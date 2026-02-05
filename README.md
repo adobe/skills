@@ -1,6 +1,6 @@
 # Adobe Skills for AI Coding Agents
 
-Official Adobe skills for AI coding agents.
+Official repository of Adobe skills for AI coding agents.
 
 ## Installation
 
@@ -95,7 +95,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on adding or updating skil
 ## Resources
 
 - [agentskills.io Specification](https://agentskills.io)
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
+- [Claude Code Plugins](https://code.claude.com/docs/en/discover-plugins)
 - [Vercel Skills](https://github.com/vercel-labs/skills)
 - [upskill GitHub Extension](https://github.com/trieloff/gh-upskill)
 
