@@ -1,0 +1,17 @@
+{
+  "name": "@anthropic-ai/skills",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Adobe skills for AI coding agents",
+  "scripts": {
+    "validate": "find skills -name SKILL.md -exec dirname {} \\; | xargs -I {} skills-ref validate {}"
+  },
+  "devDependencies": {
+    "skills-ref": "^0.1.5"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/adobe/skills.git"
+  },
+  "license": "Apache-2.0"
+}
