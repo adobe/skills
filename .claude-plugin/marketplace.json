@@ -1,0 +1,16 @@
+{
+  "name": "adobe-skills",
+  "owner": {
+    "name": "Adobe"
+  },
+  "metadata": {
+    "description": "Official Adobe skills for AI coding agents"
+  },
+  "plugins": [
+    {
+      "name": "aem-edge-delivery-services",
+      "source": "./skills/aem/edge-delivery-services",
+      "description": "Skills for AEM Edge Delivery Services development"
+    }
+  ]
+}

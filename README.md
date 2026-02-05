@@ -4,26 +4,31 @@ Official Adobe skills for AI coding agents.
 
 ## Installation
 
-Choose your preferred method:
-
 ### Claude Code Plugins
 
 ```bash
+# Add the Adobe Skills marketplace
 /plugin marketplace add adobe/skills
-/plugin install aem-content-driven-development@adobe-skills
+
+# Install AEM Edge Delivery Services plugin (all 17 skills)
+/plugin install aem-edge-delivery-services@adobe-skills
 ```
 
 ### Vercel Skills (npx skills)
 
 ```bash
-# Install a specific skill
-npx skills add adobe/skills -s aem-content-driven-development
+# Install all AEM Edge Delivery Services skills
+npx skills add https://github.com/adobe/skills/tree/main/skills/aem/edge-delivery-services --all
 
-# Install all AEM Edge Delivery skills
-npx skills add adobe/skills -s aem-edge-delivery
+# Install specific skill(s)
+npx skills add adobe/skills -s content-driven-development
+npx skills add adobe/skills -s content-driven-development building-blocks testing-blocks
 
-# Install all skills
+# Install all Adobe skills (all products)
 npx skills add adobe/skills --all
+
+# List available skills
+npx skills add adobe/skills --list
 ```
 
 ### upskill (GitHub CLI Extension)
@@ -35,7 +40,53 @@ gh upskill adobe/skills
 
 ## Available Skills
 
-TODO
+### AEM Edge Delivery Services
+
+#### Core Development
+
+| Skill | Description |
+|-------|-------------|
+| `content-driven-development` | Orchestrates the CDD workflow for all code changes |
+| `analyze-and-plan` | Analyze requirements and define acceptance criteria |
+| `building-blocks` | Implement blocks and core functionality |
+| `testing-blocks` | Browser testing and validation |
+| `content-modeling` | Design author-friendly content models |
+| `code-review` | Self-review and PR review |
+
+#### Discovery
+
+| Skill | Description |
+|-------|-------------|
+| `block-inventory` | Survey available blocks in project and Block Collection |
+| `block-collection-and-party` | Search reference implementations |
+| `docs-search` | Search aem.live documentation |
+| `find-test-content` | Find existing content for testing |
+
+#### Migration
+
+| Skill | Description |
+|-------|-------------|
+| `page-import` | Import webpages (orchestrator) |
+| `scrape-webpage` | Scrape and analyze webpage content |
+| `identify-page-structure` | Analyze page sections |
+| `page-decomposition` | Analyze content sequences |
+| `authoring-analysis` | Determine authoring approach |
+| `generate-import-html` | Generate structured HTML |
+| `preview-import` | Preview imported content |
+
+## Repository Structure
+
+```
+skills/
+└── aem/
+    └── edge-delivery-services/
+        ├── .claude-plugin/
+        │   └── plugin.json
+        └── skills/
+            ├── content-driven-development/
+            ├── building-blocks/
+            └── ...
+```
 
 ## Contributing
 
@@ -44,7 +95,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on adding or updating skil
 ## Resources
 
 - [agentskills.io Specification](https://agentskills.io)
-- [Claude Code Plugins Documentation](https://docs.anthropic.com/en/docs/claude-code)
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
 - [Vercel Skills](https://github.com/vercel-labs/skills)
 - [upskill GitHub Extension](https://github.com/trieloff/gh-upskill)
 
