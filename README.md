@@ -1,6 +1,6 @@
 # Adobe Skills for AI Coding Agents
 
-Official repository of Adobe skills for AI coding agents.
+Repository of Adobe skills for AI coding agents.
 
 ## Installation
 
