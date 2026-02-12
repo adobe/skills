@@ -37,7 +37,7 @@ npx skills add adobe/skills --list
 gh extension install trieloff/gh-upskill
 
 # Install all skills from this repo
-gh upskill adobe/skills
+gh upskill adobe/skills --all
 
 # Install only AEM Edge Delivery Services skills
 gh upskill adobe/skills --path skills/aem/edge-delivery-services --all
