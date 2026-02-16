@@ -1,0 +1,50 @@
+.example-config-container {
+  padding: var(--spacing-m, 2rem);
+  background: var(--color-background-light, #f5f5f5);
+  border-radius: var(--border-radius, 8px);
+}
+
+.example-config-container.align-left {
+  text-align: left;
+}
+
+.example-config-container.align-center {
+  text-align: center;
+}
+
+.example-config-container.align-right {
+  text-align: right;
+}
+
+.example-config-header {
+  margin-bottom: var(--spacing-s, 1rem);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs, 0.5rem);
+}
+
+.example-config-header .icon {
+  width: 24px;
+  height: 24px;
+  color: var(--color-accent, #06c);
+}
+
+.example-config-title {
+  margin: 0;
+  font-size: var(--heading-font-size-m, 1.5rem);
+  color: var(--color-text, #333);
+}
+
+.example-config-subtitle {
+  margin: var(--spacing-xs, 0.5rem) 0 0;
+  font-size: var(--body-font-size-s, 0.875rem);
+  color: var(--color-text-secondary, #666);
+}
+
+.example-config-content {
+  padding: var(--spacing-s, 1rem);
+  background: var(--color-background, #fff);
+  border-radius: var(--border-radius-small, 4px);
+  font-size: var(--body-font-size-m, 1rem);
+  color: var(--color-text, #333);
+}
