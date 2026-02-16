@@ -60,6 +60,7 @@ gh upskill adobe/skills --path skills/aem/edge-delivery-services --list
 | `content-driven-development` | Orchestrates the CDD workflow for all code changes |
 | `analyze-and-plan` | Analyze requirements and define acceptance criteria |
 | `building-blocks` | Implement blocks and core functionality |
+| `building-blocks-xwalk-ue` | Implement blocks and core functionality for AEM Sites xwalk based UE |
 | `testing-blocks` | Browser testing and validation |
 | `content-modeling` | Design author-friendly content models |
 | `code-review` | Self-review and PR review |
