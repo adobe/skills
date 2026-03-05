@@ -1,0 +1,122 @@
+{
+  "definitions": [
+    {
+      "title": "Example Nested Blocks",
+      "id": "example-nested-blocks",
+      "plugins": {
+        "xwalk": {
+          "page": {
+            "resourceType": "core/franklin/components/section/v1/section",
+            "template": {
+              "name": "Example Nested Blocks",
+              "model": "example-nested-blocks",
+              "filter": "example-nested-blocks-filter"
+            }
+          }
+        }
+      }
+    },
+    {
+      "title": "Example Nested Group",
+      "id": "example-nested-group",
+      "plugins": {
+        "xwalk": {
+          "page": {
+            "resourceType": "core/franklin/components/block/v1/block",
+            "template": {
+              "name": "Example Nested Group",
+              "model": "example-nested-group",
+              "filter": "example-nested-group-filter"
+            }
+          }
+        }
+      }
+    },
+    {
+      "title": "Example Nested Item",
+      "id": "example-nested-item",
+      "plugins": {
+        "xwalk": {
+          "page": {
+            "resourceType": "core/franklin/components/block/v1/block/item",
+            "template": {
+              "name": "Example Nested Item",
+              "model": "example-nested-item",
+              "key-value": true
+            }
+          }
+        }
+      }
+    }
+  ],
+  "models": [
+    {
+      "id": "example-nested-blocks",
+      "fields": [
+        {
+          "component": "text",
+          "name": "title",
+          "label": "Section Title",
+          "valueType": "string",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "id": "example-nested-group",
+      "fields": [
+        {
+          "component": "text",
+          "name": "heading",
+          "label": "Group Heading",
+          "valueType": "string",
+          "value": ""
+        },
+        {
+          "component": "boolean",
+          "name": "expanded",
+          "label": "Expanded by Default",
+          "valueType": "boolean",
+          "value": false
+        }
+      ]
+    },
+    {
+      "id": "example-nested-item",
+      "fields": [
+        {
+          "component": "text",
+          "name": "label",
+          "label": "Item Label",
+          "valueType": "string",
+          "value": ""
+        },
+        {
+          "component": "text",
+          "name": "url",
+          "label": "Item URL",
+          "valueType": "string",
+          "value": ""
+        },
+        {
+          "component": "text",
+          "name": "icon",
+          "label": "Icon Name",
+          "valueType": "string",
+          "value": "",
+          "description": "Icon from /icons/ directory (without extension)"
+        }
+      ]
+    }
+  ],
+  "filters": [
+    {
+      "id": "example-nested-blocks-filter",
+      "components": ["example-nested-group"]
+    },
+    {
+      "id": "example-nested-group-filter",
+      "components": ["example-nested-item"]
+    }
+  ]
+}
