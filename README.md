@@ -12,6 +12,12 @@ Repository of Adobe skills for AI coding agents.
 
 # Install AEM Edge Delivery Services plugin (all 17 skills)
 /plugin install aem-edge-delivery-services@adobe-skills
+
+# Install AEM Cloud Dispatcher plugin
+/plugin install aem-cloud-service-dispatcher@adobe-skills
+
+# Install AEM 6.5 LTS Dispatcher plugin
+/plugin install aem-6-5-lts-dispatcher@adobe-skills
 ```
 
 ### Vercel Skills (npx skills)
@@ -20,15 +26,35 @@ Repository of Adobe skills for AI coding agents.
 # Install all AEM Edge Delivery Services skills
 npx skills add https://github.com/adobe/skills/tree/main/skills/aem/edge-delivery-services --all
 
+# Install all AEM Cloud Dispatcher skills
+npx skills add https://github.com/adobe/skills/tree/main/skills/aem/cloud-service/skills/dispatcher --all
+
+# Install all AEM 6.5 LTS Dispatcher skills
+npx skills add https://github.com/adobe/skills/tree/main/skills/aem/6.5-lts/skills/dispatcher --all
+
+# Install dispatcher skills for a single agent (pick ONE mode only)
+# Cloud-service mode:
+npx skills add https://github.com/adobe/skills/tree/main/skills/aem/cloud-service/skills/dispatcher --all -a cursor -y
+# AMS 6.5 mode:
+npx skills add https://github.com/adobe/skills/tree/main/skills/aem/6.5-lts/skills/dispatcher --all -a cursor -y
+
 # Install specific skill(s)
 npx skills add adobe/skills -s content-driven-development
 npx skills add adobe/skills -s content-driven-development building-blocks testing-blocks
 
-# Install all Adobe skills (all products)
-npx skills add adobe/skills --all
+# Install a specific dispatcher skill from a mode-scoped source
+npx skills add https://github.com/adobe/skills/tree/main/skills/aem/cloud-service/skills/dispatcher -s config-authoring
+npx skills add https://github.com/adobe/skills/tree/main/skills/aem/6.5-lts/skills/dispatcher -s config-authoring
 
-# List available skills
+# Install all skills discoverable at repository root (currently AEM Edge Delivery Services)
+npx skills add adobe/skills --all
+# Note: Dispatcher mode skills are grouped under mode-scoped paths and are not discovered from repository root.
+
+# List skills discoverable at repository root (currently AEM Edge Delivery Services)
 npx skills add adobe/skills --list
+# For dispatcher skills, use mode-scoped --list:
+# npx skills add https://github.com/adobe/skills/tree/main/skills/aem/cloud-service/skills/dispatcher --list
+# npx skills add https://github.com/adobe/skills/tree/main/skills/aem/6.5-lts/skills/dispatcher --list
 ```
 
 ### upskill (GitHub CLI Extension)
@@ -36,67 +62,87 @@ npx skills add adobe/skills --list
 ```bash
 gh extension install trieloff/gh-upskill
 
-# Install all skills from this repo
+# Install all skills discoverable at repository root
 gh upskill adobe/skills --all
+# Note: prefer mode-scoped --path installs for dispatcher skills.
 
 # Install only AEM Edge Delivery Services skills
 gh upskill adobe/skills --path skills/aem/edge-delivery-services --all
 
+# Install only AEM Cloud Dispatcher skills
+gh upskill adobe/skills --path skills/aem/cloud-service/skills/dispatcher --all
+
+# Install only AEM 6.5 LTS Dispatcher skills
+gh upskill adobe/skills --path skills/aem/6.5-lts/skills/dispatcher --all
+
 # Install a specific skill
 gh upskill adobe/skills --path skills/aem/edge-delivery-services --skill content-driven-development
+gh upskill adobe/skills --path skills/aem/cloud-service/skills/dispatcher --skill config-authoring
+gh upskill adobe/skills --path skills/aem/6.5-lts/skills/dispatcher --skill config-authoring
 
 # List available skills in a subfolder
 gh upskill adobe/skills --path skills/aem/edge-delivery-services --list
+gh upskill adobe/skills --path skills/aem/cloud-service/skills/dispatcher --list
+gh upskill adobe/skills --path skills/aem/6.5-lts/skills/dispatcher --list
 ```
 
 ## Available Skills
 
 ### AEM Edge Delivery Services
 
-#### Core Development
+This package provides three capability areas:
+- Core development workflow skills
+- Discovery and documentation lookup skills
+- Migration and import workflow skills
 
-| Skill | Description |
-|-------|-------------|
-| `content-driven-development` | Orchestrates the CDD workflow for all code changes |
-| `analyze-and-plan` | Analyze requirements and define acceptance criteria |
-| `building-blocks` | Implement blocks and core functionality |
-| `testing-blocks` | Browser testing and validation |
-| `content-modeling` | Design author-friendly content models |
-| `code-review` | Self-review and PR review |
+See `skills/aem/edge-delivery-services/skills/` for the current concrete skill set.
 
-#### Discovery
+### AEM Dispatcher
 
-| Skill | Description |
-|-------|-------------|
-| `block-inventory` | Survey available blocks in project and Block Collection |
-| `block-collection-and-party` | Search reference implementations |
-| `docs-search` | Search aem.live documentation |
-| `find-test-content` | Find existing content for testing |
+Dispatcher skills are split by runtime flavor to avoid mode auto-detection and keep installation explicit.
+Install only one dispatcher flavor in a workspace (`cloud-service` or `6.5-lts`).
 
-#### Migration
+Current dispatcher flavors:
+- `skills/aem/cloud-service/skills/dispatcher`
+- `skills/aem/6.5-lts/skills/dispatcher`
 
-| Skill | Description |
-|-------|-------------|
-| `page-import` | Import webpages (orchestrator) |
-| `scrape-webpage` | Scrape and analyze webpage content |
-| `identify-page-structure` | Analyze page sections |
-| `page-decomposition` | Analyze content sequences |
-| `authoring-analysis` | Determine authoring approach |
-| `generate-import-html` | Generate structured HTML |
-| `preview-import` | Preview imported content |
+Each flavor contains parallel capability groups (workflow orchestration, config authoring, technical advisory, incident response, performance tuning, and security hardening).
+Shared advisory logic is centralized under each flavor's `dispatcher/shared/references/` to reduce duplication and drift.
 
 ## Repository Structure
 
 ```
 skills/
-└── aem/
-    └── edge-delivery-services/
-        ├── .claude-plugin/
-        │   └── plugin.json
-        └── skills/
-            ├── content-driven-development/
-            ├── building-blocks/
-            └── ...
+\-- aem/
+    |-- edge-delivery-services/
+    |   |-- .claude-plugin/
+    |   |   \-- plugin.json
+    |   \-- skills/
+    |       |-- content-driven-development/
+    |       |-- building-blocks/
+    |       \-- ...
+    |-- cloud-service/
+    |   \-- skills/
+    |       \-- dispatcher/
+    |           |-- .claude-plugin/
+    |           |   \-- plugin.json
+    |           |-- config-authoring/
+    |           |   |-- SKILL.md
+    |           |   \-- references/
+    |           |       \-- ...
+    |           |-- technical-advisory/
+    |           \-- ...
+    |-- 6.5-lts/
+    |   \-- skills/
+    |       \-- dispatcher/
+    |           |-- .claude-plugin/
+    |           |   \-- plugin.json
+    |           |-- config-authoring/
+    |           |   |-- SKILL.md
+    |           |   \-- references/
+    |           |       \-- ...
+    |           |-- technical-advisory/
+    |           \-- ...
 ```
 
 ## Contributing

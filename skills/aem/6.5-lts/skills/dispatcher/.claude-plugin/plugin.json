@@ -1,0 +1,11 @@
+{
+  "name": "aem-6-5-lts-dispatcher",
+  "description": "Mode-specific AEM Dispatcher skills for AEM 6.5 LTS and AMS workflows. Includes config authoring, advisory, incident response, performance tuning, and security hardening with Dispatcher MCP evidence.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": ["aem", "aem6.5", "6.5-lts", "ams", "dispatcher", "httpd", "apache", "caching", "security", "adobe"]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "aem-cloud-service-dispatcher",
+  "description": "Mode-specific AEM Dispatcher skills for AEM as a Cloud Service workflows. Includes config authoring, advisory, incident response, performance tuning, and security hardening with Dispatcher MCP evidence.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": ["aem", "aemaacs", "cloud", "dispatcher", "httpd", "apache", "caching", "security", "adobe"]
+}
