@@ -81,7 +81,7 @@ Deliver:
 
 ### 5) Pre-Deploy Gate
 
-1. `validate({"config":"<changed dispatcher/httpd content>","type":"dispatcher"})` -> `lint({"mode":"directory","target":"<dispatcher src path>","strict_mode":true})` -> `sdk({"action":"check-files","config_path":"<dispatcher src path>"})` -> `sdk({"action":"diff-baseline","config_path":"<dispatcher src path>"})`.
+1. `validate({"config":"<changed dispatcher.any content>","type":"dispatcher"})` -> optional `validate({"config":"<changed vhost/rewrite content>","type":"httpd","config_type":"vhost"})` when Apache files changed -> `lint({"mode":"directory","target":"<dispatcher src path>","strict_mode":true})` -> `sdk({"action":"check-files","config_path":"<dispatcher src path>"})` -> `sdk({"action":"diff-baseline","config_path":"<dispatcher src path>"})`.
 2. Run minimum runtime checks for changed behavior type.
 3. Record skipped checks and required environment for completion.
 

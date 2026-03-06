@@ -49,8 +49,8 @@ Use only these Dispatcher MCP tools:
 
 Use shared references to select security evidence depth:
 
-- [mode-specific-verification-matrix.md](./references/technical-advisory/mode-specific-verification-matrix.md)
-- [test-case-catalog.md](./references/technical-advisory/test-case-catalog.md)
+- [mode-specific-verification-matrix.md](../shared/references/technical-advisory/mode-specific-verification-matrix.md)
+- [test-case-catalog.md](../shared/references/technical-advisory/test-case-catalog.md)
 
 ## Output Contract
 
@@ -78,8 +78,8 @@ Always return:
 - [sensitive-paths-catalog.md](./references/security-hardening/sensitive-paths-catalog.md)
 - [owasp-coverage-matrix.md](./references/security-hardening/owasp-coverage-matrix.md)
 - [security-audit-report-template.md](./references/security-hardening/security-audit-report-template.md)
-- [ams-6-5-guardrails.md](./references/technical-advisory/ams-6-5-guardrails.md)
-- [mode-specific-verification-matrix.md](./references/technical-advisory/mode-specific-verification-matrix.md)
-- [test-case-catalog.md](./references/technical-advisory/test-case-catalog.md)
-- [change-risk-and-rollback-template.md](./references/technical-advisory/change-risk-and-rollback-template.md)
-- [public-doc-citation-rules.md](./references/technical-advisory/public-doc-citation-rules.md)
+- [ams-6-5-guardrails.md](../shared/references/technical-advisory/ams-6-5-guardrails.md)
+- [mode-specific-verification-matrix.md](../shared/references/technical-advisory/mode-specific-verification-matrix.md)
+- [test-case-catalog.md](../shared/references/technical-advisory/test-case-catalog.md)
+- [change-risk-and-rollback-template.md](../shared/references/technical-advisory/change-risk-and-rollback-template.md)
+- [public-doc-citation-rules.md](../shared/references/technical-advisory/public-doc-citation-rules.md)

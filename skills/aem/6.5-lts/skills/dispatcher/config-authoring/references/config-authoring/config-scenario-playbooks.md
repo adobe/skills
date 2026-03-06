@@ -9,7 +9,7 @@ Use these deterministic playbooks for high-precision config authoring with the c
 3. Build final merged `/filter` section (deny baseline -> business allows -> targeted denies).
 4. Build `/cache` section with explicit `statfileslevel` rationale and tier-appropriate behavior.
 5. Add vhost/rewrite/canonical-host logic and keep render/docroot values variable-driven (`AUTHOR_*`, `PUBLISH_*`).
-6. Run `validate({"config":"<changed dispatcher/httpd content>","type":"dispatcher"})` -> `lint({"mode":"directory","target":"<dispatcher src path>","strict_mode":true})` -> `sdk({"action":"check-files","config_path":"<dispatcher src path>"})` -> `sdk({"action":"diff-baseline","config_path":"<dispatcher src path>"})` (if required).
+6. Run `validate({"config":"<changed dispatcher.any content>","type":"dispatcher"})` -> optional `validate({"config":"<changed vhost/rewrite content>","type":"httpd","config_type":"vhost"})` when Apache files changed -> `lint({"mode":"directory","target":"<dispatcher src path>","strict_mode":true})` -> `sdk({"action":"check-files","config_path":"<dispatcher src path>"})` -> `sdk({"action":"diff-baseline","config_path":"<dispatcher src path>"})` (if required).
 7. Verify one allow + one deny + one cache candidate at runtime.
 
 ## Playbook B: Headless/API Enablement
@@ -77,8 +77,8 @@ Use these deterministic playbooks for high-precision config authoring with the c
 
 ## Playbook J: CI/Pre-Deploy Validation Gate
 
-1. Define required static gates: `validate({"config":"<changed dispatcher/httpd content>","type":"dispatcher"})`, `lint({"mode":"directory","target":"<dispatcher src path>","strict_mode":true})`, `sdk({"action":"check-files","config_path":"<dispatcher src path>"})`, `sdk({"action":"diff-baseline","config_path":"<dispatcher src path>"})`.
-2. Add optional deep gates when environment supports: `sdk(validate-full)`, `sdk(docker-test)`, `sdk(three-phase-validate)`.
+1. Define required static gates: `validate({"config":"<changed dispatcher.any content>","type":"dispatcher"})`, optional `validate({"config":"<changed vhost/rewrite content>","type":"httpd","config_type":"vhost"})` when Apache files changed, `lint({"mode":"directory","target":"<dispatcher src path>","strict_mode":true})`, `sdk({"action":"check-files","config_path":"<dispatcher src path>"})`, `sdk({"action":"diff-baseline","config_path":"<dispatcher src path>"})`.
+2. Add optional deep gates when environment supports: `sdk({"action":"validate-full","config_path":"<dispatcher src path>"})`, `sdk({"action":"docker-test","config_path":"<dispatcher src path>"})`, `sdk({"action":"three-phase-validate","config_path":"<dispatcher src path>"})`.
 3. Add minimum runtime checks for changed behavior categories.
 4. Require explicit fail/waive criteria with owner and expiration for waivers.
 5. Publish go/no-go output with unresolved risks and rollback trigger.

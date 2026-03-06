@@ -106,8 +106,8 @@ Current dispatcher flavors:
 - `skills/aem/cloud-service/skills/dispatcher`
 - `skills/aem/6.5-lts/skills/dispatcher`
 
-Each flavor contains parallel capability groups (config authoring, technical advisory, incident response, performance tuning, and security hardening).
-Shared advisory logic is being organized toward reusable sub-skills/references to reduce duplication across flavors.
+Each flavor contains parallel capability groups (workflow orchestration, config authoring, technical advisory, incident response, performance tuning, and security hardening).
+Shared advisory logic is centralized under each flavor's `dispatcher/shared/references/` to reduce duplication and drift.
 
 ## Repository Structure
 

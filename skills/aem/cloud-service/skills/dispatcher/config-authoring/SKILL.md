@@ -54,8 +54,8 @@ Cloud Config Progress
 
 Use the shared references to select the minimum evidence set:
 
-- [mode-specific-verification-matrix.md](./references/technical-advisory/mode-specific-verification-matrix.md)
-- [test-case-catalog.md](./references/technical-advisory/test-case-catalog.md)
+- [mode-specific-verification-matrix.md](../shared/references/technical-advisory/mode-specific-verification-matrix.md)
+- [test-case-catalog.md](../shared/references/technical-advisory/test-case-catalog.md)
 
 ## Output Contract
 
@@ -82,9 +82,9 @@ Always include:
 - [reference-snippets.md](./references/config-authoring/reference-snippets.md) – reusable starter snippets for consistent config authoring
 - [validation-playbook.md](./references/config-authoring/validation-playbook.md)
 - [mcp-tool-orchestration.md](./references/config-authoring/mcp-tool-orchestration.md)
-- [mode-specific-verification-matrix.md](./references/technical-advisory/mode-specific-verification-matrix.md)
-- [cloud-service-aemaacs-guardrails.md](./references/technical-advisory/cloud-service-aemaacs-guardrails.md) – cloud-service-only immutable/include/runtime boundary checks from AEMaaCS patterns
-- [test-case-catalog.md](./references/technical-advisory/test-case-catalog.md)
-- [change-risk-and-rollback-template.md](./references/technical-advisory/change-risk-and-rollback-template.md)
-- [public-doc-citation-rules.md](./references/technical-advisory/public-doc-citation-rules.md)
-- [public-docs-index.md](./references/technical-advisory/public-docs-index.md)
+- [mode-specific-verification-matrix.md](../shared/references/technical-advisory/mode-specific-verification-matrix.md)
+- [cloud-service-aemaacs-guardrails.md](../shared/references/technical-advisory/cloud-service-aemaacs-guardrails.md) – cloud-service-only immutable/include/runtime boundary checks from AEMaaCS patterns
+- [test-case-catalog.md](../shared/references/technical-advisory/test-case-catalog.md)
+- [change-risk-and-rollback-template.md](../shared/references/technical-advisory/change-risk-and-rollback-template.md)
+- [public-doc-citation-rules.md](../shared/references/technical-advisory/public-doc-citation-rules.md)
+- [public-docs-index.md](../shared/references/technical-advisory/public-docs-index.md)

@@ -6,7 +6,7 @@ Use this checklist to verify header hardening in Dispatcher/HTTPD configs with t
 
 Important contract note:
 - `trace_request` does not return full live response headers.
-- Use MCP for config/runtime evidence and optional external HTTP probes (`curl -I`) for live-header confirmation.
+- Use MCP for config/runtime evidence and optional external HTTP probes (for example `curl -I`) for live-header confirmation.
 
 ## Essential Headers
 
@@ -142,7 +142,7 @@ MCP checks:
 4) request_probe = trace_request({"url":"/content/site/en/my-account.html","method":"GET"})
 ```
 
-If live header confirmation is required, add external `curl -I` checks to the same pipeline.
+If live header confirmation is required, add external HTTP header probes (for example `curl -sI`) to the same pipeline.
 
 ## References
 

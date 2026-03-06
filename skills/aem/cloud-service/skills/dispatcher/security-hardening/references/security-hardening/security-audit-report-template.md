@@ -108,7 +108,7 @@ Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains
 
 Verification:
 - rerun `validate`/`lint`
-- optional `curl -I` confirmation for live response headers
+- optional external HTTP header probe (for example `curl -sI`) for live response headers
 
 ## Compliance Summary
 

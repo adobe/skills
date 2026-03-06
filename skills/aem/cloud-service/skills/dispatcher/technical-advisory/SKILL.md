@@ -39,7 +39,7 @@ Use only these Dispatcher MCP tools when producing verification plans:
 ## Workflow
 
 1. Confirm scope and assumptions.
-2. Apply [cloud-service-aemaacs-guardrails.md](./references/technical-advisory/cloud-service-aemaacs-guardrails.md) to lock immutable/include constraints and CDN-vs-Dispatcher boundaries.
+2. Apply [cloud-service-aemaacs-guardrails.md](../shared/references/technical-advisory/cloud-service-aemaacs-guardrails.md) to lock immutable/include constraints and CDN-vs-Dispatcher boundaries.
 3. Use [capability-coverage-map.md](./references/technical-advisory/capability-coverage-map.md) to route prompt/tool/resource intents to the right dispatcher skill flow.
 4. Select a scenario path from [core7-capability-playbook.md](./references/technical-advisory/core7-capability-playbook.md) for development/debugging requests.
 5. For conceptual questions (e.g. statfileslevel, filter order, URL decomposition, cache invalidation), use [concepts.md](./references/technical-advisory/concepts.md) and cite official docs.
@@ -51,8 +51,8 @@ Use only these Dispatcher MCP tools when producing verification plans:
 
 Use shared references for deterministic coverage:
 
-- [mode-specific-verification-matrix.md](./references/technical-advisory/mode-specific-verification-matrix.md)
-- [test-case-catalog.md](./references/technical-advisory/test-case-catalog.md)
+- [mode-specific-verification-matrix.md](../shared/references/technical-advisory/mode-specific-verification-matrix.md)
+- [test-case-catalog.md](../shared/references/technical-advisory/test-case-catalog.md)
 
 ## Output Contract
 
@@ -73,11 +73,11 @@ Use one of these output shapes:
 
 - [core7-capability-playbook.md](./references/technical-advisory/core7-capability-playbook.md) – high-value development/debugging playbooks for the current core-7 MCP contract
 - [capability-coverage-map.md](./references/technical-advisory/capability-coverage-map.md) – prompt/tool/resource coverage map to current dispatcher skill workflows
-- [cloud-service-aemaacs-guardrails.md](./references/technical-advisory/cloud-service-aemaacs-guardrails.md) – cloud-service-only immutable/include/runtime boundary checks from AEMaaCS patterns
+- [cloud-service-aemaacs-guardrails.md](../shared/references/technical-advisory/cloud-service-aemaacs-guardrails.md) – cloud-service-only immutable/include/runtime boundary checks from AEMaaCS patterns
 - [concepts.md](./references/technical-advisory/concepts.md) – key concepts (filter last-match, URL decomposition, statfileslevel, invalidate vs flush) for explanations
-- [public-docs-index.md](./references/technical-advisory/public-docs-index.md)
-- [public-doc-citation-rules.md](./references/technical-advisory/public-doc-citation-rules.md)
-- [mode-specific-verification-matrix.md](./references/technical-advisory/mode-specific-verification-matrix.md)
-- [test-case-catalog.md](./references/technical-advisory/test-case-catalog.md)
-- [change-risk-and-rollback-template.md](./references/technical-advisory/change-risk-and-rollback-template.md)
+- [public-docs-index.md](../shared/references/technical-advisory/public-docs-index.md)
+- [public-doc-citation-rules.md](../shared/references/technical-advisory/public-doc-citation-rules.md)
+- [mode-specific-verification-matrix.md](../shared/references/technical-advisory/mode-specific-verification-matrix.md)
+- [test-case-catalog.md](../shared/references/technical-advisory/test-case-catalog.md)
+- [change-risk-and-rollback-template.md](../shared/references/technical-advisory/change-risk-and-rollback-template.md)
 - [request-router.md](./references/technical-advisory/request-router.md)

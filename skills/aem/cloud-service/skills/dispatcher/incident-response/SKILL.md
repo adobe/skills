@@ -49,8 +49,8 @@ Use only these Dispatcher MCP tools:
 
 Use shared references to select incident evidence depth:
 
-- [mode-specific-verification-matrix.md](./references/technical-advisory/mode-specific-verification-matrix.md)
-- [test-case-catalog.md](./references/technical-advisory/test-case-catalog.md)
+- [mode-specific-verification-matrix.md](../shared/references/technical-advisory/mode-specific-verification-matrix.md)
+- [test-case-catalog.md](../shared/references/technical-advisory/test-case-catalog.md)
 
 ## Output Contract
 
@@ -77,8 +77,8 @@ Always return:
 - [incident-scenario-playbooks.md](./references/incident-response/incident-scenario-playbooks.md) – focused debug scenarios adapted from broader MCP prompt surfaces
 - [symptom-hypothesis-matrix.md](./references/incident-response/symptom-hypothesis-matrix.md) – troubleshooting hypothesis shortcuts for faster evidence-driven diagnosis
 - [incident-report-template.md](./references/incident-response/incident-report-template.md)
-- [mode-specific-verification-matrix.md](./references/technical-advisory/mode-specific-verification-matrix.md)
-- [cloud-service-aemaacs-guardrails.md](./references/technical-advisory/cloud-service-aemaacs-guardrails.md) – cloud-service-only immutable/include/runtime boundary checks from AEMaaCS patterns
-- [test-case-catalog.md](./references/technical-advisory/test-case-catalog.md)
-- [change-risk-and-rollback-template.md](./references/technical-advisory/change-risk-and-rollback-template.md)
-- [public-doc-citation-rules.md](./references/technical-advisory/public-doc-citation-rules.md)
+- [mode-specific-verification-matrix.md](../shared/references/technical-advisory/mode-specific-verification-matrix.md)
+- [cloud-service-aemaacs-guardrails.md](../shared/references/technical-advisory/cloud-service-aemaacs-guardrails.md) – cloud-service-only immutable/include/runtime boundary checks from AEMaaCS patterns
+- [test-case-catalog.md](../shared/references/technical-advisory/test-case-catalog.md)
+- [change-risk-and-rollback-template.md](../shared/references/technical-advisory/change-risk-and-rollback-template.md)
+- [public-doc-citation-rules.md](../shared/references/technical-advisory/public-doc-citation-rules.md)
