@@ -18,6 +18,11 @@
       "description": "Mode-specific Dispatcher skills for AEM as a Cloud Service workflows"
     },
     {
+      "name": "aem-cloud-service-code-migration",
+      "source": "./skills/aem/cloud-service/skills/code-migration",
+      "description": "Skills for migrating AEM 6.x code to Cloud Service compatible patterns"
+    },
+    {
       "name": "aem-6-5-lts-dispatcher",
       "source": "./skills/aem/6.5-lts/skills/dispatcher",
       "description": "Mode-specific Dispatcher skills for AEM 6.5 LTS and AMS workflows"

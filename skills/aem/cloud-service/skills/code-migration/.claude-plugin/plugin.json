@@ -1,0 +1,11 @@
+{
+  "name": "aem-cloud-service-code-migration",
+  "description": "Skills for migrating AEM code from legacy patterns to AEM Cloud Service compatible patterns. Covers scheduler, resource change listener, replication, event listener, event handler, and asset manager migrations.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": ["aem", "cloud-service", "migration", "bpa", "code-transformation", "adobe"]
+}

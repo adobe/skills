@@ -18,6 +18,9 @@ Repository of Adobe skills for AI coding agents.
 
 # Install AEM 6.5 LTS Dispatcher plugin
 /plugin install aem-6-5-lts-dispatcher@adobe-skills
+
+# Install AEM Cloud Service Code Migration plugin
+/plugin install aem-cloud-service-code-migration@adobe-skills
 ```
 
 ### Vercel Skills (npx skills)
@@ -31,6 +34,9 @@ npx skills add https://github.com/adobe/skills/tree/main/skills/aem/cloud-servic
 
 # Install all AEM 6.5 LTS Dispatcher skills
 npx skills add https://github.com/adobe/skills/tree/main/skills/aem/6.5-lts/skills/dispatcher --all
+
+# Install all AEM Cloud Service Code Migration skills
+npx skills add https://github.com/adobe/skills/tree/main/skills/aem/cloud-service/skills/code-migration --all
 
 # Install dispatcher skills for a single agent (pick ONE mode only)
 # AEM as a Cloud Service mode:
@@ -75,6 +81,9 @@ gh upskill adobe/skills --path skills/aem/cloud-service/skills/dispatcher --all
 # Install only AEM 6.5 LTS Dispatcher skills
 gh upskill adobe/skills --path skills/aem/6.5-lts/skills/dispatcher --all
 
+# Install only AEM Cloud Service Code Migration skills
+gh upskill adobe/skills --path skills/aem/cloud-service/skills/code-migration --all
+
 # Install a specific skill
 gh upskill adobe/skills --path skills/aem/edge-delivery-services --skill content-driven-development
 gh upskill adobe/skills --path skills/aem/cloud-service/skills/dispatcher --skill config-authoring
@@ -109,6 +118,20 @@ Current dispatcher flavors:
 Each flavor contains parallel capability groups (workflow orchestration, config authoring, technical advisory, incident response, performance tuning, and security hardening).
 Shared advisory logic is centralized under each flavor's `dispatcher/shared/references/` to reduce duplication and drift.
 
+### AEM Cloud Service Code Migration
+
+Skills for migrating AEM code from legacy patterns to AEM Cloud Service compatible patterns.
+
+| Skill | Description |
+|-------|-------------|
+| `aem-migration` | Migrate legacy AEM code patterns to Cloud Service compatible patterns (scheduler, replication, event listener, event handler, resource change listener, asset manager) |
+
+**Key Features:**
+- Automatic Best Practices Analyzer (BPA) integration
+- Pattern-specific transformation modules with sub-path classification
+- Preserves business logic while updating deprecated patterns
+- Validation and testing support for migrated code
+
 ## Repository Structure
 
 ```
@@ -123,15 +146,25 @@ skills/
     |       \-- ...
     |-- cloud-service/
     |   \-- skills/
-    |       \-- dispatcher/
+    |       |-- dispatcher/
+    |       |   |-- .claude-plugin/
+    |       |   |   \-- plugin.json
+    |       |   |-- config-authoring/
+    |       |   |   |-- SKILL.md
+    |       |   |   \-- references/
+    |       |   |       \-- ...
+    |       |   |-- technical-advisory/
+    |       |   \-- ...
+    |       \-- code-migration/
     |           |-- .claude-plugin/
     |           |   \-- plugin.json
-    |           |-- config-authoring/
-    |           |   |-- SKILL.md
-    |           |   \-- references/
-    |           |       \-- ...
-    |           |-- technical-advisory/
-    |           \-- ...
+    |           |-- README.md
+    |           \-- aem-migration/
+    |               |-- SKILL.md
+    |               \-- references/
+    |                   |-- scheduler.md
+    |                   |-- replication.md
+    |                   \-- ...
     |-- 6.5-lts/
     |   \-- skills/
     |       \-- dispatcher/
