@@ -28,55 +28,52 @@ Before using this skill, ensure you have:
 
 ## BPA Findings — How It Works
 
-The skill handles BPA data automatically. You never need to run scripts manually.
+BPA (Best Practices Analyzer) findings tell you which files need migration and which pattern applies. Follow this priority chain to obtain them.
 
-### Flow
+### Source priority
 
-1. **Collection already exists?** → Use it directly. Inform user: *"Using existing BPA collection (N findings, created X ago)"*
-2. **No collection, but user provided BPA CSV path?** → Parse the CSV, create the collection, then use it. Inform user: *"Processing your BPA report... Created collection with N findings."*
-3. **No collection, no BPA path, but MCP available?** → Fetch from MCP server.
-4. **Nothing available?** → Ask user for a BPA CSV file path, or proceed with manual flow on specific files.
+1. **User provided a BPA CSV path** → Read and parse the CSV directly
+2. **MCP server available** → Call `fetch-cam-bpa-findings` with the target pattern
+3. **User points to specific files** → Skip BPA, use Manual Flow
+4. **Nothing available** → Ask the user for a BPA CSV path or specific Java files
 
 ### What the user provides
 
 The user may say things like:
 - *"Fix scheduler issues using my BPA report at ./cleaned_file6.csv"* → You have a BPA path
-- *"Fix scheduler issues"* (no path) → Check for existing collection, then MCP, then ask
+- *"Fix scheduler issues"* (no path) → Try MCP, then ask
 - *"Fix this file: MyScheduler.java"* → Manual flow, no BPA needed
 
-### Calling the helper
+### Reading a BPA CSV
 
-```javascript
-const { getBpaFindings } = require('./scripts/bpa-findings-helper.js');
+When the user provides a CSV path, read the file and extract rows matching the target pattern. Each row typically contains:
+- **pattern** — the BPA pattern ID (e.g., `scheduler`, `replication`)
+- **filePath** — path to the Java source file that needs migration
+- **message** — description of the finding
 
-const result = await getBpaFindings(pattern, {
-  bpaFilePath: './cleaned_file6.csv',   // optional — from user
-  collectionsDir: './unified-collections', // default location
-  projectId: '...',                      // optional — for MCP fallback
-  mcpFetcher: mcpFunction               // optional — MCP function
-});
-```
+Filter rows where the `pattern` column matches the pattern identified in Step 1. The matching rows are your migration targets.
 
-The `result` object contains:
-- `success` — whether findings were loaded
-- `source` — where data came from: `'unified-collection'`, `'bpa-file'`, `'mcp-server'`, or error types
-- `message` — human-readable status to show the user
-- `targets` — array of findings (when successful)
+### Using MCP server
 
-### Collection caching
+If no CSV is available, try fetching findings from the MCP server:
+- Call `fetch-cam-bpa-findings` with `pattern` set to the target pattern (e.g., `scheduler`, `assetApi`, or `all`)
+- The response contains an array of findings with file paths and pattern IDs
+- Filter findings for the target pattern if you fetched `all`
 
-Once a collection is created from a BPA CSV, it is saved to `./unified-collections/`. On subsequent runs the skill reuses it instantly without re-parsing. If the user provides a **new** BPA file path when a collection already exists, ask: *"An existing collection was found. Would you like to use it or re-process the new BPA report?"*
+### Fallback
+
+If neither CSV nor MCP yields results, ask the user: *"Could you provide the path to your BPA CSV report? Or point me to the specific Java files you want to migrate."*
 
 ## Available Patterns
 
 | Pattern | BPA Pattern ID | Module File | Status |
 |---------|--------------|-------------|--------|
-| Scheduler | `scheduler` | `resources/scheduler.md` | Ready |
-| Resource Change Listener | `resourceChangeListener` | `resources/resource-change-listener.md` | Ready |
-| Replication | `replication` | `resources/replication.md` | Ready |
-| Event Listener | `eventListener` | `resources/event-migration.md` | Ready |
-| Event Handler | `eventHandler` | `resources/event-migration.md` | Ready |
-| Asset Manager | `assetApi` | `resources/asset-manager.md` | Ready |
+| Scheduler | `scheduler` | `references/scheduler.md` | Ready |
+| Resource Change Listener | `resourceChangeListener` | `references/resource-change-listener.md` | Ready |
+| Replication | `replication` | `references/replication.md` | Ready |
+| Event Listener | `eventListener` | `references/event-migration.md` | Ready |
+| Event Handler | `eventHandler` | `references/event-migration.md` | Ready |
+| Asset Manager | `assetApi` | `references/asset-manager.md` | Ready |
 
 ## Workflow
 
@@ -102,39 +99,26 @@ Look up the pattern in the Available Patterns table above. If the status is "Com
 
 ### Step 3: Get BPA findings
 
-Call the BPA findings helper. It handles everything automatically:
+Follow the source priority chain described in the **BPA Findings** section above:
 
-```javascript
-const { getBpaFindings } = require('./scripts/bpa-findings-helper.js');
+1. **If the user provided a BPA CSV path:** Read the CSV file, filter rows where the `pattern` column matches the pattern from Step 1. The matching `filePath` values are your migration targets. Tell the user: *"Processing your BPA report… Found N findings for [pattern]."*
 
-const result = await getBpaFindings(pattern, {
-  bpaFilePath: userProvidedPath,  // if user gave a CSV path
-  collectionsDir: './unified-collections'
-});
-```
+2. **If no CSV path, try MCP:** Call `fetch-cam-bpa-findings` with the target pattern. If results are returned, use them. Tell the user: *"Fetched N findings from MCP server."*
 
-**What happens inside (you do NOT need to run these manually):**
-1. Existing collection found → uses it, tells user *"Using existing BPA collection…"*
-2. No collection + BPA CSV path given → parses CSV, creates collection, tells user *"Processing your BPA report…"*
-3. No collection + no CSV → tries MCP server (`mcp_aem-migration-mcp_fetch-cam-bpa-findings`)
-4. Nothing available → returns error; proceed to Manual Flow
-
-**Important:** If the user provides a BPA CSV path AND a collection already exists, ask the user whether to use the existing collection or re-process the new file.
-
-If `result.success` is `false` and no BPA path was provided, ask: *"Could you provide the path to your BPA CSV report? Or point me to the specific Java files you want to migrate."*
+3. **If neither works:** Ask the user: *"Could you provide the path to your BPA CSV report? Or point me to the specific Java files you want to migrate."* If the user provides specific files, proceed with the Manual Flow instead.
 
 ### Step 4: Read the pattern module
 
 **STOP. You MUST read the pattern module before making ANY code changes.**
 
-Read the pattern file from this skill's directory. The file path is:
+Read the pattern file relative to this SKILL.md file. The file path is:
 ```
-.cursor/skills/aem-migration/references/<module-file>
+references/<module-file>
 ```
 
 For example, for scheduler:
 ```
-.cursor/skills/aem-migration/references/scheduler.md
+references/scheduler.md
 ```
 
 The pattern module contains:
@@ -204,30 +188,14 @@ If the file matches multiple patterns, ask the user which one to fix. If no patt
 
 ### Source Priority
 
-1. **Existing unified collection** → Instant, no re-processing
-2. **BPA CSV file** (user-provided path) → One-time processing, then cached
-3. **MCP Server** → Live CAM data (requires projectId)
-4. **Manual Flow** → User points to specific Java files
+1. **BPA CSV file** (user-provided path) → Read and filter for target pattern
+2. **MCP Server** → Live CAM data via `fetch-cam-bpa-findings`
+3. **Manual Flow** → User points to specific Java files
 
 ### User-Facing Messages
 
 | Situation | Tell the user |
 |-----------|---------------|
-| Collection exists, pattern found | *"Using existing BPA collection (N findings, created X ago)"* |
-| No collection, BPA path given | *"Processing your BPA report… Found N findings for [pattern]."* |
-| Collection exists + new BPA path given | *"An existing collection was found. Use it or re-process the new BPA report?"* |
-| No collection, no BPA path, MCP works | *"Fetched findings from MCP server."* |
-| Nothing available | *"Could you provide the path to your BPA CSV report?"* |
-
-### CLI Testing (development only)
-
-```bash
-# Test with existing collection
-node scripts/bpa-findings-helper.js scheduler ./unified-collections
-
-# Test with BPA file (creates collection if missing)
-node scripts/bpa-findings-helper.js scheduler ./unified-collections ./cleaned_file6.csv
-
-# Verify what's in a collection
-node scripts/unified-collection-reader.js all ./unified-collections
-```
+| BPA CSV path given | *"Processing your BPA report… Found N findings for [pattern]."* |
+| No CSV, MCP works | *"Fetched N findings from MCP server."* |
+| Nothing available | *"Could you provide the path to your BPA CSV report? Or point me to the specific Java files you want to migrate."* |
