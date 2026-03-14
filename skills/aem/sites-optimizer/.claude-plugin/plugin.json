@@ -7,5 +7,5 @@
   },
   "repository": "https://github.com/adobe/skills",
   "license": "Apache-2.0",
-  "keywords": ["aem", "sites-optimizer", "opportunities", "adobe"]
+  "keywords": ["aem", "sites-optimizer", "opportunities", "suggestions", "adobe"]
 }
