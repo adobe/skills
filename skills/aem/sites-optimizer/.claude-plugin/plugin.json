@@ -1,11 +1,11 @@
 {
   "name": "aem-sites-optimizer",
-  "description": "Skills for AEM Sites Optimizer, including querying and analyzing Spacecat opportunities across sites.",
+  "description": "Skills for AEM Sites Optimizer",
   "version": "1.0.0",
   "author": {
     "name": "Adobe"
   },
   "repository": "https://github.com/adobe/skills",
   "license": "Apache-2.0",
-  "keywords": ["aem", "sites-optimizer", "spacecat", "opportunities", "adobe"]
+  "keywords": ["aem", "sites-optimizer", "opportunities", "adobe"]
 }

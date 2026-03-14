@@ -1,11 +1,11 @@
 ---
 name: query-opportunities
-description: Use when querying Spacecat opportunities from PostgREST — filtering by tags, type, status, origin, date range, or site. Use when exporting opportunity data to CSV, analyzing opportunities across sites, or answering questions about which opportunities exist with certain properties.
+description: Use when querying Spacecat opportunities or suggestions from PostgREST — filtering by tags, type, status, origin, date range, or site. Use when exporting opportunity data to CSV, analyzing opportunities across sites, querying suggestions linked to opportunities, or answering questions about which opportunities or suggestions exist with certain properties.
 ---
 
 # Query Spacecat Opportunities via PostgREST
 
-Query the `opportunities` table directly via PostgREST (no auth — anon role has read access).
+Query the `opportunities` table directly via PostgREST (Adobe Internal, requires Adobe VPN).
 
 ## PostgREST Endpoints
 
@@ -145,6 +145,108 @@ with open("/tmp/opportunities.csv", "w", newline="") as f:
         ])
 
 print(f"Exported {len(opps)} opportunities across {len(sites)} sites")
+```
+
+## Suggestions
+
+Suggestions are actionable items linked to opportunities. Each opportunity can have multiple suggestions representing specific changes to make (code changes, content updates, config updates, etc.).
+
+### Suggestion Fields
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `id` | UUID | Primary key |
+| `opportunity_id` | UUID | FK to `opportunities` |
+| `type` | enum | `CODE_CHANGE`, `CONFIG_UPDATE`, `CONTENT_UPDATE`, `METADATA_UPDATE`, `REDIRECT_UPDATE`, `AI_INSIGHTS` |
+| `rank` | integer | Priority/ordering (lower = higher priority) |
+| `data` | jsonb | Type-specific payload (URLs, metrics, issues, etc.) |
+| `kpi_deltas` | jsonb | KPI impact data (nullable) |
+| `status` | enum | `NEW`, `IN_PROGRESS`, `FIXED`, `SKIPPED`, `OUTDATED`, `PENDING_VALIDATION` |
+| `created_at` | timestamp | |
+| `updated_at` | timestamp | |
+| `updated_by` | string | User or `system` |
+| `suggestion_key` | string | Optional dedup key (nullable) |
+| `skip_reason` | enum | `ALREADY_IMPLEMENTED` (nullable, set when status=SKIPPED) |
+| `skip_detail` | string | Free-text skip detail (nullable) |
+
+### Common Suggestion Queries
+
+#### Select specific fields
+```
+/suggestions?select=id,opportunity_id,type,rank,status,created_at&limit=100
+```
+
+#### Filter by type
+```
+/suggestions?type=eq.CODE_CHANGE
+/suggestions?type=in.(CODE_CHANGE,CONTENT_UPDATE)
+```
+
+#### Filter by status
+```
+/suggestions?status=eq.NEW
+/suggestions?status=in.(NEW,IN_PROGRESS)
+```
+
+#### Filter by opportunity
+```
+/suggestions?opportunity_id=eq.<uuid>
+```
+
+### Joining Opportunities and Suggestions
+
+PostgREST doesn't support cross-table joins on these tables. Use a two-step query pattern:
+
+#### Step 1: Fetch opportunities matching your criteria
+```bash
+curl -s "https://d1xldhzwm6wv00.cloudfront.net/opportunities?select=id,site_id,title,type,status,tags&type=eq.broken-backlinks&status=eq.NEW&limit=100"
+```
+
+#### Step 2: Fetch suggestions for those opportunity IDs
+```bash
+curl -s "https://d1xldhzwm6wv00.cloudfront.net/suggestions?select=id,opportunity_id,type,rank,status,data&opportunity_id=in.(uuid1,uuid2,uuid3)&order=rank.asc"
+```
+
+Batch opportunity IDs in groups of ~30 to avoid URL length limits (same as site lookups).
+
+### CSV Export with Suggestions
+
+```python
+import json, csv, sys, urllib.request
+
+BASE = "https://d1xldhzwm6wv00.cloudfront.net"  # prod
+
+# 1. Fetch opportunities
+url = f"{BASE}/opportunities?select=id,site_id,title,type,status,tags"
+url += "&type=eq.broken-backlinks&status=eq.NEW&limit=1000"
+with urllib.request.urlopen(url, timeout=30) as resp:
+    opps = json.load(resp)
+
+opp_ids = [o['id'] for o in opps]
+opp_map = {o['id']: o for o in opps}
+
+# 2. Fetch suggestions in batches
+suggestions = []
+for i in range(0, len(opp_ids), 30):
+    batch = ",".join(opp_ids[i:i+30])
+    sug_url = f"{BASE}/suggestions?select=id,opportunity_id,type,rank,status,data"
+    sug_url += f"&opportunity_id=in.({batch})&order=rank.asc"
+    with urllib.request.urlopen(sug_url, timeout=30) as resp2:
+        suggestions.extend(json.load(resp2))
+
+# 3. Write CSV
+with open("/tmp/opportunities_with_suggestions.csv", "w", newline="") as f:
+    w = csv.writer(f)
+    w.writerow(['opportunity_id', 'opp_title', 'opp_status', 'suggestion_id',
+                'suggestion_type', 'suggestion_rank', 'suggestion_status'])
+    for s in suggestions:
+        opp = opp_map.get(s['opportunity_id'], {})
+        w.writerow([
+            s['opportunity_id'], opp.get('title', ''), opp.get('status', ''),
+            s['id'], s['type'], s['rank'], s['status']
+        ])
+
+print(f"Exported {len(suggestions)} suggestions across {len(opp_ids)} opportunities")
 ```
 
 ## Related Tables
