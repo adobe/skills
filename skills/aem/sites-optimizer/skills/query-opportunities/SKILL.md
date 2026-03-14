@@ -106,45 +106,24 @@ Opportunities are site-scoped via `site_id`. To get site base URLs, query the `s
 
 Batch site lookups in groups of ~30 to avoid URL length limits.
 
-## CSV Export Template
+## CSV Export
 
-```python
-import json, csv, sys, urllib.request, urllib.parse
+Use the bundled export script (Python 3, stdlib only):
 
-BASE = "https://d1xldhzwm6wv00.cloudfront.net"  # prod
+```bash
+python ${CLAUDE_SKILL_DIR}/scripts/export-opportunities.py [--env dev|prod] [--filters KEY=VALUE ...] [--output FILE]
+```
 
-# 1. Fetch opportunities
-url = f"{BASE}/opportunities?select=id,site_id,title,type,status,tags,origin,created_at"
-url += "&type=eq.generic-opportunity"           # adjust filters
-url += "&created_at=gte.2025-11-01"             # adjust date
-url += "&order=created_at.desc&limit=1000"
-with urllib.request.urlopen(url, timeout=30) as resp:
-    opps = json.load(resp)
+Examples:
+```bash
+# Export all opportunities (prod, default)
+python ${CLAUDE_SKILL_DIR}/scripts/export-opportunities.py
 
-# 2. Fetch site base URLs
-site_ids = list(set(o['site_id'] for o in opps))
-sites = {}
-for i in range(0, len(site_ids), 30):
-    batch = ",".join(site_ids[i:i+30])
-    site_url = f"{BASE}/sites?select=id,base_url&id=in.({batch})"
-    with urllib.request.urlopen(site_url, timeout=30) as resp2:
-        for s in json.load(resp2):
-            sites[s['id']] = s['base_url']
+# Export with filters
+python ${CLAUDE_SKILL_DIR}/scripts/export-opportunities.py --filters type=eq.broken-backlinks status=eq.NEW
 
-# 3. Write CSV
-with open("/tmp/opportunities.csv", "w", newline="") as f:
-    w = csv.writer(f)
-    w.writerow(['opportunity_id', 'site_id', 'site_base_url', 'title',
-                'type', 'status', 'origin', 'tags', 'created_at'])
-    for o in opps:
-        w.writerow([
-            o['id'], o['site_id'], sites.get(o['site_id'], ''),
-            o['title'], o['type'], o['status'], o['origin'],
-            '; '.join(o['tags']) if o['tags'] else '',
-            o['created_at']
-        ])
-
-print(f"Exported {len(opps)} opportunities across {len(sites)} sites")
+# Export from dev with date filter
+python ${CLAUDE_SKILL_DIR}/scripts/export-opportunities.py --env dev --filters 'created_at=gte.2025-11-01' --output /tmp/opps.csv
 ```
 
 ## Suggestions
@@ -211,42 +190,25 @@ Batch opportunity IDs in groups of ~30 to avoid URL length limits (same as site 
 
 ### CSV Export with Suggestions
 
-```python
-import json, csv, sys, urllib.request
+Use the bundled suggestions export script (Python 3, stdlib only):
 
-BASE = "https://d1xldhzwm6wv00.cloudfront.net"  # prod
+```bash
+python ${CLAUDE_SKILL_DIR}/scripts/export-suggestions.py [--env dev|prod] [--opp-filters KEY=VALUE ...] [--sug-filters KEY=VALUE ...] [--output FILE]
+```
 
-# 1. Fetch opportunities
-url = f"{BASE}/opportunities?select=id,site_id,title,type,status,tags"
-url += "&type=eq.broken-backlinks&status=eq.NEW&limit=1000"
-with urllib.request.urlopen(url, timeout=30) as resp:
-    opps = json.load(resp)
+Examples:
+```bash
+# Export all suggestions for all opportunities (prod)
+python ${CLAUDE_SKILL_DIR}/scripts/export-suggestions.py
 
-opp_ids = [o['id'] for o in opps]
-opp_map = {o['id']: o for o in opps}
+# Filter by opportunity type
+python ${CLAUDE_SKILL_DIR}/scripts/export-suggestions.py --opp-filters type=eq.broken-backlinks status=eq.NEW
 
-# 2. Fetch suggestions in batches
-suggestions = []
-for i in range(0, len(opp_ids), 30):
-    batch = ",".join(opp_ids[i:i+30])
-    sug_url = f"{BASE}/suggestions?select=id,opportunity_id,type,rank,status,data"
-    sug_url += f"&opportunity_id=in.({batch})&order=rank.asc"
-    with urllib.request.urlopen(sug_url, timeout=30) as resp2:
-        suggestions.extend(json.load(resp2))
+# Filter suggestions by type and status
+python ${CLAUDE_SKILL_DIR}/scripts/export-suggestions.py --sug-filters type=eq.CODE_CHANGE status=eq.NEW
 
-# 3. Write CSV
-with open("/tmp/opportunities_with_suggestions.csv", "w", newline="") as f:
-    w = csv.writer(f)
-    w.writerow(['opportunity_id', 'opp_title', 'opp_status', 'suggestion_id',
-                'suggestion_type', 'suggestion_rank', 'suggestion_status'])
-    for s in suggestions:
-        opp = opp_map.get(s['opportunity_id'], {})
-        w.writerow([
-            s['opportunity_id'], opp.get('title', ''), opp.get('status', ''),
-            s['id'], s['type'], s['rank'], s['status']
-        ])
-
-print(f"Exported {len(suggestions)} suggestions across {len(opp_ids)} opportunities")
+# Export from dev
+python ${CLAUDE_SKILL_DIR}/scripts/export-suggestions.py --env dev --output /tmp/suggestions.csv
 ```
 
 ## Related Tables
