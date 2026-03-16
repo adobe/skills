@@ -6,6 +6,199 @@ This path keeps the EventHandler class but offloads all business logic to a new 
 
 ---
 
+## Complete Example: Before and After
+
+### Before (Legacy OSGi EventHandler with Inline Logic)
+
+```java
+package com.example.listeners;
+
+import org.apache.felix.scr.annotations.Component;
+import org.apache.felix.scr.annotations.Reference;
+import org.apache.sling.api.resource.LoginException;
+import org.apache.sling.api.resource.ModifiableValueMap;
+import org.apache.sling.api.resource.Resource;
+import org.apache.sling.api.resource.ResourceResolver;
+import org.apache.sling.api.resource.ResourceResolverFactory;
+import org.osgi.service.event.Event;
+import org.osgi.service.event.EventConstants;
+import org.osgi.service.event.EventHandler;
+
+import java.util.Calendar;
+import java.util.Collections;
+
+@Component(
+    immediate = true,
+    property = {
+        EventConstants.EVENT_TOPIC + "=org/apache/sling/api/resource/Resource/CHANGED"
+    }
+)
+public class ReplicationDateEventHandler implements EventHandler {
+
+    @Reference
+    private ResourceResolverFactory resourceResolverFactory;
+
+    @Override
+    public void handleEvent(Event event) {
+        String path = (String) event.getProperty("path");
+        try {
+            ResourceResolver resolver = resourceResolverFactory.getServiceResourceResolver(
+                Collections.singletonMap(ResourceResolverFactory.SUBSERVICE, "replication-service"));
+            
+            if (resolver != null) {
+                // Business logic: update replication date
+                Resource resource = resolver.getResource(path + "/jcr:content");
+                if (resource != null) {
+                    ModifiableValueMap map = resource.adaptTo(ModifiableValueMap.class);
+                    map.put("cq:lastReplicated", Calendar.getInstance());
+                    resolver.commit();
+                }
+                resolver.close();
+            }
+        } catch (Exception e) {
+            System.err.println("Error updating replication date: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+}
+```
+
+### After (Cloud Service Compatible)
+
+**File 1: ReplicationDateEventHandler.java** (Lightweight EventHandler)
+
+```java
+package com.example.listeners;
+
+import org.osgi.framework.Constants;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
+import org.osgi.service.event.Event;
+import org.osgi.service.event.EventConstants;
+import org.osgi.service.event.EventHandler;
+import org.apache.sling.event.jobs.JobManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@Component(
+    service = EventHandler.class,
+    immediate = true,
+    property = {
+        Constants.SERVICE_DESCRIPTION + "=Event Handler for replication date updates",
+        EventConstants.EVENT_TOPIC + "=org/apache/sling/api/resource/Resource/CHANGED"
+    }
+)
+public class ReplicationDateEventHandler implements EventHandler {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ReplicationDateEventHandler.class);
+    private static final String JOB_TOPIC = "com/example/replication/date/update";
+
+    @Reference
+    private JobManager jobManager;
+
+    @Override
+    public void handleEvent(Event event) {
+        try {
+            String path = (String) event.getProperty("path");
+            LOG.debug("Resource event: {} for path: {}", event.getTopic(), path);
+
+            Map<String, Object> jobProperties = new HashMap<>();
+            jobProperties.put("path", path);
+            jobManager.addJob(JOB_TOPIC, jobProperties);
+        } catch (Exception e) {
+            LOG.error("Error handling event", e);
+        }
+    }
+}
+```
+
+**File 2: ReplicationDateJobConsumer.java** (JobConsumer)
+
+```java
+package com.example.listeners;
+
+import org.apache.sling.api.resource.LoginException;
+import org.apache.sling.api.resource.ModifiableValueMap;
+import org.apache.sling.api.resource.PersistenceException;
+import org.apache.sling.api.resource.Resource;
+import org.apache.sling.api.resource.ResourceResolver;
+import org.apache.sling.api.resource.ResourceResolverFactory;
+import org.apache.sling.event.jobs.Job;
+import org.apache.sling.event.jobs.consumer.JobConsumer;
+import org.apache.sling.event.jobs.consumer.JobResult;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Calendar;
+import java.util.Collections;
+
+@Component(
+    service = JobConsumer.class,
+    immediate = true,
+    property = {
+        JobConsumer.PROPERTY_TOPICS + "=" + "com/example/replication/date/update"
+    }
+)
+public class ReplicationDateJobConsumer implements JobConsumer {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ReplicationDateJobConsumer.class);
+
+    @Reference
+    private ResourceResolverFactory resolverFactory;
+
+    @Override
+    public JobResult process(final Job job) {
+        String path = (String) job.getProperty("path");
+        LOG.info("Processing replication date update job for path: {}", path);
+
+        try (ResourceResolver resolver = resolverFactory.getServiceResourceResolver(
+                Collections.singletonMap(ResourceResolverFactory.SUBSERVICE, "event-handler-service"))) {
+
+            if (resolver == null) {
+                LOG.warn("Could not acquire resource resolver");
+                return JobResult.FAILED;
+            }
+
+            // Business logic: update replication date
+            Resource resource = resolver.getResource(path + "/jcr:content");
+            if (resource != null) {
+                ModifiableValueMap map = resource.adaptTo(ModifiableValueMap.class);
+                map.put("cq:lastReplicated", Calendar.getInstance());
+                resolver.commit();
+                LOG.debug("Updated replication date for: {}", path);
+            }
+
+            return JobResult.OK;
+
+        } catch (LoginException e) {
+            LOG.error("Failed to get resource resolver", e);
+            return JobResult.FAILED;
+        } catch (PersistenceException e) {
+            LOG.error("Failed to commit changes", e);
+            return JobResult.FAILED;
+        } catch (Exception e) {
+            LOG.error("Error processing job", e);
+            return JobResult.FAILED;
+        }
+    }
+}
+```
+
+**Key Changes:**
+- ✅ Split EventHandler + JobConsumer
+- ✅ EventHandler is lightweight — only creates jobs
+- ✅ Business logic moved to JobConsumer `process()` method
+- ✅ Replaced `System.out/err` → SLF4J Logger
+- ✅ Used try-with-resources for ResourceResolver
+- ✅ Preserved business logic unchanged
+
+---
+
 ## B1: Migrate Felix SCR to OSGi DS annotations (if present)
 
 If the file uses Felix SCR annotations (`org.apache.felix.scr.annotations.*`), migrate to OSGi DS:

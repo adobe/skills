@@ -6,6 +6,101 @@ Migrates AEM schedulers from legacy patterns to Cloud Service compatible pattern
 - **Path A (@SlingScheduled):** Simple schedulers — hardcoded cron, single schedule, `implements Runnable`
 - **Path B (Sling Job):** Complex schedulers — config-driven crons, multiple schedules, `implements Job`
 
+---
+
+## Quick Examples
+
+### Path A Example (Simple Scheduler)
+
+**Before:**
+```java
+@Component(service = Runnable.class)
+public class MyScheduler implements Runnable {
+    @Reference private Scheduler scheduler;
+    
+    @Activate
+    protected void activate() {
+        scheduler.schedule(this, scheduler.EXPR("*/30 * * * * ?"));
+    }
+    
+    @Override
+    public void run() {
+        ResourceResolver resolver = resolverFactory.getAdministrativeResourceResolver(null);
+        // business logic
+    }
+}
+```
+
+**After:**
+```java
+@Component(service = Runnable.class)
+public class MyScheduler implements Runnable {
+    @Reference private ResourceResolverFactory resolverFactory;
+    
+    @Override
+    @SlingScheduled(expression = "*/30 * * * * ?")
+    public void run() {
+        try (ResourceResolver resolver = resolverFactory.getServiceResourceResolver(
+                Collections.singletonMap(ResourceResolverFactory.SUBSERVICE, "scheduler-service"))) {
+            // business logic
+        }
+    }
+}
+```
+
+### Path B Example (Complex Scheduler)
+
+**Before:**
+```java
+@Component(service = Job.class)
+public class MyScheduler implements Job {
+    @Reference private Scheduler scheduler;
+    
+    @Activate
+    protected void activate(Config config) {
+        scheduler.schedule(this, scheduler.EXPR(config.cronExpression()));
+    }
+    
+    @Override
+    public void execute(JobContext context) {
+        // business logic
+    }
+}
+```
+
+**After (Split into 2 classes):**
+
+**Scheduler.java:**
+```java
+@Component(immediate = true)
+public class MyScheduler {
+    @Reference private JobManager jobManager;
+    
+    @Activate
+    protected void activate(Config config) {
+        jobManager.createJob("my/job/topic")
+            .properties(Map.of("param", config.param()))
+            .schedule().cron(config.cronExpression()).add();
+    }
+}
+```
+
+**JobConsumer.java:**
+```java
+@Component(service = JobConsumer.class, property = {
+    JobConsumer.PROPERTY_TOPICS + "=my/job/topic"
+})
+public class MyJobConsumer implements JobConsumer {
+    @Override
+    public JobResult process(Job job) {
+        // business logic from execute()
+        return JobResult.OK;
+    }
+}
+```
+
+---
+
 ## Classification
 
 **Classify BEFORE making any changes.**
