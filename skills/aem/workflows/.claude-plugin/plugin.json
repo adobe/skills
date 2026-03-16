@@ -1,0 +1,17 @@
+{
+  "name": "aem-workflows",
+  "description": "Skills for AEM Workflow troubleshooting, triaging, and debugging. Covers stuck instances, failed steps, launcher issues, custom WorkflowProcess debugging, JCR inspection, log analysis, and OSGi configuration for AEM as a Cloud Service and AEM 6.5.",
+  "version": "1.0.0",
+  "author": {
+    "name": "akankshajain18",
+    "url": "https://github.com/akankshajain18"
+  },
+  "contributors": [
+    {
+      "name": "Adobe"
+    }
+  ],
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": ["aem", "workflow", "troubleshooting", "debugging", "triaging", "adobe"]
+}
