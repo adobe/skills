@@ -137,28 +137,41 @@ skills/
     |   |   \-- plugin.json
     |   \-- skills/
     |       |-- ensure-agents-md/
-    |       |   |-- SKILL.md          <-- bootstrap: creates AGENTS.md if missing
+    |       |   |-- SKILL.md          <-- bootstrap: creates AGENTS.md + CLAUDE.md if missing
     |       |   \-- references/
     |       |       |-- AGENTS.md.template
     |       |       \-- module-catalog.md
-    |       |-- dispatcher/
+    |       |-- create-component/
+    |       |   |-- SKILL.md          <-- discovered by npx skills
     |       |   |-- .claude-plugin/
     |       |   |   \-- plugin.json
-    |       |   |-- config-authoring/
-    |       |   |   |-- SKILL.md
-    |       |   |   \-- references/
-    |       |   |       \-- ...
-    |       |   |-- technical-advisory/
-    |       |   \-- ...
-    |       \-- create-component/
+    |       |   |-- assets/
+    |       |   |   \-- field-type-mappings.md
+    |       |   \-- references/
+    |       |       |-- aem-conventions.md
+    |       |       |-- dialog-patterns.md
+    |       |       |-- htl-patterns.md
+    |       |       |-- model-patterns.md
+    |       |       |-- java-standards.md
+    |       |       |-- clientlib-patterns.md
+    |       |       |-- extending-core-components.md
+    |       |       |-- sling-servlet-standards.md
+    |       |       |-- core-components.md
+    |       |       |-- test-patterns.md
+    |       |       |-- no-hallucination-rules.md
+    |       |       \-- examples.md
+    |       \-- dispatcher/
+    |           |-- SKILL.md          <-- discovered by npx skills (router)
     |           |-- .claude-plugin/
     |           |   \-- plugin.json
-    |           |-- SKILL.md
-    |           |-- .aem-skills-config.yaml
-    |           |-- assets/
-    |           |   \-- field-type-mappings.md
-    |           \-- references/
-    |               |-- aem-conventions.md
+    |           |-- config-authoring/
+    |           |   |-- SKILL.md      <-- specialist (bundled inside dispatcher)
+    |           |   \-- references/
+    |           |-- technical-advisory/
+    |           |-- incident-response/
+    |           |-- performance-tuning/
+    |           |-- security-hardening/
+    |           \-- workflow-orchestrator/
     |-- 6.5-lts/
     |   |-- .claude-plugin/
     |   |   \-- plugin.json
