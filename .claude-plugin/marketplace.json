@@ -21,6 +21,16 @@
       "name": "aem-6-5-lts-dispatcher",
       "source": "./skills/aem/6.5-lts/skills/dispatcher",
       "description": "Mode-specific Dispatcher skills for AEM 6.5 LTS and AMS workflows"
+    },
+    {
+      "name": "aem-cloud-service-workflow",
+      "source": "./skills/aem/cloud-service/skills/aem-workflow",
+      "description": "Workflow development and production-support skills for AEM as a Cloud Service — model design, Java steps, launchers, triggering, debugging, and triaging"
+    },
+    {
+      "name": "aem-6-5-lts-workflow",
+      "source": "./skills/aem/6.5-lts/skills/aem-workflow",
+      "description": "Workflow development and production-support skills for AEM 6.5 LTS and AMS — model design, Java steps, launchers, triggering, debugging, triaging, and JMX diagnostics"
     }
   ]
 }

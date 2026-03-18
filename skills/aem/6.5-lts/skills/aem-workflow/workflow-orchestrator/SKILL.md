@@ -2,18 +2,21 @@
 
 ## Purpose
 
-This is the **master entry point** for all AEM Workflow tasks on AEM 6.5 LTS. Read this skill first. It classifies the user's request and routes to the right sub-skill with the right references to load.
+This is the **master entry point** for all AEM Workflow tasks on AEM 6.5 LTS — spanning both **development** (building workflows) and **production support** (debugging and triaging workflow issues). Read this skill first. It classifies the user's request and routes to the right sub-skill.
 
 ## How to Use This Skill
 
 1. Read the user's request carefully
 2. Classify it using the **Task Classifier** table below
 3. Load the identified sub-skill's `SKILL.md` and its references
-4. Always load the `workflow-foundation` references alongside the sub-skill references — they contain the API contracts, JCR paths, and 6.5 LTS guardrails required for every task
+4. For development tasks, always load the `workflow-foundation` references alongside the sub-skill references
+5. For production-support tasks, the debugging and triaging skills are self-contained
 
 ---
 
 ## Task Classifier
+
+### Development Skills
 
 | User Says / Asks | Sub-Skill to Load |
 |---|---|
@@ -22,6 +25,26 @@ This is the **master entry point** for all AEM Workflow tasks on AEM 6.5 LTS. Re
 | "Start a workflow from code", "Trigger a workflow via API", "Use Manage Publication with a workflow", "HTTP REST API to start a workflow" | `workflow-triggering` |
 | "Configure a launcher", "Auto-start on asset upload", "Launcher not firing", "cq:WorkflowLauncher", "Overlay an OOTB launcher" | `workflow-launchers` |
 | "How do workflows work?", "What is the Granite Workflow Engine?", "Explain workflow architecture" | Load `workflow-foundation` references only |
+
+### Production Support Skills
+
+| User Says / Asks | Sub-Skill to Load |
+|---|---|
+| "Workflow is stuck", "Why isn't my workflow advancing?", "No work item", "Workflow failed", "Step shows error" | `workflow-debugging` |
+| "Task not in Inbox", "User can't see work item", "Permissions error on workflow" | `workflow-debugging` |
+| "Thread pool exhausted", "Auto-advancement not working", "Queue backlog", "Sling Jobs stuck" | `workflow-debugging` |
+| "Repository bloat", "Too many workflow instances", "Purge not working", "Stale workflows" | `workflow-debugging` |
+| "countStaleWorkflows", "restartStaleWorkflows", "retryFailedWorkItems", "JMX workflow" | `workflow-debugging` |
+| "What workflow errors on host X?", "Workflow activity for the past N hours", "What should I collect?" | `workflow-triaging` |
+| "Classify this workflow ticket", "What Splunk query should I use?", "What logs do I need?" | `workflow-triaging` |
+| "Why did workflow X fail? Show me the error.", "Failure details for model Y" | `workflow-triaging` |
+| "What does JMX returnSystemJobInfo show?", "Check queue depth via JMX" | `workflow-triaging` |
+
+**Routing heuristic:**
+- Building/implementing workflows → development skills (`workflow-model-design`, `workflow-development`, `workflow-triggering`, `workflow-launchers`)
+- Deep troubleshooting (decision trees, config checks, thread analysis, JMX remediation) → `workflow-debugging`
+- Incident classification (symptom → runbook, log patterns, Splunk, JMX metrics, data gathering) → `workflow-triaging`
+- When both debugging and triaging apply, start with `workflow-triaging` to classify, then `workflow-debugging` for resolution
 
 ---
 
@@ -46,6 +69,8 @@ workflow-model-design/SKILL.md         ← for model design tasks
 workflow-development/SKILL.md          ← for Java implementation tasks
 workflow-triggering/SKILL.md           ← for start/trigger tasks
 workflow-launchers/SKILL.md            ← for launcher config tasks
+workflow-debugging/SKILL.md            ← for production debugging tasks
+workflow-triaging/SKILL.md             ← for incident triage tasks
 ```
 
 ### Step 3: Load the sub-skill's topic references
@@ -75,6 +100,34 @@ workflow-triggering/references/workflow-triggering/programmatic-api.md
 workflow-launchers/references/workflow-launchers/launcher-config-reference.md
 workflow-launchers/references/workflow-launchers/condition-patterns.md
 ```
+
+**workflow-debugging:**
+```
+workflow-debugging/SKILL.md
+workflow-debugging/reference.md
+```
+
+**workflow-triaging:**
+```
+workflow-triaging/SKILL.md
+```
+
+---
+
+## 6.5 LTS / AMS Production Support Capabilities
+
+| Capability | Detail |
+|---|---|
+| JMX | Full access via Felix Console (`/system/console/jmx`) or JMX client |
+| Retry failed items | JMX `retryFailedWorkItems` or Inbox Retry |
+| Stale detection | JMX `countStaleWorkflows` |
+| Stale restart | JMX `restartStaleWorkflows(dryRun=true)` then execute |
+| Purge | JMX `purgeCompleted(dryRun=true)` or Purge Scheduler |
+| Queue info | JMX `returnSystemJobInfo`, `returnWorkflowQueueInfo` |
+| Log access | Direct filesystem (`crx-quickstart/logs/`) or AMS log access |
+| Thread dumps | jstack or AMS support request |
+| Config status ZIP | Felix Console → Status → Configuration Status |
+| Config changes | Felix Console, OSGi config in repo, or CRX/DE |
 
 ---
 
@@ -159,6 +212,30 @@ Author tier
 2. Overlay `dam_update_asset_create` from `/libs/settings/workflow/launcher/config/` to `/apps/settings/workflow/launcher/config/`
 3. Set `enabled="{Boolean}false"` on the overlay
 4. Create a new custom launcher pointing to your replacement model
+
+### Pattern E: "Workflow errors on host X for the past 4 hours"
+
+1. Load `workflow-triaging` → classify as `workflow_fails_or_shows_error`
+2. Suggest Splunk / error.log search for `Error executing workflow step` on host + time range
+3. Use JMX `returnSystemJobInfo` for queue/job metrics
+4. If errors found, load `workflow-debugging` → map to runbook, walk decision tree
+5. Return: symptom_id, runbook, evidence, remediation (including JMX actions)
+
+### Pattern F: "Workflow stuck — not advancing"
+
+1. Load `workflow-debugging` → classify as `workflow_stuck_not_progressing`
+2. JMX `countStaleWorkflows` to check for stale instances
+3. Follow decision tree: check for work item → step type → specific checks
+4. If thread pool suspected, analyze config status ZIP (`039_Sling_Thread_Pools.txt`)
+5. Return: root cause, JMX remediation, config fix
+
+### Pattern G: "What should I collect for this workflow ticket?"
+
+1. Load `workflow-triaging` → identify required inputs (host, time range, model, instance ID)
+2. Suggest specific log patterns and Splunk queries
+3. Suggest JMX data collection: `countStaleWorkflows`, `returnSystemJobInfo`, `returnWorkflowQueueInfo`
+4. Suggest config status ZIP if thread pool or scheduler issues suspected
+5. Return: data collection checklist, Splunk queries, JMX commands, next steps
 
 ---
 

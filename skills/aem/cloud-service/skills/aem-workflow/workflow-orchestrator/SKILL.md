@@ -2,18 +2,21 @@
 
 ## Purpose
 
-This is the **master entry point** for all AEM Workflow tasks on Cloud Service. Read this skill first. It classifies the user's request and routes to the right sub-skill with the right references to load.
+This is the **master entry point** for all AEM Workflow tasks on Cloud Service — spanning both **development** (building workflows) and **production support** (debugging and triaging workflow issues). Read this skill first. It classifies the user's request and routes to the right sub-skill.
 
 ## How to Use This Skill
 
 1. Read the user's request carefully
 2. Classify it using the **Task Classifier** table below
 3. Load the identified sub-skill's `SKILL.md` and its references
-4. Always load the `workflow-foundation` references alongside the sub-skill references — they contain the API contracts, JCR paths, and Cloud Service guardrails required for every task
+4. For development tasks, always load the `workflow-foundation` references alongside the sub-skill references
+5. For production-support tasks, the debugging and triaging skills are self-contained
 
 ---
 
 ## Task Classifier
+
+### Development Skills
 
 | User Says / Asks | Sub-Skill to Load |
 |---|---|
@@ -22,6 +25,24 @@ This is the **master entry point** for all AEM Workflow tasks on Cloud Service. 
 | "Start a workflow from code", "Trigger a workflow via API", "Use Manage Publication with a workflow", "HTTP REST API to start a workflow" | `workflow-triggering` |
 | "Configure a launcher", "Auto-start on asset upload", "Launcher not firing", "cq:WorkflowLauncher", "Overlay an OOTB launcher" | `workflow-launchers` |
 | "How do workflows work?", "What is the Granite Workflow Engine?", "Explain workflow architecture" | Load `workflow-foundation` references only |
+
+### Production Support Skills
+
+| User Says / Asks | Sub-Skill to Load |
+|---|---|
+| "Workflow is stuck", "Why isn't my workflow advancing?", "No work item", "Workflow failed", "Step shows error" | `workflow-debugging` |
+| "Task not in Inbox", "User can't see work item", "Permissions error on workflow" | `workflow-debugging` |
+| "Thread pool exhausted", "Auto-advancement not working", "Queue backlog", "Sling Jobs stuck" | `workflow-debugging` |
+| "Repository bloat", "Too many workflow instances", "Purge not working", "Stale workflows" | `workflow-debugging` |
+| "What workflow errors on host X?", "Workflow activity for the past N hours", "What should I collect?" | `workflow-triaging` |
+| "Classify this workflow ticket", "What Splunk query should I use?", "What logs do I need?" | `workflow-triaging` |
+| "Why did workflow X fail? Show me the error.", "Failure details for model Y" | `workflow-triaging` |
+
+**Routing heuristic:**
+- Building/implementing workflows → development skills (`workflow-model-design`, `workflow-development`, `workflow-triggering`, `workflow-launchers`)
+- Deep troubleshooting (decision trees, config checks, thread analysis, remediation) → `workflow-debugging`
+- Incident classification (symptom → runbook, log patterns, Splunk, data gathering) → `workflow-triaging`
+- When both debugging and triaging apply, start with `workflow-triaging` to classify, then `workflow-debugging` for resolution
 
 ---
 
@@ -46,6 +67,8 @@ workflow-model-design/SKILL.md         ← for model design tasks
 workflow-development/SKILL.md          ← for Java implementation tasks
 workflow-triggering/SKILL.md           ← for start/trigger tasks
 workflow-launchers/SKILL.md            ← for launcher config tasks
+workflow-debugging/SKILL.md            ← for production debugging tasks
+workflow-triaging/SKILL.md             ← for incident triage tasks
 ```
 
 ### Step 3: Load the sub-skill's topic references
@@ -75,6 +98,31 @@ workflow-triggering/references/workflow-triggering/programmatic-api.md
 workflow-launchers/references/workflow-launchers/launcher-config-reference.md
 workflow-launchers/references/workflow-launchers/condition-patterns.md
 ```
+
+**workflow-debugging:**
+```
+workflow-debugging/SKILL.md
+workflow-debugging/reference.md
+```
+
+**workflow-triaging:**
+```
+workflow-triaging/SKILL.md
+```
+
+---
+
+## Cloud Service Production Support Constraints
+
+| Constraint | Detail |
+|---|---|
+| No JMX | No `retryFailedWorkItems`, `countStaleWorkflows`, `restartStaleWorkflows`, `purgeCompleted` via JMX |
+| Retry failed items | Inbox Retry only |
+| Stale detection | Custom API/script only |
+| Purge | Purge Scheduler (OSGi config in Git) |
+| Log access | Cloud Manager → Environments → Logs (download / streaming) |
+| Thread dumps | Developer Console or support request |
+| Config changes | Code in Git + Cloud Manager pipeline deploy |
 
 ---
 
@@ -148,6 +196,20 @@ Author tier
 2. Implement `WorkflowStarterService` using `ResourceResolverFactory` + `WorkflowSession`
 3. Map sub-service `workflow-starter` to `workflow-process-service`
 4. Deploy and trigger from a Sling Scheduler or Servlet
+
+### Pattern D: "Workflow errors on host X for the past 4 hours"
+
+1. Load `workflow-triaging` → classify as `workflow_fails_or_shows_error`
+2. Suggest Splunk / Cloud Manager log search for `Error executing workflow step` on host + time range
+3. If errors found, load `workflow-debugging` → map to runbook, walk decision tree
+4. Return: symptom_id, runbook, evidence, remediation
+
+### Pattern E: "Workflow stuck — not advancing"
+
+1. Load `workflow-debugging` → classify as `workflow_stuck_not_progressing`
+2. Follow decision tree: check for work item → step type → specific checks
+3. If thread pool suspected, guide thread dump analysis (Developer Console)
+4. Return: root cause, config fix (via Git), remediation steps
 
 ---
 
