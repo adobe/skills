@@ -32,6 +32,245 @@ If the file already uses `DistributionAgent` and `DistributionRequest`/`SimpleDi
 
 ---
 
+## Complete Example: Before and After
+
+### Example 1: CQ Replicator → Sling Distribution Agent
+
+#### Before (Legacy CQ Replicator)
+
+```java
+package com.example.replication;
+
+import org.apache.felix.scr.annotations.Component;
+import org.apache.felix.scr.annotations.Reference;
+import org.apache.felix.scr.annotations.Service;
+import org.apache.sling.api.resource.LoginException;
+import org.apache.sling.api.resource.ResourceResolver;
+import org.apache.sling.api.resource.ResourceResolverFactory;
+import com.day.cq.replication.ReplicationAction;
+import com.day.cq.replication.Replicator;
+import com.day.cq.replication.ReplicationActionType;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@Component(immediate = true)
+@Service
+public class PropertyNodeReplicationService {
+
+    @Reference
+    private Replicator replicator;
+
+    @Reference
+    private ResourceResolverFactory resourceResolverFactory;
+
+    public void replicatePropertyNode(String propertyNodePath) {
+        ResourceResolver resolver = null;
+        try {
+            Map<String, Object> authInfo = new HashMap<>();
+            authInfo.put(ResourceResolverFactory.USER, "replication-service");
+            authInfo.put(ResourceResolverFactory.PASSWORD, "password");
+            
+            resolver = resourceResolverFactory.getAdministrativeResourceResolver(authInfo);
+            
+            if (resolver != null) {
+                ReplicationAction action = new ReplicationAction(ReplicationActionType.ACTIVATE, propertyNodePath);
+                replicator.replicate(resolver, action);
+                System.out.println("Property Node Replication successful for path: " + propertyNodePath);
+            }
+        } catch (Exception e) {
+            System.err.println("Property Node Replication failed for path: " + propertyNodePath);
+            System.err.println("Error: " + e.getMessage());
+            e.printStackTrace();
+        } finally {
+            if (resolver != null && resolver.isLive()) {
+                resolver.close();
+            }
+        }
+    }
+}
+```
+
+#### After (Cloud Service Compatible)
+
+```java
+package com.example.replication;
+
+import org.apache.sling.api.resource.LoginException;
+import org.apache.sling.api.resource.ResourceResolver;
+import org.apache.sling.api.resource.ResourceResolverFactory;
+import org.apache.sling.distribution.agent.api.DistributionAgent;
+import org.apache.sling.distribution.agent.api.DistributionAgentException;
+import org.apache.sling.distribution.agent.api.DistributionRequest;
+import org.apache.sling.distribution.agent.api.SimpleDistributionRequest;
+import org.apache.sling.distribution.agent.api.DistributionRequestType;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Collections;
+
+@Component(service = PropertyNodeReplicationService.class)
+public class PropertyNodeReplicationService {
+
+    private static final Logger LOG = LoggerFactory.getLogger(PropertyNodeReplicationService.class);
+
+    @Reference(target = "(name=myPropertyDistributionAgent)")
+    private DistributionAgent distributionAgent;
+
+    @Reference
+    private ResourceResolverFactory resolverFactory;
+
+    public void replicatePropertyNode(String propertyNodePath) {
+        try (ResourceResolver resolver = resolverFactory.getServiceResourceResolver(
+                Collections.singletonMap(ResourceResolverFactory.SUBSERVICE, "property-node-distribution-service"))) {
+
+            if (resolver == null) {
+                LOG.warn("Could not acquire resource resolver");
+                return;
+            }
+
+            DistributionRequest request = new SimpleDistributionRequest(
+                DistributionRequestType.ADD, 
+                propertyNodePath
+            );
+            distributionAgent.execute(request);
+            LOG.info("Property Node Distribution successful for path: {}", propertyNodePath);
+
+        } catch (LoginException e) {
+            LOG.error("Failed to get resource resolver", e);
+        } catch (DistributionAgentException e) {
+            LOG.error("Distribution failed for path: {}", propertyNodePath, e);
+        } catch (Exception e) {
+            LOG.error("Error during distribution", e);
+        }
+    }
+}
+```
+
+### Example 2: Sling Replication Agent → Sling Distribution Agent
+
+#### Before (Legacy Sling Replication Agent)
+
+```java
+package com.example.replication;
+
+import org.apache.felix.scr.annotations.Component;
+import org.apache.felix.scr.annotations.Reference;
+import org.apache.sling.api.resource.ResourceResolver;
+import org.apache.sling.api.resource.ResourceResolverFactory;
+import org.apache.sling.replication.agent.api.ReplicationAgent;
+import org.apache.sling.replication.agent.api.ReplicationAgentException;
+import org.apache.sling.replication.agent.api.ReplicationResult;
+import org.apache.sling.replication.agent.api.ReplicationActionType;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@Component(immediate = true)
+public class ContentReplicationService {
+
+    @Reference
+    private ReplicationAgent agent;
+
+    @Reference
+    private ResourceResolverFactory resourceResolverFactory;
+
+    public void replicateContent(String contentPath) {
+        try {
+            ResourceResolver resolver = resourceResolverFactory.getAdministrativeResourceResolver(null);
+            if (resolver != null) {
+                ReplicationResult result = agent.replicate(resolver, ReplicationActionType.ADD, contentPath);
+                if (result.isSuccessful()) {
+                    System.out.println("Forward Replication successful for path: " + contentPath);
+                } else {
+                    System.err.println("Forward Replication failed for path: " + contentPath);
+                }
+                resolver.close();
+            }
+        } catch (ReplicationAgentException e) {
+            System.err.println("ReplicationAgentException occurred: " + e.getMessage());
+            e.printStackTrace();
+        } catch (Exception e) {
+            System.err.println("Exception occurred: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+}
+```
+
+#### After (Cloud Service Compatible)
+
+```java
+package com.example.replication;
+
+import org.apache.sling.api.resource.LoginException;
+import org.apache.sling.api.resource.ResourceResolver;
+import org.apache.sling.api.resource.ResourceResolverFactory;
+import org.apache.sling.distribution.agent.api.DistributionAgent;
+import org.apache.sling.distribution.agent.api.DistributionAgentException;
+import org.apache.sling.distribution.agent.api.DistributionRequest;
+import org.apache.sling.distribution.agent.api.SimpleDistributionRequest;
+import org.apache.sling.distribution.agent.api.DistributionRequestType;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Collections;
+
+@Component(service = ContentReplicationService.class)
+public class ContentReplicationService {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ContentReplicationService.class);
+
+    @Reference(target = "(name=my-distribution-agent)")
+    private DistributionAgent distributionAgent;
+
+    @Reference
+    private ResourceResolverFactory resolverFactory;
+
+    public void replicateContent(String contentPath) {
+        try (ResourceResolver resolver = resolverFactory.getServiceResourceResolver(
+                Collections.singletonMap(ResourceResolverFactory.SUBSERVICE, "content-distribution-service"))) {
+
+            if (resolver == null) {
+                LOG.warn("Could not acquire resource resolver");
+                return;
+            }
+
+            DistributionRequest request = new SimpleDistributionRequest(
+                DistributionRequestType.ADD, 
+                contentPath
+            );
+            distributionAgent.execute(request);
+            LOG.info("Forward Distribution successful for path: {}", contentPath);
+
+        } catch (LoginException e) {
+            LOG.error("Failed to get resource resolver", e);
+        } catch (DistributionAgentException e) {
+            LOG.error("Distribution failed for path: {}", contentPath, e);
+        } catch (Exception e) {
+            LOG.error("Error during distribution", e);
+        }
+    }
+}
+```
+
+**Key Changes:**
+- ✅ Replaced `Replicator`/`ReplicationAgent` → `DistributionAgent`
+- ✅ Replaced `ReplicationAction`/`ReplicationResult` → `DistributionRequest`/`SimpleDistributionRequest`
+- ✅ Mapped `ReplicationActionType.ACTIVATE` → `DistributionRequestType.ADD`
+- ✅ Added `@Reference(target = "(name=agent-name)")` for agent selection
+- ✅ Replaced `getAdministrativeResourceResolver()` → `getServiceResourceResolver()` with SUBSERVICE
+- ✅ Removed USER/PASSWORD from authInfo (Cloud Service uses SUBSERVICE only)
+- ✅ Replaced `System.out/err` → SLF4J Logger
+- ✅ Used try-with-resources for ResourceResolver
+- ✅ `DistributionAgent.execute()` no longer requires ResourceResolver parameter (agent uses its own service user)
+
+---
+
 # Transformation Steps
 
 ## P1: Migrate Felix SCR to OSGi DS annotations (if present)

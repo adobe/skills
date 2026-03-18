@@ -6,6 +6,104 @@ Migrates legacy JCR observation listeners and OSGi event handlers with inline bu
 - **Path A (JCR EventListener):** Source uses `javax.jcr.observation.EventListener` with `onEvent(EventIterator)` — needs JCR→OSGi conversion + offload to JobConsumer
 - **Path B (OSGi EventHandler with inline logic):** Source already uses `org.osgi.service.event.EventHandler` but has business logic directly in `handleEvent()` — needs offload to JobConsumer
 
+---
+
+## Quick Examples
+
+### Path A Example (JCR EventListener)
+
+**Before:**
+```java
+public class MyListener implements EventListener {
+    @Override
+    public void onEvent(EventIterator events) {
+        while (events.hasNext()) {
+            Event event = events.nextEvent();
+            ResourceResolver resolver = factory.getAdministrativeResourceResolver(null);
+            // business logic
+        }
+    }
+}
+```
+
+**After (Split into 2 classes):**
+
+**EventHandler.java:**
+```java
+@Component(service = EventHandler.class, property = {
+    EventConstants.EVENT_TOPIC + "=org/apache/sling/api/resource/Resource/CHANGED"
+})
+public class MyEventHandler implements EventHandler {
+    @Reference private JobManager jobManager;
+    
+    @Override
+    public void handleEvent(Event event) {
+        Map<String, Object> props = Map.of("path", event.getProperty("path"));
+        jobManager.addJob("my/job/topic", props);
+    }
+}
+```
+
+**JobConsumer.java:**
+```java
+@Component(service = JobConsumer.class, property = {
+    JobConsumer.PROPERTY_TOPICS + "=my/job/topic"
+})
+public class MyJobConsumer implements JobConsumer {
+    @Override
+    public JobResult process(Job job) {
+        // business logic from onEvent()
+        return JobResult.OK;
+    }
+}
+```
+
+### Path B Example (OSGi EventHandler with Inline Logic)
+
+**Before:**
+```java
+@Component(service = EventHandler.class)
+public class MyHandler implements EventHandler {
+    @Override
+    public void handleEvent(Event event) {
+        ResourceResolver resolver = factory.getServiceResourceResolver(...);
+        // business logic directly in handler
+        resolver.commit();
+    }
+}
+```
+
+**After (Split into 2 classes):**
+
+**EventHandler.java:**
+```java
+@Component(service = EventHandler.class)
+public class MyHandler implements EventHandler {
+    @Reference private JobManager jobManager;
+    
+    @Override
+    public void handleEvent(Event event) {
+        jobManager.addJob("my/job/topic", Map.of("path", event.getProperty("path")));
+    }
+}
+```
+
+**JobConsumer.java:**
+```java
+@Component(service = JobConsumer.class, property = {
+    JobConsumer.PROPERTY_TOPICS + "=my/job/topic"
+})
+public class MyJobConsumer implements JobConsumer {
+    @Override
+    public JobResult process(Job job) {
+        // business logic from handleEvent()
+        return JobResult.OK;
+    }
+}
+```
+
+---
+
 ## Classification
 
 **Classify BEFORE making any changes.**

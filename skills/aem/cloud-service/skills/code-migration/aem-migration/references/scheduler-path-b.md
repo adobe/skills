@@ -8,6 +8,266 @@ This path splits the original class into TWO classes:
 
 ---
 
+## Complete Example: Before and After
+
+### Before (Legacy Pattern)
+
+```java
+package com.example.schedulers;
+
+import org.apache.felix.scr.annotations.Activate;
+import org.apache.felix.scr.annotations.Component;
+import org.apache.felix.scr.annotations.Deactivate;
+import org.apache.felix.scr.annotations.Modified;
+import org.apache.felix.scr.annotations.Reference;
+import org.apache.felix.scr.annotations.Service;
+import org.apache.sling.commons.scheduler.Job;
+import org.apache.sling.commons.scheduler.JobContext;
+import org.apache.sling.commons.scheduler.Scheduler;
+import org.apache.sling.api.resource.ResourceResolver;
+import org.apache.sling.api.resource.ResourceResolverFactory;
+import org.osgi.service.metatype.annotations.AttributeDefinition;
+import org.osgi.service.metatype.annotations.Designate;
+import org.osgi.service.metatype.annotations.ObjectClassDefinition;
+
+import java.util.Map;
+
+@Component(immediate = true, metatype = true)
+@Service(value = Job.class)
+@Designate(ocd = AssetPurgeScheduler.Config.class)
+public class AssetPurgeScheduler implements Job {
+
+    @Reference
+    private Scheduler scheduler;
+
+    @Reference
+    private ResourceResolverFactory resourceResolverFactory;
+
+    private String cronExpression;
+    private String assetPath;
+
+    @Activate
+    protected void activate(Map<String, Object> config) {
+        cronExpression = (String) config.get("cronExpression");
+        assetPath = (String) config.get("assetPath");
+        addScheduler();
+    }
+
+    @Modified
+    protected void modified(Map<String, Object> config) {
+        removeScheduler();
+        cronExpression = (String) config.get("cronExpression");
+        assetPath = (String) config.get("assetPath");
+        addScheduler();
+    }
+
+    @Deactivate
+    protected void deactivate() {
+        removeScheduler();
+    }
+
+    private void addScheduler() {
+        Map<String, Object> jobProperties = new HashMap<>();
+        jobProperties.put("assetPath", assetPath);
+        
+        scheduler.schedule(this, scheduler.EXPR(cronExpression), jobProperties);
+        System.out.println("Scheduled asset purge with cron: " + cronExpression);
+    }
+
+    private void removeScheduler() {
+        scheduler.unschedule(this);
+    }
+
+    @Override
+    public void execute(JobContext context) {
+        try {
+            String path = (String) context.getConfiguration().get("assetPath");
+            ResourceResolver resolver = resourceResolverFactory.getAdministrativeResourceResolver(null);
+            if (resolver != null) {
+                // Business logic: purge assets at path
+                System.out.println("Purging assets at: " + path);
+                resolver.close();
+            }
+        } catch (Exception e) {
+            System.err.println("Error purging assets: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    @ObjectClassDefinition(name = "Asset Purge Scheduler Configuration")
+    public @interface Config {
+        @AttributeDefinition(name = "Cron Expression")
+        String cronExpression() default "0 0 2 * * ?";
+
+        @AttributeDefinition(name = "Asset Path")
+        String assetPath() default "/content/dam";
+    }
+}
+```
+
+### After (Cloud Service Compatible)
+
+**File 1: AssetPurgeScheduler.java** (Scheduler class)
+
+```java
+package com.example.schedulers;
+
+import org.apache.sling.event.jobs.JobBuilder;
+import org.apache.sling.event.jobs.JobManager;
+import org.apache.sling.event.jobs.ScheduledJobInfo;
+import org.osgi.service.component.annotations.Activate;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Deactivate;
+import org.osgi.service.component.annotations.Modified;
+import org.osgi.service.component.annotations.Reference;
+import org.osgi.service.metatype.annotations.AttributeDefinition;
+import org.osgi.service.metatype.annotations.Designate;
+import org.osgi.service.metatype.annotations.ObjectClassDefinition;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+
+@Component(immediate = true)
+@Designate(ocd = AssetPurgeScheduler.Config.class)
+public class AssetPurgeScheduler {
+
+    private static final Logger LOG = LoggerFactory.getLogger(AssetPurgeScheduler.class);
+    private static final String JOB_TOPIC = "com/example/asset/purge";
+
+    @Reference
+    private JobManager jobManager;
+
+    @Activate
+    @Modified
+    protected void activate(Config config) {
+        LOG.info("AssetPurgeScheduler activated");
+        unscheduleExistingJobs();
+        if (config.enabled()) {
+            scheduleJob(config);
+        }
+    }
+
+    @Deactivate
+    protected void deactivate() {
+        unscheduleExistingJobs();
+        LOG.info("AssetPurgeScheduler deactivated");
+    }
+
+    private void scheduleJob(Config config) {
+        Map<String, Object> jobProperties = new HashMap<>();
+        jobProperties.put("assetPath", config.assetPath());
+
+        JobBuilder.ScheduleBuilder scheduleBuilder = jobManager
+            .createJob(JOB_TOPIC)
+            .properties(jobProperties)
+            .schedule();
+        scheduleBuilder.cron(config.cronExpression());
+
+        ScheduledJobInfo info = scheduleBuilder.add();
+        if (info == null) {
+            LOG.error("Failed to create scheduled job");
+        } else {
+            LOG.info("Scheduled job created with cron: {}", config.cronExpression());
+        }
+    }
+
+    private void unscheduleExistingJobs() {
+        Collection<ScheduledJobInfo> jobs = jobManager.getScheduledJobs(JOB_TOPIC, 0, null);
+        for (ScheduledJobInfo job : jobs) {
+            job.unschedule();
+        }
+    }
+
+    @ObjectClassDefinition(name = "Asset Purge Scheduler Configuration")
+    public @interface Config {
+        @AttributeDefinition(name = "Enabled")
+        boolean enabled() default true;
+
+        @AttributeDefinition(name = "Cron Expression")
+        String cronExpression() default "0 0 2 * * ?";
+
+        @AttributeDefinition(name = "Asset Path")
+        String assetPath() default "/content/dam";
+    }
+}
+```
+
+**File 2: AssetPurgeJobConsumer.java** (JobConsumer class)
+
+```java
+package com.example.schedulers;
+
+import org.apache.sling.api.resource.LoginException;
+import org.apache.sling.api.resource.ResourceResolver;
+import org.apache.sling.api.resource.ResourceResolverFactory;
+import org.apache.sling.event.jobs.Job;
+import org.apache.sling.event.jobs.consumer.JobConsumer;
+import org.apache.sling.event.jobs.consumer.JobResult;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Collections;
+
+@Component(
+    service = JobConsumer.class,
+    property = {
+        JobConsumer.PROPERTY_TOPICS + "=" + "com/example/asset/purge"
+    }
+)
+public class AssetPurgeJobConsumer implements JobConsumer {
+
+    private static final Logger LOG = LoggerFactory.getLogger(AssetPurgeJobConsumer.class);
+
+    @Reference
+    private ResourceResolverFactory resolverFactory;
+
+    @Override
+    public JobResult process(final Job job) {
+        String assetPath = job.getProperty("assetPath", String.class);
+        LOG.info("Processing asset purge job for path: {}", assetPath);
+
+        try (ResourceResolver resolver = resolverFactory.getServiceResourceResolver(
+                Collections.singletonMap(ResourceResolverFactory.SUBSERVICE, "scheduler-service"))) {
+
+            if (resolver == null) {
+                LOG.warn("Could not acquire resource resolver");
+                return JobResult.FAILED;
+            }
+
+            // Business logic: purge assets at path
+            LOG.info("Purging assets at: {}", assetPath);
+            // ... existing business logic here ...
+
+            return JobResult.OK;
+
+        } catch (LoginException e) {
+            LOG.error("Failed to get resource resolver", e);
+            return JobResult.FAILED;
+        } catch (Exception e) {
+            LOG.error("Error executing scheduled job", e);
+            return JobResult.FAILED;
+        }
+    }
+}
+```
+
+**Key Changes:**
+- ✅ Split single class into Scheduler + JobConsumer
+- ✅ Removed `implements Job` → Scheduler class no longer implements Job
+- ✅ Replaced `Scheduler` → `JobManager` with `createJob().schedule().cron()`
+- ✅ Business logic moved to JobConsumer `process()` method
+- ✅ Replaced `getAdministrativeResourceResolver()` → `getServiceResourceResolver()` with SUBSERVICE
+- ✅ Replaced `System.out/err` → SLF4J Logger
+- ✅ Job properties extracted via `job.getProperty()` instead of `JobContext.getConfiguration()`
+- ✅ Preserved business logic unchanged
+
+---
+
 ## B1: Migrate Felix SCR to OSGi DS annotations (if present)
 
 If the file uses Felix SCR annotations (`org.apache.felix.scr.annotations.*`), migrate to OSGi DS:

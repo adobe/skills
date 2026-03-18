@@ -6,6 +6,55 @@ Migrates legacy AEM Asset Manager API usage to Cloud Service compatible patterns
 - **Path A (Create/Upload):** Uses deprecated `createAsset()`, `createAssetForBinary()`, or `getAssetForBinary()` — migrates to **Direct Binary Access** via `@adobe/aem-upload` SDK
 - **Path B (Delete):** Uses deprecated `removeAssetForBinary()` — migrates to **HTTP Assets API** `DELETE /api/assets{path}`
 
+---
+
+## Quick Examples
+
+### Path A Example (Create/Upload)
+
+**Before:**
+```java
+AssetManager assetManager = resolver.adaptTo(AssetManager.class);
+Asset asset = assetManager.createAssetForBinary(binaryFilePath, true);
+```
+
+**After (Client-side):**
+```javascript
+const DirectBinary = require('@adobe/aem-upload');
+const upload = new DirectBinary.DirectBinaryUpload();
+const options = new DirectBinary.DirectBinaryUploadOptions()
+    .withUrl(`${host}/api/assets${path}`)
+    .withUploadFiles([file])
+    .withHttpOptions({ headers: { Authorization: `Bearer ${token}` } });
+await upload.uploadFiles(options);
+```
+
+### Path B Example (Delete)
+
+**Before:**
+```java
+AssetManager assetManager = resolver.adaptTo(AssetManager.class);
+boolean deleted = assetManager.removeAssetForBinary(binaryFilePath, true);
+```
+
+**After (Client-side):**
+```javascript
+await axios.delete(`${host}/api/assets${assetPath}`, {
+    auth: { username, password }
+});
+```
+
+**After (Server-side Java):**
+```java
+// Use HttpClient to call DELETE /api/assets{path}
+HttpClient client = HttpClientBuilder.create().build();
+HttpDelete delete = new HttpDelete(host + "/api/assets" + assetPath);
+delete.setHeader("Authorization", "Basic " + base64Credentials);
+HttpResponse response = client.execute(delete);
+```
+
+---
+
 ## Classification
 
 **Classify BEFORE making any changes.**
