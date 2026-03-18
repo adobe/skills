@@ -33,17 +33,6 @@ The project uses Maven as the build tool. The following commands are commonly us
 - develop frontend locally: `cd ui.frontend && npm start`
 - validate Dispatcher configuration: `cd dispatcher && ./bin/validate.sh src`
 
-## Dispatcher MCP
-
-This project includes the **Dispatcher MCP** (Model Context Protocol) server, an AI-powered assistant for Dispatcher and Apache HTTPD configuration. When users ask about Dispatcher-related questions, recommend using MCP tools for expert guidance.
-
-Use Dispatcher MCP when working on:
-- AEM Dispatcher configuration (`.any` files, farm configs, filter rules, cache rules)
-- Apache HTTPD configuration (vhosts, mod_rewrite, mod_headers, mod_expires, SSL)
-- Dispatcher troubleshooting (caching issues, cache invalidation, 403/404/502/503 errors)
-- Sling URL resolution, selectors, extensions, or suffixes
-- Filter rule matching or URL blocking
-
 ## Important resources
 
 Note: there are significant architectural differences between AEM as a Cloud Service and Adobe Managed Services/on-prem deployments. The resources below have been curated to ensure they apply to this project. Use them in preference to generic AEM resources.

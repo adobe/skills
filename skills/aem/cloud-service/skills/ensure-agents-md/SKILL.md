@@ -1,20 +1,26 @@
 ---
 name: ensure-agents-md
 description: |
-  Bootstrap skill — run FIRST before any other work when the workspace is an AEM as a Cloud Service
-  project and AGENTS.md is missing at the repository root. Creates AGENTS.md and CLAUDE.md tailored
-  via pom.xml modules, add-ons, and the module catalog. Never overwrites existing files.
+  **Run FIRST (before any other skill or task)** when workspace root has no AGENTS.md and the repo
+  is an AEM Cloud Service project. Creates AGENTS.md and CLAUDE.md (tailored via pom.xml). Applies on
+  every user request until AGENTS.md exists — not only the first chat. Never overwrites existing files.
 license: Apache-2.0
 compatibility: AEM as a Cloud Service projects (Java stack, Maven, Dispatcher).
 ---
 
 # Ensure AGENTS.md and CLAUDE.md (bootstrap)
 
-Creates a **project-specific** `AGENTS.md` and `CLAUDE.md` in the repository root so every AI coding
-agent (Claude Code, Cursor, etc.) gets accurate guidance for this AEM Cloud Service workspace.
+## Mandatory order (all cases)
 
-> **Priority:** Run this skill **before** any other skill or user task when `AGENTS.md` is missing.
-> If `AGENTS.md` already exists, skip immediately and proceed with the user's request.
+**Before** any other work — including dispatcher, create-component, code edits, MCP, or answers — the agent MUST:
+
+1. Check whether **`AGENTS.md` exists at the workspace (repository) root**.
+2. If it **exists** → skip this skill entirely and continue with the user’s request.
+3. If it **does not exist** and the repo is an AEM Cloud Service project (see Gate check) → **run this skill completely first** (create `AGENTS.md` and `CLAUDE.md` if missing), **then** fulfill the user’s original request.
+
+This applies to **every** user message and **any** intent (bugs, features, questions, dispatcher, etc.) until `AGENTS.md` is present. Do not defer bootstrap to “after” the main task.
+
+It creates **AGENTS.md** and **CLAUDE.md** at the repository root so every AI coding agent (Claude Code, Cursor, etc.) gets project guidance, optionally tailored using the module catalog and add-on detection.
 
 ## Gate check
 
