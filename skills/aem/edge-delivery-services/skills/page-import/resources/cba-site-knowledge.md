@@ -2,6 +2,8 @@
 
 Reference knowledge for migrating commbank.com.au to AEM Cloud Service with EDS and Universal Editor.
 
+> For the full system architecture (three-layer stack, UE integration, personalisation, analytics, rate data, and image pipeline), see `cba-architecture.md` in this same directory.
+
 ---
 
 ## Platform Context
