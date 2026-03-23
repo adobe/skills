@@ -1,11 +1,11 @@
 {
   "name": "aem-cloud-service",
-  "description": "All AEM as a Cloud Service skills: component development and Dispatcher config authoring, advisory, incident response, performance tuning, and security hardening.",
+  "description": "All AEM as a Cloud Service skills: component development, Workflow model design, development, triggering, launchers, debugging, and triaging, plus Dispatcher config authoring, advisory, incident response, performance tuning, and security hardening.",
   "version": "1.0.0",
   "author": {
     "name": "Adobe"
   },
   "repository": "https://github.com/adobe/skills",
   "license": "Apache-2.0",
-  "keywords": ["aem", "aemaacs", "cloud-service", "dispatcher", "component", "adobe"]
+  "keywords": ["aem", "aemaacs", "cloud-service", "dispatcher", "component", "workflow", "adobe"]
 }

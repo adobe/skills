@@ -13,10 +13,10 @@ Repository of Adobe skills for AI coding agents.
 # Install AEM Edge Delivery Services plugin (all 17 skills)
 /plugin install aem-edge-delivery-services@adobe-skills
 
-# Install all AEM as a Cloud Service skills (create-component + dispatcher) in one command
+# Install all AEM as a Cloud Service skills (create-component + workflow + dispatcher) in one command
 /plugin install aem-cloud-service@adobe-skills
 
-# Install all AEM 6.5 LTS skills (dispatcher) in one command
+# Install all AEM 6.5 LTS skills (workflow + dispatcher) in one command
 /plugin install aem-6-5-lts@adobe-skills
 ```
 
@@ -26,10 +26,10 @@ Repository of Adobe skills for AI coding agents.
 # Install all AEM Edge Delivery Services skills
 npx skills add https://github.com/adobe/skills/tree/main/skills/aem/edge-delivery-services --all
 
-# Install all AEM as a Cloud Service skills (create-component + dispatcher) in one command
+# Install all AEM as a Cloud Service skills (create-component + workflow + dispatcher) in one command
 npx skills add https://github.com/adobe/skills/tree/beta/skills/aem/cloud-service --all
 
-# Install all AEM 6.5 LTS skills (dispatcher) in one command
+# Install all AEM 6.5 LTS skills (workflow + dispatcher) in one command
 npx skills add https://github.com/adobe/skills/tree/beta/skills/aem/6.5-lts --all
 
 # Install for a single agent (pick ONE flavor only)
@@ -54,10 +54,10 @@ gh extension install trieloff/gh-upskill
 # Install all AEM Edge Delivery Services skills
 gh upskill adobe/skills --path skills/aem/edge-delivery-services --all
 
-# Install all AEM as a Cloud Service skills (create-component + dispatcher)
+# Install all AEM as a Cloud Service skills (create-component + workflow + dispatcher)
 gh upskill adobe/skills --path skills/aem/cloud-service --all
 
-# Install all AEM 6.5 LTS skills (dispatcher)
+# Install all AEM 6.5 LTS skills (workflow + dispatcher)
 gh upskill adobe/skills --path skills/aem/6.5-lts --all
 
 # Install a specific skill
@@ -107,6 +107,25 @@ customer opens their AEM Cloud Service project and asks the agent anything, this
 If `AGENTS.md` already exists it is never overwritten.
 
 See `skills/aem/cloud-service/skills/ensure-agents-md/` for the skill, template, and module catalog.
+
+### AEM Workflow
+
+Workflow skills cover the full AEM Granite Workflow Engine lifecycle — from designing and implementing workflows to production debugging and incident triaging. Like Dispatcher, they are split by runtime flavor:
+
+- `skills/aem/cloud-service/skills/aem-workflow` — Cloud Service variant (no JMX, Cloud Manager logs, pipeline deploy)
+- `skills/aem/6.5-lts/skills/aem-workflow` — 6.5 LTS / AMS variant (JMX, Felix Console, direct log access)
+
+Each flavor contains the same specialist sub-skills:
+
+| Sub-Skill | Purpose |
+|---|---|
+| `workflow-model-design` | Design workflow models, step types, OR/AND splits, variables |
+| `workflow-development` | Implement WorkflowProcess steps, ParticipantStepChooser, OSGi services |
+| `workflow-triggering` | Start workflows from UI, code, HTTP API, or Manage Publication |
+| `workflow-launchers` | Configure automatic workflow launchers on JCR events |
+| `workflow-debugging` | Debug stuck, failed, or stale workflows in production |
+| `workflow-triaging` | Classify incidents, determine log patterns, Splunk queries |
+| `workflow-orchestrator` | Full lifecycle orchestration across all sub-skills |
 
 ### AEM Dispatcher
 
@@ -160,6 +179,19 @@ skills/
     |       |       |-- test-patterns.md
     |       |       |-- no-hallucination-rules.md
     |       |       \-- examples.md
+    |       |-- aem-workflow/
+    |       |   |-- SKILL.md          <-- discovered by npx skills (router)
+    |       |   |-- .claude-plugin/
+    |       |   |   \-- plugin.json
+    |       |   |-- workflow-model-design/
+    |       |   |   |-- SKILL.md      <-- specialist (bundled inside aem-workflow)
+    |       |   |   \-- references/
+    |       |   |-- workflow-development/
+    |       |   |-- workflow-triggering/
+    |       |   |-- workflow-launchers/
+    |       |   |-- workflow-debugging/
+    |       |   |-- workflow-triaging/
+    |       |   \-- workflow-orchestrator/
     |       \-- dispatcher/
     |           |-- SKILL.md          <-- discovered by npx skills (router)
     |           |-- .claude-plugin/
@@ -176,6 +208,18 @@ skills/
     |   |-- .claude-plugin/
     |   |   \-- plugin.json
     |   \-- skills/
+    |       |-- aem-workflow/
+    |       |   |-- SKILL.md          <-- discovered by npx skills (router)
+    |       |   |-- .claude-plugin/
+    |       |   |   \-- plugin.json
+    |       |   |-- workflow-model-design/
+    |       |   |-- workflow-development/
+    |       |   |-- workflow-triggering/
+    |       |   |-- workflow-launchers/
+    |       |   |-- workflow-debugging/
+    |       |   |-- workflow-triaging/
+    |       |   \-- workflow-orchestrator/
+    |       |-- ensure-agents-md/
     |       \-- dispatcher/
     |           |-- SKILL.md          <-- discovered by npx skills (router)
     |           |-- config-authoring/

@@ -24,7 +24,7 @@ This is the **master entry point** for all AEM Workflow tasks on Cloud Service â
 | "Implement a custom process step", "Write a WorkflowProcess", "Create a ParticipantStepChooser", "Dynamic participant" | `workflow-development` |
 | "Start a workflow from code", "Trigger a workflow via API", "Use Manage Publication with a workflow", "HTTP REST API to start a workflow" | `workflow-triggering` |
 | "Configure a launcher", "Auto-start on asset upload", "Launcher not firing", "cq:WorkflowLauncher", "Overlay an OOTB launcher" | `workflow-launchers` |
-| "How do workflows work?", "What is the Granite Workflow Engine?", "Explain workflow architecture" | Load `workflow-foundation` references only |
+| "How do workflows work?", "Explain workflow architecture" | Load `workflow-foundation` references only |
 
 ### Production Support Skills
 
