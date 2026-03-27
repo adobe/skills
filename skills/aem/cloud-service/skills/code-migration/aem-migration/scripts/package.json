@@ -1,0 +1,13 @@
+{
+  "name": "aem-migration-scripts",
+  "version": "1.0.0",
+  "description": "BPA findings helper and parser for AEM migration skill",
+  "scripts": {
+    "parse-bpa": "node bpa-local-parser.js",
+    "read-unified": "node unified-collection-reader.js",
+    "check-sources": "node bpa-findings-helper.js"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

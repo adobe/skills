@@ -1,0 +1,47 @@
+{
+  "subtypes": {
+    "unsupported_asset_api": {
+      "com_day_cq_dam_api_AssetManager_createAsset": [
+        "com.adobe.acs.commons.filefetch.impl.FileFetcherImpl",
+        "com.adobe.acs.commons.indesign.dynamicdeckdynamo.services.impl.XMLGeneratorServiceImpl",
+        "com.adobe.acs.commons.indesign.dynamicdeckdynamo.utils.DynamicDeckUtils",
+        "com.adobe.acs.commons.mcp.impl.processes.asset.AssetIngestor",
+        "com.aem.halliburton.core.servlets.UploadAndConvertExcel",
+        "com.aem.microsites.core.servlets.UploadAndConvertExcel"
+      ]
+    },
+    "javax_jcr_observation_EventListener": {
+      "javax_jcr_observation_EventListener": [
+        "com.adobe.acs.commons.wcm.properties.shared.impl.SharedComponentPropertiesPageInfoProvider"
+      ]
+    },
+    "org_apache_sling_api_resource_observation_ResourceChangeListener": {
+      "org_apache_sling_api_resource_observation_ResourceChangeListener": [
+        "com.adobe.acs.commons.httpcache.invalidator.event.JCRNodeChangeEventHandler",
+        "com.adobe.acs.commons.replication.packages.automatic.impl.ConfigurationUpdateListener",
+        "com.adobe.acs.commons.wcm.notifications.impl.SystemNotificationsImpl",
+        "com.halliburtonlabs.core.listeners.SimpleResourceListener"
+      ]
+    },
+    "org_osgi_service_event_EventHandler": {
+      "org_osgi_service_event_EventHandler": [
+        "com.adobe.acs.commons.dam.impl.ReviewTaskAssetMoverHandler",
+        "com.adobe.acs.commons.httpcache.invalidator.event.JCRNodeChangeEventHandler",
+        "com.adobe.acs.commons.logging.impl.JsonEventLogger",
+        "com.adobe.acs.commons.replication.packages.automatic.impl.AutomaticPackageReplicatorJob",
+        "com.adobe.acs.commons.replication.status.impl.JcrPackageReplicationStatusEventHandler",
+        "com.adobe.acs.commons.rewriter.impl.VersionedClientlibsTransformerFactory",
+        "com.adobe.acs.commons.util.ResourceServiceManager",
+        "com.adobe.acs.commons.util.impl.BundleDisabler",
+        "com.adobe.acs.commons.util.impl.ComponentDisabler",
+        "com.halworld.core.listeners.SimpleResourceListener"
+      ]
+    }
+  },
+  "meta": {
+    "timestamp": "2026-03-18T09:27:42.374Z",
+    "source": "local-bpa-parser",
+    "totalFindings": 21,
+    "subtypeCount": 4
+  }
+}
