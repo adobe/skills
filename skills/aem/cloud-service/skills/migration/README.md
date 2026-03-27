@@ -1,0 +1,43 @@
+# AEM as a Cloud Service — Code Migration
+
+This plugin orchestrates migration **from legacy AEM (6.x, AMS, or on-prem) to AEM as a Cloud Service**: Best Practices Analyzer (BPA) data, Cloud Acceleration Manager (CAM) via MCP when available, and a one-pattern-per-session workflow.
+
+**Target platform** is always **AEM as a Cloud Service**. Source is legacy AEM; ambiguous top-level “migration” is avoided by scoping under `cloud-service/migration`.
+
+Transformation rules and pattern modules live in the **`aem-cloud-service-best-practices` plugin** (`skills/aem/cloud-service/skills/aem-cloud-service-best-practices/`) — read its main `SKILL.md` and `references/` before editing code.
+
+## Skills
+
+### aem-cloud-service-migration
+
+- BPA collection, CSV, and CAM/MCP flows
+- Manual flow and pattern auto-detection
+- Delegates detailed transformations to `aem-cloud-service-best-practices`
+
+## Installation
+
+### Claude Code Plugins
+
+```bash
+/plugin install aem-cloud-service-migration@adobe-skills
+```
+
+### Vercel Skills
+
+```bash
+npx skills add https://github.com/adobe/skills/tree/main/skills/aem/cloud-service/skills/migration --all
+```
+
+### upskill
+
+```bash
+gh upskill adobe/skills --path skills/aem/cloud-service/skills/migration --all
+```
+
+## Prerequisites
+
+- AEM project with Maven/Gradle
+- Access to sources to migrate
+- BPA results recommended (CSV or CAM)
+
+For issues, see the main [Adobe Skills repository](https://github.com/adobe/skills).

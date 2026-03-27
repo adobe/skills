@@ -130,43 +130,11 @@ public class CreateAssetServlet extends SlingAllMethodsServlet {
 
 ---
 
-## C1: Migrate Felix SCR to OSGi DS annotations (if present)
+## Pattern prerequisites
 
-If the file uses Felix SCR annotations (`org.apache.felix.scr.annotations.*`), migrate to OSGi DS:
+Read [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md) for Java/OSGi hygiene. Asset creation/upload scope follows **this file** and `asset-manager.md` only.
 
-**Remove Felix SCR imports:**
-```java
-import org.apache.felix.scr.annotations.Component;
-import org.apache.felix.scr.annotations.Service;
-import org.apache.felix.scr.annotations.Properties;
-import org.apache.felix.scr.annotations.Property;
-import org.apache.felix.scr.annotations.Reference;
-```
-
-**Replace annotations:**
-```java
-// BEFORE (Felix SCR)
-@Component(immediate = true)
-@Service
-@Properties({
-    @Property(name = "sling.servlet.paths", value = "/bin/createasset")
-})
-public class CreateAssetServlet extends SlingAllMethodsServlet {
-    @Reference
-    private AssetManager assetManager;
-}
-
-// AFTER (OSGi DS)
-@Component(service = Servlet.class, property = {
-    ServletResolverConstants.SLING_SERVLET_PATHS + "=/bin/createasset"
-})
-public class CreateAssetServlet extends SlingAllMethodsServlet {
-    @Reference
-    private AssetManager assetManager;
-}
-```
-
-## C2: Replace createAssetForBinary / getAssetForBinary with Direct Binary Access
+## C1: Replace createAssetForBinary / getAssetForBinary with Direct Binary Access
 
 **Remove deprecated API usage:**
 
@@ -195,7 +163,7 @@ if (asset != null) {
 
 **For Java servlets that must remain:** Redirect to client-side upload flow or return instructions. Do not retain deprecated calls.
 
-## C3: Replace createAsset(path, is, mimeType, overwrite) with Direct Binary Access
+## C2: Replace createAsset(path, is, mimeType, overwrite) with Direct Binary Access
 
 **Remove deprecated API usage:**
 
@@ -221,53 +189,9 @@ resp.getWriter().write("Image Uploaded = " + imageAsset.getName() + " to path = 
 
 **InputStream handling:** Ensure any `InputStream` is closed in try-with-resources or `finally` block. If migrating away from Java entirely, remove the InputStream logic.
 
-## C4: Replace getAdministrativeResourceResolver() with getServiceResourceResolver()
+**ResourceResolver + logging:** Apply [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md) for any remaining servlet or service code that opens a resolver or logs errors.
 
-If the file uses `getAdministrativeResourceResolver()` for any AssetManager-related workflow:
-
-```java
-// BEFORE (deprecated)
-ResourceResolver resolver = resourceResolverFactory.getAdministrativeResourceResolver(null);
-
-// AFTER
-try (ResourceResolver resolver = resolverFactory.getServiceResourceResolver(
-        Collections.singletonMap(ResourceResolverFactory.SUBSERVICE, "asset-service-user"))) {
-    // use resolver
-} catch (LoginException e) {
-    LOG.error("Failed to get resource resolver", e);
-}
-```
-
-## C5: Add ResourceResolver try-with-resources (if applicable)
-
-If the file acquires a ResourceResolver for asset operations (and keeps non-deprecated usage):
-
-```java
-// BEFORE
-ResourceResolver resolver = resourceResolverFactory.getServiceResourceResolver(authInfo);
-// ... use resolver ...
-resolver.close();
-
-// AFTER
-try (ResourceResolver resolver = resourceResolverFactory.getServiceResourceResolver(authInfo)) {
-    // ... use resolver ...
-}
-```
-
-## C6: Replace System.out and e.printStackTrace() with SLF4J Logger
-
-```java
-// ADD after class declaration
-private static final Logger LOG = LoggerFactory.getLogger(MyServlet.class);
-
-// REPLACE
-System.out.println("message")  ->  LOG.info("message")
-e.printStackTrace()            ->  LOG.error("Error occurred", e)
-response.getWriter().write("Error: " + e.getMessage());  // keep for user-facing, add:
-LOG.error("Error processing request", e);
-```
-
-## C7: Update imports
+## C3: Update imports
 
 **Remove (when deprecated AssetManager usage is removed):**
 ```java
@@ -308,11 +232,7 @@ import javax.servlet.Servlet;
 - [ ] No `createAssetForBinary(binaryFilePath, doSave)` or `getAssetForBinary(binaryFilePath)` calls remain
 - [ ] No `createAsset(path, is, mimeType, overwrite)` calls remain
 - [ ] Direct Binary Access pattern documented or implemented (client-side `@adobe/aem-upload` or equivalent)
-- [ ] No Felix SCR annotations remain
-- [ ] SLF4J Logger is present
-- [ ] No `System.out.` or `e.printStackTrace()` calls remain
+- [ ] [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md) satisfied for SCR, resolver, logging
 - [ ] InputStream resources closed in try-with-resources or `finally` (if any remain)
 - [ ] `@Reference` AssetManager removed if no longer needed for create flows
-- [ ] No `getAdministrativeResourceResolver()` — uses `getServiceResourceResolver()` if ResourceResolver needed
-- [ ] ResourceResolver in try-with-resources where applicable
 - [ ] Code compiles: `mvn clean compile`

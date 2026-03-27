@@ -2,6 +2,8 @@
 
 Migrates AEM schedulers from legacy patterns to Cloud Service compatible patterns.
 
+**Before path-specific steps:** [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md) (SCR→DS, resolver, logging).
+
 **Two paths based on complexity:**
 - **Path A (@SlingScheduled):** Simple schedulers — hardcoded cron, single schedule, `implements Runnable`
 - **Path B (Sling Job):** Complex schedulers — config-driven crons, multiple schedules, `implements Job`

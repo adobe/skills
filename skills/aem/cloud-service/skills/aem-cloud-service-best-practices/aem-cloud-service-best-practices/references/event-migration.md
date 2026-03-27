@@ -2,6 +2,8 @@
 
 Migrates legacy JCR observation listeners and OSGi event handlers with inline business logic to Cloud Service compatible pattern: **lightweight EventHandler + Sling JobConsumer**.
 
+**Before path files:** [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md) (SCR→DS, resolver, logging).
+
 **Two paths based on source pattern:**
 - **Path A (JCR EventListener):** Source uses `javax.jcr.observation.EventListener` with `onEvent(EventIterator)` — needs JCR→OSGi conversion + offload to JobConsumer
 - **Path B (OSGi EventHandler with inline logic):** Source already uses `org.osgi.service.event.EventHandler` but has business logic directly in `handleEvent()` — needs offload to JobConsumer

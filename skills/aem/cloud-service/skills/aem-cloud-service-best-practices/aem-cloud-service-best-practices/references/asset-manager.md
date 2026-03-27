@@ -2,6 +2,8 @@
 
 Migrates legacy AEM Asset Manager API usage to Cloud Service compatible patterns.
 
+**Before you start:** Java baseline ([scr-to-osgi-ds.md](scr-to-osgi-ds.md), [resource-resolver-logging.md](resource-resolver-logging.md)) via [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md). This file **classifies** deprecated `AssetManager` usage and routes to path modules (`asset-manager-create.md`, `asset-manager-delete.md`); asset API scope stays limited to that pattern.
+
 **Two paths based on operation type:**
 - **Path A (Create/Upload):** Uses deprecated `createAsset()`, `createAssetForBinary()`, or `getAssetForBinary()` — migrates to **Direct Binary Access** via `@adobe/aem-upload` SDK
 - **Path B (Delete):** Uses deprecated `removeAssetForBinary()` — migrates to **HTTP Assets API** `DELETE /api/assets{path}`
