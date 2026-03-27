@@ -6,11 +6,15 @@ This plugin orchestrates migration **from legacy AEM (6.x, AMS, or on-prem) to A
 
 Transformation rules and pattern modules live in the **`aem-cloud-service-best-practices` plugin** (`skills/aem/cloud-service/skills/aem-cloud-service-best-practices/`) — read its main `SKILL.md` and `references/` before editing code.
 
+**Install both plugins for typical migrations:** **Migration** handles BPA/CAM orchestration and target lists; it does **not** ship the step-by-step pattern refactors. **Best-practices** holds those modules (`references/*.md`). Install **only** migration if your agent already has access to the same files (for example you have the full `adobe/skills` repo open and paths like `{best-practices}` resolve).
+
+**First run:** In chat, name **one BPA pattern** (e.g. scheduler) and either a **CSV path**, **CAM/MCP**, or **concrete Java files**. See **Quick start** in `aem-cloud-service-migration/SKILL.md` for copy-paste prompts and the CAM happy path in `aem-cloud-service-migration/references/cam-mcp.md`.
+
 ## Skills
 
 ### aem-cloud-service-migration
 
-- BPA collection, CSV, and CAM/MCP flows
+- BPA collection, CSV, and CAM/MCP flows (CAM tool schemas and retries: `aem-cloud-service-migration/references/cam-mcp.md`)
 - Manual flow and pattern auto-detection
 - Delegates detailed transformations to `aem-cloud-service-best-practices`
 
@@ -20,18 +24,21 @@ Transformation rules and pattern modules live in the **`aem-cloud-service-best-p
 
 ```bash
 /plugin install aem-cloud-service-migration@adobe-skills
+/plugin install aem-cloud-service-best-practices@adobe-skills
 ```
 
 ### Vercel Skills
 
 ```bash
 npx skills add https://github.com/adobe/skills/tree/main/skills/aem/cloud-service/skills/migration --all
+npx skills add https://github.com/adobe/skills/tree/main/skills/aem/cloud-service/skills/aem-cloud-service-best-practices --all
 ```
 
 ### upskill
 
 ```bash
 gh upskill adobe/skills --path skills/aem/cloud-service/skills/migration --all
+gh upskill adobe/skills --path skills/aem/cloud-service/skills/aem-cloud-service-best-practices --all
 ```
 
 ## Prerequisites

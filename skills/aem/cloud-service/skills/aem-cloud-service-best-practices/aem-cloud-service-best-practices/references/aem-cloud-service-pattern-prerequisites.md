@@ -1,6 +1,6 @@
 # Java / OSGi prerequisites (same skill)
 
-Before **pattern-specific** steps in sibling `references/*.md` files, apply these modules when the code touches SCR, `ResourceResolver`, or logging. **Do not paste** their full procedures into other reference files — link here or to the modules below.
+Before **pattern-specific** steps in other `references/*.md` pattern files, apply these modules when the code touches SCR, `ResourceResolver`, or logging. **Do not paste** their full procedures into other reference files — link here or to the modules below.
 
 | Topic | Module |
 |-------|--------|

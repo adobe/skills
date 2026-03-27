@@ -1,6 +1,6 @@
 ---
 name: aem-cloud-service-best-practices
-description: AEM as a Cloud Service Java/OSGi best practices, guardrails, and legacy-to-cloud pattern transformations. Use for Cloud Service–correct bundles, deprecated APIs, schedulers, ResourceChangeListener, replication, Replicator, JCR EventListener, OSGi EventHandler, DAM AssetManager, BPA-style fixes, or any time you need the detailed pattern reference modules under this skill.
+description: AEM as a Cloud Service Java/OSGi best practices, guardrails, and legacy-to-cloud pattern transformations. Use for Cloud Service–correct bundles, deprecated APIs, schedulers, ResourceChangeListener, replication, Replicator, JCR observation (javax.jcr.observation.EventListener), OSGi Event Admin (org.osgi.service.event.EventHandler), DAM AssetManager, BPA-style fixes, or any time you need the detailed pattern reference modules under this skill.
 ---
 
 # AEM as a Cloud Service — Best Practices
@@ -9,16 +9,18 @@ Platform guidance for **AEM as a Cloud Service** backend code: what to use, what
 
 This skill holds the **pattern transformation modules** (`references/*.md`). It is intended to be **installable on its own** so Cloud Service guidance is not locked behind a migration-only package.
 
+**Quick pick:** Open the **Pattern Reference Modules** table below → jump to the matching `references/<file>.md` → read it fully before editing Java. For Felix SCR, resolvers, or logging, use **Java / OSGi baseline** links in this file first when those appear in the same change set.
+
 ## When to Use This Skill
 
 Use this skill when you need to:
 
 - Apply **AEM as a Cloud Service** constraints to Java/OSGi code (new or existing)
 - Refactor **legacy patterns** into supported APIs (same modules migration uses)
-- Follow **consistent rules** across schedulers, replication, JCR observation, OSGi events, and DAM assets
+- Follow **consistent rules** across schedulers, replication, **JCR observation listeners** (`eventListener`), **OSGi event handlers** (`eventHandler`), and DAM assets
 - Read **step-by-step transformation** and validation checklists for a specific pattern
 
-For **BPA/CAM orchestration** (collections, CSV, MCP project selection), use the sibling plugin: `aem-cloud-service-migration` at `skills/aem/cloud-service/skills/migration/`.
+For **BPA/CAM orchestration** (collections, CSV, MCP project selection), use **`aem-cloud-service-migration`** at `skills/aem/cloud-service/skills/migration/`.
 
 ## Pattern Reference Modules
 
@@ -29,12 +31,14 @@ Each supported pattern has a dedicated module under `references/` relative to th
 | Scheduler | `scheduler` | `references/scheduler.md` | Ready |
 | Resource Change Listener | `resourceChangeListener` | `references/resource-change-listener.md` | Ready |
 | Replication | `replication` | `references/replication.md` | Ready |
-| Event Listener | `eventListener` | `references/event-migration.md` | Ready |
-| Event Handler | `eventHandler` | `references/event-migration.md` | Ready |
+| Event listener (JCR observation) | `eventListener` | `references/event-migration.md` | Ready |
+| Event handler (OSGi Event Admin) | `eventHandler` | `references/event-migration.md` | Ready |
 | Asset Manager | `assetApi` | `references/asset-manager.md` | Ready |
 | Felix SCR → OSGi DS | — | `references/scr-to-osgi-ds.md` | Ready |
 | ResourceResolver + SLF4J | — | `references/resource-resolver-logging.md` | Ready |
 | *(Prerequisites hub)* | — | `references/aem-cloud-service-pattern-prerequisites.md` | — |
+
+**Event listener vs event handler (not the same):** **`eventListener`** is **JCR observation** — the JCR API for repository change callbacks (`javax.jcr.observation.EventListener`, `onEvent`). **`eventHandler`** is **OSGi Event Admin** — whiteboard-style OSGi events (`org.osgi.service.event.EventHandler`, `handleEvent`). Both migrate via **`references/event-migration.md`** (Path A vs Path B). **`resourceChangeListener`** is separate: Sling **`ResourceChangeListener`**, module **`references/resource-change-listener.md`**.
 
 **Before changing code for a pattern:** read the module for that pattern in full. Modules include classification criteria, ordered transformation steps, and validation checklists.
 
@@ -66,8 +70,8 @@ When no BPA list exists, scan imports and types to pick a module:
 | `org.apache.sling.commons.scheduler.Scheduler` or `scheduler.schedule(` with `Runnable` | `scheduler` |
 | `implements ResourceChangeListener` | `resourceChangeListener` |
 | `com.day.cq.replication.Replicator` or `org.apache.sling.replication.*` | `replication` |
-| `implements EventListener` with `javax.jcr.observation.*` and `onEvent(EventIterator)` | `eventListener` |
-| `implements EventHandler` with substantive `handleEvent` (resolver/session/node work) | `eventHandler` |
+| **JCR observation:** `javax.jcr.observation.EventListener`, `onEvent(EventIterator)`, `javax.jcr.observation.*` | `eventListener` |
+| **OSGi Event Admin:** `org.osgi.service.event.EventHandler`, substantive `handleEvent` (resolver/session/node work) | `eventHandler` |
 | `com.day.cq.dam.api.AssetManager` create/remove asset APIs | `assetApi` |
 | `org.apache.felix.scr.annotations` | read `references/scr-to-osgi-ds.md` (often combined with a BPA pattern) |
 | `getAdministrativeResourceResolver`, `System.out` / `printStackTrace` | read `references/resource-resolver-logging.md` |
@@ -76,4 +80,4 @@ If multiple patterns match, ask which to fix first.
 
 ## Relationship to Migration
 
-The **migration** skill (`aem-cloud-service-migration`) defines **one-pattern-per-session** workflow, BPA/CAM/MCP flows, and user messaging. It **delegates** all detailed transformation steps to this skill’s `references/` modules. Keep platform truth here; keep orchestration there.
+The **migration** skill (`aem-cloud-service-migration`) defines **one-pattern-per-session** workflow, BPA/CAM/MCP flows, and user messaging. It **delegates** all detailed transformation steps to this skill’s `references/` modules. It uses a **`{best-practices}`** repo-root path alias to this folder (see its `SKILL.md`). Keep platform truth here; keep orchestration there.

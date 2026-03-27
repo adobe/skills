@@ -6,7 +6,7 @@ This plugin lives at `skills/aem/cloud-service/skills/aem-cloud-service-best-pra
 |-------|------|
 | `aem-cloud-service-best-practices` | `.../aem-cloud-service-best-practices/SKILL.md` + `references/` (patterns: scheduler, replication, events, assets; Java baseline: `scr-to-osgi-ds.md`, `resource-resolver-logging.md`, prerequisites hub) |
 
-**Sibling plugin:** `skills/aem/cloud-service/skills/migration/` (`aem-cloud-service-migration`) — BPA/CAM orchestration only.
+**Migration plugin:** `skills/aem/cloud-service/skills/migration/` (`aem-cloud-service-migration`) — BPA/CAM orchestration only. For **BPA- or CAM-driven bulk migration**, install **both** plugins; migration finds targets, this plugin supplies transformation modules.
 
 ## Installation
 

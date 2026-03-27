@@ -1,6 +1,6 @@
 {
   "name": "aem-cloud-service-migration",
-  "description": "Migrate AEM code from legacy (6.x, AMS, on-prem) to AEM as a Cloud Service: BPA/CAM workflows, finding targets, and orchestration. Delegates pattern transformations to the aem-cloud-service-best-practices plugin.",
+  "description": "Orchestrates legacy AEM to Cloud Service migration: BPA CSV/cache, CAM/MCP targets, one-pattern-per-session workflow. Pattern transformation procedures live in the aem-cloud-service-best-practices package in this repository—not in this plugin.",
   "version": "1.0.0",
   "author": {
     "name": "Adobe"
