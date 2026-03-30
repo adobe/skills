@@ -199,35 +199,11 @@ public class ReplicationDateJobConsumer implements JobConsumer {
 
 ---
 
-## B1: Migrate Felix SCR to OSGi DS annotations (if present)
+## Pattern prerequisites
 
-If the file uses Felix SCR annotations (`org.apache.felix.scr.annotations.*`), migrate to OSGi DS:
+Read [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md) before the steps below.
 
-**Remove Felix SCR imports:**
-```java
-import org.apache.felix.scr.annotations.Component;
-import org.apache.felix.scr.annotations.Service;
-import org.apache.felix.scr.annotations.Properties;
-import org.apache.felix.scr.annotations.Property;
-import org.apache.felix.scr.annotations.Reference;
-```
-
-**Replace annotations:**
-```java
-// BEFORE (Felix SCR)
-@Component(immediate = true)
-@Service
-@Properties({
-    @Property(name = EventConstants.EVENT_TOPIC, value = ReplicationEvent.EVENT_TOPIC)
-})
-
-// AFTER (OSGi DS)
-@Component(service = EventHandler.class, immediate = true, property = {
-    EventConstants.EVENT_TOPIC + "=" + ReplicationEvent.EVENT_TOPIC
-})
-```
-
-## B2: Make EventHandler lightweight — offload to Sling Job
+## B1: Make EventHandler lightweight — offload to Sling Job
 
 The `handleEvent()` method should ONLY:
 1. Extract event data (path, properties, event type, etc.)
@@ -313,7 +289,7 @@ private static final String JOB_TOPIC = "com/example/event/job";
 
 **Remove ResourceResolverFactory from EventHandler** — it moves to the JobConsumer.
 
-## B3: Create the JobConsumer class
+## B2: Create the JobConsumer class
 
 Create a NEW class that implements `JobConsumer` to handle the business logic:
 
@@ -379,42 +355,9 @@ public class ReplicationJobConsumer implements JobConsumer {
 - Move business-logic `@Reference` fields here (e.g., `ResourceResolverFactory`)
 - Extract job properties via `job.getProperty("key")` or `(Type) job.getProperty("key")`
 - Return `JobResult.OK` on success, `JobResult.FAILED` on failure
-- Replace `getAdministrativeResourceResolver()` or `getWriteResourceResolver()` with `getServiceResourceResolver()`
-- Wrap ResourceResolver in try-with-resources
+- Resolver + logging per [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md)
 
-## B4: Replace System.out and e.printStackTrace() with SLF4J Logger
-
-Replace in BOTH EventHandler and JobConsumer:
-
-```java
-// ADD after class declaration
-private static final Logger LOG = LoggerFactory.getLogger(MyHandler.class);
-
-// REPLACE
-System.out.println("message")  ->  LOG.info("message")
-e.printStackTrace()            ->  LOG.error("Error occurred", e)
-```
-
-## B5: Replace deprecated ResourceResolver APIs
-
-In the JobConsumer, replace deprecated `getAdministrativeResourceResolver()` or `getWriteResourceResolver()`:
-
-```java
-// BEFORE (deprecated)
-ResourceResolver resolver = resourceResolverFactory.getAdministrativeResourceResolver(null);
-// or
-ResourceResolver resolver = resourceResolverService.getWriteResourceResolver();
-
-// AFTER
-try (ResourceResolver resolver = resolverFactory.getServiceResourceResolver(
-        Collections.singletonMap(ResourceResolverFactory.SUBSERVICE, "event-handler-service"))) {
-    // use resolver
-} catch (LoginException e) {
-    LOG.error("Failed to get resource resolver", e);
-}
-```
-
-## B6: Add TopologyEventListener for replication handlers (if applicable)
+## B3: Add TopologyEventListener for replication handlers (if applicable)
 
 If the event handler processes replication events and should only run on one instance in a cluster, add `TopologyEventListener`:
 
@@ -451,7 +394,7 @@ public class PublishDateEventHandler implements EventHandler, TopologyEventListe
 - The handler should only fire on one node in the cluster
 - The original code had leader-check logic or similar singleton behavior
 
-## B7: Update imports
+## B4: Update imports
 
 **EventHandler class — Remove:**
 ```java
@@ -505,15 +448,14 @@ import java.util.Collections;
 
 ## EventHandler Checklist
 
-- [ ] No Felix SCR annotations remain
+- [ ] SCR→DS per [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md)
 - [ ] `@Component(service = EventHandler.class, property = { EVENT_TOPIC... })` is present
 - [ ] No business logic in `handleEvent()` — only event data extraction + job creation
 - [ ] No `ResourceResolver`, `Session`, or `Node` operations in `handleEvent()`
 - [ ] `@Reference JobManager` is present
 - [ ] `jobManager.addJob(TOPIC, properties)` is called
 - [ ] Event filtering preserves original filter logic (paths, types, property names)
-- [ ] SLF4J Logger is present
-- [ ] No `System.out.` or `e.printStackTrace()` calls remain
+- [ ] Logging per [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md)
 - [ ] Replication handlers implement `TopologyEventListener` and check `isLeader` (if applicable)
 
 ## JobConsumer Checklist
@@ -523,8 +465,5 @@ import java.util.Collections;
 - [ ] Job topic matches the EventHandler topic
 - [ ] Business logic from original `handleEvent()` is preserved
 - [ ] Returns `JobResult.OK` or `JobResult.FAILED`
-- [ ] No `getAdministrativeResourceResolver()` or `getWriteResourceResolver()` — uses `getServiceResourceResolver()`
-- [ ] ResourceResolver in try-with-resources
-- [ ] SLF4J Logger is present
-- [ ] No `System.out.` or `e.printStackTrace()` calls remain
+- [ ] Resolver + logging per [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md)
 - [ ] Code compiles: `mvn clean compile`

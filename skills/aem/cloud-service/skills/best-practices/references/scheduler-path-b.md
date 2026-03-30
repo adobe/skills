@@ -6,6 +6,10 @@ This path splits the original class into TWO classes:
 1. **Scheduler class** — registers/unregisters Sling Jobs via `JobManager`
 2. **JobConsumer class** — executes the business logic when the job fires
 
+## Pattern prerequisites
+
+Read [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md) and apply linked prerequisite modules before the steps below.
+
 ---
 
 ## Complete Example: Before and After
@@ -268,31 +272,7 @@ public class AssetPurgeJobConsumer implements JobConsumer {
 
 ---
 
-## B1: Migrate Felix SCR to OSGi DS annotations (if present)
-
-If the file uses Felix SCR annotations (`org.apache.felix.scr.annotations.*`), migrate to OSGi DS:
-
-**Remove Felix SCR imports:**
-```java
-import org.apache.felix.scr.annotations.Activate;
-import org.apache.felix.scr.annotations.Component;
-import org.apache.felix.scr.annotations.Properties;
-import org.apache.felix.scr.annotations.Property;
-import org.apache.felix.scr.annotations.Service;
-```
-
-**Replace annotations:**
-```java
-// BEFORE (Felix SCR)
-@Component(metatype = true, ...)
-@Service(value = Runnable.class)
-@Properties({ @Property(...) })
-
-// AFTER (OSGi DS)
-@Component(immediate = true)
-```
-
-## B2: Create the Scheduler class (job registration)
+## B1: Create the Scheduler class (job registration)
 
 Transform the existing class into a job registration class:
 
@@ -373,7 +353,7 @@ public class AssetPurgeScheduler {
 - Remove `@Component(service = ...)` — use `@Component(immediate = true)` only
 - Keep `@Activate` and `@Deactivate`
 - Keep `@Modified` — it re-registers jobs with new config values
-- Move business logic out (goes to JobConsumer in B3)
+- Move business logic out (goes to JobConsumer in B2)
 - Keep environment guards (e.g., `isAuthor()` run mode check) in the Scheduler class
 - Keep infrastructure `@Reference` fields (e.g., `SlingSettingsService`) in Scheduler; move business `@Reference` fields (e.g., `ExampleService`, `ResourceResolverFactory`) to JobConsumer
 
@@ -396,7 +376,7 @@ private boolean doesScheduledJobExist() {
 
 **Note on `canRunConcurrently()`:** The original code may use `scheduleOptions.canRunConcurrently(false)`. Sling Jobs do not have a direct equivalent — concurrency is controlled via job queue configuration in OSGi. This setting can be safely dropped during migration.
 
-## B3: Create the JobConsumer class (business logic)
+## B2: Create the JobConsumer class (business logic)
 
 Create a NEW class that implements `JobConsumer`:
 
@@ -464,10 +444,9 @@ public class AssetPurgeJobConsumer implements JobConsumer {
 - Extract job properties via `job.getProperty("key", Type.class)` or `JobUtil.getProperty(job, "key", Type.class)` (both valid)
 - Map `jobContext.getConfiguration().get("key")` (old) to `job.getProperty("key", Type.class)` (new)
 - Return `JobResult.OK` on success, `JobResult.FAILED` on failure
-- Replace `getAdministrativeResourceResolver()` with `getServiceResourceResolver()`
-- Add SLF4J Logger
+- Resolver + logging per [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md)
 
-## B4: Handle multiple cron expressions (if applicable)
+## B3: Handle multiple cron expressions (if applicable)
 
 If the original scheduler has multiple cron expressions (e.g., per locale), create separate scheduled jobs for each:
 
@@ -499,35 +478,7 @@ private void scheduleJob(String cron, String assetPath, String locale) {
 }
 ```
 
-## B5: Replace System.out with SLF4J Logger
-
-Add Logger in both Scheduler and JobConsumer classes:
-
-```java
-private static final Logger LOG = LoggerFactory.getLogger(MyClass.class);
-
-// REPLACE
-System.out.println("message")  ->  LOG.info("message")
-```
-
-## B6: Replace deprecated ResourceResolver APIs
-
-Replace deprecated `getAdministrativeResourceResolver()` in the JobConsumer:
-
-```java
-// BEFORE (deprecated)
-ResourceResolver resolver = resourceResolverFactory.getAdministrativeResourceResolver(null);
-
-// AFTER
-try (ResourceResolver resolver = resolverFactory.getServiceResourceResolver(
-        Collections.singletonMap(ResourceResolverFactory.SUBSERVICE, "scheduler-service"))) {
-    // use resolver
-} catch (LoginException e) {
-    LOG.error("Failed to get resource resolver", e);
-}
-```
-
-## B7: Update imports
+## B4: Update imports
 
 **Scheduler class — Remove:**
 ```java
@@ -573,7 +524,7 @@ import org.slf4j.LoggerFactory;
 import java.util.Collections;
 ```
 
-## B8: Verify @Activate, @Modified, @Deactivate lifecycle
+## B5: Verify @Activate, @Modified, @Deactivate lifecycle
 
 ```java
 @Activate
@@ -599,13 +550,13 @@ protected void deactivate() {
 - [ ] No `import org.apache.sling.commons.scheduler.Scheduler;` remains
 - [ ] No `implements Runnable` or `implements Job` remains
 - [ ] No `scheduler.schedule(` calls remain
-- [ ] No Felix SCR annotations remain
+- [ ] SCR→DS complete per [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md)
 - [ ] Uses `@Reference JobManager jobManager`
 - [ ] Uses `jobManager.createJob(TOPIC).properties(...).schedule().cron(...).add()`
 - [ ] Has `unscheduleExistingJobs()` method
 - [ ] `@Activate` and `@Deactivate` properly manage job lifecycle
 - [ ] `@Modified` re-registers jobs if present
-- [ ] SLF4J Logger is present
+- [ ] Logging per [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md)
 
 **JobConsumer class:**
 - [ ] Implements `JobConsumer`
@@ -613,7 +564,5 @@ protected void deactivate() {
 - [ ] Job topic matches the Scheduler class topic
 - [ ] Business logic from original `run()`/`execute()` is preserved
 - [ ] Returns `JobResult.OK` or `JobResult.FAILED`
-- [ ] No `getAdministrativeResourceResolver()` — uses `getServiceResourceResolver()`
-- [ ] ResourceResolver in try-with-resources
-- [ ] SLF4J Logger is present
+- [ ] Resolver + logging per [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md)
 - [ ] Code compiles: `mvn clean compile`

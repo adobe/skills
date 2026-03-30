@@ -163,35 +163,11 @@ public class DeleteAssetServlet extends SlingAllMethodsServlet {
 
 ---
 
-## D1: Migrate Felix SCR to OSGi DS annotations (if present)
+## Pattern prerequisites
 
-If the file uses Felix SCR annotations (`org.apache.felix.scr.annotations.*`), migrate to OSGi DS:
+Read [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md) for Java/OSGi hygiene. Asset delete scope follows **this file** and `asset-manager.md` only.
 
-**Remove Felix SCR imports:**
-```java
-import org.apache.felix.scr.annotations.Component;
-import org.apache.felix.scr.annotations.Service;
-import org.apache.felix.scr.annotations.Properties;
-import org.apache.felix.scr.annotations.Property;
-import org.apache.felix.scr.annotations.Reference;
-```
-
-**Replace annotations:**
-```java
-// BEFORE (Felix SCR)
-@Component(immediate = true)
-@Service
-@Properties({
-    @Property(name = "sling.servlet.paths", value = "/bin/deleteasset")
-})
-
-// AFTER (OSGi DS)
-@Component(service = Servlet.class, property = {
-    ServletResolverConstants.SLING_SERVLET_PATHS + "=/bin/deleteasset"
-})
-```
-
-## D2: Replace removeAssetForBinary with HTTP Assets API
+## D1: Replace removeAssetForBinary with HTTP Assets API
 
 **Remove deprecated API usage:**
 
@@ -222,51 +198,9 @@ const response = await axios.delete(`${host}/api/assets${assetPath}`, {
 });
 ```
 
-## D3: Replace getAdministrativeResourceResolver() with getServiceResourceResolver()
+**ResourceResolver + logging:** Apply [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md) for any remaining servlet or service code.
 
-If the file uses `getAdministrativeResourceResolver()`:
-
-```java
-// BEFORE (deprecated)
-ResourceResolver resolver = resourceResolverFactory.getAdministrativeResourceResolver(null);
-
-// AFTER
-try (ResourceResolver resolver = resolverFactory.getServiceResourceResolver(
-        Collections.singletonMap(ResourceResolverFactory.SUBSERVICE, "asset-service-user"))) {
-    // use resolver
-} catch (LoginException e) {
-    LOG.error("Failed to get resource resolver", e);
-}
-```
-
-## D4: Add ResourceResolver try-with-resources (if applicable)
-
-```java
-// BEFORE
-ResourceResolver resolver = resourceResolverFactory.getServiceResourceResolver(authInfo);
-// ... use resolver ...
-resolver.close();
-
-// AFTER
-try (ResourceResolver resolver = resourceResolverFactory.getServiceResourceResolver(authInfo)) {
-    // ... use resolver ...
-}
-```
-
-## D5: Replace System.out and e.printStackTrace() with SLF4J Logger
-
-```java
-// ADD after class declaration
-private static final Logger LOG = LoggerFactory.getLogger(MyServlet.class);
-
-// REPLACE
-System.out.println("message")  ->  LOG.info("message")
-e.printStackTrace()            ->  LOG.error("Error occurred", e)
-response.getWriter().write("Error: " + e.getMessage());  // keep for user-facing, add:
-LOG.error("Error processing request", e);
-```
-
-## D6: Update imports
+## D2: Update imports
 
 **Remove (when deprecated AssetManager delete usage is removed):**
 ```java
@@ -303,10 +237,6 @@ import javax.servlet.Servlet;
 
 - [ ] No `removeAssetForBinary(binaryFilePath, doSave)` calls remain
 - [ ] HTTP Assets API `DELETE /api/assets{path}` used (client or server)
-- [ ] No Felix SCR annotations remain
-- [ ] SLF4J Logger is present
-- [ ] No `System.out.` or `e.printStackTrace()` calls remain
+- [ ] [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md) satisfied for SCR, resolver, logging
 - [ ] `@Reference` AssetManager removed if no longer needed for delete flows
-- [ ] No `getAdministrativeResourceResolver()` — uses `getServiceResourceResolver()` if ResourceResolver needed
-- [ ] ResourceResolver in try-with-resources where applicable
 - [ ] Code compiles: `mvn clean compile`

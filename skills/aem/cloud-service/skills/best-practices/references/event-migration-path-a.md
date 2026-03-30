@@ -179,35 +179,11 @@ public class ACLModificationJobConsumer implements JobConsumer {
 
 ---
 
-## A1: Migrate Felix SCR to OSGi DS annotations (if present)
+## Pattern prerequisites
 
-If the file uses Felix SCR annotations (`org.apache.felix.scr.annotations.*`), migrate to OSGi DS:
+Read [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md) before the steps below.
 
-**Remove Felix SCR imports:**
-```java
-import org.apache.felix.scr.annotations.Component;
-import org.apache.felix.scr.annotations.Service;
-import org.apache.felix.scr.annotations.Properties;
-import org.apache.felix.scr.annotations.Property;
-import org.apache.felix.scr.annotations.Reference;
-```
-
-**Replace annotations:**
-```java
-// BEFORE (Felix SCR)
-@Component(immediate = true)
-@Service
-@Properties({
-    @Property(name = "job.consumer.type", value = "my/job/topic")
-})
-
-// AFTER (OSGi DS)
-@Component(service = EventHandler.class, immediate = true, property = {
-    EventConstants.EVENT_TOPIC + "=org/apache/sling/api/resource/Resource/CHANGED"
-})
-```
-
-## A2: Convert JCR EventListener to OSGi EventHandler
+## A1: Convert JCR EventListener to OSGi EventHandler
 
 Replace JCR observation API with OSGi event API:
 
@@ -247,7 +223,7 @@ public class ACLModificationEventHandler implements EventHandler {
     @Override
     public void handleEvent(Event event) {
         String path = (String) event.getProperty("path");
-        // offload to job — business logic goes to JobConsumer (step A4)
+        // offload to job — business logic goes to JobConsumer (step A3)
     }
 }
 ```
@@ -270,7 +246,7 @@ public class ACLModificationEventHandler implements EventHandler {
 | `event.getIdentifier()` | `(String) event.getProperty("propertyName")` or use in EVENT_FILTER |
 | `event.getType()` | Determined by topic (no need to check type) |
 
-## A3: Make EventHandler lightweight — offload to Sling Job
+## A2: Make EventHandler lightweight — offload to Sling Job
 
 The `handleEvent()` method should ONLY:
 1. Extract event data (path, properties, etc.)
@@ -303,7 +279,7 @@ private static final String JOB_TOPIC = "com/example/event/job";
 
 **Remove ResourceResolverFactory from EventHandler** — it moves to the JobConsumer.
 
-## A4: Create the JobConsumer class
+## A3: Create the JobConsumer class
 
 Create a NEW class that implements `JobConsumer` to handle the business logic:
 
@@ -369,40 +345,9 @@ public class ACLModificationJobConsumer implements JobConsumer {
 - Move business-logic `@Reference` fields here (e.g., `ResourceResolverFactory`)
 - Extract job properties via `job.getProperty("key")` or `(Type) job.getProperty("key")`
 - Return `JobResult.OK` on success, `JobResult.FAILED` on failure
+- Resolver + logging in JobConsumer per [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md)
 
-## A5: Replace System.out and e.printStackTrace() with SLF4J Logger
-
-Replace in BOTH EventHandler and JobConsumer:
-
-```java
-// ADD after class declaration
-private static final Logger LOG = LoggerFactory.getLogger(MyHandler.class);
-
-// REPLACE
-System.out.println("message")  ->  LOG.info("message")
-e.printStackTrace()            ->  LOG.error("Error occurred", e)
-```
-
-## A6: Replace deprecated ResourceResolver APIs
-
-In the JobConsumer, replace deprecated `getAdministrativeResourceResolver()` or `getWriteResourceResolver()`:
-
-```java
-// BEFORE (deprecated)
-ResourceResolver resolver = resourceResolverFactory.getAdministrativeResourceResolver(null);
-// or
-ResourceResolver resolver = resourceResolverService.getWriteResourceResolver();
-
-// AFTER
-try (ResourceResolver resolver = resolverFactory.getServiceResourceResolver(
-        Collections.singletonMap(ResourceResolverFactory.SUBSERVICE, "event-handler-service"))) {
-    // use resolver
-} catch (LoginException e) {
-    LOG.error("Failed to get resource resolver", e);
-}
-```
-
-## A7: Add TopologyEventListener for replication handlers (if applicable)
+## A4: Add TopologyEventListener for replication handlers (if applicable)
 
 If the original JCR listener observed replication-related events and should only run on one instance, add `TopologyEventListener`:
 
@@ -439,7 +384,7 @@ public class PublishDateEventHandler implements EventHandler, TopologyEventListe
 - The handler should only fire on one node in the cluster
 - The original code had leader-check logic or similar singleton behavior
 
-## A8: Update imports
+## A5: Update imports
 
 **EventHandler class — Remove:**
 ```java
@@ -497,7 +442,7 @@ import java.util.Collections;
 ## EventHandler Checklist
 
 - [ ] No `import javax.jcr.observation.*` remains
-- [ ] No Felix SCR annotations remain
+- [ ] SCR→DS per [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md)
 - [ ] `implements EventHandler` (not `EventListener`)
 - [ ] `@Component(service = EventHandler.class, property = { EVENT_TOPIC... })` is present
 - [ ] No business logic in `handleEvent()` — only event data extraction + job creation
@@ -506,8 +451,7 @@ import java.util.Collections;
 - [ ] `jobManager.addJob(TOPIC, properties)` is called
 - [ ] Event topics correctly mapped from JCR to OSGi
 - [ ] Event filtering preserves original filter logic (paths, types, property names)
-- [ ] SLF4J Logger is present
-- [ ] No `System.out.` or `e.printStackTrace()` calls remain
+- [ ] Logging per [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md)
 - [ ] Replication handlers implement `TopologyEventListener` and check `isLeader` (if applicable)
 
 ## JobConsumer Checklist
@@ -517,8 +461,5 @@ import java.util.Collections;
 - [ ] Job topic matches the EventHandler topic
 - [ ] Business logic from original `onEvent()` is preserved
 - [ ] Returns `JobResult.OK` or `JobResult.FAILED`
-- [ ] No `getAdministrativeResourceResolver()` or `getWriteResourceResolver()` — uses `getServiceResourceResolver()`
-- [ ] ResourceResolver in try-with-resources
-- [ ] SLF4J Logger is present
-- [ ] No `System.out.` or `e.printStackTrace()` calls remain
+- [ ] Resolver + logging per [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md)
 - [ ] Code compiles: `mvn clean compile`

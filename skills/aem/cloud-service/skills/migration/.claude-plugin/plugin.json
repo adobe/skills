@@ -1,0 +1,11 @@
+{
+  "name": "aem-migration",
+  "description": "Orchestrates legacy AEM to Cloud Service migration: BPA CSV/cache, CAM/MCP targets, one-pattern-per-session workflow. Pattern transformation procedures live in the aem-best-practices package in this repository—not in this plugin.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": ["aem", "cloud-service", "migration", "bpa", "cam", "code-transformation", "adobe"]
+}

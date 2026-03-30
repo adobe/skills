@@ -1,0 +1,11 @@
+{
+  "name": "aem-best-practices",
+  "description": "AEM as a Cloud Service Java/OSGi: one skill with pattern modules and Java baseline refs (SCR→OSGi DS, ResourceResolver/logging) under references/. Plugin root: skills/aem/cloud-service/skills/best-practices/.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": ["aem", "aemaacs", "cloud-service", "best-practices", "osgi", "java", "migration", "adobe"]
+}

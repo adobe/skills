@@ -1,5 +1,5 @@
 {
-  "name": "aem-migration-scripts",
+  "name": "migration-scripts",
   "version": "1.0.0",
   "description": "BPA findings helper and parser for AEM migration skill",
   "scripts": {
