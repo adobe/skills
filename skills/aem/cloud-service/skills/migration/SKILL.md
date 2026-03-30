@@ -1,11 +1,11 @@
 ---
-name: aem-migration
+name: migration
 description: Orchestrates legacy AEM Java (6.x, AMS, on-prem) to AEM as a Cloud Service migration using BPA CSV or cache, CAM/MCP target discovery, and one-pattern-per-session workflow. Use for BPA/CAM findings, Cloud Service blockers, or fixes for scheduler, ResourceChangeListener, replication, JCR observation EventListener, OSGi EventHandler, DAM AssetManager. Transformation steps are not defined here—read the aem-best-practices skill and its references/ modules in the same repository before editing code.
 ---
 
 # AEM as a Cloud Service — Code Migration
 
-**Source → target:** Legacy **AEM 6.x / AMS / on-prem** → **AEM as a Cloud Service**. Scoped under `cloud-service/migration` so this is not confused with Edge Delivery or 6.5 LTS.
+**Source → target:** Legacy **AEM 6.x / AMS / on-prem** → **AEM as a Cloud Service**. Scoped under `skills/aem/cloud-service/skills/migration/` so this is not confused with Edge Delivery or 6.5 LTS.
 
 This skill is **orchestration**: BPA data, CAM/MCP, **one pattern per session**, and target discovery. **Transformation rules and steps** live in **`aem-best-practices`** — read that skill and the right `references/*.md` before editing code.
 

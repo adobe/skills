@@ -1,0 +1,2 @@
+code,type,subtype,importance,identifier,message,context
+BPA-001,issue,sling.commons.scheduler,high,com.example.myapp.jobs.SampleJob,Uses Apache Sling scheduler in SampleJob,

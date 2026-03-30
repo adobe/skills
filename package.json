@@ -4,7 +4,8 @@
   "private": true,
   "description": "Adobe skills for AI coding agents",
   "scripts": {
-    "validate": "find skills -name SKILL.md -exec dirname {} \\; | xargs -I {} skills-ref validate {}"
+    "validate": "find skills -name SKILL.md -exec dirname {} \\; | xargs -I {} skills-ref validate {}",
+    "test": "npm run validate && node --test \"skills/aem/cloud-service/skills/migration/scripts/bpa-findings-helper.test.js\" && node -e \"JSON.parse(require('fs').readFileSync('.claude-plugin/marketplace.json','utf8')); console.log('marketplace.json: OK')\""
   },
   "devDependencies": {
     "skills-ref": "^0.1.5"
