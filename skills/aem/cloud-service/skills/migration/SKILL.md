@@ -103,7 +103,7 @@ Filter rows where **`pattern`** matches the session pattern. Typical columns: `p
 
 ### MCP errors and fallback
 
-If MCP fails, use the error/retry guidance in [references/cam-mcp.md](references/cam-mcp.md), then **CSV**, then **manual file paths**. Never hide tool errors from the user.
+If MCP fails, use the error/retry guidance in [references/cam-mcp.md](references/cam-mcp.md), then **CSV**, then **manual file paths** when that guidance allows fallback. **Exception:** enablement restriction errors (prefix documented in that file) must be shown **verbatim** with no paraphrase and no automatic fallback until the user addresses them. Never hide tool errors from the user.
 
 **Fallback prompt:** *"Could you provide the path to your BPA CSV report, or the specific Java files to migrate?"*
 
