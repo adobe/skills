@@ -1,0 +1,11 @@
+{
+  "name": "aem-6-5-lts-workflow",
+  "description": "Single entry point for AEM 6.5 LTS and AMS Workflow work — designing workflow models, implementing custom process steps and participant choosers, configuring launchers, triggering workflows, and production support including debugging stuck/failed workflows, triaging incidents with JMX, Splunk, and direct log access, thread pool analysis, and Sling Job diagnostics. Covers Granite Workflow Engine, WorkflowSession API, WorkflowProcess SPI, ParticipantStepChooser SPI, Felix Console, JMX MBeans, and 6.5 LTS deployment patterns.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": ["aem", "aem6.5", "6.5-lts", "ams", "workflow", "granite", "debugging", "triaging", "jmx", "process-step", "participant", "launcher", "sling-jobs", "production-support", "adobe"]
+}

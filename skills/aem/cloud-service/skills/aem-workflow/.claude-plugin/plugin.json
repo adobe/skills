@@ -1,0 +1,11 @@
+{
+  "name": "aem-cloud-service-workflow",
+  "description": "Single entry point for AEM as a Cloud Service Workflow work — designing workflow models, implementing custom process steps and participant choosers, configuring launchers, triggering workflows, and production support including debugging stuck/failed workflows, triaging incidents with Splunk and Cloud Manager logs, thread pool analysis, and Sling Job diagnostics. Covers Granite Workflow Engine, WorkflowSession API, WorkflowProcess SPI, ParticipantStepChooser SPI, and Cloud Service deployment guardrails.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": ["aem", "aemaacs", "cloud", "workflow", "granite", "debugging", "triaging", "process-step", "participant", "launcher", "sling-jobs", "production-support", "adobe"]
+}

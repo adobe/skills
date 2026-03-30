@@ -1,0 +1,11 @@
+{
+  "name": "aem-6-5-lts",
+  "description": "All AEM 6.5 LTS skills: Workflow model design, development, triggering, launchers, debugging, and triaging, plus Dispatcher config authoring, advisory, incident response, performance tuning, and security hardening for AEM 6.5 LTS and AMS environments.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": ["aem", "aem6.5", "6.5-lts", "ams", "dispatcher", "httpd", "apache", "workflow", "adobe"]
+}

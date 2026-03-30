@@ -1,0 +1,12 @@
+{
+  "name": "aem-cloud-service-create-component",
+  "description": "Skills for AEM Cloud Service development",
+  "version": "1.0.0",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": ["aem", "aemaacs", "cloud", "component", "servlet", "slingmodel", "adobe"]
+}
+
