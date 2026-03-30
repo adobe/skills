@@ -9,9 +9,25 @@ Read this file when **fetching BPA targets via MCP** instead of a CSV or cached 
 3. Agent calls **`fetch-cam-bpa-findings`** with that project and the **one pattern** for this session (`scheduler`, `assetApi`, etc., or `all` then filtered).
 4. Agent maps returned targets to Java files and continues the migration workflow in `../SKILL.md`.
 
-If something fails, the agent should **quote the error**, offer **retry** where appropriate, then fall back to **BPA CSV** or **manual file paths** — you should not have to guess why MCP failed.
+If something fails, the agent should **quote the error**, offer **retry** where appropriate (see [Retries and agent behavior](#retries-and-agent-behavior)), then fall back to **BPA CSV** or **manual file paths** when that chain applies — **except** for [enablement restriction errors](#enablement-restriction-errors-mandatory-handling) below.
 
 **Below:** tool shapes and maintainer notes for the agent. You can skip the TypeScript until you need parameter details.
+
+---
+
+## Enablement restriction errors (mandatory handling)
+
+Some **AEM Cloud Service Migration MCP** deployments return an error when the server is not enabled for the requested org, project, or operation. When the tool error **starts with**:
+
+`The MCP Server is restricted and isn't able to operate on the given`
+
+**You must:**
+
+1. **Output that error message to the user verbatim** — same text, in full, including any contact or enablement details the server appended. Do not paraphrase, summarize, or “translate” it into your own words.
+2. **Do not retry** the same tool call to “work around” this response.
+3. **Do not silently fall back** to CSV or manual paths as if MCP had merely failed — the user may need to complete enablement or follow the instructions embedded in the error first. After they confirm they have addressed it, you may continue (including retrying MCP if appropriate).
+
+If your MCP server documentation adds other error prefixes or codes with the same “no paraphrase / no silent fallback” rule, treat those the same way and keep this file aligned with that documentation.
 
 ---
 
@@ -117,13 +133,15 @@ const result = await fetchCamBpaFindings({
 
 **Agent:**
 
-1. Check `result.success` before using `result.targets`.
-2. If `pattern` was `all`, filter `targets` to the **one pattern** chosen for this session.
-3. Use `className` (and any file paths the server returns) to locate Java sources.
-4. On failure, follow the **fallback chain** in the parent `SKILL.md` (MCP retry once when appropriate → user CSV → manual file list). Surface errors to the user; do not ignore tool failures.
+1. If the failure matches [Enablement restriction errors](#enablement-restriction-errors-mandatory-handling), handle it **only** as described there (verbatim output; no retry; no silent CSV/manual fallback).
+2. Check `result.success` before using `result.targets`.
+3. If `pattern` was `all`, filter `targets` to the **one pattern** chosen for this session.
+4. Use `className` (and any file paths the server returns) to locate Java sources.
+5. On other failures, follow the **fallback chain** in the parent `SKILL.md` (MCP retry once when appropriate → user CSV → manual file list). Surface errors to the user; do not ignore tool failures.
 
 | Situation | Retry? | Action |
 |-----------|--------|--------|
+| Error starts with `The MCP Server is restricted and isn't able to operate on the given` | No | [Verbatim to user](#enablement-restriction-errors-mandatory-handling); stop automatic fallback |
 | Auth 401 / 403 | No | Ask for credentials or CSV |
 | 404 | No | Other project or manual flow |
 | Network / timeout | Once | Retry after ~2s, then fallback |
