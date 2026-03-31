@@ -162,8 +162,6 @@ skills/
     |       |       \-- module-catalog.md
     |       |-- create-component/
     |       |   |-- SKILL.md          <-- discovered by npx skills
-    |       |   |-- .claude-plugin/
-    |       |   |   \-- plugin.json
     |       |   |-- assets/
     |       |   |   \-- field-type-mappings.md
     |       |   \-- references/
@@ -181,8 +179,6 @@ skills/
     |       |       \-- examples.md
     |       |-- aem-workflow/
     |       |   |-- SKILL.md          <-- discovered by npx skills (router)
-    |       |   |-- .claude-plugin/
-    |       |   |   \-- plugin.json
     |       |   |-- workflow-model-design/
     |       |   |   |-- SKILL.md      <-- specialist (bundled inside aem-workflow)
     |       |   |   \-- references/
@@ -194,8 +190,6 @@ skills/
     |       |   \-- workflow-orchestrator/
     |       \-- dispatcher/
     |           |-- SKILL.md          <-- discovered by npx skills (router)
-    |           |-- .claude-plugin/
-    |           |   \-- plugin.json
     |           |-- config-authoring/
     |           |   |-- SKILL.md      <-- specialist (bundled inside dispatcher)
     |           |   \-- references/
@@ -204,32 +198,30 @@ skills/
     |           |-- performance-tuning/
     |           |-- security-hardening/
     |           \-- workflow-orchestrator/
-    |-- 6.5-lts/
-    |   |-- .claude-plugin/
-    |   |   \-- plugin.json
-    |   \-- skills/
-    |       |-- aem-workflow/
-    |       |   |-- SKILL.md          <-- discovered by npx skills (router)
-    |       |   |-- .claude-plugin/
-    |       |   |   \-- plugin.json
-    |       |   |-- workflow-model-design/
-    |       |   |-- workflow-development/
-    |       |   |-- workflow-triggering/
-    |       |   |-- workflow-launchers/
-    |       |   |-- workflow-debugging/
-    |       |   |-- workflow-triaging/
-    |       |   \-- workflow-orchestrator/
-    |       |-- ensure-agents-md/
-    |       \-- dispatcher/
-    |           |-- SKILL.md          <-- discovered by npx skills (router)
-    |           |-- config-authoring/
-    |           |   |-- SKILL.md      <-- specialist (bundled inside dispatcher)
-    |           |   \-- references/
-    |           |-- technical-advisory/
-    |           |-- incident-response/
-    |           |-- performance-tuning/
-    |           |-- security-hardening/
-    |           \-- workflow-orchestrator/
+    \-- 6.5-lts/
+        |-- .claude-plugin/
+        |   \-- plugin.json
+        \-- skills/
+            |-- aem-workflow/
+            |   |-- SKILL.md          <-- discovered by npx skills (router)
+            |   |-- workflow-model-design/
+            |   |-- workflow-development/
+            |   |-- workflow-triggering/
+            |   |-- workflow-launchers/
+            |   |-- workflow-debugging/
+            |   |-- workflow-triaging/
+            |   \-- workflow-orchestrator/
+            |-- ensure-agents-md/
+            \-- dispatcher/
+                |-- SKILL.md          <-- discovered by npx skills (router)
+                |-- config-authoring/
+                |   |-- SKILL.md      <-- specialist (bundled inside dispatcher)
+                |   \-- references/
+                |-- technical-advisory/
+                |-- incident-response/
+                |-- performance-tuning/
+                |-- security-hardening/
+                \-- workflow-orchestrator/
 ```
 
 ## Contributing
