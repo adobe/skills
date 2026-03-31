@@ -1,6 +1,6 @@
 ---
 name: migration
-description: Orchestrates legacy AEM Java (6.x, AMS, on-prem) to AEM as a Cloud Service migration using BPA CSV or cache, CAM/MCP target discovery, and one-pattern-per-session workflow. OSGi configs → Cloud Manager — scan ui.config, .cfg.json, secrets, $[secret:]/$[env:] — agent follows references/osgi-cfg-json-cloud-manager.md. Use for BPA/CAM findings, Cloud Service blockers, or fixes for scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler, DAM AssetManager. Java transformation steps live in the best-practices skill—read it and the right references/ modules before editing code.
+description: Orchestrates legacy AEM Java (6.x, AMS, on-prem) to AEM as a Cloud Service migration using BPA CSV or cache, CAM/MCP target discovery, and one-pattern-per-session workflow. Use for BPA/CAM findings, Cloud Service blockers, or fixes for scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler, DAM AssetManager. Java transformation steps live in the best-practices skill—read it and the right references/ modules before editing code.
 ---
 
 # AEM as a Cloud Service — Code Migration
@@ -20,14 +20,12 @@ This skill is **orchestration**: BPA data, CAM/MCP, **one pattern per session**,
 | A **BPA CSV** | *“Fix **scheduler** findings using `./path/to/bpa.csv`”* | Fastest path: CSV → cached collection → files |
 | **CAM + MCP** only | *“Get **scheduler** findings from CAM; I’ll pick the project when you list them.”* | Agent lists projects → you confirm → MCP fetch ([cam-mcp.md](references/cam-mcp.md)) |
 | **Just a few files** | *“Migrate **scheduler** in `core/.../MyJob.java`”* | Manual flow: no BPA required |
-| **OSGi → Cloud Manager** | *“**Scan my config files and create Cloud Manager environment secrets or variables.**”* | Agent **auto-reads** [references/osgi-cfg-json-cloud-manager.md](references/osgi-cfg-json-cloud-manager.md) (full Adobe-aligned rules inlined there); no BPA pattern id |
 
 **Starter prompts (copy-paste):**
 
 - *“Use the migration skill: **scheduler** only, BPA CSV at `./reports/bpa.csv`, then apply best-practices reference modules before editing.”*
 - *“**Replication** only from CAM; list projects first, I’ll pick one.”*
 - *“**Manual:** **event listener** migration for `.../Listener.java` — read best-practices module first.”*
-- *“Scan my config files and create Cloud Manager environment secrets or variables.”*
 
 
 ## Path convention (Adobe Skills monorepo)
@@ -51,26 +49,17 @@ Applies to **finding and editing the user’s AEM project** (Java, bundles, conf
 
 ## Required delegation (do this first)
 
-**Branch A — OSGi configs → Cloud Manager** (no Java BPA pattern this session): If the user asks to **scan config files**, **create / set up Cloud Manager environment secrets or variables**, move **passwords or secrets** out of **OSGi / `.cfg.json` / `ui.config`**, or mentions **`$[secret:]`** / **`$[env:]`** for AEM CS, then **read [references/osgi-cfg-json-cloud-manager.md](references/osgi-cfg-json-cloud-manager.md) immediately** and follow the **product rules and workflow** defined in that file (Adobe AEM as a Cloud Service OSGi + Cloud Manager behavior is reproduced there—no external doc URL required). Sleek prompts are enough — **no** need to name the reference file. **Skip** branch B for that work.
-
-**Branch B — Java / BPA pattern migration:**
-
 1. Read **`{best-practices}/SKILL.md`** — critical rules, Java baseline links, **Pattern Reference Modules** table, **Manual Pattern Hints**.
 2. Read **`{best-practices}/references/<module>.md`** for the **single** active BPA pattern (see table in that `SKILL.md`).
 3. When code uses SCR, `ResourceResolver`, or console logging, read **`{best-practices}/references/scr-to-osgi-ds.md`** and **`{best-practices}/references/resource-resolver-logging.md`** (or the hub **`{best-practices}/references/aem-cloud-service-pattern-prerequisites.md`**).
 
-Do not transform **Java** until the pattern module is read (branch B). Branch A does not require `{best-practices}` pattern modules.
+Do not transform code until the pattern module is read.
 
 ## When to Use This Skill
 
 - Migrate legacy AEM Java toward **Cloud Service–compatible** patterns
 - Drive work from **BPA** (CSV or cached collection) or **CAM via MCP**
 - Enforce **one pattern type per session**
-- **OSGi → Cloud Manager:** **Branch A** — scan scoped **`.cfg.json`**, apply **`$[secret:…]`** / **`$[env:…]`** per rules in **[references/osgi-cfg-json-cloud-manager.md](references/osgi-cfg-json-cloud-manager.md)**; gitignored handoff; **no** secret values in chat.
-
-### OSGi configs and Cloud Manager (no BPA pattern id)
-
-Sleek user prompts are enough (see Quick start). **Agent:** **Branch A** → read the reference → **One-prompt workflow**; obey the **inlined Adobe AEM CS rules** in that file (value types, placeholders, CM API/CLI, custom-properties-only, repoinit, runmode context, local SDK secrets). Ambiguous or Adobe-owned PIDs → **`needs_user_review`**, not guesses.
 
 ## Prerequisites
 
