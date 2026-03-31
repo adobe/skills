@@ -31,7 +31,7 @@ Quick pointers used by the workflow-debugging skill. For full runbooks and proce
 | Developer Console | AEM Cloud Service → Developer Console | Thread dumps, OSGi bundles, config |
 | Cloud Manager Logs | Cloud Manager → Environments → Logs | error.log, access.log download/streaming |
 | Workflow Console | /libs/cq/workflow/admin/console/content/instances.html | Instance status, work items, history |
-| Sling Job Console | /system/console/slingjobs | Queue depth, failed jobs, active jobs |
+| Sling Job Console | /system/console/slingjobs | Queue depth, failed jobs, active jobs (**local SDK only** — not accessible on Cloud Service; use Developer Console) |
 | Inbox | /aem/inbox | Retry failed work items, complete tasks |
 
 ---

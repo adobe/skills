@@ -192,7 +192,7 @@ Signs of a launcher loop in Cloud Manager logs:
 - **Tools → Workflow → Launchers** UI — lists all active launchers, you can enable/disable interactively
 - Check `/conf/global/settings/workflow/launcher/config/` in CRXDE Lite for your deployed configs
 - Check OSGi console → `WorkflowLauncherListener` service properties
-- After deployment, verify via: `curl -u admin:admin http://localhost:4502/etc/workflow/launcher.json`
+- After deployment, verify via: `curl -u <user>:<password> http://localhost:4502/conf/global/settings/workflow/launcher/config.json` (local SDK only; replace credentials with your own — never use default `admin` credentials)
 
 ## References in This Skill
 
