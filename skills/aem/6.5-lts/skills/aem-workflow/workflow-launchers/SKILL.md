@@ -131,7 +131,7 @@ Condition format: `property=<name>,value=<value>,type=<JCR_TYPE>` (type is optio
 - Check `/conf/global/settings/workflow/launcher/config/` and `/apps/settings/workflow/launcher/config/` in CRXDE Lite
 - Felix Web Console → OSGi → `WorkflowLauncherListener` service
 - Check `/var/workflow/launcher/` for active event registrations
-- Run `curl -u admin:admin http://localhost:4502/etc/workflow/launcher.json` to list all
+- Run `curl -u <user>:<password> http://localhost:4502/conf/global/settings/workflow/launcher/config.json` to list all (replace credentials with your own — never use default `admin` credentials)
 
 ## References in This Skill
 

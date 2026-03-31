@@ -72,4 +72,4 @@ To disable an OOTB launcher, create a node with the same name under `/conf/globa
 
 Configure via **Adobe Granite Workflow Purge Configuration** OSGi factory.
 
-Manual trigger: `curl -u admin:admin -X POST http://localhost:4502/libs/granite/operations/content/maintenance/granite_weekly/granite_workflowpurgetask.run.html`
+Manual trigger: `curl -u <user>:<password> -X POST http://localhost:4502/libs/granite/operations/content/maintenance/granite_weekly/granite_workflowpurgetask.run.html` (replace credentials with your own — never use default `admin` credentials)

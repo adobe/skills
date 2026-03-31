@@ -39,21 +39,23 @@ Before starting:
 
 ## Verify Deployment
 
+> **Note:** Replace `<user>:<password>` with your actual credentials. Never use default `admin` credentials in production or shared environments.
+
 ```bash
 # Check bundle is active
-curl -u admin:admin http://localhost:4502/system/console/bundles/com.example.my-bundle.json
+curl -u <user>:<password> http://localhost:4502/system/console/bundles/com.example.my-bundle.json
 
 # Check process.label registered (visible in model editor step picker)
 # Navigate to: Tools → Workflow → Models → Create → add Process step → configure
 
 # Check model synced to /var
-curl -u admin:admin "http://localhost:4502/var/workflow/models/my-workflow.json"
+curl -u <user>:<password> "http://localhost:4502/var/workflow/models/my-workflow.json"
 ```
 
 ## Start a Test Workflow via API
 
 ```bash
-curl -u admin:admin -X POST \
+curl -u <user>:<password> -X POST \
   "http://localhost:4502/api/workflow/instances" \
   -d "model=/var/workflow/models/my-workflow" \
   -d "payloadType=JCR_PATH" \
