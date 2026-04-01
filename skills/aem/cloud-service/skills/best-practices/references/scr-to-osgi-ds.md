@@ -11,6 +11,12 @@
 
 ## Build / module notes
 
+- **Scope — only change dependencies whose API you changed in code.** When migrating Java files, only add or remove POM dependencies that directly correspond to the imports you added or removed. Do not delete, upgrade, or reorganise unrelated dependencies — even if they look outdated. Unrelated POM cleanup is a separate task.
+- **Pre-deletion guard — never remove a POM dependency or plugin whose API is still used in source code.** Before deleting any Felix SCR / bndlib entry from a POM, run the appropriate search:
+  - `rg 'import org\.apache\.felix\.scr' <module>/src` → 0 matches → safe to remove `org.apache.felix.scr.annotations` dependency and `maven-scr-plugin`
+  - `rg 'import aQute\.bnd\.annotation' <module>/src` → 0 matches → safe to remove `biz.aQute:bndlib` dependency
+  - `rg 'org\.apache\.sling\.commons\.osgi\.PropertiesUtil' <module>/src` → 0 matches → safe to remove `org.apache.sling.commons.osgi` dependency (if present)
+  - **If any matches remain the dependency MUST stay in the POM.** Do not delete it. Migrate those files first (Steps 1–5), re-run the search, and only remove the dependency once the count reaches zero.
 - Remove Felix SCR Maven plugin / `scr` processing if present; ensure **`bnd-maven-plugin`** or equivalent declares DS component metadata.
 - Dependencies: `org.osgi:org.osgi.service.component.annotations` and `org.osgi:org.osgi.service.metatype.annotations` (aligned with AEM SDK / Cloud Service BOM).
 
