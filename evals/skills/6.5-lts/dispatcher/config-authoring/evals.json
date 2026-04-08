@@ -1,0 +1,56 @@
+{
+  "skill_name": "dispatcher-config-authoring",
+  "skill_variant": "6.5-lts",
+  "skill_path": "skills/aem/6.5-lts/skills/dispatcher/config-authoring",
+  "description": "Evaluates the AEM 6.5 LTS/AMS dispatcher config-authoring skill's ability to create, modify, and validate dispatcher configurations",
+  "evals": [
+    {
+      "id": 1,
+      "name": "create-basic-filter-rule",
+      "prompt": "I need to add a filter rule to block direct access to /content/dam except for images and PDFs. Can you help me create the appropriate filter configuration for AEM 6.5 on AMS?",
+      "expected_output": "A dispatcher filter configuration that denies /content/dam but allows /content/dam/*.{png,jpg,jpeg,gif,pdf}",
+      "files": [],
+      "assertions": [
+        "Output includes a valid dispatcher filter configuration section",
+        "Configuration includes a deny rule for /content/dam",
+        "Configuration includes allow rules for image and PDF extensions",
+        "Filter rules follow AEM 6.5 LTS/AMS best practices",
+        "Configuration uses correct glob patterns",
+        "No security vulnerabilities in the filter rules"
+      ],
+      "tags": ["filter", "security", "basic", "6.5-lts"]
+    },
+    {
+      "id": 2,
+      "name": "ams-vhost-pattern",
+      "prompt": "Create a vhost configuration for www.example.com that follows AEM 6.5 AMS dispatcher patterns. Make sure it works with the AMS load balancer.",
+      "expected_output": "VirtualHost configuration with AMS-specific patterns and load balancer compatibility",
+      "files": [],
+      "assertions": [
+        "VirtualHost configuration is syntactically valid",
+        "Includes AMS-specific Include directives",
+        "Does NOT include Cloud Service-only patterns",
+        "Configuration handles AMS load balancer headers properly",
+        "ServerName matches www.example.com",
+        "Follows AMS mutable config pattern (allows runtime modifications)"
+      ],
+      "tags": ["vhost", "6.5-lts", "ams"]
+    },
+    {
+      "id": 3,
+      "name": "cache-invalidation-ams",
+      "prompt": "Our cache isn't invalidating properly when we publish pages in AEM 6.5 on AMS. The statfileslevel is set to 0. Can you explain what's wrong and suggest a fix?",
+      "expected_output": "Explanation of statfileslevel behavior and AMS-specific troubleshooting",
+      "files": [],
+      "assertions": [
+        "Explanation mentions that statfileslevel 0 only invalidates exact matches",
+        "Recommendation suggests increasing statfileslevel to 2 or higher",
+        "Provides a concrete configuration example with /statfileslevel setting",
+        "Mentions AMS-specific validation/troubleshooting tools",
+        "May suggest JMX or Felix Console for debugging (6.5-specific)",
+        "Does NOT suggest Cloud Service-only tools"
+      ],
+      "tags": ["cache", "invalidation", "troubleshooting", "6.5-lts"]
+    }
+  ]
+}

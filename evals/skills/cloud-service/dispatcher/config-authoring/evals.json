@@ -1,0 +1,55 @@
+{
+  "skill_name": "dispatcher-config-authoring",
+  "skill_variant": "cloud-service",
+  "skill_path": "skills/aem/cloud-service/skills/dispatcher/config-authoring",
+  "description": "Evaluates the AEM Cloud Service dispatcher config-authoring skill's ability to create, modify, and validate dispatcher configurations",
+  "evals": [
+    {
+      "id": 1,
+      "name": "create-basic-filter-rule",
+      "prompt": "I need to add a filter rule to block direct access to /content/dam except for images and PDFs. Can you help me create the appropriate filter configuration for AEM Cloud Service?",
+      "expected_output": "A dispatcher filter configuration that denies /content/dam but allows /content/dam/*.{png,jpg,jpeg,gif,pdf}",
+      "files": [],
+      "assertions": [
+        "Output includes a valid dispatcher filter configuration section",
+        "Configuration includes a deny rule for /content/dam",
+        "Configuration includes allow rules for image and PDF extensions",
+        "Filter rules follow AEM Cloud Service best practices",
+        "Configuration uses correct glob patterns",
+        "No security vulnerabilities in the filter rules"
+      ],
+      "tags": ["filter", "security", "basic", "cloud-service"]
+    },
+    {
+      "id": 2,
+      "name": "cloud-service-vhost-pattern",
+      "prompt": "Create a vhost configuration for www.example.com that follows AEM Cloud Service dispatcher patterns. Include the standard Cloud Service includes and make sure it works with the CDN.",
+      "expected_output": "VirtualHost configuration with Cloud Service-specific includes and CDN-compatible settings",
+      "files": [],
+      "assertions": [
+        "VirtualHost configuration is syntactically valid",
+        "Includes Cloud Service-specific Include directives (e.g., conf.d/available_vhosts)",
+        "Does NOT include legacy AMS-specific patterns",
+        "Configuration is CDN-aware (X-Forwarded-* headers)",
+        "ServerName matches www.example.com",
+        "Follows immutable config pattern (no runtime modifications)"
+      ],
+      "tags": ["vhost", "cloud-service", "cdn"]
+    },
+    {
+      "id": 3,
+      "name": "cache-invalidation-cloud",
+      "prompt": "Our cache isn't invalidating properly when we publish pages in AEM Cloud Service. The statfileslevel is set to 0. Can you explain what's wrong and suggest a fix?",
+      "expected_output": "Explanation of statfileslevel behavior and Cloud Service-specific recommendations",
+      "files": [],
+      "assertions": [
+        "Explanation mentions that statfileslevel 0 only invalidates exact matches",
+        "Recommendation suggests increasing statfileslevel to 2 or higher",
+        "Provides a concrete configuration example with /statfileslevel setting",
+        "Mentions Cloud Service validation tools (dispatcher-sdk-2.x)",
+        "Does NOT suggest AMS-specific troubleshooting (JMX, Felix Console)"
+      ],
+      "tags": ["cache", "invalidation", "troubleshooting", "cloud-service"]
+    }
+  ]
+}

@@ -1,0 +1,161 @@
+name: Evaluate Skills
+
+on:
+  pull_request:
+    branches: [main, beta]
+    paths:
+      - 'skills/aem/cloud-service/skills/dispatcher/**'
+      - 'skills/aem/6.5-lts/skills/dispatcher/**'
+      - 'evals/skills/**'
+      - '.github/workflows/eval-skills.yml'
+
+jobs:
+  detect-changes:
+    name: Detect Changed Skills
+    runs-on: ubuntu-latest
+    outputs:
+      eval-cloud-dispatcher: ${{ steps.filter.outputs.cloud-dispatcher }}
+      eval-lts-dispatcher: ${{ steps.filter.outputs.lts-dispatcher }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            cloud-dispatcher:
+              - 'skills/aem/cloud-service/skills/dispatcher/**'
+              - 'evals/skills/cloud-service/dispatcher/**'
+            lts-dispatcher:
+              - 'skills/aem/6.5-lts/skills/dispatcher/**'
+              - 'evals/skills/6.5-lts/dispatcher/**'
+
+  eval-cloud-service-dispatcher:
+    name: Eval Cloud Service Dispatcher
+    needs: detect-changes
+    if: needs.detect-changes.outputs.eval-cloud-dispatcher == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'evals/runner/package.json'
+
+      - name: Install runner dependencies
+        working-directory: evals/runner
+        run: npm ci
+
+      - name: Run config-authoring evals
+        working-directory: evals/runner
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          npm run eval -- --skill cloud-service/dispatcher/config-authoring --ci
+        continue-on-error: true
+        id: eval-run
+
+      - name: Generate eval report
+        if: always()
+        id: report
+        run: |
+          node .github/scripts/generate-eval-report.js cloud-service/dispatcher/config-authoring
+
+      - name: Comment PR with results
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const reportPath = 'eval-report.md';
+
+            if (!fs.existsSync(reportPath)) {
+              console.log('No report generated');
+              return;
+            }
+
+            const report = fs.readFileSync(reportPath, 'utf8');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: report
+            });
+
+      - name: Upload eval artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-cloud-service-dispatcher
+          path: evals-workspace/
+          retention-days: 30
+
+  eval-lts-dispatcher:
+    name: Eval 6.5 LTS Dispatcher
+    needs: detect-changes
+    if: needs.detect-changes.outputs.eval-lts-dispatcher == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'evals/runner/package.json'
+
+      - name: Install runner dependencies
+        working-directory: evals/runner
+        run: npm ci
+
+      - name: Run config-authoring evals
+        working-directory: evals/runner
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          npm run eval -- --skill 6.5-lts/dispatcher/config-authoring --ci
+        continue-on-error: true
+
+      - name: Generate eval report
+        if: always()
+        run: |
+          node .github/scripts/generate-eval-report.js 6.5-lts/dispatcher/config-authoring
+
+      - name: Comment PR with results
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const reportPath = 'eval-report.md';
+
+            if (!fs.existsSync(reportPath)) {
+              console.log('No report generated');
+              return;
+            }
+
+            const report = fs.readFileSync(reportPath, 'utf8');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: report
+            });
+
+      - name: Upload eval artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-lts-dispatcher
+          path: evals-workspace/
+          retention-days: 30

@@ -11,3 +11,9 @@ node_modules/
 
 # Temporary files
 drafts/tmp/
+
+# Eval workspace (local test runs)
+evals-workspace/
+
+# Eval reports
+eval-report.md
