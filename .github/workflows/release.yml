@@ -94,7 +94,7 @@ jobs:
             echo "::group::Releasing $SKILL_NAME"
 
             EXIT_CODE=0
-            (cd "$skill_dir" && npx semantic-release -e semantic-release-monorepo) || EXIT_CODE=$?
+            (cd "$skill_dir" && npx semantic-release) || EXIT_CODE=$?
 
             echo "::endgroup::"
 
