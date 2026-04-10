@@ -20,7 +20,7 @@
     [
       "@semantic-release/exec",
       {
-        "prepareCmd": "bash \"${GITHUB_WORKSPACE:-$(git rev-parse --show-toplevel)}/scripts/prepare-release.sh\" \"$PWD\" \"${nextRelease.version}\""
+        "prepareCmd": "bash \"$(git rev-parse --show-toplevel)/scripts/prepare-release.sh\" \"$PWD\" \"${nextRelease.version}\""
       }
     ],
     [
