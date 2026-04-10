@@ -140,7 +140,7 @@ AEM as a Cloud Service has **fundamentally different** content distribution arch
 | **Cache Invalidation** | Dispatcher Flush agents | Automatic CDN purge |
 | **Preview** | Not available | Native Preview tier for content review |
 
-**Note:** The AEM 6.5 LTS Replication API (`com.day.cq.replication`) does not exist in Cloud Service. Cloud Service uses Sling Content Distribution. Refer to the separate migration skill for migration guidance.
+**Note:** The Replication API (`com.day.cq.replication`) exists in both 6.5 LTS and Cloud Service. Cloud Service uses automatic Sling Content Distribution instead of manual replication agent configuration.
 
 ## Related Skills
 

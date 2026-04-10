@@ -210,7 +210,7 @@ Bulk hierarchical publishing for large content structures.
 ### When to Use
 
 - Publishing a complete site hierarchy
-- Migrating large content trees
+- Publishing large content trees
 - Publishing 50+ pages at once
 
 ### Steps
@@ -250,7 +250,7 @@ Bulk hierarchical publishing for large content structures.
 ### Example Use Cases
 
 ```
-# Site migration
+# Bulk site publishing
 - Tree activate entire /content/wknd site structure
 - Use "Only Modified" to avoid re-publishing unchanged content
 
@@ -269,7 +269,7 @@ Publish specific content sets using content packages.
 
 - Precise content set distribution
 - Cross-environment content sync
-- Controlled content migration
+- Specific content deployment
 
 ### Steps
 

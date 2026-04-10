@@ -21,132 +21,116 @@ Use this skill for programmatic content distribution:
 
 For UI-based publishing, use [Publish Content](../publish-content/SKILL.md) instead.
 
-## Important: Cloud Service API Differences
+## Important: Cloud Service API
 
-**⚠️ CRITICAL**: The AEM 6.5 LTS Replication API (`com.day.cq.replication.*`) is **REMOVED** in Cloud Service.
+**The Replication API (`com.day.cq.replication.*`) is the official programmatic API for content distribution in AEM as a Cloud Service.**
 
-### APIs That Don't Exist in Cloud Service:
-- ❌ `Replicator` interface
-- ❌ `ReplicationOptions`
-- ❌ `ReplicationStatus`
-- ❌ `AgentManager`
-- ❌ `ReplicationQueue`
-- ❌ Replication agents (no manual configuration)
+### Available APIs in Cloud Service:
+- ✅ `Replicator` interface with `replicate()` methods
+- ✅ `ReplicationOptions` for configuring replication requests
+- ✅ `ReplicationStatus` and `ReplicationStatusProvider` for status queries
+- ✅ `ReplicationEvent` for OSGi event handling
+- ✅ Automatic agent management (no manual configuration needed)
 
-### Cloud Service Alternatives:
+### Key Differences from 6.5 LTS:
 
-| 6.5 LTS API | Cloud Service Alternative |
-|-------------|--------------------------|
-| `Replicator.replicate()` | Use `Replication` via Resource Resolver or JCR events |
-| `ReplicationOptions` | Publication request properties |
-| Agent configuration | Automatic (managed by Adobe) |
-| `ReplicationListener` | OSGi Event Handler for replication events |
-| Dispatcher Flush | Automatic CDN purge |
+| Aspect | 6.5 LTS | Cloud Service |
+|--------|---------|---------------|
+| **API** | Same Replication API | Same Replication API |
+| **Agent configuration** | Manual via UI | Automatic (managed by Adobe) |
+| **Capacity limits** | No hard limits | Max 100 paths per call (500 absolute limit), 10MB size limit |
+| **Bulk operations** | Custom code allowed | Use Tree Activation workflow step instead |
+| **CDN cache** | Manual Dispatcher Flush agents | Automatic CDN purge |
 
 ## Programmatic Publishing Approaches
 
-### Approach 1: JCR-Based Replication (Recommended)
+### Approach 1: Replication API (Recommended)
 
-Trigger content distribution by setting JCR properties.
+Use the official `Replicator` interface to trigger content distribution.
 
-**Use when**: Simple programmatic publishing in OSGi services or workflows
+**Use when**: Programmatic publishing in OSGi services or workflows
 
-#### Example: Publish a Page
+#### Example: Publish a Single Page
 
 ```java
+import com.day.cq.replication.Replicator;
+import com.day.cq.replication.ReplicationActionType;
+import com.day.cq.replication.ReplicationException;
 import org.apache.sling.api.resource.ResourceResolver;
-import org.apache.sling.api.resource.Resource;
-import org.apache.sling.api.resource.ModifiableValueMap;
-import javax.jcr.Node;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import javax.jcr.Session;
 
+@Component(service = ContentPublisher.class)
 public class ContentPublisher {
+    
+    @Reference
+    private Replicator replicator;
     
     /**
      * Publish a page to the Publish tier
      */
     public void publishPage(ResourceResolver resolver, String pagePath) 
-            throws Exception {
+            throws ReplicationException {
         
-        Resource pageResource = resolver.getResource(pagePath + "/jcr:content");
-        if (pageResource == null) {
-            throw new IllegalArgumentException("Page not found: " + pagePath);
-        }
-        
-        Node pageNode = pageResource.adaptTo(Node.class);
-        
-        // Set replication action
-        pageNode.setProperty("cq:lastReplicationAction", "Activate");
-        pageNode.setProperty("cq:lastReplicated", java.util.Calendar.getInstance());
-        pageNode.setProperty("cq:lastReplicatedBy", resolver.getUserID());
-        
-        // Trigger replication
         Session session = resolver.adaptTo(Session.class);
-        session.save();
         
-        // Cloud Service automatically detects and replicates the content
+        // Activate (publish) the page
+        replicator.replicate(session, ReplicationActionType.ACTIVATE, pagePath);
     }
 }
 ```
 
 **Key Points**:
-- Set `cq:lastReplicationAction` to `"Activate"`
-- Set `cq:lastReplicated` to current timestamp
-- Call `session.save()` to trigger distribution
-- Cloud Service automatically detects changes and replicates
+- Inject `Replicator` service via OSGi reference
+- Use `ReplicationActionType.ACTIVATE` for publishing
+- Use `ReplicationActionType.DEACTIVATE` for unpublishing
+- Limit to 100 paths per call (Cloud Service capacity limit)
 
 #### Example: Unpublish a Page
 
 ```java
 public void unpublishPage(ResourceResolver resolver, String pagePath) 
-        throws Exception {
-    
-    Resource pageResource = resolver.getResource(pagePath + "/jcr:content");
-    if (pageResource == null) {
-        return; // Page doesn't exist, nothing to unpublish
-    }
-    
-    Node pageNode = pageResource.adaptTo(Node.class);
-    
-    // Set deactivation action
-    pageNode.setProperty("cq:lastReplicationAction", "Deactivate");
-    pageNode.setProperty("cq:lastReplicated", java.util.Calendar.getInstance());
-    pageNode.setProperty("cq:lastReplicatedBy", resolver.getUserID());
+        throws ReplicationException {
     
     Session session = resolver.adaptTo(Session.class);
-    session.save();
     
-    // Cloud Service automatically unpublishes the content
+    // Deactivate (unpublish) the page
+    replicator.replicate(session, ReplicationActionType.DEACTIVATE, pagePath);
 }
 ```
 
-#### Example: Publish to Preview Tier
+#### Example: Publish Multiple Pages with Options
 
 ```java
-public void publishToPreview(ResourceResolver resolver, String pagePath) 
-        throws Exception {
-    
-    Resource pageResource = resolver.getResource(pagePath + "/jcr:content");
-    if (pageResource == null) {
-        throw new IllegalArgumentException("Page not found: " + pagePath);
-    }
-    
-    Node pageNode = pageResource.adaptTo(Node.class);
-    
-    // Set replication properties for Preview
-    pageNode.setProperty("cq:lastReplicationAction", "Activate");
-    pageNode.setProperty("cq:lastReplicated", java.util.Calendar.getInstance());
-    pageNode.setProperty("cq:lastReplicatedBy", resolver.getUserID());
-    
-    // Target Preview tier (implementation may vary)
-    // Cloud Service determines target tier based on request context
+import com.day.cq.replication.ReplicationOptions;
+
+public void publishMultiplePages(ResourceResolver resolver, String[] pagePaths) 
+        throws ReplicationException {
     
     Session session = resolver.adaptTo(Session.class);
-    session.save();
+    
+    // Configure replication options
+    ReplicationOptions options = new ReplicationOptions();
+    options.setSynchronous(false);  // Asynchronous replication
+    options.setSuppressStatusUpdate(false);  // Update replication status
+    
+    // Replicate multiple paths
+    // IMPORTANT: Limit to max 100 paths (Cloud Service limit)
+    if (pagePaths.length > 100) {
+        throw new IllegalArgumentException(
+            "Cannot replicate more than 100 paths at once. Use Tree Activation workflow instead.");
+    }
+    
+    replicator.replicate(session, ReplicationActionType.ACTIVATE, pagePaths, options);
 }
 ```
 
-**Note**: Targeting specific tiers (Preview vs. Publish) programmatically may require Adobe support configuration.
+**Cloud Service Capacity Limits**:
+- Maximum 100 paths per `replicate()` call (recommended)
+- Absolute limit: 500 paths (throws `ReplicationException` if exceeded)
+- Maximum 10MB content size per call (excluding binaries)
+- For bulk operations (>100 paths), use Tree Activation workflow step
 
 ### Approach 2: Sling POST Servlet (HTTP-Based)
 
@@ -209,11 +193,16 @@ Integrate publishing into custom workflows.
 
 ```java
 import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import com.adobe.granite.workflow.WorkflowException;
 import com.adobe.granite.workflow.WorkflowSession;
 import com.adobe.granite.workflow.exec.WorkflowData;
 import com.adobe.granite.workflow.exec.WorkflowProcess;
 import com.adobe.granite.workflow.metadata.MetaDataMap;
+import com.day.cq.replication.Replicator;
+import com.day.cq.replication.ReplicationActionType;
+import com.day.cq.replication.ReplicationException;
+import javax.jcr.Session;
 
 @Component(
     service = WorkflowProcess.class,
@@ -223,6 +212,9 @@ import com.adobe.granite.workflow.metadata.MetaDataMap;
 )
 public class PublishWorkflowProcess implements WorkflowProcess {
     
+    @Reference
+    private Replicator replicator;
+    
     @Override
     public void execute(WorkItem workItem, WorkflowSession workflowSession, 
                        MetaDataMap args) throws WorkflowException {
@@ -230,36 +222,22 @@ public class PublishWorkflowProcess implements WorkflowProcess {
         WorkflowData workflowData = workItem.getWorkflowData();
         String payloadPath = workflowData.getPayload().toString();
         
-        ResourceResolver resolver = null;
         try {
-            // Get resolver from workflow session
             Session session = workflowSession.adaptTo(Session.class);
-            resolver = ... // Get resource resolver from session
             
-            // Publish the content
-            Resource resource = resolver.getResource(payloadPath + "/jcr:content");
-            if (resource != null) {
-                Node node = resource.adaptTo(Node.class);
-                node.setProperty("cq:lastReplicationAction", "Activate");
-                node.setProperty("cq:lastReplicated", 
-                    java.util.Calendar.getInstance());
-                session.save();
-            }
+            // Publish the content using Replication API
+            replicator.replicate(session, ReplicationActionType.ACTIVATE, payloadPath);
             
-        } catch (Exception e) {
-            throw new WorkflowException("Failed to publish content", e);
-        } finally {
-            if (resolver != null && resolver.isLive()) {
-                resolver.close();
-            }
+        } catch (ReplicationException e) {
+            throw new WorkflowException("Failed to publish content: " + payloadPath, e);
         }
     }
 }
 ```
 
 **Process Arguments** (configured in workflow model):
-- `target=publish` - Publish to Publish tier
-- `target=preview` - Publish to Preview tier (if supported)
+- None required - publishes to default Publish tier
+- For bulk operations, use the Tree Activation workflow step instead
 
 ### Approach 4: Event-Driven Publishing
 
@@ -271,10 +249,14 @@ React to content changes and automatically publish.
 
 ```java
 import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.osgi.service.event.Event;
 import org.osgi.service.event.EventHandler;
 import org.apache.sling.api.SlingConstants;
 import org.apache.sling.api.resource.ResourceResolverFactory;
+import com.day.cq.replication.Replicator;
+import com.day.cq.replication.ReplicationActionType;
+import javax.jcr.Session;
 
 @Component(
     service = EventHandler.class,
@@ -287,6 +269,9 @@ public class AutoPublishContentFragmentHandler implements EventHandler {
     
     @Reference
     private ResourceResolverFactory resolverFactory;
+    
+    @Reference
+    private Replicator replicator;
     
     @Override
     public void handleEvent(Event event) {
@@ -303,12 +288,12 @@ public class AutoPublishContentFragmentHandler implements EventHandler {
                 
                 Resource resource = resolver.getResource(path);
                 if (resource != null && isContentFragment(resource)) {
-                    // Auto-publish the content fragment
-                    Node node = resource.adaptTo(Node.class);
-                    node.setProperty("cq:lastReplicationAction", "Activate");
-                    node.setProperty("cq:lastReplicated", 
-                        java.util.Calendar.getInstance());
-                    resolver.commit();
+                    // Auto-publish the content fragment using Replication API
+                    Session session = resolver.adaptTo(Session.class);
+                    
+                    // Strip /jcr:content suffix for replication
+                    String assetPath = path.substring(0, path.lastIndexOf("/jcr:content"));
+                    replicator.replicate(session, ReplicationActionType.ACTIVATE, assetPath);
                 }
                 
             } catch (Exception e) {
@@ -556,19 +541,34 @@ public class PublicationStatusChecker {
 
 ## Bulk Operations
 
-### Example: Bulk Publish Content Fragments
+**⚠️ IMPORTANT**: For bulk operations (>100 paths), Adobe recommends using the **Tree Activation workflow step** instead of custom code. See the [official documentation](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/operations/replication) for details.
+
+### Example: Bulk Publish Content Fragments (Small Scale)
+
+For publishing <100 items programmatically:
 
 ```java
 import org.apache.sling.api.resource.ResourceResolver;
+import org.osgi.service.component.annotations.Reference;
+import com.day.cq.replication.Replicator;
+import com.day.cq.replication.ReplicationActionType;
+import com.day.cq.replication.ReplicationOptions;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
+import javax.jcr.Session;
 
+@Component(service = BulkContentFragmentPublisher.class)
 public class BulkContentFragmentPublisher {
     
+    @Reference
+    private Replicator replicator;
+    
     /**
-     * Publish all content fragments under a path
+     * Publish content fragments under a path (max 100 items)
      */
-    public void publishAllContentFragments(ResourceResolver resolver, 
-                                          String basePath) throws Exception {
+    public void publishContentFragments(ResourceResolver resolver, 
+                                        String basePath) throws Exception {
         
         // Find all content fragments
         Iterator<Resource> fragments = resolver.findResources(
@@ -578,47 +578,43 @@ public class BulkContentFragmentPublisher {
             javax.jcr.query.Query.JCR_SQL2
         );
         
-        int count = 0;
-        int batchSize = 50;
-        
-        while (fragments.hasNext()) {
+        // Collect paths (Cloud Service limit: max 100 paths per call)
+        List<String> paths = new ArrayList<>();
+        while (fragments.hasNext() && paths.size() < 100) {
             Resource fragment = fragments.next();
-            Resource contentResource = fragment.getChild("jcr:content");
-            
-            if (contentResource != null) {
-                Node node = contentResource.adaptTo(Node.class);
-                node.setProperty("cq:lastReplicationAction", "Activate");
-                node.setProperty("cq:lastReplicated", 
-                    java.util.Calendar.getInstance());
-                
-                count++;
-                
-                // Commit in batches to avoid memory issues
-                if (count % batchSize == 0) {
-                    resolver.commit();
-                }
-            }
+            paths.add(fragment.getPath());
         }
         
-        // Final commit
-        if (count % batchSize != 0) {
-            resolver.commit();
+        if (paths.isEmpty()) {
+            return; // Nothing to publish
         }
         
-        // Log results
-        System.out.println("Published " + count + " content fragments");
+        // Replicate using Replication API
+        Session session = resolver.adaptTo(Session.class);
+        ReplicationOptions options = new ReplicationOptions();
+        options.setSynchronous(false);  // Asynchronous for better performance
+        
+        replicator.replicate(
+            session, 
+            ReplicationActionType.ACTIVATE, 
+            paths.toArray(new String[0]), 
+            options
+        );
+        
+        LOG.info("Published {} content fragments from {}", paths.size(), basePath);
     }
 }
 ```
 
 ### Best Practices for Bulk Operations
 
-1. **Batch Size**: Commit in batches of 50-100 items
-2. **Error Handling**: Log failures but continue processing
-3. **Service User**: Use service user with appropriate permissions
-4. **Performance**: Run during off-peak hours
-5. **Monitoring**: Log progress and errors
-6. **Rate Limiting**: Add delays between batches if needed
+1. **Use Tree Activation Workflow**: For >100 paths, use the Tree Activation workflow step (recommended by Adobe)
+2. **Respect Cloud Service Limits**: Maximum 100 paths per `replicate()` call (500 absolute limit)
+3. **Size Limit**: Maximum 10MB content per call (excluding binaries)
+4. **Error Handling**: Log failures but continue processing
+5. **Service User**: Use service user with appropriate permissions
+6. **Performance**: Run during off-peak hours
+7. **Asynchronous Replication**: Set `ReplicationOptions.setSynchronous(false)` for better performance
 
 ## Service User Configuration
 
