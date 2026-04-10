@@ -85,13 +85,11 @@ Coordinates end-to-end workflows spanning multiple sub-skills.
 - Go-live preparation workflows
 - Production incident response
 - CDN optimization strategies
-- Migration from 6.5 LTS patterns
 
 **Typical use cases:**
 - New site go-live
 - Environment setup
 - Performance optimization
-- Migration projects
 
 ## Key Features
 
@@ -151,15 +149,6 @@ All skills are based on official Adobe AEM as a Cloud Service documentation:
 3. **For developers**: Reference [Content Distribution API](./distribution-api/SKILL.md)
 4. **For troubleshooting**: Consult [Troubleshoot Distribution](./troubleshoot-distribution/SKILL.md)
 5. **For end-to-end workflows**: Use [Content Distribution Orchestrator](./orchestrator/SKILL.md)
-
-## Migration from AEM 6.5 LTS
-
-If migrating from 6.5 LTS:
-- Replication API code must be refactored (API removed in Cloud Service)
-- Replication agents not needed (managed by Adobe)
-- Dispatcher Flush agents replaced by automatic CDN purge
-- Preview tier is new capability (plan content review workflows)
-- See [Migration Patterns](./references/cloud-distribution-foundation/migration-patterns.md)
 
 ## Total Documentation
 

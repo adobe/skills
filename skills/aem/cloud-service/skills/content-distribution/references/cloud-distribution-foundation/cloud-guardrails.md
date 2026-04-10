@@ -236,33 +236,6 @@ end
 2. Review for relevance
 3. Unpublish old/unused content
 
-## Migration from 6.5 LTS Guardrails
-
-### Code Refactoring
-
-**Timeline**:
-- **Simple migrations**: 2-4 weeks
-- **Complex migrations**: 2-3 months
-- **Test/validate**: 1-2 months
-
-**Effort Estimation**:
-- **Low complexity**: 1-2 days per API usage
-- **Medium complexity**: 3-5 days per usage
-- **High complexity**: 1-2 weeks per usage
-
-### Testing Requirements
-
-**Minimum Testing**:
-- Unit tests for all refactored code
-- Integration tests on Dev environment
-- UAT on Stage environment
-- Smoke tests on Production
-
-**Best Practice**:
-- Test in lower environments first
-- Parallel run on Stage before Production cutover
-- Prepare rollback plan
-
 ## Monitoring and Alerting Thresholds
 
 ### Key Metrics to Monitor

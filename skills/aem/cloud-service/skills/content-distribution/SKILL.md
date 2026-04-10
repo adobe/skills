@@ -89,7 +89,6 @@ Coordinates end-to-end content distribution workflows spanning multiple sub-skil
 - **Go-Live Preparation**: Configure Preview tier → Test workflows → CDN warmup → Go live
 - **Production Incident Response**: Diagnose → Fix → Clear CDN → Verify
 - **CDN Optimization**: Cache analysis → Configure purge rules → Validate
-- **Migration from 6.5 LTS**: Assess replication usage → Refactor to Cloud Service patterns → Validate
 
 **When to use:** Multi-step scenarios requiring coordination across publish, preview, API, and troubleshoot skills
 
@@ -115,10 +114,9 @@ Coordinates end-to-end content distribution workflows spanning multiple sub-skil
 Shared reference materials used across all content distribution skills:
 
 - **[Cloud Service Architecture](./references/cloud-distribution-foundation/architecture.md)**: Author, Preview, Publish tiers, and content distribution flow
-- **[Sling Content Distribution](./references/cloud-distribution-foundation/sling-distribution.md)**: Modern distribution API and patterns
-- **[Preview Tier](./references/cloud-distribution-foundation/preview-tier.md)**: Preview tier architecture, URLs, and workflows
-- **[CDN Integration](./references/cloud-distribution-foundation/cdn-integration.md)**: CDN cache management, purge rules, and optimization
 - **[Cloud Service Guardrails](./references/cloud-distribution-foundation/cloud-guardrails.md)**: Rate limits, best practices, and constraints
+
+**Note**: Additional reference documentation (Sling Content Distribution details, Preview tier architecture deep-dive, CDN integration patterns) will be added in future updates.
 
 ## Official Documentation
 
@@ -142,7 +140,7 @@ AEM as a Cloud Service has **fundamentally different** content distribution arch
 | **Cache Invalidation** | Dispatcher Flush agents | Automatic CDN purge |
 | **Preview** | Not available | Native Preview tier for content review |
 
-**Migration Note:** Code using the AEM 6.5 LTS Replication API must be refactored for Cloud Service. Refer to the separate migration skill for detailed guidance on migrating from 6.5 LTS to Cloud Service.
+**Note:** The AEM 6.5 LTS Replication API (`com.day.cq.replication`) does not exist in Cloud Service. Cloud Service uses Sling Content Distribution. Refer to the separate migration skill for migration guidance.
 
 ## Related Skills
 
