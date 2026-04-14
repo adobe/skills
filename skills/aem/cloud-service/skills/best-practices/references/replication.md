@@ -23,8 +23,8 @@ If the file already uses `Distributor` and `SimpleDistributionRequest`, it may n
 
 ## Pattern-Specific Rules
 
-- **DO** replace ReplicationAgent/Replicator with Distributor
-- **DO** replace ReplicationAction/ReplicationResult with SimpleDistributionRequest/DistributionResponse
+- **DO** replace ReplicationAgent/Replicator with `Distributor`
+- **DO** replace ReplicationAction/ReplicationResult with `SimpleDistributionRequest`/`DistributionResponse`
 - **DO** map ReplicationActionType to DistributionRequestType (e.g., ACTIVATE → ADD)
 - **DO** use `publish` or `preview` to target the specific Distribution Agent or both separately if distributing to both publish and preview tiers
 - **DO NOT** use administrative resolver or console logging — follow [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md)
@@ -33,7 +33,7 @@ If the file already uses `Distributor` and `SimpleDistributionRequest`, it may n
 
 ## Complete Example: Before and After
 
-### Example 1: CQ Replicator → Sling Distribution Agent
+### Example 1: CQ Replicator → Sling Content Distribution
 
 #### Before (Legacy CQ Replicator)
 
@@ -148,7 +148,7 @@ public class PropertyNodeReplicationService {
 }
 ```
 
-### Example 2: Sling Replication Agent → Sling Distribution Agent
+### Example 2: Sling Replication Agent → Sling Content Distribution
 
 #### Before (Legacy Sling Replication Agent)
 
@@ -240,7 +240,7 @@ public class ContentReplicationService {
             }
 
             DistributionRequest distributionRequest = new SimpleDistributionRequest(
-                DistributionRequestType.ADD, 
+                DistributionRequestType.ADD,
                 false,
                 contentPath
             );
@@ -258,9 +258,9 @@ public class ContentReplicationService {
 
 **Key Changes:**
 - ✅ Replaced `Replicator`/`ReplicationAgent` → `Distributor`
-- ✅ Replaced `ReplicationAction`/`ReplicationResult` → `DistributionRequest`/`SimpleDistributionRequest`
+- ✅ Replaced `ReplicationAction`/`ReplicationResult` → `DistributionRequest`/`DistributionResponse`
 - ✅ Mapped `ReplicationActionType.ACTIVATE` → `DistributionRequestType.ADD`
-- ✅ Used correct `publish/preview` agent
+- ✅ Used correct `publish`/`preview` agent
 - ✅ Replaced `getAdministrativeResourceResolver()` → `getServiceResourceResolver()` with SUBSERVICE
 - ✅ Removed USER/PASSWORD from authInfo (Cloud Service uses SUBSERVICE only)
 - ✅ Replaced `System.out/err` → SLF4J Logger
@@ -381,8 +381,9 @@ import java.util.Map;
 ## Replication/Distribution Checklist
 
 - [ ] No `ReplicationAgent`, `Replicator`, `ReplicationAction`, or `ReplicationResult` remains
-- [ ] Uses `Distributor`
-- [ ] Uses `DistributionRequest` / `SimpleDistributionRequest` with `DistributionRequestType`
+- [ ] Uses `Distributor` (`org.apache.sling.distribution`)
+- [ ] Uses `SimpleDistributionRequest` with `DistributionRequestType` from `org.apache.sling.distribution`
+- [ ] Calls `distributor.distribute("publish", resolver, distributionRequest)` with the service-user resolver
 - [ ] [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md) satisfied (SCR→DS, resolver/logging, auth maps)
 - [ ] `scheduler.concurrent=false` is set (if using scheduler)
 - [ ] Code compiles: `mvn clean compile`
