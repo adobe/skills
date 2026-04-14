@@ -1,0 +1,50 @@
+name: Conventional Commits (at least one)
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  conventional-commits:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check for conventional commits
+        run: |
+          PATTERN='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-zA-Z0-9_-]+\))?!?: .+'
+
+          COMMITS=$(git log ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} --pretty=format:"%h %s" 2>&1) || {
+            echo "::error::Failed to retrieve commits: $COMMITS"
+            exit 1
+          }
+          if [ -z "$COMMITS" ]; then
+            echo "No commits found in this PR."
+            exit 1
+          fi
+
+          echo "Checking commits for conventional commit format..."
+          echo ""
+
+          FOUND=0
+          while IFS= read -r line; do
+            HASH=$(echo "$line" | cut -d' ' -f1)
+            MSG=$(echo "$line" | cut -d' ' -f2-)
+            if echo "$MSG" | grep -qE "$PATTERN"; then
+              echo "✅ $HASH $MSG"
+              FOUND=1
+            else
+              echo "❌ $HASH $MSG"
+            fi
+          done <<< "$COMMITS"
+
+          echo ""
+          if [ "$FOUND" -eq 1 ]; then
+            echo "✅ Pass: at least one commit follows the Conventional Commits format."
+          else
+            echo "❌ Fail: no commits follow the Conventional Commits format. At least one is required. Please use: type(scope): description"
+            exit 1
+          fi
+

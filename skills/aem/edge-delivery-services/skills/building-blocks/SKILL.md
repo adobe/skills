@@ -1,6 +1,7 @@
 ---
 name: building-blocks
 description: Guide for implementing code changes in AEM Edge Delivery Services. Handles block development (new or modified), core functionality changes (scripts.js, styles, delayed.js, etc.), or both. Use this skill for all implementation work guided by the content-driven-development workflow.
+license: Apache-2.0
 ---
 
 # Building Blocks

@@ -1,0 +1,52 @@
+{
+  "context": "Tests whether the agent produces structured acceptance criteria for adding a video variant to an existing Hero block without writing code. Covers variant behavior, video attributes, mobile fallback, impact assessment, edge cases, and accessibility.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Variant behavior clearly defined",
+      "max_score": 15,
+      "description": "Describes what the video variant does differently from the existing image variant; clearly distinguishes the two variants' behavior"
+    },
+    {
+      "name": "Video attributes specified",
+      "max_score": 12,
+      "description": "Mentions autoplay, muted, and loop requirements for the background video"
+    },
+    {
+      "name": "Mobile fallback addressed",
+      "max_score": 15,
+      "description": "Poster image fallback on mobile is explicitly covered with criteria for when and how it triggers (e.g., viewport breakpoint, device detection, or connection speed)"
+    },
+    {
+      "name": "Impact on existing variant assessed",
+      "max_score": 10,
+      "description": "Confirms that the existing image variant must remain unchanged and functional; assesses risk of regression"
+    },
+    {
+      "name": "Edge cases identified",
+      "max_score": 12,
+      "description": "Addresses edge cases such as: video fails to load, no poster image provided, unsupported video format, very short or very long videos"
+    },
+    {
+      "name": "Responsive behavior specified",
+      "max_score": 10,
+      "description": "Mobile poster vs desktop video behavior is explicitly defined; tablet behavior is mentioned or addressed"
+    },
+    {
+      "name": "Author experience documented",
+      "max_score": 10,
+      "description": "Describes how the author enables the video variant and provides video/poster content (NOT implementation details like CSS classes or HTML attributes)"
+    },
+    {
+      "name": "Accessibility considered",
+      "max_score": 8,
+      "description": "Mentions reduced motion preference (prefers-reduced-motion), video without audio implications, or screen reader considerations"
+    },
+    {
+      "name": "Definition of done is testable",
+      "max_score": 8,
+      "description": "Specific, verifiable completion conditions that can be checked without ambiguity"
+    }
+  ]
+}
+

@@ -1,0 +1,135 @@
+name: Release Skills
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    # Skip release commits to avoid infinite loops
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          # Use a token with push access so commits from semantic-release trigger CI
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - uses: tesslio/setup-tessl@v2
+        with:
+          token: ${{ secrets.TESSL_TOKEN }}
+
+      - name: Detect changed skills
+        id: detect
+        run: |
+          # Compare HEAD with its parent to find what changed in this push
+          CHANGED_FILES=$(git diff --name-only ${{ github.event.before }}..${{ github.sha }} 2>/dev/null || git diff --name-only HEAD)
+
+          # Build list of all skill directories (parents of SKILL.md)
+          ALL_SKILL_DIRS=$(find skills -name SKILL.md -exec dirname {} \; | sort)
+
+          # For each changed file, find which skill directory it belongs to
+          DIRS=""
+          for changed_file in $CHANGED_FILES; do
+            for skill_dir in $ALL_SKILL_DIRS; do
+              case "$changed_file" in
+                "$skill_dir"/*)
+                  # Check not already added
+                  case " $DIRS " in
+                    *" $skill_dir "*) ;;
+                    *) DIRS="$DIRS $skill_dir" ;;
+                  esac
+                  break
+                  ;;
+              esac
+            done
+          done
+
+          DIRS=$(echo "$DIRS" | xargs)  # trim whitespace
+
+          if [ -z "$DIRS" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No skill directories changed."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "dirs=$DIRS" >> "$GITHUB_OUTPUT"
+            echo "Changed skills: $DIRS"
+          fi
+
+      - name: Release changed skills
+        if: steps.detect.outputs.skip != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TESSL_TOKEN: ${{ secrets.TESSL_TOKEN }}
+        run: |
+          PASS=0
+          FAIL=0
+          SKIP=0
+          SUMMARY_ROWS=""
+
+          for skill_dir in ${{ steps.detect.outputs.dirs }}; do
+            SKILL_NAME=$(basename "$skill_dir")
+
+            # Each skill needs a package.json for semantic-release-monorepo
+            if [ ! -f "$skill_dir/package.json" ]; then
+              echo "::warning::$skill_dir has no package.json — skipping release"
+              SKIP=$((SKIP + 1))
+              SUMMARY_ROWS="${SUMMARY_ROWS}| ${SKILL_NAME} | skipped (no package.json) | ⏭️ |\n"
+              continue
+            fi
+
+            echo "::group::Releasing $SKILL_NAME"
+
+            EXIT_CODE=0
+            (cd "$skill_dir" && npx semantic-release) || EXIT_CODE=$?
+
+            echo "::endgroup::"
+
+            if [ "$EXIT_CODE" -ne 0 ]; then
+              echo "::error::Release failed for $SKILL_NAME (exit code $EXIT_CODE)"
+              FAIL=$((FAIL + 1))
+              SUMMARY_ROWS="${SUMMARY_ROWS}| ${SKILL_NAME} | failed | ❌ |\n"
+            else
+              PASS=$((PASS + 1))
+              SUMMARY_ROWS="${SUMMARY_ROWS}| ${SKILL_NAME} | released | ✅ |\n"
+            fi
+          done
+
+          TOTAL=$((PASS + FAIL + SKIP))
+
+          {
+            echo "## Skill Releases"
+            echo ""
+            echo "| Skill | Result | Status |"
+            echo "|-------|--------|--------|"
+            echo -e "$SUMMARY_ROWS"
+            echo "| **Total** | **$PASS released, $SKIP skipped, $FAIL failed** | $([ "$FAIL" -eq 0 ] && echo '✅' || echo '❌') |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo ""
+          echo "============================="
+          echo "  Skill Release Summary"
+          echo "============================="
+          echo "  Released: $PASS"
+          echo "  Skipped:  $SKIP"
+          echo "  Failed:   $FAIL"
+          echo "============================="
+
+          if [ "$FAIL" -gt 0 ]; then
+            echo "::error::$FAIL skill(s) failed to release"
+            exit 1
+          fi
+

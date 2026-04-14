@@ -1,0 +1,52 @@
+{
+  "context": "Tests whether the agent produces structured acceptance criteria for a new Pricing Table block without writing code. Covers functional requirements, edge cases, responsive behavior, author experience, and testable definition of done.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Functional requirements listed",
+      "max_score": 15,
+      "description": "Covers rendering of all 3 tiers (Basic, Pro, Enterprise), feature comparison list, pricing display, CTA buttons per tier, and visually highlighted 'recommended' Pro tier"
+    },
+    {
+      "name": "Pricing toggle addressed",
+      "max_score": 10,
+      "description": "Acceptance criteria mention the monthly/annual pricing toggle behavior and state management (e.g., which is the default state, how prices update on toggle)"
+    },
+    {
+      "name": "Edge cases identified",
+      "max_score": 15,
+      "description": "Addresses edge cases such as empty feature rows, missing CTA, uneven feature counts across tiers, very long tier names, or missing pricing for one billing period"
+    },
+    {
+      "name": "Responsive behavior specified",
+      "max_score": 12,
+      "description": "Mobile stacking and desktop side-by-side layout are explicitly defined; tablet behavior is mentioned or addressed"
+    },
+    {
+      "name": "Author experience documented",
+      "max_score": 12,
+      "description": "Describes what content inputs authors provide (NOT table/cell structure or implementation details); distinguishes required vs optional fields"
+    },
+    {
+      "name": "No premature implementation details",
+      "max_score": 10,
+      "description": "Does NOT prescribe HTML structure, CSS classes, or JS implementation; stays at the requirements/acceptance-criteria level"
+    },
+    {
+      "name": "Definition of done is testable",
+      "max_score": 10,
+      "description": "Completion conditions are specific and verifiable (e.g., 'all 3 tiers render with correct pricing'), not vague (e.g., 'block works correctly')"
+    },
+    {
+      "name": "Ambiguities flagged",
+      "max_score": 8,
+      "description": "Identifies open questions or ambiguities (e.g., what happens when a tier has no CTA? Is the toggle state persisted across page navigation? What currency format is used?)"
+    },
+    {
+      "name": "Structured format used",
+      "max_score": 8,
+      "description": "Output uses a structured template with clear sections such as functional requirements, edge cases, responsive behavior, author experience, and definition of done"
+    }
+  ]
+}
+

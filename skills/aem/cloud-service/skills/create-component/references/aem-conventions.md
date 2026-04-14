@@ -4,11 +4,17 @@
 
 Project configuration is loaded from `.aem-skills-config.yaml` in the **project root** (same level as `pom.xml`).
 
-> **AI AGENT - CONFIGURATION RULES:**
-> 1. **READ `.aem-skills-config.yaml` FIRST** — always check for it before anything else
-> 2. **If `configured: true`** → use `project`, `package`, and `group` values from the file. Do NOT re-detect or override them.
-> 3. **If file is missing or `configured: false`** → auto-detect values from the codebase (pom.xml, existing components, Java files), present them to the user for confirmation, then create/update the config file with `configured: true`
-> 4. **After config is established**, `.aem-skills-config.yaml` is the **SINGLE SOURCE OF TRUTH** — never re-infer values from the codebase
+> **AI AGENT GATE CHECK** - Read `.aem-skills-config.yaml` FIRST:
+> - If file is missing or `configured: false` → **STOP IMMEDIATELY**. Do NOT read any other files. Do NOT explore the codebase. Display the configuration error message and WAIT.
+> - If `configured: true` → Read `project`, `package`, and `group` values from that file. Proceed with component creation.
+
+> **⚠️ AI AGENTS - ABSOLUTE RULES:**
+> 1. **READ `.aem-skills-config.yaml` FIRST** - If missing or `configured: false`, STOP
+> 2. **DO NOT read any other files** in the repository to find values
+> 3. **DO NOT explore** `/apps/`, `core/`, `pom.xml`, or any existing components
+> 4. **DO NOT infer** values from folder structures, package names, or existing code
+> 5. **ONLY USE VALUES FROM `.aem-skills-config.yaml`** after `configured: true`
+> 6. **VIOLATION = IMMEDIATE FAILURE** - Any inference attempt is a rule violation
 
 ---
 
@@ -43,8 +49,8 @@ core/src/main/java/[package-path]/
 core/src/test/java/[package-path]/
 ├── models/
 │   └── {ComponentName}ModelTest.java
-└── testcontext/
-    └── AppAemContext.java          # Shared test context
+└── testcontext/                    # (optional)
+    └── AppAemContext.java          # Optional shared test context helper
 ```
 
 ### Clientlibs
@@ -105,7 +111,7 @@ ui.apps/src/main/content/jcr_root/apps/[project]/clientlibs/
 
 ### AEM Best Practices
 5. Use Sling Models for business logic (not JSP/scripts)
-6. Follow HTL (Sightly) best practices (see `component-htl-rules.md`)
+6. Follow HTL (Sightly) best practices (see `htl-patterns.md`)
 7. Include proper JCR node types and properties
 8. Use Touch UI dialogs (not Classic UI)
 
@@ -119,24 +125,9 @@ ui.apps/src/main/content/jcr_root/apps/[project]/clientlibs/
 
 ## Dialog Field Type Reference
 
-> **Quick reference for mapping user field specifications to Granite UI types**
+For field type mappings (dialog field types → Granite resource types, Sling Model annotations), see `assets/field-type-mappings.md` or the Quick Reference table in SKILL.md.
 
-| User Input | Granite Resource Type | Property Type |
-|------------|----------------------|---------------|
-| Textfield | `granite/ui/components/coral/foundation/form/textfield` | String |
-| Textarea | `granite/ui/components/coral/foundation/form/textarea` | String |
-| Richtext | `cq/gui/components/authoring/dialog/richtext` | String (HTML) |
-| Checkbox | `granite/ui/components/coral/foundation/form/checkbox` | Boolean |
-| Select | `granite/ui/components/coral/foundation/form/select` | String |
-| Pathfield | `granite/ui/components/coral/foundation/form/pathfield` | String (Path) |
-| Fileupload | `cq/gui/components/authoring/dialog/fileupload` | Resource |
-| Numberfield | `granite/ui/components/coral/foundation/form/numberfield` | Long/Double |
-| Datepicker | `granite/ui/components/coral/foundation/form/datepicker` | Date |
-| Multifield | `granite/ui/components/coral/foundation/form/multifield` | List |
-| Hidden | `granite/ui/components/coral/foundation/form/hidden` | String |
-| Colorfield | `granite/ui/components/coral/foundation/form/colorfield` | String |
-
-> **For detailed dialog configuration**, see `component-dialog-rules.md`
+> **For detailed dialog configuration**, see `dialog-patterns.md`
 
 ---
 
@@ -150,7 +141,7 @@ ui.apps/src/main/content/jcr_root/apps/[project]/clientlibs/
 | `@SlingObject` | Current resource | `@SlingObject private Resource resource;` |
 | `@PostConstruct` | Init logic | `@PostConstruct protected void init() {}` |
 
-> **For detailed model patterns**, see `component-model-rules.md`
+> **For detailed model patterns**, see `model-patterns.md`
 
 ---
 
@@ -160,12 +151,12 @@ This project uses modular rules files for specific aspects:
 
 | Rules File | Purpose |
 |------------|---------|
-| `component-dialog-rules.md` | Dialog XML structure, field types, validation |
-| `component-htl-rules.md` | HTL template patterns, expressions, accessibility |
-| `component-model-rules.md` | Sling Model structure, annotations, patterns |
-| `component-clientlib-rules.md` | Clientlib structure, JS/CSS patterns |
+| `dialog-patterns.md` | Dialog XML structure, field types, validation |
+| `htl-patterns.md` | HTL template patterns, expressions, accessibility |
+| `model-patterns.md` | Sling Model structure, annotations, patterns |
+| `clientlib-patterns.md` | Clientlib structure, JS/CSS patterns |
 | `java-standards.md` | Java code quality, Javadoc, error handling |
-| `testing-standards.md` | Unit test structure, scenarios, assertions |
+| `test-patterns.md` | Unit test structure, scenarios, assertions |
 
 ---
 

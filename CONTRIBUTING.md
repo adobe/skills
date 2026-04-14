@@ -1,10 +1,16 @@
-# Contributing to helix-webiste
+# Contributing to Adobe Skills for AI Coding Agents
 
 This project is an Open Development/Inner Source project and welcomes contributions from everyone who finds it useful or lacking.
 
 ## Code Of Conduct
 
 This project adheres to the Adobe [code of conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior to cstaub at adobe dot com.
+
+## Community
+
+Have questions, want feedback on a skill, or need a review? Reach out on [#agentskills](https://adobe.enterprise.slack.com/archives/C0APTKDNPEY) on Slack.
+
+For background on the skills format and specification, see [agentskills.io](https://agentskills.io) and the [agentskills GitHub org](https://github.com/agentskills/agentskills).
 
 ## Contributor License Agreement
 
@@ -20,6 +26,39 @@ For other contributors, a maintainer of the project has to approve the pull requ
 
 * Check that there is an existing issue in GitHub issues
 * Check if there are other pull requests that might overlap or conflict with your intended contribution
+
+## Writing Skills
+
+To contribute a new skill, follow the format described in the [Agent Skills specification](https://agentskills.io). When your skill is ready, open a pull request and ping [#agentskills](https://adobe.enterprise.slack.com/archives/C0APTKDNPEY) on Slack to get a review.
+
+## Quality Checks
+
+PRs go through three tiers of quality checks:
+
+1. **Validation** (`npm run validate`) — checks skill structure against the [agentskills.io](https://agentskills.io) spec. Runs automatically on every PR.
+
+2. **Tessl Skill Review** (`tessl skill review`) — LLM-based scoring of content quality, activation quality, and security. Runs automatically on every PR for changed skills. Must score at least 50%.
+
+3. **Tessl Evals** (`tessl eval run`) — end-to-end agent evaluation that measures whether the skill actually improves agent behavior. Runs only when explicitly requested and only for skills that include a `tile.json`.
+
+## Requesting Evals
+
+To trigger evals, push an empty commit with an `eval:` prefix:
+
+```bash
+git commit --allow-empty -m "eval: describe what you're testing"
+git push
+```
+
+Things to know:
+
+- Evals only run for skills that have a `tile.json` in their tile directory
+- Evals require the `TESSL_TOKEN` GitHub Actions secret
+- GitHub Actions secrets are not available to PRs from forks, so external contributors cannot run evals directly
+- If you need evals for a fork-based PR, ask a maintainer to run them from a branch in the main repo
+- Evals take several minutes per skill — be patient
+- Results appear in the GitHub Actions step summary
+- Evals measure the "impact score" — the gap between agent performance with vs. without the skill
 
 # How to Contribute
 

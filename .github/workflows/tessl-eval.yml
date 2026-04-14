@@ -1,0 +1,287 @@
+name: Tessl Skill Eval
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  tessl-eval:
+    runs-on: ubuntu-latest
+    # Uses the "eval" environment for protection rules (e.g. reviewer approval)
+    # to guard the TESSL_TOKEN secret against exfiltration via same-repo branches.
+    environment: eval
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Check eval trigger
+        id: trigger
+        run: |
+          LAST_MSG=$(git log -1 --format=%s)
+          echo "commit_message=$LAST_MSG"
+          if [[ ! "$LAST_MSG" =~ ^eval: ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Last commit does not start with 'eval:' — skipping eval."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Eval triggered by commit: $LAST_MSG"
+          fi
+
+      - name: Post skip summary (no eval trigger)
+        if: steps.trigger.outputs.skip == 'true'
+        run: |
+          {
+            echo "## Skill Eval"
+            echo ""
+            echo "Eval not requested — last commit message does not start with \`eval:\`."
+            echo "To trigger evals, create a commit with a message like:"
+            echo "\`\`\`"
+            echo 'git commit --allow-empty -m "eval: test building-blocks changes"'
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Detect changed skills with tiles
+        if: steps.trigger.outputs.skip != 'true'
+        id: detect
+        run: |
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+
+          # Build list of all tile directories (parents of tile.json)
+          ALL_TILE_DIRS=$(find skills -name tile.json -exec dirname {} \; 2>/dev/null | sort)
+
+          if [ -z "$ALL_TILE_DIRS" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No tile.json files found in repo."
+          else
+            # For each changed file, find which tile directory it belongs to
+            DIRS=""
+            for changed_file in $CHANGED_FILES; do
+              for tile_dir in $ALL_TILE_DIRS; do
+                case "$changed_file" in
+                  "$tile_dir"/*)
+                    # Check not already added
+                    case " $DIRS " in
+                      *" $tile_dir "*) ;;
+                      *) DIRS="$DIRS $tile_dir" ;;
+                    esac
+                    break
+                    ;;
+                esac
+              done
+            done
+
+            DIRS=$(echo "$DIRS" | xargs)  # trim whitespace
+
+            # Check for unmatched changes under skills/
+            UNMATCHED=false
+            for changed_file in $CHANGED_FILES; do
+              case "$changed_file" in
+                skills/*)
+                  MATCHED=false
+                  for tile_dir in $ALL_TILE_DIRS; do
+                    case "$changed_file" in
+                      "$tile_dir"/*) MATCHED=true; break ;;
+                    esac
+                  done
+                  if [ "$MATCHED" = "false" ]; then
+                    UNMATCHED=true
+                    break
+                  fi
+                  ;;
+              esac
+            done
+
+            if [ "$UNMATCHED" = "true" ]; then
+              echo "Unmatched changes under skills/ detected — evaluating all tiles"
+              DIRS=$(find skills -name tile.json -exec dirname {} \; 2>/dev/null | tr "\n" " " | xargs)
+            fi
+
+            if [ -z "$DIRS" ]; then
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              echo "Changed files don't belong to any tile — nothing to eval."
+            else
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              echo "dirs=$DIRS" >> "$GITHUB_OUTPUT"
+              echo "Changed tiles: $DIRS"
+            fi
+          fi
+
+      - name: Post skip summary (no qualifying tiles)
+        if: steps.trigger.outputs.skip != 'true' && steps.detect.outputs.skip == 'true'
+        run: |
+          {
+            echo "## Skill Eval"
+            echo ""
+            echo "No qualifying skills to evaluate — either no skill files were changed or changed skills have no \`tile.json\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: tesslio/setup-tessl@v2
+        if: steps.trigger.outputs.skip != 'true' && steps.detect.outputs.skip != 'true'
+        with:
+          token: ${{ secrets.TESSL_TOKEN }}
+
+      - name: Run evals
+        id: run-evals
+        if: steps.trigger.outputs.skip != 'true' && steps.detect.outputs.skip != 'true'
+        run: |
+          PASS=0
+          FAIL=0
+          SUMMARY_FILE=$(mktemp)
+          ERRORS_FILE=$(mktemp)
+          STDOUT_TMP=$(mktemp)
+          STDERR_TMP=$(mktemp)
+          EVAL_URLS_FILE=$(mktemp)
+          trap 'rm -f "$SUMMARY_FILE" "$ERRORS_FILE" "$STDOUT_TMP" "$STDERR_TMP" "$EVAL_URLS_FILE"' EXIT
+
+          POLL_INTERVAL=30
+          TIMEOUT=900
+
+          for tile_dir in ${{ steps.detect.outputs.dirs }}; do
+            TILE_NAME=$(basename "$tile_dir")
+            echo "::group::Evaluating $TILE_NAME ($tile_dir)"
+
+            EXIT_CODE=0
+            OUTPUT=$(tessl eval run "$tile_dir" 2>&1) || EXIT_CODE=$?
+            echo "$OUTPUT"
+            echo "::endgroup::"
+
+            if [ "$EXIT_CODE" -ne 0 ]; then
+              echo "::warning::tessl eval run failed for $TILE_NAME (exit code $EXIT_CODE)"
+              FAIL=$((FAIL + 1))
+              echo "| $TILE_NAME | error | ❌ |" >> "$SUMMARY_FILE"
+              echo "  ❌ $TILE_NAME: eval run failed (exit code $EXIT_CODE)" >> "$ERRORS_FILE"
+              continue
+            fi
+
+            # Extract run ID (UUID) from tessl eval run output
+            RUN_ID=$(echo "$OUTPUT" | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)
+            if [ -z "$RUN_ID" ]; then
+              echo "::warning::Could not extract run ID for $TILE_NAME"
+              FAIL=$((FAIL + 1))
+              echo "| $TILE_NAME | no run ID | ❌ |" >> "$SUMMARY_FILE"
+              echo "  ❌ $TILE_NAME: could not extract run ID from output" >> "$ERRORS_FILE"
+              continue
+            fi
+
+            echo "Eval run started for $TILE_NAME with run ID: $RUN_ID"
+            echo "- **$TILE_NAME**: [View results](https://tessl.io/eval-runs/$RUN_ID)" >> "$EVAL_URLS_FILE"
+
+            # Poll for completion
+            ELAPSED=0
+            EVAL_STATUS="unknown"
+            while [ "$ELAPSED" -lt "$TIMEOUT" ]; do
+              sleep "$POLL_INTERVAL"
+              ELAPSED=$((ELAPSED + POLL_INTERVAL))
+
+              # Capture stdout and stderr separately to avoid breaking JSON parsing
+              VIEW_EXIT=0
+              tessl eval view "$RUN_ID" --json >"$STDOUT_TMP" 2>"$STDERR_TMP" || VIEW_EXIT=$?
+
+              if [ "$VIEW_EXIT" -ne 0 ]; then
+                STDERR_CONTENT=$(cat "$STDERR_TMP")
+                echo "  [$TILE_NAME] tessl eval view exited $VIEW_EXIT: $STDERR_CONTENT"
+                if echo "$STDERR_CONTENT" | grep -qi "not found"; then
+                  # Transient: run not yet visible, keep polling
+                  EVAL_STATUS="unknown"
+                else
+                  # Permanent failure
+                  echo "::warning::tessl eval view failed for $TILE_NAME (exit $VIEW_EXIT): $STDERR_CONTENT"
+                  EVAL_STATUS="failed"
+                  break
+                fi
+              else
+                EVAL_STATUS=$(python3 -c "import sys,json; print(json.load(sys.stdin)['data']['attributes']['status'])" <"$STDOUT_TMP" 2>/dev/null) || {
+                  echo "  [$TILE_NAME] Warning: could not parse JSON from stdout"
+                  EVAL_STATUS="unknown"
+                }
+              fi
+
+              echo "  [$TILE_NAME] Poll at ${ELAPSED}s: status=$EVAL_STATUS"
+
+              if [ "$EVAL_STATUS" = "completed" ] || [ "$EVAL_STATUS" = "failed" ]; then
+                break
+              fi
+            done
+
+            if [ "$EVAL_STATUS" = "completed" ]; then
+              PASS=$((PASS + 1))
+              echo "| $TILE_NAME | passed | ✅ |" >> "$SUMMARY_FILE"
+              echo "::group::Eval results for $TILE_NAME"
+              tessl eval view "$RUN_ID" 2>&1 || true
+              echo "::endgroup::"
+            elif [ "$EVAL_STATUS" = "failed" ]; then
+              FAIL=$((FAIL + 1))
+              echo "| $TILE_NAME | failed | ❌ |" >> "$SUMMARY_FILE"
+              echo "  ❌ $TILE_NAME: eval failed" >> "$ERRORS_FILE"
+              echo "::group::Eval results for $TILE_NAME"
+              tessl eval view "$RUN_ID" 2>&1 || true
+              echo "::endgroup::"
+            else
+              FAIL=$((FAIL + 1))
+              echo "| $TILE_NAME | timeout | ❌ |" >> "$SUMMARY_FILE"
+              echo "  ❌ $TILE_NAME: eval timed out after ${TIMEOUT}s (last status: $EVAL_STATUS)" >> "$ERRORS_FILE"
+              echo "::warning::Eval for $TILE_NAME timed out after ${TIMEOUT}s (last status: $EVAL_STATUS)"
+            fi
+          done
+
+          TOTAL=$((PASS + FAIL))
+
+          {
+            echo "## Skill Eval"
+            echo ""
+            echo "| Tile | Result | Status |"
+            echo "|------|--------|--------|"
+            cat "$SUMMARY_FILE"
+            echo "| **Total** | **$PASS/$TOTAL passed** | $([ "$FAIL" -eq 0 ] && echo '✅' || echo '❌') |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo ""
+          echo "============================="
+          echo "  Skill Eval Summary"
+          echo "============================="
+          echo "  Total:  $TOTAL"
+          echo "  Passed: $PASS"
+          echo "  Failed: $FAIL"
+          if [ -s "$ERRORS_FILE" ]; then
+            echo ""
+            echo "  Failed evals:"
+            cat "$ERRORS_FILE"
+          fi
+          echo "============================="
+
+          # Export eval URLs for PR comment step
+          if [ -s "$EVAL_URLS_FILE" ]; then
+            echo "has_results=true" >> "$GITHUB_OUTPUT"
+            {
+              echo 'eval_urls<<EVAL_URLS_EOF'
+              cat "$EVAL_URLS_FILE"
+              echo 'EVAL_URLS_EOF'
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "has_results=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "$FAIL" -gt 0 ]; then
+            echo "::error::$FAIL tile(s) failed evaluation"
+            exit 1
+          fi
+
+      - name: Comment eval results on PR
+        if: always() && github.event_name == 'pull_request' && steps.run-evals.outputs.has_results == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVAL_URLS: ${{ steps.run-evals.outputs.eval_urls }}
+        run: |
+          COMMENT="## Tessl Eval Results"
+          COMMENT="$COMMENT"$'\n\n'
+          COMMENT="$COMMENT$EVAL_URLS"
+          COMMENT="$COMMENT"$'\n\n'
+          COMMENT="${COMMENT}_Triggered by commit $(git log -1 --format=%s)_"
+          gh pr comment ${{ github.event.pull_request.number }} --body "$COMMENT"
+

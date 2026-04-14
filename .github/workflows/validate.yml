@@ -10,13 +10,86 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - run: npm ci
 
       - run: npm run validate
+
+  codeowners-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check CODEOWNERS covers all skill directories
+        run: |
+          codeowners=".github/CODEOWNERS"
+          if [ ! -f "$codeowners" ]; then
+            echo "::error::CODEOWNERS file not found at $codeowners"
+            exit 1
+          fi
+
+          missing=()
+          for dir in skills/*/*/; do
+            # Remove trailing slash for the lookup path
+            path="/${dir%/}"
+            if ! grep -q "^${path}[/ ]" "$codeowners"; then
+              missing+=("$path")
+            fi
+          done
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::The following skill directories are not covered in CODEOWNERS:"
+            for p in "${missing[@]}"; do
+              echo "  $p"
+            done
+            exit 1
+          fi
+
+          echo "All skill directories are covered in CODEOWNERS."
+
+
+  license-field:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check SKILL.md files have license field in frontmatter
+        run: |
+          missing=()
+          for file in $(find skills -name SKILL.md); do
+            # Extract frontmatter (between first two --- delimiters) and check for license field
+            if ! awk '/^---$/{n++; next} n==1{print} n>=2{exit}' "$file" | grep -q "^license:"; then
+              missing+=("$file")
+            fi
+          done
+
+          # Write GitHub Step Summary
+          echo "## License Field Check" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Skill | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
+
+          for file in $(find skills -name SKILL.md | sort); do
+            if printf '%s\n' "${missing[@]}" | grep -qx "$file"; then
+              echo "| $file | ❌ Missing |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "| $file | ✅ Pass |" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo ""
+            echo "::error::The following SKILL.md files are missing a 'license:' field in their frontmatter:"
+            for f in "${missing[@]}"; do
+              echo "  $f"
+            done
+            exit 1
+          fi
+
+          echo "All SKILL.md files have a license field."

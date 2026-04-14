@@ -1,6 +1,9 @@
 ---
 name: docs-search
 description: Searches the aem.live documentation for information on AEM Edge Delivery Services features. Use this skill when you need more information about a feature, want guidance on how to implement a feature, and using existing tools you have to search the web isn't turning up relevant results.
+license: Apache-2.0
+metadata:
+  version: "1.0.0"
 ---
 
 # Searching AEM Documentation

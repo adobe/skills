@@ -1,0 +1,66 @@
+{
+  "context": "Tests whether the agent follows AEM EDS CSS guidelines when implementing block styles. Covers selector scoping, CSS custom property usage, mobile-first responsive design with modern syntax, modern color and layout approaches, and anti-patterns to avoid.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Block selector scoping",
+      "max_score": 12,
+      "description": "All CSS selectors begin with `main .{block-name}` (e.g., `main .testimonial-carousel { ... }`), not bare element names or unscoped class names"
+    },
+    {
+      "name": "No unscoped selectors",
+      "max_score": 8,
+      "description": "No CSS rules use bare element selectors (e.g., `h2 { }`, `.item { }`) that are not prefixed with `main .{block-name}`"
+    },
+    {
+      "name": "CSS custom properties for color",
+      "max_score": 10,
+      "description": "Uses CSS custom property variables for at least one color value (e.g., `var(--background-color)`, `var(--text-color)`, `var(--link-color)`) rather than hardcoded color values"
+    },
+    {
+      "name": "CSS custom properties for typography",
+      "max_score": 10,
+      "description": "Uses CSS custom property variables for at least one font value (e.g., `var(--body-font-family)`, `var(--heading-font-family)`, `var(--heading-font-size-m)`) rather than hardcoded font names or sizes"
+    },
+    {
+      "name": "Mobile-first default styles",
+      "max_score": 8,
+      "description": "Default (non-media-query) CSS styles represent mobile layout; larger screen styles are added inside media queries"
+    },
+    {
+      "name": "Modern media query syntax",
+      "max_score": 8,
+      "description": "Media queries use range syntax `(width >= 600px)` or `(width >= 900px)` rather than legacy `(min-width: Xpx)` syntax"
+    },
+    {
+      "name": "Standard breakpoints",
+      "max_score": 6,
+      "description": "Media queries use 600px for tablet and/or 900px for desktop breakpoints (not arbitrary values)"
+    },
+    {
+      "name": "No !important usage",
+      "max_score": 8,
+      "description": "The CSS file does NOT contain any `!important` declarations"
+    },
+    {
+      "name": "Variant CSS pattern",
+      "max_score": 6,
+      "description": "If variants (dark, wide, etc.) are styled, the selector combines block and variant classes: `main .{block-name}.{variant}` pattern"
+    },
+    {
+      "name": "No -wrapper/-container suffix inside block",
+      "max_score": 6,
+      "description": "Class names used inside the block do NOT end in `-wrapper` or `-container` (to avoid conflict with platform-generated wrapper divs)"
+    },
+    {
+      "name": "Gap over margin hacks",
+      "max_score": 8,
+      "description": "Flex or grid layouts use the `gap` property for spacing between items, NOT margin-based spacing tricks (e.g., `margin-left: -1rem` on container)"
+    },
+    {
+      "name": "No hardcoded font families",
+      "max_score": 10,
+      "description": "Font-family values use CSS custom properties (e.g., `var(--body-font-family)`) and NOT hardcoded font names like `'Arial'`, `'Lato'`, or `sans-serif`"
+    }
+  ]
+}

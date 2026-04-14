@@ -1,6 +1,9 @@
 ---
 name: content-driven-development
 description: Apply a Content Driven Development process to AEM Edge Delivery Services development. Use for ALL code changes - new blocks, block modifications, CSS styling, bug fixes, core functionality (scripts.js, styles, etc.), or any JavaScript/CSS work that needs validation.
+license: Apache-2.0
+metadata:
+  version: "1.0.0"
 ---
 
 # Content Driven Development (CDD)

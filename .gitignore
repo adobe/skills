@@ -14,3 +14,7 @@ drafts/tmp/
 
 # OMC state
 .omc/
+
+# Release artifacts
+*.skill
+dist/

@@ -4,7 +4,7 @@
     "name": "Adobe"
   },
   "metadata": {
-    "description": "Official Adobe skills for AI coding agents"
+    "description": "Official Adobe Skills for AI Agents"
   },
   "plugins": [
     {
@@ -21,6 +21,11 @@
       "name": "aem-6-5-lts",
       "source": "./skills/aem/6.5-lts",
       "description": "All AEM 6.5 LTS skills: Dispatcher, workflows for AEM 6.5 LTS and AMS environment"
+    },
+    {
+      "name": "aem-project-management",
+      "source": "./skills/aem/project-management",
+      "description": "Project lifecycle management for AEM Edge Delivery Services"
     }
   ]
 }

@@ -2,6 +2,28 @@
 
 Patterns for creating unit tests using wcm.io AEM Mocks with JUnit 5.
 
+## Table of Contents
+
+- [Critical Rules](#critical-rules)
+  - [Rule 1: NEVER Mock Resource.adaptTo()](#rule-1-never-mock-resourceadaptto)
+  - [Rule 2: Register All Sling Models](#rule-2-register-all-sling-models)
+  - [Rule 3: Use Real Resources, Not Mocks](#rule-3-use-real-resources-not-mocks)
+- [Test Class Structure](#test-class-structure)
+- [Test Naming Convention](#test-naming-convention)
+- [Required Test Scenarios](#required-test-scenarios)
+  - [For Every Component Model](#for-every-component-model)
+  - [For Multifield Components](#for-multifield-components)
+  - [For Components with Images](#for-components-with-images)
+- [Creating Test Resources](#creating-test-resources)
+  - [Simple Properties](#simple-properties)
+  - [Nested Resources (Multifield)](#nested-resources-multifield)
+  - [Image Child Resource](#image-child-resource)
+- [Assertions](#assertions)
+- [Code Coverage Goals](#code-coverage-goals)
+  - [Coverage Strategy](#coverage-strategy)
+- [Common Mistakes to Avoid](#common-mistakes-to-avoid)
+- [Quick Checklist](#quick-checklist)
+
 ---
 
 ## Critical Rules
@@ -54,15 +76,17 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import com.day.cq.wcm.api.Page;
-import [package].testcontext.AppAemContext;
-
 import io.wcm.testing.mock.aem.junit5.AemContext;
 import io.wcm.testing.mock.aem.junit5.AemContextExtension;
+
+// NOTE: Projects MAY have a custom `AppAemContext` helper class that pre-registers
+// common services or content. Using `new AemContext()` directly works universally
+// with just the wcm.io AEM Mocks dependency.
 
 @ExtendWith(AemContextExtension.class)
 class ComponentNameModelTest {
 
-    private final AemContext context = AppAemContext.newAemContext();
+    private final AemContext context = new AemContext();
 
     private Page page;
     private Resource componentResource;

@@ -2,6 +2,30 @@
 
 Patterns for creating AEM client-side libraries (clientlibs) following Adobe best practices.
 
+## Table of Contents
+
+- [MANDATORY: Every Component Needs CSS](#mandatory-every-component-needs-css)
+- [File Structure](#file-structure)
+  - [Component Clientlib](#component-clientlib)
+  - [Dialog Clientlib (for custom validation)](#dialog-clientlib-for-custom-validation)
+- [Configuration Files](#configuration-files)
+  - [Component Clientlib .content.xml](#component-clientlib-contentxml)
+  - [Dialog Clientlib .content.xml](#dialog-clientlib-contentxml)
+  - [css.txt](#csstxt)
+  - [js.txt](#jstxt)
+- [CSS Architecture (BEM)](#css-architecture-bem)
+  - [Basic Template](#basic-template)
+  - [BEM Naming](#bem-naming)
+- [CSS Checklist](#css-checklist)
+- [Including Clientlib in HTL](#including-clientlib-in-htl)
+- [JavaScript Pattern](#javascript-pattern)
+  - [Component Runtime JS](#component-runtime-js)
+- [Dialog JavaScript Pattern](#dialog-javascript-pattern)
+  - [Key Requirements](#key-requirements)
+  - [Dialog XML Example](#dialog-xml-example)
+- [Clientlib Types Summary](#clientlib-types-summary)
+- [Mockup Analysis Workflow](#mockup-analysis-workflow)
+
 ---
 
 ## MANDATORY: Every Component Needs CSS
@@ -248,7 +272,7 @@ Every component CSS MUST include:
  * IMPORTANT: 
  * - Use "foundation-contentloaded" event (fires AFTER Coral UI components are rendered)
  * - Use adaptTo("foundation-field").setDisabled() for proper Granite UI field control
- * - Apply granite:class directly to the input field element in dialog XML
+ * - Apply granite:class to the field node in dialog XML (see granite:class placement guide below)
  */
 (function(document, $) {
     "use strict";
@@ -340,25 +364,78 @@ Every component CSS MUST include:
 - **MUST** use `Granite.$` for jQuery in AEM dialogs
 - **MUST** listen for `coral-collection:add` for multifield support
 - **SHOULD** use BEM-style class names (e.g., `.cmp-componentname__field-name`)
-- **SHOULD** apply `granite:class` directly to the field node in dialog XML
+- **SHOULD** apply `granite:class` to the field node in dialog XML (see placement guide below)
 
-### Dialog XML Example
+### `granite:class` Placement Guide
+
+Always apply `granite:class` on the **dialog XML node** for the field. Where the CSS class ends up in the rendered HTML depends on the component type:
+
+- **Simple fields** (textfield, textarea, checkbox, numberfield): Apply `granite:class` directly on the field node. Granite UI renders the class on the input element itself.
+- **Complex fields** (pathfield, select/dropdown): Apply `granite:class` on the field node. Granite UI propagates it to the rendered input/wrapper — your JS selector will find it on the coral component wrapper.
+- **Multifield**: Apply `granite:class` on the **multifield node itself**, NOT on child field nodes. Child fields inside a multifield are duplicated per item, so target the multifield container.
+- **Show/hide targets** (containers, wrapper divs): Apply `granite:class` on the wrapper node that should be shown/hidden.
+
+#### Quick Reference: `granite:class` Placement by Component
+
+| Component | `sling:resourceType` | Where to put `granite:class` | Rendered on |
+|-----------|----------------------|------------------------------|-------------|
+| Textfield | `.../form/textfield` | Field node | `<input>` element |
+| Textarea | `.../form/textarea` | Field node | `<textarea>` element |
+| Checkbox | `.../form/checkbox` | Field node | `<coral-checkbox>` wrapper |
+| Numberfield | `.../form/numberfield` | Field node | `<coral-numberinput>` wrapper |
+| Pathfield | `.../form/pathfield` | Field node | `<coral-pathfield>` wrapper |
+| Select | `.../form/select` | Field node | `<coral-select>` wrapper |
+| Multifield | `.../form/multifield` | **Multifield node** (not children) | `<coral-multifield>` wrapper |
+| Container | `.../container` | Container/wrapper node | `<div>` wrapper |
+
+> **Tip:** When in doubt, inspect the rendered dialog HTML in browser DevTools to verify where the class appears. Right-click the field in the dialog → Inspect Element, and search for your class name.
+
+### Dialog XML Examples
 
 Correct `granite:class` placement on field nodes:
 
 ```xml
+<!-- Simple field: granite:class goes on the field node -->
 <linkText
     jcr:primaryType="nt:unstructured"
     sling:resourceType="granite/ui/components/coral/foundation/form/textfield"
     fieldLabel="Link Text"
     name="./linkText"
     granite:class="cmp-componentname__link-text"/>
+
+<!-- Complex field: granite:class also goes on the field node (Granite propagates it) -->
 <linkURL
     jcr:primaryType="nt:unstructured"
     sling:resourceType="granite/ui/components/coral/foundation/form/pathfield"
     fieldLabel="Link URL"
     name="./linkURL"
     granite:class="cmp-componentname__link-url"/>
+
+<!-- Multifield: granite:class goes on the MULTIFIELD node, not child fields -->
+<links
+    jcr:primaryType="nt:unstructured"
+    sling:resourceType="granite/ui/components/coral/foundation/form/multifield"
+    fieldLabel="Links"
+    composite="{Boolean}true"
+    granite:class="cmp-componentname__links-multifield">
+    <field jcr:primaryType="nt:unstructured"
+        sling:resourceType="granite/ui/components/coral/foundation/container">
+        <!-- Child fields inside multifield do NOT get granite:class -->
+        <linkText
+            jcr:primaryType="nt:unstructured"
+            sling:resourceType="granite/ui/components/coral/foundation/form/textfield"
+            fieldLabel="Link Text"
+            name="./linkText"/>
+    </field>
+</links>
+
+<!-- Show/hide target container -->
+<advancedSettings
+    jcr:primaryType="nt:unstructured"
+    sling:resourceType="granite/ui/components/coral/foundation/container"
+    granite:class="cmp-componentname__advanced-settings">
+    <!-- fields inside this container -->
+</advancedSettings>
 ```
 
 ---

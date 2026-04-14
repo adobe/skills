@@ -1,0 +1,57 @@
+{
+  "context": "Tests whether the agent produces structured acceptance criteria for an iOS Safari scroll-snap bug fix without writing code or proposing a solution. Covers bug analysis, root cause investigation, reproduction steps, cross-browser scope, and regression prevention.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Bug clearly restated",
+      "max_score": 10,
+      "description": "Accurately summarizes the reported behavior (carousel snaps back to first item), the affected browser (iOS Safari only), and the trigger condition (swipe to next testimonial)"
+    },
+    {
+      "name": "Root cause analysis",
+      "max_score": 15,
+      "description": "Identifies the CSS change from overflow-x: auto to overflow-x: scroll as the likely cause; discusses the scroll-snap and overflow interaction on iOS Safari"
+    },
+    {
+      "name": "Expected behavior defined",
+      "max_score": 12,
+      "description": "Clearly states what correct scrolling behavior looks like: carousel advances to the next item on swipe and stays there, consistently across all browsers"
+    },
+    {
+      "name": "Reproduction criteria",
+      "max_score": 10,
+      "description": "Describes how to reproduce the bug: iOS Safari, swipe gesture on the carousel, and any specific conditions (e.g., number of items, scroll speed)"
+    },
+    {
+      "name": "Edge cases identified",
+      "max_score": 12,
+      "description": "Addresses edge cases such as rapid swiping, swiping past the last item, single-item carousel, orientation change during scroll, and programmatic scroll"
+    },
+    {
+      "name": "Cross-browser scope",
+      "max_score": 10,
+      "description": "Acceptance criteria ensure the fix does not break behavior on Chrome, Firefox, or desktop Safari"
+    },
+    {
+      "name": "No premature solution",
+      "max_score": 10,
+      "description": "Analyzes the problem without prescribing a specific CSS fix or implementation approach"
+    },
+    {
+      "name": "Responsive behavior considered",
+      "max_score": 8,
+      "description": "Mentions different viewport behaviors if relevant (e.g., touch vs non-touch, portrait vs landscape)"
+    },
+    {
+      "name": "Definition of done is testable",
+      "max_score": 8,
+      "description": "Includes a specific browser/device test matrix (e.g., iOS Safari 16+, Chrome latest, Firefox latest, desktop Safari)"
+    },
+    {
+      "name": "Regression prevention",
+      "max_score": 5,
+      "description": "Mentions the need for a test or verification step to prevent re-introduction of the bug in future refactors"
+    }
+  ]
+}
+

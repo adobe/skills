@@ -1,0 +1,61 @@
+{
+  "context": "Tests whether the agent follows AEM EDS block file structure conventions and performance optimization patterns. Covers correct directory/file naming with kebab-case, lazy loading with IntersectionObserver, deferred heavy operations, dynamic imports for conditional modules, and proper use of aem.js utilities.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Correct directory path",
+      "max_score": 8,
+      "description": "The block JavaScript file is created at `blocks/{block-name}/{block-name}.js` (e.g., `blocks/video-embed/video-embed.js`), matching the block name exactly in kebab-case"
+    },
+    {
+      "name": "Correct CSS file path",
+      "max_score": 7,
+      "description": "The block CSS file is created at `blocks/{block-name}/{block-name}.css` (e.g., `blocks/video-embed/video-embed.css`), matching the block name in kebab-case"
+    },
+    {
+      "name": "IntersectionObserver for lazy load",
+      "max_score": 15,
+      "description": "Uses `IntersectionObserver` to defer loading the heavy embed content until the block enters the viewport (not loading immediately in the decorate function body)"
+    },
+    {
+      "name": "Observer disconnect after trigger",
+      "max_score": 10,
+      "description": "After the intersection is detected and loading triggered, the observer is disconnected (`observer.disconnect()`) to avoid firing repeatedly"
+    },
+    {
+      "name": "Minimal initial decoration",
+      "max_score": 10,
+      "description": "The synchronous/immediate part of decorate() does minimal work (e.g., adds placeholder UI or initializes observer) rather than eagerly fetching data or building complex DOM"
+    },
+    {
+      "name": "Dynamic import for heavy module",
+      "max_score": 12,
+      "description": "Any heavy or conditionally needed JavaScript module (e.g., a third-party player library or complex renderer) is loaded via dynamic `import()` inside the observer callback or conditional branch, NOT as a top-level static import"
+    },
+    {
+      "name": "aem.js imports with .js extension",
+      "max_score": 8,
+      "description": "Any import from `scripts/aem.js` uses the full relative path with `.js` extension: `import { ... } from '../../scripts/aem.js'`"
+    },
+    {
+      "name": "aem.js not modified",
+      "max_score": 8,
+      "description": "The solution does NOT modify or overwrite `scripts/aem.js`; it only imports from it"
+    },
+    {
+      "name": "async decorate function",
+      "max_score": 7,
+      "description": "The decorate function is declared with the `async` keyword (since it awaits operations or performs async logic)"
+    },
+    {
+      "name": "Default export decorate",
+      "max_score": 7,
+      "description": "The block JS uses `export default` for the decorate function"
+    },
+    {
+      "name": "Error handling on fetch",
+      "max_score": 8,
+      "description": "Any network requests (fetch) inside the block include a try/catch or .catch() error handler"
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+{
+  "context": "Tests whether the agent follows AEM EDS JavaScript guidelines when implementing block decoration. Covers the required function signature and export pattern, DOM manipulation best practices (re-use elements, scoped queries, no innerHTML, no orphan elements), import syntax, code style, and JSDoc documentation.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Default export decorate",
+      "max_score": 10,
+      "description": "The block JS file uses `export default function decorate(block)` or `export default async function decorate(block)` as the function declaration"
+    },
+    {
+      "name": "JSDoc comment on decorate",
+      "max_score": 8,
+      "description": "The decorate function has a JSDoc comment with at minimum `@param {Element} block` documented"
+    },
+    {
+      "name": "Scoped DOM queries",
+      "max_score": 10,
+      "description": "All DOM queries inside decorate use `block.querySelector()` or `block.querySelectorAll()`, NOT `document.querySelector()` or `document.querySelectorAll()`"
+    },
+    {
+      "name": "No innerHTML for structures",
+      "max_score": 10,
+      "description": "The JS file does NOT use `innerHTML` assignment to build multi-element DOM structures (simple text-only innerHTML may be acceptable, but complex structures must use DOM APIs)"
+    },
+    {
+      "name": "Element reuse not recreation",
+      "max_score": 10,
+      "description": "Existing DOM elements from authored content (images, headings, paragraphs) are moved/reused rather than having their content extracted and placed into freshly created duplicate elements"
+    },
+    {
+      "name": "No orphaned elements",
+      "max_score": 8,
+      "description": "When elements are transformed (e.g., a `<p>` converted to a `<div>`), the original element is removed from the DOM (via replaceWith, remove, or replaceChildren) rather than left as an empty orphan alongside the new element"
+    },
+    {
+      "name": "Import .js extensions",
+      "max_score": 8,
+      "description": "Any import statements include the `.js` file extension (e.g., `import { foo } from '../../scripts/aem.js'`)"
+    },
+    {
+      "name": "Single quotes for strings",
+      "max_score": 6,
+      "description": "String literals in the JS file use single quotes (not double quotes or template literals for simple strings)"
+    },
+    {
+      "name": "camelCase identifiers",
+      "max_score": 6,
+      "description": "Variable and function names use camelCase (e.g., `blockItems`, `handleClick`), not snake_case or PascalCase for non-class identifiers"
+    },
+    {
+      "name": "No global DOM mutation",
+      "max_score": 10,
+      "description": "The block JS does NOT select or modify DOM elements outside of its block scope (e.g., does NOT call `document.querySelector('header')` to modify the page header)"
+    },
+    {
+      "name": "variant check via classList",
+      "max_score": 7,
+      "description": "If variant handling is present, it uses `block.classList.contains('variant-name')` to check for variants"
+    },
+    {
+      "name": "ES6+ syntax",
+      "max_score": 7,
+      "description": "Code uses ES6+ syntax: uses `const`/`let` (not `var`), uses arrow functions where appropriate, and uses template literals for string interpolation instead of concatenation"
+    }
+  ]
+}

@@ -63,7 +63,7 @@ Most AEM projects fail at component reusability because:
 ```xml
 <!-- /apps/mysite/components/image/.content.xml -->
 <jcr:root
-    jcr:primaryType="cmp:Component"
+    jcr:primaryType="cq:Component"
     sling:resourceSuperType="core/wcm/components/image/v3/image"
     componentGroup="MySite - Content"/>
 ```

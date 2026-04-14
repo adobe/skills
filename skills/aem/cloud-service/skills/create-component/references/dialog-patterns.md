@@ -2,6 +2,35 @@
 
 Patterns for creating AEM component dialogs following Adobe Experience League best practices.
 
+## Table of Contents
+
+- [Dialog Structure](#dialog-structure)
+  - [File Location](#file-location)
+  - [Basic Dialog Template](#basic-dialog-template)
+  - [Multi-Tab Dialog Template](#multi-tab-dialog-template)
+- [Field Types](#field-types)
+  - [Textfield](#textfield)
+  - [Textarea](#textarea)
+  - [Rich Text Editor](#rich-text-editor)
+  - [Checkbox](#checkbox)
+  - [Select/Dropdown](#selectdropdown)
+  - [Pathfield](#pathfield)
+  - [File Upload (Image)](#file-upload-image)
+  - [Numberfield](#numberfield)
+  - [Datepicker](#datepicker)
+- [Multifield Patterns](#multifield-patterns)
+  - [Simple Multifield (Single Value)](#simple-multifield-single-value)
+  - [Composite Multifield (Multiple Fields per Item)](#composite-multifield-multiple-fields-per-item)
+- [Sling Resource Merger - Quick Reference](#sling-resource-merger---quick-reference)
+  - [Property Reference](#property-reference)
+  - [Core Component Tab Names Reference](#core-component-tab-names-reference)
+- [Dialog Clientlib (Custom Validation)](#dialog-clientlib-custom-validation)
+  - [When to Create](#when-to-create)
+  - [Adding to Dialog](#adding-to-dialog)
+  - [Add CSS Classes to Fields](#add-css-classes-to-fields)
+- [Property Naming Rules](#property-naming-rules)
+- [Complete Example: Tiles List Dialog](#complete-example-tiles-list-dialog)
+
 ---
 
 ## Dialog Structure
@@ -193,8 +222,13 @@ ui.apps/src/main/content/jcr_root/apps/[project]/components/{component-name}/_cq
     fieldLabel="Publish Date"
     name="./publishDate"
     type="datetime"
-    displayedFormat="YYYY-MM-DD HH:mm"/>
+    displayedFormat="MMMM DD, YYYY"
+    valueFormat="YYYY-MM-DD[T]HH:mm:ss.000Z"/>
 ```
+
+> **Both `displayedFormat` and `valueFormat` are required.** Without `valueFormat`, the stored date format is unpredictable and may cause rendering issues. Use ISO 8601 for `valueFormat` to ensure consistent storage and retrieval.
+> - `displayedFormat` — Format shown to the author in the dialog (e.g., `"MMMM DD, YYYY"`)
+> - `valueFormat` — Format stored in JCR (e.g., `"YYYY-MM-DD[T]HH:mm:ss.000Z"`)
 
 ---
 
@@ -258,11 +292,11 @@ ui.apps/src/main/content/jcr_root/apps/[project]/components/{component-name}/_cq
 
 ---
 
-## Sling Resource Merger - Complete Reference
+## Sling Resource Merger - Quick Reference
 
 When extending a component via `sling:resourceSuperType`, the dialog is automatically inherited. Use Sling Resource Merger properties to modify inherited content.
 
-**For comprehensive extension guide:** Load `references/guides/extending-core-components.md`
+**For complete Sling Resource Merger guide including examples:** Load `references/extending-core-components.md`
 
 ### Property Reference
 
@@ -272,67 +306,6 @@ When extending a component via `sling:resourceSuperType`, the dialog is automati
 | `sling:hideChildren` | String[] | Hide specific child nodes by name |
 | `sling:hideProperties` | String[] | Remove inherited properties before merging |
 | `sling:orderBefore` | String | Position this node before another sibling |
-
-### Hide Entire Tab
-
-To hide an inherited tab, add a node with the same name as the inherited tab:
-
-```xml
-<!-- Hide "List Settings" tab inherited from core List component -->
-<listSettings
-    jcr:primaryType="nt:unstructured"
-    sling:hideResource="{Boolean}true"/>
-
-<!-- Hide "Item Settings" tab -->
-<itemSettings
-    jcr:primaryType="nt:unstructured"
-    sling:hideResource="{Boolean}true"/>
-```
-
-### Hide Multiple Fields
-
-```xml
-<!-- Hide multiple fields at once using sling:hideChildren -->
-<items
-    jcr:primaryType="nt:unstructured"
-    sling:hideChildren="[maxItems,orderBy,childDepth,tags]"/>
-```
-
-### Hide Single Field
-
-```xml
-<!-- Hide specific field -->
-<maxItems
-    jcr:primaryType="nt:unstructured"
-    sling:hideResource="{Boolean}true"/>
-```
-
-### Override Inherited Field Properties
-
-```xml
-<!-- Change label, make required, update description -->
-<title
-    jcr:primaryType="nt:unstructured"
-    sling:hideProperties="[fieldLabel,required,fieldDescription]"
-    fieldLabel="Banner Title"
-    fieldDescription="Enter the banner headline"
-    required="{Boolean}true"/>
-```
-
-### Position Custom Tab Before Inherited
-
-```xml
-<customProperties
-    jcr:primaryType="nt:unstructured"
-    jcr:title="Custom Properties"
-    sling:orderBefore="properties"
-    sling:resourceType="granite/ui/components/coral/foundation/container"
-    margin="{Boolean}true">
-    <items jcr:primaryType="nt:unstructured">
-        <!-- Custom fields here -->
-    </items>
-</customProperties>
-```
 
 ### Core Component Tab Names Reference
 
@@ -344,71 +317,6 @@ To hide an inherited tab, add a node with the same name as the inherited tab:
 | **Button** (v2) | `properties` |
 | **Container** (v1) | `properties`, `policy` |
 | **Tabs/Accordion** (v1) | `properties`, `accessibility` |
-
-### Complete Example: Dialog with Hidden Inherited Tabs
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<jcr:root xmlns:sling="http://sling.apache.org/jcr/sling/1.0"
-    xmlns:granite="http://www.adobe.com/jcr/granite/1.0"
-    xmlns:cq="http://www.day.com/jcr/cq/1.0"
-    xmlns:jcr="http://www.jcp.org/jcr/1.0"
-    xmlns:nt="http://www.jcp.org/jcr/nt/1.0"
-    jcr:primaryType="nt:unstructured"
-    jcr:title="Custom List"
-    sling:resourceType="cq/gui/components/authoring/dialog">
-    <content
-        jcr:primaryType="nt:unstructured"
-        sling:resourceType="granite/ui/components/coral/foundation/container">
-        <items jcr:primaryType="nt:unstructured">
-            <tabs
-                jcr:primaryType="nt:unstructured"
-                sling:resourceType="granite/ui/components/coral/foundation/tabs"
-                maximized="{Boolean}true">
-                <items jcr:primaryType="nt:unstructured">
-
-                    <!-- HIDE inherited tabs from core component -->
-                    <listSettings
-                        jcr:primaryType="nt:unstructured"
-                        sling:hideResource="{Boolean}true"/>
-                    <itemSettings
-                        jcr:primaryType="nt:unstructured"
-                        sling:hideResource="{Boolean}true"/>
-
-                    <!-- Custom Properties tab -->
-                    <properties
-                        jcr:primaryType="nt:unstructured"
-                        jcr:title="Properties"
-                        sling:resourceType="granite/ui/components/coral/foundation/container"
-                        margin="{Boolean}true">
-                        <items jcr:primaryType="nt:unstructured">
-                            <columns
-                                jcr:primaryType="nt:unstructured"
-                                sling:resourceType="granite/ui/components/coral/foundation/fixedcolumns"
-                                margin="{Boolean}true">
-                                <items jcr:primaryType="nt:unstructured">
-                                    <column
-                                        jcr:primaryType="nt:unstructured"
-                                        sling:resourceType="granite/ui/components/coral/foundation/container">
-                                        <items jcr:primaryType="nt:unstructured">
-                                            <!-- Custom fields here -->
-                                            <customTitle
-                                                jcr:primaryType="nt:unstructured"
-                                                sling:resourceType="granite/ui/components/coral/foundation/form/textfield"
-                                                fieldLabel="Title"
-                                                name="./customTitle"/>
-                                        </items>
-                                    </column>
-                                </items>
-                            </columns>
-                        </items>
-                    </properties>
-                </items>
-            </tabs>
-        </items>
-    </content>
-</jcr:root>
-```
 
 ---
 

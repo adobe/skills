@@ -1,0 +1,61 @@
+{
+  "name": "project-management",
+  "version": "1.0.0",
+  "description": "Project lifecycle management for AEM Edge Delivery Services - handover documentation, PDF generation, and project assistance",
+  "author": {
+    "name": "Adobe"
+  },
+  "license": "Apache-2.0",
+  "skills": [
+    "./skills/handover",
+    "./skills/authoring",
+    "./skills/development",
+    "./skills/admin",
+    "./skills/whitepaper",
+    "./skills/auth"
+  ],
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/pdf-lifecycle.js\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/pdf-lifecycle.js\""
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/pdf-lifecycle.js\""
+          }
+        ]
+      }
+    ]
+  },
+  "keywords": [
+    "adobe",
+    "aem",
+    "eds",
+    "edge-delivery-services",
+    "project",
+    "handover",
+    "documentation",
+    "whitepaper",
+    "pdf"
+  ]
+}

@@ -2,11 +2,19 @@
   "name": "@anthropic-ai/skills",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Adobe skills for AI coding agents",
   "scripts": {
     "validate": "find skills -name SKILL.md -exec dirname {} \\; | xargs -I {} skills-ref validate {}"
   },
   "devDependencies": {
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/exec": "^7.0.3",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^12.0.0",
+    "@semantic-release/release-notes-generator": "^14.0.3",
+    "semantic-release": "^25.0.0",
     "skills-ref": "^0.1.5"
   },
   "repository": {

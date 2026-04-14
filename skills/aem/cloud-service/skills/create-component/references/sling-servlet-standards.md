@@ -2,6 +2,28 @@
 
 > **Placeholders**: `[project]` = project name, `[package]` = Java package (from `aem-conventions.md`)
 
+## Table of Contents
+
+- [When to Use Servlets](#when-to-use-servlets)
+- [File Location](#file-location)
+- [JSON Library - Use javax.json](#json-library---use-javaxjson)
+- [GET Servlet Pattern](#get-servlet-pattern)
+- [POST Servlet Pattern](#post-servlet-pattern)
+- [JSON Response Structure](#json-response-structure)
+- [Security Checklist](#security-checklist)
+- [Frontend Integration](#frontend-integration)
+- [CSRF Token Handling](#csrf-token-handling)
+- [Unit Test Pattern](#unit-test-pattern)
+  - [Content Type Assertion - Critical Note](#content-type-assertion---critical-note)
+- [Quick Reference](#quick-reference)
+- [Anti-Patterns to Avoid](#anti-patterns-to-avoid)
+- [Checklist](#checklist)
+  - [Before Creating a Servlet](#before-creating-a-servlet)
+  - [Servlet Implementation](#servlet-implementation)
+  - [Security](#security)
+  - [Frontend Integration](#frontend-integration)
+  - [Testing](#testing)
+
 ---
 
 ## When to Use Servlets
@@ -200,6 +222,51 @@ fetch(url, { method: 'GET', credentials: 'same-origin' })
         else { /* handle error */ }
     });
 ```
+
+---
+
+## CSRF Token Handling
+
+POST servlets are protected by AEM's CSRF filter. The frontend must obtain a token and include it with every POST request. GET requests do not require CSRF tokens.
+
+**Step 1 — Fetch the CSRF token:**
+```javascript
+function getCsrfToken() {
+    return fetch('/libs/granite/csrf/token.json', {
+        credentials: 'same-origin'
+    })
+    .then(function(response) { return response.json(); })
+    .then(function(data) { return data.token; });
+}
+```
+
+**Step 2 — Submit a POST request with the token:**
+```javascript
+getCsrfToken().then(function(token) {
+    fetch(element.dataset.resourcePath + '.submit.json', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+            'CSRF-Token': token,
+            'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: 'title=' + encodeURIComponent(title)
+    })
+    .then(function(response) { return response.json(); })
+    .then(function(result) {
+        if (result.success) { /* handle success */ }
+        else { /* handle error */ }
+    });
+});
+```
+
+**Alternative — Send the token as a form parameter:**
+```javascript
+var body = ':cq_csrf_token=' + encodeURIComponent(token)
+         + '&title=' + encodeURIComponent(title);
+```
+
+> **Note:** GET servlets do not need CSRF protection — only POST (and other state-changing methods) are filtered.
 
 ---
 

@@ -2,6 +2,27 @@
 
 Patterns for creating AEM Sling Models following Adobe best practices.
 
+## Table of Contents
+
+- [File Location](#file-location)
+- [Basic Model Template](#basic-model-template)
+- [Property Injection Annotations](#property-injection-annotations)
+  - [Simple Properties](#simple-properties)
+  - [Properties with Custom Name](#properties-with-custom-name)
+  - [Default Values](#default-values)
+  - [Child Resources (Nested Content)](#child-resources-nested-content)
+- [Multifield Processing Pattern](#multifield-processing-pattern)
+  - [Single-Value Multifield](#single-value-multifield)
+- [Child Item Model Pattern](#child-item-model-pattern)
+- [Component Extension (Delegation Pattern)](#component-extension-delegation-pattern)
+  - [Quick Reference](#quick-reference)
+  - [Key Points](#key-points)
+- [Prefer Java Native Over External Dependencies](#prefer-java-native-over-external-dependencies)
+- [Getter Patterns](#getter-patterns)
+- [Required Imports](#required-imports)
+- [Naming Conventions](#naming-conventions)
+- [Class Organization Order](#class-organization-order)
+
 ---
 
 ## File Location
@@ -153,6 +174,42 @@ public class TilesListModel {
     }
 }
 ```
+
+### Single-Value Multifield
+
+Even when a multifield has no `composite="true"` (i.e., it contains a single field per item), AEM stores each entry as a **child resource** — not as a multi-value JCR property. Each child resource has a `value` property containing the field's data.
+
+**Correct pattern** — iterate child resources and extract the value from each:
+
+```java
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
+import javax.annotation.PostConstruct;
+
+import org.apache.sling.api.resource.Resource;
+
+// Inside the model class:
+
+private List<String> tags;
+
+@PostConstruct
+private void init() {
+    tags = Optional.ofNullable(resource.getChild("tags"))
+        .map(Resource::getChildren)
+        .map(children -> StreamSupport.stream(children.spliterator(), false)
+            .map(child -> child.getValueMap().get("value", String.class))
+            .filter(Objects::nonNull)
+            .collect(Collectors.toList()))
+        .orElse(Collections.emptyList());
+}
+```
+
+> **Common shortcut (not recommended):** `@ValueMapValue String[] tags`
+> This only works if the JCR node stores a true multi-value property (e.g., `cq:tags`). For standard multifields the values are stored as child resources (`tags/item0`, `tags/item1`, …), so `@ValueMapValue` will return `null`. Always use the child-resource iteration pattern above for multifield data.
 
 ---
 

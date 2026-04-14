@@ -1,6 +1,9 @@
 ---
 name: page-decomposition
 description: Analyze content sequences within a section and provide neutral descriptions for AEM Edge Delivery Services. Invoked per section during page import to identify breaking points between default content and blocks.
+license: Apache-2.0
+metadata:
+  version: "1.0.0"
 ---
 
 # Page Decomposition
