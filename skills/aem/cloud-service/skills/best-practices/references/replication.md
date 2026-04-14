@@ -9,8 +9,8 @@ Migrates legacy replication code to Cloud Service compatible pattern: **Sling Di
 - CQ Replication API: `com.day.cq.replication.Replicator`, `ReplicationAction` — `replicator.replicate(resolver, new ReplicationAction(ReplicationActionType.ACTIVATE, path))`
 
 **Target pattern:**
-- Sling Distribution API: `DistributionAgent`, `DistributionRequest`, `SimpleDistributionRequest`
-- `distributionAgent.execute(new SimpleDistributionRequest(DistributionRequestType.ADD, path))`
+- Sling Distribution API: `Distributor`, `DistributionRequest`, `SimpleDistributionRequest`
+- `DistributionRequest distributionRequest = new SimpleDistributionRequest(DistributionRequestType.ADD, false, path);`
 - Uses `getServiceResourceResolver()` with SUBSERVICE; resolver lifecycle and logging per [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md)
 
 ## Classification
@@ -19,14 +19,14 @@ Identify which source pattern the file uses:
 - **Sling Replication Agent:** Has `ReplicationAgent`, `ReplicationAgentException`, `ReplicationResult`, `agent.replicate(resolver, ReplicationActionType.*, path)`
 - **CQ Replicator:** Has `com.day.cq.replication.Replicator`, `ReplicationAction`, `replicator.replicate(resolver, action)`
 
-If the file already uses `DistributionAgent` and `DistributionRequest`/`SimpleDistributionRequest`, it may not need migration — verify and skip if already compliant.
+If the file already uses `Distributor` and `SimpleDistributionRequest`, it may not need migration — verify and skip if already compliant.
 
 ## Pattern-Specific Rules
 
-- **DO** replace ReplicationAgent/Replicator with DistributionAgent
-- **DO** replace ReplicationAction/ReplicationResult with DistributionRequest/SimpleDistributionRequest
+- **DO** replace ReplicationAgent/Replicator with Distributor
+- **DO** replace ReplicationAction/ReplicationResult with SimpleDistributionRequest/DistributionResponse
 - **DO** map ReplicationActionType to DistributionRequestType (e.g., ACTIVATE → ADD)
-- **DO** use `@Reference(target = "(name=agent-name)")` to target the specific Distribution Agent
+- **DO** use `publish` or `preview` to target the specific Distribution Agent or both separately if distributing to both publish and preview tiers
 - **DO NOT** use administrative resolver or console logging — follow [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md)
 
 ---
@@ -98,11 +98,11 @@ package com.example.replication;
 import org.apache.sling.api.resource.LoginException;
 import org.apache.sling.api.resource.ResourceResolver;
 import org.apache.sling.api.resource.ResourceResolverFactory;
-import org.apache.sling.distribution.agent.api.DistributionAgent;
-import org.apache.sling.distribution.agent.api.DistributionAgentException;
-import org.apache.sling.distribution.agent.api.DistributionRequest;
-import org.apache.sling.distribution.agent.api.SimpleDistributionRequest;
-import org.apache.sling.distribution.agent.api.DistributionRequestType;
+import org.apache.sling.distribution.Distributor;
+import org.apache.sling.distribution.DistributionRequest;
+import org.apache.sling.distribution.DistributionResponse;
+import org.apache.sling.distribution.DistributionRequestType;
+import org.apache.sling.distribution.SimpleDistributionRequest;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
@@ -115,8 +115,8 @@ public class PropertyNodeReplicationService {
 
     private static final Logger LOG = LoggerFactory.getLogger(PropertyNodeReplicationService.class);
 
-    @Reference(target = "(name=myPropertyDistributionAgent)")
-    private DistributionAgent distributionAgent;
+    @Reference
+    private Distributor distributor;
 
     @Reference
     private ResourceResolverFactory resolverFactory;
@@ -130,17 +130,17 @@ public class PropertyNodeReplicationService {
                 return;
             }
 
-            DistributionRequest request = new SimpleDistributionRequest(
-                DistributionRequestType.ADD, 
+            DistributionRequest distributionRequest = new SimpleDistributionRequest(
+                DistributionRequestType.ADD,
+                false,
                 propertyNodePath
             );
-            distributionAgent.execute(request);
+            DistributionResponse distributionResponse = distributor.distribute("publish", resolver, distributionRequest);
+
             LOG.info("Property Node Distribution successful for path: {}", propertyNodePath);
 
         } catch (LoginException e) {
             LOG.error("Failed to get resource resolver", e);
-        } catch (DistributionAgentException e) {
-            LOG.error("Distribution failed for path: {}", propertyNodePath, e);
         } catch (Exception e) {
             LOG.error("Error during distribution", e);
         }
@@ -207,11 +207,11 @@ package com.example.replication;
 import org.apache.sling.api.resource.LoginException;
 import org.apache.sling.api.resource.ResourceResolver;
 import org.apache.sling.api.resource.ResourceResolverFactory;
-import org.apache.sling.distribution.agent.api.DistributionAgent;
-import org.apache.sling.distribution.agent.api.DistributionAgentException;
-import org.apache.sling.distribution.agent.api.DistributionRequest;
-import org.apache.sling.distribution.agent.api.SimpleDistributionRequest;
-import org.apache.sling.distribution.agent.api.DistributionRequestType;
+import org.apache.sling.distribution.Distributor;
+import org.apache.sling.distribution.DistributionRequest;
+import org.apache.sling.distribution.DistributionResponse;
+import org.apache.sling.distribution.DistributionRequestType;
+import org.apache.sling.distribution.SimpleDistributionRequest;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
@@ -224,8 +224,8 @@ public class ContentReplicationService {
 
     private static final Logger LOG = LoggerFactory.getLogger(ContentReplicationService.class);
 
-    @Reference(target = "(name=my-distribution-agent)")
-    private DistributionAgent distributionAgent;
+    @Reference
+    private Distributor distributor;
 
     @Reference
     private ResourceResolverFactory resolverFactory;
@@ -239,17 +239,16 @@ public class ContentReplicationService {
                 return;
             }
 
-            DistributionRequest request = new SimpleDistributionRequest(
+            DistributionRequest distributionRequest = new SimpleDistributionRequest(
                 DistributionRequestType.ADD, 
+                false,
                 contentPath
             );
-            distributionAgent.execute(request);
+            DistributionResponse distributionResponse = distributor.distribute("publish", resolver, distributionRequest);
             LOG.info("Forward Distribution successful for path: {}", contentPath);
 
         } catch (LoginException e) {
             LOG.error("Failed to get resource resolver", e);
-        } catch (DistributionAgentException e) {
-            LOG.error("Distribution failed for path: {}", contentPath, e);
         } catch (Exception e) {
             LOG.error("Error during distribution", e);
         }
@@ -258,15 +257,14 @@ public class ContentReplicationService {
 ```
 
 **Key Changes:**
-- ✅ Replaced `Replicator`/`ReplicationAgent` → `DistributionAgent`
+- ✅ Replaced `Replicator`/`ReplicationAgent` → `Distributor`
 - ✅ Replaced `ReplicationAction`/`ReplicationResult` → `DistributionRequest`/`SimpleDistributionRequest`
 - ✅ Mapped `ReplicationActionType.ACTIVATE` → `DistributionRequestType.ADD`
-- ✅ Added `@Reference(target = "(name=agent-name)")` for agent selection
+- ✅ Used correct `publish/preview` agent
 - ✅ Replaced `getAdministrativeResourceResolver()` → `getServiceResourceResolver()` with SUBSERVICE
 - ✅ Removed USER/PASSWORD from authInfo (Cloud Service uses SUBSERVICE only)
 - ✅ Replaced `System.out/err` → SLF4J Logger
 - ✅ Used try-with-resources for ResourceResolver
-- ✅ `DistributionAgent.execute()` no longer requires ResourceResolver parameter (agent uses its own service user)
 
 ---
 
@@ -276,7 +274,7 @@ public class ContentReplicationService {
 
 Read [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md) and apply SCR→DS and ResourceResolver/logging **before** replication-specific steps below.
 
-## P1: Replace ReplicationAgent/Replicator with DistributionAgent
+## P1: Replace ReplicationAgent/Replicator with Distributor
 
 **For Sling Replication Agent (ReplicationAgent):**
 
@@ -292,12 +290,14 @@ if (result.isSuccessful()) {
     System.out.println("Property Node Replication failed for path: " + propertyNodePath);
 }
 
-// AFTER (Sling Distribution Agent)
-@Reference(target = "(name=myPropertyDistributionAgent)")
-private DistributionAgent distributionAgent;
+// AFTER (Sling Content Distributor)
+@Reference
+private Distributor distributor;
 
-DistributionRequest request = new SimpleDistributionRequest(DistributionRequestType.ADD, propertyNodePath);
-distributionAgent.execute(request);
+DistributionRequest distributionRequest = new SimpleDistributionRequest(DistributionRequestType.ADD, false, propertyNodePath);
+
+DistributionResponse distributionResponse = distributor.distribute("publish", resolver, distributionRequest);
+
 LOG.info("Property Node Distribution successful for path: {}", propertyNodePath);
 ```
 
@@ -312,12 +312,13 @@ ReplicationAction action = new ReplicationAction(ReplicationActionType.ACTIVATE,
 replicator.replicate(resolver, action);
 System.out.println("Forward Replication successful for path: " + contentPath);
 
-// AFTER (Sling Distribution Agent)
-@Reference(target = "(name=my-distribution-agent)")
-private DistributionAgent distributionAgent;
+// AFTER (Sling Content Distributor)
+@Reference
+private Distributor distributor;
 
-DistributionRequest request = new SimpleDistributionRequest(DistributionRequestType.ADD, contentPath);
-distributionAgent.execute(request);
+DistributionRequest distributionRequest = new SimpleDistributionRequest(DistributionRequestType.ADD, false, contentPath);
+
+DistributionResponse distributionResponse = distributor.distribute("publish", resolver, distributionRequest);
 LOG.info("Forward Distribution successful for path: {}", contentPath);
 ```
 
@@ -330,7 +331,7 @@ LOG.info("Forward Distribution successful for path: {}", contentPath);
 | `ADD`                | `ADD`                   |
 | `DELETE`             | `DELETE`                |
 
-**Note:** `DistributionAgent.execute(request)` does not require a ResourceResolver parameter — the agent uses its own service user. If the resolver is needed for other logic, retain it per [resource-resolver-logging.md](resource-resolver-logging.md) (try-with-resources, service user).
+**Note:** `Distributor.distribute(agent-name, resolver, distributionRequest)` requires a ResourceResolver parameter, retain it per [resource-resolver-logging.md](resource-resolver-logging.md) (try-with-resources, service user).
 
 ## P2: Update imports
 
@@ -359,11 +360,11 @@ import org.apache.felix.scr.annotations.*;  // must be gone when done
 import org.apache.sling.api.resource.LoginException;
 import org.apache.sling.api.resource.ResourceResolver;
 import org.apache.sling.api.resource.ResourceResolverFactory;
-import org.apache.sling.distribution.agent.api.DistributionAgent;
-import org.apache.sling.distribution.agent.api.DistributionAgentException;
-import org.apache.sling.distribution.agent.api.DistributionRequest;
-import org.apache.sling.distribution.agent.api.SimpleDistributionRequest;
-import org.apache.sling.distribution.agent.api.DistributionRequestType;
+import org.apache.sling.distribution.Distributor;
+import org.apache.sling.distribution.DistributionRequest;
+import org.apache.sling.distribution.DistributionResponse;
+import org.apache.sling.distribution.DistributionRequestType;
+import org.apache.sling.distribution.SimpleDistributionRequest;
 import org.osgi.framework.Constants;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Reference;
@@ -380,7 +381,7 @@ import java.util.Map;
 ## Replication/Distribution Checklist
 
 - [ ] No `ReplicationAgent`, `Replicator`, `ReplicationAction`, or `ReplicationResult` remains
-- [ ] Uses `DistributionAgent` with `@Reference(target = "(name=agent-name)")`
+- [ ] Uses `Distributor`
 - [ ] Uses `DistributionRequest` / `SimpleDistributionRequest` with `DistributionRequestType`
 - [ ] [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md) satisfied (SCR→DS, resolver/logging, auth maps)
 - [ ] `scheduler.concurrent=false` is set (if using scheduler)
