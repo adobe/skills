@@ -169,6 +169,9 @@ public class AutoPublishHandler implements EventHandler {
     @Reference
     private Replicator replicator;
     
+    @Reference
+    private ResourceResolverFactory resolverFactory;
+    
     @Override
     public void handleEvent(Event event) {
         String path = (String) event.getProperty(SlingConstants.PROPERTY_PATH);
@@ -181,6 +184,18 @@ public class AutoPublishHandler implements EventHandler {
                 LOG.error("Auto-publish failed", e);
             }
         }
+    }
+    
+    private ResourceResolver getServiceResolver() throws LoginException {
+        Map<String, Object> param = Map.of(
+            ResourceResolverFactory.SUBSERVICE, "contentPublisher"
+        );
+        return resolverFactory.getServiceResourceResolver(param);
+    }
+    
+    private boolean isContentFragment(String path) {
+        return path != null && path.startsWith("/content/dam") && 
+               path.contains("/jcr:content");
     }
 }
 ```
