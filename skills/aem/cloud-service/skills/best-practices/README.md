@@ -1,6 +1,6 @@
 # AEM as a Cloud Service — Best practices
 
-Source: `skills/aem/cloud-service/skills/best-practices/`. **`SKILL.md`** and **`references/`** (patterns: scheduler, replication, events, assets; Java baseline: `scr-to-osgi-ds.md`, `resource-resolver-logging.md`, prerequisites hub).
+Source: `skills/aem/cloud-service/skills/best-practices/`. **`SKILL.md`** and **`references/`** (patterns: scheduler, replication, events, assets; Java baseline: `scr-to-osgi-ds.md`, `resource-resolver-logging.md`, prerequisites hub; **HTL:** `data-sly-test-redundant-constant.md` and proactive `rg` discovery in `SKILL.md`).
 
 These files ship with the **AEM as a Cloud Service** plugin (`aem-cloud-service` in the marketplace). Install that umbrella package once; the agent selects this skill when the task matches.
 
