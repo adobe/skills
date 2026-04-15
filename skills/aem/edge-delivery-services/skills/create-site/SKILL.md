@@ -1,6 +1,6 @@
 ---
 name: create-site
-description: Zero-knowledge onboarding skill for AEM Edge Delivery Services. Creates a new GitHub repo from the boilerplate, sets up aem-code-sync, creates initial content in DA (Document Authoring), and delivers a live preview URL. Use this skill whenever a user wants to create a new AEM Edge Delivery site from scratch.
+description: Creates a new AEM Edge Delivery site from scratch — GitHub repo from the boilerplate, aem-code-sync installation, initial DA content (nav, footer, homepage), and a live preview URL. Use this skill whenever a user wants to create a new AEM Edge Delivery site and no repository or DA content exists yet.
 license: Apache-2.0
 metadata:
   version: "1.0.0"
@@ -26,7 +26,7 @@ Use this skill when:
 - A GitHub account with permission to create repositories in the target org
 - An Adobe IMS account with access to DA (da.live)
 - `gh` CLI authenticated (`gh auth status`) or a GitHub personal access token with `repo` scope
-- Node.js 18+ (for DA token management)
+- Node.js (for DA token management via da-auth-helper)
 
 ## Related Skills
 
@@ -38,7 +38,7 @@ Use this skill when:
 
 ## Step 0: Create TodoList
 
-Use the TodoWrite tool to create a todo list:
+Create a checklist to track progress (use your agent's task-tracking tool if available):
 
 1. **Gather inputs** — org, repo name, site name collected
 2. **Create GitHub repository** — repo created from boilerplate template
