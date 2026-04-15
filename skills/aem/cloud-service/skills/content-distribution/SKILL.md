@@ -1,11 +1,17 @@
 ---
 name: aem-content-distribution
+status: beta
 description: |
-  AEM as a Cloud Service content distribution and replication. Covers programmatic publishing
+  [BETA] AEM as a Cloud Service content distribution and replication. Covers programmatic publishing
   using the Replication API and distribution event monitoring using Sling Distribution events.
+  This skill is in beta. Verify all outputs before applying them to production projects.
 ---
 
 # AEM Cloud Service Content Distribution
+
+> **Beta Skill**: This skill is in beta and under active development.
+> Results should be reviewed carefully before use in production.
+> Report issues at https://github.com/adobe/skills/issues
 
 Programmatic content publishing and distribution monitoring using official AEM Cloud Service APIs.
 
