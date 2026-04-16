@@ -12,19 +12,23 @@ Bit-field combining one or more JCR event types:
 
 | Value | Constant | Meaning |
 |---|---|---|
-| `1` | `Event.NODE_ADDED` | A node was created |
-| `2` | `Event.NODE_MODIFIED` | Node properties or child nodes changed |
-| `4` | `Event.NODE_REMOVED` | A node was deleted |
-| `8` | `Event.PROPERTY_ADDED` | A property was added |
-| `16` | `Event.PROPERTY_CHANGED` | A property value changed |
-| `32` | `Event.PROPERTY_REMOVED` | A property was removed |
+| `1` | `EVENT_NODE_ADDED` | A node was created |
+| `2` | `EVENT_NODE_MODIFIED` | Node properties or child nodes changed |
+| `4` | `EVENT_NODE_REMOVED` | A node was deleted |
+| `8` | `EVENT_PROPERTY_ADDED` | A property was added |
+| `16` | `EVENT_PROPERTY_CHANGED` | A property value changed |
+| `32` | `EVENT_PROPERTY_REMOVED` | A property was removed |
 
-Combine with addition: `eventType="{Long}3"` listens for NODE_ADDED (1) + NODE_MODIFIED (2).
+Combine with addition:
 
-Most common values:
-- `1` — fire on creation only (upload)
-- `2` — fire on modification only (edit)
-- `3` — fire on both creation and modification
+| `eventType` value | Combination | Use case |
+|---|---|---|
+| `1` | NODE_ADDED | Fire on upload/creation only |
+| `2` | NODE_MODIFIED | Fire on edits only |
+| `3` | NODE_ADDED + NODE_MODIFIED | Fire on create or edit (most common for DAM workflows) |
+| `7` | NODE_ADDED + NODE_MODIFIED + NODE_REMOVED | Fire on any structural change |
+| `18` | PROPERTY_ADDED + PROPERTY_CHANGED | Watch metadata property changes |
+| `26` | NODE_MODIFIED + PROPERTY_ADDED + PROPERTY_CHANGED | Broad content-change listener |
 
 ### `glob` (String, required)
 
@@ -96,7 +100,16 @@ Free-text description visible in the Launchers UI.
 
 ### `excludeList` (String[], optional)
 
-List of workflow model IDs. If the content's `cq:lastReplicatedBy` or similar metadata indicates one of these models triggered the last change, the launcher will not re-fire.
+Array of workflow model **runtime paths** (`/var/workflow/models/...`). If an instance of one of these models is currently running against the same payload that triggered the event, the launcher will not enqueue a new workflow instance.
+
+This is the primary mechanism for **launcher loop prevention** — it suppresses re-entry while the specified workflow is already in-flight on that payload, while still allowing the launcher to fire for new, unprocessed content.
+
+Example — prevent a DAM workflow from re-triggering itself when it writes back metadata:
+```xml
+excludeList="[/var/workflow/models/dam/my-custom-processing]"
+```
+
+> Use the **runtime path** under `/var/workflow/models/`, not the design-time path under `/conf/global/settings/workflow/models/`.
 
 ### `runModes` (String[], optional)
 

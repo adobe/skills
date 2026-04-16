@@ -69,9 +69,11 @@ For `/etc/workflow/models/` legacy models, the ID is `/etc/workflow/models/my-wo
 
 ## 4. HTTP Workflow API
 
+> **Note:** Replace `<user>:<password>` with your actual credentials. Never use default `admin` credentials in production or shared environments.
+
 ```bash
 # Start
-curl -u admin:admin -X POST \
+curl -u <user>:<password> -X POST \
   "http://localhost:4502/api/workflow/instances" \
   -d "model=/var/workflow/models/my-workflow" \
   -d "payloadType=JCR_PATH" \
@@ -79,11 +81,11 @@ curl -u admin:admin -X POST \
   -d "workflowTitle=My Test Run"
 
 # List running instances
-curl -u admin:admin \
+curl -u <user>:<password> \
   "http://localhost:4502/api/workflow/instances?state=RUNNING"
 
 # Terminate an instance
-curl -u admin:admin -X DELETE \
+curl -u <user>:<password> -X DELETE \
   "http://localhost:4502/api/workflow/instances/<instanceId>"
 ```
 

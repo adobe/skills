@@ -31,6 +31,7 @@ This package contains workflow skills for **AEM as a Cloud Service** — coverin
 | `workflow-launchers/` | Development | `cq:WorkflowLauncher` nodes: event types, glob patterns, conditions |
 | `workflow-debugging/` | Production Support | Symptom → runbook, decision trees, thread pool analysis, remediation |
 | `workflow-triaging/` | Production Support | Symptom classification, log patterns, Splunk queries, data gathering |
+| `workflow-purge/` | Production Support | Purge Scheduler config, retention policies, bloat recovery, RUNNING/SUSPENDED cleanup |
 
 ## How To Start
 

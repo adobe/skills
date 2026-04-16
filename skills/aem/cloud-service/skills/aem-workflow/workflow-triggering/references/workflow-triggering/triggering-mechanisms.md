@@ -71,9 +71,11 @@ wfs.startWorkflow(model, data);
 
 **When to use:** CI/CD pipelines, external systems, shell scripts, integration tests.
 
+> **Note:** The examples below use local AEM SDK URLs and placeholder credentials. Replace `<user>:<password>` with your actual credentials. Never use default `admin` credentials in production.
+
 ```bash
 # Start a workflow instance
-curl -u admin:admin -X POST \
+curl -u <user>:<password> -X POST \
   "http://localhost:4502/api/workflow/instances" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "model=/var/workflow/models/my-workflow" \
@@ -83,25 +85,25 @@ curl -u admin:admin -X POST \
 # Response: 201 Created, Location: /api/workflow/instances/<id>
 
 # Get instance details
-curl -u admin:admin \
+curl -u <user>:<password> \
   "http://localhost:4502/api/workflow/instances/<instanceId>.json"
 
 # List running instances filtered by model
-curl -u admin:admin \
+curl -u <user>:<password> \
   "http://localhost:4502/api/workflow/instances?state=RUNNING&model=/var/workflow/models/my-workflow"
 
 # Suspend a running workflow
-curl -u admin:admin -X PUT \
+curl -u <user>:<password> -X PUT \
   "http://localhost:4502/api/workflow/instances/<instanceId>" \
   -d "state=SUSPENDED"
 
 # Resume a suspended workflow
-curl -u admin:admin -X PUT \
+curl -u <user>:<password> -X PUT \
   "http://localhost:4502/api/workflow/instances/<instanceId>" \
   -d "state=RUNNING"
 
 # Terminate a workflow
-curl -u admin:admin -X DELETE \
+curl -u <user>:<password> -X DELETE \
   "http://localhost:4502/api/workflow/instances/<instanceId>"
 ```
 

@@ -79,9 +79,11 @@ public class MyWorkflowService {
 
 ## 4. HTTP Workflow API
 
+> **Note:** The examples below use local AEM SDK URLs and placeholder credentials. Replace `<user>:<password>` with your actual credentials. Never use default `admin` credentials in production.
+
 ```bash
 # Start a workflow
-curl -u admin:admin -X POST \
+curl -u <user>:<password> -X POST \
   "http://localhost:4502/api/workflow/instances" \
   -d "model=/var/workflow/models/my-workflow" \
   -d "payloadType=JCR_PATH" \
@@ -91,11 +93,11 @@ curl -u admin:admin -X POST \
 # Response: 201 Created with Location header pointing to instance path
 
 # Get workflow instance details
-curl -u admin:admin \
+curl -u <user>:<password> \
   "http://localhost:4502/api/workflow/instances/<instanceId>.json"
 
 # List running instances
-curl -u admin:admin \
+curl -u <user>:<password> \
   "http://localhost:4502/api/workflow/instances?state=RUNNING&model=/var/workflow/models/my-workflow"
 ```
 

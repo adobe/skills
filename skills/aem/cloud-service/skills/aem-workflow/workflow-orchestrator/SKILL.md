@@ -33,7 +33,8 @@ This is the **master entry point** for all AEM Workflow tasks on Cloud Service �
 | "Workflow is stuck", "Why isn't my workflow advancing?", "No work item", "Workflow failed", "Step shows error" | `workflow-debugging` |
 | "Task not in Inbox", "User can't see work item", "Permissions error on workflow" | `workflow-debugging` |
 | "Thread pool exhausted", "Auto-advancement not working", "Queue backlog", "Sling Jobs stuck" | `workflow-debugging` |
-| "Repository bloat", "Too many workflow instances", "Purge not working", "Stale workflows" | `workflow-debugging` |
+| "Repository bloat", "Too many workflow instances", "Stale workflows" | `workflow-debugging` |
+| "Configure purge", "Purge Scheduler", "How to purge workflow instances", "Delete old workflows", "Retention policy", "scheduledpurge", "Purge not working", "Instances accumulating" | `workflow-purge` |
 | "What workflow errors on host X?", "Workflow activity for the past N hours", "What should I collect?" | `workflow-triaging` |
 | "Classify this workflow ticket", "What Splunk query should I use?", "What logs do I need?" | `workflow-triaging` |
 | "Why did workflow X fail? Show me the error.", "Failure details for model Y" | `workflow-triaging` |
@@ -69,6 +70,7 @@ workflow-triggering/SKILL.md           ← for start/trigger tasks
 workflow-launchers/SKILL.md            ← for launcher config tasks
 workflow-debugging/SKILL.md            ← for production debugging tasks
 workflow-triaging/SKILL.md             ← for incident triage tasks
+workflow-purge/SKILL.md                ← for purge configuration and cleanup tasks
 ```
 
 ### Step 3: Load the sub-skill's topic references
@@ -108,6 +110,11 @@ workflow-debugging/reference.md
 **workflow-triaging:**
 ```
 workflow-triaging/SKILL.md
+```
+
+**workflow-purge:**
+```
+workflow-purge/SKILL.md
 ```
 
 ---

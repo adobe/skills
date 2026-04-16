@@ -54,4 +54,4 @@ Workflow jobs run on the **Sling Job Queue** named `com/adobe/granite/workflow/j
 - OSGi config: `org.apache.sling.event.impl.jobs.queues.QueueConfigurationImpl`
 - Queue name: `com\/adobe\/granite\/workflow\/job\/.*`
 
-Monitor queue depth at: **Tools → Workflow → Instances** or `/system/console/slingevent`.
+Monitor queue depth at: **Tools → Workflow → Instances**. On the local SDK, you can also check `/system/console/slingevent` (not accessible on Cloud Service environments — use Developer Console instead).

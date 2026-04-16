@@ -71,9 +71,11 @@ wfs.startWorkflow(model, data);
 
 **When to use:** CI/CD pipelines, external systems, shell scripts, integration tests.
 
+> **Note:** Replace `<user>:<password>` with your actual credentials. Never use default `admin` credentials in production or shared environments.
+
 ```bash
 # Start a workflow instance
-curl -u admin:admin -X POST \
+curl -u <user>:<password> -X POST \
   "http://localhost:4502/api/workflow/instances" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "model=/var/workflow/models/my-workflow" \
@@ -82,11 +84,11 @@ curl -u admin:admin -X POST \
   -d "workflowTitle=CI Triggered Review"
 
 # Get instance details
-curl -u admin:admin \
+curl -u <user>:<password> \
   "http://localhost:4502/api/workflow/instances/<instanceId>.json"
 
 # Terminate a workflow
-curl -u admin:admin -X DELETE \
+curl -u <user>:<password> -X DELETE \
   "http://localhost:4502/api/workflow/instances/<instanceId>"
 ```
 

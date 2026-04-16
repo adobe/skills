@@ -33,14 +33,14 @@ Workflow Instance created at /var/workflow/instances/
 
 | Property | Type | Description |
 |---|---|---|
-| `eventType` | Long | `1` = NODE_ADDED, `2` = NODE_MODIFIED, `4` = NODE_REMOVED, `8` = PROPERTY_ADDED, `16` = PROPERTY_CHANGED, `32` = PROPERTY_REMOVED |
+| `eventType` | Long | Bitmask of JCR event types — see [Event Type Bitmask](#event-type-bitmask) below |
 | `glob` | String | Glob pattern matched against the event node path (e.g., `/content/dam(/.*)?`) |
 | `nodetype` | String | JCR node type the event node must be (e.g., `dam:AssetContent`) |
 | `conditions` | String[] | Additional JCR property conditions on the event node |
 | `workflow` | String | Runtime path of the workflow model `/var/workflow/models/<id>` |
 | `enabled` | Boolean | Whether the launcher is active |
 | `description` | String | Human-readable description |
-| `excludeList` | String[] | Workflow model IDs to exclude |
+| `excludeList` | String[] | Runtime model paths (`/var/workflow/models/...`) whose active instances suppress this launcher — primary loop-prevention mechanism |
 | `runModes` | String[] | Restrict to specific run modes (e.g., `author`) |
 
 ## Deploying a Custom Launcher on Cloud Service
@@ -95,6 +95,29 @@ To disable or modify an OOTB launcher (e.g., `dam_update_asset_create`):
 | `dam_xmp_writeback` | NODE_MODIFIED on rendition | DAM Writeback |
 | `update_page_version_*` | Node events on cq:Page jcr:content | Page Version Create |
 
+## Event Type Bitmask
+
+`eventType` is a bitmask combining one or more of the following values:
+
+| Value | Name | Meaning |
+|-------|------|---------|
+| `1` | `NODE_ADDED` | A node was created (e.g., asset uploaded, page created) |
+| `2` | `NODE_MODIFIED` | A node's properties or child nodes changed |
+| `4` | `NODE_REMOVED` | A node was deleted |
+| `8` | `PROPERTY_ADDED` | A property was added to a node |
+| `16` | `PROPERTY_CHANGED` | A property value was changed |
+| `32` | `PROPERTY_REMOVED` | A property was removed from a node |
+
+Common combined values:
+
+| `eventType` value | Listens for |
+|---|---|
+| `1` | Creation only |
+| `2` | Modification only |
+| `3` | Creation **or** modification (1+2) |
+| `7` | Creation, modification, **or** deletion (1+2+4) |
+| `18` | Property added **or** property changed (8+16) — fine-grained metadata watch |
+
 ## Event Type Combinations
 
 To listen for both ADD and MODIFY, combine event types:
@@ -122,12 +145,54 @@ runModes="[publish]"  <!-- only fires on Publish -->
 
 Omit `runModes` to fire on all run modes.
 
+## Launcher Loop Prevention
+
+A **launcher loop** occurs when a workflow step writes back to a JCR path that matches the same launcher's `glob`, causing the launcher to fire again — repeatedly, until the queue floods.
+
+**Scenario:** A process step updates `jcr:content/metadata` on a DAM asset. A launcher on `/content/dam(/.*)?` with `eventType=2` (NODE_MODIFIED) re-triggers the same workflow, which updates metadata again, ad infinitum.
+
+### Prevention Strategy 1: `excludeList` (recommended)
+
+Add the workflow model's runtime path to `excludeList`. When an instance of that model is already running against the same payload, the launcher will not enqueue a new instance.
+
+```xml
+excludeList="[/var/workflow/models/my-workflow]"
+```
+
+This is the safest approach: the launcher still fires for new content, but suppresses re-entry while the workflow is in-flight.
+
+### Prevention Strategy 2: Narrow the `glob`
+
+Make the glob pattern specific enough that the paths written by the workflow don't match:
+
+```xml
+<!-- Fires on original rendition upload only, not on metadata writes -->
+glob="/content/dam(/.*)?/jcr:content/renditions/original"
+nodetype="nt:file"
+eventType="{Long}1"
+```
+
+### Prevention Strategy 3: `conditions` filter
+
+Add a property condition that is only true on the initial trigger path, not on paths written by the workflow:
+
+```xml
+conditions="[property=dam:assetState,value=processing,type=STRING]"
+```
+
+### Detecting a Loop
+
+Signs of a launcher loop in Cloud Manager logs:
+- `WorkflowLauncherListener` enqueue messages for the same payload repeating rapidly
+- Sling Job queue depth for the workflow topic growing without bound
+- `numberOfQueuedJobs` metric continuously increasing
+
 ## Debugging Launchers
 
 - **Tools → Workflow → Launchers** UI — lists all active launchers, you can enable/disable interactively
 - Check `/conf/global/settings/workflow/launcher/config/` in CRXDE Lite for your deployed configs
 - Check OSGi console → `WorkflowLauncherListener` service properties
-- After deployment, verify via: `curl -u admin:admin http://localhost:4502/etc/workflow/launcher.json`
+- After deployment, verify via: `curl -u <user>:<password> http://localhost:4502/conf/global/settings/workflow/launcher/config.json` (local SDK only; replace credentials with your own — never use default `admin` credentials)
 
 ## References in This Skill
 
