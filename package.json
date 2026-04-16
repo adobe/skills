@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Adobe skills for AI coding agents",
   "scripts": {
-    "validate": "find skills -name SKILL.md -exec dirname {} \\; | xargs -I {} skills-ref validate {}"
+    "validate": "find plugins -name SKILL.md -exec dirname {} \\; | xargs -I {} skills-ref validate {}"
   },
   "devDependencies": {
     "@semantic-release/changelog": "^6.0.3",

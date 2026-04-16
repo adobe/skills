@@ -76,7 +76,7 @@ The `create-component` skill creates complete AEM components following Adobe bes
 - Clientlibs (component and dialog)
 - Optional Sling Servlet for dynamic content
 
-See `skills/aem/cloud-service/skills/create-component/` for the skill and its reference files.
+See `plugins/aem/cloud-service/skills/create-component/` for the skill and its reference files.
 
 ### AEM as a Cloud Service — Ensure AGENTS.md (bootstrap)
 
@@ -92,14 +92,14 @@ customer opens their AEM Cloud Service project and asks the agent anything, this
 
 If `AGENTS.md` already exists it is never overwritten.
 
-See `skills/aem/cloud-service/skills/ensure-agents-md/` for the skill, template, and module catalog.
+See `plugins/aem/cloud-service/skills/ensure-agents-md/` for the skill, template, and module catalog.
 
 ### AEM Workflow
 
 Workflow skills cover the full AEM Granite Workflow Engine lifecycle — from designing and implementing workflows to production debugging and incident triaging. Like Dispatcher, they are split by runtime flavor:
 
-- `skills/aem/cloud-service/skills/aem-workflow` — Cloud Service variant (no JMX, Cloud Manager logs, pipeline deploy)
-- `skills/aem/6.5-lts/skills/aem-workflow` — 6.5 LTS / AMS variant (JMX, Felix Console, direct log access)
+- `plugins/aem/cloud-service/skills/aem-workflow` — Cloud Service variant (no JMX, Cloud Manager logs, pipeline deploy)
+- `plugins/aem/6.5-lts/skills/aem-workflow` — 6.5 LTS / AMS variant (JMX, Felix Console, direct log access)
 
 Each flavor contains the same specialist sub-skills:
 
@@ -119,8 +119,8 @@ Dispatcher skills are split by runtime flavor to avoid mode auto-detection and k
 Install only one dispatcher flavor in a workspace (`cloud-service` or `6.5-lts`).
 
 Current dispatcher flavors:
-- `skills/aem/cloud-service/skills/dispatcher`
-- `skills/aem/6.5-lts/skills/dispatcher`
+- `plugins/aem/cloud-service/skills/dispatcher`
+- `plugins/aem/6.5-lts/skills/dispatcher`
 
 Each flavor contains parallel capability groups (workflow orchestration, config authoring, technical advisory, incident response, performance tuning, and security hardening).
 Shared advisory logic is centralized under each flavor's `dispatcher/shared/references/` to reduce duplication and drift.
@@ -129,7 +129,7 @@ Shared advisory logic is centralized under each flavor's `dispatcher/shared/refe
 
 Replication skills for AEM 6.5 LTS cover the full content distribution lifecycle from agent configuration to troubleshooting.
 
-**Location:** `skills/aem/6.5-lts/skills/aem-replication`
+**Location:** `plugins/aem/6.5-lts/skills/aem-replication`
 
 The aem-replication skill contains four specialist sub-skills:
 
@@ -149,7 +149,7 @@ The aem-replication skill contains four specialist sub-skills:
 
 ### AEM as a Cloud Service — Best Practices & Migration
 
-Under `skills/aem/cloud-service/skills/`, **`best-practices/`** is the **general-purpose** Cloud Service skill: pattern modules, Java baseline references (SCR→OSGi DS, resolver/logging, and related refs), and day-to-day Cloud Service alignment. Use it **without** loading **migration** for greenfield or maintainability work. **`migration/`** (BPA/CAM orchestration) is **scoped to legacy AEM → AEM as a Cloud Service** (not Edge Delivery or 6.5 LTS); it **delegates** concrete refactors to **`best-practices`** (`references/`). **Installing the AEM as a Cloud Service plugin** (`aem-cloud-service`, or the `skills/aem/cloud-service` path with `npx skills` / `gh upskill`) **includes both**; the agent should load the appropriate `SKILL.md` for the task. Use **`gh upskill` / `npx skills` with `--skill`** when you need a specific bundled skill (see **Installation** above).
+Under `plugins/aem/cloud-service/skills/`, **`best-practices/`** is the **general-purpose** Cloud Service skill: pattern modules, Java baseline references (SCR→OSGi DS, resolver/logging, and related refs), and day-to-day Cloud Service alignment. Use it **without** loading **migration** for greenfield or maintainability work. **`migration/`** (BPA/CAM orchestration) is **scoped to legacy AEM → AEM as a Cloud Service** (not Edge Delivery or 6.5 LTS); it **delegates** concrete refactors to **`best-practices`** (`references/`). **Installing the AEM as a Cloud Service plugin** (`aem-cloud-service`, or the `plugins/aem/cloud-service` path with `npx skills` / `gh upskill`) **includes both**; the agent should load the appropriate `SKILL.md` for the task. Use **`gh upskill` / `npx skills` with `--skill`** when you need a specific bundled skill (see **Installation** above).
 
 **Key features:**
 - **Best practices:** one skill for patterns, SCR→OSGi DS, and resolver/logging — applicable to Cloud Service projects generally, not only migration
@@ -193,7 +193,7 @@ _Coming soon._
 ## Repository Structure
 
 ```
-skills/
+plugins/
 ├── aem/
 │   ├── edge-delivery-services/
 │   │   ├── .claude-plugin/

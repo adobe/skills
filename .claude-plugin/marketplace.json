@@ -9,27 +9,27 @@
   "plugins": [
     {
       "name": "aem-edge-delivery-services",
-      "source": "./skills/aem/edge-delivery-services",
+      "source": "./plugins/aem/edge-delivery-services",
       "description": "Skills for AEM Edge Delivery Services development"
     },
     {
       "name": "aem-cloud-service",
-      "source": "./skills/aem/cloud-service",
+      "source": "./plugins/aem/cloud-service",
       "description": "All AEM as a Cloud Service skills: component development and Dispatcher, workflows"
     },
     {
       "name": "aem-6-5-lts",
-      "source": "./skills/aem/6.5-lts",
+      "source": "./plugins/aem/6.5-lts",
       "description": "All AEM 6.5 LTS skills: Dispatcher, workflows for AEM 6.5 LTS and AMS environment"
     },
     {
       "name": "aem-project-management",
-      "source": "./skills/aem/project-management",
+      "source": "./plugins/aem/project-management",
       "description": "Project lifecycle management for AEM Edge Delivery Services"
     },
     {
       "name": "app-builder",
-      "source": "./skills/app-builder",
+      "source": "./plugins/app-builder",
       "description": "Development, customization, testing, and deployment skills for Adobe App Builder projects"
     }
   ]

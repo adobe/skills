@@ -14,16 +14,16 @@
 /.claude-plugin/                                      @shsteimer @trieloff
 
 # AEM Edge Delivery Services (Sean Steimer is primary author of all skills)
-/skills/aem/edge-delivery-services/                   @shsteimer
+/plugins/aem/edge-delivery-services/                   @shsteimer
 
 # AEM Project Management (Astha Bhargava is sole author)
-/skills/aem/project-management/                       @AsthaBhargava
+/plugins/aem/project-management/                       @AsthaBhargava
 
 # AEM Cloud Service (in-flight, contributors: abhishekgarg18, pkumargaddam, Himanich, akankshajain18, rombert)
-/skills/aem/cloud-service/                            @abhishekgarg18 @pkumargaddam @Himanich @akankshajain18 @rombert
+/plugins/aem/cloud-service/                            @abhishekgarg18 @pkumargaddam @Himanich @akankshajain18 @rombert
 
 # AEM 6.5 LTS (in-flight, contributors: abhishekgarg18, akankshajain18, rombert)
-/skills/aem/6.5-lts/                                  @abhishekgarg18 @akankshajain18 @rombert
+/plugins/aem/6.5-lts/                                  @abhishekgarg18 @akankshajain18 @rombert
 
 # Adobe App Builder
-/skills/app-builder/skills                            @pkumargaddam
+/plugins/app-builder/skills                            @pkumargaddam
