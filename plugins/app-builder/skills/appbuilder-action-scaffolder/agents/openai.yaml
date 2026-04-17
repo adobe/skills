@@ -1,0 +1,4 @@
+interface:
+  display_name: "App Builder Action Scaffolder"
+  short_description: "App Builder Action Scaffolder workflows"
+  default_prompt: "Help me execute App Builder Action Scaffolder tasks for this Adobe App Builder project."

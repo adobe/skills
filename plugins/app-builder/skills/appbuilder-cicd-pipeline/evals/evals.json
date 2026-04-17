@@ -1,0 +1,140 @@
+{
+  "skill_name": "appbuilder-cicd-pipeline",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Set up GitHub Actions CI/CD for my App Builder project. I want to deploy to Stage on push to main, deploy to Production on release, and run tests on PRs.",
+      "expected_output": "Three workflow files created in .github/workflows/, secrets guide provided with all 14 secrets per workspace, using OAuth S2S credentials.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_exists",
+          "path": ".github/workflows/deploy_stage.yml",
+          "description": "Creates the deploy-to-stage workflow file."
+        },
+        {
+          "type": "file_exists",
+          "path": ".github/workflows/deploy_prod.yml",
+          "description": "Creates the deploy-to-production workflow file."
+        },
+        {
+          "type": "file_exists",
+          "path": ".github/workflows/pr_test.yml",
+          "description": "Creates the PR test workflow file."
+        },
+        {
+          "type": "file_contains",
+          "path": ".github/workflows/deploy_stage.yml",
+          "pattern": "adobe/aio-cli-setup-action@3",
+          "description": "Uses the official Adobe CLI setup action."
+        },
+        {
+          "type": "file_contains",
+          "path": ".github/workflows/deploy_stage.yml",
+          "pattern": "adobe/aio-apps-action@3.3.0",
+          "description": "Uses the official Adobe apps action with pinned version."
+        },
+        {
+          "type": "file_contains",
+          "path": ".github/workflows/deploy_stage.yml",
+          "pattern": "CLIENTID.*secrets\\.CLIENTID_STAGE",
+          "description": "Injects OAuth S2S client ID from repository secrets with _STAGE suffix."
+        },
+        {
+          "type": "output_not_contains",
+          "pattern": "command: auth",
+          "description": "Does not use the deprecated auth command in aio-apps-action."
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I need to deploy my App Builder app to stage on every push to main. Set up the GitHub Actions workflow for this.",
+      "expected_output": "deploy_stage.yml workflow with correct triggers, OAuth S2S secrets, and build+deploy steps.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_exists",
+          "path": ".github/workflows/deploy_stage.yml",
+          "description": "Creates the deploy-to-stage workflow file."
+        },
+        {
+          "type": "file_contains",
+          "path": ".github/workflows/deploy_stage.yml",
+          "pattern": "push.*main|branches.*main",
+          "description": "Triggers on push to main branch."
+        },
+        {
+          "type": "file_contains",
+          "path": ".github/workflows/deploy_stage.yml",
+          "pattern": "command: deploy",
+          "description": "Includes a deploy step using aio-apps-action."
+        },
+        {
+          "type": "file_contains",
+          "path": ".github/workflows/deploy_stage.yml",
+          "pattern": "CLIENTSECRET.*secrets\\.CLIENTSECRET_STAGE",
+          "description": "Injects client secret from repository secrets with correct suffix."
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "How do I set up CI/CD for App Builder with GitLab CI? I want to build on every push and deploy to stage from the main branch.",
+      "expected_output": ".gitlab-ci.yml with aio CLI setup, workspace config from CI variables, build and deploy stages.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_exists",
+          "path": ".gitlab-ci.yml",
+          "description": "Creates a GitLab CI configuration file."
+        },
+        {
+          "type": "file_contains",
+          "path": ".gitlab-ci.yml",
+          "pattern": "aio-cli|@adobe/aio-cli",
+          "description": "Installs the Adobe I/O CLI in the pipeline."
+        },
+        {
+          "type": "file_contains",
+          "path": ".gitlab-ci.yml",
+          "pattern": "aio app deploy|aio app build",
+          "description": "Runs aio app build or deploy commands."
+        },
+        {
+          "type": "output_contains",
+          "pattern": "workspace.json|AIO_CONFIG|aio app use",
+          "description": "Explains how to configure workspace credentials for GitLab CI."
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Help me extract the secrets I need for GitHub Actions CI/CD for my App Builder project. I have the Stage workspace configured locally.",
+      "expected_output": "Runs fetch-secrets.sh or equivalent, shows all 14 secret names with _STAGE suffix and instructions to add as repository secrets.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "output_contains",
+          "pattern": "CLIENTID|CLIENTSECRET|TECHNICALACCID",
+          "description": "Lists the OAuth S2S credential secret names."
+        },
+        {
+          "type": "output_contains",
+          "pattern": "_STAGE",
+          "description": "Shows secrets with the correct workspace suffix."
+        },
+        {
+          "type": "output_contains",
+          "pattern": "repository secret|Repository secret",
+          "description": "Instructs to use repository secrets, not environment secrets."
+        },
+        {
+          "type": "output_not_contains",
+          "pattern": "environment secret",
+          "description": "Does not suggest using GitHub environment secrets."
+        }
+      ]
+    }
+  ]
+}

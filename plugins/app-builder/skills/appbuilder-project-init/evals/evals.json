@@ -1,0 +1,166 @@
+{
+  "skill_name": "appbuilder-project-init",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I need to create a new Adobe App Builder single-page application with React. It should be an Experience Cloud extension that integrates with AEM Content Fragments.",
+      "expected_output": "Project initialized using the AEM CF Console template with React SPA, proper ext.config.yaml configured, and npm dependencies installed.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_exists",
+          "path": "src/aem-cf-console-admin-1/ext.config.yaml",
+          "description": "Creates the AEM Content Fragment Console extension manifest."
+        },
+        {
+          "type": "file_contains",
+          "path": "app.config.yaml",
+          "pattern": "aem/cf-console-admin/1",
+          "description": "Registers the AEM Content Fragment Console extension in the root app manifest."
+        },
+        {
+          "type": "file_contains",
+          "path": "src/aem-cf-console-admin-1/ext.config.yaml",
+          "pattern": "operations:",
+          "description": "Defines extension operations in ext.config.yaml."
+        },
+        {
+          "type": "dir_exists",
+          "path": "src/aem-cf-console-admin-1/web-src",
+          "description": "Includes the React SPA frontend directory for the extension."
+        },
+        {
+          "type": "file_exists",
+          "path": "src/aem-cf-console-admin-1/web-src/src/index.js",
+          "description": "Includes a React entry point for the frontend."
+        },
+        {
+          "type": "command_succeeds",
+          "command": "aio app build",
+          "description": "Builds the generated App Builder project successfully."
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Set up a headless App Builder project — just Runtime actions, no UI. I need an action that calls an external REST API.",
+      "expected_output": "Project initialized using the excshell or bare template, web-assets and web-src manifest references removed or not added, and a single action scaffolded with HTTP fetch capability.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "dir_not_exists",
+          "path": "web-src",
+          "description": "Does not create a root-level web frontend directory for a headless app."
+        },
+        {
+          "type": "dir_not_exists",
+          "path": "src/**/web-src",
+          "description": "Does not keep template-generated web-src directories in a headless result."
+        },
+        {
+          "type": "dir_exists",
+          "path": "actions",
+          "description": "Creates a Runtime actions directory."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "actions/**/*.js",
+          "description": "Scaffolds at least one action implementation file."
+        },
+        {
+          "type": "file_contains",
+          "path": "app.config.yaml",
+          "pattern": "runtimeManifest:[\\s\\S]*actions:",
+          "description": "Defines at least one Runtime action under application.runtimeManifest."
+        },
+        {
+          "type": "file_not_contains",
+          "path": "app.config.yaml",
+          "pattern": "web-src|type:\\s*web|impl:\\s*index\\.html",
+          "description": "Removes stale web-src/frontend references from app.config.yaml for headless projects."
+        },
+        {
+          "type": "command_succeeds",
+          "command": "aio app build",
+          "description": "Builds the generated headless App Builder project successfully."
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Create an API Mesh configuration for my project that proxies requests to two backend services.",
+      "expected_output": "Project initialized using the API Mesh template, mesh configuration file created with source handlers for two services.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "**/mesh.json",
+          "description": "Creates an API Mesh configuration file."
+        },
+        {
+          "type": "file_contains",
+          "path": "mesh.json",
+          "pattern": "\"sources\"[\\s\\S]*\"handler\"[\\s\\S]*\"handler\"",
+          "description": "Defines at least two source handlers in the mesh configuration."
+        },
+        {
+          "type": "command_succeeds",
+          "command": "aio app build",
+          "description": "Builds the API Mesh project successfully."
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "I want to build an Asset Compute worker that generates custom renditions for AEM Assets.",
+      "expected_output": "Project initialized using the Asset Compute template, worker file created, test framework available.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/actions/worker/**/*.js",
+          "description": "Creates an Asset Compute worker implementation file."
+        },
+        {
+          "type": "dir_exists",
+          "path": "src/dx-asset-compute-worker-1/test/asset-compute",
+          "description": "Includes the Asset Compute worker test directory."
+        },
+        {
+          "type": "command_succeeds",
+          "command": "aio app build",
+          "description": "Builds the Asset Compute project successfully."
+        },
+        {
+          "type": "command_succeeds",
+          "command": "aio app test",
+          "description": "Runs the generated Asset Compute worker tests successfully."
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Just set up a bare App Builder project — I'll configure everything myself from scratch.",
+      "expected_output": "Project initialized using the bare template with minimal structure, no pre-configured actions or web assets.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_exists",
+          "path": "app.config.yaml",
+          "description": "Creates the root App Builder manifest."
+        },
+        {
+          "type": "max_file_count",
+          "path": "src",
+          "max": 15,
+          "description": "Keeps the source tree minimal for a bare project scaffold."
+        },
+        {
+          "type": "command_succeeds",
+          "command": "aio app build",
+          "description": "Builds the bare App Builder project successfully."
+        }
+      ]
+    }
+  ]
+}

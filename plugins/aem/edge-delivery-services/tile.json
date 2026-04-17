@@ -1,0 +1,26 @@
+{
+  "name": "adobe/aem-edge-delivery-services",
+  "version": "0.1.0",
+  "summary": "Skills for building AEM Edge Delivery Services sites — site creation, block development, content modeling, code review, testing, and page import.",
+  "private": false,
+  "skills": {
+    "analyze-and-plan": { "path": "skills/analyze-and-plan/SKILL.md" },
+    "create-site": { "path": "skills/create-site/SKILL.md" },
+    "authoring-analysis": { "path": "skills/authoring-analysis/SKILL.md" },
+    "block-collection-and-party": { "path": "skills/block-collection-and-party/SKILL.md" },
+    "block-inventory": { "path": "skills/block-inventory/SKILL.md" },
+    "building-blocks": { "path": "skills/building-blocks/SKILL.md" },
+    "code-review": { "path": "skills/code-review/SKILL.md" },
+    "content-driven-development": { "path": "skills/content-driven-development/SKILL.md" },
+    "content-modeling": { "path": "skills/content-modeling/SKILL.md" },
+    "docs-search": { "path": "skills/docs-search/SKILL.md" },
+    "find-test-content": { "path": "skills/find-test-content/SKILL.md" },
+    "generate-import-html": { "path": "skills/generate-import-html/SKILL.md" },
+    "identify-page-structure": { "path": "skills/identify-page-structure/SKILL.md" },
+    "page-decomposition": { "path": "skills/page-decomposition/SKILL.md" },
+    "page-import": { "path": "skills/page-import/SKILL.md" },
+    "preview-import": { "path": "skills/preview-import/SKILL.md" },
+    "scrape-webpage": { "path": "skills/scrape-webpage/SKILL.md" },
+    "testing-blocks": { "path": "skills/testing-blocks/SKILL.md" }
+  }
+}

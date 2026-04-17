@@ -1,0 +1,167 @@
+{
+  "skill_name": "appbuilder-ui-scaffolder",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Add a page to my App Builder SPA that shows a data table of products with sortable columns and pagination.",
+      "expected_output": "TableView component with sortable columns, async data loading from a backend action, proper Spectrum imports, loading state with ProgressCircle, empty state with IllustratedMessage, and fits existing project structure.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "web-src/src/components/**/*.{js,jsx}",
+          "description": "Creates a new React component file in the web-src components directory."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "web-src/src/**/*Product*.{js,jsx}",
+          "content_pattern": "TableView|TableHeader|Column|TableBody|Row|Cell",
+          "description": "Uses React Spectrum TableView components for the data table."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "web-src/src/**/*Product*.{js,jsx}",
+          "content_pattern": "@adobe/react-spectrum",
+          "description": "Imports components from @adobe/react-spectrum."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "web-src/src/**/*Product*.{js,jsx}",
+          "content_pattern": "ProgressCircle|isLoading|loading",
+          "description": "Includes a loading state while data is being fetched."
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Create a form for submitting customer data in my App Builder app. It should have fields for name, email, company, and a department picker.",
+      "expected_output": "Form component with TextField for name/email/company, Picker for department, validation, submit handler that calls a backend action, error handling with InlineAlert, and loading state on submit button.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "web-src/src/components/**/*.{js,jsx}",
+          "description": "Creates a new React form component."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "web-src/src/**/*Customer*.{js,jsx}",
+          "content_pattern": "Form|TextField|Picker|Button",
+          "description": "Uses React Spectrum Form components."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "web-src/src/**/*Customer*.{js,jsx}",
+          "content_pattern": "validationState|isRequired|errorMessage",
+          "description": "Includes form field validation."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "web-src/src/**/*Customer*.{js,jsx}",
+          "content_pattern": "Authorization|imsToken|Bearer",
+          "description": "Passes IMS token when calling the backend action."
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Set up the Experience Cloud Shell integration for my App Builder app.",
+      "expected_output": "@adobe/exc-app initialization with register(), runtime.done() to dismiss spinner, runtime.ready() to capture IMS context, Provider wrapper with defaultTheme and locale, and IMS token handling.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "web-src/src/App.{js,jsx}",
+          "content_pattern": "@adobe/exc-app|register",
+          "description": "Initializes the Experience Cloud Shell with @adobe/exc-app register()."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "web-src/src/App.{js,jsx}",
+          "content_pattern": "runtime\\.done|done\\(",
+          "description": "Calls runtime.done() to dismiss the shell loading spinner."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "web-src/src/App.{js,jsx}",
+          "content_pattern": "imsToken|imsOrg",
+          "description": "Captures IMS token and org from the shell context."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "web-src/src/App.{js,jsx}",
+          "content_pattern": "Provider.*defaultTheme|defaultTheme.*Provider",
+          "description": "Wraps the app in a Spectrum Provider with defaultTheme."
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Add a confirmation dialog before deleting a record in my App Builder app's data table.",
+      "expected_output": "DialogTrigger wrapping an AlertDialog with confirm/cancel actions, delete handler that calls a backend action, proper dismiss handling, and destructive button styling.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "web-src/src/components/**/*.{js,jsx}",
+          "description": "Creates or updates a component file with the dialog."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "web-src/src/**/*{Delete,Confirm,Dialog}*.{js,jsx}",
+          "content_pattern": "DialogTrigger|AlertDialog",
+          "description": "Uses React Spectrum DialogTrigger and AlertDialog for the confirmation."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "web-src/src/**/*{Delete,Confirm,Dialog}*.{js,jsx}",
+          "content_pattern": "onPrimaryAction|onPress|delete|Delete",
+          "description": "Includes a delete action handler on confirmation."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "web-src/src/**/*{Delete,Confirm,Dialog}*.{js,jsx}",
+          "content_pattern": "negative|destructive|danger",
+          "description": "Uses destructive styling for the delete action."
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Build a Content Fragment Console extension with an action bar button that exports selected fragments as JSON.",
+      "expected_output": "AEM CF Console extension using @adobe/uix-guest with register() API, sharedContext for authentication, actionBar extension point registration, and a UI component that handles exporting selected content fragments.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "web-src/src/**/*.{js,jsx}",
+          "description": "Creates extension UI component file."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "web-src/src/**/*.{js,jsx}",
+          "content_pattern": "@adobe/uix-guest",
+          "description": "Uses @adobe/uix-guest for AEM extension registration."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "web-src/src/**/*.{js,jsx}",
+          "content_pattern": "register",
+          "description": "Uses register() API for extension points."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "web-src/src/**/*.{js,jsx}",
+          "content_pattern": "sharedContext",
+          "description": "Uses sharedContext for authentication."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "web-src/src/**/*.{js,jsx}",
+          "content_pattern": "actionBar",
+          "description": "Registers an action bar extension point."
+        }
+      ]
+    }
+  ]
+}

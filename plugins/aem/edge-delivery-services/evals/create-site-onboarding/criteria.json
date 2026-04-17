@@ -1,0 +1,56 @@
+{
+  "context": "Tests whether the agent correctly executes the full AEM EDS site creation flow: collecting inputs, creating the GitHub repo from the boilerplate template, handling the aem-code-sync human handoff with verification, authenticating with DA using a cache-first approach, creating nav/footer/index content via DA API, and triggering preview with the required Bearer auth. Covers the non-obvious DA-specific behaviours that trip up agents without this skill.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Inputs collected before any API call",
+      "max_score": 5,
+      "description": "Agent collects GitHub org, repo name, and site name from the user before attempting any automated step"
+    },
+    {
+      "name": "GitHub repo created from aem-boilerplate template",
+      "max_score": 12,
+      "description": "Agent uses gh CLI or GitHub API to create the repo specifically from the adobe/aem-boilerplate template, not a blank repo"
+    },
+    {
+      "name": "aem-code-sync handoff correctly signalled",
+      "max_score": 12,
+      "description": "Agent provides the GitHub App installation URL, instructs the user to select only the new repo, and explicitly waits for user confirmation before continuing"
+    },
+    {
+      "name": "aem-code-sync installation verified programmatically",
+      "max_score": 8,
+      "description": "After user confirmation, agent checks admin.hlx.page/status/{org}/{repo}/main/ returns a valid JSON response before proceeding to DA steps"
+    },
+    {
+      "name": "DA auth uses cache-first approach",
+      "max_score": 10,
+      "description": "Agent checks ~/.aem/da-token.json for a valid cached token and its expiry before attempting a new OAuth flow or asking the user for a token"
+    },
+    {
+      "name": "All three mandatory pages created in DA",
+      "max_score": 15,
+      "description": "Agent creates nav.html, footer.html, and index.html in DA (admin.da.live/source/{org}/{repo}/) with structurally correct HTML and the site name substituted"
+    },
+    {
+      "name": "DA API calls use temp files, not inline multiline content",
+      "max_score": 8,
+      "description": "Agent writes HTML to temp files and uses the @ syntax for the curl -F flag rather than passing multiline content inline (inline multiline causes curl exit 26)"
+    },
+    {
+      "name": "Preview requests include Bearer auth",
+      "max_score": 15,
+      "description": "Agent sends POST requests to admin.hlx.page/preview for nav, footer, and index — all with an Authorization: Bearer header. DA-sourced content returns 401 without it even on public repos."
+    },
+    {
+      "name": "Complete hand-off delivered",
+      "max_score": 10,
+      "description": "Agent provides the preview URL (https://main--{repo}--{org}.aem.page/), DA content browser link, individual page edit links, and GitHub repo URL"
+    },
+    {
+      "name": "Human handoff points clearly distinguished from automated steps",
+      "max_score": 5,
+      "description": "Agent clearly labels which steps require human action versus which it executes automatically, and does not proceed past handoff points without confirmation"
+    }
+  ]
+}

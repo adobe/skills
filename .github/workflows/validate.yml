@@ -35,7 +35,7 @@ jobs:
           fi
 
           missing=()
-          for dir in skills/*/*/; do
+          for dir in plugins/*/*/; do
             # Remove trailing slash for the lookup path
             path="/${dir%/}"
             if ! grep -q "^${path}[/ ]" "$codeowners"; then
@@ -62,7 +62,7 @@ jobs:
       - name: Check SKILL.md files have license field in frontmatter
         run: |
           missing=()
-          for file in $(find skills -name SKILL.md); do
+          for file in $(find plugins -name SKILL.md); do
             # Extract frontmatter (between first two --- delimiters) and check for license field
             if ! awk '/^---$/{n++; next} n==1{print} n>=2{exit}' "$file" | grep -q "^license:"; then
               missing+=("$file")
@@ -75,7 +75,7 @@ jobs:
           echo "| Skill | Status |" >> "$GITHUB_STEP_SUMMARY"
           echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
 
-          for file in $(find skills -name SKILL.md | sort); do
+          for file in $(find plugins -name SKILL.md | sort); do
             if printf '%s\n' "${missing[@]}" | grep -qx "$file"; then
               echo "| $file | ❌ Missing |" >> "$GITHUB_STEP_SUMMARY"
             else

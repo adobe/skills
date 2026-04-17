@@ -53,7 +53,7 @@ jobs:
           CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
 
           # Build list of all tile directories (parents of tile.json)
-          ALL_TILE_DIRS=$(find skills -name tile.json -exec dirname {} \; 2>/dev/null | sort)
+          ALL_TILE_DIRS=$(find plugins -name tile.json -exec dirname {} \; 2>/dev/null | sort)
 
           if [ -z "$ALL_TILE_DIRS" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -78,11 +78,11 @@ jobs:
 
             DIRS=$(echo "$DIRS" | xargs)  # trim whitespace
 
-            # Check for unmatched changes under skills/
+            # Check for unmatched changes under plugins/
             UNMATCHED=false
             for changed_file in $CHANGED_FILES; do
               case "$changed_file" in
-                skills/*)
+                plugins/*)
                   MATCHED=false
                   for tile_dir in $ALL_TILE_DIRS; do
                     case "$changed_file" in
@@ -98,8 +98,8 @@ jobs:
             done
 
             if [ "$UNMATCHED" = "true" ]; then
-              echo "Unmatched changes under skills/ detected — evaluating all tiles"
-              DIRS=$(find skills -name tile.json -exec dirname {} \; 2>/dev/null | tr "\n" " " | xargs)
+              echo "Unmatched changes under plugins/ detected — evaluating all tiles"
+              DIRS=$(find plugins -name tile.json -exec dirname {} \; 2>/dev/null | tr "\n" " " | xargs)
             fi
 
             if [ -z "$DIRS" ]; then

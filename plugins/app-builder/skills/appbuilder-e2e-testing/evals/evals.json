@@ -1,0 +1,122 @@
+{
+  "skill_name": "appbuilder-e2e-testing",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Write E2E tests for my ExC Shell SPA that has a data table page and a create form page",
+      "expected_output": "Playwright config and test file created. Tests use frameLocator for iframe navigation, Spectrum ARIA selectors for table (grid role) and form (textbox role), and include assertions.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_exists",
+          "path": "playwright.config.ts",
+          "description": "Creates Playwright configuration file at project root."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "e2e/**/*.spec.ts",
+          "description": "Creates E2E test file in the e2e/ directory."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "e2e/**/*.spec.ts",
+          "content_pattern": "frameLocator|frame\\(",
+          "description": "Handles ExC Shell iframe navigation."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "e2e/**/*.spec.ts",
+          "content_pattern": "getByRole\\('grid'\\)|getByRole\\('row'\\)|getByRole\\('textbox'\\)|getByRole\\('button'\\)",
+          "description": "Uses Spectrum ARIA selectors for table and form components."
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Add Playwright E2E tests for my AEM Content Fragment Console extension that adds an export button",
+      "expected_output": "Test file with nested iframe handling for AEM extension, references Extension Tester or AEM surface, handles action bar button click and modal interaction.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "e2e/**/*.spec.ts",
+          "description": "Creates E2E test file in the e2e/ directory."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "e2e/**/*.spec.ts",
+          "content_pattern": "experience\\.adobe\\.com|devMode|Extension Tester|aem",
+          "description": "References Extension Tester URL or AEM surface."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "e2e/**/*.spec.ts",
+          "content_pattern": "frameLocator.*frameLocator|nested.*iframe|iframe.*iframe",
+          "description": "Handles nested iframe navigation for AEM extensions."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "e2e/**/*.spec.ts",
+          "content_pattern": "register|actionBar|action.bar|Export|export",
+          "description": "Tests extension action bar button or export functionality."
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Set up E2E testing in my CI pipeline with Playwright",
+      "expected_output": "GitHub Actions workflow file with Playwright browser installation, test execution, and artifact upload for reports and failure traces.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": ".github/workflows/*.yml",
+          "description": "Creates workflow file under .github/workflows/."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": ".github/workflows/*.yml",
+          "content_pattern": "playwright install",
+          "description": "Installs Playwright browsers in CI."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": ".github/workflows/*.yml",
+          "content_pattern": "upload-artifact",
+          "description": "Uploads test artifacts (reports, traces) on failure."
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Test the full flow of my App Builder app: user fills a form, submits to a backend action, and sees results in a table",
+      "expected_output": "E2E test covering form fill, submit, and table verification. Uses Spectrum ARIA selectors for form fields and table, includes action response handling.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "e2e/**/*.spec.ts",
+          "description": "Creates E2E test file in the e2e/ directory."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "e2e/**/*.spec.ts",
+          "content_pattern": "fill|textbox|getByRole.*textbox",
+          "description": "Fills form fields using Spectrum textbox selectors."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "e2e/**/*.spec.ts",
+          "content_pattern": "click|submit|button.*Save|button.*Submit",
+          "description": "Submits the form via button click."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "e2e/**/*.spec.ts",
+          "content_pattern": "grid|row|table|getByRole.*grid|getByRole.*row",
+          "description": "Verifies results in a table/grid after submission."
+        }
+      ]
+    }
+  ]
+}

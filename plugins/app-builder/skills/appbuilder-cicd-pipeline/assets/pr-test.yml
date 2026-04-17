@@ -1,0 +1,45 @@
+name: PR Test
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup AIO CLI
+        uses: adobe/aio-cli-setup-action@3
+        with:
+          os: ubuntu
+
+      - name: Test
+        uses: adobe/aio-apps-action@3.3.0
+        with:
+          os: ubuntu
+          command: test
+        env:
+          CLIENTID: ${{ secrets.CLIENTID_STAGE }}
+          CLIENTSECRET: ${{ secrets.CLIENTSECRET_STAGE }}
+          TECHNICALACCID: ${{ secrets.TECHNICALACCID_STAGE }}
+          TECHNICALACCEMAIL: ${{ secrets.TECHNICALACCEMAIL_STAGE }}
+          IMSORGID: ${{ secrets.IMSORGID_STAGE }}
+          SCOPES: ${{ secrets.SCOPES_STAGE }}
+          AIO_RUNTIME_NAMESPACE: ${{ secrets.AIO_RUNTIME_NAMESPACE_STAGE }}
+          AIO_RUNTIME_AUTH: ${{ secrets.AIO_RUNTIME_AUTH_STAGE }}
+          AIO_PROJECT_ID: ${{ secrets.AIO_PROJECT_ID_STAGE }}
+          AIO_PROJECT_NAME: ${{ secrets.AIO_PROJECT_NAME_STAGE }}
+          AIO_PROJECT_ORG_ID: ${{ secrets.AIO_PROJECT_ORG_ID_STAGE }}
+          AIO_PROJECT_WORKSPACE_ID: ${{ secrets.AIO_PROJECT_WORKSPACE_ID_STAGE }}
+          AIO_PROJECT_WORKSPACE_NAME: ${{ secrets.AIO_PROJECT_WORKSPACE_NAME_STAGE }}
+          AIO_PROJECT_WORKSPACE_DETAILS_SERVICES: ${{ secrets.AIO_PROJECT_WORKSPACE_DETAILS_SERVICES_STAGE }}

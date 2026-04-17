@@ -1,0 +1,291 @@
+{
+  "skill_name": "appbuilder-action-scaffolder",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Add a new action to my App Builder project that calls the AEM Assets API using IMS service-to-service authentication. It should list all assets in a given folder path.",
+      "expected_output": "Action created with proper IMS auth setup, correct manifest entry in ext.config.yaml, Adobe API call implementation, and error handling.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/actions/**/*.js",
+          "description": "Creates a new Runtime action source file."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/actions/**/index.js",
+          "content_pattern": "fetch|@adobe/aio-lib-core-networking",
+          "description": "Implements the outbound HTTP call used to reach the AEM Assets API."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/ext.config.yaml",
+          "content_pattern": "list-aem-assets",
+          "description": "Registers the new action in the extension manifest."
+        },
+        {
+          "type": "command_succeeds",
+          "command": "aio app build",
+          "description": "Builds the updated App Builder project successfully."
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "My Runtime action keeps timing out when processing large files. It currently has the default 60-second timeout. How do I fix this?",
+      "expected_output": "Explanation of timeout limits (60s web default, 300s non-web max), manifest configuration to increase timeout, and suggestions for async processing patterns.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/ext.config.yaml",
+          "content_pattern": "timeout:\\s*(?:[6-9]\\d{4}|[1-2]\\d{5}|300000)",
+          "description": "Raises the action timeout above the 60-second default in manifest configuration."
+        },
+        {
+          "type": "output_contains",
+          "pattern": "60s",
+          "description": "Explains the default 60-second web action timeout."
+        },
+        {
+          "type": "output_contains",
+          "pattern": "300s",
+          "description": "Explains the 300-second maximum for non-web actions."
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Create a scheduled action that runs every hour to sync inventory data from a third-party REST API to Adobe Commerce, using State SDK to track the last sync timestamp.",
+      "expected_output": "Cron-style action with Alarm trigger, State SDK for persistence, HTTP client for REST calls, error handling, and proper manifest configuration.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/actions/**/*.js",
+          "description": "Creates the scheduled sync action source file."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/actions/**/index.js",
+          "content_pattern": "@adobe/aio-lib-state|State\\s*}\\s*=\\s*require\\('@adobe/aio-sdk'\\)",
+          "description": "Uses the App Builder State SDK to persist sync state."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/ext.config.yaml",
+          "content_pattern": "/whisk.system/alarms/interval|trigger",
+          "description": "Configures an Alarm trigger/feed for scheduled execution."
+        },
+        {
+          "type": "command_succeeds",
+          "command": "aio app build",
+          "description": "Builds the scheduled sync project successfully."
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "I need a web action that accepts multipart file uploads from a React frontend and stores the files using the Files SDK. Files can be up to 5MB.",
+      "expected_output": "Raw web action for binary input handling, Files SDK storage implementation, size validation (within 1MB web limit guidance), and suggestions for handling larger files.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/actions/**/*.js",
+          "description": "Creates the upload action source file."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/ext.config.yaml",
+          "content_pattern": "web:\\s*'?raw'?",
+          "description": "Configures the upload action as a raw web action for binary payloads."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/actions/**/index.js",
+          "content_pattern": "@adobe/aio-lib-files|Files\\s*}\\s*=\\s*require\\('@adobe/aio-sdk'\\)",
+          "description": "Uses the App Builder Files SDK to store uploaded files."
+        },
+        {
+          "type": "command_succeeds",
+          "command": "aio app build",
+          "description": "Builds the file-upload project successfully."
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Create an action that stores and retrieves product catalog data using the App Builder Database SDK. It should support listing products with pagination, adding new products, and updating product details.",
+      "expected_output": "Database-backed product catalog action with App Builder Database SDK usage, list/create/update handlers, pagination support, manifest registration, and a buildable project.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/actions/**/*.js",
+          "description": "Creates a new Runtime action source file for the product catalog workflow."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/actions/**/index.js",
+          "content_pattern": "@adobe/aio-lib-db",
+          "description": "Uses the App Builder Database SDK in the product catalog action."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/ext.config.yaml",
+          "content_pattern": "product-catalog",
+          "description": "Registers the product catalog action in the extension manifest."
+        },
+        {
+          "type": "command_succeeds",
+          "command": "aio app build",
+          "description": "Builds the database CRUD action project successfully."
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Set up a Runtime action as an Adobe I/O Events webhook receiver. It should handle the challenge verification request and process incoming AEM asset modification events.",
+      "expected_output": "Webhook-capable Runtime action with challenge verification handling, POST event processing for incoming AEM asset modification events, and manifest registration.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/actions/**/index.js",
+          "content_pattern": "challenge|x-adobe",
+          "description": "Handles the Adobe I/O Events challenge verification request."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/actions/**/index.js",
+          "content_pattern": "POST|event|asset.*modif",
+          "description": "Processes POST webhook payloads for asset modification events."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/ext.config.yaml",
+          "content_pattern": "events-webhook",
+          "description": "Registers the webhook receiver action in the extension manifest."
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Create an action that publishes custom events when a user completes a purchase. The action should use the Events SDK to fire an event with the order details.",
+      "expected_output": "Runtime action that uses the Events SDK to publish a purchase-completed custom event with order details and includes the necessary event-publishing logic.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/actions/**/index.js",
+          "content_pattern": "@adobe/aio-lib-events",
+          "description": "Uses the Adobe I/O Events SDK in the custom event publisher action."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/actions/**/index.js",
+          "content_pattern": "publishEvent",
+          "description": "Publishes a custom event with the order payload."
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "Build a cron action that polls the Adobe I/O Events Journaling API every 5 minutes to consume asset upload events. It should track its position using State SDK so no events are lost.",
+      "expected_output": "Scheduled journaling consumer action with five-minute trigger configuration, State SDK position tracking, Adobe I/O Events journaling consumption, and loss-resistant event processing.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/actions/**/index.js",
+          "content_pattern": "@adobe/aio-lib-state",
+          "description": "Uses the App Builder State SDK to persist the journaling cursor."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/actions/**/index.js",
+          "content_pattern": "journal|journaling|events",
+          "description": "Implements Adobe I/O Events journaling consumption logic."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/ext.config.yaml",
+          "content_pattern": "/whisk.system/alarms/interval|trigger|feed",
+          "description": "Configures a scheduled trigger/feed for the journaling consumer."
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "My action needs to return a large JSON report (5MB+). Create an action that writes the report to Files SDK storage and returns a redirect to a presigned download URL.",
+      "expected_output": "Runtime action that writes a large report to Files SDK storage, creates a presigned download URL, and returns an HTTP redirect response to that URL.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/actions/**/index.js",
+          "content_pattern": "@adobe/aio-lib-files",
+          "description": "Uses the App Builder Files SDK for large report storage."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/actions/**/index.js",
+          "content_pattern": "generatePresignURL|presign",
+          "description": "Generates a presigned URL for downloading the large report."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/actions/**/index.js",
+          "content_pattern": "302|redirect",
+          "description": "Returns a redirect response instead of the large payload inline."
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "Create a two-action sequence: the first action validates and enriches incoming order data, the second action stores it in the database. Configure them as a sequence in the manifest.",
+      "expected_output": "Two separate Runtime actions for order validation/enrichment and database storage, plus manifest sequence configuration chaining them together.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/ext.config.yaml",
+          "content_pattern": "sequence",
+          "description": "Configures the composed actions as a sequence in the extension manifest."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/actions/**/validate-order/index.js",
+          "description": "Creates the first action that validates and enriches order data."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/actions/**/store-order/index.js",
+          "description": "Creates the second action that stores order data."
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "Create a custom Asset Compute worker that generates a grayscale rendition of uploaded images for AEM Assets.",
+      "expected_output": "Asset Compute worker implementation that uses the Asset Compute SDK, generates a grayscale rendition for uploaded images, and includes rendition callback handling.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/actions/**/index.js",
+          "content_pattern": "@adobe/asset-compute-sdk",
+          "description": "Uses the Asset Compute SDK in the custom worker."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "src/**/actions/**/index.js",
+          "content_pattern": "renditionCallback|rendition",
+          "description": "Implements grayscale rendition handling for Asset Compute."
+        }
+      ]
+    }
+  ]
+}

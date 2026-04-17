@@ -1,0 +1,11 @@
+{
+  "name": "app-builder",
+  "description": "Development, customization, testing, and deployment skills for Adobe App Builder projects.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": ["app-builder", "adobe", "development", "customization", "testing", "deployment"]
+}

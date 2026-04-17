@@ -23,7 +23,7 @@ jobs:
             CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
 
             # Build list of all skill directories (parents of SKILL.md)
-            ALL_SKILL_DIRS=$(find skills -name SKILL.md -exec dirname {} \; | sort)
+            ALL_SKILL_DIRS=$(find plugins -name SKILL.md -exec dirname {} \; | sort)
 
             # For each changed file, find which skill directory it belongs to
             DIRS=""
@@ -44,11 +44,11 @@ jobs:
 
             DIRS=$(echo "$DIRS" | xargs)  # trim whitespace
 
-            # Check for unmatched changes under skills/
+            # Check for unmatched changes under plugins/
             UNMATCHED=false
             for changed_file in $CHANGED_FILES; do
               case "$changed_file" in
-                skills/*)
+                plugins/*)
                   MATCHED=false
                   for skill_dir in $ALL_SKILL_DIRS; do
                     case "$changed_file" in
@@ -64,8 +64,8 @@ jobs:
             done
 
             if [ "$UNMATCHED" = "true" ]; then
-              echo "Unmatched changes under skills/ detected — reviewing all skills"
-              DIRS=$(find skills -name SKILL.md -exec dirname {} \; 2>/dev/null | tr "\n" " " | xargs)
+              echo "Unmatched changes under plugins/ detected — reviewing all skills"
+              DIRS=$(find plugins -name SKILL.md -exec dirname {} \; 2>/dev/null | tr "\n" " " | xargs)
             fi
 
             if [ -z "$DIRS" ]; then
@@ -105,7 +105,7 @@ jobs:
 
           if [ -z "$SKILL_DIRS_INPUT" ]; then
             # Push to main or no filter: review all skills
-            find skills -name SKILL.md -exec dirname {} \; > "$SKILL_LIST_FILE"
+            find plugins -name SKILL.md -exec dirname {} \; > "$SKILL_LIST_FILE"
           else
             # PR mode: use detected skill dirs
             printf '%s\n' $SKILL_DIRS_INPUT > "$SKILL_LIST_FILE"

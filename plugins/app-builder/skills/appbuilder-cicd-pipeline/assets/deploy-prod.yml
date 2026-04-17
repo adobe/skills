@@ -1,0 +1,51 @@
+name: Deploy to Production
+
+on:
+  release:
+    types:
+      - published
+
+jobs:
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    env:
+      CLIENTID: ${{ secrets.CLIENTID_PROD }}
+      CLIENTSECRET: ${{ secrets.CLIENTSECRET_PROD }}
+      TECHNICALACCID: ${{ secrets.TECHNICALACCID_PROD }}
+      TECHNICALACCEMAIL: ${{ secrets.TECHNICALACCEMAIL_PROD }}
+      IMSORGID: ${{ secrets.IMSORGID_PROD }}
+      SCOPES: ${{ secrets.SCOPES_PROD }}
+      AIO_RUNTIME_NAMESPACE: ${{ secrets.AIO_RUNTIME_NAMESPACE_PROD }}
+      AIO_RUNTIME_AUTH: ${{ secrets.AIO_RUNTIME_AUTH_PROD }}
+      AIO_PROJECT_ID: ${{ secrets.AIO_PROJECT_ID_PROD }}
+      AIO_PROJECT_NAME: ${{ secrets.AIO_PROJECT_NAME_PROD }}
+      AIO_PROJECT_ORG_ID: ${{ secrets.AIO_PROJECT_ORG_ID_PROD }}
+      AIO_PROJECT_WORKSPACE_ID: ${{ secrets.AIO_PROJECT_WORKSPACE_ID_PROD }}
+      AIO_PROJECT_WORKSPACE_NAME: ${{ secrets.AIO_PROJECT_WORKSPACE_NAME_PROD }}
+      AIO_PROJECT_WORKSPACE_DETAILS_SERVICES: ${{ secrets.AIO_PROJECT_WORKSPACE_DETAILS_SERVICES_PROD }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup AIO CLI
+        uses: adobe/aio-cli-setup-action@3
+        with:
+          os: ubuntu
+
+      - name: Build
+        uses: adobe/aio-apps-action@3.3.0
+        with:
+          os: ubuntu
+          command: build
+
+      - name: Deploy
+        uses: adobe/aio-apps-action@3.3.0
+        with:
+          os: ubuntu
+          command: deploy

@@ -1,0 +1,52 @@
+# NOTE: This workflow assumes tests use page.route() to stub action responses.
+# If tests require a live dev server, add aio CLI setup steps
+# (see appbuilder-cicd-pipeline/assets/deploy-stage.yml for reference).
+name: E2E Tests
+
+on:
+  pull_request:
+    branches: [main, stage]
+
+jobs:
+  e2e:
+    name: Playwright E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: npx playwright test --reporter=html
+        env:
+          CI: true
+          APP_URL: ${{ secrets.APP_URL || 'https://localhost:9080' }}
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-results
+          path: test-results/
+          retention-days: 30

@@ -1,0 +1,185 @@
+{
+  "skill_name": "appbuilder-testing",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Write unit tests for my generic action",
+      "expected_output": "Test file created in test/ directory using Jest, mocks logger via @adobe/aio-sdk, tests 200/400/500 response paths with appropriate params and assertions.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "test/**/actions/**/*.test.js",
+          "description": "Creates a Jest test file in the test directory matching the action structure."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "test/**/*.test.js",
+          "content_pattern": "jest\\.mock|jest\\.fn",
+          "description": "Uses Jest mocking to isolate SDK dependencies."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "test/**/*.test.js",
+          "content_pattern": "statusCode.*200|200.*statusCode",
+          "description": "Tests the success (200) response path."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "test/**/*.test.js",
+          "content_pattern": "statusCode.*400|400.*statusCode",
+          "description": "Tests the bad input (400) response path."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "test/**/*.test.js",
+          "content_pattern": "statusCode.*500|500.*statusCode",
+          "description": "Tests the SDK failure (500) response path."
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Add integration tests for my deployed action",
+      "expected_output": "Integration test file that invokes the deployed action via aio CLI or HTTP, asserts response schema including statusCode and body structure.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "test/**/*.integration.test.js",
+          "description": "Creates an integration test file separate from unit tests."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "test/**/*.integration.test.js",
+          "content_pattern": "aio rt action invoke|fetch\\(|execSync",
+          "description": "Invokes the deployed action via CLI command or HTTP request."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "test/**/*.integration.test.js",
+          "content_pattern": "statusCode|status",
+          "description": "Asserts the response status from the deployed action."
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "My action uses State SDK — help me mock it in tests",
+      "expected_output": "Proper jest.mock() setup for @adobe/aio-lib-state with mock init(), get(), put(), delete() methods; tests cover get/put/delete paths with assertions.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "test/**/actions/**/*.test.js",
+          "description": "Creates or updates a test file for the action."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "test/**/*.test.js",
+          "content_pattern": "jest\\.mock\\('@adobe/aio-lib-state'|jest\\.mock\\(.*aio-lib-state",
+          "description": "Sets up jest.mock() for @adobe/aio-lib-state."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "test/**/*.test.js",
+          "content_pattern": "get|put|delete",
+          "description": "Tests State SDK operations (get, put, delete)."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "test/**/*.test.js",
+          "content_pattern": "mockResolvedValue|mockImplementation",
+          "description": "Configures mock return values for State SDK methods."
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Run tests and show me coverage",
+      "expected_output": "Executes npx jest --coverage or aio app test, reports line and branch coverage percentages.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "output_contains",
+          "pattern": "jest.*--coverage|aio app test",
+          "description": "Runs Jest with coverage flag or aio app test."
+        },
+        {
+          "type": "output_contains",
+          "pattern": "Stmts|Lines|Branches|coverage",
+          "description": "Reports coverage metrics including statements, lines, or branches."
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Write component tests for my data table page that displays items fetched from a backend action",
+      "expected_output": "Component test file using Testing Library with Provider wrapper, mocks action calls, tests loading/success/error states with async utilities.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "test/**/*.test.js",
+          "description": "Creates a test file in the test directory."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "test/**/*.test.js",
+          "content_pattern": "Provider",
+          "description": "Wraps component in React Spectrum Provider."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "test/**/*.test.js",
+          "content_pattern": "defaultTheme",
+          "description": "Uses defaultTheme with the Provider wrapper."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "test/**/*.test.js",
+          "content_pattern": "waitFor|findBy",
+          "description": "Uses async Testing Library utilities for data-dependent assertions."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "test/**/*.test.js",
+          "content_pattern": "actionWebInvoke|jest\\.mock.*utils|mockResolvedValue|mockRejectedValue",
+          "description": "Mocks backend action calls."
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Add tests for my AEM Content Fragment Console extension action bar button component",
+      "expected_output": "Component test with UIX guest mock providing sharedContext, tests extension registration and guest connection.",
+      "setup_notes": "Scaffold must include web-src/src/components/ExtensionRegistration.jsx using @adobe/uix-guest with register() and actionBar extension point, and web-src/package.json with @adobe/uix-guest and @adobe/react-spectrum dependencies",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "**/test/**/*.test.*",
+          "description": "Creates a test file in the test directory."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "**/test/**/*.test.*",
+          "content_pattern": "uix-guest",
+          "description": "Mocks @adobe/uix-guest SDK."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "**/test/**/*.test.*",
+          "content_pattern": "sharedContext|guestConnection",
+          "description": "Uses sharedContext or guestConnection from the UIX guest mock."
+        },
+        {
+          "type": "file_matches_glob",
+          "glob": "**/test/**/*.test.*",
+          "content_pattern": "register|attach",
+          "description": "Tests extension registration or attachment."
+        }
+      ]
+    }
+  ]
+}
