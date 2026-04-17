@@ -1,5 +1,5 @@
 ---
-name: aem-replication-api
+name: replication
 description: |
   Programmatic content publishing using AEM Cloud Service Replication API (com.day.cq.replication).
   Covers Replicator service, ReplicationOptions, status checks, and event handling.

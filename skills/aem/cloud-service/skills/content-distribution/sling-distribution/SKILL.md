@@ -1,5 +1,5 @@
 ---
-name: aem-sling-distribution
+name: sling-distribution
 description: |
   Monitor and react to content distribution events using Sling Distribution API (org.apache.sling.distribution).
   Covers distribution event handling, queue monitoring, and distribution lifecycle tracking.

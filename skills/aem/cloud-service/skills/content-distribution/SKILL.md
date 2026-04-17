@@ -1,5 +1,5 @@
 ---
-name: aem-content-distribution
+name: content-distribution
 status: beta
 description: |
   [BETA] AEM as a Cloud Service content distribution and replication. Covers programmatic publishing
