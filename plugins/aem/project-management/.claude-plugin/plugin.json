@@ -12,7 +12,8 @@
     "./skills/development",
     "./skills/admin",
     "./skills/whitepaper",
-    "./skills/auth"
+    "./skills/auth",
+    "./skills/ops"
   ],
   "hooks": {
     "PostToolUse": [
