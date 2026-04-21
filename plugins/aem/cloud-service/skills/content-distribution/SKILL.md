@@ -1,10 +1,9 @@
 ---
 name: content-distribution
-status: beta
+license: Apache-2.0
 description: |
-  [BETA] AEM as a Cloud Service content distribution and replication. Covers programmatic publishing
+  AEM as a Cloud Service content distribution and replication. Covers programmatic publishing
   using the Replication API and distribution event monitoring using Sling Distribution events.
-  This skill is in beta. Verify all outputs before applying them to production projects.
 ---
 
 # AEM Cloud Service Content Distribution

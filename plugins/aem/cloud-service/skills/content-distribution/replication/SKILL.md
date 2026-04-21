@@ -1,5 +1,6 @@
 ---
 name: replication
+license: Apache-2.0
 description: |
   Programmatic content publishing using AEM Cloud Service Replication API (com.day.cq.replication).
   Covers Replicator service, ReplicationOptions, status checks, and event handling.

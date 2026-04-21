@@ -1,5 +1,6 @@
 ---
 name: sling-distribution
+license: Apache-2.0
 description: |
   Monitor and react to content distribution events using Sling Distribution API (org.apache.sling.distribution).
   Covers distribution event handling, queue monitoring, and distribution lifecycle tracking.
