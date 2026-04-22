@@ -17,7 +17,7 @@ If you are not already following the CDD process, STOP and invoke the **content-
 ## Related Skills
 
 - **content-driven-development**: MUST be invoked before using this skill to ensure content and content models are ready
-- **da-auth**: Obtain a valid Adobe IMS token if test content needs to be pushed to a DA-backed CMS before implementation can begin
+- **da-auth**: Obtain a valid Adobe IMS token if test content needs to be pushed to DA before implementation can begin
 - **block-collection-and-party**: Use to find similar blocks for patterns
 - **testing-blocks**: Automatically invoked during Step 5 for comprehensive testing
 
