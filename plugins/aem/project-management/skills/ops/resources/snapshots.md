@@ -191,11 +191,13 @@ curl -s -X POST \
   "https://admin.hlx.page/snapshot/${ORG}/${SITE}/main/${SNAPSHOT_ID}${PATH}?publish=true"
 ```
 
+**On success (200 / 201):**
+```
+Live URL: https://main--{site}--{org}.aem.live{path}
+```
+
 **▶ Recommended Next Actions:**
-1. Verify the page is live
-   ```
-   check status of {path}
-   ```
+1. Open the live URL to confirm — `https://main--{site}--{org}.aem.live{path}` (CDN propagation takes up to 60 seconds)
 2. Purge CDN cache if the page appears stale
    ```
    purge cache of {path}
@@ -215,12 +217,13 @@ curl -s -X POST \
   "https://admin.hlx.page/snapshot/${ORG}/${SITE}/main/${SNAPSHOT_ID}?publish=true"
 ```
 
-**Success:** `Published snapshot "{id}" - {count} pages now live`
+**On success (200 / 201):**
+```
+Published snapshot "{id}" — {count} pages now live at https://main--{site}--{org}.aem.live
+```
+
 **▶ Recommended Next Actions:**
-1. Verify pages are live
-   ```
-   check status of {path}
-   ```
+1. Spot-check key pages — `https://main--{site}--{org}.aem.live{path}` (CDN propagation takes up to 60 seconds)
 2. Purge CDN cache if pages appear stale
    ```
    purge cache of {path}

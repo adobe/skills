@@ -67,13 +67,13 @@ curl -s -X POST \
   "https://admin.hlx.page/preview/${ORG}/${SITE}/${REF}${PATH}"
 ```
 
-**Success:** `Previewed:{path}`
+**On success (200 / 201):**
+```
+Preview URL: https://{ref}--{site}--{org}.aem.page{path}
+```
 
 **▶ Recommended Next Actions:**
-1. Open the preview URL to review content
-   ```
-   preview {path}
-   ```
+1. Open the preview URL to review content — `https://{ref}--{site}--{org}.aem.page{path}`
 2. Promote to live when approved
    ```
    publish {path}
@@ -150,6 +150,12 @@ curl -s -X DELETE \
   "https://admin.hlx.page/preview/${ORG}/${SITE}/${REF}${PATH}"
 ```
 
+**On success (200 / 204):**
+```
+Preview deleted. https://{ref}--{site}--{org}.aem.page{path} now returns 404.
+Live CDN is unaffected.
+```
+
 **▶ Recommended Next Actions:**
 1. Confirm preview layer shows 404
    ```
@@ -165,10 +171,13 @@ curl -s -X POST \
   "https://admin.hlx.page/live/${ORG}/${SITE}/${REF}${PATH}"
 ```
 
-**Success:** `Published:{path}`
+**On success (200 / 201):**
+```
+Live URL: https://main--{site}--{org}.aem.live{path}
+```
 
 **▶ Recommended Next Actions:**
-1. Verify the live URL is accessible — `check status of {path}` (CDN propagation takes up to 60 seconds)
+1. Open the live URL to confirm — `https://main--{site}--{org}.aem.live{path}` (CDN propagation takes up to 60 seconds)
 2. If live URL shows stale content after 60 seconds
    ```
    purge cache of {path}
@@ -229,7 +238,11 @@ curl -s -X DELETE \
   "https://admin.hlx.page/live/${ORG}/${SITE}/${REF}${PATH}"
 ```
 
-**Success:** `Unpublished {path} from live` (HTTP 204)
+**On success (200 / 204):**
+```
+{path} now returns 404 on live CDN.
+Preview still available at: https://{ref}--{site}--{org}.aem.page{path}
+```
 
 **▶ Recommended Next Actions:**
 1. Confirm live layer shows 404
@@ -286,15 +299,27 @@ curl -s \
   "https://admin.hlx.page/status/${ORG}/${SITE}/${REF}${PATH}"
 ```
 
-**On success (200):** Display preview and live `status`, `lastModified`, and `lastModifiedBy`. Then diagnose:
+**On success (200):** Display a status summary using the full URLs. Use `preview.url` as the heading — not the short path.
+
+```
+Status of https://{ref}--{site}--{org}.aem.page{path}
+
+| Layer   | Status | Last Modified          |
+|---------|--------|------------------------|
+| Preview | ✅ 200 | {preview.lastModified} |
+| Live    | ✅ 200 | {live.lastModified}    |
+| Edit    | —      | {edit.lastModified}    |
+```
+
+Then diagnose:
 
 | Condition | Recommended Action |
 |-----------|-------------------|
-| `edit` newer than `preview` | Content changed since last preview |
-| `preview` newer than `live` | Preview is ahead of live |
-| Timestamps match, browser shows old content | CDN cache is stale |
-| `live.status` = 404 | Page not published yet |
-| All in sync | No action needed |
+| `edit` newer than `preview` | `preview {path}` — content changed since last preview |
+| `preview` newer than `live` | `publish {path}` — preview is ahead of live |
+| Timestamps match, browser shows old content | `purge cache {path}` — CDN cache is stale |
+| `live.status` = 404 | `publish {path}` — page not published yet |
+| All in sync | No action needed — page is up to date |
 
 **▶ Recommended Next Actions:**
 1. If edit is ahead of preview
@@ -348,7 +373,7 @@ curl -s -X POST \
   "https://admin.hlx.page/preview/${ORG}/${SITE}/${BRANCH}${PATH}"
 ```
 
-Branch URLs: `https://{branch}--{site}--{org}.aem.live{path}`
+Branch URLs: `https://{branch}--{site}--{org}.aem.page{path}`
 
 ## Natural Language Patterns
 

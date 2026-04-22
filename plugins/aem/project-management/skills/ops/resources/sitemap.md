@@ -36,12 +36,13 @@ curl -s -X POST \
 
 **Default path:** `/sitemap.xml`
 
-**Success:** `Sitemap generated at {path}`
+**On success (200):**
+```
+Sitemap URL: https://{ref}--{site}--{org}.aem.page{path}
+```
+
 **▶ Recommended Next Actions:**
-1. Verify the sitemap is accessible at the generated path
-   ```
-   show site config
-   ```
+1. Verify the sitemap is accessible — `https://{ref}--{site}--{org}.aem.page{path}`
 2. Regenerate if new pages have been published since last run
    ```
    generate sitemap
@@ -61,11 +62,13 @@ curl -s -X POST \
   "https://admin.hlx.page/sitemap/${ORG}/${SITE}/${REF}/sitemaps/blog.xml"
 ```
 
+**On success (200):**
+```
+Sitemap URL: https://{ref}--{site}--{org}.aem.page/sitemaps/blog.xml
+```
+
 **▶ Recommended Next Actions:**
-1. Verify the sitemap is accessible at the custom path
-   ```
-   show site config
-   ```
+1. Verify the sitemap is accessible — `https://{ref}--{site}--{org}.aem.page{path}`
 2. Update sitemap rules if coverage is incomplete
    ```
    show sitemap config
