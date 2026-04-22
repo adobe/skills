@@ -3,7 +3,7 @@ name: content-driven-development
 description: Apply a Content Driven Development process to AEM Edge Delivery Services development. Use for ALL code changes - new blocks, block modifications, CSS styling, bug fixes, core functionality (scripts.js, styles, etc.), or any JavaScript/CSS work that needs validation.
 license: Apache-2.0
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Content Driven Development (CDD)
@@ -168,7 +168,7 @@ Expected: `200`
 
 **Goal:** End this step with accessible test content URL(s) covering all test scenarios
 
-**Choose the best ath based on your situation:**
+**Choose the best path based on your situation:**
 
 ---
 
@@ -198,6 +198,8 @@ Expected: `200`
 3. Wait for user to provide URL(s)
 4. Validate: `curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/path`
 5. Expected: `200` status
+
+> **DA-backed sites:** If the site uses DA as its CMS and you need to push HTML content programmatically (rather than asking the user to author it), invoke the **da-auth** skill first to obtain a valid `DA_TOKEN`, then use the DA Admin API (`POST https://admin.da.live/source/{org}/{repo}/{path}`) to push the content and trigger a preview.
 
 **Approach 2: Local HTML (Temporary)**
 1. Create HTML file in `drafts/tmp/{block-name}.plain.html`
@@ -348,7 +350,7 @@ npm test
    ```bash
    git commit -m "feat(block-name): add new block"
    ```
-   Include revelevant details in commit message and agent attribution in footer (agent adds `Co-authored-by: cursor <noreply@cursor.com>`)
+   Include relevant details in commit message and agent attribution in footer (agent adds `Co-authored-by: cursor <noreply@cursor.com>`)
 
 4. **Push to feature branch:**
    ```bash
@@ -427,6 +429,7 @@ This PR is currently a **draft** pending creation of CMS test content.
 
 - **analyze-and-plan**: Invoked in Step 2 for requirements analysis and acceptance criteria
 - **content-modeling**: Invoked in Step 3 for designing content models
+- **da-auth**: Obtain a valid Adobe IMS token before pushing content to DA or triggering DA previews programmatically — invoke at the start of Step 4 on DA-backed sites
 - **find-test-content**: Invoked in Step 4, Option C for finding existing content
 - **building-blocks**: Invoked in Step 5 for implementation
 - **testing-blocks**: Invoked by building-blocks for browser testing
