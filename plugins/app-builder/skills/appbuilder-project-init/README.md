@@ -4,8 +4,8 @@
 
 This skill initializes new Adobe App Builder projects end-to-end without the interactive `aio app init` wizard **and** without ever opening the Developer Console UI. It can:
 
-- Walk the agent through standing up a Developer Console project, workspace, and API subscriptions non-interactively, by calling `aio console …` directly (commands shipped in `aio-cli-plugin-console` 5.2.0/5.3.0).
-- Map user intent to the correct App Builder template and run non-interactive `aio app init`, optionally wired to a specific Console org/project (flags un-hidden in `aio-cli-plugin-app` 14.2.0).
+- Walk the agent through standing up a Developer Console project, workspace, and API subscriptions non-interactively, by calling `aio console …` directly (no wrapper script needed — those commands are non-interactive in current `@adobe/aio-cli` releases).
+- Map user intent to the correct App Builder template and run non-interactive `aio app init`, optionally wired to a specific Console org/project via the un-hidden `--org` / `--project` flags.
 - Add actions or web assets to an existing project.
 
 Use it when the user wants to create a new App Builder app, scaffold a project, set up an Experience Cloud extension, bootstrap a Developer Console project/workspace, add APIs to a workspace, or anything related to `aio app init` / `aio console project|workspace|api`.
@@ -30,14 +30,11 @@ The script intentionally only wraps the `aio app *` commands — those need a no
 
 ## Prerequisites
 
-1. **Adobe I/O CLI** — `aio --version` must return a version.
-2. **Plugin floors** — verify with `aio plugins --core | grep -E '@adobe/aio-cli-plugin-(console|app)'` and reinstall (`npm install -g @adobe/aio-cli`) if either is older:
-   - `@adobe/aio-cli-plugin-console >= 5.3.0` (project/workspace create + API list/add, including `--license-config` for product-profile services).
-   - `@adobe/aio-cli-plugin-app >= 14.2.0` (un-hides `--project` / `--org` / `--template-options` on `aio app init`); 14.4.0+ adds `--no-config-validation` for partial scaffolds.
-3. **Node.js 18+** — required by the aio CLI and App Builder SDKs. Node 24 is now supported on Stage runtimes (`aio-lib-runtime@7.2.0`).
-4. **Bash shell** — `scripts/init.sh` requires bash.
-5. **Authenticated session** — `aio auth login` must have been completed. For Docker/CI scenarios, set `AIO_IMS_LOCAL_LOGIN_PORT` (added in `aio-lib-ims-oauth@6.1.0`).
-6. **IMS org selected** — `aio console org select <orgId>`, or pass `--orgId` to every bootstrap command. The Console project / workspace / API subscriptions can all be created from this skill, so they no longer have to exist beforehand.
+1. **Adobe I/O CLI (latest bundle)** — `npm install -g @adobe/aio-cli`, then `aio --version`. Always install / refresh the bundle rather than chasing individual plugin versions; the latest bundle is what makes the non-interactive `aio console …` and `aio app init --org/--project/--template-options/--no-config-validation` commands available.
+2. **Node.js 18+** — required by the aio CLI and App Builder SDKs. Node 24 is supported on Stage runtimes.
+3. **Bash shell** — `scripts/init.sh` requires bash.
+4. **Authenticated session** — `aio auth login` must have been completed. For Docker / CI scenarios, set `AIO_IMS_LOCAL_LOGIN_PORT` and forward that port into the container.
+5. **IMS org selected** — `aio console org select <orgId>`, or pass `--orgId` to every bootstrap command. The Console project / workspace / API subscriptions can all be created from this skill, so they no longer have to exist beforehand.
 
 ## Usage
 
@@ -70,7 +67,7 @@ skills/appbuilder-project-init/scripts/init.sh init \
   --org <orgId> --project my-project
 ```
 
-`--template-options` (base64-encoded JSON) and `--no-config-validation` are also passed through to `aio app init`.
+`--template-options` (base64-encoded JSON) and `--no-config-validation` are also passed through to `aio app init`. If any of these flags is rejected as unknown, refresh the CLI bundle (`npm install -g @adobe/aio-cli`) and retry.
 
 ### Initialize a bare project
 
@@ -128,14 +125,13 @@ See `references/templates.md` for detailed per-template post-init guidance.
 
 | Problem | Fix |
 | --- | --- |
-| `aio: command not found` | Install Adobe I/O CLI and run `aio auth login` before retrying |
-| `aio console …` commands missing or rejecting flags | Plugin-console is older than 5.3.0 — `npm install -g @adobe/aio-cli` |
-| `aio app init --project` / `--org` rejected as unknown | Plugin-app is older than 14.2.0 — `npm install -g @adobe/aio-cli` |
+| `aio: command not found` | Install Adobe I/O CLI (`npm install -g @adobe/aio-cli`) and run `aio auth login` before retrying |
+| `aio console …` or `aio app init` rejects a documented flag / subcommand | CLI bundle is stale — `npm install -g @adobe/aio-cli` and retry. Don't chase individual plugin versions. |
 | `aio console project create` fails with "already exists" | Read `aio console project list --json`, reuse the existing project, and continue from `workspace create` |
 | `aio console workspace api add` fails with "product profile required" | Re-run with `--license-config CODE=PROFILE`. Use `aio console api list --json` to see which services need profiles. |
-| `aio app *` fails on schema validation right after init | Manifest is mid-edit; pass `--no-config-validation` (added in plugin-app 14.4.0) for that one command, then re-validate once the manifest is whole. |
-| `aio app init` template listing hangs behind a corporate proxy | Reinstall the CLI to pull in `aio-lib-templates@3.0.4` / `aio-cli-plugin-telemetry@2.0.3`+ proxy fixes |
-| `aio login` from inside Docker can't complete the browser callback | Set `AIO_IMS_LOCAL_LOGIN_PORT` and forward that port into the container (`aio-lib-ims-oauth@6.1.0`) |
+| `aio app *` fails on schema validation right after init | Manifest is mid-edit; pass `--no-config-validation` for that one command, then re-validate once the manifest is whole. |
+| `aio app init` template listing hangs behind a corporate proxy | `npm install -g @adobe/aio-cli` to pick up the proxy fix, confirm `HTTPS_PROXY` is exported in the same shell |
+| `aio login` from inside Docker can't complete the browser callback | Set `AIO_IMS_LOCAL_LOGIN_PORT` and forward that port into the container |
 | `npm install` fails after init | Check Node.js/npm version compatibility, rerun `npm install` from project root |
 | Ambiguous template choice | Ask one clarifying question (UI vs headless, extension point, target product). Default to `@adobe/generator-app-excshell` if unclear |
 | Project directory already exists | Do not overwrite silently — ask whether to use a different directory or clear the existing one |

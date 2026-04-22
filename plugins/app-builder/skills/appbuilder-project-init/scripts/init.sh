@@ -12,11 +12,14 @@
 #   - `aio app init` and `aio app add …` need a non-trivial flag set
 #     (-y --no-login --no-install) plus mkdir + cwd management; that
 #     glue is easy to forget, so it lives here.
-#   - `aio console project|workspace|api` (plugin 5.2.0+/5.3.0+) are
-#     already non-interactive and self-contained. The agent calls
-#     them directly per references/bootstrap.md so it can react to
-#     "already exists", "needs a product profile", etc., on a
-#     per-step basis instead of failing a baked-in chain.
+#   - `aio console project|workspace|api` are already non-interactive
+#     and self-contained in current @adobe/aio-cli releases. The agent
+#     calls them directly per references/bootstrap.md so it can react
+#     to "already exists", "needs a product profile", etc., on a
+#     per-step basis instead of failing a baked-in chain. If a
+#     subcommand or flag below is unrecognised, refresh the bundle
+#     with `npm install -g @adobe/aio-cli` rather than chasing
+#     individual plugin versions.
 
 set -euo pipefail
 
@@ -75,17 +78,18 @@ Usage: init.sh <command> [options]
 
 Commands:
   init <template> [path]                       Initialize project from a template
-       [--org ID] [--project NAME]             Wire to a Console org/project (plugin >= 14.2.0)
+       [--org ID] [--project NAME]             Wire to a Console org/project
        [--template-options B64JSON]            Optional template options (base64-encoded JSON)
-       [--no-config-validation]                Skip schema validation during init (plugin >= 14.4.0)
+       [--no-config-validation]                Skip schema validation during init
   init-bare [path]                             Initialize a bare/standalone project
   add-action <name>                            Add an action to an existing project
   add-web-assets                               Add web assets to an existing project
 
-For Developer Console bootstrap (project / workspace / API
-subscriptions), call `aio console …` directly per the playbook in
-references/bootstrap.md. Those commands are already non-interactive
-in @adobe/aio-cli-plugin-console >= 5.3.0 and don't need a wrapper.
+For Developer Console bootstrap (project / workspace / API subscriptions),
+call `aio console …` directly per references/bootstrap.md — they are
+already non-interactive in current @adobe/aio-cli releases and don't
+need a wrapper. If any flag above is unrecognised, refresh the CLI
+bundle: `npm install -g @adobe/aio-cli`.
 
 All commands output JSON. Exit codes: 0=success, 1=error, 2=aio CLI missing.
 EOF

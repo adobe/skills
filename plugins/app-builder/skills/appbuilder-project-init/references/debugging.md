@@ -4,19 +4,15 @@ Common failures during Developer Console bootstrap, `aio app init`, post-init se
 
 For bootstrap-specific guidance (project / workspace / API subscription), see [bootstrap.md](bootstrap.md).
 
-## `aio console project create` or `aio console workspace create` is unrecognised
+## An `aio console …` or `aio app …` subcommand / flag is unrecognised
+
+The non-interactive Console + app init commands (`project create`, `workspace create`, `api list`, `workspace api add` with `--license-config`, `aio app init --org/--project/--template-options`, `--no-config-validation`) all ship in the latest `@adobe/aio-cli` bundle. Don't chase individual plugin versions — just refresh the bundle.
 
 | Cause | Fix |
 | --- | --- |
-| `@adobe/aio-cli-plugin-console` is older than 5.2.0 — the non-interactive `create` commands did not exist yet | `npm install -g @adobe/aio-cli` to pull in plugin 5.2.0+. Verify with `aio plugins --core | grep aio-cli-plugin-console`. |
-| `aio` not installed in the same shell PATH as `npm -g` | Run `which aio` and `npm root -g`; if they disagree, fix PATH or reinstall the CLI. |
-
-## `aio console api list` / `aio console workspace api add` is unrecognised
-
-| Cause | Fix |
-| --- | --- |
-| `@adobe/aio-cli-plugin-console` is older than 5.3.0 — these subcommands shipped in 5.3.0 | `npm install -g @adobe/aio-cli` to pull in plugin 5.3.0+. |
-| Typo in the service code passed to `--service-code` | Run `scripts/init.sh api-list` (or `aio console api list --json`) to copy the exact `code` field. |
+| CLI bundle is stale | `npm install -g @adobe/aio-cli`, then `aio --version`, then retry the failing command. |
+| `aio` on PATH is from a different install than `npm -g` | Run `which aio` and `npm root -g`; if they disagree, fix PATH (or remove the stale `aio`) and reinstall. |
+| Typo in the value passed to a flag (e.g. `--service-code`) | Re-list the canonical values, e.g. `aio console api list --json` for service codes, and copy the `code` field exactly. |
 
 ## `aio console project create` returns "already exists"
 
@@ -39,23 +35,23 @@ For bootstrap-specific guidance (project / workspace / API subscription), see [b
 | --- | --- |
 | Local `.aio` was already populated from a prior project | Run `aio app use --no-input` from the project root after bootstrap; it adopts the currently selected console workspace without prompting. |
 | Console selection drifted between bootstrap and `aio app use` | Re-select explicitly: `aio console project select <projectId> && aio console workspace select <workspaceId>`. |
-| Plugin-app is too old for `aio app init --project`/`--org` | Update to `@adobe/aio-cli-plugin-app >= 14.2.0` (`npm install -g @adobe/aio-cli`), then either re-init with the flags or stay on the `aio app use --no-input` path. |
+| `aio app init --project` / `--org` was rejected as unknown | CLI bundle is stale — `npm install -g @adobe/aio-cli`, then either re-init with the flags or stay on the `aio app use --no-input` path. |
 
 ## `aio app *` fails with config validation errors right after init
 
-Since `@adobe/aio-cli-plugin-app@14.4.0` (2026-01-20) every `aio app *` command validates `app.config.yaml` by default, and `@adobe/aio-cli-lib-app-config@4.2.0` (2026-03-10) tightened that schema to match the OpenWhisk spec for actions and packages.
+Recent `aio app *` versions validate `app.config.yaml` by default against an OpenWhisk-aligned schema for actions and packages.
 
 | Cause | Fix |
 | --- | --- |
 | Manifest is intentionally mid-edit and not yet schema-valid | Pass `--no-config-validation` to unblock for that one command. Treat this as a temporary escape hatch, not a permanent setting — re-validate as soon as the manifest is whole. |
-| Pre-existing manifest predates the OpenWhisk schema alignment | Reconcile the action/package shapes with the OpenWhisk spec referenced in the 4.2.0 release notes. Re-run with default validation (or `--config-validation`). |
+| Pre-existing manifest predates the OpenWhisk schema alignment | Reconcile the action/package shapes with the current OpenWhisk-aligned schema, then re-run with default validation (or `--config-validation`). |
 | Root-level `runtimeManifest` in `app.config.yaml` (the long-standing guardrail) | Move it under `application.runtimeManifest`, or into an `ext.config.yaml` for extension projects. |
 
 ## `aio app init` template listing hangs behind a corporate proxy
 
 | Cause | Fix |
 | --- | --- |
-| Older `@adobe/aio-lib-templates` and `@adobe/aio-cli-plugin-telemetry` did not honour `HTTP_PROXY`/`HTTPS_PROXY` for the SSL CONNECT handshake | Update the CLI to pull in `aio-lib-templates@3.0.4` / `aio-cli-plugin-telemetry@2.0.3` or newer: `npm install -g @adobe/aio-cli`. Confirm `HTTPS_PROXY` is exported in the same shell. |
+| Stale CLI bundle didn't honour `HTTP_PROXY` / `HTTPS_PROXY` during the template registry SSL handshake | `npm install -g @adobe/aio-cli` to pick up the proxy fix, confirm `HTTPS_PROXY` is exported in the same shell, then retry `aio app init`. |
 
 ## `aio login` from inside Docker / a CI runner cannot complete the browser callback
 
@@ -63,8 +59,8 @@ The interactive login launches a local server on a random port and waits for the
 
 | Cause | Fix |
 | --- | --- |
-| Local login port is not forwarded into the container | Set `AIO_IMS_LOCAL_LOGIN_PORT` (added in `@adobe/aio-lib-ims-oauth@6.1.0`, 2026-03-24) and forward it: `docker run -p $PORT:$PORT -e AIO_IMS_LOCAL_LOGIN_PORT=$PORT …`. The CLI then advertises a stable URL the browser on the host can resolve. |
-| `--no-open` flag was being silently ignored on Windows | Reinstall the CLI to pull in `@adobe/aio-lib-ims-oauth@6.0.5`+ (2025-12-02), which fixed `--no-open` on all OSes and surfaced auto-open errors instead of failing silently. |
+| Local login port is not forwarded into the container | Export `AIO_IMS_LOCAL_LOGIN_PORT=<port>` and forward it into the container, e.g. `docker run -p $PORT:$PORT -e AIO_IMS_LOCAL_LOGIN_PORT=$PORT …`. The CLI then advertises a stable URL the browser on the host can resolve. (If `aio` doesn't honour the env var, refresh the CLI bundle: `npm install -g @adobe/aio-cli`.) |
+| `aio login --no-open` is being silently ignored on Windows | `npm install -g @adobe/aio-cli` to pull in the fix that makes `--no-open` honour the flag and surface auto-open errors instead of failing silently. |
 
 ## `aio app init` fails with "template not found"
 

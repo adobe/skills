@@ -6,36 +6,30 @@ This playbook is intentionally a sequence of raw `aio` commands rather than a wr
 
 ## Why this exists
 
-Before `@adobe/aio-cli-plugin-console@5.2.0`, `aio console project create` and `aio console workspace create` only existed as interactive wizards. Agents could not script them — they would block waiting for arrow-key input on a TTY that does not exist in agentic environments. Two recent releases close that gap, plus a slightly older `aio-cli-plugin-app` release lets you wire `aio app init` straight to the bootstrapped state:
+Earlier `aio` CLI bundles only exposed `aio console project create` / `workspace create` / `workspace api add` as interactive wizards. Agents could not script them — they would block waiting for arrow-key input on a TTY that doesn't exist in agentic environments. Recent CLI releases made every one of those commands fully non-interactive (all inputs as flags), added API discovery (`aio console api list`), added `--license-config CODE=PROFILE` for services that require a product profile, and un-hid `--project` / `--org` / `--template-options` on `aio app init` so init can be wired directly to a Console project/org without a follow-up `aio app use`.
 
-| Release | Released | What it unlocks |
-| --- | --- | --- |
-| `@adobe/aio-cli-plugin-console@5.2.0` | 2026-04-01 | `aio console project create -n <name>` and `aio console workspace create --projectName <p> --name <w>` accept all inputs as flags — no prompts. |
-| `@adobe/aio-cli-plugin-console@5.3.0` | 2026-04-20 | `aio console api list`, `aio console workspace api list`, and `aio console workspace api add --service-code <codes> [--license-config CODE=PROFILE]` round out the bootstrap: discover APIs, see what is subscribed, and subscribe new ones (including services that require a product profile) — all from the CLI. |
-| `@adobe/aio-cli-plugin-app@14.2.0` | 2025-09-08 | `aio app init` un-hid `--project` and `--org` and added `--template-options` (base64-encoded JSON), so init can be wired directly to a Console project/org without a follow-up `aio app use`. |
-
-Together they remove every blocking "open the Developer Console UI and click" step from the agentic App Builder setup path.
+Concretely, the latest `@adobe/aio-cli` bundle is what makes the entire chain below scriptable. **Don't try to assert specific plugin version numbers** — just install the latest CLI and use the commands.
 
 ## Preflight
 
-1. `aio --version` returns a version (Adobe I/O CLI installed).
-2. `aio plugins --core` shows `@adobe/aio-cli-plugin-console` at **5.3.0 or later** and `@adobe/aio-cli-plugin-app` at **14.2.0 or later**:
+1. **Install / refresh the CLI** so all the bundled plugins are current:
 
    ```bash
-   aio plugins --core | grep -E '@adobe/aio-cli-plugin-(console|app)'
+   npm install -g @adobe/aio-cli
+   aio --version
    ```
 
-   If either is older, `npm install -g @adobe/aio-cli` and re-check.
+   That's the supported way to pick up the non-interactive Console + app init commands and any proxy / login fixes. If a specific subcommand below is still rejected after a clean reinstall, the install itself failed (PATH, permissions, registry mirror) — fix that rather than working around it.
 
-3. `aio auth login` has been completed in the current session.
-4. An IMS org is selected, **or** every command below passes `--orgId`:
+2. `aio auth login` has been completed in the current session.
+3. An IMS org is selected, **or** every command below passes `--orgId`:
 
    ```bash
    aio console org list --json   # find the orgId / orgCode you want
    aio console org select <orgId>
    ```
 
-5. (Optional, for Docker / CI scenarios where `aio login` would otherwise fail to receive the browser callback) export `AIO_IMS_LOCAL_LOGIN_PORT` and forward that port into the container before logging in. See [debugging.md](debugging.md).
+4. (Optional, for Docker / CI scenarios where `aio login` would otherwise fail to receive the browser callback) export `AIO_IMS_LOCAL_LOGIN_PORT` and forward that port into the container before logging in. See [debugging.md](debugging.md).
 
 ## The chain
 
@@ -98,7 +92,7 @@ aio console workspace api add \
   --json
 ```
 
-Subscribe a service that requires a product profile (added in plugin 5.3.0):
+Subscribe a service that requires a product profile:
 
 ```bash
 aio console workspace api add \
@@ -115,7 +109,7 @@ aio console workspace api add \
 
 Two equivalent paths:
 
-**A. Pass the IDs directly to `aio app init`** (cleanest, requires plugin-app >= 14.2.0):
+**A. Pass the IDs directly to `aio app init`** (cleanest):
 
 ```bash
 skills/appbuilder-project-init/scripts/init.sh init \
@@ -125,7 +119,7 @@ skills/appbuilder-project-init/scripts/init.sh init \
 
 The wrapper passes `--org` / `--project` / `--template-options` straight through to `aio app init` on top of the existing `-y --no-login --no-install` flags.
 
-**B. Init first, then `aio app use` to adopt the selected workspace** (works on any plugin-app version):
+**B. Init first, then `aio app use` to adopt the selected workspace:**
 
 ```bash
 skills/appbuilder-project-init/scripts/init.sh init \
@@ -144,10 +138,9 @@ Because each step is a separate command, the agent can branch instead of blowing
 | --- | --- | --- |
 | `aio console project create` returns "Project already exists" | Name collision in the org | Read `aio console project list --json`, reuse the existing `id`/`name`, and continue at step 2. |
 | `aio console workspace create` returns "Workspace already exists" | Name collision inside the project | List existing workspaces with `aio console workspace list --projectName <p> --json` and continue at step 3. |
-| `aio console workspace api add` returns "product profile required" | Service code needs a product profile (5.3.0 territory) | Re-run `aio console api list --json` to confirm the requirement, ask the user / org admin for the correct profile, and retry with `--license-config CODE=PROFILE`. |
+| `aio console workspace api add` returns "product profile required" | Service code needs a product profile | Re-run `aio console api list --json` to confirm the requirement, ask the user / org admin for the correct profile, and retry with `--license-config CODE=PROFILE`. |
 | Any command returns an org-selection error | No org selected, or wrong org selected | Pass `--orgId <id>` explicitly or run `aio console org select <id>` once before retrying. |
-| `aio console …` reports "command not found" or unknown flags | `@adobe/aio-cli-plugin-console` is older than 5.3.0 | `npm install -g @adobe/aio-cli`, re-check with `aio plugins --core | grep aio-cli-plugin-console`, retry. |
-| `aio app init --project` / `--org` rejected as unknown | `@adobe/aio-cli-plugin-app` is older than 14.2.0 | `npm install -g @adobe/aio-cli`, then re-issue. |
+| `aio console …` or `aio app init --project`/`--org` reports "command not found" or "unknown flag" | CLI bundle is stale | `npm install -g @adobe/aio-cli` and retry. Don't try to chase individual plugin versions; just refresh the bundle. |
 | Bootstrap succeeds but `aio app deploy` deploys to the wrong namespace | Local `.aio` not pointing at the new workspace | Run `aio app use --no-input` from the project root, or re-init with `--org`/`--project`. |
 
 For broader Node/npm/login issues see [debugging.md](debugging.md).
@@ -155,8 +148,8 @@ For broader Node/npm/login issues see [debugging.md](debugging.md).
 ## Recommended flow inside the skill
 
 ```text
-1. Preflight: confirm aio CLI + plugin-console >= 5.3.0 + plugin-app >= 14.2.0,
-   and that an org is selected.
+1. Preflight: `npm install -g @adobe/aio-cli` (refresh the bundle),
+   `aio --version`, `aio auth login`, and confirm an org is selected.
 2. Discover state: `aio console project list --json`,
    `aio console api list --json`.
 3. For each missing piece, run the matching create/add command.
