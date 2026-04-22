@@ -1,6 +1,44 @@
 # Debugging App Builder Project Init
 
-Common failures during `aio app init`, post-init setup, and first run — with root causes and fixes.
+Common failures during Developer Console bootstrap, `aio app init`, post-init setup, and first run — with root causes and fixes.
+
+For bootstrap-specific guidance (project / workspace / API subscription), see [bootstrap.md](bootstrap.md).
+
+## `aio console project create` or `aio console workspace create` is unrecognised
+
+| Cause | Fix |
+| --- | --- |
+| `@adobe/aio-cli-plugin-console` is older than 5.2.0 — the non-interactive `create` commands did not exist yet | `npm install -g @adobe/aio-cli` to pull in plugin 5.2.0+. Verify with `aio plugins --core | grep aio-cli-plugin-console`. |
+| `aio` not installed in the same shell PATH as `npm -g` | Run `which aio` and `npm root -g`; if they disagree, fix PATH or reinstall the CLI. |
+
+## `aio console api list` / `aio console workspace api add` is unrecognised
+
+| Cause | Fix |
+| --- | --- |
+| `@adobe/aio-cli-plugin-console` is older than 5.3.0 — these subcommands shipped in 5.3.0 | `npm install -g @adobe/aio-cli` to pull in plugin 5.3.0+. |
+| Typo in the service code passed to `--service-code` | Run `scripts/init.sh api-list` (or `aio console api list --json`) to copy the exact `code` field. |
+
+## `scripts/init.sh bootstrap` short-circuits with `step: "project-create"`
+
+| Cause | Fix |
+| --- | --- |
+| Project name collides with an existing project in the org | Use a different `--api`-free `bootstrap` invocation with a new name, or run `aio console project list --json` and reuse the existing project (skip directly to `workspace-create`). |
+| No org selected and `--orgId` not passed | Run `aio console org select <orgId>` once, or pass `--orgId` to every bootstrap subcommand. |
+| Token expired | `aio auth login` again and retry. |
+
+## `scripts/init.sh bootstrap` short-circuits with `step: "workspace-api-add"` and "product profile required"
+
+| Cause | Fix |
+| --- | --- |
+| Service requires a product profile but `--api` was passed without one | Re-run with `--api CODE=PROFILE` (or `workspace-api-add ... --license-config CODE=PROFILE`). Use `scripts/init.sh api-list` to see which services require profiles. |
+| Product profile name is wrong | Profile names are case-sensitive and org-specific; confirm with the org admin or in the Adobe Admin Console. |
+
+## `aio app use` after bootstrap doesn't pick up the new workspace
+
+| Cause | Fix |
+| --- | --- |
+| Local `.aio` was already populated from a prior project | Run `aio app use --no-input` from the project root after bootstrap; it adopts the currently selected console workspace without prompting. |
+| Console selection drifted between bootstrap and `aio app use` | Re-select explicitly: `aio console project select <projectId> && aio console workspace select <workspaceId>`. |
 
 ## `aio app init` fails with "template not found"
 
