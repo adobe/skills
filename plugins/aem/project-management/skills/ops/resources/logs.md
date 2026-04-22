@@ -28,6 +28,15 @@ curl -s \
 ```
 
 **Success:** `Showing {count} log entries from last 7 days`
+**▶ Recommended Next Actions:**
+1. Narrow results to recent activity only
+   ```
+   show logs from last hour
+   ```
+2. Check the status of a path that appears in the logs
+   ```
+   check status of {path}
+   ```
 
 ### View Logs with Duration Filter
 
@@ -48,6 +57,16 @@ curl -s \
   "https://admin.hlx.page/log/${ORG}/${SITE}/${REF}?since=3d"
 ```
 
+**▶ Recommended Next Actions:**
+1. Check the publish status of a path that appears in the logs
+   ```
+   check status of {path}
+   ```
+2. Narrow results to an exact time window using a date range
+   ```
+   show logs from last hour
+   ```
+
 ### View Logs with Time Range
 
 ```bash
@@ -55,6 +74,16 @@ curl -s \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/log/${ORG}/${SITE}/${REF}?from=2024-01-01T00:00:00Z&to=2024-01-02T00:00:00Z"
 ```
+
+**▶ Recommended Next Actions:**
+1. Check publish status of a path that appeared in the time range
+   ```
+   check status of {path}
+   ```
+2. Add a log entry to record a manual deployment action
+   ```
+   add log entry
+   ```
 
 ### Add Log Entry
 
@@ -67,6 +96,15 @@ curl -s -X POST \
 ```
 
 Log levels: `info`, `warn`, `error`
+**▶ Recommended Next Actions:**
+1. Verify the entry was recorded
+   ```
+   show logs from last hour
+   ```
+2. Filter for errors only to monitor issues
+   ```
+   show errors
+   ```
 
 ## Duration Format
 

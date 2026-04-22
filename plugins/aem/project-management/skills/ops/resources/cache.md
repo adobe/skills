@@ -36,6 +36,19 @@ curl -s -X POST \
 
 **Success:** `Cache purged for {path}`
 
+> **Note:** Cache purge does NOT republish — it only clears what the CDN has cached. If the page content is wrong, run Publish first, then purge.
+
+**▶ Recommended Next Actions:**
+1. Hard-refresh your browser — `Cmd+Shift+R` (Mac) / `Ctrl+Shift+R` (Windows)
+2. If content remains incorrect after purge, republish first
+   ```
+   publish {path}
+   ```
+3. Verify publish and cache state are aligned
+   ```
+   check status of {path}
+   ```
+
 ### Force Purge Cache
 
 Bypasses edge cache entirely:
@@ -49,6 +62,13 @@ curl -s -X POST \
 
 **Success:** `Force-purged cache for {path}`
 
+**▶ Recommended Next Actions:**
+1. Hard-refresh your browser — `Cmd+Shift+R` (Mac) / `Ctrl+Shift+R` (Windows)
+2. If content remains incorrect, republish to push latest version
+   ```
+   publish {path}
+   ```
+
 ### Purge All
 
 **DESTRUCTIVE OPERATION - CONFIRMATION REQUIRED**
@@ -61,6 +81,14 @@ curl -s -X POST \
   -H "x-content-source-authorization: Bearer ${IMS_TOKEN}" \
   "https://admin.hlx.page/cache/${ORG}/${SITE}/${REF}/*"
 ```
+
+**▶ Recommended Next Actions:**
+1. Hard-refresh your browser — `Cmd+Shift+R` (Mac) / `Ctrl+Shift+R` (Windows)
+2. Allow 10–15 seconds before checking — full site purge takes longer to propagate than single-path purge
+3. If specific pages remain stale, republish them
+   ```
+   publish {path}
+   ```
 
 ## Natural Language Patterns
 

@@ -34,6 +34,17 @@ data.sites.forEach((s, i) => console.log(\`\${i + 1}. \${s.name} → https://mai
 "
 ```
 
+**▶ Recommended Next Actions:**
+1. Switch to a specific site to operate on it
+   ```
+   switch to {site}
+   ```
+2. Preview a page on a specific site
+   ```
+   preview {path}
+   ```
+
+
 ### Detect Repoless Setup
 
 ```bash
@@ -48,6 +59,16 @@ else
 fi
 ```
 
+**▶ Recommended Next Actions:**
+1. Switch to a specific site in the repoless org
+   ```
+   switch to {site}
+   ```
+2. Note: code sync affects all sites in a repoless setup — run with care
+   ```
+   sync code
+   ```
+
 ### Switch Site
 
 ```bash
@@ -61,6 +82,15 @@ console.log('Switched to site: ${NEW_SITE}');
 ```
 
 **Success:** `Switched to site: {site}`
+**▶ Recommended Next Actions:**
+1. Preview a page on the newly selected site
+   ```
+   preview {path}
+   ```
+2. Verify the site configuration
+   ```
+   show site config
+   ```
 
 ### Switch Branch
 
@@ -76,12 +106,35 @@ console.log('Preview URL: https://${NEW_BRANCH}--' + config.site + '--' + config
 ```
 
 **Success:** `Switched to branch: {ref} (https://{ref}--{site}--{org}.aem.page)`
+**▶ Recommended Next Actions:**
+1. Preview a page to confirm the branch is working
+   ```
+   preview {path}
+   ```
+2. Switch back to main when done
+   ```
+   use branch main
+   ```
 
 ### Show Current Config
 
 ```bash
 cat .claude-plugin/project-config.json
 ```
+
+**▶ Recommended Next Actions:**
+1. Switch to a different site
+   ```
+   switch to {site}
+   ```
+2. Switch to a feature branch for testing
+   ```
+   use branch {branchName}
+   ```
+3. List all available sites in this org
+   ```
+   list sites
+   ```
 
 ## Scope Differences in Repoless
 

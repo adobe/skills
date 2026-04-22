@@ -56,6 +56,20 @@ Returns:
 }
 ```
 
+**▶ Recommended Next Actions:**
+1. Grant admin access to a user
+   ```
+   add {email} as admin
+   ```
+2. Grant author access to a user
+   ```
+   add {email} as author
+   ```
+3. Remove a user's access
+   ```
+   remove {role} {email}
+   ```
+
 ### Add Admin
 
 **Requires Admin role.**
@@ -69,6 +83,15 @@ curl -s -X POST \
 ```
 
 **Success:** `Added {email} as admin`
+**▶ Recommended Next Actions:**
+1. Verify the user appears in the access list
+   ```
+   list users
+   ```
+2. Confirm the user can perform admin operations
+   ```
+   who am i
+   ```
 
 ### Add Author
 
@@ -83,6 +106,15 @@ curl -s -X POST \
 ```
 
 **Success:** `Added {email} as author`
+**▶ Recommended Next Actions:**
+1. Verify the user appears in the access list
+   ```
+   list users
+   ```
+2. Review all roles currently granted on this site
+   ```
+   show permissions
+   ```
 
 ### Remove User
 
@@ -102,6 +134,15 @@ curl -s -X DELETE \
 ```
 
 **Success:** `Removed {email} from {role}`
+**▶ Recommended Next Actions:**
+1. Confirm the user has been removed from the access list
+   ```
+   list users
+   ```
+2. If the user also needs to be removed from the org
+   ```
+   remove user from org
+   ```
 
 ### Get Current User Profile
 
@@ -112,6 +153,15 @@ curl -s \
 ```
 
 **Success:** `Logged in as {email} ({name})`
+**▶ Recommended Next Actions:**
+1. Check all users who have access to this site
+   ```
+   list users
+   ```
+2. View site configuration to see your permissions scope
+   ```
+   show site config
+   ```
 
 ### List Org Users
 
@@ -120,6 +170,16 @@ curl -s \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/config/${ORG}/users"
 ```
+
+**▶ Recommended Next Actions:**
+1. Add a new user to the organization
+   ```
+   add user to org
+   ```
+2. Remove a user from the organization
+   ```
+   remove user from org
+   ```
 
 ### Add Org User
 
@@ -132,6 +192,16 @@ curl -s -X POST \
   -d '{"email": "user@example.com"}' \
   "https://admin.hlx.page/config/${ORG}/users"
 ```
+
+**▶ Recommended Next Actions:**
+1. Confirm the user was added to the org
+   ```
+   list org users
+   ```
+2. Grant site-level access to the new org user
+   ```
+   add {email} as author
+   ```
 
 ### Remove Org User
 
@@ -146,6 +216,16 @@ curl -s -X DELETE \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/config/${ORG}/users/${USER_ID}"
 ```
+
+**▶ Recommended Next Actions:**
+1. Confirm the user has been removed from the org
+   ```
+   list org users
+   ```
+2. Also remove site-level access if not already done
+   ```
+   remove {role} {email}
+   ```
 
 ## Natural Language Patterns
 

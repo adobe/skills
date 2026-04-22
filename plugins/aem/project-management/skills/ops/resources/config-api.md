@@ -45,6 +45,16 @@ curl -s \
   "https://admin.hlx.page/config/${ORG}.json"
 ```
 
+**▶ Recommended Next Actions:**
+1. Update org config if changes are required
+   ```
+   update org config
+   ```
+2. Read site-level config for a specific site
+   ```
+   show site config
+   ```
+
 ### Update Organization Config
 
 **Requires Admin role.**
@@ -57,6 +67,16 @@ curl -s -X POST \
   "https://admin.hlx.page/config/${ORG}.json"
 ```
 
+**▶ Recommended Next Actions:**
+1. Verify the update was applied correctly
+   ```
+   show org config
+   ```
+2. Preview pages that depend on this config to confirm changes
+   ```
+   preview {path}
+   ```
+
 ### Create Organization Config
 
 **Requires Admin role. Fails if org already exists.**
@@ -68,6 +88,16 @@ curl -s -X PUT \
   -d '{"property": "value"}' \
   "https://admin.hlx.page/config/${ORG}.json"
 ```
+
+**▶ Recommended Next Actions:**
+1. Verify the new org config was created correctly
+   ```
+   show org config
+   ```
+2. Add a site config under this org
+   ```
+   show site config
+   ```
 
 ### Delete Organization Config
 
@@ -86,6 +116,16 @@ curl -s -X DELETE \
   "https://admin.hlx.page/config/${ORG}.json"
 ```
 
+**▶ Recommended Next Actions:**
+1. Recreate the org config if the deletion was unintentional
+   ```
+   create org config
+   ```
+2. Verify all sites under this org are still accessible
+   ```
+   list sites
+   ```
+
 ### Read Site Config
 
 ```bash
@@ -93,6 +133,16 @@ curl -s \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/config/${ORG}/${SITE}.json"
 ```
+
+**▶ Recommended Next Actions:**
+1. Update site config if changes are required
+   ```
+   update site config
+   ```
+2. View org-level config that applies across all sites
+   ```
+   show org config
+   ```
 
 ### Update Site Config
 
@@ -106,6 +156,16 @@ curl -s -X POST \
   "https://admin.hlx.page/config/${ORG}/${SITE}.json"
 ```
 
+**▶ Recommended Next Actions:**
+1. Verify the update was applied correctly
+   ```
+   show site config
+   ```
+2. Preview pages to confirm the config change takes effect
+   ```
+   preview {path}
+   ```
+
 ### Create Site Config
 
 **Requires Admin role. Fails if site already exists.**
@@ -117,6 +177,16 @@ curl -s -X PUT \
   -d '{"property": "value"}' \
   "https://admin.hlx.page/config/${ORG}/${SITE}.json"
 ```
+
+**▶ Recommended Next Actions:**
+1. Verify the new site config was created correctly
+   ```
+   show site config
+   ```
+2. Update it with additional properties as needed
+   ```
+   update site config
+   ```
 
 ### Delete Site Config
 
@@ -135,6 +205,16 @@ curl -s -X DELETE \
   "https://admin.hlx.page/config/${ORG}/${SITE}.json"
 ```
 
+**▶ Recommended Next Actions:**
+1. Recreate the site config if the deletion was unintentional
+   ```
+   create site config
+   ```
+2. Verify the site is still accessible
+   ```
+   check status of /
+   ```
+
 ### Read Robots.txt
 
 ```bash
@@ -142,6 +222,16 @@ curl -s \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/config/${ORG}/${SITE}.json/robots.txt"
 ```
+
+**▶ Recommended Next Actions:**
+1. Update robots.txt if crawler rules need to change
+   ```
+   update robots.txt
+   ```
+2. Regenerate sitemap after reviewing crawler coverage
+   ```
+   generate sitemap
+   ```
 
 ### Update Robots.txt
 
@@ -156,6 +246,16 @@ Disallow: /private/
 Allow: /' \
   "https://admin.hlx.page/config/${ORG}/${SITE}.json/robots.txt"
 ```
+
+**▶ Recommended Next Actions:**
+1. Verify the updated robots.txt is correct
+   ```
+   show robots.txt
+   ```
+2. Regenerate sitemap after crawler rules change
+   ```
+   generate sitemap
+   ```
 
 ## Natural Language Patterns
 

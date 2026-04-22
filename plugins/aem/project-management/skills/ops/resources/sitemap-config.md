@@ -25,6 +25,16 @@ curl -s \
   "https://admin.hlx.page/config/${ORG}/${SITE}/helix-sitemap.yaml"
 ```
 
+**▶ Recommended Next Actions:**
+1. Update the sitemap configuration if rules need to change
+   ```
+   update sitemap config
+   ```
+2. Regenerate the sitemap to apply current rules
+   ```
+   generate sitemap
+   ```
+
 ### Update Sitemap Configuration
 
 **Requires Admin role.**
@@ -36,6 +46,16 @@ curl -s -X POST \
   --data-binary @helix-sitemap.yaml \
   "https://admin.hlx.page/config/${ORG}/${SITE}/helix-sitemap.yaml"
 ```
+
+**▶ Recommended Next Actions:**
+1. Verify the config was saved correctly
+   ```
+   show sitemap config
+   ```
+2. Regenerate the sitemap to apply the updated rules
+   ```
+   generate sitemap
+   ```
 
 ## Natural Language Patterns
 

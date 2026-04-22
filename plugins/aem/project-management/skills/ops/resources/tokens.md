@@ -29,6 +29,16 @@ curl -s \
   "https://admin.hlx.page/config/${ORG}/${SITE}/tokens"
 ```
 
+**▶ Recommended Next Actions:**
+1. Create a new token for a service or pipeline
+   ```
+   create token
+   ```
+2. Revoke a token that is no longer in use
+   ```
+   revoke token {tokenId}
+   ```
+
 ### Create Token
 
 **Requires Admin role.**
@@ -44,6 +54,15 @@ curl -s -X POST \
 **Success:** `Created token: {name} (ID: {tokenId})`
 
 **Important:** Token value is only returned once at creation. Store it securely.
+**▶ Recommended Next Actions:**
+1. List tokens to confirm creation
+   ```
+   list tokens
+   ```
+2. Revoke immediately if the token value was exposed
+   ```
+   revoke token {tokenId}
+   ```
 
 ### Get Token
 
@@ -54,6 +73,16 @@ curl -s \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/config/${ORG}/${SITE}/tokens/${TOKEN_ID}"
 ```
+
+**▶ Recommended Next Actions:**
+1. Revoke this token if it is no longer needed or was exposed
+   ```
+   revoke token {tokenId}
+   ```
+2. List all tokens to audit active access
+   ```
+   list tokens
+   ```
 
 ### Revoke Token
 
@@ -70,6 +99,15 @@ curl -s -X DELETE \
 ```
 
 **Success:** `Revoked token: {tokenId}`
+**▶ Recommended Next Actions:**
+1. List tokens to confirm removal
+   ```
+   list tokens
+   ```
+2. Create a replacement token for the affected system
+   ```
+   create token
+   ```
 
 ## Natural Language Patterns
 

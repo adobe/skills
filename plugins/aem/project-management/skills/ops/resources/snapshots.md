@@ -36,6 +36,16 @@ curl -s \
   "https://admin.hlx.page/snapshot/${ORG}/${SITE}/main"
 ```
 
+**▶ Recommended Next Actions:**
+1. View the contents of a specific snapshot
+   ```
+   show snapshot {id}
+   ```
+2. Create a new snapshot for an upcoming release
+   ```
+   create snapshot {id}
+   ```
+
 ### Create/Update Snapshot Manifest
 
 ```bash
@@ -47,6 +57,15 @@ curl -s -X POST \
 ```
 
 **Success:** `Snapshot "{id}" created`
+**▶ Recommended Next Actions:**
+1. Add pages to the snapshot
+   ```
+   add {path} to snapshot {id}
+   ```
+2. View the snapshot manifest to review contents
+   ```
+   show snapshot {id}
+   ```
 
 ### Get Snapshot Manifest
 
@@ -55,6 +74,20 @@ curl -s \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/snapshot/${ORG}/${SITE}/main/${SNAPSHOT_ID}"
 ```
+
+**▶ Recommended Next Actions:**
+1. Add more pages to the snapshot
+   ```
+   add {path} to snapshot {id}
+   ```
+2. Publish the snapshot when all pages are ready
+   ```
+   publish snapshot {id}
+   ```
+3. Request a review before publishing
+   ```
+   lock snapshot {id} for review
+   ```
 
 ### Add Resource to Snapshot
 
@@ -65,6 +98,19 @@ curl -s -X POST \
 ```
 
 **Success:** `Added {path} to snapshot "{id}"`
+**▶ Recommended Next Actions:**
+1. View the manifest to confirm the addition
+   ```
+   show snapshot {id}
+   ```
+2. Add more pages to the snapshot
+   ```
+   add {path} to snapshot {id}
+   ```
+3. Publish the snapshot when all pages are ready
+   ```
+   publish snapshot {id}
+   ```
 
 ### Bulk Add Resources
 
@@ -76,6 +122,16 @@ curl -s -X POST \
   "https://admin.hlx.page/snapshot/${ORG}/${SITE}/main/${SNAPSHOT_ID}/*"
 ```
 
+**▶ Recommended Next Actions:**
+1. Verify all paths were added correctly
+   ```
+   show snapshot {id}
+   ```
+2. Publish the snapshot when the content is ready
+   ```
+   publish snapshot {id}
+   ```
+
 ### Remove Resource from Snapshot
 
 ```bash
@@ -83,6 +139,16 @@ curl -s -X DELETE \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/snapshot/${ORG}/${SITE}/main/${SNAPSHOT_ID}${PATH}"
 ```
+
+**▶ Recommended Next Actions:**
+1. Verify the resource was removed from the manifest
+   ```
+   show snapshot {id}
+   ```
+2. Add a replacement resource if needed
+   ```
+   add {path} to snapshot {id}
+   ```
 
 ### Delete Entire Snapshot
 
@@ -99,6 +165,16 @@ curl -s -X DELETE \
   "https://admin.hlx.page/snapshot/${ORG}/${SITE}/main/${SNAPSHOT_ID}"
 ```
 
+**▶ Recommended Next Actions:**
+1. Confirm the snapshot no longer exists
+   ```
+   list snapshots
+   ```
+2. Create a new snapshot if the deletion was to start fresh
+   ```
+   create snapshot {id}
+   ```
+
 ### Publish Single Resource
 
 ```bash
@@ -106,6 +182,20 @@ curl -s -X POST \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/snapshot/${ORG}/${SITE}/main/${SNAPSHOT_ID}${PATH}?publish=true"
 ```
+
+**▶ Recommended Next Actions:**
+1. Verify the page is live
+   ```
+   check status of {path}
+   ```
+2. Purge CDN cache if the page appears stale
+   ```
+   purge cache of {path}
+   ```
+3. Publish the remaining pages in the snapshot
+   ```
+   publish snapshot {id}
+   ```
 
 ### Publish Entire Snapshot
 
@@ -118,6 +208,15 @@ curl -s -X POST \
 ```
 
 **Success:** `Published snapshot "{id}" - {count} pages now live`
+**▶ Recommended Next Actions:**
+1. Verify pages are live
+   ```
+   check status of {path}
+   ```
+2. Purge CDN cache if pages appear stale
+   ```
+   purge cache of {path}
+   ```
 
 ### Request Review (Lock)
 
@@ -128,6 +227,15 @@ curl -s -X POST \
 ```
 
 **Success:** `Snapshot "{id}" locked for review`
+**▶ Recommended Next Actions:**
+1. Approve the snapshot once review is complete
+   ```
+   approve snapshot {id}
+   ```
+2. Reject if changes are required
+   ```
+   reject snapshot {id}
+   ```
 
 ### Approve Snapshot
 
@@ -138,6 +246,15 @@ curl -s -X POST \
 ```
 
 **Success:** `Snapshot "{id}" approved`
+**▶ Recommended Next Actions:**
+1. Publish the approved snapshot to live
+   ```
+   publish snapshot {id}
+   ```
+2. View the manifest one final time before publishing
+   ```
+   show snapshot {id}
+   ```
 
 ### Reject Snapshot
 
@@ -148,6 +265,15 @@ curl -s -X POST \
 ```
 
 **Success:** `Snapshot "{id}" rejected`
+**▶ Recommended Next Actions:**
+1. Review the manifest and update pages as needed
+   ```
+   show snapshot {id}
+   ```
+2. Request a new review after changes are made
+   ```
+   lock snapshot {id} for review
+   ```
 
 ## Natural Language Patterns
 

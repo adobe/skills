@@ -40,6 +40,20 @@ curl -s -X POST \
 
 **Success:** `Code synced for {owner}/{repo}`
 
+**▶ Recommended Next Actions:**
+1. Verify the deployment completed successfully
+   ```
+   check code status of {path}
+   ```
+2. Preview a page to confirm code changes render correctly
+   ```
+   preview {path}
+   ```
+3. If CDN is still serving previous JS/CSS, purge cache
+   ```
+   purge cache of {path}
+   ```
+
 ### Sync Specific File
 
 ```bash
@@ -55,6 +69,20 @@ curl -s -X POST \
   "https://admin.hlx.page/code/${CODE_OWNER}/${CODE_REPO}/main/blocks/hero/hero.js"
 ```
 
+**▶ Recommended Next Actions:**
+1. Verify the file was updated on the code bus
+   ```
+   check code status of {path}
+   ```
+2. Preview affected pages to confirm the change renders
+   ```
+   preview {pagePath}
+   ```
+3. If CDN is still serving the previous version, purge cache
+   ```
+   purge cache of {pagePath}
+   ```
+
 ### Code Status
 
 ```bash
@@ -62,6 +90,20 @@ curl -s \
   -H "authorization: Bearer ${IMS_TOKEN}" \
   "https://admin.hlx.page/code/${CODE_OWNER}/${CODE_REPO}/${REF}${PATH}"
 ```
+
+**▶ Recommended Next Actions:**
+1. If the file is out of date, sync it
+   ```
+   sync file {path}
+   ```
+2. To pull all latest changes from the repository
+   ```
+   sync code
+   ```
+3. Preview pages that depend on this file to verify behavior
+   ```
+   preview {pagePath}
+   ```
 
 ### Delete Code
 
@@ -76,6 +118,20 @@ curl -s -X DELETE \
   -H "authorization: Bearer ${IMS_TOKEN}" \
   "https://admin.hlx.page/code/${CODE_OWNER}/${CODE_REPO}/${REF}${PATH}"
 ```
+
+**▶ Recommended Next Actions:**
+1. Confirm the file has been removed from the code bus
+   ```
+   check code status of {path}
+   ```
+2. Purge CDN cache to stop serving the deleted file
+   ```
+   purge cache of {path}
+   ```
+3. Preview affected pages to verify no regressions
+   ```
+   preview {pagePath}
+   ```
 
 ## Repoless Warning
 

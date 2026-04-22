@@ -29,6 +29,19 @@ curl -s -X POST \
 **Default path:** `/sitemap.xml`
 
 **Success:** `Sitemap generated at {path}`
+**▶ Recommended Next Actions:**
+1. Verify the sitemap is accessible at the generated path
+   ```
+   show site config
+   ```
+2. Regenerate if new pages have been published since last run
+   ```
+   generate sitemap
+   ```
+3. Update sitemap rules if coverage is incomplete
+   ```
+   show sitemap config
+   ```
 
 ### Custom Sitemap Path
 
@@ -39,6 +52,20 @@ curl -s -X POST \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/sitemap/${ORG}/${SITE}/${REF}/sitemaps/blog.xml"
 ```
+
+**▶ Recommended Next Actions:**
+1. Verify the sitemap is accessible at the custom path
+   ```
+   show site config
+   ```
+2. Update sitemap rules if coverage is incomplete
+   ```
+   show sitemap config
+   ```
+3. Regenerate after publishing new pages
+   ```
+   generate sitemap
+   ```
 
 ## Natural Language Patterns
 

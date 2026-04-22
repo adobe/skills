@@ -27,6 +27,16 @@ curl -s \
   "https://admin.hlx.page/config/${ORG}/${SITE}/profiles/${PROFILE_ID}.json"
 ```
 
+**▶ Recommended Next Actions:**
+1. Update profile settings if changes are required
+   ```
+   update profile config
+   ```
+2. Preview pages to verify the current profile configuration
+   ```
+   preview {path}
+   ```
+
 ### Update Profile Configuration
 
 **Requires Admin role.**
@@ -40,6 +50,15 @@ curl -s -X POST \
 ```
 
 **Success:** `Updated profile config: {profileId}`
+**▶ Recommended Next Actions:**
+1. Verify the update was applied correctly
+   ```
+   show profile config
+   ```
+2. Preview pages to confirm the profile changes render correctly
+   ```
+   preview {path}
+   ```
 
 ### Create Profile Configuration
 
@@ -54,6 +73,15 @@ curl -s -X PUT \
 ```
 
 **Success:** `Created profile config: {profileId}`
+**▶ Recommended Next Actions:**
+1. Verify the profile was created correctly
+   ```
+   show profile config
+   ```
+2. Update with additional settings as needed
+   ```
+   update profile config
+   ```
 
 ### Delete Profile Configuration
 
@@ -73,6 +101,15 @@ curl -s -X DELETE \
 ```
 
 **Success:** `Deleted profile config: {profileId}`
+**▶ Recommended Next Actions:**
+1. Verify the profile no longer exists
+   ```
+   show profile config
+   ```
+2. Create a replacement profile if needed
+   ```
+   create profile {profileId}
+   ```
 
 ## Profile Configuration Properties
 

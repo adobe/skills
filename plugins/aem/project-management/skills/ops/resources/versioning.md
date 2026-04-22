@@ -27,6 +27,16 @@ curl -s \
   "https://admin.hlx.page/config/${ORG}.json/versions"
 ```
 
+**▶ Recommended Next Actions:**
+1. Inspect the contents of a specific version
+   ```
+   show version history
+   ```
+2. Restore a previous version if current config is broken
+   ```
+   restore version {versionName}
+   ```
+
 ### Get Version Details
 
 ```bash
@@ -34,6 +44,16 @@ curl -s \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/config/${ORG}.json/versions/${VERSION_NAME}"
 ```
+
+**▶ Recommended Next Actions:**
+1. Restore this version if it is the correct one
+   ```
+   restore version {versionName}
+   ```
+2. Compare with current config before restoring
+   ```
+   show org config
+   ```
 
 ### Delete Version
 
@@ -49,6 +69,16 @@ curl -s -X DELETE \
   "https://admin.hlx.page/config/${ORG}.json/versions/${VERSION_NAME}"
 ```
 
+**▶ Recommended Next Actions:**
+1. Confirm the version was removed
+   ```
+   list versions
+   ```
+2. Restore a different version if needed
+   ```
+   restore version {versionName}
+   ```
+
 ### Restore Version
 
 **Requires Admin role.**
@@ -62,6 +92,16 @@ curl -s -X POST \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/config/${ORG}.json/versions/${VERSION_NAME}"
 ```
+
+**▶ Recommended Next Actions:**
+1. Verify the restored configuration is correct
+   ```
+   show org config
+   ```
+2. Preview pages to confirm the config change takes effect
+   ```
+   preview {path}
+   ```
 
 ## Natural Language Patterns
 

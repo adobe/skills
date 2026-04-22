@@ -58,7 +58,21 @@ curl -s -X POST \
   "https://admin.hlx.page/preview/${ORG}/${SITE}/${REF}${PATH}"
 ```
 
-**Success:** `Previewed: https://{ref}--{site}--{org}.aem.page{path}`
+**Success:** `Previewed:{path}`
+
+**▶ Recommended Next Actions:**
+1. Open the preview URL to review content
+   ```
+   preview {path}
+   ```
+2. Promote to live when approved
+   ```
+   publish {path}
+   ```
+3. Verify timestamps if preview appears stale
+   ```
+   check status of {path}
+   ```
 
 ### Preview (Bulk)
 
@@ -98,6 +112,22 @@ curl -s -X POST \
   "https://admin.hlx.page/preview/${ORG}/${SITE}/${REF}/*"
 ```
 
+**Success (202):** Bulk preview job started — `job.name` returned.
+
+**▶ Recommended Next Actions:**
+1. Track progress
+   ```
+   check job status {jobName}
+   ```
+2. Once complete, review per-path results
+   ```
+   get job details {jobName}
+   ```
+3. Publish all pages when approved
+   ```
+   publish all pages {folder}/
+   ```
+
 ### Delete Preview
 
 **DESTRUCTIVE OPERATION - CONFIRMATION REQUIRED**
@@ -111,6 +141,12 @@ curl -s -X DELETE \
   "https://admin.hlx.page/preview/${ORG}/${SITE}/${REF}${PATH}"
 ```
 
+**▶ Recommended Next Actions:**
+1. Confirm preview layer shows 404
+   ```
+   check status of {path}
+   ```
+
 ### Publish (Single)
 
 ```bash
@@ -120,7 +156,18 @@ curl -s -X POST \
   "https://admin.hlx.page/live/${ORG}/${SITE}/${REF}${PATH}"
 ```
 
-**Success:** `Published: https://{ref}--{site}--{org}.aem.live{path}`
+**Success:** `Published:{path}`
+
+**▶ Recommended Next Actions:**
+1. Verify the live URL is accessible — `check status of {path}` (CDN propagation takes up to 60 seconds)
+2. If live URL shows stale content after 60 seconds
+   ```
+   purge cache of {path}
+   ```
+3. Verify `live.lastModified` was updated
+   ```
+   check status of {path}
+   ```
 
 ### Publish (Bulk)
 
@@ -143,6 +190,18 @@ curl -s -X POST \
   "https://admin.hlx.page/live/${ORG}/${SITE}/${REF}/*"
 ```
 
+**Success (202):** Bulk publish job started — `job.name` returned.
+
+**▶ Recommended Next Actions:**
+1. Track progress
+   ```
+   check job status {jobName}
+   ```
+2. If pages remain stale after job completion
+   ```
+   purge cache of {folder}/
+   ```
+
 ### Unpublish (Single)
 
 **Requires Admin role.**
@@ -161,7 +220,21 @@ curl -s -X DELETE \
   "https://admin.hlx.page/live/${ORG}/${SITE}/${REF}${PATH}"
 ```
 
-**Success:** `Unpublished {path} from live`
+**Success:** `Unpublished {path} from live` (HTTP 204)
+
+**▶ Recommended Next Actions:**
+1. Confirm live layer shows 404
+   ```
+   check status of {path}
+   ```
+2. Remove from search index so it no longer appears in results
+   ```
+   remove from index {path}
+   ```
+3. If preview also needs to be removed
+   ```
+   delete preview of {path}
+   ```
 
 ### Unpublish (Bulk)
 
@@ -184,6 +257,18 @@ curl -s -X DELETE \
   "https://admin.hlx.page/live/${ORG}/${SITE}/${REF}/*"
 ```
 
+**Success (202):** Bulk unpublish job started — `job.name` returned.
+
+**▶ Recommended Next Actions:**
+1. Track progress
+   ```
+   check job status {jobName}
+   ```
+2. Remove pages from search index
+   ```
+   reindex {folder}/
+   ```
+
 ### Check Status
 
 ```bash
@@ -191,6 +276,30 @@ curl -s \
   -H "authorization: token ${AUTH_TOKEN}" \
   "https://admin.hlx.page/status/${ORG}/${SITE}/${REF}${PATH}"
 ```
+
+**On success (200):** Display preview and live `status`, `lastModified`, and `lastModifiedBy`. Then diagnose:
+
+| Condition | Recommended Action |
+|-----------|-------------------|
+| `edit` newer than `preview` | Content changed since last preview |
+| `preview` newer than `live` | Preview is ahead of live |
+| Timestamps match, browser shows old content | CDN cache is stale |
+| `live.status` = 404 | Page not published yet |
+| All in sync | No action needed |
+
+**▶ Recommended Next Actions:**
+1. If edit is ahead of preview
+   ```
+   preview {path}
+   ```
+2. If preview is ahead of live
+   ```
+   publish {path}
+   ```
+3. If timestamps match but browser shows stale content
+   ```
+   purge cache of {path}
+   ```
 
 ### Bulk Status
 
@@ -201,6 +310,22 @@ curl -s -X POST \
   -d '{"paths": ["/page-1", "/page-2"]}' \
   "https://admin.hlx.page/status/${ORG}/${SITE}/${REF}/*"
 ```
+
+**Success (202):** Bulk status job started — `job.name` returned.
+
+**▶ Recommended Next Actions:**
+1. Track progress
+   ```
+   check job status {jobName}
+   ```
+2. Review per-path results once complete
+   ```
+   get job details {jobName}
+   ```
+3. Preview pages that are behind
+   ```
+   preview all pages {folder}/
+   ```
 
 ## Branch Support
 
@@ -214,7 +339,7 @@ curl -s -X POST \
   "https://admin.hlx.page/preview/${ORG}/${SITE}/${BRANCH}${PATH}"
 ```
 
-Branch URLs: `https://{branch}--{site}--{org}.aem.page{path}`
+Branch URLs: `https://{branch}--{site}--{org}.aem.live{path}`
 
 ## Natural Language Patterns
 

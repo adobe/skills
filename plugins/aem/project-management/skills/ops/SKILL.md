@@ -43,6 +43,17 @@ Execute admin operations on AEM Edge Delivery Services projects using natural la
 - Always use the full name "Edge Delivery Services" or "AEM Edge Delivery Services"
 - Show clear, actionable error messages when operations fail
 - Confirm destructive operations before executing
+- **Recommended Next Actions format:** Always place each command in its own fenced code block so users get a one-click copy button. Use this structure:
+
+  **▶ Recommended Next Actions:**
+  1. Description of action
+     ```
+     command {path}
+     ```
+  2. Description of action
+     ```
+     command {path}
+     ```
 
 ---
 

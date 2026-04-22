@@ -40,6 +40,16 @@ curl -s \
   "https://admin.hlx.page/config/${ORG}/secrets"
 ```
 
+**▶ Recommended Next Actions:**
+1. Create a new org-level secret for a shared integration
+   ```
+   create secret {name}
+   ```
+2. Delete a secret that is no longer in use
+   ```
+   delete secret {secretId}
+   ```
+
 ### Create Organization Secret
 
 **Requires Admin role.**
@@ -53,6 +63,15 @@ curl -s -X POST \
 ```
 
 **Success:** `Created org secret: {name}`
+**▶ Recommended Next Actions:**
+1. List org secrets to confirm creation
+   ```
+   list org secrets
+   ```
+2. Create a site-level secret if the secret is site-specific
+   ```
+   create secret {name}
+   ```
 
 ### Read Organization Secret
 
@@ -63,6 +82,16 @@ curl -s \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/config/${ORG}/secrets/${SECRET_ID}"
 ```
+
+**▶ Recommended Next Actions:**
+1. Delete this secret if it is no longer needed
+   ```
+   delete secret {secretId}
+   ```
+2. List all org secrets to audit what is in use
+   ```
+   list org secrets
+   ```
 
 ### Delete Organization Secret
 
@@ -82,6 +111,15 @@ curl -s -X DELETE \
 ```
 
 **Success:** `Deleted org secret: {secretId}`
+**▶ Recommended Next Actions:**
+1. List org secrets to confirm removal
+   ```
+   list org secrets
+   ```
+2. If any integration broke, create a replacement secret
+   ```
+   create secret {name}
+   ```
 
 ### List Site Secrets
 
@@ -92,6 +130,16 @@ curl -s \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/config/${ORG}/${SITE}/secrets"
 ```
+
+**▶ Recommended Next Actions:**
+1. Create a new site-level secret for an integration
+   ```
+   create secret {name}
+   ```
+2. Delete a secret that is no longer in use
+   ```
+   delete secret {secretId}
+   ```
 
 ### Create Site Secret
 
@@ -106,6 +154,15 @@ curl -s -X POST \
 ```
 
 **Success:** `Created site secret: {name}`
+**▶ Recommended Next Actions:**
+1. List site secrets to confirm creation
+   ```
+   list secrets
+   ```
+2. Create an org-level secret if the secret applies to all sites
+   ```
+   list org secrets
+   ```
 
 ### Read Site Secret
 
@@ -116,6 +173,16 @@ curl -s \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/config/${ORG}/${SITE}/secrets/${SECRET_ID}"
 ```
+
+**▶ Recommended Next Actions:**
+1. Delete this secret if it is no longer needed
+   ```
+   delete secret {secretId}
+   ```
+2. List all site secrets to audit what is in use
+   ```
+   list secrets
+   ```
 
 ### Delete Site Secret
 
@@ -135,6 +202,15 @@ curl -s -X DELETE \
 ```
 
 **Success:** `Deleted site secret: {secretId}`
+**▶ Recommended Next Actions:**
+1. List site secrets to confirm removal
+   ```
+   list secrets
+   ```
+2. If any integration broke, create a replacement secret
+   ```
+   create secret {name}
+   ```
 
 ## Natural Language Patterns
 

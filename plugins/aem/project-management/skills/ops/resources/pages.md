@@ -60,6 +60,21 @@ else
 fi
 ```
 
+
+**▶ Recommended Next Actions:**
+1. Preview pages that appear out of date
+   ```
+   preview {path}
+   ```
+2. Publish pages that are behind live
+   ```
+   publish {path}
+   ```
+3. Check detailed status across preview and live layers
+   ```
+   check status of {path}
+   ```
+
 ## List Pages with Filter
 
 Filter by path prefix:
@@ -87,6 +102,17 @@ echo "$RESPONSE" | node -e "
   }
 "
 ```
+
+
+**▶ Recommended Next Actions:**
+1. Preview the filtered set of pages
+   ```
+   preview all pages {folder}/
+   ```
+2. Publish the filtered set of pages
+   ```
+   publish all pages {folder}/
+   ```
 
 ## Custom Index Name
 
