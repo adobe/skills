@@ -1,0 +1,34 @@
+{
+  "//": "AEMaaCS purge scheduler config — replaces the JMX purgeCompleted() op.",
+  "//": "Factory PID: com.adobe.granite.workflow.purge.Scheduler",
+  "//": "Filename convention: <factoryPid>-<uniqueAlias>.cfg.json",
+  "//": "Deploy under ui.config/src/main/content/jcr_root/apps/<project>/osgiconfig/config.author/",
+  "//": "",
+  "//": "SCHEDULING: this PID does NOT take a cron expression. Purge runs are",
+  "//": "triggered by the Granite Maintenance Task framework. Configure the daily",
+  "//": "or weekly maintenance window at /libs/granite/operations/config/maintenance",
+  "//": "(or via sling:osgiConfig for com.adobe.granite.maintenance.impl.TaskScheduler).",
+  "//": "Every PurgeScheduler config instance becomes a Maintenance Task that runs",
+  "//": "in that window. Verified against PurgeScheduler.java — only the properties",
+  "//": "below are read; any extra properties are silently ignored.",
+
+  "//": "Descriptive name shown in the Maintenance Task console.",
+  "scheduledpurge.name": "Daily purge of completed workflow instances",
+
+  "//": "Which workflow states to purge. This field is an ARRAY of string options.",
+  "//": "Valid: RUNNING, COMPLETED, SUSPENDED, ABORTED, FAILED.",
+  "//": "(Verified: @Property unbounded = PropertyUnbounded.ARRAY on PROP_STATUS.)",
+  "scheduledpurge.workflowStatus": [
+    "COMPLETED"
+  ],
+
+  "//": "Age threshold in days. Instances older than this (matching workflowStatus) are purged.",
+  "scheduledpurge.daysold:Integer": 30,
+
+  "//": "Optional: limit to specific workflow models. Empty array = all models.",
+  "scheduledpurge.modelIds": [],
+
+  "//": "If true, also purges any package payload referenced by the instance.",
+  "//": "Leave false unless you are sure no other content references these packages.",
+  "scheduledpurge.purgePackagePayload:Boolean": false
+}

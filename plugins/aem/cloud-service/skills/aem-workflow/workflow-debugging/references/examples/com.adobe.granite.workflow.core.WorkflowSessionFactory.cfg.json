@@ -1,0 +1,26 @@
+{
+  "//": "AEMaaCS OSGi config for Granite Workflow Session Factory.",
+  "//": "Deploy under ui.config/src/main/content/jcr_root/apps/<project>/osgiconfig/config.author/",
+  "//": "or config.author.prod/ — run-mode-scoped; publish is rarely needed for workflow.",
+
+  "//": "NOTE: workflow parallelism is NOT controlled from this PID.",
+  "//": "  Use org.apache.sling.event.jobs.QueueConfiguration targeted at the",
+  "//": "  'Granite Workflow Queue' (topics: com/adobe/granite/workflow/job/*)",
+  "//": "  and tune queue.maxparallel there. See the companion example file",
+  "//": "  org.apache.sling.event.jobs.QueueConfiguration-granitewfe.cfg.json.",
+
+  "//": "Retries for a failing job before it is moved to failed / inbox retry.",
+  "cq.workflow.job.retry:Integer": 3,
+
+  "//": "true = only the assignee can see and complete a work item.",
+  "granite.workflow.enforceWorkitemAssigneePermissions:Boolean": true,
+
+  "//": "true = only the initiator (or superuser) can terminate / suspend / resume.",
+  "granite.workflow.enforceWorkflowInitiatorPermissions:Boolean": true,
+
+  "//": "Superusers that bypass initiator / assignee enforcement.",
+  "//": "On AEMaaCS, prefer using a group provisioned via repoinit; keep this list tight.",
+  "cq.workflow.superuser": [
+    "workflow-administrators"
+  ]
+}

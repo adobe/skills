@@ -1,0 +1,45 @@
+{
+  "//": "AEMaaCS OSGi config for the Sling 'default' thread pool.",
+  "//": "This is the pool that fires Quartz-scheduled jobs including",
+  "//": "com/adobe/granite/workflow/timeout/job — i.e. workflow auto-advancement.",
+  "//": "Deploy under ui.config/src/main/content/jcr_root/apps/<project>/osgiconfig/config.author/",
+  "//": "",
+  "//": "AEMaaCS CAVEAT: some Sling core configs are reserved / filtered by the",
+  "//": "platform. After deploying, verify the pool actually picked up your values:",
+  "//": "  /system/console/status-threads  → look for the 'default' pool row, confirm",
+  "//": "                                   maxPoolSize and block policy match.",
+  "//": "If the numbers don't change, this PID is Adobe-managed on your environment —",
+  "//": "do NOT try to work around it. Open an Adobe Support ticket describing the",
+  "//": "saturation evidence (thread dump + thread-pool status) and ask Engineering",
+  "//": "to lift the pool size or change block policy for that environment.",
+
+  "name": "default",
+
+  "//": "Minimum queued tasks beyond which new threads are created.",
+  "queueSize:Integer": -1,
+
+  "//": "Maximum concurrent threads. 20 is the AEM default; raise if you have",
+  "//": "many custom schedulers. Workflow auto-advance needs headroom here.",
+  "maxPoolSize:Integer": 50,
+
+  "//": "Core (always-alive) pool size.",
+  "minPoolSize:Integer": 20,
+
+  "//": "Idle thread keepalive in seconds.",
+  "keepAliveTime:Long": 60000,
+
+  "//": "RUN = caller-runs (safe; degrades gracefully under pressure).",
+  "//": "ABORT = rejects the task — silently drops workflow timeout jobs when pool is full.",
+  "//": "Leave RUN unless you have a specific reason to drop tasks.",
+  "blockPolicy": "RUN",
+
+  "//": "Shutdown waits for queued tasks if true.",
+  "shutdownGraceful:Boolean": true,
+  "shutdownWaitTimeMs:Integer": 0,
+
+  "//": "Thread priority: NORM is correct for workflow / scheduler workloads.",
+  "priority": "NORM",
+
+  "//": "Daemon threads die with the JVM; appropriate for a pool-managed worker.",
+  "daemon:Boolean": true
+}

@@ -1,0 +1,44 @@
+{
+  "//": "AEMaaCS OSGi config for the Granite Workflow Queue.",
+  "//": "This is the real knob for workflow parallelism — NOT cq.workflow.job.max.procs",
+  "//": "(which does not exist as an OSGi property; verified against",
+  "//": "com.adobe.granite.workflow.core.WorkflowSessionFactory source).",
+  "//": "",
+  "//": "Factory PID: org.apache.sling.event.jobs.QueueConfiguration",
+  "//": "Filename: <factoryPid>-<alias>.cfg.json  (alias is arbitrary; granitewfe is",
+  "//": "conventional for the Granite Workflow queue).",
+  "//": "Deploy under ui.config/src/main/content/jcr_root/apps/<project>/osgiconfig/config.author/",
+  "//": "",
+  "//": "CAUTION: this overrides the OOB Granite Workflow Queue. You MUST include",
+  "//": "every property needed for that queue (name, topics, type, retries, etc.) —",
+  "//": "OSGi does not merge factory configs. If you omit queue.topics your override",
+  "//": "silently does nothing; if you omit queue.type you get an invalid queue.",
+
+  "queue.name": "Granite Workflow Queue",
+
+  "//": "Topics the queue consumes. Do NOT change; these are the workflow job topics",
+  "//": "produced by the engine.",
+  "queue.topics": [
+    "com/adobe/granite/workflow/job/*"
+  ],
+
+  "//": "TOPIC_ROUND_ROBIN is the OOB type for this queue — keeps per-model fairness.",
+  "queue.type": "TOPIC_ROUND_ROBIN",
+
+  "//": "THIS is the parallelism knob. OOB default is 1.",
+  "//": "Raise cautiously — higher values mean more lock contention on /var/workflow.",
+  "//": "Observed safe range on AEMaaCS author: 1–10 depending on workflow complexity.",
+  "queue.maxparallel:Integer": 4,
+
+  "//": "Retries before the job lands in the failed state. Matches cq.workflow.job.retry.",
+  "queue.retries:Integer": 10,
+
+  "//": "Delay between retries (ms).",
+  "queue.retrydelay:Long": 2000,
+
+  "//": "Priority of the queue's threads.",
+  "queue.priority": "NORM",
+
+  "//": "Keep queue enabled at all times.",
+  "service.ranking:Integer": 100
+}
