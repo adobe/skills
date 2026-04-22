@@ -1,8 +1,10 @@
-# Workflow Debugging Index (Machine-Readable)
+# Workflow Debugging Index (Machine-Readable) — Cloud Service
 
 **Purpose:** Map symptoms to runbooks and root-cause categories. Use for production debugging and AI-driven Jira analysis.
 
 **Conventions:** Each entry has a stable `symptom_id`, `root_cause_categories`, and `runbook_ref`. Parsers should key on `symptom_id` or exact symptom phrase.
+
+> **Variant:** AEM as a Cloud Service. The `symptom_id` set and `root_cause_categories` are the same across variants — they describe *what the user observes*, not the remediation channel. But the `runbook_ref` files under `runbooks/` in this folder are Cloud Service-specific: they use `StaleWorkflowServlet`, Purge Scheduler OSGi configs, `/aem/inbox`, and Cloud Manager logs in place of JMX MBeans, Felix Console, and on-disk `error.log`. For the JMX-based runbooks, use the 6.5 LTS / AMS variant of this skill.
 
 ---
 

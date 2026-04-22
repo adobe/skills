@@ -1,6 +1,13 @@
-# AEM Workflow – Error Patterns
+# AEM Workflow — Error Patterns (Cloud Service)
 
-Common error patterns and log signatures to look for when debugging workflow issues.
+Common error patterns and log signatures to look for when debugging workflow issues on **AEM as a Cloud Service**.
+
+> **Where to get these logs on AEMaaCS:**
+> - **Cloud Manager → Environments → Logs** — download `error.log` (per-hour rollups) or use log streaming.
+> - **Splunk / customer log-aggregator** — if the customer forwards AEM logs, search there.
+> - **Developer Console → Logs** — live tail on lower envs; not available in production.
+> - `jstack` / file-system `tail -f error.log` are **not available** on AEMaaCS. If you need a thread dump, use Developer Console → Status → Thread Dump (lower envs) or open an Adobe Support ticket with a timestamp range.
+> Every log signature below is grep-able in Cloud Manager's downloaded logs; add instance ID, model name, or payload path to narrow.
 
 ---
 
@@ -113,12 +120,16 @@ Generic workflow API failure. Check message and cause for root reason.
 
 ---
 
-## Where to look in logs
+## Where to look in logs (by logger)
 
-- **JobHandler:** Step execution, retries, failure item creation.
-- **WorkflowSessionImpl:** Session refresh, complete, delegate, return, lock, terminate/resume/suspend.
-- **WorkflowLauncherImpl:** Launcher config add/remove/get.
-- **PurgeScheduler / WorkflowOperationsImpl:** Purge and repository errors.
-- **WorkflowSessionFactory:** Startup, model loading, variable persist/fetch.
+| Logger class | What it tells you |
+|--------------|-------------------|
+| `com.adobe.granite.workflow.core.job.JobHandler` | Step execution, retries, failure item creation. |
+| `com.adobe.granite.workflow.core.WorkflowSessionImpl` | Session refresh, complete, delegate, return, lock, terminate / resume / suspend. |
+| `com.adobe.granite.workflow.core.launcher.WorkflowLauncherImpl` | Launcher config add / remove / get. |
+| `com.adobe.granite.workflow.core.job.PurgeScheduler` / `WorkflowOperationsImpl` | Purge and repository errors. |
+| `com.adobe.granite.workflow.core.WorkflowSessionFactory` | Startup, model loading, variable persist / fetch. |
 
-Use thread name `JobHandler: <instanceId>:<payloadPath>` to correlate with a specific workflow instance and payload.
+**Thread-name correlation on AEMaaCS:** the thread name `JobHandler: <instanceId>:<payloadPath>` ties log lines to a specific workflow instance and payload. Searching Cloud Manager logs for `JobHandler:` + the instance ID is the fastest way to reconstruct a single run.
+
+**To raise log levels on AEMaaCS:** deploy an `org.apache.sling.commons.log.LogManager.factory.config-<alias>.cfg.json` in `ui.config` with `org.apache.sling.commons.log.names=["com.adobe.granite.workflow"]` and `org.apache.sling.commons.log.level="debug"`. Commit + deploy via Cloud Manager pipeline. Felix Console runtime log-level changes are not durable on AEMaaCS.
