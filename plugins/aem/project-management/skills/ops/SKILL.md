@@ -163,14 +163,18 @@ Read `resources/config.md`:
 | User Intent | Resource Module |
 |-------------|-----------------|
 | preview, publish, unpublish, status, delete preview | `resources/content.md` |
-| cache, purge, clear cache, invalidate | `resources/cache.md` |
+| bulk status, status of all pages, get status of all pages | `resources/content.md` |
+| cache, purge, clear cache, invalidate, bust cache | `resources/cache.md` |
+| force purge, force clear, purge full cache | `resources/cache.md` |
 | sync code, deploy code, update code | `resources/code.md` |
 | reindex, index, remove from index, search | `resources/index.md` |
+| index status, show index status | `resources/index.md` |
 | sitemap, generate sitemap | `resources/sitemap.md` |
 | snapshot, staged release, bundle | `resources/snapshots.md` |
 | logs, audit, activity | `resources/logs.md` |
 | user, access, permission, who am i, add user, remove user | `resources/users.md` |
-| job, bulk operation, stop job | `resources/jobs.md` |
+| job, bulk operation, stop job, list jobs | `resources/jobs.md` |
+| job details, get job details | `resources/jobs.md` |
 | site, branch, switch, list sites | `resources/sites.md` |
 | org config, site config, robots.txt | `resources/config-api.md` |
 | secret, secrets, create secret, delete secret | `resources/secrets.md` |
@@ -187,7 +191,26 @@ Read `resources/config.md`:
 1. Read the appropriate resource file from `resources/`
 2. Follow instructions in that resource
 3. Execute the API call
-4. Return formatted result
+4. Handle the response using the table below — then return formatted result
+
+**Response Handler:**
+
+| HTTP | Meaning | Action |
+|------|---------|--------|
+| **200** | Success | Format and display result |
+| **204** | Success (no content) | Confirm completion — e.g. "Unpublished `/path` from live" |
+| **202** | Accepted (async job) | Show job name + `"To track: use ops skill to check job status {jobName}"` |
+| **400** | Bad request | Show raw API error message — it usually contains a specific fix hint |
+| **401** | Token expired | "Your session has expired. Provide a fresh IMS Bearer token: open DevTools → Network tab → copy `authorization: Bearer eyJ...` from any request." |
+| **403** | Insufficient permissions | "You don't have permission for this operation. This requires {Admin/Author} role on `{site}`." |
+| **404** (path) | Content not found | "Path `{path}` was not found. Verify it exists in your content source (SharePoint/DA)." |
+| **404** (org/site) | Not onboarded | "Org `{org}` or site `{site}` not found. It may not be onboarded to Admin Service." |
+| **422** | Validation failed | "Content failed validation: {error details from API response}" |
+| **429** | Rate limited | "Too many requests. Wait 30–60 seconds then retry." |
+| **500** | Server error | "Admin Service encountered an error. This is temporary — wait and retry. If persistent, check status.adobe.com." |
+| **502/503** | Unavailable | "Admin Service temporarily unavailable. Wait a few minutes and retry." |
+
+**Always include the raw API error message** when available — it often contains the specific fix (e.g. `wildcard paths are not supported with a markup mountpoint`).
 
 ---
 
@@ -196,11 +219,13 @@ Read `resources/config.md`:
 ### Content Operations
 - Keywords: preview, publish, unpublish, live, status, check
 - Path indicators: `/path`, "homepage", "the nav", "footer"
-- Bulk indicators: "and", comma-separated paths, "all pages under"
+- Bulk indicators: "and", comma-separated paths, "all pages under", "all pages /path/*"
+- Bulk status patterns: "get status of all pages /path/*", "status of all pages under /path", "bulk status"
 
 ### Cache Operations
 - Keywords: cache, purge, clear, invalidate, bust
-- Modifiers: force, hard
+- Modifiers: force, hard, full
+- Force purge patterns: "force clear", "purge full cache", "force purge", "full cache"
 
 ### Code Operations
 - Keywords: sync, deploy, code, update code
@@ -208,6 +233,7 @@ Read `resources/config.md`:
 
 ### Index Operations
 - Keywords: reindex, index, search, remove from search
+- Status patterns: "index status", "show index status of /path", "is /path indexed"
 
 ### Sitemap Operations
 - Keywords: sitemap, site map
@@ -226,6 +252,8 @@ Read `resources/config.md`:
 
 ### Job Management
 - Keywords: job, jobs, bulk, running, stop, cancel
+- Detail patterns: "get job details {name}", "job details {name}"
+- Status patterns: "how is job {name} doing", "check job {name}"
 
 ### Site/Branch Management
 - Keywords: site, sites, branch, switch
@@ -312,25 +340,6 @@ This skill works with AEM Edge Delivery Services projects that are:
 4. **Network access** - Can reach admin.hlx.page (not blocked by firewall)
 
 ---
-
-## Error Handling
-
-When API returns an error, explain the cause and how to fix it:
-
-| HTTP Code | Cause | Tell User | Fix |
-|-----------|-------|-----------|-----|
-| **400** | Malformed request | "The request format is invalid. Check the path or payload syntax." | Review path format, ensure JSON/YAML is valid |
-| **401** | Token expired or missing | "Your session has expired. You need to log in again." | Run `Skill({ skill: "project-management:auth" })` |
-| **403** | Insufficient permissions | "You don't have permission for this operation. This requires {Admin/Author} role." | Contact site admin to grant access |
-| **404** (on path) | Content doesn't exist | "The path '{path}' was not found. Check if it exists in your content source." | Verify path spelling, check SharePoint/Drive |
-| **404** (on org/site) | Org or site not configured | "The organization '{org}' or site '{site}' is not found. It may not be onboarded to Admin Service." | Verify org/site names, contact Adobe support if new project |
-| **409** | Conflict (e.g., already exists) | "This resource already exists. Use update instead of create." | Use POST instead of PUT |
-| **422** | Invalid content | "The content failed validation: {error details from API}" | Fix the specific validation error returned |
-| **429** | Rate limited | "Too many requests. Wait a moment before retrying." | Wait 30-60 seconds, then retry |
-| **500** | Server error | "The Admin Service encountered an error. This is temporary." | Wait and retry; if persistent, check status.adobe.com |
-| **502/503** | Service unavailable | "The Admin Service is temporarily unavailable." | Wait a few minutes and retry |
-
-**Always show the actual API error message** when available - it often contains specific details.
 
 ---
 
