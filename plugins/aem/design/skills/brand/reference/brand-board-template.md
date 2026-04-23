@@ -25,14 +25,34 @@ Render only what has data. Omit sections where the brand-profile field is null o
 
 ## Chassis · how it's presented
 
-The chassis determines navigation pattern, section order, hero shape, eyebrow conventions, spacing rhythm, typography emphasis, and motif placement. Available chassis live under `brand/reference/chassis/`:
+The chassis determines navigation pattern, hero shape, eyebrow conventions, spacing rhythm, typography emphasis, and demo-presentation style — the *presentation pattern*. It does NOT name sections; the data contract above owns that. The chassis library is shared across artifacts — brand boards, prototypes, and future aem-design artifacts all pick from the same library.
 
-- **`classic-archive`** — numbered sections, sticky top nav, masthead with metadata stamp, editorial-archival feel
-- **`dashboard`** — fixed left sidebar, cards-as-widgets, meters and status chips, operations-console feel
-- **`magazine`** — masthead with volume/issue/date, column text, pull quotes, magazine department heads
-- **`pinboard`** — no sticky nav, spatial cluster arrangement, handwritten labels, scrapbook overlap
+Available chassis live under [`../../_shared/chassis/`](../../_shared/chassis/):
 
-Read the chosen chassis's `.md` file in full before rendering. Each chassis specifies its nav, section order, hero shape, eyebrow conventions, spacing, typography register, and motif placement in detail.
+- **[`classic-archive`](../../_shared/chassis/classic-archive.md)** — sticky top nav, numbered eyebrows, text-first masthead, editorial-archival feel
+- **[`dashboard`](../../_shared/chassis/dashboard.md)** — fixed left sidebar, card-cluster hero, widget demos, operations-console feel
+- **[`magazine`](../../_shared/chassis/magazine.md)** — masthead with volume/issue/date, column text, pull quotes, magazine department heads
+- **[`pinboard`](../../_shared/chassis/pinboard.md)** — no sticky nav, spatial cluster arrangement, handwritten labels, scrapbook overlap
+
+Read the chosen chassis's `.md` file in full before rendering. Each chassis specifies its nav, hero pattern, eyebrow conventions, spacing, typography register, and demo style in detail.
+
+### Section order per chassis (board-specific application)
+
+Data-contract sections are presented in the order below when the chassis is applied to a brand board. The chassis itself doesn't name sections — this is the board's specific application of the chassis.
+
+**classic-archive** — canonical top-to-bottom:
+Masthead → Palette → Typography → Voice → Motifs → Components → Photography → Content Pillars → Personas → Logo → Spacing & Shape
+
+**dashboard** — functional clusters, rendered as dashboard cards:
+Hero cluster (masthead card + live stat card + identity card) → Palette (swatch pills) → Typography (specimen cards) → Voice (chat/messaging UI) → Motifs (widget instances) → Components (default + pressed states) → Photography (image-slot placeholders) → Content Pillars (pillar cards) → Personas (profile cards with stat rows) → Logo (app-icon tiles) → Spacing & Shape (scale chips)
+
+**magazine** — editorial rhythm:
+Masthead → Contents → Feature (the brand philosophy, with pull quote and drop cap) → Letter From (persona-as-editor, signed) → Palette (color-study spread) → Typography (specimen spread) → Voice (two-column editorial with do/don't sidebars) → Motifs (visual essay, one per panel) → Components (product catalogue spread) → Photography (photo essay with caption rail) → Content Pillars (pillar essays) → Personas (portrait page) → Logo (mark on final page) → Colophon (back matter with typography details, stock, printer)
+
+**pinboard** — clusters arranged spatially:
+Intro cluster (mark + tagline + photograph) → Palette cluster (paint chips / ribbon samples) → Type cluster (torn specimens) → Voice cluster (typed memos + marginalia) → Motif cluster (demo cards with rotation) → Component cluster (cut-out UI fragments taped) → Photography cluster (polaroids) → Personas cluster (ID cards) → Logo cluster (stamp impressions on three papers)
+
+Cross-cluster annotations link clusters; no numbered order is enforced.
 
 ### Chassis selection
 
@@ -76,12 +96,13 @@ When rendering the brand board:
 
 1. Read `aem-design/brand-profile.json`.
 2. Pick the chassis per the "Chassis selection" rules above. Record in `_divergence.chassis`.
-3. Read the selected chassis's full specification in `brand/reference/chassis/<chassis-name>.md`.
-4. Render the board following the chassis's rules for navigation, section order, hero shape, eyebrows, spacing, typography register, and motif placement.
-5. Render only data-contract sections that have data. Omit empty sections.
-6. Render the logo using `<img src="assets/logo.svg">` (or matching extension). Read the path from `brand-profile.json`'s `logo.path` and make it relative to the board file (both live under `aem-design/`, so `assets/logo.*` is correct). **Never inline the SVG** — the brand profile points at the real asset; the board consumes it.
-7. Write the complete HTML to `aem-design/brand-board.html`.
-8. Tell the designer which chassis was picked and why (which branch of the selection rules fired).
+3. Read the selected chassis's full specification in `../../_shared/chassis/<chassis-name>.md`.
+4. Read the board-specific section order for that chassis (see "Section order per chassis" above). Render sections in that order.
+5. Render each section's presentation per the chassis's rules for nav, hero pattern, eyebrows, spacing, typography register, and demo style.
+6. Render only data-contract sections that have data. Omit empty sections.
+7. Render the logo using `<img src="assets/logo.svg">` (or matching extension). Read the path from `brand-profile.json`'s `logo.path` and make it relative to the board file (both live under `aem-design/`, so `assets/logo.*` is correct). **Never inline the SVG** — the brand profile points at the real asset; the board consumes it.
+8. Write the complete HTML to `aem-design/brand-board.html`.
+9. Tell the designer which chassis was picked and why (which branch of the selection rules fired).
 
 ## Reference
 

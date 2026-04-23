@@ -232,7 +232,7 @@ Before the skill synthesizes `.impeccable.md` on its own (no designer interview)
 
 ## Phase 3: Render Brand Board
 
-The brand board has two halves — a **data contract** (what information is rendered) and a **chassis** (how it's presented). The data contract is fixed by [`reference/brand-board-template.md`](reference/brand-board-template.md); the chassis is picked per run from [`reference/chassis/`](reference/chassis/).
+The brand board has two halves — a **data contract** (what information is rendered) and a **chassis** (how it's presented). The data contract is defined in [`reference/brand-board-template.md`](reference/brand-board-template.md). The chassis is picked per run from the shared library at [`../_shared/chassis/`](../_shared/chassis/) — the same library the prototype skill reads, which keeps brand boards and prototypes visually coherent by default.
 
 ### Step 1 · Read inputs
 
@@ -244,7 +244,7 @@ Chassis selection, in order of precedence:
 
 1. **Designer override.** If `_divergence.chassis` is already populated on the profile, use it as-is. This covers refactoring an existing profile and the case where the designer picks a chassis explicitly at the start of the run.
 
-2. **Hash-based default.** Compute `byte[3]` of the MD5 of `_divergence.seed.hash_input` modulo the number of chassis files in `reference/chassis/`. Alphabetical mapping: 0 → `classic-archive`, 1 → `dashboard`, 2 → `magazine`, 3 → `pinboard`.
+2. **Hash-based default.** Compute `byte[3]` of the MD5 of `_divergence.seed.hash_input` modulo the number of chassis files in `../_shared/chassis/`. Alphabetical mapping: 0 → `classic-archive`, 1 → `dashboard`, 2 → `magazine`, 3 → `pinboard`.
 
 3. **Seed-informed preference.** The hash pick is overridden when the seed's register strongly implies a different chassis. See the preference table in `reference/brand-board-template.md` under "Chassis selection". When a register has multiple preferred chassis, re-run the hash within that subset.
 
@@ -254,7 +254,7 @@ Record the final chassis name in `_divergence.chassis`. Record which branch fire
 
 ### Step 3 · Read the chassis spec
 
-Read the full text of `reference/chassis/<chassis-name>.md`. The chassis specifies navigation, section order, hero shape, eyebrow conventions, spacing rhythm, typography register, and motif placement. Follow it precisely — a chassis pick means a commitment to that chassis's rules, not an aesthetic mood-board.
+Read the full text of `../_shared/chassis/<chassis-name>.md` for the presentation pattern (nav, hero pattern, eyebrows, spacing, typography register, demo style). The chassis does NOT name the board's sections; for the board-specific section order per chassis, consult `reference/brand-board-template.md` "Section order per chassis". Follow both precisely — a chassis pick means a commitment to that chassis's rules, not an aesthetic mood-board.
 
 ### Step 4 · Render
 

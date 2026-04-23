@@ -86,6 +86,28 @@ For each briefing:
 
 ## Phase 2: Render (Branded Mode)
 
+### Step A · Pick the chassis
+
+Before rendering, pick the presentation chassis from the shared library at [`../_shared/chassis/`](../_shared/chassis/):
+
+1. **Designer override.** If `_divergence.prototype_chassis` is set on `aem-design/brand-profile.json`, use it. The designer has explicitly asked for a different chassis on the prototype than on the brand board.
+2. **Inherit from brand.** If `_divergence.chassis` is set on `brand-profile.json` (picked by the brand skill in its Phase 3), use the same chassis for the prototype. This is the default — visual coherence across brand board and prototype.
+3. **Fallback.** `classic-archive` when neither field is set.
+
+Read the chosen chassis's `.md` spec in full before rendering. Record the chassis in the prototype's provenance block:
+
+```html
+<!-- aem-design:provenance
+  prototype_chassis: magazine
+  chassis_pick_reason: inherited-from-brand
+  ...
+-->
+```
+
+See [design-guide.md](reference/design-guide.md) "Prototype section order per chassis" for how the sections of a landing page are ordered under each chassis.
+
+### Step B · Render
+
 Render each design as a self-contained HTML file at desktop fidelity (1440px design target):
 
 - **Brand fonts** via `@import` or `<link>` to web fonts.
@@ -95,9 +117,10 @@ Render each design as a self-contained HTML file at desktop fidelity (1440px des
 - **Images** — briefing `# Imagery` sources, or branded placeholders.
 - **CSS custom properties in `:root`** that expose type scale, spacing, max-width, section padding, button proportions. These values are the **authoritative desktop tokens** — any downstream translation (to EDS CSS, another framework, a design handoff) reads them from here.
 - Preserve `data-section`, `data-intent`, `data-layout` attributes from the wireframe so downstream stages can read structure.
-- **Provenance block** — if any input was synthesized (brand, briefing, wireframe, or any `# Copy` slot), include a `<!-- aem-design:provenance ... -->` comment as the first child of `<head>` per [`../_shared/skill-contract.md`](../_shared/skill-contract.md). List each synthesized input and, for copy, each synthesized slot.
+- Apply the chassis's presentation pattern: nav, hero pattern, eyebrow conventions, spacing rhythm, typography register, demo style. See the chassis's `.md` spec for specifics.
+- **Provenance block** — if any input was synthesized (brand, briefing, wireframe, or any `# Copy` slot) OR the chassis was picked by inheritance or fallback, include a `<!-- aem-design:provenance ... -->` comment as the first child of `<head>` per [`../_shared/skill-contract.md`](../_shared/skill-contract.md). List each synthesized input, each synthesized copy slot, and the chassis pick.
 
-Write to `aem-design/prototypes/{page}.html` (single-variant mode) or `aem-design/prototypes/{page}-{letter}.html` for each variant (multi-variant mode). In multi-variant mode, each file is rendered independently — variants share the briefing's copy and the brand tokens, but differ on the design-direction axes chosen in Phase 0.
+Write to `aem-design/prototypes/{page}.html` (single-variant mode) or `aem-design/prototypes/{page}-{letter}.html` for each variant (multi-variant mode). In multi-variant mode, each file is rendered independently — variants share the briefing's copy, the brand tokens, and the same chassis, but differ on the design-direction axes chosen in Phase 0. Switching chassis mid-variant is a separate explicit override.
 
 Follow the rendering rules in [design-guide.md](reference/design-guide.md).
 
