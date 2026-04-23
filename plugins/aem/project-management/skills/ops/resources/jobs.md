@@ -32,29 +32,23 @@ Track and manage bulk operation jobs for Edge Delivery Services.
 | `preview` | Bulk preview operations |
 | `live` | Bulk publish operations |
 | `index` | Bulk indexing operations |
+| `live-remove` | Bulk unpublish operations |
+| `preview-remove` | Bulk delete preview operations |
+| `index-remove` | Bulk remove from index operations |
 
 ## Operations
 
 ### List Jobs
 
 ```bash
-# List preview jobs
-curl -s \
-  -H "authorization: token ${AUTH_TOKEN}" \
-  "https://admin.hlx.page/job/${ORG}/${SITE}/${REF}/preview"
-
-# List publish jobs
-curl -s \
-  -H "authorization: token ${AUTH_TOKEN}" \
-  "https://admin.hlx.page/job/${ORG}/${SITE}/${REF}/live"
-
-# List index jobs
-curl -s \
-  -H "authorization: token ${AUTH_TOKEN}" \
-  "https://admin.hlx.page/job/${ORG}/${SITE}/${REF}/index"
+for TOPIC in preview live index live-remove preview-remove index-remove; do
+  curl -s \
+    -H "authorization: token ${AUTH_TOKEN}" \
+    "https://admin.hlx.page/job/${ORG}/${SITE}/${REF}/${TOPIC}"
+done
 ```
 
-**On success:** Display results in a table with columns **Job Name**, **Topic**, **State**, **Processed**, **Total**, and **Started**. Report total count per topic.
+**On success:** Merge results across all topics. Display in a table with columns **Job Name**, **Topic**, **State**, **Processed**, **Total**, and **Started**. Report total count. Skip topics that return empty or error.
 
 **▶ Recommended Next Actions:**
 1. Check progress of a specific job
@@ -72,10 +66,16 @@ curl -s \
 
 ### Get Job Status
 
+If `TOPIC` is not known from context, probe all topics and use the first that returns HTTP 200:
+
 ```bash
-curl -s \
-  -H "authorization: token ${AUTH_TOKEN}" \
-  "https://admin.hlx.page/job/${ORG}/${SITE}/${REF}/${TOPIC}/${JOB_NAME}"
+for TOPIC in preview live index live-remove preview-remove index-remove; do
+  HTTP=$(curl -s -w "%{http_code}" -o /tmp/job_status.json \
+    -H "authorization: token ${AUTH_TOKEN}" \
+    "https://admin.hlx.page/job/${ORG}/${SITE}/${REF}/${TOPIC}/${JOB_NAME}")
+  [ "$HTTP" = "200" ] && break
+done
+cat /tmp/job_status.json
 ```
 
 **On success (200):** Display a status summary:
@@ -110,10 +110,16 @@ curl -s \
 
 ### Get Job Details
 
+If `TOPIC` is not known from context, probe all topics and use the first that returns HTTP 200:
+
 ```bash
-curl -s \
-  -H "authorization: token ${AUTH_TOKEN}" \
-  "https://admin.hlx.page/job/${ORG}/${SITE}/${REF}/${TOPIC}/${JOB_NAME}/details"
+for TOPIC in preview live index live-remove preview-remove index-remove; do
+  HTTP=$(curl -s -w "%{http_code}" -o /tmp/job_details.json \
+    -H "authorization: token ${AUTH_TOKEN}" \
+    "https://admin.hlx.page/job/${ORG}/${SITE}/${REF}/${TOPIC}/${JOB_NAME}/details")
+  [ "$HTTP" = "200" ] && break
+done
+cat /tmp/job_details.json
 ```
 
 **On success (200):** Display results in a table with columns **Path**, **Status**, and **Error** (if any). Summarise: total paths, succeeded count, failed count. Highlight any failed paths.
@@ -134,7 +140,16 @@ curl -s \
 
 ### Stop Job
 
+If `TOPIC` is not known from context, probe all topics to find the job first (same as Get Job Status), then delete:
+
 ```bash
+for TOPIC in preview live index live-remove preview-remove index-remove; do
+  HTTP=$(curl -s -w "%{http_code}" -o /dev/null \
+    -H "authorization: token ${AUTH_TOKEN}" \
+    "https://admin.hlx.page/job/${ORG}/${SITE}/${REF}/${TOPIC}/${JOB_NAME}")
+  [ "$HTTP" = "200" ] && break
+done
+
 curl -s -X DELETE \
   -H "authorization: token ${AUTH_TOKEN}" \
   "https://admin.hlx.page/job/${ORG}/${SITE}/${REF}/${TOPIC}/${JOB_NAME}"
@@ -171,10 +186,11 @@ Monitor job completion before starting new jobs to avoid hitting limits.
 |-----------|-----------|
 | "show running jobs" | List jobs (all topics) |
 | "list jobs" | List jobs (all topics) |
-| "job status preview-123" | Get job status |
-| "how is job preview-123 doing" | Get job status |
-| "stop job preview-123" | Stop job |
-| "cancel job index-456" | Stop job |
+| "job status job-2026-..." | Get job status (probe all topics) |
+| "how is job job-2026-... doing" | Get job status (probe all topics) |
+| "get job details job-2026-..." | Get job details (probe all topics) |
+| "stop job job-2026-..." | Stop job (probe all topics) |
+| "cancel job job-2026-..." | Stop job (probe all topics) |
 | "what jobs are running" | List jobs |
 | "check bulk operation status" | List jobs |
 
