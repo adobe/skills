@@ -31,6 +31,31 @@ Concretely, the latest `@adobe/aio-cli` bundle is what makes the entire chain be
 
 4. (Optional, for Docker / CI scenarios where `aio login` would otherwise fail to receive the browser callback) export `AIO_IMS_LOCAL_LOGIN_PORT` and forward that port into the container before logging in. See [debugging.md](debugging.md).
 
+## Identifier convention: name vs ID
+
+The `aio console …` surface is split between two identifier styles, and mixing them is the most common failure mode for agents reading this playbook top-to-bottom:
+
+| Command shape | Identifier(s) accepted |
+| --- | --- |
+| `aio console project create` / `workspace create` | `--name` (and `--projectName` to scope `workspace create`) |
+| `aio console workspace api add` / `workspace api list` | `--projectName`, `--workspaceName`, `--service-code`, optionally `--license-config` |
+| `aio console org select` / `project select` / `workspace select` | `--orgId` / `<orgId>`, `--projectId` / `<projectId>`, `--workspaceId` / `<workspaceId>` (IDs only) |
+| `aio app use` | Adopts the **currently selected** project/workspace, no IDs needed if `org/project/workspace select` already ran |
+
+**Rule of thumb:** create / add / list commands take **names**. Select commands take **IDs**. To go from a name to an ID for a `select`, look it up in the JSON output of the matching `list`:
+
+```bash
+PROJECT_ID=$(aio console project list --json \
+  | jq -r '.[] | select(.name == "my-project") | .id')
+aio console project select "$PROJECT_ID"
+
+WORKSPACE_ID=$(aio console workspace list --projectId "$PROJECT_ID" --json \
+  | jq -r '.[] | select(.name == "Stage") | .id')
+aio console workspace select "$WORKSPACE_ID"
+```
+
+Capture the IDs from the JSON output of `project create` / `workspace create` the first time around so you don't have to re-resolve them later.
+
 ## The chain
 
 Always **inspect before you create** — every create/add command fails loudly on "already exists", and there is no `--upsert` flag.
@@ -142,6 +167,8 @@ Because each step is a separate command, the agent can branch instead of blowing
 | Any command returns an org-selection error | No org selected, or wrong org selected | Pass `--orgId <id>` explicitly or run `aio console org select <id>` once before retrying. |
 | `aio console …` or `aio app init --project`/`--org` reports "command not found" or "unknown flag" | CLI bundle is stale | `npm install -g @adobe/aio-cli` and retry. Don't try to chase individual plugin versions; just refresh the bundle. |
 | Bootstrap succeeds but `aio app deploy` deploys to the wrong namespace | Local `.aio` not pointing at the new workspace | Run `aio app use --no-input` from the project root, or re-init with `--org`/`--project`. |
+| `aio app init` (or any other `aio app *` command) fails on `app.config.yaml` schema validation immediately after bootstrap | Manifest is half-scaffolded — bootstrap created the workspace but the local app isn't whole yet | One-shot escape hatch: re-run with `--no-config-validation` to unblock that single command (e.g. `init … --no-config-validation`, or `aio app build --no-config-validation`). Treat it as temporary; remove the flag and re-run with default validation as soon as the manifest is whole. See [debugging.md](debugging.md#aio-app--fails-with-config-validation-errors-right-after-init) for what to fix. |
+| `select` / `app use` step fails because you only have a name, not an ID | `select` commands take IDs, not names | Resolve the ID via the matching `list --json` output and pass `--projectId` / `--workspaceId`. See **Identifier convention** above. |
 
 For broader Node/npm/login issues see [debugging.md](debugging.md).
 
