@@ -38,6 +38,7 @@ When rendering the brand board, read `aem-design/brand-profile.json` and:
 2. Render each section using the data fields. Omit entire sections if the corresponding brand-profile field is null/missing.
 3. Write the complete HTML to `aem-design/brand-board.html`
 4. Tell the designer to open the URL to review
+5. Render the logo section using an `<img src="assets/logo.svg">` (or matching extension). Read the path from `brand-profile.json`'s `logo.path` and make it relative to the board file (both live under `aem-design/`, so `assets/logo.*` is the correct relative reference). **Never inline the SVG** — the brand profile points at the real asset; the board consumes it.
 
 ### Reference
 

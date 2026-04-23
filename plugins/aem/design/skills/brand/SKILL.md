@@ -36,6 +36,7 @@ Run the procedure in [`../_shared/preflight.md`](../_shared/preflight.md) first.
 **Produces:**
 - `aem-design/brand-profile.json`
 - `aem-design/brand-board.html`
+- `aem-design/assets/logo.<ext>` (extracted or synthesized)
 - `.impeccable.md` (created or updated)
 
 **If missing:**
@@ -88,6 +89,32 @@ After extraction, explicitly look for and record:
 - **Color variants for context** — capture "cream on blue" as a separate color if the value differs from "cream on cream" (e.g. `#FFFADD` vs `#FFFCEC`).
 - **Visual motifs beyond logos/colors** — look at the screenshot and name them: dashed dividers, aurora gradients, squiggle separators, noise textures, hand-drawn elements. Add a `motifs` array to the brand profile with `name`, `description`, `usage`. These motifs are what signal the brand before a word is read.
 
+#### 2.5 Locate and save the real logo
+
+The logo is a real asset — download it, don't synthesize it. Walk this fixed order and stop at the first hit:
+
+1. **Inline `<svg>` inside the page header or `<nav>`** — look for `header svg`, `nav svg`, `[class*="logo" i] svg`. Serialize the outer HTML and save as `aem-design/assets/logo.svg`.
+2. **`<img>` with a logo-shaped src or class** — `header img`, `nav img`, `img[src*="logo" i]`, `img[class*="logo" i]`, `img[alt*="logo" i]`. Download the resolved URL. Prefer SVG; fall back to the highest-resolution PNG or WebP.
+3. **`<link rel="icon">`, `<link rel="apple-touch-icon">`, `og:image`** — in that order. These are branded marks even if not full wordmarks.
+4. **Favicon** — `/favicon.ico` or `/favicon.svg` at the site root. Last resort.
+5. **No logo found** — create a minimal placeholder SVG with the brand name as text, save to `aem-design/assets/logo.svg`, and add `"logo: synthesized placeholder — no mark found on source"` to `_provenance.synthesized_inputs`.
+
+Save all downloads to `aem-design/assets/` (not `icons/` — the design phase is EDS-agnostic; `icons/` is an EDS convention that leaks structure into aem-design).
+
+Record the outcome in the brand profile's `logo` object:
+
+```json
+"logo": {
+  "path": "aem-design/assets/logo.svg",
+  "format": "svg",
+  "source": "inline svg in <header> | <img src=...> | apple-touch-icon | favicon | synthesized"
+}
+```
+
+For the PDF path, extract embedded images — prefer vector — and save the same way.
+
+For the conversational path, synthesize a placeholder as described above and stamp `_provenance.synthesized_inputs`.
+
 #### 3. Voice examples from live copy
 
 Pull real copy from the rendered page (hero headlines, CTAs, micro-copy) for `voice.examples.do`. Real examples beat invented ones. Note rhetorical devices — em-dashes, rhythmic triplets, single-word italic accents — and call them out in `voice.rules`.
@@ -98,14 +125,25 @@ If the input is a PDF or uploaded asset, read it directly (PDF viewer / Read too
 
 #### 5. Write the profile
 
-Map everything to the brand profile schema — consult [brand-profile-schema.md](reference/brand-profile-schema.md). Include an `extraction` block recording `method`, `source`, `capturedAt`, and screenshot paths so future runs can verify against ground truth.
+Map everything to the brand profile schema — consult [brand-profile-schema.md](reference/brand-profile-schema.md).
 
-If any input was synthesized (no URL/PDF/description), add a `"_provenance"` key at the top of the JSON per [`../_shared/skill-contract.md`](../_shared/skill-contract.md).
+**Every `brand-profile.json` MUST start with a `_provenance` block** per [`../_shared/skill-contract.md`](../_shared/skill-contract.md). Populate:
+
+- `generated_by: "brand"`
+- `date` — today, ISO format
+- `source` — URL, PDF path, or `"conversation"`
+- `extraction_method` — the actual method used (e.g. Playwright string, PDF read, conversation only)
+- `synthesized_inputs` — enumerate **every field the skill filled in but did not extract from source**. Examples: "personas (mottos, values) — composed from extracted voice signals, not read from the page"; "contentPillars descriptions — inferred from nav + hero copy"; "voice.examples.dont — LLM-composed to match extracted voice rules". If you genuinely extracted every field from source, pass an empty array and note it.
+- `screenshots` — scratch paths
+
+Readers use `synthesized_inputs` to decide what to trust. Be honest and specific. "Some fields" is not acceptable — list each one.
+
+Do **not** emit a separate `extraction` block. All source-of-extraction info lives inside `_provenance`.
 
 Pay special attention to:
 - **Voice examples** — do/don't copy pairs. Critical for content generation. Extract from live copy.
 - **Photography direction** — style rules, composition, subject matter. Feeds image generation.
-- **Logo variants** — save all variants to `icons/`. SVG preferred, optimized PNG fallback.
+- **Logo variants** — primary mark always saved to `aem-design/assets/logo.<ext>` (see Step 2.5). Additional variants (white-on-dark, mono, stacked) also go under `aem-design/assets/` with descriptive names like `logo-white.svg`.
 - **Color roles** — don't just capture hex, capture what each color is FOR (CTAs, headings, backgrounds, on-blue text).
 - **Motifs** — the non-obvious visual gestures. Without these the board reads as a generic palette.
 
@@ -177,4 +215,4 @@ Iterate until the designer says the board looks right. Then:
 | `aem-design/brand-profile.json` | Structured brand tokens (source of truth) |
 | `aem-design/brand-board.html` | Visual brand board (rendered view) |
 | `.impeccable.md` | Design personality for quality gates |
-| `icons/*` | Logo variants and brand SVGs |
+| `aem-design/assets/logo.<ext>` | Primary logo mark — SVG preferred, PNG fallback. Additional variants also under `aem-design/assets/`. |

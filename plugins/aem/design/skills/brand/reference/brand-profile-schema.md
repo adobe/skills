@@ -6,15 +6,29 @@
 
 ```json
 {
+  "_provenance": {
+    "generated_by": "string — always \"brand\"",
+    "date": "string — ISO date YYYY-MM-DD",
+    "source": "string — URL, PDF path, or \"conversation\" when no guidelines were provided",
+    "extraction_method": "string — e.g. \"Playwright (Chromium, 1440x900 @ 2x DPR, networkidle + 1.5s settle)\" or \"PDF read\" or \"conversation only\"",
+    "synthesized_inputs": [
+      "string — one entry per field the skill FILLED IN rather than extracted. e.g. \"personas (mottos, values) — composed from extracted voice signals, not read from the page\", \"contentPillars descriptions — inferred from nav + hero copy\". Empty array only if every field was directly extracted from source."
+    ],
+    "screenshots": ["string — paths to scratch screenshots"],
+    "note": "string — optional caveats"
+  },
+
   "name": "string — brand name",
   "philosophy": "string — mission/positioning statement",
 
   "logo": {
-    "primary": "string — path to primary logo SVG in icons/",
+    "path": "string — relative path to primary logo file. ALWAYS under aem-design/assets/, e.g. \"aem-design/assets/logo.svg\". Never under icons/ or the project root.",
+    "format": "string — one of svg|png|webp|jpg",
+    "source": "string — how the logo was obtained: \"inline-svg\" | \"img-tag\" | \"apple-touch-icon\" | \"og-image\" | \"favicon\" | \"pdf-embedded\" | \"synthesized-placeholder\"",
     "variants": [
       {
         "name": "string — e.g. 'white on dark', 'black B&W'",
-        "path": "string — path to variant file",
+        "path": "string — relative path under aem-design/assets/",
         "usage": "string — when to use this variant"
       }
     ],
@@ -174,13 +188,6 @@
     "borderRadius": [
       { "name": "string", "value": "string" }
     ]
-  },
-
-  "extraction": {
-    "method": "string — e.g. 'Playwright (Chromium, 1440×900, 2x DPR) — computed styles + fullpage screenshot'",
-    "source": "string — URL or file path",
-    "capturedAt": "string — ISO date",
-    "screenshots": ["string — paths to screenshot files"]
   }
 }
 ```
@@ -192,3 +199,5 @@
 - The brand board template renders whatever fields are present and omits sections for missing data.
 - Voice examples are critical for copy generation — extract as many as possible.
 - Photography style feeds into `ai-image-generator` style prefixes.
+- **`_provenance` is the first key** in every emitted `brand-profile.json`. Contract-compliant readers (downstream skills + evals) look for it at the top.
+- **`synthesized_inputs` must enumerate every field the skill filled in but did not extract.** "The LLM wrote it based on vibes from the page" counts as synthesized. Use this list so the user can tell what to trust vs. what to revise.
