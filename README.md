@@ -8,6 +8,7 @@ Repository of Adobe skills for AI coding agents.
 
 ```bash
 /plugin marketplace add adobe/skills
+/plugin install aem-design@adobe-skills
 /plugin install aem-edge-delivery-services@adobe-skills
 /plugin install aem-project-management@adobe-skills
 /plugin install app-builder@adobe-skills
@@ -33,6 +34,18 @@ gh upskill adobe/skills --all
 ### For Business
 
 #### Adobe Experience Manager
+
+##### Designing with aem-design
+
+Design-phase skills that run *before* implementation. Produces static HTML and JSON artifacts under `aem-design/` — EDS-independent; no dev server or AEM instance required.
+
+| Skill | Description |
+|-------|-------------|
+| `aem-design` | Navigator — assesses `aem-design/` state and recommends the next design stage |
+| `brand` | Extracts a brand profile (`brand-profile.json`) and visual brand board from a URL, PDF, or conversation |
+| `briefings` | Captures page intent, audience, key messages, CTAs, and (optionally) final copy under `aem-design/briefings/` |
+| `wireframes` | Produces grey structural wireframes from briefings (section order, hierarchy, spatial relationships) — optional stage |
+| `prototype` | Produces branded, high-fidelity static HTML prototypes that iterate in the browser until approved |
 
 ##### Developing with Edge Delivery Services
 
