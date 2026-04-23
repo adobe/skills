@@ -56,29 +56,30 @@ If no briefings exist yet:
 
 1. Ask the user: "What pages do you need? Let's start with the most important one."
 2. For multi-page sites, create `aem-design/briefings/_site.md` first — see [briefing-format.md](reference/briefing-format.md) for the site briefing schema.
-3. For each page, ask the user how much intent they want to capture:
-   - **Prompt-only** — a single sentence of intent. Everything else is inferred downstream.
-   - **Structured** — the full frontmatter + Intent + Audience + Key Messages + CTAs + Tone.
-   - **Fully specified** — structured plus `# Copy` (final headlines, body, microcopy) and `# Imagery` (image direction per section, source hints, alt-text).
+3. Default to the **structured** shape for every page. Do NOT ask the user to pick a fidelity level. If a section's content is not known yet, emit `[TBD]` in that section — downstream skills synthesize on-brand content for `[TBD]` fields and stamp provenance. Fidelity is a consequence of how much the user fills in, not a gate the user has to cross.
 
-If briefings already exist, read `aem-design/briefings/` and confirm which pages are covered. Ask which page to work on next (new, edit, or deepen fidelity).
+   Deepening the fidelity ladder:
+   - **Structured (default)** — full frontmatter + Intent + Audience + Key Messages + CTAs + Tone. Any field may be `[TBD]`.
+   - **Fully specified** — adds `# Copy` (final headlines/body/microcopy) and `# Imagery` (image direction per section, source hints, alt-text). Reached by filling in those sections, not by re-answering a fidelity question.
+
+If briefings already exist, read `aem-design/briefings/` and confirm which pages are covered. Ask which page to work on next (new, edit, or deepen by filling in `[TBD]` fields or adding `# Copy` / `# Imagery`).
 
 ## Phase 2: Draft
 
 1. Run the soft-deps discovery decision before any interview question:
 
-   **If `/brainstorm` is registered in this session** (detect per [`../_shared/soft-deps.md`](../_shared/soft-deps.md)): hand off to `/brainstorm` with a seeded prompt that includes the page name, any existing briefing content, and the target fidelity. Wait for its output; use the result to populate the briefing. Do NOT run any inline interview question once this delegation is made — that would double-interview the user.
+   **If `/brainstorm` is registered in this session** (detect per [`../_shared/soft-deps.md`](../_shared/soft-deps.md)): hand off to `/brainstorm` with a seeded prompt that includes the page name and any existing briefing content, and ask it to produce the structured shape (Intent + Audience + Key Messages + CTAs + Tone). Wait for its output; use the result to populate the briefing. Do NOT run any inline interview question once this delegation is made — that would double-interview the user.
 
    **Otherwise (superpowers not installed):** announce the fallback **exactly once per session**, using the verbatim text from [`../_shared/soft-deps.md`](../_shared/soft-deps.md) ("superpowers announcement"). Then run the "For briefings discovery" pattern in [`../_shared/fallback-brainstorm.md`](../_shared/fallback-brainstorm.md). On every subsequent briefing in the same session, skip the announcement (already seen) and run the inline pattern directly.
 
    Either path uses the same discovery prompts: "What should visitors feel when they land on this page? What's the one action you want them to take?"
 
    The user must be able to tell which path ran — either by `/brainstorm`'s visible hand-off UI or by the one-time announcement. Silent inline interviews are a bug.
-2. Draft the briefing at the requested fidelity. The agent helps draft; the user owns the content.
+2. Draft the briefing in the structured shape. Fill every section; where the user has not provided content, write `[TBD]` verbatim (not a rephrased placeholder). The agent helps draft; the user owns the content.
 3. Present the draft and wait for approval before writing the file.
 4. Write approved briefings to `aem-design/briefings/{page}.md`.
 
-If the briefing was synthesized from a one-line prompt (not authored in a full conversation), stamp a provenance comment at the top of the file per [`../_shared/skill-contract.md`](../_shared/skill-contract.md).
+If any `[TBD]` fields remain, or the briefing was synthesized from a short prompt rather than a full conversation, stamp a provenance comment at the top of the file per [`../_shared/skill-contract.md`](../_shared/skill-contract.md) so downstream skills know which fields to treat as synthesizable.
 
 ## Phase 2.5: Content Reuse Map (Multi-Page Sites Only)
 
@@ -120,4 +121,4 @@ Keeping briefings independent lets teams split the work: one person captures int
 | File | Description |
 |------|-------------|
 | `aem-design/briefings/_site.md` | Site-level briefing (multi-page only) |
-| `aem-design/briefings/{page}.md` | Page-level briefings — any fidelity from prompt-only up to full copy + imagery |
+| `aem-design/briefings/{page}.md` | Page-level briefings in the structured shape (Intent + Audience + Key Messages + CTAs + Tone), with `[TBD]` placeholders where content is not yet captured. May additionally contain `# Copy` / `# Imagery` when the user has committed to final words or image direction. |

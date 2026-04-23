@@ -13,8 +13,9 @@ Project with no `aem-design/` folder yet. No brand-profile.json.
 The `briefings` skill is invoked. It:
 
 1. Does NOT block on missing brand — it uses the soft-gate synthesis path.
-2. Produces `aem-design/briefings/landing.md` (or a similarly named file).
-3. The briefing has sections for Intent, Audience, Key Messages, CTAs, Tone, and optional Copy/Imagery hints.
-4. The briefing has a provenance stamp noting that brand was synthesized (since brand-profile.json is absent).
-5. If the superpowers plugin is absent, the skill announces exactly once per session that it is using the inline fallback-brainstorm interview pattern.
-6. Does NOT write brand-profile.json or any other skill's artifacts.
+2. Does NOT ask the user to pick a fidelity level (prompt-only / structured / full). It emits the structured shape directly.
+3. Produces `aem-design/briefings/landing.md` (or a similarly named file).
+4. The briefing contains all five structured sections — Intent, Audience, Key Messages, Calls to Action, Tone — with `[TBD]` written verbatim in any section the user did not commit to. `# Copy` and `# Imagery` are added only if the user provided final words or image direction.
+5. The briefing has a provenance stamp noting that brand was synthesized (since brand-profile.json is absent) and naming which sections are `[TBD]` for downstream synthesis.
+6. Soft-deps honored: either `/brainstorm` was invoked with a visible hand-off (superpowers installed), or the superpowers fallback announcement appeared exactly once and the inline interview ran.
+7. Does NOT write brand-profile.json or any other skill's artifacts.

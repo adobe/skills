@@ -2,17 +2,16 @@
 
 Briefings are human-authored structured documents that capture business intent. The agent helps draft them through conversation but the user owns the content.
 
-Briefings support three fidelity levels. Author only as much as you want to commit to now — downstream stages (wireframes, build) infer the rest.
+Every briefing uses the same **structured** shape. Any section whose content is not yet known is written as `[TBD]` verbatim; downstream skills synthesize on-brand content for `[TBD]` fields and stamp provenance. Fidelity is a consequence of how much the user fills in, not a level the user selects upfront.
 
-## Fidelity Levels
+## Shape
 
-| Level | Sections authored | Use when |
+| Shape | Sections authored | When it applies |
 |---|---|---|
-| **Prompt-only** | frontmatter + `# Intent` | You have a rough sentence of what the page should do. |
-| **Structured** | + `# Audience`, `# Key Messages`, `# Calls to Action`, `# Tone` | You want the wireframe and later copywriting to hit specific notes. |
-| **Fully specified** | + `# Copy`, `# Imagery` | You already have final words and image direction you want preserved verbatim. |
+| **Structured (default)** | frontmatter + `# Intent` + `# Audience` + `# Key Messages` + `# Calls to Action` + `# Tone` | Always. Any field may be `[TBD]`. |
+| **Fully specified** | + `# Copy` + `# Imagery` | When the user has committed to final words or image direction. Reached by filling in those sections — not by re-selecting a fidelity. |
 
-You can start at prompt-only and deepen a briefing later — the skill supports re-entering and adding sections to an existing file.
+You can deepen a briefing later — the skill supports re-entering and filling in `[TBD]` fields or adding `# Copy` / `# Imagery` to an existing file.
 
 ## Page Briefing Schema
 
@@ -21,7 +20,6 @@ You can start at prompt-only and deepen a briefing later — the skill supports 
 page: [Page Name]
 path: /[url-path]
 type: landing|product|about|contact|blog|custom
-fidelity: prompt|structured|full
 ---
 
 # Intent
@@ -106,7 +104,7 @@ Page briefings inherit context from the site briefing. They don't need to repeat
 ## Rules
 
 1. The agent NEVER generates a briefing autonomously. It can help draft through conversation, but the user must review and approve the content.
-2. Only `# Intent` is required. Every other section is optional — leave it out if you don't want to commit to it yet.
+2. Every structured section (`# Intent`, `# Audience`, `# Key Messages`, `# Calls to Action`, `# Tone`) appears on every briefing. If the user hasn't committed to a section yet, write `[TBD]` verbatim as the body of that section rather than omitting it. `# Copy` and `# Imagery` remain optional — add them only when the user has final words or image direction.
 3. Briefings use plain language, not marketing jargon. "Make them want to buy" is better than "Drive conversion through compelling value articulation."
 4. One briefing per page. The filename matches the page: `homepage.md`, `products.md`, `about.md`.
 5. `# Copy` sections are authoritative — later stages (wireframes, build) must use the exact strings. If a section has no `# Copy` entry, downstream stages may generate placeholder copy.
