@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/000814-001d3d-003566-ffc300-ffd60a",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Golden Twilight",
+  "hexes": [
+    "#000814",
+    "#001D3D",
+    "#003566",
+    "#FFC300",
+    "#FFD60A"
+  ],
+  "anchor": "#000814",
+  "classification": {
+    "ground_family": "dark",
+    "saturation_level": 5,
+    "hue_bias": "warm",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

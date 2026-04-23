@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/54494b-f1f7ed-91c7b1-b33951-e3d081",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Vintage Cottage Charm",
+  "hexes": [
+    "#54494B",
+    "#F1F7ED",
+    "#91C7B1",
+    "#B33951",
+    "#E3D081"
+  ],
+  "anchor": "#E3D081",
+  "classification": {
+    "ground_family": "monochrome-tint",
+    "saturation_level": 4,
+    "hue_bias": "green",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

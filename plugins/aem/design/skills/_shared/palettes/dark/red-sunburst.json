@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/4f000b-720026-ce4257-ff7f51-ff9b54",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Red Sunburst",
+  "hexes": [
+    "#4F000B",
+    "#720026",
+    "#CE4257",
+    "#FF7F51",
+    "#FF9B54"
+  ],
+  "anchor": "#4F000B",
+  "classification": {
+    "ground_family": "dark",
+    "saturation_level": 5,
+    "hue_bias": "warm",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

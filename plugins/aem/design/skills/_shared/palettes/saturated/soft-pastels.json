@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/ffd6ff-e7c6ff-c8b6ff-b8c0ff-bbd0ff",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Soft Pastels",
+  "hexes": [
+    "#FFD6FF",
+    "#E7C6FF",
+    "#C8B6FF",
+    "#B8C0FF",
+    "#BBD0FF"
+  ],
+  "anchor": "#FFD6FF",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "cool",
+    "energy": 3,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

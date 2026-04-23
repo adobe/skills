@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/335c67-fff3b0-e09f3e-9e2a2b-540b0e",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Dark Sunset",
+  "hexes": [
+    "#335C67",
+    "#FFF3B0",
+    "#E09F3E",
+    "#9E2A2B",
+    "#540B0E"
+  ],
+  "anchor": "#FFF3B0",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "rainbow",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

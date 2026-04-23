@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/f08080-f4978e-f8ad9d-fbc4ab-ffdab9",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Peach Sorbet",
+  "hexes": [
+    "#F08080",
+    "#F4978E",
+    "#F8AD9D",
+    "#FBC4AB",
+    "#FFDAB9"
+  ],
+  "anchor": "#FFDAB9",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "warm",
+    "energy": 3,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

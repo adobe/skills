@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/c9cba3-ffe1a8-e26d5c-723d46-472d30",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Golden Peachy Glow",
+  "hexes": [
+    "#C9CBA3",
+    "#FFE1A8",
+    "#E26D5C",
+    "#723D46",
+    "#472D30"
+  ],
+  "anchor": "#FFE1A8",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "warm",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

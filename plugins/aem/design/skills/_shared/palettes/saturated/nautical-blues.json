@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/00072d-001c55-0a2472-0e6ba8-a6e1fa",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Nautical Blues",
+  "hexes": [
+    "#00072D",
+    "#001C55",
+    "#0A2472",
+    "#0E6BA8",
+    "#A6E1FA"
+  ],
+  "anchor": "#00072D",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "cool",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

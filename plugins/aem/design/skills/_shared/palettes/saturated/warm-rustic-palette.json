@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/585123-eec170-f2a65a-f58549-772f1a",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Warm Rustic Palette",
+  "hexes": [
+    "#585123",
+    "#EEC170",
+    "#F2A65A",
+    "#F58549",
+    "#772F1A"
+  ],
+  "anchor": "#F58549",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "warm",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

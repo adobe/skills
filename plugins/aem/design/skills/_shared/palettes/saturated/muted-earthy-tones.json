@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/ffcdb2-ffb4a2-e5989b-b5838d-6d6875",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Muted Earthy Tones",
+  "hexes": [
+    "#FFCDB2",
+    "#FFB4A2",
+    "#E5989B",
+    "#B5838D",
+    "#6D6875"
+  ],
+  "anchor": "#FFCDB2",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "warm",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/011627-fdfffc-2ec4b6-e71d36-ff9f1c",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Contrast Pop",
+  "hexes": [
+    "#011627",
+    "#FDFFFC",
+    "#2EC4B6",
+    "#E71D36",
+    "#FF9F1C"
+  ],
+  "anchor": "#FDFFFC",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "teal",
+    "energy": 5,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

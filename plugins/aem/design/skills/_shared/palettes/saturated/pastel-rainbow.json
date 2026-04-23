@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/70d6ff-ff70a6-ff9770-ffd670-e9ff70",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Pastel Rainbow",
+  "hexes": [
+    "#70D6FF",
+    "#FF70A6",
+    "#FF9770",
+    "#FFD670",
+    "#E9FF70"
+  ],
+  "anchor": "#70D6FF",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "rainbow",
+    "energy": 3,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

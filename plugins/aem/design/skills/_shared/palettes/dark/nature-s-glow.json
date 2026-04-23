@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/a8d5e2-f9a620-ffd449-548c2f-104911",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Nature's Glow",
+  "hexes": [
+    "#A8D5E2",
+    "#F9A620",
+    "#FFD449",
+    "#548C2F",
+    "#104911"
+  ],
+  "anchor": "#104911",
+  "classification": {
+    "ground_family": "dark",
+    "saturation_level": 5,
+    "hue_bias": "warm",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/cad2c5-84a98c-52796f-354f52-2f3e46",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Earthy Green",
+  "hexes": [
+    "#CAD2C5",
+    "#84A98C",
+    "#52796F",
+    "#354F52",
+    "#2F3E46"
+  ],
+  "anchor": "#354F52",
+  "classification": {
+    "ground_family": "monochrome-tint",
+    "saturation_level": 2,
+    "hue_bias": "green",
+    "energy": 2,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/2c6e49-4c956c-fefee3-ffc9b9-d68c45",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Earthy Tones",
+  "hexes": [
+    "#2C6E49",
+    "#4C956C",
+    "#FEFEE3",
+    "#FFC9B9",
+    "#D68C45"
+  ],
+  "anchor": "#FFC9B9",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "green",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

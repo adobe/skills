@@ -1,0 +1,2458 @@
+{
+  "version": "v0.6.0",
+  "scraped_at": "2026-04-24",
+  "source": "coolors.co/palettes/trending",
+  "total": 127,
+  "by_ground_family": {
+    "cream": 5,
+    "dark": 20,
+    "monochrome-tint": 13,
+    "pale-gray": 5,
+    "saturated": 78,
+    "stark-white": 6
+  },
+  "palettes": [
+    {
+      "path": "cream/earthy-forest-hues.json",
+      "name": "Earthy Forest Hues",
+      "source": "https://coolors.co/dad7cd-a3b18a-588157-3a5a40-344e41",
+      "anchor": "#3A5A40",
+      "hexes": [
+        "#DAD7CD",
+        "#A3B18A",
+        "#588157",
+        "#3A5A40",
+        "#344E41"
+      ],
+      "ground_family": "cream",
+      "saturation_level": 2,
+      "hue_bias": "green",
+      "energy": 2,
+      "has_cream_family_swatch": true,
+      "cream_flagged_hexes": [
+        "#DAD7CD"
+      ]
+    },
+    {
+      "path": "cream/monochrome-harmony.json",
+      "name": "Monochrome Harmony",
+      "source": "https://coolors.co/cfdbd5-e8eddf-f5cb5c-242423-333533",
+      "anchor": "#F5CB5C",
+      "hexes": [
+        "#CFDBD5",
+        "#E8EDDF",
+        "#F5CB5C",
+        "#242423",
+        "#333533"
+      ],
+      "ground_family": "cream",
+      "saturation_level": 5,
+      "hue_bias": "green",
+      "energy": 4,
+      "has_cream_family_swatch": true,
+      "cream_flagged_hexes": [
+        "#E8EDDF"
+      ]
+    },
+    {
+      "path": "cream/neutral-earth-tones.json",
+      "name": "Neutral Earth Tones",
+      "source": "https://coolors.co/0a0908-22333b-eae0d5-c6ac8f-5e503f",
+      "anchor": "#EAE0D5",
+      "hexes": [
+        "#0A0908",
+        "#22333B",
+        "#EAE0D5",
+        "#C6AC8F",
+        "#5E503F"
+      ],
+      "ground_family": "cream",
+      "saturation_level": 2,
+      "hue_bias": "warm",
+      "energy": 3,
+      "has_cream_family_swatch": true,
+      "cream_flagged_hexes": [
+        "#EAE0D5"
+      ]
+    },
+    {
+      "path": "cream/ocean-breeze.json",
+      "name": "Ocean Breeze",
+      "source": "https://coolors.co/16697a-489fb5-82c0cc-ede7e3-ffa62b",
+      "anchor": "#FFA62B",
+      "hexes": [
+        "#16697A",
+        "#489FB5",
+        "#82C0CC",
+        "#EDE7E3",
+        "#FFA62B"
+      ],
+      "ground_family": "cream",
+      "saturation_level": 5,
+      "hue_bias": "teal",
+      "energy": 4,
+      "has_cream_family_swatch": true,
+      "cream_flagged_hexes": [
+        "#EDE7E3"
+      ]
+    },
+    {
+      "path": "cream/soft-lavender.json",
+      "name": "Soft Lavender",
+      "source": "https://coolors.co/22223b-4a4e69-9a8c98-c9ada7-f2e9e4",
+      "anchor": "#F2E9E4",
+      "hexes": [
+        "#22223B",
+        "#4A4E69",
+        "#9A8C98",
+        "#C9ADA7",
+        "#F2E9E4"
+      ],
+      "ground_family": "cream",
+      "saturation_level": 2,
+      "hue_bias": "cool",
+      "energy": 3,
+      "has_cream_family_swatch": true,
+      "cream_flagged_hexes": [
+        "#F2E9E4"
+      ]
+    },
+    {
+      "path": "dark/crimson-hues.json",
+      "name": "Crimson Hues",
+      "source": "https://coolors.co/250902-38040e-640d14-800e13-ad2831",
+      "anchor": "#250902",
+      "hexes": [
+        "#250902",
+        "#38040E",
+        "#640D14",
+        "#800E13",
+        "#AD2831"
+      ],
+      "ground_family": "dark",
+      "saturation_level": 5,
+      "hue_bias": "hot",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "dark/crimson-sunset-delight.json",
+      "name": "Crimson Sunset Delight",
+      "source": "https://coolors.co/0b0033-370031-832232-ce8964-eaf27c",
+      "anchor": "#0B0033",
+      "hexes": [
+        "#0B0033",
+        "#370031",
+        "#832232",
+        "#CE8964",
+        "#EAF27C"
+      ],
+      "ground_family": "dark",
+      "saturation_level": 5,
+      "hue_bias": "warm",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "dark/earthy-forest-glee.json",
+      "name": "Earthy Forest Glee",
+      "source": "https://coolors.co/ceb992-73937e-585563-5b2e48-471323",
+      "anchor": "#471323",
+      "hexes": [
+        "#CEB992",
+        "#73937E",
+        "#585563",
+        "#5B2E48",
+        "#471323"
+      ],
+      "ground_family": "dark",
+      "saturation_level": 4,
+      "hue_bias": "rainbow",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "dark/emerald-jungle-dreams.json",
+      "name": "Emerald Jungle Dreams",
+      "source": "https://coolors.co/0a2e36-27fb6b-14cc60-036d19-09a129",
+      "anchor": "#0A2E36",
+      "hexes": [
+        "#0A2E36",
+        "#27FB6B",
+        "#14CC60",
+        "#036D19",
+        "#09A129"
+      ],
+      "ground_family": "dark",
+      "saturation_level": 5,
+      "hue_bias": "green",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "dark/fiery-ocean-night.json",
+      "name": "Fiery Ocean Night",
+      "source": "https://coolors.co/f46036-5b85aa-414770-372248-171123",
+      "anchor": "#171123",
+      "hexes": [
+        "#F46036",
+        "#5B85AA",
+        "#414770",
+        "#372248",
+        "#171123"
+      ],
+      "ground_family": "dark",
+      "saturation_level": 5,
+      "hue_bias": "rainbow",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "dark/fiery-sunset.json",
+      "name": "Fiery Sunset",
+      "source": "https://coolors.co/ea8c55-c75146-ad2e24-81171b-540804",
+      "anchor": "#540804",
+      "hexes": [
+        "#EA8C55",
+        "#C75146",
+        "#AD2E24",
+        "#81171B",
+        "#540804"
+      ],
+      "ground_family": "dark",
+      "saturation_level": 5,
+      "hue_bias": "warm",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "dark/golden-twilight.json",
+      "name": "Golden Twilight",
+      "source": "https://coolors.co/000814-001d3d-003566-ffc300-ffd60a",
+      "anchor": "#000814",
+      "hexes": [
+        "#000814",
+        "#001D3D",
+        "#003566",
+        "#FFC300",
+        "#FFD60A"
+      ],
+      "ground_family": "dark",
+      "saturation_level": 5,
+      "hue_bias": "warm",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "dark/green-serenity.json",
+      "name": "Green Serenity",
+      "source": "https://coolors.co/a1cca5-8fb996-709775-415d43-111d13",
+      "anchor": "#111D13",
+      "hexes": [
+        "#A1CCA5",
+        "#8FB996",
+        "#709775",
+        "#415D43",
+        "#111D13"
+      ],
+      "ground_family": "dark",
+      "saturation_level": 2,
+      "hue_bias": "green",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "dark/leafy-green-garden.json",
+      "name": "Leafy Green Garden",
+      "source": "https://coolors.co/132a13-31572c-4f772d-90a955-ecf39e",
+      "anchor": "#132A13",
+      "hexes": [
+        "#132A13",
+        "#31572C",
+        "#4F772D",
+        "#90A955",
+        "#ECF39E"
+      ],
+      "ground_family": "dark",
+      "saturation_level": 5,
+      "hue_bias": "green",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "dark/nature-s-glow.json",
+      "name": "Nature's Glow",
+      "source": "https://coolors.co/a8d5e2-f9a620-ffd449-548c2f-104911",
+      "anchor": "#104911",
+      "hexes": [
+        "#A8D5E2",
+        "#F9A620",
+        "#FFD449",
+        "#548C2F",
+        "#104911"
+      ],
+      "ground_family": "dark",
+      "saturation_level": 5,
+      "hue_bias": "warm",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "dark/neon-lights-blackout.json",
+      "name": "Neon Lights Blackout",
+      "source": "https://coolors.co/00ffff-ff00ff-ffff00-000000",
+      "anchor": "#000000",
+      "hexes": [
+        "#00FFFF",
+        "#FF00FF",
+        "#FFFF00",
+        "#000000"
+      ],
+      "ground_family": "dark",
+      "saturation_level": 5,
+      "hue_bias": "teal",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "dark/ocean-sunset.json",
+      "name": "Ocean Sunset",
+      "source": "https://coolors.co/001427-708d81-f4d58d-bf0603-8d0801",
+      "anchor": "#001427",
+      "hexes": [
+        "#001427",
+        "#708D81",
+        "#F4D58D",
+        "#BF0603",
+        "#8D0801"
+      ],
+      "ground_family": "dark",
+      "saturation_level": 5,
+      "hue_bias": "hot",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "dark/oceanic-electric-love.json",
+      "name": "Oceanic Electric Love",
+      "source": "https://coolors.co/02394a-043565-5158bb-f26df9-eb4b98",
+      "anchor": "#02394A",
+      "hexes": [
+        "#02394A",
+        "#043565",
+        "#5158BB",
+        "#F26DF9",
+        "#EB4B98"
+      ],
+      "ground_family": "dark",
+      "saturation_level": 5,
+      "hue_bias": "cool",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "dark/palette-016.json",
+      "name": "",
+      "source": "https://coolors.co/23523e-674c45-776466-212833-cacdbd",
+      "anchor": "#212833",
+      "hexes": [
+        "#23523E",
+        "#674C45",
+        "#776466",
+        "#212833",
+        "#CACDBD"
+      ],
+      "ground_family": "dark",
+      "saturation_level": 3,
+      "hue_bias": "rainbow",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "dark/purple-dream.json",
+      "name": "Purple Dream",
+      "source": "https://coolors.co/231942-5e548e-9f86c0-be95c4-e0b1cb",
+      "anchor": "#231942",
+      "hexes": [
+        "#231942",
+        "#5E548E",
+        "#9F86C0",
+        "#BE95C4",
+        "#E0B1CB"
+      ],
+      "ground_family": "dark",
+      "saturation_level": 3,
+      "hue_bias": "cool",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "dark/red-sunburst.json",
+      "name": "Red Sunburst",
+      "source": "https://coolors.co/4f000b-720026-ce4257-ff7f51-ff9b54",
+      "anchor": "#4F000B",
+      "hexes": [
+        "#4F000B",
+        "#720026",
+        "#CE4257",
+        "#FF7F51",
+        "#FF9B54"
+      ],
+      "ground_family": "dark",
+      "saturation_level": 5,
+      "hue_bias": "warm",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "dark/refreshing-summer-fun.json",
+      "name": "Refreshing Summer Fun",
+      "source": "https://coolors.co/8ecae6-219ebc-023047-ffb703-fb8500",
+      "anchor": "#023047",
+      "hexes": [
+        "#8ECAE6",
+        "#219EBC",
+        "#023047",
+        "#FFB703",
+        "#FB8500"
+      ],
+      "ground_family": "dark",
+      "saturation_level": 5,
+      "hue_bias": "teal",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "dark/twilight-dreams.json",
+      "name": "Twilight Dreams",
+      "source": "https://coolors.co/97dffc-858ae3-613dc1-4e148c-2c0735",
+      "anchor": "#2C0735",
+      "hexes": [
+        "#97DFFC",
+        "#858AE3",
+        "#613DC1",
+        "#4E148C",
+        "#2C0735"
+      ],
+      "ground_family": "dark",
+      "saturation_level": 5,
+      "hue_bias": "cool",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "dark/vibrant-fusion.json",
+      "name": "Vibrant Fusion",
+      "source": "https://coolors.co/d00000-ffba08-3f88c5-032b43-136f63",
+      "anchor": "#032B43",
+      "hexes": [
+        "#D00000",
+        "#FFBA08",
+        "#3F88C5",
+        "#032B43",
+        "#136F63"
+      ],
+      "ground_family": "dark",
+      "saturation_level": 5,
+      "hue_bias": "teal",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "dark/watermelon-sorbet.json",
+      "name": "Watermelon Sorbet",
+      "source": "https://coolors.co/ef476f-ffd166-06d6a0-118ab2-073b4c",
+      "anchor": "#073B4C",
+      "hexes": [
+        "#EF476F",
+        "#FFD166",
+        "#06D6A0",
+        "#118AB2",
+        "#073B4C"
+      ],
+      "ground_family": "dark",
+      "saturation_level": 5,
+      "hue_bias": "rainbow",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "monochrome-tint/autumn-harvest-2.json",
+      "name": "Autumn Harvest",
+      "source": "https://coolors.co/ede0d4-e6ccb2-ddb892-b08968-7f5539-9c6644",
+      "anchor": "#DDB892",
+      "hexes": [
+        "#EDE0D4",
+        "#E6CCB2",
+        "#DDB892",
+        "#B08968",
+        "#7F5539",
+        "#9C6644"
+      ],
+      "ground_family": "monochrome-tint",
+      "saturation_level": 3,
+      "hue_bias": "warm",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "monochrome-tint/autumn-harvest.json",
+      "name": "Autumn Harvest",
+      "source": "https://coolors.co/f3e9dc-c08552-5e3023-895737-dab49d",
+      "anchor": "#F3E9DC",
+      "hexes": [
+        "#F3E9DC",
+        "#C08552",
+        "#5E3023",
+        "#895737",
+        "#DAB49D"
+      ],
+      "ground_family": "monochrome-tint",
+      "saturation_level": 3,
+      "hue_bias": "warm",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "monochrome-tint/cherry-blossom.json",
+      "name": "Cherry Blossom",
+      "source": "https://coolors.co/ebd4cb-da9f93-b6465f-890620-2c0703",
+      "anchor": "#890620",
+      "hexes": [
+        "#EBD4CB",
+        "#DA9F93",
+        "#B6465F",
+        "#890620",
+        "#2C0703"
+      ],
+      "ground_family": "monochrome-tint",
+      "saturation_level": 5,
+      "hue_bias": "hot",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "monochrome-tint/cool-coastal-vibes.json",
+      "name": "Cool Coastal Vibes",
+      "source": "https://coolors.co/2b2d42-8d99ae-edf2f4-ef233c-d90429",
+      "anchor": "#D90429",
+      "hexes": [
+        "#2B2D42",
+        "#8D99AE",
+        "#EDF2F4",
+        "#EF233C",
+        "#D90429"
+      ],
+      "ground_family": "monochrome-tint",
+      "saturation_level": 5,
+      "hue_bias": "cool",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "monochrome-tint/earthy-green.json",
+      "name": "Earthy Green",
+      "source": "https://coolors.co/cad2c5-84a98c-52796f-354f52-2f3e46",
+      "anchor": "#354F52",
+      "hexes": [
+        "#CAD2C5",
+        "#84A98C",
+        "#52796F",
+        "#354F52",
+        "#2F3E46"
+      ],
+      "ground_family": "monochrome-tint",
+      "saturation_level": 2,
+      "hue_bias": "green",
+      "energy": 2,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "monochrome-tint/forest-hues.json",
+      "name": "Forest Hues",
+      "source": "https://coolors.co/283d3b-197278-edddd4-c44536-772e25",
+      "anchor": "#197278",
+      "hexes": [
+        "#283D3B",
+        "#197278",
+        "#EDDDD4",
+        "#C44536",
+        "#772E25"
+      ],
+      "ground_family": "monochrome-tint",
+      "saturation_level": 4,
+      "hue_bias": "teal",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "monochrome-tint/lavender-serenity.json",
+      "name": "Lavender Serenity",
+      "source": "https://coolors.co/f7f4ea-ded9e2-c0b9dd-80a1d4-75c9c8",
+      "anchor": "#80A1D4",
+      "hexes": [
+        "#F7F4EA",
+        "#DED9E2",
+        "#C0B9DD",
+        "#80A1D4",
+        "#75C9C8"
+      ],
+      "ground_family": "monochrome-tint",
+      "saturation_level": 3,
+      "hue_bias": "cool",
+      "energy": 2,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "monochrome-tint/midnight-sky.json",
+      "name": "Midnight Sky",
+      "source": "https://coolors.co/27187e-758bfd-aeb8fe-f1f2f6-ff8600",
+      "anchor": "#FF8600",
+      "hexes": [
+        "#27187E",
+        "#758BFD",
+        "#AEB8FE",
+        "#F1F2F6",
+        "#FF8600"
+      ],
+      "ground_family": "monochrome-tint",
+      "saturation_level": 5,
+      "hue_bias": "cool",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "monochrome-tint/pastel-dreams.json",
+      "name": "Pastel Dreams",
+      "source": "https://coolors.co/809bce-95b8d1-b8e0d2-d6eadf-eac4d5",
+      "anchor": "#EAC4D5",
+      "hexes": [
+        "#809BCE",
+        "#95B8D1",
+        "#B8E0D2",
+        "#D6EADF",
+        "#EAC4D5"
+      ],
+      "ground_family": "monochrome-tint",
+      "saturation_level": 3,
+      "hue_bias": "rainbow",
+      "energy": 2,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "monochrome-tint/pastel-fantasy.json",
+      "name": "Pastel Fantasy",
+      "source": "https://coolors.co/7bdff2-b2f7ef-eff7f6-f7d6e0-f2b5d4",
+      "anchor": "#7BDFF2",
+      "hexes": [
+        "#7BDFF2",
+        "#B2F7EF",
+        "#EFF7F6",
+        "#F7D6E0",
+        "#F2B5D4"
+      ],
+      "ground_family": "monochrome-tint",
+      "saturation_level": 5,
+      "hue_bias": "teal",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "monochrome-tint/serene-blue.json",
+      "name": "Serene Blue",
+      "source": "https://coolors.co/e7ecef-274c77-6096ba-a3cef1-8b8c89",
+      "anchor": "#A3CEF1",
+      "hexes": [
+        "#E7ECEF",
+        "#274C77",
+        "#6096BA",
+        "#A3CEF1",
+        "#8B8C89"
+      ],
+      "ground_family": "monochrome-tint",
+      "saturation_level": 4,
+      "hue_bias": "cool",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "monochrome-tint/vintage-cottage-charm.json",
+      "name": "Vintage Cottage Charm",
+      "source": "https://coolors.co/54494b-f1f7ed-91c7b1-b33951-e3d081",
+      "anchor": "#E3D081",
+      "hexes": [
+        "#54494B",
+        "#F1F7ED",
+        "#91C7B1",
+        "#B33951",
+        "#E3D081"
+      ],
+      "ground_family": "monochrome-tint",
+      "saturation_level": 4,
+      "hue_bias": "green",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "monochrome-tint/warm-embrace.json",
+      "name": "Warm Embrace",
+      "source": "https://coolors.co/443742-846c5b-cea07e-edd9a3-e2e8c0",
+      "anchor": "#EDD9A3",
+      "hexes": [
+        "#443742",
+        "#846C5B",
+        "#CEA07E",
+        "#EDD9A3",
+        "#E2E8C0"
+      ],
+      "ground_family": "monochrome-tint",
+      "saturation_level": 4,
+      "hue_bias": "warm",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "pale-gray/deep-sea.json",
+      "name": "Deep Sea",
+      "source": "https://coolors.co/0d1b2a-1b263b-415a77-778da9-e0e1dd",
+      "anchor": "#0D1B2A",
+      "hexes": [
+        "#0D1B2A",
+        "#1B263B",
+        "#415A77",
+        "#778DA9",
+        "#E0E1DD"
+      ],
+      "ground_family": "pale-gray",
+      "saturation_level": 3,
+      "hue_bias": "cool",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "pale-gray/misty-lavender.json",
+      "name": "Misty Lavender",
+      "source": "https://coolors.co/eaeaea-cbc5ea-73628a-313d5a-183642",
+      "anchor": "#CBC5EA",
+      "hexes": [
+        "#EAEAEA",
+        "#CBC5EA",
+        "#73628A",
+        "#313D5A",
+        "#183642"
+      ],
+      "ground_family": "pale-gray",
+      "saturation_level": 3,
+      "hue_bias": "cool",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "pale-gray/nature-harmony.json",
+      "name": "Nature Harmony",
+      "source": "https://coolors.co/eff1ed-373d20-717744-bcbd8b-766153",
+      "anchor": "#373D20",
+      "hexes": [
+        "#EFF1ED",
+        "#373D20",
+        "#717744",
+        "#BCBD8B",
+        "#766153"
+      ],
+      "ground_family": "pale-gray",
+      "saturation_level": 2,
+      "hue_bias": "warm",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "pale-gray/silver-lining.json",
+      "name": "Silver Lining",
+      "source": "https://coolors.co/595959-7f7f7f-a5a5a5-cccccc-f2f2f2",
+      "anchor": "#595959",
+      "hexes": [
+        "#595959",
+        "#7F7F7F",
+        "#A5A5A5",
+        "#CCCCCC",
+        "#F2F2F2"
+      ],
+      "ground_family": "pale-gray",
+      "saturation_level": 1,
+      "hue_bias": "neutral",
+      "energy": 2,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "pale-gray/soft-sand.json",
+      "name": "Soft Sand",
+      "source": "https://coolors.co/edede9-d6ccc2-f5ebe0-e3d5ca-d5bdaf",
+      "anchor": "#F5EBE0",
+      "hexes": [
+        "#EDEDE9",
+        "#D6CCC2",
+        "#F5EBE0",
+        "#E3D5CA",
+        "#D5BDAF"
+      ],
+      "ground_family": "pale-gray",
+      "saturation_level": 3,
+      "hue_bias": "warm",
+      "energy": 2,
+      "has_cream_family_swatch": true,
+      "cream_flagged_hexes": [
+        "#D6CCC2",
+        "#E3D5CA"
+      ]
+    },
+    {
+      "path": "saturated/autumn-glow.json",
+      "name": "Autumn Glow",
+      "source": "https://coolors.co/780116-f7b538-db7c26-d8572a-c32f27",
+      "anchor": "#780116",
+      "hexes": [
+        "#780116",
+        "#F7B538",
+        "#DB7C26",
+        "#D8572A",
+        "#C32F27"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "warm",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/autumn-harvest.json",
+      "name": "Autumn Harvest",
+      "source": "https://coolors.co/6f1d1b-bb9457-432818-99582a-ffe6a7",
+      "anchor": "#FFE6A7",
+      "hexes": [
+        "#6F1D1B",
+        "#BB9457",
+        "#432818",
+        "#99582A",
+        "#FFE6A7"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "warm",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/autumn-sunset.json",
+      "name": "Autumn Sunset",
+      "source": "https://coolors.co/461220-8c2f39-b23a48-fcb9b2-fed0bb",
+      "anchor": "#FED0BB",
+      "hexes": [
+        "#461220",
+        "#8C2F39",
+        "#B23A48",
+        "#FCB9B2",
+        "#FED0BB"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "hot",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/beach-sunset.json",
+      "name": "Beach Sunset",
+      "source": "https://coolors.co/bee9e8-62b6cb-1b4965-cae9ff-5fa8d3",
+      "anchor": "#CAE9FF",
+      "hexes": [
+        "#BEE9E8",
+        "#62B6CB",
+        "#1B4965",
+        "#CAE9FF",
+        "#5FA8D3"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "teal",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/blue-serenity.json",
+      "name": "Blue Serenity",
+      "source": "https://coolors.co/edf2fb-e2eafc-d7e3fc-ccdbfd-c1d3fe-b6ccfe-abc4ff",
+      "anchor": "#ABC4FF",
+      "hexes": [
+        "#EDF2FB",
+        "#E2EAFC",
+        "#D7E3FC",
+        "#CCDBFD",
+        "#C1D3FE",
+        "#B6CCFE",
+        "#ABC4FF"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "cool",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/bold-berry.json",
+      "name": "Bold Berry",
+      "source": "https://coolors.co/f9dbbd-ffa5ab-da627d-a53860-450920",
+      "anchor": "#FFA5AB",
+      "hexes": [
+        "#F9DBBD",
+        "#FFA5AB",
+        "#DA627D",
+        "#A53860",
+        "#450920"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "hot",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/bold-hues.json",
+      "name": "Bold Hues",
+      "source": "https://coolors.co/f72585-7209b7-3a0ca3-4361ee-4cc9f0",
+      "anchor": "#F72585",
+      "hexes": [
+        "#F72585",
+        "#7209B7",
+        "#3A0CA3",
+        "#4361EE",
+        "#4CC9F0"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "cool",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/bright-bold-colors.json",
+      "name": "Bright Bold Colors",
+      "source": "https://coolors.co/f9c80e-f86624-ea3546-662e9b-43bccd",
+      "anchor": "#F9C80E",
+      "hexes": [
+        "#F9C80E",
+        "#F86624",
+        "#EA3546",
+        "#662E9B",
+        "#43BCCD"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "rainbow",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/candy-pop.json",
+      "name": "Candy Pop",
+      "source": "https://coolors.co/9b5de5-f15bb5-fee440-00bbf9-00f5d4",
+      "anchor": "#00BBF9",
+      "hexes": [
+        "#9B5DE5",
+        "#F15BB5",
+        "#FEE440",
+        "#00BBF9",
+        "#00F5D4"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "violet",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/citrus-burst.json",
+      "name": "Citrus Burst",
+      "source": "https://coolors.co/8ea604-f5bb00-ec9f05-d76a03-bf3100",
+      "anchor": "#F5BB00",
+      "hexes": [
+        "#8EA604",
+        "#F5BB00",
+        "#EC9F05",
+        "#D76A03",
+        "#BF3100"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "warm",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/coastal-vibes.json",
+      "name": "Coastal Vibes",
+      "source": "https://coolors.co/3d5a80-98c1d9-e0fbfc-ee6c4d-293241",
+      "anchor": "#EE6C4D",
+      "hexes": [
+        "#3D5A80",
+        "#98C1D9",
+        "#E0FBFC",
+        "#EE6C4D",
+        "#293241"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "cool",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/contrast-pop.json",
+      "name": "Contrast Pop",
+      "source": "https://coolors.co/011627-fdfffc-2ec4b6-e71d36-ff9f1c",
+      "anchor": "#FDFFFC",
+      "hexes": [
+        "#011627",
+        "#FDFFFC",
+        "#2EC4B6",
+        "#E71D36",
+        "#FF9F1C"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "teal",
+      "energy": 5,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/cool-waters.json",
+      "name": "Cool Waters",
+      "source": "https://coolors.co/22577a-38a3a5-57cc99-80ed99-c7f9cc",
+      "anchor": "#C7F9CC",
+      "hexes": [
+        "#22577A",
+        "#38A3A5",
+        "#57CC99",
+        "#80ED99",
+        "#C7F9CC"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "green",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/cotton-candy.json",
+      "name": "Cotton Candy",
+      "source": "https://coolors.co/ddfff7-93e1d8-ffa69e-aa4465-861657",
+      "anchor": "#DDFFF7",
+      "hexes": [
+        "#DDFFF7",
+        "#93E1D8",
+        "#FFA69E",
+        "#AA4465",
+        "#861657"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "hot",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/cozy-neutral-retreat.json",
+      "name": "Cozy Neutral Retreat",
+      "source": "https://coolors.co/cb997e-ddbea9-ffe8d6-b7b7a4-a5a58d-6b705c",
+      "anchor": "#FFE8D6",
+      "hexes": [
+        "#CB997E",
+        "#DDBEA9",
+        "#FFE8D6",
+        "#B7B7A4",
+        "#A5A58D",
+        "#6B705C"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "warm",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/dark-sunset.json",
+      "name": "Dark Sunset",
+      "source": "https://coolors.co/335c67-fff3b0-e09f3e-9e2a2b-540b0e",
+      "anchor": "#FFF3B0",
+      "hexes": [
+        "#335C67",
+        "#FFF3B0",
+        "#E09F3E",
+        "#9E2A2B",
+        "#540B0E"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "rainbow",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/earthy-tones-2.json",
+      "name": "Earthy Tones",
+      "source": "https://coolors.co/2c6e49-4c956c-fefee3-ffc9b9-d68c45",
+      "anchor": "#FFC9B9",
+      "hexes": [
+        "#2C6E49",
+        "#4C956C",
+        "#FEFEE3",
+        "#FFC9B9",
+        "#D68C45"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "green",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/earthy-tones-3.json",
+      "name": "Earthy Tones",
+      "source": "https://coolors.co/a3a380-d6ce93-efebce-d8a48f-bb8588",
+      "anchor": "#EFEBCE",
+      "hexes": [
+        "#A3A380",
+        "#D6CE93",
+        "#EFEBCE",
+        "#D8A48F",
+        "#BB8588"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 3,
+      "hue_bias": "hot",
+      "energy": 2,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/earthy-tones-4.json",
+      "name": "Earthy Tones",
+      "source": "https://coolors.co/f0ead2-dde5b6-adc178-a98467-6c584c",
+      "anchor": "#F0EAD2",
+      "hexes": [
+        "#F0EAD2",
+        "#DDE5B6",
+        "#ADC178",
+        "#A98467",
+        "#6C584C"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 3,
+      "hue_bias": "warm",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/earthy-tones.json",
+      "name": "Earthy Tones",
+      "source": "https://coolors.co/edafb8-f7e1d7-dedbd2-b0c4b1-4a5759",
+      "anchor": "#F7E1D7",
+      "hexes": [
+        "#EDAFB8",
+        "#F7E1D7",
+        "#DEDBD2",
+        "#B0C4B1",
+        "#4A5759"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 4,
+      "hue_bias": "hot",
+      "energy": 3,
+      "has_cream_family_swatch": true,
+      "cream_flagged_hexes": [
+        "#DEDBD2"
+      ]
+    },
+    {
+      "path": "saturated/ethereal-hues.json",
+      "name": "Ethereal Hues",
+      "source": "https://coolors.co/f2dfd7-fef9ff-d4c1ec-9f9fed-736ced",
+      "anchor": "#FEF9FF",
+      "hexes": [
+        "#F2DFD7",
+        "#FEF9FF",
+        "#D4C1EC",
+        "#9F9FED",
+        "#736CED"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "cool",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/fiery-ocean.json",
+      "name": "Fiery Ocean",
+      "source": "https://coolors.co/780000-c1121f-fdf0d5-003049-669bbc",
+      "anchor": "#780000",
+      "hexes": [
+        "#780000",
+        "#C1121F",
+        "#FDF0D5",
+        "#003049",
+        "#669BBC"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "hot",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/fiery-palette.json",
+      "name": "Fiery Palette",
+      "source": "https://coolors.co/5f0f40-9a031e-fb8b24-e36414-0f4c5c",
+      "anchor": "#FB8B24",
+      "hexes": [
+        "#5F0F40",
+        "#9A031E",
+        "#FB8B24",
+        "#E36414",
+        "#0F4C5C"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "rainbow",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/fresh-greens.json",
+      "name": "Fresh Greens",
+      "source": "https://coolors.co/386641-6a994e-a7c957-f2e8cf-bc4749",
+      "anchor": "#F2E8CF",
+      "hexes": [
+        "#386641",
+        "#6A994E",
+        "#A7C957",
+        "#F2E8CF",
+        "#BC4749"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 4,
+      "hue_bias": "rainbow",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/golden-peachy-glow.json",
+      "name": "Golden Peachy Glow",
+      "source": "https://coolors.co/c9cba3-ffe1a8-e26d5c-723d46-472d30",
+      "anchor": "#FFE1A8",
+      "hexes": [
+        "#C9CBA3",
+        "#FFE1A8",
+        "#E26D5C",
+        "#723D46",
+        "#472D30"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "warm",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/golden-summer-fields.json",
+      "name": "Golden Summer Fields",
+      "source": "https://coolors.co/ccd5ae-e9edc9-fefae0-faedcd-d4a373",
+      "anchor": "#FEFAE0",
+      "hexes": [
+        "#CCD5AE",
+        "#E9EDC9",
+        "#FEFAE0",
+        "#FAEDCD",
+        "#D4A373"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "warm",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/golden-summer-glow.json",
+      "name": "Golden Summer Glow",
+      "source": "https://coolors.co/0d3b66-faf0ca-f4d35e-ee964b-f95738",
+      "anchor": "#F95738",
+      "hexes": [
+        "#0D3B66",
+        "#FAF0CA",
+        "#F4D35E",
+        "#EE964B",
+        "#F95738"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "warm",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/midnight-glow-party.json",
+      "name": "Midnight Glow Party",
+      "source": "https://coolors.co/0d0106-3626a7-657ed4-ff331f-fbfbff",
+      "anchor": "#FF331F",
+      "hexes": [
+        "#0D0106",
+        "#3626A7",
+        "#657ED4",
+        "#FF331F",
+        "#FBFBFF"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "cool",
+      "energy": 5,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/muted-earthy-tones.json",
+      "name": "Muted Earthy Tones",
+      "source": "https://coolors.co/ffcdb2-ffb4a2-e5989b-b5838d-6d6875",
+      "anchor": "#FFCDB2",
+      "hexes": [
+        "#FFCDB2",
+        "#FFB4A2",
+        "#E5989B",
+        "#B5838D",
+        "#6D6875"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "warm",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/nautical-blues.json",
+      "name": "Nautical Blues",
+      "source": "https://coolors.co/00072d-001c55-0a2472-0e6ba8-a6e1fa",
+      "anchor": "#00072D",
+      "hexes": [
+        "#00072D",
+        "#001C55",
+        "#0A2472",
+        "#0E6BA8",
+        "#A6E1FA"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "cool",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/neutral-harmony-bliss.json",
+      "name": "Neutral Harmony Bliss",
+      "source": "https://coolors.co/f4f1de-e07a5f-3d405b-81b29a-f2cc8f",
+      "anchor": "#F2CC8F",
+      "hexes": [
+        "#F4F1DE",
+        "#E07A5F",
+        "#3D405B",
+        "#81B29A",
+        "#F2CC8F"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "rainbow",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/ocean-breeze.json",
+      "name": "Ocean Breeze",
+      "source": "https://coolors.co/03045e-0077b6-00b4d8-90e0ef-caf0f8",
+      "anchor": "#0077B6",
+      "hexes": [
+        "#03045E",
+        "#0077B6",
+        "#00B4D8",
+        "#90E0EF",
+        "#CAF0F8"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "cool",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/ocean-pearl-delight.json",
+      "name": "Ocean Pearl Delight",
+      "source": "https://coolors.co/006d77-83c5be-edf6f9-ffddd2-e29578",
+      "anchor": "#006D77",
+      "hexes": [
+        "#006D77",
+        "#83C5BE",
+        "#EDF6F9",
+        "#FFDDD2",
+        "#E29578"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "teal",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/ocean-serenity.json",
+      "name": "Ocean Serenity",
+      "source": "https://coolors.co/01161e-124559-598392-aec3b0-eff6e0",
+      "anchor": "#01161E",
+      "hexes": [
+        "#01161E",
+        "#124559",
+        "#598392",
+        "#AEC3B0",
+        "#EFF6E0"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "teal",
+      "energy": 5,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/ocean-sunset-2.json",
+      "name": "Ocean Sunset",
+      "source": "https://coolors.co/2f4858-33658a-86bbd8-f6ae2d-f26419",
+      "anchor": "#F6AE2D",
+      "hexes": [
+        "#2F4858",
+        "#33658A",
+        "#86BBD8",
+        "#F6AE2D",
+        "#F26419"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "teal",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/ocean-sunset.json",
+      "name": "Ocean Sunset",
+      "source": "https://coolors.co/355070-6d597a-b56576-e56b6f-eaac8b",
+      "anchor": "#E56B6F",
+      "hexes": [
+        "#355070",
+        "#6D597A",
+        "#B56576",
+        "#E56B6F",
+        "#EAAC8B"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 4,
+      "hue_bias": "rainbow",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/oceanic-cactus.json",
+      "name": "Oceanic Cactus",
+      "source": "https://coolors.co/1a535c-4ecdc4-f7fff7-ff6b6b-ffe66d",
+      "anchor": "#F7FFF7",
+      "hexes": [
+        "#1A535C",
+        "#4ECDC4",
+        "#F7FFF7",
+        "#FF6B6B",
+        "#FFE66D"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "teal",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/olive-garden-feast.json",
+      "name": "Olive Garden Feast",
+      "source": "https://coolors.co/606c38-283618-fefae0-dda15e-bc6c25",
+      "anchor": "#FEFAE0",
+      "hexes": [
+        "#606C38",
+        "#283618",
+        "#FEFAE0",
+        "#DDA15E",
+        "#BC6C25"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "warm",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/palette-014.json",
+      "name": "",
+      "source": "https://coolors.co/590d22-800f2f-a4133c-ff758f-ff8fa3-fff0f3",
+      "anchor": "#FF758F",
+      "hexes": [
+        "#590D22",
+        "#800F2F",
+        "#A4133C",
+        "#FF758F",
+        "#FF8FA3",
+        "#FFF0F3"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "hot",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/palette-024.json",
+      "name": "",
+      "source": "https://coolors.co/f7facc-bfc56b-63773c-836527-050503",
+      "anchor": "#F7FACC",
+      "hexes": [
+        "#F7FACC",
+        "#BFC56B",
+        "#63773C",
+        "#836527",
+        "#050503"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "mustard",
+      "energy": 5,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/palette-036.json",
+      "name": "",
+      "source": "https://coolors.co/ff4e00-1a140f-1e3a4f-6e6560-3c210b-fdf6ef",
+      "anchor": "#FF4E00",
+      "hexes": [
+        "#FF4E00",
+        "#1A140F",
+        "#1E3A4F",
+        "#6E6560",
+        "#3C210B",
+        "#FDF6EF"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "hot",
+      "energy": 5,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/pastel-comfort.json",
+      "name": "Pastel Comfort",
+      "source": "https://coolors.co/d4e09b-f6f4d2-cbdfbd-f19c79-a44a3f",
+      "anchor": "#F19C79",
+      "hexes": [
+        "#D4E09B",
+        "#F6F4D2",
+        "#CBDFBD",
+        "#F19C79",
+        "#A44A3F"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "mustard",
+      "energy": 4,
+      "has_cream_family_swatch": true,
+      "cream_flagged_hexes": [
+        "#CBDFBD"
+      ]
+    },
+    {
+      "path": "saturated/pastel-dreamland-adventure.json",
+      "name": "Pastel Dreamland Adventure",
+      "source": "https://coolors.co/cdb4db-ffc8dd-ffafcc-bde0fe-a2d2ff",
+      "anchor": "#FFC8DD",
+      "hexes": [
+        "#CDB4DB",
+        "#FFC8DD",
+        "#FFAFCC",
+        "#BDE0FE",
+        "#A2D2FF"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "teal",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/pastel-dreams.json",
+      "name": "Pastel Dreams",
+      "source": "https://coolors.co/ff99c8-fcf6bd-d0f4de-a9def9-e4c1f9",
+      "anchor": "#FF99C8",
+      "hexes": [
+        "#FF99C8",
+        "#FCF6BD",
+        "#D0F4DE",
+        "#A9DEF9",
+        "#E4C1F9"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "rainbow",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/pastel-rainbow.json",
+      "name": "Pastel Rainbow",
+      "source": "https://coolors.co/70d6ff-ff70a6-ff9770-ffd670-e9ff70",
+      "anchor": "#70D6FF",
+      "hexes": [
+        "#70D6FF",
+        "#FF70A6",
+        "#FF9770",
+        "#FFD670",
+        "#E9FF70"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "rainbow",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/pastel-serenity.json",
+      "name": "Pastel Serenity",
+      "source": "https://coolors.co/e27396-ea9ab2-efcfe3-eaf2d7-b3dee2",
+      "anchor": "#E27396",
+      "hexes": [
+        "#E27396",
+        "#EA9AB2",
+        "#EFCFE3",
+        "#EAF2D7",
+        "#B3DEE2"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 4,
+      "hue_bias": "rainbow",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/peach-sorbet.json",
+      "name": "Peach Sorbet",
+      "source": "https://coolors.co/f08080-f4978e-f8ad9d-fbc4ab-ffdab9",
+      "anchor": "#FFDAB9",
+      "hexes": [
+        "#F08080",
+        "#F4978E",
+        "#F8AD9D",
+        "#FBC4AB",
+        "#FFDAB9"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "warm",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/peachy-delight.json",
+      "name": "Peachy Delight",
+      "source": "https://coolors.co/d8e2dc-ffe5d9-ffcad4-f4acb7-9d8189",
+      "anchor": "#FFE5D9",
+      "hexes": [
+        "#D8E2DC",
+        "#FFE5D9",
+        "#FFCAD4",
+        "#F4ACB7",
+        "#9D8189"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "hot",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/pink-fantasy.json",
+      "name": "Pink Fantasy",
+      "source": "https://coolors.co/ff499e-d264b6-a480cf-779be7-49b6ff",
+      "anchor": "#FF499E",
+      "hexes": [
+        "#FF499E",
+        "#D264B6",
+        "#A480CF",
+        "#779BE7",
+        "#49B6FF"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "cool",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/purple-sunset.json",
+      "name": "Purple Sunset",
+      "source": "https://coolors.co/390099-9e0059-ff0054-ff5400-ffbd00",
+      "anchor": "#390099",
+      "hexes": [
+        "#390099",
+        "#9E0059",
+        "#FF0054",
+        "#FF5400",
+        "#FFBD00"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "violet",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/refreshing-spring-hues.json",
+      "name": "Refreshing Spring Hues",
+      "source": "https://coolors.co/90f1ef-ffd6e0-ffef9f-c1fba4-7bf1a8",
+      "anchor": "#FFD6E0",
+      "hexes": [
+        "#90F1EF",
+        "#FFD6E0",
+        "#FFEF9F",
+        "#C1FBA4",
+        "#7BF1A8"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "rainbow",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/rose-petal-2.json",
+      "name": "Rose Petal",
+      "source": "https://coolors.co/63474d-aa767c-d6a184-ffa686-fec196",
+      "anchor": "#FFA686",
+      "hexes": [
+        "#63474D",
+        "#AA767C",
+        "#D6A184",
+        "#FFA686",
+        "#FEC196"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "warm",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/rose-petal.json",
+      "name": "Rose Petal",
+      "source": "https://coolors.co/880d1e-dd2d4a-f26a8d-f49cbb-cbeef3",
+      "anchor": "#F26A8D",
+      "hexes": [
+        "#880D1E",
+        "#DD2D4A",
+        "#F26A8D",
+        "#F49CBB",
+        "#CBEEF3"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "hot",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/serene-waters.json",
+      "name": "Serene Waters",
+      "source": "https://coolors.co/0b2027-40798c-70a9a1-cfd7c7-f6f1d1",
+      "anchor": "#F6F1D1",
+      "hexes": [
+        "#0B2027",
+        "#40798C",
+        "#70A9A1",
+        "#CFD7C7",
+        "#F6F1D1"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 4,
+      "hue_bias": "teal",
+      "energy": 4,
+      "has_cream_family_swatch": true,
+      "cream_flagged_hexes": [
+        "#CFD7C7"
+      ]
+    },
+    {
+      "path": "saturated/soft-lavender-2.json",
+      "name": "Soft Lavender",
+      "source": "https://coolors.co/9381ff-b8b8ff-f8f7ff-ffeedd-ffd8be",
+      "anchor": "#9381FF",
+      "hexes": [
+        "#9381FF",
+        "#B8B8FF",
+        "#F8F7FF",
+        "#FFEEDD",
+        "#FFD8BE"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "cool",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/soft-lavender.json",
+      "name": "Soft Lavender",
+      "source": "https://coolors.co/8e9aaf-cbc0d3-efd3d7-feeafa-dee2ff",
+      "anchor": "#DEE2FF",
+      "hexes": [
+        "#8E9AAF",
+        "#CBC0D3",
+        "#EFD3D7",
+        "#FEEAFA",
+        "#DEE2FF"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "cool",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/soft-pastels.json",
+      "name": "Soft Pastels",
+      "source": "https://coolors.co/ffd6ff-e7c6ff-c8b6ff-b8c0ff-bbd0ff",
+      "anchor": "#FFD6FF",
+      "hexes": [
+        "#FFD6FF",
+        "#E7C6FF",
+        "#C8B6FF",
+        "#B8C0FF",
+        "#BBD0FF"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "cool",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/soft-pink-delight.json",
+      "name": "Soft Pink Delight",
+      "source": "https://coolors.co/ffe5ec-ffc2d1-ffb3c6-ff8fab-fb6f92",
+      "anchor": "#FFE5EC",
+      "hexes": [
+        "#FFE5EC",
+        "#FFC2D1",
+        "#FFB3C6",
+        "#FF8FAB",
+        "#FB6F92"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "hot",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/summer-dream.json",
+      "name": "Summer Dream",
+      "source": "https://coolors.co/0081a7-00afb9-fdfcdc-fed9b7-f07167",
+      "anchor": "#0081A7",
+      "hexes": [
+        "#0081A7",
+        "#00AFB9",
+        "#FDFCDC",
+        "#FED9B7",
+        "#F07167"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "teal",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/summer-ocean-breeze.json",
+      "name": "Summer Ocean Breeze",
+      "source": "https://coolors.co/e63946-f1faee-a8dadc-457b9d-1d3557",
+      "anchor": "#E63946",
+      "hexes": [
+        "#E63946",
+        "#F1FAEE",
+        "#A8DADC",
+        "#457B9D",
+        "#1D3557"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "teal",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/summer-sky.json",
+      "name": "Summer Sky",
+      "source": "https://coolors.co/072ac8-1e96fc-a2d6f9-fcf300-ffc600",
+      "anchor": "#FCF300",
+      "hexes": [
+        "#072AC8",
+        "#1E96FC",
+        "#A2D6F9",
+        "#FCF300",
+        "#FFC600"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "rainbow",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/sunny-beach-day-2.json",
+      "name": "Sunny Beach Day",
+      "source": "https://coolors.co/001524-15616d-ffecd1-ff7d00-78290f",
+      "anchor": "#001524",
+      "hexes": [
+        "#001524",
+        "#15616D",
+        "#FFECD1",
+        "#FF7D00",
+        "#78290F"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "warm",
+      "energy": 5,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/sunny-beach-day.json",
+      "name": "Sunny Beach Day",
+      "source": "https://coolors.co/264653-2a9d8f-e9c46a-f4a261-e76f51",
+      "anchor": "#F4A261",
+      "hexes": [
+        "#264653",
+        "#2A9D8F",
+        "#E9C46A",
+        "#F4A261",
+        "#E76F51"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "teal",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/sunny-delight.json",
+      "name": "Sunny Delight",
+      "source": "https://coolors.co/fabc3c-ffb238-f19143-ff773d-f55536",
+      "anchor": "#FFB238",
+      "hexes": [
+        "#FABC3C",
+        "#FFB238",
+        "#F19143",
+        "#FF773D",
+        "#F55536"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "warm",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/sunny-desert-oasis.json",
+      "name": "Sunny Desert Oasis",
+      "source": "https://coolors.co/ca2e55-ffe0b5-8a6552-462521-bdb246",
+      "anchor": "#FFE0B5",
+      "hexes": [
+        "#CA2E55",
+        "#FFE0B5",
+        "#8A6552",
+        "#462521",
+        "#BDB246"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "warm",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/sunrise-glow.json",
+      "name": "Sunrise Glow",
+      "source": "https://coolors.co/003844-006c67-f194b4-ffb100-ffebc6",
+      "anchor": "#003844",
+      "hexes": [
+        "#003844",
+        "#006C67",
+        "#F194B4",
+        "#FFB100",
+        "#FFEBC6"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "teal",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/sunset-shades.json",
+      "name": "Sunset Shades",
+      "source": "https://coolors.co/f7b267-f79d65-f4845f-f27059-f25c54",
+      "anchor": "#F79D65",
+      "hexes": [
+        "#F7B267",
+        "#F79D65",
+        "#F4845F",
+        "#F27059",
+        "#F25C54"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "warm",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/sweet-sorbet.json",
+      "name": "Sweet Sorbet",
+      "source": "https://coolors.co/5d2a42-fb6376-fcb1a6-ffdccc-fff9ec",
+      "anchor": "#FFDCCC",
+      "hexes": [
+        "#5D2A42",
+        "#FB6376",
+        "#FCB1A6",
+        "#FFDCCC",
+        "#FFF9EC"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "hot",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/sweet-summer-melody.json",
+      "name": "Sweet Summer Melody",
+      "source": "https://coolors.co/f6bd60-f7ede2-f5cac3-84a59d-f28482",
+      "anchor": "#F6BD60",
+      "hexes": [
+        "#F6BD60",
+        "#F7EDE2",
+        "#F5CAC3",
+        "#84A59D",
+        "#F28482"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "hot",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/turquoise-harmony.json",
+      "name": "Turquoise Harmony",
+      "source": "https://coolors.co/05668d-028090-00a896-02c39a-f0f3bd",
+      "anchor": "#00A896",
+      "hexes": [
+        "#05668D",
+        "#028090",
+        "#00A896",
+        "#02C39A",
+        "#F0F3BD"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "teal",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/vibrant-color-fiesta.json",
+      "name": "Vibrant Color Fiesta",
+      "source": "https://coolors.co/ffbe0b-fb5607-ff006e-8338ec-3a86ff",
+      "anchor": "#FFBE0B",
+      "hexes": [
+        "#FFBE0B",
+        "#FB5607",
+        "#FF006E",
+        "#8338EC",
+        "#3A86FF"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "rainbow",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/vibrant-summer-2.json",
+      "name": "Vibrant Summer",
+      "source": "https://coolors.co/2364aa-3da5d9-73bfb8-fec601-ea7317",
+      "anchor": "#FEC601",
+      "hexes": [
+        "#2364AA",
+        "#3DA5D9",
+        "#73BFB8",
+        "#FEC601",
+        "#EA7317"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "teal",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/vibrant-summer.json",
+      "name": "Vibrant Summer",
+      "source": "https://coolors.co/ff595e-ffca3a-8ac926-1982c4-6a4c93",
+      "anchor": "#FF595E",
+      "hexes": [
+        "#FF595E",
+        "#FFCA3A",
+        "#8AC926",
+        "#1982C4",
+        "#6A4C93"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "rainbow",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/vivid-nightfall.json",
+      "name": "Vivid Nightfall",
+      "source": "https://coolors.co/10002b-240046-3c096c-5a189a-7b2cbf-9d4edd-c77dff-e0aaff",
+      "anchor": "#10002B",
+      "hexes": [
+        "#10002B",
+        "#240046",
+        "#3C096C",
+        "#5A189A",
+        "#7B2CBF",
+        "#9D4EDD",
+        "#C77DFF",
+        "#E0AAFF"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "violet",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/warm-autumn-glow-2.json",
+      "name": "Warm Autumn Glow",
+      "source": "https://coolors.co/cc5803-e2711d-ff9505-ffb627-ffc971",
+      "anchor": "#FF9505",
+      "hexes": [
+        "#CC5803",
+        "#E2711D",
+        "#FF9505",
+        "#FFB627",
+        "#FFC971"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "warm",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/warm-autumn-glow.json",
+      "name": "Warm Autumn Glow",
+      "source": "https://coolors.co/003049-d62828-f77f00-fcbf49-eae2b7",
+      "anchor": "#003049",
+      "hexes": [
+        "#003049",
+        "#D62828",
+        "#F77F00",
+        "#FCBF49",
+        "#EAE2B7"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "rainbow",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/warm-earth-tones.json",
+      "name": "Warm Earth Tones",
+      "source": "https://coolors.co/562c2c-f2542d-f5dfbb-0e9594-127475",
+      "anchor": "#F2542D",
+      "hexes": [
+        "#562C2C",
+        "#F2542D",
+        "#F5DFBB",
+        "#0E9594",
+        "#127475"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "hot",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "saturated/warm-rustic-palette.json",
+      "name": "Warm Rustic Palette",
+      "source": "https://coolors.co/585123-eec170-f2a65a-f58549-772f1a",
+      "anchor": "#F58549",
+      "hexes": [
+        "#585123",
+        "#EEC170",
+        "#F2A65A",
+        "#F58549",
+        "#772F1A"
+      ],
+      "ground_family": "saturated",
+      "saturation_level": 5,
+      "hue_bias": "warm",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "stark-white/black-gold-elegance.json",
+      "name": "Black & Gold Elegance",
+      "source": "https://coolors.co/000000-14213d-fca311-e5e5e5-ffffff",
+      "anchor": "#FCA311",
+      "hexes": [
+        "#000000",
+        "#14213D",
+        "#FCA311",
+        "#E5E5E5",
+        "#FFFFFF"
+      ],
+      "ground_family": "stark-white",
+      "saturation_level": 5,
+      "hue_bias": "cool",
+      "energy": 5,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "stark-white/deep-sea.json",
+      "name": "Deep Sea",
+      "source": "https://coolors.co/ffffff-00171f-003459-007ea7-00a8e8",
+      "anchor": "#00171F",
+      "hexes": [
+        "#FFFFFF",
+        "#00171F",
+        "#003459",
+        "#007EA7",
+        "#00A8E8"
+      ],
+      "ground_family": "stark-white",
+      "saturation_level": 5,
+      "hue_bias": "teal",
+      "energy": 5,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "stark-white/gentle-sea-breeze.json",
+      "name": "Gentle Sea Breeze",
+      "source": "https://coolors.co/022b3a-1f7a8c-bfdbf7-e1e5f2-ffffff",
+      "anchor": "#022B3A",
+      "hexes": [
+        "#022B3A",
+        "#1F7A8C",
+        "#BFDBF7",
+        "#E1E5F2",
+        "#FFFFFF"
+      ],
+      "ground_family": "stark-white",
+      "saturation_level": 5,
+      "hue_bias": "cool",
+      "energy": 5,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "stark-white/minimalist-elegance.json",
+      "name": "Minimalist Elegance",
+      "source": "https://coolors.co/2d3142-bfc0c0-ffffff-ef8354-4f5d75",
+      "anchor": "#EF8354",
+      "hexes": [
+        "#2D3142",
+        "#BFC0C0",
+        "#FFFFFF",
+        "#EF8354",
+        "#4F5D75"
+      ],
+      "ground_family": "stark-white",
+      "saturation_level": 5,
+      "hue_bias": "cool",
+      "energy": 4,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "stark-white/monochrome-beach.json",
+      "name": "Monochrome Beach",
+      "source": "https://coolors.co/353535-3c6e71-ffffff-d9d9d9-284b63",
+      "anchor": "#284B63",
+      "hexes": [
+        "#353535",
+        "#3C6E71",
+        "#FFFFFF",
+        "#D9D9D9",
+        "#284B63"
+      ],
+      "ground_family": "stark-white",
+      "saturation_level": 3,
+      "hue_bias": "teal",
+      "energy": 3,
+      "has_cream_family_swatch": false,
+      "cream_flagged_hexes": []
+    },
+    {
+      "path": "stark-white/monochrome-charm.json",
+      "name": "Monochrome Charm",
+      "source": "https://coolors.co/050505-1b9aaa-dddbcb-f5f1e3-ffffff",
+      "anchor": "#1B9AAA",
+      "hexes": [
+        "#050505",
+        "#1B9AAA",
+        "#DDDBCB",
+        "#F5F1E3",
+        "#FFFFFF"
+      ],
+      "ground_family": "stark-white",
+      "saturation_level": 4,
+      "hue_bias": "teal",
+      "energy": 4,
+      "has_cream_family_swatch": true,
+      "cream_flagged_hexes": [
+        "#DDDBCB"
+      ]
+    }
+  ]
+}

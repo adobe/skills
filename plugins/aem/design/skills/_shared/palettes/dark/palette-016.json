@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/23523e-674c45-776466-212833-cacdbd",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "",
+  "hexes": [
+    "#23523E",
+    "#674C45",
+    "#776466",
+    "#212833",
+    "#CACDBD"
+  ],
+  "anchor": "#212833",
+  "classification": {
+    "ground_family": "dark",
+    "saturation_level": 3,
+    "hue_bias": "rainbow",
+    "energy": 3,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

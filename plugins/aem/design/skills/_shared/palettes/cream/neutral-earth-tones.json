@@ -1,0 +1,24 @@
+{
+  "source": "https://coolors.co/0a0908-22333b-eae0d5-c6ac8f-5e503f",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Neutral Earth Tones",
+  "hexes": [
+    "#0A0908",
+    "#22333B",
+    "#EAE0D5",
+    "#C6AC8F",
+    "#5E503F"
+  ],
+  "anchor": "#EAE0D5",
+  "classification": {
+    "ground_family": "cream",
+    "saturation_level": 2,
+    "hue_bias": "warm",
+    "energy": 3,
+    "has_cream_family_swatch": true,
+    "cream_flagged_hexes": [
+      "#EAE0D5"
+    ]
+  }
+}

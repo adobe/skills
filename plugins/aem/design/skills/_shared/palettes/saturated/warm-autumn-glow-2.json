@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/cc5803-e2711d-ff9505-ffb627-ffc971",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Warm Autumn Glow",
+  "hexes": [
+    "#CC5803",
+    "#E2711D",
+    "#FF9505",
+    "#FFB627",
+    "#FFC971"
+  ],
+  "anchor": "#FF9505",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "warm",
+    "energy": 3,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

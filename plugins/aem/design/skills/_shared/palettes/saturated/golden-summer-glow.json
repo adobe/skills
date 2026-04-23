@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/0d3b66-faf0ca-f4d35e-ee964b-f95738",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Golden Summer Glow",
+  "hexes": [
+    "#0D3B66",
+    "#FAF0CA",
+    "#F4D35E",
+    "#EE964B",
+    "#F95738"
+  ],
+  "anchor": "#F95738",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "warm",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

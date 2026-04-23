@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/461220-8c2f39-b23a48-fcb9b2-fed0bb",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Autumn Sunset",
+  "hexes": [
+    "#461220",
+    "#8C2F39",
+    "#B23A48",
+    "#FCB9B2",
+    "#FED0BB"
+  ],
+  "anchor": "#FED0BB",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "hot",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

@@ -41,7 +41,7 @@ Run the procedure in [`../_shared/preflight.md`](../_shared/preflight.md) first.
 
 **If missing:**
 - No URL/PDF/anchor-set/description → deliver the "no reference" warning in the Inputs section below before synthesizing. If the designer proceeds without any reference, roll a deterministic random seed from [`../_shared/divergence-toolkit.md`](../_shared/divergence-toolkit.md) §2, stamp `_divergence.divergence_warning = true` on the profile, and use the seed as a hard constraint on visual decisions. Stamp provenance per [`../_shared/skill-contract.md`](../_shared/skill-contract.md).
-- No `.impeccable.md` → prefer the designer-authored path (see Phase 2). Only fall back to synthesis after the "last chance" prompt has been declined, and stamp `authored_by: synthesized` in frontmatter.
+- No `.impeccable.md` → prefer the designer-authored path (see Phase 3). Only fall back to synthesis after the "last chance" prompt has been declined, and stamp `authored_by: synthesized` in frontmatter.
 
 ---
 
@@ -176,7 +176,126 @@ Pay special attention to:
 2. From the conversation, construct `aem-design/brand-profile.json` with whatever was discussed.
 3. Mark optional fields as null — the designer can fill them in later.
 
-## Phase 2: Design Personality
+## Phase 2: Palette Selection
+
+Before writing the palette into `brand-profile.json`, the designer picks from a set of candidate palettes pulled from the bundled library at [`../_shared/palettes/`](../_shared/palettes/). Every candidate palette's colors come from [coolors.co/palettes/trending](https://coolors.co/palettes/trending) and carry a source URL back to the original — zero assistant-invented hexes.
+
+See [`../_shared/palette-picker.md`](../_shared/palette-picker.md) for the full classifier vocabulary, filter scoring rules, and HSL helpers. See [`reference/pick-ui-template.md`](reference/pick-ui-template.md) for the UI structure and template.
+
+### Skip this phase when
+
+- The brand has authoritative guidelines and the URL/PDF extraction produced a real palette — use the extracted palette as-is (record `_divergence.palette_source.method = "extracted-from-source"`).
+- The designer explicitly provides a palette file at `aem-design/palettes/brand.json` — use it verbatim (`method = "designer-provided"`).
+- Running in fully-automated pipeline mode with no description — fall back to auto-classification from brand voice + seed (`method = "auto-classified"`).
+
+Otherwise, run all six steps below.
+
+### Step A · Derive the palette description
+
+1. **If the designer provides a natural-language palette brief** (e.g. *"freaking bold and shocking"*, *"clean and superbly engineered"*, *"muted sage, considered"*), use it verbatim.
+2. **Otherwise synthesize one short descriptor** from:
+   - the brand's content pillars,
+   - the brand voice traits,
+   - the seed triple from `_divergence.seed` (decade × craft × register),
+   - any ground-family hint from `_divergence.seed.ground`.
+
+   Example: for a Lagos dance collective with seed `1960s × folded-paper × travel-brochure × saturated`, a reasonable synthesized description is *"bold youthful outdoor, 1960s travel brochure, saturated"*.
+
+Stamp the description in `_divergence.palette_source.description_used`.
+
+### Step B · Classify the description
+
+Apply the keyword vocabulary from [`../_shared/palette-picker.md`](../_shared/palette-picker.md) § 1 to extract the five descriptor dimensions:
+
+- `energy` (1–5)
+- `contrast` (1–5)
+- `saturation_level` (1–5)
+- `hue_bias` (hot / warm / mustard / green / teal / cool / violet / neutral / rainbow)
+- `ground_family` (cream / stark-white / pale-gray / saturated / dark / monochrome-tint)
+
+Any dimension the description doesn't trigger keywords for stays `null` (no constraint). Keyword matching is whole-word, case-insensitive. Record the full classification in `_divergence.palette_source.classification`.
+
+### Step C · Filter and score the library
+
+Load palettes from `../_shared/palettes/` — either from the consolidated `library.json` or by walking each `<ground-family>/*.json` file. Apply the filter scoring from [`../_shared/palette-picker.md`](../_shared/palette-picker.md) § 2:
+
+- `ground_family` exact match: +100
+- `hue_bias` exact match: +50 / loose match (hue group): +20
+- `saturation_level` difference: `max(0, 30 − 10·diff)`
+- `energy` difference: `max(0, 20 − 8·diff)`
+
+Keep palettes with score > 0. Sort descending by score. Take the top 5 as candidates.
+
+Compute the recommended pick via `byte[0]` of `MD5(description + YYYY-MM-DD)` mod `len(top_5)`. This is the default the designer can accept with a single keypress; the others are alternatives at the same score tier.
+
+### Step D · Render the pick UI
+
+Write `aem-design/_palette-pick.html` following the template structure in [`reference/pick-ui-template.md`](reference/pick-ui-template.md):
+
+- Shows the description and the classifier output at the top
+- Renders the 5 candidates as numbered cards (1 = recommended, 2–5 = alternatives)
+- Card 1 gets a gold border and larger swatches
+- Each card: swatches with hex labels, anchor marker (★), cream-family flag if present, palette name linked to Coolors source, classification tags
+- Footer instruction: "Tell the assistant a number (1–5), a palette name, or 'refine' to change the description."
+
+Tell the designer:
+
+> "Open `aem-design/_palette-pick.html`. Five candidate palettes from the library. Tell me a number (1–5), a palette name, or 'refine' to change the description."
+
+### Step E · Designer picks
+
+Wait for the designer's input. Valid responses:
+
+- Integer 1–5 → pick that card
+- Palette name substring match → pick the matching card
+- `refine` / `none` → re-ask Step A for a new description, re-run B–D
+- `pick` / Enter → accept the recommended (index 1)
+
+**Pipeline automation:** when invoked as part of a full end-to-end pipeline run (no interactive designer), auto-accept the recommended pick and continue.
+
+### Step F · Record and write to brand-profile
+
+Write the chosen palette into the in-memory brand profile (not yet on disk — Phase 4 writes the file). Each Coolors hex becomes a `colors.primary[]` entry:
+
+```json
+{
+  "name": "Ankara Burnt Orange",   // brand-native if the designer names it, else derived from Coolors palette name + swatch-role
+  "hex": "#DD5B26",                 // from the picked palette
+  "role": "Ankara",                 // brand-native role (see brand-profile-schema.md token-level enforcement)
+  "use": "primary saturated ground, CTA fill"  // technical qualifier
+}
+```
+
+Role-naming rule from `reference/brand-profile-schema.md` Role Naming — enforced applies: no `Primary` / `Accent` / `Brand` / `Background` / `Neutral` tokens in the `role` field. If the designer hasn't provided brand-native role names, derive from the brand's subject matter (e.g., "Bar Beach", "Grove", "Lamination").
+
+Record the full chain in `_divergence.palette_source`:
+
+```json
+"palette_source": {
+  "method": "library-pick",
+  "library_version": "v0.6.0",
+  "library_source": "coolors.co/palettes/trending (scraped 2026-04-24)",
+  "description_used": "freaking bold and shocking",
+  "classification": {
+    "energy": 5, "contrast": 5,
+    "saturation_level": null, "hue_bias": null,
+    "ground_family": "saturated"
+  },
+  "candidates_shown": [
+    { "index": 1, "name": "...", "source": "https://coolors.co/..." },
+    { "index": 2, "name": "...", "source": "..." },
+    "...up to 5..."
+  ],
+  "recommended_index": 1,
+  "picked_index": 1,
+  "picked_palette_name": "Autumn Glow",
+  "picked_palette_source": "https://coolors.co/780116-f7b538-db7c26-d8572a-c32f27"
+}
+```
+
+Leave the `_palette-pick.html` file on disk as an audit record.
+
+## Phase 3: Design Personality
 
 `.impeccable.md` captures the designer's *taste* — references, pet peeves, which rules to bend — signal that can't be inferred from the brand profile alone. It's produced by an interactive interview and used as a quality gate by downstream skills.
 
@@ -230,7 +349,7 @@ Before the skill synthesizes `.impeccable.md` on its own (no designer interview)
 - `.impeccable.md` already exists. (Read its frontmatter; do not overwrite.)
 - Invoked as part of a full end-to-end pipeline run — but still present the last-chance prompt before synthesis unless the designer has explicitly opted out of it for the pipeline run.
 
-## Phase 3: Render Brand Board
+## Phase 4: Render Brand Board
 
 1. Read `aem-design/brand-profile.json`.
 2. Generate `aem-design/brand-board.html` following the template in [`reference/brand-board-template.md`](reference/brand-board-template.md). Render the data contract sections in the canonical order.
@@ -245,7 +364,7 @@ Before the skill synthesizes `.impeccable.md` on its own (no designer interview)
    - In SLICC: the board renders in the browser panel automatically.
    - In Claude Code: the designer opens the file directly; no dev server required.
 
-## Phase 4: Approval Gate
+## Phase 5: Approval Gate
 
 This is a **hard gate** in interactive mode. Do not proceed until the designer approves.
 

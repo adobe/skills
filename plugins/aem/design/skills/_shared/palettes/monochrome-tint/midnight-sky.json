@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/27187e-758bfd-aeb8fe-f1f2f6-ff8600",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Midnight Sky",
+  "hexes": [
+    "#27187E",
+    "#758BFD",
+    "#AEB8FE",
+    "#F1F2F6",
+    "#FF8600"
+  ],
+  "anchor": "#FF8600",
+  "classification": {
+    "ground_family": "monochrome-tint",
+    "saturation_level": 5,
+    "hue_bias": "cool",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

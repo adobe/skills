@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/22577a-38a3a5-57cc99-80ed99-c7f9cc",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Cool Waters",
+  "hexes": [
+    "#22577A",
+    "#38A3A5",
+    "#57CC99",
+    "#80ED99",
+    "#C7F9CC"
+  ],
+  "anchor": "#C7F9CC",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "green",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

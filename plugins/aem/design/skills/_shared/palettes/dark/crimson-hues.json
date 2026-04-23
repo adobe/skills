@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/250902-38040e-640d14-800e13-ad2831",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Crimson Hues",
+  "hexes": [
+    "#250902",
+    "#38040E",
+    "#640D14",
+    "#800E13",
+    "#AD2831"
+  ],
+  "anchor": "#250902",
+  "classification": {
+    "ground_family": "dark",
+    "saturation_level": 5,
+    "hue_bias": "hot",
+    "energy": 3,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/7bdff2-b2f7ef-eff7f6-f7d6e0-f2b5d4",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Pastel Fantasy",
+  "hexes": [
+    "#7BDFF2",
+    "#B2F7EF",
+    "#EFF7F6",
+    "#F7D6E0",
+    "#F2B5D4"
+  ],
+  "anchor": "#7BDFF2",
+  "classification": {
+    "ground_family": "monochrome-tint",
+    "saturation_level": 5,
+    "hue_bias": "teal",
+    "energy": 3,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "source": "https://coolors.co/cfdbd5-e8eddf-f5cb5c-242423-333533",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Monochrome Harmony",
+  "hexes": [
+    "#CFDBD5",
+    "#E8EDDF",
+    "#F5CB5C",
+    "#242423",
+    "#333533"
+  ],
+  "anchor": "#F5CB5C",
+  "classification": {
+    "ground_family": "cream",
+    "saturation_level": 5,
+    "hue_bias": "green",
+    "energy": 4,
+    "has_cream_family_swatch": true,
+    "cream_flagged_hexes": [
+      "#E8EDDF"
+    ]
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/ff595e-ffca3a-8ac926-1982c4-6a4c93",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Vibrant Summer",
+  "hexes": [
+    "#FF595E",
+    "#FFCA3A",
+    "#8AC926",
+    "#1982C4",
+    "#6A4C93"
+  ],
+  "anchor": "#FF595E",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "rainbow",
+    "energy": 3,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/f2dfd7-fef9ff-d4c1ec-9f9fed-736ced",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Ethereal Hues",
+  "hexes": [
+    "#F2DFD7",
+    "#FEF9FF",
+    "#D4C1EC",
+    "#9F9FED",
+    "#736CED"
+  ],
+  "anchor": "#FEF9FF",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "cool",
+    "energy": 3,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

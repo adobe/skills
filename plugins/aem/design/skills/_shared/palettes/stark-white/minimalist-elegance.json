@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/2d3142-bfc0c0-ffffff-ef8354-4f5d75",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Minimalist Elegance",
+  "hexes": [
+    "#2D3142",
+    "#BFC0C0",
+    "#FFFFFF",
+    "#EF8354",
+    "#4F5D75"
+  ],
+  "anchor": "#EF8354",
+  "classification": {
+    "ground_family": "stark-white",
+    "saturation_level": 5,
+    "hue_bias": "cool",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

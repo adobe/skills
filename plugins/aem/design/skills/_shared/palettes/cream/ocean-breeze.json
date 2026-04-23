@@ -1,0 +1,24 @@
+{
+  "source": "https://coolors.co/16697a-489fb5-82c0cc-ede7e3-ffa62b",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Ocean Breeze",
+  "hexes": [
+    "#16697A",
+    "#489FB5",
+    "#82C0CC",
+    "#EDE7E3",
+    "#FFA62B"
+  ],
+  "anchor": "#FFA62B",
+  "classification": {
+    "ground_family": "cream",
+    "saturation_level": 5,
+    "hue_bias": "teal",
+    "energy": 4,
+    "has_cream_family_swatch": true,
+    "cream_flagged_hexes": [
+      "#EDE7E3"
+    ]
+  }
+}

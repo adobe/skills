@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/443742-846c5b-cea07e-edd9a3-e2e8c0",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Warm Embrace",
+  "hexes": [
+    "#443742",
+    "#846C5B",
+    "#CEA07E",
+    "#EDD9A3",
+    "#E2E8C0"
+  ],
+  "anchor": "#EDD9A3",
+  "classification": {
+    "ground_family": "monochrome-tint",
+    "saturation_level": 4,
+    "hue_bias": "warm",
+    "energy": 3,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

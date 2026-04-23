@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/000000-14213d-fca311-e5e5e5-ffffff",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Black & Gold Elegance",
+  "hexes": [
+    "#000000",
+    "#14213D",
+    "#FCA311",
+    "#E5E5E5",
+    "#FFFFFF"
+  ],
+  "anchor": "#FCA311",
+  "classification": {
+    "ground_family": "stark-white",
+    "saturation_level": 5,
+    "hue_bias": "cool",
+    "energy": 5,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

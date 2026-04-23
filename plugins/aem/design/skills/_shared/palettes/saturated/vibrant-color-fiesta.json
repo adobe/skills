@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/ffbe0b-fb5607-ff006e-8338ec-3a86ff",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Vibrant Color Fiesta",
+  "hexes": [
+    "#FFBE0B",
+    "#FB5607",
+    "#FF006E",
+    "#8338EC",
+    "#3A86FF"
+  ],
+  "anchor": "#FFBE0B",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "rainbow",
+    "energy": 3,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

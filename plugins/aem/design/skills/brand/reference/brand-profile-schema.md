@@ -30,6 +30,31 @@
       "hash_input": "string|null — for deterministic-random, the exact string that was hashed (e.g. 'Nonna\\'s Arsenal|2026-04-23'). Present for audit reproducibility."
     },
     "font_deck": "string|null — name of the deck used from divergence-toolkit.md §3, e.g. 'retro-italian'",
+    "palette_source": {
+      "method": "string — 'library-pick' | 'extracted-from-source' | 'designer-provided' | 'auto-classified' | 'llm-invented'. 'library-pick' is the default for no-reference runs in v0.6+; 'llm-invented' is a fallback and should be rare.",
+      "library_version": "string|null — version of _shared/palettes/ used, e.g. 'v0.6.0'. Only present when method = 'library-pick'.",
+      "library_source": "string|null — provenance note, e.g. 'coolors.co/palettes/trending (scraped 2026-04-24)'.",
+      "description_used": "string|null — the natural-language palette brief ('freaking bold and shocking', 'clean and superbly engineered'). Either supplied by the designer or synthesized from brand voice + seed.",
+      "classification": {
+        "energy": "number|null — 1-5, from _shared/palette-picker.md §1 keyword match",
+        "contrast": "number|null — 1-5",
+        "saturation_level": "number|null — 1-5",
+        "hue_bias": "string|null — 'hot'|'warm'|'mustard'|'green'|'teal'|'cool'|'violet'|'neutral'|'rainbow'",
+        "ground_family": "string|null — 'cream'|'stark-white'|'pale-gray'|'saturated'|'dark'|'monochrome-tint'"
+      },
+      "candidates_shown": [
+        {
+          "index": "number — 1-5",
+          "name": "string — palette name from Coolors",
+          "source": "string — Coolors share URL",
+          "score": "number — filter score from palette-picker.md §2"
+        }
+      ],
+      "recommended_index": "number|null — 1-5, the hash-deterministic default. Null if method != 'library-pick'.",
+      "picked_index": "number|null — 1-5, which candidate the designer chose. May equal recommended_index.",
+      "picked_palette_name": "string|null — display name of the chosen palette.",
+      "picked_palette_source": "string|null — Coolors share URL for the chosen palette; lets a reviewer click through and verify the colors."
+    },
     "anti_toolbox_count": "number — how many moves from divergence-toolkit.md §1 are present in this profile; budget is 3",
     "anti_toolbox_hits": [
       "string — specific moves from the toolkit's §1 list that this profile uses, e.g. 'stencil display type', '45° hazard stripes'. Enables audit."
@@ -251,6 +276,20 @@ The `_divergence` block sits as the second top-level key, right after `_provenan
 ### Reader compatibility
 
 Older profiles (pre-`_divergence`) are valid. Readers treat a missing `_divergence` block as equivalent to `{ toolkit_version: "pre-v0.1", anti_toolbox_count: null }`. No downstream skill should hard-fail on its absence.
+
+### `palette_source` sub-block (added in v0.6)
+
+The `_divergence.palette_source` block records where the brand's `colors.primary[]` entries came from. Recommended practice in v0.6+ is `method = "library-pick"` — the brand skill's Phase 2 (Palette Selection) picks a palette from `_shared/palettes/` based on a designer description, and the designer confirms the pick in a visual UI at `aem-design/_palette-pick.html`.
+
+Other valid methods:
+- `"extracted-from-source"` — palette came from a real brand URL/PDF extracted in Phase 1
+- `"designer-provided"` — the designer dropped `aem-design/palettes/brand.json` with explicit hex values
+- `"auto-classified"` — pipeline-automation fallback where no description was given; classifier ran on synthesized description
+- `"llm-invented"` — fallback when the library has no matches. Should be rare and loud; stamp `anti_toolbox_hits` aggressively if it fires.
+
+`candidates_shown`, `recommended_index`, and `picked_index` let a reviewer verify the choice process. The `picked_palette_source` URL provides external verification — a reviewer can open the Coolors link and confirm the colors match.
+
+Backwards compatibility: profiles without a `palette_source` block are valid reads. Only enforced for new writes when Phase 2 has run.
 
 ---
 

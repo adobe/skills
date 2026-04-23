@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/f72585-7209b7-3a0ca3-4361ee-4cc9f0",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Bold Hues",
+  "hexes": [
+    "#F72585",
+    "#7209B7",
+    "#3A0CA3",
+    "#4361EE",
+    "#4CC9F0"
+  ],
+  "anchor": "#F72585",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "cool",
+    "energy": 3,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

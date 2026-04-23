@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/880d1e-dd2d4a-f26a8d-f49cbb-cbeef3",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Rose Petal",
+  "hexes": [
+    "#880D1E",
+    "#DD2D4A",
+    "#F26A8D",
+    "#F49CBB",
+    "#CBEEF3"
+  ],
+  "anchor": "#F26A8D",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "hot",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

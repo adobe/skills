@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/90f1ef-ffd6e0-ffef9f-c1fba4-7bf1a8",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Refreshing Spring Hues",
+  "hexes": [
+    "#90F1EF",
+    "#FFD6E0",
+    "#FFEF9F",
+    "#C1FBA4",
+    "#7BF1A8"
+  ],
+  "anchor": "#FFD6E0",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "rainbow",
+    "energy": 3,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

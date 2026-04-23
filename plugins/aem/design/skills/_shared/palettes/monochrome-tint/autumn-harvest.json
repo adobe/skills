@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/f3e9dc-c08552-5e3023-895737-dab49d",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Autumn Harvest",
+  "hexes": [
+    "#F3E9DC",
+    "#C08552",
+    "#5E3023",
+    "#895737",
+    "#DAB49D"
+  ],
+  "anchor": "#F3E9DC",
+  "classification": {
+    "ground_family": "monochrome-tint",
+    "saturation_level": 3,
+    "hue_bias": "warm",
+    "energy": 3,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/ea8c55-c75146-ad2e24-81171b-540804",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Fiery Sunset",
+  "hexes": [
+    "#EA8C55",
+    "#C75146",
+    "#AD2E24",
+    "#81171B",
+    "#540804"
+  ],
+  "anchor": "#540804",
+  "classification": {
+    "ground_family": "dark",
+    "saturation_level": 5,
+    "hue_bias": "warm",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

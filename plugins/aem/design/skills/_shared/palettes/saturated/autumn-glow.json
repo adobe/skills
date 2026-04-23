@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/780116-f7b538-db7c26-d8572a-c32f27",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Autumn Glow",
+  "hexes": [
+    "#780116",
+    "#F7B538",
+    "#DB7C26",
+    "#D8572A",
+    "#C32F27"
+  ],
+  "anchor": "#780116",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "warm",
+    "energy": 3,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

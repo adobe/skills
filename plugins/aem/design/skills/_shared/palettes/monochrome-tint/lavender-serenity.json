@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/f7f4ea-ded9e2-c0b9dd-80a1d4-75c9c8",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Lavender Serenity",
+  "hexes": [
+    "#F7F4EA",
+    "#DED9E2",
+    "#C0B9DD",
+    "#80A1D4",
+    "#75C9C8"
+  ],
+  "anchor": "#80A1D4",
+  "classification": {
+    "ground_family": "monochrome-tint",
+    "saturation_level": 3,
+    "hue_bias": "cool",
+    "energy": 2,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

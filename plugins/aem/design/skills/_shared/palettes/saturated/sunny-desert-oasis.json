@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/ca2e55-ffe0b5-8a6552-462521-bdb246",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Sunny Desert Oasis",
+  "hexes": [
+    "#CA2E55",
+    "#FFE0B5",
+    "#8A6552",
+    "#462521",
+    "#BDB246"
+  ],
+  "anchor": "#FFE0B5",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "warm",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

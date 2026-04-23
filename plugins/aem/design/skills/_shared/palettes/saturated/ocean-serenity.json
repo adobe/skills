@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/01161e-124559-598392-aec3b0-eff6e0",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Ocean Serenity",
+  "hexes": [
+    "#01161E",
+    "#124559",
+    "#598392",
+    "#AEC3B0",
+    "#EFF6E0"
+  ],
+  "anchor": "#01161E",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "teal",
+    "energy": 5,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

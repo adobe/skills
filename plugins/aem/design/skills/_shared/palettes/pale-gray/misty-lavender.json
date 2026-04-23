@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/eaeaea-cbc5ea-73628a-313d5a-183642",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Misty Lavender",
+  "hexes": [
+    "#EAEAEA",
+    "#CBC5EA",
+    "#73628A",
+    "#313D5A",
+    "#183642"
+  ],
+  "anchor": "#CBC5EA",
+  "classification": {
+    "ground_family": "pale-gray",
+    "saturation_level": 3,
+    "hue_bias": "cool",
+    "energy": 3,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

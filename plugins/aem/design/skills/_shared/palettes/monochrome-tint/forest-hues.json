@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/283d3b-197278-edddd4-c44536-772e25",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Forest Hues",
+  "hexes": [
+    "#283D3B",
+    "#197278",
+    "#EDDDD4",
+    "#C44536",
+    "#772E25"
+  ],
+  "anchor": "#197278",
+  "classification": {
+    "ground_family": "monochrome-tint",
+    "saturation_level": 4,
+    "hue_bias": "teal",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

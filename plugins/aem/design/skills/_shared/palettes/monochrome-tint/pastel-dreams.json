@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/809bce-95b8d1-b8e0d2-d6eadf-eac4d5",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Pastel Dreams",
+  "hexes": [
+    "#809BCE",
+    "#95B8D1",
+    "#B8E0D2",
+    "#D6EADF",
+    "#EAC4D5"
+  ],
+  "anchor": "#EAC4D5",
+  "classification": {
+    "ground_family": "monochrome-tint",
+    "saturation_level": 3,
+    "hue_bias": "rainbow",
+    "energy": 2,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

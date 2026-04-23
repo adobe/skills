@@ -1,0 +1,24 @@
+{
+  "source": "https://coolors.co/edf2fb-e2eafc-d7e3fc-ccdbfd-c1d3fe-b6ccfe-abc4ff",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Blue Serenity",
+  "hexes": [
+    "#EDF2FB",
+    "#E2EAFC",
+    "#D7E3FC",
+    "#CCDBFD",
+    "#C1D3FE",
+    "#B6CCFE",
+    "#ABC4FF"
+  ],
+  "anchor": "#ABC4FF",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "cool",
+    "energy": 3,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

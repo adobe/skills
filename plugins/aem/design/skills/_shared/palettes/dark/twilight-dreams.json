@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/97dffc-858ae3-613dc1-4e148c-2c0735",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Twilight Dreams",
+  "hexes": [
+    "#97DFFC",
+    "#858AE3",
+    "#613DC1",
+    "#4E148C",
+    "#2C0735"
+  ],
+  "anchor": "#2C0735",
+  "classification": {
+    "ground_family": "dark",
+    "saturation_level": 5,
+    "hue_bias": "cool",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/f9dbbd-ffa5ab-da627d-a53860-450920",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Bold Berry",
+  "hexes": [
+    "#F9DBBD",
+    "#FFA5AB",
+    "#DA627D",
+    "#A53860",
+    "#450920"
+  ],
+  "anchor": "#FFA5AB",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "hot",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

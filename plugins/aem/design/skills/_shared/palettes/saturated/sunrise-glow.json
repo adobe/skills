@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/003844-006c67-f194b4-ffb100-ffebc6",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Sunrise Glow",
+  "hexes": [
+    "#003844",
+    "#006C67",
+    "#F194B4",
+    "#FFB100",
+    "#FFEBC6"
+  ],
+  "anchor": "#003844",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "teal",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

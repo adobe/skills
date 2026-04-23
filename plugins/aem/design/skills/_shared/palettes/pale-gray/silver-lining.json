@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/595959-7f7f7f-a5a5a5-cccccc-f2f2f2",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Silver Lining",
+  "hexes": [
+    "#595959",
+    "#7F7F7F",
+    "#A5A5A5",
+    "#CCCCCC",
+    "#F2F2F2"
+  ],
+  "anchor": "#595959",
+  "classification": {
+    "ground_family": "pale-gray",
+    "saturation_level": 1,
+    "hue_bias": "neutral",
+    "energy": 2,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

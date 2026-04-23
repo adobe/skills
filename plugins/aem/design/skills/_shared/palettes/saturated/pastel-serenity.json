@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/e27396-ea9ab2-efcfe3-eaf2d7-b3dee2",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Pastel Serenity",
+  "hexes": [
+    "#E27396",
+    "#EA9AB2",
+    "#EFCFE3",
+    "#EAF2D7",
+    "#B3DEE2"
+  ],
+  "anchor": "#E27396",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 4,
+    "hue_bias": "rainbow",
+    "energy": 3,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/022b3a-1f7a8c-bfdbf7-e1e5f2-ffffff",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Gentle Sea Breeze",
+  "hexes": [
+    "#022B3A",
+    "#1F7A8C",
+    "#BFDBF7",
+    "#E1E5F2",
+    "#FFFFFF"
+  ],
+  "anchor": "#022B3A",
+  "classification": {
+    "ground_family": "stark-white",
+    "saturation_level": 5,
+    "hue_bias": "cool",
+    "energy": 5,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

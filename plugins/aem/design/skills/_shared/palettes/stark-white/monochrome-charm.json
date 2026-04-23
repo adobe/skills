@@ -1,0 +1,24 @@
+{
+  "source": "https://coolors.co/050505-1b9aaa-dddbcb-f5f1e3-ffffff",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Monochrome Charm",
+  "hexes": [
+    "#050505",
+    "#1B9AAA",
+    "#DDDBCB",
+    "#F5F1E3",
+    "#FFFFFF"
+  ],
+  "anchor": "#1B9AAA",
+  "classification": {
+    "ground_family": "stark-white",
+    "saturation_level": 4,
+    "hue_bias": "teal",
+    "energy": 4,
+    "has_cream_family_swatch": true,
+    "cream_flagged_hexes": [
+      "#DDDBCB"
+    ]
+  }
+}

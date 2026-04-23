@@ -1,0 +1,23 @@
+{
+  "source": "https://coolors.co/ff4e00-1a140f-1e3a4f-6e6560-3c210b-fdf6ef",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "",
+  "hexes": [
+    "#FF4E00",
+    "#1A140F",
+    "#1E3A4F",
+    "#6E6560",
+    "#3C210B",
+    "#FDF6EF"
+  ],
+  "anchor": "#FF4E00",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "hot",
+    "energy": 5,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

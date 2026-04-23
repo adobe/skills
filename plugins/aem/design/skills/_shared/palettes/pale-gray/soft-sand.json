@@ -1,0 +1,25 @@
+{
+  "source": "https://coolors.co/edede9-d6ccc2-f5ebe0-e3d5ca-d5bdaf",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Soft Sand",
+  "hexes": [
+    "#EDEDE9",
+    "#D6CCC2",
+    "#F5EBE0",
+    "#E3D5CA",
+    "#D5BDAF"
+  ],
+  "anchor": "#F5EBE0",
+  "classification": {
+    "ground_family": "pale-gray",
+    "saturation_level": 3,
+    "hue_bias": "warm",
+    "energy": 2,
+    "has_cream_family_swatch": true,
+    "cream_flagged_hexes": [
+      "#D6CCC2",
+      "#E3D5CA"
+    ]
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/072ac8-1e96fc-a2d6f9-fcf300-ffc600",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Summer Sky",
+  "hexes": [
+    "#072AC8",
+    "#1E96FC",
+    "#A2D6F9",
+    "#FCF300",
+    "#FFC600"
+  ],
+  "anchor": "#FCF300",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "rainbow",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

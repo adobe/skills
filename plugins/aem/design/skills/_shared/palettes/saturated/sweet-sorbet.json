@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/5d2a42-fb6376-fcb1a6-ffdccc-fff9ec",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Sweet Sorbet",
+  "hexes": [
+    "#5D2A42",
+    "#FB6376",
+    "#FCB1A6",
+    "#FFDCCC",
+    "#FFF9EC"
+  ],
+  "anchor": "#FFDCCC",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "hot",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

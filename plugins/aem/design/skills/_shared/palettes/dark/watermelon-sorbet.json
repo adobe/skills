@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/ef476f-ffd166-06d6a0-118ab2-073b4c",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Watermelon Sorbet",
+  "hexes": [
+    "#EF476F",
+    "#FFD166",
+    "#06D6A0",
+    "#118AB2",
+    "#073B4C"
+  ],
+  "anchor": "#073B4C",
+  "classification": {
+    "ground_family": "dark",
+    "saturation_level": 5,
+    "hue_bias": "rainbow",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

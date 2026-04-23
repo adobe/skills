@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/8e9aaf-cbc0d3-efd3d7-feeafa-dee2ff",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Soft Lavender",
+  "hexes": [
+    "#8E9AAF",
+    "#CBC0D3",
+    "#EFD3D7",
+    "#FEEAFA",
+    "#DEE2FF"
+  ],
+  "anchor": "#DEE2FF",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "cool",
+    "energy": 3,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

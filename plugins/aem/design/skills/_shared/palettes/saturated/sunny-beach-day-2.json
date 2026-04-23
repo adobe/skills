@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/001524-15616d-ffecd1-ff7d00-78290f",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Sunny Beach Day",
+  "hexes": [
+    "#001524",
+    "#15616D",
+    "#FFECD1",
+    "#FF7D00",
+    "#78290F"
+  ],
+  "anchor": "#001524",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "warm",
+    "energy": 5,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/386641-6a994e-a7c957-f2e8cf-bc4749",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Fresh Greens",
+  "hexes": [
+    "#386641",
+    "#6A994E",
+    "#A7C957",
+    "#F2E8CF",
+    "#BC4749"
+  ],
+  "anchor": "#F2E8CF",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 4,
+    "hue_bias": "rainbow",
+    "energy": 3,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

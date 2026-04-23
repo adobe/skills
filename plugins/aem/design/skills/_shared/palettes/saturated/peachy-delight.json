@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/d8e2dc-ffe5d9-ffcad4-f4acb7-9d8189",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Peachy Delight",
+  "hexes": [
+    "#D8E2DC",
+    "#FFE5D9",
+    "#FFCAD4",
+    "#F4ACB7",
+    "#9D8189"
+  ],
+  "anchor": "#FFE5D9",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "hot",
+    "energy": 3,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

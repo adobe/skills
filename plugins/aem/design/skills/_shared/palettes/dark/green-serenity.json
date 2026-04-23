@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/a1cca5-8fb996-709775-415d43-111d13",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Green Serenity",
+  "hexes": [
+    "#A1CCA5",
+    "#8FB996",
+    "#709775",
+    "#415D43",
+    "#111D13"
+  ],
+  "anchor": "#111D13",
+  "classification": {
+    "ground_family": "dark",
+    "saturation_level": 2,
+    "hue_bias": "green",
+    "energy": 3,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}

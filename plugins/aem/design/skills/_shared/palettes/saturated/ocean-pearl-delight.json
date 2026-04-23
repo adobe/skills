@@ -1,0 +1,22 @@
+{
+  "source": "https://coolors.co/006d77-83c5be-edf6f9-ffddd2-e29578",
+  "source_type": "coolors-trending",
+  "scraped_at": "2026-04-24",
+  "name": "Ocean Pearl Delight",
+  "hexes": [
+    "#006D77",
+    "#83C5BE",
+    "#EDF6F9",
+    "#FFDDD2",
+    "#E29578"
+  ],
+  "anchor": "#006D77",
+  "classification": {
+    "ground_family": "saturated",
+    "saturation_level": 5,
+    "hue_bias": "teal",
+    "energy": 4,
+    "has_cream_family_swatch": false,
+    "cream_flagged_hexes": []
+  }
+}
