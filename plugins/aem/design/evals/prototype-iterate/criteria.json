@@ -1,0 +1,16 @@
+{
+  "name": "prototype-iterate",
+  "total": 100,
+  "criteria": [
+    { "id": "activated_turn1", "weight": 10, "description": "The prototype skill activated on turn 1." },
+    { "id": "prototype_written", "weight": 10, "description": "aem-design/prototypes/landing.html was created." },
+    { "id": "brand_applied", "weight": 15, "description": "Brand palette and fonts are applied (visible in CSS custom properties or inline styles)." },
+    { "id": "copy_verbatim", "weight": 10, "description": "Hero copy matches briefing `# Copy` values verbatim." },
+    { "id": "tokens_in_root", "weight": 10, "description": "Design tokens exposed as CSS custom properties on :root." },
+    { "id": "data_section_attrs", "weight": 5, "description": "data-section and data-intent attributes present." },
+    { "id": "activated_turn2", "weight": 10, "description": "The prototype skill re-activated on turn 2 iteration request." },
+    { "id": "iteration_applied", "weight": 15, "description": "Heading weight/size decreased and hero padding increased — change is visible in the updated file." },
+    { "id": "no_briefing_writeback", "weight": 10, "description": "Briefing was not modified during iteration." },
+    { "id": "no_brand_writeback", "weight": 5, "description": "brand-profile.json was not modified during iteration." }
+  ]
+}

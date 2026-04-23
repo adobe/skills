@@ -1,0 +1,13 @@
+{
+  "name": "briefings-from-prompt",
+  "total": 100,
+  "criteria": [
+    { "id": "activated", "weight": 10, "description": "The briefings skill was invoked." },
+    { "id": "soft_gate_respected", "weight": 20, "description": "Did not block on missing brand-profile.json; proceeded with synthesis." },
+    { "id": "briefing_file_exists", "weight": 15, "description": "aem-design/briefings/<page>.md was created." },
+    { "id": "briefing_sections", "weight": 15, "description": "Briefing contains Intent, Audience, Key Messages, CTAs, Tone sections." },
+    { "id": "provenance_stamped", "weight": 15, "description": "Briefing contains a provenance stamp noting synthesized brand context." },
+    { "id": "fallback_announced_once", "weight": 15, "description": "If superpowers absent, fallback announcement appears exactly once." },
+    { "id": "no_cross_writes", "weight": 10, "description": "Did not write brand-profile.json, wireframes, or prototypes." }
+  ]
+}

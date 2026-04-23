@@ -1,0 +1,13 @@
+{
+  "name": "brand-extract-from-url",
+  "total": 100,
+  "criteria": [
+    { "id": "activated", "weight": 10, "description": "The brand skill was invoked." },
+    { "id": "playwright_over_webfetch", "weight": 20, "description": "Playwright was used (visited the URL with a browser), not WebFetch/curl." },
+    { "id": "brand_profile_shape", "weight": 15, "description": "aem-design/brand-profile.json exists with palette, typography, voice fields." },
+    { "id": "brand_board_rendered", "weight": 15, "description": "aem-design/brand-board.html exists and is self-contained (no external dev-server references)." },
+    { "id": "provenance_stamped", "weight": 15, "description": "brand-profile.json has a provenance block naming the source URL and method." },
+    { "id": "no_eds_references", "weight": 15, "description": "No mention of EDS, AEM, localhost:3000, or dev server in outputs or narration." },
+    { "id": "impeccable_md_optional", "weight": 10, "description": "If a personality signal exists, .impeccable.md is written; otherwise its absence is not penalized." }
+  ]
+}
