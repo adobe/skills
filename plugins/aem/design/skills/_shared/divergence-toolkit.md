@@ -6,13 +6,16 @@ by `prototype`) to push back against the assistant's recurring default moves.
 Loaded whenever a skill is about to make a visual decision without a strong
 external reference.
 
-**Status:** v0.5 · self-audited · run-tested twice. The anti-toolbox list below was compiled by the assistant as a self-audit of its own recurring moves and expanded after successive test runs surfaced additional defaults. It is deliberately imperfect. Designers should add corrections in §6 over time; that section is authoritative when it conflicts with §1.
+**Status:** v0.5.1 · self-audited · run-tested twice. The anti-toolbox list below was compiled by the assistant as a self-audit of its own recurring moves and expanded after successive test runs surfaced additional defaults. It is deliberately imperfect. Designers should add corrections in §6 over time; that section is authoritative when it conflicts with §1.
+
+**Changes from v0.5 → v0.5.1:**
+- **Fixed false-positive in the cream-family hex test.** The v0.5 rule used `S < 15` as a proxy for "warm or neutral", which falsely flagged pure neutral grays (`#F2F2F2`, `#CCCCCC`) as cream. Replaced with raw-channel warm-bias check (`R − B ≥ 5`). Pure grays are now correctly routed to pale-gray or stark-white instead. The rule still catches all legitimate cream rebrands (vellum, kami, oatmeal, bone, etc.) because those ARE warm at low saturation.
 
 **Changes from v0.4 → v0.5:**
 - **Retired the chassis system** (added v0.3, refined v0.4). Chassis picking produced structural divergence at the surface but did not address the deeper convergence on palette/ground. The system's surface area was larger than its payoff.
 - **Retired § 2.5 "Ground color by seed" table.** It was a carveout the LLM used to rationalise cream on most runs.
 - **Added a 4th seed dimension: ground-family.** Deterministic-random across 6 options (cream · stark-white · pale-gray · saturated · dark · monochrome-tint). Cream lands on ~1/6 of no-reference runs instead of the observed ~3/3.
-- **Tightened § 1 cream-family entry with rebrand ban and deterministic hex test.** Vellum, kami, bone, oatmeal, eggshell, ivory, parchment, washi, biscuit, tan, wheat, fawn, sand, linen, canvas, manila, calfskin — all rebrands are called out and banned under the same rule. Deterministic HSL-range check (L 80–97, H 20°–60° or low-S, S < 40%) catches cream regardless of its brand-native name.
+- **Tightened § 1 cream-family entry with rebrand ban and deterministic hex test.** Vellum, kami, bone, oatmeal, eggshell, ivory, parchment, washi, biscuit, tan, wheat, fawn, sand, linen, canvas, manila, calfskin — all rebrands are called out and banned under the same rule. Deterministic HSL + warm-bias check catches cream regardless of its brand-native name.
 
 **Changes from v0.1 → v0.2 (preserved):**
 - Retired the "3 free hits" budget. Every hit now needs a brand-specific justification (§ 1 Enforcement).
@@ -90,13 +93,15 @@ Recurring *palette families* — not individual hex values, but combinations of 
 
 - **Cream-family page ground — INCLUDING ALL REBRANDS.** The page body background is in the cream / paper / warm-neutral family, regardless of what the brand-native role name calls it. This is the single most-abused default in the v0.2 test runs — cream was rationalised as `vellum`, `kami`, `parchment`, `washi`, `bone`, `oatmeal`, `eggshell`, `ivory`, `biscuit`, `tan`, `wheat`, `fawn`, `sand`, `linen`, `canvas`, `manila`, `calfskin`, `morocco-cream`. Renaming cream does not change what it is.
 
-  **Deterministic hex test.** A page-body ground is a cream-family hit when ALL of the following are true:
+  **Deterministic hex test (v0.5.1).** A page-body ground is a cream-family hit when ALL of the following are true:
   - Hex lightness (HSL `L`) is between **80 and 97** (exclusive of pure white)
-  - Hex hue (HSL `H`) is between **20° and 60°** OR saturation is below 15% (warm-neutral OR near-achromatic-warm)
+  - **Warm bias**: in raw RGB channels, `R − B ≥ 5` — the color is measurably warmer on the red side than the blue side
   - Hex saturation (HSL `S`) is below **40%**
 
-  Examples that hit: `#F3EAD2`, `#F0E8D5`, `#F5EED8`, `#EDE0B9` ("kami"), `#F0E5C8`, `#FAF9F6`, `#FBF1D9`, `#EADDB7`, `#F8F1DE`.
-  Examples that pass: `#FFFFFF` (pure white — not cream), `#F5F5F5` (pure neutral gray — not cream), `#D4E2E8` (cool gray — not cream), `#1E1A17` (dark — not cream), `#C23B33` (saturated red — not cream).
+  The v0.5 version of this rule used `S < 15` as a proxy for "warm or neutral", which falsely flagged pure neutral grays (e.g. `#F2F2F2`, `#CCCCCC`) as cream. The corrected raw-channel warm-bias check (`R − B ≥ 5`) is a stricter discriminator that catches subtle warms (vellum, kami, oatmeal, bone) while keeping pure grays out.
+
+  Examples that hit: `#F3EAD2` (R−B=33), `#F0E8D5` (R−B=27), `#F5EED8` (R−B=29), `#EDE0B9` ("kami", R−B=52), `#F0E5C8` (R−B=40), `#FBF1D9` (R−B=34), `#EADDB7` (R−B=51), `#F8F1DE` (R−B=26).
+  Examples that pass (are NOT cream): `#FFFFFF` (pure white — L too high), `#F5F5F5` (pure neutral gray — R−B=0), `#CCCCCC` (pure gray — R−B=0), `#D4E2E8` (cool gray — R<B), `#E8ECEE` (cool near-white — R<B), `#1E1A17` (dark — L too low), `#C23B33` (saturated red — S too high).
 
   **Justification bar.** The only acceptable justification is: "the brand's primary business is *literally* printing, publishing, paper goods, binding, or stationery — cream is the substrate of the product, not a mood choice." *Adjacent registers* (liturgical program, field guide, museum didactic, auction catalogue, travel brochure) are NOT sufficient on their own — they must combine with the brand being in that category.
 
