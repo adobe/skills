@@ -6,30 +6,21 @@ by `prototype`) to push back against the assistant's recurring default moves.
 Loaded whenever a skill is about to make a visual decision without a strong
 external reference.
 
-**Status:** v0.2 · self-audited · run-tested. The anti-toolbox list below
-was compiled by the assistant as a self-audit of its own recurring moves
-and expanded after a 4-run test surfaced additional defaults (triplet-
-cadence copy, generic-2026-SaaS silhouette, stat-callout bar,
-collage-maximalism kit, archival-editorial palette family,
-cream-as-default page ground). It is deliberately imperfect. Designers
-should add corrections in §6 over time; that section is authoritative when
-it conflicts with §1.
+**Status:** v0.5 · self-audited · run-tested twice. The anti-toolbox list below was compiled by the assistant as a self-audit of its own recurring moves and expanded after successive test runs surfaced additional defaults. It is deliberately imperfect. Designers should add corrections in §6 over time; that section is authoritative when it conflicts with §1.
 
-**Changes from v0.1:**
-- Retired the "3 free hits" budget. Every hit now needs a brand-specific
-  justification (§ 1 Enforcement).
+**Changes from v0.4 → v0.5:**
+- **Retired the chassis system** (added v0.3, refined v0.4). Chassis picking produced structural divergence at the surface but did not address the deeper convergence on palette/ground. The system's surface area was larger than its payoff.
+- **Retired § 2.5 "Ground color by seed" table.** It was a carveout the LLM used to rationalise cream on most runs.
+- **Added a 4th seed dimension: ground-family.** Deterministic-random across 6 options (cream · stark-white · pale-gray · saturated · dark · monochrome-tint). Cream lands on ~1/6 of no-reference runs instead of the observed ~3/3.
+- **Tightened § 1 cream-family entry with rebrand ban and deterministic hex test.** Vellum, kami, bone, oatmeal, eggshell, ivory, parchment, washi, biscuit, tan, wheat, fawn, sand, linen, canvas, manila, calfskin — all rebrands are called out and banned under the same rule. Deterministic HSL-range check (L 80–97, H 20°–60° or low-S, S < 40%) catches cream regardless of its brand-native name.
+
+**Changes from v0.1 → v0.2 (preserved):**
+- Retired the "3 free hits" budget. Every hit now needs a brand-specific justification (§ 1 Enforcement).
 - Added self-audit rationalisation check (§ 1 Enforcement).
-- Added Palette-family moves subsection (§ 1) covering
-  archival-editorial palette, cream-as-default ground,
-  brutalist-pomodoro, and dark-mode-editorial.
-- Added Generic-2026-SaaS silhouette, Stat-callout bar, Collage-maximalism
-  kit, and Triplet-cadence copy to § 1.
-- Moved ban-marketing-adjectives, no-exclamation-points, and em-dash rules
-  out of § 1 into new § 7 Optional House Standards — they're sensible
-  universal conventions, not defaults to count against.
-- Added § 2.5 Dimension Weighting — decade → type, craft → motif,
-  register → voice — with within-run variant dominance and a *Ground color
-  by seed* table (cream belongs to specific seeds, not as a default).
+- Added Palette-family moves subsection (§ 1).
+- Added Generic-2026-SaaS silhouette, Stat-callout bar, Collage-maximalism kit, and Triplet-cadence copy to § 1.
+- Moved ban-marketing-adjectives, no-exclamation-points, and em-dash rules out of § 1 into § 7 Optional House Standards.
+- Added § 2.5 Dimension Weighting — decade → type, craft → motif, register → voice — with within-run variant dominance.
 
 ---
 
@@ -95,9 +86,24 @@ defaults.
 
 Recurring *palette families* — not individual hex values, but combinations of ground + accent + secondary that the assistant reaches for across unrelated brands. A brand profile whose dominant tones fall into one of these families is a hit, even when individual hex values differ.
 
-- **"Archival editorial palette"** — cream/paper ground (#F0–F8 on the L axis) + warm-family saturated accent (rust / brick / pomodoro / burnt-orange / oxblood) + muted earth-tone secondary (olive / mustard / ochre / fennel). The assistant's "serious-but-warm editorial" default; recurs across unrelated brands even when nothing in the brief calls for it.
-- **Cream/paper as the default page ground.** If the brand's seed does NOT call for letterpress / riso / field-guide / archival / print-ephemera, and the brand's category is NOT print-publishing-adjacent, then cream is a default substrate, not a reasoned choice. See § 2.5 *Ground color by seed* for what belongs where.
+- **"Archival editorial palette"** — cream/paper ground + warm-family saturated accent (rust / brick / pomodoro / burnt-orange / oxblood) + muted earth-tone secondary (olive / mustard / ochre / fennel). The assistant's "serious-but-warm editorial" default; recurs across unrelated brands even when nothing in the brief calls for it.
+
+- **Cream-family page ground — INCLUDING ALL REBRANDS.** The page body background is in the cream / paper / warm-neutral family, regardless of what the brand-native role name calls it. This is the single most-abused default in the v0.2 test runs — cream was rationalised as `vellum`, `kami`, `parchment`, `washi`, `bone`, `oatmeal`, `eggshell`, `ivory`, `biscuit`, `tan`, `wheat`, `fawn`, `sand`, `linen`, `canvas`, `manila`, `calfskin`, `morocco-cream`. Renaming cream does not change what it is.
+
+  **Deterministic hex test.** A page-body ground is a cream-family hit when ALL of the following are true:
+  - Hex lightness (HSL `L`) is between **80 and 97** (exclusive of pure white)
+  - Hex hue (HSL `H`) is between **20° and 60°** OR saturation is below 15% (warm-neutral OR near-achromatic-warm)
+  - Hex saturation (HSL `S`) is below **40%**
+
+  Examples that hit: `#F3EAD2`, `#F0E8D5`, `#F5EED8`, `#EDE0B9` ("kami"), `#F0E5C8`, `#FAF9F6`, `#FBF1D9`, `#EADDB7`, `#F8F1DE`.
+  Examples that pass: `#FFFFFF` (pure white — not cream), `#F5F5F5` (pure neutral gray — not cream), `#D4E2E8` (cool gray — not cream), `#1E1A17` (dark — not cream), `#C23B33` (saturated red — not cream).
+
+  **Justification bar.** The only acceptable justification is: "the brand's primary business is *literally* printing, publishing, paper goods, binding, or stationery — cream is the substrate of the product, not a mood choice." *Adjacent registers* (liturgical program, field guide, museum didactic, auction catalogue, travel brochure) are NOT sufficient on their own — they must combine with the brand being in that category.
+
+  When in doubt, pick a non-cream ground from the §2 ground-family seed.
+
 - **"Brutalist pomodoro palette"** — ink-black primary + cream/bone ground + one saturated red/orange alarm. The Nonna's Arsenal baseline palette; appears whenever the brand is "serious" or "archival". A hit specifically when the saturated accent occupies < 5% of surface area (used only for alerts / CTAs) — at that dose it reads as the assistant's signature.
+
 - **"Dark mode editorial"** — ink/black ground + cream/bone text + one saturated accent. The inverted version of the brutalist pomodoro.
 
 ### Enforcement · per-hit justification (v0.2)
@@ -184,18 +190,35 @@ Railway timetable · Museum didactic · Repair manual · Liturgical program ·
 Supermarket flyer · Real-estate listing · Pharmacy insert · Auction catalogue ·
 Travel agency brochure · Sports scorecard · Hospital discharge paperwork
 
+### Ground family · the 4th dimension
+
+Added in v0.5 after three test runs all landed on cream grounds (e2e-8 justified by seed, e2e-9 rebranded as "kami" to slip an explicit ban, e2e-10 permitted by the retired §2.5 cream carveout). Cream was the single most-abused default; this dimension caps it mathematically at **1 in 6 runs** by deterministic random.
+
+Six options:
+
+- **`cream`** — warm-neutral ground (cream / paper / warm off-white). The assistant's default instinct — now one option among six rather than the invisible substrate.
+- **`stark-white`** — true white (#FDFDFD–#FFFFFF), high-contrast mode. Often paired with saturated accents. Good for medical / editorial / minimalist registers.
+- **`pale-gray`** — cool neutral, low-saturation gray-blue (#E8ECEE / #F0F2F5 / #DDE2E6). Good for legal / technical / ops registers where cream is a cliché.
+- **`saturated`** — the brand's own saturated color as the page ground, not as an accent. Orange page / teal page / oxblood page / avocado page. Forces the accent-family to become the *substrate*.
+- **`dark`** — ink / deep charcoal / true black as the page ground. High-contrast text in bone, cream, or a saturated accent. Good for broadcast / night / editorial-noir registers.
+- **`monochrome-tint`** — a tinted neutral that is NOT cream. Cool slate, warm gray-rose, sage-adjacent gray, dusk-blue gray. Anything whose saturation is 5–20% and whose hue is outside the 20°–60° warm-yellow band.
+
+The picker is a deterministic-random pick from these six (byte[3] of the seed hash mod 6), weighted equally. Cream therefore lands on ~1/6 of no-reference runs. Designer override is allowed and recommended for brands in print/paper/publishing categories (manually set `ground: cream`).
+
 ### Picking a seed
 
-**Deterministic random:** concatenate `brand.name + ISO-date (YYYY-MM-DD)`,
-compute an MD5 hash, then index into each list using successive bytes of
-the hash modulo list length. Designers can reproduce the seed for audit by
-running the same concatenation through any MD5 utility.
+**Deterministic random (4 dimensions now):** concatenate `brand.name + ISO-date (YYYY-MM-DD)`, compute an MD5 hash, then index into each list using successive bytes of the hash modulo list length:
 
-**Manual override:** a designer may pick seeds explicitly; in that case set
-`_divergence.seed.picked_by = "designer"`.
+- `byte[0] % len(Decade)` → decade
+- `byte[1] % len(Craft)` → craft
+- `byte[2] % len(Register)` → register
+- `byte[3] % 6` → ground-family (0=cream, 1=stark-white, 2=pale-gray, 3=saturated, 4=dark, 5=monochrome-tint)
 
-The seed triple is stamped in `_divergence.seed` and forwarded to every
-downstream skill as a constraint.
+Designers can reproduce the seed for audit by running the same concatenation through any MD5 utility.
+
+**Manual override:** a designer may pick any dimension explicitly; in that case set `_divergence.seed.picked_by = "designer"`. Mixed picks (some dimensions hashed, some designer-picked) are valid — record per-dimension overrides in `_divergence.seed.overrides[]`.
+
+The full seed quadruple is stamped in `_divergence.seed` and forwarded to every downstream skill as a constraint.
 
 ### How the seed is used
 
@@ -220,54 +243,31 @@ awareness.
 
 ## 2.5 · Dimension Weighting
 
-The seed triple is not uniform — each dimension governs a different layer of
-the visual system. This makes the seed load-bearing and enables meaningful
-within-run variant divergence.
+The four seed dimensions govern different layers of the visual system. This makes the seed load-bearing and enables meaningful within-run variant divergence.
 
 | Dimension | Governs |
 |---|---|
 | **Decade** | Type deck selection (see § 3), period-appropriate cultural references, display-type register, image/photography era |
 | **Craft tradition** | Texture, motif idiom, print artifacts (misregistration, ink bleed, folds, embossing), material metaphor |
 | **Cultural register** | Voice stance, structural metaphor (table · manifest · itinerary · ledger · docket · inventory), information architecture |
+| **Ground family** | Page body background family. Constrains the actual hex picked for the ground — a `saturated` ground means the ground IS the brand's saturated color (not a cream plus saturated accent); a `dark` ground means bone/cream text on ink (inverting the default). See § 2 *Ground family · the 4th dimension* for the six options and how the hex picker resolves within each. |
 
 ### Within-run variant variance via dimension dominance
 
-When producing multiple prototype variants for the same brand, each variant
-should let one seed dimension dominate while the other two recede. Stamp the
-dominant dimension in each prototype's header comment.
+When producing multiple prototype variants for the same brand, each variant should let one seed dimension dominate while the others recede. Stamp the dominant dimension in each prototype's header comment.
 
-Example (Yadda Dey · seed = 1960s × folded-paper × travel brochure):
-- Variant A — **decade-dominant** (1960s Africa-modernist palette and type
-  lead; craft and register recede)
-- Variant B — **craft-dominant** (folded-paper physicality leads — actual
-  fold-crease shadows, die-cut dog-ears, serrated edges)
-- Variant C — **register-dominant** (travel brochure idiom leads —
-  itinerary tables, route maps, ticket edges)
+Example (Yadda Dey · seed = 1960s × folded-paper × travel brochure × ground: cream):
+- Variant A — **decade-dominant** (1960s Africa-modernist palette and type lead; craft and register recede; ground respected)
+- Variant B — **craft-dominant** (folded-paper physicality leads — actual fold-crease shadows, die-cut dog-ears, serrated edges)
+- Variant C — **register-dominant** (travel brochure idiom leads — itinerary tables, route maps, ticket edges)
 
-This is a structural tool, not a rigid rule. A variant may combine two
-dimensions if the brand warrants it; pure single-dimension dominance is the
-starting configuration, not the endpoint.
+This is a structural tool, not a rigid rule. A variant may combine two dimensions if the brand warrants it; pure single-dimension dominance is the starting configuration, not the endpoint.
 
-### Ground color by seed
+### Note on the retired "Ground color by seed" table
 
-Page ground color is seed-driven, not a template default. The assistant's
-recurring instinct is cream/paper/warm-neutral as the substrate, which
-belongs only to a specific subset of seeds.
+v0.3 shipped a table that mapped decade+craft+register combinations to appropriate grounds, with cream permitted for many combinations. In the v0.2 test run, that table became a carveout the LLM used to justify cream on 2 of 3 brands. v0.5 replaced that table with the **ground-family seed dimension** in § 2. The ground is now picked *before* the LLM reasons about the brand — removing the opportunity for post-hoc rationalisation.
 
-| Seed signal | Appropriate page ground |
-|---|---|
-| Decade 1920s–1960s × letterpress / riso / folded-paper / field-guide / travel brochure / museum didactic | Cream, paper, warm neutral (this is where cream *belongs*) |
-| Decade 1970s × enamel-sign / neon-bending / ceramic-transfer | Saturated ground (burnt orange, teal, oxblood, avocado) |
-| Decade 1990s × legal-contract / repair-manual / hospital-discharge | Stark white, pale gray — NOT cream |
-| Decade 2000s–2025 × broadcast-captioning / sports-scorecard / railway-timetable | True black, true white, or saturated monotone — NOT cream |
-| Craft terrazzo / mosaic tile | Speckled or patterned ground, not flat cream |
-| Craft photogram / plaster cast | Deep monochrome (black, bone) |
-| Craft technical-illustration / map-engraving | White or blueprint-blue |
-
-If the selected seed would naturally suggest a non-cream ground, using cream
-anyway requires a per-instance justification in
-`_divergence.anti_toolbox_hits` (see § 1 *Palette-family moves* — the
-"Cream/paper as default page ground" entry).
+If a designer is confident cream is right for a specific brand (print-publishing category, paper-goods product), manually override `_divergence.seed.ground = "cream"`.
 
 ---
 

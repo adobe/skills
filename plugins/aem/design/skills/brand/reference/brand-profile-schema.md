@@ -24,7 +24,9 @@
       "decade": "string|null — from divergence-toolkit.md §2 seed list; null if a strong reference was provided",
       "craft": "string|null — from the same list",
       "register": "string|null — from the same list",
-      "picked_by": "string — 'deterministic-random' | 'designer' | 'not-applicable'",
+      "ground": "string|null — ground-family pick from divergence-toolkit.md §2: 'cream' | 'stark-white' | 'pale-gray' | 'saturated' | 'dark' | 'monochrome-tint'. Added in v0.5 to mathematically cap cream at ~1/6 of no-reference runs. Deterministic-random from byte[3] of the seed hash mod 6, or designer-picked.",
+      "picked_by": "string — 'deterministic-random' | 'designer' | 'mixed' | 'not-applicable'",
+      "overrides": ["string — when picked_by='mixed', list the dimensions the designer explicitly set, e.g. ['ground'] means decade/craft/register hashed but ground was manually overridden"],
       "hash_input": "string|null — for deterministic-random, the exact string that was hashed (e.g. 'Nonna\\'s Arsenal|2026-04-23'). Present for audit reproducibility."
     },
     "font_deck": "string|null — name of the deck used from divergence-toolkit.md §3, e.g. 'retro-italian'",
