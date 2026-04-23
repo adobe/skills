@@ -2,90 +2,31 @@
 
 The brand board is a self-contained HTML file rendered from `brand-profile.json`. The designer reviews this visual artifact — never the raw JSON.
 
-The template has two halves: a **data contract** (what information must be rendered) and a **chassis** (how it's presented). The data contract is fixed; the chassis is picked per run from a library.
-
 ## Data contract · what must be rendered
 
-Every brand board MUST render, where data exists in `brand-profile.json`, the following information. These are information obligations — presentation is a chassis concern, handled separately.
+Every brand board MUST render, where data exists in `brand-profile.json`, the following information. Render only what has data. Omit sections where the brand-profile field is null or missing. Do NOT invent data to fill a section — an empty section is a valid signal that the brand hasn't captured that dimension yet.
 
-- **Masthead** — brand name, tagline, short philosophy / positioning statement
-- **Logo variants** — primary mark, alternates (white-on-dark, black, stacked), clear-space guidance, do/don't
-- **Color palette** — every color entry with `name`, `hex`, brand-native `role`, optional `use`, optional `pantone`
-- **Typography** — every face in `typography` with family, weights, role, and a live specimen in the actual face (or closest web-safe fallback, flagged if substituted)
-- **Voice** — character statement, trait tags (this/not-this), paired do/don't copy examples, hard rules
-- **Tone adaptation** — writing-goal cards (educate / engage / inspire) if present, clever-vs-clear guidance if present
-- **Motifs** — every motif with name, description, usage, and a visual demo
-- **Components** — primary/secondary/alert button patterns, plus any brand-specific component (stamp, tag, badge, etc.)
-- **Photography direction** — style rules, do/don't grid, subject guidance
-- **Content pillars** — if present, one card per pillar with name + description
-- **Personas** — profile card per persona with values, motto, behavioral stats
-- **Spacing & shape** — spacing scale blocks, border-radius samples (if present)
+Canonical top-to-bottom section order:
 
-Render only what has data. Omit sections where the brand-profile field is null or missing. Do NOT invent data to fill a section — an empty section is a valid signal that the brand hasn't captured that dimension yet.
+1. **Masthead** — brand name, tagline, short philosophy / positioning statement
+2. **Color palette** — every color entry with `name`, `hex`, brand-native `role`, optional `use`, optional `pantone`
+3. **Typography** — every face in `typography` with family, weights, role, and a live specimen in the actual face (or closest web-safe fallback, flagged if substituted)
+4. **Voice** — character statement, trait tags (this/not-this), paired do/don't copy examples, hard rules
+5. **Tone adaptation** — writing-goal cards (educate / engage / inspire) if present, clever-vs-clear guidance if present
+6. **Motifs** — every motif with name, description, usage, and a visual demo
+7. **Components** — primary/secondary/alert button patterns, plus any brand-specific component (stamp, tag, badge, etc.)
+8. **Photography direction** — style rules, do/don't grid, subject guidance
+9. **Content pillars** — if present, one card per pillar with name + description
+10. **Personas** — profile card per persona with values, motto, behavioral stats
+11. **Logo variants** — primary mark, alternates (white-on-dark, black, stacked), clear-space guidance, do/don't
+12. **Spacing & shape** — spacing scale blocks, border-radius samples (if present)
 
-## Chassis · how it's presented
+## Design guidelines
 
-The chassis determines navigation pattern, hero shape, eyebrow conventions, spacing rhythm, typography emphasis, and demo-presentation style — the *presentation pattern*. It does NOT name sections; the data contract above owns that. The chassis library is shared across artifacts — brand boards, prototypes, and future aem-design artifacts all pick from the same library.
-
-Available chassis live under [`../../_shared/chassis/`](../../_shared/chassis/), listed alphabetically:
-
-- **[`broadcast-grid`](../../_shared/chassis/broadcast-grid.md)** — top bar + ticker, multi-pane flat grid, monospace-led, terminal/EPG feel
-- **[`classic-archive`](../../_shared/chassis/classic-archive.md)** — sticky top nav, numbered eyebrows, text-first masthead, editorial-archival feel
-- **[`dashboard`](../../_shared/chassis/dashboard.md)** — fixed left sidebar, card-cluster hero, widget demos, operations-console feel
-- **[`magazine`](../../_shared/chassis/magazine.md)** — masthead with volume/issue/date, column text, pull quotes, magazine department heads
-
-Read the chosen chassis's `.md` file in full before rendering. Each chassis specifies its nav, hero pattern, eyebrow conventions, spacing, typography register, and demo style in detail.
-
-### Section order per chassis (board-specific application)
-
-Data-contract sections are presented in the order below when the chassis is applied to a brand board. The chassis itself doesn't name sections — this is the board's specific application of the chassis.
-
-**broadcast-grid** — panes in a flat grid, ticker above:
-Ticker (key facts scrolling) → Hero pane (masthead + chip row) → Palette pane (swatch feed with role / hex / use columns) → Typography pane (specimen table) → Motif panes (one per motif, each as a live-feed pane with header row + demo cell + source label) → Components pane (buttons/inputs in default + pressed states) → Voice pane (do/dont as a transcript-style table) → Photography pane (image-slot placeholders with direction captions) → Personas pane (roster table) → Logo pane (variants row with usage notes) → Status strip (batch · edition · provenance · chassis info)
-
-**classic-archive** — canonical top-to-bottom:
-Masthead → Palette → Typography → Voice → Motifs → Components → Photography → Content Pillars → Personas → Logo → Spacing & Shape
-
-**dashboard** — functional clusters, rendered as dashboard cards:
-Hero cluster (masthead card + live stat card + identity card) → Palette (swatch pills) → Typography (specimen cards) → Voice (chat/messaging UI) → Motifs (widget instances) → Components (default + pressed states) → Photography (image-slot placeholders) → Content Pillars (pillar cards) → Personas (profile cards with stat rows) → Logo (app-icon tiles) → Spacing & Shape (scale chips)
-
-**magazine** — editorial rhythm:
-Masthead → Contents → Feature (the brand philosophy, with pull quote and drop cap) → Letter From (persona-as-editor, signed) → Palette (color-study spread) → Typography (specimen spread) → Voice (two-column editorial with do/don't sidebars) → Motifs (visual essay, one per panel) → Components (product catalogue spread) → Photography (photo essay with caption rail) → Content Pillars (pillar essays) → Personas (portrait page) → Logo (mark on final page) → Colophon (back matter with typography details, stock, printer)
-
-### Chassis selection
-
-The `brand` skill picks the chassis in Phase 3 of `brand/SKILL.md`. Selection is:
-
-1. **Designer override.** If `_divergence.chassis` is already set (designer picked explicitly, or a previous run's profile is being refactored), use that value.
-
-2. **Hash-based default.** Compute `byte[3]` of the seed hash (already calculated for § 2 of `_shared/divergence-toolkit.md`), modulo the number of chassis files available. Maps to alphabetical order of chassis files: 0 → broadcast-grid, 1 → classic-archive, 2 → dashboard, 3 → magazine.
-
-3. **Seed-informed preference.** The hash-based pick is overridden when it lands on a chassis that flatly contradicts the seed's register. Preference table:
-
-   | Seed register | Preferred chassis |
-   |---|---|
-   | railway timetable · broadcast captioning · sports scorecard · liturgical program · pharmacy insert | broadcast-grid OR dashboard |
-   | legal contract · repair manual · museum didactic · hospital discharge | classic-archive OR dashboard |
-   | tabloid · memoir · auction catalogue · travel agency brochure · real-estate listing · supermarket flyer · zine | magazine |
-   | field guide | classic-archive OR magazine |
-
-   When a register has multiple preferred chassis, re-run the hash within that subset.
-
-4. **Fallback.** If no preference fits, default to `classic-archive`.
-
-### Note on `zine` register
-
-v0.3 routed the `zine` register to a dedicated pinboard chassis. v0.4 retired pinboard — real brands in the `zine` register are better served by magazine's editorial rhythm with a loosened type register, than by a synthetic "scrapbook" chassis that tempted the Collage-maximalism kit from [`../../_shared/divergence-toolkit.md`](../../_shared/divergence-toolkit.md) § 1. If a specific zine brand genuinely needs a non-magazine chassis, that's a signal to propose a new chassis for v0.5, not to reintroduce pinboard.
-
-Record the chosen chassis in `_divergence.chassis` on the emitted profile.
-
-## Design guidelines · cross-chassis
-
-Rules that apply regardless of chassis:
-
-- Use the brand's own colors and fonts in the board wherever possible.
-- **Page body background is derived from the brand's palette**, specifically the color whose `use` field names it as the page ground. There is NO default substrate — picking "warm neutral" / "cream" / `#faf9f6` without a brand-derived reason is a divergence hit. See [`../../_shared/divergence-toolkit.md`](../../_shared/divergence-toolkit.md) § 1 *Palette-family moves* ("Cream/paper as default page ground") and § 2.5 *Ground color by seed* for what substrate each seed implies. Example seeds that genuinely want cream: 1920s–1960s × letterpress / riso / folded-paper / field-guide / travel-brochure / museum-didactic. Example seeds that should NOT default to cream: 1990s × legal-contract (pale gray or stark white); 1970s × enamel-sign (saturated ground); 2010s+ × broadcast / sports-scorecard (true black / true white / saturated monotone).
+- Use the brand's own colors and fonts in the board.
+- **Page body background is derived from the brand's palette**, specifically the color whose `use` field names it as the page ground. There is NO default substrate — picking "warm neutral" / "cream" / `#faf9f6` (or any rebrand thereof — vellum, kami, bone, ivory, eggshell) without a brand-derived reason is a divergence hit. See [`../../_shared/divergence-toolkit.md`](../../_shared/divergence-toolkit.md) § 1 *Palette-family moves* and § 2.5 *Ground-color seed* for what substrate should be picked.
 - Dark sections / inverted blocks only when the brand's palette supports an ink-or-deeper-than-ground surface — do not invert arbitrarily.
+- Sticky top navigation with section links is recommended for long boards.
 - All color swatches rendered at 80×80px minimum with hex, role, and `use` (if present).
 - Type specimens use the actual extracted fonts (or closest web-safe fallback, flagged in `_provenance.synthesized_inputs` if substituted).
 - Do/Don't pairs color-coded using the brand's own palette — green only if the brand has green; red only if the brand has red. Do NOT inject `#7B997C` or `#C8102E` as brand-external tokens.
@@ -96,24 +37,18 @@ Rules that apply regardless of chassis:
 When rendering the brand board:
 
 1. Read `aem-design/brand-profile.json`.
-2. Pick the chassis per the "Chassis selection" rules above. Record in `_divergence.chassis`.
-3. Read the selected chassis's full specification in `../../_shared/chassis/<chassis-name>.md`.
-4. Read the board-specific section order for that chassis (see "Section order per chassis" above). Render sections in that order.
-5. Render each section's presentation per the chassis's rules for nav, hero pattern, eyebrows, spacing, typography register, and demo style.
-6. Render only data-contract sections that have data. Omit empty sections.
-7. Render the logo using `<img src="assets/logo.svg">` (or matching extension). Read the path from `brand-profile.json`'s `logo.path` and make it relative to the board file (both live under `aem-design/`, so `assets/logo.*` is correct). **Never inline the SVG** — the brand profile points at the real asset; the board consumes it.
-8. Write the complete HTML to `aem-design/brand-board.html`.
-9. Tell the designer which chassis was picked and why (which branch of the selection rules fired).
+2. Generate `aem-design/brand-board.html` rendering the data contract sections in the canonical order above.
+3. Render only data-contract sections that have data. Omit empty sections.
+4. Use the brand's own extracted colors and fonts. The page ground is brand-derived (see Design guidelines).
+5. Self-contained HTML with embedded CSS. External font + image URLs fine. No external JS.
+6. Render the logo using `<img src="assets/logo.svg">` (or matching extension). Read the path from `brand-profile.json`'s `logo.path` and make it relative to the board file (both live under `aem-design/`, so `assets/logo.*` is correct). **Never inline the SVG** — the brand profile points at the real asset; the board consumes it.
+7. Write the complete HTML to `aem-design/brand-board.html`.
+8. Tell the designer the file path.
 
 ## Reference
 
-For chassis-specific reference artifacts and examples:
-- `tmp/e2e-3/chassis-mocks/1-classic-archive.html` — classic-archive (Ward Orchard mock)
-- `tmp/e2e-3/chassis-mocks/2-dashboard.html` — dashboard
-- `tmp/e2e-3/chassis-mocks/3-magazine.html` — magazine
-- `tmp/e2e-3/chassis-mocks/5-broadcast-grid.html` — broadcast-grid
-- `tmp/e2e-3/aem-design/brand-board.html` — classic-archive (Nonna's Arsenal, larger canvas)
-- `tmp/e2e-3/aem-design/brand-board-v1-console.html` — dashboard (Nonna's Arsenal, larger canvas)
-- `tmp/e2e-3/aem-design/brand-board-v2-avanguardia.html` — magazine (Nonna's Arsenal, larger canvas)
+For brand-board reference artifacts in this repo:
+- `tmp/e2e-3/aem-design/brand-board.html` (Nonna's Arsenal — the original baseline)
+- `tmp/e2e-5/aem-design/brand-board.html` · `tmp/e2e-6/aem-design/brand-board.html` · `tmp/e2e-7/aem-design/brand-board.html` (first-pass test runs)
 
 For broader brand-board depth, see the Vitamix example at `.superpowers/brainstorm/*/content/brand-board-full.html` in the source project (not bundled with this skill).

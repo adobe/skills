@@ -232,48 +232,18 @@ Before the skill synthesizes `.impeccable.md` on its own (no designer interview)
 
 ## Phase 3: Render Brand Board
 
-The brand board has two halves — a **data contract** (what information is rendered) and a **chassis** (how it's presented). The data contract is defined in [`reference/brand-board-template.md`](reference/brand-board-template.md). The chassis is picked per run from the shared library at [`../_shared/chassis/`](../_shared/chassis/) — the same library the prototype skill reads, which keeps brand boards and prototypes visually coherent by default.
-
-### Step 1 · Read inputs
-
-Read `aem-design/brand-profile.json`. Note the `_divergence.seed.hash_input` value (or recompute it if missing): this hash drives the chassis pick.
-
-### Step 2 · Pick the chassis
-
-Chassis selection, in order of precedence:
-
-1. **Designer override.** If `_divergence.chassis` is already populated on the profile, use it as-is. This covers refactoring an existing profile and the case where the designer picks a chassis explicitly at the start of the run.
-
-2. **Hash-based default.** Compute `byte[3]` of the MD5 of `_divergence.seed.hash_input` modulo the number of chassis files in `../_shared/chassis/`. Alphabetical mapping: 0 → `broadcast-grid`, 1 → `classic-archive`, 2 → `dashboard`, 3 → `magazine`.
-
-3. **Seed-informed preference.** The hash pick is overridden when the seed's register strongly implies a different chassis. See the preference table in `reference/brand-board-template.md` under "Chassis selection". When a register has multiple preferred chassis, re-run the hash within that subset.
-
-4. **Fallback.** If no preference applies and no hash can be computed, default to `classic-archive`.
-
-Record the final chassis name in `_divergence.chassis`. Record which branch fired in `_divergence.chassis_pick_reason` (one of `"designer-override"`, `"hash"`, `"seed-preference"`, `"fallback"`).
-
-### Step 3 · Read the chassis spec
-
-Read the full text of `../_shared/chassis/<chassis-name>.md` for the presentation pattern (nav, hero pattern, eyebrows, spacing, typography register, demo style). The chassis does NOT name the board's sections; for the board-specific section order per chassis, consult `reference/brand-board-template.md` "Section order per chassis". Follow both precisely — a chassis pick means a commitment to that chassis's rules, not an aesthetic mood-board.
-
-### Step 4 · Render
-
-Generate `aem-design/brand-board.html`:
-
-- Follow the chassis's navigation pattern, section order, hero shape, eyebrow conventions, spacing rhythm, typography register, and motif placement.
-- Render only data-contract sections that have data. Omit empty sections (see `reference/brand-board-template.md` for the full data contract).
-- Use the brand's own extracted colors and fonts. The page ground is brand-derived (see `reference/brand-board-template.md` Design guidelines and `../_shared/divergence-toolkit.md` § 2.5 Ground color by seed). **Do not default to cream.**
-- Self-contained HTML with embedded CSS. External font + image URLs fine. No external JS.
-- Render the logo with `<img src="assets/logo.svg">` per `reference/brand-board-template.md` — never inline the SVG.
-
-### Step 5 · Tell the designer
-
-"Your brand board is ready. Chassis: **`<chassis-name>`** — picked by `<chassis_pick_reason>`. Open `aem-design/brand-board.html` in a browser (`open aem-design/brand-board.html` on macOS, `xdg-open …` on Linux)."
-
-- In SLICC: the board renders in the browser panel automatically.
-- In Claude Code: the designer opens the file directly; no dev server required.
-
-If the designer disagrees with the chassis pick, they can set `_divergence.chassis` to their preferred chassis name and re-run Phase 3.
+1. Read `aem-design/brand-profile.json`.
+2. Generate `aem-design/brand-board.html` following the template in [`reference/brand-board-template.md`](reference/brand-board-template.md). Render the data contract sections in the canonical order.
+3. The board must:
+   - Use the brand's own extracted colors and fonts
+   - Derive the page ground from the brand palette (see [`../_shared/divergence-toolkit.md`](../_shared/divergence-toolkit.md) § 2.5 Ground-color seed). **Do not default to cream** or any cream rebrand (vellum, kami, bone, ivory, eggshell).
+   - Include sticky navigation for section jumping on long boards
+   - Render only sections that have data (omit sections for null fields)
+   - Be self-contained HTML with embedded CSS (no external JS)
+4. Render the logo with `<img src="assets/logo.svg">` per `reference/brand-board-template.md` — never inline the SVG.
+5. Tell the designer: "Your brand board is ready. Open `aem-design/brand-board.html` in a browser (`open aem-design/brand-board.html` on macOS, `xdg-open …` on Linux)."
+   - In SLICC: the board renders in the browser panel automatically.
+   - In Claude Code: the designer opens the file directly; no dev server required.
 
 ## Phase 4: Approval Gate
 
