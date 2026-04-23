@@ -145,19 +145,9 @@ curl -s -X DELETE \
 
 In a **repoless setup**, multiple sites share one code repository. Code sync affects ALL sites.
 
-**Before syncing, check if repoless:**
+Repoless detection is handled automatically by `config.md` "Site Detection" during config load — if `SITE_COUNT > 1`, the org is repoless.
 
-```bash
-ORG=$(cat .claude-plugin/project-config.json | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"org"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
-SITES=$(curl -s "https://admin.hlx.page/config/${ORG}/sites.json")
-SITE_COUNT=$(echo "$SITES" | grep -o '"name"' | wc -l | tr -d ' ')
-
-if [ "$SITE_COUNT" -gt 1 ]; then
-  echo "REPOLESS: $SITE_COUNT sites share this codebase"
-fi
-```
-
-**If repoless, warn user:**
+**If repoless, warn user before any sync:**
 
 > "This is a repoless setup with {N} sites sharing the same code. Code sync will affect ALL sites:
 > - site-a

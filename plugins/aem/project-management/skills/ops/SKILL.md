@@ -11,6 +11,52 @@ metadata:
 
 Execute admin operations on AEM Edge Delivery Services projects using natural language commands.
 
+## When to Use This Skill
+
+Use this skill when the user asks to perform any **operational task** on an AEM Edge Delivery Services site:
+
+- **Content** — preview, publish, unpublish, or check status of pages (single or bulk)
+- **Cache** — purge or force-purge CDN cache for a path or the entire site
+- **Code** — sync or deploy code changes from GitHub
+- **Index** — reindex pages for search, check index status, remove from index
+- **Sitemap** — generate sitemap.xml at a given path
+- **Snapshots** — create, publish, approve, reject, or manage staged releases
+- **Logs** — view audit logs with time filters, add manual log entries
+- **Users** — add/remove admins or authors, list access, check current user profile
+- **Jobs** — list, monitor, stop, or get details of bulk operation jobs
+- **Sites** — list sites, switch active site, change branch in a repoless org
+- **Configuration** — read or update org config, site config, or robots.txt
+- **Secrets** — list, create, or delete secrets at org or site level
+- **API Keys** — list, create, or revoke API keys at org or site level
+- **Tokens** — list, create, or revoke access tokens at site level
+- **Profiles** — read, create, update, or delete profile configurations
+- **Index Config** — read or update helix-index.yaml indexing rules
+- **Sitemap Config** — read or update helix-sitemap.yaml generation rules
+- **Versioning** — list config versions, view history, restore a previous version
+- **Pages** — list all indexed pages from query-index, filter by path prefix
+
+---
+
+## Communication Guidelines
+
+- **NEVER use "EDS"** as an acronym for Edge Delivery Services in any responses
+- Always use the full name "Edge Delivery Services" or "AEM Edge Delivery Services"
+- Show clear, actionable error messages when operations fail
+- Confirm destructive operations before executing
+- **Recommended Next Actions format:** Always place each command in its own fenced code block so users get a one-click copy button. Use this structure:
+
+  **▶ Recommended Next Actions:**
+  1. Description of action
+     ```
+     command {path}
+     ```
+  2. Description of action
+     ```
+     command {path}
+     ```
+
+---
+
 ## Quick Reference
 
 | Category | Examples |
@@ -34,26 +80,6 @@ Execute admin operations on AEM Edge Delivery Services projects using natural la
 | **Sitemap Config** | show helix-sitemap.json, update sitemap config |
 | **Versioning** | list versions, restore version, rollback config |
 | **Pages** | list pages, list all pages, show indexed pages |
-
----
-
-## Communication Guidelines
-
-- **NEVER use "EDS"** as an acronym for Edge Delivery Services in any responses
-- Always use the full name "Edge Delivery Services" or "AEM Edge Delivery Services"
-- Show clear, actionable error messages when operations fail
-- Confirm destructive operations before executing
-- **Recommended Next Actions format:** Always place each command in its own fenced code block so users get a one-click copy button. Use this structure:
-
-  **▶ Recommended Next Actions:**
-  1. Description of action
-     ```
-     command {path}
-     ```
-  2. Description of action
-     ```
-     command {path}
-     ```
 
 ---
 
@@ -81,7 +107,7 @@ Type 'help' for the full command list.
 
 Analyze user request and load the appropriate resource module.
 
-### Step 0: Load Full Configuration
+### Step 1: Load Full Configuration
 
 Read `resources/config.md`:
 - **"Load Configuration"** section — loads `ORG`, `AUTH_TOKEN`, `IMS_TOKEN`, `SITE`, `REF`, `CODE_OWNER`, `CODE_REPO` from saved config
@@ -128,7 +154,7 @@ This opens a browser via Playwright for Adobe ID login and saves the token to `.
 | `AUTH_TOKEN` (admin JWT) | `authorization: token ${AUTH_TOKEN}` | Status checks, job queries, index reads |
 | `IMS_TOKEN` (IMS Bearer) | `authorization: Bearer ${IMS_TOKEN}` + `x-content-source-authorization: Bearer ${IMS_TOKEN}` | Preview, publish, unpublish, cache, code sync |
 
-### Step 1: Route by Intent
+### Step 2: Route by Intent
 
 | User Intent | Resource Module |
 |-------------|-----------------|
@@ -156,7 +182,7 @@ This opens a browser via Playwright for Adobe ID login and saves the token to `.
 | version, versions, history, rollback, restore | `resources/versioning.md` |
 | pages, list pages, indexed pages, all pages | `resources/pages.md` |
 
-### Step 4: Read Resource and Execute
+### Step 3: Read Resource and Execute
 
 1. Read the appropriate resource file from `resources/`
 2. Follow instructions in that resource
@@ -311,8 +337,6 @@ This skill works with AEM Edge Delivery Services projects that are:
 
 ---
 
----
-
 ## Help Response
 
 When user asks "what can you do?" or "help", show:
@@ -395,3 +419,18 @@ Pages:
   list pages             - Show all indexed pages
   list pages /blog       - Filter by path prefix
 ```
+
+---
+
+## Success Criteria
+
+- ✅ Config loaded from `.claude-plugin/project-config.json` — `ORG` and `AUTH_TOKEN` present before any API call
+- ✅ Correct resource module selected based on user intent
+- ✅ AEM URL parsed correctly when provided — `REF`, `SITE`, `ORG`, `PATH` extracted and override saved config
+- ✅ API response displayed in well-formatted table or structured output with all relevant fields
+- ✅ Total count reported for all list operations
+- ✅ Destructive operations confirmed with user before executing — impact stated clearly
+- ✅ Bulk operations report job name and user directed to monitor status with `check job status {jobName}`
+- ✅ IMS token requested only when the operation requires it (preview, publish, unpublish, cache, code)
+- ✅ DA site limitations communicated when wildcard bulk operations are not supported — explicit paths used instead
+- ✅ Recommended next actions provided after every operation in fenced code blocks

@@ -53,30 +53,6 @@ curl -s \
    ```
 
 
-### Detect Repoless Setup
-
-```bash
-ORG=$(cat .claude-plugin/project-config.json | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"org"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
-SITES=$(curl -s "https://admin.hlx.page/config/${ORG}/sites.json")
-SITE_COUNT=$(echo "$SITES" | grep -o '"name"' | wc -l | tr -d ' ')
-
-if [ "$SITE_COUNT" -gt 1 ]; then
-  echo "REPOLESS: $SITE_COUNT sites share this codebase"
-else
-  echo "STANDARD: Single site setup"
-fi
-```
-
-**▶ Recommended Next Actions:**
-1. Switch to a specific site in the repoless org
-   ```
-   switch to {site}
-   ```
-2. Note: code sync affects all sites in a repoless setup — run with care
-   ```
-   sync code
-   ```
-
 ### Switch Site
 
 ```bash

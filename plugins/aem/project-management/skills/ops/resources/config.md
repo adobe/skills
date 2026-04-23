@@ -102,8 +102,6 @@ Skill({ skill: "project-management:auth" })
 ### Site Detection
 
 ```bash
-ORG=$(cat .claude-plugin/project-config.json | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"org"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
-
 SITES_JSON=$(curl -s "https://admin.hlx.page/config/${ORG}/sites.json")
 SITE_NAMES=$(echo "$SITES_JSON" | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"name"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
 SITE_COUNT=$(echo "$SITE_NAMES" | wc -l | tr -d ' ')
@@ -112,8 +110,10 @@ echo "Found $SITE_COUNT site(s):"
 echo "$SITE_NAMES"
 ```
 
-- **Single site:** Auto-select and save
-- **Multiple sites (repoless):** Ask user to select
+- **Single site:** Auto-select and save to config
+- **Multiple sites (repoless):** Ask user to select which site to operate on
+
+> **Repoless note:** When multiple sites are detected, they share a single code repository. Code sync (`sync code`) will affect **all sites** — proceed with care. Preview, publish, cache, and index operations remain per-site.
 
 ### Code Repository (For Code Sync)
 
