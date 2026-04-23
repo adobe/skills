@@ -23,8 +23,8 @@ The brand board is a single HTML file with embedded CSS. No external dependencie
 ### Design Guidelines
 
 - Use the brand's own colors and fonts in the board wherever possible
-- Light background (#faf9f6 or similar warm neutral) for the page body
-- Dark sections for hero/philosophy and voice character statement
+- **Page body background is derived from the brand's palette**, specifically the color whose `use` field names it as the page ground. There is NO default substrate — picking "warm neutral" / "cream" / `#faf9f6` without a brand-derived reason is a divergence hit. See [`../../_shared/divergence-toolkit.md`](../../_shared/divergence-toolkit.md) § 1 *Palette-family moves* ("Cream/paper as default page ground") and § 2.5 *Ground color by seed* for what substrate each seed implies. Example seeds that genuinely want cream: 1920s–1960s × letterpress / riso / folded-paper / field-guide / travel-brochure / museum-didactic. Example seeds that should NOT default to cream: 1990s × legal-contract (pale gray or stark white); 1970s × enamel-sign (saturated ground); 2010s+ × broadcast / sports-scorecard (true black / true white / saturated monotone).
+- Dark sections for hero/philosophy and voice character statement only when the brand's palette supports an ink-or-deeper-than-ground surface — do not invert arbitrarily
 - All color swatches rendered at 80x80px minimum with hex, Pantone, and role labels
 - Type specimens use the actual extracted fonts (or closest web-safe fallback, flagged if substituted)
 - Do/Don't pairs color-coded: green (#7B997C) for do, red (#C8102E or brand red) for don't

@@ -260,12 +260,35 @@ Color `role` values in `colors.primary[]`, `colors.secondary[]`, and `colors.web
 
 ### Forbidden on new writes
 
-If a new profile emits any of the following as the sole `role` value, the skill refuses to write and retries with a prompt to rename:
+The check is **token-level, case-insensitive, whole-word match** — not string-equality. A `role` value is forbidden if any of these tokens appears anywhere in it:
 
 - Primary · Secondary · Tertiary
 - Alarm · Warning · Danger
-- Shadow · Hardware · Ink (as roles; using them as color *names* is fine)
-- Accent · Background (as roles; they remain valid technical tokens in the `use` field)
+- Shadow · Hardware · Ink
+- Accent · Background · Neutral
+- Brand · House
+
+All of the following are therefore forbidden on new writes:
+
+- `"Primary"` (bare match)
+- `"Primary Red"` (compound — `Primary` is a token)
+- `"Brand Blue"` (compound — `Brand` is a token)
+- `"Warning Amber"` (compound — `Warning` is a token)
+- `"Accent Gold"` (compound — `Accent` is a token)
+- `"House Neutral"` (compound — two forbidden tokens)
+
+String-equality was the v0.1 check. It missed compound names like `"Accent Gold"` that smuggle the generic taxonomy in alongside a color name. Token-level closes that loophole.
+
+Technical intent (CTA fill, alarm state, body background) lives in the sibling `use` field, which is explicitly allowed to contain the forbidden tokens:
+
+```json
+{ "name": "Bar Beach Teal", "hex": "#0F6B6B", "role": "Bar Beach",
+  "use": "primary background, hero fill, CTA fill on saturated scenes" }
+```
+
+The color's `name` field may also contain forbidden tokens — a color called "Shadow of Pomodoro" is fine; the `role` field is the one that must be brand-native.
+
+If a new profile emits a forbidden role value, the skill refuses to write and retries with a prompt to rename.
 
 ### Accepted
 
