@@ -65,10 +65,15 @@ If briefings already exist, read `aem-design/briefings/` and confirm which pages
 
 ## Phase 2: Draft
 
-1. When the user wants to talk through concepts, run a discovery interview:
-   - **If the `superpowers` plugin is installed** (`/brainstorm` is registered), delegate to `/brainstorm`.
-   - **Otherwise**, run the "For briefings discovery" pattern in [`../_shared/fallback-brainstorm.md`](../_shared/fallback-brainstorm.md). Per [`../_shared/soft-deps.md`](../_shared/soft-deps.md), announce the fallback once per session on the first use.
-   Example prompts either path uses: "What should visitors feel when they land on this page? What's the one action you want them to take?"
+1. Run the soft-deps discovery decision before any interview question:
+
+   **If `/brainstorm` is registered in this session** (detect per [`../_shared/soft-deps.md`](../_shared/soft-deps.md)): hand off to `/brainstorm` with a seeded prompt that includes the page name, any existing briefing content, and the target fidelity. Wait for its output; use the result to populate the briefing. Do NOT run any inline interview question once this delegation is made — that would double-interview the user.
+
+   **Otherwise (superpowers not installed):** announce the fallback **exactly once per session**, using the verbatim text from [`../_shared/soft-deps.md`](../_shared/soft-deps.md) ("superpowers announcement"). Then run the "For briefings discovery" pattern in [`../_shared/fallback-brainstorm.md`](../_shared/fallback-brainstorm.md). On every subsequent briefing in the same session, skip the announcement (already seen) and run the inline pattern directly.
+
+   Either path uses the same discovery prompts: "What should visitors feel when they land on this page? What's the one action you want them to take?"
+
+   The user must be able to tell which path ran — either by `/brainstorm`'s visible hand-off UI or by the one-time announcement. Silent inline interviews are a bug.
 2. Draft the briefing at the requested fidelity. The agent helps draft; the user owns the content.
 3. Present the draft and wait for approval before writing the file.
 4. Write approved briefings to `aem-design/briefings/{page}.md`.

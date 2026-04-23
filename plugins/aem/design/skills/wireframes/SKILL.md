@@ -56,7 +56,9 @@ For each page with an approved briefing:
    - Otherwise, use the "For wireframe section planning" pattern in [`../_shared/fallback-brainstorm.md`](../_shared/fallback-brainstorm.md). Per [`../_shared/soft-deps.md`](../_shared/soft-deps.md), impeccable fallback runs silently.
    Either path answers: what sections does this page need, what's the visual hierarchy, and how does the user flow through the content.
    - `/shape` produces a design brief — use this as the structural plan.
-4. For multi-page sites, run `/write-plan` (from superpowers) first to plan the information architecture across all pages before wireframing individual ones.
+4. For multi-page sites, plan the information architecture across all pages before wireframing individual ones:
+   - **If `/write-plan` is registered in this session** (detect per [`../_shared/soft-deps.md`](../_shared/soft-deps.md)): delegate IA planning to `/write-plan`, seeded with the site briefing and the list of pages. Use its output as the multi-page structural plan.
+   - **Otherwise (superpowers not installed):** announce the fallback **exactly once per session** using the verbatim text from [`../_shared/soft-deps.md`](../_shared/soft-deps.md) ("superpowers announcement") — unless it was already announced earlier in this session. Then sketch the IA inline: list pages, their primary content type, and the shared sections between them, and confirm with the user before moving on.
 
 ## Phase 2: Render (Grey Mode)
 

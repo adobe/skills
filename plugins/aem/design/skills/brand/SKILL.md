@@ -149,10 +149,17 @@ Pay special attention to:
 
 ### If no guidelines (conversational):
 
-1. Invoke `/brainstorm` (from superpowers) to run a brand discovery conversation
-2. Ask about: brand name, mission, target audience, personality (3-5 adjectives), colors they like/dislike, typography preference (serif/sans/mixed), photography style, competitive positioning
-3. From the conversation, construct `aem-design/brand-profile.json` with whatever was discussed
-4. Mark optional fields as null — the designer can fill them in later
+1. Run the soft-deps discovery decision before asking anything inline:
+
+   **If `/brainstorm` is registered in this session** (detect per [`../_shared/soft-deps.md`](../_shared/soft-deps.md)): hand off to `/brainstorm` with a seeded prompt naming the brand (if known) and the discovery topics below. Wait for its output; use the result to populate `brand-profile.json`. Do NOT run an inline interview once this delegation is made.
+
+   **Otherwise (superpowers not installed):** announce the fallback **exactly once per session**, using the verbatim text from [`../_shared/soft-deps.md`](../_shared/soft-deps.md) ("superpowers announcement"). Then run the inline interview.
+
+   Either path covers the same topics: brand name, mission, target audience, personality (3-5 adjectives), colors they like/dislike, typography preference (serif/sans/mixed), photography style, competitive positioning.
+
+   The user must be able to tell which path ran — either by `/brainstorm`'s visible hand-off UI or by the one-time announcement. Silent inline interviews are a bug.
+2. From the conversation, construct `aem-design/brand-profile.json` with whatever was discussed.
+3. Mark optional fields as null — the designer can fill them in later.
 
 ## Phase 2: Design Personality
 

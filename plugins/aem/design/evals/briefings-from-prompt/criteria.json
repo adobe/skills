@@ -7,7 +7,7 @@
     { "id": "briefing_file_exists", "weight": 15, "description": "aem-design/briefings/<page>.md was created." },
     { "id": "briefing_sections", "weight": 15, "description": "Briefing contains Intent, Audience, Key Messages, CTAs, Tone sections." },
     { "id": "provenance_stamped", "weight": 15, "description": "Briefing contains a provenance stamp noting synthesized brand context." },
-    { "id": "fallback_announced_once", "weight": 15, "description": "If superpowers absent, fallback announcement appears exactly once." },
+    { "id": "soft_deps_honored", "weight": 15, "description": "Soft-deps delegation was honored: either `/brainstorm` was invoked with a visible hand-off (when superpowers is installed), or the superpowers fallback announcement appeared exactly once and the inline interview ran. A silent inline interview with no announcement is a failure." },
     { "id": "no_cross_writes", "weight": 10, "description": "Did not write brand-profile.json, wireframes, or prototypes." }
   ]
 }
