@@ -10,6 +10,18 @@ metadata:
 
 Extract brand identity from guidelines and produce a visual brand board for designer approval.
 
+## When to use this skill
+
+- The user provides brand guidelines (URL, PDF, or conversational description) and asks to extract, create, or capture brand identity.
+- The user asks to change, refine, review, critique, or iterate on `aem-design/brand-profile.json`, `aem-design/brand-board.html`, or `.impeccable.md`.
+- The user types `/aem-design:brand`.
+
+## Do NOT use this skill
+
+- For page copy, headlines, or intent — those live in briefings. Hand off to `briefings`.
+- For visual layout, spacing, or prototype styling — those belong to `prototype`.
+- To render wireframes. Hand off to `wireframes`.
+
 ## Pre-flight
 
 Run the procedure in [`../_shared/preflight.md`](../_shared/preflight.md) first.

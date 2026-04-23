@@ -12,6 +12,19 @@ Design in the browser. Produce **branded, high-fidelity HTML** for each page —
 
 This is the stage where visual design decisions happen: type scale, spacing, proportions, button sizing, visual weight, section rhythm.
 
+## When to use this skill
+
+- The user is ready to design visuals — type scale, spacing, proportions, layout, visual weight.
+- The user asks to change, refine, review, critique, or iterate on visual styling or any file under `aem-design/prototypes/**/*.html`.
+- The user types `/aem-design:prototype`, or asks to "design the page" after briefings are ready.
+
+## Do NOT use this skill
+
+- For page copy — copy is owned by `briefings`. Propose a writeback to `briefings/{page}.md` if the user wants to save a new headline.
+- For brand voice or identity decisions (colors, typography system, tone). Hand off to `brand`.
+- For grey structural wireframes. Hand off to `wireframes`.
+- To build EDS blocks or production HTML. Prototype stops at static HTML — EDS implementation is a separate downstream effort.
+
 ## Pre-flight
 
 Run the procedure in [`../_shared/preflight.md`](../_shared/preflight.md) first.

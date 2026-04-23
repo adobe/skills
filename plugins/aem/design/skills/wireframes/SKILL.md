@@ -12,6 +12,19 @@ Turn approved briefings into **grey, structural** wireframes — boxes, bars, sh
 
 This stage is **optional**. A user who already has a clear structural vision can skip straight to `/aem-design:prototype`.
 
+## When to use this skill
+
+- The user wants to validate page structure before visual design — section order, hierarchy, density, spatial relationships.
+- The user asks to annotate a wireframe or mark reusable fragments across pages.
+- The user asks to change, refine, review, critique, or iterate on any file under `aem-design/wireframes/**/*.html`.
+- The user types `/aem-design:wireframes`.
+
+## Do NOT use this skill
+
+- For branded visual design, colors, typography, or final proportions. Hand off to `prototype`.
+- For page copy or intent. Hand off to `briefings`.
+- When the user explicitly wants to skip straight to branded design — suggest `/aem-design:prototype` instead.
+
 ## Pre-flight
 
 Run the procedure in [`../_shared/preflight.md`](../_shared/preflight.md) first.

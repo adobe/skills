@@ -10,6 +10,18 @@ metadata:
 
 Assess the current design-phase state and guide the user to the right next step.
 
+## When to use this skill
+
+- The user asks "where do I start?", "what's next?", or "what's the status" in the context of `aem-design/`.
+- The user types `/aem-design` with no other intent.
+- The user references `aem-design/` artifacts in general without naming a specific edit target.
+- The user asks to run the full pipeline end-to-end.
+
+## Do NOT use this skill
+
+- To create, modify, or render any artifact. The navigator only reads state. Use `brand`, `briefings`, `wireframes`, or `prototype` for writes.
+- To pick a stage on the user's behalf when they've already named one (`/aem-design:brand`, "edit the landing briefing", etc.). Hand off directly to that stage skill.
+
 ## How This Works
 
 You are the navigator for the `aem-design` pipeline — four design stages that each produce a distinct artifact under `aem-design/`:

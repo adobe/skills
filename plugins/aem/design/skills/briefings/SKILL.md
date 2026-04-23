@@ -10,6 +10,18 @@ metadata:
 
 Help the user express their page vision as briefings that capture business intent. A briefing can be as lightweight as a single sentence of intent, or as detailed as final copy and image direction — the user chooses the fidelity.
 
+## When to use this skill
+
+- The user wants to plan pages, write briefings, define audience or CTAs, or map shared sections across pages.
+- The user asks to change, refine, review, critique, or iterate on any file under `aem-design/briefings/**/*.md` (including `_site.md`).
+- The user types `/aem-design:briefings`.
+
+## Do NOT use this skill
+
+- For brand identity (voice, colors, typography). Hand off to `brand`.
+- For structural wireframes or layout decisions. Hand off to `wireframes` or `prototype`.
+- To render pages. Hand off to `wireframes` (grey) or `prototype` (branded).
+
 ## Pre-flight
 
 Run the procedure in [`../_shared/preflight.md`](../_shared/preflight.md) first.
