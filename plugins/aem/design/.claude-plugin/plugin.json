@@ -1,0 +1,11 @@
+{
+  "name": "aem-design",
+  "description": "Design-phase skills for AEM Edge Delivery Services sites: brand extraction, page briefings, wireframes, and branded HTML prototypes. EDS-independent; outputs static files.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": ["aem", "eds", "design", "brand", "prototypes"]
+}
