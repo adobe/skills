@@ -27,7 +27,8 @@
       "picked_by": "string — 'deterministic-random' | 'designer' | 'not-applicable'",
       "hash_input": "string|null — for deterministic-random, the exact string that was hashed (e.g. 'Nonna\\'s Arsenal|2026-04-23'). Present for audit reproducibility."
     },
-    "chassis": "string|null — name of the brand-board chassis chosen; see brand-board-template.md for available chassis",
+    "chassis": "string|null — name of the brand-board chassis chosen; one of 'classic-archive' | 'dashboard' | 'magazine' | 'pinboard'. See brand-board-template.md Chassis selection and brand/reference/chassis/*.md for specs.",
+    "chassis_pick_reason": "string|null — how the chassis was picked: 'designer-override' | 'hash' | 'seed-preference' | 'fallback'. Enables audit of why a specific chassis landed.",
     "font_deck": "string|null — name of the deck used from divergence-toolkit.md §3, e.g. 'retro-italian'",
     "anti_toolbox_count": "number — how many moves from divergence-toolkit.md §1 are present in this profile; budget is 3",
     "anti_toolbox_hits": [
