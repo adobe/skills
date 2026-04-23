@@ -6,24 +6,46 @@ by `prototype`) to push back against the assistant's recurring default moves.
 Loaded whenever a skill is about to make a visual decision without a strong
 external reference.
 
-**Status:** v0.1 · self-audited. The anti-toolbox list below was compiled by
-the assistant as a self-audit of its own recurring moves. It is deliberately
-imperfect. Designers should add corrections in §6 over time; that section is
-authoritative when it conflicts with §1.
+**Status:** v0.2 · self-audited · run-tested. The anti-toolbox list below
+was compiled by the assistant as a self-audit of its own recurring moves
+and expanded after a 4-run test surfaced additional defaults (triplet-
+cadence copy, generic-2026-SaaS silhouette, stat-callout bar,
+collage-maximalism kit, archival-editorial palette family,
+cream-as-default page ground). It is deliberately imperfect. Designers
+should add corrections in §6 over time; that section is authoritative when
+it conflicts with §1.
+
+**Changes from v0.1:**
+- Retired the "3 free hits" budget. Every hit now needs a brand-specific
+  justification (§ 1 Enforcement).
+- Added self-audit rationalisation check (§ 1 Enforcement).
+- Added Palette-family moves subsection (§ 1) covering
+  archival-editorial palette, cream-as-default ground,
+  brutalist-pomodoro, and dark-mode-editorial.
+- Added Generic-2026-SaaS silhouette, Stat-callout bar, Collage-maximalism
+  kit, and Triplet-cadence copy to § 1.
+- Moved ban-marketing-adjectives, no-exclamation-points, and em-dash rules
+  out of § 1 into new § 7 Optional House Standards — they're sensible
+  universal conventions, not defaults to count against.
+- Added § 2.5 Dimension Weighting — decade → type, craft → motif,
+  register → voice — with within-run variant dominance and a *Ground color
+  by seed* table (cream belongs to specific seeds, not as a default).
 
 ---
 
-## 1. The Default-Moves Budget
+## 1. The Default-Moves List
 
 These are recurring moves the assistant tends to reach for when asked to be
 "distinctive", "anti-generic", or "unexpected" — regardless of the brand's
 subject matter. Left unconstrained, they appear across unrelated brands and
 produce visual convergence.
 
-**Budget rule:** any new `brand-profile.json` or `prototype` page may include
-at most **3** moves from this list. Each inclusion past 3 requires an entry
-in `_divergence.divergence_justifications` naming why this move is right for
-*this specific brand*.
+**Enforcement model (v0.2):** every move from this list that appears in a
+profile requires a per-hit brand-specific justification. No free quota. See
+the *Enforcement · per-hit justification* block at the bottom of this
+section. In v0.1 there was a budget of 3 "free" hits; that budget was
+retired after the 4-run test showed the LLM comfortably filled it with
+defaults.
 
 ### Typography moves
 - Stencil display type (Big Shoulders Stencil Display, Oswald Stencil, similar)
@@ -44,13 +66,14 @@ in `_divergence.divergence_justifications` naming why this move is right for
 - Serial-number stamping in footers ("BATCH 0712")
 - Ticker / marquee band scrolling across top or bottom
 - "MOD. YYYY · City" archival stamp in mastheads
+- **Collage-maximalism kit** — combination of any 3 of these 6 moves in one layout: rubber/wet-paint stamps · handwritten annotations · pinned cards with drop shadows · rotated date-blocks · ripped/torn paper edges · typewriter-style captions. This is the assistant's own maximalism archetype, not a neutral default.
 
 ### Voice-rule moves
-- "Ban marketing adjectives" list, naming *artisanal / crafted / premium / curated / beloved / cozy*
-- "No exclamation points except …" rule
-- "Em-dashes welcome / semicolons earned" rule
 - "Sentences earn their length / a short one and a long one" cadence rule
 - Quartermaster / examiner / curator register as the default voice stance
+- Triplet-cadence pull-quote or section-headline copy — three short clauses of comparable length separated by period or em-dash (e.g. *"Same press. Same shop. Same eight years."* · *"Dated, classified, cross-linked."* · *"Saturday. Bar Beach. We dance."*). Detection: a display-level sentence that breaks into exactly 3 clauses with no subordinate structure. At most one per page before it becomes a tell.
+
+(The "ban marketing adjectives", "no exclamation points except …", and "em-dashes welcome / semicolons earned" rules were in v0.1. They are sensible universal voice rules and have moved to § 7 Optional House Standards. They no longer count against the budget.)
 
 ### Structural moves
 - Sticky top navigation
@@ -60,28 +83,83 @@ in `_divergence.divergence_justifications` naming why this move is right for
 - Two-column voice do / don't panel
 - Motif card grid with fixed-size demo tiles
 - Archival footer strip with batch + serial
+- **Generic-2026-SaaS silhouette** — oversized sans-serif hero (clamp(72px, 10vw, 140px)) + two-button CTA pair (solid primary + outlined secondary) + sticky top-nav + serial-marker footer, rendering as a Linear / Notion / Stripe / Arc landing page. This is a composite move: **any 3 of those 4 together** counts as a hit.
+- **Stat-callout bar** — 3–4 large numbers with short all-caps labels arranged horizontally as a "trust bar" ("61 firms · 34 patents · 17 years"). Very Stripe press page.
 
 ### Palette-role moves
 - Role vocabulary: *Primary / Secondary / Alarm / Warning / Shadow / Hardware / Ink*
 - "Alarm" as a distinct role name for a saturated accent
 - "Shadow" as a distinct role name for a deepened primary
 
-### Enforcement
+### Palette-family moves
 
-Before emitting `brand-profile.json`, the skill scans the profile against this
-list, counts matches, and populates:
+Recurring *palette families* — not individual hex values, but combinations of ground + accent + secondary that the assistant reaches for across unrelated brands. A brand profile whose dominant tones fall into one of these families is a hit, even when individual hex values differ.
 
-```json
-"_divergence": {
-  "anti_toolbox_count": <number>,
-  "anti_toolbox_hits": ["string — which specific moves"],
-  "divergence_justifications": [ { "move": "...", "reason": "..." } ]
-}
-```
+- **"Archival editorial palette"** — cream/paper ground (#F0–F8 on the L axis) + warm-family saturated accent (rust / brick / pomodoro / burnt-orange / oxblood) + muted earth-tone secondary (olive / mustard / ochre / fennel). The assistant's "serious-but-warm editorial" default; recurs across unrelated brands even when nothing in the brief calls for it.
+- **Cream/paper as the default page ground.** If the brand's seed does NOT call for letterpress / riso / field-guide / archival / print-ephemera, and the brand's category is NOT print-publishing-adjacent, then cream is a default substrate, not a reasoned choice. See § 2.5 *Ground color by seed* for what belongs where.
+- **"Brutalist pomodoro palette"** — ink-black primary + cream/bone ground + one saturated red/orange alarm. The Nonna's Arsenal baseline palette; appears whenever the brand is "serious" or "archival". A hit specifically when the saturated accent occupies < 5% of surface area (used only for alerts / CTAs) — at that dose it reads as the assistant's signature.
+- **"Dark mode editorial"** — ink/black ground + cream/bone text + one saturated accent. The inverted version of the brutalist pomodoro.
 
-If `anti_toolbox_count > 3` and `divergence_justifications` does not cover
-each excess hit with a brand-specific reason, the skill retries the
-generation with the hit list fed back in as a "do not repeat" constraint.
+### Enforcement · per-hit justification (v0.2)
+
+Before emitting `brand-profile.json`, the skill scans the profile against the
+lists above and populates:
+
+- `_divergence.anti_toolbox_count` — total count of moves matched
+- `_divergence.anti_toolbox_hits[]` — each hit as `{ move: string, justification: string }`
+
+**No free quota.** Every hit requires a per-entry justification naming why
+this specific brand warrants this specific move. "Fits the aesthetic" is not
+a justification. "Feels right" is not a justification. A justification names
+a brand-specific reason that would not transfer unchanged to an arbitrary
+other brand. For example:
+
+- ✅ "the 11-ply deck structure makes the 11-stacked-hairlines motif a direct
+  product reference, not a generic divider"
+- ✅ "letterpress traditionally prints on cream stock, and the brand IS a
+  print-publishing category, so cream is the substrate of the craft, not an
+  assistant default"
+- ❌ "a travel decal, not an archival stamp" (wording change, not a reason)
+- ❌ "feels right for the brand" (no brand-specific reason)
+
+If the assistant cannot write a brand-specific justification for a hit, the
+move must be removed or replaced with an off-toolbox alternative. Populate
+`_divergence.off_toolbox_moves[]` with the replacement.
+
+### Self-audit · rationalisation check
+
+Before finalising the profile, the assistant asks itself three questions
+and records the answers in `_divergence.audit_adjustments[]` when any
+adjustment is made.
+
+1. **Hit audit.** For each entry in `_divergence.anti_toolbox_hits`, would a
+   reviewer who knows the assistant's defaults agree this is a hit or a
+   near-hit? A "travel decal" that is a rotated circular stamp with
+   perimeter text IS a rotated circular stamp. Rewording the motif to sound
+   brand-specific does not change what it is. If you cannot answer "yes, a
+   reviewer would call this a hit" for an entry, the justification is
+   probably cover for a rationalisation — strengthen it or remove the move.
+
+2. **Off-toolbox audit.** For each entry in `_divergence.off_toolbox_moves`,
+   would a reviewer call it a genuine invention or a dressed-up default?
+   A "ply-strata rule divider" with 11 stacked hairlines specific to an
+   11-ply product is a genuine invention — it could not exist for any other
+   brand. A "dispatch decal" that happens to look like a rotated circular
+   stamp is a dressed-up default. Be strict. If the move could transfer
+   unchanged to another brand in another category, it is not really
+   off-toolbox — demote it to `anti_toolbox_hits` with a justification, or
+   remove it.
+
+3. **Triplet-copy audit.** Scan all headline, pull-quote, and marketing copy
+   for the triplet cadence (X. Y. Z. — three short clauses of similar
+   length). At most one triplet per page. Any second triplet on the same
+   page is rewritten.
+
+When the self-audit moves an entry between lists, record the move in
+`_divergence.audit_adjustments[]` with `{ from: "off_toolbox_moves",
+to: "anti_toolbox_hits", move: "...", reason: "..." }` — or the reverse, or
+`{ from: <list>, to: "removed", ... }` when the self-audit deletes a move
+outright.
 
 ---
 
@@ -137,6 +215,59 @@ visual translation:
 A profile whose visual moves cannot be traced to the seed is suspect. In
 that case, either regenerate or pick a different seed with designer
 awareness.
+
+---
+
+## 2.5 · Dimension Weighting
+
+The seed triple is not uniform — each dimension governs a different layer of
+the visual system. This makes the seed load-bearing and enables meaningful
+within-run variant divergence.
+
+| Dimension | Governs |
+|---|---|
+| **Decade** | Type deck selection (see § 3), period-appropriate cultural references, display-type register, image/photography era |
+| **Craft tradition** | Texture, motif idiom, print artifacts (misregistration, ink bleed, folds, embossing), material metaphor |
+| **Cultural register** | Voice stance, structural metaphor (table · manifest · itinerary · ledger · docket · inventory), information architecture |
+
+### Within-run variant variance via dimension dominance
+
+When producing multiple prototype variants for the same brand, each variant
+should let one seed dimension dominate while the other two recede. Stamp the
+dominant dimension in each prototype's header comment.
+
+Example (Yadda Dey · seed = 1960s × folded-paper × travel brochure):
+- Variant A — **decade-dominant** (1960s Africa-modernist palette and type
+  lead; craft and register recede)
+- Variant B — **craft-dominant** (folded-paper physicality leads — actual
+  fold-crease shadows, die-cut dog-ears, serrated edges)
+- Variant C — **register-dominant** (travel brochure idiom leads —
+  itinerary tables, route maps, ticket edges)
+
+This is a structural tool, not a rigid rule. A variant may combine two
+dimensions if the brand warrants it; pure single-dimension dominance is the
+starting configuration, not the endpoint.
+
+### Ground color by seed
+
+Page ground color is seed-driven, not a template default. The assistant's
+recurring instinct is cream/paper/warm-neutral as the substrate, which
+belongs only to a specific subset of seeds.
+
+| Seed signal | Appropriate page ground |
+|---|---|
+| Decade 1920s–1960s × letterpress / riso / folded-paper / field-guide / travel brochure / museum didactic | Cream, paper, warm neutral (this is where cream *belongs*) |
+| Decade 1970s × enamel-sign / neon-bending / ceramic-transfer | Saturated ground (burnt orange, teal, oxblood, avocado) |
+| Decade 1990s × legal-contract / repair-manual / hospital-discharge | Stark white, pale gray — NOT cream |
+| Decade 2000s–2025 × broadcast-captioning / sports-scorecard / railway-timetable | True black, true white, or saturated monotone — NOT cream |
+| Craft terrazzo / mosaic tile | Speckled or patterned ground, not flat cream |
+| Craft photogram / plaster cast | Deep monochrome (black, bone) |
+| Craft technical-illustration / map-engraving | White or blueprint-blue |
+
+If the selected seed would naturally suggest a non-cream ground, using cream
+anyway requires a per-instance justification in
+`_divergence.anti_toolbox_hits` (see § 1 *Palette-family moves* — the
+"Cream/paper as default page ground" entry).
 
 ---
 
@@ -253,6 +384,56 @@ the self-audit missed. Format each entry as:
 
 _None yet. This section is intentionally empty on the first release and
 grows as designers notice defaults the assistant didn't self-identify._
+
+---
+
+## 7. Optional House Standards
+
+Rules that are defensible for many brands but should not be counted against
+the divergence budget. Brands that opt in stamp them in
+`brand-profile.json → voice.rules`. They do NOT appear in
+`_divergence.anti_toolbox_hits`.
+
+These rules moved out of § 1 in v0.2 because they're not defaults — they're
+sensible universal voice conventions. The LLM reaches for them across
+brands, but that's because they're correct for most editorial/considered
+brands, not because they're slop.
+
+### 7.1 · Banned marketing adjectives
+
+Voice rule forbidding: *artisanal · crafted · premium · curated · beloved ·
+cozy · warm · inviting · thoughtfully · delightfully · lovingly ·
+uncompromising · bespoke*.
+
+**Opt in when:** the brand's voice resists marketing boilerplate.
+**Opt out when:** the brand's category actually uses these words (luxury
+hospitality sometimes wants "crafted"; boutique cosmetics sometimes want
+"delightfully"). Removing the rule is a positive choice, not a slip.
+
+### 7.2 · No exclamation points except …
+
+Voice rule forbidding exclamation points outside of quoted outbursts in
+italic.
+
+**Opt in when:** the brand voice is terse / editorial.
+**Opt out when:** the brand is youth-oriented, energetic, or enthusiasm is
+a genuine brand value.
+
+### 7.3 · Em-dashes welcome, semicolons earned
+
+Punctuation rule preferring em-dashes and discouraging semicolons.
+
+**Opt in when:** voice aims at editorial / literary register.
+**Opt out when:** the brand writes technical documentation where semicolons
+clarify list structure.
+
+### How opt-in works
+
+When a designer opts in (or the brand skill auto-opts-in because the seed's
+register strongly implies it — e.g. `legal contract` register → 7.3 is
+natural), the rule is copied verbatim into the emitted profile's
+`voice.rules[]`. It is NOT recorded in `_divergence.anti_toolbox_hits` and
+does NOT contribute to `_divergence.anti_toolbox_count`.
 
 ---
 
