@@ -18,6 +18,41 @@
     "note": "string — optional caveats"
   },
 
+  "_divergence": {
+    "toolkit_version": "string — version of _shared/divergence-toolkit.md in effect, e.g. 'v0.1'",
+    "seed": {
+      "decade": "string|null — from divergence-toolkit.md §2 seed list; null if a strong reference was provided",
+      "craft": "string|null — from the same list",
+      "register": "string|null — from the same list",
+      "picked_by": "string — 'deterministic-random' | 'designer' | 'not-applicable'",
+      "hash_input": "string|null — for deterministic-random, the exact string that was hashed (e.g. 'Nonna\\'s Arsenal|2026-04-23'). Present for audit reproducibility."
+    },
+    "chassis": "string|null — name of the brand-board chassis chosen; see brand-board-template.md for available chassis",
+    "font_deck": "string|null — name of the deck used from divergence-toolkit.md §3, e.g. 'retro-italian'",
+    "anti_toolbox_count": "number — how many moves from divergence-toolkit.md §1 are present in this profile; budget is 3",
+    "anti_toolbox_hits": [
+      "string — specific moves from the toolkit's §1 list that this profile uses, e.g. 'stencil display type', '45° hazard stripes'. Enables audit."
+    ],
+    "divergence_justifications": [
+      {
+        "move": "string — the toolkit move (from anti_toolbox_hits) this entry justifies",
+        "reason": "string — why this specific brand warrants this move. Required when anti_toolbox_count > 3 OR for every hit if strict enforcement is on."
+      }
+    ],
+    "off_toolbox_moves": [
+      "string — moves present in this profile that are NOT in the toolkit §1 list. Positive signal that the profile engaged with divergence."
+    ],
+    "references_used": [
+      {
+        "source": "string — URL, image path, or identifier",
+        "kind": "string — 'brand-guide' | 'marketing-site' | 'moodboard' | 'image' | 'listicle' | 'conversation'",
+        "trends_extracted": ["string — when kind='listicle', every named trend pulled from it"],
+        "trend_tags": { "trend_name": "'in-toolbox' | 'off-toolbox'" }
+      }
+    ],
+    "divergence_warning": "boolean — true if profile was generated without any external reference (source: conversation with no anchor set). Downstream skills surface this as a banner."
+  },
+
   "name": "string — brand name",
   "philosophy": "string — mission/positioning statement",
 
@@ -39,10 +74,11 @@
   "colors": {
     "primary": [
       {
-        "name": "string — color name e.g. 'Vitamix Red'",
+        "name": "string — color name e.g. 'Vitamix Red', 'Pomodoro', 'Oxblood'",
         "hex": "string — #RRGGBB",
         "pantone": "string|null — Pantone code if available",
-        "role": "string — e.g. 'Primary brand', 'Accent', 'Background'"
+        "role": "string — MUST be brand-native vocabulary, NOT a generic slot. See 'Role Naming — enforced' section below. Examples: 'Pomodoro' for a tomato brand, 'Grove' for olive oil, 'Ledger' for a bank. Forbidden on new writes: 'Primary', 'Secondary', 'Alarm', 'Warning', 'Shadow', 'Hardware', 'Accent', 'Background' as sole role values.",
+        "use": "string|null — optional technical qualifier, e.g. 'CTA fill, tomatoes, alert text'. This field is where 'primary text', 'background', 'CTA' belong — keeping the role field free for brand-native names."
       }
     ],
     "secondary": [
@@ -192,6 +228,75 @@
 }
 ```
 
+## Divergence Tracking — `_divergence` block
+
+The `_divergence` block sits as the second top-level key, right after `_provenance`. It records the constraints the skill applied during generation so the profile can be audited for sameness against the assistant's defaults.
+
+**Required when writing a new profile:**
+- `toolkit_version` — the version string from `_shared/divergence-toolkit.md`.
+- `anti_toolbox_count` — the count of moves from toolkit §1 present in this profile.
+- `anti_toolbox_hits` — explicit list of those moves. Budget is 3; excess moves require matching entries in `divergence_justifications`.
+- `references_used` — every reference considered, tagged. Empty array is a valid value only when `source: conversation` is in `_provenance`.
+
+**Required when reference was absent (conversation-only):**
+- `seed.decade`, `seed.craft`, `seed.register` — the deterministic-random triple from toolkit §2.
+- `seed.hash_input` — the exact string that was hashed. Enables reproducibility.
+- `font_deck` — the deck picked from toolkit §3.
+- `divergence_warning: true`.
+
+**Optional:**
+- `chassis` — set by the brand-board renderer; some versions of the template support multiple chassis (see `brand-board-template.md`).
+- `off_toolbox_moves` — moves present that are NOT in toolkit §1. Positive signal of divergence.
+
+### Reader compatibility
+
+Older profiles (pre-`_divergence`) are valid. Readers treat a missing `_divergence` block as equivalent to `{ toolkit_version: "pre-v0.1", anti_toolbox_count: null }`. No downstream skill should hard-fail on its absence.
+
+---
+
+## Role Naming — enforced
+
+Color `role` values in `colors.primary[]`, `colors.secondary[]`, and `colors.web[]` MUST be named in the brand's own language. The role field is not a technical slot; technical intent belongs in the new `use` field.
+
+### Forbidden on new writes
+
+If a new profile emits any of the following as the sole `role` value, the skill refuses to write and retries with a prompt to rename:
+
+- Primary · Secondary · Tertiary
+- Alarm · Warning · Danger
+- Shadow · Hardware · Ink (as roles; using them as color *names* is fine)
+- Accent · Background (as roles; they remain valid technical tokens in the `use` field)
+
+### Accepted
+
+Role names drawn from the brand's subject matter, content pillars, or founder biography. Examples:
+
+- A tomato brand: "Pomodoro", "Grove", "Crate", "Dispatch", "Kitchen counter"
+- A horror publisher: "Wormsalt Black", "Oxblood", "Sulphur", "Bone", "Tooth"
+- A bank: "Ledger", "Receipt", "Vault", "Drawer", "Coin"
+- An astronomy club: "Zenith", "Perigee", "Penumbra", "First light"
+
+### Example — valid entry
+
+```json
+{
+  "name": "Pomodoro Rosso",
+  "hex": "#C13A1D",
+  "role": "Pomodoro",
+  "use": "accents, CTAs, the tomato itself"
+}
+```
+
+### Reader compatibility
+
+Existing profiles with generic role names (e.g., `"role": "Primary brand"`) remain valid reads. The rule applies only to new writes and to profiles being refactored. Downstream skills MUST NOT reject old profiles on role-name grounds.
+
+### Why this rule
+
+When roles are named generically, the palette imports the assistant's mental model; only the hex values differ between brands. Brand-native role names force the palette to be reasoned about in the brand's own terms, which makes brands harder to interchange.
+
+---
+
 ## Notes for Implementation
 
 - All fields are optional except `name` and `colors.primary` — brands vary in what they document.
@@ -200,4 +305,6 @@
 - Voice examples are critical for copy generation — extract as many as possible.
 - Photography style feeds into `ai-image-generator` style prefixes.
 - **`_provenance` is the first key** in every emitted `brand-profile.json`. Contract-compliant readers (downstream skills + evals) look for it at the top.
+- **`_divergence` is the second key.** See the Divergence Tracking section above.
 - **`synthesized_inputs` must enumerate every field the skill filled in but did not extract.** "The LLM wrote it based on vibes from the page" counts as synthesized. Use this list so the user can tell what to trust vs. what to revise.
+- **Role names must be brand-native on new writes** (see Role Naming section above). Old profiles are read as-is.

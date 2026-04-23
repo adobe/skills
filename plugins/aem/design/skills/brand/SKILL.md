@@ -40,17 +40,32 @@ Run the procedure in [`../_shared/preflight.md`](../_shared/preflight.md) first.
 - `.impeccable.md` (created or updated)
 
 **If missing:**
-- No URL/PDF/description → ask the user one conversational prompt ("tell me about the brand in a sentence"), synthesize a neutral brand-profile shape (system fonts, mono palette, straight voice), and stamp provenance per [`../_shared/skill-contract.md`](../_shared/skill-contract.md).
-- No `.impeccable.md` → create a minimal one and stamp provenance at the top.
+- No URL/PDF/anchor-set/description → deliver the "no reference" warning in the Inputs section below before synthesizing. If the designer proceeds without any reference, roll a deterministic random seed from [`../_shared/divergence-toolkit.md`](../_shared/divergence-toolkit.md) §2, stamp `_divergence.divergence_warning = true` on the profile, and use the seed as a hard constraint on visual decisions. Stamp provenance per [`../_shared/skill-contract.md`](../_shared/skill-contract.md).
+- No `.impeccable.md` → prefer the designer-authored path (see Phase 2). Only fall back to synthesis after the "last chance" prompt has been declined, and stamp `authored_by: synthesized` in frontmatter.
 
 ---
 
 ## Inputs
 
 The designer provides ONE of:
-1. **Brand guidelines URL** — a web-based brand guide (e.g., Corebook, Frontify, Brandfolder)
-2. **Brand guidelines PDF** — uploaded document
-3. **No guidelines** — the designer describes their brand vision conversationally
+
+1. **Brand guidelines URL** — a web-based brand guide (Corebook, Frontify, Brandfolder) or a live marketing site.
+2. **Brand guidelines PDF** — uploaded document.
+3. **Reference anchor set** — a moodboard URL (Are.na, Pinterest, Dribbble collection) OR 3–5 uploaded reference images with short context notes. This is NOT a brand guideline — it is a visual anchor that keeps the extraction honest.
+4. **No reference (conversational)** — the explicit escape hatch. See warning below.
+
+### When the designer has no reference
+
+The skill defaults to requiring at least option 3 (anchor set). Before proceeding without any reference, stop and say, verbatim:
+
+> Without a reference, visual decisions will be synthesized from the assistant's defaults. The assistant has known recurring moves (see `../_shared/divergence-toolkit.md` §1) that tend to appear across unrelated brands.
+>
+> Options:
+> - Provide a reference anchor set (option 3 above) — 2 minutes, biggest divergence payoff.
+> - Run `/impeccable teach` yourself first — produces a personal `.impeccable.md` that pushes back on assistant defaults.
+> - Proceed anyway with `source: conversation`. The profile will be stamped with a divergence warning and the skill will roll a random seed per `../_shared/divergence-toolkit.md` §2.
+
+If the designer proceeds anyway, set `_provenance.source = "conversation"` and `_divergence.divergence_warning = true` in the emitted `brand-profile.json`. The skill then rolls a deterministic random seed from §2 of the toolkit (decade × craft × register) and uses it as a hard constraint on visual synthesis. Downstream skills read both flags and adjust.
 
 ## Phase 1: Extract
 
@@ -165,6 +180,28 @@ Pay special attention to:
 
 `.impeccable.md` captures the designer's *taste* — references, pet peeves, which rules to bend — signal that can't be inferred from the brand profile alone. It's produced by an interactive interview and used as a quality gate by downstream skills.
 
+### Authorship matters
+
+`.impeccable.md` has two authorship paths that downstream skills treat differently:
+
+- **Designer-authored** (via `/impeccable teach` or the inline interview answered by the designer) — strong quality gate. Downstream skills enforce its rules.
+- **Synthesized** (fallback, LLM-authored without designer input) — weak hint. Downstream skills render a visible banner on brand boards and prototypes: *"Design personality was synthesized by the assistant, not authored by the designer. The rules below reflect assistant defaults. Run `/impeccable teach` to replace."*
+
+Every `.impeccable.md` file MUST open with frontmatter that declares authorship:
+
+```yaml
+---
+authored_by: designer       # or: synthesized
+author_date: YYYY-MM-DD
+source: "/impeccable teach interview"   # or: "brand skill inline interview" | "brand skill synthesis fallback"
+strength: strong             # designer → strong; synthesized → weak
+---
+```
+
+Downstream skills key off `strength`. A file without this frontmatter is treated as weak.
+
+### Path selection
+
 This phase is delegated when possible; otherwise it runs a lighter inline interview.
 
 **If the `impeccable` plugin is installed** (`/impeccable teach` is registered), pause and recommend to the designer:
@@ -173,15 +210,25 @@ This phase is delegated when possible; otherwise it runs a lighter inline interv
 >
 > This is optional but recommended. You can also skip it — we can always run `/impeccable teach` later and re-refine. Reply "skip" to continue without it, or run the command now and then ask me to continue.
 
-Wait for the designer to either run `/impeccable teach` (then resume) or explicitly say "skip".
+Wait for the designer to either run `/impeccable teach` (then resume) or explicitly say "skip". When `teach` runs, it stamps `authored_by: designer`. On "skip" without `teach` running, proceed to the "last chance" prompt below.
 
-**If `impeccable` is not installed**, use the "For brand discovery" variant in [`../_shared/fallback-brainstorm.md`](../_shared/fallback-brainstorm.md) to run a short personality interview and write `.impeccable.md` inline. Silent — do not announce the fallback (impeccable's announcement policy is silent per [`../_shared/soft-deps.md`](../_shared/soft-deps.md)).
+**If `impeccable` is not installed**, use the "For brand discovery" variant in [`../_shared/fallback-brainstorm.md`](../_shared/fallback-brainstorm.md) to run a short personality interview. The designer answers — stamp `authored_by: designer`, `source: "brand skill inline interview"`.
 
-**Never invent `.impeccable.md` content from the brand profile alone** — that provides no signal beyond what's already captured.
+### Last-chance prompt before synthesis
 
-**Skip this phase when:**
-- `.impeccable.md` already exists.
-- Invoked as part of a full end-to-end pipeline run (designer can run `/impeccable teach` later and re-refine).
+Before the skill synthesizes `.impeccable.md` on its own (no designer interview), stop and ask:
+
+> Before I synthesize `.impeccable.md` myself, would you rather answer three quick questions? References you like, things that annoy you, one rule you want broken. Three minutes, and the file reflects your taste instead of my defaults. Reply "ok" to do the interview, or "synthesize" to proceed without.
+
+- Reply "ok" → run the three-question inline interview, write the file with `authored_by: designer`.
+- Reply "synthesize" → write the file with `authored_by: synthesized`, `strength: weak`, and include the banner language in its body so downstream skills surface it.
+
+**Never invent `.impeccable.md` content from the brand profile alone without declaring it synthesized** — that provides no signal beyond what's already captured, and stamping it as "designer" would mislead downstream quality gates into enforcing assistant defaults as if they were designer taste.
+
+### Skip this phase when
+
+- `.impeccable.md` already exists. (Read its frontmatter; do not overwrite.)
+- Invoked as part of a full end-to-end pipeline run — but still present the last-chance prompt before synthesis unless the designer has explicitly opted out of it for the pipeline run.
 
 ## Phase 3: Render Brand Board
 
