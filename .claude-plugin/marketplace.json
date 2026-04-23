@@ -28,6 +28,11 @@
       "license": "Apache-2.0"
     },
     {
+      "name": "aem-design",
+      "source": "./plugins/aem/design",
+      "description": "Design-phase skills for AEM Edge Delivery Services sites: brand extraction, page briefings, wireframes, and branded HTML prototypes. EDS-independent."
+    },
+    {
       "name": "aem-edge-delivery-services",
       "source": "./plugins/aem/edge-delivery-services",
       "description": "Skills for AEM Edge Delivery Services development"
