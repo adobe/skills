@@ -52,9 +52,9 @@ When the data contract asks a section to display demos (motifs, components, feat
 
 ## What this chassis is NOT
 
+- Not a broadcast-grid — magazine is slow, multi-column, narrative; broadcast-grid is flat, fast, data-dense
 - Not a classic archive — no numbered `§ 01 ·` eyebrows; magazine uses `FEATURE` / `ESSAY`
 - Not a dashboard — no cards, no meters, no status chips
-- Not a pinboard — no rotation, no overlap (editorial magazines are rigorous grids, not scrapbooks)
 - Not a SaaS landing page — no hero-CTA, no feature grid
 
 ## Example reference

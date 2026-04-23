@@ -244,7 +244,7 @@ Chassis selection, in order of precedence:
 
 1. **Designer override.** If `_divergence.chassis` is already populated on the profile, use it as-is. This covers refactoring an existing profile and the case where the designer picks a chassis explicitly at the start of the run.
 
-2. **Hash-based default.** Compute `byte[3]` of the MD5 of `_divergence.seed.hash_input` modulo the number of chassis files in `../_shared/chassis/`. Alphabetical mapping: 0 → `classic-archive`, 1 → `dashboard`, 2 → `magazine`, 3 → `pinboard`.
+2. **Hash-based default.** Compute `byte[3]` of the MD5 of `_divergence.seed.hash_input` modulo the number of chassis files in `../_shared/chassis/`. Alphabetical mapping: 0 → `broadcast-grid`, 1 → `classic-archive`, 2 → `dashboard`, 3 → `magazine`.
 
 3. **Seed-informed preference.** The hash pick is overridden when the seed's register strongly implies a different chassis. See the preference table in `reference/brand-board-template.md` under "Chassis selection". When a register has multiple preferred chassis, re-run the hash within that subset.
 

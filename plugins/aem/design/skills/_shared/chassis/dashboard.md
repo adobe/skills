@@ -55,9 +55,9 @@ Do not render demos as static illustrations — this chassis's point is that eve
 
 ## What this chassis is NOT
 
+- Not a broadcast-grid — dashboard cards have radii, padding, and shadow; broadcast-grid panes are flat cells separated by 1px rules. Different metaphor, different density.
 - Not a classic archive — no numbered eyebrows, no masthead-first layout
 - Not a magazine — no pull quotes, no column text, no editorial drop-caps
-- Not a pinboard — no rotation, no overlap, no scattered elements
 - Not an analytics tool mimicry — the widgets are demonstrations of brand style, not real telemetry
 
 ## Example reference

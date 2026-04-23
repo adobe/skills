@@ -27,18 +27,21 @@ Render only what has data. Omit sections where the brand-profile field is null o
 
 The chassis determines navigation pattern, hero shape, eyebrow conventions, spacing rhythm, typography emphasis, and demo-presentation style — the *presentation pattern*. It does NOT name sections; the data contract above owns that. The chassis library is shared across artifacts — brand boards, prototypes, and future aem-design artifacts all pick from the same library.
 
-Available chassis live under [`../../_shared/chassis/`](../../_shared/chassis/):
+Available chassis live under [`../../_shared/chassis/`](../../_shared/chassis/), listed alphabetically:
 
+- **[`broadcast-grid`](../../_shared/chassis/broadcast-grid.md)** — top bar + ticker, multi-pane flat grid, monospace-led, terminal/EPG feel
 - **[`classic-archive`](../../_shared/chassis/classic-archive.md)** — sticky top nav, numbered eyebrows, text-first masthead, editorial-archival feel
 - **[`dashboard`](../../_shared/chassis/dashboard.md)** — fixed left sidebar, card-cluster hero, widget demos, operations-console feel
 - **[`magazine`](../../_shared/chassis/magazine.md)** — masthead with volume/issue/date, column text, pull quotes, magazine department heads
-- **[`pinboard`](../../_shared/chassis/pinboard.md)** — no sticky nav, spatial cluster arrangement, handwritten labels, scrapbook overlap
 
 Read the chosen chassis's `.md` file in full before rendering. Each chassis specifies its nav, hero pattern, eyebrow conventions, spacing, typography register, and demo style in detail.
 
 ### Section order per chassis (board-specific application)
 
 Data-contract sections are presented in the order below when the chassis is applied to a brand board. The chassis itself doesn't name sections — this is the board's specific application of the chassis.
+
+**broadcast-grid** — panes in a flat grid, ticker above:
+Ticker (key facts scrolling) → Hero pane (masthead + chip row) → Palette pane (swatch feed with role / hex / use columns) → Typography pane (specimen table) → Motif panes (one per motif, each as a live-feed pane with header row + demo cell + source label) → Components pane (buttons/inputs in default + pressed states) → Voice pane (do/dont as a transcript-style table) → Photography pane (image-slot placeholders with direction captions) → Personas pane (roster table) → Logo pane (variants row with usage notes) → Status strip (batch · edition · provenance · chassis info)
 
 **classic-archive** — canonical top-to-bottom:
 Masthead → Palette → Typography → Voice → Motifs → Components → Photography → Content Pillars → Personas → Logo → Spacing & Shape
@@ -49,32 +52,30 @@ Hero cluster (masthead card + live stat card + identity card) → Palette (swatc
 **magazine** — editorial rhythm:
 Masthead → Contents → Feature (the brand philosophy, with pull quote and drop cap) → Letter From (persona-as-editor, signed) → Palette (color-study spread) → Typography (specimen spread) → Voice (two-column editorial with do/don't sidebars) → Motifs (visual essay, one per panel) → Components (product catalogue spread) → Photography (photo essay with caption rail) → Content Pillars (pillar essays) → Personas (portrait page) → Logo (mark on final page) → Colophon (back matter with typography details, stock, printer)
 
-**pinboard** — clusters arranged spatially:
-Intro cluster (mark + tagline + photograph) → Palette cluster (paint chips / ribbon samples) → Type cluster (torn specimens) → Voice cluster (typed memos + marginalia) → Motif cluster (demo cards with rotation) → Component cluster (cut-out UI fragments taped) → Photography cluster (polaroids) → Personas cluster (ID cards) → Logo cluster (stamp impressions on three papers)
-
-Cross-cluster annotations link clusters; no numbered order is enforced.
-
 ### Chassis selection
 
 The `brand` skill picks the chassis in Phase 3 of `brand/SKILL.md`. Selection is:
 
 1. **Designer override.** If `_divergence.chassis` is already set (designer picked explicitly, or a previous run's profile is being refactored), use that value.
 
-2. **Hash-based default.** Compute `byte[3]` of the seed hash (already calculated for § 2 of `_shared/divergence-toolkit.md`), modulo the number of chassis files available. Maps to alphabetical order of chassis files: 0 → classic-archive, 1 → dashboard, 2 → magazine, 3 → pinboard.
+2. **Hash-based default.** Compute `byte[3]` of the seed hash (already calculated for § 2 of `_shared/divergence-toolkit.md`), modulo the number of chassis files available. Maps to alphabetical order of chassis files: 0 → broadcast-grid, 1 → classic-archive, 2 → dashboard, 3 → magazine.
 
 3. **Seed-informed preference.** The hash-based pick is overridden when it lands on a chassis that flatly contradicts the seed's register. Preference table:
 
    | Seed register | Preferred chassis |
    |---|---|
-   | legal contract · repair manual · museum didactic · hospital discharge · pharmacy insert | classic-archive OR dashboard |
-   | railway timetable · broadcast captioning · sports scorecard · liturgical program | dashboard |
-   | tabloid · memoir · auction catalogue · travel agency brochure · real-estate listing · supermarket flyer | magazine |
-   | zine · (or brands with `collective`, `community`, `youth` in their content pillars) | pinboard |
+   | railway timetable · broadcast captioning · sports scorecard · liturgical program · pharmacy insert | broadcast-grid OR dashboard |
+   | legal contract · repair manual · museum didactic · hospital discharge | classic-archive OR dashboard |
+   | tabloid · memoir · auction catalogue · travel agency brochure · real-estate listing · supermarket flyer · zine | magazine |
    | field guide | classic-archive OR magazine |
 
    When a register has multiple preferred chassis, re-run the hash within that subset.
 
 4. **Fallback.** If no preference fits, default to `classic-archive`.
+
+### Note on `zine` register
+
+v0.3 routed the `zine` register to a dedicated pinboard chassis. v0.4 retired pinboard — real brands in the `zine` register are better served by magazine's editorial rhythm with a loosened type register, than by a synthetic "scrapbook" chassis that tempted the Collage-maximalism kit from [`../../_shared/divergence-toolkit.md`](../../_shared/divergence-toolkit.md) § 1. If a specific zine brand genuinely needs a non-magazine chassis, that's a signal to propose a new chassis for v0.5, not to reintroduce pinboard.
 
 Record the chosen chassis in `_divergence.chassis` on the emitted profile.
 
@@ -107,9 +108,12 @@ When rendering the brand board:
 ## Reference
 
 For chassis-specific reference artifacts and examples:
-- `tmp/e2e-3/aem-design/brand-board.html` — classic-archive (baseline)
-- `tmp/e2e-3/aem-design/brand-board-v1-console.html` — dashboard
-- `tmp/e2e-3/aem-design/brand-board-v2-avanguardia.html` — magazine
-- `tmp/e2e-3/aem-design/brand-board-v3-pinboard.html` — pinboard
+- `tmp/e2e-3/chassis-mocks/1-classic-archive.html` — classic-archive (Ward Orchard mock)
+- `tmp/e2e-3/chassis-mocks/2-dashboard.html` — dashboard
+- `tmp/e2e-3/chassis-mocks/3-magazine.html` — magazine
+- `tmp/e2e-3/chassis-mocks/5-broadcast-grid.html` — broadcast-grid
+- `tmp/e2e-3/aem-design/brand-board.html` — classic-archive (Nonna's Arsenal, larger canvas)
+- `tmp/e2e-3/aem-design/brand-board-v1-console.html` — dashboard (Nonna's Arsenal, larger canvas)
+- `tmp/e2e-3/aem-design/brand-board-v2-avanguardia.html` — magazine (Nonna's Arsenal, larger canvas)
 
 For broader brand-board depth, see the Vitamix example at `.superpowers/brainstorm/*/content/brand-board-full.html` in the source project (not bundled with this skill).

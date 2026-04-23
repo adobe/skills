@@ -48,9 +48,9 @@ When the data contract asks a section to display demos (motifs, components, vari
 
 ## What this chassis is NOT
 
+- Not a broadcast-grid — no ticker, no multi-pane flat grid, no live-feed affordances
 - Not a dashboard — no meters, gauges, status chips, or progress indicators
 - Not a magazine — no pull quotes, column text, or issue numbering
-- Not a pinboard — no rotation, overlap, or absolute positioning
 - Not a SaaS landing page — no oversized sans-serif hero, no two-CTA row
 
 ## Example reference

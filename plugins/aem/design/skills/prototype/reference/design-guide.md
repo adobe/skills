@@ -111,16 +111,19 @@ The prototype's chassis is picked in Phase 2 of `prototype/SKILL.md`. Selection 
 Record the chosen chassis in the prototype's provenance block: `prototype_chassis: <name> — <reason>` (reason = `designer-override` / `inherited-from-brand` / `fallback`).
 
 The four chassis live at [`../../_shared/chassis/`](../../_shared/chassis/):
+- `broadcast-grid.md` — top bar + ticker, multi-pane flat grid, monospace-led
 - `classic-archive.md` — editorial long-form, sticky top nav, text-first hero
 - `dashboard.md` — fixed sidebar, card-cluster hero, widget demos
 - `magazine.md` — masthead + columns, pull quotes, department heads
-- `pinboard.md` — spatial clusters, handwritten labels, no sticky nav
 
 Read the chosen chassis's full `.md` spec before rendering.
 
 ## Prototype section order per chassis
 
 The chassis specifies the presentation pattern; this section specifies which sections a landing page (or any prototype page) typically renders, and in what order, under each chassis. The briefing and `# Copy` sections drive the concrete content — this table only gives the structural ordering.
+
+**broadcast-grid** — multi-pane landing:
+Top bar (channel identifier + LIVE indicator + section tabs + clock) → Ticker (key announcements scrolling) → Hero pane (page-title + sub + chip row: LIVE / BATCH / STATUS) → Feed panes 2–3 (tables or compact lists with source labels) → Wide event pane (schedule / timeline with timecodes) → Status strip (4–6 stat callout cells across the bottom) → Compact footer row
 
 **classic-archive** — editorial long-form:
 Masthead (page-title + descriptor + metadata) → Argument section (long-form body with italic accents) → Metadata block (specs, provenance, dates) → Dispatch / Process (how the service / product / method works) → Proof (testimonial, quote, or signed letter) → Contact / Reservation (single CTA, no pill row)
@@ -131,14 +134,11 @@ Hero cluster (page-title card + live-stat card + identity card + primary-action 
 **magazine** — magazine landing:
 Masthead (page-title + volume-issue-date + kicker) → Contents / Section links (optional) → Feature story (long-form with drop cap + pull quote) → Letter from founder (signed, italic) → Object / Product catalogue (magazine-panel per item) → Photo essay (if imagery is available) → Colophon (dense metadata footer with stock, printer, typography credits)
 
-**pinboard** — clustered landing:
-Hero cluster (title card + handwritten tagline + pinned photograph) → Invitation cluster (event ticket / call-to-action as a pinned ticket stub) → Itinerary / Route cluster (pinned date-blocks for upcoming events, classes, dispatches) → Crew / Team cluster (ID cards for each person) → Place / Space cluster (map, address, or venue as pinned elements) → Footer card (contact info, hand-signed)
-
 ## Prototype section order · cross-chassis rules
 
 Regardless of chassis:
 
-- **Every prototype has exactly one primary CTA** — the action the briefing declares as the page's reason for being. It appears at least once, in a position appropriate to the chassis (hero for dashboard; later blocks for classic-archive / magazine; invitation card for pinboard).
+- **Every prototype has exactly one primary CTA** — the action the briefing declares as the page's reason for being. It appears at least once, in a position appropriate to the chassis (hero pane for broadcast-grid; hero cluster for dashboard; later blocks for classic-archive / magazine).
 - **The briefing's `# Copy` drives content selection** — if the briefing doesn't mention "Letter from founder", the magazine chassis doesn't render one. The chassis describes a maximal structure; the briefing prunes it.
-- **Motifs and components** from `brand-profile.json` are applied within sections per the chassis's demo style — widgets for dashboard, magazine panels for magazine, scattered for pinboard, inline card grid for classic-archive. Never as a standalone "here are our motifs" section on the prototype — that's a brand-board concern.
+- **Motifs and components** from `brand-profile.json` are applied within sections per the chassis's demo style — widgets for dashboard, magazine panels for magazine, live-feed panes for broadcast-grid, inline card grid for classic-archive. Never as a standalone "here are our motifs" section on the prototype — that's a brand-board concern.
 - **Variants (from Phase 0)** apply within the chosen chassis. A brand on `magazine` chassis producing two variants might vary the column count (A: 2-column, B: 3-column) or the pull-quote style, but both stay magazine. Switching chassis mid-variant is a separate explicit override.
