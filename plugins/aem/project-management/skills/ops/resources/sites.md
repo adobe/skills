@@ -161,10 +161,11 @@ ORG=$(cat .claude-plugin/project-config.json | grep -o '"org"[[:space:]]*:[[:spa
 SITES=$(curl -s "https://admin.hlx.page/config/${ORG}/sites.json" | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"name"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
 
 for SITE in $SITES; do
-  echo "Publishing /about on $SITE..."
+  echo "Publishing ${PATH} on $SITE..."
   curl -s -X POST \
-    -H "x-auth-token: ${AUTH_TOKEN}" \
-    "https://admin.hlx.page/live/${ORG}/${SITE}/main/about"
+    -H "authorization: Bearer ${IMS_TOKEN}" \
+    -H "x-content-source-authorization: Bearer ${IMS_TOKEN}" \
+    "https://admin.hlx.page/live/${ORG}/${SITE}/${REF}${PATH}"
 done
 ```
 
@@ -178,8 +179,8 @@ done
 | "switch to main" | Reset to main branch |
 | "show config" | Display current settings |
 | "what site am I on" | Show current site |
-| "preview /about on all sites" | Cross-site operation |
-| "preview /about on site-b" | Specific site operation |
+| "preview /en/homepage on all sites" | Cross-site operation |
+| "preview /en/homepage on site-b" | Specific site operation |
 
 ## Success Criteria
 

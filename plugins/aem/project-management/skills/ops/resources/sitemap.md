@@ -59,12 +59,12 @@ Generate sitemap at a specific location:
 ```bash
 curl -s -X POST \
   -H "x-auth-token: ${AUTH_TOKEN}" \
-  "https://admin.hlx.page/sitemap/${ORG}/${SITE}/${REF}/sitemaps/blog.xml"
+  "https://admin.hlx.page/sitemap/${ORG}/${SITE}/${REF}${PATH}"
 ```
 
 **On success (200):**
 ```
-Sitemap URL: https://{ref}--{site}--{org}.aem.page/sitemaps/blog.xml
+Sitemap URL: https://{ref}--{site}--{org}.aem.page{path}
 ```
 
 **▶ Recommended Next Actions:**
@@ -84,7 +84,7 @@ Sitemap URL: https://{ref}--{site}--{org}.aem.page/sitemaps/blog.xml
 |-----------|-----------|
 | "generate sitemap" | Generate at `/sitemap.xml` |
 | "create sitemap" | Generate at `/sitemap.xml` |
-| "create sitemap at /sitemaps/blog.xml" | Generate at custom path |
+| "create sitemap at /sitemaps/blog.xml" | Generate at custom `${PATH}` |
 | "update the sitemap" | Generate at `/sitemap.xml` |
 | "refresh sitemap" | Generate at `/sitemap.xml` |
 
