@@ -57,6 +57,18 @@ The briefing is the source of truth for copy.
 
 ---
 
+## Phase 0: Variant Count
+
+Before designing, ask the user: **"How many variants would you like? (1 = single prototype, 2–4 = a set to choose from)"**. Default to **1** if the user skips or the skill is invoked as part of an automated pipeline.
+
+- **1 variant** — produce `aem-design/prototypes/{page}.html` as before. Skip the rest of this phase.
+- **N ≥ 2 variants** — the skill produces `{page}-a.html`, `{page}-b.html`, ... `{page}-{letter}.html`, each exploring a distinct design direction. Pick directions along axes that are load-bearing for *this* brand (e.g. if the brand voice is unsettled, vary type-voice; if the palette is rich, vary color-energy). Canonical axes to pick from:
+  - **type-voice** — editorial serif-forward ↔ software sans-forward
+  - **density** — airy/spacious ↔ catalog/compressed
+  - **color-energy** — restrained/ink-led ↔ saturated/surface-led
+  - **imagery-role** — decorative/background ↔ content/lead
+- Record the chosen direction per file as a one-line comment inside the prototype's provenance block (e.g. `variant_direction: "editorial, Fraunces-forward, quiet"`).
+
 ## Phase 1: Plan
 
 For each briefing:
@@ -85,22 +97,32 @@ Render each design as a self-contained HTML file at desktop fidelity (1440px des
 - Preserve `data-section`, `data-intent`, `data-layout` attributes from the wireframe so downstream stages can read structure.
 - **Provenance block** — if any input was synthesized (brand, briefing, wireframe, or any `# Copy` slot), include a `<!-- aem-design:provenance ... -->` comment as the first child of `<head>` per [`../_shared/skill-contract.md`](../_shared/skill-contract.md). List each synthesized input and, for copy, each synthesized slot.
 
-Write to `aem-design/prototypes/{page}.html`.
+Write to `aem-design/prototypes/{page}.html` (single-variant mode) or `aem-design/prototypes/{page}-{letter}.html` for each variant (multi-variant mode). In multi-variant mode, each file is rendered independently — variants share the briefing's copy and the brand tokens, but differ on the design-direction axes chosen in Phase 0.
 
 Follow the rendering rules in [design-guide.md](reference/design-guide.md).
 
 ## Phase 3: Serve
 
-Prototypes are self-contained HTML files. To review one:
+Prototypes are self-contained HTML files. To review:
 
-- Simple case: `open "aem-design/prototypes/<page>.html"` (macOS) — open in default browser.
-- When you need a real HTTP origin (for fetch, service workers, relative asset URLs): `python3 -m http.server 8000 --directory aem-design/prototypes` and visit `http://localhost:8000/<page>.html`.
+- **Single variant**: `open "aem-design/prototypes/<page>.html"` (macOS) — open in default browser. Or `python3 -m http.server 8000 --directory aem-design/prototypes` and visit `http://localhost:8000/<page>.html` when a real HTTP origin is needed (fetch, service workers, relative asset URLs).
+- **Multiple variants**: open each variant file. Present the set to the user alongside a short comparison table:
 
-Tell the user which URL to visit. Do not assume any project-specific dev server.
+  | Variant | Direction | Key visual move | Risk |
+  |---|---|---|---|
+  | a | editorial, Fraunces-forward | oversized serif headline, narrow measure | may read as too quiet for a tech audience |
+  | b | software-catalog, Inter-dense | table-led hero, hard geometric rhythm | may read as cold without warm imagery |
+  | ... | ... | ... | ... |
+
+  Ask the user: **"Which variant should we take forward?"** Wait for an explicit answer (`a`, `b`, ...) before moving on.
+
+Tell the user which URL(s) to visit. Do not assume any project-specific dev server.
 
 ## Phase 4: Iterate in the Browser
 
-This is a **design loop**, not a one-shot render. Expect multiple rounds:
+This is a **design loop**, not a one-shot render. Expect multiple rounds.
+
+In multi-variant mode, **iterate only on the variant the user named** (e.g. `landing-b.html`). Unchosen variants stay on disk as a design-history reference; do not delete or rename them without the user's explicit ask. Every subsequent iteration request refers implicitly to the chosen variant until the user picks a different one.
 
 Common feedback and how to handle it:
 - **"Headlines are too big/small"** → Adjust `--heading-*` custom properties, re-render, refresh.
@@ -109,7 +131,7 @@ Common feedback and how to handle it:
 - **"Try a different accent color"** → Swap the CSS variable value; do not edit `brand-profile.json` unless the user wants to make it the new brand default.
 - **"This section should feel quieter"** → Adjust typographic weight or surface color on that specific section.
 
-Every iteration updates `aem-design/prototypes/{page}.html`. The user reviews in the browser and gives feedback. Keep iterating until they approve.
+Every iteration updates the file under review — `aem-design/prototypes/{page}.html` in single-variant mode, or `aem-design/prototypes/{page}-{letter}.html` for the variant the user named in multi-variant mode. The user reviews in the browser and gives feedback. Keep iterating until they approve.
 
 Before asking the user to look at a new iteration, run a critique:
 
@@ -138,4 +160,5 @@ Keeping prototypes static and EDS-free means:
 
 | File | Description |
 |------|-------------|
-| `aem-design/prototypes/{page}.html` | Branded, high-fidelity static HTML per page — self-contained, EDS-independent |
+| `aem-design/prototypes/{page}.html` | Branded, high-fidelity static HTML per page — self-contained, EDS-independent. Single-variant mode. |
+| `aem-design/prototypes/{page}-{letter}.html` | One file per variant (`-a`, `-b`, `-c`, `-d`) when the user asked for 2–4 variants. Each carries a `variant_direction` line in its provenance block. Unchosen variants stay on disk as design history. |
