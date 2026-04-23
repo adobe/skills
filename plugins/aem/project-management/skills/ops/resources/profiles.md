@@ -35,14 +35,12 @@ curl -s \
   "https://admin.hlx.page/config/${ORG}/${SITE}/profiles/${PROFILE_ID}.json"
 ```
 
+**On success (200):** Display the full profile configuration JSON.
+
 **▶ Recommended Next Actions:**
 1. Update profile settings if changes are required
    ```
    update profile config
-   ```
-2. Preview pages to verify the current profile configuration
-   ```
-   preview {path}
    ```
 
 ### Update Profile Configuration

@@ -84,17 +84,17 @@ curl -s \
 ```
 
 **▶ Recommended Next Actions:**
-1. Add more pages to the snapshot
-   ```
-   add {path} to snapshot {id}
-   ```
-2. Publish the snapshot when all pages are ready
+1. Publish the snapshot when all pages are ready
    ```
    publish snapshot {id}
    ```
-3. Request a review before publishing
+2. Request a review before publishing
    ```
    lock snapshot {id} for review
+   ```
+3. Add a page if something is missing from the manifest
+   ```
+   add {path} to snapshot {id}
    ```
 
 ### Add Resource to Snapshot

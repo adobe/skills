@@ -53,12 +53,10 @@ curl -s \
   "https://admin.hlx.page/config/${ORG}.json"
 ```
 
+**On success (200):** Display the full org configuration JSON.
+
 **▶ Recommended Next Actions:**
-1. Update org config if changes are required
-   ```
-   update org config
-   ```
-2. Read site-level config for a specific site
+1. Read site-level config for a specific site
    ```
    show site config
    ```
@@ -102,9 +100,9 @@ curl -s -X PUT \
    ```
    show org config
    ```
-2. Add a site config under this org
+2. Create a site config under this org
    ```
-   show site config
+   create site config
    ```
 
 ### Delete Organization Config
@@ -141,6 +139,8 @@ curl -s \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/config/${ORG}/sites/${SITE}.json"
 ```
+
+**On success (200):** Display the full site configuration JSON.
 
 **▶ Recommended Next Actions:**
 1. Update site config if changes are required
@@ -230,6 +230,8 @@ curl -s \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/config/${ORG}/sites/${SITE}/robots.txt"
 ```
+
+**On success (200):** Display the robots.txt content.
 
 **▶ Recommended Next Actions:**
 1. Update robots.txt if crawler rules need to change

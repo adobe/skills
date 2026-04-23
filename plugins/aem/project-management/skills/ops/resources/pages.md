@@ -27,7 +27,7 @@ List all indexed pages for a site using the query-index.
 curl -s "https://${REF}--${SITE}--${ORG}.aem.page/query-index.json"
 ```
 
-**On success:** Response contains a `data[]` array. For each item display: path, title, preview URL (`https://{ref}--{site}--{org}.aem.page{path}`), and live URL (`https://{ref}--{site}--{org}.aem.live{path}`). Report total count. If `data` is empty or missing, inform the user that no pages are indexed yet — pages must be previewed before they appear in the index.
+**On success:** Response contains a `data[]` array of pages currently in the preview CDN query index. For each item display: path, title, preview URL (`https://{ref}--{site}--{org}.aem.page{path}`), and live URL (`https://{ref}--{site}--{org}.aem.live{path}`). Report total count. If `data` is empty or missing, inform the user that no pages are indexed yet — pages must be previewed before they appear in the index.
 
 
 **▶ Recommended Next Actions:**

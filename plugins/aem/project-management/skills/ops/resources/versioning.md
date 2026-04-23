@@ -35,10 +35,12 @@ curl -s \
   "https://admin.hlx.page/config/${ORG}.json/versions"
 ```
 
+**On success (200):** Display each version with its name, timestamp, and author.
+
 **▶ Recommended Next Actions:**
-1. Inspect the contents of a specific version
+1. Inspect the full config for a specific version
    ```
-   show version history
+   show version {versionName}
    ```
 2. Restore a previous version if current config is broken
    ```
@@ -52,6 +54,8 @@ curl -s \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/config/${ORG}.json/versions/${VERSION_NAME}"
 ```
+
+**On success (200):** Display the full org config snapshot for this version.
 
 **▶ Recommended Next Actions:**
 1. Restore this version if it is the correct one

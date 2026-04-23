@@ -33,14 +33,12 @@ curl -s \
   "https://admin.hlx.page/config/${ORG}/${SITE}/helix-index.yaml"
 ```
 
+**On success (200):** Display the current helix-index.yaml content.
+
 **▶ Recommended Next Actions:**
 1. Update the index configuration if changes are required
    ```
    update index config
-   ```
-2. Reindex pages to apply the current config
-   ```
-   reindex {path}
    ```
 
 ### Update Index Configuration
@@ -55,14 +53,16 @@ curl -s -X POST \
   "https://admin.hlx.page/config/${ORG}/${SITE}/helix-index.yaml"
 ```
 
+**On success (200):** `Index configuration updated`
+
 **▶ Recommended Next Actions:**
 1. Verify the config was saved correctly
    ```
    show index config
    ```
-2. Trigger a reindex to apply the new rules
+2. Bulk reindex to apply the new schema across all affected pages
    ```
-   reindex {path}
+   reindex all pages {folder}/
    ```
 
 ## Natural Language Patterns

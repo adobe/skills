@@ -70,9 +70,9 @@ curl -s \
    ```
    check status of {path}
    ```
-2. Narrow results to an exact time window using a date range
+2. Narrow to an exact time window
    ```
-   show logs from last hour
+   show logs from 2024-01-01T00:00:00Z to 2024-01-01T23:59:59Z
    ```
 
 ### View Logs with Time Range
@@ -104,14 +104,13 @@ curl -s -X POST \
 ```
 
 Log levels: `info`, `warn`, `error`
+
+**Success:** `Log entry recorded`
+
 **▶ Recommended Next Actions:**
 1. Verify the entry was recorded
    ```
    show logs from last hour
-   ```
-2. Filter for errors only to monitor issues
-   ```
-   show errors
    ```
 
 ## Duration Format
