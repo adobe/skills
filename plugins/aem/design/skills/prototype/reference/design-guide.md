@@ -76,9 +76,28 @@ Use these custom properties everywhere in the rest of the stylesheet. That keeps
 
 ## Imagery
 
-- If the briefing's `# Imagery` section provides a `Source hint`, use that asset.
-- If it provides style direction only, render a branded placeholder: a rectangle at the right aspect ratio, filled with a brand-tinted gradient or a noise pattern, and labeled with the subject (e.g., "PRODUCT CAPTURE · 16:9").
-- Always include alt text — from the briefing if specified, otherwise inferred.
+Three paths, in priority order:
+
+**(a) Briefing source hint.** If the briefing's `# Imagery` section provides a `Source hint` (a path to a real asset the designer already has), use that asset directly. Always highest priority.
+
+**(b) Branded placeholder.** If the briefing gives style direction only (or nothing), and the designer chose `imagery_mode: placeholder` at Phase 0b (the default), render a branded placeholder: a rectangle at the right aspect ratio, filled with a brand-tinted gradient or a noise pattern, and labeled with the subject (e.g., `"PRODUCT CAPTURE · 16:9"`). Zero network, zero cost, fast iteration.
+
+**(c) Generated image.** If the designer chose `imagery_mode: generated` at Phase 0b and provided a model + credential, invoke the `ai-image-generator` skill (from `eds-site-builder`, `sumi`, or `testing` plugin) with:
+  - The section's `# Imagery` direction from the briefing
+  - The brand's `photography.style` and `photography.rules` from `brand-profile.json`
+  - The target aspect ratio for the section's image slot
+  - The provider and credential captured in Phase 0b
+
+Generated images land at `aem-design/prototypes/images/{page}-{section}.png`. The prototype HTML `<img src>` points at the relative path. Cache by prompt hash to avoid regenerating on iterations — if the hash matches a previous run, reuse the cached image.
+
+**Fallback** when path (c) fails: retry once with a simplified prompt, then fall back to path (b) for that slot only and stamp `imagery_fallback: true` in the provenance block. Never abort the whole page render over one failed image.
+
+**Alt text** is always included, regardless of path:
+- From the briefing's `# Imagery` section if specified
+- Otherwise inferred from the subject label and section intent
+- Never the word "image" or "photo" as the whole alt — describe the subject
+
+See `prototype/SKILL.md` Phase 0b for how imagery mode is chosen per session.
 
 ## Iteration
 

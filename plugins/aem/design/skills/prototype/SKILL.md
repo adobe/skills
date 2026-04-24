@@ -57,17 +57,80 @@ The briefing is the source of truth for copy.
 
 ---
 
-## Phase 0: Variant Count
+## Phase 0: Setup
 
-Before designing, ask the user: **"How many variants would you like? (1 = single prototype, 2–4 = a set to choose from)"**. Default to **1** if the user skips or the skill is invoked as part of an automated pipeline.
+Two setup questions before rendering begins. Ask both once per session (not per page). When the skill is re-invoked on an existing project, read answers from the last prototype's provenance block if present; re-ask only if any answer is missing.
 
-- **1 variant** — produce `aem-design/prototypes/{page}.html` as before. Skip the rest of this phase.
+### 0a · Variant count
+
+Ask: **"How many variants would you like? (1 = single prototype, 2–4 = a set to choose from)"**. Default to **1** if the user skips or the skill is invoked as part of an automated pipeline.
+
+- **1 variant** — produce `aem-design/prototypes/{page}.html` as before.
 - **N ≥ 2 variants** — the skill produces `{page}-a.html`, `{page}-b.html`, ... `{page}-{letter}.html`, each exploring a distinct design direction. Pick directions along axes that are load-bearing for *this* brand (e.g. if the brand voice is unsettled, vary type-voice; if the palette is rich, vary color-energy). Canonical axes to pick from:
   - **type-voice** — editorial serif-forward ↔ software sans-forward
   - **density** — airy/spacious ↔ catalog/compressed
   - **color-energy** — restrained/ink-led ↔ saturated/surface-led
   - **imagery-role** — decorative/background ↔ content/lead
 - Record the chosen direction per file as a one-line comment inside the prototype's provenance block (e.g. `variant_direction: "editorial, Fraunces-forward, quiet"`).
+
+### 0b · Imagery mode
+
+Ask: **"For images in the prototype, do you want: (a) branded placeholder rectangles — fast, offline, free, or (b) real generated images? If (b), you'll need to pick a model and point me at a credential."**
+
+Default to **(a) placeholders** when the user skips, the skill runs in full-pipeline auto-approve mode, or no credential is available.
+
+If the user picks **(b) generated**, ask two follow-ups:
+
+1. **"Which image model?"** — the assistant presents options based on what's installed. Currently known providers:
+
+   | Answer | Provider | Model | Credential env var |
+   |---|---|---|---|
+   | `gemini` | Google | Gemini 3 Pro Image Preview | `GOOGLE_API_KEY` |
+   | `flux` | fal.ai | FLUX Schnell | `FAL_KEY` |
+   | `imagen` | Google Vertex | Imagen 3 | `GOOGLE_APPLICATION_CREDENTIALS` |
+   | `dalle` | OpenAI | DALL-E 3 | `OPENAI_API_KEY` |
+
+2. **"Where's the credential?"** — accept any of:
+   - `env` → the credential is already exported as the env var from the table above
+   - A file path ending in `.env` → the skill reads the env var from that file (do NOT echo the key to the designer; just read it in memory)
+   - A raw token → the skill treats the string as the key value and uses it only for this session (do not write it to disk)
+
+**Record the imagery mode in each prototype's provenance block:**
+
+```html
+<!-- aem-design:provenance
+  imagery_mode: placeholder
+  ...
+-->
+```
+
+or, when generation was used:
+
+```html
+<!-- aem-design:provenance
+  imagery_mode: generated
+  imagery_provider: gemini
+  imagery_credential_source: /Users/paolo/excat/az-sitebuilder/.env
+  imagery_generated_at: 2026-04-24T15:12:00Z
+  images: [
+    { section: "hero", path: "images/landing-hero.png", prompt_hash: "abc123" },
+    ...
+  ]
+-->
+```
+
+**Never log the actual key value** anywhere — not in provenance, not in terminal output, not in error messages.
+
+### Imagery-mode consequences for Phase 2
+
+- **placeholder** → Phase 2 renders branded placeholder rectangles per [design-guide.md](reference/design-guide.md) *Imagery* section, option (b).
+- **generated** → Phase 2 invokes the `ai-image-generator` skill (from `eds-site-builder`, `sumi`, or `testing` plugin — whichever is registered) with the chosen provider + credential, passing the briefing's `# Imagery` direction + brand `photography` rules per section. Generated images land at `aem-design/prototypes/images/{page}-{section}.png`. Prototype HTML `<img src>` points at those relative paths.
+
+**Fallback behaviour** when `imagery_mode = generated` but the generation fails:
+1. Retry once with a slightly simplified prompt
+2. On second failure, fall back to a branded placeholder for that specific image slot (not the whole page)
+3. Stamp `imagery_fallback: true` and the failed-slot list in the provenance block so the designer knows which slots to retry later
+4. Continue rendering the prototype — do not abort the whole page over one failed image
 
 ## Phase 1: Plan
 
