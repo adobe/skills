@@ -51,6 +51,10 @@ Sitemap URL: https://{ref}--{site}--{org}.aem.page{path}
    ```
    show sitemap config
    ```
+4. *(DA sites only)* Browse DA folders to audit content coverage and ensure all expected pages exist in authoring
+   ```
+   list DA folders in {site}/en
+   ```
 
 ### Custom Sitemap Path
 

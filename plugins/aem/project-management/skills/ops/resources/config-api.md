@@ -151,6 +151,10 @@ curl -s \
    ```
    show org config
    ```
+3. *(DA sites only)* Browse DA content structure for this site
+   ```
+   list DA folders in {site}
+   ```
 
 ### Update Site Config
 
@@ -194,6 +198,10 @@ curl -s -X PUT \
 2. Update it with additional properties as needed
    ```
    update site config
+   ```
+3. Confirm DA content exists for this site
+   ```
+   list DA folders in {site}
    ```
 
 ### Delete Site Config

@@ -43,6 +43,10 @@ curl -s "https://${REF}--${SITE}--${ORG}.aem.page/query-index.json"
    ```
    check status of {path}
    ```
+4. *(DA sites only)* View DA source for a specific page to inspect or edit the authoring content
+   ```
+   get DA source {site}{path}
+   ```
 
 ## List Pages with Filter
 
@@ -63,6 +67,10 @@ curl -s "https://${REF}--${SITE}--${ORG}.aem.page/query-index.json"
 2. Publish the filtered set of pages
    ```
    publish all pages {folder}/
+   ```
+3. *(DA sites only)* Browse the DA folder matching this path prefix to see the authoring content
+   ```
+   list DA folders in {site}{folder}
    ```
 
 ## Custom Index Name

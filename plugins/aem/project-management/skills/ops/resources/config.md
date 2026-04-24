@@ -115,6 +115,42 @@ echo "$SITE_NAMES"
 
 > **Repoless note:** When multiple sites are detected, they share a single code repository. Code sync (`sync code`) will affect **all sites** — proceed with care. Preview, publish, cache, and index operations remain per-site.
 
+### Content Source Detection
+
+Run this after `SITE` is known to determine whether the site uses DA (Document Authoring) or an external source (SharePoint/Google Drive). Store the result in `CONTENT_SOURCE_TYPE` and `IS_DA_SITE`.
+
+```bash
+SITE_CONFIG=$(/usr/bin/curl -s -H "x-auth-token: ${AUTH_TOKEN}" \
+  "https://admin.hlx.page/config/${ORG}/sites/${SITE}.json")
+
+CONTENT_SOURCE_TYPE=$(echo "$SITE_CONFIG" | /usr/bin/python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d.get('content', {}).get('source', {}).get('type', 'unknown'))
+except:
+    print('unknown')
+")
+
+# markup = DA (Document Authoring), onedrive = SharePoint, google = Google Drive
+if [ "$CONTENT_SOURCE_TYPE" = "markup" ]; then
+  IS_DA_SITE="true"
+else
+  IS_DA_SITE="false"
+fi
+
+echo "Content source: $CONTENT_SOURCE_TYPE (DA site: $IS_DA_SITE)"
+```
+
+| `CONTENT_SOURCE_TYPE` | Source | DA Recommendations |
+|---|---|---|
+| `markup` | Document Authoring (DA) | ✅ Show |
+| `onedrive` | SharePoint | ❌ Skip |
+| `google` | Google Drive | ❌ Skip |
+| `unknown` | Not configured / error | ❌ Skip |
+
+**Rule:** Only include DA-related recommended next actions when `IS_DA_SITE="true"`.
+
 ### Code Repository (For Code Sync)
 
 ```bash

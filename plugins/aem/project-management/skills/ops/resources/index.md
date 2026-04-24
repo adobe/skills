@@ -50,6 +50,10 @@ curl -s -X POST \
    ```
    reindex all pages {folder}/
    ```
+4. *(DA sites only)* View DA source to verify the page content that was just indexed is correct
+   ```
+   get DA source {site}{path}
+   ```
 
 ### Re-index (Bulk)
 
@@ -140,6 +144,10 @@ curl -s -X DELETE \
 3. If preview also needs to be removed
    ```
    delete preview of {path}
+   ```
+4. *(DA sites only)* Delete the DA source if the content is being permanently retired
+   ```
+   delete DA {site}{path}
    ```
 
 ## Natural Language Patterns

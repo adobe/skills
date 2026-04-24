@@ -1,6 +1,6 @@
 ---
 name: ops
-description: Execute AEM Edge Delivery Services admin operations - list admins, add/remove users, preview, publish, unpublish content, clear cache, sync code, reindex, generate sitemap, manage snapshots, view logs, manage jobs, list sites, configure org/site settings, manage secrets and API keys. Use for any Edge Delivery Services administrative task.
+description: Execute AEM Edge Delivery Services admin operations - list admins, add/remove users, preview, publish, unpublish content, clear cache, sync code, reindex, generate sitemap, manage snapshots, view logs, manage jobs, list sites, configure org/site settings, manage secrets and API keys. Also covers Document Authoring (DA) API - list folders, manage source content, copy/move documents, version history, and DA config. Use for any Edge Delivery Services administrative task.
 license: Apache-2.0
 allowed-tools: Read, Write, Edit, Bash, Skill
 metadata:
@@ -34,6 +34,7 @@ Use this skill when the user asks to perform any **operational task** on an AEM 
 - **Sitemap Config** — read or update helix-sitemap.yaml generation rules
 - **Versioning** — list config versions, view history, restore a previous version
 - **Pages** — list all indexed pages from query-index, filter by path prefix
+- **DA (Document Authoring)** — list folders, get/create/delete source content, copy, move, manage versions, read/write DA config via `admin.da.live`
 
 ---
 
@@ -80,6 +81,7 @@ Use this skill when the user asks to perform any **operational task** on an AEM 
 | **Sitemap Config** | show helix-sitemap.json, update sitemap config |
 | **Versioning** | list versions, restore version, rollback config |
 | **Pages** | list pages, list all pages, show indexed pages |
+| **DA** | list DA folders, get DA source, upload to DA, copy/move DA, DA version history |
 
 ---
 
@@ -113,6 +115,10 @@ Read `resources/config.md`:
 - **"Load Configuration"** section — loads `ORG`, `AUTH_TOKEN`, `IMS_TOKEN`, `SITE`, `REF`, `CODE_OWNER`, `CODE_REPO` from saved config
 - **"Parse from AEM URL"** section — if the user's request contains an `*.aem.page` or `*.aem.live` URL, parse `REF`, `SITE`, `ORG`, `PATH` from it (overrides saved config values)
 - **"Setup If Missing"** section — if any required value is still empty after loading
+
+**After loading config, detect content source type** using the "Content Source Detection" section in `resources/config.md`. This sets `IS_DA_SITE` (`true` / `false`) and must be done before rendering any recommended next actions.
+
+**DA Recommendation Rule:** Only include DA-related recommended next actions (e.g. `get DA source`, `list DA versions`, `list DA folders in {site}`, `delete DA`) when `IS_DA_SITE="true"`. Silently omit them for SharePoint (`onedrive`) and Google Drive (`google`) sites — do not mention DA at all.
 
 **After loading, check prerequisites:**
 
@@ -181,6 +187,7 @@ This opens a browser via Playwright for Adobe ID login and saves the token to `.
 | sitemap config, helix-sitemap, sitemap rules | `resources/sitemap-config.md` |
 | version, versions, history, rollback, restore | `resources/versioning.md` |
 | pages, list pages, indexed pages, all pages | `resources/pages.md` |
+| DA, list DA, DA source, DA folders, DA version, DA config, browse DA, upload DA, copy DA, move DA | `resources/da.md` |
 
 ### Step 3: Read Resource and Execute
 
@@ -287,6 +294,10 @@ This opens a browser via Playwright for Adobe ID login and saves the token to `.
 - Keywords: pages, list pages, indexed pages, all pages, show pages
 - Actions: list, show, filter
 
+### DA (Document Authoring)
+- Keywords: DA, da.live, document authoring, DA source, DA folders, DA version, DA config
+- Actions: list, browse, get, create, upload, delete, copy, move, version, snapshot, config
+
 ---
 
 ## Security & Confirmation Requirements
@@ -307,6 +318,9 @@ This opens a browser via Playwright for Adobe ID login and saves the token to `.
 | Delete org/site config | `config-api.md` | CRITICAL - Can break site |
 | Delete secret | `secrets.md` | HIGH - Can break integrations |
 | Revoke API key | `apikeys.md` | HIGH - Can break CI/CD |
+| Delete DA source (file) | `da.md` | HIGH - Permanently deletes content |
+| Delete DA source (folder) | `da.md` | CRITICAL - Recursively deletes all contents |
+| Move DA source | `da.md` | MEDIUM - Old path becomes inaccessible |
 
 ### Confirmation Protocol
 
@@ -418,6 +432,18 @@ Versioning:
 Pages:
   list pages             - Show all indexed pages
   list pages /blog       - Filter by path prefix
+
+DA (Document Authoring):
+  list DA folders        - Browse DA org root
+  list DA folders in {site}     - Browse a DA site
+  get DA source {path}   - Read document source
+  upload {file} to DA at {path} - Create/overwrite document
+  delete DA {path}       - Delete document or folder
+  copy DA {src} to {dest}- Copy document to new path
+  move DA {src} to {dest}- Move/rename document
+  DA version history {path}     - List document versions
+  create DA version {path}      - Snapshot current version
+  show DA config         - Read DA config
 ```
 
 ---
@@ -434,3 +460,5 @@ Pages:
 - ✅ IMS token requested only when the operation requires it (preview, publish, unpublish, cache, code)
 - ✅ DA site limitations communicated when wildcard bulk operations are not supported — explicit paths used instead
 - ✅ Recommended next actions provided after every operation in fenced code blocks
+- ✅ DA operations use `admin.da.live` with `Authorization: Bearer ${IMS_TOKEN}` — never `admin.hlx.page` or `x-auth-token`
+- ✅ DA delete and folder-delete operations confirmed with user before executing — folder deletes note recursive impact

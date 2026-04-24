@@ -45,6 +45,10 @@ curl -s \
    ```
    check status of {path}
    ```
+3. *(DA sites only)* View DA version history for a path that changed to see who authored each version
+   ```
+   list DA versions of {site}{path}
+   ```
 
 ### View Logs with Duration Filter
 
@@ -76,6 +80,10 @@ curl -s \
    ```
    show logs from 2024-01-01T00:00:00Z to 2024-01-01T23:59:59Z
    ```
+3. View DA version history for a path that was recently changed
+   ```
+   list DA versions of {site}{path}
+   ```
 
 ### View Logs with Time Range
 
@@ -95,6 +103,10 @@ curl -s \
 2. Add a log entry to record a manual deployment action
    ```
    add log entry
+   ```
+3. *(DA sites only)* Check DA version history for a path active in this window to correlate authoring changes
+   ```
+   list DA versions of {site}{path}
    ```
 
 ### Add Log Entry

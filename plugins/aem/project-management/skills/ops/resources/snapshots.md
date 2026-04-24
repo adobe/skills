@@ -100,6 +100,10 @@ curl -s \
    ```
    add {path} to snapshot {id}
    ```
+4. *(DA sites only)* View DA source for a resource in the manifest to verify content is ready before publishing
+   ```
+   get DA source {site}{path}
+   ```
 
 ### Add Resource to Snapshot
 
@@ -122,6 +126,10 @@ curl -s -X POST \
 3. Publish the snapshot when all pages are ready
    ```
    publish snapshot {id}
+   ```
+4. Get DA source to verify the page content is correct before the snapshot goes live
+   ```
+   get DA source {site}{path}
    ```
 
 ### Bulk Add Resources
@@ -231,6 +239,10 @@ Published snapshot "{id}" — {count} pages now live at https://main--{site}--{o
 2. Purge CDN cache if pages appear stale
    ```
    purge cache of {path}
+   ```
+3. *(DA sites only)* View DA version history of a key page to confirm the correct authored version is now live
+   ```
+   list DA versions of {site}{path}
    ```
 
 ### Request Review (Lock)

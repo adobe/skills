@@ -82,6 +82,10 @@ Preview URL: https://{ref}--{site}--{org}.aem.page{path}
    ```
    check status of {path}
    ```
+4. *(DA sites only)* View the DA source to inspect the document that was just previewed
+   ```
+   get DA source {site}{path}
+   ```
 
 ### Preview (Bulk)
 
@@ -161,6 +165,10 @@ Live CDN is unaffected.
    ```
    check status of {path}
    ```
+2. *(DA sites only)* Delete the DA source too if the document itself is being permanently retired
+   ```
+   delete DA {site}{path}
+   ```
 
 ### Publish (Single)
 
@@ -185,6 +193,10 @@ Live URL: https://main--{site}--{org}.aem.live{path}
 3. Verify `live.lastModified` was updated
    ```
    check status of {path}
+   ```
+4. *(DA sites only)* View DA version history to track who authored the published content
+   ```
+   list DA versions of {site}{path}
    ```
 
 ### Publish (Bulk)
@@ -256,6 +268,10 @@ Preview still available at: https://{ref}--{site}--{org}.aem.page{path}
 3. If preview also needs to be removed
    ```
    delete preview of {path}
+   ```
+4. *(DA sites only)* Delete the DA source if the content is being permanently retired
+   ```
+   delete DA {site}{path}
    ```
 
 ### Unpublish (Bulk)
@@ -333,6 +349,10 @@ Then diagnose:
 3. If timestamps match but browser shows stale content
    ```
    purge cache of {path}
+   ```
+4. *(DA sites only)* View the DA source to inspect the current document state in the authoring layer
+   ```
+   get DA source {site}{path}
    ```
 
 ### Bulk Status

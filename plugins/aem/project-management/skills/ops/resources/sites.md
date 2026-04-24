@@ -51,6 +51,11 @@ curl -s \
    ```
    preview {path}
    ```
+3. Compare with DA org root to find DA folders not yet registered as sites (or vice versa)
+   ```
+   list DA folders
+   ```
+   *(Shows all DA folders — useful regardless of individual site source type)*
 
 
 ### Switch Site
@@ -74,6 +79,10 @@ print('Switched to site: ${NEW_SITE}')
 2. Verify the site configuration
    ```
    show site config
+   ```
+3. *(DA sites only)* Browse the DA content structure for this site
+   ```
+   list DA folders in {site}
    ```
 
 ### Switch Branch
@@ -116,6 +125,10 @@ cat .claude-plugin/project-config.json
 3. List all available sites in this org
    ```
    list sites
+   ```
+4. *(DA sites only)* Browse the DA content structure for the active site
+   ```
+   list DA folders in {site}
    ```
 
 ## Scope Differences in Repoless
