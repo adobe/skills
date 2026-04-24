@@ -238,9 +238,11 @@ Write `stardust/_palette-pick.html` following the template structure in [`refere
 - Each card: swatches with hex labels, anchor marker (★), cream-family flag if present, palette name linked to Coolors source, classification tags
 - Footer instruction: "Tell the assistant a number (1–5), a palette name, or 'refine' to change the description."
 
-Tell the designer:
+**Immediately after writing the file**, open it in the designer's default browser per [`../_shared/skill-contract.md`](../_shared/skill-contract.md) *Opening HTML artifacts*. On macOS: `open stardust/_palette-pick.html`. Do not require the designer to open it manually.
 
-> "Open `stardust/_palette-pick.html`. Five candidate palettes from the library. Tell me a number (1–5), a palette name, or 'refine' to change the description."
+Then say:
+
+> "Your palette pick UI is open. Five candidate palettes from the library. Tell me a number (1–5), a palette name, or 'refine' to change the description."
 
 ### Step E · Designer picks
 
@@ -360,9 +362,10 @@ Before the skill synthesizes `.impeccable.md` on its own (no designer interview)
    - Render only sections that have data (omit sections for null fields)
    - Be self-contained HTML with embedded CSS (no external JS)
 4. Render the logo with `<img src="assets/logo.svg">` per `reference/brand-board-template.md` — never inline the SVG.
-5. Tell the designer: "Your brand board is ready. Open `stardust/brand-board.html` in a browser (`open stardust/brand-board.html` on macOS, `xdg-open …` on Linux)."
-   - In SLICC: the board renders in the browser panel automatically.
-   - In Claude Code: the designer opens the file directly; no dev server required.
+5. **Open the file in the designer's default browser** per [`../_shared/skill-contract.md`](../_shared/skill-contract.md) *Opening HTML artifacts*. On macOS: `open stardust/brand-board.html`.
+6. Then say: "Your brand board is open. Review and approve, or tell me what to change."
+   - In SLICC: the board also renders in the browser panel automatically; the open command is harmless.
+   - In pipeline-automation mode (end-to-end auto-approve): skip the open.
 
 ## Phase 5: Approval Gate
 

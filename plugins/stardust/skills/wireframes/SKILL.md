@@ -80,14 +80,11 @@ Follow the full rendering rules in [wireframe-guide.md](reference/wireframe-guid
 
 ## Phase 3: Serve
 
-Wireframes are self-contained HTML files. Open them directly — no dev server required:
+Wireframes are self-contained HTML files. **Open each file in the designer's default browser immediately after writing** per [`../_shared/skill-contract.md`](../_shared/skill-contract.md) *Opening HTML artifacts*. On macOS: `open stardust/wireframes/{page}.html`. Do not rely on the designer to open it manually.
 
-```bash
-open stardust/wireframes/{page}.html      # macOS
-xdg-open stardust/wireframes/{page}.html  # Linux
-```
+If multiple wireframes were rendered in this phase (multi-page run), open each one so the designer can review in tabs.
 
-Tell the user the file path.
+In pipeline-automation mode (no designer present), skip the open.
 
 ## Phase 4: Approval Gate
 

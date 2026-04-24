@@ -178,10 +178,10 @@ Follow the rendering rules in [design-guide.md](reference/design-guide.md).
 
 ## Phase 3: Serve
 
-Prototypes are self-contained HTML files. To review:
+Prototypes are self-contained HTML files. **Open each file in the designer's default browser immediately after writing** per [`../_shared/skill-contract.md`](../_shared/skill-contract.md) *Opening HTML artifacts*. Do not require the designer to open the files manually.
 
-- **Single variant**: `open "stardust/prototypes/<page>.html"` (macOS) — open in default browser. Or `python3 -m http.server 8000 --directory stardust/prototypes` and visit `http://localhost:8000/<page>.html` when a real HTTP origin is needed (fetch, service workers, relative asset URLs).
-- **Multiple variants**: open each variant file. Present the set to the user alongside a short comparison table:
+- **Single variant**: `open "stardust/prototypes/<page>.html"` on macOS (`xdg-open` on Linux). Tell the user: "Your prototype is open."
+- **Multiple variants**: open each variant file at the same time so the designer can flip between browser tabs. Then present the comparison table:
 
   | Variant | Direction | Key visual move | Risk |
   |---|---|---|---|
@@ -191,7 +191,9 @@ Prototypes are self-contained HTML files. To review:
 
   Ask the user: **"Which variant should we take forward?"** Wait for an explicit answer (`a`, `b`, ...) before moving on.
 
-Tell the user which URL(s) to visit. Do not assume any project-specific dev server.
+If the designer needs a real HTTP origin (fetch, service workers, absolute asset URLs), additionally run `python3 -m http.server 8000 --directory stardust/prototypes` in the background and tell them the `http://localhost:8000/<page>.html` URL — but keep the browser-open via `open` first, which handles 95% of cases via the `file://` protocol.
+
+In pipeline-automation mode (no designer present), skip the open.
 
 ## Phase 4: Iterate in the Browser
 
@@ -206,7 +208,7 @@ Common feedback and how to handle it:
 - **"Try a different accent color"** → Swap the CSS variable value; do not edit `brand-profile.json` unless the user wants to make it the new brand default.
 - **"This section should feel quieter"** → Adjust typographic weight or surface color on that specific section.
 
-Every iteration updates the file under review — `stardust/prototypes/{page}.html` in single-variant mode, or `stardust/prototypes/{page}-{letter}.html` for the variant the user named in multi-variant mode. The user reviews in the browser and gives feedback. Keep iterating until they approve.
+Every iteration updates the file under review — `stardust/prototypes/{page}.html` in single-variant mode, or `stardust/prototypes/{page}-{letter}.html` for the variant the user named in multi-variant mode. **Re-open the file in the browser after every iteration** so the designer sees the change immediately (browsers with live-reload will pick up the change on re-open; otherwise the user may need to refresh). Keep iterating until they approve.
 
 Before asking the user to look at a new iteration, run a critique:
 

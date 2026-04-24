@@ -68,3 +68,53 @@ cross-artifact write allowed.
 A new skill is justified only if its artifact earns its own iteration loop.
 If an output is edited jointly with another artifact or never edited on its
 own, fold it into an existing skill instead of creating a new one.
+
+## Opening HTML artifacts
+
+Every HTML artifact a stardust skill produces — the brand board, the
+palette pick UI, wireframes, prototypes — **must be opened in the
+designer's default browser immediately after it's written**. No "tell
+the designer to open the file" step — the skill opens it.
+
+### Invocation
+
+Run the platform-appropriate open command via Bash immediately after
+the `Write` tool call succeeds:
+
+- **macOS** (`darwin`): `open "<absolute-path-to-file>"`
+- **Linux**: `xdg-open "<absolute-path-to-file>" &`
+- **Windows**: `start "" "<absolute-path-to-file>"`
+
+The skill detects the platform from its environment (e.g. `Platform:
+darwin` in the system prompt) and picks the matching command. If the
+platform is unknown, try `open` first, then `xdg-open` on failure.
+
+### When to open
+
+Open immediately after the file is written, not at the end of the
+phase. Every fresh HTML artifact triggers one open. Re-writes during
+iteration (same file, new content) re-open the file so the browser
+refreshes. If the browser auto-reloads on file change, one open is
+enough — rely on the user's default behaviour.
+
+### Artifact scope
+
+These are the HTML artifacts currently in scope:
+
+- `stardust/brand-board.html` — emitted by `brand` Phase 4
+- `stardust/_palette-pick.html` — emitted by `brand` Phase 2 Step D
+- `stardust/wireframes/<page>.html` — emitted by `wireframes`
+- `stardust/prototypes/<page>.html` (single-variant) or
+  `stardust/prototypes/<page>-<letter>.html` (multi-variant) — emitted
+  by `prototype`
+
+For multi-variant prototype mode, **open all variants at once** so the
+designer can tab between them.
+
+### Exceptions
+
+- In **pipeline-automation mode** (end-to-end auto-approve run where
+  the designer is not present), skip the open — nobody's there to
+  look. Write the file, skip `open`, continue.
+- If Bash is unavailable in the current environment, fall back to
+  telling the designer the file path and recommending `open <path>`.
