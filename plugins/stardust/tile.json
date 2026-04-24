@@ -1,0 +1,13 @@
+{
+  "name": "adobe/stardust",
+  "version": "0.1.0",
+  "summary": "Design-phase skills for static-HTML projects: brand extraction, palette picking, briefings, wireframes, branded HTML prototypes — platform-agnostic output.",
+  "private": false,
+  "skills": {
+    "stardust": { "path": "skills/stardust/SKILL.md" },
+    "brand": { "path": "skills/brand/SKILL.md" },
+    "briefings": { "path": "skills/briefings/SKILL.md" },
+    "wireframes": { "path": "skills/wireframes/SKILL.md" },
+    "prototype": { "path": "skills/prototype/SKILL.md" }
+  }
+}

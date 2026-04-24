@@ -1,0 +1,19 @@
+{
+  "name": "prototype-iterate",
+  "total": 100,
+  "criteria": [
+    { "id": "activated_turn1", "weight": 8, "description": "The prototype skill activated on turn 1." },
+    { "id": "variant_count_asked", "weight": 5, "description": "Before rendering, the skill asked the user how many variants they want (Phase 0). Accepting a default of 1 when the user skips counts as compliant; silently producing a single prototype without asking is a failure in multi-scenario runs but acceptable in pipeline mode." },
+    { "id": "prototype_written", "weight": 8, "description": "Scenario A: stardust/prototypes/landing.html was created. Scenario B: stardust/prototypes/landing-a.html and landing-b.html (plus any additional requested variants) were created." },
+    { "id": "variant_directions_distinct", "weight": 8, "description": "Scenario B only: each variant file carries a `variant_direction` line in its provenance block, and the directions are materially distinct (different load-bearing axis — type-voice, density, color-energy, or imagery-role). Identical-looking variants with only cosmetic tweaks are a failure. N/A in Scenario A." },
+    { "id": "brand_applied", "weight": 12, "description": "Brand palette and fonts are applied across all rendered files (visible in CSS custom properties or inline styles)." },
+    { "id": "copy_verbatim", "weight": 8, "description": "Hero copy matches briefing `# Copy` values verbatim across all rendered files — variants share copy; they differ in design, not words." },
+    { "id": "tokens_in_root", "weight": 8, "description": "Design tokens exposed as CSS custom properties on :root in each rendered file." },
+    { "id": "data_section_attrs", "weight": 4, "description": "data-section and data-intent attributes present in each rendered file." },
+    { "id": "activated_turn2", "weight": 8, "description": "The prototype skill re-activated on turn 2 iteration request." },
+    { "id": "iteration_applied", "weight": 12, "description": "Heading weight/size decreased and hero padding increased — change is visible in the iterated file." },
+    { "id": "iteration_targets_chosen_variant", "weight": 8, "description": "Scenario B only: the turn-2 iteration edited ONLY the variant the user named (e.g. landing-b.html). Other variant files' mtimes are unchanged. N/A in Scenario A." },
+    { "id": "no_briefing_writeback", "weight": 7, "description": "Briefing was not modified during turn 1 or turn 2." },
+    { "id": "no_brand_writeback", "weight": 4, "description": "brand-profile.json was not modified during turn 1 or turn 2." }
+  ]
+}

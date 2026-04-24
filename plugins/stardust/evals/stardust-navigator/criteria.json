@@ -1,0 +1,12 @@
+{
+  "name": "stardust-navigator-fresh-project",
+  "total": 100,
+  "criteria": [
+    { "id": "activated", "weight": 20, "description": "The stardust skill was invoked (announced or visibly followed)." },
+    { "id": "empty_state", "weight": 20, "description": "Response correctly identifies the project as fresh / empty / no artifacts." },
+    { "id": "recommends_brand_or_briefings", "weight": 15, "description": "Recommends brand or briefings as the entry point and notes they are independent." },
+    { "id": "no_files_written", "weight": 15, "description": "No files are created under stardust/ or anywhere else." },
+    { "id": "no_eds_references", "weight": 15, "description": "No mention of EDS, AEM, localhost:3000, or dev server." },
+    { "id": "no_auto_delegation", "weight": 15, "description": "The navigator does not auto-invoke brand or briefings — it only recommends." }
+  ]
+}
