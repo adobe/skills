@@ -63,10 +63,22 @@ Two setup questions before rendering begins. Ask both once per session (not per 
 
 ### 0a · Variant count
 
-Ask: **"How many variants would you like? (1 = single prototype, 2–4 = a set to choose from)"**. Default to **1** if the user skips or the skill is invoked as part of an automated pipeline.
+Ask the designer to **confirm**, with **2 as the default**:
 
-- **1 variant** — produce `aem-design/prototypes/{page}.html` as before.
-- **N ≥ 2 variants** — the skill produces `{page}-a.html`, `{page}-b.html`, ... `{page}-{letter}.html`, each exploring a distinct design direction. Pick directions along axes that are load-bearing for *this* brand (e.g. if the brand voice is unsettled, vary type-voice; if the palette is rich, vary color-energy). Canonical axes to pick from:
+> **"I'll produce 2 variants of each prototype so you can compare — confirm, or give a different number (1–4)?"**
+
+Wait for the designer's answer. Accept:
+- `"ok"`, `"confirm"`, `"yes"`, Enter, `"2"` → 2 variants (default)
+- `1` → single variant
+- `3` or `4` → that many variants
+- Any other input → re-ask once with the valid options
+
+Default to **2** when:
+- The designer skips or accepts the default
+- The skill is invoked as part of an automated pipeline with no explicit variant count
+
+- **1 variant** — produce `aem-design/prototypes/{page}.html`.
+- **N ≥ 2 variants** — the skill produces `{page}-a.html`, `{page}-b.html`, … `{page}-{letter}.html`, each exploring a distinct design direction. Pick directions along axes that are load-bearing for *this* brand (e.g. if the brand voice is unsettled, vary type-voice; if the palette is rich, vary color-energy). Canonical axes to pick from:
   - **type-voice** — editorial serif-forward ↔ software sans-forward
   - **density** — airy/spacious ↔ catalog/compressed
   - **color-energy** — restrained/ink-led ↔ saturated/surface-led
