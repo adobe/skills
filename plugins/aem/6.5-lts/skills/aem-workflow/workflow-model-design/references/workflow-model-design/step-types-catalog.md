@@ -100,7 +100,7 @@ Terminal node. Multiple branches can converge to END.
     from="node_split"
     to="node_activate"
     rule="function check(){
-        return workflowData.getMetaDataMap().get('decision','')=='APPROVE';
+        return 'APPROVE' === String(workflowData.getMetaDataMap().get('decision',''));
     }"/>
 <t_reject
     jcr:primaryType="cq:WorkflowTransition"
@@ -109,7 +109,7 @@ Terminal node. Multiple branches can converge to END.
     rule="function check(){ return true; }"/>
 ```
 
-Rules are ECMA (JavaScript). `workflowData` is the `WorkflowData` object. Use `get('key', defaultValue)` for safe reads.
+Rules are ECMAScript (Rhino) on AEM 6.5 LTS. `workflowData` is the `WorkflowData` object. Use `get('key', defaultValue)` for safe reads.
 
 ## AND_SPLIT / AND_JOIN (Parallel Branches)
 
@@ -148,6 +148,32 @@ All outgoing transitions from AND_SPLIT execute. Workflow pauses at AND_JOIN unt
 ```
 
 `WorkflowExternalProcess` SPI — the engine polls at `pollingInterval` ms until the process signals completion.
+
+## Goto Step (OOTB Loop-back PROCESS Node)
+
+`Goto Step` is a PROCESS node that re-routes execution back to an earlier node when its rule returns true. Use it for **capped** retry loops; pair with a counter held in metaData and always enforce a hard cap (see Architecture Considerations in SKILL.md).
+
+```xml
+<node_goto
+    jcr:primaryType="cq:WorkflowNode"
+    title="Retry Validate?"
+    type="PROCESS">
+  <metaData
+      jcr:primaryType="nt:unstructured"
+      PROCESS="Goto Step"
+      PROCESS_AUTO_ADVANCE="{Boolean}true"
+      targetStep="node_validate"
+      rule="function check(){
+          var count = workflowData.getMetaDataMap().get('retryCount', 0);
+          return count < 3 &amp;&amp; !workflowData.getMetaDataMap().get('processingDone', false);
+      }"/>
+</node_goto>
+```
+
+- `PROCESS`: `"Goto Step"` (label) or `com.adobe.granite.workflow.core.process.GotoProcess` (FQCN).
+- `targetStep`: name of the node to redirect to when `rule` returns true.
+- `rule`: ECMAScript function returning a boolean. `true` → workflow jumps to `targetStep`. `false` → falls through to the normal next transition.
+- Always cap the counter (`count < 3`). An uncapped Goto pins a worker thread and accumulates failed instances.
 
 ## OOTB Process Labels Reference
 

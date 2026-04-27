@@ -8,10 +8,32 @@ license: Apache-2.0
 
 Design workflow models for AEM 6.5 LTS: step structure, transitions, OR/AND splits, variables, and model XML deployment via Package Manager.
 
+## Audience
+
+Developers and workflow designers building or modifying AEM 6.5 LTS workflow models — via the Workflow Model Editor or by hand-authoring model XML and shipping it as a content package.
+
 ## Variant Scope
 
 - This skill is AEM 6.5 LTS only.
 - Models can be stored at `/conf/global/settings/workflow/models/` (preferred) or `/etc/workflow/models/` (legacy — auto-deployed without Sync).
+- **Not for AEM as a Cloud Service.** If the target instance is AEMaaCS, stop and use the cloud-service variant of this skill — `/etc/workflow/models/` is deprecated, the Sync flow differs, and several patterns documented here will produce models that fail to deploy.
+
+## Dependencies
+
+Models reference deployed `WorkflowProcess` and `ParticipantStepChooser` services by `process.label` / `chooser.label` or fully-qualified class name. **Build and deploy the Java step first; reference it from the model second.** A model that references a label whose service is not yet registered fails at runtime with `Process not found` — Sync will succeed and the model will appear in the editor, but instances will fail on first execution. See [workflow-development](../workflow-development/SKILL.md) for step implementation.
+
+## Prerequisites
+
+- AEM 6.5 LTS author instance reachable (local, dev, or sandbox).
+- Maven project with `ui.content` module — or the ability to author in the Workflow Model Editor and export as a content package.
+- Required `WorkflowProcess` / `ParticipantStepChooser` services already implemented and deployed (see Dependencies above).
+- `filter.xml` covering the model path you intend to install, with `mode="merge"`.
+
+## Required Permissions
+
+- `workflow-editors` (or equivalent write access to `/conf/global/settings/workflow/models/`) — create or modify models in the Workflow Model Editor or via content package.
+- `workflow-administrators` (or equivalent) — start test workflow instances and terminate stuck test instances during iteration.
+- Read access to `/conf/global/settings/workflow/models/` and `/var/workflow/models/` for verification.
 
 ## Workflow
 
@@ -19,12 +41,12 @@ Design workflow models for AEM 6.5 LTS: step structure, transitions, OR/AND spli
 Model Design Progress
 - [ ] 1) Clarify the workflow purpose: what triggers it, what steps are needed, who approves
 - [ ] 2) Map out steps: PROCESS (auto), PARTICIPANT (human), OR_SPLIT (decision), AND_SPLIT (parallel)
-- [ ] 3) Decide payload type: single JCR_PATH or multi-page cq:WorkflowContentPackage
+- [ ] 3) Decide payload type: single JCR_PATH or multi-page workflow package (a `cq:Page` collection, detected at runtime via `adaptTo(ResourceCollection.class)`)
 - [ ] 4) Identify workflow variables needed for inter-step data passing
 - [ ] 5) Design model XML: nodes + transitions + metaData with correct step properties
 - [ ] 6) Choose storage: /conf (requires Sync) vs /etc (auto-deployed)
 - [ ] 7) Add filter.xml entry with mode="merge"
-- [ ] 8) Deploy via mvn install or Package Manager; verify sync to /var/workflow/models/
+- [ ] 8) Deploy via mvn install or Package Manager; verify sync to /var/workflow/models/, then open the model in the Workflow Model Editor and confirm all nodes render and transitions resolve
 ```
 
 ## Node Types Quick Reference
@@ -36,7 +58,7 @@ Model Design Progress
 | `PROCESS` | Auto-executed Java step | `PROCESS` = FQCN or process.label |
 | `PARTICIPANT` | Human task (static assignee) | `PARTICIPANT` = principal name |
 | `DYNAMIC_PARTICIPANT` | Human task (runtime assignee) | `DYNAMIC_PARTICIPANT` = chooser.label |
-| `OR_SPLIT` | One branch selected by rule | Transition `rule` = ECMA/Groovy |
+| `OR_SPLIT` | One branch selected by rule | Transition `rule` = ECMAScript (Rhino) |
 | `AND_SPLIT` | All branches execute in parallel | — |
 | `AND_JOIN` | Wait for all parallel branches | — |
 
@@ -56,6 +78,16 @@ mvn clean install -P autoInstallPackage
 # Or install package manually via Package Manager
 http://localhost:4502/crx/packmgr
 ```
+
+## Architecture Considerations
+
+These choices are made at design time and are hard to retrofit. Apply them before locking the model shape:
+
+- **Transient vs persistent.** Set `transient="true"` on the model for high-volume, short-lived workflows (e.g., asset metadata extraction, replication side-effects). Transient instances create no JCR node under `/var/workflow/instances` until a retry or external-process step forces persistence — the difference between a healthy repository and unbounded growth.
+- **Participant timeouts.** A `PARTICIPANT` step with no timeout can stall a workflow indefinitely and consume a job slot for the duration. For any human task that may not be acted on promptly, configure `TIMEOUT` and a `TIMEOUT_HANDLER` route on the step's metaData.
+- **Goto retry caps.** Always enforce a hard cap on retry counters used by `Goto Step` rules (e.g., `count < 3`). An uncapped Goto loop will pin a worker thread and accumulate failed instances until the workflow is terminated by hand.
+- **Purge is a design-time concern.** Estimate instance volume before go-live. Configure the **Adobe Granite Workflow Purge Configuration** factory in the same content package as the model so purge ships with the workflow, not as an after-the-fact follow-up. Set `scheduledpurge.purgePackagePayload=true` if the workflow uses workflow packages.
+- **Model versioning.** In-flight instances stay bound to the model version they started with; new instances pick up the new version. When changing a deployed model, plan a brief drain window for old-version instances before declaring the change complete.
 
 ## References
 

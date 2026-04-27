@@ -21,11 +21,11 @@ START → [PARTICIPANT: Review] → [OR_SPLIT] ──approve──→ [PROCESS: 
                                            └──reject───→ [PROCESS: Notify]   → END
 ```
 
-OR_SPLIT transition rules (ECMA):
+OR_SPLIT transition rules (ECMAScript / Rhino). Wrap Java string returns with `String(...)` and use strict equality (`===`) — Rhino's `==` between a Java String and a JS literal works through coercion but is fragile and inconsistent with the sibling skill's style.
 ```javascript
 // Approve transition
 function check() {
-    return workflowData.getMetaDataMap().get("reviewDecision", "") == "APPROVE";
+    return 'APPROVE' === String(workflowData.getMetaDataMap().get('reviewDecision', ''));
 }
 // Reject transition (catch-all)
 function check() { return true; }
@@ -34,7 +34,12 @@ function check() { return true; }
 The PARTICIPANT step must store the decision in metadata before completing:
 ```java
 item.getWorkflowData().getMetaDataMap().put("reviewDecision", "APPROVE");
-session.complete(item, routes.get(0));
+List<Route> routes = session.getRoutes(item, false);
+Route approveRoute = routes.stream()
+    .filter(r -> "Approve".equalsIgnoreCase(r.getName()))
+    .findFirst()
+    .orElse(routes.get(0));
+session.complete(item, approveRoute);
 ```
 
 ---
@@ -60,17 +65,23 @@ START → [PROCESS: Validate] → [PROCESS: Goto?] ──true (retry)──→ [
 Goto Step evaluates a rule. If retryCount < 3, redirects to Validate node; otherwise falls through.
 
 ```java
-// In Validate step: increment counter
-int count = meta.get("retryCount", 0);
-meta.put("retryCount", count + 1);
+// In Validate step: increment counter. Use Long consistently — MetaDataMap
+// is type-strict, and mixing Integer/Long across steps throws ClassCastException.
+Long count = meta.get("retryCount", 0L);
+meta.put("retryCount", count + 1L);
 // If validation succeeds, put "retryDone=true"
 ```
 
-Goto Step ECMA rule:
+Goto Step ECMAScript (Rhino) rule:
 ```javascript
 function check() {
-    var count = workflowData.getMetaDataMap().get("retryCount", 0);
-    return count < 3 && workflowData.getMetaDataMap().get("retryDone", false) == false;
+    // MetaDataMap is type-strict. When Java stored Long, calling
+    // get(key, 0) from Rhino casts against the default's class (Double in
+    // Rhino) and can throw ClassCastException. Read raw, then longValue()
+    // for a clean numeric compare that survives both step types.
+    var raw = workflowData.getMetaDataMap().get('retryCount');
+    var count = raw != null ? raw.longValue() : 0;
+    return count < 3 && !workflowData.getMetaDataMap().get('retryDone', false);
 }
 ```
 
@@ -83,6 +94,29 @@ START → [PROCESS: TaskWorkflowProcess (SUSPEND)] → [PROCESS: Post-Approval] 
 ```
 
 `TaskWorkflowProcess` creates an Inbox Task, stores `taskId` in metadata, and **suspends** the workflow (`PROCESS_AUTO_ADVANCE=false`). When the user completes the task, `TaskEventListener` advances the workflow automatically.
+
+Configure the step as a `PROCESS` node referencing the OOTB `Task Manager Step`:
+```xml
+<node_task
+    jcr:primaryType="cq:WorkflowNode"
+    title="Approve Content"
+    type="PROCESS">
+  <metaData
+      jcr:primaryType="nt:unstructured"
+      PROCESS="Task Manager Step"
+      PROCESS_AUTO_ADVANCE="{Boolean}false"
+      taskTitle="Approve content for publication"
+      taskDescription="Review the page and approve or reject."
+      taskInstructions="Click Approve to publish, Reject to send back to author."
+      taskOwner="content-reviewers"
+      taskPriority="medium"/>
+</node_task>
+```
+
+- `PROCESS="Task Manager Step"` — OOTB label (FQCN: `com.adobe.granite.taskmanagement.impl.workflow.TaskWorkflowProcess`).
+- `PROCESS_AUTO_ADVANCE="{Boolean}false"` is required — the engine must hold here while the human acts.
+- `taskOwner` is a JCR principal name (user ID or group ID).
+- After the user completes the task, `TaskEventListener` writes `lastTaskAction` and `lastTaskCompletedBy` to instance metadata; route by `lastTaskAction` in a downstream OR_SPLIT.
 
 Post-approval step reads the task result:
 ```java
