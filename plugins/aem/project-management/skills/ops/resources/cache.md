@@ -10,53 +10,46 @@ Purge CDN cache for Edge Delivery Services content.
 
 ## API Reference
 
-| Intent | Endpoint | Method |
-|--------|----------|--------|
-| clear cache | `/cache/{org}/{site}/{ref}/{path}` | POST |
-| force clear | `/cache/{org}/{site}/{ref}/{path}?forceUpdate=true` | POST |
+| Intent | Endpoint | Method | Auth Required |
+|--------|----------|--------|---------------|
+| clear cache (single path) | `/cache/{org}/{site}/{ref}/{path}` | POST | Optional (`cache:write` if authenticated) |
+
+> **Note:** The admin API documents only the single-path `POST /cache/{org}/{site}/{ref}/{path}` endpoint. Cache purge supports both authenticated (`x-auth-token`) and unauthenticated requests. If your CDN uses a custom purge hook (`byo` CDN), it is triggered automatically when configured in the site settings. The `/*` wildcard path is not explicitly documented — use it cautiously as behavior may vary.
 
 ## Operations
 
-### Purge Cache
+### Purge Cache (Single Path)
 
 ```bash
-curl -s -X POST \
+curl -s --connect-timeout 15 --max-time 120 -X POST \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/cache/${ORG}/${SITE}/${REF}${PATH}"
 ```
 
-**Success:** `Cache purged for {path}`
+**Success:** `Cache purged for {path}. Hard-refresh browser to verify.`
 
-### Force Purge Cache
-
-Bypasses edge cache entirely:
-
-```bash
-curl -s -X POST \
-  -H "x-auth-token: ${AUTH_TOKEN}" \
-  "https://admin.hlx.page/cache/${ORG}/${SITE}/${REF}${PATH}?forceUpdate=true"
-```
-
-**Success:** `Force-purged cache for {path}`
-
-### Purge All
+### Purge All (Wildcard — Use With Caution)
 
 **DESTRUCTIVE OPERATION - CONFIRMATION REQUIRED**
 
-Before executing, confirm: "This will invalidate ALL cached content for the site. Proceed? (yes/no)"
+> This uses the `/*` wildcard path which is not explicitly documented in the admin API. It follows the same pattern as other bulk endpoints but behavior may vary.
+
+Before executing, confirm: "This will attempt to invalidate ALL cached content for the site. Proceed? (yes/no)"
 
 ```bash
-curl -s -X POST \
+curl -s --connect-timeout 15 --max-time 120 -X POST \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/cache/${ORG}/${SITE}/${REF}/*"
 ```
+
+**Success:** `{"status": 200, "path": "/*"}`
 
 ## Natural Language Patterns
 
 | User Says | Operation |
 |-----------|-----------|
 | "clear cache for /about" | Purge `/about` |
-| "force clear cache for /about" | Force purge with `forceUpdate=true` |
+| "force clear cache for /about" | Purge `/about` (same endpoint) |
 | "purge everything" | Purge `/*` |
-| "invalidate cache" | Purge cache |
+| "invalidate cache" | Purge cache (ask for path) |
 | "bust the cache for /products" | Purge `/products` |

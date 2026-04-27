@@ -27,18 +27,18 @@ Organization (org)
 ### List All Sites
 
 ```bash
-ORG=$(cat .claude-plugin/project-config.json | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"org"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
-curl -s "https://admin.hlx.page/config/${ORG}/sites.json" | node -e "
-const data = JSON.parse(require('fs').readFileSync(0, 'utf8'));
-data.sites.forEach((s, i) => console.log(\`\${i + 1}. \${s.name} → https://main--\${s.name}--${ORG}.aem.page\`));
-"
+curl -s --connect-timeout 15 --max-time 120 \
+  -H "x-auth-token: ${AUTH_TOKEN}" \
+  "https://admin.hlx.page/config/${ORG}/sites.json"
 ```
+
+**Response format:** Present as table — # | Site Name | Preview URL (`https://main--{name}--{org}.aem.page`)
 
 ### Detect Repoless Setup
 
 ```bash
 ORG=$(cat .claude-plugin/project-config.json | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"org"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
-SITES=$(curl -s "https://admin.hlx.page/config/${ORG}/sites.json")
+SITES=$(curl -s --connect-timeout 15 --max-time 120 "https://admin.hlx.page/config/${ORG}/sites.json")
 SITE_COUNT=$(echo "$SITES" | grep -o '"name"' | wc -l | tr -d ' ')
 
 if [ "$SITE_COUNT" -gt 1 ]; then
@@ -50,30 +50,13 @@ fi
 
 ### Switch Site
 
-```bash
-node -e "
-const fs = require('fs');
-const config = JSON.parse(fs.readFileSync('.claude-plugin/project-config.json', 'utf8'));
-config.site = '${NEW_SITE}';
-fs.writeFileSync('.claude-plugin/project-config.json', JSON.stringify(config, null, 2));
-console.log('Switched to site: ${NEW_SITE}');
-"
-```
+Update `site` value in `.claude-plugin/project-config.json` to the new site name.
 
 **Success:** `Switched to site: {site}`
 
 ### Switch Branch
 
-```bash
-node -e "
-const fs = require('fs');
-const config = JSON.parse(fs.readFileSync('.claude-plugin/project-config.json', 'utf8'));
-config.ref = '${NEW_BRANCH}';
-fs.writeFileSync('.claude-plugin/project-config.json', JSON.stringify(config, null, 2));
-console.log('Switched to branch: ${NEW_BRANCH}');
-console.log('Preview URL: https://${NEW_BRANCH}--' + config.site + '--' + config.org + '.aem.page');
-"
-```
+Update `ref` value in `.claude-plugin/project-config.json` to the new branch name.
 
 **Success:** `Switched to branch: {ref} (https://{ref}--{site}--{org}.aem.page)`
 
@@ -99,11 +82,11 @@ Execute operation across all sites:
 
 ```bash
 ORG=$(cat .claude-plugin/project-config.json | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"org"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
-SITES=$(curl -s "https://admin.hlx.page/config/${ORG}/sites.json" | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"name"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
+SITES=$(curl -s --connect-timeout 15 --max-time 120 "https://admin.hlx.page/config/${ORG}/sites.json" | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"name"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
 
 for SITE in $SITES; do
   echo "Publishing /about on $SITE..."
-  curl -s -X POST \
+  curl -s --connect-timeout 15 --max-time 120 -X POST \
     -H "x-auth-token: ${AUTH_TOKEN}" \
     "https://admin.hlx.page/live/${ORG}/${SITE}/main/about"
 done

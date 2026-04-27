@@ -10,47 +10,46 @@ Read and manage organization and site configurations.
 
 ## API Reference
 
+> **Role requirement:** All config read operations require `config:read-redacted` (`config` role or higher). Write operations (update/create/delete) require `config:write` — only `config_admin` or `admin` roles have this permission. If a user gets 403 on config operations, they need the `config_admin` role.
+
 ### Organization Config
 
-| Intent | Endpoint | Method |
-|--------|----------|--------|
-| read org config | `/config/{org}.json` | GET |
-| update org config | `/config/{org}.json` | POST |
-| create org config | `/config/{org}.json` | PUT |
-| delete org config | `/config/{org}.json` | DELETE |
+| Intent | Endpoint | Method | Required Role |
+|--------|----------|--------|---------------|
+| read org config | `/config/{org}.json` | GET | `config` or `config_admin` or `admin` |
+| update org config | `/config/{org}.json` | POST | `config_admin` or `admin` |
+| create org config | `/config/{org}.json` | PUT | `config_admin` or `admin` |
+| delete org config | `/config/{org}.json` | DELETE | `admin` only |
 
 ### Site Config
 
-| Intent | Endpoint | Method |
-|--------|----------|--------|
-| read site config | `/config/{org}/{site}.json` | GET |
-| update site config | `/config/{org}/{site}.json` | POST |
-| create site config | `/config/{org}/{site}.json` | PUT |
-| delete site config | `/config/{org}/{site}.json` | DELETE |
+| Intent | Endpoint | Method | Required Role |
+|--------|----------|--------|---------------|
+| read site config | `/config/{org}/sites/{site}.json` | GET | `config` or `config_admin` or `admin` |
+| update site config | `/config/{org}/sites/{site}.json` | POST | `config_admin` or `admin` |
+| create site config | `/config/{org}/sites/{site}.json` | PUT | `config_admin` or `admin` |
+| delete site config | `/config/{org}/sites/{site}.json` | DELETE | `admin` only |
 
 ### Robots.txt
 
-| Intent | Endpoint | Method |
-|--------|----------|--------|
-| read robots.txt | `/config/{org}/{site}.json/robots.txt` | GET |
-| update robots.txt | `/config/{org}/{site}.json/robots.txt` | POST |
+| Intent | Endpoint | Method | Required Role |
+|--------|----------|--------|---------------|
+| read robots.txt | `/config/{org}/sites/{site}/robots.txt` | GET | `config` or `config_admin` or `admin` |
+| update robots.txt | `/config/{org}/sites/{site}/robots.txt` | POST | `config_admin` or `admin` |
 
 ## Operations
 
 ### Read Organization Config
 
 ```bash
-curl -s \
+curl -s --connect-timeout 15 --max-time 120 \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/config/${ORG}.json"
 ```
 
 ### Update Organization Config
-
-**Requires Admin role.**
-
 ```bash
-curl -s -X POST \
+curl -s --connect-timeout 15 --max-time 120 -X POST \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{"property": "value"}' \
@@ -59,10 +58,10 @@ curl -s -X POST \
 
 ### Create Organization Config
 
-**Requires Admin role. Fails if org already exists.**
+**Fails if org already exists.
 
 ```bash
-curl -s -X PUT \
+curl -s --connect-timeout 15 --max-time 120 -X PUT \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{"property": "value"}' \
@@ -70,9 +69,6 @@ curl -s -X PUT \
 ```
 
 ### Delete Organization Config
-
-**Requires Admin role.**
-
 **CRITICAL DESTRUCTIVE OPERATION - CONFIRMATION REQUIRED**
 
 Before executing, you MUST:
@@ -81,7 +77,7 @@ Before executing, you MUST:
 3. Only execute if user types the exact confirmation
 
 ```bash
-curl -s -X DELETE \
+curl -s --connect-timeout 15 --max-time 120 -X DELETE \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/config/${ORG}.json"
 ```
@@ -89,39 +85,37 @@ curl -s -X DELETE \
 ### Read Site Config
 
 ```bash
-curl -s \
+curl -s --connect-timeout 15 --max-time 120 \
   -H "x-auth-token: ${AUTH_TOKEN}" \
-  "https://admin.hlx.page/config/${ORG}/${SITE}.json"
+  "https://admin.hlx.page/config/${ORG}/sites/${SITE}.json"
 ```
 
+**Optional query parameters:**
+- `?migrate=true` — Aggregates config from legacy sources (fstab, `.helix/config.xlsx`, etc.)
+- `?migrate=true&validate=true` — Also validates the migrated configuration
+
 ### Update Site Config
-
-**Requires Admin role.**
-
 ```bash
-curl -s -X POST \
+curl -s --connect-timeout 15 --max-time 120 -X POST \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{"property": "value"}' \
-  "https://admin.hlx.page/config/${ORG}/${SITE}.json"
+  "https://admin.hlx.page/config/${ORG}/sites/${SITE}.json"
 ```
 
 ### Create Site Config
 
-**Requires Admin role. Fails if site already exists.**
+**Fails if site already exists.
 
 ```bash
-curl -s -X PUT \
+curl -s --connect-timeout 15 --max-time 120 -X PUT \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{"property": "value"}' \
-  "https://admin.hlx.page/config/${ORG}/${SITE}.json"
+  "https://admin.hlx.page/config/${ORG}/sites/${SITE}.json"
 ```
 
 ### Delete Site Config
-
-**Requires Admin role.**
-
 **CRITICAL DESTRUCTIVE OPERATION - CONFIRMATION REQUIRED**
 
 Before executing, you MUST:
@@ -130,31 +124,28 @@ Before executing, you MUST:
 3. Only execute if user types the exact confirmation
 
 ```bash
-curl -s -X DELETE \
+curl -s --connect-timeout 15 --max-time 120 -X DELETE \
   -H "x-auth-token: ${AUTH_TOKEN}" \
-  "https://admin.hlx.page/config/${ORG}/${SITE}.json"
+  "https://admin.hlx.page/config/${ORG}/sites/${SITE}.json"
 ```
 
 ### Read Robots.txt
 
 ```bash
-curl -s \
+curl -s --connect-timeout 15 --max-time 120 \
   -H "x-auth-token: ${AUTH_TOKEN}" \
-  "https://admin.hlx.page/config/${ORG}/${SITE}.json/robots.txt"
+  "https://admin.hlx.page/config/${ORG}/sites/${SITE}/robots.txt"
 ```
 
 ### Update Robots.txt
-
-**Requires Admin role.**
-
 ```bash
-curl -s -X POST \
+curl -s --connect-timeout 15 --max-time 120 -X POST \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   -H "Content-Type: text/plain" \
   -d 'User-agent: *
 Disallow: /private/
 Allow: /' \
-  "https://admin.hlx.page/config/${ORG}/${SITE}.json/robots.txt"
+  "https://admin.hlx.page/config/${ORG}/sites/${SITE}/robots.txt"
 ```
 
 ## Natural Language Patterns
@@ -168,3 +159,4 @@ Allow: /' \
 | "show robots.txt" | Read robots.txt |
 | "update robots.txt" | Update robots.txt |
 | "block crawlers from /private" | Update robots.txt |
+| "show aggregated site config" | Read site config with `?migrate=true` |

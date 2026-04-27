@@ -1,98 +1,106 @@
 ---
 name: ops-profiles
-description: Profile configuration for Edge Delivery Services - manage user profile settings including access controls, CDN rules, headers, and metadata.
+description: Profile configuration for Edge Delivery Services - manage reusable profile-level settings at the org level, including access controls, CDN rules, headers, and metadata.
 allowed-tools: Read, Write, Edit, Bash
 ---
 
 # Edge Delivery Services Operations - Profile Configuration
 
-Manage user profile-level configuration settings.
+Manage org-level profile configurations. Profiles are shared across sites and reside under `/config/{org}/profiles/`.
 
 ## API Reference
 
 | Intent | Endpoint | Method |
 |--------|----------|--------|
-| read profile config | `/config/{org}/{site}/profiles/{profileId}.json` | GET |
-| update profile config | `/config/{org}/{site}/profiles/{profileId}.json` | POST |
-| create profile config | `/config/{org}/{site}/profiles/{profileId}.json` | PUT |
-| delete profile config | `/config/{org}/{site}/profiles/{profileId}.json` | DELETE |
+| list profiles | `/config/{org}/profiles.json` | GET |
+| read profile config | `/config/{org}/profiles/{profile}.json` | GET |
+| update profile config | `/config/{org}/profiles/{profile}.json` | POST |
+| create profile config | `/config/{org}/profiles/{profile}.json` | PUT |
+| delete profile config | `/config/{org}/profiles/{profile}.json` | DELETE |
 
 ## Operations
+
+### List Profiles
+
+```bash
+curl -s --connect-timeout 15 --max-time 120 \
+  -H "x-auth-token: ${AUTH_TOKEN}" \
+  "https://admin.hlx.page/config/${ORG}/profiles.json"
+```
+
+**Response format:** Present as table — Profile Name
 
 ### Read Profile Configuration
 
 ```bash
-curl -s \
+curl -s --connect-timeout 15 --max-time 120 \
   -H "x-auth-token: ${AUTH_TOKEN}" \
-  "https://admin.hlx.page/config/${ORG}/${SITE}/profiles/${PROFILE_ID}.json"
+  "https://admin.hlx.page/config/${ORG}/profiles/${PROFILE}.json"
 ```
 
 ### Update Profile Configuration
 
-**Requires Admin role.**
-
 ```bash
-curl -s -X POST \
+curl -s --connect-timeout 15 --max-time 120 -X POST \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{"property": "value"}' \
-  "https://admin.hlx.page/config/${ORG}/${SITE}/profiles/${PROFILE_ID}.json"
+  -d '{"version": 1, "created": "...", "lastModified": "...", "content": {...}}' \
+  "https://admin.hlx.page/config/${ORG}/profiles/${PROFILE}.json"
 ```
 
-**Success:** `Updated profile config: {profileId}`
+> Note: `version`, `created`, and `lastModified` fields are required in the request body.
+
+**Success:** HTTP 200 with updated profile config data
 
 ### Create Profile Configuration
 
-**Requires Admin role. Fails if profile already exists.**
+Use PUT to create a new profile config (fails with 409 if one already exists — use POST to update instead).
 
 ```bash
-curl -s -X PUT \
+curl -s --connect-timeout 15 --max-time 120 -X PUT \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{"property": "value"}' \
-  "https://admin.hlx.page/config/${ORG}/${SITE}/profiles/${PROFILE_ID}.json"
+  -d '{"version": 1, "created": "...", "lastModified": "...", "content": {...}}' \
+  "https://admin.hlx.page/config/${ORG}/profiles/${PROFILE}.json"
 ```
 
-**Success:** `Created profile config: {profileId}`
+**Success:** HTTP 200 with created profile config data
 
 ### Delete Profile Configuration
-
-**Requires Admin role.**
-
 **DESTRUCTIVE OPERATION - CONFIRMATION REQUIRED**
 
 Before executing, you MUST:
-1. Tell user: "This will delete the profile configuration for '{profileId}'. Any settings specific to this profile will be lost."
+1. Tell user: "This will delete the profile configuration for '${PROFILE}'. Any sites inheriting from this profile will lose its settings."
 2. Ask: "Do you want to proceed? (yes/no)"
 3. Only execute if user confirms with "yes"
 
 ```bash
-curl -s -X DELETE \
+curl -s --connect-timeout 15 --max-time 120 -X DELETE \
   -H "x-auth-token: ${AUTH_TOKEN}" \
-  "https://admin.hlx.page/config/${ORG}/${SITE}/profiles/${PROFILE_ID}.json"
+  "https://admin.hlx.page/config/${ORG}/profiles/${PROFILE}.json"
 ```
 
-**Success:** `Deleted profile config: {profileId}`
+**Success:** `Deleted profile config: ${PROFILE}`
 
 ## Profile Configuration Properties
 
-Profiles can include settings for:
-- Access controls
-- CDN rules
-- Code settings
-- Content settings
-- Folder configurations
-- Custom headers
-- Metadata
-- Robots.txt overrides
-- Secrets
+Profiles can include the same fields as site configs, such as:
+- `content` — content bus source (SharePoint, Google Drive)
+- `code` — GitHub repository
+- `access` — admin/site/preview/live access rules
+- `cdn` — CDN routing
+- `headers` — custom response headers
+- `secrets` / `tokens` / `apiKeys`
+- `sidekick` — sidekick plugin settings
+- `robots` — robots.txt content
+- `metadata` — metadata source paths
 
 ## Natural Language Patterns
 
 | User Says | Operation |
 |-----------|-----------|
-| "show profile config" | Read profile config |
+| "list profiles" | List profiles |
+| "show profile config for X" | Read profile config |
 | "read profile settings for X" | Read profile config |
-| "update profile config" | Update profile config |
-| "create profile for X" | Create profile config |
+| "update profile config for X" | Update profile config |
 | "delete profile X" | Delete profile config |

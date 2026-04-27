@@ -10,32 +10,32 @@ Generate sitemap files for Edge Delivery Services sites.
 
 ## API Reference
 
-| Intent | Endpoint | Method |
-|--------|----------|--------|
-| generate sitemap | `/sitemap/{org}/{site}/{ref}/{path}` | POST |
+| Intent | Endpoint | Method | Required Role |
+|--------|----------|--------|---------------|
+| generate sitemap | `/sitemap/{org}/{site}/{ref}/{path}` | POST | `basic_author`+ |
 
-The `{path}` is where the sitemap will be created (e.g., `/sitemap.xml`).
+The `{path}` is the destination path for the sitemap (e.g., `/sitemap.xml`). The API returns the list of generated sitemap paths.
 
 ## Operations
 
 ### Generate Sitemap
 
 ```bash
-curl -s -X POST \
+curl -s --connect-timeout 15 --max-time 120 -X POST \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/sitemap/${ORG}/${SITE}/${REF}${PATH}"
 ```
 
 **Default path:** `/sitemap.xml`
 
-**Success:** `Sitemap generated at {path}`
+**Success (HTTP 200):** `{"paths": ["/sitemap.xml"]}` — report generated paths to user.
 
 ### Custom Sitemap Path
 
 Generate sitemap at a specific location:
 
 ```bash
-curl -s -X POST \
+curl -s --connect-timeout 15 --max-time 120 -X POST \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/sitemap/${ORG}/${SITE}/${REF}/sitemaps/blog.xml"
 ```

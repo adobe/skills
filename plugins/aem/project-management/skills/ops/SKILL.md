@@ -22,7 +22,7 @@ Execute admin operations on AEM Edge Delivery Services projects using natural la
 | **Sitemap** | generate sitemap |
 | **Snapshots** | create snapshot X, publish snapshot X, approve snapshot X |
 | **Logs** | show logs, show logs last hour |
-| **Users** | add user@email as author, remove admin user@email, who am i |
+| **Users** | add user@email as author/publish/develop, remove admin user@email, who am i |
 | **Jobs** | list jobs, job status X, stop job X |
 | **Sites** | list sites, switch to site-X, use branch feature-X |
 | **Config** | show org config, show site config, update robots.txt |
@@ -30,8 +30,8 @@ Execute admin operations on AEM Edge Delivery Services projects using natural la
 | **API Keys** | list API keys, create API key, revoke API key |
 | **Tokens** | list tokens, create token, revoke token |
 | **Profiles** | show profile config, create profile, delete profile |
-| **Index Config** | show helix-index.json, update index config |
-| **Sitemap Config** | show helix-sitemap.json, update sitemap config |
+| **Index Config** | show index config, update index config (query.yaml) |
+| **Sitemap Config** | show sitemap config, update sitemap config (sitemap.yaml) |
 | **Versioning** | list versions, restore version, rollback config |
 | **Pages** | list pages, list all pages, show indexed pages |
 
@@ -61,8 +61,20 @@ Quick commands to try:
   preview /path    - Preview a content path
   show logs        - View recent activity
 
-Type 'help' for the full command list.
+For the full command list: type help, /ops help, or what can you do? (slash commands may be /ops help or /ops what can you do? depending on your client).
 ```
+
+---
+
+## Cross-Platform Notes
+
+Shell commands in this skill use POSIX-compatible syntax (works on macOS/Linux). On Windows:
+- **Git Bash / WSL**: Commands work as-is
+- **PowerShell**: Claude Code will translate commands automatically using available shell
+
+**curl:** All examples use `--connect-timeout 15` and `--max-time 120` so a stuck network does not hang the session. For unusually large responses (e.g. huge logs), you may increase `--max-time` for that call.
+
+The agent executing these commands should adapt syntax to the user's environment.
 
 ---
 
@@ -116,9 +128,9 @@ This opens a browser via Playwright for Adobe ID login and saves the token to `.
 
 **IMPORTANT:** Do NOT skip this step. Do NOT attempt any API calls without a valid auth token. The auth skill handles the entire authentication flow.
 
-### Step 2: Load Full Configuration
+### Step 2: Load Full Configuration and Validate Role
 
-After auth is confirmed, load remaining config:
+After auth is confirmed, load config and verify user role:
 
 ```bash
 CONFIG=$(cat .claude-plugin/project-config.json 2>/dev/null)
@@ -126,10 +138,58 @@ ORG=$(echo "$CONFIG" | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/
 AUTH_TOKEN=$(echo "$CONFIG" | grep -o '"authToken"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"authToken"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
 SITE=$(echo "$CONFIG" | grep -o '"site"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"site"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
 REF=$(echo "$CONFIG" | grep -o '"ref"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"ref"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
+USER_ROLE=$(echo "$CONFIG" | grep -o '"userRole"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"userRole"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
 
 REF=${REF:-main}
-echo "Config: org=$ORG site=$SITE ref=$REF auth=${AUTH_TOKEN:+set}"
+echo "Config: org=$ORG site=$SITE ref=$REF role=$USER_ROLE auth=${AUTH_TOKEN:+set}"
 ```
+
+**If `USER_ROLE` is empty** (not yet cached), fetch profile to verify auth and record user identity:
+
+```bash
+PROFILE_RESPONSE=$(curl -s --connect-timeout 15 --max-time 120 -w "\n%{http_code}" -H "x-auth-token: ${AUTH_TOKEN}" \
+  "https://admin.hlx.page/profile")
+HTTP_CODE=$(echo "$PROFILE_RESPONSE" | tail -n1)
+PROFILE=$(echo "$PROFILE_RESPONSE" | sed '$d')
+
+if [ "$HTTP_CODE" = "401" ]; then
+  echo "Auth token expired. Re-authenticate required."
+  # Clear cached token and re-run auth skill
+  exit 1
+elif [ "$HTTP_CODE" != "200" ]; then
+  echo "Failed to fetch profile (HTTP $HTTP_CODE). Check network/API status."
+  exit 1
+fi
+
+# Profile response: {"profile": {"email": "...", "name": "...", "ttl": ...}}
+USER_EMAIL=$(echo "$PROFILE" | grep -o '"email"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"email"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
+USER_NAME=$(echo "$PROFILE" | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"name"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
+
+echo "Authenticated as: $USER_EMAIL ($USER_NAME)"
+```
+
+**Important:** The `/profile` endpoint does **not** return a role. To determine if the user is admin or author on a site, check the site access config:
+
+```bash
+# Determine user role on the current site
+ACCESS_RESPONSE=$(curl -s --connect-timeout 15 --max-time 120 -H "x-auth-token: ${AUTH_TOKEN}" \
+  "https://admin.hlx.page/config/${ORG}/sites/${SITE}.json")
+# Check which role(s) the user's email appears in within access.admin.role
+# Roles: admin, author, publish, basic_author, basic_publish, develop, config, config_admin
+```
+
+If an operation returns 403, inform the user which role is required. Key role requirements:
+- **Preview** → `basic_author`, `author`, `publish`, or `admin`
+- **Publish to live** → `basic_publish`, `publish`, or `admin`
+- **Unpublish from live** → `publish` or `admin`
+- **Code sync** → `develop` or `admin`
+- **Config read** → `config`, `config_admin`, or `admin`
+- **Config write** → `config_admin` or `admin`
+- **Snapshot manage** → `author`, `publish`, or `admin`
+
+Do not block all operations because role cannot be pre-determined — let the API enforce permissions and surface 403 errors.
+
+Save `email` to `.claude-plugin/project-config.json` for future use.
 
 Read `resources/config.md` for setup instructions if site or other values are missing.
 
@@ -162,7 +222,21 @@ Read `resources/config.md` for setup instructions if site or other values are mi
 1. Read the appropriate resource file from `resources/`
 2. Follow instructions in that resource
 3. Execute the API call
-4. Return formatted result
+4. Handle response per completion standards below
+
+### Completion Standards
+
+| HTTP Response | What It Means | Required Action |
+|---------------|---------------|-----------------|
+| **200/201** | Success | Display result with full URLs (`https://{ref}--{site}--{org}.aem.page{path}`) |
+| **202** | Async job started | Report job name and instruct: `check job status {jobName}` to track progress |
+| **204** | Success (no body) | Confirm completion: "{action} completed for {path}" |
+| **4xx/5xx** | Error | Show API error verbatim, then suggest fix per Error Handling table |
+
+**Before reporting success:**
+- For content operations: Include both preview and live URLs where applicable
+- For bulk operations: Never say "published" or "previewed" — say "job started" until job completes
+- For destructive operations: Confirm what was removed and what still exists (e.g., "Unpublished from live. Preview still available.")
 
 ---
 
@@ -238,6 +312,9 @@ Read `resources/config.md` for setup instructions if site or other values are mi
 - Keywords: pages, list pages, indexed pages, all pages, show pages
 - Actions: list, show, filter
 
+### Help
+- Triggers: `help`, `what can you do?`, `/ops help`, `/ops what can you do?`, "list commands", "show available commands" — show the **Help Response** block in this file (no resource module).
+
 ---
 
 ## Security & Confirmation Requirements
@@ -277,13 +354,41 @@ Before ANY destructive operation:
 
 ---
 
+## URL Parsing Helper
+
+If user provides an AEM URL instead of separate org/site/path values, extract context:
+
+```bash
+# Pattern: https://{ref}--{site}--{org}.aem.page{path} or .aem.live{path}
+# The hostname is split on -- (double hyphen), not on single - (hyphenated org/site names use single -).
+URL="$USER_INPUT"
+if echo "$URL" | grep -q '\.aem\.page\|\.aem\.live'; then
+  DOMAIN=$(echo "$URL" | cut -d'/' -f3)
+  HOST_PART=$(echo "$DOMAIN" | cut -d'.' -f1)
+  REF=$(echo "$HOST_PART" | awk -F'--' '{print $1}')
+  ORG=$(echo "$HOST_PART" | awk -F'--' '{print $NF}')
+  SITE=$(echo "$HOST_PART" | awk -F'--' '{
+    r=""; for(i=2;i<NF;i++) r=(r==""?"":r"--")$i; print r
+  }')
+  URL_PATH=$(echo "$URL" | sed 's|https://[^/]*||')
+  URL_PATH=${URL_PATH:-/}
+  echo "Parsed from URL: org=$ORG site=$SITE ref=$REF path=$URL_PATH"
+fi
+```
+
+**Examples (hyphenated `ref` / `site` / `org`):** `uat--hmns-uat-kw--alshaya-axp.aem.page` → `ref=uat`, `site=hmns-uat-kw`, `org=alshaya-axp`.
+
+Use this when user pastes a URL like `https://main--mysite--myorg.aem.page/en/products` to extract the path for operations. Still follow the standard org/auth flow for config validation.
+
+---
+
 ## Prerequisites
 
 This skill works with AEM Edge Delivery Services projects that are:
 
 1. **Onboarded to Admin Service** - Project must have admin.hlx.page access
 2. **User has Adobe IMS account** - Required for authentication
-3. **User has appropriate role** - Admin or Author on the site
+3. **User has a site role that allows the operation** - Roles are defined in the site configuration (`access.admin.role`). The Admin API defines eight roles: `admin`, `author`, `publish`, `develop`, `basic_author`, `basic_publish`, `config`, and `config_admin`. Each operation needs the matching permission; if the user lacks it, the API returns **403**. Do not assume only "admin" or "author" — use the **403 guidance** and role table earlier in this file when explaining permission errors.
 4. **Network access** - Can reach admin.hlx.page (not blocked by firewall)
 
 ---
@@ -296,7 +401,7 @@ When API returns an error, explain the cause and how to fix it:
 |-----------|-------|-----------|-----|
 | **400** | Malformed request | "The request format is invalid. Check the path or payload syntax." | Review path format, ensure JSON/YAML is valid |
 | **401** | Token expired or missing | "Your session has expired. You need to log in again." | Run `Skill({ skill: "project-management:auth" })` |
-| **403** | Insufficient permissions | "You don't have permission for this operation. This requires {Admin/Author} role." | Contact site admin to grant access |
+| **403** | Insufficient permissions | Show actual API error message. If none, say: "You don't have permission for this operation." | Contact site admin to grant access |
 | **404** (on path) | Content doesn't exist | "The path '{path}' was not found. Check if it exists in your content source." | Verify path spelling, check SharePoint/Drive |
 | **404** (on org/site) | Org or site not configured | "The organization '{org}' or site '{site}' is not found. It may not be onboarded to Admin Service." | Verify org/site names, contact Adobe support if new project |
 | **409** | Conflict (e.g., already exists) | "This resource already exists. Use update instead of create." | Use POST instead of PUT |
@@ -311,13 +416,13 @@ When API returns an error, explain the cause and how to fix it:
 
 ## Help Response
 
-When user asks "what can you do?" or "help", show:
+When the user wants the command list, show the block below. Match **help**, **what can you do?**, the same with a **/ops** prefix (e.g. `/ops help`, `/ops what can you do?`), or short phrases like **list commands** / **show available commands**:
 
 ```
 Content Operations:
   preview /path          - Update preview
   publish /path          - Publish to live
-  unpublish /path        - Remove from live (admin only)
+  unpublish /path        - Remove from live (requires publish or admin role)
   status /path           - Check preview/live status
 
 Cache Operations:
@@ -376,11 +481,11 @@ Profiles:
   delete profile {id}    - Remove profile config
 
 Index Config:
-  show index config      - View helix-index.json
+  show index config      - View query.yaml (index config)
   update index config    - Modify indexing rules
 
 Sitemap Config:
-  show sitemap config    - View helix-sitemap.json
+  show sitemap config    - View sitemap.yaml (sitemap config)
   update sitemap config  - Modify sitemap rules
 
 Versioning:

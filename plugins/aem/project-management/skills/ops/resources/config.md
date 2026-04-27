@@ -56,7 +56,7 @@ Skill({ skill: "project-management:auth" })
 ```bash
 ORG=$(cat .claude-plugin/project-config.json | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"org"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
 
-SITES_JSON=$(curl -s "https://admin.hlx.page/config/${ORG}/sites.json")
+SITES_JSON=$(curl -s --connect-timeout 15 --max-time 120 "https://admin.hlx.page/config/${ORG}/sites.json")
 SITE_NAMES=$(echo "$SITES_JSON" | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"name"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
 SITE_COUNT=$(echo "$SITE_NAMES" | wc -l | tr -d ' ')
 
@@ -74,57 +74,58 @@ AUTH_TOKEN=$(cat .claude-plugin/project-config.json | grep -o '"authToken"[[:spa
 ORG=$(cat .claude-plugin/project-config.json | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"org"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
 SITE=$(cat .claude-plugin/project-config.json | grep -o '"site"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"site"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
 
-SITE_CONFIG=$(curl -s -H "x-auth-token: ${AUTH_TOKEN}" "https://admin.hlx.page/config/${ORG}/sites/${SITE}.json")
+SITE_CONFIG=$(curl -s --connect-timeout 15 --max-time 120 -H "x-auth-token: ${AUTH_TOKEN}" "https://admin.hlx.page/config/${ORG}/sites/${SITE}.json")
 CODE_OWNER=$(echo "$SITE_CONFIG" | grep -o '"owner"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/"owner"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
 CODE_REPO=$(echo "$SITE_CONFIG" | grep -o '"repo"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/"repo"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
 
-node -e "
-const fs = require('fs');
-const config = JSON.parse(fs.readFileSync('.claude-plugin/project-config.json', 'utf8'));
-config.codeOwner = '${CODE_OWNER}';
-config.codeRepo = '${CODE_REPO}';
-fs.writeFileSync('.claude-plugin/project-config.json', JSON.stringify(config, null, 2));
-"
+# Update config file with code owner/repo
+# Agent should use Edit tool to update .claude-plugin/project-config.json with codeOwner and codeRepo values
 ```
 
 ## Permission Check
 
+Identity comes from `/profile`. Roles on the current site are read from `/config/{org}/sites/{site}.json` under `access.admin.role` (a map of role name → list of user emails), not from a separate `/access.json` endpoint.
+
+Use `python3` to parse JSON so nested structures are handled correctly (shell `grep` on JSON is unreliable):
+
 ```bash
-PROFILE=$(curl -s -H "x-auth-token: ${AUTH_TOKEN}" "https://admin.hlx.page/profile")
+PROFILE=$(curl -s --connect-timeout 15 --max-time 120 -H "x-auth-token: ${AUTH_TOKEN}" "https://admin.hlx.page/profile")
 USER_EMAIL=$(echo "$PROFILE" | grep -o '"email"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"email"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
 
-ACCESS=$(curl -s -H "x-auth-token: ${AUTH_TOKEN}" "https://admin.hlx.page/config/${ORG}/sites/${SITE}/access.json")
+SITE_CONFIG=$(curl -s --connect-timeout 15 --max-time 120 -H "x-auth-token: ${AUTH_TOKEN}" "https://admin.hlx.page/config/${ORG}/sites/${SITE}.json")
 
-IS_ADMIN=$(echo "$ACCESS" | grep -o '"admin"[[:space:]]*:[[:space:]]*\[[^]]*\]' | grep -q "$USER_EMAIL" && echo "true" || echo "false")
-IS_AUTHOR=$(echo "$ACCESS" | grep -o '"author"[[:space:]]*:[[:space:]]*\[[^]]*\]' | grep -q "$USER_EMAIL" && echo "true" || echo "false")
+export USER_EMAIL
+ROLES_ON_SITE=$(echo "$SITE_CONFIG" | python3 -c '
+import json, os, sys
+try:
+    email = os.environ.get("USER_EMAIL", "")
+    data = json.load(sys.stdin)
+    block = data.get("access", {}).get("admin", {}).get("role", {})
+    if not isinstance(block, dict):
+        print("")
+        sys.exit(0)
+    matched = []
+    for name, value in block.items():
+        if isinstance(value, list) and email in value:
+            matched.append(name)
+        elif value == email:
+            matched.append(name)
+    print(" ".join(matched))
+except Exception:
+    print("")
+')
 
-echo "User: $USER_EMAIL | Admin: $IS_ADMIN | Author: $IS_AUTHOR"
+IS_ADMIN=false
+IS_AUTHOR=false
+for r in $ROLES_ON_SITE; do
+  [ "$r" = "admin" ] && IS_ADMIN=true
+  { [ "$r" = "author" ] || [ "$r" = "basic_author" ]; } && IS_AUTHOR=true
+done
+
+echo "User: $USER_EMAIL | roles on site: ${ROLES_ON_SITE:-—} | IS_ADMIN=$IS_ADMIN | IS_AUTHOR=$IS_AUTHOR"
 ```
 
-## Permission Matrix
-
-| Operation | Required Role |
-|-----------|---------------|
-| Preview/Publish | Author or Admin |
-| Unpublish | Admin |
-| Cache Purge | Author or Admin |
-| Code Sync | Admin |
-| Index | Author or Admin |
-| Remove from Index | Admin |
-| Snapshots | Author (Publish requires Admin) |
-| User Management | Admin |
-| View Logs | Author or Admin |
-
-## Error Handling
-
-| HTTP Code | Meaning | Action |
-|-----------|---------|--------|
-| 200/201 | Success | Show result |
-| 202 | Accepted (async) | Show job ID |
-| 401 | Unauthorized | Re-authenticate |
-| 403 | Forbidden | Insufficient permissions |
-| 404 | Not found | Check path |
-| 429 | Rate limited | Wait and retry |
+`IS_AUTHOR` is **true** if the user has the `author` or `basic_author` role. For other roles (`publish`, `develop`, `config`, etc.) inspect the space-separated `ROLES_ON_SITE` list. If `ROLES_ON_SITE` is empty, the user may not be listed in `access.admin.role` or the config shape may differ—let the API enforce permissions on each call.
 
 ## Config Structure
 

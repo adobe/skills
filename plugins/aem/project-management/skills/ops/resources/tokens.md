@@ -12,33 +12,29 @@ Manage access tokens for Edge Delivery Services sites.
 
 | Intent | Endpoint | Method |
 |--------|----------|--------|
-| list tokens | `/config/{org}/{site}/tokens` | GET |
-| create token | `/config/{org}/{site}/tokens` | POST |
-| get token | `/config/{org}/{site}/tokens/{tokenId}` | GET |
-| revoke token | `/config/{org}/{site}/tokens/{tokenId}` | DELETE |
+| list tokens | `/config/{org}/sites/{site}/tokens.json` | GET |
+| create token | `/config/{org}/sites/{site}/tokens.json` | POST |
+| get token | `/config/{org}/sites/{site}/tokens/${tokenId}.json` | GET |
+| revoke token | `/config/{org}/sites/{site}/tokens/${tokenId}.json` | DELETE |
 
 ## Operations
 
 ### List Tokens
-
-**Requires Admin role.**
-
 ```bash
-curl -s \
+curl -s --connect-timeout 15 --max-time 120 \
   -H "x-auth-token: ${AUTH_TOKEN}" \
-  "https://admin.hlx.page/config/${ORG}/${SITE}/tokens"
+  "https://admin.hlx.page/config/${ORG}/sites/${SITE}/tokens.json"
 ```
 
+**Response format:** Present as table — ID | Name | Scopes | Expiration
+
 ### Create Token
-
-**Requires Admin role.**
-
 ```bash
-curl -s -X POST \
+curl -s --connect-timeout 15 --max-time 120 -X POST \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{"name": "Preview Token", "scopes": ["preview"]}' \
-  "https://admin.hlx.page/config/${ORG}/${SITE}/tokens"
+  "https://admin.hlx.page/config/${ORG}/sites/${SITE}/tokens.json"
 ```
 
 **Success:** `Created token: {name} (ID: {tokenId})`
@@ -46,27 +42,21 @@ curl -s -X POST \
 **Important:** Token value is only returned once at creation. Store it securely.
 
 ### Get Token
-
-**Requires Admin role.**
-
 ```bash
-curl -s \
+curl -s --connect-timeout 15 --max-time 120 \
   -H "x-auth-token: ${AUTH_TOKEN}" \
-  "https://admin.hlx.page/config/${ORG}/${SITE}/tokens/${TOKEN_ID}"
+  "https://admin.hlx.page/config/${ORG}/sites/${SITE}/tokens/${TOKEN_ID}.json"
 ```
 
 ### Revoke Token
-
-**Requires Admin role.**
-
 **DESTRUCTIVE OPERATION - CONFIRMATION REQUIRED**
 
 Confirm: "This will revoke token '{tokenId}'. Any systems using this token will lose access. Proceed? (yes/no)"
 
 ```bash
-curl -s -X DELETE \
+curl -s --connect-timeout 15 --max-time 120 -X DELETE \
   -H "x-auth-token: ${AUTH_TOKEN}" \
-  "https://admin.hlx.page/config/${ORG}/${SITE}/tokens/${TOKEN_ID}"
+  "https://admin.hlx.page/config/${ORG}/sites/${SITE}/tokens/${TOKEN_ID}.json"
 ```
 
 **Success:** `Revoked token: {tokenId}`

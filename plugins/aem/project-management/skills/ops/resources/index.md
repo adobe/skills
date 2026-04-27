@@ -10,19 +10,19 @@ Manage search index for Edge Delivery Services content.
 
 ## API Reference
 
-| Intent | Endpoint | Method |
-|--------|----------|--------|
-| reindex page | `/index/{org}/{site}/{ref}/{path}` | POST |
-| bulk reindex | `/index/{org}/{site}/{ref}/*` | POST |
-| index status | `/index/{org}/{site}/{ref}/{path}` | GET |
-| remove from index | `/index/{org}/{site}/{ref}/{path}` | DELETE |
+| Intent | Endpoint | Method | Required Role |
+|--------|----------|--------|---------------|
+| reindex page | `/index/{org}/{site}/{ref}/{path}` | POST | `basic_author`+ (`index:write`) |
+| bulk reindex | `/index/{org}/{site}/{ref}/*` | POST | `basic_author`+ (`index:write`) |
+| index status | `/index/{org}/{site}/{ref}/{path}` | GET | `basic_author`+ (`index:read`) |
+| remove from index | `/index/{org}/{site}/{ref}/{path}` | DELETE | `basic_author`+ (`index:write`) |
 
 ## Operations
 
 ### Re-index (Single)
 
 ```bash
-curl -s -X POST \
+curl -s --connect-timeout 15 --max-time 120 -X POST \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/index/${ORG}/${SITE}/${REF}${PATH}"
 ```
@@ -34,7 +34,7 @@ curl -s -X POST \
 **Limit: 1000 paths max per request.** For larger sets, batch into multiple calls.
 
 ```bash
-curl -s -X POST \
+curl -s --connect-timeout 15 --max-time 120 -X POST \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{"paths": ["/path1", "/path2"]}' \
@@ -46,14 +46,12 @@ curl -s -X POST \
 ### Index Status
 
 ```bash
-curl -s \
+curl -s --connect-timeout 15 --max-time 120 \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/index/${ORG}/${SITE}/${REF}${PATH}"
 ```
 
 ### Remove from Index
-
-**Requires Admin role.**
 
 **DESTRUCTIVE OPERATION - CONFIRMATION REQUIRED**
 
@@ -63,7 +61,7 @@ Before executing, you MUST:
 3. Only execute if user confirms with "yes"
 
 ```bash
-curl -s -X DELETE \
+curl -s --connect-timeout 15 --max-time 120 -X DELETE \
   -H "x-auth-token: ${AUTH_TOKEN}" \
   "https://admin.hlx.page/index/${ORG}/${SITE}/${REF}${PATH}"
 ```
