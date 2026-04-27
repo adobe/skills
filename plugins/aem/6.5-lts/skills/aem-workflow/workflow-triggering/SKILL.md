@@ -8,6 +8,16 @@ license: Apache-2.0
 
 All mechanisms to start a workflow on AEM 6.5 LTS — from UI, programmatic API, HTTP API, Manage Publication, and replication-linked triggers.
 
+## AEM Project Bootstrap Check
+
+> Before running this skill, check if `AGENTS.md` exists at the **workspace root**.
+>
+> | Status | Action |
+> |--------|--------|
+> | `AGENTS.md` **exists** | Continue with this skill. |
+> | `AGENTS.md` **missing** and `ensure-agents-md` skill is available | Run `ensure-agents-md` first, then return to this skill. |
+> | `AGENTS.md` **missing** and `ensure-agents-md` is not installed | Tell the user: *"For optimal project guidance, install the `ensure-agents-md` skill to bootstrap AGENTS.md before using this skill."* Then continue. |
+
 ## Variant Scope
 
 - AEM 6.5 LTS only.

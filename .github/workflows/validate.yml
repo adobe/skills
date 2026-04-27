@@ -93,3 +93,102 @@ jobs:
           fi
 
           echo "All SKILL.md files have a license field."
+
+  bootstrap-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: AEM skills must include the bootstrap prerequisite check
+        run: |
+          # Three required markers — heading, AGENTS.md reference, and ensure-agents-md reference.
+          # A valid section must contain ALL three, not just the heading.
+          heading="## AEM Project Bootstrap Check"
+          ref_agents="AGENTS.md"
+          ref_skill="ensure-agents-md"
+
+          missing=()
+          incomplete=()
+
+          for file in $(find plugins/aem/cloud-service/skills plugins/aem/6.5-lts/skills \
+                        -name SKILL.md ! -path '*/ensure-agents-md/*' | sort); do
+            has_heading=false
+            has_agents_ref=false
+            has_skill_ref=false
+
+            grep -qF "$heading" "$file" && has_heading=true
+            grep -qF "$ref_agents" "$file" && has_agents_ref=true
+            grep -qF "$ref_skill" "$file" && has_skill_ref=true
+
+            if [ "$has_heading" = false ]; then
+              missing+=("$file")
+            elif [ "$has_agents_ref" = false ] || [ "$has_skill_ref" = false ]; then
+              incomplete+=("$file (heading present but missing references: agents_md=$has_agents_ref, ensure_skill=$has_skill_ref)")
+            fi
+          done
+
+          all_bad=("${missing[@]}" "${incomplete[@]}")
+
+          # Write GitHub Step Summary
+          echo "## AEM Bootstrap Prerequisite Check" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "AEM skills (cloud-service, 6.5-lts) must include a complete \`## AEM Project Bootstrap Check\` section" >> "$GITHUB_STEP_SUMMARY"
+          echo "that references both \`AGENTS.md\` and \`ensure-agents-md\` so the agent checks for project" >> "$GITHUB_STEP_SUMMARY"
+          echo "bootstrap even when \`ensure-agents-md\` is not installed." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Skill | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
+
+          for file in $(find plugins/aem/cloud-service/skills plugins/aem/6.5-lts/skills \
+                        -name SKILL.md ! -path '*/ensure-agents-md/*' | sort); do
+            if printf '%s\n' "${missing[@]}" | grep -qx "$file"; then
+              echo "| $file | ❌ Missing section |" >> "$GITHUB_STEP_SUMMARY"
+            elif printf '%s\n' "${incomplete[@]}" | grep -q "^$file "; then
+              echo "| $file | ⚠️ Incomplete |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "| $file | ✅ Pass |" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+
+          failed=false
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo ""
+            echo "::error::The following AEM SKILL.md files are missing the '## AEM Project Bootstrap Check' section entirely:"
+            for f in "${missing[@]}"; do
+              echo "  $f"
+            done
+            failed=true
+          fi
+
+          if [ ${#incomplete[@]} -gt 0 ]; then
+            echo ""
+            echo "::error::The following AEM SKILL.md files have the heading but are missing required references:"
+            for f in "${incomplete[@]}"; do
+              echo "  $f"
+            done
+            failed=true
+          fi
+
+          if [ "$failed" = true ]; then
+            echo ""
+            echo "Each AEM skill must have a complete bootstrap check section containing:"
+            echo "  1. The heading: ## AEM Project Bootstrap Check"
+            echo "  2. A reference to AGENTS.md (the file the agent should look for)"
+            echo "  3. A reference to ensure-agents-md (the skill to run if AGENTS.md is missing)"
+            echo ""
+            echo "Standard block to add after the first heading:"
+            echo ""
+            echo '  ## AEM Project Bootstrap Check'
+            echo '  '
+            echo '  > Before running this skill, check if `AGENTS.md` exists at the **workspace root**.'
+            echo '  >'
+            echo '  > | Status | Action |'
+            echo '  > |--------|--------|'
+            echo '  > | `AGENTS.md` **exists** | Continue with this skill. |'
+            echo '  > | `AGENTS.md` **missing** and `ensure-agents-md` skill is available | Run `ensure-agents-md` first, then return to this skill. |'
+            echo '  > | `AGENTS.md` **missing** and `ensure-agents-md` is not installed | Tell the user: *"For optimal project guidance, install the `ensure-agents-md` skill to bootstrap AGENTS.md before using this skill."* Then continue. |'
+            exit 1
+          fi
+
+          echo "All AEM skills include a complete bootstrap prerequisite check."

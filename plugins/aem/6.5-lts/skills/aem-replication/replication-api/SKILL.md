@@ -8,6 +8,16 @@ license: Apache-2.0
 
 This skill provides comprehensive guidance on using the official Adobe Experience Manager 6.5 LTS Replication API for programmatic replication operations. The API enables custom code to activate, deactivate, and manage content distribution workflows.
 
+## AEM Project Bootstrap Check
+
+> Before running this skill, check if `AGENTS.md` exists at the **workspace root**.
+>
+> | Status | Action |
+> |--------|--------|
+> | `AGENTS.md` **exists** | Continue with this skill. |
+> | `AGENTS.md` **missing** and `ensure-agents-md` skill is available | Run `ensure-agents-md` first, then return to this skill. |
+> | `AGENTS.md` **missing** and `ensure-agents-md` is not installed | Tell the user: *"For optimal project guidance, install the `ensure-agents-md` skill to bootstrap AGENTS.md before using this skill."* Then continue. |
+
 ## When to Use This Skill
 
 Use this skill when you need to:
