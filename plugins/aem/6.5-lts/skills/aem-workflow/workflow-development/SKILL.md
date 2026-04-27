@@ -15,9 +15,10 @@ Java developers with OSGi / Maven familiarity building custom workflow steps on 
 ## Variant Scope
 
 - AEM 6.5 LTS, including Adobe Managed Services (AMS) deployments of 6.5 LTS.
-- Both Felix SCR and DS R6 annotations are supported. DS R6 preferred for new code.
+- Both Felix SCR and DS R6 annotations are supported. For new code, default to DS R6. Use Felix SCR only when the existing classes in the same module already use Felix SCR — match the project's annotation style rather than mixing both.
 - Felix SCR is supported for the lifetime of AEM 6.5 LTS only. Code intended to outlive 6.5 LTS (e.g., a future Cloud Service migration) should start on DS R6.
 - Bundle deployed via Maven (`autoInstallBundle`) or Package Manager.
+- **Not for AEM as a Cloud Service.** If the target instance is AEMaaCS, stop and use the cloud-service variant of this skill — the 6.5 LTS patterns here (Felix SCR, `/etc/workflow/models/`, JMX-based remediation) do not apply to AEMaaCS and will produce code that fails to deploy.
 
 ## Prerequisites
 
@@ -37,7 +38,7 @@ Development Progress
 - [ ] 2) Create Java class implementing WorkflowProcess or ParticipantStepChooser
 - [ ] 3) Register with @Component/@Service (Felix SCR) or @Component (DS R6) with service property
 - [ ] 4) Read step arguments from MetaDataMap args
-- [ ] 5) Access payload via item.getWorkflowData().getPayload().toString()
+- [ ] 5) Verify payloadType == "JCR_PATH"; then access via item.getWorkflowData().getPayload().toString()
 - [ ] 6) Read/write workflow instance metadata via item.getWorkflowData().getMetaDataMap()
 - [ ] 7) Return normally to advance; throw WorkflowException to trigger retry
 - [ ] 8) Deploy; verify process.label appears in Workflow Model Editor step picker
@@ -84,7 +85,15 @@ public class MyCustomProcess implements WorkflowProcess {
     @Override
     public void execute(WorkItem item, WorkflowSession session, MetaDataMap args)
             throws WorkflowException {
-        // same body as DS R6 example
+        // Guard against non-JCR_PATH payloads (e.g., BLOB).
+        // See process-step-patterns.md Pattern 1 for the full payload-type handling.
+        if (!"JCR_PATH".equals(item.getWorkflowData().getPayloadType())) {
+            return;
+        }
+        String payloadPath = item.getWorkflowData().getPayload().toString();
+        String myArg = args.get("myArgKey", "defaultValue");
+        item.getWorkflowData().getMetaDataMap().put("processedBy", "my-step");
+        // ... do work ...
     }
 }
 ```

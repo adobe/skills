@@ -6,12 +6,12 @@
 @Override
 public void execute(WorkItem item, WorkflowSession session, MetaDataMap args)
         throws WorkflowException {
-    String payloadPath = item.getWorkflowData().getPayload().toString();
-
-    // Verify payload type
+    // Verify payload type before reading the payload — non-JCR_PATH payloads
+    // (e.g. BLOB) do not expose a path via toString().
     if (!"JCR_PATH".equals(item.getWorkflowData().getPayloadType())) {
         return; // only handles JCR_PATH payloads
     }
+    String payloadPath = item.getWorkflowData().getPayload().toString();
 
     ResourceResolver resolver = session.adaptTo(ResourceResolver.class);
     Resource resource = resolver.getResource(payloadPath);
@@ -34,7 +34,10 @@ String targetPath = args.get("targetPath", "/content/default");
 // Boolean arg
 boolean activate = args.get("activateOnComplete", false);
 
-// Legacy PROCESS_ARGS comma-separated
+// LEGACY — do not generate for new steps. PROCESS_ARGS is a single
+// comma-separated string used by older OOTB steps. For new code, use
+// named args (see "targetPath" / "activateOnComplete" above). Only read
+// PROCESS_ARGS when extending an existing step that already uses it.
 String rawArgs = args.get("PROCESS_ARGS", "");
 String[] parts = StringUtils.split(rawArgs, ",");
 
@@ -73,6 +76,8 @@ session.complete(workItem, approveRoute);
 
 The `session.adaptTo(ResourceResolver.class)` resolver is tied to the workflow system user and may have limited write ACLs. For payload writes, use your service user:
 
+`getServiceResourceResolver` throws `LoginException` and `commit()` throws `PersistenceException`. Neither is declared on `WorkflowProcess.execute(...)`, so wrap both and convert to `WorkflowException` — never swallow them.
+
 ```java
 Map<String, Object> auth = Collections.singletonMap(
     ResourceResolverFactory.SUBSERVICE, "workflow-process");
@@ -83,6 +88,8 @@ try (ResourceResolver resolver = resolverFactory.getServiceResourceResolver(auth
         map.put("cq:reviewStatus", "approved");
         resolver.commit();
     }
+} catch (LoginException | PersistenceException e) {
+    throw new WorkflowException("Failed to write payload status: " + payloadPath, e);
 }
 ```
 
@@ -99,6 +106,9 @@ public void execute(WorkItem item, WorkflowSession session, MetaDataMap args)
     if ("JCR_PATH".equals(data.getPayloadType())) {
         ResourceResolver resolver = session.adaptTo(ResourceResolver.class);
         Resource payload = resolver.getResource(data.getPayload().toString());
+        if (payload == null) {
+            throw new WorkflowException("Payload not found: " + data.getPayload());
+        }
         ResourceCollection collection = rcManager.getResourceCollection(payload);
         if (collection != null) {
             // Multi-page workflow package
