@@ -93,6 +93,62 @@ public class ProjectEditorsChooser implements ParticipantStepChooser {
 }
 ```
 
+### Pattern 4: Route to the Workflow Initiator
+
+A very common need: notify or route a task back to whoever started the workflow. The `initiator` key is set by the engine on every workflow instance.
+
+```java
+@Component(service = ParticipantStepChooser.class,
+           property = {"chooser.label=Workflow Initiator Chooser"})
+public class InitiatorChooser implements ParticipantStepChooser {
+    @Override
+    public String getParticipant(WorkItem workItem, WorkflowSession session,
+                                 MetaDataMap args) throws WorkflowException {
+        String initiator = workItem.getWorkflowData()
+                                   .getMetaDataMap().get("initiator", String.class);
+        if (initiator == null || initiator.isEmpty()) {
+            return args.get("fallbackParticipant", "workflow-administrators");
+        }
+        return initiator;
+    }
+}
+```
+
+In the model XML, reference this chooser from a `DYNAMIC_PARTICIPANT` step:
+
+```xml
+<node jcr:primaryType="cq:WorkflowNode"
+      title="Notify Initiator"
+      type="DYNAMIC_PARTICIPANT">
+  <metaData jcr:primaryType="nt:unstructured"
+            PARTICIPANT_CHOOSER="Workflow Initiator Chooser"
+            DESCRIPTION="The acknowledgement message shown to the initiator."/>
+</node>
+```
+
+Do **not** rely on a string like `PARTICIPANT="$initiator$"` or `PARTICIPANT="${initiator}"` in the static PARTICIPANT step — variable substitution in the static `PARTICIPANT` field is not consistently supported across 6.5 LTS releases. Use the chooser above.
+
+## Notification-Only Participant Steps (Dialog Participant)
+
+When the spec says "notify the initiator" or "send back to the requester," the cleanest 6.5 LTS implementation is a Participant or Dynamic Participant step whose only purpose is to surface a message in the user's Inbox; the user clicks a single route to acknowledge and the workflow ends.
+
+```xml
+<node jcr:primaryType="cq:WorkflowNode"
+      title="No Promo Banner — Notify Initiator"
+      type="DYNAMIC_PARTICIPANT">
+  <metaData jcr:primaryType="nt:unstructured"
+            PARTICIPANT_CHOOSER="Workflow Initiator Chooser"
+            DESCRIPTION="No Promo Banner found on the page. Acknowledge to close."/>
+</node>
+```
+
+Two design rules:
+
+- One notification step per distinct outcome — do not multiplex outcomes through a shared step that decides the message in Java. Keeping outcomes as separate model nodes preserves the visual flow in the Model Editor.
+- The `DESCRIPTION` is the message the user sees in their Inbox. Keep it short and action-oriented.
+
+If a true email is required (not just an Inbox task), use the OOTB `Send Email` process step or a custom `WorkflowProcess` that calls the Day Communications Mail Service — that path is outside the scope of this skill.
+
 ## Completing Participant Steps via Code
 
 ```java

@@ -120,28 +120,3 @@ public void execute(WorkItem item, WorkflowSession session, MetaDataMap args)
 | Business skip (not an error) | Return normally | Workflow advances |
 | Hold for external event | Use TaskWorkflowProcess or EXTERNAL_PROCESS | Step remains SUSPENDED |
 
-## Testing
-
-`SimpleMetaDataMap` lives in `com.adobe.granite.workflow.metadata` but is not always on the public export list across 6.5 LTS versions. If it is not accessible from your test scope, mock `MetaDataMap` via Mockito (`mock(MetaDataMap.class)` with per-key stubs, or a `HashMap`-backed Answer) instead.
-
-```java
-@Test
-public void testExecute() throws WorkflowException {
-    WorkItem mockItem = mock(WorkItem.class);
-    WorkflowData mockData = mock(WorkflowData.class);
-    MetaDataMap mockMeta = new SimpleMetaDataMap();
-
-    when(mockItem.getWorkflowData()).thenReturn(mockData);
-    when(mockData.getPayload()).thenReturn("/content/test");
-    when(mockData.getPayloadType()).thenReturn("JCR_PATH");
-    when(mockData.getMetaDataMap()).thenReturn(mockMeta);
-
-    WorkflowSession mockSession = mock(WorkflowSession.class);
-    MetaDataMap args = new SimpleMetaDataMap();
-    args.put("myArg", "testValue");
-
-    new MyCustomProcess().execute(mockItem, mockSession, args);
-
-    assertEquals("expected", mockMeta.get("resultKey", String.class));
-}
-```

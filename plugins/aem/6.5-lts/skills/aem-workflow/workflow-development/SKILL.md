@@ -115,6 +115,7 @@ public class DepartmentHeadChooser implements ParticipantStepChooser {
 - Do not mix Felix SCR and DS R6 annotations in the same class.
 - Throw `WorkflowException` for retryable errors; log and rethrow for unexpected errors.
 - Do not log full payload contents or metadata values at `INFO` — payloads may carry PII or confidential content. Log the payload path and a correlation key; log full values only at `DEBUG` on non-production instances.
+- Model XML and Java are co-authored. The `PROCESS=` value on a `cq:WorkflowNode` must resolve to either the fully qualified class name **or** the exact `process.label` of a deployed `WorkflowProcess`. A model that references a label you have not registered will fail at runtime with `Process not found`. Generate the Java class first, deploy and confirm it appears in the Model Editor step picker, then reference it from the model.
 
 ## Rollback / Recovery
 

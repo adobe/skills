@@ -9,6 +9,44 @@
 | `/var/workflow/models/<name>` | Runtime (deployed) model | Engine reads from here |
 | `/libs/settings/workflow/models/` | OOTB models | Mutable but always overlay at `/conf` to survive upgrades |
 
+## Design-time Model Page Wrapper (canonical `.content.xml`)
+
+A `/conf`-based workflow model is a `cq:Page` whose `jcr:content` carries a `cq:WorkflowModel` child named `model`. The exact `cq:template` and `sling:resourceType` values matter — using the wrong template produces a model that opens differently in the Model Editor or fails to sync.
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<jcr:root xmlns:sling="http://sling.apache.org/jcr/sling/1.0"
+          xmlns:cq="http://www.day.com/jcr/cq/1.0"
+          xmlns:jcr="http://www.jcp.org/jcr/1.0"
+          xmlns:nt="http://www.jcp.org/jcr/nt/1.0"
+          jcr:primaryType="cq:Page">
+    <jcr:content
+        cq:template="/libs/settings/workflow/templates/model"
+        jcr:primaryType="cq:PageContent"
+        jcr:title="My Workflow"
+        sling:resourceType="cq/workflow/components/pages/model">
+        <model
+            jcr:primaryType="cq:WorkflowModel"
+            jcr:title="My Workflow"
+            sling:resourceType="cq/workflow/components/model">
+            <metaData jcr:primaryType="nt:unstructured"/>
+            <nodes jcr:primaryType="nt:unstructured">
+                <!-- node0..nodeN -->
+            </nodes>
+            <transitions jcr:primaryType="nt:unstructured">
+                <!-- t0..tN -->
+            </transitions>
+        </model>
+    </jcr:content>
+</jcr:root>
+```
+
+Common pitfalls — do not use any of these; they look plausible but are wrong:
+
+- ❌ `cq:template="/libs/settings/workflow/templates/workflow-model"` — hallucinated path, no such template.
+- ❌ `cq:template="/libs/cq/workflow/templates/model"` — legacy `/etc`-era template; resolves on some instances but is not the canonical `/conf` template.
+- ❌ Missing the `model` child node and putting `nodes` / `transitions` directly under `jcr:content`.
+
 ## Launcher Config Paths
 
 | Path | Priority | Notes |
