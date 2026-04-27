@@ -34,8 +34,16 @@ public class WorkflowStarterService {
         try (ResourceResolver resolver = resolverFactory.getServiceResourceResolver(auth)) {
             WorkflowSession session = resolver.adaptTo(WorkflowSession.class);
             WorkflowModel model = session.getModel(modelId);
+            if (model == null) {
+                // getModel returns null when the model isn't deployed or the path
+                // is wrong (typo, not synced from /conf to /var). Fail fast — the
+                // next call would NPE.
+                throw new WorkflowException("Workflow model not found: " + modelId);
+            }
             WorkflowData data = session.newWorkflowData("JCR_PATH", payloadPath);
             data.getMetaDataMap().put("workflowTitle", title);
+            // startWorkflow() is non-blocking; step execution happens asynchronously
+            // on the Sling job queue. To wait for completion, poll instance.getState().
             Workflow instance = session.startWorkflow(model, data);
             LOG.info("Started workflow {} for payload {}", instance.getId(), payloadPath);
             return instance.getId();
@@ -68,6 +76,12 @@ public class WorkflowStarterService {
            })
 public class NightlyAssetProcessingJob implements Runnable {
 
+    private static final Logger LOG = LoggerFactory.getLogger(NightlyAssetProcessingJob.class);
+
+    // Hard cap per run — prevents an unbounded query result from saturating the
+    // workflow job queue. Tune to your environment; remaining items run next cycle.
+    private static final int MAX_PER_RUN = 500;
+
     @Reference
     private ResourceResolverFactory resolverFactory;
 
@@ -78,17 +92,31 @@ public class NightlyAssetProcessingJob implements Runnable {
         try (ResourceResolver resolver = resolverFactory.getServiceResourceResolver(auth)) {
             WorkflowSession wfs = resolver.adaptTo(WorkflowSession.class);
             WorkflowModel model = wfs.getModel("/var/workflow/models/asset-processing");
-            // Start workflow for each unprocessed asset
+            if (model == null) {
+                LOG.error("Workflow model not deployed; aborting batch");
+                return;
+            }
+            // High-volume triggering: set transient="true" on the model to avoid
+            // /var/workflow/instances bloat. See workflow-model-design Architecture
+            // Considerations for the full rationale.
             Iterator<Resource> assets = resolver.findResources(
                 "SELECT * FROM [dam:Asset] WHERE ISDESCENDANTNODE('/content/dam/pending')",
                 Query.JCR_SQL2);
-            while (assets.hasNext()) {
+            int started = 0;
+            while (assets.hasNext() && started < MAX_PER_RUN) {
                 String path = assets.next().getPath();
-                WorkflowData data = wfs.newWorkflowData("JCR_PATH", path);
-                wfs.startWorkflow(model, data);
+                try {
+                    WorkflowData data = wfs.newWorkflowData("JCR_PATH", path);
+                    wfs.startWorkflow(model, data);
+                    started++;
+                } catch (WorkflowException e) {
+                    // One bad payload should not abort the whole batch — log and continue.
+                    LOG.warn("Failed to start workflow for {}: {}", path, e.getMessage());
+                }
             }
-        } catch (Exception e) {
-            LoggerFactory.getLogger(getClass()).error("Nightly job failed", e);
+            LOG.info("Started {} workflows; remaining will run next cycle", started);
+        } catch (LoginException e) {
+            LOG.error("Service user login failed", e);
         }
     }
 }

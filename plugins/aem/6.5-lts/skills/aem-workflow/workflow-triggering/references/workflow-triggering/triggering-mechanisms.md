@@ -29,7 +29,7 @@
 4. Check **Include Workflow** → select a workflow model
 5. Click **Publish** or **Publish Later**
 
-**Payload:** AEM creates a `cq:WorkflowContentPackage` node containing all selected paths. The workflow receives this package as the `JCR_PATH` payload.
+**Payload:** AEM creates a workflow package — a `cq:Page` collection built from `/libs/cq/workflow/components/collection/page` — under `/var/workflow/packages/` (newer 6.5 LTS) or `/etc/workflow/packages/` (legacy fallback). The workflow receives this package's path as the `JCR_PATH` payload. Detect at runtime via `payload.adaptTo(ResourceCollection.class)` — do not check primary type.
 
 **Reading package members in a process step:**
 ```java
@@ -63,13 +63,15 @@ data.getMetaDataMap().put("department", "marketing");
 wfs.startWorkflow(model, data);
 ```
 
-**Service user requirement:** Map a sub-service or use the deprecated SlingRepository.loginService(). The `workflow-process-service` system user exists for this purpose on 6.5 LTS.
+**Service user requirement:** Use a service user via `ResourceResolverFactory.getServiceResourceResolver()` with a sub-service name (preferred) or `SlingRepository.loginService(subServiceName)`. The `workflow-process-service` system user exists for this purpose on 6.5 LTS. Note: `loginService(...)` is the supported method — only `loginAdministrative()` is deprecated and must not be used.
 
 ---
 
 ## Mechanism 4: HTTP Workflow REST API
 
 **When to use:** CI/CD pipelines, external systems, shell scripts, integration tests.
+
+> **Local development only.** The `curl -u admin:admin` examples target a local author at `localhost:4502` with the default admin password. Never run them against a shared, stage, or production instance, and never with default `admin:admin` credentials outside an isolated dev box. For CI/CD or external systems hitting non-local environments, use a service-account token or short-lived OAuth credentials.
 
 ```bash
 # Start a workflow instance

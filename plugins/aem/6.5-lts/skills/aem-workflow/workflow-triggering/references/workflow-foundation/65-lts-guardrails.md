@@ -48,15 +48,25 @@ ResourceResolver resolver = factory.getServiceResourceResolver(auth);
 
 ## Workflow Packages (Multi-Page Payloads)
 
-When Manage Publication sends multiple pages, the payload is a `cq:WorkflowContentPackage` node under `/etc/workflow/packages/`.
+When Manage Publication (or a custom caller) sends multiple pages, the payload is a workflow-package page under `/var/workflow/packages/` (newer) or `/etc/workflow/packages/` (legacy), built from the template `/libs/cq/workflow/components/collection/page`.
 
-In process steps, check:
+The canonical way to detect a workflow package from a process step is to adapt the payload resource to `ResourceCollection` — a non-null result means the payload is a multi-member collection:
+
 ```java
-if ("cq:WorkflowContentPackage".equals(
-        resource.getValueMap().get("jcr:primaryType", ""))) {
-    // iterate members via ResourceCollectionManager
+Resource payload = resolver.getResource(payloadPath);
+ResourceCollection collection = payload != null
+        ? payload.adaptTo(ResourceCollection.class)
+        : null;
+if (collection != null) {
+    // multi-member workflow package — iterate via ResourceCollectionManager
+    Iterator<Node> nodes = collection.list(new String[]{"cq:Page", "dam:Asset"});
+    // ...
+} else {
+    // single-payload workflow
 }
 ```
+
+Do not rely on a primary-type string check — the package is a `cq:Page`, and the primary type alone does not distinguish a package from an ordinary page.
 
 Purge workflow packages along with instances using `scheduledpurge.purgePackagePayload=true`.
 
