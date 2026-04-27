@@ -99,7 +99,7 @@ Common mistake: collapsing both Approve and Reject into a single downstream PROC
 
 ## Goto Step for Retry Loops (OOTB GotoProcess)
 
-Workflow rules (OR_SPLIT branches, Goto, launcher conditions) are evaluated as **ECMAScript** (Rhino) on AEM 6.5 LTS. Groovy is not supported for workflow rules.
+Workflow rules (OR_SPLIT branches, Goto, launcher conditions) are evaluated as **ECMAScript** (Rhino) on AEM 6.5 LTS.
 
 ```javascript
 // OR_SPLIT / PROCESS Goto rule — ECMAScript

@@ -89,4 +89,4 @@ meta.put("status", "APPROVED");
 | `WorkflowModel` | `getNodes()` | All `WorkflowNode` objects |
 | `WorkflowNode` | `getType()` | `START`, `END`, `PROCESS`, `PARTICIPANT`, `DYNAMIC_PARTICIPANT`, `OR_SPLIT`, `AND_SPLIT`, `AND_JOIN` |
 | `WorkflowNode` | `getMetaData()` | Step configuration (`PROCESS`, `PARTICIPANT`, etc.) |
-| `WorkflowTransition` | `getRule()` | ECMA/Groovy rule string for OR splits |
+| `WorkflowTransition` | `getRule()` | ECMAScript (Rhino) rule string for OR splits |
