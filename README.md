@@ -80,6 +80,19 @@ Design-phase skills that run *before* implementation. Produces static HTML and J
 | `generate-import-html` | Generate structured HTML |
 | `preview-import` | Preview imported content |
 
+##### Managing Projects
+
+Handover documentation and PDF guides generation for AEM Edge Delivery Services projects. Available via the `aem-project-management` plugin.
+
+| Skill | Description |
+|-------|-------------|
+| `handover` | Orchestrates project documentation generation |
+| `authoring` | Generate comprehensive authoring guide for content authors |
+| `development` | Generate technical documentation for developers |
+| `admin` | Generate admin guide for site administrators |
+| `whitepaper` | Create professional PDF whitepapers from Markdown |
+| `auth` | Authenticate with AEM Config Service API |
+
 ### AEM as a Cloud Service — Create Component
 
 The `create-component` skill creates complete AEM components following Adobe best practices for AEM Cloud Service and AEM 6.5. It covers:
@@ -168,19 +181,6 @@ Under `plugins/aem/cloud-service/skills/`, **`best-practices/`** is the **genera
 **Key features:**
 - **Best practices:** one skill for patterns, SCR→OSGi DS, and resolver/logging — applicable to Cloud Service projects generally, not only migration
 - **Migration:** orchestration-only; pattern and transformation content lives in **`best-practices`**
-
-##### Managing Projects
-
-Handover documentation and PDF generation for AEM Edge Delivery Services projects.
-
-| Skill | Description |
-|-------|-------------|
-| `handover` | Orchestrates project documentation generation |
-| `authoring` | Generate comprehensive authoring guide for content authors |
-| `development` | Generate technical documentation for developers |
-| `admin` | Generate admin guide for site administrators |
-| `whitepaper` | Create professional PDF whitepapers from Markdown |
-| `auth` | Authenticate with AEM Config Service API |
 
 ### App Builder
 
