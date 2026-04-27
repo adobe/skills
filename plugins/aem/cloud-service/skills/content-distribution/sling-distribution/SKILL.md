@@ -10,6 +10,16 @@ description: |
 
 Monitor and react to content distribution lifecycle events using the Sling Distribution API.
 
+## AEM Project Bootstrap Check
+
+> Before running this skill, check if `AGENTS.md` exists at the **workspace root**.
+>
+> | Status | Action |
+> |--------|--------|
+> | `AGENTS.md` **exists** | Continue with this skill. |
+> | `AGENTS.md` **missing** and `ensure-agents-md` skill is available | Run `ensure-agents-md` first, then return to this skill. |
+> | `AGENTS.md` **missing** and `ensure-agents-md` is not installed | Tell the user: *"For optimal project guidance, install the `ensure-agents-md` skill to bootstrap AGENTS.md before using this skill."* Then continue. |
+
 ## When to Use This Skill
 
 Use Sling Distribution event handling for:

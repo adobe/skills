@@ -12,6 +12,16 @@ This skill holds the **pattern transformation modules** (`references/*.md`). The
 
 **Quick pick:** Open the **Pattern Reference Modules** table below → jump to the matching `references/<file>.md` → read it fully before editing. For Java: Felix SCR, resolvers, or logging, use **Java / OSGi baseline** links first when those appear in the same change set.
 
+## AEM Project Bootstrap Check
+
+> Before running this skill, check if `AGENTS.md` exists at the **workspace root**.
+>
+> | Status | Action |
+> |--------|--------|
+> | `AGENTS.md` **exists** | Continue with this skill. |
+> | `AGENTS.md` **missing** and `ensure-agents-md` skill is available | Run `ensure-agents-md` first, then return to this skill. |
+> | `AGENTS.md` **missing** and `ensure-agents-md` is not installed | Tell the user: *"For optimal project guidance, install the `ensure-agents-md` skill to bootstrap AGENTS.md before using this skill."* Then continue. |
+
 ## When to Use This Skill
 
 Use this skill when you need to:

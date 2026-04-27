@@ -10,6 +10,16 @@ description: |
 
 Programmatic content publishing and unpublishing using the official AEM Replication API.
 
+## AEM Project Bootstrap Check
+
+> Before running this skill, check if `AGENTS.md` exists at the **workspace root**.
+>
+> | Status | Action |
+> |--------|--------|
+> | `AGENTS.md` **exists** | Continue with this skill. |
+> | `AGENTS.md` **missing** and `ensure-agents-md` skill is available | Run `ensure-agents-md` first, then return to this skill. |
+> | `AGENTS.md` **missing** and `ensure-agents-md` is not installed | Tell the user: *"For optimal project guidance, install the `ensure-agents-md` skill to bootstrap AGENTS.md before using this skill."* Then continue. |
+
 ## When to Use This Skill
 
 Use the Replication API for programmatic content distribution:

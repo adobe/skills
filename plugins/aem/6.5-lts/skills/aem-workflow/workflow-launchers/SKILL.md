@@ -6,6 +6,16 @@ license: Apache-2.0
 
 # Workflow Launchers Skill — AEM 6.5 LTS
 
+## AEM Project Bootstrap Check
+
+> Before running this skill, check if `AGENTS.md` exists at the **workspace root**.
+>
+> | Status | Action |
+> |--------|--------|
+> | `AGENTS.md` **exists** | Continue with this skill. |
+> | `AGENTS.md` **missing** and `ensure-agents-md` skill is available | Run `ensure-agents-md` first, then return to this skill. |
+> | `AGENTS.md` **missing** and `ensure-agents-md` is not installed | Tell the user: *"For optimal project guidance, install the `ensure-agents-md` skill to bootstrap AGENTS.md before using this skill."* Then continue. |
+
 ## Purpose
 
 This skill teaches you how to configure and deploy Workflow Launchers that automatically start workflows in response to JCR content changes on AEM 6.5 LTS.

@@ -6,6 +6,16 @@ license: Apache-2.0
 
 # Workflow Orchestrator — AEM 6.5 LTS
 
+## AEM Project Bootstrap Check
+
+> Before running this skill, check if `AGENTS.md` exists at the **workspace root**.
+>
+> | Status | Action |
+> |--------|--------|
+> | `AGENTS.md` **exists** | Continue with this skill. |
+> | `AGENTS.md` **missing** and `ensure-agents-md` skill is available | Run `ensure-agents-md` first, then return to this skill. |
+> | `AGENTS.md` **missing** and `ensure-agents-md` is not installed | Tell the user: *"For optimal project guidance, install the `ensure-agents-md` skill to bootstrap AGENTS.md before using this skill."* Then continue. |
+
 ## Purpose
 
 This is the **master entry point** for all AEM Workflow tasks on AEM 6.5 LTS — spanning both **development** (building workflows) and **production support** (debugging and triaging workflow issues). Read this skill first. It classifies the user's request and routes to the right sub-skill.

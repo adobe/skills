@@ -12,6 +12,16 @@ This skill is **orchestration**: BPA data, CAM/MCP, **one pattern per session**,
 
 **Setup:** Use the **`aem-cloud-service`** install (see repository root **README**) so both **migration** and **best-practices** paths are available. If you already have the monorepo open with resolvable `{best-practices}` paths, no separate install step is required.
 
+## AEM Project Bootstrap Check
+
+> Before running this skill, check if `AGENTS.md` exists at the **workspace root**.
+>
+> | Status | Action |
+> |--------|--------|
+> | `AGENTS.md` **exists** | Continue with this skill. |
+> | `AGENTS.md` **missing** and `ensure-agents-md` skill is available | Run `ensure-agents-md` first, then return to this skill. |
+> | `AGENTS.md` **missing** and `ensure-agents-md` is not installed | Tell the user: *"For optimal project guidance, install the `ensure-agents-md` skill to bootstrap AGENTS.md before using this skill."* Then continue. |
+
 ## Quick start (for the person driving the agent)
 
 **One pattern per chat/session** — if you ask to "fix everything," the skill will ask you to pick first (e.g. scheduler vs replication vs htlLint).
