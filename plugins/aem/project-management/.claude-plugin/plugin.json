@@ -1,5 +1,5 @@
 {
-  "name": "project-management",
+  "name": "aem-project-management",
   "version": "1.0.0",
   "description": "Project lifecycle management for AEM Edge Delivery Services - handover documentation, PDF generation, and project assistance",
   "author": {
