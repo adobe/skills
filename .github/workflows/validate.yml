@@ -35,13 +35,14 @@ jobs:
           fi
 
           missing=()
-          for dir in plugins/*/*/; do
-            # Remove trailing slash for the lookup path
-            path="/${dir%/}"
+          while IFS= read -r plugin_json; do
+            # Extract the directory path from the plugin.json file path
+            path="/${plugin_json%/.claude-plugin/plugin.json}"
+            echo "Checking $path in CODEOWNERS..."
             if ! grep -q "^${path}[/ ]" "$codeowners"; then
               missing+=("$path")
             fi
-          done
+          done < <(find plugins -name "plugin.json" -path "*/.claude-plugin/plugin.json")
 
           if [ ${#missing[@]} -gt 0 ]; then
             echo "::error::The following skill directories are not covered in CODEOWNERS:"

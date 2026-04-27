@@ -26,7 +26,10 @@
 /plugins/aem/6.5-lts/                                  @abhishekgarg18 @akankshajain18 @rombert
 
 # Adobe App Builder
-/plugins/app-builder/skills                            @pkumargaddam
+/plugins/app-builder                                   @pkumargaddam
 
 # Adobe for creativity
 /plugins/creative-cloud/adobe-for-creativity           @bossjones @njampani123 @solimant
+
+# Stardust
+/plugins/stardust                                      @paolomoz
