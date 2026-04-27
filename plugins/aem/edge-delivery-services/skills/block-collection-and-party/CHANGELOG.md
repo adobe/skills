@@ -1,3 +1,26 @@
+# [1.1.0](https://github.com/adobe/skills/compare/block-collection-and-party-v1.0.0...block-collection-and-party-v1.1.0) (2026-04-27)
+
+
+### Bug Fixes
+
+* **marketplace:** rename project-management to aem-project-management in marketplace.json ([0a442dd](https://github.com/adobe/skills/commit/0a442dd550a3cfd502eae7e35e90f75b535b0709))
+
+
+### Features
+
+* add Adobe for creativity plugin skeleton ([0ea30a4](https://github.com/adobe/skills/commit/0ea30a4c5643c93b9c62e7903c85e34d90238a02))
+* adding aem content distribution skill in AEMaaCS skills ([#84](https://github.com/adobe/skills/issues/84)) ([4c49279](https://github.com/adobe/skills/commit/4c492792d8dca63eec6755525074501d03f48127)), closes [#72](https://github.com/adobe/skills/issues/72) [adobe/skills#72](https://github.com/adobe/skills/issues/72) [#76](https://github.com/adobe/skills/issues/76)
+* **adobe-for-creativity:** add multiple new skills for photo and video editing ([a33c79a](https://github.com/adobe/skills/commit/a33c79a46a6ca1ceff49fd25a8f560254887485d))
+* **marketplace:** enrich plugin catalog with discovery metadata ([8d82ddd](https://github.com/adobe/skills/commit/8d82ddd11af723ae89d49c178cefe47a8de029dd))
+* **migration:** batch BPA findings with paging and unified helper behavior ([bfe825c](https://github.com/adobe/skills/commit/bfe825cd2c3f8bcb8fa7ed04f9d8d99594832b0e))
+* **migration:** wire OSGi Cloud Manager reference in skill, README, plugin ([2bdf423](https://github.com/adobe/skills/commit/2bdf42340c22a7b8c6989a8f834a20717d5c8f0e))
+* **stardust:** publish design-phase skills plugin ([#92](https://github.com/adobe/skills/issues/92)) ([a183041](https://github.com/adobe/skills/commit/a183041f6e233fcc512561bdd237ca513fddc8ec)), closes [#1](https://github.com/adobe/skills/issues/1) [#3](https://github.com/adobe/skills/issues/3) [#4](https://github.com/adobe/skills/issues/4) [#5](https://github.com/adobe/skills/issues/5) [#6](https://github.com/adobe/skills/issues/6) [#7](https://github.com/adobe/skills/issues/7) [#faf9f6](https://github.com/adobe/skills/issues/faf9f6) [hi#density](https://github.com/hi/issues/density) [#595959](https://github.com/adobe/skills/issues/595959) [#7F7F7F](https://github.com/adobe/skills/issues/7F7F7F) [#A5A5A5](https://github.com/adobe/skills/issues/A5A5A5) [#CCCCCC](https://github.com/adobe/skills/issues/CCCCCC) [#F2F2F2](https://github.com/adobe/skills/issues/F2F2F2) [#F5F5F5](https://github.com/adobe/skills/issues/F5F5F5) [#CCCCCC](https://github.com/adobe/skills/issues/CCCCCC) [#D4E2E8](https://github.com/adobe/skills/issues/D4E2E8) [#E8ECEE](https://github.com/adobe/skills/issues/E8ECEE)
+
+
+### Reverts
+
+* **migration:** restore README from beta; drop migration .claude-plugin ([02fe9b9](https://github.com/adobe/skills/commit/02fe9b9aba69c83b7bd7d742d1a769f3596d7007))
+
 # 1.0.0 (2026-04-16)
 
 
