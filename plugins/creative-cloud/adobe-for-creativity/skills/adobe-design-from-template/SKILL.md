@@ -15,7 +15,6 @@ license: Apache-2.0
 metadata:
   version: 1.0.0
   visibility: public
-compatibility: "Requires Adobe for creativity MCP — search_design, fill_text, change_background_color, animate_design."
 ---
 
 # Adobe Design from Template
@@ -26,7 +25,21 @@ to share or open in Express for further editing.
 
 ---
 
-## Step 0 - prereq: Initialize Adobe Tools
+## Tool Reference
+
+| Step | Tool | Notes |
+|------|------|-------|
+| Search for template | `search_design` | Interactive picker; user selects URN |
+| Edit text and copy | `fill_text` | Retry once on transient error |
+| Change background color | `change_background_color` | Pass hex; infer from color description if needed |
+| Animate design | `animate_design` | Skip on 403 entitlement; no retry |
+
+---
+
+## Workflow
+
+### Step 0 — Initialize Adobe Tools
+
 Call `adobe_mandatory_init` first. This returns file handling rules and tool routing guidance required for the rest of the workflow.
 
 ```json
@@ -35,11 +48,15 @@ Call `adobe_mandatory_init` first. This returns file handling rules and tool rou
 
 ---
 
-## Workflow
+### Step 1 — Entitlement Check
 
-### Step 0 — Build the search query (don't ask questions first)
+Now that `adobe_mandatory_init` confirmed that the "Adobe for creativity" connector is live, check which tools are available through the "Adobe for creativity" connector by cross checking against the Tool Reference table above.
 
-Extract the design type from whatever the user said and go straight to Step 1.
+---
+
+### Step 2 — Build the search query (don't ask questions first)
+
+Extract the design type from whatever the user said and go straight to Step 3.
 Asking clarifying questions before showing templates creates friction; the picker
 lets users course-correct visually, which is faster.
 
@@ -53,7 +70,7 @@ lets users course-correct visually, which is faster.
 
 ---
 
-### Step 1 — Search for a template
+### Step 3 — Search for a template
 
 Call `search_design`:
 
@@ -70,7 +87,7 @@ it; the URN comes back automatically. If the user says "show more", call
 
 ---
 
-### Step 2 — Confirm selection and offer edits
+### Step 4 — Confirm selection and offer edits
 
 Once a template is selected, confirm what was picked and ask what to customize:
 
@@ -86,7 +103,7 @@ and ask if they want anything else before wrapping up.
 
 ---
 
-### Step 3 — Apply edits
+### Step 5 — Apply edits
 
 After each edit, ask: *"What else would you like to change, or does this look good?"*
 
@@ -140,7 +157,7 @@ Skip it and note in the delivery: *"Animation isn't available on your current Ad
 
 ---
 
-### Step 4 — Deliver
+### Step 6 — Deliver
 
 When the user is satisfied:
 

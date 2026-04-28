@@ -19,7 +19,7 @@ Produces platform-ready images and videos from a single source file. Uses AI can
 | Input                         | Supported       | Notes                                                                               |
 | ----------------------------- | --------------- | ----------------------------------------------------------------------------------- |
 | JPG / PNG                     | ✅ Full workflow |                                                                                     |
-| Firefly-generated image       | ✅ Full workflow | Use `presignedRenditionUrl`, not `presignedAssetUrl` if asset is `.ffgenimg` format |
+| Firefly-generated image       | ✅ Full workflow | For `.ffgenimg` assets, pass the `presignedRenditionUrl` field, not `presignedAssetUrl` |
 | Express file                  | ⚠️ Partial       | Must be exported to JPG/PNG first — tell user before proceeding                     |
 | PSD / AI (Illustrator)        | ⚠️ Partial       | Flatten first (see Error Handling if this fails)                                    |
 | Video (MP4/MOV)               | ⚠️ Partial       | Resize only — no smart reframe. See VIDEO WORKFLOW                                  |
@@ -33,6 +33,62 @@ Call `adobe_mandatory_init` first. This returns file handling rules and tool rou
 ```json
 { "skill_name": "adobe-create-social-variations", "skill_version": "1.0.0" }
 ```
+
+---
+
+## Step 1 — Entitlement Check
+
+Now that `adobe_mandatory_init` confirmed that the "Adobe for creativity" connector is live, check which tools are available through the connector and set capability flags.
+
+### Image Workflow — Core Tools (required)
+
+All of these must be present for the skill to run at all. If **any** are missing from the connector, output this message exactly and stop — make no further tool calls:
+
+> "To access this skill, please disconnect and reconnect to the "Adobe for creativity" Connector to sign in using an Adobe account, or sign up."
+
+| Tool | Purpose |
+|------|---------|
+| `asset_add_file` | File picker / CC browse / upload |
+| `asset_initialize_file_upload` | First call in two-step egress upload |
+| `asset_finalize_file_upload` | Second call in two-step egress upload |
+| `asset_inline_preview` | Determines focus strategy before cropping |
+| `image_crop_and_resize` | Per-platform, per-format cropping |
+| `asset_preview_file` | Test previews and final delivery |
+
+### Image Workflow — Enhanced Tools (optional, graceful fallback)
+
+| Tool | Flag | If missing |
+|------|------|------------|
+| `image_generative_expand` | `expandAvailable = true/false` | Use `image_crop_and_resize` with `fit: "reframe"` from `sourceURI` instead. Do NOT mention "AI canvas expansion" to the user. Note in delivery summary: "Smart reframe was used for aspect ratio adaptation." |
+
+### Video Workflow — Required Tools (optional workflow, all-or-nothing)
+
+Only offer the video workflow if **both** tools below are available. If either is missing, set `videoCapable = false` — do NOT mention video resizing capabilities to the user at any point.
+
+| Tool | Purpose |
+|------|---------|
+| `video_resize` | Same-ratio resize only |
+| `resizeVideoPoll` | Deferred tool — load before calling |
+
+If `videoCapable = false` and the user explicitly asks about video resizing, avoid verbosity and output this message exactly:
+
+> "Video resizing isn't available with your current setup. Please disconnect and reconnect to the "Adobe for creativity" Connector to sign in using an Adobe account, or sign up. In the meantime, I can help with image crops and social media variants though."
+
+---
+
+## Tool Reference
+
+| Step | Tool | Notes |
+|------|------|-------|
+| Upload chat-dropped file | `asset_initialize_file_upload` | First call in two-step egress upload |
+| Complete the upload | `asset_finalize_file_upload` | Second call in two-step egress upload |
+| Get file from CC or as egress fallback | `asset_add_file` | File picker / CC browse / upload |
+| Inspect source image | `asset_inline_preview` | Determines focus strategy before cropping |
+| Expand canvas | `image_generative_expand` | Creates tall (9:16/4:5) and wide (~2:1/16:9) variants |
+| Crop to platform dimensions | `image_crop_and_resize` | Per-platform, per-format; also 403 fallback for expand |
+| Preview test crops or full set | `asset_preview_file` | Before full run (test) and at delivery |
+| Resize video | `video_resize` | Same-ratio resize only |
+| Poll video resize job | `resizeVideoPoll` | Deferred tool — load before calling |
 
 ---
 

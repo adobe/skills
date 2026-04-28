@@ -37,7 +37,7 @@ for creativity tools.
 | Brightness/Contrast   | `image_adjust_brightness_and_contrast`                      | Batch                                              |
 | Vibrance/Saturation   | `image_adjust_vibrance_and_saturation`                      | Batch                                              |
 | Face detection        | `image_select_subject` with `bodyParts: ["Face"]`           | To check for face presence                         |
-| Adaptive Enhancements | `image_apply_preset`                                        | Per image, opt-in (see Step 5b)                    |
+| Adaptive Enhancements | `image_apply_preset`                                        | Per image, opt-in (see Step 6)                     |
 | Adaptive Blur BG      | `image_apply_preset` ("Adaptive: Blur Background - Subtle") | Replaces `image_apply_lens_blur` when selected     |
 | Heavy blur            | `image_apply_gaussian_blur`                                 | Per image (if user requests, no adaptive selected) |
 | Crop                  | `image_crop_and_resize`                                     | Per image                                          |
@@ -56,7 +56,13 @@ Call `adobe_mandatory_init` first. This returns file handling rules and tool rou
 
 ---
 
-## Step 1: Image Ingestion
+## Step 1 — Entitlement Check
+
+Now that `adobe_mandatory_init` confirmed that the "Adobe for creativity" connector is live, check which tools are available through the "Adobe for creativity" connector by cross checking against the Tool Reference table above.
+
+---
+
+## Step 2: Image Ingestion
 
 Call `asset_add_file` with no parameters. This renders an interactive UI where
 the user can:
@@ -74,7 +80,7 @@ user selects files. Wait for that follow-up before continuing.
 
 ---
 
-## Step 2: Announce Pipeline + Offer Options
+## Step 3: Announce Pipeline + Offer Options
 
 Once URIs are obtained, check whether the user's message **already fully specifies** their enhancement, tweak, and crop preferences.
 
@@ -131,10 +137,10 @@ Question 3 (single_select):
 - "Subject Pop" → `Adaptive: Subject - Pop`
 - "Warm Pop" → `Adaptive: Subject - Warm Pop`
 - "Whiten Teeth" → `Adaptive: Portrait - Whiten Teeth` (skip if no face detected)
-- "Blur Background" → `Adaptive: Blur Background - Subtle` (skip Step 6 for that image)
+- "Blur Background" → `Adaptive: Blur Background - Subtle` (skip Step 7 for that image)
 - "Sky Drama (Blue)" → `Adaptive: Sky - Blue Drama`
 - "Sky Drama (Dark)" → `Adaptive: Sky - Dark Drama`
-- "None" → skip Step 5b entirely
+- "None" → skip Step 6 entirely
 **Manual tweaks:**
 - "Recover highlights" → `image_adjust_highlights` → `amount: -60`
 - "Lift shadows" → `image_adjust_dark_portions` → `amount: -40`
@@ -142,7 +148,7 @@ Question 3 (single_select):
 - "More vibrant" → `image_adjust_vibrance_and_saturation` → `vibrance: 30`
 - "Desaturate" → `image_adjust_vibrance_and_saturation` → `saturation: -30`
 - "Heavy background blur" → `image_apply_gaussian_blur` → `blurRadius: 12, blurTarget: "background"` (do not combine with Blur Background adaptive preset)
-- "None" → skip Step 4b entirely
+- "None" → skip Step 5b entirely
 **Crop:**
 - "Auto" → landscape → `"4:3"`, portrait → `"3:4"`, focus: `"face"`
 - "1:1 square" → `output: "1:1"`, focus: `"face"`
@@ -162,7 +168,7 @@ After receiving button selections, confirm the settings back to the user:
 
 ---
 
-## Step 2b: Large Batch Warning (N > 5)
+## Step 3a: Large Batch Warning (N > 5)
 
 Include this in the confirmation when N > 5:
 
@@ -178,9 +184,9 @@ download links when done. (No Slack/email notifications available from here.)
 
 ---
 
-## Step 2c: Sample Preview (Before/After on Image 1)
+## Step 3b: Sample Preview (Before/After on Image 1)
 
-Before running the full batch, process the **first image only** through the complete pipeline (Steps 3–7) using the confirmed settings. This gives the user a real preview of exactly what will be applied to every image.
+Before running the full batch, process the **first image only** through the complete pipeline (Steps 4–8) using the confirmed settings. This gives the user a real preview of exactly what will be applied to every image.
 
 1. Run the full pipeline on `sourceURIs[0]` only (straighten → tone → tweaks → adaptive → blur → crop).
 2. Call `asset_preview_file` directly with the original source URL and the processed output — do NOT resize either through `image_crop_and_resize` first, as that introduces white bars or unwanted cropping:
@@ -212,9 +218,9 @@ Question (single_select):
 
 Processing pauses here until the user responds — the gate catches issues before time is spent on the full batch.
 
-**If "Looks great":** proceed to Step 3 for the remaining images. Reuse the already-processed image 1 result — do not reprocess it.
+**If "Looks great":** proceed to Step 4 for the remaining images. Reuse the already-processed image 1 result — do not reprocess it.
 
-**If "Adjust settings":** return to Step 2 (`AskUserQuestion`) to re-collect preferences. Once new settings are confirmed, ask:
+**If "Adjust settings":** return to Step 3 (`AskUserQuestion`) to re-collect preferences. Once new settings are confirmed, ask:
 
 ```
 Question (single_select):
@@ -224,13 +230,13 @@ Question (single_select):
     - "🚀 Run all [N] images now"
 ```
 
-- If "Preview first": repeat Step 2c with the new settings (reprocess image 1, show before/after, offer the gate again).
+- If "Preview first": repeat Step 3b with the new settings (reprocess image 1, show before/after, offer the gate again).
 - If "Run all now": start the full batch immediately on all images with the new settings. Do not reuse the earlier image 1 result — reprocess it with the updated settings.
 **If "Cancel":** stop and let the user know they can restart any time.
 
 ---
 
-## Step 3: Auto-Straighten (per image)
+## Step 4: Auto-Straighten (per image)
 
 Loop one image at a time (no batch support):
 
@@ -249,7 +255,7 @@ On failure: use original URI, note "straighten skipped" for that image.
 
 ---
 
-## Step 4: Auto-Tone (per image)
+## Step 5: Auto-Tone (per image)
 
 ```
 Tool: image_apply_auto_tone
@@ -261,7 +267,7 @@ Params:
 
 ---
 
-## Step 4b: Optional Tone Adjustments (batch)
+## Step 5b: Optional Tone Adjustments (batch)
 
 If the user requested tonal tweaks, apply in this order using batch arrays,
 chaining each step's output into the next:
@@ -274,14 +280,14 @@ chaining each step's output into the next:
 6. `image_adjust_vibrance_and_saturation`
 ---
 
-## Step 5: Adaptive Enhancements (per image, opt-in only)
+## Step 6: Adaptive Enhancements (per image, opt-in only)
 
 Only run this step if the user selected one or more adaptive enhancements. Run each selected preset in sequence, chaining outputs. The order below is recommended but not required by the tools:
 
 1. `Adaptive: Subject - Pop` (if selected)
 2. `Adaptive: Subject - Warm Pop` (if selected — do not combine with Subject Pop; pick one or let user decide)
 3. `Adaptive: Portrait - Whiten Teeth` (if selected AND face detected via `image_select_subject`)
-4. `Adaptive: Blur Background - Subtle` (if selected — skip Step 6 entirely for this image)
+4. `Adaptive: Blur Background - Subtle` (if selected — skip Step 7 entirely for this image)
 5. `Adaptive: Sky - Blue Drama` (if selected AND not skipped due to indoor context)
 6. `Adaptive: Sky - Dark Drama` (if selected AND not skipped due to indoor context)
 ```
@@ -292,7 +298,7 @@ Params:
     presetName: "<exact preset name from list above>"
 ```
 
-**Output:** `results[0].outputUrl` → chain as input to next preset or Step 6.
+**Output:** `results[0].outputUrl` → chain as input to next preset or Step 7.
 
 **Skip conditions:**
 - Whiten Teeth: skip if `image_select_subject` face check returned no face
@@ -302,9 +308,9 @@ Params:
 
 ---
 
-## Step 6: Background Blur (per image)
+## Step 7: Background Blur (per image)
 
-**Skip this step entirely** if the user selected "Blur Background" in Step 5b — the adaptive preset already handled it.
+**Skip this step entirely** if the user selected "Blur Background" in Step 6 — the adaptive preset already handled it.
 
 **No blur selected:** skip this step entirely.
 
@@ -324,7 +330,7 @@ On failure: use previous step's output, note "blur skipped" for that image.
 
 ---
 
-## Step 7: Crop (per image)
+## Step 8: Crop (per image)
 
 **Default behavior:**
 - Landscape image → crop to `"4:3"`, focus: `"face"`
@@ -346,7 +352,7 @@ Params:
 
 ---
 
-## Step 8: Final Preview + Download Links + Firefly Board
+## Step 9: Final Preview + Download Links + Firefly Board
 
 Pass the final output URLs directly to `asset_preview_file` — do NOT run them through `image_crop_and_resize` first, as that introduces white bars or unwanted cropping. `asset_preview_file` handles its own thumbnailing correctly.
 
@@ -439,7 +445,7 @@ Output is read from `results[N].outputUrl`. On `success: false` see Error Handli
 | `image_apply_preset` (adaptive) returns 403 (entitlement) | Skip that preset (Pattern 1). Note in delivery summary: "[Preset name] was skipped — your Adobe plan does not include this feature." Retrying does not resolve a 403 entitlement — note the skip in the summary. |
 | Any tool returns 401 (not authenticated)                  | Ask the user to re-authenticate via Adobe OAuth and retry                                                                                                                                                        |
 | `asset_add_file` shows no files                           | Wait; remind user to select files in the picker                                                                                                                                                                  |
-| `image_auto_straighten` fails                             | Pass original URI to Step 4; note "straighten skipped"                                                                                                                                                           |
+| `image_auto_straighten` fails                             | Pass original URI to Step 5; note "straighten skipped"                                                                                                                                                           |
 | `image_apply_auto_tone` fails                             | Pass straightened URI forward; note in summary                                                                                                                                                                   |
 | Any tone adjustment fails                                 | Log and continue with previous step's output                                                                                                                                                                     |
 | `image_select_subject` (face check) fails                 | Skip Whiten Teeth preset for that image; continue                                                                                                                                                                |
@@ -458,6 +464,6 @@ Output is read from `results[N].outputUrl`. On `success: false` see Error Handli
 - `image_apply_auto_tone` is called with `type: "cameraRawFilter"`.
 - Adaptive enhancements are **off by default** — only run them if the user explicitly selects them.
 - Background blur is handled by the "Adaptive: Blur Background - Subtle" preset (or `image_apply_gaussian_blur` for heavy blur); `image_apply_lens_blur` is not used here.
-- When "Blur Background" adaptive preset is selected, Step 6 is skipped for that image (the two steps are mutually exclusive).
+- When "Blur Background" adaptive preset is selected, Step 7 is skipped for that image (the two steps are mutually exclusive).
 - Whiten Teeth preset only runs when a face is detected via `image_select_subject`.
 - Push notifications (Slack/email/text) are not available from here; completion is communicated through an in-chat summary.
