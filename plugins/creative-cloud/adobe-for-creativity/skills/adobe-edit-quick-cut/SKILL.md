@@ -20,7 +20,31 @@ style — giving the user options to pick from.
 
 ---
 
-## Step 0 - prereq: Initialize Adobe Tools
+## Tool Reference
+
+| Step | Tool | Notes |
+|------|------|-------|
+| Upload source video | `asset_add_file` | File picker; returns CC asset URN required by Quick Cut |
+| Run Quick Cut variations | `video_create_quick_cut` | Fire 3 in parallel; same duration and style prompt |
+| Poll job status | `quickCutPoll` | Repeat until all 3 return `completed` |
+| Preview variations | `asset_preview_file` | Renders all 3 side-by-side for selection |
+| Resize re-uploaded output | `video_resize` | Workaround only — Quick Cut output must be re-uploaded first |
+
+---
+
+## Quickstart
+
+**Step 1:** Verify entitlement and available tools.
+**Step 2:** Call `asset_add_file({})` to open the file picker.
+**Step 3:** Confirm upload, then present the Q&A form.
+**Step 4:** Run 3 Quick Cut variations in parallel. Preview all 3. Allow download.
+
+---
+
+## Workflow
+
+### Step 0 — Initialize Adobe Tools
+
 Call `adobe_mandatory_init` first. This returns file handling rules and tool routing guidance required for the rest of the workflow.
 
 ```json
@@ -29,15 +53,13 @@ Call `adobe_mandatory_init` first. This returns file handling rules and tool rou
 
 ---
 
-## Quickstart
+### Step 1 — Entitlement Check
 
-**Step 1:** Call `asset_add_file({})` to open the file picker.
-**Step 2:** Confirm upload, then present the Q&A form.
-**Step 3:** Run 3 Quick Cut variations in parallel. Preview all 3. Allow download.
+Now that `adobe_mandatory_init` confirmed that the "Adobe for creativity" connector is live, check which tools are available through the "Adobe for creativity" connector by cross checking against the Tool Reference table above.
 
 ---
 
-## Step 1 — Open the File Picker
+### Step 2 — Open the File Picker
 
 Open the picker immediately with this message:
 
@@ -53,7 +75,7 @@ Once the user selects a file, extract `assetId` (CC asset URN) from widget conte
 
 ---
 
-## Step 2 — Confirm Upload
+### Step 3 — Confirm Upload
 
 Once the file is selected, confirm with:
 
@@ -63,7 +85,7 @@ Then immediately present the Q&A form below.
 
 ---
 
-## Step 3 — Q&A Form (via AskUserQuestion)
+### Step 4 — Q&A Form (via AskUserQuestion)
 
 Wait for the user's answers before proceeding; present the questions via AskUserQuestion
 (not plain text) so the user gets tappable buttons.
@@ -96,11 +118,11 @@ AskUserQuestion({
 })
 ```
 
-Wait for the user's selections before proceeding to Step 4.
+Wait for the user's selections before proceeding to Step 5.
 
 ---
 
-## Step 4 — Acknowledge and Run
+### Step 5 — Acknowledge and Run
 
 Once the user answers, respond with:
 
@@ -156,7 +178,7 @@ video_create_quick_cut({
 
 ---
 
-## Step 5 — Poll Until All 3 Complete
+### Step 6 — Poll Until All 3 Complete
 
 Poll all 3 in each round using `quickCutPoll(statusId)`. Show progress % after each round.
 Repeat until all 3 return `jobStatus: "completed"`.
@@ -170,7 +192,7 @@ Store:
 
 ---
 
-## Step 6 — Preview All 3
+### Step 7 — Preview All 3
 
 ```javascript
 asset_preview_file({
@@ -184,7 +206,7 @@ asset_preview_file({
 
 ---
 
-## Step 7 — Deliver Summary + Download Prompt
+### Step 8 — Deliver Summary + Download Prompt
 
 After preview, present:
 
