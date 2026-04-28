@@ -196,12 +196,12 @@ Use a standard web browser with dev tools:
 - ❌ Straightforward decoration logic
 - ❌ Changes easily validated in browser
 
-**For guidance on what to test:** See `resources/testing-philosophy.md`
+**For guidance on what to test:** See [references/testing-philosophy.md](references/testing-philosophy.md)
 
 **If unit tests needed:**
 
 ```bash
-# Verify test setup (see resources/vitest-setup.md if not configured)
+# Verify test setup (see references/vitest-setup.md if not configured)
 npm test
 
 # Write test for utility function
@@ -216,7 +216,7 @@ describe('myUtility', () => {
 });
 ```
 
-**For detailed unit testing guidance:** See `resources/unit-testing.md`
+**For detailed unit testing guidance:** See [references/unit-testing.md](references/unit-testing.md)
 
 **Success criteria:**
 - ✅ Unit tests written for logic-heavy code
@@ -249,7 +249,7 @@ npm test
 
 ## Troubleshooting
 
-For detailed troubleshooting guide, see `resources/troubleshooting.md`.
+For detailed troubleshooting guide, see [references/troubleshooting.md](references/troubleshooting.md).
 
 **Common issues:**
 
@@ -270,10 +270,10 @@ For detailed troubleshooting guide, see `resources/troubleshooting.md`.
 
 ## Resources
 
-- **Unit Testing:** `resources/unit-testing.md` - Complete guide to writing and maintaining unit tests
-- **Troubleshooting:** `resources/troubleshooting.md` - Solutions to common testing issues
-- **Vitest Setup:** `resources/vitest-setup.md` - One-time configuration guide
-- **Testing Philosophy:** `resources/testing-philosophy.md` - Guide on what and how to test
+- **Unit Testing:** [references/unit-testing.md](references/unit-testing.md) - Complete guide to writing and maintaining unit tests
+- **Troubleshooting:** [references/troubleshooting.md](references/troubleshooting.md) - Solutions to common testing issues
+- **Vitest Setup:** [references/vitest-setup.md](references/vitest-setup.md) - One-time configuration guide
+- **Testing Philosophy:** [references/testing-philosophy.md](references/testing-philosophy.md) - Guide on what and how to test
 
 ## Integration with Building Blocks Skill
 

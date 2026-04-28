@@ -35,7 +35,7 @@ Content Driven Development prioritizes creating or identifying test content befo
 
 **Optional: Understanding CDD Principles**
 
-Read `resources/cdd-philosophy.md` if:
+Read [references/cdd-philosophy.md](references/cdd-philosophy.md) if:
 - User asks "why" questions about content-first approach
 - You need to understand reasoning behind CDD decisions
 - You're unsure whether to prioritize author vs developer experience
@@ -204,7 +204,7 @@ Expected: `200`
 **Approach 2: Local HTML (Temporary)**
 1. Create HTML file in `drafts/tmp/{block-name}.plain.html`
 2. Follow structure from Step 3 content model
-3. Read `resources/html-structure.md` for local HTML file format guidance
+3. Read [references/html-structure.md](references/html-structure.md) for local HTML file format guidance
 4. Restart dev server: `aem up --html-folder drafts --no-open --forward-browser-logs`
 5. Validate: `curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/drafts/tmp/{block-name}`
 6. Expected: `200` status
@@ -445,5 +445,5 @@ Common mistakes that violate CDD principles:
 
 ## Resources
 
-- **Philosophy:** `resources/cdd-philosophy.md` - Why content-first matters
-- **HTML Structure:** `resources/html-structure.md` - Guide for creating local HTML test files
+- **Philosophy:** [references/cdd-philosophy.md](references/cdd-philosophy.md) - Why content-first matters
+- **HTML Structure:** [references/html-structure.md](references/html-structure.md) - Guide for creating local HTML test files

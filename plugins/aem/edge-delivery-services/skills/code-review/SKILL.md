@@ -1159,6 +1159,8 @@ When triggered via GitHub Actions, the skill should:
 
 ## Resources
 
+- **PR Review Checklist:** [references/review-checklist.md](references/review-checklist.md) — Comprehensive checklist for reviewing EDS pull requests
+
 ### EDS-Specific Resources
 - **EDS Development Guidelines:** https://www.aem.live/docs/dev-collab-and-good-practices
 - **Performance Best Practices:** https://www.aem.live/developer/keeping-it-100

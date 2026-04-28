@@ -75,8 +75,8 @@ AEM Edge Delivery has 4 canonical block models that serve as proven patterns:
 Use these patterns to inform your design in Step 2, but focus first on understanding the content requirements.
 
 **Detailed resources:**
-- Read `resources/canonical-models.md` for detailed examples and guidance on the 4 canonical models
-- If your content model is particularly complex or combines multiple models, see `resources/advanced-scenarios.md`
+- Read [references/canonical-models.md](references/canonical-models.md) for detailed examples and guidance on the 4 canonical models
+- If your content model is particularly complex or combines multiple models, see [references/advanced-scenarios.md](references/advanced-scenarios.md)
 
 ## Step 2: Design Block Structure
 
@@ -102,8 +102,8 @@ These patterns align with the canonical models and can inform your design:
 - **Auto-Blocked content:** Design for simplest possible authoring. Often uses sections and section metadata. Example: Tabs auto-blocked from sections with H2 headings.
 
 **Detailed resources:**
-- Read `resources/canonical-models.md` for examples of good vs. bad block structures
-- If dealing with complex scenarios (nested blocks, lists, forms), see `resources/advanced-scenarios.md`
+- Read [references/canonical-models.md](references/canonical-models.md) for examples of good vs. bad block structures
+- If dealing with complex scenarios (nested blocks, lists, forms), see [references/advanced-scenarios.md](references/advanced-scenarios.md)
 
 ## Step 3: Validate Against Best Practices
 
@@ -155,10 +155,10 @@ purpose of each row/column and any semantic formatting used.]
 
 ## Resources
 
-### `resources/canonical-models.md`
+### [references/canonical-models.md](references/canonical-models.md)
 Detailed guide to the 4 canonical block models (Standalone, Collection, Configuration, Auto-Blocked) with comprehensive examples showing both good and bad implementations. Includes "why this works" and "why this fails" explanations for each pattern, multiple variations, and anti-patterns to avoid.
 
-### `resources/advanced-scenarios.md`
+### [references/advanced-scenarios.md](references/advanced-scenarios.md)
 Solutions for complex content modeling challenges including nested blocks, item-level configurations in collections, handling lists (with important guidance on not requiring authors to create lists), and form patterns.
 
 ## Key Principles Revisited

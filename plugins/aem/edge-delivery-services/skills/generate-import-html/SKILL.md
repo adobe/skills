@@ -93,7 +93,7 @@ From previous skills, you need:
 </div>
 ```
 
-**For detailed block structure patterns:** See `../page-import/resources/html-structure.md`
+**For detailed block structure patterns:** See [../content-driven-development/references/html-structure.md](../content-driven-development/references/html-structure.md)
 
 ---
 
@@ -196,7 +196,7 @@ From previous skills, you need:
 
 **Append metadata block as the last section div at the end of the HTML file.**
 
-**Detailed guidance:** See `resources/metadata-extraction.md` and `resources/metadata-mapping.md`
+**Detailed guidance:** See [references/metadata-extraction.md](references/metadata-extraction.md) and [references/metadata-mapping.md](references/metadata-mapping.md)
 
 ---
 

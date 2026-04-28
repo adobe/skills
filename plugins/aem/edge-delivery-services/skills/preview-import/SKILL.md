@@ -117,7 +117,7 @@ Use `paths.documentPath` from metadata.json, but for index files ensure the path
 **Blocks don't render correctly:**
 - Check HTML structure matches expected format
 - Verify block names match exactly (case-sensitive)
-- Review `../page-import/resources/html-structure.md` for format guidance
+- Review [../content-driven-development/references/html-structure.md](../content-driven-development/references/html-structure.md) for format guidance
 
 **Images not loading:**
 - Verify images folder is in same directory as HTML file
