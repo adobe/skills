@@ -8,11 +8,21 @@ license: Apache-2.0
 
 Classify workflow issues, determine what logs and data to gather, and map to the correct runbook or log search. Optimized for **production support** on **AEM 6.5 LTS** and **Adobe Managed Services (AMS)**.
 
+## Audience
+
+AEM 6.5 LTS / AMS support and operations engineers (and the IDE LLM acting on their behalf) classifying workflow incidents across multi-instance environments — host + time-range + Splunk / log-mining context, before drilling into a single instance.
+
 ## Variant Scope
 
-- This skill is **6.5-lts-only** (includes AMS).
+- AEM 6.5 LTS only (includes AMS).
+- **Not for AEM as a Cloud Service.** If the target is AEMaaCS, stop and use the cloud-service variant of this skill — Splunk index/sourcetype paths, the JMX surface, and several log signatures here do not apply as written on AEMaaCS.
 - Log access via direct filesystem, AMS log access, or Splunk.
 - JMX available for workflow counts, queue metrics, and remediation.
+
+## Dependencies
+
+- `workflow-debugging` — once a symptom is classified and an instance/model is identified, route here for the runbook + remediation.
+- `workflow-foundation` references (under any sibling skill) — for canonical JCR paths, MBean names, OSGi PIDs.
 
 ---
 
@@ -104,7 +114,7 @@ On 6.5 / AMS, use JMX for metrics that are not available from logs alone.
 | Failed work item retry | `retryFailedWorkItems` | Retry all failed items (use after root cause fixed) |
 | Purge completed (dryRun) | `purgeCompleted(dryRun=true)` | Count purgeable instances before executing |
 
-**Always use `dryRun=true` first before executing destructive operations.**
+**JMX safety: Never recommend executing JMX remediation operations (`restartStaleWorkflows`, `purgeCompleted(dryRun=false)`, `terminate`, etc.) without first confirming the target instance with the user — these affect live workflow state and are not reversible. Always pair with `dryRun=true` first when the operation supports it.**
 
 ---
 

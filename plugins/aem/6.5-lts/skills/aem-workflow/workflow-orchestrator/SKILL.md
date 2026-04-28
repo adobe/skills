@@ -1,6 +1,6 @@
 ---
 name: workflow-orchestrator
-description: Master entry point for all AEM Workflow tasks on AEM 6.5 LTS spanning development and production support
+description: Master entry point for AEM 6.5 LTS Workflow tasks — routes development, debugging, and operational requests to the right sub-skill. AEM 6.5 LTS only — stop on AEMaaCS.
 license: Apache-2.0
 ---
 
@@ -176,6 +176,7 @@ Before doing anything, apply these constraints:
 | OSGi annotations | DS R6 preferred; Felix SCR still supported on 6.5 LTS |
 | Deploy via | Package Manager (CRX Package), Maven + Content Package Plugin, or ACS AEM Commons JCR |
 | No `javax.jcr.Session.loginAdministrative` | Deprecated — use `loginService()` or `ResourceResolverFactory` |
+| Launcher run-mode restriction | The `runModes` property on `cq:WorkflowLauncher` is unreliable on 6.5 LTS — package the launcher's `.content.xml` under `config.author/` (or `config.publish/`) and let Sling's run-mode-aware OSGi config handling drive it |
 
 Full detail: `references/workflow-foundation/65-lts-guardrails.md`
 

@@ -8,12 +8,26 @@ license: Apache-2.0
 
 Production-grade debugging for the AEM Granite Workflow engine, launcher, Inbox, Sling Jobs, thread pools, and purge on **AEM 6.5 LTS** and **Adobe Managed Services (AMS)**.
 
+## Audience
+
+AEM 6.5 LTS / AMS developers and operators (and the IDE LLM acting on their behalf) diagnosing stuck or failed workflows on an instance they have direct access to — Felix Console, JMX, `error.log`, and Configuration Status ZIP available.
+
 ## Variant Scope
 
-- This skill is **6.5-lts-only**. For AEM as a Cloud Service use the cloud-service variant.
+- AEM 6.5 LTS only.
+- **Not for AEM as a Cloud Service.** If the target is AEMaaCS, stop and use the cloud-service variant of this skill — JMX is not exposed the same way, the OSGi PIDs differ, and the runbook patterns documented here will not apply as written.
 - **AMS coverage:** applies to AMS instances running AEM 6.5.x (any Service Pack) — the Granite Workflow APIs, JMX MBeans, and OSGi PIDs covered here are identical across 6.5 GA, SP-line, and the LTS line. Dispatcher-level or network-level differences are out of scope for this skill.
 - **Full JMX access** via Felix Console (`/system/console/jmx`) or an external JMX client.
 - **Config changes** via Felix Console (runtime) or OSGi config in the repository (durable).
+
+## Dependencies
+
+This skill is largely self-contained but routes back into the dev skills when the root cause is a code or model defect:
+
+- `workflow-development` — when the diagnosis is "process step throws / not registered / leaks resources"
+- `workflow-model-design` — when the diagnosis is "model has wrong split rule / missing transition / wrong step type"
+- `workflow-launchers` — when the diagnosis is "launcher not firing / re-trigger loop"
+- `workflow-triaging` — load instead of this skill if the user is mining logs across multiple instances rather than diagnosing one
 
 ---
 
@@ -172,7 +186,7 @@ The Sling Scheduler `ApacheSlingdefault` uses `ThreadPool: default`. This pool f
 | `com.adobe.granite.workflow:type=Maintenance` | `purgeCompleted(dryRun)`, `countRunningWorkflows`, `countStaleWorkflows`, `restartStaleWorkflows(dryRun)` | Purge, stale detection and restart |
 | `com.adobe.granite.workflow:type=Repository` | `retryFailedWorkItems`, `returnSystemJobInfo`, `returnWorkflowQueueInfo` | Retry, queue/job diagnostics |
 
-**Always use `dryRun=true` first before executing destructive operations.**
+**JMX safety: Never recommend executing JMX remediation operations (`restartStaleWorkflows`, `purgeCompleted(dryRun=false)`, `terminate`, etc.) without first confirming the target instance with the user — these affect live workflow state and are not reversible. Always pair with `dryRun=true` first when the operation supports it.**
 
 ---
 
@@ -215,6 +229,20 @@ The Sling Scheduler `ApacheSlingdefault` uses `ThreadPool: default`. This pool f
 **Root cause:** `Cannot archive workitem` during transition; JCR session crash during step completion.
 
 **Diagnosis:** Search for `Cannot archive workitem`; JMX `countStaleWorkflows`; `restartStaleWorkflows(dryRun=true)`.
+
+---
+
+## Routing back to dev skills
+
+Once diagnosis identifies a code or model defect (not an operational issue on a healthy implementation), route back into the development skills:
+
+| Diagnosis | Route to |
+|---|---|
+| Process step throws an exception, leaks resources, or is not registered | [workflow-development](../workflow-development/SKILL.md) |
+| Model has wrong OR-split rule, missing transition, wrong step type, or fails to deploy | [workflow-model-design](../workflow-model-design/SKILL.md) |
+| Launcher not firing, firing on wrong path, or causing a re-trigger loop | [workflow-launchers](../workflow-launchers/SKILL.md) |
+| Workflow not started by code/HTTP API, or starts on wrong payload type | [workflow-triggering](../workflow-triggering/SKILL.md) |
+| Diagnosis spans multiple instances or requires Splunk / log-mining across hosts | [workflow-triaging](../workflow-triaging/SKILL.md) |
 
 ---
 

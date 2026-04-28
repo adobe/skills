@@ -20,6 +20,14 @@ Java developers with OSGi / Maven familiarity building custom workflow steps on 
 - Bundle deployed via Maven (`autoInstallBundle`) or Package Manager.
 - **Not for AEM as a Cloud Service.** If the target instance is AEMaaCS, stop and use the cloud-service variant of this skill — the 6.5 LTS patterns here (Felix SCR, `/etc/workflow/models/`, JMX-based remediation) do not apply to AEMaaCS and will produce code that fails to deploy.
 
+## Dependencies
+
+This skill builds on:
+
+- `workflow-foundation` references (architecture, API, JCR paths, 6.5 LTS guardrails) — load alongside.
+- `workflow-model-design` — every `WorkflowProcess` and `ParticipantStepChooser` you implement here must be referenced by a step in a deployed model. Build the model first; this skill makes the Java side match.
+- `workflow-launchers` — when a launcher routes content into your step, see launcher-side loop-prevention guardrails.
+
 ## Prerequisites
 
 - AEM 6.5 LTS author instance reachable (local, dev, or sandbox).
@@ -125,6 +133,7 @@ public class DepartmentHeadChooser implements ParticipantStepChooser {
 - Throw `WorkflowException` for retryable errors; log and rethrow for unexpected errors.
 - Do not log full payload contents or metadata values at `INFO` — payloads may carry PII or confidential content. Log the payload path and a correlation key; log full values only at `DEBUG` on non-production instances.
 - Model XML and Java are co-authored. The `PROCESS=` value on a `cq:WorkflowNode` must resolve to either the fully qualified class name **or** the exact `process.label` of a deployed `WorkflowProcess`. A model that references a label you have not registered will fail at runtime with `Process not found`. Generate the Java class first, deploy and confirm it appears in the Model Editor step picker, then reference it from the model.
+- **Avoid launcher re-trigger loops.** If your process step modifies a JCR path that any `cq:WorkflowLauncher` watches, the change will re-trigger the same workflow. Before the write, mark the JCR session with `session.getWorkspace().getObservationManager().setUserData("workflowmanager")` — `WorkflowLauncherListener` ignores events tagged with that user data. See [workflow-launchers](../workflow-launchers/SKILL.md) for code examples and the alternative `excludeList` / JCR-flag patterns.
 
 ## Rollback / Recovery
 
