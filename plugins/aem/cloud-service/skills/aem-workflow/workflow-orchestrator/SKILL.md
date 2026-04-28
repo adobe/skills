@@ -1,6 +1,6 @@
 ---
 name: workflow-orchestrator
-description: Master entry point for all AEM Workflow tasks on Cloud Service spanning development and production support
+description: Master entry point for AEM as a Cloud Service Workflow tasks — routes development, debugging, and operational requests to the right sub-skill. AEMaaCS only — stop on AEM 6.5 LTS.
 license: Apache-2.0
 ---
 
@@ -145,9 +145,11 @@ workflow-triaging/SKILL.md
 
 ## Cloud Service Production Support Constraints
 
+> **Cloud environments only.** These constraints describe AEMaaCS dev/stage/prod cloud environments. The **local AEMaaCS SDK** at `localhost:4502` has Felix Console with JMX, accepts Package Manager uploads, supports `admin:admin` auth, and gives `jstack` access — none of which apply to cloud environments. When reasoning about debug paths, distinguish the two and never carry local-SDK affordances over to cloud.
+
 | Constraint | Detail |
 |---|---|
-| No JMX | No `retryFailedWorkItems`, `countStaleWorkflows`, `restartStaleWorkflows`, `purgeCompleted` via JMX |
+| No JMX (cloud) | No `retryFailedWorkItems`, `countStaleWorkflows`, `restartStaleWorkflows`, `purgeCompleted` via JMX on cloud environments. JMX is available only on the local AEMaaCS SDK. |
 | Retry failed items | Inbox Retry only |
 | Stale detection | Custom API/script only |
 | Purge | Purge Scheduler (OSGi config in Git) |
@@ -178,6 +180,8 @@ Full detail: `references/workflow-foundation/cloud-service-guardrails.md`
 ---
 
 ## Quick Architecture Recap
+
+> **Author-tier only by default.** Workflows on AEMaaCS execute on the **author tier** — the publish tier is read-mostly and replication-driven. The diagram below is author-tier; do not assume publish-tier workflow infrastructure unless the user has an explicit publish-tier-execution requirement (rare on AEMaaCS).
 
 ```
 Author tier

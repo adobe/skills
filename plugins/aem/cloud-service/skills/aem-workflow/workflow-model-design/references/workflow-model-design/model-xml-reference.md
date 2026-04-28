@@ -97,7 +97,7 @@
 | `jcr:primaryType` | String | Must be `cq:WorkflowTransition` |
 | `from` | String | Node ID of source |
 | `to` | String | Node ID of destination |
-| `rule` | String | ECMA/Groovy rule (empty = always true) |
+| `rule` | String | ECMAScript (Rhino) rule (empty = always true) |
 
 ### cq:VariableTemplate Properties
 

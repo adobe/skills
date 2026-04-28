@@ -47,7 +47,7 @@ Model Design Progress
 | `PROCESS` | Auto-executed Java step | `PROCESS` = FQCN or process.label |
 | `PARTICIPANT` | Human task (static assignee) | `PARTICIPANT` = principal name |
 | `DYNAMIC_PARTICIPANT` | Human task (runtime assignee) | `DYNAMIC_PARTICIPANT` = chooser.label |
-| `OR_SPLIT` | One branch selected by rule | Transition `rule` = ECMA/Groovy |
+| `OR_SPLIT` | One branch selected by rule | Transition `rule` = ECMAScript (Rhino) |
 | `AND_SPLIT` | All branches execute in parallel | — |
 | `AND_JOIN` | Wait for all parallel branches | — |
 | `EXTERNAL_PROCESS` | Poll an external system | `EXTERNAL_PROCESS` = FQCN |

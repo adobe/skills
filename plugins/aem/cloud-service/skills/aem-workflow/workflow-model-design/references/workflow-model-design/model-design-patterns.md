@@ -21,7 +21,7 @@ START → [PARTICIPANT: Review] → [OR_SPLIT] ──approve──→ [PROCESS: 
                                            └──reject───→ [PROCESS: Notify]   → END
 ```
 
-OR_SPLIT transition rules (ECMA):
+OR_SPLIT transition rules (ECMAScript / Rhino — wrap Java string returns with `String(...)` and use strict equality `===` for safety):
 ```javascript
 // Approve transition
 function check() {
@@ -66,7 +66,7 @@ meta.put("retryCount", count + 1);
 // If validation succeeds, put "retryDone=true"
 ```
 
-Goto Step ECMA rule:
+Goto Step ECMAScript (Rhino) rule:
 ```javascript
 function check() {
     var count = workflowData.getMetaDataMap().get("retryCount", 0);

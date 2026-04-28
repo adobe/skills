@@ -85,7 +85,7 @@ map.put("timestamp", new Date());
 | `WorkflowModel` | `getTransitions()` | All `WorkflowTransition` objects |
 | `WorkflowNode` | `getType()` | `START`, `END`, `PROCESS`, `PARTICIPANT`, `DYNAMIC_PARTICIPANT`, `OR_SPLIT`, `AND_SPLIT`, `AND_JOIN`, `EXTERNAL_PROCESS` |
 | `WorkflowNode` | `getMetaData()` | `MetaDataMap` of step args (e.g. `PROCESS`, `PARTICIPANT`) |
-| `WorkflowTransition` | `getRule()` | ECMA/Groovy rule string (for OR splits) |
+| `WorkflowTransition` | `getRule()` | ECMAScript (Rhino) rule string (for OR splits) |
 
 ## WorkItem
 

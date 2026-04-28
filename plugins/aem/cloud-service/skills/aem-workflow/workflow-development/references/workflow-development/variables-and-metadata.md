@@ -67,7 +67,7 @@ Use instead of custom code when assignment logic is simple:
 | `LITERAL` | `"approvalStatus"` | A literal string `"APPROVED"` |
 | `RELATIVE_TO_PAYLOAD` | `"payloadTitle"` | JCR property relative to payload (e.g. `jcr:title`) |
 | `ABSOLUTE_PATH` | `"result"` | Full JCR path to a property |
-| `EXPRESSION` | `"computed"` | Groovy/ECMA expression |
+| `EXPRESSION` | `"computed"` | ECMAScript (Rhino) expression |
 | `VARIABLE` | `"copy"` | Another variable's value |
 | `JSON_DOT_NOTATION` | `"field"` | JSON path like `data.response.status` |
 | `XPATH` | `"xmlField"` | XPath over an XML-typed variable |

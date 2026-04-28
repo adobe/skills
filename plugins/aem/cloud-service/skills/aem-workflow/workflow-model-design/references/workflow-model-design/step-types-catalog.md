@@ -109,7 +109,7 @@ Terminal node. Multiple branches can converge to END.
     rule="function check(){ return true; }"/>
 ```
 
-Rules are ECMA (JavaScript). `workflowData` is the `WorkflowData` object. Use `get('key', defaultValue)` for safe reads.
+Rules are evaluated as **ECMAScript** (Rhino) on AEMaaCS. `workflowData` is the `WorkflowData` object. Use `get('key', defaultValue)` for safe reads.
 
 ## AND_SPLIT / AND_JOIN (Parallel Branches)
 
