@@ -32,7 +32,7 @@ Follow these steps in order:
 
 **Skip if:** No screenshots, design files, or reference URLs provided
 
-**If visual materials provided:** See `resources/visual-analysis.md` for complete visual analysis guidance covering layout, typography, interactive states, responsive behavior, and block model classification. Document findings using the template provided there before proceeding.
+**If visual materials provided:** See [references/visual-analysis.md](references/visual-analysis.md) for complete visual analysis guidance covering layout, typography, interactive states, responsive behavior, and block model classification. Document findings using the template provided there before proceeding.
 
 **Output:** Visual requirements documented for use in next steps
 
@@ -49,7 +49,7 @@ Follow these steps in order:
 
 **Ask the user questions if needed** to clarify unclear requirements, confirm assumptions, or fill in missing information before proceeding.
 
-**Use task-specific guidance from `resources/task-types.md`** to apply the correct analysis approach for new blocks, variants, CSS-only changes, behavior modifications, or bug fixes.
+**Use task-specific guidance from [references/task-types.md](references/task-types.md)** to apply the correct analysis approach for new blocks, variants, CSS-only changes, behavior modifications, or bug fixes.
 
 ---
 
@@ -141,7 +141,7 @@ Document the analysis and acceptance criteria in your response. This becomes the
 
 ## Resources
 
-- [Visual Analysis](resources/visual-analysis.md)
-- [Task Types](resources/task-types.md)
+- [Visual Analysis](references/visual-analysis.md)
+- [Task Types](references/task-types.md)
 
 

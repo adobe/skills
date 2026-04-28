@@ -57,7 +57,7 @@ Based on the JS analysis:
 
 ### Step 3: Design the Model Fields
 
-Map the block's content expectations to component model fields. Read `references/field-types.md` for the full field type reference.
+Map the block's content expectations to component model fields. Read [references/field-types.md](references/field-types.md) for the full field type reference.
 
 **Common field mappings:**
 
@@ -164,9 +164,9 @@ After generating the config, verify:
 
 For detailed information, read these reference files as needed:
 
-- **`references/architecture.md`** — How the three files connect, the full AEM→Markdown→HTML pipeline, resource types, field naming conventions, semantic collapsing rules, and RTE filter configuration
-- **`references/field-types.md`** — Complete reference for all 17 field component types (`text`, `textarea`, `richtext`, `reference`, `aem-content`, `aem-content-fragment`, `aem-experience-fragment`, `aem-tag`, `select`, `multiselect`, `checkbox-group`, `radio-group`, `boolean`, `number`, `date-time`, `container`, `tab`), valueType constraints, required properties, field properties, validation types, conditional fields, and option formats
-- **`references/examples.md`** — Real examples showing Hero (simple), Embed (simple with URL), Cards (container), Teaser (variants), Product Details (key-value), Article (content fragment), Section configuration, Metadata (textarea), Feature Toggles (checkbox-group), and RTE filter configuration
+- **[references/architecture.md](references/architecture.md)** — How the three files connect, the full AEM→Markdown→HTML pipeline, resource types, field naming conventions, semantic collapsing rules, and RTE filter configuration
+- **[references/field-types.md](references/field-types.md)** — Complete reference for all 17 field component types (`text`, `textarea`, `richtext`, `reference`, `aem-content`, `aem-content-fragment`, `aem-experience-fragment`, `aem-tag`, `select`, `multiselect`, `checkbox-group`, `radio-group`, `boolean`, `number`, `date-time`, `container`, `tab`), valueType constraints, required properties, field properties, validation types, conditional fields, and option formats
+- **[references/examples.md](references/examples.md)** — Real examples showing Hero (simple), Embed (simple with URL), Cards (container), Teaser (variants), Product Details (key-value), Article (content fragment), Section configuration, Metadata (textarea), Feature Toggles (checkbox-group), and RTE filter configuration
 
 ## Common Pitfalls
 

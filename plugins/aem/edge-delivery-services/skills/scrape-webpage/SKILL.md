@@ -59,7 +59,7 @@ node .claude/skills/scrape-webpage/scripts/analyze-webpage.js "https://example.c
 10. Generates document paths (sanitized, lowercase, no .html extension)
 11. Saves complete analysis with image mapping to metadata.json
 
-**For detailed explanation:** See `resources/web-page-analysis.md`
+**For detailed explanation:** See [references/web-page-analysis.md](references/web-page-analysis.md)
 
 ---
 

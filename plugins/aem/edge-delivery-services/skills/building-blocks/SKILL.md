@@ -153,7 +153,7 @@ export default async function decorate(block) {
 - Helper functions from aem.js
 - Code style and linting rules
 
-**Read `resources/js-guidelines.md`**
+**Read [references/js-guidelines.md](references/js-guidelines.md)**
 
 ## Step 4: Add CSS Styling
 
@@ -212,7 +212,7 @@ main .my-block.dark {
 - Naming conventions
 - Common patterns and anti-patterns
 
-**Read `resources/css-guidelines.md`**
+**Read [references/css-guidelines.md](references/css-guidelines.md)**
 
 **Note on iterative validation:** While building, you can test changes in your browser as you go (load test content URL, check console, verify layout and functionality). For comprehensive testing guidance including browser testing techniques, responsive testing, and validation approaches, see the testing-blocks skill invoked in Step 5.
 
@@ -265,12 +265,12 @@ If your changes require modifying core files (scripts.js, styles.css, delayed.js
 - Verify responsive behavior
 
 **For detailed patterns:**
-- JavaScript: See `resources/js-guidelines.md`
-- CSS: See `resources/css-guidelines.md`
+- JavaScript: See [references/js-guidelines.md](references/js-guidelines.md)
+- CSS: See [references/css-guidelines.md](references/css-guidelines.md)
 
 ---
 
 ## Reference Materials
 
-- `resources/js-guidelines.md` - Complete JavaScript patterns and best practices
-- `resources/css-guidelines.md` - Complete CSS patterns and best practices
+- [references/js-guidelines.md](references/js-guidelines.md) - Complete JavaScript patterns and best practices
+- [references/css-guidelines.md](references/css-guidelines.md) - Complete CSS patterns and best practices
