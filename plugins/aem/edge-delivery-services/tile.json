@@ -13,6 +13,7 @@
     "code-review": { "path": "skills/code-review/SKILL.md" },
     "content-driven-development": { "path": "skills/content-driven-development/SKILL.md" },
     "content-modeling": { "path": "skills/content-modeling/SKILL.md" },
+    "da-auth": { "path": "skills/da-auth/SKILL.md" },
     "docs-search": { "path": "skills/docs-search/SKILL.md" },
     "find-test-content": { "path": "skills/find-test-content/SKILL.md" },
     "generate-import-html": { "path": "skills/generate-import-html/SKILL.md" },
@@ -21,6 +22,7 @@
     "page-import": { "path": "skills/page-import/SKILL.md" },
     "preview-import": { "path": "skills/preview-import/SKILL.md" },
     "scrape-webpage": { "path": "skills/scrape-webpage/SKILL.md" },
-    "testing-blocks": { "path": "skills/testing-blocks/SKILL.md" }
+    "testing-blocks": { "path": "skills/testing-blocks/SKILL.md" },
+    "ue-component-model": { "path": "skills/ue-component-model/SKILL.md" }
   }
 }
