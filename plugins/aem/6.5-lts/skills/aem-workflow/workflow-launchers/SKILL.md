@@ -6,16 +6,60 @@ license: Apache-2.0
 
 # Workflow Launchers Skill — AEM 6.5 LTS
 
-## Purpose
+## Audience
 
-This skill teaches you how to configure and deploy Workflow Launchers that automatically start workflows in response to JCR content changes on AEM 6.5 LTS.
+Developers and integrators configuring `cq:WorkflowLauncher` nodes that auto-start workflows on JCR content events on AEM 6.5 LTS — DAM asset processing on upload, review workflows on page edit, custom auto-trigger patterns, or overlays that disable/replace OOTB launcher behavior.
 
-## When to Use This Skill
+## Variant Scope
 
-- A workflow must start automatically when an asset is uploaded to DAM
-- A review workflow should trigger whenever an author modifies content under a specific path
-- You need to replicate or replace an OOTB launcher behavior without editing `/libs`
-- You want to enable, disable, or restrict a launcher to specific run modes
+- AEM 6.5 LTS only.
+- Custom launchers live at `/conf/global/settings/workflow/launcher/config/` (preferred) or `/apps/settings/workflow/launcher/config/`. Legacy `/etc/workflow/launcher/config/` still works but should be migrated.
+- **Not for AEM as a Cloud Service.** AEMaaCS uses Sling Job Topics for event distribution; the JCR-event-listener launcher pattern documented here does not apply directly. If the target is AEMaaCS, stop and use the cloud-service variant of this skill.
+
+## Dependencies
+
+Launchers depend on three upstream concerns — verify all three before expecting a launcher to start a working instance:
+
+- **workflow-model-design** — the workflow referenced by the launcher's `workflow=` property must already be deployed and synced to `/var/workflow/models/<name>`.
+- **workflow-development** — every `WorkflowProcess` and `ParticipantStepChooser` referenced by that model must be registered as an OSGi service. Missing services produce `Process not found` on first instance execution.
+- **workflow-triggering** — launchers are one of several triggering mechanisms; if you need a different one (manual, programmatic, HTTP API), see [workflow-triggering](../workflow-triggering/SKILL.md).
+
+## Prerequisites
+
+- AEM 6.5 LTS author instance reachable.
+- Workflow model deployed and visible at `/var/workflow/models/<name>` (verify via **Tools → Workflow → Models**).
+- For OOTB-launcher overlays: write access to `/conf/global/` or `/apps/settings/`.
+- `filter.xml` covering the launcher path with `mode="merge"`.
+
+## Required Permissions
+
+- Write access to `/conf/global/settings/workflow/launcher/config/` (or `/apps/settings/...`) for deploying custom launchers via content package.
+- `workflow-administrators` (or equivalent) — enable/disable launchers in the **Tools → Workflow → Launchers** UI.
+- Read access to `/var/workflow/models/` for runtime path lookup.
+
+## Common Scenarios
+
+Use this table to route a developer's intent to the right launcher pattern:
+
+| Developer intent | Pattern |
+|---|---|
+| "Start a workflow when an asset is uploaded to DAM" | NODE_ADDED on `nt:file` under `/content/dam(/.*)?/jcr:content/renditions/original` |
+| "Trigger review when a page is edited under /content/my-site" | NODE_MODIFIED on `cq:PageContent` under `/content/my-site(/.*)?/jcr:content` |
+| "Disable an OOTB DAM launcher I don't need" | Overlay at `/conf/global/.../launcher/config/<same-name>` with `enabled={Boolean}false` |
+| "Replace OOTB launcher behavior with my own workflow" | Overlay at `/conf/global/.../launcher/config/<same-name>` with new `workflow=` |
+| "Auto-start on every replication event" | Use a Replication Trigger instead — see [workflow-triggering](../workflow-triggering/SKILL.md) Section 5 |
+
+### When NOT to Use a Launcher
+
+Launchers are **event-based** (JCR observation). Use a different mechanism when the trigger is not an event-driven content change:
+
+| Developer intent | Use this instead |
+|---|---|
+| "Run my workflow nightly" or any time-based schedule | Sling Scheduler + WorkflowSession API — see [workflow-triggering](../workflow-triggering/SKILL.md) `programmatic-api.md` |
+| "Run this once for all 500 existing pages" | A one-shot servlet or scheduled job that starts workflows in a capped loop |
+| "When workflow X completes, run workflow Y" | A `WorkflowProcess` step in workflow X that triggers Y, not a second launcher (avoids race conditions) |
+| "Run when content is replicated to publish" | Replication Trigger (workflow-triggering Section 5), not a launcher on `/var/audit/...` |
+| "Run on events under `/var/`, `/jcr:system`, or anonymous-user events" | These paths and the `anonymous` user are excluded by `WorkflowLauncherListener` — launchers cannot fire here |
 
 ## Core Concept: What Is a Workflow Launcher?
 
@@ -47,7 +91,9 @@ Workflow Instance created at /var/workflow/instances/
 | `enabled` | Boolean | Whether the launcher is active |
 | `description` | String | Human-readable description |
 | `excludeList` | String[] | Workflow model IDs to exclude |
-| `runModes` | String[] | Restrict to specific run modes (e.g., `author`) |
+| `runModes` | String[] | Restrict to specific run modes — **honoring is unreliable on 6.5 LTS; prefer `config.author/` packaging** |
+| `transient` | Boolean | Run the launched workflow as transient — no `/var/workflow/instances/` node unless persistence is forced. Use for high-volume launchers |
+| `noProcess` | Boolean | Match events but do not start the workflow — silence a launcher without removing it |
 
 ## Launcher Storage Paths on 6.5 LTS
 
@@ -90,8 +136,10 @@ Node structure (`.content.xml`):
     nodetype="nt:file"
     workflow="/var/workflow/models/dam/update_asset"
     enabled="{Boolean}true"
-    description="Start DAM update workflow on new original rendition upload"
-    runModes="[author]"/>
+    description="Start DAM update workflow on new original rendition upload"/>
+<!-- For author-only restriction, package this .content.xml under config.author/.
+     The runModes property on cq:WorkflowLauncher is unreliable on 6.5 LTS. -->
+
 ```
 
 Filter in `filter.xml`:
@@ -131,13 +179,48 @@ conditions="[property=cq:type,value=publicationevent,type=STRING]"
 
 Condition format: `property=<name>,value=<value>,type=<JCR_TYPE>` (type is optional, defaults to STRING).
 
+## Architecture Considerations
+
+Launchers are the surface where workflow load is *automated*. A single bad glob can flood the workflow job queue with one content edit. Apply these before deploying any launcher:
+
+- **Narrow your glob, node type, and conditions.** A broad glob (`/content(/.*)?`) paired with `eventType=2` (NODE_MODIFIED) fires on every property change under `/content`. Always pair the glob with a specific `nodetype` (`cq:PageContent`, `dam:AssetContent`) and conditions that match only the events you care about.
+- **Watch multi-event amplification.** A single DAM asset upload fires multiple events — the asset node, each rendition, the metadata node. Without narrowing, one upload starts N workflows. Pin the glob to a specific descendant (e.g., `/jcr:content/renditions/original`) when you only want one trigger per upload.
+- **Avoid infinite loops.** A workflow whose process step writes to a path the launcher watches will re-trigger itself. **Default strategy: mark the JCR session inside the process step with `session.getWorkspace().getObservationManager().setUserData("workflowmanager")`.** This is the most robust pattern (works across model changes, no static config to keep in sync). Use the launcher's `excludeList` only when you can statically name every model that might re-trigger; use a JCR property flag when the workflow writes to a different node than the launcher watches. See `condition-patterns.md` for code.
+- **Use transient workflows for high-volume launchers.** Set `transient="true"` on the workflow model (see [workflow-model-design Architecture Considerations](../workflow-model-design/SKILL.md)). Persistent workflows in this regime bloat `/var/workflow/instances` quickly.
+- **Disable broad launchers in lower environments.** A broad-match OOTB or custom launcher active in dev/stage with the same content as prod can fire on every content sync, masking real prod-vs-dev behavior. Either disable in lower envs (`enabled={Boolean}false` overlay), package the launcher under `config.author/` for run-mode restriction, or restrict with conditions tied to a prod-only marker.
+- **Stack mechanisms cautiously.** Pairing a Workflow Launcher with a Replication Trigger on the same content fires *two* workflows per content change. Pick one mechanism per content event.
+
 ## Debugging Launchers (6.5 LTS)
+
+> **Local development only.** The `curl -u admin:admin` example below targets a local author at `localhost:4502` with the default admin password. Never run it against a shared, stage, or production instance, and never with default `admin:admin` credentials outside an isolated dev box.
 
 - **Tools → Workflow → Launchers** UI — lists all active launchers, interactive enable/disable
 - Check `/conf/global/settings/workflow/launcher/config/` and `/apps/settings/workflow/launcher/config/` in CRXDE Lite
 - Felix Web Console → OSGi → `WorkflowLauncherListener` service
 - Check `/var/workflow/launcher/` for active event registrations
 - Run `curl -u admin:admin http://localhost:4502/etc/workflow/launcher.json` to list all
+
+## Verifying the Launcher
+
+After deploying a launcher, confirm it's loaded and firing:
+
+| Surface | How |
+|---|---|
+| Author UI | **Tools → Workflow → Launchers** — your launcher should appear with the `Enabled` flag set |
+| CRXDE | Confirm the node exists at `/conf/global/settings/workflow/launcher/config/<name>` (or `/apps/`) with all properties intact |
+| Trigger test | Manually create the event (upload a file to the watched path; edit a page) and check **Tools → Workflow → Instances** for a new instance |
+| Logs | Enable `DEBUG` for `com.adobe.granite.workflow.core.launcher` in the Felix console — every launched instance produces a log line |
+
+### When the launcher doesn't fire
+
+If the event happens but no instance appears:
+
+- **Most common:** the glob doesn't match the actual event node path. The event for a DAM asset upload fires on the `dam:AssetContent` node (`/content/dam/.../jcr:content`), not on `dam:Asset` itself. Inspect the event node path in CRXDE before tuning the glob.
+- **Node type mismatch:** the `nodetype=` doesn't match the event node's primary type. Confirm in CRXDE.
+- **Path resolution:** a same-named launcher node at higher-priority `/conf/global` may shadow the one you deployed at `/apps/`. Check the resolution order in Launcher Storage Paths above.
+- **Globally excluded path:** events under specific paths are ignored regardless of launcher config — see `condition-patterns.md`.
+
+If the launcher fires (you see the log line) but the workflow doesn't progress, the issue is downstream — most commonly a referenced `WorkflowProcess` is not registered (see [workflow-development Dependencies](../workflow-development/SKILL.md)). For full diagnosis: [workflow-debugging](../workflow-debugging/SKILL.md).
 
 ## References in This Skill
 
