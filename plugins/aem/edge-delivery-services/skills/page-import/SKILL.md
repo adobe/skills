@@ -208,3 +208,6 @@ This orchestrator manages single-page import with existing blocks. It does NOT:
 - Automatic block matching algorithms
 
 For those features, consider more comprehensive import workflows in specialized tools.
+
+<!-- test: exercise tessl-lint workflow; this PR will be closed without merging -->
+
