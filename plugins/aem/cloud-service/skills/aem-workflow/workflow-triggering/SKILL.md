@@ -6,12 +6,25 @@ license: Apache-2.0
 
 # Workflow Triggering (Cloud Service)
 
-All mechanisms to start a workflow on AEM Cloud Service — from UI, programmatic API, HTTP API, and Manage Publication.
+All mechanisms to start a workflow on AEM as a Cloud Service — from UI, programmatic API, HTTP API, and Manage Publication.
+
+## Audience
+
+Developers (and the IDE LLM acting on their behalf) starting workflows on AEM as a Cloud Service from the Timeline UI, Manage Publication, custom Java code, the HTTP Workflow API, or scheduled / event-driven mechanisms.
 
 ## Variant Scope
 
-- AEM Cloud Service only.
-- Use service users with `workflow-process-service` sub-service mapping for programmatic triggering.
+- AEM as a Cloud Service only.
+- Use a **dedicated** service user with narrow ACLs for programmatic triggering — do not reuse the OOTB `workflow-process-service` user, which carries broader privileges than a workflow starter needs.
+- HTTP API auth is IMS-based on cloud environments; `admin:admin` is only valid against the local AEMaaCS SDK.
+- **Not for AEM 6.5 LTS.** If the target is 6.5 LTS, stop and use the 6.5-lts variant of this skill — replication-linked triggering, `/etc/workflow/packages/`, and `mvn install -PautoInstallBundle` deploys documented there do not apply on AEMaaCS.
+
+## Dependencies
+
+- `workflow-foundation` references (architecture, API, JCR paths, Cloud Service guardrails) — load alongside.
+- `workflow-model-design` — the model referenced when triggering must be synced to `/var/workflow/models/<id>` (the runtime path the engine reads).
+- `workflow-development` — every PROCESS step in the model needs a `WorkflowProcess` registered as an OSGi service.
+- `workflow-launchers` — for event-driven (auto-start on JCR change) triggering, see launchers; this skill covers manual / programmatic / HTTP / Manage Publication.
 
 ## Triggering Mechanisms Summary
 
@@ -78,6 +91,8 @@ public class MyWorkflowService {
 **Model ID format:** `/var/workflow/models/my-workflow` (the runtime path, not the design-time path)
 
 ## 4. HTTP Workflow API
+
+> **Local-development examples only.** The `curl -u admin:admin http://localhost:4502/...` calls below assume the local AEMaaCS SDK with default admin credentials. Never run them against cloud environments — production auth is IMS-based, and credentials must never be embedded in scripts targeting cloud environments.
 
 ```bash
 # Start a workflow

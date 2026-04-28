@@ -6,12 +6,24 @@ license: Apache-2.0
 
 # Workflow Model Design (Cloud Service)
 
-Design workflow models for AEM Cloud Service: step structure, transitions, OR/AND splits, variables, and model XML deployment.
+Design workflow models for AEM as a Cloud Service: step structure, transitions, OR/AND splits, variables, and model XML deployment.
+
+## Audience
+
+Developers (and the IDE LLM acting on their behalf) authoring AEM workflow models for AEM as a Cloud Service — designing the step graph, splits, joins, transitions, and the model XML that ships through the Cloud Manager pipeline.
 
 ## Variant Scope
 
-- This skill is AEM Cloud Service only.
-- Models are stored at `/conf/global/settings/workflow/models/`. Do not write to `/libs` or `/etc`.
+- AEM as a Cloud Service only.
+- Models are stored at `/conf/global/settings/workflow/models/`. Do not write to `/libs` or `/etc` — `/libs` is immutable and `/etc/workflow/models/` is the legacy 6.5 path, deprecated on AEMaaCS.
+- Deploy via Cloud Manager pipeline; design-time → runtime sync is required after deploy (Tools → Workflow → Models → Sync).
+- **Not for AEM 6.5 LTS.** If the target is 6.5 LTS, stop and use the 6.5-lts variant of this skill — `/etc/workflow/models/` legacy auto-deploy and `mvn install -PautoInstallPackage` deploys documented there do not apply on AEMaaCS.
+
+## Dependencies
+
+- `workflow-foundation` references (architecture, API, JCR paths, Cloud Service guardrails) — load alongside.
+- `workflow-development` — every PROCESS step in the model needs a `WorkflowProcess` (or `process.label`) registered as an OSGi service. Model XML and Java code are co-authored.
+- `workflow-launchers` — when a launcher routes content into the model, see launcher-side guardrails.
 
 ## Workflow
 

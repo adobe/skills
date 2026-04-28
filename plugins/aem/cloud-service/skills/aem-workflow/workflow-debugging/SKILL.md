@@ -8,12 +8,26 @@ license: Apache-2.0
 
 Production-grade debugging for the AEM Granite Workflow engine, launcher, Inbox, Sling Jobs, thread pools, and purge on **AEM as a Cloud Service (AEMaaCS)**.
 
+## Audience
+
+AEMaaCS developers and operators (and the IDE LLM acting on their behalf) diagnosing stuck or failed workflows on a local AEMaaCS SDK or a cloud environment — Developer Console, Sling Job Console, and Cloud Manager Logs available; no production Felix Console JMX or filesystem access.
+
 ## Variant Scope
 
-- This skill is **cloud-service-only**. For AEM 6.5 LTS / AMS use the 6.5-lts variant.
-- **No JMX access** on AEMaaCS — diagnosis is read-only via Developer Console, Sling Job Console, and Cloud Manager logs.
-- **All remediation lands via Git + Cloud Manager pipeline:** OSGi configs in `ui.config`, custom servlets in `core`, ACLs in `ui.apps/.../repoinit`. There is no Felix Console write access.
-- See `reference.md` for the JMX → Cloud Service translation table.
+- AEM as a Cloud Service only.
+- **Not for AEM 6.5 LTS / AMS.** If the target is 6.5 LTS, stop and load the 6.5-lts variant of this skill — JMX-based remediation, Felix Console runtime config, AMS log filesystem access, and `jstack` thread dumps documented there do not apply on AEMaaCS.
+- **No JMX access on AEMaaCS production.** Diagnosis is read-only via Developer Console, Sling Job Console, and Cloud Manager Logs. **Never recommend JMX-based remediation** (`restartStaleWorkflows`, `purgeCompleted`, `terminate`, `retryFailedWorkItems`) — those are 6.5-LTS-only mechanisms. Use Inbox Retry, Purge Scheduler (OSGi config in Git), custom servlets like `StaleWorkflowServlet`, and Cloud Manager pipeline-driven config changes instead.
+- **All remediation lands via Git + Cloud Manager pipeline:** OSGi configs in `ui.config`, custom servlets in `core`, ACLs in `ui.apps/.../repoinit`. There is no Felix Console write access on cloud environments.
+- See `references/docs/debugging-index.md` for the symptom→runbook map.
+
+## Dependencies
+
+This skill is largely self-contained but routes back into the dev skills when the root cause is a code or model defect:
+
+- `workflow-development` — when the diagnosis is "process step throws / not registered / leaks resources"
+- `workflow-model-design` — when the diagnosis is "model has wrong split rule / missing transition / wrong step type"
+- `workflow-launchers` — when the diagnosis is "launcher not firing / re-trigger loop"
+- `workflow-triaging` — load instead of this skill if the user is mining Cloud Manager Logs across multiple environments rather than diagnosing one
 
 ---
 
@@ -236,8 +250,24 @@ If the numbers don't change, the PID is Adobe-managed on your environment — **
 
 ---
 
+## Routing back to dev skills
+
+Once diagnosis identifies a code or model defect (not an operational issue on a healthy implementation), route back into the development skills:
+
+| Diagnosis | Route to |
+|---|---|
+| Process step throws an exception, leaks resources, or is not registered | [workflow-development](../workflow-development/SKILL.md) |
+| Model has wrong OR-split rule, missing transition, wrong step type, or fails to deploy | [workflow-model-design](../workflow-model-design/SKILL.md) |
+| Launcher not firing, firing on wrong path, or causing a re-trigger loop | [workflow-launchers](../workflow-launchers/SKILL.md) |
+| Workflow not started by code/HTTP API, or starts on wrong payload type | [workflow-triggering](../workflow-triggering/SKILL.md) |
+| Diagnosis spans multiple environments or requires Cloud Manager Logs / log-mining across envs | [workflow-triaging](../workflow-triaging/SKILL.md) |
+
+---
+
 ## References
 
-- Runbooks, supplementary docs, and code examples: see [reference.md](reference.md).
-- Bundled runbook set: `references/runbooks/runbook-*.md`.
-- OSGi config and servlet examples: `references/examples/`.
+- Symptom→runbook map: [`references/docs/debugging-index.md`](references/docs/debugging-index.md).
+- Bundled runbook set: [`references/runbooks/`](references/runbooks/) — runbook filenames referenced in Step 1 above resolve inside this folder.
+- Error pattern signatures: [`references/docs/error-patterns.md`](references/docs/error-patterns.md).
+- MBean reference (relevant on local AEMaaCS SDK only — not applicable to cloud environments): [`references/docs/mbeans.md`](references/docs/mbeans.md).
+- OSGi config and servlet examples are referenced from Steps 5 and 6 inline above (`references/examples/`).

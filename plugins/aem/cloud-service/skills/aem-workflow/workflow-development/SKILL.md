@@ -6,13 +6,26 @@ license: Apache-2.0
 
 # Workflow Development (Cloud Service)
 
-Implement custom workflow components for AEM Cloud Service: `WorkflowProcess`, `ParticipantStepChooser`, OSGi registration, metadata handling, and error patterns.
+Implement custom workflow components for AEM as a Cloud Service: `WorkflowProcess`, `ParticipantStepChooser`, OSGi registration, metadata handling, and error patterns.
+
+## Audience
+
+Java developers with OSGi / Maven familiarity building custom workflow steps on AEM as a Cloud Service.
 
 ## Variant Scope
 
-- AEM Cloud Service only.
-- Use OSGi DS R6 annotations (`org.osgi.service.component.annotations.*`). Do not use Felix SCR.
+- AEM as a Cloud Service only.
+- Use OSGi DS R6 annotations (`org.osgi.service.component.annotations.*`). Do not use Felix SCR — Felix SCR is not supported on AEMaaCS.
 - The Java source lives in the `core` (or equivalent) Maven module that builds an OSGi bundle. The built bundle is wrapped by your project's `all` content package and deployed via Cloud Manager pipeline. Do not place `.java` source under `ui.apps/src/main/content/jcr_root/...` — `ui.apps` carries OSGi configs and `/apps` content, not Java source.
+- **Not for AEM 6.5 LTS.** If the target instance is 6.5 LTS, stop and load the 6.5-lts variant of this skill — Felix SCR support, JMX-based remediation, and direct Package Manager / `mvn install -PautoInstallBundle` deploys documented there do not apply on AEMaaCS.
+
+## Dependencies
+
+This skill builds on:
+
+- `workflow-foundation` references (architecture, API, JCR paths, Cloud Service guardrails) — load alongside.
+- `workflow-model-design` — every `WorkflowProcess` and `ParticipantStepChooser` you implement here must be referenced by a step in a deployed model. Build the model first; this skill makes the Java side match.
+- `workflow-launchers` — when a launcher routes content into your step, see launcher-side loop-prevention guardrails.
 
 ## Workflow
 
@@ -104,9 +117,13 @@ public class ContentOwnerChooser implements ParticipantStepChooser {
 
 ## Guardrails
 
-- Never use `ResourceResolverFactory.loginAdministrative()`. Always use a service user sub-service.
-- Do not call `Session.save()` on the workflow session's JCR session for payload changes — use a separate ResourceResolver obtained from `resolverFactory.getServiceResourceResolver()`.
+- Never use `ResourceResolverFactory.loginAdministrative()`. Always use a service user sub-service mapped via `ServiceUserMapper`.
+- Do not call `Session.save()` on the workflow session's JCR session for payload changes — use a separate `ResourceResolver` obtained from `resolverFactory.getServiceResourceResolver()`.
 - If a step must hold (not auto-advance), set `PROCESS_AUTO_ADVANCE=false` in the model metaData and use `TaskWorkflowProcess` or an external completion mechanism.
+- Throw `WorkflowException` for retryable errors so the engine respects retry policy; log and rethrow for unexpected errors.
+- Do not log full payload contents or metadata values at `INFO` — payloads may carry PII or confidential content. Log the payload path and a correlation key; log full values only at `DEBUG` against the local AEMaaCS SDK, never against cloud environments.
+- Model XML and Java are co-authored. The `PROCESS=` value on a `cq:WorkflowNode` must resolve to either the fully qualified class name **or** the exact `process.label` of a deployed `WorkflowProcess`. A model that references a label you have not registered will fail at runtime with `Process not found`. Generate the Java class first, deploy through Cloud Manager and confirm it appears in the Model Editor step picker, then reference it from the model.
+- **Avoid launcher re-trigger loops.** If your process step modifies a JCR path that any `cq:WorkflowLauncher` watches, the change will re-trigger the same workflow. The `session` parameter on `execute()` is a `WorkflowSession`, **not** a JCR `Session` — adapt it first: `javax.jcr.Session jcrSession = session.adaptTo(javax.jcr.Session.class);`. Then before the write, call `jcrSession.getWorkspace().getObservationManager().setUserData("workflowmanager")` — `WorkflowLauncherListener` ignores events tagged with that user data. If you write through a service-user `ResourceResolver` instead, tag *that* resolver's underlying `Session` the same way (it is a different `Session` instance and the flag does not propagate). See [workflow-launchers](../workflow-launchers/SKILL.md) for the alternative `excludeList` / JCR-flag patterns.
 
 ## References
 
