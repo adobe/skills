@@ -124,10 +124,10 @@ jobs:
             echo "$OUTPUT"
             echo "::endgroup::"
 
-            # Surface warnings as informational annotations (not failures)
+            # Surface warnings as ::warning:: annotations (yellow icon, doesn't fail the build)
             WARN_COUNT=$(echo "$OUTPUT" | grep -c '^⚠' || true)
             if [ "$WARN_COUNT" -gt 0 ]; then
-              echo "::notice::$TILE_NAME has $WARN_COUNT lint warning(s) — see job log"
+              echo "::warning::$TILE_NAME has $WARN_COUNT lint warning(s) — see job log"
             fi
 
             if [ "$EXIT_CODE" -ne 0 ]; then
