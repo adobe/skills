@@ -25,7 +25,27 @@ For social media platform sets (Instagram, TikTok, etc.) → use the `adobe-crea
 
 ---
 
-## Step 0 - prereq: Initialize Adobe Tools
+## Tool Reference
+
+| Step | Tool | Notes |
+|------|------|-------|
+| Open file picker | `asset_add_file` | Returns `presignedAssetUrl`, `assetId`, and `mediaType` |
+| Find asset in CC | `asset_search` | Re-stage result via `asset_add_file` for image; use `id` directly for video |
+| Render PSD/AI | `document_render_vector` | Converts to JPEG before resize |
+| Resize image | `image_crop_and_resize` | One call per dimension; `reframe` by default |
+| Preview outputs | `asset_preview_file` | All outputs in a single call |
+| Upload to CC (start) | `asset_initialize_file_upload` | First call in block upload pipeline |
+| Upload to CC (finish) | `asset_finalize_file_upload` | Second call; returns presigned CC URL for board |
+| Create Firefly board | `create_firefly_board` | Pass `import_adobe_storage` with finalize URL |
+| Resize video | `video_resize` | Returns `statusId` for polling |
+| Poll video resize | `resizeVideoPoll` | Deferred tool — load before calling |
+
+---
+
+## Workflow
+
+### Step 0 — Initialize Adobe Tools
+
 Call `adobe_mandatory_init` first. This returns file handling rules and tool routing guidance required for the rest of the workflow.
 
 ```json
@@ -34,22 +54,28 @@ Call `adobe_mandatory_init` first. This returns file handling rules and tool rou
 
 ---
 
-## IMMEDIATE ACTION REQUIRED
+### Step 1 — Entitlement Check
 
-**Step 1:** If parameters are missing or ambiguous → run the multi-step intake (Step 0 below).
-**Step 2:** If no file uploaded, call `asset_add_file({})`.
-**Step 3:** Detect image vs. video → route to the correct workflow.
+Now that `adobe_mandatory_init` confirmed that the "Adobe for creativity" connector is live, check which tools are available through the "Adobe for creativity" connector by cross checking against the **Tool Reference** table above.
 
 ---
 
-## Step 0 — Multi-Step Intake
+## IMMEDIATE ACTION REQUIRED
+
+**Step 1:** If parameters are missing or ambiguous → run the multi-step intake (Step 2 below).
+**Step 2:** If no file is uploaded, run Step 3 (`asset_add_file({})`).
+**Step 3:** Detect image vs. video and route to the correct workflow (Step 5 Image/Video).
+
+---
+
+### Step 2 — Multi-Step Intake
 
 Run this when the user hasn't provided complete parameters (type + dimensions + fit mode).
 Skip entirely if the user's message already contains all three.
 
 Use `AskUserQuestion` to collect parameters step by step.
 
-### Step 0a — Type
+#### Step 2a — Type
 
 ```
 AskUserQuestion([{
@@ -59,7 +85,7 @@ AskUserQuestion([{
 }])
 ```
 
-### Step 0b — Dimensions
+#### Step 2b — Dimensions
 
 **If Photo** (`multi_select` — user can pick one or more):
 ```
@@ -109,7 +135,7 @@ AskUserQuestion([{
 If user selects multiple video presets → submit a separate `video_resize` job per dimension,
 poll each to completion, preview all outputs together.
 
-### Step 0c — Fit mode
+#### Step 2c — Fit mode
 
 **If Photo** (`single_select`):
 ```
@@ -137,7 +163,7 @@ AskUserQuestion([{
 }])
 ```
 
-### Step 0d — Smart focus (Photo only)
+#### Step 2d — Smart focus (Photo only)
 
 ```
 AskUserQuestion([{
@@ -155,7 +181,7 @@ AskUserQuestion([{
 
 If user selects "Named object" → follow up: "Describe the object (e.g. 'the red car', 'the logo'):"
 
-### Step 0e — Options (Photo only)
+#### Step 2e — Options (Photo only)
 
 ```
 AskUserQuestion([{
@@ -169,7 +195,7 @@ AskUserQuestion([{
 }])
 ```
 
-### Step 0f — Source (Video only)
+#### Step 2f — Source (Video only)
 
 ```
 AskUserQuestion([{
@@ -184,7 +210,7 @@ AskUserQuestion([{
 
 ---
 
-## Step 1 — Get the Source File
+### Step 3 — Get the Source File
 
 **Critical — `/mnt/user-data/uploads/` paths are NOT usable URLs.**
 Even when the user has attached a file and it appears in context at a `/mnt/user-data/uploads/` path,
@@ -207,7 +233,7 @@ Detect type from returned `mediaType`:
 
 ---
 
-## Step 2 — Resolve Target Dimensions
+### Step 4 — Resolve Target Dimensions
 
 | User says                    | Resolve to                                      |
 | ---------------------------- | ----------------------------------------------- |
@@ -229,7 +255,7 @@ If no target was specified in the form AND none in the user's message → ask:
 
 ## IMAGE WORKFLOW
 
-### Step 3 (Image) — Valid URI Sources
+### Step 5 (Image) — Valid URI Sources
 
 Only these work as `imageURI`:
 - `presignedAssetUrl` from `asset_add_file()` ✅
@@ -250,7 +276,7 @@ Not usable as `imageURI`:
 
 ---
 
-### Step 4 (Image) — Fit Mode
+### Step 6 (Image) — Fit Mode
 
 | Intent                                   | Mode      | Notes                                                  |
 | ---------------------------------------- | --------- | ------------------------------------------------------ |
@@ -264,7 +290,7 @@ Not usable as `imageURI`:
 
 ---
 
-### Step 5 (Image) — Call `image_crop_and_resize`
+### Step 7 (Image) — Call `image_crop_and_resize`
 
 ```javascript
 image_crop_and_resize({
@@ -289,7 +315,7 @@ image_crop_and_resize({
 
 ---
 
-### Step 6 (Image) — Batch
+### Step 8 (Image) — Batch
 
 If batch was selected in the form OR the user provided multiple files:
 1. Call `asset_add_file()` for each file to get individual presigned URLs
@@ -309,7 +335,7 @@ causing Claude to pause mid-batch. This is expected — not an error. When it ha
 
 ---
 
-### Step 7 (Image) — Preview + Deliver + Firefly Board
+### Step 9 (Image) — Preview + Deliver + Firefly Board
 
 ```javascript
 asset_preview_file({
@@ -359,7 +385,7 @@ Post the completion summary after the board step:
 
 ## VIDEO WORKFLOW
 
-### Step 3 (Video) — Get Asset ID
+### Step 5 (Video) — Get Asset ID
 
 Video tools require `assetId`, not a URL.
 
@@ -370,7 +396,7 @@ Video tools require `assetId`, not a URL.
 
 ---
 
-### Step 4 (Video) — Common Targets
+### Step 6 (Video) — Common Targets
 
 | Name          | Dimensions  |
 | ------------- | ----------- |
@@ -383,7 +409,7 @@ Video tools require `assetId`, not a URL.
 
 ---
 
-### Step 5 (Video) — Call `video_resize`
+### Step 7 (Video) — Call `video_resize`
 
 > ⚠️ `resizeVideoPoll` is a **deferred tool** — load it first before attempting to poll.
 > Direct calls without loading will fail with "not loaded" error.
@@ -418,7 +444,7 @@ resizeVideoPoll({ statusId })
 
 ---
 
-### Step 6 (Video) — Preview + Deliver + Firefly Board
+### Step 8 (Video) — Preview + Deliver + Firefly Board
 
 If polling succeeds and returns `outputUrl`, upload to CC storage via the block upload pipeline
 (`asset_initialize_file_upload` → PUT → `asset_finalize_file_upload`) to get a presigned URL, then:
@@ -433,7 +459,7 @@ create_firefly_board({
 })
 ```
 
-> ✅ Use `import_adobe_storage` with the finalize presigned URL. If board creation fails, omit the link.
+> ✅ Pass `import_adobe_storage` with the finalize presigned URL. If board creation fails, omit the link.
 
 ```
 ✅ Done! Video resized to [WxH].
@@ -443,7 +469,7 @@ create_firefly_board({
 🎨 View in Firefly Board → <board_url>   ← omit if board creation failed
 ```
 
-If polling is unavailable → skip preview, deliver the CC storage fallback message from Step 5.
+If polling is unavailable → skip preview, deliver the CC storage fallback message from Step 7.
 
 ---
 
