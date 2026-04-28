@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   tessl-lint:
@@ -108,12 +109,26 @@ jobs:
 
       - name: Lint tiles
         if: steps.detect.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           PASS=0
           FAIL=0
+          TOTAL_WARNINGS=0
           SUMMARY_FILE=$(mktemp)
           ERRORS_FILE=$(mktemp)
-          trap 'rm -f "$SUMMARY_FILE" "$ERRORS_FILE"' EXIT
+          COMMENT_FILE=$(mktemp)
+          PAYLOAD_FILE=$(mktemp)
+          trap 'rm -f "$SUMMARY_FILE" "$ERRORS_FILE" "$COMMENT_FILE" "$PAYLOAD_FILE"' EXIT
+
+          # Marker used to find/update the sticky PR comment on subsequent runs
+          MARKER="<!-- tessl-lint-summary -->"
+
+          {
+            echo "$MARKER"
+            echo "## Tessl Skill Lint"
+            echo ""
+          } > "$COMMENT_FILE"
 
           for tile_dir in ${{ steps.detect.outputs.dirs }}; do
             TILE_NAME=$(basename "$tile_dir")
@@ -124,28 +139,51 @@ jobs:
             echo "$OUTPUT"
             echo "::endgroup::"
 
-            # Surface warnings as ::warning:: annotations (yellow icon, doesn't fail the build)
             WARN_COUNT=$(echo "$OUTPUT" | grep -c '^⚠' || true)
+            TOTAL_WARNINGS=$((TOTAL_WARNINGS + WARN_COUNT))
+
+            # ::warning:: annotation per tile with warnings (visible in run details)
             if [ "$WARN_COUNT" -gt 0 ]; then
-              echo "::warning::$TILE_NAME has $WARN_COUNT lint warning(s) — see job log"
+              echo "::warning::$TILE_NAME has $WARN_COUNT lint warning(s) — see job log or PR comment"
             fi
 
             if [ "$EXIT_CODE" -ne 0 ]; then
               FAIL=$((FAIL + 1))
               echo "| $TILE_NAME | $WARN_COUNT warnings | ❌ error |" >> "$SUMMARY_FILE"
               echo "  ❌ $TILE_NAME: lint failed (exit code $EXIT_CODE)" >> "$ERRORS_FILE"
+              {
+                echo "### ❌ \`$TILE_NAME\` — lint failed"
+                echo ""
+                echo '```'
+                echo "$OUTPUT"
+                echo '```'
+                echo ""
+              } >> "$COMMENT_FILE"
             else
               PASS=$((PASS + 1))
               if [ "$WARN_COUNT" -gt 0 ]; then
                 echo "| $TILE_NAME | $WARN_COUNT warnings | ✅ |" >> "$SUMMARY_FILE"
+                {
+                  echo "<details>"
+                  echo "<summary>⚠️ <strong><code>$TILE_NAME</code></strong> — $WARN_COUNT warning(s)</summary>"
+                  echo ""
+                  echo '```'
+                  echo "$OUTPUT"
+                  echo '```'
+                  echo "</details>"
+                  echo ""
+                } >> "$COMMENT_FILE"
               else
                 echo "| $TILE_NAME | clean | ✅ |" >> "$SUMMARY_FILE"
+                echo "✅ \`$TILE_NAME\` — clean" >> "$COMMENT_FILE"
+                echo "" >> "$COMMENT_FILE"
               fi
             fi
           done
 
           TOTAL=$((PASS + FAIL))
 
+          # GitHub Actions step summary
           {
             echo "## Skill Lint"
             echo ""
@@ -155,19 +193,56 @@ jobs:
             echo "| **Total** | **$PASS/$TOTAL passed** | $([ "$FAIL" -eq 0 ] && echo '✅' || echo '❌') |"
           } >> "$GITHUB_STEP_SUMMARY"
 
+          # Footer in sticky comment
+          {
+            echo ""
+            echo "---"
+            if [ "$FAIL" -gt 0 ]; then
+              echo "**$FAIL tile(s) failed lint**, $TOTAL_WARNINGS warning(s) across $TOTAL tile(s) checked."
+            elif [ "$TOTAL_WARNINGS" -gt 0 ]; then
+              echo "✅ All $TOTAL tile(s) lint passed with $TOTAL_WARNINGS warning(s) total."
+            else
+              echo "✅ All $TOTAL tile(s) clean."
+            fi
+            echo ""
+            echo "_Updated by [\`tessl-lint\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) for commit ${GITHUB_SHA:0:7}._"
+          } >> "$COMMENT_FILE"
+
+          # stdout summary
           echo ""
           echo "============================="
           echo "  Skill Lint Summary"
           echo "============================="
-          echo "  Total:  $TOTAL"
-          echo "  Passed: $PASS"
-          echo "  Failed: $FAIL"
+          echo "  Total:    $TOTAL"
+          echo "  Passed:   $PASS"
+          echo "  Failed:   $FAIL"
+          echo "  Warnings: $TOTAL_WARNINGS"
           if [ -s "$ERRORS_FILE" ]; then
             echo ""
             echo "  Failed tiles:"
             cat "$ERRORS_FILE"
           fi
           echo "============================="
+
+          # Sticky PR comment (pull_request events only)
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            PR_NUMBER=${{ github.event.pull_request.number }}
+            REPO="${{ github.repository }}"
+
+            # JSON-encode the comment body via jq so quotes/newlines survive
+            jq -n --rawfile body "$COMMENT_FILE" '{body: $body}' > "$PAYLOAD_FILE"
+
+            EXISTING_ID=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
+              --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -1 || true)
+
+            if [ -n "$EXISTING_ID" ]; then
+              echo "Updating existing sticky comment $EXISTING_ID"
+              gh api -X PATCH "repos/$REPO/issues/comments/$EXISTING_ID" --input "$PAYLOAD_FILE" >/dev/null
+            else
+              echo "Creating new sticky comment"
+              gh api -X POST "repos/$REPO/issues/$PR_NUMBER/comments" --input "$PAYLOAD_FILE" >/dev/null
+            fi
+          fi
 
           if [ "$FAIL" -gt 0 ]; then
             echo "::error::$FAIL tile(s) failed lint"
