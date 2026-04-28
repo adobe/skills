@@ -65,7 +65,13 @@ Call `adobe_mandatory_init` first. This returns file handling rules and tool rou
 
 ---
 
-## Step 1: Image Ingestion
+## Step 1 — Entitlement Check
+
+Now that `adobe_mandatory_init` confirmed that the "Adobe for creativity" connector is live, check which tools are available through the "Adobe for creativity" connector by cross checking against the Tool Reference table above.
+
+---
+
+## Step 2: Image Ingestion
 
 Call `asset_add_file` with no parameters to open the file picker:
 
@@ -76,7 +82,7 @@ Params: {}
 
 ---
 
-## Step 2: Understand the Desired Look
+## Step 3: Understand the Desired Look
 
 Once URIs are obtained, scan the conversation to infer as many preferences
 as possible before asking anything:
@@ -89,7 +95,7 @@ as possible before asking anything:
 
 **Three cases:**
 
-**A — Everything clear from context:** Skip `AskUserQuestion` entirely. Post the confirmation message, then proceed directly to Step 2c (sample preview). Do NOT start the full batch — the preview and confirm gate always runs regardless of how clearly preferences were stated.
+**A — Everything clear from context:** Skip `AskUserQuestion` entirely. Post the confirmation message, then proceed directly to Step 3b (sample preview). Do NOT start the full batch — the preview and confirm gate always runs regardless of how clearly preferences were stated.
 
 **B — Some things clear, some not:** Confirm what you've inferred upfront,
 then call `AskUserQuestion` with only the questions that remain unanswered.
@@ -200,13 +206,13 @@ After receiving selections, confirm the settings back to the user:
 - Background blur: [yes/no]
 ```
 
-Then proceed immediately to Step 2c (sample preview) — do not start the full batch yet.
+Then proceed immediately to Step 3b (sample preview) — do not start the full batch yet.
 
 ---
 
-## Step 2b: Large Batch Warning (N > 5)
+## Step 3a: Large Batch Warning (N > 5)
 
-Include this as part of the Step 2c confirmation prompt (after the before/after preview) when N > 5:
+Include this as part of the Step 3b confirmation prompt (after the before/after preview) when N > 5:
 ```
 ⏱ Estimated time for [N] images:
   6–10 → ~3–5 min
@@ -218,9 +224,9 @@ Feel free to step away — I'll post a ✅ summary with download links when done
 
 ---
 
-## Step 2c: Sample Preview (Before/After on Image 1)
+## Step 3b: Sample Preview (Before/After on Image 1)
 
-Before running the full batch, process the **first image only** through the complete pipeline (Steps 3–7) using the confirmed settings. This gives the user a real preview of exactly what will be applied to every image.
+Before running the full batch, process the **first image only** through the complete pipeline (Steps 4–8) using the confirmed settings. This gives the user a real preview of exactly what will be applied to every image.
 
 1. Run the full pipeline on `sourceURIs[0]` only (straighten → tone → look → fine-tune → blur → crop).
 2. Call `asset_preview_file` directly with both the original source URL and the processed output URL — do NOT resize either through `image_crop_and_resize` first, as that introduces white bars or unwanted cropping:
@@ -252,7 +258,7 @@ Question (single_select):
 
 **If "Looks great":** Start the full batch on the remaining images (`sourceURIs[1…]`). Reuse the already-processed image[0] result — do not reprocess it.
 
-**If "Adjust settings":** Re-show the full `AskUserQuestion` set from Step 2. Once new settings are confirmed, ask whether the user wants another preview or wants to go straight to the full batch:
+**If "Adjust settings":** Re-show the full `AskUserQuestion` set from Step 3. Once new settings are confirmed, ask whether the user wants another preview or wants to go straight to the full batch:
 
 ```
 Question (single_select):
@@ -262,13 +268,13 @@ Question (single_select):
     - "🚀 Run all [N] images now"
 ```
 
-- If "Preview first": repeat Step 2c with the new settings (process image[0] again, show before/after, offer the same Looks great / Adjust / Cancel gate).
+- If "Preview first": repeat Step 3b with the new settings (process image[0] again, show before/after, offer the same Looks great / Adjust / Cancel gate).
 - If "Run all now": start the full batch immediately on all `sourceURIs` with the new settings. Do not reuse the earlier image[0] result — reprocess it with the updated settings.
 **If "Cancel":** Acknowledge and stop. Do not process any images.
 
 ---
 
-## Step 3: Auto-Straighten (per image)
+## Step 4: Auto-Straighten (per image)
 
 ```
 Tool: image_auto_straighten
@@ -285,7 +291,7 @@ On failure: use original URI, note "straighten skipped" for that image.
 
 ---
 
-## Step 4: Auto-Tone (per image)
+## Step 5: Auto-Tone (per image)
 
 ```
 Tool: image_apply_auto_tone
@@ -300,11 +306,11 @@ Use `type: "cameraRawFilter"` for `image_apply_auto_tone`. Output: `results[0].o
 
 ---
 
-## Step 5: Apply the Look (per image)
+## Step 6: Apply the Look (per image)
 
 Apply the look in this order per image, chaining outputs:
 
-**5a: Color Temperature** (if the look requires it — see mapping table)
+**6a: Color Temperature** (if the look requires it — see mapping table)
 
 `image_adjust_color_temperature` supports a batch `imageURIs` array. Pass all toned
 URLs at once for efficiency:
@@ -319,7 +325,7 @@ Params:
 ```
 Output: `results[N].outputUrl` → `color_temp_urls[]`
 
-**5b: Look Preset** (if the look uses one — see mapping table)
+**6b: Look Preset** (if the look uses one — see mapping table)
 ```
 Tool: image_apply_preset
 Params:
@@ -328,7 +334,7 @@ Params:
     presetName: "<preset from mapping>"
 ```
 
-**5c: Vibrance / Saturation** (if the look requires it)
+**6c: Vibrance / Saturation** (if the look requires it)
 ```
 Tool: image_adjust_vibrance_and_saturation
 Params:
@@ -338,7 +344,7 @@ Params:
     saturation: <value>
 ```
 
-**5d: Brightness + Contrast** (if the look requires either — combine into one call)
+**6d: Brightness + Contrast** (if the look requires either — combine into one call)
 ```
 Tool: image_adjust_brightness_and_contrast
 Params:
@@ -361,7 +367,7 @@ your Adobe plan." Continue with the rest of the look adjustments.
 
 ---
 
-## Step 6: Fine-Tune Adjustments (batch, if selected)
+## Step 7: Fine-Tune Adjustments (batch, if selected)
 
 Apply user-selected tweaks across all images at once. All of these tools
 accept a batch `imageURIs` array — chain from the look output:
@@ -389,7 +395,7 @@ Params:
 
 ---
 
-## Step 7: Crop (per image, if requested)
+## Step 8: Crop (per image, if requested)
 
 If "No crop" was selected, skip this step entirely.
 
@@ -422,11 +428,11 @@ Params:
   outputFileType: "jpeg"
 ```
 
-Collect as `final_urls[]`. If no crop: `final_urls[]` = outputs from Step 6.
+Collect as `final_urls[]`. If no crop: `final_urls[]` = outputs from Step 7 (or Step 6 when no fine-tunes are selected).
 
 ---
 
-## Step 8: Preview
+## Step 9: Preview
 
 Pass the final output URLs directly to `asset_preview_file` — do NOT run them through `image_crop_and_resize` first. Adding a resize step introduces white bars (from `fit: "pad"`) or crops subjects (from `fit: "reframe"`). `asset_preview_file` handles its own thumbnailing correctly.
 
@@ -441,7 +447,7 @@ asset_preview_file({
 
 If `asset_preview_file` fails, present the final output URLs as plain text links in the completion summary.
 
-**Before/after preview (Step 2c):** Same rule applies — pass the original source URL and the processed URL directly to `asset_preview_file`. Do not resize either.
+**Before/after preview (Step 3b):** Same rule applies — pass the original source URL and the processed URL directly to `asset_preview_file`. Do not resize either.
 
 ### Create Firefly Board
 
@@ -521,8 +527,8 @@ Read `results[N].outputUrl`. On `success: false` → see Error Handling.
 | Any tone/color tool returns 403                     | Skip that step. Note in summary. Continue.                                                                                                                                                               |
 | Any tool returns "No approval received"             | Treat the same as a 403 entitlement error. For optional steps (presets, fine-tune adjustments, preview), skip and note in summary. Retrying does not help for this error — continue per the rules above. |
 | Any tool returns 401                                | Ask user to re-authenticate via Adobe OAuth and retry.                                                                                                                                                   |
+| Any tool returns "file too large or corrupted"      | Stop processing that image immediately. Do not retry, do not attempt alternative URLs. Tell the user: "I couldn't process [filename] — it's either too large or the file may be damaged. Try re-uploading a smaller version, or check that the file opens correctly on your end." Flag the image in the summary and continue with remaining images. |
 | `asset_add_file` shows no files                     | Remind user to select files in the picker.                                                                                                                                                               |
-| URI starts with `dcx*.adobe.io`                     | Call `read_widget_context` for real presigned S3 URL.                                                                                                                                                    |
 | `image_auto_straighten` fails                       | Use original URI; note "straighten skipped".                                                                                                                                                             |
 | `image_apply_auto_tone` fails                       | Use straightened URI; note in summary.                                                                                                                                                                   |
 | Any adjustment tool fails                           | Use previous step's output; note in summary.                                                                                                                                                             |
