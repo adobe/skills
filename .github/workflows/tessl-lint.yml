@@ -1,0 +1,175 @@
+name: Tessl Skill Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tessl-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: tesslio/setup-tessl@v2
+
+      - name: Detect changed tiles
+        id: detect
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+
+            # Build list of all tile directories (parents of tile.json)
+            ALL_TILE_DIRS=$(find plugins -name tile.json -exec dirname {} \; 2>/dev/null | sort)
+
+            if [ -z "$ALL_TILE_DIRS" ]; then
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              echo "No tile.json files found in repo."
+              exit 0
+            fi
+
+            # For each changed file, find which tile directory it belongs to
+            DIRS=""
+            for changed_file in $CHANGED_FILES; do
+              for tile_dir in $ALL_TILE_DIRS; do
+                case "$changed_file" in
+                  "$tile_dir"/*)
+                    case " $DIRS " in
+                      *" $tile_dir "*) ;;
+                      *) DIRS="$DIRS $tile_dir" ;;
+                    esac
+                    break
+                    ;;
+                esac
+              done
+            done
+
+            DIRS=$(echo "$DIRS" | xargs)  # trim whitespace
+
+            # Check for unmatched changes under plugins/
+            UNMATCHED=false
+            for changed_file in $CHANGED_FILES; do
+              case "$changed_file" in
+                plugins/*)
+                  MATCHED=false
+                  for tile_dir in $ALL_TILE_DIRS; do
+                    case "$changed_file" in
+                      "$tile_dir"/*) MATCHED=true; break ;;
+                    esac
+                  done
+                  if [ "$MATCHED" = "false" ]; then
+                    UNMATCHED=true
+                    break
+                  fi
+                  ;;
+              esac
+            done
+
+            if [ "$UNMATCHED" = "true" ]; then
+              echo "Unmatched changes under plugins/ detected — linting all tiles"
+              DIRS=$(echo "$ALL_TILE_DIRS" | tr "\n" " " | xargs)
+            fi
+
+            if [ -z "$DIRS" ]; then
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              echo "Changed files don't belong to any tile — nothing to lint."
+            else
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              echo "dirs=$DIRS" >> "$GITHUB_OUTPUT"
+              echo "Tiles to lint: $DIRS"
+            fi
+          else
+            # Push to main: lint all tiles
+            ALL_TILE_DIRS=$(find plugins -name tile.json -exec dirname {} \; 2>/dev/null | tr "\n" " " | xargs)
+            if [ -z "$ALL_TILE_DIRS" ]; then
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              echo "No tile.json files found in repo."
+            else
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              echo "dirs=$ALL_TILE_DIRS" >> "$GITHUB_OUTPUT"
+              echo "Push to main — linting all tiles: $ALL_TILE_DIRS"
+            fi
+          fi
+
+      - name: Post skip summary
+        if: steps.detect.outputs.skip == 'true'
+        run: |
+          {
+            echo "## Skill Lint"
+            echo ""
+            echo "No tiles to lint."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Lint tiles
+        if: steps.detect.outputs.skip != 'true'
+        run: |
+          PASS=0
+          FAIL=0
+          SUMMARY_FILE=$(mktemp)
+          ERRORS_FILE=$(mktemp)
+          trap 'rm -f "$SUMMARY_FILE" "$ERRORS_FILE"' EXIT
+
+          for tile_dir in ${{ steps.detect.outputs.dirs }}; do
+            TILE_NAME=$(basename "$tile_dir")
+            echo "::group::Linting $TILE_NAME ($tile_dir)"
+
+            EXIT_CODE=0
+            OUTPUT=$(tessl skill lint "$tile_dir" 2>&1) || EXIT_CODE=$?
+            echo "$OUTPUT"
+            echo "::endgroup::"
+
+            # Surface warnings as informational annotations (not failures)
+            WARN_COUNT=$(echo "$OUTPUT" | grep -c '^⚠' || true)
+            if [ "$WARN_COUNT" -gt 0 ]; then
+              echo "::notice::$TILE_NAME has $WARN_COUNT lint warning(s) — see job log"
+            fi
+
+            if [ "$EXIT_CODE" -ne 0 ]; then
+              FAIL=$((FAIL + 1))
+              echo "| $TILE_NAME | $WARN_COUNT warnings | ❌ error |" >> "$SUMMARY_FILE"
+              echo "  ❌ $TILE_NAME: lint failed (exit code $EXIT_CODE)" >> "$ERRORS_FILE"
+            else
+              PASS=$((PASS + 1))
+              if [ "$WARN_COUNT" -gt 0 ]; then
+                echo "| $TILE_NAME | $WARN_COUNT warnings | ✅ |" >> "$SUMMARY_FILE"
+              else
+                echo "| $TILE_NAME | clean | ✅ |" >> "$SUMMARY_FILE"
+              fi
+            fi
+          done
+
+          TOTAL=$((PASS + FAIL))
+
+          {
+            echo "## Skill Lint"
+            echo ""
+            echo "| Tile | Status | Result |"
+            echo "|------|--------|--------|"
+            cat "$SUMMARY_FILE"
+            echo "| **Total** | **$PASS/$TOTAL passed** | $([ "$FAIL" -eq 0 ] && echo '✅' || echo '❌') |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo ""
+          echo "============================="
+          echo "  Skill Lint Summary"
+          echo "============================="
+          echo "  Total:  $TOTAL"
+          echo "  Passed: $PASS"
+          echo "  Failed: $FAIL"
+          if [ -s "$ERRORS_FILE" ]; then
+            echo ""
+            echo "  Failed tiles:"
+            cat "$ERRORS_FILE"
+          fi
+          echo "============================="
+
+          if [ "$FAIL" -gt 0 ]; then
+            echo "::error::$FAIL tile(s) failed lint"
+            exit 1
+          fi
