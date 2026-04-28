@@ -6,17 +6,45 @@ license: Apache-2.0
 
 # Workflow Orchestrator — AEM 6.5 LTS
 
+## Audience
+
+AEM 6.5 LTS developers (and the IDE LLM acting on their behalf) building, deploying, debugging, or operating Workflow models, process steps, launchers, or programmatic workflow starts on a local or dev author instance.
+
+## Variant Scope
+
+**AEM 6.5 LTS only.** If the user is on AEM as a Cloud Service, stop and load the cloud-service variant of this orchestrator. JCR-event launchers, JMX-driven remediation (`restartStaleWorkflows`, `purgeCompleted`, etc.), and the `/etc → /libs → /conf` overlay chain documented here do not apply 1:1 on AEMaaCS.
+
 ## Purpose
 
-This is the **master entry point** for all AEM Workflow tasks on AEM 6.5 LTS — spanning both **development** (building workflows) and **production support** (debugging and triaging workflow issues). Read this skill first. It classifies the user's request and routes to the right sub-skill.
+Master entry point for AEM Workflow tasks on AEM 6.5 LTS. Read this skill first. It classifies the user's request and routes to the right sub-skill.
+
+## Dependencies
+
+This orchestrator routes into six sub-skills:
+
+- `workflow-model-design` — design models (steps, splits, joins) and model XML
+- `workflow-development` — implement `WorkflowProcess`, `ParticipantStepChooser`, variables and metadata
+- `workflow-triggering` — start workflows from code, HTTP API, or Manage Publication
+- `workflow-launchers` — configure `cq:WorkflowLauncher` for event-driven start
+- `workflow-debugging` — diagnose stuck or failed workflows on an accessible instance
+- `workflow-triaging` — symptom→runbook mapping for multi-instance / log-mining contexts (load only when the user explicitly invokes that context)
+
+## Cross-Cutting Invariants
+
+These apply to every workflow task; surface them regardless of which sub-skill is loaded:
+
+- **Loop prevention.** A workflow whose process step modifies a JCR path watched by a launcher will re-trigger itself. Default to marking the JCR session inside the process step with `session.getWorkspace().getObservationManager().setUserData("workflowmanager")` so launcher listeners ignore the change. See `workflow-launchers` for the alternative `excludeList` and JCR-flag patterns.
+- **JMX safety.** Never recommend executing JMX remediation operations (`restartStaleWorkflows`, `purgeCompleted(dryRun=false)`, `terminate`, etc.) without first confirming the target instance with the user. These affect live workflow state and are not reversible. Always pair with `dryRun=true` first when the operation supports it.
+- **AEMaaCS stop-rule.** If the user's target is AEMaaCS, stop and load the cloud-service orchestrator — see Variant Scope above.
 
 ## How to Use This Skill
 
-1. Read the user's request carefully
-2. Classify it using the **Task Classifier** table below
-3. Load the identified sub-skill's `SKILL.md` and its references
-4. For development tasks, always load the `workflow-foundation` references alongside the sub-skill references
-5. For production-support tasks, the debugging and triaging skills are self-contained
+1. Read the user's request carefully.
+2. Confirm the variant (6.5 LTS vs AEMaaCS) before routing — see Variant Scope.
+3. Classify the request using the **Task Classifier** table below.
+4. Load the identified sub-skill's `SKILL.md` and its references.
+5. For development tasks, always load the `workflow-foundation` references alongside the sub-skill references.
+6. The cross-cutting invariants above apply regardless of which sub-skill is loaded.
 
 ---
 
@@ -32,7 +60,7 @@ This is the **master entry point** for all AEM Workflow tasks on AEM 6.5 LTS —
 | "Configure a launcher", "Auto-start on asset upload", "Launcher not firing", "cq:WorkflowLauncher", "Overlay an OOTB launcher" | `workflow-launchers` |
 | "How do workflows work?", "What is the Granite Workflow Engine?", "Explain workflow architecture" | Load `workflow-foundation` references only |
 
-### Production Support Skills
+### Debugging Skills
 
 | User Says / Asks | Sub-Skill to Load |
 |---|---|
@@ -40,17 +68,12 @@ This is the **master entry point** for all AEM Workflow tasks on AEM 6.5 LTS —
 | "Task not in Inbox", "User can't see work item", "Permissions error on workflow" | `workflow-debugging` |
 | "Thread pool exhausted", "Auto-advancement not working", "Queue backlog", "Sling Jobs stuck" | `workflow-debugging` |
 | "Repository bloat", "Too many workflow instances", "Purge not working", "Stale workflows" | `workflow-debugging` |
-| "countStaleWorkflows", "restartStaleWorkflows", "retryFailedWorkItems", "JMX workflow" | `workflow-debugging` |
-| "What workflow errors on host X?", "Workflow activity for the past N hours", "What should I collect?" | `workflow-triaging` |
-| "Classify this workflow ticket", "What Splunk query should I use?", "What logs do I need?" | `workflow-triaging` |
-| "Why did workflow X fail? Show me the error.", "Failure details for model Y" | `workflow-triaging` |
-| "What does JMX returnSystemJobInfo show?", "Check queue depth via JMX" | `workflow-triaging` |
+| "countStaleWorkflows", "restartStaleWorkflows", "retryFailedWorkItems", "JMX workflow", "returnSystemJobInfo", "queue depth via JMX" | `workflow-debugging` |
 
 **Routing heuristic:**
 - Building/implementing workflows → development skills (`workflow-model-design`, `workflow-development`, `workflow-triggering`, `workflow-launchers`)
-- Deep troubleshooting (decision trees, config checks, thread analysis, JMX remediation) → `workflow-debugging`
-- Incident classification (symptom → runbook, log patterns, Splunk, JMX metrics, data gathering) → `workflow-triaging`
-- When both debugging and triaging apply, start with `workflow-triaging` to classify, then `workflow-debugging` for resolution
+- Diagnosis of a stuck or failed workflow on the user's accessible instance → `workflow-debugging` (decision trees, config checks, thread analysis, JMX remediation under the JMX-safety invariant above)
+- Multi-instance / log-mining contexts (Splunk queries, host fleets, ticket classification, "errors across hosts for the past N hours") → `workflow-triaging` — **load only when the user explicitly invokes that context**, not by default
 
 ---
 
@@ -111,6 +134,8 @@ workflow-launchers/references/workflow-launchers/condition-patterns.md
 ```
 workflow-debugging/SKILL.md
 workflow-debugging/reference.md
+workflow-debugging/references/runbooks/<symptom_id>.md   ← load the runbook(s) matching the classified symptom_id
+workflow-debugging/references/docs/                       ← supporting docs, load as needed
 ```
 
 **workflow-triaging:**
@@ -196,7 +221,7 @@ Author tier
 3. Implement `WorkflowProcess` for the approve/reject step
 4. Deploy model XML to `/conf/global/settings/workflow/models/` via Maven content package
 5. Deploy OSGi bundle with the process step
-6. Sync via Package Manager for quick iteration
+6. Run **Tools → Workflow → Models → Sync** to push the design-time model to `/var/workflow/models/<id>` (the runtime path the engine reads). For Maven-driven iteration, use `mvn install -PautoInstallPackage` with `filter.xml` covering both `/conf/global/settings/workflow/models/<id>` and `/var/workflow/models/<id>` so design-time and runtime stay in sync.
 
 ### Pattern B: Auto-process content on upload
 
@@ -209,7 +234,7 @@ Author tier
 
 1. Load `workflow-triggering` sub-skill
 2. Implement `WorkflowStarterService` using `ResourceResolverFactory` + `WorkflowSession`
-3. Map sub-service `workflow-starter` to `workflow-process-service` or a dedicated service user
+3. Map sub-service `workflow-starter` to a **dedicated** service user with narrow ACLs (`jcr:read` on payload paths, `jcr:read` on `/var/workflow/models`, `jcr:write` on `/var/workflow/instances`). Do not reuse the OOTB `workflow-process-service` user — it carries broader privileges than a workflow starter needs.
 4. Deploy and trigger from a Sling Scheduler or Servlet
 
 ### Pattern D: Replace OOTB DAM Update Asset launcher
@@ -219,29 +244,13 @@ Author tier
 3. Set `enabled="{Boolean}false"` on the overlay
 4. Create a new custom launcher pointing to your replacement model
 
-### Pattern E: "Workflow errors on host X for the past 4 hours"
-
-1. Load `workflow-triaging` → classify as `workflow_fails_or_shows_error`
-2. Suggest Splunk / error.log search for `Error executing workflow step` on host + time range
-3. Use JMX `returnSystemJobInfo` for queue/job metrics
-4. If errors found, load `workflow-debugging` → map to runbook, walk decision tree
-5. Return: symptom_id, runbook, evidence, remediation (including JMX actions)
-
-### Pattern F: "Workflow stuck — not advancing"
+### Pattern E: "Workflow stuck — not advancing"
 
 1. Load `workflow-debugging` → classify as `workflow_stuck_not_progressing`
 2. JMX `countStaleWorkflows` to check for stale instances
 3. Follow decision tree: check for work item → step type → specific checks
 4. If thread pool suspected, analyze config status ZIP (`039_Sling_Thread_Pools.txt`)
-5. Return: root cause, JMX remediation, config fix
-
-### Pattern G: "What should I collect for this workflow ticket?"
-
-1. Load `workflow-triaging` → identify required inputs (host, time range, model, instance ID)
-2. Suggest specific log patterns and Splunk queries
-3. Suggest JMX data collection: `countStaleWorkflows`, `returnSystemJobInfo`, `returnWorkflowQueueInfo`
-4. Suggest config status ZIP if thread pool or scheduler issues suspected
-5. Return: data collection checklist, Splunk queries, JMX commands, next steps
+5. Return: root cause, JMX remediation (under the JMX-safety invariant — confirm target instance with the user before executing), config fix
 
 ---
 

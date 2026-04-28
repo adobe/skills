@@ -1,5 +1,7 @@
 # Quick Start Guide — AEM Workflow Development (6.5 LTS)
 
+> **Local development only.** The `curl -u admin:admin http://localhost:4502/...` examples below assume a local 6.5 LTS author with default admin credentials. Never run them against shared, stage, or production instances, and never with default `admin:admin` outside an isolated dev box.
+
 ## Determine What You Need
 
 ```
