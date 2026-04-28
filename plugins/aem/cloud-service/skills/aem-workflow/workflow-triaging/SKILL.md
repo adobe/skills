@@ -8,11 +8,21 @@ license: Apache-2.0
 
 Classify workflow issues, determine what logs and data to gather, and map to the correct runbook or log search. Optimized for **production support** on **AEM as a Cloud Service**.
 
+## Audience
+
+AEMaaCS support and operations engineers (and the IDE LLM acting on their behalf) classifying workflow incidents across multi-environment AEMaaCS contexts — program/environment IDs + time-range + Cloud Manager Logs / Splunk context, before drilling into a single environment.
+
 ## Variant Scope
 
-- This skill is **cloud-service-only**.
-- Log access via Cloud Manager download or log streaming.
-- No JMX — workflow counts and queue metrics come from logs, APIs, or Developer Console.
+- AEM as a Cloud Service only.
+- **Not for AEM 6.5 LTS / AMS.** If the target is 6.5 LTS, stop and load the 6.5-lts variant of this skill — AMS log filesystem access, Splunk indexing patterns specific to AMS, and JMX-based diagnostics referenced there do not apply on AEMaaCS.
+- Log access via Cloud Manager Logs (download or streaming), or Splunk if the customer indexes Cloud Manager Logs into their SIEM.
+- **No JMX on AEMaaCS production.** Workflow counts and queue metrics come from logs, custom HTTP APIs, or Developer Console — not JMX. Never recommend JMX-based remediation in AEMaaCS triage; it does not exist on cloud environments.
+
+## Dependencies
+
+- `workflow-debugging` — once a symptom is classified and an environment/model is identified, route here for the runbook + remediation.
+- `workflow-foundation` references (under any sibling skill) — for canonical JCR paths, OSGi PIDs, and AEMaaCS-specific configuration patterns.
 
 ---
 
