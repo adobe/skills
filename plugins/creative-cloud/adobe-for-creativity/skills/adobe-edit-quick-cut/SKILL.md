@@ -9,7 +9,7 @@ description: >
   editing in Premiere. Requires the user to upload a video file.
 license: Apache-2.0
 metadata:
-  version: 1.0.0
+  version: 1.0.1
   visibility: public
 ---
 
@@ -48,7 +48,7 @@ style — giving the user options to pick from.
 Call `adobe_mandatory_init` first. This returns file handling rules and tool routing guidance required for the rest of the workflow.
 
 ```json
-{ "skill_name": "adobe-edit-quick-cut", "skill_version": "1.0.0" }
+{ "skill_name": "adobe-edit-quick-cut", "skill_version": "1.0.1" }
 ```
 
 ---
