@@ -1,15 +1,127 @@
 ---
 name: appbuilder-project-init
-description: Initialize a new Adobe App Builder project end-to-end without manual template selection. Maps user intent to the correct template, runs non-interactive initialization, and guides post-init customization. Use this skill whenever the user mentions creating an App Builder app, scaffolding a project, initializing with aio, setting up an Experience Cloud extension, adding actions or web assets to an existing project, or anything related to 'aio app init', even if they don't explicitly say 'App Builder'. Also use when users mention SPA templates, AEM extensions, API Mesh setup, Asset Compute workers, or MCP server projects. Also handles debugging and troubleshooting init failures — use when users report template not found errors, aio app init hanging or timing out, Node version mismatches, npm install failures after init, build errors right after project setup, wrong directory structure from extension templates, aio login or token issues, or aio app run showing nothing.
+description: Initialize an Adobe App Builder project end-to-end without Developer Console UI clicks. Creates the Console project and workspace, subscribes APIs (including those needing a product profile), maps user intent to the right template, runs non-interactive `aio app init`, and guides post-init customization. Use whenever the user mentions creating an App Builder app, scaffolding a project, `aio app init`, setting up an Experience Cloud extension, adding actions or web assets, creating a Console project or workspace, adding APIs, or bootstrapping App Builder — even if they don't say "App Builder". Also for SPA templates, AEM extensions, API Mesh, Asset Compute workers, and MCP server projects. Also handles debugging init failures — template not found, `aio app init` hangs or times out, Node version mismatches, npm install failures, post-init build errors, `aio login` issues, `aio app run` showing nothing, or `aio console project create` / `workspace create` / `workspace api add` errors.
 metadata:
   category: project-initialization
 license: Apache-2.0
-compatibility: Requires aio CLI (Adobe I/O CLI), Node.js 18+, and bash shell
+compatibility: Requires aio CLI (Adobe I/O CLI) — install or refresh with `npm install -g @adobe/aio-cli` so the bundled plugins (`aio-cli-plugin-console`, `aio-cli-plugin-app`, etc.) are current. Node.js 18+ (Node 24 supported on Stage runtimes). Bash shell.
 allowed-tools: Bash(aio:*) Bash(npm:*) Bash(node:*) Read Write
 ---
 # App Builder Project Initialization
 
 Maps user intent to the right Adobe App Builder template and runs non-interactive `aio app init`. Default: `@adobe/generator-app-excshell` (SPA + actions). For headless/bare projects, use `init-bare`.
+
+When a Developer Console project / workspace / API subscription does not yet exist, this skill walks the agent through creating them non-interactively by calling `aio console …` directly — see the **Bootstrap** section and [references/bootstrap.md](references/bootstrap.md). The latest `@adobe/aio-cli` bundle exposes non-interactive `aio console project create` / `workspace create` / `api list` / `workspace api add` (with `--license-config` for services that require a product profile), and non-interactive `aio app init --org/--project/--template-options`. Together they remove every blocking "open the Developer Console UI and click" step from the agentic setup path. Just install the latest CLI (`npm install -g @adobe/aio-cli`) and use them.
+
+## Bootstrap the Developer Console (project, workspace, APIs)
+
+If the user is starting from zero — no Developer Console project yet, or an existing project that is missing a workspace or API subscription — bootstrap that state **before** `aio app init`. Otherwise `aio app init` / `aio app use` / `aio app deploy` have nothing to wire the local app to.
+
+The full bootstrap is just `aio` commands; **call them directly**, not through a wrapper script. They are already non-interactive in the recent plugin releases, and per-step calls let you react to "already exists" or "needs a product profile" responses without baking those decisions into bash.
+
+### Preflight
+
+Make sure the CLI is current — that's what brings in the non-interactive Console + app init commands:
+
+```bash
+npm install -g @adobe/aio-cli
+aio --version
+```
+
+Don't try to assert specific plugin versions; just take the latest. If a `console` or `app` subcommand below is rejected as "command not found" or "unknown flag" after this, the CLI install genuinely failed (PATH issue, permissions, registry mirror) — fix the install rather than working around it.
+
+Confirm an org is selected (or pass `--orgId` on every command below):
+
+```bash
+aio console org list --json   # if needed, then:
+aio console org select <orgId>
+```
+
+### Decision rule
+
+| User state | Next action |
+| --- | --- |
+| "Create a project + workspace + add APIs from scratch" | Run the bootstrap chain (project → workspace → APIs), then `aio app init`. |
+| Project exists, workspace missing | Skip project-create. Run `aio console workspace create`, then optionally `aio console workspace api add`. |
+| Project + workspace exist, only need to add an API | Run `aio console api list` to discover service codes, then `aio console workspace api add`. |
+| Everything already wired | Skip bootstrap. Go straight to **Initialize via Script**. |
+
+Always check what already exists with `aio console project list --json` and `aio console workspace api list --projectName <p> --workspaceName <w> --json` before creating — these commands fail loudly on "already exists" and there is no built-in idempotency.
+
+### The bootstrap chain (raw commands)
+
+Step 1 — create the Console project:
+
+```bash
+aio console project create -n my-project --json
+# optional: -t "Title" -d "Description" -o <orgId>
+```
+
+Step 2 — create a workspace inside it (`Stage` is the conventional first non-Production workspace; pick a more descriptive name in long-lived shared projects):
+
+```bash
+aio console workspace create \
+  --projectName my-project \
+  --name Stage \
+  --json
+# optional: --orgId <orgId> --title "Stage workspace"
+```
+
+Step 3 — discover and subscribe the APIs the app needs:
+
+```bash
+aio console api list --json   # see all service codes available to the org
+                              # entries flagged for whether they need a product profile
+
+# Free-tier service:
+aio console workspace api add \
+  --projectName my-project \
+  --workspaceName Stage \
+  --service-code AdobeIOManagementAPISDK \
+  --json
+
+# Service that requires a product profile:
+aio console workspace api add \
+  --projectName my-project \
+  --workspaceName Stage \
+  --service-code AdobeAnalyticsSDK \
+  --license-config AdobeAnalyticsSDK=AnalyticsProductionProfile \
+  --json
+```
+
+`--service-code` accepts a comma-separated list to subscribe several free-tier services in one call. `--license-config` is repeatable when several profile-bound services are added together.
+
+### Recover from per-step failures
+
+| Failure | What to do |
+| --- | --- |
+| `project create` fails with "already exists" | Read `aio console project list --json`, reuse the existing project's name, and continue at step 2. |
+| `workspace create` fails with "already exists" | List workspaces with `aio console workspace list --projectName <p> --json` and continue at step 3. |
+| `workspace api add` returns "product profile required" | The service code requires `--license-config`. Ask the user (or the org admin) for the profile name and retry with `--license-config CODE=PROFILE`. |
+| Any step returns an org-selection error | Pass `--orgId <id>` explicitly, or `aio console org select <id>` once before retrying. |
+
+### Wire the local app to the bootstrapped state
+
+Two equivalent ways to point a fresh `aio app init` at the project/workspace you just created:
+
+1. **Pass them as flags to `init` itself** (cleanest):
+
+   ```bash
+   skills/appbuilder-project-init/scripts/init.sh init \
+     "@adobe/generator-app-excshell" ./my-project \
+     --org <orgId> --project my-project
+   ```
+
+   The wrapper passes `--org` / `--project` / `--template-options` straight through to `aio app init`, on top of the existing `-y --no-login --no-install` flags.
+
+2. **Run `aio app use` after init** (works on any plugin version):
+
+   ```bash
+   cd ./my-project
+   aio app use --no-input   # adopts the currently selected project/workspace, no prompts
+   ```
+
+Either route ends with the local `.aio` and `.env` pointing at the workspace you just bootstrapped, so `aio app deploy` publishes to the right namespace.
 
 ## Fast Path (for clear requests)
 
@@ -42,7 +154,7 @@ For a headless/backend-only request, prefer `init-bare` when possible. If the us
 
 ## Initialize via Script
 
-All commands go through a single script: `scripts/init.sh`
+The `aio app *` wrappers go through a single script: `scripts/init.sh`. (Console bootstrap commands are called directly — see the **Bootstrap** section above for the rationale.)
 
 > **Note:** The path to this skill's scripts may be `skills/`, `.augment/skills/`, or `.github/skills/` depending on your platform and repository layout. Adjust the prefix in the commands below accordingly.
 
@@ -51,6 +163,16 @@ All commands go through a single script: `scripts/init.sh`
 ```bash
 skills/appbuilder-project-init/scripts/init.sh init "@adobe/generator-app-excshell" ./my-project
 ```
+
+**With a template, fully wired to a specific Console org/project (no post-init `aio app use` needed):**
+
+```bash
+skills/appbuilder-project-init/scripts/init.sh init \
+  "@adobe/generator-app-excshell" ./my-project \
+  --org <orgId> --project my-project
+```
+
+`--org`, `--project`, `--template-options` (base64-encoded JSON), and `--no-config-validation` are passed straight through to `aio app init`. Use the latest `@adobe/aio-cli` so they're all recognised; `--no-config-validation` is the escape hatch for the rare case where a partial scaffold shouldn't yet have to pass schema validation.
 
 **Bare project (no template):**
 
@@ -80,8 +202,12 @@ Ask the user (or infer from conversation context):
 | Needs a UI? | Yes (React Spectrum in ExC Shell), No (actions only) |
 | Extension point? | dx/excshell/1, aem/cf-console-admin/1, dx/asset-compute/worker/1, or N/A |
 | Additional actions? | Names and purposes of custom actions beyond the default |
+| Console state? | Existing project + workspace? Or do we need to create them and subscribe APIs first? |
+| APIs needed? | e.g. Adobe I/O Management, Analytics, Target — including any that require a product profile |
 
 If the user simply says "create an App Builder app" with no specifics, default to `@adobe/generator-app-excshell`.
+
+If the Console state is "from scratch" or unknown, run the **Bootstrap the Developer Console** flow before continuing to template selection. See [references/bootstrap.md](references/bootstrap.md) for the full agentic bootstrap playbook.
 
 ### Step 2 — Select template
 
@@ -103,7 +229,7 @@ Consult [references/templates.md](references/templates.md) for template-specific
 6. **Add web assets** — Only if the user later decides the bare project needs a UI, run `skills/appbuilder-project-init/scripts/init.sh add-web-assets`.
 7. **Edit ext.config.yaml directly** — Customize action definitions:
 
-- Set `runtime: nodejs:22` (latest supported)
+- Set `runtime: nodejs:22` for production. Stage workspaces also accept `runtime: nodejs:24`.
 - Add `inputs:` for environment variables the action needs
 - Set `annotations.require-adobe-auth: true` if the action needs IMS tokens
 - Set `web: 'yes'` or `web: 'raw'` depending on HTTP access needs
@@ -149,6 +275,11 @@ Do not place a root-level `runtimeManifest` directly in `app.config.yaml`: the C
 - `npm install`** fails after init:** The scaffold can still be created because init runs with `--no-install`, but builds/tests will fail until dependencies install cleanly. Capture the first package error, confirm the Node/npm version is compatible, rerun `npm install` from the project root, and only continue once it succeeds.
 - **Template choice is ambiguous:** If the request could map to multiple templates, ask one clarifying question about UI vs headless, extension point, or target Adobe product. If the user has no preference, default to `@adobe/generator-app-excshell` and state that assumption explicitly.
 - **Project directory already exists or is not empty:** Do not overwrite it silently. Ask whether to use a different directory, clear the existing folder, or initialize into a new path.
+- `aio console …`** subcommand or flag not recognised:** Almost always means the CLI bundle is stale. Run `npm install -g @adobe/aio-cli` and retry — that's the supported way to refresh every plugin (console, app, runtime, ims-oauth, telemetry). Only dig deeper if the same command still fails after a clean reinstall.
+- **Workspace API add fails with "product profile required":** The service code needs a product profile. Re-run `aio console api list --json` to confirm, ask the user (or org admin) for the profile name, and retry with `--license-config CODE=PROFILE`.
+- **No org selected:** Console bootstrap commands will fail with an org-selection error. Run `aio console org list` then `aio console org select <orgId>` (or pass `--orgId` to every command) before retrying.
+- **Validation errors from a freshly scaffolded but partially edited project:** Recent `aio app *` versions validate `app.config.yaml` by default against an OpenWhisk-aligned schema. The validation runs on every `aio app *` command that reads or writes the manifest — concretely: `aio app init`, `aio app add (action|web-assets|extension|event|service)`, `aio app delete (action|web-assets|extension|event|service)`, `aio app build`, `aio app deploy`, `aio app undeploy`, `aio app run`, `aio app dev`, `aio app use`, and `aio app info`. The escape hatch flag is the same on all of them: `--no-config-validation`. Use it on the single command you need to unblock (e.g. `aio app build --no-config-validation` while you're still mid-refactor), then drop it as soon as the manifest is whole. Don't bake it into scripts — silent drift between local config and the deployed shape is exactly what the validator was added to catch.
+- **Template listing hangs behind a corporate proxy:** Older CLI bundles didn't honour `HTTP_PROXY` / `HTTPS_PROXY` during the template registry SSL handshake. Run `npm install -g @adobe/aio-cli` to pick up the proxy fix, confirm `HTTPS_PROXY` is exported in the same shell, and retry.
 
 ## Chaining with other skills
 
@@ -159,11 +290,17 @@ After initialization, hand off to:
 
 ## Pattern Quick-Reference
 
-| Task | Reference | Script |
+| Task | Reference | Command |
 | --- | --- | --- |
+| Bootstrap Console project + workspace + APIs | [references/bootstrap.md](references/bootstrap.md) | `aio console project create` → `aio console workspace create` → `aio console workspace api add` |
+| Discover org's available APIs | [references/bootstrap.md](references/bootstrap.md) | `aio console api list --json` |
+| Subscribe an existing workspace to an API | [references/bootstrap.md](references/bootstrap.md) | `aio console workspace api add --service-code … [--license-config …]` |
+| Initialize an App Builder project from a template | [references/templates.md](references/templates.md) | `scripts/init.sh init` |
+| Wire local app to a Console workspace post-init | [references/bootstrap.md](references/bootstrap.md) | `scripts/init.sh init … --org … --project …` *or* `aio app use --no-input` |
 | Debug project init issues | [references/debugging.md](references/debugging.md) | — |
 
 ## References
 
+- [references/bootstrap.md](references/bootstrap.md) — Agentic Developer Console bootstrap (project, workspace, API subscriptions) via raw `aio console …` commands from the latest `@adobe/aio-cli`
 - [references/templates.md](references/templates.md) — Template catalog with intent mapping and per-template post-init guidance
 - [references/debugging.md](references/debugging.md) — Troubleshooting guide for init failures, Node/npm issues, login problems, and first-run errors

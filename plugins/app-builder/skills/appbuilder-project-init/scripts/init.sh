@@ -1,8 +1,29 @@
 #!/usr/bin/env bash
 # Unified App Builder project initialization script.
-# Subcommands: init, init-bare, add-action, add-web-assets
+#
+# Subcommands:
+#   init <template> [path] [--org ID] [--project NAME] [--template-options B64]
+#   init-bare [path]
+#   add-action <name>
+#   add-web-assets
+#
+# Why a script for these but not for the new `aio console …` agentic
+# bootstrap commands?
+#   - `aio app init` and `aio app add …` need a non-trivial flag set
+#     (-y --no-login --no-install) plus mkdir + cwd management; that
+#     glue is easy to forget, so it lives here.
+#   - `aio console project|workspace|api` are already non-interactive
+#     and self-contained in current @adobe/aio-cli releases. The agent
+#     calls them directly per references/bootstrap.md so it can react
+#     to "already exists", "needs a product profile", etc., on a
+#     per-step basis instead of failing a baked-in chain. If a
+#     subcommand or flag below is unrecognised, refresh the bundle
+#     with `npm install -g @adobe/aio-cli` rather than chasing
+#     individual plugin versions.
 
 set -euo pipefail
+
+# --- JSON helpers ---
 
 json_escape() {
   local value=${1-}
@@ -35,6 +56,8 @@ print_json() {
   printf '%s\n' "$out"
 }
 
+# --- Guards ---
+
 require_aio() {
   if ! command -v aio >/dev/null 2>&1; then
     print_json success false error "aio CLI is not installed or not on PATH."
@@ -54,10 +77,19 @@ usage() {
 Usage: init.sh <command> [options]
 
 Commands:
-  init <template> [path]   Initialize project from a template
-  init-bare [path]         Initialize a bare/standalone project
-  add-action <name>        Add an action to an existing project
-  add-web-assets           Add web assets to an existing project
+  init <template> [path]                       Initialize project from a template
+       [--org ID] [--project NAME]             Wire to a Console org/project
+       [--template-options B64JSON]            Optional template options (base64-encoded JSON)
+       [--no-config-validation]                Skip schema validation during init
+  init-bare [path]                             Initialize a bare/standalone project
+  add-action <name>                            Add an action to an existing project
+  add-web-assets                               Add web assets to an existing project
+
+For Developer Console bootstrap (project / workspace / API subscriptions),
+call `aio console …` directly per references/bootstrap.md — they are
+already non-interactive in current @adobe/aio-cli releases and don't
+need a wrapper. If any flag above is unrecognised, refresh the CLI
+bundle: `npm install -g @adobe/aio-cli`.
 
 All commands output JSON. Exit codes: 0=success, 1=error, 2=aio CLI missing.
 EOF
@@ -71,13 +103,55 @@ cmd_init() {
     exit 1
   fi
 
-  local template="$1"
-  local project_path="${2-}"
+  local template="$1"; shift
+  local project_path=""
+  local extra_flags=()
+
+  # First non-flag positional becomes project_path; everything else
+  # is a pass-through flag for `aio app init`.
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --org|--project|--template-options)
+        extra_flags+=("$1" "${2-}")
+        shift 2
+        ;;
+      --org=*|--project=*|--template-options=*)
+        extra_flags+=("$1")
+        shift
+        ;;
+      --no-config-validation|--config-validation)
+        extra_flags+=("$1")
+        shift
+        ;;
+      --)
+        shift
+        while [[ $# -gt 0 ]]; do extra_flags+=("$1"); shift; done
+        ;;
+      -*)
+        print_json success false error "Unknown flag for init: $1"
+        exit 1
+        ;;
+      *)
+        if [[ -z "$project_path" ]]; then
+          project_path="$1"
+          shift
+        else
+          print_json success false error "Unexpected positional argument: $1"
+          exit 1
+        fi
+        ;;
+    esac
+  done
 
   require_aio
 
   local resolved_path
   resolved_path="$(pwd -P)"
+
+  local base_args=(app init -y --no-login --no-install --template="$template")
+  if [[ ${#extra_flags[@]} -gt 0 ]]; then
+    base_args+=("${extra_flags[@]}")
+  fi
 
   if [[ -n "$project_path" ]]; then
     if ! mkdir -p "$project_path"; then
@@ -89,13 +163,13 @@ cmd_init() {
       exit 1
     fi
     local output
-    output="$(cd "$project_path" && aio app init -y --no-login --no-install --template="$template" 2>&1)" || {
+    output="$(cd "$project_path" && aio "${base_args[@]}" 2>&1)" || {
       print_json success false template "$template" path "$resolved_path" output "$output"
       exit 1
     }
   else
     local output
-    output="$(aio app init -y --no-login --no-install --template="$template" 2>&1)" || {
+    output="$(aio "${base_args[@]}" 2>&1)" || {
       print_json success false template "$template" path "$resolved_path" output "$output"
       exit 1
     }

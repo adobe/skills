@@ -1,6 +1,66 @@
 # Debugging App Builder Project Init
 
-Common failures during `aio app init`, post-init setup, and first run — with root causes and fixes.
+Common failures during Developer Console bootstrap, `aio app init`, post-init setup, and first run — with root causes and fixes.
+
+For bootstrap-specific guidance (project / workspace / API subscription), see [bootstrap.md](bootstrap.md).
+
+## An `aio console …` or `aio app …` subcommand / flag is unrecognised
+
+The non-interactive Console + app init commands (`project create`, `workspace create`, `api list`, `workspace api add` with `--license-config`, `aio app init --org/--project/--template-options`, `--no-config-validation`) all ship in the latest `@adobe/aio-cli` bundle. Don't chase individual plugin versions — just refresh the bundle.
+
+| Cause | Fix |
+| --- | --- |
+| CLI bundle is stale | `npm install -g @adobe/aio-cli`, then `aio --version`, then retry the failing command. |
+| `aio` on PATH is from a different install than `npm -g` | Run `which aio` and `npm root -g`; if they disagree, fix PATH (or remove the stale `aio`) and reinstall. |
+| Typo in the value passed to a flag (e.g. `--service-code`) | Re-list the canonical values, e.g. `aio console api list --json` for service codes, and copy the `code` field exactly. |
+
+## `aio console project create` returns "already exists"
+
+| Cause | Fix |
+| --- | --- |
+| A project with that name already exists in the org | Read `aio console project list --json` and reuse the existing project's name. Skip directly to `aio console workspace create`. |
+| No org selected (and `--orgId` not passed) — error wording can be misleading | Run `aio console org select <orgId>` once, or pass `--orgId` to every bootstrap command. |
+| Token expired | `aio auth login` and retry. |
+
+## `aio console workspace api add` returns "product profile required"
+
+| Cause | Fix |
+| --- | --- |
+| The service code requires a product profile and `--license-config` was not supplied | Re-run `aio console api list --json` to confirm which services need profiles, then retry with `--license-config CODE=PROFILE`. Repeat the flag once per profile-bound service. |
+| Product profile name is wrong / case-mismatched | Profile names are case-sensitive and org-specific; confirm with the org admin or via the Adobe Admin Console. |
+
+## `aio app use` after bootstrap doesn't pick up the new workspace
+
+| Cause | Fix |
+| --- | --- |
+| Local `.aio` was already populated from a prior project | Run `aio app use --no-input` from the project root after bootstrap; it adopts the currently selected console workspace without prompting. |
+| Console selection drifted between bootstrap and `aio app use` | Re-select explicitly: `aio console project select <projectId> && aio console workspace select <workspaceId>`. |
+| `aio app init --project` / `--org` was rejected as unknown | CLI bundle is stale — `npm install -g @adobe/aio-cli`, then either re-init with the flags or stay on the `aio app use --no-input` path. |
+
+## `aio app *` fails with config validation errors right after init
+
+Recent `aio app *` versions validate `app.config.yaml` by default against an OpenWhisk-aligned schema for actions and packages.
+
+| Cause | Fix |
+| --- | --- |
+| Manifest is intentionally mid-edit and not yet schema-valid | Pass `--no-config-validation` to unblock for that one command. Treat this as a temporary escape hatch, not a permanent setting — re-validate as soon as the manifest is whole. |
+| Pre-existing manifest predates the OpenWhisk schema alignment | Reconcile the action/package shapes with the current OpenWhisk-aligned schema, then re-run with default validation (or `--config-validation`). |
+| Root-level `runtimeManifest` in `app.config.yaml` (the long-standing guardrail) | Move it under `application.runtimeManifest`, or into an `ext.config.yaml` for extension projects. |
+
+## `aio app init` template listing hangs behind a corporate proxy
+
+| Cause | Fix |
+| --- | --- |
+| Stale CLI bundle didn't honour `HTTP_PROXY` / `HTTPS_PROXY` during the template registry SSL handshake | `npm install -g @adobe/aio-cli` to pick up the proxy fix, confirm `HTTPS_PROXY` is exported in the same shell, then retry `aio app init`. |
+
+## `aio login` from inside Docker / a CI runner cannot complete the browser callback
+
+The interactive login launches a local server on a random port and waits for the browser redirect. When `aio` is running inside a container, that port is hidden from the host browser by default.
+
+| Cause | Fix |
+| --- | --- |
+| Local login port is not forwarded into the container | Export `AIO_IMS_LOCAL_LOGIN_PORT=<port>` and forward it into the container, e.g. `docker run -p $PORT:$PORT -e AIO_IMS_LOCAL_LOGIN_PORT=$PORT …`. The CLI then advertises a stable URL the browser on the host can resolve. (If `aio` doesn't honour the env var, refresh the CLI bundle: `npm install -g @adobe/aio-cli`.) |
+| `aio login --no-open` is being silently ignored on Windows | `npm install -g @adobe/aio-cli` to pull in the fix that makes `--no-open` honour the flag and surface auto-open errors instead of failing silently. |
 
 ## `aio app init` fails with "template not found"
 
