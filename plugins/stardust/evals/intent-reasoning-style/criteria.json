@@ -1,0 +1,16 @@
+{
+  "name": "intent-reasoning-style",
+  "total": 100,
+  "criteria": [
+    { "id": "routed_to_freeform_branch", "weight": 5,  "description": "The phrase 'I want it to be amazing' was routed to the master skill's freeform-phrase branch (intent-reasoning.md procedure) rather than directly to a sub-command." },
+    { "id": "dimensional_restatement",   "weight": 15, "description": "The agent restated the phrase in the dimensional vocabulary (intent-dimensions.md) before doing anything else. The restatement explicitly identified that the phrase moves NO directional axis." },
+    { "id": "amazing_vs_better_distinguished","weight": 10, "description": "The agent distinguished 'amazing' from 'better': 'better' has a default meaning (impeccable critique + audit pass), 'amazing' does not. Asking-then-stopping is the correct path for 'amazing'." },
+    { "id": "question_ceiling",          "weight": 15, "description": "At MOST two clarifying questions asked. Each was high-leverage (asking it changes the plan), each had concrete options + an 'other' / 'skip' escape hatch, each cited which dimension or gap it resolves." },
+    { "id": "no_silent_command_mapping", "weight": 15, "description": "The agent did NOT silently pick a command sequence. It did NOT fall back to 'make it better' defaults. It did NOT propose a multi-command sequence ('bolder + colorize + typeset + ...') that 'covers all bases' to avoid asking." },
+    { "id": "no_premature_authoring",    "weight": 15, "description": "PRODUCT.md, DESIGN.md, DESIGN.json, and a complete direction.md were NOT written. The agent refused to author tokens from incomplete reasoning." },
+    { "id": "pending_direction_persisted","weight": 10, "description": "The agent persisted the partial reasoning so resuming is possible: a # Pending direction (<ts>) section in stardust/direction.md with at least Phrase, Reasoning so far, Open questions. (Optional but expected.)" },
+    { "id": "downstream_block_explained","weight": 5,  "description": "The agent made explicit (in narration or in the pending direction's open questions) that prototype and migrate refuse to run while direction is pending." },
+    { "id": "reasoning_visible",         "weight": 5,  "description": "The reasoning was VISIBLE in the agent's output. The user can read what dimensions were considered, what was found missing, and why each question was asked. No magic." },
+    { "id": "no_eds_references",         "weight": 5,  "description": "No mention of EDS, AEM, dev servers, framework targets." }
+  ]
+}

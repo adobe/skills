@@ -1,0 +1,18 @@
+{
+  "name": "direct-from-phrase",
+  "total": 100,
+  "criteria": [
+    { "id": "activated",                  "weight": 5,  "description": "The stardust:direct skill was invoked with the freeform phrase as input." },
+    { "id": "dimensional_restatement",    "weight": 10, "description": "The agent restated the phrase in stardust's dimensional vocabulary (register / expressive axis / tone / density / distinctiveness / audience / constraints) before doing anything else. Each axis is named and either marked as moved (with direction), pinned, or left alone." },
+    { "id": "gaps_identified",            "weight": 5,  "description": "The agent explicitly identified what's underspecified before asking questions. 'Young' as too coarse (or equivalent) was called out." },
+    { "id": "question_ceiling",           "weight": 10, "description": "At most TWO clarifying questions were asked. Each had concrete options + an 'other' / 'skip' escape hatch and cited which dimension it resolved." },
+    { "id": "plan_shown_before_execution","weight": 15, "description": "After answers (or with no questions needed), the agent showed the resolved plan to the user BEFORE running any impeccable command or writing any file. Plan included: one-sentence restatement, assumptions, command sequence with reasoning, pages affected." },
+    { "id": "divergence_resolved",        "weight": 10, "description": "Divergence inputs resolved: 4-dim seed (decade x craft x register x ground-family), font deck pick, palette resolution. Recorded in DESIGN.json.extensions.divergence per the v2 storage shape." },
+    { "id": "product_md_direct",          "weight": 10, "description": "PRODUCT.md authored directly at project root using impeccable's teach.md as format spec. The agent did NOT invoke $impeccable teach. Sections present: Register, Users, Product Purpose, Brand Personality, Anti-references, Design Principles, Accessibility & Inclusion." },
+    { "id": "design_md_direct",           "weight": 10, "description": "DESIGN.md and DESIGN.json authored directly at project root. DESIGN.md uses Stitch frontmatter + 6 canonical sections. DESIGN.json schemaVersion 2 with extensions (divergence, componentStyle, voice) and narrative blocks." },
+    { "id": "direction_md_shape",         "weight": 10, "description": "stardust/direction.md exists with provenance + YAML frontmatter + # Active direction section containing required sub-sections: Phrase, Restatement, Movements, Divergence inputs, Command sequence (proposed), User confirmation, Pages in scope. Anti-references explicitly written (or '(none)')." },
+    { "id": "state_updated",              "weight": 5,  "description": "stardust/state.json updated: direction.resolvedAt set, direction.phrase verbatim, in-scope pages move from 'extracted' to 'directed' with history entries." },
+    { "id": "no_silent_command_mapping",  "weight": 5,  "description": "The agent did NOT silently map the phrase to a fixed command lookup. Reasoning was visible (dimensional vocabulary used, command choices justified)." },
+    { "id": "no_eds_references",          "weight": 5,  "description": "No mention of EDS, AEM, dev servers, or framework targets." }
+  ]
+}

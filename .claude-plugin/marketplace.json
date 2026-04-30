@@ -30,7 +30,22 @@
     {
       "name": "stardust",
       "source": "./plugins/stardust",
-      "description": "Design-phase skills for static-HTML design projects: brand extraction, palette picking from a curated library, page briefings, wireframes, and branded HTML prototypes. Platform-agnostic output."
+      "description": "Redesign an existing website to make it better. Higher-level guided flow on top of impeccable.",
+      "version": "0.3.0",
+      "category": "design",
+      "keywords": [
+        "design",
+        "redesign",
+        "frontend",
+        "skills",
+        "impeccable"
+      ],
+      "author": {
+        "name": "Adobe"
+      },
+      "homepage": "https://github.com/adobe/skills",
+      "repository": "https://github.com/adobe/skills",
+      "license": "Apache-2.0"
     },
     {
       "name": "aem-edge-delivery-services",

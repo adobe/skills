@@ -1,0 +1,19 @@
+{
+  "name": "prototype-before-after",
+  "total": 100,
+  "criteria": [
+    { "id": "activated",                 "weight": 5,  "description": "The stardust:prototype skill was invoked." },
+    { "id": "two_files_written",         "weight": 10, "description": "Both stardust/prototypes/home.html (viewer) AND stardust/prototypes/home-proposed.html (proposed redesign) are written. Two files, not one." },
+    { "id": "viewer_two_iframes",        "weight": 10, "description": "The viewer file has two iframes side-by-side. CURRENT side resolves via the chain (live URL > screenshot > landmarks-text fallback). PROPOSED side references home-proposed.html via a relative path." },
+    { "id": "viewer_action_buttons",     "weight": 5,  "description": "The viewer's header strip includes the four action buttons: swap sides, approve, stash, open in $impeccable live." },
+    { "id": "root_token_block",          "weight": 15, "description": "home-proposed.html has the :root block as the first content of the first <style>. All required tokens present per token-contract.md (--heading-*, --body, --body-sm, --line-height-*, --color-bg, --color-fg, --color-accent, --spacing-*, --section-padding, --max-width, --radius)." },
+    { "id": "data_attributes_on_sections","weight": 10, "description": "Every <section> in home-proposed.html has data-section, data-intent, data-layout. Optional attributes (data-items, data-media, data-interactive) used where applicable. Lowercase kebab-case slugs." },
+    { "id": "provenance_complete",       "weight": 10, "description": "home-proposed.html has a stardust:provenance block as the first child of <head> listing: writtenBy, writtenAt, page, pageUrl, againstDirection (with the active direction's resolvedAt), readArtifacts, divergenceVersion, fontDeck, paletteSource. Viewer has its own provenance with proposedFile reference." },
+    { "id": "self_contained",            "weight": 10, "description": "home-proposed.html is self-contained: no external CSS files, no external JS files, no analytics, no fonts loaded from CDN that aren't justified by the chosen font deck." },
+    { "id": "content_preserved",         "weight": 10, "description": "Content from current/pages/home.json is preserved: hero headline, body copy, CTA labels, navigation labels, link destinations. The redesign restyles, it does not rewrite." },
+    { "id": "delegates_to_craft",        "weight": 5,  "description": "The agent invoked $impeccable craft (or its equivalent flow) to perform the creative rendering, rather than inventing the design from scratch in stardust." },
+    { "id": "browser_opened",            "weight": 3,  "description": "The viewer was opened in the default browser via open / xdg-open / start. Skipped only in pipeline-automation mode." },
+    { "id": "state_prototyped_not_approved", "weight": 4, "description": "state.json marks home as 'prototyped'. Approval is a separate explicit step the user takes; the agent did not auto-approve." },
+    { "id": "no_eds_references",         "weight": 3,  "description": "No mention of EDS, AEM, framework targets, or production CMS output in either file or in narration." }
+  ]
+}

@@ -1,88 +1,70 @@
 # stardust
 
-<p align="center">
-  <img src="docs/cover.svg" alt="Stardust — brief + seed = star" width="100%" />
-</p>
+> Redesign an existing website to make it better.
 
-**Design you could only get today.**
+Stardust is a Claude Code plugin that drives a guided redesign of an existing
+website. It is a higher-level skill built **on top of
+[impeccable](https://github.com/pbakaus/impeccable)**: impeccable owns *how* to
+design well; stardust owns the specific job of taking a site that exists and
+turning it into a site that is better.
 
-Stardust is a design-phase toolkit for static-HTML projects. It turns a brand concept and a page brief into curated palettes, grey wireframes, and branded HTML prototypes. Platform-agnostic output — any downstream system (AEM Edge Delivery Services, another SSG, a design handoff) can consume the static files.
+Stardust is opinionated about what "better" means but the user has the final
+say. The default definition of *better* is rooted in impeccable's critique and
+audit, the absence of AI-slop patterns, and a user-selected expressive
+direction. Every redesign decision is reasoned in the open before code runs.
 
-Every design tool promises uniqueness. Most deliver the average. Stardust adds a seed — `md5(brand · date)` — that only exists today, and only belongs to you. That seed picks from 127 real palettes, names its own clichés so it can subvert them, and produces output you literally could not receive any other way.
-
-> Deterministic, not mystical.
-> Curated, not invented.
-> Yours alone, today only.
-
-## The pipeline
-
-<p align="center">
-  <img src="docs/pipeline.svg" alt="Pipeline: brand, briefings, wireframes, prototype" width="100%" />
-</p>
-
-Four stages, each one skill, each owning its artifact under `stardust/`. Any order, each runnable alone.
-
-| Skill | Owns | Invocation |
-|---|---|---|
-| `stardust` | Navigator — assesses `stardust/` state and recommends the next step | `/stardust` |
-| `brand` | `stardust/brand-profile.json`, `stardust/brand-board.html`, `.impeccable.md` | `/stardust:brand` |
-| `briefings` | `stardust/briefings/**/*.md` | `/stardust:briefings` |
-| `wireframes` | `stardust/wireframes/**/*.html` | `/stardust:wireframes` |
-| `prototype` | `stardust/prototypes/**/*.html` | `/stardust:prototype` |
-
-Most of the time you won't remember slash commands — the skills activate from natural-language requests that reference `stardust/` paths.
-
-## Install
+## Pipeline
 
 ```
-/plugin install stardust@adobe-skills
+extract  →  direct  →  prototype  →  migrate
 ```
 
-## What makes stardust different
+1. **extract** — crawl the existing site (capped, multi-page) and seed a
+   description of its current state in impeccable's own format
+   (`stardust/current/PRODUCT.md` + `DESIGN.md`).
+2. **direct** — capture the user's intent ("make it better", "make it more
+   expressive for a young audience") as an open phrase, reason about what it
+   means in stardust's dimensional vocabulary, ask up to two clarifying
+   questions, and write a target `PRODUCT.md` + `DESIGN.md` at the project root
+   plus a `stardust/direction.md` with the full reasoning trace.
+3. **prototype** — render before/after static-HTML prototypes per page and
+   iterate via `$impeccable craft` and `$impeccable live`.
+4. **migrate** — apply the approved target `DESIGN.md` to every page in the
+   inventory. Per-page state means migration is incremental and resumable.
 
-Three things stardust does that generic "LLM generates a brand" tools do not:
+## Surface
 
-- **Palette from a curated library, not LLM-invented.** The `brand` skill's Phase 2 pauses for the designer to pick from 127 real palettes (scraped from `coolors.co/palettes/trending`, classified by deterministic HSL heuristics) filtered by the designer's description. Every chosen hex carries a source URL. See `_shared/palette-picker.md` and `_shared/palettes/`.
-- **Divergence toolkit that names the LLM's own defaults.** A self-audited list of recurring moves (stencil type, hazard stripes, rotated stamps, cream grounds, triplet copy, etc.) with per-hit justification required. The toolkit caps cream at ~1/6 of runs by adding a 4th "ground family" seed dimension. See `_shared/divergence-toolkit.md`.
-- **Deterministic-random seeds** from `md5(brand-name + date)` pick a decade × craft × register × ground tuple that drives visual decisions. No two brands rolled on different days collapse to the same aesthetic by accident.
-
-## How it wants to be spoken about
-
-If you're writing docs, onboarding, or tooling on top of stardust, keep the register honest:
-
-- **Call it the thing.** "Palette," not "chromatic symphony." "MD5 seed," not "cosmic fingerprint."
-- **Show the seed.** Every generated artifact ships with a provenance stamp. Transparency is the feature.
-- **Math, not mysticism.** Say "hashed," not "inspired." Say "seeded," not "divined."
-- **Honor the designer.** You are the director. Stardust is the crew. Never speak as if the tool made the design.
-
-## Soft dependencies
-
-`stardust` works standalone. Three peer plugins enhance it when installed:
-
-- **superpowers** — adds `/brainstorm`, `/write-plan`, `/execute-plan`. When present, the `briefings` and `prototype` skills delegate discovery and iteration planning to it. When absent, they fall back to inline interview patterns.
-- **impeccable** — adds `/impeccable critique`, `/shape`, `/teach`. When present, the `brand`, `wireframes`, and `prototype` skills delegate critique and section planning to it. When absent, they fall back to inline rubrics.
-- **ai-image-generator** — present in `eds-site-builder`, `sumi`, or `testing` plugins. When installed, the `prototype` skill's Phase 0b offers real image generation (Gemini, FLUX, Imagen, DALL-E) instead of branded placeholder rectangles.
-
-Fallbacks are viable — peer plugins are nice-to-haves, not requirements.
-
-## AGENTS.md snippet
-
-To reinforce activation on agents with weaker description matching, paste this into your project's `AGENTS.md`:
-
-```markdown
-## stardust
-
-Files under `stardust/` are owned by the `stardust` skills. When asked to modify, create, or review any artifact in that folder, invoke the matching skill (`brand`, `briefings`, `wireframes`, `prototype`) instead of editing files directly.
+```
+$stardust                  # state report + freeform intent reasoning
+$stardust extract [url]    # ingest existing site
+$stardust direct           # resolve intent → target PRODUCT.md / DESIGN.md
+$stardust prototype [page] # before/after prototype, delegates to impeccable
+$stardust migrate [page]   # render redesigned static HTML (incremental)
 ```
 
-## What `stardust` does NOT ship
+`$stardust` with no argument runs a read-only state report and shows the
+recommended next step. `$stardust` with a freeform phrase runs the intent
+reasoning procedure (`reference/intent-reasoning.md`) and proposes a plan
+before executing anything.
 
-- No downstream implementation. `stardust` stops at approved static prototypes. Converting those prototypes into EDS blocks, another framework's components, or a production CMS is a separate effort and platform-specific.
+## Hard dependency
+
+Stardust requires impeccable to be installed. There are no fallbacks. On every
+invocation stardust verifies the impeccable skill is reachable and aborts
+otherwise with a clear install hint.
+
+## What stardust does NOT ship
+
+- **No design language of its own.** All design opinions are impeccable's. Stardust adds *redesign-specific* opinions (the divergence toolkit, the palette library, the before/after model, the migration target).
+- **No production CMS output.** The migration target is platform-agnostic static HTML. Conversion to AEM EDS, another CMS, or a framework is a separate downstream effort and out of scope for this plugin.
+- **No closed intent vocabulary.** The user phrase is open. The agent reasons about it in public.
+
+## Status
+
+`v0.3.0` — complete refactor. v1 (the four-stage greenfield design tool) is
+preserved at the [`stardust--v0.1.0`](https://github.com/adobe/skills/tree/stardust--v0.1.0/plugins/stardust)
+tag and is unrelated to this version's surface.
 
 ## License
 
-Apache-2.0.
-
-<p align="right">
-  <sub><code>md5("stardust" · today)</code> — yours alone, today only.</sub>
-</p>
+Apache-2.0

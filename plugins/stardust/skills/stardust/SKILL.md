@@ -1,143 +1,111 @@
 ---
 name: stardust
-description: "Navigate the stardust design pipeline — assess project state under `stardust/` and recommend the next design stage. Use when the user wants to check design-pipeline progress, doesn't know which stage to run next, asks a general question about `stardust/` artifacts without naming a specific stage, says `/stardust`, or asks about files under `stardust/` (brand, briefings, wireframes, prototypes) without a clear edit target."
+description: Redesign an existing website to make it better. Multi-page, incremental, reasoned in the open. Built on top of impeccable.
 license: Apache-2.0
-metadata:
-  version: "0.1.0"
 ---
 
-# stardust Navigator
+# stardust
 
-Assess the current design-phase state and guide the user to the right next step.
+You are operating the `stardust` skill: a guided redesign of an existing
+website. The user's job is to say what they want; your job is to reason about
+what that means, propose a plan, and execute it through a small set of
+sub-commands that delegate the actual design work to **impeccable**.
 
-## When to use this skill
+## Setup (run before anything else)
 
-- The user asks "where do I start?", "what's next?", or "what's the status" in the context of `stardust/`.
-- The user types `/stardust` with no other intent.
-- The user references `stardust/` artifacts in general without naming a specific edit target.
-- The user asks to run the full pipeline end-to-end.
+1. **Verify impeccable is installed.** Stardust has a hard dependency on
+   impeccable and ships no fallbacks. Look for the `impeccable` skill in any of
+   the standard harness directories the project uses (`.claude/skills/`,
+   `.agents/skills/`, `.cursor/skills/`, etc.). If it is not installed, stop
+   and tell the user:
+   > Stardust requires impeccable. Install it from
+   > <https://github.com/pbakaus/impeccable> and re-run the command.
+2. **Run impeccable's context loader once per session.** Execute the loader at
+   `<harness>/skills/impeccable/scripts/load-context.mjs`. Its JSON output
+   tells you whether `PRODUCT.md` and `DESIGN.md` exist at the project root
+   (these are the *target* state for stardust). Skip the loader if it already
+   ran in this session's history.
+3. **Read stardust's state.** Read `stardust/state.json` if present
+   (`reference/state-machine.md` defines the schema). Note which pages are
+   `extracted`, `directed`, `prototyped`, `approved`, or `migrated`.
+4. **Read impeccable's command registry.** Parse
+   `<harness>/skills/impeccable/scripts/command-metadata.json`. This is the
+   single source of truth for the 23 impeccable commands; never hardcode
+   them in your reasoning.
 
-## Do NOT use this skill
+## Routing
 
-- To create, modify, or render any artifact. The navigator only reads state. Use `brand`, `briefings`, `wireframes`, or `prototype` for writes.
-- To pick a stage on the user's behalf when they've already named one (`/stardust:brand`, "edit the landing briefing", etc.). Hand off directly to that stage skill.
+Once setup is done, route on the user's input:
 
-## How This Works
+- **No argument.** Render the **state report** described in
+  `reference/state-machine.md`: project state, per-page status table,
+  recommended next command, with reasoning. Do not write anything.
+- **First word is `extract`, `direct`, `prototype`, or `migrate`.** Delegate
+  to the matching sub-command (`stardust:<name>` skill). Pass remaining args
+  through.
+- **First word is anything else (a freeform phrase).** Treat it as a
+  redesign intent. Load `reference/intent-reasoning.md` and follow the
+  procedure step by step. **Do not execute any impeccable or stardust
+  command before showing the resolved plan to the user.**
 
-You are the navigator for the `stardust` pipeline — four design stages that each produce a distinct artifact under `stardust/`:
+## The "open and reasoned" principle
 
-| Stage | Skill | Produces |
-|---|---|---|
-| Brand | `/stardust:brand` | `stardust/brand-profile.json`, `stardust/brand-board.html`, `.impeccable.md` |
-| Briefings | `/stardust:briefings` | `stardust/briefings/{page}.md` (and `_site.md` multi-page) |
-| Wireframes | `/stardust:wireframes` (optional) | `stardust/wireframes/{page}.html` |
-| Prototype | `/stardust:prototype` | `stardust/prototypes/{page}.html` |
+Stardust does not ship a closed `intent → commands` lookup. Every freeform
+phrase is reasoned about in public. You must:
 
-You read artifacts on disk to determine where the project is, then recommend the next step. You NEVER write or modify files.
+1. Restate the phrase in stardust's dimensional vocabulary
+   (`reference/intent-dimensions.md`).
+2. Identify which axes the phrase moves and in which direction.
+3. Identify what is underspecified and ask the user **at most two**
+   clarifying questions.
+4. Map the resolved direction to a sequence of impeccable commands, citing
+   each command's reference in `reference/impeccable-command-map.md`.
+5. Show the proposed plan to the user before executing.
+6. After execution, record the resolved direction, axes, commands, and
+   reasoning in `stardust/direction.md` with a stardust provenance block.
 
----
+Worked examples of this procedure live in `reference/intent-examples.md`.
 
-## Step 1: Read Project State
+## Per-page state and "stale on direction change"
 
-Check for these artifacts and record which exist:
+Pages have lifecycle states (`extracted | directed | prototyped | approved |
+migrated`). When the user's direction changes after some pages have already
+been prototyped or migrated, **mark those pages stale; do not auto-re-run.**
+The user opts in to re-prototyping or re-migrating explicitly. Details in
+`reference/state-machine.md`.
 
-```
-Check: stardust/brand-profile.json          → brand_extracted
-Check: .impeccable.md                          → design_personality
-Check: stardust/brand-board.html             → brand_board
-Check: stardust/briefings/ (has .md files)   → briefings
-Check: stardust/wireframes/ (has .html files)→ wireframes (optional)
-Check: stardust/prototypes/ (has .html files)→ prototypes
-```
+## Artifacts you read and write
 
-## Soft-Gate Model
+Stardust state lives under `stardust/`. Impeccable's `PRODUCT.md` /
+`DESIGN.md` / `DESIGN.json` live at the project root and represent the
+*target* state. The current (extracted) state lives under
+`stardust/current/`. Full layout in `reference/artifact-map.md`.
 
-Every `stardust` skill uses a soft-gate model: missing upstream inputs are synthesized with provenance stamps, never blocked on. You recommend the ideal next step, but the user is free to skip around — they will see provenance notes when they open the artifacts.
+## Provenance
 
-## Step 2: Determine Pipeline State
+Every artifact stardust writes carries a provenance block as the first line
+or first key, declaring: which sub-command wrote it, against which user
+input, what was synthesized vs. authored, and what other artifacts were
+read. Format conventions in `reference/artifact-map.md`.
 
-Brand, briefings, wireframes, and prototype can each run in any order. The ideal path is **brand → briefings → wireframes → prototype**, but any skill runs with upstream gaps. Your job is to recommend the most useful next step, not to enforce a sequence.
+## What stardust never does
 
-| State | Condition | Next Step |
-|---|---|---|
-| **Fresh project** | Nothing in `stardust/` | Recommend `/stardust:brand` or `/stardust:briefings` first — either can come first. |
-| **Brand in progress** | `brand-profile.json` but no `brand-board.html` | Complete brand: render the board. |
-| **Brand only** | brand artifacts present, no briefings | Run `/stardust:briefings`. |
-| **Briefings only** | briefings present, no brand | Run `/stardust:brand`. |
-| **Both ready** | brand + briefings present, no wireframes and no prototypes | Run `/stardust:wireframes` (optional grey pass) **or** `/stardust:prototype` (skip wireframes, go straight to branded). |
-| **Wireframes approved** | wireframes exist, no prototypes | Run `/stardust:prototype`. |
-| **Prototypes in progress** | some prototypes rendered, others not | Continue `/stardust:prototype`. |
-| **All rendered** | every briefing has a prototype | Suggest iteration or next-page work. |
+- Invent design opinions that contradict impeccable's hard rules. Defer to
+  impeccable.
+- Execute a redesign plan without showing it first.
+- Force a re-run on stale pages without explicit user opt-in.
+- Crawl an existing site beyond the user's confirmed page cap.
+- Emit AEM EDS, a CMS, or a framework. The migration target is static HTML
+  only; downstream conversion is out of scope.
 
-## Step 3: Present Status
+## References
 
-Report to the user:
-
-```
-## stardust Pipeline Status
-
-- ✓ Brand extracted (brand-profile.json)
-- ✓ Design personality set (.impeccable.md)
-- ✓ Brand board rendered
-- ✓ Briefings: 3 pages authored
-- ✓ Wireframes: 3 pages (grey, approved)
-- → Prototypes: 1 of 3 rendered
-
-### Next Step
-Continue `/stardust:prototype` to render the remaining pages.
-```
-
-Adapt the format to what's actually present. If nothing exists yet:
-
-```
-## stardust Pipeline Status
-
-This is a fresh project. No pipeline artifacts found yet.
-
-### Next Step
-Run `/stardust:brand` or `/stardust:briefings` — they are independent; either can come first.
-
-Brand needs one of:
-- A brand guidelines URL (Corebook, Frontify, etc.)
-- A brand guidelines PDF
-- Or we can discover your brand through conversation
-
-Briefings need one of:
-- A one-line prompt per page
-- Or a structured description of intent, audience, CTAs
-- Or fully-specified copy and imagery
-```
-
-## Step 4: Offer Entry Points
-
-If the user already has artifacts from outside the pipeline (e.g., an existing `brand-profile.json` imported from another tool), acknowledge:
-
-- "I see you already have a brand-profile.json — want to review it, extend it, or start a briefing?"
-
-## Full Pipeline Run (End-to-End)
-
-When the user asks to run the full pipeline end-to-end (e.g., "run all stardust stages", "design the whole thing", or provides a detailed brief with brand source + page requirements), execute each stage in sequence without waiting for approval at each gate:
-
-1. **`/stardust:brand`** — extract brand identity, render board, auto-approve.
-2. **`/stardust:briefings`** — capture page intent from the user's brief, auto-approve.
-3. **`/stardust:wireframes`** — grey structural pass, auto-approve. (Skip if the user explicitly opts out — going straight to `prototype` is valid.)
-4. **`/stardust:prototype`** — branded prototype per page, auto-approve after critique.
-
-Brand and briefings are independent and can run in either order, but the end-to-end default runs brand first so briefings can reference brand voice when the user wants fully-specified copy.
-
-Each stage skill has a "pipeline automation" note in its approval gate section — when running end-to-end, skip interactive approval loops and continue to the next stage.
-
-At the end, report the file paths of rendered prototypes (and any server URL if one was started).
-
-## Pipeline Reference
-
-Consult [artifact-map.md](reference/artifact-map.md) for the complete artifact specification including file formats, required fields, and detection logic.
-
-## Skills in the Pipeline
-
-| Stage | Skill | What it does |
-|---|---|---|
-| Brand | `/stardust:brand` | Extract brand → profile + board + personality |
-| Briefings | `/stardust:briefings` | Capture page intent (standalone, no brand dependency) |
-| Wireframes | `/stardust:wireframes` | Optional — grey structural pass from briefings |
-| Prototype | `/stardust:prototype` | Branded, high-fidelity HTML prototype — iterated in the browser |
+- `reference/intent-dimensions.md` — the axes redesigns move along.
+- `reference/intent-reasoning.md` — the procedure for handling a freeform phrase.
+- `reference/intent-examples.md` — worked examples (8-12) of the reasoning style.
+- `reference/impeccable-command-map.md` — when to reach for each of the 23 impeccable commands.
+- `reference/state-machine.md` — page lifecycle, stale rules, state report format.
+- `reference/artifact-map.md` — every file stardust reads or writes, with ownership and provenance shape.
+- `reference/divergence-toolkit.md` — anti-mediocrity device. Default-moves list, deterministic seed, font decks, role-naming rule. Consumed by `direct` (when authoring target tokens) and `prototype` (when generating variants).
+- `reference/token-contract.md` — `:root` CSS custom-property contract every prototype and migrated page must expose. The token interface between stardust and any downstream consumer.
+- `reference/data-attributes.md` — structural `data-*` vocabulary applied to sections in every prototype and migrated page. The structural lingua franca between stardust sub-commands and downstream tools.

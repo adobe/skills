@@ -1,0 +1,19 @@
+{
+  "name": "extract-multipage",
+  "total": 100,
+  "criteria": [
+    { "id": "activated",                 "weight": 5,  "description": "The stardust:extract skill was invoked." },
+    { "id": "impeccable_dep_check",      "weight": 5,  "description": "Master skill setup ran first; impeccable was confirmed installed before extract proceeded." },
+    { "id": "discovery_before_crawl",    "weight": 10, "description": "Discovery (sitemap.xml -> sitemap_index -> robots.txt -> BFS crawl) happened before any per-page rendering. The discovered URL list was visible in the agent's narration." },
+    { "id": "page_cap_confirmation",     "weight": 10, "description": "The default 25-page cap was applied and the user was shown the kept list AND the cut list before crawling proceeded. Confirmation was solicited (no silent crawling beyond the cap)." },
+    { "id": "playwright_over_webfetch",  "weight": 10, "description": "Playwright was used for per-page rendering (1440x900 @ 2x DPR, networkidle + 1.5s, scroll-to-bottom pass). WebFetch / curl was NOT used as a substitute." },
+    { "id": "per_page_json_shape",       "weight": 10, "description": "Each stardust/current/pages/<slug>.json contains all required top-level keys: _provenance (first key), slug, url, finalUrl, title, og, themeColor, headings, landmarks, ctas, links, media, forms, widgets, perSectionStyle." },
+    { "id": "brand_extraction_shape",    "weight": 10, "description": "stardust/current/_brand-extraction.json exists with all sections: logo, palette (with role names + occurrences + sourceSelectors), type (heading + body families with weights / sizes), spacing, motifs (borderRadius / shadows / patterns), componentStyle (v1 fields preserved), voice samples, register guess." },
+    { "id": "logo_locator_chain",        "weight": 5,  "description": "Logo extracted via the priority chain. _brand-extraction.json.logo.source names the method used (inline-svg | img | apple-touch-icon | og-image | favicon | synthesized). File saved under stardust/current/assets/ (NOT icons/)." },
+    { "id": "current_product_md_direct", "weight": 10, "description": "stardust/current/PRODUCT.md was authored directly (sections per impeccable's teach.md format spec). The agent did NOT invoke $impeccable teach for the current-state file." },
+    { "id": "current_design_md_direct",  "weight": 10, "description": "stardust/current/DESIGN.md and DESIGN.json were authored directly. DESIGN.md uses Stitch frontmatter (colors, typography, rounded, spacing, components) and the 6 canonical sections. DESIGN.json schemaVersion 2 with extensions block." },
+    { "id": "state_json_shape",          "weight": 5,  "description": "stardust/state.json exists with _provenance first, site (originUrl/extractedAt/pageCap/totalDiscovered/crawled), direction (resolvedAt null at this stage), and pages[] (one entry per crawled page, status=extracted)." },
+    { "id": "provenance_stamped",        "weight": 5,  "description": "Every artifact carries a stardust:provenance block per artifact-map.md (first <head> child for HTML, first line above frontmatter for markdown, _provenance first key for JSON)." },
+    { "id": "no_eds_references",         "weight": 5,  "description": "No mention of EDS, AEM, localhost:3000, dev servers, or framework targets in outputs or narration." }
+  ]
+}

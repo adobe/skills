@@ -1,0 +1,21 @@
+{
+  "name": "migrate-incremental",
+  "total": 100,
+  "criteria": [
+    { "id": "activated",                 "weight": 5,  "description": "The stardust:migrate skill was invoked." },
+    { "id": "plan_printed",              "weight": 5,  "description": "The plan was printed before any writes: in-scope count partitioned by render path (A: approved-from-prototype; B: directed-no-prototype), DESIGN.md and DESIGN.json shas, output destination, idempotent-skip note." },
+    { "id": "path_a_used_for_approved",  "weight": 10, "description": "Approved pages (home, pricing) used render path A: read the proposed file's body verbatim, refreshed only the :root block from latest DESIGN.md. Provenance renderPath = 'approved-from-prototype'." },
+    { "id": "path_b_used_for_directed",  "weight": 10, "description": "Directed-but-not-prototyped pages (about, features, contact) used render path B: rendered from scratch using current/pages/<slug>.json IA + DESIGN.json components. Provenance renderPath = 'directed-no-prototype'." },
+    { "id": "output_path_mapping",       "weight": 10, "description": "Nested index.html structure: migrated/index.html for home, migrated/<slug>/index.html for others, multi-segment slugs (e.g. docs__api) nest as docs/api/index.html. Verified for at least the 5 pages in scope." },
+    { "id": "root_block_refreshed",      "weight": 10, "description": "Every migrated page's :root block matches the LATEST DESIGN.md tokens via the mapping table in token-contract.md." },
+    { "id": "data_attributes_preserved", "weight": 5,  "description": "Every <section> has data-section, data-intent, data-layout. Path A preserved them from the proposed file; path B applied them per the landmark purpose heuristic." },
+    { "id": "content_preserved",         "weight": 10, "description": "Every page's headlines, body copy, CTA labels, nav labels, and link destinations match the source (current/pages/<slug>.json or proposed.html). The redesign restyles, it does not rewrite." },
+    { "id": "internal_links_rewritten",  "weight": 5,  "description": "Internal links (same host as state.json.site.originUrl) rewritten to root-relative paths matching the migrated tree. External links and mailto:/tel: pass through unchanged. Missing targets get data-broken-link='true' + a provenance log entry." },
+    { "id": "assets_copied",             "weight": 5,  "description": "stardust/migrated/assets/ contains the logo and the referenced media files (only files referenced by migrated pages). Asset paths in HTML rewritten to /assets/..." },
+    { "id": "robots_and_sitemap",        "weight": 3,  "description": "stardust/migrated/robots.txt and stardust/migrated/sitemap.xml are present and derived from the migrated inventory." },
+    { "id": "provenance_complete",       "weight": 5,  "description": "Each page's provenance includes designMd sha, designJson sha, sourceCurrent sha, sourceProposed sha (path A only), renderPath, againstDirection, divergenceVersion." },
+    { "id": "state_marked_migrated",     "weight": 4,  "description": "state.json: all 5 pages moved to status 'migrated' after run 1, with history entries appended and any stale flags cleared." },
+    { "id": "idempotent_skip_run2",      "weight": 10, "description": "Run 2 (no changes between runs) produced zero file writes. Every page sha-compared and skipped. Summary: 0 migrated, 5 unchanged. state.json NOT updated for unchanged pages." },
+    { "id": "no_eds_references",         "weight": 3,  "description": "No mention of EDS, AEM, framework component generation, or production CMS payload. Output is platform-agnostic static HTML only." }
+  ]
+}

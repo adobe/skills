@@ -1,11 +1,11 @@
 {
   "name": "stardust",
-  "description": "Design-phase skills for static-HTML design projects: brand extraction, palette picking from a curated library, page briefings, wireframes, and branded HTML prototypes. Platform-agnostic output.",
-  "version": "0.1.0",
+  "description": "Redesign an existing website to make it better. Higher-level guided flow on top of impeccable.",
+  "version": "0.3.0",
   "author": {
     "name": "Adobe"
   },
   "repository": "https://github.com/adobe/skills",
   "license": "Apache-2.0",
-  "keywords": ["design", "brand", "palette", "prototypes", "wireframes"]
+  "keywords": ["design", "redesign", "frontend", "skills", "impeccable"]
 }
