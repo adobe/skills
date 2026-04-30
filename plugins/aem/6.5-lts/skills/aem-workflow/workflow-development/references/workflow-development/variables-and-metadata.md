@@ -67,15 +67,42 @@ Use instead of custom code when assignment logic is simple:
 | `LITERAL` | `"approvalStatus"` | A literal string `"APPROVED"` |
 | `RELATIVE_TO_PAYLOAD` | `"payloadTitle"` | JCR property relative to payload (e.g. `jcr:title`) |
 | `ABSOLUTE_PATH` | `"result"` | Full JCR path to a property |
-| `EXPRESSION` | `"computed"` | Groovy/ECMA expression |
+| `EXPRESSION` | `"computed"` | ECMAScript expression |
 | `VARIABLE` | `"copy"` | Another variable's value |
 | `JSON_DOT_NOTATION` | `"field"` | JSON path like `data.response.status` |
 | `XPATH` | `"xmlField"` | XPath over an XML-typed variable |
 
+## OR_SPLIT After a Participant Step (Approve / Reject Routing)
+
+The `TaskEventListener` writes `lastTaskAction` to instance metadata when a participant completes a task. Use it as the OR_SPLIT condition immediately after the participant step.
+
+Model transitions (ECMAScript rules):
+
+```xml
+<!-- Participant produced lastTaskAction; route by value -->
+<transitionApprove
+    jcr:primaryType="cq:WorkflowTransition"
+    from="participantNode"
+    to="approveProcessNode"
+    rule="function check(){ return 'APPROVE' === String(workflowData.getMetaDataMap().get('lastTaskAction','')); }"/>
+
+<transitionReject
+    jcr:primaryType="cq:WorkflowTransition"
+    from="participantNode"
+    to="rejectProcessNode"
+    rule="function check(){ return 'REJECT' === String(workflowData.getMetaDataMap().get('lastTaskAction','')); }"/>
+```
+
+OR_SPLIT transitions are evaluated in document order; the first rule that returns `true` fires. Always provide a second branch — never rely on Approve being the only outcome. For unknown / custom action IDs, keep a default branch with `rule="function check(){ return true; }"` last.
+
+Common mistake: collapsing both Approve and Reject into a single downstream PROCESS step that branches in Java. Do not do this — the model editor will not show the two outcomes, and reviewers cannot reason about the workflow visually.
+
 ## Goto Step for Retry Loops (OOTB GotoProcess)
 
+Workflow rules (OR_SPLIT branches, Goto, launcher conditions) are evaluated as **ECMAScript** (Rhino) on AEM 6.5 LTS.
+
 ```javascript
-// OR_SPLIT / PROCESS Goto rule
+// OR_SPLIT / PROCESS Goto rule — ECMAScript
 function check() {
     var count = workflowData.getMetaDataMap().get("retryCount", 0);
     return count < 3 && !workflowData.getMetaDataMap().get("processingDone", false);

@@ -52,10 +52,13 @@ Fire only when `dam:sha1Changed = true`:
 property=dam:sha1Changed,value=true,type=BOOLEAN
 ```
 
-Multiple conditions use multiple array entries — all must match (AND logic):
+Multiple conditions use multiple array entries — all must match (AND logic). Each entry is its own string in the multi-value `conditions` property; the inner commas inside each entry must be backslash-escaped in `.content.xml` so the FileVault parser does not split them as array separators:
+
 ```xml
-conditions="[property=cq:type,value=publicationevent,property=jcr:mimeType,value=image/jpeg]"
+conditions="[property=cq:type\,value=publicationevent\,type=STRING,property=jcr:mimeType\,value=image/jpeg\,type=STRING]"
 ```
+
+The unescaped form (`property=cq:type,value=publicationevent,...` without backslashes) parses as a single garbled entry and silently makes the launcher never match.
 
 ---
 
@@ -93,6 +96,8 @@ jcrSession.getWorkspace().getObservationManager()
 ---
 
 ## Run Mode Patterns
+
+> **`runModes` on `cq:WorkflowLauncher` is unreliable on AEM 6.5 LTS.** The property is honored inconsistently — launchers can fire on the wrong run mode despite the restriction. **Default to packaging the launcher's `.content.xml` under `config.author/` (or `config.publish/`)** in your content package and let Sling's run-mode-aware OSGi config handling do the gating. The `runModes` examples below are documented for completeness only — do not generate them as the primary mechanism for run-mode restriction.
 
 ### Author Only (Most Common for Launchers)
 

@@ -16,6 +16,12 @@ User request
     ├── "How do I auto-trigger a workflow when content changes?"
     │       → workflow-launchers/SKILL.md
     │
+    ├── "A workflow is stuck / failed / stale / missing Inbox task"
+    │       → workflow-debugging/SKILL.md
+    │
+    ├── "Classify an incident, pick logs/JMX/Splunk, gather diagnostic data"
+    │       → workflow-triaging/SKILL.md
+    │
     └── "I need end-to-end help designing + building + deploying a workflow"
             → workflow-orchestrator/SKILL.md
 ```
@@ -38,6 +44,8 @@ Before starting:
 ```
 
 ## Verify Deployment
+
+> **Local development only.** The `curl -u admin:admin` examples below target a local author instance at `localhost:4502` with the default admin password. Never run these against a shared, stage, or production instance, and never keep the default admin password enabled outside an isolated dev box.
 
 ```bash
 # Check bundle is active

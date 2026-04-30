@@ -1,22 +1,50 @@
 ---
 name: workflow-orchestrator
-description: Master entry point for all AEM Workflow tasks on Cloud Service spanning development and production support
+description: Master entry point for AEM as a Cloud Service Workflow tasks — routes development, debugging, and operational requests to the right sub-skill. AEMaaCS only — stop on AEM 6.5 LTS.
 license: Apache-2.0
 ---
 
 # Workflow Orchestrator — AEM as a Cloud Service
 
+## Audience
+
+AEM as a Cloud Service developers (and the IDE LLM acting on their behalf) building, deploying, debugging, or operating Workflow models, process steps, launchers, or programmatic workflow starts on AEMaaCS author tier — local SDK or cloud environment.
+
+## Variant Scope
+
+**AEM as a Cloud Service only.** If the user is on AEM 6.5 LTS, stop and load the 6.5-lts variant of this orchestrator. Cloud Manager-only deploy, Developer Console (in place of production Felix Console JMX), IMS-based auth, and `all`-package deployment documented here do not apply on 6.5 LTS.
+
 ## Purpose
 
-This is the **master entry point** for all AEM Workflow tasks on Cloud Service — spanning both **development** (building workflows) and **production support** (debugging and triaging workflow issues). Read this skill first. It classifies the user's request and routes to the right sub-skill.
+Master entry point for AEM Workflow tasks on AEM as a Cloud Service. Read this skill first. It classifies the user's request and routes to the right sub-skill.
+
+## Dependencies
+
+This orchestrator routes into six sub-skills:
+
+- `workflow-model-design` — design models (steps, splits, joins) and model XML
+- `workflow-development` — implement `WorkflowProcess`, `ParticipantStepChooser`, variables and metadata
+- `workflow-triggering` — start workflows from code, HTTP API, or Manage Publication
+- `workflow-launchers` — configure `cq:WorkflowLauncher` for event-driven start
+- `workflow-debugging` — diagnose stuck or failed workflows on an accessible AEMaaCS environment (local SDK or via Cloud Manager Logs / Developer Console)
+- `workflow-triaging` — symptom→runbook mapping for multi-environment / log-mining contexts via Cloud Manager Logs (load only when the user explicitly invokes that context)
+
+## Cross-Cutting Invariants
+
+These apply to every workflow task; surface them regardless of which sub-skill is loaded:
+
+- **Loop prevention.** A workflow whose process step modifies a JCR path watched by a launcher will re-trigger itself. The `session` parameter on `WorkflowProcess.execute()` is a `WorkflowSession`, **not** a JCR `Session` — adapt it first (`javax.jcr.Session jcrSession = session.adaptTo(javax.jcr.Session.class);`) and tag the JCR `Session` with `jcrSession.getWorkspace().getObservationManager().setUserData("workflowmanager")` before the write so `WorkflowLauncherListener` ignores the resulting events. See `workflow-launchers` for code examples and the alternative `excludeList` / JCR-flag patterns.
+- **JMX safety on AEMaaCS.** AEMaaCS production has **no Felix Console JMX**. Never recommend JMX-based remediation (`restartStaleWorkflows`, `purgeCompleted`, `terminate`, `retryFailedWorkItems`, etc.) for cloud environments — these are 6.5-LTS-only mechanisms. Use **Inbox Retry**, the **Purge Scheduler** (configured as OSGi config committed to Git), and Cloud Manager pipeline-driven config changes instead. JMX is available only on the local AEMaaCS SDK at `localhost:4502/system/console/jmx`; never recommend its use against cloud environments.
+- **6.5-LTS stop-rule.** If the user's target is AEM 6.5 LTS, stop and load the 6.5-lts orchestrator — see Variant Scope above.
 
 ## How to Use This Skill
 
-1. Read the user's request carefully
-2. Classify it using the **Task Classifier** table below
-3. Load the identified sub-skill's `SKILL.md` and its references
-4. For development tasks, always load the `workflow-foundation` references alongside the sub-skill references
-5. For production-support tasks, the debugging and triaging skills are self-contained
+1. Read the user's request carefully.
+2. Confirm the variant (AEMaaCS vs 6.5 LTS) before routing — see Variant Scope.
+3. Classify the request using the **Task Classifier** table below.
+4. Load the identified sub-skill's `SKILL.md` and its references.
+5. For development tasks, always load the `workflow-foundation` references alongside the sub-skill references.
+6. The cross-cutting invariants above apply regardless of which sub-skill is loaded.
 
 ---
 
@@ -32,7 +60,7 @@ This is the **master entry point** for all AEM Workflow tasks on Cloud Service �
 | "Configure a launcher", "Auto-start on asset upload", "Launcher not firing", "cq:WorkflowLauncher", "Overlay an OOTB launcher" | `workflow-launchers` |
 | "How do workflows work?", "Explain workflow architecture" | Load `workflow-foundation` references only |
 
-### Production Support Skills
+### Debugging Skills
 
 | User Says / Asks | Sub-Skill to Load |
 |---|---|
@@ -40,15 +68,11 @@ This is the **master entry point** for all AEM Workflow tasks on Cloud Service �
 | "Task not in Inbox", "User can't see work item", "Permissions error on workflow" | `workflow-debugging` |
 | "Thread pool exhausted", "Auto-advancement not working", "Queue backlog", "Sling Jobs stuck" | `workflow-debugging` |
 | "Repository bloat", "Too many workflow instances", "Purge not working", "Stale workflows" | `workflow-debugging` |
-| "What workflow errors on host X?", "Workflow activity for the past N hours", "What should I collect?" | `workflow-triaging` |
-| "Classify this workflow ticket", "What Splunk query should I use?", "What logs do I need?" | `workflow-triaging` |
-| "Why did workflow X fail? Show me the error.", "Failure details for model Y" | `workflow-triaging` |
 
 **Routing heuristic:**
 - Building/implementing workflows → development skills (`workflow-model-design`, `workflow-development`, `workflow-triggering`, `workflow-launchers`)
-- Deep troubleshooting (decision trees, config checks, thread analysis, remediation) → `workflow-debugging`
-- Incident classification (symptom → runbook, log patterns, Splunk, data gathering) → `workflow-triaging`
-- When both debugging and triaging apply, start with `workflow-triaging` to classify, then `workflow-debugging` for resolution
+- Diagnosis of a stuck or failed workflow on an accessible AEMaaCS environment → `workflow-debugging` (decision trees, OSGi config-via-Git checks, Developer Console thread dumps, Cloud Manager Logs — under the JMX-safety invariant above)
+- Multi-environment / log-mining contexts (Cloud Manager Logs queries across environments, ticket classification, "errors across environments over the past N hours") → `workflow-triaging` — **load only when the user explicitly invokes that context**, not by default
 
 ---
 
@@ -108,7 +132,8 @@ workflow-launchers/references/workflow-launchers/condition-patterns.md
 **workflow-debugging:**
 ```
 workflow-debugging/SKILL.md
-workflow-debugging/reference.md
+workflow-debugging/references/docs/debugging-index.md   ← symptom→runbook index
+workflow-debugging/references/runbooks/<symptom_id>.md  ← runbook(s) matching the classified symptom_id
 ```
 
 **workflow-triaging:**
@@ -120,9 +145,11 @@ workflow-triaging/SKILL.md
 
 ## Cloud Service Production Support Constraints
 
+> **Cloud environments only.** These constraints describe AEMaaCS dev/stage/prod cloud environments. The **local AEMaaCS SDK** at `localhost:4502` has Felix Console with JMX, accepts Package Manager uploads, supports `admin:admin` auth, and gives `jstack` access — none of which apply to cloud environments. When reasoning about debug paths, distinguish the two and never carry local-SDK affordances over to cloud.
+
 | Constraint | Detail |
 |---|---|
-| No JMX | No `retryFailedWorkItems`, `countStaleWorkflows`, `restartStaleWorkflows`, `purgeCompleted` via JMX |
+| No JMX (cloud) | No `retryFailedWorkItems`, `countStaleWorkflows`, `restartStaleWorkflows`, `purgeCompleted` via JMX on cloud environments. JMX is available only on the local AEMaaCS SDK. |
 | Retry failed items | Inbox Retry only |
 | Stale detection | Custom API/script only |
 | Purge | Purge Scheduler (OSGi config in Git) |
@@ -142,16 +169,18 @@ Before doing anything, apply these non-negotiable constraints:
 | Model design-time path | `/conf/global/settings/workflow/models/<id>` |
 | Model runtime path (for API calls) | `/var/workflow/models/<id>` |
 | Launcher config path | `/conf/global/settings/workflow/launcher/config/` |
-| Service users | Always use `workflow-process-service` sub-service; never admin credentials |
 | OSGi annotations | Use DS R6 (`@Component`, `@Reference` from `org.osgi.service.component.annotations`) |
 | Deploy via | Cloud Manager pipeline — no Package Manager in production |
 | No `javax.jcr.Session.loginAdministrative` | Use `ResourceResolverFactory.getServiceResourceResolver()` |
+| Launcher run-mode restriction | The `runModes` property on `cq:WorkflowLauncher` has known reliability issues — package the launcher's `.content.xml` under `config.author/` (the canonical AEMaaCS run-mode-aware folder) and let Sling's run-mode-aware OSGi config handling drive it |
 
 Full detail: `references/workflow-foundation/cloud-service-guardrails.md`
 
 ---
 
 ## Quick Architecture Recap
+
+> **Author-tier only by default.** Workflows on AEMaaCS execute on the **author tier** — the publish tier is read-mostly and replication-driven. The diagram below is author-tier; do not assume publish-tier workflow infrastructure unless the user has an explicit publish-tier-execution requirement (rare on AEMaaCS).
 
 ```
 Author tier
@@ -186,8 +215,9 @@ Author tier
 1. Load `workflow-model-design` + `workflow-development` sub-skills
 2. Design model: START → PARTICIPANT (reviewer) → PROCESS (approve/reject logic) → END
 3. Implement `WorkflowProcess` for the approve/reject step
-4. Deploy model XML to `/conf/global/settings/workflow/models/`
-5. Deploy OSGi bundle with the process step
+4. Deploy model XML to `/conf/global/settings/workflow/models/<id>` via the project's `all` content package and the Cloud Manager pipeline
+5. Deploy the OSGi bundle in the same pipeline run so the process step is registered
+6. Run **Tools → Workflow → Models → Sync** so the runtime copy at `/var/workflow/models/<id>` matches design-time. The engine reads only from `/var/workflow/models/<id>`.
 
 ### Pattern B: Auto-process content on upload
 
@@ -200,22 +230,15 @@ Author tier
 
 1. Load `workflow-triggering` sub-skill
 2. Implement `WorkflowStarterService` using `ResourceResolverFactory` + `WorkflowSession`
-3. Map sub-service `workflow-starter` to `workflow-process-service`
+3. Map sub-service `workflow-starter` via `ServiceUserMapper` to a service user with the ACLs your starter needs.
 4. Deploy and trigger from a Sling Scheduler or Servlet
 
-### Pattern D: "Workflow errors on host X for the past 4 hours"
-
-1. Load `workflow-triaging` → classify as `workflow_fails_or_shows_error`
-2. Suggest Splunk / Cloud Manager log search for `Error executing workflow step` on host + time range
-3. If errors found, load `workflow-debugging` → map to runbook, walk decision tree
-4. Return: symptom_id, runbook, evidence, remediation
-
-### Pattern E: "Workflow stuck — not advancing"
+### Pattern D: "Workflow stuck — not advancing"
 
 1. Load `workflow-debugging` → classify as `workflow_stuck_not_progressing`
 2. Follow decision tree: check for work item → step type → specific checks
-3. If thread pool suspected, guide thread dump analysis (Developer Console)
-4. Return: root cause, config fix (via Git), remediation steps
+3. If thread pool suspected, guide thread dump analysis via the AEMaaCS **Developer Console**
+4. Return: root cause, config fix (committed to Git via the project's OSGi config module and deployed through Cloud Manager), remediation steps (under the JMX-safety invariant — JMX-based remediation does not apply on AEMaaCS production)
 
 ---
 

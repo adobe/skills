@@ -65,6 +65,8 @@ public class ContentOwnerChooser implements ParticipantStepChooser {
 
 ### Pattern 3: Project-Based Participant
 
+`ParticipantStepChooser.getParticipant()` must return a JCR `rep:principalName` (user ID or group ID), **never a path**. For AEM Projects, read the principal(s) from the project's `roles` node and return a principal name.
+
 ```java
 @Component(service = ParticipantStepChooser.class,
            property = {"chooser.label=Project Editors Chooser"})
@@ -76,19 +78,83 @@ public class ProjectEditorsChooser implements ParticipantStepChooser {
         String projectPath = workItem.getWorkflowData()
                                      .getMetaDataMap().get("project.path", String.class);
         if (projectPath != null) {
-            return projectPath + "/jcr:content/editors";
+            ResourceResolver resolver = session.adaptTo(ResourceResolver.class);
+            Resource roles = resolver.getResource(projectPath + "/jcr:content/roles");
+            if (roles != null) {
+                // 'editors' is a multi-value property of principal names (user/group IDs)
+                String[] editors = roles.getValueMap().get("editors", String[].class);
+                if (editors != null && editors.length > 0) {
+                    return editors[0];
+                }
+            }
         }
-        return "workflow-administrators";
+        return args.get("fallbackParticipant", "workflow-administrators");
     }
 }
 ```
 
+### Pattern 4: Route to the Workflow Initiator
+
+A very common need: notify or route a task back to whoever started the workflow. The `initiator` key is set by the engine on every workflow instance.
+
+```java
+@Component(service = ParticipantStepChooser.class,
+           property = {"chooser.label=Workflow Initiator Chooser"})
+public class InitiatorChooser implements ParticipantStepChooser {
+    @Override
+    public String getParticipant(WorkItem workItem, WorkflowSession session,
+                                 MetaDataMap args) throws WorkflowException {
+        String initiator = workItem.getWorkflowData()
+                                   .getMetaDataMap().get("initiator", String.class);
+        if (initiator == null || initiator.isEmpty()) {
+            return args.get("fallbackParticipant", "workflow-administrators");
+        }
+        return initiator;
+    }
+}
+```
+
+In the model XML, reference this chooser from a `DYNAMIC_PARTICIPANT` step:
+
+```xml
+<node jcr:primaryType="cq:WorkflowNode"
+      title="Notify Initiator"
+      type="DYNAMIC_PARTICIPANT">
+  <metaData jcr:primaryType="nt:unstructured"
+            PARTICIPANT_CHOOSER="Workflow Initiator Chooser"
+            DESCRIPTION="The acknowledgement message shown to the initiator."/>
+</node>
+```
+
+Do **not** rely on a string like `PARTICIPANT="$initiator$"` or `PARTICIPANT="${initiator}"` in the static PARTICIPANT step — variable substitution in the static `PARTICIPANT` field is not consistently supported across 6.5 LTS releases. Use the chooser above.
+
+## Notification-Only Participant Steps (Dialog Participant)
+
+When the spec says "notify the initiator" or "send back to the requester," the cleanest 6.5 LTS implementation is a Participant or Dynamic Participant step whose only purpose is to surface a message in the user's Inbox; the user clicks a single route to acknowledge and the workflow ends.
+
+```xml
+<node jcr:primaryType="cq:WorkflowNode"
+      title="No Promo Banner — Notify Initiator"
+      type="DYNAMIC_PARTICIPANT">
+  <metaData jcr:primaryType="nt:unstructured"
+            PARTICIPANT_CHOOSER="Workflow Initiator Chooser"
+            DESCRIPTION="No Promo Banner found on the page. Acknowledge to close."/>
+</node>
+```
+
+Two design rules:
+
+- One notification step per distinct outcome — do not multiplex outcomes through a shared step that decides the message in Java. Keeping outcomes as separate model nodes preserves the visual flow in the Model Editor.
+- The `DESCRIPTION` is the message the user sees in their Inbox. Keep it short and action-oriented.
+
+If a true email is required (not just an Inbox task), use the OOTB `Send Email` process step or a custom `WorkflowProcess` that calls the Day Communications Mail Service — that path is outside the scope of this skill.
+
 ## Completing Participant Steps via Code
 
 ```java
-// Retrieve available routes for the work item
+// Retrieve forward routes available from this work item.
+// For back routes (rewind), use session.getBackRoutes(workItem).
 List<Route> routes = session.getRoutes(workItem, false);
-// false = non-backtrack routes (forward routes only)
 
 // Find by name
 Route targetRoute = routes.stream()

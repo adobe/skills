@@ -8,11 +8,21 @@ license: Apache-2.0
 
 Classify workflow issues, determine what logs and data to gather, and map to the correct runbook or log search. Optimized for **production support** on **AEM as a Cloud Service**.
 
+## Audience
+
+AEMaaCS support and operations engineers (and the IDE LLM acting on their behalf) classifying workflow incidents across multi-environment AEMaaCS contexts — program/environment IDs + time-range + Cloud Manager Logs / Splunk context, before drilling into a single environment.
+
 ## Variant Scope
 
-- This skill is **cloud-service-only**.
-- Log access via Cloud Manager download or log streaming.
-- No JMX — workflow counts and queue metrics come from logs, APIs, or Developer Console.
+- AEM as a Cloud Service only.
+- **Not for AEM 6.5 LTS / AMS.** If the target is 6.5 LTS, stop and load the 6.5-lts variant of this skill — AMS log filesystem access, Splunk indexing patterns specific to AMS, and JMX-based diagnostics referenced there do not apply on AEMaaCS.
+- Log access via Cloud Manager Logs (download or streaming), or Splunk if the customer indexes Cloud Manager Logs into their SIEM.
+- **No JMX on AEMaaCS production.** Workflow counts and queue metrics come from logs, custom HTTP APIs, or Developer Console — not JMX. Never recommend JMX-based remediation in AEMaaCS triage; it does not exist on cloud environments.
+
+## Dependencies
+
+- `workflow-debugging` — once a symptom is classified and an environment/model is identified, route here for the runbook + remediation.
+- `workflow-foundation` references (under any sibling skill) — for canonical JCR paths, OSGi PIDs, and AEMaaCS-specific configuration patterns.
 
 ---
 
@@ -40,6 +50,7 @@ Map the user's description to a **symptom_id** and runbook.
 | User cannot see work item or complete/delegate/return | user_cannot_see_or_complete_item | runbook-inbox-and-permissions.md |
 | Cannot delete workflow model (running instances) | cannot_delete_model | runbook-model-delete-and-update.md |
 | Jobs queued a long time; slow completion; queue depth high | slow_throughput_queue_backlog | runbook-job-throughput-and-concurrency.md |
+| Auto-advance / timeout jobs not firing; participant step stuck past its configured timeout | workflow_auto_advance_failure | runbook-job-throughput-and-concurrency.md |
 | New or changed workflow not starting or step not executing | workflow_setup_validation | runbook-validate-workflow-setup.md |
 
 ---
@@ -129,7 +140,10 @@ Always pair log-based triage with the appropriate runbook for actions (retry via
 
 ## References (in repo)
 
-- **Machine-readable index:** `aem-agent-marketplace-workflow-knowledge-base/docs/debugging-index.md`
-- **Decision guide:** `runbooks/runbook-decision-guide.md`
-- **Splunk scenarios and queries:** `Workflow-docs/splunk-workflow-triaging.md`
-- **Error patterns:** `docs/error-patterns.md`
+Runbooks and supporting docs live under the sibling `workflow-debugging` skill. Paths below are relative to this file.
+
+- **Machine-readable symptom index:** [`../workflow-debugging/references/docs/debugging-index.md`](../workflow-debugging/references/docs/debugging-index.md)
+- **Decision guide (symptom → runbook → first step):** [`../workflow-debugging/references/runbooks/runbook-decision-guide.md`](../workflow-debugging/references/runbooks/runbook-decision-guide.md)
+- **Error patterns (log signatures):** [`../workflow-debugging/references/docs/error-patterns.md`](../workflow-debugging/references/docs/error-patterns.md)
+- **Runbook set (remediation):** [`../workflow-debugging/references/runbooks/`](../workflow-debugging/references/runbooks/) — the runbook filenames referenced in Step 1 above resolve inside this folder.
+- **Splunk scenarios and queries:** inlined in Step 3 above.
