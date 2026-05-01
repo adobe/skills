@@ -1,7 +1,8 @@
-# Stardust learning system — design sketch v0
+# Stardust learning system — design v1
 
-> Status: **draft for designer review.** Nothing here is implemented yet. This
-> doc is the artifact we circulate to invited designers before any code lands.
+> Status: **locked from designer review.** All v0 open questions are
+> resolved (see §8). Nothing here is implemented yet — the doc now informs
+> the spec and implementation work that follows.
 
 ## Why this exists
 
@@ -32,7 +33,7 @@ Out of scope (separate sessions):
 - **Figma-as-extract-source** (Figma file as the *source of truth* for a
   redesign). Depends on `design-facts` being defined here; otherwise its own
   doc.
-- Any implementation. This is v0 design only.
+- Any implementation. This doc is design only; the spec and code follow.
 
 ---
 
@@ -100,6 +101,18 @@ why:          1–3 lines on what makes it work (or fail)
 anti_pattern: optional tag (e.g. "gradient-blob-hero")
 ```
 
+**`brand_axes` are open tags, not a fixed enum.** Designers describe brands
+in their own vocabulary; the corpus accepts that. Cost: near-duplicates will
+appear (`playful` / `whimsical` / `joyful`) and the curator pass is
+responsible for periodic merges, not the contributor.
+
+**Verdict has four levels: `stunning | strong | competent | slop`.**
+`competent` is the most load-bearing — it's where most failures hide.
+
+**Anti-patterns live in the same corpus**, as entries with `verdict: slop`
+plus an `anti_pattern` tag. Symmetric storage means stardust can use them
+without a second read path.
+
 **Read path.** At `direct` time, stardust filters the corpus by the *target
 brand's* `brand_axes`, not by visual similarity. Surfaces ~3 `stunning` + 1
 `slop` as anchors before generating. At `prototype` time, the chosen moves
@@ -145,12 +158,13 @@ without becoming a curation tax. Four steps:
 1. **Capture** — designer (~30 seconds). Sees something striking. Submits
    source (URL / Figma frame / screenshot / etc.) + one line: *"what is this
    doing that's different?"* Stored in `stardust/captures/`.
-   - **Frictionless or it dies.** No taxonomy work at this step. No required
-     fields beyond `source` and one sentence.
-2. **Cluster** — curator pass. Captures are grouped periodically. A lone
-   capture waits. **≥2–3 captures of the same underlying idea** become a
-   *candidate move*. Guards against one designer's idiosyncratic taste
-   becoming canon.
+   - **Frictionless or it dies.** No taxonomy work at this step. No axis
+     tag. No required fields beyond `source` and one sentence.
+2. **Cluster** — curator pass. **Queue-driven cadence:** the pass triggers
+   when any cluster reaches **≥2–3 captures of the same underlying idea**,
+   not on a calendar. A lone capture waits. This guards against one
+   designer's idiosyncratic taste becoming canon and keeps curation
+   reactive to real signal density rather than the clock.
 3. **Abstract** — curator + originating designer. Turn the cluster into a
    named move with the §1 schema. Originating designer signs off that the
    abstraction matches what they captured.
@@ -174,6 +188,10 @@ Growth without pruning recreates the original problem at higher cost.
 
 - A periodic **histogram audit** of moves used across all redesigns stardust
   has produced.
+- **Owned by a lead designer, run manually.** Stardust generates the raw
+  histogram; the lead designer interprets it. Automation would catch drift
+  mechanically but miss qualitative slop, which is exactly the failure mode
+  the audit is meant to detect.
 - Moves that dominate regardless of brand → demote (treat as default-combo
   warning).
 - Moves unused for N sessions → retire (move to archive, not deleted, with
@@ -212,23 +230,35 @@ critique session  →  raw critiques  →  curator pass  →  divergence-toolkit
 
 ---
 
-## 8. Open questions for the designer review
+## 8. Decisions log (resolved from designer review)
 
-1. Do `brand_axes` belong as a fixed enum (easier to filter) or open tags
-   (truer to how designers think)?
-2. Should `verdict` collapse `competent` and `slop` into one, or keep four
-   levels?
-3. What's the right curator cadence — per-session, weekly, when the queue
-   crosses N captures?
-4. Who owns the histogram audit — automated by stardust, or manual by a lead
-   designer?
-5. Should anti-patterns be stored alongside exemplars (one corpus) or in a
-   separate `anti-patterns/` directory (clearer intent)?
+All v0 open questions, with the resolved answer and a one-line rationale.
+
+1. **`brand_axes` — open tags, not a fixed enum.** Truer to how designers
+   describe brands. Curator owns periodic de-duping.
+2. **Verdict — keep four levels** (`stunning | strong | competent | slop`).
+   Granularity is worth the slightly higher annotation cost; `competent` is
+   where the failures hide and we don't want to lose it.
+3. **Curator cadence — queue-driven.** Pass triggers when a cluster reaches
+   ≥2–3 captures, not on a calendar. Reactive to signal density.
+4. **Histogram audit — manual, owned by a lead designer.** Stardust
+   generates the raw histogram; interpretation is human. Automation would
+   miss qualitative slop, which is the failure the audit is for.
+5. **Anti-patterns — one corpus.** Same schema, `verdict: slop` +
+   `anti_pattern` tag. Lets stardust use them symmetrically with exemplars.
+6. **Move-combination floor — ≥3 moves spanning ≥3 axes.** Confirmed.
+7. **Capture step — source + one sentence, no axis tag.** Confirmed.
+   Frictionless contribution outweighs cheaper clustering.
+8. **Verdict vocabulary — `stunning | strong | competent | slop`.**
+   Confirmed. "Slop" is loaded but precise.
 
 ---
 
-## What changes after this doc is approved
+## What happens next
 
+- Pin the **`design-facts` shape** (§3) as a standalone spec — this is the
+  interface every future ingester depends on (URL crawler, Figma reader,
+  vision-on-image, PDF parser, video frame sampler).
 - Add a `learning-system.md` in `reference/` describing **runtime behavior**
   (what stardust reads at `direct` and `prototype` time). This doc stays as
   the design rationale.
