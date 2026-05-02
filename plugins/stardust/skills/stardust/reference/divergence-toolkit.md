@@ -8,12 +8,24 @@ moves.
 Loaded whenever a skill is about to make a visual decision without a strong
 external reference.
 
-**Status:** v1.0 (stardust v2) · ported from v1 toolkit v0.5.1, adapted
+**Status:** v1.1 (stardust v2) · ported from v1 toolkit v0.5.1, adapted
 for the impeccable-based pipeline. The anti-toolbox list below was compiled
 by the assistant as a self-audit of its own recurring moves and expanded
 after successive test runs surfaced additional defaults. It is deliberately
 imperfect. Designers should add corrections in §6 over time; that section
 is authoritative when it conflicts with §1.
+
+**Changes from v1.0 → v1.1:**
+- **Added §1a Usable-Moves Catalog** — the complement to §1's anti-defaults
+  list. Formalizes the move schema (id/axis/summary/when_to_use/
+  when_not_to_use/exemplars/provenance) the learning system reads at
+  `direct` and `prototype` time. Names the seven axes (`layout`, `type`,
+  `palette`, `image`, `motion`, `tone`, `structural`). Defines the
+  promotion contract (curator-pass-only; runtime emits `candidate/`-
+  prefixed observations but never auto-promotes). Defines the
+  default-combinations registry (combinations of legitimate §1a moves
+  that recreate §1 slop patterns). Ships with one seed entry per axis;
+  the catalog grows through the contribution pipeline.
 
 **v1 → v2 adaptation (paths and consumers only — rules unchanged):**
 - Consumer skills: v1's `brand` becomes v2's `direct`; `prototype` is unchanged.
@@ -248,6 +260,218 @@ When the self-audit moves an entry between lists, record the move in
 to: "anti_toolbox_hits", move: "...", reason: "..." }` — or the reverse, or
 `{ from: <list>, to: "removed", ... }` when the self-audit deletes a move
 outright.
+
+---
+
+## 1a. Usable-Moves Catalog
+
+§1 lists *anti-defaults* — moves the assistant reaches for unbidden,
+which require per-hit justification. This section is the **complement**:
+the catalog of *usable moves* a proposal can intentionally commit to as
+its design grammar. Where §1 says "don't reach for this without a
+reason", §1a says "here are the legitimate moves you can pick from."
+
+The two are read together at runtime:
+
+- **`direct`** authoring the target `DESIGN.md` consults §1a for the move
+  vocabulary that proposals will commit to.
+- **`prototype`** validates that each proposal's committed moves come
+  from §1a (or are prefixed `candidate/` per the runtime contract), and
+  separately scans for §1 anti-default hits.
+- The **default-combinations registry** (below) cross-references both:
+  certain combinations of §1a moves trigger §1-style flagging.
+
+### Move schema
+
+Every entry in this catalog uses the shape from
+`design/learning-system.md` §1:
+
+```yaml
+id:               <axis>/<short-name>     # e.g. layout/asymmetric-grid
+axis:             <axis>                   # one of the named axes below
+summary:          <one line>
+when_to_use:      <short note grounded in brand axes>
+when_not_to_use:  <short note>
+exemplars:        [exemplar-id, ...]       # ids in plugins/stardust/exemplars/
+provenance:
+  added_by:       <designer handle | "seed">
+  from_session:   <session id | null>
+  captures:       [capture-id, ...]        # source captures, if grown via pipeline
+```
+
+`id` is `<axis>/<short-name>`. Axis prefix is mandatory; it's how
+proposals satisfy the "≥3 moves spanning ≥3 axes" rule from the
+move-combination contract (`reference/learning-system.md`).
+
+### Axes
+
+A move belongs to exactly one axis. The current axes:
+
+| axis        | what it determines                            |
+|-------------|-----------------------------------------------|
+| `layout`    | structural grammar of the page                |
+| `type`      | typography system (display, body, pairing)    |
+| `palette`   | color strategy (roles, temperature, contrast) |
+| `image`     | image strategy (presence, treatment, role)    |
+| `motion`    | motion personality                            |
+| `tone`      | copy register and density                     |
+| `structural`| recurring structural devices (nav, footer)    |
+
+A proposal must commit to ≥3 moves spanning ≥3 distinct axes. The
+brand-justification rule (per the contract) means each committed move
+must trace to a fact about the extracted brand or the resolved
+direction.
+
+New axes are added only by curator pass, not at runtime.
+
+### Promotion contract
+
+The catalog is grown **plugin-side**, by curator pass, per
+`design/learning-system.md` §4. At runtime, stardust may emit
+**candidate moves** with id prefix `candidate/<axis>/<short-name>` when
+it observes a move pattern in an exemplar that isn't yet in the
+catalog. Candidates are written to
+`<user-project>/stardust/captures/candidates/` (or the plugin staging
+queue if a contributor authored them) and **never auto-promoted**.
+
+A candidate becomes a catalog move only after:
+
+1. Designer signoff per the move contribution pipeline.
+2. PR landed against `plugins/stardust/skills/stardust/reference/divergence-toolkit.md` adding the entry to §1a.
+3. Provenance block populated (who, which captures, which session).
+
+### Default-combinations registry
+
+Some combinations of §1a moves, when used together, recreate the slop
+patterns §1 is meant to catch. These are flagged at `prototype` time
+even though each individual move is legitimate.
+
+Registry format:
+
+```yaml
+- id:           default-combo/generic-2026-saas
+  triggers:     when ALL of these are present
+    - layout/centered-single-column
+    - type/all-caps-grotesque-display
+    - structural/sticky-nav
+    - structural/two-button-cta-pair
+  why:          Recreates the Linear/Notion/Stripe landing skeleton.
+  resolution:   surface to user, ask for divergence justification before render
+```
+
+Entries here are added by curator pass, typically from the house-style
+audit (`design/learning-system.md` §5) when the histogram surfaces a
+combination that recurs across unrelated brands.
+
+### Seed catalog
+
+The catalog at landing time is intentionally small. The expectation is
+that contributors and the curator pass populate it over the system's
+life. Seed entries (one per axis, fully spec'd to demonstrate the
+shape):
+
+```yaml
+- id:               layout/asymmetric-grid
+  axis:             layout
+  summary:          Two-column layout where the columns are deliberately
+                    unequal in width and offset vertically; primary content
+                    sits in the heavier column with annotative material in
+                    the lighter one.
+  when_to_use:      Editorial brands; brands that read as authored rather
+                    than systemic; brands whose content has a primary/
+                    secondary information hierarchy that benefits from
+                    spatial expression.
+  when_not_to_use:  Utility/transactional surfaces where scan speed
+                    matters more than expression; brands whose content is
+                    list-heavy and would lose rhythm in asymmetry.
+  exemplars:        []
+  provenance:       { added_by: seed, from_session: null, captures: [] }
+
+- id:               type/editorial-serif-display
+  axis:             type
+  summary:          Display type set in an editorial serif (transitional
+                    or modern) at poster scale, paired with a quieter
+                    sans for body.
+  when_to_use:      Brands whose register is editorial, literary, or
+                    civic; brands that benefit from typographic
+                    "voice" being a load-bearing design element.
+  when_not_to_use:  Tech/utility brands where serifs read as performative;
+                    brands whose actual voice is technical or terse.
+  exemplars:        []
+  provenance:       { added_by: seed, from_session: null, captures: [] }
+
+- id:               palette/duotone-high-contrast
+  axis:             palette
+  summary:          Two-color system: a saturated or deep ground plus
+                    one near-pure foreground (often warm-white or pure
+                    white). No mid-tones in the primary palette.
+  when_to_use:      Brands that benefit from chromatic decisiveness;
+                    posters; brands whose voice is declarative.
+  when_not_to_use:  Brands needing nuance in color hierarchy
+                    (multi-product catalogs, dashboards, anything with
+                    semantic color requirements).
+  exemplars:        []
+  provenance:       { added_by: seed, from_session: null, captures: [] }
+
+- id:               image/no-imagery
+  axis:             image
+  summary:          Type and color do all the visual work; no
+                    photographic or illustrative imagery anywhere on
+                    primary surfaces.
+  when_to_use:      Brands whose product is non-visual (services,
+                    information, software at a certain register); brands
+                    where stock imagery would dilute distinctiveness.
+  when_not_to_use:  Brands whose product is fundamentally visual
+                    (fashion, interiors, food); brands that need to
+                    establish trust through faces.
+  exemplars:        []
+  provenance:       { added_by: seed, from_session: null, captures: [] }
+
+- id:               motion/still-but-precise
+  axis:             motion
+  summary:          No animations; nothing moves on scroll, hover, or
+                    timer. Layout precision and type rhythm carry what
+                    motion would otherwise carry.
+  when_to_use:      Brands whose register is editorial, archival, or
+                    civic; brands whose seriousness would be undercut by
+                    motion.
+  when_not_to_use:  Brands whose product or category expects kineticism
+                    (entertainment, tools-for-makers, anything with a
+                    "playful" axis from the resolved direction).
+  exemplars:        []
+  provenance:       { added_by: seed, from_session: null, captures: [] }
+
+- id:               tone/declarative
+  axis:             tone
+  summary:          Copy makes statements. Short sentences. No qualifiers,
+                    no marketing softening, no second-person hand-holding.
+  when_to_use:      Brands with conviction in their offering; brands
+                    whose audience expects directness (B2B utility,
+                    civic, infrastructure).
+  when_not_to_use:  Consumer brands that need warmth; brands selling on
+                    aspiration rather than utility.
+  exemplars:        []
+  provenance:       { added_by: seed, from_session: null, captures: [] }
+```
+
+Seed entries have empty `exemplars[]` because no exemplar corpus has
+been authored yet. The curator pass will populate exemplar references
+as the corpus grows.
+
+### What this catalog deliberately does NOT do
+
+- It does **not** replace §1. A move appearing in §1a may also appear in
+  §1's anti-default list (or in the default-combinations registry),
+  meaning "legitimate when intentionally chosen, slop when reached for
+  by inertia."
+- It does **not** rank moves. There is no "best" move per axis — the
+  brand-justification rule does the ranking on a per-redesign basis.
+- It does **not** enumerate every possible move. The catalog grows
+  through the contribution pipeline; gaps are expected and fine.
+- It does **not** ship moves grouped by brand category. Filtering by
+  `brand_axes` happens via exemplar tagging
+  (`design/learning-system.md` §2), not via a category column on the
+  move itself.
 
 ---
 
@@ -522,16 +746,19 @@ does NOT contribute to `_divergence.anti_toolbox_count`.
 ## How skills consume this toolkit (stardust v2)
 
 - **`direct`** reads the toolkit when it authors the target `DESIGN.md` /
-  `DESIGN.json` from the resolved direction. It uses §2 to roll a seed
-  (when reference is weak or missing), §3 to pick a font deck, §4 to
-  validate role names in the palette frontmatter, §5 to handle listicle
-  references the user supplied. It writes the choices into
-  `DESIGN.json.extensions.divergence` (the v2 home for what v1 called
-  `_divergence`).
+  `DESIGN.json` from the resolved direction. It uses §1a as the move
+  vocabulary the proposal commits to (per the move-combination contract
+  in `reference/learning-system.md`), §2 to roll a seed (when reference
+  is weak or missing), §3 to pick a font deck, §4 to validate role names
+  in the palette frontmatter, §5 to handle listicle references the user
+  supplied. It writes the choices into `DESIGN.json.extensions.divergence`
+  (the v2 home for what v1 called `_divergence`).
 - **`prototype`** reads the toolkit at the start of its render pass. It
-  uses §1 to count anti-toolbox moves in the candidate prototype and §4
-  to validate palette role names used in the `:root` token block. It
-  refuses to emit without a populated
+  uses §1a to validate that each proposal's committed moves come from
+  the catalog (or are `candidate/`-prefixed), the default-combinations
+  registry to flag slop combinations, §1 to count anti-toolbox moves in
+  the candidate prototype, and §4 to validate palette role names used
+  in the `:root` token block. It refuses to emit without a populated
   `DESIGN.json.extensions.divergence.font_deck`.
 - **`migrate`** does not consult the toolkit directly — it consumes the
   approved DESIGN.md tokens, which already reflect the divergence choices
