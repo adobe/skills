@@ -34,11 +34,27 @@ unless the contributor redirects.
 
 ### Phase 1 — Identify and load context
 
-1. **Resolve the contributor's handle.** Read from `git config
-   user.name` (or `user.email` as fallback). If neither is available,
-   ask the contributor *"What handle should I record your
-   contributions under?"*
-2. **Scan the corpus for their history.** Look across:
+1. **Resolve the contributor's handle.** Resolution is layered;
+   stop at the first source that returns a value:
+   1. **Persistent handle file** at `~/.stardust/contributor.yaml`
+      (user-level, survives across projects). Schema:
+      ```yaml
+      handle:        <canonical handle>
+      saved_at:      <ISO-8601>
+      git_config_at_save: <verbatim git config user.name | null>
+      ```
+   2. **`git config user.name`** (then `user.email` as fallback).
+   3. **Prompt the contributor** if neither resolves: *"What handle
+      should I record your contributions under? I'll save this so I
+      don't have to ask again."* Write the answer to
+      `~/.stardust/contributor.yaml`. Create the directory if absent.
+2. **Verify against git config (when both exist).** If the
+   persistent file's `handle` differs from current `git config
+   user.name`, ask once: *"I have you saved as `<handle>` but git
+   config says `<git-handle>`. Which should I use going forward?"*
+   Update the persistent file with the answer. Do not silently switch.
+3. **Scan the corpus for their history** using the canonical handle.
+   Look across:
    - `<user-project>/stardust/captures/` and
      `plugins/stardust/captures/` for files where `submitted_by`
      matches the handle.
@@ -50,13 +66,26 @@ unless the contributor redirects.
      `provenance.signed_off_by` matches the handle.
    - `plugins/stardust/audits/curator-pass-*.md` for explicit
      mentions.
-3. **Classify them as one of:**
+4. **Classify them as one of:**
    - **First-time** — no prior submissions found.
    - **Returning, no pending** — has submissions; nothing currently
      awaits their action.
    - **Returning, has pending** — has submissions; at least one
      candidate move awaits their signoff, or at least one of their
      captures has clustered.
+
+If the corpus contains submissions under a *different* handle that
+the contributor recognizes as theirs (e.g. older captures under
+`alex.smith` while their current handle is `alex`), surface this and
+ask: *"I see N captures under `alex.smith` — should I treat those as
+yours too?"* If they say yes, record an alias in the persistent file:
+
+```yaml
+handle:    alex
+aliases:   [alex.smith]
+```
+
+Subsequent scans treat aliases as equivalent to the canonical handle.
 
 ### Phase 2 — Compute corpus needs
 
