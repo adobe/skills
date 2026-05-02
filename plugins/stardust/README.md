@@ -60,6 +60,12 @@ otherwise with a clear install hint.
 - **No production CMS output.** The migration target is platform-agnostic static HTML. Conversion to AEM EDS, another CMS, or a framework is a separate downstream effort and out of scope for this plugin.
 - **No closed intent vocabulary.** The user phrase is open. The agent reasons about it in public.
 
+## Contributing to the learning corpus
+
+If you've been invited to help grow the moves catalog and exemplar corpus,
+read [`CONTRIBUTING.md`](./CONTRIBUTING.md). The minimum that makes you a
+contributor is one capture; everything else is opt-in.
+
 ## Status
 
 `v0.4.0` — adds the **learning system**: a moves catalog and exemplar/critique

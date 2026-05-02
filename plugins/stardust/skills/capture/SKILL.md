@@ -35,6 +35,12 @@ $stardust capture <source> [-- <sentence>] --upstream
   by contributors operating against this repo. Without the flag,
   captures are local to the user's project and stay there until the
   user PRs them upstream.
+- `--new-contributor` — optional. Run the first-time-contributor
+  walkthrough: a short explainer of what's about to happen, why the
+  schema is minimal, and what the curator will do with the
+  submission. After the walkthrough, the normal capture flow runs
+  interactively (prompts for source and sentence). Subsequent
+  captures don't need the flag; use it once per contributor.
 
 ## Setup
 
@@ -93,6 +99,44 @@ $stardust capture <source> [-- <sentence>] --upstream
      promote upstream when ready."*
    - With `--upstream`: *"Plugin-side capture. Will land in the
      curator pass queue."*
+
+## First-time contributor walkthrough (`--new-contributor`)
+
+When the user passes `--new-contributor`, run the capture flow with a
+brief explainer block printed first. The explainer is verbatim:
+
+```
+Welcome. A capture is the lowest-friction contribution to stardust's
+learning corpus: a source (URL, image, Figma frame) plus one sentence
+about what's distinctive.
+
+We do not ask for tags, axes, verdicts, or classification — those
+come later from the curator pass. The whole point is that capture
+costs you 30 seconds.
+
+Your capture will:
+  1. Land in the queue (project-side, or plugin-side with --upstream).
+  2. Wait for company. Lone captures wait; clusters of ≥2 become
+     candidate moves.
+  3. Surface to you for signoff if your capture originated a cluster.
+
+You can read the full contributor flow at:
+  plugins/stardust/CONTRIBUTING.md
+
+Let's do your first one.
+```
+
+Then prompt for `source` and `sentence` interactively (per the normal
+flow), write the file, and print the standard confirmation block. End
+the session with one extra line:
+
+```
+This was your first capture. Subsequent runs don't need
+--new-contributor; just $stardust capture <source> -- "<sentence>".
+```
+
+Use the flag at most once per contributor. The walkthrough is for
+orientation, not for repeated use.
 
 ## Inline capture (during a session)
 
