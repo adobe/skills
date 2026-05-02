@@ -175,11 +175,55 @@ For each page in scope:
    F-002 placeholder contract). Author directly — no interview, no
    impeccable invocation; this is stardust's reasoning about how
    the system deploys to this page given this content.
-6. Show the brief to the user and wait for confirmation before
-   moving to Phase 2. The user can edit the brief in place
-   (rearrange sections, kill open questions, change composition
-   decisions); re-rendering Phase 2 will rebuild the proposed file
-   from the edited brief.
+6. **Declare committed moves.** Add a `## Committed moves` block to
+   the brief listing the moves this proposal commits to (per the
+   move-combination contract in
+   `skills/stardust/reference/learning-system.md`). Each entry:
+
+   ```
+   - id:                   <axis>/<short-name>   # from divergence-toolkit.md §1a
+     brand_justification:  <one line tracing this move to a brand fact
+                           from the extracted current state or
+                           direction.md, e.g. "audience tag civic +
+                           extracted register editorial supports
+                           layout/asymmetric-grid">
+     anchor_ref:           <exemplar id from direction.md §Anchors,
+                           or null with a one-line divergence reason>
+   ```
+
+7. **Enforce the move-combination contract on the brief** before
+   showing to the user. Reject the brief and re-author if any of:
+
+   - **Floor:** fewer than 3 committed moves, OR moves span fewer than
+     3 distinct axes (axes are `layout`, `type`, `palette`, `image`,
+     `motion`, `tone`, `structural` per divergence-toolkit §1a).
+   - **Justification:** any move missing a non-empty
+     `brand_justification` field.
+   - **Anchor coherence:** any move with `anchor_ref: null` lacking a
+     one-line divergence reason. Cited anchors must share at least one
+     move with the proposal OR carry a one-line reason for the
+     divergence.
+   - **Pairwise variance** (multi-variant only): a sibling variant for
+     the same page differs by fewer than 2 moves. Token-only
+     differences (palette tokens, spacing) do not count.
+
+   Flag (do not reject) when the committed move set matches an entry
+   in the **default-combinations registry** (divergence-toolkit §1a).
+   Surface the warning to the user with the matched combo id and the
+   resolution note from the registry; ask for confirmation or
+   revision before continuing.
+
+   `--bypass-contract` is the only opt-out (per learning-system
+   runtime contract Hard rules). Recorded in the brief's
+   `_provenance.contract_bypass` block with the user's verbatim
+   acknowledgement.
+
+8. Show the brief (now contract-compliant) to the user and wait for
+   confirmation before moving to Phase 2. The user can edit the
+   brief in place (rearrange sections, kill open questions, change
+   composition decisions, swap moves); re-rendering Phase 2 will
+   rebuild the proposed file from the edited brief. If user edits
+   change the committed moves, **re-run step 7** before re-render.
 
 `$impeccable shape` is **not** invoked in v0.2 (see
 `reference/page-shape-brief.md` § Authoring procedure for the
@@ -597,6 +641,15 @@ Default mode is unchanged.
   attribute vocabulary (cross-cutting, used by prototype + migrate).
 - `skills/stardust/reference/divergence-toolkit.md` —
   anti-mediocrity rules consumed during render and live iteration.
+  §1a (v1.1) is the **usable-moves catalog** — the move vocabulary
+  every brief commits to (Phase 1 step 6). The
+  default-combinations registry is consulted during contract
+  enforcement (Phase 1 step 7).
+- `skills/stardust/reference/learning-system.md` — runtime contract
+  for the move-combination contract enforced at Phase 1 step 7
+  (≥3 moves across ≥3 axes, brand-justification, anchor coherence,
+  pairwise variance for multi-variant). Anchors are sourced from
+  `direction.md` `# Anchors` section written by `direct` Phase 5.
 - `skills/stardust/reference/intent-dimensions.md` — the 7-axis
   vocabulary used to read a chat-driven refinement phrase
   (iteration path 2).

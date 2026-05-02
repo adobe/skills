@@ -107,6 +107,35 @@ register: brand
 - The 5/3 hero split inverts to stacked at <1024px (memoir card
   becomes the second block, full-width).
 
+## Committed moves
+
+The moves this proposal commits to. Required by the move-combination
+contract in `skills/stardust/reference/learning-system.md`: ≥3 moves
+spanning ≥3 distinct axes; every move carries a `brand_justification`
+tracing it to a fact in the extracted current state or `direction.md`.
+
+Each entry:
+
+```
+- id:                   layout/asymmetric-grid
+  brand_justification:  audience tag civic + extracted register editorial
+                        ground the asymmetry in the brand's authored voice
+  anchor_ref:           tactile-chairs-2024  # from direction.md §Anchors
+- id:                   type/editorial-serif-display
+  brand_justification:  the brand's masthead reads as institutional;
+                        editorial-serif-display sustains that across deeper pages
+  anchor_ref:           tactile-chairs-2024
+- id:                   image/no-imagery
+  brand_justification:  current site relies on stock photography that
+                        dilutes its register; removing imagery resolves
+                        improvements list item #2
+  anchor_ref:           null   # diverges from anchor; anchor uses photographic-edge.
+                                # Reason: brand's product is information, not visual.
+```
+
+Axes available: `layout`, `type`, `palette`, `image`, `motion`, `tone`,
+`structural` (per `divergence-toolkit.md` §1a).
+
 ## Key states
 
 - Default — described above.

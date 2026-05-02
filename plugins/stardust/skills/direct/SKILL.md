@@ -569,6 +569,49 @@ The C-cliff name comes from the observed pattern where a
 not to soften C — it is to define C against a captured trait
 instead of against B.
 
+### Phase 2.7 — Exemplar anchor selection
+
+After divergence inputs are resolved (Phase 2), variants are forked
+(Phase 2.6), and **before** authoring `PRODUCT.md` (Phase 3) and
+`DESIGN.md` (Phase 4), select anchors from the exemplar corpus per
+the runtime contract in
+`plugins/stardust/skills/stardust/reference/learning-system.md`.
+
+1. **Compute target `brand_axes`** from the resolved direction (Phase 1
+   restate + Phase 2 resolutions) and the extracted current state
+   (`stardust/current/PRODUCT.md`, `stardust/current/DESIGN.md`,
+   `stardust/current/_brand-extraction.json`). Open tags; no enum.
+   Examples: `editorial`, `niche`, `tactile`, `civic`, `playful`,
+   `mass-market`, `technical`, `expressive`.
+2. **Read the corpus.** Union of plugin-side
+   (`plugins/stardust/exemplars/`) and project-side
+   (`stardust/exemplars/` if present in the user's project). Plugin-side
+   is the trusted base; project-side is opt-in additions for this user.
+3. **Filter** by `brand_axes` overlap. An entry qualifies when at least
+   two of its tags overlap the target tags, OR one tag overlaps and
+   the entry is `verdict: stunning`.
+4. **Surface anchors:**
+   - Up to **three `stunning`** entries, ordered by tag-overlap richness;
+     break ties by `critique_mode` (qualified > quick), then by entry
+     age (newer first).
+   - **One `slop`** entry, ordered by tag-overlap richness, to anchor
+     the anti-pattern side.
+5. **Empty / thin corpus.** If no entries qualify, skip anchor selection
+   silently in this phase but **note the absence** in `direction.md` at
+   Phase 5 (`# Anchors: none qualifying`). If <3 qualifying entries,
+   surface what's there and note thinness. Do not substitute from
+   non-overlapping `brand_axes` to fill the slot.
+
+Anchors are reference, not template. The proposed direction is **not
+bound** to copy moves from anchors. They constrain the *space* the
+proposal lives in, not its specific choices. They will be cited in
+`direction.md` at Phase 5 under a `# Anchors` section per the runtime
+contract.
+
+Skip this phase entirely when the resolved mode is rebrand and no
+`brand_axes` overlap can be computed from the current state — anchors
+in that mode would mislead more than help.
+
 ### Phase 3 — Author target PRODUCT.md
 
 Write `PRODUCT.md` at the project root using impeccable's
@@ -774,6 +817,14 @@ trace: phrase, restatement, movements, gaps, questions and answers,
 resolved axes, divergence inputs, command sequence proposed, user
 confirmation, every assumption that defaulted in. Re-directs append
 to the file as a new section; prior direction stays as history.
+
+**Anchors block.** If Phase 2.7 surfaced anchors, append a `# Anchors`
+section to `direction.md` listing each anchor with: `id`, `verdict`,
+`brand_axes`, the entry's `why`, and the moves it exhibits. If Phase
+2.7 was skipped or no entries qualified, write `# Anchors: none
+qualifying` (or `# Anchors: corpus thin (N entries surfaced)` for the
+thin-corpus case). The `prototype` sub-skill reads this section to
+verify anchor coherence on each proposal.
 
 Update `stardust/state.json`:
 
@@ -1026,6 +1077,12 @@ Default mode is unchanged.
   homogeneity`) and universal hardening (`Fabricated content`,
   `Hero text on photographic background without contrast scrim`,
   `Editorial-register vocabulary applied to non-editorial brands`).
+  §1a (v1.1) is the **usable-moves catalog** — the move vocabulary
+  proposals commit to, read at Phase 4 when authoring DESIGN.md.
+- `skills/stardust/reference/learning-system.md` — runtime contract
+  for exemplar anchor selection (Phase 2.7) and the move-combination
+  contract enforced by `prototype`. Anchors land in `direction.md`
+  via Phase 5.
 - `skills/stardust/reference/artifact-map.md` — provenance shape.
 - `reference/direction-format.md` — schema for `stardust/direction.md`.
 - `reference/palette-picker.md` — palette resolution procedure.
