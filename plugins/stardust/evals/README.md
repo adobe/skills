@@ -31,6 +31,8 @@ v2 evals without modification.
 |------------------------------|---------------------------|-----------------------------------------------------------------------------------------------------|
 | `extract-multipage/`         | Phase 1 (`extract`)       | Multi-page crawl with cap + Playwright (not WebFetch) + correct file shapes + direct authoring of current PRODUCT.md / DESIGN.md. |
 | `direct-from-phrase/`        | Phase 2 (`direct`)        | Dimensional restatement + at most two questions + plan-before-execution + direct authoring of target spec + direction.md trace. |
+| `exemplar-anchoring/`        | Phase 2.7 (`direct`)      | Target `brand_axes` computed from resolved direction + extracted state. Corpus filtered by `brand_axes` overlap. Up to 3 stunning + 1 slop anchors written to `direction.md` `# Anchors`. Non-overlapping entries excluded; no slot-filling. Stardust-observed candidate emission (if any) honors the conservative gate (high-verdict source, structural axis, cap of 2 per session, user-visible note). |
+| `move-combination-contract/` | Phase 1 (`prototype`)     | Brief declares ≥3 moves across ≥3 axes with `brand_justification` on each. Floor violations rejected before user confirmation. Default-combo registry flags warn (don't reject). `--bypass-contract` never invoked silently; bypass is recorded in `_provenance.contract_bypass` with the user's verbatim acknowledgement. Three sub-scenarios (compliant, under-floor, default-combo). |
 | `prototype-before-after/`    | Phase 3 (`prototype`)     | Two files per page (viewer + proposed) + `:root` block + data attributes + content preserved + delegates to `$impeccable craft`. |
 | `migrate-incremental/`       | Phase 4 (`migrate`)       | Both render paths (A and B) + nested index.html output + content preservation + idempotent skip on re-run.                 |
 | `intent-reasoning-style/`    | Master skill principle    | "Open and reasoned" — vague phrases get clarified, never silently mapped to commands. Pending direction persisted.          |
@@ -42,6 +44,7 @@ v2 evals without modification.
 | Layer 1 — intent abstraction (open + reasoned) | `intent-reasoning-style`, `direct-from-phrase`                  |
 | Layer 2 — navigator orchestrator (4 phases)  | `extract-multipage`, `direct-from-phrase`, `prototype-before-after`, `migrate-incremental` |
 | Layer 3 — migration tooling (per-page, incremental, idempotent) | `migrate-incremental`                                          |
+| Layer 4 — learning system (anchors + move-combination contract) | `exemplar-anchoring`, `move-combination-contract`              |
 
 The cross-cutting properties are pinned across multiple evals:
 

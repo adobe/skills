@@ -1,0 +1,18 @@
+{
+  "name": "move-combination-contract",
+  "total": 100,
+  "criteria": [
+    { "id": "committed_moves_block_present",  "weight": 10, "description": "Every brief authored in Phase 1 contains a ## Committed moves block per prototype/reference/page-shape-brief.md. The block lists move entries with id, brand_justification, anchor_ref." },
+    { "id": "move_ids_reference_catalog",     "weight": 8,  "description": "Every move id in the brief references an entry in divergence-toolkit.md §1a (or is candidate/-prefixed for an observed-but-not-promoted move). No invented or unrecognized ids." },
+    { "id": "brand_justification_required",   "weight": 10, "description": "Every committed move carries a non-empty brand_justification field tracing the move to a fact in stardust/current/_brand-extraction.json, stardust/current/PRODUCT.md, or direction.md. Generic 'because it's distinctive' is rejected; the trace must be specific." },
+    { "id": "scenario_a_floor_satisfied",     "weight": 10, "description": "Scenario A: the brief commits to ≥3 moves spanning ≥3 distinct axes (drawn from layout, type, palette, image, motion, tone, structural). Pre-confirmation contract check passes." },
+    { "id": "scenario_a_anchor_coherence",    "weight": 8,  "description": "Scenario A: each move's anchor_ref either cites a direction.md anchor id from the # Anchors section, OR is null with a one-line divergence reason. Cited anchors share at least one move with the proposal." },
+    { "id": "scenario_b_floor_rejection",     "weight": 12, "description": "Scenario B: the under-floor brief (2 moves, 1 axis) is rejected at step 7. Failure message names the failing rules (floor on count, floor on axis count). The brief is NOT shown to the user before re-authoring." },
+    { "id": "scenario_b_re_authoring",        "weight": 8,  "description": "Scenario B: after rejection, the agent re-authors the brief with additional moves on different axes. The re-authored brief passes step 7 and only then is shown to the user." },
+    { "id": "scenario_c_default_combo_flag",  "weight": 10, "description": "Scenario C: the default-combo/generic-2026-saas combination is flagged (not rejected). The warning surfaces the combo_id and resolution note from the registry. The user is asked to confirm or revise before Phase 2." },
+    { "id": "scenario_c_provenance_recorded", "weight": 6,  "description": "Scenario C: if the user confirms, the combo-flag event is recorded in _provenance.contract_flags[] on the brief with combo_id and the user's verbatim acknowledgement." },
+    { "id": "no_silent_bypass",               "weight": 8,  "description": "--bypass-contract is never silently invoked. If the user did not pass the flag, the contract is enforced. If the user did pass it, the bypass is recorded in _provenance.contract_bypass with the user's verbatim acknowledgement and the failed rules listed." },
+    { "id": "user_confirmation_gate",         "weight": 5,  "description": "In all scenarios, the user is shown the contract-compliant brief at step 8 before Phase 2 (render) begins. No render before user confirmation. If user edits change committed_moves, step 7 re-runs." },
+    { "id": "no_eds_references",              "weight": 5,  "description": "No mention of EDS, AEM, dev servers, or framework targets in the brief, the contract messages, or the provenance blocks." }
+  ]
+}

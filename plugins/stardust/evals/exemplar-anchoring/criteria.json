@@ -1,0 +1,19 @@
+{
+  "name": "exemplar-anchoring",
+  "total": 100,
+  "criteria": [
+    { "id": "phase_2_7_ran",                "weight": 8,  "description": "Phase 2.7 (Exemplar anchor selection) executed before Phase 3 (PRODUCT.md authoring). Visible in the agent's reasoning trace OR in direction.md provenance." },
+    { "id": "brand_axes_computed",          "weight": 10, "description": "Target brand_axes computed from the resolved direction + extracted current state. Tags include at least 'editorial' and 'niche' (plus 'tactile' or 'civic' if derived). Open tags, not a fixed enum." },
+    { "id": "corpus_read_as_union",         "weight": 5,  "description": "Both plugin-side (plugins/stardust/exemplars/) and project-side (stardust/exemplars/) were checked. Project-side empty case handled without error." },
+    { "id": "filter_correct_inclusion",     "weight": 12, "description": "All four qualifying entries (editorial-civic-2024, tactile-publishing-2025, archival-museum-2023, slop-fintech-stock-2024) appear in the qualifying set. Filter rule applied: ≥2 tag overlap OR 1 tag overlap with verdict stunning." },
+    { "id": "filter_correct_exclusion",     "weight": 12, "description": "Both non-qualifying entries (corporate-saas-2025, playful-d2c-2024) are excluded. They never appear in direction.md or in the anchor citations. No 'fill the slot' substitution from non-overlapping brand_axes." },
+    { "id": "stunning_anchor_count",        "weight": 8,  "description": "Up to 3 stunning anchors surfaced. With 3 qualifying stunning entries, all three are cited. Order ranked by tag-overlap richness; ties broken by critique_mode (qualified > quick) then by entry age." },
+    { "id": "slop_anchor_present",          "weight": 8,  "description": "Exactly 1 slop anchor surfaced (slop-fintech-stock-2024). Cited in direction.md alongside stunning anchors. If no slop entry qualifies, the slot is skipped (not substituted)." },
+    { "id": "anchors_section_in_direction", "weight": 10, "description": "stardust/direction.md contains a # Anchors section (written at Phase 5) listing each anchor with id, verdict, brand_axes, why, and moves the entry exhibits. Section present even when corpus is thin or empty (with appropriate note)." },
+    { "id": "anchors_not_template",         "weight": 5,  "description": "Anchors are referenced as constraints on the design space, not copied as templates. The proposed direction does not literally replicate anchor moves; the anchor citations inform but do not bind." },
+    { "id": "candidate_emission_conservative", "weight": 8, "description": "If stardust emits a stardust-observed candidate, it complies with all five gates: source verdict stunning or strong; structural axis only; unambiguous pattern; not matching existing §1a; cap of 2 per session. If no candidate is emitted, that is also acceptable (the gate is conservative)." },
+    { "id": "candidate_user_visible",       "weight": 5,  "description": "If a candidate is emitted, a one-line user-visible note surfaces ('Observed a pattern in <exemplar-id> not yet named in the catalog; saved as candidate/<axis>/<name>'). No silent emission." },
+    { "id": "no_auto_promote",              "weight": 4,  "description": "No candidate moves were promoted to divergence-toolkit.md §1a from runtime. The catalog file is unchanged after this run." },
+    { "id": "provenance_traceable",         "weight": 5,  "description": "Anchor selection is traceable in direction.md: which corpus was read (plugin-side / project-side), which entries were filtered out, what brand_axes were used. Provenance block per artifact-map.md." }
+  ]
+}
