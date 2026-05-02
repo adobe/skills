@@ -4,14 +4,22 @@ Welcome. You've been invited because someone trusts your eye for design,
 and the stardust plugin needs that eye more than it needs another line
 of code.
 
-This doc is the floor: it tells you what stardust's learning corpus is,
-what we're asking from you, and how to do your first capture and your
-first critique. Plan to spend **15–20 minutes reading and trying it**.
-After that you'll know whether this is for you.
+> **The easiest way to contribute is conversational, not by reading.**
+> Open Claude in this repo and say *"I am a contributor"* (or *"help
+> me contribute to the corpus"* — phrasing isn't load-bearing).
+> Stardust will identify you, look at what you've done before, look
+> at what the corpus needs right now, and walk you through whatever
+> makes sense in the moment. Impact of each action is narrated as it
+> lands. See `skills/stardust/reference/contributor-session.md` for
+> the runtime behavior, but you don't need to read it to use it.
+>
+> This document remains as **reference**: the schemas, the worked
+> examples, and the FAQ for contributors who prefer to read first
+> or want to see the full picture.
 
 > If you're here to contribute *code* (sub-skill changes, runtime
 > behavior, the schema), that goes through normal PR review against
-> this repo. This doc is specifically about contributing to the
+> this repo. This document is specifically about contributing to the
 > **learning corpus** — the human signal that makes stardust's design
 > output less generic over time.
 
@@ -47,23 +55,25 @@ rationale. It's not required reading to contribute.
 
 ## What we're asking from you
 
-In rough order of effort:
-
-| activity                      | time per occurrence | frequency             |
-|-------------------------------|---------------------|-----------------------|
-| **Capture**                   | ~30 seconds         | whenever you see something striking (irregular) |
-| **Quick critique**            | ~30 seconds         | per proposal in a critique session |
-| **Qualified critique**        | ~5–10 minutes       | opt-in, when a proposal merits depth |
-| **Comparative critique**      | ~2–5 minutes for a set | when reviewing multiple proposals together |
-| **Conversation critique**     | ~30 minutes recorded | when you'd rather talk than write |
-| **Signoff on a candidate**    | ~5 minutes          | when the curator abstracts captures *you* originated into a candidate move |
-
 You're not committing to all of these. The minimum that makes you a
-contributor is **one capture**.
+contributor is **one capture**. Everything else is opt-in.
+
+- **Capture** — *"I saw something striking; here's the one-line
+  note about why."* Whenever it happens.
+- **Quick critique** — verdict + 1–3 lines on a generated proposal.
+- **Qualified critique** — opt-in deeper read, with per-dimension
+  notes and a counterfactual.
+- **Comparative critique** — reviewing 2+ proposals side-by-side
+  and naming what differentiates them.
+- **Conversation critique** — recorded call, transcribed and
+  signed off afterward. For when you'd rather talk than write.
+- **Signoff on a candidate** — when the curator abstracts captures
+  *you* originated into a candidate move, you confirm or correct
+  the abstraction.
 
 ---
 
-## Your first capture (5 minutes)
+## Your first capture
 
 A capture is the lowest-friction contribution: a source (URL, image,
 Figma frame) plus one sentence about what's distinctive.
@@ -139,14 +149,14 @@ indefinitely as historical signal. It's not lost.
 
 ---
 
-## Your first critique (15–30 minutes)
+## Your first critique
 
 A critique is a judgment of a stardust-generated proposal. The corpus
 needs critiques to learn which moves land and which don't, *for whom*.
 
-There are four modes; you pick what fits your time and depth.
+There are four modes; you pick what fits your depth.
 
-### Quick mode (~30 seconds per proposal)
+### Quick mode
 
 Verdict (`stunning | strong | competent | slop`) plus 1–3 lines.
 Default mode. Most session critiques are quick.
@@ -163,7 +173,7 @@ why:     "the typography is doing the work; layout is clean. but
 critique_mode: quick
 ```
 
-### Qualified mode (~5–10 minutes per proposal)
+### Qualified mode
 
 Use this for proposals that merit depth. Adds per-dimension
 assessment, working/failing moves, a counterfactual ("this would be
@@ -208,7 +218,7 @@ why:              "competent because the foundation is right.
                    listed above."
 ```
 
-### Comparative mode (~2–5 minutes for a set)
+### Comparative mode
 
 When you're reviewing 2+ proposals on the same page side-by-side.
 Pairwise judgment is sharper than absolute. Don't write per-proposal
@@ -228,7 +238,7 @@ why: "B commits to a design grammar; A is partial; C is performing
       a different brand."
 ```
 
-### Conversation mode (~30 minutes recorded)
+### Conversation mode
 
 When you'd rather talk than write. Schedule a call with the curator,
 record it (with consent), and the curator extracts critique entries
@@ -301,8 +311,8 @@ for retirement at the next audit.
 
 **How often is the curator pass run?**
 Queue-driven, not on a calendar. When a cluster of captures hits
-≥2–3 observations, the curator triggers a pass. Expect days to
-weeks between passes early on; faster as the corpus matures.
+≥2–3 observations, the curator triggers a pass. Cadence depends on
+contribution volume and curator availability, not on a schedule.
 
 **Can I see what's been promoted from my contributions?**
 Yes. The catalog at

@@ -111,8 +111,7 @@ learning corpus: a source (URL, image, Figma frame) plus one sentence
 about what's distinctive.
 
 We do not ask for tags, axes, verdicts, or classification — those
-come later from the curator pass. The whole point is that capture
-costs you 30 seconds.
+come later from the curator pass. The schema is intentionally minimal.
 
 Your capture will:
   1. Land in the queue (project-side, or plugin-side with --upstream).
@@ -120,8 +119,9 @@ Your capture will:
      candidate moves.
   3. Surface to you for signoff if your capture originated a cluster.
 
-You can read the full contributor flow at:
-  plugins/stardust/CONTRIBUTING.md
+For a guided session that adapts to what you've done before and what
+the corpus currently needs, just say "I am a contributor" — that
+gives you a live plan rather than a CLI walkthrough.
 
 Let's do your first one.
 ```

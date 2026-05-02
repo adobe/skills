@@ -47,6 +47,15 @@ Once setup is done, route on the user's input:
   Treat as `$stardust capture` against the most recent source the
   session has discussed. Prompt for the sentence. See
   `capture/SKILL.md` § Inline capture.
+- **Contributor-session triggers** ("I am a contributor", "I want to
+  contribute to the corpus", "help me contribute", "what should I do
+  as a contributor", or close variants). Enter contributor-session
+  mode per `reference/contributor-session.md`. Identify the
+  contributor, scan the corpus for their history, compute current
+  gaps, generate a session plan, and narrate impact as actions
+  land. **Do not** redirect the contributor to read CONTRIBUTING.md
+  unless they ask — the session is the primary entry path; the doc
+  is reference material.
 - **First word is anything else (a freeform phrase).** Treat it as a
   redesign intent. Load `reference/intent-reasoning.md` and follow the
   procedure step by step. **Do not execute any impeccable or stardust
@@ -112,5 +121,6 @@ read. Format conventions in `reference/artifact-map.md`.
 - `reference/artifact-map.md` — every file stardust reads or writes, with ownership and provenance shape.
 - `reference/divergence-toolkit.md` — anti-mediocrity device. Default-moves list, deterministic seed, font decks, role-naming rule. Consumed by `direct` (when authoring target tokens) and `prototype` (when generating variants).
 - `reference/learning-system.md` — runtime contract for the moves catalog and exemplar/critique corpus. Loaded by `direct` (anchor selection by `brand_axes`) and `prototype` (move-combination contract enforcement). Design rationale lives in `plugins/stardust/design/learning-system.md`.
+- `reference/contributor-session.md` — runtime behavior when a user identifies as a contributor and asks for guidance. Loaded on the contributor-session triggers. Replaces the static "read CONTRIBUTING.md" entry path.
 - `reference/token-contract.md` — `:root` CSS custom-property contract every prototype and migrated page must expose. The token interface between stardust and any downstream consumer.
 - `reference/data-attributes.md` — structural `data-*` vocabulary applied to sections in every prototype and migrated page. The structural lingua franca between stardust sub-commands and downstream tools.

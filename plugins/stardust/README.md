@@ -63,8 +63,15 @@ otherwise with a clear install hint.
 ## Contributing to the learning corpus
 
 If you've been invited to help grow the moves catalog and exemplar corpus,
-read [`CONTRIBUTING.md`](./CONTRIBUTING.md). The minimum that makes you a
-contributor is one capture; everything else is opt-in.
+the easiest entry is conversational: open Claude in this repo and say
+*"I am a contributor"* (phrasing isn't load-bearing). Stardust will
+identify you, scan what you've done before, look at what the corpus
+needs right now, and walk you through whatever makes sense in the
+moment. Impact of each action is narrated as it lands.
+
+[`CONTRIBUTING.md`](./CONTRIBUTING.md) is the reference doc with the
+full schemas, worked examples, and FAQ for those who prefer to read
+first or see the full picture.
 
 ## Status
 
