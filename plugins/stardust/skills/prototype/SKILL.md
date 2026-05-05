@@ -28,11 +28,26 @@ is delegated to `$impeccable craft` and `$impeccable live`.
 - `--no-iterate` — write the initial proposed render and the viewer,
   open the viewer in the browser, but **do not** invoke
   `$impeccable live`. The user iterates manually later.
-- `--no-critique` — skip the automatic post-render critique pass
-  (Phase 2.5). Default behaviour runs critique and gates
-  `prototyped` status on P0/P1 findings; this flag opts out of the
-  gate for fast iteration cycles where the user is running
-  critique manually between iterations.
+- `--no-critique` — skip the automatic post-render critique +
+  audit pass (Phase 2.5). Default behaviour runs both
+  `impeccable critique` and `impeccable audit` and gates
+  `prototyped` status on P0/P1 findings from either; this flag
+  opts out of the gate for fast iteration cycles where the user
+  is running critique / audit manually between iterations. The
+  flag's name predates the audit addition; the scope now covers
+  both validators.
+- `--skip-adapt-audit` — skip Phase 5.5 (Adapt for mobile) on
+  approval. Default behaviour runs `$impeccable adapt` against
+  the approved variant and gates downstream `migrate` and
+  `--publish-sample` on the mobile-adapt audit (per
+  `reference/before-after-shell.md` § Mobile-adapt audit). Use
+  this flag for explicit desktop-only demo runs; the proposed
+  file's `_provenance.adapt[]` records `adapt: skipped (user)`
+  so downstream consumers see the override.
+- `--adapt-variant <id>` — extend the adapt pass to a non-primary
+  variant. Default Phase 5.5 only adapts the variant the user
+  approves (or the variant flagged `isPrimary: true`); pass this
+  flag to adapt B / C / etc. on demand.
 - `--publish-sample <slug>` — submit the named slug to the
   stardust showcase. Triggers the publish-sample sub-flow
   documented in `reference/publish-sample.md`: eligibility checks,
@@ -258,73 +273,126 @@ After craft returns, validate the output:
 If validation fails, do not write the file. Surface the failure to
 the user with the specific rule violated and a suggested fix.
 
-### Phase 2.5 — Validate via critique
+### Phase 2.5 — Validate via critique + audit
 
-Before composing the viewer, run an automatic critique pass against
-the rendered proposed file. Critique catches AI-slop reflexes and
-brand-misalignment that craft's hard-rules audit doesn't cover —
-visual hierarchy regressions, cognitive-load issues, color/contrast
-gaps, anti-pattern reflexes, register/voice drift. The pass is a
-**contract**, not a courtesy: previously the agent ran critique
-only when the user asked, and the user has to remember to ask.
+Before composing the viewer, run **two parallel validators**
+against the rendered proposed file: `critique` and `audit`. They
+are explicitly designed as a complementary pair — critique
+covers *design* (AI-slop reflexes, hierarchy, brand fit,
+cognitive load); audit covers *technical correctness*
+(accessibility / performance / theming / responsive /
+anti-patterns). Running only critique misses every quantifiable
+WCAG / perf / responsive failure; running only audit misses
+brand-misalignment and design slop. The pass is a **contract**,
+not a courtesy.
+
+The 2026-05-04 nvidia.com home prototype critique returned
+1 P0 + 2 P1 + 3 P2; the audit on the same artifact returned
+**six additional findings** (no skip-link, theme carousels
+without keyboard arrow nav, hero ~3.5MB without responsive
+`<picture>`, layout-property animation, JS-gated reveal with
+no `<noscript>` fallback, `scroll-behavior: smooth` not
+respecting `prefers-reduced-motion`). None were design issues,
+none would have been caught by critique alone. Without an
+audit gate the page would have been marked `prototyped` with
+quantifiable WCAG failures.
 
 Procedure:
 
-1. **Run the deterministic detector first.** Invoke
-   `impeccable:impeccable` via the Skill tool with sub-command
-   `critique`:
+1. **Run both validators in parallel.** Invoke `impeccable:impeccable`
+   twice in the same Skill-tool batch:
 
    ```
-   Skill {
-     skill: "impeccable:impeccable",
-     args: "critique stardust/prototypes/<slug>-proposed.html --json"
-   }
+   Skill { skill: "impeccable:impeccable",
+           args: "critique stardust/prototypes/<slug>-proposed.html --json" }
+
+   Skill { skill: "impeccable:impeccable",
+           args: "audit stardust/prototypes/<slug>-proposed.html --json" }
    ```
 
-   Critique returns a JSON findings list — each finding has
+   Each returns a JSON findings list — each finding has
    `priority` (P0 / P1 / P2 / P3), `category` (hierarchy /
-   contrast / motion / etc.), and a one-line description.
-   Capture verbatim into `_provenance.critique[]` on the proposed
-   file (append; never overwrite previous runs' entries).
+   contrast / motion / a11y / perf / responsive / etc.), and a
+   one-line description. Capture critique findings into
+   `_provenance.critique[]` and audit findings into
+   `_provenance.audit[]` on the proposed file (append; never
+   overwrite previous runs' entries).
 
-2. **Surface findings in the user-facing report** alongside the
-   prototype-rendered confirmation. Group by priority. List the
-   first 5 P0/P1 verbatim; collapse P2/P3 to a count with a
-   "expand to see all" pointer.
+2. **Brand-faithful inversion auto-dismiss.** Both validators
+   ship known false positives on Mode A renders — Arial fallback
+   reads as "overused-font," eyebrow uppercase reads as
+   "all-caps body," pure white / pure black flagged when the
+   brand's captured palette includes them. Before surfacing
+   findings to the user, diff each finding against
+   `DESIGN.json#extensions.divergence.brand_faithful_inversions[]`
+   and `DESIGN.md#narrative.rules` (e.g. permitted uppercase
+   contexts). Drop findings whose category and target match an
+   approved inversion; keep the original list in
+   `_provenance.<critique|audit>[]` with a
+   `dismissedAsBrandFaithful: true` flag for audit-trail
+   purposes. The user-facing report shows only the real hits.
 
-3. **Gate `prototyped` status on P0/P1 findings.** If the detector
-   returned ≥1 P0 or ≥1 P1 finding, do **not** mark the page
-   `prototyped` in `state.json` yet. The proposed file is on disk;
-   the viewer can render it; but the page stays in `directed`
-   until either:
+3. **Surface findings in the user-facing report**, grouped by
+   priority across both validators with the source attributed
+   (`critique:` / `audit:`). List the first 5 P0/P1 verbatim;
+   collapse P2/P3 to per-source counts with an "expand to see
+   all" pointer. Format:
+
+   ```
+   Critique + audit on home-proposed.html
+
+   P0 (1)
+     audit:    skip-link missing — header has no <a href="#main"> as first focusable
+   P1 (4)
+     critique: hierarchy regression — H2 visually heavier than H1 in section #features
+     audit:    hero <img> 3.5MB; no responsive <picture> set despite captured srcset
+     audit:    transition: width animates layout properties (jank)
+     audit:    .hero scroll-behavior: smooth not gated by prefers-reduced-motion
+   P2 (3 critique, 1 audit) — expand to see
+   P3 (0)
+   ```
+
+4. **Gate `prototyped` status on P0/P1 findings from EITHER
+   validator.** If the merged-and-deduped findings list (after
+   the brand-faithful auto-dismiss) contains any P0 or P1, do
+   **not** mark the page `prototyped` in `state.json` yet. The
+   proposed file is on disk; the viewer can render it; but the
+   page stays in `directed` until either:
    - The agent fixes the issue (run a chat-driven impeccable
      command per Phase 4 iteration paths, then re-run Phase 2.5).
    - The user explicitly acknowledges (e.g. "ship as-is" /
      "accept the P1 findings"). Acknowledgement is recorded in
-     `_provenance.critique[]` with the verbatim user phrase.
+     `_provenance.critique[]` AND `_provenance.audit[]` with the
+     verbatim user phrase, so re-runs see the existing
+     acknowledgement and don't re-prompt.
 
    P2/P3 findings do not block `prototyped`. They surface as
    advisory.
 
-4. **Optionally spawn an LLM design-review subagent** for an
+5. **Optionally spawn an LLM design-review subagent** for an
    independent take when the user wants more than the
    deterministic detector. Trigger only when the user explicitly
    asks ("give me a deeper critique", "second opinion") or when
-   the deterministic pass returns ≥3 findings (signal that the
-   render has multiple issues worth a closer look). Default off
-   to keep the loop fast.
+   the deterministic pass returns ≥3 P0/P1 findings (signal that
+   the render has multiple issues worth a closer look). Default
+   off to keep the loop fast.
 
-5. **`--no-critique` opt-out.** When the user passes
-   `--no-critique` to `$stardust prototype`, skip the entire
-   pass. Useful for fast iteration cycles where the user is
-   already running critique manually between iterations. Without
-   the flag, the pass is mandatory.
+6. **`--no-critique` opt-out.** When the user passes
+   `--no-critique` to `$stardust prototype`, skip **both**
+   validators. The flag's name is preserved for backward
+   compatibility (it predates the audit addition); document the
+   broader scope in the help text. Useful for fast iteration
+   cycles where the user is already running critique / audit
+   manually between iterations. Without the flag, both
+   validators are mandatory.
 
 Failure handling: when impeccable is unavailable (per Delegation
 mechanic § When impeccable is not available), record
-`_provenance.critique[]` with one entry of class `unavailable`
-and continue. Prototype proceeds to mark the page `prototyped` —
-the user will need to run critique manually before approving.
+`_provenance.critique[]` and `_provenance.audit[]` each with one
+entry of class `unavailable` and continue. Prototype proceeds to
+mark the page `prototyped` — the user will need to run both
+validators manually before approving. Surface the gap loudly in
+the report so the user doesn't forget.
 
 ### Phase 3 — Compose the viewer
 
@@ -344,15 +412,18 @@ relative path to `<slug>-proposed.html`.
    (`open` macOS, `xdg-open` Linux, `start ""` Windows). Skip in
    pipeline-automation mode.
 2. Mark the page `prototyped` in `state.json` — **gated on the
-   Phase 2.5 critique result**. If critique returned ≥1 P0 or P1
-   finding and the user has not acknowledged, the page stays
-   `directed` (not `prototyped`); surface the critique findings in
-   the report and recommend either fixing the issue or
-   acknowledging explicitly. The transition itself does not require
-   *approval* (a separate later step) — but it does require the
-   critique gate to clear, since shipping a `prototyped` flag on
-   work that fails P0/P1 critique misleads downstream consumers
-   (migrate, the dashboard) about the prototype's quality.
+   Phase 2.5 critique + audit result**. If either validator
+   returned ≥1 P0 or P1 finding (after the brand-faithful
+   inversion auto-dismiss) and the user has not acknowledged,
+   the page stays `directed` (not `prototyped`); surface the
+   findings in the report grouped by source (`critique:` /
+   `audit:`) and recommend either fixing the issue or
+   acknowledging explicitly. The transition itself does not
+   require *approval* (a separate later step) — but it does
+   require the gate to clear, since shipping a `prototyped` flag
+   on work that fails P0/P1 critique or audit misleads
+   downstream consumers (migrate, the dashboard) about the
+   prototype's quality.
 3. If `--no-iterate` was passed, stop here and report the prototype
    path.
 4. Otherwise, invoke `$impeccable live` against
@@ -430,17 +501,103 @@ On approval:
 2. Mark the page `approved` in `state.json`. Append a
    `{ status: "approved", at: <ts> }` history entry.
 3. Clear any `stale` flag on the page.
-4. Print:
+4. **Run Phase 5.5 — Adapt for mobile** (below) on the variant
+   the user is signing off on. Approval does not complete until
+   the adapt pass lands; the viewer's "Approve" button surfaces
+   this as one extra step rather than a separate user gesture.
+5. Print:
    ```
    home: approved
      proposed: stardust/prototypes/home-proposed.html
      viewer:   stardust/prototypes/home.html
+     mobile:   adapted (4 @media rules at 640/768/1024/1280)
 
    Next: $stardust migrate home  (write final redesigned static HTML)
    ```
 
 If multiple pages are in flight, approval is per-page; the user can
 approve some and continue iterating on others.
+
+### Phase 5.5 — Adapt for mobile
+
+Every variant the user approves goes through `$impeccable adapt`
+before it leaves the prototype phase. The cascade ships
+desktop-only HTML otherwise — viewports are tuned to ~1440×900
+through render and iteration, and nothing earlier in the
+pipeline produces responsive coverage. The 2026-05-03 lovesac.com
+showcase publish surfaced this: stakeholders eyeballing variants
+on a phone got the unadjusted desktop layout (bracket motif
+crowding, overflowing trust band, hamburger absent, hero
+unstacked) — and the question *"did you run impeccable adapt?"*
+was the only thing that caught the gap, after publish.
+
+Trigger: any variant the user approves OR any variant explicitly
+flagged `isPrimary: true` in `meta.json#variants[]` for a
+multi-variant render. The user can extend coverage to other
+variants on demand (`$stardust prototype <slug> --adapt-variant <id>`).
+
+Procedure:
+
+1. Invoke impeccable adapt against the approved file:
+
+   ```
+   Skill {
+     skill: "impeccable:impeccable",
+     args: "adapt stardust/prototypes/<slug>-proposed.html"
+   }
+   ```
+
+   Pass the captured viewport breakpoints from
+   `DESIGN.json#extensions.breakpoints` if present; otherwise
+   adapt picks defaults (640 / 768 / 1024 / 1280 are the
+   stardust spec defaults — anything above 640 used as a "mobile
+   breakpoint" is a smell per § Mobile-adapt audit below).
+
+2. Validate the adapted file against the same contracts Phase 2
+   ran (`:root` token block, data attributes, anti-toolbox audit
+   clean, impeccable hard rules, content sourcing). The adapt
+   pass is an iteration over the existing render; it must not
+   reintroduce contract violations.
+
+3. Append an entry to the proposed file's `_provenance.adapt[]`
+   recording: ISO timestamp, the breakpoint list applied, the
+   number of `@media` rules added, and any layout decisions the
+   adapt pass surfaced (carousel → stack, sidebar → drawer,
+   hamburger → menu, etc.).
+
+4. Update the report (Phase 5 step 5) with the `mobile:` line.
+
+#### Mobile-adapt audit
+
+Phase 5.5 also runs a hard audit, separate from the adapt pass
+itself, that the resulting file would survive a publish or
+migrate. The same audit re-runs at `migrate` and `--publish-sample`
+so an adapted-but-broken render can't slip through (per
+`skills/migrate/SKILL.md` § Setup, `skills/prototype/reference/
+publish-sample.md` § Phase 1).
+
+Refuse the file when **any** of:
+
+- `<meta name="viewport" content="width=device-width, ...">` is
+  missing or width is set to a fixed pixel value.
+- The file declares zero `@media (max-width: ...)` rules at all
+  (desktop-only).
+- The file declares mobile-targeted breakpoints **above 640px**
+  — `@media (max-width: 1024px)` as the *narrowest* breakpoint
+  is the recognisable shape of "didn't actually adapt for
+  phones." Adapt should produce at least one rule at ≤ 640px.
+
+Pass `--skip-adapt-audit` to the prototype invocation when the
+user explicitly wants a desktop-only render (a presales demo
+cycle that won't ship to phones, an internal review). The flag
+records `adapt: skipped (user)` in the proposed file's
+`_provenance.adapt[]` so downstream consumers can see the
+override.
+
+When the audit refuses, the page does **not** demote from
+`approved` (the approval already landed); but the report carries
+the failure prominently and migrate / publish-sample will refuse
+to consume the file until it passes.
 
 ### Stale handling
 

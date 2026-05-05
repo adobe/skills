@@ -43,6 +43,14 @@ sidecars.
   Default logs the deviation and continues. Useful for projects
   where canon discipline matters more than per-template
   flexibility.
+- `--skip-adapt-audit` — skip the mobile-adapt audit at
+  per-page render time. Default refuses pages whose proposed /
+  approved file has no `<meta viewport>`, zero `@media (max-width:
+  ...)` rules, or no mobile-targeted breakpoint at ≤ 640px (per
+  `skills/prototype/SKILL.md` § Mobile-adapt audit). Use this
+  flag for an explicit desktop-only demo deploy; the failure
+  is real and the override is recorded in the per-page
+  `_meta.json#audit.adapt`.
 
 ## Setup
 
@@ -73,6 +81,26 @@ sidecars.
    that misrepresents the source site, the exact failure mode
    that motivated the validator. Surface `Provenance OK on N
    pages` in the migrate-plan output before Phase 1.
+8. **Mobile-adapt audit on every Path A / Path A′ source.** For
+   every page whose render branch consumes a proposed or
+   archetype HTML file (Path A, Path A′ per
+   `reference/template-and-module-rendering.md` § Render path
+   selection), run the audit per `skills/prototype/SKILL.md`
+   § Mobile-adapt audit:
+
+   - `<meta name="viewport" content="width=device-width, ...">`
+     present, width not pinned to a fixed pixel value.
+   - At least one `@media (max-width: ...)` rule.
+   - At least one mobile-targeted breakpoint at ≤ 640px.
+
+   Refuse pages that fail unless `--skip-adapt-audit` was passed.
+   Record the audit result per page in the migrate report and
+   in the post-render `_meta.json#audit.adapt` sidecar. Path B
+   (unique-renders) skips the audit because adapt hasn't run
+   on those pages — a Path B page that needs mobile coverage
+   gets it via `$impeccable adapt` invoked separately by the
+   user. Surface this distinction in the report so it's not
+   read as a silent skip.
 
 ## Procedure
 

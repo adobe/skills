@@ -1,9 +1,12 @@
 # Publish a sample to the showcase
 
 The procedure for `$stardust prototype --publish-sample <slug>`.
-Stages a new sample folder in the stardust source repo, opens a
+Stages a new sample folder in the stardust showcase repo, opens a
 PR, and lands the sample in the showcase published at
-`https://{owner}.github.io/stardust-2/`.
+`https://{owner}.github.io/stardust-site/`. Per-sample deep links
+go through `samples/brand.html?slug={showcase-slug}#{variantId}`
+— the showcase is a single-page viewer that reads the slug from
+the query string and the variant from the URL hash.
 
 The flow assumes:
 
@@ -15,8 +18,8 @@ The flow assumes:
   a block).
 - The user has the GitHub CLI (`gh`) installed and authenticated.
   `gh auth status` exits zero.
-- The stardust source repo is reachable (default upstream:
-  `paolomoz/stardust-2`; configurable via `--upstream <owner/repo>`).
+- The stardust showcase repo is reachable (default upstream:
+  `paolomoz/stardust-site`; configurable via `--upstream <owner/repo>`).
 
 The user does **not** need write access to the upstream repo —
 `gh pr create` will fork on the user's behalf if needed.
@@ -30,7 +33,7 @@ The user does **not** need write access to the upstream repo —
   `stardust/prototypes/<slug>-proposed.html` (single-variant) or
   `stardust/prototypes/<slug>-proposed-A.html` (multi-variant).
 - `--upstream <owner/repo>` — optional. Override the upstream repo
-  the PR targets. Default `paolomoz/stardust-2`.
+  the PR targets. Default `paolomoz/stardust-site`.
 - `--variants <list>` — optional. Comma-separated variant ids to
   include (e.g. `A,B,C`). Default: every variant on disk for the
   slug.
@@ -120,21 +123,25 @@ combine into a single "not eligible" message.
    visual sample vs. end-users browsing a deployed site),
    different stakes (design demonstration vs. production claim),
    different gate. Don't conflate them.
-5. **No outstanding P0/P1 critique findings.** Read each proposed
-   file's `_provenance.critique[]`.
+5. **No outstanding P0/P1 critique or audit findings.** Read
+   each proposed file's `_provenance.critique[]` AND
+   `_provenance.audit[]`.
 
-   - If the field exists and contains any P0 or P1 finding without
-     a recorded user acknowledgement: refuse. The user runs Phase
-     2.5 (Validate via critique) and either fixes or acknowledges
-     before publishing.
-   - If the field is **absent entirely**: that means critique was
-     not run on this file (typical for prototypes from before P-3
-     landed in the spec). This is **not** a publish blocker — the
-     spec treats absence as "no findings." But the PR body
-     records `critique: not run` so the reviewer knows to run it
-     before merging, and the publish flow surfaces a one-line
-     warning to the user: "critique not run on N variant(s);
-     reviewer will see this in the PR."
+   - If either field exists and contains any P0 or P1 finding
+     without a recorded user acknowledgement (after the
+     brand-faithful inversion auto-dismiss per
+     `prototype/SKILL.md` § Phase 2.5): refuse. The user runs
+     Phase 2.5 (Validate via critique + audit) and either fixes
+     or acknowledges before publishing.
+   - If either field is **absent entirely**: that means the
+     corresponding validator was not run (typical for prototypes
+     from before the spec landed). This is **not** a publish
+     blocker — the spec treats absence as "no findings." But
+     the PR body records `critique: not run` and/or
+     `audit: not run` so the reviewer knows to run them before
+     merging, and the publish flow surfaces a one-line warning:
+     "critique not run on N variant(s); audit not run on M
+     variant(s); reviewer will see this in the PR."
 6. **Anti-toolbox audit clean.** Read
    `DESIGN.json#extensions.divergence.anti_toolbox_hits[]`. Every
    hit must have a brand-specific justification (per
@@ -144,6 +151,26 @@ combine into a single "not eligible" message.
    `_brand-extraction.json`, and `current/PRODUCT.md` exist in the
    project — these are the inputs the publish flow reads to
    author `meta.json`.
+8. **Mobile-adapt audit on every variant being published.** For
+   every variant in scope (the primary, plus any variants named
+   in `--variants <list>`), run the audit per
+   `skills/prototype/SKILL.md` § Mobile-adapt audit:
+
+   - `<meta name="viewport" content="width=device-width, ...">`
+     present, width not pinned to a fixed pixel value.
+   - At least one `@media (max-width: ...)` rule.
+   - At least one mobile-targeted breakpoint at ≤ 640px.
+
+   Refuse to publish variants that fail unless
+   `--skip-adapt-audit` was passed. Record the audit result per
+   variant in the PR body's submitter checklist (a new line:
+   *"adapt: passed for A, B"* or *"adapt: skipped (user) for C"*)
+   so the maintainer reviewing the PR can see at a glance which
+   variants the showcase visitor will actually see render
+   correctly on a phone. The 2026-05-03 lovesac.com showcase
+   ran without this gate and shipped variant B to mobile
+   visitors with the bracket motif crowding, an overflowing
+   trust band, and a missing hamburger.
 
 ### Phase 1.5 — Backup originals (mandatory before any transform)
 
@@ -302,17 +329,27 @@ Sample published as PR.
   source:        https://aurora-coffee.example.com/
   variants:      A (primary)
 
-  PR:            https://github.com/paolomoz/stardust-2/pull/42
+  PR:            https://github.com/paolomoz/stardust-site/pull/42
 
 The sample lands in the showcase at
-https://paolomoz.github.io/stardust-2/ once the PR merges and the
-showcase-pages workflow redeploys (~1 minute after merge).
+https://paolomoz.github.io/stardust-site/samples/brand.html?slug=aurora-coffee#A
+once the PR merges and the showcase-pages workflow redeploys
+(~1 minute after merge).
 
 The PR carries an opinionated body summarising the run. Review it
 before requesting merge — the auto-generated tagline and category
 are best-guess; refine them in the PR before the maintainer
 reviews.
 ```
+
+The deep-link URL points the reviewer (and any later visitor)
+straight at the variant the publish flow flagged as primary —
+the `meta.json#variants[]` entry whose `isPrimary: true`. For
+single-variant samples this is always `#A`. For multi-variant
+samples, render the hash to match the primary variant id; the
+showcase's `samples/brand.html` reads the slug from
+`URLSearchParams(location.search)` and the variant from the
+hash, so the URL must carry both.
 
 ---
 
@@ -364,10 +401,13 @@ The publish flow already verified these — reviewer can spot-check.
       above]` otherwise. Placeholders are allowed in the showcase
       per the visual-demonstration policy; the listing makes them
       visible to reviewers without opening files.}
-- [{x|⚠}] No outstanding P0/P1 critique findings. {Render `[x]`
-      when critique[] is present with no P0/P1; render `[⚠]
-      critique: not run` when critique[] is absent on any variant
-      — the reviewer should run `$impeccable critique` before
+- [{x|⚠}] No outstanding P0/P1 critique or audit findings.
+      {Render `[x]` when critique[] AND audit[] are present with
+      no P0/P1 on either (after brand-faithful auto-dismiss);
+      render `[⚠] critique: not run on <ids>` and/or `audit: not
+      run on <ids>` for any variant where the corresponding
+      field is absent — the reviewer should run both
+      `$impeccable critique` and `$impeccable audit` before
       merging.}
 - [x] All anti-toolbox hits carry brand-specific justifications.
 - [x] Every `meta.json#direction.seed.pickedBy` accurately records
@@ -392,10 +432,15 @@ The publish flow already verified these — reviewer can spot-check.
 
 ### Showcase URL after merge
 
-`https://{owner}.github.io/stardust-2/`
+`https://{owner}.github.io/stardust-site/samples/brand.html?slug={showcase-slug}#{primaryVariantId}`
 
 The `showcase-pages` workflow redeploys on merge to main; the
-sample is visible within ~1 minute.
+sample is visible within ~1 minute. The hash carries the primary
+variant's id (the `meta.json#variants[]` entry with
+`isPrimary: true`); single-variant samples always resolve to
+`#A`. The `samples/brand.html` viewer reads `slug` from the
+query string and the variant from the hash — both are required
+for the deep link to land on the right rendering.
 
 ---
 
