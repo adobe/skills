@@ -2,6 +2,10 @@
 
 Each section covers one template: when to use it, what it generates, and what to customize after initialization.
 
+## Action runtime versions
+
+Templates default to `runtime: nodejs:22`, which is supported in production. The Stage environment also accepts `runtime: nodejs:24` today (so long as you're on a current `@adobe/aio-cli` install). Use `nodejs:24` only on Stage workspaces; keep production on `nodejs:22` until the production rollout for 24 is announced.
+
 ## @adobe/generator-app-excshell
 
 | Field | Value |
@@ -78,7 +82,7 @@ runtimeManifest:
 - `ActionsForm.js` — form for invoking actions; adapt to new action names
 
 1. **Remove unused files.** Delete `ActionsForm.js` if the generic action form isn't needed. Remove `About.js` if not needed.
-2. **Set runtime version.** Ensure all actions use `runtime: nodejs:22`.
+2. **Set runtime version.** Use `runtime: nodejs:22` for production workspaces. Stage workspaces also accept `runtime: nodejs:24`.
 
 ## @adobe/aem-cf-admin-ui-ext-tpl
 
