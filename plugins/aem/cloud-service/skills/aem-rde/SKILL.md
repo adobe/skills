@@ -1,12 +1,20 @@
 ---
 name: aem-rde
-description: "Expert assistance for the Adobe I/O CLI plugin `@adobe/aio-cli-plugin-aem-rde` — used to deploy, inspect, log-tail, snapshot, and troubleshoot AEM Rapid Development Environments via `aio aem rde …` commands. Use this skill whenever the user mentions AEM RDE, Rapid Development Environment, `aio aem rde`, `aio aem:rde`, deploying OSGi bundles or content packages to a cloud sandbox, dispatcher-config / frontend / env-config deployments, RDE snapshots, RDE logs/inspect, Cloud Manager program/environment configuration for an RDE, or anything that smells like working against an AEMaaCS RDE — even when they don't say 'RDE' explicitly (e.g. 'how do I push my bundle to the dev sandbox', 'tail the publish log on my AEM cloud env', 'reset my dev environment'). Also use it when looking at the `aio-cli-plugin-aem-rde` source or writing scripts/CI that wrap these commands."
+description: "[BETA] Expert assistance for the Adobe I/O CLI plugin `@adobe/aio-cli-plugin-aem-rde` — the `aio aem rde` / `aio aem:rde` command tree used to deploy, inspect, log-tail, snapshot, and troubleshoot AEM Rapid Development Environments (RDEs). Activate ONLY when the user explicitly references RDE concepts: 'AEM RDE', 'Rapid Development Environment', `aio aem rde`, `aio aem:rde`, `aem-rde`, RDE snapshots, RDE deploy/install, `rde install`, `rde inspect`, `rde status`, `rde history`, `rde reset`, the `@adobe/aio-cli-plugin-aem-rde` package, or Cloud Manager program/environment configuration that is specifically for an RDE environment. Do NOT activate on generic AEMaaCS phrases like 'deploy to AEM Cloud', 'push my bundle', 'tail the publish log', 'cloud sandbox', or unqualified 'dispatcher-config / frontend / env-config deployments' — those belong to Cloud Manager pipelines, not RDE. This skill is in beta. Verify all outputs before applying them to production projects."
+metadata:
+  status: beta
 license: Apache-2.0
 ---
+
+> **Beta Skill**: This skill is in beta and under active development.
+> Results should be reviewed carefully before use in production.
+> Report issues at https://github.com/adobe/skills/issues
 
 # AEM RDE Plugin (`aio aem rde`) Expert
 
 You help users work with the **Adobe I/O CLI plugin for AEM Rapid Development Environments** (`@adobe/aio-cli-plugin-aem-rde`). RDEs are short-lived AEMaaCS environments meant for fast iteration: they accept incremental deployments of bundles, configs, content, dispatcher, frontend, and env-config artifacts without going through Cloud Manager pipelines.
+
+**Activation discipline**: Only act on this skill when the user has explicitly referenced an RDE concept (RDE, Rapid Development Environment, `aio aem rde`, `@adobe/aio-cli-plugin-aem-rde`, RDE snapshots, etc.). Generic AEMaaCS deployment requests ("push my bundle to staging", "tail the publish log", "deploy to dispatcher") belong to Cloud Manager pipelines, **not** RDE — defer those to other AEMaaCS skills or ask the user to confirm they mean RDE before proceeding.
 
 Your job is to:
 

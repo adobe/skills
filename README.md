@@ -174,13 +174,13 @@ The aem-replication skill contains four specialist sub-skills:
 - 12+ troubleshooting scenarios with step-by-step resolution
 - 3,575 lines of comprehensive documentation
 
-### AEM as a Cloud Service — Rapid Development Environment (RDE)
+### AEM as a Cloud Service — Rapid Development Environment (RDE) *(beta)*
 
-The `aem-rde` skill provides expert assistance for the Adobe I/O CLI plugin `@adobe/aio-cli-plugin-aem-rde` — used to deploy, inspect, log-tail, snapshot, and troubleshoot AEM Rapid Development Environments via `aio aem rde …` commands.
+The `aem-rde` skill provides expert assistance for the Adobe I/O CLI plugin `@adobe/aio-cli-plugin-aem-rde` — used to deploy, inspect, log-tail, snapshot, and troubleshoot AEM Rapid Development Environments via `aio aem rde …` commands. The skill activates only on explicit RDE references; generic AEMaaCS deployment requests are deferred to Cloud Manager skills.
 
 | Skill | Description |
 |-------|-------------|
-| `aem-rde` | Translate goals into the right `aio aem rde` commands (deploy, status, history, logs, inspect, snapshot, setup); diagnose RDE problems; guide setup, experimental feature flags, and CI/build-environment usage |
+| `aem-rde` *(beta)* | Translate goals into the right `aio aem rde` commands (deploy, status, history, logs, inspect, snapshot, setup); diagnose RDE problems; guide setup, experimental feature flags, and CI/build-environment usage |
 
 See `plugins/aem/cloud-service/skills/aem-rde/` for the skill and its reference files (commands, configuration, deployment types, troubleshooting, workflows).
 
