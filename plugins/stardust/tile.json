@@ -4,10 +4,10 @@
   "summary": "Redesign an existing website to make it better. Built on top of impeccable.",
   "skills": {
     "stardust": { "path": "skills/stardust/SKILL.md" },
-    "stardust:extract": { "path": "skills/extract/SKILL.md" },
-    "stardust:direct": { "path": "skills/direct/SKILL.md" },
-    "stardust:prototype": { "path": "skills/prototype/SKILL.md" },
-    "stardust:migrate": { "path": "skills/migrate/SKILL.md" }
+    "stardust-extract": { "path": "skills/extract/SKILL.md" },
+    "stardust-direct": { "path": "skills/direct/SKILL.md" },
+    "stardust-prototype": { "path": "skills/prototype/SKILL.md" },
+    "stardust-migrate": { "path": "skills/migrate/SKILL.md" }
   },
   "softDependencies": [
     "impeccable"
