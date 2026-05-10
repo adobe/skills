@@ -33,6 +33,7 @@ public void deactivate(ResourceResolver resolver, String path) throws Replicatio
 | `DEACTIVATE` | Remove from Publish instances |
 | `DELETE` | Permanently delete from Publish |
 | `TEST` | Test agent connectivity only |
+| `REVERSE` | Reverse replicate (Publish → Author) |
 
 ### ReplicationOptions
 
@@ -88,18 +89,24 @@ response=$(curl -s -w "\n%{http_code}" -u "$AEM_USER:$AEM_PASSWORD" -X POST \
   http://localhost:4502/bin/replicate.json \
   -F "cmd=Activate" -F "path=/content/mysite/en/page")
 http_code=$(echo "$response" | tail -n1)
-body=$(echo "$response" | head -n1)
+body=$(echo "$response" | sed '$d')
 [ "$http_code" -eq 200 ] || { echo "Failed: HTTP $http_code — $body"; exit 1; }
 echo "$body" | grep -q '"success":true' || { echo "Replication error: $body"; exit 1; }
 ```
 
 ## Service User Setup
 
-Use a dedicated service user (not `admin`) in OSGi components:
+Use a dedicated service user (not `admin`) in OSGi components. Create an OSGi config file:
 
-```xml
-<!-- service-user-mapping.xml -->
-<entry key="com.example.bundle:replication-service">replication-service-user</entry>
+```json
+// org.apache.sling.serviceusermapping.impl.ServiceUserMapperImpl.amended-replication.cfg.json
+{
+  "user.mapping": [
+    "com.example.bundle:replication-service=replication-service-user"
+  ]
+}
 ```
 
 Grant the service user `jcr:read` on the content path and `crx:replicate` privilege.
+
+For a complete API reference (ReplicationStatus, AgentManager, ReplicationQueue, ReplicationListener), see the `replication-api` skill.

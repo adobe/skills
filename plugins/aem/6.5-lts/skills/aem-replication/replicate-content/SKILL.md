@@ -55,7 +55,7 @@ Sites console → select page(s) → **Manage Publication**
 
 - Start Path: `/content/mysite/en`
 - Always run **Dry Run** first to preview scope
-- Options: Only Modified, Ignore Deactivated
+- Options: Only Modified, Only Activated, Ignore Deactivated
 - ✓ Verify: results log shows success count with zero failures
 
 For full steps and performance guidance, see [`references/TREE_ACTIVATION.md`](references/TREE_ACTIVATION.md).
@@ -144,7 +144,21 @@ For deep diagnostics, use the `troubleshoot-replication` skill.
 
 ---
 
+## Asset Replication (DAM)
+
+Use the Assets console (`/assets.html/content/dam`) with the same Quick Publish / Manage Publication actions. All renditions and metadata replicate automatically. For shared datastores, enable binary-less replication (Serialization Type: Binary-less) on the agent to transfer only metadata nodes.
+
+---
+
+## Additional Resources
+
+- [AEM 6.5 LTS Replication](https://experienceleague.adobe.com/en/docs/experience-manager-65-lts/content/implementing/deploying/configuring/replication)
+- [Managing Publications](https://experienceleague.adobe.com/docs/experience-manager-65/authoring/authoring/publishing-pages.html)
+
+---
+
 ## Related Skills
 
 - `configure-replication-agent` — set up and configure replication agents
+- `replication-api` — full programmatic Replication API reference for custom OSGi services and servlets
 - `troubleshoot-replication` — diagnose and resolve replication failures
