@@ -4,7 +4,7 @@ description: Generate comprehensive admin documentation for AEM Edge Delivery Se
 license: Apache-2.0
 allowed-tools: Read, Write, Edit, Bash, AskUserQuestion, Skill
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Project Handover - Admin Guide
@@ -29,7 +29,10 @@ Generate comprehensive documentation for administrators taking over an AEM Edge 
 **CRITICAL: If NOT skipped, you MUST execute the `cd` command. Do NOT use absolute paths — actually change directory.**
 
 ```bash
-ALL_GUIDES=$(cat .claude-plugin/project-config.json 2>/dev/null | grep -o '"allGuides"[[:space:]]*:[[:space:]]*true')
+ALL_GUIDES=$(cat .claude-plugin/project-config.json 2>/dev/null | node -e "
+  const d = require('fs').readFileSync(0,'utf8');
+  try { console.log(JSON.parse(d).allGuides ? 'true' : ''); } catch(e) { console.log(''); }
+")
 if [ -z "$ALL_GUIDES" ]; then
   # Navigate to git project root (works from any subdirectory)
   cd "$(git rev-parse --show-toplevel)"
@@ -130,7 +133,10 @@ NOT the full guide content converted to HTML.
 
 ```bash
 # Check if org name is already saved
-cat .claude-plugin/project-config.json 2>/dev/null | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1
+cat .claude-plugin/project-config.json 2>/dev/null | node -e "
+  const d = require('fs').readFileSync(0,'utf8');
+  try { const o = JSON.parse(d).org; if(o) console.log('org: ' + o); } catch(e) {}
+"
 ```
 
 ### 0.2 Prompt for Organization Name (If Not Saved)
@@ -167,92 +173,62 @@ Replace `{ORG_NAME}` with the actual organization name provided by the user.
 
 ---
 
-## Phase 0.5: Authenticate with Config Service (Browser Login)
+## Phase 0.5: Authenticate with Adobe IMS
 
-**After getting the organization name, authenticate using Playwright browser automation.**
+**After getting the organization name, authenticate to obtain an IMS token.**
 
 ### 0.5.1 Check for Existing Auth Token
 
 ```bash
-# Check if auth token is already saved
-AUTH_TOKEN=$(cat .claude-plugin/project-config.json 2>/dev/null | grep -o '"authToken"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"authToken"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
+IMS_TOKEN=$(cat .claude-plugin/project-config.json 2>/dev/null | node -e "
+  const d = require('fs').readFileSync(0,'utf8');
+  try { console.log(JSON.parse(d).imsToken || ''); } catch(e) { console.log(''); }
+")
+IMS_EXPIRY=$(cat .claude-plugin/project-config.json 2>/dev/null | node -e "
+  const d = require('fs').readFileSync(0,'utf8');
+  try { console.log(JSON.parse(d).imsTokenExpiry || 0); } catch(e) { console.log(0); }
+")
+NOW=$(date +%s)
 
-if [ -n "$AUTH_TOKEN" ]; then
-  echo "Auth token found"
+if [ -n "$IMS_TOKEN" ] && [ "$IMS_EXPIRY" -gt "$((NOW + 60))" ]; then
+  echo "Token valid (expires in $((IMS_EXPIRY - NOW)) seconds)"
 else
-  echo "No auth token - need to authenticate"
+  echo "Token missing or expired. Need to authenticate."
 fi
 ```
 
-### 0.5.2 Open Browser for Login (If No Token)
+### 0.5.2 Authenticate (If No Valid Token)
 
-If no auth token exists, use Playwright CLI:
+If no valid token exists, invoke the auth skill:
 
-1. **Install Playwright (if needed)**:
-```bash
-npx playwright --version 2>/dev/null || npm install -g playwright
-npx playwright install chromium 2>/dev/null || true
+```
+Skill({ skill: "project-management:auth" })
 ```
 
-2. **Get the first site name** (unauthenticated endpoint):
-```bash
-ORG=$(cat .claude-plugin/project-config.json | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"org"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
-SITE=$(curl -s "https://admin.hlx.page/config/${ORG}/sites.json" | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/"name"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
-```
+This will:
+1. Open a browser for Adobe ID login
+2. Capture the IMS OAuth token automatically
+3. Save token to `.claude-plugin/project-config.json`
+4. Auto-close the browser when complete
 
-3. **Display clear instructions and open browser**:
-```bash
-echo ""
-echo "╔════════════════════════════════════════════════════════════════╗"
-echo "║                                                                ║"
-echo "║   BROWSER WINDOW OPENING FOR ADOBE ID LOGIN                    ║"
-echo "║                                                                ║"
-echo "║   1. Sign in with your Adobe ID credentials                   ║"
-echo "║   2. After successful login, CLOSE THE BROWSER WINDOW         ║"
-echo "║                                                                ║"
-echo "║   >>> CLOSE THE BROWSER TO CONTINUE <<<                       ║"
-echo "║                                                                ║"
-echo "╚════════════════════════════════════════════════════════════════╝"
-echo ""
+### 0.5.3 Verify Authentication
 
-mkdir -p .claude-plugin
-npx playwright open --save-storage=.claude-plugin/auth-storage.json "https://admin.hlx.page/login/${ORG}/${SITE}/main"
-```
-
-### 0.5.3 Extract and Save Auth Token
-
-After browser is closed, extract token from storage file:
+After auth skill completes, verify token works:
 
 ```bash
-echo "Browser closed. Extracting auth token..."
-
-AUTH_TOKEN=$(node -e "
-const fs = require('fs');
-const data = JSON.parse(fs.readFileSync('.claude-plugin/auth-storage.json', 'utf8'));
-const cookie = data.cookies.find(c => c.name === 'auth_token');
-console.log(cookie ? cookie.value : '');
+eval $(cat .claude-plugin/project-config.json | node -e "
+  const d = require('fs').readFileSync(0,'utf8');
+  const c = JSON.parse(d);
+  console.log('IMS_TOKEN=' + JSON.stringify(c.imsToken || ''));
+  console.log('ORG=' + JSON.stringify(c.org || ''));
 ")
 
-ORG=$(cat .claude-plugin/project-config.json | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"org"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
-echo "{\"org\": \"${ORG}\", \"authToken\": \"${AUTH_TOKEN}\"}" > .claude-plugin/project-config.json
-
-rm -f .claude-plugin/auth-storage.json
-echo "Auth token saved."
-```
-
-### 0.5.4 Verify Authentication
-
-Test the token works:
-```bash
-AUTH_TOKEN=$(cat .claude-plugin/project-config.json | grep -o '"authToken"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"authToken"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
-ORG=$(cat .claude-plugin/project-config.json | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"org"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
-
 # Test with authenticated endpoint
-curl -s -w "%{http_code}" -o /dev/null -H "x-auth-token: ${AUTH_TOKEN}" \
+curl -s -w "%{http_code}" -o /dev/null -H "Authorization: Bearer ${IMS_TOKEN}" \
   "https://admin.hlx.page/config/${ORG}/sites.json"
 ```
 
-If returns 200, authentication is successful. If 401, re-authenticate.
+If returns 200, authentication is successful. If 401, re-run auth skill.
 
 ---
 
@@ -274,7 +250,10 @@ You MUST call the Config Service API. This is the ONLY acceptable source for sit
 **✅ REQUIRED: Execute and save response:**
 
 ```bash
-ORG=$(cat .claude-plugin/project-config.json | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"org"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
+ORG=$(cat .claude-plugin/project-config.json | node -e "
+  const d = require('fs').readFileSync(0,'utf8');
+  console.log(JSON.parse(d).org || '');
+")
 
 # Save response to file - Step 1.2 depends on this file
 curl -s -H "Accept: application/json" "https://admin.hlx.page/config/${ORG}/sites.json" > .claude-plugin/sites-config.json
@@ -295,8 +274,11 @@ Multiple sites = **repoless** setup. Single site = **standard** setup.
 **Then fetch individual site config for code and content details:**
 
 ```bash
-AUTH_TOKEN=$(cat .claude-plugin/project-config.json | grep -o '"authToken"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"authToken"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
-curl -s -H "x-auth-token: ${AUTH_TOKEN}" "https://admin.hlx.page/config/${ORG}/sites/{site-name}.json"
+IMS_TOKEN=$(cat .claude-plugin/project-config.json | node -e "
+  const d = require('fs').readFileSync(0,'utf8');
+  console.log(JSON.parse(d).imsToken || '');
+")
+curl -s -H "Authorization: Bearer ${IMS_TOKEN}" "https://admin.hlx.page/config/${ORG}/sites/{site-name}.json"
 ```
 
 **Example response:**
@@ -394,7 +376,7 @@ Complete administration guide for managing this Edge Delivery Services project.
 
 ```bash
 curl -X POST \
-  -H "x-auth-token: $AUTH_TOKEN" \
+  -H "Authorization: Bearer $IMS_TOKEN" \
   "https://admin.hlx.page/logout/{org}/{site}/main"
 ```
 
@@ -403,7 +385,7 @@ curl -X POST \
 ### View Current Access
 
 ```bash
-curl -H "x-auth-token: $AUTH_TOKEN" \
+curl -H "Authorization: Bearer $IMS_TOKEN" \
   "https://admin.hlx.page/config/{org}/sites/{site}/access.json"
 ```
 
@@ -418,7 +400,7 @@ curl -H "x-auth-token: $AUTH_TOKEN" \
 
 ```bash
 curl -X DELETE \
-  -H "x-auth-token: $AUTH_TOKEN" \
+  -H "Authorization: Bearer $IMS_TOKEN" \
   "https://admin.hlx.page/config/{org}/sites/{site}/access/admin/{email}.json"
 ```
 
@@ -452,7 +434,7 @@ curl -X DELETE \
 
 ```bash
 curl -X POST \
-  -H "x-auth-token: $AUTH_TOKEN" \
+  -H "Authorization: Bearer $IMS_TOKEN" \
   "https://admin.hlx.page/code/{owner}/{repo}/main"
 ```
 

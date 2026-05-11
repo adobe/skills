@@ -4,7 +4,7 @@ description: Generate comprehensive technical documentation for developers takin
 license: Apache-2.0
 allowed-tools: Read, Write, Edit, Bash, Skill, Glob, Grep
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Project Handover - Development
@@ -27,7 +27,10 @@ Generate a complete technical guide for developers. This skill analyzes the code
 **CRITICAL: If NOT skipped, you MUST execute the `cd` command. Do NOT use absolute paths — actually change directory.**
 
 ```bash
-ALL_GUIDES=$(cat .claude-plugin/project-config.json 2>/dev/null | grep -o '"allGuides"[[:space:]]*:[[:space:]]*true')
+ALL_GUIDES=$(cat .claude-plugin/project-config.json 2>/dev/null | node -e "
+  const d = require('fs').readFileSync(0,'utf8');
+  try { console.log(JSON.parse(d).allGuides ? 'true' : ''); } catch(e) { console.log(''); }
+")
 if [ -z "$ALL_GUIDES" ]; then
   # Navigate to git project root (works from any subdirectory)
   cd "$(git rev-parse --show-toplevel)"
@@ -123,7 +126,10 @@ project-guides/DEVELOPER-GUIDE.md
 
 ```bash
 # Check if org name is already saved
-cat .claude-plugin/project-config.json 2>/dev/null | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1
+cat .claude-plugin/project-config.json 2>/dev/null | node -e "
+  const d = require('fs').readFileSync(0,'utf8');
+  try { const o = JSON.parse(d).org; if(o) console.log('org: ' + o); } catch(e) {}
+"
 ```
 
 ### 0.2 Prompt for Organization Name (If Not Saved)
@@ -201,7 +207,10 @@ You MUST call the Config Service API. This is the ONLY acceptable source for sit
 **✅ REQUIRED: Execute and save response:**
 
 ```bash
-ORG=$(cat .claude-plugin/project-config.json | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"org"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
+ORG=$(cat .claude-plugin/project-config.json | node -e "
+  const d = require('fs').readFileSync(0,'utf8');
+  console.log(JSON.parse(d).org || '');
+")
 
 # Save response to file - Phase 2 depends on this file
 curl -s -H "Accept: application/json" "https://admin.hlx.page/config/${ORG}/sites.json" > .claude-plugin/sites-config.json
@@ -219,11 +228,40 @@ The response is a JSON object with a `sites` array (each entry has a `name` fiel
 
 Multiple sites = **repoless** setup. Single site = **standard** setup.
 
-**Then fetch individual site config for code and content details:**
+**Then fetch individual site config for code and content details.**
+
+First, check for valid auth token:
 
 ```bash
-AUTH_TOKEN=$(cat .claude-plugin/project-config.json | grep -o '"authToken"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"authToken"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
-curl -s -H "x-auth-token: ${AUTH_TOKEN}" "https://admin.hlx.page/config/${ORG}/sites/{site-name}.json"
+IMS_TOKEN=$(cat .claude-plugin/project-config.json 2>/dev/null | node -e "
+  const d = require('fs').readFileSync(0,'utf8');
+  try { console.log(JSON.parse(d).imsToken || ''); } catch(e) { console.log(''); }
+")
+IMS_EXPIRY=$(cat .claude-plugin/project-config.json 2>/dev/null | node -e "
+  const d = require('fs').readFileSync(0,'utf8');
+  try { console.log(JSON.parse(d).imsTokenExpiry || 0); } catch(e) { console.log(0); }
+")
+NOW=$(date +%s)
+
+if [ -z "$IMS_TOKEN" ] || [ "$IMS_EXPIRY" -lt "$((NOW + 60))" ]; then
+  echo "AUTH_REQUIRED"
+fi
+```
+
+**If `AUTH_REQUIRED`**, invoke the auth skill before proceeding:
+
+```
+Skill({ skill: "project-management:auth" })
+```
+
+Then fetch site config:
+
+```bash
+IMS_TOKEN=$(cat .claude-plugin/project-config.json | node -e "
+  const d = require('fs').readFileSync(0,'utf8');
+  console.log(JSON.parse(d).imsToken);
+")
+curl -s -H "Authorization: Bearer ${IMS_TOKEN}" "https://admin.hlx.page/config/${ORG}/sites/{site-name}.json"
 ```
 
 **Example response:**
