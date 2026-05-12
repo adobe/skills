@@ -18,10 +18,10 @@ the step sequence and step component configuration.
 | PARTICIPANT | `cq/workflow/components/model/participant` |
 | DYNAMIC_PARTICIPANT | `cq/workflow/components/model/dynamic_participant` |
 | OR_SPLIT | `cq/workflow/components/model/or` |
-| AND_SPLIT | `cq/workflow/components/model/AND_split` |
-| AND_JOIN | `cq/workflow/components/model/AND_join` |
+| AND_SPLIT | `cq/workflow/components/model/and` |
 | EXTERNAL_PROCESS | `cq/workflow/components/model/external_process` |
-| END | `cq/workflow/components/model/end` |
+
+START, END, and AND_JOIN have no design-time component on AEM Cloud Service. AEM Sync derives them automatically at `/var/workflow/models/<id>`. Never write `cq/workflow/components/model/start`, `cq/workflow/components/model/end`, or `cq/workflow/components/model/AND_join` as `sling:resourceType` — no such components exist under `/libs/cq/workflow/components/model/`, and the Workflow Model Editor will not render them.
 
 ## Initiator Participant Chooser (AEM default first step)
 
@@ -127,28 +127,21 @@ function check() {
 function check() { return true; }
 ```
 
-## AND_SPLIT / AND_JOIN (Parallel Branches)
+## AND_SPLIT (Parallel Branches)
+
+In the design-time `flow` layer, author only the AND_SPLIT step. AEM Sync derives the matching AND_JOIN node automatically at `/var/workflow/models/<id>` based on where the parallel branches converge in the editor.
 
 ```xml
 <!-- AND_SPLIT: fans out to all connected outgoing steps -->
 <startparallelreview
     jcr:primaryType="nt:unstructured"
     jcr:title="Start Parallel Review"
-    sling:resourceType="cq/workflow/components/model/AND_split">
+    sling:resourceType="cq/workflow/components/model/and">
   <metaData jcr:primaryType="nt:unstructured"/>
 </startparallelreview>
-
-<!-- AND_JOIN: waits for all incoming branches before continuing -->
-<synchronize
-    jcr:primaryType="nt:unstructured"
-    jcr:title="Synchronize"
-    sling:resourceType="cq/workflow/components/model/AND_join">
-  <metaData jcr:primaryType="nt:unstructured"/>
-</synchronize>
 ```
 
-All outgoing transitions from AND_SPLIT execute in parallel. Workflow pauses at AND_JOIN until all
-branches complete.
+All outgoing transitions from AND_SPLIT execute in parallel. Workflow pauses at the Sync-generated AND_JOIN until all branches complete. There is no design-time component for AND_JOIN — never write `sling:resourceType="cq/workflow/components/model/AND_join"`; the editor will not render it.
 
 ## EXTERNAL_PROCESS Node (Polling Step)
 
@@ -167,19 +160,11 @@ branches complete.
 `WorkflowExternalProcess` SPI — the engine polls at `pollingInterval` ms until the process signals
 completion. `pollingInterval` is stored as a plain string in the design-time `flow` layer.
 
-## END Node
+## START and END (Sync-Derived)
 
-```xml
-<workflowend
-    jcr:primaryType="nt:unstructured"
-    jcr:title="End"
-    sling:resourceType="cq/workflow/components/model/end">
-  <metaData jcr:primaryType="nt:unstructured"/>
-</workflowend>
-```
+AEM Sync adds both START and END nodes automatically to the runtime model at `/var/workflow/models/<id>`. Do not author them in the design-time `flow` layer. The design-time flow simply ends after the last step component; Sync inserts the END node and connects it. The START node is similarly auto-generated as the entry point.
 
-Multiple branches can converge to the same END node. Sync also inserts a START node automatically
-— you do not need to declare it in the design-time `flow` layer.
+There is no `cq/workflow/components/model/end` or `cq/workflow/components/model/start` component under `/libs/cq/workflow/components/model/` on AEM Cloud Service — never write these as `sling:resourceType` values.
 
 ## Goto Step (OOTB Loop-back PROCESS Node)
 
