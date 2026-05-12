@@ -7,6 +7,7 @@
     "description": "Official Adobe Skills for AI Agents",
     "version": "1.0.0"
   },
+  "allowCrossMarketplaceDependenciesOn": ["pbakaus/impeccable"],
   "plugins": [
     {
       "name": "adobe-for-creativity",
