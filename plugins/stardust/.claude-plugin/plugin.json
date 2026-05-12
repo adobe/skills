@@ -9,6 +9,6 @@
   "license": "Apache-2.0",
   "keywords": ["design", "redesign", "frontend", "skills", "impeccable"],
   "dependencies": [
-    { "name": "impeccable", "marketplace": "impeccable" }
+    "impeccable@impeccable"
   ]
 }
