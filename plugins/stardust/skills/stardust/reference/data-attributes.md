@@ -148,7 +148,7 @@ mechanically rather than re-deriving structure.
 ### Mobile-collapse marker
 
 - **`data-nav-collapse="hamburger"`** — on `<header>` when the
-  stock mobile-nav collapse pattern is applied during Phase 5.5
+  stock mobile-nav collapse pattern is applied during Phase 2.7
   (`skills/prototype/SKILL.md` § Mobile-adapt audit /
   `skills/prototype/reference/mobile-nav-collapse.md`).
   Downstream consumers detect the marker to avoid re-applying or

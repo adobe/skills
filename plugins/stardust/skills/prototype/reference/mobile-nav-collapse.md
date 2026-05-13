@@ -1,6 +1,6 @@
 # Mobile nav collapse
 
-The stock pattern stardust applies during `$impeccable adapt` (Phase 5.5)
+The stock pattern stardust applies during `$impeccable adapt` (Phase 2.7)
 when the header's horizontal nav cannot survive a 360px viewport. The
 adapt step's audit refuses files that overflow, shrink nav type below
 11px, or compress nav gap below 10px; this doc is the canonical
@@ -27,7 +27,7 @@ with a moderately-sized nav. This pattern centralises the fix.
 
 ## When this applies
 
-`$impeccable adapt`, invoked from `stardust:prototype` Phase 5.5,
+`$impeccable adapt`, invoked from `stardust:prototype` Phase 2.7,
 runs the Mobile-adapt audit (see `skills/prototype/SKILL.md`
 § Mobile-adapt audit). The audit refuses the file when, at 360px:
 
@@ -469,7 +469,7 @@ When the stock pattern is applied, `_provenance.adapt[]` records:
 
 ```yaml
 - at: 2026-05-13T10:42:00Z
-  by: impeccable:adapt (via stardust:prototype Phase 5.5)
+  by: impeccable:adapt (via stardust:prototype Phase 2.7)
   breakpoints: [360, 640, 768, 1024, 1280]
   rules: 6
   navCollapse: hamburger (stock)

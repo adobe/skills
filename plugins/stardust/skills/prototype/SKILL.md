@@ -944,10 +944,8 @@ lands as `prototyped` in the first place.
 
 The implementation (impeccable adapt invocation, mobile-adapt
 audit, mobile-nav-collapse stock pattern) lives in § Phase 2.7
-above. This section is retained as an anchor for cross-references
-from `state-machine.md`, `migrate/SKILL.md`, and
-`reference/publish-sample.md` that still name Phase 5.5; those
-references should be updated to Phase 2.7 in a follow-up sweep.
+above. This section is retained as an anchor for any external
+cross-reference that still names Phase 5.5.
 
 ### Stale handling
 

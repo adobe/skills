@@ -52,7 +52,7 @@ The proposed file must satisfy:
    `@import` is acceptable for prototyping but not for migrate
    output.
 
-   **Inline `<script>` exception — mobile nav a11y.** When Phase 5.5
+   **Inline `<script>` exception — mobile nav a11y.** When Phase 2.7
    applies the stock hamburger pattern (per
    `mobile-nav-collapse.md`), the file carries a ≤10-line inline
    `<script>` that syncs `aria-expanded` on the burger button and
