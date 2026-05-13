@@ -27,7 +27,8 @@ and resumable. The state file is `stardust/state.json`. It is written by
   "direction": {
     "resolvedAt": "<ISO timestamp>",
     "phrase": "<verbatim user phrase>",
-    "directionFile": "stardust/direction.md"
+    "directionFile": "stardust/direction.md",
+    "iaFidelity": "reimagined"
   },
   "pages": [
     {
@@ -149,8 +150,15 @@ The rule:
    The trigger for delta computation is direction-edit by default,
    but applies identically when canon updates land via
    `prototype --prep` approval or when the module catalog updates
-   via `extract --prep`. Stale-flagging is content-aware in all
-   three cases.
+   via `extract --prep`, or when **approval fold-back** lands a
+   site-wide direction addendum (per
+   `skills/prototype/reference/approval-fold-back.md`). Stale-
+   flagging is content-aware in all four cases. The fold-back
+   case carries a special exemption: the **approved page that
+   triggered the fold-back does NOT go stale** — its moves ARE
+   the fold, so by definition the fold can't invalidate them.
+   Page-local folds skip stale-flagging entirely (no other page
+   is affected by construction).
 2. For each page in `prototyped`, `approved`, or `migrated`:
    - Read its `<slug>-shape.md` (per
      `skills/prototype/reference/page-shape-brief.md`) to see
@@ -296,6 +304,58 @@ maintainer running the cascade twice should see `Provenance OK`
 twice; a quiet absence of that line is itself a smell.
 
 ---
+
+## IA-fidelity and iaPriorities mutability
+
+`direction.iaFidelity` stamps the value pinned at direct time (per
+`stardust/reference/intent-dimensions.md` § 9): `verbatim` or
+`reimagined`. The stamp gates:
+
+- **Variant fork shape** at prototype (A1/A2/A3 under verbatim;
+  A+B+C under reimagined; per `direct/SKILL.md` § Phase 2.6).
+- **Per-page surprise budget ceiling** at prototype Phase 1
+  (capped at `low` under verbatim; per
+  `prototype/SKILL.md` § Brief-time disciplines / Discipline 3).
+- **Approval fold-back at Phase 5** (no-op under verbatim by
+  construction; runs under reimagined; per
+  `prototype/reference/approval-fold-back.md`).
+- **Discipline 10 convergence detector mode** (structural deltas
+  required under reimagined; forbidden under verbatim).
+
+The `direction.iaFidelity` value propagates to each
+`DESIGN.json.extensions.iaPriorities[]` entry as a `mutability`
+field: `locked` under verbatim (variants may not move the
+priority), `movable` under reimagined (variants may demote /
+promote / re-shape the priority's deployment).
+
+Re-pinning `ia-fidelity` (via `direct --re-direct` with an
+explicit phrase signal or the one-shot question) updates
+`direction.iaFidelity` AND re-stamps every iaPriorities `mutability`
+field. Stale-flagging follows the content-aware rule: pages whose
+brief consumed the mutability field (e.g., a B/C variant brief
+authored under reimagined that re-pins to verbatim invalidates the
+brief's structural moves) are flagged stale.
+
+## Fold-back state record
+
+When `prototype` Phase 5 fold-back runs, the result is recorded
+in two places:
+
+1. **Direction addendum** in `stardust/direction.md` (per
+   `prototype/reference/approval-fold-back.md`) — the human-
+   readable record.
+2. **Approved file `_provenance.foldBackDecision`** — the
+   machine-readable per-file record: `{ choice: "site-wide" |
+   "page-local" | "none", at, scope, rationale?, rejectedOptions?,
+   staleFlagged? }`.
+
+`state.json` itself does not gain a fold-back-specific field —
+the page's `status: "approved"` history entry plus the file's
+`_provenance.foldBackDecision` is the source of truth. Subsequent
+prototype / migrate runs read the approved file's
+`foldBackDecision` to know whether the page's structural moves
+are site-wide (consumed by other pages too), page-local (this
+page only), or unfolded (the moves stay file-local).
 
 ## Concurrency
 

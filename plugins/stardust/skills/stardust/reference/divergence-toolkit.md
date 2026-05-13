@@ -351,6 +351,100 @@ When the seed from §2 strongly implies a deck (e.g., 1977 + letterpress +
 tabloid → `retro-italian` or `handmade-signwriter`), pick from the implied
 set. When multiple decks fit, pick deterministically from the hash.
 
+### Reflex-reject fonts
+
+A family of fonts the assistant reaches for across unrelated brands
+because they read as "modern editorial" in current training data.
+Drawn from cross-brand dogfood evidence: when no captured surface
+pins the type, these are the families that recur regardless of
+brand register. Used by `prototype` Discipline 6 (the reflex-reject
+font pre-flight) — `≥ 3` hits in a single page's declared
+`font-family` declarations refuses the file with a substitute
+proposal.
+
+```
+Fraunces, Cormorant Garamond, Space Grotesk, IBM Plex Sans,
+Instrument Serif, Inter, DM Sans, Lora, Playfair, Crimson,
+Newsreader, Syne, Outfit, Plus Jakarta Sans, Instrument Sans,
+Sora, Manrope
+```
+
+Substitute table (dimensional equivalents, off the reflex list):
+
+| Reflex | Dimensional role | Substitutes |
+|---|---|---|
+| Fraunces | serif-luxury display | GT Sectra · Eczar · Sorts Mill Goudy |
+| Cormorant Garamond | serif-luxury editorial | Spectral · Reckless · Editorial New |
+| Space Grotesk | geometric-sans display | Bricolage Grotesque · GT Standard · Söhne |
+| IBM Plex Sans | workhorse body | Hanken Grotesk · Söhne · Diatype |
+| Inter | utility body | Hanken Grotesk · GT America · Söhne |
+| Playfair | high-contrast serif display | Tiempos Headline · Domaine Display · GT Super |
+| DM Sans | neutral display sans | Söhne · GT Walsheim · Mona Sans |
+| Plus Jakarta Sans / Manrope / Outfit | rounded humanist sans | Hanken Grotesk · GT Walsheim · Bricolage Grotesque |
+| Instrument Serif | display editorial | Reckless · GT Sectra · Editorial New |
+| Newsreader / Crimson / Lora | reading serif | Spectral · Source Serif · Tiempos Text |
+
+**Refusal contract.** When prototype's reflex-reject pre-flight
+counts `≥ 3` hits, refuse to write and surface the substitute
+proposal with the dimensional role each substitute fills.
+Mode-A renders with captured display + body families pinned bypass
+the check entirely (the families are inherited, not chosen) — the
+check fires only on rendered files whose `font-family` declarations
+the agent had freedom to pick.
+
+### Font deck — expressive positions
+
+Off-deck accent fonts ship with named **expressive positions**, not
+just style-class slots. The vocabulary below is the authoritative
+list `prototype` Discipline 7 reads when an expressive accent face
+is engaged on a page:
+
+- **`marginal-tag`** — hand-drawn annotation in a 0–4° rotation,
+  ≤ 2 per page. Caveat / Homemade Apple / Reenie Beanie shapes,
+  pointing at a heading or sitting in a margin gutter.
+- **`pointer-scribble`** — directional arrow + ≤ 3-word callout
+  pointing at a heading or a key beat. Typically Caveat or a
+  hand-drawn SVG; the arrow is part of the lockup, not a separate
+  ornament.
+- **`headline-callout`** — single-line emphasis inside or beside a
+  Display headline. The expressive face is the only italic / cursive
+  word in the line; the rest stays in the display deck.
+- **`badge-fill`** — short uppercase label inside a yellow / colored
+  chip. Acts as eyebrow chrome rather than as headline.
+
+Any off-deck face that doesn't fit one of these positions is a
+reflex pick, not an expressive position; the divergence-justification
+slot must name the position explicitly when introducing it.
+
+### Non-template move bank
+
+The closed list of non-template moves `prototype` Discipline 3
+draws from when a per-page `surprise` tier is `medium` or `high`.
+Each move is a substitution for a captured cliché pattern; pages
+declare which move they're applying in
+`<slug>-shape.md#surpriseMoves[]` with a captured-source citation.
+
+- **Typographic substitution** — text-line / ledger-row replacing
+  a tile grid. The captured 5-up image-card grid becomes a typed
+  index, ledger, or running list. Carries the same content set.
+- **Substrate-promotion** — background color promoted from accent
+  (≤ 10% surface area) to page ground (≥ 50%). The brand's accent
+  becomes the substrate; the prior ground becomes the accent.
+- **Inversion** — negative-space dominant where original was
+  content-dominant. Hero is mostly empty; the headline anchors a
+  composition framed by ground rather than supporting copy.
+- **Document-shape** — table / ledger / index card / poster /
+  docket / zine spread replacing a card grid. The page adopts the
+  document's structural rhythm (per-block substrate, per-spread
+  layout, etc.).
+- **Scale-displacement** — one element rendered at 4–8× normal
+  size; others at 0.5×. The display headline becomes the page's
+  primary structural element, with body text receding to caption
+  scale.
+
+Worked examples per move live in
+`skills/prototype/reference/anti-template-bank.md`.
+
 ---
 
 ## 4. Role-Naming Rule

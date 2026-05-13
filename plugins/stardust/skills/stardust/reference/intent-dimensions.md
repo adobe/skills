@@ -234,6 +234,85 @@ sites (the common stardust use case). For product-register sites
 *workflow-priority preservation*: the primary task path on the page
 stays the primary task path. The same principle, different surface.
 
+## 9. IA-fidelity (variant-fork ceiling)
+
+How much the variant set is allowed to move on the *spine* of the
+page. Pinned at direct time; consumed by prototype's variant fork,
+brief-time `surprise` budget, and the approval fold-back.
+
+- Anchors: `verbatim`, `reimagined`.
+- Default if unstated: **`reimagined`** — the typical refresh.
+- `verbatim` — same IA, same section sequence, same content beats.
+  Variant fork at prototype produces **A1 / A2 / A3** (surface-tuning
+  forks only).
+- `reimagined` — variant fork produces **A + B + C** with IA-priority
+  moves allowed.
+
+#### Auto-pin trigger phrases
+
+The agent pins the axis without asking when the user's phrase
+contains an unambiguous signal.
+
+| Tier | Trigger phrases |
+|---|---|
+| `verbatim` | *"same IA"*, *"verbatim"*, *"keep the structure"*, *"don't rethink the IA"*, *"swap the surface"* |
+| `reimagined` | *"reimagine"*, *"rethink"*, *"deeper redesign"*, *"what if"* |
+
+When the phrase is ambiguous (the typical *"refresh the home page"*
+case), direct's Phase 1 asks the one-shot `ia-fidelity` question; see
+`direct/SKILL.md` § Phase 1.
+
+#### Intersection with § 8 (IA-priority preservation)
+
+The two axes constrain different things:
+
+- **§ 8** declares **which priorities are preserved** under Mode A
+  (commercial-conversion path, crisis affordance, audience router,
+  search-led hero, donation funnel). It is a hard contract that fires
+  on captured signals — every Mode A variant must honor it.
+- **§ 9 `ia-fidelity`** declares **how much the variants may move
+  within those preservations**. Under `verbatim` no variant may
+  move on the spine at all (A1/A2/A3 are surface forks). Under
+  `reimagined` variants may demote / promote / drop sections, move
+  IA priorities, and take "what if" positions — but the § 8
+  preservations still fire as a floor.
+
+In other words: § 8 is the floor, § 9 is the ceiling. A `verbatim`
+direction collapses the ceiling to the floor.
+
+#### Intersection with the per-page `surprise` budget
+
+The `ia-fidelity` axis is site-wide; the `surprise` budget is
+**per-page** (declared in `<slug>-shape.md` per `prototype/reference/
+page-shape-brief.md`). `ia-fidelity` sets a ceiling on `surprise`:
+
+| `ia-fidelity` | per-page `surprise` ceiling |
+|---|---|
+| `verbatim` | every page capped at `low` (A1/A2/A3 are surface forks; no IA moves) |
+| `reimagined` | `low` / `medium` / `high` per page; variant A defaults `low`, B `medium`, C `high` |
+
+The two axes are kept distinct because they have different scopes:
+the ceiling is a site-wide commitment the user pins once at direct
+time; the per-page budget reflects how much surprise *this particular
+page* warrants given its captured content and role. A future PR may
+collapse them if the two-axis model proves confusing in practice.
+
+#### Stamping and propagation
+
+Direct stamps the resolved tier in `stardust/direction.md` §
+Movements as `ia-fidelity: <tier>` and propagates a `mutability`
+field onto each `DESIGN.json.extensions.iaPriorities[]` entry:
+
+- `mutability: "locked"` under `verbatim`
+- `mutability: "movable"` under `reimagined`
+
+Downstream skills read the stamp and the `mutability` field. See:
+- `direct/SKILL.md` § Phase 2.6 — variant fork branches on the tier.
+- `prototype/SKILL.md` § Phase 1 brief-time disciplines — surprise
+  budget is capped at `low` site-wide under `verbatim`.
+- `prototype/reference/approval-fold-back.md` — Phase 5 fold-back is
+  a no-op under `verbatim`.
+
 ---
 
 ## Reading a phrase

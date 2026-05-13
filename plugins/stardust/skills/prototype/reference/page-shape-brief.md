@@ -171,13 +171,47 @@ than discover them in the proposed HTML.
 
 **Required** in every brief:
 
-- Frontmatter (`slug`, `url`, `register`).
+- Frontmatter (`slug`, `url`, `register`, `surprise`,
+  `dominantDimension`).
 - `## Sections (in render order)` — the section list with role
   and composition note per section.
 - `## Data attributes` — the contract for `<slug>-proposed.html`'s
   structural attributes.
-- `## Unsourced content` — bridge toplaceholder list, even
-  if empty (emit `(none)`).
+- `## Unsourced content` — bridge to placeholder list, even
+  if empty (emit `(none)`). Placeholder-ribbon labels are
+  classified as `direction-authorized chrome` per friction #3
+  and do **not** appear here.
+
+**Required when Disciplines 1–5 + 10 fire** (in `_provenance` block):
+
+- `_provenance.capturedSourceLineage[]` — Discipline 1; every
+  section's captured-source origin.
+- `_provenance.antiTemplatePass[]` — Discipline 2; per-pattern
+  alternatives audit.
+- `_provenance.substrateTransitions` — Discipline 4;
+  `{ default, exceptions[] }`. Carry a `note` field citing the
+  substrate-keyed document-shape exception (friction #2) when
+  more than two transitions appear.
+- `_provenance.voiceClassification[]` — Discipline 5; one entry
+  per section with `{ classification, copy?, source? }`.
+- `_provenance.surpriseTier_typeScaleYields[]` — friction #4
+  carve-out; populated only when a tier-medium-or-higher variant
+  yields a brand-level type-scale rule. Schema:
+  `{ rule, variantDominantDimension, capturedTraitAmplified,
+  yieldedTo, rationale }`.
+- `_provenance.compositionDelta_vs_<sibling>[]` — Discipline 10;
+  per-sibling deltas (≥ 2 structural changes under reimagined;
+  surface-only under verbatim). Required for every variant in a
+  multi-variant fork; absent for single-variant runs.
+
+**Required frontmatter fields (new):**
+
+- `surprise: low | medium | high` — Discipline 3 budget. Capped at
+  `low` under `ia-fidelity: verbatim`.
+- `dominantDimension: <seed-dimension>/<sub-kind>` — Discipline 10
+  distinct-dimension stamp (`composition/document-card-zine`,
+  `ground-family/label-substrate-zine`, etc.). Each variant in a
+  fork must have a unique value.
 
 **Optional** but recommended:
 
@@ -192,6 +226,49 @@ than discover them in the proposed HTML.
 
 Sections may be omitted when their content is "inherits site
 default."
+
+---
+
+## Validator contract
+
+The brief validator runs at the end of `prototype` Phase 1 and
+refuses to advance to Phase 2 when any of the following fails.
+Each refusal cites the discipline number, the specific rule, and
+the section / field that failed.
+
+1. **Lineage** (Discipline 1) — every section in `## Sections`
+   has a `_provenance.capturedSourceLineage[]` entry. Refusal
+   names the section(s) missing.
+2. **Anti-template pass** (Discipline 2) — every captured
+   component pattern the page deploys appears in
+   `_provenance.antiTemplatePass[]` with ≥ 2 considered
+   alternatives, a picked move, and a captured-source rationale.
+3. **Surprise tier** (Discipline 3) — frontmatter `surprise`
+   field is declared. Under `ia-fidelity: verbatim` (read from
+   `direction.md § Movements`), `surprise: medium` and
+   `surprise: high` both refuse with: *"verbatim direction caps
+   surprise at `low` site-wide; this brief declares `<value>`.
+   Either change to `low` or re-pin `ia-fidelity` at direct."*
+4. **Substrate cap** (Discipline 4) — `_provenance.substrateTransitions
+   .exceptions[]` count `≤ 2`, OR the substrate-keyed-document-shape
+   exception applies: `surprise: high` + picked move from the
+   bank is `document-shape` with a substrate-keyed sub-kind
+   (zine / catalog-card / poster-sequence) + every exception
+   carries a per-section captured-source citation.
+5. **Voice classification** (Discipline 5) — every section in
+   `## Sections` appears in `_provenance.voiceClassification[]`
+   with a valid `classification` value. Placeholder-ribbon
+   labels are classified as `direction-authorized chrome` and
+   do NOT appear in `_provenance.unsourcedContent[]`.
+6. **CompositionDelta** (Discipline 10) — when the run is
+   multi-variant (`N > 1` per direct's Phase 2.6), each variant's
+   brief carries `_provenance.compositionDelta_vs_<sibling>[]`
+   blocks with `≥ 2` structural deltas per pair (under
+   `ia-fidelity: reimagined`) or `≥ 2` surface deltas per pair
+   (under `verbatim`). Trivial (token-only) deltas refuse the
+   brief and require ideation restart.
+
+Single-variant runs (`N = 1`) skip rule #6.
 
 ---
 

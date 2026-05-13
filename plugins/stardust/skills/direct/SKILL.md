@@ -136,6 +136,45 @@ deterministically per `intent-dimensions.md` § 4: airy = 96px,
 balanced = 64px, packed = 48px. Phase 4 picks the value from this
 stamp without re-asking.
 
+#### IA-fidelity tuning (one-shot, only when unmoved)
+
+When the user's phrase does **not** auto-pin `ia-fidelity` (per
+`reference/intent-dimensions.md` § 9 — i.e. none of *"verbatim"*,
+*"same IA"*, *"keep the structure"*, *"swap the surface"*,
+*"don't rethink the IA"* and none of *"reimagine"*, *"rethink"*,
+*"deeper redesign"*, *"what if"* appear), ask one short follow-up
+— count it within the two-question ceiling:
+
+> IA fidelity — (a) verbatim (same section sequence, same content
+> beats; variants explore surface only: color, type, density,
+> motion), or (b) reimagined (variants may demote / promote / drop
+> sections, move IA priorities, take "what if" positions on the
+> spine of the page).
+> Default (b) for the typical refresh; pick (a) when the customer
+> asked to keep their site structurally identical and only swap
+> the surface.
+
+If the user answers, stamp the chosen tier in `direction.md` §
+Movements as `ia-fidelity: <tier>`. If unanswered, default to
+**reimagined** and stamp `ia-fidelity: reimagined (default)`.
+
+Skip this question entirely when:
+- The user's phrase already auto-pinned the axis (any trigger phrase
+  in § 9 — *"same IA, swap the surface"* → verbatim;
+  *"what if we rethought the home page"* → reimagined).
+- An existing `direction.md` is being refined (the active tier holds
+  unless the user explicitly re-pins).
+
+The tier propagates to `DESIGN.json.extensions.iaPriorities[].mutability`:
+`locked` under verbatim, `movable` under reimagined. Phase 4 stamps
+the field; downstream `prototype` reads it.
+
+Pair this question with the density-tuning question when both are
+unmoved — *"two things to pin before we resolve: (1) density …, (2)
+IA fidelity …"* — to stay within the two-question ceiling. If
+resolving register (brand vs product) is also outstanding, prioritise
+register first; defer one of density / ia-fidelity to the next turn.
+
 Wait for the user's confirmation (`"go"`, or a correction to the
 plan) before moving on.
 
@@ -532,6 +571,59 @@ internal review called *"three rebrands"* output: each variant was
 defensible standalone but none felt like the same brand. The
 variant role contract below addresses this directly.
 
+#### Branch on `ia-fidelity` first
+
+The variant role contract is **`ia-fidelity`-aware**. Read the tier
+stamped in Phase 1 (per `reference/intent-dimensions.md` § 9 and the
+IA-fidelity tuning step above), and branch:
+
+**Under `ia-fidelity: verbatim` — surface-tuning forks (A1/A2/A3).**
+
+Variant slots are A1 / A2 / A3 (or A1…An for N > 3), all
+surface-tuning forks of A's role. Each must differ from the others by
+**≥ 2 surface changes** drawn from:
+
+- type-weight choice (e.g. 400 vs 600 vs 800 display)
+- type-scale ratio (e.g. 1.2 vs 1.333 vs 1.5)
+- density tier (within the multi-audience floor in § 4)
+- motion energy (still vs gentle vs animated)
+- color-temperature move within the captured palette (warm-leaning
+  vs cool-leaning vs neutral-balanced)
+- spacing rhythm (compact vs even vs generous within the floor)
+
+**Forbidden differentiation axes** under verbatim:
+
+- section sequence
+- section presence / absence
+- IA priority
+- layout strategy of a major section
+
+A1 / A2 / A3 names indicate "different tunings of the same role,"
+not different roles. When the user asks for *"3 variants"* while
+`ia-fidelity` is verbatim, the fork produces A1 / A2 / A3
+automatically; for N=1, just A.
+
+The improvements list (Phase 2.5) still anchors variant A's role —
+A1/A2/A3 all apply every item from `<slug>-improvements.md`. They
+differ only in surface treatment of the same applied fixes.
+
+The convergence detector in `prototype/SKILL.md` Discipline 10
+becomes its inverse under verbatim: structural deltas
+(section-sequence / presence / IA priority / layout strategy) are
+**forbidden**, surface-only deltas are **required**.
+
+**Under `ia-fidelity: reimagined` — A + B + C role-differentiated.**
+
+Variant slots are A + B + C (or A + B + C + D…) per the variant role
+contract below. The contract is unchanged from the prior behavior:
+faithful + improvements / one captured trait amplified / different
+captured trait amplified.
+
+The remainder of this Phase 2.6 (variant role contract, variant
+differentiation contract, C-cliff failure mode) applies as written
+under `reimagined`. Under `verbatim`, only the surface-fork rules
+above apply; the variant role contract below does not.
+
 #### Variant role contract
 
 | Slot | Role | Brief |
@@ -751,7 +843,8 @@ donation funnel, crisis affordance, audience routing), record an
     "signal": "crisis-affordance",
     "evidence": "pages/home.json#landmarks[hero] contains heading 'Looking for immediate shelter?' + phone 801-990-9999",
     "preserveAs": "first-viewport",
-    "scope": "site-wide"
+    "scope": "site-wide",
+    "mutability": "movable"
   }
 ]
 ```
@@ -761,6 +854,14 @@ must honor — a variant whose home shape brief omits the crisis
 affordance from the first viewport fails the audit and is rejected.
 The audit is the structural enforcement of § 8; without it, IA-
 priority preservation is a guideline rather than a contract.
+
+The `mutability` field reflects the `ia-fidelity` stamp from Phase 1
+(per `reference/intent-dimensions.md` § 9): `locked` under verbatim
+(variants may not move the priority at all — A1/A2/A3 are surface
+forks), `movable` under reimagined (variants may demote / promote /
+re-shape the priority's deployment, but the § 8 floor still fires).
+The field is stamped once at Phase 4 and is the source of truth
+prototype reads.
 
 #### Multi-variant DESIGN files (when N > 1)
 

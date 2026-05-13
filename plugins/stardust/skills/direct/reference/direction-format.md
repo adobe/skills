@@ -51,6 +51,7 @@ no jargon.
 - **distinctiveness** — `familiar` → `distinctive` (implied by
   "expressive")
 - **audience** — Gen Z college / first-job (resolved via Q1)
+- **ia-fidelity** — `reimagined` (default; phrase did not auto-pin)
 - **constraints** — none stated
 
 ## Gaps and questions
@@ -166,11 +167,30 @@ Required in every direction (active or historical):
 
 - `## Phrase`
 - `## Restatement`
-- `## Movements`
+- `## Movements` — must include an `ia-fidelity` line (per
+  `reference/intent-dimensions.md` § 9). Values: `verbatim` |
+  `reimagined`. Annotate as `(default)` when the phrase did not
+  auto-pin and the user did not answer the one-shot question.
 - `## Divergence inputs` — at minimum `seed`, `font deck`, `palette`
 - `## Command sequence (proposed)`
 - `## User confirmation`
 - `## Pages in scope`
+
+### The `ia-fidelity` movement line
+
+`ia-fidelity` is a movement like `density` — pinned at direct time,
+read by every downstream skill. It governs the variant-fork ceiling
+and gates the per-page `surprise` budget (see
+`reference/intent-dimensions.md` § 9 for the full intersection).
+Stamped values:
+
+| Value | Variant fork (prototype) | Per-page surprise ceiling | Fold-back at approval |
+|---|---|---|---|
+| `verbatim` | A1 / A2 / A3 (surface forks of A) | capped at `low` site-wide | no-op (no structural moves to fold) |
+| `reimagined` | A + B + C (role-differentiated) | low / medium / high per page | active (proposes site-wide / page-local / don't-fold) |
+
+The field propagates to `DESIGN.json.extensions.iaPriorities[].mutability`:
+`locked` under `verbatim`, `movable` under `reimagined`.
 
 Optional (omit cleanly when not applicable):
 
