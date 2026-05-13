@@ -114,7 +114,15 @@ the user's go-ahead by re-calling the helper with `offset: paging.nextOffset`. S
 
 ### CAM via MCP (summary)
 
-Use **`fetch-cam-bpa-findings`** only after **`list-projects`** and **explicit user confirmation** of which project row to use (prefer **`projectId`** from that list). Do not pass an unconfirmed project name string. **Full tool schemas, REST notes, retries, and error handling:** [references/cam-mcp.md](references/cam-mcp.md).
+Use **`fetch-cam-bpa-findings-by-pattern`** for code-transformer pattern flows (scheduler,
+assetApi, eventListener, resourceChangeListener, eventHandler) and
+**`fetch-cam-bpa-findings-by-importance`** when the user instead asks "what are the
+critical/major/advisory/info findings?" (returns the latest BPA report's authoritative
+`_COUNT_<code>` rows at one importance level, sorted by descending count). Either tool
+requires **explicit user confirmation** of the project before being called — ask the user
+for their CAM project name or ID; the tools resolve it internally (prefer **`projectId`**
+when known). Do not pass an unconfirmed project name string. **Full tool schemas, REST notes, retries, and error handling:**
+[references/cam-mcp.md](references/cam-mcp.md).
 
 ### What the user might say
 
@@ -237,8 +245,8 @@ After finishing the batch, summarise **for this batch only**:
 - If `paging.hasMore === false`, say the pattern is done and move to the overall session report.
 
 **Stop and wait for the user.** Do not automatically start the next batch. Only call
-`getBpaFindings` (or `fetch-cam-bpa-findings`) again when the user explicitly requests it,
-and pass `offset: paging.nextOffset` unchanged.
+`getBpaFindings` (or `fetch-cam-bpa-findings-by-pattern`) again when the user explicitly
+requests it, and pass `offset: paging.nextOffset` unchanged.
 
 ### Manual flow (no BPA)
 
