@@ -216,7 +216,7 @@ by construction; consolidation is a no-op for them.
 Without consolidation a single noisy rule swamps the Tensions
 section — observed on theroadhome.org where `T-color-imbalance`
 fired 8 times and pushed every other tension below the fold
-(`STARDUST-FEEDBACK.md F-004`).
+.
 
 ### Card layout
 

@@ -98,7 +98,7 @@ combine into a single "not eligible" message.
 4. **Placeholder content is allowed.** The showcase is a **visual
    demonstration** of the redesign — composition, palette,
    typography, layout, motion — not a deployable site. Placeholders
-   are deliberately visible per the F-002 PLACEHOLDER signature
+   are deliberately visible per thePLACEHOLDER signature
    contract (dashed outline + monospace eyebrow + surface-alt
    tint). A showcase reader can tell at a glance what's sourced
    and what's illustrative; that's the protection.
@@ -158,16 +158,14 @@ combine into a single "not eligible" message.
    - At least one `@media (max-width: ...)` rule.
    - At least one mobile-targeted breakpoint at ≤ 640px.
 
-   Refuse to publish variants that fail unless
-   `--skip-adapt-audit` was passed. Record the audit result per
-   variant in the PR body's submitter checklist (a new line:
-   *"adapt: passed for A, B"* or *"adapt: skipped (user) for C"*)
-   so the maintainer reviewing the PR can see at a glance which
-   variants the showcase visitor will actually see render
-   correctly on a phone. The 2026-05-03 lovesac.com showcase
-   ran without this gate and shipped variant B to mobile
-   visitors with the bracket motif crowding, an overflowing
-   trust band, and a missing hamburger.
+   Refuse to publish variants that fail — the audit is
+   mandatory. Record the audit result per variant in the PR
+   body's submitter checklist (a new line: *"adapt: passed for
+   A, B"*) so the maintainer reviewing the PR can see at a
+   glance that every published variant renders correctly on a
+   phone. An early showcase ran without this gate and shipped a
+   variant to mobile visitors with bracket-motif crowding, an
+   overflowing trust band, and a missing hamburger.
 
 ### Phase 1.5 — Backup originals (mandatory before any transform)
 
@@ -209,12 +207,11 @@ backup step is still run for symmetry but produces a small
 `pre-publish-backup/` folder always exists after a publish; the
 manifest documents whether anything was actually transformed.
 
-This Phase exists because of a real recurrence risk
-(`STARDUST-FEEDBACK.md F-018` — the destructive-edit incident
-during the fiserv-com publish dry-run). The agent attempted to
-clear `[data-placeholder]` elements in place; the project was
-not git-tracked; the originals were lost. Backup-first prevents
-this class of failure.
+This Phase exists because of a real recurrence risk — an early
+destructive-edit incident where the agent attempted to clear
+`[data-placeholder]` elements in place against a project that
+wasn't git-tracked, and the originals were lost. Backup-first
+prevents this class of failure.
 
 ### Phase 2 — Stage the sample
 
@@ -380,7 +377,7 @@ Source: {source.url}  ·  register: {source.register}  ·  extracted {source.ext
 ### Unsourced content {Render this section only when at least one variant has non-empty unsourcedContent[]; omit otherwise.}
 
 The showcase is a visual demonstration; placeholders are
-deliberately visible per the F-002 PLACEHOLDER signature
+deliberately visible per thePLACEHOLDER signature
 contract. Listed here so reviewers know what's illustrative.
 
 {For each variant with placeholders:}
@@ -495,6 +492,5 @@ caught earlier (the slug exists in upstream's
   shape).
 - **Does not capture variants the user hasn't already
   prototyped.** If you want a 3-variant sample, render the
-  variants first (per the multi-variant prototype flow when
-  shipped — `STARDUST-FEEDBACK.md P-1`); the publish flow only
-  ports what's on disk.
+  variants first via the multi-variant prototype flow; the
+  publish flow only ports what's on disk.

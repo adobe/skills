@@ -630,10 +630,9 @@ Write `DESIGN.md` at the project root using impeccable's
 `reference/document.md` as the format spec — Stitch YAML frontmatter
 plus the 6 canonical sections in fixed order.
 
-**Site-level only.** Per `STARDUST-FEEDBACK.md F-015`, `direct`
-authors the design **system**, not page-level deployments. Page-
-specific composition decisions live in
-`stardust/prototypes/<slug>-shape.md` written by `prototype`
+**Site-level only.** `direct` authors the design **system**, not
+page-level deployments. Page-specific composition decisions live
+in `stardust/prototypes/<slug>-shape.md` written by `prototype`
 Phase 1 — see `skills/prototype/reference/page-shape-brief.md`.
 
 The boundary is **abstract role vs literal deployment**:

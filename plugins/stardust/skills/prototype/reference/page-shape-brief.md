@@ -10,7 +10,7 @@ component roles). Page-level decisions — *which* sections appear on
 *this* page, in what order, with what literal content, at what
 section-level dimensions, in what composition — live here, with
 the per-page artifact, not in the site spec
-(`STARDUST-FEEDBACK.md F-015`).
+.
 
 The split avoids three problems that v0.1's mash-up created:
 
@@ -42,8 +42,8 @@ Written by `$stardust prototype` Phase 1 before craft is invoked.
 Re-iterations re-author the brief only when the user's iteration
 phrase moves the *composition* (e.g. "split the hero into two
 columns") rather than the *style* (e.g. "make it bolder"). Style
-iterations live in `<slug>-proposed.html` directly via
-`$impeccable live` or chat-driven impeccable invocations.
+iterations live in `<slug>-proposed.html` directly via chat-driven
+impeccable invocations.
 
 ---
 
@@ -148,7 +148,7 @@ with the placeholder signature, not invented.
 - `section[data-section="stat-row"] .stat:nth-child(4) .number`
   — `RESOURCE CENTERS` count: source unknown; placeholder.
 
-Cross-references the F-002 content sourcing rules. Every
+Cross-references thecontent sourcing rules. Every
 placeholder noted here MUST appear in
 `<slug>-proposed.html`'s `unsourcedContent[]` after render.
 
@@ -176,7 +176,7 @@ than discover them in the proposed HTML.
   and composition note per section.
 - `## Data attributes` — the contract for `<slug>-proposed.html`'s
   structural attributes.
-- `## Unsourced content` — bridge to F-002 placeholder list, even
+- `## Unsourced content` — bridge toplaceholder list, even
   if empty (emit `(none)`).
 
 **Optional** but recommended:
@@ -219,10 +219,11 @@ The agent does NOT use `$impeccable shape` for brief authoring in
 v0.2 — direct authoring matches the pattern stardust already uses
 for PRODUCT.md / DESIGN.md / DESIGN.json / direction.md, and
 running impeccable:shape per-page would re-introduce an interview
-at every page (`STARDUST-FEEDBACK.md F-016`). When per-page hand
+at every page. When per-page hand
 authoring proves insufficient (the agent skips Layout Strategy or
-Key States consistently across multiple sites), revisit F-016 and
-consider routing brief authoring through impeccable:shape.
+Key States consistently across multiple sites), revisit the
+decision and consider routing brief authoring through
+impeccable:shape.
 
 ---
 

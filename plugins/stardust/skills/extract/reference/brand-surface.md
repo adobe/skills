@@ -157,7 +157,7 @@ Aggregation rules:
   Picking up `rgba(255, 255, 255, 0)` as a `surface` role with high
   occurrence count (because most elements default to transparent
   backgrounds in CSS) is a real bug observed on
-  theroadhome.org (`STARDUST-FEEDBACK.md F-003`).
+  theroadhome.org.
 - Cluster colors within `ΔE < 5` (CIE76 in Lab space) and pick the
   most frequent member as the cluster representative.
 - Pure `#000` and `#fff` are kept verbatim — do **not** silently tint

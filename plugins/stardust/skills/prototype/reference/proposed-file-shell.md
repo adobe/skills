@@ -3,8 +3,8 @@
 Stardust's prototype output is a **single file per page**, written at
 `stardust/prototypes/<slug>-proposed.html`. It's the self-contained
 redesign of the page — what the user opens in the browser to review,
-what `$impeccable live` iterates on, what `$stardust migrate` later
-re-derives from `DESIGN.md`.
+what chat-driven impeccable commands iterate on, what `$stardust
+migrate` later re-derives from `DESIGN.md`.
 
 There is no per-page before/after viewer. The proposed file is the
 artifact; comparing to the current page happens by switching browser
@@ -75,7 +75,7 @@ The proposed file must satisfy:
    reconciliation.** OKLCH colors, no glassmorphism reflex, no
    gradient text, no side stripes > 1px, no skipped headings, type
    ratio ≥ 1.25 for brand register. Two refinements
-   (`STARDUST-FEEDBACK.md F-009`):
+:
 
    - **Color format follows DESIGN.md frontmatter.** The proposed
      file's `:root` token block uses the **same color format as
@@ -120,7 +120,7 @@ the **allowed sources** below, or be rendered with the **mandatory
 PLACEHOLDER signature**.
 
 This section exists because the v0.2 prototype produced fabricated
-content (`STARDUST-FEEDBACK.md F-002`): an invented stat row, an
+content: an invented stat row, an
 invented street address, an invented tax ID, and a memoir quote
 attributed to a real person who never said it. For a real nonprofit
 or any production site this is a serious harm — invented content
@@ -215,23 +215,21 @@ before the prototype becomes a production deliverable.
 
 `migrate` reads the proposed file's `unsourcedContent[]` and the
 DOM's `[data-placeholder]` elements. If any are present, migrate
-**refuses to ship** unless `--allow-placeholder` is passed
-explicitly. Without the flag, migrate prints the unsourced list
-and exits with a non-zero status. With the flag, migrate ships the
-placeholders verbatim into the final HTML — the user has explicitly
-acknowledged that the deployable site will contain placeholder
-markers visible to end users. Spec for the migrate guard lives in
-`skills/migrate/SKILL.md` § Failure modes.
+**refuses to ship** — there is no bypass flag. Migrate prints the
+unsourced list and exits with a non-zero status. The user fills
+the missing content in the proposed file (re-prototype or edit
+inline) and re-invokes migrate. Spec for the migrate guard lives
+in `skills/migrate/SKILL.md` § Failure modes.
 
 ## Provenance
 
 ```html
 <!-- stardust:provenance
-  writtenBy:         stardust:prototype  (or stardust:prototype/iterate after live edits)
+  writtenBy:         stardust:prototype  (or stardust:prototype/iterate after refinement)
   writtenAt:         2026-04-25T16:42:00Z
   page:              home
   pageUrl:           https://example.com/
-  iteratedVia:       impeccable:live (sessionId: abc123)
+  iteratedVia:       impeccable:bolder, impeccable:typeset   # commands run since initial render
   againstDirection:  stardust/direction.md (Active 2026-04-25T15:42:00Z)
   readArtifacts:
     - stardust/current/pages/home.json
@@ -245,9 +243,10 @@ markers visible to end users. Spec for the migrate guard lives in
 -->
 ```
 
-`iteratedVia` is added after the first `$impeccable live` accept;
-absent on the initial render. `unsourcedContent[]` lists placeholder
-elements per § Content sourcing hierarchy.
+`iteratedVia` appends each impeccable command run against the file
+after the initial render; absent on the initial render.
+`unsourcedContent[]` lists placeholder elements per § Content
+sourcing hierarchy.
 
 ---
 
@@ -257,7 +256,7 @@ When `direction.md` changes, the prototype's provenance comment
 lists an `againstDirection` that is no longer the active direction.
 `state.json` flags the page `stale: true`. Re-runs of
 `$stardust prototype <slug>` skip the page by default; pass
-`--refresh-stale` to re-prototype.
+`--all` to re-prototype every stale page.
 
 The user can still open and review a stale prototype — it is a
 valid artifact representing the prior direction. They opt into

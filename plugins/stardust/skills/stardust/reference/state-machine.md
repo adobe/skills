@@ -117,9 +117,9 @@ When `$stardust direct` resolves a new direction that differs from
 the prior one, stale-flagging is **content-aware**, not blanket:
 each page in `prototyped`, `approved`, or `migrated` state is
 flagged stale only if the new direction's changes actually affect
-that page's deployment. Per `STARDUST-FEEDBACK.md F-015` corollary,
-the v0.1 blanket rule (every prior-state page goes stale on every
-re-direct) over-invalidated work and forced the user to re-render
+that page's deployment. The earlier blanket rule (every prior-state
+page goes stale on every re-direct) over-invalidated work and
+forced the user to re-render
 pages whose composition was unchanged by the direction edit.
 
 The rule:
@@ -163,9 +163,9 @@ The rule:
    - If no consumed item appears, **do not** flag the page.
      The deployment is unaffected by the direction edit.
 3. Pages that lack a `<slug>-shape.md` (legacy prototypes from
-   pre-F-015 runs) fall back to the v0.1 blanket rule for safety —
-   without a brief, the agent cannot determine which tokens/
-   components/rules the deployment consumes.
+   before the site/page split landed) fall back to the blanket
+   rule for safety — without a brief, the agent cannot determine
+   which tokens/components/rules the deployment consumes.
 
 The state itself does not change — the artifact on disk is still
 valid; stale just means "may be out of step with the latest
@@ -173,11 +173,11 @@ direction." The user opts in to refresh:
 
 - `$stardust prototype` with no args operates only on **non-stale**
   pages, plus shows a count of stale ones with a hint to use
-  `$stardust prototype --refresh-stale`. The hint includes the
-  per-page `staleReason` so the user can decide which pages
-  actually need work.
-- `$stardust prototype --refresh-stale` re-prototypes every stale
-  page.
+  `$stardust prototype --all`. The hint includes the per-page
+  `staleReason` so the user can decide which pages actually need
+  work.
+- `$stardust prototype --all` re-prototypes every directed page
+  including stale ones.
 - `$stardust prototype <slug>` always operates on the named page,
   stale or not.
 - Same flags for `migrate`.
@@ -209,7 +209,7 @@ Pages
     extracted  (15 more)
 
 Stale: 2 pages (home, about) — direction changed since they were migrated.
-       Re-run with `$stardust migrate --refresh-stale` to update.
+       Re-run with `$stardust migrate --all` to update.
 
 Recommended next: $stardust prototype features
                   (5 directed pages waiting; closest to migration)

@@ -50,6 +50,7 @@ The `stardust:prototype` skill is invoked. It:
 6. Marks the page `prototyped` in `state.json` (NOT `approved` —
    approval is a separate explicit step, signalled in chat by
    "approve home" or "approve").
-7. Invokes `$impeccable live` against `home-proposed.html` for
-   iteration unless `--no-iterate` was passed.
-8. Reports the proposed-file path and the next-step hint.
+7. Reports the proposed-file path and the next-step hint.
+   Iteration happens through chat-driven impeccable commands
+   ("make the hero bolder") that run against the proposed file
+   on disk; the agent does not auto-launch any iteration loop.

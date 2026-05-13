@@ -23,8 +23,6 @@ sidecars.
 - `<slug>` — optional positional. Migrate just this page. Without
   it, migrate every page whose status is `directed`,
   `prototyped`, or `approved` (and not `stale`).
-- `--refresh-stale` — re-migrate every page flagged `stale`.
-  Default skips stale pages and surfaces the count.
 - `--all` — migrate every page including stale ones.
 - `--force` — re-migrate every page even when the idempotent
   skip would skip them.
@@ -33,24 +31,16 @@ sidecars.
   Path A′ or Path B per
   `reference/template-and-module-rendering.md`); this flag flips
   approval-gating on.
-- `--allow-placeholder` — allow migration of pages whose
-  proposed/archetype files contain `[data-placeholder]`
-  elements (per
-  `skills/prototype/reference/proposed-file-shell.md` § Content
-  sourcing hierarchy). Default refuses; use this flag only when
-  shipping placeholders is intentional (internal staging review).
 - `--strict-canon` — refuse approvals that conflict with canon.
   Default logs the deviation and continues. Useful for projects
   where canon discipline matters more than per-template
   flexibility.
-- `--skip-adapt-audit` — skip the mobile-adapt audit at
-  per-page render time. Default refuses pages whose proposed /
-  approved file has no `<meta viewport>`, zero `@media (max-width:
-  ...)` rules, or no mobile-targeted breakpoint at ≤ 640px (per
-  `skills/prototype/SKILL.md` § Mobile-adapt audit). Use this
-  flag for an explicit desktop-only demo deploy; the failure
-  is real and the override is recorded in the per-page
-  `_meta.json#audit.adapt`.
+
+The mobile-adapt audit, content-sourcing scan, and placeholder
+refusal are all mandatory gates — there is no `--skip-*` or
+`--allow-*` flag to bypass them. If a gate refuses a page, the
+remediation is to fix the proposed file (re-prototype, edit
+inline, or run an impeccable command) and re-invoke migrate.
 
 ## Setup
 
@@ -69,8 +59,8 @@ sidecars.
    direction.
 6. Read `state.json.pages[]` and partition into:
    - **inScope**: status `directed`, `prototyped`, or
-     `approved`, `stale: false` (or `--all` /
-     `--refresh-stale` / explicit `<slug>`).
+     `approved`, `stale: false` (or `--all` / explicit
+     `<slug>`).
    - **skipped**: everything else, with reason captured.
 7. **Validate provenance on every in-scope page.** Call
    `validateProvenance(page)` per
@@ -93,7 +83,9 @@ sidecars.
    - At least one `@media (max-width: ...)` rule.
    - At least one mobile-targeted breakpoint at ≤ 640px.
 
-   Refuse pages that fail unless `--skip-adapt-audit` was passed.
+   Refuse pages that fail — the audit is mandatory; there is no
+   skip flag. The user fixes the proposed file (re-prototype or
+   chat-driven impeccable command) and re-invokes migrate.
    Record the audit result per page in the migrate report and
    in the post-render `_meta.json#audit.adapt` sidecar. Path B
    (unique-renders) skips the audit because adapt hasn't run
@@ -141,9 +133,10 @@ For each page in scope, follow
   `designMd`, `designJson`, `sourceCurrent`, `sourceProposed`,
   `canonShas`, `archetypeSource`).
 - **Placeholder gate** (Path A and Path A′ only — pages with a
-  proposed file or archetype). Refuse without
-  `--allow-placeholder` when `[data-placeholder]` elements or
-  non-empty `_provenance.unsourcedContent[]` are present.
+  proposed file or archetype). Refuse when `[data-placeholder]`
+  elements or non-empty `_provenance.unsourcedContent[]` are
+  present — the user fills the missing content in the proposed
+  file before re-invoking migrate. No bypass flag.
 - **Render branch selection** (LLM judgment per T&M §
   Render path selection): A / A′ / B.
 - **Render** per the chosen branch's procedure in T&M.
@@ -285,8 +278,8 @@ some pages have been migrated:
   Stale-flagging is content-aware in all three trigger cases.
 - `$stardust migrate` (no flags) skips stale pages and reports
   the count.
-- `$stardust migrate --refresh-stale` re-migrates each stale
-  page, clearing the flag on success.
+- `$stardust migrate --all` re-migrates each stale page,
+  clearing the flag on success.
 - `$stardust migrate <slug>` always operates on the named page,
   stale or not.
 
@@ -312,12 +305,12 @@ work, they just mark it as out-of-step.
 - **Output path collision.** Two slugs mapping to the same
   output path. Refuse to write the second one and surface to
   the user — manual slug rename needed.
-- **Placeholder content in proposed/archetype file.** Without
-  `--allow-placeholder`, refuse to ship a page whose source
-  contains `[data-placeholder]` elements. Surface the unsourced
-  list and recommend either sourcing real content
-  (re-prototype) or re-running with `--allow-placeholder` for
-  staging review.
+- **Placeholder content in proposed/archetype file.** Refuse
+  to ship a page whose source contains `[data-placeholder]`
+  elements. Surface the unsourced list and recommend sourcing
+  real content (re-prototype, or edit the proposed file
+  directly). There is no bypass flag — shipping placeholders to
+  a public site is the failure mode this gate exists to prevent.
 - **Color reservation violated.** Refuse the page; surface to
   user with the offending color and the reserved-for context.
 - **Brand-faithful inversion conflict.** A hard rule declared
@@ -337,8 +330,8 @@ work, they just mark it as out-of-step.
   output is platform-agnostic static HTML; downstream conversion
   is a separate plugin's job.
 - Re-fetch the live site. Offline after extract Phase 1.
-- Run `$impeccable live` or any iteration loop. Iteration
-  belongs to `prototype`; migrate consumes the result.
+- Run any iteration loop. Iteration belongs to `prototype`;
+  migrate consumes the result.
 
 ## References
 

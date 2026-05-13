@@ -8,40 +8,16 @@ moves.
 Loaded whenever a skill is about to make a visual decision without a strong
 external reference.
 
-**Status:** v1.0 (stardust v2) · ported from v1 toolkit v0.5.1, adapted
-for the impeccable-based pipeline. The anti-toolbox list below was compiled
-by the assistant as a self-audit of its own recurring moves and expanded
-after successive test runs surfaced additional defaults. It is deliberately
-imperfect. Designers should add corrections in §6 over time; that section
-is authoritative when it conflicts with §1.
+**Status:** v1.0 (stardust v2). The anti-toolbox list below was
+compiled as a self-audit of recurring assistant moves and expanded
+across successive test runs. It is deliberately imperfect.
+Designers should add corrections in §6 over time; that section is
+authoritative when it conflicts with §1.
 
-**v1 → v2 adaptation (paths and consumers only — rules unchanged):**
-- Consumer skills: v1's `brand` becomes v2's `direct`; `prototype` is unchanged.
-- Storage location: v1 wrote into `brand-profile.json._divergence`. v2
-  writes into `DESIGN.json.extensions.divergence` (impeccable's sidecar
-  reserves the `extensions` block for tool-specific data).
-- §7 Optional House Standards now land in `DESIGN.json.narrative.rules[]`
-  (impeccable's canonical voice-rules slot), not in
-  `brand-profile.json.voice.rules`.
-- Wherever the v1 text below says `brand-profile.json` or "the brand
-  skill", read it as the v2 equivalent above.
-
-**Changes from v0.5 → v0.5.1:**
-- **Fixed false-positive in the cream-family hex test.** The v0.5 rule used `S < 15` as a proxy for "warm or neutral", which falsely flagged pure neutral grays (`#F2F2F2`, `#CCCCCC`) as cream. Replaced with raw-channel warm-bias check (`R − B ≥ 5`). Pure grays are now correctly routed to pale-gray or stark-white instead. The rule still catches all legitimate cream rebrands (vellum, kami, oatmeal, bone, etc.) because those ARE warm at low saturation.
-
-**Changes from v0.4 → v0.5:**
-- **Retired the chassis system** (added v0.3, refined v0.4). Chassis picking produced structural divergence at the surface but did not address the deeper convergence on palette/ground. The system's surface area was larger than its payoff.
-- **Retired § 2.5 "Ground color by seed" table.** It was a carveout the LLM used to rationalise cream on most runs.
-- **Added a 4th seed dimension: ground-family.** Deterministic-random across 6 options (cream · stark-white · pale-gray · saturated · dark · monochrome-tint). Cream lands on ~1/6 of no-reference runs instead of the observed ~3/3.
-- **Tightened § 1 cream-family entry with rebrand ban and deterministic hex test.** Vellum, kami, bone, oatmeal, eggshell, ivory, parchment, washi, biscuit, tan, wheat, fawn, sand, linen, canvas, manila, calfskin — all rebrands are called out and banned under the same rule. Deterministic HSL + warm-bias check catches cream regardless of its brand-native name.
-
-**Changes from v0.1 → v0.2 (preserved):**
-- Retired the "3 free hits" budget. Every hit now needs a brand-specific justification (§ 1 Enforcement).
-- Added self-audit rationalisation check (§ 1 Enforcement).
-- Added Palette-family moves subsection (§ 1).
-- Added Generic-2026-SaaS silhouette, Stat-callout bar, Collage-maximalism kit, and Triplet-cadence copy to § 1.
-- Moved ban-marketing-adjectives, no-exclamation-points, and em-dash rules out of § 1 into § 7 Optional House Standards.
-- Added § 2.5 Dimension Weighting — decade → type, craft → motif, register → voice — with within-run variant dominance.
+Storage location: `DESIGN.json.extensions.divergence` (impeccable's
+sidecar reserves the `extensions` block for tool-specific data).
+§7 Optional House Standards land in `DESIGN.json.narrative.rules[]`
+(impeccable's canonical voice-rules slot).
 
 ---
 
@@ -52,12 +28,10 @@ These are recurring moves the assistant tends to reach for when asked to be
 subject matter. Left unconstrained, they appear across unrelated brands and
 produce visual convergence.
 
-**Enforcement model (v0.2):** every move from this list that appears in a
-profile requires a per-hit brand-specific justification. No free quota. See
-the *Enforcement · per-hit justification* block at the bottom of this
-section. In v0.1 there was a budget of 3 "free" hits; that budget was
-retired after the 4-run test showed the LLM comfortably filled it with
-defaults.
+**Enforcement model:** every move from this list that appears in a
+profile requires a per-hit brand-specific justification. No free
+quota. See the *Enforcement · per-hit justification* block at the
+bottom of this section.
 
 ### Typography moves
 - Stencil display type (Big Shoulders Stencil Display, Oswald Stencil, similar)
@@ -86,7 +60,7 @@ defaults.
 - Triplet-cadence pull-quote or section-headline copy — three short clauses of comparable length separated by period or em-dash (e.g. *"Same press. Same shop. Same eight years."* · *"Dated, classified, cross-linked."* · *"Saturday. Bar Beach. We dance."*). Detection: a display-level sentence that breaks into exactly 3 clauses with no subordinate structure. At most one per page before it becomes a tell.
 - **Editorial-register vocabulary applied to non-editorial brands** — *"atelier"*, *"the studio"*, *"the journal"*, *"mise-en-place"*, *"dispatches"*, *"catalogue"*, *"the field guide"*, *"the manifesto"*, *"the broadcast"*, *"the bulletin"* applied to product-commerce, direct-services, civic, B2B, or healthcare brands whose register is not editorial. The assistant reaches for editorial vocabulary regardless of the brand's actual register; the result reads as cosplay, not as voice. Detection: any of the listed terms appears in `voice.do` / section eyebrows / nav labels / page sub-titles when `register != editorial` and `register != memoir-adjacent` per the resolved direction.
 
-(The "ban marketing adjectives", "no exclamation points except …", and "em-dashes welcome / semicolons earned" rules were in v0.1. They are sensible universal voice rules and have moved to § 7 Optional House Standards. They no longer count against the budget.)
+(The "ban marketing adjectives", "no exclamation points except …", and "em-dashes welcome / semicolons earned" rules are sensible universal voice rules and live in § 7 Optional House Standards rather than § 1. They do not count toward the divergence audit.)
 
 ### Structural moves
 - Sticky top navigation
@@ -150,7 +124,7 @@ section rather than scanning the prototype HTML.
   input. Placeholders are mandatory when real data is absent — use
   an explicit `data-placeholder="true"` attribute and a visible
   signature treatment (dashed outline, "PLACEHOLDER" eyebrow label,
-  or the F-002 visual signature when defined) so reviewers see the
+  or thevisual signature when defined) so reviewers see the
   gap rather than a fabricated value. *"100 YEARS · 18,400 PEOPLE
   HOUSED · 87% STABLY HOUSED"* invented for a stat-row when the
   captured site doesn't carry those numbers is the canonical
@@ -168,14 +142,14 @@ Recurring *palette families* — not individual hex values, but combinations of 
 
 - **"Archival editorial palette"** — cream/paper ground + warm-family saturated accent (rust / brick / pomodoro / burnt-orange / oxblood) + muted earth-tone secondary (olive / mustard / ochre / fennel). The assistant's "serious-but-warm editorial" default; recurs across unrelated brands even when nothing in the brief calls for it.
 
-- **Cream-family page ground — INCLUDING ALL REBRANDS.** The page body background is in the cream / paper / warm-neutral family, regardless of what the brand-native role name calls it. This is the single most-abused default in the v0.2 test runs — cream was rationalised as `vellum`, `kami`, `parchment`, `washi`, `bone`, `oatmeal`, `eggshell`, `ivory`, `biscuit`, `tan`, `wheat`, `fawn`, `sand`, `linen`, `canvas`, `manila`, `calfskin`, `morocco-cream`. Renaming cream does not change what it is.
+- **Cream-family page ground — INCLUDING ALL REBRANDS.** The page body background is in the cream / paper / warm-neutral family, regardless of what the brand-native role name calls it. This is the single most-abused default — cream was rationalised across test runs as `vellum`, `kami`, `parchment`, `washi`, `bone`, `oatmeal`, `eggshell`, `ivory`, `biscuit`, `tan`, `wheat`, `fawn`, `sand`, `linen`, `canvas`, `manila`, `calfskin`, `morocco-cream`. Renaming cream does not change what it is.
 
-  **Deterministic hex test (v0.5.1).** A page-body ground is a cream-family hit when ALL of the following are true:
+  **Deterministic hex test.** A page-body ground is a cream-family hit when ALL of the following are true:
   - Hex lightness (HSL `L`) is between **80 and 97** (exclusive of pure white)
   - **Warm bias**: in raw RGB channels, `R − B ≥ 5` — the color is measurably warmer on the red side than the blue side
   - Hex saturation (HSL `S`) is below **40%**
 
-  The v0.5 version of this rule used `S < 15` as a proxy for "warm or neutral", which falsely flagged pure neutral grays (e.g. `#F2F2F2`, `#CCCCCC`) as cream. The corrected raw-channel warm-bias check (`R − B ≥ 5`) is a stricter discriminator that catches subtle warms (vellum, kami, oatmeal, bone) while keeping pure grays out.
+  The raw-channel warm-bias check (`R − B ≥ 5`) is a strict discriminator that catches subtle warms (vellum, kami, oatmeal, bone) while keeping pure grays out — pure grays are routed to pale-gray or stark-white instead.
 
   Examples that hit: `#F3EAD2` (R−B=33), `#F0E8D5` (R−B=27), `#F5EED8` (R−B=29), `#EDE0B9` ("kami", R−B=52), `#F0E5C8` (R−B=40), `#FBF1D9` (R−B=34), `#EADDB7` (R−B=51), `#F8F1DE` (R−B=26).
   Examples that pass (are NOT cream): `#FFFFFF` (pure white — L too high), `#F5F5F5` (pure neutral gray — R−B=0), `#CCCCCC` (pure gray — R−B=0), `#D4E2E8` (cool gray — R<B), `#E8ECEE` (cool near-white — R<B), `#1E1A17` (dark — L too low), `#C23B33` (saturated red — S too high).
@@ -188,7 +162,7 @@ Recurring *palette families* — not individual hex values, but combinations of 
 
 - **"Dark mode editorial"** — ink/black ground + cream/bone text + one saturated accent. The inverted version of the brutalist pomodoro.
 
-### Enforcement · per-hit justification (v0.2)
+### Enforcement · per-hit justification
 
 Before emitting `brand-profile.json`, the skill scans the profile against the
 lists above and populates:
@@ -274,7 +248,7 @@ Travel agency brochure · Sports scorecard · Hospital discharge paperwork
 
 ### Ground family · the 4th dimension
 
-Added in v0.5 after three test runs all landed on cream grounds (e2e-8 justified by seed, e2e-9 rebranded as "kami" to slip an explicit ban, e2e-10 permitted by the retired §2.5 cream carveout). Cream was the single most-abused default; this dimension caps it mathematically at **1 in 6 runs** by deterministic random.
+Cream is the assistant's most-abused default — test runs converged on cream grounds across unrelated brands (rebranded as "kami" or rationalised by chassis carveouts). This dimension caps cream mathematically at **1 in 6 runs** by deterministic random.
 
 Six options:
 
@@ -347,7 +321,7 @@ This is a structural tool, not a rigid rule. A variant may combine two dimension
 
 ### Note on the retired "Ground color by seed" table
 
-v0.3 shipped a table that mapped decade+craft+register combinations to appropriate grounds, with cream permitted for many combinations. In the v0.2 test run, that table became a carveout the LLM used to justify cream on 2 of 3 brands. v0.5 replaced that table with the **ground-family seed dimension** in § 2. The ground is now picked *before* the LLM reasons about the brand — removing the opportunity for post-hoc rationalisation.
+An earlier toolkit version shipped a table that mapped decade+craft+register combinations to appropriate grounds, with cream permitted for many combinations. In testing, that table became a carveout the LLM used to justify cream on most brands. It was replaced with the **ground-family seed dimension** in § 2 so the ground is picked *before* the LLM reasons about the brand — removing the opportunity for post-hoc rationalisation.
 
 If a designer is confident cream is right for a specific brand (print-publishing category, paper-goods product), manually override `_divergence.seed.ground = "cream"`.
 
@@ -473,13 +447,13 @@ grows as designers notice defaults the assistant didn't self-identify._
 
 Rules that are defensible for many brands but should not be counted against
 the divergence budget. Brands that opt in stamp them in
-`brand-profile.json → voice.rules`. They do NOT appear in
-`_divergence.anti_toolbox_hits`.
+`DESIGN.json.narrative.rules`. They do NOT appear in
+`anti_toolbox_hits[]`.
 
-These rules moved out of § 1 in v0.2 because they're not defaults — they're
-sensible universal voice conventions. The LLM reaches for them across
-brands, but that's because they're correct for most editorial/considered
-brands, not because they're slop.
+These rules are sensible universal voice conventions — not slop
+defaults. The LLM reaches for them across brands because they're
+correct for most editorial/considered brands, so they don't
+count against the divergence audit.
 
 ### 7.1 · Banned marketing adjectives
 

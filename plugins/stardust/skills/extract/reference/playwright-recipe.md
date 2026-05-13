@@ -325,8 +325,7 @@ For each page, capture:
     image used on multiple inner pages) surface as system motifs
     rather than per-page noise. Without this capture, hero photos
     applied via `background-image` (parallax sections, full-bleed
-    sections) are silently invisible to extract — `STARDUST-FEEDBACK.md
-    F-018 / X-1`.
+    sections) are silently invisible to extract.
 
     **Pseudo-element walk.** `document.querySelectorAll('*')` does
     not reach `::before` / `::after` generated content, so a hero

@@ -145,7 +145,6 @@ try {
   }
   console.error('\nSuggested fix: apply the stock hamburger pattern');
   console.error('  skills/prototype/reference/mobile-nav-collapse.md');
-  console.error('Or pass --no-hamburger to skip auto-apply.');
   process.exit(1);
 } finally {
   await browser.close();

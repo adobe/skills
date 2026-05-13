@@ -4,8 +4,8 @@ The stock pattern stardust applies during `$impeccable adapt` (Phase 5.5)
 when the header's horizontal nav cannot survive a 360px viewport. The
 adapt step's audit refuses files that overflow, shrink nav type below
 11px, or compress nav gap below 10px; this doc is the canonical
-remediation the agent reaches for unless the user opted out with
-`--no-hamburger`.
+remediation the agent reaches for. Alternative patterns are
+available on request (§ Alternative patterns).
 
 ## Why this exists
 
@@ -39,12 +39,15 @@ runs the Mobile-adapt audit (see `skills/prototype/SKILL.md`
 - A flex/grid `<nav>` inside `<header>` has computed `gap` (or
   `column-gap`) below 10px (`audit/responsive: nav-readability-floor`).
 
-On any refusal, and when the user did not pass `--no-hamburger`,
-the agent injects the stock pattern below into the file, marks the
-header with `data-nav-collapse="hamburger"`, and re-runs the audit.
-If the audit then passes, the run continues. If it still fails
-(e.g. the wordmark itself is wider than 360px), the agent surfaces
-the residual finding and waits for direction.
+On any refusal, the agent injects the stock pattern below into
+the file, marks the header with `data-nav-collapse="hamburger"`,
+and re-runs the audit. If the audit then passes, the run
+continues. If it still fails (e.g. the wordmark itself is wider
+than 360px), the agent surfaces the residual finding and waits
+for direction. If the user wants a different collapse pattern,
+they ask in chat and the agent reaches for an alternative
+(§ Alternative patterns) — there is no flag to bypass the
+auto-apply.
 
 ## The stock pattern
 
@@ -362,35 +365,21 @@ The stock pattern satisfies:
   static contract. A future variant can add a trap if needed for
   modal-style behavior.
 
-## Opt-out: `--no-hamburger`
+## When to reach for an alternative
 
-The user can opt out of the stock collapse:
+If the brand calls for a non-hamburger pattern (priority+overflow,
+bottom nav, bespoke drawer), the user says so in chat and the
+agent applies that instead. See § Alternative patterns below for
+the vocabulary. The agent records the choice in
+`_provenance.adapt[]` as `navCollapse: <pattern> (chat-requested)`
+so downstream consumers see the deliberate substitution.
 
-```
-$stardust prototype <slug> --no-hamburger
-```
-
-Behavior with the flag:
-
-- Phase 5.5's adapt pass runs normally.
-- The Mobile-adapt audit still runs. If it refuses (overflow / sub-11px
-  font / sub-10px gap), the agent surfaces the refusal but does
-  **not** auto-apply the stock pattern. The page stays approved (the
-  approval already landed) but migrate and `--publish-sample` will
-  refuse to consume the file until the audit clears — the user has
-  to remediate via their own pattern (see § Alternatives) and re-run
-  prototype.
-- The `_provenance.adapt[]` entry records
-  `navCollapse: skipped (user, --no-hamburger)` so downstream
-  consumers see the override.
-
-Use the flag when:
-
-- The site is desktop-only by design (presales demo, internal
-  dashboard, etc. — `--skip-adapt-audit` is the heavier hammer for
-  this case, but `--no-hamburger` keeps the rest of the audit).
-- The brand carries a non-hamburger pattern (priority+overflow, bottom
-  nav, bespoke drawer) that the user wants to author themselves.
+There is no flag to bypass the auto-apply. If a project is
+desktop-only by design and the audit refusal is acceptable, the
+user edits `_provenance.adapt[]` to record
+`adapt: deliberately desktop-only (<reason>)` — the explicit
+acknowledgement satisfies the downstream gates without lowering
+the bar by default.
 
 ## Alternative patterns (not stocked)
 

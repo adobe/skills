@@ -9,69 +9,23 @@ license: Apache-2.0
 For each `directed` page, render a **proposed redesign** as a
 self-contained static HTML file at
 `stardust/prototypes/<slug>-proposed.html`. Open the file in the
-browser; iterate via `$impeccable live`. Mark `approved` once the
-user signs off in the conversation.
+browser; iterate via chat-driven impeccable commands ("make the
+hero bolder", "tighten the cup-note grid"). Mark `approved` once
+the user signs off in the conversation.
 
 `prototype` is not a renderer of its own design — it composes the
 target spec written by `direct` (`PRODUCT.md`, `DESIGN.md`,
 `DESIGN.json`, `stardust/direction.md`) onto the page content captured
 by `extract` (`stardust/current/pages/<slug>.json`). Visual creativity
-is delegated to `$impeccable craft` and `$impeccable live`.
+is delegated to `$impeccable craft` and the iteration commands
+(`bolder`, `quieter`, `distill`, `polish`, `colorize`, `typeset`,
+`layout`, `adapt`, `animate`, `delight`, `overdrive`, `impeccable`).
 
 ## Inputs
 
 - `<slug>` — optional positional. Prototype just this page. Without
   it, prototype every `directed` page that is not `stale`.
-- `--refresh-stale` — re-prototype every page flagged `stale` by a
-  direction change. Default behaviour without this flag is to skip
-  stale pages and surface the count.
 - `--all` — prototype every `directed` page including stale ones.
-- `--no-iterate` — write the initial proposed render and open it in
-  the browser, but **do not** invoke `$impeccable live`. The user
-  iterates manually later.
-- `--no-critique` — skip the automatic post-render critique +
-  audit pass (Phase 2.5). Default behaviour runs both
-  `impeccable critique` and `impeccable audit` and gates
-  `prototyped` status on P0/P1 findings from either; this flag
-  opts out of the gate for fast iteration cycles where the user
-  is running critique / audit manually between iterations. The
-  flag's name predates the audit addition; the scope now covers
-  both validators.
-- `--skip-adapt-audit` — skip Phase 5.5 (Adapt for mobile) on
-  approval. Default behaviour runs `$impeccable adapt` against
-  the approved variant and gates downstream `migrate` and
-  `--publish-sample` on the mobile-adapt audit (per § Mobile-adapt
-  audit below and `reference/proposed-file-shell.md`). Use this
-  flag for explicit desktop-only demo runs; the proposed file's
-  `_provenance.adapt[]` records `adapt: skipped (user)` so
-  downstream consumers see the override.
-- `--adapt-variant <id>` — extend the adapt pass to a non-primary
-  variant. Default Phase 5.5 only adapts the variant the user
-  approves (or the variant flagged `isPrimary: true`); pass this
-  flag to adapt B / C / etc. on demand.
-- `--no-hamburger` — opt out of the stock mobile-nav collapse
-  pattern. Phase 5.5's adapt audit still runs; if it refuses on
-  `horizontal-overflow-at-360px` or `nav-readability-floor`, the
-  agent surfaces the refusal but does **not** auto-apply the stock
-  hamburger. Migrate and `--publish-sample` still gate on the audit,
-  so the user is on the hook to remediate with their own pattern
-  (priority+overflow, bottom nav, bespoke drawer — see
-  `reference/mobile-nav-collapse.md` § Alternative patterns). The
-  flag records `navCollapse: skipped (user, --no-hamburger)` in
-  `_provenance.adapt[]`.
-- `--publish-sample <slug>` — submit the named slug to the
-  stardust showcase. Triggers the publish-sample sub-flow
-  documented in `reference/publish-sample.md`: eligibility checks,
-  file staging, PR creation against the upstream stardust repo.
-  Requires `gh` installed and authenticated. The showcase is a
-  visual demonstration, not a deployable site — placeholder
-  content is allowed and recorded in the PR body's § Unsourced
-  content section (the F-002 PLACEHOLDER signature is the honesty
-  mechanism). Design-quality gates stay strict: refuses on
-  unjustified anti-toolbox hits, `:root` token contract failure,
-  data-attributes contract failure, or impeccable hard-rule
-  violations. P0/P1 critique findings warn but don't refuse.
-  The showcase publishes via GitHub Pages on merge.
 - `--prep` — optional. Run in **migrate-prep mode**: fill page-type
   gaps (prototype one representative archetype per type) and, on
   approval, write canon back to `stardust/canon/` and
@@ -81,6 +35,31 @@ is delegated to `$impeccable craft` and `$impeccable live`.
 - `--canon-from <slug>` — optional. Override the default canon-
   author (which is the first approved prototype, typically `home`).
   Used when a different page should establish the design canon.
+- `--publish-sample <slug>` — submit the named slug to the
+  stardust showcase. Triggers the publish-sample sub-flow
+  documented in `reference/publish-sample.md`: eligibility checks,
+  file staging, PR creation against the upstream stardust repo.
+  Requires `gh` installed and authenticated. The showcase is a
+  visual demonstration, not a deployable site — placeholder
+  content is allowed and recorded in the PR body's § Unsourced
+  content section. Design-quality gates stay strict: refuses on
+  unjustified anti-toolbox hits, `:root` token contract failure,
+  data-attributes contract failure, or impeccable hard-rule
+  violations. P0/P1 critique findings warn but don't refuse.
+  The showcase publishes via GitHub Pages on merge.
+
+### No opt-outs
+
+`prototype` does not carry `--no-*` or `--skip-*` flags. The
+quality gates (critique, audit, mobile-adapt audit, anti-toolbox
+audit, content-sourcing scan) are the product — they're not
+optional. If a gate refuses a file, the remediation is to fix
+the file or override the gate by editing the file directly, not
+to pass a flag that silently lowers the bar. Manual chat
+overrides ("ship as-is", "accept the P1 findings") are still
+available; the agent records the override verbatim in
+`_provenance` so downstream consumers see the explicit
+acknowledgement.
 
 ## Setup
 
@@ -110,10 +89,9 @@ is delegated to `$impeccable craft` and `$impeccable live`.
 ## Delegation mechanic
 
 `prototype` does **not** author `<slug>-proposed.html` directly. The
-heavy creative lift is delegated to `$impeccable craft`, the
-in-browser iteration to `$impeccable live`, and (when needed) the
-structural plan to `$impeccable shape`. Spelling out the mechanic
-matters because the carve-out documented in
+heavy creative lift is delegated to `$impeccable craft`, and (when
+needed) the structural plan to `$impeccable shape`. Spelling out the
+mechanic matters because the carve-out documented in
 `skills/stardust/reference/artifact-map.md` (where stardust authors
 `PRODUCT.md`, `DESIGN.md`, `DESIGN.json`, `current/PRODUCT.md`,
 `current/DESIGN.md` directly, treating impeccable's references as
@@ -122,15 +100,15 @@ five files only**. It does NOT extend to:
 
 - `stardust/prototypes/<slug>-proposed.html` — must be authored by
   `$impeccable craft`, not by stardust direct authoring.
-- Iteration on the proposed file — must be driven through
-  `$impeccable live` (or a chat-driven invocation of an explicit
-  impeccable command per the iteration paths section).
+- Iteration on the proposed file — must be driven through a
+  chat-driven invocation of an explicit impeccable command (per
+  the iteration paths section).
 - Structural planning when a page is complex enough to need it —
   `$impeccable shape`.
 
-The proximate cause of content fabrication
-(`STARDUST-FEEDBACK.md F-002`) was the agent over-generalizing the
-direct-authoring carve-out to the proposed HTML. Don't.
+The proximate cause of past content fabrication was the agent
+over-generalizing the direct-authoring carve-out to the proposed
+HTML. Don't.
 
 ### Invoking impeccable
 
@@ -147,28 +125,18 @@ Skill {
 ```
 
 Sub-commands referenced from this skill are all routed through the
-same Skill: `craft`, `shape`, `live`, plus the iteration commands
+same Skill: `craft`, `shape`, plus the iteration commands
 (`bolder`, `quieter`, `distill`, `polish`, `colorize`, `typeset`,
 `layout`, `adapt`, `animate`, `delight`, `overdrive`, `impeccable`).
 
 When impeccable is **not** available (CLI-only environments,
-plugin uninstalled, sandbox without skill access):
-
-1. Stop and tell the user impeccable is required for prototype
-   rendering. Recommend installing the impeccable plugin.
-2. Do NOT fall back to direct authoring of `<slug>-proposed.html`.
-   The validation contract craft enforces (anti-toolbox audit,
-   divergence rules, type ratios, content sourcing hierarchy) is
-   not reproducible by direct authoring; falling back silently
-   ships unverified output.
-3. The only allowed exception is `--no-impeccable` passed
-   explicitly. In that mode, stardust authors a placeholder
-   proposed file with `renderedVia: stardust-direct (impeccable
-   unavailable, --no-impeccable)` in provenance and **every
-   non-trivial section** wrapped in the placeholder visual signature
-   per `reference/proposed-file-shell.md` § Content sourcing
-   hierarchy. The output is a sketch, not a deliverable; migrate
-   refuses to ship it without `--allow-placeholder`.
+plugin uninstalled, sandbox without skill access), stop and tell
+the user impeccable is required for prototype rendering. Recommend
+installing the impeccable plugin. Do not fall back to direct
+authoring of `<slug>-proposed.html` — the validation contract
+craft enforces (anti-toolbox audit, divergence rules, type ratios,
+content sourcing hierarchy) is not reproducible by direct
+authoring, and falling back silently ships unverified output.
 
 Stardust's job inside Phase 2 is therefore:
 
@@ -209,7 +177,7 @@ For each page in scope:
    `reference/page-shape-brief.md`. The brief carries the section
    list, layout strategy, key states, interaction model, structural
    data attributes, and the unsourced-content list (bridge to the
-   F-002 placeholder contract). Author directly — no interview, no
+placeholder contract). Author directly — no interview, no
    impeccable invocation; this is stardust's reasoning about how
    the system deploys to this page given this content.
 6. Show the brief to the user and wait for confirmation before
@@ -221,7 +189,7 @@ For each page in scope:
 `$impeccable shape` is **not** invoked in v0.2 (see
 `reference/page-shape-brief.md` § Authoring procedure for the
 rationale; revisit if per-page hand-authoring proves insufficient
-across sites — `STARDUST-FEEDBACK.md F-016`).
+across sites).
 
 The brief decouples site-level concerns (in DESIGN.md) from
 page-level deployment (per-page brief). A direction change
@@ -389,22 +357,18 @@ Procedure:
    the render has multiple issues worth a closer look). Default
    off to keep the loop fast.
 
-6. **`--no-critique` opt-out.** When the user passes
-   `--no-critique` to `$stardust prototype`, skip **both**
-   validators. The flag's name is preserved for backward
-   compatibility (it predates the audit addition); document the
-   broader scope in the help text. Useful for fast iteration
-   cycles where the user is already running critique / audit
-   manually between iterations. Without the flag, both
-   validators are mandatory.
+Both validators are mandatory. There is no opt-out flag — if a
+finding bites and the user wants to ship anyway, they say so in
+chat ("ship as-is" / "accept the P1 findings") and the
+acknowledgement is recorded in `_provenance.critique[]` AND
+`_provenance.audit[]` verbatim. The contract is that the gate
+runs; the user can override the gate but the override is
+explicit and recorded.
 
-Failure handling: when impeccable is unavailable (per Delegation
-mechanic § When impeccable is not available), record
-`_provenance.critique[]` and `_provenance.audit[]` each with one
-entry of class `unavailable` and continue. Prototype proceeds to
-mark the page `prototyped` — the user will need to run both
-validators manually before approving. Surface the gap loudly in
-the report so the user doesn't forget.
+Failure handling: when impeccable is unavailable per the
+Delegation mechanic, prototype refuses to run (impeccable is a
+hard requirement). There is no degraded mode that ships
+unverified output.
 
 ### Phase 4 — Open and iterate
 
@@ -430,40 +394,18 @@ Cross-references throughout the docs still name Phases 4, 5, 5.5.)
    on work that fails P0/P1 critique or audit misleads
    downstream consumers (migrate, the dashboard) about the
    prototype's quality.
-3. If `--no-iterate` was passed, stop here and report the prototype
-   path.
-4. Otherwise, invoke `$impeccable live` against
-   `<slug>-proposed.html`. Configure live's `config.json` to point at
-   the proposed file as a static HTML page (multi-page glob mode per
-   impeccable live's setup).
-5. Stream live events (generate / accept / discard / prefetch /
-   timeout / exit) as documented in impeccable's `reference/live.md`.
-   Stardust's role here is the **agent driving live's poll loop** —
-   plan three distinct variants per `generate`, edit the proposed
-   file accordingly, write the param values, etc. Live's reference is
-   authoritative for the iteration mechanics.
-6. On every `accept`, run live's carbonize cleanup (move CSS to the
-   stylesheet inside the page, bake param values, remove markers).
-   Append a new provenance entry with `iteratedVia: impeccable:live
-   (sessionId: <id>)`.
+3. Report the prototype path and stop. Iteration happens via
+   chat-driven impeccable commands or direct invocation (see
+   § Iteration paths below).
 
 #### Iteration paths
 
-Refinement after the initial render can take three forms. They are
-not mutually exclusive — a single page can move through all three
+Refinement after the initial render takes one of two forms. They
+are not mutually exclusive — a single page can move through both
 across its lifetime.
 
-1. **Live picker (default).** The user clicks an element + an action
-   inside `$impeccable live`'s browser picker. Live emits a
-   `generate` event with `action ∈ {bolder, quieter, distill, polish,
-   typeset, colorize, layout, adapt, animate, delight, overdrive,
-   impeccable, <freeform>}`. The agent (driving the poll loop) plans
-   three variants for that element and writes them into
-   `<slug>-proposed.html`. Live owns the action vocabulary at this
-   level; stardust does not re-implement it.
-
-2. **Chat-driven (when not in live).** The user gives a refinement
-   phrase in chat — *"make the hero bolder for home"*, *"tighten the
+1. **Chat-driven (default).** The user gives a refinement phrase
+   in chat — *"make the hero bolder for home"*, *"tighten the
    cup-note grid"*, *"less corporate"*. The agent:
    - Reads the phrase against
      `skills/stardust/reference/intent-dimensions.md` to identify
@@ -479,14 +421,17 @@ across its lifetime.
      anti-toolbox audit clean, impeccable hard rules) and updates
      the proposed file's provenance.
 
-3. **Direct impeccable invocation.** The user runs an impeccable
+2. **Direct impeccable invocation.** The user runs an impeccable
    command directly — `$impeccable bolder
    stardust/prototypes/home-proposed.html`. Stardust isn't in the
    loop; the browser tab reloads whatever's on disk. This is fine
-   and documented as a supported escape hatch.
+   and documented as a supported escape hatch. (Includes
+   `$impeccable live` against the proposed file when the user
+   wants in-browser picker iteration — that's an external tool
+   they invoke directly; stardust does not drive its poll loop.)
 
 The "open and reasoned" principle from the master skill applies to
-path 2: the agent reasons publicly about the phrase before running
+path 1: the agent reasons publicly about the phrase before running
 any command, and never silently maps a refinement to a fixed
 command.
 
@@ -538,8 +483,9 @@ was the only thing that caught the gap, after publish.
 
 Trigger: any variant the user approves OR any variant explicitly
 flagged `isPrimary: true` in `meta.json#variants[]` for a
-multi-variant render. The user can extend coverage to other
-variants on demand (`$stardust prototype <slug> --adapt-variant <id>`).
+multi-variant render. When the user wants adapt run against a
+non-primary variant (B / C / etc.), they re-prototype that variant
+or ask in chat for the specific variant to be adapted.
 
 Procedure:
 
@@ -616,31 +562,25 @@ The last three conditions require actually rendering the file —
 they can't be inferred from CSS text. The canonical check is a
 small Playwright snippet (`fixtures/mobile-nav-audit.mjs`) the
 agent runs against the file at 360×800. Audit messages must
-include a pointer to the stock-template doc and the
-`--no-hamburger` opt-out so the reader knows the remediation:
+include a pointer to the stock-template doc:
 
 > Suggested fix: apply the stock hamburger pattern
 >   skills/prototype/reference/mobile-nav-collapse.md
-> Or pass `--no-hamburger` to skip auto-apply.
-
-Pass `--skip-adapt-audit` to the prototype invocation when the
-user explicitly wants a desktop-only render (a presales demo
-cycle that won't ship to phones, an internal review). The flag
-records `adapt: skipped (user)` in the proposed file's
-`_provenance.adapt[]` so downstream consumers can see the
-override.
 
 When the audit refuses, the page does **not** demote from
 `approved` (the approval already landed); but the report carries
 the failure prominently and migrate / publish-sample will refuse
-to consume the file until it passes.
+to consume the file until it passes. There is no flag to skip
+this audit — if a project legitimately needs a desktop-only
+render, the user edits the file's `_provenance.adapt[]` to
+record `adapt: deliberately desktop-only (<user-reason>)` and
+the downstream gates honor the explicit acknowledgement.
 
 #### Mobile nav collapse
 
 When the audit refuses on either of the nav-related codes above
-(`horizontal-overflow-at-360px` or `nav-readability-floor`), and
-the user did **not** pass `--no-hamburger`, the agent applies the
-stock CSS-only hamburger pattern documented in
+(`horizontal-overflow-at-360px` or `nav-readability-floor`), the
+agent applies the stock CSS-only hamburger pattern documented in
 `reference/mobile-nav-collapse.md`. Procedure:
 
 1. Inject the stock pattern into the file (HTML + CSS + ≤10-line
@@ -657,11 +597,7 @@ stock CSS-only hamburger pattern documented in
    declaration wins; if the base is appended *after* the
    `@media (max-width: 640px)` override, the burger stays hidden
    at every viewport and the file silently regresses to the
-   bare-nav failure mode. This bug was caught during the
-   greenfield-beermaker dogfood at
-   `stardust/prototypes/home-proposed-C2.html` — an early draft
-   appended the block at the bottom and the burger never
-   appeared.
+   bare-nav failure mode.
 
 2. **Run the post-injection ordering check** before re-running
    the audit. The check is a small `awk` one-liner documented in
@@ -681,14 +617,14 @@ stock CSS-only hamburger pattern documented in
    finding and wait for direction. Do not iterate further without
    user input.
 
-With `--no-hamburger`: skip step 1; the audit refusal stands and
-the user remediates separately. With `--skip-adapt-audit`: the
-audit doesn't run at all, so neither does this auto-apply.
-
 The stock pattern is the default; `reference/mobile-nav-collapse.md`
 § Alternative patterns documents priority+overflow, bottom nav,
 and side-drawer as valid alternatives the user can request, but
-the agent does not pick between them autonomously.
+the agent does not pick between them autonomously. If the user
+genuinely doesn't want a hamburger, they ask in chat and the
+agent applies one of the alternatives (or edits the file to
+suppress the collapse and records the choice in
+`_provenance.adapt[]`).
 
 ### Stale handling
 
@@ -697,10 +633,10 @@ provenance becomes outdated and `state.json` flags the page
 `stale: true`. Default behaviour:
 
 - `$stardust prototype` (no slug) skips stale pages and reports the
-  count: `2 stale pages (home, about) — re-run with --refresh-stale.`
+  count: `2 stale pages (home, about) — re-run with --all.`
 - `$stardust prototype home` operates on `home` even if stale.
-- `$stardust prototype --refresh-stale` re-prototypes every stale
-  page.
+- `$stardust prototype --all` re-prototypes every directed page
+  including stale ones.
 
 When a stale page is successfully re-prototyped, clear its `stale`
 flag and update `againstDirection` to the new active direction.
@@ -710,7 +646,7 @@ flag and update `againstDirection` to the new active direction.
 | Path                                          | Purpose                                       |
 |-----------------------------------------------|-----------------------------------------------|
 | `stardust/prototypes/<slug>-shape.md`         | Per-page compositional brief (Phase 1 output, craft input). |
-| `stardust/prototypes/<slug>-proposed.html`    | Proposed redesign (live-mode iteration target, migration source, user-facing review surface). |
+| `stardust/prototypes/<slug>-proposed.html`    | Proposed redesign (chat-driven iteration target, migration source, user-facing review surface). |
 | `stardust/state.json`                         | Updated with page status and approval history. |
 | `DESIGN.json`                                 | Updated with `extensions.divergence.anti_toolbox_hits` and any audit amendments from this prototype's render. |
 
@@ -722,9 +658,9 @@ flag and update `againstDirection` to the new active direction.
 - **Validation failure (:root block missing, data attributes missing,
   unjustified anti-toolbox hit, impeccable rule violation).** Do not
   write the file. Surface the specific failure and a suggested fix.
-- **`$impeccable live` not available.** Fall back to `--no-iterate`
-  behaviour and tell the user the iteration step requires impeccable
-  live.
+- **Impeccable not available.** Refuse to run — impeccable is a
+  hard requirement (Delegation mechanic). Recommend the user
+  install the impeccable plugin and re-invoke.
 
 ## Concurrency
 
@@ -846,15 +782,14 @@ Default mode is unchanged.
   pattern Phase 5.5 auto-applies when the Mobile-adapt audit
   refuses on `horizontal-overflow-at-360px` or
   `nav-readability-floor`. Carries the copy-pasteable
-  HTML+CSS+JS, the audit smoke-test command, the
-  `--no-hamburger` opt-out, and the alternative-pattern
-  vocabulary.
+  HTML+CSS+JS, the audit smoke-test command, and the
+  alternative-pattern vocabulary.
 - `skills/stardust/reference/token-contract.md` — `:root` token
   block (cross-cutting, used by prototype + migrate).
 - `skills/stardust/reference/data-attributes.md` — structural data
   attribute vocabulary (cross-cutting, used by prototype + migrate).
 - `skills/stardust/reference/divergence-toolkit.md` —
-  anti-mediocrity rules consumed during render and live iteration.
+  anti-mediocrity rules consumed during render and iteration.
 - `skills/stardust/reference/intent-dimensions.md` — the 7-axis
   vocabulary used to read a chat-driven refinement phrase
   (iteration path 2).

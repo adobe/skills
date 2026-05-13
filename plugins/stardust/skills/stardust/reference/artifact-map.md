@@ -80,7 +80,7 @@ stardust/
 │       └── media/                    # extracted images, with original URLs
 ├── prototypes/
 │   ├── <slug>-shape.md               # per-page compositional brief (page-level deployment record)
-│   └── <slug>-proposed.html          # proposed redesign (live-mode iteration target, migration source, user-facing review surface)
+│   └── <slug>-proposed.html          # proposed redesign (iteration target, migration source, user-facing review surface)
 └── migrated/                         # deployable static HTML site
     ├── index.html                    # the home page (slug "home" -> root)
     ├── _meta.json                    # sidecar JSON (full reasoning trace) — one per migrated page
@@ -155,25 +155,25 @@ layout strategy, key states, interaction model, structural data
 attributes, unsourced-content list. Format spec in
 `skills/prototype/reference/page-shape-brief.md`.
 
-The brief exists because of the F-015 site/page split (see
-`STARDUST-FEEDBACK.md` and the site-level vs page-level table
-below). `direct` authors the design **system**; the brief records
-the **deployment** of that system to a specific page. A direction
-change invalidates the system; the brief is content-aware-stale
-only when the system change makes its composition impossible.
+The brief exists because of the site/page split (see the
+site-level vs page-level table below). `direct` authors the
+design **system**; the brief records the **deployment** of that
+system to a specific page. A direction change invalidates the
+system; the brief is content-aware-stale only when the system
+change makes its composition impossible.
 
 ### `stardust/prototypes/<slug>-proposed.html`
 Owner: `$stardust prototype`. One file per page — the **proposed
 redesign on its own**: self-contained, complete HTML page rendered
 against the target `DESIGN.md`. The user opens it in the browser to
-review; `$impeccable live` iterates on it; `$stardust migrate` later
-re-derives from it for the final migrated page. Full contract in
-`skills/prototype/reference/proposed-file-shell.md`.
+review; chat-driven impeccable commands iterate on it; `$stardust
+migrate` later re-derives from it for the final migrated page. Full
+contract in `skills/prototype/reference/proposed-file-shell.md`.
 
 The file carries a provenance block in `<head>` listing the active
 direction it was rendered against; when direction changes the page
 is flagged `stale` in `state.json` and re-runs of `prototype` skip
-it unless `--refresh-stale` is passed.
+it unless `--all` is passed.
 
 ### `stardust/migrated/`
 Owner: `$stardust migrate`. A deployable static HTML site. The slug →
@@ -288,7 +288,7 @@ First top-level key (`_provenance`):
 
 ---
 
-## Site-level vs page-level (the F-015 split)
+## Site-level vs page-level
 
 Stardust separates **system** (site-wide design decisions) from
 **deployment** (how the system applies to a specific page). The
@@ -316,20 +316,20 @@ the file nonsensical for *every other page on the site*, it's
 site-level (DESIGN.md). If removing it would only affect *this
 page*, it's page-level (`<slug>-shape.md`).
 
-The split solves three problems with v0.1's mash-up
-(`STARDUST-FEEDBACK.md F-015`):
+The split solves three problems with a prior mash-up where both
+lived in DESIGN.md:
 
 1. **DESIGN.md grew per-page** — each prototyped page leaked its
-   specifics into the site spec. After F-015, DESIGN.md size is
-   bounded by the system, not the page count.
+   specifics into the site spec. Now DESIGN.md size is bounded
+   by the system, not the page count.
 2. **Direct over-specified the visual layer at site-time** —
-   leaving prototype no room to diverge per-page. After F-015,
-   prototype owns deployment; direct owns vocabulary.
+   leaving prototype no room to diverge per-page. Now prototype
+   owns deployment; direct owns vocabulary.
 3. **Re-direct ambiguity** — was the user changing the system
    (tokens, voice) or the deployment (composition on this page)?
-   After F-015, direct's edits target the system; prototype's
-   edits target a single brief; stale-flagging is content-aware
-   per `state-machine.md` § Stale flagging.
+   Now direct's edits target the system; prototype's edits target
+   a single brief; stale-flagging is content-aware per
+   `state-machine.md` § Stale flagging.
 
 When in doubt about where a new piece of information should land,
 ask: does this affect *every* page in the inventory, or just one?

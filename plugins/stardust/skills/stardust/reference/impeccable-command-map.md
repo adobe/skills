@@ -154,9 +154,11 @@ surfaces P0/P1 performance issues.
 ## Iterate category
 
 ### `live`
-Reach for it: inside `$stardust prototype` for in-browser variant
-exploration. Stardust delegates fully to `$impeccable live` — do not
-reimplement.
+External tool. The user can invoke `$impeccable live` directly
+against `stardust/prototypes/<slug>-proposed.html` for in-browser
+picker-driven iteration; stardust does not drive its poll loop.
+Most iteration goes through chat-driven invocation of the named
+commands above.
 
 ---
 

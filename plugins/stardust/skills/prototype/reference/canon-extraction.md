@@ -262,8 +262,9 @@ summary:
   approval was rough and the article's choice is what the brand
   actually wants.
 - **Reject (re-iterate prototype).** Refuse the approval; user
-  iterates via `$impeccable live` until the prototype matches
-  canon. Useful when the deviation is a mistake.
+  iterates via chat-driven impeccable commands until the
+  prototype matches canon. Useful when the deviation is a
+  mistake.
 
 Both are explicit user gestures during prep summary. Without an
 override, conflict is logged as deviation and approval proceeds.
