@@ -125,17 +125,29 @@ canon shas in provenance no longer match.
 ## Asset references
 
 The migrated site is **self-contained** under
-`stardust/migrated/`. Asset paths in HTML resolve relative to the
-migrated tree:
+`stardust/migrated/` — every asset referenced by a migrated page
+is bundled under `stardust/migrated/assets/<subpath>` and every
+HTML/CSS reference is rewritten to root-relative
+`/assets/<subpath>`. The contract is in
+`reference/asset-bundling.md`; the downstream-facing guarantee is
+in `skills/stardust/reference/migrate-output-format.md`.
 
-- `<img src="...">` references rewritten per
-  `content-preservation.md` § Media references.
-- The migration step copies referenced media from
-  `stardust/current/assets/media/*` to
-  `stardust/migrated/assets/media/*`.
+Highlights:
+
+- The bundling phase is the last step of the per-page render
+  (Phase 2 of SKILL.md). Detection covers six shapes: `src`,
+  `href`, `srcset`, inline `style="…url()…"`, `<style>` blocks,
+  external CSS files.
+- Cross-page deduplication via a project-level Set seeded from
+  `state.json.migrate.bundledAssets[]`.
+- Missing source assets warn-and-skip — the bundle stays
+  internally consistent; the missing files are deploy-time 404s
+  the migrate report surfaces.
 - Fonts are downloaded during `prepare-migration` Phase 4 to
   `stardust/migrated/assets/fonts/`; canon CSS already
-  references them via local paths after that phase.
+  references them via local paths after that phase, and the
+  bundling pass treats those references like any other asset
+  reference.
 - Logo + favicon variants: see
   `metadata-and-jsonld.md` § Favicon.
 

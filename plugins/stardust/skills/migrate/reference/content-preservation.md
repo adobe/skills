@@ -100,23 +100,26 @@ For every `<a href>`:
 
 ## Media references
 
-For every `<img>`, `<video>`, `<source>`:
+Asset bundling is run as the last step of the per-page render —
+see `reference/asset-bundling.md` for the canonical contract.
+Summary of the content-preservation surface:
 
-1. Look up the original URL in
-   `current/pages/<slug>.json § media.images[].src` (or
-   `media.videos[]`).
-2. Find the `localPath` recorded by extract
-   (`stardust/current/assets/media/<basename-with-hash>.<ext>`).
-3. **Copy** the local file to
-   `stardust/migrated/assets/media/<basename-with-hash>.<ext>` (only
-   if not already there).
-4. **Rewrite** the `src` to a relative path: `/assets/media/<basename-with-hash>.<ext>`.
-5. **Preserve `srcset`, `sizes`, `loading`, `decoding`, `alt`,
-   `width`, `height`** verbatim. Update `srcset` URLs the same way as
-   `src`.
-6. If the local file is missing (download failed at extract time),
-   keep the original absolute URL and log under
-   `provenance.contentDeviations[]` with `kind: "media-missing"`.
+1. Asset references on the rendered page (any of the six
+   detection shapes in `asset-bundling.md` § Detection) are
+   resolved against the asset-prefix set, copied into
+   `stardust/migrated/assets/<subpath>` with subdir structure
+   preserved, and rewritten to root-relative `/assets/<subpath>`.
+2. **Preserve `srcset`, `sizes`, `loading`, `decoding`, `alt`,
+   `width`, `height`** verbatim. The bundler updates `srcset`
+   URLs by splitting on commas, rewriting each URL, and
+   re-joining with the descriptors preserved.
+3. If the source file is missing from
+   `stardust/current/assets/<subpath>`, the bundler **still
+   rewrites the HTML reference** (so the bundle stays internally
+   consistent) and logs under `provenance.contentDeviations[]`
+   with `kind: "asset-missing"`. The bundle will 404 on that
+   asset at deploy time — a downstream concern that the migrate
+   report surfaces explicitly.
 
 For inline SVGs, preserve the markup verbatim (modulo class-name
 substitutions to match the new component classes when the component

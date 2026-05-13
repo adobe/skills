@@ -90,16 +90,21 @@ stardust/
     ├── docs/api/                     # multi-segment slugs nest naturally
     │   ├── index.html
     │   └── _meta.json
-    ├── assets/
+    ├── assets/                       # self-contained bundle (skills/migrate/reference/asset-bundling.md)
     │   ├── logo.<ext>                # copied from current/assets/
     │   ├── favicon.<ext>             # canonical favicon
     │   ├── favicon-512.png           # variants generated during prepare-migration phase 4
     │   ├── apple-touch-icon.png
     │   ├── fonts/                    # @font-face files downloaded during prepare-migration phase 4
-    │   └── media/                    # only files referenced by migrated pages
+    │   └── <subpath>                 # every asset referenced by a migrated page, subdir structure preserved from current/assets/
     ├── robots.txt                    # minimal
     └── sitemap.xml                   # derived from migrated inventory
 ```
+
+The migrated tree is a **self-contained, zip-and-deploy** bundle.
+Contract in `skills/stardust/reference/migrate-output-format.md`;
+the `state.json.migrate` block (with `selfContained: true`) is the
+forward-compat signal downstream consumers test for.
 
 ### `stardust/state.json`
 Owner: every stardust sub-command. Schema in `state-machine.md`.
@@ -185,8 +190,12 @@ mapping.
 Each page is a self-contained HTML file with a stardust:migrate
 provenance block as the first child of `<head>`, the `:root` block
 exposing the current DESIGN.md tokens, structural data attributes on
-every section, and asset references rewritten to relative paths
-under `assets/`.
+every section, and asset references rewritten to root-relative
+paths of the form `/assets/<subpath>` (per
+`skills/migrate/reference/asset-bundling.md`). The full bundle —
+HTML + every referenced asset — is self-contained: `cd
+stardust/migrated && zip -r out.zip .` produces a deploy-ready
+archive.
 
 The migrated tree is **incremental and idempotent**. Re-running
 migrate writes only pages whose source has changed (sha-compared in

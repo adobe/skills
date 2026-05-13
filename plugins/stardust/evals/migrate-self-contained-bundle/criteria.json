@@ -1,0 +1,27 @@
+{
+  "name": "migrate-self-contained-bundle",
+  "total": 100,
+  "criteria": [
+    { "id": "activated",                       "weight": 4,  "description": "The stardust:migrate skill was invoked." },
+    { "id": "no_current_escapes",              "weight": 10, "description": "After run 1, no HTML file under stardust/migrated/ contains the substring '../current/'. Self-containment verified by absence of escape segments. (Acceptance criterion #1.)" },
+    { "id": "zip_deploy_ready",                "weight": 8,  "description": "Running 'cd stardust/migrated && zip -r out.zip .' produces a zip that, when extracted and served at the host root, renders identically to the migrated tree opened directly. No 404s on any bundled asset. (Acceptance criterion #2.)" },
+    { "id": "cross_project_isolation",         "weight": 6,  "description": "Extracting the zip into a directory that contains no other stardust files (no current/, no prototypes/) and serving it produces the same render. Self-containment verified by isolation. (Acceptance criterion #3.)" },
+    { "id": "idempotent_modulo_timestamp",     "weight": 8,  "description": "Re-running migrate without source changes produces output that differs only in the migrate-provenance timestamp line. With --pin-timestamp, output is byte-identical to the prior run. (Acceptance criterion #4.)" },
+    { "id": "asset_count_in_report",           "weight": 4,  "description": "Run summary includes 'N pages, M bundled assets, KKK KB HTML total — self-contained, zip-and-deploy' so the user sees the bundle composition at a glance. (Acceptance criterion #5.)" },
+    { "id": "missing_asset_surfaced",          "weight": 6,  "description": "The 'generated/missing.jpg' reference surfaces in the run report's Missing assets block AND in state.json.migrate.missingAssets[]. Migrate completes successfully (warnings, not errors). (Acceptance criterion #6.)" },
+    { "id": "detection_src_href",              "weight": 4,  "description": "Detection shape #1 (single-URL src/href): the <link rel=\"icon\"> and <img src> references are bundled and rewritten to /assets/<subpath>." },
+    { "id": "detection_srcset",                "weight": 6,  "description": "Detection shape #2 (srcset multi-URL): each URL in the comma-separated list is rewritten independently; descriptors (1x, 2x, 768w) preserved verbatim; whitespace between entries preserved." },
+    { "id": "detection_inline_style",          "weight": 4,  "description": "Detection shape #3 (inline style=\"...url(...)...\"): background-image url() is rewritten." },
+    { "id": "detection_style_block_url",       "weight": 6,  "description": "Detection shape #4 (<style>-block url()): both @font-face src: url() and .grid background url() are rewritten." },
+    { "id": "prefix_resolution_root_relative", "weight": 4,  "description": "Root-relative authoring (/assets/generated/hero-1x.jpg) is detected via the /assets/ prefix and passes through idempotently (the file is bundled if not already, the reference is left as-is)." },
+    { "id": "asset_subpath_preserved",         "weight": 4,  "description": "Source subdir structure preserved verbatim under stardust/migrated/assets/: generated/hero-1x.jpg, fonts/inter-var.woff2, photos/family portrait.jpg all land at the expected paths." },
+    { "id": "percent_encoded_subpath",         "weight": 4,  "description": "The reference to '/assets/photos/family%20portrait.jpg' is preserved encoded in HTML but the file-system access decodes to 'photos/family portrait.jpg' and the file copies correctly." },
+    { "id": "path_traversal_refused",          "weight": 4,  "description": "The '/assets/../etc/passwd' reference is refused: no copy, the HTML reference is left unchanged (so the issue surfaces visibly on deploy), and the page's _meta.json#migrationDecisions[] records kind: 'asset-path-traversal'." },
+    { "id": "scheme_bearing_url_skipped",      "weight": 3,  "description": "The 'https://fonts.googleapis.com/...' stylesheet link is left external — not bundled, not rewritten, not flagged as missing. CDN URLs are by-design external." },
+    { "id": "state_json_migrate_block",        "weight": 8,  "description": "state.json.migrate is written with: selfContained: true, outputDir, totalAssetsBundled, bundledAssets[] (unique subpath set), per-page assetsBundled counts, missingAssets[], cleanedAssets[]. Field order and shapes match migrate-output-format.md." },
+    { "id": "self_contained_signal",           "weight": 3,  "description": "state.json.migrate.selfContained === true is the forward-compat signal — downstream consumers can test for it." },
+    { "id": "cross_page_dedup",                "weight": 4,  "description": "When two pages reference the same asset, the bundler copies it exactly once. The global Set is seeded from state.json.migrate.bundledAssets[] so cross-run dedup works even when only some pages re-render." },
+    { "id": "stale_cleanup_clean_flag",        "weight": 4,  "description": "Run 3 with --clean removes assets that were bundled in the prior run but are no longer referenced. state.json.migrate.cleanedAssets[] records what was removed. Without --clean, the run is additive (no deletions)." },
+    { "id": "self_containment_verifier",       "weight": 3,  "description": "Phase 3 includes the verifier (e.g., find ... -name '*.html' -exec grep -l '\\.\\./current/' {} + returns nothing) and fails the run with a clear message if any escape slips through." }
+  ]
+}
