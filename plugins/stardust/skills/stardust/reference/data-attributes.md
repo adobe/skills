@@ -145,6 +145,27 @@ mechanically rather than re-deriving structure.
   `migrate`'s run summary; user resolves by extracting the
   missing page and re-migrating, or accepts the broken link.
 
+### Mobile-collapse marker
+
+- **`data-nav-collapse="hamburger"`** — on `<header>` when the
+  stock mobile-nav collapse pattern is applied during Phase 5.5
+  (`skills/prototype/SKILL.md` § Mobile-adapt audit /
+  `skills/prototype/reference/mobile-nav-collapse.md`).
+  Downstream consumers detect the marker to avoid re-applying or
+  re-checking the same collapse — the Mobile-adapt audit, the
+  migrate re-derivation, and any future shared-component
+  extractor read it as "this header already collapses; pass
+  through verbatim."
+
+  Possible values: `"hamburger"` (the stocked stock pattern). Future
+  values may include `"priority-overflow"`, `"bottom-nav"`,
+  `"drawer"` if those alternatives gain stock treatments; today
+  the agent does not auto-apply them and therefore does not write
+  the marker.
+
+  Absent on headers that already fit at 360px without a collapse
+  (e.g. a 2-link nav at desktop type sizes).
+
 ## Examples
 
 ```html
@@ -228,6 +249,11 @@ v0.2.0.
 — ship with the migrate-template-canon refactor. Additive: every
 v2-only consumer continues to work; v2.1-aware consumers gain the
 template/module/slot/canon surface.
+
+**v2.2 additive set.** `data-nav-collapse` — ships with the
+mobile-nav-collapse pattern (`reference/mobile-nav-collapse.md`).
+Additive on `<header>`; absent for headers that didn't need a
+collapse.
 
 New attributes can be added in a backward-compatible way; renaming
 existing ones requires a version bump.

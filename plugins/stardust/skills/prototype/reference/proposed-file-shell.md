@@ -1,138 +1,20 @@
-# Before/after shell
+# Proposed-file shell
 
-Stardust's prototype output is **two files per page**, written under
-`stardust/prototypes/`:
+Stardust's prototype output is a **single file per page**, written at
+`stardust/prototypes/<slug>-proposed.html`. It's the self-contained
+redesign of the page — what the user opens in the browser to review,
+what `$impeccable live` iterates on, what `$stardust migrate` later
+re-derives from `DESIGN.md`.
 
-```
-stardust/prototypes/
-├── <slug>.html             # the viewer (before/after side-by-side)
-└── <slug>-proposed.html    # the proposed redesign on its own
-```
-
-The viewer is the user-facing artifact. The proposed file is the
-isolated redesign — what `$impeccable live` iterates on, what `migrate`
-later re-derives from DESIGN.md.
-
-Two files because:
-- **Live mode targets a single file.** `$impeccable live` injects its
-  picker into a running page. A standalone `<slug>-proposed.html`
-  gives it a clean target.
-- **Approval clarity.** The user reviews the viewer; the artifact that
-  carries the design decisions is the proposed file.
-- **Migration source.** `migrate` reads the proposed file's `:root`
-  block and structural data attributes to seed the migrated page,
-  even though it re-renders from DESIGN.md (the proposed file is the
-  agent's record of what it intended).
+There is no per-page before/after viewer. The proposed file is the
+artifact; comparing to the current page happens by switching browser
+tabs (the captured screenshot at
+`stardust/current/assets/screenshots/<slug>.png` or the live URL from
+`state.json`).
 
 ---
 
-## `<slug>.html` — the viewer
-
-A self-contained HTML file that loads the current and proposed pages
-side-by-side in iframes. No external CSS, no external JS, no
-analytics, no fonts.
-
-### Layout
-
-- Two-column flex layout, 50/50 by default.
-- Header strip (~48px) with: page slug, side labels ("CURRENT" left,
-  "PROPOSED" right), action buttons ("swap sides", "approve",
-  "stash"), provenance link.
-- Footer strip (~32px) with the resolved direction title (one line)
-  and a link to `stardust/direction.md`.
-- Body fills the remaining height with two `<iframe>`s.
-- A divider between iframes is draggable (CSS resize). The user can
-  shift the split.
-
-### Iframes
-
-**Left (CURRENT).**
-Source resolution order (screenshot-default):
-
-1. **Screenshot** at
-   `stardust/current/assets/screenshots/<slug>.png` displayed in an
-   `<img>`. **Default.** Always works, no embedding question, no CSP
-   risk.
-2. **Live URL** from `state.json` (`pages[<slug>].url`), exposed as
-   an opt-in "Try live" toggle in the viewer header strip. Loads
-   in a sandboxed iframe with
-   `sandbox="allow-scripts allow-same-origin"`.
-3. **Landmarks-text fallback** — render the page's captured
-   `landmarks` summary as a text-only outline. Used only when the
-   screenshot is missing AND the live URL is unreachable.
-
-The screenshot-default order is a flip from v0.1, which loaded the
-live URL first and fell back to screenshot only on network failure.
-Most production sites send `Content-Security-Policy: frame-ancestors`
-that silently blocks iframe embedding (no `onerror` event fires —
-the iframe just paints empty), so the v0.1 chain produced a blank
-CURRENT pane on the majority of real sites tested
-(`STARDUST-FEEDBACK.md F-001`). The screenshot is already captured
-during extract per `playwright-recipe.md` § Capture list (14); using
-it as the default eliminates the failure mode entirely.
-
-The "Try live" toggle remains useful when reviewing a page that
-*does* allow embedding (own staging environments, sites without
-CSP, localhost), or when the user wants to test interactive
-behavior. The toggle replaces the current iframe with the live URL
-inline; if it fails to load (CSP block, offline, login wall), the
-toggle button surfaces a "site refused embedding" notice and
-reverts to screenshot.
-
-**Right (PROPOSED).**
-Source: `srcdoc` of the relative path to `<slug>-proposed.html` (or
-direct iframe src when served by `$impeccable live`'s helper server).
-Always reachable; lives next to the viewer on disk.
-
-Both iframes inherit the viewport from the parent page, so the design
-is reviewed at the user's actual screen width — not at a fixed 1440px.
-
-### Provenance
-
-First child of `<head>`:
-
-```html
-<!-- stardust:provenance
-  writtenBy:        stardust:prototype
-  writtenAt:        2026-04-25T16:42:00Z
-  page:             home
-  pageUrl:          https://example.com/
-  proposedFile:     ./home-proposed.html
-  againstDirection: stardust/direction.md (Active 2026-04-25T15:42:00Z)
-  readArtifacts:
-    - stardust/current/pages/home.json
-    - DESIGN.md
-    - DESIGN.json
-  synthesizedInputs: []
-  stardustVersion:  0.2.0
--->
-```
-
-### Action buttons (header strip)
-
-- **Swap sides.** Toggles which iframe is left vs right. Helpful
-  when comparing big visual moves — sometimes the new design "feels"
-  bigger when it's on the right; swap to check.
-- **Approve.** Marks this prototype `approved` in `state.json`. The
-  agent confirms before writing.
-- **Stash.** Saves the current `<slug>-proposed.html` as
-  `<slug>-proposed-stash-<ts>.html` so the next iteration starts
-  fresh without losing this version.
-- **Open in `$impeccable live`.** A copy-paste command snippet for
-  starting an iteration session against `<slug>-proposed.html`.
-
-The action buttons are HTML buttons with inline JS that posts to
-`window.parent` or copies a command to the clipboard — they do not
-require a server.
-
----
-
-## `<slug>-proposed.html` — the proposed redesign
-
-A complete, self-contained HTML page. The thing the user is
-ultimately approving.
-
-### Required structure
+## Required structure
 
 ```html
 <!DOCTYPE html>
@@ -160,7 +42,7 @@ ultimately approving.
 </html>
 ```
 
-### Hard requirements
+## Hard requirements
 
 The proposed file must satisfy:
 
@@ -169,6 +51,17 @@ The proposed file must satisfy:
    includes it), inline the `@font-face` with a Google Fonts CSS
    `@import` is acceptable for prototyping but not for migrate
    output.
+
+   **Inline `<script>` exception — mobile nav a11y.** When Phase 5.5
+   applies the stock hamburger pattern (per
+   `mobile-nav-collapse.md`), the file carries a ≤10-line inline
+   `<script>` that syncs `aria-expanded` on the burger button and
+   wires Escape-to-close. This is the one place stardust's "no JS"
+   preference bends, and only for assistive-tech support. The
+   rationale lives in `mobile-nav-collapse.md` § Accessibility
+   checklist. No other inline scripts are permitted. The fixture
+   at `skills/prototype/fixtures/mobile-nav-collapse-example.html`
+   shows the exact script.
 2. **`:root` token block** as the first content of the first
    `<style>`. See `skills/stardust/reference/token-contract.md`.
 3. **Structural data attributes** on every section. See
@@ -218,7 +111,7 @@ The proposed file must satisfy:
    *demands* but the page *does not provide* (stat rows, addresses,
    testimonial quotes, etc.).
 
-### Content sourcing hierarchy
+## Content sourcing hierarchy
 
 Every literal value rendered into `<slug>-proposed.html` — every
 heading, paragraph, CTA label, statistic, address, quote, name,
@@ -233,7 +126,7 @@ attributed to a real person who never said it. For a real nonprofit
 or any production site this is a serious harm — invented content
 looks authoritative once rendered.
 
-#### Allowed sources, in priority order
+### Allowed sources, in priority order
 
 1. **`stardust/current/pages/<slug>.json`** — the captured page.
    Use values verbatim. Headings, body copy, CTA labels, navigation
@@ -268,7 +161,7 @@ likely to be demanded by a redesign template (stat rows,
 testimonial cards, contact panels, pricing tables) without the
 captured page providing them.
 
-#### PLACEHOLDER visual signature (mandatory)
+### PLACEHOLDER visual signature (mandatory)
 
 When the new design demands content the captured page does not
 provide, render it as a placeholder element with **all** of:
@@ -297,7 +190,7 @@ The visual signature is not optional and must remain visible in
 screenshots. The reviewer must be unable to mistake a placeholder
 for real content.
 
-#### Provenance log of unsourced content
+### Provenance log of unsourced content
 
 Add an `unsourcedContent[]` array to the proposed file's provenance
 listing every placeholder element rendered, with the reason:
@@ -318,7 +211,7 @@ unsourcedContent:
 This list is the canonical record of what needs to be sourced
 before the prototype becomes a production deliverable.
 
-#### Migrate guard
+### Migrate guard
 
 `migrate` reads the proposed file's `unsourcedContent[]` and the
 DOM's `[data-placeholder]` elements. If any are present, migrate
@@ -330,7 +223,7 @@ acknowledged that the deployable site will contain placeholder
 markers visible to end users. Spec for the migrate guard lives in
 `skills/migrate/SKILL.md` § Failure modes.
 
-### Provenance
+## Provenance
 
 ```html
 <!-- stardust:provenance
@@ -358,30 +251,14 @@ elements per § Content sourcing hierarchy.
 
 ---
 
-## How they're written
-
-`$stardust prototype <slug>` writes both files in a single pass:
-
-1. Render `<slug>-proposed.html` first (the heavy lift).
-2. Then write `<slug>.html` (the viewer) referencing the proposed
-   file by relative path.
-
-Re-iterations rewrite `<slug>-proposed.html` only; the viewer file is
-unchanged unless the page slug or proposed filename changes.
-
----
-
 ## Stale handling
 
-When `direction.md` changes, the prototype's provenance comment lists
-a `againstDirection` that is no longer the active direction.
-`state.json` flags the page `stale: true`. The viewer surfaces this
-in the header strip:
+When `direction.md` changes, the prototype's provenance comment
+lists an `againstDirection` that is no longer the active direction.
+`state.json` flags the page `stale: true`. Re-runs of
+`$stardust prototype <slug>` skip the page by default; pass
+`--refresh-stale` to re-prototype.
 
-```
-[STALE] direction changed at 2026-04-26T09:00:00Z
-        run: $stardust prototype <slug> --refresh-stale
-```
-
-The user can still open and review a stale prototype — it is a valid
-artifact representing the prior direction. They opt into refreshing.
+The user can still open and review a stale prototype — it is a
+valid artifact representing the prior direction. They opt into
+refreshing when ready.

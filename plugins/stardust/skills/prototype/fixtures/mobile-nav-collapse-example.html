@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- stardust:fixture
+    purpose: positive case for mobile-nav-collapse audit
+    pattern: stock hamburger (skills/prototype/reference/mobile-nav-collapse.md)
+    expects: passes mobile-nav-audit.mjs at 360px
+  -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mobile nav collapse · stardust fixture</title>
+  <style>
+    :root {
+      --heading-font-family: 'Georgia', 'Times New Roman', serif;
+      --body-font-family: 'Helvetica Neue', system-ui, sans-serif;
+
+      --heading-xxl: 64px;
+      --heading-xl:  44px;
+      --heading-lg:  32px;
+      --heading-md:  22px;
+      --body:        16px;
+      --body-sm:     14px;
+
+      --line-height-heading: 1.1;
+      --line-height-body:    1.55;
+
+      --color-bg:     #f7f3ec;
+      --color-fg:     #1a1a1a;
+      --color-accent: #c2410c;
+
+      --spacing-xs:  4px;
+      --spacing-sm:  8px;
+      --spacing-md:  16px;
+      --spacing-lg:  24px;
+      --spacing-xl:  48px;
+      --spacing-2xl: 96px;
+
+      --section-padding: 96px;
+      --max-width:       1200px;
+      --radius:          8px;
+
+      --dur-state:  180ms;
+      --ease-snap:  cubic-bezier(0.2, 0, 0, 1);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: var(--color-bg);
+      color: var(--color-fg);
+      font-family: var(--body-font-family);
+      font-size: var(--body);
+      line-height: var(--line-height-body);
+    }
+
+    /* Header — stock mobile-nav-collapse pattern */
+    header[data-nav-collapse="hamburger"] {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--spacing-md);
+      padding: var(--spacing-md) var(--spacing-lg);
+      border-bottom: 1px solid var(--color-fg);
+    }
+
+    .ds-wordmark {
+      font-family: var(--heading-font-family);
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--color-fg);
+      text-decoration: none;
+      letter-spacing: -0.01em;
+    }
+
+    .ds-nav-toggle {
+      position: absolute;
+      width: 1px; height: 1px;
+      margin: -1px; padding: 0;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      clip-path: inset(50%);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    .ds-nav-burger { display: none; }
+
+    .ds-nav {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-md);
+      font-family: var(--body-font-family);
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .ds-nav a {
+      color: var(--color-fg);
+      text-decoration: none;
+      font-size: var(--body);
+      padding: 4px 0;
+    }
+    .ds-nav a:hover { color: var(--color-accent); }
+
+    @media (max-width: 640px) {
+      .ds-nav-burger {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        padding: 10px 14px;
+        font-family: var(--body-font-family);
+        font-size: var(--body-sm);
+        color: var(--color-fg);
+        background: transparent;
+        border: 1px solid currentColor;
+        border-radius: var(--radius);
+        user-select: none;
+      }
+      .ds-nav-burger-icon {
+        width: 16px;
+        height: 12px;
+        position: relative;
+      }
+      .ds-nav-burger-icon::before,
+      .ds-nav-burger-icon::after {
+        content: "";
+        position: absolute;
+        left: 0; right: 0;
+        height: 2px;
+        background: currentColor;
+      }
+      .ds-nav-burger-icon::before { top: 0; }
+      .ds-nav-burger-icon::after  { bottom: 0; }
+
+      .ds-nav {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+        padding: var(--spacing-md) var(--spacing-lg);
+        background: var(--color-bg);
+        border-top: 1px solid var(--color-fg);
+        transform: translateY(-8px);
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transition: transform var(--dur-state) var(--ease-snap),
+                    opacity   var(--dur-state) var(--ease-snap),
+                    visibility 0s linear var(--dur-state);
+        z-index: 10;
+      }
+      .ds-nav a {
+        padding: 12px 0;
+        font-size: var(--body);
+        border-bottom: 1px solid color-mix(in srgb, var(--color-fg) 12%, transparent);
+      }
+      .ds-nav a:last-child { border-bottom: 0; }
+
+      .ds-nav-toggle:checked ~ .ds-nav {
+        transform: translateY(0);
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+        transition: transform var(--dur-state) var(--ease-snap),
+                    opacity   var(--dur-state) var(--ease-snap),
+                    visibility 0s linear 0s;
+      }
+
+      .ds-nav-burger:focus-visible,
+      .ds-nav a:focus-visible {
+        outline: 2px solid var(--color-accent);
+        outline-offset: 2px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .ds-nav,
+      .ds-nav-toggle:checked ~ .ds-nav {
+        transition: none;
+      }
+    }
+
+    /* Body — minimal hero so the file looks like a real page */
+    main {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: var(--spacing-2xl) var(--spacing-lg);
+    }
+    h1 {
+      font-family: var(--heading-font-family);
+      font-size: var(--heading-xl);
+      line-height: var(--line-height-heading);
+      margin: 0 0 var(--spacing-md);
+      letter-spacing: -0.02em;
+    }
+    p { max-width: 60ch; }
+
+    @media (max-width: 640px) {
+      main { padding: var(--spacing-xl) var(--spacing-md); }
+      h1 { font-size: var(--heading-lg); }
+    }
+  </style>
+</head>
+<body>
+
+  <header data-section="header"
+          data-intent="navigation"
+          data-layout="contained"
+          data-nav-collapse="hamburger">
+    <a class="ds-wordmark" href="/">Wasatch Back</a>
+
+    <input type="checkbox" id="ds-nav-toggle" class="ds-nav-toggle">
+    <label class="ds-nav-burger"
+           for="ds-nav-toggle"
+           role="button"
+           tabindex="0"
+           aria-controls="ds-nav-list"
+           aria-expanded="false">
+      <span class="ds-nav-burger-icon" aria-hidden="true"></span>
+      <span class="ds-nav-burger-label">Menu</span>
+    </label>
+
+    <nav id="ds-nav-list" class="ds-nav" aria-label="Main">
+      <a href="/beers">Beers</a>
+      <a href="/taproom">Taproom</a>
+      <a href="/events">Events</a>
+      <a href="/visit">Visit</a>
+      <a href="/contact">Contact</a>
+    </nav>
+  </header>
+
+  <main>
+    <h1>The mountain brewery on Main Street.</h1>
+    <p>Park City&rsquo;s working-class brewery. Six rotating taps,
+       a stone-floor taproom, and a tab that never closes too early.
+       This is a fixture page used to demonstrate the stock mobile
+       nav collapse pattern at 360px.</p>
+  </main>
+
+  <script>
+  (() => {
+    const t = document.getElementById('ds-nav-toggle');
+    const b = document.querySelector('.ds-nav-burger');
+    if (!t || !b) return;
+    const sync = () => b.setAttribute('aria-expanded', t.checked);
+    t.addEventListener('change', sync); sync();
+    addEventListener('keydown', e => { if (e.key === 'Escape' && t.checked) { t.checked = false; sync(); b.focus(); } });
+  })();
+  </script>
+
+</body>
+</html>

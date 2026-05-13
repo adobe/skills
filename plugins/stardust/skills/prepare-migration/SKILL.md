@@ -171,9 +171,9 @@ establishes canon; subsequent approvals extend it (with conflicts
 logged as deviations by default).
 
 This phase typically takes the longest — each archetype goes
-through the full prototype loop (shape brief, craft, viewer,
-iterate, approve). Stream progress to the user as each archetype
-lands.
+through the full prototype loop (shape brief, craft, open in
+browser, iterate, approve). Stream progress to the user as each
+archetype lands.
 
 Surface the summary and gate.
 

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- stardust:fixture
+    purpose: negative case for mobile-nav-collapse audit
+    pattern: NONE (raw horizontal nav, font and gap shrunk under floor)
+    expects: refuses on horizontal-overflow-at-360px AND nav-readability-floor
+  -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mobile nav broken · stardust fixture</title>
+  <style>
+    :root {
+      --heading-font-family: 'Georgia', 'Times New Roman', serif;
+      --body-font-family: 'Helvetica Neue', system-ui, sans-serif;
+      --body: 16px;
+      --body-sm: 14px;
+      --color-bg: #f7f3ec;
+      --color-fg: #1a1a1a;
+      --color-accent: #c2410c;
+      --spacing-md: 16px;
+      --spacing-lg: 24px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: var(--color-bg);
+      color: var(--color-fg);
+      font-family: var(--body-font-family);
+    }
+
+    /* Header — raw horizontal nav, no collapse */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--spacing-md);
+      padding: var(--spacing-md) var(--spacing-lg);
+      border-bottom: 1px solid var(--color-fg);
+    }
+
+    .wordmark {
+      font-family: var(--heading-font-family);
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--color-fg);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    nav {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-md);
+    }
+    nav a {
+      color: var(--color-fg);
+      text-decoration: none;
+      font-size: var(--body);
+      white-space: nowrap;
+    }
+
+    /* The "shrink until it fits" anti-pattern — still overflows AND
+       breaches the readability floor */
+    @media (max-width: 640px) {
+      nav { gap: 6px; }       /* sub-10px gap — FAIL condition (c) */
+      nav a { font-size: 10px; } /* sub-11px font — FAIL condition (b) */
+      /* No collapse, no hamburger — header overflows at 360px — FAIL (a) */
+    }
+
+    main { padding: 48px 24px; }
+    h1 { font-family: var(--heading-font-family); margin: 0 0 16px; }
+  </style>
+</head>
+<body>
+
+  <header data-section="header"
+          data-intent="navigation"
+          data-layout="contained">
+    <a class="wordmark" href="/">Wasatch Back Beerworks</a>
+    <nav aria-label="Main">
+      <a href="/beers">Beers</a>
+      <a href="/taproom">Taproom</a>
+      <a href="/events">Events</a>
+      <a href="/visit">Visit</a>
+      <a href="/contact">Contact</a>
+    </nav>
+  </header>
+
+  <main>
+    <h1>The mountain brewery on Main Street.</h1>
+    <p>Same page as the good fixture, with the nav shrunk into the
+       unreadable-and-still-overflowing failure mode.</p>
+  </main>
+
+</body>
+</html>

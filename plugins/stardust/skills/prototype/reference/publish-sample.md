@@ -77,13 +77,10 @@ combine into a single "not eligible" message.
    - For each file, parse the `<!-- stardust:provenance -->`
      comment block in `<head>`.
    - A file is a candidate variant for the named slug if its
-     `page:` field equals `<slug>` and it is **not** the viewer
-     (the viewer's `writtenBy:` says `stardust:prototype`'s
-     viewer pass, while a proposed file's `writtenBy:` is plain
-     `stardust:prototype` or `stardust:prototype/iterate`; the
-     viewer also lacks a top-level `<!DOCTYPE html><html>` body
-     section because it's iframe-shelled. The cheaper detection
-     is the absence of `<iframe` tags in the body).
+     `page:` field equals `<slug>`. (Earlier versions of the
+     flow needed to disambiguate proposed files from a
+     per-page viewer; the viewer was dropped, so any prototypes
+     file with a matching `page:` is a proposed file.)
    - Variant id resolution: read the file's `<head>` `<meta
      name="variant" content="A">` if present; else read the
      filename for a single uppercase letter token (matches
@@ -415,7 +412,7 @@ The publish flow already verified these — reviewer can spot-check.
 - [x] `meta.json#direction.palette.source` resolves to the picked
       palette.
 - [x] Every `proposed-*.html` file is self-contained per
-      `before-after-shell.md` § Required structure.
+      `proposed-file-shell.md` § Required structure.
 
 ### Reviewer checklist
 

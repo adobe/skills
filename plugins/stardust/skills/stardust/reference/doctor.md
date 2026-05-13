@@ -116,7 +116,7 @@ artifact must declare what wrote it and what it read.
   no-confirm fast-path)`) is reported as a *fast-path bypass*.
 - **D-103** — `PRODUCT.md`, `DESIGN.md`, and `DESIGN.json` exist at the
   project root when any prototype exists. (Catches: skipping direct.)
-- **D-104** — Every `prototypes/<slug>.html` has a paired
+- **D-104** — Every `prototypes/<slug>-proposed.html` has a paired
   `prototypes/<slug>-shape.md` brief (per
   `prototype/reference/page-shape-brief.md`). (Catches: skipping shape.)
 - **D-105** — Each artifact's `_provenance.reads[]` references files

@@ -221,7 +221,8 @@ audit trail is complete and the user can review what was dropped.
 ## Slug derivation
 
 Slugs are filesystem-friendly identifiers used as keys in `state.json`,
-filenames in `current/pages/<slug>.json`, and `prototypes/<slug>.html`.
+filenames in `current/pages/<slug>.json`, and
+`prototypes/<slug>-proposed.html`.
 
 Algorithm:
 

@@ -5,7 +5,7 @@
 A project where extract + direct + partial prototype have completed:
 
 - `stardust/state.json` lists 5 pages:
-  - `home`, `pricing` — `approved` (with proposed.html + viewer)
+  - `home`, `pricing` — `approved` (with proposed.html)
   - `about`, `features`, `contact` — `directed` (no prototype yet)
 - `stardust/current/` populated.
 - Project-root `PRODUCT.md`, `DESIGN.md`, `DESIGN.json` exist.

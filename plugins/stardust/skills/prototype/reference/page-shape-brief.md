@@ -88,7 +88,7 @@ register: brand
    `… PEOPLE HOUSED · …`, `… GRANTED · …`, `… CENTERS · …`. **All
    four numerals are placeholders** — current/pages/home.json
    provides no statistics. Render with the placeholder visual
-   signature per `before-after-shell.md` § Content sourcing
+   signature per `proposed-file-shell.md` § Content sourcing
    hierarchy.
 4. **threshold band** (system-component role: `cta-band`) — site-
    wide block, see `_brand-extraction.json#crossPromo`. Render the

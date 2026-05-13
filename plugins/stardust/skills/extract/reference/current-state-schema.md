@@ -147,7 +147,7 @@ Capture rules in `playwright-recipe.md` § Capture list (7-bis). These
 fields are what migrate consumes to render real body copy under
 each section heading; without them every body region falls back to
 the placeholder-with-signature treatment (per `prototype/reference/
-before-after-shell.md` § Content sourcing hierarchy) even when the
+proposed-file-shell.md` § Content sourcing hierarchy) even when the
 source page had real prose to reuse.
 
 ## § CTAs

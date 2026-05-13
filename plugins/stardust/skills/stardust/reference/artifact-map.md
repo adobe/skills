@@ -80,8 +80,7 @@ stardust/
 │       └── media/                    # extracted images, with original URLs
 ├── prototypes/
 │   ├── <slug>-shape.md               # per-page compositional brief (page-level deployment record)
-│   ├── <slug>.html                   # before/after viewer (user-facing review surface)
-│   └── <slug>-proposed.html          # proposed redesign on its own (live-mode iteration target, migration source)
+│   └── <slug>-proposed.html          # proposed redesign (live-mode iteration target, migration source, user-facing review surface)
 └── migrated/                         # deployable static HTML site
     ├── index.html                    # the home page (slug "home" -> root)
     ├── _meta.json                    # sidecar JSON (full reasoning trace) — one per migrated page
@@ -163,26 +162,18 @@ the **deployment** of that system to a specific page. A direction
 change invalidates the system; the brief is content-aware-stale
 only when the system change makes its composition impossible.
 
-### `stardust/prototypes/<slug>.html` and `<slug>-proposed.html`
-Owner: `$stardust prototype`. Two files per page (see
-`skills/prototype/reference/before-after-shell.md` for the contract):
+### `stardust/prototypes/<slug>-proposed.html`
+Owner: `$stardust prototype`. One file per page — the **proposed
+redesign on its own**: self-contained, complete HTML page rendered
+against the target `DESIGN.md`. The user opens it in the browser to
+review; `$impeccable live` iterates on it; `$stardust migrate` later
+re-derives from it for the final migrated page. Full contract in
+`skills/prototype/reference/proposed-file-shell.md`.
 
-- **`<slug>.html`** — the **viewer**. Self-contained HTML with two
-  iframes side-by-side: left = current page (live URL, screenshot
-  fallback, or landmarks-text fallback), right = the proposed
-  redesign (loaded from `<slug>-proposed.html`). Header strip with
-  swap/approve/stash/live-mode actions. The user-facing review
-  surface.
-- **`<slug>-proposed.html`** — the **proposed redesign on its own**.
-  Self-contained, complete HTML page rendered against the target
-  `DESIGN.md`. The file `$impeccable live` iterates on; the file
-  `$stardust migrate` later re-derives from for the final migrated
-  page.
-
-Both carry provenance blocks in `<head>`. The proposed file's
-provenance lists the active direction it was rendered against; when
-direction changes, the page is flagged `stale` in `state.json` and
-the viewer surfaces the staleness in the header strip.
+The file carries a provenance block in `<head>` listing the active
+direction it was rendered against; when direction changes the page
+is flagged `stale` in `state.json` and re-runs of `prototype` skip
+it unless `--refresh-stale` is passed.
 
 ### `stardust/migrated/`
 Owner: `$stardust migrate`. A deployable static HTML site. The slug →

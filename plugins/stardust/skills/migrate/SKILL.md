@@ -36,7 +36,7 @@ sidecars.
 - `--allow-placeholder` — allow migration of pages whose
   proposed/archetype files contain `[data-placeholder]`
   elements (per
-  `skills/prototype/reference/before-after-shell.md` § Content
+  `skills/prototype/reference/proposed-file-shell.md` § Content
   sourcing hierarchy). Default refuses; use this flag only when
   shipping placeholders is intentional (internal staging review).
 - `--strict-canon` — refuse approvals that conflict with canon.

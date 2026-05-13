@@ -45,7 +45,7 @@ and resumable. The state file is `stardust/state.json`. It is written by
       "stale": false,
       "staleReason": null,
       "currentStatePath": "stardust/current/pages/home.json",
-      "prototypePath":    "stardust/prototypes/home.html",
+      "prototypePath":    "stardust/prototypes/home-proposed.html",
       "migratedPath":     null
     }
   ]
@@ -67,7 +67,7 @@ move the state, it flags it.
 |--------------|-------------------------------------------------------------------------|-------------------------|
 | `extracted`  | Crawled and parsed. `current/pages/<slug>.json` exists.                 | `stardust:extract`      |
 | `directed`   | Direction `direction.md` resolved; this page is in scope of the direction. | `stardust:direct`     |
-| `prototyped` | A before/after prototype exists at `prototypes/<slug>.html`.            | `stardust:prototype`    |
+| `prototyped` | A proposed-redesign prototype exists at `prototypes/<slug>-proposed.html`. | `stardust:prototype` |
 | `approved`   | The user explicitly approved the prototype.                             | `stardust:prototype`    |
 | `migrated`   | Final redesigned static HTML written to `migrated/<slug>.html`.         | `stardust:migrate`      |
 

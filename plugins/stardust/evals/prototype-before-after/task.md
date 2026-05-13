@@ -1,4 +1,4 @@
-# Eval: prototype writes before/after viewer + proposed file
+# Eval: prototype writes the proposed file and opens it in the browser
 
 ## Setup
 
@@ -44,16 +44,12 @@ The `stardust:prototype` skill is invoked. It:
    - Passes the divergence audit (every anti-toolbox hit recorded
      in `DESIGN.json.extensions.divergence.anti_toolbox_hits` with a
      brand-specific justification).
-5. **Composes `stardust/prototypes/home.html`** (the viewer) per
-   `before-after-shell.md`:
-   - Two-iframe layout (50/50 default split).
-   - CURRENT iframe loads the live URL with screenshot fallback.
-   - PROPOSED iframe loads `home-proposed.html` via relative path.
-   - Header strip with swap / approve / stash / live-mode action
-     buttons and a link to `direction.md`.
-6. **Opens the viewer** in the default browser.
-7. Marks the page `prototyped` in `state.json` (NOT `approved` —
-   approval is a separate explicit step).
-8. Invokes `$impeccable live` against `home-proposed.html` for
+5. **Opens `stardust/prototypes/home-proposed.html`** in the
+   default browser (`open` macOS, `xdg-open` Linux, `start ""`
+   Windows). No separate viewer file is composed.
+6. Marks the page `prototyped` in `state.json` (NOT `approved` —
+   approval is a separate explicit step, signalled in chat by
+   "approve home" or "approve").
+7. Invokes `$impeccable live` against `home-proposed.html` for
    iteration unless `--no-iterate` was passed.
-9. Reports the file paths and the next-step hint.
+8. Reports the proposed-file path and the next-step hint.
