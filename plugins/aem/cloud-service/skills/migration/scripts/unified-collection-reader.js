@@ -56,6 +56,7 @@ class BpaResult {
     this.projectId = 'unified-collection';
     this.targets = [];
     this.summary = {};
+    this.message = null;
     this.error = null;
     this.errorDetails = null;
     this.troubleshooting = [];

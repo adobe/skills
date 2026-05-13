@@ -334,6 +334,42 @@ test('MCP cache files are keyed by (projectId, pattern) — different keys do no
   assert.ok(fs.existsSync(path.join(dir, 'mcp', 'proj-B', 'scheduler.json')));
 });
 
+test('MCP path: success:true with empty targets propagates message and caches', async () => {
+  const dir = tempDir();
+  const mcpFetcher = async () => ({
+    success: true,
+    targets: [],
+    summary: { schedulerCount: 0 },
+    message: "No 'scheduler' findings in the latest BPA report for project proj-X."
+  });
+  const r = await getBpaFindings('scheduler', {
+    collectionsDir: dir,
+    projectId: 'proj-X',
+    mcpFetcher
+  });
+  assert.equal(r.success, true);
+  assert.equal(r.source, 'mcp-server');
+  assert.equal(r.targets.length, 0);
+  assert.equal(r.paging.total, 0);
+  assert.equal(r.paging.hasMore, false);
+  assert.ok(r.message.includes("No 'scheduler' findings"), 'message should reflect empty pattern result');
+
+  const cacheFile = path.join(dir, 'mcp', 'proj-X', 'scheduler.json');
+  assert.ok(fs.existsSync(cacheFile), 'cache file should be written even for empty results');
+
+  // Second call should read cache and not invoke fetcher again.
+  let fetcherCalled = false;
+  const deadFetcher = async () => { fetcherCalled = true; return { success: true, targets: [] }; };
+  const r2 = await getBpaFindings('scheduler', {
+    collectionsDir: dir,
+    projectId: 'proj-X',
+    mcpFetcher: deadFetcher
+  });
+  assert.equal(fetcherCalled, false, 'fetcher must not be called when cache exists');
+  assert.equal(r2.success, true);
+  assert.ok(r2.message.includes("No 'scheduler' findings"), 'cached message should persist');
+});
+
 test('MCP path: second session reuses the cache across processes (no fetch)', async () => {
   const dir = tempDir();
   const fA = mkCountingMcpFetcher(8);

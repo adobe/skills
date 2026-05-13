@@ -52,7 +52,7 @@ function readMcpCache(collectionsDir, projectId, pattern) {
 }
 
 /** Persist an MCP fetch to disk as the read model for subsequent paging. */
-function writeMcpCache(collectionsDir, projectId, pattern, environment, targets) {
+function writeMcpCache(collectionsDir, projectId, pattern, environment, targets, mcpMessage) {
   const file = mcpCachePath(collectionsDir, projectId, pattern);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify({
@@ -61,7 +61,8 @@ function writeMcpCache(collectionsDir, projectId, pattern, environment, targets)
     pattern,
     environment,
     fetchedAt: new Date().toISOString(),
-    targets
+    targets,
+    ...(mcpMessage ? { mcpMessage } : {})
   }, null, 2));
 }
 
@@ -129,7 +130,7 @@ async function getFromMcp({ pattern, projectId, environment, mcpFetcher, collect
         };
       }
       const targets = Array.isArray(mcp.targets) ? mcp.targets : [];
-      writeMcpCache(collectionsDir, projectId, pattern, environment, targets);
+      writeMcpCache(collectionsDir, projectId, pattern, environment, targets, mcp.message);
       cache = readMcpCache(collectionsDir, projectId, pattern);
     } catch (error) {
       return {
@@ -147,12 +148,13 @@ async function getFromMcp({ pattern, projectId, environment, mcpFetcher, collect
   }
 
   const { targets, paging } = paginate(cache.targets, { offset, limit });
+  const defaultMessage = `Using MCP cache for project ${projectId} (fetched ${formatTimestamp(cache.fetchedAt)}).`;
   return {
     success: true,
     source: 'mcp-server',
     projectId,
     environment,
-    message: `Using MCP cache for project ${projectId} (fetched ${formatTimestamp(cache.fetchedAt)}).`,
+    message: (cache.targets.length === 0 && cache.mcpMessage) ? cache.mcpMessage : defaultMessage,
     targets,
     paging
   };

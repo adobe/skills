@@ -88,6 +88,13 @@ The MCP server is **not** required to implement paging; the helper batches clien
     severity?: string;
   }>;
   summary?: Record<string, number>;
+  /**
+   * Present when a specific pattern was requested but has no findings in the
+   * latest BPA report (e.g. "No 'scheduler' findings in the latest BPA report
+   * for project <id>."). `targets` will be an empty array. This is a successful
+   * response — the report exists, there are just no findings for this pattern.
+   */
+  message?: string;
 }
 ```
 
@@ -172,4 +179,5 @@ helper caches the response to disk and slices from the cache on subsequent calls
 | Network / timeout | Once | Retry after ~2s, then quote error verbatim and stop if still failing. |
 | 5xx | Once | Retry after ~2s, then quote error verbatim and stop if still failing. |
 | 400 | No | Quote error verbatim; stop; ask user to fix parameters or pick another path. |
-| 200 empty targets | No | Report honestly; stop. Offer options (other pattern, CSV, explicit files) **only** as choices for the user — do not start editing the repo without BPA targets unless the user picks manual files. |
+| `success: true`, empty `targets`, `message` present (specific pattern, no findings) | No | Show the `message` verbatim (e.g. *"No 'scheduler' findings in the latest BPA report for project X."*). Offer options — other pattern, CSV, explicit files — **only** as choices; do not start editing the repo without BPA targets unless the user picks manual files. |
+| `success: false`, empty `targets` (`pattern: "all"` or error) | No | Quote `error` verbatim; stop. Offer options (other pattern, CSV, explicit files) **only** as choices for the user. |
