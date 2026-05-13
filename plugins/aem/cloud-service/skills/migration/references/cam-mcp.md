@@ -6,7 +6,7 @@ Read this file when **fetching BPA targets via MCP** instead of a CSV or cached 
 
 1. Agent asks the user for their **CAM project name or ID**.
 2. **You confirm** the project name or ID (the agent should not guess or infer it).
-3. Agent calls **`fetch-cam-bpa-findings`** **once** with the confirmed project and the **one pattern** for this session (`scheduler`, `assetApi`, etc., or `all` then filtered). The MCP server returns all findings for that pattern.
+3. Agent calls **`fetch-cam-bpa-findings-by-pattern`** **once** with the confirmed project and the **one pattern** for this session (`scheduler`, `assetApi`, etc., or `all` then filtered). The MCP server returns all findings for that pattern.
 4. `bpa-findings-helper.js` caches the response to
    `<collectionsDir>/mcp/<projectId>/<pattern>.json` and applies the batch slice (default 5) client-side.
 5. Agent processes that batch, reports progress (`returned / total`), then stops. The user says whether to continue.
@@ -16,7 +16,7 @@ See [Batching](#batching) below for the full contract.
 
 ### Project name and ID — non-negotiable
 
-- **Never** call **`fetch-cam-bpa-findings`** with a `projectId` or `projectName` that the user has not **explicitly confirmed**.
+- **Never** call **`fetch-cam-bpa-findings-by-pattern`** or **`fetch-cam-bpa-findings-by-importance`** with a `projectId` or `projectName` that the user has not **explicitly confirmed**.
 - If the tool returns a "project not found" error, **quote the error verbatim**, and ask the user to provide the correct project name or ID — do not guess or retry with a fuzzy match.
 - **Do not** infer the CAM project from the open workspace, repository name, or sample code (e.g. WKND) when using MCP.
 
@@ -53,12 +53,12 @@ If your MCP server documentation adds other error prefixes or codes with the sam
 ## Rules before any tool call
 
 1. **Ask the user** for their CAM project name or ID. Do not guess from the workspace or sample code.
-2. **Wait for explicit confirmation**, then call **`fetch-cam-bpa-findings`** using the **confirmed** `projectId` (preferred) or `projectName`.
-3. Map the session's **single pattern** to the tool's `pattern` argument (`scheduler`, `assetApi`, `eventListener`, `resourceChangeListener`, `eventHandler`, or `all`). If you used `all`, filter `targets` to the active pattern.
+2. **Wait for explicit confirmation**, then call **`fetch-cam-bpa-findings-by-pattern`** (for code-transformer pattern flows) or **`fetch-cam-bpa-findings-by-importance`** (for "what are the critical/major findings?" requests) using the **confirmed** `projectId` (preferred) or `projectName`.
+3. For pattern flows: map the session's **single pattern** to the tool's `pattern` argument (`scheduler`, `assetApi`, `eventListener`, `resourceChangeListener`, `eventHandler`, or `all`). If you used `all`, filter `targets` to the active pattern.
 
-## Tool: `fetch-cam-bpa-findings`
+## Tool: `fetch-cam-bpa-findings-by-pattern`
 
-The only MCP tool registered by the server. It can also resolve a project name to a project ID internally (via the CAM projects API), so a separate `list-projects` call is not needed — pass `projectName` or `projectId`.
+Pattern-axis tool registered by the server. It can also resolve a project name to a project ID internally (via the CAM projects API), so a separate `list-projects` call is not needed — pass `projectName` or `projectId`.
 
 **Request (illustrative — confirm against live MCP tool schema):**
 
@@ -125,6 +125,59 @@ const resp = await fetchCamBpaFindings({
 
 ---
 
+## Tool: `fetch-cam-bpa-findings-by-importance`
+
+Importance-axis tool registered by the server. Returns all findings at one importance
+level (`CRITICAL`, `MAJOR`, `ADVISORY`, or `INFO`) from the **latest** BPA report
+uploaded to the project, sourced from the BPA's authoritative `_COUNT_<code>` rollup rows
+and pre-sorted by descending count.
+
+Use this tool when the user asks open-ended questions like *"what are the critical
+findings?"* or *"show me the major issues"*, rather than a code-transformer migration
+flow (those use `fetch-cam-bpa-findings-by-pattern`). The same project-confirmation
+guardrails apply: never call it with an unconfirmed `projectId` / `projectName`.
+
+**Request (illustrative — confirm against live MCP tool schema):**
+
+```typescript
+{
+  importance: "CRITICAL" | "MAJOR" | "ADVISORY" | "INFO";  // required
+  projectId?: string;   // CAM project ID; either this or projectName must be provided
+  projectName?: string; // human-readable name; resolved to projectId via CAM /projects API
+  environment?: "dev" | "stage" | "prod";  // defaults to "prod"
+}
+```
+
+**Backed by:** `GET /projects/{projectId}/bpaReportCodeTransformerData/findings/{importance}`
+
+**Success response:**
+
+```typescript
+{
+  success: true;
+  importance: "CRITICAL" | "MAJOR" | "ADVISORY" | "INFO";
+  environment?: "dev" | "stage" | "prod";
+  projectId: string;
+  reportId: string | null;
+  reportTime: number | null;  // epoch millis from BpaOverview, when available
+  findings: Array<{
+    code: string;          // e.g. "_COUNT_ACV"
+    type: string;          // e.g. "_count.assets.health"
+    subtype: string;       // e.g. "missing.original.rendition"
+    importance: "CRITICAL" | "MAJOR" | "ADVISORY" | "INFO";
+    count: number;
+  }>;
+}
+```
+
+A 404 from the backend (no BPA report uploaded yet) is mapped to `success: true` with
+`findings: []` and `reportId: null`.
+
+**Error response:** same shape as `fetch-cam-bpa-findings-by-pattern` (`success: false`,
+`error`, optional `troubleshooting` / `suggestion`). Apply the same retry table.
+
+---
+
 ## Batching
 
 The migration skill processes BPA findings in **batches of 5** by default. Batching is
@@ -146,7 +199,7 @@ helper caches the response to disk and slices from the cache on subsequent calls
 
 ### Agent rules
 
-1. Call `fetch-cam-bpa-findings` **once** per `(projectId, pattern)` — the helper does this
+1. Call `fetch-cam-bpa-findings-by-pattern` **once** per `(projectId, pattern)` — the helper does this
    the first time the agent invokes `getBpaFindings` on the MCP path.
 2. After each batch the helper returns, process **only** those findings, then **stop**:
    *"Processed 5 of 137 scheduler findings. Reply `continue` for the next batch, or name
