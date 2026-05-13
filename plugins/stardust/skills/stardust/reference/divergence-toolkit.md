@@ -637,7 +637,7 @@ which version of §1 was in effect.
       "audit_adjustments": [],
       "references_used": [],
       "palette_source": {
-        "library_version": "v0.6.0",
+        "library_version": "v0.7.0",
         "candidates": [],
         "recommended_index": 2,
         "picked_index": 2
