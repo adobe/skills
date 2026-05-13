@@ -111,7 +111,7 @@ page is approved, ready for migrate:
      "at":                  "<ISO>",
      "outputDir":           "stardust/migrated/",
      "selfContained":       true,
-     "totalAssetsBundled":  6,
+     "totalAssetsBundled":  7,
      "bundledAssets":       [ "favicon.svg", "generated/hero-1x.jpg",
                               "generated/hero-2x.jpg", "generated/parallax-bg.jpg",
                               "generated/orphan-only-1x.jpg",
@@ -154,15 +154,19 @@ reference from `home-proposed.html` (the asset on disk under
 
 ## Expected behavior (run 3 — stale asset cleanup)
 
-10. `home` re-renders (proposed sha changed).
-11. The new `bundledAssets` set no longer contains
+10. **`--clean` implies `--force`**: every page in scope
+    re-renders, not just `home`. The migrate plan surfaces
+    `--clean → --force on N pages`.
+11. The new `bundledAssets` set is the complete union across
+    every re-rendered page and no longer contains
     `generated/orphan-only-1x.jpg`.
 12. The prior copy at
     `stardust/migrated/assets/generated/orphan-only-1x.jpg` is
     deleted. `state.json.migrate.cleanedAssets[]` records
     `["generated/orphan-only-1x.jpg"]`.
-13. Without `--clean`, the file would have remained on disk
-    (additive default).
+13. Without `--clean`, the run would have honored the idempotent
+    skip (only `home` re-renders), the file would have remained
+    on disk (additive default), and no deletions occur.
 
 ## User prompt (run 4 — cross-page asset deduplication)
 

@@ -181,6 +181,18 @@ A consumer that depends on `selfContained: true` should also
 test for the field's presence — older `state.json` files won't
 have it.
 
+**Provenance schema change.** This PR renames the
+`contentDeviations[]` / `migrationDecisions[]` kind from
+`"media-missing"` (used by pre-PR runs for image/video assets
+not on disk) to `"asset-missing"` (used by post-PR runs for any
+asset type). Consumers reading `_meta.json#migrationDecisions[]`
+or per-page `contentDeviations[]` should accept either string
+until they migrate; the union shape is `"media-missing" |
+"asset-missing"`. The new name reflects the broader scope —
+fonts, CSS-referenced URLs, srcset entries, and other non-media
+references can now be flagged missing too, not just `<img>` /
+`<video>` / `<source>`.
+
 ## Idempotency and incremental behaviour
 
 The bundle is incremental — running migrate on a 5-page site

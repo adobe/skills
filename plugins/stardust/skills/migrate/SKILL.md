@@ -37,7 +37,11 @@ sidecars.
   flexibility.
 - `--clean` — delete assets previously bundled but no longer
   referenced from `stardust/migrated/assets/`. Off by default
-  (migrate is additive); see
+  (migrate is additive). **Implies `--force`**: every page is
+  re-rendered so the run's `bundledAssets` Set is the complete
+  union of currently-referenced assets — otherwise `--clean`
+  would risk deleting assets still referenced by
+  idempotent-skipped pages. See
   `reference/asset-bundling.md` § Stale asset cleanup.
 - `--pin-timestamp <ISO8601>` — pin the migrate-provenance
   timestamp so re-runs without source changes produce byte-

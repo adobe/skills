@@ -337,19 +337,32 @@ includes them, and they are harmless 0-link files.
 
 The `--clean` flag changes this:
 
-1. At the start of the run, capture `priorBundle =
+1. **`--clean` implies `--force`.** Every page in scope is
+   re-rendered so the run's `bundledAssets` Set is the complete
+   union of assets referenced by every migrated page. Without
+   this implication, an idempotent-skipped page's assets would
+   be absent from the new Set and `--clean` would delete them —
+   producing deploy-time 404s on the skipped page. Surface the
+   implication in the migrate plan: `--clean → --force on N
+   pages`.
+2. At the start of the run, capture `priorBundle =
    state.json.migrate.bundledAssets[]` (or an empty list if the
    key is absent).
-2. Run normal bundling. `bundledAssets` is the new set.
-3. After all pages are written, compute
+3. Run normal bundling on every page (no skips). `bundledAssets`
+   is the new, complete set.
+4. After all pages are written, compute
    `stale = priorBundle.filter(p => !bundledAssets.has(p))`.
-4. For each stale subpath, `fs.unlink(<migrated>/assets/<subpath>)`.
-5. Remove empty parent directories.
-6. Record the cleanup in `state.json.migrate.cleanedAssets[]`.
+5. For each stale subpath, `fs.unlink(<migrated>/assets/<subpath>)`.
+6. Remove empty parent directories.
+7. Record the cleanup in `state.json.migrate.cleanedAssets[]`.
 
 `--clean` is opt-in because deleting files is the kind of action
-the user should authorise. Without it, the run is purely
-additive.
+the user should authorise; bundling it with `--force` is
+necessary because the two flags interact — additive runs can
+safely use the idempotent skip, but stale-cleanup runs need the
+full per-page asset scan to compute the orphan set correctly.
+Without `--clean`, the run is purely additive and the
+idempotent skip is honored.
 
 ### Idempotent skip interaction
 
@@ -360,6 +373,12 @@ prior run emitted are still on disk; the new run's
 `state.json.migrate.bundledAssets[]` at the start of the run so
 the cross-page dedup logic still works correctly when only some
 pages are re-rendered.
+
+`--clean` cannot rely on this union alone because the prior set
+also contains stale-asset candidates — exactly the assets
+`--clean` is trying to find. The fix is documented in
+§ Stale asset cleanup: `--clean` implies `--force`, every page
+re-renders, and the global Set is rebuilt from scratch.
 
 ### Configurable prefixes from `stardust.json`
 
