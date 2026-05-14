@@ -116,6 +116,16 @@ broken internal link — flagged `data-broken-link="true"` and
 logged under `provenance.brokenInternalLinks[]` per
 `content-preservation.md` § Internal link rewriting.
 
+**Same-origin absolute URLs go through the page map too.** A
+`<a href="https://example.com/beers/">` where `example.com`
+matches `state.json.site.originUrl` is stripped to its path +
+query + fragment per `content-preservation.md` § Internal link
+rewriting step 3, then looked up in `pageMap[]` like any other
+internal reference. Skipping this step lets same-origin absolute
+links pass through verbatim — which would defeat the
+portability claim under `file://` and at subpaths. The Phase 3
+absolute-internal-ref grep is the runtime backstop.
+
 ### Reference shape (depth-aware relative paths)
 
 For a page with `outputPath` O, the page's depth is
