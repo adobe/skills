@@ -17,18 +17,20 @@ zip-and-deploy static site**.
 Concretely:
 
 1. `cd <project>/stardust/migrated && zip -r out.zip .` produces a
-   zip that, when extracted onto any static host that serves it
-   from the host root, renders identically to the migrated tree
-   opened directly via `file://`.
+   zip that renders identically in three contexts: extracted
+   onto a static host at the host root, extracted onto a host
+   that serves it from any subpath, or opened directly via
+   `file://`. No rewriting at deploy time.
 2. The only external runtime dependencies are CDN-hosted URLs
    that are deliberately external — Google Fonts CSS + woff2,
    jsDelivr-hosted vendor JS libraries. These keep the bundle
    lightweight; the migrated site is network-dependent at view
    time for them.
 3. No `../` segment in any `src`/`href`/`url()` reference
-   escapes the migrated tree. Every internal reference resolves
-   either inside `migrated/` (static asset, internal page) or to
-   an external scheme-bearing URL.
+   escapes the migrated tree. Every internal reference is a
+   depth-aware relative path that resolves either inside
+   `migrated/` (static asset, internal page) or to an external
+   scheme-bearing URL.
 
 The `selfContained: true` field in `state.json.migrate` (§
 State.json contract below) is the forward-compat signal —
@@ -39,14 +41,17 @@ bundles that pre-date this guarantee.
 
 ```
 stardust/migrated/
-├── index.html                  # home (slug "home" → root)
+├── index.html                  # source / (home)
 ├── _meta.json                  # home's sidecar
-├── <slug>/
-│   ├── index.html              # one per non-home slug (URL-faithful nesting)
-│   └── _meta.json
-├── docs/api/                   # multi-segment slugs nest naturally
+├── beers/                      # source /beers/  -> beers/index.html
 │   ├── index.html
 │   └── _meta.json
+├── about-us/                   # source /about-us/history.html -> about-us/history.html
+│   ├── history.html            # (preserve .html leaf — no extra index.html)
+│   ├── history._meta.json
+│   └── team/                   # source /about-us/team/ -> about-us/team/index.html
+│       ├── index.html
+│       └── _meta.json
 ├── assets/
 │   ├── logo.<ext>
 │   ├── favicon.<ext>           # plus variants per metadata-and-jsonld.md § Favicon
@@ -57,37 +62,52 @@ stardust/migrated/
 └── sitemap.xml
 ```
 
-Per-page output paths follow
+Per-page output paths follow the URL-literal rule in
 `skills/migrate/reference/migration-procedure.md` § Output path
-mapping. Asset subpaths preserve the source structure verbatim
-per `skills/migrate/reference/asset-bundling.md` § Copy.
+mapping — the file lands at the source URL's literal path
+(`/about-us/history.html` → `about-us/history.html`;
+`/beers/` → `beers/index.html`). Asset subpaths preserve the
+source structure verbatim per
+`skills/migrate/reference/asset-bundling.md` § Copy.
 
 ## Asset reference shape
 
-Every asset reference in migrated HTML and migrated CSS uses a
-**root-relative** path of the form `/assets/<subpath>`. This
-covers:
+Every asset and internal-page reference in migrated HTML and
+migrated CSS uses a **depth-aware relative path** computed per
+`skills/migrate/reference/migration-procedure.md` § Reference
+shape. The prefix is `./` for depth-0 pages (the root
+`index.html`) and `../`.repeat(depth) for nested pages.
 
-| Reference shape                                | Example                                              |
-|------------------------------------------------|------------------------------------------------------|
-| `<img src>` / `<img srcset>`                    | `src="/assets/hero.jpg"`                            |
-| `<picture><source src>` / `<source srcset>`     | `srcset="/assets/hero-2x.jpg 2x"`                   |
-| `<link rel="icon">` / `<link rel="apple-touch-icon">` | `href="/assets/favicon.svg"`                  |
-| `<link rel="stylesheet" href="/assets/...">`    | when migrate emits an external CSS file              |
-| Inline `style="background-image: url(...)"`     | `url('/assets/parallax-bg.jpg')`                    |
-| `@font-face src: url(...)` inside `<style>`     | `url('/assets/fonts/inter-var.woff2')`              |
+| Reference shape                                | Example (from `beers/index.html`, depth 1)        |
+|------------------------------------------------|---------------------------------------------------|
+| `<img src>` / `<img srcset>`                    | `src="../assets/hero.jpg"`                       |
+| `<picture><source src>` / `<source srcset>`     | `srcset="../assets/hero-2x.jpg 2x"`              |
+| `<link rel="icon">` / `<link rel="apple-touch-icon">` | `href="../assets/favicon.svg"`             |
+| `<link rel="stylesheet" href="...">`            | `href="../assets/styles.css"`                    |
+| Inline `style="background-image: url(...)"`     | `url('../assets/parallax-bg.jpg')`               |
+| `@font-face src: url(...)` inside `<style>`     | `url('../assets/fonts/inter-var.woff2')`         |
+| Internal page link `<a href>`                   | `href="../the-brewery/index.html"`               |
 
 JSON-LD and OG-image `<meta content="...">` references are
-**absolute URLs**, not root-relative, because search engines
-fetch them by URL. They are composed per
+**absolute URLs**, not relative, because search engines fetch
+them by URL. They are composed per
 `skills/migrate/reference/metadata-and-jsonld.md` § OG image
-using `state.json.site.deployUrl`; asset bundling does not touch
-them.
+using `state.json.site.deployUrl`. The `<link rel="canonical">`
+and `og:url <meta>` are likewise absolute (they identify the
+page on the deploy host). Asset bundling and link rewriting
+skip these.
 
-Deploying the bundle to a non-root subpath (e.g.,
-`example.com/preview/`) requires a one-shot rewrite of
-`/assets/` → `/preview/assets/`. That is **out of scope for
-migrate**; it belongs to a downstream `prepare-deploy` step.
+Depth-aware relative was chosen so the bundle works **in three
+contexts without rewriting at deploy time**:
+
+- `file://`, opening `index.html` directly. Every link resolves
+  because the prefix is computed from the file's own depth.
+- Host root (`example.com/`). Relative paths work like
+  webserver-served HTML.
+- Subpath (`example.com/preview/`, `example.com/v2/`). Same.
+
+The contract is **one shape, works everywhere**. There is no
+alternative mode.
 
 ## `_meta.json` sidecar contract
 
@@ -128,6 +148,11 @@ every successful run:
     "at":                  "2026-05-13T22:30:00Z",
     "outputDir":           "stardust/migrated/",
     "selfContained":       true,
+    "pageMap": [
+      { "sourceUrl": "/",                       "outputPath": "index.html",                 "slug": "home" },
+      { "sourceUrl": "/about-us/history.html",  "outputPath": "about-us/history.html",      "slug": "about-us__history" },
+      { "sourceUrl": "/beers/",                 "outputPath": "beers/index.html",           "slug": "beers" }
+    ],
     "totalAssetsBundled":  14,
     "bundledAssets":       [
       "favicon.svg",
@@ -135,8 +160,8 @@ every successful run:
       "..."
     ],
     "pages": [
-      { "slug": "home",        "file": "stardust/migrated/index.html",        "assetsBundled": 11 },
-      { "slug": "about",       "file": "stardust/migrated/about/index.html",  "assetsBundled":  3 }
+      { "slug": "home",        "file": "stardust/migrated/index.html",                  "assetsBundled": 11 },
+      { "slug": "about-us__history", "file": "stardust/migrated/about-us/history.html", "assetsBundled":  3 }
     ],
     "missingAssets": [
       {
@@ -155,7 +180,8 @@ Field-by-field:
 |------------------------|-----------|-----------------------------------------------------------------------|
 | `at`                   | ISO 8601  | Run end timestamp.                                                    |
 | `outputDir`            | string    | Project-relative path to the bundle root.                             |
-| `selfContained`        | boolean   | Forward-compat signal. Always `true` after this PR ships; `false` (or absent) on pre-PR bundles. |
+| `selfContained`        | boolean   | Forward-compat signal. Always `true` after the 0.7.0 bundle PR; `false` (or absent) on older bundles. |
+| `pageMap[]`            | object[]  | Source-URL-to-output-path map built once per run. Consumed by per-page rendering AND internal-link rewriting. Per `migration-procedure.md` § Page map. Each entry: `{ sourceUrl, outputPath, slug }`. |
 | `totalAssetsBundled`   | integer   | Count of unique subpaths bundled into `<outputDir>/assets/`.          |
 | `bundledAssets`        | string[]  | The unique subpath set. Used by re-runs to seed the dedup set and by `--clean` to compute stale assets. |
 | `pages[].slug`         | string    | Slug from `state.json.pages[]`.                                       |
