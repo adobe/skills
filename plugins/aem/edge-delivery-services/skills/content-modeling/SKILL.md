@@ -3,7 +3,7 @@ name: content-modeling
 description: Create effective content models for your blocks that are easy for authors to work with. Use this skill anytime you are building new blocks, making changes to existing blocks that modify the initial structure authors work with.
 license: Apache-2.0
 metadata:
-  version: "1.0.0"
+  version: "2.0.0"
 ---
 
 # Content Modeling for AEM Edge Delivery Blocks
