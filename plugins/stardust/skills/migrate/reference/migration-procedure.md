@@ -50,34 +50,152 @@ All three branches apply canon chrome (header, footer) verbatim;
 all three apply the validation contracts; all three emit a
 `_meta.json` sidecar.
 
-## Output path mapping (slug → file)
+## Output path mapping
 
-Slugs (filesystem-friendly identifiers) map to nested
-`index.html` files for portable static hosting:
+The migrated tree's output path is determined by the **source
+URL**, not the slug shape. Slugs are filesystem-friendly
+identifiers used internally; the URL the page served at the live
+origin is the authoritative spec for where it lands.
 
-| Slug                  | Output path                                | URL it serves       |
-|-----------------------|--------------------------------------------|---------------------|
-| `home`                | `migrated/index.html`                      | `/`                 |
-| `about`               | `migrated/about/index.html`                | `/about`            |
-| `pricing`             | `migrated/pricing/index.html`              | `/pricing`          |
-| `docs__api`           | `migrated/docs/api/index.html`             | `/docs/api`         |
-| `blog__post-one`      | `migrated/blog/post-one/index.html`        | `/blog/post-one`    |
+### Output path: URL-literal rule
 
-The mapping algorithm: replace `__` with `/`, append
-`/index.html`. The `home` slug is the only special case (becomes
-the root `index.html`).
+```
+source URL                          ->  output path
+────────────────────────────────────────────────────
+/                                   ->  index.html
+/<slug>/                            ->  <slug>/index.html
+/<dir>/<sub>/                       ->  <dir>/<sub>/index.html
+/<slug>.html                        ->  <slug>.html           (preserve .html leaf)
+/<dir>/<page>.html                  ->  <dir>/<page>.html     (preserve .html leaf)
+/<slug>                             ->  <slug>/index.html     (default; record in _meta.json)
+/<file>.<other-ext>                 ->  <file>.<other-ext>    (passthrough, skip HTML render)
+```
 
-This convention works on every static host (Netlify, Vercel,
-Cloudflare Pages, S3+CloudFront, GitHub Pages, plain nginx)
-without URL rewrite rules.
+The rule is "mirror the source URL literally". A page served at
+`/about-us/history.html` lands at
+`stardust/migrated/about-us/history.html` — not at
+`stardust/migrated/about-us/history/index.html`. A page served at
+`/beers/` lands at `stardust/migrated/beers/index.html`. A page
+served at the bare `/beers` (no trailing slash) defaults to
+`beers/index.html` and records the default choice in
+`_meta.json.outputPathDefault: "trailing-slash"` so re-runs are
+deterministic.
+
+The output convention works on every static host (Netlify,
+Vercel, Cloudflare Pages, S3+CloudFront, GitHub Pages, plain
+nginx) without URL rewrite rules — and on `file://`, and at any
+subpath, because internal references are rewritten relative to
+each page's location per § Reference shape below.
+
+### Page map (build once, use everywhere)
+
+Migrate's first action in Phase 2 is to resolve every in-scope
+source URL to its definitive output path and write the map to
+`state.json.migrate.pageMap[]`:
+
+```json
+"pageMap": [
+  { "sourceUrl": "/",                          "outputPath": "index.html",                    "slug": "home" },
+  { "sourceUrl": "/beers-bev/",                "outputPath": "beers/index.html",              "slug": "beers" },
+  { "sourceUrl": "/about-us/history.html",     "outputPath": "about-us/history.html",         "slug": "about-us__history" },
+  { "sourceUrl": "/about-us/team/",            "outputPath": "about-us/team/index.html",      "slug": "about-us__team" }
+]
+```
+
+Per-page rendering AND internal-link rewriting both consume this
+map. Internal-link rewriting MUST look up the target's
+`outputPath` via the map — NOT synthesize `<target>/index.html`
+from the source slug. The synthesis bug is what turns
+`/about-us/history.html` into `/about-us/history/index.html`;
+the page map is the fix.
+
+The map is built once per migrate run, before any page is
+rendered, so cross-page link rewriting can resolve every target
+deterministically. A target URL that has no `pageMap` entry is a
+broken internal link — flagged `data-broken-link="true"` and
+logged under `provenance.brokenInternalLinks[]` per
+`content-preservation.md` § Internal link rewriting.
+
+**Same-origin absolute URLs go through the page map too.** A
+`<a href="https://example.com/beers/">` where `example.com`
+matches `state.json.site.originUrl` is stripped to its path +
+query + fragment per `content-preservation.md` § Internal link
+rewriting step 3, then looked up in `pageMap[]` like any other
+internal reference. Skipping this step lets same-origin absolute
+links pass through verbatim — which would defeat the
+portability claim under `file://` and at subpaths. The Phase 3
+absolute-internal-ref grep is the runtime backstop.
+
+### Reference shape (depth-aware relative paths)
+
+For a page with `outputPath` O, the page's depth is
+`segments(O) - 1`:
+
+- `index.html`            → depth 0
+- `beers/index.html`      → depth 1
+- `about-us/history.html` → depth 1
+- `about-us/team/index.html` → depth 2
+
+The rewrite prefix is:
+
+```
+prefix = depth === 0 ? "./" : "../".repeat(depth)
+```
+
+Rewrites applied to every internal reference in the page's
+final HTML and CSS:
+
+```
+/assets/foo                  -> <prefix>assets/foo
+url(/assets/foo)             -> url(<prefix>assets/foo)
+href="/"                     -> href="<prefix>index.html"
+href="<source-url>"          -> href="<prefix><pageMap[source-url].outputPath>"
+href="<source-url>#anchor"   -> href="<prefix><pageMap[source-url].outputPath>#anchor"
+```
+
+The explicit `index.html` (or the source URL's literal `.html`
+leaf) in nav targets is mandatory — `file://` browsers don't
+auto-resolve directory links. `href="./beers/"` works on a
+webserver that resolves `/beers/` to `/beers/index.html`, but
+opens an "index of beers/" listing or 404 on `file://`. The
+fix is `href="./beers/index.html"`.
+
+Absolute external URLs (`https://`, `http://`, `mailto:`,
+`tel:`) pass through verbatim. The canonical `<link>` and
+`og:url` `<meta>` stay absolute (they are external addresses
+that identify the page on the deploy host, not internal
+references — composed per `metadata-and-jsonld.md` using
+`state.json.site.deployUrl`).
+
+The depth-aware relative shape makes the bundle truly portable:
+
+- `file://` works because every link resolves relative to the
+  open HTML file with an explicit filename.
+- Hosting at the host root works because `./` and `../` resolve
+  exactly like a webserver would.
+- Hosting at any subpath (`example.com/preview/`) works for the
+  same reason. No rewriting needed at deploy time.
+
+This is the **single shape** the bundle emits; there is no
+alternative-mode flag. The contract is "one shape, works
+everywhere".
 
 ## `_meta.json` sidecar
 
-Every migrated page gets a sidecar JSON next to its `index.html`:
+Every migrated page gets a sidecar JSON next to its HTML file.
+The sidecar's name depends on the HTML leaf:
 
-- `migrated/index.html` → `migrated/_meta.json` (home)
-- `migrated/about/index.html` → `migrated/about/_meta.json`
-- `migrated/docs/api/index.html` → `migrated/docs/api/_meta.json`
+- `index.html` → `_meta.json` (same dir)
+- `<other>.html` → `<other>._meta.json` (same dir, prefix matches
+  the HTML basename so multiple `.html` siblings don't collide)
+
+Examples:
+
+- `migrated/index.html`              → `migrated/_meta.json`
+- `migrated/about/index.html`        → `migrated/about/_meta.json`
+- `migrated/docs/api/index.html`     → `migrated/docs/api/_meta.json`
+- `migrated/about-us/history.html`   → `migrated/about-us/history._meta.json`
+- `migrated/about-us/team.html`      → `migrated/about-us/team._meta.json`
 
 Schema:
 

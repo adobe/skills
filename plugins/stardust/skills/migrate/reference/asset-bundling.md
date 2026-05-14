@@ -172,11 +172,12 @@ bundled if and only if one prefix matches.
 
 Default prefix set:
 
-| Prefix                     | When it appears                                      |
-|----------------------------|------------------------------------------------------|
-| `../current/assets/`       | Prototype/migrate-internal references (the Wasatch shape) |
-| `/assets/`                 | Root-relative asset paths authored by the prototype   |
-| `assets/` and `./assets/`  | Project-relative asset paths (rare; subdir-served sites) |
+| Prefix                                          | When it appears                                      |
+|-------------------------------------------------|------------------------------------------------------|
+| `../current/assets/`                            | Prototype/migrate-internal references (the Wasatch shape) |
+| `/assets/`                                      | Root-relative asset paths authored by the prototype   |
+| `assets/` and `./assets/`                       | Depth-0 emitted form (home page re-runs)              |
+| `../assets/`, `../../assets/`, `../../../assets/` | Depth-N emitted form (nested page re-runs)         |
 
 Projects may extend the set via
 `DESIGN.json.extensions.canon.assetPrefixes[]`:
@@ -234,38 +235,50 @@ with the prefix swapped to `/assets/`.
 ## Rewrite
 
 Once copy is done, every detected reference is rewritten in the
-HTML string. The rewrite always produces a **root-relative**
-path of the form `/assets/<subpath>`.
+HTML string. The rewrite produces a **depth-aware relative path**
+of the form `<prefix>assets/<subpath>`, where `<prefix>` is
+computed from the page's `outputPath` per
+`migration-procedure.md` § Reference shape:
 
-Root-relative was chosen over computed relative because:
+```
+depth  = segments(outputPath) - 1
+prefix = depth === 0 ? "./" : "../".repeat(depth)
+```
 
-- The plugin's slug layout nests pages (`/about/index.html`,
-  `/docs/api/index.html`). Computed relative paths would need
-  per-page depth math (`../assets/foo.jpg`,
-  `../../assets/foo.jpg`) — extra complexity, more failure modes.
-- The existing migrate output already uses root-relative for
-  `<link rel="icon">`, `<meta property="og:image">`, and the
-  JSON-LD `image` fields (`metadata-and-jsonld.md`). Consistency.
-- Self-containedness at the host root is the default deploy
-  shape (Netlify drop, Vercel, S3+CloudFront with the bundle at
-  the bucket root, GitHub Pages with a custom domain). The bundle
-  works there with no further rewrites.
+Worked examples:
 
-Deployments to **a non-root subpath** (`example.com/preview/`)
-need a separate one-shot rewrite of `/assets/` → `/preview/assets/`.
-That is out of scope for migrate; recommend the user run a sed
-pipeline or a downstream `prepare-deploy` skill (separate plugin).
+| Page outputPath          | Depth | Prefix | Asset reference                  |
+|--------------------------|-------|--------|----------------------------------|
+| `index.html`             | 0     | `./`   | `./assets/hero.jpg`              |
+| `beers/index.html`       | 1     | `../`  | `../assets/hero.jpg`             |
+| `about-us/history.html`  | 1     | `../`  | `../assets/hero.jpg`             |
+| `about-us/team/index.html` | 2   | `../../` | `../../assets/hero.jpg`        |
 
-The Wasatch reference uses *relative* paths (`assets/<subpath>`)
-because its output is flat — every HTML file lives at the bundle
-root. The plugin's nested slug layout makes flat relative paths
-unworkable; root-relative is the generalisation.
+Depth-aware relative was chosen because it makes the bundle
+truly portable: `file://`, host-root deploy, and any-subpath
+deploy all work without rewriting at deploy time. Root-relative
+`/assets/<subpath>` works only on a webserver that serves the
+bundle at the host root — it 404s on `file://` and at any
+subpath.
 
-The rewrite is idempotent: if the HTML already contains
-`/assets/<subpath>` references (because a prior migrate run
-emitted them), they pass through the detection phase by matching
-the `/assets/` prefix, get copied if not already bundled, and
-land unchanged in the output.
+The Wasatch reference uses *flat* relative (`assets/<subpath>`,
+no `./` prefix) because every HTML file lives at the bundle
+root. The plugin's nested layout requires the explicit
+depth-aware prefix; the same algorithm reduces to Wasatch's
+shape when every page has depth 0.
+
+The rewrite is idempotent across re-runs: a reference already
+shaped as `<prefix>assets/<subpath>` passes back through
+detection by matching the bare `assets/` prefix (depth-aware
+relative paths all end in `assets/<subpath>`); the bundler
+extracts the subpath, copies if not already bundled, and emits
+the same string. The asset-prefix set (§ Prefix resolution)
+explicitly includes `assets/`, `./assets/`, and `../assets/`
+for this reason.
+
+Strict byte-identity across re-runs (modulo provenance
+timestamp) holds because depth is a pure function of
+`outputPath` and `outputPath` is stable across runs.
 
 ## State.json migrate block
 

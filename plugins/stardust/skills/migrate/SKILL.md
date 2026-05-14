@@ -208,11 +208,50 @@ assets** that no individual page references explicitly:
    stale subpath from `stardust/migrated/assets/`. Record the
    deletions under `state.json.migrate.cleanedAssets[]`. Per
    `reference/asset-bundling.md` § Stale asset cleanup.
-5. Verify **self-containment**:
-   `find stardust/migrated/ -type f -name '*.html' -exec grep -l
-   '\.\./current/' {} +` returns nothing. Any hit is a bug in
-   the bundling pass — fail the run with the offending file(s)
-   listed.
+5. Verify **portability**. The bundle must work via `file://`,
+   at a webserver root, and at any subpath — "one shape, works
+   everywhere". Run every audit; any non-empty grep output or
+   non-zero fixture exit fails the run with the cited error
+   message:
+
+   ```bash
+   # No source-tree escapes
+   find stardust/migrated/ -type f -name '*.html' -exec grep -l '\.\./current/' {} +
+   # Error: "asset still points outside the migrated tree; rewrite via the
+   #   asset-bundling pass per reference/asset-bundling.md § Detection"
+
+   # No absolute internal references in attribute values (404 on file:// and subpath)
+   grep -rE '(href|src)="/[^/]' stardust/migrated/ --include='*.html'
+   # Error: "absolute href `/beers/` will 404 on file:// and on subpath hosts;
+   #   rewrite via the page map per migration-procedure.md § Reference shape"
+
+   # No absolute internal references in url() (inline style, <style> blocks, CSS)
+   grep -rE 'url\(\s*["'\'']?\s*/[^/]' stardust/migrated/ --include='*.html' --include='*.css'
+   # Error: "absolute url(/...) reference will 404 on file:// and on subpath hosts;
+   #   rewrite via the asset-bundling pass per asset-bundling.md § Rewrite"
+
+   # No directory-only nav (doesn't resolve on file://). Pattern accepts
+   # only relative or root-absolute hrefs (./, ../, /, or bare segment)
+   # so external URLs like https://google.com/ aren't false-flagged.
+   grep -rE 'href="(\.{0,2}/|[a-zA-Z0-9_-])[^:"#?]*/"' stardust/migrated/ --include='*.html'
+   # Error: "directory-only href `./beers/` won't resolve on file://;
+   #   append the explicit index.html (or the source URL's .html leaf)
+   #   per § Reference shape"
+
+   # pageMap consistency — every internal href appears as an outputPath
+   node skills/migrate/fixtures/pagemap-audit.mjs stardust/migrated/ stardust/state.json
+   # Error: "internal href has no pageMap entry; link rewriting bypassed the
+   #   page map per § Page map (build once, use everywhere)"
+
+   # Headless file:// round-trip — the test that proves zip-and-deploy works
+   node skills/migrate/fixtures/file-protocol-audit.mjs stardust/migrated/
+   # Error: "<offending file> linked <ref> that 404s under file://; see the
+   #   Playwright network log printed above"
+   ```
+
+   The audits are mandatory — there is no skip flag. The contract
+   is "self-contained, zip-and-deploy" and these audits are the
+   verifiers that back the claim.
 
 Asset migration is idempotent — files are content-hashed and
 copied only when missing; per-page bundling deduplicates across
@@ -286,8 +325,8 @@ Next:
 
 | Path                                              | Purpose                                                |
 |---------------------------------------------------|--------------------------------------------------------|
-| `stardust/migrated/<slug-path>/index.html`        | Migrated page (one per slug, nested for URL fidelity). |
-| `stardust/migrated/<slug-path>/_meta.json`        | Sidecar with full reasoning trace per page.            |
+| `stardust/migrated/<source-url-path>`             | Migrated page. Output path mirrors the source URL literally (see `reference/migration-procedure.md` § Output path mapping). The bundle is **zip-and-deploy**: drop on any static host at any path, or open `index.html` directly via `file://`. Every internal reference is relative to the page that emits it; nav targets carry an explicit `index.html` (or the source URL's literal filename) so file:// resolves without a server. |
+| _meta.json sidecar                                | Lives next to each migrated page. For `<dir>/index.html` the sidecar is `<dir>/_meta.json`; for `<dir>/<name>.html` the sidecar is `<dir>/<name>._meta.json` so multiple `.html` siblings don't collide. Per `reference/migration-procedure.md` § `_meta.json` sidecar. |
 | `stardust/migrated/index.html`                    | The home page (special case).                          |
 | `stardust/migrated/_meta.json`                    | Home sidecar.                                          |
 | `stardust/migrated/assets/logo.<ext>`             | Brand logo (sitewide).                                 |
