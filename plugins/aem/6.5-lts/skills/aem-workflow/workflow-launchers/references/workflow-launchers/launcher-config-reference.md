@@ -58,6 +58,8 @@ property=<property-name>,value=<expected-value>,type=<JCR_TYPE>
 
 `type` defaults to `STRING` if omitted.
 
+Also acceptable: `condition` (singular, single String) when a launcher has exactly one condition expression. Both forms are read at startup. New launchers should default to `conditions` (the plural form scales to multiple conditions without re-authoring).
+
 ### `workflow` (String, required)
 
 **Runtime path** of the workflow model.
@@ -76,9 +78,18 @@ Always confirm the actual runtime ID using **Tools → Workflow → Models → s
 
 Free-text description visible in the Launchers UI.
 
-### `excludeList` (String[], optional)
+### `excludeList` (String, optional)
 
-List of workflow model IDs whose sessions should not re-trigger the launcher.
+Comma-separated list of entries that suppress the launcher for matching events. Two entry formats can be mixed:
+
+- **Bare JCR property names** (e.g., `jcr:lastModified`, `dc:format`): when a `PROPERTY_CHANGED` event affects only properties in this list, the launcher skips the event.
+- **`event-user-data:<value>`** prefix (e.g., `event-user-data:changedByWorkflowProcess`): skip events whose JCR observation `userData` matches `<value>`. This is the primary loop-prevention mechanism — pair with `setUserData("changedByWorkflowProcess")` in your `WorkflowProcess` (see `condition-patterns.md`).
+
+Example from an OOTB launcher:
+
+```
+excludeList="lastTransferredForTagging,jcr:lastModified,dc:format,event-user-data:changedByWorkflowProcess,event-user-data:changedByPageManagerCopy"
+```
 
 ### `runModes` (String[], optional)
 

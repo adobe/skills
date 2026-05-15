@@ -90,7 +90,7 @@ Workflow Instance created at /var/workflow/instances/
 | `workflow` | String | Runtime path of the workflow model `/var/workflow/models/<id>` |
 | `enabled` | Boolean | Whether the launcher is active |
 | `description` | String | Human-readable description |
-| `excludeList` | String[] | Workflow model IDs to exclude |
+| `excludeList` | String | Comma-separated list of entries that suppress the launcher for matching events. Two entry formats can be mixed: bare JCR property names (skip events whose only changed property matches, e.g. `jcr:lastModified`) and `event-user-data:<value>` (skip events tagged with that JCR observation `userData`, e.g. `event-user-data:changedByWorkflowProcess`). |
 | `runModes` | String[] | Restrict to specific run modes — **honoring is unreliable on 6.5 LTS; prefer `config.author/` packaging** |
 | `transient` | Boolean | Run the launched workflow as transient — no `/var/workflow/instances/` node unless persistence is forced. Use for high-volume launchers |
 | `noProcess` | Boolean | Match events but do not start the workflow — silence a launcher without removing it |
@@ -157,12 +157,13 @@ To disable or modify an OOTB launcher:
 
 ## Common OOTB Launchers (6.5 LTS)
 
-| Launcher | Trigger | Workflow |
-|---|---|---|
-| `dam_update_asset_create` | NODE_ADDED on `dam:AssetContent` | DAM Update Asset |
-| `dam_update_asset_modify` | NODE_MODIFIED on asset properties | DAM Update Asset |
-| `dam_xmp_writeback` | NODE_MODIFIED on rendition | DAM Writeback |
-| `update_page_version_*` | Node events on `cq:Page jcr:content` | Page Version Create |
+Verified against `/libs/settings/workflow/launcher/config/` on AEM 6.5 LTS. Inspect any launcher in CRXDE Lite or via `Tools → Workflow → Launchers` for the full property set.
+
+| Launcher | `eventType` | `nodetype` | `glob` | `workflow` |
+|---|---|---|---|---|
+| `update_asset_create` | `1` (NODE_ADDED) | `nt:file` | `/content/dam(/((?!/subassets).)*/)renditions/original` | `/var/workflow/models/dam/update_asset` |
+| `update_asset_mod` | `16` (PROPERTY_CHANGED) | `nt:file` | `/content/dam(/((?!/subassets).)*/)renditions/original` | `/var/workflow/models/dam/update_asset` |
+| `dam_xmp_writeback` | `16` (PROPERTY_CHANGED) | `nt:unstructured` | `/content/dam(/.*)/jcr:content/metadata` | `/var/workflow/models/dam-xmp-writeback` |
 
 ## Event Type Combinations
 
