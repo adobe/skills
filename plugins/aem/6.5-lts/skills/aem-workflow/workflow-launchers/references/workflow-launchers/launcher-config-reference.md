@@ -84,9 +84,23 @@ List of workflow model IDs whose sessions should not re-trigger the launcher.
 
 Restricts the launcher to specific run modes: `author`, `publish`. Leave empty for all run modes.
 
+> **Note:** `runModes` honoring on `cq:WorkflowLauncher` has known inconsistencies on AEM 6.5 LTS. If reliable run-mode restriction is required, package the launcher's `.content.xml` under a `config.author/` (or `config.publish/`) folder and let Sling's run-mode-aware OSGi config handling drive it, instead of relying solely on this property.
+
+### `transient` (Boolean, optional)
+
+When `true`, the workflow instance started by this launcher runs as transient — no JCR node under `/var/workflow/instances/` is created unless the workflow needs persistence (retry, external process). Use for high-volume short-lived launchers (asset processing, replication side-effects) to prevent repository bloat.
+
+The workflow model itself must also support transient mode (`transient="true"` on the model). See workflow-model-design Architecture Considerations.
+
+### `noProcess` (Boolean, optional)
+
+When `true`, the launcher matches events but does not start the configured workflow. Use to temporarily silence a launcher without removing the node or its history — preserves the configuration for inspection and easy re-enable.
+
 ---
 
 ## Complete `.content.xml` Templates
+
+> **Run-mode restriction:** these templates intentionally omit `runModes="[author]"` because that property's honoring is unreliable on `cq:WorkflowLauncher` in 6.5 LTS (see the property reference above). For author-only restriction, package the launcher's `.content.xml` under a `config.author/` folder in your content package — Sling's run-mode-aware OSGi config handling will keep it off publish reliably.
 
 ### Template 1: DAM Asset Upload
 
@@ -101,8 +115,7 @@ Restricts the launcher to specific run modes: `author`, `publish`. Leave empty f
     nodetype="nt:file"
     workflow="/var/workflow/models/dam/update_asset"
     enabled="{Boolean}true"
-    description="DAM Update Asset on original rendition upload"
-    runModes="[author]"/>
+    description="DAM Update Asset on original rendition upload"/>
 ```
 
 ### Template 2: Page Content Modification
@@ -118,8 +131,7 @@ Restricts the launcher to specific run modes: `author`, `publish`. Leave empty f
     nodetype="cq:PageContent"
     workflow="/var/workflow/models/my-review-workflow"
     enabled="{Boolean}true"
-    description="Request review whenever site page content is modified"
-    runModes="[author]"/>
+    description="Request review whenever site page content is modified"/>
 ```
 
 ### Template 3: Legacy `/etc` Launcher (6.5 LTS Only)
