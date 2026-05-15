@@ -87,8 +87,12 @@ A launcher can cause a loop if a workflow step writes to a path the same launche
 // In WorkflowProcess.execute() — mark this session so launchers ignore it
 Session jcrSession = resolver.adaptTo(Session.class);
 jcrSession.getWorkspace().getObservationManager()
-    .setUserData("workflowmanager");
-// "workflowmanager" = WorkflowLauncherListener.GLOBALLY_EXCLUDED_EVENT_USER_DATA
+    .setUserData("changedByWorkflowProcess");
+// "changedByWorkflowProcess" matches HandlerBase.WORKFLOW_SESSION_USERDATA
+// and is the default member of WorkflowLauncherListener's globally-excluded
+// userData list (OSGi config property
+// granite.workflow.launcher.globally.exluded.event.user.data) — every active
+// launcher will ignore events tagged with this string.
 ```
 
 3. **Use a JCR property flag**: Set a flag property on the node before saving in the workflow step; add a launcher condition to skip nodes with that flag
