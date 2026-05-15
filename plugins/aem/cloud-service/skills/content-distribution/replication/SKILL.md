@@ -1,9 +1,9 @@
 ---
 name: replication
 license: Apache-2.0
-description: |
-  Programmatic content publishing using AEM Cloud Service Replication API (com.day.cq.replication).
-  Covers Replicator service, ReplicationOptions, status checks, and event handling.
+description: "Publish, deactivate, and delete AEM content programmatically via the Cloud Service Replication API (com.day.cq.replication). Covers single-path and bulk activation, preview-tier targeting with AgentFilter, synchronous/async options, ReplicationStatus checks, permission validation, workflow process steps, and replication event handling. Use when the user needs to publish pages, activate or deactivate content, check replication status, build workflow steps that replicate content, listen to replication events, query batch publication state, or work with Replicator, ReplicationOptions, or ReplicationStatusProvider in AEM Cloud Service."
+metadata:
+  category: content-distribution
 ---
 
 # AEM Cloud Service Replication API
@@ -30,17 +30,6 @@ Use the Replication API for programmatic content distribution:
 - `com.day.cq.replication.ReplicationOptions` - Configuration options
 - `com.day.cq.replication.ReplicationStatus` - Publication status
 - `com.day.cq.replication.ReplicationActionType` - Action types (ACTIVATE, DEACTIVATE, DELETE, TEST)
-
-## Architecture: How Replication Works in Cloud Service
-
-AEM Cloud Service uses **Sling Content Distribution** as the underlying transport mechanism:
-
-1. Author tier: Replication API call triggers content packaging
-2. Content is sent to Adobe Developer pipeline service (external to AEM runtime)
-3. Pipeline distributes to target tier (Publish or Preview)
-4. Target tier imports and activates content
-
-**Key Difference from AEM 6.x**: No direct JCR replication; content flows through external pipeline service.
 
 ## Basic Replication: Single Path
 
@@ -100,16 +89,6 @@ public class ContentPublisher {
     }
 }
 ```
-
-### ReplicationActionType Values
-
-| Action Type | Description | Use Case |
-|-------------|-------------|----------|
-| `ACTIVATE` | Publish content to target tier | Make content live |
-| `DEACTIVATE` | Unpublish content from target tier | Remove from production |
-| `DELETE` | Delete content from target tier | Permanent removal |
-| `TEST` | Test replication connection | Health checks |
-| `INTERNAL_POLL` | Internal polling (reverse replication) | System use only |
 
 ## Bulk Replication: Multiple Paths
 
@@ -565,149 +544,18 @@ Don't build custom bulk publishing code. Use Tree Activation workflow step.
 ### 3. Validate Permissions
 Always check permissions before replication to avoid exceptions.
 
-### 4. Handle Exceptions
-```java
-try {
-    replicator.replicate(session, ReplicationActionType.ACTIVATE, path);
-} catch (ReplicationException e) {
-    LOG.error("Replication failed for path: " + path, e);
-    // Handle failure (retry, notify, etc.)
-}
-```
+### 4. Use Service Users
+Never replicate with admin credentials. Map a sub-service name to the principal that holds `crx:replicate` via `ServiceUserMapperImpl.amended` config. Provision the principal with `jcr:read` + `crx:replicate` on `/content` via Repo Init scripts — see [AEM Project Structure — Repo Init](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/aem-project-content-package-structure#repo-init). See [references/patterns.md](references/patterns.md) for the full service user setup example.
 
-### 5. Use Service Users
-Never replicate with admin credentials. Map a sub-service name to the principal that holds `crx:replicate`.
-
-**OSGi service user mapping**
-
-File: `ui.config/src/main/content/jcr_root/apps/myapp/osgiconfig/config/org.apache.sling.serviceusermapping.impl.ServiceUserMapperImpl.amended-myapp.cfg.json`
-
-```json
-{
-  "user.mapping": [
-    "com.myapp.core:contentPublisher=myapp-replication-service"
-  ]
-}
-```
-
-**Obtain the resolver in code**
-
-```java
-@Reference
-private ResourceResolverFactory resolverFactory;
-
-private ResourceResolver getServiceResolver() throws LoginException {
-    return resolverFactory.getServiceResourceResolver(
-        Map.of(ResourceResolverFactory.SUBSERVICE, "contentPublisher")
-    );
-}
-```
-
-> **Service user creation is out of scope here**: The principal `myapp-replication-service` must exist in the JCR with `jcr:read` + `crx:replicate` on `/content` before this mapping works. Service users in AEM Cloud Service are provisioned via **Repo Init scripts** which run **at deployment startup** (not as dynamic runtime config changes). This is a general AEM Cloud Service pattern — see [AEM Project Structure — Repo Init](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/aem-project-content-package-structure#repo-init) for the full authoritative guide.
-
-### 6. Publish Only What's Needed
-"It is always a good practice to only publish content that must be published."
+### 5. Publish Only What's Needed
+Minimize replication volume to reduce queue pressure and pipeline load.
 
 ## Common Patterns
 
-### Pattern 1: Auto-Publish on Content Fragment Save
-
-```java
-import org.apache.sling.api.SlingConstants;
-import org.apache.sling.api.resource.ResourceResolverFactory;
-
-@Component(
-    service = EventHandler.class,
-    property = {
-        org.osgi.service.event.EventConstants.EVENT_TOPIC + "=" + 
-            SlingConstants.TOPIC_RESOURCE_CHANGED
-    }
-)
-public class AutoPublishContentFragmentHandler implements EventHandler {
-    
-    @Reference
-    private Replicator replicator;
-    
-    @Reference
-    private ResourceResolverFactory resolverFactory;
-    
-    @Override
-    public void handleEvent(Event event) {
-        String path = (String) event.getProperty(SlingConstants.PROPERTY_PATH);
-        
-        // Only process content fragments
-        if (path != null && path.startsWith("/content/dam") && 
-            isContentFragment(path)) {
-            
-            try (ResourceResolver resolver = getServiceResolver()) {
-                Session session = resolver.adaptTo(Session.class);
-                replicator.replicate(
-                    session,
-                    ReplicationActionType.ACTIVATE,
-                    path
-                );
-            } catch (Exception e) {
-                LOG.error("Auto-publish failed", e);
-            }
-        }
-    }
-    
-    private ResourceResolver getServiceResolver() throws Exception {
-        Map<String, Object> param = Map.of(
-            ResourceResolverFactory.SUBSERVICE, "contentPublisher"
-        );
-        return resolverFactory.getServiceResourceResolver(param);
-    }
-    
-    private boolean isContentFragment(String path) {
-        // Implementation to check if path is a content fragment
-        return true;
-    }
-}
-```
-
-### Pattern 2: External Cache Purge After Publication
-
-```java
-@Component(
-    service = EventHandler.class,
-    property = {
-        org.osgi.service.event.EventConstants.EVENT_TOPIC + "=" + "com/day/cq/replication"
-    }
-)
-public class ExternalCachePurgeHandler implements EventHandler {
-    
-    @Reference
-    private HttpClient httpClient;
-    
-    @Override
-    public void handleEvent(Event event) {
-        String action = (String) event.getProperty("action");
-        
-        if ("Activate".equals(action) || "Deactivate".equals(action)) {
-            String[] paths = (String[]) event.getProperty("paths");
-            
-            if (paths != null) {
-                for (String path : paths) {
-                    purgeExternalCache(path);
-                }
-            }
-        }
-    }
-    
-    private void purgeExternalCache(String path) {
-        // Call external CDN purge API
-        try {
-            HttpPost request = new HttpPost("https://cdn.example.com/purge");
-            request.setHeader("Content-Type", "application/json");
-            request.setEntity(new StringEntity("{\"path\":\"" + path + "\"}"));
-            httpClient.execute(request);
-        } catch (Exception e) {
-            LOG.error("Cache purge failed", e);
-        }
-    }
-}
-```
+See [references/patterns.md](references/patterns.md) for complete implementations:
+- **Auto-Publish on Content Fragment Save** — event-driven publish using `SlingConstants.TOPIC_RESOURCE_CHANGED`
+- **External Cache Purge After Publication** — CDN invalidation via replication event handler
+- **Service User Setup for Replication** — OSGi service user mapping and Repo Init provisioning
 
 ## Troubleshooting
 
