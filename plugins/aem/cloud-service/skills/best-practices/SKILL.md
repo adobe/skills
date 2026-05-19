@@ -26,20 +26,23 @@ For **BPA/CAM orchestration** (collections, CSV, MCP project selection), use the
 
 ## Pattern Reference Modules
 
-Each supported pattern has a dedicated module under `references/` relative to this `SKILL.md`.
+Each supported pattern has a dedicated module under `references/` relative to this `SKILL.md`. This table is the **Intent Router** — match the user's request to a row, then read the referenced module before any code change.
 
-| Pattern / topic | BPA Pattern ID | Module file | Status |
-|-----------------|----------------|-------------|--------|
-| Scheduler | `scheduler` | `references/scheduler.md` | Ready |
-| Resource Change Listener | `resourceChangeListener` | `references/resource-change-listener.md` | Ready |
-| Replication | `replication` | `references/replication.md` | Ready |
-| Event listener (JCR observation) | `eventListener` | `references/event-migration.md` | Ready |
-| Event handler (OSGi Event Admin) | `eventHandler` | `references/event-migration.md` | Ready |
-| Asset Manager | `assetApi` | `references/asset-manager.md` | Ready |
-| Felix SCR → OSGi DS | — | `references/scr-to-osgi-ds.md` | Ready |
-| ResourceResolver + SLF4J | — | `references/resource-resolver-logging.md` | Ready |
-| HTL: `data-sly-test` redundant constant | — (HTL lint) | `references/data-sly-test-redundant-constant.md` | Ready |
-| *(Prerequisites hub)* | — | `references/aem-cloud-service-pattern-prerequisites.md` | — |
+**Transition state.** The flat `references/*.md` files below are the source of truth today and are what `migration` reads via `{best-practices}/references/<module>.md`. The **Planned Sub-Skill** column signals where each pattern is moving: domain-expert sub-skills under `best-practices/<pattern>/` that will progressively replace the flat references. Sub-skills become Ready in this table after passing structural contract conformance, migration parity against the current flat reference, and domain-expert review. Migration's `{best-practices}/references/<module>.md` alias is preserved through the transition.
+
+| Pattern / topic | BPA Pattern ID | Module file (current) | Planned sub-skill | Status |
+|-----------------|----------------|-----------------------|-------------------|--------|
+| Scheduler | `scheduler` | [`references/scheduler.md`](references/scheduler.md) | `scheduler/` | Flat Ready · sub-skill planned (Phase 2 pilot) |
+| Resource Change Listener | `resourceChangeListener` | [`references/resource-change-listener.md`](references/resource-change-listener.md) | `resource-change-listener/` | Flat Ready · sub-skill planned (Phase 4) |
+| Replication | `replication` | [`references/replication.md`](references/replication.md) | `replication/` | Flat Ready · sub-skill planned (Phase 4) |
+| Event listener (JCR observation) | `eventListener` | [`references/event-migration.md`](references/event-migration.md) | `event/` | Flat Ready · sub-skill planned (Phase 4) |
+| Event handler (OSGi Event Admin) | `eventHandler` | [`references/event-migration.md`](references/event-migration.md) | `event/` | Flat Ready · sub-skill planned (Phase 4) |
+| Asset Manager | `assetApi` | [`references/asset-manager.md`](references/asset-manager.md) | `asset-manager/` | Flat Ready · sub-skill planned (Phase 4) |
+| HTL: `data-sly-test` redundant constant | — (HTL lint) | [`references/data-sly-test-redundant-constant.md`](references/data-sly-test-redundant-constant.md) | `htl/` | Flat Ready · sub-skill planned (Phase 4) |
+| Multi-pattern / cross-cutting | — | (consult Manual Pattern Hints below) | `best-practices-orchestrator/` | Sub-skill planned (Phase 4, ships last) |
+| Felix SCR → OSGi DS | — | [`references/scr-to-osgi-ds.md`](references/scr-to-osgi-ds.md) | Foundation (duplicated into each sub-skill) | Ready |
+| ResourceResolver + SLF4J | — | [`references/resource-resolver-logging.md`](references/resource-resolver-logging.md) | Foundation (duplicated into each sub-skill) | Ready |
+| *(Prerequisites hub)* | — | [`references/aem-cloud-service-pattern-prerequisites.md`](references/aem-cloud-service-pattern-prerequisites.md) | Foundation (duplicated into each sub-skill) | — |
 
 **Event listener vs event handler (not the same):** **`eventListener`** is **JCR observation** — the JCR API for repository change callbacks (`javax.jcr.observation.EventListener`, `onEvent`). **`eventHandler`** is **OSGi Event Admin** — whiteboard-style OSGi events (`org.osgi.service.event.EventHandler`, `handleEvent`). Both migrate via **`references/event-migration.md`** (Path A vs Path B). **`resourceChangeListener`** is separate: Sling **`ResourceChangeListener`**, module **`references/resource-change-listener.md`**.
 
