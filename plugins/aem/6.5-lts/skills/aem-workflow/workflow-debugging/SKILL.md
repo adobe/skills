@@ -102,7 +102,7 @@ The Sling Scheduler `ApacheSlingdefault` uses `ThreadPool: default`. This pool f
 
 **Check Granite Workflow Queue configuration:**
 - Type: Topic Round Robin
-- Max Parallel: 1 (default; consider increasing for throughput)
+- Max Parallel: 0.5 OOTB on AEM 6.5 LTS (50% of available CPU cores). Increase for throughput on bursty workloads. Verify the running value at `/system/console/configMgr/org.apache.sling.event.jobs.QueueConfiguration~workflow` before assuming.
 - Max Retries: 10
 
 ### 3d. Sling Scheduler
@@ -145,7 +145,7 @@ The Sling Scheduler `ApacheSlingdefault` uses `ThreadPool: default`. This pool f
 | WorkflowSessionFactory | `cq.workflow.superuser` | Must include admin users/groups |
 | DefaultThreadPool (default) | `block policy` | ABORT can reject timeout jobs; prefer RUN |
 | DefaultThreadPool (default) | `max pool size` | 20 default; increase if many schedulers |
-| Granite Workflow Queue | Max Parallel | 1 default; increase for throughput |
+| Granite Workflow Queue | `queue.maxparallel` | 0.5 OOTB (50% of CPU cores); increase for throughput. Verify at `/system/console/configMgr/org.apache.sling.event.jobs.QueueConfiguration~workflow` |
 | Purge Scheduler | `scheduledpurge.daysold` | 30 default; tune per environment |
 
 ---
