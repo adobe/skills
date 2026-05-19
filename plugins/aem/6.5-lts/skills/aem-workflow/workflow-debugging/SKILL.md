@@ -63,7 +63,7 @@ The Sling Scheduler `ApacheSlingdefault` uses `ThreadPool: default`. This pool f
 - Oak observation events
 - All Quartz-scheduled jobs
 
-**Check in `039_Sling_Thread_Pools.txt` or thread pool console:**
+**Check the Sling Thread Pools status page (`/system/console/status-slingthreadpools`):**
 
 | Field | Healthy | Problem |
 |-------|---------|---------|
@@ -75,20 +75,20 @@ The Sling Scheduler `ApacheSlingdefault` uses `ThreadPool: default`. This pool f
 - New scheduled tasks (including workflow timeout/auto-advance jobs) are **silently rejected**
 - This is the #1 cause of auto-advancement failure
 
-**Check in thread dump (`042_Threads.txt` or `043_Threads__via_JStack_.txt`):**
+**Check the Threads status page (`/system/console/status-Threads`) or the jstack thread dump (`/system/console/status-jstack-threaddump`):**
 - Search for `sling-default-` threads
 - If all threads show same stack (e.g. stuck on HTTP call, database, or external service), that's the blocking culprit
 - Note `elapsed` time — threads stuck for hours indicate a hung external call without timeout
 
 ### 3b. Sling Job thread pool
 
-**Check `Apache Sling Job Thread Pool`** in `039_Sling_Thread_Pools.txt`:
+**Check `Apache Sling Job Thread Pool`** in the Sling Thread Pools status page:
 - active count vs max pool size
 - If saturated, Sling Jobs cannot execute (workflow jobs stall)
 
 ### 3c. Granite Workflow Queue
 
-**Check in `027_Sling_Jobs.txt`:**
+**Check the Sling Jobs page (`/system/console/slingevent`):**
 
 | Field | Healthy | Problem |
 |-------|---------|---------|
@@ -107,7 +107,7 @@ The Sling Scheduler `ApacheSlingdefault` uses `ThreadPool: default`. This pool f
 
 ### 3d. Sling Scheduler
 
-**Check in `034_Sling_Scheduler.txt`:**
+**Check the Sling Scheduler status page (`/system/console/status-slingscheduler`):**
 - Verify `com/adobe/granite/workflow/timeout/job` scheduled jobs exist
 - `nextFireTime: null` → job already fired or deregistered
 - Verify which ThreadPool the scheduler uses (should be `default`)
@@ -134,7 +134,7 @@ The Sling Scheduler `ApacheSlingdefault` uses `ThreadPool: default`. This pool f
 
 ## Step 5: Configuration checklist
 
-**In Felix Console (OSGi) or `003_Configurations.txt` from config status ZIP:**
+**In Felix Console → OSGi → Configuration (`/system/console/configMgr`):**
 
 | Config | Property | Check |
 |--------|----------|-------|
@@ -193,11 +193,11 @@ All workflow maintenance and diagnostic operations live on a single MBean: `com.
 7. Auto-advancement never happens
 
 **Diagnosis checklist:**
-- [ ] `039_Sling_Thread_Pools.txt`: Pool `default` → active count = max pool size?
-- [ ] `039_Sling_Thread_Pools.txt`: Pool `default` → block policy = ABORT?
-- [ ] Thread dump: All `sling-default-*` threads stuck on same stack?
-- [ ] `027_Sling_Jobs.txt`: Workflow job topic has high Failed Jobs?
-- [ ] `034_Sling_Scheduler.txt`: ThreadPool = `default` for `ApacheSlingdefault`?
+- [ ] Sling Thread Pools page (`/system/console/status-slingthreadpools`): Pool `default` → active count = max pool size?
+- [ ] Sling Thread Pools page: Pool `default` → block policy = ABORT?
+- [ ] Threads page (`/system/console/status-Threads`) or jstack: All `sling-default-*` threads stuck on same stack?
+- [ ] Sling Jobs page (`/system/console/slingevent`): Workflow job topic has high Failed Jobs?
+- [ ] Sling Scheduler page (`/system/console/status-slingscheduler`): ThreadPool = `default` for `ApacheSlingdefault`?
 
 **Fix:** Restart instance (immediate); fix scheduler code (add HTTP timeout, set `concurrent=false`); change pool policy to RUN; increase pool size.
 
