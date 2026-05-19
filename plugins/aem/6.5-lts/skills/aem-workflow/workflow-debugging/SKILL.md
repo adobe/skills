@@ -37,7 +37,7 @@ Production-grade debugging for AEM Granite Workflow engine, launcher, Inbox, Sli
 | Repository bloat / too many instances | repository_bloat_too_many_instances | runbook-purge-and-cleanup.md | JMX `purgeCompleted(dryRun=true)` or Purge Scheduler. |
 | User cannot see or complete item | user_cannot_see_or_complete_item | runbook-inbox-and-permissions.md | Assignee/initiator/superuser; enforce flags. |
 | Cannot delete model | cannot_delete_model | runbook-model-delete-and-update.md | JMX `countRunningWorkflows` → terminate → delete. |
-| Slow throughput / queue backlog | slow_throughput_queue_backlog | runbook-job-throughput-and-concurrency.md | JMX `returnSystemJobInfo`; max.procs; Sling thread pool. |
+| Slow throughput / queue backlog | slow_throughput_queue_backlog | runbook-job-throughput-and-concurrency.md | JMX `returnSystemJobInfo`; `queue.maxparallel` on Granite Workflow Queue; Sling thread pool. |
 | Auto-advancement not working | workflow_auto_advance_failure | runbook-job-throughput-and-concurrency.md | Check `default` thread pool saturation; Sling Scheduler; timeout jobs. |
 | New workflow not working | workflow_setup_validation | runbook-validate-workflow-setup.md | Model sync, launcher, process registration, permissions. |
 
@@ -121,7 +121,7 @@ The Sling Scheduler `ApacheSlingdefault` uses `ThreadPool: default`. This pool f
 | `Error executing workflow step` | Process step exception | Check stack; fix process code or payload |
 | `getProcess for '<name>' failed` | No WorkflowProcess registered | Deploy bundle; match `process.label` |
 | `Cannot archive workitem` | Archive failure → stale risk | JMX `restartStaleWorkflows` |
-| `refreshing the session since we had to wait for a lock` | Lock contention | Increase `cq.workflow.job.max.procs`; reduce parallelism |
+| `refreshing the session since we had to wait for a lock` | Lock contention | Tune `queue.maxparallel` on the Granite Workflow Queue (Apache Sling Job Queue Configuration); reduce concurrent writes to the same path |
 | `Terminate failed` / `Resume failed` / `Suspend failed` | Permissions (not initiator/superuser) | Check `enforceWorkflowInitiatorPermissions`; add to superusers |
 | `PathNotFoundException` (workflow/payload) | Payload/launcher path missing | Verify payload exists; check launcher config path |
 | `Error adding launcher config` | Launcher config path not created | Create `/conf/global/settings/workflow/launcher/config` |
@@ -139,7 +139,7 @@ The Sling Scheduler `ApacheSlingdefault` uses `ThreadPool: default`. This pool f
 | Config | Property | Check |
 |--------|----------|-------|
 | WorkflowSessionFactory | `cq.workflow.job.retry` | Default 3; increase for flaky steps |
-| WorkflowSessionFactory | `cq.workflow.job.max.procs` | -1 = CPU cores; increase for throughput |
+| Apache Sling Job Queue Configuration (Granite Workflow Queue) | `queue.maxparallel` | Workflow parallelism. Default 1; increase for throughput. The `cq.workflow.job.max.procs` property shown on WorkflowSessionFactory has no runtime effect — do not rely on it |
 | WorkflowSessionFactory | `granite.workflow.enforceWorkitemAssigneePermissions` | true = only assignee sees items |
 | WorkflowSessionFactory | `granite.workflow.enforceWorkflowInitiatorPermissions` | true = only initiator can terminate |
 | WorkflowSessionFactory | `cq.workflow.superuser` | Must include admin users/groups |
@@ -157,7 +157,7 @@ The Sling Scheduler `ApacheSlingdefault` uses `ThreadPool: default`. This pool f
 | Retry failed work item | JMX `retryFailedWorkItems` or Inbox Retry |
 | Restart stale workflows | JMX `restartStaleWorkflows(dryRun=true)` then execute |
 | Purge completed | JMX `purgeCompleted(dryRun=true)` or Purge Scheduler |
-| Increase parallelism | Felix Console: `cq.workflow.job.max.procs`; or OSGi config in repo |
+| Increase parallelism | Felix Console: `queue.maxparallel` on the Granite Workflow Queue (Apache Sling Job Queue Configuration); or OSGi config in repo |
 | Fix thread pool exhaustion | Restart instance (immediate); fix stuck scheduler code; change block policy to RUN |
 | Fix process not found | Deploy bundle; `process.label` must match; Sync model |
 | Fix auto-advancement | Verify `default` pool not saturated; timeout jobs scheduled; block policy = RUN |
