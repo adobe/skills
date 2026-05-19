@@ -166,12 +166,14 @@ The Sling Scheduler `ApacheSlingdefault` uses `ThreadPool: default`. This pool f
 
 ## Step 7: Key JMX MBeans
 
+All workflow maintenance and diagnostic operations live on a single MBean: `com.adobe.granite.workflow:type=Maintenance`. A separate MBean — `com.adobe.granite.workflow:type=Statistics` — exposes time-series workflow execution metrics for trend analysis.
+
 | MBean | Operations | Purpose |
 |-------|------------|---------|
-| `com.adobe.granite.workflow:type=Maintenance` | `purgeCompleted(dryRun)`, `countRunningWorkflows`, `countStaleWorkflows`, `restartStaleWorkflows(dryRun)` | Purge, stale detection and restart |
-| `com.adobe.granite.workflow:type=Repository` | `retryFailedWorkItems`, `returnSystemJobInfo`, `returnWorkflowQueueInfo` | Retry, queue/job diagnostics |
+| `com.adobe.granite.workflow:type=Maintenance` | `purgeCompleted(model, days, dryRun)`, `purgeActive(model, days, dryRun)`, `countRunningWorkflows(model)`, `countCompletedWorkflows(model)`, `countStaleWorkflows(model)`, `restartStaleWorkflows(model)`, `retryFailedWorkItems(dryRun, model)`, `returnSystemJobInfo`, `returnWorkflowQueueInfo`, `returnWorkflowJobTopicInfo`, `returnFailedWorkflowCount(model)`, `terminateFailedInstances`, `fetchModelList` | Purge, stale detection/restart, retry failed items, failure handling, queue/job diagnostics, model enumeration |
+| `com.adobe.granite.workflow:type=Statistics` | `getResults`, `clearRecords`; plus `get`/`set` accessors for `DataLifeTime`, `DataFidelityTime`, `DataProcessRate`, `DataRate` | Time-series workflow execution statistics |
 
-**Always use `dryRun=true` first before executing destructive operations.**
+**Always use `dryRun=true` first before executing destructive purge or retry operations.**
 
 ---
 
