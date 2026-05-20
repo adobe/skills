@@ -1,12 +1,13 @@
 const path = require("path");
 const pkg = require(path.resolve("package.json"));
 const name = pkg.name;
+const pathFilteredAnalyzer = path.resolve(__dirname, "scripts/path-filtered-analyzer.cjs");
 
 module.exports = {
   branches: ["main"],
   tagFormat: name + "-v${version}",
   plugins: [
-    ["@semantic-release/commit-analyzer", {
+    [pathFilteredAnalyzer, {
       releaseRules: [
         { type: "docs", release: "patch" },
         { type: "refactor", release: "patch" },
@@ -14,7 +15,9 @@ module.exports = {
         { type: "perf", release: "patch" }
       ]
     }],
-    "@semantic-release/release-notes-generator",
+    ["@semantic-release/release-notes-generator", {
+      gitRawCommitsOpts: { path: "." }
+    }],
     ["@semantic-release/changelog", {
       changelogFile: "CHANGELOG.md"
     }],
