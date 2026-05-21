@@ -28,7 +28,7 @@ Quick pointers used by the workflow-debugging skill. For full runbooks and proce
 
 | Item | Where |
 |------|--------|
-| Workflow parallelism | WorkflowSessionFactory → `cq.workflow.job.max.procs` |
+| Workflow parallelism | Apache Sling Job Queue Configuration → "Granite Workflow Queue" → `queue.maxparallel`. Note: the `cq.workflow.job.max.procs` property displayed under WorkflowSessionFactory has no runtime effect |
 | Retry | WorkflowSessionFactory → `cq.workflow.job.retry` |
 | Purge | WorkflowOperationsMBean (`com.adobe.granite.workflow:type=Maintenance`) or Purge Scheduler |
 | Stale restart | JMX: `countStaleWorkflows`, `restartStaleWorkflows(dryRun` then execute) |
