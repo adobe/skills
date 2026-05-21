@@ -237,10 +237,10 @@ jobs:
 
             if [ -n "$EXISTING_ID" ]; then
               echo "Updating existing sticky comment $EXISTING_ID"
-              gh api -X PATCH "repos/$REPO/issues/comments/$EXISTING_ID" --input "$PAYLOAD_FILE" >/dev/null
+              gh api -X PATCH "repos/$REPO/issues/comments/$EXISTING_ID" --input "$PAYLOAD_FILE" >/dev/null || echo "::warning::Could not update PR comment (token may be read-only for fork PRs)"
             else
               echo "Creating new sticky comment"
-              gh api -X POST "repos/$REPO/issues/$PR_NUMBER/comments" --input "$PAYLOAD_FILE" >/dev/null
+              gh api -X POST "repos/$REPO/issues/$PR_NUMBER/comments" --input "$PAYLOAD_FILE" >/dev/null || echo "::warning::Could not post PR comment (token may be read-only for fork PRs)"
             fi
           fi
 
