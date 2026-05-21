@@ -15,6 +15,8 @@ It supports two verbs:
 - `handoff:<instruction>` — continue the current task inside SLICC.
 - `upskill:<github-url>` — ask SLICC to install a skill from a GitHub repository.
 
+For canonical SLICC protocol, API, and documentation references, fetch [`https://www.sliccy.ai/llms.txt`](https://www.sliccy.ai/llms.txt) — it is the maintainer-curated, machine-readable index for LLM consumers and is the authoritative source for the handoff/upskill rels, the public API catalog, and links to the protocol and architecture docs.
+
 ## When to Use This Skill
 
 Use this skill when the user wants to:
@@ -53,25 +55,7 @@ SLICC_PORT=5720 node .claude/skills/slicc-handoff/scripts/slicc-handoff --open "
 
 ## How It Works
 
-The script builds a URL of the form `https://www.sliccy.ai/handoff?handoff=<urlencoded>` (or `?upskill=<urlencoded-github-url>`) and dispatches it through two parallel paths so the handoff reaches SLICC regardless of which Chrome profile holds the extension:
-
-- **Localhost POST** to `http://localhost:${SLICC_PORT ?? 5710}/api/handoff` with a structured payload:
-
-  ```json
-  {
-    "verb": "handoff" | "upskill",
-    "target": "<github-url-for-upskill-or-handoff-url-for-handoff>",
-    "instruction": "<prose-for-handoff-only>",
-    "url": "<https-handoff-url>",
-    "title": "SLICC handoff"
-  }
-  ```
-
-  The SLICC node-server rebroadcasts the payload to the connected webapp as a `navigate` lick. This path is profile-independent — it reaches SLICC even when the user's default browser is a different Chrome profile than the one SLICC controls.
-
-- **`--open`** opens the URL in the local browser. If that browser profile has the SLICC extension installed, `chrome.webRequest` parses the response's RFC 8288 `Link` header (rel `https://www.sliccy.ai/rel/handoff` or `https://www.sliccy.ai/rel/upskill`) and emits the navigate lick when one of those rels is present.
-
-Either path results in a yes/no approval card in the SLICC cone; accepting it dispatches the handoff or upskill by verb prefix.
+The script builds a `https://www.sliccy.ai/handoff?<verb>=<urlencoded-payload>` URL and dispatches it through two parallel paths — a profile-independent localhost POST to a SLICC CLI/Electron float, and (with `--open`) a real browser navigation that the SLICC extension picks up via an RFC 8288 `Link` header. Either path surfaces a yes/no approval card in the SLICC cone, dispatched by verb prefix once accepted. For the full protocol details (rel URIs, payload shape, public API catalog), see [`https://www.sliccy.ai/llms.txt`](https://www.sliccy.ai/llms.txt) and the linked handoff protocol reference.
 
 ## Examples
 
