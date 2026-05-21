@@ -72,6 +72,11 @@
       "name": "app-builder",
       "source": "./plugins/app-builder",
       "description": "Development, customization, testing, and deployment skills for Adobe App Builder projects"
+    },
+    {
+      "name": "aem-eds-content-ops",
+      "source": "./plugins/aem/edge-delivery-services-content-ops",
+      "description": "Content operations skills for AEM Edge Delivery Services: page auditing, AI search optimization (GEO), WCAG accessibility, bulk metadata, and content diffing"
     }
   ]
 }
