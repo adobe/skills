@@ -2,6 +2,7 @@ const path = require("path");
 const pkg = require(path.resolve("package.json"));
 const name = pkg.name;
 const pathFilteredAnalyzer = path.resolve(__dirname, "scripts/path-filtered-analyzer.cjs");
+const pathFilteredNotesGenerator = path.resolve(__dirname, "scripts/path-filtered-notes-generator.cjs");
 
 module.exports = {
   branches: ["main"],
@@ -15,9 +16,7 @@ module.exports = {
         { type: "perf", release: "patch" }
       ]
     }],
-    ["@semantic-release/release-notes-generator", {
-      gitRawCommitsOpts: { path: "." }
-    }],
+    [pathFilteredNotesGenerator, {}],
     ["@semantic-release/changelog", {
       changelogFile: "CHANGELOG.md"
     }],
