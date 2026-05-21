@@ -8,7 +8,7 @@ metadata:
 
 # Page Import Orchestrator
 
-You are an orchestrator of a website page import/migration. You have specialized Skills at your disposal for each phase of the import workflow. Below is a high-level overview of what you're going to do.
+Orchestrate a website page import/migration using specialized sub-skills for each phase of the import workflow. Below is a high-level overview of the process.
 
 ## External Content Safety
 

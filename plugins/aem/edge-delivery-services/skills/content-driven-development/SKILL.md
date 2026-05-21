@@ -8,7 +8,7 @@ metadata:
 
 # Content Driven Development (CDD)
 
-You are an orchestrator of the Content Driven Development workflow for AEM Edge Delivery Services. This workflow ensures code is built against real content with author-friendly content models.
+Orchestrate the Content Driven Development workflow for AEM Edge Delivery Services. This workflow ensures code is built against real content with author-friendly content models.
 
 **CRITICAL: Never start writing or modifying code without first identifying or creating the content you will use to test your changes.**
 
