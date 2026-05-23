@@ -471,20 +471,28 @@ expressive position.
 The tier is declared in the run invocation; persisted in
 `_provenance.fidelity`. Default is `quick`.
 
-### Phases 2.5 – 2.7 — Quality gates: Critique → Audit → Adapt (Discipline 9)
+### Phases 2.5 – 2.8 — Quality gates: Critique → Audit → Adapt → Motion (Discipline 9)
 
-Three mandatory gate phases run by default before any prototype
+Four mandatory gate phases run by default before any prototype
 can advance to `prototyped`. They implement Discipline 9: critique
 covers *design*, audit covers *technical correctness*, adapt
-covers *viewport behaviour*. P0/P1 findings from **any** of the
-three block `prototyped` until acknowledged. None of the three
-have an opt-out flag (per § No opt-outs).
+covers *viewport behaviour*, motion covers *scroll-driven and
+time-driven choreography correctness*. P0/P1 findings from **any**
+of the four block `prototyped` until acknowledged. None have an
+opt-out flag (per § No opt-outs).
 
 | Sub-phase | Focus | Catches |
 |---|---|---|
 | **2.5 Critique** | Design judgment | AI-slop reflexes, hierarchy regressions, contrast / cognitive issues, register drift |
 | **2.6 Audit** | Technical correctness | a11y (alt, focus, contrast ratios computed), responsive overflow at 4–6 viewports, performance (LCP, image weights), JS-dependent-hidden-state |
 | **2.7 Adapt** | Viewport behaviour | doc-width · overflow · sticky · grid columns · font scaling at 1920 / 1440 / 1280 / 800 / 414 / 375, mobile-nav-collapse audit |
+| **2.8 Motion** | Scroll / time-driven correctness | clipped-container reveal timing, animation-range vs reading position, anim-enter trigger reachability, reduced-motion override completeness, no-JS fallback, multi-viewport scroll-driven check |
+
+Phase 2.8 fires only when the rendered file declares ≥ 1 named
+choreography (per the page-shape brief's motion stack) OR uses
+`animation-timeline:`, `@scroll-timeline`, IntersectionObserver-driven
+entry triggers, or rAF loops reading `getBoundingClientRect()`.
+Static prototypes skip it.
 
 The wasatch dry-run on 2026-05-13 caught two real bugs the brief
 and craft phases missed (a WCAG miscalculation off by 0.27–1.86
@@ -782,6 +790,57 @@ The stock pattern is the default; `reference/mobile-nav-collapse.md`
 and side-drawer as valid alternatives the user can request, but
 the agent does not pick between them autonomously.
 
+### Phase 2.8 — Motion validation (mandatory when motion declared)
+
+Static-DOM gates (2.5 critique, 2.6 audit, 2.7 adapt) all read the
+proposed file at `scrollY=0` with no time elapsed. They cannot
+catch motion-specific failure modes:
+
+- Content stuck `opacity: 0` because an anim-enter trigger fires
+  past the user's reading position.
+- Content rendered outside its parent's `overflow: clip` boundary
+  because a translateY animation magnitude exceeds the parent's
+  slack room.
+- Scroll-driven animations whose `animation-range` completes only
+  after the section has fully scrolled past, leaving the reveal
+  state invisible during the readable window.
+- rAF loops with stale baseline measurements drifting on resize /
+  font-load / lazy-image-load.
+- Section overlaps caused by transforms that don't appear in
+  static DOM.
+- `prefers-reduced-motion` regressions where the choreography is
+  disabled but the element is left at the hidden "from" state.
+- No-JS regressions where the choreography's hidden initial state
+  has no `<noscript>` fallback.
+
+The full procedure (5 passes — scroll-position probe, finding
+classification, motion-bug checks, no-JS state, multi-viewport
+scroll-driven check) lives in `reference/motion-validation.md`.
+
+Phase 2.8 fires when the rendered file declares ≥ 1 named
+choreography (per `_provenance.motion.choreographies[]`) OR contains
+any of: `animation-timeline:`, `@scroll-timeline`, IntersectionObserver
+with `target.classList.add('anim-enter-visible')` patterns, or rAF
+loops driven by `getBoundingClientRect()`. Static prototypes skip.
+
+Findings are classified as **by-design** (the choreography is
+supposed to produce this state at this position; explained by a
+named choreography in the brief) or **bug** (the choreography
+produces an unintended state). Bugs block `prototyped` until
+acknowledged or fixed.
+
+When a bug cannot be auto-fixed within 3 iterations of the recursive
+loop, surface to the user with the finding, the classification
+reasoning, the 3 fix attempts that were tried, and a proposed
+remediation that requires user input. Do not silently lower the
+gate.
+
+Append an entry to the proposed file's `_provenance.motionValidation`
+recording: ISO timestamp, probe positions run, viewports tested,
+findings (hiddenInViewport, sectionOverlaps, clippedReveals,
+rangeMismatches) with per-finding classification, and `fixesApplied[]`.
+Save clean-pass screenshots to `stardust/validation/<slug>/motion-<viewport>.png`.
+
 #### Variant-convergence detector (Discipline 10)
 
 When N > 1 variants render, each `<slug>-<id>-shape.md` declares:
@@ -833,18 +892,19 @@ Cross-references throughout the docs still name Phases 4, 5, 5.5.)
    multiple files were written in one run, open the primary variant
    only. Skip in pipeline-automation mode.
 2. Mark the page `prototyped` in `state.json` — **gated on the
-   Phase 2.5 critique + Phase 2.6 audit + Phase 2.7 adapt
-   result** (Discipline 9). If any of the three returned ≥ 1 P0
-   or P1 finding (after the brand-faithful inversion auto-dismiss)
-   and the user has not acknowledged, the page stays `directed`
-   (not `prototyped`); surface the findings in the report grouped
-   by source (`critique:` / `audit:` / `adapt:`) and recommend
+   Phase 2.5 critique + Phase 2.6 audit + Phase 2.7 adapt +
+   Phase 2.8 motion validation (when fired) result** (Discipline 9).
+   If any of the four returned ≥ 1 P0 or P1 finding (after the
+   brand-faithful inversion auto-dismiss) and the user has not
+   acknowledged, the page stays `directed` (not `prototyped`);
+   surface the findings in the report grouped by source
+   (`critique:` / `audit:` / `adapt:` / `motion:`) and recommend
    either fixing the issue or acknowledging explicitly. The
    transition itself does not require *approval* (a separate
-   later step) — but it does require all three gates to clear,
-   since shipping a `prototyped` flag on work that fails P0/P1
-   on any gate misleads downstream consumers (migrate, the
-   dashboard) about the prototype's quality.
+   later step) — but it does require all gates to clear, since
+   shipping a `prototyped` flag on work that fails P0/P1 on any
+   gate misleads downstream consumers (migrate, the dashboard)
+   about the prototype's quality.
 3. Report the prototype path and stop. Iteration happens via
    chat-driven impeccable commands or direct invocation (see
    § Iteration paths below).
@@ -1105,6 +1165,13 @@ Default mode is unchanged.
   `nav-readability-floor`. Carries the copy-pasteable
   HTML+CSS+JS, the audit smoke-test command, and the
   alternative-pattern vocabulary.
+- `reference/motion-validation.md` — Phase 2.8 procedure:
+  scroll-position probe, finding classification, motion-bug
+  checks (clipped-container reveal timing, animation-range vs
+  reading position, anim-enter trigger reachability,
+  reduced-motion override completeness, no-JS state, multi-
+  viewport scroll-driven check). Reusable Playwright probe
+  patterns documented inline.
 - `reference/fidelity-refined-pass.md` — concrete CSS recipes for
   the `--fidelity=refined` craft micro-pass (Discipline 8).
 - `reference/anti-template-bank.md` — worked examples of the
