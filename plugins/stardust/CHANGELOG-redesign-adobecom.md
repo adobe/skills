@@ -9,6 +9,50 @@ from the worked-example project at
 This branch bumps the plugin from **0.7.1 → 0.8.0** (minor: new skill +
 extensions, no breaking changes to existing artifacts).
 
+## 0.10.0 — `stardust:uplift` one-shot presales orchestrator
+
+Adds `/stardust:uplift <URL>` as a single entry point for the
+presales redesign workflow. Collapses `extract → direct → prototype × 3`
+into one opinionated command that picks every variability axis from
+the captured brand surface rather than asking the user.
+
+| Area | Status | Driver |
+|---|---|---|
+| **NEW skill `uplift`** | added | The presales workflow had calcified into a 100+ line user-prompt that re-stated rules already enforced by `direct` and `prototype` (Mode A pinning, IA priority, density floor, variant differentiation, no-fabrication). The prompt also missed the 0.9.0 cinematic feature and had no closed catalog for the "what if…" questions, so the agent improvised. `uplift` packages the workflow as a sub-skill with a fixed three-variant role contract: A faithful + improvements, B "what if we amplified `<captured trait>`?", C "what if motion was part of the identity?" (fully cinematic with register auto-picked from the brand). |
+| **Closed "what if…" candidate catalog** | added at `uplift/reference/what-if-candidates.md` | Eight named captured-trait amplifications (display-typography amplification, photography re-foregrounding, live-data promotion, signature-gesture extension, voice-register pivot, color-ladder re-weighting, audience-routing reframe, motif vocabulary swap). Each candidate declares triggering signal, direction, natural cinematic register, and a disqualification clause. The agent walks the catalog, marks disqualifications, and picks B and C from the remaining set — closing the improvisation loophole. |
+| **Two load-bearing artifacts** | added | `stardust/uplift-improvements.md` (5 specific captured-site weaknesses — load-bearing for variant A) and `stardust/uplift-questions.md` (the catalog walk + picks + disqualifications — audit trail for B and C's directional bets). |
+| **Three-variant role contract** | tightened | A · risk-averse green-light buyer pitch. B · design-team motivator pitch. C · visionary cinematic pitch. C is always cinematic (the register varies per brand); this is how `uplift` reliably ships a third proposition that's defensibly different from A and B rather than the C-cliff failure mode. |
+| **Stop conditions preserved** | inherited | The original presales prompt's (a) extraction-fails / (b) brand-surface-insufficient / (c) improvements-list-empty / (d) variants-can't-differentiate stop conditions are preserved verbatim, plus a new (e) hard-rule-conflict condition for single-color palettes / no-display-register typography. |
+
+### Files added (0.10.0)
+
+```
+plugins/stardust/skills/uplift/SKILL.md                                NEW
+plugins/stardust/skills/uplift/reference/what-if-candidates.md         NEW
+```
+
+### Files extended (0.10.0)
+
+```
+plugins/stardust/skills/stardust/SKILL.md                  — uplift in routing + cross-cutting reference list
+plugins/stardust/skills/stardust/reference/artifact-map.md — uplift-improvements.md + uplift-questions.md ownership
+plugins/stardust/CHANGELOG-redesign-adobecom.md            — this entry
+plugins/stardust/.claude-plugin/plugin.json                — version bump 0.9.0 → 0.10.0
+```
+
+### Backward compatibility
+
+- All existing sub-commands unchanged. `extract`, `direct`, `prototype`,
+  `migrate`, `distill`, `prepare-migration` continue to work as
+  before with no flag changes.
+- `uplift` delegates entirely to the existing skills — it adds an
+  orchestration layer, not a parallel render path.
+- Existing project trees gain only two new artifacts
+  (`uplift-improvements.md`, `uplift-questions.md`) when uplift
+  runs against them.
+
+---
+
 ## 0.9.0 — Cinematic motion feature
 
 Adds `prototype --cinematic` (and `--cinematic=<register>`) as a

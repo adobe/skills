@@ -40,13 +40,17 @@ Once setup is done, route on the user's input:
 - **No argument.** Render the **state report** described in
   `reference/state-machine.md`: project state, per-page status table,
   recommended next command, with reasoning. Do not write anything.
-- **First word is `distill`, `extract`, `direct`, `prototype`, or `migrate`.**
-  Delegate to the matching sub-command (`stardust:<name>` skill). Pass
-  remaining args through. Note that `prototype` accepts a
-  `--cinematic` (or `--cinematic=<register>`) flag that layers a
-  brand-faithful motion register on top of the static prototype
-  (per `skills/prototype/reference/motion-registers.md`); the flag
-  passes through unchanged.
+- **First word is `distill`, `extract`, `direct`, `prototype`,
+  `migrate`, or `uplift`.** Delegate to the matching sub-command
+  (`stardust:<name>` skill). Pass remaining args through.
+  - `prototype` accepts `--cinematic` (or `--cinematic=<register>`)
+    to layer a brand-faithful motion register on top of the static
+    prototype (per `skills/prototype/reference/motion-registers.md`).
+  - `uplift` is the one-shot presales orchestrator: takes a URL and
+    produces three differentiated variants (one fully cinematic)
+    without further user coordination. Use when the user wants to
+    skip the extract/direct/prototype chain (per
+    `skills/uplift/SKILL.md`).
 - **First word is anything else (a freeform phrase).** Treat it as a
   redesign intent. Load `reference/intent-reasoning.md` and follow the
   procedure step by step. **Do not execute any impeccable or stardust
@@ -183,10 +187,19 @@ motion gate cascade).
 
 Owned by `prototype/` because the cinematic feature is scoped to
 prototype rendering, but cited by `direct` (when selecting a
-register) and `migrate` (when copying motion assets through):
+register), `uplift` (when picking C's register), and `migrate`
+(when copying motion assets through):
 
 - `../prototype/reference/motion-registers.md` — five brand-faithful motion personalities (`arrival`, `kinetic-display`, `live-systems`, `editorial`, `kinetic-grid`) and the selection heuristic that maps PRODUCT.md Brand Personality traits to a register.
 - `../prototype/reference/motion-stack.md` — technology choice: Lenis + CSS keyframes + rAF + IntersectionObserver. Why not GSAP. Bundle policy.
 - `../prototype/reference/motion-attributes.md` — `data-*` vocabulary the runtime consumes (`[data-anim]`, `[data-tile-anim]`, `[data-countup]`, `[data-flip]`, `[data-fill]`, `[data-split]`, `[data-parallax]`).
 - `../prototype/reference/motion-runtime.md` — the canonical inline runtime script that powers every cinematic prototype.
 - `../prototype/reference/motion-validation.md` § Pass 6 — cinematic-mode validation gates (Lenis boot, reduced-motion fallback, scroll-jack, three-position screenshots, register-match, motion C-cliff detector).
+
+### Uplift-feature references
+
+Owned by `uplift/`. Cited by master routing when delegating
+`/stardust:uplift <URL>`:
+
+- `../uplift/SKILL.md` — one-shot presales orchestrator: extract → tension/trait identification → 3-variant direction → prototype × 3 → open + summarize.
+- `../uplift/reference/what-if-candidates.md` — closed catalog of 8 captured-trait amplification candidates that B and C select from in Phase 2b.

@@ -59,6 +59,8 @@ refactor (see `notes/migrate-template-canon-refactor.md`):
 stardust/
 ├── state.json                        # state machine (state-machine.md)
 ├── direction.md                      # resolved intent + reasoning trace
+├── uplift-improvements.md            # 5 specific weaknesses — load-bearing for uplift's variant A (written by `stardust:uplift` Phase 2a; absent otherwise)
+├── uplift-questions.md               # 6–8 "what if…" candidates with disqualifications (written by `stardust:uplift` Phase 2b; absent otherwise)
 ├── canon/                            # design canon (canon-extraction.md) — written by prototype --prep on first approval, extended on subsequent approvals
 │   ├── header.html                   # canonical header chrome
 │   ├── footer.html                   # canonical footer chrome
@@ -182,6 +184,21 @@ The file carries a provenance block in `<head>` listing the active
 direction it was rendered against; when direction changes the page
 is flagged `stale` in `state.json` and re-runs of `prototype` skip
 it unless `--all` is passed.
+
+### `stardust/uplift-improvements.md` and `stardust/uplift-questions.md`
+Owner: `$stardust uplift`. Written in Phase 2 of uplift before any
+variant renders. **`uplift-improvements.md`** is the load-bearing
+list of 5 specific captured-site weaknesses that variant A applies
+exactly. **`uplift-questions.md`** is the 6–8 "what if…" candidate
+catalog (per `skills/uplift/reference/what-if-candidates.md`) with
+disqualifications recorded — the audit trail proving that B and C
+picked their directional bets from the closed catalog rather than
+improvising.
+
+Both files are absent when uplift has not been run; the standard
+`extract → direct → prototype` chain produces no equivalent
+artifacts (their content lives implicitly in `direction.md` and
+the per-page shape briefs).
 
 ### `stardust/prototypes/<slug>-cinematic.html`
 Owner: `$stardust prototype --cinematic`. One file per page when
