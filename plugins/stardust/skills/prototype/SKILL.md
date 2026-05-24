@@ -47,6 +47,20 @@ is delegated to `$impeccable craft` and the iteration commands
   data-attributes contract failure, or impeccable hard-rule
   violations. P0/P1 critique findings warn but don't refuse.
   The showcase publishes via GitHub Pages on merge.
+- `--cinematic` — optional. Layer a cinematic motion register
+  on top of the static prototype. The register is read from
+  `DESIGN.json.extensions.motion.register` (written by `direct`);
+  if absent, the prototype phase picks one using the same
+  heuristic per `reference/motion-registers.md` § Selection
+  heuristic. Output filename is `<slug>-cinematic.html`
+  (alongside the static `<slug>-proposed.html`, never replacing
+  it). Triggers the cinematic gates in motion validation
+  (`reference/motion-validation.md` § Pass 6).
+- `--cinematic=<register>` — optional. Same as `--cinematic` but
+  forces a specific register (`arrival`, `kinetic-display`,
+  `live-systems`, `editorial`, `kinetic-grid`). The override is
+  recorded in `_provenance.motion.registerSource = "user-override"`
+  so reviewers can spot when direction's heuristic was bypassed.
 
 ### No opt-outs
 
@@ -471,6 +485,118 @@ expressive position.
 The tier is declared in the run invocation; persisted in
 `_provenance.fidelity`. Default is `quick`.
 
+### Phase 2.4 — Motion application (when `--cinematic`)
+
+Fires only when `--cinematic` (with or without an explicit
+register) was passed, OR when
+`DESIGN.json.extensions.motion.register` was authored by `direct`
+and the user did not opt out. Produces
+`stardust/prototypes/<slug>-cinematic.html` **alongside** the static
+`<slug>-proposed.html` — the static prototype is never replaced.
+
+Procedure:
+
+1. **Resolve the register.** Read
+   `DESIGN.json.extensions.motion.register`. If
+   `--cinematic=<register>` was passed, the CLI value wins.
+   Record the source in `_provenance.motion.registerSource`
+   (`"direct"` or `"user-override"`). If neither path resolved a
+   register, fall through to the selection heuristic in
+   `reference/motion-registers.md` § Selection heuristic.
+
+2. **Stage Lenis assets.** Copy
+   `skills/prototype/assets/motion/lenis.min.js` and `lenis.min.css`
+   into `stardust/prototypes/` (idempotent — skip if shas match).
+   Cinematic prototypes load these via relative paths.
+
+3. **Read the canonical runtime.** Embed the inline script from
+   `reference/motion-runtime.md` § The canonical script verbatim,
+   with the `animConfig` constants rewritten per the active
+   register's token defaults (`reference/motion-registers.md` §
+   The five registers § Token defaults).
+
+4. **Layer the register's CSS.** Append the register-specific
+   keyframes and class rules (entrance keyframes, parallax CSS
+   custom properties, marquee animations, pulse animations) to
+   the file's `<style>` block. The set of keyframes is closed
+   per register; see `reference/motion-runtime.md` § Per-register
+   tuning.
+
+5. **Annotate target HTML.** Walk the rendered DOM and emit the
+   motion `data-*` attributes per the register's vocabulary:
+   - `arrival`: `[data-anim]` on section heads, body copy,
+     CTAs, and tile cards; `[data-countup]` on numeric values;
+     `[data-parallax]` on the hero photograph.
+   - `kinetic-display`: `[data-anim]` on most sections; `[data-split]`
+     on display-cap headlines (`<h1 data-split>DINE</h1>`);
+     `[data-flip]` on terminal codes / gate numbers; `.word`
+     spans on display headlines for clip-path word wipes.
+   - `live-systems`: `[data-tile-anim]` on every ops-tile and
+     card; `[data-countup]` on every numeric data value;
+     `[data-fill]` on every bar inner element; `.live-sweep`
+     on the live-data container; `.marquee__track` on the top
+     ticker.
+   - `editorial`: `[data-anim]` only; `[data-parallax]` with
+     reduced magnitude on hero imagery; never `[data-flip]` /
+     `[data-fill]` / `[data-split]`.
+   - `kinetic-grid`: `[data-tile-anim]` on cards; `[data-anim]`
+     on section heads.
+
+   Full per-register attribute matrix: `reference/motion-registers.md`
+   § Data-attributes consumed.
+
+6. **Inject the `<noscript>` fallback.** Add the no-JS override
+   from `reference/motion-runtime.md` § No-JS fallback to `<head>`
+   so the file degrades to its static-end state without
+   JavaScript.
+
+7. **Update `_provenance`.** Add the `motion` block:
+
+   ```json
+   "motion": {
+     "register": "<register-name>",
+     "registerSource": "direct | user-override | heuristic",
+     "runtimeVersion": "v1",
+     "lenisAssets": { "js": "lenis.min.js", "css": "lenis.min.css" },
+     "attributesEmitted": ["data-anim", "data-countup", ...]
+   }
+   ```
+
+8. **Hand off to Phase 2.8** (motion validation). The cinematic
+   gates in `reference/motion-validation.md` § Pass 6 fire
+   automatically because the rendered file declares the
+   `_provenance.motion.register` field.
+
+The static `<slug>-proposed.html` is unaffected by this phase.
+Both files are reviewable; the brand owner sees the cinematic
+version when motion is part of the redesign brief, the static
+version when migration / accessibility audit is the focus.
+
+#### Output paths
+
+| File                                | Owner phase           | When            |
+|-------------------------------------|----------------------|-----------------|
+| `stardust/prototypes/<slug>-proposed.html`   | Phase 2 (always)   | Always written. |
+| `stardust/prototypes/<slug>-cinematic.html`  | Phase 2.4 (`--cinematic`) | Written alongside; static remains. |
+| `stardust/prototypes/lenis.min.js`           | Phase 2.4 (`--cinematic`) | Copied from skill assets. |
+| `stardust/prototypes/lenis.min.css`          | Phase 2.4 (`--cinematic`) | Copied from skill assets. |
+
+#### When to use the static-only path
+
+The static prototype remains the load-bearing artifact for:
+- Brand-faithful inheritance reviews (motion is additive — the
+  static prototype is the canonical "yes, that's us, refreshed"
+  surface).
+- Accessibility audits (motion-driven pages are harder to evaluate
+  in their reduced-motion state).
+- Migration consumption (`migrate` reads the static prototype as
+  its primary source; it picks up cinematic motion when both files
+  exist).
+
+The static prototype must pass every gate independently — the
+cinematic layer cannot rescue a static prototype that fails
+Phases 2.5–2.7.
+
 ### Phases 2.5 – 2.8 — Quality gates: Critique → Audit → Adapt → Motion (Discipline 9)
 
 Four mandatory gate phases run by default before any prototype
@@ -491,8 +617,15 @@ opt-out flag (per § No opt-outs).
 Phase 2.8 fires only when the rendered file declares ≥ 1 named
 choreography (per the page-shape brief's motion stack) OR uses
 `animation-timeline:`, `@scroll-timeline`, IntersectionObserver-driven
-entry triggers, or rAF loops reading `getBoundingClientRect()`.
-Static prototypes skip it.
+entry triggers, or rAF loops reading `getBoundingClientRect()`,
+**OR** when Phase 2.4 (motion application under `--cinematic`)
+emitted a `<slug>-cinematic.html` file with motion attributes per
+`reference/motion-attributes.md`. Cinematic prototypes additionally
+trigger the cinematic-mode gates in `reference/motion-validation.md`
+§ Pass 6 (Lenis bootstrap, reduced-motion fallback completeness,
+scroll-jack check, three-position screenshots, register-match
+audit, motion C-cliff detector). Static prototypes skip the
+discipline entirely.
 
 The wasatch dry-run on 2026-05-13 caught two real bugs the brief
 and craft phases missed (a WCAG miscalculation off by 0.27–1.86

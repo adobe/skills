@@ -257,3 +257,39 @@ collapse.
 
 New attributes can be added in a backward-compatible way; renaming
 existing ones requires a version bump.
+
+## Companion vocabulary: motion attributes
+
+The cinematic-prototype feature (`prototype --cinematic`) adds a
+**separate** `data-*` vocabulary scoped to motion declarations:
+`[data-anim]`, `[data-tile-anim]`, `[data-countup]`, `[data-flip]`,
+`[data-fill]`, `[data-split]`, `[data-parallax]`.
+
+Documented in `skills/prototype/reference/motion-attributes.md`,
+not here, because motion attributes:
+
+1. Live on **leaf elements** (the element whose visual property
+   animates), not on sections.
+2. Are only emitted by cinematic prototypes; static prototypes
+   carry **only** the structural attributes documented above.
+3. Are register-scoped — which attributes appear in a given
+   prototype depends on the register selected in
+   `DESIGN.json.extensions.motion.register`.
+
+A page can carry both vocabularies simultaneously without
+conflict:
+
+```html
+<section data-section="live-ops"
+         data-intent="operational transparency"
+         data-layout="grid">
+  <article data-tile-anim>
+    <span class="tile__term">T5</span>
+    <span data-countup="27">0</span>
+    <span class="park-bar"><i data-fill="78"></i></span>
+  </article>
+</section>
+```
+
+The structural attributes describe what the section is *for*; the
+motion attributes describe what each element *does* under scroll.

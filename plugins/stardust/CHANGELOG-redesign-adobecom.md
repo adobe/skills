@@ -9,6 +9,65 @@ from the worked-example project at
 This branch bumps the plugin from **0.7.1 → 0.8.0** (minor: new skill +
 extensions, no breaking changes to existing artifacts).
 
+## 0.9.0 — Cinematic motion feature
+
+Adds `prototype --cinematic` (and `--cinematic=<register>`) as a
+first-class motion feature on top of the static prototype contract.
+Built on top of the JFK Airport worked example (see
+`test-jfkairport/stardust/prototypes/home-{A,B,C}-cinematic.html` for
+register-specific reference instantiations).
+
+| Area | Status | Driver |
+|---|---|---|
+| **`prototype --cinematic` flag** | added | Layers a brand-faithful motion register on top of the static prototype. Output is `<slug>-cinematic.html` alongside the static `<slug>-proposed.html` (never replacing). |
+| **5 motion registers** | added — `arrival`, `kinetic-display`, `live-systems`, `editorial`, `kinetic-grid` | Closed catalog of choreography templates, each with brand-fit clause, signature moves, refuses list, and token defaults. Mode A's palette/typography pinning extended to motion personality. |
+| **Register selection in `direct`** | added | `DESIGN.json.extensions.motion.register` written from PRODUCT.md Brand Personality via a documented selection heuristic. User override at command time via `--cinematic=<register>`. |
+| **Motion `data-*` vocabulary** | added — `[data-anim]`, `[data-tile-anim]`, `[data-countup]`, `[data-flip]`, `[data-fill]`, `[data-split]`, `[data-parallax]` | Declarative motion contract on leaf elements; mirrors structural `data-section` vocabulary at a different scope. |
+| **Lenis bundled** | added at `skills/prototype/assets/motion/` | MIT-licensed smooth-scroll engine, ~17 KB. Pinned per `motion-stack.md` § Pinning Lenis. No GSAP / Framer / Theatre.js — explicitly rejected for vendor-lock + license + weight reasons. |
+| **Canonical inline motion runtime** | added at `prototype/reference/motion-runtime.md` | ~200-line script that bootstraps Lenis, drives the rAF loop, registers scroll entrances, runs `IntersectionObserver` triggers, and respects `prefers-reduced-motion`. Single source of truth; embedded inline in every cinematic prototype. |
+| **Cinematic-mode validation gates (Pass 6)** | extended in `motion-validation.md` | Six new gates: Lenis bootstrap clean, reduced-motion fallback complete, scroll-jack check, three-position screenshot pass, register-match audit, motion C-cliff detector. |
+| **Motion tokens in `:root` contract** | extended in `token-contract.md` | Cinematic prototypes additionally expose `--ease-out-cubic`, `--enter-duration`, `--parallax-translate`, etc. at `:root`. Static prototypes omit them. |
+
+### Files added (0.9.0)
+
+```
+plugins/stardust/skills/prototype/assets/motion/lenis.min.js            NEW (bundled)
+plugins/stardust/skills/prototype/assets/motion/lenis.min.css           NEW (bundled)
+plugins/stardust/skills/prototype/assets/motion/LICENSE.md              NEW
+plugins/stardust/skills/prototype/reference/motion-registers.md         NEW
+plugins/stardust/skills/prototype/reference/motion-stack.md             NEW
+plugins/stardust/skills/prototype/reference/motion-attributes.md        NEW
+plugins/stardust/skills/prototype/reference/motion-runtime.md           NEW
+```
+
+### Files extended (0.9.0)
+
+```
+plugins/stardust/skills/prototype/SKILL.md                 — +`--cinematic` flag, +Phase 2.4 (motion application)
+plugins/stardust/skills/prototype/reference/motion-validation.md  — +Pass 6 cinematic-mode gates, +cinematic _provenance shape
+plugins/stardust/skills/direct/SKILL.md                    — +motion register selection in Phase 4 (DESIGN.json)
+plugins/stardust/skills/stardust/SKILL.md                  — +cinematic-feature cross-cutting references
+plugins/stardust/skills/stardust/reference/token-contract.md — +motion tokens (optional, cinematic only)
+plugins/stardust/skills/stardust/reference/data-attributes.md — +companion-vocabulary pointer to motion-attributes.md
+plugins/stardust/skills/stardust/reference/artifact-map.md — +cinematic file ownership + lenis asset paths
+plugins/stardust/.claude-plugin/plugin.json                — version bump 0.8.0 → 0.9.0
+```
+
+### Backward compatibility
+
+- Default behavior unchanged: prototypes are static unless
+  `--cinematic` is passed.
+- Existing prototypes do not gain motion automatically; the user
+  opts in per slug.
+- The static `<slug>-proposed.html` is the load-bearing artifact;
+  the cinematic file lives alongside.
+- All existing references continue to validate against the existing
+  gates. Motion gates fire only when the cinematic feature is engaged.
+
+---
+
+## 0.8.0 — Original `redesign-adobecom` changes
+
 ## Summary
 
 | Area | Status | Driver |

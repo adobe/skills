@@ -80,7 +80,10 @@ stardust/
 │       └── media/                    # extracted images, with original URLs
 ├── prototypes/
 │   ├── <slug>-shape.md               # per-page compositional brief (page-level deployment record)
-│   └── <slug>-proposed.html          # proposed redesign (iteration target, migration source, user-facing review surface)
+│   ├── <slug>-proposed.html          # proposed redesign (iteration target, migration source, user-facing review surface)
+│   ├── <slug>-cinematic.html         # cinematic variant — written only when `prototype --cinematic` ran (alongside proposed)
+│   ├── lenis.min.js                  # smooth-scroll runtime (copied from skills/prototype/assets/motion/; cinematic only)
+│   └── lenis.min.css                 # smooth-scroll styles (cinematic only)
 └── migrated/                         # deployable static HTML site
     ├── index.html                    # the home page (slug "home" -> root)
     ├── _meta.json                    # sidecar JSON (full reasoning trace) — one per migrated page
@@ -179,6 +182,45 @@ The file carries a provenance block in `<head>` listing the active
 direction it was rendered against; when direction changes the page
 is flagged `stale` in `state.json` and re-runs of `prototype` skip
 it unless `--all` is passed.
+
+### `stardust/prototypes/<slug>-cinematic.html`
+Owner: `$stardust prototype --cinematic`. One file per page when
+the cinematic feature was engaged. Written **alongside**
+`<slug>-proposed.html`, never replacing it — the static prototype
+remains the load-bearing artifact for accessibility audits,
+migration consumption, and brand-faithful inheritance reviews.
+
+The cinematic file declares an active motion register in its
+provenance block (`_provenance.motion.register`) and ships the
+Lenis runtime alongside (relative `<script src="lenis.min.js">`).
+Full contract in:
+
+- `skills/prototype/reference/motion-stack.md` — technology choice
+- `skills/prototype/reference/motion-registers.md` — five
+  brand-faithful motion personalities and the selection heuristic
+- `skills/prototype/reference/motion-attributes.md` — `data-*`
+  vocabulary the runtime consumes
+- `skills/prototype/reference/motion-runtime.md` — canonical
+  inline runtime script
+- `skills/prototype/reference/motion-validation.md` § Pass 6 —
+  cinematic-mode validation gates
+
+Pages whose redesign brief does not engage motion never write this
+file; the directory contains only `<slug>-proposed.html`. Detect
+"is this a cinematic project" by the presence of
+`stardust/prototypes/lenis.min.js`.
+
+### `stardust/prototypes/lenis.min.js` and `lenis.min.css`
+Owner: `$stardust prototype --cinematic`. Copied from
+`skills/prototype/assets/motion/` on first cinematic render in a
+project. Re-copied (sha-compared) on subsequent renders. The
+cinematic prototype HTML loads these via relative paths so the
+prototypes directory remains self-contained.
+
+`migrate` re-copies them into `stardust/migrated/assets/motion/`
+and rewrites the cinematic HTML's `<script>` and `<link>`
+references to root-relative paths per the bundle-as-self-contained
+contract.
 
 ### `stardust/migrated/`
 Owner: `$stardust migrate`. A deployable static HTML site. The slug →

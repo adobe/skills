@@ -18,9 +18,29 @@ HTML:
 - IntersectionObserver-driven entry triggers (anim-enter pattern)
 - Lenis / Locomotive / GSAP ScrollTrigger choreographies declared
   in DESIGN.json's `extensions.motion`
+- A `[data-anim]`, `[data-tile-anim]`, `[data-countup]`,
+  `[data-flip]`, `[data-fill]`, or `[data-split]` attribute
+  anywhere in the document (the cinematic vocabulary —
+  `reference/motion-attributes.md`)
+- A loaded `lenis.min.js` (cinematic feature signal —
+  `reference/motion-stack.md`)
 
 If none of these patterns appear in the rendered file, skip this
 discipline.
+
+## Cinematic-mode entry conditions
+
+When the rendered file declares
+`_provenance.motion.register ∈ { "arrival", "kinetic-display",
+"live-systems", "editorial", "kinetic-grid" }`, the motion-validation
+discipline runs in **cinematic mode** — every static-prototype gate
+still applies, plus the cinematic-specific gates in § Pass 6 below.
+
+The active register is read from
+`DESIGN.json.extensions.motion.register` (written by `direct`) or
+from the `--cinematic=<register>` CLI override recorded in
+`_provenance.motion.registerSource`. The register name selects the
+expected motion vocabulary against which Pass 6 audits.
 
 ## What motion validation catches (that static gates miss)
 
@@ -248,6 +268,136 @@ choreography's section in-flow position, (b) computes the
 visually-centered scroll position per viewport, (c) verifies inner
 content is visible at that position.
 
+### Pass 6 — Cinematic-mode gates
+
+Run only when the rendered file declares a register per § Cinematic-mode
+entry conditions. Six sub-gates. All hard — block `prototyped` until
+the agent either fixes the issue or the user explicitly acknowledges.
+
+#### 6a. Lenis bootstrap is clean
+- The rendered HTML loads `lenis.min.js` from a relative or root-
+  relative path that resolves to a file in the bundle (the
+  cinematic feature ships Lenis at
+  `skills/prototype/assets/motion/lenis.min.js`).
+- Page load produces no console errors during the first 1500ms.
+- `window.__lenis` is defined and has a `scroll` accessor.
+
+A Lenis bootstrap failure (404, MIME mismatch, missing API) breaks
+every scroll-driven choreography. Refuse `prototyped` if this gate
+fails — the page will appear broken to the brand owner.
+
+#### 6b. Reduced-motion fallback is complete
+
+Re-render with Playwright `reducedMotion: 'reduce'`. After 800ms
+settle:
+
+- Every `[data-anim]` and `[data-tile-anim]` has computed `opacity:
+  1` and identity transform.
+- Every `[data-countup]` has textContent equal to its
+  `data-countup` integer.
+- Every `[data-flip]` has textContent equal to its `data-flip`
+  integer.
+- Every `[data-fill]` has computed `width` matching its
+  `data-fill` percentage.
+- Every `[data-split] span` has computed `opacity: 1`, identity
+  transform, `filter: none`.
+- Every `.marquee__track` has paused animation
+  (`animation-play-state: paused` or `animation: none`).
+- Every `.live-sweep` has no active `.sweep` class and no
+  recurring interval (the runtime's `setInterval` must be gated
+  by the reduced-motion check).
+
+Reference: `motion-attributes.md` § Reduced-motion contract and
+`motion-runtime.md` § Reduced-motion: force final states.
+
+#### 6c. Scroll-jack check
+
+- The browser's native scroll still resolves anchor links (click
+  on `<a href="#section">` scrolls to the section).
+- Arrow-key scroll moves the page (keyboard accessibility).
+- Browser back / forward preserves scroll position on navigation
+  to the same page.
+- The page is scrollable within 250ms of load (Lenis must not
+  block initial scroll while booting).
+
+Lenis is configured with `lerp: 0.1` and `smoothWheel: true`. If
+the validation harness detects scroll trapping (a click on an
+`<a href>` produces no scroll-position change after 1500ms), the
+gate fails. The runtime should never intercept programmatic scroll
+APIs.
+
+#### 6d. Three-position screenshot pass
+
+Capture full-page screenshots at three scroll positions:
+- `desktop-top.png` — scrollY=0, after 1500ms entrance settle.
+- `desktop-mid.png` — scrollY=900, after 800ms transient settle.
+- `desktop-deep.png` — scrollY=2400, after 800ms transient settle.
+
+Verify at each position:
+- No element is `opacity < 0.05` that should be visible at this
+  scroll depth (`mid` and `deep` should show their respective
+  bands fully revealed; reveals firing at the wrong depth surface
+  as HIDDEN findings).
+- No section overlaps another by > 1px in document coordinates.
+- The footer wordmark wipe-up has progressed proportionally to
+  scrollY at `deep`.
+
+Save the three PNGs to `stardust/validation/<slug>/cine-<position>.png`.
+
+Plus a mobile capture at 390 × 844 (`mobile.png`) confirming the
+register's mobile fallback (parallax off, marquee speeds halved,
+configurator un-stickied).
+
+#### 6e. Register-match audit
+
+Read `_provenance.motion.register` and walk the rendered file:
+
+- Every choreography present must be **emitted by** the declared
+  register per `motion-registers.md` § The five registers § Data-
+  attributes consumed.
+- Specifically:
+  - `editorial` forbids `[data-flip]`, `[data-fill]`, `.marquee__track`,
+    `.live-sweep`, count-ups, parallax > 12vh.
+  - `live-systems` forbids `[data-split]`, hero parallax,
+    long-fade entrances.
+  - `kinetic-display` forbids `[data-fill]`, weather-style ambient
+    micro-anims.
+  - `arrival` forbids `[data-flip]`, `[data-fill]`, `.live-sweep`,
+    tickers.
+  - `kinetic-grid` forbids page-level parallax, letter-by-letter
+    reveals, tickers.
+
+A register-mismatch finding fails the gate. The fix is one of:
+(a) remove the off-register choreography, (b) change the register
+(rare — register is a brand-faithful choice from `direct`),
+(c) move the off-register element to a `data-motion-register`
+section opt-out (allowed at most once per page; recorded in the
+page-shape brief).
+
+#### 6f. Motion C-cliff detector
+
+Refuse the page if:
+- More than 80 `[data-anim]` + `[data-tile-anim]` elements declared
+  (animation overload).
+- Total stagger duration in any single section exceeds 600ms
+  (content unreadable for too long).
+- Parallax translate exceeds 50vh on any axis (vestibular risk).
+- More than two infinite-loop animations active simultaneously in
+  the viewport (marquees, slowZoom, livePulse all running at
+  once — cognitive overload).
+- More than one `.live-sweep` interval registered (would compound).
+
+This is the cinematic equivalent of the Variant-C overshoot
+failure mode documented in
+`skills/direct/SKILL.md` § The C-cliff. "More motion = more
+cinematic" is the same kind of escalation trap the C-cliff
+warns about.
+
+The detector counts attributes and class instances against the
+thresholds above and refuses with the offending count. The
+remediation is to thin the motion — most cinematic prototypes
+need fewer animations than they appear to.
+
 ## Output
 
 Motion validation produces:
@@ -269,7 +419,28 @@ Motion validation produces:
     },
     "fixesApplied": [
       "<short description of each fix>"
-    ]
+    ],
+    "cinematic": {
+      "register": "arrival | kinetic-display | live-systems | editorial | kinetic-grid",
+      "registerSource": "direct | user-override",
+      "lenisBoot": "ok | failed",
+      "reducedMotionFallback": "complete | incomplete",
+      "scrollJackCheck": "pass | fail",
+      "registerMatchAudit": "pass | fail",
+      "cliffDetector": {
+        "animElementCount": <N>,
+        "maxSectionStaggerMs": <N>,
+        "maxParallaxVh": <N>,
+        "activeInfiniteLoops": <N>,
+        "verdict": "pass | refused"
+      },
+      "screenshots": {
+        "desktopTop": "stardust/validation/<slug>/cine-top.png",
+        "desktopMid": "stardust/validation/<slug>/cine-mid.png",
+        "desktopDeep": "stardust/validation/<slug>/cine-deep.png",
+        "mobile": "stardust/validation/<slug>/cine-mobile.png"
+      }
+    }
   }
 }
 ```

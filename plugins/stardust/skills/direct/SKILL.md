@@ -859,7 +859,49 @@ Token sources:
 Write `DESIGN.json` (schemaVersion 2) with:
 
 - `extensions.colorMeta`, `typographyMeta`, `shadows`, `motion`,
-  `breakpoints` — filled from the same sources as DESIGN.md.
+  `breakpoints` — filled from the same sources as DESIGN.md. The
+  `motion` block carries the **register selection** (when
+  cinematic motion may be applied at prototype time):
+
+  ```json
+  "motion": {
+    "register": "arrival | kinetic-display | live-systems | editorial | kinetic-grid",
+    "registerRationale": "<one-line citation back to PRODUCT.md Brand Personality trait that selected this register>",
+    "easings":   { "entrance": "...", "transition": "...", "expo": "..." },
+    "durations": { "enter": <ms>, "stagger": <ms> },
+    "parallax":  { "translate": <vh>, "fade": <0-1>, "rangeStart": <%>, "range": <%> }
+  }
+  ```
+
+  Picked per the **register selection heuristic** in
+  `skills/prototype/reference/motion-registers.md` § Selection
+  heuristic, reading the resolved `PRODUCT.md` § Brand Personality:
+
+  | Personality traits (any match)                                            | Register          |
+  |---------------------------------------------------------------------------|-------------------|
+  | `civic-formal` + (`institutional` OR `place-led`)                         | `arrival`         |
+  | `signage-led` OR `wayfinding-first` OR `display-typography-signature`     | `kinetic-display` |
+  | `operationally-transparent` OR `data-led` OR `dashboard-register`         | `live-systems`    |
+  | `editorial` OR `slow-paced` OR `publication-register`                     | `editorial`       |
+  | `product` OR `SaaS` OR `transactional` OR `modular-catalogue`             | `kinetic-grid`    |
+  | (ambiguous / no clear match)                                              | `arrival`         |
+
+  Token defaults per register are sourced from
+  `skills/prototype/reference/motion-registers.md` § The five
+  registers; `direct` copies them verbatim into the `motion`
+  block unless the user has provided overrides during intent
+  reasoning. The `registerRationale` field records the one-line
+  justification so reviewers can audit the choice. **`direct`
+  does not apply the motion** — that happens at prototype time
+  under `--cinematic`. `direct` only **selects** the register.
+  Pages whose redesign does not need motion can leave
+  `register` absent; cinematic prototype will then either ask or
+  pick from the heuristic at render time.
+
+  When the user's intent phrase contains explicit motion direction
+  ("make it cinematic", "feel alive", "move like signage"),
+  `direct` picks the register and notes the source in
+  `registerRationale` as `"user-phrase: <verbatim>"`.
 - `extensions.divergence` — full audit trail per the v2 storage shape
   in `divergence-toolkit.md`. Includes the brand-faithful inversion
   log (per `reference/direction-format.md` § Divergence inputs)
