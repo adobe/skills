@@ -24,22 +24,22 @@ Production-grade debugging for AEM Granite Workflow engine, launcher, Inbox, Sli
 
 ---
 
-## Step 1: Map symptom to runbook
+## Step 1: Map symptom to first action
 
-| Symptom | symptom_id | Runbook | First action |
-|---------|------------|---------|--------------|
-| Workflow stuck (not advancing) | workflow_stuck_not_progressing | runbook-workflow-stuck.md | Open instance; note current step type. No work item → stale. |
-| Task not in Inbox | task_not_in_inbox | runbook-task-not-in-inbox.md | Confirm Participant step; assignee = logged-in user; Inbox filters. |
-| Workflow not starting (launcher) | workflow_not_starting_launcher | runbook-launcher-not-starting.md | Launcher enabled; path/event match payload. |
-| Workflow fails or shows error | workflow_fails_or_shows_error | runbook-workflow-fails-or-shows-error.md | Instance history; error.log for instance ID; payload and process. |
-| Step failed, retries exhausted | step_failed_retries_exhausted | runbook-failed-work-items.md | Logs → process.label → JMX `retryFailedWorkItems` or Inbox retry. |
-| Stale (no current work item) | stale_workflow_no_work_item | runbook-stale-workflows.md | JMX `countStaleWorkflows` → `restartStaleWorkflows(dryRun=true)`. |
-| Repository bloat / too many instances | repository_bloat_too_many_instances | runbook-purge-and-cleanup.md | JMX `purgeCompleted(dryRun=true)` or Purge Scheduler. |
-| User cannot see or complete item | user_cannot_see_or_complete_item | runbook-inbox-and-permissions.md | Assignee/initiator/superuser; enforce flags. |
-| Cannot delete model | cannot_delete_model | runbook-model-delete-and-update.md | JMX `countRunningWorkflows` → terminate → delete. |
-| Slow throughput / queue backlog | slow_throughput_queue_backlog | runbook-job-throughput-and-concurrency.md | JMX `returnSystemJobInfo`; `queue.maxparallel` on Granite Workflow Queue; Sling thread pool. |
-| Auto-advancement not working | workflow_auto_advance_failure | runbook-job-throughput-and-concurrency.md | Check `default` thread pool saturation; Sling Scheduler; timeout jobs. |
-| New workflow not working | workflow_setup_validation | runbook-validate-workflow-setup.md | Model sync, launcher, process registration, permissions. |
+| Symptom | symptom_id | First action |
+|---------|------------|--------------|
+| Workflow stuck (not advancing) | workflow_stuck_not_progressing | Open instance; note current step type. No work item → stale. |
+| Task not in Inbox | task_not_in_inbox | Confirm Participant step; assignee = logged-in user; Inbox filters. |
+| Workflow not starting (launcher) | workflow_not_starting_launcher | Launcher enabled; path/event match payload. |
+| Workflow fails or shows error | workflow_fails_or_shows_error | Instance history; error.log for instance ID; payload and process. |
+| Step failed, retries exhausted | step_failed_retries_exhausted | Logs → process.label → JMX `retryFailedWorkItems` or Inbox retry. |
+| Stale (no current work item) | stale_workflow_no_work_item | JMX `countStaleWorkflows` → `restartStaleWorkflows(dryRun=true)`. |
+| Repository bloat / too many instances | repository_bloat_too_many_instances | JMX `purgeCompleted(dryRun=true)` or Purge Scheduler. |
+| User cannot see or complete item | user_cannot_see_or_complete_item | Assignee/initiator/superuser; enforce flags. |
+| Cannot delete model | cannot_delete_model | JMX `countRunningWorkflows` → terminate → delete. |
+| Slow throughput / queue backlog | slow_throughput_queue_backlog | JMX `returnSystemJobInfo`; `queue.maxparallel` on Granite Workflow Queue; Sling thread pool. |
+| Auto-advancement not working | workflow_auto_advance_failure | Check `default` thread pool saturation; Sling Scheduler; timeout jobs. |
+| New workflow not working | workflow_setup_validation | Model sync, launcher, process registration, permissions. |
 
 ---
 
@@ -58,10 +58,9 @@ Thread dumps on 6.5 / AMS are obtained via **jstack** or by requesting from AMS 
 
 ### 3a. Sling `default` thread pool (critical path)
 
-The Sling Scheduler `ApacheSlingdefault` uses `ThreadPool: default`. This pool fires:
-- `com/adobe/granite/workflow/timeout/job` (auto-advancement)
+The Sling Scheduler `ApacheSlingdefault` uses `ThreadPool: default`. This pool runs:
 - Oak observation events
-- All Quartz-scheduled jobs
+- All Quartz-scheduled jobs — including the workflow timeout-detection scheduler that emits `com/adobe/granite/workflow/timeout/job` events to the Sling Job system (the job itself then runs on the Granite Workflow Queue, see Step 3c)
 
 **Check the Sling Thread Pools status page (`/system/console/status-slingthreadpools`):**
 
@@ -69,7 +68,7 @@ The Sling Scheduler `ApacheSlingdefault` uses `ThreadPool: default`. This pool f
 |-------|---------|---------|
 | active count | < max pool size | **= max pool size** (saturated) |
 | block policy | RUN | **ABORT** (rejects tasks when full) |
-| max pool size | ≥ 20 | Low values starve schedulers |
+| max pool size | sized for workload | OOTB on AEM 6.5 LTS is **5/5** (Apache Sling default). Bump to 20+ in OSGi config for environments with many custom periodic schedulers, otherwise schedulers can starve. |
 
 **If active count = max pool size AND block policy = ABORT:**
 - New scheduled tasks (including workflow timeout/auto-advance jobs) are **silently rejected**
@@ -108,9 +107,9 @@ The Sling Scheduler `ApacheSlingdefault` uses `ThreadPool: default`. This pool f
 ### 3d. Sling Scheduler
 
 **Check the Sling Scheduler status page (`/system/console/status-slingscheduler`):**
-- Verify `com/adobe/granite/workflow/timeout/job` scheduled jobs exist
-- `nextFireTime: null` → job already fired or deregistered
-- Verify which ThreadPool the scheduler uses (should be `default`)
+- This page lists Quartz-style schedulers, not Sling Job topics. On OOTB AEM 6.5 LTS the workflow-related entry visible here is the periodic `WorkflowStatsMBean` collector (used by the Statistics MBean) — its `nextFireTime` should be in the near future; `nextFireTime: null` means the trigger was deregistered.
+- The `com/adobe/granite/workflow/timeout/job` topic itself is a **Sling Job**, not a Quartz job — check it on the Sling Jobs page (`/system/console/slingevent`), not here.
+- Confirm `ApacheSlingdefault` uses `ThreadPool: default` — that's how the periodic timeout-detection scheduler reaches the workflow engine.
 
 ---
 
@@ -139,14 +138,17 @@ The Sling Scheduler `ApacheSlingdefault` uses `ThreadPool: default`. This pool f
 | Config | Property | Check |
 |--------|----------|-------|
 | WorkflowSessionFactory | `cq.workflow.job.retry` | Default 3; increase for flaky steps |
-| Apache Sling Job Queue Configuration (Granite Workflow Queue) | `queue.maxparallel` | Workflow parallelism. Default 1; increase for throughput. The `cq.workflow.job.max.procs` property shown on WorkflowSessionFactory has no runtime effect — do not rely on it |
-| WorkflowSessionFactory | `granite.workflow.enforceWorkitemAssigneePermissions` | true = only assignee sees items |
-| WorkflowSessionFactory | `granite.workflow.enforceWorkflowInitiatorPermissions` | true = only initiator can terminate |
-| WorkflowSessionFactory | `cq.workflow.superuser` | Must include admin users/groups |
-| DefaultThreadPool (default) | `block policy` | ABORT can reject timeout jobs; prefer RUN |
-| DefaultThreadPool (default) | `max pool size` | 20 default; increase if many schedulers |
-| Granite Workflow Queue | `queue.maxparallel` | 0.5 OOTB (50% of CPU cores); increase for throughput. Verify at `/system/console/configMgr/org.apache.sling.event.jobs.QueueConfiguration~workflow` |
-| Purge Scheduler | `scheduledpurge.daysold` | 30 default; tune per environment |
+| WorkflowSessionFactory | `cq.workflow.superuser` | Must include admin users/groups (OOTB list includes `admin`, `administrators`, `workflow-process-service`, `workflow-service`, `workflow-administrators`, `wcm-workflow-service`) |
+| WorkflowSessionFactory | `granite.workflow.enforceWorkitemAssigneePermissions` | true (OOTB) = only assignee sees items |
+| WorkflowSessionFactory | `granite.workflow.enforceWorkflowInitiatorPermissions` | true (OOTB) = only initiator (or superuser) can terminate/suspend/resume |
+| WorkflowSessionFactory | `granite.workflow.inboxQuerySize` | Max work items returned per Inbox query. OOTB 2000; raise if heavy users hit the cap |
+| WorkflowSessionFactory | `granite.workflow.maxPurgeSaveThreshold` | OOTB 20 — commit after this many purged instances. Raise carefully to reduce JCR overhead during large purges |
+| WorkflowSessionFactory | `granite.workflow.maxPurgeQueryCount` | OOTB 1000 — JCR query batch size during purge. Tune with above |
+| Granite Workflow Queue (`org.apache.sling.event.jobs.QueueConfiguration~workflow`) | `queue.maxparallel` | **Real parallelism knob.** OOTB on AEM 6.5 LTS is `0.5` (50% of CPU cores). Adobe's *Workflows Best Practices* recommends **between half and three-quarters of processor cores**. `cq.workflow.job.max.procs` displayed in Felix Config Manager is an **orphaned metatype label** with no code path that reads it (verified against source on `release/660` and `prod/cq660`) — do not rely on it. Verify the running value at `/system/console/configMgr/org.apache.sling.event.jobs.QueueConfiguration~workflow` |
+| DefaultThreadPool (`name=default`) | `block policy` | OOTB `RUN`. `ABORT` would silently drop workflow timeout jobs — keep `RUN` unless you have a specific reason |
+| DefaultThreadPool (`name=default`) | `max pool size` | **OOTB on AEM 6.5 LTS is 5** (Apache Sling default). Bump to 20+ for environments with many custom periodic schedulers; otherwise the pool can starve under load |
+| Purge Scheduler (`com.adobe.granite.workflow.purge.Scheduler`) | `scheduledpurge.daysold` | 30 default; tune per environment. Factory PID — deploy one config per schedule |
+| Purge Scheduler | `scheduledpurge.workflowStatus` | Array-typed; e.g. `["COMPLETED"]` |
 
 ---
 
@@ -170,7 +172,7 @@ All workflow maintenance and diagnostic operations live on a single MBean: `com.
 
 | MBean | Operations | Purpose |
 |-------|------------|---------|
-| `com.adobe.granite.workflow:type=Maintenance` | `purgeCompleted(model, days, dryRun)`, `purgeActive(model, days, dryRun)`, `countRunningWorkflows(model)`, `countCompletedWorkflows(model)`, `countStaleWorkflows(model)`, `restartStaleWorkflows(model)`, `retryFailedWorkItems(dryRun, model)`, `returnSystemJobInfo`, `returnWorkflowQueueInfo`, `returnWorkflowJobTopicInfo`, `returnFailedWorkflowCount(model)`, `terminateFailedInstances`, `fetchModelList` | Purge, stale detection/restart, retry failed items, failure handling, queue/job diagnostics, model enumeration |
+| `com.adobe.granite.workflow:type=Maintenance` | `purgeCompleted(model [optional], days, dryRun)`, `purgeActive(model [optional], days, dryRun)`, `countRunningWorkflows(model [optional])`, `countCompletedWorkflows(model [optional])`, `countStaleWorkflows(model [optional])`, `restartStaleWorkflows(model [optional], dryRun)`, `retryFailedWorkItems(dryRun, model [optional])`, `terminateFailedInstances(restart, dryRun, model [optional])`, `returnSystemJobInfo()`, `returnWorkflowQueueInfo()`, `returnWorkflowJobTopicInfo()`, `returnFailedWorkflowCount(model [optional])`, `returnFailedWorkflowCountPerModel()`, `listRunningWorkflowsPerModel()`, `listCompletedWorkflowsPerModel()`, `fetchModelList()` | Purge, stale detection/restart, retry failed items, bulk terminate, queue/job diagnostics, per-model counts and enumeration |
 | `com.adobe.granite.workflow:type=Statistics` | `getResults`, `clearRecords`; plus `get`/`set` accessors for `DataLifeTime`, `DataFidelityTime`, `DataProcessRate`, `DataRate` | Time-series workflow execution statistics |
 
 **Always use `dryRun=true` first before executing destructive purge or retry operations.**
@@ -187,9 +189,9 @@ All workflow maintenance and diagnostic operations live on a single MBean: `com.
 1. Custom scheduler (e.g. `AccessTokenScheduler`) makes blocking HTTP call without timeout
 2. `concurrent = true` allows overlapping executions on each cron trigger
 3. Each stuck execution consumes a `default` pool thread indefinitely
-4. All 20 threads consumed → pool saturated
-5. Block policy = ABORT → new Quartz jobs rejected silently
-6. Workflow timeout jobs (`com/adobe/granite/workflow/timeout/job`) cannot fire
+4. All pool threads consumed (OOTB on AEM 6.5 LTS that's only **5**; environments hardened for throughput typically run with 20+) → pool saturated
+5. If block policy has been changed to `ABORT` (OOTB is `RUN`), new Quartz triggers are rejected silently; on `RUN` they instead pile up on the caller thread and back-pressure the dispatch
+6. The workflow timeout-detection scheduler cannot dispatch new `com/adobe/granite/workflow/timeout/job` events
 7. Auto-advancement never happens
 
 **Diagnosis checklist:**
