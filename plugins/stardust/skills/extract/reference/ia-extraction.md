@@ -383,7 +383,7 @@ informational output.
 
 ```json
 {
-  "_provenance": { "writtenBy": "stardust:extract", "writtenAt": "...", "stardustVersion": "0.2.0" },
+  "_provenance": { "writtenBy": "stardust:extract", "writtenAt": "...", "stardustVersion": "0.10.0" },
   "discovery": {
     "source": "sitemap.xml",
     "sourceUrl": "https://example.com/sitemap.xml",

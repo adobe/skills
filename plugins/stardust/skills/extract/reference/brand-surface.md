@@ -32,7 +32,7 @@ values, and carries a source citation.
       "stardust/current/pages/home.json"
     ],
     "synthesizedInputs": [],
-    "stardustVersion": "0.2.0"
+    "stardustVersion": "0.10.0"
   },
   "site": {
     "name": "Example",

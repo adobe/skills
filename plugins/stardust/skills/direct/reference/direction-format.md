@@ -22,7 +22,7 @@ section as a sub-section.
     - stardust/current/_brand-extraction.json
     - stardust/current/PRODUCT.md
   synthesizedInputs: []
-  stardustVersion: 0.2.0
+  stardustVersion: 0.10.0
 -->
 ---
 title: "make it more expressive for a young audience"

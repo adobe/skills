@@ -14,7 +14,7 @@ and resumable. The state file is `stardust/state.json`. It is written by
   "_provenance": {
     "writtenBy": "stardust:<sub-command>",
     "writtenAt": "<ISO timestamp>",
-    "stardustVersion": "0.2.0"
+    "stardustVersion": "0.10.0"
   },
   "site": {
     "originUrl": "https://example.com",

@@ -506,7 +506,7 @@ _provenance:
     - stardust/current/_brand-extraction.json
     - stardust/current/brand-review.html
     - stardust/current/pages/<slug>.json
-  stardustVersion: 0.2.x
+  stardustVersion: 0.10.x
 -->
 
 # Improvements — <slug>

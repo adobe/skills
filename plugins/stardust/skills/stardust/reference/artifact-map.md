@@ -322,7 +322,7 @@ First child of `<head>`:
     - DESIGN.md
     - DESIGN.json
   synthesizedInputs: []
-  stardustVersion:  0.2.0
+  stardustVersion:  0.10.0
 -->
 ```
 
@@ -348,7 +348,7 @@ First top-level key (`_provenance`):
     "writtenAt": "2026-04-25T13:00:00Z",
     "readArtifacts": ["https://example.com/"],
     "synthesizedInputs": [],
-    "stardustVersion": "0.2.0"
+    "stardustVersion": "0.10.0"
   },
   "...": "..."
 }

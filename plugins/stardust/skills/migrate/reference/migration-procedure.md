@@ -324,7 +324,7 @@ the failure with the specific rule violated and a suggested fix.
   canonShas:        header:<short> footer:<short> css:<short>
   decisionTrace:    _meta.json
   brokenInternalLinks: 0
-  stardustVersion:  0.2.0
+  stardustVersion:  0.10.0
 -->
 ```
 
