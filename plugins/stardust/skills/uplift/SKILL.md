@@ -120,6 +120,33 @@ specifics, "make it better" has no claim. Categories:
 Refuse to proceed if fewer than 3 specific weaknesses can be named
 (see § Stop conditions).
 
+Format (mirrors the provenance shape used by the rest of stardust):
+
+```markdown
+---
+_provenance:
+  writtenBy: stardust:uplift
+  writtenAt: <ISO-8601>
+  againstInput: <URL>
+  readArtifacts:
+    - stardust/current/_brand-extraction.json
+    - stardust/current/pages/<slug>.json
+    - stardust/current/brand-review.html
+---
+
+# Improvements — <URL>
+
+1. **[dated-pattern]** <one-line headline> — <captured evidence>.
+2. **[ia-clutter]** <one-line headline> — <captured evidence>.
+3. **[contrast-or-density]** <one-line headline> — <captured evidence>.
+4. **[cliché]** <one-line headline> — <captured evidence>.
+5. **[missed-opportunity]** <one-line headline> — <captured evidence>.
+```
+
+The bracketed tag preceding each weakness is the category from the
+list above. The headline is the one-sentence summary the agent will
+restate when variant A's shape brief applies the fix.
+
 #### 2b — `stardust/uplift-questions.md`
 
 Six to eight "what if we leaned into…" candidates derived from the
@@ -148,6 +175,14 @@ The disqualification step is what keeps the agent from reflexively
 picking the same candidate for every brand.
 
 ### Phase 3 — Pick three variant directions (owned by `uplift`)
+
+Default: three variants (A + B + C). When `--two-variants` is
+active, skip § 3c (B's candidate selection) and the direction.md
+authored in § 3d declares only A + C. Phase 4 then writes only
+`DESIGN-A` and `DESIGN-C` files at the project root, and Phase 5
+renders accordingly. All downstream contracts (variant
+differentiation, motion validation on C, summary in Phase 6)
+operate over the reduced variant set without modification.
 
 #### 3a — Pick the cinematic register for variant C
 
@@ -474,8 +509,10 @@ DESIGN-C.md / DESIGN-C.json                 ← carries motion.register
   and selection heuristic used in Phase 3a.
 - `../prototype/reference/motion-validation.md` § Pass 6 —
   cinematic-mode validation gates that fire for variant C.
-- `../prototype/SKILL.md` § Inputs — `--cinematic` and
-  `--variant` flags passed through from uplift.
+- `../prototype/SKILL.md` § Inputs — `--cinematic` flag passed
+  through from uplift; multi-variant rendering driven by the
+  per-variant `DESIGN-<id>.json` files `direct` wrote in Phase 4,
+  not by a CLI selector.
 - `../direct/SKILL.md` § Phase 2.6 — multi-variant fork; uplift
   passes the three-variant declaration through.
 - `../stardust/reference/data-attributes.md` — structural section

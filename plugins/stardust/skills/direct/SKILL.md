@@ -898,6 +898,17 @@ Write `DESIGN.json` (schemaVersion 2) with:
   `register` absent; cinematic prototype will then either ask or
   pick from the heuristic at render time.
 
+  **Per-variant placement (when N > 1 variants).** For
+  multi-variant runs, the `motion` block goes into the
+  variant-specific `DESIGN-<id>.json` files (see § Multi-variant
+  DESIGN files below), not into the site-level `DESIGN.json`.
+  Variants that should render static omit the block entirely;
+  variants that should engage cinematic motion declare a
+  `register`. This is what lets one variant (typically C) be
+  cinematic while siblings stay static — `prototype` Phase 2.4
+  reads `DESIGN-<id>.json.extensions.motion.register` per
+  variant and fires only where present.
+
   When the user's intent phrase contains explicit motion direction
   ("make it cinematic", "feel alive", "move like signage"),
   `direct` picks the register and notes the source in
