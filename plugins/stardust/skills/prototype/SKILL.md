@@ -496,13 +496,31 @@ and the user did not opt out. Produces
 
 Procedure:
 
-1. **Resolve the register.** Read
-   `DESIGN.json.extensions.motion.register`. If
-   `--cinematic=<register>` was passed, the CLI value wins.
+1. **Resolve the register.** For single-variant runs, read
+   `DESIGN.json.extensions.motion.register`. **For multi-variant
+   runs** (when `DESIGN-<id>.json` files exist at the project
+   root), read `DESIGN-<id>.json.extensions.motion.register` for
+   the variant currently being rendered — each variant may carry
+   its own register, or omit it entirely (variant renders
+   static). If `--cinematic=<register>` was passed at the CLI,
+   the CLI value wins **only for the variants in scope** (every
+   variant when no `<slug>` filter is set, otherwise the
+   variant(s) matching the filter).
+
    Record the source in `_provenance.motion.registerSource`
-   (`"direct"` or `"user-override"`). If neither path resolved a
-   register, fall through to the selection heuristic in
-   `reference/motion-registers.md` § Selection heuristic.
+   (`"direct"` for per-variant DESIGN-authored, `"user-override"`
+   for CLI). If neither path resolved a register for this
+   variant, fall through to the selection heuristic in
+   `reference/motion-registers.md` § Selection heuristic. If the
+   heuristic itself returns no register (e.g. the variant's
+   PRODUCT.md Brand Personality maps to none of the five
+   registers), skip Phase 2.4 entirely for that variant — render
+   it static.
+
+   The per-variant resolution is what lets `uplift` produce a
+   three-variant set where only variant C engages motion: `direct`
+   writes the register into `DESIGN-C.json` only, and Phase 2.4
+   fires for C alone (A and B render static).
 
 2. **Stage Lenis assets.** Copy
    `skills/prototype/assets/motion/lenis.min.js` and `lenis.min.css`

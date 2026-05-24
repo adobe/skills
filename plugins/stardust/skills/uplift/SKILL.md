@@ -237,25 +237,54 @@ the brand-faithful contract.
 
 ### Phase 5 — Prototype × 3 (delegate to `stardust:prototype`)
 
-Invoke prototype three times:
+Invoke prototype **once** with the page slug:
 
-1. `stardust:prototype <slug> --variant=A` → `<slug>-A-proposed.html`
-2. `stardust:prototype <slug> --variant=B` → `<slug>-B-proposed.html`
-3. `stardust:prototype <slug> --variant=C --cinematic` →
-   `<slug>-C-proposed.html` PLUS `<slug>-C-cinematic.html`
+```
+stardust:prototype <slug>
+```
+
+Prototype detects N > 1 variants from the per-variant `DESIGN-A`,
+`DESIGN-B`, `DESIGN-C` files that `direct` wrote in Phase 4 and
+iterates internally — authoring `<slug>-A-shape.md` / `-B-shape.md`
+/ `-C-shape.md` and emitting `<slug>-A-proposed.html` /
+`<slug>-B-proposed.html` / `<slug>-C-proposed.html` per the
+variant-convergence detector contract
+(`../prototype/SKILL.md` § Phase 2.5 / Discipline 10).
+
+**Cinematic motion fires per-variant from the per-variant DESIGN
+file**, not from a CLI flag. Because Phase 4 wrote
+`extensions.motion.register` into `DESIGN-C.json` only (A and B
+omit it), prototype's Phase 2.4 (motion application) fires only
+for variant C. Variant C emits both `<slug>-C-proposed.html`
+(the static reference) and `<slug>-C-cinematic.html` (the
+register-applied surface). Variants A and B render static, never
+acquiring the motion runtime.
 
 Prototype owns:
 
 - Page-shape brief authoring per Phase 1 of prototype.
-- Render via `$impeccable craft` delegation.
-- Phase 2.4 motion application for variant C (reads
-  `DESIGN-C.json.extensions.motion.register`).
-- Phases 2.5–2.8 quality gates (critique, audit, adapt, motion).
+- Render via `$impeccable craft` delegation, per variant.
+- Phase 2.4 motion application for variants whose `DESIGN-<id>.json`
+  declares an `extensions.motion.register`.
+- Phases 2.5–2.8 quality gates (critique, audit, adapt, motion)
+  per variant.
 - Variant C's cinematic-mode gates (Pass 6) per
   `../prototype/reference/motion-validation.md`.
+- Variant-convergence detector (≥ 2 structural changes per pair)
+  per Discipline 10.
 
-Run all three in sequence (not parallel) so the canon-fold-back
-in prototype Phase 5 carries through A → B → C consistently.
+The single invocation lets prototype's canon-fold-back (Phase 5
+of prototype) carry through A → B → C consistently inside one run.
+
+#### Why one invocation, not three
+
+Prototype has no `--variant <id>` input. Multi-variant rendering is
+driven by the presence of multiple `DESIGN-<id>.json` files at the
+project root, not by a CLI selector. Invoking prototype three times
+with different flags would re-author canon three times and
+re-validate cross-variant differentiation against an incomplete
+sibling set. The single-invocation contract is what makes uplift's
+three-variant flow cohere with the existing prototype skill.
 
 ### Phase 6 — Open and summarize (owned by `uplift`)
 
@@ -292,8 +321,8 @@ After all three prototypes mark `prototyped` in `state.json`:
    passes motion validation Pass 6.
 
    Next: iterate any variant via chat ("make B's hero quieter") or
-   approve via /stardust:prototype <slug> --variant=<X> (records
-   the approval in state.json).
+   approve via the standard prototype approval flow (records the
+   approval in state.json).
    ```
 
 The summary is the user's only direct touchpoint with the three

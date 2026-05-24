@@ -117,9 +117,11 @@ A flex-row of duplicated content. Animates with `@keyframes
 marqueeScroll` (translateX 0 → -50%) infinite.
 **Registers.** `kinetic-display`, `live-systems` (top ticker).
 
-### `.jfk-mask span` (and equivalents)
+### `.monogram-mask span` (and equivalents)
 Display-monogram letters whose `clip-path: inset(0 0 100% 0)`
 animates to `inset(0 0 0 0)` via `@keyframes letterReveal`.
+Apply to letter spans inside a hero-monogram container when the
+register is `kinetic-display`.
 **Registers.** `kinetic-display`.
 
 ## Reduced-motion contract
@@ -158,38 +160,38 @@ neutralized.
 
 ```html
 <!-- arrival hero -->
-<h1 class="hero-marquee__title">JFK</h1>
-<p class="hero-marquee__body">Your world-class gateway…</p>
+<h1 class="hero-marquee__title">BRAND</h1>
+<p class="hero-marquee__body">Brand tagline goes here…</p>
 
-<!-- live wait chip with count-up -->
-<span class="term-chip">
-  <span class="t">T5</span>
+<!-- live data chip with count-up -->
+<span class="data-chip">
+  <span class="t">A1</span>
   <span class="v" data-countup="27">0</span>
-  <span style="opacity:0.7">min</span>
+  <span style="opacity:0.7">unit</span>
 </span>
 
 <!-- live-systems tile -->
 <article class="tile warn" data-tile-anim>
-  <span class="tile__term">T5</span>
-  <div class="tile__wait">
+  <span class="tile__id">A1</span>
+  <div class="tile__metric">
     <span class="v" data-countup="27">0</span>
-    <span class="u">min</span>
+    <span class="u">unit</span>
   </div>
 </article>
 
 <!-- bar fill -->
-<span class="park-bar warn">
+<span class="capacity-bar warn">
   <i data-fill="78"></i>
 </span>
 
 <!-- kinetic-display split-flap -->
-<span class="tno" data-flip="5">0</span>
+<span class="big-id" data-flip="5">0</span>
 
 <!-- editorial scroll entrance -->
-<p data-anim>An entirely new $19B JFK is being constructed.</p>
+<p data-anim>Headline copy reveals on scroll.</p>
 
 <!-- kinetic-display letter reveal -->
-<h3 class="trio__title" data-split>Dine</h3>
+<h3 class="trio__title" data-split>WORD</h3>
 ```
 
 ## Who reads, who writes

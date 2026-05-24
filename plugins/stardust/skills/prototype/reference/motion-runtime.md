@@ -357,23 +357,32 @@ state to its visible end state:
 Without JS the cinematic prototype renders identically to its static
 counterpart. The motion-validation gate Pass 4 enforces this.
 
-## Worked example
+## Per-register surface shape
 
-See the JFK Airport cinematic prototype fixtures (referenced from
-`fixtures/cinematic-jfk-A.html`, `cinematic-jfk-B.html`,
-`cinematic-jfk-C.html`) for register-specific instantiations:
+Each register's runtime instantiation produces a recognisable
+surface shape. The contract below names the moves the runtime is
+expected to drive when the register is active; motion validation
+Pass 6e (register-match audit) reads against this list.
 
-- **A · arrival** — hero parallax + post-hero riser + count-ups +
-  footer wordmark wipe-up.
-- **B · kinetic-display** — split-letter monogram + display-head
-  word wipes + split-flap terminal numerals + infinite marquees +
-  letter-by-letter caps reveal.
-- **C · live-systems** — top ticker + tile cascade (rotateX) +
-  count-ups + bar fills + animated weather wind + 5.4s refresh
-  sweep.
+- **arrival** — hero parallax + post-hero riser + scroll-stagger
+  entrances + count-ups + footer wordmark clip-path wipe-up.
+- **kinetic-display** — split-letter monogram reveal + display-head
+  clip-path word wipes + split-flap numerals (`[data-flip]`) +
+  infinite signage marquees + letter-by-letter cap reveals
+  (`[data-split]`).
+- **live-systems** — top ticker marquee + tile cascade with rotateX
+  (`[data-tile-anim]`) + count-ups + bar fills (`[data-fill]`) +
+  ambient micro-animations on supporting widgets + periodic
+  refresh sweep (`.live-sweep`).
+- **editorial** — long fade entrances + soft micro-parallax (≤ 12vh)
+  + reading-paced reveals + hover-driven detail (image scale, link
+  underline). No marquees, no flips, no fills.
+- **kinetic-grid** — cascade tile reveals with directional stagger
+  + hover lift system + tab/segment slide indicators + button
+  sheen. No page-level parallax.
 
-All three pass the motion-validation gate (described in
-`motion-validation.md`) including reduced-motion fallback,
+A rendered prototype that engages a register must pass every gate
+in `motion-validation.md` including reduced-motion fallback,
 no-JS render, and the multi-viewport scroll-driven check.
 
 ## Who reads, who writes

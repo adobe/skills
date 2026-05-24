@@ -38,6 +38,7 @@ plugins/stardust/skills/stardust/SKILL.md                  — uplift in routing
 plugins/stardust/skills/stardust/reference/artifact-map.md — uplift-improvements.md + uplift-questions.md ownership
 plugins/stardust/CHANGELOG-redesign-adobecom.md            — this entry
 plugins/stardust/.claude-plugin/plugin.json                — version bump 0.9.0 → 0.10.0
+plugins/stardust/tile.json                                  — version bump 0.8.0 → 0.10.0; register uplift + prepare-migration (the latter pre-existing gap closed)
 ```
 
 ### Backward compatibility
@@ -57,9 +58,9 @@ plugins/stardust/.claude-plugin/plugin.json                — version bump 0.9.
 
 Adds `prototype --cinematic` (and `--cinematic=<register>`) as a
 first-class motion feature on top of the static prototype contract.
-Built on top of the JFK Airport worked example (see
-`test-jfkairport/stardust/prototypes/home-{A,B,C}-cinematic.html` for
-register-specific reference instantiations).
+Developed against a multi-variant brand-led dogfood site that
+exercised three of the five registers (`arrival`, `kinetic-display`,
+`live-systems`) on a single page.
 
 | Area | Status | Driver |
 |---|---|---|

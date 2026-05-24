@@ -127,9 +127,10 @@ Lenis version is pinned to the build copied into
 `skills/prototype/assets/motion/`. Re-bundling requires:
 
 1. Replace `lenis.min.js` and `lenis.min.css` together.
-2. Re-validate against a known-good prototype (the JFK Airport
-   cinematic A/B/C fixtures referenced in `motion-runtime.md` §
-   Worked example).
+2. Re-validate against a cinematic prototype rendered under each
+   register defined in `motion-registers.md` — confirm scroll
+   parallax, IO triggers, and reduced-motion handling all still
+   behave per `motion-runtime.md` § Per-register surface shape.
 3. Confirm `lenis.scroll` (read inside the rAF tick) and
    `lenis.on('scroll', ...)` (subscribed at boot) still resolve
    the same shape.
