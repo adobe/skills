@@ -454,6 +454,65 @@ Before ANY config update (org, site, profile, or DA config):
 
 ---
 
+## Sensitive Data Handling
+
+Many of these endpoints return secrets, credentials, PII, or organizational metadata. Operating on a real customer org is normal usage — but the responses must be handled with care so they do not leak into chat history, terminal scrollback, or memory.
+
+### Sensitive endpoints (default to summarized output)
+
+| Endpoint | Sensitive content |
+|----------|-------------------|
+| `/config/{org}/apiKeys.json`, `/config/{org}/sites/{site}/apiKeys.json` | API key IDs, expiration, role/subject metadata; `value` (JWT) on create |
+| `/config/{org}/sites/{site}/tokens.json` | Token IDs; `value` (`hlx_…`) on create |
+| `/config/{org}/sites/{site}/secrets.json` | Secret names; `value` on create |
+| `/config/{org}.json`, `/config/{org}/sites/{site}.json` | User emails, role mappings, allowed domains, content source URLs, contentBusId |
+| `/config/{org}/users.json` | User emails and IDs |
+| `/log/{org}/{site}/{ref}` | User emails, IPs, paths edited, timestamps |
+| `/profile` | IMS user ID, session IDs, scopes |
+
+### Default behavior on these endpoints
+
+These rules apply unconditionally on every org — personal, sandbox, dev, stage, prod, customer. There is no carve-out: customer dev/stage/sandbox environments hold real PII just like prod. Do not rationalize past them — the user's verb ("list", "show", "get") is a request for the data, NOT a request to un-redact. The redacted view IS the requested data.
+
+1. **Lead with a summary, not the raw payload.** Example: "Found 3 API keys (IDs: …). Want me to show full details?" — not a dump of the full JSON.
+2. **Redact emails by default.** Show `<3 admin users>` or `j***@example.com` on the first response, regardless of org type or naming.
+3. **Never echo a credential `value` field a second time.** It must be displayed exactly once at creation, with the instruction to copy it now. Do not include it in any later message, summary, or memory write.
+4. **Only these exact phrases un-redact:** "show full", "show un-redacted", "show raw", "show emails". Imperative verbs alone ("list users", "show users") do NOT — they request the data, served redacted by default.
+
+### First-touch awareness
+
+Before the first sensitive operation against any org in a session, surface a one-line note:
+
+> "Querying org `{org}`. I'll redact emails by default — say 'show full' to see un-redacted output."
+
+This applies uniformly. The org's name (test/dev/stage/prod/personal) does not change the rule.
+
+### Memory rules
+
+Never write to memory:
+
+- API key IDs, JWTs, or `value` fields
+- Token IDs or `hlx_…` secret strings
+- Secret names paired with their values
+- User emails from log entries or config dumps (memorize names/roles abstractly: "alice manages auth setup", not "alice@example.com")
+- Full config bodies (role mappings, contentBusId, source URLs)
+- IMS tokens, session IDs, IPs, or anything from `/profile`
+
+If the user asks you to remember something derived from a sensitive endpoint, save the abstract fact (e.g., "this org has CI/CD via API keys") not the identifiers.
+
+### POST safety on credential endpoints
+
+Some endpoints **create a credential on any POST**, even with an empty body — defaults are filled in by the server, and the secret `value` is returned exactly once. This applies to:
+
+- `/config/{org}/apiKeys.json` (org API keys)
+- `/config/{org}/sites/{site}/apiKeys.json` (site API keys)
+- `/config/{org}/sites/{site}/tokens.json` (site tokens)
+- `/config/{org}/sites/{site}/secrets.json` (site secrets)
+
+Never POST to these endpoints to "probe", "test", or "check" the API. Only POST when the user has explicitly asked to create a credential, with the intended role/scope/expiration provided. See `apikeys.md` and `tokens.md` for the full create flow.
+
+---
+
 ## URL Parsing Helper
 
 If user provides an AEM URL instead of separate org/site/path values, extract context:

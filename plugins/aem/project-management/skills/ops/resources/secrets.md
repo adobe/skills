@@ -8,6 +8,12 @@ allowed-tools: Read, Write, Edit, Bash
 
 Manage secrets for Edge Delivery Services at organization and site levels.
 
+## Critical: POST creates a secret
+
+Any POST to a `secrets.json` endpoint creates a new secret, **even with an empty body** (`{}`) — the server fills in defaults (`hashed` type) and returns the secret's `value` (an `hlx_…` string) **once**; it cannot be retrieved later.
+
+Never POST to these endpoints to "probe" the API. Only POST when the user has explicitly asked to create a secret, with the intended description provided.
+
 ## API Reference
 
 ### Organization Secrets
@@ -42,6 +48,14 @@ curl -s \
 ### Create Organization Secret
 
 The API accepts either a `hashedSecretConfig` (server-generates the value) or `keySecretConfig` (provide your own key). Both use `description` as the label — the `value` is only returned once in the response.
+
+**CAUTION — CONFIRMATION REQUIRED**
+
+Before executing, you MUST:
+1. Confirm the user explicitly asked to create a secret (not "list" or "check")
+2. Tell user: "This will create a new secret with description '{description}'. The secret value is shown once and cannot be retrieved later."
+3. Ask: "Do you want to proceed? (yes/no)"
+4. Only execute if user confirms with "yes"
 
 ```bash
 curl -s -X POST \
@@ -86,6 +100,8 @@ curl -s \
 **Response format:** Present as table — Name | ID
 
 ### Create Site Secret
+
+Same gate as Create Organization Secret. Confirm explicit user intent and warn that the secret value is shown only once.
 
 ```bash
 curl -s -X POST \
