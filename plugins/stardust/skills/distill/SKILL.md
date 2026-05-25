@@ -1,6 +1,6 @@
 ---
 name: distill
-description: Distill a set of user-provided design samples (static HTML + live URLs) into a structured trait matrix and a narrative vocabulary brief that anchors stardust:direct.
+description: Analyze a set of design samples (HTML mockups + website URLs) and produce a structured style guide that anchors the rest of the stardust redesign pipeline. Use when the user supplies reference designs ("design samples", "mockups", "inspiration sites", "style references") and wants to extract a consistent visual language — type system, color palette, spacing, motion, and reusable component patterns — before redesigning a target site. Triggers on phrases like "distill these samples", "extract a style guide from these examples", "use these as design references", or "analyze these mockups". Outputs a `trait-matrix.json` (structured per-sample + cross-sample design tokens) and a `SAMPLES.md` narrative brief that `stardust:direct` reads under Mode B (anchor-reference precedence) when picking a redesign direction.
 license: Apache-2.0
 ---
 

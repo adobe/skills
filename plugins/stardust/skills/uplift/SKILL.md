@@ -15,32 +15,25 @@ same as the long-form chain (state.json, brand-review.html, three
 proposed files, motion validation) — the user just doesn't have to
 coordinate it.
 
-## Why this skill exists
+## Opinionated defaults
 
-The standard chain assumes the user knows enough about stardust to
-coordinate: which sub-command runs when, when Mode A applies, when
-direct's variant fork engages, how cinematic motion is opted into,
-where the load-bearing improvements artifact goes. For presales, that
-coordination is friction the user doesn't need to bear.
-
-`uplift` is opinionated about every choice the standard chain leaves
-to the user:
-
-- **Single-page extract** — the homepage by default (the brand owner's
-  first surface) unless `--page <slug>` overrides.
+- **Single-page extract** — the homepage by default (the brand
+  owner's first surface) unless `--page <slug>` overrides.
 - **Brand-faithful Mode A** — palette + typography pinned. No
   invented colors, no fonts outside the captured surface.
-- **Three variants, fixed role contract** — A is the green-light, B is
-  the design-team motivator, C is the visionary cinematic pitch.
-- **Cinematic register auto-picked** — C's motion register is read
-  from the captured PRODUCT.md Brand Personality per
+- **Three variants, fixed role contract** — A is the green-light,
+  B is the design-team motivator, C is the visionary cinematic
+  pitch.
+- **Cinematic register auto-picked** — C's motion register is
+  selected from the captured PRODUCT.md Brand Personality per
   `../prototype/reference/motion-registers.md` § Selection
-  heuristic. No questions asked.
-- **"What if..." candidates pulled from a closed catalog** — B and
-  C each pick one captured-but-underused trait from
-  `reference/what-if-candidates.md`. Different traits.
-- **Validation cascade runs** — every gate in `prototype/SKILL.md`
-  Phases 2.5–2.8 fires, including cinematic Pass 6 for variant C.
+  heuristic.
+- **"What if..." candidates from a closed catalog** — B and C
+  each pick one captured-but-underused trait from
+  `reference/what-if-candidates.md`. Different traits per variant.
+- **Validation cascade runs** — every gate in
+  `prototype/SKILL.md` Phases 2.5–2.8 fires, including cinematic
+  Pass 6 for variant C.
 
 ## Inputs
 
@@ -310,16 +303,9 @@ Prototype owns:
 
 The single invocation lets prototype's canon-fold-back (Phase 5
 of prototype) carry through A → B → C consistently inside one run.
-
-#### Why one invocation, not three
-
-Prototype has no `--variant <id>` input. Multi-variant rendering is
-driven by the presence of multiple `DESIGN-<id>.json` files at the
-project root, not by a CLI selector. Invoking prototype three times
-with different flags would re-author canon three times and
-re-validate cross-variant differentiation against an incomplete
-sibling set. The single-invocation contract is what makes uplift's
-three-variant flow cohere with the existing prototype skill.
+Multi-variant rendering is driven by the presence of multiple
+`DESIGN-<id>.json` files at the project root, not by a CLI selector
+— prototype has no `--variant <id>` input.
 
 ### Phase 6 — Open and summarize (owned by `uplift`)
 
@@ -481,25 +467,14 @@ DESIGN-B.md / DESIGN-B.json
 DESIGN-C.md / DESIGN-C.json                 ← carries motion.register
 ```
 
-## What this skill is NOT
+## Scope
 
-- It is not a renderer. The actual rendering is delegated to
-  `prototype` (via `$impeccable craft`).
-- It is not a re-implementation of direct's intent reasoning. The
-  resolved direction is constructed mechanically from the
-  brand-surface inputs + the closed candidate catalog; the
-  reasoning lives in `direction.md` as a record, not in an
-  interview.
-- It is not multi-page. Uplift is the one-page presales tool. For
-  multi-page redesigns, the standard chain
-  (`extract` → `direct` → `prototype`) is the right shape.
-- It is not a migration tool. Migration produces a deployable
-  bundle; uplift produces three review surfaces for a presales
-  conversation.
-- It is not a substitute for `direct` and `prototype`. After the
-  brand owner picks a variant, the user iterates that variant via
-  `prototype <slug>` chat-driven impeccable commands, and
-  approves via the standard approval flow.
+- One page per run. Multi-page redesigns use the standard
+  `extract` → `direct` → `prototype` chain.
+- Three review surfaces, not a deployable bundle. After the brand
+  owner picks a variant, iterate via chat-driven impeccable
+  commands and approve via the standard `prototype` approval flow.
+  Migration is `stardust:migrate`.
 
 ## References
 
