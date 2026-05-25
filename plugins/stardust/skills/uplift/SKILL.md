@@ -311,8 +311,17 @@ Multi-variant rendering is driven by the presence of multiple
 
 After all three prototypes mark `prototyped` in `state.json`:
 
-1. **Open all three in the browser** (`open <slug>-A-proposed.html
-   <slug>-B-proposed.html <slug>-C-cinematic.html`).
+1. **Open all three in the browser** using the `open` shell command (not
+   `playwright-cli open`) so VFS paths are served via the preview service
+   worker:
+   ```
+   open stardust/prototypes/<slug>-A-proposed.html
+   open stardust/prototypes/<slug>-B-proposed.html
+   open stardust/prototypes/<slug>-C-cinematic.html
+   ```
+   `playwright-cli open` bypasses the preview service worker and produces
+   a FILE NOT FOUND error for VFS paths. Always use `open <vfs-path>` for
+   local prototype files.
 2. **Print the three-pitch summary** in the chat:
 
    ```
