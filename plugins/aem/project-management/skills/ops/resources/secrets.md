@@ -16,8 +16,8 @@ Manage secrets for Edge Delivery Services at organization and site levels.
 |--------|----------|--------|
 | list org secrets | `/config/{org}/secrets.json` | GET |
 | create org secret | `/config/{org}/secrets.json` | POST |
-| read org secret | `/config/{org}/secrets/${secretId}.json` | GET |
-| delete org secret | `/config/{org}/secrets/${secretId}.json` | DELETE |
+| read org secret | `/config/{org}/secrets/{secretId}.json` | GET |
+| delete org secret | `/config/{org}/secrets/{secretId}.json` | DELETE |
 
 ### Site Secrets
 
@@ -25,8 +25,8 @@ Manage secrets for Edge Delivery Services at organization and site levels.
 |--------|----------|--------|
 | list site secrets | `/config/{org}/sites/{site}/secrets.json` | GET |
 | create site secret | `/config/{org}/sites/{site}/secrets.json` | POST |
-| read site secret | `/config/{org}/sites/{site}/secrets/${secretId}.json` | GET |
-| delete site secret | `/config/{org}/sites/{site}/secrets/${secretId}.json` | DELETE |
+| read site secret | `/config/{org}/sites/{site}/secrets/{secretId}.json` | GET |
+| delete site secret | `/config/{org}/sites/{site}/secrets/{secretId}.json` | DELETE |
 
 ## Operations
 

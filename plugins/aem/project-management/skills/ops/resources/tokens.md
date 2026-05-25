@@ -14,8 +14,8 @@ Manage access tokens for Edge Delivery Services sites.
 |--------|----------|--------|
 | list tokens | `/config/{org}/sites/{site}/tokens.json` | GET |
 | create token | `/config/{org}/sites/{site}/tokens.json` | POST |
-| get token | `/config/{org}/sites/{site}/tokens/${tokenId}.json` | GET |
-| revoke token | `/config/{org}/sites/{site}/tokens/${tokenId}.json` | DELETE |
+| get token | `/config/{org}/sites/{site}/tokens/{tokenId}.json` | GET |
+| revoke token | `/config/{org}/sites/{site}/tokens/{tokenId}.json` | DELETE |
 
 ## Operations
 

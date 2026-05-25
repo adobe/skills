@@ -26,8 +26,8 @@ Manage user access for Edge Delivery Services sites.
 |--------|----------|--------|
 | list org users | `/config/{org}/users.json` | GET |
 | add org user | `/config/{org}/users.json` | POST |
-| get org user | `/config/{org}/users/${userId}.json` | GET |
-| remove org user | `/config/{org}/users/${userId}.json` | DELETE |
+| get org user | `/config/{org}/users/{userId}.json` | GET |
+| remove org user | `/config/{org}/users/{userId}.json` | DELETE |
 
 ### Profile
 | Intent | Endpoint | Method |

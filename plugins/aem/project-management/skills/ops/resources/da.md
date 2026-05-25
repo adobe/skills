@@ -180,16 +180,16 @@ curl -s --connect-timeout 15 --max-time 120 -X DELETE \
   "https://admin.da.live/source/${ORG}/${SITE}/drafts/old-folder"
 ```
 
-**Folder deletion:** For large folders, the API may return a `da-continuation-token` response header indicating more items remain. Continue deleting by sending follow-up DELETE requests with the token:
+**Folder deletion:** For large folders, the API returns HTTP 206 with a JSON body containing `{"continuationToken": "..."}` indicating more items remain. Pass the token as a form field in the follow-up DELETE request:
 
 ```bash
 curl -s --connect-timeout 15 --max-time 120 -X DELETE \
   -H "Authorization: Bearer ${IMS_TOKEN}" \
-  -H "da-continuation-token: ${CONTINUATION_TOKEN}" \
+  -F "continuation-token=${CONTINUATION_TOKEN}" \
   "https://admin.da.live/source/${ORG}/${SITE}/drafts/old-folder"
 ```
 
-Repeat until no continuation token is returned.
+Repeat until you receive HTTP 204 (complete, no more items).
 
 **Note:** There is no bulk delete-by-paths endpoint. To delete multiple individual files, issue separate DELETE requests for each path.
 
@@ -224,7 +224,7 @@ curl -s --connect-timeout 15 --max-time 120 -X POST \
 
 **Success:** HTTP 204 No Content
 
-**Folder copy:** For large folders, the API may return a continuation token. Pass it in the follow-up request to continue copying:
+**Folder copy:** For large folders, the API returns HTTP 206 with a JSON body containing `{"continuationToken": "..."}`. Pass it as a form field in the follow-up request to continue copying:
 
 ```bash
 curl -s --connect-timeout 15 --max-time 120 -X POST \
@@ -366,11 +366,13 @@ VERSION_CONTENT=$(curl -s --connect-timeout 15 --max-time 120 \
   "https://admin.da.live${VERSION_URL}")
 
 # Step 3: Write the content back to the original path
-echo "${VERSION_CONTENT}" | curl -s --connect-timeout 15 --max-time 120 -X POST \
+# Use form-data upload (works for both HTML and JSON files)
+echo "${VERSION_CONTENT}" > /tmp/da-restore-content
+curl -s --connect-timeout 15 --max-time 120 -X POST \
   -H "Authorization: Bearer ${IMS_TOKEN}" \
-  -H "Content-Type: text/html" \
-  --data-binary @- \
+  -F "data=@/tmp/da-restore-content" \
   "https://admin.da.live/source/${ORG}/${SITE}/${PATH}"
+rm -f /tmp/da-restore-content
 ```
 
 **Important:** Before restoring, consider creating a labeled version of the current state so you can undo the restore if needed.

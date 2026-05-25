@@ -16,8 +16,8 @@ Manage API keys for programmatic access to Edge Delivery Services.
 |--------|----------|--------|
 | list org API keys | `/config/{org}/apiKeys.json` | GET |
 | create org API key | `/config/{org}/apiKeys.json` | POST |
-| read org API key | `/config/{org}/apiKeys/${keyId}.json` | GET |
-| revoke org API key | `/config/{org}/apiKeys/${keyId}.json` | DELETE |
+| read org API key | `/config/{org}/apiKeys/{keyId}.json` | GET |
+| revoke org API key | `/config/{org}/apiKeys/{keyId}.json` | DELETE |
 
 ### Site API Keys
 
@@ -25,8 +25,8 @@ Manage API keys for programmatic access to Edge Delivery Services.
 |--------|----------|--------|
 | list site API keys | `/config/{org}/sites/{site}/apiKeys.json` | GET |
 | create site API key | `/config/{org}/sites/{site}/apiKeys.json` | POST |
-| read site API key | `/config/{org}/sites/{site}/apiKeys/${keyId}.json` | GET |
-| revoke site API key | `/config/{org}/sites/{site}/apiKeys/${keyId}.json` | DELETE |
+| read site API key | `/config/{org}/sites/{site}/apiKeys/{keyId}.json` | GET |
+| revoke site API key | `/config/{org}/sites/{site}/apiKeys/{keyId}.json` | DELETE |
 
 ## Operations
 

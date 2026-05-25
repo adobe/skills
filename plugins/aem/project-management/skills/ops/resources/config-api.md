@@ -46,7 +46,9 @@ curl -s --connect-timeout 15 --max-time 120 \
   -H "Authorization: Bearer ${IMS_TOKEN}" \
   "https://admin.hlx.page/config/${ORG}.json"
 ```
-
+> **⚠️ IMPORTANT: POST replaces the ENTIRE configuration.** It is NOT a merge/patch operation. 
+> Always GET the current config first, modify the full JSON, and POST the complete object back.
+> Sending a partial config will DELETE all fields not included in your request.
 ### Update Organization Config
 ```bash
 curl -s --connect-timeout 15 --max-time 120 -X POST \
@@ -94,6 +96,7 @@ curl -s --connect-timeout 15 --max-time 120 \
 - `?migrate=true` — Aggregates config from legacy sources (fstab, `.helix/config.xlsx`, etc.)
 - `?migrate=true&validate=true` — Also validates the migrated configuration
 
+> **⚠️ IMPORTANT: POST replaces the ENTIRE site configuration.** Always GET first, modify, then POST the full config back. Partial updates will wipe unincluded fields.
 ### Update Site Config
 ```bash
 curl -s --connect-timeout 15 --max-time 120 -X POST \

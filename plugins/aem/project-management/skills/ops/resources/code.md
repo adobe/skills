@@ -87,7 +87,7 @@ ORG=$(cat .claude-plugin/project-config.json | node -e "
   const d = require('fs').readFileSync(0,'utf8');
   console.log(JSON.parse(d).org || '');
 ")
-SITES_JSON=$(curl -s --connect-timeout 15 --max-time 120 "https://admin.hlx.page/config/${ORG}/sites.json")
+SITES_JSON=$(curl -s --connect-timeout 15 --max-time 120 -H "Authorization: Bearer ${IMS_TOKEN}" "https://admin.hlx.page/config/${ORG}/sites.json")
 SITE_COUNT=$(echo "$SITES_JSON" | node -e "
   const d = require('fs').readFileSync(0,'utf8');
   try { console.log((JSON.parse(d).sites || []).length); } catch(e) { console.log(0); }
