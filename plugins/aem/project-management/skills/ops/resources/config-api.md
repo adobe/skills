@@ -71,7 +71,7 @@ curl -s -X POST \
 
 ### Create Organization Config
 
-**Fails if org already exists.
+**Fails if org already exists.**
 
 ```bash
 curl -s -X PUT \

@@ -124,6 +124,14 @@ curl -s -X POST \
 
 ### Publish Entire Snapshot
 
+**DESTRUCTIVE OPERATION — CONFIRMATION REQUIRED**
+
+Before executing, you MUST:
+1. Tell user: "This will publish ALL resources in snapshot '{snapshotId}' to the live site."
+2. Explain impact: "All pages in the snapshot will become publicly visible immediately."
+3. Ask: "Do you want to proceed? (yes/no)"
+4. Only execute if user confirms with "yes"
+
 ```bash
 curl -s -X POST \
   -H "Authorization: Bearer ${IMS_TOKEN}" \
@@ -146,7 +154,15 @@ curl -s -X POST \
 
 ### Approve Snapshot
 
+**DESTRUCTIVE OPERATION — CONFIRMATION REQUIRED**
+
 Publishes all resources, clears the snapshot, and unlocks it. Requires `live:write` permission → `publish` or `admin` role.
+
+Before executing, you MUST:
+1. Tell user: "This will approve snapshot '{snapshotId}' — publishing all resources to live AND clearing the snapshot."
+2. Explain impact: "All pages go live immediately and the snapshot is emptied. This cannot be undone."
+3. Ask: "Do you want to proceed? (yes/no)"
+4. Only execute if user confirms with "yes"
 
 ```bash
 curl -s -X POST \

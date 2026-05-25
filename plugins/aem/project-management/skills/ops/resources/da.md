@@ -208,17 +208,17 @@ Before executing, you MUST:
 ```bash
 curl -s -X POST \
   -H "Authorization: Bearer ${IMS_TOKEN}" \
-  -F "destination=/${ORG}/${SITE}/${DEST_PATH}" \
+  -F "destination=/${DEST_PATH}" \
   "https://admin.da.live/copy/${ORG}/${SITE}/${SOURCE_PATH}"
 ```
 
-**Important:** The `destination` value MUST be the **full path including org and site prefix**: `/{org}/{site}/{path}`. Using a site-relative path (e.g. `/new-page.html` without the `/{org}/{site}` prefix) silently fails — the API returns HTTP 204 but no copy occurs.
+**Important:** The `destination` value is **site-relative** — just the path within the site (e.g. `/new-page.html`). Do NOT include the `/{org}/{site}` prefix; the API infers org/site from the request URL.
 
 **Example:** Copy template to new page
 ```bash
 curl -s -X POST \
   -H "Authorization: Bearer ${IMS_TOKEN}" \
-  -F "destination=/myorg/mysite/new-page.html" \
+  -F "destination=/new-page.html" \
   "https://admin.da.live/copy/myorg/mysite/templates/basic.html"
 ```
 
@@ -226,7 +226,7 @@ curl -s -X POST \
 ```bash
 curl -s -X POST \
   -H "Authorization: Bearer ${IMS_TOKEN}" \
-  -F "destination=/myorg/mysite/archive/article.html" \
+  -F "destination=/archive/article.html" \
   "https://admin.da.live/copy/myorg/mysite/drafts/article.html"
 ```
 
@@ -237,7 +237,7 @@ curl -s -X POST \
 ```bash
 curl -s -X POST \
   -H "Authorization: Bearer ${IMS_TOKEN}" \
-  -F "destination=/myorg/mysite/archive/old-blog" \
+  -F "destination=/archive/old-blog" \
   -F "continuation-token=${CONTINUATION_TOKEN}" \
   "https://admin.da.live/copy/myorg/mysite/blog"
 ```
@@ -257,17 +257,17 @@ Before executing, you MUST:
 ```bash
 curl -s -X POST \
   -H "Authorization: Bearer ${IMS_TOKEN}" \
-  -F "destination=/${ORG}/${SITE}/${DEST_PATH}" \
+  -F "destination=/${DEST_PATH}" \
   "https://admin.da.live/move/${ORG}/${SITE}/${SOURCE_PATH}"
 ```
 
-**Important:** The `destination` value MUST be the **full path including org and site prefix**: `/{org}/{site}/{path}`. Using a site-relative path (without the `/{org}/{site}` prefix) silently fails — the API returns HTTP 204 but no move occurs. Destination cannot be a descendant of the source (returns 400).
+**Important:** The `destination` value is **site-relative** — just the path within the site. Do NOT include `/{org}/{site}` prefix; the API infers org/site from the request URL. Destination cannot be a descendant of the source (returns 400).
 
 **Example:** Rename file
 ```bash
 curl -s -X POST \
   -H "Authorization: Bearer ${IMS_TOKEN}" \
-  -F "destination=/myorg/mysite/new-name.html" \
+  -F "destination=/new-name.html" \
   "https://admin.da.live/move/myorg/mysite/old-name.html"
 ```
 
@@ -275,7 +275,7 @@ curl -s -X POST \
 ```bash
 curl -s -X POST \
   -H "Authorization: Bearer ${IMS_TOKEN}" \
-  -F "destination=/myorg/mysite/archive/2024/article.html" \
+  -F "destination=/archive/2024/article.html" \
   "https://admin.da.live/move/myorg/mysite/drafts/article.html"
 ```
 

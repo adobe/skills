@@ -394,6 +394,8 @@ Read `resources/config.md` for setup instructions if site or other values are mi
 | Delete code | `code.md` | HIGH - Affects all sites in repoless |
 | Purge all cache (wildcard) | `cache.md` | MEDIUM - Site-wide cache miss spike |
 | Remove from index | `index.md` | MEDIUM - Removes from search |
+| Publish entire snapshot | `snapshots.md` | HIGH - Mass publish to live |
+| Approve snapshot | `snapshots.md` | HIGH - Publishes all + clears snapshot |
 | Delete snapshot | `snapshots.md` | MEDIUM |
 | Remove resource from snapshot | `snapshots.md` | LOW - Changes staged release contents |
 | Remove user | `users.md` | HIGH - Revokes access |
