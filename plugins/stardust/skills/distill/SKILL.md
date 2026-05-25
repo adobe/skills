@@ -323,3 +323,8 @@ Every artifact distill writes carries a provenance block with at
 minimum: `writtenBy: stardust:distill`, `writtenAt: <ISO-8601>`,
 `readArtifacts: [...]` (every sample file consumed),
 `consumedBy: "stardust:direct — Mode B anchor resolution"`.
+
+## References
+
+- [`reference/samples-brief-format.md`](reference/samples-brief-format.md) — the narrative-brief format the SAMPLES.md output follows.
+- [`reference/trait-matrix-schema.md`](reference/trait-matrix-schema.md) — the per-sample and cross-sample schema the trait-matrix.json output follows.

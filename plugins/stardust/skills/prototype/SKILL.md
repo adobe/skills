@@ -1323,6 +1323,21 @@ Default mode is unchanged.
   reduced-motion override completeness, no-JS state, multi-
   viewport scroll-driven check). Reusable Playwright probe
   patterns documented inline.
+- `reference/motion-registers.md` — five brand-faithful motion
+  registers (`arrival`, `kinetic-display`, `live-systems`,
+  `editorial`, `kinetic-grid`) and the selection heuristic that
+  maps PRODUCT.md Brand Personality traits to a register.
+  Consumed by Phase 2.4 (motion application).
+- `reference/motion-stack.md` — technology choice for cinematic
+  prototypes: Lenis + CSS keyframes + rAF + IntersectionObserver.
+  Why not GSAP. Bundle policy + Lenis pinning procedure.
+- `reference/motion-attributes.md` — `data-*` vocabulary the
+  cinematic runtime consumes (`[data-anim]`, `[data-tile-anim]`,
+  `[data-countup]`, `[data-flip]`, `[data-fill]`, `[data-split]`,
+  `[data-parallax]`). Annotated per the active register.
+- `reference/motion-runtime.md` — the canonical inline runtime
+  script that powers every cinematic prototype. Single source of
+  truth; embedded verbatim during Phase 2.4.
 - `reference/fidelity-refined-pass.md` — concrete CSS recipes for
   the `--fidelity=refined` craft micro-pass (Discipline 8).
 - `reference/anti-template-bank.md` — worked examples of the
@@ -1337,20 +1352,20 @@ Default mode is unchanged.
   a strong structural `compositionDelta` (passes Discipline 10).
 - `fixtures/composition-delta-trivial.md` — example shape brief
   with token-only deltas (fails Discipline 10).
-- `skills/stardust/reference/token-contract.md` — `:root` token
+- `../stardust/reference/token-contract.md` — `:root` token
   block (cross-cutting, used by prototype + migrate).
-- `skills/stardust/reference/data-attributes.md` — structural data
+- `../stardust/reference/data-attributes.md` — structural data
   attribute vocabulary (cross-cutting, used by prototype + migrate).
-- `skills/stardust/reference/divergence-toolkit.md` —
+- `../stardust/reference/divergence-toolkit.md` —
   anti-mediocrity rules consumed during render and iteration.
-- `skills/stardust/reference/intent-dimensions.md` — the 7-axis
+- `../stardust/reference/intent-dimensions.md` — the 7-axis
   vocabulary used to read a chat-driven refinement phrase
   (iteration path 2).
-- `skills/stardust/reference/impeccable-command-map.md` — when to
+- `../stardust/reference/impeccable-command-map.md` — when to
   reach for each impeccable command. Consulted during chat-driven
   iteration (path 2) to pick the command for a refinement phrase.
-- `skills/stardust/reference/state-machine.md` — page lifecycle
+- `../stardust/reference/state-machine.md` — page lifecycle
   and stale rules.
-- `skills/stardust/reference/artifact-map.md` — provenance shape.
+- `../stardust/reference/artifact-map.md` — provenance shape.
 - impeccable's `reference/craft.md` and `reference/live.md` — the
   underlying impeccable commands stardust delegates to.
