@@ -51,6 +51,41 @@ The block above is the **minimum**. Pages may add more tokens (e.g.
 present, with a value either inherited from DESIGN.md or computed
 deterministically from a value that is.
 
+## Optional: motion tokens (cinematic prototypes only)
+
+When `prototype --cinematic` renders a page, the `:root` block
+additionally exposes the motion vocabulary from
+`DESIGN.json.extensions.motion`:
+
+```css
+:root {
+  /* ...static tokens... */
+
+  /* Motion (cinematic only) */
+  --ease-out-cubic: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-out-quart: cubic-bezier(0.42, 0, 0, 1);
+  --ease-expo:      cubic-bezier(0.16, 1, 0.3, 1);
+  --enter-duration: 700ms;
+  --enter-stagger:  90ms;
+  --parallax-translate: 35;          /* used as `<value>vh` in transforms */
+  --parallax-fade:      0.55;
+  --parallax-progress:  0;           /* JS-driven; 0–1 */
+}
+```
+
+These motion tokens follow the same contract: written by the
+renderer, sourced from `DESIGN.json.extensions.motion`, exposed at
+`:root` so any CSS rule or downstream consumer can read them.
+
+When `DESIGN.json.extensions.motion.register` is absent (static
+prototype), the motion tokens are omitted from `:root`. A future
+consumer that needs to detect "is this a cinematic file" can probe
+for `--ease-out-cubic` on `:root`.
+
+The motion vocabulary is **register-specific** — values vary per
+the active register (per `skills/prototype/reference/motion-registers.md`
+§ The five registers § Token defaults). The names stay constant.
+
 ## Sourcing the values from DESIGN.md
 
 Every token in the block above maps back to a DESIGN.md frontmatter

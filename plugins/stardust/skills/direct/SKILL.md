@@ -506,7 +506,7 @@ _provenance:
     - stardust/current/_brand-extraction.json
     - stardust/current/brand-review.html
     - stardust/current/pages/<slug>.json
-  stardustVersion: 0.2.x
+  stardustVersion: 0.10.x
 -->
 
 # Improvements — <slug>
@@ -634,6 +634,63 @@ above apply; the variant role contract below does not.
 
 Variants beyond C (D, E, …) follow the C+ contract — each amplifies
 a distinct captured trait, declared in the shape brief.
+
+#### Surface forks of role-differentiated variants (B1/B2/B3, C1/C2/C3…)
+
+Under `ia-fidelity: reimagined`, a variant's role (A, B, C, …) may
+spawn **surface forks** — tunings of the *same role* across the
+same surface axes that A1/A2/A3 use under verbatim. The pattern:
+
+- `B` is "scroll cinema amplified" (the role).
+- `B1`, `B2`, `B3` are surface tunings of B that all amplify scroll
+  cinema, but vary along type-weight, type-scale, density,
+  motion-energy, color-temperature, or spacing-rhythm.
+
+This composes the verbatim-mode surface-fork machinery with the
+reimagined-mode role differentiation: the **role contract** binds
+the captured trait being amplified; the **surface-fork delta**
+governs how that trait reads in chrome.
+
+Surface forks of role-differentiated variants are **opt-in, not
+default**. The default fork under reimagined is still A + B + C.
+Surface forks appear in two ways:
+
+1. **Explicit user request**: *"design 5 variant directions for B"*
+   — the user asks for surface tunings of an existing role-
+   differentiated variant. Render B1 / B2 / B3 / B4 / B5, each
+   amplifying B's captured trait but with distinct surface tunings.
+2. **Via `--add-variant <name>` with a parent declared**: e.g.,
+   `--add-variant B3` after B exists. The parent inferred from the
+   slot name's letter prefix (`B3` → parent `B`). See § Add-variant
+   mode → Per-field inheritance rules for the inheritance chain.
+
+Surface forks of role-differentiated variants follow the **same
+≥ 2 surface-changes contract** as A1/A2/A3 — the per-pair
+differentiation is surface-only (type-weight / type-scale / density
+/ motion-energy / color-temperature / spacing-rhythm), with the
+**captured trait being amplified held constant** across the fork.
+Structural differentiation (section sequence / presence / IA
+priority / layout strategy) is forbidden between B and its surface
+forks B1/B2/B3 — the role IS the captured trait, and changing
+structure changes the role.
+
+The variant-convergence detector in `prototype/SKILL.md`
+Discipline 10 reads the variant's parent slot: when comparing
+B vs B3 (parent–child surface fork), it applies the verbatim-style
+inverse rule (surface deltas required, structural deltas
+forbidden); when comparing B vs C (sibling role-differentiated
+variants), it applies the reimagined-style rule (structural deltas
+required).
+
+The cap on motion-energy and other amplified surface axes is the
+parent role's cap — a B3 that amplifies motion-energy beyond B's
+ceiling must declare a **cap override** in its DESIGN.json
+extensions with a one-sentence rationale (e.g. *"B3 raises B's
+motion choreography count from ≤ 3 to ≤ 5 to accommodate the loud-
+register tuning of scroll cinema"*). The override must cite a
+captured-source basis or it refuses; cap overrides without a
+captured-source rationale produce surface drift instead of trait
+amplification.
 
 #### Variant differentiation contract
 
@@ -802,7 +859,60 @@ Token sources:
 Write `DESIGN.json` (schemaVersion 2) with:
 
 - `extensions.colorMeta`, `typographyMeta`, `shadows`, `motion`,
-  `breakpoints` — filled from the same sources as DESIGN.md.
+  `breakpoints` — filled from the same sources as DESIGN.md. The
+  `motion` block carries the **register selection** (when
+  cinematic motion may be applied at prototype time):
+
+  ```json
+  "motion": {
+    "register": "arrival | kinetic-display | live-systems | editorial | kinetic-grid",
+    "registerRationale": "<one-line citation back to PRODUCT.md Brand Personality trait that selected this register>",
+    "easings":   { "entrance": "...", "transition": "...", "expo": "..." },
+    "durations": { "enter": <ms>, "stagger": <ms> },
+    "parallax":  { "translate": <vh>, "fade": <0-1>, "rangeStart": <%>, "range": <%> }
+  }
+  ```
+
+  Picked per the **register selection heuristic** in
+  `skills/prototype/reference/motion-registers.md` § Selection
+  heuristic, reading the resolved `PRODUCT.md` § Brand Personality:
+
+  | Personality traits (any match)                                            | Register          |
+  |---------------------------------------------------------------------------|-------------------|
+  | `civic-formal` + (`institutional` OR `place-led`)                         | `arrival`         |
+  | `signage-led` OR `wayfinding-first` OR `display-typography-signature`     | `kinetic-display` |
+  | `operationally-transparent` OR `data-led` OR `dashboard-register`         | `live-systems`    |
+  | `editorial` OR `slow-paced` OR `publication-register`                     | `editorial`       |
+  | `product` OR `SaaS` OR `transactional` OR `modular-catalogue`             | `kinetic-grid`    |
+  | (ambiguous / no clear match)                                              | `arrival`         |
+
+  Token defaults per register are sourced from
+  `skills/prototype/reference/motion-registers.md` § The five
+  registers; `direct` copies them verbatim into the `motion`
+  block unless the user has provided overrides during intent
+  reasoning. The `registerRationale` field records the one-line
+  justification so reviewers can audit the choice. **`direct`
+  does not apply the motion** — that happens at prototype time
+  under `--cinematic`. `direct` only **selects** the register.
+  Pages whose redesign does not need motion can leave
+  `register` absent; cinematic prototype will then either ask or
+  pick from the heuristic at render time.
+
+  **Per-variant placement (when N > 1 variants).** For
+  multi-variant runs, the `motion` block goes into the
+  variant-specific `DESIGN-<id>.json` files (see § Multi-variant
+  DESIGN files below), not into the site-level `DESIGN.json`.
+  Variants that should render static omit the block entirely;
+  variants that should engage cinematic motion declare a
+  `register`. This is what lets one variant (typically C) be
+  cinematic while siblings stay static — `prototype` Phase 2.4
+  reads `DESIGN-<id>.json.extensions.motion.register` per
+  variant and fires only where present.
+
+  When the user's intent phrase contains explicit motion direction
+  ("make it cinematic", "feel alive", "move like signage"),
+  `direct` picks the register and notes the source in
+  `registerRationale` as `"user-phrase: <verbatim>"`.
 - `extensions.divergence` — full audit trail per the v2 storage shape
   in `divergence-toolkit.md`. Includes the brand-faithful inversion
   log (per `reference/direction-format.md` § Divergence inputs)
@@ -1213,6 +1323,35 @@ When `--add-variant <name>` is passed:
    `state-machine.md`'s multi-variant additions) recording the
    new variant's id and DESIGN files.
 
+### Variant parentage and inheritance chain
+
+`--add-variant <name>` infers a **parent** from the slot name:
+
+- Slot name is a single letter (`A`, `B`, `C`, ...): parent is the
+  *active direction* (the resolved direction in `direction.md`).
+  The variant inherits from the active direction's resolved seed.
+- Slot name is a letter + digits (`A1`, `A2`, `B3`, `C2`...):
+  parent is the variant whose id is the letter prefix (`A1` → `A`,
+  `B3` → `B`). The variant is a **surface fork** of its parent
+  per § Surface forks of role-differentiated variants. The
+  parent must already exist; if not, refuse and recommend adding
+  the parent first (`--add-variant B` before `--add-variant B3`).
+
+Inheritance chains under reimagined mode:
+
+- `A → active-direction` — A inherits from the resolved direction.
+- `B → active-direction` — B inherits from the resolved direction;
+  its captured trait is declared in its shape brief.
+- `B3 → B → active-direction` — B3 inherits from B (parent surface
+  fork); B's captured trait + role propagate, B3 declares its
+  surface tuning.
+
+Record the chain in `direction.md`'s per-variant section as
+`Inheritance chain: <child> → <parent> → <root>`. Stardust
+`state.json` records the parent in
+`direction.variants[].parentVariant` (per
+`stardust/reference/state-machine.md` § Variants block).
+
 ### Per-field inheritance rules
 
 When writing `DESIGN-<name>.{md,json}`, fields fall into three
@@ -1234,6 +1373,26 @@ Variants **cannot**:
   variant-invariant under Mode A).
 - Skip the IA-priority audit (variants are visual expressions,
   not strategic re-shapings).
+
+**Surface-fork-specific rules (when parent is a letter-prefix
+variant like B → B3):**
+
+- The captured trait being amplified is **inherited from the parent
+  variant**. The surface fork cannot change which trait is amplified
+  (changing it changes the role, which is a sibling variant, not a
+  surface fork).
+- The role narrative (B's "scroll cinema amplified" thesis) is
+  inherited; the surface fork's narrative extends it with its
+  per-axis tuning ("B3 amplifies the same captured trait in a loud
+  register: weight 700 body H3s, perfect-fifth type scale, packed
+  density").
+- The parent's caps (motion-energy ≤ N, color-temperature within
+  range, etc.) inherit. Cap overrides are permitted but must be
+  declared in the surface fork's DESIGN.json `extensions.capOverrides[]`
+  with a one-sentence rationale citing a captured-source basis.
+- Structural fields (IA priority order, section sequence, layout
+  strategy of major sections) inherit verbatim from the parent —
+  changing them produces a sibling variant, not a surface fork.
 
 When the user's add-variant request would violate one of the
 forbidden rules, refuse with the same § Failure modes (c) hard

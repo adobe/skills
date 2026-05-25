@@ -47,6 +47,20 @@ is delegated to `$impeccable craft` and the iteration commands
   data-attributes contract failure, or impeccable hard-rule
   violations. P0/P1 critique findings warn but don't refuse.
   The showcase publishes via GitHub Pages on merge.
+- `--cinematic` — optional. Layer a cinematic motion register
+  on top of the static prototype. The register is read from
+  `DESIGN.json.extensions.motion.register` (written by `direct`);
+  if absent, the prototype phase picks one using the same
+  heuristic per `reference/motion-registers.md` § Selection
+  heuristic. Output filename is `<slug>-cinematic.html`
+  (alongside the static `<slug>-proposed.html`, never replacing
+  it). Triggers the cinematic gates in motion validation
+  (`reference/motion-validation.md` § Pass 6).
+- `--cinematic=<register>` — optional. Same as `--cinematic` but
+  forces a specific register (`arrival`, `kinetic-display`,
+  `live-systems`, `editorial`, `kinetic-grid`). The override is
+  recorded in `_provenance.motion.registerSource = "user-override"`
+  so reviewers can spot when direction's heuristic was bypassed.
 
 ### No opt-outs
 
@@ -471,20 +485,165 @@ expressive position.
 The tier is declared in the run invocation; persisted in
 `_provenance.fidelity`. Default is `quick`.
 
-### Phases 2.5 – 2.7 — Quality gates: Critique → Audit → Adapt (Discipline 9)
+### Phase 2.4 — Motion application (when `--cinematic`)
 
-Three mandatory gate phases run by default before any prototype
+Fires only when `--cinematic` (with or without an explicit
+register) was passed, OR when
+`DESIGN.json.extensions.motion.register` was authored by `direct`
+and the user did not opt out. Produces
+`stardust/prototypes/<slug>-cinematic.html` **alongside** the static
+`<slug>-proposed.html` — the static prototype is never replaced.
+
+Procedure:
+
+1. **Resolve the register.** For single-variant runs, read
+   `DESIGN.json.extensions.motion.register`. **For multi-variant
+   runs** (when `DESIGN-<id>.json` files exist at the project
+   root), read `DESIGN-<id>.json.extensions.motion.register` for
+   the variant currently being rendered — each variant may carry
+   its own register, or omit it entirely (variant renders
+   static). If `--cinematic=<register>` was passed at the CLI,
+   the CLI value wins **only for the variants in scope** (every
+   variant when no `<slug>` filter is set, otherwise the
+   variant(s) matching the filter).
+
+   Record the source in `_provenance.motion.registerSource`
+   (`"direct"` for per-variant DESIGN-authored, `"user-override"`
+   for CLI). If neither path resolved a register for this
+   variant, fall through to the selection heuristic in
+   `reference/motion-registers.md` § Selection heuristic. If the
+   heuristic itself returns no register (e.g. the variant's
+   PRODUCT.md Brand Personality maps to none of the five
+   registers), skip Phase 2.4 entirely for that variant — render
+   it static.
+
+   The per-variant resolution is what lets `uplift` produce a
+   three-variant set where only variant C engages motion: `direct`
+   writes the register into `DESIGN-C.json` only, and Phase 2.4
+   fires for C alone (A and B render static).
+
+2. **Stage Lenis assets.** Copy
+   `skills/prototype/assets/motion/lenis.min.js` and `lenis.min.css`
+   into `stardust/prototypes/` (idempotent — skip if shas match).
+   Cinematic prototypes load these via relative paths.
+
+3. **Read the canonical runtime.** Embed the inline script from
+   `reference/motion-runtime.md` § The canonical script verbatim,
+   with the `animConfig` constants rewritten per the active
+   register's token defaults (`reference/motion-registers.md` §
+   The five registers § Token defaults).
+
+4. **Layer the register's CSS.** Append the register-specific
+   keyframes and class rules (entrance keyframes, parallax CSS
+   custom properties, marquee animations, pulse animations) to
+   the file's `<style>` block. The set of keyframes is closed
+   per register; see `reference/motion-runtime.md` § Per-register
+   tuning.
+
+5. **Annotate target HTML.** Walk the rendered DOM and emit the
+   motion `data-*` attributes per the register's vocabulary:
+   - `arrival`: `[data-anim]` on section heads, body copy,
+     CTAs, and tile cards; `[data-countup]` on numeric values;
+     `[data-parallax]` on the hero photograph.
+   - `kinetic-display`: `[data-anim]` on most sections; `[data-split]`
+     on display-cap headlines (`<h1 data-split>DINE</h1>`);
+     `[data-flip]` on terminal codes / gate numbers; `.word`
+     spans on display headlines for clip-path word wipes.
+   - `live-systems`: `[data-tile-anim]` on every ops-tile and
+     card; `[data-countup]` on every numeric data value;
+     `[data-fill]` on every bar inner element; `.live-sweep`
+     on the live-data container; `.marquee__track` on the top
+     ticker.
+   - `editorial`: `[data-anim]` only; `[data-parallax]` with
+     reduced magnitude on hero imagery; never `[data-flip]` /
+     `[data-fill]` / `[data-split]`.
+   - `kinetic-grid`: `[data-tile-anim]` on cards; `[data-anim]`
+     on section heads.
+
+   Full per-register attribute matrix: `reference/motion-registers.md`
+   § Data-attributes consumed.
+
+6. **Inject the `<noscript>` fallback.** Add the no-JS override
+   from `reference/motion-runtime.md` § No-JS fallback to `<head>`
+   so the file degrades to its static-end state without
+   JavaScript.
+
+7. **Update `_provenance`.** Add the `motion` block:
+
+   ```json
+   "motion": {
+     "register": "<register-name>",
+     "registerSource": "direct | user-override | heuristic",
+     "runtimeVersion": "v1",
+     "lenisAssets": { "js": "lenis.min.js", "css": "lenis.min.css" },
+     "attributesEmitted": ["data-anim", "data-countup", ...]
+   }
+   ```
+
+8. **Hand off to Phase 2.8** (motion validation). The cinematic
+   gates in `reference/motion-validation.md` § Pass 6 fire
+   automatically because the rendered file declares the
+   `_provenance.motion.register` field.
+
+The static `<slug>-proposed.html` is unaffected by this phase.
+Both files are reviewable; the brand owner sees the cinematic
+version when motion is part of the redesign brief, the static
+version when migration / accessibility audit is the focus.
+
+#### Output paths
+
+| File                                | Owner phase           | When            |
+|-------------------------------------|----------------------|-----------------|
+| `stardust/prototypes/<slug>-proposed.html`   | Phase 2 (always)   | Always written. |
+| `stardust/prototypes/<slug>-cinematic.html`  | Phase 2.4 (`--cinematic`) | Written alongside; static remains. |
+| `stardust/prototypes/lenis.min.js`           | Phase 2.4 (`--cinematic`) | Copied from skill assets. |
+| `stardust/prototypes/lenis.min.css`          | Phase 2.4 (`--cinematic`) | Copied from skill assets. |
+
+#### When to use the static-only path
+
+The static prototype remains the load-bearing artifact for:
+- Brand-faithful inheritance reviews (motion is additive — the
+  static prototype is the canonical "yes, that's us, refreshed"
+  surface).
+- Accessibility audits (motion-driven pages are harder to evaluate
+  in their reduced-motion state).
+- Migration consumption (`migrate` reads the static prototype as
+  its primary source; it picks up cinematic motion when both files
+  exist).
+
+The static prototype must pass every gate independently — the
+cinematic layer cannot rescue a static prototype that fails
+Phases 2.5–2.7.
+
+### Phases 2.5 – 2.8 — Quality gates: Critique → Audit → Adapt → Motion (Discipline 9)
+
+Four mandatory gate phases run by default before any prototype
 can advance to `prototyped`. They implement Discipline 9: critique
 covers *design*, audit covers *technical correctness*, adapt
-covers *viewport behaviour*. P0/P1 findings from **any** of the
-three block `prototyped` until acknowledged. None of the three
-have an opt-out flag (per § No opt-outs).
+covers *viewport behaviour*, motion covers *scroll-driven and
+time-driven choreography correctness*. P0/P1 findings from **any**
+of the four block `prototyped` until acknowledged. None have an
+opt-out flag (per § No opt-outs).
 
 | Sub-phase | Focus | Catches |
 |---|---|---|
 | **2.5 Critique** | Design judgment | AI-slop reflexes, hierarchy regressions, contrast / cognitive issues, register drift |
 | **2.6 Audit** | Technical correctness | a11y (alt, focus, contrast ratios computed), responsive overflow at 4–6 viewports, performance (LCP, image weights), JS-dependent-hidden-state |
 | **2.7 Adapt** | Viewport behaviour | doc-width · overflow · sticky · grid columns · font scaling at 1920 / 1440 / 1280 / 800 / 414 / 375, mobile-nav-collapse audit |
+| **2.8 Motion** | Scroll / time-driven correctness | clipped-container reveal timing, animation-range vs reading position, anim-enter trigger reachability, reduced-motion override completeness, no-JS fallback, multi-viewport scroll-driven check |
+
+Phase 2.8 fires only when the rendered file declares ≥ 1 named
+choreography (per the page-shape brief's motion stack) OR uses
+`animation-timeline:`, `@scroll-timeline`, IntersectionObserver-driven
+entry triggers, or rAF loops reading `getBoundingClientRect()`,
+**OR** when Phase 2.4 (motion application under `--cinematic`)
+emitted a `<slug>-cinematic.html` file with motion attributes per
+`reference/motion-attributes.md`. Cinematic prototypes additionally
+trigger the cinematic-mode gates in `reference/motion-validation.md`
+§ Pass 6 (Lenis bootstrap, reduced-motion fallback completeness,
+scroll-jack check, three-position screenshots, register-match
+audit, motion C-cliff detector). Static prototypes skip the
+discipline entirely.
 
 The wasatch dry-run on 2026-05-13 caught two real bugs the brief
 and craft phases missed (a WCAG miscalculation off by 0.27–1.86
@@ -782,6 +941,57 @@ The stock pattern is the default; `reference/mobile-nav-collapse.md`
 and side-drawer as valid alternatives the user can request, but
 the agent does not pick between them autonomously.
 
+### Phase 2.8 — Motion validation (mandatory when motion declared)
+
+Static-DOM gates (2.5 critique, 2.6 audit, 2.7 adapt) all read the
+proposed file at `scrollY=0` with no time elapsed. They cannot
+catch motion-specific failure modes:
+
+- Content stuck `opacity: 0` because an anim-enter trigger fires
+  past the user's reading position.
+- Content rendered outside its parent's `overflow: clip` boundary
+  because a translateY animation magnitude exceeds the parent's
+  slack room.
+- Scroll-driven animations whose `animation-range` completes only
+  after the section has fully scrolled past, leaving the reveal
+  state invisible during the readable window.
+- rAF loops with stale baseline measurements drifting on resize /
+  font-load / lazy-image-load.
+- Section overlaps caused by transforms that don't appear in
+  static DOM.
+- `prefers-reduced-motion` regressions where the choreography is
+  disabled but the element is left at the hidden "from" state.
+- No-JS regressions where the choreography's hidden initial state
+  has no `<noscript>` fallback.
+
+The full procedure (5 passes — scroll-position probe, finding
+classification, motion-bug checks, no-JS state, multi-viewport
+scroll-driven check) lives in `reference/motion-validation.md`.
+
+Phase 2.8 fires when the rendered file declares ≥ 1 named
+choreography (per `_provenance.motion.choreographies[]`) OR contains
+any of: `animation-timeline:`, `@scroll-timeline`, IntersectionObserver
+with `target.classList.add('anim-enter-visible')` patterns, or rAF
+loops driven by `getBoundingClientRect()`. Static prototypes skip.
+
+Findings are classified as **by-design** (the choreography is
+supposed to produce this state at this position; explained by a
+named choreography in the brief) or **bug** (the choreography
+produces an unintended state). Bugs block `prototyped` until
+acknowledged or fixed.
+
+When a bug cannot be auto-fixed within 3 iterations of the recursive
+loop, surface to the user with the finding, the classification
+reasoning, the 3 fix attempts that were tried, and a proposed
+remediation that requires user input. Do not silently lower the
+gate.
+
+Append an entry to the proposed file's `_provenance.motionValidation`
+recording: ISO timestamp, probe positions run, viewports tested,
+findings (hiddenInViewport, sectionOverlaps, clippedReveals,
+rangeMismatches) with per-finding classification, and `fixesApplied[]`.
+Save clean-pass screenshots to `stardust/validation/<slug>/motion-<viewport>.png`.
+
 #### Variant-convergence detector (Discipline 10)
 
 When N > 1 variants render, each `<slug>-<id>-shape.md` declares:
@@ -833,18 +1043,19 @@ Cross-references throughout the docs still name Phases 4, 5, 5.5.)
    multiple files were written in one run, open the primary variant
    only. Skip in pipeline-automation mode.
 2. Mark the page `prototyped` in `state.json` — **gated on the
-   Phase 2.5 critique + Phase 2.6 audit + Phase 2.7 adapt
-   result** (Discipline 9). If any of the three returned ≥ 1 P0
-   or P1 finding (after the brand-faithful inversion auto-dismiss)
-   and the user has not acknowledged, the page stays `directed`
-   (not `prototyped`); surface the findings in the report grouped
-   by source (`critique:` / `audit:` / `adapt:`) and recommend
+   Phase 2.5 critique + Phase 2.6 audit + Phase 2.7 adapt +
+   Phase 2.8 motion validation (when fired) result** (Discipline 9).
+   If any of the four returned ≥ 1 P0 or P1 finding (after the
+   brand-faithful inversion auto-dismiss) and the user has not
+   acknowledged, the page stays `directed` (not `prototyped`);
+   surface the findings in the report grouped by source
+   (`critique:` / `audit:` / `adapt:` / `motion:`) and recommend
    either fixing the issue or acknowledging explicitly. The
    transition itself does not require *approval* (a separate
-   later step) — but it does require all three gates to clear,
-   since shipping a `prototyped` flag on work that fails P0/P1
-   on any gate misleads downstream consumers (migrate, the
-   dashboard) about the prototype's quality.
+   later step) — but it does require all gates to clear, since
+   shipping a `prototyped` flag on work that fails P0/P1 on any
+   gate misleads downstream consumers (migrate, the dashboard)
+   about the prototype's quality.
 3. Report the prototype path and stop. Iteration happens via
    chat-driven impeccable commands or direct invocation (see
    § Iteration paths below).
@@ -1105,6 +1316,13 @@ Default mode is unchanged.
   `nav-readability-floor`. Carries the copy-pasteable
   HTML+CSS+JS, the audit smoke-test command, and the
   alternative-pattern vocabulary.
+- `reference/motion-validation.md` — Phase 2.8 procedure:
+  scroll-position probe, finding classification, motion-bug
+  checks (clipped-container reveal timing, animation-range vs
+  reading position, anim-enter trigger reachability,
+  reduced-motion override completeness, no-JS state, multi-
+  viewport scroll-driven check). Reusable Playwright probe
+  patterns documented inline.
 - `reference/fidelity-refined-pass.md` — concrete CSS recipes for
   the `--fidelity=refined` craft micro-pass (Discipline 8).
 - `reference/anti-template-bank.md` — worked examples of the

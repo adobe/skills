@@ -281,7 +281,7 @@ its first content:
   sourceSlug:       home
   sourcePrototype:  stardust/prototypes/home-proposed.html
   region:           header                       # or footer, css, module:hotline-211
-  stardustVersion:  0.2.0
+  stardustVersion:  0.10.0
 -->
 ```
 

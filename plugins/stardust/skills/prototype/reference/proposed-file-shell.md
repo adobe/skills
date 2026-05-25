@@ -239,7 +239,7 @@ in `skills/migrate/SKILL.md` § Failure modes.
   fontDeck:          zine-maximalist
   paletteSource:     library:Brutalist Dawn (recommended_index=2, picked_index=2)
   unsourcedContent: []   # populated when design demands content the page doesn't provide; see § Content sourcing hierarchy
-  stardustVersion:   0.2.0
+  stardustVersion:   0.10.0
 -->
 ```
 

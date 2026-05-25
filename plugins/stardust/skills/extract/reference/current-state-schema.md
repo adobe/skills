@@ -18,7 +18,7 @@ The file is JSON because every consumer is non-human. It carries a
     "writtenAt": "2026-04-25T13:42:00Z",
     "readArtifacts": ["https://example.com/about"],
     "synthesizedInputs": [],
-    "stardustVersion": "0.2.0",
+    "stardustVersion": "0.10.0",
     "renderedBy": "playwright",      // REQUIRED. "playwright" only — synthesis is forbidden (see § Live-render evidence)
     "fetchedAt": "2026-04-25T13:41:58Z",  // ISO 8601 timestamp of the live fetch (distinct from writtenAt)
     "waitMode": "networkidle",       // configured mode: fast | medium | spec | networkidle | domcontentloaded(fallback)

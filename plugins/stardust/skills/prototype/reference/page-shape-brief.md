@@ -62,7 +62,7 @@ impeccable invocations.
     - DESIGN.md
     - DESIGN.json
     - stardust/direction.md
-  stardustVersion:  0.2.0
+  stardustVersion:  0.10.0
 -->
 ---
 slug: home

@@ -74,6 +74,92 @@ config changes. Stardust does not depend on it; mention to the
 user as a path of last resort when even headed real Chrome is
 blocked.
 
+#### Route-fulfiller pattern (unattended-pipeline alternative)
+
+When headed real Chrome is unacceptable (CI, scheduled job,
+sandbox without a display), an alternative bypass uses the
+Playwright `request` API as a **route fulfiller** instead of a
+direct browser navigation. The bare `request` API, called with no
+browser-context headers forwarded, presents a default Node TLS/H2
+fingerprint that some Akamai configurations accept where the
+bundled-chromium fingerprint is rejected.
+
+The pattern:
+
+```js
+const apiCtx = await request.newContext({
+  // Do NOT forward browser context headers; bare Node fingerprint
+  // is the load-bearing detail.
+  extraHTTPHeaders: { 'user-agent': '<bare-ua-string>' },
+});
+
+// Intercept every request the page makes and fulfill from the
+// API context.
+await context.route('**/*', async (route, req) => {
+  try {
+    const response = await apiCtx.fetch(req.url(), {
+      method: req.method(),
+      headers: req.headers(),
+      data: req.postData() || undefined,
+    });
+    const body = await response.body();
+    await route.fulfill({
+      status: response.status(),
+      headers: response.headers(),
+      body,
+    });
+  } catch (e) {
+    await route.abort();
+  }
+});
+
+await page.goto(url, { waitUntil: 'networkidle' });
+```
+
+The browser context still drives DOM construction, JavaScript
+execution, scroll, screenshot — but every network request is
+proxied through the API context, which carries a different TLS
+fingerprint.
+
+**When the route-fulfiller pattern works.** Some Akamai bot-
+management configurations gate only on the initial connection's
+TLS handshake fingerprint; once a request is accepted, subsequent
+requests on the same connection inherit the verdict. Other
+configurations re-evaluate per-request based on full request
+shape (headers, order, cookies). The route-fulfiller bypass works
+for the first class; not the second. Worked example:
+adobe.com / business.adobe.com — both classify as the first
+class as of 2026-05.
+
+**When it fails.** When the route-fulfiller path also returns
+`ERR_HTTP2_PROTOCOL_ERROR` or hangs, escalate to headed real
+Chrome (the documented fallback above). Do not chain bypasses
+silently — record each attempt in `_crawl-log.json#discovery.fetchTechnique`
+so re-runs start at the first technique that worked.
+
+**Sub-resource caveat.** When the route-fulfiller pattern is
+active, the page's in-page `fetch()` calls also flow through the
+route handler — they inherit the API context's fingerprint
+automatically. The "in-page evaluate" pattern documented above
+for headed-Chrome runs is not needed under route-fulfiller; both
+top-level navigations and sub-resources use the same bypass
+path.
+
+**Order of techniques (refined).** When the agent encounters
+`ERR_HTTP2_PROTOCOL_ERROR` on the first navigation, try in this
+order:
+
+1. Route-fulfiller pattern (above). Unattended, no display
+   required, no third-party plugin.
+2. Headed real Chrome (`headless: false, channel: 'chrome'`).
+   Requires a display; works for interactive sessions.
+3. `playwright-extra` + stealth plugin. Non-standard; last
+   resort.
+
+Record the technique that worked in
+`_crawl-log.json#discovery.fetchTechnique` so the next run starts
+at the same step.
+
 ## Pre-flight: consent dismissal
 
 Most production-tier sites ship a consent / cookie banner
