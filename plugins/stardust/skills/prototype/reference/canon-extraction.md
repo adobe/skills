@@ -85,6 +85,17 @@ and is unlikely to recur (e.g., `.home-hero-asymmetric-grid`)
 stays in the prototype's inline styles. A class that's clearly
 the site's button language is lifted.
 
+**Naming alignment with the four-scope CSS organization.** The
+canon.css output is the **`GLOBAL: compound utility`** group of
+the four-scope organization per
+`skills/prototype/SKILL.md` § Discipline 11. The Selection rule
+above is unchanged; the relabeling is cosmetic — it lets the
+downstream converter recognize canon.css rules by the same marker
+comment grammar that classifies every other rule in the prototype's
+`<style>` block. canon.css authoring rules continue to govern
+*which* compound utilities land here; Discipline 11 governs *how*
+they appear in the `<style>` block.
+
 ### 3. Pinned tokens — JSON in DESIGN.json
 
 DESIGN.md tokens may be ranges or have a default-with-corridor
