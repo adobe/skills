@@ -188,6 +188,31 @@ These are user prerequisites, not things the skill provisions.
 
 ---
 
+## Resolving `<SKILL_DIR>` paths
+
+Phase prompts reference files like `<SKILL_DIR>/knowledge/methodology.md`
+or invoke `node <SKILL_DIR>/scripts/install-substrate.mjs`. The assistant
+resolves `<SKILL_DIR>` to the absolute path of the directory containing
+`SKILL.md`, then substitutes that absolute path into the bash invocation.
+
+Per host:
+
+- **Claude Code (plugin)**: the agent reads `SKILL.md` from the plugin
+  cache (e.g. `~/.claude/plugins/cache/.../skills/snowflake/`) and
+  substitutes that path. Bash CWD is the target EDS repo, not the
+  skill directory — never use bare `./scripts/foo.mjs`.
+- **`gh upskill` / `npx skills`**: skills are installed to
+  `.claude/skills/snowflake/` at the target repo root; `<SKILL_DIR>`
+  resolves there.
+- **Slicc**: `<SKILL_DIR>` = `/workspace/skills/snowflake/`.
+- **Generic**: assistant computes the directory of `SKILL.md` and
+  uses that absolute path.
+
+Node scripts inside `scripts/` self-locate via `import.meta.url` and
+work regardless of CWD once invoked with the correct absolute path.
+
+---
+
 ## Forbidden cross-host primitives
 
 When extending the skill, do NOT use:
