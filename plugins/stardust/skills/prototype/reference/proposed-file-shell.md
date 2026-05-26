@@ -25,10 +25,30 @@ tabs (the captured screenshot at
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><!-- page title from current/pages/<slug>.json --></title>
   <style>
+    /* === GLOBAL: tokens === */
     /* The :root token contract — see skills/stardust/reference/token-contract.md */
     :root { ... }
-    /* component-level styles, derived from DESIGN.json components */
-    /* ... */
+
+    /* === GLOBAL: resets === */
+    html, body, main { ... }
+
+    /* === GLOBAL: default-content === */
+    section > h1, section > h2, section > h3, section > h4, section > h5, section > h6 { ... }
+    section > p, section > ul, section > ol, section > li { ... }
+    section > a, section > img, section > picture, section > blockquote { ... }
+
+    /* canon.css injected here at migrate time — === GLOBAL: compound utility === */
+    .btn-primary { ... } .card { ... } .link { ... }
+
+    /* === SECTION: hero === */
+    section[data-section="hero"] { ... }       /* token redefinition */
+    section[data-section="hero"] > h1 { ... }  /* per-section default-content override */
+
+    /* === BLOCK: hotline-211 === */
+    [data-module="hotline-211"] { ... }
+    [data-module="hotline-211"] [data-slot="phone"] { ... }
+
+    /* See skills/prototype/SKILL.md § Discipline 11 — Four-scope CSS organization */
   </style>
 </head>
 <body>
@@ -110,6 +130,18 @@ The proposed file must satisfy:
    contract — including how to handle content the new design
    *demands* but the page *does not provide* (stat rows, addresses,
    testimonial quotes, etc.).
+
+8. **Four-scope CSS organization.** Every rule in the file's
+   first `<style>` block classifies into one of four scopes —
+   `global`, `section`, `block`, or `default-content` — grouped
+   contiguously and preceded by a marker comment of the form
+   `/* === <SCOPE>: <name> === */`. The discipline is the
+   downstream-extraction contract: a future EDS converter splits
+   rules to `styles/styles.css` and `blocks/<name>/<name>.css`
+   by reading these markers without LLM judgment per rule. Full
+   classification rules, refusal messages, motion CSS guidance,
+   and the site-global escape hatch live in
+   `skills/prototype/SKILL.md` § Discipline 11.
 
 ## Content sourcing hierarchy
 
