@@ -1,0 +1,15 @@
+{
+  "name": "css-four-scope-global",
+  "total": 100,
+  "criteria": [
+    { "id": "activated",              "weight": 5,  "description": "The stardust:prototype skill was invoked and Discipline 11 was applied at craft time." },
+    { "id": "marker_tokens",          "weight": 15, "description": "The proposed file's <style> block opens with /* === GLOBAL: tokens === */ immediately preceding the :root declaration." },
+    { "id": "marker_resets",          "weight": 10, "description": "An /* === GLOBAL: resets === */ marker precedes the html/body/main element selectors." },
+    { "id": "marker_default_content", "weight": 15, "description": "An /* === GLOBAL: default-content === */ marker precedes the section > <el> default-content rules; all default-content rules use the direct-child combinator." },
+    { "id": "marker_compound_utility","weight": 10, "description": "When canon.css applies, an /* === GLOBAL: compound utility === */ marker precedes canon.css classes (.btn-primary, .card, .link, form inputs)." },
+    { "id": "marker_motion",          "weight": 10, "description": "When cinematic motion applies, an /* === GLOBAL: motion === */ marker precedes @keyframes definitions; motion tokens land under GLOBAL: tokens (no fifth scope introduced)." },
+    { "id": "refuses_unscoped_class", "weight": 20, "description": "Given a page-specific class selector with no scoping prefix (e.g., .headline { ... } not under GLOBAL: compound utility), the validator refuses the write with a structured message naming the selector, line number, and cross-link to Discipline 11." },
+    { "id": "refusal_message_shape",  "weight": 10, "description": "The refusal message offers the four remediation options (compound utility / section-scoped / block-scoped / default-content) verbatim per the Discipline 11 spec." },
+    { "id": "no_eds_references",      "weight": 5,  "description": "No mention of EDS, AEM, localhost:3000, dev servers, or framework targets in outputs or narration." }
+  ]
+}
