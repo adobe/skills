@@ -402,10 +402,11 @@ the user with the specific rule violated and a suggested fix.
 
 #### Craft-time disciplines (pre-write validators)
 
-Three disciplines fire on the rendered file *before* it lands on
+Four disciplines fire on the rendered file *before* it lands on
 disk. These run after craft returns its output and before the file
 is written; failure refuses the write with a substitute proposal
-(Discipline 6) or a rule citation (7, 8).
+(Discipline 6), a rule citation (7, 8), or a structured
+classification refusal (11).
 
 **Discipline 6 — Reflex-reject font pre-flight.** Grep the
 declared `font-family` declarations against the reject list in
@@ -520,6 +521,15 @@ The four scopes:
   headings inside the module subtree without colliding with
   defaults.
 
+Scope-to-marker-prefix mapping: `global` → `GLOBAL` (with one of
+the GLOBAL sub-names below); `section` → `SECTION: <data-section
+value>`; `block` → `BLOCK: <data-module or data-template value>`;
+`default-content` → `GLOBAL: default-content` when site-global,
+otherwise nested inside `SECTION: <name>` alongside its section's
+token overrides. Media queries fold into their owning scope's
+group, OR stand alone as `MEDIA: <breakpoint>` when site-global —
+`MEDIA` is a marker prefix, not a scope.
+
 Inheritance falls out of the cascade for free: a default-content
 rule reads custom properties resolved against the surrounding
 section's redefinition. No engineered machinery is required.
@@ -542,13 +552,14 @@ and `<name>`:
   block-specific media queries live inside their owning group; a
   site-global media block lives between groups.
 
-The validator regex over the `<style>` text:
+The validator regex over the `<style>` text, matched per line:
 
-    /\* === (GLOBAL|SECTION|BLOCK|MEDIA): ([^=]+) === \*/
+    /\* === (GLOBAL|SECTION|BLOCK|MEDIA): ([^=\n]+) === \*/
 
 Each rule is matched against its preceding marker; rules without a
 preceding marker, or with a selector that does not match the
-marker's scope, refuse the write.
+marker's scope, refuse the write. Markers whose `<name>` contains
+`=` or a newline refuse on grounds of malformed marker.
 
 Refusal message format:
 
@@ -571,7 +582,7 @@ detection): the offending selector and the suggested module name
 (nearest match by Levenshtein) appear in the refusal message.
 
 **Motion CSS classifies into the four scopes (no fifth scope).** When
-`--cinematic` is engaged (per Phase 2.4 of Discipline 9), motion CSS
+`--cinematic` is engaged (per Phase 2.4 — motion application), motion CSS
 still follows the four-scope rule:
 
 - Motion tokens (`--motion-duration-*`, `--motion-easing-*`) live in
