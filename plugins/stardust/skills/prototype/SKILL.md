@@ -485,6 +485,120 @@ expressive position.
 The tier is declared in the run invocation; persisted in
 `_provenance.fidelity`. Default is `quick`.
 
+**Discipline 11 — Four-scope CSS organization.** Every rule in the
+proposed file's `<style>` block (including canon.css contents injected
+at migrate time) classifies into exactly one of four scopes, grouped
+contiguously, preceded by a machine-parseable marker comment. The
+discipline makes downstream block extraction mechanical instead of
+LLM-driven: a converter can split rules to `styles/styles.css` and
+`blocks/<name>/<name>.css` by reading marker comments, without
+LLM judgment per rule.
+
+The four scopes:
+
+- **`global`** — `:root` declarations; `html` / `body` / `main`
+  element selectors; class selectors not preceded by a
+  `[data-section]` / `[data-module]` / `[data-template]` attribute
+  selector. canon.css classes (`.btn-primary`, `.card`, `.link`,
+  form inputs) and `@keyframes` definitions also land here.
+- **`section`** — selector starts with `section[data-section="X"]`
+  (or `[data-section="X"]`). Descendants of the section selector
+  still classify as `section`. Typical use: token redefinition that
+  cascades to default-content within the section.
+- **`block`** — selector starts with `[data-module="X"]` or
+  `[data-template="X"]`. Both fold into BLOCK because both extract
+  1:1 to a downstream block file. Descendants of the module/template
+  selector classify as `block`.
+- **`default-content`** — direct-child selectors of the form
+  `section > <el>` or `section[data-section="X"] > <el>` where
+  `<el>` is one of: `h1`, `h2`, `h3`, `h4`, `h5`, `h6`, `p`, `ul`,
+  `ol`, `li`, `img`, `picture`, `figure`, `figcaption`, `a`,
+  `blockquote`, `hr`. The direct-child combinator (`>`) is
+  load-bearing: it isolates default-content rules from block
+  internals (`section > h1` does NOT match an `h1` deep-descended
+  inside a `[data-module]`). Block authors style their own
+  headings inside the module subtree without colliding with
+  defaults.
+
+Inheritance falls out of the cascade for free: a default-content
+rule reads custom properties resolved against the surrounding
+section's redefinition. No engineered machinery is required.
+
+Marker comments are mandatory and machine-parseable. Format:
+
+    /* === <SCOPE>: <name|kind> === */
+
+Where `<SCOPE>` is one of `GLOBAL` / `SECTION` / `BLOCK` / `MEDIA`
+and `<name>`:
+
+- `GLOBAL`: one of `tokens` / `resets` / `default-content` /
+  `motion` (`@keyframes` definitions) / `compound utility` (the
+  canon.css block injected at migrate time) / `section-defaults`
+  (the escape hatch for rules that span sections).
+- `SECTION`: matches the `data-section` attribute value.
+- `BLOCK`: matches the `data-module` or `data-template` attribute
+  value.
+- `MEDIA`: describes the breakpoint, e.g. `≤ 640px`. Section- or
+  block-specific media queries live inside their owning group; a
+  site-global media block lives between groups.
+
+The validator regex over the `<style>` text:
+
+    /\* === (GLOBAL|SECTION|BLOCK|MEDIA): ([^=]+) === \*/
+
+Each rule is matched against its preceding marker; rules without a
+preceding marker, or with a selector that does not match the
+marker's scope, refuse the write.
+
+Refusal message format:
+
+    unscoped CSS rule: `<selector> { ... }` at line N
+
+    A page-specific rule must be one of:
+      - canon.css class (lifted because used across templates), OR
+      - section-scoped (`section[data-section="X"] .foo`), OR
+      - block-scoped (`[data-module="Y"] .foo`), OR
+      - default-content (`section > h1` if it's a default heading
+        style).
+
+    Pick one and re-render. See
+      skills/prototype/reference/proposed-file-shell.md § Four-scope CSS
+      skills/stardust/reference/data-attributes.md § Why
+
+Block rules whose `data-module` / `data-template` value has no
+matching element in the rendered DOM also refuse (typo / dead-block
+detection): the offending selector and the suggested module name
+(nearest match by Levenshtein) appear in the refusal message.
+
+**Motion CSS classifies into the four scopes (no fifth scope).** When
+`--cinematic` is engaged (per Phase 2.4 of Discipline 9), motion CSS
+still follows the four-scope rule:
+
+- Motion tokens (`--motion-duration-*`, `--motion-easing-*`) live in
+  the `:root` block under `GLOBAL: tokens`.
+- `@keyframes` definitions live under `GLOBAL: motion`.
+- Section-scoped motion (a section that animates its background on
+  enter) lives under its `SECTION: <name>` group.
+- Block-scoped motion (a hover transform on a card) lives under its
+  `BLOCK: <name>` group.
+- The cinematic prototype file (`<slug>-cinematic.html`) carries the
+  same four-scope organization as the static prototype.
+
+The motion subsystem inherits the same downstream contract; no new
+extraction logic is required for cinematic pages.
+
+**Site-global escape hatch.** Rules that legitimately span scopes
+(e.g., `section { padding: var(--section-padding); }` applies to
+every section in the page) live in `GLOBAL: resets` or a dedicated
+`GLOBAL: section-defaults` group. The escape hatch keeps the
+discipline from forcing absurd duplication; the downstream converter
+treats `section-defaults` as global default rules in styles.css.
+
+**Grandfathering.** Discipline 11 fires at craft time. Existing
+prototypes that pass current critique + audit + adapt remain valid
+until re-craft. The discipline applies to new craft output; old
+output is not retroactively invalidated.
+
 ### Phase 2.4 — Motion application (when `--cinematic`)
 
 Fires only when `--cinematic` (with or without an explicit
