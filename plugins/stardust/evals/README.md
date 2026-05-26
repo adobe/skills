@@ -36,10 +36,10 @@ v2 evals without modification.
 | `migrate-multi-template/`    | Phase 4 (`migrate`)       | Three render branches (Path A / A′ / B) + canon + modules + bespoke-slot promotion + broken-link reporting + color-reservation refusal. |
 | `migrate-self-contained-bundle/` | Phase 4 (`migrate`)   | Self-contained zip-and-deploy bundle — six asset detection shapes, nine edge cases, six acceptance criteria, state.json `migrate` block with `selfContained: true`. |
 | `intent-reasoning-style/`    | Master skill principle    | "Open and reasoned" — vague phrases get clarified, never silently mapped to commands. Pending direction persisted.          |
-| `css-four-scope-global/`     | Phase 2 (`prototype`)     | Discipline 11 GLOBAL scope — marker comments for tokens / resets / default-content / compound utility / motion; unscoped-class refusal path.       |
-| `css-four-scope-section/`    | Phase 2 (`prototype`)     | Discipline 11 SECTION scope — marker names matching data-section, token override + default-content override grouping, cascade, orphan refusal.    |
-| `css-four-scope-block/`      | Phase 2 (`prototype`)     | Discipline 11 BLOCK scope — data-module + data-template fold into BLOCK, internals don't bleed to default-content, dead-block refusal.            |
-| `css-four-scope-default-content/` | Phase 2 (`prototype`)| Discipline 11 default-content scope — direct-child combinator load-bearing, canonical element set, isolation from block internals.                 |
+| `css-four-scope-global/`     | Phase 3 (`prototype`)     | Discipline 11 GLOBAL scope — marker comments for tokens / resets / default-content / compound utility / motion; unscoped-class refusal path.       |
+| `css-four-scope-section/`    | Phase 3 (`prototype`)     | Discipline 11 SECTION scope — marker names matching data-section, token override + default-content override grouping, cascade, orphan refusal.    |
+| `css-four-scope-block/`      | Phase 3 (`prototype`)     | Discipline 11 BLOCK scope — data-module + data-template fold into BLOCK, internals don't bleed to default-content, dead-block refusal.            |
+| `css-four-scope-default-content/` | Phase 3 (`prototype`)| Discipline 11 default-content scope — direct-child combinator load-bearing, canonical element set, isolation from block internals.                 |
 
 ## Coverage map
 
