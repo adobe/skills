@@ -1,0 +1,15 @@
+{
+  "name": "css-four-scope-default-content",
+  "total": 100,
+  "criteria": [
+    { "id": "activated",              "weight": 5,  "description": "The stardust:prototype skill was invoked and Discipline 11 was applied at craft time." },
+    { "id": "direct_child_combinator","weight": 15, "description": "All rules under /* === GLOBAL: default-content === */ use the direct-child combinator (section > <el>). The combinator is load-bearing per Discipline 11." },
+    { "id": "canonical_element_set",  "weight": 10, "description": "Default-content selectors target only the canonical element set: h1-h6, p, ul, ol, li, img, picture, figure, figcaption, a, blockquote, hr. Other elements (div, span, custom tags) refuse." },
+    { "id": "section_override_grouping","weight":15, "description": "Per-section default-content overrides (section[data-section=\"X\"] > <el>) live inside the matching SECTION group, NOT under GLOBAL: default-content." },
+    { "id": "isolation_verified",     "weight": 15, "description": "Block internals (e.g., [data-module=\"team-roster\"] h2) are NOT styled by section > h2 — the direct-child combinator stops at the section's direct children. Verified by render or computed-style inspection." },
+    { "id": "refuses_descendant_combinator","weight":20, "description": "Given an element selector under GLOBAL: default-content that uses the descendant combinator instead of direct-child (e.g., section p { ... }), the validator refuses with a message naming the selector, suggesting section > p, and cross-linking Discipline 11." },
+    { "id": "cascade_token_pickup",   "weight": 10, "description": "When a section redefines a token (e.g., --heading-xxl), the section's default-content elements pick up the redefined value via cascade — verified by render or computed style." },
+    { "id": "no_block_leak_to_default","weight": 5, "description": "No selector starting with [data-module] or [data-template] appears under GLOBAL: default-content." },
+    { "id": "no_eds_references",      "weight": 5,  "description": "No mention of EDS, AEM, localhost:3000, dev servers, or framework targets in outputs or narration." }
+  ]
+}
