@@ -1042,9 +1042,7 @@ Cross-references throughout the docs still name Phases 4, 5, 5.5.)
    the `open <vfs-path>` shell command. This routes VFS paths through
    the preview service worker — **do not use `playwright-cli open`**
    for local prototype files, as it bypasses the preview service worker
-   and produces a FILE NOT FOUND error. If multiple files were written
-   in one run, open the primary variant only. Skip in
-   pipeline-automation mode.
+   and produces a FILE NOT FOUND error. Skip in pipeline-automation mode.
 2. Mark the page `prototyped` in `state.json` — **gated on the
    Phase 2.5 critique + Phase 2.6 audit + Phase 2.7 adapt +
    Phase 2.8 motion validation (when fired) result** (Discipline 9).
