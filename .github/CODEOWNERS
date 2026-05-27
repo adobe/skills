@@ -13,6 +13,9 @@
 # Claude plugin marketplace config
 /.claude-plugin/                                      @shsteimer @trieloff
 
+# Cursor plugin marketplace config
+/.cursor-plugin/                                      @shsteimer @trieloff
+
 # AEM Edge Delivery Services (Sean Steimer is primary author of all skills)
 /plugins/aem/edge-delivery-services/                   @shsteimer
 

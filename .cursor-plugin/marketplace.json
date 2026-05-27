@@ -1,0 +1,17 @@
+{
+  "name": "adobe-skills",
+  "owner": {
+    "name": "Adobe"
+  },
+  "metadata": {
+    "description": "Official Adobe Skills for AI Agents",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "app-builder",
+      "source": "plugins/app-builder",
+      "description": "Development, customization, testing, and deployment skills for Adobe App Builder projects"
+    }
+  ]
+}
