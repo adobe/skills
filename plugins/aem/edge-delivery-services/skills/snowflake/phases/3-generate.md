@@ -1,41 +1,54 @@
 # Phase 3 — Generate
 
-Goal: produce the 5 deployable artifacts and the DA-source body
-fragment, written to the project's `output/` folder.
+Goal: produce the deployable artifacts and the DA-source body
+fragment, written to the project's `output/` folder. The artifacts
+differ by conversion level.
 
-> **Note on `conversionLevel`.** As of skill version 1.1.0, Phase 2
-> writes `decisions.json.conversionLevel` (`page-level` |
-> `block-level` | `hybrid`) based on the feasibility assessment in
-> [../knowledge/block-level-feasibility.md](../knowledge/block-level-feasibility.md).
-> **This phase currently implements only the `page-level` path**
-> (overlay template with `[data-slot]` markers). The `block-level`
-> and `hybrid` paths described in `SKILL.md` are documented but not
-> yet implemented here. If `decisions.json.conversionLevel` is
-> `block-level` or `hybrid`, fall back to the page-level path and
-> surface a note to the user that block-level generation is a
-> future enhancement. Do not silently produce wrong output.
+## Branch by conversion level
+
+Read `decisions.json.conversionLevel`:
+
+- **`page-level`** → follow the page-level path below (overlay
+  template + slot markers). This is the original snowflake path.
+- **`block-level`** → follow the block-level path below (per-section
+  EDS blocks). See
+  [../knowledge/block-level-conversion.md](../knowledge/block-level-conversion.md)
+  for the architecture and patterns.
+- **`hybrid`** → block-level for passing sections, static fragments
+  for failing sections. Follow block-level path with fragment
+  fallbacks per `decisions.json.feasibility.sections[].level`.
 
 ## Knowledge to load
 
 Before writing anything, load (using the override-then-bundled
 resolution from `SKILL.md`):
+
+**Always:**
 - `methodology.md` §3 (Generate) — the authoritative rules
-- `architecture.md` §"Slot semantics" — all five slot writer cases
-  the engine supports
 - `learnings.md` — at minimum the entries for "container vs.
   children", "Media Bus absolute URLs", "`<br>` stripping",
   "non-`<section>` blocks must be rewritten", plus whatever else
   applies to the patterns in `decisions.json`
 
+**Page-level additionally:**
+- `architecture.md` §"Slot semantics" — all five slot writer cases
+  the engine supports
+
+**Block-level additionally:**
+- `block-level-conversion.md` — output layout, decorator pattern,
+  CSS extraction, content model design, drafts test page format
+
 Resolution at each lookup: check `.snowflake/knowledge/<file>.md`
 first (project override), then `<SKILL_DIR>/knowledge/<file>.md`
 (bundled). Project overrides win on conflict.
 
-This phase is sequential in this version of the skill. (A future
-version may fan out the mechanical extractions across parallel
-sub-agents — see the skill repo's roadmap.)
+---
 
-## Output layout
+# Page-level path
+
+Follow this section when `conversionLevel` is `page-level`.
+
+## Output layout (page-level)
 
 Under `<projectsDir>/<NNN>-<slug>/output/`:
 
@@ -273,12 +286,200 @@ grep -oE 'class="[^"]*"' "$PROJ/output/templates/"*.html \
     done || echo "OK: no first-class CSS collisions detected"
 ```
 
-## Update state and finish
+## Update state and finish (page-level)
 
 Set `state.phase = "generate"`, `state.phaseStatus = "complete"`,
 `state.generateCompletedAt = "<timestamp>"`. Record:
+- `state.conversionLevel = "page-level"`
 - `state.slotCount` — total number of `[data-slot]` markers across
   the template
 - `state.sectionCount` — number of sections in `<main>`
+
+Continue to Phase 4 (Wire).
+
+---
+
+# Block-level path
+
+Follow this section when `conversionLevel` is `block-level` or
+`hybrid`. The full architecture is in
+[../knowledge/block-level-conversion.md](../knowledge/block-level-conversion.md);
+this section is the step-by-step execution.
+
+## Output layout (block-level)
+
+Artifacts are written directly to the EDS repo (not to a project
+`output/` subfolder) because block-level produces standard EDS files
+at standard paths:
+
+```
+styles/styles.css                     ← global tokens + shared components
+styles/fonts.css                      ← empty (fonts via head.html)
+head.html                             ← font preconnects (appended)
+fragments/<brand>/header.html         ← static header fragment
+fragments/<brand>/footer.html         ← static footer fragment
+blocks/header/header.{js,css}         ← fragment loader + header styles
+blocks/footer/footer.{js,css}         ← fragment loader + footer styles
+blocks/<name>/<name>.{js,css}         ← one pair per content section
+assets/                               ← vendored images/logo
+drafts/<page-slug>.html               ← local test page
+output/da/<page-slug>.html            ← DA body fragment (for upload)
+```
+
+## Step-by-step (block-level)
+
+### B.1 — Extract global styles
+
+Split the source's inline `<style>` block. See
+`block-level-conversion.md` §"Global styles extraction" for the
+two-bucket split (global vs per-section).
+
+Write `styles/styles.css` with:
+1. EDS boilerplate skeleton (`body { display: none }`, header/footer
+   visibility, `.appear`)
+2. Source `:root` design tokens
+3. Source base typography (replace boilerplate Roboto defaults)
+4. Shared components (`.eyebrow`, `.btn` variants, `.editorial`, etc.)
+5. EDS section overrides for full-bleed
+6. Responsive breakpoints for `:root` token changes
+7. Reduced motion media query
+
+Write `styles/fonts.css` as empty (fonts loaded via CDN).
+
+### B.2 — Set up fonts in head.html
+
+Append font preconnects and the CDN stylesheet link to `head.html`,
+placed after the viewport meta but before the `aem.js` script tag.
+
+### B.3 — Vendor assets
+
+Per `decisions.json["assetStrategy"]` (usually `vendor` for
+local-only sources):
+1. Copy referenced images and logo to `assets/`
+2. Remove `.DS_Store`s, rename dirs with spaces
+3. All template/fragment/CSS refs use root-relative `/assets/...`
+4. DA cell image refs use absolute branch URLs
+
+### B.4 — Create header/footer fragments
+
+Extract header and footer markup from the source. Write to
+`fragments/<brand>/header.html` and `footer.html`. Rewrite asset
+paths to root-relative.
+
+Write `blocks/header/header.js` and `blocks/footer/footer.js` as
+simple fragment loaders (see `block-level-conversion.md`
+§"Header/footer fragment pattern").
+
+Write `blocks/header/header.css` and `blocks/footer/footer.css`
+with the header/footer CSS rules extracted from the source.
+
+### B.5 — Create content blocks
+
+For each content section in `decisions.json.feasibility.sections[]`
+where `level === "block"`:
+
+1. **Design the content model** — map the section's authorable
+   content to DA block table rows. See
+   `block-level-conversion.md` §"Content model design".
+
+2. **Write the block JS** — `blocks/<name>/<name>.js` with a
+   `decorate(block)` function that reads authored rows and builds
+   the source DOM structure. Follow the decorator pattern in
+   `block-level-conversion.md`.
+
+3. **Write the block CSS** — `blocks/<name>/<name>.css` with the
+   section-scoped CSS rules from the source. Include the
+   `<name>-container` / `<name>-wrapper` override for full-bleed.
+
+For hybrid conversions, sections where `level === "fragment"` get
+a static fragment + minimal loader instead (see
+`block-level-conversion.md` §"Hybrid conversion").
+
+### B.6 — Modify scripts.js
+
+Add the early return to `buildHeroBlock` if `.hero` exists as an
+authored block. See `block-level-conversion.md` §"scripts.js
+modifications".
+
+### B.7 — Build the drafts test page
+
+Write `drafts/<page-slug>.html` as a full HTML document with all
+blocks in DA canonical div-class format. See
+`block-level-conversion.md` §"Drafts test page".
+
+### B.8 — Build the DA-source body fragment
+
+Write `output/da/<page-slug>.html` in the canonical DA body
+fragment format (`da-content` §1, §3.2). Structure:
+
+```html
+<body>
+  <header></header>
+  <main>
+    <div>
+      <div class="hero">
+        <div><div><picture>...</picture></div></div>
+        <div><div>Eyebrow text</div></div>
+        <div><div><h1>Heading</h1></div></div>
+        <div><div>Description text</div></div>
+        <div><div>
+          <p><strong><a href="/cta">CTA Label</a></strong></p>
+        </div></div>
+      </div>
+    </div>
+    <!-- ... one section div per block ... -->
+    <div>
+      <div class="metadata">
+        <div><div>title</div><div>Page Title</div></div>
+      </div>
+    </div>
+  </main>
+  <footer></footer>
+</body>
+```
+
+No `template` metadata key — block-level pages don't use the
+overlay engine. No slot-keyed rows — standard EDS positional
+block tables.
+
+DA cell image URLs must be absolute (same rule as page-level).
+
+### B.9 — Self-checks (block-level)
+
+```bash
+# 1) Each block has both .js and .css
+for dir in blocks/*/; do
+  name=$(basename "$dir")
+  [ -f "$dir/$name.js" ] && [ -f "$dir/$name.css" ] \
+    || echo "MISSING: $dir"
+done
+
+# 2) No relative "assets/" in block CSS or fragments
+grep -rn '"assets/' blocks/ fragments/ && echo "FAIL" || echo "OK"
+
+# 3) Lint passes
+npm run lint
+
+# 4) DA cell <img> URLs are absolute
+grep -oE '<img[^>]*src="[^"]+"' output/da/*.html \
+  | grep -vE 'src="https?://' \
+  && echo "FAIL: non-absolute DA img" || echo "OK"
+```
+
+Then start the dev server and verify:
+```bash
+npx -y @adobe/aem-cli up --html-folder drafts --no-open
+# Open http://localhost:3000/drafts/<page-slug> in a browser
+# Check: zero console errors, all blocks render, visual match
+```
+
+## Update state and finish (block-level)
+
+Set `state.phase = "generate"`, `state.phaseStatus = "complete"`,
+`state.generateCompletedAt = "<timestamp>"`. Record:
+- `state.conversionLevel = "block-level"` (or `"hybrid"`)
+- `state.blockCount` — number of content blocks created
+- `state.fragmentCount` — number of static fragments (header +
+  footer + any hybrid fallbacks)
 
 Continue to Phase 4 (Wire).

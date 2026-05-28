@@ -222,7 +222,9 @@ overrides win on conflict.
    EDS pipeline overlay-runtime lore.
 7. [knowledge/block-level-feasibility.md](./knowledge/block-level-feasibility.md) —
    criteria for block-level vs page-level conversion (Analyze phase).
-8. The phase prompt for the current phase.
+8. [knowledge/block-level-conversion.md](./knowledge/block-level-conversion.md) —
+   architecture and patterns for block-level conversion (Generate phase).
+9. The phase prompt for the current phase.
 
 Then start at Phase 0.
 
