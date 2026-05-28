@@ -1,6 +1,6 @@
 {
   "name": "aem-6-5-lts",
-  "description": "All AEM 6.5 LTS skills: Workflow model design, development, triggering, launchers, debugging, and triaging; Dispatcher config authoring, advisory, incident response, performance tuning, and security hardening; and Replication agent configuration, content activation, API usage, and troubleshooting for AEM 6.5 LTS and AMS environments.",
+  "description": "All AEM 6.5 LTS skills: Java 21 migration (OpenRewrite + POM manipulation + AI-assisted build fixes); Workflow model design, development, triggering, launchers, debugging, and triaging; Dispatcher config authoring, advisory, incident response, performance tuning, and security hardening; and Replication agent configuration, content activation, API usage, and troubleshooting for AEM 6.5 LTS and AMS environments.",
   "version": "1.0.0",
   "author": {
     "name": "Adobe"

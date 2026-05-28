@@ -1,0 +1,13 @@
+{
+  "name": "adobe/aem-6-5-lts",
+  "version": "1.0.0",
+  "summary": "Skills for AEM 6.5 LTS — Java 21 migration, dispatcher configuration, workflow management, and replication.",
+  "private": false,
+  "skills": {
+    "java21-migration": { "path": "skills/java21-migration/SKILL.md" },
+    "dispatcher": { "path": "skills/dispatcher/SKILL.md" },
+    "aem-workflow": { "path": "skills/aem-workflow/SKILL.md" },
+    "aem-replication": { "path": "skills/aem-replication/SKILL.md" },
+    "ensure-agents-md": { "path": "skills/ensure-agents-md/SKILL.md" }
+  }
+}

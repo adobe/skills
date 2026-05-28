@@ -1,0 +1,7 @@
+[
+  {
+    "groupId": "com.adobe.aem",
+    "artifactId": "uber-jar",
+    "classifier": "apis"
+  }
+]

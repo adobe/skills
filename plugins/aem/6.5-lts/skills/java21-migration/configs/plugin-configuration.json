@@ -1,0 +1,10 @@
+[
+  {
+    "groupId": "org.apache.maven.plugins",
+    "artifactId": "maven-compiler-plugin",
+    "configuration": {
+      "source": "21",
+      "target": "21"
+    }
+  }
+]

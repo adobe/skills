@@ -1,0 +1,8 @@
+[
+  {
+    "groupId": "org.apache.jackrabbit",
+    "artifactId": "filevault-package-maven-plugin",
+    "targetVersion": "1.1.2",
+    "force": false
+  }
+]

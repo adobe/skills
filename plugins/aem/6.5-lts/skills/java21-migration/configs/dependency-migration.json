@@ -1,0 +1,10 @@
+[
+  {
+    "groupId": "com.adobe.cq",
+    "artifactId": "core.wcm.components.*",
+    "newVersion": "2.24.0",
+    "skip": [
+      "core.wcm.components.junit.core"
+    ]
+  }
+]
