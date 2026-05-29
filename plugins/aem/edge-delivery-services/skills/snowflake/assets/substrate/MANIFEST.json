@@ -2,7 +2,6 @@
   "substrateVersion": "1.1.0",
   "defaults": {
     "projectsDir": ".snowflake/projects",
-    "daRoot": "",
     "branchPrefix": "snowflake-",
     "trunkBranch": "main",
     "tagPrefix": "snowflake-"
