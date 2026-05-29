@@ -50,8 +50,10 @@ For the HTML at `<projectsDir>/<NNN>-<slug>/input/index.html`:
    3. Slug from the most prominent eyebrow / label inside
    4. Positional: `section-N`
 
-5. **Slot opportunities per section** — for each block:
-   - Visible text in headings, paragraphs, button labels → text slot
+5. **Slot opportunities per section** — for each block (include ALL
+   elements regardless of CSS visibility — hidden tab panels, collapsed
+   accordions, inactive carousel slides all contain authorable content):
+   - Text in headings, paragraphs, button labels → text slot
    - `<img>` / `<picture>` → image / picture slot
    - `<a>` with text and href → link slot (NOT if the link wraps
      other to-be-slotted children — see learnings: "container vs.
