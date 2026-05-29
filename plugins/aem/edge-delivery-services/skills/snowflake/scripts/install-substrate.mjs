@@ -265,21 +265,28 @@ if (manifest.gitignore) {
 }
 
 // ---------------------------------------------------------------------------
-// 7. Write .snowflake/config.json with installed version
+// 7. Write .snowflake/config.json with installed version + defaults
+//
+// Merge order (later wins):
+//   manifest.defaults  ← stamped on fresh install so config always has them
+//   existing config    ← user edits survive upgrades
+//   configOut          ← substrateVersion + installedAt always refresh
 // ---------------------------------------------------------------------------
 
 const snowflakeDir = join(REPO_ROOT, '.snowflake');
+const defaults = manifest.defaults ?? {};
+const existingConfig = existsSync(configPath)
+  ? JSON.parse(readFileSync(configPath, 'utf8'))
+  : {};
 const configOut = {
   substrateVersion: bundledVersion,
   installedAt: new Date().toISOString(),
 };
+const merged = { ...defaults, ...existingConfig, ...configOut };
 if (DRY_RUN) {
-  log(`would write .snowflake/config.json: ${JSON.stringify(configOut)}`);
+  log(`would write .snowflake/config.json: ${JSON.stringify(merged, null, 2)}`);
 } else {
   mkdirSync(snowflakeDir, { recursive: true });
-  const merged = existsSync(configPath)
-    ? { ...JSON.parse(readFileSync(configPath, 'utf8')), ...configOut }
-    : configOut;
   writeFileSync(configPath, JSON.stringify(merged, null, 2) + '\n');
   log(`wrote .snowflake/config.json`);
 }

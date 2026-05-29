@@ -1,5 +1,12 @@
 {
-  "substrateVersion": "1.0.5",
+  "substrateVersion": "1.0.6",
+  "defaults": {
+    "projectsDir": ".snowflake/projects",
+    "daRoot": "/marketing",
+    "branchPrefix": "snowflake-",
+    "trunkBranch": "main",
+    "tagPrefix": "snowflake-"
+  },
   "marker": {
     "file": "scripts/scripts.js",
     "needle": "function applyTemplateOverlay",
