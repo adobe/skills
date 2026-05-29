@@ -375,6 +375,15 @@ export default async function decorate(block) {
   main.innerHTML = newMain.innerHTML;
   main.dataset.overlay = templateName;
 
+  // Reveal the overlay. Milo's styles.css hides every `main > div`
+  // ("progressive section appearance": `main > div { display: none }`) until it's
+  // decorated into a revealed `.section`. We just replaced Milo's decorated
+  // sections with the template's own top-level containers, which Milo never
+  // re-decorates — so without this they stay hidden and the page renders blank.
+  // Inline `display:block` beats the non-!important rule; block is the section
+  // default and avoids pulling in Milo's `.section` padding/max-width.
+  main.querySelectorAll(':scope > div').forEach((el) => { el.style.display = 'block'; });
+
   // Bring frozen interactive content to life (carousels, marquees, tabs,
   // accordions) via the prototype interaction contract. No-op when the
   // template carries no proto-* markup (e.g. Figma-sourced single-frame
