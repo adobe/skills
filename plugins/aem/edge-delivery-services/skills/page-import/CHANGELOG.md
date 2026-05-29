@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/adobe/skills/compare/page-import-v1.1.0...page-import-v1.1.1) (2026-05-29)
+
+
+### Bug Fixes
+
+* Update EDS skill intros to follow current best practices ([c728efe](https://github.com/adobe/skills/commit/c728efeba0b35135e7aa93bc114d0bfad7406278))
+
 # [1.1.0](https://github.com/adobe/skills/compare/page-import-v1.0.0...page-import-v1.1.0) (2026-05-29)
 
 
