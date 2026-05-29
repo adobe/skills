@@ -13,11 +13,13 @@
 # Claude plugin marketplace config
 /.claude-plugin/                                      @shsteimer @trieloff
 
+
 # Cursor plugin marketplace config
 /.cursor-plugin/                                      @arjuncooliitr
 
 # AEM Edge Delivery Services (Sean Steimer is primary author of all skills)
 /plugins/aem/edge-delivery-services/                   @shsteimer
+/plugins/aem/edge-delivery-services-content-ops/       @trieloff
 
 # AEM Project Management (Astha Bhargava is sole author)
 /plugins/aem/project-management/                       @asthabh23
