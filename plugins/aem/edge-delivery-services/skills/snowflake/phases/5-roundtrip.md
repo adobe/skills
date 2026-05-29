@@ -9,6 +9,40 @@ If a condition appears that suggests skipping (e.g. local-only
 source assets, perceived blockers), surface it to the user as a
 question — don't decide unilaterally.
 
+## The browser health gate (mandatory)
+
+Phase 5 is a **gate**, not a report. The converted page must pass every
+check below — first locally (5.1), then on production preview (5.2.5) —
+before the run may continue to Phase 6. If any check fails, **stop**:
+diagnose (5.2.6), fix at the source (re-Generate → re-Wire →
+re-Round-trip), and re-run the gate. Never mark this phase complete on a
+failing or unverified page.
+
+| # | Check | Pass criteria |
+|---|-------|---------------|
+| 1 | **Renders (not blank)** | `<body>` has real content: visible text ≥ 200 chars, rendered height ≥ 1.5× viewport, ≥ 1 `main section[class]`. A blank or near-blank page is an automatic FAIL. |
+| 2 | **Overlay applied** | `main[data-overlay]` === `<TEMPLATE_NAME>` and `<body>` carries the `appear` class. |
+| 3 | **Structure matches** | `sectionCount` and `sectionClasses` match `decisions.json` / `state.sectionCount` from Generate. |
+| 4 | **No console errors** | Zero console errors (uncaught exceptions, unhandled rejections, `console.error`). Tolerated only: font-CORS errors when the source is cross-origin and fonts are not vendored — and only if recorded in `state.json`. |
+| 5 | **No network failures** | No request failed or returned status ≥ 400; no `<img>` resolved to `about:error` or `naturalWidth === 0`. |
+| 6 | **1:1 with the source** | `dom-equality.mjs` exits PASS, or FAILs only on the known wrapper-element deltas enumerated in 5.1.1 (judgment recorded). Any other delta is a FAIL. |
+
+How console and network errors are captured depends on the host's
+browser tool. Prefer the tool's own console + network capture (recorded
+from the moment the page opens). If the tool cannot surface them, inject
+this listener **before navigating** and read the globals after load:
+
+```js
+window.__err = [];
+addEventListener("error", (e) => window.__err.push(String(e.message || e.error)));
+addEventListener("unhandledrejection", (e) => window.__err.push(String(e.reason)));
+const _ce = console.error;
+console.error = (...a) => { window.__err.push(a.join(" ")); _ce(...a); };
+```
+
+Record the outcome of all six checks (per environment) in `state.json`
+under `healthGate` so the pass is auditable, not assumed.
+
 ## Knowledge to load
 
 Round-trip failures often map to known gotchas. Before driving the
@@ -48,24 +82,39 @@ PAGE="http://localhost:3000/drafts/${TEMPLATE_NAME}-${PAGE_SLUG}.html"
 Evaluate this JavaScript in the browser and report the result:
 
 ```js
-({
-  overlayApplied: document.querySelector("main")?.dataset?.overlay,
-  sectionCount: document.querySelectorAll("main section[class]").length,
-  sectionClasses: [...document.querySelectorAll("main section[class]")]
-    .map(s => s.className.split(" ")[0]),
-  consoleErrors: (window.__errors || []).length,
-  bodyAppearClass: document.body.classList.contains("appear")
-})
+(() => {
+  const main = document.querySelector("main");
+  const sections = [...document.querySelectorAll("main section[class]")];
+  const imgs = [...document.querySelectorAll("img")];
+  return {
+    overlayApplied: main?.dataset?.overlay,
+    bodyAppearClass: document.body.classList.contains("appear"),
+    sectionCount: sections.length,
+    sectionClasses: sections.map((s) => s.className.split(" ")[0]),
+    visibleTextLength: (document.body.innerText || "").trim().length,
+    renderedHeight: document.body.scrollHeight,
+    viewportHeight: window.innerHeight,
+    brokenImages: imgs
+      .filter((i) => i.complete && i.naturalWidth === 0)
+      .map((i) => i.currentSrc || i.src),
+    capturedErrors: window.__err || null,
+  };
+})()
 ```
 
-Expect:
-- `overlayApplied` === `<TEMPLATE_NAME>`
-- `sectionCount` matches `state.sectionCount` from Generate
-- `sectionClasses` matches the unique-first-class list from
-  `decisions.json`
-- `consoleErrors` === 0 (or only CORS-on-font errors if source is
-  cross-origin and not vendored)
-- `bodyAppearClass` === true
+Also collect, from the browser tool's console + network capture (or the
+injected `window.__err` listener), every console error and every request
+that failed or returned status ≥ 400.
+
+Apply the **health gate** (checks 1–5 from the table above):
+- Check 1 (not blank): `visibleTextLength` ≥ 200, `renderedHeight` ≥
+  1.5 × `viewportHeight`, `sectionCount` ≥ 1.
+- Check 2: `overlayApplied` === `<TEMPLATE_NAME>`, `bodyAppearClass` === true.
+- Check 3: `sectionCount` / `sectionClasses` match `decisions.json`.
+- Check 4: zero console errors (font-CORS exception only, recorded).
+- Check 5: `brokenImages` empty and no failed/≥400 network requests.
+
+Any failure stops the gate — diagnose (5.2.6) and fix before continuing.
 
 ### Section-by-section screenshots
 
@@ -120,17 +169,18 @@ the overlay engine to apply on the rendered side):
 
 Output is a markdown report. Exit 0 on PASS, 1 on FAIL.
 
-**Interpreting the report:**
-- **PASS** — overlay is 1:1 with the source. Move on.
-- **FAIL** with small deltas — usually expected wrapper-element diffs
-  (EDS injects `<header class="header-wrapper">` around the fetched
-  header fragment; the substrate synthesizes `<main>` if the source
-  lacks one; dev-tool markup gets stripped). Compare to a known-good
-  prior run as a baseline.
-- **FAIL** with large deltas, or a first-divergence inside a slot
-  block — investigate. The first divergence in tagSequence and the
-  first-divergent-character in visibleText are usually the smoking
-  gun.
+**Interpreting the report (this is gate check 6 — enforced):**
+- **PASS** — overlay is 1:1 with the source. Check 6 passes.
+- **FAIL on known wrapper deltas only** — the *sole* tolerated FAIL.
+  These are: EDS injecting `<header class="header-wrapper">` around the
+  fetched header fragment; the substrate synthesizing `<main>` when the
+  source lacks one; stripped dev-tool markup. Confirm the report's
+  divergences are limited to these, record the judgment in
+  `state.json` `healthGate`, and only then treat check 6 as passed.
+- **FAIL on anything else** — large deltas, or a first-divergence inside
+  a slot block — is a **gate failure**. Do not proceed. The first
+  divergence in tagSequence and the first-divergent character in
+  visibleText are the smoking gun; fix at the source and re-run.
 
 ## 5.2 — Production round-trip
 
@@ -286,22 +336,36 @@ PAGE="$PROD_BASE/${DA_ROOT}/${PAGE_SLUG}"
 Evaluate this JavaScript in the browser and report the result:
 
 ```js
-({
-  overlayApplied: document.querySelector("main")?.dataset?.overlay,
-  sectionCount: document.querySelectorAll("main section[class]").length,
-  storyBg: document.querySelector(".story-card__photo, [style*=\"background-image\"]")?.style?.backgroundImage,
-  consoleErrors: (window.__errors || []).length,
-})
+(() => {
+  const main = document.querySelector("main");
+  const sections = [...document.querySelectorAll("main section[class]")];
+  const imgs = [...document.querySelectorAll("img")];
+  return {
+    overlayApplied: main?.dataset?.overlay,
+    bodyAppearClass: document.body.classList.contains("appear"),
+    sectionCount: sections.length,
+    sectionClasses: sections.map((s) => s.className.split(" ")[0]),
+    visibleTextLength: (document.body.innerText || "").trim().length,
+    renderedHeight: document.body.scrollHeight,
+    viewportHeight: window.innerHeight,
+    storyBg: document.querySelector(".story-card__photo, [style*=\"background-image\"]")?.style?.backgroundImage,
+    brokenImages: imgs
+      .filter((i) => i.complete && i.naturalWidth === 0)
+      .map((i) => i.currentSrc || i.src),
+    capturedErrors: window.__err || null,
+  };
+})()
 ```
 
-Expect:
-- `overlayApplied` === `<TEMPLATE_NAME>`
-- `sectionCount` matches
-- Any background-image slot src has been rewritten by Media Bus to
+Apply the **same health gate** (checks 1–5) as the local run. Production
+notes specific to check 5:
+- Any background-image slot src must have been rewritten by Media Bus to
   `./media_<sha>.png?width=...` form — confirms DA cells used absolute
-  URLs (if they don't, you'll see `about:error` here; fix is in the
-  Generate self-check 3.9).
-- `consoleErrors` === 0
+  URLs. If they didn't, `brokenImages` will list `about:error` entries;
+  the fix is in the Generate self-check 3.9.
+
+The page must clear all five checks on production, not just locally — a
+page that passes locally but fails here is still a gate failure.
 
 Capture screenshots into `${PROJECTS_DIR}/${NNN}-${SLUG}/diff/`
 with a `production-` prefix.
@@ -350,10 +414,22 @@ Bus rules, or a template/DA URL mismatch.
 
 ## Update state and finish
 
+**Do not reach this section unless the browser health gate passed on both
+local and production.** A failing or unverified page means the phase is
+not complete — go back, fix, and re-run.
+
 Set `state.phase = "roundtrip"`, `state.phaseStatus = "complete"`,
 `state.roundtripCompletedAt = "<timestamp>"`. Record:
 - `state.localUrl`
 - `state.productionUrl`
 - `state.daEditorUrl` = `https://da.live/edit#/<owner>/<repo>/<da-root>/<page-slug>`
+- `state.healthGate` — the per-environment result of all six checks,
+  e.g.:
+  ```json
+  "healthGate": {
+    "local":      { "notBlank": true, "overlay": true, "structure": true, "console": "pass", "network": true, "domEquality": "pass" },
+    "production": { "notBlank": true, "overlay": true, "structure": true, "console": "pass (font-CORS tolerated)", "network": true, "domEquality": "pass (wrapper deltas only)" }
+  }
+  ```
 
 Continue to Phase 6 (Reflect).

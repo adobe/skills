@@ -254,9 +254,11 @@ proceeds. Reruns are safe — phases skip work already done.
    drafts file, run lint.
    See [phases/4-wire.md](./phases/4-wire.md).
 
-5. **Round-trip** — local (dev server + headless browser) then
-   production (branch + push + DA PUT + preview API + verify on
-   `<branch>--<repo>--<owner>.aem.page`).
+5. **Round-trip** — local (dev server) then production (branch + push +
+   DA PUT + preview API). Enforces a **browser health gate** on both: the
+   page must render (not blank), apply the overlay, match the source
+   structure, be free of console/network errors, and pass the 1:1
+   DOM-equality check before the run may continue.
    See [phases/5-roundtrip.md](./phases/5-roundtrip.md).
 
 6. **Reflect** — append run findings; promote cross-project learnings
