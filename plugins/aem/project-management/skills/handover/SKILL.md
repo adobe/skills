@@ -4,7 +4,7 @@ description: Generate project handover documentation for AEM Edge Delivery Servi
 license: Apache-2.0
 allowed-tools: Read, Write, Edit, Bash, AskUserQuestion, Skill, Agent
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Project Handover Documentation
@@ -101,7 +101,10 @@ AskUserQuestion({
 
 ```bash
 # Check if org name is already saved
-cat .claude-plugin/project-config.json 2>/dev/null | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1
+cat .claude-plugin/project-config.json 2>/dev/null | node -e "
+  const d = require('fs').readFileSync(0,'utf8');
+  try { const o = JSON.parse(d).org; if(o) console.log('org: ' + o); } catch(e) {}
+"
 ```
 
 #### 1.5.2 Prompt for Organization Name (If Not Saved)
@@ -123,7 +126,7 @@ Once you have the org name, save it so sub-skills can use it:
 ```bash
 # Create config directory if needed
 mkdir -p .claude-plugin
-# Ensure .claude-plugin is in .gitignore (contains auth tokens)
+# Ensure .claude-plugin is in .gitignore (contains project config)
 grep -qxF '.claude-plugin/' .gitignore 2>/dev/null || echo '.claude-plugin/' >> .gitignore
 
 # Save org name to config file
@@ -139,74 +142,43 @@ Replace `{ORG_NAME}` with the actual organization name provided by the user.
 
 **Why this matters:** The organization name is required by the Helix Admin API to determine if the project is repoless (multi-site). By gathering it once in the orchestrator, sub-skills running in parallel don't each need to prompt the user separately.
 
-### Step 1.6: Authenticate with Config Service (Browser Login)
+### Step 1.6: Authenticate with Adobe IMS
 
-**AFTER saving the organization name, authenticate using Playwright browser automation.**
+**AFTER saving the organization name, authenticate to obtain an IMS token.**
 
 #### 1.6.1 Check for Existing Auth Token
 
 ```bash
-AUTH_TOKEN=$(cat .claude-plugin/project-config.json 2>/dev/null | grep -o '"authToken"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"authToken"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
-```
-
-#### 1.6.2 Open Browser for Login (If No Token)
-
-If no auth token exists, use Playwright CLI:
-
-1. **Install Playwright (if needed)**:
-```bash
-npx playwright --version 2>/dev/null || npm install -g playwright
-npx playwright install chromium 2>/dev/null || true
-```
-
-2. **Get first site name** (unauthenticated):
-```bash
-ORG=$(cat .claude-plugin/project-config.json | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"org"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
-SITE=$(curl -s "https://admin.hlx.page/config/${ORG}/sites.json" | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/"name"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
-```
-
-3. **Get user acknowledgment before opening browser**:
-
-Use `AskUserQuestion` to ensure user is ready:
-
-```json
-AskUserQuestion({
-  "questions": [{
-    "question": "A browser window will open for authentication. After signing in, CLOSE THE BROWSER WINDOW to continue. Ready?",
-    "header": "Authentication Required",
-    "options": [
-      {"label": "Open Browser", "description": "I understand - open the browser for login"}
-    ],
-    "multiSelect": false
-  }]
-})
-```
-
-**After user confirms**, run:
-```bash
-mkdir -p .claude-plugin && npx playwright open --save-storage=.claude-plugin/auth-storage.json "https://admin.hlx.page/login/${ORG}/${SITE}/main"
-```
-
-#### 1.6.3 Extract and Save Auth Token
-
-After browser is closed, extract token from storage file:
-
-```bash
-echo "Browser closed. Extracting auth token..."
-
-AUTH_TOKEN=$(node -e "
-const fs = require('fs');
-const data = JSON.parse(fs.readFileSync('.claude-plugin/auth-storage.json', 'utf8'));
-const cookie = data.cookies.find(c => c.name === 'auth_token');
-console.log(cookie ? cookie.value : '');
+IMS_TOKEN=$(node -e "
+  const fs = require('fs');
+  try {
+    const t = JSON.parse(fs.readFileSync(process.env.HOME + '/.aem/ims-token.json', 'utf8'));
+    if (t.imsToken && t.imsTokenExpiry > Math.floor(Date.now()/1000) + 60) {
+      process.stdout.write(t.imsToken);
+    }
+  } catch (e) {}
 ")
 
-ORG=$(cat .claude-plugin/project-config.json | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"org"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
-echo "{\"org\": \"${ORG}\", \"authToken\": \"${AUTH_TOKEN}\"}" > .claude-plugin/project-config.json
-
-rm -f .claude-plugin/auth-storage.json
-echo "Auth token saved."
+if [ -n "$IMS_TOKEN" ]; then
+  echo "Token valid"
+else
+  echo "Token missing or expired. Need to authenticate."
+fi
 ```
+
+#### 1.6.2 Authenticate (If No Valid Token)
+
+If no valid token exists, invoke the auth skill:
+
+```
+Skill({ skill: "project-management:auth" })
+```
+
+This will:
+1. Open a browser for Adobe ID login
+2. Capture the IMS OAuth token automatically
+3. Save token to `~/.aem/ims-token.json` (user-level, shared across projects)
+4. Auto-close the browser when complete
 
 **Why authenticate in orchestrator:** By authenticating once here, all sub-skills running in parallel can use the saved token without each prompting for login separately.
 

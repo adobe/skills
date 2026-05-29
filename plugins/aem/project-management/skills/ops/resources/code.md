@@ -1,0 +1,124 @@
+---
+name: ops-code
+description: Code sync operations for Edge Delivery Services - deploy code changes from GitHub. Syncs full repo or specific files. Warns about repoless impact.
+allowed-tools: Read, Write, Edit, Bash
+---
+
+# Edge Delivery Services Operations - Code Sync
+
+Deploy code changes from GitHub to Edge Delivery Services.
+
+## API Reference
+
+| Intent | Endpoint | Method | Required Role |
+|--------|----------|--------|---------------|
+| sync code (full) | `/code/{owner}/{repo}/{ref}/*` | POST | `develop` or `admin` (`code:write`) |
+| sync file | `/code/{owner}/{repo}/{ref}/{path}` | POST | `develop` or `admin` (`code:write`) |
+| delete code | `/code/{owner}/{repo}/{ref}/{path}` | DELETE | `develop` or `admin` (`code:delete`) |
+| code status | `/code/{owner}/{repo}/{ref}/{path}` | GET | `basic_author`+ (`code:read`) |
+
+**Note:** Code operations use `{owner}/{repo}` (GitHub), not `{org}/{site}` (content). If user gets 403 on code sync, they need the `develop` role.
+
+## Operations
+
+### Sync Full Repository
+
+Use the `/*` wildcard to recursively sync the entire repository tree:
+
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer ${IMS_TOKEN}" \
+  "https://admin.hlx.page/code/${CODE_OWNER}/${CODE_REPO}/${REF}/*"
+```
+
+**Success:** `Code synced for {owner}/{repo}. Changes now live on all sites using this repo.`
+
+### Sync Specific File
+
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer ${IMS_TOKEN}" \
+  "https://admin.hlx.page/code/${CODE_OWNER}/${CODE_REPO}/${REF}${PATH}"
+```
+
+**Success:** `Synced {path} to code bus.`
+
+Example: Sync just the hero block:
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer ${IMS_TOKEN}" \
+  "https://admin.hlx.page/code/${CODE_OWNER}/${CODE_REPO}/main/blocks/hero/hero.js"
+```
+
+### Code Status
+
+```bash
+curl -s \
+  -H "Authorization: Bearer ${IMS_TOKEN}" \
+  "https://admin.hlx.page/code/${CODE_OWNER}/${CODE_REPO}/${REF}${PATH}"
+```
+
+### Delete Code
+
+**DESTRUCTIVE OPERATION - CONFIRMATION REQUIRED**
+
+Before executing, you MUST:
+1. Tell user: "This will delete {path} from the code bus. In repoless setups, this affects ALL sites sharing the codebase."
+2. Ask: "Do you want to proceed? (yes/no)"
+3. Only execute if user confirms with "yes"
+
+```bash
+curl -s -X DELETE \
+  -H "Authorization: Bearer ${IMS_TOKEN}" \
+  "https://admin.hlx.page/code/${CODE_OWNER}/${CODE_REPO}/${REF}${PATH}"
+```
+
+## Batch Code Update (Webhook-Only)
+
+`POST /code/{owner}/{repo}/{ref}` (without a path) is a **webhook-oriented** endpoint used by GitHub integrations to process push events. It requires a `changes` array payload matching GitHub webhook format. This endpoint is called automatically — do **not** use it for manual code sync. Use the `/*` wildcard endpoint above instead.
+
+---
+
+## Repoless Warning
+
+In a **repoless setup**, multiple sites share one code repository. Code sync affects ALL sites.
+
+**Before syncing, check if repoless:**
+
+```bash
+ORG=$(cat .claude-plugin/project-config.json | node -e "
+  const d = require('fs').readFileSync(0,'utf8');
+  console.log(JSON.parse(d).org || '');
+")
+SITES_JSON=$(curl -s -H "Authorization: Bearer ${IMS_TOKEN}" "https://admin.hlx.page/config/${ORG}/sites.json")
+SITE_COUNT=$(echo "$SITES_JSON" | node -e "
+  const d = require('fs').readFileSync(0,'utf8');
+  try { console.log((JSON.parse(d).sites || []).length); } catch(e) { console.log(0); }
+")
+
+if [ "$SITE_COUNT" -gt 1 ]; then
+  echo "REPOLESS: $SITE_COUNT sites share this codebase"
+fi
+```
+
+**If repoless, warn user:**
+
+> "This is a repoless setup with {N} sites sharing the same code. Code sync will affect ALL sites:
+> - site-a
+> - site-b
+> - site-c
+>
+> Proceed with code sync?"
+
+Only execute after confirmation.
+
+## Natural Language Patterns
+
+| User Says | Operation |
+|-----------|-----------|
+| "sync code" | Full repo sync |
+| "deploy the latest code" | Full repo sync |
+| "sync blocks/hero/hero.js" | Sync specific file |
+| "deploy code changes" | Full repo sync |
+| "update the code" | Full repo sync |
+| "delete code blocks/old.js" | Delete code file |
