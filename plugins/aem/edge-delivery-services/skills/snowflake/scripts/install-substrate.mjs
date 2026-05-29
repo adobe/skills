@@ -34,7 +34,7 @@
  * Exit codes:
  *   0   Success (installed, no-op, or dry-run completed cleanly)
  *   1   Target repo not detected (no .git, no package.json, etc.)
- *   2   Substrate is already installed at a different version (use --force)
+ *   2   Cannot proceed without --force (substrate drift), or an inject anchor was missing/ambiguous
  *   3   Filesystem error during install
  */
 
@@ -254,6 +254,50 @@ for (const patch of manifest.ignorePatches ?? []) {
 if (manifest.gitignore) {
   mergeLines(manifest.gitignore.dst, manifest.gitignore.lines);
 }
+
+// ---------------------------------------------------------------------------
+// 6b. Apply anchored, idempotent code injections (manifest.inject)
+// ---------------------------------------------------------------------------
+
+function applyInject() {
+  for (const target of manifest.inject ?? []) {
+    const path = join(REPO_ROOT, target.file);
+    let content = readMaybe(path);
+    if (content === null) die(`inject target missing: ${target.file}`, 3);
+    let changed = false;
+    for (const edit of target.edits) {
+      if (content.includes(edit.skipIf)) continue; // already applied — idempotent
+      const idx = content.indexOf(edit.anchor);
+      if (idx === -1) {
+        console.error(`[snowflake] could not find the anchor for "${edit.id}" in ${target.file}.`);
+        console.error(`[snowflake] Your boilerplate may have changed. Apply this manually,`);
+        console.error(`[snowflake] immediately AFTER this anchor: ${JSON.stringify(edit.anchor)}`);
+        console.error(`[snowflake] ---`);
+        console.error(edit.insert);
+        console.error(`[snowflake] ---`);
+        process.exit(2);
+      }
+      if (content.indexOf(edit.anchor, idx + 1) !== -1) {
+        die(`anchor for "${edit.id}" is ambiguous in ${target.file} (multiple matches)`, 2);
+      }
+      const at = idx + edit.anchor.length;
+      if (DRY_RUN) {
+        log(`would inject "${edit.id}" into ${target.file}`);
+        content = content.slice(0, at) + '\n' + edit.insert + content.slice(at);
+        continue;
+      }
+      content = content.slice(0, at) + '\n' + edit.insert + content.slice(at);
+      changed = true;
+      log(`injected "${edit.id}" into ${target.file}`);
+    }
+    if (changed && !DRY_RUN) {
+      backupOne(target.file);
+      writeFileSync(path, content);
+    }
+  }
+}
+
+applyInject();
 
 // ---------------------------------------------------------------------------
 // 7. Write .snowflake/config.json with installed version + defaults
