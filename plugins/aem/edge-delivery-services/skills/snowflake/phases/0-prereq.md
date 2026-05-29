@@ -103,6 +103,30 @@ See `assets/substrate/MANIFEST.json` for the authoritative list. Summary:
 | `.stylelintignore` | Patterns added (idempotent merge) |
 | `.gitignore` | Patterns added (in-progress run state excluded) |
 
+## Substrate flavors: EDS vs Milo
+
+The installer auto-detects which **flavor** to install and reports it
+(`substrate flavor: <eds|milo> (auto-detected|explicit)`). Override with
+`--flavor=milo` / `--flavor=eds` (or `--milo` / `--eds`).
+
+- **`eds`** (default for vanilla `adobe/aem-boilerplate`): the full overlay
+  substrate described above — replaces `head.html`, `scripts/scripts.js`,
+  `styles/styles.css`, and the header/footer blocks.
+
+- **`milo`** (auto-detected when the repo boots milolibs — `head.html`
+  contains `milolibs`, or `scripts/scripts.js` calls `setLibs()`): a
+  **minimal** substrate. It installs **only** `blocks/snowflake/{js,css}`
+  plus the ignore patches, and **leaves Milo's `head.html`,
+  `scripts/scripts.js`, and `styles/styles.css` untouched**. Replacing them
+  would rip out the Milo runtime — the very thing that loads the live
+  `global-navigation` + footer from `gnav-source`/`footer-source` metadata.
+  On a Milo repo the chrome is owned by Milo; the bespoke body is drawn by
+  the `snowflake` overlay block, which Milo loads from the project's
+  `codeRoot`. `.snowflake/config.json` records `substrateFlavor: "milo"`.
+
+The later phases branch on `.snowflake/config.json` `substrateFlavor` — read
+it before Generate/Wire.
+
 ## After install
 
 Phase 0 completes. The `.snowflake/` directory is now seeded:

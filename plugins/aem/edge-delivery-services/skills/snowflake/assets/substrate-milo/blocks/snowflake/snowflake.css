@@ -1,0 +1,14 @@
+/*
+ * snowflake (Milo flavor) — intentionally minimal.
+ *
+ * The overlaid body carries its own design system: the captured
+ * template lifts the source's stylesheets (typekit, Milo C2 block CSS)
+ * into <head>, and per-template inline CSS ships at /styles/<template>.css.
+ * Milo's own /libs/c2/styles/styles.css loads via foundation:c2.
+ *
+ * The block element itself only hosts the (consumed) authoring rows
+ * before decorate() replaces <main>, so it needs no paint of its own.
+ */
+.snowflake {
+  display: none;
+}

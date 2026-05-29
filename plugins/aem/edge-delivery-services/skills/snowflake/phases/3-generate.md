@@ -48,6 +48,60 @@ first (project override), then `<SKILL_DIR>/knowledge/<file>.md`
 
 Follow this section when `conversionLevel` is `page-level`.
 
+## Milo flavor deltas (read FIRST if `substrateFlavor` is `milo`)
+
+When `.snowflake/config.json` `substrateFlavor` is `milo`, the page is hosted
+by Milo (which owns the chrome) and the bespoke body is drawn by the
+`blocks/snowflake` overlay block. Apply these deltas to the page-level steps
+below; everything else (template build, slot markers, per-template CSS,
+animations, asset rewriting, self-checks) is unchanged:
+
+- **Skip 3.3 (header fragment) and 3.4 (footer fragment) entirely.** Do not
+  emit `fragments/<template>/*`. Milo renders the live gnav/footer from
+  metadata. (Capturing them is the bug the Milo flavor fixes.)
+- **3.1 head links** — still lift the body's `<link>`s (typekit, fonts), but
+  drop any `global-navigation*.css` / footer chrome stylesheets: Milo loads
+  C2 styles itself via `foundation: c2`, and chrome CSS without the chrome DOM
+  just adds weight.
+- **3.8 DA doc** — emit a **Milo page** instead of EDS block tables: empty
+  `<header>`/`<footer>`, one `snowflake` block carrying the template name (+
+  optional slot overrides), and a `metadata` block that re-emits
+  `state.json.chromeMeta` (`foundation`, `gnav-source`, `footer-source`,
+  `unav`, `universal-nav`, …) plus `template` and `title`:
+
+  ```html
+  <body>
+    <header></header>
+    <main>
+      <div>
+        <div class="snowflake">
+          <div><div>template</div><div><templateName></div></div>
+          <!-- optional authorable overrides, 3 cells each:
+          <div><div><section-class></div><div><slot-name></div><div><value></div></div>
+          -->
+        </div>
+      </div>
+      <div>
+        <div class="metadata">
+          <div><div>template</div><div><templateName></div></div>
+          <div><div>title</div><div><pageTitle></div></div>
+          <div><div>foundation</div><div>c2</div></div>
+          <div><div>gnav-source</div><div><from chromeMeta></div></div>
+          <div><div>footer-source</div><div><from chromeMeta></div></div>
+          <div><div>unav</div><div><from chromeMeta></div></div>
+          <div><div>universal-nav</div><div><from chromeMeta></div></div>
+        </div>
+      </div>
+    </main>
+    <footer></footer>
+  </body>
+  ```
+
+  The `template` metadata is still required (the overlay block also resolves
+  it from `<meta name="template">`). With no slot-override rows the template's
+  default content renders 1:1; add 3-cell rows only for content you want
+  authorable in DA.
+
 ## Output layout (page-level)
 
 Under `<projectsDir>/<NNN>-<slug>/output/`:
