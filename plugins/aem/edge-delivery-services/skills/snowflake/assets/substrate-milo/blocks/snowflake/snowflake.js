@@ -152,6 +152,178 @@ function liftTemplateLinks(templateDoc) {
   });
 }
 
+/* =========================================================================
+ * Prototype interaction layer (URL / pasted-HTML prototypes).
+ *
+ * page-forge captures the full *rendered* DOM, so multi-slide content
+ * (carousels, auto-rotating marquees) and tab/accordion panels are all
+ * present in the template — just frozen, because the source block JS that
+ * wired them isn't running on the snowflake'd page. This adds a small,
+ * dependency-free behaviour layer driven by an explicit contract the
+ * generate step emits, so the prototype feels alive WITHOUT depending on
+ * any real Milo block. Block-agnostic by design: snowflake never has to
+ * understand these structures — it just carries the contract markup
+ * through, and this runs at runtime after the overlay injects <main>.
+ *
+ * IMPORTANT — capture-mode limitation: Figma-sourced prototypes converge
+ * to a single static reference image, so only the visible slide exists.
+ * There is nothing to cycle and the generate step emits no contract markup,
+ * so this layer is a deliberate no-op for them.
+ *
+ * Contract (all opt-in via the proto-* classes):
+ *   carousel:  .proto-carousel > .proto-carousel-track > .proto-slide+
+ *              [data-proto-autoplay="<ms>"]
+ *   marquee:   .proto-marquee  > .proto-marquee-slide+   [data-proto-interval="<ms>"]
+ *              optional nav: .proto-marquee-nav-item+ (anywhere inside)
+ *   tabs:      .proto-tabs     > .proto-tablist > .proto-tab+ ; sibling .proto-tabpanel+
+ *   accordion: .proto-accordion> .proto-acc-item ( .proto-acc-trigger + .proto-acc-panel )+
+ * ========================================================================= */
+
+const REDUCED_MOTION = !!(window.matchMedia
+  && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+/** Make an element with a class and optional text. */
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text != null) node.textContent = text;
+  return node;
+}
+
+/** Wire one carousel: single-slide-in-view track + dots + arrows + autoplay + swipe. */
+function initCarousel(root) {
+  const track = root.querySelector('.proto-carousel-track');
+  const slides = track
+    ? [...track.children].filter((s) => s.classList.contains('proto-slide'))
+    : [];
+  if (slides.length < 2) return;
+
+  let index = 0;
+  let timer = null;
+  const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
+
+  let dots = [];
+  const render = () => {
+    track.style.transform = `translateX(-${index * 100}%)`;
+    dots.forEach((d, i) => d.setAttribute('aria-selected', String(i === index)));
+  };
+  const go = (i) => { index = (i + slides.length) % slides.length; render(); };
+
+  let prev = root.querySelector('.proto-carousel-prev');
+  let next = root.querySelector('.proto-carousel-next');
+  if (!prev) { prev = el('button', 'proto-carousel-prev', '‹'); prev.setAttribute('aria-label', 'Previous'); root.appendChild(prev); }
+  if (!next) { next = el('button', 'proto-carousel-next', '›'); next.setAttribute('aria-label', 'Next'); root.appendChild(next); }
+  prev.addEventListener('click', () => { stop(); go(index - 1); });
+  next.addEventListener('click', () => { stop(); go(index + 1); });
+
+  let dotsWrap = root.querySelector('.proto-carousel-dots');
+  if (!dotsWrap) { dotsWrap = el('div', 'proto-carousel-dots'); root.appendChild(dotsWrap); }
+  dots = slides.map((_, i) => {
+    const d = el('button', 'proto-carousel-dot');
+    d.setAttribute('aria-label', `Slide ${i + 1}`);
+    d.addEventListener('click', () => { stop(); go(i); });
+    dotsWrap.appendChild(d);
+    return d;
+  });
+
+  const ms = parseInt(root.dataset.protoAutoplay || '', 10);
+  const start = () => { if (ms > 0 && !REDUCED_MOTION) timer = setInterval(() => go(index + 1), ms); };
+  root.addEventListener('mouseenter', stop);
+  root.addEventListener('mouseleave', start);
+  root.addEventListener('focusin', stop);
+
+  let x0 = null;
+  root.addEventListener('pointerdown', (e) => { x0 = e.clientX; });
+  root.addEventListener('pointerup', (e) => {
+    if (x0 == null) return;
+    const dx = e.clientX - x0;
+    x0 = null;
+    if (Math.abs(dx) > 40) { stop(); go(index + (dx < 0 ? 1 : -1)); }
+  });
+
+  render();
+  start();
+}
+
+/** Wire one auto-rotating marquee: only the active slide is shown. */
+function initMarquee(root) {
+  const slides = [...root.querySelectorAll(':scope > .proto-marquee-slide')];
+  if (slides.length < 2) return;
+  const nav = [...root.querySelectorAll('.proto-marquee-nav-item')];
+
+  let index = 0;
+  let timer = null;
+  const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
+  const go = (n) => {
+    index = (n + slides.length) % slides.length;
+    slides.forEach((s, i) => s.classList.toggle('is-active', i === index));
+    nav.forEach((it, i) => it.setAttribute('aria-selected', String(i === index)));
+  };
+  nav.forEach((it, i) => it.addEventListener('click', () => { stop(); go(i); }));
+
+  const ms = parseInt(root.dataset.protoInterval || '5000', 10);
+  const start = () => { if (ms > 0 && !REDUCED_MOTION) timer = setInterval(() => go(index + 1), ms); };
+  root.addEventListener('mouseenter', stop);
+  root.addEventListener('mouseleave', start);
+
+  go(0);
+  start();
+}
+
+/** Wire one tab group: .proto-tab buttons toggle matched .proto-tabpanel. */
+function initTabs(root) {
+  const tabs = [...root.querySelectorAll('.proto-tab')];
+  const panels = [...root.querySelectorAll('.proto-tabpanel')];
+  if (!tabs.length || tabs.length !== panels.length) return;
+
+  const select = (n) => {
+    tabs.forEach((t, i) => t.setAttribute('aria-selected', String(i === n)));
+    panels.forEach((p, i) => { p.hidden = i !== n; });
+  };
+  tabs.forEach((t, i) => {
+    t.setAttribute('role', 'tab');
+    t.addEventListener('click', () => select(i));
+    t.addEventListener('keydown', (e) => {
+      let n = -1;
+      if (e.key === 'ArrowRight') n = (i + 1) % tabs.length;
+      if (e.key === 'ArrowLeft') n = (i - 1 + tabs.length) % tabs.length;
+      if (n >= 0) { tabs[n].focus(); select(n); }
+    });
+  });
+  const pre = tabs.findIndex((t) => t.getAttribute('aria-selected') === 'true');
+  select(pre >= 0 ? pre : 0);
+}
+
+/** Wire accordions: each .proto-acc-trigger toggles its .proto-acc-panel. */
+function initAccordion(root) {
+  root.querySelectorAll('.proto-acc-item').forEach((item) => {
+    const trigger = item.querySelector('.proto-acc-trigger');
+    const panel = item.querySelector('.proto-acc-panel');
+    if (!trigger || !panel) return;
+    const open = trigger.getAttribute('aria-expanded') === 'true';
+    trigger.setAttribute('aria-expanded', String(open));
+    panel.hidden = !open;
+    trigger.addEventListener('click', () => {
+      const isOpen = trigger.getAttribute('aria-expanded') === 'true';
+      trigger.setAttribute('aria-expanded', String(!isOpen));
+      panel.hidden = isOpen;
+    });
+  });
+}
+
+/** Activate every prototype interaction present in the overlaid <main>. */
+function initProtoInteractions(root) {
+  try {
+    root.querySelectorAll('.proto-carousel').forEach(initCarousel);
+    root.querySelectorAll('.proto-marquee').forEach(initMarquee);
+    root.querySelectorAll('.proto-tabs').forEach(initTabs);
+    root.querySelectorAll('.proto-accordion').forEach(initAccordion);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[snowflake] prototype interactions failed to init', e);
+  }
+}
+
 export default async function decorate(block) {
   const main = document.querySelector('main');
   if (!main || main.dataset.overlay) return; // idempotent
@@ -202,4 +374,10 @@ export default async function decorate(block) {
   // <header>/<footer> (live gnav/footer) and the <head> metadata untouched.
   main.innerHTML = newMain.innerHTML;
   main.dataset.overlay = templateName;
+
+  // Bring frozen interactive content to life (carousels, marquees, tabs,
+  // accordions) via the prototype interaction contract. No-op when the
+  // template carries no proto-* markup (e.g. Figma-sourced single-frame
+  // prototypes), so it's safe to always call.
+  initProtoInteractions(main);
 }

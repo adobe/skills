@@ -72,6 +72,25 @@ animations, asset rewriting, self-checks) is unchanged:
   `modal.css`, `merch.css`, `video.css`, typekit, lenis. **Dropping these is
   what makes the overlaid body render as unstyled, stacked content** — only the
   two chrome stylesheets come out.
+- **3.1b interactive content — prototype interaction contract.** The overlay
+  injects *frozen, pre-decorated* DOM, so any widget whose motion came from JS
+  (carousel/slider, auto-rotating marquee, tabs, accordion) renders but does not
+  move. The `snowflake` block ships a tiny dependency-free activator that revives
+  them **only** when they use the contract below. So when the source body has such
+  a widget AND the captured markup actually holds every state (all carousel
+  slides, all tab panels — true for URL/HTML captures, which serialize the full
+  rendered DOM), rewrite that widget to the contract, keeping each slide/panel's
+  inner content and block CSS classes 1:1 (you only swap the outer wrapper):
+  - carousel: `<div class="proto-carousel" data-proto-autoplay="5000"><div class="proto-carousel-track"><div class="proto-slide">…</div>…</div></div>` (drop `data-proto-autoplay` for manual-only; arrows + dots are auto-generated)
+  - marquee: `<div class="proto-marquee" data-proto-interval="5000"><div class="proto-marquee-slide">…</div>…</div>` (optional `<button class="proto-marquee-nav-item">` per slide)
+  - tabs: `<div class="proto-tabs"><div class="proto-tablist"><button class="proto-tab">…</button>…</div><div class="proto-tabpanel">…</div>…</div>` (equal counts; mark the open tab `aria-selected="true"`)
+  - accordion: `<div class="proto-accordion"><div class="proto-acc-item"><button class="proto-acc-trigger" aria-expanded="false">…</button><div class="proto-acc-panel">…</div></div>…</div>`
+
+  **Capture-mode limit:** a Figma-sourced prototype converges to a *single static
+  reference image*, so only the visible slide exists — there is nothing to cycle.
+  Do **not** fabricate slides; leave single-frame widgets as static markup. The
+  contract (and the activator) are for captures that retained the off-screen
+  states.
 - **3.8 DA doc** — emit a **Milo page** instead of EDS block tables: empty
   `<header>`/`<footer>`, one `snowflake` block carrying the template name (+
   optional slot overrides), and a `metadata` block that re-emits
