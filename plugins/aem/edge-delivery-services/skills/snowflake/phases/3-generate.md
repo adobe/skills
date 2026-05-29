@@ -59,10 +59,19 @@ animations, asset rewriting, self-checks) is unchanged:
 - **Skip 3.3 (header fragment) and 3.4 (footer fragment) entirely.** Do not
   emit `fragments/<template>/*`. Milo renders the live gnav/footer from
   metadata. (Capturing them is the bug the Milo flavor fixes.)
-- **3.1 head links** — still lift the body's `<link>`s (typekit, fonts), but
-  drop any `global-navigation*.css` / footer chrome stylesheets: Milo loads
-  C2 styles itself via `foundation: c2`, and chrome CSS without the chrome DOM
-  just adds weight.
+- **3.1 head links — KEEP all body/block stylesheets.** This is load-bearing.
+  The overlay block injects the captured, **pre-decorated** DOM and Milo does
+  **not** re-decorate it, so per-block CSS will NOT auto-load. `foundation: c2`
+  only pulls the C2 **base** `styles.css`, not each block's stylesheet. Lift
+  **every** source `<link rel="stylesheet">` into the template's top level
+  (the overlay block lifts them into `<head>` at runtime) **EXCEPT**
+  `global-navigation*.css` and any footer-chrome CSS — Milo's own gnav/footer
+  blocks load those. Concretely, keep e.g. `router-marquee.css`,
+  `rich-content.css`, `base-card.css`, `elastic-carousel.css`,
+  `carousel-c2.css`, `visually-hidden.css`, `section-metadata.css`,
+  `modal.css`, `merch.css`, `video.css`, typekit, lenis. **Dropping these is
+  what makes the overlaid body render as unstyled, stacked content** — only the
+  two chrome stylesheets come out.
 - **3.8 DA doc** — emit a **Milo page** instead of EDS block tables: empty
   `<header>`/`<footer>`, one `snowflake` block carrying the template name (+
   optional slot overrides), and a `metadata` block that re-emits
