@@ -172,6 +172,52 @@ the EDS project. All other outputs are net-new files in
 non-conflicting locations (`styles/<theme>.css`, `fragments/<theme>/`,
 `assets/<theme>/`, etc.).
 
+## blocks/*/*.css patch — wrap defaults in `@layer base`
+
+Required for the cascade-layer scaffold in
+[`theme-css-template.md`](./theme-css-template.md) to work as designed.
+The CSS Cascade Layers spec has one rule that breaks naïve theme
+authoring: **unlayered CSS rules always beat ANY layered rule**,
+regardless of specificity. EDS loads `blocks/<name>/<name>.css`
+*after* the theme stylesheet, and those files ship from the boilerplate
+with unlayered rules. Without this patch, every theme rule in
+`@layer variant` (or `@layer base`, `@layer substrate`) silently loses
+to any rule in `blocks/cards/cards.css` (and similar) that touches the
+same property.
+
+The fix: walk every `blocks/<name>/<name>.css` file with non-trivial
+content and wrap the file body in `@layer base { ... }`.
+
+Before:
+```css
+/* blocks/cards/cards.css */
+.cards > ul > li {
+  border: 1px solid #dadada;
+  background-color: var(--background-color);
+}
+```
+
+After:
+```css
+/* blocks/cards/cards.css */
+@layer base {
+  .cards > ul > li {
+    border: 1px solid #dadada;
+    background-color: var(--background-color);
+  }
+}
+```
+
+The wrapping is idempotent — re-running the patch detects the existing
+`@layer base {` opening and skips. Empty stubs (e.g., `text.css`,
+`footer.css`) are left alone — no rules means no layer needed.
+
+Files typically wrapped on a fresh AEM boilerplate:
+`blocks/cards/cards.css`, `blocks/columns/columns.css`,
+`blocks/hero/hero.css`. Per-project block CSS files (custom blocks)
+must also be wrapped if they have rules that the theme should be able
+to override.
+
 ## Edge cases
 
 - **Project already has its own blocks-mode pattern.** Detect by

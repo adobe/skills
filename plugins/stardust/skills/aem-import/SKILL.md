@@ -318,6 +318,14 @@ absent, apply the patch documented in `reference/engine-patch.md`:
 2. `blocks/header/header.js` + `blocks/footer/footer.js`: read
    `main.dataset.theme` first (with `dataset.overlay` as fallback
    for backward compat with overlay-mode pages).
+3. **`blocks/<name>/<name>.css` files: wrap non-empty bodies in
+   `@layer base { ... }`.** Required for the cascade-layer scaffold
+   in `reference/theme-css-template.md` to win against block
+   defaults. Without this, unlayered rules in `blocks/cards/cards.css`
+   (and similar) silently beat every `@layer variant` rule in the
+   theme — because the CSS spec says unlayered rules beat any
+   layered rule. Idempotent — detects existing `@layer base {` and
+   skips. Empty stubs (e.g., `text.css`) are left alone.
 
 The patch is backward-compatible — existing overlay-mode pages
 continue to work because their HTML fetch succeeds and the

@@ -205,6 +205,31 @@ is no worse than before the refactor.
 
 No transpilation, no PostCSS plugin, no polyfill needed.
 
+## Critical: `blocks/*/*.css` MUST also be layered
+
+The CSS Cascade Layers spec has one rule that breaks naïve theme
+authoring: **unlayered CSS rules always beat ANY layered rule**,
+regardless of specificity or source order. EDS loads
+`blocks/<name>/<name>.css` *after* the theme stylesheet, and the
+boilerplate ships those files with unlayered rules. Without an
+additional patch, every theme rule in `@layer variant` silently
+loses to any rule in `blocks/cards/cards.css` that touches the
+same property.
+
+The engine-patch step (see `engine-patch.md`) wraps each non-empty
+`blocks/<name>/<name>.css` body in `@layer base { ... }`. This is
+**mandatory** — without it, the scaffold's variant layer never wins
+against block defaults like `.cards > ul > li { border: 1px solid
+#dadada; background-color: var(--background-color) }`, and the theme's
+variants render as half-styled (right text color, wrong background;
+right layout, wrong border; etc.).
+
+Symptom that fires when the wrap is missing: cards backgrounds, image
+aspect-ratios, or default borders bleed through from the boilerplate
+defaults even though the variant rule clearly sets them. Check
+`blocks/cards/cards.css` for an `@layer base {` opening line —
+if absent, run the engine patch.
+
 ## Migration of existing themes
 
 Existing pre-layer themes continue to work — they're untouched. If a
