@@ -1,0 +1,23 @@
+{
+  "skill_name": "reduce-page",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Reduce https://example.com to a structural skeleton showing its content layout",
+      "expected_output": "A skeleton.html and manifest.json are produced with semantic tokens representing the page structure.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_exists",
+          "path": "skeleton.html",
+          "description": "Skeleton HTML file is generated from the page."
+        },
+        {
+          "type": "file_exists",
+          "path": "manifest.json",
+          "description": "Manifest JSON file is generated alongside the skeleton."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "web",
+  "description": "Browser automation and web page analysis skills: detect the available browser layer, connect via CDP, probe CDN bot protection, dismiss overlays, capture spatial DOM trees, reduce pages to skeletons, and extract structured page resources.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": ["browser", "playwright", "cdp", "web-scraping", "page-analysis", "automation"]
+}

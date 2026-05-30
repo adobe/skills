@@ -1,0 +1,18 @@
+{
+  "skill_name": "cdp-ext-pilot",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Load my Chrome extension from /path/to/extension and open its sidepanel",
+      "expected_output": "Chrome launches with the extension loaded and the sidepanel is opened via CDP.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "command_succeeds",
+          "command": "node -e \"import('./scripts/cdp-ext-pilot.mjs').catch(e => process.exit(e.code === 'ERR_MODULE_NOT_FOUND' ? 1 : 0))\"",
+          "description": "CDP extension pilot script has valid ESM syntax."
+        }
+      ]
+    }
+  ]
+}

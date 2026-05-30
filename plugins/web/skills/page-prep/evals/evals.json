@@ -1,0 +1,18 @@
+{
+  "skill_name": "page-prep",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Prepare https://example.com for screenshots by dismissing any cookie banners or overlays",
+      "expected_output": "A JS recipe is generated for dismissing overlays on example.com, ready to be injected into any browser tool.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "command_succeeds",
+          "command": "node -e \"require('./scripts/overlay-detect.js')\"",
+          "description": "Overlay detection script loads without syntax errors."
+        }
+      ]
+    }
+  ]
+}

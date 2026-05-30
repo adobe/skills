@@ -1,0 +1,18 @@
+{
+  "skill_name": "browser-universal",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Open the browser and take a screenshot of https://example.com",
+      "expected_output": "A screenshot of example.com is captured using the detected browser layer.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_matches_glob",
+          "glob": "*.png",
+          "description": "A screenshot file is produced."
+        }
+      ]
+    }
+  ]
+}

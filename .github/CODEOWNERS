@@ -38,3 +38,6 @@
 
 # Stardust
 /plugins/stardust                                      @paolomoz
+
+# Web (browser automation and page analysis)
+/plugins/web                                           @catalan-adobe

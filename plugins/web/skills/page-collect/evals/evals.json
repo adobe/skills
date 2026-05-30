@@ -1,0 +1,18 @@
+{
+  "skill_name": "page-collect",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Extract all icons and SVGs from https://example.com",
+      "expected_output": "SVG icons are extracted, classified, and saved to /icons/ ready for use.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "dir_exists",
+          "path": "icons",
+          "description": "Icons directory is created with extracted SVGs."
+        }
+      ]
+    }
+  ]
+}

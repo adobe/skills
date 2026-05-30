@@ -1,0 +1,18 @@
+{
+  "skill_name": "cdp-connect",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Connect to Chrome running on port 9222 and navigate to https://example.com",
+      "expected_output": "Chrome is controlled via CDP, page navigates to example.com.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "command_succeeds",
+          "command": "node -e \"require('./scripts/cdp.js')\"",
+          "description": "CDP script loads without syntax errors."
+        }
+      ]
+    }
+  ]
+}
