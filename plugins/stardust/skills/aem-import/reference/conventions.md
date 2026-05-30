@@ -257,6 +257,36 @@ If a theme needs to OVERRIDE cards.js decoration entirely, it would
 need to provide a custom `blocks/cards/cards.js`. Don't unless
 necessary — composing with the standard decoration is cleaner.
 
+### Sticky header attaches to `.header-wrapper`, not the chrome's inner div
+
+EDS emits chrome inside `<header class="header-wrapper">`, a body-level
+wrapper. Whatever fragment HTML the theme provides sits inside that
+wrapper, typically starting with an inner div like `.site-header` or
+`.utility-strip`.
+
+A naïve `.site-header { position: sticky; top: 0 }` fails silently —
+the sticky element's containing block is `.header-wrapper`, which is
+exactly the same height as `.site-header`. Sticky behavior only
+operates **within the containing block**, so when both are equally
+tall there's no scroll range to stick across — the header scrolls
+away with its wrapper.
+
+**Apply sticky to `.header-wrapper` instead:**
+
+```css
+.header-wrapper { position: sticky; top: 0; z-index: 50; }
+.site-header { background: var(--color-surface-dark); color: var(--color-text-on-dark); }
+```
+
+`.header-wrapper` is a direct child of `<body>`, so its containing
+block is body — full page-height to stick across.
+
+Symptom when this is wrong: sticky declaration shows in computed style
+(`position: sticky; top: 0px`) but DevTools' "scroll" shows the header
+moving with the scroll, not pinning. The chrome's inner classes
+(`.site-header`, `.utility-strip`) are red herrings — they live inside
+the constrained wrapper.
+
 ### `columns.js` adds `columns-N-cols` class + `columns-img-col` per image cell
 
 The decoration adds:
