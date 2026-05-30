@@ -671,6 +671,41 @@ plausible. Tall blog cards (2:3 portrait) expose it.
 }
 ```
 
+### Trap 6 — `display: contents` on the base body needs explicit override
+
+The shared base sets:
+```css
+.cards.block .cards-card-body { display: contents; }
+```
+
+This is intentional for non-photo cards — it lets `cards-card-body`
+children flow into the li's flex layout (eyebrow → h3 → body → CTA
+all stack vertically as siblings under the li). But any photo-style
+variant whose body must overlay an absolute-positioned image relies
+on the body being a real box with `position: relative; z-index: N;
+padding: ...`. With `display: contents` the body box doesn't exist
+— position/z-index/padding are silently ignored, and the text
+renders under the image with no stacking context.
+
+**Variants that overlay text on an absolute-positioned image must
+explicitly set `display: block` (or `flex`):**
+
+```css
+.cards.photos.four > ul > li .cards-card-body {
+  display: block;       /* REQUIRED — overrides base display: contents */
+  position: relative;
+  z-index: 2;
+  padding: var(--sp-lg);
+  width: 100%;
+}
+```
+
+Symptom when this is missing: the variant looks right at first glance
+(photo bg renders, gradient overlay renders, layout container has the
+right aspect) but the title/CTA text is invisible. DOM inspection
+shows the text IS in the page (h3.textContent is correct) but its
+bounding rect places it under or behind the image, with no z-index.
+
 ### Trap 5 — Wide-aspect images need `object-fit: contain` defaulted
 
 The shared `.cards.photos` rule uses:
