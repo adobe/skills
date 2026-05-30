@@ -20,6 +20,9 @@ The patterns are grouped by what they fix:
   DA media bus timing
 - [§6 Section substrate transitions](#6-section-substrate-transitions) — how
   to author warm-stone, dark, etc. via section-metadata
+- [§7 Per-variant inheritance traps](#7-per-variant-inheritance-traps) —
+  systematic specificity / cascade / flex-direction gotchas that bite when
+  a theme adds new card or text variants on top of the shared base
 
 ---
 
@@ -168,6 +171,35 @@ For wheelercat, the only main-content icon used is `icon-phone`.
 The skill should ship a small library of common SVG icons (phone,
 search, menu, etc.) and copy them at init.
 
+**`fill="currentColor"` does NOT work inside `<img src=x.svg>`.** When
+EDS loads the SVG as an `<img>`, the SVG lives in its own document
+context — `currentColor` resolves to the SVG's root color (defaulting
+to black), not the parent CSS color. This means an icon set in CSS
+to `color: yellow` will still render BLACK if EDS loaded it as an img.
+
+**Recolor via CSS `mask-image`** when an icon must render in a brand
+color (e.g., Cat Yellow tile icons, yellow map-pins on a dark band):
+
+```css
+.my-context .icon {
+  display: inline-block;
+  width: 40px; height: 40px;
+  background-color: var(--brand-accent);   /* this becomes the visible color */
+  -webkit-mask-position: center;       mask-position: center;
+  -webkit-mask-repeat: no-repeat;      mask-repeat: no-repeat;
+  -webkit-mask-size: contain;          mask-size: contain;
+}
+.my-context .icon img { display: none; }   /* hide the loaded <img> */
+.my-context .icon-service { -webkit-mask-image: url('/icons/service.svg'); mask-image: url('/icons/service.svg'); }
+.my-context .icon-phone   { -webkit-mask-image: url('/icons/phone.svg');   mask-image: url('/icons/phone.svg');   }
+/* ... one rule per icon used in this context ... */
+```
+
+The trick: `background-color` paints the box, `mask-image` uses the
+SVG silhouette as a cutout. Per-icon `mask-image` URLs are required
+(no way to read the icon-name class dynamically from CSS alone). Always
+vendor-prefix `-webkit-mask-*` for Safari.
+
 ### `cards.js` classifies image cells only when `<picture>` is descendant
 
 The boilerplate cards.js:
@@ -188,6 +220,31 @@ guard fails and the cell gets `cards-card-body` class. ✗
 raw `<img>`). DA's pipeline re-wraps `<img>` in `<picture>` during
 media-bus processing IF it can fetch the source — but to be safe,
 author with `<picture>` explicitly.
+
+**Single-cell rows ALWAYS become `cards-card-body`, never
+`cards-card-image`.** When a card row has only ONE cell, EDS doesn't
+classify it as an image cell even if the cell contains nothing but a
+picture. The cards.js guard `div.children.length === 1 && div.querySelector('picture')` evaluates against the OUTER cell, but the
+classifier loop only fires for rows with multiple cells.
+
+This bites variants like `cards.logos` where each row holds one logo
+image and no body text. Author each logo as a single-cell row and the
+li ends up with `<div class="cards-card-body"><p><img …></p></div>` —
+NOT the expected `cards-card-image`. Variant CSS must therefore handle
+BOTH `.cards-card-image` (multi-cell rows) AND `.cards-card-body img`
+(single-cell rows), OR force a second empty cell in the row to trigger
+the classifier.
+
+```css
+/* Handle both classification paths for logo-only cards */
+.cards.logos .cards-card-image img,
+.cards.logos .cards-card-body img {
+  max-height: 64px;
+  object-fit: contain;
+  /* ... */
+}
+.cards.logos .cards-card-body { display: contents; }  /* don't hide it */
+```
 
 ### `cards.js` runs full decorate even on theme-styled cards
 
@@ -388,6 +445,26 @@ prototype max-width.
 
 ## §5 Image + asset pipeline
 
+### DA image src MUST be absolute URLs
+
+```html
+<!-- WRONG: relative path — DA fetches against admin.da.live, 404s, stores about:error -->
+<picture><img src="/assets/wheelercat-home/media/hero.webp" alt="..."></picture>
+
+<!-- RIGHT: absolute URL pointing at the EDS preview origin -->
+<picture><img src="https://main--<repo>--<owner>.aem.page/assets/wheelercat-home/media/hero.webp" alt="..."></picture>
+```
+
+DA's content pipeline fetches every `src` URL at content-process time.
+A relative path like `/assets/...` is resolved against DA's own
+origin (`admin.da.live`), which 404s, and the img is stored as
+`about:error`. Subsequent re-PUTs of the same relative-path content
+don't help — DA caches the broken fetch result. The fix is to author
+the DA HTML with absolute URLs from the start.
+
+The wheelercat CVA reference page confirms the pattern: every img src
+points at `https://main--uplift-wheelercat-eds--paolomoz.aem.page/assets/...`.
+
 ### DA media bus image-fetch race
 
 When DA receives content with `<img src="https://eds-codebus-url/image.jpg">`,
@@ -399,13 +476,21 @@ it fetches the URL at content-process time and stores in its media bus.
 
 **Workaround:**
 1. Push code (assets) to git first
-2. Wait for code-bus deploy (typically 5–8s)
+2. Wait for code-bus deploy (typically 5–8s, occasionally longer)
 3. PUT DA content (so DA fetches images from the now-propagated URLs)
 4. Trigger preview
 
 If a previous DA push got `about:error`, re-PUT the same content
 after code-bus deploy completes — DA re-runs media-bus processing
 on the re-PUT.
+
+### DA token expiry pre-check
+
+The `DA_TOKEN` in `.env` is an OAuth access token with `expires_in: 86400`
+seconds (~24h). It silently expires between sessions; first PUT in a
+fresh session typically returns 401. The skill's Setup phase should
+test the token with a cheap auth-only request (`GET /source/<owner>/<repo>/`)
+and prompt for refresh before any work — fail fast, not five files in.
 
 ### Per-theme asset paths
 
@@ -458,6 +543,164 @@ main .section:not(:has(.block)) { display: none; }
 
 ---
 
+## §7 Per-variant inheritance traps
+
+Every new card / text variant a theme adds inherits from the shared
+base patterns in §4. Five systematic gotchas surface when a variant
+needs to deviate from the base — all rooted in CSS cascade order and
+flex-context inheritance. Surfaced together while authoring the
+wheelercat home page (which exercises five new variants:
+`cards.finance`, `cards.tiers`, `cards.photos.four`, `cards.logos`,
+`cards.locations`).
+
+> **Structural fix: the cascade-layer scaffold in [`theme-css-template.md`](./theme-css-template.md).**
+> Traps 1 and 2 are *fully* eliminated by emitting base / substrate /
+> variant rules in their own `@layer` blocks — variant rules always
+> win regardless of selector specificity or source order, so no
+> specificity bumps and no substrate-variant pairing dance. Traps 3,
+> 4, 5 are eliminated by the template-constant defaults the scaffold
+> always emits (inter-block spacing, `flex-direction` + `justify-content`
+> on photo cards, `object-fit` token).
+>
+> The traps below are documented here both as the *symptom* (when
+> they fire, what fails) and as a sanity-check the scaffold catches
+> them. If you ever see one of these symptoms on a freshly-emitted
+> theme, the scaffold is missing or its layer order is wrong.
+
+### Trap 1 — Variant text rules need specificity ≥ (0,4,1)
+
+The shared base sets:
+```css
+.cards.block .cards-card-body p:not(.button-wrapper) {
+  color: var(--color-body);   /* dark gray */
+}
+```
+
+Specificity: 3 classes + 1 pseudo-class (`:not(.button-wrapper)`) +
+1 element = **(0, 4, 1)**. This rule wins against any naïve variant
+selector like `.cards.locations > ul > li .cards-card-body p`
+((0, 3, 3) = 3 classes + 3 elements) by class count, so a custom
+variant on dark substrate renders dark text on dark — unreadable.
+
+**Always add `:not(.button-wrapper)` (or `.block`) to variant text
+rules so they tie or beat (0, 4, 1):**
+
+```css
+/* WRONG — (0,3,3), loses to base */
+.cards.locations > ul > li .cards-card-body p { color: white; }
+
+/* RIGHT — (0,4,3), beats base */
+.cards.locations > ul > li .cards-card-body p:not(.button-wrapper) { color: white; }
+```
+
+### Trap 2 — Substrate overrides silently bury variant rules
+
+The pattern from §6:
+```css
+.section.dark .text.block { max-width: 880px; margin: 0; text-align: left; }
+```
+
+Specificity: **(0, 3, 0)**. The variant `.text.block.centered` also
+has **(0, 3, 0)** but is authored EARLIER in the file. Tied specificity
++ later source order means `.section.dark .text.block` wins and
+`text-align: center` is silently dropped under dark substrate.
+
+**Every substrate override on a base block must be paired with explicit
+variant overrides** so variants survive substrate context:
+
+```css
+.section.dark .text.block          { max-width: 880px; margin: 0; text-align: left; }
+.section.dark .text.block.centered { max-width: 880px; margin: 0 auto; text-align: center; }  /* required pair */
+```
+
+Generalized rule: for every `.section.<substrate> .<block>` override
+that the theme writes, also write `.section.<substrate> .<block>.<variant>`
+for each variant used on that substrate.
+
+### Trap 3 — No automatic inter-block spacing within a section
+
+EDS wraps each block in `.<name>-wrapper` and stacks them as direct
+children of `.section`. There is NO automatic gap between wrappers.
+A trailing CTA (`text.centered`) after `cards` or `columns` collides
+into the preceding block.
+
+```css
+/* Always include these in any per-theme stylesheet */
+.cards-wrapper + .text-wrapper,
+.columns-wrapper + .text-wrapper,
+.cards-wrapper + .cards-wrapper,
+.columns-wrapper + .cards-wrapper {
+  margin-top: var(--sp-xxl);
+}
+```
+
+This affects EVERY page that stacks blocks within a section. Bake into
+the skill's default per-theme CSS.
+
+### Trap 4 — Variant `align-items: flex-end` doesn't align to bottom
+
+The shared base sets `display: flex; flex-direction: column;` on every
+card `<li>`:
+```css
+.cards.block > ul > li { display: flex; flex-direction: column; ... }
+```
+
+When a variant adds `display: flex; align-items: flex-end;` (intending
+"body at the bottom of the photo card"), `flex-direction` is NOT
+overridden — so it stays `column`. With column direction, `align-items`
+controls the CROSS axis (horizontal), and `flex-end` means RIGHT,
+not bottom. Items still stack from the top.
+
+Even the base `.cards.photos` rule in the wheelercat reference has
+this implicit bug — it only doesn't manifest because the photo cards
+were tall enough relative to their content that the layout looked
+plausible. Tall blog cards (2:3 portrait) expose it.
+
+**Use `justify-content` for main-axis alignment with column direction:**
+
+```css
+/* WRONG — align-items doesn't put body at bottom under column direction */
+.cards.photos > ul > li { display: flex; align-items: flex-end; }
+
+/* RIGHT — explicitly put body at end of main axis */
+.cards.photos > ul > li {
+  display: flex;
+  flex-direction: column;       /* explicit, even though inherited */
+  justify-content: flex-end;    /* main axis = vertical for column */
+  align-items: stretch;         /* cross axis = full width */
+}
+```
+
+### Trap 5 — Wide-aspect images need `object-fit: contain` defaulted
+
+The shared `.cards.photos` rule uses:
+```css
+.cards.photos > ul > li .cards-card-image img { width: 100%; height: 100%; object-fit: cover; }
+```
+
+`object-fit: cover` crops the image to fill the box — fine for portrait
+photos, wrong for wide-aspect images (brand logos at 343×100, banners,
+horizontal partner marks). With cover semantics, wide images get
+center-cropped and look mangled.
+
+**Variants holding wide-aspect images (logos, banners) must default
+to `object-fit: contain`:**
+
+```css
+.cards.logos > ul > li .cards-card-image img {
+  width: 100%;
+  height: 64px;
+  object-fit: contain;   /* preserve aspect; letterbox if needed */
+  max-height: 64px;
+}
+```
+
+The base photo-card rule was written for square-ish service-line photos
+and doesn't generalize. Treat `cover` as opt-in (portrait/landscape
+photos), not default.
+
+---
+
 ## Cross-reference
 
 These patterns are realized in the wheelercat reference theme at
@@ -468,6 +711,7 @@ These patterns are realized in the wheelercat reference theme at
 - `fragments/wheelercat-cva-blocks/{header,footer}.html` — chrome
 - `scripts/scripts.js`, `blocks/header/header.js`, `blocks/footer/footer.js`
   — engine patch (see `engine-patch.md`)
-- DA content at `/customer-value-agreements-blocks-test.html` and
-  `/service-blocks-test.html` — two authored pages exercising the
-  full pattern catalogue
+- DA content at `/customer-value-agreements-blocks-test.html`,
+  `/service-blocks-test.html`, and `/home-blocks-test.html` —
+  three authored pages exercising the full pattern catalogue (the
+  home page added 5 new variants and surfaced the §7 inheritance traps)

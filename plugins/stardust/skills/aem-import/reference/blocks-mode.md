@@ -32,6 +32,26 @@ the prototype's visual treatment.
   ratios). See `conventions.md` for the workarounds; some don't
   translate cleanly to standard EDS authoring shapes.
 
+## Structural backbone — cascade-layer scaffold
+
+Every per-theme stylesheet in blocks mode is emitted using the
+cascade-layer scaffold documented in
+[`theme-css-template.md`](./theme-css-template.md). The layer order
+(`tokens → fonts → reset → chrome → base → layout → substrate →
+variant → responsive`) makes the cascade explicit and eliminates the
+per-variant inheritance traps catalogued in
+[`conventions.md` §7](./conventions.md#7-per-variant-inheritance-traps).
+
+In practice this means a new variant rule like
+`.cards.locations .cards-card-body p { color: white }` is enough on
+its own — no `:not(.button-wrapper)` specificity bumps, no
+substrate+variant pairing, no `!important`. The layer ordering
+ensures variants always win.
+
+The scaffold is mandatory: the same pattern that makes blocks mode
+"reuse theme CSS across many pages" only works if adding a new
+variant is a one-line rule, not a specificity puzzle.
+
 ## Block vocabulary
 
 Default block types the skill maps prototype sections to. Each can

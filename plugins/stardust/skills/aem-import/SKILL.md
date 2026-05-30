@@ -166,42 +166,93 @@ The user may correct mappings before Phase 2. Lock answers in
 
 ### Phase 2 — Generate the per-theme stylesheet
 
-Lift the prototype's `<style>` block into `styles/<theme>.css` with
-two transformations:
+Emit `styles/<theme>.css` using the **cascade-layer scaffold**
+documented in `reference/theme-css-template.md`. The scaffold is not
+optional — its layer ordering is what eliminates the
+specificity / source-order traps catalogued in `conventions.md` §7.
+Variants in `@layer variant` automatically win against base + substrate
+regardless of selector specificity, so the generator can write naïve
+per-variant selectors without specificity-bump tricks.
 
-1. **Rewrite per-section selectors to target generic block classes.**
-   For each mapped section, rename `.hero`, `.plan-picker`,
-   `.premium-deepdive`, `.tmr`, `.cta-bar`, etc. to their EDS-block
-   equivalents (`.hero`, `.text.centered`, `.cards.tiers`,
-   `.columns`, `.cta-bar`). The substitution table comes from
-   Phase 1's mapping.
-2. **Apply the EDS-pipeline workarounds** (see
-   `reference/conventions.md` § EDS pipeline quirks). These are
-   not optional — without them the page fails to render correctly:
-   - Hero `min-height` matches prototype (don't introduce defaults)
-   - Hero text cell `max-width` accounts for padding (set to
-     `calc(<proto-content-width> + padding-l + padding-r)`)
-   - `.text.block.centered { max-width: 880px }` (or whatever the
-     prototype's intro container is; default 880)
-   - `a.button .icon { font-size: 0.9em; margin-right: 4px }` and
-     `.icon > img { width: 1em; height: 1em; vertical-align: -0.15em }`
-   - `.icon:has(> img)::before { content: none !important }` (suppress
-     icomoon font glyph when EDS injects SVG)
-   - `em > a` direct styling for icon-containing CTAs (decorateButton
-     skips them — see Phase 4)
-   - `p:has(code)` placeholder pattern (the eyebrow marker `<code>`
-     survives DA; `<small>` does not)
-   - `main .section:not(:has(.block)) { display: none }` (hide empty
-     metadata-stripped sections)
-   - `.cards.photos > ul > li:not(:has(.cards-card-image))` for
-     placeholder image cards
-3. **Replace asset paths.** Rewrite `../current/assets/fonts/`,
-   `../current/assets/media/` etc. to the EDS-served paths
-   (`/assets/<theme>/fonts/`, `/assets/<theme>/media/`).
+Declare the layer order first:
+
+```css
+@layer tokens, fonts, reset, chrome, base, layout, substrate, variant, responsive;
+```
+
+Then emit content layer by layer:
+
+1. **`@layer tokens`** — translate the prototype's `:root` block.
+   Rewrite asset paths from `../current/assets/...` to
+   `/assets/<theme>/...`. If a sibling theme exists, prefer its
+   shared fonts/logo to avoid duplication.
+
+2. **`@layer fonts`** — `@font-face` declarations from the prototype.
+
+3. **`@layer reset`** — the standard reset (template constant — same
+   across themes).
+
+4. **`@layer chrome`** — translate the prototype's chrome CSS
+   (utility-strip, site-header, mega-nav, site-footer).
+
+5. **`@layer base`** — generic block defaults. These are mostly
+   **template constants** (`.hero.block`, `.text.block`,
+   `.cards.block`, `.columns.block`, `.cta-bar.block`), emitted the
+   same way for every theme. Include the EDS-pipeline defensive
+   defaults from `conventions.md` §2 + §4:
+   - Hero `min-height` matches the prototype (no default)
+   - Hero text cell `max-width: calc(<proto-content-width> + padding-l + padding-r)`
+   - `a.button .icon { font-size: 0.9em }` + `.icon > img { width: 1em; height: 1em }`
+   - `.icon:has(> img)::before { content: none !important }`
+   - `em > a` direct styling for icon-containing CTAs
+   - `p:has(code)` placeholder pattern
+
+6. **`@layer layout`** — inter-block spacing + section defaults
+   (template constant). REQUIRED — without these the trailing CTAs
+   collide into preceding blocks (`conventions.md` §7 Trap 3):
+   ```css
+   .cards-wrapper + .text-wrapper,
+   .columns-wrapper + .text-wrapper,
+   .cards-wrapper + .cards-wrapper,
+   .columns-wrapper + .cards-wrapper { margin-top: var(--sp-xxl); }
+   ```
+   Plus `main .section:not(:has(.block)) { display: none }` and the
+   substrate base padding.
+
+7. **`@layer substrate`** — per-substrate overrides on base blocks
+   (`.section.warm-stone`, `.section.dark`). Emit one block per
+   substrate the page uses.
+
+8. **`@layer variant`** — per-variant rules. Translate the
+   prototype's per-section CSS, rewriting selectors to target EDS
+   block class + variant (e.g., `.plan-picker → .cards.tiers`,
+   `.finance → .cards.finance`). **NO specificity tricks needed** —
+   the layer ordering ensures variants win.
+
+   Variant rules must explicitly set properties that the base
+   doesn't generalize cleanly:
+   - **`flex-direction` + `justify-content`** when overriding the
+     base `.cards.block > ul > li` layout. `align-items: flex-end`
+     does NOT align to the bottom of a column-direction parent.
+     See `conventions.md` §7 Trap 4.
+   - **`object-fit: contain`** for variants holding wide-aspect
+     images (logos, banners). See `conventions.md` §7 Trap 5.
+   - **mask-image recolor** for any icon that must render in a
+     brand color (not the default black). The generator should walk
+     the icons referenced in the variant's DA content and emit
+     one `.<context> .icon-<name> { mask-image: url(...) }` rule
+     per icon. See `conventions.md` §2 (`decorateIcons`).
+
+9. **`@layer responsive`** — media queries. Normal cascade applies
+   inside.
 
 If the EDS project already has another theme's CSS (e.g., a sibling
 home theme), **prefer pointing at its shared assets** (fonts especially)
 to avoid duplication. Surface the deduplication in the log.
+
+**On regeneration of a pre-scaffold theme:** wrap existing content
+in `@layer base { ... }` / `@layer substrate { ... }` blocks. No
+selector rewrites needed — the cascade behavior shifts automatically.
 
 ### Phase 3 — Generate the DA content + chrome fragments + assets
 
@@ -429,10 +480,14 @@ stardust/
 
 ## Reference
 
+- `reference/theme-css-template.md` — the cascade-layer scaffold every
+  per-theme stylesheet uses. **Read this before authoring the Phase 2
+  CSS output.** Defines the 9-layer ordering that eliminates the
+  variant-inheritance traps catalogued in `conventions.md` §7.
 - `reference/conventions.md` — DA authoring vocabulary, EDS pipeline
   quirks, per-block CSS patterns. **Read this before writing any
-  theme.** Captures the 11 patterns discovered in the Wheeler
-  reference engagement.
+  theme.** §1–§6 cover authoring shape; §7 catalogues the per-variant
+  inheritance traps that the cascade-layer scaffold eliminates.
 - `reference/blocks-mode.md` — detailed walk-through of blocks mode.
 - `reference/overlay-mode.md` — detailed walk-through of overlay
   mode + template authoring spec.
