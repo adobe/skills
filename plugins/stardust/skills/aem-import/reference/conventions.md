@@ -257,7 +257,7 @@ If a theme needs to OVERRIDE cards.js decoration entirely, it would
 need to provide a custom `blocks/cards/cards.js`. Don't unless
 necessary — composing with the standard decoration is cleaner.
 
-### Sticky header attaches to `.header-wrapper`, not the chrome's inner div
+### Sticky header attaches to `.header-wrapper` (and may need negative `top`)
 
 EDS emits chrome inside `<header class="header-wrapper">`, a body-level
 wrapper. Whatever fragment HTML the theme provides sits inside that
@@ -271,21 +271,37 @@ operates **within the containing block**, so when both are equally
 tall there's no scroll range to stick across — the header scrolls
 away with its wrapper.
 
-**Apply sticky to `.header-wrapper` instead:**
+**Apply sticky to `.header-wrapper` (body-level child):**
 
 ```css
 .header-wrapper { position: sticky; top: 0; z-index: 50; }
-.site-header { background: var(--color-surface-dark); color: var(--color-text-on-dark); }
 ```
 
-`.header-wrapper` is a direct child of `<body>`, so its containing
-block is body — full page-height to stick across.
+**If the chrome has a top utility strip that should scroll AWAY** (the
+common pattern — yellow utility strip with secondary nav scrolls off,
+main header + dept row pin), offset the sticky top by the strip's
+height so the strip scrolls into negative space:
 
-Symptom when this is wrong: sticky declaration shows in computed style
-(`position: sticky; top: 0px`) but DevTools' "scroll" shows the header
-moving with the scroll, not pinning. The chrome's inner classes
-(`.site-header`, `.utility-strip`) are red herrings — they live inside
-the constrained wrapper.
+```css
+:root { --utility-strip-h: 41px; }
+.header-wrapper {
+  position: sticky;
+  top: calc(0px - var(--utility-strip-h));
+  z-index: 50;
+}
+```
+
+Without the offset, the entire chrome (utility strip + main header +
+dept row) pins together — which is wrong when the prototype's intent
+is that only the persistent nav pins.
+
+**Verification: take screenshots at multiple scroll positions** (e.g.,
+`scrollTo(0, 0)`, `scrollTo(0, 500)`, `scrollTo(0, 1500)`) and look
+at what's visible at the top. A single `getBoundingClientRect().top === 0`
+check is NOT enough — it only confirms the wrapper element is at the
+viewport top, not which inner band is visible. Equally, computed
+`position: sticky` showing in DevTools means the rule is set, not that
+sticky behavior is actually happening.
 
 ### `columns.js` adds `columns-N-cols` class + `columns-img-col` per image cell
 
