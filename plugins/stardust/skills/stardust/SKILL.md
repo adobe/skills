@@ -41,8 +41,9 @@ Once setup is done, route on the user's input:
   `reference/state-machine.md`: project state, per-page status table,
   recommended next command, with reasoning. Do not write anything.
 - **First word is `distill`, `extract`, `direct`, `prototype`,
-  `migrate`, `uplift`, or `aem-import`.** Delegate to the matching
-  sub-command (`stardust:<name>` skill). Pass remaining args through.
+  `migrate`, `uplift`, `aem-import`, or `aem-import-site`.** Delegate
+  to the matching sub-command (`stardust:<name>` skill). Pass remaining
+  args through.
   - `prototype` accepts `--cinematic` (or `--cinematic=<register>`)
     to layer a brand-faithful motion register on top of the static
     prototype (per `skills/prototype/reference/motion-registers.md`).
@@ -60,6 +61,14 @@ Once setup is done, route on the user's input:
     slot-shaped authoring). Use when the prototype needs to land on
     aem.page via admin.da.live, not as a static migrate output. See
     `skills/aem-import/SKILL.md`.
+  - `aem-import-site` orchestrates SITE-WIDE migration to EDS. Walks
+    the template inventory (from clustering), asks per-template input
+    mode (A: import existing prototype · B: author new prototype first ·
+    C: build directly as EDS · D: skip), delegates per-template work
+    to `aem-import` (or `prototype` then `aem-import`), then writes
+    per-template fill scripts and batch-migrates every page. Use when
+    migrating > 50 pages where the LLM-crafts-once + scripts-execute-at-
+    scale pattern is the leverage. See `skills/aem-import-site/SKILL.md`.
 - **First word is anything else (a freeform phrase).** Treat it as a
   redesign intent. Load `reference/intent-reasoning.md` and follow the
   procedure step by step. **Do not execute any impeccable or stardust

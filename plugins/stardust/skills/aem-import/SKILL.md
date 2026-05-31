@@ -486,6 +486,15 @@ stardust/
   aem-import-log.md                          ← per-page log: mapping decisions, asset list, verification result
 ```
 
+## Related skill
+
+For **site-wide** migration (N templates × thousands of pages), use
+[`stardust:aem-import-site`](../aem-import-site/SKILL.md) — it
+orchestrates per-template invocations of THIS skill, asking the user
+per template whether to import an existing prototype, author a new one
+first, build directly as EDS, or skip. Use that orchestrator when
+you're migrating > 50 pages.
+
 ## Reference
 
 - `reference/theme-css-template.md` — the cascade-layer scaffold every
