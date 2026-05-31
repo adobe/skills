@@ -62,6 +62,51 @@ others get transformed, others get stripped.
   (added on the outermost block div) OR cell structure (presence of
   picture, presence of specific text).
 
+### The `<dl>` lottery — author the post-conversion shape directly
+
+DA's HTML pipeline handles `<dl>/<dt>/<dd>` **inconsistently**. On most
+pages it converts cleanly to `<ul><li><p>label</p><p>value</p></li>`.
+On some pages — apparently triggered by content complexity, length, or
+specific tag patterns — it instead:
+1. Escapes the opening `<dl>` tag as literal text (`&lt;dl className=...&gt;`)
+2. Renames the `class` attribute to `className` in the escape (DA's
+   HTML normalizer treats `class` as React-shaped)
+3. Strips the `<dt>` and `<dd>` tags entirely
+4. Renders children as plain `<p>` paragraphs (sometimes in scrambled order)
+
+The result is visible junk on the rendered page: literal text like
+`<dl className="specs-inline">` shows above the specs, the
+label/value pairs render as a vertical list of plain paragraphs.
+
+**Symptom is page-specific and unpredictable.** A re-PUT of the same
+source doesn't always reproduce; the same content can convert correctly
+on one page and break on another.
+
+**Workaround: never use `<dl>` in authored content.** Emit the
+post-conversion shape directly:
+
+```html
+<!-- WRONG — DA may escape -->
+<dl class="specs-inline">
+  <dt>Hours</dt><dd>481</dd>
+  <dt>Serial</dt><dd>AN400798</dd>
+</dl>
+
+<!-- RIGHT — author the shape DA would (sometimes) convert to -->
+<ul>
+  <li><p>Hours</p><p>481</p></li>
+  <li><p>Serial</p><p>AN400798</p></li>
+</ul>
+```
+
+CSS targets `ul:has(li > p + p)` to recognize this shape as a label/value
+grid.
+
+**Generalize:** any tag DA might unpredictably escape vs convert should
+be authored in its post-conversion shape. The lottery is reproducible
+on `<dl>`; treat other uncommon tags (e.g., `<address>`, `<details>`,
+`<dialog>`) with the same suspicion until proven otherwise.
+
 ### Practical implications
 
 - **Use `<code>` for placeholder eyebrows**, not `<small>`. The pattern:
@@ -110,6 +155,21 @@ others get transformed, others get stripped.
 EDS's standard decorate pipeline applies specific behaviors to specific
 patterns. Several have guards that look fine alone but compose in
 surprising ways.
+
+### `decorateButton` decorates `<p><strong><a>` AND `<p><em><a>` patterns
+
+EDS's `decorateButton` looks at `<p>` elements whose only-child chain
+ends in an `<a>`. Two patterns get decorated, with different output:
+
+| Source markup | Post-decoration |
+|---|---|
+| `<p><strong><a href>...</a></strong></p>` | `<p class="button-wrapper"><a class="button primary" href>...</a></p>` (strong unwrapped) |
+| `<p><em><a href>...</a></em></p>` | `<p class="button-wrapper"><a class="button secondary" href>...</a></p>` (em unwrapped) |
+
+Style by **post-decoration shape** — `.button.primary` and
+`.button.secondary` — not the pre-decoration `strong > a` / `em > a`.
+The wrapper tags are gone by the time CSS runs. Common pitfall: write
+`.cta-bar p em > a` styling, find it doesn't match anything.
 
 ### `decorateButton` skips `<a>` containing `<img>`
 
@@ -303,6 +363,46 @@ viewport top, not which inner band is visible. Equally, computed
 `position: sticky` showing in DevTools means the rule is set, not that
 sticky behavior is actually happening.
 
+### Per-theme motion scripts must wait for `data-block-status="loaded"`
+
+EDS decorates blocks asynchronously **after** `DOMContentLoaded`. A
+per-theme motion script that queries decorated DOM (e.g.,
+`.cards.gallery.block img`) at `DOMContentLoaded` runs against an
+empty selector — click handlers never get wired, behavior silently
+fails.
+
+**Wait for `data-block-status="loaded"` on the blocks you query.**
+The boilerplate aem.js writes that attribute on each block as
+decoration completes:
+
+```js
+function safeInit() {
+  if (initialized) return;        // CRITICAL — double-init guard
+  initialized = true;
+  realInit();
+}
+
+function waitForBlocksThenInit() {
+  const ready = () => document.querySelector('.cards.gallery.block')
+    ?.dataset?.blockStatus === 'loaded';
+  if (ready()) { safeInit(); return; }
+  const observer = new MutationObserver(() => {
+    if (ready()) { observer.disconnect(); safeInit(); }
+  });
+  observer.observe(document.body, {
+    childList: true, subtree: true,
+    attributes: true, attributeFilter: ['data-block-status'],
+  });
+  setTimeout(() => { observer.disconnect(); safeInit(); }, 5000); // safety
+}
+```
+
+**Always guard against double-init.** Both the observer detection AND
+the safety timeout can fire — without a flag, the init function runs
+twice, appends two overlays to `<body>`, registers two sets of click
+handlers, and they fight each other (symptom: click X to close lightbox
+→ image jumps to previous instead of closing; close requires two clicks).
+
 ### `columns.js` adds `columns-N-cols` class + `columns-img-col` per image cell
 
 The decoration adds:
@@ -468,6 +568,108 @@ export default function decorate() { /* no-op; styling is theme-owned */ }
 
 This silences EDS's per-block resource 404s in the console.
 
+### `.hero` variants must override `picture { position: absolute }`
+
+Boilerplate `blocks/hero/hero.css` sets:
+```css
+.hero picture { position: absolute; inset: 0; z-index: -1; object-fit: cover; }
+```
+treating the picture as a background-layer behind the hero text
+(standard EDS hero pattern).
+
+A variant like `.hero.listing` that wants the picture **inline in a
+grid cell** (right column of a 2-col hero) inherits the `position:
+absolute` rule and the picture overflows the grid cell, often
+collapsing the cell to height 0. Symptom: empty box where the photo
+should render; image visible only at viewport-width scale.
+
+**Variant CSS must explicitly reset position + insets on picture:**
+
+```css
+.hero.listing.block > div > div:last-child picture {
+  position: static !important;
+  inset: auto !important;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.hero.listing.block > div > div:last-child img {
+  width: 100%; height: 100%; object-fit: cover;
+}
+```
+
+`!important` is needed because the base rule's specificity ties most
+variant selectors at (0, 4, 2) and the base is in `@layer base` while
+the variant is in `@layer variant` — variant layer beats base layer in
+the normal cascade, but `inset: 0` shorthand vs individual properties
+can resolve in surprising ways. `!important` makes it unambiguous.
+
+### `.cta-bar.<variant>` content lives in `> div > div`, not `> div`
+
+EDS emits cta-bar (and most text-shaped blocks) as a single
+row + single cell:
+
+```html
+<div class="cta-bar triple block">
+  <div>            <!-- row -->
+    <div>          <!-- cell — actual content here -->
+      <h2>...</h2>
+      <p class="button-wrapper">...</p>
+      <p class="button-wrapper">...</p>
+    </div>
+  </div>
+</div>
+```
+
+A variant that wants h2 + buttons inline needs to flex the **inner
+cell**, not the row wrapper:
+
+```css
+/* WRONG — flex on row wrapper, but it has only one child (the cell);
+   the cell uses default block layout and stacks content vertically */
+.cta-bar.triple.block > div { display: flex; flex-wrap: wrap; }
+
+/* RIGHT — flex on the cell so h2 and button-wrappers actually flex */
+.cta-bar.triple.block > div > div {
+  display: flex; flex-wrap: wrap;
+  justify-content: center; align-items: center;
+  gap: var(--sp-xl) var(--sp-md);
+}
+.cta-bar.triple.block > div > div h2 { flex: 0 0 100%; text-align: center; }
+.cta-bar.triple.block > div > div p.button-wrapper { flex: 0 0 auto; }
+```
+
+The same `> div > div` pattern applies to other single-row+cell blocks
+(`.text`, `.breadcrumb`) when the variant needs to flex its children.
+
+### Specs grid must explicitly `width: 100%` inside flex-column parents
+
+A `<ul>` (or grid container) placed inside a `display: flex;
+flex-direction: column` parent — typical for the hero left cell — does
+NOT fill the parent's width by default. Flex items along the main axis
+(here vertical) shrink-to-fit their cross-axis content.
+
+Result: `grid-template-columns: 1fr 1fr` on the `<ul>` evaluates against
+the shrunken width and the grid columns end up tiny (e.g., 74px each
+for a parent that's 543px wide).
+
+**Variant CSS must set `width: 100%` on grid containers inside flex-column
+parents:**
+
+```css
+.hero.listing.block ul:has(li > p + p) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;   /* REQUIRED — without this, grid columns shrink */
+  ...
+}
+```
+
+This is a special case of the broader principle: inside flex-column
+containers, child block-level elements need explicit `width: 100%` to
+fill the cross axis. Default behavior (shrink-to-content) is rarely
+what you want for grids.
+
 ### Hero text container width (CRITICAL — pure CSS bug fix)
 
 The prototype's hero typically has padding on an OUTER container and
@@ -510,6 +712,43 @@ the DA HTML with absolute URLs from the start.
 
 The wheelercat CVA reference page confirms the pattern: every img src
 points at `https://main--uplift-wheelercat-eds--paolomoz.aem.page/assets/...`.
+
+### DA media bus dedupes perceptually-similar images
+
+DA's media bus assigns a single hash to a group of images that look
+similar (different file URLs, different byte contents, different MD5
+hashes — but visually similar like multiple angles of the same
+machine). All references collapse to one stored asset.
+
+**Symptom:** a gallery authored with 10 distinct `<picture>` elements
+referencing 10 different image files renders with all 10 pictures
+showing the SAME image. The HTML stored in DA has `src="./media_<hash>"`
+where every `<hash>` is identical.
+
+**Workaround: use external URLs that DA can't pre-dedup at fetch time.**
+
+When emitting gallery content for a machine that has many similar
+photos (used-equipment listings being the canonical case), reference
+the source-site URLs directly:
+
+```html
+<!-- WRONG — DA pre-dedupes similar images from your own /assets/ -->
+<picture><img src="/assets/wheelercat-equipment/304-1.jpg"></picture>
+<picture><img src="/assets/wheelercat-equipment/304-2.jpg"></picture>
+<picture><img src="/assets/wheelercat-equipment/304-3.jpg"></picture>
+
+<!-- RIGHT — each external URL is fetched + stored independently -->
+<picture><img src="https://source.example.com/uploads/photo-a.jpg"></picture>
+<picture><img src="https://source.example.com/uploads/photo-b.jpg"></picture>
+<picture><img src="https://source.example.com/uploads/photo-c.jpg"></picture>
+```
+
+DA still proxies these through its media bus (the rendered HTML has
+`./media_<hash>` URLs) but each external URL gets its own hash because
+the fetch + content-process happens per-URL.
+
+Side benefit: no local-asset copying step for gallery images. The fill
+script just references source URLs; DA does the fetch + hosting.
 
 ### DA media bus image-fetch race
 
