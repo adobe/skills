@@ -1237,6 +1237,251 @@ photos), not default.
 
 ---
 
+## §8 CLS / layout-shift control
+
+EDS's standard lifecycle (head.html → global styles.css → aem.js →
+per-template CSS → chrome fragments → block decoration → lazy-loaded
+images → web font swap) is a sequence of async events, each of which
+can shift layout. The Layout Instability API records every shift after
+`body.appear` fires; that's everything except the very first paint.
+
+Real-world CLS budget for a typical migrated EDS page on throttled
+mobile (Lighthouse-class: 1.5 Mbps + 4× CPU) lands around 0.30–0.45
+out of the box and needs deliberate work to fall below 0.10. The
+patterns below take a page from ~0.40 → ~0.05 with no preloads, no
+hidden bandwidth tax, and no truncation of legitimate content.
+
+### Diagnostic recipe
+
+Use Playwright + CDP throttling to reproduce Lighthouse-class numbers
+locally:
+
+```js
+const client = await page.context().newCDPSession(page);
+await client.send('Network.emulateNetworkConditions', {
+  offline: false,
+  downloadThroughput: 1.5 * 1024 * 1024 / 8,
+  uploadThroughput: 750 * 1024 / 8,
+  latency: 150,
+});
+await client.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+
+const cls = [];
+await page.exposeFunction('reportShift', (e) => cls.push(e));
+await page.addInitScript(() => {
+  new PerformanceObserver((list) => {
+    for (const entry of list.getEntries()) {
+      const sources = entry.sources?.map(s => ({
+        node: (s.node?.outerHTML || s.node?.tagName).slice(0, 200),
+        prev: s.previousRect,
+        curr: s.currentRect,
+      })) || [];
+      window.reportShift({ value: entry.value, t: Math.round(entry.startTime), sources });
+    }
+  }).observe({ type: 'layout-shift', buffered: true });
+});
+```
+
+The `sources[]` previousRect / currentRect lets you see exactly which
+element moved and where to, which makes diagnosis fast — without that,
+"total CLS = 0.31" tells you nothing about what to fix.
+
+### Trap 1 — Chrome height reservation must live in global styles.css
+
+Per-template CSS (`/styles/<template>.css`) loads on a second
+round-trip AFTER first paint. If a chrome-height reservation only
+exists in per-template CSS, the `<header>` is rendered at 0px during
+the gap between first paint and per-template CSS arrival, and `<main>`
+sits at `top: 0`. When per-template CSS arrives, the header expands
+to its real height (typically 170–230px depending on breakpoint) and
+**every element below shifts down by that height** — a single CLS
+event of 0.30+ on mobile.
+
+The reservation must apply from first paint, which means in
+`styles.css` (the only stylesheet referenced from `head.html`):
+
+```css
+/* styles/styles.css — applies before per-template CSS arrives */
+.header-wrapper { min-height: 173px; background: #272727; }
+@media (max-width: 768px) { .header-wrapper { min-height: 224px; } }
+```
+
+The exact values are project-specific — measure the loaded chrome at
+each breakpoint and use those numbers. The dark background prevents
+a flash of white before the chrome fragment fills in. Per-template
+CSS can refine the value via custom properties without changing the
+baseline.
+
+### Trap 2 — Reveal-on-scroll animations register as CLS for above-the-fold elements
+
+A motion script that applies `transform: translateY(20px)` initially
+and animates back to `translateY(0)` looks innocent — transforms
+don't trigger reflow. But `getBoundingClientRect()` returns the
+post-transform position, and the Layout Instability API uses that
+for shift detection.
+
+For an above-the-fold element that's visible from first paint, the
+motion script's "hide it at +20, then animate to 0" sequence
+registers as a 20px layout shift. The element didn't actually move
+visually (it was opacity 0 during the offset), but the API doesn't
+know that.
+
+Skip reveal animation for elements already in the initial viewport:
+
+```js
+// In the motion script's measure pass:
+const viewportH = window.innerHeight;
+document.querySelectorAll('[data-anim]').forEach((el) => {
+  if (el.getBoundingClientRect().top < viewportH * 0.9) return;
+  // ...apply initial offset + register for reveal...
+});
+```
+
+Elements above the fold render in their final position from frame 1
+— no animation needed, no CLS.
+
+### Trap 3 — Font-wrap shifts are the dominant remaining CLS source
+
+After the chrome-height and motion-reveal fixes are in, the next
+CLS source is web font swap. The classic case is line-count change:
+short text in a fallback (e.g., Arial) wraps to N lines, then the
+web font (e.g., Roboto Condensed, narrower) loads and the same text
+fits on N-1 lines — the element shrinks vertically, everything
+below shifts up.
+
+Three layered mitigations:
+
+**(a) Metric-matched fallback `@font-face`.** Define a sibling family
+that renders local Arial with overrides tuned to match the web font's
+vertical metrics. Use this as the next family in the font-family
+chain so the fallback period uses metric-matched dimensions.
+
+```css
+@font-face {
+  font-family: "Roboto Fallback";
+  src: local("Arial");
+  ascent-override: 92.55%;
+  descent-override: 24.34%;
+  line-gap-override: 0%;
+  size-adjust: 100.30%;
+}
+@font-face {
+  font-family: "Roboto Condensed Fallback";
+  src: local("Arial");
+  ascent-override: 95.94%;
+  descent-override: 25.25%;
+  line-gap-override: 0%;
+  size-adjust: 100.27%;
+}
+@font-face {
+  font-family: "Oswald Fallback";
+  src: local("Arial");
+  ascent-override: 96.39%;
+  descent-override: 26.16%;
+  line-gap-override: 0%;
+  size-adjust: 90.83%;
+}
+
+:root {
+  --font-display: "Roboto Condensed", "Roboto Condensed Fallback",
+                  "Arial Narrow", "Arial", system-ui, sans-serif;
+}
+```
+
+Regenerate values via https://screenspan.net/fallback or
+github.com/seek-oss/capsize for any font family. The values above
+match the Next.js `@next/font` module's emitted output for these
+Google fonts. The metric overrides fix the **vertical** metrics
+(ascent / descent / line-height) but not horizontal advance width —
+a wider fallback still wraps differently than a narrower web font.
+
+**(b) `white-space: nowrap` for short single-line text.** Eyebrows,
+nav items, badges, breadcrumb segments — anything the design treats
+as "always one line" — should be locked to one line via:
+
+```css
+.eyebrow { white-space: nowrap; overflow: hidden; }
+```
+
+If the fallback font is wider and text would overflow, that's a
+brief 1-frame width overflow, not a height change → no CLS.
+
+**(c) `align-items: start` on grid/flex containers that hold flowing
+text.** When a multi-line paragraph shrinks vertically (4 lines →
+3 lines after font swap), elements stacked inside a centered grid
+cell would all shift up by half the delta to maintain centering.
+Anchoring to the start means only the bottom edge of the cell
+content moves; elements themselves keep their top positions.
+
+```css
+.hero.block { display: grid; align-items: start; min-height: 600px; }
+```
+
+This is counter-intuitive (designers default to `center` for hero
+text vertical alignment), but `center` actively causes CLS when
+content can change height. `start` eliminates it.
+
+### Trap 4 — Async-fragment height locks
+
+The chrome fragment (`fragments/<theme>/header.html`) is fetched and
+injected AFTER first paint. Even with `.header-wrapper { min-height }`
+reserving the outer wrapper, inner elements (`.utility-strip`,
+`.main-header`, `.dept-row`) can still shift as they fill with
+content. Lock each sub-element's height too:
+
+```css
+.utility-strip {
+  height: var(--utility-strip-h);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.utility-strip__list {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  overflow: hidden;  /* fallback Arial may overflow horizontally — that's fine */
+}
+.main-header__inner { min-height: 84px; }
+```
+
+The pattern: lock vertical dimensions, allow horizontal overflow to
+absorb font-width differences invisibly.
+
+### Trap 5 — `body.display:none → body.appear` is not a CLS shield
+
+The pattern `body { display: none } body.appear { display: block }`
+(from EDS's `styles.css`) hides everything until aem.js initializes.
+This eliminates pre-init flash but does NOT prevent CLS — every
+shift recorded AFTER `body.appear` still counts. The async sources
+(chrome fragment, per-template CSS, web fonts, lazy images, dynamic
+blocks) all fire after body.appear, and that's where the CLS budget
+gets spent.
+
+The shield is at the wrong layer. Address each async source's shift
+individually using the traps above.
+
+### Cascade pattern — fix in order
+
+CLS fixes are sequential — each fix exposes the next dominant
+source:
+
+1. Header-wrapper height reservation (kills ~0.30 of CLS)
+2. Above-the-fold reveal-on-scroll skip (kills the false 0.05–0.10)
+3. Chrome sub-element height locks (kills 0.05–0.15)
+4. Metric-matched fallback fonts + `align-items: start` on flow
+   containers (kills 0.05–0.10)
+5. `white-space: nowrap` on short text labels (kills 0.02–0.05)
+
+The order matters — measure after each fix because the source-list
+changes. Don't try to address shifts you can't see yet.
+
+After all five, multi-line paragraphs with content that wraps
+differently between web font and fallback remain the irreducible
+floor — usually 0.03–0.05 on throttled mobile. Reducing further
+requires either truncating fallback render (`-webkit-line-clamp`)
+or accepting it.
+
+---
+
 ## Cross-reference
 
 These patterns are realized in the wheelercat reference theme at
