@@ -148,6 +148,195 @@ on `<dl>`; treat other uncommon tags (e.g., `<address>`, `<details>`,
   `<div class="cards"><div class="photo-card">...</div></div>` ✗
   (the inner classes get stripped).
 
+### The `<details>/<summary>` lottery — same fix as `<dl>`
+
+DA's HTML pipeline treats `<details>/<summary>` the same way it
+treats `<dl>`: some pages preserve them intact (especially the first
+one, often when it carries the `open` attribute), others escape the
+opening tag as literal text and strip the children. Re-PUTting does
+not always reproduce the failure mode for the same source.
+
+The symptom is identical to the `<dl>` case — the literal string
+`<details>` shows above each accordion category, and the
+collapse/expand behavior is gone because the elements never made it
+through the pipeline.
+
+**Workaround: never author `<details>/<summary>` in DA.** Emit only
+the post-strip shape (one `<h3>` per category, followed by the
+content list / paragraph), and reconstruct the accordion in the
+block's `decorate()` function. The block JS owns the interactive
+shape; DA owns the content.
+
+```html
+<!-- WRONG — DA may escape -->
+<div class="specs accordions">
+  <details open>
+    <summary><h3>Engine</h3></summary>
+    <ul><li><p>Bore</p><p>5.4 in</p></li></ul>
+  </details>
+  <details>
+    <summary><h3>Transmission</h3></summary>
+    <ul><li><p>Gears</p><p>4 fwd / 3 rev</p></li></ul>
+  </details>
+</div>
+
+<!-- RIGHT — author the post-strip shape -->
+<div class="specs accordions">
+  <h3>Engine</h3>
+  <ul><li><p>Bore</p><p>5.4 in</p></li></ul>
+  <h3>Transmission</h3>
+  <ul><li><p>Gears</p><p>4 fwd / 3 rev</p></li></ul>
+</div>
+```
+
+The block decorator wraps each `<h3>+(<ul>|<ol>|<p>)` pair into a
+fresh `<details>/<summary>` with the first one `open` by default:
+
+```js
+// blocks/<name>/<name>.js
+export default function decorate(block) {
+  if (!block.classList.contains('accordions')) return;
+  const cells = block.querySelectorAll(':scope > div > div');
+  const items = [];
+  cells.forEach((cell) => {
+    const kids = Array.from(cell.children);
+    for (let i = 0; i < kids.length; i++) {
+      if (kids[i].tagName !== 'H3') continue;
+      const body = kids[i + 1];
+      if (body && /^(UL|OL|P)$/.test(body.tagName)) items.push({ h3: kids[i], body });
+    }
+  });
+  if (!items.length) return;
+  const wrapper = cells[0];
+  wrapper.innerHTML = '';
+  items.forEach(({ h3, body }, i) => {
+    const details = document.createElement('details');
+    if (i === 0) details.open = true;
+    const summary = document.createElement('summary');
+    summary.appendChild(h3);
+    details.append(summary, body);
+    wrapper.appendChild(details);
+  });
+  // Remove now-empty sibling cells (each DA row became its own cell — see §1.6)
+  cells.forEach((c, i) => { if (i > 0) c.parentElement.remove(); });
+}
+```
+
+**Generalize:** any tag that DA might strip or escape unpredictably
+should be authored in its post-strip shape and reconstructed in
+block JS at decorate time. The lottery is reproducible on `<dl>` and
+`<details>/<summary>`; treat `<address>`, `<dialog>`, `<aside>`, and
+any other semantic HTML5 tag with the same suspicion until proven
+otherwise on the target project.
+
+### Each DA "row" becomes its own `<div><div>` cell — not a `<ul>`
+
+When a block is authored with multiple sibling `<div>` blocks under
+the block class (one per visual row), DA's pipeline renders each row
+as a separate `<div><div>` child of the block. There is **no
+auto-generated `<ul>` wrapper** unless the row content itself is a ul.
+This breaks variant CSS that assumes `<ul>` wrapping copied from the
+`cards` decoration pattern.
+
+Example authored shape:
+
+```html
+<div class="specs at-a-glance">
+  <div><div><p>580<strong>hp</strong></p><p>Engine Power</p></div></div>
+  <div><div><p>112,574<strong>lb</strong></p><p>Operating Weight</p></div></div>
+  <div><div><p>4.7–13<strong>m³</strong></p><p>Bucket Capacity</p></div></div>
+  <div><div><p>16<strong>t</strong></p><p>Rated Payload</p></div></div>
+</div>
+```
+
+Naive CSS targeting `.specs.at-a-glance.block > ul { display: grid }`
+matches nothing — there is no `<ul>`. Either:
+
+1. **Grid the outer `.block` element itself** and treat each `> div`
+   as a grid cell:
+   ```css
+   .specs.at-a-glance.block {
+     display: grid;
+     grid-template-columns: repeat(4, 1fr);
+     gap: var(--sp-lg);
+   }
+   .specs.at-a-glance.block > div > div > p:first-child { /* big number */ }
+   .specs.at-a-glance.block > div > div > p:last-child  { /* label */ }
+   ```
+2. **Or author all rows inside a single cell** as a real `<ul>` and
+   let the row-grid CSS apply:
+   ```html
+   <div class="specs at-a-glance">
+     <div><div>
+       <ul>
+         <li><p>580<strong>hp</strong></p><p>Engine Power</p></li>
+         …
+       </ul>
+     </div></div>
+   </div>
+   ```
+
+Option 1 is the simpler authoring shape for any block where every
+row is one cell with a small known piece of content. Option 2 stays
+closer to the cards-block convention and lets variant CSS reuse the
+`> ul > li` selectors that the standard cards decoration produces.
+Pick one per variant and stick with it.
+
+The same trap fires for any block that visually presents a row-grid
+(stat strips, photo galleries, badge rails, KPI bands): **the block
+itself becomes the grid, not a child `<ul>`.**
+
+### Block names use the FIRST class — chain variants from there
+
+EDS resolves block JS/CSS by the **first class** on the block
+element. `<div class="cards related dynamic">` loads
+`blocks/cards/cards.js` and `blocks/cards/cards.css`, regardless of
+what `related/` or `dynamic/` block directories also exist.
+
+This bites two patterns:
+
+1. **A variant directory with its own JS that never runs.** If the
+   project has `blocks/related/related.js` and authors use
+   `<div class="cards related">`, the related.js is silently
+   ignored — cards.js decoration runs alone.
+
+2. **A composite variant class array intended to add behavior.**
+   `<div class="cards related dynamic">` cannot just "import" both
+   the cards decoration and the dynamic behavior from separate
+   block files — only `cards.js` loads.
+
+Two ways to compose variant behavior into the first-class block:
+
+**A. Rename so the variant's block is the primary class.** Author as
+`<div class="related dynamic">` instead — now `related.js` loads.
+This is cleanest when the variant has substantially different
+decoration logic than the base block.
+
+**B. Chain from the primary block's JS.** Detect variant classes in
+the primary block and dynamic-import the variant module:
+
+```js
+// blocks/cards/cards.js
+import { createOptimizedPicture } from '../../scripts/aem.js';
+
+export default async function decorate(block) {
+  if (block.classList.contains('dynamic')) {
+    const { decorateDynamic } = await import('../related/related.js');
+    return decorateDynamic(block);
+  }
+  // ...standard cards decoration...
+}
+```
+
+Then `blocks/related/related.js` exports `decorateDynamic` as a
+named export (default export stays a no-op so authors who use
+`<div class="related ...">` directly also work).
+
+Chaining keeps the standard authoring shape (`<div class="cards
+…">`) so authors don't need to know which compositions exist. It
+also keeps the standard cards decoration available as a fallback
+when the variant isn't requested.
+
 ---
 
 ## §2 EDS decorate-function guards

@@ -339,6 +339,11 @@ stardust/
   reference engagement.
 - [`reference/fill-script-pattern.md`](reference/fill-script-pattern.md) —
   the verbatim-at-scale guarantee, with code structure.
+- [`reference/admin-api-and-publish-flow.md`](reference/admin-api-and-publish-flow.md)
+  — token lifecycle, PUT→preview→publish→index ordering, helix-query.yaml
+  + dynamic cross-page block wiring, URL-structure decisions, the
+  admin.hlx.page DELETE trap, sitemap sub-chunking, DA media-bus race,
+  spec-catalog extraction patterns, per-template motion JS.
 
 ## Provenance
 
