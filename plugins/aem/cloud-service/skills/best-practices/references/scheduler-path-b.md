@@ -1,3 +1,6 @@
+> **Deprecated:** This file is superseded by [`../scheduler/path-b.md`](../scheduler/path-b.md).
+> It will be removed once all five expert skills are in place. Do not update this file.
+
 # Scheduler Path B: Sling Job (Complex Schedulers)
 
 For schedulers with config-driven crons, multiple schedules, `implements Job`, or `ScheduleOptions.config()`.

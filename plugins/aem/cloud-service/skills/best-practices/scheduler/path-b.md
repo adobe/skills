@@ -10,7 +10,7 @@ Business `@Reference` fields (e.g. `ResourceResolverFactory`, domain services) g
 **JobConsumer**. Infrastructure fields (`JobManager`, `SlingSettingsService`) stay in the
 **Scheduler class**.
 
-**Before starting:** Read `{best-practices}/references/aem-cloud-service-pattern-prerequisites.md`
+**Before starting:** Read [`../references/aem-cloud-service-pattern-prerequisites.md`](../references/aem-cloud-service-pattern-prerequisites.md)
 and apply SCR→DS and ResourceResolver fixes.
 
 ---
@@ -24,6 +24,7 @@ import org.osgi.service.component.annotations.*;
 import org.osgi.service.metatype.annotations.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -72,7 +73,7 @@ public class AssetPurgeScheduler {
     }
 
     private void unscheduleExistingJobs() {
-        jobManager.getScheduledJobs(JOB_TOPIC, 0, null).forEach(ScheduledJobInfo::unschedule);
+        new ArrayList<>(jobManager.getScheduledJobs(JOB_TOPIC, 0, null)).forEach(ScheduledJobInfo::unschedule);
     }
 
     @ObjectClassDefinition(name = "Asset Purge Scheduler Config")
@@ -92,22 +93,46 @@ Key changes from legacy:
 - Keep infrastructure `@Reference` fields (`JobManager`, `SlingSettingsService`) in the Scheduler class; move business `@Reference` fields (`ResourceResolverFactory`, domain services) to the `JobConsumer`
 - **`canRunConcurrently(false)`** — drop it if present in legacy code; Sling Jobs have no direct equivalent; concurrency is controlled via job queue OSGi config, not in code
 
-**Idempotency guard (recommended):** Add an existence check before scheduling to prevent duplicate jobs after config updates or restart races:
+**Author-only schedulers:** If the job must only run on author (e.g. replication triggers, workflow launchers), guard in `activate()` using `SlingSettingsService`:
 
 ```java
+@Reference
+private SlingSettingsService slingSettingsService;
+
 @Activate
 @Modified
 protected void activate(Config config) {
     unscheduleExistingJobs();
+    if (config.enabled() && slingSettingsService.getRunModes().contains("author")) {
+        scheduleJob(config);
+    }
+}
+```
+
+Import: `import org.apache.sling.settings.SlingSettingsService;`
+
+**Idempotency guard (alternative pattern):** If you need to avoid cancelling a running schedule on config refresh, check existence *before* any unschedule call. Do **not** combine with `unscheduleExistingJobs()` in the same flow — after unscheduling, `doesScheduledJobExist()` is always `false`, making the guard a no-op:
+
+```java
+// Alternative: check first, skip if already scheduled
+@Activate
+@Modified
+protected void activate(Config config) {
     if (config.enabled() && !doesScheduledJobExist()) {
         scheduleJob(config);
     }
+    // Note: no unscheduleExistingJobs() here — the guard is only useful
+    // when you want to preserve an existing schedule across config updates
 }
 
 private boolean doesScheduledJobExist() {
     return !jobManager.getScheduledJobs(JOB_TOPIC, 0, null).isEmpty();
 }
 ```
+
+For most migrations, the standard pattern above (unschedule then reschedule unconditionally) is correct and simpler.
+
+> **Limitation of the guard:** if `doesScheduledJobExist()` returns `true` but the admin has changed `cronExpression` in OSGi config, the old schedule is silently kept — the new cron never takes effect until the instance restarts or the job is manually unscheduled. The standard unschedule-then-reschedule flow does not have this problem.
 
 ---
 
@@ -119,6 +144,7 @@ import org.apache.sling.api.resource.ResourceResolver;
 import org.apache.sling.api.resource.ResourceResolverFactory;
 import org.apache.sling.event.jobs.Job;
 import org.apache.sling.event.jobs.consumer.JobConsumer;
+import org.apache.sling.event.jobs.consumer.JobResult;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
@@ -197,9 +223,9 @@ import org.apache.sling.commons.osgi.PropertiesUtil;
 
 **Scheduler class — Add:**
 ```java
-import org.apache.sling.event.jobs.JobBuilder;
 import org.apache.sling.event.jobs.JobManager;
 import org.apache.sling.event.jobs.ScheduledJobInfo;
+import org.apache.sling.settings.SlingSettingsService;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Deactivate;
@@ -208,7 +234,7 @@ import org.osgi.service.component.annotations.Reference;
 import org.osgi.service.metatype.annotations.Designate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.util.Collection;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 ```

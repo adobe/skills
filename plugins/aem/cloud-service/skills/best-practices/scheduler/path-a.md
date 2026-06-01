@@ -2,7 +2,7 @@
 
 For schedulers with a hardcoded cron, a single schedule, and `implements Runnable`.
 
-**Before starting:** Read `{best-practices}/references/aem-cloud-service-pattern-prerequisites.md`
+**Before starting:** Read [`../references/aem-cloud-service-pattern-prerequisites.md`](../references/aem-cloud-service-pattern-prerequisites.md)
 and apply SCR→DS and ResourceResolver fixes if present in the same changeset.
 
 ---
@@ -89,6 +89,16 @@ protected void modified(Config config) {
 
 Keep `@Modified` only if it updates other cached config fields; remove the scheduling calls from it.
 
+**`@Designate`-backed Path A schedulers:** If the class uses `@Designate` and `@Modified` purely to update cached instance fields (not to re-register the schedule), keep `@Modified` — the Sling framework handles the schedule update from the new config automatically, but your code may still need to react to the new config values:
+
+```java
+@Modified
+protected void modified(Config config) {
+    this.myParameter = config.myParameter();  // keep — updates cached field
+    // do NOT call removeScheduler() / addScheduler() — Sling handles reschedule
+}
+```
+
 ---
 
 ## A5: Extract the cron and put it in `@Component`
@@ -147,6 +157,44 @@ public void run() {
 **`getServiceResourceResolver` throws `LoginException` on failure — it does NOT normally return
 `null`.** Catch `LoginException` and log; do not add a `resolver == null` branch unless a custom
 wrapper is in use.
+
+**Write-side schedulers:** If `run()` modifies JCR content, call `resolver.commit()` before the try-with-resources closes the resolver. Changes not committed are silently discarded on resolver close:
+
+```java
+@Override
+public void run() {
+    try (ResourceResolver resolver = resolverFactory.getServiceResourceResolver(
+            Collections.singletonMap(ResourceResolverFactory.SUBSERVICE, "scheduler-service"))) {
+        Resource resource = resolver.getResource("/content/my-page");
+        if (resource != null) {
+            ModifiableValueMap props = resource.adaptTo(ModifiableValueMap.class);
+            props.put("lastRun", System.currentTimeMillis());
+            resolver.commit();  // required — changes are discarded without this
+        }
+    } catch (LoginException e) {
+        LOG.error("Could not open service resolver for subservice 'scheduler-service'", e);
+    } catch (PersistenceException e) {
+        LOG.error("Failed to commit changes", e);
+    }
+}
+```
+
+**Author-only schedulers:** If `run()` must only execute on author, inject `SlingSettingsService` and guard at the top of `run()`:
+
+```java
+@Reference
+private SlingSettingsService slingSettingsService;
+
+@Override
+public void run() {
+    if (!slingSettingsService.getRunModes().contains("author")) {
+        return;
+    }
+    // author-only logic
+}
+```
+
+Import: `import org.apache.sling.settings.SlingSettingsService;`
 
 Add the factory field if missing:
 
@@ -217,6 +265,8 @@ protected void deactivate() {
 }
 ```
 
+For a stateless Path A scheduler, `@Deactivate` provides no functional benefit — OSGi unregisters the component and the Sling Scheduler removes the job automatically. The method is conventional and aids observability in logs, but is **optional**. If the legacy class already has a `@Deactivate` with meaningful cleanup (closing resources, clearing caches), keep it. If there is none, adding a log-only method is fine but not required.
+
 ---
 
 ## Complete example after migration
@@ -271,6 +321,9 @@ public class MyScheduler implements Runnable {
 
     @ObjectClassDefinition(name = "My Scheduler Config")
     @interface Config {
+        @AttributeDefinition(name = "Enabled")
+        boolean enabled() default true;
+
         @AttributeDefinition(name = "Cron Expression")
         String scheduler_expression() default "0 0 2 * * ?";
 
@@ -281,11 +334,22 @@ public class MyScheduler implements Runnable {
         String scheduler_runOn() default "SINGLE";
     }
 
+    private volatile boolean enabled;
+
+    @Activate
+    @Modified
+    protected void activate(Config config) {
+        this.enabled = config.enabled();
+    }
+
     @Reference
     private ResourceResolverFactory resolverFactory;
 
     @Override
     public void run() {
+        if (!enabled) {
+            return;
+        }
         try (ResourceResolver resolver = resolverFactory.getServiceResourceResolver(
                 Collections.singletonMap(ResourceResolverFactory.SUBSERVICE, "my-scheduler-service"))) {
             // business logic
@@ -311,7 +375,7 @@ SUBSERVICE name must match a `ServiceUserMapperImpl.amended-*.cfg.json` mapping.
 - [ ] `scheduler.runOn=SINGLE` or `LEADER` when job writes to repo or calls external systems
 - [ ] `ResourceResolverFactory` injected via `@Reference` if `run()` uses a resolver
 - [ ] Resolver in try-with-resources in `run()` — not a field
-- [ ] `@Deactivate` present
+- [ ] `@Deactivate` present if there is meaningful cleanup; optional for purely stateless schedulers (see A9)
 - [ ] OSGi DS R6 annotations — no `org.apache.felix.scr.annotations.*`
 - [ ] Service user + mapping exists in Repoinit / `ui.config`
 - [ ] `mvn clean compile` passes

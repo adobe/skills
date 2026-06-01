@@ -1,3 +1,6 @@
+> **Deprecated:** This file is superseded by [`../scheduler/path-a.md`](../scheduler/path-a.md).
+> It will be removed once all five expert skills are in place. Do not update this file.
+
 # Scheduler Path A — OSGi scheduler properties (simple schedulers)
 
 For schedulers with a hardcoded cron, a single schedule, and `implements Runnable`.

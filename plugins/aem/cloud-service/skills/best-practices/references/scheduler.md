@@ -1,3 +1,7 @@
+> **Deprecated:** This file is superseded by the `scheduler` expert skill at
+> [`../scheduler/SKILL.md`](../scheduler/SKILL.md). It will be removed once all five
+> expert skills are in place. Do not update this file — update the skill instead.
+
 # Scheduler Migration Pattern
 
 Migrates AEM schedulers from legacy patterns to Cloud Service compatible patterns.
