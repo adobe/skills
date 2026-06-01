@@ -61,6 +61,33 @@ others get transformed, others get stripped.
   Cell-level differentiation must come from EITHER block-level variants
   (added on the outermost block div) OR cell structure (presence of
   picture, presence of specific text).
+- **`data-*` attributes on inline tags → stripped.** Authoring
+  `<strong data-count>…</strong>` or `<span data-marker="X">` loses the
+  attribute through the pipeline. Block-level data attributes
+  (`<div class="cards listing" data-source>`) on the outer block
+  generally survive; inline ones do not. When block JS needs a marker
+  to find-and-replace at render time (counts injected from
+  `/query-index.json`, computed totals, dynamic strings), use a
+  **sentinel text token inside `<code>`**:
+
+  ```html
+  <!-- authored in DA -->
+  <p>Showing <strong><code>LISTING_COUNT</code></strong> models available</p>
+  ```
+
+  ```js
+  // block JS
+  document.querySelectorAll('code').forEach((el) => {
+    if (el.textContent.trim() === 'LISTING_COUNT') {
+      el.outerHTML = String(items.length);
+    }
+  });
+  ```
+
+  `<code>` survives the pipeline intact (per the "survives intact" list
+  above), so its textContent is reliable as a sentinel. Pick token
+  names that won't appear in normal copy (ALL_CAPS_WITH_UNDERSCORES is
+  a safe convention).
 
 ### The `<dl>` lottery — author the post-conversion shape directly
 
