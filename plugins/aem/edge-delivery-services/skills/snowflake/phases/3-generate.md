@@ -48,6 +48,88 @@ first (project override), then `<SKILL_DIR>/knowledge/<file>.md`
 
 Follow this section when `conversionLevel` is `page-level`.
 
+## Milo flavor deltas (read FIRST if `substrateFlavor` is `milo`)
+
+When `.snowflake/config.json` `substrateFlavor` is `milo`, the page is hosted
+by Milo (which owns the chrome) and the bespoke body is drawn by the
+`blocks/snowflake` overlay block. Apply these deltas to the page-level steps
+below; everything else (template build, slot markers, per-template CSS,
+animations, asset rewriting, self-checks) is unchanged:
+
+- **Skip 3.3 (header fragment) and 3.4 (footer fragment) entirely.** Do not
+  emit `fragments/<template>/*`. Milo renders the live gnav/footer from
+  metadata. (Capturing them is the bug the Milo flavor fixes.)
+- **3.1 head links — KEEP all body/block stylesheets.** This is load-bearing.
+  The overlay block injects the captured, **pre-decorated** DOM and Milo does
+  **not** re-decorate it, so per-block CSS will NOT auto-load. `foundation: c2`
+  only pulls the C2 **base** `styles.css`, not each block's stylesheet. Lift
+  **every** source `<link rel="stylesheet">` into the template's top level
+  (the overlay block lifts them into `<head>` at runtime) **EXCEPT**
+  `global-navigation*.css` and any footer-chrome CSS — Milo's own gnav/footer
+  blocks load those. Concretely, keep e.g. `router-marquee.css`,
+  `rich-content.css`, `base-card.css`, `elastic-carousel.css`,
+  `carousel-c2.css`, `visually-hidden.css`, `section-metadata.css`,
+  `modal.css`, `merch.css`, `video.css`, typekit, lenis. **Dropping these is
+  what makes the overlaid body render as unstyled, stacked content** — only the
+  two chrome stylesheets come out.
+- **3.1b interactive content — prototype interaction contract.** The overlay
+  injects *frozen, pre-decorated* DOM, so any widget whose motion came from JS
+  (carousel/slider, auto-rotating marquee, tabs, accordion) renders but does not
+  move. The `snowflake` block ships a tiny dependency-free activator that revives
+  them **only** when they use the contract below. So when the source body has such
+  a widget AND the captured markup actually holds every state (all carousel
+  slides, all tab panels — true for URL/HTML captures, which serialize the full
+  rendered DOM), rewrite that widget to the contract, keeping each slide/panel's
+  inner content and block CSS classes 1:1 (you only swap the outer wrapper):
+  - carousel: `<div class="proto-carousel" data-proto-autoplay="5000"><div class="proto-carousel-track"><div class="proto-slide">…</div>…</div></div>` (drop `data-proto-autoplay` for manual-only; arrows + dots are auto-generated)
+  - marquee: `<div class="proto-marquee" data-proto-interval="5000"><div class="proto-marquee-slide">…</div>…</div>` (optional `<button class="proto-marquee-nav-item">` per slide)
+  - tabs: `<div class="proto-tabs"><div class="proto-tablist"><button class="proto-tab">…</button>…</div><div class="proto-tabpanel">…</div>…</div>` (equal counts; mark the open tab `aria-selected="true"`)
+  - accordion: `<div class="proto-accordion"><div class="proto-acc-item"><button class="proto-acc-trigger" aria-expanded="false">…</button><div class="proto-acc-panel">…</div></div>…</div>`
+
+  **Capture-mode limit:** a Figma-sourced prototype converges to a *single static
+  reference image*, so only the visible slide exists — there is nothing to cycle.
+  Do **not** fabricate slides; leave single-frame widgets as static markup. The
+  contract (and the activator) are for captures that retained the off-screen
+  states.
+- **3.8 DA doc** — emit a **Milo page** instead of EDS block tables: empty
+  `<header>`/`<footer>`, one `snowflake` block carrying the template name (+
+  optional slot overrides), and a `metadata` block that re-emits
+  `state.json.chromeMeta` (`foundation`, `gnav-source`, `footer-source`,
+  `unav`, `universal-nav`, …) plus `template` and `title`:
+
+  ```html
+  <body>
+    <header></header>
+    <main>
+      <div>
+        <div class="snowflake">
+          <div><div>template</div><div><templateName></div></div>
+          <!-- optional authorable overrides, 3 cells each:
+          <div><div><section-class></div><div><slot-name></div><div><value></div></div>
+          -->
+        </div>
+      </div>
+      <div>
+        <div class="metadata">
+          <div><div>template</div><div><templateName></div></div>
+          <div><div>title</div><div><pageTitle></div></div>
+          <div><div>foundation</div><div>c2</div></div>
+          <div><div>gnav-source</div><div><from chromeMeta></div></div>
+          <div><div>footer-source</div><div><from chromeMeta></div></div>
+          <div><div>unav</div><div><from chromeMeta></div></div>
+          <div><div>universal-nav</div><div><from chromeMeta></div></div>
+        </div>
+      </div>
+    </main>
+    <footer></footer>
+  </body>
+  ```
+
+  The `template` metadata is still required (the overlay block also resolves
+  it from `<meta name="template">`). With no slot-override rows the template's
+  default content renders 1:1; add 3-cell rows only for content you want
+  authorable in DA.
+
 ## Output layout (page-level)
 
 Under `<projectsDir>/<NNN>-<slug>/output/`:

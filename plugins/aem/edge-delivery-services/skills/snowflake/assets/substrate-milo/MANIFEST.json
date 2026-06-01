@@ -1,0 +1,50 @@
+{
+  "substrateVersion": "1.0.0-milo.1",
+  "flavor": "milo",
+  "_comment": "Milo-flavor substrate. Unlike the EDS flavor it does NOT replace head.html / scripts/scripts.js / styles/styles.css / header+footer blocks — that would rip out Milo's runtime, which is what loads the live global-navigation + footer from page metadata. It only ADDS a project-local overlay block (blocks/snowflake) that Milo loads from codeRoot. Chrome is owned by Milo; the body is drawn by the block from /templates/<template>.html.",
+  "marker": {
+    "file": "blocks/snowflake/snowflake.js",
+    "needle": "snowflake — Milo substrate overlay block",
+    "_comment": "Presence of the overlay block is the install marker for the Milo flavor."
+  },
+  "replace": [
+    {
+      "src": "blocks/snowflake/snowflake.js",
+      "dst": "blocks/snowflake/snowflake.js",
+      "purpose": "Milo overlay block: resolves template name, fetches /templates/<t>.html, lifts its <link>s, loads /styles/<t>.css, applies DA slot overrides, replaces <main>. Leaves <header>/<footer> to Milo."
+    },
+    {
+      "src": "blocks/snowflake/snowflake.css",
+      "dst": "blocks/snowflake/snowflake.css",
+      "purpose": "Minimal; hides the (consumed) authoring block. The overlaid body carries its own styles."
+    }
+  ],
+  "ignorePatches": [
+    {
+      "dst": ".eslintignore",
+      "lines": [
+        "scripts/*-animations.js"
+      ],
+      "purpose": "Per-template animation engines are vendored verbatim from the source."
+    },
+    {
+      "dst": ".stylelintignore",
+      "lines": [
+        "# Per-template CSS is vendor — extracted verbatim from the source.",
+        "# Ignore everything in styles/ except the repo's own boilerplate files.",
+        "styles/*.css",
+        "!styles/styles.css",
+        "!styles/lazy-styles.css"
+      ],
+      "purpose": "Skip per-template CSS files (vendored from source)."
+    }
+  ],
+  "gitignore": {
+    "dst": ".gitignore",
+    "lines": [
+      "# Snowflake skill: in-progress run state (committed only on close)",
+      ".snowflake/projects/*/state.json"
+    ],
+    "purpose": "Avoid churn from mid-run state.json writes; closed runs rename to state.json.closed and commit."
+  }
+}

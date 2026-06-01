@@ -140,6 +140,30 @@ grep -oE '<(link|script)[^>]*(href|src)="[^"]+"' "$INPUT/index.html" \
     done
 ```
 
+## Milo flavor: capture the chrome metadata (not the chrome DOM)
+
+If `.snowflake/config.json` `substrateFlavor` is `milo`, the deployed page
+does **not** ship a captured header/footer — Milo renders the live
+`global-navigation` + footer from page metadata. Capture that metadata from
+the source's `<head>` into `state.json.chromeMeta` so Generate can re-emit it
+onto the DA page. These are the keys that drive Milo's chrome:
+
+```bash
+# From the saved source HTML <head>
+for name in foundation gnav-source footer-source unav universal-nav \
+            gnav-promo-source skin mobile-gnav-v2; do
+  val=$(grep -oE "<meta[[:space:]]+name=\"$name\"[[:space:]]+content=\"[^\"]*\"" \
+        "$INPUT/index.html" | sed -E 's/.*content="([^"]*)".*/\1/' | head -1)
+  [ -n "$val" ] && echo "$name = $val"
+done
+```
+
+Write whichever are present into `state.json.chromeMeta` (object of
+name→content). Do **not** save the rendered `feds-*` gnav DOM — a static
+snapshot of a JS-driven nav renders as a broken, fully-expanded blob (this is
+the exact bug the Milo flavor exists to fix). For the EDS flavor, ignore this
+step and capture chrome as before.
+
 ## Write a stub README.md for the project
 
 ```markdown

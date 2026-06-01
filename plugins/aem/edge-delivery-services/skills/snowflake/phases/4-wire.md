@@ -3,6 +3,28 @@
 Goal: copy the Generate output into the target EDS repo's deployed
 paths and build a local-test file.
 
+## Milo flavor (read FIRST if `substrateFlavor` is `milo`)
+
+For the Milo flavor, copy **only** the body artifacts — there are no
+header/footer fragments, and Milo's `head.html`/`scripts.js`/`styles.css`
+stay untouched:
+
+```bash
+cd "$(git rev-parse --show-toplevel)"
+PROJ="${PROJECTS_DIR}/${NNN}-${SLUG}"
+cp "${PROJ}/output/templates/${TEMPLATE_NAME}.html" "templates/${TEMPLATE_NAME}.html"
+cp "${PROJ}/output/styles/${TEMPLATE_NAME}.css"     "styles/${TEMPLATE_NAME}.css"
+[ -f "${PROJ}/output/scripts/${TEMPLATE_NAME}-animations.js" ] && \
+  cp "${PROJ}/output/scripts/${TEMPLATE_NAME}-animations.js" "scripts/${TEMPLATE_NAME}-animations.js"
+# vendored libs/assets: same as the EDS path (globs below), minus the fragments/ copies.
+```
+
+Do NOT `mkdir fragments/<template>` or copy header/footer fragments. The
+`blocks/snowflake` overlay block (installed in Phase 0) loads
+`templates/<template>.html` + `styles/<template>.css` at runtime; Milo loads
+the gnav/footer from the page metadata emitted in Generate 3.8. Then skip to
+the lint step. The EDS steps below do not apply to Milo.
+
 ## Steps
 
 Run from the target repo's root:

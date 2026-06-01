@@ -157,3 +157,55 @@ test('a custom edit elsewhere in scripts.js survives install', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// --- Substrate flavor: EDS vs Milo --------------------------------------
+
+// A scripts.js that boots Milo (setLibs / milolibs) — the auto-detect signal.
+const MILO_SCRIPTS = `import { setLibs } from './utils.js';\nconst LIBS = '/libs';\nsetLibs(LIBS);\n`;
+
+test('milo repo auto-detects the milo flavor — adds blocks/snowflake, leaves scripts.js untouched', () => {
+  const dir = makeRepo({
+    'head.html': '<meta name="milolibs" content="/libs">',
+    'scripts/scripts.js': MILO_SCRIPTS,
+  });
+  try {
+    const r = runInstaller(dir);
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /substrate flavor: milo \(auto-detected\)/, 'did not auto-detect milo');
+    // Milo substrate adds only the overlay block…
+    assert.ok(existsSync(join(dir, 'blocks/snowflake/snowflake.js')), 'overlay block not installed');
+    // …and must NOT rip out Milo's runtime (no overlay import injected into scripts.js).
+    assert.equal(read(dir, 'scripts/scripts.js'), MILO_SCRIPTS, 'Milo scripts.js was modified');
+    assert.doesNotMatch(read(dir, 'scripts/scripts.js'), /overlay-engine/, 'overlay engine wrongly injected on milo');
+    const cfg = JSON.parse(read(dir, '.snowflake/config.json'));
+    assert.equal(cfg.substrateFlavor, 'milo', 'config did not record milo flavor');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('--flavor=eds overrides auto-detection on a milo-looking repo', () => {
+  const dir = makeRepo({
+    'head.html': '<meta name="milolibs" content="/libs">',
+    'scripts/scripts.js': STOCK_SCRIPTS, // give the EDS path its expected anchors
+  });
+  try {
+    const r = runInstaller(dir, ['--flavor=eds']);
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /substrate flavor: eds \(explicit\)/, 'explicit eds override ignored');
+    assert.match(read(dir, 'scripts/scripts.js'), /overlay-engine/, 'eds flavor did not hook scripts.js');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('an unknown --flavor fails loud', () => {
+  const dir = makeRepo();
+  try {
+    const r = runInstaller(dir, ['--flavor=banana']);
+    assert.notEqual(r.code, 0, 'unknown flavor should be rejected');
+    assert.match(r.stderr + r.stdout, /unknown --flavor/, 'no clear error for bad flavor');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
