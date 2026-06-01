@@ -1,5 +1,5 @@
 {
-  "substrateVersion": "1.0.0-milo.1",
+  "substrateVersion": "1.0.0-milo.2",
   "flavor": "milo",
   "_comment": "Milo-flavor substrate. Unlike the EDS flavor it does NOT replace head.html / scripts/scripts.js / styles/styles.css / header+footer blocks — that would rip out Milo's runtime, which is what loads the live global-navigation + footer from page metadata. It only ADDS a project-local overlay block (blocks/snowflake) that Milo loads from codeRoot. Chrome is owned by Milo; the body is drawn by the block from /templates/<template>.html.",
   "marker": {

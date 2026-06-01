@@ -83,6 +83,8 @@ function readBlockConfig(block) {
 /**
  * Write a slot value into a template element. Element-typed, ported
  * verbatim from the EDS substrate's writeSlot (5 cases).
+ *
+ * Ported from assets/substrate/scripts/overlay-engine.js — keep in sync.
  */
 function writeSlot(el, value) {
   const { tagName } = el;
