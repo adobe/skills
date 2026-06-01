@@ -1,0 +1,115 @@
+<!--
+  Report style assets for cja-dimension-analysis.
+  - <head> block: paste into the generated report's <head>.
+  - <header> block: paste at the top of <body>, with {PLACEHOLDER}s filled in.
+-->
+
+<!-- ===== <head> block — Google Fonts + editorial design system CSS ===== -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f5f4f1;
+  --surface: #ffffff;
+  --ink: #1a1a1a;
+  --ink-muted: #6b6b6b;
+  --border: #e5e2dc;
+  --header-bg: #0e0e10;
+  --header-warm: #3a1010;
+  --accent-red: #c8312f;
+  --accent-red-bright: #ff6b68;
+  --accent-red-soft: #fdecea;
+  --accent-green: #1f7a4d;
+  --accent-yellow: #d4a017;
+}
+body { font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+       background: var(--bg); color: var(--ink); line-height: 1.5;
+       -webkit-font-smoothing: antialiased; }
+
+/* === Header === */
+header { background: linear-gradient(120deg, var(--header-bg) 0%, #1a0d0d 55%, var(--header-warm) 100%);
+         color: #fff; padding: 56px 56px 44px; position: relative; overflow: hidden; }
+header::after { content: ""; position: absolute; right: -140px; top: -140px;
+                width: 460px; height: 460px;
+                background: radial-gradient(circle, rgba(200,49,47,.35) 0%, transparent 70%);
+                pointer-events: none; }
+.header-inner { max-width: 1080px; margin: 0 auto; position: relative; z-index: 1; }
+.eyebrow { display: inline-flex; align-items: center; gap: 8px;
+           padding: 6px 14px; border: 1px solid rgba(255,107,104,.55);
+           border-radius: 999px; color: var(--accent-red-bright);
+           font-size: 11px; font-weight: 600; letter-spacing: 1.2px;
+           text-transform: uppercase; margin-bottom: 24px;
+           background: rgba(200,49,47,.10); }
+.eyebrow::before { content: ""; width: 6px; height: 6px;
+                   background: var(--accent-red-bright); border-radius: 50%; }
+header h1 { font-family: "Playfair Display", Georgia, serif;
+            font-size: 56px; font-weight: 700; letter-spacing: -1.5px;
+            line-height: 1.05; margin-bottom: 14px; color: #fff; }
+header .lede { font-size: 16px; max-width: 560px;
+               color: rgba(255,255,255,.80); margin-bottom: 24px;
+               line-height: 1.55; }
+header .meta { display: flex; flex-wrap: wrap; gap: 22px;
+               font-size: 13px; color: rgba(255,255,255,.60); }
+header .meta span { display: inline-flex; align-items: center; gap: 6px; }
+header .meta .icon { opacity: .8; }
+
+/* === Tabs === */
+nav { background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 0 56px; display: flex; gap: 28px;
+      position: sticky; top: 0; z-index: 50; }
+nav a { display: block; padding: 16px 0; font-size: 14px;
+        color: var(--ink); text-decoration: none;
+        border-bottom: 2px solid transparent;
+        transition: border-color .15s ease; }
+nav a:hover { border-bottom-color: var(--accent-red); }
+
+/* === Container === */
+.container { max-width: 1080px; margin: 0 auto; padding: 36px 56px 60px; }
+
+/* === Section (collapsible drill-down cards) === */
+.section { background: var(--surface); border-radius: 8px;
+           box-shadow: 0 1px 3px rgba(0,0,0,.04);
+           margin-bottom: 22px; overflow: hidden; }
+.section-header { padding: 18px 28px; border-bottom: 1px solid var(--border);
+                  display: flex; justify-content: space-between;
+                  align-items: center; cursor: pointer; }
+.section-header h2 { font-family: "Playfair Display", Georgia, serif;
+                     font-size: 18px; font-weight: 700; }
+
+/* === Tables === */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th { background: #faf8f4; padding: 12px 22px;
+           text-align: left; font-weight: 600;
+           text-transform: uppercase; letter-spacing: .6px;
+           font-size: 11px; color: var(--ink-muted);
+           border-bottom: 1px solid var(--border); }
+tbody td { padding: 12px 22px; border-bottom: 1px solid #f4f1eb; vertical-align: top; }
+tbody tr:last-child td { border-bottom: none; }
+
+/* === Badges (cardinality, skew, anomaly severity) === */
+.badge { display: inline-block; padding: 3px 9px; border-radius: 4px;
+         font-size: 11px; font-weight: 600; }
+.badge.green  { background: #ebf5ef; color: var(--accent-green); }
+.badge.red    { background: var(--accent-red-soft); color: var(--accent-red); }
+.badge.yellow { background: #fef6e3; color: #b67a08; }
+.badge.grey   { background: #f1efea; color: var(--ink-muted); }
+
+footer { text-align: center; padding: 32px 24px;
+         font-size: 12px; color: var(--ink-muted); }
+</style>
+
+<!-- ===== <header> block — eyebrow + serif h1 + lede + meta row ===== -->
+<header>
+  <div class="header-inner">
+    <div class="eyebrow">Dimension Analysis</div>
+    <h1>{ORG_NAME} Dimension Analysis</h1>
+    <p class="lede">Cardinality, distribution, trends, anomalies, and data quality across {DIMENSION_COUNT} dimensions.</p>
+    <div class="meta">
+      <span><span class="icon">&#128197;</span> {DATE_RANGE}</span>
+      <span><span class="icon">&#128202;</span> {DATA_VIEW_NAME}</span>
+      <span><span class="icon">&#128340;</span> Prepared {DATE}</span>
+    </div>
+  </div>
+</header>
