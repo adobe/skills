@@ -169,6 +169,148 @@ shows up in the index. The dynamic block fetches the index at page
 load — visitors hitting the page during the lag window see the
 empty state. The block self-hides; no broken UI.
 
+### Three variants of the same dynamic block
+
+The same block JS typically deploys in three filter variants across a
+migrated catalog site. They share the pattern (fetch index, filter,
+render) and differ only in scope:
+
+| Variant | On page type | Filters by | Cap | Order |
+|---|---|---|---|---|
+| **`.related`** | detail pages | same `template` + same `category` + not-self | 3 | first 3 |
+| **`.listing`** | category-listing pages | same `category` + path starts with parent URL prefix + `pageType !== 'listing'` | none (show all) | alpha by `modelName` |
+| **`.hub`** | top-level hub pages (`/new`, `/used-equipment`, `/service`) | `pageType === 'listing'` + path starts with hub URL prefix | none | alpha |
+
+The hub variant lists OTHER listing pages (one level up from
+listings). Its rendered card needs a preview image, which listings
+themselves rarely have. The fallback chain:
+
+1. Use the listing's own `image` if non-default (curated source-side
+   category hero, see § "Hub-card preview images" below).
+2. Otherwise find any indexed `pageType !== 'listing'` child whose
+   `category` matches, and use that detail's `image`.
+3. Otherwise render the text-only fallback (dark tile + accent rail).
+
+### Hub-card preview images — curated vs derived
+
+When the source site has a top-level category-hub page (e.g.
+`/new/machines/` listing all equipment families with curated
+photos), extract that image map once during migration and inject it
+into each category-listing's metadata:
+
+```js
+// One-off update — for each curated (slug → imageURL) pair, PUT the
+// listing's source with an additional <div>image</div><div>URL</div>
+// row in the metadata block. EDS converts to <meta property="og:image">,
+// helix-query picks it up into the `image` field, the hub block reads it.
+const html = currentSource.replace(
+  /(<div>description<\/div>[\s\S]*?<\/div>\s*<\/div>)/,
+  `$1\n    <div>\n      <div>image</div>\n      <div>${imageUrl}</div>\n    </div>`,
+);
+```
+
+For categories without a curated source image (often: parent
+categories like `excavators`, `dozers` whose actual detail pages
+live under sub-category slugs `mini-excavators`, `large-dozers`),
+the hub block's fallback to "find any matching child" produces 0
+matches because `excavators` has zero direct children. Two
+options:
+
+- Inject the curated image at fill time so the hub doesn't need
+  the fallback.
+- Author a synthetic child page or skip parent categories from the
+  hub display.
+
+### Filename-hash dedup for path-prefixed media
+
+DA stores the SAME uploaded media at path-prefixed URLs per page —
+e.g., a placeholder "no photo" image used by 288 detail pages
+across 28 categories appears in the index as:
+
+```
+/used-equipment/asphalt-pavers/media_1fe1b37fbb579a8....jpg?width=1200&...
+/used-equipment/backhoe-loaders/media_1fe1b37fbb579a8....jpg?width=1200&...
+/used-equipment/crushers/media_1fe1b37fbb579a8....jpg?width=1200&...
+```
+
+As strings, these URLs are all distinct. But they point to the
+same underlying media file (same `media_<hash>`). String-equality
+dedup misses them; **filename-based dedup catches them**:
+
+```js
+const imageKey = (src) => src ? src.split('/').pop() : null;
+const imageCounts = candidates.reduce((acc, src) => {
+  const k = imageKey(src);
+  if (k) acc[k] = (acc[k] || 0) + 1;
+  return acc;
+}, {});
+
+// Reject images shared across ≥3 categories — they're stock placeholders
+const previewImage = imageCounts[imageKey(candidate)] < 3 ? candidate : null;
+```
+
+This is the same trick documented for `.cards.related`'s nested-vs-
+flat dedup (§5 of this file) — strip the directory, compare just
+the filename.
+
+### Sticky reveal-on-hover (image-tile UX)
+
+For tile grids where a default-dark treatment looks better than a
+photo at rest, but the photo adds discoverability on interaction:
+reveal-once on first hover, never hide:
+
+```js
+// In the block JS, after rendering:
+block.querySelectorAll(':scope > ul > li').forEach((li) => {
+  if (!li.querySelector('.cards-card-image')) return;
+  const reveal = () => li.classList.add('revealed');
+  li.addEventListener('mouseenter', reveal, { once: true });
+  li.addEventListener('focusin', reveal, { once: true });
+  li.addEventListener('touchstart', reveal, { once: true, passive: true });
+});
+```
+
+```css
+.cards.hub > ul > li .cards-card-image { opacity: 0; transition: opacity 600ms; }
+.cards.hub > ul > li.revealed .cards-card-image { opacity: 1; }
+.cards.hub > ul > li::before {
+  content: ""; position: absolute; inset: 0; z-index: 1;
+  background: linear-gradient(to top, rgba(18,18,18,0.85), rgba(18,18,18,0.55) 50%, rgba(18,18,18,0.40));
+  opacity: 0; transition: opacity 600ms;
+}
+.cards.hub > ul > li.revealed::before { opacity: 1; }
+```
+
+`{ once: true }` removes the listener after first fire so the class
+sticks. Three event types cover keyboard (`focusin`), mouse
+(`mouseenter`), and touch (`touchstart`) without three separate
+state machines.
+
+### Metadata field-name lowercasing
+
+DA's metadata block emits `<meta name="X">` with **`X` lowercased**.
+Authoring `<div>pageType</div><div>listing</div>` produces
+`<meta name="pagetype" content="listing">`. The helix-query.yaml
+selector must match exact case:
+
+```yaml
+pageType:
+  select: head > meta[name="pagetype"]   # NOT meta[name="pageType"]
+  value: |
+    attribute(el, "content")
+```
+
+The yaml KEY (`pageType`) becomes the JSON field name in
+`/query-index.json` — keep that camelCase if your block JS reads it
+as `r.pageType`. Only the `select` expression needs the lowercased
+DOM-side name.
+
+After changing helix-query.yaml, **already-indexed pages don't
+pick up the new field automatically**. You must re-trigger the
+index endpoint on each affected page so the indexer re-extracts
+with the new schema, then trigger preview/live on
+`/query-index.json` to regenerate the aggregated JSON.
+
 ## §4 URL structure — decide BEFORE the first batch
 
 The biggest mid-migration headache is reorganizing URLs after pages
