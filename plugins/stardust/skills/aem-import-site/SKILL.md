@@ -54,11 +54,22 @@ this orchestrator isn't worth it.
    run the patch as a first action; the patch is idempotent.
 4. Read `stardust/templates.json` if present. If absent, treat this as a
    fresh planning run (Phase 0 + Phase 1 will create it).
-5. Scaffold `scripts/utils/` with the standard utility templates (see
-   References below — link-audit, build-redirects, mass-edit-template,
-   measure-cls). They're each ~50 lines, project-agnostic, and used
-   from Phase 6 onward. Copy from existing aem-import-site project or
-   from the reference snippets.
+5. Scaffold `scripts/utils/` with the standard utility templates from
+   [`reference/templates/`](reference/templates/). Required keys for
+   the templates land in `.env`:
+
+   ```
+   DA_TOKEN=<bearer from admin.da.live session>
+   DA_ORG=<github org>
+   DA_REPO=<github repo>
+   EDS_PREVIEW_ORIGIN=https://main--<repo>--<org>.aem.page
+   ```
+
+   Copy `link-audit.mjs` + `build-redirects.mjs` + `mass-edit.mjs` +
+   `retry-mass-edit.mjs` from the skill's template dir; rename the
+   mass-edit copies per amendment (e.g. `mass-edit-strip-bc.mjs`).
+   See `reference/templates/README.md` for the full list and
+   per-file project-edit requirements.
 
 ## Procedure
 
@@ -579,6 +590,12 @@ stardust/
   Phase 10 deliverable shape: inventory, per-template counts, link
   audit, CLS audit, deferred work, known issues. Single source of
   truth for "are we done?".
+- [`reference/templates/`](reference/templates/) — ready-to-copy
+  `.mjs` utility templates: `link-audit.mjs` (Phase 7),
+  `build-redirects.mjs` (Phase 9), `mass-edit.mjs` +
+  `retry-mass-edit.mjs` (Phase 9). All config via `.env`; the
+  mass-edit templates need a project-specific `mutate()` function
+  pasted in.
 
 ## Provenance
 
