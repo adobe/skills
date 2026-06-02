@@ -116,9 +116,14 @@ The installer auto-detects which **flavor** to install and reports it
   `scripts/scripts.js`, and `styles/styles.css` untouched**. Replacing them
   would rip out the Milo runtime — the very thing that loads the live
   `global-navigation` + footer from `gnav-source`/`footer-source` metadata.
-  On a Milo repo the chrome is owned by Milo; the bespoke body is drawn by
-  the `snowflake` overlay block, which Milo loads from the project's
-  `codeRoot`. `.snowflake/config.json` records `substrateFlavor: "milo"`.
+  On a Milo repo the chrome is owned by Milo; for **page-level** the bespoke
+  body is drawn by the `snowflake` overlay block, which Milo loads from the
+  project's `codeRoot`. For **block-level** the body is real `forge-*` block
+  tables that Milo decorates directly — the installed `blocks/snowflake` block
+  is simply unused (and harmless, since no `snowflake` block is authored on a
+  block-level page), so the same minimal Milo substrate works for both levels;
+  no extra install or skip is needed. `.snowflake/config.json` records
+  `substrateFlavor: "milo"`.
 
 The later phases branch on `.snowflake/config.json` `substrateFlavor` — read
 it before Generate/Wire.

@@ -5,9 +5,14 @@ paths and build a local-test file.
 
 ## Milo flavor (read FIRST if `substrateFlavor` is `milo`)
 
-For the Milo flavor, copy **only** the body artifacts — there are no
-header/footer fragments, and Milo's `head.html`/`scripts.js`/`styles.css`
-stay untouched:
+The Milo flavor has two wire paths depending on `conversionLevel`. In **both**,
+Milo's `head.html`/`scripts.js`/`styles.css` stay untouched and Milo loads the
+gnav/footer from the page metadata emitted in Generate. Pick the matching path,
+do it, then skip to the lint step — the EDS steps below do not apply to Milo.
+
+### Milo + page-level (overlay)
+
+Copy **only** the body artifacts — there are no header/footer fragments:
 
 ```bash
 cd "$(git rev-parse --show-toplevel)"
@@ -21,9 +26,40 @@ cp "${PROJ}/output/styles/${TEMPLATE_NAME}.css"     "styles/${TEMPLATE_NAME}.css
 
 Do NOT `mkdir fragments/<template>` or copy header/footer fragments. The
 `blocks/snowflake` overlay block (installed in Phase 0) loads
-`templates/<template>.html` + `styles/<template>.css` at runtime; Milo loads
-the gnav/footer from the page metadata emitted in Generate 3.8. Then skip to
-the lint step. The EDS steps below do not apply to Milo.
+`templates/<template>.html` + `styles/<template>.css` at runtime.
+
+### Milo + block-level (editable `forge-*` blocks)
+
+Copy **only** the per-section block code + assets. There are NO templates,
+NO `styles/`, NO `head.html`, NO `fragments/`, and NO `blocks/{header,footer}` —
+Milo runs the standard decoration pipeline and auto-loads each `forge-*` block
+from the repo root, and renders the live gnav/footer from the metadata block:
+
+```bash
+cd "$(git rev-parse --show-toplevel)"
+PROJ="${PROJECTS_DIR}/${NNN}-${SLUG}"
+
+# 1) Copy each forge-* block (js + css) to the repo's blocks/ dir
+for dir in "${PROJ}/output/blocks/"forge-*/; do
+  [ -d "$dir" ] || continue
+  name="$(basename "$dir")"
+  mkdir -p "blocks/${name}"
+  cp "${dir}/${name}.js"  "blocks/${name}/${name}.js"
+  cp "${dir}/${name}.css" "blocks/${name}/${name}.css"
+done
+
+# 2) Vendored assets (if asset strategy is "vendor") — already under assets/
+
+# 3) Build the local-test drafts file from the DA doc (full HTML document)
+node "<SKILL_DIR>/scripts/transform-da-to-eds.mjs" \
+  "${PROJ}/output/da/${PAGE_SLUG}.html" \
+  "drafts/${PAGE_SLUG}.html"
+```
+
+The DA-source body (`output/da/${PAGE_SLUG}.html`) is uploaded to DA in Phase 4's
+upload step (or by the host); it carries the `forge-*` block tables + the chrome
+`metadata` block and NO `template` key. At runtime Milo decorates each `forge-*`
+block (rebuilding its DOM) and draws the live gnav/footer from the metadata.
 
 ## Steps
 

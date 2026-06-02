@@ -4,6 +4,16 @@ Reference for Phases 3–5 when `conversionLevel` is `block-level` or
 `hybrid`. Read `block-level-feasibility.md` first (covers the
 decision criteria); this document covers the implementation.
 
+> **Milo flavor:** this document describes the **EDS** block-level output
+> (it writes `styles/styles.css`, appends `head.html`, and creates
+> `blocks/{header,footer}` + `fragments/`). On a **Milo** repo
+> (`substrateFlavor: milo`) those global/chrome steps are SKIPPED — Milo owns
+> the runtime and renders the live gnav/footer from a page `metadata` block.
+> Read the **"Milo flavor deltas"** section at the top of the Block-level path
+> in `phases/3-generate.md` before applying anything here. The decorator
+> pattern, content-model design, and CSS-scoping guidance below are the same
+> for both flavors; only the global/chrome plumbing differs.
+
 ## How it differs from page-level
 
 | Aspect | Page-level (overlay) | Block-level |
