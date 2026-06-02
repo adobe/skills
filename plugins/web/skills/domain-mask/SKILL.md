@@ -86,14 +86,6 @@ help the user remove the entry manually:
 sudo sed -i '' '/<display-domain>/d' /etc/hosts
 ```
 
-## What the proxy does
-
-- Forwards all requests to the target origin with rewritten `Host` header
-- Rewrites `Location` headers in redirects back to the display domain
-- Strips `strict-transport-security` headers (prevents cert conflicts)
-- Strips `accept-encoding` (avoids compressed responses)
-- Returns 502 on proxy errors
-
 ## Limitations
 
 - macOS only (`/etc/hosts` path, `brew install mkcert`)
