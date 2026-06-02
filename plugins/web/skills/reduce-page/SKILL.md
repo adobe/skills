@@ -87,10 +87,6 @@ Inject the bundle via `initScript` in a playwright-cli `--config` JSON, along wi
 bootstrap script that runs detection asynchronously after the page loads and stores the
 result in `window.__reduceResult`. Then read it via a synchronous `eval` expression.
 
-**Why this pattern:** `playwright-cli eval` is expression-only and cannot `await`.
-The bootstrap runs the async work during page load, so the eval only needs to read
-the already-resolved result.
-
 ```bash
 REDUCE_CONFIG="/tmp/reduce-config-$$.json"
 BOOTSTRAP="/tmp/reduce-bootstrap-$$.js"
@@ -122,26 +118,13 @@ RESULT=$(playwright-cli eval "JSON.stringify(window.__reduceResult)")
 rm -f "$REDUCE_CONFIG" "$BOOTSTRAP"
 ```
 
-Parse the returned JSON. This is the Phase 1 output:
+Parse the returned JSON:
 
 ```json
 {
-  "url": "https://example.com",
-  "title": "Page Title",
-  "viewport": { "width": 1280 },
-  "templateHash": "...",
-  "sections": [
-    {
-      "index": 0,
-      "sectionType": "hero",
-      "xpath": "/html/body/main/section[1]",
-      "xpathWithDetails": "//section[@class='hero']",
-      "tokenizedHtml": "<section class='hero'>...</section>",
-      "layout": { "numCols": 2, "numRows": 1 },
-      "features": ["hasHeading", "hasBackgroundImage", "hasCTA"],
-      "section": null
-    }
-  ]
+  "url": "...", "title": "...", "viewport": { "width": 1280 }, "templateHash": "...",
+  "sections": [{ "index": 0, "sectionType": "hero", "xpath": "...", "tokenizedHtml": "...",
+    "layout": { "numCols": 2, "numRows": 1 }, "features": ["hasHeading", "hasCTA"] }]
 }
 ```
 
@@ -213,22 +196,6 @@ Print:
 - Section types (with any re-typings noted)
 - Size stats: original HTML → Phase 1 → Phase 2 skeleton
 - Paths to output files
-
-## Phase 1 Token Reference
-
-These tokens are produced by the browser script (Phase 1):
-
-| Token | Source Signal |
-|-------|-------------|
-| `{TEXT}` | Non-empty text node |
-| `{HEADING:n}` | `<h1>`-`<h6>` tag |
-| `{IMAGE:WxH}` | `<img>` with both dimensions > 64px |
-| `{ICON}` | `<img>`/`<svg>` with either dimension ≤ 64px |
-| `{VIDEO}` | `<video>` or iframe with video domain src |
-| `{CTA:label}` | `<a>` with styled background/border |
-| `{LINK:label}` | `<a>` with href (plain style) |
-| `{INPUT:type}` | `<input>` or `<textarea>` |
-| `{SELECT:N}` | `<select>` with N options |
 
 ## Dependencies
 
