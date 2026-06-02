@@ -260,6 +260,9 @@ proceeds. Reruns are safe — phases skip work already done.
    phases/3-generate.md FIRST — Milo owns the runtime, so the global
    styles / `head.html` / `scripts.js` / header-footer-fragment steps
    are skipped and the chrome comes from a page `metadata` block.
+   On `milo` + `block`, scroll animations are emitted as adjustable
+   `--pa-*` `animation` sidecar blocks (step B.5b), consumed by the
+   vendored `blocks/animation` runtime the substrate installs.
    See [phases/3-generate.md](./phases/3-generate.md).
 
 4. **Wire** — copy artifacts to EDS-served paths, build the local-test

@@ -172,8 +172,12 @@ test('milo repo auto-detects the milo flavor — adds blocks/snowflake, leaves s
     const r = runInstaller(dir);
     assert.equal(r.code, 0, r.stderr);
     assert.match(r.stdout, /substrate flavor: milo \(auto-detected\)/, 'did not auto-detect milo');
-    // Milo substrate adds only the overlay block…
+    // Milo substrate adds the overlay block…
     assert.ok(existsSync(join(dir, 'blocks/snowflake/snowflake.js')), 'overlay block not installed');
+    // …the scroll-animation runtime (so --pa-* animation sidecars run on the deployed page)…
+    assert.ok(existsSync(join(dir, 'blocks/animation/animation.js')), 'animation block not installed');
+    assert.ok(existsSync(join(dir, 'blocks/animation/animation.css')), 'animation css not installed');
+    assert.ok(existsSync(join(dir, 'tools/page-animator/controls.js')), 'page-animator controls (animation dep) not installed');
     // …and must NOT rip out Milo's runtime (no overlay import injected into scripts.js).
     assert.equal(read(dir, 'scripts/scripts.js'), MILO_SCRIPTS, 'Milo scripts.js was modified');
     assert.doesNotMatch(read(dir, 'scripts/scripts.js'), /overlay-engine/, 'overlay engine wrongly injected on milo');

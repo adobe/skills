@@ -1,7 +1,7 @@
 {
-  "substrateVersion": "1.0.0-milo.2",
+  "substrateVersion": "1.0.0-milo.3",
   "flavor": "milo",
-  "_comment": "Milo-flavor substrate. Unlike the EDS flavor it does NOT replace head.html / scripts/scripts.js / styles/styles.css / header+footer blocks — that would rip out Milo's runtime, which is what loads the live global-navigation + footer from page metadata. It only ADDS a project-local overlay block (blocks/snowflake) that Milo loads from codeRoot. Chrome is owned by Milo; the body is drawn by the block from /templates/<template>.html.",
+  "_comment": "Milo-flavor substrate. Unlike the EDS flavor it does NOT replace head.html / scripts/scripts.js / styles/styles.css / header+footer blocks — that would rip out Milo's runtime, which is what loads the live global-navigation + footer from page metadata. It ADDS project-local blocks that Milo auto-loads from codeRoot: (1) the overlay block (blocks/snowflake) for the page-level path; (2) the scroll-animation runtime (blocks/animation + tools/page-animator/controls.js, vendored from milo@page-animator-poc) so --pa-* animation sidecars run on the deployed page and stay adjustable in the page-animator panel. Chrome is owned by Milo.",
   "marker": {
     "file": "blocks/snowflake/snowflake.js",
     "needle": "snowflake — Milo substrate overlay block",
@@ -17,6 +17,21 @@
       "src": "blocks/snowflake/snowflake.css",
       "dst": "blocks/snowflake/snowflake.css",
       "purpose": "Minimal; hides the (consumed) authoring block. The overlaid body carries its own styles."
+    },
+    {
+      "src": "blocks/animation/animation.js",
+      "dst": "blocks/animation/animation.js",
+      "purpose": "Scroll-animation sidecar block (vendored from milo@page-animator-poc). Reads --pa-*/range-*/timing-* rows from a `<div class=\"animation {target}\">` sibling, finds the target by class name (works for bespoke forge-* blocks), injects a CSS scroll-driven animation, stamps data-pa-* for the page-animator panel, then hides itself."
+    },
+    {
+      "src": "blocks/animation/animation.css",
+      "dst": "blocks/animation/animation.css",
+      "purpose": "No-op stylesheet (the block hides itself in JS; animation CSS is generated per-animId)."
+    },
+    {
+      "src": "tools/page-animator/controls.js",
+      "dst": "tools/page-animator/controls.js",
+      "purpose": "Dependency of blocks/animation: the --pa-* param model + buildCssRule + generateAnimId (vendored from milo@page-animator-poc). Same vocabulary the page-animator panel reads/writes, so emitted animation sidecars are adjustable."
     }
   ],
   "ignorePatches": [

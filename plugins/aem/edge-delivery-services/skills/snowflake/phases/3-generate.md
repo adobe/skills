@@ -37,6 +37,8 @@ resolution from `SKILL.md`):
 **Block-level additionally:**
 - `block-level-conversion.md` — output layout, decorator pattern,
   CSS extraction, content model design, drafts test page format
+- `animation-sidecars.md` — (Milo flavor, step B.5b) the `--pa-*` /
+  `range-*` / `timing-*` vocabulary for `animation` sidecar blocks
 
 Resolution at each lookup: check `.snowflake/knowledge/<file>.md`
 first (project override), then `<SKILL_DIR>/knowledge/<file>.md`
@@ -469,6 +471,52 @@ editable (positional block tables). Only the global/chrome plumbing changes:
     (inspect the actual wrapper class Milo emits and match it), plus any
     `main > .section { margin: 0; }` the design needs. Scope the block's rules with
     enough specificity to win against Milo's base `main`/`.section`/typography styles.
+- **B.5b (animation sidecars) — emit scroll animations as `animation` blocks, NOT
+  bundled JS.** The Milo substrate ships a vendored `blocks/animation` runtime (+
+  `tools/page-animator/controls.js`) — installed in Phase 0 — that reads a sibling
+  `<div class="animation {target}">` block of `--pa-*`/`range-*`/`timing-*` KV rows,
+  finds the target block **by class name** (so it animates `forge-*` blocks), and
+  drives a CSS scroll-driven animation (`animation-timeline: view()`). Emitting motion
+  this way (instead of an opaque `scripts/<page>-animations.js` blob) makes every
+  animation **adjustable** in the page-animator panel/sidekick and durable in DA. For
+  each animated section, add — as a sibling of the `forge-<name>` block, inside the
+  same section `<div>` — an `animation` block:
+
+  ```html
+  <div class="animation forge-hero">
+    <div><div>--pa-opacity-from</div><div>0</div></div>
+    <div><div>--pa-translate-y</div><div>24</div></div>
+    <div><div>range-start</div><div>entry 0%</div></div>
+    <div><div>range-end</div><div>entry 60%</div></div>
+  </div>
+  ```
+
+  Rules:
+  - **Target by class:** the second class names the block (`animation forge-hero`);
+    append an index for the Nth match (`animation forge-card 2`). No class = animate the
+    whole section.
+  - **Values are bare numbers** (the runtime's `parseProps` does `parseFloat`): write
+    `24`, not `24px`. Only emit keys you change; defaults fill the rest. The full
+    vocabulary + defaults are in `knowledge/animation-sidecars.md`.
+  - **Policy — driven by `decisions.json.animations` (`default` | `preserve` | `off`,
+    default `default`):**
+    - `default`: a conservative, tasteful reveal on each major section — a gentle
+      fade-up (`--pa-opacity-from: 0`, `--pa-translate-y: ~24`, range `entry 0%` →
+      `entry 60%`), lightly **staggered** across sibling sections by nudging
+      `range-start` later (e.g. `entry 0%`, `entry 10%`, `entry 20%`). Do NOT animate
+      tiny atoms — animate the section/primary block. Because `animation-timeline:
+      view()` is scroll-position-driven, an above-the-fold hero is already past its
+      entry range at scroll 0 and renders settled (no jank/LCP cost) — emit it anyway
+      for consistency; it just won't visibly move.
+    - `preserve`: only where the **source** had motion (Match path). Map enter/reveal/
+      translate/scale/blur to `--pa-*`. Leave true cinematics (Lenis/GSAP scrub,
+      pinning) as the existing bundled `scripts/<page>-animations.js` — they don't
+      reduce to the `--pa-*` model.
+    - `off`: emit no `animation` blocks.
+  - **Reduced motion:** the design tokens already include a reduced-motion guard via the
+    runtime; do not duplicate it per block.
+  - **Fidelity:** reveals animate to the real end-state, so the per-section 1:1
+    screenshot still matches — adding `default` motion does not break the 1:1 gate.
 - **B.6 (scripts.js `buildHeroBlock`) — SKIP.** Never touch Milo's `scripts.js`.
   Milo has no hero auto-block, so there is nothing to guard against.
 - **B.8 (DA-source body) — keep the standard positional block tables** (one
@@ -491,8 +539,14 @@ editable (positional block tables). Only the global/chrome plumbing changes:
           <div><div>Description</div></div>
           <div><div><p><strong><a href="/cta">CTA</a></strong></p></div></div>
         </div>
+        <div class="animation forge-hero">          <!-- B.5b sidecar (optional per section) -->
+          <div><div>--pa-opacity-from</div><div>0</div></div>
+          <div><div>--pa-translate-y</div><div>24</div></div>
+          <div><div>range-start</div><div>entry 0%</div></div>
+          <div><div>range-end</div><div>entry 60%</div></div>
+        </div>
       </div>
-      <!-- … one section div per forge- block … -->
+      <!-- … one section div per forge- block (+ optional animation sidecar) … -->
       <div>
         <div class="metadata">
           <div><div>title</div><div><pageTitle></div></div>
