@@ -286,6 +286,170 @@ sticks. Three event types cover keyboard (`focusin`), mouse
 (`mouseenter`), and touch (`touchstart`) without three separate
 state machines.
 
+### Derive-from-URL blocks (breadcrumb, sectional nav)
+
+Don't hand-author breadcrumbs per page — they're a URL-derivable shape
+and authoring them in every page accumulates ~10× maintenance cost
+over a multi-thousand-page migration. Instead, deploy a single
+block JS that derives the trail from `window.location.pathname` plus
+two declarative overrides:
+
+```js
+// blocks/breadcrumb/breadcrumb.js
+const LABEL_OVERRIDES = {
+  // Slugs whose Title-Case form would read wrong
+  'new': 'New Equipment',
+  'used-equipment': 'Used Equipment',
+  'jobs': 'Careers',
+  // Compound paths (look up before single-segment fallback)
+  'parts/lookup': 'Parts Lookup',
+  'service/field': 'Field Service',
+};
+const SKIP_SEGMENTS = new Set(['machines']);  // hidden from trail, kept in hrefs
+
+export default function decorate(block) {
+  const path = window.location.pathname.replace(/\/$/, '');
+  if (!path || path === '/') { block.closest('.section')?.remove(); return; }
+
+  const segments = path.split('/').filter(Boolean);
+  const items = [{ label: 'Home', href: '/' }];
+  segments.forEach((seg, i) => {
+    if (SKIP_SEGMENTS.has(seg)) return;
+    items.push({
+      href: '/' + segments.slice(0, i + 1).join('/'),
+      label: LABEL_OVERRIDES[seg]
+        || (i > 0 && LABEL_OVERRIDES[`${segments[i - 1]}/${seg}`])
+        || titleCase(seg),
+    });
+  });
+
+  // Leaf: prefer document.title (minus brand suffix) for slugs WITHOUT
+  // overrides — title is usually a cleaner human label for product/location
+  // pages. For overridden hub slugs, keep the override (titles tend to be
+  // verbose: "Careers at Wheeler" vs "Careers").
+  const lastSlug = segments[segments.length - 1];
+  if (items.length > 1 && !LABEL_OVERRIDES[lastSlug]) {
+    items[items.length - 1].label =
+      (document.title || '').replace(/\s*[—–-]\s*Wheeler.*$/i, '').trim()
+      || document.querySelector('main h1')?.textContent?.trim()
+      || items[items.length - 1].label;
+  }
+
+  // Render
+  const p = document.createElement('p');
+  items.forEach((item, i) => {
+    if (i === items.length - 1) {
+      p.appendChild(document.createTextNode(item.label));
+    } else {
+      const a = document.createElement('a'); a.href = item.href; a.textContent = item.label;
+      p.appendChild(a);
+      const sep = document.createElement('em'); sep.textContent = '›';
+      p.appendChild(sep);
+    }
+  });
+
+  block.innerHTML = '';  // wipe any legacy static authoring
+  block.appendChild(p);
+}
+```
+
+The `block.innerHTML = ''` at the end is key — legacy pages with static
+authored breadcrumb HTML get the trail replaced without re-authoring.
+Pair with a one-shot migration script (see § "Repetitive-task scripts"
+below) to clean the DA-side source for editor clarity.
+
+For fill scripts going forward, author an empty block:
+
+```html
+<div class="breadcrumb"><div><div></div></div></div>
+```
+
+Authors get a clean empty cell in DA; visitors get the derived trail.
+
+### Trailing-slash → no-slash via /redirects.json
+
+AEM EDS does NOT auto-redirect `/path/` ↔ `/path`. If pages are
+authored at the no-slash version (e.g. `new.html` → `/new`), chrome
+links and breadcrumbs that include a trailing slash (`/new/` from the
+source site's WordPress convention) all 404.
+
+The fastest fix is a generated `/redirects.json`. EDS reads it at
+the CDN; each `Source → Destination` is a 301:
+
+```json
+{
+  "total": 2175,
+  "offset": 0,
+  "limit": 2175,
+  "data": [
+    { "Source": "/new/",             "Destination": "/new" },
+    { "Source": "/used-equipment/",  "Destination": "/used-equipment" },
+    { "Source": "/new/machines/large-wheel-loaders/", "Destination": "/new/machines/large-wheel-loaders" }
+  ],
+  ":type": "sheet"
+}
+```
+
+Generate it by walking `/query-index.json` once and emitting one entry
+per indexed path. No re-batch of content needed; no link changes in
+chrome fragments. Publish with the same admin.hlx.page preview + live
+endpoints as any other file.
+
+This is also the way to handle:
+
+- WordPress → EDS path-shape migrations (`/new/` → `/new`)
+- Restructure-after-publish (`/old/path` → `/new/path`)
+- Cross-system redirects (production source → EDS subdomain)
+
+Long redirects.json files (1k+ entries) work fine; the CDN matches
+in O(1) on each request.
+
+### Repetitive-task scripts (one-shot mass edits)
+
+A common late-migration task: amend a small piece of every page's
+DA source — strip dead static content, inject a new metadata field,
+fix a typo, swap a global URL. The recipe:
+
+```js
+// e.g., strip-static-X.mjs
+import { readFileSync, writeFileSync } from 'fs';
+const TOKEN = readFileSync('.env', 'utf8').match(/^DA_TOKEN=(.+)$/m)[1].trim();
+const AUTH = { Authorization: `Bearer ${TOKEN}` };
+
+async function mutateOne(path) {
+  const slug = path.replace(/^\//, '');
+  const url = `https://admin.da.live/source/<org>/<repo>/${slug}.html`;
+  const res = await fetch(url, { headers: AUTH });
+  if (res.status === 404) return { path, skipped: 'orphan' };
+  if (!res.ok) return { path, failed: res.status };
+
+  const html = await res.text();
+  const newHtml = mutate(html);  // your transformation
+  if (html === newHtml) return { path, skipped: 'no-change' };
+
+  const fd = new FormData();
+  fd.append('data', new Blob([newHtml], { type: 'text/html' }));
+  await fetch(url, { method: 'PUT', headers: AUTH, body: fd });
+  await new Promise(r => setTimeout(r, 600));
+  await fetch(`https://admin.hlx.page/preview/<org>/<repo>/main/${slug}`, { method: 'POST', headers: AUTH });
+  await fetch(`https://admin.hlx.page/live/<org>/<repo>/main/${slug}`, { method: 'POST', headers: AUTH });
+  return { path, mutated: true };
+}
+
+// Drive from /query-index.json with a worker pool (concurrency 5)
+```
+
+Key conventions:
+- **Always treat GET 404 as skip, not failure** — orphan pages still
+  in the index but with no DA source are normal.
+- **Detect no-change and skip the PUT** — keeps idempotent re-runs
+  fast and quiet.
+- **Concurrency ~5 hits admin.hlx.page rate limits comfortably** —
+  10 per second is the documented ceiling.
+- **Always retry on network errors** — admin.hlx.page can throw
+  transient connect timeouts; 3 retries with linear backoff handles
+  every retryable case observed.
+
 ### Metadata field-name lowercasing
 
 DA's metadata block emits `<meta name="X">` with **`X` lowercased**.
