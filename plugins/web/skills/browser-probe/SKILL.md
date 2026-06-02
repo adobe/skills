@@ -1,6 +1,7 @@
 ---
 name: browser-probe
 license: Apache-2.0
+compatibility: Requires playwright-cli on PATH. Run `playwright-cli --help` for usage.
 description: >-
   Probe a URL with escalating headless browser configurations to detect CDN bot
   protection (Akamai, Cloudflare, DataDome, AWS WAF) and produce a

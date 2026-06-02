@@ -78,7 +78,7 @@
     try {
       const res = await fetch(src);
       if (!res.ok) return null;
-      return res.text();
+      return await res.text();
     } catch {
       return null;
     }

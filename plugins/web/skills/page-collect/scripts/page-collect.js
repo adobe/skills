@@ -20,7 +20,7 @@
  */
 
 const { spawnSync } = require('node:child_process');
-const { mkdirSync, readFileSync, writeFileSync, rmSync, existsSync } = require('node:fs');
+const { readFileSync, writeFileSync, rmSync, existsSync } = require('node:fs');
 const { mkdir, writeFile } = require('node:fs/promises');
 const { join, resolve, dirname } = require('node:path');
 const { tmpdir } = require('node:os');
@@ -388,8 +388,7 @@ async function main() {
       process.stderr.write(`Done. Output: ${output}/collection.json\n`);
 
     } else if (subcommand === 'icons') {
-      const manifest = await writeIcons(data.svgs || [], data.url, output);
-      await writeFile(join(output, 'icons.json'), JSON.stringify(manifest, null, 2));
+      await writeIcons(data.svgs || [], data.url, output);
       process.stderr.write(`Done. Output: ${output}/icons.json\n`);
 
     } else {

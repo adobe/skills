@@ -1,6 +1,7 @@
 ---
 name: page-prep
 license: Apache-2.0
+compatibility: Requires playwright-cli on PATH. Run `playwright-cli --help` for usage.
 description: >-
   Prepare any webpage for clean interaction by detecting and removing disruptive
   overlays (cookie banners, GDPR consent, modals, popups, newsletter signups,
