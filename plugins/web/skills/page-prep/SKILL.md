@@ -177,51 +177,8 @@ cannot.
 For multi-step sessions where new overlays may appear (SPAs, lazy-loaded
 banners), inject the watch mode snippet after cleanup (see Watch Mode).
 
-## Detection Report Format
-
-```jsonc
-{
-  "overlays": [
-    {
-      "id": "overlay-0",
-      "type": "cookie-consent",
-      "source": "cmp-match",       // "cmp-match" | "heuristic"
-      "cmp": "cookiebot",          // CMP name (only for cmp-match)
-      "selector": "#CybotCookiebotDialog",
-      "confidence": 1.0,
-      "hide": ["#CybotCookiebotDialog { display:none!important }"],
-      "dismiss": [{ "action": "click", "selector": "#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll" }]
-    },
-    {
-      "id": "overlay-1",
-      "type": "unknown-modal",
-      "source": "heuristic",
-      "selector": "div.gdpr-wall",
-      "confidence": 0.45,
-      "signals": ["high-z-index", "keyword-match", "scroll-lock-boost"],
-      "hide": ["div.gdpr-wall { display:none!important }"],
-      "dismiss": null               // agent composes dismiss (see Agent Fallback)
-    }
-  ],
-  "scroll_locked": true,
-  "scroll_fix": "html,body { overflow:auto!important; height:auto!important }"
-}
-```
-
-## Recipe Manifest Format
-
-```json
-{
-  "overlays": [
-    {
-      "id": "cookiebot",
-      "hide": { "css": ["#CybotCookiebotDialog { display: none !important; }"] },
-      "dismiss": { "steps": [{ "action": "click", "selector": "#accept-btn" }] }
-    }
-  ],
-  "scroll_fix": "document.body.style.overflow=''"
-}
-```
+See [references/formats.md](references/formats.md) for the Detection Report and
+Recipe Manifest JSON schemas.
 
 ## Agent Fallback (heuristic detections with null dismiss)
 
