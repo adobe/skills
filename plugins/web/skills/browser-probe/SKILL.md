@@ -21,14 +21,8 @@ dependencies.
 
 ## When to Use
 
-Run this skill **before** any `playwright-cli` interaction with a domain you
-haven't tested, or when a downstream script reports a blocked page. Common
-triggers:
-
-- First interaction with a new domain
-- `capture-snapshot.js` produces empty/error snapshots
-- Page title contains "error", "denied", "blocked", "captcha"
-- HTTP 403 responses from headless browser
+Run **before** any `playwright-cli` interaction with an untested domain, or when
+a downstream script reports a blocked/empty page (403, "access denied", "captcha").
 
 ## Script Location
 
@@ -68,19 +62,9 @@ Load `probe-report.json`. Check `firstSuccess`:
 
 ### Step 3 — Interpret results
 
-Load the stealth configuration reference at `references/stealth-config.md` and match the
-`detectedSignals` array against the Provider Signature Table.
-
-| Signal(s) | Interpretation | Minimum config |
-|-----------|----------------|----------------|
-| `cloudfront-block` or stealth fails / stealth-ua succeeds | CloudFront UA blocking (`HeadlessChrome` in HTTP header) | `stealth-ua` |
-| `cloudfront` (no `cloudfront-block`) | CloudFront present, not blocking | default |
-| `akamai-server` / `akamai-bot-manager` | TLS fingerprint blocking | `chrome` (stealth+UA alone insufficient) |
-| `cloudflare-ray` (no `cloudflare-challenge`) | Cloudflare present, not blocking | default |
-| `cloudflare-challenge` | Active JS challenge | `chrome` + stealth + UA |
-| `datadome` | Aggressive detection | `chrome` + stealth + UA |
-| `aws-waf` | Usually UA-based | `stealth-ua` |
-| no signals + blocked | Unknown protection | `persistent` (last resort) |
+Match `detectedSignals` against the Provider Signature Table in
+`references/stealth-config.md` to confirm why blocking occurred and validate
+that `firstSuccess` is the minimum sufficient config.
 
 ### Step 4 — Generate recipe
 
@@ -103,16 +87,15 @@ Write `browser-recipe.json` to `$OUTPUT_DIR`:
 
 **Config mapping from `firstSuccess`:**
 
-| firstSuccess | cliConfig.launchOptions | stealthInitScript |
-|---|---|---|
-| `default` | `{}` (no channel, no args) | `null` (not needed) |
-| `stealth` | `{}` (no channel, no args) | Full stealth script from reference |
-| `stealth-ua` | `{ "args": ["--user-agent=<realistic UA>"] }` | Full stealth script from reference |
-| `chrome` | `{ "channel": "chrome", "args": ["--user-agent=<realistic UA>"] }` | Full stealth script from reference |
-| `persistent` | `{ "channel": "chrome", "args": ["--user-agent=<realistic UA>"] }` | Full stealth script from reference |
+| firstSuccess | channel | args | stealthInitScript |
+|---|---|---|---|
+| `default` | — | — | null |
+| `stealth` | — | — | from reference |
+| `stealth-ua` | — | `--user-agent=<realistic UA>` | from reference |
+| `chrome` | `chrome` | `--user-agent=<realistic UA>` | from reference |
+| `persistent` | `chrome` | `--user-agent=<realistic UA>` | from reference |
 
-If `firstSuccess` is `persistent`, add a `"persistent": true` field to the
-recipe so consumers know to use `--persistent`.
+If `firstSuccess` is `persistent`, add `"persistent": true` to the recipe.
 
 ### Step 5 — Report results
 
