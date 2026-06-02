@@ -54,10 +54,54 @@ this orchestrator isn't worth it.
    run the patch as a first action; the patch is idempotent.
 4. Read `stardust/templates.json` if present. If absent, treat this as a
    fresh planning run (Phase 0 + Phase 1 will create it).
+5. Scaffold `scripts/utils/` with the standard utility templates (see
+   References below — link-audit, build-redirects, mass-edit-template,
+   measure-cls). They're each ~50 lines, project-agnostic, and used
+   from Phase 6 onward. Copy from existing aem-import-site project or
+   from the reference snippets.
 
 ## Procedure
 
-The skill has six phases. Phases 0–1 plan; phases 2–5 execute.
+The skill runs in 10 ordered phases. Phases -1 through 1 plan;
+phases 2 through 6 execute templates; phases 7 through 9 close
+the long tail. Each phase has an explicit completion artifact and
+(where indicated) a user-review gate before moving on.
+
+| # | Phase | Output | Gate |
+|---|---|---|---|
+| -1 | Pre-flight | `_preflight.json` | green checks |
+| 0 | Site inventory + template clustering | `templates.json` | — |
+| 1 | Per-template mode-pick + pageType | `templates.json` (filled) | user confirms |
+| 2 | Per-template execution: one representative | EDS preview URLs | user review + CLS gate |
+| 3 | Hub landing pages FIRST | chrome destinations live | — |
+| 4 | Per-template fill script | `scripts/aem-import/fill-<template>.mjs` | — |
+| 5 | Smoke-test batch (`--limit 5`) | 5 sample pages live | user review |
+| 6 | Full batch + verify | `_batch-results.json`, `_verification.json` | — |
+| 7 | Link audit | `/tmp/link-audit.csv` | — |
+| 8 | Gap-fill sprint | top-N missing pages live | user reviews priorities |
+| 9 | Polish (CLS, redirects, dynamic conversions, cleanup) | post-polish state | — |
+| (10) | Completion report | `stardust/completion-report.md` | — |
+
+### Phase -1 — Pre-flight check
+
+Before any work, validate the environment. Fail fast on:
+
+- **DA_TOKEN present and not stale** — read from `.env`, GET a known
+  source path to confirm it returns 200 (not 401)
+- **helix-bot push access** — verify GitHub remote is writeable
+  (`git ls-remote --heads origin` succeeds)
+- **admin.hlx.page reachable** — POST `/preview/.../<known-published-path>`
+  returns 200 (catches CDN auth issues early)
+- **DA repo structure intact** — confirm `helix-query.yaml`, `head.html`,
+  `styles/styles.css`, `blocks/header/`, `blocks/footer/` all exist
+- **Engine patch present** — confirm scripts.js has the blocks-mode
+  tolerance marker (see `aem-import/reference/engine-patch.md`)
+
+Write `_preflight.json` with each check + status. If any fails,
+stop and surface a clear remediation.
+
+This phase is fast (< 30 s) and saves the embarrassing mid-batch
+"token expired in hour 14" failures.
 
 ### Phase 0 — Site inventory + template clustering
 
@@ -228,7 +272,47 @@ Walk each `planned` template in this hubs-first order. Execute per mode:
 #### Mode D — Skip
 No work. Record `status: "skipped"`.
 
-### Phase 3 — Per-template fill script
+**User-review gate**: every representative page must pass the **CLS
+Day-1 checklist** before Phase 4 begins. The checklist lives in
+[`../aem-import/reference/conventions.md`](../aem-import/reference/conventions.md)
+§8 "Day 1 checklist for new templates". Throttled-mobile CLS must
+be < 0.1 — fixing CLS after detail-page batches have shipped means
+re-rendering thousands of pages with already-deployed CSS that's
+still wrong.
+
+### Phase 3 — Hub landing pages live
+
+After Phase 2 produces a representative for each template, but
+**before** any detail-page batch runs in Phase 6, author every
+remaining hub destination in the site.
+
+This phase exists because chrome verbs (BUY / RENT / SERVICE /
+PARTS / etc.) link to hub pages on every single page in the site
+— including every detail page about to be batched. If a chrome
+destination doesn't exist when its first inbound page ships, every
+chrome verb 404s. Authoring 5-15 minimal hub stubs upfront unlocks
+the chrome from page 1 of N.
+
+For each hub identified in Phase 0 (pageType=`hub`):
+
+1. Author a minimal hub stub: title + tagline + dynamic-block
+   placeholder + CTA. ~5 minutes per hub.
+2. PUT to DA, preview, publish, index.
+3. The dynamic block (e.g., `.cards.hub.dynamic`) fills in
+   automatically as detail / listing pages get batched in Phase 6.
+   Empty hubs are cheap; absent hubs are expensive.
+
+Phase 3 also covers any **sub-hub** destinations chrome may link
+to that aren't part of the catalog templating (action pages like
+`/contact`, `/quotes`, `/request-service`; portal stubs like
+`/login`, external-system gateways).
+
+See [`reference/page-shape-inventory.md`](reference/page-shape-inventory.md)
+for the typical hub inventory; see
+[`reference/dynamic-vs-static.md`](reference/dynamic-vs-static.md)
+for what to author static vs dynamic on each hub.
+
+### Phase 4 — Per-template fill script
 
 For each approved template, author a Node script at
 `scripts/aem-import/fill-<template>.mjs` that:
@@ -245,58 +329,163 @@ For each approved template, author a Node script at
 slots → page added to a failure bucket, not silently placeholdered. This
 is the verbatim-at-scale guarantee.
 
-The fill script also handles asset URL rewriting (captured wheelercat.com
+The fill script also handles asset URL rewriting (captured source-site
 URLs → DA-fetchable forms) and image deduplication checks.
 
-### Phase 4 — Batch migrate
+Pair each fill script with a batch orchestrator at
+`scripts/aem-import/batch-<template>.mjs` supporting the required CLI
+flag set (`--limit`, `--skip-existing`, `--retry-failed`,
+`--concurrency`, `--no-publish`) — see
+[`reference/fill-script-pattern.md`](reference/fill-script-pattern.md)
+for the contract.
 
-A single orchestrator script walks every page in every approved template:
+### Phase 5 — Smoke-test batch
+
+Run each template's batch with `--limit 5`. User reviews the 5 sample
+pages in EDS preview, confirms the structure renders as expected,
+then proceeds to Phase 6 (full batch).
+
+This phase is short (5 min per template) but catches most "the
+fill script generates broken HTML for unusual source pages" bugs
+before they ship across thousands of pages. Skipping it has cost
+multi-thousand-page re-batches in the past.
+
+### Phase 6 — Full batch + verify
+
+After the smoke-test passes (Phase 5), each template's batch
+orchestrator walks the full sitemap. Per-template orchestrator scripts
+(one per template) use the shared CLI contract documented in
+[`reference/fill-script-pattern.md`](reference/fill-script-pattern.md):
 
 ```
-for template in templates.approved:
-  for page in template.pages (excluding representative):
-    fill_script(page) → emits DA HTML
-    PUT to DA admin source endpoint
-    POST to admin.hlx.page preview
-    record result (success / fail / image-error)
+node scripts/aem-import/batch-<template>.mjs --concurrency 4
 ```
 
-Reports per-template counts:
+Default concurrency 4 is the safe sustained rate against admin.hlx.page
+(see admin-api §2 "Concurrency ceiling"). Each batch:
+
+1. Walks the source sitemap chunks for the template.
+2. Fills, PUTs, previews, publishes, indexes each page (per-page result
+   recorded in `_batch-results.json`).
+3. Reports per-template counts.
+
+Reports look like:
 
 ```
-Batch migrate complete.
-
-Template                          Planned    Pushed    Live    Failed
-home                              1          1         1       0
-customer-value-agreements         2          2         2       0
-new                               6          6         6       0
-equipment-detail-used             1001       1001      998     3
-equipment-detail-new              249        249       249     0
-attachment-detail                 1001       1001      999     2
-static-content                    117        117       115     2
-industries                        24         24        24      0
-TOTAL                             2401       2401      2394    7
-
-Failures recorded in stardust/aem-import-out/_failures.json — re-run
-with --templates=<template> --retry-failed.
+Template                  Planned    Live    Failed
+home                      1          1       0
+hubs                      10         10      0
+<detail-family-A>         <X>        <X>     <small>
+<detail-family-B>         <Y>        <Y>     <small>
+listings                  <L>        <L>     0
+locations                 <N>        <N>     0
+info pages                <I>        <I>     <small>
+TOTAL                     <Σ>        <Σ>     <σ>
 ```
 
-### Phase 5 — Batch verify
+Per-template failures are recoverable via `--retry-failed` (reads
+the previous `_batch-results.json` and re-runs only the failed
+slugs). Most failures are transient network errors that clear on
+the retry pass.
 
-For each live URL, run a lightweight verification:
+**Verification** runs immediately after each batch completes:
 
-1. HTTP 200 check
+1. HTTP 200 check on each live URL.
 2. Captured-text substring presence: every string from
    `pages/<slug>.json#body` that's ≥ 20 chars must appear in the rendered
-   HTML (the verbatim guarantee, post-hoc)
+   HTML (the verbatim guarantee, post-hoc).
 3. Page-height delta vs the template baseline (the representative
    page's render). Flag pages > 15% larger or smaller — likely missing
    or duplicated content.
-4. Image-load check: every img has naturalWidth > 0 (no broken images)
+4. Image-load check: every img has naturalWidth > 0 (no broken images).
 
 The skill writes `stardust/aem-import-out/_verification.json` and a
 human-readable summary. For flagged pages, the LLM triages whether the
 diff is acceptable (font wrap / acceptable padding) or a real issue.
+
+### Phase 7 — Link audit
+
+After batches are live, the link audit identifies which **not-yet-
+migrated** pages would unlock the most cross-page navigation if
+authored. Run the standard utility:
+
+```
+node scripts/utils/link-audit.mjs
+```
+
+See [`reference/link-audit-workflow.md`](reference/link-audit-workflow.md)
+for the full recipe + interpretation. The output ranks missing
+destinations by weighted inbound-link count (chrome links count as
+N × inbound where N = total page count, main-content links scale
+by template-family size, dynamic-block-generated links count as 1).
+
+The top-30 missing list typically reveals:
+- A handful of chrome-linked hub pages still missing (highest
+  priority — every page references them)
+- Action-page destinations (`/contact`, `/quotes`, etc.) linked from
+  every detail page's CTA bar
+- One-off destinations linked from a single template family
+- Long-tail one-inbound destinations (low priority)
+
+### Phase 8 — Gap-fill sprint
+
+Author the highest-impact missing pages identified in Phase 7. Most
+gaps are minimal landing pages (5-20 lines of HTML each) that share
+the same hub template introduced in Phase 3.
+
+Typical sprint scope after a multi-thousand-page batch is ~10-20
+pages. User reviews the prioritized gap list from Phase 7 and confirms
+which to author this sprint vs defer.
+
+After the gap-fill sprint, re-run Phase 7 (link audit) to confirm
+the gap closed and surface any remaining one-off destinations.
+
+### Phase 9 — Polish
+
+Standardized post-batch hardening steps:
+
+1. **`/redirects.json`** — generate from `/query-index.json` to cover
+   trailing-slash mismatches and any URL-shape drift introduced by
+   the source site's WordPress conventions. See `scripts/utils/
+   build-redirects.mjs` + admin-api §3 "Trailing-slash → no-slash
+   via /redirects.json". One file fixes thousands of would-be 404s
+   without re-batching any content.
+
+2. **Dynamic-block conversions for derive-from-URL content** — e.g.,
+   if pages were authored with static breadcrumb HTML, convert to
+   the dynamic `blocks/breadcrumb/breadcrumb.js` pattern + run the
+   mass-edit utility to strip the static authoring (see
+   [`reference/mass-edit-utility.md`](reference/mass-edit-utility.md)).
+   Standard targets: breadcrumbs, count strings, locale-derived
+   labels.
+
+3. **CLS re-measurement** — sample one page per (template, pageType)
+   bucket via the diagnostic recipe in
+   `aem-import/reference/conventions.md` §8. Confirm throttled
+   CLS < 0.1 across all samples. If Phase 2 enforced the CLS
+   Day-1 checklist, this is a no-op.
+
+4. **Chrome consistency** — header/footer fragments are the same
+   across themes? Active-verb highlight (BUY/RENT/SERVICE/PARTS)
+   highlights based on URL prefix?
+
+5. **Orphan management** — pages still in `/query-index.json` with
+   no DA source (typically old paths from a mid-migration URL
+   restructure). See admin-api §5 "The unpublish trap" — orphans
+   persist because admin.hlx.page DELETE is restricted; dedupe-at-
+   block-level in the dynamic blocks already handles them invisibly.
+   Optional manual cleanup via DA admin UI.
+
+### Phase 10 — Completion report
+
+Generate the project's final deliverable per
+[`reference/completion-report.md`](reference/completion-report.md):
+a written record at `stardust/completion-report.md` (+ JSON sidecar)
+listing inventory, per-template counts, link-audit results, CLS
+audit, deferred work, and known issues.
+
+This is the single source of truth for "are we done?" — and the
+starting point for any future re-engagement.
 
 ## What this skill does NOT do
 
@@ -371,6 +560,25 @@ stardust/
   — the 7 canonical `pageType` values (`detail` / `listing` / `hub` /
   `location` / `info` / `industry` / `portal`); how they drive every
   dynamic block; helix-query field mapping with the lowercasing trap.
+- [`reference/page-shape-inventory.md`](reference/page-shape-inventory.md)
+  — the typical page-shape inventory for catalog/dealer sites
+  (counts, pageTypes, suggested modes); Day 1 planning reference for
+  Phase 0.
+- [`reference/dynamic-vs-static.md`](reference/dynamic-vs-static.md) —
+  decision tree for when to author content statically vs derive at
+  render time; common false positives + false negatives.
+- [`reference/link-audit-workflow.md`](reference/link-audit-workflow.md)
+  — Phase 7 deliverable: crawl + cross-check + sorted-by-inbound
+  missing destinations; canonical utility script.
+- [`reference/mass-edit-utility.md`](reference/mass-edit-utility.md) —
+  the standard GET / mutate / PUT recipe for post-batch amendments
+  (strip authored blocks, inject metadata, fix global links). Each
+  amendment is a one-off copy + mutate-function-edit; the recipe
+  + retry conventions stay constant.
+- [`reference/completion-report.md`](reference/completion-report.md) —
+  Phase 10 deliverable shape: inventory, per-template counts, link
+  audit, CLS audit, deferred work, known issues. Single source of
+  truth for "are we done?".
 
 ## Provenance
 
