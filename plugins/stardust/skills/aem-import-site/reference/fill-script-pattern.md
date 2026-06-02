@@ -216,6 +216,37 @@ Parallelism: pages within a template can be parallel (independent). Across
 templates: probably serial to avoid swamping DA. The orchestrator handles
 throttling.
 
+## Required CLI flag set for batch orchestrators
+
+Every batch script (one per template) must support this exact flag set.
+The contract is load-bearing for predictable operator behavior across
+templates — same flags, same semantics, every time.
+
+| Flag | Purpose |
+|---|---|
+| `--limit <N>` | Process the first N URLs only. The first smoke-test of any new batch should be `--limit 5`. |
+| `--skip-existing` | Skip URLs whose local fill-output file already exists. Idempotent re-runs become cheap. |
+| `--retry-failed` | Read the previous run's `_batch-results.json`, take only the URLs that failed, retry them. Standard recovery for transient network failures. |
+| `--concurrency <N>` | Worker-pool size. Default **4** (proven sustainable against admin.hlx.page rate limits — see admin-api §2). |
+| `--no-publish` | PUT + preview only; skip the `/live/` and `/index/` calls. Useful for staged-content reviews; the page won't enter `/query-index.json` and dynamic blocks won't see it. |
+
+Example contract:
+
+```
+node batch-<template>.mjs                              # full batch, publish, concurrency 4
+node batch-<template>.mjs --limit 5                    # smoke-test
+node batch-<template>.mjs --skip-existing              # idempotent re-run (e.g. after a code change)
+node batch-<template>.mjs --retry-failed               # only retry previously-failed slugs
+node batch-<template>.mjs --no-publish                 # preview-only (staged content)
+node batch-<template>.mjs --concurrency 2              # ease off DA on a flaky network
+```
+
+A `_batch-results.json` artifact lands at the end of every run with
+`{ _provenance, summary: { total, ok, fail }, results: [...] }`, so
+`--retry-failed` is purely declarative — it just filters the
+sitemap to the failed slugs from that file. Operators don't construct
+retry lists by hand.
+
 ## Verification post-batch
 
 `scripts/aem-import/verify.mjs` reads `_failures.json` plus checks every

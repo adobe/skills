@@ -84,6 +84,29 @@ if (publish) {
 }
 ```
 
+### Concurrency ceiling for batch orchestrators
+
+Across multiple multi-thousand-page batches, the safe sustained
+concurrency for batch scripts hitting this pipeline (4 admin calls
+per page: PUT + preview + live + index) converged on **4 workers**.
+
+- **Concurrency 4**: completes cleanly, no rate-limit hits, ~6 s per
+  page end-to-end.
+- **Concurrency 6+**: starts hitting admin.hlx.page rate limits
+  (10 calls/s documented). Some calls fail with 429 or transient
+  network errors that need retry.
+- **Concurrency 1-2**: wasteful — admin operations are network-bound;
+  pipeline can absorb more.
+- **For retry passes (failed-only re-runs)**: use sequential with
+  5x retry + linear backoff. Persistent transient failures clear
+  on second pass.
+
+```js
+const CONCURRENCY = 4;       // batch default
+const RETRY_CONCURRENCY = 1; // retry-failed default
+const RETRY_ATTEMPTS = 5;    // 5 retries with 2s×n backoff
+```
+
 ## §3 helix-query.yaml + page-metadata = dynamic cross-page blocks
 
 The pattern below replaces hand-authored "related" lists, "category

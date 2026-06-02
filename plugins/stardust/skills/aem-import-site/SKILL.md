@@ -175,7 +175,28 @@ to adjust modes without re-running Phase 1.
 
 ### Phase 2 — Per-template execution
 
-Walk each `planned` template in order. Execute per mode:
+**Critical sequencing rule: do hubs FIRST.** Walk `planned` templates
+in this order, regardless of count or complexity:
+
+1. **Hub templates** (the chrome destinations: `/new`, `/used-equipment`,
+   `/service`, `/parts`, `/rental`, `/contact`, `/quotes`, etc.)
+2. **Sub-hubs** that chrome links to (`/parts/lookup`, `/service/field`)
+3. **Category-listing templates**
+4. **Detail templates** (the long-tail high-count ones)
+5. **Info / location / portal templates** (last — they're often the
+   least-linked-from)
+
+**Rationale**: chrome verbs (BUY / RENT / SERVICE / PARTS) link to hub
+destinations on every page. If detail-page batches ship before hubs
+exist, every chrome verb 404s — even with thousands of pages live the
+site feels navigationally broken. Hubs first means the chrome works
+from the very first detail-page batch.
+
+Initial hubs can be minimal stubs (just title + CTA + dynamic block
+placeholder). The dynamic block on each hub will fill in as detail
+pages get batched. Empty hubs are cheap; absent hubs are expensive.
+
+Walk each `planned` template in this hubs-first order. Execute per mode:
 
 #### Mode A — Import existing prototype
 1. Verify the prototype file exists at the recorded path.
@@ -343,7 +364,13 @@ stardust/
   — token lifecycle, PUT→preview→publish→index ordering, helix-query.yaml
   + dynamic cross-page block wiring, URL-structure decisions, the
   admin.hlx.page DELETE trap, sitemap sub-chunking, DA media-bus race,
-  spec-catalog extraction patterns, per-template motion JS.
+  spec-catalog extraction patterns, per-template motion JS, **concurrency
+  ceiling**, derive-from-URL blocks, /redirects.json pattern,
+  mass-edit recipe.
+- [`reference/page-type-taxonomy.md`](reference/page-type-taxonomy.md)
+  — the 7 canonical `pageType` values (`detail` / `listing` / `hub` /
+  `location` / `info` / `industry` / `portal`); how they drive every
+  dynamic block; helix-query field mapping with the lowercasing trap.
 
 ## Provenance
 

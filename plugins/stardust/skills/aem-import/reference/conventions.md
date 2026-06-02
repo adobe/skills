@@ -1251,6 +1251,43 @@ out of the box and needs deliberate work to fall below 0.10. The
 patterns below take a page from ~0.40 → ~0.05 with no preloads, no
 hidden bandwidth tax, and no truncation of legitimate content.
 
+### Day 1 checklist for new templates
+
+**Apply this checklist when authoring the Phase 2 representative page**
+(per `aem-import-site` workflow), not later. Every fix below touches
+the per-theme CSS that will be deployed across every page using this
+template — fixing late means re-rendering thousands of pages with
+already-shipped CSS that's still wrong. Cheaper to get it right once
+on page 1 of N than to fix N times.
+
+Mandatory CSS hardening for any new template:
+
+- [ ] `.header-wrapper { min-height: <X>px }` in **global** `styles.css`
+      (not per-theme) — value = measured loaded chrome height per breakpoint
+- [ ] `.footer-wrapper { min-height: <Y>px }` in global `styles.css` —
+      same pattern as header
+- [ ] `main { min-height: 100vh }` in global `styles.css` — keeps the
+      footer below the initial viewport during the brief render gap
+- [ ] Metric-matched fallback `@font-face` for every web font in the
+      theme (Roboto/Oswald/etc. — see Trap 3 below for the Capsize
+      values)
+- [ ] `--font-display` / `--font-body` chains include the `*_Fallback`
+      families
+- [ ] `.utility-strip { height: var(--utility-strip-h); overflow: hidden }`
+      with `flex-wrap: nowrap; white-space: nowrap` on the link list
+- [ ] Any grid/flex container holding stacked text uses
+      `align-items: start`, not `center` (the latter causes shift on
+      font-swap height changes)
+- [ ] `.icon { min-width: 1em; min-height: 1em }` reservation
+- [ ] Any reveal-on-scroll motion script skips above-the-fold elements
+- [ ] Dynamic blocks (hub/listing) have a `min-height: <Nvh>` reservation
+      in global `styles.css` so async fetch+render doesn't shift the
+      footer
+
+Phase 2 exit gate: run the diagnostic recipe (below) against the
+representative page; CLS must be < 0.1 throttled before moving to
+Phase 4 (fill script) or Phase 6 (batch).
+
 ### Diagnostic recipe
 
 Use Playwright + CDP throttling to reproduce Lighthouse-class numbers
