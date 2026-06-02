@@ -288,15 +288,24 @@ async function main() {
     }
   };
 
+  const OPEN_TIMEOUT_MS = 60_000;
+  const RUN_TIMEOUT_MS  = 30_000;
+  const SS_TIMEOUT_MS   = 10_000;
+
   try {
     // Open the URL with bundle injected
     process.stderr.write(`Navigating to ${url}...\n`);
     const openResult = spawnSync(
       'playwright-cli',
       ['open', url, `--config=${configPath}`],
-      { encoding: 'utf-8' }
+      { encoding: 'utf-8', timeout: OPEN_TIMEOUT_MS }
     );
-    if (openResult.error) throw new Error(`playwright-cli open failed: ${openResult.error.message}`);
+    if (openResult.error) {
+      const extra = openResult.error.code === 'ETIMEDOUT'
+        ? ` (timed out after ${OPEN_TIMEOUT_MS / 1000}s — page may be too slow or unreachable)`
+        : '';
+      throw new Error(`playwright-cli open failed: ${openResult.error.message}${extra}`);
+    }
     if (openResult.status !== 0) {
       throw new Error(`playwright-cli open exited ${openResult.status}: ${openResult.stderr}`);
     }
@@ -306,9 +315,16 @@ async function main() {
     const runResult = spawnSync(
       'playwright-cli',
       ['run-code', `--filename=${runCodePath}`],
-      { encoding: 'utf-8', maxBuffer: 100 * 1024 * 1024 }
+      { encoding: 'utf-8', maxBuffer: 100 * 1024 * 1024, timeout: RUN_TIMEOUT_MS }
     );
-    if (runResult.error) throw new Error(`playwright-cli run-code failed: ${runResult.error.message}`);
+    if (runResult.error) {
+      const extra = runResult.error.code === 'ETIMEDOUT'
+        ? ` (timed out after ${RUN_TIMEOUT_MS / 1000}s — try a narrower subcommand)`
+        : runResult.error.code === 'ENOBUFS'
+        ? ' (output exceeded 100 MB — try a narrower subcommand)'
+        : '';
+      throw new Error(`playwright-cli run-code failed: ${runResult.error.message}${extra}`);
+    }
     if (runResult.status !== 0) {
       throw new Error(`playwright-cli run-code exited ${runResult.status}: ${runResult.stderr}`);
     }
@@ -325,9 +341,16 @@ async function main() {
     if (subcommand === 'all') {
       // Screenshot via playwright-cli
       const screenshotPath = join(output, 'screenshot.jpg');
-      spawnSync('playwright-cli', ['screenshot', '--filename', screenshotPath], {
-        encoding: 'utf-8',
-      });
+      const ssResult = spawnSync(
+        'playwright-cli',
+        ['screenshot', '--filename', screenshotPath],
+        { encoding: 'utf-8', timeout: SS_TIMEOUT_MS }
+      );
+      if (ssResult.error || ssResult.status !== 0) {
+        process.stderr.write(
+          `Warning: screenshot failed — ${ssResult.error?.message ?? ssResult.stderr}\n`
+        );
+      }
 
       const results = {};
       if (data.svgs) {

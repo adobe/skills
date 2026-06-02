@@ -71,7 +71,7 @@ Common CSS applied to `html` or `body` that blocks scrolling:
 | `touch-action` | `none` |
 | `height` + `overflow` | `100vh` + `hidden` (locks viewport) |
 
-Fix — inject via `page.evaluate()`:
+Fix — inject via `playwright-cli eval`:
 ```js
 document.documentElement.style.cssText +=
   ';overflow:auto!important;height:auto!important;position:static!important';

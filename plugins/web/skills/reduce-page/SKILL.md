@@ -63,9 +63,10 @@ for the command reference.
 
 ### Step 2 — Navigate and prepare the page
 
-1. Open the URL with `playwright-cli open <url>`
-2. Wait for network idle (or equivalent for the browser layer)
-3. If the `page-prep` skill is available, invoke it to dismiss cookie
+After the page is open (Step 3 handles the actual `playwright-cli open` call with the bundle config):
+
+1. Wait for network idle
+2. If the `page-prep` skill is available, invoke it to dismiss cookie
    banners, GDPR consent modals, and other overlays
 4. Scroll the full page to trigger lazy-loaded content:
    - Scroll to bottom, wait 1-2s

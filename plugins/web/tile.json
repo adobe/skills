@@ -1,6 +1,6 @@
 {
   "name": "adobe/web",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "summary": "Browser automation and web page analysis skills for working with arbitrary sites — probe bot protection, dismiss overlays, capture DOM trees, reduce pages to structural skeletons, and extract page resources. Uses playwright-cli as the single browser layer.",
   "private": false,
   "skills": {
