@@ -1,0 +1,75 @@
+---
+# 65LTSUpgradeUberJar.yaml
+#
+# Purpose: Migrate the AEM UberJar dependency to version 6.6.0 with the
+# mandatory "apis" classifier.
+#
+# Background:
+#   Starting with AEM 6.5 LTS (internally versioned as 6.6.0 in Maven), Adobe
+#   changed the UberJar packaging so that only the "apis" classifier variant
+#   contains the public API classes.  The unclassified artefact is no longer
+#   published.  Projects that previously declared the UberJar without a
+#   classifier must:
+#     1. bump the version to 6.6.0
+#     2. add <classifier>apis</classifier>
+#
+#   This recipe handles:
+#     a. <dependencies> section (direct dependency)
+#     b. <dependencyManagement> section (managed version declaration)
+#     c. Both of the above simultaneously (parent POM pattern)
+#
+# Recipe artifact coordinates:
+#   com.adobe.aem:aem65lts-migration-recipes:1.0-SNAPSHOT
+
+type: specs.openrewrite.org/v1beta/recipe
+name: aem.lts.migration.UpdateUberJarVersion
+displayName: AEM 6.5 LTS — Migrate UberJar to 6.6.0 with apis Classifier
+description: >
+  Bumps the AEM UberJar (com.adobe.aem:uber-jar) from any prior version to
+  6.6.0 and adds the required "apis" classifier.  Covers both direct
+  <dependencies> entries and <dependencyManagement> declarations, including
+  the alternate com.day.cq groupId that older projects may use.
+tags:
+  - aem
+  - uberjar
+  - migration
+recipeList:
+
+  # ── Step 1: Upgrade version to 6.6.0 ─────────────────────────────────────
+  # Handle the current canonical groupId (com.adobe.aem).
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: com.adobe.aem
+      artifactId: uber-jar
+      newVersion: 6.6.0
+
+  # Handle the legacy groupId used by pre-6.3 projects (com.day.cq).
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: com.day.cq
+      artifactId: uber-jar
+      newVersion: 6.6.0
+
+  # ── Step 2: Migrate legacy groupId to canonical groupId ──────────────────
+  - org.openrewrite.maven.ChangeDependencyGroupIdAndArtifactId:
+      oldGroupId: com.day.cq
+      oldArtifactId: uber-jar
+      newGroupId: com.adobe.aem
+      newArtifactId: uber-jar
+      newVersion: 6.6.0
+
+  # ── Step 3: Add the "apis" classifier ────────────────────────────────────
+  - org.openrewrite.maven.AddDependencyClassifier:
+      groupId: com.adobe.aem
+      artifactId: uber-jar
+      classifier: apis
+
+  # ── Step 4: Ensure dependencyManagement is in sync ───────────────────────
+  - org.openrewrite.maven.AddManagedDependency:
+      groupId: com.adobe.aem
+      artifactId: uber-jar
+      version: 6.6.0
+      scope: provided
+      classifier: apis
+      addToRootPom: true
+
+  # ── Step 5: Remove duplicate dependency entries ───────────────────────────
+  - org.openrewrite.maven.RemoveDuplicateDependencies

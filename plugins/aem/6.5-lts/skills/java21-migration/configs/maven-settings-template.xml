@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Maven Settings Template — AEM 6.5 LTS Java 21 Migration
+  =========================================================
+  Copy this file to ~/.m2/settings.xml if your Maven installation
+  does not already have the Adobe Public Repository configured.
+
+  Alternatively, pass it explicitly on the command line:
+    mvn -s /path/to/skills/.../configs/maven-settings-template.xml clean install
+
+  This settings file adds two repository sources:
+    1. Maven Central  — standard open-source dependencies
+    2. Adobe Public   — AEM UberJar, WCM Core Components, AEM SDK artifacts
+
+  Both are added to <repositories> (for regular dependencies) and
+  <pluginRepositories> (for Maven plugins, including OpenRewrite).
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
+                              https://maven.apache.org/xsd/settings-1.0.0.xsd">
+
+  <profiles>
+    <profile>
+      <id>adobe-public</id>
+
+      <activation>
+        <activeByDefault>true</activeByDefault>
+      </activation>
+
+      <!-- ============================================================
+           Dependency Repositories
+           ============================================================ -->
+      <repositories>
+
+        <repository>
+          <id>central</id>
+          <name>Maven Central Repository</name>
+          <url>https://repo.maven.apache.org/maven2</url>
+          <layout>default</layout>
+          <releases>
+            <enabled>true</enabled>
+            <updatePolicy>never</updatePolicy>
+            <checksumPolicy>warn</checksumPolicy>
+          </releases>
+          <snapshots>
+            <enabled>false</enabled>
+          </snapshots>
+        </repository>
+
+        <repository>
+          <id>adobe-public-releases</id>
+          <name>Adobe Public Repository</name>
+          <url>https://repo.adobe.com/nexus/content/groups/public/</url>
+          <layout>default</layout>
+          <releases>
+            <enabled>true</enabled>
+            <updatePolicy>never</updatePolicy>
+            <checksumPolicy>warn</checksumPolicy>
+          </releases>
+          <snapshots>
+            <enabled>false</enabled>
+          </snapshots>
+        </repository>
+
+      </repositories>
+
+      <!-- ============================================================
+           Plugin Repositories
+           OpenRewrite downloads recipe JARs at runtime via the plugin
+           repository resolution mechanism, so both repositories must
+           appear here as well as in <repositories>.
+           ============================================================ -->
+      <pluginRepositories>
+
+        <pluginRepository>
+          <id>central</id>
+          <name>Maven Central Repository</name>
+          <url>https://repo.maven.apache.org/maven2</url>
+          <releases>
+            <enabled>true</enabled>
+            <updatePolicy>never</updatePolicy>
+          </releases>
+          <snapshots>
+            <enabled>false</enabled>
+          </snapshots>
+        </pluginRepository>
+
+        <pluginRepository>
+          <id>adobe-public-releases</id>
+          <name>Adobe Public Repository</name>
+          <url>https://repo.adobe.com/nexus/content/groups/public/</url>
+          <releases>
+            <enabled>true</enabled>
+            <updatePolicy>never</updatePolicy>
+          </releases>
+          <snapshots>
+            <enabled>false</enabled>
+          </snapshots>
+        </pluginRepository>
+
+      </pluginRepositories>
+
+    </profile>
+  </profiles>
+
+  <!-- ================================================================
+       Active Profiles
+       The adobe-public profile is activated by default above.
+       Remove the <activeByDefault> element if you prefer to activate
+       it explicitly: mvn -Padobe-public clean install
+       ================================================================ -->
+  <activeProfiles>
+    <activeProfile>adobe-public</activeProfile>
+  </activeProfiles>
+
+  <!-- ================================================================
+       Plugin Groups
+       Allows short-form plugin invocations (e.g. 'mvn rewrite:run')
+       without specifying the full group ID on the command line.
+       ================================================================ -->
+  <pluginGroups>
+    <pluginGroup>org.apache.maven.plugins</pluginGroup>
+    <pluginGroup>org.openrewrite.maven</pluginGroup>
+  </pluginGroups>
+
+</settings>
