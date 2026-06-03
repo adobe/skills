@@ -364,6 +364,28 @@ Chaining keeps the standard authoring shape (`<div class="cards
 also keeps the standard cards decoration available as a fallback
 when the variant isn't requested.
 
+### Variant CSS modifier classes must keep the base class
+
+Separate from which JS loads (above): a CSS **modifier** class usually
+overrides only a few properties and relies on the base class for the rest.
+`.split--text-first` overrides the columns, but `display: grid` lives on
+`.split`:
+
+```css
+.split { display: grid; grid-template-columns: 1fr 1fr; }
+.split--text-first { grid-template-columns: 1fr 1.15fr; }   /* no display! */
+```
+
+If a block's `decorate()` emits the modifier **alone**
+(`class="split--text-first"`), the element loses `display: grid` and the
+layout silently falls back to block flow — a two-column split renders
+stacked. Emit `base base--modifier` (`class="split split--text-first"`),
+never the modifier on its own.
+
+**Rule:** block JS must emit the exact class compound the ported CSS
+expects, verified against the prototype's literal `class="…"` — never
+reconstruct the class string from memory.
+
 ---
 
 ## §2 EDS decorate-function guards
@@ -371,6 +393,37 @@ when the variant isn't requested.
 EDS's standard decorate pipeline applies specific behaviors to specific
 patterns. Several have guards that look fine alone but compose in
 surprising ways.
+
+### Custom block `decorate()` must MOVE authored nodes, not re-wrap `innerHTML`
+
+When a bespoke block rebuilds its DOM, the safe pattern is to **classify
+cells and move their existing child nodes** into the new structure — never
+re-emit a cell's `innerHTML` inside a freshly-built `<p>`/`<h1>`/`<li>`.
+
+Re-wrapping breaks the instant a cell already holds block-level elements —
+which it does whenever the cell was authored richly in DA, or emitted by a
+fill script as `<p>…</p>` / `<h1>…</h1>`:
+
+```js
+// WRONG — double-wraps and drops media
+block.innerHTML = `<p class="eyebrow">${cell.innerHTML}</p><h1>${next.innerHTML}</h1>`;
+// → <p class="eyebrow"><p>…</p></p> (the browser splits it) and the cell's <picture> is lost
+```
+
+```js
+// RIGHT — classify, then move the real nodes
+const media = cells.find((c) => c.querySelector('picture, img, a[href$=".mp4"]') && !c.querySelector('h1,h2,h3'));
+const wrap = document.createElement('div');
+textCells.forEach((c) => { while (c.firstChild) wrap.append(c.firstChild); });   // move, don't stringify
+if (media) hero.append(media.querySelector('picture') || media.querySelector('img'));   // reuse the EDS node (keeps srcset)
+// only ADD classes (e.g. tag the eyebrow) — never rebuild the semantics
+```
+
+This also preserves the EDS-optimized `<picture>` (with its generated
+srcsets) instead of rebuilding an `<img>` from a `src` string. A block
+written this way renders correctly whether the cell came from the fill
+script or a hand-edit in DA — the two shapes that otherwise break a
+positional, string-rebuilding decorator.
 
 ### `decorateButton` decorates `<p><strong><a>` AND `<p><em><a>` patterns
 

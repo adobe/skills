@@ -169,11 +169,34 @@ perceptual-dedup issue documented in
 | Failure | Script behavior |
 |---|---|
 | Required slot missing | Returns `{ ok: false, error: 'missing-required-slots', missing: [...] }` |
+| Captured field has no slot (forgotten by the map) | Returns `{ ok: false, error: 'unmapped-fields', fields: [...] }` — never silently dropped |
 | Captured page JSON not found | Returns `{ ok: false, error: 'page-not-found' }` |
 | Output path not writable | Throws (likely permissions; abort batch) |
 | Image dedup empties the gallery | Continues with empty gallery (warning logged) |
 | Captured text contains HTML | Escaped before interpolation (no XSS) |
 | Captured text contains unicode | Preserved verbatim |
+
+## Field-coverage assertion — never drop a field silently
+
+Mapping by known keys silently loses any captured field the slot map
+forgot — and a forgotten field can be an entire section. Before (or while)
+emitting, diff the keys present on the captured page object against the set
+the script actually maps, and **fail (or loudly warn) on any unmapped key**:
+
+```js
+const MAPPED = new Set(['title', 'lede', 'body', 'image', /* …every slot the script reads… */]);
+const unmapped = Object.keys(page).filter((k) => !MAPPED.has(k) && page[k] != null);
+if (unmapped.length) {
+  return { ok: false, error: 'unmapped-fields', fields: unmapped };
+}
+```
+
+Without this guard, a captured field the template author didn't anticipate
+(e.g. a `docGrid` library block) just vanishes — and a missing section
+reads as "fully covered" in every downstream check until a human eyeballs
+the page. The assertion converts a silent content-loss bug into a
+build-time failure, per template, for free. Keep `MAPPED` next to the slot
+map so the two are edited together.
 
 ## Batch orchestrator
 
