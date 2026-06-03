@@ -1,0 +1,163 @@
+type: specs.openrewrite.org/v1beta/recipe
+name: com.org.adobe.MockitoUpgrade
+displayName: Mockito 5.x Upgrade
+description: Upgrades Mockito to version 5.x using custom migration
+recipeList:
+  - com.adobe.CustomMockito1to5Migration
+
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: com.adobe.CustomMockito1to5Migration
+displayName: Mockito 5.x upgrade (custom)
+description: Upgrade Mockito from 1.x to 5.x.
+recipeList:
+  - com.adobe.CustomMockito1to4Migration
+  - com.adobe.CustomMockito4to5Only
+  - com.adobe.RemoveFieldSetterAndUnusedImports
+
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: com.adobe.CustomMockito1to4Migration
+displayName: Mockito 4.x upgrade (custom)
+description: Upgrade Mockito from 1.x to 4.x.
+recipeList:
+  - com.adobe.CustomMockito1to3Migration
+  - org.openrewrite.java.testing.mockito.MockitoWhenOnStaticToMockStatic
+  - org.openrewrite.java.dependencies.UpgradeDependencyVersion:
+      groupId: org.mockito
+      artifactId: "*"
+      newVersion: 4.x
+  - org.openrewrite.java.dependencies.UpgradeDependencyVersion:
+      groupId: net.bytebuddy
+      artifactId: byte-buddy*
+      newVersion: 1.12.19
+
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: com.adobe.CustomMockito1to3Migration
+displayName: Mockito 3.x migration from 1.x (custom)
+description: Upgrade Mockito from 1.x to 3.x.
+recipeList:
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: org.mockito.MockitoAnnotations.Mock
+      newFullyQualifiedTypeName: org.mockito.Mock
+  - org.openrewrite.java.testing.mockito.AnyToNullable
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: org.mockito.Matchers
+      newFullyQualifiedTypeName: org.mockito.ArgumentMatchers
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: org.mockito.ArgumentMatchers anyVararg()
+      newMethodName: any
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: org.mockito.ArgumentMatchers anyObject()
+      newMethodName: any
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: org.mockito.ArgumentMatchers anyListOf(java.lang.Class)
+      newMethodName: anyList
+  - org.openrewrite.java.DeleteMethodArgument:
+      methodPattern: org.mockito.ArgumentMatchers anyList(java.lang.Class)
+      argumentIndex: 0
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: org.mockito.ArgumentMatchers anySetOf(java.lang.Class)
+      newMethodName: anySet
+  - org.openrewrite.java.DeleteMethodArgument:
+      methodPattern: org.mockito.ArgumentMatchers anySet(java.lang.Class)
+      argumentIndex: 0
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: org.mockito.ArgumentMatchers anyMapOf(java.lang.Class, java.lang.Class)
+      newMethodName: anyMap
+  - org.openrewrite.java.DeleteMethodArgument:
+      methodPattern: org.mockito.ArgumentMatchers anyMap(java.lang.Class, java.lang.Class)
+      argumentIndex: 0
+  - org.openrewrite.java.DeleteMethodArgument:
+      methodPattern: org.mockito.ArgumentMatchers anyMap(java.lang.Class)
+      argumentIndex: 0
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: org.mockito.ArgumentMatchers anyCollectionOf()
+      newMethodName: anyCollection
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: org.mockito.ArgumentMatchers anyIterableOf()
+      newMethodName: anyIterable
+  - org.openrewrite.java.DeleteMethodArgument:
+      methodPattern: org.mockito.ArgumentMatchers isNull(java.lang.Class)
+      argumentIndex: 0
+  - org.openrewrite.java.DeleteMethodArgument:
+      methodPattern: org.mockito.ArgumentMatchers notNull(java.lang.Class)
+      argumentIndex: 0
+  - org.openrewrite.java.ReorderMethodArguments:
+      methodPattern: org.mockito.MockedStatic
+        verify(org.mockito.verification.VerificationMode,
+        org.mockito.MockedStatic.Verification)
+      newParameterNames:
+        - verification
+        - mode
+      oldParameterNames:
+        - mode
+        - verification
+  - org.openrewrite.java.testing.mockito.VerifyZeroToNoMoreInteractions
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: org.mockito.Mockito verifyZeroInteractions(..)
+      newMethodName: verifyNoInteractions
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: org.mockito.invocation.InvocationOnMock getArgumentAt(int,
+        java.lang.Class)
+      newMethodName: getArgument
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: org.mockito.exceptions.verification.TooLittleActualInvocations
+      newFullyQualifiedTypeName: org.mockito.exceptions.verification.TooFewActualInvocations
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: org.mockito.configuration.AnnotationEngine
+      newFullyQualifiedTypeName: org.mockito.plugins.AnnotationEngine
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: org.mockito.plugins.InstantiatorProvider
+      newFullyQualifiedTypeName: org.mockito.plugins.InstantiatorProvider2
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: org.mockito.runners.MockitoJUnitRunner
+      newFullyQualifiedTypeName: org.mockito.junit.MockitoJUnitRunner
+  - org.openrewrite.java.testing.mockito.CleanupMockitoImports
+  - org.openrewrite.java.testing.mockito.MockUtilsToStatic
+  - org.openrewrite.java.testing.junit5.MockitoJUnitToMockitoExtension
+  - org.openrewrite.java.testing.mockito.ReplacePowerMockito
+  - org.openrewrite.java.dependencies.UpgradeDependencyVersion:
+      groupId: org.mockito
+      artifactId: "*"
+      newVersion: 3.x
+  - org.openrewrite.java.dependencies.ChangeDependency:
+      oldGroupId: org.mockito
+      oldArtifactId: mockito-all
+      newArtifactId: mockito-core
+  - org.openrewrite.java.dependencies.UpgradeDependencyVersion:
+      groupId: net.bytebuddy
+      artifactId: byte-buddy*
+      newVersion: 1.11.13
+
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: com.adobe.CustomMockito4to5Only
+displayName: Mockito 4 to 5.x upgrade only (custom)
+description: Upgrade Mockito from 4.x to 5.x. Does not include 1.x to 4.x migration.
+recipeList:
+  - org.openrewrite.java.dependencies.ChangeDependency:
+      oldGroupId: org.mockito
+      oldArtifactId: mockito-inline
+      newArtifactId: mockito-core
+  - org.openrewrite.java.dependencies.UpgradeDependencyVersion:
+      groupId: org.mockito
+      artifactId: "*"
+      newVersion: 5.x
+  - org.openrewrite.java.dependencies.UpgradeDependencyVersion:
+      groupId: net.bytebuddy
+      artifactId: byte-buddy*
+      newVersion: 1.15.x
+  - org.openrewrite.maven.RemoveDuplicateDependencies
+
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: com.adobe.RemoveFieldSetterAndUnusedImports
+displayName: Remove FieldSetter usage and clean up unused imports
+description: Replaces FieldSetter.setField with a TODO comment and removes its unused import.
+recipeList:
+  - org.openrewrite.java.RemoveMethodInvocations:
+      methodPattern: org.mockito.internal.util.reflection.FieldSetter setField(..)
+      comment: "TODO: set this field manually or refactor to use constructor injection"
+  - org.openrewrite.java.RemoveUnusedImports

@@ -1,0 +1,97 @@
+---
+# 65LTSPluginUpgrades.yaml
+#
+# Purpose: Standalone recipe for upgrading Maven build plugins to versions
+# compatible with Java 21 and AEM 6.5 LTS.
+#
+# NOTE: These same plugin upgrades are also included as a sub-recipe within
+# 65LTSUpgrade.yaml (as aem.lts.migration.UpgradePluginVersions).  This file
+# allows the plugin-only upgrade to be run independently via:
+#
+#   aem-migrate upgrade-plugins --repository-path <path>
+#
+# Plugin version rationale:
+#   maven-bundle-plugin 5.1.9   — correct 5.x target for AEM 6.5 LTS; the 6.x
+#     line is NOT required for this SDK version.
+#   bnd-maven-plugin 6.4.0      — last stable 6.x release; Java 21 compatible.
+#   maven-scr-plugin 1.26.4     — final release; ASM must be overridden to 9.7.1
+#     because the plugin ships with ASM 7 which cannot parse Java 21 bytecode.
+#   filevault-package-maven-plugin 1.3.6 — current stable with Java 21 support.
+
+type: specs.openrewrite.org/v1beta/recipe
+name: aem.lts.migration.UpgradePluginVersions
+displayName: AEM 6.5 LTS — Upgrade Maven Build Plugins (standalone)
+description: >
+  Upgrades AEM-related Maven build plugins to versions that produce and validate
+  OSGi bundles correctly when compiling with Java 21.  Uses maven-bundle-plugin
+  5.1.9 (the correct 5.x target for AEM 6.5 LTS; NOT 6.x), pins ASM 9.7.1
+  inside maven-scr-plugin for Java 21 class file parsing, and sets the compiler
+  --release flag.  This recipe is also included as a sub-recipe of
+  aem.lts.migration.UpgradeToAEM65LTS.
+tags:
+  - aem
+  - maven
+  - plugins
+  - migration
+recipeList:
+
+  # ── OSGi bundle tooling ───────────────────────────────────────────────────
+
+  # maven-bundle-plugin 5.1.9: correct 5.x release for AEM 6.5 LTS.
+  # AEM 6.5 LTS does NOT require the 6.x plugin line.
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: org.apache.felix
+      artifactId: maven-bundle-plugin
+      newVersion: 5.1.9
+
+  # bnd-maven-plugin family: 6.4.0 (last stable 6.x, Java 21 ready)
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: biz.aQute.bnd
+      artifactId: bnd-maven-plugin
+      newVersion: 6.4.0
+
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: biz.aQute.bnd
+      artifactId: bnd-indexer-maven-plugin
+      newVersion: 6.4.0
+
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: biz.aQute.bnd
+      artifactId: bnd-resolver-maven-plugin
+      newVersion: 6.4.0
+
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: biz.aQute.bnd
+      artifactId: bnd-testing-maven-plugin
+      newVersion: 6.4.0
+
+  # maven-scr-plugin 1.26.4: final release.  Ships with ASM 7 which cannot
+  # parse Java 21 class files; override with ASM 9.7.1 via plugin dependency.
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: org.apache.felix
+      artifactId: maven-scr-plugin
+      newVersion: 1.26.4
+
+  - org.openrewrite.maven.AddPluginDependency:
+      pluginGroupId: org.apache.felix
+      pluginArtifactId: maven-scr-plugin
+      groupId: org.ow2.asm
+      artifactId: asm-analysis
+      version: 9.7.1
+
+  # ── Compiler configuration ────────────────────────────────────────────────
+
+  # Set --release 21 in maven-compiler-plugin configuration.
+  - org.openrewrite.maven.ChangePluginConfiguration:
+      groupId: org.apache.maven.plugins
+      artifactId: maven-compiler-plugin
+      configuration: >
+        <release>21</release>
+
+  # ── Content package tooling ───────────────────────────────────────────────
+
+  # filevault-package-maven-plugin 1.3.6: Java 21 compatible.
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: org.apache.jackrabbit
+      artifactId: filevault-package-maven-plugin
+      newVersion: 1.3.6

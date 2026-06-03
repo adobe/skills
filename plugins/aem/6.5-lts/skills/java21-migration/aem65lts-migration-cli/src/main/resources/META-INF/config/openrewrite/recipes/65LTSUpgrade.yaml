@@ -1,0 +1,375 @@
+---
+# 65LTSUpgrade.yaml
+#
+# Purpose: Top-level composite recipe for migrating an AEM 6.5 LTS project from
+# Java 8/11 to Java 21.  Orchestrates four sub-recipes that can also be run
+# individually:
+#
+#   UpgradeToJava21                  — language + JDK API migration (no jakarta)
+#   UpgradePluginVersions            — Maven build plugin upgrades
+#   UpgradeCommonLibraries           — runtime/compile library upgrades
+#   UpgradeMavenPluginConfigurations — bnd/filevault artefact config changes
+#
+# IMPORTANT — No jakarta migration:
+#   AEM 6.5 LTS continues to use the javax.* namespace.  The OpenRewrite
+#   composite UpgradeToJava17 bundles javax→jakarta replacement that would break
+#   AEM 6.5 LTS code.  We cherry-pick only javax-neutral recipes instead.
+#
+# Recipe artifact coordinates:
+#   org.openrewrite.recipe:rewrite-migrate-java:3.9.0
+#   com.adobe.aem:aem65lts-migration-recipes:1.0-SNAPSHOT
+
+type: specs.openrewrite.org/v1beta/recipe
+name: aem.lts.migration.UpgradeToAEM65LTS
+displayName: AEM 6.5 LTS — Full Java 21 Migration
+description: >
+  Migrates an AEM 6.5 LTS Maven project from Java 8/11 to Java 21.  Runs Java
+  language modernization, Maven plugin upgrades, library dependency upgrades, and
+  FileVault/bnd configuration corrections in one pass.  Jakarta migration is
+  intentionally excluded because AEM 6.5 LTS remains on the javax namespace.
+tags:
+  - aem
+  - java21
+  - migration
+recipeList:
+  - aem.lts.migration.UpgradeToJava21
+  - aem.lts.migration.UpgradePluginVersions
+  - aem.lts.migration.UpgradeCommonLibraries
+  - aem.lts.migration.UpgradeMavenPluginConfigurations
+
+---
+# ── Sub-recipe 1: Java language + JDK API migration ─────────────────────────
+type: specs.openrewrite.org/v1beta/recipe
+name: aem.lts.migration.UpgradeToJava21
+displayName: AEM 6.5 LTS — Upgrade Java Source to Java 21
+description: >
+  Cherry-picked Java 8→11→17→21 migration recipes that are safe for AEM 6.5 LTS
+  (no javax→jakarta namespace changes).  Covers language syntax modernization,
+  removed JDK APIs, and compiler/toolchain version metadata.
+tags:
+  - aem
+  - java21
+  - migration
+recipeList:
+
+  # ── Phase 1: Java 8 → 11 ─────────────────────────────────────────────────
+  # Java8toJava11 does not include jakarta changes; safe for AEM 6.5 LTS.
+  - org.openrewrite.java.migrate.Java8toJava11
+
+  # ── Phase 2: Java 11 → 17 (cherry-picked, no jakarta) ───────────────────
+  # We do NOT invoke the UpgradeToJava17 composite because it transitively
+  # pulls in JavaxMigrationToJakarta.  Each recipe below is individually
+  # vetted to be javax-neutral.
+
+  # Tell Maven/Gradle build tooling to target Java 17
+  - org.openrewrite.java.migrate.UpgradeBuildToJava17
+
+  # Pattern-matching instanceof (JEP 394)
+  - org.openrewrite.java.migrate.InstanceOfPatternMatch
+
+  # Annotation processor compatibility
+  - org.openrewrite.java.migrate.AddSerialAnnotationToSerialVersionUID
+
+  # Removed/unsupported runtime APIs in JDK 17
+  - org.openrewrite.java.migrate.RemovedRuntimeTraceMethods
+  - org.openrewrite.java.migrate.RemovedToolProviderConstructor
+  - org.openrewrite.java.migrate.RemovedModifierAndConstantBootstrapsConstructors
+  - org.openrewrite.java.migrate.ExplicitRecordImport
+
+  # Text blocks (JEP 378) — only convert strings that already contain newlines
+  - org.openrewrite.java.migrate.UseTextBlocks:
+      convertStringsWithoutNewlines: false
+
+  # String.formatted() convenience method
+  - org.openrewrite.java.migrate.StringFormatted:
+      addParentheses: false
+
+  # Deprecated security / SSL APIs
+  - org.openrewrite.java.migrate.DeprecatedJavaxSecurityCert
+  - org.openrewrite.java.migrate.DeprecatedLogRecordThreadID
+  - org.openrewrite.java.migrate.RemovedLegacySunJSSEProviderName
+  - org.openrewrite.java.migrate.Jre17AgentMainPreMainPublic
+  - org.openrewrite.java.migrate.DeprecatedCountStackFramesMethod
+
+  # Removed ZIP / file finalization
+  - org.openrewrite.java.migrate.RemovedZipFinalizeMethods
+  - org.openrewrite.java.migrate.RemovedFileIOFinalizeMethods
+
+  # Removed SSL session method
+  - org.openrewrite.java.migrate.RemovedSSLSessionGetPeerCertificateChainMethodImpl
+
+  # Removed sun.net.ssl package
+  - org.openrewrite.java.migrate.SunNetSslPackageUnavailable
+
+  # Removed RMI constant
+  - org.openrewrite.java.migrate.RemovedRMIConnectorServerCredentialTypesConstant
+
+  # Maven plugin compatibility for Java 17
+  - org.openrewrite.java.migrate.UpgradePluginsForJava17
+
+  # ── Phase 3: Java 17 → 21 ────────────────────────────────────────────────
+
+  # Tell Maven/Gradle build tooling to target Java 21
+  - org.openrewrite.java.migrate.UpgradeBuildToJava21
+
+  # Syntax & language
+  - org.openrewrite.java.migrate.RemoveIllegalSemicolons
+
+  # Thread.stop() removed in JDK 21 (JEP — finalized deprecation)
+  - org.openrewrite.java.migrate.ThreadStopUnsupported
+
+  # URL(String) constructor deprecated; replace with URI.create().toURL()
+  - org.openrewrite.java.migrate.URLConstructorToURICreate
+
+  # Sequenced Collections (JEP 431)
+  - org.openrewrite.java.migrate.SequencedCollection
+
+  # Locale factory method
+  - org.openrewrite.java.migrate.UseLocaleOf
+
+  # Deprecated Runtime.exec() overloads
+  - org.openrewrite.java.migrate.ReplaceDeprecatedRuntimeExecMethods
+
+  # Toolchain / compiler version metadata
+  - org.openrewrite.java.migrate.SetupJavaUpgradeJavaVersion
+
+  # Maven plugin compatibility for Java 21
+  - org.openrewrite.java.migrate.UpgradePluginsForJava21
+
+  # Object.finalize() deleted in JDK 21 (JEP 421 / JEP 447)
+  - org.openrewrite.java.migrate.DeleteDeprecatedFinalize
+
+  # Removed Subject methods (JEP 411 follow-up)
+  - org.openrewrite.java.migrate.RemovedSubjectMethods
+
+  # ── Phase 4: Import cleanup ───────────────────────────────────────────────
+  - org.openrewrite.java.RemoveUnusedImports
+
+  # ── Phase 5: Library upgrades bundled with the Java 21 migration ─────────
+
+  # Google Guice: 4.x → 5.x (requires Java 11+)
+  - org.openrewrite.java.migrate.guava.UpgradeGuice_5_x
+
+  # Apache Commons Codec: upgrade to 1.17.x
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: commons-codec
+      artifactId: commons-codec
+      newVersion: 1.17.x
+
+  # SpotBugs Maven Plugin: 4.9.x (requires Java 11+)
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: com.github.spotbugs
+      artifactId: spotbugs-maven-plugin
+      newVersion: 4.9.x
+
+  # MapStruct: 1.6.x
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: org.mapstruct
+      artifactId: mapstruct
+      newVersion: 1.6.x
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: org.mapstruct
+      artifactId: mapstruct-processor
+      newVersion: 1.6.x
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: projectlombok
+      artifactId: lombok-mapstruct-binding
+      newVersion: 0.2.x
+
+  # JaCoCo: 0.8.12 (required for Java 21 bytecode instrumentation support)
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: org.jacoco
+      artifactId: jacoco-maven-plugin
+      newVersion: 0.8.12
+
+---
+# ── Sub-recipe 2: Maven plugin version upgrades ──────────────────────────────
+type: specs.openrewrite.org/v1beta/recipe
+name: aem.lts.migration.UpgradePluginVersions
+displayName: AEM 6.5 LTS — Upgrade Maven Build Plugins
+description: >
+  Upgrades AEM-related Maven build plugins to versions that produce and validate
+  OSGi bundles correctly when compiling with Java 21.  Uses maven-bundle-plugin
+  5.1.9 (the correct 5.x target for AEM 6.5 LTS; NOT 6.x), pins ASM 9.7.1
+  inside maven-scr-plugin for Java 21 class file parsing, and sets the compiler
+  --release flag.
+tags:
+  - aem
+  - maven
+  - plugins
+  - migration
+recipeList:
+
+  # ── OSGi bundle tooling ───────────────────────────────────────────────────
+
+  # maven-bundle-plugin 5.1.9: correct 5.x release for AEM 6.5 LTS.
+  # AEM 6.5 LTS does NOT require the 6.x plugin line.
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: org.apache.felix
+      artifactId: maven-bundle-plugin
+      newVersion: 5.1.9
+
+  # bnd-maven-plugin family: 6.4.0 (last stable 6.x, Java 21 ready)
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: biz.aQute.bnd
+      artifactId: bnd-maven-plugin
+      newVersion: 6.4.0
+
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: biz.aQute.bnd
+      artifactId: bnd-indexer-maven-plugin
+      newVersion: 6.4.0
+
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: biz.aQute.bnd
+      artifactId: bnd-resolver-maven-plugin
+      newVersion: 6.4.0
+
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: biz.aQute.bnd
+      artifactId: bnd-testing-maven-plugin
+      newVersion: 6.4.0
+
+  # maven-scr-plugin 1.26.4: final release.  Ships with ASM 7 which cannot
+  # parse Java 21 class files; override with ASM 9.7.1 via plugin dependency.
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: org.apache.felix
+      artifactId: maven-scr-plugin
+      newVersion: 1.26.4
+
+  - org.openrewrite.maven.AddPluginDependency:
+      pluginGroupId: org.apache.felix
+      pluginArtifactId: maven-scr-plugin
+      groupId: org.ow2.asm
+      artifactId: asm-analysis
+      version: 9.7.1
+
+  # ── Compiler configuration ────────────────────────────────────────────────
+
+  # Set --release 21 in maven-compiler-plugin configuration.
+  - org.openrewrite.maven.ChangePluginConfiguration:
+      groupId: org.apache.maven.plugins
+      artifactId: maven-compiler-plugin
+      configuration: >
+        <release>21</release>
+
+  # ── Content package tooling ───────────────────────────────────────────────
+
+  # filevault-package-maven-plugin 1.3.6: Java 21 compatible.
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: org.apache.jackrabbit
+      artifactId: filevault-package-maven-plugin
+      newVersion: 1.3.6
+
+---
+# ── Sub-recipe 3: Library dependency upgrades ────────────────────────────────
+type: specs.openrewrite.org/v1beta/recipe
+name: aem.lts.migration.UpgradeCommonLibraries
+displayName: AEM 6.5 LTS — Upgrade Common Library Dependencies
+description: >
+  Upgrades AEM WCM Core Components, Groovy, and the AEM Groovy Console to
+  versions compatible with AEM 6.5 LTS and Java 21.  Migrates the Groovy
+  Console from the abandoned com.icfolson.aem coordinates to the actively
+  maintained be.orbinson.aem coordinates.
+tags:
+  - aem
+  - dependencies
+  - migration
+recipeList:
+
+  # ── AEM WCM Core Components ───────────────────────────────────────────────
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: com.adobe.cq
+      artifactId: core.wcm.components.core
+      newVersion: 2.24.0
+
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: com.adobe.cq
+      artifactId: core.wcm.components.content
+      newVersion: 2.24.0
+
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: com.adobe.cq
+      artifactId: core.wcm.components.config
+      newVersion: 2.24.0
+
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: com.adobe.cq
+      artifactId: core.wcm.components.all
+      newVersion: 2.24.0
+
+  # ── Groovy runtime ────────────────────────────────────────────────────────
+  # Groovy 4.0.27: first version with full Java 21 support; 3.x is EOL.
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: org.apache.groovy
+      artifactId: groovy-all
+      newVersion: 4.0.27
+
+  # Also cover legacy org.codehaus.groovy groupId
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: org.codehaus.groovy
+      artifactId: groovy-all
+      newVersion: 4.0.27
+
+  # ── AEM Groovy Console ────────────────────────────────────────────────────
+  # Migrate from abandoned com.icfolson.aem coordinates to be.orbinson.aem.
+  - org.openrewrite.maven.ChangeDependencyGroupIdAndArtifactId:
+      oldGroupId: com.icfolson.aem.groovy.console
+      oldArtifactId: aem-groovy-console
+      newGroupId: be.orbinson.aem
+      newArtifactId: aem-groovy-console
+      newVersion: 19.0.8
+
+  - org.openrewrite.maven.ChangeDependencyGroupIdAndArtifactId:
+      oldGroupId: com.icfolson.aem.groovy.console
+      oldArtifactId: aem-groovy-console-bundle
+      newGroupId: be.orbinson.aem
+      newArtifactId: aem-groovy-console-bundle
+      newVersion: 19.0.8
+
+  - org.openrewrite.maven.ChangeDependencyGroupIdAndArtifactId:
+      oldGroupId: com.icfolson.aem.groovy.console
+      oldArtifactId: aem-groovy-console-content
+      newGroupId: be.orbinson.aem
+      newArtifactId: aem-groovy-console-content
+      newVersion: 19.0.8
+
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: be.orbinson.aem
+      artifactId: aem-groovy-console
+      newVersion: 19.0.8
+
+---
+# ── Sub-recipe 4: Maven plugin configuration corrections ─────────────────────
+type: specs.openrewrite.org/v1beta/recipe
+name: aem.lts.migration.UpgradeMavenPluginConfigurations
+displayName: AEM 6.5 LTS — Fix Maven Plugin Configurations for LTS
+description: >
+  Corrects FileVault and bnd plugin configurations that are incompatible with
+  AEM 6.5 LTS.  Migrates the Groovy Console embedded artefact from the
+  abandoned com.icfolson coordinates to the current be.orbinson coordinates
+  inside filevault-package-maven-plugin <embedded> declarations, and removes
+  the _plugin- BND instruction that is rejected by bnd 6.x.
+tags:
+  - aem
+  - maven
+  - filevault
+  - migration
+recipeList:
+
+  # Migrate Groovy Console embedded artefact inside filevault plugin config.
+  # Handles <embedded> entries in <embeddeds> within filevault-package-maven-plugin.
+  - com.adobe.aem.migration.recipes.ChangeFilevaultEmbeddedArtifact:
+      oldGroupId: "com.icfolson.aem*"
+      oldArtifactId: "aem-groovy-console*"
+      newGroupId: be.orbinson.aem
+
+  # Remove the _plugin- BND instruction header that bnd 6.x no longer accepts.
+  - com.adobe.aem.migration.recipes.RemoveBndPluginInstruction:
+      instructionPattern: SCRDescriptorBndPlugin
+
+  # Revert any accidental javax→jakarta changes in AEM source files.
+  # This is a safeguard: if any upstream recipe inadvertently migrated javax
+  # imports, this recipe restores them to the javax namespace required by
+  # AEM 6.5 LTS.
+  - com.adobe.aem.migration.recipes.RevertJakartaInAemSource

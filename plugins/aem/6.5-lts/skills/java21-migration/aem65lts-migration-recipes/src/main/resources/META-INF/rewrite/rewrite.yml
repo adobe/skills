@@ -1,0 +1,8 @@
+# Custom recipes are auto-discovered as imperative Java recipes on the classpath.
+# This file is reserved for declarative compositions of those recipes.
+#
+# Available imperative recipes (discovered via classpath scanning):
+#   - com.adobe.aem.migration.recipes.ChangeFilevaultEmbeddedArtifact
+#   - com.adobe.aem.migration.recipes.RemoveBndPluginInstruction
+#   - com.adobe.aem.migration.recipes.RevertJakartaInAemSource
+#   - com.adobe.aem.migration.recipes.DetectUnsupportedPackages

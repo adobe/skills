@@ -1,0 +1,211 @@
+---
+# 65LTSTestLibsUpgrades.yaml
+#
+# Purpose: Migrate Mockito from 1.x to 5.x in progressive phases for AEM 6.5 LTS
+# projects upgrading to Java 21.
+#
+# Migration chain:
+#   Mockito 1.x → 3.x → 4.x → 5.x → Cleanup
+#
+# Phases are composed into the top-level recipe so the full chain can be
+# executed in a single rewrite:run invocation, while still being individually
+# addressable for incremental rollouts.
+#
+# Recipe artifact coordinates:
+#   org.openrewrite.recipe:rewrite-testing-frameworks:3.9.0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Top-level orchestrator
+# ─────────────────────────────────────────────────────────────────────────────
+type: specs.openrewrite.org/v1beta/recipe
+name: aem.lts.migration.UpgradeTestingFrameworks
+displayName: AEM 6.5 LTS — Upgrade Testing Frameworks (Mockito 1.x → 5.x)
+description: >
+  Progressively migrates Mockito from 1.x through 3.x, 4.x, and finally 5.x,
+  cleaning up obsolete APIs, updating byte-buddy, and consolidating the
+  mockito-inline artefact into mockito-core.  Each phase is a sub-recipe that
+  can also be run in isolation.
+tags:
+  - aem
+  - testing
+  - mockito
+  - migration
+recipeList:
+  - aem.lts.migration.MockitoOneToThree
+  - aem.lts.migration.MockitoThreeToFour
+  - aem.lts.migration.MockitoFourToFive
+  - aem.lts.migration.MockitoCleanup
+
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 1: Mockito 1.x → 3.x
+# ─────────────────────────────────────────────────────────────────────────────
+type: specs.openrewrite.org/v1beta/recipe
+name: aem.lts.migration.MockitoOneToThree
+displayName: Mockito 1.x → 3.x API migration
+description: >
+  Replaces deprecated Mockito 1.x imports, matchers, and verification helpers
+  with their Mockito 3.x equivalents.  Also migrates JUnit 4 runner to the
+  JUnit 5 extension, replaces PowerMockito usage, and switches the Maven
+  dependency from mockito-all to mockito-core.
+tags:
+  - mockito
+  - testing
+recipeList:
+
+  # Import: org.mockito.MockitoAnnotations.Mock → org.mockito.Mock
+  - org.openrewrite.java.testing.mockito.MockitoAnnotationsMockToMockitoMock
+
+  # Matcher type widening: replace typed any()/isNull()/notNull()
+  - org.openrewrite.java.testing.mockito.AnyToNullable
+
+  # Static import: org.mockito.Matchers → org.mockito.ArgumentMatchers
+  - org.openrewrite.java.testing.mockito.MockitoMatchersToArgumentMatchers
+
+  # Vararg matcher: anyVararg() was removed; use any()
+  - org.openrewrite.java.testing.mockito.MockitoVarargMatcherToAny
+
+  # Typed matchers removed in Mockito 2+; replace with untyped variants
+  - org.openrewrite.java.testing.mockito.MockitoTypedMatchersToUntypedMatchers
+
+  # ArgumentCaptor.getArgumentAt(int, Class) → getArgument(int, Class)
+  - org.openrewrite.java.testing.mockito.MockitoGetArgumentAt
+
+  # MockedStatic verify: argument order changed in 3.4+
+  - org.openrewrite.java.testing.mockito.MockitoMockedStaticVerifyArgReorder
+
+  # verifyZeroInteractions() → verifyNoMoreInteractions()
+  - org.openrewrite.java.testing.mockito.VerifyZeroToNoMoreInteractions
+
+  # Type renames between 1.x and 3.x
+  - org.openrewrite.java.testing.mockito.MockitoTypeMigration
+
+  # Remove residual org.mockito.* wildcard imports
+  - org.openrewrite.java.testing.mockito.CleanupMockitoImports
+
+  # MockUtils static helpers → inline static calls
+  - org.openrewrite.java.testing.mockito.MockitoMockUtilsToStatic
+
+  # @RunWith(MockitoJUnitRunner) → @ExtendWith(MockitoExtension)  (JUnit 5)
+  - org.openrewrite.java.testing.mockito.MockitoJUnitRunnerToMockitoExtension
+
+  # JUnit 4 @Rule MockitoJUnit.rule() → @ExtendWith(MockitoExtension)
+  - org.openrewrite.java.testing.mockito.MockitoJUnitToMockitoExtension
+
+  # Replace PowerMockito static mocking with Mockito 3.4 mockStatic()
+  - org.openrewrite.java.testing.mockito.ReplacePowerMockito
+
+  # POM: replace mockito-all (fat JAR) with mockito-core
+  - org.openrewrite.java.testing.mockito.MockitoAllToMockitoCore
+
+  # POM: bump Mockito to 3.x
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: org.mockito
+      artifactId: mockito-core
+      newVersion: 3.x
+
+  # POM: byte-buddy compatible with Mockito 3.x
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: net.bytebuddy
+      artifactId: byte-buddy
+      newVersion: 1.11.13
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: net.bytebuddy
+      artifactId: byte-buddy-agent
+      newVersion: 1.11.13
+
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 2: Mockito 3.x → 4.x
+# ─────────────────────────────────────────────────────────────────────────────
+type: specs.openrewrite.org/v1beta/recipe
+name: aem.lts.migration.MockitoThreeToFour
+displayName: Mockito 3.x → 4.x API migration
+description: >
+  Updates Mockito from 3.x to 4.x.  Applies the MockitoWhenOnStaticToMockStatic
+  transform and bumps both mockito-core and byte-buddy to their 4.x-compatible
+  versions.
+tags:
+  - mockito
+  - testing
+recipeList:
+
+  # Mockito.when(StaticClass.method()) → try(MockedStatic) pattern
+  - org.openrewrite.java.testing.mockito.MockitoWhenOnStaticToMockStatic
+
+  # POM: bump Mockito to 4.x
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: org.mockito
+      artifactId: mockito-core
+      newVersion: 4.x
+
+  # POM: byte-buddy compatible with Mockito 4.x
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: net.bytebuddy
+      artifactId: byte-buddy
+      newVersion: 1.12.19
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: net.bytebuddy
+      artifactId: byte-buddy-agent
+      newVersion: 1.12.19
+
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 3: Mockito 4.x → 5.x
+# ─────────────────────────────────────────────────────────────────────────────
+type: specs.openrewrite.org/v1beta/recipe
+name: aem.lts.migration.MockitoFourToFive
+displayName: Mockito 4.x → 5.x API migration
+description: >
+  Upgrades Mockito from 4.x to 5.11.0.  Removes the now-obsolete mockito-inline
+  dependency (its functionality was merged into mockito-core in 5.0), bumps
+  byte-buddy to 1.17.5, and removes duplicate dependency declarations.
+tags:
+  - mockito
+  - testing
+recipeList:
+
+  # mockito-inline merged into mockito-core in 5.x
+  - org.openrewrite.java.testing.mockito.MockitoInlineToMockitoCore
+
+  # POM: bump Mockito to 5.11.0
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: org.mockito
+      artifactId: mockito-core
+      newVersion: 5.11.0
+
+  # POM: byte-buddy compatible with Mockito 5.x / Java 21
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: net.bytebuddy
+      artifactId: byte-buddy
+      newVersion: 1.17.5
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: net.bytebuddy
+      artifactId: byte-buddy-agent
+      newVersion: 1.17.5
+
+  # Remove duplicate dependency entries created by the multi-phase upgrade
+  - org.openrewrite.maven.RemoveDuplicateDependencies
+
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 4: Post-migration cleanup
+# ─────────────────────────────────────────────────────────────────────────────
+type: specs.openrewrite.org/v1beta/recipe
+name: aem.lts.migration.MockitoCleanup
+displayName: Mockito post-migration cleanup
+description: >
+  Final cleanup pass after the Mockito 1→5 migration chain.  Removes calls to
+  the deleted FieldSetter.setField() utility and strips unused imports left
+  behind by previous phases.
+tags:
+  - mockito
+  - testing
+recipeList:
+
+  # FieldSetter.setField() was an internal Mockito utility removed in 4.x.
+  # Replaced with a TODO comment; correct fix depends on context.
+  - org.openrewrite.java.testing.mockito.MockitoRemoveFieldSetterWithTodo
+
+  # Remove any stale/unused Mockito or test framework imports
+  - org.openrewrite.java.RemoveUnusedImports

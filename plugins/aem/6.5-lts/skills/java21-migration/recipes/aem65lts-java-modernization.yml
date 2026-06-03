@@ -1,0 +1,162 @@
+---
+# aem65lts-java-modernization.yml
+#
+# Purpose: Migrate AEM 6.5 LTS project Java source from Java 8/11 to Java 21.
+#
+# IMPORTANT — No jakarta migration:
+#   AEM 6.5 LTS continues to use the javax.* namespace (Servlet API 4, JPA 2,
+#   JAX-RS 2, etc.).  The OpenRewrite composite UpgradeToJava17 bundles a
+#   javax→jakarta namespace replacement that would break AEM 6.5 LTS code.
+#   Instead we cherry-pick only the language/JDK recipes from the 11→17 and
+#   17→21 migration sets and skip any jakarta-touching recipes.
+#
+# Dependency versions pinned here:
+#   rewrite-migrate-java: 3.9.0  (latest stable at time of authoring)
+
+type: specs.openrewrite.org/v1beta/recipe
+name: aem.lts.migration.ModernizeJavaCode
+displayName: AEM 6.5 LTS — Modernize Java Code (Java 8/11 → 21)
+description: >
+  Incrementally migrates Java source code and Maven build tooling from Java 8/11
+  to Java 21 compatibility, targeting AEM 6.5 LTS projects.  Jakarta migration
+  is intentionally excluded because AEM 6.5 LTS remains on the javax namespace.
+tags:
+  - aem
+  - java21
+  - migration
+recipeList:
+
+  # ── Phase 1: Java 8 → 11 ─────────────────────────────────────────────────
+  # The composite Java8toJava11 does not include any javax→jakarta changes and
+  # is safe for AEM 6.5 LTS.
+  - org.openrewrite.java.migrate.Java8toJava11
+
+  # ── Phase 2: Java 11 → 17 (cherry-picked, no jakarta) ───────────────────
+  # We do NOT invoke UpgradeToJava17 because it transitively pulls in
+  # javax→jakarta recipes via JavaxMigrationToJakarta.  Each recipe below is
+  # individually vetted to be javax-neutral.
+
+  # Tell Maven/Gradle build tooling to target Java 17
+  - org.openrewrite.java.migrate.UpgradeBuildToJava17
+
+  # Pattern-matching instanceof (JEP 394)
+  - org.openrewrite.java.migrate.InstanceOfPatternMatch
+
+  # Annotation processor compatibility
+  - org.openrewrite.java.migrate.AddSerialAnnotationToSerialVersionUID
+
+  # Removed/unsupported runtime APIs in JDK 17
+  - org.openrewrite.java.migrate.RemovedRuntimeTraceMethods
+  - org.openrewrite.java.migrate.RemovedToolProviderConstructor
+  - org.openrewrite.java.migrate.RemovedModifierAndConstantBootstrapsConstructors
+  - org.openrewrite.java.migrate.ExplicitRecordImport
+
+  # Text blocks (JEP 378) — only convert strings that already contain newlines
+  # to avoid changing behaviour of single-line concatenations
+  - org.openrewrite.java.migrate.UseTextBlocks:
+      convertStringsWithoutNewlines: false
+
+  # String.formatted() convenience method
+  - org.openrewrite.java.migrate.StringFormatted:
+      addParentheses: false
+
+  # Deprecated security / SSL APIs
+  - org.openrewrite.java.migrate.DeprecatedJavaxSecurityCert
+  - org.openrewrite.java.migrate.DeprecatedLogRecordThreadID
+  - org.openrewrite.java.migrate.RemovedLegacySunJSSEProviderName
+  - org.openrewrite.java.migrate.Jre17AgentMainPreMainPublic
+  - org.openrewrite.java.migrate.DeprecatedCountStackFramesMethod
+
+  # Removed ZIP / file finalization
+  - org.openrewrite.java.migrate.RemovedZipFinalizeMethods
+  - org.openrewrite.java.migrate.RemovedFileIOFinalizeMethods
+
+  # Removed SSL session method
+  - org.openrewrite.java.migrate.RemovedSSLSessionGetPeerCertificateChainMethodImpl
+
+  # Removed sun.net.ssl package
+  - org.openrewrite.java.migrate.SunNetSslPackageUnavailable
+
+  # Removed RMI constant
+  - org.openrewrite.java.migrate.RemovedRMIConnectorServerCredentialTypesConstant
+
+  # Maven plugin compatibility for Java 17
+  - org.openrewrite.java.migrate.UpgradePluginsForJava17
+
+  # ── Phase 3: Java 17 → 21 ────────────────────────────────────────────────
+
+  # Tell Maven/Gradle build tooling to target Java 21
+  - org.openrewrite.java.migrate.UpgradeBuildToJava21
+
+  # Syntax & language
+  - org.openrewrite.java.migrate.RemoveIllegalSemicolons
+
+  # Thread.stop() removed in JDK 21 (JEP — finalized deprecation)
+  - org.openrewrite.java.migrate.ThreadStopUnsupported
+
+  # URL(String) constructor deprecated; replace with URI.create().toURL()
+  - org.openrewrite.java.migrate.URLConstructorToURICreate
+
+  # Sequenced Collections (JEP 431)
+  - org.openrewrite.java.migrate.SequencedCollection
+
+  # Locale factory method
+  - org.openrewrite.java.migrate.UseLocaleOf
+
+  # Deprecated Runtime.exec() overloads
+  - org.openrewrite.java.migrate.ReplaceDeprecatedRuntimeExecMethods
+
+  # Toolchain / compiler version metadata
+  - org.openrewrite.java.migrate.SetupJavaUpgradeJavaVersion
+
+  # Maven plugin compatibility for Java 21
+  - org.openrewrite.java.migrate.UpgradePluginsForJava21
+
+  # Object.finalize() deleted in JDK 21 (JEP 421 / JEP 447)
+  - org.openrewrite.java.migrate.DeleteDeprecatedFinalize
+
+  # Removed Subject methods (JEP 411 follow-up)
+  - org.openrewrite.java.migrate.RemovedSubjectMethods
+
+  # ── Phase 4: Import cleanup ───────────────────────────────────────────────
+  - org.openrewrite.java.RemoveUnusedImports
+
+  # ── Phase 5: Library upgrades bundled with the Java 21 migration ─────────
+  # These libraries require a minimum Java 11/17/21 runtime and are therefore
+  # upgraded as part of the same migration wave rather than a separate ticket.
+
+  # Google Guice: 4.x → 5.x (requires Java 11+; removes internal Guice APIs
+  # in favour of standard JSR-330 annotations)
+  - org.openrewrite.java.migrate.guava.UpgradeGuice_5_x
+
+  # Apache Commons Codec: upgrade to 1.17.x (Java 8+ compatible, no API breaks)
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: commons-codec
+      artifactId: commons-codec
+      newVersion: 1.17.x
+
+  # SpotBugs Maven Plugin: 4.9.x (requires Java 11+)
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: com.github.spotbugs
+      artifactId: spotbugs-maven-plugin
+      newVersion: 4.9.x
+
+  # MapStruct: 1.6.x + accompanying lombok-mapstruct-binding
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: org.mapstruct
+      artifactId: mapstruct
+      newVersion: 1.6.x
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: org.mapstruct
+      artifactId: mapstruct-processor
+      newVersion: 1.6.x
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: projectlombok
+      artifactId: lombok-mapstruct-binding
+      newVersion: 0.2.x
+
+  # JaCoCo: 0.8.12 (required for Java 21 bytecode instrumentation support)
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: org.jacoco
+      artifactId: jacoco-maven-plugin
+      newVersion: 0.8.12

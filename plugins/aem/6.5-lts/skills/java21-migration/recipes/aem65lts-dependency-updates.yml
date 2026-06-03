@@ -1,0 +1,114 @@
+---
+# aem65lts-dependency-updates.yml
+#
+# Purpose: Upgrade AEM-ecosystem library dependencies to versions that are
+# compatible with AEM 6.5 LTS and Java 21.
+#
+# Scope: runtime / compile-scope Maven dependencies consumed by AEM bundles.
+#        Maven build plugins are handled in aem65lts-plugin-updates.yml.
+#        UberJar migration is handled in aem65lts-uberjar-migration.yml.
+#
+# Version rationale:
+#   core.wcm.components 2.24.0 — last version validated for AEM 6.5 LTS GA;
+#     downstream automation (aem65lts-java-modernization) may further bump to
+#     2.30.4 once Java 21 compatibility is confirmed for that version line.
+#   groovy-all 4.0.27           — Groovy 4 is the first version with full
+#     Java 21 support; 3.x line is EOL.
+#   aem-groovy-console 19.0.8   — repackaged under be.orbinson.aem groupId;
+#     the com.icfolson.aem.groovy.console coordinates are abandoned.
+
+type: specs.openrewrite.org/v1beta/recipe
+name: aem.lts.migration.UpdateAEMDependencies
+displayName: AEM 6.5 LTS — Update AEM Ecosystem Dependencies
+description: >
+  Upgrades AEM WCM Core Components, Groovy, and the AEM Groovy Console to
+  versions that are compatible with AEM 6.5 LTS and Java 21.  The Groovy
+  Console migration also corrects the Maven groupId from the abandoned
+  com.icfolson.aem coordinates to the actively maintained be.orbinson.aem
+  coordinates.
+tags:
+  - aem
+  - dependencies
+  - migration
+recipeList:
+
+  # ── AEM WCM Core Components ───────────────────────────────────────────────
+  # Bump all four Core Components artefacts together to keep versions in sync.
+  # The 2.24.0 baseline is required for AEM 6.5 SP21+ / LTS compatibility.
+
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: com.adobe.cq
+      artifactId: core.wcm.components.core
+      newVersion: 2.24.0
+
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: com.adobe.cq
+      artifactId: core.wcm.components.content
+      newVersion: 2.24.0
+
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: com.adobe.cq
+      artifactId: core.wcm.components.config
+      newVersion: 2.24.0
+
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: com.adobe.cq
+      artifactId: core.wcm.components.all
+      newVersion: 2.24.0
+
+  # ── Groovy runtime ────────────────────────────────────────────────────────
+  # groovy-all 4.0.27 is the consolidated "all" artefact for Groovy 4.
+  # Groovy 4 requires Java 8+ and has full Java 21 support.
+  # If a project uses individual groovy-* sub-modules instead of groovy-all,
+  # those should be bumped manually to the same 4.0.27 version.
+
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: org.apache.groovy
+      artifactId: groovy-all
+      newVersion: 4.0.27
+
+  # Legacy groupId used by Groovy < 4.x was "org.codehaus.groovy".
+  # Upgrade that coordinate too so projects that haven't yet migrated groupIds
+  # are also covered (the new groupId org.apache.groovy is handled above).
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: org.codehaus.groovy
+      artifactId: groovy-all
+      newVersion: 4.0.27
+
+  # ── AEM Groovy Console ────────────────────────────────────────────────────
+  # The com.icfolson.aem.groovy.console groupId is abandoned (last release
+  # 2021).  The project was transferred to be.orbinson.aem and 19.0.8 is the
+  # current stable release under the new coordinates.
+  #
+  # Step 1: migrate groupId/artifactId (handles both <dependency> and
+  #         <dependencyManagement> entries via overrideExisting: true).
+  # Step 2: set the target version.
+
+  - org.openrewrite.maven.ChangeDependencyGroupIdAndArtifactId:
+      oldGroupId: com.icfolson.aem.groovy.console
+      oldArtifactId: aem-groovy-console
+      newGroupId: be.orbinson.aem
+      newArtifactId: aem-groovy-console
+      newVersion: 19.0.8
+
+  # Also cover the variant artefact names used by the old groupId
+  - org.openrewrite.maven.ChangeDependencyGroupIdAndArtifactId:
+      oldGroupId: com.icfolson.aem.groovy.console
+      oldArtifactId: aem-groovy-console-bundle
+      newGroupId: be.orbinson.aem
+      newArtifactId: aem-groovy-console-bundle
+      newVersion: 19.0.8
+
+  - org.openrewrite.maven.ChangeDependencyGroupIdAndArtifactId:
+      oldGroupId: com.icfolson.aem.groovy.console
+      oldArtifactId: aem-groovy-console-content
+      newGroupId: be.orbinson.aem
+      newArtifactId: aem-groovy-console-content
+      newVersion: 19.0.8
+
+  # For projects that already use be.orbinson.aem but are on an older version,
+  # ensure the version is also bumped to 19.0.8.
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: be.orbinson.aem
+      artifactId: aem-groovy-console
+      newVersion: 19.0.8

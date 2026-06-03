@@ -1,0 +1,186 @@
+# Unsupported API Configuration
+#
+# Used by the `aem-migrate analyze` CLI command during pre-migration analysis.
+#
+# Entries under hard_stop_packages cause the migration to halt immediately.
+# The project cannot be migrated using this workflow until the dependency
+# is resolved, removed, or a dedicated migration path is available.
+#
+# Entries under warning_packages allow migration to continue but generate
+# a warning in the report. These represent dependencies that will compile
+# but may fail at AEM runtime because the bundle is not present in
+# the AEM 6.5 LTS classloader.
+#
+# Pattern matching:
+#   - Patterns use prefix matching on Java import statements and
+#     Maven dependency coordinates found in POM files.
+#   - A trailing '.*' matches any subpackage.
+#   - A pattern without '.*' matches the exact package or group ID.
+
+# -----------------------------------------------------------------------
+# HARD STOP PACKAGES
+# Migration cannot proceed while these are present in the project.
+# -----------------------------------------------------------------------
+hard_stop_packages:
+
+  - pattern: "com.adobe.cq.commerce.*"
+    reason: >
+      AEM Commerce Cloud integration — this API set requires a separate
+      Commerce-specific migration path and is not handled by this workflow.
+    remediation: >
+      Remove Commerce integration code or engage the Commerce team for
+      a coordinated migration strategy before running this workflow.
+
+  - pattern: "com.adobe.cq.social.*"
+    reason: >
+      AEM Communities — the Communities framework was deprecated in AEM 6.4
+      and its bundles are not present in AEM 6.5 LTS. Code referencing these
+      packages will not compile against the LTS UberJar.
+    remediation: >
+      Remove Communities integration. If social features are required,
+      evaluate AEM Sites social components or a third-party integration.
+
+  - pattern: "com.adobe.granite.social.*"
+    reason: >
+      Granite Social framework — deprecated and removed in AEM 6.5 LTS.
+      Code will not compile against the LTS UberJar.
+    remediation: >
+      Remove Granite Social references. Equivalent capabilities are not
+      available in AEM 6.5 LTS without a custom implementation.
+
+  - pattern: "com.adobe.cq.screens.*"
+    reason: >
+      AEM Screens — Screens requires its own migration path with specific
+      Screens SDK versions. It is not covered by this general LTS migration.
+    remediation: >
+      Separate the Screens modules from the main project and run the
+      Screens-specific migration workflow for those modules.
+
+  - pattern: "com.adobe.cq.sample.we.retail.*"
+    reason: >
+      We.Retail reference implementation — this sample content is not
+      part of a production codebase and should be removed before migration.
+    remediation: >
+      Delete We.Retail modules from the project. They are not supported
+      in production and their presence inflates the migration surface area.
+
+  - pattern: "com.day.cq.dam.pim.*"
+    reason: >
+      DAM PIM integration — deprecated in AEM 6.4 and removed in 6.5 LTS.
+      Classes are not present in the LTS UberJar.
+    remediation: >
+      Remove PIM integration code. Evaluate AEM Assets metadata schemas
+      as a replacement for product information management workflows.
+
+  - pattern: "com.day.cq.dam.rating.*"
+    reason: >
+      DAM asset rating — deprecated and removed in AEM 6.5 LTS.
+    remediation: >
+      Remove DAM rating references. Implement custom asset scoring via
+      metadata properties if rating functionality is required.
+
+  - pattern: "com.adobe.cq.searchpromote.*"
+    reason: >
+      Adobe Search and Promote integration — the Search and Promote
+      service was discontinued and its integration classes are not
+      present in AEM 6.5 LTS.
+    remediation: >
+      Remove Search and Promote integration. Migrate search functionality
+      to AEM's native search (Oak-based) or an external search platform.
+
+  - pattern: "com.day.cq.mcm.campaign.*"
+    reason: >
+      AEM Campaign integration — the legacy MCM Campaign connector was
+      removed in AEM 6.5 LTS. The replacement uses Adobe Campaign Standard
+      APIs directly.
+    remediation: >
+      Migrate to the AEM-Campaign integration via Adobe Campaign Standard
+      or Adobe Campaign Classic v7 REST APIs.
+
+# -----------------------------------------------------------------------
+# WARNING PACKAGES
+# Migration can continue, but these will cause runtime failures in AEM
+# unless the dependency is embedded in the OSGi bundle or refactored.
+# -----------------------------------------------------------------------
+warning_packages:
+
+  - pattern: "com.google.common.*"
+    reason: >
+      Google Guava — the Guava bundle (com.google.guava) is not deployed
+      in the AEM 6.5 LTS runtime. Code that imports Guava classes will
+      compile against the UberJar but throw ClassNotFoundException at runtime.
+    remediation: >
+      Refactor Guava usages to JDK equivalents where possible
+      (e.g., ImmutableList → List.of, Optional → java.util.Optional,
+      Strings → String methods). If Guava is essential, embed it in
+      the OSGi bundle using the maven-shade-plugin or bundle-plugin.
+    reference: "references/removed-bundles-remediation.md#google-guava-migration"
+    severity: "high"
+
+  - pattern: "com.github.benmanes.caffeine.*"
+    reason: >
+      Caffeine cache — the Caffeine bundle is not deployed in the
+      AEM 6.5 LTS runtime classloader. Classes will not be resolvable
+      at runtime even though compilation succeeds.
+    remediation: >
+      Embed Caffeine in the OSGi bundle or replace with a
+      ConcurrentHashMap-based cache or the Sling commons cache API.
+    reference: "references/removed-bundles-remediation.md#caffeine"
+    severity: "high"
+
+  - pattern: "org.eclipse.jetty.*"
+    reason: >
+      Eclipse Jetty — Jetty internals are not exported from the AEM 6.5
+      LTS classloader. Using Jetty APIs directly in application code is
+      not supported and will fail at runtime.
+    remediation: >
+      Replace Jetty-specific code with Servlet API abstractions
+      (javax.servlet.*) which are fully exported. If WebSocket support
+      is required, use the AEM-provided WebSocket API.
+    reference: "references/removed-bundles-remediation.md#jetty"
+    severity: "medium"
+
+  - pattern: "org.apache.commons.collections."
+    reason: >
+      Apache Commons Collections 3 — the collections 3.x bundle was
+      replaced by Collections 4 in AEM 6.5 LTS. The old package path
+      org.apache.commons.collections (without the '4' suffix) resolves
+      to an older version not present in the runtime.
+    remediation: >
+      Change import statements from org.apache.commons.collections
+      to org.apache.commons.collections4 and update the Maven dependency
+      to commons-collections4 4.4 or later.
+    reference: "references/removed-bundles-remediation.md#apache-commons-collections-3-to-4"
+    severity: "medium"
+    # Do not flag the new package as a warning
+    exclude_pattern: "org.apache.commons.collections4.*"
+
+  - pattern: "org.slf4j.impl.*"
+    reason: >
+      SLF4J implementation classes — importing SLF4J implementation
+      internals (not the API) creates a hard binding to a specific
+      logging implementation. AEM may ship a different SLF4J backend.
+    remediation: >
+      Use only the SLF4J API (org.slf4j.Logger, org.slf4j.LoggerFactory).
+      Never import from org.slf4j.impl.*.
+    severity: "low"
+
+  - pattern: "org.apache.jackrabbit.oak.spi.security.*"
+    reason: >
+      Oak SPI security internals — these are unstable APIs that may
+      change between Oak patch versions shipped with AEM 6.5 LTS service
+      packs.
+    remediation: >
+      Replace with the stable Jackrabbit API (org.apache.jackrabbit.api.*)
+      or the AEM Granite security API (com.adobe.granite.security.*).
+    severity: "low"
+
+  - pattern: "com.day.cq.wcm.mobile.*"
+    reason: >
+      CQ Mobile framework — the legacy mobile framework was deprecated
+      in AEM 6.4. While it may still be present in the LTS runtime,
+      it will not receive updates and may be removed in a future patch.
+    remediation: >
+      Migrate to responsive design using AEM Core Components and
+      AEM's built-in device detection rather than the legacy mobile framework.
+    severity: "low"

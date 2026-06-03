@@ -1,0 +1,104 @@
+---
+# aem65lts-plugin-updates.yml
+#
+# Purpose: Upgrade Maven build plugins to versions compatible with Java 21 and
+# AEM 6.5 LTS.
+#
+# Plugin version rationale:
+#   maven-bundle-plugin 5.1.9   — supports Java 21 bytecode; 5.x is the branch
+#     maintained alongside bnd 6.x.  Note: AEM 6.5 LTS does NOT require the
+#     6.x plugin line; 5.1.9 is the correct target for this SDK version.
+#   bnd-maven-plugin 6.4.0      — last stable 6.x release; Java 21 compatible.
+#   maven-scr-plugin 1.26.4     — final release; ASM must be overridden to 9.7.1
+#     because the plugin ships with ASM 7 which cannot parse Java 21 bytecode.
+#   maven-compiler-plugin       — configuration change only (source/target
+#     already handled by UpgradeBuildToJava21); here we set the `release` flag.
+#   filevault-package-maven-plugin 1.3.6 — current stable release with
+#     Java 21 support and improved content-package validation.
+
+type: specs.openrewrite.org/v1beta/recipe
+name: aem.lts.migration.UpdateBuildPlugins
+displayName: AEM 6.5 LTS — Update Maven Build Plugins
+description: >
+  Upgrades AEM-related Maven build plugins to versions that produce and validate
+  OSGi bundles correctly when compiling with Java 21.  Also updates the
+  maven-compiler-plugin configuration to use the --release flag for hermetic
+  compilation, and pins ASM inside maven-scr-plugin to a Java-21-compatible
+  version.
+tags:
+  - aem
+  - maven
+  - plugins
+  - migration
+recipeList:
+
+  # ── OSGi bundle tooling ───────────────────────────────────────────────────
+
+  # maven-bundle-plugin: Apache Felix plugin that wraps bnd.
+  # 5.1.9 is the latest 5.x release; it correctly processes Java 21 class files.
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: org.apache.felix
+      artifactId: maven-bundle-plugin
+      newVersion: 5.1.9
+
+  # bnd-maven-plugin family (biz.aQute.bnd group).
+  # 6.4.0 is the latest stable 6.x release; Java 21 ready.
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: biz.aQute.bnd
+      artifactId: bnd-maven-plugin
+      newVersion: 6.4.0
+
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: biz.aQute.bnd
+      artifactId: bnd-indexer-maven-plugin
+      newVersion: 6.4.0
+
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: biz.aQute.bnd
+      artifactId: bnd-resolver-maven-plugin
+      newVersion: 6.4.0
+
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: biz.aQute.bnd
+      artifactId: bnd-testing-maven-plugin
+      newVersion: 6.4.0
+
+  # maven-scr-plugin: legacy SCR annotation processor.
+  # 1.26.4 is the final release.  The plugin ships with ASM 7 which cannot
+  # parse Java 21 class files (needs ASM 9.4+).  We add asm-analysis 9.7.1 as
+  # a plugin-level dependency to override the bundled ASM version.
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: org.apache.felix
+      artifactId: maven-scr-plugin
+      newVersion: 1.26.4
+
+  # Add ASM override inside maven-scr-plugin's <dependencies> block so that
+  # Java 21 class files are parsed correctly at annotation-processing time.
+  - org.openrewrite.maven.AddPluginDependency:
+      pluginGroupId: org.apache.felix
+      pluginArtifactId: maven-scr-plugin
+      groupId: org.ow2.asm
+      artifactId: asm-analysis
+      version: 9.7.1
+
+  # ── Compiler configuration ────────────────────────────────────────────────
+
+  # Set --release 21 in maven-compiler-plugin configuration.
+  # The --release flag (introduced in JDK 9) is preferred over -source/-target
+  # because it also validates that the code does not use APIs removed in older
+  # JDKs and produces hermetically correct bytecode for the target release.
+  - org.openrewrite.maven.ChangePluginConfiguration:
+      groupId: org.apache.maven.plugins
+      artifactId: maven-compiler-plugin
+      configuration: >
+        <release>21</release>
+
+  # ── Content package tooling ───────────────────────────────────────────────
+
+  # filevault-package-maven-plugin: Adobe's official content-package plugin.
+  # 1.3.6 adds support for the new package validation rules introduced in
+  # AEM 6.5 LTS and is compatible with Java 21.
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: org.apache.jackrabbit
+      artifactId: filevault-package-maven-plugin
+      newVersion: 1.3.6

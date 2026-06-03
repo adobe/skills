@@ -1,0 +1,144 @@
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: com.org.adobe.JavaUpgrade
+displayName: Migrate to Java 21
+description: |
+  This recipe will apply changes commonly needed when migrating to Java 21. This recipe will also replace deprecated API with equivalents when there is a clear migration strategy. Build files will also be updated to use Java 21 as the target/source and plugins will be also be upgraded to versions that are compatible with Java 21.
+tags:
+  - java21
+recipeList:
+  - org.openrewrite.java.RemoveUnusedImports
+  # Java 8 → 11
+  - org.openrewrite.java.migrate.Java8toJava11
+  # Java 11 → 17 (individual recipes — excludes javax→jakarta annotation migration)
+  - org.openrewrite.java.migrate.UpgradeBuildToJava17
+  - org.openrewrite.staticanalysis.InstanceOfPatternMatch
+  - org.openrewrite.staticanalysis.AddSerialAnnotationToSerialVersionUID
+  - org.openrewrite.java.migrate.RemovedRuntimeTraceMethods
+  - org.openrewrite.java.migrate.RemovedToolProviderConstructor
+  - org.openrewrite.java.migrate.RemovedModifierAndConstantBootstrapsConstructors
+  - org.openrewrite.java.migrate.lang.ExplicitRecordImport
+  - org.openrewrite.java.migrate.lang.UseTextBlocks:
+      convertStringsWithoutNewlines: false
+  - org.openrewrite.java.migrate.lang.StringFormatted:
+      addParentheses: false
+  - org.openrewrite.java.migrate.DeprecatedJavaxSecurityCert
+  - org.openrewrite.java.migrate.DeprecatedLogRecordThreadID
+  - org.openrewrite.java.migrate.RemovedLegacySunJSSEProviderName
+  - org.openrewrite.java.migrate.Jre17AgentMainPreMainPublic
+  - org.openrewrite.java.migrate.DeprecatedCountStackFramesMethod
+  - org.openrewrite.java.migrate.RemovedZipFinalizeMethods
+  - org.openrewrite.java.migrate.RemovedSSLSessionGetPeerCertificateChainMethodImpl
+  - org.openrewrite.java.migrate.SunNetSslPackageUnavailable
+  - org.openrewrite.java.migrate.RemovedRMIConnectorServerCredentialTypesConstant
+  - org.openrewrite.java.migrate.RemovedFileIOFinalizeMethods
+  - org.openrewrite.java.migrate.UpgradePluginsForJava17
+  - org.openrewrite.java.dependencies.UpgradeDependencyVersion:
+      groupId: com.google.inject
+      artifactId: guice
+      newVersion: 5.x
+  - org.openrewrite.java.dependencies.UpgradeDependencyVersion:
+      groupId: commons-codec
+      artifactId: commons-codec
+      newVersion: 1.17.x
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: com.github.spotbugs
+      artifactId: spotbugs-maven-plugin
+      newVersion: 4.9.x
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: com.github.spotbugs
+      artifactId: spotbugs-maven-plugin
+      newVersion: 4.9.x
+  - org.openrewrite.java.dependencies.UpgradeDependencyVersion:
+      groupId: org.mapstruct
+      artifactId: mapstruct*
+      newVersion: 1.6.x
+  - org.openrewrite.java.migrate.AddLombokMapstructBinding
+  # Java 17 → 21
+  - org.openrewrite.java.migrate.UpgradeBuildToJava21
+  - org.openrewrite.java.migrate.RemoveIllegalSemicolons
+  - org.openrewrite.java.migrate.lang.ThreadStopUnsupported
+  - org.openrewrite.java.migrate.net.URLConstructorToURICreate
+  - org.openrewrite.java.migrate.util.SequencedCollection
+  - org.openrewrite.java.migrate.util.UseLocaleOf
+  - org.openrewrite.staticanalysis.ReplaceDeprecatedRuntimeExecMethods
+  - org.openrewrite.github.SetupJavaUpgradeJavaVersion
+  - org.openrewrite.java.migrate.UpgradePluginsForJava21
+  - org.openrewrite.java.migrate.DeleteDeprecatedFinalize
+  - org.openrewrite.java.migrate.RemovedSubjectMethods
+  # Test infrastructure
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: "org.jacoco"
+      artifactId: "jacoco-maven-plugin"
+      newVersion: "0.8.12"
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: "org.jacoco"
+      artifactId: "*"
+      newVersion: "0.8.12"
+  # AEM-specific plugin and dependency upgrades
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: "biz.aQute.bnd"
+      artifactId: "*-maven-plugin"
+      newVersion: "6.4.0"
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: "org.apache.felix"
+      artifactId: "maven-bundle-plugin"
+      newVersion: "6.0.0"
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: "org.apache.felix"
+      artifactId: "maven-scr-plugin"
+      newVersion: "1.26.4"
+  - org.openrewrite.maven.AddPluginDependency:
+      pluginGroupId: "org.apache.felix"
+      pluginArtifactId: "maven-scr-plugin"
+      groupId: "org.ow2.asm"
+      artifactId: "asm-analysis"
+      version: "9.7.1"
+  - org.openrewrite.maven.UpgradePluginVersion:
+      groupId: "org.apache.groovy"
+      artifactId: "groovy-all"
+      newVersion: "4.0.27"
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: "com.adobe.aem"
+      artifactId: "uber-jar"
+      newVersion: "6.6.0"
+      overrideManagedVersion: true
+  - org.openrewrite.maven.ChangeDependencyClassifier:
+      groupId: "com.adobe.aem"
+      artifactId: "uber-jar"
+      newClassifier: "apis"
+      changeManagedDependency: true
+  - org.openrewrite.maven.ChangeDependencyGroupIdAndArtifactId:
+      oldGroupId: "*"
+      oldArtifactId: "aem-groovy-console*"
+      newGroupId: "be.orbinson.aem"
+      newVersion: "19.0.8"
+      changeManagedDependency: true
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: com.adobe.cq
+      artifactId: "core.wcm.components.core"
+      newVersion: 2.30.4
+      overrideManagedVersion: true
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: com.adobe.cq
+      artifactId: "core.wcm.components.content"
+      newVersion: 2.30.4
+      overrideManagedVersion: true
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: com.adobe.cq
+      artifactId: "core.wcm.components.config"
+      newVersion: 2.30.4
+      overrideManagedVersion: true
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: com.adobe.cq
+      artifactId: "core.wcm.components.all"
+      newVersion: 2.30.4
+      overrideManagedVersion: true
+  - org.openrewrite.maven.ChangePluginConfiguration:
+      groupId: "org.apache.maven.plugins"
+      artifactId: "maven-compiler-plugin"
+      configuration: |
+        <release>21</release>
+  - org.openrewrite.xml.ChangeTagValue:
+      elementName: //plugin/configuration/toolchains/jdk/version
+      newValue: "21"
