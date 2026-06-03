@@ -72,7 +72,7 @@ Path B checks:
 
 | Symptom | Log to search | Fix direction |
 |---------|--------------|--------------|
-| Scheduler never appears in `/system/console/slingscheduler` | none (silent) | Check OSGi Components console — `UNSATISFIED` usually means missing config or a misspelled config field name (`scheduler_expression()` in Path A, `cronExpression()` in Path B) |
+| Scheduler never fires after deployment | none (silent) | Inspect the component's runtime state: if `UNSATISFIED`, the cause is usually a missing config or a misspelled config field name (`scheduler_expression()` in Path A, `cronExpression()` in Path B); if `ACTIVE` but no executions, the cron property name is misspelled or `scheduler.expression` is invalid |
 | Fires N times per trigger (N = pod count) | none | Add `scheduler.runOn=SINGLE` to `@Component` property array |
 | Two instances run simultaneously | none | Add `scheduler.concurrent:Boolean=false` — the `:Boolean` type hint is mandatory |
 | Stops firing with no code change; unrelated workflows also stall | `RejectedExecutionException` in `sling-default` pool entries | Thread pool starvation — see diagnosis below |

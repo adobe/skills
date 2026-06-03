@@ -1,3 +1,7 @@
+> **Deprecated:** This file is superseded by the `resource-change-listener` expert skill at
+> [`../resource-change-listener/SKILL.md`](../resource-change-listener/SKILL.md). It will be removed
+> once all five expert skills are in place. Do not update this file — update the skill instead.
+
 # Sling `ResourceChangeListener` (AEM as a Cloud Service)
 
 BPA pattern id: **`resourceChangeListener`**.
