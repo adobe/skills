@@ -8,7 +8,11 @@ license: Apache-2.0
 
 ## Overview
 
-`org.apache.sling.api.resource.observation.ResourceChangeListener` is the preferred API on AEM CS for reacting to repository content changes. The listener runs on a shared Sling thread, so it **must** stay lightweight — all business logic must be offloaded to a Sling Job via `JobManager.addJob()`.
+`org.apache.sling.api.resource.observation.ResourceChangeListener` is the preferred API on AEM CS for reacting to repository content changes. The listener runs on a shared Sling thread and should return as quickly as possible.
+
+For any blocking, repository-intensive, network, workflow, replication, indexing, asset-processing, or otherwise non-trivial work, enqueue a Sling Job and perform the processing in a `JobConsumer`.
+
+Very small in-memory operations (metrics, counters, simple event translation, lightweight filtering, or enqueueing a job) may remain inside `onChange()` provided they do not perform repository access, network I/O, workflow operations, or expensive computation.
 
 Two interface variants:
 
@@ -24,6 +28,8 @@ Three CS-specific constraints every listener must satisfy:
 | No `ResourceResolver` / `Session` / JCR ops inside `onChange()` | Blocks the shared listener thread; delays every other registered listener |
 | `getServiceResourceResolver(SUBSERVICE)` in the consumer | `getAdministrativeResourceResolver` is removed from the CS SDK |
 | Filter via `PATHS` / `CHANGES` OSGi properties — not in code | Sling delivers only matching events; in-code filtering wastes the listener thread |
+
+> **`PATHS` are chosen by the implementer from the business scope.** Do not ask the customer for raw `PATHS` syntax (`/content/dam`, `glob:/**/jcr:content/*`, etc.) unless the business scope itself is unclear. Derive the path from what the listener is supposed to react to.
 
 ---
 
@@ -256,7 +262,9 @@ public class MyChangeListener implements ResourceChangeListener {
 |----------|---------|--------|
 | `ResourceChangeListener.PATHS` | Path prefixes or globs to observe | `/content/dam`, `glob:/**/jcr:content/*`, `.` (all) |
 | `ResourceChangeListener.CHANGES` | Change types | `ADDED`, `CHANGED`, `REMOVED`, `PROVIDER_ADDED`, `PROVIDER_REMOVED` |
-| `ResourceChangeListener.PROPERTY_NAMES_HINT` | Hint: only these property names are relevant for `CHANGED` events | `cq:lastReplicated`, `status` |
+| `ResourceChangeListener.PROPERTY_NAMES_HINT` | **Hint only** — Sling may use it as an optimization to reduce delivery, but does not guarantee exclusivity | `cq:lastReplicated`, `status` |
+
+> **`PROPERTY_NAMES_HINT` is an optimization hint, not a contract.** Applications must not rely on Sling delivering exclusively those property changes. Always validate the actual `ResourceChange` data inside the listener or consumer (`change.getChangedPropertyNames()`, `change.getAddedPropertyNames()`).
 
 **Legacy JCR event type → `ChangeType` mapping:**
 
@@ -283,14 +291,14 @@ public class MyChangeListener implements ResourceChangeListener {
 
 ## R1 — Keep `onChange()` lightweight; offload to Sling Job
 
-`onChange()` must only:
+For production AEMaaCS code, the recommended pattern is:
 
-1. Inspect each `ResourceChange` for path, type, and (optionally) property names
-2. Build a job `Map<String, Object>`
+1. Extract the minimal event data required
+2. Build a job payload (`Map<String, Object>`)
 3. Call `jobManager.addJob(JOB_TOPIC, props)`
-4. Return
+4. Return immediately
 
-Do **not** open resolvers, call `adaptTo(Session.class)`, read child resources, or do I/O here.
+Repository access, service resolver creation, workflow operations, replication, external API calls, indexing, asset processing, and other potentially expensive work belong in a `JobConsumer` — never inside `onChange()`.
 
 ```java
 @Override
@@ -397,11 +405,22 @@ public JobResult process(final Job job) {
 
 Import: `import org.apache.sling.settings.SlingSettingsService;`
 
+> **Author-only does not mean single execution.** In AEMaaCS author clusters, multiple author pods may process the same logical change. If the operation must execute exactly once across the author tier (e.g. sending a notification, creating a unique audit record), use an appropriate cluster-coordination pattern — leader election (`SlingSettingsService` topology APIs), distributed locking, idempotent processing, or another singleton mechanism. A simple run-mode check guarantees neither uniqueness nor ordering.
+
 ---
 
 ## R3 — Choose `ResourceChangeListener` vs `ExternalResourceChangeListener`
 
 **Default to plain `ResourceChangeListener`** (local changes only). Switch to `ExternalResourceChangeListener` **only** when the reaction must run on every cluster node, even for changes that happened elsewhere.
+
+`ExternalResourceChangeListener` should be treated as an exception, not the default. Before selecting it, verify:
+
+- The reaction must occur for changes created on other cluster nodes
+- Duplicate processing is acceptable or prevented (idempotency or coordination)
+- The operation is idempotent — running it N times must equal running it once
+- Per-node execution is intentional (cache invalidation, distributed indexing, local warm-up)
+
+If any of these does not hold, use plain `ResourceChangeListener` plus a cluster-coordination layer instead.
 
 ```java
 import org.apache.sling.api.resource.observation.ExternalResourceChangeListener;
@@ -575,6 +594,8 @@ See [`../references/aem-cloud-service-pattern-prerequisites.md`](../references/a
 | Same job fires N times per change (N = pod count) | none | Listener registered as `ExternalResourceChangeListener` when only local was needed — switch to plain `ResourceChangeListener` |
 | Job enqueued but consumer never runs | `No JobConsumer for topic …` warning, or job stuck in `org/apache/sling/event/jobs` queue | Topic mismatch between `jobManager.addJob(TOPIC, ...)` and `PROPERTY_TOPICS` on the consumer — share the topic as a `static final String` |
 | One bad change kills the whole batch | a single stack trace, then the listener stops processing the rest of the `List<ResourceChange>` | `onChange()` is not catching per-change exceptions — wrap the per-change body in try/catch |
+| Listener repeatedly triggers itself | repeated `ResourceChange` events on the same path; consumer logs running in a loop | Consumer writes under an observed path — add recursion protection (skip property the consumer wrote), exclude generated content from `PATHS`, or make the write a no-op when target state already matches |
+| Excessive job volume after deployment | large growth in active jobs under `org/apache/sling/event/jobs`; consumer queue backlog | `PATHS` is too broad, or the listener observes generated content paths — narrow `PATHS`, add `CHANGES` filtering, or use `PROPERTY_NAMES_HINT` to reduce delivery |
 
 ---
 
@@ -582,7 +603,7 @@ See [`../references/aem-cloud-service-pattern-prerequisites.md`](../references/a
 
 **Opening a `ResourceResolver` inside `onChange()`** — blocks the shared Sling listener thread and delays every other registered listener. Defeats the entire purpose of the lightweight-listener pattern.
 
-**Using `javax.jcr.observation.EventListener`** — requires a `Session`, not cluster-aware, not recommended on AEMaaCS. Migrate to `ResourceChangeListener`.
+**Using `javax.jcr.observation.EventListener`** — legacy JCR observation should generally be avoided for new AEMaaCS development. Prefer `ResourceChangeListener` unless a documented platform limitation requires JCR-level observation semantics; in that case raise an Adobe support case before introducing a custom JCR listener.
 
 **Subscribing `EventHandler` to `org/apache/sling/api/resource/Resource/*`** — those topics are an internal Sling dispatcher detail and deprecated as an application-facing API. Use `ResourceChangeListener` instead.
 
@@ -596,6 +617,10 @@ See [`../references/aem-cloud-service-pattern-prerequisites.md`](../references/a
 
 **Forgetting `resolver.commit()` in a write-side consumer** — try-with-resources closes the resolver and silently discards pending changes. JCR writes need an explicit commit.
 
+**Observing overly broad paths** — registering on `/content`, `/`, or large DAM trees without strong filtering can generate extremely high event volumes (an "event storm"). Always scope `PATHS` as narrowly as possible and use `CHANGES` and `PROPERTY_NAMES_HINT` to reduce delivery.
+
+**Listener writes back to the observed subtree** — the JobConsumer modifies content under the same path being observed, causing the listener to trigger itself repeatedly. Ensure the processing is idempotent, exclude generated content paths from `PATHS`, or add a guard property the consumer reads to skip its own writes.
+
 ---
 
 ## Modern Alternatives
@@ -604,8 +629,36 @@ See [`../references/aem-cloud-service-pattern-prerequisites.md`](../references/a
 |------|-----|
 | React to JCR content changes (page/asset/property add/change/remove) | `ResourceChangeListener` (this skill) |
 | React to cluster-wide content changes (publish, replicated updates) | `ExternalResourceChangeListener` (this skill) |
-| React to replication, workflow, or custom OSGi Event Admin topics | `EventHandler` — see `event-migration` skill |
+| Notify external systems (Adobe I/O Events, App Builder, webhooks) about AEM activity | **AEM Eventing** — see note below |
+| React to replication, workflow, or custom OSGi Event Admin topics inside AEM | `EventHandler` — see `event-migration` skill |
 | Synchronous post-write reaction in the same JVM | `ResourceChangeListener` with local-only filter |
 | Heavy / blocking / I/O work | Always offload via `JobManager.addJob()` — never run in `onChange()` |
 | Sling resource provider lifecycle (added/removed) | `ResourceChangeListener` with `CHANGES=PROVIDER_ADDED/PROVIDER_REMOVED` |
 | JCR-level events RCL cannot express | **Avoid** on AEMaaCS — raise an Adobe support case before adding a custom JCR listener |
+
+### AEM Eventing
+
+If the requirement is to **notify external systems** (Adobe I/O Events, App Builder actions, webhooks, downstream services) about repository activity, evaluate **AEM Eventing** before introducing a new in-process `ResourceChangeListener`.
+
+`ResourceChangeListener` is primarily for **in-process** reactions inside AEM — post-write side effects, cache invalidation, follow-up jobs. AEM Eventing is the supported path for **out-of-process** notification and external integration, with built-in delivery semantics, retries, and observability that an in-process listener does not provide.
+
+---
+
+## Expert Guidance
+
+**Prefer designing consumers to be idempotent.** AEMaaCS is a distributed system:
+
+- Events may be batched
+- Events may arrive after related content has changed again
+- External events may be delivered from another cluster node
+- Retries (`JobResult.FAILED`) may execute the same job more than once
+- Author clusters may process the same logical change on multiple pods
+
+Consumers should therefore:
+
+- Tolerate duplicate execution (running the same job twice should not double-apply effects)
+- Tolerate missing resources (read-before-write; the target may have moved or been deleted between event and processing)
+- Tolerate reordered events (do not assume strict ordering of `onChange()` batches)
+- Derive current state from the repository whenever possible, instead of relying solely on event payload ordering
+
+Treat the event as a **trigger** to inspect current state, not as a complete description of what happened.
