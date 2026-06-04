@@ -161,12 +161,14 @@ grep helper in [references/upgrade-and-migration.md](./references/upgrade-and-mi
 |---|---|
 | [references/per-module-agents-md.md](./references/per-module-agents-md.md) | Rules, templates, and size budgets for per-module `AGENTS.md` files |
 | [references/codified-context.md](./references/codified-context.md) | `.aem/context/*` schemas, discovery rules, evidence-pointer format, schema versioning |
-| [references/per-tool-artifacts.md](./references/per-tool-artifacts.md) | Tool detection signals, canonical role-prompt source, projection into Claude / Cursor / Copilot / Continue formats |
+| [references/per-tool-artifacts.md](./references/per-tool-artifacts.md) | Tool detection signals, canonical role-prompt source, projection into Claude / Cursor / Copilot / Continue / Cline / Windsurf / Augment formats |
 | [references/mcp-wiring.md](./references/mcp-wiring.md) | `.mcp.json` and `.cursor/mcp.json` non-destructive merge rules |
 | [references/guardrails.md](./references/guardrails.md) | Guardrail rule text (search-before-create, verify-API, etc.) |
 | [references/module-catalog.md](./references/module-catalog.md) | Module descriptions and add-on detection table |
 | [references/collision-rules.md](./references/collision-rules.md) | Complete pre-existing-state behavior table (25+ scenarios) |
 | [references/upgrade-and-migration.md](./references/upgrade-and-migration.md) | Skill version bump + JSON schema migration rules |
+| [references/privacy-and-sanitization.md](./references/privacy-and-sanitization.md) | Privacy deny-list, symlink hardening, Unicode sanitization rules |
+| [references/output-format.md](./references/output-format.md) | Exact preamble / summary / error templates |
 
 ## Idempotency
 
@@ -191,19 +193,7 @@ grep helper in [references/upgrade-and-migration.md](./references/upgrade-and-mi
 - Modify customer source code (Java, HTL, JSP, JS/TS/CSS, dispatcher `.conf`/`.any`/`.farm`, FileVault XML, `pom.xml`, content `.json`, OSGi config, `README`, `CONTRIBUTING`, `LICENSE`, or any other pre-existing file lacking the marker).
 - Modify the root `AGENTS.md` or `CLAUDE.md`.
 - Write into `.git/`, `target/`, `node_modules/`, `dist/`, `build/`, `out/`.
-- Read any path matching the privacy deny-list. Match is **case-insensitive** on every platform (so `Credentials.json`, `SECRETS.txt`, and `.ENV` are denied). Patterns:
-  - `.cloudmanager/env*.json`, `.cloudmanager/secrets*` (the only file read from `.cloudmanager/` is `java-version`)
-  - `.env`, `.env.*`
-  - `**/credentials*`, `**/credential*`, `**/*creds*`, `**/*cred`, `**/*secret*`, `**/*secrets`, `**/*password*`, `**/*passwd*`, `**/*token*`, `**/api[-_]key*`, `**/apikey*`, `**/auth.json`, `**/auth-config*`
-  - PKI / keystores: `**/*.pem`, `**/*.key`, `**/*.p12`, `**/*.pfx`, `**/*.p8`, `**/*.jks`, `**/*.jceks`, `**/*.keystore`, `**/*.truststore`, `**/keystore`, `**/truststore`, `**/*.p7b`
-  - SSH keys: `**/id_rsa*`, `**/id_dsa*`, `**/id_ecdsa*`, `**/id_ed25519*`, `**/.ssh/**`, `**/*.ovpn`
-  - Cloud SDK credentials: `**/.aws/**`, `**/.gcp/**`, `**/*.key.json` (`*.key` does **not** glob-match `.key.json` on its own), `**/.azure/**`, `**/.kube/**`, `**/kubeconfig`
-  - Package registry / build secrets: `**/.npmrc`, `**/.yarnrc`, `**/.yarnrc.yml`, `**/.pypirc`, `**/.gem/credentials`, `**/.dockercfg`, `**/.docker/config.json`, `**/.m2/**/settings.xml`, `**/.m2/**/settings-security.xml` (Maven user-home settings, classified by path alone to avoid the bootstrap-loop of reading-to-classify; project-local `pom.xml` and any other `settings.xml` outside `.m2/` are not denied), `**/.netrc`, `**/_netrc`, `**/.htpasswd`
-  - Adobe IO / IMS: `**/.adobe-aio*`, `**/aio-config.json`, `**/*-private.pem`, `**/*ims*credentials*`, `**/serviceuser*key*`
-  - IaC state and secret vars: `**/*.tfvars`, `**/*.tfstate`, `**/*.tfstate.backup`, `**/.terraform/**`
-  - PGP / encrypted: `**/*.gpg`, `**/*.asc`, `**/*.kdbx`, `**/wallet.dat`, `**/.gnupg/**`
-  - `.git/` is never read except for `.git/HEAD` (top-of-tree branch) and `.git/refs/heads/*` (current SHA); `.git/config` is never read because it may contain `https://oauth2:<TOKEN>@…` URLs.
-  - **Fail closed.** If a path's classification is ambiguous, skip it and emit a `warningStubs` entry; never read on uncertainty.
+- Read any file matching the **privacy deny-list** in [`references/privacy-and-sanitization.md`](./references/privacy-and-sanitization.md) § 1. Matching is case-insensitive on every platform; the deny-list covers `.cloudmanager/env*` and `.cloudmanager/secrets*`, `.env`/`.env.*`, generic credential / secret / token / password / API-key patterns, PKI and keystores, SSH keys, cloud SDK credentials (AWS / GCP / Azure / kubeconfig), package-registry build secrets (npm / yarn / pip / Maven `~/.m2/settings.xml`), Adobe IO / IMS configs, IaC state, PGP / encrypted archives. `.git/HEAD` and `.git/refs/heads/*` are the only files read from `.git/`. Fail closed on uncertainty.
 - Mention specific MCP server packages by name in the bodies of generated AGENTS.md / per-module AGENTS.md files. Server names belong in `.mcp.json` / `.cursor/mcp.json`, which the skill seeds as inert placeholders only — never as live wiring (see [references/mcp-wiring.md](./references/mcp-wiring.md)).
 - Use marketing language in any generated artifact. Generated content frames itself as agentic workflow context.
 - Embed AEM 6.5 documentation URLs. All resource links use the Cloud Service namespace.
@@ -211,50 +201,14 @@ grep helper in [references/upgrade-and-migration.md](./references/upgrade-and-mi
 
 ## Communication contract
 
-The skill writes only at three points to the user:
-
-**Before any writes — one line:**
-
-> Bootstrapping agentic workflow context for this AEM as a Cloud Service repository. No source files will be modified.
-
-**When `_disable_agentkit` is detected — one line, then exit 0:**
-
-> aem-agentkit: skipped (opt-out signal `_disable_agentkit` present at `<workspace-relative-path>`). No writes performed.
-
-**After all writes — concise deterministic summary:**
-
-```
-aem-agentkit: complete
-  Universal layer:
-    Per-module AGENTS.md: <N> across [<modules>]
-    Indexes: components.json (N), osgi-services.json (N)
-    Derived: conventions.md (N rules, T TODOs), avoid.md (N entries),
-             glossary.md (N terms), test-patterns.md (N rules)
-    Static refs: aem-api-namespaces.md, README.md
-  Tool-specific layer (detected: <tool list>):
-    Claude:   <count> agents, <count> commands, mcp.json (existing|new-placeholder|absent)
-    Cursor:   <count> rules, mcp.json (existing|new-placeholder|absent)
-    Copilot:  <count> instructions
-    Continue: <count> rules
-    Cline:    .clinerules (existing|new|absent)
-    Windsurf: .windsurfrules (existing|new|absent)
-    Augment:  augment.md (existing|new|absent)
-  TODO markers: <T> items pending human review
-  MCP placeholders to replace: <N> (in <files>) — agent will not connect until set
-  Refresh:   /regen-context
-  Drift:     /agents-md-check
-```
-
-The `MCP placeholders to replace` row is emitted whenever `.mcp.json` or
-`.cursor/mcp.json` was written from the placeholder template and still
-contains one or more `_TODO_*` server-name keys (the inert sentinel
-shape used in `templates/mcp.json.template`). The customer must rename
-each `_TODO_*` key and supply `command` / `args` before any MCP server
-will connect; see [references/mcp-wiring.md](./references/mcp-wiring.md).
-
-**On any error:** a single line describing the failure plus the diagnostic path. The skill never leaves partial outputs (atomic write: `.tmp` + rename).
-
-After the summary, the skill yields back so the user's original request proceeds with the new context loaded.
+The skill writes to the user at exactly three points: a one-line
+preamble before any writes, a deterministic summary after all writes
+(with counts, detected-tool rows, and a `MCP placeholders to replace`
+row when applicable), and a one-line workspace-relative diagnostic on
+any error. The skill never leaves partial outputs — each file write is
+atomic (`.tmp` + rename), the multi-step run resumes idempotently. Full
+templates and conditional-row rules in
+[references/output-format.md](./references/output-format.md).
 
 ## Rules
 
@@ -263,17 +217,11 @@ After the summary, the skill yields back so the user's original request proceeds
 - **Never read** files in § "What this skill never does". Path matching is case-insensitive on every platform.
 - **Never write** outside the allow-list in § "Hard guarantee".
 - **Customer-only discovery.** Components, models, and services are discovered from the customer's source modules. Do not index Core Components or anything under `/libs`.
-- **Workspace boundary + symlink hardening.** Only walk paths under the workspace root. Before opening any file, resolve its canonical realpath and reject the path if (a) the realpath escapes the workspace root, (b) the realpath matches the deny-list, or (c) the walk has already visited that realpath (loop guard). Open with `O_NOFOLLOW` (platform equivalents: `FILE_FLAG_OPEN_REPARSE_POINT` on Windows, `O_NOFOLLOW_ANY` on macOS) and re-check the opened descriptor's canonical path before reading, closing the TOCTOU window between resolve and open. Deduplication uses realpath, not inode, so filesystems with unstable inodes (some Windows mounts) are handled correctly. Hard depth cap: 32 directories from the workspace root. Hard file-walk cap: 100,000 files; on overflow, mark every index `truncated: true`, emit `warningStubs`, and refuse to declare indexes authoritative (downstream slash commands gate on `truncated`).
+- **Workspace boundary + symlink hardening.** Only walk paths under the workspace root. Realpath check, workspace-escape rejection, deny-list rejection, visited-set loop guard, `O_NOFOLLOW` open, depth cap 32, file-walk cap 100,000 with `truncated: true` index marker. Full rules in [`references/privacy-and-sanitization.md`](./references/privacy-and-sanitization.md) § 1.2.
 - **Output stability.** JSON sorted-keys + 2-space indent + LF + final newline + UTF-8 no BOM. Markdown LF + final newline + no trailing whitespace. Discovery enumerates with `sort()` on POSIX paths before processing. `generatedAt` uses the format `YYYY-MM-DDTHH:MM:SSZ` exactly.
 - **Determinism tiebreaker.** Whenever a derivation selects "N evidence pointers" or "N samples" out of a larger candidate set, choose by `sort()` on POSIX path (ascending), then `sort()` on line number (ascending), then `sort()` on the sanitized extracted value (ascending, byte order over UTF-8 NFC-normalized bytes), then take the first N. The third tiebreaker handles line-less artifacts (glossary terms, taxonomy node names, `cq:title` values) where the same path produces multiple candidate strings. Every rendered list (evidence pointers, glossary entries, conventions samples, avoid.md anti-patterns, test-patterns) follows this rule so re-runs are byte-identical.
 - **Evidence-pointer format.** `<repo-relative-posix-path>:<1-based-line>`. Path uses `/` separators on every platform.
-- **Sanitize extracted strings.** Any string extracted from customer source (evidence-pointer line snippets, `cq:title` values, Content Fragment model titles, taxonomy node names, Java package names) and baked into a generated Markdown file must be (a) length-capped to 80 characters with `…` suffix if truncated, (b) wrapped in backticks (inline code) so it cannot be parsed as instruction text by a downstream agent, (c) stripped of the following code points (exhaustive list):
-  - **Control characters:** U+0000 – U+001F except `\t` (U+0009).
-  - **Line/paragraph separators that escape inline-code wrap:** U+2028, U+2029.
-  - **Zero-width / invisible:** U+00AD (soft hyphen), U+180E (Mongolian vowel separator), U+200B – U+200F (zero-width set), U+2060 (word joiner), U+FEFF (zero-width no-break space / BOM).
-  - **Bidirectional / directional overrides:** U+061C (Arabic letter mark), U+202A – U+202E, U+2066 – U+2069.
-
-  Strings failing sanitization produce a TODO marker in place of the value, not a partial value. **Implementation note (v0.2 roadmap).** This rule is at the limit of what an LLM can execute deterministically over arbitrary Unicode input; a future release will move sanitization into a deterministic helper invoked from the skill (Python one-liner over `unicodedata` plus the explicit code-point set above). Until then, regenerate `glossary.md` only when content drifts and review TODO markers after every run.
+- **Sanitize extracted strings.** Length-cap 80 chars, inline-code wrap, strip the exhaustive Unicode code-point set (control, line/paragraph separators, zero-width, bidirectional overrides). Strings failing sanitization produce a TODO marker, not a partial value. Full rule and code-point list in [`references/privacy-and-sanitization.md`](./references/privacy-and-sanitization.md) § 2.
 - **Diagnostic-path scrubbing.** Error messages reference paths relative to the workspace root only; never include absolute filesystem paths or `~/`.
 - **Atomic write per file.** Every output goes to `<path>.tmp` and is renamed to `<path>` on success. Orphan `.tmp` files from a previous interrupted run are deleted at startup. Note: "atomic" applies to each individual file. A multi-step run that crashes between steps can leave earlier outputs on disk. The next invocation resumes idempotently because completed files carry markers with matching checksums (§ Idempotency).
 - **Marker verification.** A file is treated as skill-owned only when (a) the marker line matches the documented format (§ Idempotency) **and** (b) the embedded `sha256` recomputed over the file body (excluding the marker line) matches the marker's stated value. A marker with a wrong, malformed, missing, or duplicated checksum is treated as **human-curated** and never overwritten. This prevents marker-spoofing attacks.
