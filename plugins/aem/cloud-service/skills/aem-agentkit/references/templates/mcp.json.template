@@ -1,0 +1,25 @@
+{
+  "_generatedBy": "aem-agentkit",
+  "_skillVersion": "0.1.0-beta",
+  "_note": "Placeholder MCP wiring. Replace stub entries with real MCP server commands. Safe to delete or edit.",
+  "mcpServers": {
+    "aem-developer": {
+      "_disabled": true,
+      "_purpose": "AEM developer MCP - programmatic access to AEM SDK and runtime. Configure command and args per your install.",
+      "command": "REPLACE_WITH_AEM_MCP_COMMAND",
+      "args": []
+    },
+    "cloud-manager": {
+      "_disabled": true,
+      "_purpose": "Cloud Manager MCP - pipelines, environments, deploy status. Configure command and args per your install.",
+      "command": "REPLACE_WITH_CLOUD_MANAGER_MCP_COMMAND",
+      "args": []
+    },
+    "content": {
+      "_disabled": true,
+      "_purpose": "Content MCP - query and manipulate AEM content. Configure command and args per your install.",
+      "command": "REPLACE_WITH_CONTENT_MCP_COMMAND",
+      "args": []
+    }
+  }
+}

@@ -1,0 +1,61 @@
+<!-- aem-agentkit: generated v0.1.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+# AEM as a Cloud Service — canonical API namespaces
+
+Static reference used by the "verify before import" guardrail. Imports under these package roots are real AEM as a Cloud Service APIs. Imports outside these roots that look AEM-ish (e.g. `com.adobe.granite.*`, `com.day.*` without the right sub-path) should be verified in the Cloud Service Javadoc before use.
+
+## AEM (Adobe)
+
+- `com.adobe.aem.*` — AEM as a Cloud Service APIs
+- `com.adobe.cq.*` — Communiqué / WCM APIs
+- `com.adobe.granite.*` — Granite platform APIs (Sling-based)
+- `com.day.cq.*` — Legacy CQ APIs (many still supported on Cloud Service; check Javadoc for deprecation)
+- `com.day.cq.dam.*` — DAM APIs (`AssetManager` create/remove ops are deprecated — see `.aem/context/avoid.md`)
+- `com.adobe.cq.wcm.core.components.*` — Core Components models
+
+## Sling
+
+- `org.apache.sling.api.*` — Sling API (request, resource, resolver)
+- `org.apache.sling.models.annotations.*` — Sling Models annotations
+- `org.apache.sling.commons.*` — Sling commons utilities (`Scheduler`, etc.)
+- `org.apache.sling.servlets.annotations.*` — Sling Servlet annotations
+- `org.apache.sling.event.jobs.*` — Sling Jobs API
+- `org.apache.sling.settings.*` — Run-mode settings
+
+## OSGi (DS R7 — current Cloud Service style)
+
+- `org.osgi.service.component.annotations.*` — `@Component`, `@Reference`, `@Activate`
+- `org.osgi.service.metatype.annotations.*` — `@ObjectClassDefinition`, `@Designate`
+
+## Felix SCR (legacy — flag for migration)
+
+- `org.apache.felix.scr.annotations.*` — DS R6 / Felix SCR (legacy; do not introduce in new code — see `.aem/context/avoid.md`)
+
+## JCR / Jackrabbit
+
+- `javax.jcr.*` — JCR API
+- `javax.jcr.observation.*` — JCR observation (event listeners — flag for migration to `ResourceChangeListener` per `.aem/context/avoid.md`)
+- `org.apache.jackrabbit.*` — Jackrabbit utilities
+
+## SLF4J / logging
+
+- `org.slf4j.*` — slf4j (canonical logging)
+- `org.slf4j.LoggerFactory` — `LoggerFactory.getLogger(<Class>.class)`
+
+## Apache Commons
+
+- `org.apache.commons.lang3.*` — Apache Commons Lang 3 (allowed)
+- `org.apache.commons.io.*` — Apache Commons IO (check whether your project uses it before adding)
+
+## What's NOT here is suspect
+
+If an AEM-looking import doesn't match a namespace above, the agent should:
+
+1. Search the Cloud Service Javadoc (manually or via an MCP if available).
+2. Search `.aem/context/osgi-services.json` for project-local services.
+3. If neither resolves, do not invent the class. Surface the unknown import to the user.
+
+## See also
+
+- `.aem/context/avoid.md` — anti-patterns detected in this repo.
+- `.aem/context/conventions.md` — what the project actually uses.
+- Cloud Service Javadoc: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/

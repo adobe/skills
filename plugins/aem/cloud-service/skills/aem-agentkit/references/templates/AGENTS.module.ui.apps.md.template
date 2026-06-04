@@ -1,0 +1,34 @@
+<!-- aem-agentkit: generated v0.1.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+# ui.apps
+
+FileVault content package. Application code: components, templates, client libraries, content structure. HTL is the scripting engine.
+
+## Agentic workflow guardrails
+
+- Search `.aem/context/components.json` before creating a new component.
+- Never write under `/libs`; use `/apps/<project>/...` overlays.
+- Honor the project's HTL conventions in `.aem/context/conventions.md`.
+- Update `.aem/context/components.json` after adding a component.
+
+## Common entry points
+
+{{ENTRY_POINTS}}
+
+## Module-local conventions
+
+{{CONVENTIONS}}
+
+## What to avoid in this module
+
+- HTL `data-sly-test` with redundant constant comparison (Cloud SDK lint warning).
+- Hard-coded component groups; reuse the project's component-group naming.
+- Mutating `/libs` paths.
+
+## Where to look
+
+- Components: `.aem/context/components.json`
+- Conventions: `.aem/context/conventions.md`
+
+## Build
+
+- Content package build + deploy: `{{MVN_CMD}} clean install -pl ui.apps -PautoInstallPackage`

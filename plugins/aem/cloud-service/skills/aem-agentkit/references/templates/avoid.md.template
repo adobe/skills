@@ -1,0 +1,10 @@
+<!-- aem-agentkit: generated v0.1.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+# Anti-patterns to avoid in this repo
+
+Each entry was detected by static signal in existing code. The supported replacement is documented in the `best-practices` skill; do not duplicate that guidance here.
+
+{{AVOID_ENTRIES}}
+
+## TODOs
+
+{{TODOS}}

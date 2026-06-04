@@ -1,0 +1,19 @@
+<!-- aem-agentkit: generated v0.1.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+---
+description: Regenerate .aem/context/* indexes from the current code, non-destructive
+---
+
+# /regen-context
+
+Re-run the `aem-agentkit` skill in **refresh** mode against this repository.
+
+## Flow
+
+1. Re-discover components, services, and conventions per the skill's discovery rules.
+2. For each `.aem/context/*` file:
+   - If the file does not exist → write it.
+   - If the file exists with a matching `aem-agentkit` marker → recompute the checksum; if unchanged, skip; if changed, write the new content to `<file>.agentkit-new` and print a diff summary.
+   - If the file exists without the marker → leave it alone (treated as human-curated).
+3. Print the summary block from `SKILL.md` § "Communication contract".
+
+Refresh mode does not regenerate per-module `AGENTS.md`, subagents, slash commands, or `.mcp.json`. Use the skill itself to bootstrap missing artifacts.

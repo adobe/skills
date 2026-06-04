@@ -1,0 +1,24 @@
+<!-- aem-agentkit: generated v0.1.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+# Test patterns (derived)
+
+How this project writes tests. Derived from existing test sources.
+
+## Test framework
+
+{{TEST_FRAMEWORK}}
+
+## AemContext usage
+
+{{AEM_CONTEXT_USAGE}}
+
+## Mocking
+
+{{MOCKING_STYLE}}
+
+## Integration test client
+
+{{IT_CLIENT}}
+
+## TODOs
+
+{{TODOS}}

@@ -1,0 +1,18 @@
+<!-- aem-agentkit: generated v0.1.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+---
+description: Scaffold a new AEM component honoring this repo's conventions and update .aem/context/components.json
+argument-hint: <component-name>
+---
+
+# /new-component <name>
+
+Before any other action, read `AGENTS.md`, `.aem/context/components.json`, `.aem/context/conventions.md`, and `ui.apps/AGENTS.md`. Honor every rule under the **Agentic workflow guardrails** sections.
+
+## Flow
+
+1. Confirm `<name>` does not already exist in `.aem/context/components.json`.
+2. Delegate to the `aem-component-author` subagent (project-scoped, installed in `.claude/agents/`).
+3. After the subagent completes, run `{{MVN_CMD}} -pl ui.apps -PautoInstallPackage clean install` and report the outcome.
+4. Confirm the new component now appears in `.aem/context/components.json` with an updated marker checksum.
+
+Stop if any guardrail would be violated.

@@ -184,6 +184,22 @@ If `AGENTS.md` already exists it is never overwritten.
 
 See `plugins/aem/cloud-service/skills/ensure-agents-md/` for the skill, template, and module catalog.
 
+### AEM as a Cloud Service — aem-agentkit (beta)
+
+The `aem-agentkit` skill complements `ensure-agents-md` by layering everything beyond the root `AGENTS.md` needed for agentic workflows across Claude Code, Cursor, GitHub Copilot, Codex, and Continue.dev. It writes only into agent-meta locations and never modifies customer source code.
+
+- Per-module `AGENTS.md` in each detected AEM module (focused context the agent loads only when working in that module)
+- Machine-readable codified context under `.aem/context/`: component catalog, OSGi services / Sling Models / Sling Servlets index, derived conventions with evidence pointers, anti-patterns with pointers to the `best-practices` skill, glossary, test patterns
+- Silent IDE detection — writes project-scoped subagents (`.claude/agents/aem-*.md`) and slash commands (`.claude/commands/*.md`) for Claude, rule files (`.cursor/rules/aem-*.mdc`) for Cursor, scoped instructions (`.github/instructions/aem-*.instructions.md`) for GitHub Copilot, and rules (`.continue/rules/aem-*.md`) for Continue. A single canonical role-prompt is projected into each format so the content is identical across IDEs.
+- Non-destructive `.mcp.json` / `.cursor/mcp.json` placeholders when missing
+- Embedded guardrails (search-before-create, verify-before-import, no `/libs` writes, stop-on-red)
+- Idempotent, marker-based, byte-for-byte non-destructive — `git diff` after a run shows zero changes to pre-existing files. Customer opt-out via a `_disable_agentkit` file at the workspace root.
+- Beta. Verify all outputs before applying them to production projects.
+
+`aem-agentkit` does not replace `ensure-agents-md`; the two are complementary. When the root `AGENTS.md` is missing and `ensure-agents-md` is available, `aem-agentkit` defers to it as step 0. When `ensure-agents-md` is not installed, `aem-agentkit` proceeds with everything else and emits a one-line notice.
+
+See `plugins/aem/cloud-service/skills/aem-agentkit/` for the skill, references, templates, and tool-specific projection rules.
+
 ### AEM Workflow
 
 Workflow skills cover the full AEM Granite Workflow Engine lifecycle — from designing and implementing workflows to production debugging and incident triaging. Like Dispatcher, they are split by runtime flavor:

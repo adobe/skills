@@ -1,0 +1,34 @@
+<!-- aem-agentkit: generated v0.1.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+# core
+
+OSGi bundle. Backend services, Sling Models, business logic. Built with Maven, tested with JUnit and AEM Mocks.
+
+## Agentic workflow guardrails
+
+- Search `.aem/context/osgi-services.json` before creating a service / model / servlet.
+- Verify AEM class names in the Cloud Service Javadoc before importing.
+- Use the project's logging style and DS annotations as derived in `.aem/context/conventions.md`.
+- Update `.aem/context/osgi-services.json` after adding anything indexable.
+
+## Common entry points
+
+{{ENTRY_POINTS}}
+
+## Module-local conventions
+
+{{CONVENTIONS}}
+
+## What to avoid in this module
+
+See `.aem/context/avoid.md` for the full list with evidence pointers.
+
+## Where to look
+
+- Services and models: `.aem/context/osgi-services.json`
+- Conventions: `.aem/context/conventions.md`
+- Test patterns: `.aem/context/test-patterns.md`
+
+## Build
+
+- Bundle-only build + deploy: `{{MVN_CMD}} clean install -pl core -PautoInstallBundle`
+- Unit tests only: `{{MVN_CMD}} -pl core test`

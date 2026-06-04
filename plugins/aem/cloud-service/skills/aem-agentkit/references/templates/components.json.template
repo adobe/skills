@@ -1,0 +1,8 @@
+{
+  "_generatedBy": "aem-agentkit",
+  "_skillVersion": "0.1.0-beta",
+  "schemaVersion": "1",
+  "generatedAt": "{{ISO8601_UTC}}",
+  "warningStubs": [],
+  "components": []
+}

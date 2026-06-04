@@ -1,0 +1,26 @@
+<!-- aem-agentkit: generated v0.1.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+# {{MODULE_NAME}}
+
+{{MODULE_DESCRIPTION}}
+
+## Agentic workflow guardrails
+
+- Honor the cross-cutting rules in the root `AGENTS.md`.
+- Consult `.aem/context/conventions.md` before introducing new patterns.
+
+## Common entry points
+
+{{ENTRY_POINTS}}
+
+## Module-local conventions
+
+{{CONVENTIONS}}
+
+## What to avoid in this module
+
+{{AVOID_FOR_MODULE}}
+
+## Where to look
+
+- Cross-cutting conventions: `.aem/context/conventions.md`
+- Indexes: `.aem/context/components.json`, `.aem/context/osgi-services.json`

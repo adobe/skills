@@ -1,0 +1,27 @@
+<!-- aem-agentkit: generated v0.1.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+---
+description: Drift report - list missing aem-agentkit artifacts, stale indexes, and unresolved TODOs
+---
+
+# /agents-md-check
+
+Run the `aem-agentkit` skill in **check** mode. Read-only — no files are written.
+
+## Output (deterministic)
+
+```
+aem-agentkit: drift report
+  Missing artifacts:
+    - <path> (reason)
+  Stale indexes (new artifacts not yet in the index):
+    - components.json: <count> new components found in source but not indexed
+    - osgi-services.json: <count> new services / models / servlets
+  Unresolved TODOs:
+    - <file>: <count> TODO markers requiring human review
+  Marker drift (file edited without checksum update):
+    - <path> (reason)
+  .agentkit-new files pending review:
+    - <path> (created at <time>)
+```
+
+Exit code is non-zero when any of the above categories is non-empty.
