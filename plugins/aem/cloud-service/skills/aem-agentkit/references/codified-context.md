@@ -22,13 +22,36 @@ every file under `.aem/context/`.
 - **Multi-adaptable Sling Models.** Include every adaptable in the entry.
 - **Multi-impl services.** Each impl is its own entry; entries include
   `siblingImpls` (count of other impls of the same interface).
-- **Symlinks.** Walk by logical path. Do not follow symlinks pointing
-  outside the workspace root. Deduplicate inside-workspace symlinks via
-  canonical inode.
-- **Off-limits.** Never read `.cloudmanager/env*.json`,
-  `.cloudmanager/secrets*`, `.env`, `.env.*`, `**/credentials*`,
-  `**/*creds*`, `**/*secret*`, `**/*.pem`, `**/*.key`, `**/*.p12`, or
-  anything inside `.git/` besides top-of-tree state.
+- **Symlinks.** Walk by logical path, but before opening any file resolve
+  its canonical realpath. Reject the path if (a) the realpath escapes the
+  workspace root, (b) the realpath matches the privacy deny-list, or (c)
+  the walk has already visited that realpath (loop guard). Deduplication
+  uses realpath, not inode, so filesystems with unstable inodes (some
+  Windows mounts) are handled correctly. Hard depth cap: 32 directories
+  from the workspace root. Open files with `O_NOFOLLOW` (or the platform
+  equivalent: `FILE_FLAG_OPEN_REPARSE_POINT` on Windows, `O_NOFOLLOW_ANY`
+  on macOS) and re-check the canonical path of the opened file descriptor
+  before reading, to close the TOCTOU window between resolve and open.
+- **File-walk cap.** Hard cap: 100,000 files per workspace. On overflow,
+  set `truncated: true` at the top level of every index file that would
+  otherwise have been written (`components.json`, `osgi-services.json`),
+  append a `warningStubs` entry naming which subtree was not walked, and
+  do **not** declare the indexes authoritative — downstream slash
+  commands (`/new-component`, `/new-sling-model`) must refuse to proceed
+  on a `truncated: true` index until the customer either narrows the
+  workspace or raises the cap explicitly. Silent half-completion is the
+  failure mode we are blocking.
+- **Declared-but-missing modules.** When `per-module-agents-md.md` step 1
+  detects a `<module>` declared in `pom.xml` whose directory is missing,
+  the same `warningStubs` entry (`"declared module <name> has no
+  directory; skipped"`) is added to every workspace-root index
+  (`components.json`, `osgi-services.json`) in addition to the per-module
+  warning, so a customer reading just the index sees the gap without
+  having to cross-reference the AGENTS.md files.
+- **Off-limits (privacy deny-list).** See [SKILL.md](../SKILL.md) §
+  "What this skill never does" for the canonical, case-insensitive list.
+  The off-limits list in SKILL.md is the source of truth — this file does
+  not duplicate it.
 - **Zero-X sanity.** If a `ui.apps` module exists but discovery returns
   zero components, treat as discovery error: emit a clear warning and
   do **not** overwrite an existing `components.json`. Same rule for
@@ -36,6 +59,10 @@ every file under `.aem/context/`.
 - **Multi-module repos.** Discover from each module that exists. Repo
   with no `ui.apps` (decoupled / EDS) → `components.json` is an empty list
   with a `warningStubs` entry noting the layout.
+- **Pom heuristic robustness.** When a Sling Model is annotated in a way
+  the heuristic does not recognise (custom annotation processor, Lombok
+  with no Sling-model marker, mixin imports), emit a `warningStubs`
+  entry naming the file and do not infer. Do not guess.
 
 ## 2. Output stability
 
@@ -43,8 +70,16 @@ every file under `.aem/context/`.
   newline, UTF-8 no BOM.
 - Markdown: LF line endings, final newline, UTF-8 no BOM, no trailing
   whitespace.
-- `generatedAt` is ISO-8601 in UTC.
-- Discovery enumerates with sorted directory listings.
+- `generatedAt` uses the format `YYYY-MM-DDTHH:MM:SSZ` exactly. Renderers
+  must emit a zero-padded, second-resolution UTC timestamp with the literal
+  `T` and `Z` separators (no millisecond suffix, no `+00:00`).
+- Discovery enumerates with `sort()` on POSIX paths before processing.
+- **Determinism tiebreaker.** Follows [SKILL.md](../SKILL.md) § Rules
+  "Determinism tiebreaker": path ascending, then line number ascending,
+  then sanitized value ascending. Single source of truth.
+- **Sanitisation.** Customer strings baked into Markdown follow the
+  exhaustive code-point list in [SKILL.md](../SKILL.md) § Rules
+  "Sanitize extracted strings". Single source of truth.
 
 ## 3. `components.json`
 
@@ -183,6 +218,28 @@ Domain disambiguation only. Extracted terms:
   `/conf/*/settings/dam/cfm/models/**/.content.xml`.
 - Taxonomy node names from `ui.content/.../tags/**`.
 
+Every extracted value passes the § 2 sanitisation rule. In addition,
+**PII heuristics** filter out values that look like personal data.
+Heuristics are deterministic (no LLM judgement); each is a regex applied
+to the post-sanitisation value:
+
+- Email: `\b\S+@\S+\.\S+\b`
+- Phone-shaped: `\b\+?\d[\d\s().\-]{6,}\b`
+- IPv4: `\b(?:\d{1,3}\.){3}\d{1,3}\b`
+- IPv6 (rough): `\b[0-9a-fA-F:]{8,}:[0-9a-fA-F:]{2,}\b`
+- IBAN-shaped: `\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b`
+- Postal-address fragment: `\b\d{1,5}\s+[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){0,3}\s+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Way|Drive|Dr)\b`
+- Employee / badge ID: `\b[A-Z]{2,5}-?\d{4,8}\b`
+- High-entropy token: any token with `>= 8` ASCII digits in a row, or
+  `>= 12` alphanumeric chars where digit-count is `>= 4`.
+
+Any value that matches **any** of the above produces a TODO marker; the
+raw value is never written. Trade-off: this set will over-match on some
+benign domain terms (e.g. internal product names that look like IDs);
+the customer reviews TODO markers manually. Under-matches (e.g. internal
+codenames that are plain English words) ship as glossary entries — the
+skill makes no claim of catching every PII shape, only the common ones.
+
 Soft: 60. Hard: 120.
 
 ## 8. `test-patterns.md`
@@ -239,4 +296,11 @@ After writing all `.aem/context/*` files:
 - Every `implFqcn` in `osgi-services.json` resolves to an existing `.java` file.
 - No file contains marketing language; framing stays factual.
 
-Failure aborts the entire skill run; no partial outputs are left on disk.
+On failure, the skill prints a one-line diagnostic naming the failing
+file (workspace-relative path) and the failing check. Each individual
+file write is atomic (`.tmp` + rename), so no file is left half-written;
+but earlier successful writes within the `.aem/context/` step set remain
+on disk. The next invocation resumes idempotently: completed files match
+their checksum and are skipped; the failing file is re-attempted. The
+customer can remove everything with the grep helper in
+[`upgrade-and-migration.md`](./upgrade-and-migration.md) § Reversibility.

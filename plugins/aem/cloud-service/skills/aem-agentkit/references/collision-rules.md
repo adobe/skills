@@ -38,16 +38,31 @@ target path already exists. Every target falls into exactly one row.
 | `.continue/rules/<customer-name>.md` | Never touched. |
 | `.mcp.json` present | Never modified. |
 | `.mcp.json` missing AND `.claude/` detected | Write placeholder. |
+| `.clinerules` present (any author) | Never modified. The skill emits a `warningStubs` entry if Cline signal is detected. |
+| `.clinerules` missing AND Cline signal detected | Write placeholder concatenating canonical role bodies. |
+| `.windsurfrules` present | Never modified. |
+| `.windsurfrules` missing AND Windsurf signal detected | Write placeholder concatenating canonical role bodies. |
+| `augment.md` present | Never modified. |
+| `augment.md` missing AND Augment signal detected | Write placeholder concatenating canonical role bodies. |
 | `.aem/constitution.md`, `.aem/specs/`, `.aem/plans/`, `.aem/tasks/`, `.aem/templates/` (from aem-orchestration-workflow) | Never touched. The skill writes only inside `.aem/context/`. |
-| `_disable_agentkit` file at root | Skill skips entirely (exit 0, no writes). |
+| `_disable_agentkit` at workspace root (regular file, directory, or symlink — contents ignored) | Skill skips entirely (exit 0, no writes). |
+| `_disable_agentkit` inside a nested AEM sub-project root | That sub-project is skipped; the rest of the run proceeds. |
+| Customer slash-command `<owned-name>.md` present in `.claude/commands/`, **no marker** | Never touched. The skill emits a `warningStubs` entry: `"slash-command name collision: <name> is human-curated; the matching aem-agentkit command was not installed"`. |
+| Customer-renamed marker-bearing file (e.g. `core/AGENTS.md` moved to `core/docs/AGENTS-aem.md`) | Workspace-wide marker scan runs first. When a marker-bearing file is found outside the expected path **and** the expected path is missing, the skill leaves the renamed file alone and emits a `warningStubs` entry: `"marker-bearing file at unexpected location <found>; expected <wanted>; skipping regeneration of <wanted>"`. It does not regenerate the canonical location until the customer resolves the move. |
 
-## Marker check
+## Marker check (authenticated)
 
-A file is marker-bearing when **all** of:
-- Its first content line (Markdown / `.mdc`) starts with `<!-- aem-agentkit: generated`, **OR**
-- It is JSON whose top-level object contains `"_generatedBy": "aem-agentkit"`.
+A file is treated as **skill-owned** only when **all** of:
+- Its first content line (Markdown / `.mdc`) starts with the exact prefix `<!-- aem-agentkit: generated v` followed by a version string and a `; checksum: <64-hex>` portion, **OR**
+- It is parseable JSON whose top-level object contains both `"_generatedBy": "aem-agentkit"` and a `"_skillVersion"` matching the expected pattern.
+- **AND** the embedded `sha256` recomputes correctly over the file body excluding the marker line (Markdown / `.mdc`) or over the JSON body with the three marker fields removed (JSON).
 
-Anything else is human-curated.
+A file with a marker-shaped prefix but a wrong, malformed, missing, or
+duplicated `sha256` is treated as **human-curated** and never overwritten.
+Two markers found in the same file → human-curated (an attacker / careless
+paste cannot trick the skill into ownership by adding the marker comment).
+
+Anything that fails the above is human-curated.
 
 ## `.agentkit-new` lifecycle
 
@@ -56,6 +71,20 @@ When the skill writes `<path>.agentkit-new`:
 - The customer reviews the diff (`diff <path> <path>.agentkit-new`).
 - The customer either deletes the `.agentkit-new` file (rejects changes)
   or `mv`s it over the original (accepts).
-- The skill never auto-applies. Re-running the skill while a
-  `.agentkit-new` exists just re-overwrites it; the original is still
-  untouched.
+- The skill never auto-applies.
+
+When a `.agentkit-new` already exists at re-run time:
+- If the new content matches the existing `.agentkit-new` byte-for-byte,
+  the file is left untouched (no churn, no `mtime` bump).
+- If the new content differs, the existing `.agentkit-new` is rotated to
+  `<path>.agentkit-new.<UTC-timestamp>` before the fresh `.agentkit-new`
+  is written. The timestamp format is `YYYYMMDDTHHMMSSZ` (e.g.
+  `core/AGENTS.md.agentkit-new.20260604T113053Z`). This prevents silent
+  loss of an in-progress diff review.
+- **Collision suffix.** If a rotated path already exists (two refreshes
+  in the same second on a fast filesystem, or test-harness back-to-back
+  runs), append `.<N>` starting at `1` and incrementing until the path
+  is free: `core/AGENTS.md.agentkit-new.20260604T113053Z.1`,
+  `…Z.2`, etc. The skill never overwrites a previously rotated file.
+- A `warningStubs` entry summarises every rotation so the customer can
+  find archived diffs and rejected content is never lost silently.

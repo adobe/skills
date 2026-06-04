@@ -15,13 +15,18 @@ have a root pom whose `<modules>` are themselves full AEM archetypes.
 Algorithm:
 
 1. Read the root `pom.xml` `<modules>` section. For each `<module>`,
-   confirm the directory exists.
+   confirm the directory exists. If a declared module's directory is
+   missing, emit a `warningStubs` entry (`"declared module <name> has no
+   directory; skipped"`) and continue with the rest. Do not abort.
 2. For each present module, decide its **shape**:
    - **Nested AEM project** (sub-project) — the module is itself a full
      AEM archetype. Detection: the module's own `pom.xml` declares
-     `<modules>` AND at least 2 of the names `core`, `ui.apps`,
-     `ui.apps.structure`, `ui.config`, `ui.content`, `ui.frontend`,
-     `all` appear as either sibling directories or sub-modules.
+     `<modules>` AND at least 2 of the following buckets appear as
+     either sibling directories or sub-modules — `core`, `ui.apps` (or
+     `ui.apps.structure`, counted as the same bucket), `ui.config`,
+     `ui.content`, `ui.frontend`, `all`. The two-bucket threshold avoids
+     misclassifying a skinny `ui.apps` + `ui.apps.structure`-only module
+     as a sub-project.
    - **Leaf module** — otherwise.
 3. For a **leaf module**, write `<module>/AGENTS.md` using the matching
    per-module template (§ 3 below).
@@ -34,10 +39,33 @@ Algorithm:
      sub-project's own modules. Per-archetype-leaf files are written
      at `<module>/<sub-module>/AGENTS.md` (e.g. for a nested AEM project named `brand-site`, `brand-site/core/AGENTS.md`).
 5. Recursion is bounded to 3 levels to prevent runaway behavior on
-   pathological repos.
+   pathological repos. When the depth cap is reached and additional
+   nested AEM sub-projects exist beyond it, emit a `warningStubs` entry
+   naming each truncated path (`"nested AEM project at <path> beyond
+   3-level recursion cap; not bootstrapped"`) so the customer can re-run
+   the skill from that directory if they want full coverage.
 6. Git submodules at any level are out of scope — do not descend into
    them. The skill must be re-run from each submodule's root by the
    customer when they want per-archetype-leaf files there too.
+
+### Top-level module-name collisions across nested AEM sub-projects
+
+When two nested AEM sub-projects share a leaf name (e.g.
+`brand-site-a/core` and `brand-site-b/core`):
+
+- `.aem/context/components.json` keys by full JCR path, so component
+  entries stay disambiguated.
+- Per-module `AGENTS.md` files live under their own sub-project
+  directory (`brand-site-a/core/AGENTS.md`, `brand-site-b/core/AGENTS.md`),
+  so they do not collide.
+- The **per-tool layer** (Cursor `globs:`, Copilot `applyTo`) is
+  workspace-root scoped, so a glob like `**/ui.apps/**` matches both
+  sub-projects. The agent therefore cannot disambiguate `brand-site-a`
+  from `brand-site-b` from the rule alone. In this case the rule body
+  defers to `.aem/context/conventions.md` and the per-sub-project
+  `.aem/context/` for any sub-project-specific conventions; the
+  guardrails block tells the agent to read whichever `.aem/context/` is
+  closest to the file under edit.
 
 ### Discovery side-effects on the rest of the layer
 
@@ -109,9 +137,14 @@ In this order:
 | Signal | Effect |
 |---|---|
 | `mvnw` present at workspace root | Use `./mvnw` instead of `mvn` everywhere |
-| `.cloudmanager/java-version` present | Insert "Build with Java N" line (N from file) |
+| `.cloudmanager/java-version` present | Read first line, strip whitespace, validate against `^(8\|11\|17\|21\|25)$`. Pass → insert "Build with Java N" line. Fail → emit `warningStubs` entry and omit the line. |
 | `dispatcher` module exists | Add `cd dispatcher && ./bin/validate.sh src` in the dispatcher module file |
 | `ui.frontend` exists | Add `cd ui.frontend && npm run build` / `npm start` in that module file |
+
+`mvnw` (Maven wrapper) and `dispatcher/bin/validate.sh` are
+customer-supplied executables. The skill recommends invoking them but
+does not vouch for their contents. Reviewers should treat changes to
+these files as security-sensitive.
 
 ## 6. Size budgets
 

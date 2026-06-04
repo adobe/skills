@@ -22,6 +22,7 @@ See [`SKILL.md`](./SKILL.md) for the full contract.
 | `.aem/context/avoid.md` | Anti-patterns detected in the repo |
 | `.aem/context/glossary.md` | Domain disambiguation |
 | `.aem/context/test-patterns.md` | How this project writes tests |
+| `.aem/context/aem-api-namespaces.md` | Canonical AEM as a Cloud Service API package roots (verify-before-import support) |
 | `.aem/context/README.md` | Index of the above |
 
 ### Tool-specific layer (silent auto-detection)
@@ -33,6 +34,10 @@ See [`SKILL.md`](./SKILL.md) for the full contract.
 | GitHub Copilot | `.github/copilot-instructions.md` or `.github/*.yml` workflow | `.github/instructions/aem-*.instructions.md` (Copilot-instructions written only if missing) |
 | Codex | (universal layer is sufficient) | — |
 | Continue.dev | `.continue/` dir | `.continue/rules/aem-*.md` |
+| Cline | `.clinerules` or `.vscode/extensions.json` listing the Cline extension | `.clinerules` (only when missing) |
+| Windsurf | `.windsurfrules` or `.codeium/` directory | `.windsurfrules` (only when missing) |
+| Augment Code | `.augment/` directory or pre-existing `augment.md` | `augment.md` (only when missing) |
+| Aider, Gemini CLI, Zed, Factory, Jules, Devin, Amp, Kilo, RooCode, Warp, JetBrains Junie, Ona, Phoenix | (universal layer is sufficient — read `AGENTS.md` natively) | — |
 
 A single canonical role-prompt source is projected into each tool's format
 so the content seen by the agent is identical regardless of IDE.

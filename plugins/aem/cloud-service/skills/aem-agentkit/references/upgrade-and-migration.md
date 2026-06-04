@@ -9,8 +9,28 @@
 | Markdown / `.mdc` (first content line) | `<!-- aem-agentkit: generated v0.1.0-beta; safe to delete or edit. checksum: <sha256> -->` |
 | JSON (top-level fields) | `"_generatedBy": "aem-agentkit"`, `"_skillVersion": "0.1.0-beta"`, `"schemaVersion": "1"` |
 
-`<sha256>` is the SHA-256 of the rendered body **excluding** the marker
-line itself.
+`<sha256>` is the SHA-256 of the canonical body bytes (lowercase hex,
+no separators, 64 characters). Canonicalization is pinned to remove
+ambiguity:
+
+- **Markdown / `.mdc`:** the marker is the first non-blank line. The
+  checksummed body is the raw bytes of everything after the first `\n`
+  that terminates the marker line, up to and including the final
+  newline of the file. Line endings are LF only (the output stability
+  rule enforces LF on write). No NFC normalization, no whitespace
+  trimming: byte-exact over the post-marker content.
+- **JSON:** the checksummed body is the canonical re-serialization of
+  the parsed object **with the three marker fields removed**
+  (`_generatedBy`, `_skillVersion`, `schemaVersion`). Canonical
+  re-serialization: sorted keys at every level, 2-space indent, LF line
+  endings, UTF-8 no BOM, no trailing whitespace, final newline (the same
+  output-stability rule applied to every JSON write).
+- **Encoding:** UTF-8 without BOM throughout. A file with a BOM at the
+  start fails the marker check.
+
+A marker with a `<sha256>` that does not recompute under this rule is
+treated as **human-curated** per
+[`collision-rules.md`](./collision-rules.md) § Marker check.
 
 ## 2. Skill version bump
 
@@ -42,6 +62,27 @@ the skill's current schema:
 | From → To | Component | Change |
 |---|---|---|
 
+### Worked example (illustrative — schemaVersion 1 → 2)
+
+Suppose `components.json` schemaVersion 2 adds a required
+`htlPrecompiled` boolean field and renames `dialogFieldNames` to
+`dialog.fieldNames` (nested under a new `dialog` object).
+
+The migration step renders the new file as follows:
+1. Read the existing file. Validate `schemaVersion: "1"`.
+2. For each `components[]` entry, copy every field. Move
+   `dialogFieldNames` → `dialog.fieldNames` and `dialogPath` →
+   `dialog.path`. Set `htlPrecompiled` to `false` (safe default).
+3. Move the old `dialogFieldNames` and `dialogPath` values into
+   `warningStubs` as a single migration-trace entry so a customer can
+   diff what was rewritten.
+4. Bump `schemaVersion` to `"2"`.
+5. Recompute the marker checksum over the migrated body.
+6. Write to `<file>.agentkit-new` only. Do not overwrite the v1 file.
+
+The customer reviews `diff components.json components.json.agentkit-new`
+and either accepts (`mv`) or rejects (`rm`).
+
 ## 4. Reversibility
 
 To remove every artifact produced by this skill, the customer:
@@ -66,4 +107,7 @@ grep -rlF '"_generatedBy": "aem-agentkit"' . 2>/dev/null
 - New required fields for a schemaVersion go behind the migration step
   above so older repos do not break.
 - Removing a field requires a deprecation cycle of at least one minor
-  version.
+  version. **Pre-1.0 (during beta)** this means at least one `0.x` bump
+  with the field still emitted alongside a `warningStubs` deprecation
+  notice. **Post-1.0** this means at least one full minor release
+  (≥ 90 days from the release notes' deprecation announcement).

@@ -8,9 +8,13 @@ argument-hint: <fully.qualified.ClassName>
 
 Before any other action, read `AGENTS.md`, `core/AGENTS.md` (or the relevant module), `.aem/context/osgi-services.json`, `.aem/context/conventions.md`, and `.aem/context/test-patterns.md`.
 
+## Input validation
+
+`<FQCN>` must match `^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+\.[A-Z][A-Za-z0-9_]*$` (lowercased package segments, capitalised class). Reject any input that does not match — for example, anything containing whitespace, semicolons, backticks, `$`, `&`, `|`, `<`, `>`, `;`, or shell metacharacters — before any other step. The validated FQCN is the only value that may be interpolated into a shell or filesystem command.
+
 ## Flow
 
 1. Confirm the FQCN is not present in `.aem/context/osgi-services.json`.
 2. Delegate to the `aem-sling-model-author` subagent.
-3. Run `{{MVN_CMD}} -pl <module> test` and report.
+3. Run `{{MVN_CMD}} -pl <module> test` and report. `<module>` is resolved from the FQCN's package against the project's module list, never from raw input.
 4. Confirm the new model appears in `.aem/context/osgi-services.json` under `slingModels` with an updated marker checksum.

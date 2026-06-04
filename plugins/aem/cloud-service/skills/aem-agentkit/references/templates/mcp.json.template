@@ -1,25 +1,17 @@
 {
   "_generatedBy": "aem-agentkit",
+  "_note": "Placeholder only. No MCP server is wired. To enable: rename each `_TODO_*` key (e.g. `_TODO_aem_developer` -> `aem-developer`) AND set `command` / `args` per your install. Safe to delete this file entirely if no MCP servers are desired. SECURITY: any future change to this file MUST be reviewed - MCP `command` values execute on agent start.",
   "_skillVersion": "0.1.0-beta",
-  "_note": "Placeholder MCP wiring. Replace stub entries with real MCP server commands. Safe to delete or edit.",
   "mcpServers": {
-    "aem-developer": {
-      "_disabled": true,
-      "_purpose": "AEM developer MCP - programmatic access to AEM SDK and runtime. Configure command and args per your install.",
-      "command": "REPLACE_WITH_AEM_MCP_COMMAND",
-      "args": []
+    "_TODO_aem_developer": {
+      "_purpose": "AEM developer MCP - programmatic access to AEM SDK and runtime. Rename this key to `aem-developer` and set command/args once configured."
     },
-    "cloud-manager": {
-      "_disabled": true,
-      "_purpose": "Cloud Manager MCP - pipelines, environments, deploy status. Configure command and args per your install.",
-      "command": "REPLACE_WITH_CLOUD_MANAGER_MCP_COMMAND",
-      "args": []
+    "_TODO_cloud_manager": {
+      "_purpose": "Cloud Manager MCP - pipelines, environments, deploy status. Rename this key to `cloud-manager` and set command/args once configured."
     },
-    "content": {
-      "_disabled": true,
-      "_purpose": "Content MCP - query and manipulate AEM content. Configure command and args per your install.",
-      "command": "REPLACE_WITH_CONTENT_MCP_COMMAND",
-      "args": []
+    "_TODO_content": {
+      "_purpose": "Content MCP - query and manipulate AEM content. Rename this key to `content` and set command/args once configured."
     }
-  }
+  },
+  "schemaVersion": "1"
 }
