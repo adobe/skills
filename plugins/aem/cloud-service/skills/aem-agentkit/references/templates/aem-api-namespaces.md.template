@@ -1,7 +1,8 @@
-<!-- aem-agentkit: generated v0.1.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+<!-- _static: true -->
 # AEM as a Cloud Service — canonical API namespaces
 
-Static reference used by the "verify before import" guardrail. Imports under these package roots are real AEM as a Cloud Service APIs. Imports outside these roots that look AEM-ish (e.g. `com.adobe.granite.*`, `com.day.*` without the right sub-path) should be verified in the Cloud Service Javadoc before use.
+Static reference used by the "verify before import" guardrail. Imports under the package roots below are real AEM as a Cloud Service APIs. An import that does not match any root below is suspect and must be verified in the Cloud Service Javadoc before use.
 
 ## AEM (Adobe)
 
@@ -56,6 +57,6 @@ If an AEM-looking import doesn't match a namespace above, the agent should:
 
 ## See also
 
-- `.aem/context/avoid.md` — anti-patterns detected in this repo.
+- `.aem/context/avoid.md` — anti-patterns detected in this repo, each with an absolute Cloud Service documentation link to the supported replacement.
 - `.aem/context/conventions.md` — what the project actually uses.
 - Cloud Service Javadoc: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/

@@ -10,12 +10,12 @@ equivalence guarantee promised in SKILL.md.
 ## Contents
 
 - § 0. LLM-agnostic foundation
-- § 1. Silent IDE detection
+- § 1. Silent IDE detection and stability tiers
 - § 2. Canonical role-prompt source
 - § 3. Projection rules (per IDE)
 - § 4. Conditional generation
 - § 5. Index self-update rule (indexable roles only)
-- § 6. Size budgets
+- § 6. Size budgets and deferred-role sidecar
 - § 7. Self-validation
 
 ## 0. LLM-agnostic foundation
@@ -36,20 +36,26 @@ If a customer uses an agent the skill does not have a projection for,
 they still get the full universal layer, which is enough for AGENTS.md-
 spec-compliant agents to behave correctly.
 
-## 1. Silent IDE detection
+## 1. Silent IDE detection and stability tiers
 
-| Tool | Positive signal(s) |
-|---|---|
-| Claude Code | `.claude/` directory at workspace root, OR `CLAUDE.md` at root |
-| Cursor | `.cursor/` directory at workspace root |
-| GitHub Copilot | `.github/copilot-instructions.md` present, OR `.github/` with any `.yml` workflow file (covers VS Code, JetBrains, Neovim with Copilot) |
-| Codex (OpenAI) | Always — Codex reads `AGENTS.md` natively per the open standard |
-| Continue.dev | `.continue/` directory at workspace root (covers VS Code, JetBrains with Continue) |
-| Cline (VS Code) | `.clinerules` file at workspace root, OR `.vscode/extensions.json` listing `saoudrizwan.claude-dev` |
-| Windsurf | `.windsurfrules` file at workspace root, OR `.codeium/` directory |
-| Aider | Always — Aider reads `AGENTS.md` natively |
-| Augment Code | `.augment/` directory or `augment.md` at root |
-| **Native AGENTS.md adopters (no projection needed — universal layer is enough)** | Always covered: OpenAI Codex, Gemini CLI, Zed, Factory, Jules, Devin, Amp, Kilo, RooCode, Warp, JetBrains Junie, Ona, Phoenix, and any future AGENTS.md-spec-compliant agent |
+| Tool | Positive signal(s) | Stability tier |
+|---|---|---|
+| Claude Code | `.claude/` directory at workspace root, OR `CLAUDE.md` at root | **stable** |
+| Cursor | `.cursor/` directory at workspace root | **stable** |
+| GitHub Copilot | `.github/copilot-instructions.md` present, OR `.github/` with any `.yml` workflow file (covers VS Code, JetBrains, Neovim with Copilot) | **stable** |
+| Codex (OpenAI) | Always — Codex reads `AGENTS.md` natively per the open standard | **stable** |
+| Continue.dev | `.continue/` directory at workspace root (covers VS Code, JetBrains with Continue) | **stable** |
+| Cline (VS Code) | `.clinerules` file at workspace root, OR `.vscode/extensions.json` listing `saoudrizwan.claude-dev` | **stable** |
+| Windsurf | `.windsurfrules` file at workspace root, OR `.codeium/` directory | **stable** |
+| Aider | Always — Aider reads `AGENTS.md` natively | **stable** |
+| Augment Code | `.augment/` directory or `augment.md` at root | **stable** |
+| **Native AGENTS.md adopters (no projection needed — universal layer is enough)** | Always covered: OpenAI Codex, Gemini CLI, Zed, Factory, Jules, Devin, Amp, Kilo, RooCode, Warp, JetBrains Junie, Ona, Phoenix, and any future AGENTS.md-spec-compliant agent | **stable** |
+
+All projections are first-class. The skill's release process verifies
+each projection's syntax against the upstream IDE's documented format
+before every release; an IDE that materially changes its format produces
+a follow-up release. The customer can pin `aem-agentkit` versions in
+their plugin manifest if they need a stable target.
 
 A signal present **after** the customer manually creates the relevant
 directory is treated identically — re-running the skill after `mkdir
@@ -76,12 +82,24 @@ The body of each source file is the system prompt the agent will see. The
 projection logic for each IDE wraps that body with the correct
 frontmatter and extension; no content is rewritten between IDEs.
 
+### Sub-project resolution in role bodies
+
+Role bodies that reference paths like `<project>/components/<name>/` or
+`<module>/...` resolve `<project>`, `<module>`, and the path prefix at
+runtime by walking up from the file under edit to the closest `pom.xml`
+whose directory either is the workspace root or matches a nested-AEM-
+project detection from [`per-module-agents-md.md`](./per-module-agents-md.md)
+§ 1. Each role body states this explicitly. In multi-brand monorepos
+the agent therefore writes into the correct sub-project tree
+(`brand-a/ui.apps/...` or `brand-b/ui.apps/...`) instead of guessing
+from a single hard-coded path.
+
 ## 3. Projection rules
 
 ### 3.1 Claude Code — `.claude/agents/aem-<role>.md`
 
 ```markdown
-<!-- aem-agentkit: generated v0.1.0-beta; safe to delete or edit. checksum: <sha256> -->
+<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: <sha256> -->
 ---
 name: aem-<role>
 description: <one-line from canonical source>
@@ -107,17 +125,27 @@ scans `.claude/commands/` for files of the same name. A matching name
 that is **not** marker-bearing (per [`collision-rules.md`](./collision-rules.md))
 is human-curated — usually owned by a sibling skill such as
 `create-component`. The skill does **not** overwrite it; instead it
-emits a `warningStubs` entry: `"slash-command name collision: /<name> is
-human-curated; aem-agentkit slash command not installed"`. The Claude
+emits a `warningStubs` entry: `"slash-command name collision: /<name>
+is human-curated; aem-agentkit slash command not installed. Invoke
+@aem-<role> directly via the IDE's subagent invocation."` The Claude
 projection still ships the role agents (`aem-component-author` etc.);
-the customer can invoke them directly.
+the customer can invoke them directly. The summary block surfaces one
+line per collision with the alternate invocation so the customer is
+never told a feature is missing without being told how to reach it.
+
+**Input-argument validation.** `<name>` in `/new-component` must match
+`^[a-z][a-z0-9-]{0,63}$`; `<FQCN>` in `/new-sling-model` must match the
+FQCN regex documented in the template. `MVN_CMD` template variable is
+restricted to the literal set `{"mvn", "./mvnw"}`; any other resolved
+value emits a `warningStubs` entry and the build line is omitted from
+the rendered command artifact.
 
 Plus MCP wiring at `.mcp.json` (see [`mcp-wiring.md`](./mcp-wiring.md)).
 
 ### 3.2 Cursor — `.cursor/rules/aem-<role>.mdc`
 
 ```markdown
-<!-- aem-agentkit: generated v0.1.0-beta; safe to delete or edit. checksum: <sha256> -->
+<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: <sha256> -->
 ---
 description: <one-line from canonical source>
 globs:
@@ -132,26 +160,28 @@ Globs per role:
 
 | Role | `globs:` |
 |---|---|
-| component-author | `**/ui.apps/**` |
+| component-author | `**/ui.apps/**`, `**/ui.apps.*/**` |
 | sling-model-author | `**/src/main/java/**` |
-| htl-author | `**/ui.apps/**/*.html` |
+| htl-author | `**/ui.apps*/**/*.html` |
 | dispatcher-editor | `dispatcher/**` |
-| osgi-config-author | `**/ui.config/**`, `**/jcr_root/apps/*/config*/**` |
+| osgi-config-author | `**/ui.config/**`, `**/ui.config.*/**`, `**/jcr_root/apps/*/config*/**` |
 | integration-test-author | `**/it.tests/**` |
 | ui-test-author | `**/ui.tests/**` |
 | content-fragment-author | `**/conf/**/settings/dam/cfm/**`, `**/content/dam/**` |
 | guardrails | `**/*` with `alwaysApply: true` |
 
-`htl-author` is intentionally scoped to `**/ui.apps/**/*.html` to avoid
-matching `ui.frontend/dist/**`, `ui.tests/**`, and other non-HTL HTML in
-the workspace.
+`htl-author` is intentionally scoped to `**/ui.apps*/**/*.html` (note the
+trailing `*` after `ui.apps`) so it covers customer modules like
+`ui.apps.commerce/` or `ui.apps.commons/` while still avoiding
+`ui.frontend/dist/**`, `ui.tests/**`, and other non-HTL HTML in the
+workspace.
 
 Plus MCP wiring at `.cursor/mcp.json`.
 
 ### 3.3 GitHub Copilot — `.github/instructions/aem-<role>.instructions.md`
 
 ```markdown
-<!-- aem-agentkit: generated v0.1.0-beta; safe to delete or edit. checksum: <sha256> -->
+<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: <sha256> -->
 ---
 applyTo: "<glob pattern>"
 ---
@@ -168,7 +198,7 @@ comma-separated globs. When a role has multiple globs (e.g.
 `applyTo` line joining the globs with `,` (no surrounding spaces):
 
 ```markdown
-applyTo: "**/ui.config/**,**/jcr_root/apps/*/config*/**"
+applyTo: "**/ui.config/**,**/ui.config.*/**,**/jcr_root/apps/*/config*/**"
 ```
 
 Do **not** split into multiple `.instructions.md` files — the canonical
@@ -178,7 +208,7 @@ If `.github/copilot-instructions.md` is missing **and** Copilot is detected,
 write a minimal version:
 
 ```markdown
-<!-- aem-agentkit: generated v0.1.0-beta; safe to delete or edit. checksum: <sha256> -->
+<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: <sha256> -->
 # Repository-wide Copilot instructions
 
 This repository follows the conventions documented in [`AGENTS.md`](../AGENTS.md)
@@ -191,7 +221,7 @@ If it already exists, the skill never touches it.
 ### 3.4 Continue.dev — `.continue/rules/aem-<role>.md`
 
 ```markdown
-<!-- aem-agentkit: generated v0.1.0-beta; safe to delete or edit. checksum: <sha256> -->
+<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: <sha256> -->
 # aem-<role>
 
 <body of canonical role source>
@@ -212,7 +242,7 @@ Single Markdown file at the workspace root. Cline concatenates all rules
 into its system prompt.
 
 ```markdown
-<!-- aem-agentkit: generated v0.1.0-beta; safe to delete or edit. checksum: <sha256> -->
+<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: <sha256> -->
 # AEM as a Cloud Service — agent rules
 
 Read AGENTS.md, the relevant per-module AGENTS.md, and the indexes under
@@ -234,12 +264,16 @@ Read AGENTS.md, the relevant per-module AGENTS.md, and the indexes under
 
 A single file works for Cline because it ingests one rules document, not
 per-file or per-glob rules. The same content blocks are reused from the
-canonical role sources.
+canonical role sources. When the budget in § 6 forces deferred roles,
+the deferred bodies are inlined into the sibling
+`<file>.aem-roles-extra.md` so the customer keeps the full role set on
+disk.
 
 ### 3.7 Windsurf — `.windsurfrules`
 
 Same shape as `.clinerules`. Single file at the workspace root with all
-detected roles concatenated.
+detected roles concatenated. Deferred roles go into
+`.windsurfrules.aem-roles-extra.md`.
 
 ### 3.8 Aider
 
@@ -250,7 +284,8 @@ maintains an `.aider.conf.yml`, the skill does not touch it.
 
 Single file at `augment.md` (project root) — same concatenation pattern
 as Cline / Windsurf. Created only when `.augment/` directory or existing
-`augment.md` signal is detected.
+`augment.md` signal is detected. Deferred roles go into
+`augment.md.aem-roles-extra.md`.
 
 ## 4. Conditional generation
 
@@ -258,9 +293,9 @@ as Cline / Windsurf. Created only when `.augment/` directory or existing
 |---|---|
 | component-author | Always (universal author role) |
 | sling-model-author | Any module with `src/main/java/**` contains `@Model` classes |
-| htl-author | `ui.apps` module present (any nesting level) |
+| htl-author | `ui.apps` module present (any nesting level), including `ui.apps.*` siblings |
 | dispatcher-editor | `dispatcher/` module present |
-| osgi-config-author | `ui.config` module present (any nesting level) |
+| osgi-config-author | `ui.config` module present (any nesting level), including `ui.config.*` siblings |
 | integration-test-author | `it.tests/` module present |
 | ui-test-author | `ui.tests/` module present |
 | content-fragment-author | Content Fragment models present under `/conf/*/settings/dam/cfm/models/` |
@@ -275,13 +310,21 @@ as Cline / Windsurf. Created only when `.augment/` directory or existing
 
 Roles that author artifacts tracked by a `.aem/context/*.json` index end
 with an `## Index self-update (mandatory final step)` section. The
-section body is the role's instruction to mutate the relevant index file
-after a successful write and recompute the marker checksum.
+section body is the role's instruction to call `/regen-context` after a
+successful write so the index is recomputed and re-checksummed by the
+skill (not by the agent inline). This is the **single shared protocol**
+that any sibling skill (`create-component`, `best-practices`, `migration`,
+or any future skill that touches `.aem/context/*.json`) MUST follow.
+Agent-driven inline mutation of the index files is forbidden: the
+agent cannot reliably compute SHA-256 over canonical bodies, so it
+either succeeds (and the file becomes uncertified) or fails silently
+(and the file looks human-curated to the next skill run, which then
+treats it as a collision and starts producing `.agentkit-new` sidecars).
 
 | Role | Indexed by | Has the section |
 |---|---|---|
-| component-author | `.aem/context/components.json` | yes |
-| sling-model-author | `.aem/context/osgi-services.json` (`slingModels`) | yes |
+| component-author | `.aem/context/components.json` | yes (delegates to `/regen-context`) |
+| sling-model-author | `.aem/context/osgi-services.json` (`slingModels`) | yes (delegates to `/regen-context`) |
 | htl-author | (covered by component-author when the HTL belongs to a new component) | no |
 | dispatcher-editor | (dispatcher config is not indexed) | no |
 | osgi-config-author | (PIDs are resolved against `osgi-services.json`, but the config files themselves are not indexed) | no |
@@ -297,10 +340,10 @@ that role's index file, and appears verbatim in every IDE projection
 Roles without the section still inherit the "Honor the indexes" rule from
 the canonical guardrails block, so they will not bypass `/regen-context`
 when the work they touch incidentally produces an indexable artifact (for
-example, a new component HTL written by `htl-author` is picked up by the
-next `/regen-context` run).
+example, a new component HTL written by `htl-author` triggers an
+`/regen-context` reminder from the guardrails block).
 
-## 6. Size budgets
+## 6. Size budgets and deferred-role sidecar
 
 | Artifact | Soft | Hard |
 |---|---|---|
@@ -316,10 +359,12 @@ next `/regen-context` run).
 When a concatenated single-file projection (Cline / Windsurf / Augment)
 would exceed its hard budget, the skill keeps the guardrails role plus the
 core roles (component-author, sling-model-author, htl-author,
-dispatcher-editor) in full and replaces the remaining role bodies with a
-one-line pointer back to the canonical source under
-`references/templates/roles/` of the published skill. A `warningStubs`
-entry names the truncated roles.
+dispatcher-editor) in full in the main file and writes the remaining role
+bodies to a sibling `<file>.aem-roles-extra.md` (e.g.
+`.clinerules.aem-roles-extra.md`). The customer therefore always has every
+role body on disk; nothing points back to the published skill bundle. A
+one-line pointer at the bottom of the main file directs the agent to the
+sidecar, and a `warningStubs` entry names the truncated roles.
 
 ## 7. Self-validation
 
@@ -327,3 +372,5 @@ After writing all tool-specific files:
 - Every generated file carries the marker.
 - The canonical role-source body appears verbatim across all tool projections (byte-identical inside each role across IDEs).
 - No file contains marketing language; framing uses "agentic workflow" terminology only.
+- Every URL is Cloud-Service-scoped (no `/6.5/`, no `experience-manager-65/`).
+- Every sanitized customer string is free of every code point in [`privacy-and-sanitization.md`](./privacy-and-sanitization.md) § 2.1.

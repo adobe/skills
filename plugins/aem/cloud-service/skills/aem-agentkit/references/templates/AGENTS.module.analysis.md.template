@@ -1,4 +1,4 @@
-<!-- aem-agentkit: generated v0.1.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
 # {{MODULE_NAME}}
 
 Analysis / scripting / tooling module. Contains scripts, generators, or analysis utilities that run alongside the reactor build but do not ship application code.

@@ -1,4 +1,4 @@
-<!-- aem-agentkit: generated v0.1.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
 # it.tests
 
 Integration tests against a running AEM instance. AEM Testing clients. Executed by Cloud Manager during *Custom Functional Testing*.

@@ -3,7 +3,10 @@
 > **Beta Skill:** Outputs must be reviewed before applying to production.
 
 Use this catalog when generating per-module `AGENTS.md`. Only include
-entries whose directories actually exist in the project.
+entries whose directories actually exist in the project. This catalog
+targets AEM as a Cloud Service module shapes; AEM 6.5 LTS / AMS
+on-premise layouts trigger the early-exit notice documented in
+[`SKILL.md`](../SKILL.md) § Scope.
 
 ## Core modules
 
@@ -11,9 +14,9 @@ entries whose directories actually exist in the project.
 |---|---|
 | `core` | OSGi bundle. Backend services, Sling Models, business logic. Uses OSGi for dependency injection, Sling Models for exposing content to scripts, and JUnit for unit testing. |
 | `dispatcher` | Cloud-optimized Dispatcher configuration: caching and security. Immutable files validated by the Dispatcher SDK. |
-| `ui.apps` | FileVault content package. Application code: components, templates, client libraries, content structure. HTL is the scripting engine. |
+| `ui.apps` | FileVault content package. Application code: components, templates, client libraries, content structure. HTL is the scripting engine. Customer modules `ui.apps.<sibling>` (e.g. `ui.apps.commerce`, `ui.apps.commons`) are treated as `ui.apps` for template-selection purposes. |
 | `ui.apps.structure` | FileVault content package. Empty module that defines the structure of the repository content. |
-| `ui.config` | FileVault content package. OSGi configurations. |
+| `ui.config` | FileVault content package. OSGi configurations. Customer modules `ui.config.<sibling>` are treated as `ui.config`. |
 | `ui.content` | FileVault content package. Mutable initial content, templates, sample assets. |
 | `ui.content.sample` | FileVault content package. Sample content; not deployed to production. |
 | `it.tests` | Integration tests. AEM Testing clients. Run by Cloud Manager during *Custom Functional Testing*. |
@@ -41,7 +44,11 @@ entries whose directories actually exist in the project.
 | Module `ui.frontend.react.forms.af` exists | **Headless Forms** |
 | `pom.xml` uses `precompiled-scripts-provider` | **Precompiled Scripts** |
 
-If none of these are detected, treat as **General Webpack** frontend.
+When none of these signals matches, emit a `warningStubs` entry
+`"frontend variant could not be inferred; treating as General Webpack"`
+and record the decision under `heuristics[]` in the manifest. Customers
+override by setting `decision: frontend-variant` in
+`.aem/agentkit-overrides.yml`.
 
 ## Add-on per-module notes
 
@@ -55,7 +62,10 @@ If none of these are detected, treat as **General Webpack** frontend.
 ## Cloud Service documentation links (per-module hints)
 
 Per-module `AGENTS.md` files include up to 3 Cloud Service documentation
-links per module, selected from:
+links per module, selected from the table below in **table-order**
+(ascending); when more than 3 candidates apply the first 3 win. The
+order is the authoritative tiebreak — no implicit per-customer ranking
+exists.
 
 - Core Concepts, AEM Project Structure, AEM Development Guidelines
 - Sling Adapters, Sling Resource Merger, HTL Getting Started
@@ -64,4 +74,11 @@ links per module, selected from:
 - Client-Side Libraries, Universal Editor, Content Fragments, Experience Fragments
 - Deprecated and Removed Features
 
-Never embed AEM 6.5 documentation URLs.
+Every link materialized in any generated artifact must resolve under
+`https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/`
+or `https://developer.adobe.com/experience-manager/reference-materials/cloud-service/`.
+The self-validation pass after step 12 in
+[`SKILL.md`](../SKILL.md) § "Generation order" rejects any URL
+containing `/6.5/` or `experience-manager-65/` before the manifest is
+written, so an AEM 6.5 URL slipping into derived content aborts the
+run.

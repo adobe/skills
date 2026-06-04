@@ -1,12 +1,12 @@
-<!-- aem-agentkit: generated v0.1.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
 ---
-description: Scaffold a Sling Model + JUnit test in this repo's conventions and update .aem/context/osgi-services.json
+description: Scaffold a Sling Model + JUnit test in this repo's conventions and call /regen-context to refresh .aem/context/osgi-services.json
 argument-hint: <fully.qualified.ClassName>
 ---
 
 # /new-sling-model <FQCN>
 
-Before any other action, read `AGENTS.md`, `core/AGENTS.md` (or the relevant module), `.aem/context/osgi-services.json`, `.aem/context/conventions.md`, and `.aem/context/test-patterns.md`.
+Before any other action, read `AGENTS.md`, the relevant `<aem-project-root>/core/AGENTS.md` (or matching Java module), the closest `.aem/context/osgi-services.json`, the closest `.aem/context/conventions.md`, and the closest `.aem/context/test-patterns.md`.
 
 ## Input validation
 
@@ -14,7 +14,9 @@ Before any other action, read `AGENTS.md`, `core/AGENTS.md` (or the relevant mod
 
 ## Flow
 
-1. Confirm the FQCN is not present in `.aem/context/osgi-services.json`.
-2. Delegate to the `aem-sling-model-author` subagent.
-3. Run `{{MVN_CMD}} -pl <module> test` and report. `<module>` is resolved from the FQCN's package against the project's module list, never from raw input.
-4. Confirm the new model appears in `.aem/context/osgi-services.json` under `slingModels` with an updated marker checksum.
+1. Resolve the AEM project root and the closest `.aem/context/` (see `templates/roles/role.sling-model-author.md` § "Resolve the AEM project root").
+2. Confirm the FQCN is not present in the closest `.aem/context/osgi-services.json` and that file does not carry `truncated: true`. If a matching entry has `dsGeneration: "MIXED"`, stop and surface the mixed file before any further work.
+3. Delegate to the `aem-sling-model-author` subagent.
+4. Run `{{MVN_CMD}} -pl <module> test` and report. `<module>` is resolved from the FQCN's package against the closest sub-project's module list (taken from the resolved AEM project root), never from raw input. `{{MVN_CMD}}` is restricted to the literal set `{"mvn", "./mvnw"}`; any other resolved value omits this build step entirely with a `warningStubs` entry.
+5. Run `/regen-context` so `.aem/context/osgi-services.json` is recomputed with a valid marker checksum. Do not mutate the JSON inline.
+6. Confirm the new model now appears in the (refreshed) closest `.aem/context/osgi-services.json` under `slingModels`.

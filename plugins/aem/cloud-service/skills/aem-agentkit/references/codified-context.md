@@ -3,9 +3,17 @@
 > **Beta Skill:** Outputs must be reviewed before applying to production.
 
 This reference defines the schemas, discovery rules, and stability rules for
-every file under `.aem/context/`.
+every file under `.aem/context/`. The skill targets **AEM as a Cloud
+Service only**; non-Cloud-Service layouts trigger the early-exit notice
+documented in [`SKILL.md`](../SKILL.md) § Scope.
 
 ## 1. Discovery scope
+
+All filesystem walks are performed by the deterministic helper's `walk`
+operation (see [`helpers.md`](./helpers.md) § 2.3) which enforces the
+realpath / deny-list / special-filesystem / depth / file-count rules
+documented in [`privacy-and-sanitization.md`](./privacy-and-sanitization.md)
+§ 1.
 
 - **Components.** Walk `**/src/main/content/jcr_root/apps/**/components/**`
   in every FileVault content-package module (typically `ui.apps`, optionally
@@ -13,45 +21,54 @@ every file under `.aem/context/`.
   `/libs`. Key by full JCR path (e.g. `/apps/wknd/components/byline`) so
   duplicates across component groups stay distinguishable.
 - **Sling Models, OSGi services, Sling Servlets.** Walk every module
-  containing `src/main/java/**`. Exclude `target/`, `generated-sources/`,
-  `out/`, `build/`, `node_modules/`.
+  containing `src/main/java/**`. The walk prunes `target/`,
+  `generated-sources/`, `out/`, `build/`, `node_modules/` at every depth
+  regardless of root (the helper enforces this as part of its segment-
+  by-segment deny-list).
 - **Multiple HTL files per component.** Index the primary HTL file
-  (`<componentname>.html` matching directory name) under `htlPath`; list
-  others under `siblingHtmlFiles`.
+  (`<componentname>.html` matching directory name) under `htlPath`. List
+  others under `siblingHtmlFiles` as repo-relative POSIX paths, sorted
+  ascending by `sort()`. Empty array when there are none.
 - **Dialogs.** Index both `cq:dialog` and `cq:editConfig` when present.
 - **Multi-adaptable Sling Models.** Include every adaptable in the entry.
 - **Multi-impl services.** Each impl is its own entry; entries include
   `siblingImpls` (count of other impls of the same interface).
-- **Symlinks.** Walk by logical path, but before opening any file resolve
-  its canonical realpath. Reject the path if (a) the realpath escapes the
-  workspace root, (b) the realpath matches the privacy deny-list, or (c)
-  the walk has already visited that realpath (loop guard). Deduplication
-  uses realpath, not inode, so filesystems with unstable inodes (some
-  Windows mounts) are handled correctly. Hard depth cap: 32 directories
-  from the workspace root. Open files with `O_NOFOLLOW` (or the platform
-  equivalent: `FILE_FLAG_OPEN_REPARSE_POINT` on Windows, `O_NOFOLLOW_ANY`
-  on macOS) and re-check the canonical path of the opened file descriptor
-  before reading, to close the TOCTOU window between resolve and open.
-- **File-walk cap.** Hard cap: 100,000 files per workspace. On overflow,
-  set `truncated: true` at the top level of every index file that would
-  otherwise have been written (`components.json`, `osgi-services.json`),
-  append a `warningStubs` entry naming which subtree was not walked, and
-  do **not** declare the indexes authoritative — downstream slash
-  commands (`/new-component`, `/new-sling-model`) must refuse to proceed
-  on a `truncated: true` index until the customer either narrows the
-  workspace or raises the cap explicitly. Silent half-completion is the
-  failure mode we are blocking.
+- **Symlinks.** Walk by logical path, then resolve via the helper's
+  `realpath` operation, which performs realpath check (canonical),
+  workspace-escape rejection (against the workspace root resolved once
+  at startup), deny-list rejection on every path segment, special-
+  filesystem rejection (`/proc`, `/sys`, `/dev`, Windows device paths,
+  UNC roots), visited-set loop guard, `O_NOFOLLOW` open with TOCTOU
+  re-check after open. Deduplication uses realpath. Hard depth cap: 32
+  directories from the workspace root. Full rules in
+  [`privacy-and-sanitization.md`](./privacy-and-sanitization.md) § 1.2.
+- **File-walk caps.** Global: 100,000 files per workspace. Per-immediate-
+  child-of-root: 10,000 files (prevents a single subtree from starving
+  the global budget). On overflow, set `truncated: true` at the top
+  level of every index file that would otherwise have been written
+  (`components.json`, `osgi-services.json`), append a `warningStubs`
+  entry naming every truncated subtree (the helper returns these in
+  `truncatedSubtrees`), and do **not** declare the indexes
+  authoritative — downstream slash commands (`/new-component`,
+  `/new-sling-model`) refuse to proceed on a `truncated: true` index
+  until the customer either narrows the workspace or raises the cap
+  through `.aem/agentkit-overrides.yml`
+  (see [`manifest.md`](./manifest.md) § Overrides). Silent half-completion
+  is the failure mode being blocked.
 - **Declared-but-missing modules.** When `per-module-agents-md.md` step 1
   detects a `<module>` declared in `pom.xml` whose directory is missing,
   the same `warningStubs` entry (`"declared module <name> has no
-  directory; skipped"`) is added to every workspace-root index
-  (`components.json`, `osgi-services.json`) in addition to the per-module
-  warning, so a customer reading just the index sees the gap without
-  having to cross-reference the AGENTS.md files.
+  directory; skipped"`) is added to every workspace-root index in
+  addition to the per-module warning. For a workspace that produces no
+  `components.json` or `osgi-services.json` entry at all (dispatcher-only
+  or content-only repos), the warning lands in `components.json`'s
+  `warningStubs` regardless — `components.json` always exists for every
+  run, so every warning has a stable destination.
 - **Off-limits (privacy deny-list).** See [SKILL.md](../SKILL.md) §
-  "What this skill never does" for the canonical, case-insensitive list.
-  The off-limits list in SKILL.md is the source of truth — this file does
-  not duplicate it.
+  "What this skill never does" and
+  [`privacy-and-sanitization.md`](./privacy-and-sanitization.md) § 1.
+  The off-limits list is the source of truth — this file does not
+  duplicate it.
 - **Zero-X sanity.** If a `ui.apps` module exists but discovery returns
   zero components, treat as discovery error: emit a clear warning and
   do **not** overwrite an existing `components.json`. Same rule for
@@ -67,29 +84,42 @@ every file under `.aem/context/`.
 ## 2. Output stability
 
 - JSON: 2-space indent, sorted keys at every level, LF line endings, final
-  newline, UTF-8 no BOM.
+  newline, UTF-8 no BOM. The on-disk byte sequence and the canonical-body
+  sequence used for the marker checksum differ in exactly one respect: the
+  on-disk file includes `_generatedBy`, `_skillVersion`, `schemaVersion`,
+  `_markerChecksum`, `generatedAt`, and `_static` (when applicable). The
+  helper's `sha256-canonical` operation (see
+  [`helpers.md`](./helpers.md) § 2.4) strips those six keys before hashing,
+  so two runs that change only `generatedAt` produce identical marker
+  checksums and the file is left untouched on disk (no `mtime` churn,
+  no `.agentkit-new` noise).
 - Markdown: LF line endings, final newline, UTF-8 no BOM, no trailing
   whitespace.
 - `generatedAt` uses the format `YYYY-MM-DDTHH:MM:SSZ` exactly. Renderers
   must emit a zero-padded, second-resolution UTC timestamp with the literal
-  `T` and `Z` separators (no millisecond suffix, no `+00:00`).
+  `T` and `Z` separators (no millisecond suffix, no `+00:00`). Excluded
+  from the marker checksum so re-runs with no content change leave the
+  file alone.
 - Discovery enumerates with `sort()` on POSIX paths before processing.
 - **Determinism tiebreaker.** Follows [SKILL.md](../SKILL.md) § Rules
   "Determinism tiebreaker": path ascending, then line number ascending,
-  then sanitized value ascending. Single source of truth.
+  then **pre-sanitization** value ascending (byte order over UTF-8
+  NFC-normalized bytes), then SHA-256 of the pre-sanitization value
+  ascending. Four levels of tiebreak so post-sanitization truncation
+  collisions still resolve deterministically. Single source of truth.
 - **Sanitisation.** Customer strings baked into Markdown follow the
-  exhaustive code-point list in [SKILL.md](../SKILL.md) § Rules
-  "Sanitize extracted strings". Single source of truth.
+  exhaustive code-point list in
+  [`privacy-and-sanitization.md`](./privacy-and-sanitization.md) § 2.1
+  and are run through the helper's `sanitize-string` operation. Single
+  source of truth.
 
 ## 3. `components.json`
 
 ```json
 {
   "_generatedBy": "aem-agentkit",
-  "_skillVersion": "0.1.0-beta",
-  "schemaVersion": "1",
-  "generatedAt": "2026-06-04T00:00:00Z",
-  "warningStubs": [],
+  "_markerChecksum": "<sha256>",
+  "_skillVersion": "1.0.0-beta",
   "components": [
     {
       "componentGroup": "WKND - Content",
@@ -103,7 +133,10 @@ every file under `.aem/context/`.
       "slingModelFqcn": "com.adobe.aem.guides.wknd.core.models.Byline",
       "title": "Byline"
     }
-  ]
+  ],
+  "generatedAt": "2026-06-04T11:30:53Z",
+  "schemaVersion": "1",
+  "warningStubs": []
 }
 ```
 
@@ -111,16 +144,20 @@ Notes:
 - `slingModelFqcn` is the interface (not impl) when both exist.
 - `dialogFieldNames` is best-effort: extract `name="./<field>"` attributes
   from `cq:dialog`'s `.content.xml`.
+- `siblingHtmlFiles` is a `sort()`-ordered list of workspace-relative
+  POSIX paths to non-primary HTL files in the same component directory
+  (e.g. `partials.html`, `meta.html`). The primary HTL goes under
+  `htlPath` so consumers never have to disambiguate.
 
 ## 4. `osgi-services.json`
 
 ```json
 {
   "_generatedBy": "aem-agentkit",
-  "_skillVersion": "0.1.0-beta",
+  "_markerChecksum": "<sha256>",
+  "_skillVersion": "1.0.0-beta",
+  "generatedAt": "2026-06-04T11:30:53Z",
   "schemaVersion": "1",
-  "generatedAt": "2026-06-04T00:00:00Z",
-  "warningStubs": [],
   "services": [
     {
       "configPids": [],
@@ -154,14 +191,19 @@ Notes:
       "modelPath": "core/src/main/java/com/adobe/aem/guides/wknd/core/models/impl/BylineImpl.java",
       "resourceType": "wknd/components/byline"
     }
-  ]
+  ],
+  "warningStubs": []
 }
 ```
 
 DS generation detection:
 - `org.osgi.service.component.annotations` → `R7`
 - `org.apache.felix.scr.annotations` → `R6`
-- Both in the same impl → `R6`, emit a TODO to migrate.
+- Both in the same impl → `MIXED`. The entry's `dsGeneration` is set to
+  `MIXED` (not silently downgraded to `R6`), a `warningStubs` entry is
+  emitted, and `/new-sling-model` refuses to edit a `MIXED` file until
+  the customer resolves the mix. The `sling-model-author` role checks
+  for `MIXED` before writing and surfaces the mismatch.
 
 ## 5. `conventions.md`
 
@@ -188,24 +230,31 @@ set.
 Detected anti-patterns. Each entry has:
 - Pattern name and one-line description.
 - Where it was found (evidence pointer).
-- Pointer to the supported replacement in the existing `best-practices`
-  skill — do not duplicate that guidance.
+- An **absolute documentation URL** under
+  `https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/`
+  or `https://developer.adobe.com/experience-manager/reference-materials/cloud-service/`
+  pointing to the supported pattern. The link is a real URL, not a
+  relative pointer to another skill — `.aem/context/avoid.md` is
+  consumed by agents that may never have the `best-practices` skill
+  installed at any specific relative path, so absolute URLs are the
+  only durable form.
 
 Detection signals (initial set):
 
-| Pattern | Signal |
-|---|---|
-| `Scheduler` + `Runnable` | imports `org.apache.sling.commons.scheduler.Scheduler` + `Runnable` in same class |
-| JCR observation `EventListener` | implements `javax.jcr.observation.EventListener` |
-| OSGi `EventHandler` (substantive) | implements `org.osgi.service.event.EventHandler` with non-trivial body |
-| Direct `Replicator` call | uses `com.day.cq.replication.Replicator` |
-| Legacy `AssetManager` create/remove | uses deprecated `com.day.cq.dam.api.AssetManager` ops |
-| `getAdministrativeResourceResolver` | direct call |
-| Felix SCR annotations | `org.apache.felix.scr.annotations` import |
-| HTL redundant constant comparison | `data-sly-test` containing `== 'something'` or `=== 'something'` |
+| Pattern | Signal | Replacement URL category |
+|---|---|---|
+| `Scheduler` + `Runnable` | imports `org.apache.sling.commons.scheduler.Scheduler` + `Runnable` in same class | Sling Jobs (`org.apache.sling.event.jobs`) |
+| JCR observation `EventListener` | implements `javax.jcr.observation.EventListener` | `ResourceChangeListener` |
+| OSGi `EventHandler` (substantive) | implements `org.osgi.service.event.EventHandler` with non-trivial body | Sling Jobs / `ResourceChangeListener` |
+| Direct `Replicator` call | uses `com.day.cq.replication.Replicator` | Distribution API on Cloud Service |
+| Legacy `AssetManager` create/remove | uses deprecated `com.day.cq.dam.api.AssetManager` ops | Asset API on Cloud Service |
+| `getAdministrativeResourceResolver` | direct call | Service User Mapping |
+| Felix SCR annotations | `org.apache.felix.scr.annotations` import | DS R7 annotations |
+| HTL redundant constant comparison | `data-sly-test` containing `== 'something'` or `=== 'something'` | HTL conventions on Cloud Service |
 
-For each match, link to the existing pattern module in
-`../best-practices/references/<file>.md`.
+For each match, embed the absolute URL inline next to the evidence
+pointer. The `aem-agentkit-helper` ships a fixed URL table per category
+so the rendered URLs are byte-identical across runs.
 
 Soft: 60 lines. Hard: 120.
 
@@ -218,10 +267,10 @@ Domain disambiguation only. Extracted terms:
   `/conf/*/settings/dam/cfm/models/**/.content.xml`.
 - Taxonomy node names from `ui.content/.../tags/**`.
 
-Every extracted value passes the § 2 sanitisation rule. In addition,
-**PII heuristics** filter out values that look like personal data.
-Heuristics are deterministic (no LLM judgement); each is a regex applied
-to the post-sanitisation value:
+Every extracted value passes the § 2 sanitisation rule (executed by
+the helper). In addition, **PII heuristics** filter out values that
+look like personal data. Heuristics are deterministic (no LLM
+judgement); each is a regex applied to the post-sanitisation value:
 
 - Email: `\b\S+@\S+\.\S+\b`
 - Phone-shaped: `\b\+?\d[\d\s().\-]{6,}\b`
@@ -232,13 +281,17 @@ to the post-sanitisation value:
 - Employee / badge ID: `\b[A-Z]{2,5}-?\d{4,8}\b`
 - High-entropy token: any token with `>= 8` ASCII digits in a row, or
   `>= 12` alphanumeric chars where digit-count is `>= 4`.
+- Provider-prefixed tokens: `\bAKIA[A-Z0-9]{12,}\b`, `\bASIA[A-Z0-9]{12,}\b`, `\bghp_[A-Za-z0-9]{20,}\b`, `\bgho_[A-Za-z0-9]{20,}\b`, `\bghs_[A-Za-z0-9]{20,}\b`, `\bxox[abopr]-[A-Za-z0-9-]{10,}\b`, `\bsk_(?:live|test)_[A-Za-z0-9]{16,}\b`, `\bpat_[A-Za-z0-9]{20,}\b`, `\bAIza[A-Za-z0-9_-]{20,}\b`, `\bEAAC[A-Za-z0-9]{20,}\b`.
+- JWT: `\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b`.
+- Base64 blob: `\b[A-Za-z0-9+/]{40,}={0,2}\b` (no whitespace; conservative
+  ≥ 40 chars to avoid catching plain words).
+- Internal-domain URL: `https?://[^/\s]*\.(?:corp|internal|intranet)\b`.
 
 Any value that matches **any** of the above produces a TODO marker; the
 raw value is never written. Trade-off: this set will over-match on some
-benign domain terms (e.g. internal product names that look like IDs);
-the customer reviews TODO markers manually. Under-matches (e.g. internal
-codenames that are plain English words) ship as glossary entries — the
-skill makes no claim of catching every PII shape, only the common ones.
+benign domain terms (e.g. internal product names that look like IDs).
+The customer reviews TODO markers manually. The full regex set is the
+authoritative input to the helper's PII pass.
 
 Soft: 60. Hard: 120.
 
@@ -267,13 +320,16 @@ class names. Complements (does not replace) live Javadoc lookup.
 
 Rendered from [`templates/aem-api-namespaces.md.template`](./templates/aem-api-namespaces.md.template).
 The template is project-agnostic, so the rendered file is byte-identical
-across repos — but it still carries a checksum-bearing marker so
-idempotency rules apply uniformly.
+across repos and carries `_static: true` in its marker — eligible for
+in-place overwrite on a skill version bump (see
+[`upgrade-and-migration.md`](./upgrade-and-migration.md) § Static-
+reference handling).
 
 ## 10. `README.md` (context index)
 
 Plain Markdown pointing at the indexes and the derived files. No
-evidence pointers; just a navigation aid for humans.
+evidence pointers; just a navigation aid for humans. Also a static-
+reference file (`_static: true`).
 
 ## 11. Per-sub-project scope (nested AEM monorepos)
 
@@ -285,7 +341,9 @@ cover the whole monorepo for cross-cutting queries.
 
 Subagents and rules reference whichever `.aem/context/` is closest to
 the file under edit (sub-project context when working inside a
-sub-project, root context otherwise).
+sub-project, root context otherwise) — the role bodies state this
+explicitly so the agent resolves `<project>` and the prefix at runtime
+instead of relying on a hard-coded path in the role.
 
 ## 12. Self-validation (this step only)
 
@@ -294,13 +352,18 @@ After writing all `.aem/context/*` files:
 - Every `slingModelFqcn` in `components.json` resolves to an existing
   `.java` file.
 - Every `implFqcn` in `osgi-services.json` resolves to an existing `.java` file.
+- Every URL is Cloud-Service-scoped (no `/6.5/`, no
+  `experience-manager-65/`).
 - No file contains marketing language; framing stays factual.
+- Every sanitized string in every generated Markdown is free of every
+  strip-list code point (the helper re-scans).
 
 On failure, the skill prints a one-line diagnostic naming the failing
 file (workspace-relative path) and the failing check. Each individual
-file write is atomic (`.tmp` + rename), so no file is left half-written;
-but earlier successful writes within the `.aem/context/` step set remain
-on disk. The next invocation resumes idempotently: completed files match
-their checksum and are skipped; the failing file is re-attempted. The
-customer can remove everything with the grep helper in
-[`upgrade-and-migration.md`](./upgrade-and-migration.md) § Reversibility.
+file write is atomic (helper `write-atomic`), so no file is left
+half-written; but earlier successful writes within the `.aem/context/`
+step set remain on disk. The next invocation resumes idempotently:
+completed files match their checksum and are skipped; the failing file
+is re-attempted. The customer can remove everything with the grep
+helper in [`upgrade-and-migration.md`](./upgrade-and-migration.md)
+§ Reversibility.

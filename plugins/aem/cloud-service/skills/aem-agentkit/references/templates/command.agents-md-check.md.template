@@ -1,4 +1,4 @@
-<!-- aem-agentkit: generated v0.1.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
 ---
 description: Drift report - list missing aem-agentkit artifacts, stale indexes, and unresolved TODOs
 ---

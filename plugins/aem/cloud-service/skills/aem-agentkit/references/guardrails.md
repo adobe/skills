@@ -3,10 +3,12 @@
 > **Beta Skill:** Outputs must be reviewed before applying to production.
 
 Guardrails are embedded into each per-module `AGENTS.md` and each
-tool-specific role artifact (Claude / Cursor / Copilot / Continue). They
-are **advisory** in this beta release — text, not enforcement.
-Deterministic enforcement (pre-edit hook, MCP check tool) is on the v2
-roadmap.
+tool-specific role artifact (Claude / Cursor / Copilot / Continue /
+Cline / Windsurf / Augment). They are deliberately text-shaped — they
+steer the agent through its system prompt, not through a runtime
+interceptor. Customers who need machine-enforced rules wire those into
+their own CI / pre-commit / MCP enforcement pipeline; the skill does
+not ship a pre-edit hook.
 
 The rules are deliberately tool-agnostic. They never name specific MCP
 server packages, IDEs, or other skills.
@@ -15,7 +17,7 @@ server packages, IDEs, or other skills.
 
 This block appears verbatim near the top of every per-module `AGENTS.md`
 and in `templates/roles/role.guardrails.md` (used to project Cursor /
-Copilot / Continue artifacts):
+Copilot / Continue / Cline / Windsurf / Augment artifacts):
 
 ```markdown
 ## Agentic workflow guardrails
@@ -31,9 +33,10 @@ Copilot / Continue artifacts):
 - **Never write under `/libs`.** Use `/apps` or `/conf/global/` overlays.
 - **Stop on red.** A change is not complete until the project build (`mvn`
   or `./mvnw -B verify`) and `dispatcher/bin/validate.sh src` pass locally.
-- **Honor the indexes after writing code.** When you add a new component,
-  model, service, or servlet, append the new entry to the corresponding
-  `.aem/context/*.json` file and update its marker checksum.
+- **Run `/regen-context` after writing code that produces indexable
+  artifacts** (a new component, Sling Model, OSGi service, or servlet).
+  Do not mutate `.aem/context/*.json` directly — the skill recomputes the
+  marker checksum from the canonical body during regeneration.
 - **Customer source files only.** Do not edit anything under `/libs`, Core
   Components packages, or vendor `target/` outputs.
 ```
@@ -58,4 +61,17 @@ AGENTS.md / per-module AGENTS.md, which has the canonical text.
 - "Respect run-mode guards" — common refactoring mistake to remove `isAuthor()` blocks when migrating patterns.
 - "Never write under `/libs`" — the most expensive Cloud Service mistake.
 - "Stop on red" — local verification is fast and prevents pipeline waste.
-- "Honor the indexes" — keeps the codified context current between explicit `/regen-context` runs.
+- "Run `/regen-context` after writing code" — keeps `.aem/context/*.json` honest. Inline mutation by the agent breaks the marker checksum and corrupts ownership classification for the next skill run, so the skill explicitly forbids it.
+
+## 4. Inter-skill contract for `.aem/context/*.json`
+
+`.aem/context/components.json` and `.aem/context/osgi-services.json` are
+**skill-owned, read-only between regenerations**. Sibling skills
+(`create-component`, `best-practices`, `migration`, future skills that
+touch the same indexes) MUST NOT mutate these files; instead they call
+`/regen-context` (or have the customer call it) after any change to
+the underlying source that would change the index content. This is the
+single shared contract that keeps the marker mechanism honest across
+the plugin's skill set. The same rule applies to `aem-agentkit` itself
+— the slash commands and roles delegate to `/regen-context` rather
+than mutating in place.

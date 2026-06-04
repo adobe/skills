@@ -1,4 +1,4 @@
-<!-- aem-agentkit: generated v0.1.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
 ---
 description: Regenerate .aem/context/* indexes from the current code, non-destructive
 ---

@@ -1,4 +1,4 @@
-<!-- aem-agentkit: generated v0.1.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
 # dispatcher
 
 Cloud-optimized Dispatcher configuration. Caching, security, virtual hosts. Validated locally by the Dispatcher SDK.

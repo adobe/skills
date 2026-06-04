@@ -1,11 +1,18 @@
 # aem-agentkit (beta)
 
-Bootstrap an AEM as a Cloud Service repository for agentic workflows.
+Bootstrap an **AEM as a Cloud Service** repository for agentic workflows.
+
+> **Beta Skill**: This skill is in beta and under active development.
+> Results should be reviewed carefully before use in production.
+> Report issues at https://github.com/adobe/skills/issues
 
 This skill writes a small set of agent-meta files at the workspace root and
 inside existing modules so coding agents and any harness on top of them can
 work on the customer's repository with high reliability and low
 hallucination. It never modifies customer source code.
+
+**Scope:** AEM as a Cloud Service only. The skill exits early on AEM 6.5
+LTS, AMS, and on-premise AEM layouts.
 
 See [`SKILL.md`](./SKILL.md) for the full contract.
 
@@ -24,6 +31,8 @@ See [`SKILL.md`](./SKILL.md) for the full contract.
 | `.aem/context/test-patterns.md` | How this project writes tests |
 | `.aem/context/aem-api-namespaces.md` | Canonical AEM as a Cloud Service API package roots (verify-before-import support) |
 | `.aem/context/README.md` | Index of the above |
+| `.aem/context/.agentkit-manifest.json` | Run manifest: every file written, post-write checksum, every heuristic decision |
+| `.aem/context/.agentkit.lock` | Workspace advisory lock so parallel invocations exit cleanly |
 
 ### Tool-specific layer (silent auto-detection)
 
@@ -40,7 +49,11 @@ See [`SKILL.md`](./SKILL.md) for the full contract.
 | Aider, Gemini CLI, Zed, Factory, Jules, Devin, Amp, Kilo, RooCode, Warp, JetBrains Junie, Ona, Phoenix | (universal layer is sufficient — read `AGENTS.md` natively) | — |
 
 A single canonical role-prompt source is projected into each tool's format
-so the content seen by the agent is identical regardless of IDE.
+so the content seen by the agent is identical regardless of IDE. The
+deferred-role inline fallback (for the concatenated single-file
+projections — Cline / Windsurf / Augment) writes a sibling
+`<file>.aem-roles-extra.md` so the customer always has every role body on
+disk, not behind a pointer to the published skill bundle.
 
 ## What never changes
 
@@ -61,11 +74,13 @@ available, `aem-agentkit` proceeds with everything except the root
 
 ## Status
 
-Beta. Verify all outputs before applying to production projects.
+Beta. Skill version `1.0.0-beta`. Generated JSON files carry
+`schemaVersion: "1"`. Marker contract, migration rules, and the
+deterministic-helper version pin are documented in
+[`references/upgrade-and-migration.md`](./references/upgrade-and-migration.md)
+and [`references/helpers.md`](./references/helpers.md).
 
-Skill version: `0.1.0-beta`. Generated JSON files carry
-`schemaVersion: "1"`. Upgrade rules in
-[`references/upgrade-and-migration.md`](./references/upgrade-and-migration.md).
+Verify all outputs before applying to production projects.
 
 ## End-to-end agentic workflow coverage
 
