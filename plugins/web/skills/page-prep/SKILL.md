@@ -118,12 +118,14 @@ manifest (see Recipe Manifest Format). Include the global `scroll_fix` if
 Find remaining `position:fixed` blockers the script didn't catch:
 
 ```bash
-playwright-cli eval "[...document.querySelectorAll('*')].filter(el => { var s = getComputedStyle(el); return s.position === 'fixed' && parseInt(s.zIndex, 10) > 1000 && (el.offsetWidth > 100 || el.offsetHeight > 100); }).map(el => { var s = getComputedStyle(el); return { tag: el.tagName, id: el.id, cls: (el.className || '').slice(0, 50), z: s.zIndex, w: el.offsetWidth, h: el.offsetHeight }; })"
+playwright-cli eval "JSON.stringify([...document.querySelectorAll('*')].filter(el => { var s = getComputedStyle(el); var r = el.getBoundingClientRect(); return s.position === 'fixed' && parseInt(s.zIndex, 10) > 1000 && (el.offsetWidth > 100 || el.offsetHeight > 100) && r.right > 0 && r.bottom > 0 && r.left < window.innerWidth && r.top < window.innerHeight; }).map(el => { var s = getComputedStyle(el); return { tag: el.tagName, id: el.id, cls: (el.className || '').slice(0, 50), z: s.zIndex, w: el.offsetWidth, h: el.offsetHeight }; }))"
 ```
 
-This returns all visible `position:fixed` elements with `z-index > 1000` and
-non-trivial dimensions. Ignore
-legitimate elements (navigation bars, toolbars) and remove the rest:
+This returns `position:fixed` elements with `z-index > 1000`, non-trivial
+dimensions, and **within the visible viewport** — off-screen elements (e.g.
+slide-in panels in their closed state) are excluded by the `getBoundingClientRect()`
+bounds check. Ignore legitimate elements (navigation bars, toolbars) and
+remove the rest:
 
 1. For each suspicious element, evaluate
    `document.querySelector('<selector>')?.remove()`.
