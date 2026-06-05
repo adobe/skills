@@ -300,13 +300,30 @@ resumes idempotently on the next invocation. A helper `2` propagates a
 ## 5. Reference implementation
 
 A reference implementation in Python 3.10+ (no third-party
-dependencies) ships in the published skill bundle under
-`bin/aem-agentkit-helper`. The implementation is ~400 lines and is
-covered by golden-output tests in the bundle's `tests/` directory; the
-golden outputs include the byte-exact SHA-256 of each canonical-body
-shape, the byte-exact sanitized output of strings containing every
-strip-list code point, and the walk output on a fixtures workspace
-with adversarial nested layouts.
+dependencies) ships in the skill bundle at
+[`bin/aem-agentkit-helper`](../bin/aem-agentkit-helper). The
+implementation is ~500 lines (POSIX only: Linux + macOS; Windows is
+rejected at startup until a separate release adds the Win32 syscall
+surface).
+
+The bundle's `tests/` directory holds the helper's golden-output unit
+tests covering: byte-exact SHA-256 across the canonical-body shapes
+(Markdown body excludes the marker line; JSON re-serialization strips
+the six marker fields and re-emits with sorted keys), sanitization on
+every strip-list code-point category (control / line-paragraph
+separator / zero-width / bidi override / format), realpath / deny-list
+/ workspace-escape / special-filesystem rejection, deny-list directory
+pruning at every depth, walk caps with `truncatedSubtrees`, atomic
+`write-atomic` (no `.tmp` leftovers), and lock acquisition with
+stale-lock recovery via PID liveness check.
+
+Run the tests from the skill root:
+
+```bash
+tests/run-tests.sh
+```
+
+CI runs the same script through `npm test`.
 
 ## 6. What the helper never does
 

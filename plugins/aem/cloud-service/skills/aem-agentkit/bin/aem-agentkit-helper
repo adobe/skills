@@ -1,0 +1,682 @@
+#!/usr/bin/env python3
+"""aem-agentkit-helper - deterministic helper for the aem-agentkit skill.
+
+Reference implementation. See references/helpers.md in the skill bundle
+for the full operation spec. POSIX only (Linux, macOS); Windows is
+rejected at startup because the symlink-hardening contract requires
+O_NOFOLLOW / O_NOFOLLOW_ANY semantics that the Win32 API does not
+expose in a portable form.
+
+Protocol
+--------
+- `aem-agentkit-helper --version`       prints VERSION and exits 0.
+- `aem-agentkit-helper`                  reads JSON-line requests from
+  stdin until EOF, emits one JSON-line response per request to stdout.
+  Exit code 0 if every request returned ok=true, 1 otherwise.
+
+Every request is `{"op": "<name>", ...}` with op-specific fields. Every
+response is `{"ok": true, ...}` or `{"ok": false, "error": "..."}`.
+"""
+
+import base64
+import ctypes
+import ctypes.util
+import errno
+import fnmatch
+import hashlib
+import json
+import os
+import re
+import sys
+import unicodedata
+
+VERSION = "1.0.0-beta"
+
+# --------------------------------------------------------------------- #
+# Platform gate                                                         #
+# --------------------------------------------------------------------- #
+
+if sys.platform == "win32":
+    sys.stderr.write(
+        "aem-agentkit: platform lacks the syscall surface needed for the "
+        "symlink-hardening contract; aborting.\n"
+    )
+    sys.exit(1)
+
+# --------------------------------------------------------------------- #
+# Constants from privacy-and-sanitization.md                            #
+# --------------------------------------------------------------------- #
+
+# Unicode code points to strip (privacy-and-sanitization.md § 2.1)
+_STRIP_CODEPOINTS = (
+    list(range(0x00, 0x09)) + list(range(0x0A, 0x20))     # control except \t
+    + [0x2028, 0x2029]                                      # line/para separators
+    + [0x00AD, 0x180E]                                      # zero-width
+    + list(range(0x200B, 0x2010))                           # zero-width set U+200B..U+200F
+    + [0x2060, 0xFEFF, 0xFFFD]                              # word joiner, BOM, replacement
+    + [0x061C]                                              # Arabic letter mark
+    + list(range(0x202A, 0x202F))                           # bidi U+202A..U+202E
+    + list(range(0x2066, 0x206A))                           # bidi U+2066..U+2069
+)
+STRIP_SET = frozenset(_STRIP_CODEPOINTS)
+
+# Deny-list patterns applied per path segment, case-insensitive (ASCII casefold)
+DENY_PATTERNS = [
+    "env*.json", "secrets*",
+    ".env", ".env.*", "*.env", "*.env.*",
+    "credential*", "credentials*", "*creds*", "*cred",
+    "*secret*", "*secrets", "*password*", "*passwd*", "*token*",
+    "api-key*", "api_key*", "apikey*",
+    "auth.json", "auth-config*", "auth-tokens*",
+    "*.pem", "*.key", "*.p12", "*.pfx", "*.p8", "*.jks", "*.jceks",
+    "*.keystore", "*.truststore", "keystore", "truststore", "*.p7b",
+    "id_rsa*", "id_dsa*", "id_ecdsa*", "id_ed25519*", "*.ovpn", "*.netrc.gpg",
+    "*.key.json", "*-service-account*.json", "*-firebase-adminsdk-*.json",
+    "firebase.json", ".firebaserc", "aws-exports.js", "kubeconfig",
+    "profiles.yml",
+    ".npmrc", ".yarnrc", ".yarnrc.yml", ".pypirc",
+    ".dockercfg", "settings.xml", "settings-security.xml",
+    ".netrc", "_netrc", ".htpasswd",
+    "aio-config.json", "*-private.pem", "*ims*credentials*", "serviceuser*key*",
+    "*.tfvars", "*.tfstate", "*.tfstate.backup",
+    "*.gpg", "*.asc", "*.kdbx", "wallet.dat", "*.pgp",
+    "datasources.local.xml", "sshconfigs.xml", "websservers.xml",
+    "security*.xml", "sftp.json", "launch.local.json", "secrets.json",
+    "*.bak", "*.orig", "*.swp", "*.swo", ".#*", "*~", "*.rej",
+]
+DENY_PATTERNS_LC = [p.lower() for p in DENY_PATTERNS]
+
+# Directory names that prune the entire subtree at every depth
+DENY_DIRS = frozenset({
+    ".git", "target", "node_modules", "dist", "build", "out",
+    "crx-quickstart", ".idea",
+    ".terraform", ".gnupg", ".ssh",
+    ".aws", ".gcp", ".azure", ".kube", ".aio", ".adobe-aio", ".fbc",
+    ".password-store", ".aws-sam", ".m2",
+    ".databricks-cfg", ".snowflake", ".dbt",
+})
+
+# Special filesystems rejected even when the workspace lives inside them
+REJECT_PREFIXES = (
+    "/proc/", "/sys/", "/dev/", "/var/run/", "/run/",
+)
+
+# Marker fields removed from a JSON body before checksum
+JSON_MARKER_FIELDS = (
+    "_generatedBy", "_skillVersion", "schemaVersion",
+    "_markerChecksum", "generatedAt", "_static",
+)
+
+MAX_BYTES_CEILING = 16 * 1024 * 1024
+DEFAULT_MAX_FILES = 100_000
+DEFAULT_MAX_DEPTH = 32
+DEFAULT_MAX_FILES_PER_SUBTREE = 10_000
+
+# --------------------------------------------------------------------- #
+# Helpers                                                               #
+# --------------------------------------------------------------------- #
+
+
+def casefold_ascii(s: str) -> str:
+    """ASCII lowercase casefold (privacy-and-sanitization.md / helpers.md § 3).
+
+    Bytes 0x41..0x5A -> 0x61..0x7A; every other byte unchanged.
+    """
+    return "".join(c.lower() if "A" <= c <= "Z" else c for c in s)
+
+
+def segment_denied(segment: str) -> str:
+    """Return the matching pattern name if the segment is denied, else ""."""
+    seg_lc = casefold_ascii(segment)
+    if seg_lc in DENY_DIRS:
+        return seg_lc
+    for pat in DENY_PATTERNS_LC:
+        if fnmatch.fnmatchcase(seg_lc, pat):
+            return pat
+    return ""
+
+
+def _resolve_workspace(workspace: str) -> str:
+    ws_real = os.path.realpath(workspace)
+    if not os.path.isdir(ws_real):
+        raise ValueError("workspace is not a directory")
+    return ws_real
+
+
+def _check_special_fs(realpath: str) -> str:
+    for prefix in REJECT_PREFIXES:
+        if realpath.startswith(prefix):
+            return prefix
+    return ""
+
+
+def _fd_realpath(fd: int) -> str:
+    """Return the canonical path of an open file descriptor.
+
+    Used for the TOCTOU re-check in op_open (helpers.md § 2.2).
+    """
+    if sys.platform == "linux":
+        return os.readlink(f"/proc/self/fd/{fd}")
+    if sys.platform == "darwin":
+        # F_GETPATH on macOS = 50; returns the canonical path of fd into a buffer.
+        libc_name = ctypes.util.find_library("c")
+        if libc_name is None:
+            raise OSError("libc not available")
+        libc = ctypes.CDLL(libc_name, use_errno=True)
+        buf = ctypes.create_string_buffer(4096)
+        F_GETPATH = 50
+        rc = libc.fcntl(fd, F_GETPATH, buf)
+        if rc == -1:
+            raise OSError(ctypes.get_errno(), "fcntl(F_GETPATH) failed")
+        return buf.value.decode("utf-8")
+    raise OSError("fd realpath unsupported on this platform")
+
+
+def _validate_path(workspace: str, path: str) -> dict:
+    """Run the realpath gauntlet on `path` against `workspace`. Return dict."""
+    try:
+        ws_real = _resolve_workspace(workspace)
+    except (OSError, ValueError) as e:
+        return {"ok": False, "error": f"workspace invalid: {e}"}
+
+    try:
+        path_real = os.path.realpath(path, strict=True)
+    except OSError as e:
+        return {"ok": False, "error": f"realpath failed: {e.strerror or e}"}
+
+    parts = path_real.split(os.sep)
+    if ".." in parts:
+        return {"ok": False, "error": "resolved path contains .."}
+
+    if path_real != ws_real and not path_real.startswith(ws_real + os.sep):
+        return {"ok": False, "error": "path escapes workspace root"}
+
+    bad_prefix = _check_special_fs(path_real)
+    if bad_prefix:
+        return {"ok": False, "error": f"path traverses rejected filesystem {bad_prefix}"}
+
+    rel = "" if path_real == ws_real else os.path.relpath(path_real, ws_real)
+    if rel:
+        for seg in rel.split(os.sep):
+            denied = segment_denied(seg)
+            if denied:
+                return {"ok": False, "error": f"deny-list match on segment: {seg} (pattern: {denied})"}
+
+    try:
+        is_symlink = os.path.islink(path)
+    except OSError:
+        is_symlink = False
+    is_dir = os.path.isdir(path_real)
+
+    return {
+        "ok": True,
+        "realpath": path_real,
+        "workspaceRelative": rel.replace(os.sep, "/"),
+        "isSymlink": is_symlink,
+        "isDir": is_dir,
+        "workspaceRealpath": ws_real,
+    }
+
+
+# --------------------------------------------------------------------- #
+# Operations                                                            #
+# --------------------------------------------------------------------- #
+
+
+def op_realpath(req):
+    res = _validate_path(req["workspace"], req["path"])
+    res.pop("workspaceRealpath", None)
+    return res
+
+
+def op_match_deny(req):
+    res = _validate_path(req["workspace"], req["path"])
+    if res["ok"]:
+        return {"ok": True, "denied": False, "matchedPattern": None, "matchedSegment": None}
+    # If validation failed because of deny-list, extract pattern and segment
+    err = res.get("error", "")
+    m = re.match(r"deny-list match on segment: (.+) \(pattern: (.+)\)$", err)
+    if m:
+        return {"ok": True, "denied": True, "matchedSegment": m.group(1), "matchedPattern": m.group(2)}
+    return res
+
+
+def op_open(req):
+    workspace = req["workspace"]
+    path = req["path"]
+    max_bytes = min(int(req.get("maxBytes", MAX_BYTES_CEILING)), MAX_BYTES_CEILING)
+
+    val = _validate_path(workspace, path)
+    if not val["ok"]:
+        return val
+    target = val["realpath"]
+
+    flags = os.O_RDONLY | os.O_NOFOLLOW
+    if sys.platform == "darwin" and hasattr(os, "O_NOFOLLOW_ANY"):
+        flags |= os.O_NOFOLLOW_ANY
+
+    try:
+        fd = os.open(path, flags)
+    except OSError as e:
+        return {"ok": False, "error": f"open failed: {e.strerror or e}"}
+
+    try:
+        try:
+            fd_real = _fd_realpath(fd)
+        except OSError:
+            fd_real = None
+        if fd_real and fd_real != target:
+            return {"ok": False, "error": "TOCTOU mismatch: descriptor path differs from resolved path"}
+
+        chunks = []
+        remaining = max_bytes + 1
+        while remaining > 0:
+            chunk = os.read(fd, min(remaining, 65536))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        data = b"".join(chunks)
+        if len(data) > max_bytes:
+            return {"ok": False, "error": f"file exceeds maxBytes ({max_bytes})"}
+
+        return {
+            "ok": True,
+            "bytes": base64.b64encode(data).decode("ascii"),
+            "sha256": hashlib.sha256(data).hexdigest(),
+        }
+    finally:
+        os.close(fd)
+
+
+def op_walk(req):
+    workspace = req["workspace"]
+    roots = req.get("roots", ["."])
+    max_files = int(req.get("maxFiles", DEFAULT_MAX_FILES))
+    max_depth = int(req.get("maxDepth", DEFAULT_MAX_DEPTH))
+    per_subtree = int(req.get("maxFilesPerSubtree", DEFAULT_MAX_FILES_PER_SUBTREE))
+    globs = req.get("globs", []) or []
+
+    try:
+        ws_real = _resolve_workspace(workspace)
+    except (OSError, ValueError) as e:
+        return {"ok": False, "error": f"workspace invalid: {e}"}
+
+    files = []
+    visited = set()
+    warnings = []
+    truncated_subtrees = []
+    truncated = False
+
+    def matches_any_glob(rel_posix):
+        if not globs:
+            return True
+        return any(fnmatch.fnmatchcase(rel_posix, g) for g in globs)
+
+    for root in roots:
+        if truncated:
+            break
+        root_path = root if os.path.isabs(root) else os.path.join(ws_real, root)
+        root_val = _validate_path(workspace, root_path)
+        if not root_val["ok"]:
+            warnings.append(f"root rejected: {root}: {root_val.get('error')}")
+            continue
+        root_real = root_val["realpath"]
+        subtree_count = 0
+        subtree_label = root_val["workspaceRelative"] or "."
+
+        stack = [(root_real, 0)]
+        while stack and not truncated:
+            current, depth = stack.pop()
+            if depth > max_depth:
+                warnings.append(f"depth cap reached at {os.path.relpath(current, ws_real)}")
+                continue
+            try:
+                entries = sorted(os.listdir(current))
+            except OSError as e:
+                warnings.append(f"cannot list {os.path.relpath(current, ws_real)}: {e.strerror}")
+                continue
+            for name in entries:
+                seg_denied = segment_denied(name)
+                full = os.path.join(current, name)
+                if seg_denied:
+                    warnings.append(f"deny-list segment match: {os.path.relpath(full, ws_real)} ({seg_denied})")
+                    continue
+                try:
+                    real = os.path.realpath(full, strict=True)
+                except OSError:
+                    warnings.append(f"realpath failed for {os.path.relpath(full, ws_real)}")
+                    continue
+                if real != ws_real and not real.startswith(ws_real + os.sep):
+                    warnings.append(f"escape rejected: {os.path.relpath(full, ws_real)}")
+                    continue
+                if _check_special_fs(real):
+                    warnings.append(f"special-fs rejected: {os.path.relpath(full, ws_real)}")
+                    continue
+                if real in visited:
+                    continue
+                visited.add(real)
+                if os.path.isdir(real):
+                    stack.append((real, depth + 1))
+                    continue
+                rel_posix = os.path.relpath(real, ws_real).replace(os.sep, "/")
+                if matches_any_glob(rel_posix):
+                    files.append(rel_posix)
+                    subtree_count += 1
+                    if subtree_count >= per_subtree:
+                        truncated_subtrees.append(subtree_label)
+                        warnings.append(f"per-subtree cap reached: {subtree_label}")
+                        stack.clear()
+                        break
+                    if len(files) >= max_files:
+                        truncated = True
+                        truncated_subtrees.append(subtree_label)
+                        warnings.append("global file-walk cap reached")
+                        stack.clear()
+                        break
+
+    files.sort()
+    return {
+        "ok": True,
+        "files": files,
+        "truncated": truncated,
+        "truncatedSubtrees": sorted(set(truncated_subtrees)),
+        "warnings": warnings,
+    }
+
+
+def op_sha256_canonical(req):
+    kind = req.get("kind")
+    try:
+        raw = base64.b64decode(req["bytes"], validate=True)
+    except Exception as e:
+        return {"ok": False, "error": f"bytes must be valid base64: {e}"}
+
+    if raw.startswith(b"\xef\xbb\xbf"):
+        return {"ok": False, "error": "UTF-8 BOM not allowed"}
+
+    if kind == "markdown":
+        nl = raw.find(b"\n")
+        if nl < 0:
+            return {"ok": False, "error": "markdown body missing a newline-terminated marker line"}
+        body = raw[nl + 1:]
+        return {"ok": True, "sha256": hashlib.sha256(body).hexdigest()}
+
+    if kind == "json":
+        try:
+            obj = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as e:
+            return {"ok": False, "error": f"json parse failed: {e}"}
+        if not isinstance(obj, dict):
+            return {"ok": False, "error": "json top-level must be an object"}
+        cleaned = {k: v for k, v in obj.items() if k not in JSON_MARKER_FIELDS}
+        emitted = json.dumps(
+            cleaned, sort_keys=True, indent=2, ensure_ascii=False,
+            separators=(",", ": "),
+        ).encode("utf-8") + b"\n"
+        return {"ok": True, "sha256": hashlib.sha256(emitted).hexdigest()}
+
+    return {"ok": False, "error": f"unknown kind: {kind}"}
+
+
+def op_write_atomic(req):
+    workspace = req["workspace"]
+    rel = req["path"]
+    try:
+        data = base64.b64decode(req["bytes"], validate=True)
+    except Exception as e:
+        return {"ok": False, "error": f"bytes must be valid base64: {e}"}
+
+    try:
+        ws_real = _resolve_workspace(workspace)
+    except (OSError, ValueError) as e:
+        return {"ok": False, "error": f"workspace invalid: {e}"}
+
+    if os.path.isabs(rel) or ".." in rel.split("/"):
+        return {"ok": False, "error": "path must be relative without .."}
+
+    full = os.path.join(ws_real, *rel.split("/"))
+    parent = os.path.dirname(full)
+    if not parent:
+        return {"ok": False, "error": "path lacks a parent directory"}
+    try:
+        os.makedirs(parent, exist_ok=True)
+    except OSError as e:
+        return {"ok": False, "error": f"parent dir create failed: {e.strerror or e}"}
+
+    parent_real = os.path.realpath(parent)
+    if parent_real != ws_real and not parent_real.startswith(ws_real + os.sep):
+        return {"ok": False, "error": "parent escapes workspace root"}
+
+    tmp = full + ".tmp"
+    try:
+        fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    except FileExistsError:
+        return {"ok": False, "error": ".tmp already exists; aborting"}
+    except OSError as e:
+        return {"ok": False, "error": f"tmp open failed: {e.strerror or e}"}
+
+    try:
+        os.write(fd, data)
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+    try:
+        os.rename(tmp, full)
+    except OSError as e:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        return {"ok": False, "error": f"rename failed: {e.strerror or e}"}
+
+    try:
+        dfd = os.open(parent, os.O_RDONLY)
+        try:
+            os.fsync(dfd)
+        finally:
+            os.close(dfd)
+    except OSError:
+        pass
+
+    return {"ok": True, "sha256": hashlib.sha256(data).hexdigest()}
+
+
+def op_cleanup_tmp(req):
+    workspace = req["workspace"]
+    try:
+        ws_real = _resolve_workspace(workspace)
+    except (OSError, ValueError) as e:
+        return {"ok": False, "error": f"workspace invalid: {e}"}
+
+    deleted = []
+    for dirpath, dirnames, filenames in os.walk(ws_real):
+        # Prune deny dirs at every layer
+        dirnames[:] = [d for d in dirnames if d not in DENY_DIRS]
+        for name in filenames:
+            if not name.endswith(".tmp"):
+                continue
+            target_name = name[:-4]
+            target_path = os.path.join(dirpath, target_name)
+            if not os.path.exists(target_path):
+                continue
+            # Verify target carries a marker (Markdown or JSON)
+            try:
+                with open(target_path, "rb") as f:
+                    head = f.read(4096)
+            except OSError:
+                continue
+            if (b"<!-- aem-agentkit: generated v" in head
+                    or b'"_generatedBy": "aem-agentkit"' in head):
+                tmp_path = os.path.join(dirpath, name)
+                try:
+                    os.unlink(tmp_path)
+                    deleted.append(os.path.relpath(tmp_path, ws_real).replace(os.sep, "/"))
+                except OSError:
+                    pass
+    return {"ok": True, "deleted": sorted(deleted)}
+
+
+def op_sanitize_string(req):
+    value = req.get("value", "")
+    if not isinstance(value, str):
+        return {"ok": False, "error": "value must be a string"}
+    if value == "":
+        return {"ok": True, "value": "", "dropped": True, "reason": "empty"}
+
+    normalized = unicodedata.normalize("NFC", value)
+
+    # Strip-list check
+    for ch in normalized:
+        if ord(ch) in STRIP_SET:
+            return {"ok": True, "value": "", "dropped": True, "reason": "stripped"}
+
+    truncated = False
+    if len(normalized) > 80:
+        normalized = normalized[:79] + "…"
+        truncated = True
+
+    # Inline-code wrap with appropriate fence length
+    backticks = re.findall(r"`+", normalized)
+    longest = max((len(b) for b in backticks), default=0)
+    fence = "`" * (longest + 1)
+    wrapped = f"{fence}{normalized}{fence}"
+
+    # Self-validate (no strip-list survivors)
+    for ch in wrapped:
+        if ord(ch) in STRIP_SET:
+            return {"ok": True, "value": "", "dropped": True, "reason": "stripped"}
+
+    reason = "length" if truncated else "ok"
+    return {"ok": True, "value": wrapped, "dropped": False, "reason": reason}
+
+
+def op_lock(req):
+    workspace = req["workspace"]
+    lock_rel = req.get("path", ".aem/context/.agentkit.lock")
+    try:
+        ws_real = _resolve_workspace(workspace)
+    except (OSError, ValueError) as e:
+        return {"ok": False, "acquired": False, "error": f"workspace invalid: {e}"}
+
+    lock_full = os.path.join(ws_real, *lock_rel.split("/"))
+    parent = os.path.dirname(lock_full)
+    try:
+        os.makedirs(parent, exist_ok=True)
+    except OSError as e:
+        return {"ok": False, "acquired": False, "error": f"lock parent: {e.strerror or e}"}
+
+    pid = os.getpid()
+
+    def _try_create():
+        return os.open(lock_full, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+
+    try:
+        fd = _try_create()
+    except FileExistsError:
+        # Check for stale lock (PID no longer running)
+        try:
+            with open(lock_full, "rb") as f:
+                existing = f.read().strip().decode("ascii", errors="replace")
+            existing_pid = int(existing)
+        except (OSError, ValueError):
+            return {"ok": False, "acquired": False, "error": "lock file present with unreadable PID"}
+        try:
+            os.kill(existing_pid, 0)
+            return {"ok": False, "acquired": False, "error": f"another invocation is already running (PID {existing_pid})"}
+        except OSError as ke:
+            if ke.errno != errno.ESRCH:
+                return {"ok": False, "acquired": False, "error": f"PID check failed: {ke.strerror}"}
+            try:
+                os.unlink(lock_full)
+                fd = _try_create()
+            except OSError as e2:
+                return {"ok": False, "acquired": False, "error": f"stale lock cleanup failed: {e2.strerror or e2}"}
+
+    try:
+        os.write(fd, str(pid).encode("ascii"))
+    finally:
+        os.close(fd)
+    return {"ok": True, "acquired": True, "pid": pid}
+
+
+def op_unlock(req):
+    workspace = req["workspace"]
+    lock_rel = req.get("path", ".aem/context/.agentkit.lock")
+    try:
+        ws_real = _resolve_workspace(workspace)
+    except (OSError, ValueError) as e:
+        return {"ok": False, "error": f"workspace invalid: {e}"}
+    lock_full = os.path.join(ws_real, *lock_rel.split("/"))
+    try:
+        os.unlink(lock_full)
+    except FileNotFoundError:
+        pass
+    except OSError as e:
+        return {"ok": False, "error": f"unlock failed: {e.strerror or e}"}
+    return {"ok": True}
+
+
+# --------------------------------------------------------------------- #
+# Dispatch                                                              #
+# --------------------------------------------------------------------- #
+
+OPS = {
+    "realpath": op_realpath,
+    "open": op_open,
+    "walk": op_walk,
+    "sha256-canonical": op_sha256_canonical,
+    "write-atomic": op_write_atomic,
+    "cleanup-tmp": op_cleanup_tmp,
+    "sanitize-string": op_sanitize_string,
+    "lock": op_lock,
+    "unlock": op_unlock,
+    "match-deny": op_match_deny,
+}
+
+
+def handle(req):
+    op = req.get("op")
+    fn = OPS.get(op)
+    if fn is None:
+        return {"ok": False, "error": f"unknown op: {op!r}"}
+    try:
+        return fn(req)
+    except KeyError as e:
+        return {"ok": False, "error": f"missing required field: {e}"}
+    except Exception as e:
+        return {"ok": False, "error": f"internal helper error: {type(e).__name__}: {e}"}
+
+
+def main():
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "--version":
+            sys.stdout.write(VERSION + "\n")
+            return 0
+        if sys.argv[1] in ("-h", "--help"):
+            sys.stdout.write(__doc__)
+            return 0
+        sys.stderr.write(f"aem-agentkit-helper: unknown argument {sys.argv[1]!r}\n")
+        return 1
+
+    all_ok = True
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            req = json.loads(line)
+        except json.JSONDecodeError as e:
+            resp = {"ok": False, "error": f"invalid json: {e}"}
+        else:
+            resp = handle(req)
+        if not resp.get("ok"):
+            all_ok = False
+        sys.stdout.write(json.dumps(resp, sort_keys=True) + "\n")
+        sys.stdout.flush()
+    return 0 if all_ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
