@@ -133,24 +133,32 @@ resolution.
 
 ## Generation order
 
-1–8: `.aem/context/components.json`, `osgi-services.json`,
-`conventions.md`, `avoid.md`, `glossary.md`, `test-patterns.md`,
-`aem-api-namespaces.md`, `README.md`.
+The order is fixed. Skipping any step breaks downstream consumers.
 
-9: Per-module `AGENTS.md` (recursive — see [references/per-module-agents-md.md](./references/per-module-agents-md.md)).
+**Workspace-root universal layer (steps 1-8).** `.aem/context/components.json`, `osgi-services.json`, `conventions.md`, `avoid.md`, `glossary.md`, `test-patterns.md`, `aem-api-namespaces.md`, `README.md`. Each file covers the **whole workspace**.
 
-10: Tool-specific artifacts — see [references/per-tool-artifacts.md](./references/per-tool-artifacts.md).
+**Per-sub-project universal layer (step 9 — MANDATORY for nested AEM monorepos).** For every nested AEM project the discovery in [`references/per-module-agents-md.md`](./references/per-module-agents-md.md) § 1 detected (and recorded under `heuristics[].decision == "module-shape"` with `value: nested-aem-project`), **repeat steps 1-7 scoped to that sub-project's source tree** and write the files to `<sub-project>/.aem/context/`. Skip the static-reference files (`aem-api-namespaces.md`, `README.md` already cover the whole workspace) and the manifest (workspace-root only). A sub-project with `_disable_agentkit` is skipped per [`references/collision-rules.md`](./references/collision-rules.md). This step is **not optional** — when nested sub-projects are detected, their per-sub-project `.aem/context/` directories MUST exist before the generation order proceeds. See [`references/codified-context.md`](./references/codified-context.md) § 11 for the schema and discovery scope rules.
 
-11: `.mcp.json` / `.cursor/mcp.json` placeholders — see [references/mcp-wiring.md](./references/mcp-wiring.md).
+**Step 10 — Per-module `AGENTS.md`** (recursive — see [`references/per-module-agents-md.md`](./references/per-module-agents-md.md)).
 
-12: `.aem/context/.agentkit-manifest.json` — see [references/manifest.md](./references/manifest.md).
+**Step 11 — Tool-specific artifacts** — see [`references/per-tool-artifacts.md`](./references/per-tool-artifacts.md).
 
-Then run the self-validation pass: every evidence pointer resolves; every
-`slingModelFqcn` / `implFqcn` resolves; every per-module `AGENTS.md`
-matches an existing directory; every marker checksum recomputes; every
-URL is Cloud-Service-scoped; every sanitized string is strip-list clean;
-every manifest entry's checksum matches on-disk. Exit `0` clean, `2`
-completed-with-warnings, `1` hard failure.
+**Step 12 — `.mcp.json` / `.cursor/mcp.json` placeholders** — see [`references/mcp-wiring.md`](./references/mcp-wiring.md).
+
+**Step 13 — `.aem/context/.agentkit-manifest.json`** — see [`references/manifest.md`](./references/manifest.md).
+
+Then run the **self-validation pass**:
+
+- Every evidence pointer in derived Markdown resolves to an existing file (and line, when given).
+- Every `slingModelFqcn` / `implFqcn` resolves to an existing `.java` file.
+- Every per-module `AGENTS.md` matches an existing directory.
+- Every marker checksum recomputes correctly via the helper's `sha256-canonical` op.
+- Every URL is Cloud-Service-scoped (no `/6.5/`, no `experience-manager-65/`).
+- Every sanitized string is strip-list clean.
+- Every manifest entry's checksum matches the on-disk file.
+- **For every `heuristics[]` entry with `decision: module-shape, value: nested-aem-project`, the corresponding `<path>/.aem/context/components.json` and `<path>/.aem/context/osgi-services.json` exist and carry valid markers.** Missing per-sub-project context is a hard failure (exit `1`).
+
+Exit `0` clean, `2` completed-with-warnings, `1` hard failure.
 
 ## Reference files
 

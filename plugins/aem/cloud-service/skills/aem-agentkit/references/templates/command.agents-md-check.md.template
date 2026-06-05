@@ -13,6 +13,8 @@ Run the `aem-agentkit` skill in **check** mode. Read-only — no files are writt
 aem-agentkit: drift report
   Missing artifacts:
     - <path> (reason)
+  Missing per-sub-project context (nested AEM project lacks .aem/context/):
+    - <sub-project-path> (heuristics declared as nested-aem-project but no scoped indexes found)
   Stale indexes (new artifacts not yet in the index):
     - components.json: <count> new components found in source but not indexed
     - osgi-services.json: <count> new services / models / servlets
@@ -20,8 +22,10 @@ aem-agentkit: drift report
     - <file>: <count> TODO markers requiring human review
   Marker drift (file edited without checksum update):
     - <path> (reason)
+  Suspicious markers (first line almost matches but checksum fails to parse):
+    - <path>
   .agentkit-new files pending review:
     - <path> (created at <time>)
 ```
 
-Exit code is non-zero when any of the above categories is non-empty.
+Exit code is non-zero when any of the above categories is non-empty. A `Missing per-sub-project context` entry on its own is sufficient to fail CI gates because the spec mandates these directories for nested AEM monorepos.

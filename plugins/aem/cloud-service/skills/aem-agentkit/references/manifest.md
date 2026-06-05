@@ -130,6 +130,15 @@ detection) and the source of truth for `.agentkit-new` rotation.
   marker). Missing manifest entries for marker-bearing files in the
   workspace are reported as "unknown skill-marker file" so a customer
   can identify files left over from a previous skill version.
+- **`/agents-md-check` also enforces per-sub-project completeness.**
+  For every `heuristics[]` entry with `decision: module-shape, value:
+  nested-aem-project`, the check confirms that
+  `<path>/.aem/context/components.json` and
+  `<path>/.aem/context/osgi-services.json` exist with valid markers.
+  Missing per-sub-project context is reported under a distinct
+  `missing-subproject-context` category and exits non-zero so CI gates
+  catch the case where a prior run skipped step 9 of the generation
+  order (see [`SKILL.md`](../SKILL.md) § "Generation order").
 - **`/regen-context`** consults the manifest to decide whether each
   index file is currently in its skill-owned state before refreshing.
 - **`.agentkit-new` rotation** (`collision-rules.md` § `.agentkit-new`

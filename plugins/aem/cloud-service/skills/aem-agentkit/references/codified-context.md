@@ -331,19 +331,50 @@ Plain Markdown pointing at the indexes and the derived files. No
 evidence pointers; just a navigation aid for humans. Also a static-
 reference file (`_static: true`).
 
-## 11. Per-sub-project scope (nested AEM monorepos)
+## 11. Per-sub-project scope (nested AEM monorepos) — mandatory
 
-When `per-module-agents-md.md` detects a nested AEM project, the skill
-also writes a scoped `.aem/context/` at that sub-project root. The
-scoped indexes contain only that sub-project's components / services /
-models / conventions. The shared root `.aem/context/` continues to
-cover the whole monorepo for cross-cutting queries.
+When the workspace contains one or more nested AEM projects (detected
+per [`per-module-agents-md.md`](./per-module-agents-md.md) § 1 and
+recorded in `heuristics[]` as `decision: module-shape,
+value: nested-aem-project`), the skill **MUST** also write a scoped
+`.aem/context/` at each sub-project root. This is step 9 of the
+[`SKILL.md`](../SKILL.md) generation order, and is **not optional**:
+the self-validation pass after step 13 fails the run (exit `1`) if any
+declared `nested-aem-project` entry is missing its scoped
+`.aem/context/components.json` or `.aem/context/osgi-services.json`.
 
-Subagents and rules reference whichever `.aem/context/` is closest to
-the file under edit (sub-project context when working inside a
-sub-project, root context otherwise) — the role bodies state this
-explicitly so the agent resolves `<project>` and the prefix at runtime
-instead of relying on a hard-coded path in the role.
+### What's in each per-sub-project `.aem/context/`
+
+| File | Scoped content |
+|---|---|
+| `components.json` | Only components under `<sub-project>/ui.apps*/.../jcr_root/apps/<sub-project's apps namespace>/components/**` — that sub-project's own JCR component tree |
+| `osgi-services.json` | Only Sling Models / OSGi services / Sling Servlets discovered under `<sub-project>/**/src/main/java/**` |
+| `conventions.md` | Conventions derived from **that sub-project's** source files only; if conventions differ from the workspace-root file (e.g. one sub-project uses Felix SCR while the other has migrated to DS R7), the scoped copy is the source of truth for agents working in that sub-project |
+| `avoid.md` | Anti-patterns detected in that sub-project's source files only |
+| `glossary.md` | Domain terms extracted from that sub-project's `cq:title` / CF models / taxonomy only |
+| `test-patterns.md` | Test conventions derived from that sub-project's `it.tests/` and `core/src/test/` only |
+
+### What's NOT duplicated per sub-project
+
+| File | Why workspace-root only |
+|---|---|
+| `aem-api-namespaces.md` | Project-agnostic static reference — same content across every repo and every sub-project |
+| `README.md` (context index) | Project-agnostic static reference |
+| `.agentkit-manifest.json` | Workspace-scoped record of the whole run; each per-sub-project file is listed with its `subprojectRoot` |
+| `.agentkit.lock` | Workspace-scoped advisory lock |
+
+### Discovery walk for per-sub-project context
+
+Step 9 reuses the helper's `walk` op with `roots: ["<sub-project>"]` and
+the standard caps (depth 32, 10k per-subtree, 100k global). The walk is
+bounded to the sub-project's tree, so the scoped indexes never leak
+content from sibling sub-projects.
+
+Subagents and rules reference **whichever `.aem/context/` is closest to
+the file under edit** — sub-project context when working inside a
+sub-project, workspace-root context otherwise. Role bodies state this
+explicitly so the agent resolves `<project>` and the path prefix at
+runtime instead of relying on a hard-coded path.
 
 ## 12. Self-validation (this step only)
 
