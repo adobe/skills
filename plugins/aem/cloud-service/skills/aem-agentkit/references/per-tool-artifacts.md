@@ -36,30 +36,71 @@ If a customer uses an agent the skill does not have a projection for,
 they still get the full universal layer, which is enough for AGENTS.md-
 spec-compliant agents to behave correctly.
 
-## 1. Silent IDE detection and stability tiers
+## 1. IDE detection signals and selection
 
-| Tool | Positive signal(s) | Stability tier |
+Detection signals are deliberately tight to avoid false positives. Each
+tool's row below is a **necessary** condition: if the row's signal does
+not match, the tool is considered absent and is never offered in the
+selection prompt.
+
+| Tool | Positive signal (both halves where applicable) | Stability tier |
 |---|---|---|
-| Claude Code | `.claude/` directory at workspace root, OR `CLAUDE.md` at root | **stable** |
-| Cursor | `.cursor/` directory at workspace root | **stable** |
-| GitHub Copilot | `.github/copilot-instructions.md` present, OR `.github/` with any `.yml` workflow file (covers VS Code, JetBrains, Neovim with Copilot) | **stable** |
+| Claude Code | `.claude/agents/` is non-empty OR `.claude/commands/` is non-empty (an empty `.claude/` directory left by an IDE installer is **not** a signal) | **stable** |
+| Cursor | `.cursor/rules/` is non-empty OR `.cursor/mcp.json` exists | **stable** |
+| GitHub Copilot | `.github/copilot-instructions.md` exists (the presence of any `.github/*.yml` workflow is **not** a signal — GitHub Actions ≠ Copilot) | **stable** |
 | Codex (OpenAI) | Always — Codex reads `AGENTS.md` natively per the open standard | **stable** |
-| Continue.dev | `.continue/` directory at workspace root (covers VS Code, JetBrains with Continue) | **stable** |
-| Cline (VS Code) | `.clinerules` file at workspace root, OR `.vscode/extensions.json` listing `saoudrizwan.claude-dev` | **stable** |
-| Windsurf | `.windsurfrules` file at workspace root, OR `.codeium/` directory | **stable** |
+| Continue.dev | `.continue/rules/` is non-empty | **stable** |
+| Cline (VS Code) | `.clinerules` file at workspace root, OR `.vscode/extensions.json` lists `saoudrizwan.claude-dev` | **stable** |
+| Windsurf | `.windsurfrules` file at workspace root, OR `.codeium/` directory has content | **stable** |
 | Aider | Always — Aider reads `AGENTS.md` natively | **stable** |
 | Augment Code | `.augment/` directory or `augment.md` at root | **stable** |
 | **Native AGENTS.md adopters (no projection needed — universal layer is enough)** | Always covered: OpenAI Codex, Gemini CLI, Zed, Factory, Jules, Devin, Amp, Kilo, RooCode, Warp, JetBrains Junie, Ona, Phoenix, and any future AGENTS.md-spec-compliant agent | **stable** |
+
+### 1.1 Selection prompt
+
+After detection, the skill presents the customer with the matched
+toolchains and waits for one of four answers: **all** (every detected
+toolchain), **single** (pick one), **multi** (multi-select subset), or
+**none** (universal layer only). The exact prompt template is in
+[`output-format.md`](./output-format.md) § 1.1.
+
+The selection is persisted under the `decision: ide-targets` entry of
+`.aem/agentkit-overrides.yml` (schema in
+[`manifest.md`](./manifest.md) § 5). On subsequent runs the override
+takes precedence and the prompt is skipped.
+
+### 1.2 Suppressing the prompt (headless / CI runs)
+
+The prompt is suppressed under any one of:
+
+- CLI flag `--silent` (or skill argument `silent: true`).
+- Environment variable `AEM_AGENTKIT_SILENT=1`.
+- `.aem/agentkit-overrides.yml` already contains a `decision: ide-targets` entry — that entry is honored verbatim, no prompt.
+
+In suppressed mode the skill writes for **every** detected toolchain
+(the original silent behavior), so existing scripted invocations
+remain reproducible. The CI integration recipe is therefore: commit
+`.aem/agentkit-overrides.yml` with the team's chosen `ide-targets` list
+on first run; every subsequent CI invocation honors it without
+prompting.
+
+### 1.3 Adding or removing IDEs on later runs
+
+To layer in a tool the customer originally declined: either edit
+`.aem/agentkit-overrides.yml` and add the new tool to the
+`ide-targets` list, or delete the entry entirely (the next run
+prompts again). To remove a tool whose artifacts already exist:
+delete the marker-bearing files (the skill's reversibility recipe
+in [`upgrade-and-migration.md`](./upgrade-and-migration.md) § 4) and
+re-run. The skill never auto-removes tool artifacts when the customer
+deselects a tool — those files have markers and remain skill-owned;
+removing them is an explicit operation.
 
 All projections are first-class. The skill's release process verifies
 each projection's syntax against the upstream IDE's documented format
 before every release; an IDE that materially changes its format produces
 a follow-up release. The customer can pin `aem-agentkit` versions in
 their plugin manifest if they need a stable target.
-
-A signal present **after** the customer manually creates the relevant
-directory is treated identically — re-running the skill after `mkdir
-.cursor` (or `touch .clinerules`) adds that tool's layer.
 
 ## 2. Canonical role-prompt source
 

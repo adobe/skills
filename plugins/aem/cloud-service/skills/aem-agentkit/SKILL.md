@@ -61,22 +61,51 @@ skill defers to it as step 0 before continuing.
   AEM project root. Full collision behavior in
   [references/collision-rules.md](./references/collision-rules.md).
 
-## Silent IDE detection
+## IDE detection and selection
 
-| Tool | Signal | Artifacts |
+The skill detects agentic toolchain signals from the filesystem and then
+**asks the customer** which detected toolchains to materialize artifacts
+for. The universal layer (`AGENTS.md` + `.aem/context/*`) is always
+written; the tool-specific layer is opt-in per IDE.
+
+Detection signals are tightened to avoid false positives — having
+`.github/*.yml` workflow files no longer counts as a Copilot signal,
+and an empty `.claude/` directory (often left by IDE installers) no
+longer fires.
+
+| Tool | Signal (must include the "content" half) | Artifacts (when selected) |
 |---|---|---|
-| Claude Code | `.claude/` or `CLAUDE.md` | `.claude/agents/aem-*.md`, `.claude/commands/<owned>.md`, `.mcp.json` placeholder |
-| Cursor | `.cursor/` | `.cursor/rules/aem-*.mdc`, `.cursor/mcp.json` placeholder |
-| GitHub Copilot | `.github/copilot-instructions.md` or `.github/*.yml` | `.github/instructions/aem-*.instructions.md` (+ `.github/copilot-instructions.md` when missing) |
-| Codex / Aider / native-AGENTS.md tools | always | (universal layer only) |
-| Continue.dev | `.continue/` | `.continue/rules/aem-*.md` |
-| Cline | `.clinerules` or VS Code Cline extension signal | `.clinerules` (when missing) |
-| Windsurf | `.windsurfrules` or `.codeium/` | `.windsurfrules` (when missing) |
-| Augment | `.augment/` or `augment.md` | `augment.md` (when missing) |
+| Claude Code | `.claude/agents/` or `.claude/commands/` is non-empty | `.claude/agents/aem-*.md`, `.claude/commands/<owned>.md`, `.mcp.json` placeholder |
+| Cursor | `.cursor/rules/` is non-empty or `.cursor/mcp.json` exists | `.cursor/rules/aem-*.mdc`, `.cursor/mcp.json` placeholder |
+| GitHub Copilot | `.github/copilot-instructions.md` exists | `.github/instructions/aem-*.instructions.md` (+ `.github/copilot-instructions.md` only when missing) |
+| Codex / Aider / native-AGENTS.md tools | always | (universal layer only — never IDE-specific files) |
+| Continue.dev | `.continue/rules/` is non-empty | `.continue/rules/aem-*.md` |
+| Cline | `.clinerules` exists OR `.vscode/extensions.json` lists `saoudrizwan.claude-dev` | `.clinerules` (when missing) |
+| Windsurf | `.windsurfrules` exists OR `.codeium/` is non-empty | `.windsurfrules` (when missing) |
+| Augment | `.augment/` exists OR `augment.md` exists | `augment.md` (when missing) |
+
+After detection, the skill prompts the customer with the detected
+toolchains and the choices: **all**, **single (pick one)**,
+**multi-select**, or **none** (universal layer only). The selection
+is recorded under `decision: ide-targets` in
+`.aem/agentkit-overrides.yml` so subsequent runs skip the prompt.
+Prompt template in [`references/output-format.md`](./references/output-format.md) § 1.1.
+
+The prompt is **suppressed** (and the skill falls back to writing for
+every detected toolchain — the original silent behavior) under any of:
+
+- CLI flag `--silent` on the invocation.
+- Environment variable `AEM_AGENTKIT_SILENT=1` set in the shell.
+- `.aem/agentkit-overrides.yml` already contains a
+  `decision: ide-targets` entry — that entry wins outright.
+
+These three escape hatches keep CI / scripted invocations fully
+reproducible: a skill run in a non-interactive context with the
+override file present makes no decisions of its own.
 
 When no IDE signal fires, the universal layer is still written and the
-preamble notes which tool dirs the customer can create to layer in
-tool-specific artifacts later.
+preamble lists which toolchain dirs the customer can create to layer in
+tool-specific artifacts on a later run.
 
 ## Hard guarantee — allow-list of paths the skill writes
 
@@ -96,9 +125,11 @@ only other paths it touches. Root `AGENTS.md` / `CLAUDE.md` are owned by
 The skill never reads anything matching the deny-list in
 [references/privacy-and-sanitization.md](./references/privacy-and-sanitization.md)
 § 1, never embeds AEM 6.5 documentation URLs (the self-validation pass
-rejects `/6.5/` and `experience-manager-65/`), never names specific MCP
-server packages in any AGENTS.md body, and never prompts the customer
-for input.
+rejects `/6.5/` and `experience-manager-65/`), and never names specific
+MCP server packages in any AGENTS.md body. The skill prompts the
+customer only for **IDE selection** (§ "IDE detection and selection")
+— no prompts for content decisions, file overwrites, or path
+resolution.
 
 ## Generation order
 

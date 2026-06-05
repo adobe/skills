@@ -53,6 +53,60 @@ aem-agentkit: no IDE signal detected; writing universal layer only. Create .clau
 The skill then exits 0 with no writes for the opt-out branches; the
 no-IDE-signal branch proceeds with the universal layer.
 
+## 1.1 IDE selection prompt
+
+After the universal layer is planned and the IDE detection
+signals from
+[`per-tool-artifacts.md`](./per-tool-artifacts.md) § 1 are evaluated,
+the skill prompts the customer before writing any tool-specific
+artifact. The prompt is suppressed when `--silent`,
+`AEM_AGENTKIT_SILENT=1`, or a `decision: ide-targets` entry in
+`.aem/agentkit-overrides.yml` is present
+([`per-tool-artifacts.md`](./per-tool-artifacts.md) § 1.2).
+
+The prompt template:
+
+```
+aem-agentkit: detected agentic toolchain signals:
+  [x] Claude Code     (.claude/agents/, .claude/commands/)
+  [x] GitHub Copilot  (.github/copilot-instructions.md)
+  [ ] Cursor          (no signal)
+  [ ] Continue.dev    (no signal)
+  [ ] Cline           (no signal)
+  [ ] Windsurf        (no signal)
+  [ ] Augment Code    (no signal)
+
+Generate tool-specific artifacts for which toolchain(s)? Universal layer
+is always written regardless of this choice.
+
+  [a] All detected         (Claude Code, GitHub Copilot)
+  [s] Single — pick one
+  [m] Multi-select
+  [n] None — universal layer only
+
+> _
+```
+
+Detected toolchains appear with `[x]`; undetected toolchains appear
+with `[ ]` so the customer sees the complete picture. Detected-but-not-
+chosen toolchains receive no artifacts (and no `.agentkit-new` sidecar
+is produced — the absence is the answer).
+
+The selection is recorded in `.aem/agentkit-overrides.yml` as:
+
+```yaml
+schemaVersion: "1"
+overrides:
+  - decision: ide-targets
+    value: [claude, copilot]
+```
+
+Valid `value` entries: `claude`, `cursor`, `copilot`, `continue`,
+`cline`, `windsurf`, `augment`. The list is the **exclusive** target
+set — toolchains not listed are not materialized. An empty list
+(`value: []`) is equivalent to choosing "none" — only the universal
+layer is written.
+
 ## 2. Summary block
 
 Printed verbatim after every successful run. Counts are filled in from

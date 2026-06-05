@@ -142,13 +142,33 @@ detection) and the source of truth for `.agentkit-new` rotation.
 
 ## 5. Overrides — `.aem/agentkit-overrides.yml`
 
-When the customer disagrees with a heuristic decision, they author
-`.aem/agentkit-overrides.yml` at the workspace root. Example:
+`.aem/agentkit-overrides.yml` lives at the workspace root and carries
+two classes of override:
+
+1. **Customer-authored heuristic overrides** — when the customer
+   disagrees with the skill's inference for module shape, frontend
+   variant, DS generation, recursion depth, etc. Read-only from the
+   skill's perspective.
+2. **`ide-targets` selection** — written by the skill itself the first
+   time the IDE-selection prompt is answered
+   ([`output-format.md`](./output-format.md) § 1.1). Read-only on
+   subsequent runs; deleting the entry forces the prompt to fire
+   again.
+
+Example:
 
 ```yaml
 # Workspace-root only. Read at the start of every run.
 schemaVersion: "1"
 overrides:
+  # IDE selection (written by the skill on the answer to the prompt;
+  # see output-format.md § 1.1). Valid entries: claude, cursor,
+  # copilot, continue, cline, windsurf, augment. Empty list means
+  # "universal layer only".
+  - decision: ide-targets
+    value: [claude, copilot]
+
+  # Heuristic overrides (customer-authored).
   - decision: module-shape
     path: brand-a
     value: leaf-module
@@ -158,24 +178,29 @@ overrides:
   - decision: ds-generation
     path: core/src/main/java/com/example/MyService.java
     value: R7
+  - decision: max-recursion-depth
+    value: 4
 ```
 
 Rules:
 
-- The override file is **read-only** from the skill's perspective; the
-  skill never authors or modifies it.
-- Each override entry must specify `decision`, `path`, and `value`. An
-  entry missing any of those is reported in `warningStubs` and
-  ignored.
+- Customer-authored entries are read-only by the skill; the skill
+  never modifies them. The `ide-targets` entry is the **only** value
+  the skill writes into this file, and only on first-run answer to
+  the selection prompt.
+- Each heuristic override entry must specify `decision`, `path`, and
+  `value`. The `ide-targets` and `max-recursion-depth` entries omit
+  `path` (they are workspace-scoped). An entry missing required
+  fields is reported in `warningStubs` and ignored.
 - Override `value` must be a valid value for the decision (e.g.
-  `module-shape` ∈ {`leaf-module`, `nested-aem-project`}). Invalid
-  values are reported in `warningStubs` and ignored.
+  `module-shape` ∈ {`leaf-module`, `nested-aem-project`};
+  `ide-targets` ⊂ {`claude`, `cursor`, `copilot`, `continue`,
+  `cline`, `windsurf`, `augment`}). Invalid values are reported in
+  `warningStubs` and ignored.
 - The manifest records each applied override under
   `heuristics[].overriddenBy` so a customer reading the manifest sees
   which inferences were customer-controlled.
-- The override file is in the privacy-deny-list scope (it lives at
-  `.aem/agentkit-overrides.yml`, not in `~/.aio`/`~/.aws`/etc.) and is
-  read normally; secrets do not belong in this file.
+- The override file is **not** secret. Secrets do not belong here.
 
 ## 6. Reversibility
 
