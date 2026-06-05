@@ -1,0 +1,22 @@
+<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+# {{MODULE_NAME}}
+
+Code-quality / build-enforcement module. Carries `maven-checkstyle-plugin`, `maven-enforcer-plugin`, or similar build-time enforcement rules used by sibling modules.
+
+## Agentic workflow guardrails
+
+- This module ships rules, not application code. Do not add Sling Models, HTL, or content here.
+- Update rules with care — they apply to the whole reactor.
+
+## Common entry points
+
+{{ENTRY_POINTS}}
+
+## What to avoid in this module
+
+- Adding application code (Java, HTL, content).
+- Loosening enforcement rules to make a build pass; fix the offending module instead.
+
+## Build
+
+- `{{MVN_CMD}} -pl {{MODULE_NAME}} install`

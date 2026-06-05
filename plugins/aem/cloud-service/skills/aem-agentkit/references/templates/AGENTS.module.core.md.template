@@ -1,0 +1,36 @@
+<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+# core
+
+OSGi bundle. Backend services, Sling Models, business logic. Built with Maven, tested with JUnit and AEM Mocks.
+
+## Agentic workflow guardrails
+
+- Search the closest `.aem/context/osgi-services.json` before creating a service / model / servlet (closest = scoped sub-project copy when working inside a nested AEM project, root copy otherwise).
+- Verify AEM class names in the Cloud Service Javadoc before importing.
+- Use the project's logging style and DS annotations as derived in `.aem/context/conventions.md`.
+- After adding any indexable artifact, run `/regen-context` so `.aem/context/osgi-services.json` is recomputed with a valid marker checksum. Do not mutate the JSON inline.
+
+## Common entry points
+
+{{ENTRY_POINTS}}
+
+## Module-local conventions
+
+{{CONVENTIONS}}
+
+## What to avoid in this module
+
+See `.aem/context/avoid.md` for the full list with evidence pointers and absolute Cloud Service documentation links.
+
+## Where to look
+
+- Services and models: `.aem/context/osgi-services.json`
+- Conventions: `.aem/context/conventions.md`
+- Test patterns: `.aem/context/test-patterns.md`
+
+## Build
+
+- Bundle-only build + deploy: `{{MVN_CMD}} clean install -pl core -PautoInstallBundle`
+- Unit tests only: `{{MVN_CMD}} -pl core test`
+
+`{{MVN_CMD}}` is one of `mvn` / `./mvnw` (validated against this exact set; any other resolved value omits these build lines with a `warningStubs` entry).

@@ -1,0 +1,30 @@
+<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+# ui.tests
+
+End-to-end UI tests with Cypress. Executed by Cloud Manager during *Custom UI Testing*.
+
+## Agentic workflow guardrails
+
+- Use `data-test-id` attributes for selectors. Avoid brittle CSS selectors.
+- No fixed sleeps. Use `cy.intercept` plus assertions.
+
+## Common entry points
+
+{{ENTRY_POINTS}}
+
+## Module-local conventions
+
+{{CONVENTIONS}}
+
+## What to avoid in this module
+
+- Tests that depend on author / publish state managed outside the test.
+
+## Run
+
+- Local: `cd ui.tests/test-module && npm test`
+- Headless: `cd ui.tests/test-module && npm run test:ci`
+
+## Where to look
+
+- `.aem/context/test-patterns.md`

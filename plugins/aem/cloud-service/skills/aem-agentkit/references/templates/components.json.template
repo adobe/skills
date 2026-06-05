@@ -1,0 +1,9 @@
+{
+  "_generatedBy": "aem-agentkit",
+  "_markerChecksum": "{{CHECKSUM}}",
+  "_skillVersion": "1.0.0-beta",
+  "components": [],
+  "generatedAt": "{{ISO8601_UTC}}",
+  "schemaVersion": "1",
+  "warningStubs": []
+}

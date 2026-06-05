@@ -1,0 +1,24 @@
+<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+---
+description: Scaffold a new AEM component honoring this repo's conventions and call /regen-context to refresh .aem/context/components.json
+argument-hint: <component-name>
+---
+
+# /new-component <name>
+
+Before any other action, read `AGENTS.md`, the closest `.aem/context/components.json`, the closest `.aem/context/conventions.md`, and the relevant `<aem-project-root>/ui.apps/AGENTS.md`. Honor every rule under the **Agentic workflow guardrails** sections.
+
+## Input validation
+
+`<name>` must match `^[a-z][a-z0-9-]{0,63}$` (lowercase letters and digits, hyphen-separated, 1–64 characters). Reject any input that does not match before any other step; do **not** pass the raw name into shell or filesystem commands without validating first.
+
+## Flow
+
+1. Resolve the AEM project root by walking up from the current working directory to the closest enclosing `pom.xml` that matches the nested-AEM-project detection (see `templates/roles/role.component-author.md`). Take the closest `.aem/context/` as the index set for this work.
+2. Confirm `<name>` does not already exist in the closest `.aem/context/components.json` and that file does not carry `truncated: true`. If it does, stop and recommend `/regen-context` after narrowing the workspace.
+3. Delegate to the `aem-component-author` subagent (project-scoped, installed in `.claude/agents/`).
+4. After the subagent completes, run `{{MVN_CMD}} -pl <aem-project-root>/ui.apps -PautoInstallPackage clean install` and report the outcome. `{{MVN_CMD}}` is restricted to the literal set `{"mvn", "./mvnw"}`; any other resolved value omits this build step entirely with a `warningStubs` entry. Use the validated `<name>` only; never interpolate untrusted input into shell commands.
+5. Run `/regen-context` so `.aem/context/components.json` is recomputed with a valid marker checksum and the new component appears in the canonical body. Do not mutate the JSON inline from this command.
+6. Confirm the new component now appears in the (refreshed) closest `.aem/context/components.json`.
+
+Stop if any guardrail would be violated.

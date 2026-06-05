@@ -1,0 +1,36 @@
+<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+# ui.apps
+
+FileVault content package. Application code: components, templates, client libraries, content structure. HTL is the scripting engine.
+
+## Agentic workflow guardrails
+
+- Search `.aem/context/components.json` before creating a new component (closest scoped copy when working in a nested sub-project).
+- Never write under `/libs`; use `/apps/<project>/...` overlays where `<project>` is resolved from the closest enclosing AEM project root (see `templates/roles/role.component-author.md` § "Resolve `<project>`").
+- Honor the project's HTL conventions in `.aem/context/conventions.md`.
+- After adding a component, run `/regen-context` so `.aem/context/components.json` is recomputed with a valid marker checksum. Do not mutate the JSON inline.
+
+## Common entry points
+
+{{ENTRY_POINTS}}
+
+## Module-local conventions
+
+{{CONVENTIONS}}
+
+## What to avoid in this module
+
+- HTL `data-sly-test` with redundant constant comparison (Cloud SDK lint warning).
+- Hard-coded component groups; reuse the project's component-group naming.
+- Mutating `/libs` paths.
+
+## Where to look
+
+- Components: `.aem/context/components.json`
+- Conventions: `.aem/context/conventions.md`
+
+## Build
+
+- Content package build + deploy: `{{MVN_CMD}} clean install -pl ui.apps -PautoInstallPackage`
+
+`{{MVN_CMD}}` is one of `mvn` / `./mvnw` (validated against this exact set; any other value emits a `warningStubs` entry and this build line is omitted).

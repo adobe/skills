@@ -1,0 +1,34 @@
+<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+# dispatcher
+
+Cloud-optimized Dispatcher configuration. Caching, security, virtual hosts. Validated locally by the Dispatcher SDK.
+
+Layout detected: **{{DISPATCHER_LAYOUT}}** (`{{DISPATCHER_LAYOUT_PATH}}`).
+
+## Agentic workflow guardrails
+
+- Never mutate immutable files in `dispatcher/src/conf.d/` (cloud layout).
+- Customer changes go in `dispatcher/src/conf.dispatcher.d/`.
+- Run `dispatcher/bin/validate.sh src` before every commit.
+
+## Common entry points
+
+{{ENTRY_POINTS}}
+
+## Module-local conventions
+
+{{CONVENTIONS}}
+
+## What to avoid in this module
+
+- Adding `allow` rules without a corresponding `deny` baseline.
+- Editing under `conf.d/` (cloud layout — immutable).
+- Bypassing the SDK validation step.
+
+## Validate
+
+```bash
+cd dispatcher && ./bin/validate.sh src
+```
+
+The change is not complete until validation passes.

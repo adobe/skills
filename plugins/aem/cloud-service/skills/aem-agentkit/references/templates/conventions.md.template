@@ -1,0 +1,38 @@
+<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+# Conventions (derived)
+
+Each rule below was derived from existing code. Every rule cites at least three evidence pointers (`<path>:<line>`). Rules without enough evidence are marked TODO.
+
+## Package naming
+
+{{PACKAGE_NAMING}}
+
+## Sling Model annotation style
+
+{{SLING_MODEL_STYLE}}
+
+## OSGi DS annotation style
+
+{{OSGI_DS_STYLE}}
+
+## HTL naming
+
+{{HTL_NAMING}}
+
+## Logging
+
+{{LOGGING_STYLE}}
+
+## Dispatcher includes
+
+{{DISPATCHER_INCLUDES}}
+
+## Build / verify
+
+- Full build: `{{MVN_CMD}} clean install`
+- Verify: `{{MVN_CMD}} -B verify`
+- Dispatcher validate: `cd dispatcher && ./bin/validate.sh src`{{JAVA_VERSION_LINE}}
+
+## TODOs requiring human review
+
+{{TODOS}}
