@@ -69,23 +69,42 @@ For `/etc/workflow/models/` legacy models, the ID is `/etc/workflow/models/my-wo
 
 ## 4. HTTP Workflow API
 
+The API is rooted at `/var/workflow/instances` (the legacy `/etc/workflow/instances` path is
+still accepted on 6.5 LTS). Do **not** POST to `/api/workflow/instances` — no workflow API is
+mounted there, so the Sling default POST servlet silently writes stray JCR nodes and returns a
+misleading 2xx **without starting any workflow** (a `GET` on that path returns 404).
+
 ```bash
-# Start
+# Start — returns HTTP 201 with an HTML body linking to the new instance path
 curl -u admin:admin -X POST \
-  "http://localhost:4502/api/workflow/instances" \
-  -d "model=/var/workflow/models/my-workflow" \
-  -d "payloadType=JCR_PATH" \
-  -d "payload=/content/my-site/en/home" \
-  -d "workflowTitle=My Test Run"
+  "http://localhost:4502/var/workflow/instances" \
+  --data-urlencode "_charset_=utf-8" \
+  --data-urlencode "model=/var/workflow/models/my-workflow" \
+  --data-urlencode "payloadType=JCR_PATH" \
+  --data-urlencode "payload=/content/my-site/en/home" \
+  --data-urlencode "workflowTitle=My Test Run" \
+  --data-urlencode "startComment=triggered via HTTP API"
 
-# List running instances
+# List instances — filter by state with a selector (.RUNNING.json, .COMPLETED.json, ...)
+curl -u admin:admin "http://localhost:4502/var/workflow/instances.json"
+curl -u admin:admin "http://localhost:4502/var/workflow/instances.RUNNING.json"
+
+# Instance detail — the id is the path returned at start,
+# e.g. /var/workflow/instances/server0/<date>/my-workflow_1
 curl -u admin:admin \
-  "http://localhost:4502/api/workflow/instances?state=RUNNING"
+  "http://localhost:4502/var/workflow/instances/server0/<date>/my-workflow_1.json"
 
-# Terminate an instance
-curl -u admin:admin -X DELETE \
-  "http://localhost:4502/api/workflow/instances/<instanceId>"
+# Terminate (abort) — POST state=ABORTED to the instance path, returns HTTP 200
+curl -u admin:admin -X POST \
+  "http://localhost:4502/var/workflow/instances/server0/<date>/my-workflow_1" \
+  --data-urlencode "_charset_=utf-8" \
+  --data-urlencode "state=ABORTED" \
+  --data-urlencode "terminateComment=cleanup"
 ```
+
+The start response is HTML, not JSON: parse the instance path from the returned link
+(`<a id="Location" …>` / "Modified Resource"). Instance and model listings (`.json`) and
+instance detail (`<instanceId>.json`) return JSON.
 
 ## 5. Replication-Linked Trigger (6.5 LTS Only)
 

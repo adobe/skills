@@ -71,24 +71,42 @@ wfs.startWorkflow(model, data);
 
 **When to use:** CI/CD pipelines, external systems, shell scripts, integration tests.
 
+The API is rooted at `/var/workflow/instances` (legacy `/etc/workflow/instances` is still
+accepted on 6.5 LTS). Do **not** POST to `/api/workflow/instances`: no workflow API is mounted
+there, so the Sling default POST servlet silently writes stray JCR nodes and returns a misleading
+2xx **without starting any workflow** (a `GET` on that path returns 404). This is the most common
+reason a "successful" HTTP trigger never produces a workflow instance.
+
 ```bash
-# Start a workflow instance
+# Start a workflow instance — returns HTTP 201 with an HTML body that links to the
+# new instance path (e.g. /var/workflow/instances/server0/<date>/my-workflow_1)
 curl -u admin:admin -X POST \
-  "http://localhost:4502/api/workflow/instances" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "model=/var/workflow/models/my-workflow" \
-  -d "payloadType=JCR_PATH" \
-  -d "payload=/content/my-site/en/home" \
-  -d "workflowTitle=CI Triggered Review"
+  "http://localhost:4502/var/workflow/instances" \
+  --data-urlencode "_charset_=utf-8" \
+  --data-urlencode "model=/var/workflow/models/my-workflow" \
+  --data-urlencode "payloadType=JCR_PATH" \
+  --data-urlencode "payload=/content/my-site/en/home" \
+  --data-urlencode "workflowTitle=CI Triggered Review" \
+  --data-urlencode "startComment=triggered from CI"
 
-# Get instance details
+# List instances (JSON); filter by state with a selector
+curl -u admin:admin "http://localhost:4502/var/workflow/instances.json"
+curl -u admin:admin "http://localhost:4502/var/workflow/instances.RUNNING.json"
+
+# Get instance details (JSON: id, state, initiator, startTime, model, payload, workItems[])
 curl -u admin:admin \
-  "http://localhost:4502/api/workflow/instances/<instanceId>.json"
+  "http://localhost:4502/var/workflow/instances/server0/<date>/my-workflow_1.json"
 
-# Terminate a workflow
-curl -u admin:admin -X DELETE \
-  "http://localhost:4502/api/workflow/instances/<instanceId>"
+# Terminate (abort) a workflow — POST state=ABORTED to the instance path, returns HTTP 200
+curl -u admin:admin -X POST \
+  "http://localhost:4502/var/workflow/instances/server0/<date>/my-workflow_1" \
+  --data-urlencode "_charset_=utf-8" \
+  --data-urlencode "state=ABORTED" \
+  --data-urlencode "terminateComment=cleanup"
 ```
+
+**Response handling:** the start POST returns HTML — extract the instance path from the
+returned link rather than expecting JSON. Listing and detail endpoints (`.json`) return JSON.
 
 ---
 
