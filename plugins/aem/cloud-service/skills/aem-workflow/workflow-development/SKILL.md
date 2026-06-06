@@ -1,10 +1,15 @@
 ---
 name: workflow-development
-description: Implement custom AEM Workflow Java components on AEM as a Cloud Service. Use when writing WorkflowProcess steps, ParticipantStepChooser implementations, registering services via OSGi DS R6 annotations, reading step arguments from MetaDataMap, accessing JCR payload via WorkflowSession adapter, reading and writing workflow metadata and variables, and handling errors with WorkflowException for retry behavior.
+description: "[BETA] Implement custom AEM Workflow Java components on AEM as a Cloud Service. This skill is in beta. Verify all outputs before applying them to production projects. Use when writing WorkflowProcess steps, ParticipantStepChooser implementations, registering services via OSGi DS R6 annotations, reading step arguments from MetaDataMap, accessing JCR payload via WorkflowSession adapter, reading and writing workflow metadata and variables, and handling errors with WorkflowException for retry behavior."
 license: Apache-2.0
+status: beta
 ---
 
 # Workflow Development (Cloud Service)
+
+> **Beta Skill**: This skill is in beta and under active development.
+> Results should be reviewed carefully before use in production.
+> Report issues at https://github.com/adobe/skills/issues
 
 Implement custom workflow components for AEM Cloud Service: `WorkflowProcess`, `ParticipantStepChooser`, OSGi registration, metadata handling, and error patterns.
 
