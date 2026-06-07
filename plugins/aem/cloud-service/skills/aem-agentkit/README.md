@@ -34,19 +34,27 @@ See [`SKILL.md`](./SKILL.md) for the full contract.
 | `.aem/context/.agentkit-manifest.json` | Run manifest: every file written, post-write checksum, every heuristic decision |
 | `.aem/context/.agentkit.lock` | Workspace advisory lock so parallel invocations exit cleanly |
 
-### Tool-specific layer (silent auto-detection)
+### Tool-specific layer (signal-detected, then customer confirms)
 
-| Tool | Detection signal | Tool-specific artifacts |
+Signals are tightened to avoid false positives. The presence of
+`.github/*.yml` workflow files is NOT a Copilot signal; an empty
+`.claude/` directory (often left by IDE installers) is NOT a Claude
+Code signal. The skill prompts the customer to confirm or narrow the
+detected toolchains before materializing artifacts. The single source
+of truth for this table is [`SKILL.md`](./SKILL.md) § "IDE detection
+and selection"; the row below mirrors it.
+
+| Tool | Detection signal (must include the "content" half) | Tool-specific artifacts (when selected) |
 |---|---|---|
-| Claude Code | `.claude/` dir or `CLAUDE.md` | `.claude/agents/aem-*.md`, `.claude/commands/<owned>.md`, `.mcp.json` |
-| Cursor | `.cursor/` dir | `.cursor/rules/aem-*.mdc`, `.cursor/mcp.json` |
-| GitHub Copilot | `.github/copilot-instructions.md` or `.github/*.yml` workflow | `.github/instructions/aem-*.instructions.md` (Copilot-instructions written only if missing) |
+| Claude Code | `.claude/agents/` or `.claude/commands/` is non-empty | `.claude/agents/aem-*.md`, `.claude/commands/<owned>.md`, `.mcp.json` |
+| Cursor | `.cursor/rules/` is non-empty or `.cursor/mcp.json` exists | `.cursor/rules/aem-*.mdc`, `.cursor/mcp.json` |
+| GitHub Copilot | `.github/copilot-instructions.md` exists | `.github/instructions/aem-*.instructions.md` (+ `.github/copilot-instructions.md` only when missing) |
 | Codex | (universal layer is sufficient) | — |
-| Continue.dev | `.continue/` dir | `.continue/rules/aem-*.md` |
-| Cline | `.clinerules` or `.vscode/extensions.json` listing the Cline extension | `.clinerules` (only when missing) |
-| Windsurf | `.windsurfrules` or `.codeium/` directory | `.windsurfrules` (only when missing) |
-| Augment Code | `.augment/` directory or pre-existing `augment.md` | `augment.md` (only when missing) |
-| Aider, Gemini CLI, Zed, Factory, Jules, Devin, Amp, Kilo, RooCode, Warp, JetBrains Junie, Ona, Phoenix | (universal layer is sufficient — read `AGENTS.md` natively) | — |
+| Continue.dev | `.continue/rules/` is non-empty | `.continue/rules/aem-*.md` |
+| Cline | `.clinerules` exists or `.vscode/extensions.json` lists `saoudrizwan.claude-dev` | `.clinerules` (only when missing) |
+| Windsurf | `.windsurfrules` exists or `.codeium/` is non-empty | `.windsurfrules` (only when missing) |
+| Augment Code | `.augment/` exists or pre-existing `augment.md` | `augment.md` (only when missing) |
+| Aider, Gemini CLI, Zed, Factory, Jules, Devin, Amp, Kilo, RooCode, Warp, JetBrains Junie, Ona | (universal layer is sufficient — read `AGENTS.md` natively) | — |
 
 A single canonical role-prompt source is projected into each tool's format
 so the content seen by the agent is identical regardless of IDE. The
@@ -116,7 +124,9 @@ Cline, Windsurf, Augment, Aider, Gemini CLI, Zed, RooCode, JetBrains
 Junie, and others) are nominative and descriptive only — they identify
 the tools the skill produces artifacts for. All such names remain the
 trademarks of their respective owners. This skill is not affiliated with
-or endorsed by any of them.
+or endorsed by any of them. Names removed from the previous edition
+(e.g. agent names without a published product page) have been dropped to
+keep the trademark list to verifiable tools only.
 
 ## Reporting issues
 

@@ -1,4 +1,4 @@
-<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+<!-- aem-agentkit: generated v{{SKILL_VERSION}}; safe to delete or edit. checksum: {{CHECKSUM}} -->
 # Test patterns (derived)
 
 How this project writes tests. Derived from existing test sources.

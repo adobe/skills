@@ -28,18 +28,38 @@ import json
 import os
 import re
 import sys
+import traceback
 import unicodedata
 
 VERSION = "1.0.0-beta"
+# Protocol-version is tracked separately from skill version. Bump on op
+# add / response-shape changes so the skill driver can pin the wire format
+# independently of marketing version bumps. See references/helpers.md § 1.
+PROTOCOL_VERSION = "1"
 
 # --------------------------------------------------------------------- #
 # Platform gate                                                         #
 # --------------------------------------------------------------------- #
 
-if sys.platform == "win32":
+# Python version pin. The helper uses no 3.10-only syntax today, but the
+# spec requires 3.10+ for forward-compat (PEP 604 unions, structural pattern
+# matching in future tests). Fail loud rather than emit obscure SyntaxError.
+if sys.version_info < (3, 10):
     sys.stderr.write(
-        "aem-agentkit: platform lacks the syscall surface needed for the "
-        "symlink-hardening contract; aborting.\n"
+        f"aem-agentkit-helper requires Python 3.10+; got "
+        f"{sys.version_info.major}.{sys.version_info.minor}\n"
+    )
+    sys.exit(1)
+
+# Platform allow-list: only Linux and Darwin support the syscall surface
+# the symlink-hardening contract needs (/proc/self/fd or F_GETPATH for the
+# TOCTOU re-check; O_NOFOLLOW semantics). Other POSIX variants (FreeBSD,
+# OpenBSD, Solaris, AIX) silently degrade and are rejected.
+_SUPPORTED_PLATFORMS = {"linux", "darwin"}
+if sys.platform not in _SUPPORTED_PLATFORMS:
+    sys.stderr.write(
+        f"aem-agentkit: platform '{sys.platform}' is unsupported. "
+        f"The symlink-hardening contract requires Linux or macOS.\n"
     )
     sys.exit(1)
 
@@ -47,16 +67,22 @@ if sys.platform == "win32":
 # Constants from privacy-and-sanitization.md                            #
 # --------------------------------------------------------------------- #
 
-# Unicode code points to strip (privacy-and-sanitization.md § 2.1)
+# Unicode code points to strip. See references/privacy-and-sanitization.md
+# § 2.1 for the source list. Each block is named so additions stay auditable.
+# C0/C1 controls except TAB; line/paragraph separators (Unicode Cc/Cf
+# categories); soft hyphen / Mongolian vowel separator; zero-width set
+# (U+200B-U+200F covers ZWSP, ZWNJ, ZWJ, LRM, RLM); WORD JOINER, BOM,
+# REPLACEMENT CHARACTER; Arabic Letter Mark; bidi overrides (LRE/RLE/PDF/
+# LRO/RLO at U+202A-U+202E and isolates LRI/RLI/FSI/PDI at U+2066-U+2069).
 _STRIP_CODEPOINTS = (
-    list(range(0x00, 0x09)) + list(range(0x0A, 0x20))     # control except \t
-    + [0x2028, 0x2029]                                      # line/para separators
-    + [0x00AD, 0x180E]                                      # zero-width
-    + list(range(0x200B, 0x2010))                           # zero-width set U+200B..U+200F
-    + [0x2060, 0xFEFF, 0xFFFD]                              # word joiner, BOM, replacement
-    + [0x061C]                                              # Arabic letter mark
-    + list(range(0x202A, 0x202F))                           # bidi U+202A..U+202E
-    + list(range(0x2066, 0x206A))                           # bidi U+2066..U+2069
+    list(range(0x00, 0x09)) + list(range(0x0A, 0x20))     # C0 controls except \t (0x09)
+    + [0x2028, 0x2029]                                      # LINE SEPARATOR, PARAGRAPH SEPARATOR
+    + [0x00AD, 0x180E]                                      # SOFT HYPHEN, MONGOLIAN VOWEL SEP
+    + list(range(0x200B, 0x2010))                           # zero-width / directional marks U+200B..U+200F
+    + [0x2060, 0xFEFF, 0xFFFD]                              # WORD JOINER, BOM, REPLACEMENT CHAR
+    + [0x061C]                                              # ARABIC LETTER MARK
+    + list(range(0x202A, 0x202F))                           # bidi overrides U+202A..U+202E
+    + list(range(0x2066, 0x206A))                           # bidi isolates U+2066..U+2069
 )
 STRIP_SET = frozenset(_STRIP_CODEPOINTS)
 
@@ -83,8 +109,18 @@ DENY_PATTERNS = [
     "datasources.local.xml", "sshconfigs.xml", "websservers.xml",
     "security*.xml", "sftp.json", "launch.local.json", "secrets.json",
     "*.bak", "*.orig", "*.swp", "*.swo", ".#*", "*~", "*.rej",
+    # Auxiliary credential surfaces (security review I/M findings):
+    "github_pat_*", ".vault-token", "*.aio-config", "op-session-*",
 ]
 DENY_PATTERNS_LC = [p.lower() for p in DENY_PATTERNS]
+
+# Pre-compile the deny-list into a single regex for hot-path lookup. fnmatch
+# patterns translate cleanly via fnmatch.translate; we anchor and join with |.
+# For a 7000-path workspace, this is ~5-10x faster than iterating fnmatch in
+# segment_denied(). The compiled form is matched against the casefolded segment.
+DENY_PATTERN_REGEX = re.compile(
+    "|".join(f"(?:{fnmatch.translate(p)})" for p in DENY_PATTERNS_LC)
+)
 
 # Directory names that prune the entire subtree at every depth
 DENY_DIRS = frozenset({
@@ -96,10 +132,38 @@ DENY_DIRS = frozenset({
     ".databricks-cfg", ".snowflake", ".dbt",
 })
 
-# Special filesystems rejected even when the workspace lives inside them
+# Special filesystems rejected even when the workspace lives inside them.
+# macOS aliases /var/run -> /private/var/run, /tmp -> /private/tmp, etc.
+# Realpath resolves through these, so both forms must be rejected.
 REJECT_PREFIXES = (
     "/proc/", "/sys/", "/dev/", "/var/run/", "/run/",
+    "/private/var/run/", "/private/run/",
 )
+
+# Allow-list of write destinations enforced inside op_write_atomic. Every
+# write path must match at least one of these globs (after the relative-path
+# and dotdot checks). This is the helper-enforced realization of
+# SKILL.md § "Hard guarantee - allow-list of paths the skill writes" -
+# previously this contract was enforced only by the orchestrating LLM.
+WRITE_ALLOWLIST_GLOBS = (
+    "AGENTS.md", "*/AGENTS.md", "*/*/AGENTS.md", "*/*/*/AGENTS.md",
+    "*/*/*/*/AGENTS.md", "*/*/*/*/*/AGENTS.md",
+    ".aem/context/*",
+    "*/.aem/context/*",
+    "*/*/.aem/context/*",
+    ".aem/agentkit-overrides.yml",
+    "*/.aem/agentkit-overrides.yml",
+    ".claude/agents/*", ".claude/commands/*",
+    ".cursor/rules/*", ".cursor/mcp.json",
+    ".github/instructions/*", ".github/copilot-instructions.md",
+    ".continue/rules/*",
+    ".clinerules", ".clinerules.aem-roles-extra.md",
+    ".windsurfrules", ".windsurfrules.aem-roles-extra.md",
+    "augment.md", "augment.md.aem-roles-extra.md",
+    ".mcp.json",
+)
+# Sidecars (.tmp and .agentkit-new) are derived from allow-list targets and
+# share their allow-list status via _is_allowlisted().
 
 # Marker fields removed from a JSON body before checksum
 JSON_MARKER_FIELDS = (
@@ -120,18 +184,44 @@ DEFAULT_MAX_FILES_PER_SUBTREE = 10_000
 def casefold_ascii(s: str) -> str:
     """ASCII lowercase casefold (privacy-and-sanitization.md / helpers.md § 3).
 
-    Bytes 0x41..0x5A -> 0x61..0x7A; every other byte unchanged.
+    Bytes 0x41..0x5A -> 0x61..0x7A; every other byte unchanged. The input is
+    NFC-normalized first so HFS+ (NFD-on-disk) and ext4/APFS (NFC) compare
+    identically. Non-ASCII patterns would silently misbehave without this -
+    today the deny-list is ASCII-only so the NFC pass is defense-in-depth.
     """
+    s = unicodedata.normalize("NFC", s)
     return "".join(c.lower() if "A" <= c <= "Z" else c for c in s)
 
 
 def segment_denied(segment: str) -> str:
-    """Return the matching pattern name if the segment is denied, else ""."""
+    """Return the matching pattern name if the segment is denied, else "".
+
+    Hot path: called for every entry in op_walk. Uses the pre-compiled
+    DENY_PATTERN_REGEX (~5-10x faster than iterating fnmatch per pattern).
+    """
     seg_lc = casefold_ascii(segment)
     if seg_lc in DENY_DIRS:
         return seg_lc
-    for pat in DENY_PATTERNS_LC:
-        if fnmatch.fnmatchcase(seg_lc, pat):
+    if DENY_PATTERN_REGEX.fullmatch(seg_lc):
+        # Return the first matching glob for diagnostic clarity.
+        for pat in DENY_PATTERNS_LC:
+            if fnmatch.fnmatchcase(seg_lc, pat):
+                return pat
+    return ""
+
+
+def _is_allowlisted(rel_posix: str) -> str:
+    """Return the matching allow-list glob, or "" if `rel_posix` is not
+    a permitted write destination. Sidecars (.tmp, .agentkit-new) inherit
+    their target's status.
+    """
+    candidate = rel_posix
+    if candidate.endswith(".tmp"):
+        candidate = candidate[:-4]
+    elif candidate.endswith(".agentkit-new"):
+        candidate = candidate[: -len(".agentkit-new")]
+    for pat in WRITE_ALLOWLIST_GLOBS:
+        if fnmatch.fnmatchcase(candidate, pat):
             return pat
     return ""
 
@@ -153,27 +243,33 @@ def _check_special_fs(realpath: str) -> str:
 def _fd_realpath(fd: int) -> str:
     """Return the canonical path of an open file descriptor.
 
-    Used for the TOCTOU re-check in op_open (helpers.md § 2.2).
+    Used for the TOCTOU re-check in op_open (helpers.md § 2.2). Uses the
+    stdlib `fcntl` module on Darwin (F_GETPATH = 50) which handles the
+    buffer marshalling correctly - the previous ctypes path failed on
+    real macOS because fcntl's third arg has variant type and ctypes
+    doesn't know to marshal a string buffer as a path argument.
     """
     if sys.platform == "linux":
         return os.readlink(f"/proc/self/fd/{fd}")
     if sys.platform == "darwin":
-        # F_GETPATH on macOS = 50; returns the canonical path of fd into a buffer.
-        libc_name = ctypes.util.find_library("c")
-        if libc_name is None:
-            raise OSError("libc not available")
-        libc = ctypes.CDLL(libc_name, use_errno=True)
-        buf = ctypes.create_string_buffer(4096)
-        F_GETPATH = 50
-        rc = libc.fcntl(fd, F_GETPATH, buf)
-        if rc == -1:
-            raise OSError(ctypes.get_errno(), "fcntl(F_GETPATH) failed")
-        return buf.value.decode("utf-8")
+        import fcntl as _fcntl
+        F_GETPATH = getattr(_fcntl, "F_GETPATH", 50)
+        # fcntl.fcntl with a bytes arg returns the modified buffer.
+        buf = b"\x00" * 1024
+        result = _fcntl.fcntl(fd, F_GETPATH, buf)
+        return result.rstrip(b"\x00").decode("utf-8")
     raise OSError("fd realpath unsupported on this platform")
 
 
 def _validate_path(workspace: str, path: str) -> dict:
-    """Run the realpath gauntlet on `path` against `workspace`. Return dict."""
+    """Run the realpath gauntlet on `path` against `workspace`. Return dict.
+
+    The resolved-realpath deny-list re-check (security finding C1) catches
+    in-workspace symlinks that route around the deny-list - e.g.,
+    `<ws>/innocent -> <ws>/.git`. The literal entry name "innocent" passes
+    the segment check; without re-walking the realpath segments, descent
+    into `.git` would surface its contents.
+    """
     try:
         ws_real = _resolve_workspace(workspace)
     except (OSError, ValueError) as e:
@@ -182,7 +278,7 @@ def _validate_path(workspace: str, path: str) -> dict:
     try:
         path_real = os.path.realpath(path, strict=True)
     except OSError as e:
-        return {"ok": False, "error": f"realpath failed: {e.strerror or e}"}
+        return {"ok": False, "error": f"realpath failed: {e.strerror or e}", "errno": e.errno}
 
     parts = path_real.split(os.sep)
     if ".." in parts:
@@ -202,6 +298,20 @@ def _validate_path(workspace: str, path: str) -> dict:
             if denied:
                 return {"ok": False, "error": f"deny-list match on segment: {seg} (pattern: {denied})"}
 
+    # Case-collision detection (QA finding Q11): on case-insensitive
+    # filesystems (default macOS APFS, NTFS) the realpath of `agents.md`
+    # and `AGENTS.md` is the same file. If the requested basename differs
+    # from the realpath basename byte-for-byte, surface a warning so the
+    # caller can decide whether to proceed.
+    case_collision = False
+    requested_base = os.path.basename(path.rstrip(os.sep))
+    real_base = os.path.basename(path_real)
+    if (requested_base and real_base
+            and requested_base != real_base
+            and unicodedata.normalize("NFC", requested_base).lower()
+                == unicodedata.normalize("NFC", real_base).lower()):
+        case_collision = True
+
     try:
         is_symlink = os.path.islink(path)
     except OSError:
@@ -215,7 +325,24 @@ def _validate_path(workspace: str, path: str) -> dict:
         "isSymlink": is_symlink,
         "isDir": is_dir,
         "workspaceRealpath": ws_real,
+        "caseCollision": case_collision,
     }
+
+
+def _validate_segments(rel_posix: str) -> str:
+    """Walk a workspace-relative POSIX path through segment_denied. Return
+    the matching pattern, or "". Used for write-time policy enforcement and
+    for op_match_deny ENOENT fallback (paths that don't exist yet).
+    """
+    if not rel_posix or rel_posix == ".":
+        return ""
+    for seg in rel_posix.split("/"):
+        if seg in ("", "."):
+            continue
+        denied = segment_denied(seg)
+        if denied:
+            return denied
+    return ""
 
 
 # --------------------------------------------------------------------- #
@@ -230,14 +357,55 @@ def op_realpath(req):
 
 
 def op_match_deny(req):
-    res = _validate_path(req["workspace"], req["path"])
+    workspace = req["workspace"]
+    path = req["path"]
+    res = _validate_path(workspace, path)
     if res["ok"]:
         return {"ok": True, "denied": False, "matchedPattern": None, "matchedSegment": None}
-    # If validation failed because of deny-list, extract pattern and segment
     err = res.get("error", "")
     m = re.match(r"deny-list match on segment: (.+) \(pattern: (.+)\)$", err)
     if m:
         return {"ok": True, "denied": True, "matchedSegment": m.group(1), "matchedPattern": m.group(2)}
+    # ENOENT fallback (QA finding Q10): pre-flight checks need a clean
+    # denied/allowed answer for paths that may not exist yet. Walk up to
+    # the nearest existing ancestor, realpath it (to handle /tmp -> /private/tmp
+    # on macOS and similar aliases), then re-attach the missing tail.
+    if res.get("errno") == errno.ENOENT:
+        try:
+            ws_real = _resolve_workspace(workspace)
+        except (OSError, ValueError):
+            return res
+        if os.path.isabs(path):
+            candidate = path
+        else:
+            candidate = os.path.join(ws_real, path)
+        ancestor = candidate
+        while ancestor and not os.path.exists(ancestor):
+            parent = os.path.dirname(ancestor)
+            if parent == ancestor:
+                break
+            ancestor = parent
+        try:
+            anc_real = os.path.realpath(ancestor) if os.path.exists(ancestor) else ancestor
+        except OSError:
+            return res
+        if candidate == ancestor:
+            norm = anc_real
+        else:
+            tail = os.path.relpath(candidate, ancestor)
+            norm = os.path.normpath(os.path.join(anc_real, tail))
+        if not (norm == ws_real or norm.startswith(ws_real + os.sep)):
+            return {"ok": False, "error": "path escapes workspace root"}
+        rel = "" if norm == ws_real else os.path.relpath(norm, ws_real)
+        rel_posix = rel.replace(os.sep, "/")
+        denied = _validate_segments(rel_posix)
+        if denied:
+            offender = next(
+                (s for s in rel_posix.split("/") if s and segment_denied(s)),
+                "",
+            )
+            return {"ok": True, "denied": True, "matchedSegment": offender, "matchedPattern": denied}
+        return {"ok": True, "denied": False, "matchedPattern": None, "matchedSegment": None}
     return res
 
 
@@ -251,45 +419,79 @@ def op_open(req):
         return val
     target = val["realpath"]
 
+    # Intra-workspace symlinks via intermediate directories are legitimate
+    # (pnpm, yarn workspaces, dispatcher submodules). Drop O_NOFOLLOW_ANY -
+    # which rejected ANY symlink in the path - and open the FULLY RESOLVED
+    # target instead of the requested path. O_NOFOLLOW on the leaf still
+    # rejects the target itself being a symlink (which would defeat the
+    # workspace-boundary check). See QA finding Q6.
     flags = os.O_RDONLY | os.O_NOFOLLOW
-    if sys.platform == "darwin" and hasattr(os, "O_NOFOLLOW_ANY"):
-        flags |= os.O_NOFOLLOW_ANY
 
     try:
-        fd = os.open(path, flags)
+        fd = os.open(target, flags)
     except OSError as e:
         return {"ok": False, "error": f"open failed: {e.strerror or e}"}
 
     try:
         try:
             fd_real = _fd_realpath(fd)
-        except OSError:
-            fd_real = None
-        if fd_real and fd_real != target:
+            toctou_verified = True
+        except OSError as e:
+            # Fail-closed (security finding I4 / QA Q5). The TOCTOU re-check
+            # is advertised as a hard contract; silently degrading to a
+            # best-effort check would mean callers can't trust the
+            # security guarantees of any platform where /proc/self/fd or
+            # F_GETPATH is masked.
+            return {
+                "ok": False,
+                "error": f"TOCTOU re-check unavailable: {e.strerror or e}",
+            }
+        if fd_real != target:
             return {"ok": False, "error": "TOCTOU mismatch: descriptor path differs from resolved path"}
 
-        chunks = []
-        remaining = max_bytes + 1
-        while remaining > 0:
-            chunk = os.read(fd, min(remaining, 65536))
+        # Stream-read into a single bytearray with hard size tracking so
+        # the helper does not transiently hold > max_bytes (memory cap fix
+        # for SE4 / M4). On a 100 MB file with a 16 MB ceiling, prior code
+        # accumulated chunks until len > max_bytes; we now stop at the
+        # exact threshold.
+        buf = bytearray()
+        while len(buf) <= max_bytes:
+            chunk = os.read(fd, min(65536, max_bytes + 1 - len(buf)))
             if not chunk:
                 break
-            chunks.append(chunk)
-            remaining -= len(chunk)
-        data = b"".join(chunks)
-        if len(data) > max_bytes:
-            return {"ok": False, "error": f"file exceeds maxBytes ({max_bytes})"}
+            buf.extend(chunk)
+        if len(buf) > max_bytes:
+            # Best-effort report of actual size for diagnostics (Q23).
+            try:
+                actual = os.fstat(fd).st_size
+            except OSError:
+                actual = len(buf)
+            return {
+                "ok": False,
+                "error": f"file exceeds maxBytes ({max_bytes}); actual size {actual}",
+            }
+        data = bytes(buf)
 
         return {
             "ok": True,
             "bytes": base64.b64encode(data).decode("ascii"),
             "sha256": hashlib.sha256(data).hexdigest(),
+            "toctouVerified": toctou_verified,
         }
     finally:
         os.close(fd)
 
 
 def op_walk(req):
+    """Bounded directory walk.
+
+    Glob dialect: Python `fnmatch.fnmatchcase` against the workspace-relative
+    POSIX path. `*` matches any character INCLUDING `/`, so `*.java` matches
+    `core/A.java` AND `core/sub/B.java`. This is NOT shell-glob (where `*`
+    stops at `/`) and NOT git-style `**` (which is unsupported). To restrict
+    a walk to a single sub-tree, pass it as a root; do not rely on the glob
+    for path-segment scoping. See references/helpers.md § 2.3.
+    """
     workspace = req["workspace"]
     roots = req.get("roots", ["."])
     max_files = int(req.get("maxFiles", DEFAULT_MAX_FILES))
@@ -306,7 +508,7 @@ def op_walk(req):
     visited = set()
     warnings = []
     truncated_subtrees = []
-    truncated = False
+    truncated_global = False
 
     def matches_any_glob(rel_posix):
         if not globs:
@@ -314,7 +516,7 @@ def op_walk(req):
         return any(fnmatch.fnmatchcase(rel_posix, g) for g in globs)
 
     for root in roots:
-        if truncated:
+        if truncated_global:
             break
         root_path = root if os.path.isabs(root) else os.path.join(ws_real, root)
         root_val = _validate_path(workspace, root_path)
@@ -323,10 +525,11 @@ def op_walk(req):
             continue
         root_real = root_val["realpath"]
         subtree_count = 0
+        subtree_truncated = False
         subtree_label = root_val["workspaceRelative"] or "."
 
         stack = [(root_real, 0)]
-        while stack and not truncated:
+        while stack and not subtree_truncated and not truncated_global:
             current, depth = stack.pop()
             if depth > max_depth:
                 warnings.append(f"depth cap reached at {os.path.relpath(current, ws_real)}")
@@ -337,52 +540,83 @@ def op_walk(req):
                 warnings.append(f"cannot list {os.path.relpath(current, ws_real)}: {e.strerror}")
                 continue
             for name in entries:
-                seg_denied = segment_denied(name)
                 full = os.path.join(current, name)
-                if seg_denied:
-                    warnings.append(f"deny-list segment match: {os.path.relpath(full, ws_real)} ({seg_denied})")
+                # Run the full validation gauntlet on every entry so an
+                # in-workspace symlink (e.g. `safe -> .git`) cannot escape
+                # the deny-list. The prior code only checked the literal
+                # entry name `name`; the resolved realpath's segments were
+                # not re-checked. See security finding C1.
+                child_val = _validate_path(workspace, full)
+                if not child_val["ok"]:
+                    err = child_val.get("error", "")
+                    rel_for_warn = os.path.relpath(full, ws_real)
+                    if "deny-list" in err:
+                        warnings.append(f"deny-list rejected: {rel_for_warn}: {err}")
+                    elif "escapes workspace" in err:
+                        warnings.append(f"escape rejected: {rel_for_warn}")
+                    elif "rejected filesystem" in err:
+                        warnings.append(f"special-fs rejected: {rel_for_warn}")
+                    else:
+                        warnings.append(f"rejected: {rel_for_warn}: {err}")
                     continue
-                try:
-                    real = os.path.realpath(full, strict=True)
-                except OSError:
-                    warnings.append(f"realpath failed for {os.path.relpath(full, ws_real)}")
-                    continue
-                if real != ws_real and not real.startswith(ws_real + os.sep):
-                    warnings.append(f"escape rejected: {os.path.relpath(full, ws_real)}")
-                    continue
-                if _check_special_fs(real):
-                    warnings.append(f"special-fs rejected: {os.path.relpath(full, ws_real)}")
-                    continue
+                real = child_val["realpath"]
                 if real in visited:
                     continue
                 visited.add(real)
-                if os.path.isdir(real):
+                if child_val["isDir"]:
                     stack.append((real, depth + 1))
                     continue
-                rel_posix = os.path.relpath(real, ws_real).replace(os.sep, "/")
+                rel_posix = child_val["workspaceRelative"]
                 if matches_any_glob(rel_posix):
                     files.append(rel_posix)
                     subtree_count += 1
                     if subtree_count >= per_subtree:
+                        # Per-subtree cap fired: terminate THIS subtree's
+                        # walk only. Leave the outer-loop stack alone so
+                        # subsequent roots still get a chance. Previously
+                        # stack.clear() short-circuited all remaining
+                        # roots (QA finding Q12).
                         truncated_subtrees.append(subtree_label)
                         warnings.append(f"per-subtree cap reached: {subtree_label}")
-                        stack.clear()
+                        subtree_truncated = True
                         break
                     if len(files) >= max_files:
-                        truncated = True
-                        truncated_subtrees.append(subtree_label)
+                        # Global cap is workspace-wide. DON'T tag the
+                        # current subtree as "truncated" - the subtree
+                        # might be complete; the cap fired on its last
+                        # entry. Set the global truncated flag only.
+                        # See staff-engineer finding SE1.
+                        truncated_global = True
                         warnings.append("global file-walk cap reached")
-                        stack.clear()
                         break
 
     files.sort()
     return {
         "ok": True,
         "files": files,
-        "truncated": truncated,
+        "truncated": truncated_global or bool(truncated_subtrees),
         "truncatedSubtrees": sorted(set(truncated_subtrees)),
-        "warnings": warnings,
+        "globalCapReached": truncated_global,
+        "warnings": sorted(warnings),
     }
+
+
+def _nfc_normalize_leaves(obj):
+    """Walk a JSON-decoded structure and NFC-normalize every string leaf.
+
+    Without this, identical logical content can hash differently between
+    HFS+ (NFD) and ext4/APFS (NFC) — see QA finding Q7. The strip-list
+    pass on op_sanitize_string covers extracted string fragments before
+    they enter a JSON body; this pass covers the JSON body holistically
+    so re-runs on macOS NFD-on-disk don't churn `.agentkit-new` sidecars.
+    """
+    if isinstance(obj, str):
+        return unicodedata.normalize("NFC", obj)
+    if isinstance(obj, dict):
+        return {k: _nfc_normalize_leaves(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_nfc_normalize_leaves(v) for v in obj]
+    return obj
 
 
 def op_sha256_canonical(req):
@@ -396,7 +630,13 @@ def op_sha256_canonical(req):
         return {"ok": False, "error": "UTF-8 BOM not allowed"}
 
     if kind == "markdown":
-        nl = raw.find(b"\n")
+        # The marker MUST be on the first non-empty line. Skip leading blank
+        # lines so a stray newline from an IDE auto-prettier doesn't reclass
+        # the file as human-curated (QA finding Q22).
+        pos = 0
+        while pos < len(raw) and raw[pos:pos + 1] in (b"\n", b"\r"):
+            pos += 1
+        nl = raw.find(b"\n", pos)
         if nl < 0:
             return {"ok": False, "error": "markdown body missing a newline-terminated marker line"}
         body = raw[nl + 1:]
@@ -409,7 +649,12 @@ def op_sha256_canonical(req):
             return {"ok": False, "error": f"json parse failed: {e}"}
         if not isinstance(obj, dict):
             return {"ok": False, "error": "json top-level must be an object"}
+        # JSON_MARKER_FIELDS is stripped at the TOP LEVEL only. Nested keys
+        # with the same names are preserved by design — if a customer added
+        # a nested `componentDefinition._markerChecksum`, the checksum is
+        # legitimately part of the body. See security finding M2.
         cleaned = {k: v for k, v in obj.items() if k not in JSON_MARKER_FIELDS}
+        cleaned = _nfc_normalize_leaves(cleaned)
         emitted = json.dumps(
             cleaned, sort_keys=True, indent=2, ensure_ascii=False,
             separators=(",", ": "),
@@ -420,6 +665,15 @@ def op_sha256_canonical(req):
 
 
 def op_write_atomic(req):
+    """Atomic write with helper-enforced allow-list and deny-list.
+
+    Previously the helper trusted the orchestrating LLM to send only
+    allow-listed paths. A bug or prompt injection could ask the helper to
+    write `.git/hooks/post-commit` or `.env`, and the helper would comply.
+    The allow-list (security C2 / QA Q2) and per-segment deny-list checks
+    are now ENFORCED here — the helper is the trust anchor for the
+    "no writes outside the allow-list" hard guarantee in SKILL.md.
+    """
     workspace = req["workspace"]
     rel = req["path"]
     try:
@@ -435,18 +689,97 @@ def op_write_atomic(req):
     if os.path.isabs(rel) or ".." in rel.split("/"):
         return {"ok": False, "error": "path must be relative without .."}
 
+    rel_posix = rel.replace(os.sep, "/")
+
+    # Deny-list segment check first (applies even before allow-list because
+    # the deny-list is a hard refusal regardless of intent).
+    denied = _validate_segments(rel_posix)
+    if denied:
+        return {"ok": False, "error": f"deny-list match on path: {rel_posix} (pattern: {denied})"}
+
+    # Allow-list check. Caller may opt out per request with
+    # `enforceAllowlist: false`, but the default is the safe one. Setting
+    # this to false is intended only for test fixtures.
+    enforce_allowlist = bool(req.get("enforceAllowlist", True))
+    matched_allow = _is_allowlisted(rel_posix)
+    if enforce_allowlist and not matched_allow:
+        return {
+            "ok": False,
+            "error": (
+                f"path not in write allow-list: {rel_posix}. See SKILL.md "
+                f"'Hard guarantee' for the permitted destinations."
+            ),
+        }
+
     full = os.path.join(ws_real, *rel.split("/"))
     parent = os.path.dirname(full)
     if not parent:
         return {"ok": False, "error": "path lacks a parent directory"}
+
+    # Validate-before-makedirs (security I5): walk up to the nearest
+    # existing ancestor, realpath-check it stays inside the workspace.
+    # The prior code ran makedirs first; if any parent component was a
+    # symlink to outside, makedirs created directories there before the
+    # realpath check rejected. Now no side effects happen until we know
+    # the path is safe.
+    ancestor = parent
+    while ancestor and not os.path.exists(ancestor):
+        ancestor = os.path.dirname(ancestor)
+    if not ancestor:
+        return {"ok": False, "error": "no existing ancestor for parent"}
+    try:
+        ancestor_real = os.path.realpath(ancestor, strict=True)
+    except OSError as e:
+        return {"ok": False, "error": f"ancestor realpath failed: {e.strerror or e}"}
+    if ancestor_real != ws_real and not ancestor_real.startswith(ws_real + os.sep):
+        return {"ok": False, "error": "ancestor escapes workspace root"}
+    # Reject if any segment between the validated ancestor and the parent
+    # is a symlink (a malicious customer can't insert one, but a stray
+    # workspace symlink could).
+    walked = ancestor_real
+    rel_from_ancestor = os.path.relpath(parent, ancestor) if parent != ancestor else ""
+    if rel_from_ancestor and rel_from_ancestor != ".":
+        for seg in rel_from_ancestor.split(os.sep):
+            if not seg:
+                continue
+            candidate = os.path.join(walked, seg)
+            if os.path.islink(candidate):
+                return {"ok": False, "error": f"refused: intermediate dir is a symlink: {seg}"}
+            walked = candidate
+
     try:
         os.makedirs(parent, exist_ok=True)
     except OSError as e:
         return {"ok": False, "error": f"parent dir create failed: {e.strerror or e}"}
 
+    # Post-makedirs sanity check (cheap defense-in-depth).
     parent_real = os.path.realpath(parent)
     if parent_real != ws_real and not parent_real.startswith(ws_real + os.sep):
         return {"ok": False, "error": "parent escapes workspace root"}
+
+    # Case-collision detection (Q11): on case-insensitive filesystems,
+    # writing `AGENTS.md` when `agents.md` already exists silently
+    # overwrites it. Detect and refuse unless the caller opted in.
+    case_collision_detected = False
+    target_base = os.path.basename(full)
+    if os.path.exists(full):
+        try:
+            existing_real_base = os.path.basename(os.path.realpath(full))
+        except OSError:
+            existing_real_base = target_base
+        if (existing_real_base != target_base
+                and unicodedata.normalize("NFC", existing_real_base).lower()
+                    == unicodedata.normalize("NFC", target_base).lower()):
+            case_collision_detected = True
+            if not bool(req.get("allowCaseCollision", False)):
+                return {
+                    "ok": False,
+                    "error": (
+                        f"case-insensitive filesystem collision: requested "
+                        f"{target_base!r} but pre-existing entry is "
+                        f"{existing_real_base!r}. Refusing to silently rename."
+                    ),
+                }
 
     tmp = full + ".tmp"
     try:
@@ -480,10 +813,35 @@ def op_write_atomic(req):
     except OSError:
         pass
 
-    return {"ok": True, "sha256": hashlib.sha256(data).hexdigest()}
+    return {
+        "ok": True,
+        "sha256": hashlib.sha256(data).hexdigest(),
+        "allowlistMatch": matched_allow,
+        "caseCollision": case_collision_detected,
+    }
 
 
 def op_cleanup_tmp(req):
+    """Delete orphan `.tmp` sidecars adjacent to marker-bearing targets,
+    plus orphan `.tmp` files where the target does not exist (a crash
+    artifact from a previous run that crashed mid-write-atomic).
+
+    Previously, op_cleanup_tmp ONLY deleted .tmp when the target existed
+    AND carried the marker prefix. After a crash mid-write-atomic the
+    target was never created, so the .tmp sat there forever - and the
+    next write-atomic to that path hits O_CREAT|O_EXCL on the tmp and
+    aborts permanently. The skill becomes wedged. See QA finding Q4.
+
+    Adds realpath validation per visited candidate (security I3): the
+    op now uses the same bounded-walk + per-entry _validate_path that
+    op_walk does, so a customer symlink chain cannot trick the cleanup
+    into reading or deleting outside the workspace.
+
+    The marker prefix `<!-- aem-agentkit: generated v` is intentionally
+    version-agnostic. Cross-version cleanup is the right default: a tmp
+    written by v0.9.0 should still be cleaned by v1.0.0 if its target
+    was written by either version.
+    """
     workspace = req["workspace"]
     try:
         ws_real = _resolve_workspace(workspace)
@@ -491,31 +849,72 @@ def op_cleanup_tmp(req):
         return {"ok": False, "error": f"workspace invalid: {e}"}
 
     deleted = []
-    for dirpath, dirnames, filenames in os.walk(ws_real):
-        # Prune deny dirs at every layer
-        dirnames[:] = [d for d in dirnames if d not in DENY_DIRS]
-        for name in filenames:
+    orphans_recovered = []
+
+    # Bounded walk, same gauntlet as op_walk (security I3): every visited
+    # entry must pass _validate_path, so a customer-controlled symlink
+    # chain `safe -> /etc` cannot reach .tmp files outside the workspace.
+    stack = [(ws_real, 0)]
+    visited = set()
+    while stack:
+        current, depth = stack.pop()
+        if depth > DEFAULT_MAX_DEPTH:
+            continue
+        try:
+            entries = sorted(os.listdir(current))
+        except OSError:
+            continue
+        for name in entries:
+            full = os.path.join(current, name)
+            child_val = _validate_path(workspace, full)
+            if not child_val["ok"]:
+                continue
+            real = child_val["realpath"]
+            if real in visited:
+                continue
+            visited.add(real)
+            if child_val["isDir"]:
+                stack.append((real, depth + 1))
+                continue
             if not name.endswith(".tmp"):
                 continue
+
             target_name = name[:-4]
-            target_path = os.path.join(dirpath, target_name)
-            if not os.path.exists(target_path):
-                continue
-            # Verify target carries a marker (Markdown or JSON)
-            try:
-                with open(target_path, "rb") as f:
-                    head = f.read(4096)
-            except OSError:
-                continue
-            if (b"<!-- aem-agentkit: generated v" in head
-                    or b'"_generatedBy": "aem-agentkit"' in head):
-                tmp_path = os.path.join(dirpath, name)
+            target_path = os.path.join(current, target_name)
+            tmp_path = full
+            rel_tmp = os.path.relpath(tmp_path, ws_real).replace(os.sep, "/")
+
+            target_exists = os.path.exists(target_path)
+            if target_exists:
                 try:
-                    os.unlink(tmp_path)
-                    deleted.append(os.path.relpath(tmp_path, ws_real).replace(os.sep, "/"))
+                    with open(target_path, "rb") as f:
+                        head = f.read(4096)
                 except OSError:
-                    pass
-    return {"ok": True, "deleted": sorted(deleted)}
+                    continue
+                if (b"<!-- aem-agentkit: generated v" in head
+                        or b'"_generatedBy": "aem-agentkit"' in head):
+                    try:
+                        os.unlink(tmp_path)
+                        deleted.append(rel_tmp)
+                    except OSError:
+                        pass
+            else:
+                # Orphan .tmp with no target. Recover ONLY when the .tmp
+                # sits at an allow-listed path - that's the signal it was
+                # written by a prior crashed write-atomic run, not some
+                # unrelated customer file ending in .tmp. See Q4.
+                if _is_allowlisted(rel_tmp):
+                    try:
+                        os.unlink(tmp_path)
+                        orphans_recovered.append(rel_tmp)
+                    except OSError:
+                        pass
+
+    return {
+        "ok": True,
+        "deleted": sorted(deleted),
+        "orphansRecovered": sorted(orphans_recovered),
+    }
 
 
 def op_sanitize_string(req):
@@ -552,7 +951,63 @@ def op_sanitize_string(req):
     return {"ok": True, "value": wrapped, "dropped": False, "reason": reason}
 
 
+def _proc_start_time(pid: int) -> str:
+    """Return a string identifier of a process's start time, or "" if not
+    available. Used to defend against PID reuse during stale-lock recovery
+    (security I2 / QA Q9). On Linux reads /proc/<pid>/stat field 22; on
+    macOS shells `ps -o lstart=` for `pid`.
+    """
+    if sys.platform == "linux":
+        try:
+            with open(f"/proc/{pid}/stat", "rb") as f:
+                stat = f.read()
+            # Field 2 is `(comm)` which may contain spaces or parens; the
+            # canonical parse takes everything after the LAST `)`.
+            after = stat.rsplit(b")", 1)[1].split()
+            return after[19].decode("ascii", errors="replace")
+        except (OSError, IndexError):
+            return ""
+    if sys.platform == "darwin":
+        # Avoid spawning a subprocess on every lock check; use kvm_proc via
+        # libproc if available, else fall back to mtime of /proc-less stat.
+        # Simplest portable answer: read process start time via libproc.
+        try:
+            libname = ctypes.util.find_library("proc")
+            if libname is None:
+                return ""
+            lib = ctypes.CDLL(libname, use_errno=True)
+            # proc_pidinfo with PROC_PIDTBSDINFO returns start time.
+            # struct proc_bsdinfo first 4-byte fields: pbi_flags, pbi_status,
+            # pbi_xstatus, pbi_pid; pbi_start_tvsec is at offset ~152 on
+            # 64-bit. We just need an opaque identifier - bail to "" if the
+            # call fails. Caller treats "" as "can't pin start time".
+            buf = ctypes.create_string_buffer(512)
+            PROC_PIDTBSDINFO = 3
+            PROC_PIDTBSDINFO_SIZE = 392
+            rc = lib.proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, buf, PROC_PIDTBSDINFO_SIZE)
+            if rc <= 0:
+                return ""
+            # Return the first 32 bytes hex-encoded as an opaque token.
+            return buf.raw[:32].hex()
+        except Exception:
+            return ""
+    return ""
+
+
 def op_lock(req):
+    """Advisory lock at .aem/context/.agentkit.lock.
+
+    Lock-file format (newline-separated):
+        line 1: PID (integer)
+        line 2: start-time token (opaque - opaque PID-reuse defense)
+
+    Stale-lock recovery treats the following as stale (Q8, I2/Q9):
+    - empty file
+    - non-numeric PID
+    - PID <= 0 (PID 0 is the process group, never a real lock holder)
+    - PID exists but its start time differs from the recorded one
+    - PID does not exist (ESRCH)
+    """
     workspace = req["workspace"]
     lock_rel = req.get("path", ".aem/context/.agentkit.lock")
     try:
@@ -568,34 +1023,85 @@ def op_lock(req):
         return {"ok": False, "acquired": False, "error": f"lock parent: {e.strerror or e}"}
 
     pid = os.getpid()
+    start_token = _proc_start_time(pid)
+    payload = f"{pid}\n{start_token}\n".encode("ascii")
 
     def _try_create():
         return os.open(lock_full, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
 
+    def _classify_stale():
+        """Inspect the on-disk lock and decide whether it's stale.
+        Returns (is_stale, diagnostic, existing_pid).
+        """
+        try:
+            with open(lock_full, "rb") as f:
+                content = f.read().decode("ascii", errors="replace").strip()
+        except OSError as e:
+            return True, f"lock unreadable, treating as stale: {e.strerror or e}", None
+        if not content:
+            # Empty file (partial write from a crashed earlier run). Stale.
+            return True, "lock file empty, treating as stale", None
+        lines = content.splitlines()
+        try:
+            existing_pid = int(lines[0])
+        except (ValueError, IndexError):
+            return True, "lock file PID unparseable, treating as stale", None
+        if existing_pid <= 0:
+            return True, f"lock file PID {existing_pid} invalid, treating as stale", None
+        existing_start = lines[1] if len(lines) > 1 else ""
+        try:
+            os.kill(existing_pid, 0)
+        except OSError as ke:
+            if ke.errno == errno.ESRCH:
+                return True, "lock holder gone", existing_pid
+            # Some other error (EPERM, etc.) means we can't tell - fail safe.
+            return False, f"PID liveness check failed: {ke.strerror}", existing_pid
+        # PID is alive. If we have start-time tokens to compare, do so.
+        if existing_start and start_token:
+            current_start = _proc_start_time(existing_pid)
+            if current_start and current_start != existing_start:
+                return True, "PID reused since lock was written", existing_pid
+        return False, "", existing_pid
+
+    fd = None
     try:
         fd = _try_create()
     except FileExistsError:
-        # Check for stale lock (PID no longer running)
+        is_stale, diag, existing_pid = _classify_stale()
+        if not is_stale:
+            return {
+                "ok": False,
+                "acquired": False,
+                "error": (
+                    f"another invocation is already running"
+                    + (f" (PID {existing_pid})" if existing_pid is not None else "")
+                ),
+            }
+        # Stale recovery. Race-safe: another process may have done the
+        # cleanup between our classify and our unlink (SE2). Treat
+        # FileNotFoundError on unlink as "already gone, retry create".
+        # Treat FileExistsError on _try_create as "another process won the
+        # recovery race - back off cleanly".
         try:
-            with open(lock_full, "rb") as f:
-                existing = f.read().strip().decode("ascii", errors="replace")
-            existing_pid = int(existing)
-        except (OSError, ValueError):
-            return {"ok": False, "acquired": False, "error": "lock file present with unreadable PID"}
+            os.unlink(lock_full)
+        except FileNotFoundError:
+            pass
+        except OSError as e2:
+            return {"ok": False, "acquired": False, "error": f"stale lock cleanup failed: {e2.strerror or e2}"}
         try:
-            os.kill(existing_pid, 0)
-            return {"ok": False, "acquired": False, "error": f"another invocation is already running (PID {existing_pid})"}
-        except OSError as ke:
-            if ke.errno != errno.ESRCH:
-                return {"ok": False, "acquired": False, "error": f"PID check failed: {ke.strerror}"}
-            try:
-                os.unlink(lock_full)
-                fd = _try_create()
-            except OSError as e2:
-                return {"ok": False, "acquired": False, "error": f"stale lock cleanup failed: {e2.strerror or e2}"}
+            fd = _try_create()
+        except FileExistsError:
+            return {
+                "ok": False,
+                "acquired": False,
+                "error": "another invocation acquired the lock during stale recovery",
+            }
+        except OSError as e3:
+            return {"ok": False, "acquired": False, "error": f"lock retry failed: {e3.strerror or e3}"}
 
     try:
-        os.write(fd, str(pid).encode("ascii"))
+        os.write(fd, payload)
+        os.fsync(fd)
     finally:
         os.close(fd)
     return {"ok": True, "acquired": True, "pid": pid}
@@ -622,6 +1128,12 @@ def op_unlock(req):
 # Dispatch                                                              #
 # --------------------------------------------------------------------- #
 
+def op_protocol_version(req):
+    """Return the protocol version so the driver can pin separately
+    from the skill version (architect rec: decouple cadences)."""
+    return {"ok": True, "protocolVersion": PROTOCOL_VERSION, "skillVersion": VERSION}
+
+
 OPS = {
     "realpath": op_realpath,
     "open": op_open,
@@ -633,7 +1145,13 @@ OPS = {
     "lock": op_lock,
     "unlock": op_unlock,
     "match-deny": op_match_deny,
+    "protocol-version": op_protocol_version,
 }
+
+# Per-invocation cap on stdin ops (security M5). Prevents a runaway
+# orchestrator (or one being prompt-injected via repo content) from
+# coercing the helper into millions of operations.
+MAX_OPS_PER_INVOCATION = 100_000
 
 
 def handle(req):
@@ -646,6 +1164,11 @@ def handle(req):
     except KeyError as e:
         return {"ok": False, "error": f"missing required field: {e}"}
     except Exception as e:
+        # Print traceback to stderr so customer terminals (and CI logs) get
+        # actionable context. Stdout is reserved for the JSON-line protocol;
+        # stderr is invisible to the orchestrator-driven flow but visible
+        # to humans. See SE finding 8.
+        traceback.print_exc(file=sys.stderr)
         return {"ok": False, "error": f"internal helper error: {type(e).__name__}: {e}"}
 
 
@@ -654,6 +1177,19 @@ def main():
         if sys.argv[1] == "--version":
             sys.stdout.write(VERSION + "\n")
             return 0
+        if sys.argv[1] == "--protocol-version":
+            sys.stdout.write(PROTOCOL_VERSION + "\n")
+            return 0
+        if sys.argv[1] == "--self-test":
+            # Self-test entry point so downstream consumers can run the
+            # gate without the JS toolchain. Returns 0 if all unit tests
+            # pass, non-zero otherwise.
+            here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            return os.spawnvp(os.P_WAIT, sys.executable, [
+                sys.executable, "-m", "unittest", "discover",
+                "-s", os.path.join(here, "tests"),
+                "-p", "test_*.py", "-v",
+            ])
         if sys.argv[1] in ("-h", "--help"):
             sys.stdout.write(__doc__)
             return 0
@@ -661,7 +1197,15 @@ def main():
         return 1
 
     all_ok = True
+    op_count = 0
     for line in sys.stdin:
+        op_count += 1
+        if op_count > MAX_OPS_PER_INVOCATION:
+            sys.stderr.write(
+                f"aem-agentkit-helper: op-count cap reached "
+                f"({MAX_OPS_PER_INVOCATION}); aborting\n"
+            )
+            return 1
         line = line.strip()
         if not line:
             continue

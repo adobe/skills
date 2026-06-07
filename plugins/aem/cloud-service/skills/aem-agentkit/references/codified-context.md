@@ -55,6 +55,19 @@ documented in [`privacy-and-sanitization.md`](./privacy-and-sanitization.md)
   through `.aem/agentkit-overrides.yml`
   (see [`manifest.md`](./manifest.md) § Overrides). Silent half-completion
   is the failure mode being blocked.
+- **Operational cost at enterprise scale.** A single-archetype workspace
+  (a few thousand paths) finishes in seconds. The verified `aem-guides-wknd`
+  run completes in under 5 s wall-clock. A multi-brand monorepo with two
+  nested AEM projects (7,800 paths in the verified Twilio-style run)
+  finishes in under 15 s. An enterprise monorepo with 5+ nested AEM
+  projects and 500+ components per project is plausibly bouncing off
+  the 100k file cap and the 10k per-subtree cap; budget for it.
+  `/agents-md-check` recomputes every manifest entry's checksum on
+  every run. For a 200-entry manifest this is microseconds. For a
+  10,000-entry manifest (multiple sub-projects, every per-module file)
+  it is a meaningful slice of CI time. The `files[].mtime` field
+  (see [`manifest.md`](./manifest.md) § 3) is the v2 hook for
+  incremental drift detection.
 - **Declared-but-missing modules.** When `per-module-agents-md.md` step 1
   detects a `<module>` declared in `pom.xml` whose directory is missing,
   the same `warningStubs` entry (`"declared module <name> has no

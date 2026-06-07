@@ -160,6 +160,36 @@ points; any survivor aborts the manifest write.
 - **Zero-width / invisible:** U+00AD (soft hyphen), U+180E (Mongolian vowel separator), U+200B – U+200F (zero-width set), U+2060 (word joiner), U+FEFF (zero-width no-break space / BOM), U+FFFD (replacement character — drops on detection because it indicates upstream decode failure).
 - **Bidirectional / directional overrides:** U+061C (Arabic letter mark), U+202A – U+202E, U+2066 – U+2069.
 
+## 2.2 What the helper does NOT sanitize automatically
+
+The `sanitize-string` operation runs on string fragments the helper is
+**told** to sanitize: extracted `cq:title` values, derived package
+names, glossary terms, evidence pointer paths. It does NOT run on raw
+file bytes returned by `op_open`. When the orchestrating LLM uses
+`op_open` to read a customer file (Java source, HTL, `pom.xml`, README)
+and places those bytes into LLM context, prompt-injection payloads in
+the file are NOT filtered.
+
+This is the **orchestrator's responsibility**. A malicious or tampered
+customer repo can embed bidi-override, zero-width, or "ignore prior
+instructions" tokens in Java comments, HTL files, or `pom.xml`
+`<description>` fields; if the orchestrator passes those bytes
+verbatim into agent context, the agent's behavior can be subverted.
+
+Recommended orchestrator pattern (until a helper-side
+`op_read_for_context` ships):
+
+1. Read bytes via `op_open`.
+2. Decode to a UTF-8 string.
+3. Strip the same code-point set in § 2.1 from the decoded string.
+4. Hard-cap the resulting text at a sensible size (e.g. 64 KB).
+5. Wrap the result in a fenced code block before placing into LLM
+   context.
+
+This bracketing keeps customer file content as **data**, not as
+instructions. The skill's own per-module `AGENTS.md` rules block
+already advises agents to treat customer files as untrusted input.
+
 ## 3. Where these contracts apply
 
 - **Discovery scope** (`codified-context.md` § 1) — the deny-list is

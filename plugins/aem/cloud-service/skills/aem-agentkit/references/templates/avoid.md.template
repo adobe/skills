@@ -1,4 +1,4 @@
-<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+<!-- aem-agentkit: generated v{{SKILL_VERSION}}; safe to delete or edit. checksum: {{CHECKSUM}} -->
 # Anti-patterns to avoid in this repo
 
 Each entry was detected by a static signal in existing code. Every entry links to an absolute Cloud Service documentation URL (under `experienceleague.adobe.com/en/docs/experience-manager-cloud-service/` or `developer.adobe.com/experience-manager/reference-materials/cloud-service/`) so the agent does not depend on any sibling skill being installed at a particular relative path.

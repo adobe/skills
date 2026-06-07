@@ -1,4 +1,4 @@
-<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+<!-- aem-agentkit: generated v{{SKILL_VERSION}}; safe to delete or edit. checksum: {{CHECKSUM}} -->
 # core
 
 OSGi bundle. Backend services, Sling Models, business logic. Built with Maven, tested with JUnit and AEM Mocks.
@@ -34,3 +34,15 @@ See `.aem/context/avoid.md` for the full list with evidence pointers and absolut
 - Unit tests only: `{{MVN_CMD}} -pl core test`
 
 `{{MVN_CMD}}` is one of `mvn` / `./mvnw` (validated against this exact set; any other resolved value omits these build lines with a `warningStubs` entry).
+
+## After making changes
+
+When you (or another agent) add / rename / delete a Sling Model, OSGi
+service, Sling Servlet, or component in this module, run **`/regen-context`**
+before completing the task. This recomputes `.aem/context/osgi-services.json`
+and `.aem/context/components.json` (workspace-root copies plus any
+nested-sub-project copies that contain this module) so later agent
+sessions read the updated inventory instead of the stale one. The
+indexes carry a SHA-256 marker that the next `aem-agentkit` run uses to
+detect drift; mutating them by hand invalidates the marker and triggers
+a `.agentkit-new` sidecar on the next refresh.

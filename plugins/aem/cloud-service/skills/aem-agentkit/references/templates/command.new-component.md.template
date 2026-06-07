@@ -1,4 +1,4 @@
-<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+<!-- aem-agentkit: generated v{{SKILL_VERSION}}; safe to delete or edit. checksum: {{CHECKSUM}} -->
 ---
 description: Scaffold a new AEM component honoring this repo's conventions and call /regen-context to refresh .aem/context/components.json
 argument-hint: <component-name>

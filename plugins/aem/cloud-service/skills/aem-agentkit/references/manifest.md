@@ -109,6 +109,7 @@ detection) and the source of truth for `.agentkit-new` rotation.
 |---|---|
 | `files[].path` | Workspace-relative POSIX path of every file the run wrote. |
 | `files[].sha256` | SHA-256 of the canonical body (for marker-bearing files) or of the file bytes (for non-marker files). Used by `/agents-md-check` to detect drift. |
+| `files[].mtime` | Post-write `mtime` (epoch seconds, integer) of the file. v2 of `/agents-md-check` will use this for incremental drift detection: entries whose on-disk mtime is unchanged skip the checksum recompute. v1 records the field but ignores it for compatibility. Setting the schema field now means v2 isn't a manifest migration. |
 | `files[].kind` | One of `per-module-agents-md`, `index`, `derived`, `static-reference`, `subproject-overview`, `tool-claude-agent`, `tool-claude-command`, `tool-cursor-rule`, `tool-copilot-instructions`, `tool-continue-rule`, `tool-clinerules`, `tool-windsurfrules`, `tool-augment`, `mcp-placeholder`. |
 | `files[].subprojectRoot` | Workspace-relative path of the nested sub-project root this file belongs to, or `null` for workspace-root scope. |
 | `files[].static` | `true` when the file is a static-reference template (eligible for in-place overwrite on a skill version bump). |

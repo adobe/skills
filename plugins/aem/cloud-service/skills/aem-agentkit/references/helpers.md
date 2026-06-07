@@ -21,16 +21,26 @@ not ship on-prem or 6.5-LTS-specific paths.
 - The skill resolves the helper in this order: `${AEM_AGENTKIT_HELPER}`
   environment variable → `bin/aem-agentkit-helper` under the published
   skill root → `aem-agentkit-helper` on `PATH`.
-- The helper exposes `--version`. The skill compares the helper's
-  reported version against the skill's `metadata.version` (currently
-  `1.0.0-beta`). A mismatch aborts the run with a single diagnostic naming
-  the expected and observed versions; the customer must align the two
-  before retrying. The helper version follows the same `MAJOR.MINOR.PATCH`
-  scheme as the skill.
-- The helper is content-addressable. The skill verifies the helper's
-  SHA-256 against the value pinned in
-  [`upgrade-and-migration.md`](./upgrade-and-migration.md) § 1 before
-  the first invocation. A mismatch aborts the run.
+- The helper exposes `--version` (skill release version, e.g. `1.0.0-beta`)
+  and `--protocol-version` (JSON-line wire protocol version, currently
+  `1`). The skill compares **skill version** against `metadata.version`
+  and **protocol version** against its pinned protocol version. A
+  mismatch on either aborts the run with a single diagnostic naming the
+  expected and observed values.
+- Protocol version is decoupled from skill version so the helper can
+  evolve template content (skill release bump) without breaking driver
+  contracts (protocol bump). The protocol bumps when an op is added,
+  removed, or its response shape changes; skill version bumps on every
+  release including template-only changes. Both fields appear in the
+  `protocol-version` op response.
+- The helper is content-addressable. The release-time CI pipeline
+  computes the helper's SHA-256 and publishes it in
+  [`upgrade-and-migration.md`](./upgrade-and-migration.md) § 1.1's
+  "Helper SHA-256 pin" table for each shipped version. The skill
+  verifies the on-disk helper's SHA-256 against the value pinned for
+  its own skill version before the first invocation; a mismatch aborts.
+  Before that table is populated, the pin is "advisory" and the run
+  proceeds with a single warning entry in the summary block.
 - If the helper is not available the skill exits `1` with the
   diagnostic `aem-agentkit: deterministic helper not found (expected
   aem-agentkit-helper v<expected> at $AEM_AGENTKIT_HELPER, the published
@@ -112,33 +122,44 @@ Request:
 
 Response:
 ```json
-{"ok": true, "files": ["<workspace-relative-posix-path>", ...], "truncated": <boolean>, "truncatedSubtrees": ["<workspace-relative-posix-path>", ...], "warnings": ["<message>", ...]}
+{"ok": true, "files": ["<workspace-relative-posix-path>", ...], "truncated": <boolean>, "truncatedSubtrees": ["<workspace-relative-posix-path>", ...], "globalCapReached": <boolean>, "warnings": ["<message>", ...]}
 ```
+
+**Glob dialect.** `globs` uses Python `fnmatch.fnmatchcase` against the
+workspace-relative POSIX path. `*` matches any character INCLUDING `/`,
+so `*.java` matches both `core/A.java` and `core/sub/B.java`. Git-style
+recursive `**` is NOT a special token — it's two consecutive `*`s
+(semantically the same as one `*`). To restrict a walk to a single
+sub-tree, pass it as a root; do not rely on the glob for path-segment
+scoping.
 
 Behavior:
 1. Start from each entry in `roots`. Each root passes through § 2.1
    first.
-2. Walk depth-first. At every directory descent, casefold-match the
-   segment against the deny-list patterns; matching directories are
-   pruned (the entire subtree is skipped) and added to `warnings` as
-   `"deny-list segment match: <workspace-relative-path>"`. The full
-   pruned list (`target/`, `node_modules/`, `dist/`, `build/`, `out/`,
-   `.git/`, `crx-quickstart/`, `.idea/`, `.vscode/` excluding
-   `extensions.json`, plus any pattern from the privacy deny-list) is
-   enforced at every layer of the walk regardless of which root is
-   being walked.
-3. Each file passes through § 2.1.
-4. Files are returned in `sort()` order on the workspace-relative
+2. Walk depth-first. At every directory descent, every entry passes
+   through the same realpath gauntlet as § 2.1, including a re-check
+   of the resolved realpath segments against the deny-list. This
+   defeats an in-workspace symlink (e.g. `<ws>/safe -> <ws>/.git`)
+   that would otherwise pass the entry-name check but resolve into a
+   deny-listed subtree. Pruned entries are added to `warnings` with
+   the form `deny-list rejected: <workspace-relative-path>: ...`.
+   The full pruned list (`target/`, `node_modules/`, `dist/`,
+   `build/`, `out/`, `.git/`, `crx-quickstart/`, `.idea/`, `.vscode/`
+   excluding `extensions.json`, plus any pattern from the privacy
+   deny-list) is enforced at every layer of the walk.
+3. Files are returned in `sort()` order on the workspace-relative
    POSIX path.
-5. Caps:
+4. Caps:
    - `maxFiles` (default 100,000): global walk cap. On overflow,
-     `truncated: true` and the walk halts. The subtree where the cap
-     was reached is added to `truncatedSubtrees`.
+     `truncated: true` and `globalCapReached: true`. The walk halts
+     for all subsequent roots. The current subtree is NOT added to
+     `truncatedSubtrees` (the global cap is a workspace-wide event;
+     the current subtree may have been complete).
    - `maxDepth` (default 32): directory depth from the workspace root.
-   - `maxFilesPerSubtree` (default 10,000): per-immediate-child-of-root
-     cap so one malicious or generated subtree cannot starve the
-     global budget. On overflow, the subtree is partially returned and
-     added to `truncatedSubtrees`.
+   - `maxFilesPerSubtree` (default 10,000): per-root cap so one
+     malicious or generated subtree cannot starve the global budget.
+     On overflow, the subtree is partially returned and added to
+     `truncatedSubtrees`; the walk continues with the NEXT root.
 
 ### 2.4 `sha256-canonical` — compute the marker checksum
 
@@ -159,18 +180,24 @@ Response:
 
 Behavior:
 - **Markdown / `.mdc`:** Reject if the bytes start with a UTF-8 BOM.
-  Locate the first `\n`. Take the byte slice from the index after that
+  Skip any leading blank lines (a stray newline from an IDE
+  auto-prettier must not reclassify the file as human-curated), then
+  locate the first `\n`. Take the byte slice from the index after that
   `\n` to the end of the input. SHA-256 over the slice. No NFC
-  normalization, no whitespace trimming.
+  normalization on the body bytes, no whitespace trimming.
 - **JSON:** Reject if the bytes contain a UTF-8 BOM. Compute the
   canonical re-serialization: parse the bytes as RFC 8259 strict
   (top-level object required, no comments, no trailing commas), remove
   the keys `_generatedBy`, `_skillVersion`, `schemaVersion`,
-  `_markerChecksum`, `generatedAt`, `_static`, re-emit with sorted keys
-  at every level, 2-space indent, LF newlines, no trailing whitespace,
-  one final newline, UTF-8 no BOM. SHA-256 over the re-emitted bytes.
-  This makes the checksum stable across human edits that change only
-  whitespace, but every other content edit invalidates the marker.
+  `_markerChecksum`, `generatedAt`, `_static` **at the top level only**
+  (nested same-named keys are legitimate body content and are
+  preserved), recursively NFC-normalize every string leaf (so HFS+
+  NFD-on-disk and ext4/APFS NFC hash identically), then re-emit with
+  sorted keys at every level, 2-space indent, LF newlines, no trailing
+  whitespace, one final newline, UTF-8 no BOM. SHA-256 over the
+  re-emitted bytes. This makes the checksum stable across human edits
+  that change only whitespace or `generatedAt`/marker fields, but
+  every other content edit invalidates the marker.
 
 ### 2.5 `write-atomic` — write a file via `.tmp` + `rename(2)`
 
@@ -185,17 +212,34 @@ Response:
 ```
 
 Behavior:
-1. Resolve the **parent directory** via § 2.1 (the file itself does
-   not exist yet on first write).
-2. Reject if `path` is not in the SKILL.md § "Hard guarantee"
-   allow-list.
-3. Write to `<path>.tmp` using `O_CREAT | O_EXCL | O_WRONLY` with
-   permissions `0644`. If `<path>.tmp` exists, reject with
-   `EEXIST`; the caller is responsible for prior cleanup.
-4. `fsync(3)` the written file.
-5. `rename(2)` `<path>.tmp` over `<path>`.
-6. `fsync(3)` the parent directory on POSIX (no-op on Windows).
-7. Return SHA-256 over the written bytes.
+1. Reject if `path` is absolute or contains `..` components.
+2. Run a per-segment deny-list check on `path` (the same casefold + NFC
+   normalize + segment match used everywhere). Reject on any match.
+3. Reject if `path` is not in the SKILL.md § "Hard guarantee"
+   allow-list (helper-enforced, NOT advisory). Sidecars (`<path>.tmp`,
+   `<path>.agentkit-new`) inherit their target's allow-list status.
+   A test-only opt-out `enforceAllowlist: false` exists for fixture
+   construction; production callers must leave it at the default.
+4. Walk up to the nearest existing ancestor and realpath-check it
+   stays inside the workspace BEFORE any `mkdir` side effect. The
+   prior code ran `mkdir -p` first, which would create directories
+   under an attacker-controlled symlink before the realpath check
+   rejected. Reject if any intermediate directory between the
+   ancestor and the parent is a symlink.
+5. `os.makedirs(parent, exist_ok=True)`.
+6. Detect case-insensitive filesystem collisions: if the target's
+   basename differs from any pre-existing case-insensitive equivalent
+   (e.g. `AGENTS.md` requested but `agents.md` already on disk),
+   reject. Caller may opt in with `allowCaseCollision: true` to
+   accept the silent rename, but the default is the safe one.
+7. Write to `<path>.tmp` using `O_CREAT | O_EXCL | O_WRONLY` with
+   permissions `0644`. If `<path>.tmp` exists, reject with `EEXIST`;
+   the caller is responsible for prior cleanup (see § 2.6).
+8. `fsync(3)` the written file.
+9. `rename(2)` `<path>.tmp` over `<path>`.
+10. `fsync(3)` the parent directory on POSIX.
+11. Return SHA-256 over the written bytes, the matched allow-list
+    glob, and a `caseCollision` flag for visibility.
 
 ### 2.6 `cleanup-tmp` — startup cleanup of orphan `.tmp` files
 
@@ -206,13 +250,27 @@ Request:
 
 Response:
 ```json
-{"ok": true, "deleted": ["<workspace-relative-path>", ...]}
+{"ok": true, "deleted": ["<workspace-relative-path>", ...], "orphansRecovered": ["<workspace-relative-path>", ...]}
 ```
 
-Behavior: walk the allow-list paths only; for each `<path>.tmp`,
-delete only when `<path>` exists and is a marker-bearing file with a
-verifiable marker checksum. Never touches a `.tmp` not adjacent to a
-marker-bearing target.
+Behavior: bounded walk over the workspace (same realpath gauntlet
+as § 2.3). For each `<path>.tmp`:
+
+- If `<path>` exists and carries the aem-agentkit marker prefix
+  (Markdown `<!-- aem-agentkit: generated v` or JSON
+  `"_generatedBy": "aem-agentkit"`), delete the `.tmp` (regular
+  cleanup). Added to `deleted`.
+- If `<path>` does NOT exist AND the `.tmp` sits at an allow-listed
+  path (sidecar inherits allow-list status from its target), this is
+  a crash artifact from a prior write-atomic call that died between
+  `O_EXCL` create and `rename(2)`. Delete the `.tmp` so a future
+  write-atomic to the same path can proceed. Added to `orphansRecovered`.
+- Otherwise the `.tmp` is unrelated customer state; leave it alone.
+
+The marker prefix is intentionally version-agnostic (no `1.0.0-beta`
+literal in the substring match) so cross-version cleanup is the
+default: a `.tmp` written by v0.9 is cleaned by v1.0 if its target
+was authored by either version.
 
 ### 2.7 `sanitize-string` — sanitize an extracted string
 

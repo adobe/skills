@@ -6,8 +6,13 @@
 
 | File type | Marker |
 |---|---|
-| Markdown / `.mdc` (first content line) | `<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: <sha256> -->` |
-| JSON (top-level fields) | `"_generatedBy": "aem-agentkit"`, `"_skillVersion": "1.0.0-beta"`, `"schemaVersion": "1"`, `"_markerChecksum": "<sha256>"`; static-reference JSON files also carry `"_static": true`. |
+| Markdown / `.mdc` (first content line) | `<!-- aem-agentkit: generated v<SKILL_VERSION>; safe to delete or edit. checksum: <sha256> -->` |
+| JSON (top-level fields) | `"_generatedBy": "aem-agentkit"`, `"_skillVersion": "<SKILL_VERSION>"`, `"schemaVersion": "1"`, `"_markerChecksum": "<sha256>"`; static-reference JSON files also carry `"_static": true`. |
+
+`<SKILL_VERSION>` is substituted from `metadata.version` in `SKILL.md`
+at render time. Templates carry the `{{SKILL_VERSION}}` token rather
+than a baked-in literal so a release version bump does not require a
+coordinated find/replace across every template.
 
 `<sha256>` is the SHA-256 of the canonical body bytes (lowercase hex,
 no separators, 64 characters). Canonicalization is pinned to remove
@@ -36,11 +41,25 @@ ambiguity and is performed by the deterministic helper's
 - **Encoding:** UTF-8 without BOM throughout. A file with a BOM at the
   start fails the marker check.
 
-The helper version is pinned by content-addressable SHA-256 in this
-section. The skill compares its own `metadata.version` (`1.0.0-beta`)
-against the helper's `--version` output before any operation; mismatch
-aborts the run. The helper's SHA-256 is part of the published skill
-bundle's release notes and is verified before the first invocation.
+### 1.1 Helper SHA-256 pin
+
+The skill compares its own `metadata.version` against the helper's
+`--version` output before any operation; mismatch aborts the run.
+Beyond that version pin, the helper binary is content-addressable: the
+release-time CI pipeline computes the helper's SHA-256 and writes it
+into the table below for each shipped skill version. The skill verifies
+the on-disk helper's SHA-256 against the pinned value for its own
+version before the first invocation.
+
+| Skill version | Helper SHA-256 |
+|---|---|
+| `1.0.0-beta` | _Advisory: helper SHA-256 pin will be populated by release CI. Until then, the skill emits a single advisory warning entry in the summary block and proceeds._ |
+
+When the table is empty for the current skill version, the pin is
+advisory; the skill warns in the summary block but proceeds. When the
+table contains a value, mismatch is a hard failure (exit `1`). This
+graduation lets the table be populated incrementally without breaking
+existing customers.
 
 A marker with a `<sha256>` that does not recompute under this rule is
 treated as **human-curated** per

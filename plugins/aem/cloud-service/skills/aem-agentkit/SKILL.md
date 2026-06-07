@@ -115,12 +115,16 @@ Every output sits under one of:
 - `.aem/context/` files: `components.json`, `osgi-services.json`, `conventions.md`, `avoid.md`, `glossary.md`, `test-patterns.md`, `aem-api-namespaces.md`, `README.md`, `.agentkit-manifest.json`, `.agentkit.lock` (manifest and lock are workspace-root only; the other files are mirrored per detected nested sub-project)
 - Per-tool artifacts under `.claude/`, `.cursor/`, `.github/instructions/`, `.continue/`, plus single-file `.clinerules` / `.windsurfrules` / `augment.md` when their signal fires
 - `.mcp.json` and `.cursor/mcp.json` placeholders (only when missing)
+- `.aem/agentkit-overrides.yml` (one entry per resolved decision)
+
+**Helper-enforced.** The allow-list is enforced inside `bin/aem-agentkit-helper`'s `write-atomic` op (see [`references/helpers.md`](./references/helpers.md) § 2.5). A write request for any path outside the allow-list is rejected by the helper; the orchestrating LLM cannot bypass this even if prompt-injected. The deny-list (per-segment privacy patterns) is enforced before the allow-list - `node_modules/`, `.git/`, `.env`, `*.pem`, and the full privacy list are always refused regardless of intent.
 
 Outside this list every pre-existing file is read-only. The skill's own
 `<path>.tmp` (atomic-write only, cleaned at startup when adjacent to a
-marker-bearing target) and `<path>.agentkit-new` (diff sidecar) are the
-only other paths it touches. Root `AGENTS.md` / `CLAUDE.md` are owned by
-`ensure-agents-md` and are never modified.
+marker-bearing target OR when orphaned at an allow-listed path) and
+`<path>.agentkit-new` (diff sidecar) are the only other paths it touches.
+Root `AGENTS.md` / `CLAUDE.md` are owned by `ensure-agents-md` and are
+never modified.
 
 The skill never reads anything matching the deny-list in
 [references/privacy-and-sanitization.md](./references/privacy-and-sanitization.md)
@@ -133,13 +137,23 @@ resolution.
 
 ## Generation order
 
-The order is fixed. Skipping any step breaks downstream consumers.
+The order is fixed. Skipping any step breaks downstream consumers. All
+13 steps are numbered explicitly; the workspace-root universal layer
+(steps 1-8) is a coherent first batch that materializes
+`.aem/context/*` for the whole workspace.
 
-**Workspace-root universal layer (steps 1-8).** `.aem/context/components.json`, `osgi-services.json`, `conventions.md`, `avoid.md`, `glossary.md`, `test-patterns.md`, `aem-api-namespaces.md`, `README.md`. Each file covers the **whole workspace**.
+**Step 1 — `.aem/context/components.json`** (workspace-wide component catalog).
+**Step 2 — `.aem/context/osgi-services.json`** (Sling Models, OSGi services, Sling Servlets).
+**Step 3 — `.aem/context/conventions.md`** (derived conventions with evidence pointers).
+**Step 4 — `.aem/context/avoid.md`** (anti-patterns detected in the repo).
+**Step 5 — `.aem/context/glossary.md`** (domain disambiguation).
+**Step 6 — `.aem/context/test-patterns.md`** (project test patterns).
+**Step 7 — `.aem/context/aem-api-namespaces.md`** (static reference).
+**Step 8 — `.aem/context/README.md`** (static index of the above).
 
-**Per-sub-project universal layer (step 9 — MANDATORY for nested AEM monorepos).** For every nested AEM project the discovery in [`references/per-module-agents-md.md`](./references/per-module-agents-md.md) § 1 detected (and recorded under `heuristics[].decision == "module-shape"` with `value: nested-aem-project`), **repeat steps 1-7 scoped to that sub-project's source tree** and write the files to `<sub-project>/.aem/context/`. Skip the static-reference files (`aem-api-namespaces.md`, `README.md` already cover the whole workspace) and the manifest (workspace-root only). A sub-project with `_disable_agentkit` is skipped per [`references/collision-rules.md`](./references/collision-rules.md). This step is **not optional** — when nested sub-projects are detected, their per-sub-project `.aem/context/` directories MUST exist before the generation order proceeds. See [`references/codified-context.md`](./references/codified-context.md) § 11 for the schema and discovery scope rules.
+**Step 9 — Per-sub-project universal layer (MANDATORY for nested AEM monorepos).** For every nested AEM project the discovery in [`references/per-module-agents-md.md`](./references/per-module-agents-md.md) § 1 detected (and recorded under `heuristics[].decision == "module-shape"` with `value: nested-aem-project`), **repeat steps 1-7 scoped to that sub-project's source tree** and write the files to `<sub-project>/.aem/context/`. Skip the static-reference files (`aem-api-namespaces.md`, `README.md` already cover the whole workspace) and the manifest (workspace-root only). A sub-project with `_disable_agentkit` is skipped per [`references/collision-rules.md`](./references/collision-rules.md). This step is **not optional** — when nested sub-projects are detected, their per-sub-project `.aem/context/` directories MUST exist before the generation order proceeds. See [`references/codified-context.md`](./references/codified-context.md) § 11 for the schema and discovery scope rules.
 
-**Step 10 — Per-module `AGENTS.md`** (recursive — see [`references/per-module-agents-md.md`](./references/per-module-agents-md.md)).
+**Step 10 — Per-module `AGENTS.md`** (recursive — see [`references/per-module-agents-md.md`](./references/per-module-agents-md.md)). Includes a `## After making changes` block that instructs the agent to run `/regen-context` after any code change touching `core/`, `ui.apps/apps/`, or `ui.config/` so the indexes don't drift. This is the cross-skill index-mutation protocol delivered via the document every spec-compliant agent reads at session start, rather than requiring sibling skills to opt into a SKILL.md hook.
 
 **Step 11 — Tool-specific artifacts** — see [`references/per-tool-artifacts.md`](./references/per-tool-artifacts.md).
 
@@ -147,18 +161,20 @@ The order is fixed. Skipping any step breaks downstream consumers.
 
 **Step 13 — `.aem/context/.agentkit-manifest.json`** — see [`references/manifest.md`](./references/manifest.md).
 
-Then run the **self-validation pass**:
+Then run the **self-validation pass**. Each failure is reported with one
+of these category tags so the customer immediately knows the class of fix:
 
-- Every evidence pointer in derived Markdown resolves to an existing file (and line, when given).
-- Every `slingModelFqcn` / `implFqcn` resolves to an existing `.java` file.
-- Every per-module `AGENTS.md` matches an existing directory.
-- Every marker checksum recomputes correctly via the helper's `sha256-canonical` op.
-- Every URL is Cloud-Service-scoped (no `/6.5/`, no `experience-manager-65/`).
-- Every sanitized string is strip-list clean.
-- Every manifest entry's checksum matches the on-disk file.
-- **For every `heuristics[]` entry with `decision: module-shape, value: nested-aem-project`, the corresponding `<path>/.aem/context/components.json` and `<path>/.aem/context/osgi-services.json` exist and carry valid markers.** Missing per-sub-project context is a hard failure (exit `1`).
+- `evidence-resolution` — an evidence pointer in derived Markdown does not resolve to an existing file (or line, when given).
+- `evidence-resolution` — a `slingModelFqcn` / `implFqcn` does not resolve to an existing `.java` file.
+- `module-mismatch` — a per-module `AGENTS.md` does not match an existing directory.
+- `marker-checksum` — a marker checksum does not recompute correctly via the helper's `sha256-canonical` op.
+- `url-scoping` — a URL is not Cloud-Service-scoped (matches `/6.5/` or `experience-manager-65/`).
+- `strip-list-survivor` — a sanitized string carries strip-list code points.
+- `manifest-drift` — a manifest entry's checksum does not match the on-disk file.
+- `missing-subproject-context` — for some `heuristics[]` entry with `decision: module-shape, value: nested-aem-project`, the corresponding `<path>/.aem/context/components.json` or `<path>/.aem/context/osgi-services.json` is missing or marker-invalid.
 
-Exit `0` clean, `2` completed-with-warnings, `1` hard failure.
+Missing per-sub-project context is a hard failure (exit `1`). Exit `0`
+clean, `2` completed-with-warnings, `1` hard failure.
 
 ## Reference files
 
@@ -205,17 +221,54 @@ summary after the manifest is written (with `Heuristics`, `Warnings`,
 one-line workspace-relative diagnostic on any error. Templates in
 [`references/output-format.md`](./references/output-format.md).
 
+## Threat model
+
+The skill operates inside a developer's workspace with the privileges
+of the developer's user account. It reads files in the customer repo
+and writes a bounded set of agent-context files. Key trust boundaries:
+
+| Asset | Defended against | Mechanism |
+|---|---|---|
+| Customer source files | Accidental modification | Allow-list (helper-enforced in `write-atomic`) + marker-based human-curated detection |
+| Privacy-sensitive files (`.env`, `*.pem`, `.aws/`, `.git/config`) | Indexing into LLM context | Deny-list per path segment, ASCII casefold + NFC normalize, applied at both walk-name AND resolved-realpath segments |
+| Filesystem outside workspace | Reading or writing via symlink | Workspace realpath cached at startup; in-workspace symlinks pointing outside are rejected; special filesystems (`/proc`, `/sys`, `/dev`, `/var/run`, `/run`, macOS `/private/var/run`) rejected even when the workspace lives inside them |
+| TOCTOU on read | Reading a swapped file | `O_NOFOLLOW` + post-open re-check via `/proc/self/fd/N` (Linux) or `F_GETPATH` (macOS); fail-closed when re-check is unavailable |
+| Marker spoofing | Pasting our marker into a customer file | SHA-256 over canonical body bytes is recomputed on every "is this ours?" check; mismatch → human-curated → never overwritten |
+| Concurrent invocations | Racing on `.tmp` files | Advisory `flock` with PID + start-time defense against PID reuse; stale-lock recovery is race-safe |
+
+**Explicitly out of scope:**
+
+- **Prompt injection via raw file content.** When the orchestrating LLM
+  reads source files via the helper's `open` op, the helper returns the
+  raw bytes. The helper sanitizes only strings it is told to sanitize
+  (`cq:title` values, package names, glossary terms). Bidi-override,
+  zero-width, and "ignore prior instructions" payloads embedded in Java
+  comments, HTL files, or `pom.xml` `<description>` can hijack an agent
+  if the orchestrator places opened bytes into LLM context unfiltered.
+  This is the orchestrator's responsibility; see
+  [`references/privacy-and-sanitization.md`](./references/privacy-and-sanitization.md)
+  § 3 for the recommended `sanitize-bytes` wrapping flow. A future
+  `op_read_for_context` is tracked as a follow-up.
+- **Supply-chain tampering with the helper binary.** The helper's
+  content-addressable SHA-256 pin is documented in
+  [`references/upgrade-and-migration.md`](./references/upgrade-and-migration.md)
+  § 1.1 and baked into the release notes. A plugin marketplace
+  replacement of the helper would be detected only by that pin, not by
+  any in-skill mechanism.
+- **Adversarial Windows hosts.** Windows is rejected at startup; no
+  hardening claims apply on that platform. Use WSL.
+
 ## Rules
 
 Every rule is enforced by the helper and / or the self-validation pass.
 The references hold the byte-exact definitions; this section is a
 checklist for review.
 
-- **Allow-list writes only** (this file § Hard guarantee).
+- **Allow-list writes only** (this file § Hard guarantee, enforced inside the helper's `write-atomic` op).
 - **Never overwrite** any pre-existing file lacking the skill's marker (see [`collision-rules.md`](./references/collision-rules.md)).
-- **Never read** any path matching the privacy deny-list ([`privacy-and-sanitization.md`](./references/privacy-and-sanitization.md) § 1) — segment-by-segment match, ASCII-lowercase casefold, fail-closed on uncertainty.
-- **Workspace boundary + symlink hardening** ([`privacy-and-sanitization.md`](./references/privacy-and-sanitization.md) § 1.2): realpath check, workspace-escape rejection, special-filesystem rejection (`/proc`, `/sys`, `/dev`, UNC paths), `O_NOFOLLOW` open with TOCTOU re-check, depth cap 32, global file cap 100,000, per-subtree cap 10,000.
-- **Output stability** ([`codified-context.md`](./references/codified-context.md) § 2): JSON sorted-keys + 2-space indent + LF + final newline + UTF-8 no BOM; Markdown LF + final newline + no trailing whitespace; `generatedAt` is `YYYY-MM-DDTHH:MM:SSZ` and excluded from the checksum.
+- **Never read** any path matching the privacy deny-list ([`privacy-and-sanitization.md`](./references/privacy-and-sanitization.md) § 1) — segment-by-segment match, ASCII-lowercase casefold + NFC normalize, fail-closed on uncertainty. Deny-list also applies to the **resolved realpath segments** to defeat in-workspace symlink bypass.
+- **Workspace boundary + symlink hardening** ([`privacy-and-sanitization.md`](./references/privacy-and-sanitization.md) § 1.2): realpath check, workspace-escape rejection, special-filesystem rejection (`/proc`, `/sys`, `/dev`, `/var/run`, `/run`, macOS `/private/var/run`, UNC paths), `O_NOFOLLOW` open on the resolved target with TOCTOU re-check (fail-closed when re-check is unavailable), depth cap 32, global file cap 100,000, per-subtree cap 10,000.
+- **Output stability** ([`codified-context.md`](./references/codified-context.md) § 2): JSON sorted-keys + 2-space indent + LF + final newline + UTF-8 no BOM; Markdown LF + final newline + no trailing whitespace; `generatedAt` is `YYYY-MM-DDTHH:MM:SSZ` and excluded from the checksum. String leaves are NFC-normalized before checksum so HFS+ (NFD) and ext4/APFS (NFC) hash identically.
 - **Determinism tiebreaker** ([`codified-context.md`](./references/codified-context.md) § 2): path → line number → pre-sanitization value → SHA-256 of pre-sanitization value.
 - **Sanitize extracted strings** ([`privacy-and-sanitization.md`](./references/privacy-and-sanitization.md) § 2): NFC normalize, drop on strip-list match, 80-char cap, inline-code wrap with escalating fence.
 - **Hallucination guard.** Emit a derived rule only when ≥ 3 evidence pointers exist; otherwise emit a TODO marker.
@@ -224,7 +277,7 @@ checklist for review.
 - **Slash-command input validation**: `<name>` and `<FQCN>` against anchored regex before any shell or filesystem interpolation; `MVN_CMD` ∈ `{"mvn", "./mvnw"}` literally.
 - **No inline mutation of `.aem/context/*.json`**: roles delegate to `/regen-context` so the marker checksum is recomputed by the helper, not by the agent.
 - **Diagnostic-path scrubbing.** Workspace-relative paths only; never absolute, never `~/`.
-- **Equivalence guarantee** ([`per-tool-artifacts.md`](./references/per-tool-artifacts.md) § 7): the canonical role-source body is byte-identical across IDE projections.
+- **Semantically equivalent role bodies across IDE projections** ([`per-tool-artifacts.md`](./references/per-tool-artifacts.md) § 7): the canonical role-source body is the same content materialized in each IDE's preferred wrapper. Light per-projection adapters (frontmatter, file extension, IDE-specific directives) are permitted so the design survives IDE format evolution without forking the canonical source.
 
 ## Example invocation
 

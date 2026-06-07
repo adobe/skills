@@ -407,11 +407,41 @@ role body on disk; nothing points back to the published skill bundle. A
 one-line pointer at the bottom of the main file directs the agent to the
 sidecar, and a `warningStubs` entry names the truncated roles.
 
-## 7. Self-validation
+## 7. Semantic equivalence across IDE projections
+
+The canonical role-source body is the single source of truth for each
+role (`role.component-author.md`, `role.sling-model-author.md`, etc.).
+Each IDE projection materializes the SAME canonical body, wrapped in
+the IDE's preferred container:
+
+- **Claude Code:** `.claude/agents/<role>.md` (frontmatter + body).
+- **Cursor:** `.cursor/rules/<role>.mdc` (frontmatter with `globs` + body).
+- **Copilot:** `.github/instructions/<role>.instructions.md` (frontmatter with `applyTo` + body).
+- **Continue.dev:** `.continue/rules/<role>.md` (body only, slug filename).
+- **Cline / Windsurf / Augment:** concatenated into the single rules
+  file with a `## <role>` section heading.
+
+**Today's guarantee:** the role body content is functionally identical
+across projections — same guidance, same evidence pointers, same
+guardrails. Per-projection adapters (frontmatter, file extension,
+IDE-specific directives like Cursor's `@-mentions`) are permitted and
+expected; they wrap the canonical body without changing its semantics.
+
+**What this is NOT:** a byte-identical guarantee. Earlier drafts
+asserted "byte-identical body across all IDE projections," but that
+formulation does not survive the next round of IDE format evolution.
+The day Cursor ships a custom interpolation syntax that mid-body
+content can take advantage of, "byte-identical" forces either lowest-
+common-denominator content (skill systematically underperforms each
+tool) or a fork (the guarantee becomes a partial truth). Semantic
+equivalence is the durable contract; per-projection adapters are the
+escape hatch.
+
+## 7.1 Self-validation
 
 After writing all tool-specific files:
 - Every generated file carries the marker.
-- The canonical role-source body appears verbatim across all tool projections (byte-identical inside each role across IDEs).
+- The canonical role-source body is semantically equivalent across all tool projections — wrap, frontmatter, and extension may vary per IDE; the role body content is the same in every projection.
 - No file contains marketing language; framing uses "agentic workflow" terminology only.
 - Every URL is Cloud-Service-scoped (no `/6.5/`, no `experience-manager-65/`).
 - Every sanitized customer string is free of every code point in [`privacy-and-sanitization.md`](./privacy-and-sanitization.md) § 2.1.

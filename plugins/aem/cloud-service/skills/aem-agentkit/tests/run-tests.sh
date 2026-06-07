@@ -10,12 +10,17 @@ python3 --version >/dev/null 2>&1 || {
   exit 1
 }
 
-# Ensure helper is executable
-chmod +x bin/aem-agentkit-helper
+# Don't mutate the working tree; only chmod if not already executable.
+# This keeps `git status` clean after a test run (SE16 / Q16).
+if [ ! -x bin/aem-agentkit-helper ]; then
+  chmod +x bin/aem-agentkit-helper
+fi
 
-# Sanity-check the --version flag
+# Sanity-check the --version and --protocol-version flags
 HELPER_VERSION=$(python3 bin/aem-agentkit-helper --version)
-echo "helper --version: $HELPER_VERSION"
+PROTOCOL_VERSION=$(python3 bin/aem-agentkit-helper --protocol-version)
+echo "helper --version:          $HELPER_VERSION"
+echo "helper --protocol-version: $PROTOCOL_VERSION"
 
 # Run the unit suite
 python3 -m unittest tests.test_helper -v

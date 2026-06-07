@@ -1,4 +1,4 @@
-<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+<!-- aem-agentkit: generated v{{SKILL_VERSION}}; safe to delete or edit. checksum: {{CHECKSUM}} -->
 # Conventions (derived)
 
 Each rule below was derived from existing code. Every rule cites at least three evidence pointers (`<path>:<line>`). Rules without enough evidence are marked TODO.

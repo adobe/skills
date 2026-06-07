@@ -1,4 +1,4 @@
-<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: {{CHECKSUM}} -->
+<!-- aem-agentkit: generated v{{SKILL_VERSION}}; safe to delete or edit. checksum: {{CHECKSUM}} -->
 # {{SUBPROJECT_NAME}}
 
 Nested AEM as a Cloud Service project inside the monorepo at `{{REPO_ROOT}}`.
@@ -27,6 +27,17 @@ Nested AEM as a Cloud Service project inside the monorepo at `{{REPO_ROOT}}`.
 - Monorepo-wide indexes: `.aem/context/components.json`, `.aem/context/osgi-services.json`
 - Shared conventions: `.aem/context/conventions.md`
 - Anti-patterns with absolute Cloud Service documentation links: `.aem/context/avoid.md`
+
+## After making changes
+
+When you (or another agent) add / rename / delete a component, Sling
+Model, OSGi service, or Sling Servlet in this sub-project, run
+**`/regen-context`** before completing the task. This recomputes both
+the workspace-root and the **sub-project-scoped** `.aem/context/*`
+indexes so later sessions read the correct inventory at the right
+scope. In a multi-brand monorepo, the sub-project scope is what
+prevents a `twilio-com` agent session from seeing
+`twilio-foundation-reactor`'s components.
 
 ## Note on Git submodules
 
