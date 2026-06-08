@@ -1,3 +1,7 @@
+> **Deprecated:** This file is superseded by the `event-migration` expert skill at
+> [`../event-migration/SKILL.md`](../event-migration/SKILL.md). It will be removed once all
+> five expert skills are in place. Do not update this file — update the skill instead.
+
 # Event Migration Pattern
 
 Covers two legacy event-listening styles on AEM as a Cloud Service:

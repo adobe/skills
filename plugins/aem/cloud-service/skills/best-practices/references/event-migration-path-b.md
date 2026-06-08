@@ -1,3 +1,6 @@
+> **Deprecated:** This file is superseded by [`../event-migration/SKILL.md`](../event-migration/SKILL.md).
+> It will be removed once all five expert skills are in place. Do not update this file.
+
 # Event Migration Path B: OSGi EventHandler with Inline Logic → Lightweight + JobConsumer
 
 For classes that already implement `org.osgi.service.event.EventHandler` but have business logic (ResourceResolver, JCR Session, Node operations) directly inside `handleEvent()`.
