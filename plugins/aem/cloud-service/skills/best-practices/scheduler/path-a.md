@@ -38,7 +38,7 @@ the value as a String and concurrent execution is not suppressed.
 | `scheduler.concurrent` | `Boolean` | Allow overlapping runs | `false` (set via `:Boolean=false`) |
 | `scheduler.runOn` | `String` | Which topology members execute it | `SINGLE` for writes/external calls; omit only for per-pod tasks |
 | `scheduler.period` | `Long` | Fixed-interval scheduling in seconds | Only when migrating a periodic (non-cron) scheduler — prefer `scheduler.expression` |
-| `scheduler.name` | `String` | Human-readable name / registry key | Optional; useful for identifying the scheduler in `/system/console/slingscheduler` |
+| `scheduler.name` | `String` | Human-readable name / registry key | Optional; useful for identifying the scheduler in Sling Scheduler status (Developer Console on AEMaaCS, Felix Web Console on local SDK) |
 
 ---
 
