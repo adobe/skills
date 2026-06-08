@@ -295,24 +295,73 @@ Use the **amend** form (`ServiceUserMapperImpl.amended-<name>.cfg.json`) and the
 
 ### Variant — workflow events
 
-Workflow events live on topics under `com/adobe/granite/workflow/*` and expose payload properties via `com.adobe.granite.workflow.event.WorkflowEvent` constants. The handler+consumer pair is structurally identical to the replication example above — only the topic, the event-type discriminator, and the payload extraction change:
+Workflow events live on topics under `com/adobe/granite/workflow/*` and expose payload properties via `com.adobe.granite.workflow.event.WorkflowEvent` constants. The overall shape (lightweight handler + leader election + JobConsumer) is identical to the replication example — only the topic, the event-type discriminator, and the payload keys change. Full standalone handler:
 
 ```java
+package com.example.listeners;
+
 import com.adobe.granite.workflow.event.WorkflowEvent;
+import org.apache.sling.discovery.TopologyEvent;
+import org.apache.sling.discovery.TopologyEventListener;
+import org.apache.sling.event.jobs.JobManager;
+import org.osgi.framework.Constants;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
+import org.osgi.service.event.Event;
+import org.osgi.service.event.EventConstants;
+import org.osgi.service.event.EventHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-// In @Component.property:
-EventConstants.EVENT_TOPIC + "=com/adobe/granite/workflow/event"
+import java.util.HashMap;
+import java.util.Map;
 
-// Inside handleEvent() (after the isLeader gate, replacing the ReplicationEvent block):
-String eventType = (String) event.getProperty(WorkflowEvent.EVENT_TYPE);
-if (!WorkflowEvent.WORKFLOW_COMPLETED_EVENT.equals(eventType)) {
-    return;
+@Component(
+    service = { EventHandler.class, TopologyEventListener.class },
+    immediate = true,
+    property = {
+        Constants.SERVICE_DESCRIPTION + "=Handle workflow completion",
+        EventConstants.EVENT_TOPIC + "=com/adobe/granite/workflow/event"
+    }
+)
+public class WorkflowCompletedEventHandler implements EventHandler, TopologyEventListener {
+
+    public static final String JOB_TOPIC = "com/example/workflow/completed";
+
+    private static final Logger LOG = LoggerFactory.getLogger(WorkflowCompletedEventHandler.class);
+    private volatile boolean isLeader = false;
+
+    @Reference
+    private JobManager jobManager;
+
+    @Override
+    public void handleTopologyEvent(TopologyEvent event) {
+        if (event.getType() == TopologyEvent.Type.TOPOLOGY_CHANGED
+                || event.getType() == TopologyEvent.Type.TOPOLOGY_INIT) {
+            isLeader = event.getNewView().getLocalInstance().isLeader();
+        }
+    }
+
+    @Override
+    public void handleEvent(Event event) {
+        if (!isLeader) {
+            return;
+        }
+        try {
+            String eventType = (String) event.getProperty(WorkflowEvent.EVENT_TYPE);
+            if (!WorkflowEvent.WORKFLOW_COMPLETED_EVENT.equals(eventType)) {
+                return;
+            }
+            Map<String, Object> jobProperties = new HashMap<>();
+            jobProperties.put("workflowId", event.getProperty(WorkflowEvent.WORKFLOW_ID));
+            jobProperties.put("workItemId", event.getProperty(WorkflowEvent.WORK_ITEM));
+            jobProperties.put("path", event.getProperty("path"));
+            jobManager.addJob(JOB_TOPIC, jobProperties);
+        } catch (Exception e) {
+            LOG.error("Failed to enqueue workflow-completed job", e);
+        }
+    }
 }
-Map<String, Object> jobProperties = new HashMap<>();
-jobProperties.put("workflowId", event.getProperty(WorkflowEvent.WORKFLOW_ID));
-jobProperties.put("workItemId", event.getProperty(WorkflowEvent.WORK_ITEM));
-jobProperties.put("path", event.getProperty("path"));
-jobManager.addJob(JOB_TOPIC, jobProperties);
 ```
 
 Common `WorkflowEvent` payload keys:
@@ -324,7 +373,7 @@ Common `WorkflowEvent` payload keys:
 | `WorkflowEvent.WORK_ITEM` | The current work item ID |
 | `path` | The payload path the workflow is operating on (when applicable) |
 
-The JobConsumer pattern is unchanged from the replication example.
+The JobConsumer pattern is unchanged from the replication example — read the properties via `job.getProperty("key", Type.class)` and apply the business logic.
 
 ---
 
@@ -624,49 +673,126 @@ See [`../references/aem-cloud-service-pattern-prerequisites.md`](../references/a
 
 ## Greenfield — writing a new EventHandler from scratch
 
-For new handlers (not migrating legacy), follow the structure of the "After" example above. The handler shape, leader-election scaffolding, and JobConsumer skeleton are identical; only the topic, the event-type filter (if any), and the consumer's business logic change.
+When writing a new handler for a non-resource topic (not migrating legacy), use this template. It bundles the AEMaaCS best practices into one self-contained pair: lightweight handler, optional leader election, JobConsumer with proper outcome classification.
 
-The greenfield-specific value-adds in the consumer:
+```java
+// File 1: lightweight EventHandler with optional leader election
+@Component(
+    service = { EventHandler.class, TopologyEventListener.class },
+    immediate = true,
+    property = {
+        Constants.SERVICE_DESCRIPTION + "=My custom event handler",
+        EventConstants.EVENT_TOPIC + "=com/example/custom/topic"
+    }
+)
+public class MyEventHandler implements EventHandler, TopologyEventListener {
+
+    public static final String JOB_TOPIC = "com/example/custom/job";
+
+    private static final Logger LOG = LoggerFactory.getLogger(MyEventHandler.class);
+    private volatile boolean isLeader = false;
+
+    @Reference
+    private JobManager jobManager;
+
+    @Override
+    public void handleTopologyEvent(TopologyEvent event) {
+        if (event.getType() == TopologyEvent.Type.TOPOLOGY_CHANGED
+                || event.getType() == TopologyEvent.Type.TOPOLOGY_INIT) {
+            isLeader = event.getNewView().getLocalInstance().isLeader();
+        }
+    }
+
+    @Override
+    public void handleEvent(Event event) {
+        if (!isLeader) {
+            return;
+        }
+        try {
+            String path = (String) event.getProperty("path");
+            if (path == null) {
+                return;
+            }
+            Map<String, Object> jobProperties = new HashMap<>();
+            jobProperties.put("path", path);
+            jobManager.addJob(JOB_TOPIC, jobProperties);
+        } catch (Exception e) {
+            LOG.error("Failed to enqueue job", e);
+        }
+    }
+}
+
+// File 2: JobConsumer with outcome classification
+@Component(
+    service = JobConsumer.class,
+    property = { JobConsumer.PROPERTY_TOPICS + "=com/example/custom/job" }
+)
+public class MyJobConsumer implements JobConsumer {
+
+    private static final Logger LOG = LoggerFactory.getLogger(MyJobConsumer.class);
+    private static final String SUBSERVICE = "my-event-handler-service";
+
+    @Reference
+    private ResourceResolverFactory resolverFactory;
+
+    @Override
+    public JobResult process(final Job job) {
+        final String path = job.getProperty("path", String.class);
+        if (path == null) {
+            return JobResult.CANCEL;  // unrecoverable — required property missing
+        }
+
+        try (ResourceResolver resolver = resolverFactory.getServiceResourceResolver(
+                Collections.singletonMap(ResourceResolverFactory.SUBSERVICE, SUBSERVICE))) {
+            // business logic; resolver.commit() if writing
+            return JobResult.OK;
+        } catch (LoginException e) {
+            LOG.error("Could not open service resolver", e);
+            return JobResult.FAILED;  // retryable
+        }
+    }
+}
+```
+
+What this template captures:
+
+- **Leader-only by default** — drop the `TopologyEventListener` parts only if you've verified the action is genuinely idempotent or per-node intentional
+- **Topic shared as a `static final String`** — never copy the literal into the consumer's `PROPERTY_TOPICS`
+- **`JobResult` outcomes mapped deliberately** — `CANCEL` for missing required job data (won't recover on retry), `FAILED` for transient errors (Sling will retry), `OK` for success
+
+---
+
+## Composition — `EventHandler` → `JobConsumer` → `Distributor`
+
+A common production pattern is reacting to a replication event by triggering follow-up distribution (e.g. mirror the activation to a preview tier, or republish dependent content). The composition is straightforward: the `EventHandler` enqueues a job; the consumer calls `Distributor.distribute(...)`. Full consumer:
 
 ```java
 @Override
 public JobResult process(final Job job) {
     final String path = job.getProperty("path", String.class);
     if (path == null) {
-        return JobResult.CANCEL;  // unrecoverable — required property missing
+        return JobResult.CANCEL;
     }
+
     try (ResourceResolver resolver = resolverFactory.getServiceResourceResolver(
             Collections.singletonMap(ResourceResolverFactory.SUBSERVICE, SUBSERVICE))) {
-        // business logic; resolver.commit() if writing
-        return JobResult.OK;
-    } catch (LoginException e) {
-        LOG.error("Could not open service resolver", e);
-        return JobResult.FAILED;  // retryable
+
+        DistributionRequest request = new SimpleDistributionRequest(
+                DistributionRequestType.ADD, false, path);
+        DistributionResponse response = distributor.distribute("preview", resolver, request);
+
+        if (response.isSuccessful()) {
+            return JobResult.OK;
+        }
+        // Map DistributionResponse failure modes to JobResult outcomes
+        // See the replication skill for the full mapping
+        return JobResult.FAILED;
+
+    } catch (LoginException | DistributionException e) {
+        LOG.error("Distribution composition failed for {}", path, e);
+        return JobResult.FAILED;
     }
 }
-```
-
-Greenfield rules:
-
-- **Leader-only by default** — start with `TopologyEventListener` + `isLeader` gate. Drop only after verifying the action is genuinely idempotent at the data layer or per-node by design.
-- **Topic shared as a `static final String`** — never copy the literal into the consumer's `PROPERTY_TOPICS`.
-- **`JobResult` outcomes mapped deliberately** — `CANCEL` for missing required job data (won't recover on retry), `FAILED` for transient errors (Sling will retry), `OK` for success.
-
----
-
-## Composition — `EventHandler` → `JobConsumer` → `Distributor`
-
-A common production pattern is reacting to a replication event by triggering follow-up distribution (e.g. mirror the activation to the preview tier). The integration point is one call inside the JobConsumer's `process()`:
-
-```java
-DistributionRequest request = new SimpleDistributionRequest(
-        DistributionRequestType.ADD, false, path);
-DistributionResponse response = distributor.distribute("preview", resolver, request);
-if (!response.isSuccessful()) {
-    // See replication skill for full DistributionResponse → JobResult mapping
-    return JobResult.FAILED;
-}
-return JobResult.OK;
 ```
 
 See the [`replication` skill](../replication/SKILL.md) for the full `DistributionResponse` → `JobResult` mapping (CANCEL for unrecoverable permission/agent errors, FAILED for transient queue/transport, defensive preview handling).
