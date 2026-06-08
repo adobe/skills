@@ -1,3 +1,7 @@
+> **Deprecated:** This file is superseded by the `replication` expert skill at
+> [`../replication/SKILL.md`](../replication/SKILL.md). It will be removed once all
+> five expert skills are in place. Do not update this file — update the skill instead.
+
 # Replication API Migration Pattern
 
 Migrates legacy replication code to Cloud Service compatible pattern: **Sling Distribution API** instead of Sling Replication / CQ Replication APIs.
