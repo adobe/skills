@@ -70,6 +70,17 @@ playwright-cli run-code --filename="$COLLECT" \
   | node "$DETECT" --output ./page-langs-output
 ```
 
+### Step 4 — Verify output
+
+```bash
+cat ./page-langs-output/langs.json
+```
+
+Check for common failure modes:
+- `detected` is empty → `wordCount` is very low (page didn't render JS content or is bot-blocked); try `--headed` or run `page-prep` first
+- Command exits non-zero → `playwright-cli` lost the session; re-run Step 2 before Step 3
+- `declared` fields are all null → page has no language markup at all (valid finding, not an error)
+
 Output file: `./page-langs-output/langs.json`
 
 ## Output
