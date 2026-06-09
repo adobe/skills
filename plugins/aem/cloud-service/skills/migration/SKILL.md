@@ -32,7 +32,7 @@ This skill drives the **migration workflow**: BPA data, CAM/MCP, **one pattern p
 - *"**Manual:** **event listener** migration for `.../Listener.java` — read the code-assessment pattern guide first."*
 - *"Scan my config files and create Cloud Manager environment secrets or variables."*
 - *"Fix **htlLint** in `ui.apps` — scan for `data-sly-test` redundant constant warnings and fix them."*
-- *"Migrate my static templates to editable templates and generate the Modernize Tools rewrite rules — run discovery first and show me the per-template plan before writing any files."*
+- *"Migrate my static templates to editable templates and generate the Modernize Tools rewrite rules."*
 
 
 ## Path convention (Adobe Skills monorepo)
