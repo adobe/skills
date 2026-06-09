@@ -1,3 +1,6 @@
+> **Deprecated:** This file is superseded by [`../event-migration/SKILL.md`](../event-migration/SKILL.md).
+> It will be removed once all five expert skills are in place. Do not update this file.
+
 # Event Migration Path A: JCR `EventListener` → `JobConsumer`
 
 For classes that implement `javax.jcr.observation.EventListener` with `onEvent(EventIterator)`.
