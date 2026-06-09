@@ -1,3 +1,7 @@
+> **Deprecated:** This file is superseded by the `asset-manager` expert skill at
+> [`../asset-manager/SKILL.md`](../asset-manager/SKILL.md). It will be removed once all
+> five expert skills are in place. Do not update this file — update the skill instead.
+
 # Asset Manager API Migration Pattern
 
 Covers how to handle `com.day.cq.dam.api.AssetManager` usage so it is safe and idiomatic on

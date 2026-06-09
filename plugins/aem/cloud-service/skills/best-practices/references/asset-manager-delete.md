@@ -1,3 +1,6 @@
+> **Deprecated:** This file is superseded by [`../asset-manager/SKILL.md`](../asset-manager/SKILL.md).
+> It will be removed once all five expert skills are in place. Do not update this file.
+
 # Asset Manager Path B: Delete
 
 For files using `AssetManager.removeAssetForBinary(binaryFilePath, doSave)` — an API that
