@@ -1,6 +1,6 @@
 ---
 name: migration
-description: Migrates legacy AEM (6.x, AMS, on-prem) to AEM as a Cloud Service using BPA CSV or cache, CAM/MCP target discovery, and a one-pattern-per-session workflow. Use for BPA/CAM findings, Cloud Service blockers, or fixes for scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler, DAM AssetManager, HTL data-sly-test lint. OSGi configs → Cloud Manager — scan ui.config, .cfg.json, secrets, $[secret:]/$[env:] — agent follows references/osgi-cfg-json-cloud-manager.md when prompted. After BPA/CAM discovery, migration hands off each (pattern, file) pair to the code-assessment skill — code-assessment owns the five pattern guides (scheduler/, resource-change-listener/, replication/, event-migration/, asset-manager/) and the shared references for SCR→DS, ResourceResolver/SLF4J, HTL lint, and prerequisites. Template modernization (static → editable templates + AEM Modernize Tools rules) runs a per-template pipeline — context → per-template execute → validate.
+description: Migrates legacy AEM (6.x, AMS, on-prem) to AEM as a Cloud Service using BPA CSV or cache, CAM/MCP target discovery, and a one-pattern-per-session workflow. Use for BPA/CAM findings, Cloud Service blockers, or fixes for scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler, DAM AssetManager, HTL data-sly-test lint, Classic UI/ExtJS dialogs, and custom ExtJS widgets (CDW). OSGi configs → Cloud Manager — scan ui.config, .cfg.json, secrets, $[secret:]/$[env:] — agent follows references/osgi-cfg-json-cloud-manager.md when prompted. After BPA/CAM discovery, migration hands off each (pattern, file) pair to the code-assessment skill — code-assessment owns the five pattern guides (scheduler/, resource-change-listener/, replication/, event-migration/, asset-manager/) and the shared references for SCR→DS, ResourceResolver/SLF4J, HTL lint, and prerequisites. Template modernization (static → editable templates + AEM Modernize Tools rules) runs a per-template pipeline — context → per-template execute → validate. Legacy UI migration (dialog and CDW) follows references/legacy-ui/ modules.
 license: Apache-2.0
 ---
 
@@ -24,6 +24,8 @@ This skill drives the **migration workflow**: BPA data, CAM/MCP, **one pattern p
 | **OSGi → Cloud Manager** | *"**Scan my config files and create Cloud Manager environment secrets or variables.**"* | Agent **auto-reads** [references/osgi-cfg-json-cloud-manager.md](references/osgi-cfg-json-cloud-manager.md) (full Adobe-aligned rules inlined there); no BPA pattern id |
 | **HTL lint warnings** | *"Fix **htlLint** issues in `ui.apps`"* | Proactive discovery via `rg` → fix per the HTL lint reference |
 | **Template modernization** | *"**Migrate my static templates to editable templates and generate Modernize Tools rules.**"* / *"Create editable templates from my static templates."* / *"Generate AEM Modernize Tools structure/component/policy rules."* | Agent **auto-reads** [references/template-modernization/template-modernization-context.md](references/template-modernization/template-modernization-context.md) (shared discovery + structured context), produces a **per-template plan table**, then executes the plan using [editable-template-creation.md](references/template-modernization/editable-template-creation.md) and [aem-modernization.md](references/template-modernization/aem-modernization.md), and validates via [template-modernization-validation.md](references/template-modernization/template-modernization-validation.md). No BPA pattern id. |
+| **Dialog migration** | *"Convert my Classic UI / ExtJS dialogs to Touch UI."* / *"Upgrade Coral 2 dialogs to Coral 3."* / *"Fix LUI dialog findings."* | Agent reads [references/legacy-ui/dialog/context.md](references/legacy-ui/dialog/context.md) — filters BPA LUI to dialog sub-types, converts via [extjs-to-coral3.md](references/legacy-ui/dialog/extjs-to-coral3.md) or [coral2-to-coral3.md](references/legacy-ui/dialog/coral2-to-coral3.md), validates via [validation.md](references/legacy-ui/dialog/validation.md). BPA pattern id: `lui`. |
+| **Custom widget migration** | *"Fix my CDW findings."* / *"Migrate custom ExtJS widgets to Coral 3."* | Agent reads [references/legacy-ui/cdw/context.md](references/legacy-ui/cdw/context.md) — inventories xtypes, maps or scaffolds Granite UI components via [conversion.md](references/legacy-ui/cdw/conversion.md), validates via [validation.md](references/legacy-ui/cdw/validation.md). BPA pattern id: `cdw`. Run CDW before dialog migration when both are needed. |
 
 **Starter prompts (copy-paste):**
 
@@ -33,6 +35,9 @@ This skill drives the **migration workflow**: BPA data, CAM/MCP, **one pattern p
 - *"Scan my config files and create Cloud Manager environment secrets or variables."*
 - *"Fix **htlLint** in `ui.apps` — scan for `data-sly-test` redundant constant warnings and fix them."*
 - *"Migrate my static templates to editable templates and generate the Modernize Tools rewrite rules."*
+- *"Fix LUI dialog findings using BPA CSV at `./reports/bpa.csv`."*
+- *"Migrate custom ExtJS widgets (CDW findings) from CAM."*
+- *"Fix all Classic UI and custom widget findings — CDW first, then dialogs."*
 
 
 ## Path convention (Adobe Skills monorepo)
@@ -74,6 +79,22 @@ Do not transform **Java or HTL** until the pattern guide (or reference) is read 
 
 **Branch C — Template Modernization** (no BPA): static → editable templates and/or AEM Modernize Tools rules (structure/component/policy). Three phases: context → per-template execute → validate. Start at [references/template-modernization/template-modernization-context.md](references/template-modernization/template-modernization-context.md); generators are [editable-template-creation.md](references/template-modernization/editable-template-creation.md) and [aem-modernization.md](references/template-modernization/aem-modernization.md); post-gen checks in [template-modernization-validation.md](references/template-modernization/template-modernization-validation.md). **Skip** branch B.
 
+**Branch D — Legacy UI Migration** (`legacy-ui/` sub-folders): If the user asks to convert Classic UI / ExtJS dialogs, upgrade Coral 2 dialogs, migrate custom ExtJS widgets, fix LUI or CDW BPA findings, or mentions `cq:Dialog` / `xtype` / `cq:Widget`:
+
+- **For dialog findings** (`lui` pattern, `legacy.dialog.classic` or `legacy.dialog.coral2` only):
+  1. Read [references/legacy-ui/dialog/context.md](references/legacy-ui/dialog/context.md) — `getBpaFindings('lui', …)`, filter to dialog sub-types, skip all others with a note.
+  2. `convert-extjs` → [references/legacy-ui/dialog/extjs-to-coral3.md](references/legacy-ui/dialog/extjs-to-coral3.md).
+  3. `upgrade-coral2` → [references/legacy-ui/dialog/coral2-to-coral3.md](references/legacy-ui/dialog/coral2-to-coral3.md).
+  4. Validate: [references/legacy-ui/dialog/validation.md](references/legacy-ui/dialog/validation.md).
+
+- **For custom widget findings** (`cdw` pattern):
+  1. Read [references/legacy-ui/cdw/context.md](references/legacy-ui/cdw/context.md) — `getBpaFindings('cdw', …)`, inventory xtypes.
+  2. Per xtype: [references/legacy-ui/cdw/conversion.md](references/legacy-ui/cdw/conversion.md) (apply mapping or scaffold Granite UI component).
+  3. Validate: [references/legacy-ui/cdw/validation.md](references/legacy-ui/cdw/validation.md).
+  4. If the same components also have LUI `legacy.dialog.classic` findings, run dialog migration afterwards — all xtypes are now resolved.
+
+**Run order when both are needed: CDW first, then dialog.** CDW resolves custom xtypes so dialog conversion can proceed without stops. **Skip** Branch B. **Skip** Branch C.
+
 ## When to Use This Skill
 
 - Migrate legacy AEM Java toward **Cloud Service–compatible** patterns
@@ -82,6 +103,7 @@ Do not transform **Java or HTL** until the pattern guide (or reference) is read 
 - Enforce **one pattern type per session**
 - **OSGi → Cloud Manager:** **Branch A** — scan scoped **`.cfg.json`**, apply **`$[secret:…]`** / **`$[env:…]`** per rules in **[references/osgi-cfg-json-cloud-manager.md](references/osgi-cfg-json-cloud-manager.md)**; gitignored handoff; **no** secret values in chat.
 - **Template Modernization:** **Branch C** — see the Required-delegation entry above. Per-template plan table; no branch-level ordering between editable templates, structure rules, component rules, policy rules. References: [references/template-modernization/](references/template-modernization/).
+- **Legacy UI Migration:** **Branch D** — `legacy-ui/dialog/` for Classic UI/Coral 2 dialog conversion (BPA `lui` dialog sub-types); `legacy-ui/cdw/` for custom ExtJS widget remediation (BPA `cdw`). Run CDW before dialog when both are needed.
 
 ### OSGi configs and Cloud Manager (no BPA pattern id)
 
@@ -217,7 +239,9 @@ If the request is **OSGi configs → Cloud Manager** (see **Required delegation*
 
 If the request is **template modernization** — including "create editable templates", "generate `/conf` templates", "static to editable template", "structure rewrite rules", "component rewrite rules", "policy import rules", "parsys to container", or "AEM Modernize Tools" — follow **Branch C** → start with [references/template-modernization/template-modernization-context.md](references/template-modernization/template-modernization-context.md) (discovery + plan table), then execute per-template via the generators, then validate. No pattern id, no BPA.
 
-Otherwise map the request to a pattern id: `scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `htlLint`. If unclear, use **Manual Pattern Hints** in **`{code-assessment}/SKILL.md`** or ask the user to pick one of those.
+If the request involves **legacy UI** (Classic UI dialogs, Coral 2 dialogs, custom ExtJS widgets, LUI or CDW BPA findings) — follow **Branch D**. Route `lui` findings to `legacy-ui/dialog/`, `cdw` findings to `legacy-ui/cdw/`. No Java pattern modules needed.
+
+Otherwise map the request to a pattern id: `scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `htlLint`, `lui`, `cdw`. If unclear, use **Manual Pattern Hints** in **`{code-assessment}/SKILL.md`** or ask the user to pick one of those.
 
 ### Step 2: Availability
 
@@ -354,7 +378,7 @@ that cache.
 
 ## Quick reference
 
-**Source priority (when choosing how to obtain targets):** unified collection → BPA CSV → MCP → manual paths. **Not** an automatic cascade after MCP errors — if MCP fails, stop and wait for user direction (see **MCP errors and fallback**). For `htlLint`, use proactive `rg` discovery (no BPA/MCP). For **OSGi → Cloud Manager**, use [references/osgi-cfg-json-cloud-manager.md](references/osgi-cfg-json-cloud-manager.md) only (no BPA/MCP). For **Template Modernization** (Branch C), use the three-file pipeline: [template-modernization-context.md](references/template-modernization/template-modernization-context.md) → ([editable-template-creation.md](references/template-modernization/editable-template-creation.md) + [aem-modernization.md](references/template-modernization/aem-modernization.md)) → [template-modernization-validation.md](references/template-modernization/template-modernization-validation.md) — no BPA/MCP.
+**Source priority (when choosing how to obtain targets):** unified collection → BPA CSV → MCP → manual paths. **Not** an automatic cascade after MCP errors — if MCP fails, stop and wait for user direction (see **MCP errors and fallback**). For `htlLint`, use proactive `rg` discovery (no BPA/MCP). For **OSGi → Cloud Manager**, use [references/osgi-cfg-json-cloud-manager.md](references/osgi-cfg-json-cloud-manager.md) only (no BPA/MCP). For **Template Modernization** (Branch C), use the three-file pipeline: [template-modernization-context.md](references/template-modernization/template-modernization-context.md) → ([editable-template-creation.md](references/template-modernization/editable-template-creation.md) + [aem-modernization.md](references/template-modernization/aem-modernization.md)) → [template-modernization-validation.md](references/template-modernization/template-modernization-validation.md) — no BPA/MCP. For **Legacy UI** (Branch D): `lui` dialog sub-types → [references/legacy-ui/dialog/context.md](references/legacy-ui/dialog/context.md); `cdw` → [references/legacy-ui/cdw/context.md](references/legacy-ui/cdw/context.md).
 
 **Batch size:** 5 (default) on every BPA source. See **Batched processing** above.
 
