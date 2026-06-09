@@ -8,9 +8,11 @@ license: Apache-2.0
 
 Platform guidance for **AEM as a Cloud Service**: **Java/OSGi** (what to use, what to avoid, how to refactor legacy patterns) and **HTL** (component `.html` templates, Cloud SDK HTL lint).
 
-This skill holds the **pattern transformation modules** (`references/*.md`). They ship with the **`aem-cloud-service`** plugin; use this skill **without** the **migration** skill for greenfield or maintenance work that only needs these references. Use **migration** when you need BPA/CAM orchestration on top.
+This skill is a **router**: each major migration pattern lives in its own **expert skill subdirectory** (`scheduler/`, `resource-change-listener/`, `replication/`, `event-migration/`, `asset-manager/`) — each one is a self-contained expert skill covering migration, greenfield, review, troubleshooting, common pitfalls, and modern alternatives. Smaller cross-cutting reference modules (SCR→DS, resolver/logging, HTL lint, prerequisites hub) still live under `references/`.
 
-**Quick pick:** Open the **Pattern Reference Modules** table below → jump to the matching `references/<file>.md` → read it fully before editing. For Java: Felix SCR, resolvers, or logging, use **Java / OSGi baseline** links first when those appear in the same change set.
+The skill ships with the **`aem-cloud-service`** plugin. Use it **without** the **migration** skill for greenfield or maintenance work that only needs the pattern guidance. Use **migration** when you need BPA/CAM orchestration on top.
+
+**Quick pick:** Open the **Pattern Reference Modules** table below → jump to the matching skill (`<pattern>/SKILL.md`) or reference (`references/<file>.md`) → read it fully before editing. For Java baseline concerns (Felix SCR, resolvers, logging), check the **Java / OSGi baseline** links first when those appear in the same change set.
 
 ## When to Use This Skill
 
@@ -26,24 +28,24 @@ For **BPA/CAM orchestration** (collections, CSV, MCP project selection), use the
 
 ## Pattern Reference Modules
 
-Each supported pattern has a dedicated module under `references/` relative to this `SKILL.md`.
+The five major patterns have **dedicated expert skill subdirectories** with end-to-end coverage (migration, greenfield, review checklist, troubleshooting, common pitfalls, modern alternatives, expert guidance). Smaller cross-cutting concerns are reference modules under `references/`.
 
-| Pattern / topic | BPA Pattern ID | Module file | Status |
-|-----------------|----------------|-------------|--------|
-| Scheduler | `scheduler` | `references/scheduler.md` | Ready |
-| Resource Change Listener | `resourceChangeListener` | `references/resource-change-listener.md` | Ready |
-| Replication | `replication` | `references/replication.md` | Ready |
-| Event listener (JCR observation) | `eventListener` | `references/event-migration.md` | Ready |
-| Event handler (OSGi Event Admin) | `eventHandler` | `references/event-migration.md` | Ready |
-| Asset Manager | `assetApi` | `references/asset-manager.md` | Ready |
-| Felix SCR → OSGi DS | — | `references/scr-to-osgi-ds.md` | Ready |
-| ResourceResolver + SLF4J | — | `references/resource-resolver-logging.md` | Ready |
-| HTL: `data-sly-test` redundant constant | — (HTL lint) | `references/data-sly-test-redundant-constant.md` | Ready |
-| *(Prerequisites hub)* | — | `references/aem-cloud-service-pattern-prerequisites.md` | — |
+| Pattern / topic | BPA Pattern ID | Skill / module | Status |
+|-----------------|----------------|----------------|--------|
+| Scheduler | `scheduler` | [`scheduler/SKILL.md`](scheduler/SKILL.md) | Expert skill |
+| Resource Change Listener | `resourceChangeListener` | [`resource-change-listener/SKILL.md`](resource-change-listener/SKILL.md) | Expert skill |
+| Replication | `replication` | [`replication/SKILL.md`](replication/SKILL.md) | Expert skill |
+| Event listener (JCR observation) | `eventListener` | [`event-migration/SKILL.md`](event-migration/SKILL.md) | Expert skill |
+| Event handler (OSGi Event Admin) | `eventHandler` | [`event-migration/SKILL.md`](event-migration/SKILL.md) | Expert skill |
+| Asset Manager | `assetApi` | [`asset-manager/SKILL.md`](asset-manager/SKILL.md) | Expert skill |
+| Felix SCR → OSGi DS | — | [`references/scr-to-osgi-ds.md`](references/scr-to-osgi-ds.md) | Reference module |
+| ResourceResolver + SLF4J | — | [`references/resource-resolver-logging.md`](references/resource-resolver-logging.md) | Reference module |
+| HTL: `data-sly-test` redundant constant | — (HTL lint) | [`references/data-sly-test-redundant-constant.md`](references/data-sly-test-redundant-constant.md) | Reference module |
+| *(Prerequisites hub)* | — | [`references/aem-cloud-service-pattern-prerequisites.md`](references/aem-cloud-service-pattern-prerequisites.md) | Reference module |
 
-**Event listener vs event handler (not the same):** **`eventListener`** is **JCR observation** — the JCR API for repository change callbacks (`javax.jcr.observation.EventListener`, `onEvent`). **`eventHandler`** is **OSGi Event Admin** — whiteboard-style OSGi events (`org.osgi.service.event.EventHandler`, `handleEvent`). Both migrate via **`references/event-migration.md`** (Path A vs Path B). **`resourceChangeListener`** is separate: Sling **`ResourceChangeListener`**, module **`references/resource-change-listener.md`**.
+**Event listener vs event handler (not the same):** **`eventListener`** is **JCR observation** — the JCR API for repository change callbacks (`javax.jcr.observation.EventListener`, `onEvent`). **`eventHandler`** is **OSGi Event Admin** — whiteboard-style OSGi events (`org.osgi.service.event.EventHandler`, `handleEvent`). Both migrate via the [`event-migration/SKILL.md`](event-migration/SKILL.md) expert skill (covers JCR `EventListener` migration as Path A and OSGi `EventHandler` migration as Path B). **`resourceChangeListener`** is separate: Sling **`ResourceChangeListener`**, expert skill at [`resource-change-listener/SKILL.md`](resource-change-listener/SKILL.md).
 
-**Before changing code for a pattern:** read the module for that pattern in full. Modules include classification criteria, ordered transformation steps, and validation checklists.
+**Before changing code for a pattern:** read the expert skill (or reference module) for that pattern in full. Each expert skill contains classification criteria, complete before/after examples, ordered transformation steps, greenfield templates, composition examples with other expert skills, review checklists, troubleshooting fingerprints, common pitfalls, modern alternatives, and expert guidance on AEMaaCS-specific concerns.
 
 ## Java / OSGi baseline (same skill; no separate installables)
 
@@ -83,6 +85,8 @@ When no BPA list exists, scan imports and types to pick a module:
 
 If multiple patterns match, ask which to fix first.
 
-## Relationship to Migration
+## Relationship to Migration and Code-Assessment
 
-The **`migration`** skill defines **one-pattern-per-session** workflow, BPA/CAM/MCP flows, and user messaging. It **delegates** all detailed transformation steps to this skill's `references/` modules. It uses a **`{best-practices}`** repo-root path alias to this folder (see its `SKILL.md`). Keep platform truth here; keep orchestration there.
+The **`migration`** skill defines **one-pattern-per-session** workflow, BPA/CAM/MCP flows, and user messaging. It **delegates** all detailed transformation steps to this skill's expert skill subdirectories (`<pattern>/SKILL.md`) and reference modules (`references/<file>.md`). It uses a **`{best-practices}`** repo-root path alias to this folder (see its `SKILL.md`). Keep platform truth here; keep orchestration there.
+
+The **`code-assessment`** skill (when present) is the second orchestrator entry point: it tries Health Assessment (HA) findings via MCP first, and falls back to this skill's expert subdirectories when HA has no detector coverage for a named pattern. Both orchestrators invoke the same expert skills — the difference is the discovery path (BPA/CAM for `migration`, HA/MCP for `code-assessment`).
