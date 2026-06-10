@@ -1,6 +1,7 @@
 package analyzer;
 
 import analyzer.detectors.InjectInSlingModel;
+import analyzer.detectors.OutboundCallTimeouts;
 import analyzer.detectors.OutdatedDependencies;
 
 import java.util.ArrayList;
@@ -12,6 +13,7 @@ public final class Registry {
     public static List<Detector> all() {
         return new ArrayList<>(Arrays.asList(
             new InjectInSlingModel(),
+            new OutboundCallTimeouts(),
             new OutdatedDependencies()
         ));
     }

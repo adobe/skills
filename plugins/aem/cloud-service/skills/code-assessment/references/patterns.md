@@ -31,7 +31,7 @@ Adding a pattern: add a row here, then build the expert skill from
 |---|---|---|---|---|---|
 | [`inject-in-sling-model`](../inject-in-sling-model/SKILL.md) | migrate `@Inject` fields in `@Model` classes to injector-specific annotations | high | ready | analyzer | mechanical |
 | [`outdated-dependencies`](../outdated-dependencies/SKILL.md) | upgrade stale Maven dependency versions | medium | ready | analyzer | mechanical |
-| `outbound-call-timeouts` | add connect/read timeouts to outbound HTTP / `URLConnection` calls | high | planned | scan | - |
+| [`outbound-call-timeouts`](../outbound-call-timeouts/SKILL.md) | add connect/read/socket timeouts to outbound HTTP client construction (Apache HttpClient, OkHttp, JDK HttpClient) | high | ready | analyzer | mechanical |
 | `unbounded-query` | bound QueryBuilder / JCR / SQL2 queries (`p.limit=-1` → limit + pagination) | high | planned | scan | - |
 | `unclosed-resources` | close `ResourceResolver` / `Session` / streams via try-with-resources | high | planned | scan | - |
 | `thread-lock-contention` | replace coarse `synchronized` / synchronized collections on shared state with concurrent types | high | planned | scan | - |

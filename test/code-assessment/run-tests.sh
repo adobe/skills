@@ -157,6 +157,16 @@ assert_absent  "non-allowlisted dep skipped by default"   "$OUT" 'random-lib'
 OUT="$(run "$FIX/allowlist" --all)"
 assert_contains "--all surfaces non-allowlisted dep"       "$OUT" 'random-lib'
 
+echo "[outbound-call-timeouts] timeout-less clients + JDK requests flagged; configured ones clean"
+OUT="$(run "$FIX/outbound-call-timeouts")"
+assert_contains "pattern present"                       "$OUT" '"pattern":"outbound-call-timeouts"'
+assert_contains "Apache no-timeout client flagged"      "$OUT" 'BadHttpService.java'
+assert_contains "JDK newHttpClient flagged"             "$OUT" 'JdkHttpService.java'
+assert_contains "JDK request without timeout flagged"   "$OUT" 'JdkRequestBad.java'
+assert_absent  "RequestConfig-timeout client not flagged" "$OUT" 'GoodHttpService.java'
+assert_absent  "JDK request with timeout not flagged"   "$OUT" 'JdkRequestGood.java'
+assert_absent  "non-JDK HttpRequest not flagged"        "$OUT" 'OtherHttpRequest.java'
+
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -44,6 +44,7 @@ Route the request to one expert skill:
 |---|---|
 | "update aem sdk", "upgrade mockito", stale `<version>` or `${property}` in pom | [`outdated-dependencies/`](outdated-dependencies/SKILL.md) |
 | "fix @Inject", "modernize Sling Models", `javax.inject.Inject` on `@Model` fields | [`inject-in-sling-model/`](inject-in-sling-model/SKILL.md) |
+| "add HTTP timeouts", "outbound/external call has no timeout", `HttpClient` / `HttpClients` / `OkHttpClient` built without a timeout | [`outbound-call-timeouts/`](outbound-call-timeouts/SKILL.md) |
 
 **Broad / correctness-review asks** ("check my Sling Models are implemented correctly", "review my code", "is my AEM project healthy", "assess this project") are not a single pattern: run the runbook in `discover` mode with intent `report` — the analyzer runs every detector and the report covers all built patterns, explicitly noting aspects not yet supported. Only narrow to one pattern when the user targets a specific fix.
 
