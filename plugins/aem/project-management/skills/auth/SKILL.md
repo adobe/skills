@@ -4,16 +4,16 @@ description: Authenticate with AEM Edge Delivery Services. Opens browser for log
 license: Apache-2.0
 allowed-tools: Read, Write, Edit, Bash, AskUserQuestion
 metadata:
-  version: "4.0.0"
+  version: "5.0.0"
 ---
 
 # AEM Edge Delivery Services Authentication
 
-Authenticate to obtain a token for all Edge Delivery Services admin operations. Auto-detects identity provider from org+site — no content source question needed.
+Authenticate to obtain a token for all Edge Delivery Services admin operations. Auto-detects identity provider from org+site — no content source question needed. Opens the user's default browser for login and receives the token via a local callback server.
 
 ## Token Usage
 
-The `auth_token` cookie works for admin APIs:
+The `authToken` works for admin APIs:
 
 | API | Header | Usage |
 |-----|--------|-------|
@@ -32,7 +32,6 @@ The `auth_token` cookie works for admin APIs:
 ## Prerequisites
 
 - Node.js installed
-- Playwright installed (`npx playwright install chromium`)
 
 ---
 
@@ -63,14 +62,7 @@ fi
 echo "Token missing or expired. Starting login..."
 ```
 
-### Step 2: Install Playwright (if needed)
-
-```bash
-npx playwright --version 2>/dev/null || npm install -g playwright
-npx playwright install chromium 2>/dev/null || true
-```
-
-### Step 2.5: Resolve Org and Site
+### Step 2: Resolve Org and Site
 
 The auto-login endpoint `/login/{org}/{site}/main` redirects to the correct identity provider automatically — no need to know the content source.
 
@@ -133,61 +125,105 @@ fi
 
 **Do NOT proceed until both org and site are available.**
 
-### Step 3: Capture Token via Playwright
+### Step 3: Capture Token via Loopback Redirect
 
-The `/login/{org}/{site}/main` endpoint auto-redirects to the correct identity provider based on the project's configuration. Playwright follows the redirect, user logs in, and the `auth_token` cookie is captured automatically.
+Opens the user's default browser for login. A temporary local HTTP server receives the token callback after login completes. The user must click "Send" on the confirmation page to deliver the token. Works with all identity providers (Adobe IMS, Google, Microsoft).
+
+**User-facing message (display BEFORE running the script below):**
+
+> **Browser opened for login to `{org}/{site}`. Click "Send" after authenticating — you can close the tab once done.**
+
+Use bold/highlighted formatting so the instruction stands out clearly.
 
 ```bash
 mkdir -p "${HOME}/.aem"
 
 node -e "
+const http = require('http');
+const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { chromium } = require('playwright');
+const crypto = require('crypto');
 
 const TOKEN_PATH = path.join(process.env.HOME, '.aem', 'ims-token.json');
 const ORG = '${ORG}';
 const SITE = '${SITE}';
-const loginUrl = 'https://admin.hlx.page/login/' + ORG + '/' + SITE + '/main';
+const STATE = crypto.randomUUID();
 
-(async () => {
+const server = http.createServer((req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  if (req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk) => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const parsed = JSON.parse(body);
+        if (parsed.state !== STATE) {
+          console.error('State mismatch — ignoring callback');
+          res.writeHead(403);
+          res.end('State mismatch');
+          return;
+        }
+        const authToken = parsed.authToken;
+        if (authToken) {
+          const expiresAt = Math.floor(Date.now() / 1000) + 86400;
+          fs.writeFileSync(TOKEN_PATH, JSON.stringify({
+            authToken,
+            authTokenExpiry: expiresAt,
+          }, null, 2));
+          try { fs.chmodSync(TOKEN_PATH, 0o600); } catch (e) {}
+          console.log('Authentication successful');
+          console.log('Token cached at: ' + TOKEN_PATH);
+          console.log('Expires: ' + new Date(expiresAt * 1000).toISOString());
+        } else {
+          console.error('No authToken in callback. The helix-admin authToken support may not yet be deployed.');
+          console.error('Keys received: ' + Object.keys(parsed).join(', '));
+        }
+        res.writeHead(200, { 'content-type': 'text/plain' });
+        res.end('OK');
+      } catch (e) {
+        console.error('Failed to parse callback: ' + e.message);
+        res.writeHead(400);
+        res.end('Bad request');
+      }
+      server.close(() => process.exit(0));
+    });
+  } else if (req.method === 'GET') {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end('<html><body><p>Login complete. You can close this tab.</p><script>window.close()</script></body></html>');
+  }
+});
+
+server.listen(0, () => {
+  const port = server.address().port;
+  const redirectUri = 'http://localhost:' + port + '/.aem/cli/login/ack';
+  const loginUrl = 'https://admin.hlx.page/login/' + ORG + '/' + SITE + '/main?client_id=aem-cli&redirect_uri=' + encodeURIComponent(redirectUri) + '&state=' + STATE + '&selectAccount=true';
+
   console.log('Opening browser for login...');
   console.log('URL: ' + loginUrl);
-  const browser = await chromium.launch({ headless: false });
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  await page.goto(loginUrl);
-
-  // Poll for auth_token cookie after login completes
-  let token = null;
-  for (let i = 0; i < 60; i++) {
-    await page.waitForTimeout(5000);
-    const cookies = await context.cookies('https://admin.hlx.page');
-    const authCookie = cookies.find(c => c.name === 'auth_token');
-    if (authCookie && authCookie.value) {
-      token = authCookie.value;
-      break;
+  console.log('');
+  console.log('After logging in, click the Send button to complete authentication.');
+  try { execSync('open \"' + loginUrl + '\"'); } catch (e) {
+    try { execSync('xdg-open \"' + loginUrl + '\"'); } catch (e2) {
+      console.log('Could not open browser. Please open this URL manually:');
+      console.log(loginUrl);
     }
   }
+});
 
-  if (token) {
-    const expiresAt = Math.floor(Date.now() / 1000) + 86400;
-    let existing = {};
-    try { existing = JSON.parse(fs.readFileSync(TOKEN_PATH, 'utf8')); } catch (e) {}
-    existing.authToken = token;
-    existing.authTokenExpiry = expiresAt;
-    fs.writeFileSync(TOKEN_PATH, JSON.stringify(existing, null, 2));
-    try { fs.chmodSync(TOKEN_PATH, 0o600); } catch (e) {}
-    console.log('Authentication successful');
-    console.log('Token cached at: ' + TOKEN_PATH);
-    console.log('Expires: ' + new Date(expiresAt * 1000).toISOString());
-  } else {
-    console.error('Login timed out - no auth_token cookie found after 5 minutes');
-  }
-
-  await browser.close();
-  process.exit(token ? 0 : 1);
-})();
+setTimeout(() => {
+  console.error('Login timed out after 5 minutes. No callback received.');
+  process.exit(1);
+}, 300000);
 "
 ```
 
@@ -206,8 +242,8 @@ const loginUrl = 'https://admin.hlx.page/login/' + ORG + '/' + SITE + '/main';
 
 | Field | Description |
 |-------|-------------|
-| `authToken` | Token from `auth_token` cookie after login |
-| `authTokenExpiry` | Unix timestamp when token expires |
+| `authToken` | Admin JWT from login callback |
+| `authTokenExpiry` | Unix timestamp when token expires (~24 hours) |
 
 Shared across every project on this machine. File is written with `0600` permissions.
 
@@ -236,12 +272,25 @@ curl -H "x-auth-token: ${AUTH_TOKEN}" "https://admin.hlx.page/config/{org}/sites
 
 | Issue | Solution |
 |-------|----------|
-| `npx playwright` not found | Run `npm install -g playwright` |
-| Browser doesn't open | Run `npx playwright install chromium` |
-| Login page doesn't redirect | Verify org and site names are correct |
-| Token not captured | Ensure login completed before closing browser |
+| Browser doesn't open | Manually open the URL printed in the terminal |
+| "Send" button not working | Check browser console for errors; ensure no ad-blocker is blocking localhost requests |
+| No authToken in callback | The helix-admin PR adding authToken to CLI login response has not yet been deployed |
+| Token not received | Ensure you clicked "Send" on the confirmation page before the 5-minute timeout |
 | 401 after login | Token expired, re-authenticate |
 | 403 on API | User lacks permission for that org/site |
+| State mismatch | Another process may have sent a rogue callback; re-run login |
+
+---
+
+## How It Works
+
+1. CLI starts a temporary HTTP server on a random localhost port
+2. Opens the user's default browser to `admin.hlx.page/login/{org}/{site}/main` with `client_id=aem-cli` and `redirect_uri=http://localhost:{port}/...`
+3. Admin API auto-detects IDP (Google, Microsoft, Adobe) and redirects to login
+4. User authenticates in their real browser
+5. After login, admin API shows a confirmation page with a "Send" button
+6. User clicks "Send" — browser POSTs `{ state, authToken }` to localhost
+7. CLI validates state nonce, saves `authToken` to `~/.aem/ims-token.json`, exits
 
 ---
 
