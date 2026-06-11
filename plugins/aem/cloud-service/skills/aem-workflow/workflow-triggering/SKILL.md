@@ -11,7 +11,10 @@ All mechanisms to start a workflow on AEM Cloud Service — from UI, programmati
 ## Variant Scope
 
 - AEM Cloud Service only.
-- Use service users with `workflow-process-service` sub-service mapping for programmatic triggering.
+- For programmatic triggering, use a service user — map a sub-service (e.g. `workflow-starter`)
+  to a service user that is a member of the `workflow-process-service` group
+  (`workflow-process-service` is a group, not a user). See
+  [programmatic-api.md](./references/workflow-triggering/programmatic-api.md) for the mapping config.
 
 ## Triggering Mechanisms Summary
 
@@ -43,6 +46,9 @@ The workflow starts with the selected item as `JCR_PATH` payload and the current
 5. Click **Publish Later** or **Publish Now**
 
 AEM creates a `cq:WorkflowContentPackage` containing all selected pages as the workflow payload.
+The payload is a `JCR_PATH` pointing to the generated package node under `/var/workflow/packages`
+(legacy: `/etc/workflow/packages`) — useful to know when debugging payload issues, since the
+payload is the package node, not the individual pages.
 
 ## 3. Programmatic (WorkflowSession API)
 
@@ -56,7 +62,7 @@ public class MyWorkflowService {
     public String startWorkflow(String payloadPath, String modelId,
                                 Map<String, Object> initialMeta) throws Exception {
         Map<String, Object> auth = Collections.singletonMap(
-            ResourceResolverFactory.SUBSERVICE, "workflow-process");
+            ResourceResolverFactory.SUBSERVICE, "workflow-starter");
         try (ResourceResolver resolver = resolverFactory.getServiceResourceResolver(auth)) {
             WorkflowSession wfSession = resolver.adaptTo(WorkflowSession.class);
             WorkflowModel model = wfSession.getModel(modelId);
@@ -79,24 +85,54 @@ public class MyWorkflowService {
 
 ## 4. HTTP Workflow API
 
+The API is rooted at `/var/workflow/instances`. Do **not** POST to `/api/workflow/instances` —
+no workflow servlet is mounted there, so the Sling default POST servlet silently writes stray JCR
+nodes and returns a misleading 2xx **without starting any workflow**.
+
 ```bash
-# Start a workflow
+# Start a workflow — returns HTTP 201 with an HTML body linking to the new instance path
 curl -u admin:admin -X POST \
-  "http://localhost:4502/api/workflow/instances" \
-  -d "model=/var/workflow/models/my-workflow" \
-  -d "payloadType=JCR_PATH" \
-  -d "payload=/content/my-site/en/home" \
-  -d "workflowTitle=Review Request from CI"
+  "http://localhost:4502/var/workflow/instances" \
+  --data-urlencode "_charset_=utf-8" \
+  --data-urlencode "model=/var/workflow/models/my-workflow" \
+  --data-urlencode "payloadType=JCR_PATH" \
+  --data-urlencode "payload=/content/my-site/en/home" \
+  --data-urlencode "workflowTitle=Review Request from CI" \
+  --data-urlencode "startComment=triggered via HTTP API"
 
-# Response: 201 Created with Location header pointing to instance path
+# The start response is HTML — parse the instance path from the
+# <a id="Location"> anchor (or "Modified Resource" link in the body),
+# e.g. /var/workflow/instances/server0/<date>/my-workflow_1
 
-# Get workflow instance details
+# List all instances (JSON)
+curl -u admin:admin "http://localhost:4502/var/workflow/instances.json"
+
+# List by state using a selector (.RUNNING.json, .SUSPENDED.json, .COMPLETED.json, .ABORTED.json)
+curl -u admin:admin "http://localhost:4502/var/workflow/instances.RUNNING.json"
+
+# Get instance details — JSON fields: id, state, initiator, startTime,
+#   model, payloadType, payload, workItems[]
 curl -u admin:admin \
-  "http://localhost:4502/api/workflow/instances/<instanceId>.json"
+  "http://localhost:4502/var/workflow/instances/server0/<date>/my-workflow_1.json"
 
-# List running instances
-curl -u admin:admin \
-  "http://localhost:4502/api/workflow/instances?state=RUNNING&model=/var/workflow/models/my-workflow"
+# Suspend a running workflow — POST state=SUSPENDED, returns HTTP 200
+curl -u admin:admin -X POST \
+  "http://localhost:4502/var/workflow/instances/server0/<date>/my-workflow_1" \
+  --data-urlencode "_charset_=utf-8" \
+  --data-urlencode "state=SUSPENDED"
+
+# Resume a suspended workflow — POST state=RUNNING, returns HTTP 200
+curl -u admin:admin -X POST \
+  "http://localhost:4502/var/workflow/instances/server0/<date>/my-workflow_1" \
+  --data-urlencode "_charset_=utf-8" \
+  --data-urlencode "state=RUNNING"
+
+# Terminate (abort) a workflow — POST state=ABORTED, returns HTTP 200
+curl -u admin:admin -X POST \
+  "http://localhost:4502/var/workflow/instances/server0/<date>/my-workflow_1" \
+  --data-urlencode "_charset_=utf-8" \
+  --data-urlencode "state=ABORTED" \
+  --data-urlencode "terminateComment=cleanup"
 ```
 
 ## Guardrails
@@ -105,6 +141,7 @@ curl -u admin:admin \
 - Never start workflows with admin credentials from production code. Use a service user.
 - Model ID must be the `/var/workflow/models/` path (runtime). Do not use the `/conf` design-time path.
 - Check that the model is synced to `/var/workflow/models/` before calling `startWorkflow()`.
+- For multi-page batch triggering, prefer Manage Publication over programmatic creation of workflow packages — it is better integrated with the publish pipeline and avoids manual package lifecycle management.
 
 ## References
 

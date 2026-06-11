@@ -29,7 +29,12 @@
 4. Check **Include Workflow** → select a workflow model
 5. Click **Publish** or **Publish Later**
 
-**Payload:** AEM creates a `cq:WorkflowContentPackage` node containing all selected paths. The workflow receives this package as the `JCR_PATH` payload.
+**Payload:** AEM creates a `cq:WorkflowContentPackage` node containing all selected paths. The
+workflow receives this package as the `JCR_PATH` payload — the path points to the generated
+package node under `/var/workflow/packages` (legacy: `/etc/workflow/packages`), **not** to the
+individual pages. Keep this in mind when debugging payload issues: a process step reading
+`data.getPayload()` gets the package node, and must expand it via `ResourceCollection` (below)
+to reach the member pages.
 
 **Reading package members in a process step:**
 ```java
@@ -63,7 +68,9 @@ data.getMetaDataMap().put("department", "marketing");
 wfs.startWorkflow(model, data);
 ```
 
-**Service user requirement:** Use a service user sub-service, not admin credentials. Map to `workflow-process-service` or a custom service user.
+**Service user requirement:** Use a service user sub-service, not admin credentials. Map the
+subservice to a service user that is a member of the `workflow-process-service` group
+(`workflow-process-service` is a group, not a user).
 
 ---
 
@@ -71,39 +78,57 @@ wfs.startWorkflow(model, data);
 
 **When to use:** CI/CD pipelines, external systems, shell scripts, integration tests.
 
+The API is rooted at `/var/workflow/instances`. Do **not** POST to `/api/workflow/instances` — no
+workflow servlet is mounted there, so the Sling default POST servlet silently writes stray JCR nodes
+and returns a misleading 2xx **without starting any workflow** (a `GET` on that path returns 404).
+This is the most common reason a "successful" HTTP trigger never produces a workflow instance.
+
 ```bash
-# Start a workflow instance
+# Start a workflow instance — returns HTTP 201 with an HTML body that links to the
+# new instance path (e.g. /var/workflow/instances/server0/<date>/my-workflow_1)
 curl -u admin:admin -X POST \
-  "http://localhost:4502/api/workflow/instances" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "model=/var/workflow/models/my-workflow" \
-  -d "payloadType=JCR_PATH" \
-  -d "payload=/content/my-site/en/home" \
-  -d "workflowTitle=CI Triggered Review"
-# Response: 201 Created, Location: /api/workflow/instances/<id>
+  "http://localhost:4502/var/workflow/instances" \
+  --data-urlencode "_charset_=utf-8" \
+  --data-urlencode "model=/var/workflow/models/my-workflow" \
+  --data-urlencode "payloadType=JCR_PATH" \
+  --data-urlencode "payload=/content/my-site/en/home" \
+  --data-urlencode "workflowTitle=CI Triggered Review" \
+  --data-urlencode "startComment=triggered from CI"
 
-# Get instance details
+# List all instances (JSON)
+curl -u admin:admin "http://localhost:4502/var/workflow/instances.json"
+
+# List by state using a selector (.RUNNING.json, .SUSPENDED.json, .COMPLETED.json, .ABORTED.json)
+curl -u admin:admin "http://localhost:4502/var/workflow/instances.RUNNING.json"
+
+# Get instance details — JSON fields: id, state, initiator, startTime,
+#   model, payloadType, payload, workItems[]
 curl -u admin:admin \
-  "http://localhost:4502/api/workflow/instances/<instanceId>.json"
+  "http://localhost:4502/var/workflow/instances/server0/<date>/my-workflow_1.json"
 
-# List running instances filtered by model
-curl -u admin:admin \
-  "http://localhost:4502/api/workflow/instances?state=RUNNING&model=/var/workflow/models/my-workflow"
+# Suspend a running workflow — POST state=SUSPENDED, returns HTTP 200
+curl -u admin:admin -X POST \
+  "http://localhost:4502/var/workflow/instances/server0/<date>/my-workflow_1" \
+  --data-urlencode "_charset_=utf-8" \
+  --data-urlencode "state=SUSPENDED"
 
-# Suspend a running workflow
-curl -u admin:admin -X PUT \
-  "http://localhost:4502/api/workflow/instances/<instanceId>" \
-  -d "state=SUSPENDED"
+# Resume a suspended workflow — POST state=RUNNING, returns HTTP 200
+curl -u admin:admin -X POST \
+  "http://localhost:4502/var/workflow/instances/server0/<date>/my-workflow_1" \
+  --data-urlencode "_charset_=utf-8" \
+  --data-urlencode "state=RUNNING"
 
-# Resume a suspended workflow
-curl -u admin:admin -X PUT \
-  "http://localhost:4502/api/workflow/instances/<instanceId>" \
-  -d "state=RUNNING"
-
-# Terminate a workflow
-curl -u admin:admin -X DELETE \
-  "http://localhost:4502/api/workflow/instances/<instanceId>"
+# Terminate (abort) a workflow — POST state=ABORTED to the instance path, returns HTTP 200
+curl -u admin:admin -X POST \
+  "http://localhost:4502/var/workflow/instances/server0/<date>/my-workflow_1" \
+  --data-urlencode "_charset_=utf-8" \
+  --data-urlencode "state=ABORTED" \
+  --data-urlencode "terminateComment=cleanup"
 ```
+
+**Response handling:** the start POST returns HTML — parse the instance path from the
+`<a id="Location">` anchor or the "Modified Resource" link in the body. Listing and
+detail endpoints (`.json`) return JSON.
 
 ---
 

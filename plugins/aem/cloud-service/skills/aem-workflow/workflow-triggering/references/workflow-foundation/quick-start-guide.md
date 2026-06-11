@@ -52,11 +52,18 @@ curl -u admin:admin "http://localhost:4502/var/workflow/models/my-workflow.json"
 ## Start a Test Workflow via API
 
 ```bash
+# POST to /var/workflow/instances — NOT /api/workflow/instances (posting there silently
+# writes stray JCR nodes and returns a misleading 2xx without starting any workflow).
+# Returns HTTP 201 with an HTML body linking to the new instance path.
 curl -u admin:admin -X POST \
-  "http://localhost:4502/api/workflow/instances" \
-  -d "model=/var/workflow/models/my-workflow" \
-  -d "payloadType=JCR_PATH" \
-  -d "payload=/content/test-page"
+  "http://localhost:4502/var/workflow/instances" \
+  --data-urlencode "_charset_=utf-8" \
+  --data-urlencode "model=/var/workflow/models/my-workflow" \
+  --data-urlencode "payloadType=JCR_PATH" \
+  --data-urlencode "payload=/content/test-page"
+
+# Confirm it is running
+curl -u admin:admin "http://localhost:4502/var/workflow/instances.RUNNING.json"
 ```
 
-Monitor at: **Tools → Workflow → Instances** → filter by model.
+Monitor at: **Tools → Workflow → Instances** → filter by model or status.
