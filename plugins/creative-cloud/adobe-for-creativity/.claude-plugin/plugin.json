@@ -7,6 +7,11 @@
   },
   "repository": "https://github.com/adobe/skills",
   "license": "Apache-2.0",
-  "keywords": ["adobe", "creative-cloud", "image-editing", "design"],
+  "keywords": [
+    "adobe",
+    "creative-cloud",
+    "image-editing",
+    "design"
+  ],
   "skills": "./skills"
 }
