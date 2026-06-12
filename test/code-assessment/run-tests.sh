@@ -167,6 +167,14 @@ assert_absent  "RequestConfig-timeout client not flagged" "$OUT" 'GoodHttpServic
 assert_absent  "JDK request with timeout not flagged"   "$OUT" 'JdkRequestGood.java'
 assert_absent  "non-JDK HttpRequest not flagged"        "$OUT" 'OtherHttpRequest.java'
 
+echo "[unbounded-query] explicit p.limit=-1 / setLimit(-1) (literal + same-file const) flagged; bounded clean"
+OUT="$(run "$FIX/unbounded-query")"
+assert_contains "pattern present"                  "$OUT" '"pattern":"unbounded-query"'
+assert_contains "p.limit=-1 predicate flagged"     "$OUT" 'UnboundedQuery.java'
+assert_contains "setLimit(-1) flagged"             "$OUT" 'UnboundedJcr.java'
+assert_contains "unbounded via final constant flagged" "$OUT" 'UnboundedConst.java'
+assert_absent  "bounded query (incl. bounded const) not flagged" "$OUT" 'BoundedQuery.java'
+
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]
