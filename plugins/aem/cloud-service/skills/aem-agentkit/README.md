@@ -104,8 +104,8 @@ AEM Cloud Service API namespace reference, detected conventions and
 anti-patterns, and `/regen-context` to keep the context fresh after code
 changes. The payoff: lower hallucination, less re-explaining the codebase
 per session, and portable context across agent tools — not locked to one
-IDE. The context is AaCS-grounded (Cloud Manager, RDE, AEM SDK realities
-are reflected), not back-ported from 6.5 docs. Beta — verify outputs
+IDE. The context is grounded in AEM as a Cloud Service (Cloud Manager,
+RDE, AEM SDK realities are reflected), not back-ported from 6.5 docs. Beta — verify outputs
 before applying to production.
 
 ## End-to-end agentic workflow coverage
