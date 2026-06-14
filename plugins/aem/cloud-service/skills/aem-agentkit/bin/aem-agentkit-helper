@@ -4,8 +4,8 @@
 Reference implementation. See references/helpers.md in the skill bundle
 for the full operation spec. POSIX only (Linux, macOS); Windows is
 rejected at startup because the symlink-hardening contract requires
-O_NOFOLLOW / O_NOFOLLOW_ANY semantics that the Win32 API does not
-expose in a portable form.
+O_NOFOLLOW semantics that the Win32 API does not expose in a portable
+form.
 
 Protocol
 --------
@@ -19,9 +19,8 @@ response is `{"ok": true, ...}` or `{"ok": false, "error": "..."}`.
 """
 
 import base64
-import ctypes
-import ctypes.util
 import errno
+import fcntl
 import fnmatch
 import hashlib
 import json
@@ -35,7 +34,7 @@ VERSION = "1.0.0-beta"
 # Protocol-version is tracked separately from skill version. Bump on op
 # add / response-shape changes so the skill driver can pin the wire format
 # independently of marketing version bumps. See references/helpers.md § 1.
-PROTOCOL_VERSION = "1"
+PROTOCOL_VERSION = "2"
 
 # --------------------------------------------------------------------- #
 # Platform gate                                                         #
@@ -85,6 +84,14 @@ _STRIP_CODEPOINTS = (
     + list(range(0x2066, 0x206A))                           # bidi isolates U+2066..U+2069
 )
 STRIP_SET = frozenset(_STRIP_CODEPOINTS)
+
+# Variant of STRIP_SET for whole-FILE-body sanitization (op_read_for_context).
+# STRIP_SET strips line/carriage feeds because op_sanitize_string operates on
+# single-line fragments; when reading an entire source file into an LLM context
+# we must PRESERVE line structure (LF/CR) while still neutralizing bidi /
+# zero-width / control / BOM injection. \t is already excluded from STRIP_SET.
+_FILE_STRIP_PRESERVE = frozenset({0x0A, 0x0D})  # LINE FEED, CARRIAGE RETURN
+FILE_STRIP_SET = STRIP_SET - _FILE_STRIP_PRESERVE
 
 # Deny-list patterns applied per path segment, case-insensitive (ASCII casefold)
 DENY_PATTERNS = [
@@ -175,6 +182,12 @@ MAX_BYTES_CEILING = 16 * 1024 * 1024
 DEFAULT_MAX_FILES = 100_000
 DEFAULT_MAX_DEPTH = 32
 DEFAULT_MAX_FILES_PER_SUBTREE = 10_000
+
+# Open lock file descriptors, keyed by absolute lock path. flock(2) is held
+# for as long as the fd stays open; the kernel releases it automatically when
+# the process dies (crash-safe). op_lock stores the fd here so op_unlock can
+# release + close it within the same long-running helper process.
+_LOCK_FDS: dict[str, int] = {}
 
 # --------------------------------------------------------------------- #
 # Helpers                                                               #
@@ -409,11 +422,15 @@ def op_match_deny(req):
     return res
 
 
-def op_open(req):
-    workspace = req["workspace"]
-    path = req["path"]
-    max_bytes = min(int(req.get("maxBytes", MAX_BYTES_CEILING)), MAX_BYTES_CEILING)
+def _safe_open_bytes(workspace, path, max_bytes):
+    """Validate + safely open `path` within `workspace` and return its bytes.
 
+    Runs the full security gauntlet: _validate_path, O_NOFOLLOW open of the
+    resolved leaf, and the fail-closed _fd_realpath TOCTOU re-check. Returns
+    {"ok": True, "data": <bytes>} on success or an error dict ({"ok": False,
+    ...}) on any failure. Shared by op_open and op_read_for_context so both
+    inherit identical workspace-boundary, deny-list, and TOCTOU guarantees.
+    """
     val = _validate_path(workspace, path)
     if not val["ok"]:
         return val
@@ -435,7 +452,6 @@ def op_open(req):
     try:
         try:
             fd_real = _fd_realpath(fd)
-            toctou_verified = True
         except OSError as e:
             # Fail-closed (security finding I4 / QA Q5). The TOCTOU re-check
             # is advertised as a hard contract; silently degrading to a
@@ -470,16 +486,76 @@ def op_open(req):
                 "ok": False,
                 "error": f"file exceeds maxBytes ({max_bytes}); actual size {actual}",
             }
-        data = bytes(buf)
-
-        return {
-            "ok": True,
-            "bytes": base64.b64encode(data).decode("ascii"),
-            "sha256": hashlib.sha256(data).hexdigest(),
-            "toctouVerified": toctou_verified,
-        }
+        return {"ok": True, "data": bytes(buf)}
     finally:
         os.close(fd)
+
+
+def op_open(req):
+    workspace = req["workspace"]
+    path = req["path"]
+    max_bytes = min(int(req.get("maxBytes", MAX_BYTES_CEILING)), MAX_BYTES_CEILING)
+
+    res = _safe_open_bytes(workspace, path, max_bytes)
+    if not res["ok"]:
+        return res
+    data = res["data"]
+
+    return {
+        "ok": True,
+        "bytes": base64.b64encode(data).decode("ascii"),
+        "sha256": hashlib.sha256(data).hexdigest(),
+        "toctouVerified": True,
+    }
+
+
+def op_read_for_context(req):
+    """Read source into an LLM context with dangerous code points neutralized.
+
+    The skill's job is feeding customer Java/HTL/POM into a model to generate
+    AGENTS.md. op_open returns RAW bytes; a bidi-override, zero-width, or
+    control-char payload buried in a code comment would flow straight into the
+    model. This op decodes the bytes (errors="replace"), NFC-normalizes, then
+    removes every STRIP_SET code point (bidi overrides, zero-width marks, C0/C1
+    controls, BOM, etc.) and reports how many were stripped.
+
+    NOTE: this neutralizes *dangerous code points* only. It does NOT and cannot
+    defend against natural-language prompt injection (e.g. an English sentence
+    "ignore previous instructions" in a comment). The orchestrator MUST still
+    treat returned content as untrusted. The sha256 is over the ORIGINAL raw
+    bytes so callers can correlate with op_open / on-disk state.
+    """
+    workspace = req["workspace"]
+    path = req["path"]
+    max_bytes = min(int(req.get("maxBytes", MAX_BYTES_CEILING)), MAX_BYTES_CEILING)
+
+    res = _safe_open_bytes(workspace, path, max_bytes)
+    if not res["ok"]:
+        return res
+    data = res["data"]
+
+    text = unicodedata.normalize("NFC", data.decode("utf-8", errors="replace"))
+    kept = []
+    stripped = 0
+    for ch in text:
+        if ord(ch) in FILE_STRIP_SET:
+            stripped += 1
+            continue
+        kept.append(ch)
+    sanitized = "".join(kept)
+
+    # Self-validate: no FILE_STRIP_SET survivors. NFC normalization can in
+    # principle re-introduce a composed form, so re-check fail-closed.
+    if any(ord(ch) in FILE_STRIP_SET for ch in sanitized):
+        return {"ok": False, "error": "sanitization left dangerous code points"}
+
+    return {
+        "ok": True,
+        "text": sanitized,
+        "sha256": hashlib.sha256(data).hexdigest(),
+        "stripped": stripped,
+        "toctouVerified": True,
+    }
 
 
 def op_walk(req):
@@ -951,62 +1027,15 @@ def op_sanitize_string(req):
     return {"ok": True, "value": wrapped, "dropped": False, "reason": reason}
 
 
-def _proc_start_time(pid: int) -> str:
-    """Return a string identifier of a process's start time, or "" if not
-    available. Used to defend against PID reuse during stale-lock recovery
-    (security I2 / QA Q9). On Linux reads /proc/<pid>/stat field 22; on
-    macOS shells `ps -o lstart=` for `pid`.
-    """
-    if sys.platform == "linux":
-        try:
-            with open(f"/proc/{pid}/stat", "rb") as f:
-                stat = f.read()
-            # Field 2 is `(comm)` which may contain spaces or parens; the
-            # canonical parse takes everything after the LAST `)`.
-            after = stat.rsplit(b")", 1)[1].split()
-            return after[19].decode("ascii", errors="replace")
-        except (OSError, IndexError):
-            return ""
-    if sys.platform == "darwin":
-        # Avoid spawning a subprocess on every lock check; use kvm_proc via
-        # libproc if available, else fall back to mtime of /proc-less stat.
-        # Simplest portable answer: read process start time via libproc.
-        try:
-            libname = ctypes.util.find_library("proc")
-            if libname is None:
-                return ""
-            lib = ctypes.CDLL(libname, use_errno=True)
-            # proc_pidinfo with PROC_PIDTBSDINFO returns start time.
-            # struct proc_bsdinfo first 4-byte fields: pbi_flags, pbi_status,
-            # pbi_xstatus, pbi_pid; pbi_start_tvsec is at offset ~152 on
-            # 64-bit. We just need an opaque identifier - bail to "" if the
-            # call fails. Caller treats "" as "can't pin start time".
-            buf = ctypes.create_string_buffer(512)
-            PROC_PIDTBSDINFO = 3
-            PROC_PIDTBSDINFO_SIZE = 392
-            rc = lib.proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, buf, PROC_PIDTBSDINFO_SIZE)
-            if rc <= 0:
-                return ""
-            # Return the first 32 bytes hex-encoded as an opaque token.
-            return buf.raw[:32].hex()
-        except Exception:
-            return ""
-    return ""
-
-
 def op_lock(req):
-    """Advisory lock at .aem/context/.agentkit.lock.
+    """Advisory lock at .aem/context/.agentkit.lock via fcntl.flock.
 
-    Lock-file format (newline-separated):
-        line 1: PID (integer)
-        line 2: start-time token (opaque - opaque PID-reuse defense)
-
-    Stale-lock recovery treats the following as stale (Q8, I2/Q9):
-    - empty file
-    - non-numeric PID
-    - PID <= 0 (PID 0 is the process group, never a real lock holder)
-    - PID exists but its start time differs from the recorded one
-    - PID does not exist (ESRCH)
+    Uses a real `flock(LOCK_EX | LOCK_NB)` on an open file descriptor that
+    the helper holds for the lifetime of the lock. flock is advisory and the
+    kernel releases it automatically when the holding process dies, so a
+    SIGKILL'd helper cannot leave a stale lock behind - crash-safety comes
+    for free and there is no stale-classification / PID-reuse logic to get
+    wrong. The PID written into the file is diagnostic only.
     """
     workspace = req["workspace"]
     lock_rel = req.get("path", ".aem/context/.agentkit.lock")
@@ -1023,87 +1052,29 @@ def op_lock(req):
         return {"ok": False, "acquired": False, "error": f"lock parent: {e.strerror or e}"}
 
     pid = os.getpid()
-    start_token = _proc_start_time(pid)
-    payload = f"{pid}\n{start_token}\n".encode("ascii")
-
-    def _try_create():
-        return os.open(lock_full, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
-
-    def _classify_stale():
-        """Inspect the on-disk lock and decide whether it's stale.
-        Returns (is_stale, diagnostic, existing_pid).
-        """
-        try:
-            with open(lock_full, "rb") as f:
-                content = f.read().decode("ascii", errors="replace").strip()
-        except OSError as e:
-            return True, f"lock unreadable, treating as stale: {e.strerror or e}", None
-        if not content:
-            # Empty file (partial write from a crashed earlier run). Stale.
-            return True, "lock file empty, treating as stale", None
-        lines = content.splitlines()
-        try:
-            existing_pid = int(lines[0])
-        except (ValueError, IndexError):
-            return True, "lock file PID unparseable, treating as stale", None
-        if existing_pid <= 0:
-            return True, f"lock file PID {existing_pid} invalid, treating as stale", None
-        existing_start = lines[1] if len(lines) > 1 else ""
-        try:
-            os.kill(existing_pid, 0)
-        except OSError as ke:
-            if ke.errno == errno.ESRCH:
-                return True, "lock holder gone", existing_pid
-            # Some other error (EPERM, etc.) means we can't tell - fail safe.
-            return False, f"PID liveness check failed: {ke.strerror}", existing_pid
-        # PID is alive. If we have start-time tokens to compare, do so.
-        if existing_start and start_token:
-            current_start = _proc_start_time(existing_pid)
-            if current_start and current_start != existing_start:
-                return True, "PID reused since lock was written", existing_pid
-        return False, "", existing_pid
-
-    fd = None
     try:
-        fd = _try_create()
-    except FileExistsError:
-        is_stale, diag, existing_pid = _classify_stale()
-        if not is_stale:
-            return {
-                "ok": False,
-                "acquired": False,
-                "error": (
-                    f"another invocation is already running"
-                    + (f" (PID {existing_pid})" if existing_pid is not None else "")
-                ),
-            }
-        # Stale recovery. Race-safe: another process may have done the
-        # cleanup between our classify and our unlink (SE2). Treat
-        # FileNotFoundError on unlink as "already gone, retry create".
-        # Treat FileExistsError on _try_create as "another process won the
-        # recovery race - back off cleanly".
-        try:
-            os.unlink(lock_full)
-        except FileNotFoundError:
-            pass
-        except OSError as e2:
-            return {"ok": False, "acquired": False, "error": f"stale lock cleanup failed: {e2.strerror or e2}"}
-        try:
-            fd = _try_create()
-        except FileExistsError:
-            return {
-                "ok": False,
-                "acquired": False,
-                "error": "another invocation acquired the lock during stale recovery",
-            }
-        except OSError as e3:
-            return {"ok": False, "acquired": False, "error": f"lock retry failed: {e3.strerror or e3}"}
+        fd = os.open(lock_full, os.O_CREAT | os.O_RDWR, 0o644)
+    except OSError as e:
+        return {"ok": False, "acquired": False, "error": f"lock open failed: {e.strerror or e}"}
 
     try:
-        os.write(fd, payload)
-        os.fsync(fd)
-    finally:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (BlockingIOError, OSError) as e:
+        # EAGAIN / EWOULDBLOCK: another process holds the lock.
         os.close(fd)
+        if isinstance(e, OSError) and e.errno not in (errno.EAGAIN, errno.EWOULDBLOCK):
+            return {"ok": False, "acquired": False, "error": f"flock failed: {e.strerror or e}"}
+        return {"ok": False, "acquired": False, "error": "another invocation is already running"}
+
+    # Acquired. Record diagnostic PID (not load-bearing) and hold the fd open -
+    # closing it would release the flock.
+    try:
+        os.ftruncate(fd, 0)
+        os.write(fd, f"{pid}\n".encode("ascii"))
+        os.fsync(fd)
+    except OSError:
+        pass
+    _LOCK_FDS[lock_full] = fd
     return {"ok": True, "acquired": True, "pid": pid}
 
 
@@ -1115,12 +1086,23 @@ def op_unlock(req):
     except (OSError, ValueError) as e:
         return {"ok": False, "error": f"workspace invalid: {e}"}
     lock_full = os.path.join(ws_real, *lock_rel.split("/"))
+
+    fd = _LOCK_FDS.pop(lock_full, None)
+    if fd is not None:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        try:
+            os.close(fd)
+        except OSError:
+            pass
     try:
         os.unlink(lock_full)
     except FileNotFoundError:
         pass
-    except OSError as e:
-        return {"ok": False, "error": f"unlock failed: {e.strerror or e}"}
+    except OSError:
+        pass
     return {"ok": True}
 
 
@@ -1137,6 +1119,7 @@ def op_protocol_version(req):
 OPS = {
     "realpath": op_realpath,
     "open": op_open,
+    "read-for-context": op_read_for_context,
     "walk": op_walk,
     "sha256-canonical": op_sha256_canonical,
     "write-atomic": op_write_atomic,

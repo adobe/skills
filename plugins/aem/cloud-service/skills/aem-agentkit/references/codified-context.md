@@ -97,15 +97,9 @@ documented in [`privacy-and-sanitization.md`](./privacy-and-sanitization.md)
 ## 2. Output stability
 
 - JSON: 2-space indent, sorted keys at every level, LF line endings, final
-  newline, UTF-8 no BOM. The on-disk byte sequence and the canonical-body
-  sequence used for the marker checksum differ in exactly one respect: the
-  on-disk file includes `_generatedBy`, `_skillVersion`, `schemaVersion`,
-  `_markerChecksum`, `generatedAt`, and `_static` (when applicable). The
-  helper's `sha256-canonical` operation (see
-  [`helpers.md`](./helpers.md) § 2.4) strips those six keys before hashing,
-  so two runs that change only `generatedAt` produce identical marker
-  checksums and the file is left untouched on disk (no `mtime` churn,
-  no `.agentkit-new` noise).
+  newline, UTF-8 no BOM. Marker shape and checksum canonicalization are
+  defined in [`upgrade-and-migration.md`](./upgrade-and-migration.md) § 1
+  (the authoritative source).
 - Markdown: LF line endings, final newline, UTF-8 no BOM, no trailing
   whitespace.
 - `generatedAt` uses the format `YYYY-MM-DDTHH:MM:SSZ` exactly. Renderers

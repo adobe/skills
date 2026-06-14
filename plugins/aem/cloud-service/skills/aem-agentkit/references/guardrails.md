@@ -54,16 +54,7 @@ role. Apply every rule under "Agentic workflow guardrails".
 This is enough on its own — the agent then loads the full block from
 AGENTS.md / per-module AGENTS.md, which has the canonical text.
 
-## 3. Rationale
-
-- "Search before create" — the most common hallucination is duplicating an existing component or service under a slightly different name.
-- "Verify before import" — coding agents invent plausible-sounding AEM class names. The Javadoc is authoritative.
-- "Respect run-mode guards" — common refactoring mistake to remove `isAuthor()` blocks when migrating patterns.
-- "Never write under `/libs`" — the most expensive Cloud Service mistake.
-- "Stop on red" — local verification is fast and prevents pipeline waste.
-- "Run `/regen-context` after writing code" — keeps `.aem/context/*.json` honest. Inline mutation by the agent breaks the marker checksum and corrupts ownership classification for the next skill run, so the skill explicitly forbids it.
-
-## 4. Inter-skill contract for `.aem/context/*.json`
+## 3. Inter-skill contract for `.aem/context/*.json`
 
 `.aem/context/components.json` and `.aem/context/osgi-services.json` are
 **skill-owned, read-only between regenerations**. Sibling skills

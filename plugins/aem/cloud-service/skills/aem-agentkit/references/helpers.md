@@ -23,7 +23,7 @@ not ship on-prem or 6.5-LTS-specific paths.
   skill root → `aem-agentkit-helper` on `PATH`.
 - The helper exposes `--version` (skill release version, e.g. `1.0.0-beta`)
   and `--protocol-version` (JSON-line wire protocol version, currently
-  `1`). The skill compares **skill version** against `metadata.version`
+  `2`). The skill compares **skill version** against `metadata.version`
   and **protocol version** against its pinned protocol version. A
   mismatch on either aborts the run with a single diagnostic naming the
   expected and observed values.
@@ -99,15 +99,19 @@ Response (success):
 ```
 
 Behavior:
-1. Run § 2.1 on `path`.
-2. Open the file with `O_NOFOLLOW` on Linux, `O_NOFOLLOW_ANY` on macOS
-   11+ (falling back to `openat2` with `RESOLVE_NO_SYMLINKS` on Linux
-   5.6+ for the multi-component guarantee), and
-   `FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS` on
-   Windows.
-3. Re-resolve the opened descriptor's canonical path. Reject if it
-   differs from the path resolved in step 1 (closes the TOCTOU
-   window between resolve and open).
+1. Run § 2.1 on `path`. The realpath gauntlet resolves and validates
+   every intermediate directory component (intermediate-directory
+   symlinks are deliberately followed so pnpm/yarn/dispatcher
+   submodule layouts that rely on symlinked directories work correctly).
+2. Open the fully-resolved leaf target with `os.O_RDONLY | os.O_NOFOLLOW`
+   (the flag applies to the leaf only; intermediate components were
+   already validated by the realpath gauntlet in step 1). Reject
+   if the open fails because the leaf is itself a symlink (`ELOOP` /
+   `errno.ELOOP`). Fail-closed on any open error.
+3. Re-resolve the opened descriptor's canonical path using
+   `/proc/self/fd/<N>` on Linux or `fcntl(F_GETPATH)` on macOS.
+   Reject if it differs from the realpath resolved in step 1 — this
+   closes the TOCTOU window between resolve and open.
 4. Read at most `maxBytes` (helper enforces a hard ceiling of
    16 MiB; the skill passes `maxBytes: 256` for
    `.cloudmanager/java-version` and analogous tight caps elsewhere).
@@ -333,6 +337,54 @@ Response:
 Behavior: applies the case-folded segment-by-segment match described
 in [`privacy-and-sanitization.md`](./privacy-and-sanitization.md) § 1.1.
 
+### 2.10 `read-for-context` — safe file ingestion into LLM context
+
+Request:
+```json
+{"op": "read-for-context", "workspace": "<absolute-path>", "path": "<absolute-or-workspace-relative-path>", "maxBytes": <optional-int>}
+```
+
+Response (success):
+```json
+{"ok": true, "text": "<NFC-normalized UTF-8 with dangerous code points removed; LF/CR preserved>", "sha256": "<lowercase-hex of original raw bytes>", "stripped": <int — count of code points removed>, "toctouVerified": true}
+```
+
+Response (error): same shape and error strings as `open` (TOCTOU
+mismatch, deny-list rejection, `maxBytes` exceeded).
+
+Behavior:
+1. Run the same safe-open path as § 2.2 (`open`): realpath gauntlet →
+   `os.O_RDONLY | os.O_NOFOLLOW` on the fully-resolved leaf → TOCTOU
+   re-check via `/proc/self/fd/<N>` (Linux) or `fcntl F_GETPATH`
+   (macOS) → size cap enforcement.
+2. Compute SHA-256 over the **original raw bytes** before any
+   transformation. This is the `sha256` field; it lets the caller
+   verify they received an unmodified read.
+3. Decode the bytes as UTF-8 (replacement-character on invalid byte
+   sequences).
+4. NFC-normalize the decoded string.
+5. Remove every code point in
+   [`privacy-and-sanitization.md`](./privacy-and-sanitization.md)
+   § 2.1 **except** LF (U+000A) and CR (U+000D) — line structure
+   is preserved while bidi overrides, zero-width marks, BOM
+   (U+FEFF), and C0/C1 controls are neutralized. Count the removed
+   code points in `stripped`.
+6. Return the cleaned text in `text`.
+
+**Honesty caveat (important):** `read-for-context` neutralizes
+dangerous *Unicode* code points only. It does **not** defend against
+natural-language prompt injection — literal text such as
+`ignore previous instructions` passes through unchanged. The
+orchestrator **must** treat the returned `text` as untrusted customer
+input (e.g. wrap in a fenced code block before placing in agent
+context).
+
+`read-for-context` is the **required** path for reading any customer
+source file into LLM context. Raw `open` (§ 2.2) is for checksums and
+binary-exact operations only; it skips Unicode normalization and the
+code-point strip, so unfiltered bidi overrides and zero-width marks
+can reach agent context when used directly.
+
 ## 3. Casefold algorithm
 
 ASCII lowercase only. Bytes `0x41-0x5A` are lowercased to `0x61-0x7A`;
@@ -372,8 +424,8 @@ every strip-list code-point category (control / line-paragraph
 separator / zero-width / bidi override / format), realpath / deny-list
 / workspace-escape / special-filesystem rejection, deny-list directory
 pruning at every depth, walk caps with `truncatedSubtrees`, atomic
-`write-atomic` (no `.tmp` leftovers), and lock acquisition with
-stale-lock recovery via PID liveness check.
+`write-atomic` (no `.tmp` leftovers), and lock acquisition and
+crash-safe release via `fcntl.flock`.
 
 Run the tests from the skill root:
 

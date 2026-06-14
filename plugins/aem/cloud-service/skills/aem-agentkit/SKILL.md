@@ -205,6 +205,15 @@ third-party deps). The skill compares `--version` against
 Full protocol in [`references/helpers.md`](./references/helpers.md);
 unit-test suite at [`tests/run-tests.sh`](./tests/run-tests.sh).
 
+Helper ops include: `open` (safe read), `read-for-context` (the
+**required safe path for reading customer source into agent/LLM context**
+— same safe-open path as `open` plus Unicode sanitization: NFC normalize,
+strip bidi overrides, zero-width marks, BOM, C0/C1 controls; LF/CR
+preserved), `write-atomic`, `sha256-canonical`, `sanitize-bytes`,
+`realpath`, `walk`, and `lock`/`unlock`. The orchestrator MUST use
+`read-for-context` (not `open`) whenever file content will be passed into
+agent or LLM context.
+
 ## Concurrency, idempotency, modes
 
 - **Lock.** Workspace advisory lock at `.aem/context/.agentkit.lock`
@@ -234,21 +243,22 @@ and writes a bounded set of agent-context files. Key trust boundaries:
 | Filesystem outside workspace | Reading or writing via symlink | Workspace realpath cached at startup; in-workspace symlinks pointing outside are rejected; special filesystems (`/proc`, `/sys`, `/dev`, `/var/run`, `/run`, macOS `/private/var/run`) rejected even when the workspace lives inside them |
 | TOCTOU on read | Reading a swapped file | `O_NOFOLLOW` + post-open re-check via `/proc/self/fd/N` (Linux) or `F_GETPATH` (macOS); fail-closed when re-check is unavailable |
 | Marker spoofing | Pasting our marker into a customer file | SHA-256 over canonical body bytes is recomputed on every "is this ours?" check; mismatch → human-curated → never overwritten |
-| Concurrent invocations | Racing on `.tmp` files | Advisory `flock` with PID + start-time defense against PID reuse; stale-lock recovery is race-safe |
+| Concurrent invocations | Racing on `.tmp` files | Advisory `fcntl.flock(LOCK_EX\|LOCK_NB)`; the kernel auto-releases the lock when the helper process exits or is killed (crash-safe) — no PID-reuse defense or stale-lock recovery needed |
 
 **Explicitly out of scope:**
 
-- **Prompt injection via raw file content.** When the orchestrating LLM
-  reads source files via the helper's `open` op, the helper returns the
-  raw bytes. The helper sanitizes only strings it is told to sanitize
-  (`cq:title` values, package names, glossary terms). Bidi-override,
-  zero-width, and "ignore prior instructions" payloads embedded in Java
-  comments, HTL files, or `pom.xml` `<description>` can hijack an agent
-  if the orchestrator places opened bytes into LLM context unfiltered.
-  This is the orchestrator's responsibility; see
-  [`references/privacy-and-sanitization.md`](./references/privacy-and-sanitization.md)
-  § 3 for the recommended `sanitize-bytes` wrapping flow. A future
-  `op_read_for_context` is tracked as a follow-up.
+- **Prompt injection via raw file content — mitigated for dangerous Unicode; NL injection residual.**
+  The helper now provides a `read-for-context` op (see § "Deterministic
+  helper") that runs the same safe-open path as `open`, then
+  NFC-normalizes and removes dangerous Unicode code points (bidi
+  overrides U+202A–U+202E / U+2066–U+2069, zero-width marks, BOM
+  U+FEFF, C0/C1 controls except LF/CR) before the bytes enter LLM
+  context. The orchestrator **MUST** read customer source via
+  `read-for-context`, not raw `open`, when the content will be placed
+  into agent context. Residual, still out of scope: natural-language
+  prompt injection (e.g. literal "ignore previous instructions" prose)
+  survives Unicode sanitization — returned content must still be treated
+  as untrusted and the orchestrator must apply appropriate framing.
 - **Supply-chain tampering with the helper binary.** The helper's
   content-addressable SHA-256 pin is documented in
   [`references/upgrade-and-migration.md`](./references/upgrade-and-migration.md)
@@ -275,6 +285,7 @@ checklist for review.
 - **Customer-only discovery.** Never index Core Components or anything under `/libs`.
 - **Sub-project resolution in role bodies** ([`per-tool-artifacts.md`](./references/per-tool-artifacts.md) § 2): role bodies walk up from the file under edit to the closest enclosing AEM project root before resolving `<project>` or `<module>`.
 - **Slash-command input validation**: `<name>` and `<FQCN>` against anchored regex before any shell or filesystem interpolation; `MVN_CMD` ∈ `{"mvn", "./mvnw"}` literally.
+- **Use `read-for-context` for LLM-bound reads.** Any customer source file placed into agent or LLM context MUST be read via the helper's `read-for-context` op, not raw `open`. This enforces Unicode sanitization (bidi overrides, zero-width marks, BOM, C0/C1 controls stripped) before bytes enter the model.
 - **No inline mutation of `.aem/context/*.json`**: roles delegate to `/regen-context` so the marker checksum is recomputed by the helper, not by the agent.
 - **Diagnostic-path scrubbing.** Workspace-relative paths only; never absolute, never `~/`.
 - **Semantically equivalent role bodies across IDE projections** ([`per-tool-artifacts.md`](./references/per-tool-artifacts.md) § 7): the canonical role-source body is the same content materialized in each IDE's preferred wrapper. Light per-projection adapters (frontmatter, file extension, IDE-specific directives) are permitted so the design survives IDE format evolution without forking the canonical source.

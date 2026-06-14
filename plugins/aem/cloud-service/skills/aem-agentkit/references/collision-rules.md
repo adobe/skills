@@ -63,19 +63,22 @@ target path already exists. Every target falls into exactly one row.
 
 ## Marker check (authenticated)
 
-A file is treated as **skill-owned** only when **all** of:
-- Its first content line (Markdown / `.mdc`) starts with the exact prefix `<!-- aem-agentkit: generated v` followed by a version string and a `; checksum: <64-hex>` portion, **OR**
-- It is parseable JSON whose top-level object contains both `"_generatedBy": "aem-agentkit"` and a `"_skillVersion"` matching the expected pattern, plus `"_markerChecksum"`.
-- **AND** the embedded `sha256` recomputes correctly over the canonical body bytes per [`upgrade-and-migration.md`](./upgrade-and-migration.md) § 1. The canonical-body bytes are computed by the deterministic helper's `sha256-canonical` operation, which strips the marker fields (`_generatedBy`, `_skillVersion`, `schemaVersion`, `_markerChecksum`, `generatedAt`, `_static` for JSON; the marker line for Markdown) and re-emits in the canonical byte form before hashing.
+Marker shape and checksum rules are defined in
+[`upgrade-and-migration.md`](./upgrade-and-migration.md) § 1 (the
+authoritative source).
 
-A file with a marker-shaped prefix but a wrong, malformed, missing, or
-duplicated `sha256` is treated as **human-curated** and never overwritten.
-Two markers found in the same file → human-curated (an attacker / careless
-paste cannot trick the skill into ownership by adding the marker comment).
-Markers whose first line *almost* matches the shape but fails to parse
-are emitted as a distinct `suspiciousMarkers` category by
-`/agents-md-check` so the customer can find files where a marker was
-edited but the file should still be reviewed.
+A file is treated as **skill-owned** only when its marker prefix matches
+the exact shape defined there **and** the embedded `sha256` recomputes
+correctly. The following additional rules apply:
+
+- A file with a marker-shaped prefix but a wrong, malformed, missing, or
+  duplicated `sha256` is treated as **human-curated** and never overwritten.
+- Two markers found in the same file → human-curated (an attacker / careless
+  paste cannot trick the skill into ownership by adding the marker comment).
+- Markers whose first line *almost* matches the shape but fails to parse
+  are emitted as a distinct `suspiciousMarkers` category by `/agents-md-check`
+  so the customer can find files where a marker was edited but the file
+  should still be reviewed.
 
 Anything that fails the above is human-curated.
 

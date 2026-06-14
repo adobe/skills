@@ -11,8 +11,12 @@ inside existing modules so coding agents and any harness on top of them can
 work on the customer's repository with high reliability and low
 hallucination. It never modifies customer source code.
 
-**Scope:** AEM as a Cloud Service only. The skill exits early on AEM 6.5
-LTS, AMS, and on-premise AEM layouts.
+**Scope: AEM as a Cloud Service only.** The skill exits early on AEM 6.5
+LTS, AMS, and on-premise AEM layouts. The generated context is
+Cloud Service-native: it understands `conf.d/`-based dispatcher layouts
+(not legacy `conf/`), Cloud Manager pipelines, RDE (Rapid Development
+Environment), and the AEM SDK. Core Components and anything under `/libs`
+are excluded — indexing covers customer code only.
 
 See [`SKILL.md`](./SKILL.md) for the full contract.
 
@@ -89,6 +93,20 @@ deterministic-helper version pin are documented in
 and [`references/helpers.md`](./references/helpers.md).
 
 Verify all outputs before applying to production projects.
+
+## What "AI-native" means here
+
+After running this skill on an AEM as a Cloud Service repo, any
+AGENTS.md-spec agent (Claude Code, Cursor, Copilot, etc.) works the repo
+with project-specific context: correct module boundaries, real
+component / Sling-Model / OSGi catalogs, verify-before-import via the
+AEM Cloud Service API namespace reference, detected conventions and
+anti-patterns, and `/regen-context` to keep the context fresh after code
+changes. The payoff: lower hallucination, less re-explaining the codebase
+per session, and portable context across agent tools — not locked to one
+IDE. The context is AaCS-grounded (Cloud Manager, RDE, AEM SDK realities
+are reflected), not back-ported from 6.5 docs. Beta — verify outputs
+before applying to production.
 
 ## End-to-end agentic workflow coverage
 

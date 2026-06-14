@@ -18,8 +18,24 @@ import time
 import unicodedata
 import unittest
 
+import importlib.util
+from importlib.machinery import SourceFileLoader
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 HELPER = os.path.join(os.path.dirname(HERE), "bin", "aem-agentkit-helper")
+
+
+def _load_helper_module():
+    """Import the extension-less helper script as a module for in-process
+    tests (e.g. monkeypatching _fd_realpath, which a subprocess can't reach).
+
+    The script has no .py suffix, so spec_from_file_location can't infer a
+    loader; pass SourceFileLoader explicitly."""
+    loader = SourceFileLoader("aem_agentkit_helper", HELPER)
+    spec = importlib.util.spec_from_loader("aem_agentkit_helper", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
 # Generous timeout for CI runners under load (was 15s; CI cold-start with a
 # subprocess + Python interpreter import has been measured at ~10s on
 # resource-constrained runners). See QA finding Q18.
@@ -317,6 +333,10 @@ class TestWriteAtomic(unittest.TestCase):
 
 
 class TestLock(unittest.TestCase):
+    """flock-based advisory lock. The kernel releases the lock when the
+    holding process dies, so there is no stale-recovery / PID-reuse logic
+    to test - just real lock semantics and crash-safety."""
+
     def setUp(self):
         self.ws = tempfile.mkdtemp(prefix="agentkit-lock-")
 
@@ -324,66 +344,49 @@ class TestLock(unittest.TestCase):
         shutil.rmtree(self.ws, ignore_errors=True)
 
     def test_lock_then_unlock(self):
-        r1 = call({"op": "lock", "workspace": self.ws})
-        self.assertTrue(r1["ok"], r1)
-        self.assertTrue(r1["acquired"])
-        r2 = call({"op": "unlock", "workspace": self.ws})
-        self.assertTrue(r2["ok"])
+        # lock + unlock in ONE helper process: the fd must be held across
+        # both ops (a fresh subprocess per op would release on exit).
+        rc, resps = call_many([
+            {"op": "lock", "workspace": self.ws},
+            {"op": "unlock", "workspace": self.ws},
+        ])
+        self.assertEqual(len(resps), 2, resps)
+        self.assertTrue(resps[0]["ok"], resps[0])
+        self.assertTrue(resps[0]["acquired"])
+        self.assertTrue(resps[1]["ok"], resps[1])
 
-    def test_stale_lock_recovered(self):
-        # Pre-create a lock file with an impossible PID
-        path = os.path.join(self.ws, ".aem", "context", ".agentkit.lock")
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w") as f:
-            f.write("999999999")
-        res = call({"op": "lock", "workspace": self.ws})
-        self.assertTrue(res["ok"], res)
-        self.assertTrue(res["acquired"])
+    def test_second_lock_same_process_blocked(self):
+        # (a) A second op_lock in the SAME helper process while the first
+        # is held must fail - flock(LOCK_EX|LOCK_NB) on an already-held
+        # lock returns EWOULDBLOCK even within the same process when a
+        # distinct fd is used.
+        rc, resps = call_many([
+            {"op": "lock", "workspace": self.ws},
+            {"op": "lock", "workspace": self.ws},
+        ])
+        self.assertEqual(len(resps), 2, resps)
+        self.assertTrue(resps[0]["ok"], resps[0])
+        self.assertTrue(resps[0]["acquired"])
+        self.assertFalse(resps[1]["acquired"], resps[1])
+        self.assertIn("already running", resps[1]["error"])
 
-    def test_empty_lock_file_recovered(self):
-        # Q8: zero-byte lock file from a crashed partial write must not
-        # permanently wedge the skill.
-        path = os.path.join(self.ws, ".aem", "context", ".agentkit.lock")
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        open(path, "w").close()
-        res = call({"op": "lock", "workspace": self.ws})
-        self.assertTrue(res["ok"], res)
-        self.assertTrue(res["acquired"])
-
-    def test_corrupt_lock_file_recovered(self):
-        path = os.path.join(self.ws, ".aem", "context", ".agentkit.lock")
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w") as f:
-            f.write("not-a-number\nrandom\n")
-        res = call({"op": "lock", "workspace": self.ws})
-        self.assertTrue(res["ok"], res)
-        self.assertTrue(res["acquired"])
-
-    def test_pid_zero_treated_as_stale(self):
-        # I2: PID 0 is the process group; os.kill(0, 0) signals the group
-        # and would falsely report "alive". Must be treated as stale.
-        path = os.path.join(self.ws, ".aem", "context", ".agentkit.lock")
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w") as f:
-            f.write("0\n")
-        res = call({"op": "lock", "workspace": self.ws})
-        self.assertTrue(res["ok"], res)
-        self.assertTrue(res["acquired"])
-
-    def test_negative_pid_treated_as_stale(self):
-        path = os.path.join(self.ws, ".aem", "context", ".agentkit.lock")
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w") as f:
-            f.write("-1\n")
-        res = call({"op": "lock", "workspace": self.ws})
-        self.assertTrue(res["ok"], res)
-        self.assertTrue(res["acquired"])
+    def test_unlock_then_reacquire(self):
+        # (c) lock -> unlock -> lock in one process: the re-acquire must
+        # succeed because unlock released the flock.
+        rc, resps = call_many([
+            {"op": "lock", "workspace": self.ws},
+            {"op": "unlock", "workspace": self.ws},
+            {"op": "lock", "workspace": self.ws},
+        ])
+        self.assertEqual(len(resps), 3, resps)
+        self.assertTrue(resps[0]["acquired"], resps[0])
+        self.assertTrue(resps[1]["ok"], resps[1])
+        self.assertTrue(resps[2]["acquired"], resps[2])
 
     def test_two_live_invocations_second_blocked(self):
-        # AC 18 / Q3: Two helpers with overlapping lifetimes must NOT
-        # both acquire the lock. Spawn helper A as a long-running stdin
-        # consumer, ask it to lock, then run helper B which must be
-        # rejected.
+        # (b) AC 18 / Q3: two real OS processes. Helper A acquires + holds
+        # the lock (long-running stdin consumer); helper B in a separate
+        # process must be rejected while A is alive.
         proc_a = subprocess.Popen(
             [sys.executable, HELPER],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -410,6 +413,37 @@ class TestLock(unittest.TestCase):
                 except Exception:
                     pass
             proc_a.wait(timeout=TIMEOUT)
+
+    def test_crash_without_unlock_releases_lock(self):
+        # (d) KEY REGRESSION GUARD: a child helper acquires the lock then
+        # exits WITHOUT unlocking (os._exit, simulating SIGKILL/crash). The
+        # kernel must release the flock on process death, so a fresh op_lock
+        # from the parent now SUCCEEDS. The old PID-file lock left a stale
+        # lock here; flock does not.
+        proc_a = subprocess.Popen(
+            [sys.executable, HELPER],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True,
+        )
+        proc_a.stdin.write(json.dumps({"op": "lock", "workspace": self.ws}) + "\n")
+        proc_a.stdin.flush()
+        resp_a = json.loads(proc_a.stdout.readline())
+        self.assertTrue(resp_a["acquired"], resp_a)
+
+        # Kill the holder hard - no unlock op, no clean shutdown.
+        proc_a.kill()
+        proc_a.wait(timeout=TIMEOUT)
+        for stream in (proc_a.stdin, proc_a.stdout, proc_a.stderr):
+            try:
+                if stream is not None:
+                    stream.close()
+            except Exception:
+                pass
+
+        # The kernel released the flock on death; a fresh lock must succeed.
+        resp_b = call({"op": "lock", "workspace": self.ws})
+        self.assertTrue(resp_b["ok"], resp_b)
+        self.assertTrue(resp_b["acquired"], resp_b)
 
 
 class TestWalk(unittest.TestCase):
@@ -782,6 +816,108 @@ class TestProtocolVersion(unittest.TestCase):
         self.assertTrue(res["ok"])
         self.assertEqual(res["skillVersion"], "1.0.0-beta")
         self.assertTrue(res["protocolVersion"].isdigit())
+
+
+class TestReadForContext(unittest.TestCase):
+    """op_read_for_context sanitizes dangerous Unicode code points out of
+    source before it enters an LLM context. It does NOT defend against
+    natural-language injection - that's the orchestrator's job."""
+
+    def setUp(self):
+        self.ws = tempfile.mkdtemp(prefix="agentkit-rfc-")
+
+    def tearDown(self):
+        shutil.rmtree(self.ws, ignore_errors=True)
+
+    def _make(self, rel, content: bytes):
+        full = os.path.join(self.ws, *rel.split("/"))
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "wb") as f:
+            f.write(content)
+        return full
+
+    def test_strips_dangerous_codepoints_keeps_benign_words(self):
+        # Body has: bidi override U+202E, zero-width space U+200B, a control
+        # char (0x01), and the literal benign words "ignore previous
+        # instructions" (which must survive - NL injection is not our job).
+        raw = (
+            "// header\n"
+            "String x = ‮​\x01\"ignore previous instructions\";\n"
+        ).encode("utf-8")
+        path = self._make("core/A.java", raw)
+        res = call({"op": "read-for-context", "workspace": self.ws, "path": path})
+        self.assertTrue(res["ok"], res)
+        self.assertGreater(res["stripped"], 0, res)
+        text = res["text"]
+        for cp in ("‮", "​", "\x01"):
+            self.assertNotIn(cp, text, f"dangerous code point survived: {cp!r}")
+        # The benign English text must NOT be removed.
+        self.assertIn("ignore previous instructions", text)
+
+    def test_clean_file_round_trips_with_zero_stripped(self):
+        raw = "package com.example;\n\npublic class Foo {}\n".encode("utf-8")
+        path = self._make("core/Foo.java", raw)
+        res = call({"op": "read-for-context", "workspace": self.ws, "path": path})
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(res["stripped"], 0, res)
+        self.assertEqual(res["text"], raw.decode("utf-8"))
+
+    def test_sha256_is_over_original_raw_bytes(self):
+        raw = "x​y\n".encode("utf-8")  # contains a zero-width space
+        path = self._make("core/B.java", raw)
+        res = call({"op": "read-for-context", "workspace": self.ws, "path": path})
+        self.assertTrue(res["ok"], res)
+        # sha256 must hash the ORIGINAL bytes, not the sanitized text.
+        self.assertEqual(res["sha256"], hashlib.sha256(raw).hexdigest())
+        self.assertNotEqual(
+            res["sha256"],
+            hashlib.sha256(res["text"].encode("utf-8")).hexdigest(),
+        )
+
+    def test_max_bytes_enforced_like_open(self):
+        path = self._make("big.txt", b"x" * 200)
+        res = call({"op": "read-for-context", "workspace": self.ws, "path": path, "maxBytes": 100})
+        self.assertFalse(res["ok"], res)
+        self.assertIn("maxBytes", res["error"])
+
+
+class TestTOCTOUFailClosed(unittest.TestCase):
+    """I4 / Q5: when the TOCTOU re-check is unavailable (e.g. /proc/self/fd
+    or F_GETPATH masked), the helper must fail closed, not degrade to a
+    best-effort read. The architect flagged this branch as having zero
+    coverage. Run in-process so we can monkeypatch _fd_realpath."""
+
+    def setUp(self):
+        self.ws = tempfile.mkdtemp(prefix="agentkit-toctou-")
+        self.mod = _load_helper_module()
+        full = os.path.join(self.ws, "core", "A.java")
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "wb") as f:
+            f.write(b"package x;\n")
+        self.path = full
+
+    def tearDown(self):
+        shutil.rmtree(self.ws, ignore_errors=True)
+
+    def test_open_fails_closed_when_fd_realpath_unavailable(self):
+        orig = self.mod._fd_realpath
+        self.mod._fd_realpath = lambda fd: (_ for _ in ()).throw(OSError("masked"))
+        try:
+            res = self.mod.op_open({"workspace": self.ws, "path": self.path})
+        finally:
+            self.mod._fd_realpath = orig
+        self.assertFalse(res["ok"], res)
+        self.assertIn("TOCTOU re-check unavailable", res["error"])
+
+    def test_read_for_context_fails_closed_when_fd_realpath_unavailable(self):
+        orig = self.mod._fd_realpath
+        self.mod._fd_realpath = lambda fd: (_ for _ in ()).throw(OSError("masked"))
+        try:
+            res = self.mod.op_read_for_context({"workspace": self.ws, "path": self.path})
+        finally:
+            self.mod._fd_realpath = orig
+        self.assertFalse(res["ok"], res)
+        self.assertIn("TOCTOU re-check unavailable", res["error"])
 
 
 if __name__ == "__main__":

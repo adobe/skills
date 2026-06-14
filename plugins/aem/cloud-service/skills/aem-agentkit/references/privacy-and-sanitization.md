@@ -50,6 +50,11 @@ entry, and never read on uncertainty.
 | Backup / swap artifacts | `**/*.bak`, `**/*.orig`, `**/*.swp`, `**/*.swo`, `**/.#*`, `**/*~`, `**/*.rej` |
 | `.git/` (scoped exception) | Only `.git/HEAD` (top-of-tree branch) and `.git/refs/heads/*` (current SHA). `.git/config` is never read because it may contain `https://oauth2:<TOKEN>@…` URLs. |
 
+The table above lists the category groups and representative patterns.
+The full, exhaustive pattern list is hardcoded in
+`bin/aem-agentkit-helper` and is the authoritative enforcement
+source — the doc does not need to enumerate every variant.
+
 In addition to the file patterns above, the walk **prunes** the
 following directory names at every depth so they are never descended
 into: `.git/`, `target/`, `node_modules/`, `dist/`, `build/`, `out/`,
@@ -89,16 +94,15 @@ Before opening any file:
 7. Reject if the walk has already visited that realpath (visited-set
    loop guard) so a symlink chain that resolves into a previously seen
    subtree does not double-visit.
-8. Open with `O_NOFOLLOW` on Linux, `O_NOFOLLOW_ANY` on macOS 11+
-   (falling back to `openat2` with `RESOLVE_NO_SYMLINKS` on
-   Linux 5.6+), `FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS`
-   on Windows. Older platforms without the necessary flag are rejected
-   at startup with the diagnostic `aem-agentkit: platform lacks the
-   syscall surface needed for the symlink-hardening contract; aborting.`
-   The skill never silently relaxes this rule.
-9. Re-resolve the opened descriptor's canonical path and reject if it
-   differs from the realpath resolved in step 2 — closes the TOCTOU
-   window.
+8. Open the fully-resolved leaf target with `os.O_RDONLY | os.O_NOFOLLOW`
+   (intermediate-directory symlinks are deliberately followed so pnpm /
+   yarn / dispatcher submodule layouts that use symlinked directories
+   work correctly; the leaf itself must not be a symlink). Reject with
+   fail-closed on `ELOOP` or any open error.
+9. Re-resolve the opened descriptor's canonical path using
+   `/proc/self/fd/<N>` on Linux or `fcntl(F_GETPATH)` on macOS.
+   Reject if it differs from the realpath resolved in step 2 — closes
+   the TOCTOU window between resolve and open.
 
 Hard depth cap: 32 directories from the workspace root. Hard global
 file-walk cap: 100,000 files; per-immediate-child-of-root cap: 10,000
@@ -165,10 +169,10 @@ points; any survivor aborts the manifest write.
 The `sanitize-string` operation runs on string fragments the helper is
 **told** to sanitize: extracted `cq:title` values, derived package
 names, glossary terms, evidence pointer paths. It does NOT run on raw
-file bytes returned by `op_open`. When the orchestrating LLM uses
-`op_open` to read a customer file (Java source, HTL, `pom.xml`, README)
-and places those bytes into LLM context, prompt-injection payloads in
-the file are NOT filtered.
+file bytes returned by `open`. When the orchestrating LLM uses `open`
+(§ 2.2 of `helpers.md`) to read a customer file (Java source, HTL,
+`pom.xml`, README) and places those bytes into LLM context,
+prompt-injection payloads in the file are NOT filtered by `open` alone.
 
 This is the **orchestrator's responsibility**. A malicious or tampered
 customer repo can embed bidi-override, zero-width, or "ignore prior
@@ -176,19 +180,20 @@ instructions" tokens in Java comments, HTL files, or `pom.xml`
 `<description>` fields; if the orchestrator passes those bytes
 verbatim into agent context, the agent's behavior can be subverted.
 
-Recommended orchestrator pattern (until a helper-side
-`op_read_for_context` ships):
+**Use `read-for-context` for all LLM ingestion** (see
+[`helpers.md`](./helpers.md) § 2.10). This op runs the same safe-open
+path as `open`, then NFC-normalizes the decoded text and strips every
+code point in § 2.1 except LF/CR (preserving line structure while
+neutralizing bidi overrides, zero-width marks, BOM, and C0/C1
+controls). The orchestrator still wraps the returned `text` in a
+fenced code block before placing it in agent context.
 
-1. Read bytes via `op_open`.
-2. Decode to a UTF-8 string.
-3. Strip the same code-point set in § 2.1 from the decoded string.
-4. Hard-cap the resulting text at a sensible size (e.g. 64 KB).
-5. Wrap the result in a fenced code block before placing into LLM
-   context.
-
-This bracketing keeps customer file content as **data**, not as
-instructions. The skill's own per-module `AGENTS.md` rules block
-already advises agents to treat customer files as untrusted input.
+**Honesty caveat:** `read-for-context` neutralizes dangerous *Unicode*
+only. Literal natural-language prompt injection (e.g. `ignore previous
+instructions`) passes through unchanged. The orchestrator must treat
+`read-for-context` output as untrusted customer input. `read-for-context`
+is the **required** path for reading customer source into LLM context;
+raw `open` is for checksums and binary-exact operations only.
 
 ## 3. Where these contracts apply
 
