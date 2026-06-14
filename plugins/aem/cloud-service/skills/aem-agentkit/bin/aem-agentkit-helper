@@ -155,6 +155,10 @@ REJECT_PREFIXES = (
 WRITE_ALLOWLIST_GLOBS = (
     "AGENTS.md", "*/AGENTS.md", "*/*/AGENTS.md", "*/*/*/AGENTS.md",
     "*/*/*/*/AGENTS.md", "*/*/*/*/*/AGENTS.md",
+    # Workspace-root CLAUDE.md only (the consent-gated root-CLAUDE.md write).
+    # Intentionally NOT "*/CLAUDE.md" — nested CLAUDE.md remains out of scope,
+    # and root AGENTS.md stays owned by ensure-agents-md.
+    "CLAUDE.md",
     ".aem/context/*",
     "*/.aem/context/*",
     "*/*/.aem/context/*",
@@ -695,6 +699,53 @@ def _nfc_normalize_leaves(obj):
     return obj
 
 
+def _canonical_body_sha(raw: bytes, kind):
+    """Compute the canonical-body sha256 for `raw` under the given `kind`.
+
+    Returns the hex digest string on success, or None on any structural
+    failure (no marker newline, BOM, parse error, non-object JSON, unknown
+    kind). This is the single source of truth for both op_sha256_canonical
+    (the external op) and _is_skill_owned (the overwrite-protection check),
+    so the two can never diverge in how they derive the body checksum.
+    """
+    if raw.startswith(b"\xef\xbb\xbf"):
+        return None
+
+    if kind == "markdown":
+        # The marker MUST be on the first non-empty line. Skip leading blank
+        # lines so a stray newline from an IDE auto-prettier doesn't reclass
+        # the file as human-curated (QA finding Q22).
+        pos = 0
+        while pos < len(raw) and raw[pos:pos + 1] in (b"\n", b"\r"):
+            pos += 1
+        nl = raw.find(b"\n", pos)
+        if nl < 0:
+            return None
+        body = raw[nl + 1:]
+        return hashlib.sha256(body).hexdigest()
+
+    if kind == "json":
+        try:
+            obj = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return None
+        if not isinstance(obj, dict):
+            return None
+        # JSON_MARKER_FIELDS is stripped at the TOP LEVEL only. Nested keys
+        # with the same names are preserved by design — if a customer added
+        # a nested `componentDefinition._markerChecksum`, the checksum is
+        # legitimately part of the body. See security finding M2.
+        cleaned = {k: v for k, v in obj.items() if k not in JSON_MARKER_FIELDS}
+        cleaned = _nfc_normalize_leaves(cleaned)
+        emitted = json.dumps(
+            cleaned, sort_keys=True, indent=2, ensure_ascii=False,
+            separators=(",", ": "),
+        ).encode("utf-8") + b"\n"
+        return hashlib.sha256(emitted).hexdigest()
+
+    return None
+
+
 def op_sha256_canonical(req):
     kind = req.get("kind")
     try:
@@ -706,38 +757,102 @@ def op_sha256_canonical(req):
         return {"ok": False, "error": "UTF-8 BOM not allowed"}
 
     if kind == "markdown":
-        # The marker MUST be on the first non-empty line. Skip leading blank
-        # lines so a stray newline from an IDE auto-prettier doesn't reclass
-        # the file as human-curated (QA finding Q22).
-        pos = 0
-        while pos < len(raw) and raw[pos:pos + 1] in (b"\n", b"\r"):
-            pos += 1
-        nl = raw.find(b"\n", pos)
-        if nl < 0:
+        sha = _canonical_body_sha(raw, "markdown")
+        if sha is None:
             return {"ok": False, "error": "markdown body missing a newline-terminated marker line"}
-        body = raw[nl + 1:]
-        return {"ok": True, "sha256": hashlib.sha256(body).hexdigest()}
+        return {"ok": True, "sha256": sha}
 
     if kind == "json":
+        # Preserve the granular error messages the external op contract
+        # advertises (parse failure vs. non-object top-level); these are
+        # exercised by existing tests. _canonical_body_sha collapses both
+        # to None, so re-derive the specific cause here.
         try:
             obj = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as e:
             return {"ok": False, "error": f"json parse failed: {e}"}
         if not isinstance(obj, dict):
             return {"ok": False, "error": "json top-level must be an object"}
-        # JSON_MARKER_FIELDS is stripped at the TOP LEVEL only. Nested keys
-        # with the same names are preserved by design — if a customer added
-        # a nested `componentDefinition._markerChecksum`, the checksum is
-        # legitimately part of the body. See security finding M2.
-        cleaned = {k: v for k, v in obj.items() if k not in JSON_MARKER_FIELDS}
-        cleaned = _nfc_normalize_leaves(cleaned)
-        emitted = json.dumps(
-            cleaned, sort_keys=True, indent=2, ensure_ascii=False,
-            separators=(",", ": "),
-        ).encode("utf-8") + b"\n"
-        return {"ok": True, "sha256": hashlib.sha256(emitted).hexdigest()}
+        sha = _canonical_body_sha(raw, "json")
+        return {"ok": True, "sha256": sha}
 
     return {"ok": False, "error": f"unknown kind: {kind}"}
+
+
+# Version-agnostic marker prefix and checksum locator for markdown marker
+# lines. The version digits after `v` are intentionally not matched so that
+# a file generated by any aem-agentkit version is recognized.
+_MD_MARKER_PREFIX = b"<!-- aem-agentkit: generated v"
+_MD_CHECKSUM_RE = re.compile(rb"checksum:\s*([0-9a-fA-F]{64})\b")
+
+
+def _is_skill_owned(full_path: str, kind) -> bool:
+    """Return True iff the EXISTING file at `full_path` is authentically
+    skill-generated, per collision-rules.md: a file is "skill-owned" only
+    when its marker prefix matches AND the embedded sha256 recomputes over
+    the canonical body. Anything that fails — wrong prefix, missing/malformed
+    checksum, a second marker occurrence, a mismatch, an unreadable file, a
+    symlink, or an unknown kind — is treated as human-curated (return False).
+
+    Fail-closed in every ambiguous case: when in doubt, refuse the overwrite.
+    """
+    # Fail-closed open: O_NOFOLLOW rejects a symlink at the leaf; any open
+    # error (permission, missing, ENOENT race) is treated as human-curated.
+    try:
+        fd = os.open(full_path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError:
+        return False
+    try:
+        try:
+            raw = os.read(fd, MAX_BYTES_CEILING)
+        except OSError:
+            return False
+    finally:
+        os.close(fd)
+
+    if kind == "markdown":
+        # The marker prefix must occur exactly once anywhere in the file; a
+        # second occurrence is a spoofing signal -> human-curated.
+        if raw.count(_MD_MARKER_PREFIX) != 1:
+            return False
+        # The marker must be on the first NON-EMPTY line.
+        pos = 0
+        while pos < len(raw) and raw[pos:pos + 1] in (b"\n", b"\r"):
+            pos += 1
+        nl = raw.find(b"\n", pos)
+        if nl < 0:
+            return False
+        first_line = raw[pos:nl]
+        if not first_line.startswith(_MD_MARKER_PREFIX):
+            return False
+        m = _MD_CHECKSUM_RE.search(first_line)
+        if not m:
+            return False
+        embedded = m.group(1).decode("ascii").lower()
+        recomputed = _canonical_body_sha(raw, "markdown")
+        if recomputed is None:
+            return False
+        return embedded == recomputed
+
+    if kind == "json":
+        try:
+            obj = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return False
+        if not isinstance(obj, dict):
+            return False
+        if obj.get("_generatedBy") != "aem-agentkit":
+            return False
+        embedded = obj.get("_markerChecksum")
+        if not isinstance(embedded, str):
+            return False
+        recomputed = _canonical_body_sha(raw, "json")
+        if recomputed is None:
+            return False
+        return embedded.lower() == recomputed
+
+    # Unknown / missing kind -> conservatively human-curated.
+    return False
 
 
 def op_write_atomic(req):
@@ -752,6 +867,7 @@ def op_write_atomic(req):
     """
     workspace = req["workspace"]
     rel = req["path"]
+    kind = req.get("kind")
     try:
         data = base64.b64decode(req["bytes"], validate=True)
     except Exception as e:
@@ -857,6 +973,30 @@ def op_write_atomic(req):
                     ),
                 }
 
+    # Marker-aware, fail-closed overwrite protection (collision-rules.md):
+    # never silently overwrite a human-curated file. A file is skill-owned
+    # only when its marker prefix matches AND the embedded sha256 recomputes
+    # over the canonical body; anything that fails is human-curated and must
+    # not be clobbered. The orchestrator may force an overwrite with
+    # allowOverwriteHumanCurated:true (the diagnostic field below records it).
+    # Fresh paths (target does not exist) skip the check entirely.
+    allow_overwrite_human = bool(req.get("allowOverwriteHumanCurated", False))
+    overwrote_human_curated = False
+    if os.path.exists(full):
+        skill_owned = _is_skill_owned(full, kind)
+        if not skill_owned:
+            if not allow_overwrite_human:
+                return {
+                    "ok": False,
+                    "error": (
+                        f"refusing to overwrite human-curated file: {rel_posix}. "
+                        f"It exists and is not skill-owned (no valid aem-agentkit marker). "
+                        f"Pass allowOverwriteHumanCurated:true to force, or write to a "
+                        f".agentkit-new sidecar."
+                    ),
+                }
+            overwrote_human_curated = True
+
     tmp = full + ".tmp"
     try:
         fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
@@ -894,6 +1034,7 @@ def op_write_atomic(req):
         "sha256": hashlib.sha256(data).hexdigest(),
         "allowlistMatch": matched_allow,
         "caseCollision": case_collision_detected,
+        "overwroteHumanCurated": overwrote_human_curated,
     }
 
 

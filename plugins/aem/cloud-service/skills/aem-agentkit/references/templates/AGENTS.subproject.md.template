@@ -36,8 +36,8 @@ Model, OSGi service, or Sling Servlet in this sub-project, run
 the workspace-root and the **sub-project-scoped** `.aem/context/*`
 indexes so later sessions read the correct inventory at the right
 scope. In a multi-brand monorepo, the sub-project scope is what
-prevents a `twilio-com` agent session from seeing
-`twilio-foundation-reactor`'s components.
+prevents a `brand-a` agent session from seeing
+`brand-b`'s components.
 
 ## Note on Git submodules
 

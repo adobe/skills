@@ -42,11 +42,19 @@ classifiers; `dispatcher` legacy `conf/` only without `conf.d/`;
 
 | Skill | Owns |
 |---|---|
-| `ensure-agents-md` | Root `AGENTS.md` + `CLAUDE.md` |
-| `aem-agentkit` | Per-module `AGENTS.md`, `.aem/context/`, tool-specific files |
+| `ensure-agents-md` | Root `AGENTS.md` + the base `CLAUDE.md` |
+| `aem-agentkit` | Per-module `AGENTS.md`, `.aem/context/`, tool-specific files; **with consent**, an "AEM as a Cloud Service" section appended to root `CLAUDE.md` |
 
 When root `AGENTS.md` is missing and `ensure-agents-md` is installed, this
 skill defers to it as step 0 before continuing.
+
+Root `AGENTS.md` is **never** written by `aem-agentkit` — it is always
+deferred to `ensure-agents-md`. Root `CLAUDE.md` is different: if
+`ensure-agents-md` is present it still creates root `AGENTS.md` and the
+base `CLAUDE.md`; `aem-agentkit` then only **offers** (consent-gated, see
+§ "Root `CLAUDE.md` consent prompt") to append its marked "AEM as a Cloud
+Service" agentic-context section to that `CLAUDE.md`. On decline, the
+file is left exactly as `ensure-agents-md` wrote it.
 
 ## Trigger
 
@@ -107,6 +115,53 @@ When no IDE signal fires, the universal layer is still written and the
 preamble lists which toolchain dirs the customer can create to layer in
 tool-specific artifacts on a later run.
 
+### Root `CLAUDE.md` consent prompt
+
+After the IDE-selection prompt, the skill issues a **second** prompt
+asking whether it may add or update an "AEM as a Cloud Service"
+agentic-context section in the customer's root `CLAUDE.md`. This is the
+same consent pattern as the IDE-selection prompt. Root `AGENTS.md` is
+**never** touched by this skill — it remains deferred to
+`ensure-agents-md` (see § "Relationship to `ensure-agents-md`"); only
+`CLAUDE.md` is offered here.
+
+The skill first detects the `CLAUDE.md` state:
+
+- **Missing** — no root `CLAUDE.md` exists.
+- **Skill-owned** — a `CLAUDE.md` whose AEM section recomputes its
+  marker correctly (the helper's `_is_skill_owned` check, see
+  [`helpers.md`](./references/helpers.md) § 2.5 step 7).
+- **Human-curated** — a `CLAUDE.md` that exists without a valid AEM
+  section marker (any other content the developer authored).
+
+It then prompts (template in
+[`references/output-format.md`](./references/output-format.md) § 1.2):
+
+- On **decline** → skip entirely. The skill does **not** touch
+  `CLAUDE.md` (this is the old/default behavior).
+- On **accept**:
+  - Missing → write a `CLAUDE.md` carrying only the marked AEM section.
+  - Skill-owned → re-render the marked AEM section in place.
+  - Human-curated → **append** a marked "AEM as a Cloud Service" section
+    to the end of the existing file without clobbering existing content.
+    Because the file is human-curated, the orchestrator passes the
+    helper's `allowOverwriteHumanCurated: true` to `write-atomic`
+    **only** because the developer consented on this prompt.
+
+The consent decision is persisted in `.aem/agentkit-overrides.yml` as
+`decision: claude-md` with value `allow` or `deny`, so re-runs do not
+re-prompt. The prompt is **suppressed** under the same rules as the
+IDE-selection prompt:
+
+- CLI flag `--silent` on the invocation.
+- Environment variable `AEM_AGENTKIT_SILENT=1`.
+- `.aem/agentkit-overrides.yml` already contains a `decision: claude-md`
+  entry — that entry wins outright.
+
+The silent default is **DENY** (`CLAUDE.md` is left untouched), which is
+the safe/old behavior: a scripted or CI invocation never writes
+`CLAUDE.md` unless an existing `decision: claude-md` entry says `allow`.
+
 ## Hard guarantee — allow-list of paths the skill writes
 
 Every output sits under one of:
@@ -116,6 +171,7 @@ Every output sits under one of:
 - Per-tool artifacts under `.claude/`, `.cursor/`, `.github/instructions/`, `.continue/`, plus single-file `.clinerules` / `.windsurfrules` / `augment.md` when their signal fires
 - `.mcp.json` and `.cursor/mcp.json` placeholders (only when missing)
 - `.aem/agentkit-overrides.yml` (one entry per resolved decision)
+- Root `CLAUDE.md` — **only with explicit developer consent** (see § "Root `CLAUDE.md` consent prompt"). Created when missing, or its marked "AEM as a Cloud Service" section re-rendered / appended. Root `AGENTS.md` is NOT on this list — it is never written by this skill.
 
 **Helper-enforced.** The allow-list is enforced inside `bin/aem-agentkit-helper`'s `write-atomic` op (see [`references/helpers.md`](./references/helpers.md) § 2.5). A write request for any path outside the allow-list is rejected by the helper; the orchestrating LLM cannot bypass this even if prompt-injected. The deny-list (per-segment privacy patterns) is enforced before the allow-list - `node_modules/`, `.git/`, `.env`, `*.pem`, and the full privacy list are always refused regardless of intent.
 
@@ -123,17 +179,20 @@ Outside this list every pre-existing file is read-only. The skill's own
 `<path>.tmp` (atomic-write only, cleaned at startup when adjacent to a
 marker-bearing target OR when orphaned at an allow-listed path) and
 `<path>.agentkit-new` (diff sidecar) are the only other paths it touches.
-Root `AGENTS.md` / `CLAUDE.md` are owned by `ensure-agents-md` and are
-never modified.
+Root `AGENTS.md` is owned by `ensure-agents-md` and is **never modified**
+by this skill. Root `CLAUDE.md` is modified **only with explicit
+developer consent** (§ "Root `CLAUDE.md` consent prompt"); absent consent
+it is left untouched, exactly as before.
 
 The skill never reads anything matching the deny-list in
 [references/privacy-and-sanitization.md](./references/privacy-and-sanitization.md)
 § 1, never embeds AEM 6.5 documentation URLs (the self-validation pass
 rejects `/6.5/` and `experience-manager-65/`), and never names specific
 MCP server packages in any AGENTS.md body. The skill prompts the
-customer only for **IDE selection** (§ "IDE detection and selection")
-— no prompts for content decisions, file overwrites, or path
-resolution.
+customer for exactly two decisions: **IDE selection** (§ "IDE detection
+and selection") and **root `CLAUDE.md` consent** (§ "Root `CLAUDE.md`
+consent prompt") — no prompts for content decisions, other file
+overwrites, or path resolution.
 
 ## Generation order
 
@@ -238,7 +297,7 @@ and writes a bounded set of agent-context files. Key trust boundaries:
 
 | Asset | Defended against | Mechanism |
 |---|---|---|
-| Customer source files | Accidental modification | Allow-list (helper-enforced in `write-atomic`) + marker-based human-curated detection |
+| Customer source files / human-curated files | Accidental modification | Allow-list (helper-enforced in `write-atomic`) **plus** helper-enforced overwrite protection: `write-atomic`'s `_is_skill_owned` check (§ 2.5 step 7) refuses to overwrite any pre-existing human-curated file unless the caller passes `allowOverwriteHumanCurated: true` (default `false`). Marker recomputation is the ownership test; this is enforced in the helper, not just orchestrator convention. |
 | Privacy-sensitive files (`.env`, `*.pem`, `.aws/`, `.git/config`) | Indexing into LLM context | Deny-list per path segment, ASCII casefold + NFC normalize, applied at both walk-name AND resolved-realpath segments |
 | Filesystem outside workspace | Reading or writing via symlink | Workspace realpath cached at startup; in-workspace symlinks pointing outside are rejected; special filesystems (`/proc`, `/sys`, `/dev`, `/var/run`, `/run`, macOS `/private/var/run`) rejected even when the workspace lives inside them |
 | TOCTOU on read | Reading a swapped file | `O_NOFOLLOW` + post-open re-check via `/proc/self/fd/N` (Linux) or `F_GETPATH` (macOS); fail-closed when re-check is unavailable |
@@ -275,7 +334,8 @@ The references hold the byte-exact definitions; this section is a
 checklist for review.
 
 - **Allow-list writes only** (this file § Hard guarantee, enforced inside the helper's `write-atomic` op).
-- **Never overwrite** any pre-existing file lacking the skill's marker (see [`collision-rules.md`](./references/collision-rules.md)).
+- **Never overwrite** any pre-existing human-curated file (one lacking a valid skill marker) — helper-enforced in `write-atomic` via the `_is_skill_owned` check; the orchestrator may pass `allowOverwriteHumanCurated: true` ONLY for root `CLAUDE.md` and ONLY after the developer consents on the § "Root `CLAUDE.md` consent prompt" (see [`collision-rules.md`](./references/collision-rules.md)).
+- **Root `AGENTS.md` never written; root `CLAUDE.md` only with consent** — `AGENTS.md` is always deferred to `ensure-agents-md`; `CLAUDE.md` is touched only on an `allow` consent decision (`decision: claude-md`), with `deny` as the silent default.
 - **Never read** any path matching the privacy deny-list ([`privacy-and-sanitization.md`](./references/privacy-and-sanitization.md) § 1) — segment-by-segment match, ASCII-lowercase casefold + NFC normalize, fail-closed on uncertainty. Deny-list also applies to the **resolved realpath segments** to defeat in-workspace symlink bypass.
 - **Workspace boundary + symlink hardening** ([`privacy-and-sanitization.md`](./references/privacy-and-sanitization.md) § 1.2): realpath check, workspace-escape rejection, special-filesystem rejection (`/proc`, `/sys`, `/dev`, `/var/run`, `/run`, macOS `/private/var/run`, UNC paths), `O_NOFOLLOW` open on the resolved target with TOCTOU re-check (fail-closed when re-check is unavailable), depth cap 32, global file cap 100,000, per-subtree cap 10,000.
 - **Output stability** ([`codified-context.md`](./references/codified-context.md) § 2): JSON sorted-keys + 2-space indent + LF + final newline + UTF-8 no BOM; Markdown LF + final newline + no trailing whitespace; `generatedAt` is `YYYY-MM-DDTHH:MM:SSZ` and excluded from the checksum. String leaves are NFC-normalized before checksum so HFS+ (NFD) and ext4/APFS (NFC) hash identically.

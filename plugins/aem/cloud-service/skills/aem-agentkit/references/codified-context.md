@@ -58,8 +58,8 @@ documented in [`privacy-and-sanitization.md`](./privacy-and-sanitization.md)
 - **Operational cost at enterprise scale.** A single-archetype workspace
   (a few thousand paths) finishes in seconds. The verified `aem-guides-wknd`
   run completes in under 5 s wall-clock. A multi-brand monorepo with two
-  nested AEM projects (7,800 paths in the verified Twilio-style run)
-  finishes in under 15 s. An enterprise monorepo with 5+ nested AEM
+  nested AEM projects (~7,800 paths in a verified large multi-brand
+  monorepo run) finishes in under 15 s. An enterprise monorepo with 5+ nested AEM
   projects and 500+ components per project is plausibly bouncing off
   the 100k file cap and the 10k per-subtree cap; budget for it.
   `/agents-md-check` recomputes every manifest entry's checksum on

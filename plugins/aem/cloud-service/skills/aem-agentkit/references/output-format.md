@@ -107,6 +107,53 @@ set — toolchains not listed are not materialized. An empty list
 (`value: []`) is equivalent to choosing "none" — only the universal
 layer is written.
 
+## 1.2 Root `CLAUDE.md` consent prompt
+
+After the IDE-selection prompt, the skill issues a second prompt asking
+whether it may add or update an "AEM as a Cloud Service" agentic-context
+section in the customer's root `CLAUDE.md`. Root `AGENTS.md` is never
+offered — it is always deferred to `ensure-agents-md`. The prompt is
+suppressed under the same three escape hatches as § 1.1: `--silent`,
+`AEM_AGENTKIT_SILENT=1`, or an existing `decision: claude-md` entry in
+`.aem/agentkit-overrides.yml`. When suppressed with no pre-existing
+decision, the silent default is **DENY** — `CLAUDE.md` is left untouched
+(the safe/old behavior).
+
+The prompt template (mirrors § 1.1):
+
+```
+aem-agentkit: root CLAUDE.md detected state: <missing | skill-owned | human-curated>.
+
+May I add an "AEM as a Cloud Service" agentic-context section to your
+root CLAUDE.md? This points coding agents at the per-module AGENTS.md and
+.aem/context/* this skill generates. Root AGENTS.md is never modified.
+
+  - missing       → a new CLAUDE.md is created with only the AEM section.
+  - skill-owned   → the existing AEM section is re-rendered in place.
+  - human-curated → the AEM section is appended; your existing content is
+                    preserved untouched.
+
+  [y] Yes — add / update the AEM as a Cloud Service section
+  [n] No  — leave CLAUDE.md untouched (default)
+
+> _
+```
+
+The decision is recorded in `.aem/agentkit-overrides.yml` as:
+
+```yaml
+schemaVersion: "1"
+overrides:
+  - decision: claude-md
+    value: allow
+```
+
+Valid `value` entries: `allow`, `deny`. On `allow` the orchestrator
+writes via the helper's `write-atomic` op; for a human-curated
+`CLAUDE.md` it passes `allowOverwriteHumanCurated: true` (so the helper
+permits the append) **only** because the developer consented. On `deny`
+the skill performs no write to `CLAUDE.md`.
+
 ## 2. Summary block
 
 Printed verbatim after every successful run. Counts are filled in from

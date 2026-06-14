@@ -71,18 +71,31 @@ disk, not behind a pointer to the published skill bundle.
 
 Customer Java, HTL, JSP, JS/TS/CSS, dispatcher configuration, FileVault XML,
 `pom.xml`, content `.json`, OSGi config files, `README`, `CONTRIBUTING`,
-`LICENSE`, the root `AGENTS.md` / `CLAUDE.md`, or any other pre-existing file
-lacking the marker comment. See `SKILL.md` § "Hard guarantee" for the exact
-allow-list.
+`LICENSE`, the root `AGENTS.md`, or any other pre-existing file lacking the
+marker comment. See `SKILL.md` § "Hard guarantee" for the exact allow-list.
+
+The one exception is the root `CLAUDE.md`: the skill may add or update an
+"AEM as a Cloud Service" agentic-context section there, but **only after
+the developer explicitly consents** to a prompt (same pattern as the
+IDE-selection prompt). On decline — and as the silent default for
+`--silent` / `AEM_AGENTKIT_SILENT=1` runs — `CLAUDE.md` is left untouched.
+Root `AGENTS.md` is never written by this skill regardless of consent.
 
 ## Relationship to `ensure-agents-md`
 
 `aem-agentkit` does not replace `ensure-agents-md`; they are complementary.
-`ensure-agents-md` owns the root `AGENTS.md` + `CLAUDE.md`. `aem-agentkit`
-owns everything else. If root `AGENTS.md` is missing and `ensure-agents-md`
-is available, `aem-agentkit` defers to it as step 0. If it is not
-available, `aem-agentkit` proceeds with everything except the root
-`AGENTS.md` and emits a one-line notice.
+`ensure-agents-md` owns the root `AGENTS.md` and the base `CLAUDE.md`.
+`aem-agentkit` owns everything else. If root `AGENTS.md` is missing and
+`ensure-agents-md` is available, `aem-agentkit` defers to it as step 0. If
+it is not available, `aem-agentkit` proceeds with everything except the
+root `AGENTS.md` and emits a one-line notice.
+
+Root `AGENTS.md` is never written by `aem-agentkit`. Root `CLAUDE.md` is
+the only file the two skills both touch: `ensure-agents-md` creates the
+base `CLAUDE.md`, and `aem-agentkit` then **offers** — with explicit
+developer consent — to append its marked "AEM as a Cloud Service"
+agentic-context section to it. On decline, `CLAUDE.md` stays exactly as
+`ensure-agents-md` left it.
 
 ## Status
 

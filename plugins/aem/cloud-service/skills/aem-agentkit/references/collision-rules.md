@@ -7,8 +7,12 @@ target path already exists. Every target falls into exactly one row.
 
 | Pre-existing state | Skill behavior |
 |---|---|
-| Root `AGENTS.md` present (any author) | Never modified. Read-only consult. |
-| Root `CLAUDE.md` present | Never modified. |
+| Root `AGENTS.md` present (any author) | Never modified. Read-only consult. Always deferred to `ensure-agents-md`. |
+| Root `CLAUDE.md` missing, consent **declined** (or silent default DENY) | Not created. No write. This is the old/default behavior. |
+| Root `CLAUDE.md` missing, consent **accepted** | Create `CLAUDE.md` carrying only the marked "AEM as a Cloud Service" section. Written via `write-atomic` (no `allowOverwriteHumanCurated` needed — the file does not exist). |
+| Root `CLAUDE.md` present, **skill-owned** AEM section, consent accepted | Re-render the marked AEM section in place (idempotent if unchanged). Skill-owned, so `write-atomic` permits it without `allowOverwriteHumanCurated`. |
+| Root `CLAUDE.md` present, **human-curated**, consent **declined** (or silent default DENY) | Never modified. |
+| Root `CLAUDE.md` present, **human-curated**, consent **accepted** | **Append** a marked "AEM as a Cloud Service" section to the end; existing content preserved. The orchestrator passes `write-atomic`'s `allowOverwriteHumanCurated: true` ONLY because the developer consented. |
 | `<module>/AGENTS.md` present, **no** marker | Treated as human-curated. Never modified. The skill emits a `warningStubs` entry: `"human-curated <path>; skipping per-module generation"`. |
 | `<module>/AGENTS.md` present, marker + **same** checksum | Skip silently (idempotent). |
 | `<module>/AGENTS.md` present, marker + **different** checksum | Write new content to `<path>.agentkit-new`. Print a one-line diff summary. Original untouched. |
@@ -53,6 +57,8 @@ target path already exists. Every target falls into exactly one row.
 | `.aem/constitution.md`, `.aem/specs/`, `.aem/plans/`, `.aem/tasks/`, `.aem/templates/` (from aem-orchestration-workflow) | Never touched. The skill writes only inside `.aem/context/`. |
 | `.aem/agentkit-overrides.yml` present with no `decision: ide-targets` entry | **Read-only** by the skill for the heuristic-override entries. On first IDE-selection prompt answer, the skill appends a `decision: ide-targets` entry (see [`manifest.md`](./manifest.md) § Overrides + [`output-format.md`](./output-format.md) § 1.1). |
 | `.aem/agentkit-overrides.yml` present with `decision: ide-targets` already populated | Read-only. The IDE selection prompt is suppressed; the entry is honored as the exclusive target set. |
+| `.aem/agentkit-overrides.yml` present with no `decision: claude-md` entry | On the first root-`CLAUDE.md` consent answer, the skill appends a `decision: claude-md` entry (`value: allow` or `deny`) so re-runs don't re-prompt (see [`output-format.md`](./output-format.md) § 1.2). |
+| `.aem/agentkit-overrides.yml` present with `decision: claude-md` already populated | Read-only. The `CLAUDE.md` consent prompt is suppressed; `value: allow` writes/updates the marked AEM section, `value: deny` leaves `CLAUDE.md` untouched. Same suppression rules as `ide-targets` (`--silent` / `AEM_AGENTKIT_SILENT=1` / pre-existing entry); silent default with no entry is DENY. |
 | Tool-specific artifact already exists with the marker for a tool the customer **deselected** in the current run | Left in place; not regenerated, not deleted. Removal is an explicit customer operation (delete the marker-bearing files per [`upgrade-and-migration.md`](./upgrade-and-migration.md) § 4 Reversibility). |
 | `_disable_agentkit` at workspace root (any regular file, directory, or symlink — `lstat`-by-name; contents and target are never dereferenced) | Skill skips entirely (exit 0, no writes). For single-archetype workspaces the preamble enumerates the disabled sub-project list explicitly to prevent partial-scope confusion. The 1024-byte sanity threshold from earlier v0.x designs was dropped — `_disable_agentkit` is an obscure-enough name that name-collision with a committed binary is implausible, and the threshold produced more "why isn't opt-out engaging?" support tickets than the binary-collision risk it defended against. |
 | `_disable_agentkit` inside a nested AEM sub-project root | That sub-project is skipped; the rest of the run proceeds. The directory containing `_disable_agentkit` must independently pass nested-AEM-project detection ([`per-module-agents-md.md`](./per-module-agents-md.md) § 1); otherwise the file is ignored. |
@@ -81,6 +87,14 @@ correctly. The following additional rules apply:
   should still be reviewed.
 
 Anything that fails the above is human-curated.
+
+This floor is **helper-enforced**, not merely an orchestrator
+convention: the helper's `write-atomic` op (see
+[`helpers.md`](./helpers.md) § 2.5, step 7 `_is_skill_owned`) refuses to
+overwrite a pre-existing human-curated file unless the caller passes
+`allowOverwriteHumanCurated: true`. The collision decisions in the table
+above are therefore backstopped in the helper — an orchestrator bug or
+prompt injection cannot silently clobber human-curated content.
 
 ## `.agentkit-new` lifecycle
 

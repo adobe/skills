@@ -294,6 +294,47 @@ class TestWriteAtomic(unittest.TestCase):
         res = call({"op": "write-atomic", "workspace": self.ws, "path": "brand-a/.aem/context/components.json", "bytes": b64(b"{}")})
         self.assertTrue(res["ok"], res)
 
+    def test_allowlist_accepts_root_claude_md(self):
+        # New consent-gated behavior: workspace-root CLAUDE.md is now writable.
+        # Fresh path (no pre-existing file) -> allowed.
+        res = call({
+            "op": "write-atomic", "workspace": self.ws, "path": "CLAUDE.md",
+            "kind": "markdown", "bytes": b64(b"# project\n"),
+        })
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(res["allowlistMatch"], "CLAUDE.md")
+
+    def test_allowlist_claude_md_is_root_only(self):
+        # Lock in that the CLAUDE.md addition opened up the workspace-root path
+        # ONLY, not "*/CLAUDE.md". A nested CLAUDE.md (which we did NOT add to
+        # the allow-list) must still be rejected with the allow-list error.
+        res = call({
+            "op": "write-atomic", "workspace": self.ws, "path": "core/CLAUDE.md",
+            "kind": "markdown", "bytes": b64(b"# nested\n"),
+        })
+        self.assertFalse(res["ok"], res)
+        self.assertIn("allow-list", res["error"])
+
+    def test_root_claude_md_human_curated_overwrite_protected(self):
+        # The consent path: a pre-existing human-curated CLAUDE.md (plain
+        # content, no aem-agentkit marker) must be refused without the force
+        # flag, and allowed with allowOverwriteHumanCurated:true.
+        target = os.path.join(self.ws, "CLAUDE.md")
+        with open(target, "wb") as f:
+            f.write(b"# hand-written project guide\n")
+        refused = call({
+            "op": "write-atomic", "workspace": self.ws, "path": "CLAUDE.md",
+            "kind": "markdown", "bytes": b64(b"# regenerated\n"),
+        })
+        self.assertFalse(refused["ok"], refused)
+        self.assertIn("human-curated", refused["error"])
+        forced = call({
+            "op": "write-atomic", "workspace": self.ws, "path": "CLAUDE.md",
+            "kind": "markdown", "bytes": b64(b"# regenerated\n"),
+            "allowOverwriteHumanCurated": True,
+        })
+        self.assertTrue(forced["ok"], forced)
+
     def test_allowlist_opt_out_for_test_fixtures(self):
         # Explicit escape hatch for fixture builders. Documented as test-only.
         res = call({
@@ -307,7 +348,14 @@ class TestWriteAtomic(unittest.TestCase):
         # on case-insensitive filesystems.
         with open(os.path.join(self.ws, "agents.md"), "wb") as f:
             f.write(b"x")
-        res = call({"op": "write-atomic", "workspace": self.ws, "path": "AGENTS.md", "bytes": b64(b"y")})
+        # The pre-existing file has no marker, so the overwrite-protection
+        # would refuse it on the case-insensitive branch (where AGENTS.md
+        # resolves to the same inode). Force past that with the documented
+        # test escape hatch; this test only exercises case-collision handling.
+        res = call({
+            "op": "write-atomic", "workspace": self.ws, "path": "AGENTS.md",
+            "bytes": b64(b"y"), "allowOverwriteHumanCurated": True,
+        })
         # The behavior is filesystem-dependent: on a case-sensitive FS the
         # write succeeds with caseCollision=False; on case-insensitive it
         # is refused.
@@ -800,6 +848,171 @@ class TestMarkerSpoofDetection(unittest.TestCase):
         expected = hashlib.sha256(b"# Hello\n").hexdigest()
         self.assertEqual(res["sha256"], expected)
         self.assertNotEqual(res["sha256"], "deadbeef")
+
+
+def _skill_owned_md(body_after_marker: bytes, version="1.0.0-beta") -> bytes:
+    """Build a marker-bearing markdown file whose embedded checksum is the
+    canonical body sha (sha256 over everything after the first newline, the
+    same rule op_sha256_canonical applies for markdown)."""
+    checksum = hashlib.sha256(body_after_marker).hexdigest()
+    marker = (
+        f"<!-- aem-agentkit: generated v{version}; "
+        f"checksum: {checksum} -->\n"
+    ).encode("utf-8")
+    return marker + body_after_marker
+
+
+def _skill_owned_json(body_obj: dict) -> bytes:
+    """Build a marker-bearing JSON file whose _markerChecksum is the canonical
+    body sha (strip JSON_MARKER_FIELDS, NFC-normalize leaves, dumps sorted-keys
+    /indent=2/LF + final newline), the same rule op_sha256_canonical applies."""
+    cleaned = {
+        k: v for k, v in body_obj.items()
+        if k not in (
+            "_generatedBy", "_skillVersion", "schemaVersion",
+            "_markerChecksum", "generatedAt", "_static",
+        )
+    }
+    emitted = json.dumps(
+        cleaned, sort_keys=True, indent=2, ensure_ascii=False,
+        separators=(",", ": "),
+    ).encode("utf-8") + b"\n"
+    checksum = hashlib.sha256(emitted).hexdigest()
+    full = dict(body_obj)
+    full["_generatedBy"] = "aem-agentkit"
+    full["_markerChecksum"] = checksum
+    return json.dumps(full).encode("utf-8")
+
+
+class TestOverwriteProtection(unittest.TestCase):
+    """collision-rules.md: op_write_atomic must never silently overwrite a
+    human-curated file. Skill-owned == marker prefix matches AND embedded
+    sha256 recomputes over the canonical body. Everything else is
+    human-curated and is refused unless allowOverwriteHumanCurated:true."""
+
+    def setUp(self):
+        self.ws = tempfile.mkdtemp(prefix="agentkit-overwrite-")
+        os.makedirs(os.path.join(self.ws, "core"), exist_ok=True)
+
+    def tearDown(self):
+        shutil.rmtree(self.ws, ignore_errors=True)
+
+    def _fs_write(self, rel, content: bytes):
+        full = os.path.join(self.ws, *rel.split("/"))
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "wb") as f:
+            f.write(content)
+        return full
+
+    def test_fresh_allowlisted_path_ok(self):
+        # (a) fresh path -> write proceeds, no overwrite flag set.
+        res = call({
+            "op": "write-atomic", "workspace": self.ws,
+            "path": "core/AGENTS.md", "bytes": b64(b"# core\n"), "kind": "markdown",
+        })
+        self.assertTrue(res["ok"], res)
+        self.assertFalse(res["overwroteHumanCurated"], res)
+
+    def test_skill_owned_markdown_rewrite_ok(self):
+        # (b) idempotent rewrite: existing file is skill-owned -> overwrite ok.
+        first = _skill_owned_md(b"# core v1\n")
+        self._fs_write("core/AGENTS.md", first)
+        second = _skill_owned_md(b"# core v2\n")
+        res = call({
+            "op": "write-atomic", "workspace": self.ws,
+            "path": "core/AGENTS.md", "bytes": b64(second), "kind": "markdown",
+        })
+        self.assertTrue(res["ok"], res)
+        self.assertFalse(res["overwroteHumanCurated"], res)
+        with open(os.path.join(self.ws, "core/AGENTS.md"), "rb") as f:
+            self.assertEqual(f.read(), second)
+
+    def test_human_curated_markdown_refused(self):
+        # (c) plain file, no marker -> refused.
+        self._fs_write("core/AGENTS.md", b"# hand-written by a human\n")
+        res = call({
+            "op": "write-atomic", "workspace": self.ws,
+            "path": "core/AGENTS.md", "bytes": b64(b"# robot\n"), "kind": "markdown",
+        })
+        self.assertFalse(res["ok"], res)
+        self.assertIn("human-curated", res["error"])
+        # The original content must be untouched.
+        with open(os.path.join(self.ws, "core/AGENTS.md"), "rb") as f:
+            self.assertEqual(f.read(), b"# hand-written by a human\n")
+
+    def test_human_curated_markdown_force_ok(self):
+        # (d) same as (c) but forced -> ok, diagnostic flag set true.
+        self._fs_write("core/AGENTS.md", b"# hand-written by a human\n")
+        res = call({
+            "op": "write-atomic", "workspace": self.ws,
+            "path": "core/AGENTS.md", "bytes": b64(b"# robot\n"), "kind": "markdown",
+            "allowOverwriteHumanCurated": True,
+        })
+        self.assertTrue(res["ok"], res)
+        self.assertTrue(res["overwroteHumanCurated"], res)
+        with open(os.path.join(self.ws, "core/AGENTS.md"), "rb") as f:
+            self.assertEqual(f.read(), b"# robot\n")
+
+    def test_spoofed_marker_checksum_refused(self):
+        # (e) marker-shaped first line but WRONG checksum -> human-curated.
+        spoof = (
+            b"<!-- aem-agentkit: generated v1.0.0-beta; checksum: "
+            + b"0" * 64 + b" -->\n# spoofed body\n"
+        )
+        self._fs_write("core/AGENTS.md", spoof)
+        res = call({
+            "op": "write-atomic", "workspace": self.ws,
+            "path": "core/AGENTS.md", "bytes": b64(b"# robot\n"), "kind": "markdown",
+        })
+        self.assertFalse(res["ok"], res)
+        self.assertIn("human-curated", res["error"])
+
+    def test_skill_owned_json_rewrite_ok(self):
+        # (f) skill-owned json overwrite -> ok.
+        first = _skill_owned_json({"components": []})
+        self._fs_write("core/.aem/context/components.json", first)
+        second = _skill_owned_json({"components": [{"name": "x"}]})
+        res = call({
+            "op": "write-atomic", "workspace": self.ws,
+            "path": "core/.aem/context/components.json", "bytes": b64(second),
+            "kind": "json",
+        })
+        self.assertTrue(res["ok"], res)
+        self.assertFalse(res["overwroteHumanCurated"], res)
+
+    def test_human_curated_json_refused(self):
+        # (f) human-curated json (no _generatedBy) -> refused.
+        self._fs_write("core/.aem/context/components.json", b'{"components":[]}')
+        res = call({
+            "op": "write-atomic", "workspace": self.ws,
+            "path": "core/.aem/context/components.json", "bytes": b64(b"{}"),
+            "kind": "json",
+        })
+        self.assertFalse(res["ok"], res)
+        self.assertIn("human-curated", res["error"])
+
+    def test_regression_marker_strip_protects_agents_md(self):
+        # (g) the motivating bug: a valid generated core/AGENTS.md is
+        # overwritable, but once its marker line is stripped (human edit),
+        # it becomes protected.
+        body = b"# AGENTS for core\n\nGenerated guidance.\n"
+        generated = _skill_owned_md(body)
+        self._fs_write("core/AGENTS.md", generated)
+        # While the marker is intact, a regen overwrite is allowed.
+        regen = _skill_owned_md(b"# AGENTS for core\n\nUpdated guidance.\n")
+        res_ok = call({
+            "op": "write-atomic", "workspace": self.ws,
+            "path": "core/AGENTS.md", "bytes": b64(regen), "kind": "markdown",
+        })
+        self.assertTrue(res_ok["ok"], res_ok)
+        # Now a human strips the marker line, leaving just the body.
+        self._fs_write("core/AGENTS.md", body)
+        res_refused = call({
+            "op": "write-atomic", "workspace": self.ws,
+            "path": "core/AGENTS.md", "bytes": b64(regen), "kind": "markdown",
+        })
+        self.assertFalse(res_refused["ok"], res_refused)
+        self.assertIn("human-curated", res_refused["error"])
 
 
 class TestProtocolVersion(unittest.TestCase):

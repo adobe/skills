@@ -207,13 +207,28 @@ Behavior:
 
 Request:
 ```json
-{"op": "write-atomic", "workspace": "<absolute-path>", "path": "<workspace-relative-path>", "bytes": "<base64-encoded-content>"}
+{"op": "write-atomic", "workspace": "<absolute-path>", "path": "<workspace-relative-path>", "bytes": "<base64-encoded-content>", "allowOverwriteHumanCurated": false}
 ```
+
+`allowOverwriteHumanCurated` (optional, default `false`): when `false`,
+the op refuses to overwrite a pre-existing file that is NOT skill-owned
+(i.e. human-curated). The caller must pass `true` explicitly to overwrite
+a human-curated file, and does so only when the developer has consented
+(e.g. the root-`CLAUDE.md` consent flow in
+[`collision-rules.md`](./collision-rules.md) and
+[`output-format.md`](./output-format.md) § 1.2). This makes "never
+overwrite human-curated files" a helper-enforced floor, not merely an
+orchestrator convention.
 
 Response:
 ```json
-{"ok": true, "sha256": "<lowercase-hex>"}
+{"ok": true, "sha256": "<lowercase-hex>", "overwroteHumanCurated": false}
 ```
+
+`overwroteHumanCurated` is `true` only when the op overwrote a
+pre-existing human-curated file because the caller passed
+`allowOverwriteHumanCurated: true`; `false` for a fresh write or an
+overwrite of a skill-owned file.
 
 Behavior:
 1. Reject if `path` is absolute or contains `..` components.
@@ -236,14 +251,33 @@ Behavior:
    (e.g. `AGENTS.md` requested but `agents.md` already on disk),
    reject. Caller may opt in with `allowCaseCollision: true` to
    accept the silent rename, but the default is the safe one.
-7. Write to `<path>.tmp` using `O_CREAT | O_EXCL | O_WRONLY` with
+7. **Overwrite protection (`_is_skill_owned` check).** If `<path>`
+   already exists, run `_is_skill_owned(<path>)`. A file is skill-owned
+   ONLY when its marker recomputes correctly:
+   - Markdown / `.mdc`: the first non-blank line matches the marker
+     shape and the embedded `sha256` equals the `sha256-canonical`
+     (§ 2.4) checksum of the canonical body.
+   - JSON: top-level `_generatedBy == "aem-agentkit"` is present AND
+     the embedded `_markerChecksum` equals the `sha256-canonical`
+     (§ 2.4) checksum of the canonical body.
+
+   The check is **fail-closed**: a symlink, an unreadable file, a
+   missing / malformed / wrong marker, or two markers in the same file
+   all classify the file as human-curated (NOT skill-owned). When the
+   pre-existing file is human-curated and the caller did NOT pass
+   `allowOverwriteHumanCurated: true`, the op refuses with a
+   `would overwrite human-curated file` diagnostic and exit `1`.
+   When the file is skill-owned, or absent, the write proceeds.
+8. Write to `<path>.tmp` using `O_CREAT | O_EXCL | O_WRONLY` with
    permissions `0644`. If `<path>.tmp` exists, reject with `EEXIST`;
    the caller is responsible for prior cleanup (see § 2.6).
-8. `fsync(3)` the written file.
-9. `rename(2)` `<path>.tmp` over `<path>`.
-10. `fsync(3)` the parent directory on POSIX.
-11. Return SHA-256 over the written bytes, the matched allow-list
-    glob, and a `caseCollision` flag for visibility.
+9. `fsync(3)` the written file.
+10. `rename(2)` `<path>.tmp` over `<path>`.
+11. `fsync(3)` the parent directory on POSIX.
+12. Return SHA-256 over the written bytes, the matched allow-list
+    glob, a `caseCollision` flag, and `overwroteHumanCurated`
+    (`true` only when step 7 was bypassed via
+    `allowOverwriteHumanCurated: true` over a human-curated file).
 
 ### 2.6 `cleanup-tmp` — startup cleanup of orphan `.tmp` files
 
