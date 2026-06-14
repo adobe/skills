@@ -26,3 +26,59 @@ The 75th percentile (p75) is the standard reporting percentile — this means 75
 | CWV data is missing for Safari users | Safari does not fully support the Performance Observer API | Acknowledge the gap — CWV data is primarily from Chromium browsers; Safari metrics may be underrepresented |
 | Metrics fluctuate wildly day to day | Low traffic volume produces noisy samples | Use a wider date range (7-30 days) to smooth out sampling variance |
 | LCP shows "good" but pages feel slow | TTFB may be high, which is not captured separately in CWV | Check server response time independently using curl or WebPageTest |
+
+## Per-Metric Analysis Detail (Steps 3-5)
+
+For each non-green metric, pull the distribution (good/needs-improvement/poor split), the worst pages by p75, and match the pattern to a likely EDS root cause.
+
+### LCP — what to look for
+LCP is typically the most impactful metric to fix first.
+- **Distribution**: Percentage of page loads in good/needs-improvement/poor buckets.
+- **Worst pages**: Top N URLs by p75 LCP (`cwvLCP`).
+- **Mobile vs. desktop**: A gap of more than 1 second between mobile and desktop p75 usually indicates image or resource loading issues on slower connections.
+- **Common EDS causes**: Hero images exceeding the 100KB LCP budget, too many eager-loaded blocks, custom fonts blocking render, or third-party scripts in the eager phase.
+- For each worst page, note the likely cause based on its page type (article, product, landing, home).
+
+### CLS — what to look for
+CLS problems on EDS sites have distinct, recognizable patterns.
+- **Distribution**: Percentage of page loads with CLS > 0.1.
+- **Worst pages**: Top N URLs by p75 CLS (`cwvCLS`).
+- **Common EDS causes**: Images without `width`/`height` attributes from `createOptimizedPicture()` (tracked as aem-lib issue #201, fixed in recent versions), late-loading consent banners, font swaps without `size-adjust`, or blocks that restructure their DOM during JavaScript decoration.
+
+### INP — what to look for
+INP measures responsiveness to user interaction.
+- **Distribution**: Percentage of interactions with INP > 200ms.
+- **Worst pages**: Top N URLs by p75 INP (`cwvINP`).
+- **Common EDS causes**: Heavy block decoration JS (accordions, tabs, carousels), synchronous layout reads followed by DOM writes (forced reflows), third-party scripts adding event listeners globally, or large DOM size from deeply nested block structures.
+
+## Final Report Template (Step 8)
+
+Produce a structured report with these sections:
+
+### Site Performance Summary
+- Domain, date range, total estimated page views.
+- Overall CWV pass rate.
+- One-sentence health assessment.
+
+### Core Web Vitals Scorecard
+| Metric | p75 Value | Rating | Threshold | Trend |
+|--------|-----------|--------|-----------|-------|
+| LCP | X.Xs | Good / Needs Improvement / Poor | < 2.5s | improving / stable / degrading |
+| CLS | X.XX | Good / Needs Improvement / Poor | < 0.1 | improving / stable / degrading |
+| INP | Xms | Good / Needs Improvement / Poor | < 200ms | improving / stable / degrading |
+
+### Top Issues by Impact
+Ranked list of the 3-5 most impactful findings, each with: the metric affected, specific pages or templates, root cause, recommended fix (reference `cwv-optimizer` for implementation), and estimated improvement.
+
+### Traffic Insights
+Key findings from device, browser, geographic, and trend analysis.
+
+### Recommended Next Steps
+1. **Quick wins** — Fixes for this week.
+2. **Medium-term** — Improvements over 1-2 sprints.
+3. **Monitoring** — What to watch going forward.
+
+### Finding categorization
+- **Critical** (red/poor metrics) — Directly affects search ranking and user experience.
+- **Warning** (amber/needs-improvement) — At risk of slipping into poor.
+- **Healthy** (green) — Note as maintained strengths.
