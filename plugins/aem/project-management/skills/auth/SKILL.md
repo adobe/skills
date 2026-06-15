@@ -4,7 +4,7 @@ description: Authenticate with AEM Edge Delivery Services. Opens browser for log
 license: Apache-2.0
 allowed-tools: Read, Write, Edit, Bash, AskUserQuestion
 metadata:
-  version: "5.0.0"
+  version: "2.0.0"
 ---
 
 # AEM Edge Delivery Services Authentication
