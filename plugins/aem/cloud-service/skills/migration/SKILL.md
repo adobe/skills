@@ -1,6 +1,6 @@
 ---
 name: migration
-description: Orchestrates legacy AEM (6.x, AMS, on-prem) to AEM as a Cloud Service migration using BPA CSV or cache, CAM/MCP target discovery, and one-pattern-per-session workflow. Use for BPA/CAM findings, Cloud Service blockers, or fixes for scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler, DAM AssetManager, HTL data-sly-test lint. OSGi configs → Cloud Manager — scan ui.config, .cfg.json, secrets, $[secret:]/$[env:] — agent follows references/osgi-cfg-json-cloud-manager.md when prompted. Transformation steps live in the best-practices skill—read it and the right references/ modules before editing code.
+description: Orchestrates legacy AEM (6.x, AMS, on-prem) to AEM as a Cloud Service migration using BPA CSV or cache, CAM/MCP target discovery, and one-pattern-per-session workflow. Use for BPA/CAM findings, Cloud Service blockers, or fixes for scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler, DAM AssetManager, HTL data-sly-test lint. OSGi configs → Cloud Manager — scan ui.config, .cfg.json, secrets, $[secret:]/$[env:] — agent follows references/osgi-cfg-json-cloud-manager.md when prompted. Transformation steps live in the best-practices skill: five major patterns are dedicated expert skills (scheduler/, resource-change-listener/, replication/, event-migration/, asset-manager/); cross-cutting concerns are reference modules under references/. Read the right one before editing code.
 license: Apache-2.0
 ---
 
@@ -60,12 +60,12 @@ Applies to **finding and editing the user's AEM project** (Java, bundles, config
 
 1. Read **`{best-practices}/SKILL.md`** — critical rules, Java baseline links, **Pattern Reference Modules** table, **Manual Pattern Hints**.
 2. Read the **expert skill** (or reference module) for the **single** active pattern. Routing:
-   - `scheduler` → **`{best-practices}/scheduler/SKILL.md`**
-   - `resourceChangeListener` → **`{best-practices}/resource-change-listener/SKILL.md`**
-   - `replication` → **`{best-practices}/replication/SKILL.md`**
-   - `eventListener` / `eventHandler` → **`{best-practices}/event-migration/SKILL.md`**
-   - `assetApi` → **`{best-practices}/asset-manager/SKILL.md`**
-   - `htlLint` → **`{best-practices}/references/data-sly-test-redundant-constant.md`**
+   - `scheduler` → **`{best-practices}/scheduler/SKILL.md`** *(expert skill)*
+   - `resourceChangeListener` → **`{best-practices}/resource-change-listener/SKILL.md`** *(expert skill)*
+   - `replication` → **`{best-practices}/replication/SKILL.md`** *(expert skill)*
+   - `eventListener` / `eventHandler` → **`{best-practices}/event-migration/SKILL.md`** *(expert skill — both JCR and OSGi Event Admin paths)*
+   - `assetApi` → **`{best-practices}/asset-manager/SKILL.md`** *(expert skill)*
+   - `htlLint` → **`{best-practices}/references/data-sly-test-redundant-constant.md`** *(reference module by design — HTL lint stays a reference module, not an expert skill subdirectory)*
 3. When code uses SCR, `ResourceResolver`, or console logging, read **`{best-practices}/references/scr-to-osgi-ds.md`** and **`{best-practices}/references/resource-resolver-logging.md`** (or the hub **`{best-practices}/references/aem-cloud-service-pattern-prerequisites.md`**).
 
 Do not transform **Java or HTL** until the pattern's expert skill (or reference module) is read (branch B). Branch A does not require `{best-practices}` pattern guidance.
@@ -198,7 +198,7 @@ For retries, error categories, and when user-directed CSV/manual paths are allow
 
 ## Pattern modules
 
-Do **not** duplicate the pattern table here. Use **`{best-practices}/SKILL.md` → Pattern Reference Modules** (`references/<file>.md`).
+Do **not** duplicate the pattern table here. Use **`{best-practices}/SKILL.md` → Pattern Reference Modules** — five patterns route to expert skill subdirectories (`{best-practices}/<pattern>/SKILL.md`); cross-cutting concerns (SCR→DS, ResourceResolver/SLF4J, HTL lint, prerequisites hub) stay as reference modules (`{best-practices}/references/<file>.md`). See **Branch B step 2** above for the per-pattern routing table.
 
 ## Workflow
 
