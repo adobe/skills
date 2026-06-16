@@ -395,6 +395,60 @@ test('SVGs are ignored (out of scope)', async () => {
   }
 });
 
+test('data URI images — extracted to file, rewritten in HTML, classified da-media', async () => {
+  // Minimal 1×1 PNG as base64
+  const dataUri = `data:image/png;base64,${TINY_PNG.toString('base64')}`;
+  const dir = makeInput({
+    'index.html': `<html><body><img src="${dataUri}" alt="test"></body></html>`,
+  });
+  serverRoot = dir;
+  try {
+    const r = await run(dir, `http://127.0.0.1:${serverPort}/index.html`);
+    assert.equal(r.code, 0, r.stderr);
+    const m = readManifest(dir);
+    assert.equal(m.stats.total, 1);
+    assert.equal(m.assets[0].type, 'image');
+    assert.equal(m.assets[0].strategy, 'da-media');
+    assert.equal(m.assets[0].reachability, 'local');
+    assert.ok(m.assets[0].dataUri, 'dataUri flag missing');
+    // File was extracted
+    const normalizedPath = m.assets[0].normalizedPath;
+    assert.ok(normalizedPath.startsWith('images/'), `unexpected path: ${normalizedPath}`);
+    assert.ok(existsSync(join(dir, normalizedPath)));
+    // data URI was rewritten out of index.html
+    const rewritten = readFileSync(join(dir, 'index.html'), 'utf8');
+    assert.ok(!rewritten.includes('data:image/'), 'data URI still present in index.html');
+    assert.ok(rewritten.includes(normalizedPath), 'normalized path not found in index.html');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('duplicate data URIs — same file written once, both refs rewritten', async () => {
+  const dataUri = `data:image/png;base64,${TINY_PNG.toString('base64')}`;
+  const dir = makeInput({
+    'index.html': `<html><body>
+      <img src="${dataUri}" alt="first">
+      <img src="${dataUri}" alt="second">
+    </body></html>`,
+  });
+  serverRoot = dir;
+  try {
+    const r = await run(dir, `http://127.0.0.1:${serverPort}/index.html`);
+    assert.equal(r.code, 0, r.stderr);
+    const m = readManifest(dir);
+    // Same data URI deduplicated → 1 asset entry
+    assert.equal(m.stats.total, 1);
+    const rewritten = readFileSync(join(dir, 'index.html'), 'utf8');
+    assert.ok(!rewritten.includes('data:image/'), 'data URI still present');
+    // Both img tags now reference the extracted file
+    const occurrences = (rewritten.match(new RegExp(m.assets[0].normalizedPath, 'g')) || []).length;
+    assert.equal(occurrences, 2, 'expected both img srcs to be rewritten');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('all three CSS url() quote forms handled', async () => {
   const dir = makeInput({
     'index.html': `<html><head>

@@ -14,9 +14,14 @@
  * and emits asset-manifest.json.
  *
  * In-scope types:
- *   images : .png .jpg .jpeg .webp .avif .gif
+ *   images : .png .jpg .jpeg .webp .avif .gif  (+ data URI base64 images)
  *   videos : .mp4 .webm
  *   fonts  : .otf .woff .woff2 .ttf .eot
+ *
+ * Data URI images (data:image/...;base64,...) are always extracted — they are
+ * the primary source of DA document bloat on Claude Design pages. Each unique
+ * data URI is decoded, written to images/<sha256-12>.ext, and the data: ref
+ * is rewritten in index.html. Duplicates resolve to the same hash → one file.
  *
  * Asset strategies (per-asset, not per-run):
  *   absolute  — stable public URL; leave as-is
@@ -44,6 +49,7 @@
 import { readFile, writeFile, mkdir, copyFile, access, stat } from 'node:fs/promises';
 import { join, basename, extname, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -52,6 +58,14 @@ import { fileURLToPath } from 'node:url';
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.avif', '.gif']);
 const VIDEO_EXTS = new Set(['.mp4', '.webm']);
 const FONT_EXTS = new Set(['.otf', '.woff', '.woff2', '.ttf', '.eot']);
+
+const MIME_TO_EXT = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+  'image/avif': '.avif',
+};
 
 const STABLE_CDN_HOSTS = new Set([
   'fonts.googleapis.com',
@@ -224,7 +238,12 @@ function scanHtml(html) {
   const found = new Set();
 
   const addIfInScope = (rawUrl) => {
-    if (!rawUrl || rawUrl.startsWith('data:')) return;
+    if (!rawUrl) return;
+    if (rawUrl.startsWith('data:')) {
+      const mimeMatch = rawUrl.match(/^data:(image\/[a-z+]+);base64,/);
+      if (mimeMatch && MIME_TO_EXT[mimeMatch[1]]) found.add(rawUrl);
+      return;
+    }
     const ext = extname(new URL(rawUrl, 'http://x').pathname).toLowerCase();
     if (IMAGE_EXTS.has(ext) || VIDEO_EXTS.has(ext) || FONT_EXTS.has(ext)) found.add(rawUrl);
   };
@@ -326,6 +345,36 @@ const usedNames = new Set();
 const rewrites = new Map(); // originalUrl → normalizedPath
 
 for (const originalUrl of rawUrls) {
+  // Data URI: extract to file instead of fetching
+  if (originalUrl.startsWith('data:')) {
+    const mimeMatch = originalUrl.match(/^data:(image\/[a-z+]+);base64,(.+)$/s);
+    if (!mimeMatch) continue;
+    const [, mime, b64] = mimeMatch;
+    const ext = MIME_TO_EXT[mime] ?? '.bin';
+    const buf = Buffer.from(b64, 'base64');
+    const hash = createHash('sha256').update(buf).digest('hex').slice(0, 12);
+    const normalizedPath = `images/${hash}${ext}`;
+    usedNames.add(`${hash}${ext}`);
+    const asset = {
+      originalUrl: `${originalUrl.slice(0, 64)}…`,
+      resolvedUrl: null,
+      normalizedPath,
+      type: 'image',
+      reachability: 'local',
+      strategy: 'da-media',
+      size: buf.length,
+      dataUri: true,
+    };
+    if (!dryRun) {
+      await mkdir(join(inputDir, 'images'), { recursive: true });
+      await writeFile(join(inputDir, normalizedPath), buf);
+      log(`extracted data URI → ${normalizedPath} (${buf.length} bytes)`);
+    }
+    rewrites.set(originalUrl, normalizedPath);
+    assets.push(asset);
+    continue;
+  }
+
   let resolvedUrl;
   try { resolvedUrl = new URL(originalUrl, baseUrl).toString(); } catch {
     warnings.push(`Cannot resolve URL '${originalUrl}' against base '${baseUrl}' — skipped`);
