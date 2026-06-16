@@ -100,11 +100,11 @@ For the HTML at `<projectsDir>/<NNN>-<slug>/input/index.html`:
     item. Record the manifest path in `decisions.json` under
     `assetManifest`.
 
-    **Reminder on DA cell image URLs**: images vendored locally still
-    need absolute branch URLs in DA cells (Media Bus resolves against
-    `content.da.live`, not the code-bus host). See `knowledge/learnings.md`
-    2026-05-19 Media Bus entry. This is a Generate-phase concern — note
-    it here so Generate doesn't miss it.
+    **Reminder on DA cell image URLs**: DA cell image refs must use
+    relative paths (`images/filename.jpg`), not absolute branch URLs.
+    The calling pipeline's `rewriteImageRefs` rewrites these to DA
+    Media Bus URLs before the DA push. This is a Generate-phase
+    concern — note it here so Generate doesn't miss it.
 
 ## Produce `notes.md`
 

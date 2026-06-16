@@ -63,7 +63,7 @@ da/<page-slug>.html                    ← DA-source body fragment
 
 Plus any vendored external libs (`scripts/<template>-<libname>.js`,
 `styles/<template>-<libname>.css`) and any vendored static assets
-(`assets/...`) per the asset strategy in `decisions.json`.
+(`images/...`, `fonts/...`) per the asset strategy in `decisions.json`.
 
 ## Step-by-step
 
@@ -191,10 +191,11 @@ apply this context-dependent transformation:
   browser resolves these against the code-bus host where these files
   will be deployed.
 
-- **DA doc image/video cells** (`da-media` assets): use absolute
-  branch URLs. Media Bus resolves against `content.da.live`, not
-  code-bus — root-relative paths produce `about:error`.
-  Form: `https://<branch>--<repo>--<owner>.aem.page/images/hero.jpg`
+- **DA doc image/video cells** (`da-media` assets): use relative
+  paths (`images/hero.jpg`, not absolute branch URLs). The calling
+  pipeline's upload step rewrites these to DA Media Bus URLs before
+  pushing to DA. Absolute branch URLs break the pipeline's
+  `rewriteImageRefs` pattern matching.
 
 - **Fonts** (vendored to `input/fonts/`): deploy to `/fonts/` in the
   repo. Emit `@font-face` in `styles/<template>.css` with
@@ -246,10 +247,9 @@ Snowflake-specific reminders (universal rules are in `da-content`):
   bails → standard EDS decoration 404s on every block).
 - Never write `<span class="…">` into cells — class is lost on
   normalization, breaking any CSS hook the source page relied on.
-- For vendored assets, DA cells use the absolute branch URL form:
-  `https://<branch>--<repo>--<owner>.aem.page/assets/...` (DA cells
-  don't accept root-relative paths even though template/fragment
-  HTML does).
+- For collected images/videos, DA cells use relative paths
+  (`images/filename.jpg`) — the pipeline rewrites these to DA
+  Media Bus URLs before the DA push.
 
 ### 3.9 — Self-checks before declaring Generate done
 
@@ -267,7 +267,7 @@ node -e '
 '
 
 # 2) No bare relative asset refs in template/fragments/CSS
-# (paths must be root-relative /fonts/... /assets/... not bare fonts/... assets/...)
+# (paths must be root-relative /fonts/... /images/... not bare fonts/... images/...)
 grep -REn "=\"fonts/\|=\"images/\|=\"videos/" "$PROJ/output/templates" "$PROJ/output/fragments" "$PROJ/output/styles" && echo "FAIL: missing leading slash on asset ref" || echo "OK"
 
 # 3) No nested [data-slot] inside another [data-slot]
@@ -282,9 +282,10 @@ grep -cE "<table|<span class" "$PROJ/output/da/"*.html
 # 4a) WARN: <br> is position-dependent (da-content §3.9).
 grep -nE "<br>" "$PROJ/output/da/"*.html && echo "WARN: <br> found — verify position" || echo "OK"
 
-# 5) DA cell <img> URLs are absolute
+# 5) DA cell <img> URLs are bare relative (pipeline rewrites to Media Bus)
+#    Catch both absolute (https://...) and root-relative (/images/...) — both break pipeline
 grep -oE "<img[^>]*src=\"[^\"]+\"" "$PROJ/output/da/"*.html \
-  | grep -vE "src=\"https?://" && echo "FAIL: non-absolute DA img" || echo "OK"
+  | grep -E "src=\"(https?://|/)" && echo "FAIL: DA img must be bare relative (images/...)" || echo "OK"
 
 # 6) No section first-class collides with a CSS layout rule
 #    This is the most common post-conversion layout bug — inner CSS class
@@ -353,7 +354,8 @@ fragments/<brand>/footer.html         ← static footer fragment
 blocks/header/header.{js,css}         ← fragment loader + header styles
 blocks/footer/footer.{js,css}         ← fragment loader + footer styles
 blocks/<name>/<name>.{js,css}         ← one pair per content section
-assets/                               ← vendored images/logo
+images/                               ← extracted images
+videos/                               ← extracted videos
 drafts/<page-slug>.html               ← local test page
 output/da/<page-slug>.html            ← DA body fragment (for upload)
 ```
@@ -395,13 +397,13 @@ cp -R "${PROJ}/input/fonts" ./fonts/ 2>/dev/null || true
 
 # Content assets (images/videos) → local staging for dev server;
 # Phase 5 uploads to DA Media Bus via da-media-upload.mjs
-cp -R "${PROJ}/input/images" ./assets/images/ 2>/dev/null || true
-cp -R "${PROJ}/input/videos" ./assets/videos/ 2>/dev/null || true
+cp -R "${PROJ}/input/images" ./images/ 2>/dev/null || true
+cp -R "${PROJ}/input/videos" ./videos/ 2>/dev/null || true
 ```
 
 Use root-relative paths in template/fragment/CSS (`/fonts/...`,
-`/assets/images/...`). Use absolute branch URLs in DA cells
-(`https://<branch>--<repo>--<owner>.aem.page/assets/images/...`).
+`/images/...`). Use relative paths in DA cells
+(`images/filename.jpg`) — the pipeline rewrites to Media Bus URLs.
 
 ### B.4 — Create header/footer fragments
 
@@ -493,7 +495,8 @@ No `template` metadata key — block-level pages don't use the
 overlay engine. No slot-keyed rows — standard EDS positional
 block tables.
 
-DA cell image URLs must be absolute (same rule as page-level).
+DA cell image URLs must be relative (`images/filename.jpg`) —
+same rule as page-level. The pipeline rewrites to Media Bus URLs.
 
 ### B.9 — Self-checks (block-level)
 
@@ -505,16 +508,17 @@ for dir in blocks/*/; do
     || echo "MISSING: $dir"
 done
 
-# 2) No relative "assets/" in block CSS or fragments
-grep -rn '"assets/' blocks/ fragments/ && echo "FAIL" || echo "OK"
+# 2) No bare relative asset refs in block CSS or fragments
+grep -rEn '"fonts/|"images/|"videos/' blocks/ fragments/ && echo "FAIL: missing leading slash" || echo "OK"
 
 # 3) Lint passes
 npm run lint
 
-# 4) DA cell <img> URLs are absolute
+# 4) DA cell <img> URLs are bare relative (pipeline rewrites to Media Bus)
+#    Catch both absolute (https://...) and root-relative (/images/...) — both break pipeline
 grep -oE '<img[^>]*src="[^"]+"' output/da/*.html \
-  | grep -vE 'src="https?://' \
-  && echo "FAIL: non-absolute DA img" || echo "OK"
+  | grep -E 'src="(https?://|/)' \
+  && echo "FAIL: DA img must be bare relative (images/...)" || echo "OK"
 ```
 
 Then start the dev server and verify:

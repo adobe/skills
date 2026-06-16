@@ -208,8 +208,8 @@ git add \
   drafts/${TEMPLATE_NAME}-${PAGE_SLUG}.html \
   ${PROJECTS_DIR}/${NNN}-${SLUG}/
 
-# If asset strategy was vendor:
-[ "$ASSET_STRATEGY" = "vendor" ] && git add assets/
+# Collected assets (deployed by Wire step 1b)
+git add fonts/ images/ videos/ 2>/dev/null || true
 
 git commit -m "snowflake #${NNN} — ${SLUG} overlay"
 git push -u origin "$BRANCH"
@@ -360,9 +360,10 @@ Evaluate this JavaScript in the browser and report the result:
 Apply the **same health gate** (checks 1–5) as the local run. Production
 notes specific to check 5:
 - Any background-image slot src must have been rewritten by Media Bus to
-  `./media_<sha>.png?width=...` form — confirms DA cells used absolute
-  URLs. If they didn't, `brokenImages` will list `about:error` entries;
-  the fix is in the Generate self-check 3.9.
+  `./media_<sha>.png?width=...` form — confirms the pipeline rewrote
+  DA cell image refs to Media Bus URLs. If they weren't rewritten,
+  `brokenImages` will list `about:error` entries; check that the
+  pipeline's `rewriteImageRefs` ran before the DA push.
 
 The page must clear all five checks on production, not just locally — a
 page that passes locally but fails here is still a gate failure.
@@ -396,8 +397,10 @@ source.
 
 Diagnose, not workaround. Common patterns:
 
-- **`about:error` in background-image** → DA cells used root-relative
-  URLs; Media Bus requires absolute. Fix the DA doc and re-PUT.
+- **`about:error` in background-image** → DA cell image refs were not
+  rewritten to Media Bus URLs. Check that the pipeline's image upload
+  and `rewriteImageRefs` ran before the DA push. Phase 3 writes
+  relative refs (`images/...`) that the pipeline rewrites.
 - **Half-empty cards** → wrapping `<a>` was slotted while its
   children were ALSO slotted; the slot writer wiped children. Drop
   the wrap slot in template + DA, keep child slots.

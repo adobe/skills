@@ -103,16 +103,14 @@ SVGs under 40KB, scripts, stylesheets) go in the git repo.
 
 The script downloads assets, normalizes filenames, and rewrites
 references in `index.html` to relative paths (`fonts/foo.woff2`,
-`images/hero.jpg`). Phase 3 transforms these to root-relative
-(`/fonts/foo.woff2`) for template/fragment/CSS, and to absolute branch
-URLs for DA cells:
+`images/hero.jpg`). Phase 3 transforms these depending on context:
 
 - **Template / fragment / CSS**: root-relative paths (`/fonts/...`,
-  `/assets/images/...`). Browser resolves against code-bus host.
-- **DA cell image refs**: absolute branch URLs
-  (`https://<branch>--<repo>--<owner>.aem.page/assets/images/...`).
-  Media Bus resolves against `content.da.live`, not code-bus — root-
-  relative paths produce `about:error` there.
+  `/images/...`). Browser resolves against code-bus host.
+- **DA cell image refs**: relative paths (`images/hero.jpg`). The
+  calling pipeline's `rewriteImageRefs` rewrites these to DA Media
+  Bus URLs before pushing to DA. Do NOT use absolute branch URLs —
+  they break the pipeline's pattern matching.
 
 The `da-media-upload.mjs` script (Phase 5) uploads `da-media` assets
 to DA and emits final `content.da.live` URLs; DA cells should be
@@ -122,7 +120,7 @@ updated to those final URLs after upload.
 |---|---|---|---|
 | Asset types | any | fonts only | images, videos |
 | Repo size | unchanged | +font files (small) | unchanged |
-| DA-cell URL form | source host (leave as-is) | branch URL | content.da.live (after upload) |
+| DA-cell URL form | source host (leave as-is) | N/A (fonts are in CSS, not DA cells) | relative (`images/...`) → pipeline rewrites |
 | Delivered image URL | `./media_<hash>` (sideload) | `./media_<hash>` | `./media_<hash>` |
 
 This applies to template HTML, fragment HTML, DA cell values
@@ -201,15 +199,15 @@ or consequences that aren't in `da-content`:
    page styling hooks to CSS-on-structure (`:has()`, sibling
    selectors) or swap to a preserved semantic element before emitting.
 
-3. **`<img>` URLs in DA cells are stricter than template/fragment
-   HTML.** DA cells require absolute URLs (`da-content` §9).
-   Template and fragment HTML can use root-relative `/assets/...`
-   because the browser resolves those against the rendered page host
-   (= code-bus host). The DA pipeline is what's stricter, not the
-   browser. Acceptable absolute forms in Snowflake DA cells:
-   - Public source page: `https://<source-host>/<path>/image.png`
-   - Vendored same-branch assets: `https://<branch>--<repo>--<owner>.aem.page/assets/...`
-   - DA media: `https://content.da.live/<org>/<repo>/media_<sha>...`
+3. **`<img>` URLs in DA cells must be relative, not absolute.**
+   Phase 3 writes relative paths (`images/hero.jpg`) in DA cell
+   image refs. The calling pipeline's `rewriteImageRefs` matches
+   these patterns and rewrites them to DA Media Bus URLs before
+   the DA push. Absolute branch URLs
+   (`https://<branch>--...aem.page/images/...`) break the
+   pipeline's pattern matching. Template and fragment HTML use
+   root-relative paths (`/images/...`) instead — the browser
+   resolves those against the code-bus host.
 
 ### Slot rules in the template
 
@@ -333,19 +331,16 @@ animations to settle, then capture. Save each as
 cannot reach the source's assets. Three options, in order of
 preference:
 
-1. **Vendor the referenced assets under `/assets/` in the repo.**
-   Same paths work locally and on production via code-bus. Same-origin
-   so no CORS issues for fonts. Trade-off is repo size. Mechanical
-   steps:
-   - `cp -R <source-assets-dir> ./assets/`
-   - Remove `.DS_Store`s and unreferenced files
-   - Rename any directory containing spaces (AEM CLI 404s on
-     URL-encoded `%20`)
-   - In template/fragments/CSS: rewrite localhost URLs to
-     root-relative `/assets/...`
-   - In DA doc cells: rewrite localhost URLs to ABSOLUTE branch URLs
-     (`https://<branch>--<repo>--<owner>.aem.page/assets/...`) — Media
-     Bus requires absolute (see Generate phase rule #4).
+1. **Deploy assets to the repo** (`fonts/`, `images/`, `videos/`).
+   `asset-collect.mjs` handles this automatically — it downloads,
+   normalizes, and rewrites refs in Phase 1. Wire (Phase 4) copies
+   them to repo root. Same paths work locally and on production via
+   code-bus. Same-origin so no CORS issues for fonts. Mechanical
+   rules:
+   - In template/fragments/CSS: root-relative `/fonts/...`,
+     `/images/...`
+   - In DA doc cells: relative paths (`images/...`) — the pipeline
+     rewrites these to DA Media Bus URLs before the DA push.
 2. **Migrate assets to DA `/media/`.** Cleaner long-term; requires
    tooling not yet in scope.
 3. **Skip production round-trip.** Lowest effort; ask the user first
