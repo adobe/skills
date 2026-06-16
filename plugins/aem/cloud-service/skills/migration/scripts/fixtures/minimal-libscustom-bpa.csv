@@ -1,0 +1,2 @@
+code,type,subtype,importance,identifier,message,context
+BPA-202,issue,custom.content.libs,high,/libs/myco/components/foo,Customer content installed under Adobe-reserved /libs path — relocate to /apps overlay,

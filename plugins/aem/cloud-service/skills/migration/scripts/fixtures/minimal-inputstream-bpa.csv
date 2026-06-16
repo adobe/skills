@@ -1,0 +1,2 @@
+code,type,subtype,importance,identifier,message,context
+BPA-200,issue,java.io.InputStream,advisory,com.example.myapp.servlets.UploadServlet,Uses java.io.InputStream with deprecated AssetManager.createAsset overload,

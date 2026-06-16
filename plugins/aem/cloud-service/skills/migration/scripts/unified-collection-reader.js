@@ -17,8 +17,11 @@ const PATTERN_TO_SUBTYPE = {
   scheduler: "sling.commons.scheduler",
   assetApi: "unsupported.asset.api",
   eventListener: "javax.jcr.observation.EventListener",
-  resourceChangeListener: "org.apache.sling.api.resource.observation.ResourceChangeListener", 
-  eventHandler: "org.osgi.service.event.EventHandler"
+  resourceChangeListener: "org.apache.sling.api.resource.observation.ResourceChangeListener",
+  eventHandler: "org.osgi.service.event.EventHandler",
+  inputStreamUsage: "java.io.InputStream",
+  guavaCache: "com.google.common.cache",
+  libsCustomContent: "custom.content.libs"
 };
 
 // MongoDB-safe to pattern mapping
@@ -27,7 +30,10 @@ const MONGO_SAFE_TO_PATTERN = {
   "unsupported_asset_api": "assetApi",
   "javax_jcr_observation_EventListener": "eventListener",
   "org_apache_sling_api_resource_observation_ResourceChangeListener": "resourceChangeListener",
-  "org_osgi_service_event_EventHandler": "eventHandler"
+  "org_osgi_service_event_EventHandler": "eventHandler",
+  "java_io_InputStream": "inputStreamUsage",
+  "com_google_common_cache": "guavaCache",
+  "custom_content_libs": "libsCustomContent"
 };
 
 // Known scheduler identifier
@@ -297,6 +303,85 @@ function processEventHandlerFromUnified(subtypeData, targets) {
 }
 
 /**
+ * Process java.io.InputStream usage findings from unified collection.
+ */
+function processInputStreamFromUnified(subtypeData, targets) {
+  let count = 0;
+
+  const identifierKeys = Object.keys(subtypeData || {}).sort();
+  for (const mongoSafeIdentifier of identifierKeys) {
+    const classNames = subtypeData[mongoSafeIdentifier] || [];
+    const identifier = fromMongoSafeFieldName(mongoSafeIdentifier);
+
+    for (const className of classNames) {
+      count++;
+      targets.push(new BpaTarget(
+        "inputStreamUsage",
+        className,
+        identifier,
+        `Uses java.io.InputStream with an API removed on AEM as a Cloud Service: ${className}`,
+        "advisory"
+      ));
+    }
+  }
+
+  return count;
+}
+
+/**
+ * Process Guava cache dependency findings from unified collection.
+ */
+function processGuavaCacheFromUnified(subtypeData, targets) {
+  let count = 0;
+
+  const identifierKeys = Object.keys(subtypeData || {}).sort();
+  for (const mongoSafeIdentifier of identifierKeys) {
+    const classNames = subtypeData[mongoSafeIdentifier] || [];
+    const identifier = fromMongoSafeFieldName(mongoSafeIdentifier);
+
+    for (const className of classNames) {
+      count++;
+      targets.push(new BpaTarget(
+        "guavaCache",
+        className,
+        identifier,
+        `Uses Guava cache (com.google.common.cache) — replace with Caffeine on AEM as a Cloud Service`,
+        "info"
+      ));
+    }
+  }
+
+  return count;
+}
+
+/**
+ * Process custom-content-in-/libs findings from unified collection.
+ * Identifiers are JCR paths under /libs, not class names.
+ */
+function processLibsCustomContentFromUnified(subtypeData, targets) {
+  let count = 0;
+
+  const identifierKeys = Object.keys(subtypeData || {}).sort();
+  for (const mongoSafeIdentifier of identifierKeys) {
+    const paths = subtypeData[mongoSafeIdentifier] || [];
+    const identifier = fromMongoSafeFieldName(mongoSafeIdentifier);
+
+    for (const jcrPath of paths) {
+      count++;
+      targets.push(new BpaTarget(
+        "libsCustomContent",
+        jcrPath,
+        identifier,
+        `Custom content under /libs (Adobe-reserved) at ${jcrPath} — relocate to /apps overlay or delete`,
+        "high"
+      ));
+    }
+  }
+
+  return count;
+}
+
+/**
  * Fetch findings from unified collection (mimics cam-bpa-fetcher behavior).
  *
  * The full ordered list for the requested `pattern` is assembled, then
@@ -405,8 +490,17 @@ function fetchUnifiedBpaFindings(pattern = "all", collectionsDir = './unified-co
     } else if (pat === "eventHandler") {
       count = processEventHandlerFromUnified(subtypeData, result.targets);
       result.summary.eventHandlerCount = count;
+    } else if (pat === "inputStreamUsage") {
+      count = processInputStreamFromUnified(subtypeData, result.targets);
+      result.summary.inputStreamUsageCount = count;
+    } else if (pat === "guavaCache") {
+      count = processGuavaCacheFromUnified(subtypeData, result.targets);
+      result.summary.guavaCacheCount = count;
+    } else if (pat === "libsCustomContent") {
+      count = processLibsCustomContentFromUnified(subtypeData, result.targets);
+      result.summary.libsCustomContentCount = count;
     }
-    
+
     console.log(`[Unified Collection Reader] Processed ${count} findings for pattern: ${pat}`);
   }
   

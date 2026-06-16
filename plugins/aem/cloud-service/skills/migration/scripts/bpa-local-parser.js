@@ -25,9 +25,12 @@ const PATTERN_TO_SUBTYPE = {
 // CSV subtype to pattern mapping (based on actual CSV structure)
 const CSV_SUBTYPE_TO_PATTERN = {
   "unsupported.asset.api": "assetApi",
-  "javax.jcr.observation.EventListener": "eventListener", 
+  "javax.jcr.observation.EventListener": "eventListener",
   "org.apache.sling.api.resource.observation.ResourceChangeListener": "resourceChangeListener",
-  "org.osgi.service.event.EventHandler": "eventHandler"
+  "org.osgi.service.event.EventHandler": "eventHandler",
+  "java.io.InputStream": "inputStreamUsage",
+  "com.google.common.cache": "guavaCache",
+  "custom.content.libs": "libsCustomContent"
 };
 
 // Known scheduler identifier
@@ -380,6 +383,100 @@ function processEventHandlerFindings(findings) {
 }
 
 /**
+ * Process java.io.InputStream usage findings from CSV.
+ * Flagged when AEM code passes InputStream to APIs deprecated/removed on Cloud Service —
+ * typically AssetManager.createAsset, Asset.setRendition, JCR Binary writes.
+ * Replacement APIs are documented in {best-practices}/references/input-stream-usage.md.
+ */
+function processInputStreamFindings(findings) {
+  const inputStreamFindings = findings.filter(finding =>
+    finding.subtype === 'java.io.InputStream'
+  );
+
+  const identifiers = {};
+  const classNames = [];
+
+  inputStreamFindings.forEach(finding => {
+    const className = extractClassNameFromCsvFinding(finding);
+    if (className && !classNames.includes(className)) {
+      classNames.push(className);
+    }
+  });
+
+  if (classNames.length > 0) {
+    identifiers['java.io.InputStream'] = classNames;
+  }
+
+  return {
+    subtype: 'java.io.InputStream',
+    identifiers: identifiers
+  };
+}
+
+/**
+ * Process Guava cache dependency findings from CSV.
+ * Flagged when a bundle depends on `com.google.common.cache.*`; replacement is Caffeine
+ * (`com.github.benmanes.caffeine.cache.*`). Identifier is typically the consuming class or
+ * the bundle's symbolic name; both shapes are accepted.
+ */
+function processGuavaCacheFindings(findings) {
+  const guavaFindings = findings.filter(finding =>
+    finding.subtype === 'com.google.common.cache'
+  );
+
+  const identifiers = {};
+  const classNames = [];
+
+  guavaFindings.forEach(finding => {
+    const className = extractClassNameFromCsvFinding(finding);
+    if (className && !classNames.includes(className)) {
+      classNames.push(className);
+    }
+  });
+
+  if (classNames.length > 0) {
+    identifiers['com.google.common.cache'] = classNames;
+  }
+
+  return {
+    subtype: 'com.google.common.cache',
+    identifiers: identifiers
+  };
+}
+
+/**
+ * Process "custom content in /libs" findings from CSV.
+ * Unlike Java-class patterns, the `identifier` is a JCR path (e.g. `/libs/myco/components/foo`),
+ * not a class name. Findings are emitted under a single grouping identifier so the agent can
+ * batch-process the relocation.
+ */
+function processLibsCustomContentFindings(findings) {
+  const libsFindings = findings.filter(finding =>
+    finding.subtype === 'custom.content.libs'
+  );
+
+  const identifiers = {};
+  const paths = [];
+
+  libsFindings.forEach(finding => {
+    const jcrPath = (finding.identifier || '').trim();
+    if (!jcrPath) return;
+    if (!paths.includes(jcrPath)) {
+      paths.push(jcrPath);
+    }
+  });
+
+  if (paths.length > 0) {
+    identifiers['custom.content.libs'] = paths;
+  }
+
+  return {
+    subtype: 'custom.content.libs',
+    identifiers: identifiers
+  };
+}
+
+/**
  * Convert subtype to MongoDB-safe field name (matching cloud-adoption-service)
  */
 function toMongoSafeFieldName(fieldName) {
@@ -478,16 +575,61 @@ function createUnifiedCollection(bpaData, outputDir) {
   if (Object.keys(eventHandlerCollection.identifiers).length > 0) {
     const mongoSafeSubtype = toMongoSafeFieldName(eventHandlerCollection.subtype);
     subtypes[mongoSafeSubtype] = {};
-    
+
     Object.entries(eventHandlerCollection.identifiers).forEach(([identifier, classNames]) => {
       const mongoSafeIdentifier = toMongoSafeIdentifier(identifier);
       subtypes[mongoSafeSubtype][mongoSafeIdentifier] = classNames;
       totalFindings += classNames.length;
     });
-    
+
     console.log(`Found ${Object.values(eventHandlerCollection.identifiers).flat().length} event handler classes`);
   }
-  
+
+  // Process java.io.InputStream usage findings (Wall ② dev-guideline subtype)
+  const inputStreamCollection = processInputStreamFindings(findings);
+  if (Object.keys(inputStreamCollection.identifiers).length > 0) {
+    const mongoSafeSubtype = toMongoSafeFieldName(inputStreamCollection.subtype);
+    subtypes[mongoSafeSubtype] = {};
+
+    Object.entries(inputStreamCollection.identifiers).forEach(([identifier, classNames]) => {
+      const mongoSafeIdentifier = toMongoSafeIdentifier(identifier);
+      subtypes[mongoSafeSubtype][mongoSafeIdentifier] = classNames;
+      totalFindings += classNames.length;
+    });
+
+    console.log(`Found ${Object.values(inputStreamCollection.identifiers).flat().length} java.io.InputStream usages`);
+  }
+
+  // Process Guava cache dependency findings
+  const guavaCollection = processGuavaCacheFindings(findings);
+  if (Object.keys(guavaCollection.identifiers).length > 0) {
+    const mongoSafeSubtype = toMongoSafeFieldName(guavaCollection.subtype);
+    subtypes[mongoSafeSubtype] = {};
+
+    Object.entries(guavaCollection.identifiers).forEach(([identifier, classNames]) => {
+      const mongoSafeIdentifier = toMongoSafeIdentifier(identifier);
+      subtypes[mongoSafeSubtype][mongoSafeIdentifier] = classNames;
+      totalFindings += classNames.length;
+    });
+
+    console.log(`Found ${Object.values(guavaCollection.identifiers).flat().length} Guava cache dependencies`);
+  }
+
+  // Process custom-content-in-/libs findings (JCR paths, not class names)
+  const libsCollection = processLibsCustomContentFindings(findings);
+  if (Object.keys(libsCollection.identifiers).length > 0) {
+    const mongoSafeSubtype = toMongoSafeFieldName(libsCollection.subtype);
+    subtypes[mongoSafeSubtype] = {};
+
+    Object.entries(libsCollection.identifiers).forEach(([identifier, paths]) => {
+      const mongoSafeIdentifier = toMongoSafeIdentifier(identifier);
+      subtypes[mongoSafeSubtype][mongoSafeIdentifier] = paths;
+      totalFindings += paths.length;
+    });
+
+    console.log(`Found ${Object.values(libsCollection.identifiers).flat().length} /libs custom-content paths`);
+  }
+
   // Create unified collection structure with metadata
   const subtypeKeys = Object.keys(subtypes);
   const unifiedCollection = {

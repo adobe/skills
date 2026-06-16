@@ -36,6 +36,9 @@ Each supported pattern has a dedicated module under `references/` relative to th
 | Event listener (JCR observation) | `eventListener` | `references/event-migration.md` | Ready |
 | Event handler (OSGi Event Admin) | `eventHandler` | `references/event-migration.md` | Ready |
 | Asset Manager | `assetApi` | `references/asset-manager.md` | Ready |
+| `java.io.InputStream` usage | `inputStreamUsage` | `references/input-stream-usage.md` | Beta |
+| Guava cache dependency | `guavaCache` | `references/guava-cache.md` | Beta |
+| Custom content under `/libs` | `libsCustomContent` | `references/libs-custom-content.md` | Beta |
 | Felix SCR → OSGi DS | — | `references/scr-to-osgi-ds.md` | Ready |
 | ResourceResolver + SLF4J | — | `references/resource-resolver-logging.md` | Ready |
 | HTL: `data-sly-test` redundant constant | — (HTL lint) | `references/data-sly-test-redundant-constant.md` | Ready |
@@ -77,6 +80,9 @@ When no BPA list exists, scan imports and types to pick a module:
 | **JCR observation:** `javax.jcr.observation.EventListener`, `onEvent(EventIterator)`, `javax.jcr.observation.*` | `eventListener` |
 | **OSGi Event Admin:** `org.osgi.service.event.EventHandler`, substantive `handleEvent` (resolver/session/node work) | `eventHandler` |
 | `com.day.cq.dam.api.AssetManager` create/remove asset APIs | `assetApi` |
+| `import java.io.InputStream` passed to `AssetManager.createAsset`, `Asset.setRendition`, `Node.setProperty(... Binary ...)` | `inputStreamUsage` |
+| `import com.google.common.cache.*` (`Cache`, `CacheBuilder`, `LoadingCache`) | `guavaCache` |
+| Custom JCR nodes/files under `/libs/<not-an-Adobe-namespace>/` in `ui.apps` | `libsCustomContent` |
 | `org.apache.felix.scr.annotations` | read `references/scr-to-osgi-ds.md` (often combined with a BPA pattern) |
 | `getAdministrativeResourceResolver`, `System.out` / `printStackTrace` | read `references/resource-resolver-logging.md` |
 | **HTL:** build warning `data-sly-test: redundant constant value comparison`, or `.html` under `ui.apps` / `jcr_root` with bad `data-sly-test` | read `references/data-sly-test-redundant-constant.md` |

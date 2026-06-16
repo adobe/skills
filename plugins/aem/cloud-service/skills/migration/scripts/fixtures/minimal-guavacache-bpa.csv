@@ -1,0 +1,2 @@
+code,type,subtype,importance,identifier,message,context
+BPA-201,issue,com.google.common.cache,info,com.example.myapp.services.UserCacheService,Depends on com.google.common.cache.CacheBuilder — replace with Caffeine,
