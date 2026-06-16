@@ -93,9 +93,14 @@ assigns a per-asset strategy based on reachability and type:
 
 | Asset reachability | Asset type | Strategy | Destination |
 |---|---|---|---|
-| Stable public URL (any CDN or publicly reachable host) | any | `absolute` — leave URL as-is | no download |
-| Local / unreachable | font | `vendor` — git repo (Code Bus) | `input/fonts/` → `/fonts/` |
-| Local / unreachable | image, video | `da-media` — DA Media Bus | `input/images/` or `input/videos/` → upload in Phase 5 |
+| Stable CDN (fonts.gstatic.com, cdn.jsdelivr.net, etc.) | any | `absolute` — leave URL as-is | no download |
+| Ephemeral host (claudeusercontent.com, etc.) | font | `vendor` — always download | `input/fonts/` → `/fonts/` |
+| Ephemeral host | image, video | `da-media` — always download | `input/images/` or `input/videos/` |
+| Reachable public host + public base URL | any | `absolute` — leave URL as-is | no download |
+| Reachable public host + local base URL (snapshot) | font | `vendor` — download | `input/fonts/` → `/fonts/` |
+| Reachable public host + local base URL (snapshot) | image, video | `da-media` — download | `input/images/` or `input/videos/` |
+| Local / private IP | font | `vendor` — download | `input/fonts/` → `/fonts/` |
+| Local / private IP | image, video | `da-media` — download | `input/images/` or `input/videos/` |
 
 **Never vendor images or videos into the git repo.** Binary content
 assets belong in DA Media Bus, not Code Bus. Only code assets (fonts,

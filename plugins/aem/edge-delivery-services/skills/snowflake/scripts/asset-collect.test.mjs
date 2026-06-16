@@ -283,7 +283,7 @@ test('stable CDN assets are left as absolute — no download', async () => {
   }
 });
 
-test('cross-origin font warning generated for reachable non-CDN font', async () => {
+test('cross-origin font warning generated for reachable non-CDN font (public base)', async () => {
   const dir = makeInput({
     'index.html': `<html><head>
       <style>
@@ -294,14 +294,16 @@ test('cross-origin font warning generated for reachable non-CDN font', async () 
       </style>
     </head><body></body></html>`,
   });
-  serverRoot = dir;
   try {
-    const r = await run(dir, `http://127.0.0.1:${serverPort}/index.html`);
+    // Public base URL → reachable font stays absolute → CORS warning
+    const r = await run(dir, 'https://example.com/page.html', ['--dry-run']);
     assert.equal(r.code, 0, r.stderr);
-    const m = readManifest(dir);
+    const jsonStart = r.stdout.indexOf('{');
+    const manifest = JSON.parse(r.stdout.slice(jsonStart));
+    assert.equal(manifest.assets[0].strategy, 'absolute');
     assert.ok(
-      m.warnings.some((w) => w.includes('cross-origin')),
-      `Expected cross-origin warning, got: ${JSON.stringify(m.warnings)}`,
+      manifest.warnings.some((w) => w.includes('cross-origin')),
+      `Expected cross-origin warning, got: ${JSON.stringify(manifest.warnings)}`,
     );
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -444,6 +446,62 @@ test('duplicate data URIs — same file written once, both refs rewritten', asyn
     // Both img tags now reference the extracted file
     const occurrences = (rewritten.match(new RegExp(m.assets[0].normalizedPath, 'g')) || []).length;
     assert.equal(occurrences, 2, 'expected both img srcs to be rewritten');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('ephemeral host — claudeusercontent.com font always extracted', async () => {
+  const dir = makeInput({
+    'index.html': `<html><head><style>
+      @font-face {
+        font-family: "Design Font";
+        src: url("https://abc123.claudeusercontent.com/v1/blobs/font.woff2") format("woff2");
+      }
+    </style></head><body></body></html>`,
+  });
+  try {
+    // Even with a public base URL, ephemeral hosts are always downloaded
+    const r = await run(dir, 'https://example.com/page.html', ['--dry-run']);
+    assert.equal(r.code, 0, r.stderr);
+    const jsonStart = r.stdout.indexOf('{');
+    const manifest = JSON.parse(r.stdout.slice(jsonStart));
+    assert.equal(manifest.assets[0].reachability, 'ephemeral');
+    assert.equal(manifest.assets[0].strategy, 'vendor');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('base-is-local — non-CDN external image downloaded in snapshot mode', async () => {
+  const dir = makeInput({
+    'index.html': `<html><body>
+      <img src="https://random-host.com/photo.jpg" alt="">
+    </body></html>`,
+  });
+  try {
+    const r = await run(dir, `http://127.0.0.1:${serverPort}/index.html`, ['--dry-run']);
+    assert.equal(r.code, 0, r.stderr);
+    const jsonStart = r.stdout.indexOf('{');
+    const manifest = JSON.parse(r.stdout.slice(jsonStart));
+    assert.equal(manifest.assets[0].strategy, 'da-media', 'should download in snapshot mode');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('public base URL — reachable external image left as absolute', async () => {
+  const dir = makeInput({
+    'index.html': `<html><body>
+      <img src="https://random-host.com/photo.jpg" alt="">
+    </body></html>`,
+  });
+  try {
+    const r = await run(dir, 'https://example.com/page.html', ['--dry-run']);
+    assert.equal(r.code, 0, r.stderr);
+    const jsonStart = r.stdout.indexOf('{');
+    const manifest = JSON.parse(r.stdout.slice(jsonStart));
+    assert.equal(manifest.assets[0].strategy, 'absolute');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

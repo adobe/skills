@@ -25,8 +25,12 @@
  *
  * Asset strategies (per-asset, not per-run):
  *   absolute  — stable public URL; leave as-is
- *   vendor    — local/unreachable font; download to fonts/
- *   da-media  — local/unreachable image or video; download to images/ or videos/
+ *   vendor    — local/ephemeral/unreachable font; download to fonts/
+ *   da-media  — local/ephemeral/unreachable image or video; download to images/ or videos/
+ *
+ * Ephemeral hosts (e.g. claudeusercontent.com) are always downloaded regardless
+ * of reachability. When --base-url is localhost, all non-stable-CDN external
+ * assets are also downloaded (snapshot mode).
  *
  * Usage:
  *   node <SKILL_DIR>/scripts/asset-collect.mjs \
@@ -75,6 +79,10 @@ const STABLE_CDN_HOSTS = new Set([
   'unpkg.com',
 ]);
 
+const EPHEMERAL_HOST_PATTERNS = [
+  /claudeusercontent\.com$/,
+];
+
 const PRIVATE_IP_RE = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/;
 
 const log = (msg) => console.log(`[asset-collect] ${msg}`);
@@ -119,23 +127,26 @@ function assetType(url) {
 
 /**
  * @param {string} resolvedUrl
- * @returns {'local'|'stable-cdn'|'reachable'}
+ * @returns {'local'|'stable-cdn'|'ephemeral'|'reachable'}
  */
 function reachability(resolvedUrl) {
   let host;
   try { host = new URL(resolvedUrl).hostname; } catch { return 'local'; }
   if (PRIVATE_IP_RE.test(host)) return 'local';
   if (STABLE_CDN_HOSTS.has(host)) return 'stable-cdn';
+  if (EPHEMERAL_HOST_PATTERNS.some((re) => re.test(host))) return 'ephemeral';
   return 'reachable';
 }
 
 /**
- * @param {'local'|'stable-cdn'|'reachable'} reach
+ * @param {'local'|'stable-cdn'|'ephemeral'|'reachable'} reach
  * @param {'image'|'video'|'font'} type
+ * @param {boolean} baseIsLocal
  * @returns {'absolute'|'vendor'|'da-media'}
  */
-function strategy(reach, type) {
-  if (reach !== 'local') return 'absolute';
+function strategy(reach, type, baseIsLocal) {
+  if (reach === 'stable-cdn') return 'absolute';
+  if (reach === 'reachable' && !baseIsLocal) return 'absolute';
   if (type === 'font') return 'vendor';
   return 'da-media';
 }
@@ -324,6 +335,9 @@ async function alreadyCollected(inputDir) {
 // ---------------------------------------------------------------------------
 
 const { inputDir, baseUrl, dryRun } = parseArgs();
+const baseIsLocal = PRIVATE_IP_RE.test(
+  (() => { try { return new URL(baseUrl).hostname; } catch { return 'localhost'; } })(),
+);
 
 const indexPath = join(inputDir, 'index.html');
 try { await access(indexPath); } catch { die(`index.html not found in ${inputDir}`, 1); }
@@ -385,7 +399,7 @@ for (const originalUrl of rawUrls) {
   if (!type) continue;
 
   const reach = reachability(resolvedUrl);
-  const strat = strategy(reach, type);
+  const strat = strategy(reach, type, baseIsLocal);
 
   const asset = { originalUrl, resolvedUrl, normalizedPath: null, type, reachability: reach, strategy: strat };
 

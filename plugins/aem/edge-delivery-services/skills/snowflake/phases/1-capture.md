@@ -117,9 +117,12 @@ node "<SKILL_DIR>/scripts/asset-collect.mjs" \
 The script handles:
 - HTML tags (`<img src>`, `<img srcset>`, `<picture>`, `<video>`, inline `style` url())
 - CSS `url()` inside inline `<style>` blocks (including `@font-face src`)
-- Per-asset strategy: local fonts → `vendor` (saved to `input/fonts/`),
-  local images/videos → `da-media` (saved to `input/images/` or `input/videos/`),
-  public stable URLs → `absolute` (left as-is)
+- Per-asset strategy: local/ephemeral fonts → `vendor` (saved to `input/fonts/`),
+  local/ephemeral images/videos → `da-media` (saved to `input/images/` or `input/videos/`),
+  stable CDN URLs → `absolute` (left as-is).
+  Ephemeral hosts (e.g. claudeusercontent.com) are always downloaded.
+  When base URL is localhost (snapshot mode), all non-CDN external assets
+  are downloaded too.
 - Hash-named font files: renamed to human-readable names from `@font-face` context
 - References in `index.html` rewritten to normalized relative paths
 
