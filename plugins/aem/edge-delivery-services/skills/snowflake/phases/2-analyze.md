@@ -89,19 +89,22 @@ For the HTML at `<projectsDir>/<NNN>-<slug>/input/index.html`:
    - Reference a public CDN
    - Concatenate into the per-template animations file
 
-10. **Asset references** — count all relative paths
-    (`assets/...`, `./images/...`, etc.) and absolute paths to
-    external hosts. Decide the asset strategy:
-    - **Public source host**: rewrite to absolute URLs pointing at
-      that host
-    - **Local-only source host** (`localhost`, `127.0.0.1`): two
-      paths — vendor to `/assets/` in the repo (proven; ~38 MB
-      acceptable for one-off bespoke), or migrate to DA `/media/`
-      (out of scope unless asked). Default: vendor.
-    - **NOTE**: image URLs INSIDE DA cells must be absolute even
-      when template/fragment refs are root-relative (Media Bus
-      requires absolute). See `knowledge/learnings.md` 2026-05-19
-      Media Bus entry.
+10. **Asset manifest** — read `input/asset-manifest.json` produced by
+    `asset-collect.mjs` in Phase 1. The script has already classified
+    every in-scope asset (raster images, videos, fonts), decided its
+    per-asset strategy, downloaded local/unreachable ones, and rewritten
+    references in `index.html`. No manual asset classification is needed.
+
+    Record the manifest's `stats` summary and any `warnings` in
+    `notes.md`. Surface CORS warnings for cross-origin fonts as a risk
+    item. Record the manifest path in `decisions.json` under
+    `assetManifest`.
+
+    **Reminder on DA cell image URLs**: images vendored locally still
+    need absolute branch URLs in DA cells (Media Bus resolves against
+    `content.da.live`, not the code-bus host). See `knowledge/learnings.md`
+    2026-05-19 Media Bus entry. This is a Generate-phase concern — note
+    it here so Generate doesn't miss it.
 
 ## Produce `notes.md`
 
@@ -267,9 +270,13 @@ this directly. Suggested shape:
   "externalLibs": [
     { "name": "lenis", "css": "assets/lenis.min.css", "js": "assets/lenis.min.js", "strategy": "vendor" }
   ],
-  "assetStrategy": "vendor",
-  "assetBase": "http://127.0.0.1:8080/path/to/page/",
-  "vendorAssetsTo": "assets/"
+  "assetManifest": "input/asset-manifest.json",
+  "assetStats": {
+    "total": 4,
+    "byStrategy": { "absolute": 2, "vendor": 2, "da-media": 0 },
+    "byType": { "font": 2, "image": 2, "video": 0 }
+  },
+  "assetWarnings": []
 }
 ```
 

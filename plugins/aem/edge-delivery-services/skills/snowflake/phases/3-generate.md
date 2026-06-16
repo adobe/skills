@@ -177,33 +177,36 @@ Lenis), inject a small loader prelude that:
 For any inline `onclick="someFunc()"` references in the template,
 expose `someFunc` on `window` from inside `main()`.
 
-### 3.7 — Asset path rewriting
+### 3.7 — Asset paths (already normalized by asset-collect.mjs)
 
-Per `decisions.json["assetStrategy"]`:
+`asset-collect.mjs` ran in Phase 1 and already:
+- Downloaded local/unreachable assets into `input/fonts/`, `input/images/`, `input/videos/`
+- Rewrote references in `input/index.html` to normalized relative paths
 
-- **`"absolute"`** (public source host): rewrite every relative
-  `assets/...` reference to `${assetBase}assets/...` (absolute URL
-  pointing at the source host).
+When copying content from `input/index.html` into output artifacts,
+apply this context-dependent transformation:
 
-- **`"vendor"`** (local-only source host, or user-requested vendor):
-  - Copy the referenced asset files from source into the target
-    repo's `assets/` directory (preserving subfolder structure).
-    Use `curl` if source is HTTP, `cp -R` if filesystem path is
-    available.
-  - Remove `.DS_Store`s and any unreferenced files in the copied
-    tree.
-  - Rename any directory containing spaces (AEM CLI 404s on
-    URL-encoded `%20`).
-  - In template, fragments, and CSS: rewrite source URLs to
-    root-relative `/assets/...`.
-  - **In the DA doc (next step): rewrite to ABSOLUTE branch URLs**
-    (`https://<branch>--<repo>--<owner>.aem.page/assets/...`). Media
-    Bus only resolves absolute URLs. The branch name comes from
-    decisions.json or is asked of the user.
+- **Template / fragment / CSS** refs to vendored assets: prepend `/`
+  to make root-relative (`fonts/foo.otf` → `/fonts/foo.otf`). The
+  browser resolves these against the code-bus host where these files
+  will be deployed.
 
-The asymmetry is critical and worth a sanity check: search the
-output for any `src="assets/"` (missing leading slash, non-absolute,
-not vendored-absolute) — should find none.
+- **DA doc image/video cells** (`da-media` assets): use absolute
+  branch URLs. Media Bus resolves against `content.da.live`, not
+  code-bus — root-relative paths produce `about:error`.
+  Form: `https://<branch>--<repo>--<owner>.aem.page/images/hero.jpg`
+
+- **Fonts** (vendored to `input/fonts/`): deploy to `/fonts/` in the
+  repo. Emit `@font-face` in `styles/<template>.css` with
+  `src: url('/fonts/<file>')`.
+
+Read `input/asset-manifest.json` to find the `normalizedPath` for
+each asset entry. Assets with `strategy: "absolute"` need no action —
+their URLs were left as-is in `index.html`.
+
+Sanity check: search output artifacts for any `src="fonts/"` or
+`src="images/"` without a leading `/` in template/fragment/CSS files
+— should find none.
 
 ### 3.8 — DA-source body fragment
 
@@ -263,8 +266,9 @@ node -e '
   // ... or use regex-based check if jsdom not available
 '
 
-# 2) No relative "assets/" refs in template/fragments/CSS
-grep -REn "=\"assets/" "$PROJ/output/templates" "$PROJ/output/fragments" "$PROJ/output/styles" && echo "FAIL: relative assets/" || echo "OK"
+# 2) No bare relative asset refs in template/fragments/CSS
+# (paths must be root-relative /fonts/... /assets/... not bare fonts/... assets/...)
+grep -REn "=\"fonts/\|=\"images/\|=\"videos/" "$PROJ/output/templates" "$PROJ/output/fragments" "$PROJ/output/styles" && echo "FAIL: missing leading slash on asset ref" || echo "OK"
 
 # 3) No nested [data-slot] inside another [data-slot]
 # (would need a DOM parse — skip for now if jsdom not available;
@@ -379,14 +383,25 @@ Write `styles/fonts.css` as empty (fonts loaded via CDN).
 Append font preconnects and the CDN stylesheet link to `head.html`,
 placed after the viewport meta but before the `aem.js` script tag.
 
-### B.3 — Vendor assets
+### B.3 — Deploy collected assets
 
-Per `decisions.json["assetStrategy"]` (usually `vendor` for
-local-only sources):
-1. Copy referenced images and logo to `assets/`
-2. Remove `.DS_Store`s, rename dirs with spaces
-3. All template/fragment/CSS refs use root-relative `/assets/...`
-4. DA cell image refs use absolute branch URLs
+`asset-collect.mjs` already downloaded assets into `input/fonts/`,
+`input/images/`, `input/videos/` and rewrote refs in `index.html`.
+Deploy to the repo:
+
+```bash
+# Code assets (fonts) → Code Bus
+cp -R "${PROJ}/input/fonts" ./fonts/ 2>/dev/null || true
+
+# Content assets (images/videos) → local staging for dev server;
+# Phase 5 uploads to DA Media Bus via da-media-upload.mjs
+cp -R "${PROJ}/input/images" ./assets/images/ 2>/dev/null || true
+cp -R "${PROJ}/input/videos" ./assets/videos/ 2>/dev/null || true
+```
+
+Use root-relative paths in template/fragment/CSS (`/fonts/...`,
+`/assets/images/...`). Use absolute branch URLs in DA cells
+(`https://<branch>--<repo>--<owner>.aem.page/assets/images/...`).
 
 ### B.4 — Create header/footer fragments
 

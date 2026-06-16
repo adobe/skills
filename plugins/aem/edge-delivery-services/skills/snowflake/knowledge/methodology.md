@@ -86,46 +86,44 @@ output/
 └── da/<page-slug>.html                        ← DA-source body fragment
 ```
 
-**Rewrite relative asset paths.** When a source uses relative paths
-like `assets/photos/foo.jpg`, `url(./images/bar.png)`,
-`<link href="assets/css/site.css">`, they resolve against our serving
-host (`localhost:3000/drafts/...` or
-`<branch>--<repo>--<owner>.aem.page/<da-root>/...`) — where they 404.
-They need rewriting to one of three target forms, depending on
-**asset strategy** (recorded in `decisions.json["assetStrategy"]`):
+**Asset handling is per-asset, decided mechanically.** The
+`asset-collect.mjs` script (run in Phase 1) scans `index.html` for
+in-scope asset references — raster images, videos, and fonts — and
+assigns a per-asset strategy based on reachability and type:
 
-1. **`absolute`** (default for publicly hosted sources):
-   `https://<source-host>/path/to/assets/...`. Source host serves the
-   binaries directly; EDS preview sideloads any `<img src>` URL into
-   Media Bus on first preview (see da-content `media.md` §2).
-2. **`vendor`** (local-only source, accepted repo size impact):
-   Copy the asset tree into `./assets/` in the repo. Template /
-   fragment / page-CSS refs become root-relative `/assets/...`. DA
-   cell refs use absolute branch URLs
-   (`https://<branch>--<repo>--<owner>.aem.page/assets/...`).
-3. **`da-media`** (cleanest long-term):
-   Upload binaries to DA `/media/<scope>/<file>` via the bundled
-   `<SKILL_DIR>/scripts/da-media-upload.mjs` script. Template /
-   fragment / page-CSS / DA cell refs all use
-   `https://content.da.live/<org>/<repo>/media/<scope>/<file>`. The
-   uploader emits a `media-mapping.json` of local-path →
-   content.da.live URL that Generate consumes for the rewrites.
+| Asset reachability | Asset type | Strategy | Destination |
+|---|---|---|---|
+| Stable public URL (any CDN or publicly reachable host) | any | `absolute` — leave URL as-is | no download |
+| Local / unreachable | font | `vendor` — git repo (Code Bus) | `input/fonts/` → `/fonts/` |
+| Local / unreachable | image, video | `da-media` — DA Media Bus | `input/images/` or `input/videos/` → upload in Phase 5 |
 
-| Aspect                    | absolute    | vendor       | da-media     |
-|---------------------------|-------------|--------------|--------------|
-| Repo size                 | unchanged   | +N MB        | unchanged    |
-| Branch-independent assets | N/A         | No           | **Yes**      |
-| Local-only source         | No          | Yes          | Yes          |
-| Initial-run effort        | none        | curl+sed     | uploader     |
-| Tooling required          | none        | none         | bundled `.mjs` |
-| Reusable across runs      | N/A         | per-run      | **Yes**      |
-| DA-cell image URL form    | source host | branch URL   | content.da.live |
-| Delivered image URL       | `./media_<hash>` (sideload) | `./media_<hash>` | `./media_<hash>` |
+**Never vendor images or videos into the git repo.** Binary content
+assets belong in DA Media Bus, not Code Bus. Only code assets (fonts,
+SVGs under 40KB, scripts, stylesheets) go in the git repo.
 
-For fonts specifically, even under `da-media`, place font files in Code
-Bus `/fonts/<file>.woff2` (or `.otf`) per da-content `media.md`
-§13.2 decision tree. Fonts upload would be a DA media-bus mismatch
-(SVG/PNG/JPG/MP4 are Media Bus; fonts are Content Bus).
+The script downloads assets, normalizes filenames, and rewrites
+references in `index.html` to relative paths (`fonts/foo.woff2`,
+`images/hero.jpg`). Phase 3 transforms these to root-relative
+(`/fonts/foo.woff2`) for template/fragment/CSS, and to absolute branch
+URLs for DA cells:
+
+- **Template / fragment / CSS**: root-relative paths (`/fonts/...`,
+  `/assets/images/...`). Browser resolves against code-bus host.
+- **DA cell image refs**: absolute branch URLs
+  (`https://<branch>--<repo>--<owner>.aem.page/assets/images/...`).
+  Media Bus resolves against `content.da.live`, not code-bus — root-
+  relative paths produce `about:error` there.
+
+The `da-media-upload.mjs` script (Phase 5) uploads `da-media` assets
+to DA and emits final `content.da.live` URLs; DA cells should be
+updated to those final URLs after upload.
+
+| Aspect | absolute | vendor | da-media |
+|---|---|---|---|
+| Asset types | any | fonts only | images, videos |
+| Repo size | unchanged | +font files (small) | unchanged |
+| DA-cell URL form | source host (leave as-is) | branch URL | content.da.live (after upload) |
+| Delivered image URL | `./media_<hash>` (sideload) | `./media_<hash>` | `./media_<hash>` |
 
 This applies to template HTML, fragment HTML, DA cell values
 referencing images, and any CSS `url()` references.
