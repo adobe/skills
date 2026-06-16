@@ -320,7 +320,7 @@ function processInputStreamFromUnified(subtypeData, targets) {
         className,
         identifier,
         `Uses java.io.InputStream with an API removed on AEM as a Cloud Service: ${className}`,
-        "advisory"
+        "low"
       ));
     }
   }
@@ -346,7 +346,7 @@ function processGuavaCacheFromUnified(subtypeData, targets) {
         className,
         identifier,
         `Uses Guava cache (com.google.common.cache) — replace with Caffeine on AEM as a Cloud Service`,
-        "info"
+        "low"
       ));
     }
   }
