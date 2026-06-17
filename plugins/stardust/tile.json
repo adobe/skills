@@ -1,10 +1,9 @@
 {
   "name": "adobe/stardust",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "summary": "Redesign an existing website to make it better. Built on top of impeccable.",
   "skills": {
     "stardust": { "path": "skills/stardust/SKILL.md" },
-    "distill": { "path": "skills/distill/SKILL.md" },
     "extract": { "path": "skills/extract/SKILL.md" },
     "direct": { "path": "skills/direct/SKILL.md" },
     "prototype": { "path": "skills/prototype/SKILL.md" },

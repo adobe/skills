@@ -40,7 +40,7 @@ Once setup is done, route on the user's input:
 - **No argument.** Render the **state report** described in
   `reference/state-machine.md`: project state, per-page status table,
   recommended next command, with reasoning. Do not write anything.
-- **First word is `distill`, `extract`, `direct`, `prototype`,
+- **First word is `extract`, `direct`, `prototype`,
   `migrate`, or `uplift`.** Delegate to the matching sub-command
   (`stardust:<name>` skill). Pass remaining args through.
   - `prototype` accepts `--cinematic` (or `--cinematic=<register>`)
@@ -131,8 +131,8 @@ and-fix loop** before being marked done. The principle: type checks and
 test suites verify code correctness; only browser rendering verifies
 *feature* correctness.
 
-For HTML the user will see (prototypes, migrated pages, sample distillation
-artifacts, the brand-review HTML):
+For HTML the user will see (prototypes, migrated pages, the brand-review
+HTML):
 
 1. Render in Playwright (file:// for static, or local dev server).
 2. Capture at three viewports — desktop **1440×900**, tablet **768×1024**,
