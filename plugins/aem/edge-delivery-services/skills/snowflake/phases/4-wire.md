@@ -39,6 +39,10 @@ ls "${PROJ}/output/styles/" 2>/dev/null \
 [ -d "${PROJ}/input/videos" ] && mkdir -p videos && cp -R "${PROJ}/input/videos/." videos/
 
 # 2) Build the local-test drafts file from the DA doc
+if [ ! -f "${PROJ}/output/da/${PAGE_SLUG}.html" ]; then
+  echo "FAIL: DA doc missing at output/da/${PAGE_SLUG}.html — Phase 3 did not complete. Re-run Generate."
+  exit 1
+fi
 node "<SKILL_DIR>/scripts/transform-da-to-eds.mjs" \
   "${PROJ}/output/da/${PAGE_SLUG}.html" \
   "drafts/${TEMPLATE_NAME}-${PAGE_SLUG}.html"

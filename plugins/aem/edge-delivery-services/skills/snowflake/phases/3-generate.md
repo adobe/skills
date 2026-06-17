@@ -259,6 +259,19 @@ the check.
 ```bash
 PROJ="${PROJECTS_DIR}/${NNN}-${SLUG}"
 
+# 0) All required artifacts exist — hard fail if any missing
+for f in \
+  "templates/${TEMPLATE_NAME}.html" \
+  "fragments/${TEMPLATE_NAME}/header.html" \
+  "fragments/${TEMPLATE_NAME}/footer.html" \
+  "styles/${TEMPLATE_NAME}.css" \
+  "da/${PAGE_SLUG}.html"; do
+  if [ ! -f "${PROJ}/output/$f" ]; then
+    echo "FAIL: missing required artifact: output/$f — Phase 3 did not complete"
+    exit 1
+  fi
+done
+
 # 1) Template has <main> and all sections have unique first-classes
 node -e '
   const fs = require("fs");
@@ -501,6 +514,12 @@ same rule as page-level. The pipeline rewrites to Media Bus URLs.
 ### B.9 — Self-checks (block-level)
 
 ```bash
+# 0) DA doc exists — hard fail if missing
+if [ ! -f "output/da/${PAGE_SLUG}.html" ]; then
+  echo "FAIL: missing required artifact: output/da/${PAGE_SLUG}.html — Phase 3 did not complete"
+  exit 1
+fi
+
 # 1) Each block has both .js and .css
 for dir in blocks/*/; do
   name=$(basename "$dir")
