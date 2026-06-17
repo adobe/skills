@@ -86,17 +86,17 @@ Each expert skill under `code-assessment/<pattern>/` documents its own suggested
 
 ## Run log: `.autofix/last-run.json`
 
-The skill writes a single JSON record to `.autofix/last-run.json` at the working-directory root after each run (success, revert, report, or abort). On first use it also writes `.autofix/.gitignore` containing `*`, so the directory self-ignores in the developer's repo (the skill cannot edit the developer's root `.gitignore`). The file is the authoritative record of what the skill did or attempted. It is overwritten on every run — historical runs are not retained.
+The skill writes a single JSON record to `.autofix/last-run.json` at the working-directory root after each run (success, revert, report, or abort). On first use it also writes `.autofix/.gitignore` containing `*`, so the directory self-ignores in the developer's repo (the skill cannot edit the developer's root `.gitignore`). The file is the authoritative record of what the skill did or attempted. A new run overwrites it; historical runs are not retained. **During an apply it is updated after each file** (not only at the end) so an interrupted or context-compacted session can resume from it without losing or repeating work — see "Resuming a large apply".
 
 ### Schema
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "run_id": "<uuid-v4>",
   "started_at": "<ISO-8601 UTC timestamp>",
   "finished_at": "<ISO-8601 UTC timestamp>",
-  "status": "success | reverted | aborted | reported",
+  "status": "success | reverted | aborted | reported | applied-partial | applied-unverified",
   "intent": "report | apply",
   "preflight": {
     "git_status": "clean | dirty | n/a",
@@ -112,7 +112,15 @@ The skill writes a single JSON record to `.autofix/last-run.json` at the working
   "branch": "autofix/outdated-dependencies/2026-04-21-a1b2c3d",
   "compile": {
     "baseline": "pass | fail | skipped",
+    "baseline_reason": "toolchain-jdk-lombok | missing-private-repo | other | no-maven-project | null",
     "verification": "pass | fail | skipped"
+  },
+  "apply_progress": {
+    "total": 0,
+    "applied": 0,
+    "skipped": 0,
+    "remaining": ["<workspace-relative path not yet processed this pass>"],
+    "batch_cap": 40
   },
   "applied": [
     {
@@ -149,7 +157,9 @@ The skill writes a single JSON record to `.autofix/last-run.json` at the working
 
 ### Field rules
 
-- **`status`** — `success` = edits applied and verification compile passed. `reported` = report/plan delivered, no edits (`intent=report` or user did not confirm apply). `reverted` = edits applied but verification failed; rollback ran. `aborted` = stopped before useful output (unsupported pattern, user declined, blocked `autofix/*` without consent). **Not** used for dirty git or baseline compile failure alone.
+- **`status`** — `success` = edits applied and verification compile passed. `reported` = report/plan delivered, no edits (`intent=report` or user did not confirm apply). `reverted` = edits applied but verification failed; rollback ran. `aborted` = stopped before useful output (unsupported pattern, user declined, blocked `autofix/*` without consent). `applied-partial` = a batch of files was applied and **more remain** (apply paused at `apply_progress.batch_cap`; resume to continue — see "Resuming a large apply"). `applied-unverified` = edits applied but post-apply compile could not confirm them because the **baseline build does not compile** for a toolchain/repo reason (`compile.baseline_reason` ∈ `toolchain-jdk-lombok | missing-private-repo`); not a rollback. **Not** used for dirty git or baseline compile failure alone.
+- **`compile.baseline_reason`** — when `compile.baseline=fail`, the classified cause (`toolchain-jdk-lombok | missing-private-repo | other`); `no-maven-project` when no pom; `null` when baseline passed.
+- **`apply_progress`** — present only for `intent=apply`. `total` = applicable findings/files for the pattern; `applied`/`skipped` = processed so far; `remaining[]` = files not yet processed; `batch_cap` = max files per pass (default 40). Updated **after each file** so progress survives an interrupted/compacted session.
 - **`intent`** — `report` or `apply` for this run.
 - **`preflight`** — advisory git snapshot; dirty tree is a warning, not a failure status.
 - **`discovery_warnings[]`** — strings from Step 3 discover-time checks (e.g. duplicate pom locator). Mirror the **Discover warnings** section of the Step 7 report template in `runbook.md`.
@@ -167,6 +177,30 @@ The skill writes a single JSON record to `.autofix/last-run.json` at the working
   - `no-recipe: no expert skill at ../<pattern-slug>/` — the issue has no expert skill yet.
 
   Recording these means nothing is silently dropped — the user has a clear list to fix in a follow-up session or request a new expert skill for.
+
+## Resuming a large apply (batching)
+
+A large apply (e.g. an `@Inject` migration spanning 150 files) can exceed one context window; a
+mid-run summary/compaction must not lose track of which files are done. The run log is the durable
+checkpoint:
+
+1. **Checkpoint per file.** After each file is applied or skipped, append it to `applied[]` /
+   `skipped[]` and update `apply_progress` (`applied`/`skipped`/`remaining`) in `.autofix/last-run.json`
+   **immediately** — never batch the writes to the end.
+2. **Cap per pass.** Process at most `apply_progress.batch_cap` files (default 40) in one pass. If more
+   remain, stop cleanly with `status=applied-partial` and tell the user: *"Applied N of M files for
+   `<pattern>`; <K> remain. Reply **apply `<pattern>`** to continue."* The branch (git mode) stays as
+   is between passes.
+3. **Resume idempotently.** On an `apply <pattern>` invocation, before editing, read
+   `.autofix/last-run.json`; if it records the same `pattern` + `base_sha` (git) and `status` is
+   `applied-partial`, **skip files already in `applied[]`/`skipped[]`** and continue with `remaining[]`.
+   Re-applying an already-migrated file must be a no-op (the recipe's edits are idempotent — e.g. a
+   field already on `@ValueMapValue` is left unchanged), so a resume after a partial write is safe.
+4. **Finish.** When `remaining[]` is empty, run Step 9 verify and set the terminal status
+   (`success` / `reverted` / `applied-unverified`).
+
+This keeps a large mechanical migration safe across context boundaries and gives the user a clear
+resume handle instead of an opaque half-migration.
 
 ### Why this shape
 

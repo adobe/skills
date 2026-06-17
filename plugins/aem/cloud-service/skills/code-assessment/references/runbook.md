@@ -112,9 +112,26 @@ From the AEM Maven reactor root when present, run `mvn compile` (or `mvn compile
 
 - Record `compile.baseline: pass | fail | skipped` in the run log and **always surface in the plan/summary** with a short excerpt of errors on failure.
 - **Do not block** planning or apply on baseline failure. The project may already be broken; the skill still attempts recipe-driven fixes the user asked for.
-- On baseline **fail** and intent **apply**, require explicit `yes` that acknowledges: *"Baseline compile failed; I still want edits applied."*
 
-If no Maven project, set `compile.baseline=skipped` and note in the report.
+**Toolchain pre-check (before `mvn compile`).** Read the project's target Java from the pom
+(`maven.compiler.release`, else `maven.compiler.source`/`target`, else a `<java.version>` property).
+Compare with the running `java -version`. If the **running JDK is newer** than the project target,
+warn in the plan: *"Running JDK \<X\> is newer than the project target \<Y\>; `mvn compile` may fail
+(e.g. Lombok `JCTree` error). Use a JDK matching the project, or treat compile results as advisory."*
+
+**Classify a baseline `fail`** from its output and record `compile.baseline_reason`; surface the
+matching plain-language line (this is what makes the apply caveat in Steps 7/9 honest):
+
+| Output contains | `baseline_reason` | Say |
+|---|---|---|
+| `JCTree`, `lombok`, `NoSuchFieldError` on `com.sun.tools.javac` | `toolchain-jdk-lombok` | "Toolchain mismatch (JDK/Lombok), **not your code**. Post-apply verify will fail identically — fix the JDK/Lombok before applying." |
+| `Could not resolve`, `Could not transfer`, `Cannot access`, `Artifactory`, `401`/`403`, `Network is unreachable` | `missing-private-repo` | "Build needs a private repo (e.g. Adobe Artifactory) not reachable here. Post-apply verify will be **skipped** — the apply is **unverified**. Build in CI / a configured environment to catch type errors." |
+| anything else | `other` | surface the one-line excerpt as usual |
+
+- On baseline **fail** and intent **apply**, require explicit `yes` that acknowledges the consequence:
+  *"Baseline compile failed (\<reason\>); edits will be **UNVERIFIED** — post-apply compile cannot confirm them. Apply anyway?"*
+
+If no Maven project, set `compile.baseline=skipped` (`baseline_reason: no-maven-project`) and note in the report.
 
 ### 6. Build detailed edit plan
 
@@ -154,7 +171,9 @@ Copy this structure; keep section headings so runs are comparable across session
 
 ## Compile (baseline)
 - Result: <pass \| fail \| skipped>
-- Notes: <one-line excerpt if fail, or —>
+- Cause: <toolchain-jdk-lombok \| missing-private-repo \| other \| no-maven-project \| —>
+- Notes: <one-line excerpt / plain-language line if fail, or —>
+- Verify impact: <"post-apply verify unreliable — apply will be UNVERIFIED" when result ≠ pass, else —>
 
 ## Discover warnings
 <bullets from Step 3 discover-time checks, or None>
@@ -176,6 +195,7 @@ Copy this structure; keep section headings so runs are comparable across session
 ## Next step
 <For report intent: "Reply **apply** to make edits, or name files/versions to narrow scope.">
 <For apply intent: awaiting user confirmation — do not edit until yes>
+<When Compile (baseline) ≠ pass: "⚠ Baseline build does not compile (<cause>) — any apply will be UNVERIFIED until you build in a working environment / CI.">
 ```
 
 **Agent output requirement:** present the full report template above in the user-facing response — every section, headings verbatim. Do not replace it with a shortened or ad-hoc summary; identical headings keep runs comparable across sessions.
@@ -190,12 +210,25 @@ Copy this structure; keep section headings so runs are comparable across session
 
 **in_place:** Write directly to resolved paths. Same surgical rules — no reformat, no out-of-scope files.
 
+**Checkpoint + batch (survive context limits).** A large apply can exceed one context window; progress
+must be durable so a mid-run compaction does not lose or repeat work. Follow **Resuming a large apply**
+in [`git-workflow.md`](git-workflow.md):
+
+- After **each** file, append it to `applied[]`/`skipped[]` and update `apply_progress` in
+  `.autofix/last-run.json` **immediately** (not batched at the end).
+- Process at most `apply_progress.batch_cap` files (default 40) per pass. If more remain, stop with
+  `status=applied-partial` and tell the user *"Applied N of M; K remain — reply **apply `<pattern>`**
+  to continue."*
+- On an `apply <pattern>` re-invocation, read `.autofix/last-run.json` first and **skip files already
+  recorded** (re-applying a migrated file must be a no-op). Continue with `remaining[]`.
+
 ### 9. Verify and summarize
 
 Re-run `mvn compile` when Step 5 was not skipped. Record `compile.verification: pass | fail | skipped`.
 
 - **Pass:** `status=success` — summary includes baseline + verification, applied/skipped, handoff (`git diff` or path list), runtime caveat for `@Inject`.
 - **Fail after apply:** Rollback per `edit_mode`, `status=reverted`, surface compiler output. Do not auto-retry with different versions.
+- **Baseline already failed (`toolchain-jdk-lombok` / `missing-private-repo`):** a re-run fails or is skipped for the **same unrelated reason** — do **not** roll back the edits on that basis (the failure is not caused by the apply). Set `compile.verification=skipped`, `status=applied-unverified`, and state clearly: *"Edits applied but UNVERIFIED — the build does not compile here (\<reason\>). Build in CI / a configured environment before merge."* Distinguish this from a real apply-introduced regression (which only Step's `mvn compile` on an otherwise-passing baseline can show).
 - **report-only run:** `compile.verification=skipped`; summary is the Step 7 report.
 
 **Never** `git commit`, `git push`, or open a PR.
