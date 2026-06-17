@@ -1,6 +1,6 @@
 ---
 name: stardust
-description: Redesign an existing website to make it better. Multi-page, incremental, reasoned in the open. Built on top of impeccable.
+description: Guided multi-page redesign of an existing website through a four-phase pipeline — extract (crawl and capture the current site), direct (set a visual direction), prototype (generate redesigned HTML), and migrate (emit a deployable static site). Tracks progress incrementally per page in stardust/state.json so redesigns are resumable. Delegates the per-page design craft (typography, spacing, color, layout, motion) to the impeccable skill. Use when the user wants to redesign, revamp, modernize, or restyle an existing site they can point to by URL, run the extract/direct/prototype/migrate flow, or resume a multi-page redesign. Not for designing a brand-new site from scratch or one-off single-component edits.
 license: Apache-2.0
 ---
 
