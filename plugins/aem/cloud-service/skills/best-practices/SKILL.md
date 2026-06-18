@@ -49,7 +49,7 @@ The five major patterns each have a **dedicated pattern guide** with end-to-end 
 
 ## Java / OSGi baseline (same skill; no separate installables)
 
-SCR→DS and `ResourceResolver`/logging are **reference modules** under `references/` — not separate skills. Read them when relevant **instead of** re-embedding the same steps inside each pattern file.
+SCR→DS and `ResourceResolver`/logging are **shared references** under `references/` — not separate skills. Read them when relevant **instead of** re-embedding the same steps inside each pattern file.
 
 - **Hub:** [`references/aem-cloud-service-pattern-prerequisites.md`](references/aem-cloud-service-pattern-prerequisites.md)
 - **Modules:** [`references/scr-to-osgi-ds.md`](references/scr-to-osgi-ds.md), [`references/resource-resolver-logging.md`](references/resource-resolver-logging.md)
@@ -71,8 +71,8 @@ SCR→DS and `ResourceResolver`/logging are **reference modules** under `referen
 
 When no BPA list exists, scan imports and types to pick the pattern guide or reference:
 
-| Look for | Pattern → Expert skill / Reference module |
-|----------|-------------------------------------------|
+| Look for | Pattern → Guide |
+|----------|-----------------|
 | `org.apache.sling.commons.scheduler.Scheduler` or `scheduler.schedule(` with `Runnable` | `scheduler` → [`scheduler/SKILL.md`](scheduler/SKILL.md) |
 | `implements ResourceChangeListener` | `resourceChangeListener` → [`resource-change-listener/SKILL.md`](resource-change-listener/SKILL.md) |
 | `com.day.cq.replication.Replicator` or `org.apache.sling.replication.*` | `replication` → [`replication/SKILL.md`](replication/SKILL.md) |

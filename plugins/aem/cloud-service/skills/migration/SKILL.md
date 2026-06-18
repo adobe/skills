@@ -22,11 +22,11 @@ This skill drives the **migration workflow**: BPA data, CAM/MCP, **one pattern p
 | **CAM + MCP** only | *"Get **scheduler** findings from CAM; I'll pick the project when you list them."* | Agent lists projects → you confirm → MCP fetch ([cam-mcp.md](references/cam-mcp.md)) |
 | **Just a few files** | *"Migrate **scheduler** in `core/.../MyJob.java`"* | Manual flow: no BPA required |
 | **OSGi → Cloud Manager** | *"**Scan my config files and create Cloud Manager environment secrets or variables.**"* | Agent **auto-reads** [references/osgi-cfg-json-cloud-manager.md](references/osgi-cfg-json-cloud-manager.md) (full Adobe-aligned rules inlined there); no BPA pattern id |
-| **HTL lint warnings** | *"Fix **htlLint** issues in `ui.apps`"* | Proactive discovery via `rg` → fix per reference module |
+| **HTL lint warnings** | *"Fix **htlLint** issues in `ui.apps`"* | Proactive discovery via `rg` → fix per the HTL lint reference |
 
 **Starter prompts (copy-paste):**
 
-- *"Use the migration skill: **scheduler** only, BPA CSV at `./reports/bpa.csv`, then apply best-practices reference modules before editing."*
+- *"Use the migration skill: **scheduler** only, BPA CSV at `./reports/bpa.csv`, then apply the best-practices pattern guide before editing."*
 - *"**Replication** only from CAM; list projects first, I'll pick one."*
 - *"**Manual:** **event listener** migration for `.../Listener.java` — read best-practices module first."*
 - *"Scan my config files and create Cloud Manager environment secrets or variables."*
@@ -58,7 +58,7 @@ Applies to **finding and editing the user's AEM project** (Java, bundles, config
 
 **Branch B — Java / HTL / BPA pattern migration:**
 
-1. Read **`{best-practices}/SKILL.md`** — critical rules, Java baseline links, **Pattern Reference Modules** table, **Manual Pattern Hints**.
+1. Read **`{best-practices}/SKILL.md`** — critical rules, Java baseline links, **Pattern Guides** table, **Manual Pattern Hints**.
 2. Read the **pattern guide** (or reference) for the **single** active pattern:
    - `scheduler` → **`{best-practices}/scheduler/SKILL.md`** *(pattern guide)*
    - `resourceChangeListener` → **`{best-practices}/resource-change-listener/SKILL.md`** *(pattern guide)*
@@ -196,7 +196,7 @@ For retries, error categories, and when user-directed CSV/manual paths are allow
 
 **Optional prompt after stop (user must reply):** *"Reply with the CAM project to use (id or name from the list), a path to your BPA CSV, or the Java files for a manual migration."*
 
-## Pattern modules
+## Pattern guides
 
 Do **not** duplicate the pattern table here. Use **`{best-practices}/SKILL.md` → Pattern Guides** — five patterns each have a pattern guide (`{best-practices}/<pattern>/SKILL.md`); shared topics (SCR→DS, ResourceResolver/SLF4J, HTL lint, prerequisites hub) stay as references (`{best-practices}/references/<file>.md`). See **Branch B step 2** above for the per-pattern routing table.
 
@@ -260,7 +260,7 @@ User-named files → classify (best-practices hints or ask) → confirm the patt
 
 ### OSGi → Cloud Manager flow
 
-Does **not** use BPA CSV, CAM/MCP, or best-practices pattern modules for collection. Follow **Branch A** in **Required delegation** and the **One-prompt workflow** in [references/osgi-cfg-json-cloud-manager.md](references/osgi-cfg-json-cloud-manager.md).
+Does **not** use BPA CSV, CAM/MCP, or best-practices pattern guides for collection. Follow **Branch A** in **Required delegation** and the **One-prompt workflow** in [references/osgi-cfg-json-cloud-manager.md](references/osgi-cfg-json-cloud-manager.md).
 
 ### htlLint flow
 
