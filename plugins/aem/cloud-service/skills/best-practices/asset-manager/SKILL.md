@@ -105,7 +105,13 @@ public class CreateAssetServlet extends SlingAllMethodsServlet {
 
 ### After — Cloud Service compatible (client-side Direct Binary Access)
 
-On AEMaaCS the upload happens **directly between the client and the binary store**; the AEM JVM orchestrates the upload but does not carry the bytes. Delete the upload-accepting servlet entirely, and replace it with a client-side call to the Direct Binary Access HTTP API via `@adobe/aem-upload`:
+On AEMaaCS the upload happens **directly between the client and the binary store**; the AEM JVM orchestrates the upload but does not carry the bytes. This migration has **two required parts** that must be delivered together — emitting only one is incomplete and looks like a placeholder.
+
+> **Hard rule for the agent:** When migrating a client-facing `createAsset()` servlet, you **must** emit BOTH the client-side JavaScript replacement AND (if the servlet path is being preserved) the 410 Gone Java servlet. Never emit a 410 Gone servlet without also producing the `@adobe/aem-upload` client code that callers will use instead. Never emit the JavaScript replacement without explicitly removing or repurposing the original servlet (either deletion or 410 Gone). Half-migrations look like placeholder code to reviewers and leave the customer's frontend broken.
+
+#### Part 1 (required) — Client-side replacement via `@adobe/aem-upload`
+
+Delete the upload-accepting servlet entirely (or keep it as Part 2 below). Either way, the frontend that *used* to POST to the legacy servlet now uses `@adobe/aem-upload` to call Direct Binary Access on `/api/assets{path}`:
 
 ```javascript
 import DirectBinary from '@adobe/aem-upload';
@@ -137,7 +143,11 @@ async function uploadAsset(file, assetPath, host, token) {
 }
 ```
 
-If the servlet path must remain (routing, ACL, audit reasons), convert it to return `410 Gone` with a documented replacement — do **not** silently call a removed API:
+This is the **actual replacement**, not a placeholder. The customer's frontend (or external caller) needs to be updated to call this function instead of POSTing to the legacy servlet endpoint. If the customer cannot update the frontend in this change, stop and surface that — do not proceed with only the server-side step.
+
+#### Part 2 (only if the legacy URL must keep responding) — 410 Gone Java servlet
+
+When the original servlet path *must* remain bound (existing clients still hit `/bin/createasset`, routing/ACL/audit reasons), convert the servlet to return `410 Gone` with a documented pointer to the replacement. **Only emit this when Part 1 above has also been produced for the customer** — a 410 Gone without the JS replacement is a broken migration:
 
 ```java
 package com.example.servlets;
@@ -172,6 +182,10 @@ public class CreateAssetServlet extends SlingAllMethodsServlet {
     }
 }
 ```
+
+The 410 Gone servlet is **not a placeholder** — it is the supported AEMaaCS pattern for legacy endpoints that must keep their URL while their behavior moves to Direct Binary Access. It pairs with Part 1 above; the two together form a complete migration.
+
+**Default path: prefer Part 1 alone (delete the servlet entirely).** Only add Part 2 when there's a documented reason the original URL must keep responding (e.g. existing external callers that cannot be updated in the same change).
 
 ---
 
@@ -372,9 +386,16 @@ Apply the decision matrix:
 
 | Caller | Keep `createAsset(...)`? |
 |--------|--------------------------|
-| Client-facing servlet accepting `multipart` / `InputStream` from a browser or external caller | **No** — migrate to Direct Binary Access |
+| Client-facing servlet accepting `multipart` / `InputStream` from a browser or external caller | **No** — migrate to Direct Binary Access (both client-side JS **and** server-side servlet removal/410 Gone are required) |
 | Back-office utility creating small assets from a bundled resource or another already-in-JVM stream (fixtures, reports, migration imports) | **Yes, still supported** — use a service-user resolver and close the stream |
 | Scheduled asset ingestion pulling from an external source | **Prefer** Direct Binary Access through the HTTP API; the scheduler-triggered job acts as an external client |
+
+**For the client-facing servlet case, the migration has two required outputs and cannot be split:**
+
+1. **Client-side**: emit the `@adobe/aem-upload` JavaScript replacement that the frontend (or external caller) will use instead. See the "After" example above.
+2. **Server-side**: either delete the original servlet (preferred) OR convert it to return `410 Gone` with a pointer to the JS replacement (only when the legacy URL must keep responding).
+
+If you produce only the server-side half (e.g. a 410 Gone servlet) without the client-side replacement, the migration is incomplete — the customer's frontend is now broken and the output reads as a placeholder. If the customer cannot update the frontend in this change, **stop and surface that**; do not proceed with only the server-side step.
 
 **When keeping `createAsset` for in-JVM use:**
 
@@ -692,6 +713,7 @@ if (!response.isSuccessful()) {
 
 **Path A (create / upload):**
 - [ ] Client-facing upload endpoints replaced with Direct Binary Access (`@adobe/aem-upload`) — any residual servlet returns `410 Gone` with a documented replacement
+- [ ] **When a client-facing servlet is migrated, BOTH the client-side `@adobe/aem-upload` JavaScript replacement AND the server-side servlet change (deletion or 410 Gone) are present in the change set.** A 410 Gone servlet without an accompanying JS replacement is an incomplete migration, not a finished one.
 - [ ] `createAsset(path, InputStream, mimeType, overwrite)` remains only in in-JVM utilities where the binary is small and already in the JVM (fixtures, bundled resources, post-processing)
 - [ ] `InputStream` closed in try-with-resources
 - [ ] Service-user resolver used for in-JVM `createAsset` flows
@@ -735,6 +757,8 @@ if (!response.isSuccessful()) {
 **Calling `createAssetForBinary` / `getAssetForBinary` / `removeAssetForBinary`** — these APIs do not exist on AEMaaCS. The compile-time signature is gone; if a build succeeds against legacy AEM jars and then deploys to CS, every call throws `NoSuchMethodError` at runtime.
 
 **Accepting client uploads via a Java servlet that calls `createAsset(path, InputStream, ...)`** — funnels every byte through the AEM JVM. Slow, memory-bound, blocked by a 2 GB ceiling, and bypasses the asset processing pipeline's Direct Binary Access path. Migrate to `@adobe/aem-upload` on the client.
+
+**Emitting only one half of the client-facing migration** — converting the Java servlet to `410 Gone` without also producing the `@adobe/aem-upload` JavaScript replacement (or vice versa). The 410 Gone servlet by itself reads like a placeholder because the customer's frontend is now broken with no documented path forward. The two outputs are a single migration and must be delivered together; if the customer cannot update the frontend in this change, stop and surface that instead of leaving a half-finished migration.
 
 **Hardcoding credentials** — `Authorization: Basic Buffer.from('admin:admin').toString('base64')`, literal `":password"` strings, plain-text bearer tokens. AEMaaCS has no static admin password; external callers must use IMS / dev-console service credentials that produce short-lived bearer tokens.
 
