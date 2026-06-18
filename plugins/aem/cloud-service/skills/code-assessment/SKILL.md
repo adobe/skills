@@ -1,7 +1,7 @@
 ---
 name: code-assessment
 description: |
-  Detect, review, and fix code-quality and correctness issues in an AEM as a Cloud Service
+  [BETA] Detect, review, and fix code-quality and correctness issues in an AEM as a Cloud Service
   project — locally, with no external services or network calls. Use whenever a user wants to
   check, review, assess, audit, scan, modernize, upgrade, or fix AEM Java, Sling Models, OSGi,
   or Maven code — for example: "check my Sling Models are implemented correctly", "review my
@@ -10,8 +10,15 @@ description: |
   it to scan the repo; it detects issues, plans, and — only when you ask — applies surgical
   edits on a branch or in place, then verifies with mvn compile. It recognises the intent and
   handles each issue type itself, reporting anything it cannot yet fix.
+  This skill is in beta. Verify all outputs before applying them to production projects.
+metadata:
+  status: beta
 license: Apache-2.0
 ---
+
+> **Beta Skill**: This skill is in beta and under active development.
+> Results should be reviewed carefully before use in production.
+> Report issues at https://github.com/adobe/skills/issues
 
 # AEM as a Cloud Service — Code Assessment
 
