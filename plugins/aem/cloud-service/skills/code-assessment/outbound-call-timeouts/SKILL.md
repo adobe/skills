@@ -1,8 +1,14 @@
 ---
 name: outbound-call-timeouts
-description: "AEM Cloud Service expert skill — add explicit connect/read/socket timeouts to outbound HTTP clients constructed without one (Apache HttpClient 4.x/5.x, OkHttp, JDK java.net.http.HttpClient), including the JDK per-request read timeout on HttpRequest. Use for \"add HTTP timeouts\", \"this external/outbound call has no timeout\", or a scan that flags a timeout-less client. Highest-frequency CSO outage cause: a client on default (effectively infinite) timeouts holds request threads on a slow upstream until the Jetty pool saturates and the site goes down. The analyzer locates timeout-less construction sites; mechanical per-library remediation applies CSO-backed default timeouts (recipe.md)."
+description: "[BETA] AEM Cloud Service expert skill — add explicit connect/read/socket timeouts to outbound HTTP clients constructed without one (Apache HttpClient 4.x/5.x, OkHttp, JDK java.net.http.HttpClient), including the JDK per-request read timeout on HttpRequest. Use for \"add HTTP timeouts\", \"this external/outbound call has no timeout\", or a scan that flags a timeout-less client. Highest-frequency CSO outage cause: a client on default (effectively infinite) timeouts holds request threads on a slow upstream until the Jetty pool saturates and the site goes down. The analyzer locates timeout-less construction sites; mechanical per-library remediation applies CSO-backed default timeouts (recipe.md). This skill is in beta. Verify all outputs before applying them to production projects."
+metadata:
+  status: beta
 license: Apache-2.0
 ---
+
+> **Beta Skill**: This skill is in beta and under active development.
+> Results should be reviewed carefully before use in production.
+> Report issues at https://github.com/adobe/skills/issues
 
 # Outbound HTTP calls without a timeout — AEM as a Cloud Service
 

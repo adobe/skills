@@ -1,8 +1,14 @@
 ---
 name: unbounded-query
-description: "AEM Cloud Service expert skill — handle an explicitly-unbounded query (`p.limit=-1` predicate or JCR `setLimit(-1)`): bound it when capping is provably safe, otherwise flag it for human pagination. Use for \"bound my query\", \"unbounded query\", \"query causing OOM\", or a scan that flags `p.limit=-1`. Top CSO OOM cause: an unbounded result set traversed in a loop fills the heap and saturates the instance. The analyzer locates the explicit markers; the recipe triages each by how the result is consumed — single-result → 1, already-bounded list → N, iterate-all on the request path → escalate. Never silently cap a result the caller reads in full."
+description: "[BETA] AEM Cloud Service expert skill — handle an explicitly-unbounded query (`p.limit=-1` predicate or JCR `setLimit(-1)`): bound it when capping is provably safe, otherwise flag it for human pagination. Use for \"bound my query\", \"unbounded query\", \"query causing OOM\", or a scan that flags `p.limit=-1`. Top CSO OOM cause: an unbounded result set traversed in a loop fills the heap and saturates the instance. The analyzer locates the explicit markers; the recipe triages each by how the result is consumed — single-result → 1, already-bounded list → N, iterate-all on the request path → escalate. Never silently cap a result the caller reads in full. This skill is in beta. Verify all outputs before applying them to production projects."
+metadata:
+  status: beta
 license: Apache-2.0
 ---
+
+> **Beta Skill**: This skill is in beta and under active development.
+> Results should be reviewed carefully before use in production.
+> Report issues at https://github.com/adobe/skills/issues
 
 # Unbounded query — AEM as a Cloud Service
 
