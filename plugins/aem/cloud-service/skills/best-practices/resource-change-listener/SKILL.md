@@ -1,6 +1,6 @@
 ---
 name: resource-change-listener
-description: AEM Cloud Service expert skill for Sling ResourceChangeListener. Covers the lightweight listener + JobConsumer pattern, migration from javax.jcr.observation.EventListener and resource-topic OSGi EventHandler, ResourceChangeListener vs ExternalResourceChangeListener decision, OSGi filter configuration, review checklist, troubleshooting (silent failures, hot-path blocking, missing service-user mapping), and common pitfalls.
+description: AEM as a Cloud Service guide for Sling ResourceChangeListener. Covers the lightweight listener + JobConsumer pattern, migration from javax.jcr.observation.EventListener and resource-topic OSGi EventHandler, ResourceChangeListener vs ExternalResourceChangeListener decision, OSGi filter configuration, review checklist, troubleshooting (silent failures, hot-path blocking, missing service-user mapping), and common pitfalls.
 license: Apache-2.0
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: asset-manager
-description: AEM Cloud Service expert skill for the Asset Manager API (com.day.cq.dam.api.AssetManager). Covers two migration paths — Path A (create/upload, replacing createAssetForBinary/getAssetForBinary/client-facing createAsset with Direct Binary Access via @adobe/aem-upload) and Path B (delete, replacing removeAssetForBinary with in-JVM resolver.delete() + commit or external HTTP Assets API with IMS bearer tokens). Covers IMS authentication, service-user setup with crx delete permissions, asset processing pipeline, common pitfalls (hardcoded credentials, AEM calling its own HTTP API), and composition with replication/event-migration skills.
+description: AEM as a Cloud Service guide for the Asset Manager API (com.day.cq.dam.api.AssetManager). Covers two migration paths — Path A (create/upload, replacing createAssetForBinary/getAssetForBinary/client-facing createAsset with Direct Binary Access via @adobe/aem-upload) and Path B (delete, replacing removeAssetForBinary with in-JVM resolver.delete() + commit or external HTTP Assets API with IMS bearer tokens). Covers IMS authentication, service-user setup with crx delete permissions, asset processing pipeline, common pitfalls (hardcoded credentials, AEM calling its own HTTP API), and composition with the replication and event-migration pattern guides.
 license: Apache-2.0
 ---
 

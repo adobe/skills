@@ -1,6 +1,6 @@
 ---
 name: scheduler
-description: AEM Cloud Service expert skill for Sling Scheduler. Routes to path-a.md (Runnable + OSGi properties) or path-b.md (Sling Jobs via JobManager). Covers classification, CS-specific constraints (no @SlingScheduled, multi-pod runOn, Boolean type hint), review checklist, troubleshooting fingerprints, and common pitfalls.
+description: AEM as a Cloud Service guide for Sling Scheduler. Covers two paths — path-a.md (Runnable + OSGi properties) and path-b.md (Sling Jobs via JobManager) — plus classification, CS-specific constraints (no @SlingScheduled, multi-pod runOn, Boolean type hint), review checklist, troubleshooting fingerprints, and common pitfalls.
 license: Apache-2.0
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: event-migration
-description: AEM Cloud Service expert skill for OSGi Event Admin handlers (non-resource events). Covers migration of javax.jcr.observation.EventListener (residual non-resource cases) and OSGi EventHandler with inline business logic to the lightweight EventHandler + JobConsumer split. Includes routing rules (resource events go to resource-change-listener, external notification goes to AEM Eventing), TopologyEventListener for leader-only execution, replication and workflow event patterns, service-user setup, review checklist, troubleshooting, and common pitfalls.
+description: AEM as a Cloud Service guide for OSGi Event Admin handlers (non-resource events). Covers migration of javax.jcr.observation.EventListener (residual non-resource cases) and OSGi EventHandler with inline business logic to the lightweight EventHandler + JobConsumer split. Includes routing rules (resource events go to resource-change-listener, external notification goes to AEM Eventing), TopologyEventListener for leader-only execution, replication and workflow event patterns, service-user setup, review checklist, troubleshooting, and common pitfalls.
 license: Apache-2.0
 ---
 

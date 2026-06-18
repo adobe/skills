@@ -1,6 +1,6 @@
 ---
 name: replication
-description: AEM Cloud Service expert skill for replication / content distribution. Covers migration from CQ Replicator (com.day.cq.replication.Replicator) and Sling Replication Agent (org.apache.sling.replication.agent.api) to the Sling Distribution API (Distributor + SimpleDistributionRequest). Includes agent selection (publish vs preview), async response handling, author cluster coordination, service-user setup, review checklist, troubleshooting, and common pitfalls.
+description: AEM as a Cloud Service guide for replication / content distribution. Covers migration from CQ Replicator (com.day.cq.replication.Replicator) and Sling Replication Agent (org.apache.sling.replication.agent.api) to the Sling Distribution API (Distributor + SimpleDistributionRequest). Includes agent selection (publish vs preview), async response handling, author cluster coordination, service-user setup, review checklist, troubleshooting, and common pitfalls.
 license: Apache-2.0
 ---
 
