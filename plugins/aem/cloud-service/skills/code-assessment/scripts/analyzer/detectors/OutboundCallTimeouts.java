@@ -34,12 +34,13 @@ public final class OutboundCallTimeouts implements Detector {
     public String pattern() { return "outbound-call-timeouts"; }
     public boolean needsPoms() { return false; }   // Java-only detector
 
-    // Simple type-name fragments naming an HTTP client we cover. Textual match against the
-    // construction expression covers Apache HttpClient 4.x (org.apache.http) and 5.x (org.apache.hc)
-    // — both expose HttpClients / HttpClientBuilder — plus OkHttp and JDK java.net.http.HttpClient.
-    private static final String[] CLIENT_TYPES = {
-        "HttpClientBuilder", "HttpClients", "OkHttpClient", "HttpClient"
-    };
+    // Type names of an HTTP client we cover, matched as whole words (\b…\b) — covers Apache
+    // HttpClient 4.x (org.apache.http) and 5.x (org.apache.hc), both exposing HttpClients /
+    // HttpClientBuilder, plus OkHttp and JDK java.net.http.HttpClient. Word-boundary matching is
+    // deliberate: a bare substring "HttpClient" otherwise matches identifiers like
+    // `mockCloseableHttpClient` (e.g. a Mockito `.build()` stub), producing false positives (CA-12).
+    private static final java.util.regex.Pattern CLIENT_TYPE = java.util.regex.Pattern.compile(
+        "\\b(HttpClientBuilder|HttpClients|OkHttpClient|HttpClient)\\b");
 
     // A candidate must look like client *creation*, not just any mention of the type.
     private static final String[] CREATION_MARKERS = {
@@ -90,7 +91,7 @@ public final class OutboundCallTimeouts implements Detector {
 
         // Client construction (Apache HttpClient 4.x/5.x, OkHttp, JDK HttpClient): flag when no
         // timeout knob appears anywhere in the enclosing scope.
-        if (!containsAny(text, CLIENT_TYPES)) return;
+        if (!CLIENT_TYPE.matcher(text).find()) return;
         if (!containsAny(text, CREATION_MARKERS)) return;
         if (containsAny(enclosingScopeText(path, u), TIMEOUT_TOKENS)) return;   // timeout set in scope
         emit(node, u, out, seen, text);

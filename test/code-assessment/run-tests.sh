@@ -166,6 +166,7 @@ assert_contains "JDK request without timeout flagged"   "$OUT" 'JdkRequestBad.ja
 assert_absent  "RequestConfig-timeout client not flagged" "$OUT" 'GoodHttpService.java'
 assert_absent  "JDK request with timeout not flagged"   "$OUT" 'JdkRequestGood.java'
 assert_absent  "non-JDK HttpRequest not flagged"        "$OUT" 'OtherHttpRequest.java'
+assert_absent  "Mockito .build() stub not flagged (CA-12)" "$OUT" 'MockitoStub.java'
 
 echo "[unbounded-query] explicit p.limit=-1 / setLimit(-1) (literal + same-file const) flagged; bounded clean"
 OUT="$(run "$FIX/unbounded-query")"
