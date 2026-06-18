@@ -1,12 +1,12 @@
 # AEM as a Cloud Service — Code Migration
 
-This skill orchestrates migration **from legacy AEM (6.x, AMS, or on-prem) to AEM as a Cloud Service**: Best Practices Analyzer (BPA) data, Cloud Acceleration Manager (CAM) via MCP when available, and a one-pattern-per-session workflow.
+This skill drives migration **from legacy AEM (6.x, AMS, or on-prem) to AEM as a Cloud Service**: Best Practices Analyzer (BPA) data, Cloud Acceleration Manager (CAM) via MCP when available, and a one-pattern-per-session workflow.
 
 **Target platform** is always **AEM as a Cloud Service**. Source is legacy AEM; ambiguous top-level “migration” is avoided by scoping this under `skills/aem/cloud-service/skills/migration/`.
 
 ## Requires `best-practices`
 
-**This skill is not standalone.** It orchestrates BPA/CAM and target discovery; **step-by-step refactors live only in the [`best-practices`](../best-practices/) skill**. Five major patterns are dedicated **expert skill subdirectories** (`scheduler/`, `resource-change-listener/`, `replication/`, `event-migration/`, `asset-manager/`); cross-cutting concerns (SCR→DS, ResourceResolver/SLF4J, HTL lint, prerequisites hub) are **reference modules** under `references/`. For any code change, the agent must read the relevant expert skill or reference module — **migration does not copy those procedures** here.
+**This skill is not standalone.** It drives BPA/CAM and target discovery; **step-by-step refactors live only in the [`best-practices`](../best-practices/) skill**. Five major patterns each have a **pattern guide** (`scheduler/`, `resource-change-listener/`, `replication/`, `event-migration/`, `asset-manager/`); shared topics (SCR→DS, ResourceResolver/SLF4J, HTL lint, prerequisites hub) live as **references** under `references/`. For any code change, the agent must read the relevant pattern guide or reference — **migration does not copy those procedures** here.
 
 - **You need both:** use **migration** for workflow and targets; use **best-practices** for how to edit Java/OSGi and apply each pattern.
 - **Install once, get both:** the umbrella **`aem-cloud-service`** plugin (path `skills/aem/cloud-service`) includes `migration/` and `best-practices/` together. Do not rely on migration alone unless the same `best-practices` files are already on disk (for example full `adobe/skills` checkout with working `{best-practices}` links).

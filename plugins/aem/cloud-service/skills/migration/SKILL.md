@@ -1,6 +1,6 @@
 ---
 name: migration
-description: Orchestrates legacy AEM (6.x, AMS, on-prem) to AEM as a Cloud Service migration using BPA CSV or cache, CAM/MCP target discovery, and one-pattern-per-session workflow. Use for BPA/CAM findings, Cloud Service blockers, or fixes for scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler, DAM AssetManager, HTL data-sly-test lint. OSGi configs → Cloud Manager — scan ui.config, .cfg.json, secrets, $[secret:]/$[env:] — agent follows references/osgi-cfg-json-cloud-manager.md when prompted. Transformation steps live in the best-practices skill: five major patterns are dedicated expert skills (scheduler/, resource-change-listener/, replication/, event-migration/, asset-manager/); cross-cutting concerns are reference modules under references/. Read the right one before editing code.
+description: Migrates legacy AEM (6.x, AMS, on-prem) to AEM as a Cloud Service using BPA CSV or cache, CAM/MCP target discovery, and a one-pattern-per-session workflow. Use for BPA/CAM findings, Cloud Service blockers, or fixes for scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler, DAM AssetManager, HTL data-sly-test lint. OSGi configs → Cloud Manager — scan ui.config, .cfg.json, secrets, $[secret:]/$[env:] — agent follows references/osgi-cfg-json-cloud-manager.md when prompted. Transformation steps live in the best-practices skill: five major patterns each have a pattern guide (scheduler/, resource-change-listener/, replication/, event-migration/, asset-manager/); shared topics live as references under references/. Read the right one before editing code.
 license: Apache-2.0
 ---
 
@@ -8,7 +8,7 @@ license: Apache-2.0
 
 **Source → target:** Legacy **AEM 6.x / AMS / on-prem** → **AEM as a Cloud Service**. Scoped under `skills/aem/cloud-service/skills/migration/` so this is not confused with Edge Delivery or 6.5 LTS.
 
-This skill is **orchestration**: BPA data, CAM/MCP, **one pattern per session**, and target discovery. **Transformation rules and steps** live in the **`best-practices`** skill — read that skill and the right **expert skill subdirectory** (`<pattern>/SKILL.md`) or reference module (`references/<file>.md`) before editing code.
+This skill drives the **migration workflow**: BPA data, CAM/MCP, **one pattern per session**, and target discovery. **Transformation rules and steps** live in the **`best-practices`** skill — read that skill and the right **pattern guide** (`<pattern>/SKILL.md`) or reference (`references/<file>.md`) before editing code.
 
 **Setup:** Use the **`aem-cloud-service`** install (see repository root **README**) so both **migration** and **best-practices** paths are available. If you already have the monorepo open with resolvable `{best-practices}` paths, no separate install step is required.
 
@@ -59,16 +59,16 @@ Applies to **finding and editing the user's AEM project** (Java, bundles, config
 **Branch B — Java / HTL / BPA pattern migration:**
 
 1. Read **`{best-practices}/SKILL.md`** — critical rules, Java baseline links, **Pattern Reference Modules** table, **Manual Pattern Hints**.
-2. Read the **expert skill** (or reference module) for the **single** active pattern. Routing:
-   - `scheduler` → **`{best-practices}/scheduler/SKILL.md`** *(expert skill)*
-   - `resourceChangeListener` → **`{best-practices}/resource-change-listener/SKILL.md`** *(expert skill)*
-   - `replication` → **`{best-practices}/replication/SKILL.md`** *(expert skill)*
-   - `eventListener` / `eventHandler` → **`{best-practices}/event-migration/SKILL.md`** *(expert skill — both JCR and OSGi Event Admin paths)*
-   - `assetApi` → **`{best-practices}/asset-manager/SKILL.md`** *(expert skill)*
-   - `htlLint` → **`{best-practices}/references/data-sly-test-redundant-constant.md`** *(reference module by design — HTL lint stays a reference module, not an expert skill subdirectory)*
+2. Read the **pattern guide** (or reference) for the **single** active pattern:
+   - `scheduler` → **`{best-practices}/scheduler/SKILL.md`** *(pattern guide)*
+   - `resourceChangeListener` → **`{best-practices}/resource-change-listener/SKILL.md`** *(pattern guide)*
+   - `replication` → **`{best-practices}/replication/SKILL.md`** *(pattern guide)*
+   - `eventListener` / `eventHandler` → **`{best-practices}/event-migration/SKILL.md`** *(pattern guide — both JCR and OSGi Event Admin paths)*
+   - `assetApi` → **`{best-practices}/asset-manager/SKILL.md`** *(pattern guide)*
+   - `htlLint` → **`{best-practices}/references/data-sly-test-redundant-constant.md`** *(reference — HTL lint is a single shared reference, not a dedicated pattern guide)*
 3. When code uses SCR, `ResourceResolver`, or console logging, read **`{best-practices}/references/scr-to-osgi-ds.md`** and **`{best-practices}/references/resource-resolver-logging.md`** (or the hub **`{best-practices}/references/aem-cloud-service-pattern-prerequisites.md`**).
 
-Do not transform **Java or HTL** until the pattern's expert skill (or reference module) is read (branch B). Branch A does not require `{best-practices}` pattern guidance.
+Do not transform **Java or HTL** until the pattern guide (or reference) is read (branch B). Branch A does not require `{best-practices}` pattern guidance.
 
 ## When to Use This Skill
 
@@ -198,7 +198,7 @@ For retries, error categories, and when user-directed CSV/manual paths are allow
 
 ## Pattern modules
 
-Do **not** duplicate the pattern table here. Use **`{best-practices}/SKILL.md` → Pattern Reference Modules** — five patterns route to expert skill subdirectories (`{best-practices}/<pattern>/SKILL.md`); cross-cutting concerns (SCR→DS, ResourceResolver/SLF4J, HTL lint, prerequisites hub) stay as reference modules (`{best-practices}/references/<file>.md`). See **Branch B step 2** above for the per-pattern routing table.
+Do **not** duplicate the pattern table here. Use **`{best-practices}/SKILL.md` → Pattern Guides** — five patterns each have a pattern guide (`{best-practices}/<pattern>/SKILL.md`); shared topics (SCR→DS, ResourceResolver/SLF4J, HTL lint, prerequisites hub) stay as references (`{best-practices}/references/<file>.md`). See **Branch B step 2** above for the per-pattern routing table.
 
 ## Workflow
 
@@ -228,7 +228,7 @@ the user says to continue. See **Batched processing (batch size 5)** below.
 
 ### Step 4: Read before edits
 
-**STOP.** Read **`{best-practices}/SKILL.md`** and the expert skill (or reference module) for the active pattern — see **Branch B step 2** above for the pattern → file routing table.
+**STOP.** Read **`{best-practices}/SKILL.md`** and the pattern guide (or reference) for the active pattern — see **Branch B step 2** above for the pattern → file routing table.
 
 ### Step 5: Process the batch
 
@@ -256,7 +256,7 @@ requests it, and pass `offset: paging.nextOffset` unchanged.
 
 ### Manual flow (no BPA)
 
-User-named files → classify (best-practices hints or ask) → confirm the expert skill or reference module exists → read **`{best-practices}/SKILL.md`** + the expert skill (or reference module) — see Branch B step 2 routing — → transform → report.
+User-named files → classify (best-practices hints or ask) → confirm the pattern guide or reference exists → read **`{best-practices}/SKILL.md`** + the pattern guide (or reference) — see Branch B step 2 routing — → transform → report.
 
 ### OSGi → Cloud Manager flow
 
@@ -266,7 +266,7 @@ Does **not** use BPA CSV, CAM/MCP, or best-practices pattern modules for collect
 
 `htlLint` does not use BPA CSV or CAM/MCP. Instead:
 
-1. **Read** [`{best-practices}/references/data-sly-test-redundant-constant.md`](../best-practices/references/data-sly-test-redundant-constant.md) — it contains the **Workflow**, **Proactive Discovery** `rg` patterns, and all 4 fix patterns. (HTL lint stays as a reference module — not an expert skill subdirectory.)
+1. **Read** [`{best-practices}/references/data-sly-test-redundant-constant.md`](../best-practices/references/data-sly-test-redundant-constant.md) — it contains the **Workflow**, **Proactive Discovery** `rg` patterns, and all 4 fix patterns. (HTL lint lives as a shared reference, not a dedicated pattern guide.)
 2. **Discover** targets using the `rg` commands from the module's **Proactive Discovery** table (scope: `ui.apps/**/jcr_root/**/*.html` or the user's content package paths).
 3. **Group** hits by file, classify each by pattern (boolean literal, raw string, numeric, split expression).
 4. **Fix** each hit per the matching pattern section in the module.
