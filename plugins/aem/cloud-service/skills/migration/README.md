@@ -17,7 +17,7 @@ This skill drives migration **from legacy AEM (6.x, AMS, or on-prem) to AEM as a
 
 - BPA collection, CSV, and CAM/MCP flows (CAM tool schemas and retries: `references/cam-mcp.md`)
 - Manual flow and pattern auto-detection
-- Delegates detailed transformations to **`best-practices`**
+- Points to **`best-practices`** for all detailed transformation steps
 
 **First run:** In chat, name **one BPA pattern** (e.g. scheduler) and either a **CSV path**, **CAM/MCP**, or **concrete Java files**. See **Quick start** in `SKILL.md` for copy-paste prompts and the CAM happy path in `references/cam-mcp.md`.
 

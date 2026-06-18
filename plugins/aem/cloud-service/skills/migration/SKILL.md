@@ -28,7 +28,7 @@ This skill drives the **migration workflow**: BPA data, CAM/MCP, **one pattern p
 
 - *"Use the migration skill: **scheduler** only, BPA CSV at `./reports/bpa.csv`, then apply the best-practices pattern guide before editing."*
 - *"**Replication** only from CAM; list projects first, I'll pick one."*
-- *"**Manual:** **event listener** migration for `.../Listener.java` — read best-practices module first."*
+- *"**Manual:** **event listener** migration for `.../Listener.java` — read the best-practices pattern guide first."*
 - *"Scan my config files and create Cloud Manager environment secrets or variables."*
 - *"Fix **htlLint** in `ui.apps` — scan for `data-sly-test` redundant constant warnings and fix them."*
 
@@ -235,7 +235,7 @@ the user says to continue. See **Batched processing (batch size 5)** below.
 For **each finding in the returned batch only** (up to 5):
 
 1. Resolve the target **inside the IDE workspace** (see **Workspace scope (IDE)**).
-2. Read source → classify with the module → apply steps **in order** → check lints → next file.
+2. Read source → classify with the pattern guide (or reference) → apply steps **in order** → check lints → next file.
 
 Do **not** request the next batch mid-processing. Never hold more than one batch of findings in working memory at a time.
 
@@ -267,9 +267,9 @@ Does **not** use BPA CSV, CAM/MCP, or best-practices pattern guides for collecti
 `htlLint` does not use BPA CSV or CAM/MCP. Instead:
 
 1. **Read** [`{best-practices}/references/data-sly-test-redundant-constant.md`](../best-practices/references/data-sly-test-redundant-constant.md) — it contains the **Workflow**, **Proactive Discovery** `rg` patterns, and all 4 fix patterns. (HTL lint lives as a shared reference, not a dedicated pattern guide.)
-2. **Discover** targets using the `rg` commands from the module's **Proactive Discovery** table (scope: `ui.apps/**/jcr_root/**/*.html` or the user's content package paths).
+2. **Discover** targets using the `rg` commands from the reference's **Proactive Discovery** table (scope: `ui.apps/**/jcr_root/**/*.html` or the user's content package paths).
 3. **Group** hits by file, classify each by pattern (boolean literal, raw string, numeric, split expression).
-4. **Fix** each hit per the matching pattern section in the module.
+4. **Fix** each hit per the matching pattern section in the reference.
 5. **Report** and recommend the user run `mvn clean install` or HTL validate to confirm no warnings remain.
 
 ## Batched processing (batch size 5)
