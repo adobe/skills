@@ -3,7 +3,9 @@
 # and asserts on the JSON it prints to stdout. Requires only a JDK and bash.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
-ANALYZE="$HERE/../analyze.sh"
+REPO_ROOT="$(cd "$HERE/../.." && pwd)"
+SKILL_ROOT="$REPO_ROOT/plugins/aem/cloud-service/skills/code-assessment"
+ANALYZE="$SKILL_ROOT/scripts/analyze.sh"
 FIX="$HERE/fixtures"
 PASS=0; FAIL=0
 
@@ -83,7 +85,6 @@ assert_absent  "inherited-dep (version-less) skipped"          "$OUT" 'inherited
 assert_absent  "reactor-module (\${project.version}) skipped"  "$OUT" 'reactor-module'
 
 echo "[wiring] each registered detector has an expert skill + ready/analyzer catalog row"
-SKILL_ROOT="$(cd "$HERE/../.." && pwd)"
 PATTERNS_MD="$SKILL_ROOT/references/patterns.md"
 for slug in $(bash "$ANALYZE" --list-patterns); do
   if [ -f "$SKILL_ROOT/$slug/SKILL.md" ]; then

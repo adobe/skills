@@ -73,8 +73,11 @@ a query recurs across detectors, promote it to a shared static helper rather tha
 
 ## Tests
 
+The dev-only test harness lives at the repo root (outside the skill, so it is not installed on
+customer systems). Run it from the repo root:
+
 ```
-bash test/run-tests.sh
+bash test/code-assessment/run-tests.sh
 ```
 
 Dependency-free (JDK + bash + `grep`): runs the analyzer against fixtures and asserts on the
