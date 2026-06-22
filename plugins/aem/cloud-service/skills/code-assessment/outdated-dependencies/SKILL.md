@@ -1,8 +1,14 @@
 ---
 name: outdated-dependencies
-description: "AEM Cloud Service expert skill — upgrade outdated Maven dependencies in pom.xml, both literal <version> and same-pom ${property} shapes. Use for \"update my aem-sdk-api\", \"upgrade mockito\", or scanning a project for stale dependency versions. Discovery can find <dependency> blocks but \"outdated\" needs a target version, which the user supplies. Pattern A/B locators and editing strategy are in recipe.md."
+description: "[BETA] AEM Cloud Service expert skill — upgrade outdated Maven dependencies in pom.xml, both literal <version> and same-pom ${property} shapes. Use for \"update my aem-sdk-api\", \"upgrade mockito\", or scanning a project for stale dependency versions. Discovery can find <dependency> blocks but \"outdated\" needs a target version, which the user supplies. Pattern A/B locators and editing strategy are in recipe.md. This skill is in beta. Verify all outputs before applying them to production projects."
+metadata:
+  status: beta
 license: Apache-2.0
 ---
+
+> **Beta Skill**: This skill is in beta and under active development.
+> Results should be reviewed carefully before use in production.
+> Report issues at https://github.com/adobe/skills/issues
 
 # Outdated Maven dependencies — AEM as a Cloud Service
 

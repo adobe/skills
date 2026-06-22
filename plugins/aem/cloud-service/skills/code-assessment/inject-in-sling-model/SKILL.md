@@ -1,8 +1,16 @@
 ---
 name: inject-in-sling-model
-description: AEM Cloud Service expert skill — migrate javax.inject.@Inject fields in Sling Model (@Model) classes to injector-specific annotations (@ValueMapValue / @OSGiService / @SlingObject). Self-discoverable (scan for @Model classes with field-level @Inject); the replacement is chosen deterministically from each field's declared type. Use for "fix @Inject in HeroModel.java", "modernize my Sling Models", or when scanning an AEM project for @Inject misuse. Detailed decision table, companion-annotation handling, import management, and file-level skip policy are in recipe.md.
+description: |
+  [BETA] AEM Cloud Service expert skill — migrate javax.inject.@Inject fields in Sling Model (@Model) classes to injector-specific annotations (@ValueMapValue / @OSGiService / @SlingObject). Self-discoverable (scan for @Model classes with field-level @Inject); the replacement is chosen deterministically from each field's declared type. Use for "fix @Inject in HeroModel.java", "modernize my Sling Models", or when scanning an AEM project for @Inject misuse. Detailed decision table, companion-annotation handling, import management, and file-level skip policy are in recipe.md.
+  This skill is in beta. Verify all outputs before applying them to production projects.
+metadata:
+  status: beta
 license: Apache-2.0
 ---
+
+> **Beta Skill**: This skill is in beta and under active development.
+> Results should be reviewed carefully before use in production.
+> Report issues at https://github.com/adobe/skills/issues
 
 # @Inject in Sling Models — AEM as a Cloud Service
 
