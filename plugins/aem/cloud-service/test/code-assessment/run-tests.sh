@@ -3,8 +3,9 @@
 # and asserts on the JSON it prints to stdout. Requires only a JDK and bash.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$HERE/../.." && pwd)"
-SKILL_ROOT="$REPO_ROOT/plugins/aem/cloud-service/skills/code-assessment"
+# Harness lives at plugins/aem/cloud-service/test/code-assessment; the skill it exercises
+# is its sibling under skills/code-assessment.
+SKILL_ROOT="$(cd "$HERE/../../skills/code-assessment" && pwd)"
 ANALYZE="$SKILL_ROOT/scripts/analyze.sh"
 FIX="$HERE/fixtures"
 PASS=0; FAIL=0

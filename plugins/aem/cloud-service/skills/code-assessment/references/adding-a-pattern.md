@@ -75,14 +75,14 @@ public final class YourDetector implements Detector {
   add it once as a shared static helper rather than copying it.
 - **Register** it: add `new YourDetector()` to `Registry.all()` in `scripts/analyzer/Registry.java`.
 
-Verify in isolation (from repo root): `bash plugins/aem/cloud-service/skills/code-assessment/scripts/analyze.sh test/code-assessment/fixtures/<slug> --pattern <slug>`.
+Verify in isolation (from repo root): `bash plugins/aem/cloud-service/skills/code-assessment/scripts/analyze.sh plugins/aem/cloud-service/test/code-assessment/fixtures/<slug> --pattern <slug>`.
 
-## Step 3 — fixtures + tests (`test/code-assessment/`)
+## Step 3 — fixtures + tests (`plugins/aem/cloud-service/test/code-assessment/`)
 
 - Create `fixtures/<slug>/` with at least: one **antipattern** file (must be flagged) and one
   **clean / negative** file (must NOT be flagged). Add edge cases (import-aware collisions, scope
   suppression, etc.) as needed.
-- Add a block to `test/code-assessment/run-tests.sh` immediately before the `echo "----"` summary:
+- Add a block to `plugins/aem/cloud-service/test/code-assessment/run-tests.sh` immediately before the `echo "----"` summary:
 
 ```bash
 echo "[<slug>] <what it checks>"
@@ -92,7 +92,7 @@ assert_contains "expected file present"    "$OUT" 'Antipattern.java'
 assert_absent  "clean file not flagged"    "$OUT" 'Clean.java'
 ```
 
-- Run red → green (from repo root): `bash test/code-assessment/run-tests.sh`.
+- Run red → green (from repo root): `bash plugins/aem/cloud-service/test/code-assessment/run-tests.sh`.
 
 ## Step 4 — catalog + routing
 
@@ -121,7 +121,7 @@ Author from [`_template.md`](_template.md):
 ## Step 6 — verify
 
 ```bash
-bash test/code-assessment/run-tests.sh   # your block + [wiring] green
+bash plugins/aem/cloud-service/test/code-assessment/run-tests.sh   # your block + [wiring] green
 npm run validate                         # exit 0
 ```
 
