@@ -1,0 +1,55 @@
+/*
+ * Minimal EDS lifecycle CSS for overlay-driven pages.
+ * The bulk of styling lives in /styles/<template>.css, loaded
+ * dynamically by the overlay engine after it resolves the template
+ * name. Boilerplate typography/button/icon styles were removed
+ * because each template carries its own design system inline.
+ */
+
+body {
+  display: none;
+}
+
+body.appear {
+  display: block;
+}
+
+/* Section visibility lifecycle used by aem.js decorateSections when
+   running on non-overlay pages. Harmless on overlay pages because the
+   overlay skips decorateSections entirely. */
+main .section[data-section-status="loading"],
+main .section[data-section-status="initialized"] {
+  display: none;
+}
+
+/* Header/footer block visibility flag from aem.js block lifecycle.
+   Allows the empty <header>/<footer> placeholders to stay invisible
+   until our static fragments are fetched and injected.
+   Uses direct-child (>) so we only target the EDS block wrapper —
+   NOT any nested .header / .footer elements the fetched fragment
+   itself might contain (sources that wrap their nav in
+   <header class="header"> would otherwise stay permanently hidden
+   under a descendant selector). */
+header > .header,
+footer > .footer {
+  visibility: hidden;
+}
+
+header > .header[data-block-status="loaded"],
+footer > .footer[data-block-status="loaded"] {
+  visibility: visible;
+}
+
+/* Reset padding/margin on the EDS landmark <header>/<footer> elements.
+   Page CSS often uses generic selectors like `section, header, footer`
+   to set section padding — that rule incorrectly leaks into the EDS
+   landmarks (which wrap our fragments). The source page's <header>
+   was usually a SPECIFIC class like .promo-strip / .site-header with
+   class-level padding overrides; the EDS landmark <header> has no
+   such class so the generic rule wins. body > selector specificity
+   (0,0,2) wins over plain header (0,0,1) without !important. */
+body > header,
+body > footer {
+  padding: 0;
+  margin: 0;
+}

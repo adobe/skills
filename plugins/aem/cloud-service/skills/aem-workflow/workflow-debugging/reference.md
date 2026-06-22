@@ -1,26 +1,8 @@
 # AEM Workflow Debugging – Reference (Cloud Service)
 
-Quick pointers used by the workflow-debugging skill. For full runbooks and procedures, use the paths below inside this repo.
-
----
-
-## Runbook locations (relative to repo root)
-
-| Runbook | Path |
-|---------|------|
-| Decision guide (symptom → runbook) | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-decision-guide.md` |
-| Debugging index (machine-readable) | `aem-agent-marketplace-workflow-knowledge-base/docs/debugging-index.md` |
-| Workflow stuck | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-workflow-stuck.md` |
-| Task not in Inbox | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-task-not-in-inbox.md` |
-| Launcher not starting | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-launcher-not-starting.md` |
-| Workflow fails / error | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-workflow-fails-or-shows-error.md` |
-| Failed work items | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-failed-work-items.md` |
-| Stale workflows | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-stale-workflows.md` |
-| Purge and cleanup | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-purge-and-cleanup.md` |
-| Inbox and permissions | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-inbox-and-permissions.md` |
-| Model delete/update | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-model-delete-and-update.md` |
-| Job throughput / concurrency | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-job-throughput-and-concurrency.md` |
-| Validate workflow setup | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-validate-workflow-setup.md` |
+Quick pointers used by the workflow-debugging skill. Use the SKILL.md Step 1
+symptom table for the symptom → first-action map; the entries below are for
+quick access to diagnostic tools, log patterns, and external documentation.
 
 ---
 
@@ -28,26 +10,39 @@ Quick pointers used by the workflow-debugging skill. For full runbooks and proce
 
 | Tool | Where | Purpose |
 |------|-------|---------|
-| Developer Console | AEM Cloud Service → Developer Console | Thread dumps, OSGi bundles, config |
-| Cloud Manager Logs | Cloud Manager → Environments → Logs | error.log, access.log download/streaming |
-| Workflow Console | /libs/cq/workflow/admin/console/content/instances.html | Instance status, work items, history |
-| Sling Job Console | /system/console/slingjobs | Queue depth, failed jobs, active jobs |
-| Inbox | /aem/inbox | Retry failed work items, complete tasks |
+| Developer Console | AEM Cloud Service → Developer Console | Thread dumps, OSGi bundles, config, status producers |
+| Cloud Manager Logs | Cloud Manager → Environments → Logs | `error.log`, `access.log`, `request.log` download/streaming |
+| Workflow Console | `/libs/cq/workflow/admin/console/content/instances.html` | Instance status, work items, history |
+| Sling Jobs page | `/system/console/slingevent` | Queue depth, failed jobs, active jobs (read-only) |
+| Sling Thread Pools page | `/system/console/status-slingthreadpools` | Per-pool active count, max size, block policy |
+| Threads page | `/system/console/status-Threads` | Live thread states; full stacks |
+| Thread dump | `/system/console/status-jstack-threaddump` | jstack-style snapshot |
+| Sling Scheduler page | `/system/console/status-slingscheduler` | Scheduled jobs and their ThreadPool |
+| OSGi Configuration | `/system/console/configMgr` | Read and (on lower envs) edit OSGi configs |
+| Inbox | `/aem/inbox` | Retry failed work items, complete tasks |
+
+Note: `/system/console/jmx` is **not** available on AEMaaCS production. The same
+MBeans exist on the local AEMaaCS SDK, but production diagnosis must use the
+status producers above plus Cloud Manager logs.
 
 ---
 
-## Log patterns (see also docs/error-patterns.md)
+## Log patterns
 
-- `Error executing workflow step` – Process/step exception
-- `getProcess for '<name>' failed` – Process not registered
-- `Cannot archive workitem` – Stale risk
-- `refreshing the session since we had to wait for a lock` – Contention
-- `Terminate failed` / `Resume failed` / `Suspend failed` – Permissions
-- `PathNotFoundException` (workflow/payload) – Payload or launcher path
+- `Error executing workflow step` – process/step exception
+- `getProcess for '<name>' failed` – process not registered (`process.label` mismatch)
+- `Cannot archive workitem` – stale risk; archive failed during step transition
+- `refreshing the session since we had to wait for a lock` – contention; **reduce** `queue.maxparallel`, do not raise it
+- `Terminate failed` / `Resume failed` / `Suspend failed` – permissions (not initiator or superuser)
+- `PathNotFoundException` (workflow/payload) – payload deleted, or launcher config path missing
+- `RejectedExecutionException` – thread pool full with `blockPolicy=ABORT`; timeout jobs dropped
+- `retrys exceeded - remove isTransient` – transient workflow failed after `cq.workflow.job.retry` exhausted
 
 ---
 
-## External docs (Experience League)
+## External docs
 
-- [Workflows overview (Cloud Service)](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/workflows/overview)
-- [Workflow API (6.5 Javadoc, applies to Cloud)](https://developer.adobe.com/experience-manager/reference-materials/6-5/javadoc/com/adobe/granite/workflow/exec/Workflow.html)
+- [Working with Workflows (Cloud Service)](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/sites/authoring/workflows/overview)
+- [Workflow API (AEMaaCS Javadoc)](https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/com/adobe/granite/workflow/exec/Workflow.html)
+- [Configuring OSGi for AEM Cloud Service](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/deploying/configuring-osgi)
+- [AEMaaCS repoinit (Deploying overview → Repoinit)](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/deploying/overview#repoinit)

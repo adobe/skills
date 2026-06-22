@@ -1,0 +1,53 @@
+<body>
+  <header></header>
+  <main>
+    <div>
+      <h1>Asset boundary test</h1>
+
+      <h2>1. External reachable URL (picsum.photos) in &lt;img&gt;</h2>
+      <p><img src="https://picsum.photos/seed/eds-boundary-A/400/300" alt="test-A external picsum"></p>
+
+      <h2>2. External reachable URL in &lt;source srcset&gt; only</h2>
+      <p><picture>
+        <source srcset="https://picsum.photos/seed/eds-boundary-B/400/300">
+        <img src="https://picsum.photos/seed/eds-boundary-B/400/300" alt="test-B external picsum picture">
+      </picture></p>
+
+      <h2>3. External unreachable URL (DNS fail) in &lt;img&gt;</h2>
+      <p><img src="https://this-host-does-not-exist-xyz789-eds-test.invalid/foo.png" alt="test-C invalid host"></p>
+
+      <h2>4. External URL pointing to non-image content-type</h2>
+      <p><img src="https://example.com/index.html" alt="test-D non-image"></p>
+
+      <h2>5. Self-host aem.page URL in &lt;img&gt;</h2>
+      <p><img src="https://main--snowflake-demos--aemcoder.aem.page/catalan-tests/media_15d7589cab0d35f55bb7fbfa3167cab3f2f9084a9.jpg" alt="test-E self-host media"></p>
+
+      <h2>6. Repeated external URL (dedup test)</h2>
+      <p><img src="https://picsum.photos/seed/eds-boundary-A/400/300" alt="test-F same URL as test-A"></p>
+
+      <h2>7. URL embedded in &lt;a href&gt; not &lt;img&gt;</h2>
+      <p><a href="https://picsum.photos/seed/eds-boundary-G/400/300">test-G external link, not image</a></p>
+
+      <h2>8. SVG external URL</h2>
+      <p><img src="https://upload.wikimedia.org/wikipedia/commons/4/4f/SVG_Logo.svg" alt="test-H external SVG"></p>
+
+      <h2>9. Section metadata background URL</h2>
+      <div class="quote">
+        <div><div><p>test-I quote with section background</p></div></div>
+      </div>
+      <div class="section-metadata">
+        <div><div>Style</div><div>dark</div></div>
+        <div><div>Background</div><div>https://picsum.photos/seed/eds-boundary-I/400/300</div></div>
+      </div>
+    </div>
+
+    <div>
+      <h2>Page metadata block</h2>
+      <div class="metadata">
+        <div><div>title</div><div>Asset boundary test</div></div>
+        <div><div>image</div><div><img src="https://picsum.photos/seed/eds-boundary-J/1200/630" alt="test-J og image"></div></div>
+      </div>
+    </div>
+  </main>
+  <footer></footer>
+</body>

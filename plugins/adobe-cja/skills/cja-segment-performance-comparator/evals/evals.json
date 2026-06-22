@@ -1,0 +1,23 @@
+{
+  "skill_name": "cja-segment-performance-comparator",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Compare my mobile vs desktop visitors on key metrics for the last 30 days. I want to see revenue, orders, cart additions, and sessions side by side. Which device type is performing better?",
+      "expected_output": "A segment comparison that creates ad hoc segments for Desktop and Mobile Phone device types (since no pre-built segments exist), runs one runReport per segment with all requested metrics, builds a comparison matrix with rows=metrics and cols=segments, marks winners with cell-winner CSS class and losers with cell-loser, computes spread for each metric, flags significant differences (spread > 10%), generates 3-5 narrative insights that quantify which device type wins on revenue/orders and which has the larger spread, and writes an HTML report to /tmp/cja_segment_performance_comparator_report_<timestamp>.html.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "How does the paid traffic segment perform vs organic? Pull the top segments from CJA and find anything related to acquisition channel, then compare them on our main KPIs for the last 30 days.",
+      "expected_output": "A segment comparison that calls findSegments to search for segments related to 'paid', 'organic', 'channel', or 'acquisition', describes the top matches via describeSegment to verify their logic, falls back to ad hoc segments using a marketing channel dimension if no pre-built segments are found, runs runReport per segment using listComponentUsage to pick the top 5-8 most-used metrics, builds the comparison matrix with winner/loser highlighting, identifies the segment with the most wins as the overall winner, and generates an HTML report with 3-5 insight bullets about channel performance differences.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Show me segment performance comparison for the last 30 days. I have two segments I care about: 'Highly Engaged People' and 'Low Engagement People'. Compare them on visitors, sessions, orders, revenue, and product views.",
+      "expected_output": "A segment comparison that uses findSegments to locate 'Highly Engaged People' and 'Low Engagement People' by name, calls describeSegment on each to confirm their definitions, runs one runReport per segment with the specified metrics using segmentIds, builds a matrix showing each metric value per segment with winner/loser cells highlighted, computes spread and significance for each row, generates at least 3 insight bullets including which segment wins overall and the biggest metric gap, and writes the HTML report to /tmp/cja_segment_performance_comparator_report_<timestamp>.html.",
+      "files": []
+    }
+  ]
+}

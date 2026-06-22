@@ -15,6 +15,8 @@ jobs:
           fetch-depth: 0
 
       - uses: tesslio/setup-tessl@v2
+        with:
+          token: ${{ secrets.TESSL_TOKEN }}
 
       - name: Detect changed skills
         id: detect
@@ -44,30 +46,6 @@ jobs:
 
             DIRS=$(echo "$DIRS" | xargs)  # trim whitespace
 
-            # Check for unmatched changes under plugins/
-            UNMATCHED=false
-            for changed_file in $CHANGED_FILES; do
-              case "$changed_file" in
-                plugins/*)
-                  MATCHED=false
-                  for skill_dir in $ALL_SKILL_DIRS; do
-                    case "$changed_file" in
-                      "$skill_dir"/*) MATCHED=true; break ;;
-                    esac
-                  done
-                  if [ "$MATCHED" = "false" ]; then
-                    UNMATCHED=true
-                    break
-                  fi
-                  ;;
-              esac
-            done
-
-            if [ "$UNMATCHED" = "true" ]; then
-              echo "Unmatched changes under plugins/ detected — reviewing all skills"
-              DIRS=$(find plugins -name SKILL.md -exec dirname {} \; 2>/dev/null | tr "\n" " " | xargs)
-            fi
-
             if [ -z "$DIRS" ]; then
               echo "skip=true" >> "$GITHUB_OUTPUT"
               echo "No skill files changed."
@@ -93,7 +71,7 @@ jobs:
       - name: Review skills
         if: steps.detect.outputs.skip != 'true'
         run: |
-          THRESHOLD=50
+          THRESHOLD=80
           PASS=0
           FAIL=0
           SUMMARY_FILE=$(mktemp)

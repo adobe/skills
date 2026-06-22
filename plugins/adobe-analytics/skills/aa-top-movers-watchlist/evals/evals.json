@@ -1,0 +1,23 @@
+{
+  "skill_name": "aa-top-movers-watchlist",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Show me top movers by marketing channel this week vs last week in AA. Which channels are rising and which are falling?",
+      "expected_output": "A top movers report comparing visits (or page views) by marketing channel for last 7 days vs prior 7 days. Should make exactly 2 runReport calls (one per period) with dimensionId: variables/marketingchannel. Results joined to compute absolute delta and percent change per channel. Top 10 gainers and top 10 losers listed. HTML at /tmp/aa_top_movers_report_<timestamp>.html with color-coded gainers (green header) and losers (red header) tables side by side. Materiality filter applied (exclude channels with <100 visits in both periods). Inline text summary with top 3 gainers and top 3 losers plus a one-sentence key takeaway.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "What pages gained or lost the most traffic vs last week in Adobe Analytics? I want to see the biggest movers across our pages.",
+      "expected_output": "Page-level top movers report for page views (or visits). Should use dimensionId: variables/page with limit: 50 (or higher) to capture enough items. Joins both period results, computes deltas, flags NEW items (present in current but not prior) and Disappeared items (present in prior but not current). Top 10 gainers sorted by absolute delta descending, top 10 losers sorted by absolute delta ascending. HTML at /tmp/aa_top_movers_report_<timestamp>.html. Narrative should explain the pattern (e.g., app pages declining, web pages growing) in 1-2 sentences.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Which campaigns are rising or falling in Adobe Analytics this month compared to last month? Show me the campaign movers watchlist.",
+      "expected_output": "A movers analysis using campaign-related dimensions (variables/campaign or variables/trackingcode if available, otherwise variables/marketingchannel as fallback). Compares month-to-date vs same period last month. Should make 2 runReport calls per dimension. HTML at /tmp/aa_top_movers_report_<timestamp>.html with gainers and losers tables. Should confirm the metric used (visits or orders), apply a materiality threshold to exclude noise, and deliver an inline text summary listing top 3 gainers and top 3 losers with deltas.",
+      "files": []
+    }
+  ]
+}

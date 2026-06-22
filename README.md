@@ -8,6 +8,8 @@ Repository of Adobe skills for AI coding agents.
 
 ```bash
 /plugin marketplace add adobe/skills
+/plugin install adobe-analytics@adobe-skills
+/plugin install adobe-cja@adobe-skills
 /plugin install aem-design@adobe-skills
 /plugin install aem-edge-delivery-services@adobe-skills
 /plugin install aem-project-management@adobe-skills
@@ -29,9 +31,62 @@ gh extension install ai-ecoverse/gh-upskill
 gh upskill adobe/skills --all
 ```
 
+### Cursor (preview)
+
+The `app-builder` plugin includes a Cursor-native manifest at `plugins/app-builder/.cursor-plugin/plugin.json` as the pilot for Cursor distribution. Other plugins will gain Cursor support once the pattern is validated. To install locally for development:
+
+```bash
+mkdir -p ~/.cursor/plugins/local/app-builder
+cp -R plugins/app-builder/. ~/.cursor/plugins/local/app-builder/
+# Then in Cursor: Cmd+Shift+P → Developer: Reload Window
+```
+
+Verify the plugin loaded via **Cursor Settings → Plugins** (it should appear with all six App Builder skills). The skills are also visible in **Settings → Rules** under "Agent Decides".
+
 ## Available Skills
 
 ### For Business
+
+#### Analytics
+
+Practitioner-focused skills for Adobe's analytics products — KPI monitoring, funnel and dimension analysis, segment comparison, and stakeholder readouts. Each product has a dedicated plugin and a dedicated MCP server. Requests require IMS auth headers (`Authorization`, `x-gw-ims-org-id`, `x-gw-ims-user-id`); an OAuth proxy may inject these.
+
+##### Adobe Analytics
+
+Available via the [`adobe-analytics`](plugins/adobe-analytics/README.md) plugin. Talks to the AA MCP server at `https://aa-mcp.adobe.io/mcp`.
+
+```bash
+/plugin install adobe-analytics@adobe-skills
+```
+
+| Skill | Description |
+| ----- | ----------- |
+| `aa-kpi-pulse` | KPI digest with period-over-period change and top mover callout<br>• `How are our KPIs looking this week?`<br>• `Compare last month's KPIs to the same month last year` |
+| `aa-top-movers-watchlist` | Ranks dimension items by biggest gain or loss for a metric<br>• `Top gaining and declining pages this week`<br>• `Which marketing channels grew or shrank most this month?` |
+| `aa-conversion-funnel-analysis` | Step-by-step fallout analysis across a multi-step conversion funnel<br>• `Analyze our checkout funnel`<br>• `Where do mobile users drop off in the signup flow?` |
+| `aa-segment-performance-comparator` | Side-by-side KPI comparison across two or more audience segments<br>• `Compare mobile vs desktop performance`<br>• `How do US visitors compare to UK visitors on key KPIs?` |
+| `aa-executive-briefing` | Narrative performance summary ready for leadership or QBR<br>• `Write last week's performance briefing for leadership`<br>• `Draft a monthly business review for the board` |
+
+See the [`adobe-analytics` ](plugins/adobe-analytics/README.md)doc for the full plugin description, MCP server template, and skill index.
+
+##### Customer Journey Analytics
+
+Available via the [`adobe-cja`](plugins/adobe-cja/README.md) plugin. Talks to the CJA MCP server at `https://cja-mcp.adobe.io/mcp`. 
+
+```bash
+/plugin install adobe-cja@adobe-skills
+```
+
+| Skill | Description |
+| ----- | ----------- |
+| `cja-kpi-pulse` | KPI digest with period-over-period change, trend direction, and dimension breakdown<br>• `How are our KPIs looking this week?`<br>• `Compare last month's KPIs to the same month last year` |
+| `cja-top-movers-watchlist` | Ranks dimension items by biggest gain or loss for a metric<br>• `Top gaining and declining pages this week`<br>• `Which marketing channels grew or shrank most this month?` |
+| `cja-funnel-health-check` | Step-by-step fallout analysis across a multi-step conversion funnel<br>• `Check the health of our purchase funnel`<br>• `Where do users drop off in our onboarding journey?` |
+| `cja-dimension-analysis` | Cardinality, distribution, trends, anomalies, and data quality for a dimension<br>• `Analyze the Page Name dimension`<br>• `Audit our Marketing Channel values — any spelling variations or duplicates?` |
+| `cja-segment-performance-comparator` | Side-by-side KPI comparison across two or more audience segments<br>• `Compare mobile vs desktop performance`<br>• `How do US visitors compare to UK visitors on key KPIs?` |
+| `cja-executive-briefing` | Narrative performance summary ready for leadership or QBR<br>• `Write last week's performance briefing for leadership`<br>• `Draft a monthly business review for the board` |
+
+See the [`adobe-cja` ](plugins/adobe-cja/README.md)doc for the full plugin description, MCP server template, and skill index.
 
 #### Adobe Experience Manager
 
@@ -39,18 +94,19 @@ gh upskill adobe/skills --all
 
 Design-phase skills that run *before* implementation. Produces static HTML and JSON artifacts under `aem-design/` — EDS-independent; no dev server or AEM instance required.
 
-| Skill | Description |
-|-------|-------------|
-| `aem-design` | Navigator — assesses `aem-design/` state and recommends the next design stage |
-| `brand` | Extracts a brand profile (`brand-profile.json`) and visual brand board from a URL, PDF, or conversation |
-| `briefings` | Captures page intent, audience, key messages, CTAs, and (optionally) final copy under `aem-design/briefings/` |
+| Skill          | Description                                                                                                            |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `aem-design` | Navigator — assesses `aem-design/` state and recommends the next design stage                                       |
+| `brand`      | Extracts a brand profile (`brand-profile.json`) and visual brand board from a URL, PDF, or conversation              |
+| `briefings`  | Captures page intent, audience, key messages, CTAs, and (optionally) final copy under `aem-design/briefings/`        |
 | `wireframes` | Produces grey structural wireframes from briefings (section order, hierarchy, spatial relationships) — optional stage |
-| `prototype` | Produces branded, high-fidelity static HTML prototypes that iterate in the browser until approved |
+| `prototype`  | Produces branded, high-fidelity static HTML prototypes that iterate in the browser until approved                      |
 
 ##### Developing with Edge Delivery Services
 
 | Skill | Description |
 |-------|-------------|
+| `aem-cli` | Install, run, and configure the Adobe AEM CLI (`aem up` local dev server, `.env`/TLS/proxy setup, `aem import`, `aem content` da.live sync, troubleshooting); migrate from `@adobe/helix-cli` |
 | `create-site` | Start a brand-new site from scratch: GitHub repo from boilerplate, aem-code-sync, initial DA content (nav, footer, homepage), and live URL handoff |
 | `content-driven-development` | Orchestrates the CDD workflow for all code changes |
 | `analyze-and-plan` | Analyze requirements and define acceptance criteria |
@@ -61,37 +117,44 @@ Design-phase skills that run *before* implementation. Produces static HTML and J
 
 ##### Discovering Blocks
 
-| Skill | Description |
-|-------|-------------|
-| `block-inventory` | Survey available blocks in project and Block Collection |
-| `block-collection-and-party` | Search reference implementations |
-| `docs-search` | Search aem.live documentation |
-| `find-test-content` | Find existing content for testing |
+| Skill                          | Description                                             |
+| ------------------------------ | ------------------------------------------------------- |
+| `block-inventory`            | Survey available blocks in project and Block Collection |
+| `block-collection-and-party` | Search reference implementations                        |
+| `docs-search`                | Search aem.live documentation                           |
+| `find-test-content`          | Find existing content for testing                       |
 
 ##### Migrating Content
 
 | Skill | Description |
 |-------|-------------|
-| `page-import` | Import webpages (orchestrator) |
+| `page-import` | Import webpages into canonical EDS block format (orchestrator) |
 | `scrape-webpage` | Scrape and analyze webpage content |
 | `identify-page-structure` | Analyze page sections |
 | `page-decomposition` | Analyze content sequences |
 | `authoring-analysis` | Determine authoring approach |
 | `generate-import-html` | Generate structured HTML |
 | `preview-import` | Preview imported content |
+| `snowflake` | Static-to-EDS overlay conversion — preserves original DOM byte-for-byte (alternative path to `page-import` for AI-generated/static pages) |
+
+##### Content & Platform Reference
+
+| Skill | Description |
+|-------|-------------|
+| `da-content` | Reference for DA + EDS content rules: block HTML format, metadata, media handling, DA Source API contract, and silent-failure rules |
 
 ##### Managing Projects
 
 Handover documentation and PDF guides generation for AEM Edge Delivery Services projects. Available via the `aem-project-management` plugin.
 
-| Skill | Description |
-|-------|-------------|
-| `handover` | Orchestrates project documentation generation |
-| `authoring` | Generate comprehensive authoring guide for content authors |
-| `development` | Generate technical documentation for developers |
-| `admin` | Generate admin guide for site administrators |
-| `whitepaper` | Create professional PDF whitepapers from Markdown |
-| `auth` | Authenticate with AEM Config Service API |
+| Skill           | Description                                                |
+| --------------- | ---------------------------------------------------------- |
+| `handover`    | Orchestrates project documentation generation              |
+| `authoring`   | Generate comprehensive authoring guide for content authors |
+| `development` | Generate technical documentation for developers            |
+| `admin`       | Generate admin guide for site administrators               |
+| `whitepaper`  | Create professional PDF whitepapers from Markdown          |
+| `auth`        | Authenticate with AEM Config Service API                   |
 
 ### AEM as a Cloud Service — Create Component
 
@@ -130,15 +193,15 @@ Workflow skills cover the full AEM Granite Workflow Engine lifecycle — from de
 
 Each flavor contains the same specialist sub-skills:
 
-| Sub-Skill | Purpose |
-|---|---|
-| `workflow-model-design` | Design workflow models, step types, OR/AND splits, variables |
-| `workflow-development` | Implement WorkflowProcess steps, ParticipantStepChooser, OSGi services |
-| `workflow-triggering` | Start workflows from UI, code, HTTP API, or Manage Publication |
-| `workflow-launchers` | Configure automatic workflow launchers on JCR events |
-| `workflow-debugging` | Debug stuck, failed, or stale workflows in production |
-| `workflow-triaging` | Classify incidents, determine log patterns, Splunk queries |
-| `workflow-orchestrator` | Full lifecycle orchestration across all sub-skills |
+| Sub-Skill                 | Purpose                                                                |
+| ------------------------- | ---------------------------------------------------------------------- |
+| `workflow-model-design` | Design workflow models, step types, OR/AND splits, variables           |
+| `workflow-development`  | Implement WorkflowProcess steps, ParticipantStepChooser, OSGi services |
+| `workflow-triggering`   | Start workflows from UI, code, HTTP API, or Manage Publication         |
+| `workflow-launchers`    | Configure automatic workflow launchers on JCR events                   |
+| `workflow-debugging`    | Debug stuck, failed, or stale workflows in production                  |
+| `workflow-triaging`     | Classify incidents, determine log patterns, Splunk queries             |
+| `workflow-orchestrator` | Full lifecycle orchestration across all sub-skills                     |
 
 ### AEM Dispatcher
 
@@ -146,6 +209,7 @@ Dispatcher skills are split by runtime flavor to avoid mode auto-detection and k
 Install only one dispatcher flavor in a workspace (`cloud-service` or `6.5-lts`).
 
 Current dispatcher flavors:
+
 - `plugins/aem/cloud-service/skills/dispatcher`
 - `plugins/aem/6.5-lts/skills/dispatcher`
 
@@ -160,14 +224,15 @@ Replication skills for AEM 6.5 LTS cover the full content distribution lifecycle
 
 The aem-replication skill contains four specialist sub-skills:
 
-| Sub-Skill | Purpose |
-|---|---|
+| Sub-Skill                       | Purpose                                                                                |
+| ------------------------------- | -------------------------------------------------------------------------------------- |
 | `configure-replication-agent` | Configure replication agents for publishing, dispatcher flush, and reverse replication |
-| `replicate-content` | Activate and deactivate content using UI, workflows, and package manager |
-| `replication-api` | Use the Replication API programmatically in custom code with complete Java examples |
-| `troubleshoot-replication` | Diagnose and fix blocked queues, connectivity failures, and distribution problems |
+| `replicate-content`           | Activate and deactivate content using UI, workflows, and package manager               |
+| `replication-api`             | Use the Replication API programmatically in custom code with complete Java examples    |
+| `troubleshoot-replication`    | Diagnose and fix blocked queues, connectivity failures, and distribution problems      |
 
 **Key features:**
+
 - All skills based on official AEM 6.5 LTS documentation
 - Complete coverage of public Replication API (Replicator, ReplicationOptions, AgentManager, ReplicationQueue, etc.)
 - 49 Java code examples for OSGi services, servlets, and workflow steps
@@ -178,8 +243,8 @@ The aem-replication skill contains four specialist sub-skills:
 
 The `aem-rde` skill provides expert assistance for the Adobe I/O CLI plugin `@adobe/aio-cli-plugin-aem-rde` — used to deploy, inspect, log-tail, snapshot, and troubleshoot AEM Rapid Development Environments via `aio aem rde …` commands. The skill activates only on explicit RDE references; generic AEMaaCS deployment requests are deferred to Cloud Manager skills.
 
-| Skill | Description |
-|-------|-------------|
+| Skill                  | Description                                                                                                                                                                                                       |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `aem-rde` *(beta)* | Translate goals into the right `aio aem rde` commands (deploy, status, history, logs, inspect, snapshot, setup); diagnose RDE problems; guide setup, experimental feature flags, and CI/build-environment usage |
 
 See `plugins/aem/cloud-service/skills/aem-rde/` for the skill and its reference files (commands, configuration, deployment types, troubleshooting, workflows).
@@ -189,6 +254,7 @@ See `plugins/aem/cloud-service/skills/aem-rde/` for the skill and its reference 
 Under `plugins/aem/cloud-service/skills/`, **`best-practices/`** is the **general-purpose** Cloud Service skill: pattern modules, Java baseline references (SCR→OSGi DS, resolver/logging, and related refs), and day-to-day Cloud Service alignment. Use it **without** loading **migration** for greenfield or maintainability work. **`migration/`** (BPA/CAM orchestration) is **scoped to legacy AEM → AEM as a Cloud Service** (not Edge Delivery or 6.5 LTS); it **delegates** concrete refactors to **`best-practices`** (`references/`). **Installing the AEM as a Cloud Service plugin** (`aem-cloud-service`, or the `plugins/aem/cloud-service` path with `npx skills` / `gh upskill`) **includes both**; the agent should load the appropriate `SKILL.md` for the task. Use **`gh upskill` / `npx skills` with `--skill`** when you need a specific bundled skill (see **Installation** above).
 
 **Key features:**
+
 - **Best practices:** one skill for patterns, SCR→OSGi DS, and resolver/logging — applicable to Cloud Service projects generally, not only migration
 - **Migration:** orchestration-only; pattern and transformation content lives in **`best-practices`**
 
@@ -197,34 +263,62 @@ Under `plugins/aem/cloud-service/skills/`, **`best-practices/`** is the **genera
 Development, customization, testing, and deployment skills for Adobe App Builder projects.
 
 **Skill chaining:**
+
 - **Actions path:** `appbuilder-project-init` → `appbuilder-action-scaffolder` → `appbuilder-testing` → `appbuilder-cicd-pipeline`
 - **UI path:** `appbuilder-project-init` → `appbuilder-ui-scaffolder` → `appbuilder-testing` → `appbuilder-cicd-pipeline`
 - **E2E path:** `appbuilder-ui-scaffolder` or `appbuilder-testing` → `appbuilder-e2e-testing` → `appbuilder-cicd-pipeline`
 
-| Skill | Description |
-|-------|-------------|
-| `appbuilder-project-init` | Initialize new Adobe App Builder projects and choose the right bootstrap path |
-| `appbuilder-action-scaffolder` | Scaffold, implement, deploy, and debug Adobe Runtime actions |
-| `appbuilder-ui-scaffolder` | Generate React Spectrum UI components for ExC Shell SPAs and AEM UI Extensions |
-| `appbuilder-testing` | Generate and run Jest unit, integration, and contract tests for actions and UI components |
-| `appbuilder-e2e-testing` | Playwright browser E2E tests for ExC Shell SPAs and AEM extensions |
-| `appbuilder-cicd-pipeline` | Set up CI/CD pipelines for GitHub Actions, Azure DevOps, and GitLab CI |
+| Skill                            | Description                                                                               |
+| -------------------------------- | ----------------------------------------------------------------------------------------- |
+| `appbuilder-project-init`      | Initialize new Adobe App Builder projects and choose the right bootstrap path             |
+| `appbuilder-action-scaffolder` | Scaffold, implement, deploy, and debug Adobe Runtime actions                              |
+| `appbuilder-ui-scaffolder`     | Generate React Spectrum UI components for ExC Shell SPAs and AEM UI Extensions            |
+| `appbuilder-testing`           | Generate and run Jest unit, integration, and contract tests for actions and UI components |
+| `appbuilder-e2e-testing`       | Playwright browser E2E tests for ExC Shell SPAs and AEM extensions                        |
+| `appbuilder-cicd-pipeline`     | Set up CI/CD pipelines for GitHub Actions, Azure DevOps, and GitLab CI                    |
+
+### AEM as a Cloud Service — Code Assessment
+
+**`code-assessment`** (under `plugins/aem/cloud-service/skills/`) detects and fixes AEM CS code-quality issues entirely against the local workspace — no external services. Name the files to fix or ask it to scan the repo; it plans, applies surgical edits (git branch or in-place), and verifies with `mvn compile`. Each issue type is a self-contained expert skill.
+
+See `plugins/aem/cloud-service/skills/code-assessment/SKILL.md` for routing and classification. **Installing the AEM as a Cloud Service plugin** (`aem-cloud-service`) includes this skill.
 
 ### Creativity & Design
 
-| Skill | Description |
-|-------|-------------|
-| `adobe-batch-edit-photos` | Apply consistent, cohesive photo adjustments across a set of images — matched tones, presets, and cinematic looks |
-| `adobe-design-from-template` | Create flyers, posters, social posts, invitations, business cards, and other visuals from Adobe Express templates |
-| `adobe-retouch-portraits` | Bulk walk-away retouching for wedding and event portraits: auto-straighten, auto-tone, and auto-light across a folder |
-| `adobe-edit-quick-cut` | Turn a long video into a punchy sizzle or highlight reel using Adobe Quick Cut |
-| `adobe-resize-photos-and-videos` | Resize images and videos to exact pixel dimensions, aspect ratios, or named sizes (4K, HD, A4) |
-| `adobe-create-social-variations` | Produce platform-ready image and video crops for Instagram, TikTok, LinkedIn, YouTube, and other social platforms |
+| Skill                              | Description                                                                                                           |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `adobe-batch-edit-photos`        | Apply consistent, cohesive photo adjustments across a set of images — matched tones, presets, and cinematic looks    |
+| `adobe-design-from-template`     | Create flyers, posters, social posts, invitations, business cards, and other visuals from Adobe Express templates     |
+| `adobe-retouch-portraits`        | Bulk walk-away retouching for wedding and event portraits: auto-straighten, auto-tone, and auto-light across a folder |
+| `adobe-edit-quick-cut`           | Turn a long video into a punchy sizzle or highlight reel using Adobe Quick Cut                                        |
+| `adobe-resize-photos-and-videos` | Resize images and videos to exact pixel dimensions, aspect ratios, or named sizes (4K, HD, A4)                        |
+| `adobe-create-social-variations` | Produce platform-ready image and video crops for Instagram, TikTok, LinkedIn, YouTube, and other social platforms     |
 
 ## Repository Structure
 
 ```
 plugins/
+├── adobe-analytics/
+│   ├── .claude-plugin/
+│   │   └── plugin.json
+│   ├── .mcp.json
+│   └── skills/
+│       ├── aa-kpi-pulse/
+│       ├── aa-top-movers-watchlist/
+│       ├── aa-conversion-funnel-analysis/
+│       ├── aa-segment-performance-comparator/
+│       └── aa-executive-briefing/
+├── adobe-cja/
+│   ├── .claude-plugin/
+│   │   └── plugin.json
+│   ├── .mcp.json
+│   └── skills/
+│       ├── cja-kpi-pulse/
+│       ├── cja-top-movers-watchlist/
+│       ├── cja-funnel-health-check/
+│       ├── cja-dimension-analysis/
+│       ├── cja-segment-performance-comparator/
+│       └── cja-executive-briefing/
 ├── aem/
 │   ├── edge-delivery-services/
 │   │   ├── .claude-plugin/

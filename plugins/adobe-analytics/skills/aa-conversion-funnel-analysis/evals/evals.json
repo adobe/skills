@@ -1,0 +1,23 @@
+{
+  "skill_name": "aa-conversion-funnel-analysis",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Analyze my checkout funnel in Adobe Analytics — I want to see where visitors are dropping off between browsing products and completing a purchase. Show me the last 30 days.",
+      "expected_output": "A multi-step funnel visualization (HTML report at /tmp/aa_funnel_analysis_report_<timestamp>.html) showing at minimum 4-5 funnel steps (e.g., All Visits → Product View → Add to Cart → Checkout → Purchase), with visit counts and conversion rates at each step. The report must identify the step with the highest drop-off rate, include a leakage analysis section with device type or channel breakdown for the worst step, and provide at least 3 actionable recommendations. The overall conversion rate and biggest drop-off step must be clearly labeled.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Where are visitors dropping off in the purchase flow? Show me funnel conversion rates and the biggest leakage point.",
+      "expected_output": "An HTML funnel report at /tmp/aa_funnel_analysis_report_<timestamp>.html with: (1) a visual funnel with bar widths proportional to visit counts, (2) a step detail table showing visits, % of total, step-to-step conversion rate, and drop-off counts for each step, (3) the worst step highlighted in red, (4) a leakage analysis drilling into WHY visitors drop at the worst step (e.g., device type breakdown comparing converters vs drop-offs). The report should note the AA approximation methodology (visit-level segment counting vs strict sequential fallout).",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Show me funnel conversion rates for my e-commerce site in Adobe Analytics. I'm particularly interested in the add-to-cart to purchase conversion.",
+      "expected_output": "An HTML funnel report showing the checkout funnel steps with real data from the report suite. If the active suite has no funnel data, the skill should automatically fall back to another suite that does. The report must include: funnel steps identified from real page data using searchDimensionItems (typical e-commerce step pages such as a product detail page, a checkout step, and a confirmation/thank-you page), computed step-to-step conversion rates, identification of the add-to-cart step performance specifically, and a recommendation about mobile vs desktop funnel performance. Report saved to /tmp/aa_funnel_analysis_report_<timestamp>.html.",
+      "files": []
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+/*
+ * Intentionally empty.
+ *
+ * EDS auto-loads /blocks/<blockname>/<blockname>.css for every block.
+ * The original boilerplate shipped a 272-line stylesheet that targets
+ * element-level selectors (header nav, header .nav-wrapper, etc.)
+ * scoped to the boilerplate's DA-authored nav markup.
+ *
+ * Our overlay model uses blocks/header/header.js to fetch a static
+ * /fragments/<template>/header.html fragment — markup the boilerplate
+ * CSS knows nothing about — so the boilerplate rules cascade
+ * destructively into the fragment (e.g. header nav { display: grid }
+ * breaks flex-row layouts that templates define).
+ *
+ * All actual header styling for an overlay page lives in
+ * /styles/<template>.css (extracted from the source's inline
+ * <style> and loaded dynamically by the overlay engine).
+ */

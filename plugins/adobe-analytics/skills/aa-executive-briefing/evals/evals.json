@@ -1,0 +1,23 @@
+{
+  "skill_name": "aa-executive-briefing",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "give me an executive briefing for last week in Adobe Analytics",
+      "expected_output": "Calls findReportSuites, setSessionDefaults, describeAa(REPORT_SUITE_CONTEXT_GUIDE), findMetrics(expansions: 'componentType'), and two runReport calls (current week and prior week, all metrics batched in a single metricIds parameter per call), followed by a runReport for marketing channel breakdown. Writes an HTML file to /tmp/aa_executive_briefing_<timestamp>.html containing: a KPI grid with one card per metric showing metric display name, current period total, and a delta percentage styled with .up (green) or .down (red) CSS class; a narrative section in Georgia serif font with a 1-sentence opening headline and a 'What Drove Performance' paragraph; a Top Channels table with Channel, Current, Prior, Delta, and Share columns; and a Watch item block. Narrative uses business language (e.g., 'Revenue grew $42K, up 14%') — raw metric IDs like metrics/revenue do not appear in visible text. If a metric is unauthorized (appears in columnErrors), the briefing notes it as unavailable rather than showing a fabricated value.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "create a leadership summary of our Adobe Analytics performance this month",
+      "expected_output": "Calls findReportSuites, setSessionDefaults, describeAa(REPORT_SUITE_CONTEXT_GUIDE), findMetrics(expansions: 'componentType') or listComponentUsage(componentType: 'metric') to identify top metrics, then two runReport calls batching up to 6 metrics (current month vs. prior month). Writes /tmp/aa_executive_briefing_<timestamp>.html with: a header block showing the report suite name and month label; a KPI grid with current-month value and WoW/MoM percent delta per metric; a narrative section using Georgia serif font that expresses changes as business impact (e.g., 'Visits increased 18% month-over-month'); and a Top Channels table for the north-star metric. The file includes an @media print block that sets background colors for header and delta badges. Metric IDs (e.g., metrics/pageviews) do not appear in any visible heading or paragraph text.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "prepare a board-ready analytics report using our report suite data",
+      "expected_output": "Calls findReportSuites, setSessionDefaults, describeAa(REPORT_SUITE_CONTEXT_GUIDE), findMetrics(expansions: 'componentType'), two batched runReport calls (current and comparison period), and at least one dimension-breakdown runReport for the north-star metric (variables/marketingchannel). Writes /tmp/aa_executive_briefing_<timestamp>.html containing: a sticky navigation bar with anchors for Summary, KPIs, Narrative, Key Drivers, and Watch Items; a KPI grid with .kpi-card elements showing metric display name, value, and delta badge; narrative sections (h3 headings + p tags) in Georgia serif font with business-language phrasing and no raw API field names; a channel driver table; a .watch-item block for any risk or concern; and an @media print block ensuring colors are preserved in print via -webkit-print-color-adjust: exact. All metric values reflect actual runReport API responses — no numbers are fabricated.",
+      "files": []
+    }
+  ]
+}

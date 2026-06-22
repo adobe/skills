@@ -1,0 +1,23 @@
+{
+  "skill_name": "aa-kpi-pulse",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Give me a KPI update for last week in Adobe Analytics for our main report suite.",
+      "expected_output": "An HTML report saved to /tmp/aa_kpi_pulse_report_<timestamp>.html containing KPI cards for 5-8 metrics (visits, page views, revenue, orders, bounce rate, etc.) with current vs prior week values, percent change badges (green/red), a marketing channel breakdown table for the top movers, and an inline text summary table showing each metric's current value and delta.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "How did we do this month in Adobe Analytics? Pull our top AA metrics and show me what moved.",
+      "expected_output": "A KPI pulse report comparing month-to-date against the same period last month. Should include at minimum: visits, page views, revenue, and orders. HTML written to /tmp/aa_kpi_pulse_report_<timestamp>.html with KPI score cards, delta badges, a top-mover driver narrative, and an inline text summary. For percentage-type metrics (bounce rate), changes should be expressed in percentage points (pp), not percent change.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Pull our top AA metrics for the last 7 days vs the prior 7 days and tell me what's driving any changes.",
+      "expected_output": "A KPI digest comparing last 7 days vs prior 7 days. Must make 2xN runReport calls (one per metric per period). Should identify the top 1-2 movers by percent change and run a dimension breakdown (marketing channel or device type) to explain the driver. Output includes HTML report at /tmp/aa_kpi_pulse_report_<timestamp>.html and an inline text summary with a narrative sentence about the key driver.",
+      "files": []
+    }
+  ]
+}

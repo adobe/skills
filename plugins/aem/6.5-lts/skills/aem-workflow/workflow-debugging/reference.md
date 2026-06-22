@@ -1,26 +1,8 @@
 # AEM Workflow Debugging – Reference (6.5 LTS / AMS)
 
-Quick pointers used by the workflow-debugging skill. For full runbooks and procedures, use the paths below inside this repo.
-
----
-
-## Runbook locations (relative to repo root)
-
-| Runbook | Path |
-|---------|------|
-| Decision guide (symptom → runbook) | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-decision-guide.md` |
-| Debugging index (machine-readable) | `aem-agent-marketplace-workflow-knowledge-base/docs/debugging-index.md` |
-| Workflow stuck | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-workflow-stuck.md` |
-| Task not in Inbox | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-task-not-in-inbox.md` |
-| Launcher not starting | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-launcher-not-starting.md` |
-| Workflow fails / error | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-workflow-fails-or-shows-error.md` |
-| Failed work items | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-failed-work-items.md` |
-| Stale workflows | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-stale-workflows.md` |
-| Purge and cleanup | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-purge-and-cleanup.md` |
-| Inbox and permissions | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-inbox-and-permissions.md` |
-| Model delete/update | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-model-delete-and-update.md` |
-| Job throughput / concurrency | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-job-throughput-and-concurrency.md` |
-| Validate workflow setup | `aem-agent-marketplace-workflow-knowledge-base/runbooks/runbook-validate-workflow-setup.md` |
+Quick pointers used by the workflow-debugging skill. Use the SKILL.md Step 1
+symptom table for the symptom → first-action map; the entries below are for
+quick access to JMX/config, diagnostic tools, log patterns, and external docs.
 
 ---
 
@@ -46,12 +28,16 @@ Quick pointers used by the workflow-debugging skill. For full runbooks and proce
 | Config Status ZIP | Felix Console → Status → Configuration Status | Full config dump, thread pools, Sling Jobs, schedulers |
 | Thread dump | jstack or AMS support request | Thread analysis |
 | Workflow Console | /libs/cq/workflow/admin/console/content/instances.html | Instance status, work items, history |
-| Sling Job Console | /system/console/slingjobs | Queue depth, failed jobs, active jobs |
+| Sling Jobs page | /system/console/slingevent | Queue depth, failed jobs, active jobs, topic statistics |
+| Sling Thread Pools | /system/console/status-slingthreadpools | Per-pool active count, max size, block policy |
+| Threads | /system/console/status-Threads | Live thread states with stacks |
+| jstack thread dump | /system/console/status-jstack-threaddump | jstack-style snapshot |
+| Sling Scheduler | /system/console/status-slingscheduler | Quartz-scheduled jobs and their ThreadPool |
 | Inbox | /aem/inbox | Retry failed work items, complete tasks |
 
 ---
 
-## Log patterns (see also docs/error-patterns.md)
+## Log patterns
 
 - `Error executing workflow step` – Process/step exception
 - `getProcess for '<name>' failed` – Process not registered

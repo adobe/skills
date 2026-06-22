@@ -1,0 +1,46 @@
+{
+  "context": "Tests whether the agent correctly handles the AEM CLI migration from @adobe/helix-cli, TLS setup, .env configuration with AEM_* variables, and corporate-proxy certificate trust. Covers the non-obvious behaviours that trip up agents without this skill: the hlx binary conflict on install, the correct AEM_* env-var names, the distinction between AEM_* variables (loaded from .env) and NODE_EXTRA_CA_CERTS (a Node.js built-in that must be set in the shell), and the cert generation options.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Uninstalls @adobe/helix-cli before installing @adobe/aem-cli",
+      "max_score": 15,
+      "description": "Agent runs `npm uninstall -g @adobe/helix-cli` before `npm install -g @adobe/aem-cli` (or equivalent). Installing without uninstalling first results in a 'File exists: .../hlx' conflict that blocks the install."
+    },
+    {
+      "name": "Generates a TLS certificate with mkcert or openssl",
+      "max_score": 12,
+      "description": "Agent generates a local TLS certificate using mkcert (preferred for trusted cert) or openssl (self-signed fallback). Provides the exact command. Does not suggest purchasing or using production certificates."
+    },
+    {
+      "name": "Starts dev server with correct TLS, port, and URL flags",
+      "max_score": 10,
+      "description": "Agent invokes aem up with --tls-cert, --tls-key, --port 8443, --url https://main--mysite--myorg.aem.page, and --no-open flags (or equivalent AEM_* env vars), either in the command or via .env."
+    },
+    {
+      "name": "Persists configuration in .env using correct AEM_* variable names",
+      "max_score": 15,
+      "description": "Agent writes a .env file that uses correct AEM_* variable names: AEM_TLS_CERT, AEM_TLS_KEY, AEM_PORT, AEM_PAGES_URL (or AEM_URL), AEM_NO_OPEN. Incorrect variable names (e.g. AEM_TLS_CERTIFICATE, AEM_SERVER_PORT) would be silently ignored by the CLI."
+    },
+    {
+      "name": "Diagnoses the certificate error as corporate proxy SSL interception",
+      "max_score": 12,
+      "description": "Agent correctly identifies that 'unable to get local issuer certificate' is caused by an HTTPS-intercepting corporate proxy that replaces the server certificate with one signed by the corporate CA, which Node.js does not trust by default."
+    },
+    {
+      "name": "Resolves the certificate error with NODE_EXTRA_CA_CERTS",
+      "max_score": 15,
+      "description": "Agent sets NODE_EXTRA_CA_CERTS=/etc/ssl/certs/corporate-ca.crt using the exact path from the scenario. The command is `export NODE_EXTRA_CA_CERTS=/etc/ssl/certs/corporate-ca.crt` (or Windows equivalent). Does not attempt to use an AEM_* variable for this."
+    },
+    {
+      "name": "Distinguishes NODE_EXTRA_CA_CERTS from AEM_* variables",
+      "max_score": 10,
+      "description": "Agent correctly notes that NODE_EXTRA_CA_CERTS is a Node.js built-in environment variable — not an AEM_* variable — and must be set in the shell profile or CI environment rather than the .env file."
+    },
+    {
+      "name": "Delivers a complete, reproducible setup",
+      "max_score": 11,
+      "description": "Agent provides a complete working setup: the final .env file contents, the command to start the server after applying the fix, and confirmation that the server should be accessible at https://localhost:8443."
+    }
+  ]
+}

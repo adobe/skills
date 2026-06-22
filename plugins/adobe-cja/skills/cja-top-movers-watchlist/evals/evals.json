@@ -1,0 +1,23 @@
+{
+  "skill_name": "cja-top-movers-watchlist",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "show me top movers by marketing channel this week vs last week — use sessions as the metric",
+      "expected_output": "An HTML report at /tmp/cja_top_movers_report_<timestamp>.html with: (1) summary KPI cards showing total items compared, biggest gainer, biggest decliner, new entries count, and disappeared count; (2) a Gainers table sorted by absolute delta descending; (3) a Decliners table sorted by absolute delta ascending; (4) a New Entries & Disappeared section; (5) a Full Comparison Table. A 3-line inline text summary is also delivered (e.g., 'Top gainer: Direct +46 sessions (+3.8%). Top decliner: Affiliate −24 (−22.6%). Natural Social disappeared from the rankings.').",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "what pages gained or lost traffic vs last week? use page views",
+      "expected_output": "The skill uses findDimensions to resolve PageName (variables/web.webPageDetails.name), runs two runReport calls with limit 50 for this week and last week, joins the results, computes delta and pctChange for each page, identifies New Entry pages (in Period A but not B), Disappeared pages (in B but not A), and generates the HTML watchlist report at /tmp/cja_top_movers_report_<timestamp>.html with top 10 gainers and top 10 decliners.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "which products are rising or falling in orders this month compared to last month?",
+      "expected_output": "The skill resolves a product dimension (e.g., product name or category) and orders metric, runs reports for this month and last month with limit 50, computes deltas, classifies items as gainers/decliners/new/disappeared, and generates the HTML top movers report. Products with status 'New Entry' (appeared in top 50 this month but not last) and 'Disappeared' are highlighted separately.",
+      "files": []
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Asset boundary test v2 — DA-hosted images</title>
+    <link rel="canonical" href="https://main--snowflake-demos--aemcoder.aem.page/catalan-tests/asset-boundary-test-v2">
+    <meta property="og:title" content="Asset boundary test v2 — DA-hosted images">
+    <meta property="og:url" content="https://main--snowflake-demos--aemcoder.aem.page/catalan-tests/asset-boundary-test-v2">
+    <meta property="og:image" content="https://main--snowflake-demos--aemcoder.aem.page/catalan-tests/media_146e492706eb08f424a53f8b8673e6d8b59472cc9.png?width=1200&#x26;format=pjpg&#x26;optimize=medium">
+    <meta property="og:image:secure_url" content="https://main--snowflake-demos--aemcoder.aem.page/catalan-tests/media_146e492706eb08f424a53f8b8673e6d8b59472cc9.png?width=1200&#x26;format=pjpg&#x26;optimize=medium">
+    <meta property="og:image:alt" content="test-K content.da.live">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Asset boundary test v2 — DA-hosted images">
+    <meta name="twitter:image" content="https://main--snowflake-demos--aemcoder.aem.page/catalan-tests/media_146e492706eb08f424a53f8b8673e6d8b59472cc9.png?width=1200&#x26;format=pjpg&#x26;optimize=medium">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script nonce="LKHyHhNGn4W0H5AVD/VeUh7v" src="/scripts/aem.js" type="module"></script>
+    <script nonce="LKHyHhNGn4W0H5AVD/VeUh7v" src="/scripts/scripts.js" type="module"></script>
+    <link rel="stylesheet" href="/styles/styles.css">
+  </head>
+  <body>
+    <header></header>
+    <main>
+      <div>
+        <h1 id="asset-boundary-test-v2--da-hosted-images">Asset boundary test v2 — DA-hosted images</h1>
+        <h2 id="k-image-hosted-at-contentdalive-in-img">K. Image hosted at content.da.live in &#x3C;img></h2>
+        <p>
+          <picture>
+            <source type="image/webp" srcset="./media_146e492706eb08f424a53f8b8673e6d8b59472cc9.png?width=2000&#x26;format=webply&#x26;optimize=medium" media="(min-width: 600px)">
+            <source type="image/webp" srcset="./media_146e492706eb08f424a53f8b8673e6d8b59472cc9.png?width=750&#x26;format=webply&#x26;optimize=medium">
+            <source type="image/png" srcset="./media_146e492706eb08f424a53f8b8673e6d8b59472cc9.png?width=2000&#x26;format=png&#x26;optimize=medium" media="(min-width: 600px)">
+            <img loading="lazy" alt="test-K content.da.live" src="./media_146e492706eb08f424a53f8b8673e6d8b59472cc9.png?width=750&#x26;format=png&#x26;optimize=medium" width="400" height="300">
+          </picture>
+        </p>
+        <h2 id="l-same-image-at-contentdalive-different-page-cross-page-dedup-test">L. Same image at content.da.live, different page (cross-page dedup test)</h2>
+        <p>
+          <picture>
+            <source type="image/webp" srcset="./media_146e492706eb08f424a53f8b8673e6d8b59472cc9.png?width=2000&#x26;format=webply&#x26;optimize=medium" media="(min-width: 600px)">
+            <source type="image/webp" srcset="./media_146e492706eb08f424a53f8b8673e6d8b59472cc9.png?width=750&#x26;format=webply&#x26;optimize=medium">
+            <source type="image/png" srcset="./media_146e492706eb08f424a53f8b8673e6d8b59472cc9.png?width=2000&#x26;format=png&#x26;optimize=medium" media="(min-width: 600px)">
+            <img loading="lazy" alt="test-L same content.da.live" src="./media_146e492706eb08f424a53f8b8673e6d8b59472cc9.png?width=750&#x26;format=png&#x26;optimize=medium" width="400" height="300">
+          </picture>
+        </p>
+        <h2 id="m-same-image-but-via-aempage-host-not-contentdalive">M. Same image, but via aem.page host (not content.da.live)</h2>
+        <p>
+          <img src="about:error" alt="test-M aem.page host" loading="lazy">
+        </p>
+        <h2 id="n-cross-org-contentdalive-url-other-tenant--should-it-fetch">N. Cross-org content.da.live URL (other tenant) — should it fetch?</h2>
+        <p>
+          <img src="about:error" alt="test-N cross-org content.da.live" loading="lazy">
+        </p>
+        <h2 id="o-relative-url-should-not-work-per-docs">O. Relative URL (should NOT work per docs)</h2>
+        <p>
+          <img src="about:error" alt="test-O relative URL" loading="lazy">
+        </p>
+      </div>
+    </main>
+    <footer></footer>
+  </body>
+</html>

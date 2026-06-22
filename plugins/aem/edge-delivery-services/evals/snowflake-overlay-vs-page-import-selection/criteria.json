@@ -1,0 +1,41 @@
+{
+  "context": "Tests whether the agent correctly disambiguates between the snowflake skill (static-to-EDS overlay, preserves DOM) and the page-import skill (canonical block-rewrite migration) given a user prompt that emphasizes DOM preservation. Validates description-driven skill selection in the presence of overlapping migration vocabulary.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Selects snowflake skill",
+      "max_score": 25,
+      "description": "Correctly identifies snowflake as the right skill for this request, not page-import"
+    },
+    {
+      "name": "Cites DOM preservation as the rationale",
+      "max_score": 15,
+      "description": "Explanation references that the user wants the source DOM/markup/design kept intact, which is snowflake's defining property"
+    },
+    {
+      "name": "Explicitly rules out page-import",
+      "max_score": 10,
+      "description": "Acknowledges that page-import would be the alternative and explains why it is the wrong choice here (rewrites into canonical block markup)"
+    },
+    {
+      "name": "Lists snowflake phases",
+      "max_score": 15,
+      "description": "Names the snowflake phases: Prerequisites (substrate install), Capture, Analyze, Generate, Wire, Round-trip, Reflect (or a close paraphrase covering all six conversion phases)"
+    },
+    {
+      "name": "Surfaces prerequisites",
+      "max_score": 15,
+      "description": "Lists what the user must provide before starting: source URL, target EDS repo (owner/repo), DA root path, DA admin token (or how to obtain one via da-auth)"
+    },
+    {
+      "name": "No premature implementation",
+      "max_score": 10,
+      "description": "Does not execute any phase, write code, modify the repo, or make tool calls beyond what is needed to plan the response"
+    },
+    {
+      "name": "Calls out substrate impact",
+      "max_score": 10,
+      "description": "Mentions that snowflake installs an overlay substrate that modifies scripts.js, styles.css, and header/footer blocks, and that this is incompatible with the canonical-block path (building-blocks / page-import) on the same repo"
+    }
+  ]
+}

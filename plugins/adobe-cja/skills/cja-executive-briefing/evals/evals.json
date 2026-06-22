@@ -1,0 +1,23 @@
+{
+  "skill_name": "cja-executive-briefing",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "give me an executive briefing for last week",
+      "expected_output": "Calls findDataViews, setDefaultSessionDataViewId (if needed), describeCja(DATAVIEW_CONTEXT_GUIDE) to load business context. Calls listComponentUsage(componentType: 'metric') and listComponentUsage(componentType: 'calculatedMetric') in parallel to identify 4–6 north-star KPIs. Calls runReport twice in parallel for last full calendar week and prior week using variables/daterangeday dimension; reads summaryData.filteredTotals for each KPI. Calls runReport for the 2 most-moved metrics broken down by variables/marketing_channel (current + prior period) to identify drivers. Writes /tmp/cja_executive_briefing_<timestamp>.html with: gradient header (#1B1B1B to #1473E6) showing org name, data view, and period label; sticky nav with Highlights/Summary/Supporting Data/Key Drivers links; .kpi-row with one .kpi-tile per KPI each containing .metric-name (uppercase, 11px), .metric-value (28px, 800 weight), and .delta.up or .delta.down badge; .narrative-card with .bullet-list of 3–5 items each with signal emoji + .metric-highlight + .driver text in business language (no raw metric IDs); Full KPI Detail collapsible table with columns Metric/Current Period/Prior Period/Change/% Change/Signal; What Drove the Movement collapsible table; .back-top button. Opens file with open command. Outputs narrative bullets directly in chat using the ━━━ separator format ending with the HTML file path.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "create a leadership summary of our performance this month",
+      "expected_output": "Calls findDataViews, setDefaultSessionDataViewId (if needed), describeCja(DATAVIEW_CONTEXT_GUIDE). Calls listComponentUsage for metrics and calculatedMetrics to select 4–6 KPIs. Infers monthly period: current month-to-date vs same month-to-date prior month. Calls runReport for current MTD and prior MTD periods in parallel using variables/daterangeday; reads summaryData.filteredTotals. Calls runReport for 2 most-moved KPIs broken down by a driver dimension. Writes /tmp/cja_executive_briefing_<timestamp>.html with: header period label showing month-to-date date range (e.g., 'Apr 1–17, 2026 vs Mar 1–17, 2026'); KPI tiles with MoM delta badges (.delta.up or .delta.down); narrative section with 3–5 business-language bullets naming the driver dimension value; supporting data table; back-top button. Outputs monthly narrative bullets in chat with signal emojis, business-friendly metric names (not metric IDs), and HTML file path. No raw metric or dimension IDs appear anywhere in the output.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "prepare a board-ready analytics summary for Q4",
+      "expected_output": "Calls findDataViews, setDefaultSessionDataViewId (if needed), describeCja(DATAVIEW_CONTEXT_GUIDE). Applies board audience mode: narrative focuses on high-level business outcomes, omits internal channel naming. Calls listComponentUsage for metrics and calculatedMetrics. Resolves Q4 date range and prior quarter for comparison. Calls runReport for Q4 and Q3 totals in parallel; reads summaryData.filteredTotals for 4–6 KPIs. Calls runReport for driver breakdown on 2 most-moved metrics. Writes /tmp/cja_executive_briefing_<timestamp>.html with: header showing 'Q4 2025' vs 'Q3 2025' period labels; 4–6 KPI tiles each with quarterly value, delta badge (.delta.up/.delta.down), and signal color; narrative section with 3–5 bullets in board-appropriate language (business outcomes, no internal channel names, leading with most impactful finding); Full KPI Detail and Key Drivers collapsible tables; back-top button. Outputs QBR narrative bullets in chat with all numbers quantified, no metric IDs, no dimension variable names, and HTML file path.",
+      "files": []
+    }
+  ]
+}

@@ -72,6 +72,52 @@
       "name": "app-builder",
       "source": "./plugins/app-builder",
       "description": "Development, customization, testing, and deployment skills for Adobe App Builder projects"
+    },
+    {
+      "name": "aem-eds-content-ops",
+      "source": "./plugins/aem/edge-delivery-services-content-ops",
+      "description": "Content operations skills for AEM Edge Delivery Services: page auditing, AI search optimization (GEO), WCAG accessibility, bulk metadata, and content diffing"
+    },
+    {
+      "name": "adobe-analytics",
+      "source": "./plugins/adobe-analytics",
+      "description": "Practitioner skills for Adobe Analytics via the AA MCP server",
+      "version": "1.0.0",
+      "category": "analytics",
+      "keywords": [
+        "adobe",
+        "adobe-analytics",
+        "analytics",
+        "mcp",
+        "reporting"
+      ],
+      "author": {
+        "name": "Adobe"
+      },
+      "homepage": "https://github.com/adobe/skills",
+      "repository": "https://github.com/adobe/skills",
+      "license": "Apache-2.0"
+    },
+    {
+      "name": "adobe-cja",
+      "source": "./plugins/adobe-cja",
+      "description": "Practitioner skills for Adobe Customer Journey Analytics via the CJA MCP server",
+      "version": "1.0.0",
+      "category": "analytics",
+      "keywords": [
+        "adobe",
+        "customer-journey-analytics",
+        "cja",
+        "analytics",
+        "mcp",
+        "reporting"
+      ],
+      "author": {
+        "name": "Adobe"
+      },
+      "homepage": "https://github.com/adobe/skills",
+      "repository": "https://github.com/adobe/skills",
+      "license": "Apache-2.0"
     }
   ]
 }

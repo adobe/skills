@@ -1,0 +1,56 @@
+{
+  "context": "Tests whether the agent applies the silent-failure rules from the da-content skill when generating DA-uploadable HTML for a new EDS block. Covers body-fragment shape, block class encoding, metadata block naming, image URL reachability, and prohibition of head/script/style tags.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Body fragment only",
+      "max_score": 15,
+      "description": "Output contains no <!DOCTYPE>, <html>, <head>, <body>, <script>, or <style> tags, and no inline style= attributes (silent-failure rule #1)"
+    },
+    {
+      "name": "Canonical block class on outermost div",
+      "max_score": 15,
+      "description": "Block markup uses <div class=\"feature-comparison\"> with the block name as the first class token (silent-failure rule #2)"
+    },
+    {
+      "name": "Block name uses valid characters",
+      "max_score": 10,
+      "description": "Block name uses alphanumeric + single hyphens only; no underscores, no leading digit, no double dashes (silent-failure rule #3)"
+    },
+    {
+      "name": "Section wrapper present",
+      "max_score": 10,
+      "description": "Block is wrapped in a section <div> directly under the implied <main>, following the DA section structure"
+    },
+    {
+      "name": "Page metadata block correctly named",
+      "max_score": 10,
+      "description": "Page metadata block uses class=\"metadata\" (lowercase, single token) and is the last section in the document (silent-failure rule #4)"
+    },
+    {
+      "name": "Image URLs reachable",
+      "max_score": 10,
+      "description": "All <img src> URLs are absolute, externally reachable URLs (e.g., https://picsum.photos/...) — no repo-relative or document-relative paths that would produce <img src=\"about:error\"> (silent-failure rule #5)"
+    },
+    {
+      "name": "Three feature cards with required content",
+      "max_score": 10,
+      "description": "Block contains three rows or cells, each with a title, description, and \"Learn more\" anchor"
+    },
+    {
+      "name": "Anchor links use full <a href> elements",
+      "max_score": 5,
+      "description": "Learn-more links are real anchor elements with href and visible text (not just plain text)"
+    },
+    {
+      "name": "Inline tag normalization compliance",
+      "max_score": 10,
+      "description": "Block cell content avoids tags that get stripped or rewritten by the pipeline (<span>, <ins>, bare <b>/<i>); uses <strong>/<em>/<del> instead (silent-failure rule #11)"
+    },
+    {
+      "name": "Output is upload-ready",
+      "max_score": 5,
+      "description": "Output is a single complete HTML snippet that could be written to disk and PUT to admin.da.live without further modification"
+    }
+  ]
+}

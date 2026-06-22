@@ -1,0 +1,115 @@
+{
+  "substrateVersion": "1.1.0",
+  "defaults": {
+    "projectsDir": ".snowflake/projects",
+    "branchPrefix": "snowflake-",
+    "trunkBranch": "main",
+    "tagPrefix": "snowflake-"
+  },
+  "marker": {
+    "file": "scripts/scripts.js",
+    "needle": "overlay-engine.js",
+    "_comment": "Presence of the overlay-engine import proves both that the engine module is installed and that scripts.js is hooked. Renaming overlay-engine.js is a breaking change anyway."
+  },
+  "replace": [
+    {
+      "src": "scripts/overlay-engine.js",
+      "dst": "scripts/overlay-engine.js",
+      "purpose": "Static-to-EDS overlay engine (readBlockSlots, writeSlot, applySlotsToTemplate, resolveTemplateName, applyTemplateOverlay). Snowflake-owned module imported by scripts.js."
+    },
+    {
+      "src": "scripts/delayed.js",
+      "dst": "scripts/delayed.js",
+      "purpose": "Per-template animation engine loader with HEAD-probe; templates without animations skip silently and don't pull CDN deps."
+    },
+    {
+      "src": "styles/styles.css",
+      "dst": "styles/styles.css",
+      "purpose": "Lifecycle visibility CSS with direct-child selectors so fragment-internal .header/.footer classes are not caught by the boilerplate's descendant selectors."
+    },
+    {
+      "src": "styles/fonts.css",
+      "dst": "styles/fonts.css",
+      "purpose": "Empty by design. The boilerplate's default ships Roboto @font-face rules that scripts.js loadFonts() loads on every page — that contaminates overlay pages whose source declares 'Roboto, Tahoma, ...' as a fallback chain without actually loading a webfont (source intends system Tahoma; boilerplate silently provides real Roboto). Per-template font needs belong in /styles/<template>.css."
+    },
+    {
+      "src": "blocks/header/header.js",
+      "dst": "blocks/header/header.js",
+      "purpose": "Fetches /fragments/<template>/header.html based on main.dataset.overlay, instead of parsing DA-shape header markup."
+    },
+    {
+      "src": "blocks/header/header.css",
+      "dst": "blocks/header/header.css",
+      "purpose": "Intentionally empty; the boilerplate's 272-line stylesheet leaked into our fetched fragments. All header styling lives in /styles/<template>.css."
+    },
+    {
+      "src": "blocks/footer/footer.js",
+      "dst": "blocks/footer/footer.js",
+      "purpose": "Same as header.js for footer."
+    },
+    {
+      "src": "blocks/footer/footer.css",
+      "dst": "blocks/footer/footer.css",
+      "purpose": "Same reason as header.css — empty to prevent leakage."
+    },
+    {
+      "src": "head.html",
+      "dst": "head.html",
+      "purpose": "Minimal head: CSP, viewport, aem.js + scripts.js + styles.css. No per-template stylesheet; the overlay engine loads /styles/<template>.css dynamically once the template name resolves."
+    }
+  ],
+  "inject": [
+    {
+      "file": "scripts/scripts.js",
+      "edits": [
+        {
+          "id": "overlay-import",
+          "anchor": "} from './aem.js';",
+          "insert": "import { applyTemplateOverlay } from './overlay-engine.js';",
+          "skipIf": "overlay-engine.js"
+        },
+        {
+          "id": "overlay-eager-hook",
+          "anchor": "  decorateTemplateAndTheme();\n  const main = doc.querySelector('main');",
+          "insert": "  if (main && await applyTemplateOverlay(main)) {\n    document.body.classList.add('appear');\n    return;\n  }",
+          "skipIf": "applyTemplateOverlay(main)"
+        }
+      ]
+    }
+  ],
+  "ignorePatches": [
+    {
+      "dst": ".eslintignore",
+      "lines": [
+        "helix-importer-ui",
+        "*.min.js",
+        "scripts/*-animations.js",
+        "experiments/"
+      ],
+      "purpose": "Allow per-template animation engines + vendored libs + experiments folder."
+    },
+    {
+      "dst": ".stylelintignore",
+      "lines": [
+        "# Per-template CSS is vendor — extracted verbatim from the source",
+        "# generator's inline <style>. Ignore everything in styles/ except the",
+        "# boilerplate files we own.",
+        "styles/*.css",
+        "!styles/styles.css",
+        "!styles/fonts.css",
+        "!styles/lazy-styles.css",
+        "",
+        "experiments/"
+      ],
+      "purpose": "Skip per-template CSS files (vendored from source) and snowflake's own experiments folder."
+    }
+  ],
+  "gitignore": {
+    "dst": ".gitignore",
+    "lines": [
+      "# Snowflake skill: in-progress run state (committed only on close)",
+      ".snowflake/projects/*/state.json"
+    ],
+    "purpose": "Avoid churn from mid-run state.json writes; closed runs rename to state.json.closed and commit."
+  }
+}

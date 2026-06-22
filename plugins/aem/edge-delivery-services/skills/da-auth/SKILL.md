@@ -3,7 +3,7 @@ name: da-auth
 description: Obtains a valid Adobe IMS access token for the DA (Document Authoring) API. Use this skill as a prerequisite step whenever another skill needs to call admin.da.live — for example, before pushing HTML content, listing documents, or triggering a DA preview. Do NOT use this skill if you already have a valid DA_TOKEN in scope from a previous step in the same session.
 license: Apache-2.0
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # DA Authentication
@@ -33,6 +33,8 @@ Do NOT use this skill when:
 - **create-site** — includes its own DA auth step for new site onboarding; do not invoke da-auth separately within that flow
 - **content-driven-development** — use da-auth before pushing authored content to DA
 - **building-blocks** — use da-auth if test content needs to be pushed to DA for block development
+- **snowflake** — invoke da-auth before Phase 5 (round-trip) so `$DA_TOKEN` is set when snowflake PUTs the converted page to DA
+- **da-content** — the reference for what to do with `$DA_TOKEN` once you have it (Source API, preview/publish)
 
 ---
 

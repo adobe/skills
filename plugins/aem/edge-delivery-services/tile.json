@@ -6,6 +6,7 @@
   "skills": {
     "analyze-and-plan": { "path": "skills/analyze-and-plan/SKILL.md" },
     "create-site": { "path": "skills/create-site/SKILL.md" },
+    "da-content": { "path": "skills/da-content/SKILL.md" },
     "authoring-analysis": { "path": "skills/authoring-analysis/SKILL.md" },
     "block-collection-and-party": { "path": "skills/block-collection-and-party/SKILL.md" },
     "block-inventory": { "path": "skills/block-inventory/SKILL.md" },
@@ -23,7 +24,9 @@
     "preview-import": { "path": "skills/preview-import/SKILL.md" },
     "scrape-webpage": { "path": "skills/scrape-webpage/SKILL.md" },
     "slicc-handoff": { "path": "skills/slicc-handoff/SKILL.md" },
+    "snowflake": { "path": "skills/snowflake/SKILL.md" },
     "testing-blocks": { "path": "skills/testing-blocks/SKILL.md" },
-    "ue-component-model": { "path": "skills/ue-component-model/SKILL.md" }
+    "ue-component-model": { "path": "skills/ue-component-model/SKILL.md" },
+    "aem-cli": { "path": "skills/aem-cli/SKILL.md" }
   }
 }

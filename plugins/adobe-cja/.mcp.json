@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "adobe-cja": {
+      "type": "http",
+      "url": "https://cja-mcp.adobe.io/mcp"
+    }
+  }
+}

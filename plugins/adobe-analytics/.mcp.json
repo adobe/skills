@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "adobe-analytics": {
+      "type": "http",
+      "url": "https://aa-mcp.adobe.io/mcp"
+    }
+  }
+}

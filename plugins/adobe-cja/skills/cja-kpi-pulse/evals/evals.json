@@ -1,0 +1,23 @@
+{
+  "skill_name": "cja-kpi-pulse",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "give me a KPI update for last week — I want to know how sessions, orders, and revenue did vs the week before",
+      "expected_output": "An HTML report at /tmp/cja_kpi_pulse_report_<timestamp>.html with KPI scorecards for sessions, orders, and revenue comparing last week to the prior week. Each metric shows current value, delta, and % change with color-coded trend indicators (green for >+3%, red for <-3%, grey for flat). A text summary of 3-5 lines is delivered inline.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "how did we do this month vs last month — pull our top metrics",
+      "expected_output": "An HTML KPI pulse report comparing this month to last month across 5-8 automatically discovered metrics (sessions, people, orders, product views, cart views, etc.). The report includes scorecards, a full detail table with % change badges, and a top movers section showing which marketing channels or dimensions drove the biggest changes. Inline text summary is provided.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "pull our top metrics for the last 7 days and show me what moved",
+      "expected_output": "A KPI pulse report for the last 7 days vs the prior 7 days. Uses listComponentUsage (falling back to findMetrics if empty) to discover 5-8 key metrics. Runs two runReport calls for the two periods. HTML report written to /tmp/cja_kpi_pulse_report_<timestamp>.html with scorecards, detail table, and a dimension breakdown (e.g., marketing channel) for the 1-2 biggest movers.",
+      "files": []
+    }
+  ]
+}

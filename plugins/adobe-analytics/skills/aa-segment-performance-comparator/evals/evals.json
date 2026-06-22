@@ -1,0 +1,23 @@
+{
+  "skill_name": "aa-segment-performance-comparator",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Compare my mobile and non-mobile visitors in Adobe Analytics. I want to see how they differ on visits, revenue, orders, page views, bounce rate, and conversion rate.",
+      "expected_output": "An HTML comparison report at /tmp/aa_segment_comparator_report_<timestamp>.html with: (1) KPI summary cards (segments compared, metrics evaluated, significant differences, overall winner), (2) a segment context panel showing each segment's visit count and share of total visits, (3) a comparison matrix table (rows=metrics, columns=segments) with Winner, Spread, and Significant? columns — winner cell highlighted green, loser cell highlighted red, (4) a key insights section with at least 3 bullet insights referencing specific values and spreads, (5) a text summary table. No baseline delta percentages in the matrix. All data must come from real mcp__aa__runReport calls using segmentIds from findSegments.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "How does the Paid Search segment perform vs Organic (Natural Search) visitors in Adobe Analytics? Compare on conversion, revenue, and engagement metrics. Show me which segment is more efficient.",
+      "expected_output": "An HTML report at /tmp/aa_segment_comparator_report_<timestamp>.html comparing Paid Search (segment ID: Paid_Search) vs Natural Search (segment ID: Visits_from_Natural_Search). The segment context panel must show visit counts and share of total for each segment. The comparison matrix must include visits, revenue, orders, and at minimum one engagement metric (pageviews or bounce rate), with Winner, Spread, and Significant? columns per row. The key insights must specifically address which channel has better ROI potential and what the conversion rate spread is between segments. The skill must run separate runReport calls per segment per metric (not combined), per the AA one-metric-per-call constraint.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Show me a segment comparison for last month in Adobe Analytics. Compare new visitors (First Time Visits) against returning visitors (Return Visits) on all key metrics.",
+      "expected_output": "An HTML segment comparison report at /tmp/aa_segment_comparator_report_<timestamp>.html using segment IDs First_Time_Visits and Return_Visits from the AA built-in segment library. The segment context panel must show each segment's visit count and share of total. The report must include at least 5 metrics in the comparison matrix with Winner, Spread, and Significant? columns per row — no baseline delta percentages. The key insights section must address the value of returning visitors vs acquisition of new visitors (typical finding: returning visitors convert better). Winner and loser cells must be highlighted with distinct colors. The narrative insights must reference specific percentage differences and spreads, not just generic statements.",
+      "files": []
+    }
+  ]
+}

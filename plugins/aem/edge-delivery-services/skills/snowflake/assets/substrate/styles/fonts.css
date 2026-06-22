@@ -1,0 +1,18 @@
+/*
+ * snowflake substrate: intentionally empty.
+ *
+ * The AEM boilerplate ships this file with Roboto @font-face rules
+ * loaded unconditionally via scripts.js loadFonts(). Overlay pages
+ * declare their own font stacks in /styles/<template>.css (extracted
+ * from the source page's inline <style>), so the boilerplate's
+ * Roboto serves no purpose for them.
+ *
+ * Worse, it contaminates pages whose source CSS declares
+ * "Roboto, Tahoma, ..." in a fallback chain without loading a
+ * webfont — the source intends system Tahoma, but the boilerplate
+ * silently provides a real Roboto. Surfaced on ups-gb-a refresh
+ * (run 017, 2026-05-20).
+ *
+ * Keep this file empty. If a specific template needs a webfont,
+ * declare it in that template's /styles/<template>.css.
+ */

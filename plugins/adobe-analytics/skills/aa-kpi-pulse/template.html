@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>KPI Pulse &mdash; {ORG_NAME} &mdash; {PERIOD_LABEL}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f5f4f1;
+    --surface: #ffffff;
+    --ink: #1a1a1a;
+    --ink-muted: #6b6b6b;
+    --border: #e5e2dc;
+    --header-bg: #0e0e10;
+    --header-warm: #3a1010;
+    --accent-red: #c8312f;
+    --accent-red-bright: #ff6b68;
+    --accent-red-soft: #fdecea;
+    --accent-green: #1f7a4d;
+    --accent-yellow: #d4a017;
+  }
+  body { font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         background: var(--bg); color: var(--ink); line-height: 1.5;
+         -webkit-font-smoothing: antialiased; }
+
+  /* === Header === */
+  header { background: linear-gradient(120deg, var(--header-bg) 0%, #1a0d0d 55%, var(--header-warm) 100%);
+           color: #fff; padding: 56px 56px 44px; position: relative; overflow: hidden; }
+  header::after { content: ""; position: absolute; right: -140px; top: -140px;
+                  width: 460px; height: 460px;
+                  background: radial-gradient(circle, rgba(200,49,47,.35) 0%, transparent 70%);
+                  pointer-events: none; }
+  .header-inner { max-width: 1080px; margin: 0 auto; position: relative; z-index: 1; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 8px;
+             padding: 6px 14px; border: 1px solid rgba(255,107,104,.55);
+             border-radius: 999px; color: var(--accent-red-bright);
+             font-size: 11px; font-weight: 600; letter-spacing: 1.2px;
+             text-transform: uppercase; margin-bottom: 24px;
+             background: rgba(200,49,47,.10); }
+  .eyebrow::before { content: ""; width: 6px; height: 6px;
+                     background: var(--accent-red-bright); border-radius: 50%; }
+  header h1 { font-family: "Playfair Display", Georgia, serif;
+              font-size: 56px; font-weight: 700; letter-spacing: -1.5px;
+              line-height: 1.05; margin-bottom: 14px; color: #fff; }
+  header .lede { font-size: 16px; max-width: 600px;
+                 color: rgba(255,255,255,.80); margin-bottom: 24px;
+                 line-height: 1.55; }
+  header .meta { display: flex; flex-wrap: wrap; gap: 22px;
+                 font-size: 13px; color: rgba(255,255,255,.60); }
+  header .meta span { display: inline-flex; align-items: center; gap: 6px; }
+  header .meta .icon { opacity: .8; }
+
+  /* === Tabs === */
+  nav { background: var(--surface); border-bottom: 1px solid var(--border);
+        padding: 0 56px; display: flex; gap: 28px;
+        position: sticky; top: 0; z-index: 50; }
+  nav a { display: block; padding: 16px 0; font-size: 14px;
+          color: var(--ink); text-decoration: none;
+          border-bottom: 2px solid transparent;
+          transition: border-color .15s ease; }
+  nav a:hover { border-bottom-color: var(--accent-red); }
+
+  /* === Container === */
+  .container { max-width: 1080px; margin: 0 auto; padding: 36px 56px 60px; }
+
+  /* === Period context strip === */
+  .period-bar { background: var(--surface); border-radius: 8px;
+                padding: 14px 22px; margin-bottom: 28px;
+                font-size: 13px; color: var(--ink-muted);
+                box-shadow: 0 1px 3px rgba(0,0,0,.04);
+                border-left: 3px solid var(--accent-red); }
+  .period-bar strong { color: var(--ink); font-weight: 600; }
+
+  /* === Section label === */
+  .section-label { font-size: 11px; font-weight: 700;
+                   text-transform: uppercase; letter-spacing: 1.4px;
+                   color: var(--ink-muted); margin-bottom: 14px;
+                   padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+
+  /* === KPI grid === */
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+             gap: 14px; margin-bottom: 36px; }
+  .kpi-tile { background: var(--surface); border-radius: 8px;
+              padding: 22px 22px 20px;
+              border-top: 3px solid #b9b6ae;
+              box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+  .kpi-tile.down { border-top-color: var(--accent-red); }
+  .kpi-tile.up   { border-top-color: var(--accent-green); }
+  .kpi-tile.flat { border-top-color: #b9b6ae; }
+  .kpi-head { display: flex; justify-content: space-between;
+              align-items: center; margin-bottom: 10px; }
+  .kpi-label { font-size: 11px; font-weight: 700;
+               text-transform: uppercase;
+               color: var(--ink-muted); letter-spacing: 1px; }
+  .kpi-value { font-family: "Playfair Display", Georgia, serif;
+               font-weight: 700; font-size: 38px;
+               line-height: 1; color: var(--ink);
+               margin-bottom: 12px; }
+  .pill { display: inline-flex; align-items: center; gap: 4px;
+          padding: 3px 9px; border-radius: 4px;
+          font-size: 12px; font-weight: 600; line-height: 1.4; }
+  .pill.down { background: var(--accent-red-soft); color: var(--accent-red); }
+  .pill.up   { background: #ebf5ef; color: var(--accent-green); }
+  .pill.flat { background: #f1efea; color: var(--ink-muted); }
+  .prior { display: block; margin-top: 10px;
+           font-size: 12px; color: var(--ink-muted); }
+
+  /* === Movers section === */
+  .movers-section { background: var(--surface); border-radius: 8px;
+                    margin-bottom: 24px;
+                    box-shadow: 0 1px 3px rgba(0,0,0,.04); overflow: hidden; }
+  .movers-header { padding: 18px 28px; border-bottom: 1px solid var(--border); }
+  .movers-header h2 { font-family: "Playfair Display", Georgia, serif;
+                      font-size: 18px; font-weight: 700; }
+  .driver-narrative { padding: 18px 28px; font-size: 14px; line-height: 1.65;
+                      color: var(--ink); border-bottom: 1px solid var(--border); }
+
+  /* === Tables === */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th { background: #faf8f4; padding: 12px 22px;
+             text-align: left; font-weight: 600;
+             text-transform: uppercase; letter-spacing: .6px;
+             font-size: 11px; color: var(--ink-muted);
+             border-bottom: 1px solid var(--border); }
+  tbody td { padding: 12px 22px; border-bottom: 1px solid #f4f1eb; }
+  tbody tr:last-child td { border-bottom: none; }
+  .trend-up   { color: var(--accent-green); font-weight: 600; }
+  .trend-down { color: var(--accent-red); font-weight: 600; }
+  .trend-flat { color: var(--ink-muted); }
+
+  .back-top { position: fixed; bottom: 24px; right: 24px; background: var(--accent-red);
+              color: #fff; width: 44px; height: 44px; border-radius: 50%; border: none;
+              font-size: 20px; cursor: pointer;
+              box-shadow: 0 4px 12px rgba(200,49,47,.35); }
+  footer { text-align: center; padding: 32px 24px;
+           font-size: 12px; color: var(--ink-muted); }
+
+  /* === Print === */
+  @media print {
+    nav { display: none; position: static; }
+    header { padding: 36px 32px 28px; }
+    header h1 { font-size: 42px; }
+    .back-top { display: none; }
+    .kpi-row { page-break-inside: avoid; }
+    .kpi-tile, .movers-section, .period-bar {
+      box-shadow: none; border: 1px solid var(--border);
+    }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <div class="eyebrow">KPI Pulse Report</div>
+    <h1>{ORG_NAME} KPI Pulse</h1>
+    <p class="lede">A compact view of how key metrics moved during {PERIOD_LABEL} compared to {COMPARISON_PERIOD}.</p>
+    <div class="meta">
+      <span><span class="icon">&#128197;</span> {PERIOD_LABEL}</span>
+      <span><span class="icon">&#128202;</span> {REPORT_SUITE}</span>
+      <span><span class="icon">&#128340;</span> Prepared {GENERATED_DATE}</span>
+    </div>
+  </div>
+</header>
+<nav>
+  <a href="#scorecards">Scorecards</a>
+  <a href="#movers">Top Movers</a>
+</nav>
+<div class="container">
+  <div class="period-bar">
+    <strong>Current:</strong> {CURRENT_PERIOD} &nbsp;|&nbsp;
+    <strong>vs. Prior:</strong> {COMPARISON_PERIOD}
+  </div>
+
+  <!-- KPI Score Cards -->
+  <div class="section-label">Key Performance Indicators</div>
+  <div id="scorecards" class="kpi-row">
+    <!-- Repeat for each KPI (4-8 tiles), class = up | down | flat:
+    <div class="kpi-tile up">
+      <div class="kpi-head">
+        <div class="kpi-label">{METRIC_LABEL}</div>
+      </div>
+      <div class="kpi-value">{FORMATTED_VALUE}</div>
+      <span class="pill up">&#9650; {PCT_CHANGE}%</span>
+      <span class="prior">Prior: {PRIOR_VALUE}</span>
+    </div>
+    -->
+  </div>
+
+  <!-- Top Movers Detail -->
+  <div id="movers" class="movers-section">
+    <div class="movers-header">
+      <h2>What Drove the Movement</h2>
+    </div>
+    <div class="driver-narrative">
+      <!-- 2–3 sentence narrative about top movers -->
+    </div>
+    <table>
+      <thead><tr>
+        <th>Metric</th><th>Dimension</th><th>Top Driver</th>
+        <th>Current</th><th>Prior</th><th>Change</th>
+      </tr></thead>
+      <tbody><!-- top mover rows --></tbody>
+    </table>
+  </div>
+</div>
+<button class="back-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">
+  &#8679;
+</button>
+<footer>KPI Pulse &mdash; {ORG_NAME} &mdash; Generated {GENERATED_DATE}</footer>
+</body>
+</html>

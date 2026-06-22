@@ -1,0 +1,23 @@
+{
+  "skill_name": "cja-funnel-health-check",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Analyze my checkout funnel. The steps are: Homepage, Product Listing, Cart, Checkout, and Purchase. Use the last 30 days of data and tell me where we're losing the most visitors.",
+      "expected_output": "A funnel analysis that searches for the relevant page dimension in CJA, runs one report per step using adhocSegments to filter by page name, computes step-to-step conversion rates and drop-off counts, identifies the biggest step-to-step drop-off and quantifies it, includes a breakdown by device type for the worst step, and generates an HTML report at /tmp/cja_funnel_health_check_report_<timestamp>.html with a Chart.js bar chart and step-by-step table.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Where are visitors dropping off in our purchase flow? We have four steps: landing on the homepage, browsing a product category, adding something to the basket, and completing checkout. Show me funnel conversion rates for last 30 days.",
+      "expected_output": "A funnel health check that resolves each step to a CJA page dimension value using searchDimensionItems, runs per-step visitor counts via runReport with adhocSegments, calculates stepConversionRate and dropOffRate for each transition, identifies the step with the highest absolute drop-off as the biggest leak, and produces an HTML funnel visualization with recommendations targeting the worst step.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Show me funnel conversion rates for our onboarding flow. Steps: Registration page, Welcome email clicked, First dashboard visit, Feature activated. I want to know the overall conversion rate and which step kills the most users.",
+      "expected_output": "A funnel analysis that attempts to resolve each step to a CJA dimension (searching for page names or events), asks one clarifying question if a step is ambiguous (e.g., 'Feature activated' may need event clarification), runs a report per step with an adhoc segment filter, computes overall conversion rate from step 1 to step N, identifies biggestDropOffStep by absolute visitors lost, and generates an HTML report with recommendations. If page names are not found in the data view, it surfaces that clearly and suggests alternatives.",
+      "files": []
+    }
+  ]
+}

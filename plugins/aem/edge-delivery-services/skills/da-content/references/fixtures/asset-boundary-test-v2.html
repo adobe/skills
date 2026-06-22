@@ -1,0 +1,24 @@
+<body>
+  <header></header>
+  <main>
+    <div>
+      <h1>Asset boundary test v2 — DA-hosted images</h1>
+
+      <h2>K. Image hosted at content.da.live in &lt;img&gt;</h2>
+      <p><img src="https://content.da.live/aemcoder/snowflake-demos/catalan-tests/test-media-asset.png" alt="test-K content.da.live"></p>
+
+      <h2>L. Same image at content.da.live, different page (cross-page dedup test)</h2>
+      <p><img src="https://content.da.live/aemcoder/snowflake-demos/catalan-tests/test-media-asset.png" alt="test-L same content.da.live"></p>
+
+      <h2>M. Same image, but via aem.page host (not content.da.live)</h2>
+      <p><img src="https://main--snowflake-demos--aemcoder.aem.page/catalan-tests/test-media-asset.png" alt="test-M aem.page host"></p>
+
+      <h2>N. Cross-org content.da.live URL (other tenant) — should it fetch?</h2>
+      <p><img src="https://content.da.live/some-other-org/some-other-repo/some-image.png" alt="test-N cross-org content.da.live"></p>
+
+      <h2>O. Relative URL (should NOT work per docs)</h2>
+      <p><img src="/catalan-tests/test-media-asset.png" alt="test-O relative URL"></p>
+    </div>
+  </main>
+  <footer></footer>
+</body>

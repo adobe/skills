@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Asset boundary test</title>
+    <link rel="canonical" href="https://main--snowflake-demos--aemcoder.aem.page/catalan-tests/asset-boundary-test">
+    <meta property="og:title" content="Asset boundary test">
+    <meta property="og:url" content="https://main--snowflake-demos--aemcoder.aem.page/catalan-tests/asset-boundary-test">
+    <meta property="og:image" content="https://main--snowflake-demos--aemcoder.aem.page/catalan-tests/media_1deb739621e210ede243e8612b6f1138b999b07a7.jpg?width=1200&#x26;format=pjpg&#x26;optimize=medium">
+    <meta property="og:image:secure_url" content="https://main--snowflake-demos--aemcoder.aem.page/catalan-tests/media_1deb739621e210ede243e8612b6f1138b999b07a7.jpg?width=1200&#x26;format=pjpg&#x26;optimize=medium">
+    <meta property="og:image:alt" content="test-A external picsum">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Asset boundary test">
+    <meta name="twitter:image" content="https://main--snowflake-demos--aemcoder.aem.page/catalan-tests/media_1deb739621e210ede243e8612b6f1138b999b07a7.jpg?width=1200&#x26;format=pjpg&#x26;optimize=medium">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script nonce="afr5poFeBHZJXcbO5QTwFnBe" src="/scripts/aem.js" type="module"></script>
+    <script nonce="afr5poFeBHZJXcbO5QTwFnBe" src="/scripts/scripts.js" type="module"></script>
+    <link rel="stylesheet" href="/styles/styles.css">
+  </head>
+  <body>
+    <header></header>
+    <main>
+      <div class="dark" data-background="https://picsum.photos/seed/eds-boundary-I/400/300">
+        <h1 id="asset-boundary-test">Asset boundary test</h1>
+        <h2 id="external-reachable-url-picsumphotos-in-img">1. External reachable URL (picsum.photos) in &#x3C;img></h2>
+        <p>
+          <picture>
+            <source type="image/webp" srcset="./media_18daaf9593a4539b1db953aeaf58c0fbc813f5591.jpg?width=2000&#x26;format=webply&#x26;optimize=medium" media="(min-width: 600px)">
+            <source type="image/webp" srcset="./media_18daaf9593a4539b1db953aeaf58c0fbc813f5591.jpg?width=750&#x26;format=webply&#x26;optimize=medium">
+            <source type="image/jpeg" srcset="./media_18daaf9593a4539b1db953aeaf58c0fbc813f5591.jpg?width=2000&#x26;format=jpg&#x26;optimize=medium" media="(min-width: 600px)">
+            <img loading="lazy" alt="test-A external picsum" src="./media_18daaf9593a4539b1db953aeaf58c0fbc813f5591.jpg?width=750&#x26;format=jpg&#x26;optimize=medium" width="400" height="300">
+          </picture>
+        </p>
+        <h2 id="external-reachable-url-in-source-srcset-only">2. External reachable URL in &#x3C;source srcset> only</h2>
+        <p>
+          <picture>
+            <source type="image/webp" srcset="./media_1c52ec7b50864bc2d9e5ea03373ce83a63c047f0c.jpg?width=2000&#x26;format=webply&#x26;optimize=medium" media="(min-width: 600px)">
+            <source type="image/webp" srcset="./media_1c52ec7b50864bc2d9e5ea03373ce83a63c047f0c.jpg?width=750&#x26;format=webply&#x26;optimize=medium">
+            <source type="image/jpeg" srcset="./media_1c52ec7b50864bc2d9e5ea03373ce83a63c047f0c.jpg?width=2000&#x26;format=jpg&#x26;optimize=medium" media="(min-width: 600px)">
+            <img loading="lazy" alt="test-B external picsum picture" src="./media_1c52ec7b50864bc2d9e5ea03373ce83a63c047f0c.jpg?width=750&#x26;format=jpg&#x26;optimize=medium" width="400" height="300">
+          </picture>
+        </p>
+        <h2 id="external-unreachable-url-dns-fail-in-img">3. External unreachable URL (DNS fail) in &#x3C;img></h2>
+        <p>
+          <img src="about:error" alt="test-C invalid host" loading="lazy">
+        </p>
+        <h2 id="external-url-pointing-to-non-image-content-type">4. External URL pointing to non-image content-type</h2>
+        <p>
+          <img src="about:error" alt="test-D non-image" loading="lazy">
+        </p>
+        <h2 id="self-host-aempage-url-in-img">5. Self-host aem.page URL in &#x3C;img></h2>
+        <p>
+          <picture>
+            <source type="image/webp" srcset="./media_15d7589cab0d35f55bb7fbfa3167cab3f2f9084a9.jpg?width=2000&#x26;format=webply&#x26;optimize=medium" media="(min-width: 600px)">
+            <source type="image/webp" srcset="./media_15d7589cab0d35f55bb7fbfa3167cab3f2f9084a9.jpg?width=750&#x26;format=webply&#x26;optimize=medium">
+            <source type="image/jpeg" srcset="./media_15d7589cab0d35f55bb7fbfa3167cab3f2f9084a9.jpg?width=2000&#x26;format=jpg&#x26;optimize=medium" media="(min-width: 600px)">
+            <img loading="lazy" alt="test-E self-host media" src="./media_15d7589cab0d35f55bb7fbfa3167cab3f2f9084a9.jpg?width=750&#x26;format=jpg&#x26;optimize=medium" width="2000" height="1000">
+          </picture>
+        </p>
+        <h2 id="repeated-external-url-dedup-test">6. Repeated external URL (dedup test)</h2>
+        <p>
+          <picture>
+            <source type="image/webp" srcset="./media_18daaf9593a4539b1db953aeaf58c0fbc813f5591.jpg?width=2000&#x26;format=webply&#x26;optimize=medium" media="(min-width: 600px)">
+            <source type="image/webp" srcset="./media_18daaf9593a4539b1db953aeaf58c0fbc813f5591.jpg?width=750&#x26;format=webply&#x26;optimize=medium">
+            <source type="image/jpeg" srcset="./media_18daaf9593a4539b1db953aeaf58c0fbc813f5591.jpg?width=2000&#x26;format=jpg&#x26;optimize=medium" media="(min-width: 600px)">
+            <img loading="lazy" alt="test-F same URL as test-A" src="./media_18daaf9593a4539b1db953aeaf58c0fbc813f5591.jpg?width=750&#x26;format=jpg&#x26;optimize=medium" width="400" height="300">
+          </picture>
+        </p>
+        <h2 id="url-embedded-in-a-href-not-img">7. URL embedded in &#x3C;a href> not &#x3C;img></h2>
+        <p><a href="https://picsum.photos/seed/eds-boundary-G/400/300">test-G external link, not image</a></p>
+        <h2 id="svg-external-url">8. SVG external URL</h2>
+        <p>
+          <picture>
+            <source type="image/webp" srcset="./media_1d288388a084377b5963387277a44c77d96e2462c.svg?width=2000&#x26;format=webply&#x26;optimize=medium" media="(min-width: 600px)">
+            <source type="image/webp" srcset="./media_1d288388a084377b5963387277a44c77d96e2462c.svg?width=750&#x26;format=webply&#x26;optimize=medium">
+            <source type="image/svg+xml" srcset="./media_1d288388a084377b5963387277a44c77d96e2462c.svg?width=2000&#x26;format=svg&#x26;optimize=medium" media="(min-width: 600px)">
+            <img loading="lazy" alt="test-H external SVG" src="./media_1d288388a084377b5963387277a44c77d96e2462c.svg?width=750&#x26;format=svg&#x26;optimize=medium" width="300" height="300">
+          </picture>
+        </p>
+        <h2 id="section-metadata-background-url">9. Section metadata background URL</h2>
+        <div class="quote">
+          <div>
+            <div>test-I quote with section background</div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <h2 id="page-metadata-block">Page metadata block</h2>
+      </div>
+    </main>
+    <footer></footer>
+  </body>
+</html>

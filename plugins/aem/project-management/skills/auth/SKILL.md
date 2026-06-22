@@ -1,54 +1,67 @@
 ---
 name: auth
-description: Authenticate with AEM Edge Delivery Services Config Service API. Opens a browser window for Adobe ID login and captures the auth token when browser is closed. Use when generating guides/documentation that require API access.
+description: Authenticate with AEM Edge Delivery Services using Adobe IMS OAuth. Opens browser for Adobe ID login and captures token. Works for admin.hlx.page, admin.da.live, and Config Service APIs.
 license: Apache-2.0
 allowed-tools: Read, Write, Edit, Bash, AskUserQuestion
 metadata:
-  version: "1.0.0"
+  version: "2.0.0"
 ---
 
-# AEM Config Service Authentication
+# AEM Edge Delivery Services Authentication
 
-This skill handles browser-based authentication for AEM Edge Delivery Services Config Service API using Playwright CLI. It opens a browser window for Adobe ID login and captures the auth token when the browser is closed.
+Authenticate with Adobe IMS to obtain a Bearer token for all Edge Delivery Services admin operations.
+
+## Token Usage
+
+The IMS token works for all admin APIs:
+
+| API | Usage |
+|-----|-------|
+| `admin.hlx.page` | Preview, publish, status, code sync, jobs, logs |
+| `admin.da.live` | DA content operations (list, source, copy, move) |
+| Config Service | Sites, config, secrets, API keys, profiles |
+
+**Header:** `Authorization: Bearer ${IMS_TOKEN}`
 
 ## When to Use This Skill
 
-- Before generating admin/authoring/development guides that need API data
-- When Config Service API returns 401 Unauthorized
-- User says "login", "authenticate", "get auth token"
-- Orchestrated by handover/admin/authoring/development skills
+- API returns 401 Unauthorized
+- User says "login", "authenticate", "auth"
+- Before any admin operation when token is missing/expired
+- Before generating guides that need API access
 
 ## Prerequisites
 
-- Organization name must be known (from `.claude-plugin/project-config.json` or user input)
-- Node.js and npm installed
+- Node.js installed
+- Playwright installed (`npx playwright install chromium`)
 
 ---
 
 ## Authentication Flow
 
-### Step 1: Get Organization and Site Names
+### Step 1: Check Existing Token
 
 ```bash
-# Read saved org name
-ORG=$(cat .claude-plugin/project-config.json 2>/dev/null | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"org"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
-```
-
-If org is not saved, prompt user:
-> "What is your Config Service organization name? (the `{org}` in `https://main--site--{org}.aem.page`)"
-
-Save the org name:
-```bash
+CONFIG_FILE=".claude-plugin/project-config.json"
 mkdir -p .claude-plugin
-# Ensure .claude-plugin is in .gitignore (contains auth tokens)
 grep -qxF '.claude-plugin/' .gitignore 2>/dev/null || echo '.claude-plugin/' >> .gitignore
-echo "{\"org\": \"${ORG}\"}" > .claude-plugin/project-config.json
-```
 
-Then fetch the first site name from Config Service (unauthenticated endpoint):
+IMS_TOKEN=$(cat "$CONFIG_FILE" 2>/dev/null | node -e "
+  const d = require('fs').readFileSync(0,'utf8');
+  try { console.log(JSON.parse(d).imsToken || ''); } catch(e) { console.log(''); }
+")
+IMS_EXPIRY=$(cat "$CONFIG_FILE" 2>/dev/null | node -e "
+  const d = require('fs').readFileSync(0,'utf8');
+  try { console.log(JSON.parse(d).imsTokenExpiry || 0); } catch(e) { console.log(0); }
+")
+NOW=$(date +%s)
 
-```bash
-SITE=$(curl -s "https://admin.hlx.page/config/${ORG}/sites.json" | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/"name"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
+if [ -n "$IMS_TOKEN" ] && [ "$IMS_EXPIRY" -gt "$((NOW + 60))" ]; then
+  echo "Token valid (expires in $((IMS_EXPIRY - NOW)) seconds)"
+  exit 0
+fi
+
+echo "Token missing or expired. Starting login..."
 ```
 
 ### Step 2: Install Playwright (if needed)
@@ -58,122 +71,131 @@ npx playwright --version 2>/dev/null || npm install -g playwright
 npx playwright install chromium 2>/dev/null || true
 ```
 
-### Step 3: Display Clear Instructions and Open Browser
+### Step 3: Capture IMS Token via Playwright
 
-**IMPORTANT: Print highly visible instructions BEFORE opening the browser:**
-
-```bash
-echo ""
-echo "╔════════════════════════════════════════════════════════════════╗"
-echo "║                                                                ║"
-echo "║   BROWSER WINDOW OPENING FOR ADOBE ID LOGIN                    ║"
-echo "║                                                                ║"
-echo "║   1. Sign in with your Adobe ID credentials                   ║"
-echo "║   2. After successful login, CLOSE THE BROWSER WINDOW         ║"
-echo "║                                                                ║"
-echo "║   >>> CLOSE THE BROWSER TO CONTINUE <<<                       ║"
-echo "║                                                                ║"
-echo "╚════════════════════════════════════════════════════════════════╝"
-echo ""
-```
-
-Then open the browser with storage save:
+Playwright opens browser, local HTTP server captures the OAuth token from redirect, then browser closes automatically.
 
 ```bash
 mkdir -p .claude-plugin
-npx playwright open --save-storage=.claude-plugin/auth-storage.json "https://admin.hlx.page/login/${ORG}/${SITE}/main"
-```
 
-**Note:** This command blocks until the browser is closed. The auth token is saved to `auth-storage.json` when the browser closes.
-
-### Step 4: Extract Auth Token from Storage
-
-After browser is closed, extract the token:
-
-```bash
-echo ""
-echo "Browser closed. Extracting auth token..."
-
-AUTH_TOKEN=$(node -e "
+node -e "
+const http = require('http');
 const fs = require('fs');
-try {
-  const data = JSON.parse(fs.readFileSync('.claude-plugin/auth-storage.json', 'utf8'));
-  const cookie = data.cookies.find(c => c.name === 'auth_token');
-  if (cookie) {
-    console.log(cookie.value);
+const { chromium } = require('playwright');
+
+const CALLBACK_PORT = 9898;
+const CONFIG_PATH = '.claude-plugin/project-config.json';
+
+const scopes = 'ab.manage,AdobeID,gnav,openid,org.read,read_organizations,session,aem.frontend.all,additional_info.ownerOrg,additional_info.projectedProductContext,account_cluster.read';
+
+const authUrl = 'https://ims-na1.adobelogin.com/ims/authorize/v2' +
+  '?client_id=darkalley' +
+  '&scope=' + encodeURIComponent(scopes) +
+  '&response_type=token' +
+  '&redirect_uri=' + encodeURIComponent('http://localhost:' + CALLBACK_PORT + '/callback');
+
+let browser;
+
+const server = http.createServer((req, res) => {
+  const url = new URL(req.url, 'http://localhost:' + CALLBACK_PORT);
+  
+  if (url.pathname === '/callback') {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(\\\`<!DOCTYPE html><html><body>
+<script>
+  const p = new URLSearchParams(window.location.hash.substring(1));
+  const token = p.get('access_token');
+  const expiresIn = p.get('expires_in');
+  if (token) {
+    fetch('/token?access_token=' + encodeURIComponent(token) + '&expires_in=' + encodeURIComponent(expiresIn || ''));
+    document.body.innerHTML = '<h2>Login successful!</h2>';
   } else {
-    console.error('ERROR: auth_token cookie not found. Login may have failed.');
-    process.exit(1);
+    fetch('/token?error=failed');
+    document.body.innerHTML = '<h2>Login failed</h2>';
   }
-} catch (e) {
-  console.error('ERROR: Could not read auth storage file.');
-  process.exit(1);
-}
-")
-```
+</script>
+</body></html>\\\`);
+    return;
+  }
+  
+  if (url.pathname === '/token') {
+    const token = url.searchParams.get('access_token');
+    const expiresIn = url.searchParams.get('expires_in');
+    res.writeHead(200); res.end();
+    server.close();
+    
+    if (token) {
+      const expiresAt = Math.floor(Date.now() / 1000) + parseInt(expiresIn || '86400', 10);
+      let config = {};
+      try { config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch(e) {}
+      config.imsToken = token;
+      config.imsTokenExpiry = expiresAt;
+      fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+      
+      console.log('Authentication successful');
+      console.log('Expires: ' + new Date(expiresAt * 1000).toISOString());
+      
+      // Auto-close browser
+      if (browser) browser.close().then(() => process.exit(0));
+    } else {
+      console.error('Login failed');
+      if (browser) browser.close().then(() => process.exit(1));
+    }
+  }
+});
 
-### Step 5: Save Auth Token to Project Config
-
-```bash
-ORG=$(cat .claude-plugin/project-config.json | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"org"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
-
-echo "{\"org\": \"${ORG}\", \"authToken\": \"${AUTH_TOKEN}\"}" > .claude-plugin/project-config.json
-
-# Clean up storage file (contains sensitive session data)
-rm -f .claude-plugin/auth-storage.json
-
-echo "Auth token saved successfully."
-```
-
-### Step 6: Verify Token Works
-
-```bash
-AUTH_TOKEN=$(cat .claude-plugin/project-config.json | grep -o '"authToken"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"authToken"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
-ORG=$(cat .claude-plugin/project-config.json | grep -o '"org"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"org"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
-
-HTTP_CODE=$(curl -s -w "%{http_code}" -o /dev/null -H "x-auth-token: ${AUTH_TOKEN}" \
-  "https://admin.hlx.page/config/${ORG}/sites.json")
-
-if [ "$HTTP_CODE" = "200" ]; then
-  echo ""
-  echo "╔════════════════════════════════════════════════════════════════╗"
-  echo "║  ✓ AUTHENTICATION SUCCESSFUL                                   ║"
-  echo "╚════════════════════════════════════════════════════════════════╝"
-  echo ""
-else
-  echo ""
-  echo "╔════════════════════════════════════════════════════════════════╗"
-  echo "║  ✗ AUTHENTICATION FAILED (HTTP $HTTP_CODE)                        ║"
-  echo "║    Please try again                                            ║"
-  echo "╚════════════════════════════════════════════════════════════════╝"
-  echo ""
-fi
+(async () => {
+  server.listen(CALLBACK_PORT, 'localhost');
+  
+  console.log('Opening browser for Adobe ID login...');
+  browser = await chromium.launch({ headless: false });
+  const page = await browser.newPage();
+  await page.goto(authUrl);
+  
+  // Timeout after 5 minutes
+  setTimeout(() => {
+    console.error('Login timed out');
+    server.close();
+    browser.close().then(() => process.exit(1));
+  }, 5 * 60 * 1000);
+})();
+"
 ```
 
 ---
 
 ## Token Storage
 
-Auth tokens are stored in `.claude-plugin/project-config.json`:
+Stored in `.claude-plugin/project-config.json`:
 
 ```json
 {
   "org": "myorg",
-  "authToken": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+  "site": "mysite",
+  "imsToken": "eyJ...",
+  "imsTokenExpiry": 1777891272
 }
 ```
 
-**Security Note:** Add `.claude-plugin/` to `.gitignore`.
+| Field | Description |
+|-------|-------------|
+| `imsToken` | IMS OAuth token |
+| `imsTokenExpiry` | Unix timestamp when token expires |
 
 ---
 
-## Using the Token in Other Skills
+## Using the Token
 
 ```bash
-AUTH_TOKEN=$(cat .claude-plugin/project-config.json 2>/dev/null | grep -o '"authToken"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"authToken"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
+IMS_TOKEN=$(cat .claude-plugin/project-config.json | node -e "
+  const d = require('fs').readFileSync(0,'utf8');
+  console.log(JSON.parse(d).imsToken);
+")
 
-curl -H "x-auth-token: ${AUTH_TOKEN}" \
-  "https://admin.hlx.page/config/${ORG}/sites/{site}/access.json"
+# All APIs use the same header
+curl -H "Authorization: Bearer ${IMS_TOKEN}" "https://admin.hlx.page/status/{org}/{site}/main/"
+curl -H "Authorization: Bearer ${IMS_TOKEN}" "https://admin.hlx.page/config/{org}/sites.json"
+curl -H "Authorization: Bearer ${IMS_TOKEN}" "https://admin.da.live/list/{org}/{site}"
 ```
 
 ---
@@ -184,17 +206,18 @@ curl -H "x-auth-token: ${AUTH_TOKEN}" \
 |-------|----------|
 | `npx playwright` not found | Run `npm install -g playwright` |
 | Browser doesn't open | Run `npx playwright install chromium` |
-| Token not found after login | Ensure login completed before closing browser |
-| Login page not loading | Verify org/site names are correct |
-| API returns 401 | Token expired, re-authenticate |
+| Port 9898 in use | Kill process or wait |
+| Login page doesn't load | Check network to `ims-na1.adobelogin.com` |
+| Token not captured | Ensure login completed before closing browser |
+| 401 after login | Token expired, re-authenticate |
+| 403 on API | User lacks permission for that org/site |
 
 ---
 
-## Integration with Other Skills
+## Integration
 
-Called by: `admin`, `authoring`, `development`, `handover`
+Called by: `ops`, `admin`, `authoring`, `development`, `handover`
 
-**Invocation:**
 ```
 Skill({ skill: "project-management:auth" })
 ```
