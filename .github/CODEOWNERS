@@ -24,8 +24,8 @@
 # AEM Project Management (Astha Bhargava is sole author)
 /plugins/aem/project-management/                       @asthabh23
 
-# AEM Cloud Service (in-flight, contributors: abhishekgarg18, pkumargaddam, Himanich, akankshajain18, rombert)
-/plugins/aem/cloud-service/                            @abhishekgarg18 @pkumargaddam @Himanich @akankshajain18 @rombert
+# AEM Cloud Service (in-flight, contributors: abhishekgarg18, pkumargaddam, Himanich, akankshajain18, rombert, mandeep294)
+/plugins/aem/cloud-service/                            @abhishekgarg18 @pkumargaddam @Himanich @akankshajain18 @rombert @mandeep294
 
 # AEM 6.5 LTS (in-flight, contributors: abhishekgarg18, akankshajain18, rombert)
 /plugins/aem/6.5-lts/                                  @abhishekgarg18 @akankshajain18 @rombert
