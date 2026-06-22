@@ -9,9 +9,9 @@ Before **pattern-specific** steps in other `references/*.md` pattern files, appl
 
 **Repository-root paths** (workspace resolution):
 
-- `skills/aem/cloud-service/skills/best-practices/references/scr-to-osgi-ds.md`
-- `skills/aem/cloud-service/skills/best-practices/references/resource-resolver-logging.md`
+- `skills/aem/cloud-service/skills/code-assessment/references/scr-to-osgi-ds.md`
+- `skills/aem/cloud-service/skills/code-assessment/references/resource-resolver-logging.md`
 
 Main skill hub: [`../SKILL.md`](../SKILL.md).
 
-**Asset API (`assetApi`):** [asset-manager.md](asset-manager.md) and path files only.
+**Asset API (`assetApi`):** the [`asset-manager` pattern guide](../asset-manager/SKILL.md) covers create/upload (Direct Binary Access) and delete (in-JVM `resolver.delete()` + commit, or HTTP Assets API).

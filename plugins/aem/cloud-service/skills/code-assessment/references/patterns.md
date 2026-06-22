@@ -31,6 +31,11 @@ Adding a pattern: add a row here, then build the expert skill from
 |---|---|---|---|---|---|
 | [`inject-in-sling-model`](../inject-in-sling-model/SKILL.md) | migrate `@Inject` fields in `@Model` classes to injector-specific annotations | high | ready | analyzer | mechanical |
 | [`outdated-dependencies`](../outdated-dependencies/SKILL.md) | upgrade stale Maven dependency versions | medium | ready | analyzer | mechanical |
+| [`scheduler`](../scheduler/SKILL.md) | migrate `org.apache.sling.commons.scheduler.Scheduler` / `implements Job` to Cloud Service-compatible OSGi properties or Sling Jobs via `JobManager` | high | ready | scan | guided |
+| [`resource-change-listener`](../resource-change-listener/SKILL.md) | migrate JCR `EventListener` / resource-topic `EventHandler` to lightweight `ResourceChangeListener` + `JobConsumer` | high | ready | scan | guided |
+| [`replication`](../replication/SKILL.md) | migrate CQ `Replicator` / Sling Replication Agent to the Sling Distribution API (`Distributor` + `SimpleDistributionRequest`) | high | ready | scan | guided |
+| [`event-migration`](../event-migration/SKILL.md) | migrate OSGi `EventHandler` with inline business logic (replication / workflow / custom topics) to lightweight `EventHandler` + `JobConsumer` split, with `TopologyEventListener` for leader-only execution | high | ready | scan | guided |
+| [`asset-manager`](../asset-manager/SKILL.md) | migrate DAM `AssetManager` create/upload via Direct Binary Access (`@adobe/aem-upload`) and delete via in-JVM `resolver.delete()` + `commit()` or HTTP Assets API; removes `createAssetForBinary` / `getAssetForBinary` / `removeAssetForBinary` (not available on CS) | high | ready | scan | guided |
 | `outbound-call-timeouts` | add connect/read timeouts to outbound HTTP / `URLConnection` calls | high | planned | scan | - |
 | `unbounded-query` | bound QueryBuilder / JCR / SQL2 queries (`p.limit=-1` → limit + pagination) | high | planned | scan | - |
 | `unclosed-resources` | close `ResourceResolver` / `Session` / streams via try-with-resources | high | planned | scan | - |
