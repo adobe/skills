@@ -45,18 +45,42 @@ Then follow the runbook: [`references/runbook.md`](references/runbook.md).
 
 ## Manual Pattern Hints (classification → expert skill)
 
-Route the request to one expert skill:
+Route the request to one expert skill. Two pattern families share this skill:
+
+**Mechanical fixes** (analyzer-driven detection, deterministic edits — follow the runbook flow):
 
 | User said / saw | Expert skill |
 |---|---|
 | "update aem sdk", "upgrade mockito", stale `<version>` or `${property}` in pom | [`outdated-dependencies/`](outdated-dependencies/SKILL.md) |
 | "fix @Inject", "modernize Sling Models", `javax.inject.Inject` on `@Model` fields | [`inject-in-sling-model/`](inject-in-sling-model/SKILL.md) |
 
+**Architectural migration patterns** (guided remediation — full before/after, troubleshooting, modern alternatives; invoked directly or via `migration` for BPA/CAM-driven discovery):
+
+| User said / saw | Expert skill | BPA pattern ID |
+|---|---|---|
+| `org.apache.sling.commons.scheduler.Scheduler` or `scheduler.schedule(` with `Runnable` | [`scheduler/`](scheduler/SKILL.md) | `scheduler` |
+| `implements ResourceChangeListener`, lightweight listener + JobConsumer | [`resource-change-listener/`](resource-change-listener/SKILL.md) | `resourceChangeListener` |
+| `com.day.cq.replication.Replicator`, `org.apache.sling.replication.*`, "publish/preview activation" | [`replication/`](replication/SKILL.md) | `replication` |
+| `javax.jcr.observation.EventListener`, `org.osgi.service.event.EventHandler` on non-resource topics (replication, workflow, custom) | [`event-migration/`](event-migration/SKILL.md) | `eventListener` / `eventHandler` |
+| `com.day.cq.dam.api.AssetManager` create/upload/delete APIs, `createAssetForBinary`, `removeAssetForBinary` | [`asset-manager/`](asset-manager/SKILL.md) | `assetApi` |
+| HTL build warning `data-sly-test: redundant constant value comparison` | [`references/data-sly-test-redundant-constant.md`](references/data-sly-test-redundant-constant.md) | `htlLint` (reference, no expert skill subdirectory) |
+
 **Broad / correctness-review asks** ("check my Sling Models are implemented correctly", "review my code", "is my AEM project healthy", "assess this project") are not a single pattern: run the runbook in `discover` mode with intent `report` — the analyzer runs every detector and the report covers all built patterns, explicitly noting aspects not yet supported. Only narrow to one pattern when the user targets a specific fix.
 
 If nothing matches, say the issue is not yet supported and offer to file a request for a new expert skill.
 
 **Full catalog** (built + `planned` patterns, with severity / detection / fix): [`references/patterns.md`](references/patterns.md).
+
+## Invocation from the `migration` skill
+
+`migration` performs BPA/CAM/MCP discovery and handles batching + one-pattern-per-session workflow. After it has identified `(pattern, file)` pairs from BPA findings, it hands off here for the actual transformation. When invoked with `(pattern, file)` from `migration`:
+
+- **Skip** HA/analyzer discovery (caller already identified the pattern + file)
+- Open the pattern's expert skill directly (per the Manual Pattern Hints table above)
+- Apply the steps in the expert skill against the named file(s)
+- Return the result; `migration` continues with the next finding in its batch
+
+The pattern guides themselves are agnostic about who invoked them — they apply identically whether reached from `migration` (BPA/CAM) or from the runbook in this skill (HA / analyzer).
 
 ## Runbook
 
@@ -108,5 +132,4 @@ row, and expert-skill directory in sync.
 
 ## Related skills
 
-- **`migration`** — legacy AEM-version migration.
-- **`best-practices`** — general AEM CS Java/OSGi patterns.
+- **`migration`** — drives BPA/CAM/MCP-based legacy-AEM migration workflow. Discovers findings, batches them, enforces one-pattern-per-session, and hands off `(pattern, file)` pairs to this skill for transformation. See the "Invocation from the `migration` skill" section above.
