@@ -1,0 +1,4 @@
+code,type,subtype,importance,identifier,message,context
+OID-001,issue,index.rule.violation,critical,/oak:index/wkndId,Custom index missing -custom- suffix,
+OID-002,issue,index.rule.violation,critical,/oak:index/wkndTerminationDate,Custom index missing -custom- suffix,
+OID-003,issue,standard.index.modification,critical,/oak:index/damAssetLucene,OOTB index modified in place,

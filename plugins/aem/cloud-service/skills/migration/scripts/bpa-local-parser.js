@@ -20,14 +20,17 @@ const path = require('path');
 const PATTERN_TO_SUBTYPE = {
   scheduler: "sling.commons.scheduler",
   assetApi: "unsupported.asset.api",
+  oakIndex: "oak.index.definition",
 };
 
 // CSV subtype to pattern mapping (based on actual CSV structure)
 const CSV_SUBTYPE_TO_PATTERN = {
   "unsupported.asset.api": "assetApi",
-  "javax.jcr.observation.EventListener": "eventListener", 
+  "javax.jcr.observation.EventListener": "eventListener",
   "org.apache.sling.api.resource.observation.ResourceChangeListener": "resourceChangeListener",
-  "org.osgi.service.event.EventHandler": "eventHandler"
+  "org.osgi.service.event.EventHandler": "eventHandler",
+  "index.rule.violation": "oakIndex",
+  "standard.index.modification": "oakIndex"
 };
 
 // Known scheduler identifier
@@ -352,6 +355,38 @@ function processResourceChangeListenerFindings(findings) {
 }
 
 /**
+ * Process oak index findings from CSV.
+ * Oak index findings differ from Java-class patterns: the `identifier` is the
+ * oak index path (e.g. `/oak:index/wkndId`), not a fully-qualified class name.
+ * Both BPA subtypes for category OID are emitted under the `oakIndex` pattern.
+ */
+function processOakIndexFindings(findings) {
+  const oakIndexFindings = findings.filter(finding =>
+    finding.subtype === 'index.rule.violation' ||
+    finding.subtype === 'standard.index.modification'
+  );
+
+  const identifiers = {};
+
+  oakIndexFindings.forEach(finding => {
+    const subtype = finding.subtype;
+    const indexPath = (finding.identifier || '').trim();
+    if (!indexPath) return;
+    if (!identifiers[subtype]) {
+      identifiers[subtype] = [];
+    }
+    if (!identifiers[subtype].includes(indexPath)) {
+      identifiers[subtype].push(indexPath);
+    }
+  });
+
+  return {
+    subtype: 'oak.index.definition',
+    identifiers: identifiers
+  };
+}
+
+/**
  * Process event handler findings from CSV
  */
 function processEventHandlerFindings(findings) {
@@ -478,14 +513,29 @@ function createUnifiedCollection(bpaData, outputDir) {
   if (Object.keys(eventHandlerCollection.identifiers).length > 0) {
     const mongoSafeSubtype = toMongoSafeFieldName(eventHandlerCollection.subtype);
     subtypes[mongoSafeSubtype] = {};
-    
+
     Object.entries(eventHandlerCollection.identifiers).forEach(([identifier, classNames]) => {
       const mongoSafeIdentifier = toMongoSafeIdentifier(identifier);
       subtypes[mongoSafeSubtype][mongoSafeIdentifier] = classNames;
       totalFindings += classNames.length;
     });
-    
+
     console.log(`Found ${Object.values(eventHandlerCollection.identifiers).flat().length} event handler classes`);
+  }
+
+  // Process oak index findings (category OID)
+  const oakIndexCollection = processOakIndexFindings(findings);
+  if (Object.keys(oakIndexCollection.identifiers).length > 0) {
+    const mongoSafeSubtype = toMongoSafeFieldName(oakIndexCollection.subtype);
+    subtypes[mongoSafeSubtype] = {};
+
+    Object.entries(oakIndexCollection.identifiers).forEach(([identifier, indexPaths]) => {
+      const mongoSafeIdentifier = toMongoSafeIdentifier(identifier);
+      subtypes[mongoSafeSubtype][mongoSafeIdentifier] = indexPaths;
+      totalFindings += indexPaths.length;
+    });
+
+    console.log(`Found ${Object.values(oakIndexCollection.identifiers).flat().length} oak index paths`);
   }
   
   // Create unified collection structure with metadata

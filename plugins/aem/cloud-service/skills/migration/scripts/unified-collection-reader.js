@@ -27,7 +27,8 @@ const MONGO_SAFE_TO_PATTERN = {
   "unsupported_asset_api": "assetApi",
   "javax_jcr_observation_EventListener": "eventListener",
   "org_apache_sling_api_resource_observation_ResourceChangeListener": "resourceChangeListener",
-  "org_osgi_service_event_EventHandler": "eventHandler"
+  "org_osgi_service_event_EventHandler": "eventHandler",
+  "oak_index_definition": "oakIndex"
 };
 
 // Known scheduler identifier
@@ -273,14 +274,14 @@ function processResourceChangeListenerFromUnified(subtypeData, targets) {
  */
 function processEventHandlerFromUnified(subtypeData, targets) {
   let count = 0;
-  
+
   // Sort identifiers alphabetically so the iteration order is deterministic
   // across runs, independent of how the unified-collection JSON was written.
   const identifierKeys = Object.keys(subtypeData || {}).sort();
   for (const mongoSafeIdentifier of identifierKeys) {
     const classNames = subtypeData[mongoSafeIdentifier] || [];
     const identifier = fromMongoSafeFieldName(mongoSafeIdentifier);
-    
+
     for (const className of classNames) {
       count++;
       targets.push(new BpaTarget(
@@ -292,7 +293,38 @@ function processEventHandlerFromUnified(subtypeData, targets) {
       ));
     }
   }
-  
+
+  return count;
+}
+
+/**
+ * Process oak index data from unified collection.
+ *
+ * Oak index findings differ from Java-class patterns: each "className" slot
+ * carries an oak index JCR path (e.g. `/oak:index/wkndId`), not a fully
+ * qualified class name. The BPA subtype is preserved in the identifier
+ * field so the agent can pick the right fix (custom vs OOTB modification).
+ */
+function processOakIndexFromUnified(subtypeData, targets) {
+  let count = 0;
+
+  const subtypeKeys = Object.keys(subtypeData || {}).sort();
+  for (const mongoSafeSubtype of subtypeKeys) {
+    const indexPaths = subtypeData[mongoSafeSubtype] || [];
+    const subtype = fromMongoSafeFieldName(mongoSafeSubtype);
+
+    for (const indexPath of indexPaths) {
+      count++;
+      targets.push(new BpaTarget(
+        "oakIndex",
+        indexPath,
+        subtype,
+        `Oak index requires Cloud-compatible rewrite (${subtype}): ${indexPath}`,
+        "critical"
+      ));
+    }
+  }
+
   return count;
 }
 
@@ -405,6 +437,9 @@ function fetchUnifiedBpaFindings(pattern = "all", collectionsDir = './unified-co
     } else if (pat === "eventHandler") {
       count = processEventHandlerFromUnified(subtypeData, result.targets);
       result.summary.eventHandlerCount = count;
+    } else if (pat === "oakIndex") {
+      count = processOakIndexFromUnified(subtypeData, result.targets);
+      result.summary.oakIndexCount = count;
     }
     
     console.log(`[Unified Collection Reader] Processed ${count} findings for pattern: ${pat}`);

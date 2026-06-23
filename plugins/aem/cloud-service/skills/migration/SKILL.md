@@ -23,6 +23,7 @@ This skill is **orchestration**: BPA data, CAM/MCP, **one pattern per session**,
 | **Just a few files** | *"Migrate **scheduler** in `core/.../MyJob.java`"* | Manual flow: no BPA required |
 | **OSGi → Cloud Manager** | *"**Scan my config files and create Cloud Manager environment secrets or variables.**"* | Agent **auto-reads** [references/osgi-cfg-json-cloud-manager.md](references/osgi-cfg-json-cloud-manager.md) (full Adobe-aligned rules inlined there); no BPA pattern id |
 | **HTL lint warnings** | *"Fix **htlLint** issues in `ui.apps`"* | Proactive discovery via `rg` → fix per reference module |
+| **Oak index findings (OID)** [BETA] | *"Fix **oakIndex** findings using `./path/to/bpa.csv`"* — covers `index.rule.violation` and `standard.index.modification` | Invokes Adobe `@adobe/aem-cs-source-migration-index-converter` per [{best-practices}/references/oak-index.md]({best-practices}/references/oak-index.md); shows diff in IDE; validates with `mvn` and `aemanalyser` |
 
 **Starter prompts (copy-paste):**
 
@@ -204,7 +205,7 @@ If the user asks to fix everything or BPA mixes patterns, **ask which pattern fi
 
 If the request is **OSGi configs → Cloud Manager** (see **Required delegation**, branch A), do **not** map to a BPA pattern — follow [references/osgi-cfg-json-cloud-manager.md](references/osgi-cfg-json-cloud-manager.md) instead.
 
-Otherwise map the request to a pattern id: `scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `htlLint`. If unclear, use **Manual Pattern Hints** in **`{best-practices}/SKILL.md`** or ask the user to pick one of those.
+Otherwise map the request to a pattern id: `scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `htlLint`, `oakIndex`. If unclear, use **Manual Pattern Hints** in **`{best-practices}/SKILL.md`** or ask the user to pick one of those.
 
 ### Step 2: Availability
 
@@ -212,7 +213,7 @@ If the id is missing from the best-practices table, say the pattern is not suppo
 
 ### Step 3: Targets
 
-**For BPA patterns** (`scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`): Run **`getBpaFindings`** (with `bpaFilePath` when provided). Internally: cache → CSV → MCP → manual **only when each step is applicable and succeeds**; if MCP fails, obey **MCP errors and fallback** (stop; no silent chain). For MCP details, [references/cam-mcp.md](references/cam-mcp.md).
+**For BPA patterns** (`scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `oakIndex`): Run **`getBpaFindings`** (with `bpaFilePath` when provided). Internally: cache → CSV → MCP → manual **only when each step is applicable and succeeds**; if MCP fails, obey **MCP errors and fallback** (stop; no silent chain). For MCP details, [references/cam-mcp.md](references/cam-mcp.md).
 
 `getBpaFindings` returns **a batch of 5 findings** (default `limit=5`) along with a `paging`
 envelope. The agent processes that batch only; it does **not** request the next batch until
