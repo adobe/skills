@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stardust.dev/schemas/rollout-pages.schema.json",
+  "title": "stardust rollout/coverage/pages.json",
+  "description": "Delivery ledger: one row per migrated page rollout is responsible for delivering to AEM-EDS. Built by inventorying stardust/migrated/. Tracks the source hash (for stale detection) and per-page delivery status. Owned by stardust:rollout; the agnostic core is never modified.",
+  "type": "object",
+  "required": ["_provenance", "pages"],
+  "additionalProperties": false,
+  "properties": {
+    "_provenance": { "$ref": "#/$defs/provenance" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "pages": { "type": "array", "items": { "$ref": "#/$defs/page" } }
+  },
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "required": ["writtenBy", "writtenAt", "stardustVersion"],
+      "properties": {
+        "writtenBy": { "type": "string", "examples": ["stardust:rollout"] },
+        "writtenAt": { "type": "string", "format": "date-time" },
+        "readArtifacts": { "type": "array", "items": { "type": "string" } },
+        "stardustVersion": { "type": "string" }
+      }
+    },
+    "page": {
+      "type": "object",
+      "required": ["slug", "source", "delivery"],
+      "additionalProperties": false,
+      "properties": {
+        "slug": { "type": "string" },
+        "path": { "type": "string", "description": "Destination path on the delivered site, e.g. /blog/scaling-teams." },
+        "title": { "type": "string" },
+        "templateId": {
+          "type": ["string", "null"],
+          "description": "The template grouping this page belongs to (rollout/coverage/templates.json[].id). Drives delivery order and block reuse."
+        },
+        "source": {
+          "type": "object",
+          "description": "The agnostic input rollout delivers (read-only).",
+          "required": ["migratedHtml", "sourceHash"],
+          "additionalProperties": false,
+          "properties": {
+            "migratedHtml": { "type": "string", "description": "Path, e.g. stardust/migrated/blog/scaling-teams.html." },
+            "metaJson": { "type": ["string", "null"], "description": "Path to the page's _meta.json." },
+            "sourceHash": { "type": "string", "description": "Content hash of the migrated HTML; changes mark the page stale for re-delivery." }
+          }
+        },
+        "blocks": {
+          "type": "array",
+          "description": "Block ids this page composes (rollout/coverage/blocks.json[].id).",
+          "items": { "type": "string" }
+        },
+        "delivery": {
+          "type": "object",
+          "required": ["status"],
+          "additionalProperties": false,
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": ["pending", "converting", "deployed", "verified", "stale", "failed"],
+              "description": "stale = source hash changed after a prior delivery; needs re-delivery."
+            },
+            "deployedUrl": { "type": ["string", "null"], "format": "uri" },
+            "deployedAt": { "type": ["string", "null"], "format": "date-time" },
+            "verifiedAt": { "type": ["string", "null"], "format": "date-time" },
+            "error": { "type": ["string", "null"], "description": "Failure detail when status == failed." }
+          }
+        }
+      }
+    }
+  }
+}

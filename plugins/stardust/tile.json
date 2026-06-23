@@ -11,6 +11,7 @@
     "prepare-migration": { "path": "skills/prepare-migration/SKILL.md" },
     "uplift": { "path": "skills/uplift/SKILL.md" },
     "deploy": { "path": "skills/deploy/SKILL.md" },
+    "rollout": { "path": "skills/rollout/SKILL.md" },
     "diff": { "path": "skills/diff/SKILL.md" }
   },
   "softDependencies": [
