@@ -129,5 +129,5 @@ All skills reference official Adobe AEM 6.5 LTS documentation:
 
 AEM as a Cloud Service uses the **Sling Distribution API** instead of replication agents. If planning migration:
 - Review [Cloud Service Distribution Documentation](https://experienceleague.adobe.com/docs/experience-manager-cloud-service/content/operations/distribution.html)
-- For code migration patterns, see `skills/aem/cloud-service/skills/best-practices/references/replication.md`
+- For code migration patterns, use the `code-assessment` skill: `skills/aem/cloud-service/skills/code-assessment/replication/SKILL.md`
 - Avoid agent-specific coupling (filter by agent ID) to reduce migration complexity
