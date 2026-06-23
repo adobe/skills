@@ -1,7 +1,12 @@
 package analyzer;
 
+import analyzer.detectors.AssetManager;
+import analyzer.detectors.EventMigration;
 import analyzer.detectors.InjectInSlingModel;
 import analyzer.detectors.OutdatedDependencies;
+import analyzer.detectors.Replication;
+import analyzer.detectors.ResourceChangeListener;
+import analyzer.detectors.Scheduler;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -12,7 +17,12 @@ public final class Registry {
     public static List<Detector> all() {
         return new ArrayList<>(Arrays.asList(
             new InjectInSlingModel(),
-            new OutdatedDependencies()
+            new OutdatedDependencies(),
+            new Scheduler(),
+            new ResourceChangeListener(),
+            new Replication(),
+            new EventMigration(),
+            new AssetManager()
         ));
     }
 }
