@@ -16,6 +16,8 @@ import java.util.List;
 // can be reviewed for the CS-required lightweight + JobConsumer pattern.
 // Legacy javax.jcr.observation.EventListener migration is handled by the EventMigration
 // detector, matching the BPA BpaSubtypeConfig taxonomy.
+// Limitation: matches a direct `implements` clause only (parse-level, no type hierarchy) — a class
+// that reaches the interface via an abstract base or a project interface that extends it is missed.
 public final class ResourceChangeListener implements Detector {
     static final String RCL_FQN          = "org.apache.sling.api.resource.observation.ResourceChangeListener";
     static final String EXTERNAL_RCL_FQN = "org.apache.sling.api.resource.observation.ExternalResourceChangeListener";

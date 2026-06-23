@@ -35,6 +35,9 @@ public final class AssetManager implements Detector {
             // Parse-level only (no symbol table), so the receiver type is not verified — a call to
             // an unrelated object's createAsset(...) in a file that also imports AssetManager would
             // match. Accepted as a known limitation; the import gate keeps false positives rare.
+            // Granularity: this detector emits ONE finding per matching call site (each legacy call
+            // is individually actionable), unlike the class/file-level detectors that emit one per
+            // type. A class with three legacy calls yields three findings.
             new TreePathScanner<Void, Void>() {
                 public Void visitMethodInvocation(MethodInvocationTree mit, Void p) {
                     if (mit.getMethodSelect() instanceof MemberSelectTree) {

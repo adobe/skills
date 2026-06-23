@@ -26,6 +26,14 @@ assert_absent() { # desc, haystack, needle
     echo "  PASS: $1"; PASS=$((PASS+1))
   fi
 }
+assert_count() { # desc, haystack, needle (fixed string), expected
+  actual=$(printf '%s' "$2" | grep -oF -- "$3" | wc -l | tr -d ' ')
+  if [ "$actual" = "$4" ]; then
+    echo "  PASS: $1 (count=$actual)"; PASS=$((PASS+1))
+  else
+    echo "  FAIL: $1 (expected $4, got $actual)"; FAIL=$((FAIL+1))
+  fi
+}
 
 echo "[smoke] valid empty/clean output"
 OUT="$(run "$FIX/clean")"
@@ -122,6 +130,7 @@ assert_contains "LegacyAssetWorkflow flagged"                       "$OUT" 'Lega
 assert_contains "asset-manager pattern present"                     "$OUT" '"pattern":"asset-manager"'
 assert_contains "createAssetForBinary call captured in snippet"     "$OUT" 'createAssetForBinary'
 assert_contains "removeAssetForBinary call captured in snippet"     "$OUT" 'removeAssetForBinary'
+assert_count   "LegacyAssetWorkflow emits one finding per call site (3)" "$OUT" '"file":"LegacyAssetWorkflow.java"' 3
 assert_absent  "UnrelatedCreateAsset (no AssetManager import) skipped" "$OUT" 'UnrelatedCreateAsset.java'
 
 echo "[wiring] each registered detector has an expert skill + ready/analyzer catalog row"

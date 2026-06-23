@@ -54,6 +54,8 @@ public final class Scheduler implements Detector {
         }
     }
 
+    // Direct `implements` clause only (parse-level, no type hierarchy): a class reaching Job via an
+    // abstract base or an interface that extends it is missed.
     static boolean implementsLegacyJob(ClassTree cls, JavaUnit u) {
         for (Tree iface : cls.getImplementsClause()) {
             if (Types.resolvesTo(iface.toString(), JOB_FQN, u)) return true;
@@ -62,6 +64,9 @@ public final class Scheduler implements Detector {
     }
 
     // implements Runnable + an import-aware OSGi @Component whose source declares a scheduler.* property.
+    // Soft spots (both rare, kept safe by the import-aware @Component gate): a property whose value is
+    // a constant (property = SchedulerConstants.EXPRESSION) won't contain the literal and is missed;
+    // an unrelated property string that happens to contain "scheduler.name" would false-match.
     static boolean isOsgiPropertyScheduler(ClassTree cls, JavaUnit u) {
         boolean implementsRunnable = false;
         for (Tree iface : cls.getImplementsClause()) {

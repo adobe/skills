@@ -15,10 +15,11 @@ Adding a pattern: add a row here, then build the expert skill from
 - **severity** — `high` | `medium` | `low`. The report orders findings by this (highest first).
 - **status** — `ready` (expert skill built) | `planned` (catalogued placeholder, not built yet).
 - **detection** — how instances are found: `analyzer` (the deterministic local analyzer
-  parses the workspace and emits findings — see [`../scripts/README.md`](../scripts/README.md))
-  or `scan` (legacy LLM workspace search, used only where no analyzer detector exists yet).
-  When the user names targets directly, that's the `with_findings` invocation mode
-  (see [`../SKILL.md`](../SKILL.md)), not a per-pattern detection method.
+  parses the workspace and emits findings — see [`../scripts/README.md`](../scripts/README.md)).
+  Every `ready` pattern uses `analyzer`; there is no LLM-scan code path in this version.
+  `planned` rows leave it `-` — the detector is built (and this set to `analyzer`) when the
+  pattern reaches `ready`. When the user names targets directly, that's the `with_findings`
+  invocation mode (see [`../SKILL.md`](../SKILL.md)), not a per-pattern detection method.
 - **fix** — `mechanical` (deterministic edit) | `guided` (LLM-judgment remediation).
   Set only when a pattern reaches `ready` and has a recipe to prove it; `planned` rows
   leave it `-` (the fix approach is decided when the pattern is built).
@@ -36,15 +37,15 @@ Adding a pattern: add a row here, then build the expert skill from
 | [`replication`](../replication/SKILL.md) | migrate CQ `Replicator` / Sling Replication Agent to the Sling Distribution API (`Distributor` + `SimpleDistributionRequest`) | high | ready | analyzer | guided |
 | [`event-migration`](../event-migration/SKILL.md) | migrate OSGi `EventHandler` with inline business logic (replication / workflow / custom topics) to lightweight `EventHandler` + `JobConsumer` split, with `TopologyEventListener` for leader-only execution | high | ready | analyzer | guided |
 | [`asset-manager`](../asset-manager/SKILL.md) | migrate DAM `AssetManager` create/upload via Direct Binary Access (`@adobe/aem-upload`) and delete via in-JVM `resolver.delete()` + `commit()` or HTTP Assets API; removes `createAssetForBinary` / `getAssetForBinary` / `removeAssetForBinary` (not available on CS) | high | ready | analyzer | guided |
-| `outbound-call-timeouts` | add connect/read timeouts to outbound HTTP / `URLConnection` calls | high | planned | scan | - |
-| `unbounded-query` | bound QueryBuilder / JCR / SQL2 queries (`p.limit=-1` → limit + pagination) | high | planned | scan | - |
-| `unclosed-resources` | close `ResourceResolver` / `Session` / streams via try-with-resources | high | planned | scan | - |
-| `thread-lock-contention` | replace coarse `synchronized` / synchronized collections on shared state with concurrent types | high | planned | scan | - |
-| `heavy-model-init` | move heavy work (I/O, queries) out of `@PostConstruct` / Sling Model init | medium | planned | scan | - |
-| `in-process-image-processing` | move in-request `BufferedImage` / `ImageIO` work to renditions / async | medium | planned | scan | - |
-| `unbounded-recursion` | add a depth guard to self-recursive / tree-traversal methods (incl. navigation & breadcrumb) | medium | planned | scan | - |
-| `unbounded-graphql` | add pagination (`first` / `limit`) to GraphQL queries | medium | planned | scan | - |
-| `logging-in-loops` | move logging out of hot loops / add level guards | low | planned | scan | - |
+| `outbound-call-timeouts` | add connect/read timeouts to outbound HTTP / `URLConnection` calls | high | planned | - | - |
+| `unbounded-query` | bound QueryBuilder / JCR / SQL2 queries (`p.limit=-1` → limit + pagination) | high | planned | - | - |
+| `unclosed-resources` | close `ResourceResolver` / `Session` / streams via try-with-resources | high | planned | - | - |
+| `thread-lock-contention` | replace coarse `synchronized` / synchronized collections on shared state with concurrent types | high | planned | - | - |
+| `heavy-model-init` | move heavy work (I/O, queries) out of `@PostConstruct` / Sling Model init | medium | planned | - | - |
+| `in-process-image-processing` | move in-request `BufferedImage` / `ImageIO` work to renditions / async | medium | planned | - | - |
+| `unbounded-recursion` | add a depth guard to self-recursive / tree-traversal methods (incl. navigation & breadcrumb) | medium | planned | - | - |
+| `unbounded-graphql` | add pagination (`first` / `limit`) to GraphQL queries | medium | planned | - | - |
+| `logging-in-loops` | move logging out of hot loops / add level guards | low | planned | - | - |
 
 > Out-of-memory / leak incidents — a frequent symptom — are usually caused by
 > the patterns above (unbounded queries, unclosed resources, in-process image work, heavy init).

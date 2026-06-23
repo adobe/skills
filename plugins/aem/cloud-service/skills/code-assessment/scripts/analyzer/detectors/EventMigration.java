@@ -16,6 +16,8 @@ import java.util.List;
 // org.osgi.service.event.EventHandler map to this pattern. Fine-grained routing (a resource-topic
 // EventHandler or a content-observing JCR listener belongs in resource-change-listener) is handled
 // downstream by the guide's cross-links, mirroring BPA's class-level detection granularity.
+// Limitation: matches a direct `implements` clause only (parse-level, no type hierarchy) — a class
+// that reaches the interface via an abstract base or a project interface that extends it is missed.
 public final class EventMigration implements Detector {
     static final String OSGI_EVENT_HANDLER_FQN = "org.osgi.service.event.EventHandler";
     static final String JCR_EVENT_LISTENER_FQN = "javax.jcr.observation.EventListener";
