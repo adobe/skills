@@ -15,7 +15,7 @@ jobs:
     # Skip release commits to avoid infinite loops
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           # Use a token with push access so commits from semantic-release trigger CI
