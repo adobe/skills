@@ -115,9 +115,21 @@ The ANTI-PATTERNS below are the **decode** side: a block must parse robustly wha
 - **No raw presentational HTML in content.** No `<sup>` (move unit superscript into the block — split `185+` into number + generated `<sup>`); don't use `<br>` for layout (a deliberate editorial line break via Shift+Enter is fine — it's not "exposed code").
 - **Grouped item sets → one row per item.** A band of N similar units (metrics, stats, feature cards) is ONE row per unit, its parts as flat siblings in that cell — not one cell per atom (loses which label pairs with which number) and not all-in-one-cell. The block segments per row.
 - **Lists / FAQ → rows, not nested lists or one blob.** An accordion/FAQ is a head cell then one row per Q/A (question cell + answer cell). David's-Model #5.
+- **Section head → DEFAULT CONTENT, not a block row.** The eyebrow/heading/lede that sits *above* a repeating block (cards, metrics, FAQ, insights) is prose, not part of the block's structure — author it as **default content** in the section, before the block, so DA and `.plain.html` keep it out of the block table (David's #1). The block **reabsorbs** it at decorate time (see "Section heads" below), so this is a pure markup/authoring win with **zero pixel change**. (NOT for a genuine widget whose rows ARE its structure, e.g. countdown.)
 - **Buttons → one emphasis axis:** primary `<strong><a>`, secondary `<em><a>`; never `<strong><em><a>`. (See "Lean on EDS button conventions".)
 - **Headings → real outline, no level jumps:** one `<h1>`; section titles `<h2>`; card/sub titles `<h3>` (never skip to `<h4>`). Canonicalising a prototype's card `<h4>` to `<h3>` is correct.
 - **Metadata stays name/value** (config only — David's #14); never name/value for semantic content.
+
+### Section heads: default content the block reabsorbs (zero pixel change)
+
+A head-bearing block (one with a section eyebrow/heading/lede above repeating units) should NOT carry that head as block rows. Author the head as **default content** in the section, before the block; the block table holds only the repeating units. Then the block **reabsorbs** the head so the decorated DOM — and every pixel — is identical to the old in-table form:
+
+- On `decorate(block)`, read the section's leading default-content wrapper, build the SAME `.section-head` the block used to build from its first rows, and **remove the wrapper**. Result: identical decorated DOM; CSS untouched.
+- **The head wrapper is a sibling of the block's SECTION-LEVEL wrapper, not of the block, and its class varies by runtime.** Use `block.closest('.block-content')?.previousElementSibling` and match BOTH `.default-content` (AuthorKit runtime) **and** `.default-content-wrapper` (vanilla EDS). `block.previousElementSibling` alone is `null` (the block is nested in `.block-content`).
+- Keep the old in-table head (leading non-unit rows) as a **back-compat fallback**.
+- **Verify zero change:** diff the *decorated* block `outerHTML` (ids/`media_<hash>` normalised) old-vs-new — it must be byte-identical, with 0 default-content wrappers left after decorate.
+
+A FOUC is possible (head paints as default content, then reabsorbs); the final layout is identical — watch CLS only if default-content margins differ markedly from the head's.
 
 ### Images: editorial → authored content, decorative → CSS only
 
@@ -789,6 +801,7 @@ A block that builds its own layout/view wrapper (common for interactive blocks t
 - [ ] **Exactly one `<h1>` per page** (#35): the hero/lead headline is `<h1>`; section titles are `<h2>`/`<h3>`; no headline left as a bare `<div>` (interactive blocks included — the lead title is `<h1>` in server-visible markup).
 - [ ] **Editorial images are authorable content** — uploaded to DA `/media`, authored as `content.da.live` `<img>` with `alt` (NOT repo-relative `/img/`, NOT baked into block JS by index). Hero/feature/CTA-band backgrounds count as editorial. Decorative image-less treatments (gradients/scrims/washes) and fixed brand assets stay CSS background. **Verify: the delivered `.plain.html` carries the expected `<img>`+alt count** (CSS-background images are absent from it). `<image-slot>` placeholders → empty cells with a CSS background fallback.
 - [ ] **ENCODE shapes (see The ENCODE contract):** grouped bands = one row per item; FAQ/accordion = head cell + Q/A rows; sub-fields carried by a leading `<strong>`/`<code>` tag, **not** an invented `::`/`|` delimiter; accents `<em>` not `<span class="em">`; no `<sup>`/layout-`<br>` in content.
+- [ ] **Section heads are DEFAULT CONTENT, not block rows** — the eyebrow/heading/lede above a repeating block is authored as section default content; the block reabsorbs it (`block.closest('.block-content').previousElementSibling`; match `.default-content`/`.default-content-wrapper`) so the decorated DOM is byte-identical (verify: 0 wrappers left, decorated outerHTML unchanged).
 - [ ] **Same-pattern sections share ONE block + variant classes** (`cards`/`text`/…); only genuinely-unique sections are bespoke (see "The one rule").
 - [ ] Heading outline has no level jumps (`h2 → h3`, never `h2 → h4`).
 - [ ] Each block reproduces the prototype's max-width container — **including plain-background sections** (#37); **no unintended full-width content at a wide (≥1600px) viewport**.
