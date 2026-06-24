@@ -254,7 +254,13 @@ proceeds. Reruns are safe — phases skip work already done.
      standard block tables.
    - **`hybrid`**: block-level for passing sections, page-level
      fragments for failing sections.
-   See [phases/3-generate.md](./phases/3-generate.md).
+   Both `page` and `block` are supported under **either substrate
+   flavor** (`eds` or `milo`). All Milo-specific deltas — chrome
+   metadata, page-level/block-level generation, the `--pa-*` animation
+   sidecars, and wiring — live in
+   [assets/substrate-milo/FLAVOR.md](./assets/substrate-milo/FLAVOR.md);
+   the phase docs carry a gated pointer to it. The core skill stays
+   substrate-neutral. See [phases/3-generate.md](./phases/3-generate.md).
 
 4. **Wire** — copy artifacts to EDS-served paths, build the local-test
    drafts file, run lint.
