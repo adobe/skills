@@ -1,6 +1,6 @@
 ---
 name: migration
-description: Migrates legacy AEM (6.x, AMS, on-prem) to AEM as a Cloud Service using BPA CSV or cache, CAM/MCP target discovery, and a one-pattern-per-session workflow. Use for BPA/CAM findings, Cloud Service blockers, or fixes for scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler, DAM AssetManager, HTL data-sly-test lint. OSGi configs → Cloud Manager — scan ui.config, .cfg.json, secrets, $[secret:]/$[env:] — agent follows references/osgi-cfg-json-cloud-manager.md when prompted. After BPA/CAM discovery, migration hands off each (pattern, file) pair to the code-assessment skill — code-assessment owns the five pattern guides (scheduler/, resource-change-listener/, replication/, event-migration/, asset-manager/) and the shared references for SCR→DS, ResourceResolver/SLF4J, HTL lint, and prerequisites.
+description: Migrates legacy AEM (6.x, AMS, on-prem) to AEM as a Cloud Service using BPA CSV or cache, CAM/MCP target discovery, and a one-pattern-per-session workflow. Use to review/scan a project for AEMaaCS migration (generates a read-only migration-runbook.md via the BPA/CAM → CSV → analyzer → LLM-scan cascade), for BPA/CAM findings, Cloud Service blockers, or fixes for scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler, DAM AssetManager, HTL data-sly-test lint. OSGi configs → Cloud Manager — scan ui.config, .cfg.json, secrets, $[secret:]/$[env:] — agent follows references/osgi-cfg-json-cloud-manager.md when prompted. After BPA/CAM discovery, migration hands off each (pattern, file) pair to the code-assessment skill — code-assessment owns the five pattern guides (scheduler/, resource-change-listener/, replication/, event-migration/, asset-manager/) and the shared references for SCR→DS, ResourceResolver/SLF4J, HTL lint, and prerequisites.
 license: Apache-2.0
 ---
 
@@ -18,6 +18,7 @@ This skill drives the **migration workflow**: BPA data, CAM/MCP, **one pattern p
 
 | You have… | Say something like… | What happens |
 |-----------|---------------------|--------------|
+| **A whole project to assess** | *"Review my code for AEMaaCS migration"* | Generates read-only `migration-runbook.md` — all BPA-addressed patterns, affected files, sample prompts. Cascade: BPA/CAM → CSV → analyzer → LLM scan. **No edits.** |
 | A **BPA CSV** | *"Fix **scheduler** findings using `./path/to/bpa.csv`"* | Fastest path: CSV → cached collection → files |
 | **CAM + MCP** only | *"Get **scheduler** findings from CAM; I'll pick the project when you list them."* | Agent lists projects → you confirm → MCP fetch ([cam-mcp.md](references/cam-mcp.md)) |
 | **Just a few files** | *"Migrate **scheduler** in `core/.../MyJob.java`"* | Manual flow: no BPA required |
@@ -26,6 +27,7 @@ This skill drives the **migration workflow**: BPA data, CAM/MCP, **one pattern p
 
 **Starter prompts (copy-paste):**
 
+- *"Review my code for AEMaaCS migration"* — **start here** for a full runbook before changing anything.
 - *"Use the migration skill: **scheduler** only, BPA CSV at `./reports/bpa.csv`, then apply the code-assessment pattern guide before editing."*
 - *"**Replication** only from CAM; list projects first, I'll pick one."*
 - *"**Manual:** **event listener** migration for `.../Listener.java` — read the code-assessment pattern guide first."*
@@ -201,6 +203,49 @@ For retries, error categories, and when user-directed CSV/manual paths are allow
 Do **not** duplicate the pattern table here. Use **`{code-assessment}/SKILL.md` → Pattern Guides** — five patterns each have a pattern guide (`{code-assessment}/<pattern>/SKILL.md`); shared topics (SCR→DS, ResourceResolver/SLF4J, HTL lint, prerequisites hub) stay as references (`{code-assessment}/references/<file>.md`). See **Branch B step 2** above for the per-pattern routing table.
 
 ## Workflow
+
+### Step 0: Migration runbook (review / scan entry point)
+
+When the user opens with a **broad review/scan** request — *"review my code for AEMaaCS migration"*, *"scan my project for AEM migration"*, or similar — and does **not** name a single pattern, generate a **read-only migration runbook** before any apply work.
+
+The runbook covers only the **BPA-addressed** patterns — `scheduler`, `resourceChangeListener`, `event-migration` (JCR `EventListener` + OSGi `EventHandler`), `assetApi`, `replication`. It **skips** patterns not addressed via BPA (`htlLint`, OSGi → Cloud Manager config, `inject-in-sling-model`, `outdated-dependencies`).
+
+**Per-pattern detection cascade.** For **each** pattern, the highest available source that can actually produce it wins:
+
+```
+BPA / CAM (MCP, if configured) → CSV (if uploaded/cached) → analyzer (local fallback) → LLM scan (last resort)
+```
+
+`replication` has **no** BPA/CSV mapping, so it always falls through to the analyzer (or LLM scan). The script handles tiers 1–3; the agent handles tier 4.
+
+```javascript
+const { generateRunbook, renderRunbook } = require('./scripts/runbook-generator.js');
+
+const result = await generateRunbook({
+  workspaceRoot: '<IDE workspace root>',     // for the analyzer tier
+  bpaFilePath: '<csv path or undefined>',     // tier 2
+  collectionsDir: './unified-collections',
+  projectId, mcpFetcher,                      // tier 1 (MCP), when configured
+  outputPath: './migration-runbook.md',
+});
+// result.needsLlmScan → patterns no deterministic source could scan
+```
+
+**Tier 4 — LLM scan (last resort).** If `result.needsLlmScan` is non-empty (no BPA source **and** the analyzer could not run — e.g. no JDK), the agent scans those patterns itself: read each pattern guide's detection hints under `{code-assessment}/<pattern>/`, locate matches **inside the IDE workspace** (see **Workspace scope**), build findings in the `{ location, detail, severity }` shape, merge them into `result.gathered.findingsByPattern`, then re-render with `renderRunbook(result.gathered, ctx)` and overwrite the runbook file.
+
+After writing the runbook, tell the user:
+
+> "I've written `migration-runbook.md` — **{totalFindings} findings** across **{N} patterns** (detected via {sources}). It's read-only. Reply with the pattern you want to migrate first (e.g. `scheduler`) and I'll run the one-pattern-per-session apply workflow."
+
+**Skip Step 0** when the user names a specific pattern up front (e.g. *"fix scheduler findings"*) — go straight to Step 1 — or when the request is **OSGi → Cloud Manager** (Branch A) or **htlLint**.
+
+**CLI (development):**
+
+```bash
+node scripts/runbook-generator.js <workspaceRoot> [--csv ./reports/bpa.csv] [--out ./migration-runbook.md]
+```
+
+---
 
 ### One pattern per session
 

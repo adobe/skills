@@ -28,6 +28,44 @@ Collection already exists?              No CSV path given
 
 ## Scripts
 
+### `runbook-generator.js` (review / scan entry point)
+
+Generates a read-only `migration-runbook.md` covering the **BPA-addressed** patterns (`scheduler`, `resourceChangeListener`, `event-migration`, `assetApi`, `replication`). Triggered by broad prompts like "review my code for AEMaaCS migration".
+
+Runs a **per-pattern detection cascade** — for each pattern, the highest available source wins:
+
+```
+BPA / CAM (MCP) → CSV (uploaded/cached) → analyzer (local fallback) → LLM scan (last resort, agent-driven)
+```
+
+`replication` has no BPA/CSV mapping, so it always falls through to the analyzer.
+
+```javascript
+const { generateRunbook, renderRunbook } = require('./scripts/runbook-generator.js');
+
+const result = await generateRunbook({
+  workspaceRoot: '/path/to/project',         // analyzer tier
+  bpaFilePath: './reports/bpa.csv',          // optional (CSV tier)
+  collectionsDir: './unified-collections',   // default
+  projectId, mcpFetcher,                     // optional (MCP tier)
+  outputPath: './migration-runbook.md',      // default
+});
+
+// result.totalFindings → total across patterns
+// result.patternCounts → { scheduler: 12, replication: 1, … }
+// result.needsLlmScan  → patterns no deterministic source could scan (tier 4)
+// result.gathered      → { findingsByPattern, sourceByPattern, … } for re-render after an LLM scan
+```
+
+**CLI:**
+```bash
+node scripts/runbook-generator.js <workspaceRoot> [--csv <bpaFilePath>] [--out <outputPath>]
+```
+
+### `analyzer-runner.js`
+
+Wraps the code-assessment deterministic analyzer (`../../code-assessment/scripts/analyze.sh`). Runs it once over a workspace, parses the `{ findings, warnings }` JSON, and normalizes analyzer slugs (`resource-change-listener`, `event-migration`, `asset-manager`, …) into the migration canonical pattern ids. Used internally by `runbook-generator.js`. Returns `{ ok: false }` when the analyzer can't run (missing script, no JDK, compile error) so the cascade falls through to the LLM-scan tier.
+
 ### `bpa-findings-helper.js` (main entry point)
 
 Orchestrates finding BPA data. Called by the skill internally.
