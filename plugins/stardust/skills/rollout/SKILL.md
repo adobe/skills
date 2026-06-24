@@ -1,6 +1,6 @@
 ---
 name: rollout
-description: Deliver a WHOLE redesigned site to AEM Edge Delivery Services. The full-site sibling of `deploy` (which converts one page). Inventories the platform-agnostic migrated tree (stardust/migrated/ + _meta.json sidecars) into a delivery coverage ledger, then delivers each page by invoking the `deploy` methodology, tracking what is done and what is missing across the whole site. Use when the user has a migrated stardust site and wants to push the entire site to AEM, not just one page.
+description: Deliver a WHOLE redesigned site to AEM Edge Delivery Services. The full-site sibling of `deploy` (which converts one page). Inventories the platform-agnostic migrated tree (stardust/migrated/ + _meta.json sidecars) into a delivery coverage ledger, then delivers each page by invoking the `deploy` methodology, tracking what is done and what is missing across the whole site. Use when the user has a migrated stardust site and wants to push the entire site to AEM, not just one page. Supports archetypes-only mode: if only the template archetype pages have been migrated, rollout can deploy all block code immediately and register the remaining pages as content-pending for later population.
 license: Apache-2.0
 ---
 
@@ -22,23 +22,38 @@ coverage model, and the phasing are in
 
 ## When to use
 
-The user has:
-1. A migrated stardust site at `stardust/migrated/` (the output of
+**Full mode** — the user has:
+1. A fully migrated stardust site at `stardust/migrated/` (the output of
    `stardust migrate`: per-page HTML + `_meta.json` sidecars). This is the
    explicit handoff `migrate` documents for downstream AEM conversion.
 2. An EDS/AEM project + DA destination (the same target `deploy` needs — see
    `skills/deploy/SKILL.md` and `da-deploy-protocol.md`).
 3. A goal to deliver the **entire** site, incrementally and resumably.
 
-If there is no `stardust/migrated/` tree, stop and recommend `stardust migrate`
-first. For a single page, use `stardust deploy` directly — `rollout` is for the
-whole site.
+**Archetypes-only mode** — the user has:
+1. One migrated archetype page per template in `stardust/migrated/` (the
+   representative pages, not every sibling), plus a full page inventory in
+   `stardust/state.json` with `type` assignments for all pages.
+2. The same EDS/AEM project + DA destination as above.
+3. A goal to ship all block code immediately without waiting for every page to
+   be individually migrated. Sibling pages are registered as `content-pending`
+   in the coverage ledger; their document content is populated later through a
+   separate content track.
+
+If there is no `stardust/migrated/` tree at all, recommend `stardust migrate`
+on at least the archetype pages first. For a single page, use `stardust deploy`
+directly — `rollout` is for the whole site.
 
 ## Setup
 
 1. Run the master skill's setup (`skills/stardust/SKILL.md` § Setup).
 2. Verify `stardust/migrated/` exists and contains at least one `*.html` page.
-   If not, recommend `stardust migrate` and stop.
+   If not, recommend `stardust migrate` on the template archetypes and stop.
+   - **Full mode**: `migrated/` covers all pages in scope.
+   - **Archetypes-only mode**: `migrated/` covers only the archetype pages (one
+     per template). Verify `stardust/state.json` exists and has `type` populated
+     for all pages whose siblings need coverage. If `state.json` is absent or
+     lacks `type` assignments, recommend resolving those before proceeding.
 3. Verify the EDS/AEM target is ready exactly as `deploy` requires (project
    scaffolding, `DA_TOKEN`, code branch pushable). `rollout` adds no new transport
    — it reuses `deploy`'s.
@@ -52,21 +67,35 @@ Run the inventory script to project the migrated tree into the delivery coverage
 ```bash
 node skills/rollout/scripts/inventory.mjs --site-url <source-url>
 # defaults: --migrated stardust/migrated  --out stardust/rollout
+
+# archetypes-only mode: supplement migrated/ with the full page roster from state.json
+node skills/rollout/scripts/inventory.mjs --site-url <source-url> --state stardust/state.json
 ```
 
 It writes:
-- `stardust/rollout/coverage/pages.json` — one row per migrated page: slug,
-  delivered `path`, `templateId` (from the sidecar `template`/`type`), the
-  `blocks` it composes (from the sidecar `modules`), a `sourceHash`, and the
-  per-page `delivery` status.
+- `stardust/rollout/coverage/pages.json` — one row per page: slug, delivered
+  `path`, `templateId` (from the sidecar `template`/`type`), the `blocks` it
+  composes (from the sidecar `modules`), a `sourceHash`, and the per-page
+  `delivery` status.
 - `stardust/rollout/coverage/templates.json` — pages grouped by template (drives
   delivery order and per-template roll-ups).
 - `stardust/rollout/rollout.json` — target + DA config + a `lastRun` counts
   summary.
 
+**Archetypes-only mode** (triggered by `--state`): inventory reads `state.json`
+for the full page roster and merges it with `migrated/`:
+- Pages with a `_meta.json` in `migrated/` are seeded from their sidecar
+  exactly as in full mode.
+- Pages present only in `state.json` (not yet individually migrated) are seeded
+  with `templateId` inferred from their `type` field and `blocks` inferred from
+  the archetype sidecar for that template. Their `sourceHash` is derived from
+  `state.json[].currentStatePath` content. Their initial `delivery.status` is
+  `content-pending`.
+
 The inventory is **idempotent and incremental**: existing delivery status is
 preserved; a page whose migrated HTML changed after it was delivered is
-re-flagged `stale`. Re-run it any time `migrate` re-emits pages.
+re-flagged `stale`. Re-run it any time `migrate` re-emits pages or `state.json`
+adds new pages.
 
 Fill in the DA coordinates in `stardust/rollout/rollout.json` (`site.da.org`,
 `site.site`, `site.da.ref`, and `site.liveHost`) if the inventory didn't infer
@@ -86,13 +115,16 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
   `modules` + chrome) into the **distinct** set, assigns each a canonical
   `edsBlockName` (kebab; reserved-class-guarded per deploy #15), and records
   `usedByPages` / `instanceCount`. Chrome (`header`/`nav`/`footer`) is marked
-  `kind: chrome` → delivered as site-wide fragments, not per-page blocks.
+  `kind: chrome` → delivered as site-wide fragments, not per-page blocks. In
+  archetypes-only mode the distinct block set is fully determined by the archetype
+  sidecars alone — `content-pending` sibling pages add no new blocks.
 - `plan.mjs` orders pages **representative-first per template**, walks them once,
   and assigns each distinct block a **single conversion point**: the first page
   in order that uses it CONVERTS it; every later page REUSES it by name. The
   per-page `convert` / `reuse` lists are exactly `deploy`'s Step-7 brief input
   (*"Existing blocks — REUSE, do not recreate: …"*), so each block converts once
-  **without changing deploy**.
+  **without changing deploy**. `content-pending` pages are always assigned
+  `convert: []` / `reuse: [all template blocks]` — they never introduce new blocks.
 
 ### Phase C — Deliver the site (drive `deploy` per page, per the plan)
 
@@ -103,6 +135,14 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    step into deploy's brief**: create only the blocks in `convert`; for every
    block in `reuse`, instruct deploy to REUSE the existing block by its
    `edsBlockName` (do not recreate). This is the dedup contract in action.
+
+   **`content-pending` pages** (archetypes-only mode): these pages have no
+   migrated HTML. Skip the document push entirely — do not create a shell or
+   placeholder document. Record them as `content-pending` in the coverage ledger
+   and surface them in the report as "awaiting content track." Block code for
+   these pages is already deployed via their template's archetype; no conversion
+   work remains.
+
 2. **Record outcomes** with the state-writer (never hand-edit the ledger):
 
    ```bash
@@ -111,6 +151,8 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    node skills/rollout/scripts/update-coverage.mjs --block <id> --status converted --eds-name <name>
    # … run the deploy steps …
    node skills/rollout/scripts/update-coverage.mjs <slug> --status deployed --url <branch-preview-url>
+   # for content-pending pages (no document push):
+   node skills/rollout/scripts/update-coverage.mjs <slug> --status content-pending
    ```
 
    On failure: `--status failed --error "<reason>"` and continue (one page's
@@ -227,16 +269,19 @@ and print the counts:
 ```
 rollout — <site> → aem-eds
 ==================================================
-Pages       <N> total · <v> verified · <d> deployed · <p> pending · <s> stale
+Pages       <N> total · <v> verified · <d> deployed · <p> pending · <cp> content-pending · <s> stale
 Templates   <T> (per-template delivered/total)
 Blocks      <B> total · <c> converted · <p> pending
 Quality     health <H>/100 · open P1 <n> / P2 <n> / P3 <n>
 To deliver  <list of remaining slugs>
+Content     <cp> pages awaiting content track (block code deployed, document not yet pushed)
 ```
 
 Surface anything still `pending`/`stale`/`failed` as the explicit "what's
-missing" list. Re-run from Phase B/C to pick up exactly those pages; when
-`migrate` re-emits a page, `inventory` re-flags it `stale` and it re-delivers.
+missing" list. `content-pending` pages are listed separately — they are not
+failures; their block code is live and they advance to `pending` automatically
+when `migrate` emits their individual HTML and `inventory` is re-run. Re-run
+from Phase B/C to pick up exactly the pages that changed.
 
 ### Phase I — Dashboard
 
@@ -277,6 +322,7 @@ optional — without it the tree starts at the `migrated` stage.)
 |---|---|---|
 | `stardust/migrated/*.html` | `migrate` | the pages to deliver (read-only) |
 | `stardust/migrated/**/_meta.json` | `migrate` | `templateId` (`template`/`type`), `blocks` (`modules`), `title` |
+| `stardust/state.json` | stardust core | *(archetypes-only mode)* full page roster + `type` assignments for pages not yet individually migrated |
 | `stardust/rollout/rollout.json` | rollout / user | DA target coordinates |
 
 ## Outputs
@@ -319,11 +365,18 @@ Normalize each one's output into the ledger via `findings.mjs record`. See
 - **No new transport.** Delivery is `deploy`'s DA Source API path, unchanged.
 - **No redesign of the agnostic core.** `extract`/`direct`/`prototype`/`migrate`
   and `deploy` are untouched; rollout is the across-pages delivery layer on top.
+- **No full pre-migration requirement.** Rollout does not require every page to
+  be individually migrated before it runs. Archetypes-only mode is a first-class
+  path: block code is fully deployed from the archetype pages; the remaining
+  pages advance from `content-pending` to `deployed` as `migrate` emits their
+  HTML and `inventory` is re-run — no rollout restart needed.
 
 ## Scripts
 
 - `scripts/inventory.mjs` — migrated tree → page + template coverage (idempotent;
-  stale-aware).
+  stale-aware). `--state <path>` enables archetypes-only mode: supplements the
+  migrated tree with the full page roster from `state.json`, seeding non-migrated
+  pages as `content-pending` with template and blocks inferred from the archetype.
 - `scripts/blocks.mjs` — distinct-block dedup ledger (`blocks.json`).
 - `scripts/plan.mjs` — dedup-driven delivery order + per-page convert/reuse briefs.
 - `scripts/update-coverage.mjs` — deterministic delivery state-writer for pages

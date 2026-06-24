@@ -23,17 +23,24 @@ The contract the two scripts maintain. Design rationale is in
 ## Page delivery status lifecycle
 
 ```
-            ┌──────────────── (migrated HTML changed after delivery) ──────────────┐
-            ▼                                                                       │
-  pending ──► converting ──► deployed ──► verified ──────────────────────────► stale
-     ▲            │                                                                 │
-     └─ inventory │                                                                 │
-        seeds new └──► failed ──(retry)──► converting …                             │
-                                                                                    │
-                  stale/failed pages are re-picked by the next Phase B pass ◄───────┘
+                                     ┌──── migrate emits page ────────────────────────┐
+                                     ▼                                                 │
+  content-pending ──► pending ──► converting ──► deployed ──► verified ──────────► stale
+        ▲                ▲            │                                                │
+        │                └─ inventory │                                                │
+        │                   seeds new └──► failed ──(retry)──► converting …           │
+        │                                                                              │
+        └─ inventory seeds (archetypes-only mode, no migrated HTML yet)               │
+                         stale/failed pages are re-picked by the next Phase B pass ◄──┘
 ```
 
-- **pending** — inventoried, not yet delivered. New pages start here.
+- **content-pending** — inventoried from `state.json` in archetypes-only mode;
+  no migrated HTML exists yet. Block code is live (deployed via the archetype);
+  the document push is deferred to the content track. Advances automatically to
+  `pending` when `migrate` emits the page's HTML and `inventory` is re-run. Not
+  a failure — these pages are tracked, not lost.
+- **pending** — inventoried with migrated HTML, not yet delivered. New pages start
+  here (full mode) or transition here from `content-pending`.
 - **converting** — `deploy` is mid-flight on this page.
 - **deployed** — pushed to the branch preview; not yet verified.
 - **verified** — renders live (200, blocks decorate, no `about:error`).
@@ -44,14 +51,19 @@ The contract the two scripts maintain. Design rationale is in
 ## Idempotency rules (inventory)
 
 On every `inventory.mjs` run:
-- A page's `sourceHash` is recomputed from its migrated HTML bytes.
+- A page's `sourceHash` is recomputed from its migrated HTML bytes (migrated
+  pages) or from `state.json[].currentStatePath` content (content-pending pages).
 - If a page already exists in `pages.json`:
   - hash **unchanged** → its `delivery` is preserved verbatim.
   - hash **changed** and prior status ∈ {`deployed`,`verified`} → status becomes
     `stale` (delivered URL retained); otherwise the prior status is kept.
-- A page **not** in prior coverage → seeded `pending`.
+  - prior status was `content-pending` and migrated HTML now exists → status
+    advances to `pending` and `sourceHash` is recomputed from the HTML bytes.
+- A page **not** in prior coverage → seeded `content-pending` (if sourced from
+  `state.json` only) or `pending` (if migrated HTML is present).
 - Pages are keyed by `slug` (from the `_meta.json` sidecar, else derived from the
-  delivered path). The `assets/` bundle is never inventoried.
+  delivered path, else from `state.json[].slug`). The `assets/` bundle is never
+  inventoried.
 
 ## Block delivery status lifecycle
 
