@@ -1,3 +1,7 @@
+# Secrets (DA_TOKEN etc. — never commit)
+.env
+.env.*
+
 # Dependencies
 node_modules/
 

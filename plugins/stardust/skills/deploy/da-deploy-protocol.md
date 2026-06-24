@@ -6,9 +6,20 @@ Reference for the headless deploy sequence: write the sanitised **body-fragment*
 
 Needs an IMS token (`DA_TOKEN`; see the `da-content` / `da-auth` skills — may live in the repo `.env`, which MUST be gitignored). Also **push the code branch to GitHub first** so AEM Code Sync builds it and the branch preview renders your blocks.
 
+**Two preconditions bite (both cost real debugging):**
+- **Branch-host length ≤ 63 chars.** The host label `<branch>--<repo>--<owner>` must fit the DNS 63-char limit. Over it, the host does not resolve at all (curl `000`, "label too long") — nothing renders. The page PATH is independent of the host, so keep the path descriptive and **shorten the BRANCH** (e.g. `velocity-refined-content-2`, not `velocity-global-refined-content-2`).
+- **Force Code Sync for a fresh/programmatic branch.** The GitHub webhook frequently does NOT fire on a scripted push — symptom: your edited blocks/assets `404` on the branch host (`code.status: 404` via `admin.hlx.page/status/...`) while baseline files serve. Force it: `POST https://admin.hlx.page/code/$ORG/$REPO/$BRANCH/*` (→ `202` + a job), then poll until the edited block JS/CSS are live before previewing.
+
 ```bash
 ORG=<daOrg>; REPO=<daRepo>; BRANCH=<branch>; P=<path-without-extension>   # e.g. snowflake-blocks/test-1
 TOKEN="$DA_TOKEN"
+
+# 0. force Code Sync (webhook may not fire for a scripted push) — then wait for
+#    your edited blocks to be live before previewing. Assets gzip → curl --compressed.
+curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
+  "https://admin.hlx.page/code/$ORG/$REPO/$BRANCH/*"          # expect 202
+until curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/blocks/<edited-block>/<edited-block>.js" \
+  | grep -q "<a marker string from your edit>"; do sleep 3; done
 
 # 1. sanitise non-ASCII to entities (in place, idempotent) — DA corrupts raw UTF-8
 node skills/deploy/scripts/sanitise.js content/$P.html
@@ -30,9 +41,14 @@ done
 curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
   "https://admin.hlx.page/preview/$ORG/$REPO/$BRANCH/$P"       # expect 200
 
-# 3b. VERIFY no broken-image ingestion (#75) — must be 0; if not, an asset wasn't on
-#     Code Bus yet. Re-run step 3 (preview is idempotent; it re-ingests and repairs).
-curl -s "https://$BRANCH--$REPO--$ORG.aem.page/$P.plain.html" | grep -c about:error   # expect 0
+# 3b. VERIFY ingestion on the delivered .plain.html (per page; assets gzip → --compressed):
+#   (i)  no broken-image ingestion (#75) — must be 0; if not, an asset wasn't on Code Bus
+#        yet. Re-run step 3 (preview is idempotent; it re-ingests and repairs).
+#   (ii) authored EDITORIAL images actually landed — assert the expected <img>/alt count.
+#        CSS-background images are absent from .plain.html, so "it renders" is NOT proof
+#        that an image is authorable/AI-visible (see SKILL "The ENCODE contract → Images").
+curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/$P.plain.html" | grep -c about:error      # expect 0
+curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/$P.plain.html" | grep -oc '<img'          # expect = authored editorial image count
 
 # 4. (optional) publish to aem.live
 curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
