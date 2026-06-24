@@ -128,7 +128,12 @@ vocabulary across all prototypes and migrated pages.
 
 ## Per-section overrides
 
-Local tokens may override the root for a single section:
+Per-section overrides are the **canonical SECTION pattern of the
+four-scope CSS organization** (see
+`skills/prototype/SKILL.md` § Discipline 11). A section redefines
+any token to customize its visual context; the cascade propagates
+the redefinition to default-content rules and to any blocks nested
+within the section.
 
 ```css
 section[data-section="hero"] {
@@ -141,6 +146,12 @@ Per-section overrides must respect impeccable's contrast rules (WCAG
 AA min) and be reasoned in the prototype's provenance comment. They
 are normal — the token contract is the **inheritance default**, not a
 ceiling.
+
+In the prototype's `<style>` block, per-section override blocks live
+under a `/* === SECTION: <name> === */` marker comment per Discipline
+11, where `<name>` matches the `data-section` attribute value. This
+pairs the override mechanically to the matching DOM element, making
+it extractable to `styles/styles.css` downstream.
 
 ## Editability
 

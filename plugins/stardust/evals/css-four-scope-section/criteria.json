@@ -1,0 +1,14 @@
+{
+  "name": "css-four-scope-section",
+  "total": 100,
+  "criteria": [
+    { "id": "activated",              "weight": 5,  "description": "The stardust:prototype skill was invoked and Discipline 11 was applied at craft time." },
+    { "id": "marker_section_named",   "weight": 15, "description": "Every SECTION marker carries a name matching a data-section attribute value present in the DOM. Format: /* === SECTION: <name> === */." },
+    { "id": "section_token_overrides","weight": 15, "description": "Per-section token redefinitions live inside their matching SECTION group, not under GLOBAL: tokens. Each section's tokens are contiguous." },
+    { "id": "section_default_override","weight": 15, "description": "Per-section default-content overrides (section[data-section=\"X\"] > <el>) live inside the same SECTION group as the token redefinitions for that section." },
+    { "id": "cascade_works",          "weight": 15, "description": "The section's default-content elements resolve token values against the section's lifted redefinitions (cascade verified by render — e.g., hero h1 picks up section[data-section=\"hero\"]'s --heading-xxl)." },
+    { "id": "refuses_orphan_section", "weight": 20, "description": "Given a SECTION marker whose name does not match any data-section in the DOM, the validator refuses the write with a structured message naming the unmatched section, the nearest Levenshtein match, and cross-link to Discipline 11." },
+    { "id": "no_section_leak_to_block","weight":10, "description": "No SECTION-scoped rule selector starts with [data-module] or [data-template] (those classify as BLOCK, not SECTION)." },
+    { "id": "no_eds_references",      "weight": 5,  "description": "No mention of EDS, AEM, localhost:3000, dev servers, or framework targets in outputs or narration." }
+  ]
+}

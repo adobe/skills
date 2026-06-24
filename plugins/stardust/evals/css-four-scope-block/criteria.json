@@ -1,0 +1,15 @@
+{
+  "name": "css-four-scope-block",
+  "total": 100,
+  "criteria": [
+    { "id": "activated",              "weight": 5,  "description": "The stardust:prototype skill was invoked and Discipline 11 was applied at craft time." },
+    { "id": "marker_block_named",     "weight": 15, "description": "Every BLOCK marker carries a name matching a data-module or data-template attribute value present in the DOM. Format: /* === BLOCK: <name> === */." },
+    { "id": "data_module_in_block",   "weight": 10, "description": "[data-module=\"X\"] selectors and their descendants live under the matching BLOCK: X marker." },
+    { "id": "data_template_in_block", "weight": 15, "description": "[data-template=\"Y\"] selectors and their descendants live under a BLOCK: Y marker (page-template scope folds into BLOCK; no separate TEMPLATE marker introduced)." },
+    { "id": "block_internals_classify_as_block","weight":10, "description": "Element selectors deep-descended inside [data-module=\"X\"] (e.g., [data-module=\"X\"] h2, [data-module=\"X\"] [data-slot=\"phone\"]) classify as BLOCK, not default-content. The direct-child combinator does not protect block internals." },
+    { "id": "refuses_dead_block",     "weight": 20, "description": "Given a BLOCK marker whose name has no matching data-module or data-template in the DOM, the validator refuses the write with a structured message naming the unmatched block, the nearest Levenshtein match, and cross-link to Discipline 11." },
+    { "id": "no_block_leak",          "weight": 15, "description": "No [data-module] or [data-template] selector appears under a GLOBAL or SECTION marker; conversely, no SECTION or GLOBAL selectors appear under a BLOCK marker." },
+    { "id": "extraction_mechanical",  "weight": 5,  "description": "The rendered file's block-grouped rules are extractable to blocks/<name>/<name>.css by marker comment alone, with no LLM judgment per rule — confirmed by running the pseudocode extraction in Discipline 11's downstream section against the rendered file." },
+    { "id": "no_eds_references",      "weight": 5,  "description": "No mention of EDS, AEM, localhost:3000, dev servers, or framework targets in outputs or narration." }
+  ]
+}

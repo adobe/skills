@@ -109,6 +109,31 @@ contexts without rewriting at deploy time**:
 The contract is **one shape, works everywhere**. There is no
 alternative mode.
 
+## Four-scope CSS organization
+
+The migrated page's first `<style>` block follows the four-scope
+organization per `skills/prototype/SKILL.md` § Discipline 11. Every
+rule is grouped under a `/* === <SCOPE>: <name> === */` marker
+comment, where `<SCOPE>` is one of `GLOBAL` / `SECTION` / `BLOCK` /
+`MEDIA`.
+
+Downstream consumers (e.g., a future `aem-eds-from-stardust` skill)
+can rely on these markers to extract block CSS to
+`blocks/<name>/<name>.css` mechanically, with no per-rule LLM
+judgment required. The extraction algorithm is straightforward
+regex over the `<style>` text:
+
+- `GLOBAL: tokens` / `resets` / `default-content` / `compound utility`
+  / `motion` / `section-defaults` → `styles/styles.css`
+- `SECTION: <name>` → scoped block in `styles/styles.css`
+- `BLOCK: <name>` → `blocks/<name>/<name>.css`
+- `MEDIA: <breakpoint>` → preserved as media-query wrapper in its
+  owning group, or as a site-global block in `styles/styles.css`
+
+canon.css, when injected at migrate time, lands as the
+`GLOBAL: compound utility` group inside the same `<style>` block
+(per `skills/prototype/reference/canon-extraction.md` § 2).
+
 ## `_meta.json` sidecar contract
 
 Schema in `skills/migrate/reference/migration-procedure.md` §

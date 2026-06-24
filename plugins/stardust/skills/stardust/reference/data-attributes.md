@@ -25,7 +25,26 @@ Three reasons:
 3. **Downstream consumers.** A future `aem-eds-from-stardust` skill
    (out of scope here) will map sections to EDS blocks. The data
    attributes are the contract that lets a separate plugin ingest
-   stardust's output without re-parsing semantics.
+   stardust's output without re-parsing semantics. Specifically:
+
+   - **`data-module`** is the **block primitive** — each
+     `data-module="X"` in the DOM corresponds 1:1 to a downstream
+     EDS block file `blocks/X/X.css`.
+   - **`data-template`** maps to a page template; for downstream
+     CSS extraction it folds into the same BLOCK scope as
+     `data-module` (per
+     `skills/prototype/SKILL.md` § Discipline 11).
+   - **`data-section`** scopes per-section token overrides that
+     cascade to default-content within the section.
+   - Section descendants of the form `section > <el>` (where
+     `<el>` is `h1`–`h6`, `p`, `ul`, `ol`, `li`, `img`, `picture`,
+     `figure`, `figcaption`, `a`, `blockquote`, `hr`) are the
+     **default-content selector pattern** — these CSS rules live
+     in `styles/styles.css` and provide un-blocked-prose styling
+     inside sections.
+
+   See `skills/prototype/SKILL.md` § Discipline 11 for the full
+   four-scope CSS organization that makes EDS extraction mechanical.
 
 ## Where they go
 
