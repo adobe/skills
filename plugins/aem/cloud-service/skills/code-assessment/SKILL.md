@@ -33,8 +33,10 @@ Single skill for detecting and fixing AEM CS code-quality issues, **entirely aga
 
 Discovery runs through the deterministic **analyzer** ([`scripts/analyze.sh`](scripts/README.md)):
 it parses the workspace once and runs the enabled detectors, emitting the shared findings shape.
-Patterns without an analyzer detector yet fall back to an LLM `scan` — see
-[`references/patterns.md`](references/patterns.md).
+Every `ready` pattern has an analyzer detector. Patterns without one are `planned` only — not yet
+detectable and not yet built; there is **no LLM-scan fallback** in this version (see Scope &
+limitations) — the `scan` value on `planned` rows in [`references/patterns.md`](references/patterns.md)
+marks the intended future detection method, not an active code path.
 
 ## Routing
 

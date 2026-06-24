@@ -26,6 +26,14 @@ assert_absent() { # desc, haystack, needle
     echo "  PASS: $1"; PASS=$((PASS+1))
   fi
 }
+assert_count() { # desc, haystack, needle (fixed string), expected
+  actual=$(printf '%s' "$2" | grep -oF -- "$3" | wc -l | tr -d ' ')
+  if [ "$actual" = "$4" ]; then
+    echo "  PASS: $1 (count=$actual)"; PASS=$((PASS+1))
+  else
+    echo "  FAIL: $1 (expected $4, got $actual)"; FAIL=$((FAIL+1))
+  fi
+}
 
 echo "[smoke] valid empty/clean output"
 OUT="$(run "$FIX/clean")"
@@ -84,6 +92,46 @@ assert_contains "prop-dep (real \${property}) detected"        "$OUT" 'prop-dep'
 assert_absent  "plugin-dep (<plugin>) excluded"                "$OUT" 'plugin-dep'
 assert_absent  "inherited-dep (version-less) skipped"          "$OUT" 'inherited-dep'
 assert_absent  "reactor-module (\${project.version}) skipped"  "$OUT" 'reactor-module'
+
+echo "[scheduler] Sling Scheduler API, implements legacy Job, OSGi-property scheduler; collisions skipped"
+OUT="$(run "$FIX/scheduler")"
+assert_contains "LegacyScheduler (implements Sling Job) flagged"   "$OUT" 'LegacyScheduler.java'
+assert_contains "ProgrammaticScheduler (imports Scheduler) flagged" "$OUT" 'ProgrammaticScheduler.java'
+assert_contains "OsgiPropertyScheduler (Runnable + scheduler.expression) flagged" "$OUT" 'OsgiPropertyScheduler.java'
+assert_contains "scheduler pattern present"                         "$OUT" '"pattern":"scheduler"'
+assert_absent  "NotASchedulerJob (non-Sling Job) not flagged"       "$OUT" 'NotASchedulerJob.java'
+assert_absent  "PlainRunnableHelper (Runnable + @Component, no scheduler.* prop) not flagged" "$OUT" 'PlainRunnableHelper.java'
+assert_absent  "CollisionComponentScheduler (non-OSGi @Component) not flagged" "$OUT" 'CollisionComponentScheduler.java'
+
+echo "[resource-change-listener] modern ResourceChangeListener / ExternalRCL detected, name-collision skipped"
+OUT="$(run "$FIX/resource-change-listener")"
+assert_contains "ModernResourceChangeListener flagged"     "$OUT" 'ModernResourceChangeListener.java'
+assert_contains "ExternalRclListener flagged"              "$OUT" 'ExternalRclListener.java'
+assert_contains "resource-change-listener pattern present" "$OUT" '"pattern":"resource-change-listener"'
+assert_absent  "CollisionRcl (non-Sling RCL) not flagged"  "$OUT" 'CollisionRcl.java'
+
+echo "[replication] CQ Replicator import detected; modern Distributor not flagged"
+OUT="$(run "$FIX/replication")"
+assert_contains "LegacyReplicator flagged"           "$OUT" 'LegacyReplicator.java'
+assert_contains "replication pattern present"        "$OUT" '"pattern":"replication"'
+assert_absent  "CleanDistributor not flagged"        "$OUT" 'CleanDistributor.java'
+
+echo "[event-migration] OSGi EventHandler + legacy JCR EventListener detected, collisions skipped"
+OUT="$(run "$FIX/event-migration")"
+assert_contains "ReplicationEventHandler flagged"           "$OUT" 'ReplicationEventHandler.java'
+assert_contains "LegacyJcrEventListener flagged"            "$OUT" 'LegacyJcrEventListener.java'
+assert_contains "event-migration pattern present"           "$OUT" '"pattern":"event-migration"'
+assert_absent  "CollisionEventHandler (non-OSGi) not flagged" "$OUT" 'CollisionEventHandler.java'
+assert_absent  "JcrListenerCollision (non-JCR EventListener) not flagged" "$OUT" 'JcrListenerCollision.java'
+
+echo "[asset-manager] legacy AssetManager calls detected, unrelated createAsset skipped"
+OUT="$(run "$FIX/asset-manager")"
+assert_contains "LegacyAssetWorkflow flagged"                       "$OUT" 'LegacyAssetWorkflow.java'
+assert_contains "asset-manager pattern present"                     "$OUT" '"pattern":"asset-manager"'
+assert_contains "createAssetForBinary call captured in snippet"     "$OUT" 'createAssetForBinary'
+assert_contains "removeAssetForBinary call captured in snippet"     "$OUT" 'removeAssetForBinary'
+assert_count   "LegacyAssetWorkflow emits one finding per call site (3)" "$OUT" '"file":"LegacyAssetWorkflow.java"' 3
+assert_absent  "UnrelatedCreateAsset (no AssetManager import) skipped" "$OUT" 'UnrelatedCreateAsset.java'
 
 echo "[wiring] each registered detector has an expert skill + ready/analyzer catalog row"
 PATTERNS_MD="$SKILL_ROOT/references/patterns.md"
