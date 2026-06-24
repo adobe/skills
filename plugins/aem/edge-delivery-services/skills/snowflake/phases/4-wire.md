@@ -32,19 +32,29 @@ ls "${PROJ}/output/styles/" 2>/dev/null \
   | grep -v -- "^${TEMPLATE_NAME}\.css$" \
   | while IFS= read -r f; do cp "${PROJ}/output/styles/$f" "styles/$f"; done
 
+# 1b) Deploy collected assets from input/ to repo root
+#     asset-collect.mjs downloaded these in Phase 1; Wire deploys them.
+[ -d "${PROJ}/input/fonts" ] && mkdir -p fonts && cp -R "${PROJ}/input/fonts/." fonts/
+[ -d "${PROJ}/input/images" ] && mkdir -p images && cp -R "${PROJ}/input/images/." images/
+[ -d "${PROJ}/input/videos" ] && mkdir -p videos && cp -R "${PROJ}/input/videos/." videos/
+
 # 2) Build the local-test drafts file from the DA doc
+if [ ! -f "${PROJ}/output/da/${PAGE_SLUG}.html" ]; then
+  echo "FAIL: DA doc missing at output/da/${PAGE_SLUG}.html — Phase 3 did not complete. Re-run Generate."
+  exit 1
+fi
 node "<SKILL_DIR>/scripts/transform-da-to-eds.mjs" \
   "${PROJ}/output/da/${PAGE_SLUG}.html" \
   "drafts/${TEMPLATE_NAME}-${PAGE_SLUG}.html"
 
-# 3) Vendored assets (if asset strategy is "vendor"):
-#    Assets were copied during Generate phase. Confirm they're in
-#    place under assets/.
-if [ "$ASSET_STRATEGY" = "vendor" ]; then
-  if [ ! -d assets ]; then
-    echo "FAIL: assetStrategy=vendor but ./assets/ does not exist"
-    exit 1
-  fi
+# 3) Verify collected assets are in place (deployed by step 1b above)
+if [ -d "${PROJ}/input/fonts" ] && [ ! -d fonts ]; then
+  echo "FAIL: input/fonts exists but ./fonts/ does not"
+  exit 1
+fi
+if [ -d "${PROJ}/input/images" ] && [ ! -d images ]; then
+  echo "FAIL: input/images exists but ./images/ does not"
+  exit 1
 fi
 
 # 4) Lint

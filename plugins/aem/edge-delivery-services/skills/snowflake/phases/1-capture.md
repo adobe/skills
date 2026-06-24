@@ -101,44 +101,35 @@ curl -fsS "$SOURCE_URL" -o "${PROJ}/input/index.html"
 Validate: file size > 0, response was HTML (look for `<!doctype html`
 or `<html` in the first 200 bytes).
 
-## Identify and fetch external assets
+## Collect and normalize assets
 
-Look for these patterns in the saved HTML:
-
-- `<link rel="stylesheet" href="...">` — external CSS
-- `<script src="...">` — external JS
-- For each match, if the href is relative or points to the same host
-  as the source, fetch it into `input/` (preserve filename).
-
-Skip CDN resources (Google Fonts, jsdelivr, etc.) that are publicly
-available; they'll be referenced directly in the converted artifacts.
-Local/same-host external assets are saved so the project is self-
-contained.
+Run the asset-collect script to discover in-scope asset references
+(raster images, videos, fonts), download local/unreachable ones,
+normalize filenames, rewrite references in `index.html`, and emit
+`asset-manifest.json`. Always runs — no-op when already collected.
 
 ```bash
-INPUT="${PROJ}/input"
-# Extract candidate external assets
-grep -oE '<(link|script)[^>]*(href|src)="[^"]+"' "$INPUT/index.html" \
-  | grep -oE '(href|src)="[^"]+"' \
-  | sed -E 's/^(href|src)="//;s/"$//' \
-  | sort -u \
-  | while IFS= read -r ref; do
-      case "$ref" in
-        http://*|https://*)
-          host=$(echo "$ref" | sed -E 's|^https?://([^/]+)/.*|\1|')
-          src_host=$(echo "$SOURCE_URL" | sed -E 's|^https?://([^/]+)/.*|\1|')
-          if [ "$host" != "$src_host" ]; then continue; fi
-          ;;
-      esac
-      url=$(node -e "
-        const base = process.argv[1];
-        const ref = process.argv[2];
-        process.stdout.write(new URL(ref, base).toString());
-      " "$SOURCE_URL" "$ref")
-      filename=$(basename "$url" | sed 's/?.*$//')
-      [ -n "$filename" ] && curl -fsS "$url" -o "$INPUT/$filename" || true
-    done
+node "<SKILL_DIR>/scripts/asset-collect.mjs" \
+  --input "${PROJ}/input" \
+  --base-url "$SOURCE_URL"
 ```
+
+The script handles:
+- HTML tags (`<img src>`, `<img srcset>`, `<picture>`, `<video>`, inline `style` url())
+- CSS `url()` inside inline `<style>` blocks (including `@font-face src`)
+- Per-asset strategy: local/ephemeral fonts → `vendor` (saved to `input/fonts/`),
+  local/ephemeral images/videos → `da-media` (saved to `input/images/` or `input/videos/`),
+  stable CDN URLs → `absolute` (left as-is).
+  Ephemeral hosts (e.g. claudeusercontent.com) are always downloaded.
+  When base URL is localhost (snapshot mode), all non-CDN external assets
+  are downloaded too.
+- Hash-named font files: renamed to human-readable names from `@font-face` context
+- References in `index.html` rewritten to normalized relative paths
+
+Validate the manifest: check `asset-manifest.json` was written, review
+any `warnings` entries (especially cross-origin font CORS risks).
+
+Read `asset-manifest.json` to note asset stats for the init summary.
 
 ## Write a stub README.md for the project
 
@@ -155,6 +146,8 @@ Status: capturing
 ## Update state and finish
 
 Set `state.phase = "capture"` and `state.phaseStatus = "complete"`,
-append `state.captureCompletedAt = "<timestamp>"`. Save state.json.
+append `state.captureCompletedAt = "<timestamp>"` and
+`state.assetStats` from `input/asset-manifest.json`'s `stats` block.
+Save state.json.
 
 Continue to Phase 2 (Analyze).
