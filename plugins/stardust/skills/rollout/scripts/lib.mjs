@@ -25,6 +25,7 @@ export function pageCounts(pages) {
     verified: countBy(pages, g, 'verified'),
     deployed: countBy(pages, g, 'deployed'),
     pending: countBy(pages, g, 'pending'),
+    contentPending: countBy(pages, g, 'content-pending'),
     stale: countBy(pages, g, 'stale'),
     failed: countBy(pages, g, 'failed'),
   };
@@ -43,10 +44,12 @@ export function rollupTemplates(templatesDoc, pages) {
   for (const t of templatesDoc.templates) {
     const tp = pages.filter((p) => (t.pages || []).includes(p.slug));
     const g = (p) => (p.delivery && p.delivery.status) || 'pending';
+    const cp = countBy(tp, g, 'content-pending');
     t.delivery = {
       verified: countBy(tp, g, 'verified'),
       deployed: countBy(tp, g, 'deployed'),
-      pending: tp.length - countBy(tp, g, 'verified') - countBy(tp, g, 'deployed'),
+      contentPending: cp,
+      pending: tp.length - countBy(tp, g, 'verified') - countBy(tp, g, 'deployed') - cp,
     };
   }
 }

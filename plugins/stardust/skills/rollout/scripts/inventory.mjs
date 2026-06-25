@@ -15,8 +15,15 @@
  * Phase 1 scope: pages + template grouping only. Block dedup (blocks.json) is a
  * first-class step deferred to Phase 2 — see notes/rollout/PLAN.md § 8.
  *
+ * Archetypes-only mode (`--state <state.json>`): the migrated tree holds only the
+ * template archetypes (one per template); the full page roster lives in state.json.
+ * Pages present only in state.json (not yet individually migrated) are merged in as
+ * `content-pending` siblings — keyed to the archetype their `type` names, inheriting
+ * that archetype's blocks, pushing no document. Block code ships from the archetypes;
+ * sibling content is populated later by a separate content track.
+ *
  * Usage:
- *   node skills/rollout/scripts/inventory.mjs [--migrated <dir>] [--out <rolloutDir>] [--site-url <url>]
+ *   node skills/rollout/scripts/inventory.mjs [--migrated <dir>] [--out <rolloutDir>] [--site-url <url>] [--state <state.json>]
  *   defaults: --migrated stardust/migrated  --out stardust/rollout
  */
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, statSync } from 'node:fs';
@@ -32,6 +39,7 @@ function arg(name, fallback) {
 const MIGRATED = arg('migrated', 'stardust/migrated');
 const OUT = arg('out', 'stardust/rollout');
 const SITE_URL = arg('site-url', null);
+const STATE = arg('state', null);
 
 const STARDUST_VERSION = (() => {
   try {
@@ -72,6 +80,22 @@ function deliveredPath(relHtml) {
   if (noExt === 'index') return '/';
   if (noExt.endsWith('/index')) return `/${noExt.slice(0, -'/index'.length)}`;
   return `/${noExt}`;
+}
+
+/** Delivered (extensionless) path for an absolute page URL (archetypes-only roster). */
+function urlToDeliveredPath(url) {
+  let p;
+  try { p = new URL(url).pathname; } catch { p = String(url); }
+  p = p.replace(/\.html$/, '');
+  if (p === '' || p === '/' || p === '/index') return '/';
+  if (p.endsWith('/index')) return p.slice(0, -'/index'.length);
+  return p;
+}
+
+/** Stable slug from a delivered path (de/x/y -> de-x-y; '/' -> home). */
+function pathToSlug(path) {
+  if (path === '/') return 'home';
+  return path.replace(/^\//, '').replace(/\/+$/, '').replace(/\//g, '-');
 }
 
 function readJSON(path, fallback = null) {
@@ -132,6 +156,48 @@ for (const relHtml of htmlFiles) {
   });
 }
 
+// --- Archetypes-only mode: merge content-pending siblings from state.json -------
+// In --state mode each migrated archetype is keyed by its own fine slug (the
+// archetypes are genuinely distinct templates that share only chrome). A roster
+// page's `type` names the archetype slug it clones; it joins that archetype's
+// template group as a `content-pending` sibling, inheriting the archetype's blocks
+// and pushing no document of its own.
+if (STATE) {
+  for (const p of pages) p.templateId = p.slug;
+  const archetypeBySlug = new Map(pages.map((p) => [p.slug, p]));
+  const coveredPaths = new Set(pages.map((p) => p.path));
+  const usedSlugs = new Set(pages.map((p) => p.slug));
+  const state = readJSON(STATE, { pages: [] });
+  for (const sp of (state.pages || [])) {
+    if (!sp || !sp.url) continue;
+    const path = urlToDeliveredPath(sp.url);
+    if (coveredPaths.has(path)) continue; // the archetype itself — already inventoried
+    // A roster sibling names the archetype it clones via `representative` (preferred)
+    // or its `type`; that archetype supplies the template grouping + block set.
+    const rep = archetypeBySlug.get(sp.representative) || archetypeBySlug.get(sp.type) || null;
+    let slug = sp.slug && !usedSlugs.has(sp.slug) ? sp.slug : pathToSlug(path);
+    while (usedSlugs.has(slug)) slug = `${slug}-x`;
+    usedSlugs.add(slug);
+    const csPath = sp.currentStatePath && existsSync(sp.currentStatePath) ? sp.currentStatePath : null;
+    const sourceHash = csPath ? sha256(readFileSync(csPath)) : sha256(Buffer.from(String(sp.url)));
+    const prior = priorBySlug.get(slug);
+    const delivery = (prior && prior.delivery)
+      ? prior.delivery
+      : { status: 'content-pending', deployedUrl: null, deployedAt: null, verifiedAt: null, error: null };
+    pages.push({
+      slug,
+      path,
+      title: sp.title || slug,
+      templateId: rep ? rep.slug : (sp.type || 'untyped'),
+      representative: rep ? rep.slug : null,
+      source: { migratedHtml: null, metaJson: null, sourceHash, currentStatePath: csPath },
+      blocks: rep ? rep.blocks.slice() : [],
+      delivery,
+    });
+    coveredPaths.add(path);
+  }
+}
+
 pages.sort((a, b) => a.slug.localeCompare(b.slug));
 
 // --- Derive the template grouping ----------------------------------------------
@@ -146,16 +212,20 @@ for (const p of pages) {
 const templates = [...tmap.values()].map((t) => {
   const tp = pages.filter((p) => t.pages.includes(p.slug));
   const count = (s) => tp.filter((p) => p.delivery.status === s).length;
+  // The representative is the migrated archetype that converts the blocks — never a
+  // content-pending sibling (which pushes no document).
+  const rep = tp.find((p) => p.delivery.status !== 'content-pending') || tp[0];
   return {
     id: t.id,
-    representativeSlug: t.pages[0] || null,
+    representativeSlug: (rep && rep.slug) || null,
     pages: t.pages.sort(),
     pageCount: t.pages.length,
     blocks: [...t.blocks].sort(),
     delivery: {
       verified: count('verified'),
       deployed: count('deployed'),
-      pending: t.pages.length - count('verified') - count('deployed'),
+      contentPending: count('content-pending'),
+      pending: t.pages.length - count('verified') - count('deployed') - count('content-pending'),
     },
   };
 }).sort((a, b) => a.id.localeCompare(b.id));
@@ -167,6 +237,7 @@ const counts = {
   verified: status('verified'),
   deployed: status('deployed'),
   pending: status('pending'),
+  contentPending: status('content-pending'),
   stale: status('stale'),
   failed: status('failed'),
 };
@@ -176,7 +247,7 @@ const now = new Date().toISOString();
 mkdirSync(coverageDir, { recursive: true });
 
 const prov = (writtenBy) => ({
-  writtenBy, writtenAt: now, readArtifacts: [MIGRATED], stardustVersion: STARDUST_VERSION,
+  writtenBy, writtenAt: now, readArtifacts: STATE ? [MIGRATED, STATE] : [MIGRATED], stardustVersion: STARDUST_VERSION,
 });
 
 writeFileSync(pagesPath, `${JSON.stringify({ _provenance: prov('stardust:rollout/inventory'), generatedAt: now, pages }, null, 2)}\n`);
@@ -198,7 +269,7 @@ writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
 // --- Report --------------------------------------------------------------------
 console.log(`rollout inventory → ${OUT}`);
 console.log('='.repeat(60));
-console.log(`Pages       ${counts.total} total · ${counts.verified} verified · ${counts.deployed} deployed · ${counts.pending} pending · ${counts.stale} stale`);
+console.log(`Pages       ${counts.total} total · ${counts.verified} verified · ${counts.deployed} deployed · ${counts.pending} pending · ${counts.contentPending} content-pending · ${counts.stale} stale`);
 console.log(`Templates   ${templates.length} (${templates.map((t) => `${t.id}:${t.pageCount}`).join(', ')})`);
 const todo = pages.filter((p) => ['pending', 'stale', 'failed'].includes(p.delivery.status));
 if (todo.length) console.log(`To deliver  ${todo.length}: ${todo.slice(0, 8).map((p) => p.slug).join(', ')}${todo.length > 8 ? ' …' : ''}`);

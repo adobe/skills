@@ -62,7 +62,7 @@ if (blockId) {
 }
 
 // Page update
-const STATUSES = ['pending', 'converting', 'deployed', 'verified', 'stale', 'failed'];
+const STATUSES = ['pending', 'converting', 'deployed', 'verified', 'content-pending', 'stale', 'failed'];
 if (!slug || !status || !STATUSES.includes(status)) {
   console.error(`usage: update-coverage.mjs <slug> --status <${STATUSES.join('|')}> [--url <u>] [--error <m>]`);
   console.error('   or: update-coverage.mjs --block <id> --status <pending|converted|deployed|verified|failed> [--eds-name <n>]');
