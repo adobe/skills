@@ -39,6 +39,7 @@ Adding a pattern: add a row here, then build the expert skill from
 | [`asset-manager`](../asset-manager/SKILL.md) | migrate DAM `AssetManager` create/upload via Direct Binary Access (`@adobe/aem-upload`) and delete via in-JVM `resolver.delete()` + `commit()` or HTTP Assets API; removes `createAssetForBinary` / `getAssetForBinary` / `removeAssetForBinary` (not available on CS) | high | ready | analyzer | guided |
 | [`outbound-call-timeouts`](../outbound-call-timeouts/SKILL.md) | add connect/read/socket timeouts to outbound HTTP client construction (Apache HttpClient, OkHttp, JDK HttpClient) | high | ready | analyzer | mechanical |
 | [`unbounded-query`](../unbounded-query/SKILL.md) | bound or escalate an explicitly-unbounded query (`p.limit=-1` predicate / `setLimit(-1)`) — safe-cap where provable, else flag for pagination | high | ready | analyzer | guided |
+| [`guava-cache`](../guava-cache/SKILL.md) | swap Guava cache (`com.google.common.cache.*`) for Caffeine (`com.github.benmanes.caffeine.cache.*`) — pom dependency + imports + API call sites | low | ready | analyzer | guided |
 | `unclosed-resources` | close `ResourceResolver` / `Session` / streams via try-with-resources | high | planned | - | - |
 | `thread-lock-contention` | replace coarse `synchronized` / synchronized collections on shared state with concurrent types | high | planned | - | - |
 | `heavy-model-init` | move heavy work (I/O, queries) out of `@PostConstruct` / Sling Model init | medium | planned | - | - |

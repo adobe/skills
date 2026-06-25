@@ -225,6 +225,13 @@ assert_contains "setLimit(-1) flagged"             "$OUT" 'UnboundedJcr.java'
 assert_contains "unbounded via final constant flagged" "$OUT" 'UnboundedConst.java'
 assert_absent  "bounded query (incl. bounded const) not flagged" "$OUT" 'BoundedQuery.java'
 
+echo "[guava-cache] com.google.common.cache.* imports flagged; caffeine + micrometer look-alike not flagged"
+OUT="$(run "$FIX/guava-cache")"
+assert_contains "pattern present"                      "$OUT" '"pattern":"guava-cache"'
+assert_contains "LegacyGuavaCache flagged"             "$OUT" 'LegacyGuavaCache.java'
+assert_absent  "CleanCaffeineCache not flagged"        "$OUT" 'CleanCaffeineCache.java'
+assert_absent  "MicrometerGuavaMetrics not flagged"    "$OUT" 'MicrometerGuavaMetrics.java'
+
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

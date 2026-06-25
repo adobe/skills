@@ -67,6 +67,7 @@ Route the request to one expert skill. Two pattern families share this skill:
 | `com.day.cq.replication.Replicator`, `org.apache.sling.replication.*`, "publish/preview activation" | [`replication/`](replication/SKILL.md) | `replication` |
 | `javax.jcr.observation.EventListener`, `org.osgi.service.event.EventHandler` on non-resource topics (replication, workflow, custom) | [`event-migration/`](event-migration/SKILL.md) | `eventListener` / `eventHandler` |
 | `com.day.cq.dam.api.AssetManager` create/upload/delete APIs, `createAssetForBinary`, `removeAssetForBinary` | [`asset-manager/`](asset-manager/SKILL.md) | `assetApi` |
+| `import com.google.common.cache.*` (`CacheBuilder`, `LoadingCache`, `CacheLoader`), "guava cache", "swap guava for caffeine" | [`guava-cache/`](guava-cache/SKILL.md) | `guavaCache` |
 | HTL build warning `data-sly-test: redundant constant value comparison` | [`references/data-sly-test-redundant-constant.md`](references/data-sly-test-redundant-constant.md) | `htlLint` (reference, no expert skill subdirectory) |
 
 **Broad / correctness-review asks** ("check my Sling Models are implemented correctly", "review my code", "is my AEM project healthy", "assess this project") are not a single pattern: run the runbook in `discover` mode with intent `report` — the analyzer runs every detector and the report covers all built patterns, explicitly noting aspects not yet supported. Only narrow to one pattern when the user targets a specific fix.
