@@ -51,7 +51,7 @@ Match the request to one expert skill under `code-assessment/<pattern>/` using t
 
 ### 2. Read reference module
 
-Read the chosen expert skill's `SKILL.md` then its `recipe.md` (or `path-*.md`) in full — **Discovery**, input contract, recipe, Unlocatable, editing strategy.
+Read the chosen expert skill's `SKILL.md` then its `recipe.md` or `path-*.md` in full — **Discovery**, input contract, recipe, Unlocatable, editing strategy.
 
 ### 3. Resolve findings (with_findings or discover)
 
