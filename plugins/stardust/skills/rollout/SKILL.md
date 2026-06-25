@@ -286,6 +286,14 @@ can't corrupt state, and so the gates above run uniformly:
   its rendered `.plain.html` passes (HTTP 200, 0 `about:error`, `<h1>` present).
   The verify pass is where the image- and path-fidelity defects above actually
   surface at scale — 4-page samples won't show them; a 130-page batch will.
+- **Admin 200 ≠ delivered — verify the rendered URL, not the POST codes.** Some
+  path-safety defects pass `PUT`+preview+live ALL `200` yet 404 at the delivery
+  URL. The proven case: an **uppercase segment** (`.../CAR-T-Zellen`) — the admin
+  API accepts and "publishes" it, but `*.aem.live/.../CAR-T-Zellen` 404s (delivery
+  is lower-cased). So the `PUT=201 PRE=4xx` heuristic below MISSES it. Gate 4's
+  "lowercase the whole path" prevents it at author time; the GET-`.plain.html`
+  verify is the only thing that catches it after the fact. Fix = rename to the
+  lowercase path, redeploy, `DELETE` the stale uppercase DA source, add a redirect.
 - **Long batches run in the background** (a 130-page `PUT`+preview loop far
   exceeds a 2-min foreground budget); log per-page OK/FAIL and re-drive only the
   FAILs. Transient `PUT=000` → retry; `PUT=201 PRE=4xx/400` → a path-safety case
