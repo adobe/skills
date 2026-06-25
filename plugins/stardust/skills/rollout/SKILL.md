@@ -126,7 +126,36 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
   **without changing deploy**. `content-pending` pages are always assigned
   `convert: []` / `reuse: [all template blocks]` — they never introduce new blocks.
 
+### Phase B2 — Dynamic-blocks map + metadata contract (PRE-IMPORT GATE)
+
+**Do this before Phase C — the import is blocked on it.** What a dynamic listing
+block can show is bounded by what each page emits, and an index row can carry only
+page-intrinsic DOM **or** authored metadata (see Phase D2 for the full mechanics).
+So the metadata a block will need must be decided **before** the batch import —
+emitting it per page at write time is one extra field; retrofitting it across
+thousands of already-imported, already-published pages is a second migration.
+
+Produce two artifacts now:
+
+1. **`dynamic-blocks-map.md`** — classify every listing-candidate block: dynamic
+   (index-driven) vs static (editorial curation), and for each dynamic one, the
+   index it reads and the fields its cards need.
+2. **The metadata contract** — the concrete `<meta name="…">` fields each content
+   TYPE must carry for its dynamic blocks to work (e.g. clinic →
+   `canton`/`city`/`address`/`phone`; news → `publishdate`/`category`; event →
+   `eventdate`/`clinic`/`location`). Fields already intrinsic to the DOM (title,
+   image, authored cross-links) need NO metadata — only what the DOM lacks.
+
+**Then make Phase C's `deploy` brief emit the contract**: each authoring agent adds
+the type's metadata rows to every page's metadata block as it writes it. Author
+`helix-query.yaml` (Phase D2) from the same contract so selectors and emitted names
+line up. A block whose contract can't be met from the source (a relationship like
+center↔disease) stays static — record that in the map, don't fake it.
+
 ### Phase C — Deliver the site (drive `deploy` per page, per the plan)
+
+**Blocked on Phase B2** — author each page's metadata contract (above) into its
+metadata block during delivery, so the indexes are rich at import time.
 
 Walk `plan.json.steps` in order (representative pages first). For each page:
 
@@ -273,8 +302,10 @@ preview-serve, but clean them up if you want the DA tree to match the live tree.
 Most sites have blocks that LIST other pages (doctor directories, news/event
 feeds, clinic grids, "related" rails). Statically authoring those cards doesn't
 scale and goes stale — they should read an EDS **query-index** (a published JSON
-of pages with per-page properties). **Plan this BEFORE importing 1000s of pages**,
-because what the blocks can list is bounded by what the migration emits.
+of pages with per-page properties). The map + metadata contract are decided in the
+**Phase B2 pre-import gate**; this phase covers the mechanics of building the index
+and wiring the blocks. What the blocks can list is bounded by what the import
+emitted — which is why B2 comes first.
 
 **A query-index row can carry only:**
 1. **Page-intrinsic DOM** — `h1`, `og:image`, and links the content already
