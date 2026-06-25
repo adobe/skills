@@ -143,6 +143,8 @@ A FOUC is possible (head paints as default content, then reabsorbs); the final l
 
 **The check that catches the #1 mistake:** after preview, grep the delivered `.plain.html` for the expected `<img>`+alt count. "It renders" hides CSS-background images — they're absent from `.plain.html`, carry no alt, and are neither authorable nor AI/SEO-visible.
 
+**When the image src is a SOURCE/external URL (migration), verify it resolves BEFORE you author it.** Re-using an image straight off the source page is the most common way to ship `<img src="about:error">`: the preview ingester fetches the authored URL, and if that fetch fails the delivered image is `about:error` — silent, since the page still renders. So for every authored `<img>` whose src points at the source/CDN, `curl -s -o /dev/null -w '%{http_code}' <url>` first; if it isn't `200`, **omit the image** (the block renders without it) rather than ship a broken one — and never substitute a generic logo/placeholder (`…-logo…`) as if it were editorial. Two real failure signatures (the asset exists — fix the URL, don't drop it): (1) **wrong rendition variant** — the page exposes only a derivative that 404s while a sibling resolves (e.g. a portrait's `…/4x3/768/…` 404 vs `…/original/768/…` 200) → rewrite to the resolver; (2) **missing query delimiter** — `…/<id>&wid=600&hei=…` with no `?` makes `<id>&wid=…` a bogus id → 403 → repair the first `&` after the id to `?`.
+
 ## Steps
 
 ### 1. Audit (light)

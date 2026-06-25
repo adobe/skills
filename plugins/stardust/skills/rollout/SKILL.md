@@ -173,7 +173,38 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    different case: leave the block, render gracefully (no placeholder void), and
    log it as a content gap — do NOT invent filler to fill it.
 
-3. **Record outcomes** with the state-writer (never hand-edit the ledger):
+3. **Image-fidelity gate — every authored `<img>` src must RESOLVE, or be omitted.**
+   This is the #1 recurring defect at scale: an authored external image URL that
+   the preview ingester can't fetch delivers as `<img src="about:error">` — a
+   silent break that "it renders" hides. Before deploy, for EACH authored `<img>`
+   whose src is an external/source URL, verify it returns 200
+   (`curl -s -o /dev/null -w '%{http_code}' <url>`); if it doesn't, OMIT the image
+   (the block renders without it) rather than ship `about:error`. Never author a
+   logo/placeholder stand-in (`…hirslanden-logo…`) as if it were editorial.
+   Two failure signatures seen on real sites — fix the URL, don't drop the image,
+   when the asset truly exists behind a malformed URL:
+   - **Wrong rendition variant** — the source page exposes only a derivative that
+     404s (e.g. a doctor portrait's `…/4x3/768/…` 404s; the `…/original/768/…`
+     sibling resolves). Rewrite to the resolving variant.
+   - **Missing query delimiter** — a CDN URL built as `…/<id>&wid=600&hei=…`
+     (no `?`) makes the whole `<id>&wid=…` a bogus asset id → 403. Repair the
+     first `&` after the id to `?` (`…/<id>?wid=600&hei=…`).
+   After preview, the authoritative check is `.plain.html`: 0 `about:error` and
+   the expected `<img>`+alt count (CSS-background images are absent from it).
+
+4. **Path-safety gate — source paths must be AEM-Edge-safe, or normalized + redirected.**
+   Real source URLs are not always valid EDS resource paths; DA accepts the `PUT`
+   (`201`) but the preview/serve then 404s/400s, so this is invisible until verify.
+   Before deploy, normalize each path and, when it changes, record the original→
+   normalized pair so the source URL can be redirected (a final-migration must not
+   404 inbound links). Rules: lowercase the whole path; trim a trailing `-`/`_` in
+   any segment; collapse `_`→`-` and runs of `-`; replace the `--` segment
+   delimiter (e.g. `klinik-st--anna`) — AEM reserves `--` as the
+   `branch--repo--owner` host delimiter, so a `--` in a path 400s. Append each
+   change to `stardust/redirects.tsv` (`source<TAB>destination`); wiring those into
+   the EDS redirects config is a Phase D/assembly step.
+
+5. **Record outcomes** with the state-writer (never hand-edit the ledger):
 
    ```bash
    node skills/rollout/scripts/update-coverage.mjs <slug> --status converting
@@ -194,6 +225,30 @@ agents. **Deliver each template's representative — the page that converts that
 template's blocks — before its siblings**, so the blocks exist to be reused. The
 state-writer is per-unit so concurrent updates don't collide.
 
+**Batched delivery at scale (clusters of 6–20+ siblings).** Proven flow for a
+large content track — separate the concerns so an agent crash or a token blowout
+can't corrupt state, and so the gates above run uniformly:
+- **Author-only agents, central deploy.** Each cluster agent reads its work-list
+  + the cleaned archetype template and *only writes content files* — it does NOT
+  deploy. The orchestrator deploys centrally (one idempotent `PUT`+preview loop),
+  which keeps the token in one place, makes retries trivial, and survives a
+  sub-agent dying mid-response (its files are already on disk).
+- **Validate structure BEFORE deploy.** Cheap deterministic check on every
+  authored file — exactly one `<h1>`, the body/`<main>`/`<footer>` wrapper,
+  balanced `<div>`s — catches a truncated/garbled file (e.g. from an agent that
+  crashed) before it reaches DA.
+- **Verify-THEN-flip, never flip blind.** Only flip a page to `deployed` after
+  its rendered `.plain.html` passes (HTTP 200, 0 `about:error`, `<h1>` present).
+  The verify pass is where the image- and path-fidelity defects above actually
+  surface at scale — 4-page samples won't show them; a 130-page batch will.
+- **Long batches run in the background** (a 130-page `PUT`+preview loop far
+  exceeds a 2-min foreground budget); log per-page OK/FAIL and re-drive only the
+  FAILs. Transient `PUT=000` → retry; `PUT=201 PRE=4xx/400` → a path-safety case
+  (gate 4); `200 + about:error` → an image case (gate 3).
+- **zsh gotcha:** `node`/`curl` inside a multi-line `while`/`for` can lose PATH
+  ("command not found") — write the loop to a `bash` script file with absolute
+  binaries and run it, rather than inlining.
+
 ### Phase D — Site assembly (whole-site artifacts)
 
 ```bash
@@ -205,6 +260,13 @@ Generates the artifacts that only make sense site-wide: `sitemap.xml` +
 chrome blocks to `fragments/header.html` / `fragments/footer.html` with their
 `canon/*.html` source. `deploy` lifts and pushes the actual fragment content
 (Step 6); `assemble` prepares and records what to push.
+
+**Redirects.** If Phase C's path-safety gate (#4) emitted `stardust/redirects.tsv`
+(original source path → normalized EDS path), wire it into the site's EDS
+redirects mechanism here so the original inbound URLs don't 404 — a final
+migration must preserve link/SEO continuity. (DA also holds orphan content at the
+pre-normalization paths from the accepted `PUT`s; harmless since they never
+preview-serve, but clean them up if you want the DA tree to match the live tree.)
 
 ### Phase E — Full-site verify
 
