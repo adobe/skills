@@ -152,6 +152,15 @@ the type's metadata rows to every page's metadata block as it writes it. Author
 line up. A block whose contract can't be met from the source (a relationship like
 center↔disease) stays static — record that in the map, don't fake it.
 
+**Metadata key → meta-name mechanics.** A metadata-block row `<div><div>KEY</div>
+<div>VALUE</div></div>` renders to `<meta name="<key lowercased>">`. Use
+single-token capitalized keys (`PublishDate`→`name="publishdate"`,
+`Canton`→`name="canton"`) and make `helix-query.yaml`'s `select:
+meta[name="publishdate"]` match. Emit dates as ISO `YYYY-MM-DD` (sortable). Emitting
+the contract during authoring is one row per page; retrofitting it across an
+already-imported, already-published batch is a full extra pass + republish — which
+is the whole reason B2 is a gate.
+
 ### Phase C — Deliver the site (drive `deploy` per page, per the plan)
 
 **Blocked on Phase B2** — author each page's metadata contract (above) into its
@@ -244,6 +253,13 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    # for content-pending pages (no document push):
    node skills/rollout/scripts/update-coverage.mjs <slug> --status content-pending
    ```
+
+   **Publish in the loop (`PUT → preview → live`), don't stop at preview.** If the
+   site has any query-index block (Phase D2), the index builds from the **live**
+   tree — a preview-only delivery leaves every index empty. Make `POST /live/…` a
+   per-page step of the delivery loop, not a deferred batch, so indexes populate as
+   pages land. (Indexing is async; the index `total` settles a little after the
+   publishes.)
 
    On failure: `--status failed --error "<reason>"` and continue (one page's
    failure never aborts the rollout — mirrors `migrate`).
