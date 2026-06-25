@@ -302,9 +302,13 @@ identified → prototyped → deployed → optimised
 ```
 
 The stage spans all three sources: `stardust/state.json` (agnostic
-`extracted/directed` → identified, `prototyped/approved/migrated` → prototyped),
-rollout coverage (`deployed`/`verified` → deployed), and optimize (`optimised` =
-verified **and** no open findings for the page). The legend **counts are
+`rostered/extracted/directed` → identified, `prototyped/approved/migrated` →
+prototyped), rollout coverage (`deployed`/`verified` → deployed), and optimize
+(`optimised` = verified **and** no open findings for the page). **A
+`content-pending` sibling (archetypes-only mode) stays at `identified`** — it sits
+in the coverage ledger so its delivery can be tracked, but it has no designed
+document yet, so being in coverage alone does **not** advance it to `prototyped`
+(only a page in the migrated tree does). The legend **counts are
 cumulative** — a page counts toward every stage up to the one it reached, so
 `identified` equals the total page count, `prototyped` includes everything
 prototyped-or-beyond, and so on. **Template archetypes** — the page that defines a

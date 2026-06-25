@@ -63,7 +63,7 @@ function readIdentity() {
 // to and including the one it reached (so identified = all pages).
 const STAGES = ['identified', 'prototyped', 'deployed', 'optimised'];
 const STAGE_COLOR = { identified: '#9aa3ad', prototyped: '#5b8def', deployed: '#18a0a0', optimised: '#2e9e5b' };
-const AG = { extracted: 0, directed: 0, prototyped: 1, approved: 1, migrated: 1 };
+const AG = { rostered: 0, extracted: 0, directed: 0, prototyped: 1, approved: 1, migrated: 1 };
 const rankOf = (stage) => STAGES.indexOf(stage);
 
 const openByPage = {};
@@ -84,7 +84,11 @@ function pathOf(slug, cov, stp) {
 }
 function stageOf(p) {
   let r = AG[p.agnosticStatus] ?? 0;
-  if (p.inCoverage) r = Math.max(r, 1); // in the migrated tree → at least prototyped/designed
+  // Being in the coverage ledger only counts as "prototyped/designed" if the page
+  // is actually in the migrated tree. A `content-pending` sibling (archetypes-only
+  // mode) sits in coverage but has no designed document yet — it stays "identified".
+  const designed = p.inCoverage && !(p.delivery && p.delivery.status === 'content-pending');
+  if (designed) r = Math.max(r, 1);
   if (p.delivery && (p.delivery.status === 'deployed' || p.delivery.status === 'verified')) r = Math.max(r, 2);
   if (p.delivery && p.delivery.status === 'verified' && (openByPage[p.slug] || 0) === 0 && optimizeRan) r = 3;
   return STAGES[r];
@@ -99,7 +103,9 @@ const model = [...allSlugs].map((slug) => {
     path: pathOf(slug, cov, stp),
     templateId: (cov && cov.templateId) || (stp && stp.type) || null,
     delivery: cov && cov.delivery, inCoverage: !!cov,
-    agnosticStatus: (stp && stp.status) || (cov ? 'migrated' : 'identified'),
+    agnosticStatus: (stp && stp.status)
+      || (cov && cov.delivery && cov.delivery.status === 'content-pending' ? 'rostered'
+        : (cov ? 'migrated' : 'identified')),
     isTemplate: repSlugs.has(slug), openFindings: openByPage[slug] || 0,
   };
   p.stage = stageOf(p);
