@@ -251,6 +251,12 @@ assert_contains "warning for missing cache"        "$OUT" 'deprecated-api-rules-
 assert_absent   "no findings when cache is missing" "$OUT" '"pattern":"remove-deprecated-api"'
 rm -f "$RULES_TSV"
 
+echo "[guava-cache] com.google.common.cache.* imports flagged; caffeine + micrometer look-alike not flagged"
+OUT="$(run "$FIX/guava-cache")"
+assert_contains "pattern present"                      "$OUT" '"pattern":"guava-cache"'
+assert_contains "LegacyGuavaCache flagged"             "$OUT" 'LegacyGuavaCache.java'
+assert_absent  "CleanCaffeineCache not flagged"        "$OUT" 'CleanCaffeineCache.java'
+assert_absent  "MicrometerGuavaMetrics not flagged"    "$OUT" 'MicrometerGuavaMetrics.java'
 
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"
