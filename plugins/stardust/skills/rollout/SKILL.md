@@ -268,6 +268,50 @@ migration must preserve link/SEO continuity. (DA also holds orphan content at th
 pre-normalization paths from the accepted `PUT`s; harmless since they never
 preview-serve, but clean them up if you want the DA tree to match the live tree.)
 
+### Phase D2 — Dynamic listings (query-index)
+
+Most sites have blocks that LIST other pages (doctor directories, news/event
+feeds, clinic grids, "related" rails). Statically authoring those cards doesn't
+scale and goes stale — they should read an EDS **query-index** (a published JSON
+of pages with per-page properties). **Plan this BEFORE importing 1000s of pages**,
+because what the blocks can list is bounded by what the migration emits.
+
+**A query-index row can carry only:**
+1. **Page-intrinsic DOM** — `h1`, `og:image`, and links the content already
+   authored. Extract via CSS selectors in `helix-query.yaml`
+   (e.g. a doctor's specialty/clinic from `a[href*="/fachgebiete/"]` /
+   `a[href*="/home"]`). **Zero content change.** Author meaningful internal links
+   in content and they become free index facets.
+2. **Page metadata** — anything NOT in the DOM (article/event date, clinic
+   canton/address/phone) must be emitted as `<meta name="…">` via each page's
+   metadata block. → **Define a metadata contract per content type up front and
+   have Phase C emit it.** Retrofitting metadata across thousands of live pages
+   later is the expensive path.
+3. **NOT relationships.** A flat index can't express many-to-many
+   (centers↔disease, clinic↔specialty). Those need an explicit join field
+   (`treats:`/`topics:` slug list) in metadata on one side — and the related items
+   must themselves BE indexed pages (a block whose cards link only to `tel:` has
+   nothing to fetch). Without that, keep the block static; don't fake it.
+
+**The publish gotcha (cost a debugging cycle):** the query-index builds against the
+**PUBLISHED (live)** tree, not preview. A preview-only rollout has an EMPTY index —
+`query-index.json` 404s and `POST /index/…` returns `"requested path returned a 301
+or 404"` per index (that message == "page not published," not "bad selector").
+**Publish pages (`POST /live/…`) before expecting index rows.** Indexing is async:
+bulk-publish, then poll the index `total` until it settles.
+
+**Also localize internal links.** Migrated content often keeps absolute
+source-site URLs (`https://www.source.com/…`); the index then captures those as
+paths and on-site nav breaks. Rewrite internal links to delivered local paths
+(a Phase C / deploy concern) so index `*Path` fields are usable as links.
+
+Deliverables: `helix-query.yaml` (scoped indexes: include globs + `target`), the
+listing blocks rewritten to `fetch` their index (chunked for scale, with filter/
+sort/paginate + an authored fallback), and a `dynamic-blocks-map.md` recording
+which blocks are dynamic, which stay static (editorial curation), and the metadata
+contract. Validate one flagship end-to-end (e.g. a doctor directory + search with a
+`?q=` hand-off) before converting the rest.
+
 ### Phase E — Full-site verify
 
 ```bash
