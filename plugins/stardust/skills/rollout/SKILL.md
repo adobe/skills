@@ -143,7 +143,37 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    these pages is already deployed via their template's archetype; no conversion
    work remains.
 
-2. **Record outcomes** with the state-writer (never hand-edit the ledger):
+2. **Source-fidelity gate — "don't add sections the source doesn't have."**
+   Before flipping a page to `deployed`, confirm every authored section maps to a
+   real region on the *source* page. A migration reproduces the source; it must
+   not invent sections — and the failure is silent, because invented sections
+   render as empty placeholders or, worse, get back-filled with fabricated facts.
+   This recurs as trailing **cross-link rails** (`related-*`, `*-teasers`),
+   **specialist/teaser grids**, and generic **trailing CTAs** appended to every
+   leaf page regardless of source.
+
+   ```bash
+   node skills/rollout/scripts/section-fidelity.mjs \
+     --file <content.html> --source <sourceUrl>   # lays authored vs source side-by-side
+   ```
+
+   The helper is a scaffold, not a judge: it lists the authored block sections
+   (pre-flagging known filler shapes as `⟵ REVIEW`) against the source's heading
+   outline. For each authored section — especially flagged ones — decide:
+   - **HARD-FAIL → remove before `deployed`:** the section carries FABRICATED
+     facts (invented person names, made-up events/dates, boilerplate prose not on
+     the source). Fabricated content on a real site is the worst migration defect.
+   - **Soft call:** an invented rail whose links all point to REAL pages — prefer
+     remove (honor the rule); keep only as a plain text link-row if cross-linking
+     is explicitly wanted, never as an image-card grid that needs assets to exist.
+   - **Pass:** the section backs a real source region.
+
+   Delete the section from the content file (and `git rm` the block if it becomes
+   orphaned — no other page references it). Genuinely-missing *real* content is a
+   different case: leave the block, render gracefully (no placeholder void), and
+   log it as a content gap — do NOT invent filler to fill it.
+
+3. **Record outcomes** with the state-writer (never hand-edit the ledger):
 
    ```bash
    node skills/rollout/scripts/update-coverage.mjs <slug> --status converting
@@ -386,6 +416,10 @@ Normalize each one's output into the ledger via `findings.mjs record`. See
 - `scripts/update-coverage.mjs` — deterministic delivery state-writer for pages
   (`<slug> --status …`) and blocks (`--block <id> --status …`); re-derives all
   roll-ups.
+- `scripts/section-fidelity.mjs` — Phase C source-fidelity gate scaffold: lays a
+  page's authored sections (pre-flagging known invented-filler shapes) against the
+  source page's heading outline, so the agent can remove sections the source lacks
+  before flipping to `deployed`. Informs the gate; never auto-decides (exit 0).
 - `scripts/assemble.mjs` — site-level sitemap / robots / fragments manifest.
 - `scripts/verify.mjs` — full-site structural verification (HTTP or offline `--root`).
 - `scripts/optimize.mjs` — `rollout:baseline` detectors + the multi-source gate:
