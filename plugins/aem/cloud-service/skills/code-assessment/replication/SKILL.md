@@ -53,6 +53,30 @@ Identify the source pattern in the file:
 
 ---
 
+## Discovery
+
+Detection is performed by the analyzer ([`../scripts/analyze.sh`](../scripts/README.md)), run by the runbook:
+
+```bash
+bash ../scripts/analyze.sh <workspace-root> --pattern replication
+```
+
+**Match criteria (what the detector flags):** a file that imports **`com.day.cq.replication.Replicator`** or any **`org.apache.sling.replication.*`** type — the legacy replication APIs removed on Cloud Service. One finding per file, at the file's primary type, with the class header as the snippet. Parse-level only — import-based, no type resolution. The modern `org.apache.sling.distribution.*` API is not flagged.
+
+> Analyzer-only: `replication` has no BPA subtype, so a `replication` finding originates from the local analyzer, never from a BPA/CAM report.
+
+## Resolution contract
+
+**guided** — `migrate (guided)`. The analyzer locates each legacy replication caller; remediation is judgment-based (CQ `Replicator` / Sling Replication Agent → Sling Distribution API) and applied via P1–P4 in an apply session.
+
+| Site shape | Disposition |
+|---|---|
+| `Replicator` / Sling Replication Agent usage in custom code | migrate (guided) → P1–P4 |
+| Replication tied to a workflow step (workflow owns it) | skipped: `workflow-owned` |
+| Test code (`src/test/`) | skipped: `test-scope` |
+
+---
+
 ## Complete example — before and after
 
 ### Before (legacy CQ Replicator with admin resolver)

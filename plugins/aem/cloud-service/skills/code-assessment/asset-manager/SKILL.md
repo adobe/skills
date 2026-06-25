@@ -56,6 +56,30 @@ license: Apache-2.0
 
 ---
 
+## Discovery
+
+Detection is performed by the analyzer ([`../scripts/analyze.sh`](../scripts/README.md)), run by the runbook:
+
+```bash
+bash ../scripts/analyze.sh <workspace-root> --pattern asset-manager
+```
+
+**Match criteria (what the detector flags):** in a file importing **`com.day.cq.dam.api.AssetManager`**, a call to **`createAssetForBinary`**, **`getAssetForBinary`**, **`removeAssetForBinary`**, or **`createAsset`**. **One finding per call site** (each call is individually actionable, unlike the class-level patterns), with the call as the snippet. Parse-level only — gated on the import; the receiver type is not resolved, so an unrelated `createAsset(...)` in the same file could match (rare).
+
+## Resolution contract
+
+**guided** — `migrate (guided)`. The analyzer reports each legacy call site; remediation is judgment-based, routed by the call (create/upload → C1–C3, delete → D1–D3) and applied in an apply session.
+
+| Call site | Disposition |
+|---|---|
+| `createAssetForBinary` / `getAssetForBinary` (removed on CS) | migrate (guided) → C1–C3 |
+| `removeAssetForBinary` (removed on CS) | migrate (guided) → D1–D3 |
+| Client-facing `createAsset(...)` upload | migrate (guided) → C1–C3 (Direct Binary Access) |
+| In-JVM back-office `createAsset(...)` with a service-user resolver | skipped: `already-compliant` |
+| Test code (`src/test/`) | skipped: `test-scope` |
+
+---
+
 ## Complete example — Path A (create / upload)
 
 ### Before (client-facing upload via `AssetManager.createAsset`)

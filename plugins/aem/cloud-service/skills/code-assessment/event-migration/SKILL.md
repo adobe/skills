@@ -75,6 +75,32 @@ A typo'd topic string compiles fine and silently subscribes to a topic that noth
 
 ---
 
+## Discovery
+
+Detection is performed by the analyzer ([`../scripts/analyze.sh`](../scripts/README.md)), run by the runbook:
+
+```bash
+bash ../scripts/analyze.sh <workspace-root> --pattern event-migration
+```
+
+**Match criteria (what the detector flags):** a class that **`implements org.osgi.service.event.EventHandler`** or **`javax.jcr.observation.EventListener`** (import-aware) — both map here per the BPA subtype taxonomy.
+
+Emitted at the class declaration, with the class header as the snippet. Parse-level only — direct `implements` clause; the subscribed topic (resource vs non-resource) is not resolved at detection, so topic-based routing to `resource-change-listener` happens during remediation (see Routing / Classification).
+
+## Resolution contract
+
+**guided** — `migrate (guided)`. The analyzer locates each handler/listener; remediation is judgment-based and applied via E0–E5 (per the Classification above) in an apply session.
+
+| Site shape | Disposition |
+|---|---|
+| `EventHandler` on a non-resource topic (replication / workflow / custom), `handleEvent()` does heavy work | migrate (guided) → E1–E5 |
+| Legacy `javax.jcr.observation.EventListener` that cannot be a `ResourceChangeListener` | migrate (guided) → E0 then E1–E5 |
+| Handler observes repository content / a resource topic (`org/apache/sling/api/resource/Resource/*`) | skipped: `wrong-pattern` (use `resource-change-listener`) |
+| `EventHandler` on a non-resource topic, `handleEvent()` only enqueues a Sling Job | skipped: `already-compliant` |
+| Test code (`src/test/`) | skipped: `test-scope` |
+
+---
+
 ## Complete example — before and after
 
 ### Before (replication EventHandler with inline business logic)

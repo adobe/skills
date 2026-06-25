@@ -51,7 +51,7 @@ Match the request to one expert skill under `code-assessment/<pattern>/` using t
 
 ### 2. Read reference module
 
-Read the chosen expert skill's `SKILL.md` then its `recipe.md` (or `path-*.md`) in full — **Discovery**, input contract, recipe, Unlocatable, editing strategy.
+Read the chosen expert skill's `SKILL.md` in full, then its `recipe.md` / `path-*.md` if present (guided patterns may carry the migration steps inline instead) — **Discovery**, **Resolution contract**, input contract, recipe/steps, Unlocatable, editing strategy.
 
 ### 3. Resolve findings (with_findings or discover)
 
@@ -181,7 +181,15 @@ Copy this structure; keep section headings so runs are comparable across session
 ## Candidates
 | File | Finding | Planned action | Target / notes |
 |------|---------|----------------|----------------|
-| <path> | <id> | apply \| skipped | <before → after, or skip reason> |
+| <path>:<line> | <snippet> | apply \| skipped \| migrate (guided) | <before → after, skip reason, or guide to open> |
+
+**Same columns for every pattern — mechanical *and* guided.** `Finding` is the analyzer `snippet`
+(present for every pattern). `Planned action` follows the pattern's catalog `fix`: `fix: mechanical`
+→ `apply` or `skipped — <reason>`; `fix: guided` → `migrate (guided)` (the analyzer locates the
+site; remediation opens the pattern's expert guide — name it in *Target / notes*). When several
+patterns are in play, group rows under per-pattern subheadings ordered by `severity`, but **never
+drop a column or render a guided pattern as a bare file list** — guided patterns carry concrete
+findings exactly like mechanical ones.
 
 ## Summary counts
 - Apply: <n>
