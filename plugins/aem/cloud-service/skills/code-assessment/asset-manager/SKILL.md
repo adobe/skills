@@ -68,13 +68,13 @@ bash ../scripts/analyze.sh <workspace-root> --pattern asset-manager
 
 ## Resolution contract
 
-**guided** — `migrate (guided)`. The analyzer reports each legacy call site; remediation is judgment-based, routed by the call (create/upload → C1–C3, delete → D1–D3) and applied in an apply session.
+**guided** — `apply (guided)`. The analyzer reports each legacy call site; remediation is judgment-based, routed by the call (create/upload → C1–C3, delete → D1–D3) and applied in an apply session.
 
 | Call site | Disposition |
 |---|---|
-| `createAssetForBinary` / `getAssetForBinary` (removed on CS) | migrate (guided) → C1–C3 |
-| `removeAssetForBinary` (removed on CS) | migrate (guided) → D1–D3 |
-| Client-facing `createAsset(...)` upload | migrate (guided) → C1–C3 (Direct Binary Access) |
+| `createAssetForBinary` / `getAssetForBinary` (removed on CS) | apply (guided) → C1–C3 |
+| `removeAssetForBinary` (removed on CS) | apply (guided) → D1–D3 |
+| Client-facing `createAsset(...)` upload | apply (guided) → C1–C3 (Direct Binary Access) |
 | In-JVM back-office `createAsset(...)` with a service-user resolver | skipped: `already-compliant` |
 | Test code (`src/test/`) | skipped: `test-scope` |
 

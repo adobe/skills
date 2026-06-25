@@ -67,12 +67,12 @@ Emitted at the class declaration, with the class header as the snippet. Parse-le
 
 ## Resolution contract
 
-**guided** — `migrate (guided)`. The analyzer locates each `ResourceChangeListener`; remediation is judgment-based and applied via R0–R5 (per the Classification above) in an apply session.
+**guided** — `apply (guided)`. The analyzer locates each `ResourceChangeListener`; remediation is judgment-based and applied via R0–R5 (per the Classification above) in an apply session.
 
 | Site shape | Disposition |
 |---|---|
-| `implements ResourceChangeListener`, `onChange()` does repository/JCR/heavy work | migrate (guided) → R1–R5 |
-| Legacy `javax.jcr.observation.EventListener` / resource-topic `EventHandler` routed here | migrate (guided) → R0 then R1–R5 |
+| `implements ResourceChangeListener`, `onChange()` does repository/JCR/heavy work | apply (guided) → R1–R5 |
+| Legacy `javax.jcr.observation.EventListener` / resource-topic `EventHandler` routed here | apply (guided) → R0 then R1–R5 |
 | `implements ResourceChangeListener`, `onChange()` only enqueues a Sling Job | skipped: `already-compliant` |
 | Test code (`src/test/`) | skipped: `test-scope` |
 

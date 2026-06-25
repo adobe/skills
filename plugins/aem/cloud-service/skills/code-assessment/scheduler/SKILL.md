@@ -61,12 +61,12 @@ Emitted at the class declaration, with the class header as the snippet. Parse-le
 
 ## Resolution contract
 
-**guided** — `migrate (guided)`. The analyzer locates and reports each scheduler class; remediation is judgment-based and routed by the Classification above to **Path A** ([path-a.md](path-a.md), Runnable + OSGi properties) or **Path B** ([path-b.md](path-b.md), Sling Jobs via `JobManager`). Open the chosen path and apply its steps in an apply session.
+**guided** — `apply (guided)`. The analyzer locates and reports each scheduler class; remediation is judgment-based and routed by the Classification above to **Path A** ([path-a.md](path-a.md), Runnable + OSGi properties) or **Path B** ([path-b.md](path-b.md), Sling Jobs via `JobManager`). Open the chosen path and apply its steps in an apply session.
 
 | Site shape | Disposition |
 |---|---|
-| Single-schedule, hardcoded cron, `implements Runnable` | migrate (guided) → path-a.md |
-| Config-driven cron, multiple schedules, `implements Job`, or `ScheduleOptions.config()` | migrate (guided) → path-b.md |
+| Single-schedule, hardcoded cron, `implements Runnable` | apply (guided) → path-a.md |
+| Config-driven cron, multiple schedules, `implements Job`, or `ScheduleOptions.config()` | apply (guided) → path-b.md |
 | Already Sling Jobs via `JobManager` with single-execution guard | skipped: `already-compliant` |
 | Test code (`src/test/`) | skipped: `test-scope` |
 

@@ -67,11 +67,11 @@ bash ../scripts/analyze.sh <workspace-root> --pattern replication
 
 ## Resolution contract
 
-**guided** — `migrate (guided)`. The analyzer locates each legacy replication caller; remediation is judgment-based (CQ `Replicator` / Sling Replication Agent → Sling Distribution API) and applied via P1–P4 in an apply session.
+**guided** — `apply (guided)`. The analyzer locates each legacy replication caller; remediation is judgment-based (CQ `Replicator` / Sling Replication Agent → Sling Distribution API) and applied via P1–P4 in an apply session.
 
 | Site shape | Disposition |
 |---|---|
-| `Replicator` / Sling Replication Agent usage in custom code | migrate (guided) → P1–P4 |
+| `Replicator` / Sling Replication Agent usage in custom code | apply (guided) → P1–P4 |
 | Replication tied to a workflow step (workflow owns it) | skipped: `workflow-owned` |
 | Test code (`src/test/`) | skipped: `test-scope` |
 

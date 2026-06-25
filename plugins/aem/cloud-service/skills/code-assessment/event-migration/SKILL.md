@@ -89,12 +89,12 @@ Emitted at the class declaration, with the class header as the snippet. Parse-le
 
 ## Resolution contract
 
-**guided** — `migrate (guided)`. The analyzer locates each handler/listener; remediation is judgment-based and applied via E0–E5 (per the Classification above) in an apply session.
+**guided** — `apply (guided)`. The analyzer locates each handler/listener; remediation is judgment-based and applied via E0–E5 (per the Classification above) in an apply session.
 
 | Site shape | Disposition |
 |---|---|
-| `EventHandler` on a non-resource topic (replication / workflow / custom), `handleEvent()` does heavy work | migrate (guided) → E1–E5 |
-| Legacy `javax.jcr.observation.EventListener` that cannot be a `ResourceChangeListener` | migrate (guided) → E0 then E1–E5 |
+| `EventHandler` on a non-resource topic (replication / workflow / custom), `handleEvent()` does heavy work | apply (guided) → E1–E5 |
+| Legacy `javax.jcr.observation.EventListener` that cannot be a `ResourceChangeListener` | apply (guided) → E0 then E1–E5 |
 | Handler observes repository content / a resource topic (`org/apache/sling/api/resource/Resource/*`) | skipped: `wrong-pattern` (use `resource-change-listener`) |
 | `EventHandler` on a non-resource topic, `handleEvent()` only enqueues a Sling Job | skipped: `already-compliant` |
 | Test code (`src/test/`) | skipped: `test-scope` |
