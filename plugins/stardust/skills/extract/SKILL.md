@@ -360,15 +360,16 @@ After all Phase 2-5 writes succeed:
      _crawl-log.json
 
    Per-page evidence:
-     slug         live  waitMode               waitMs   status
-     /            yes   medium                 2380     200
-     /about       yes   medium                 2110     200
-     /pricing     yes   medium                 1940     200
-     /products    yes   medium                 2640     200
-     /contact     yes   domcontentloaded(fb)   8000     200
+     slug         live  waitMode               waitMs   status  media(img/bg)
+     /            yes   medium                 2380     200     38/6
+     /about       yes   medium                 2110     200     12/2
+     /pricing     yes   medium                 1940     200     9/0   ⚠ low-media
+     /products    yes   medium                 2640     200     21/4
+     /contact     yes   domcontentloaded(fb)   8000     200     3/0
 
    Wait summary: 4 resolved at medium (avg 2.4s), 1 fallback (timed out at 8s)
      → /contact may be under-captured; consider --refresh
+   Media summary: 1 page flagged low-media (/pricing) — see media-coverage check
 
    Open stardust/current/brand-review.html to verify the extraction
    before running $stardust direct.
@@ -397,6 +398,29 @@ After all Phase 2-5 writes succeed:
    and averaging `waitMs`. List slugs whose `waitMode` ends in
    `(fallback)` (rendered as `(fb)` in the table for width) as
    candidates for `--refresh`.
+
+   The **`media(img/bg)` column** is the analogous defense-in-depth
+   signal for imagery. It prints `<count of media.imgs> / <count of
+   media.cssBackgrounds>`. Flag a row `⚠ low-media` when the page
+   reads as brand/marketing (register `brand`, or a landing/solution/
+   product template) yet has `cssBackgrounds: []` **and** few large
+   rasters (no `media.imgs` entry with intrinsic width ≥ 600). That
+   combination is the signature of a silently-failed background /
+   lazy-media walk — `getComputedStyle(el).backgroundImage` read
+   before the element was styled, a `::before`/`::after` host missed,
+   or product imagery gated behind interaction the reveal pass did not
+   trigger. The recipe already specs the full background walk
+   (`playwright-recipe.md` § Capture list 11, hardened after the
+   2026-05-04 ups.com dropped-hero failure), but a thorough spec that
+   silently produces nothing still ships an image-less capture: the
+   2026-06-26 knack.com run returned `cssBackgrounds: []` on every
+   page and lost all product screenshots, hero art, and customer
+   logos, and nothing surfaced it because no column reported media
+   coverage. A flagged row is the cue to re-run that page with
+   `--refresh` (and, if it persists, to fall back to headed Chrome per
+   § Bot-management fallback). A maintainer scanning the summary should
+   treat a `brand`-register site with all-zero `bg` counts as suspect,
+   not as "this site uses no background images."
 
 ## Outputs
 

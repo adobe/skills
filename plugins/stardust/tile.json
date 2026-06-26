@@ -1,6 +1,6 @@
 {
   "name": "adobe/stardust",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "summary": "Redesign an existing website to make it better. Built on top of impeccable.",
   "skills": {
     "stardust": { "path": "skills/stardust/SKILL.md" },
