@@ -92,75 +92,31 @@ longer fires.
 | Windsurf | `.windsurfrules` exists OR `.codeium/` is non-empty | `.windsurfrules` (when missing) |
 | Augment | `.augment/` exists OR `augment.md` exists | `augment.md` (when missing) |
 
-After detection, the skill prompts the customer with the detected
-toolchains and the choices: **all**, **single (pick one)**,
-**multi-select**, or **none** (universal layer only). The selection
-is recorded under `decision: ide-targets` in
-`.aem/agentkit-overrides.yml` so subsequent runs skip the prompt.
-Prompt template in [`references/output-format.md`](./references/output-format.md) § 1.1.
+After detection, the skill prompts the customer with **all** / **single**
+/ **multi** / **none** (universal layer only) and persists the answer
+under `decision: ide-targets` in `.aem/agentkit-overrides.yml`. The
+prompt is suppressed under `--silent`, `AEM_AGENTKIT_SILENT=1`, or a
+pre-existing `decision: ide-targets` entry (CI default = write for every
+detected toolchain). Template + the full suppression contract in
+[`references/output-format.md`](./references/output-format.md) § 1.1.
 
-The prompt is **suppressed** (and the skill falls back to writing for
-every detected toolchain — the original silent behavior) under any of:
-
-- CLI flag `--silent` on the invocation.
-- Environment variable `AEM_AGENTKIT_SILENT=1` set in the shell.
-- `.aem/agentkit-overrides.yml` already contains a
-  `decision: ide-targets` entry — that entry wins outright.
-
-These three escape hatches keep CI / scripted invocations fully
-reproducible: a skill run in a non-interactive context with the
-override file present makes no decisions of its own.
-
-When no IDE signal fires, the universal layer is still written and the
+When no IDE signal fires the universal layer is still written; the
 preamble lists which toolchain dirs the customer can create to layer in
 tool-specific artifacts on a later run.
 
 ### Root `CLAUDE.md` consent prompt
 
-After the IDE-selection prompt, the skill issues a **second** prompt
-asking whether it may add or update an "AEM as a Cloud Service"
-agentic-context section in the customer's root `CLAUDE.md`. This is the
-same consent pattern as the IDE-selection prompt. Root `AGENTS.md` is
-**never** touched by this skill — it remains deferred to
-`ensure-agents-md` (see § "Relationship to `ensure-agents-md`"); only
-`CLAUDE.md` is offered here.
-
-The skill first detects the `CLAUDE.md` state:
-
-- **Missing** — no root `CLAUDE.md` exists.
-- **Skill-owned** — a `CLAUDE.md` whose AEM section recomputes its
-  marker correctly (the helper's `_is_skill_owned` check, see
-  [`helpers.md`](./references/helpers.md) § 2.5 step 7).
-- **Human-curated** — a `CLAUDE.md` that exists without a valid AEM
-  section marker (any other content the developer authored).
-
-It then prompts (template in
-[`references/output-format.md`](./references/output-format.md) § 1.2):
-
-- On **decline** → skip entirely. The skill does **not** touch
-  `CLAUDE.md` (this is the old/default behavior).
-- On **accept**:
-  - Missing → write a `CLAUDE.md` carrying only the marked AEM section.
-  - Skill-owned → re-render the marked AEM section in place.
-  - Human-curated → **append** a marked "AEM as a Cloud Service" section
-    to the end of the existing file without clobbering existing content.
-    Because the file is human-curated, the orchestrator passes the
-    helper's `allowOverwriteHumanCurated: true` to `write-atomic`
-    **only** because the developer consented on this prompt.
-
-The consent decision is persisted in `.aem/agentkit-overrides.yml` as
-`decision: claude-md` with value `allow` or `deny`, so re-runs do not
-re-prompt. The prompt is **suppressed** under the same rules as the
-IDE-selection prompt:
-
-- CLI flag `--silent` on the invocation.
-- Environment variable `AEM_AGENTKIT_SILENT=1`.
-- `.aem/agentkit-overrides.yml` already contains a `decision: claude-md`
-  entry — that entry wins outright.
-
-The silent default is **DENY** (`CLAUDE.md` is left untouched), which is
-the safe/old behavior: a scripted or CI invocation never writes
-`CLAUDE.md` unless an existing `decision: claude-md` entry says `allow`.
+After IDE selection the skill issues a **second** prompt asking whether
+it may add or update an "AEM as a Cloud Service" agentic-context section
+in the customer's root `CLAUDE.md`. Root `AGENTS.md` is **never**
+touched — it is deferred to `ensure-agents-md`. State detection,
+decision flow (missing → write; skill-owned → re-render; human-curated →
+append with consent), persistence under `decision: claude-md`, CI
+suppression (`--silent` / `AEM_AGENTKIT_SILENT=1` / pre-existing
+override), and the safe DENY default are documented in
+[`references/collision-rules.md`](./references/collision-rules.md)
+§ "Root `CLAUDE.md` consent prompt". Prompt template in
+[`references/output-format.md`](./references/output-format.md) § 1.2.
 
 ## Hard guarantee — allow-list of paths the skill writes
 
@@ -173,26 +129,19 @@ Every output sits under one of:
 - `.aem/agentkit-overrides.yml` (one entry per resolved decision)
 - Root `CLAUDE.md` — **only with explicit developer consent** (see § "Root `CLAUDE.md` consent prompt"). Created when missing, or its marked "AEM as a Cloud Service" section re-rendered / appended. Root `AGENTS.md` is NOT on this list — it is never written by this skill.
 
-**Helper-enforced.** The allow-list is enforced inside `bin/aem-agentkit-helper`'s `write-atomic` op (see [`references/helpers.md`](./references/helpers.md) § 2.5). A write request for any path outside the allow-list is rejected by the helper; the orchestrating LLM cannot bypass this even if prompt-injected. The deny-list (per-segment privacy patterns) is enforced before the allow-list - `node_modules/`, `.git/`, `.env`, `*.pem`, and the full privacy list are always refused regardless of intent.
+**Helper-enforced.** The allow-list is enforced inside
+`bin/aem-agentkit-helper`'s `write-atomic` op
+([`references/helpers.md`](./references/helpers.md) § 2.5). The deny-list
+(privacy patterns — `node_modules/`, `.git/`, `.env`, `*.pem`, …) is
+checked **before** the allow-list and refuses regardless of intent.
+Sidecars `<path>.tmp` (atomic write) and `<path>.agentkit-new` (diff
+review) inherit their target's allow-list status. Customer source is
+never modified; reads honor the same deny-list and no generated URL
+contains `/6.5/` or `experience-manager-65/` (self-validation rejects).
 
-Outside this list every pre-existing file is read-only. The skill's own
-`<path>.tmp` (atomic-write only, cleaned at startup when adjacent to a
-marker-bearing target OR when orphaned at an allow-listed path) and
-`<path>.agentkit-new` (diff sidecar) are the only other paths it touches.
-Root `AGENTS.md` is owned by `ensure-agents-md` and is **never modified**
-by this skill. Root `CLAUDE.md` is modified **only with explicit
-developer consent** (§ "Root `CLAUDE.md` consent prompt"); absent consent
-it is left untouched, exactly as before.
-
-The skill never reads anything matching the deny-list in
-[references/privacy-and-sanitization.md](./references/privacy-and-sanitization.md)
-§ 1, never embeds AEM 6.5 documentation URLs (the self-validation pass
-rejects `/6.5/` and `experience-manager-65/`), and never names specific
-MCP server packages in any AGENTS.md body. The skill prompts the
-customer for exactly two decisions: **IDE selection** (§ "IDE detection
-and selection") and **root `CLAUDE.md` consent** (§ "Root `CLAUDE.md`
-consent prompt") — no prompts for content decisions, other file
-overwrites, or path resolution.
+The skill prompts for exactly two decisions: **IDE selection** and
+**root `CLAUDE.md` consent**. No prompts for content, path resolution,
+or other overwrites.
 
 ## Generation order
 
@@ -258,35 +207,24 @@ clean, `2` completed-with-warnings, `1` hard failure.
 | [`output-format.md`](./references/output-format.md) | Preamble + summary + diagnostic templates with conditional rows |
 | [`helpers.md`](./references/helpers.md) | Deterministic helper protocol, ops, version pinning |
 | [`manifest.md`](./references/manifest.md) | Run-manifest schema, `/agents-md-check` consumer rules, overrides |
+| [`threat-model.md`](./references/threat-model.md) | Defended trust boundaries and explicit out-of-scope items |
 
 ## Deterministic helper
 
-Every operation that must be byte-exact (realpath + workspace boundary,
-`O_NOFOLLOW` + TOCTOU re-check, SHA-256 canonical-body checksum, atomic
-`.tmp` + `rename(2)`, Unicode sanitization, deny-list segment matching,
-bounded file walk, advisory file lock) is performed by the helper at
-[`bin/aem-agentkit-helper`](./bin/aem-agentkit-helper) (Python 3.10+, no
-third-party deps). The skill compares `--version` against
-`metadata.version` at startup and refuses to run on mismatch or absence.
-Full protocol in [`references/helpers.md`](./references/helpers.md);
-unit-test suite at [`tests/run-tests.sh`](./tests/run-tests.sh).
-
-Helper ops include: `open` (safe read), `read-for-context` (the
-**required safe path for reading customer source into agent/LLM context**
-— same safe-open path as `open` plus Unicode sanitization: NFC normalize,
-strip bidi overrides, zero-width marks, BOM, C0/C1 controls; LF/CR
-preserved), `write-atomic`, `sha256-canonical`, `sanitize-bytes`,
-`realpath`, `walk`, and `lock`/`unlock`. The orchestrator MUST use
-`read-for-context` (not `open`) whenever file content will be passed into
-agent or LLM context.
+Every byte-exact operation runs in [`bin/aem-agentkit-helper`](./bin/aem-agentkit-helper)
+(Python 3.10+, no third-party deps). The skill version-pins the helper
+via `--version`/`--protocol-version` at startup and refuses to run on
+mismatch. Op surface, JSON-line protocol, and the byte-exact contracts
+are in [`references/helpers.md`](./references/helpers.md); unit-test
+suite at [`tests/run-tests.sh`](./tests/run-tests.sh). The orchestrator
+MUST use `read-for-context` (not raw `open`) whenever file content will
+be passed into agent or LLM context.
 
 ## Concurrency, idempotency, modes
 
-- **Lock.** Workspace advisory lock at `.aem/context/.agentkit.lock`
-  (acquired through the helper); a second invocation exits `1` with a
-  clean diagnostic instead of racing on `.tmp` files.
-- **Markers.** Markdown: first line is `<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: <sha256> -->`. JSON: top-level `"_generatedBy": "aem-agentkit"`, `"_skillVersion": "1.0.0-beta"`, `"schemaVersion": "1"`, `"_markerChecksum": "<sha256>"` (plus `"_static": true` for static-reference files). The marker checksum covers the canonical body bytes only; `generatedAt` is excluded so identical content does not churn the file across runs. Marker spoofing (wrong / malformed / duplicated checksum) is treated as human-curated. Full byte-exact rules in [`references/upgrade-and-migration.md`](./references/upgrade-and-migration.md) § 1.
-- **Modes.** `Default` runs the full order. `Refresh` (`/regen-context`) re-renders only `.aem/context/*`. `Check` (`/agents-md-check`) is read-only drift detection driven by the run manifest.
+- **Lock.** Workspace advisory lock at `.aem/context/.agentkit.lock`; a second invocation exits `1` cleanly. Crash-safe via `fcntl.flock`.
+- **Markers.** Markdown first-line comment / top-level JSON fields carry skill version + SHA-256 over the canonical body (`generatedAt` excluded so identical content does not churn the file). Marker spoofing is treated as human-curated. Byte-exact rules in [`references/upgrade-and-migration.md`](./references/upgrade-and-migration.md) § 1.
+- **Modes.** `Default` runs the full order. `/regen-context` re-renders only `.aem/context/*`. `/agents-md-check` is read-only drift detection driven by the run manifest.
 
 ## Communication
 
@@ -298,65 +236,35 @@ one-line workspace-relative diagnostic on any error. Templates in
 
 ## Threat model
 
-The skill operates inside a developer's workspace with the privileges
-of the developer's user account. It reads files in the customer repo
-and writes a bounded set of agent-context files. Key trust boundaries:
-
-| Asset | Defended against | Mechanism |
-|---|---|---|
-| Customer source files / human-curated files | Accidental modification | Allow-list (helper-enforced in `write-atomic`) **plus** helper-enforced overwrite protection: `write-atomic`'s `_is_skill_owned` check (§ 2.5 step 7) refuses to overwrite any pre-existing human-curated file unless the caller passes `allowOverwriteHumanCurated: true` (default `false`). Marker recomputation is the ownership test; this is enforced in the helper, not just orchestrator convention. |
-| Privacy-sensitive files (`.env`, `*.pem`, `.aws/`, `.git/config`) | Indexing into LLM context | Deny-list per path segment, ASCII casefold + NFC normalize, applied at both walk-name AND resolved-realpath segments |
-| Filesystem outside workspace | Reading or writing via symlink | Workspace realpath cached at startup; in-workspace symlinks pointing outside are rejected; special filesystems (`/proc`, `/sys`, `/dev`, `/var/run`, `/run`, macOS `/private/var/run`) rejected even when the workspace lives inside them |
-| TOCTOU on read | Reading a swapped file | `O_NOFOLLOW` + post-open re-check via `/proc/self/fd/N` (Linux) or `F_GETPATH` (macOS); fail-closed when re-check is unavailable |
-| Marker spoofing | Pasting our marker into a customer file | SHA-256 over canonical body bytes is recomputed on every "is this ours?" check; mismatch → human-curated → never overwritten |
-| Concurrent invocations | Racing on `.tmp` files | Advisory `fcntl.flock(LOCK_EX\|LOCK_NB)`; the kernel auto-releases the lock when the helper process exits or is killed (crash-safe) — no PID-reuse defense or stale-lock recovery needed |
-
-**Explicitly out of scope:**
-
-- **Prompt injection via raw file content — mitigated for dangerous Unicode; NL injection residual.**
-  The helper now provides a `read-for-context` op (see § "Deterministic
-  helper") that runs the same safe-open path as `open`, then
-  NFC-normalizes and removes dangerous Unicode code points (bidi
-  overrides U+202A–U+202E / U+2066–U+2069, zero-width marks, BOM
-  U+FEFF, C0/C1 controls except LF/CR) before the bytes enter LLM
-  context. The orchestrator **MUST** read customer source via
-  `read-for-context`, not raw `open`, when the content will be placed
-  into agent context. Residual, still out of scope: natural-language
-  prompt injection (e.g. literal "ignore previous instructions" prose)
-  survives Unicode sanitization — returned content must still be treated
-  as untrusted and the orchestrator must apply appropriate framing.
-- **Supply-chain tampering with the helper binary.** The helper's
-  content-addressable SHA-256 pin is documented in
-  [`references/upgrade-and-migration.md`](./references/upgrade-and-migration.md)
-  § 1.1 and baked into the release notes. A plugin marketplace
-  replacement of the helper would be detected only by that pin, not by
-  any in-skill mechanism.
-- **Adversarial Windows hosts.** Windows is rejected at startup; no
-  hardening claims apply on that platform. Use WSL.
+The defended trust boundaries (customer source, privacy-sensitive
+files, workspace boundary, TOCTOU on read, marker spoofing, concurrent
+invocations) and explicitly out-of-scope concerns (natural-language
+prompt injection, helper binary supply-chain tampering, adversarial
+Windows hosts) are documented in [`references/threat-model.md`](./references/threat-model.md).
 
 ## Rules
 
-Every rule is enforced by the helper and / or the self-validation pass.
-The references hold the byte-exact definitions; this section is a
-checklist for review.
+Every rule is enforced by the helper and/or the self-validation pass.
+The references hold the byte-exact definitions; the list below is the
+review-checklist surface — each bullet links to where the rule is
+authoritative.
 
-- **Allow-list writes only** (this file § Hard guarantee, enforced inside the helper's `write-atomic` op).
-- **Never overwrite** any pre-existing human-curated file (one lacking a valid skill marker) — helper-enforced in `write-atomic` via the `_is_skill_owned` check; the orchestrator may pass `allowOverwriteHumanCurated: true` ONLY for root `CLAUDE.md` and ONLY after the developer consents on the § "Root `CLAUDE.md` consent prompt" (see [`collision-rules.md`](./references/collision-rules.md)).
-- **Root `AGENTS.md` never written; root `CLAUDE.md` only with consent** — `AGENTS.md` is always deferred to `ensure-agents-md`; `CLAUDE.md` is touched only on an `allow` consent decision (`decision: claude-md`), with `deny` as the silent default.
-- **Never read** any path matching the privacy deny-list ([`privacy-and-sanitization.md`](./references/privacy-and-sanitization.md) § 1) — segment-by-segment match, ASCII-lowercase casefold + NFC normalize, fail-closed on uncertainty. Deny-list also applies to the **resolved realpath segments** to defeat in-workspace symlink bypass.
-- **Workspace boundary + symlink hardening** ([`privacy-and-sanitization.md`](./references/privacy-and-sanitization.md) § 1.2): realpath check, workspace-escape rejection, special-filesystem rejection (`/proc`, `/sys`, `/dev`, `/var/run`, `/run`, macOS `/private/var/run`, UNC paths), `O_NOFOLLOW` open on the resolved target with TOCTOU re-check (fail-closed when re-check is unavailable), depth cap 32, global file cap 100,000, per-subtree cap 10,000.
-- **Output stability** ([`codified-context.md`](./references/codified-context.md) § 2): JSON sorted-keys + 2-space indent + LF + final newline + UTF-8 no BOM; Markdown LF + final newline + no trailing whitespace; `generatedAt` is `YYYY-MM-DDTHH:MM:SSZ` and excluded from the checksum. String leaves are NFC-normalized before checksum so HFS+ (NFD) and ext4/APFS (NFC) hash identically.
-- **Determinism tiebreaker** ([`codified-context.md`](./references/codified-context.md) § 2): path → line number → pre-sanitization value → SHA-256 of pre-sanitization value.
-- **Sanitize extracted strings** ([`privacy-and-sanitization.md`](./references/privacy-and-sanitization.md) § 2): NFC normalize, drop on strip-list match, 80-char cap, inline-code wrap with escalating fence.
-- **Hallucination guard.** Emit a derived rule only when ≥ 3 evidence pointers exist; otherwise emit a TODO marker.
+- **Allow-list writes only** (this file § Hard guarantee).
+- **Never overwrite human-curated files** ([`collision-rules.md`](./references/collision-rules.md)); root `CLAUDE.md` is the only consent-gated exception.
+- **Root `AGENTS.md` never written** — deferred to `ensure-agents-md`; root `CLAUDE.md` only on `allow` consent (default DENY).
+- **Privacy deny-list, segment + realpath** ([`privacy-and-sanitization.md`](./references/privacy-and-sanitization.md) § 1).
+- **Workspace boundary + symlink hardening** ([`privacy-and-sanitization.md`](./references/privacy-and-sanitization.md) § 1.2).
+- **Output stability + determinism tiebreaker** ([`codified-context.md`](./references/codified-context.md) § 2).
+- **Sanitize extracted strings** ([`privacy-and-sanitization.md`](./references/privacy-and-sanitization.md) § 2).
+- **Hallucination guard.** Derived rule only when ≥ 3 evidence pointers exist; otherwise emit a TODO marker.
 - **Customer-only discovery.** Never index Core Components or anything under `/libs`.
-- **Sub-project resolution in role bodies** ([`per-tool-artifacts.md`](./references/per-tool-artifacts.md) § 2): role bodies walk up from the file under edit to the closest enclosing AEM project root before resolving `<project>` or `<module>`.
-- **Slash-command input validation**: `<name>` and `<FQCN>` against anchored regex before any shell or filesystem interpolation; `MVN_CMD` ∈ `{"mvn", "./mvnw"}` literally.
-- **Use `read-for-context` for LLM-bound reads.** Any customer source file placed into agent or LLM context MUST be read via the helper's `read-for-context` op, not raw `open`. This enforces Unicode sanitization (bidi overrides, zero-width marks, BOM, C0/C1 controls stripped) before bytes enter the model.
-- **No inline mutation of `.aem/context/*.json`**: roles delegate to `/regen-context` so the marker checksum is recomputed by the helper, not by the agent.
-- **Follow the Registration Rule** ([`manifest.md`](./references/manifest.md) § 8) when authoring an indexable artifact: write source → `/regen-context` → confirm the index → manifest rewrites on next run. Slash commands and sibling skills are bound by the same protocol; `/agents-md-check` reports `source-vs-index-drift` when the protocol was skipped.
+- **Sub-project resolution in role bodies** ([`per-tool-artifacts.md`](./references/per-tool-artifacts.md) § 2).
+- **Slash-command input validation**: `<name>` and `<FQCN>` against anchored regex; `MVN_CMD` ∈ `{"mvn", "./mvnw"}` literally.
+- **Use `read-for-context` for LLM-bound reads** ([`helpers.md`](./references/helpers.md) § 2 — `read-for-context`).
+- **No inline mutation of `.aem/context/*.json`** — roles delegate to `/regen-context`.
+- **Follow the Registration Rule** ([`manifest.md`](./references/manifest.md) § 8) when authoring an indexable artifact.
 - **Diagnostic-path scrubbing.** Workspace-relative paths only; never absolute, never `~/`.
-- **Semantically equivalent role bodies across IDE projections** ([`per-tool-artifacts.md`](./references/per-tool-artifacts.md) § 7): the canonical role-source body is the same content materialized in each IDE's preferred wrapper. Light per-projection adapters (frontmatter, file extension, IDE-specific directives) are permitted so the design survives IDE format evolution without forking the canonical source.
+- **Semantically equivalent role bodies across IDE projections** ([`per-tool-artifacts.md`](./references/per-tool-artifacts.md) § 7).
 
 ## Example invocation
 

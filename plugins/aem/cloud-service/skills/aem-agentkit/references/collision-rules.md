@@ -122,3 +122,56 @@ When a `.agentkit-new` already exists at re-run time:
   per-path; the skill never overwrites a previously rotated file.
 - A `warningStubs` entry summarises every rotation so the customer can
   find archived diffs and rejected content is never lost silently.
+
+## Root `CLAUDE.md` consent prompt — state detection and decision flow
+
+After the IDE-selection prompt, the skill issues a **second** prompt
+asking whether it may add or update an "AEM as a Cloud Service"
+agentic-context section in the customer's root `CLAUDE.md`. Root
+`AGENTS.md` is **never** touched — it is deferred to `ensure-agents-md`;
+only `CLAUDE.md` is offered here.
+
+### State detection
+
+The skill classifies the existing `CLAUDE.md`:
+
+- **Missing** — no root `CLAUDE.md` exists.
+- **Skill-owned** — a `CLAUDE.md` whose AEM section recomputes its
+  marker correctly (the helper's `_is_skill_owned` check,
+  [`helpers.md`](./helpers.md) § 2.5 step 7).
+- **Human-curated** — a `CLAUDE.md` that exists without a valid AEM
+  section marker (any other content the developer authored).
+
+### Decision flow
+
+The prompt template lives in [`output-format.md`](./output-format.md) § 1.2.
+
+- On **decline** → skip entirely. The skill does **not** touch
+  `CLAUDE.md` (this is the default behavior).
+- On **accept**:
+  - Missing → write a `CLAUDE.md` carrying only the marked AEM section.
+  - Skill-owned → re-render the marked AEM section in place.
+  - Human-curated → **append** a marked "AEM as a Cloud Service" section
+    to the end of the existing file without clobbering existing content.
+    Because the file is human-curated, the orchestrator passes the
+    helper's `allowOverwriteHumanCurated: true` to `write-atomic`
+    **only** because the developer consented on this prompt.
+
+### Persistence
+
+The consent decision is persisted in `.aem/agentkit-overrides.yml` as
+`decision: claude-md` with value `allow` or `deny`, so re-runs do not
+re-prompt.
+
+### Suppression (CI / headless)
+
+The prompt is suppressed under any of:
+
+- CLI flag `--silent` on the invocation.
+- Environment variable `AEM_AGENTKIT_SILENT=1`.
+- `.aem/agentkit-overrides.yml` already contains a `decision: claude-md`
+  entry — that entry wins outright.
+
+The silent default is **DENY** (`CLAUDE.md` is left untouched), which is
+the safe behavior: a scripted or CI invocation never writes `CLAUDE.md`
+unless an existing `decision: claude-md` entry says `allow`.
