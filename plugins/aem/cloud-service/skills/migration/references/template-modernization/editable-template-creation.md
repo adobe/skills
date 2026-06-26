@@ -72,14 +72,13 @@ ui.content/src/main/content/jcr_root/conf/<appId>/settings/wcm/templates/<templa
         </root>
         <cq:responsive jcr:primaryType="nt:unstructured">
             <breakpoints jcr:primaryType="nt:unstructured">
-                <phone
+                <!-- One node per conventions.breakpoints entry. Node name, title and
+                     width all come from context — do not hardcode names or numbers.
+                     Example shape for an entry { name, title, width }: -->
+                <BREAKPOINT_NAME
                     jcr:primaryType="nt:unstructured"
-                    title="Smaller Screen"
-                    width="{Long}768"/>
-                <tablet
-                    jcr:primaryType="nt:unstructured"
-                    title="Tablet"
-                    width="{Long}1200"/>
+                    title="<breakpointTitle>"
+                    width="{Long}<breakpointWidth>"/>
             </breakpoints>
         </cq:responsive>
     </jcr:content>
@@ -91,8 +90,8 @@ ui.content/src/main/content/jcr_root/conf/<appId>/settings/wcm/templates/<templa
 - `sling:resourceType` on `jcr:content` = `<appId>/components/structure/<templateName>` — must match the page structure component discovered in step 3
 - `<root>` uses `wcm/foundation/components/responsivegrid` — the WCM layout container
 - `<responsivegrid>` inside root uses the **app's own content container** (`<appId>/components/content/container`) with `editable="{Boolean}true"` — this marks it as the author-editable zone
-- `<cq:responsive>` breakpoints: use values discovered from existing templates; default to phone=768, tablet=1200 if none found
-- `cq:deviceGroups="[/etc/mobile/groups/responsive]"` — always include on structure
+- `<cq:responsive>` breakpoints: emit one node per entry in `conventions.breakpoints` (name, width, title verbatim). Never invent values — if `conventions.breakpoints` is `needs-user-confirm`, stop and ask the user. There is **no** numeric default.
+- `cq:deviceGroups="[/etc/mobile/groups/responsive]"` — always include on structure. This is the standard AEM responsive device-group path used by the template editor; use it verbatim. Do not invent a per-project value, and do not "modernize" it to a `/conf` or `/libs` path — the template editor still resolves device groups from `/etc/mobile/groups`.
 
 For each `namedChildren` entry with `placement ∈ {structure, structure+initial}`, emit a child of `<root>`:
 
@@ -156,7 +155,7 @@ For templates where new pages must start with a specific component already prese
 Only pre-place components that belong in the editable zone. Components locked in `structure` must **not** be duplicated here.
 
 **Required runtime nodes (e.g. `targeting`):**
-If the page structure component renders a named child via `data-sly-resource` that is not a parsys (discovered in checklist step 8), add it as a direct child of `jcr:content` in initial — not inside `<root>`:
+For each `namedChildren` entry the context classified as `required-runtime` (`placement: initial`) — a named child the page structure component renders via `data-sly-resource` that is **not** a parsys — add it as a direct child of `jcr:content` in initial, not inside `<root>`:
 ```xml
 <jcr:content ...>
     <targeting jcr:primaryType="nt:unstructured"
@@ -262,8 +261,14 @@ The complete migration sequence is:
 3. [aem-modernization.md]  Create structure/component/policy rewrite rules → ui.apps + ui.config
 4. [validation]      Run template-modernization-validation.md
 5. [manual]          Deploy both packages (or via Cloud Manager pipeline)
-6. [manual]          Run AEM Modernize Tools UI jobs against content paths
+6. [manual]          Allow the template on its parent content tree — add it to the
+                     parent page's `cq:allowedTemplates` (or the relevant policy).
+                     Creating the editable template does NOT make it selectable in
+                     the Create Page wizard; without this step authors won't see it.
+7. [manual]          Run AEM Modernize Tools UI jobs against content paths
 ```
+
+> **Note (`allowedTemplates`):** an editable template's own `allowedPaths` regex constrains *where* it may be used, but the template only appears in the Create Page wizard when the target section also allows it (via `cq:allowedTemplates` on the parent `jcr:content`, or an Allowed Templates policy). This skill does not edit content trees — surface it as a manual step.
 
 ---
 

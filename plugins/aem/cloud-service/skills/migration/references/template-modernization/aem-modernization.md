@@ -87,12 +87,14 @@ ui.config/src/main/content/jcr_root/apps/<appId>/osgiconfig/config.author/
 
 **Optional properties — add only when discovered in the project:**
 
+> **All four properties operate on JCR node names** — the names of the child nodes directly under the static page's `jcr:content` (e.g. `par`, `rightpar`, `header`, `image`), **not** `sling:resourceType` values. `PageRewriteRule` matches each child by `node.getName()`. Listing a resourceType here matches nothing (silent no-op) for `ignore`/`order`/`rename`, and for `remove` removes nothing while leaving the dead node in place. Read the actual child node names from the static template's `jcr:content` / a sampled `/content` page before populating any of these.
+
 | Property | Type | When to add |
 |----------|------|-------------|
-| `ignore.components` | `String[]` | When the page structure component contains parsys slots that must **not** be converted (e.g. targeting, LiveSync config nodes) |
-| `rename.components` | `String[]` | When a parsys node must be **renamed** in addition to being retyped. Format: `"oldName=newName"` per entry |
-| `order.components` | `String[]` | When child components must be reordered after conversion. List component names in desired order |
-| `remove.components` | `String[]` | When the static page structure component renders fixed structural elements (logo, nav, header) that are no longer rendered by the editable template's page component — list their `sling:resourceType` values. These orphaned nodes will be deleted from page content during conversion instead of being left as dead data. |
+| `ignore.components` | `String[]` | Node names of children that must **remain on the page's `jcr:content` root** (not moved into the new responsive grid) — e.g. `targeting`, `LiveSyncConfig`, fixed runtime nodes. List the node names. |
+| `rename.components` | `String[]` | When a child node must be **renamed** as it is moved into the root grid. Format: `"oldName=newName"` per entry (node names; the rename also supports intermediate-path targets like `"par=container/container"`). |
+| `order.components` | `String[]` | Node names, in the desired final order inside the root container. Any found-but-unspecified children are appended in arbitrary order. |
+| `remove.components` | `String[]` | Node names of children to **delete** from page content during conversion — e.g. fixed structural nodes (`logo`, `nav`, `header`) no longer rendered by the editable template's page component. **Destructive:** each named node is removed from the page. List node names, never resourceTypes — a wrong/missing name silently removes the wrong node or nothing. |
 
 **How to determine `sling.resourceType`:**
 - Read the page structure component under `/apps/<appId>/components/structure/<templateName>/`
@@ -106,10 +108,11 @@ ui.config/src/main/content/jcr_root/apps/<appId>/osgiconfig/config.author/
 **How to detect `ignore.components`:**
 - Read the structure component's HTL files under `ui.apps/…/components/structure/<templateName>/`
 - Look for `sling:include` / `data-sly-resource` calls that reference non-content nodes (e.g. `targeting`, `LiveSyncConfig`, header/footer fixed zones)
-- Any named child that is a fixed/structural element — not a parsys — should be ignored
+- Take the **node name** of each such named child (the `jcr:content` child name, e.g. `targeting`) and list it — not its resourceType
+- Any named child that is a fixed/structural element — not a parsys — should be ignored so it is left on `jcr:content` rather than swept into the grid
 
 **How to detect `rename.components`:**
-- Compare child node names in the static template's page structure to the editable template's structure
+- Compare child **node names** in the static template's page structure to the names the editable template expects
 - If a parsys is named `par` in the static template but the editable template expects `responsivegrid`, add `"par=responsivegrid"` to `rename.components`
 - Only add when names actually differ
 
@@ -120,7 +123,7 @@ Required once per app. Controls which folder the `StructureRewriteRuleService` s
 **File path:**
 ```
 ui.config/src/main/content/jcr_root/apps/<appId>/osgiconfig/config.author/
-  com.adobe.aem.modernize.structure.StructureRewriteRuleService.cfg.json
+  com.adobe.aem.modernize.structure.impl.StructureRewriteRuleServiceImpl.cfg.json
 ```
 
 ```json
@@ -130,6 +133,8 @@ ui.config/src/main/content/jcr_root/apps/<appId>/osgiconfig/config.author/
   ]
 }
 ```
+
+**PID note:** The OSGi component is `StructureRewriteRuleServiceImpl` (the `@Component` lives on the **impl** class, with no explicit `name=`), so the configuration PID — and therefore the `.cfg.json` filename — is the impl class's fully-qualified name (`…structure.impl.StructureRewriteRuleServiceImpl`). A config named after the interface (`…structure.StructureRewriteRuleService`) is **not** picked up: the service runs with empty `search.paths` and no rule folder is scanned.
 
 **Note:** If multiple apps share rules, add all paths to the array. Only one config file is needed — it covers all apps.
 
@@ -206,7 +211,7 @@ A typical rule name is `parsys-to-container`.
 **File path:**
 ```
 ui.config/src/main/content/jcr_root/apps/<appId>/osgiconfig/config.author/
-  com.adobe.aem.modernize.component.ComponentRewriteRuleService.cfg.json
+  com.adobe.aem.modernize.component.impl.ComponentRewriteRuleServiceImpl.cfg.json
 ```
 
 ```json
@@ -227,7 +232,7 @@ ui.config/src/main/content/jcr_root/apps/<appId>/osgiconfig/config.author/
 }
 ```
 
-**Note:** There is also an `impl` variant PID (`ComponentRewriteRuleServiceImpl.cfg.json`) with the same `search.paths` property. If both PIDs are already present in the project, update both. If starting fresh, use the non-impl PID only.
+**PID note:** As with the structure service, the `@Component` is on the **impl** class (`…component.impl.ComponentRewriteRuleServiceImpl`) with no explicit `name=`, so that impl FQN is the configuration PID and the `.cfg.json` filename. A config named after the interface (`…component.ComponentRewriteRuleService`) is inert. If a legacy project already carries the interface-named config, migrate its `search.paths` onto the impl PID and remove the inert one.
 
 ### B3 — Folder scaffold nodes
 
@@ -274,21 +279,14 @@ ui.apps/src/main/content/jcr_root/apps/<appId>/modernization/policy-import-rules
 
 ### C2 — Service registration config
 
-Two config files are needed (both PIDs register the same service):
+One config file — same rule as structure and component: the `@Component` is on the **impl** class with no explicit `name=`, so the configuration PID is the impl FQN.
 
-**File 1:**
-```
-ui.config/.../osgiconfig/config.author/
-  com.adobe.aem.modernize.policy.PolicyImportRuleService.cfg.json
-```
-
-**File 2:**
+**File path:**
 ```
 ui.config/.../osgiconfig/config.author/
   com.adobe.aem.modernize.policy.impl.PolicyImportRuleServiceImpl.cfg.json
 ```
 
-Both files have identical content:
 ```json
 {
   "search.paths": [
@@ -296,6 +294,8 @@ Both files have identical content:
   ]
 }
 ```
+
+**PID note:** Do not also create an interface-named `…policy.PolicyImportRuleService.cfg.json` — the interface is not a `@Component`, so that file is inert. If a legacy project already has one, move its `search.paths` onto the impl PID and delete the interface-named file.
 
 ### C3 — Folder scaffold nodes
 
@@ -353,15 +353,15 @@ After generating files, report:
 Sub-path A — Structure Rewrite Rules
   XML rules created   : <list of templateName.xml files>
   OSGi configs created: <list of PageRewriteRule-*.cfg.json files>
-  Service config      : StructureRewriteRuleService.cfg.json (created / already existed)
+  Service config      : StructureRewriteRuleServiceImpl.cfg.json (created / already existed)
 
 Sub-path B — Component Rewrite Rules
   XML rules created   : <list of ruleName.xml files per app>
-  Service config      : ComponentRewriteRuleService.cfg.json (created / already existed)
+  Service config      : ComponentRewriteRuleServiceImpl.cfg.json (created / already existed)
 
 Sub-path C — Policy Import Rules
   XML rules created   : <list of designName.xml files>
-  Service configs     : PolicyImportRuleService.cfg.json + PolicyImportRuleServiceImpl.cfg.json
+  Service config      : PolicyImportRuleServiceImpl.cfg.json
 
 Repoinit initializer  : created / already existed
 Filter entries        : added / already present

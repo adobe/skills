@@ -22,24 +22,24 @@ All paths are rooted at the workspace. `<uiApps>` / `<uiContent>` / `<uiConfig>`
 
 2.2 **OSGi config** — `PageRewriteRule-<appId>-<tpl>.cfg.json` has keys `static.template`, `sling.resourceType`, `editable.template`, `container.resourceType`. `sling.resourceType` = `<appId>/components/structure/<tpl>` (folder must exist). `container.resourceType` = `wcm/foundation/components/responsivegrid` (**not** the app container).
 
-2.3 **Service config** — exactly one `StructureRewriteRuleService.cfg.json`; every path in `search.paths` exists.
+2.3 **Service config** — exactly one `…structure.impl.StructureRewriteRuleServiceImpl.cfg.json` (impl-class PID — the interface-named `StructureRewriteRuleService.cfg.json` is inert and must **not** be the registration file); every path in `search.paths` exists.
 
 ## 3. Component rewrite rules
 
 3.1 **`cq:copyChildren` present on every rule (highest-impact check)** —
-`rg -L 'cq:copyChildren="\{Boolean\}true"' <uiApps>/.../apps/*/modernization/component-rewrite-rules/*.xml` → **zero files listed**. Any file here is a content-destroying bug waiting to fire.
+For every `*.xml` under `<uiApps>/.../apps/*/modernization/component-rewrite-rules/`, the file must contain `cq:copyChildren="{Boolean}true"`. With the Grep tool: first list the rule files (`glob` the path above), then for each run Grep with `pattern: cq:copyChildren="\{Boolean\}true"` and `output_mode: files_with_matches` — **every** rule file must appear in the matches. Any rule file missing from that set is a content-destroying bug waiting to fire (parsys children deleted at conversion). (Equivalent to `rg -L` returning zero files for that pattern.)
 
 3.2 **Replacement resourceType** = `conventions.contentContainerResourceType` from context (the app's container, **not** `wcm/foundation/components/responsivegrid`).
 
 3.3 **Pattern = source** — root `@sling:resourceType` equals `<patterns>/<parsys>/@sling:resourceType` (typically `wcm/foundation/components/parsys`).
 
-3.4 **Service config** — if both PID and `Impl` files already exist, `search.paths` must match in both. New project: use the non-`Impl` PID only.
+3.4 **Service config** — exactly one `…component.impl.ComponentRewriteRuleServiceImpl.cfg.json` (impl-class PID). If a legacy interface-named `ComponentRewriteRuleService.cfg.json` is also present, it is inert — its `search.paths` must have been migrated onto the impl PID and the interface file removed.
 
 ## 4. Policy import rules
 
 4.1 **XML** — `design` ∈ `designs[*].path`; `policyPath` under `/conf/<appId>/settings/wcm/policies/`; one file per design.
 
-4.2 **Both PIDs registered** — `PolicyImportRuleService.cfg.json` and `PolicyImportRuleServiceImpl.cfg.json` present with identical `search.paths`.
+4.2 **Service config** — exactly one `…policy.impl.PolicyImportRuleServiceImpl.cfg.json` (impl-class PID). The interface-named `PolicyImportRuleService.cfg.json` is inert; if present in a legacy project its `search.paths` must have been migrated onto the impl PID and the interface file removed.
 
 ## 5. Repoinit
 
