@@ -1,6 +1,6 @@
 ---
 name: rollout
-description: Deliver a WHOLE redesigned site to AEM Edge Delivery Services. The full-site sibling of `deploy` (which converts one page). Inventories the platform-agnostic migrated tree (stardust/migrated/ + _meta.json sidecars) into a delivery coverage ledger, then delivers each page by invoking the `deploy` methodology, tracking what is done and what is missing across the whole site. Use when the user has a migrated stardust site and wants to push the entire site to AEM, not just one page. Supports archetypes-only mode: if only the template archetype pages have been migrated, rollout can deploy all block code immediately and register the remaining pages as content-pending for later population.
+description: Deliver a WHOLE redesigned site to AEM Edge Delivery Services. The full-site sibling of `deploy` (which converts one page). Inventories the platform-agnostic migrated tree (stardust/migrated/ + _meta.json sidecars) into a delivery coverage ledger, then delivers each page by invoking the `deploy` methodology, tracking what is done and what is missing across the whole site. Use when the user has a migrated stardust site and wants to push the entire site to AEM, not just one page. Supports archetypes-only mode — if only the template archetype pages have been migrated, rollout can deploy all block code immediately and register the remaining pages as content-pending for later population.
 license: Apache-2.0
 ---
 
