@@ -307,6 +307,7 @@ goto(url, { waitUntil: <mode>, timeout: <hardCap> })
 wait <grace> ms              // grace period for late JS paints
 scroll the page to bottom in 4 viewport-height steps with 300 ms pauses
 scroll back to top
+reveal interactive content   // open every closed <details>, click [aria-expanded="false"] disclosure triggers, surface non-active tab panels
 ```
 
 The grace period catches lazy-loaded hero media, fonts that swap after
@@ -315,6 +316,22 @@ scroll-to-bottom pass triggers IntersectionObserver-driven content
 (carousels, fold-in sections, lazy images) so it lands in the captured
 DOM. **Skipping the scroll pass is a recipe violation** — even
 server-rendered sites use lazy images.
+
+The **reveal pass** is the analogous requirement for content gated
+behind interaction rather than scroll. Sites routinely defer FAQ
+answers, tabbed feature panels, and "read more" bodies until a click,
+and the disclosed DOM is frequently *injected on demand* — so it is
+absent (not merely hidden) until the trigger fires. Before the capture
+list runs, set `open` on every closed `<details>`, click each
+`[aria-expanded="false"]` / `[role="button"][aria-controls]`
+disclosure trigger, and activate every non-active `role="tab"` once,
+re-reading content afterward. Guard against dialogs (skip triggers
+inside `[role="dialog"]` and anything whose click navigates away).
+**Skipping the reveal pass is a recipe violation** on any page with
+accordions or tabs. The 2026-06-26 knack.com run captured only 1 of 6
+FAQ answers without it — the five collapsed answers were never in the
+DOM, so they were absent from `qa[]` and from the prototype, which
+then had to placeholder them.
 
 ## Capture list
 
@@ -355,6 +372,14 @@ For each page, capture:
    - `qa[]` — when an accordion (`<details>` or
      ARIA-driven disclosure) is detected within the section, capture
      each entry as `{ q: <trigger text>, a: <disclosed textContent> }`.
+     Read `a` from `textContent`, **not** `innerText`: the disclosure
+     is captured after the Navigation reveal pass has expanded it, but
+     a panel whose CSS still resolves to `display:none` yields empty
+     `innerText`, silently dropping the answer. `textContent` survives
+     that. If a trigger has no resolvable answer after the reveal pass
+     (genuinely click-injected and not yet present), emit the entry
+     with `a: null` rather than omitting it — a recorded gap is
+     auditable downstream; a missing entry is not.
    - `quotes[]` — when a review-card / testimonial / pullquote
      pattern is detected (a `<blockquote>` or `[class*="testimonial"
      i]` containing prose plus an optional attribution / rating),

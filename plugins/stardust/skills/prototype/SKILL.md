@@ -402,10 +402,11 @@ the user with the specific rule violated and a suggested fix.
 
 #### Craft-time disciplines (pre-write validators)
 
-Three disciplines fire on the rendered file *before* it lands on
+Four disciplines fire on the rendered file *before* it lands on
 disk. These run after craft returns its output and before the file
 is written; failure refuses the write with a substitute proposal
-(Discipline 6) or a rule citation (7, 8).
+(Discipline 6) or a rule citation (7, 8), and Discipline 9 registers
+detector ignores rather than refusing.
 
 **Discipline 6 — Reflex-reject font pre-flight.** Grep the
 declared `font-family` declarations against the reject list in
@@ -484,6 +485,38 @@ expressive position.
 
 The tier is declared in the run invocation; persisted in
 `_provenance.fidelity`. Default is `quick`.
+
+**Discipline 9 — Copy-cadence detector bypass under verbatim
+fidelity.** This extends the Mode-A reasoning of Discipline 6 from
+fonts to prose. impeccable's design detector ships prose-voice rules
+(`em-dash-overuse`, `marketing-buzzword`, and similar copy-cadence
+checks) that assume the copy is the agent's to rewrite. Under
+`ia-fidelity: verbatim` — or any faithful/Mode-A render where the body
+copy is `captured-verbatim` — that assumption is false by
+construction: the prose is the source brand's, reproduced exactly per
+the content-sourcing hierarchy, and rewriting it to satisfy a cadence
+rule *is* the fabrication the fidelity setting exists to prevent. So
+when the rendered file's copy classification is `captured-verbatim`
+(per Discipline 5's `voiceClassification`), register those copy-cadence
+rules as intentional ignores for the `<slug>-proposed.html` files
+before the design hook fires — the same way Discipline 6 bypasses the
+font reflex-reject check for pinned families. Scope the ignore to the
+proposed files only, **never** to the project's own source (blocks,
+styles, components), where the rules still apply because that copy
+*is* the agent's. Record the bypass in
+`_provenance.copyCadenceBypass` with the rules ignored and the
+classification basis. The 2026-06-26 knack.com run hit this: the hook
+flagged em-dashes and "enterprise-grade" on Knack's own headings
+("Built on Enterprise-Grade Components") under a verbatim direction,
+and the only correct response was to leave the captured copy untouched
+and record the bypass.
+
+Bound the bypass: it covers prose-cadence rules only. Structural and
+craft detector rules (`design-system-radius`, contrast failures,
+reflex layout slop) are *not* exempted by verbatim fidelity — those
+govern the agent's own CSS and structure, which faithful mode does not
+freeze. Listing a rule under this bypass requires it be a copy-voice
+rule whose subject is the captured prose.
 
 ### Phase 2.4 — Motion application (when `--cinematic`)
 
