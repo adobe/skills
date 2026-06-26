@@ -126,6 +126,19 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
   **without changing deploy**. `content-pending` pages are always assigned
   `convert: []` / `reuse: [all template blocks]` — they never introduce new blocks.
 
+> **Extending a DELIVERED site: a "new template" is almost always a new COMPOSITION
+> of the existing block library, not new block code.** When you add page types
+> *after* the first rollout (Hirslanden's later `fachgebiete`, `blog`, `legal`,
+> `center`, and the per-clinic sub-trees), audit `blocks/` BEFORE writing any block:
+> most "new templates" resolve to existing blocks recomposed —
+> blog = `article-header` + `article-body` (the news blocks); legal =
+> `page-header` + `body-text`; specialty landing = `page-header` + `lead-text` +
+> `centers`; center = `page-header` + `lead-text` + `body-text` + `contact-cta`.
+> All four shipped with **zero new block JS/CSS** — only new archetype content
+> files composing existing blocks. Reach for a new block only when no composition
+> of the library reproduces the section. This keeps the library small (David's
+> model) and makes extension an authoring task, not an engineering one.
+
 ### Phase B2 — Dynamic-blocks map + metadata contract (PRE-IMPORT GATE)
 
 **Do this before Phase C — the import is blocked on it.** What a dynamic listing
@@ -380,6 +393,42 @@ which blocks are dynamic, which stay static (editorial curation), and the metada
 contract. Validate one flagship end-to-end (e.g. a doctor directory + search with a
 `?q=` hand-off) before converting the rest.
 
+### Phase D3 — Multilingual (per-language trees) — optional
+
+When the source has language trees (`/fr/…`, `/en/…` beside `/de/…`), add them as
+**parallel content trees that REUSE the same block library** — the block structure
+is language-agnostic; only the authored content and a few wiring pieces change.
+Proven on the Hirslanden FR+EN add (≈90 pages/language, ≥5 per template):
+
+- **Author by mirroring the DE archetype per type, in the target language.** A FR
+  doctor page is the DE doctor page's block composition with FR content at the FR
+  path (`/fr/corporate/doctors/3/<slug>`). Dispatch author agents grouped by
+  template-type (doctors / treatments / diseases / specialty / editorial), each
+  given the DE reference file to mirror — *no new blocks*.
+- **Language-route the static header/footer.** The single `postlcp.js`
+  `loadStaticFragment` serves one fragment for all pages; make it pick by path
+  prefix and fall back to the default:
+  ```js
+  const seg = window.location.pathname.split('/')[1];
+  const lang = (seg === 'fr' || seg === 'en') ? `${seg}/` : '';
+  let resp = await fetch(`${codeBase}/fragments/${lang}${name}.html`);
+  if (!resp.ok && lang) resp = await fetch(`${codeBase}/fragments/${name}.html`);
+  ```
+  Add `fragments/fr/{header,footer}.html` + `fragments/en/…`: translated labels,
+  links localized to *live* same-language pages (else a source bounce), and a
+  **language switcher that targets each language's home** (`/`, `/fr/…/home`,
+  `/en/…/home`) — don't try to compute per-page cross-language equivalents.
+- **Per-language indexes** in `helix-query.yaml`: clone each index with a
+  language-scoped `include` glob + a language-prefixed `target`, and **fix the
+  selectors that encode language** — the doctor specialty facet selector is
+  `a[href*="/specialites-medicales/"]` (FR) / `a[href*="/specialities/"]` (EN), not
+  the DE `/fachgebiete/`. Same metadata contract per type.
+- **Path-safety is per-language too.** The same leading/trailing-`-`, `--`, `_`,
+  and uppercase normalization (gate 4) applies to FR/EN slugs — doctor slugs in
+  particular recur with a leading hyphen across every language tree.
+- The per-language indexes are empty until the FR/EN pages are published under the
+  synced config — see the Phase F republish note.
+
 ### Phase E — Full-site verify
 
 ```bash
@@ -453,6 +502,36 @@ fixes it; `design-pass` → upstream (surface only); `out-of-scope` → informat
 
 The gate **exits non-zero if any open P1 is in scope** — a page is delivery-clean
 only when verify passes *and* the ledger has no open P1.
+
+**Operational learnings (Hirslanden, ~1.1k pages):**
+- **A `head.html`-level fix needs a SITE-WIDE REPUBLISH to land, and to flip the
+  findings.** The dominant baseline finding at scale is `ai-search/jsonld` ("no
+  JSON-LD structured data") — one P2 *per page*. The cheap, legitimate fix is
+  sitewide structured data in `head.html` (for a medical site:
+  `MedicalOrganization` + `WebSite` `@graph`); the detector only checks for the
+  presence of `application/ld+json` in the served `<head>`. But editing `head.html`
+  updates the file immediately while **already-rendered pages stay CDN-cached with
+  the old head** — `/head.html` shows the new JSON-LD yet `/some/page` does not.
+  You must **`POST /live/` every page** to re-render it with the new head (verify on
+  one page first: republish → GET → grep `ld+json`). On the optimize re-run those
+  findings then flip `open → fixed` (715/716 in one pass). Per-page granular schema
+  (`Physician`/`MedicalWebPage`) is a later enhancement, not needed to clear the gate.
+- **A full republish also re-triggers query-index builds.** New indexes added to
+  `helix-query.yaml` sit at `total: building`/404 until the in-scope pages are
+  re-published under the synced config — the same republish that propagates a
+  `head.html` change populates them. (Same root cause as the publish gotcha in D2.)
+- **optimize only audits what's in `coverage/pages.json`.** When EXTENDING a
+  delivered site (new templates, sub-trees, language trees), those pages aren't in
+  the coverage ledger, so Phase F silently skips them. Re-run `inventory.mjs` (add
+  the new pages to `state.json` first) before the gate, or audit them with explicit
+  `--slug`/a second `--base` pass — otherwise "gate passes" covers only the old set.
+- **Faithfully migrating PARALLEL source trees yields legitimate
+  `duplicate-title`/`duplicate-description` findings, not bugs.** Hirslanden serves
+  the same treatment at `/de/corporate/behandlungen/X` *and*
+  `/de/international/behandlungen/X`; reproducing both faithfully trips the cross-page
+  uniqueness detector. The resolution is a **content-model / canonical decision**
+  (canonicalize one tree to the other, or differentiate titles), not a re-author —
+  surface it as such, don't silently rewrite source-faithful titles to dodge the check.
 
 > The judgment layers (brand-tensions, design-ux, content-conversion) are scored
 > `null` (not assessed by the automated baseline) until populated by the
