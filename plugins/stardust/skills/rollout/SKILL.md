@@ -242,6 +242,19 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    change to `stardust/redirects.tsv` (`source<TAB>destination`); wiring those into
    the EDS redirects config is a Phase D/assembly step.
 
+4b. **Source-content hygiene — a sitemap roster contains dead and bodyless URLs.**
+   At 1000-page scale the roster comes from the source sitemap, which includes
+   URLs that **404 on the source** (stale entries) and pages with **no HTML body**
+   (PDF-only magazine/publication entries — a title plus a PDF download, nothing
+   else to migrate). Two rules, both proven on the Hirslanden 1k run:
+   - **Verify the source returns 200 before authoring.** A dead source URL is not a
+     page to fabricate — leave it un-authored and let it show as the lone gap in the
+     dashboard (e.g. 814/815). Never invent a body to fill the slot.
+   - **Bodyless/PDF-only source → author metadata + hero + the real download link,
+     then STOP.** Don't pad with invented prose to make it "look complete"; the
+     faithful page is a thin one, and that is correct. (Same root rule as the
+     source-fidelity gate: reproduce the source, never out-author it.)
+
 5. **Record outcomes** with the state-writer (never hand-edit the ledger):
 
    ```bash
@@ -378,6 +391,22 @@ For every delivered page, `verify` confirms it's reachable (HTTP 200), has no
 `about:error` (broken-image ingestion, deploy #75), and that every internal
 `href="/…"` resolves to a known delivered path — then flips each page to
 `verified` or `failed` with the reason. It exits non-zero if any page failed.
+
+**Two checks a roster-driven batch misses — run them explicitly (Hirslanden 1k):**
+- **Nav/footer targets + section landing pages are NOT archetype siblings.** A
+  roster built from detail-page sitemaps skips them, so they get committed but never
+  deployed/published — and every header/footer link to them 404s while the batch
+  dashboard still reads 100%. Enumerate the header/footer/nav fragment hrefs (and
+  each section's index/landing page) and confirm each target is in the
+  deploy+publish+verify set, not just the archetype detail pages. (Static header/
+  footer fragments are served from the CODE branch — a fix there is a git push, not
+  a DA write.)
+- **Absolute source-site "bounce" links.** Beyond root-relative `href="/…"` that
+  404, flag `href="https://<source-host>/…"` links whose path HAS a delivered local
+  equivalent — those silently bounce the visitor back to the OLD site (not a 404, so
+  plain link-resolution misses them). Rewrite to the local path. Keep an absolute
+  source link only when no local page exists (e.g. an un-migrated language tree);
+  localizing it would just trade a bounce for a 404.
 
 ### Phase F — Optimize: multi-source audit + gate (delivery quality)
 
