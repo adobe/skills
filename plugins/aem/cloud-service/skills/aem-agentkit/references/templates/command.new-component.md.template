@@ -12,13 +12,25 @@ Before any other action, read `AGENTS.md`, the closest `.aem/context/components.
 
 `<name>` must match `^[a-z][a-z0-9-]{0,63}$` (lowercase letters and digits, hyphen-separated, 1–64 characters). Reject any input that does not match before any other step; do **not** pass the raw name into shell or filesystem commands without validating first.
 
-## Flow
+## Flow — follows the Registration Rule (manifest.md § 8)
 
-1. Resolve the AEM project root by walking up from the current working directory to the closest enclosing `pom.xml` that matches the nested-AEM-project detection (see `templates/roles/role.component-author.md`). Take the closest `.aem/context/` as the index set for this work.
-2. Confirm `<name>` does not already exist in the closest `.aem/context/components.json` and that file does not carry `truncated: true`. If it does, stop and recommend `/regen-context` after narrowing the workspace.
-3. Delegate to the `aem-component-author` subagent (project-scoped, installed in `.claude/agents/`).
-4. After the subagent completes, run `{{MVN_CMD}} -pl <aem-project-root>/ui.apps -PautoInstallPackage clean install` and report the outcome. `{{MVN_CMD}}` is restricted to the literal set `{"mvn", "./mvnw"}`; any other resolved value omits this build step entirely with a `warningStubs` entry. Use the validated `<name>` only; never interpolate untrusted input into shell commands.
-5. Run `/regen-context` so `.aem/context/components.json` is recomputed with a valid marker checksum and the new component appears in the canonical body. Do not mutate the JSON inline from this command.
-6. Confirm the new component now appears in the (refreshed) closest `.aem/context/components.json`.
+The four steps below map 1:1 to the **Registration Rule** in the
+published skill (`references/manifest.md` § 8). Do not skip a step, do
+not reorder, do not substitute an inline JSON edit for step 2.
 
-Stop if any guardrail would be violated.
+**Pre-flight — discovery and uniqueness check.** Resolve the AEM project root by walking up from the current working directory to the closest enclosing `pom.xml` that matches the nested-AEM-project detection (see `templates/roles/role.component-author.md`). Take the closest `.aem/context/` as the index set for this work. Confirm `<name>` does not already exist in the closest `.aem/context/components.json` and that file does not carry `truncated: true`. If it does, stop and recommend `/regen-context` after narrowing the workspace.
+
+**Step 1 (Registration Rule §1) — Write source.** Delegate to the `aem-component-author` subagent (project-scoped, installed in `.claude/agents/`). The subagent writes HTL, dialog, and any client-library files under the resolved AEM project root. No `.aem/context/*` writes happen at this step.
+
+**Build to verify the source compiles** (between steps 1 and 2 — not part of the Registration Rule but recommended). Run `{{MVN_CMD}} -pl <aem-project-root>/ui.apps -PautoInstallPackage clean install` and report the outcome. `{{MVN_CMD}}` is restricted to the literal set `{"mvn", "./mvnw"}`; any other resolved value omits this build step entirely with a `warningStubs` entry. Use the validated `<name>` only; never interpolate untrusted input into shell commands.
+
+**Step 2 (Registration Rule §2) — Refresh the index.** Run `/regen-context` so `.aem/context/components.json` is recomputed end-to-end with a valid marker checksum and the new component appears in the canonical body. **Never** edit the JSON inline — the agent cannot reproduce the helper's canonical-body SHA-256, so an inline edit silently corrupts the marker and the next skill run treats the file as human-curated (§ 8 of `manifest.md`).
+
+**Step 3 (Registration Rule §3) — Confirm the index reflects the source.** Confirm the new component now appears in the (refreshed) closest `.aem/context/components.json`. If it does not, the refresh failed (likely because the source file was not written to a location the discovery scope captures); surface the path mismatch instead of silently continuing.
+
+**Step 4 (Registration Rule §4) — Manifest reconciliation.** No explicit action — the next full skill run (or the next `/regen-context`) rewrites the manifest to include the new file. Between runs, `/agents-md-check` compares the on-disk state against the most recent manifest and reports `source-vs-index-drift` (§ 8.1) when this protocol was skipped.
+
+Stop if any guardrail would be violated. The Registration Rule's
+intent is that **steps 1, 2, and 3 are atomic from the agent's
+perspective** — never report the component as "done" between steps 1
+and 3.

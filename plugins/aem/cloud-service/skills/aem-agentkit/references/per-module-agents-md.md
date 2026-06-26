@@ -178,3 +178,22 @@ After writing all per-module `AGENTS.md`:
 - Every per-module file corresponds to an existing directory.
 - No file contains marketing language.
 - Every URL is Cloud-Service-scoped (no `/6.5/`, no `experience-manager-65/`).
+
+## 8. After-making-changes block — Registration Rule pointer
+
+Every per-module `AGENTS.md` carries an `## After making changes` block
+that tells the agent to run `/regen-context` after a code change that
+produced an indexable artifact (component, Sling Model, OSGi service,
+Sling Servlet). The block is the per-module surface of the
+**Registration Rule** ([`manifest.md`](./manifest.md) § 8): the rule
+defines the four-step protocol; the per-module file delivers the
+reminder so an agent reading the module's `AGENTS.md` at session start
+sees the protocol without having to load `manifest.md`.
+
+Slash commands that author indexable artifacts (`/new-component`,
+`/new-sling-model`) cite the Registration Rule by name in their own
+templates so the cross-skill index-mutation contract has a single
+authoritative source. `/validate-dispatcher` is read-only and does not
+author indexable artifacts, so it is exempt from the Registration Rule.
+Sibling skills authoring indexable artifacts follow the same rule; see
+[`manifest.md`](./manifest.md) § 8.2 for the sibling-skill contract.

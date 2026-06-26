@@ -168,7 +168,7 @@ Every output sits under one of:
 
 - `<module>/AGENTS.md` for each detected AEM module (recursive for nested monorepos)
 - `.aem/context/` files: `components.json`, `osgi-services.json`, `conventions.md`, `avoid.md`, `glossary.md`, `test-patterns.md`, `aem-api-namespaces.md`, `README.md`, `.agentkit-manifest.json`, `.agentkit.lock` (manifest and lock are workspace-root only; the other files are mirrored per detected nested sub-project)
-- Per-tool artifacts under `.claude/`, `.cursor/`, `.github/instructions/`, `.continue/`, plus single-file `.clinerules` / `.windsurfrules` / `augment.md` when their signal fires
+- Per-tool artifacts under `.claude/agents/`, `.claude/commands/`, `.claude/rules/`, `.cursor/rules/`, `.github/instructions/`, `.continue/rules/`, plus single-file `.clinerules` / `.windsurfrules` / `augment.md` when their signal fires
 - `.mcp.json` and `.cursor/mcp.json` placeholders (only when missing)
 - `.aem/agentkit-overrides.yml` (one entry per resolved decision)
 - Root `CLAUDE.md` — **only with explicit developer consent** (see § "Root `CLAUDE.md` consent prompt"). Created when missing, or its marked "AEM as a Cloud Service" section re-rendered / appended. Root `AGENTS.md` is NOT on this list — it is never written by this skill.
@@ -212,7 +212,7 @@ The order is fixed. Skipping any step breaks downstream consumers. All
 
 **Step 9 — Per-sub-project universal layer (MANDATORY for nested AEM monorepos).** For every nested AEM project the discovery in [`references/per-module-agents-md.md`](./references/per-module-agents-md.md) § 1 detected (and recorded under `heuristics[].decision == "module-shape"` with `value: nested-aem-project`), **repeat steps 1-7 scoped to that sub-project's source tree** and write the files to `<sub-project>/.aem/context/`. Skip the static-reference files (`aem-api-namespaces.md`, `README.md` already cover the whole workspace) and the manifest (workspace-root only). A sub-project with `_disable_agentkit` is skipped per [`references/collision-rules.md`](./references/collision-rules.md). This step is **not optional** — when nested sub-projects are detected, their per-sub-project `.aem/context/` directories MUST exist before the generation order proceeds. See [`references/codified-context.md`](./references/codified-context.md) § 11 for the schema and discovery scope rules.
 
-**Step 10 — Per-module `AGENTS.md`** (recursive — see [`references/per-module-agents-md.md`](./references/per-module-agents-md.md)). Includes a `## After making changes` block that instructs the agent to run `/regen-context` after any code change touching `core/`, `ui.apps/apps/`, or `ui.config/` so the indexes don't drift. This is the cross-skill index-mutation protocol delivered via the document every spec-compliant agent reads at session start, rather than requiring sibling skills to opt into a SKILL.md hook.
+**Step 10 — Per-module `AGENTS.md`** (recursive — see [`references/per-module-agents-md.md`](./references/per-module-agents-md.md)). Includes a `## After making changes` block that instructs the agent to run `/regen-context` after any code change touching `core/`, `ui.apps/apps/`, or `ui.config/` so the indexes don't drift. This is the per-module surface of the **Registration Rule** ([`references/manifest.md`](./references/manifest.md) § 8) — the cross-skill index-mutation protocol delivered via the document every spec-compliant agent reads at session start, rather than requiring sibling skills to opt into a SKILL.md hook.
 
 **Step 11 — Tool-specific artifacts** — see [`references/per-tool-artifacts.md`](./references/per-tool-artifacts.md).
 
@@ -231,6 +231,13 @@ of these category tags so the customer immediately knows the class of fix:
 - `strip-list-survivor` — a sanitized string carries strip-list code points.
 - `manifest-drift` — a manifest entry's checksum does not match the on-disk file.
 - `missing-subproject-context` — for some `heuristics[]` entry with `decision: module-shape, value: nested-aem-project`, the corresponding `<path>/.aem/context/components.json` or `<path>/.aem/context/osgi-services.json` is missing or marker-invalid.
+- `source-vs-index-drift` — a component (`jcr:primaryType="cq:Component"`) or `@Model`-annotated `.java` exists on disk but is not present in the closest `.aem/context/components.json` / `.aem/context/osgi-services.json`, or an index entry resolves to no source file. The Registration Rule ([`references/manifest.md`](./references/manifest.md) § 8) defines the protocol the slash commands and sibling skills must follow to prevent this.
+
+`source-vs-index-drift` is reported as a warning during a full skill run
+(not a hard failure — the agent may not have run `/regen-context` yet at
+the moment of self-validation). `/agents-md-check` re-evaluates the same
+condition read-only and exits non-zero on drift so CI gates catch the
+case where a previous session left the indexes stale.
 
 Missing per-sub-project context is a hard failure (exit `1`). Exit `0`
 clean, `2` completed-with-warnings, `1` hard failure.
@@ -347,6 +354,7 @@ checklist for review.
 - **Slash-command input validation**: `<name>` and `<FQCN>` against anchored regex before any shell or filesystem interpolation; `MVN_CMD` ∈ `{"mvn", "./mvnw"}` literally.
 - **Use `read-for-context` for LLM-bound reads.** Any customer source file placed into agent or LLM context MUST be read via the helper's `read-for-context` op, not raw `open`. This enforces Unicode sanitization (bidi overrides, zero-width marks, BOM, C0/C1 controls stripped) before bytes enter the model.
 - **No inline mutation of `.aem/context/*.json`**: roles delegate to `/regen-context` so the marker checksum is recomputed by the helper, not by the agent.
+- **Follow the Registration Rule** ([`manifest.md`](./references/manifest.md) § 8) when authoring an indexable artifact: write source → `/regen-context` → confirm the index → manifest rewrites on next run. Slash commands and sibling skills are bound by the same protocol; `/agents-md-check` reports `source-vs-index-drift` when the protocol was skipped.
 - **Diagnostic-path scrubbing.** Workspace-relative paths only; never absolute, never `~/`.
 - **Semantically equivalent role bodies across IDE projections** ([`per-tool-artifacts.md`](./references/per-tool-artifacts.md) § 7): the canonical role-source body is the same content materialized in each IDE's preferred wrapper. Light per-projection adapters (frontmatter, file extension, IDE-specific directives) are permitted so the design survives IDE format evolution without forking the canonical source.
 

@@ -294,6 +294,33 @@ class TestWriteAtomic(unittest.TestCase):
         res = call({"op": "write-atomic", "workspace": self.ws, "path": "brand-a/.aem/context/components.json", "bytes": b64(b"{}")})
         self.assertTrue(res["ok"], res)
 
+    def test_allowlist_accepts_claude_rules(self):
+        # v1.0.0-beta addition: passive Claude rules projection at
+        # .claude/rules/aem-<role>.md (per per-tool-artifacts.md § 3.1.1).
+        # Same canonical role body as .claude/agents/aem-<role>.md but with
+        # globs-only frontmatter so it is read as context, not invoked as a
+        # subagent.
+        res = call({
+            "op": "write-atomic", "workspace": self.ws,
+            "path": ".claude/rules/aem-component-author.md",
+            "bytes": b64(b"# component author rules\n"),
+        })
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(res["allowlistMatch"], ".claude/rules/*")
+
+    def test_allowlist_claude_rules_is_workspace_root_only(self):
+        # The matching glob is ".claude/rules/*" (no leading wildcard), so a
+        # nested .claude/rules/ (e.g. inside a sub-project) must still be
+        # rejected to match the Cursor / Copilot projection conventions
+        # which are workspace-root only.
+        res = call({
+            "op": "write-atomic", "workspace": self.ws,
+            "path": "brand-a/.claude/rules/aem-component-author.md",
+            "bytes": b64(b"# nested\n"),
+        })
+        self.assertFalse(res["ok"], res)
+        self.assertIn("allow-list", res["error"])
+
     def test_allowlist_accepts_root_claude_md(self):
         # New consent-gated behavior: workspace-root CLAUDE.md is now writable.
         # Fresh path (no pre-existing file) -> allowed.

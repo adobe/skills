@@ -18,6 +18,12 @@ aem-agentkit: drift report
   Stale indexes (new artifacts not yet in the index):
     - components.json: <count> new components found in source but not indexed
     - osgi-services.json: <count> new services / models / servlets
+  Source-vs-index drift (Registration Rule §8.1):
+    - components.json: <count> on-disk components missing from index
+    - components.json: <count> index entries with no resolvable source file
+    - osgi-services.json: <count> @Model FQCNs on disk missing from slingModels[]
+    - osgi-services.json: <count> slingModels[] entries with no resolvable .java file
+    - osgi-services.json: <count> @Component / @SlingServlet PIDs missing from services[] / servlets[]
   Unresolved TODOs:
     - <file>: <count> TODO markers requiring human review
   Marker drift (file edited without checksum update):
@@ -29,3 +35,5 @@ aem-agentkit: drift report
 ```
 
 Exit code is non-zero when any of the above categories is non-empty. A `Missing per-sub-project context` entry on its own is sufficient to fail CI gates because the spec mandates these directories for nested AEM monorepos.
+
+When `Source-vs-index drift` is non-empty, the surfaced remediation is **always** "run `/regen-context`" — never an inline JSON edit. See the **Registration Rule** in the published `aem-agentkit` skill (`references/manifest.md` § 8) for the protocol slash commands and sibling skills must follow to keep this category empty.

@@ -164,7 +164,7 @@ WRITE_ALLOWLIST_GLOBS = (
     "*/*/.aem/context/*",
     ".aem/agentkit-overrides.yml",
     "*/.aem/agentkit-overrides.yml",
-    ".claude/agents/*", ".claude/commands/*",
+    ".claude/agents/*", ".claude/commands/*", ".claude/rules/*",
     ".cursor/rules/*", ".cursor/mcp.json",
     ".github/instructions/*", ".github/copilot-instructions.md",
     ".continue/rules/*",

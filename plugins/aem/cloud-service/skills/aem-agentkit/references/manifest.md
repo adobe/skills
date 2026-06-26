@@ -110,7 +110,7 @@ detection) and the source of truth for `.agentkit-new` rotation.
 | `files[].path` | Workspace-relative POSIX path of every file the run wrote. |
 | `files[].sha256` | SHA-256 of the canonical body (for marker-bearing files) or of the file bytes (for non-marker files). Used by `/agents-md-check` to detect drift. |
 | `files[].mtime` | Post-write `mtime` (epoch seconds, integer) of the file. v2 of `/agents-md-check` will use this for incremental drift detection: entries whose on-disk mtime is unchanged skip the checksum recompute. v1 records the field but ignores it for compatibility. Setting the schema field now means v2 isn't a manifest migration. |
-| `files[].kind` | One of `per-module-agents-md`, `index`, `derived`, `static-reference`, `subproject-overview`, `tool-claude-agent`, `tool-claude-command`, `tool-cursor-rule`, `tool-copilot-instructions`, `tool-continue-rule`, `tool-clinerules`, `tool-windsurfrules`, `tool-augment`, `mcp-placeholder`. |
+| `files[].kind` | One of `per-module-agents-md`, `index`, `derived`, `static-reference`, `subproject-overview`, `tool-claude-agent`, `tool-claude-command`, `tool-claude-rule`, `tool-cursor-rule`, `tool-copilot-instructions`, `tool-continue-rule`, `tool-clinerules`, `tool-windsurfrules`, `tool-augment`, `mcp-placeholder`. |
 | `files[].subprojectRoot` | Workspace-relative path of the nested sub-project root this file belongs to, or `null` for workspace-root scope. |
 | `files[].static` | `true` when the file is a static-reference template (eligible for in-place overwrite on a skill version bump). |
 | `heuristics[].decision` | The heuristic category. |
@@ -131,6 +131,12 @@ detection) and the source of truth for `.agentkit-new` rotation.
   marker). Missing manifest entries for marker-bearing files in the
   workspace are reported as "unknown skill-marker file" so a customer
   can identify files left over from a previous skill version.
+- **`/agents-md-check` enforces the Registration Rule** (§ 8.1).
+  Source-vs-index drift (an on-disk component / Sling Model / OSGi
+  service / Sling Servlet that is not in the closest `.aem/context/*.json`,
+  or vice versa) is reported under `source-vs-index-drift` and exits
+  non-zero. The surfaced remediation is **always** "run
+  `/regen-context`" — never an inline JSON edit.
 - **`/agents-md-check` also enforces per-sub-project completeness.**
   For every `heuristics[]` entry with `decision: module-shape, value:
   nested-aem-project`, the check confirms that
@@ -230,3 +236,71 @@ human-curated per
 - `~/` references.
 - Timestamps with sub-second resolution (every timestamp is
   second-resolution UTC).
+
+## 8. Registration Rule (slash commands and sibling skills)
+
+Every aem-agentkit-owned slash command that authors indexable artifacts
+(`/new-component`, `/new-sling-model`) and every sibling skill that
+authors an indexable artifact (component, Sling Model, OSGi service,
+Sling Servlet) MUST follow this four-step protocol, in order, after the
+authoring step succeeds. The rule is named so that future skills can
+cite it by name (`Registration Rule`) instead of re-deriving the order.
+
+`/validate-dispatcher` is read-only — it runs the Dispatcher SDK
+validator and reports findings without writing source — so it is
+**exempt** from the Registration Rule. `/regen-context` and
+`/agents-md-check` are themselves the helpers consumed by the Rule
+(steps 2 and 8.1 respectively); they are not bound by it either.
+
+| Step | Action | Why |
+|---|---|---|
+| **1. Write source** | Write the new source file(s) under the customer's source tree. | Indexable artifact lives in customer source first; index reflects source, never the reverse. |
+| **2. Refresh the index** | Invoke `/regen-context` so the closest `.aem/context/*.json` is recomputed end-to-end by the skill helper and gets a valid marker checksum. **Never** mutate the JSON inline from the slash command or sibling skill — the agent cannot reliably recompute the SHA-256 canonical body. | Inline mutation corrupts the marker and turns the file `human-curated` on the next run. |
+| **3. Confirm the index reflects the source** | After `/regen-context` finishes, read the closest `.aem/context/*.json` back and verify the new artifact appears (component name in `components.json[].name`, FQCN in `osgi-services.json.slingModels[].fqcn`, etc.). | Catches the case where the artifact was written outside the discovery scope; surfaces a path mismatch the next session would otherwise inherit silently. |
+| **4. Let the manifest reconcile on the next run** | No explicit action — the next full `aem-agentkit` run (or the next `/regen-context`) rewrites `.aem/context/.agentkit-manifest.json` so the new files appear under `files[]` with current SHA-256 checksums. Between runs, `/agents-md-check` compares the on-disk state against the most recent manifest and reports `source-vs-index-drift` (§ 8.1). | Manifest reconciliation is best-effort post-write — the agent never edits the manifest inline, the helper rewrites it on the next skill invocation. |
+
+**Per-module `AGENTS.md` refresh — separate from the Registration Rule.**
+`/regen-context` only refreshes the `.aem/context/*` indexes. Per-module
+`<module>/AGENTS.md` files are re-rendered by a full skill run, not by
+`/regen-context`. When the customer adds enough new artifacts that the
+per-module file's "Common entry points" section is meaningfully stale,
+they re-run the full skill. This separation keeps the Registration Rule
+fast (no recursive markdown re-render after every new component) without
+silently leaving stale `AGENTS.md` references around — `/agents-md-check`
+flags marker drift on per-module files independently.
+
+### 8.1 What `/agents-md-check` enforces against the Registration Rule
+
+`/agents-md-check` runs read-only and reports a `source-vs-index-drift`
+category when any of the following hold:
+
+- A `.html` component descriptor (`jcr:primaryType="cq:Component"`) exists
+  under `<module>/ui.apps/.../jcr_root/apps/<project>/components/<name>/`
+  but `<name>` is not present in the closest `.aem/context/components.json`
+  (or the entry's `path` does not resolve back to the source).
+- A `.java` class carries the `@Model` annotation but its FQCN is not
+  present in the closest `.aem/context/osgi-services.json` under
+  `slingModels`, or vice versa.
+- A `.java` class registers an OSGi component (`@Component`,
+  `@Designate`, `@SlingServlet`) but its PID/path is not in
+  `osgi-services.json` under `services` / `servlets`.
+
+Any non-empty `source-vs-index-drift` category causes
+`/agents-md-check` to exit non-zero so CI gates catch it. The
+remediation surfaced in the report is "run `/regen-context`" (step 2 of
+the Registration Rule); after a successful refresh, re-running
+`/agents-md-check` returns clean.
+
+### 8.2 Sibling-skill contract
+
+A skill that creates indexable artifacts MUST either:
+
+- Invoke `/regen-context` itself after the authoring step (preferred,
+  matches the slash-command pattern), OR
+- Print a single-line warning in its summary block telling the customer
+  to run `/regen-context` before any subsequent agent session.
+
+The skill MUST NOT write to `.aem/context/*.json` directly. The
+allow-list in SKILL.md § "Hard guarantee" reserves those paths for the
+helper; the helper recomputes the marker checksum from the canonical
+body and the orchestrator cannot reproduce that step deterministically.

@@ -45,7 +45,7 @@ selection prompt.
 
 | Tool | Positive signal (both halves where applicable) | Stability tier |
 |---|---|---|
-| Claude Code | `.claude/agents/` is non-empty OR `.claude/commands/` is non-empty (an empty `.claude/` directory left by an IDE installer is **not** a signal) | **stable** |
+| Claude Code | `.claude/agents/` is non-empty OR `.claude/commands/` is non-empty OR `.claude/rules/` is non-empty (an empty `.claude/` directory left by an IDE installer is **not** a signal) | **stable** |
 | Cursor | `.cursor/rules/` is non-empty OR `.cursor/mcp.json` exists | **stable** |
 | GitHub Copilot | `.github/copilot-instructions.md` exists (the presence of any `.github/*.yml` workflow is **not** a signal — GitHub Actions ≠ Copilot) | **stable** |
 | Codex (OpenAI) | Always — Codex reads `AGENTS.md` natively per the open standard | **stable** |
@@ -150,6 +150,49 @@ tools: Read, Glob, Grep, Edit, Write, Bash
 
 <body of canonical role source>
 ```
+
+#### 3.1.1 Claude Code — `.claude/rules/aem-<role>.md` (passive projection)
+
+A lighter sibling of the subagent file at `.claude/agents/`. The body is
+the **same canonical role source** (§ 7 — semantic equivalence). The
+frontmatter omits `name:` (so the file is not exposed as an invocable
+subagent), omits the `tools:` allow-list (rules don't execute), and
+carries only `description:` plus a `globs:` hint that mirrors the Cursor
+glob table below. The agent treats this file as **passive context** —
+the file is read into context when one of the matching globs is under
+edit, in the same way Cursor reads `.cursor/rules/*.mdc` and Copilot
+reads `.github/instructions/*.instructions.md`.
+
+```markdown
+<!-- aem-agentkit: generated v1.0.0-beta; safe to delete or edit. checksum: <sha256> -->
+---
+description: <one-line from canonical source>
+globs:
+  - <glob pattern from role>
+---
+
+<body of canonical role source>
+```
+
+The Claude rules surface is intentionally a parallel projection (not a
+replacement) of the subagent surface: `.claude/agents/` remains the
+delegation target for explicit `@aem-<role>` invocations; `.claude/rules/`
+is the glob-scoped passive guidance Cursor users have had since the PR's
+initial cut. Customers using Claude Code without delegating to a
+subagent now read the same role body the Cursor user reads, instead of
+relying solely on per-module `AGENTS.md`.
+
+The `.claude/rules/` file is **never** invoked as a subagent — its
+frontmatter intentionally omits `name:` to enforce this. If a future
+Claude Code version surfaces rules files in the subagent picker, that
+absence keeps the file read-only.
+
+Manifest entry: each generated `.claude/rules/aem-<role>.md` is recorded
+under `files[]` with `kind: "tool-claude-rule"` ([`manifest.md`](./manifest.md)
+§ 3 — `files[].kind`). The kind disambiguates it from the invocable
+`.claude/agents/` projection (`kind: "tool-claude-agent"`) so
+`/agents-md-check` and `.agentkit-new` rotation handle each surface
+independently.
 
 Plus slash commands at `.claude/commands/`:
 
@@ -346,6 +389,7 @@ as Cline / Windsurf. Created only when `.augment/` directory or existing
 | `/validate-dispatcher` | `dispatcher/` module present |
 | `/regen-context` | Always |
 | `/agents-md-check` | Always |
+| `.claude/rules/aem-<role>.md` (passive projection) | Claude Code detected AND the role is detected (same per-role conditions as `.claude/agents/`) |
 
 ## 5. Index self-update rule (indexable roles only)
 
@@ -389,6 +433,7 @@ example, a new component HTL written by `htl-author` triggers an
 | Artifact | Soft | Hard |
 |---|---|---|
 | Claude subagent | 50 lines | 100 lines |
+| Claude `.claude/rules/aem-<role>.md` (passive) | 50 lines | 100 lines |
 | Cursor `.mdc` rule | 50 lines | 100 lines |
 | Copilot `.instructions.md` | 50 lines | 100 lines |
 | Continue rule | 50 lines | 100 lines |
@@ -414,7 +459,8 @@ role (`role.component-author.md`, `role.sling-model-author.md`, etc.).
 Each IDE projection materializes the SAME canonical body, wrapped in
 the IDE's preferred container:
 
-- **Claude Code:** `.claude/agents/<role>.md` (frontmatter + body).
+- **Claude Code (subagent):** `.claude/agents/<role>.md` (frontmatter + body) — invocable as `@aem-<role>`.
+- **Claude Code (rules):** `.claude/rules/<role>.md` (frontmatter with `globs:` + body) — passive context.
 - **Cursor:** `.cursor/rules/<role>.mdc` (frontmatter with `globs` + body).
 - **Copilot:** `.github/instructions/<role>.instructions.md` (frontmatter with `applyTo` + body).
 - **Continue.dev:** `.continue/rules/<role>.md` (body only, slug filename).
