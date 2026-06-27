@@ -118,19 +118,36 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    as "awaiting content track." Their block code is already deployed via the
    archetype.
 
-2. **Run the delivery gates** before flipping a page to `deployed`. Each is a
+2. **Static contract lint (pre-PUT, deterministic).** Before the push, run the
+   delivery-contract linter — it catches the cheap, deterministic failures
+   (wrapper, one-CTA-per-`<p>`, trailing-slash, path-safety, `/img/` src,
+   `about:error`) offline so a broken page never reaches preview. Mechanics in
+   `reference/delivery-lint.md`. **A P0/P1 blocks the PUT.**
+   ```bash
+   node skills/rollout/scripts/delivery-lint.mjs --file <html> --path </da/path>
+   node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <branch>--<repo>--<owner>.aem.live [--apply]
+   ```
+   `media-reconcile` resolves every image on the network and decides
+   optimize/keep/rewrite/omit (`reference/media-reconciliation.md`) — the
+   authoritative form of the image-fidelity gate below.
+
+3. **Run the delivery gates** before flipping a page to `deployed`. Each is a
    one-line rule here; mechanics + helpers in `reference/delivery-gates.md`:
    - **Source-fidelity** — don't add sections the source lacks; never fabricate
      facts. `node skills/rollout/scripts/section-fidelity.mjs --file <html> --source <url>`
    - **Image-fidelity** — every authored `<img>` src must return 200 or be omitted;
-     never ship `<img src="about:error">`.
+     never ship `<img src="about:error">`. Run `media-reconcile.mjs` (step 2).
    - **Path-safety** — normalize source paths to AEM-Edge-safe form (lowercase, no
      trailing `-`/`_`, no `--` segment); record original→normalized in
-     `stardust/redirects.tsv`.
+     `stardust/redirects.tsv`. (delivery-lint flags violations.)
    - **Source-content hygiene** — skip dead source URLs; author bodyless/PDF-only
-     sources thin and faithful, don't pad with invented prose.
+     sources thin and faithful (tier `thin`, `reference/fidelity-tiers.md`),
+     don't pad with invented prose.
+   - **Fidelity tier declared** — record each page's `fidelityTier`
+     (archetype/sibling/thin) so coverage shows what was craft-gated vs cloned
+     (`reference/fidelity-tiers.md`).
 
-3. **Record outcomes** with the state-writer (never hand-edit the ledger):
+4. **Record outcomes** with the state-writer (never hand-edit the ledger):
    ```bash
    node skills/rollout/scripts/update-coverage.mjs <slug> --status converting
    node skills/rollout/scripts/update-coverage.mjs --block <id> --status converted --eds-name <name>
