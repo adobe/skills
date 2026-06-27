@@ -259,6 +259,15 @@ extracted pages** to avoid the home-page bias documented in
   § heroImage resolution). Without this elevation, downstream
   prototype reasons over a 16-image list and frequently picks
   the `og:image` instead of the live hero.
+- **Hero medium (signature)** — when the hero/first viewport carries a
+  *moving* asset (background `<video>` / HLS / canvas / WebGL /
+  Lottie / animated SVG / scroll-driven motion), elevate it to
+  `voice.heroMedium` (per `reference/brand-surface.md` § heroMedium
+  resolution). This is the page's **signature**; without elevation it
+  is lost in the raw media list and downstream prototype flattens it
+  to a static hero. A non-null `heroMedium` triggers signature
+  preservation (`skills/stardust/reference/intent-dimensions.md`
+  § 8b) at prototype time.
 - **Icon font** — when detected per `reference/playwright-recipe.md`
   § Capture list 17, populate `_brand-extraction.json#iconFont`
   with family, file path, and the `iconClass → codepoint`

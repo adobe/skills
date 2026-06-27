@@ -281,6 +281,31 @@ surprise budget is **capped at `low` site-wide**. The validator
 refuses any verbatim-direction brief with `surprise: medium` or
 `high`.
 
+**`low` ≠ generic.** The budget bounds *added* divergence, not craft
+or fidelity. `low` means **brand-faithful + improvements + full
+signature preservation**, NOT "the most obvious faithful
+interpretation." The recurring failure mode (moneyhub.com migration)
+is the agent reading `low` / `verbatim` as license to strip the page
+to a plain type-hero on a flat ground — the result is faithful but
+forgettable and under-sells the redesign. Hold the craft bar at `low`:
+keep the brand's distinctive elements, apply the improvements list,
+and reproduce the signature.
+
+**Signature preservation is mandatory and budget-exempt.** When the
+captured page has a signature hero medium (background video / canvas /
+WebGL / Lottie), signature motion (scroll / parallax / kinetic), or a
+signature visual motif (per `intent-dimensions.md` § 8b), the brief
+**must** reproduce it — with a static fallback, `prefers-reduced-
+motion` alternative, and (for overlaid text) a legibility scrim. This
+does **not** consume the `low` allowance: carrying the brand's own
+signature forward is fidelity, not divergence (§ 8b § Surprise-budget
+exemption). Record the kept signatures in
+`_provenance.signatureElements[]` as `{ kind, capturedSource,
+mechanism, fallback }`. **Render-refusal:** a brief that flattens a
+captured video/canvas/animation hero to a still, gradient, or
+type-only hero — or drops a site-wide motif — is rejected at the
+shape-brief audit; reproduce the signature instead.
+
 **Type-scale yield clause.** When a tier-`medium`-or-higher variant's
 captured-trait amplification structurally conflicts with a
 brand-level type-scale rule from `DESIGN.md` (e.g. a

@@ -62,7 +62,7 @@ Each field below is sourced from one of two scopes:
 
 | scope | fields | rationale |
 |---|---|---|
-| home-only | `logo`, `voice.heroHeadline`, `voice.heroSubcopy`, `voice.primaryCTALabel`, `voice.firstParagraph`, `register` | These are the landing surface; aggregating across pages would dilute, not clarify |
+| home-only | `logo`, `voice.heroHeadline`, `voice.heroSubcopy`, `voice.heroImage`, `voice.heroMedium`, `voice.primaryCTALabel`, `voice.firstParagraph`, `register` | These are the landing surface; aggregating across pages would dilute, not clarify |
 | cross-page | `palette`, `type` (sizes, weights, families used), `spacing`, `motifs.borderRadius`, `motifs.shadows`, `motifs.gradients`, `componentStyle`, `voice.ctaSamples`, `voice.navItems`, `voice.footerHeadings` | Home-only readings are biased by hero/CTA-heavy markup; the dominant motif on the site as a whole is what `direct` needs |
 
 Cross-page aggregation rules:
@@ -506,6 +506,14 @@ DESIGN.json.
     "localPath": "stardust/current/assets/media/hero-a3f9.avif",
     "rect": { "x": 0, "y": 80, "width": 1440, "height": 720 }
   },
+  "heroMedium": {
+    "kind": "video",                  // "video" | "canvas" | "lottie" | "animated-svg" | "scroll-motion" | null
+    "mechanism": "hls",               // "video-file" | "hls" | "youtube/vimeo-embed" | "webgl" | "lottie" | "css-keyframes" | "scroll-driven"
+    "src": "https://customer-xxxx.cloudflarestream.com/<id>/manifest/video.m3u8",
+    "domPath": "div.home-video-wrapper > video#background-video",
+    "loader": "hls.js@cdn",           // library the source uses to drive it, if any
+    "rect": { "x": 0, "y": 0, "width": 1440, "height": 900 }
+  },
   "primaryCTALabel": "Start free trial",
   "ctaSamples": ["Start free trial", "Talk to sales", "See pricing", "Read the docs"],
   "navItems": ["Product", "Pricing", "Customers", "Docs", "Sign in"],
@@ -557,6 +565,42 @@ Downstream `prototype` reads `heroImage.url` /
 `heroImage.localPath` directly when composing the hero slot
 under Mode A's image-reuse contract (per
 `skills/direct/SKILL.md` § Mode A).
+
+### `heroMedium` resolution (signature hero medium)
+
+The hero is often **not** a still image but a *moving* asset — a
+background video (file / HLS / Mux / Cloudflare Stream), a
+canvas/WebGL scene, a Lottie/Rive animation, an animated SVG, or a
+scroll-driven motion. This is the page's **signature** and is the most
+common thing a generic redesign silently flattens to a static hero.
+Elevate it here so downstream `prototype` preserves it under
+`intent-dimensions.md` § 8b (Signature preservation) instead of
+re-deriving it from the raw `media` inventory and missing it — the
+exact failure that dropped the moneyhub.com home's HLS brand-animation
+on the first migration pass.
+
+Resolve from the home page's captured media
+(`pages/home.json#media`): the `<video>` / `<iframe>` inventory
+(`playwright-recipe.md` § Capture list — every `<video>`/`<iframe>`
+src), `<canvas>` presence, and any motion library detected among
+loaded scripts (hls.js, lottie, three.js, gsap, lenis).
+
+1. Prefer a `<video>` / `<canvas>` / Lottie mount whose `rect`
+   intersects the first viewport (`rect.top < 800`) and covers a
+   large area (same area/aspect filters as `heroImage`).
+2. Record `kind` + `mechanism` + `src` (the manifest/file/embed URL —
+   reuse it the way image-fidelity reuses image URLs) + `loader`
+   (the driving library, so prototype can wire it).
+3. If the hero's signature is motion without a discrete asset
+   (scroll-pinned, parallax, kinetic type), set
+   `kind: "scroll-motion"` with `mechanism` naming the technique and
+   `src: null`.
+4. When the hero has no moving signature, set `heroMedium: null`
+   (most pages — the still `heroImage` is then the hero).
+
+A non-null `heroMedium` is a § 8b trigger: every Mode A variant must
+reproduce it (graceful fallback + `prefers-reduced-motion` + scrim),
+and doing so is exempt from the per-page `surprise` budget.
 
 The `tone.guess` is a heuristic — never present it as ground truth in
 the user report. `direct` will use it as one of several signals, not

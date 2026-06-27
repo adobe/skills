@@ -207,7 +207,13 @@ brand-faithful) catches ambiguous phrases, and the riskier mode
    active by default. The user's phrase moves *expressive*,
    *distinctiveness*, *tone*, and *density* axes inside Mode A — but
    palette and type are pinned to the captured surface, and the
-   image-reuse contract (below) holds. Surface in the plan:
+   image-reuse contract (below) holds. **Signature preservation also
+   holds:** a captured signature hero medium (background video /
+   canvas / Lottie / scroll-motion, elevated as
+   `_brand-extraction.json#voice.heroMedium`) or a site-wide motif is
+   reproduced, not flattened — per `skills/stardust/reference/
+   intent-dimensions.md` § 8b, and exempt from the `surprise` budget.
+   Surface in the plan:
    *"Brand-faithful mode active — palette and type pinned to the
    captured brand surface. Pass `--rebrand` to override."*
 
