@@ -48,6 +48,27 @@ The contract the two scripts maintain. Design rationale is in
 - **stale** — was deployed/verified, but `migrate` re-emitted the page (its
   `sourceHash` changed). Needs re-delivery.
 
+## Artifact type + fidelity tier (orthogonal to status)
+
+Two further per-page fields make delivery quality auditable; both are independent
+of `delivery.status`:
+
+- **`delivery.type`** — `page | fragment | index`. Drives what "renders
+  correctly" means: a fragment has no `<h1>`, an index is JSON with rows.
+  `verify.mjs` infers it from the path when unset and reports the distribution;
+  a one-size `<h1>` check false-fails fragments without it.
+- **`fidelityTier`** — `archetype | sibling | thin` (+ `archetypeSource`,
+  `gatesPassed[]`), set by `migrate` from the render branch
+  (`migrate/reference/fidelity-tiers.md`). Records *how much QA the page carries*:
+  `archetype` is craft-gated once per template; `sibling` is a canon-fork that
+  inherits that structure and re-checks only content + media + the delivery
+  contract; `thin` is a bodyless/PDF page rendered gracefully.
+
+The dashboard surfaces the **tier distribution** alongside status, so
+"92/92 deployed" cannot hide "1 craft-gated, 91 ungated clones". Many
+`unique`/`thin` pages where one template was expected signals a missing
+archetype — prototype it, then re-fork its siblings.
+
 ## Idempotency rules (inventory)
 
 On every `inventory.mjs` run:

@@ -37,7 +37,7 @@ const BASE = arg('base', (config.site && config.site.liveHost) ? `https://${conf
 
 if (!ROOT && !BASE) { console.error('rollout verify: need --base <url> or --root <dir> (or set site.liveHost).'); process.exit(2); }
 
-const knownPaths = new Set(pages.map((p) => p.path.replace(/\/$/, '') || '/'));
+const knownPaths = new Set(pages.map((p) => (p.path || '/').replace(/\/$/, '') || '/'));
 const norm = (p) => (p.split(/[?#]/)[0].replace(/\/$/, '') || '/');
 
 function resolveLocal(p) {
@@ -68,10 +68,44 @@ function checkLinks(body) {
   for (const m of body.matchAll(/href="(\/[^"]*)"/g)) {
     const target = norm(m[1]);
     if (target.startsWith('//')) continue; // protocol-relative external
-    if (/\.(css|js|png|jpe?g|webp|svg|ico|woff2?|xml|txt|json)$/i.test(target)) continue; // assets
+    if (/\.(css|js|png|jpe?g|gif|webp|avif|svg|ico|woff2?|xml|txt|json|pdf|mp4|webm|mov|zip)$/i.test(target)) continue; // assets
     if (!knownPaths.has(target)) broken.push(target);
   }
   return [...new Set(broken)];
+}
+
+// Artifact type drives what "renders correctly" means — a fragment has no <h1>,
+// an index is JSON not a page. A one-size <h1> check false-fails fragments.
+function artifactType(p) {
+  const t = (p.delivery && p.delivery.type) || p.type;
+  if (t) return t; // explicit wins
+  const s = (p.path || '').toLowerCase();
+  // anchor to top-level /nav,/footer or a /fragments/ path so a content page
+  // named e.g. /about/nav is not mistyped out of the page render checks.
+  if (/^\/(nav|footer)$/.test(s) || /\/fragments?\//.test(s)) return 'fragment';
+  if (/query-index(\.json)?$/.test(s) || /\.json$/.test(s)) return 'index';
+  return 'page';
+}
+
+// Typed render-truth: returns a failure reason or null. Pages must render one
+// <h1> and carry no about:error; fragments skip the <h1> rule; indexes must be
+// valid JSON with rows. Link integrity applies to pages and fragments.
+function renderCheck(type, body) {
+  if (type === 'index') {
+    // a valid index with zero rows is a legitimate state (nothing published yet),
+    // not a failure — only malformed JSON or a missing data[] array fails.
+    try { const j = JSON.parse(body); if (!Array.isArray(j.data)) return 'index missing data[] array'; }
+    catch { return 'index is not valid JSON'; }
+    return null;
+  }
+  if (/about:error/.test(body)) return 'about:error in body (#75 broken image)';
+  if (type === 'page') {
+    const h1 = (body.match(/<h1[\s>]/gi) || []).length;
+    if (h1 !== 1) return `page should render exactly one <h1>, found ${h1}`;
+  }
+  const broken = checkLinks(body);
+  if (broken.length) return `broken internal links: ${broken.slice(0, 5).join(', ')}`;
+  return null;
 }
 
 const target = pages.filter((p) => {
@@ -84,18 +118,15 @@ const now = new Date().toISOString();
 const results = [];
 for (const p of target) {
   const r = await fetchPage(p);
+  const type = artifactType(p);
   let status = 'verified'; let reason = null;
   if (!r.ok) { status = 'failed'; reason = r.reason; }
-  else if (r.body.includes('about:error')) { status = 'failed'; reason = 'about:error in body (#75 broken image)'; }
-  else {
-    const broken = checkLinks(r.body);
-    if (broken.length) { status = 'failed'; reason = `broken internal links: ${broken.slice(0, 5).join(', ')}`; }
-  }
+  else { reason = renderCheck(type, r.body); if (reason) status = 'failed'; }
   p.delivery = p.delivery || {};
   p.delivery.status = status;
   if (status === 'verified') { p.delivery.verifiedAt = now; p.delivery.error = null; }
   else p.delivery.error = reason;
-  results.push({ slug: p.slug, status, reason });
+  results.push({ slug: p.slug, type, status, reason });
 }
 
 // persist + re-roll
@@ -108,9 +139,10 @@ if (config && config.lastRun !== undefined) { rollupConfig(config, pages, blocks
 
 const ok = results.filter((r) => r.status === 'verified').length;
 const bad = results.filter((r) => r.status === 'failed');
+const byType = results.reduce((a, r) => { a[r.type] = (a[r.type] || 0) + 1; return a; }, {});
 console.log(`rollout verify (${ROOT ? `root:${ROOT}` : BASE})`);
 console.log('='.repeat(60));
-console.log(`Checked ${results.length} · ${ok} verified · ${bad.length} failed`);
-for (const r of bad) console.log(`  ✗ ${r.slug}: ${r.reason}`);
+console.log(`Checked ${results.length} · ${ok} verified · ${bad.length} failed · types: ${Object.entries(byType).map(([k, v]) => `${k}:${v}`).join(' ')}`);
+for (const r of bad) console.log(`  ✗ ${r.slug} (${r.type}): ${r.reason}`);
 if (!target.length) console.log('Nothing to verify (no deployed pages). Deliver pages first, or pass --all.');
 process.exit(bad.length ? 1 : 0);

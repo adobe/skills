@@ -4,6 +4,15 @@ The per-page checks Phase C runs before flipping a page to `deployed`, and the
 batched-delivery flow that runs them uniformly at scale. SKILL.md Phase C names
 each gate in one line; the mechanics live here.
 
+**Two halves.** The gates split into a **static** pre-PUT lint
+(`reference/delivery-lint.md` → `scripts/delivery-lint.mjs`: wrapper,
+one-CTA-per-`<p>`, trailing-slash, path-safety — deterministic and offline) and a
+**dynamic** post-deploy check (`scripts/verify.mjs` § typed render-truth: does it
+actually render, typed by page/fragment/index). Run the static lint first — it
+catches the cheap failures before a network round-trip. Gate 2 (image-fidelity)
+has its own network resolver, `scripts/media-reconcile.mjs`
+(`migrate/reference/media-reconciliation.md`).
+
 ## Gate 1 — Source-fidelity ("don't add sections the source doesn't have")
 
 A migration reproduces the source; it must not invent sections. Invented
@@ -36,11 +45,13 @@ gracefully, log it as a content gap — do NOT invent filler.
 
 The #1 recurring defect at scale: an authored external image URL the preview
 ingester can't fetch delivers as `<img src="about:error">` — a silent break that
-"it renders" hides. Before deploy, for each authored `<img>` whose src is an
-external/source URL, verify 200:
+"it renders" hides. The systematic resolver is `media-reconcile.mjs` (it decides
+optimize/keep/rewrite/omit per image and can `--apply` the fix); the manual
+form, for a single image, is a 200 check:
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}' <url>
+node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <host>   # all images
+curl -s -o /dev/null -w '%{http_code}' <url>                                          # one image
 ```
 
 If it isn't 200, OMIT the image (the block renders without it) rather than ship
