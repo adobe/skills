@@ -11,19 +11,20 @@ a ~90-pages-per-language add (≥5 per template).
   agents grouped by template-type, each given the default-language reference file to
   mirror — *no new blocks*.
 
-- **Language-route the static header/footer.** A single `loadStaticFragment`
-  (`postlcp.js`) serves one fragment for all pages; make it pick by path prefix and
-  fall back to the default:
+- **Language-route the header/footer blocks.** The `header`/`footer` blocks render
+  one chrome for the whole repo; make them resolve the chrome per language by path
+  prefix, with a fallback to the default. In the block `decorate()`:
   ```js
   const seg = window.location.pathname.split('/')[1];
-  const lang = (seg === 'fr' || seg === 'en') ? `${seg}/` : '';
-  let resp = await fetch(`${codeBase}/fragments/${lang}${name}.html`);
-  if (!resp.ok && lang) resp = await fetch(`${codeBase}/fragments/${name}.html`);
+  const lang = (seg === 'fr' || seg === 'en') ? seg : '';
+  // self-contained block: branch the lifted DOM/strings by `lang`.
+  // fragment-content block: loadFragment(`/${lang}/nav`) → fall back to `/nav`.
   ```
-  Add `fragments/fr/{header,footer}.html` + `fragments/en/…`: translated labels,
-  links localized to *live* same-language pages (else a source bounce), and a
-  **language switcher that targets each language's home** — don't try to compute
-  per-page cross-language equivalents.
+  Provide per-language chrome (self-contained: a translated-strings map keyed by
+  `lang`; fragment-content: `content/fr/{nav,footer}` + `content/en/…`) with:
+  translated labels, links localized to *live* same-language pages (else a source
+  bounce), and a **language switcher that targets each language's home** — don't try
+  to compute per-page cross-language equivalents.
 
 - **Per-language indexes** in `helix-query.yaml`: clone each index with a
   language-scoped `include` glob + a language-prefixed `target`, and **fix the

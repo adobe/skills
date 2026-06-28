@@ -9,6 +9,19 @@ to the `samples/**` claude-design prototypes in this repo. Each test converts
 Status legend: 🔴 blocker / bug · 🟠 missing guidance · 🟡 nice-to-have ·
 ✅ implemented in skill.
 
+> **⚠️ AuthorKit-legacy findings.** `stardust:deploy` now targets the **vanilla
+> `aem-boilerplate`** runtime; the AuthorKit runtime (and its bootstrap-onto-vanilla
+> port) has been removed from the skill. The findings below that are specific to the
+> AuthorKit runtime — **#4** (lazy.js footer double-load), **#21/#26** (`postlcp.js`
+> fragment className), **#40** (`body.appear` blank-render — *inverted* under vanilla:
+> the gate is now KEPT), **#81** (late static-fragment header CLS — under vanilla the
+> cause is the late header-*block* decoration, same reservation fix), **#84** (manual
+> AuthorKit bootstrap / version drift — the `bootstrap-authorkit.mjs` script and the
+> Runtime-bootstrap section are deleted), plus the `.btn`/`body.session`/static-fragment
+> guidance — are retained **only** as history for anyone maintaining an existing
+> AuthorKit site. They do NOT describe the current vanilla path. See SKILL.md's
+> "Runtime" section for the supported contract.
+
 ---
 
 ## Findings (wasatch-back deploy — `stardust:deploy`)
@@ -690,7 +703,13 @@ persistent ledger that skips already-live pages, retry/backoff on 000/429/5xx,
 append-only log, delivered-`.plain.html` verify before flip; idempotent re-run
 re-drives only FAILs). Wired into extract/SKILL.md, deploy/SKILL.md, rollout/SKILL.md.
 
-### #84 🟠 AuthorKit bootstrap is manual + version-drifted ✅
+### #84 🟠 AuthorKit bootstrap is manual + version-drifted → ⛔️ SUPERSEDED (AuthorKit removed)
+**Update:** This finding (and its `bootstrap-authorkit.mjs` fix) is **obsolete**. The
+deploy skill no longer ports the AuthorKit runtime at all — vanilla `aem-boilerplate`
+is the target, so there is nothing to bootstrap. `bootstrap-authorkit.mjs` has been
+deleted and the Runtime-bootstrap section removed. The original finding is kept below
+for history only.
+
 **Where:** 5 sites. ~15 manual file ops with two silent-failing mandatory edits;
 "port from the latest test branch" is an unpinned moving target, and author-kit's
 runtime has drifted (static-fragment → block-based) so the documented edits can

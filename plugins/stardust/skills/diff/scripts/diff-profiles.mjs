@@ -38,7 +38,7 @@ export const profiles = {
       EXTRA: 'Unexpected node with no proto source.',
       FONT_FORK: 'A "→sys" on the proto side means it named a font it never loaded and fell back — EDS self-hosting the intended fallback is then CORRECT (#77); confirm the fork is intended, else ship the missing @font-face.',
       // visual-diff
-      BLANK_RENDER: 'Likely a foundation body{display:none}/body.appear gate the runtime never satisfies (use the body.session font gate, no display gate), or the harness failed to load. Fix before trusting any other result.',
+      BLANK_RENDER: 'The page rendered zero-height/empty. On vanilla aem-boilerplate the body{display:none}/body.appear gate IS driven by scripts.js loadEager — so a blank render usually means the harness failed to load scripts.js (no `appear` added) or a block threw during decorate; check the harness loads /scripts/scripts.js and the console is clean. Fix before trusting any other result.',
       IMAGERY_GAP: 'Likely image-less content using CSS fallbacks (#2) — EYEBALL the screenshots to confirm the fallbacks render intentionally (not a missing-asset regression). Not a defect by itself.',
       CONTENT_GAP: 'The EDS likely DROPPED or duplicated authored content (a missing section, a dropped CTA) — eyeball the section pair; metrics-only checks (stretch/flush/blank) cannot see this.',
       SURFACE_GROUND: 'A band likely rendered on the wrong ground (dark vs light). Check the owning block section background (#58/#59).',
