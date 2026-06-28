@@ -1,6 +1,6 @@
 ---
 name: migrate
-description: Apply DESIGN, canon, and modules to every page in the inventory, producing a deployable static HTML site. Three render branches (approved page, template-applied sibling, unique render). Per-page, incremental, idempotent, content-preserving by default.
+description: Apply DESIGN, canon, and modules to every page in the inventory, producing a deployable static HTML site. Use to migrate or render the whole captured site into the redesigned static tree ("migrate the pages", "render the migrated site", "apply the design to all pages", "build the deployable site", "convert the approved prototype into the full site") — the page-rendering step between prototype and deploy/rollout. Three render branches (approved page, template-applied sibling, unique render), with a declared fidelity tier per page. Per-page, incremental, idempotent, content-preserving by default.
 license: Apache-2.0
 ---
 
