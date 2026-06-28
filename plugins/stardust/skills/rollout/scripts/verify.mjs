@@ -37,7 +37,7 @@ const BASE = arg('base', (config.site && config.site.liveHost) ? `https://${conf
 
 if (!ROOT && !BASE) { console.error('rollout verify: need --base <url> or --root <dir> (or set site.liveHost).'); process.exit(2); }
 
-const knownPaths = new Set(pages.map((p) => p.path.replace(/\/$/, '') || '/'));
+const knownPaths = new Set(pages.map((p) => (p.path || '/').replace(/\/$/, '') || '/'));
 const norm = (p) => (p.split(/[?#]/)[0].replace(/\/$/, '') || '/');
 
 function resolveLocal(p) {
@@ -68,7 +68,7 @@ function checkLinks(body) {
   for (const m of body.matchAll(/href="(\/[^"]*)"/g)) {
     const target = norm(m[1]);
     if (target.startsWith('//')) continue; // protocol-relative external
-    if (/\.(css|js|png|jpe?g|webp|svg|ico|woff2?|xml|txt|json)$/i.test(target)) continue; // assets
+    if (/\.(css|js|png|jpe?g|gif|webp|avif|svg|ico|woff2?|xml|txt|json|pdf|mp4|webm|mov|zip)$/i.test(target)) continue; // assets
     if (!knownPaths.has(target)) broken.push(target);
   }
   return [...new Set(broken)];
@@ -80,7 +80,9 @@ function artifactType(p) {
   const t = (p.delivery && p.delivery.type) || p.type;
   if (t) return t; // explicit wins
   const s = (p.path || '').toLowerCase();
-  if (/\/(nav|footer)$/.test(s) || /\/fragments?\//.test(s)) return 'fragment';
+  // anchor to top-level /nav,/footer or a /fragments/ path so a content page
+  // named e.g. /about/nav is not mistyped out of the page render checks.
+  if (/^\/(nav|footer)$/.test(s) || /\/fragments?\//.test(s)) return 'fragment';
   if (/query-index(\.json)?$/.test(s) || /\.json$/.test(s)) return 'index';
   return 'page';
 }
@@ -90,7 +92,9 @@ function artifactType(p) {
 // valid JSON with rows. Link integrity applies to pages and fragments.
 function renderCheck(type, body) {
   if (type === 'index') {
-    try { const j = JSON.parse(body); if (!Array.isArray(j.data) || !j.data.length) return 'index has no rows (data[] empty)'; }
+    // a valid index with zero rows is a legitimate state (nothing published yet),
+    // not a failure — only malformed JSON or a missing data[] array fails.
+    try { const j = JSON.parse(body); if (!Array.isArray(j.data)) return 'index missing data[] array'; }
     catch { return 'index is not valid JSON'; }
     return null;
   }

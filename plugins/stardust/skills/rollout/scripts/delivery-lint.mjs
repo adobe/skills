@@ -31,7 +31,9 @@ const html = readFileSync(FILE, 'utf8');
 function inferType(p) {
   if (!p) return 'page';
   const s = p.toLowerCase();
-  if (/\/(nav|footer)$/.test(s) || /\/fragments?\//.test(s)) return 'fragment';
+  // anchor fragment detection: only top-level /nav,/footer or a /fragments/ path —
+  // a content page like /about/nav must NOT be downgraded out of the P0 gates.
+  if (/^\/(nav|footer)$/.test(s) || /\/fragments?\//.test(s)) return 'fragment';
   if (/query-index(\.json)?$/.test(s) || /\.json$/.test(s)) return 'index';
   return 'page';
 }
@@ -66,7 +68,7 @@ for (const m of html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)) {
 }
 
 /* ---- image hygiene ---- */
-const imgs = [...html.matchAll(/<img\b[^>]*\bsrc="([^"]+)"[^>]*>/gi)].map((m) => m[1]);
+const imgs = [...html.matchAll(/<img\b[^>]*\ssrc="([^"]+)"[^>]*>/gi)].map((m) => m[1]);
 if (/about:error/i.test(html)) add('P0', 'about-error', 'about:error present — a broken image rendition shipped');
 for (const src of imgs) {
   if (/^\/img\//i.test(src)) add('P0', 'img-path', `/img/ src will 404 at delivery: ${src.slice(0, 60)}`);
@@ -76,7 +78,7 @@ for (const blk of OPTIMIZING) {
   const re = new RegExp(`class="${blk}(\\s[^"]*)?"([\\s\\S]*?)(?=<div class="(?!${blk})|</main>)`, 'i');
   const seg = html.match(re);
   if (!seg) continue;
-  for (const m of seg[2].matchAll(/<img\b[^>]*\bsrc="(https?:\/\/[^"]+)"/gi)) {
+  for (const m of seg[2].matchAll(/<img\b[^>]*\ssrc="(https?:\/\/[^"]+)"/gi)) {
     add('P2', 'cross-origin-optimize', `external <img> inside .${blk} (optimizing block) — run media-reconcile (skip-optimize or rehost) to confirm it renders: ${m[1].slice(0, 50)}…`);
   }
 }

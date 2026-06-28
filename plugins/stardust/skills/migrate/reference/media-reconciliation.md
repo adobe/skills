@@ -30,9 +30,12 @@ For every authored image URL (`<img src>`, `srcset`, inline/`<style>` `url(...)`
    - **wrong rendition variant** — a derivative 404s where a sibling resolves
      (`…/4x3/768/…` 404, `…/original/768/…` 200). Not auto-repaired; flag for
      manual rewrite.
-4. **omit** — external, unresolvable and unrepairable. **Drop the `<img>`** so
-   the block renders gracefully. Never ship `about:error`, and never substitute
-   a logo/placeholder as if it were editorial.
+4. **omit** — external, a **definitive 4xx** (404/403/410) with no repair.
+   **Drop the `<img>`** (and its enclosing `<picture>`/`<source>`) so the block
+   renders gracefully. Never ship `about:error`, never substitute a placeholder.
+5. **unresolved** — a network error, timeout, or **5xx** (transient). The image
+   may be fine; the script flags it for a human and **never auto-deletes it on
+   `--apply`**. Re-run, or resolve manually. The gate fails until it's cleared.
 
 ## Run it
 
