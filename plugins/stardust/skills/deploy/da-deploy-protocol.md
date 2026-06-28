@@ -36,6 +36,13 @@ curl -sS -X PUT -H "Authorization: Bearer $TOKEN" \
 for u in $(grep -oE 'https://[^"]+/img/[^"]+\.(jpg|jpeg|png|webp|svg)' content/$P.html | sort -u); do
   until [ "$(curl -s -o /dev/null -w '%{http_code}' "$u")" = "200" ]; do sleep 3; done
 done
+# NB (#2): this bare-curl wait is for repo-relative /img/ assets only. Do NOT bare-curl
+#   - content.da.live/admin.da.live media URLs — they 401 to anon curl but ingest fine
+#     (verify them via step 3b about:error instead); and
+#   - external SOURCE/CDN <img> srcs on a bot-walled origin (Akamai/Cloudflare 403 a curl
+#     while serving a real browser) — verify those with the recorded headed-chrome in-page
+#     fetch, and rehost a 403'd asset to DA media rather than omitting it
+#     (see deploy SKILL "The ENCODE contract → Images" image-fidelity rules).
 
 # 3. preview (separate, required; path WITHOUT .html; ref = the code branch)
 curl -sS -X POST -H "Authorization: Bearer $TOKEN" \

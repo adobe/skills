@@ -162,7 +162,13 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
 **Parallelism + scale.** Deliver template clusters concurrently (one agent per
 cluster, non-overlapping pages), representative-first so blocks exist to be reused.
 For clusters of 6–20+ siblings, use the author-only-agents + central-deploy +
-verify-then-flip flow in `reference/delivery-gates.md` § Batched delivery.
+verify-then-flip flow in `reference/delivery-gates.md` § Batched delivery. The
+central deploy step should run the bundled, resumable driver rather than a serial
+loop: `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo>
+--branch <branch> --content <dir>` (concurrency pool, persistent ledger that skips
+already-live pages, retry/backoff, append-only log, delivered-`.plain.html` check).
+After a transient blip, re-run the same command — it re-drives only the FAILs.
+Then reconcile the ledger into coverage with `update-coverage.mjs`.
 
 ### Phase D — Site assembly (whole-site artifacts)
 

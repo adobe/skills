@@ -64,8 +64,29 @@ Additional checks for this sub-command:
 
 1. **Playwright availability.** The extraction step needs a real
    browser. Detect Playwright in this order: a Playwright MCP server,
-   then `npx playwright`. If neither is available, stop and tell the
-   user how to install Playwright.
+   then a project-importable `playwright` module. **The `npx
+   playwright` probe is NOT sufficient** — it confirms the CLI
+   (which resolves a global install) but the recipe and
+   `scripts/crawl.mjs` do `import { chromium } from 'playwright'`,
+   and ESM module resolution does **not** honour a global install or
+   `NODE_PATH`. On a vanilla `aem-boilerplate` target (no
+   `node_modules`) that import throws `ERR_MODULE_NOT_FOUND` even
+   though `npx playwright --version` succeeds. So verify the module is
+   import-resolvable from the project root; if it isn't, run
+   `npm i -D playwright` (or use the Playwright MCP server) before
+   crawling. Don't trust the CLI probe alone.
+
+   **Bundled crawler.** `skills/extract/scripts/crawl.mjs` is a
+   runnable reference implementation of this whole sub-command —
+   browser config + bot-management fallback, consent dismissal, wait
+   + scroll, the capture list, response validation, and the §
+   Capture-hygiene hardening (visibility filter, interstitial drop,
+   SPA-shell flag, modal `textContent` capture, tracking-pixel
+   discounting, cross-page duplicate detection). Prefer invoking it
+   (`node skills/extract/scripts/crawl.mjs --url <origin> [--pages …]
+   [--max N]`) over hand-rolling a Playwright script per run; extend
+   its in-page `capture()` to cover any recipe field it doesn't yet
+   emit.
 2. **Origin collision.** If `stardust/state.json` already records
    `site.originUrl` and the new `<url>` is a different origin, stop and
    ask before clobbering. Stardust does not silently mix two sites in

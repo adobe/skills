@@ -535,6 +535,53 @@ For each page, capture:
     (`<family>`, N distinct classes used) — see
     `_brand-extraction.json#iconFont` for the mapping."*
 
+## Capture hygiene — visibility, interstitials, SPA shells, modals (#7)
+
+The capture list above describes WHAT to read; this section describes what to
+**exclude or flag** so transient and hidden DOM doesn't pollute the record. The
+bundled `extract/scripts/crawl.mjs` implements all of these; a hand-rolled crawl
+must apply them too. They exist because real enterprise/SPA sites routinely
+render non-content DOM that, captured verbatim, propagates wrong headings, fake
+sections, and silent duplicate pages downstream.
+
+1. **Visibility filter (headings, body, CTAs).** Only capture a node if it is
+   actually visible: skip any element that is `display:none`,
+   `visibility:hidden`, `opacity:0`, `[hidden]`, inside `[aria-hidden="true"]`,
+   zero-area, or rendered far off-screen. A captured heading that the user never
+   sees is not page content. (Exception: modal detail — see 4.)
+2. **Interstitial / error-state heuristic.** Drop — and COUNT in a per-page
+   `filteredInterstitials` field — headings/CTAs/paragraphs whose text matches
+   known overlay copy: consent banners ("this site uses cookies", "accept all
+   cookies", "change cookie settings", "privacy notice"), language gates
+   ("continuing to a page", "continue in english", "go back to Spanish"), and
+   soft-error overlays ("temporarily unavailable", "page unavailable"). These
+   sit in the DOM at capture time and otherwise become `h2`s and fake sections
+   (the bankofamerica run authored a "Page unavailable" section from one).
+   Dismissing consent (§ Pre-flight) handles the common case; this is the
+   backstop for custom banners the selector list misses.
+3. **Content-substance / SPA-shell check.** After capture, flag a page
+   `spaShellSuspect` when it has **< 2 distinct in-`<main>` headings AND**
+   tiny `<main>` innerText (< ~200 chars) **AND** zero real media. A
+   client-rendered route that returns the app shell (global `h1` + chrome + a
+   tracking pixel) is otherwise indistinguishable from a real capture and
+   silently ships a wrong title + empty body. Crucially, a **lone off-origin
+   tracking pixel does NOT count as media** (`<= 2px`, or src matching
+   `1x1|pixel|track|beacon|/p?|/b?`) — so the low-media flag fires on a shell
+   instead of being suppressed by the pixel. Re-capture a flagged page with a
+   longer wait or an explicit content selector before trusting it.
+4. **Modal / AJAX-addressable detail.** When a detail route renders its content
+   into a `[role="dialog"]` / `[aria-modal]` / `.modal` container populated by an
+   XHR (and often left `display:none` until opened), `body.innerText` captures
+   none of it — so the page captures byte-identical to its listing (the
+   sycamorepartners `/investment-info/<slug>` case: 35 "identical" detail
+   records). Read such containers via **`textContent` even while hidden**, and
+   when a URL deep-links to a modal, wait for its XHR to settle before capture.
+5. **Cross-page duplicate detection.** Hash each page's main content
+   (`headings ++ main innerText`); if two pages hash equal, flag the later one
+   `duplicateOf: <slug>`. A detail page that equals its listing page is the
+   signature of an under-captured modal/SPA route (4/3), not real duplication —
+   surface it rather than shipping N identical pages.
+
 ## Logo locator chain
 
 For the brand-surface pass (Phase 3 of `extract`), find the logo in
@@ -636,7 +683,10 @@ Capture the navigation response and apply these checks in order:
    `message: "empty page — possibly soft-404"`. The conjunction is
    deliberately tight: legitimate minimal pages (a Calendly embed
    landing, a single-iframe contact widget) have at least one of
-   those signals.
+   those signals. A page that is non-empty but thin — the SPA-shell
+   case — is NOT failed here; it is captured and flagged
+   `spaShellSuspect` (§ Capture hygiene 3) for review, because a wrong
+   title on a shell is worse than a recorded gap.
 
 Failed pages do **not** appear in `state.json` as `extracted`. They
 appear only in `_crawl-log.json#crawl.failures[]`. The user can

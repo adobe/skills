@@ -655,3 +655,68 @@ All implemented on `snowflake-blocks` (SKILL.md + da-deploy-protocol.md).
 - [x] #11 Non-variable-font branch (compute metrics) — Step 4 + anti-pattern 11
 - [x] #12 Multi-family CLS note — Step 4
 - [x] #13 Block briefs must reproduce max-width container; add wide-viewport QA — Step 7 brief, Local QA, anti-pattern 13
+
+---
+
+## Findings (multitest-280626 — 8-site parallel stress test, 2026-06-28)
+
+Eight live sites (xfinity, paramount, bankofamerica, starbucks, sycamorepartners,
+paypal, samsung, sony) migrated in parallel, one branch + DA subfolder each. Four
+fixes implemented here (deploy + extract). The trailing-slash-subfolder-home bug
+(all 8 sites) and the logo-locator misses (3 sites) are tracked separately.
+
+### #82 🔴 Image-fidelity gate `curl`-omits real imagery on bot-walled origins ✅
+**Where:** 5 sites behind Akamai/Cloudflare (paramount/xfinity/sony/samsung/bofa).
+**Cause:** the gate said "curl each external `<img>`; if not 200, omit." Bot
+managers 403 a bare curl while serving a real browser, so the rule would strip
+EVERY real brand image. And `content.da.live` media URLs 401 to anon curl though
+they ingest fine.
+**Fix applied (`deploy/SKILL.md` ENCODE→Images, `da-deploy-protocol.md` 2b):**
+verify with the recorded `_crawl-log.json#discovery.fetchTechnique` (in-page
+headed-chrome fetch inherits the JA3 fingerprint), distinguish 403-bot-wall from
+404-missing, **default to download-and-rehost to DA Media Bus** (not omit), and
+exempt `content.da.live`/`admin.da.live` URLs from the anon 200-check (verify via
+post-preview `about:error` instead). Omit only on a true 404.
+
+### #83 🟠 No bundled crawler / resumable batch-deploy driver ✅
+**Where:** all 8 (a transient API blip killed all agents ~40 min in mid-deploy).
+**Cause:** extract specifies the recipe but shipped no runnable crawler (each run
+re-implements Playwright); deploy/rollout said "long batches in background, re-drive
+FAILs" but shipped no driver — hand-rolled serial loops truncated their log on
+restart and re-PUT already-live pages.
+**Fix applied:** `skills/extract/scripts/crawl.mjs` (full recipe + bot fallback +
+#85 hardening) and `skills/deploy/scripts/deploy-batch.mjs` (concurrency pool,
+persistent ledger that skips already-live pages, retry/backoff on 000/429/5xx,
+append-only log, delivered-`.plain.html` verify before flip; idempotent re-run
+re-drives only FAILs). Wired into extract/SKILL.md, deploy/SKILL.md, rollout/SKILL.md.
+
+### #84 🟠 AuthorKit bootstrap is manual + version-drifted ✅
+**Where:** 5 sites. ~15 manual file ops with two silent-failing mandatory edits;
+"port from the latest test branch" is an unpinned moving target, and author-kit's
+runtime has drifted (static-fragment → block-based) so the documented edits can
+miss.
+**Fix applied:** `skills/deploy/scripts/bootstrap-authorkit.mjs` — `--from-sibling`
+(copy a known-good already-bootstrapped sibling runtime, offline/parity-safe — the
+multi-site default) or `--ref` (pinned author-kit tarball). Ports the manifest,
+removes the boilerplate set, **applies AND verifies both mandatory edits** (hard
+error instead of silent footer-error-box), patches the `body.appear` blank-render
+gate (#40), writes `.eslintignore`. Validated end-to-end against a fresh vanilla
+clone + a real sibling. `deploy/SKILL.md` Runtime-bootstrap updated to lead with
+the script + pin/sibling guidance.
+
+### #85 🔴 Extract captures hidden/transient/modal DOM as content ✅
+**Where:** bankofamerica (error/lang interstitials as headings), starbucks (consent
+banner + SPA shell), sycamorepartners (AJAX-modal detail captured byte-identical to
+its listing → 35 silent duplicates).
+**Fix applied (`extract/reference/playwright-recipe.md` § Capture hygiene + crawl.mjs):**
+visibility filter (skip display:none/aria-hidden/off-screen/zero-area), interstitial/
+error-state heuristic with a `filteredInterstitials` count, content-substance check
+(`spaShellSuspect` when <2 distinct main headings + tiny innerText + no real media;
+a lone off-origin tracking pixel does NOT count as media), modal/AJAX `textContent`
+capture even while hidden, and cross-page `duplicateOf` detection (detail==listing).
+Implemented and smoke-tested in crawl.mjs.
+
+- [x] #82 CDN-aware image-fidelity gate (verify-by-technique, rehost, 401-exempt) — ENCODE→Images
+- [x] #83 Bundled crawl.mjs + resumable deploy-batch.mjs — extract/deploy/rollout SKILLs
+- [x] #84 bootstrap-authorkit.mjs (sibling/pinned, verifies edits) — Runtime bootstrap
+- [x] #85 Capture hygiene (visibility/interstitial/SPA-shell/modal/dup) — playwright-recipe.md
