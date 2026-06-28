@@ -15,66 +15,24 @@ The user has:
    - **`<x-dc>` document-content with everything inline-styled** (per-element `style="…"`). Harder — you must lift inline styles into a scoped block stylesheet.
    - **React/JSX prototypes** (an HTML shell that mounts `.jsx` components at runtime). **Pre-render to static HTML first** (run it, or screenshot + read the JSX to reconstruct the DOM); you cannot decorate a shell that has no server-rendered `<main>`.
    The prototypes typically live under `stardust/prototypes/**` or a `samples/<Name>/` folder — don't hard-code the path; discover them.
-2. An EDS project at the repo root — `blocks/`, `styles/`, `scripts/`, `head.html`, plus existing blocks (`fragment`, `section-metadata`). If the project is **vanilla `aem-boilerplate`** rather than the AuthorKit runtime this skill assumes, run the **Runtime bootstrap** below first.
+2. An EDS project at the repo root — a **vanilla `aem-boilerplate`** checkout: `blocks/`, `styles/`, `scripts/` (`aem.js` + `scripts.js`), `head.html`, plus the stock blocks (`header`, `footer`, `fragment`, `section-metadata`). This is the runtime this skill targets — no runtime porting step. See **Runtime** below for the (rare) case where you inherit a legacy AuthorKit project instead.
 3. A goal to convert: prototypes → authorable EDS blocks + EDS content pages under `content/**`.
 
 If the user has prototypes but no EDS scaffolding, stop and ask whether to bootstrap. If they have EDS but no prototypes, this skill doesn't apply.
 
-## Runtime bootstrap (vanilla aem-boilerplate targets)
+## Runtime
 
-This skill's runtime is the **AuthorKit** runtime (`ak.js` page boot, `postlcp.js` static header/footer fragments, `body.session` font gating, `decorateSession()`). The conversion steps below assume those files exist. They are **NOT** in this skill folder — they live in the canonical AuthorKit repo (`github.com/aemsites/author-kit`). (The `sanitise.js` DA-write helper is bundled with this skill at `skills/deploy/scripts/sanitise.js`; it is not part of the ported runtime.)
+This skill targets the **vanilla `aem-boilerplate`** runtime — the stock `scripts/aem.js` + `scripts/scripts.js` page boot, real `header`/`footer` blocks, `decorateSections`/`decorateBlocks`/`decorateButtons`, and the standard `body { display: none } body.appear { display: block }` paint gate. **No runtime is ported in** — you build everything as blocks + content on top of a clean boilerplate checkout. There is nothing to bootstrap before Step 1.
 
-If the target project is a **vanilla `aem-boilerplate`** (it has `scripts/aem.js` + `scripts/scripts.js` and `header`/`footer` blocks, but no `ak.js`/`postlcp.js`), port the runtime before Step 1.
+**Detect the runtime first (one-line gate).** If the repo has `scripts/aem.js` + `scripts/scripts.js` and `blocks/header`/`blocks/footer` → it's vanilla; follow this skill as written. If instead you find `scripts/ak.js` + `scripts/postlcp.js` and NO `blocks/header`/`blocks/footer` → you've inherited a legacy **AuthorKit** project; see the appendix below.
 
-**Automate it (#6):** run `node skills/deploy/scripts/bootstrap-authorkit.mjs --target . [--from-sibling <dir> | --ref <gitref>]`. The script does the entire port below — copies the PORT-IN set, removes the boilerplate set, applies AND verifies both mandatory edits (failing loud instead of the usual silent footer-error-box), patches the `body.appear` blank-render gate, and writes `.eslintignore`. Two source modes:
-- **`--from-sibling <dir>` (preferred in a multi-site repo):** copy the runtime from another EDS project in the workspace that is already bootstrapped (has `scripts/ak.js` with both edits). Offline, deterministic, and parity-safe with a known-good *deployed* runtime — no re-fetch, no re-patch risk per site. This is the right default when several sites share one repo (e.g. 8 subfolder sites).
-- **`--ref <gitref>`:** fetch a **pinned** author-kit ref tarball and port from it. Pin a real commit/tag (the script's `AUTHORKIT_REF` constant or `--ref`), **not** a tracking branch — author-kit's runtime has drifted (static-fragment → block-based header/footer), so an unpinned port can silently change what you get. If the fetched runtime no longer matches the static-fragment model the steps below describe (`loadStaticFragment`, `postlcp.js` injecting `fragments/{header,footer}.html` via `innerHTML`), pin an older known-good ref or use `--from-sibling`.
+**Record the runtime as state.** Write `runtime: aem-boilerplate` into the conversion log (`stardust/eds-conversion-log.md`) so prototype/migrate and the `stardust:diff` probe key the class contract (`.button` vs `.btn`, `.default-content-wrapper` vs `.default-content`, header/footer blocks vs static fragments) off a declared field instead of re-guessing. The prototype renders a bespoke design-system vocabulary; this field is what lets deploy translate it onto the *real* runtime contract deterministically rather than drifting.
 
-The manual manifest (what the script does, for reference / hand-porting). Fetch the author-kit tarball and copy:
+(The `sanitise.js` DA-write helper is bundled with this skill at `skills/deploy/scripts/sanitise.js` — it is runtime-independent.)
 
-**Port in (from author-kit):**
-```
-scripts/ak.js scripts/scripts.js scripts/postlcp.js scripts/lazy.js scripts/utils/*
-tools/**                      # da/da.js (+ sidekick, quick-edit, scheduler — keep so lazy.js/scripts.js imports resolve). sanitise.js is bundled with this skill, not ported.
-deps/**                       # rum.js + lit (head.html loads deps/rum.js)
-head.html                     # AuthorKit head: loads ak.js + scripts.js + styles.css + deps/rum.js
-blocks/fragment blocks/section-metadata
-.hlxignore
-```
+**Lint.** The vanilla boilerplate already ships its own `.eslintrc`/`eslint.config.js` (airbnb-base) and lints `aem.js`/`scripts.js` clean. Your generated blocks + `styles/styles.css` lint under the same config — expand any single-line multi-declaration CSS rules the prototype used. Keep `samples/` out of lint (it's reference prototypes, not project code) via `.eslintignore`.
 
-**Remove (boilerplate the AuthorKit runtime replaces):**
-```
-scripts/aem.js scripts/delayed.js          # replaced by ak.js + lazy.js
-blocks/header blocks/footer                 # replaced by static fragments/{header,footer}.html (Step 6)
-blocks/cards blocks/columns blocks/widget   # unused demo blocks (delete to avoid stale aem.js imports)
-styles/fonts.css styles/lazy-styles.css     # @font-face goes in styles.css; AuthorKit head loads only styles.css
-```
-
-**After porting, two runtime edits are mandatory (do BOTH — they're halves of one change):**
-1. **`scripts/lazy.js` (#4):** the stock AuthorKit `lazy.js` lazy-loads `utils/footer.js`, which does `loadBlock(footer)` and collides with the static footer fragment (renders a visible "Error" box, since there is no `blocks/footer`). **Delete the `import('./utils/footer.js')…` line.**
-2. **`scripts/postlcp.js` (#21):** deleting `utils/footer.js` also removed the only code that set the `<footer>`'s class. Without it, the fragment's own root selector (`footer.footer { background: … }`) never matches and any styling on the fragment ROOT (background/padding/color) silently no-ops. In `loadStaticFragment`, set the class before injecting:
-   ```js
-   const html = await resp.text();
-   el.className = name;          // so header.header / footer.footer match
-   el.innerHTML = html;
-   ```
-   This bug is invisible when the footer happens to match the body background; it bites the moment a fragment has its own background (e.g. a yellow footer).
-
-When starting a NEW conversion in a repo where a sibling site is already bootstrapped, port from that sibling (`bootstrap-authorkit.mjs --from-sibling <dir>`) — it already carries both edits and matches a known-good deployed runtime. Otherwise port from a **pinned** author-kit ref, not a tracking branch (the runtime drifts).
-
-**Lint mismatch (#6).** The AuthorKit runtime is authored for `@adobe/eslint-config-helix`; a boilerplate project lints with `airbnb-base`, so `npm run lint` will throw thousands of errors on the vendored runtime + minified `deps/`. Treat the runtime as vendored — add to `.eslintignore`:
-```
-deps/
-scripts/ak.js
-scripts/lazy.js
-scripts/postlcp.js
-scripts/scripts.js
-scripts/utils/
-tools/
-blocks/fragment/
-samples            # reference prototypes, not project code
-```
-Your generated blocks + `styles/styles.css` still lint clean under airbnb (expand any single-line multi-declaration CSS rules the prototype used). Alternatively, adopt the author-kit `eslint.config.js` (helix) wholesale.
+> **Legacy AuthorKit appendix.** Older stardust deployments (and a few inherited repos) run the **AuthorKit** runtime — `ak.js` boot, `postlcp.js` injecting static `fragments/{header,footer}.html` via `innerHTML`, `body.session` font gating, `decorateSession()`, `.btn`/`.btn-group` buttons, and blocks with **no `.block` class**. That runtime has **drifted** upstream (static-fragment → block-based header/footer) and is no longer the supported target; do **not** port it onto a fresh boilerplate. If you must maintain an existing AuthorKit site, the historical porting recipe and its gotchas (footer double-load, `postlcp` className edit, `body.appear` blank-render, late-fragment CLS) are preserved in `IMPROVEMENTS.md` under the AuthorKit-legacy findings. New conversions use the vanilla path above.
 
 ## Deploy (DA Source API, from a local agent)
 
@@ -108,7 +66,7 @@ For a typical 5–10 page site:
 
 - **One block per distinct prototype section.** A 5-page site with 6 sections each → ~12–18 blocks (some are reused across pages, e.g. `closing`).
 - **One EDS content page per prototype page.** Same number of pages.
-- **Nav + footer fragments** at `content/fragments/{nav,footer}.html` (the navigation lives in `nav.html`, not `header.html`).
+- **Header + footer blocks** at `blocks/header/{header.js,header.css}` and `blocks/footer/{footer.js,footer.css}` — self-contained (the chrome DOM is built in the block JS). (Optional: author nav/footer as DA content at `content/nav` + `content/footer` only if the client must edit nav links — see Step 6.)
 - **Updated `styles/styles.css`** with brand tokens lifted from the prototype's `:root`, a reset, the EDS section scaffold, and a global button system (see "Lean on EDS button conventions" below). Nothing more.
 - **No shared utility modules.** No wave systems. No section-metadata style classes. No motion library. The prototype already encodes these per-section; keep them inside the owning block.
 
@@ -133,9 +91,9 @@ The ANTI-PATTERNS below are the **decode** side: a block must parse robustly wha
 A head-bearing block (one with a section eyebrow/heading/lede above repeating units) should NOT carry that head as block rows. Author the head as **default content** in the section, before the block; the block table holds only the repeating units. Then the block **reabsorbs** the head so the decorated DOM — and every pixel — is identical to the old in-table form:
 
 - On `decorate(block)`, read the section's leading default-content wrapper, build the SAME `.section-head` the block used to build from its first rows, and **remove the wrapper**. Result: identical decorated DOM; CSS untouched.
-- **The head wrapper is a sibling of the block's SECTION-LEVEL wrapper, not of the block, and its class varies by runtime.** Use `block.closest('.block-content')?.previousElementSibling` and match BOTH `.default-content` (AuthorKit runtime) **and** `.default-content-wrapper` (vanilla EDS). `block.previousElementSibling` alone is `null` (the block is nested in `.block-content`).
+- **The head wrapper is a sibling of the block inside the section.** In vanilla EDS the block sits directly in `<div class="section">` next to `<div class="default-content-wrapper">` (there is NO `.block-content` wrapper — that was AuthorKit). Read it as `block.closest('.section')?.querySelector(':scope > .default-content-wrapper')` (or `block.previousElementSibling` when the default content immediately precedes the block).
 - Keep the old in-table head (leading non-unit rows) as a **back-compat fallback**.
-- **Verify zero change:** diff the *decorated* block `outerHTML` (ids/`media_<hash>` normalised) old-vs-new — it must be byte-identical, with 0 default-content wrappers left after decorate.
+- **Verify zero change:** diff the *decorated* block `outerHTML` (ids/`media_<hash>` normalised) old-vs-new — it must be byte-identical, with 0 `.default-content-wrapper`s left after decorate.
 
 A FOUC is possible (head paints as default content, then reabsorbs); the final layout is identical — watch CLS only if default-content margins differ markedly from the head's.
 
@@ -217,18 +175,18 @@ Update `styles/styles.css` to the following — and ONLY the following:
 - A minimal EDS section scaffold:
   ```css
   main .section { display: block; }
-  main .section > .default-content,
-  main .section > .block-content { display: block; }
-  main > div, .has-template, div[data-status] { display: none; }
+  main .section > .default-content-wrapper { display: block; }
+  main > .section:empty { display: none; }   /* collapse the consumed metadata section (#41) */
   ```
+  **Collapse the consumed metadata section (#41).** The pipeline lifts the `metadata` block into `<head>` and leaves an empty `<div class="section">` behind. Vanilla `decorateSections` still gives it the section padding, so it renders as a blank band (often ~88px) above the first real section — very visible under a flush full-bleed hero. `main > .section:empty { display: none }` removes it. (Vanilla `decorateSections` applies section `Style` from `section-metadata` server-side/at decorate time, but does NOT add arbitrary "ground" classes for you — see Step 7: a block that needs its section tinted does `block.closest('.section').classList.add('<ground>')` itself.)
 - A global button system (see next section). This is the one place per-block CSS does NOT own its paint — buttons are site-wide and convention-driven.
-- **Reserve the static header's height — or the late fragment injection shifts the first section → CLS (#81).** `postlcp.js` injects `fragments/header.html` AFTER first paint (it's a deferred fetch). In the common layout where the header sits in flow ABOVE the first section (full-bleed hero *below* the nav), the hero therefore renders at `y=0`, then jumps DOWN by the header's height the instant the fragment lands — a large layout shift the browser attributes to the hero block (a real page measured **CLS 0.143, ~0.13 of it the hero**; metric-matched fonts do NOT fix it because the cause is the header box appearing, not a font swap). Reserve the header's rendered height on the **bare `<header>` element** in `styles/styles.css` (it applies before the fragment loads — `decorateHeader()` sets the class early, but styling the bare element covers the pre-class sliver too), with responsive `min-height` matching the fragment per breakpoint and the chrome's own `background` so any reserve-vs-actual delta is invisible:
+- **Reserve the header's height — or the late header-block load shifts the first section → CLS (#81).** Vanilla `loadLazy` decorates the `header` block AFTER first paint (`loadHeader(doc.querySelector('header'))` runs in the lazy phase). In the common layout where the header sits in flow ABOVE the first section (full-bleed hero *below* the nav), the hero therefore renders at `y=0`, then jumps DOWN by the header's height the instant the block decorates — a large layout shift the browser attributes to the hero block (a real page measured **CLS 0.143, ~0.13 of it the hero**; metric-matched fonts do NOT fix it because the cause is the header box appearing, not a font swap). Reserve the header's rendered height on the **bare `<header>` element** in `styles/styles.css` (it applies before the block decorates — the header block sets its own classes late, but styling the bare element covers the pre-decoration sliver too), with responsive `min-height` matching the decorated header per breakpoint and the chrome's own `background` so any reserve-vs-actual delta is invisible:
   ```css
   header { min-height: 98px; background: var(--brand-ground); }   /* desktop nav+banner height */
   @media (width <= 767px) { header { min-height: 102px; } }
   @media (width <= 480px) { header { min-height: 120px; } }       /* banner wraps to 2 lines */
   ```
-  Make the header's height **deterministic** so the reserved value actually matches: keep the reservation breakpoints in sync with the fragment's, and avoid nav-link *wrap zones* (e.g. extend the burger/hamburger breakpoint so the inline links can't wrap to a second row at awkward widths). Reserve slightly OVER the natural height (a few px) so you never under-reserve and shift — on a dark/uniform ground the small gap is invisible; a `header:empty` page (`header: off`) removes the element so the reservation is moot. **The footer needs NO reservation** — it's below the fold, so its late injection shifts nothing above it. Verify with a CLS probe (Playwright `PerformanceObserver({type:'layout-shift'})`) that **delays the woff2/fragment fetches** to reproduce the slow-network swap PSI measures — a fast localhost load hides the shift.
+  Make the header's height **deterministic** so the reserved value actually matches: keep the reservation breakpoints in sync with the header block's, and avoid nav-link *wrap zones* (e.g. extend the burger/hamburger breakpoint so the inline links can't wrap to a second row at awkward widths). Reserve slightly OVER the natural height (a few px) so you never under-reserve and shift — on a dark/uniform ground the small gap is invisible; a `header:empty` page (`header: off`) removes the element so the reservation is moot. **The footer needs NO reservation** — it's below the fold, so its late injection shifts nothing above it. Verify with a CLS probe (Playwright `PerformanceObserver({type:'layout-shift'})`) that **delays the woff2/fragment fetches** to reproduce the slow-network swap PSI measures — a fast localhost load hides the shift.
 
 That's it. No section-style classes. No motion primitives. No utility classes beyond the button system.
 
@@ -243,7 +201,7 @@ Four principles, applied in this order on every project:
 Then four principles, applied in this order on every project:
 
 **1. Leave `head.html` untouched. No font lines, period.**
-No Google Fonts `<link>`. No CDN `<link rel="stylesheet">` for type. No `<style>` blocks declaring `@font-face`. **No `<link rel="preload" as="font">`** either — even self-hosted preloads belong out of `head.html`. The browser will fetch the woff2 it needs as soon as `styles/styles.css` parses; the `body { arial }` / `body.session { var(--font-body) }` split (principle 3) eliminates the CLS that preloading is normally meant to prevent. **All `@font-face` declarations live in `styles/styles.css`.**
+No Google Fonts `<link>`. No CDN `<link rel="stylesheet">` for type. No `<style>` blocks declaring `@font-face`. **No `<link rel="preload" as="font">`** either — even self-hosted preloads belong out of `head.html`. The browser will fetch the woff2 it needs as soon as `styles/styles.css` parses; the metric-matched fallback `@font-face` (principle 3) eliminates the CLS that preloading is normally meant to prevent. **All `@font-face` declarations live in `styles/styles.css`.**
 
 **2. Self-host EVERY brand face — including proprietary ones — and emit a licensing alert (#80).**
 Inspect the prototype to identify each font family and its license:
@@ -292,8 +250,8 @@ print(f"size-adjust:{size_adjust*100:.2f}% ascent-override:{hhea.ascent/adj*100:
 ```
 Apply those to the system-font override `@font-face` (renamed `"Arial"` / `"Times New Roman"`) exactly as in principle 3.
 
-**3. Body.session pattern with a metric-matched fallback `@font-face`.**
-The brand font must NOT render at first paint. Default to a metric-matched system font; switch to the brand font once `decorateSession()` (in `scripts/ak.js`) adds `body.session`. The recipe:
+**3. Metric-matched fallback `@font-face` — zero-CLS swap, no session class needed.**
+The brand font must NOT shift the layout when it loads. Default the body to a metric-matched system font (renamed after the system font so it wins site-wide), name the brand font FIRST in the stack, and let `font-display: swap` swap it in with zero shift. Vanilla EDS needs no `body.session` gate — the metric match does the work. The recipe:
 
 ```css
 @font-face {
@@ -320,11 +278,12 @@ The brand font must NOT render at first paint. Default to a metric-matched syste
   --font-body: "<Brand>", arial, sans-serif;       /* serif: times, "Times New Roman", serif */
 }
 
-body { font-family: arial, sans-serif; }
-body.session { font-family: var(--font-body); }
+body { font-family: var(--font-body); }
 ```
 
-**Keep `body` VISIBLE — never gate display on `body.appear` (#40).** The font gate is the `body` → `body.session` font swap above; `ak.js` adds `body.session`. Do NOT port the aem-boilerplate pattern `body { display: none } body.appear { display: block }` into the foundation: the static-chrome runtime never adds `appear`, so every OFF-pipeline render (the Local-QA harness, the `visual-diff` probe) stays permanently hidden/zero-height — and a blank page silently passes most checks. (The probe now emits a `BLANK RENDER` red flag as a backstop, but the foundation must not introduce the gate in the first place.)
+At first paint the brand woff2 hasn't loaded, so `--font-body` resolves to the metric-adjusted `"Arial"`; when the brand font arrives, `font-display: swap` replaces it with **zero shift** because the metrics already match. No JS class drives this.
+
+**Keep the boilerplate's `body.appear` paint gate (#40).** Vanilla `aem-boilerplate` ships `body { display: none } body.appear { display: block }` in `styles.css`, and `scripts.js` `loadEager` adds `body.appear` once the first section is decorated. **Leave it in place** — it is the standard FOUC gate and the local QA harness drives it too (the harness loads `scripts.js`, which runs `loadEager` → adds `appear`). The font swap above is a *font-family* swap, NOT a display gate — do not couple the two. (Historical note: AuthorKit's `ak.js` never added `appear`, so on that runtime the gate had to be removed; that inversion does NOT apply to vanilla. The `visual-diff` probe still emits a `BLANK RENDER` red flag as a backstop if a page renders zero-height for any reason.)
 
 The metric-override values come from the `@fontsource-variable/<name>` package's published calibration — fetch their CSS:
 
@@ -336,9 +295,8 @@ curl -s "https://cdn.jsdelivr.net/npm/@fontsource-variable/<name>@latest/index.c
 Each fontsource package publishes a `<Name> Fallback` `@font-face` with `size-adjust`, `ascent-override`, and `descent-override` values. Lift those three numbers verbatim and apply them to a local-system `@font-face` renamed to the system font (`"Arial"`, `"Times New Roman"`, `"Courier New"`).
 
 The CLS chain that results:
-- **Initial paint**: `body { font-family: arial, sans-serif; }` — renders the metric-adjusted local Arial because the override `@font-face` named `"Arial"` wins over the OS Arial. Line box already matches the brand font's metrics.
-- **Session activates**: `body.session` switches to `var(--font-body)`. Brand woff2 is still loading; Arial renders in its place with matching metrics. **Zero shift.**
-- **Brand font loads**: swaps in. **Zero shift** because metrics already match.
+- **Initial paint**: `body { font-family: var(--font-body) }` resolves to the metric-adjusted local Arial (the brand woff2 hasn't loaded; the override `@font-face` named `"Arial"` wins over the OS Arial). Line box already matches the brand font's metrics.
+- **Brand font loads**: `font-display: swap` swaps it in. **Zero shift** because metrics already match.
 
 **4. Match the fallback family to the brand font's classification.**
 Use the SAME class of typeface for the fallback so visual rhythm is preserved during the load:
@@ -352,29 +310,28 @@ Never substitute classifications (don't match a serif brand to Arial; don't matc
 
 **Self-host the prototype's INTENDED fallback, not its accidental system render — and verify with a width probe, never `document.fonts.check` (#77).** Prototypes routinely load **zero `@font-face`** and name a proprietary brand font first (`--display: "Bellfort", "Bebas Neue", system-ui`). On any machine missing the brand font the prototype silently renders **system-ui** — so its on-screen display face is an *accident of the viewing machine*, not the design intent. Do NOT match that accident (don't set EDS `--display` to system-ui because "that's what the proto shows"). The prototype's OWN stack documents the intent: self-host the first **redistributable** fallback (OFL/Apache — e.g. Bebas Neue) so EDS ships the condensed display face the design wants; keep proprietary families documented in the conversion log. **Verify what actually rendered with a width probe** — `document.fonts.check('24px "X"')` returns **true for any family name the page references**, installed or not, so it produces false "fonts match" reads. Instead measure: a span at `font-family:"X",monospace` whose width equals a known-absent name's width means X fell back (absent); a distinct width means X is really rendering. (A beermaker pass set `--display` to Bebas Neue via a `fonts.check` false-positive — the width probe later showed the proto actually renders system-ui, but Bebas Neue was still correct as the documented intended fallback.)
 
-**Multiple display families (#12).** A brand may use several families — e.g. Barlow (body) + Barlow Condensed + Barlow Semi Condensed (display). The `body.session` pattern only gates the **body** family; display families referenced directly by class (headings, eyebrows) load with `font-display: swap` and aren't fully CLS-eliminated. Define each as a `:root` token (`--font-cond`, `--font-semi`) and reference it per-block on the elements that use it. Fully metric-matching every display family is optional polish — for display text used sparingly (eyebrows, big condensed headings) the CLS impact is small; **document the trade-off** in the conversion log rather than over-engineering it. **But when a display family is used in an ABOVE-THE-FOLD heading (the hero `<h1>`, an LCP title), metric-match it too** — compute its `size-adjust`/`ascent-override`/`descent-override` from the woff2 (the same fonttools recipe as #11) and put a dedicated fallback `@font-face` SECOND in that family's stack: `--hero: "Lilita One", "Lilita One Fallback", …`. The fallback family MUST have its own name — do NOT reuse the renamed `"Arial"` face the body match already defines (#11), since that carries the *body* font's metrics, not the display font's. (Note: in practice the dominant first-section CLS is usually the late header box, #81, not the display-font swap — fix the header reservation first, then metric-match above-fold display faces to zero the remainder.)
+**Multiple display families (#12).** A brand may use several families — e.g. Barlow (body) + Barlow Condensed + Barlow Semi Condensed (display). The metric-matched fallback (principle 3) only covers the **body** family; display families referenced directly by class (headings, eyebrows) load with `font-display: swap` and aren't fully CLS-eliminated unless you metric-match them too. Define each as a `:root` token (`--font-cond`, `--font-semi`) and reference it per-block on the elements that use it. Fully metric-matching every display family is optional polish — for display text used sparingly (eyebrows, big condensed headings) the CLS impact is small; **document the trade-off** in the conversion log rather than over-engineering it. **But when a display family is used in an ABOVE-THE-FOLD heading (the hero `<h1>`, an LCP title), metric-match it too** — compute its `size-adjust`/`ascent-override`/`descent-override` from the woff2 (the same fonttools recipe as #11) and put a dedicated fallback `@font-face` SECOND in that family's stack: `--hero: "Lilita One", "Lilita One Fallback", …`. The fallback family MUST have its own name — do NOT reuse the renamed `"Arial"` face the body match already defines (#11), since that carries the *body* font's metrics, not the display font's. (Note: in practice the dominant first-section CLS is usually the late header box, #81, not the display-font swap — fix the header reservation first, then metric-match above-fold display faces to zero the remainder.)
 
 **Match the prototype's effective weight (#22).** A single-weight display font (e.g. **Anton**, ships only 400) often appears *bolder* in the prototype than its one weight: a bare `<h1>`/`<h2>` inherits the browser-default heading weight (700), and the browser **faux-bolds** the 400-only face. If your foundation sets `h1,h2,h3 { font-weight: 400 }`, headings render visibly lighter than the prototype. Set the weight the prototype actually shows (often 700) so the faux-bold matches — don't assume "one weight in the file ⇒ `font-weight: 400`".
 
 ### 5. Lean on EDS button conventions — DO NOT manufacture button anchors in block JS
 
-The EDS link decorator in `scripts/ak.js` (`decorateButton()`) automatically applies button classes when authors wrap a link in inline emphasis. This runs during page boot, AFTER block JS. Block JS just needs to clone the cell anchor as-is.
+The vanilla EDS link decorator `decorateButtons()` (in `scripts/aem.js`) automatically applies button classes when authors wrap a link in inline emphasis. It runs during `decorateMain` (eager phase). Block JS just needs to clone the cell anchor as-is.
 
-**Author markup → auto-applied class:**
+**Author markup → auto-applied class (vanilla `decorateButtons`):**
 
 | Author markup | Class applied | Visual |
 |---|---|---|
-| `<strong><a>` | `.btn.btn-primary` | wavelength fill, dark text |
-| `<em><a>` | `.btn.btn-secondary` | transparent + outline (color-aware) |
-| `<em><strong><a>` | `.btn.btn-accent` | canvas fill on dark surfaces |
-| `<del><a>` | `.btn.btn-negative` | rare; destructive |
-| `+ <u>` inside any | adds `.btn-outline` | transparent variant |
-| 2+ buttons in same parent | parent gets `.btn-group` | flex with gap |
+| `<a>` (sole child of its `<p>`) | `<a class="button">` wrapped in `<p class="button-container">` | base button |
+| `<strong><a>` | `.button.primary` | filled, primary |
+| `<em><a>` | `.button.secondary` | outline / secondary |
+
+Vanilla `decorateButtons` names only **primary** (`<strong>`) and **secondary** (`<em>`) and does NOT auto-group adjacent buttons — there is no `.btn-accent`/`.btn-negative`/`.btn-outline`/`.btn-group`. For a button GROUP, give the block CSS a flex rule on the cell/`.actions` wrapper you build in `decorate()`. For MORE than two variants, use the escape hatch in "Multi-variant button systems" below.
 
 **Add to `styles/styles.css`** (the project's brand button system):
 
 ```css
-a.btn {
+a.button {
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -387,24 +344,26 @@ a.btn {
   transition: background 0.25s var(--ease-out), color 0.25s var(--ease-out), border-color 0.25s var(--ease-out);
 }
 
-a.btn-primary { background: var(--color-wavelength); color: var(--color-ink-rich); border-color: var(--color-wavelength); }
-a.btn-primary:hover { background: var(--color-canvas); border-color: var(--color-canvas); }
+a.button.primary { background: var(--color-wavelength); color: var(--color-ink-rich); border-color: var(--color-wavelength); }
+a.button.primary:hover { background: var(--color-canvas); border-color: var(--color-canvas); }
 
-a.btn-secondary { background: transparent; color: currentcolor; border-color: rgb(255 255 255 / 40%); }
-a.btn-secondary:hover { border-color: currentcolor; background: rgb(255 255 255 / 5%); }
+a.button.secondary { background: transparent; color: currentcolor; border-color: rgb(255 255 255 / 40%); }
+a.button.secondary:hover { border-color: currentcolor; background: rgb(255 255 255 / 5%); }
 
 /* On light surfaces, secondary uses dark-tinted outline. List the dark sections explicitly. */
-main .section:not(.dark, .closing, .hero, .team) a.btn-secondary { border-color: var(--color-rule-strong); color: var(--color-ink-rich); }
-main .section:not(.dark, .closing, .hero, .team) a.btn-secondary:hover { border-color: var(--color-ink-rich); }
+main .section:not(.dark, .closing, .hero, .team) a.button.secondary { border-color: var(--color-rule-strong); color: var(--color-ink-rich); }
+main .section:not(.dark, .closing, .hero, .team) a.button.secondary:hover { border-color: var(--color-ink-rich); }
 
-/* Trailing arrow on primary/accent. */
-a.btn-primary::after, a.btn-accent::after { content: "→"; font-weight: 600; transition: transform 0.3s var(--ease-out); }
-a.btn-primary:hover::after, a.btn-accent:hover::after { transform: translateX(4px); }
+/* Trailing arrow on primary. */
+a.button.primary::after { content: "→"; font-weight: 600; transition: transform 0.3s var(--ease-out); }
+a.button.primary:hover::after { transform: translateX(4px); }
 
-.btn-group { display: inline-flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+/* Group adjacent CTAs — vanilla decorateButtons does NOT auto-group, so style the
+   .actions wrapper the block builds (or the shared .button-container run). */
+.actions { display: inline-flex; flex-wrap: wrap; gap: 16px; align-items: center; }
 ```
 
-**Surface-aware variants: scope to the BLOCK class, not just the section (#41).** When a button/link/text treatment differs on dark vs light surfaces, the prototype's dark-surface cue (e.g. `.hero`, `.cta-dark`) becomes a **block class** after conversion — a `<div class="hero">` nested inside the `<div class="section">`. So an override written as `main .section.hero a.btn-secondary` never matches (the `.hero` is one level below `.section`), and the on-dark CTA silently renders dark-on-dark. Scope on-dark overrides to BOTH: `main .section.dark a.btn-secondary, main .hero a.btn-secondary { … }`. QA any block on a dark background for secondary/ghost-CTA contrast (light outline + light text) — the button "exists" in metrics, so only contrast/eyeball catches this.
+**Surface-aware variants: scope to the BLOCK class, not just the section (#41).** When a button/link/text treatment differs on dark vs light surfaces, the prototype's dark-surface cue (e.g. `.hero`, `.cta-dark`) becomes a **block class** after conversion — a `<div class="hero">` nested inside the `<div class="section">`. So an override written as `main .section.hero a.button.secondary` never matches (the `.hero` is one level below `.section`), and the on-dark CTA silently renders dark-on-dark. Scope on-dark overrides to BOTH: `main .section.dark a.button.secondary, main .hero a.button.secondary { … }`. QA any block on a dark background for secondary/ghost-CTA contrast (light outline + light text) — the button "exists" in metrics, so only contrast/eyeball catches this.
 
 **Block JS pattern — just clone the cell:**
 
@@ -426,7 +385,7 @@ DO NOT manufacture anchors with `cta.className = 'btn-loud'` or inject custom SV
 The `closing` block's CTA is slightly larger than the global default. That's a legitimate override:
 
 ```css
-.closing .actions a.btn-primary { padding: 22px 32px; font-size: 13px; }
+.closing .actions a.button.primary { padding: 22px 32px; font-size: 13px; }
 ```
 
 Three lines. Targets the global class, not a custom one. This is the entire "blocks slightly augment defaults" pattern.
@@ -441,53 +400,33 @@ Some links are NOT buttons. Examples:
 
 For these: the author leaves the `<a>` as a plain anchor in content (no `<strong>` / `<em>` wrap), and the owning block styles it with per-block CSS. The convention is for buttons; if it's not a button, don't apply it.
 
-**Multi-variant button systems (#25).** The strong/em convention only names three slots (primary / secondary / accent). When a prototype has **more** context-specific variants than that — e.g. JFK's `.btn--accent` (yellow), `.btn--primary` (blue), `.btn--ghost` (outline), `.btn--onblue` (white-on-blue) — author emphasis can't express them. Don't force it: **lift the prototype's full `.btn` + variant system into `styles/styles.css`**, author the CTAs as plain `<a>` in content, and have each block apply the right `btn btn--<variant>` class to the cloned anchor (the block knows its section's variant). This is the same "if it doesn't fit, style it" escape hatch, applied at the button-system level rather than per-link.
+**Multi-variant button systems (#25).** Vanilla `decorateButtons` only names two slots (primary `<strong>` / secondary `<em>`). When a prototype has **more** context-specific variants than that — e.g. JFK's `.btn--accent` (yellow), `.btn--primary` (blue), `.btn--ghost` (outline), `.btn--onblue` (white-on-blue) — author emphasis can't express them. Don't force it: **lift the prototype's full button + variant system into `styles/styles.css`** (keep the prototype's own class names, e.g. `btn btn--<variant>`), author the CTAs as plain `<a>` in content, and have each block apply the right variant class to the cloned anchor (the block knows its section's variant). This is the same "if it doesn't fit, style it" escape hatch, applied at the button-system level rather than per-link.
 
-### 6. Static header + footer fragments
+### 6. Header + footer (self-contained blocks)
 
-Header and footer are **static fragments** — extracted verbatim from the prototype with their full DOM and styles intact. No EDS authoring, no block JS parsing. They are stored in `fragments/header.html` and `fragments/footer.html` at the repo root and committed to GitHub as code.
+Header and footer are **real EDS blocks** — `blocks/header/{header.js,header.css}` and `blocks/footer/{footer.js,footer.css}`, the stock vanilla boilerplate slots. Vanilla `loadLazy` decorates them (`loadHeader(doc.querySelector('header'))` / `loadFooter(...)`) the same way as any block. **Because the block JS runs, the chrome's interactivity can be real JavaScript** — there is no inert-`<script>` trap (the AuthorKit static-fragment runtime's defining limitation).
 
-**Fragment file format:**
+**Two ways to source the chrome DOM — pick per project:**
 
-```html
-<style>
-  /* Scoped styles lifted from the prototype's _tokens.css and page <style> */
-  .utility { background: var(--color-ink); ... }
-  nav.topnav { position: sticky; ... }
-  .nav-inner { ... }
-  /* Include responsive breakpoints */
-  @media (max-width: 900px) { ... }
-</style>
-<!-- Full prototype DOM, copied verbatim -->
-<div class="utility">...</div>
-<nav class="topnav">...</nav>
-```
+1. **Self-contained block (default for migration fidelity).** The block's `decorate(block)` builds the lifted prototype header/footer DOM directly into the `<header>`/`<footer>` element; the prototype's chrome `<style>` becomes `header.css` / `footer.css` scoped under `.header` / `.footer`. No content fragment to author, no DA round-trip for chrome. This is the simplest faithful port and what migrations should default to.
+2. **Fragment-content block (when the client must edit nav in DA).** Keep the boilerplate header/footer blocks that `loadFragment('/nav')` / `loadFragment('/footer')` and author the chrome as DA content pages at `content/nav` + `content/footer`. Slower to set up; use only when authorable nav links are a hard requirement.
 
-No `<!DOCTYPE>`, no `<html>`, no `<body>` wrapper. Just the raw `<style>` + DOM. The EDS runtime injects it directly into the page's `<header>` or `<footer>` element via `innerHTML`.
+**Extraction rules (self-contained):**
 
-**Extraction rules:**
+1. Lift the header DOM (utility bar + topnav) from any prototype — it's shared across pages — and rebuild it in `header.js` `decorate()`. Same for the footer in `footer.js`.
+2. Lift the relevant CSS from the prototype's `_tokens.css` and page `<style>` blocks into `header.css` / `footer.css`, **scoped under `.header` / `.footer`**, including all responsive breakpoints.
+2b. **Lift the chrome element's OWN box styles (#31)** — `margin`, `padding`, `border` on the prototype's `<header>`/`<footer>` element — onto `header.header` / `footer.footer`, not just the inner content styles. The `<header>`/`<footer>` sit OUTSIDE `<main>`, so the gap between the last section and the footer comes entirely from the footer's own top margin (e.g. `footer { margin-top: 72px }`). Easy to miss: the inner content looks right while the footer sits flush against the last block.
+3. Rewrite relative asset paths (`../assets/logo.png`) to root-relative (`/img/...` for committed assets) or fully-qualified code-origin URLs.
+4. Rewrite relative link hrefs (`donate.html`) to root-relative paths (`/donate`) matching how EDS serves pages.
 
-1. Copy the header DOM (utility bar + topnav) from any prototype — it's shared across all pages.
-2. Copy the footer DOM from any prototype — also shared.
-3. For each fragment, collect the relevant CSS rules from the prototype's `_tokens.css` and any page `<style>` blocks. Include all responsive breakpoints.
-3b. **Lift the chrome element's OWN box styles (#31)** — `margin`, `padding`, `border` set on the prototype's `<header>`/`<footer>` element itself — onto `header.header` / `footer.footer`, not just the inner content styles. The fragment injects into the EDS `<header>`/`<footer>`, which sit OUTSIDE `<main>`, so the gap between the last section and the footer comes entirely from the footer's own top margin (e.g. `footer { margin-top: 72px }`). Easy to miss: the inner content looks right while the footer sits flush against the last block.
-4. Scope the CSS inside a `<style>` tag at the top of the fragment file.
-5. Rewrite relative asset paths (e.g. `../assets/logo.png`) to fully-qualified URLs on the code origin: `https://main--<repo>--<owner>.aem.page/path/to/asset`.
-6. Rewrite relative link hrefs (e.g. `donate.html`) to root-relative paths (e.g. `/donate`) matching how EDS serves pages.
+**Interactive chrome — block JS runs, so prefer real listeners.** Unlike a static fragment, you can attach handlers in `decorate()`:
+- **Mobile menu / drawer** → a `<button type="button">` with `addEventListener('click', …)` toggling an `aria-expanded` / open class. (The CSS-only checkbox-hack still works and needs no JS — use it if you prefer zero-JS chrome.)
+- **Scroll-state shadow / sticky color change** → a real `IntersectionObserver` or `scroll` listener in `decorate()`.
+- **Forms / inline `on*` handlers (#20)** → EDS's delivered CSP is `script-src 'nonce-…' 'strict-dynamic' 'unsafe-inline'`; with `strict-dynamic`, `'unsafe-inline'` is **ignored**, so inline `onsubmit`/`onclick` in authored/lifted HTML never fire. Don't author inline handlers — wire behavior from the block JS (`addEventListener`) and render a real control (`<button type="button">`, or a `<form>` whose submit you `preventDefault`). Document anything you dropped in the conversion log.
 
-**Loading mechanism:** `scripts/postlcp.js` fetches `fragments/header.html` and `fragments/footer.html` from the code origin (`codeBase`) and injects via `innerHTML`. On branch-hosted pages (`<branch>--repo--org.aem.live`), relative paths resolve to the correct branch automatically.
+**Multi-site / subfolder repos — don't hardcode a root-absolute nav source (#26).** When several sites live in subfolders of one repo (`/siteA/...`, `/siteB/...`), `blocks/` is shared repo-wide, so a header block that hardcodes a root path (`/nav`, `/fragments/header`) renders the SAME nav on every site. Resolve the chrome per site instead: derive the site folder from the current path (or read a `nav` metadata key) and source that site's header/footer, with a sensible fallback. State the layout (one-site-per-repo vs subfolder multi-tenant) in the conversion log so the next run picks the right resolution.
 
-**Fragments cannot run JavaScript.** Because the fragment is injected via `innerHTML`, any `<script>` inside it is inert — the prototype's header JS (mobile-menu toggle, scroll-state shadow, dropdown logic) will NOT run. Re-implement interactive chrome as **CSS-only**:
-- **Mobile menu / drawer** → checkbox-hack: a visually-hidden `<input type="checkbox" id="mnav-toggle">` as the first element, `<label for="mnav-toggle">` for the open button and the close button and a full-screen scrim label, and CSS `#mnav-toggle:checked ~ #mnav { … }` to drive the open/close state and the panel transform.
-- **Scroll-state shadow / sticky color change** → drop it (keep a static border), or use a CSS scroll-driven approach where supported. Don't try to reattach JS to the fragment.
-- **Forms / inline `on*` handlers (#20)** → EDS's delivered CSP is `script-src 'nonce-…' 'strict-dynamic' 'unsafe-inline'`; with `strict-dynamic`, `'unsafe-inline'` is **ignored**, so inline `onsubmit`/`onclick` never fire. A real `<form>` would then submit and reload the page. Render such controls **non-submitting**: a `<div>` wrapper (no `<form>`) with `<button type="button">`. (Same root cause as the no-`<script>` rule — fragments are inert.)
-- Document anything you dropped in the conversion log.
-
-**Footer reconciliation (see #4).** The AuthorKit `lazy.js` also tries to load the footer as a *block* (`utils/footer.js` → `loadBlock(footer)`), which collides with the static footer fragment and renders an error box. Make sure the Runtime-bootstrap edit removing that import has been applied.
-
-**Fragment root class (#26).** `postlcp.js` sets the host element's class to `header` / `footer`. If the prototype's chrome styling is keyed to a *different* root class (e.g. JFK's `.utilnav` / `.site-footer`), wrap the fragment content in a `<div class="<that-class>">` so the lifted root selector matches — `header.header` / `footer.footer` is only the host. (Don't nest another `<header>`/`<footer>` inside the host element; use a `<div>`.)
-
-**`header: off` / `footer: off`:** To suppress header/footer on a specific page, add a metadata block with `header: off` or `footer: off`. The loader checks `getMetadata('header')` / `getMetadata('footer')` before fetching.
+**`header: off` / `footer: off`:** To suppress header/footer on a page, add a `metadata` block row `header | off` / `footer | off`; the block checks `getMetadata('header')` / `getMetadata('footer')` and renders nothing.
 
 ### 7. Blocks (parallel agents)
 
@@ -535,7 +474,7 @@ Agents do not need to coordinate on shared blocks — the brief tells them which
  *      section title becomes <h2> (sub-items <h3>). (use <strong> for emphasis)
  *   4. body paragraph
  *   5. CTA links — wrap primary in <strong>, secondary in <em>; the EDS link
- *      decorator applies .btn.btn-primary / .btn.btn-secondary
+ *      decorator applies .button.primary / .button.secondary
  *   6..N: card rows — cells: num | label | description
  */
 
@@ -608,7 +547,7 @@ Always pair with a per-section screenshot eyeball (#23) and the `CONTENT GAP` pr
 
 ### 9. Content page scaffold
 
-**Every content page MUST begin with a `metadata` block (#34).** At minimum it carries a **Title** (~50–60 chars: brand + primary keyword/location, derived from the page's real `<h1>` — NEVER a block or section name) and a **Description** (~150–160 chars summarising the page). Skip it and EDS derives `<title>` from the first content cell — junk like `<title>Hero</title>` / `<title>Quiz</title>` — and emits no description; and because EDS **mirrors Title/Description into `og:`/`twitter:`**, that junk poisons social/AI share cards too. Authoring this one block resolves title, description, og:title, og:description, twitter:title and twitter:description at once. `header: off` / `footer: off` / `Robots` rows go in the same block when needed (the pipeline extracts the block wherever it sits in `<main>` — first or last). The static header/footer fragments still load automatically via `postlcp.js`; no other per-page configuration is required.
+**Every content page MUST begin with a `metadata` block (#34).** At minimum it carries a **Title** (~50–60 chars: brand + primary keyword/location, derived from the page's real `<h1>` — NEVER a block or section name) and a **Description** (~150–160 chars summarising the page). Skip it and EDS derives `<title>` from the first content cell — junk like `<title>Hero</title>` / `<title>Quiz</title>` — and emits no description; and because EDS **mirrors Title/Description into `og:`/`twitter:`**, that junk poisons social/AI share cards too. Authoring this one block resolves title, description, og:title, og:description, twitter:title and twitter:description at once. `header: off` / `footer: off` / `Robots` rows go in the same block when needed (the pipeline extracts the block wherever it sits in `<main>` — first or last). The header/footer blocks decorate automatically via `loadLazy`; no other per-page configuration is required.
 
 **The content page is a DA *body fragment* (#7).** The DA Source API (the headless deploy path) requires the document to start at `<body>` — **no `<!DOCTYPE>`, no `<html>`, no `<head>`** (the pipeline injects head/scripts/styles from Code Bus). Emit exactly:
 
@@ -649,7 +588,7 @@ To suppress header/footer on a specific page, add `header: off` and/or `footer: 
     </div>
 ```
 
-**Multi-view SPA → multiple pages (#29).** If the prototype is a single-page app with several views that have **different chrome** (e.g. a marketing home with a full nav vs. a signed-in dashboard with a minimal bar), convert **each view to its own EDS page** (pre-render each per #27) and link them with real hrefs. Since `postlcp.js` loads ONE shared `fragments/header.html` for the whole site, two different headers can't both be the fragment: keep the most representative header as the fragment, and on the other page set **`header: off`** (metadata above) and render that page's header as a **block** (`site-nav`) at the top of its content. Share the footer fragment if the footer is the same. (Harness caveat: the `metadata` block is consumed by the delivery pipeline into a `<head>` `<meta>`, but the local harness has no pipeline — so it won't apply `header: off` and will try to load `metadata` as a block, showing a stray error. Strip the `<header>` element from the harness to preview a header-off page; it's a non-issue live.)
+**Multi-view SPA → multiple pages (#29).** If the prototype is a single-page app with several views that have **different chrome** (e.g. a marketing home with a full nav vs. a signed-in dashboard with a minimal bar), convert **each view to its own EDS page** (pre-render each per #27) and link them with real hrefs. The `header` block renders the site's one shared header, so two different headers can't both be the global header: keep the most representative header as the `header` block, and on the other page set **`header: off`** (metadata above) and render that page's header as a separate **block** (`site-nav`) at the top of its content. Share the `footer` block if the footer is the same. (Harness caveat: the `metadata` block is consumed by the delivery pipeline into a `<head>` `<meta>`, but the local harness has no pipeline — so it won't apply `header: off` and will try to load `metadata` as a block, showing a stray error. Strip the `<header>` element from the harness to preview a header-off page; it's a non-issue live.)
 
 **Do NOT emit a `<head>` element.** EDS content pages are markdown-equivalent fragments: the document metadata (title, meta, stylesheets, scripts) lives in the project's `head.html`, which EDS injects at delivery time. A `<head>` block in a content page is dead weight at best and a duplication conflict at worst.
 
@@ -669,7 +608,7 @@ npx -y @adobe/aem-cli up --no-open &
 node skills/deploy/scripts/build-harness.mjs content/<path>.html qa/page.html   # qa/ is gitignored
 ```
 
-Open `http://localhost:3000/qa/page.html` — `scripts.js` runs `loadArea()`, blocks load from the code origin, fragments inject via `postlcp.js`. Screenshot / inspect with headless Chrome (`--virtual-time-budget=9000 --screenshot` / `--dump-dom`) or Playwright.
+Open `http://localhost:3000/qa/page.html` — `scripts.js` runs `loadPage()` (`loadEager` → `loadLazy`), blocks load from the code origin, and the header/footer blocks decorate in the lazy phase. Screenshot / inspect with headless Chrome (`--virtual-time-budget=9000 --screenshot` / `--dump-dom`) or Playwright.
 
 **Capture at a real viewport and scroll — not one giant window (#19).** A `min-height:100vh` hero becomes *window-tall* under a huge capture window (e.g. 7800px), pushing its centered content far down and off the top crop — it looks like the hero text vanished. Instead, use Playwright at a normal viewport (e.g. 1440×900) and `scrollIntoView()` each section before each screenshot.
 
@@ -763,13 +702,13 @@ Defining `.section.dark`, `.section.prose-2col`, `.section.eyebrow`, etc. and ap
 A wave SVG that all blocks import seems reusable. But each prototype section uses its wave differently (different dimensions, colors, animation). Inlining the SVG inside the owning block is more code on paper but eliminates a coupling and makes each block self-contained.
 
 **4. Manually creating button anchors in block JS.**
-Code like `cta.className = 'btn-loud'; cta.innerHTML = '<span>…</span>' + ARROW_SVG;` duplicates the EDS button decorator's job, fights its class-application order, and ties block JS to specific button classes. **Clone the cell anchor; let `decorateButton()` apply the class.** Block CSS overrides the global button style only when something is actually different (size, hover variant).
+Code like `cta.className = 'btn-loud'; cta.innerHTML = '<span>…</span>' + ARROW_SVG;` duplicates the EDS button decorator's job, fights its class-application order, and ties block JS to specific button classes. **Clone the cell anchor; let `decorateButtons()` apply the class.** Block CSS overrides the global button style only when something is actually different (size, hover variant).
 
-**5. Building complex block JS to parse and rebuild header/footer.**
-The old pattern (fetch flat DA fragment → parse structurally → rebuild DOM) is fragile and lossy. Static fragments (`fragments/header.html`, `fragments/footer.html`) are injected verbatim — no parsing, no rebuild. If you find yourself writing block JS for header/footer, stop. Extract the prototype's header/footer as-is.
+**5. Re-parsing a DA nav fragment to rebuild header/footer.**
+Don't fetch a flat DA fragment and parse-then-rebuild its structure (fragile and lossy). The self-contained header/footer blocks (Step 6) build the lifted prototype chrome DOM directly in `decorate()` — you write the chrome markup once, verbatim from the prototype, not a parser that reconstructs it from authored content. Only reach for the fragment-content approach (`loadFragment('/nav')`) when the client genuinely needs to edit nav links in DA.
 
-**6. `.default-content-wrapper` (or any guess about EDS's section DOM).**
-The actual EDS shape is `<div class="section"><div class="default-content">…</div><div class="block-content">…</div></div>`. Confirm by inspecting a rendered page in the browser before designing CSS that relies on the wrapping shape.
+**6. Guessing EDS's section DOM.**
+The actual vanilla EDS shape is `<div class="section"><div class="default-content-wrapper">…</div><div class="<name> block" data-block-name="<name>">…</div></div>` — default content and each block are SIBLINGS inside `.section`; there is no `.block-content` wrapper (that was AuthorKit). Confirm by inspecting a rendered page in the browser before designing CSS that relies on the wrapping shape.
 
 **7. Doing the audit in too much depth.**
 A 22-pattern audit produces abstractions. You only need a per-page section list. Pattern reuse emerges organically when you find two byte-identical sections.
@@ -784,7 +723,7 @@ Naming + reuse decisions look small but ripple through every block and content p
 ANY fixed brand asset referenced from block code — a JS string literal (logo/icon/watermark/fallback) OR a CSS `background-image: url("…")` (a full-bleed section wash) — must be root-relative `/img/<brand>/x.png`, NEVER an absolute origin (`http://localhost:3000/img/...`, a branch `--…aem.page/img/...` host). An absolute origin passes local QA (the dev server *is* localhost:3000, so it loads) but 404s on every real environment. **This directly overrides anti-pattern #9 / the Step-9 "fully-qualified host URL" rule for fixed block assets (#67):** that rule applies ONLY to AUTHORED content `<img src>` for *uploaded/Media-Bus* assets — fixed imagery in block CSS/JS (section backgrounds, watermarks, CSS fallbacks) is always root-relative. (Cinematic prototypes lean on CSS background washes, so this is common.) Gate before deploy: `grep -rn "http://localhost\|aem\.page/img\|aem\.live/img" blocks/` must be empty (it scans CSS too).
 
 **10. Touching `head.html` for fonts (preload included).**
-Google Fonts `<link>` tags, Adobe Fonts script tags, any CDN-hosted stylesheet, AND `<link rel="preload" as="font">` lines all belong out of `head.html`. The first three add DNS/handshake hops and external coupling; the preload looks helpful but it's not — the metric-matched `body.session` pattern (principle 3) makes preload irrelevant for CLS, and adding it splits font discovery between two files. Declare `@font-face` in `styles/styles.css` only. Self-host proprietary brand faces too (for fidelity) and raise the licensing alert (#80) — only keep a CDN load when you genuinely cannot obtain the font files, and then document the CDN coupling + CLS trade-off.
+Google Fonts `<link>` tags, Adobe Fonts script tags, any CDN-hosted stylesheet, AND `<link rel="preload" as="font">` lines all belong out of `head.html`. The first three add DNS/handshake hops and external coupling; the preload looks helpful but it's not — the metric-matched fallback `@font-face` (principle 3) makes preload irrelevant for CLS, and adding it splits font discovery between two files. Declare `@font-face` in `styles/styles.css` only. Self-host proprietary brand faces too (for fidelity) and raise the licensing alert (#80) — only keep a CDN load when you genuinely cannot obtain the font files, and then document the CDN coupling + CLS trade-off.
 
 **11. Skipping the metric-matched fallback `@font-face`.**
 Without `size-adjust` + `ascent-override` + `descent-override` on a system-font fallback, the swap from system font → brand font shifts every line of text on the page when the woff2 lands. For a variable brand, lift the calibration from the matching `@fontsource-variable/<name>` package; for a **non-variable** brand (static weights only, no published Fallback face), compute it from the woff2 with fonttools (Step 4, #11). Rename the override `@font-face` after the system font (`"Arial"`, `"Times New Roman"`) so any reference to that family in a font stack picks up the adjusted metrics automatically.
@@ -798,8 +737,8 @@ The prototype wraps section content in a centered max-width container (`.wrap` /
 **14. Forgetting `<image-slot>` placeholders have no real assets.**
 Claude-design prototypes use `<image-slot>` drop-targets, not `<img>` with real `src`. Don't hard-code a prototype image URL (it 404s) and don't ship a broken `<img>`. Treat the image as an **optional** cell and give the block a CSS background fallback so the empty state still looks right.
 
-**15. Loading the footer twice (block + static fragment).**
-The AuthorKit `lazy.js` lazy-loads `utils/footer.js` → `loadBlock(footer)`. With static chrome fragments (this skill) and no `blocks/footer`, that throws and renders a visible "Error" box between the last section and the footer. Remove the `utils/footer.js` import from `lazy.js` during Runtime bootstrap.
+**15. Header/footer block silently empty (no chrome renders).**
+On vanilla, `loadLazy` calls `loadHeader`/`loadFooter`, which `loadBlock` the `header`/`footer` blocks. If you removed the stock blocks but left the content page's `<header></header>`/`<footer></footer>` empty (or the self-contained block's `decorate()` early-returns), the page ships with no chrome and nothing errors — it just looks unstyled. Verify the header/footer blocks exist and decorate (check the rendered DOM, not just the content page). *(Legacy AuthorKit had the opposite failure — `lazy.js` loaded the footer twice and rendered an error box; that does not apply to vanilla.)*
 
 **16. Lifting a JS-toggled `opacity:0` reveal.**
 Prototypes often hide sections with `.reveal { opacity:0 }` and reveal them via an inline-`<script>` IntersectionObserver. That script doesn't run in EDS, so the lifted `opacity:0` makes the content **permanently invisible** — and it looks fine in the prototype, so it's easy to miss. Render content visible; drop the reveal. (Same root cause as anti-pattern 5 and the fragment-JS rule: prototype `<script>` never executes after conversion.)
@@ -812,17 +751,17 @@ A block that builds its own layout/view wrapper (common for interactive blocks t
 - [ ] Each section in the prototype `<main>` has a corresponding block call in the content page.
 - [ ] **Content page is a body fragment** for the Source-API deploy: starts at `<body>`, **no `<!DOCTYPE>`/`<html>`/`<head>`** — EDS injects the project `head.html` at delivery. (Only the mount deploy tolerates a full doc.)
 - [ ] Ran `node skills/deploy/scripts/sanitise.js` on the content before any DA write (non-ASCII → entities).
-- [ ] `<header></header>` and `<footer></footer>` are EMPTY (static fragments load automatically via `postlcp.js`).
+- [ ] `<header></header>` and `<footer></footer>` are EMPTY in the content page (the `header`/`footer` blocks decorate them automatically via `loadLazy`); the self-contained header/footer blocks exist under `blocks/`.
 - [ ] **Page begins with a `metadata` block** (#34): real Title (≤60 chars, from the `<h1>`, never a block name) + Description (~155 chars). `header: off` / `footer: off` / `Robots` rows go in the same block when needed.
 - [ ] **Exactly one `<h1>` per page** (#35): the hero/lead headline is `<h1>`; section titles are `<h2>`/`<h3>`; no headline left as a bare `<div>` (interactive blocks included — the lead title is `<h1>` in server-visible markup).
 - [ ] **Editorial images are authorable content** — uploaded to DA `/media`, authored as `content.da.live` `<img>` with `alt` (NOT repo-relative `/img/`, NOT baked into block JS by index). Hero/feature/CTA-band backgrounds count as editorial. Decorative image-less treatments (gradients/scrims/washes) and fixed brand assets stay CSS background. **Verify: the delivered `.plain.html` carries the expected `<img>`+alt count** (CSS-background images are absent from it). `<image-slot>` placeholders → empty cells with a CSS background fallback.
 - [ ] **ENCODE shapes (see The ENCODE contract):** grouped bands = one row per item; FAQ/accordion = head cell + Q/A rows; sub-fields carried by a leading `<strong>`/`<code>` tag, **not** an invented `::`/`|` delimiter; accents `<em>` not `<span class="em">`; no `<sup>`/layout-`<br>` in content.
-- [ ] **Section heads are DEFAULT CONTENT, not block rows** — the eyebrow/heading/lede above a repeating block is authored as section default content; the block reabsorbs it (`block.closest('.block-content').previousElementSibling`; match `.default-content`/`.default-content-wrapper`) so the decorated DOM is byte-identical (verify: 0 wrappers left, decorated outerHTML unchanged).
+- [ ] **Section heads are DEFAULT CONTENT, not block rows** — the eyebrow/heading/lede above a repeating block is authored as section default content; the block reabsorbs it (`block.closest('.section').querySelector(':scope > .default-content-wrapper')`) so the decorated DOM is byte-identical (verify: 0 wrappers left, decorated outerHTML unchanged).
 - [ ] **Same-pattern sections share ONE block + variant classes** (`cards`/`text`/…); only genuinely-unique sections are bespoke (see "The one rule").
 - [ ] Heading outline has no level jumps (`h2 → h3`, never `h2 → h4`).
 - [ ] Each block reproduces the prototype's max-width container — **including plain-background sections** (#37); **no unintended full-width content at a wide (≥1600px) viewport**.
 - [ ] Global `img` reset is `display: block; max-width: 100%; height: auto;` (#36) — EDS adds width/height attrs; without `height: auto` images stretch vertically.
-- [ ] When the header sits in flow above the first section, the bare `<header>` has a reserved responsive `min-height` matching the fragment (#81) — the late `postlcp.js` fragment injection must NOT push the hero down (verify CLS with a fetch-delayed probe; target < 0.1).
+- [ ] When the header sits in flow above the first section, the bare `<header>` has a reserved responsive `min-height` matching the decorated header (#81) — the late `loadLazy` header-block decoration must NOT push the hero down (verify CLS with a fetch-delayed probe; target < 0.1).
 - [ ] Any styling that depends on a `<span>`/class INSIDE a block cell is re-created in `decorate()` (#39) — EDS strips `<span>` in block cells (e.g. wrap a `.stars` run in JS, don't author it).
 - [ ] Every block reads plain-text fields by CELL/`textContent`, NOT `querySelectorAll('p')` (#79) — the pipeline unwraps the `<p>` in single-text cells, so a `p`-based read drops eyebrow/subhead/lede/tag/body on live while the raw-`<p>` harness still shows them. Verify against the decorated live/preview render or a `<p>`-stripping harness, and assert each text field is present (counts alone don't catch it).
 - [ ] No `<style>` or `<script>` tags in the content page.
@@ -841,9 +780,9 @@ A block that builds its own layout/view wrapper (common for interactive blocks t
 - [ ] `head.html` is untouched. No font `<link>`, `<script>`, `<style>`, or `<link rel="preload" as="font">` lines added. All `@font-face` declarations live in `styles/styles.css`. Brand woff2(s) live in `styles/fonts/`.
 - [ ] EVERY named brand face is self-hosted — including proprietary ones (#80); proprietary `.otf`/`.ttf` from the prototype were converted to woff2 with fontTools. If any proprietary face is shipped, the **licensing alert** exists in all three places (styles.css banner + `styles/fonts/LICENSING.md` + conversion log) and the hand-off message flags "license required before `aem.live`".
 - [ ] Condensed/narrow display faces fall back to a **condensed** face, not plain Arial (#80): `"<Brand>", "Arial Narrow", arial, …` (or a self-hosted free condensed analog). Width-class is part of classification.
-- [ ] Body defaults to a metric-matched system fallback (`arial, sans-serif` for sans brand, `times, "Times New Roman", serif` for serif). `body.session` switches to the brand stack via `var(--font-body)`.
+- [ ] Body uses `font-family: var(--font-body)` with the brand face FIRST and a metric-matched system fallback (`arial, sans-serif` for sans, `times, "Times New Roman", serif` for serif); brand swaps in with zero CLS via `font-display: swap`. The boilerplate `body{display:none}/body.appear` paint gate is left in place (#40).
 - [ ] An override `@font-face` named after the system font (e.g. `"Arial"`) declares `size-adjust` / `ascent-override` / `descent-override`. For variable brands, lift the calibration from `@fontsource-variable/<name>`; for non-variable brands, **compute** it from the woff2 with fonttools. Result: zero CLS on font swap.
-- [ ] No per-block `font-family: var(--font-body)` or `var(--font-display)` declarations. Brand font flows from `body.session` via inheritance. Only mono and serif (Fraunces / Times) families are explicitly set per-block.
+- [ ] No per-block `font-family: var(--font-body)` or `var(--font-display)` declarations. Brand font flows from `body` via inheritance. Only mono and serif (Fraunces / Times) families are explicitly set per-block.
 
 ## When you finish
 

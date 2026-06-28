@@ -12,9 +12,9 @@
  * Usage: node skills/deploy/scripts/build-harness.mjs <contentFile> <outHarness>
  *   e.g. node skills/deploy/scripts/build-harness.mjs content/snowflake-blocks/test-12.html qa/test-12.html
  *
- * Output: a full HTML doc loading /styles/styles.css + /scripts/ak.js +
- * /scripts/scripts.js, body = <main> with metadata removed and every absolute
- * .../img/ (or http://localhost:PORT/img/) <img src> rewritten root-relative.
+ * Output: a full HTML doc loading /styles/styles.css + /scripts/scripts.js
+ * (vanilla aem-boilerplate boot), body = <main> with metadata removed and every
+ * absolute .../img/ (or http://localhost:PORT/img/) <img src> rewritten root-relative.
  */
 import { readFileSync, writeFileSync } from 'fs';
 
@@ -65,7 +65,6 @@ if (lead.startsWith('</div>')) {
 const doc = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>QA harness</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="/styles/styles.css">
-<script src="/scripts/ak.js" type="module"></script>
 <script src="/scripts/scripts.js" type="module"></script>
 <link rel="icon" href="data:,"></head>
 <body>
