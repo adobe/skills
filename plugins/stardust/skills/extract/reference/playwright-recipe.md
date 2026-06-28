@@ -296,6 +296,20 @@ the site is JS-driven and `spec` is appropriate. Record the chosen
 mode and the auto-detect basis in `_crawl-log.json` under
 `discovery.waitMode`.
 
+**Enterprise-CMS caveat.** A near-empty-shell test under-detects the
+common hard case: enterprise CMSes (React / SPA layers over WebSphere,
+AEM, Sitecore, or bespoke app shells) ship *some* server markup that
+then re-renders / hydrates client-side, so the raw HTML is not empty
+yet the meaningful content paints after `domcontentloaded`. Treat as
+JS-driven (→ `spec`, and the scroll + reveal passes are non-optional)
+when the raw HTML shows any of: a framework bootstrap
+(`window.__INITIAL_STATE__`, `data-reactroot`, `ng-version`,
+`<div id="__next">`), a vendor app marker, or a body whose visible
+headings don't match the `<title>` / `og:title`. On these sites the
+hero copy and child links arrive late and the DOM carries hidden
+modal / promo / count states — which is exactly what § Capture list
+(5-bis) `heroHeadline` + the junk filter exist to survive.
+
 The default remains `medium` regardless of auto-detect until the
 heuristic is validated across more sites; auto-detect is opt-in via
 `--wait auto`.
@@ -345,6 +359,57 @@ For each page, capture:
 5. **Heading outline** — every `h1`-`h6` in document order with text
    and computed font-family, font-weight, font-size, line-height,
    letter-spacing, color.
+
+5-bis. **Hero headline + lede (resolved) — JS-rendered robustness.**
+   On semantic / SSR sites the first `<h1>`/`<h2>` *is* the hero
+   headline. On **JS-rendered enterprise CMSes** (React / SPA layers
+   over WebSphere, AEM, Sitecore, Salesforce, and bespoke "SNAPS" /
+   "FUZE"-style shells) the real tagline is buried among many `<h2>`s,
+   and the DOM also carries hidden modal / error / promo / count states
+   that a document-order heuristic grabs as the headline (observed on a
+   3m.com run: `"Thank You!"`, `"Our Apologies…"`, `"629 products"`,
+   `"Limited-time offer…"` all out-ranked the real hero line). Resolve
+   two dedicated fields instead of trusting `headings[0]`:
+
+   - **`heroHeadline`** — among `h1, h2, h3` whose post-layout
+     `getBoundingClientRect().top` is within the hero band (≤ ~820 px)
+     and `width ≥ 120 px`, pick the element with the **largest computed
+     `font-size`**, after dropping any text caught by the junk-state
+     filter below. That is the visually-dominant hero line, which is
+     what `prototype` / `migrate` actually need.
+   - **`heroLede`** — the first `<p>` in the top ~1300 px with
+     `40 ≤ textLength ≤ 400` that is not caught by the junk filter.
+   - **Clean fallback (load-bearing).** When either resolves to empty
+     or junk, fall back to the editor-written
+     `<meta name="description">` — first sentence → `heroHeadline`,
+     full text → `heroLede`. Meta descriptions are present and clean
+     on virtually every enterprise page and are the single most
+     reliable recovery; without this fallback roughly half of
+     JS-rendered pages yield a junk or empty hero. Record which source
+     won in `_provenance` (`heroSource: "dom" | "meta-fallback"`).
+
+   Record both fields per `current-state-schema.md` § Hero headline.
+   The full `headings[]` list is unchanged — these are an additional
+   resolved convenience, not a replacement.
+
+   **Junk / hidden-state filter (shared).** JS frameworks inject hidden
+   modal, error, newsletter, promo, and result-count nodes that are
+   absent from the *rendered* page but present in the *tree*. Drop any
+   candidate heading / lede / CTA-label whose normalised text matches
+   (case-insensitive):
+   - status / modal chrome: `thank you`, `our apologies`, `sign in`,
+     `sign up`, `subscribe`, `newsletter`, `follow us`, `share this`,
+     `related`, a bare `contact us` heading
+   - merchandising chrome: `featured products`, `limited-time offer`,
+     `% off`, `save \d+%`
+   - faceted-listing counts: `^\d[\d,]*\s*(products?|results?|items?)$`
+     and a bare number `^\d[\d,]*$`
+   - leaked CSS / script text: any value containing `{` or `}`
+
+   Apply this filter wherever `headings[]` / `ctas[]` text is reused
+   downstream as a label (module detection, section heads, card titles)
+   — not only for `heroHeadline`.
+
 6. **Landmark structure** — every `header`, `nav`, `main`, `aside`,
    `footer`, plus elements with `role="banner|navigation|main|complementary|contentinfo|region"`. For each: tag, role, id, class, child element count.
 7. **Visible text per landmark** — innerText in full, normalised
@@ -406,10 +471,31 @@ For each page, capture:
       `gap`, `margin-block`)
     - dominant border-radius (mode of non-zero values across direct
       children)
-11. **Media inventory** — for every `<img>`: src, srcset, alt,
-    naturalWidth, naturalHeight. For every inline SVG: serialized
-    markup hash + viewBox. For every `<video>` and `<iframe>`: src and
-    poster.
+11. **Media inventory** — for every `<img>`: `currentSrc || src`
+    captured **with its query string intact** (see § Source-URL
+    fidelity below), `srcset`, `alt`, `naturalWidth`, `naturalHeight`,
+    and a `resolves` boolean. For every inline SVG: serialized markup
+    hash + viewBox. For every `<video>` and `<iframe>`: src and poster.
+
+    **Source-URL fidelity (enterprise CDNs).** The #1 way migration
+    ships `<img src="about:error">` is re-using a source image URL that
+    doesn't actually resolve. Two capture-time rules prevent it:
+    - **Never truncate the URL, and prefer `currentSrc`.** Enterprise
+      DAM / CDN URLs carry load-bearing query strings
+      (`…/connect/<uuid>/file.jpg?MOD=AJPERES&CACHEID=…`); dropping the
+      query (or reading `src` instead of the resolved `currentSrc`)
+      yields a 404. An early reference that sliced `src` to a fixed
+      length produced exactly this on a 3m.com run.
+    - **Record a `resolves` flag.** After capture, issue a `HEAD`
+      (fall back to `GET`) for each `<img>` src and set
+      `resolves: true` only on a 2xx with an image `content-type`.
+      On a bot-managed origin issue it through the page context (the
+      in-page `fetch` / route-fulfiller path that carries the accepted
+      fingerprint, per § Bot-management fallback) **and** with a
+      browser `User-Agent` + `Referer: <page-url>` — bare requests are
+      frequently rejected by enterprise CDNs even when the asset
+      exists. `migrate` must omit or repair (never author) any image
+      whose `resolves` is `false`.
     For each cross-origin `<iframe>` (host different from page host),
     additionally capture: `boundingClientRect` after layout settles,
     `viewportCoveragePct` (its rect area divided by 1440×900), and

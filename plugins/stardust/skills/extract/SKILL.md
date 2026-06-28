@@ -194,6 +194,12 @@ Capture per page (full schema in `reference/current-state-schema.md`):
 
 - Page metadata (title, meta description, OG tags, theme-color)
 - Semantic structure: heading outline, landmark roles, sections
+- **Hero headline + lede (resolved)** — `heroHeadline` / `heroLede`
+  picked by font-size × hero-region with a junk/hidden-state filter and
+  a clean meta-description fallback (per `reference/playwright-recipe.md`
+  § Capture list 5-bis). Required for JS-rendered enterprise CMSes,
+  where document-order headings surface modal / promo / count junk
+  instead of the real tagline.
 - Content: visible text per section (full innerText, **no
   truncation** per `reference/playwright-recipe.md` § Capture
   list 7), structured paragraphs (`body[]`), lists, FAQ Q/A
@@ -204,11 +210,14 @@ Capture per page (full schema in `reference/current-state-schema.md`):
 - CTA labels and href targets, link inventory (internal vs external)
 - Per-section computed style summary: dominant colors, font families
   in use, spacing rhythm, border-radius, shadows
-- Media inventory: img/srcset with original URLs and intrinsic
-  dimensions, inline SVG count, video/iframe presence,
-  `cssBackgrounds[]` (including pseudo-element `::before`/
+- Media inventory: img with `currentSrc`/`srcset` captured **with
+  query strings intact** plus a `resolves` flag (HEAD/GET with browser
+  UA + Referer), intrinsic dimensions, inline SVG count, video/iframe
+  presence, `cssBackgrounds[]` (including pseudo-element `::before`/
   `::after` walks per § Capture list 11) so `background-image`
-  heroes and motifs do not silently disappear from extract.
+  heroes and motifs do not silently disappear from extract — and so
+  enterprise-CDN images that 404 are flagged before migrate ships
+  `about:error`.
 - Font files captured via network-intercept (per § Capture list
   16): every `woff2`/`woff`/`ttf`/`otf` response saved under
   `assets/fonts/` and recorded in `_brand-extraction.json#type.files[]`
