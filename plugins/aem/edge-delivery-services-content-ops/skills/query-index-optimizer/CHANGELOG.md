@@ -6,4 +6,4 @@
 - 7-step query index audit workflow with property usage mapping
 - Stale entry detection and missing page identification
 - Index size and pagination analysis
-- Generates ready-to-paste helix-query.yaml recommendations
+- Generates ready-to-apply index-definition recommendations (Index Admin tool)

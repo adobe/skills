@@ -1,6 +1,6 @@
 ---
 name: query-index-optimizer
-description: Audit and optimize the AEM Edge Delivery Services query index configuration. Analyzes indexed properties against actual usage, identifies missing or stale pages, checks index size and pagination, and generates recommendations for helix-query.yaml changes. Use when the query index feels bloated, pages are missing from block-driven lists, or you need to verify index health before launch.
+description: Audit and optimize the AEM Edge Delivery Services query index configuration. Analyzes indexed properties against actual usage, identifies missing or stale pages, checks index size and pagination, and generates recommendations for the index definition (managed via the Index Admin tool). Use when the query index feels bloated, pages are missing from block-driven lists, or you need to verify index health before launch.
 license: Apache-2.0
 metadata:
   version: "1.0.0"
@@ -8,7 +8,7 @@ metadata:
 
 # Query Index Optimizer for AEM Edge Delivery Services
 
-Audit the EDS query index configuration (`helix-query.yaml`), analyze which properties are actually consumed by downstream blocks, identify missing or stale entries, and generate actionable recommendations to improve index health and performance.
+Audit the EDS query index configuration (managed via the Index Admin tool), analyze which properties are actually consumed by downstream blocks, identify missing or stale entries, and generate actionable recommendations to improve index health and performance.
 
 Read `references/query-index-context.md` for background on how the query index works, common properties, example YAML configuration, and troubleshooting tables.
 
@@ -27,7 +27,7 @@ This skill fetches external web pages, JSON endpoints, and YAML configuration fi
 - Pages are missing from card lists, search results, or navigation blocks.
 - Blocks return incomplete data and you suspect properties are not indexed.
 - Preparing for launch and need to validate index health.
-- The index is hitting the default 500-entry limit and you need pagination guidance.
+- The index is hitting the default 1000-entry limit and you need pagination guidance.
 - Stale content (deleted or renamed pages) still appears in block-driven lists.
 - Restructuring site sections and need to verify index coverage.
 
@@ -40,7 +40,7 @@ Do not use for editing page content directly, for non-EDS sites, or for debuggin
 Before starting, create a checklist of all steps to track progress:
 
 - [ ] Fetch and analyze the live query index
-- [ ] Fetch the helix-query.yaml configuration from the GitHub repo
+- [ ] Review the index definition (Index Admin tool / Admin API)
 - [ ] Identify downstream consumers and map property usage
 - [ ] Check for pages missing from the index
 - [ ] Check for stale entries (pages that return 404)
@@ -73,26 +73,21 @@ If the response contains exactly the limit number of entries, warn the user that
 
 ---
 
-## Step 2: Fetch the helix-query.yaml Configuration
+## Step 2: Review the Index Definition
 
-Ask the user for their GitHub repository details if not already known.
+The index definition is managed with the [Index Admin tool](https://www.aem.live/developer/indexing) (or the Admin API "Indexing Configuration" endpoints) — it is **not** a file in the GitHub repo. Two ways to review it:
 
-```javascript
-// Fetch helix-query.yaml from the repo
-const yamlResp = await fetch(
-  'https://raw.githubusercontent.com/<owner>/<repo>/<branch>/helix-query.yaml'
-);
-const yamlText = await yamlResp.text();
-```
+1. **Ask the user to share their current index definition** from the Index Admin tool (or retrieve it via the Admin API with their token). Then document it.
+2. **Infer the effective configuration from the live index** (Step 1 output) when the definition isn't available — the property keys present in `query-index.json` reveal what is being indexed.
 
-If the file exists, parse it and document:
+From whichever source, document:
 
-1. **Defined indices** — There may be multiple named indices (e.g., `all`, `blog`, `products`).
+1. **Defined indices** — There may be multiple named indices (e.g., `all`, `blog`, `products`); `query-index.json` is just the default.
 2. **Properties per index** — Which properties are configured, their `select` expressions, and their `value` expressions.
 3. **Include/exclude filters** — Any path-based filters that limit which pages appear in each index.
 4. **Custom computations** — Properties that use `value` expressions to transform or compute values.
 
-If the file cannot be fetched (private repo or not found), proceed with analysis based solely on the live query index output and note the limitation.
+If the definition cannot be obtained, proceed with analysis based solely on the live query index output and note the limitation.
 
 ---
 
@@ -126,7 +121,7 @@ Compare the query index against the site's sitemap to find pages that should be 
 3. Compare against the paths in the query index.
 4. Report pages in the sitemap but not the index — these pages will not appear in any block-driven lists.
 
-Common reasons for missing pages: not previewed/published via Sidekick after index configuration, excluded by a path filter, or in an uncrawled subfolder.
+Common reasons for missing pages: not published after the index was configured (pages are indexed on publish), excluded by a path filter, or in an uncrawled subfolder.
 
 ---
 
@@ -141,7 +136,7 @@ Flag entries that return 404 (deleted — recommend re-publishing or removing th
 ## Step 6: Analyze Index Size and Pagination
 
 1. **Total entries vs. limit** — If the index returns the maximum entries, pages are being silently dropped. Recommend pagination or increased limits.
-2. **Pagination** — Consumers should use `?offset=<n>&limit=<n>` to page through results, or the site should split into multiple named indices via `helix-query.yaml`.
+2. **Pagination** — Consumers should use `?offset=<n>&limit=<n>` to page through results (the default limit is 1000), or the site should split into multiple named indices configured in the Index Admin tool.
 3. **Index bloat** — If many entries are stale or low-value properties inflate the response, estimate the JSON payload size and recommend trimming.
 4. **Named indices** — For large sites, recommend splitting into focused indices (e.g., `blog`, `products`, `events`) with path filters so each consumer fetches only what it needs.
 
@@ -155,15 +150,15 @@ Produce a prioritized list of recommendations covering:
 Properties with low fill rates or no identified consumers. For each, explain the impact of removal.
 
 ### Properties to Add
-Properties that downstream consumers need but are not currently indexed. Provide the `helix-query.yaml` snippet to add them.
+Properties that downstream consumers need but are not currently indexed. Provide the index-definition snippet to add them (to apply in the Index Admin tool).
 
 ### Pages to Investigate
 Pages missing from the index or returning 404, with the action needed for each.
 
 ### Configuration Changes
-The recommended `helix-query.yaml` changes as a YAML code block the user can paste directly. Show only the diff — what to add, change, or remove.
+The recommended index-definition changes as a YAML code block the user can apply in the Index Admin tool. Show only the diff — what to add, change, or remove.
 
 ### Index Architecture
 For larger sites, recommend whether to use a single index or multiple named indices, and provide the configuration for each.
 
-Always provide ready-to-paste `helix-query.yaml` snippets — do not just describe changes.
+Always provide ready-to-apply index-definition snippets — do not just describe changes.
