@@ -16,6 +16,7 @@ Repository of Adobe skills for AI coding agents.
 /plugin install app-builder@adobe-skills
 /plugin install aem-cloud-service@adobe-skills
 /plugin install aem-6-5-lts@adobe-skills
+/plugin install aem-agentify@adobe-skills
 ```
 
 ### Vercel Skills (npx skills)
@@ -183,6 +184,34 @@ customer opens their AEM Cloud Service project and asks the agent anything, this
 If `AGENTS.md` already exists it is never overwritten.
 
 See `plugins/aem/cloud-service/skills/ensure-agents-md/` for the skill, template, and module catalog.
+
+### AI-Native Repository Setup — agentify
+
+The `agentify` skill transforms any AEM customer repository into one that AI agents can navigate
+and contribute to independently. It runs a four-phase structured workflow — always with user
+approval before writing — that produces the full AI-native surface for the repo:
+
+| Phase | Output |
+|-------|--------|
+| Phase 0 — Assess | Repo type classification (OSGi bundle, content package, multi-module Maven, AEMaaCS project, etc.) and inventory of existing AI-native files |
+| Phase 1 — High-ROI wins | `AGENTS.md` (vendor-neutral SSoT), `CLAUDE.md`, `CONTRIBUTING.md`, `.claude/settings.json`, permission gates, `.cursorrules`, CI workflow |
+| Phase 2 — Contract clarity | Architecture docs, runbooks, ADRs, prompt library, repo-aware helper agents, bundled `review-governor`, release process docs and `/release` skill |
+| Phase 3 & 4 — Structure + automation | Triage-first structural cleanup and CI hygiene (do-now / offer / defer) |
+
+The bundled `review-governor` agent (18 reviewer lenses, 3-phase orchestration) is copied into
+the target repo during Phase 2 — no separate install required.
+
+**Complements `ensure-agents-md`:** `ensure-agents-md` is a lightweight bootstrap that creates
+`AGENTS.md` from a fixed AEM template and then immediately continues with the user's request.
+`agentify` is the full transformation for repos that need sustained multi-agent AI-native
+development.
+
+```bash
+/plugin install aem-agentify@adobe-skills
+```
+
+See [`plugins/aem/agentify/skills/agentify/`](plugins/aem/agentify/skills/agentify/) for the
+skill, phase instructions, AEM conventions, and the bundled `review-governor` distribution.
 
 ### AEM Workflow
 
@@ -381,35 +410,46 @@ plugins/
 │   │           ├── performance-tuning/
 │   │           ├── security-hardening/
 │   │           └── workflow-orchestrator/
-│   └── 6.5-lts/
+│   ├── 6.5-lts/
+│   │   ├── .claude-plugin/
+│   │   │   └── plugin.json
+│   │   └── skills/
+│   │       ├── aem-workflow/
+│   │       │   ├── SKILL.md
+│   │       │   ├── workflow-model-design/
+│   │       │   ├── workflow-development/
+│   │       │   ├── workflow-triggering/
+│   │       │   ├── workflow-launchers/
+│   │       │   ├── workflow-debugging/
+│   │       │   ├── workflow-triaging/
+│   │       │   └── workflow-orchestrator/
+│   │       ├── aem-replication/
+│   │       │   ├── README.md
+│   │       │   ├── SKILL.md
+│   │       │   ├── configure-replication-agent/
+│   │       │   ├── replicate-content/
+│   │       │   ├── replication-api/
+│   │       │   └── troubleshoot-replication/
+│   │       ├── ensure-agents-md/
+│   │       └── dispatcher/
+│   │           ├── SKILL.md
+│   │           ├── config-authoring/
+│   │           ├── technical-advisory/
+│   │           ├── incident-response/
+│   │           ├── performance-tuning/
+│   │           ├── security-hardening/
+│   │           └── workflow-orchestrator/
+│   └── agentify/
 │       ├── .claude-plugin/
 │       │   └── plugin.json
 │       └── skills/
-│           ├── aem-workflow/
-│           │   ├── SKILL.md
-│           │   ├── workflow-model-design/
-│           │   ├── workflow-development/
-│           │   ├── workflow-triggering/
-│           │   ├── workflow-launchers/
-│           │   ├── workflow-debugging/
-│           │   ├── workflow-triaging/
-│           │   └── workflow-orchestrator/
-│           ├── aem-replication/
-│           │   ├── README.md
-│           │   ├── SKILL.md
-│           │   ├── configure-replication-agent/
-│           │   ├── replicate-content/
-│           │   ├── replication-api/
-│           │   └── troubleshoot-replication/
-│           ├── ensure-agents-md/
-│           └── dispatcher/
+│           └── agentify/
+│               ├── README.md
 │               ├── SKILL.md
-│               ├── config-authoring/
-│               ├── technical-advisory/
-│               ├── incident-response/
-│               ├── performance-tuning/
-│               ├── security-hardening/
-│               └── workflow-orchestrator/
+│               ├── PLAN.md
+│               ├── CONVENTIONS.md
+│               ├── references/
+│               └── review-governor/
 ├── app-builder/
 │   ├── .claude-plugin/
 │   │   └── plugin.json
