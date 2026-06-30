@@ -45,6 +45,12 @@ Node names (JCR keys) are preserved — they are authored content property names
 
 **Unknown xtype:** Stop. Report xtype and path. Ask user for Coral 3 equivalent. Never guess.
 
+**`rootPath` sanitization:** When copying `rootPath` from a Classic widget to the Coral 3 field, apply before writing:
+1. Strip a leading `/libs/` prefix — `/libs/foundation/...` paths are internal AEM paths that are not valid picker roots in Touch UI. Replace with the correct project-relative path (ask user if unclear) or omit the property to use the default.
+2. Collapse double slashes — replace any `//` sequences with `/` (typos and concatenation artifacts in legacy configs cause broken picker navigation).
+
+Example: `rootPath="/libs//content/dam"` → `rootPath="/content/dam"`.
+
 ---
 
 ## Node Container Mapping
@@ -204,7 +210,7 @@ For a single sub-field multifield, omit `composite` and place the sub-field dire
 
 1. Read `dialog/.content.xml`. Collect and set aside `listeners` nodes — write sidecar.
 2. Determine structure: root `xtype=tabpanel` → tabbed, else flat.
-3. Convert widget tree: replace `cq:WidgetCollection` → `nt:unstructured` `items`; apply widget + property mapping; convert `<options>` → `<items>`; apply namePrefix; handle optionsProvider; drop `dialogbuttons`.
+3. Convert widget tree: replace `cq:WidgetCollection` → `nt:unstructured` `items`; apply widget + property mapping; convert `<options>` → `<items>`; apply namePrefix; handle optionsProvider; drop `dialogbuttons`. **Sanitize path property values** (`rootPath`, `pickerSrc`, or any property whose value starts with `/`): strip a leading `/libs/` prefix and collapse any `//` double-slash sequences to `/`.
 4. Write `_cq_dialog/.content.xml`. If `_cq_dialog/` exists: rename to `_cq_dialog.coral2/` first.
 5. Rename source: `dialog/` → `dialog.bak/`. For design dialog: `design_dialog/` → `design_dialog.bak/`; write output to `_cq_design_dialog/.content.xml`. Skip design dialog if `skipReason: editable-templates-in-use`.
 6. Update `filter.xml` — add excludes:

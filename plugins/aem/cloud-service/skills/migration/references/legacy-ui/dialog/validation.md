@@ -57,17 +57,33 @@ rg 'sling:resourceType="granite/ui/components/coral/foundation/form' -A 10 <file
 ```
 → **0 matches**. Blocking.
 
-## 8. filter.xml excludes backup folders
+## 8. Path property sanitization (both conversion types)
 
-8.1 `dialog.bak` excluded (convert-extjs) —
+8.0 No `/libs/` prefix in path properties —
+```bash
+rg 'rootPath="/libs/' <componentRoot>/_cq_dialog/
+```
+→ **0 matches**. Blocking.
+
+8.1b No double slashes in path properties —
+```bash
+rg 'rootPath="[^"]*//[^"]*"' <componentRoot>/_cq_dialog/
+```
+→ **0 matches**. Non-blocking (flag for manual review).
+
+---
+
+## 9. filter.xml excludes backup folders
+
+9.1 `dialog.bak` excluded (convert-extjs) —
 `rg 'dialog\\\.bak' ui.apps/META-INF/vault/filter.xml` → **≥1 match**. Blocking.
 
-8.2 `_cq_dialog.coral2` excluded (upgrade-coral2) —
+9.2 `_cq_dialog.coral2` excluded (upgrade-coral2) —
 `rg '_cq_dialog\\\.coral2' ui.apps/META-INF/vault/filter.xml` → **≥1 match**. Blocking.
 
 ## Report
 
-Blocking failures: 1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 3.1, 5.1, 7.1, 8.1, 8.2.
+Blocking failures: 1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 3.1, 5.1, 7.1, 8.0, 9.1, 9.2.
 (1.1 now checks `dialog/` absent AND `dialog.bak/` present — both conditions must hold.)
-Non-blocking warnings: 3.2, 4.2, 6.1.
+Non-blocking warnings: 3.2, 4.2, 6.1, 8.1b.
 Always surface in report: listeners sidecar contents, optionsProvider shells, dropped validation properties, namePrefix mappings.
