@@ -5,16 +5,21 @@ description: >-
   Provides patterns for pages, forms, data tables, dialogs, and navigation using @adobe/react-spectrum.
   Guides ExC Shell integration with @adobe/exc-app including runtime.done(), IMS token passthrough,
   and shell theming. Guides AEM UI Extension development with @adobe/uix-guest for Content Fragment
-  Console, CF Editor, Universal Editor, and Assets View surfaces. Trigger on: building App Builder UI,
-  React Spectrum components, ExC Shell pages, forms, data tables, dialogs, modals, navigation, theming,
-  web-src, Spectrum design system, @adobe/exc-app, AEM extension, AEM UI extension, Content Fragment
-  Console, Universal Editor extension, uix-guest, @adobe/uix-guest, extension points for AEM,
-  customizing AEM surfaces.
+  Console, CF Editor, Universal Editor, and Assets View surfaces. Guides Content Hub extension
+  development with @adobe/uix-guest for the aem/assets/contenthub/1 extension point across all
+  three surfaces — asset details tab panels (assetDetails), asset card action buttons (card), and
+  selection bar / bulk action buttons (selectionBar) — including the host.modal dialog flow.
+  Trigger on: building App Builder UI, React Spectrum components, ExC Shell pages,
+  forms, data tables, dialogs, modals, navigation, theming, web-src, Spectrum design system,
+  @adobe/exc-app, AEM extension, AEM UI extension, Content Fragment Console, Universal Editor
+  extension, uix-guest, @adobe/uix-guest, extension points for AEM, customizing AEM surfaces,
+  Content Hub extension, contenthub, asset details panel, asset card action, selection bar,
+  bulk action, aem/assets/contenthub/1.
 metadata:
   category: frontend
 license: Apache-2.0
 compatibility: Requires Node.js 18+, npm, and @adobe/react-spectrum
-allowed-tools: Bash(npm:*) Bash(node:*) Bash(npx:*) Read Write Edit
+allowed-tools: Bash(aio:*) Bash(npm:*) Bash(node:*) Bash(npx:*) Bash(mkdir:*) Bash(ls:*) Read Write Edit
 ---
 # App Builder UI Scaffolder
 
@@ -33,7 +38,9 @@ Identify the user's intent, then read the referenced sections to generate tailor
 | Navigation layout | `references/ui-patterns.md` § Navigation | `Tabs`, `Breadcrumbs`, `Flex` |
 | ExC Shell setup | `references/shell-integration.md` | `@adobe/exc-app`, `Provider`, `defaultTheme` |
 | Connect UI to backend actions | `references/action-integration.md` | `fetch()` with IMS token |
-| AEM UI Extension (CF Console, CF Editor, Universal Editor) | `references/aem-extensions.md` | `@adobe/uix-guest`, `register()`, `sharedContext` |
+| AEM UI Extension — customize existing (CF Console, CF Editor, Universal Editor) | `references/aem-extensions.md` | `@adobe/uix-guest`, `register()`, `sharedContext` |
+| Any extension — scaffold NEW from scratch (Content Hub, CF Console/Editor, Universal Editor, Assets View, ExC Shell) | Use `adobe-extension-scaffolder` skill instead | Handles full flow for every surface: Console setup, file generation, build, dev server, deploy |
+| Content Hub extension (customize existing — panels, card actions, bulk actions) | `references/contenthub-extensions.md` | `@adobe/uix-guest`, `register()`, `attach()`, `assetDetails.getTabPanels()`, `card`/`selectionBar` `getActionButtons(actionContext)` + `onActionClick(resourceType, buttonId, resourceId, actionContext)`, `host.modal` |
 | Debug UI issues | `references/debugging.md` | Shell spinner, CORS, blank screen, auth |
 
 ## Fast Path (for clear requests)
@@ -52,9 +59,13 @@ Examples of fast-path triggers:
 - "Add a confirmation dialog" → Read `references/ui-patterns.md` § Dialog, generate directly
 - "Set up the shell integration" → Read `references/shell-integration.md`, generate directly
 
-- "Build a Content Fragment Console extension" → Read `references/aem-extensions.md` § CF Console, generate directly
-- "Add a header menu button to the Universal Editor" → Read `references/aem-extensions.md` § Universal Editor, generate directly
-- "Create an AEM extension with uix-guest" → Read `references/aem-extensions.md` § Core Registration, generate directly
+- "Add a header menu button to the Universal Editor"  → Read `references/aem-extensions.md` § Universal Editor, generate directly
+- "Customize an existing AEM extension's UI with uix-guest" → Read `references/aem-extensions.md` § Core Registration, generate directly
+- "Create / scaffold a new extension from scratch" — for ANY surface (Content Hub, CF Console, CF Editor, Universal Editor, Assets View, ExC Shell) → Redirect to the `adobe-extension-scaffolder` skill (it asks which surface in Step 0 and handles the full Console + scaffold + build + dev server + deploy flow)
+- "Add a tab panel to Content Hub asset details" (existing project) → Read `references/contenthub-extensions.md` § Asset Details Extension, generate directly
+- "Add a Content Hub asset card action / card button" → Read `references/contenthub-extensions.md` § Asset Card Actions, generate directly
+- "Add a Content Hub bulk action / selection bar button" → Read `references/contenthub-extensions.md` § Selection Bar / Bulk Actions, generate directly
+- "Customize the Content Hub panel/modal UI" → Read `references/contenthub-extensions.md` § Tab Panel Component / Modal Component, generate directly
 
 If there is any ambiguity — multiple patterns could fit, constraints are unclear, or the user hasn't specified enough — fall through to the full workflow below.
 
@@ -93,6 +104,12 @@ If there is any ambiguity — multiple patterns could fit, constraints are uncle
 - "Build a Content Fragment Console extension with an action bar button."
 - "Add a custom RTE toolbar button in the Content Fragment Editor."
 - "Create a Universal Editor extension with a header menu button."
+- "Create a Content Hub extension."
+- "Add a custom panel to the Content Hub Asset Details Dialog."
+- "Build a Content Hub extension that shows asset metadata in a side panel."
+- "Add an action button to Content Hub asset cards."
+- "Add a bulk action to the Content Hub selection bar."
+- "Scaffold a Content Hub App Builder extension for aem/assets/contenthub/1."
 
 ## Inputs To Request
 
@@ -126,6 +143,7 @@ If there is any ambiguity — multiple patterns could fit, constraints are uncle
 - Use `references/action-integration.md` for calling backend actions from the SPA.
 - Use `references/checklist.md` for pre-handoff UI quality validation.
 - Use `references/aem-extensions.md` for AEM UI Extension patterns (`@adobe/uix-guest`, Content Fragment Console/Editor, Universal Editor, Assets View).
+- Use `references/contenthub-extensions.md` for Content Hub extension patterns (`@adobe/uix-guest`, `aem/assets/contenthub/1`, asset details tab panels, Host APIs, web actions).
 - Use `references/debugging.md` for common SPA debugging scenarios (shell spinner, CORS, auth, blank screen, performance).
 
 ## Chaining
@@ -133,4 +151,4 @@ If there is any ambiguity — multiple patterns could fit, constraints are uncle
 - Chains FROM `appbuilder-project-init` (after SPA project is scaffolded with `dx/excshell/1` extension)
 - Works alongside `appbuilder-action-scaffolder` for full-stack features (UI calls backend actions)
 - Chains TO `appbuilder-testing` (test generated UI components)
-- Chains TO `appbuilder-cicd-pipeline` (deploy frontend changes)
+- Delegates TO `adobe-extension-scaffolder` skill for scaffolding any NEW extension from scratch on any surface — Content Hub, CF Console/Editor, Universal Editor, Assets View, or ExC Shell (that skill owns the full Developer Console + scaffold + build + dev server + deploy workflow). This skill handles UI patterns and customizing extensions that already exist.
