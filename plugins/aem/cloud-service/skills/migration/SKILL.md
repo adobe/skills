@@ -1,6 +1,6 @@
 ---
 name: migration
-description: Migrates legacy AEM (6.x, AMS, on-prem) to AEM as a Cloud Service using BPA CSV or cache, CAM/MCP target discovery, and a one-pattern-per-session workflow. Use for BPA/CAM findings, Cloud Service blockers, or fixes for scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler, DAM AssetManager, HTL data-sly-test lint, Classic UI/ExtJS dialogs, and custom ExtJS widgets (CDW). OSGi configs → Cloud Manager — scan ui.config, .cfg.json, secrets, $[secret:]/$[env:] — agent follows references/osgi-cfg-json-cloud-manager.md when prompted. After BPA/CAM discovery, migration hands off each (pattern, file) pair to the code-assessment skill — code-assessment owns the five pattern guides (scheduler/, resource-change-listener/, replication/, event-migration/, asset-manager/) and the shared references for SCR→DS, ResourceResolver/SLF4J, HTL lint, and prerequisites. Template modernization (static → editable templates + AEM Modernize Tools rules) runs a per-template pipeline — context → per-template execute → validate. Legacy UI migration (dialog and CDW) follows references/legacy-ui/ modules.
+description: Migrates legacy AEM (6.x, AMS, on-prem) to AEM as a Cloud Service using BPA CSV or cache, CAM/MCP target discovery, and a one-pattern-per-session workflow. Use for BPA/CAM findings, Cloud Service blockers, or fixes for scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler, DAM AssetManager, HTL data-sly-test lint, Classic UI dialog migration (lui — ExtJS → Coral 3 via BPA legacy.dialog.classic, and Coral 2 → Coral 3 via the legacy.dialog.coral2 sub-type), Custom Design Widgets (cdw — via BPA legacy.custom.component.dialog.widgets). OSGi configs → Cloud Manager — scan ui.config, .cfg.json, secrets, $[secret:]/$[env:] — agent follows references/osgi-cfg-json-cloud-manager.md when prompted. After BPA/CAM discovery, migration hands off each (pattern, file) pair to the code-assessment skill — code-assessment owns the five pattern guides (scheduler/, resource-change-listener/, replication/, event-migration/, asset-manager/) and the shared references for SCR→DS, ResourceResolver/SLF4J, HTL lint, and prerequisites. Template modernization (static → editable templates + AEM Modernize Tools rules) runs a per-template pipeline — context → per-template execute → validate. Legacy UI migration (dialog and CDW) follows references/legacy-ui/ modules.
 license: Apache-2.0
 ---
 
@@ -148,7 +148,7 @@ the user's go-ahead by re-calling the helper with `offset: paging.nextOffset`. S
 ### CAM via MCP (summary)
 
 Use **`fetch-cam-bpa-findings-by-pattern`** for code-transformer pattern flows (scheduler,
-assetApi, eventListener, resourceChangeListener, eventHandler) and
+assetApi, eventListener, resourceChangeListener, eventHandler, lui, luiCoral2, cdw) and
 **`fetch-cam-bpa-findings-by-importance`** when the user instead asks "what are the
 critical/major/advisory/info findings?" (returns the latest BPA report's authoritative
 `_COUNT_<code>` rows at one importance level, sorted by descending count). Either tool
@@ -163,6 +163,8 @@ when known). Do not pass an unconfirmed project name string. **Full tool schemas
 - *"Fix scheduler"* → collection → MCP → ask for CSV
 - *"Migrate `core/.../Foo.java`"* → manual flow
 - *"Fix htlLint in ui.apps"* → proactive discovery flow
+- *"Fix lui findings using ./reports/bpa.csv"* → CSV → component paths → Branch D dialog skill
+- *"Get cdw findings from CAM"* → MCP → xtype inventory → Branch D CDW skill
 
 ### Calling the helper
 
@@ -249,7 +251,9 @@ If the id is missing from the code-assessment catalog ([`{code-assessment}/refer
 
 ### Step 3: Targets
 
-**For BPA patterns** (`scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`): Run **`getBpaFindings`** (with `bpaFilePath` when provided). Internally: cache → CSV → MCP → manual **only when each step is applicable and succeeds**; if MCP fails, obey **MCP errors and fallback** (stop; no silent chain). For MCP details, [references/cam-mcp.md](references/cam-mcp.md).
+**For BPA patterns** (`scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `lui`, `luiCoral2`, `cdw`): Run **`getBpaFindings`** (with `bpaFilePath` when provided). Internally: cache → CSV → MCP → manual **only when each step is applicable and succeeds**; if MCP fails, obey **MCP errors and fallback** (stop; no silent chain). For MCP details, [references/cam-mcp.md](references/cam-mcp.md).
+
+For `lui` and `luiCoral2` findings, the `identifier` in each target is the **JCR component path** (e.g. `/apps/myapp/components/content/mycomp`) — not a Java class name. Resolve it to the filesystem path using the [JCR → filesystem mapping](references/legacy-ui/dialog/context.md#jcr-path--filesystem-path) before opening files.
 
 `getBpaFindings` returns **a batch of 5 findings** (default `limit=5`) along with a `paging`
 envelope. The agent processes that batch only; it does **not** request the next batch until
