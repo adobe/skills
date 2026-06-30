@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stardust.dev/schemas/rollout-config.schema.json",
+  "title": "stardust rollout/rollout.json",
+  "description": "Top-level config + run summary for a full-site rollout to AEM Edge Delivery Services. Owned by stardust:rollout. Keeps all platform/full-site state out of the agnostic core (state.json is never touched).",
+  "type": "object",
+  "required": ["_provenance", "target", "site"],
+  "additionalProperties": false,
+  "properties": {
+    "_provenance": { "$ref": "#/$defs/provenance" },
+    "target": {
+      "type": "string",
+      "const": "aem-eds",
+      "description": "Delivery target. Fixed to AEM Edge Delivery Services for this proposal."
+    },
+    "site": {
+      "type": "object",
+      "required": ["sourceUrl"],
+      "additionalProperties": false,
+      "properties": {
+        "sourceUrl": { "type": "string", "format": "uri", "description": "The original site being migrated." },
+        "da": {
+          "type": "object",
+          "description": "DA (da.live) destination coordinates for the DA Source API push.",
+          "additionalProperties": false,
+          "properties": {
+            "org": { "type": "string" },
+            "site": { "type": "string" },
+            "ref": { "type": "string", "default": "main" }
+          }
+        },
+        "liveHost": { "type": ["string", "null"], "description": "Resolved aem.live host, e.g. main--site--org.aem.live." }
+      }
+    },
+    "lastRun": {
+      "type": ["object", "null"],
+      "description": "Summary of the most recent rollout run (the dashboard headline reads this).",
+      "additionalProperties": false,
+      "properties": {
+        "at": { "type": "string", "format": "date-time" },
+        "pages": { "$ref": "#/$defs/counts" },
+        "blocks": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "total": { "type": "integer", "minimum": 0 },
+            "converted": { "type": "integer", "minimum": 0 },
+            "pending": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "verifyFailures": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "required": ["writtenBy", "writtenAt", "stardustVersion"],
+      "properties": {
+        "writtenBy": { "type": "string", "examples": ["stardust:rollout"] },
+        "writtenAt": { "type": "string", "format": "date-time" },
+        "stardustVersion": { "type": "string" }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "verified": { "type": "integer", "minimum": 0 },
+        "deployed": { "type": "integer", "minimum": 0 },
+        "pending": { "type": "integer", "minimum": 0 },
+        "stale": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

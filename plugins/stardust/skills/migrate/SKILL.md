@@ -1,6 +1,6 @@
 ---
 name: migrate
-description: Apply DESIGN, canon, and modules to every page in the inventory, producing a deployable static HTML site. Three render branches (approved page, template-applied sibling, unique render). Per-page, incremental, idempotent, content-preserving by default.
+description: Apply DESIGN, canon, and modules to every page in the inventory, producing a deployable static HTML site. Use to migrate or render the whole captured site into the redesigned static tree ("migrate the pages", "render the migrated site", "apply the design to all pages", "build the deployable site", "convert the approved prototype into the full site") — the page-rendering step between prototype and deploy/rollout. Three render branches (approved page, template-applied sibling, unique render), with a declared fidelity tier per page. Per-page, incremental, idempotent, content-preserving by default.
 license: Apache-2.0
 ---
 
@@ -151,7 +151,12 @@ For each page in scope, follow
   present — the user fills the missing content in the proposed
   file before re-invoking migrate. No bypass flag.
 - **Render branch selection** (LLM judgment per T&M §
-  Render path selection): A / A′ / B.
+  Render path selection): A / A′ / B. **Declare the page's
+  `fidelityTier`** from the branch — A → `archetype` (craft-gated),
+  A′ → `sibling` (canon-fork, the cheap default for breadth),
+  B/bodyless → `thin` — per `reference/fidelity-tiers.md`. Record
+  `fidelityTier`, `archetypeSource`, and `gatesPassed[]` in
+  `_meta.json` so coverage shows what was craft-gated vs cloned.
 - **Render** per the chosen branch's procedure in T&M.
 - **Canon application** — chrome injection, canon.css
   injection, deviation logging.
@@ -180,6 +185,15 @@ For each page in scope, follow
   `state.json.migrate.bundledAssets[]`. Missing source assets
   warn-and-skip per § Edge cases; the bundle stays internally
   consistent.
+- **Media reconciliation.** For every image **not** bundled to
+  same-origin (reused source-CDN URLs under Mode A image-reuse),
+  decide optimize/keep/rewrite/omit per
+  `reference/media-reconciliation.md`. Cross-origin `<img>` kept
+  as source URLs must **skip `createOptimizedPicture`** (it drops
+  the `?v=` key and corrupts the rendition); broken URLs are
+  repaired (missing `?`-delimiter, wrong host) or omitted, never
+  shipped as `about:error`. `rollout` re-runs the authoritative
+  network resolve at delivery (`media-reconcile.mjs`).
 - **Write** the migrated `index.html` and the `_meta.json`
   sidecar in the same directory. Provenance block as first
   child of `<head>`. Record `assetsBundled` (count of unique

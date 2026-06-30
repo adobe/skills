@@ -61,7 +61,7 @@ public final class Analyze {
         boolean unknownPattern = onlyF != null && dets.isEmpty();
         if (unknownPattern) warnings.add("unknown-pattern: " + onlyF);
 
-        List<Path> javaFiles = new ArrayList<>(), pomFiles = new ArrayList<>();
+        List<Path> javaFiles = new ArrayList<>(), pomFiles = new ArrayList<>(), osgiFiles = new ArrayList<>();
         if (fileList != null) {
             for (String f : fileList) {
                 Path p = root.resolve(f.trim()).normalize();
@@ -69,16 +69,19 @@ public final class Analyze {
                 String n = p.getFileName().toString();
                 if (n.endsWith(".java")) javaFiles.add(p);
                 else if (n.equals("pom.xml")) pomFiles.add(p);
+                else if (isOsgiConfig(n)) osgiFiles.add(p);
             }
         } else {
-            collect(root, javaFiles, pomFiles);
+            collect(root, javaFiles, pomFiles, osgiFiles);
         }
 
         boolean anyJava = dets.stream().anyMatch(Detector::needsJava);
         boolean anyPoms = dets.stream().anyMatch(Detector::needsPoms);
+        boolean anyOsgi = dets.stream().anyMatch(Detector::needsOsgi);
         List<JavaUnit> javaUnits = anyJava ? parseJava(root, javaFiles, warnings) : new ArrayList<>();
         List<PomUnit> pomUnits = anyPoms ? parsePoms(root, pomFiles, warnings) : new ArrayList<>();
-        Corpus corpus = new Corpus(root, javaUnits, pomUnits, allowAll);
+        List<OsgiUnit> osgiUnits = anyOsgi ? parseOsgi(root, osgiFiles, warnings) : new ArrayList<>();
+        Corpus corpus = new Corpus(root, javaUnits, pomUnits, osgiUnits, allowAll);
 
         List<Finding> out = new ArrayList<>();
         for (Detector d : dets) {
@@ -104,7 +107,11 @@ public final class Analyze {
         }
     }
 
-    static void collect(Path root, List<Path> javaFiles, List<Path> poms) throws java.io.IOException {
+    static boolean isOsgiConfig(String name) {
+        return name.endsWith(".cfg") || name.endsWith(".cfg.json") || name.endsWith(".config");
+    }
+
+    static void collect(Path root, List<Path> javaFiles, List<Path> poms, List<Path> osgiFiles) throws java.io.IOException {
         if (!Files.exists(root)) return;
         Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes a) {
@@ -115,9 +122,20 @@ public final class Analyze {
                 String n = f.getFileName().toString();
                 if (n.endsWith(".java")) javaFiles.add(f);
                 else if (n.equals("pom.xml")) poms.add(f);
+                else if (isOsgiConfig(n)) osgiFiles.add(f);
                 return FileVisitResult.CONTINUE;
             }
         });
+    }
+
+    static List<OsgiUnit> parseOsgi(Path root, List<Path> files, List<String> warnings) {
+        List<OsgiUnit> units = new ArrayList<>();
+        for (Path f : files) {
+            String rel = safeRel(root, f);
+            String pid = OsgiUnit.pidFromFilename(f.getFileName().toString());
+            units.add(new OsgiUnit(f, rel, pid));
+        }
+        return units;
     }
 
     static String safeRel(Path root, Path p) {

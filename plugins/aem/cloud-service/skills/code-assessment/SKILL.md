@@ -57,6 +57,7 @@ Route the request to one expert skill. Two pattern families share this skill:
 | "fix @Inject", "modernize Sling Models", `javax.inject.Inject` on `@Model` fields | [`inject-in-sling-model/`](inject-in-sling-model/SKILL.md) |
 | "add HTTP timeouts", "outbound/external call has no timeout", `HttpClient` / `HttpClients` / `OkHttpClient` built without a timeout | [`outbound-call-timeouts/`](outbound-call-timeouts/SKILL.md) |
 | "bound my query", "unbounded query", "query causing OOM", `p.limit=-1`, `setLimit(-1)` | [`unbounded-query/`](unbounded-query/SKILL.md) |
+| "remove deprecated API", "fix deprecated imports", "Cloud Manager deprecated API failure", `import org.apache.log4j`, `import org.apache.commons.lang`, `import com.adobe.granite.xss`, `import com.day.cq.xss`, commons-lang/collections upgrade, log4j migration, unmodifiable OSGi configs | [`remove-deprecated-api/`](remove-deprecated-api/SKILL.md) _(apply uses JAR scripts — see recipe.md)_ |
 
 **Architectural migration patterns** (guided remediation — full before/after, troubleshooting, modern alternatives; invoked directly or via `migration` for BPA/CAM-driven discovery):
 

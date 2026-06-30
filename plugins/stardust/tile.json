@@ -1,6 +1,6 @@
 {
   "name": "adobe/stardust",
-  "version": "0.12.0",
+  "version": "0.13.1",
   "summary": "Redesign an existing website to make it better. Built on top of impeccable.",
   "skills": {
     "stardust": { "path": "skills/stardust/SKILL.md" },
@@ -11,6 +11,7 @@
     "prepare-migration": { "path": "skills/prepare-migration/SKILL.md" },
     "uplift": { "path": "skills/uplift/SKILL.md" },
     "deploy": { "path": "skills/deploy/SKILL.md" },
+    "rollout": { "path": "skills/rollout/SKILL.md" },
     "diff": { "path": "skills/diff/SKILL.md" }
   },
   "softDependencies": [

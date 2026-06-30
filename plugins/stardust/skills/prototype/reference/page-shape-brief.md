@@ -194,6 +194,13 @@ than discover them in the proposed HTML.
   more than two transitions appear.
 - `_provenance.voiceClassification[]` — Discipline 5; one entry
   per section with `{ classification, copy?, source? }`.
+- `_provenance.signatureElements[]` — § 8b signature preservation;
+  one entry per captured signature reproduced (hero video / canvas /
+  Lottie / scroll-motion / site-wide motif), with
+  `{ kind, capturedSource, mechanism, fallback }`. Required whenever
+  the captured page (`_brand-extraction.json#voice.heroMedium` or a
+  `#motifs` signature) triggers § 8b — even at `surprise: low`, since
+  signature preservation is budget-exempt.
 - `_provenance.surpriseTier_typeScaleYields[]` — friction #4
   carve-out; populated only when a tier-medium-or-higher variant
   yields a brand-level type-scale rule. Schema:

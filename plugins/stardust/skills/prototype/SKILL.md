@@ -281,6 +281,31 @@ surprise budget is **capped at `low` site-wide**. The validator
 refuses any verbatim-direction brief with `surprise: medium` or
 `high`.
 
+**`low` ≠ generic.** The budget bounds *added* divergence, not craft
+or fidelity. `low` means **brand-faithful + improvements + full
+signature preservation**, NOT "the most obvious faithful
+interpretation." The recurring failure mode (moneyhub.com migration)
+is the agent reading `low` / `verbatim` as license to strip the page
+to a plain type-hero on a flat ground — the result is faithful but
+forgettable and under-sells the redesign. Hold the craft bar at `low`:
+keep the brand's distinctive elements, apply the improvements list,
+and reproduce the signature.
+
+**Signature preservation is mandatory and budget-exempt.** When the
+captured page has a signature hero medium (background video / canvas /
+WebGL / Lottie), signature motion (scroll / parallax / kinetic), or a
+signature visual motif (per `intent-dimensions.md` § 8b), the brief
+**must** reproduce it — with a static fallback, `prefers-reduced-
+motion` alternative, and (for overlaid text) a legibility scrim. This
+does **not** consume the `low` allowance: carrying the brand's own
+signature forward is fidelity, not divergence (§ 8b § Surprise-budget
+exemption). Record the kept signatures in
+`_provenance.signatureElements[]` as `{ kind, capturedSource,
+mechanism, fallback }`. **Render-refusal:** a brief that flattens a
+captured video/canvas/animation hero to a still, gradient, or
+type-only hero — or drops a site-wide motif — is rejected at the
+shape-brief audit; reproduce the signature instead.
+
 **Type-scale yield clause.** When a tier-`medium`-or-higher variant's
 captured-trait amplification structurally conflicts with a
 brand-level type-scale rule from `DESIGN.md` (e.g. a
@@ -402,10 +427,11 @@ the user with the specific rule violated and a suggested fix.
 
 #### Craft-time disciplines (pre-write validators)
 
-Three disciplines fire on the rendered file *before* it lands on
+Four disciplines fire on the rendered file *before* it lands on
 disk. These run after craft returns its output and before the file
 is written; failure refuses the write with a substitute proposal
-(Discipline 6) or a rule citation (7, 8).
+(Discipline 6) or a rule citation (7, 8), and Discipline 9 registers
+detector ignores rather than refusing.
 
 **Discipline 6 — Reflex-reject font pre-flight.** Grep the
 declared `font-family` declarations against the reject list in
@@ -484,6 +510,38 @@ expressive position.
 
 The tier is declared in the run invocation; persisted in
 `_provenance.fidelity`. Default is `quick`.
+
+**Discipline 9 — Copy-cadence detector bypass under verbatim
+fidelity.** This extends the Mode-A reasoning of Discipline 6 from
+fonts to prose. impeccable's design detector ships prose-voice rules
+(`em-dash-overuse`, `marketing-buzzword`, and similar copy-cadence
+checks) that assume the copy is the agent's to rewrite. Under
+`ia-fidelity: verbatim` — or any faithful/Mode-A render where the body
+copy is `captured-verbatim` — that assumption is false by
+construction: the prose is the source brand's, reproduced exactly per
+the content-sourcing hierarchy, and rewriting it to satisfy a cadence
+rule *is* the fabrication the fidelity setting exists to prevent. So
+when the rendered file's copy classification is `captured-verbatim`
+(per Discipline 5's `voiceClassification`), register those copy-cadence
+rules as intentional ignores for the `<slug>-proposed.html` files
+before the design hook fires — the same way Discipline 6 bypasses the
+font reflex-reject check for pinned families. Scope the ignore to the
+proposed files only, **never** to the project's own source (blocks,
+styles, components), where the rules still apply because that copy
+*is* the agent's. Record the bypass in
+`_provenance.copyCadenceBypass` with the rules ignored and the
+classification basis. The 2026-06-26 knack.com run hit this: the hook
+flagged em-dashes and "enterprise-grade" on Knack's own headings
+("Built on Enterprise-Grade Components") under a verbatim direction,
+and the only correct response was to leave the captured copy untouched
+and record the bypass.
+
+Bound the bypass: it covers prose-cadence rules only. Structural and
+craft detector rules (`design-system-radius`, contrast failures,
+reflex layout slop) are *not* exempted by verbatim fidelity — those
+govern the agent's own CSS and structure, which faithful mode does not
+freeze. Listing a rule under this bypass requires it be a copy-voice
+rule whose subject is the captured prose.
 
 ### Phase 2.4 — Motion application (when `--cinematic`)
 

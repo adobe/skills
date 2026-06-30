@@ -225,6 +225,18 @@ assert_contains "setLimit(-1) flagged"             "$OUT" 'UnboundedJcr.java'
 assert_contains "unbounded via final constant flagged" "$OUT" 'UnboundedConst.java'
 assert_absent  "bounded query (incl. bounded const) not flagged" "$OUT" 'BoundedQuery.java'
 
+echo "[remove-deprecated-api] deprecated imports, deps, and OSGi PIDs flagged; clean + future-deadline skipped"
+OUT="$(run "$FIX/remove-deprecated-api")"
+assert_contains "pattern present"                        "$OUT" '"pattern":"remove-deprecated-api"'
+assert_contains "log4j import flagged"                   "$OUT" 'DeprecatedLog4j.java'
+assert_contains "jetty import flagged"                   "$OUT" 'DeprecatedJetty.java'
+assert_contains "pom log4j dep flagged"                  "$OUT" 'pom.xml'
+assert_contains "unmodifiable OSGi PID flagged"          "$OUT" 'org.apache.sling.commons.log.LogManager.cfg'
+assert_absent   "clean service not flagged"              "$OUT" 'CleanService.java'
+assert_absent   "future-deadline import not flagged"     "$OUT" 'FutureDeadline.java'
+assert_absent   "clean OSGi config not flagged"          "$OUT" 'com.example.MyService.cfg'
+
+
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

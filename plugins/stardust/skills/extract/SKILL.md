@@ -64,8 +64,29 @@ Additional checks for this sub-command:
 
 1. **Playwright availability.** The extraction step needs a real
    browser. Detect Playwright in this order: a Playwright MCP server,
-   then `npx playwright`. If neither is available, stop and tell the
-   user how to install Playwright.
+   then a project-importable `playwright` module. **The `npx
+   playwright` probe is NOT sufficient** — it confirms the CLI
+   (which resolves a global install) but the recipe and
+   `scripts/crawl.mjs` do `import { chromium } from 'playwright'`,
+   and ESM module resolution does **not** honour a global install or
+   `NODE_PATH`. On a vanilla `aem-boilerplate` target (no
+   `node_modules`) that import throws `ERR_MODULE_NOT_FOUND` even
+   though `npx playwright --version` succeeds. So verify the module is
+   import-resolvable from the project root; if it isn't, run
+   `npm i -D playwright` (or use the Playwright MCP server) before
+   crawling. Don't trust the CLI probe alone.
+
+   **Bundled crawler.** `skills/extract/scripts/crawl.mjs` is a
+   runnable reference implementation of this whole sub-command —
+   browser config + bot-management fallback, consent dismissal, wait
+   + scroll, the capture list, response validation, and the §
+   Capture-hygiene hardening (visibility filter, interstitial drop,
+   SPA-shell flag, modal `textContent` capture, tracking-pixel
+   discounting, cross-page duplicate detection). Prefer invoking it
+   (`node skills/extract/scripts/crawl.mjs --url <origin> [--pages …]
+   [--max N]`) over hand-rolling a Playwright script per run; extend
+   its in-page `capture()` to cover any recipe field it doesn't yet
+   emit.
 2. **Origin collision.** If `stardust/state.json` already records
    `site.originUrl` and the new `<url>` is a different origin, stop and
    ask before clobbering. Stardust does not silently mix two sites in
@@ -173,6 +194,12 @@ Capture per page (full schema in `reference/current-state-schema.md`):
 
 - Page metadata (title, meta description, OG tags, theme-color)
 - Semantic structure: heading outline, landmark roles, sections
+- **Hero headline + lede (resolved)** — `heroHeadline` / `heroLede`
+  picked by font-size × hero-region with a junk/hidden-state filter and
+  a clean meta-description fallback (per `reference/playwright-recipe.md`
+  § Capture list 5-bis). Required for JS-rendered enterprise CMSes,
+  where document-order headings surface modal / promo / count junk
+  instead of the real tagline.
 - Content: visible text per section (full innerText, **no
   truncation** per `reference/playwright-recipe.md` § Capture
   list 7), structured paragraphs (`body[]`), lists, FAQ Q/A
@@ -183,11 +210,14 @@ Capture per page (full schema in `reference/current-state-schema.md`):
 - CTA labels and href targets, link inventory (internal vs external)
 - Per-section computed style summary: dominant colors, font families
   in use, spacing rhythm, border-radius, shadows
-- Media inventory: img/srcset with original URLs and intrinsic
-  dimensions, inline SVG count, video/iframe presence,
-  `cssBackgrounds[]` (including pseudo-element `::before`/
+- Media inventory: img with `currentSrc`/`srcset` captured **with
+  query strings intact** plus a `resolves` flag (HEAD/GET with browser
+  UA + Referer), intrinsic dimensions, inline SVG count, video/iframe
+  presence, `cssBackgrounds[]` (including pseudo-element `::before`/
   `::after` walks per § Capture list 11) so `background-image`
-  heroes and motifs do not silently disappear from extract.
+  heroes and motifs do not silently disappear from extract — and so
+  enterprise-CDN images that 404 are flagged before migrate ships
+  `about:error`.
 - Font files captured via network-intercept (per § Capture list
   16): every `woff2`/`woff`/`ttf`/`otf` response saved under
   `assets/fonts/` and recorded in `_brand-extraction.json#type.files[]`
@@ -259,6 +289,15 @@ extracted pages** to avoid the home-page bias documented in
   § heroImage resolution). Without this elevation, downstream
   prototype reasons over a 16-image list and frequently picks
   the `og:image` instead of the live hero.
+- **Hero medium (signature)** — when the hero/first viewport carries a
+  *moving* asset (background `<video>` / HLS / canvas / WebGL /
+  Lottie / animated SVG / scroll-driven motion), elevate it to
+  `voice.heroMedium` (per `reference/brand-surface.md` § heroMedium
+  resolution). This is the page's **signature**; without elevation it
+  is lost in the raw media list and downstream prototype flattens it
+  to a static hero. A non-null `heroMedium` triggers signature
+  preservation (`skills/stardust/reference/intent-dimensions.md`
+  § 8b) at prototype time.
 - **Icon font** — when detected per `reference/playwright-recipe.md`
   § Capture list 17, populate `_brand-extraction.json#iconFont`
   with family, file path, and the `iconClass → codepoint`
@@ -360,15 +399,16 @@ After all Phase 2-5 writes succeed:
      _crawl-log.json
 
    Per-page evidence:
-     slug         live  waitMode               waitMs   status
-     /            yes   medium                 2380     200
-     /about       yes   medium                 2110     200
-     /pricing     yes   medium                 1940     200
-     /products    yes   medium                 2640     200
-     /contact     yes   domcontentloaded(fb)   8000     200
+     slug         live  waitMode               waitMs   status  media(img/bg)
+     /            yes   medium                 2380     200     38/6
+     /about       yes   medium                 2110     200     12/2
+     /pricing     yes   medium                 1940     200     9/0   ⚠ low-media
+     /products    yes   medium                 2640     200     21/4
+     /contact     yes   domcontentloaded(fb)   8000     200     3/0
 
    Wait summary: 4 resolved at medium (avg 2.4s), 1 fallback (timed out at 8s)
      → /contact may be under-captured; consider --refresh
+   Media summary: 1 page flagged low-media (/pricing) — see media-coverage check
 
    Open stardust/current/brand-review.html to verify the extraction
    before running $stardust direct.
@@ -397,6 +437,29 @@ After all Phase 2-5 writes succeed:
    and averaging `waitMs`. List slugs whose `waitMode` ends in
    `(fallback)` (rendered as `(fb)` in the table for width) as
    candidates for `--refresh`.
+
+   The **`media(img/bg)` column** is the analogous defense-in-depth
+   signal for imagery. It prints `<count of media.imgs> / <count of
+   media.cssBackgrounds>`. Flag a row `⚠ low-media` when the page
+   reads as brand/marketing (register `brand`, or a landing/solution/
+   product template) yet has `cssBackgrounds: []` **and** few large
+   rasters (no `media.imgs` entry with intrinsic width ≥ 600). That
+   combination is the signature of a silently-failed background /
+   lazy-media walk — `getComputedStyle(el).backgroundImage` read
+   before the element was styled, a `::before`/`::after` host missed,
+   or product imagery gated behind interaction the reveal pass did not
+   trigger. The recipe already specs the full background walk
+   (`playwright-recipe.md` § Capture list 11, hardened after the
+   2026-05-04 ups.com dropped-hero failure), but a thorough spec that
+   silently produces nothing still ships an image-less capture: the
+   2026-06-26 knack.com run returned `cssBackgrounds: []` on every
+   page and lost all product screenshots, hero art, and customer
+   logos, and nothing surfaced it because no column reported media
+   coverage. A flagged row is the cue to re-run that page with
+   `--refresh` (and, if it persists, to fall back to headed Chrome per
+   § Bot-management fallback). A maintainer scanning the summary should
+   treat a `brand`-register site with all-zero `bg` counts as suspect,
+   not as "this site uses no background images."
 
 ## Outputs
 
