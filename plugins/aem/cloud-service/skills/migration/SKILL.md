@@ -148,7 +148,7 @@ the user's go-ahead by re-calling the helper with `offset: paging.nextOffset`. S
 ### CAM via MCP (summary)
 
 Use **`fetch-cam-bpa-findings-by-pattern`** for code-transformer pattern flows (scheduler,
-assetApi, eventListener, resourceChangeListener, eventHandler, lui, luiCoral2, cdw) and
+assetApi, eventListener, resourceChangeListener, eventHandler, lui, cdw) and
 **`fetch-cam-bpa-findings-by-importance`** when the user instead asks "what are the
 critical/major/advisory/info findings?" (returns the latest BPA report's authoritative
 `_COUNT_<code>` rows at one importance level, sorted by descending count). Either tool
@@ -251,9 +251,9 @@ If the id is missing from the code-assessment catalog ([`{code-assessment}/refer
 
 ### Step 3: Targets
 
-**For BPA patterns** (`scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `lui`, `luiCoral2`, `cdw`): Run **`getBpaFindings`** (with `bpaFilePath` when provided). Internally: cache → CSV → MCP → manual **only when each step is applicable and succeeds**; if MCP fails, obey **MCP errors and fallback** (stop; no silent chain). For MCP details, [references/cam-mcp.md](references/cam-mcp.md).
+**For BPA patterns** (`scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `lui`, `cdw`): Run **`getBpaFindings`** (with `bpaFilePath` when provided). Internally: cache → CSV → MCP → manual **only when each step is applicable and succeeds**; if MCP fails, obey **MCP errors and fallback** (stop; no silent chain). For MCP details, [references/cam-mcp.md](references/cam-mcp.md).
 
-For `lui` and `luiCoral2` findings, the `identifier` in each target is the **JCR component path** (e.g. `/apps/myapp/components/content/mycomp`) — not a Java class name. Resolve it to the filesystem path using the [JCR → filesystem mapping](references/legacy-ui/dialog/context.md#jcr-path--filesystem-path) before opening files.
+For `lui` findings, the `identifier` in each target is the **JCR component path** (e.g. `/apps/myapp/components/content/mycomp`) — not a Java class name. Resolve it to the filesystem path using the [JCR → filesystem mapping](references/legacy-ui/dialog/context.md#jcr-path--filesystem-path) before opening files. **Note:** `luiCoral2` is not a standalone BPA pattern id — Coral 2 dialogs appear as the `legacy.dialog.coral2` sub-type within `lui` results. Do not call `getBpaFindings('luiCoral2', …)` independently; call `getBpaFindings('lui', …)` and filter by sub-type inside Branch D.
 
 `getBpaFindings` returns **a batch of 5 findings** (default `limit=5`) along with a `paging`
 envelope. The agent processes that batch only; it does **not** request the next batch until

@@ -63,8 +63,9 @@ In-place upgrade of `_cq_dialog/.content.xml` where nodes use `granite/ui/compon
 1. Backup: copy `_cq_dialog/` → `_cq_dialog.coral2/`.
 2. Read `_cq_dialog/.content.xml`. Apply resource type replacements. Apply property fixes. **Sanitize path property values** (`rootPath` and any property whose value starts with `/`): strip a leading `/libs/` prefix and collapse any `//` double-slash sequences to `/`.
 3. Write updated file in place.
-4. Update `filter.xml`: add `<exclude pattern=".*/_cq_dialog\.coral2(/.*)?"/>`.
-5. Report: types replaced (N), fixes applied, backup location.
+4. **Design dialog (skip if `skipReason: editable-templates-in-use`):** If `_cq_design_dialog/` exists and contains Coral 2 resource types, apply the same resource type replacements: backup `_cq_design_dialog/` → `_cq_design_dialog.coral2/`, apply replacements, write in place, and add `<exclude pattern=".*/_cq_design_dialog\.coral2(/.*)?"/>` to `filter.xml`.
+5. Update `filter.xml`: add `<exclude pattern=".*/_cq_dialog\.coral2(/.*)?"/>`.
+6. Report: types replaced (N), fixes applied, backup location, whether design dialog was upgraded.
 
 ---
 

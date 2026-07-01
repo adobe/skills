@@ -112,4 +112,6 @@ ui.apps/.../clientlibs/clientlib-<xtype-kebab>/
 
 ## After all xtypes processed
 
+**Update `filter.xml`:** Verify that the new scaffold component path (`apps/<appId>/components/granite/form/<xtype-kebab>/`) and its clientlib path (`apps/<appId>/...clientlibs/clientlib-<xtype-kebab>/`) are covered by an existing `<filter>` entry in `filter.xml`. If they fall outside any existing filter root, add a new `<filter root="..."/>` entry so the new paths are included in the content package. Do not add an `<exclude>` — these are new additions that must be deployed.
+
 Run [validation.md](validation.md). Then if these components also have LUI `legacy.dialog.classic` findings, re-run the dialog converter — all xtypes are now in the known-safe list for that session.
