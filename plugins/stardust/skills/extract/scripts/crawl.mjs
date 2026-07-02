@@ -142,9 +142,19 @@ async function dismissConsent(page) {
     const el = await page.$(s);
     if (el) { await el.click().catch(() => {}); await page.waitForTimeout(300); break; }
   }
+  // Usercentrics renders inside shadow DOM (#usercentrics-root) — regular
+  // selectors can't reach it (festool e2e finding).
+  await page.evaluate(() => {
+    const root = document.querySelector('#usercentrics-root')?.shadowRoot;
+    if (root) {
+      const btn = root.querySelector('[data-testid="uc-deny-all-button"], [data-testid="uc-accept-all-button"]');
+      if (btn) btn.click();
+    }
+  }).catch(() => {});
+  await page.waitForTimeout(300);
   // assert: prune any consent container still present (don't leave it for capture).
   await page.evaluate(() => {
-    document.querySelectorAll('#onetrust-banner-sdk, #truste-consent-track, [class*="cookie" i][class*="banner" i], [id*="consent" i]')
+    document.querySelectorAll('#onetrust-banner-sdk, #truste-consent-track, #usercentrics-root, [class*="cookie" i][class*="banner" i], [id*="consent" i]')
       .forEach((n) => n.remove());
   });
 }
@@ -293,7 +303,23 @@ function capture() {
     body,
     ctas,
     links,
-    media: { imgs: realImgs, allImgCount: imgs.length, cssBackgrounds: [...new Set(cssBgs)], modals },
+    media: {
+      imgs: realImgs,
+      allImgCount: imgs.length,
+      cssBackgrounds: [...new Set(cssBgs)],
+      modals,
+      videos: [...document.querySelectorAll('video')].filter(vis).map((v) => ({
+        src: v.currentSrc || v.src || v.querySelector('source')?.src || null,
+        poster: v.poster || null,
+        autoplay: v.autoplay,
+        loop: v.loop,
+        muted: v.muted,
+      })),
+      iframes: [...document.querySelectorAll('iframe')].filter(vis).map((f) => ({
+        src: f.src || null,
+        title: f.title || null,
+      })),
+    },
     customProps,
     _signals: {
       filteredInterstitials: filtered,
@@ -352,6 +378,15 @@ async function capturePage(context, url, slug, args) {
   }
   rec.screenshot = screenshotMode === 'failed' ? null : `assets/screenshots/${slug}.png`;
   rec._signals.screenshotMode = screenshotMode;
+  // live-render evidence per SKILL.md § Phase 2 / current-state-schema.md —
+  // validateProvenance() downstream refuses pages without these five fields.
+  rec._provenance = {
+    renderedBy: 'playwright',
+    fetchedAt: new Date().toISOString(),
+    waitMode: args.wait || 'medium',
+    waitMs: WAIT_MS[args.wait] || WAIT_MS.medium,
+    httpStatus: status,
+  };
   await page.close();
   return rec;
 }
@@ -380,11 +415,25 @@ async function main() {
     } else throw err;
   }
 
+  // adopt the post-redirect origin (apex→www etc.): the same-origin filter and
+  // sitemap fetch must use where the site actually lives, or discovery silently
+  // collapses to 1 page (sliccy e2e finding).
+  let originRedirect = null;
+  try {
+    const landed = new URL(probe.url());
+    if (landed.origin !== args.origin) {
+      originRedirect = { from: args.origin, to: landed.origin };
+      console.error(`[crawl] origin redirect ${args.origin} -> ${landed.origin} — adopting post-redirect origin`);
+      args.origin = landed.origin;
+      args.url = landed.href;
+    }
+  } catch { /* keep declared origin */ }
+
   const urls = await discover(args, probe);
   await probe.close();
   console.error(`[crawl] technique=${technique} pages=${urls.length}`);
 
-  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency }, consent: { method: args.consent ? 'auto' : 'skipped' }, crawl: { failures: [] } };
+  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...(originRedirect ? { originRedirect } : {}) }, consent: { method: args.consent ? 'auto' : 'skipped' }, crawl: { failures: [] } };
   let ok = 0;
   await context.close();
 
@@ -407,7 +456,8 @@ async function main() {
         const hash = crypto.createHash('sha1').update(rec._contentHash).digest('hex');
         delete rec._contentHash;
         const file = path.join(outPages, `${slug}.json`);
-        await writeFile(file, JSON.stringify({ slug, url, renderedBy: 'playwright', fetchedAt: new Date().toISOString(), ...rec }, null, 2));
+        const { _provenance, ...rest } = rec;
+        await writeFile(file, JSON.stringify({ _provenance, slug, url, renderedBy: _provenance.renderedBy, fetchedAt: _provenance.fetchedAt, ...rest }, null, 2));
         results[idx] = { slug, file, hash };
         ok += 1;
         const s = rec._signals;

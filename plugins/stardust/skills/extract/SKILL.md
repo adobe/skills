@@ -83,9 +83,23 @@ Additional checks for this sub-command:
    `NODE_PATH`. On a vanilla `aem-boilerplate` target (no
    `node_modules`) that import throws `ERR_MODULE_NOT_FOUND` even
    though `npx playwright --version` succeeds. So verify the module is
-   import-resolvable from the project root; if it isn't, run
-   `npm i -D playwright` (or use the Playwright MCP server) before
-   crawling. Don't trust the CLI probe alone.
+   import-resolvable from the project root (probe:
+   `node -e "import('playwright').then(()=>process.exit(0))"`); if it
+   isn't, run `npm i -D playwright --no-save --legacy-peer-deps` (or
+   use the Playwright MCP server) before crawling. The
+   `--legacy-peer-deps` flag is required on `aem-boilerplate` targets
+   — its pinned `eslint@8` conflicts with `@babel/eslint-parser@8`'s
+   peer range and a plain `npm i` exits `ERESOLVE` before playwright
+   is even considered (six-site e2e finding). Don't trust the CLI
+   probe alone.
+
+   **Script location matters.** ESM resolves `import 'playwright'`
+   from the *script's* directory, and the plugin tree ships no
+   `node_modules` — so running `crawl.mjs` from the plugin path
+   throws `ERR_MODULE_NOT_FOUND` even when the project has playwright
+   installed. Copy the script byte-identical into the project
+   (`stardust/scripts/crawl.mjs`) and run the copy; it resolves
+   against the project's `node_modules`.
 
    **Bundled crawler.** `skills/extract/scripts/crawl.mjs` is a
    runnable reference implementation of this whole sub-command —
