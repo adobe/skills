@@ -239,7 +239,7 @@ motion gate cascade).
 - Execute a redesign plan without showing it first (hands-off mode records
   the plan in `stardust/direction.md` instead of waiting — § Hands-off mode).
 - Force a re-run on stale pages without explicit user opt-in.
-- Crawl an existing site beyond the user's confirmed page cap.
+- Crawl an existing site beyond the user's confirmed page cap (an explicit `--pages` list is itself the confirmed scope — listed pages are never dropped; the crawler warns rather than truncates when the list exceeds `--max`).
 - Emit platform-specific output from `migrate`. `migrate` emits
   platform-agnostic static HTML; the EDS conversion and delivery are owned
   by the `stardust:deploy` (one page) and `stardust:rollout` (whole site)
@@ -279,4 +279,4 @@ Owned by `uplift/`. Cited by master routing when delegating
 `/stardust:uplift <URL>`:
 
 - `../uplift/SKILL.md` — one-shot presales orchestrator: extract → tension/trait identification → 3-variant direction → prototype × 3 → open + summarize.
-- `../uplift/reference/what-if-candidates.md` — closed catalog of 8 captured-trait amplification candidates that B and C select from in Phase 2b.
+- `../uplift/reference/what-if-candidates.md` — catalog of 8 worked captured-trait amplification candidates that B and C select from in Phase 2b — plus its § Extension rule admitting evidence-shaped `derived` candidates.

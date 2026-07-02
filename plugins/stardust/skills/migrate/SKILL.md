@@ -57,6 +57,13 @@ inline, or run an impeccable command) and re-invoke migrate.
 
 ## Setup
 
+0. **Playwright re-probe (mandatory first step).** `--no-save` playwright
+   installs from earlier phases are pruned by any later real `npm i`
+   (extract SKILL.md § Setup → `--no-save` installs are ephemeral). Before
+   any rendering step, probe
+   `node -e "import('playwright').then(()=>process.exit(0))"` from the
+   project root and re-install (`npm i -D playwright --no-save
+   --legacy-peer-deps`) on failure.
 1. Run the master skill's setup
    (`skills/stardust/SKILL.md` § Setup).
 2. Verify `stardust/state.json` exists with at least one
@@ -212,6 +219,14 @@ For each page in scope, follow
   repaired (missing `?`-delimiter, wrong host) or omitted, never
   shipped as `about:error`. `rollout` re-runs the authoritative
   network resolve at delivery (`media-reconcile.mjs`).
+- **Cinematic sibling (when `<slug>-cinematic.html` exists).**
+  Migrate consumes the STATIC prototype only — the cinematic layer
+  is never merged. Copy the motion assets (`lenis.min.js`,
+  `lenis.min.css`) from `stardust/prototypes/` to
+  `stardust/migrated/assets/motion/` (idempotent) for downstream
+  consumers (deploy/rollout decide whether to wire them), and
+  record `cinematic-variant-not-consumed` in the page's
+  `_meta.json#migrationDecisions[]`.
 - **Write** the migrated `index.html` and the `_meta.json`
   sidecar in the same directory. Provenance block as first
   child of `<head>`. Record `assetsBundled` (count of unique

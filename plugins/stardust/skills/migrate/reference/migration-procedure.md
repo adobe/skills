@@ -124,7 +124,13 @@ rewriting step 3, then looked up in `pageMap[]` like any other
 internal reference. Skipping this step lets same-origin absolute
 links pass through verbatim — which would defeat the
 portability claim under `file://` and at subpaths. The Phase 3
-absolute-internal-ref grep is the runtime backstop.
+absolute-internal-ref grep is the runtime backstop. **One
+exception:** on a deliberately scoped (partial-inventory) run,
+links to known-inventory-but-unmigrated pages keep the absolute
+origin URL, flagged `data-broken-link` — per
+`content-preservation.md` § Partial-inventory carve-out; the
+Phase 3 grep and `file-protocol-audit.mjs` accept those flagged
+URLs as known-broken on scoped runs.
 
 ### Reference shape (depth-aware relative paths)
 

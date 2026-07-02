@@ -77,6 +77,13 @@ acknowledgement.
 
 ## Setup
 
+0. **Playwright re-probe (mandatory first step).** `--no-save` playwright
+   installs from earlier phases are pruned by any later real `npm i`
+   (extract SKILL.md § Setup → `--no-save` installs are ephemeral). Before
+   any rendering step, probe
+   `node -e "import('playwright').then(()=>process.exit(0))"` from the
+   project root and re-install (`npm i -D playwright --no-save
+   --legacy-peer-deps`) on failure.
 1. Run the master skill's setup
    (`skills/stardust/SKILL.md` § Setup).
 2. Verify `stardust/state.json` exists and contains at least one
@@ -692,11 +699,10 @@ The static prototype remains the load-bearing artifact for:
   in their reduced-motion state).
 - Migration consumption (`migrate` reads the static prototype as
   its primary source. It does **not** merge the cinematic layer —
-  no cinematic handling is specced in `skills/migrate/`; when a
-  `<slug>-cinematic.html` sibling exists, migrate carries the
-  motion assets (`lenis.min.*`) through to `migrated/assets/` for
-  downstream consumers and records `cinematic-variant-not-consumed`
-  in the sidecar — stardust-style e2e finding).
+  per `skills/migrate/SKILL.md` § Phase 2 → Cinematic sibling, it
+  carries the motion assets (`lenis.min.*`) through to
+  `migrated/assets/motion/` and records
+  `cinematic-variant-not-consumed` in the sidecar).
 
 The static prototype must pass every gate independently — the
 cinematic layer cannot rescue a static prototype that fails

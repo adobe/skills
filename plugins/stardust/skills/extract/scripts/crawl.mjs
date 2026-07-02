@@ -56,6 +56,11 @@ import { chromium } from 'playwright';
 
 const WAIT_MS = { fast: 1200, medium: 2500, slow: 5000 };
 
+// One context config for probe, headed fallback, and workers — a tweak (locale,
+// UA, colorScheme) must land everywhere or discovery renders under different
+// conditions than capture. Viewport here also saves a per-page CDP round-trip.
+const CRAWL_CONTEXT = { reducedMotion: 'reduce', viewport: { width: 1440, height: 900 } };
+
 function parseArgs(argv) {
   const a = { out: 'stardust/current', max: 25, wait: 'medium', consent: true, concurrency: 4 };
   for (let i = 2; i < argv.length; i += 1) {
@@ -79,6 +84,28 @@ const slugify = (u) => {
   const s = pathname.replace(/^\/|\/$/g, '').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
   return s || 'index';
 };
+
+// Slugs key the output FILES (pages/<slug>.json, screenshots/<slug>.png), but
+// distinct pages can collide on one slug: dedupeKey keeps url.search (so
+// /p?a=1 and /p?a=2 are two pages) while slugify reads pathname only, and
+// /about-us vs /about/us flatten identically. Without disambiguation two
+// concurrent workers write the same files (silent last-writer-wins) and the
+// duplicate post-pass can mark a page duplicateOf itself. Assign slugs once,
+// up front: first claimant keeps the clean slug, later distinct pages get a
+// deterministic -<hash4> suffix.
+function assignSlugs(urls) {
+  const bySlug = new Map(); // slug -> dedupeKey of first claimant
+  return urls.map((u) => {
+    const base = slugify(u);
+    const key = dedupeKey(u);
+    if (!bySlug.has(base)) { bySlug.set(base, key); return base; }
+    if (bySlug.get(base) === key) return base; // same page (shouldn't recur post-dedupe)
+    const suffix = crypto.createHash('sha1').update(key).digest('hex').slice(0, 4);
+    const alt = `${base}-${suffix}`;
+    if (!bySlug.has(alt)) bySlug.set(alt, key);
+    return alt;
+  });
+}
 
 // ---- bot-management fallback: headless first, headed real Chrome on H2 reject ----
 async function launchWithFallback() {
@@ -119,7 +146,8 @@ async function discover(args, page) {
     const seen = new Set();
     const listed = args.pages.map((p) => normalizeUrl(p, args.url))
       .filter((u) => { const k = dedupeKey(u); if (seen.has(k)) return false; seen.add(k); return true; });
-    const urls = listed.includes(entry) ? listed : [entry, ...listed];
+    const entryKey = dedupeKey(entry);
+    const urls = listed.some((u) => dedupeKey(u) === entryKey) ? listed : [entry, ...listed];
     if (urls.length > args.max) {
       console.error(`[crawl] WARN --pages lists ${listed.length} page(s); with the entry URL the total is ${urls.length}, exceeding --max ${args.max} — crawling all of them (explicitly listed pages are never dropped)`);
     }
@@ -141,8 +169,27 @@ async function discover(args, page) {
       const xml = await page.evaluate(async (u) => {
         const r = await fetch(u); return r.ok ? r.text() : '';
       }, new URL(sm, args.origin).href);
-      const locs = [...xml.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)].map((m) => m[1]);
-      if (locs.length >= 1) return withEntry(locs.filter((u) => u.startsWith(args.origin)));
+      const locs = [...xml.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)].map((m) => m[1])
+        .filter((u) => u.startsWith(args.origin));
+      // a sitemap INDEX's <loc>s are child-sitemap .xml URLs, not pages —
+      // recurse one level (capped) instead of queueing them as pages, where
+      // every capture would throw ContentTypeError and discovery would
+      // silently collapse to the entry page.
+      const isXml = (u) => /\.xml(?:[?#]|$)/i.test(u);
+      let pageLocs = locs.filter((u) => !isXml(u));
+      const childMaps = locs.filter(isXml).slice(0, 8);
+      if (!pageLocs.length && childMaps.length) {
+        for (const child of childMaps) {
+          try {
+            const cx = await page.evaluate(async (u) => {
+              const r = await fetch(u); return r.ok ? r.text() : '';
+            }, child);
+            pageLocs = pageLocs.concat([...cx.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)]
+              .map((m) => m[1]).filter((u) => u.startsWith(args.origin) && !isXml(u)));
+          } catch { /* skip unreadable child sitemap */ }
+        }
+      }
+      if (pageLocs.length >= 1) return withEntry(pageLocs);
     } catch { /* fall through */ }
   }
   // BFS depth-1 from the entry page's same-origin nav links.
@@ -359,21 +406,25 @@ function capture() {
 
 async function capturePage(context, url, slug, args) {
   const page = await context.newPage();
-  await page.setViewportSize({ width: 1440, height: 900 });
+  try {
   let resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
   // response validation
   if (!resp) throw Object.assign(new Error('no response'), { errorClass: 'TimeoutError' });
   let status = resp.status();
   // 404 on a slash variant: retry ONCE with the trailing slash flipped before
   // recording a failure (stardust-style e2e finding — slash-required hosts).
+  let resolvedUrl = url;
   if (status === 404) {
     const u = new URL(url);
     if (u.pathname.length > 1) {
       u.pathname = u.pathname.endsWith('/') ? u.pathname.replace(/\/+$/, '') : `${u.pathname}/`;
-      const retry = await page.goto(u.href, { waitUntil: 'domcontentloaded', timeout: 45000 });
+      // guarded + short timeout: a hanging flipped-variant probe must not
+      // replace the crisp HTTPError 404 with a raw TimeoutError.
+      const retry = await page.goto(u.href, { waitUntil: 'domcontentloaded', timeout: 15000 })
+        .catch(() => null);
       if (retry && retry.status() < 400) {
         console.error(`[crawl] slash-retry OK ${url} -> ${u.href}`);
-        resp = retry; status = retry.status();
+        resp = retry; status = retry.status(); resolvedUrl = u.href;
       }
     }
   }
@@ -389,16 +440,18 @@ async function capturePage(context, url, slug, args) {
     await page.waitForTimeout(400);
   }
   await page.evaluate(() => window.scrollTo(0, 0));
-  // settle after return-to-top: entry animations (hero reveals) must reach their
-  // final state before the visibility filter reads computed opacity, or the
-  // animated h1 is silently dropped (stardust-style e2e finding). reducedMotion
-  // emulation above neutralizes most of it; the settle covers JS-driven reveals.
+  // settle after return-to-top: entry animations (hero reveals) must reach
+  // their final state before the visibility filter reads computed opacity, or
+  // the animated h1 is silently dropped. reducedMotion emulation neutralizes
+  // most of it; the settle covers JS-driven reveals. Deliberately a FLAT wait:
+  // gating on document.getAnimations() was tried and re-dropped the h1 — a
+  // JS-delayed reveal has no running animation at check time, so the gate
+  // resolves before the reveal even starts. The 800ms floor is load-bearing.
   await page.waitForTimeout(800);
 
   const rec = await page.evaluate(capture);
   // soft-404: empty page (no text, no headings, no media, no forms)
   if (!rec.headings.length && rec._signals.mainTextLen === 0 && rec._signals.realImageCount === 0) {
-    await page.close();
     throw Object.assign(new Error('empty page — possibly soft-404'), { errorClass: 'EmptyPageError' });
   }
   // full-page screenshot for the Phase 2.5 vision gate. Extremely tall pages
@@ -422,6 +475,7 @@ async function capturePage(context, url, slug, args) {
   rec._signals.screenshotMode = screenshotMode;
   // live-render evidence per SKILL.md § Phase 2 / current-state-schema.md —
   // validateProvenance() downstream refuses pages without these five fields.
+  if (resolvedUrl !== url) rec._resolvedUrl = resolvedUrl;
   rec._provenance = {
     renderedBy: 'playwright',
     fetchedAt: new Date().toISOString(),
@@ -429,8 +483,13 @@ async function capturePage(context, url, slug, args) {
     waitMs: WAIT_MS[args.wait] || WAIT_MS.medium,
     httpStatus: status,
   };
-  await page.close();
   return rec;
+  } finally {
+    // every exit path — success, validation throw, goto error — releases the
+    // page, or failure-heavy crawls accumulate open tabs in the long-lived
+    // worker context.
+    await page.close().catch(() => {});
+  }
 }
 
 async function main() {
@@ -439,7 +498,7 @@ async function main() {
   await mkdir(outPages, { recursive: true });
 
   let { browser, technique } = await launchWithFallback();
-  let context = await browser.newContext({ reducedMotion: 'reduce' });
+  let context = await browser.newContext(CRAWL_CONTEXT);
   let probe = await context.newPage();
 
   // bot-management probe on the entry URL; switch to headed real Chrome on reject.
@@ -451,7 +510,7 @@ async function main() {
       console.error('[crawl] fingerprint block — switching to headed real Chrome (channel:chrome)');
       browser = await chromium.launch({ headless: false, channel: 'chrome' });
       technique = 'headed-chrome';
-      context = await browser.newContext({ reducedMotion: 'reduce' });
+      context = await browser.newContext(CRAWL_CONTEXT);
       probe = await context.newPage();
       await probe.goto(args.url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     } else throw err;
@@ -485,21 +544,33 @@ async function main() {
   // During capture we only RECORD content hashes (indexed by queue position);
   // duplicate attribution happens in a deterministic post-pass below.
   const results = new Array(urls.length).fill(null); // { slug, file, hash } per queue index
+  const slugs = assignSlugs(urls);
   let nextIdx = 0;
   async function worker() {
-    const ctx = await browser.newContext({ reducedMotion: 'reduce' });
+    const ctx = await browser.newContext(CRAWL_CONTEXT);
     while (nextIdx < urls.length) {
       const idx = nextIdx;
       nextIdx += 1;
       const url = urls[idx];
-      const slug = slugify(url);
+      const slug = slugs[idx];
       try {
         const rec = await capturePage(ctx, url, slug, args);
         const hash = crypto.createHash('sha1').update(rec._contentHash).digest('hex');
         delete rec._contentHash;
+        // slash-retry rescue: record the URL that actually served the page and
+        // an audit-trail entry — downstream consumers of `url` must not re-hit
+        // the 404 variant the crawler already learned to avoid.
+        const recordUrl = rec._resolvedUrl || url;
+        if (rec._resolvedUrl) {
+          log.crawl.slashRetries = log.crawl.slashRetries || [];
+          log.crawl.slashRetries.push({ requested: url, resolved: rec._resolvedUrl, slug });
+          delete rec._resolvedUrl;
+        }
         const file = path.join(outPages, `${slug}.json`);
         const { _provenance, ...rest } = rec;
-        await writeFile(file, JSON.stringify({ _provenance, slug, url, renderedBy: _provenance.renderedBy, fetchedAt: _provenance.fetchedAt, ...rest }, null, 2));
+        // top-level renderedBy/fetchedAt are legacy-reader aliases of the same
+        // _provenance fields — _provenance is the authoritative contract.
+        await writeFile(file, JSON.stringify({ _provenance, slug, url: recordUrl, renderedBy: _provenance.renderedBy, fetchedAt: _provenance.fetchedAt, ...rest }, null, 2));
         results[idx] = { slug, file, hash };
         ok += 1;
         const s = rec._signals;

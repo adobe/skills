@@ -173,7 +173,8 @@ one CTA legitimately has no paragraphs / lists / accordion / quotes).
 sites the install commands are the single most load-bearing content
 and the prose capture skips them (stardust-style e2e finding); every
 downstream phase that needs a command literal reads it from here, not
-from `body[]`. Emit `[]` when the page has no code blocks.
+from `body[]`. Emit `[]` when the page has no code blocks. Capture
+rule: `playwright-recipe.md` § Capture list 7-ter.
 Capture rules in `playwright-recipe.md` § Capture list (7-bis). These
 fields are what migrate consumes to render real body copy under
 each section heading; without them every body region falls back to

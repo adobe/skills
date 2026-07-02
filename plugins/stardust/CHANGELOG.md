@@ -4,6 +4,39 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.14.3 — seventh-site validation harvest (stardust.style) + review fixes
+
+Learnings L1–L9 from the final validation run (full pipeline on
+stardust.style, hands-off) plus the PR-review findings, folded:
+
+- **crawl.mjs:** trailing-slash forms kept verbatim with slash-insensitive
+  dedupe + a guarded 404 slash-retry that records the resolved URL
+  (`_crawl-log.json#crawl.slashRetries[]`); `reducedMotion: 'reduce'` on every
+  context + an 800ms post-scroll settle (animated h1s were silently dropped);
+  visible `<pre>` contents captured as `codeBlocks[]`; collision-safe slug
+  assignment (query-variant / flattened-path pages no longer clobber one
+  file); sitemap-index recursion (child-sitemap `.xml` locs no longer queued
+  as pages); `page.close()` on every exit path via try/finally.
+- **Specs:** playwright re-probe rule at the start of every rendering skill
+  (`--no-save` installs are pruned by any later `npm i`); token-hygiene gate
+  at the FIRST phase commit (master SKILL.md); partial-inventory broken-link
+  carve-out reconciled across content-preservation / migration-procedure /
+  template-and-module-rendering; cinematic sibling handling specced in
+  migrate (assets carried, `cinematic-variant-not-consumed` recorded);
+  key-facts-in-server-rendered-content ENCODE rule (#86) with the declaration
+  site defined (`DESIGN.json.extensions.metadata.keyFacts[]`); stale
+  "closed catalog / 5 weaknesses" references reconciled in the master skill,
+  divergence-toolkit, and artifact-map; diff JOIN/SPLIT limitation documented
+  (#87, code fix pending).
+- **Versions realigned** across plugin.json / tile.json / marketplace.json /
+  README / this file (the #230 drift class).
+
+## 0.14.1 — six-site E2E hardening (round 1, folded into extract)
+
+Released as part of the six-site validation cycle; the crawl.mjs items listed
+under 0.14.2's last bullet were folded here first. Documented retroactively —
+see git history (`4a61c83`) for the full diff.
+
 ## 0.14.2 — six-site E2E hardening (round 2)
 
 Fixes folded from validating the pipeline end-to-end on six live sites

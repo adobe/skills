@@ -64,7 +64,7 @@ stardust/
 ├── dynamic-blocks-map.md             # dynamic-vs-static listing blocks + per-type metadata contract (prepare-migration Phase 4.5 / rollout Phase B2)
 ├── redirects.tsv                     # original→normalized path pairs from the path-safety gate (rollout Phase C)
 ├── runtime-contract.json             # EDS runtime probe result (deploy § Runtime-detection probe)
-├── uplift-improvements.md            # 5 specific weaknesses — load-bearing for uplift's variant A (written by `stardust:uplift` Phase 2a; absent otherwise)
+├── uplift-improvements.md            # >=3 specific weaknesses (cut, not padded) — load-bearing for uplift's variant A (written by `stardust:uplift` Phase 2a; absent otherwise)
 ├── uplift-questions.md               # 6–8 "what if…" candidates with disqualifications (written by `stardust:uplift` Phase 2b; absent otherwise)
 ├── canon/                            # design canon (canon-extraction.md) — written by prototype --prep on first approval, extended on subsequent approvals
 │   ├── header.html                   # canonical header chrome
@@ -228,12 +228,14 @@ it unless `--all` is passed.
 ### `stardust/uplift-improvements.md` and `stardust/uplift-questions.md`
 Owner: `$stardust uplift`. Written in Phase 2 of uplift before any
 variant renders. **`uplift-improvements.md`** is the load-bearing
-list of 5 specific captured-site weaknesses that variant A applies
+list of >= 3 specific captured-site weaknesses (as many as the
+evidence supports — cut, not padded) that variant A applies
 exactly. **`uplift-questions.md`** is the 6–8 "what if…" candidate
 catalog (per `skills/uplift/reference/what-if-candidates.md`) with
 disqualifications recorded — the audit trail proving that B and C
-picked their directional bets from the closed catalog rather than
-improvising.
+picked their directional bets from the candidate catalog — or an
+evidence-shaped `derived` candidate per its § Extension rule —
+rather than improvising.
 
 Both files are absent when uplift has not been run; the standard
 `extract → direct → prototype` chain produces no equivalent

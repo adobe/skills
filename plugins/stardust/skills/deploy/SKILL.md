@@ -76,6 +76,16 @@ samples            # reference prototypes, not project code
 ```
 Your generated blocks + `styles/styles.css` still lint clean under airbnb (expand any single-line multi-declaration CSS rules the prototype used). Alternatively, adopt the author-kit `eslint.config.js` (helix) wholesale.
 
+## Playwright re-probe (run before anything that renders)
+
+`--no-save` playwright installs from earlier phases are pruned by any later
+real `npm i` — including this skill's own bootstrap adding a devDependency
+(extract SKILL.md § Setup → `--no-save` installs are ephemeral). Before the
+Local-QA harness, the computed-layout gate, or any probe below, verify
+`node -e "import('playwright').then(()=>process.exit(0))"` from the project
+root and re-install (`npm i -D playwright --no-save --legacy-peer-deps`) on
+failure.
+
 ## Runtime-detection probe (run before Step 1 — write `stardust/runtime-contract.json`)
 
 Two EDS runtimes look identical from the content side but need different generated code, and a wrong assumption here is **silent and sitewide**. Before converting anything, inspect the repo — `scripts/ak.js` vs `scripts/aem.js`, how `loadBlock` wraps blocks, what the button decorator emits — and record the answers:
@@ -112,7 +122,7 @@ The content payload is a **body fragment** (see Step 9). The deploy needs the **
 
 **For more than a few pages, use the bundled driver instead of a hand-rolled loop (#4).** `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> --content content [--concurrency 4] [--no-publish]` runs `PUT → preview → live` across a content tree with bounded concurrency, a **persistent ledger** (`content/.deploy-ledger.json`) so a re-run **skips pages already live** and only re-drives FAILs, capped-backoff retries on `000/429/5xx`, an **append-only** log (survives a restart), and a delivered-`.plain.html` check before flipping a page to `live` (admin 200 ≠ delivered). It's idempotent — safe to Ctrl-C and re-run, which is the documented recovery for a transient-blip half-deploy. A serial hand-rolled bash loop that truncates its own log on restart is the anti-pattern this replaces.
 
-**Per-page atomic delivery contract.** A page is `deployed` only when the full chain passes, in order: sanitise-wrapped file (`scripts/sanitise.js`) → `PUT` (multipart field `data`, `type=text/html`) → `POST /preview/` → `POST /live/` → **GET the rendered `.plain.html` and assert**: HTTP 200, the `<body>` wrapper intact, exactly one `<h1>`, zero `about:error`, no `/img/` srcs — plus, when the page carries declared key facts (#86), grep the RAW full-page HTML (not the rendered DOM) for each fact string. Only then flip the page's ledger entry to `deployed` — never on the POST codes (admin 200 ≠ delivered).
+**Per-page atomic delivery contract.** A page is `deployed` only when the full chain passes, in order: sanitise-wrapped file (`scripts/sanitise.js`) → `PUT` (multipart field `data`, `type=text/html`) → `POST /preview/` → `POST /live/` → **GET the rendered `.plain.html` and assert**: HTTP 200, the `<body>` wrapper intact, exactly one `<h1>`, zero `about:error`, no `/img/` srcs — plus, when key facts are declared for the site (#86 — `DESIGN.json.extensions.metadata.keyFacts[]`, written by `direct`; skip the gate and note the skip when the field is absent), grep the RAW full-page HTML (not the rendered DOM) for each fact string on the pages that carry them. Only then flip the page's ledger entry to `deployed` — never on the POST codes (admin 200 ≠ delivered).
 
 **A `.plain.html` pass is NOT a layout pass — add one computed-style assertion (#the silent-failure guard).** The text-level asserts above are all satisfied while the page renders as a single stacked column, because the AuthorKit `.<name>.block` scoping bug (see `blockWrapperClass` in the runtime contract) makes every grid fall back to `display: block` *with the typography still correct*. This shipped green on a real e2e site. So the contract's final gate is a **headless computed-style check on the delivered live URL** (not `.plain.html`): load the page in a headless browser and assert, for the first page of each template, that every block whose CSS declares a grid/flex layout **computes `display: grid`/`flex` (not `block`)**, `main .section` count > 0, blocks are decorated (`data-block-name` present), zero `pageerror`, zero broken images. A block that should grid but computes `block` fails the page — do not flip it to `deployed`. This is the assertion `blockWrapperClass` in the runtime contract calls for; the atomic contract is where it must actually run, once per template. Two field-decodes worth pinning: a **burst of `PUT` 400s is a malformed path, not rate limiting** — lowercase every segment, never a double slash (`content//…` 400s the PUT while preview/live still 200), no trailing `-`/`_` on a segment; and **write long loops to a bash script file with absolute binary paths** (`/usr/bin/curl`, the full `node` path) — zsh drops PATH inside `while`/`for` in some contexts, and the resulting `command not found` burst mimics a transport failure.
 

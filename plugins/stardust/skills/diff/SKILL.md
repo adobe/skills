@@ -35,6 +35,11 @@ prototype's DOM and the built DOM compare symmetrically, then diffs them.
 ## Run it
 
 ```bash
+# Prereq 0: playwright importable from the project root — probe
+#   node -e "import('playwright').then(()=>process.exit(0))"
+# and re-install (npm i -D playwright --no-save --legacy-peer-deps) on failure:
+# a --no-save install from extract is PRUNED by any later real npm i
+# (extract SKILL.md § Setup). Run the copied scripts from the project, not the plugin.
 # Prereq: a RENDERABLE source. Static → serve from its own dir (python3 -m http.server).
 # The build URL must be the DECORATED page (live/preview or a local harness), not raw markup.
 PROTO="http://localhost:8791/<prototype>.html"

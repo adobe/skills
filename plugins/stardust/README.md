@@ -79,7 +79,7 @@ otherwise with a clear install hint.
 
 ## Status
 
-`v0.14.0` — Fable 5 refactor: reference-grounded direction, the `audit`
+`v0.14.3` — Fable 5 refactor: reference-grounded direction, the `audit`
 skill, cross-site same-brand extraction, hands-off production mode, vision
 gates, parallelism contracts, and delivery hardening. See
 [CHANGELOG.md](CHANGELOG.md) for the full breakdown; prior versions live in

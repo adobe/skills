@@ -187,7 +187,7 @@ async function main() {
 
     const failed = edits.filter((e) => !e.ok);
     if (failed.length) {
-      log('\n[bootstrap] FAILED: a mandatory edit could not be verified (the ported runtime is incompatible — likely source drift). Boilerplate NOT removed; the repo still runs its original runtime. Pin a known-good --ref and re-run.');
+      log('\n[bootstrap] FAILED: a mandatory edit could not be verified (the ported runtime is incompatible — likely source drift). WARNING: the PORT-IN files (scripts/*.js, head.html, tools/, deps/, fragment blocks) were already copied over your originals — the repo is now a HYBRID runtime, not the original. Restore with `git checkout -- .` (the script keeps no backups), pin a known-good --ref, and re-run. The boilerplate REMOVE step did not run.');
       process.exit(1);
     }
 

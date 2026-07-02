@@ -435,8 +435,10 @@ slot must name the position explicitly when introducing it.
 
 ### Non-template move bank
 
-The closed list of non-template moves `prototype` Discipline 3
-draws from when a per-page `surprise` tier is `medium` or `high`.
+The bank of non-template moves `prototype` Discipline 3
+draws from when a per-page `surprise` tier is `medium` or `high` —
+worked exemplars, not a closed set: extensions are admissible per
+`anti-template-bank.md` § Extension rule.
 Each move is a substitution for a captured cliché pattern; pages
 declare which move they're applying in
 `<slug>-shape.md#surpriseMoves[]` with a captured-source citation.
