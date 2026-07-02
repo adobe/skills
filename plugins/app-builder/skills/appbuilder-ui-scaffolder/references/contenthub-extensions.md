@@ -263,7 +263,7 @@ methods: {
 
 Card and selection-bar actions have no panel of their own — they open a modal dialog whose content is another route in the same guest app. The `modal` Host API is available to all three Content Hub surfaces.
 
-**Critical signature:** `openDialog` takes a **single config object** — NOT `({ id }, {...})`. There is **no `{ id }` argument and no `payload` field**. Passing the two-argument form makes the host receive a malformed request and the call retries until it times out (`... timed out after 10000ms`, then `[object Object] doesn't exist`). Pass data to the modal through the `contentUrl` **query string** instead.
+**Signature:** from the guest's perspective, `openDialog` is called with a **single config object** — `openDialog({ title, contentUrl, type?, size?, payload? })`. You never pass `{ id }` yourself; the UIX host auto-injects the extension id as the first argument on its side of the proxy. Data can reach the modal page two ways: via the `payload` field (retrieved with `modal.getPayload()`) or via a query string on `contentUrl` — pick whichever is more convenient.
 
 ```js
 // From an onActionClick handler (register page):
@@ -272,28 +272,32 @@ await guestConnection.host.modal.openDialog({
   contentUrl: `/#card-action-modal?resourceId=${encodeURIComponent(resourceId)}&resourceType=${encodeURIComponent(resourceType)}`,  // hash route + query data
   type: 'modal',                      // optional: 'modal' | 'fullscreen'
   size: 'M',                          // optional: 'S' | 'M' | 'L'
+  // payload: { resourceId, resourceType },  // alternative to the query string — read with modal.getPayload()
 });
 ```
 
-Inside the modal page (a route rendered in its own iframe), read the data from the URL query and reconnect with `attach()` only so you can close:
+Inside the modal page (a route rendered in its own iframe), read the data and reconnect with `attach()`:
 
 ```js
 import { attach } from '@adobe/uix-guest';
 import { extensionId } from './Constants';
 
-// Data comes from the contentUrl query — there is NO getPayload().
+// Query-string approach (simplest — no extra round trip):
 const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
 const resourceId = params.get('resourceId');
 const resourceType = params.get('resourceType'); // 'asset' | 'collection'
 
 const connection = await attach({ id: extensionId });
+// Payload approach (alternative to the query string):
+// const { resourceId, resourceType } = await connection.host.modal.getPayload();
 // ... render UI, run the action ...
 await connection.host.modal.closeDialog();                 // dismiss the dialog
 ```
 
 | Method | Signature | Purpose |
 | --- | --- | --- |
-| `modal.openDialog` | `({ title, contentUrl, type?, size? })` | Open a dialog rendering `contentUrl`. Single object — no `{ id }`, no `payload`. |
+| `modal.openDialog` | `({ title, contentUrl, type?, size?, payload? })` | Open a dialog rendering `contentUrl`. Single object from the guest's side — the host auto-injects `{ id }`. |
+| `modal.getPayload` | `() => unknown` | Returns the `payload` passed to `openDialog()`. Call from the modal page after `attach()`. |
 | `modal.closeDialog` | `() => void` | Close the current dialog (call from the modal page after `attach()`) |
 
 ---
@@ -359,7 +363,7 @@ export default function TabPanel() {
 
 ## Modal Component (card / selectionBar)
 
-The modal page is just another `attach()`-based component, distinguished by reading its data **from the URL query** (there is no `getPayload()`). Same shape for `CardActionModal.js` and `SelectionBarModal.js` — only the query fields differ (`resourceId` + `resourceType` for card, `assetIds` JSON for selectionBar).
+The modal page is just another `attach()`-based component, distinguished by reading its data **from the URL query or from `modal.getPayload()`**, whichever `openDialog()` used. Same shape for `CardActionModal.js` and `SelectionBarModal.js` — only the fields differ (`resourceId` + `resourceType` for card, `assetIds` JSON for selectionBar).
 
 ```js
 import { attach } from '@adobe/uix-guest';
@@ -371,7 +375,8 @@ export default function CardActionModal() {
 
   useEffect(() => {
     (async () => {
-      // openDialog has no payload channel — read what onActionClick put in the contentUrl query.
+      // Query-string approach — read what onActionClick put in the contentUrl query.
+      // (Alternative: `await connection.host.modal.getPayload()` if openDialog() used `payload`.)
       const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
       setData({
         resourceId: params.get('resourceId'),
@@ -426,12 +431,14 @@ const { locale } = await guestConnection.host.i18n.getLocalizationInfo();
 
 ### Modal (`modal` namespace)
 
-Available on all three surfaces. Used by `card`/`selectionBar` to open a dialog, and by any modal page to read its payload and close:
+Available on all three surfaces. Used by `card`/`selectionBar` to open a dialog, and by any modal page to read its data and close:
 
 ```js
-guestConnection.host.modal.openDialog({ title, contentUrl, type, size });  // single object — no { id }, no payload
-// inside the modal page, read data from the URL query (no getPayload):
+guestConnection.host.modal.openDialog({ title, contentUrl, type, size, payload });  // single object — host auto-injects { id }
+// inside the modal page, read data either from the URL query...
 const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
+// ...or via the payload, if openDialog() set one:
+const payload = await guestConnection.host.modal.getPayload();
 guestConnection.host.modal.closeDialog();
 ```
 
@@ -506,14 +513,15 @@ aio app run
 ### Test URL
 
 ```
-https://experience.adobe.com/?devMode=true&ext=https://localhost:9080&repo=delivery-p12345-e123456.adobeaemcloud.com#/assets/contenthub/
+https://experience.adobe.com/?devMode=true&ext=https://localhost:9080#/assets/contenthub/
 ```
 
 | Parameter | Purpose |
 | --- | --- |
 | `devMode=true` | Enables developer mode |
 | `ext=https://localhost:9080` | Loads local extension |
-| `repo=<delivery-repo>` | Identifies the AEM environment; must match `allowedRepos` |
+
+No `&repo=` needed — the scaffold sets `allowedRepos = []`, so any repo works for local dev (see `adobe-extension-scaffolder/SKILL.md` Step 16).
 
 **Self-signed cert (first time only):** Navigate to `https://localhost:9080` and click "Proceed to localhost (unsafe)". The extension panel will be blank until the cert is trusted.
 
@@ -531,7 +539,7 @@ https://experience.adobe.com/?devMode=true&ext=https://localhost:9080&repo=deliv
 
 5. **`const guestConnection` breaks card/selectionBar** — Their `onActionClick` handlers fire *after* `register()` resolves and must reference the connection to call `host.modal.openDialog()`. Declare it `let guestConnection;` and assign inside `register()`, or the handler closes over `undefined`.
 
-5a. **`openDialog` signature — single object, no `{ id }`, no `payload`** — Content Hub's `host.modal.openDialog` takes **one** config object: `openDialog({ title, contentUrl, type, size })`. It is NOT `openDialog({ id }, {...})`, and there is **no `payload` field** and **no `getPayload()`**. The two-argument form makes the host receive a malformed request; the uix-guest client then retries the call every 500ms until it fails with `... timed out after 10000ms` and `[object Object] doesn't exist` — and no dialog ever appears (a `host.toast.display` in the same handler still works, which makes it look like the connection is fine). Pass data to the modal via the `contentUrl` query string (`/#card-action-modal?resourceId=...&resourceType=...`) and read it in the modal page with `new URLSearchParams(window.location.hash.split('?')[1])`. Close with `host.modal.closeDialog()`. (Note: this is the **opposite** of the other AEM surfaces — CF Console/Editor/UE/Assets View use `host.modal.showUrl({ title, url })` + `close()`. Content Hub uses `openDialog`/`closeDialog`. Don't cross them.)
+5a. **`openDialog` signature — single object from the guest's side** — Content Hub's `host.modal.openDialog` is called as **one** config object: `openDialog({ title, contentUrl, type, size, payload })`. Never pass `{ id }` yourself — the UIX host auto-injects the extension id as the first argument on its side of the proxy; passing it explicitly makes the host receive a malformed request, and the call retries every 500ms until it fails with `... timed out after 10000ms` and `[object Object] doesn't exist` (a `host.toast.display` in the same handler still works, which makes it look like the connection is fine). Data can reach the modal page via `payload` (read with `host.modal.getPayload()` after `attach()`) or via a `contentUrl` query string (`/#card-action-modal?resourceId=...&resourceType=...`, read with `new URLSearchParams(window.location.hash.split('?')[1])`) — both are supported, pick one. Close with `host.modal.closeDialog()`. (Note: this is the **opposite** of the other AEM surfaces — CF Console/Editor/UE/Assets View use `host.modal.showUrl({ title, url })` + `close()`. Content Hub uses `openDialog`/`closeDialog`. Don't cross them.)
 
 6. **`card` vs `selectionBar` signatures differ** — Both `getActionButtons(actionContext)` receive a context, but the shapes differ: card gets `{ context }` only, while selectionBar gets `{ context, resourceSelection }`. On click, card `onActionClick(resourceType, buttonId, resourceId, actionContext)` gets a single resource + its type (`'asset'` or `'collection'`); selectionBar `onActionClick(buttonId, assetIds)` gets no resource type and `assetIds` is an array. Don't copy one signature for the other.
 

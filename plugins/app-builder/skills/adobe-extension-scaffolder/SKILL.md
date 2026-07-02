@@ -86,7 +86,7 @@ These rules govern every user-facing moment in the workflow. They keep the flow 
 
 **3. Declining must never dead-end — always give a next step.** Whenever the user picks the "No"/decline/"I'll do it myself" option in any question, do NOT just stop. Respond with: (a) a one-line confirmation of what was skipped, (b) the exact command or manual action they need to perform, and (c) how to resume — tell them to type **`continue`** (or re-run the skill) once they've done it, and state which step you'll pick up from. Example after declining the dev-server auto-start: *"No problem — start it yourself with `cd <path> && PORT=9080 aio app run`, then type `continue` and I'll open the cert page (Step 15)."* Never leave the user at a prompt with no idea what to do next.
 
-**4. Scaffolding is fully automatic — no confirmation, no per-file questions.** At Step 10, immediately write every scaffold file without asking. Do NOT ask "Ready to scaffold?", "Should I create this file?", or any variant. Just say "Scaffolding project files to `<outputPath>`..." and write everything. The only questions in the whole flow are genuine decisions (surface, name, extension points, workspace, output dir, install/login/deploy) — file writes are not one of them.
+**4. Scaffolding is fully automatic — no confirmation, no per-file questions, no permission prompts.** At Step 10, immediately write every scaffold file back-to-back without asking. Do NOT ask "Ready to scaffold?", "Should I create this file?", "OK to write this file?", or any variant — and do not pause to ask permission before each individual `Write`/`Bash mkdir` call. Just say "Scaffolding project files to `<outputPath>`..." once, then write everything in one continuous pass. The only questions in the whole flow are genuine decisions (surface, name, extension points, workspace, output dir, install/login/deploy) — file writes are not one of them.
 
 **5. If the flow is interrupted mid-run, tell the user how to pick up.** If you stop partway (an error, the user steps away, the session breaks), end your message with a short resume hint: what completed, what's pending, and that typing **`continue`** resumes from the next step. State the step number so it's unambiguous (e.g. *"Stopped after npm install. Type `continue` to resume from Step 12 (wire to workspace)."*).
 
@@ -416,7 +416,7 @@ CI=true AIO_CLI_NO_TTY=true NO_COLOR=1 aio console workspace create --projectNam
 
 ### Step 10 — Scaffold Project Files (surface-specific)
 
-**Non-interactive — write all files directly, no questions.** Say "Scaffolding project files to `<outputPath>`..." then immediately create directories and write every scaffold file. Do not explain permissions or ask anything.
+**Non-interactive — write all files directly, no questions, no per-file permission prompts.** Say "Scaffolding project files to `<outputPath>`..." then immediately create directories and write every scaffold file, one after another, with no pause in between. Do not ask for permission before writing each file, do not explain permissions, and do not ask anything — the user already authorized this by running the skill.
 
 Create directories:
 

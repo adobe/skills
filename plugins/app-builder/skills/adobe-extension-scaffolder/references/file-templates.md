@@ -190,9 +190,9 @@ First time: accept the self-signed cert at https://localhost:9080.
 - `discovery.getAemHost()` → `https://<repoId>/`
 - `toast.display({ variant, message })` → show toast; variants: `neutral`, `positive`, `negative`, `info`
 - `i18n.getLocalizationInfo()` → `{ locale }`
-- `modal.openDialog({ title, contentUrl, type?, size? })` → open modal dialog. **Single config object — NOT `({ id }, {...})`, and there is NO `payload` field.** Pass data to the modal in the `contentUrl` query string (e.g. `/#card-action-modal?resourceId=...&resourceType=...`).
+- `modal.openDialog({ title, contentUrl, type?, size?, payload? })` → open modal dialog. **Single config object from the guest's side** — the UIX host auto-injects `{ id }`; never pass it yourself. Pass data to the modal either via the `contentUrl` query string (e.g. `/#card-action-modal?resourceId=...&resourceType=...`) or via `payload`.
+- `modal.getPayload()` → returns the `payload` passed to `openDialog()`. Call from the modal page after `attach()`.
 - `modal.closeDialog()` → close the current modal (call from the modal page after `attach()`)
-- There is **no `getPayload()`** — the modal reads its data from `window.location.hash` query params.
 
 ## assetDetails: getCurrentAsset()
 
@@ -676,7 +676,7 @@ export default function TabPanel() {
 
 ## `src/aem-assets-contenthub-1/web-src/src/components/CardActionModal.js`
 
-Modal opened when a card action button is clicked. Reads the data passed via the `contentUrl` query string (Content Hub's `openDialog` has **no payload channel** — there is no `getPayload()`), and uses `attach()` only so it can call `closeDialog()`. Only scaffold this file if `card` was selected in Step 2.
+Modal opened when a card action button is clicked. Reads the data passed via the `contentUrl` query string (the simpler alternative to `openDialog()`'s `payload`/`getPayload()` — either works), and uses `attach()` only so it can call `closeDialog()`. Only scaffold this file if `card` was selected in Step 2.
 
 ```js
 import React, { useState, useEffect } from 'react';
@@ -697,7 +697,7 @@ export default function CardActionModal() {
 
   useEffect(() => {
     (async () => {
-      // Read data from the modal URL query — openDialog has no payload channel.
+      // Read data from the modal URL query (alternative: openDialog()'s payload + host.modal.getPayload()).
       // contentUrl was `/#card-action-modal?resourceId=...&resourceType=...`.
       const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
       setPayload({ resourceId: params.get('resourceId'), resourceType: params.get('resourceType') });
@@ -758,7 +758,7 @@ export default function CardActionModal() {
 
 ## `src/aem-assets-contenthub-1/web-src/src/components/SelectionBarModal.js`
 
-Modal opened when a selection bar (bulk action) button is clicked. Reads `assetIds[]` from the `contentUrl` query (no `getPayload()` — Content Hub `openDialog` has no payload channel). Only scaffold this file if `selectionBar` was selected in Step 2.
+Modal opened when a selection bar (bulk action) button is clicked. Reads `assetIds[]` from the `contentUrl` query (the simpler alternative to `openDialog()`'s `payload`/`getPayload()` — either works). Only scaffold this file if `selectionBar` was selected in Step 2.
 
 ```js
 import React, { useState, useEffect } from 'react';
@@ -781,7 +781,7 @@ export default function SelectionBarModal() {
 
   useEffect(() => {
     (async () => {
-      // Read assetIds from the modal URL query — openDialog has no payload channel.
+      // Read assetIds from the modal URL query (alternative: openDialog()'s payload + host.modal.getPayload()).
       // contentUrl was `/#selection-bar-modal?assetIds=<json>`.
       const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
       const raw = params.get('assetIds');
@@ -967,16 +967,18 @@ aio app build
 aio app run
 ```
 
-Test URL (replace with your repo):
+Test URL:
 ```
-https://experience.adobe.com/?devMode=true&ext=https://localhost:9080&repo=delivery-p12345-e123456.adobeaemcloud.com#/assets/contenthub/
+https://experience.adobe.com/?devMode=true&ext=https://localhost:9080#/assets/contenthub/
 ```
+
+No `&repo=` needed for local dev — the scaffold sets `allowedRepos = []`, so any repo (or none) works.
 
 > First time only: accept the self-signed cert at https://localhost:9080 before loading the test URL.
 
 ## Allowed Repos
 
-Update `allowedRepos` in `ExtensionRegistration.js` with your delivery repo IDs before deploying:
+Before deploying to Production, update `allowedRepos` in `ExtensionRegistration.js` with your delivery repo IDs — this restricts which AEM repos may load the extension:
 
 ```js
 const allowedRepos = ['delivery-p12345-e167890.adobeaemcloud.com'];
