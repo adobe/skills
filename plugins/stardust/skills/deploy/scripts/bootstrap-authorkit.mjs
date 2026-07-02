@@ -64,6 +64,7 @@ function parseArgs(argv) {
     if (k === '--target') a.target = argv[(i += 1)];
     else if (k === '--from-sibling') a.sibling = argv[(i += 1)];
     else if (k === '--ref') a.ref = argv[(i += 1)];
+    else if (k === '--allow-unpinned') a.allowUnpinned = true;
     else throw new Error(`unknown arg: ${k}`);
   }
   return a;
@@ -160,29 +161,42 @@ async function writeEslintignore(target) {
 async function main() {
   const args = parseArgs(process.argv);
   if (!existsSync(path.join(args.target, 'scripts'))) throw new Error(`--target ${args.target} is not an EDS project (no scripts/)`);
+  // Refuse the drift-prone `main` default unless explicitly acknowledged: on 2 of
+  // 6 e2e sites author-kit@main had drifted to a block-based postlcp.js that fails
+  // the mandatory static-fragment edit, and the port had already deleted the
+  // boilerplate — bricking the repo. Force a conscious choice.
+  if (args.ref === 'main' && !args.allowUnpinned && !args.sibling) {
+    log('[bootstrap] REFUSING author-kit@main (drift-prone). Pass --ref <known-good-sha>, or --from-sibling <path> to port from a working repo, or --allow-unpinned to accept the risk.');
+    process.exit(3);
+  }
   const { dir, cleanup } = await resolveSource(args);
   try {
+    // Transactional ordering: port + verify the mandatory edits BEFORE removing any
+    // boilerplate, so a failed/incompatible edit leaves the original runtime intact
+    // and recoverable rather than a half-ported brick.
     const { copied, missing } = await portIn(dir, args.target);
-    const removed = await removeBoilerplate(args.target);
     const edits = await applyEdits(args.target);
     const gate = await patchBlankRenderGate(args.target);
-    const eslintAdded = await writeEslintignore(args.target);
 
     log('\n[bootstrap] PORT-IN:');
     for (const c of copied) log(`  + ${c}`);
     if (missing.length) log(`[bootstrap] NOT FOUND in source (verify source is a full runtime): ${missing.join(', ')}`);
-    log('[bootstrap] REMOVED boilerplate:');
-    for (const r of removed) log(`  - ${r}`);
     log('[bootstrap] MANDATORY EDITS:');
     for (const e of edits) log(`  ${e.ok ? 'OK  ' : 'FAIL'} ${e.edit}`);
     log(`[bootstrap] blank-render gate: ${gate.note}`);
-    log(`[bootstrap] .eslintignore: +${eslintAdded} entries`);
 
     const failed = edits.filter((e) => !e.ok);
     if (failed.length) {
-      log('\n[bootstrap] FAILED: a mandatory edit could not be verified (the runtime would fail silently). Fix the source runtime and re-run.');
+      log('\n[bootstrap] FAILED: a mandatory edit could not be verified (the ported runtime is incompatible — likely source drift). Boilerplate NOT removed; the repo still runs its original runtime. Pin a known-good --ref and re-run.');
       process.exit(1);
     }
+
+    // Edits verified — now safe to remove the boilerplate the new runtime replaces.
+    const removed = await removeBoilerplate(args.target);
+    const eslintAdded = await writeEslintignore(args.target);
+    log('[bootstrap] REMOVED boilerplate:');
+    for (const r of removed) log(`  - ${r}`);
+    log(`[bootstrap] .eslintignore: +${eslintAdded} entries`);
     log('\n[bootstrap] done. Next: foundation (Step 3), then push the branch + force Code Sync before deploy.');
   } finally {
     await cleanup();
