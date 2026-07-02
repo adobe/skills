@@ -57,6 +57,7 @@ Flags (both tools): `--profile eds|generic` (default `eds`), `--width <px>` (def
 - 🔴 **ROLE SWAP** — same text under a different role (body painted as eyebrow, eyebrow folded into a teaser). FIX the component's node segmentation.
 - 🟡 **MISSING BODY / EXTRA** — body prose dropped, or build copy with no source. Usually a placeholder→real-copy rewrite. CONFIRM intended; don't blindly "fix".
 - 🟠 **FONT FORK** — matched lines whose rendered FACE differs (width probe, never `document.fonts.check`). `source X→sys` means the prototype named font X but never loaded it and fell back to system — the build self-hosting the intended fallback is then CORRECT, not a bug. All forked lines are grouped into one advisory.
+- **Known limitation — node-granularity JOIN/SPLIT reads as 🔴 (#87).** When the source renders one text run as N sibling nodes and the build renders the same text as ONE node (or vice versa — e.g. three fact chips vs one combined chip span), the diff currently reports MISSING + ROLE SWAP + EXTRA for what is a non-defect. Until concat-matching lands (a source node that is a substring of a same-region build node → 🟡 JOIN/SPLIT advisory), verify a 🔴 whose texts concatenate into an EXTRA finding's text before treating it as dropped content — confirmed-justified is a pass.
 
 **Pass bar:** visual red flags none/justified **AND** content-diff **0 structural 🔴** (🟡/🟠 confirmed intended). Re-run BOTH after each fix.
 

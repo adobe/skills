@@ -167,6 +167,13 @@ and `prototype` reason about IA without re-parsing. When unsure, emit
 `body[]`, `lists[]`, `qa[]`, `quotes[]` are required; emit `[]` when
 the section has none of that shape (a hero card with one heading and
 one CTA legitimately has no paragraphs / lists / accordion / quotes).
+
+`codeBlocks[]` (page-level, sibling of `body`) captures every visible
+`<pre>`'s `innerText` verbatim, in document order. On developer-tool
+sites the install commands are the single most load-bearing content
+and the prose capture skips them (stardust-style e2e finding); every
+downstream phase that needs a command literal reads it from here, not
+from `body[]`. Emit `[]` when the page has no code blocks.
 Capture rules in `playwright-recipe.md` § Capture list (7-bis). These
 fields are what migrate consumes to render real body copy under
 each section heading; without them every body region falls back to

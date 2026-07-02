@@ -93,6 +93,14 @@ Additional checks for this sub-command:
    is even considered (six-site e2e finding). Don't trust the CLI
    probe alone.
 
+   **`--no-save` installs are ephemeral (stardust-style e2e
+   finding).** Any later real `npm i` (e.g. deploy's bootstrap
+   adding a devDependency) prunes non-manifest packages, silently
+   removing playwright mid-pipeline. Every downstream skill that
+   renders (prototype, migrate, deploy, diff) must re-run the
+   import-resolvability probe — and re-install on failure — at the
+   start of its own run, not assume extract's install survived.
+
    **Script location matters.** ESM resolves `import 'playwright'`
    from the *script's* directory, and the plugin tree ships no
    `node_modules` — so running `crawl.mjs` from the plugin path

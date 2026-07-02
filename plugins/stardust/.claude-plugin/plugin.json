@@ -1,13 +1,19 @@
 {
   "name": "stardust",
   "description": "Redesign an existing website to make it better. Higher-level guided flow on top of impeccable.",
-  "version": "0.14.2",
+  "version": "0.14.3",
   "author": {
     "name": "Adobe"
   },
   "repository": "https://github.com/adobe/skills",
   "license": "Apache-2.0",
-  "keywords": ["design", "redesign", "frontend", "skills", "impeccable"],
+  "keywords": [
+    "design",
+    "redesign",
+    "frontend",
+    "skills",
+    "impeccable"
+  ],
   "dependencies": [
     "impeccable@impeccable"
   ]

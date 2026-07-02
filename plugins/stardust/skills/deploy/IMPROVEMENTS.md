@@ -720,3 +720,7 @@ Implemented and smoke-tested in crawl.mjs.
 - [x] #83 Bundled crawl.mjs + resumable deploy-batch.mjs — extract/deploy/rollout SKILLs
 - [x] #84 bootstrap-authorkit.mjs (sibling/pinned, verifies edits) — Runtime bootstrap
 - [x] #85 Capture hygiene (visibility/interstitial/SPA-shell/modal/dup) — playwright-recipe.md
+- [x] #86 Key facts in server-rendered content, never fragment-only; raw-HTML key-facts grep in the atomic contract — ENCODE contract + Per-page atomic delivery (stardust-style e2e, learning L9)
+- [ ] #87 content-diff JOIN/SPLIT concat-matching (node-granularity false 🔴 → 🟡 advisory) — diff SKILL.md documents the limitation; code fix pending (stardust-style e2e, learning L8)
+- [x] #88 crawl.mjs: verbatim slash forms + key-dedupe + 404 slash-retry; reducedMotion emulation + settle; codeBlocks[] capture — extract (stardust-style e2e, learnings L1/L2/L3, smoke-tested live)
+- [x] #89 --no-save playwright installs pruned by later npm i → per-skill re-probe rule; token-hygiene check moved to first hands-off commit; partial-inventory broken-link carve-out; cinematic-pickup sentence corrected — extract/stardust/migrate/prototype SKILLs (learnings L7/L6/L4/L5)

@@ -95,6 +95,21 @@ For every `<a href>`:
      not as escape hatches to the live origin. The user resolves
      by extracting the missing page (and re-running migrate) or
      accepting the broken link.
+
+     **Partial-inventory carve-out (stardust-style e2e finding).**
+     When the run is deliberately scoped to a subset of the
+     inventory (an explicit `<slug>` list, or siblings not yet
+     migrated), a rewritten-but-nonexistent migrated path makes the
+     mandatory `file-protocol-audit.mjs` fail on every page that
+     links a not-yet-migrated sibling — the two contracts are only
+     co-satisfiable on full-inventory runs. On a scoped run the
+     link to a known-inventory-but-unmigrated page keeps the
+     resolvable **absolute origin URL** instead, still flagged
+     `data-broken-link="true"` and logged; a later migrate run that
+     covers the target reconciles it to the relative migrated path
+     (the sha change re-renders the linking page). The audit
+     accepts `data-broken-link`-flagged origin URLs as known-broken
+     on scoped runs.
 4. **Preserve** any href fragment (`#section-3`) and query string
    (`?ref=foo`) exactly when rewriting.
 

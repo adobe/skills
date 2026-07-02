@@ -691,8 +691,12 @@ The static prototype remains the load-bearing artifact for:
 - Accessibility audits (motion-driven pages are harder to evaluate
   in their reduced-motion state).
 - Migration consumption (`migrate` reads the static prototype as
-  its primary source; it picks up cinematic motion when both files
-  exist).
+  its primary source. It does **not** merge the cinematic layer —
+  no cinematic handling is specced in `skills/migrate/`; when a
+  `<slug>-cinematic.html` sibling exists, migrate carries the
+  motion assets (`lenis.min.*`) through to `migrated/assets/` for
+  downstream consumers and records `cinematic-variant-not-consumed`
+  in the sidecar — stardust-style e2e finding).
 
 The static prototype must pass every gate independently — the
 cinematic layer cannot rescue a static prototype that fails

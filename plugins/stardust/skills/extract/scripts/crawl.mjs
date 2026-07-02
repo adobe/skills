@@ -96,10 +96,17 @@ function isFingerprintBlock(err) {
 function normalizeUrl(u, base) {
   const url = new URL(u, base);
   url.hash = '';
-  if (url.pathname.length > 1 && url.pathname.endsWith('/')) {
-    url.pathname = url.pathname.replace(/\/+$/, '');
-  }
+  // Keep the source's trailing-slash form VERBATIM (stardust-style e2e finding):
+  // static hosts commonly serve /docs/ as 200 and /docs as 404 with NO redirect
+  // between the variants, so rewriting the fetched URL turns sitemap-declared
+  // pages into 404s. Dedupe happens by slash-stripped KEY (dedupeKey below),
+  // never by rewriting the URL we fetch.
   return url.href;
+}
+// slash-insensitive identity for dedupe: /about, /about/ and /about#x are one page.
+function dedupeKey(href) {
+  const url = new URL(href);
+  return url.origin + url.pathname.replace(/\/+$/, '') + url.search;
 }
 
 // ---- discovery: explicit pages > sitemap (validated) > BFS from nav ----
@@ -109,7 +116,9 @@ async function discover(args, page) {
   // (the effective cap grows by one when needed); if the total still exceeds
   // --max, warn instead of silently evicting a requested page.
   if (args.pages) {
-    const listed = [...new Set(args.pages.map((p) => normalizeUrl(p, args.url)))];
+    const seen = new Set();
+    const listed = args.pages.map((p) => normalizeUrl(p, args.url))
+      .filter((u) => { const k = dedupeKey(u); if (seen.has(k)) return false; seen.add(k); return true; });
     const urls = listed.includes(entry) ? listed : [entry, ...listed];
     if (urls.length > args.max) {
       console.error(`[crawl] WARN --pages lists ${listed.length} page(s); with the entry URL the total is ${urls.length}, exceeding --max ${args.max} — crawling all of them (explicitly listed pages are never dropped)`);
@@ -117,7 +126,14 @@ async function discover(args, page) {
     return urls;
   }
   // discovered lists (sitemap/BFS): entry always included, normalized dedupe, capped at --max.
-  const withEntry = (list) => [...new Set([entry, ...list.map((u) => normalizeUrl(u, args.origin))])].slice(0, args.max);
+  const withEntry = (list) => {
+    const seen = new Set(); const out = [];
+    for (const u of [entry, ...list.map((x) => normalizeUrl(x, args.origin))]) {
+      const k = dedupeKey(u);
+      if (!seen.has(k)) { seen.add(k); out.push(u); }
+    }
+    return out.slice(0, args.max);
+  };
   // sitemap.xml — but only trust it if it has >=1 <loc> (a 200-but-empty Drupal
   // sitemap must fall through to BFS — finding from the paramount run).
   for (const sm of ['/sitemap.xml', '/sitemap_index.xml']) {
@@ -294,6 +310,13 @@ function capture() {
   // content hash for cross-page duplicate detection (detail == listing)
   const contentHash = `${headings.map((h) => h.text).join('|')}::${mainText.slice(0, 4000)}`;
 
+  // code blocks: pre/code contents verbatim (stardust-style e2e finding — on a
+  // developer-tool site the install commands are the most load-bearing content
+  // and innerText body capture skips them). Visible pres only; innerText keeps
+  // line structure.
+  const codeBlocks = [...document.querySelectorAll('pre')].filter(vis)
+    .map((el) => (el.innerText || '').trim()).filter(Boolean);
+
   return {
     finalUrl: location.href,
     title: document.title || null,
@@ -301,6 +324,7 @@ function capture() {
     og: { title: meta('og:title'), description: meta('og:description'), image: meta('og:image'), type: meta('og:type') },
     headings,
     body,
+    codeBlocks,
     ctas,
     links,
     media: {
@@ -336,10 +360,23 @@ function capture() {
 async function capturePage(context, url, slug, args) {
   const page = await context.newPage();
   await page.setViewportSize({ width: 1440, height: 900 });
-  const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+  let resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
   // response validation
   if (!resp) throw Object.assign(new Error('no response'), { errorClass: 'TimeoutError' });
-  const status = resp.status();
+  let status = resp.status();
+  // 404 on a slash variant: retry ONCE with the trailing slash flipped before
+  // recording a failure (stardust-style e2e finding — slash-required hosts).
+  if (status === 404) {
+    const u = new URL(url);
+    if (u.pathname.length > 1) {
+      u.pathname = u.pathname.endsWith('/') ? u.pathname.replace(/\/+$/, '') : `${u.pathname}/`;
+      const retry = await page.goto(u.href, { waitUntil: 'domcontentloaded', timeout: 45000 });
+      if (retry && retry.status() < 400) {
+        console.error(`[crawl] slash-retry OK ${url} -> ${u.href}`);
+        resp = retry; status = retry.status();
+      }
+    }
+  }
   if (status >= 400) throw Object.assign(new Error(`HTTP ${status}`), { errorClass: 'HTTPError' });
   const ct = resp.headers()['content-type'] || '';
   if (!/text\/html|application\/xhtml/.test(ct)) throw Object.assign(new Error(`content-type ${ct}`), { errorClass: 'ContentTypeError' });
@@ -352,6 +389,11 @@ async function capturePage(context, url, slug, args) {
     await page.waitForTimeout(400);
   }
   await page.evaluate(() => window.scrollTo(0, 0));
+  // settle after return-to-top: entry animations (hero reveals) must reach their
+  // final state before the visibility filter reads computed opacity, or the
+  // animated h1 is silently dropped (stardust-style e2e finding). reducedMotion
+  // emulation above neutralizes most of it; the settle covers JS-driven reveals.
+  await page.waitForTimeout(800);
 
   const rec = await page.evaluate(capture);
   // soft-404: empty page (no text, no headings, no media, no forms)
@@ -397,7 +439,7 @@ async function main() {
   await mkdir(outPages, { recursive: true });
 
   let { browser, technique } = await launchWithFallback();
-  let context = await browser.newContext();
+  let context = await browser.newContext({ reducedMotion: 'reduce' });
   let probe = await context.newPage();
 
   // bot-management probe on the entry URL; switch to headed real Chrome on reject.
@@ -409,7 +451,7 @@ async function main() {
       console.error('[crawl] fingerprint block — switching to headed real Chrome (channel:chrome)');
       browser = await chromium.launch({ headless: false, channel: 'chrome' });
       technique = 'headed-chrome';
-      context = await browser.newContext();
+      context = await browser.newContext({ reducedMotion: 'reduce' });
       probe = await context.newPage();
       await probe.goto(args.url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     } else throw err;
@@ -445,7 +487,7 @@ async function main() {
   const results = new Array(urls.length).fill(null); // { slug, file, hash } per queue index
   let nextIdx = 0;
   async function worker() {
-    const ctx = await browser.newContext();
+    const ctx = await browser.newContext({ reducedMotion: 'reduce' });
     while (nextIdx < urls.length) {
       const idx = nextIdx;
       nextIdx += 1;

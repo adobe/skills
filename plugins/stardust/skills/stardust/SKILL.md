@@ -108,6 +108,13 @@ otherwise):
   representative spread of detail pages across all templates. State
   the chosen caps in `direction.md`.
 - **Commit at the end of each phase** when the project is a git repo.
+  Before the FIRST such commit, run the token-hygiene check that
+  `deploy` § Token hygiene (#16) specifies: `.gitignore` must cover
+  `.env`, `.env.*`, and `qa/` **before** anything is committed — in
+  the happy path the first commit lands at the end of the audit
+  phase, long before deploy's SKILL.md is ever read, and a tracked
+  `.env` poisons every later push (stardust-style e2e finding: GH013
+  push rejection + history rewrite at deploy time).
 
 **Hard blockers remain stops.** An unreachable source site, an
 expired `DA_TOKEN` that cannot be recovered, or a signal-absent brand
