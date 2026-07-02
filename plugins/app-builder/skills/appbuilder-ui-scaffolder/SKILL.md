@@ -1,20 +1,7 @@
 ---
 name: appbuilder-ui-scaffolder
 description: >-
-  Generate React Spectrum UI components for Adobe Experience Cloud Shell SPAs and AEM UI Extensions.
-  Provides patterns for pages, forms, data tables, dialogs, and navigation using @adobe/react-spectrum.
-  Guides ExC Shell integration with @adobe/exc-app including runtime.done(), IMS token passthrough,
-  and shell theming. Guides AEM UI Extension development with @adobe/uix-guest for Content Fragment
-  Console, CF Editor, Universal Editor, and Assets View surfaces. Guides Content Hub extension
-  development with @adobe/uix-guest for the aem/assets/contenthub/1 extension point across all
-  three surfaces — asset details tab panels (assetDetails), asset card action buttons (card), and
-  selection bar / bulk action buttons (selectionBar) — including the host.modal dialog flow.
-  Trigger on: building App Builder UI, React Spectrum components, ExC Shell pages,
-  forms, data tables, dialogs, modals, navigation, theming, web-src, Spectrum design system,
-  @adobe/exc-app, AEM extension, AEM UI extension, Content Fragment Console, Universal Editor
-  extension, uix-guest, @adobe/uix-guest, extension points for AEM, customizing AEM surfaces,
-  Content Hub extension, contenthub, asset details panel, asset card action, selection bar,
-  bulk action, aem/assets/contenthub/1.
+  Generate React Spectrum UI components for Experience Cloud Shell SPAs and AEM UI Extensions. Provides patterns for pages, forms, data tables, dialogs, and navigation using @adobe/react-spectrum. Guides ExC Shell integration with @adobe/exc-app including runtime, IMS tokens, and theming. Guides AEM UI Extensions for Content Fragment Console/Editor, Universal Editor, Assets View, and Content Hub (panels, card actions, bulk actions). Covers @adobe/uix-guest integration, modal dialogs, and host APIs. Trigger on: App Builder UI, React Spectrum, ExC Shell, forms, tables, dialogs, modals, navigation, theming, @adobe/exc-app, uix-guest, AEM extensions, Content Hub.
 metadata:
   category: frontend
 license: Apache-2.0

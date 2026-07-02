@@ -1,25 +1,7 @@
 ---
 name: adobe-extension-scaffolder
 description: >-
-  End-to-end scaffold, develop, and deploy Adobe App Builder UI extensions for
-  ANY supported surface — Content Hub (asset details panels, asset card actions,
-  selection bar / bulk actions), Content Fragment Console, Content Fragment
-  Editor, Universal Editor, Assets View, and Experience Cloud Shell SPAs.
-  Handles the complete customer journey from zero: asks which surface, asks
-  clarifying questions via MCQ options, bootstraps the Adobe Developer Console
-  project and workspace, writes all scaffold files for the chosen surface,
-  installs dependencies, builds, starts the local dev server, opens the
-  certificate page, gates the test URL behind cert acceptance, and opens the
-  target surface automatically. The shared Console/login/build/deploy core is
-  identical across every surface; only Step 0 (surface choice), Step 10
-  (scaffold), Step 16 (open URL), and Step 18 (customization) vary. Use whenever
-  the user mentions a Content Hub extension, a Content Hub card action, a Content
-  Hub bulk action, a Content Hub selection bar extension, an AEM UI extension
-  (CF Console, CF Editor, Universal Editor, Assets View), an ExC Shell app,
-  aem/assets/contenthub/1, or asks generically to "create an extension" / "build
-  an Adobe extension" / "make an App Builder extension" without naming a surface
-  — in that case it FIRST asks which surface (Step 0). Never just print a test
-  URL — always open it via Bash after cert is accepted.
+  End-to-end scaffold, develop, and deploy Adobe App Builder UI extensions for any supported surface: Content Hub, Content Fragment Console/Editor, Universal Editor, Assets View, or Experience Cloud Shell SPAs. Automatically handles org/project/workspace setup, dependency installation, build, local dev server, certificate acceptance, and deployment. Asks MCQ questions for surface choice and extension points, generates all scaffold files, and opens the target surface automatically. Use for Content Hub panels, card actions, bulk actions, or AEM UI extensions without naming a specific surface—it will ask which surface first. Never prints test URLs without opening them.
 metadata:
   category: app-builder
 license: Apache-2.0
