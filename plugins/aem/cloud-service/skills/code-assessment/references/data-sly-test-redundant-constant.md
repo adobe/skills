@@ -39,6 +39,13 @@ From the **repository root**, use **ripgrep** (`rg`):
 3. Apply fixes from the matching pattern section.
 4. Tell the user to run **HTL validate** / full module build so compiler warnings confirm nothing was missed.
 
+**Cached findings from the `migration` runbook:** when `htlLint` findings arrive via a cached
+`migration-runbook.json` (see `{migration}/scripts/runbook-generator.js` and
+`references/runbook.md`'s `with_findings (pre-resolved)` mode), they carry
+`"confidence": "heuristic"` — they are `rg` matches, not analyzer- or BPA-validated findings.
+Re-open and re-confirm each one against the patterns above before editing; do not skip step 2
+just because the finding came from a cache.
+
 ---
 
 ## Pattern 1: Boolean Constant Comparison (`== true` / `== false`)

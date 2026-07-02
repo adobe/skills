@@ -106,7 +106,7 @@ The skill writes a single JSON record to `.autofix/last-run.json` at the working
   "abort_reason": "<string, only present when status=aborted>",
   "pattern": "outdated-dependencies",
   "edit_mode": "git | in_place",
-  "invocation": "with_findings | discover",
+  "invocation": "with_findings | with_findings_preresolved | discover",
   "base_branch": "main",
   "base_sha": "<7-char short hash, null when in_place>",
   "branch": "autofix/outdated-dependencies/2026-04-21-a1b2c3d",
@@ -155,13 +155,13 @@ The skill writes a single JSON record to `.autofix/last-run.json` at the working
 - **`discovery_warnings[]`** — strings from Step 3 discover-time checks (e.g. duplicate pom locator). Mirror the **Discover warnings** section of the Step 7 report template in `runbook.md`.
 - **`pattern`** — the expert skill (pattern slug) fixed this session.
 - **`edit_mode`** — `git` or `in_place` for the whole run.
-- **`invocation`** — `with_findings` (paths/coordinates supplied by the user) or `discover` (repo scan).
+- **`invocation`** — `with_findings` (paths/coordinates supplied by the user), `with_findings_preresolved` (caller — e.g. the `migration` skill's runbook cache — supplied a complete `{pattern, file, line, snippet}` finding list; see [`runbook.md`](runbook.md) "with_findings (pre-resolved)"), or `discover` (repo scan).
 - **`branch`** — `null` when `edit_mode=in_place`, or `status=aborted` before branch creation.
 - **`base_branch` / `base_sha`** — `null` when `edit_mode=in_place`.
 - **`compile.baseline`** — `skipped` only when `status=aborted` before reaching baseline (e.g. unsupported pattern, user declined) or when no Maven project is present.
 - **`compile.verification`** — `skipped` when `status=aborted` (no edits applied) or when zero findings were applicable.
 - **`applied[].finding`** — human-readable identifier for the finding. For `outdated-dependencies` use `<groupId>:<artifactId>@<currentVersion> -> <targetVersion>`. For `inject-in-sling-model` use the file path.
-- **`skipped[].reason`** — must be one of the exact strings the active expert skill defines under "Unlocatable" (`literal-not-found: …`, `property-missing: …`, `inject-ambiguous-field: …`, `ambiguous-locator: …`, `discovery-no-match: …`). No free-form text.
+- **`skipped[].reason`** — must be one of the exact strings the active expert skill defines under "Unlocatable" (`literal-not-found: …`, `property-missing: …`, `inject-ambiguous-field: …`, `ambiguous-locator: …`, `discovery-no-match: …`), or `stale-finding: snippet at <file>:<line> no longer matches — re-scan recommended` for `with_findings_preresolved` runs where a cached finding's `(file, line)` no longer matches the live file. No free-form text.
 - **`deferred[]`** — patterns found but **not fixed this session**. Two reason variants:
   - `not-selected: user chose <other-pattern>` — the user picked a different pattern this session (one-pattern-per-session rule).
   - `no-recipe: no expert skill at ../<pattern-slug>/` — the issue has no expert skill yet.

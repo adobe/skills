@@ -53,10 +53,15 @@ function isAnalyzerAvailable(analyzeScript = DEFAULT_ANALYZE_SCRIPT) {
  * @returns {{
  *   ok: boolean,
  *   findingsByPattern: Record<string, Array<{location: string, detail: string, severity: string}>>,
+ *   rawFindingsByPattern: Record<string, Array<{pattern: string, file: string, line: number, snippet: string}>>,
  *   warnings: string[],
  *   error?: string,
  * }}
- *   `findingsByPattern` is keyed by canonical migration pattern id. `ok:false`
+ *   `findingsByPattern` is the display shape, keyed by canonical migration
+ *   pattern id, for rendering the runbook markdown. `rawFindingsByPattern`
+ *   preserves the analyzer's own `{pattern, file, line, snippet}` shape
+ *   verbatim (same keys) so the apply handoff can hand exact, re-locatable
+ *   findings to code-assessment without re-running the analyzer. `ok:false`
  *   means the analyzer could not run (missing script, no JDK, compile/parse
  *   failure) — the caller should treat the analyzer tier as unavailable.
  */
@@ -64,7 +69,7 @@ function runAnalyzer(workspaceRoot, options = {}) {
   const { analyzeScript = DEFAULT_ANALYZE_SCRIPT } = options;
 
   if (!isAnalyzerAvailable(analyzeScript)) {
-    return { ok: false, findingsByPattern: {}, warnings: [], error: `analyzer not found at ${analyzeScript}` };
+    return { ok: false, findingsByPattern: {}, rawFindingsByPattern: {}, warnings: [], error: `analyzer not found at ${analyzeScript}` };
   }
 
   let raw;
@@ -80,6 +85,7 @@ function runAnalyzer(workspaceRoot, options = {}) {
     return {
       ok: false,
       findingsByPattern: {},
+      rawFindingsByPattern: {},
       warnings: [],
       error: stderr || `analyzer exited with code ${err.status}`,
     };
@@ -89,10 +95,11 @@ function runAnalyzer(workspaceRoot, options = {}) {
   try {
     parsed = JSON.parse(raw);
   } catch (e) {
-    return { ok: false, findingsByPattern: {}, warnings: [], error: `could not parse analyzer output: ${e.message}` };
+    return { ok: false, findingsByPattern: {}, rawFindingsByPattern: {}, warnings: [], error: `could not parse analyzer output: ${e.message}` };
   }
 
   const findingsByPattern = {};
+  const rawFindingsByPattern = {};
   for (const f of parsed.findings || []) {
     const canonical = ANALYZER_TO_CANONICAL[f.pattern];
     if (!canonical) continue; // skip non-BPA patterns (inject-in-sling-model, outdated-dependencies, …)
@@ -101,9 +108,15 @@ function runAnalyzer(workspaceRoot, options = {}) {
       detail: sanitizeSnippet(f.snippet),
       severity: 'high',
     });
+    (rawFindingsByPattern[canonical] = rawFindingsByPattern[canonical] || []).push({
+      pattern: f.pattern,
+      file: f.file,
+      line: f.line,
+      snippet: f.snippet,
+    });
   }
 
-  return { ok: true, findingsByPattern, warnings: parsed.warnings || [] };
+  return { ok: true, findingsByPattern, rawFindingsByPattern, warnings: parsed.warnings || [] };
 }
 
 module.exports = {

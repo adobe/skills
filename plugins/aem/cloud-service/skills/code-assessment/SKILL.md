@@ -84,6 +84,8 @@ If nothing matches, say the issue is not yet supported and offer to file a reque
 
 The pattern guides themselves are agnostic about who invoked them — they apply identically whether reached from `migration` (BPA/CAM) or from the runbook in this skill (HA / analyzer).
 
+When `migration` has already run its runbook cascade for a pattern, it may hand off the **complete resolved finding list** for that pattern (not just bare `(pattern, file)` pairs) — treat this as `with_findings (pre-resolved)` per [`references/runbook.md`](references/runbook.md), skipping the analyzer re-run for that pattern when the findings already carry `line`/`snippet`.
+
 ## Runbook
 
 All detection, planning, edits, verification, git/in-place handling, and the run log live in

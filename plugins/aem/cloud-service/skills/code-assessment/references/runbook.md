@@ -9,6 +9,7 @@ For design *why*, see [`shared-principles.md`](shared-principles.md). For git br
 | Mode | How it starts | Findings `files[]` | Target versions (deps) |
 |---|---|---|---|
 | **with_findings** | User named paths or coordinates | Provided — use only these paths | User-supplied target versions before planning. |
+| **with_findings (pre-resolved)** | Caller (e.g. the `migration` skill's runbook) already supplies a finding list in the canonical `{pattern, file, line, snippet}` shape | Provided directly — see **Step 3, with_findings (pre-resolved)** below | Same as with_findings — ask if missing |
 | **discover** | User asks to scan/fix project without a file list | Empty — run **Discovery** in the active expert skill's `SKILL.md` + recipe under `../<pattern-name>/` (e.g. `../inject-in-sling-model/`, `../outdated-dependencies/`) inside workspace roots | Ask user for coordinates + target versions before building dep plans |
 
 ## Git vs in-place
@@ -59,6 +60,13 @@ Read the chosen expert skill's `SKILL.md` then its `recipe.md` (or `path-*.md`) 
 
 **with_findings:** Build the work list from user-named paths/coordinates. For outdated dependencies, merge user-supplied fields with local pom inspection for `shape` / `propertyName`. For Sling Model inject migration, use the resolved Java paths only.
 Pass the named paths to the analyzer with `--files a.java,b.java` so detection runs only on them.
+
+**with_findings (pre-resolved):** When the caller (e.g. the `migration` skill's runbook) already supplies findings in the canonical `{pattern, file, line, snippet}` shape:
+
+- If a finding already has `line` **and** `snippet` populated (analyzer-sourced — e.g. `replication`, or any pattern the runbook's cache marks `sourceByPattern: "analyzer"`), **do not** invoke `analyze.sh` for it — treat the supplied array exactly as if it were the analyzer's `findings[]` output and proceed directly to **Discover-time checks** and Step 6.
+- If a finding has `file` but `line`/`snippet` are `null` (BPA/CSV/MCP-sourced — the migration runbook's cache marks these `sourceByPattern: "mcp"` or `"csv"`), run `analyze.sh --files <paths>` once over the named files to resolve `line`/`snippet` before building the plan — this still saves the `getBpaFindings` round-trip even though it doesn't skip analysis entirely.
+- Findings carrying `"confidence": "heuristic"` (currently only `htlLint`, which is `rg`-derived and never validated by the analyzer) should not be treated as equally reliable as analyzer/BPA findings — call this out in the plan/report so the user knows these are proactive-discovery matches, not deterministic detections.
+- **Re-validate `(file, line)` against the live file when building the plan regardless of source.** If the snippet at that location no longer matches (the workspace changed since the runbook was generated), record it as `skipped` with reason `stale-finding: snippet at <file>:<line> no longer matches — re-scan recommended` (see [`git-workflow.md`](git-workflow.md) for the full skip-reason vocabulary) rather than guessing or silently re-locating it.
 
 **discover:** Run the analyzer — it is the detection engine:
 

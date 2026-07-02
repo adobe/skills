@@ -235,7 +235,9 @@ const result = await generateRunbook({
 
 After writing the runbook, tell the user:
 
-> "I've written `migration-runbook.md` — **{totalFindings} findings** across **{N} patterns** (detected via {sources}). It's read-only. Reply with the pattern you want to migrate first (e.g. `scheduler`) and I'll run the one-pattern-per-session apply workflow."
+> "I've written `migration-runbook.md` — **{totalFindings} findings** across **{N} patterns** (detected via {sources}). It's read-only. Reply with the pattern you want to migrate first (e.g. `scheduler`) and I'll reuse the findings already discovered for that pattern — no re-scan needed — and run the one-pattern-per-session apply workflow."
+
+`generateRunbook()` also writes a sidecar findings cache (default `./migration-runbook.json`, see `result.cachePath`) alongside the markdown, holding each pattern's raw findings and their source. **Step 3** below reads this cache first before falling back to a live BPA/analyzer/rg lookup.
 
 **Skip Step 0** when the user names a specific pattern up front (e.g. *"fix scheduler findings"*) — go straight to Step 1 — or when the request is **OSGi → Cloud Manager** (Branch A) or **htlLint**.
 
@@ -263,13 +265,42 @@ If the id is missing from the code-assessment catalog ([`{code-assessment}/refer
 
 ### Step 3: Targets
 
-**For BPA patterns** (`scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`): Run **`getBpaFindings`** (with `bpaFilePath` when provided). Internally: cache → CSV → MCP → manual **only when each step is applicable and succeeds**; if MCP fails, obey **MCP errors and fallback** (stop; no silent chain). For MCP details, [references/cam-mcp.md](references/cam-mcp.md).
+**Check for a cached runbook first.** If `./migration-runbook.json` (or the path passed to
+`generateRunbook`'s `cachePath` option) exists and its `findingsByPattern[<active pattern>]` array
+is non-empty, reuse it instead of re-deriving findings:
+
+- Load `{ generatedAt, sourceByPattern, findingsByPattern }` from the cache file.
+- Take `allFindings = findingsByPattern[<active pattern>]`. Each entry is
+  `{ pattern, file, line, snippet }` — `line`/`snippet` are `null` when the pattern's source was
+  `mcp`/`csv` (BPA-sourced findings never carry line/snippet; only the `analyzer` source does).
+- Slice the batch with the same paginate helper used elsewhere in this file:
+  ```javascript
+  const { paginate } = require('./scripts/unified-collection-reader.js');
+  const { targets, paging } = paginate(allFindings, { offset, limit: 5 });
+  ```
+  This keeps the exact same `{ targets, paging }` envelope, batch-of-5 default, and
+  `paging.nextOffset` semantics as the live `getBpaFindings` path below — only the data source
+  differs. Do not bypass the batch-of-5 discipline just because the whole array is already in
+  memory.
+- Tell the user: *"Reusing N findings for `<pattern>` from the existing runbook (generated at
+  `<generatedAt>`)."*
+- Hand the batch to code-assessment as a **`with_findings (pre-resolved)`** invocation (see
+  `{code-assessment}/references/runbook.md`). Findings with `line`/`snippet` already populated skip
+  the analyzer re-run entirely; findings with only `file` populated (BPA-sourced) still trigger one
+  `analyze.sh --files <paths>` call inside code-assessment to resolve `line`/`snippet` before the
+  edit plan is built.
+- If the cache is missing, has no entries for the active pattern, or the user explicitly says
+  "re-scan" / "refresh", fall through to the live flow below unchanged.
+
+**For BPA patterns** (`scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`) **when no usable cache exists**: Run **`getBpaFindings`** (with `bpaFilePath` when provided). Internally: cache → CSV → MCP → manual **only when each step is applicable and succeeds**; if MCP fails, obey **MCP errors and fallback** (stop; no silent chain). For MCP details, [references/cam-mcp.md](references/cam-mcp.md).
 
 `getBpaFindings` returns **a batch of 5 findings** (default `limit=5`) along with a `paging`
 envelope. The agent processes that batch only; it does **not** request the next batch until
 the user says to continue. See **Batched processing (batch size 5)** below.
 
-**For `htlLint`**: Skip BPA/CSV/MCP — targets come from proactive `rg` discovery. See **htlLint flow** below.
+**For `htlLint`**: Skip BPA/CSV/MCP — targets come from proactive `rg` discovery, unless a cached
+runbook entry already has `htlLint` findings (marked `"confidence": "heuristic"`) — reuse those
+per the cache-first rule above. See **htlLint flow** below.
 
 ### Step 4: Read before edits
 
