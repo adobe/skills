@@ -1,0 +1,22 @@
+<!-- aem-agentkit: generated v{{SKILL_VERSION}}; safe to delete or edit. checksum: {{CHECKSUM}} -->
+# {{MODULE_NAME}}
+
+Analysis / scripting / tooling module. Contains scripts, generators, or analysis utilities that run alongside the reactor build but do not ship application code.
+
+## Agentic workflow guardrails
+
+- This module's outputs are developer tools, not production code. Do not import its contents from production modules.
+- Match the existing scripting style (bash / Groovy / Python — whichever is already present).
+
+## Common entry points
+
+{{ENTRY_POINTS}}
+
+## What to avoid in this module
+
+- Embedding production-only dependencies.
+- Hard-coded paths outside the reactor root.
+
+## Build
+
+- `{{MVN_CMD}} -pl {{MODULE_NAME}} install`

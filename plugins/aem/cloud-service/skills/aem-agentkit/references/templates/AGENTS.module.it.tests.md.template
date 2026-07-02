@@ -1,0 +1,32 @@
+<!-- aem-agentkit: generated v{{SKILL_VERSION}}; safe to delete or edit. checksum: {{CHECKSUM}} -->
+# it.tests
+
+Integration tests against a running AEM instance. AEM Testing clients. Executed by Cloud Manager during *Custom Functional Testing*.
+
+## Agentic workflow guardrails
+
+- Match the project's test client and assertion style derived in `.aem/context/test-patterns.md`.
+- No hardcoded base URLs; resolve from the testing-client configuration.
+- Every side-effecting test has a teardown.
+
+## Common entry points
+
+{{ENTRY_POINTS}}
+
+## Module-local conventions
+
+{{CONVENTIONS}}
+
+## What to avoid in this module
+
+- Admin-credential dependencies. Use configured test service users.
+- Flaky waits. Use the testing-client's polling primitives.
+
+## Run
+
+- All: `{{MVN_CMD}} -pl it.tests verify -Pintegration-tests`
+- One class: `{{MVN_CMD}} -pl it.tests verify -Pintegration-tests -Dit.test=<ClassName>`
+
+## Where to look
+
+- `.aem/context/test-patterns.md`

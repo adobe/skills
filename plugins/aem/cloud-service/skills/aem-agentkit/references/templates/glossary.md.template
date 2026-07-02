@@ -1,0 +1,6 @@
+<!-- aem-agentkit: generated v{{SKILL_VERSION}}; safe to delete or edit. checksum: {{CHECKSUM}} -->
+# Glossary (derived)
+
+Domain terms found in this repository. Disambiguation only; not a marketing glossary. Every term has passed the PII / sanitization checks documented in `references/codified-context.md` § 7 and `references/privacy-and-sanitization.md` § 2. Terms matching any PII heuristic are replaced by TODO markers; review the TODOs before sharing this file outside the project.
+
+{{GLOSSARY_ENTRIES}}

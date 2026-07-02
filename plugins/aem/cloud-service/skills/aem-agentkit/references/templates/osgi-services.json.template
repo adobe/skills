@@ -1,0 +1,11 @@
+{
+  "_generatedBy": "aem-agentkit",
+  "_markerChecksum": "{{CHECKSUM}}",
+  "_skillVersion": "{{SKILL_VERSION}}",
+  "generatedAt": "{{ISO8601_UTC}}",
+  "schemaVersion": "1",
+  "services": [],
+  "servlets": [],
+  "slingModels": [],
+  "warningStubs": []
+}

@@ -1,0 +1,35 @@
+<!-- aem-agentkit: generated v{{SKILL_VERSION}}; safe to delete or edit. checksum: {{CHECKSUM}} -->
+---
+description: Scaffold a Sling Model + JUnit test in this repo's conventions and call /regen-context to refresh .aem/context/osgi-services.json
+argument-hint: <fully.qualified.ClassName>
+---
+
+# /new-sling-model <FQCN>
+
+Before any other action, read `AGENTS.md`, the relevant `<aem-project-root>/core/AGENTS.md` (or matching Java module), the closest `.aem/context/osgi-services.json`, the closest `.aem/context/conventions.md`, and the closest `.aem/context/test-patterns.md`.
+
+## Input validation
+
+`<FQCN>` must match `^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+\.[A-Z][A-Za-z0-9_]*$` (lowercased package segments, capitalised class). Reject any input that does not match — for example, anything containing whitespace, semicolons, backticks, `$`, `&`, `|`, `<`, `>`, `;`, or shell metacharacters — before any other step. The validated FQCN is the only value that may be interpolated into a shell or filesystem command.
+
+## Flow — follows the Registration Rule (manifest.md § 8)
+
+The four steps below map 1:1 to the **Registration Rule** in the
+published skill (`references/manifest.md` § 8). Do not skip a step, do
+not reorder, do not substitute an inline JSON edit for step 2.
+
+**Pre-flight — discovery and uniqueness check.** Resolve the AEM project root and the closest `.aem/context/` (see `templates/roles/role.sling-model-author.md` § "Resolve the AEM project root"). Confirm the FQCN is not present in the closest `.aem/context/osgi-services.json` and that file does not carry `truncated: true`. If a matching entry has `dsGeneration: "MIXED"`, stop and surface the mixed file before any further work.
+
+**Step 1 (Registration Rule §1) — Write source.** Delegate to the `aem-sling-model-author` subagent. The subagent writes the `.java` source plus a JUnit / AEM Mocks test under the resolved module. No `.aem/context/*` writes happen at this step.
+
+**Build to verify the source compiles and the test passes** (between steps 1 and 2 — not part of the Registration Rule but recommended). Run `{{MVN_CMD}} -pl <module> test` and report. `<module>` is resolved from the FQCN's package against the closest sub-project's module list (taken from the resolved AEM project root), never from raw input. `{{MVN_CMD}}` is restricted to the literal set `{"mvn", "./mvnw"}`; any other resolved value omits this build step entirely with a `warningStubs` entry.
+
+**Step 2 (Registration Rule §2) — Refresh the index.** Run `/regen-context` so `.aem/context/osgi-services.json` is recomputed end-to-end with a valid marker checksum. **Never** edit the JSON inline — the agent cannot reproduce the helper's canonical-body SHA-256, so an inline edit silently corrupts the marker and the next skill run treats the file as human-curated (§ 8 of `manifest.md`).
+
+**Step 3 (Registration Rule §3) — Confirm the index reflects the source.** Confirm the new model now appears in the (refreshed) closest `.aem/context/osgi-services.json` under `slingModels`. If it does not, the refresh failed (likely because the source file was not written to a location the discovery scope captures); surface the path mismatch instead of silently continuing.
+
+**Step 4 (Registration Rule §4) — Manifest reconciliation.** No explicit action — the next full skill run (or the next `/regen-context`) rewrites the manifest to include the new file. Between runs, `/agents-md-check` reports `source-vs-index-drift` (§ 8.1) when this protocol was skipped.
+
+The Registration Rule's intent is that **steps 1, 2, and 3 are atomic
+from the agent's perspective** — never report the model as "done"
+between steps 1 and 3.

@@ -1,0 +1,32 @@
+<!-- aem-agentkit: generated v{{SKILL_VERSION}}; safe to delete or edit. checksum: {{CHECKSUM}} -->
+---
+description: Regenerate .aem/context/* indexes from the current code, non-destructive
+---
+
+# /regen-context
+
+Re-run the `aem-agentkit` skill in **refresh** mode against this repository.
+
+## Scope
+
+Refresh mode regenerates **only** the contents of `.aem/context/` (root and per-sub-project). It does **not** touch:
+
+- Per-module `AGENTS.md` files (use a full skill run to add or update these)
+- `.claude/agents/`, `.cursor/rules/`, `.github/instructions/`, `.continue/rules/`, `.clinerules`, `.windsurfrules`, `augment.md`
+- `.claude/commands/`
+- `.mcp.json` and `.cursor/mcp.json`
+
+Use the skill itself (without this command) to bootstrap missing artifacts of any other type. A full skill run from an `aem-agentkit` version bump that ships new templates is the heavier upgrade mechanism documented in the published `aem-agentkit` skill (`references/upgrade-and-migration.md` inside the skill package); `/regen-context` is the lighter-weight refresh.
+
+## Flow
+
+1. Re-discover components, services, and conventions per the skill's discovery rules.
+2. For each `.aem/context/*` file:
+   - If the file does not exist → write it.
+   - If the file exists with a matching `aem-agentkit` marker → recompute the checksum; if unchanged, skip; if changed, write the new content to `<file>.agentkit-new` and print a diff summary.
+   - If the file exists without the marker → leave it alone (treated as human-curated).
+3. Print the summary block per the published `aem-agentkit` skill's communication contract.
+
+## Reviewing rotated diffs
+
+If a prior refresh produced `.aem/context/<file>.agentkit-new` and you have not yet accepted or rejected it, the next refresh archives the prior file as `<file>.agentkit-new.<UTC-timestamp>` before writing a fresh `.agentkit-new`. Run `git status` (or `find .aem/context -name '*.agentkit-new*'`) periodically to clean up archived diffs you have already reviewed.

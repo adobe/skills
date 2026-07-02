@@ -1,0 +1,14 @@
+<!-- aem-agentkit: generated v{{SKILL_VERSION}}; safe to delete or edit. checksum: {{CHECKSUM}} -->
+---
+description: Run the Dispatcher SDK validation against dispatcher/src and report the outcome
+---
+
+# /validate-dispatcher
+
+Before any other action, read `dispatcher/AGENTS.md`.
+
+## Flow
+
+1. Run `cd dispatcher && ./bin/validate.sh src` and capture stdout and exit code.
+2. Print a clean summary: validation pass / fail, failing files (if any), suggested fixes from the SDK output.
+3. Do not edit configuration; surface findings only. For edits, delegate to `aem-dispatcher-editor`.

@@ -1,0 +1,29 @@
+<!-- aem-agentkit: generated v{{SKILL_VERSION}}; safe to delete or edit. checksum: {{CHECKSUM}} -->
+# ui.frontend
+
+{{FRONTEND_VARIANT_DESCRIPTION}}
+
+## Agentic workflow guardrails
+
+- Do not call `/libs/*` paths from the frontend. Use `/apps/<project>/*` (where `<project>` is resolved from the closest enclosing AEM project root — see `templates/roles/role.component-author.md` for the resolution rule) or the JSON Model API.
+- Reuse the project's webpack and TypeScript config; do not introduce a new build chain.
+- Inline `<style>` blocks in HTL are forbidden; use clientlibs.
+
+## Common entry points
+
+{{ENTRY_POINTS}}
+
+## Module-local conventions
+
+{{CONVENTIONS}}
+
+## What to avoid in this module
+
+- Direct fetch / XHR against `/libs/*`.
+- Inline styles in HTL.
+- Importing from non-whitelisted `node_modules` paths.
+
+## Build
+
+- Production build: `cd ui.frontend && npm run build`
+- Local dev: `cd ui.frontend && npm start`{{SPA_DEV_NOTE}}

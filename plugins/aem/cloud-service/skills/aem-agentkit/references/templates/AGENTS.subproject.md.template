@@ -1,0 +1,44 @@
+<!-- aem-agentkit: generated v{{SKILL_VERSION}}; safe to delete or edit. checksum: {{CHECKSUM}} -->
+# {{SUBPROJECT_NAME}}
+
+Nested AEM as a Cloud Service project inside the monorepo at `{{REPO_ROOT}}`.
+
+## Agentic workflow guardrails
+
+- This is its own AEM archetype tree (`core/`, `ui.apps/`, `ui.frontend/`, etc.). When working in this sub-project, load **this** sub-project's per-module files plus its scoped `.aem/context/*` (at `{{SUBPROJECT_NAME}}/.aem/context/`). The root `.aem/context/` covers the whole monorepo for cross-cutting queries.
+- Cross-cutting conventions in the monorepo's root `AGENTS.md` apply here too.
+- Customer source files only. Do not edit anything under `/libs`, Core Components packages, or vendor `target/` outputs.
+
+## Sub-project modules
+
+{{SUBPROJECT_MODULES_TABLE}}
+
+## Build (from monorepo root)
+
+- Full sub-project build + deploy: `{{MVN_CMD}} -pl {{SUBPROJECT_NAME}} -am clean install -PautoInstallSinglePackage`
+- Single sub-module: `{{MVN_CMD}} -pl {{SUBPROJECT_NAME}}/<sub-module> -PautoInstallPackage clean install`
+
+`{{MVN_CMD}}` is one of `mvn` / `./mvnw`.
+
+## Where to look
+
+- Sub-project per-leaf files: `{{SUBPROJECT_NAME}}/core/AGENTS.md`, `{{SUBPROJECT_NAME}}/ui.apps/AGENTS.md`, …
+- Sub-project-scoped indexes (this sub-project only): `{{SUBPROJECT_NAME}}/.aem/context/components.json`, `{{SUBPROJECT_NAME}}/.aem/context/osgi-services.json`
+- Monorepo-wide indexes: `.aem/context/components.json`, `.aem/context/osgi-services.json`
+- Shared conventions: `.aem/context/conventions.md`
+- Anti-patterns with absolute Cloud Service documentation links: `.aem/context/avoid.md`
+
+## After making changes
+
+When you (or another agent) add / rename / delete a component, Sling
+Model, OSGi service, or Sling Servlet in this sub-project, run
+**`/regen-context`** before completing the task. This recomputes both
+the workspace-root and the **sub-project-scoped** `.aem/context/*`
+indexes so later sessions read the correct inventory at the right
+scope. In a multi-brand monorepo, the sub-project scope is what
+prevents a `brand-a` agent session from seeing
+`brand-b`'s components.
+
+## Note on Git submodules
+
+If this sub-project itself contains Git submodules (e.g. brand-specific sites), each submodule is an independent AEM project. Run the `aem-agentkit` skill from each submodule's own root to get per-archetype-leaf `AGENTS.md` files there.

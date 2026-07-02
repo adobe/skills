@@ -1,0 +1,18 @@
+{
+  "_generatedBy": "aem-agentkit",
+  "_markerChecksum": "{{CHECKSUM}}",
+  "_note": "Placeholder only. No MCP server is wired. To enable: rename each `_TODO_*` key to a namespaced package name you control (e.g. `_TODO_adobe_aem_developer` -> `@adobe/aem-developer` once that package is published, or your own scoped name) AND set `command` / `args` per your install. Safe to delete this file entirely if no MCP servers are desired. SECURITY: any future change to this file MUST be reviewed - MCP `command` values execute on agent start. Add this file to CODEOWNERS so server-spawn changes get a human gate.",
+  "_skillVersion": "{{SKILL_VERSION}}",
+  "mcpServers": {
+    "_TODO_adobe_aem_developer": {
+      "_purpose": "AEM developer MCP - programmatic access to AEM SDK and runtime. Rename this key to the published namespaced package (e.g. `@adobe/aem-developer-mcp`) and set command/args once configured."
+    },
+    "_TODO_adobe_cloud_manager": {
+      "_purpose": "Cloud Manager MCP - pipelines, environments, deploy status. Rename this key to the published namespaced package (e.g. `@adobe/cloud-manager-mcp`) and set command/args once configured."
+    },
+    "_TODO_adobe_content": {
+      "_purpose": "Content MCP - query and manipulate AEM content. Rename this key to the published namespaced package (e.g. `@adobe/aem-content-mcp`) and set command/args once configured."
+    }
+  },
+  "schemaVersion": "1"
+}
