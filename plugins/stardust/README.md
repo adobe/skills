@@ -6,46 +6,70 @@ Stardust is a Claude Code plugin that drives a guided redesign of an existing
 website. It is a higher-level skill built **on top of
 [impeccable](https://github.com/pbakaus/impeccable)**: impeccable owns *how* to
 design well; stardust owns the specific job of taking a site that exists and
-turning it into a site that is better.
+turning it into a site that is better — and, when asked, shipping the result.
 
 Stardust is opinionated about what "better" means but the user has the final
 say. The default definition of *better* is rooted in impeccable's critique and
-audit, the absence of AI-slop patterns, and a user-selected expressive
+audit, the absence of AI-slop patterns, and a reference-grounded expressive
 direction. Every redesign decision is reasoned in the open before code runs.
 
-## Pipeline
+## Two layers
+
+**Platform-agnostic core** — captures, directs, and renders the redesign as
+static HTML, with no CMS assumptions:
 
 ```
 extract  →  direct  →  prototype  →  migrate
 ```
 
-1. **extract** — crawl the existing site (capped, multi-page) and seed a
-   description of its current state in impeccable's own format
-   (`stardust/current/PRODUCT.md` + `DESIGN.md`).
-2. **direct** — capture the user's intent ("make it better", "make it more
-   expressive for a young audience") as an open phrase, reason about what it
-   means in stardust's dimensional vocabulary, ask up to two clarifying
-   questions, and write a target `PRODUCT.md` + `DESIGN.md` at the project root
-   plus a `stardust/direction.md` with the full reasoning trace.
+1. **extract** — crawl the existing site (capped, multi-page) and seed
+   `stardust/current/` with `PRODUCT.md`, `DESIGN.md`, `DESIGN.json`, a
+   per-page inventory, and the consolidated brand surface. Supports cross-site
+   same-brand capture (`--brand-source` / `--design-source`, sibling
+   discovery) and verifies its own captures with vision gates.
+2. **direct** — resolve the user's intent ("make it more expressive for a
+   young audience") into a target `PRODUCT.md` + `DESIGN.md`, grounded in
+   real-site reference research when available, with the full reasoning trace
+   at `stardust/direction.md`.
 3. **prototype** — render before/after static-HTML prototypes per page and
-   iterate via `$impeccable craft` and `$impeccable live`.
-4. **migrate** — apply the approved target `DESIGN.md` to every page in the
-   inventory. Per-page state means migration is incremental and resumable.
+   iterate via `$impeccable craft`, with vision-verified checkpoints.
+4. **migrate** — apply the approved design to every page in the inventory,
+   with declared fidelity tiers. Per-page state makes it incremental and
+   resumable.
 
-## Surface
+Two more core entry points sit alongside the pipeline: **uplift** (one-shot
+brand-faithful presales redesign — URL in, three differentiated variants out)
+and **audit** (design + SEO + LLM-visibility audit of any site, producing a
+scored HTML report).
 
-```
-$stardust                  # state report + freeform intent reasoning
-$stardust extract [url]    # ingest existing site
-$stardust direct           # resolve intent → target PRODUCT.md / DESIGN.md
-$stardust prototype [page] # before/after prototype, delegates to impeccable
-$stardust migrate [page]   # render redesigned static HTML (incremental)
-```
+**EDS delivery** — optional second half that ships the migrated site to AEM
+Edge Delivery Services via Document Authoring: **deploy** (one page →
+blocks + content), **rollout** (whole site: delivery ledger, block dedup,
+runtime-contract probe, atomic per-page verify, link audit), **diff**
+(pixel + structural fidelity reconciliation against the prototype), and
+**prepare-migration** (the migrate-prep cascade). The core never leaks EDS
+concepts; the delivery skills consume its platform-agnostic output.
 
-`$stardust` with no argument runs a read-only state report and shows the
-recommended next step. `$stardust` with a freeform phrase runs the intent
-reasoning procedure (`reference/intent-reasoning.md`) and proposes a plan
-before executing anything.
+## Hands-off production mode
+
+For production migrations, `skills/stardust/SKILL.md § Hands-off mode` runs
+the whole chain end-to-end without conversational gates: decisions that would
+normally pause for the user are resolved from the captured evidence and
+logged, run status is streamed to `stardust/status.jsonl`, and each run
+appends to a learnings ledger so the next run starts smarter. What used to be
+an external "master migration prompt" is now folded into the skills.
+
+## Optional integrations
+
+Each of these is used when present and degrades gracefully when absent:
+
+- **refero MCP** — `direct` grounds its direction research in real-site
+  references from refero; without it, the curated seed roll is the fallback.
+- **modern-web-guidance** — consulted for current platform best practices;
+  without it, the skills rely on their own baked-in guidance.
+- **marketing-skills** — `audit` borrows the `seo-audit` / `ai-seo`
+  methodology when installed; without it, the audit runs on its built-in
+  heuristics.
 
 ## Hard dependency
 
@@ -53,17 +77,13 @@ Stardust requires impeccable to be installed. There are no fallbacks. On every
 invocation stardust verifies the impeccable skill is reachable and aborts
 otherwise with a clear install hint.
 
-## What stardust does NOT ship
-
-- **No design language of its own.** All design opinions are impeccable's. Stardust adds *redesign-specific* opinions (the divergence toolkit, the palette library, the before/after model, the migration target).
-- **No production CMS output.** The migration target is platform-agnostic static HTML. Conversion to AEM EDS, another CMS, or a framework is a separate downstream effort and out of scope for this plugin.
-- **No closed intent vocabulary.** The user phrase is open. The agent reasons about it in public.
-
 ## Status
 
-`v0.3.0` — complete refactor. v1 (the four-stage greenfield design tool) is
-preserved at the [`stardust--v0.1.0`](https://github.com/adobe/skills/tree/stardust--v0.1.0/plugins/stardust)
-tag and is unrelated to this version's surface.
+`v0.14.0` — Fable 5 refactor: reference-grounded direction, the `audit`
+skill, cross-site same-brand extraction, hands-off production mode, vision
+gates, parallelism contracts, and delivery hardening. See
+[CHANGELOG.md](CHANGELOG.md) for the full breakdown; prior versions live in
+git history.
 
 ## License
 

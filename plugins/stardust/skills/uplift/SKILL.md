@@ -28,9 +28,10 @@ coordinate it.
   selected from the captured PRODUCT.md Brand Personality per
   `../prototype/reference/motion-registers.md` § Selection
   heuristic.
-- **"What if..." candidates from a closed catalog** — B and C
-  each pick one captured-but-underused trait from
-  `reference/what-if-candidates.md`. Different traits per variant.
+- **"What if..." candidates are evidence-shaped** — B and C each
+  pick one captured-but-underused trait, from the eight worked
+  candidates in `reference/what-if-candidates.md` or a derived
+  candidate per its § Extension rule. Different traits per variant.
 - **Validation cascade runs** — every gate in
   `prototype/SKILL.md` Phases 2.5–2.8 fires, including cinematic
   Pass 6 for variant C.
@@ -48,6 +49,9 @@ coordinate it.
 - `--two-variants` — optional. Render only A and C (skip B). Useful
   when the brand surface is thin and a forced three-way differentiation
   would produce a weak middle (per the stop condition below).
+- `--re-extract` — optional. Force a fresh crawl even when a prior
+  extraction of the same URL is < 7 days old (see § Setup,
+  reuse-if-fresh).
 
 There are no other flags. Everything else is derived from the
 captured brand surface or governed by the underlying skills'
@@ -60,15 +64,18 @@ contracts.
    loader, state read.
 2. Verify Playwright is available (`extract` will fail without it —
    surface the same install message extract would).
-3. Read `stardust/state.json` if present. If a previous `uplift`
-   ran against the same URL on a recent date, ask whether the user
-   wants to refresh the extraction or render against the existing
-   capture.
+3. Read `stardust/state.json` if present. **Reuse-if-fresh:** when
+   a prior extraction of the same URL is < 7 days old, skip Phase 1
+   and render against the existing capture, with a one-line notice
+   ("reusing extraction from <date> — pass `--re-extract` for a
+   fresh crawl"). `--re-extract` forces a fresh crawl regardless of
+   age; extractions ≥ 7 days old re-extract without asking.
 
 ## Procedure
 
-Six phases. Phases 1, 4, 5 delegate to existing skills; phases 2,
-3, 6 are owned by `uplift`.
+Six phases plus a reference-grounding interphase. Phases 1, 4, 5
+delegate to existing skills; phases 2, 2.5, 3, 6 are owned by
+`uplift`.
 
 ### Phase 1 — Extract (delegate to `stardust:extract`)
 
@@ -95,20 +102,35 @@ Read `stardust/current/brand-review.html` § Tensions surfaced and
 
 #### 2a — `stardust/uplift-improvements.md`
 
-Five specific weaknesses observed in the captured site. Same
-load-bearing contract as the existing presales workflow: without
-specifics, "make it better" has no claim. Categories:
+At least **3** specific weaknesses observed in the captured site —
+as many as the evidence supports, no fixed count. Same load-bearing
+contract as the existing presales workflow: without specifics,
+"make it better" has no claim. Category tags (MAY repeat across
+items when the evidence supports it):
 
-- Dated patterns the design world has moved past (be specific:
-  "centered hero with stock photo + double CTA in primary blue
-  reads as the SaaS template circa 2019")
-- Cluttered IA / unclear hierarchy / weak CTAs / redundant sections
-- Contrast failures, accessibility gaps, density issues
-- Cliché conventions the brand could move past while staying
+- `[dated-pattern]` — patterns the design world has moved past (be
+  specific: "centered hero with stock photo + double CTA in primary
+  blue reads as the SaaS template circa 2019")
+- `[ia-clutter]` — cluttered IA / unclear hierarchy / weak CTAs /
+  redundant sections
+- `[contrast-or-density]` — contrast failures, accessibility gaps,
+  density issues
+- `[cliché]` — conventions the brand could move past while staying
   recognisably itself
-- Missed opportunities the captured surface doesn't capitalise on
-  ("captured photography is excellent but the layout crops it to
-  thumbnail-size")
+- `[missed-opportunity]` — the captured surface doesn't capitalise
+  on its own strengths ("captured photography is excellent but the
+  layout crops it to thumbnail-size")
+
+**Specificity bar — every item.** Each item cites a measurement,
+tension ID, or screenshot observation from the capture, names the
+pattern at fault, and proposes one concrete fix. An item that fails
+the bar is cut, not padded.
+
+**Audit consumption.** When `stardust/audit/<domain-slug>/audit.json`
+exists for this origin (written by the `stardust:audit` skill),
+consume its design findings as candidate improvements instead of
+re-deriving them from scratch — cite the finding IDs in the item's
+evidence and add the audit file to `readArtifacts`.
 
 Refuse to proceed if fewer than 3 specific weaknesses can be named
 (see § Stop conditions).
@@ -129,14 +151,13 @@ _provenance:
 
 # Improvements — <URL>
 
-1. **[dated-pattern]** <one-line headline> — <captured evidence>.
-2. **[ia-clutter]** <one-line headline> — <captured evidence>.
-3. **[contrast-or-density]** <one-line headline> — <captured evidence>.
-4. **[cliché]** <one-line headline> — <captured evidence>.
-5. **[missed-opportunity]** <one-line headline> — <captured evidence>.
+1. **[<category-tag>]** <one-line headline> — <measurement /
+   tension ID / screenshot observation> · <pattern at fault> ·
+   fix: <one concrete fix>.
+2. **[<category-tag>]** … (≥ 3 items; tags may repeat)
 ```
 
-The bracketed tag preceding each weakness is the category from the
+The bracketed tag preceding each weakness is a category from the
 list above. The headline is the one-sentence summary the agent will
 restate when variant A's shape brief applies the fix.
 
@@ -144,8 +165,9 @@ restate when variant A's shape brief applies the fix.
 
 Six to eight "what if we leaned into…" candidates derived from the
 captured brand surface. Each candidate cites the captured evidence
-that makes it concrete. Candidates are picked from the closed
-catalog in `reference/what-if-candidates.md`:
+that makes it concrete. Candidates are drawn from the catalog in
+`reference/what-if-candidates.md` — eight worked examples that are
+the **floor, not a ceiling**:
 
 1. Display-typography amplification
 2. Photography re-foregrounding
@@ -155,6 +177,13 @@ catalog in `reference/what-if-candidates.md`:
 6. Color-ladder re-weighting
 7. Audience-routing reframe
 8. Motif vocabulary swap
+
+An out-of-catalog **derived** candidate is admissible when it
+carries the same evidence shape as the catalog entries: ≥ 2
+captured citations + an explicit disqualification test + the
+variant role it serves (per `reference/what-if-candidates.md`
+§ Extension rule). Record each candidate's source —
+`catalog | derived` — in the candidate list.
 
 For each candidate the agent generates: a one-line "what if…"
 phrasing, the captured evidence that makes the candidate concrete,
@@ -166,6 +195,36 @@ the weakness").
 
 The disqualification step is what keeps the agent from reflexively
 picking the same candidate for every brand.
+
+### Phase 2.5 — Reference grounding (owned by `uplift`)
+
+When reference research is available (per
+`skills/stardust/reference/reference-research.md` — when to fire,
+the 3–5 reference budget, the evidence shape, and provenance
+recording are all defined there), ground the Phase 2 claims in
+real-world references before Phase 3 picks directions:
+
+(a) **Ground each `[dated-pattern]` claim** in
+    `uplift-improvements.md` with a named contemporary
+    counter-example — a real site / screen citation showing what
+    the pattern's world moved to.
+(b) **Anchor variant B's composition bet** with a named real-world
+    compositional anchor — a real screen whose composition the bet
+    resembles.
+(c) **Verify C's register pick** against how motion is actually
+    used in the vertical — does the register match observed
+    contemporary practice for this kind of brand?
+
+Record the references per reference-research.md's provenance
+contract (`_provenance.referencesUsed[]` on the artifact each
+grounding serves). When reference research is unavailable, skip
+with a one-line note in that provenance and proceed — the phase
+degrades gracefully.
+
+This phase never replaces captured-evidence discipline:
+**references justify the MOVE, captured evidence justifies the
+TRAIT.** A candidate without captured citations is inadmissible no
+matter how well-referenced its move is.
 
 ### Phase 3 — Pick three variant directions (owned by `uplift`)
 
@@ -187,15 +246,20 @@ rationale.
 #### 3b — Pick C's "what if" candidate
 
 The candidate must be the one the picked register **naturally
-amplifies through motion**:
+amplifies through motion**. The per-candidate **Natural register
+for C** fields in `reference/what-if-candidates.md` are the single
+source of truth for the register→candidate mapping — read the
+mapping there (a derived candidate admitted per its § Extension
+rule must declare the same field). This file does not duplicate
+the table.
 
-| Picked register | Natural candidate |
-|---|---|
-| `arrival` | Signature-gesture extension OR Photography re-foregrounding |
-| `kinetic-display` | Display-typography amplification |
-| `live-systems` | Live-data promotion |
-| `editorial` | Photography re-foregrounding OR Voice-register pivot |
-| `kinetic-grid` | Motif vocabulary swap |
+**Fallback when C's natural candidates are all disqualified:**
+re-pick the second-choice register — the next-best match from
+`../prototype/reference/motion-registers.md` § Selection heuristic
+— and take its natural candidate. If the second-choice register's
+natural candidates are also all disqualified, fall through to
+`--two-variants` via stop condition (d): drop B and let C take the
+strongest remaining non-disqualified candidate.
 
 #### 3c — Pick B's "what if" candidate
 
@@ -265,22 +329,38 @@ the brand-faithful contract.
 
 ### Phase 5 — Prototype × 3 (delegate to `stardust:prototype`)
 
-Invoke prototype **once** with the page slug:
+Render **A first, then B and C**:
 
-```
-stardust:prototype <slug>
-```
+1. **Render A** — invoke `stardust:prototype <slug>` scoped to
+   variant A. A establishes and **freezes the canon** (tokens,
+   chrome, module renderings) that B and C inherit; rendering it
+   first removes the ordering race.
+2. **Render B, then C** (default: sequential). B and C prototype
+   the *same slug*, and same-slug concurrent runs are last-write-
+   wins on `state.json` per
+   `../stardust/reference/state-machine.md` § Concurrency — so
+   in-place parallel rendering is unsafe. **Parallel is permitted
+   only via isolated workspace copies**: each subagent gets a copy
+   of the project (git worktree or directory copy) containing only
+   its own `DESIGN-<id>.json` at the root (siblings stashed), so
+   prototype's file-presence detection renders exactly that
+   variant. The subagent returns its `<slug>-<id>-shape.md`,
+   `<slug>-<id>-proposed.html` (and C's `-cinematic.html`) plus
+   provenance; the parent copies the artifacts back and performs
+   the **single** `state.json` update for both variants.
+3. **Open each prototype as it completes** (via the `open`
+   mechanics in Phase 6 step 1) rather than waiting for all three.
 
-Prototype detects N > 1 variants from the per-variant `DESIGN-A`,
-`DESIGN-B`, `DESIGN-C` files that `direct` wrote in Phase 4 and
-iterates internally — authoring `<slug>-A-shape.md` / `-B-shape.md`
-/ `-C-shape.md` and emitting `<slug>-A-proposed.html` /
-`<slug>-B-proposed.html` / `<slug>-C-proposed.html` per the
-variant-convergence detector contract
-(`../prototype/SKILL.md` § Phase 2.5 / Discipline 10).
+Prototype detects the variant set from the per-variant `DESIGN-A`,
+`DESIGN-B`, `DESIGN-C` files that `direct` wrote in Phase 4 —
+authoring `<slug>-A-shape.md` / `-B-shape.md` / `-C-shape.md` and
+emitting `<slug>-A-proposed.html` / `<slug>-B-proposed.html` /
+`<slug>-C-proposed.html` per the variant-convergence detector
+contract (`../prototype/SKILL.md` § Phase 2.5 / Discipline 10).
 
 **Cinematic motion fires per-variant from the per-variant DESIGN
-file**, not from a CLI flag. Because Phase 4 wrote
+file**, not from a CLI flag. **Never pass `--cinematic` to
+prototype from uplift.** Because Phase 4 wrote
 `extensions.motion.register` into `DESIGN-C.json` only (A and B
 omit it), prototype's Phase 2.4 (motion application) fires only
 for variant C. Variant C emits both `<slug>-C-proposed.html`
@@ -301,19 +381,22 @@ Prototype owns:
 - Variant-convergence detector (≥ 2 structural changes per pair)
   per Discipline 10.
 
-The single invocation lets prototype's canon-fold-back (Phase 5
-of prototype) carry through A → B → C consistently inside one run.
 Multi-variant rendering is driven by the presence of multiple
 `DESIGN-<id>.json` files at the project root, not by a CLI selector
-— prototype has no `--variant <id>` input.
+— prototype has no `--variant <id>` input. That is exactly why the
+parallel path in step 2 requires isolated workspace copies with a
+single pinned `DESIGN-<id>.json` each: file presence is the only
+variant selector prototype has. The A-first ordering above is what
+keeps canon consistent across the B and C runs in either path.
 
 ### Phase 6 — Open and summarize (owned by `uplift`)
 
 After all three prototypes mark `prototyped` in `state.json`:
 
-1. **Open all three in the browser** using the `open` shell command (not
-   `playwright-cli open`) so VFS paths are served via the preview service
-   worker:
+1. **Confirm all three are open in the browser** — each variant was
+   opened as it completed (Phase 5 step 3); open any that weren't,
+   using the `open` shell command (not `playwright-cli open`) so VFS
+   paths are served via the preview service worker:
    ```
    open stardust/prototypes/<slug>-A-proposed.html
    open stardust/prototypes/<slug>-B-proposed.html
@@ -447,7 +530,7 @@ original presales prompt is preserved.
 stardust/
 ├── state.json                              ← extracted + 3× prototyped
 ├── direction.md                            ← resolved direction + 3 variant declarations
-├── uplift-improvements.md                  ← load-bearing 5-weakness list
+├── uplift-improvements.md                  ← load-bearing weakness list (≥ 3 items)
 ├── uplift-questions.md                     ← 6–8 "what if…" candidate list with disqualifications
 ├── current/                                ← from extract
 │   ├── PRODUCT.md
@@ -487,16 +570,21 @@ DESIGN-C.md / DESIGN-C.json                 ← carries motion.register
 
 ## References
 
-- `reference/what-if-candidates.md` — the closed catalog of 8
-  captured-trait amplification candidates that B and C pick from.
+- `reference/what-if-candidates.md` — the eight worked
+  captured-trait amplification candidates that B and C pick from,
+  plus the § Extension rule for evidence-shaped derived candidates.
+- `skills/stardust/reference/reference-research.md` — procedure for
+  sourcing real-world design references (Phase 2.5): when to fire,
+  the 3–5 reference budget, the evidence shape, provenance
+  recording.
 - `../prototype/reference/motion-registers.md` — register catalog
   and selection heuristic used in Phase 3a.
 - `../prototype/reference/motion-validation.md` § Pass 6 —
   cinematic-mode validation gates that fire for variant C.
-- `../prototype/SKILL.md` § Inputs — `--cinematic` flag passed
-  through from uplift; multi-variant rendering driven by the
-  per-variant `DESIGN-<id>.json` files `direct` wrote in Phase 4,
-  not by a CLI selector.
+- `../prototype/SKILL.md` — multi-variant rendering and motion
+  driven by the per-variant `DESIGN-<id>.json` files `direct` wrote
+  in Phase 4, not by a CLI selector or flag (uplift never passes
+  `--cinematic`).
 - `../direct/SKILL.md` § Phase 2.6 — multi-variant fork; uplift
   passes the three-variant declaration through.
 - `../stardust/reference/data-attributes.md` — structural section

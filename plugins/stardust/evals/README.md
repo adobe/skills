@@ -1,5 +1,35 @@
 # Stardust v2 evals
 
+### 0.14.0 rescope notes
+
+The 0.14.0 (Fable 5) refactor changes contracts that several criteria below
+hard-pin. The eval definitions are left as-is for now; these criteria need
+rescoping before the suite is run against 0.14.0:
+
+- **`no_eds_references` (every eval).** Written when the plugin was
+  platform-agnostic end-to-end. The plugin now has an EDS delivery half
+  (`deploy`, `rollout`, `diff`, `prepare-migration`), so a plugin-wide EDS ban
+  is wrong. Rescope to: the *core* artifacts (extract/direct/prototype/migrate
+  outputs under `stardust/current/`, the target spec, prototypes, migrated
+  HTML) must stay free of EDS/CMS leakage; delivery skills are exempt.
+- **Two-question ceiling (`direct-from-phrase`).** Still valid for the
+  interactive flow, but 0.14.0 adds a hands-off production mode that asks
+  *zero* questions and resolves ambiguity from captured evidence. Rescope the
+  criterion to interactive invocations only.
+- **Closed-catalog criteria (uplift/prototype).** Any criterion asserting the
+  agent picks strictly from a fixed catalog (e.g. the what-if candidate list)
+  conflicts with 0.14.0's opened catalogs, which allow evidence-gated
+  extensions. Rescope to: catalog-first, extensions permitted only with cited
+  evidence from the brand surface.
+- **Seed-roll direction procedure (`direct-from-phrase`).** Direction research
+  is now reference-grounded via the optional refero MCP, with the seed roll
+  demoted to fallback; criteria that pin the seed roll as *the* procedure
+  should accept the reference-research path as the preferred branch.
+- **Coverage gaps (informational).** The suite predates `audit`, cross-site
+  extraction (`--brand-source` / `--design-source`), vision gates, and the
+  merge-by-slug parallelism contract; new evals are needed rather than
+  rescoped ones.
+
 Evaluation suite for the four-phase redesign pipeline plus the
 "open and reasoned" intent-reasoning principle that governs the
 master skill.

@@ -225,11 +225,28 @@ outright.
 
 ---
 
-## 2. Seed Lists
+## 2. Seed Lists — the deterministic fallback
 
-When the user has not provided a strong external reference (no brand URL, no
-moodboard, no uploaded images), the `brand` skill picks one seed from each
-list below and injects them as hard constraints into the generation prompt.
+**Default path first (stardust 0.14+):** before rolling any seed, run
+the reference-research procedure
+(`skills/stardust/reference/reference-research.md`). Researched
+anchors imply dimensions the same way user-provided anchors do in
+`direct`'s Mode B — each implied dimension is recorded with
+`picked_by: "reasoned: <anchor/basis>"` and the seed is rolled only
+for the dimensions research left un-implied. The lists below are the
+**fallback**: they fire when research is unavailable (no refero MCP,
+no network) or yields no usable anchors, and they remain available as
+an explicit *convergence tiebreaker* — when the anti-toolbox
+self-audit detects the model converging on its defaults despite
+research, a rolled dimension injects entropy the model must design
+against. Record which path produced each dimension; a profile whose
+`picked_by` values are all `"deterministic"` while research was
+available is itself a self-audit finding.
+
+When the fallback fires (user provided no strong external reference —
+no brand URL, no moodboard, no uploaded images — and research is
+unavailable), the skill picks one seed from each list below and
+injects them as hard constraints into the generation prompt.
 
 ### Decade
 1920s · 1930s · 1950s · 1960s · 1970s · 1980s · 1990s · 2000s · 2010s · 2025-now
@@ -590,10 +607,13 @@ does NOT contribute to `_divergence.anti_toolbox_count`.
 ## How skills consume this toolkit (stardust v2)
 
 - **`direct`** reads the toolkit when it authors the target `DESIGN.md` /
-  `DESIGN.json` from the resolved direction. It uses §2 to roll a seed
-  (when reference is weak or missing), §3 to pick a font deck, §4 to
-  validate role names in the palette frontmatter, §5 to handle listicle
-  references the user supplied. It writes the choices into
+  `DESIGN.json` from the resolved direction. It runs reference research
+  first (`reference-research.md`) and uses §2 only for dimensions
+  research left un-implied (or entirely, when research is unavailable),
+  §3 to pick a font deck, §4 to validate role names in the palette
+  frontmatter, §5 to handle listicle references the user supplied —
+  extended by `reference-research.md` § 2 step 4 to researched
+  references. It writes the choices into
   `DESIGN.json.extensions.divergence` (the v2 home for what v1 called
   `_divergence`).
 - **`prototype`** reads the toolkit at the start of its render pass. It

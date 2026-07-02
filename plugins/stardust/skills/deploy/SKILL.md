@@ -76,6 +76,26 @@ samples            # reference prototypes, not project code
 ```
 Your generated blocks + `styles/styles.css` still lint clean under airbnb (expand any single-line multi-declaration CSS rules the prototype used). Alternatively, adopt the author-kit `eslint.config.js` (helix) wholesale.
 
+## Runtime-detection probe (run before Step 1 — write `stardust/runtime-contract.json`)
+
+Two EDS runtimes look identical from the content side but need different generated code, and a wrong assumption here is **silent and sitewide**. Before converting anything, inspect the repo — `scripts/ak.js` vs `scripts/aem.js`, how `loadBlock` wraps blocks, what the button decorator emits — and record the answers:
+
+```json
+{
+  "runtime": "authorkit | vanilla-eds",
+  "blockWrapperClass": "none | block",
+  "buttonClasses": ".btn / .btn-primary / .btn-group | .button / .button-container",
+  "fragmentScriptPolicy": "inert-innerHTML | executed",
+  "emptySectionCollapse": true
+}
+```
+
+Block CSS/JS generation and the Local-QA harness read this contract instead of assuming a runtime. The two costliest wrong guesses:
+- **`blockWrapperClass`** — AuthorKit's `loadBlock` (`ak.js`) only sets `data-block-name`; it **never adds a `.block` class** (blocks sit inside `.block-content` as `<div class="<name> <variant>">`). CSS must scope `.<name> …`, **never `.<name>.block`** — that selector silently never matches, grids fall back to `display: block`, and every grid section stacks single-column ("mobile layout on desktop") while typography still looks fine. Confirm by asserting a grid container computes `display: grid` in a headless render.
+- **`buttonClasses`** — the AuthorKit decorator emits `a.btn` / `.btn-primary` / `.btn-secondary` inside `p.btn-group`, NOT the stock EDS `.button` / `.button-container`. Style the wrong family and every CTA ships as a bare unstyled link.
+
+When `emptySectionCollapse` is true (the page-metadata block leaves an empty padded section after its content is consumed into `<head>`), add `main .section:empty { display: none }` to the foundation — or an empty ~88px band sits between the header and the first real section.
+
 ## Deploy (DA Source API, from a local agent)
 
 **Steps 1–9 are the conversion methodology**; deploy is the one transport-specific step. From a local agent (Claude Code / CLI), each converted page deploys headlessly:
@@ -92,7 +112,11 @@ The content payload is a **body fragment** (see Step 9). The deploy needs the **
 
 **For more than a few pages, use the bundled driver instead of a hand-rolled loop (#4).** `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> --content content [--concurrency 4] [--no-publish]` runs `PUT → preview → live` across a content tree with bounded concurrency, a **persistent ledger** (`content/.deploy-ledger.json`) so a re-run **skips pages already live** and only re-drives FAILs, capped-backoff retries on `000/429/5xx`, an **append-only** log (survives a restart), and a delivered-`.plain.html` check before flipping a page to `live` (admin 200 ≠ delivered). It's idempotent — safe to Ctrl-C and re-run, which is the documented recovery for a transient-blip half-deploy. A serial hand-rolled bash loop that truncates its own log on restart is the anti-pattern this replaces.
 
+**Per-page atomic delivery contract.** A page is `deployed` only when the full chain passes, in order: sanitise-wrapped file (`scripts/sanitise.js`) → `PUT` (multipart field `data`, `type=text/html`) → `POST /preview/` → `POST /live/` → **GET the rendered `.plain.html` and assert**: HTTP 200, the `<body>` wrapper intact, exactly one `<h1>`, zero `about:error`, no `/img/` srcs. Only then flip the page's ledger entry to `deployed` — never on the POST codes (admin 200 ≠ delivered). Two field-decodes worth pinning: a **burst of `PUT` 400s is a malformed path, not rate limiting** — lowercase every segment, never a double slash (`content//…` 400s the PUT while preview/live still 200), no trailing `-`/`_` on a segment; and **write long loops to a bash script file with absolute binary paths** (`/usr/bin/curl`, the full `node` path) — zsh drops PATH inside `while`/`for` in some contexts, and the resulting `command not found` burst mimics a transport failure.
+
 **Token hygiene (#16).** The IMS token typically lives in repo `.env` as `DA_TOKEN`. Before the first commit, make sure `.gitignore` excludes `.env`, `.env.*`, and `qa/` (the local QA harness) **on the branch you'll branch tests from** — otherwise every test subbranch re-exposes the token. Keep `samples/` out of commits too. Dev tokens last ~24h; a `401` with an empty body means expired → refresh and retry (the write is idempotent).
+
+**DA_TOKEN lifecycle — preflight and re-check, never fail pages on it.** At setup, preflight the token: decode the JWT `exp` claim when present (base64-decode the middle segment) and smoke-test ONE authenticated DA call before any batch. **Re-check before each long batch** — a token fresh at setup can expire mid-run. On a `401` mid-batch: checkpoint the ledger (the batch driver's persistent ledger already records per-page state), stop the batch, and halt with a single actionable instruction — "DA_TOKEN expired; refresh it in `.env` and re-run the same command (the ledger skips delivered pages)" — instead of letting every remaining page fail red. Token expiry is the one credential failure the agent cannot self-recover; it is a legitimate hard stop even in a hands-off run.
 
 ## The one rule that drives everything else
 

@@ -179,7 +179,10 @@ viewport. With default extract behavior the banner:
 Pre-flight a **consent dismissal** before the per-page loop.
 One dismissal in a fresh `BrowserContext` typically persists
 the cookie state across every subsequent page in the same
-context, so the cost is one extra navigation per crawl.
+context — but **not across contexts**: with concurrent capture
+(`extract/SKILL.md` § Concurrency) each worker context re-runs
+the dismissal on its first page, or clones the probe context's
+`storageState`. Cost: one extra navigation per context.
 
 ### Dismissal procedure
 

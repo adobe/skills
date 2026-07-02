@@ -58,6 +58,23 @@ downstream sub-commands.
    `$stardust extract <url>` first.
 3. Read `stardust/current/_brand-extraction.json`. If absent, stop —
    extract did not complete brand-surface extraction; re-run extract.
+3b. **Cross-site brand inputs** (when present). Two extract-written
+   signals widen the brand surface beyond the primary origin:
+   - `state.json.designSource` — design-donor mode (extract ran with
+     `--design-source <url>`). The donor's derived system at
+     `stardust/canon-source/DESIGN.{md,json}` becomes the **target**
+     the Mode A pins bind to: palette and type pin to the *donor*
+     surface while content, IA priorities, and per-page evidence stay
+     with the primary origin. Surface in the plan: *"Design-donor
+     mode — target system inherited from <donor-url>."*
+   - `_brand-extraction.json.origins[]` — sibling-property evidence
+     captured via `--brand-source`. Traits captured on a sibling
+     origin count as **captured evidence** for trait amplification
+     (variant B/C briefs, improvements items) exactly like
+     primary-origin evidence; cite the origin in the evidence
+     citation. Under Mode A the *pins* still come from the primary
+     origin unless designSource says otherwise — sibling evidence
+     widens what can be amplified, not what is pinned.
 4. Read `stardust/direction.md` if present. If a prior direction
    exists and `--re-direct` was not passed, ask whether the user wants
    to refine the existing direction or replace it.
@@ -103,6 +120,18 @@ command sequence, show the plan to the user.
 Worked examples in
 `skills/stardust/reference/intent-examples.md` calibrate the style.
 Hard ceiling on questions: two per turn, no exceptions.
+
+**Hands-off mode** (per `skills/stardust/SKILL.md` § Hands-off mode,
+`state.json.handsOff: true`): ask nothing and wait for nothing.
+Derive every answer the questions would have collected from the
+captured evidence — density and ia-fidelity from their documented
+defaults and trigger conditions, audience and register from the
+captured surface — and record each as a named assumption in
+`direction.md` § Movements (e.g. `density: balanced (hands-off
+default — multi-audience floor fired)`). The plan is still written;
+execution proceeds without the confirmation gate. Question budgets
+and gates below that say "ask the user" resolve the same way: derive,
+stamp the assumption, proceed.
 
 #### Density tuning (one-shot, only when unmoved)
 
@@ -349,6 +378,42 @@ surfaces "Brand-faithful mode active" in the plan it shows the
 user before executing — the user can correct (e.g. "actually let
 me move the palette" or "actually rebrand it") before it locks.
 
+#### Mode A+ — Brand-adjacent refinement (bounded, evidence-gated)
+
+The middle tier between Mode A's hard pins and `--rebrand`. It exists
+because the median redesign candidate is a site whose brand is right
+but whose *execution* of that brand is part of the problem — a
+generic system body face, a palette whose only accent fails contrast
+on half its surfaces. Strict Mode A reproduces those weaknesses;
+rebrand throws away the brand. Mode A+ authorizes **bounded
+upgrades**, each gated on evidence:
+
+- **Same-classification type upgrade.** When the improvements list
+  (Phase 2.5) names the captured *body or system* face as a weakness
+  with evidence (illegibility at captured sizes, a generic system
+  stack where the brand deserves a voice, missing weights/axes the
+  layout needs), the body face may be upgraded to a
+  same-classification, deliverable face (humanist sans → humanist
+  sans; grotesque → grotesque). **The display face stays pinned** —
+  it carries the brand's recognition.
+- **Single-role palette recolor.** When a specific captured color
+  fails contrast or hierarchy *as evidenced* (computed ratio cited,
+  or a `T-color-imbalance` tension), that one role may be re-derived
+  (deepened, re-weighted) while every other role stays pinned. New
+  hues from outside the captured family remain forbidden.
+
+Contract: each refinement is recorded in
+`DESIGN.json.extensions.divergence.brand_adjacent_refinements[]` as
+`{ kind, captured, replacement, evidence, improvementsItem }` — an
+inversion-style audit entry citing the improvements-list item that
+authorizes it. No evidence citation → no refinement. Mode A+ never
+activates by default: it requires the qualifying improvements-list
+item, and the plan surfaces each refinement explicitly (*"body face
+upgraded Arial → Hanken Grotesk per improvements #3; display face
+pinned"*) so the user (or the hands-off record) sees exactly what
+moved. Refinements do not run through reference research — their
+justification is the captured weakness, not an external anchor.
+
 #### Mode B — Anchor-reference precedence
 
 When the user provides anchor references (Q1/Q2 answers like
@@ -359,6 +424,19 @@ register `Memoir`-adjacent. Rolling those dimensions
 deterministically and getting an accidental alignment is fragile —
 the agent then has to retro-justify the alignment in
 `direction.md`.
+
+**Agent-sourced anchors (default when the user provides none).**
+Mode B no longer waits for the user to name references: run the
+reference-research procedure
+(`skills/stardust/reference/reference-research.md`) to source 3–5
+real-world anchors matched to the brand's category, register, and the
+resolved direction movement. Researched anchors carry the same
+implied-dimension weight as user-provided ones and are recorded as
+`picked_by: "reasoned: <anchor>"` with the full citation in
+`extensions.divergence.references_used[]`. User-provided references
+always outrank researched ones on conflict. When research is
+unavailable (ladder exhausted per reference-research.md § 1), Mode B
+degrades to the deterministic roll for the un-implied dimensions.
 
 Precedence rule:
 
@@ -405,20 +483,38 @@ in the user report.
 
 #### Default mode (no constraints)
 
-When neither Mode A nor Mode B applies, follow the standard
-procedure:
+When neither Mode A nor Mode B applies (rebrand or thin-signal runs
+with no user anchors), the procedure is **research-first, roll as
+fallback**:
 
-- **Seed.** Roll the 4-dimension seed (decade × craft × register ×
-  ground-family) using the deterministic MD5 picker per § 2 of the
-  toolkit. Record `picked_by`.
-- **Font deck.** Pick from the 10 named decks per § 3. When the
-  seed strongly implies a deck (e.g. `1977 + letterpress + tabloid`
-  → `retro-italian`) use the implied deck; otherwise pick
-  deterministically from the hash.
+- **Reference research first.** Run
+  `skills/stardust/reference/reference-research.md` to source
+  anchors for the brand's category and the resolved direction, and
+  derive the dimensions they imply (`picked_by: "reasoned: <basis>"`).
+  This is Mode B's machinery applied to agent-sourced anchors — see
+  § Mode B above.
+- **Seed as fallback + tiebreaker.** Roll the 4-dimension seed
+  (decade × craft × register × ground-family) per § 2 of the toolkit
+  **only** for dimensions research left un-implied, or entirely when
+  research is unavailable. The roll also remains available as a
+  deliberate convergence-breaker when the self-audit catches the
+  model reproducing its defaults despite research. Record
+  `picked_by` per dimension.
+- **Font deck.** Pick from the 10 named decks per § 3, letting the
+  researched anchors inform the pick the same way a seed implication
+  would (e.g. an editorial-serif anchor set → `serif-luxury`). When
+  neither research nor seed implies a deck, pick deterministically
+  from the hash.
 - **Palette.** If the resolved direction moves the color-energy
-  axis or names the existing palette as part of the problem, run
-  the palette picker
-  (`skills/direct/reference/palette-picker.md`). Otherwise inherit
+  axis or names the existing palette as part of the problem: derive
+  a full role-ramped palette (text, grounds, borders, accents,
+  states) from the primary researched anchor or a library candidate
+  — the library (`skills/direct/reference/palette-picker.md`) is an
+  **anchor bank**, not a closed menu; the model designs the ramp and
+  validates every text-on-ground pair for WCAG AA before it lands
+  in tokens (deterministic where it matters — math — not where it
+  hurts — taste). Record the derivation basis in
+  `extensions.divergence.palette_source`. Otherwise inherit
   the existing palette from
   `stardust/current/_brand-extraction.json`, applying role-renaming
   per toolkit § 4 if the inherited names violate the brand-native
@@ -453,6 +549,12 @@ not contradict it).
 Skip this phase when the resolved mode is rebrand — the improvements
 list assumes brand-faithful inheritance, and a rebrand replaces the
 site rather than fixing it.
+
+**Audit reuse.** When `stardust/audit/<domain-slug>/audit.json`
+exists for this origin (written by `stardust:audit`), consume its
+design findings as candidate improvements instead of re-deriving from
+scratch — carry the finding IDs into each item's evidence citation.
+The specificity bar below still applies to every carried item.
 
 #### What goes in the list
 
@@ -1456,6 +1558,10 @@ Next: $stardust prototype <slug> --variant B
 - `skills/stardust/reference/intent-examples.md` — worked examples.
 - `skills/stardust/reference/impeccable-command-map.md` — when to
   reach for each impeccable command (used when building the plan).
+- `skills/stardust/reference/reference-research.md` — the
+  research-first anchor procedure (refero MCP → WebSearch → seed
+  fallback) consumed by Mode B and Default mode; evidence shape and
+  budgets.
 - `skills/stardust/reference/divergence-toolkit.md` — anti-mediocrity
   inputs and the v2 storage shape for the audit trail. Contains the
   anti-toolbox additions for multi-variant moves
@@ -1472,8 +1578,9 @@ Next: $stardust prototype <slug> --variant B
 This skill changed its default behavior in 2026-04-29 to make Mode A
 (brand-faithful) the default whenever the captured brand surface is
 `signal-strong`, rather than activating only on explicit user
-signals. The full rationale and prior-state migration notes live in
-`notes/brand-faithful-default-2026-04-29.md`. Behavior summary:
+signals. (The rationale: dogfood runs showed ambiguous refresh
+phrases rolling full divergence seeds and shipping rebrand-shaped
+output to brand owners who asked for a refresh.) Behavior summary:
 
 - Before: ambiguous phrases like *"make it more modern"* rolled the
   full divergence seed and produced rebrand-shaped output.

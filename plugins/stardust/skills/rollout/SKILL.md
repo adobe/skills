@@ -40,6 +40,9 @@ least the archetype pages first. For a single page, use `stardust deploy` direct
    populated). If not, recommend `stardust migrate` on the archetypes and stop.
 3. Verify the EDS/AEM target is ready exactly as `deploy` requires (project
    scaffolding, `DA_TOKEN`, code branch pushable). `rollout` adds no new transport.
+4. If `state.json.handsOff` is true (`skills/stardust/SKILL.md` § Hands-off
+   mode), run full-auto: no per-phase pauses. Every gate and verify step below
+   runs unchanged — hands-off removes waiting, not validation.
 
 ## Procedure
 
@@ -97,7 +100,10 @@ thousands of already-published pages is a second migration. Before importing,
 produce `dynamic-blocks-map.md` (which blocks are dynamic vs static, the index each
 reads, the fields its cards need) and a **metadata contract** (the `<meta name="…">`
 each content TYPE must carry). Then have Phase C's `deploy` brief emit the contract
-per page, and author `helix-query.yaml` from the same contract.
+per page, and author `helix-query.yaml` from the same contract. When
+`stardust:prepare-migration` Phase 4.5 already ran, `stardust/dynamic-blocks-map.md`
+and `helix-query.yaml` exist — verify them against the inventory here instead of
+redoing them.
 
 Mechanics (key→meta-name rules, what a row can carry): `reference/dynamic-listings.md`.
 
@@ -128,8 +134,8 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <branch>--<repo>--<owner>.aem.live [--apply]
    ```
    `media-reconcile` resolves every image on the network and decides
-   optimize/keep/rewrite/omit (`reference/media-reconciliation.md`) — the
-   authoritative form of the image-fidelity gate below.
+   optimize/keep/rewrite/omit (`skills/migrate/reference/media-reconciliation.md`)
+   — the authoritative form of the image-fidelity gate below.
 
 3. **Run the delivery gates** before flipping a page to `deployed`. Each is a
    one-line rule here; mechanics + helpers in `reference/delivery-gates.md`:
@@ -141,11 +147,11 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
      trailing `-`/`_`, no `--` segment); record original→normalized in
      `stardust/redirects.tsv`. (delivery-lint flags violations.)
    - **Source-content hygiene** — skip dead source URLs; author bodyless/PDF-only
-     sources thin and faithful (tier `thin`, `reference/fidelity-tiers.md`),
-     don't pad with invented prose.
+     sources thin and faithful (tier `thin`,
+     `skills/migrate/reference/fidelity-tiers.md`), don't pad with invented prose.
    - **Fidelity tier declared** — record each page's `fidelityTier`
      (archetype/sibling/thin) so coverage shows what was craft-gated vs cloned
-     (`reference/fidelity-tiers.md`).
+     (`skills/migrate/reference/fidelity-tiers.md`).
 
 4. **Record outcomes** with the state-writer (never hand-edit the ledger):
    ```bash
@@ -159,12 +165,27 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    leaves indexes empty. On failure: `--status failed --error "<reason>"` and
    continue (one page's failure never aborts the rollout).
 
-**Parallelism + scale.** Deliver template clusters concurrently (one agent per
-cluster, non-overlapping pages), representative-first so blocks exist to be reused.
-For clusters of 6–20+ siblings, use the author-only-agents + central-deploy +
-verify-then-flip flow in `reference/delivery-gates.md` § Batched delivery. The
-central deploy step should run the bundled, resumable driver rather than a serial
-loop: `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo>
+**Foundation-first gate (hard block, once per rollout).** When the FIRST
+archetype page flips to `deployed`, stop and prove the foundation before
+authoring any second page: run `stardust:diff` (both probes) against its
+prototype, **plus computed-style invariants in a headless render** — grid
+containers compute `display: grid` (not stacked single-column), sections are
+full-bleed where the design says so, and the CTA/button classes are actually
+styled (per `stardust/runtime-contract.json`, `skills/deploy/SKILL.md`
+§ Runtime-detection probe). A wrong runtime assumption (block wrapper class,
+button classes) is silent and sitewide — typography still looks fine while
+every grid stacks. This one gate is the difference between fixing one page
+and rebuilding every template.
+
+**Execution model: waves.** Deliver in waves of parallel **author-only** agents
+— each agent curls its source pages and writes files only, never deploys or
+edits blocks — template clusters concurrently (non-overlapping pages),
+representative-first so blocks exist to be reused; then a **central deploy**
+per page; then background batches with a per-page OK/FAIL ledger, re-driving
+FAILs only. For clusters of 6–20+ siblings, the full flow is
+`reference/delivery-gates.md` § Batched delivery. The central deploy step
+should run the bundled, resumable driver rather than a serial loop:
+`node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo>
 --branch <branch> --content <dir>` (concurrency pool, persistent ledger that skips
 already-live pages, retry/backoff, append-only log, delivered-`.plain.html` check).
 After a transient blip, re-run the same command — it re-drives only the FAILs.
@@ -191,6 +212,16 @@ contract: author `helix-query.yaml` (scoped indexes), rewrite the listing blocks
 validate one flagship end-to-end. The index builds from the **published (live)**
 tree — publish before expecting rows. Full mechanics: `reference/dynamic-listings.md`.
 
+**Index resilience.** After a bulk publish, **poll the index `total` with a
+timeout** (indexing is async; a freshly-synced config sits at `building`/404
+first) — don't assert once and fail. Decode `"requested path returned a 301 or
+404"` per row as **not-published**, not a bad selector: publish the page and
+re-poll (`reference/dynamic-listings.md` § The publish gotcha). If the index
+never settles inside the timeout, the documented **degraded mode** is a
+committed static index JSON (generated from the coverage ledger, served from
+the code branch) + regeneration on content change — the listing blocks read
+the same row shape either way, so the swap back is a URL change.
+
 ### Phase D3 — Multilingual (per-language trees) — optional
 
 When the source has language trees (`/fr/…`, `/en/…`), add them as parallel content
@@ -209,9 +240,36 @@ For every delivered page, `verify` confirms HTTP 200, no `about:error` (deploy
 #75), and that every internal `href="/…"` resolves to a known delivered path — then
 flips each page to `verified` or `failed`. Exits non-zero if any page failed.
 
-> Two checks a roster-driven batch misses: nav/footer/landing targets (not
-> archetype siblings) and absolute source-site "bounce" links. See
-> `reference/operational-learnings.md`.
+**Headless render check (per template).** A 200 `.plain.html` can still render
+blank — decoration failures (missing script, wrong block wrapper class, 404
+chrome) are invisible to a text check. On the FIRST delivered page of each
+template (home included), load the live URL in a headless browser and assert
+decoration ran: the runtime's body class is set (`body.session` under
+AuthorKit — read `stardust/runtime-contract.json`), `main .section` count > 0,
+zero `pageerror` events, zero broken images.
+
+### Phase E2 — Link-audit completeness
+
+`verify.mjs` checks the links on delivered pages; this phase closes the set of
+link **targets** a roster-driven batch misses
+(`reference/operational-learnings.md` § Two verify checks):
+
+- **Nav/footer/landing targets are NOT archetype siblings.** Enumerate every
+  header/footer/nav-fragment `href` plus each section's index/landing page and
+  confirm each is **deployed + published + verified** — otherwise they get
+  committed but never published, their links 404, and the dashboard still
+  reads 100%.
+- **Localize source-site bounce links** whose path has a delivered local 200
+  page (header/footer/home first); keep an absolute source link only when no
+  local page exists (a bounce beats a 404).
+- **Strip trailing slashes and `.html` from internal links.** EDS serves
+  extensionless documents with no trailing slash, so `/x/y/` and `/x/y.html`
+  both 404 (render the 404 block) while `.plain.html` still passes — nav reads
+  green, every link is dead. Normalize every internal `href` (keep bare `/`);
+  repoint `.html` links with no local page at the working source URL.
+- **The audit GETs each href against the LIVE tree.** Structural resolution
+  against the ledger misses trailing-slash and case defects that only
+  delivery exposes.
 
 ### Phase F — Optimize: multi-source audit + gate (delivery quality)
 
@@ -297,6 +355,12 @@ Surface `pending`/`stale`/`failed` as the explicit "what's missing" list.
 `content-pending` pages are listed separately — not failures; their block code is
 live and they advance to `pending` automatically when `migrate` emits their HTML
 and `inventory` is re-run.
+
+**Also write/refresh `stardust/learnings.md`** per
+`skills/stardust/reference/learnings.md`: one entry per failure class this run
+surfaced (evidence, proposed skill + section to change, `status: pending`).
+plugin maintainers harvest pending entries into skill
+diffs — this is how a run's hard-won fixes stop being re-learned.
 
 ### Phase I — Dashboard
 
@@ -403,6 +467,12 @@ Normalize each one's output into the ledger via `findings.mjs record`. See
 - `reference/operational-learnings.md` — scaled-rollout gotchas (extend, republish, verify).
 - `reference/audit-sources.md` — the audit-source → layer → fixability → autofix map.
 - `reference/checks.md` — the `rollout:baseline` check catalog.
+- `skills/stardust/reference/learnings.md` — the per-run learnings ledger the
+  report phase writes.
+- `skills/migrate/reference/fidelity-tiers.md` — the archetype/sibling/thin tier
+  contract Phase C records.
+- `skills/migrate/reference/media-reconciliation.md` — the image-fidelity
+  resolver's decision table.
 - `skills/deploy/SKILL.md` — the single-page conversion methodology rollout drives.
 - `skills/deploy/da-deploy-protocol.md` — the DA Source API transport.
 - `skills/migrate/SKILL.md` — produces the `migrated/` + `_meta.json` inputs.

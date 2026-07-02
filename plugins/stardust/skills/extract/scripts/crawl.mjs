@@ -32,10 +32,17 @@
  *     innerText AND no real media is flagged `spaShellSuspect`.
  *   - DUPLICATE check (cross-page, after the crawl): a page whose main-content
  *     hash equals another page's is flagged `duplicateOf` (catches detail==listing).
+ *     Attribution is deterministic by discovery order: the earliest-queued page
+ *     per hash is canonical, regardless of pool completion order.
+ *   - SCREENSHOT: a full-page PNG per page under <out>/assets/screenshots/<slug>.png
+ *     (viewport-only fallback on extremely tall pages; mode in _signals.screenshotMode,
+ *     relative path in the page record's `screenshot` field) — feeds the extract
+ *     SKILL.md Phase 2.5 vision gate.
  *
  * Usage:
  *   node crawl.mjs --url https://example.com [--pages a,b,c] [--max 25] \
- *     [--out stardust/current] [--wait medium] [--no-consent-dismiss]
+ *     [--out stardust/current] [--wait medium] [--no-consent-dismiss] \
+ *     [--concurrency 4]
  *
  * Needs playwright importable from the project (see extract/SKILL.md Setup —
  * `npm i -D playwright` or the Playwright MCP server; the `npx playwright`
@@ -50,7 +57,7 @@ import { chromium } from 'playwright';
 const WAIT_MS = { fast: 1200, medium: 2500, slow: 5000 };
 
 function parseArgs(argv) {
-  const a = { out: 'stardust/current', max: 25, wait: 'medium', consent: true };
+  const a = { out: 'stardust/current', max: 25, wait: 'medium', consent: true, concurrency: 4 };
   for (let i = 2; i < argv.length; i += 1) {
     const k = argv[i];
     if (k === '--url') a.url = argv[(i += 1)];
@@ -59,6 +66,7 @@ function parseArgs(argv) {
     else if (k === '--max') a.max = Math.max(1, +argv[(i += 1)] || 25);
     else if (k === '--wait') a.wait = argv[(i += 1)];
     else if (k === '--no-consent-dismiss') a.consent = false;
+    else if (k === '--concurrency') a.concurrency = Math.max(1, +argv[(i += 1)] || 4);
     else throw new Error(`unknown arg: ${k}`);
   }
   if (!a.url) throw new Error('--url is required');
@@ -82,9 +90,34 @@ function isFingerprintBlock(err) {
   return /ERR_HTTP2_PROTOCOL_ERROR|ERR_QUIC_PROTOCOL_ERROR|ERR_CONNECTION_RESET|net::ERR/.test(m);
 }
 
+// ---- URL normalization: one canonical form for entry, --pages, sitemap, BFS ----
+// resolve against base, strip hash, keep query, normalize trailing slash
+// (non-root paths lose it) so `/about`, `/about/` and `/about#team` dedupe.
+function normalizeUrl(u, base) {
+  const url = new URL(u, base);
+  url.hash = '';
+  if (url.pathname.length > 1 && url.pathname.endsWith('/')) {
+    url.pathname = url.pathname.replace(/\/+$/, '');
+  }
+  return url.href;
+}
+
 // ---- discovery: explicit pages > sitemap (validated) > BFS from nav ----
 async function discover(args, page) {
-  if (args.pages) return args.pages.map((p) => new URL(p, args.url).href).slice(0, args.max);
+  const entry = normalizeUrl(args.url);
+  // explicit --pages: NEVER drop a listed page. The entry URL is ADDED on top
+  // (the effective cap grows by one when needed); if the total still exceeds
+  // --max, warn instead of silently evicting a requested page.
+  if (args.pages) {
+    const listed = [...new Set(args.pages.map((p) => normalizeUrl(p, args.url)))];
+    const urls = listed.includes(entry) ? listed : [entry, ...listed];
+    if (urls.length > args.max) {
+      console.error(`[crawl] WARN --pages lists ${listed.length} page(s); with the entry URL the total is ${urls.length}, exceeding --max ${args.max} — crawling all of them (explicitly listed pages are never dropped)`);
+    }
+    return urls;
+  }
+  // discovered lists (sitemap/BFS): entry always included, normalized dedupe, capped at --max.
+  const withEntry = (list) => [...new Set([entry, ...list.map((u) => normalizeUrl(u, args.origin))])].slice(0, args.max);
   // sitemap.xml — but only trust it if it has >=1 <loc> (a 200-but-empty Drupal
   // sitemap must fall through to BFS — finding from the paramount run).
   for (const sm of ['/sitemap.xml', '/sitemap_index.xml']) {
@@ -93,13 +126,13 @@ async function discover(args, page) {
         const r = await fetch(u); return r.ok ? r.text() : '';
       }, new URL(sm, args.origin).href);
       const locs = [...xml.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)].map((m) => m[1]);
-      if (locs.length >= 1) return [...new Set(locs)].filter((u) => u.startsWith(args.origin)).slice(0, args.max);
+      if (locs.length >= 1) return withEntry(locs.filter((u) => u.startsWith(args.origin)));
     } catch { /* fall through */ }
   }
   // BFS depth-1 from the entry page's same-origin nav links.
   const links = await page.evaluate((origin) => [...document.querySelectorAll('a[href]')]
     .map((a) => a.href).filter((h) => h.startsWith(origin)), args.origin);
-  return [...new Set([args.url, ...links])].slice(0, args.max);
+  return withEntry(links);
 }
 
 async function dismissConsent(page) {
@@ -184,8 +217,65 @@ function capture() {
     .map((m) => text(m)).filter((t) => t && t.length > 40).slice(0, 10);
 
   const mainText = text(main);
-  const customProps = Object.fromEntries(Array.from(document.documentElement.style)
-    .filter((p) => p.startsWith('--')).map((p) => [p, getComputedStyle(document.documentElement).getPropertyValue(p).trim()]));
+  // custom props — discovery-vs-value split:
+  //   * the stylesheet walk DISCOVERS property NAMES declared on :root/html-ish
+  //     selectors, recursing into @media/@supports groups AND @import'ed sheets
+  //     (a CSSImportRule exposes .styleSheet, not .cssRules — WordPress/legacy
+  //     CMS token sheets commonly arrive via @import);
+  //   * the recorded VALUE is always the LIVE one from
+  //     getComputedStyle(documentElement). A declared value is accepted as
+  //     fallback ONLY from unconditional rules (not inside any grouping rule
+  //     with a condition, nor a conditional @import/link media) whose selector
+  //     list contains exactly ':root' or 'html'. Names that only appear in
+  //     conditional/themed rules (e.g. `:root.dark`, `@media (…)`) and compute
+  //     empty are skipped — the rendered page never used them.
+  const propNames = new Set();
+  const declaredFallback = {};
+  const isConditionalMedia = (media) => !!(media && media.mediaText && !/^(all)?$/i.test(media.mediaText.trim()));
+  const walkRules = (rules, conditional) => {
+    for (const rule of rules || []) {
+      if (rule.type === 3 /* CSSRule.IMPORT_RULE */ || (typeof CSSImportRule !== 'undefined' && rule instanceof CSSImportRule)) {
+        try {
+          if (rule.styleSheet) walkRules(rule.styleSheet.cssRules, conditional || isConditionalMedia(rule.media));
+        } catch { /* cross-origin imported sheet */ }
+        continue;
+      }
+      if (rule.style && rule.selectorText) {
+        const selectors = rule.selectorText.split(',').map((s) => s.trim());
+        if (selectors.some((s) => /^(:root|html)\b/.test(s))) {
+          const unconditionalRoot = !conditional && selectors.some((s) => s === ':root' || s === 'html');
+          for (const p of rule.style) {
+            if (!p.startsWith('--')) continue;
+            propNames.add(p);
+            // last unconditional exact-:root/html declaration wins (cascade order)
+            if (unconditionalRoot) declaredFallback[p] = rule.style.getPropertyValue(p).trim();
+          }
+        }
+      }
+      if (rule.cssRules && rule.cssRules.length) {
+        // grouping rule: @media/@supports carry a condition; @layer etc. do not
+        const groupConditional = conditional || typeof rule.conditionText === 'string';
+        try { walkRules(rule.cssRules, groupConditional); } catch { /* skip */ }
+      }
+    }
+  };
+  for (const sheet of document.styleSheets) {
+    try { walkRules(sheet.cssRules, isConditionalMedia(sheet.media)); } catch { /* cross-origin sheet */ }
+  }
+  for (const p of document.documentElement.style) {
+    if (p.startsWith('--')) {
+      propNames.add(p);
+      declaredFallback[p] = document.documentElement.style.getPropertyValue(p).trim();
+    }
+  }
+  const rootStyle = getComputedStyle(document.documentElement);
+  const customProps = {};
+  for (const name of propNames) {
+    const live = rootStyle.getPropertyValue(name).trim();
+    if (live) customProps[name] = live;
+    else if (declaredFallback[name]) customProps[name] = declaredFallback[name];
+    // else: conditional/themed-only name with empty computed value — skip
+  }
 
   // substance / SPA-shell signal
   const distinctHeadings = new Set(headings.map((h) => h.text)).size;
@@ -217,7 +307,7 @@ function capture() {
   };
 }
 
-async function capturePage(context, url, args) {
+async function capturePage(context, url, slug, args) {
   const page = await context.newPage();
   await page.setViewportSize({ width: 1440, height: 900 });
   const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
@@ -243,6 +333,25 @@ async function capturePage(context, url, args) {
     await page.close();
     throw Object.assign(new Error('empty page — possibly soft-404'), { errorClass: 'EmptyPageError' });
   }
+  // full-page screenshot for the Phase 2.5 vision gate. Extremely tall pages
+  // can exceed Playwright's raster limit — catch and retry viewport-only,
+  // recording which mode was used in _signals.
+  const shotsDir = path.join(args.out, 'assets', 'screenshots');
+  await mkdir(shotsDir, { recursive: true });
+  const shotPath = path.join(shotsDir, `${slug}.png`);
+  let screenshotMode = 'fullPage';
+  try {
+    await page.screenshot({ path: shotPath, fullPage: true, timeout: 30000 });
+  } catch {
+    screenshotMode = 'viewport';
+    try {
+      await page.screenshot({ path: shotPath, fullPage: false, timeout: 30000 });
+    } catch {
+      screenshotMode = 'failed';
+    }
+  }
+  rec.screenshot = screenshotMode === 'failed' ? null : `assets/screenshots/${slug}.png`;
+  rec._signals.screenshotMode = screenshotMode;
   await page.close();
   return rec;
 }
@@ -275,29 +384,59 @@ async function main() {
   await probe.close();
   console.error(`[crawl] technique=${technique} pages=${urls.length}`);
 
-  const log = { discovery: { fetchTechnique: technique, count: urls.length }, consent: { method: args.consent ? 'auto' : 'skipped' }, crawl: { failures: [] } };
-  const byHash = new Map();
+  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency }, consent: { method: args.consent ? 'auto' : 'skipped' }, crawl: { failures: [] } };
   let ok = 0;
-  for (const url of urls) {
-    const slug = slugify(url);
-    try {
-      const rec = await capturePage(context, url, args);
-      // cross-page duplicate (detail == listing) detection
-      const h = crypto.createHash('sha1').update(rec._contentHash).digest('hex');
-      if (byHash.has(h)) rec._signals.duplicateOf = byHash.get(h);
-      else byHash.set(h, slug);
-      delete rec._contentHash;
-      await writeFile(path.join(outPages, `${slug}.json`), JSON.stringify({ slug, url, renderedBy: 'playwright', fetchedAt: new Date().toISOString(), ...rec }, null, 2));
-      ok += 1;
-      const s = rec._signals;
-      const warn = [s.spaShellSuspect && 'SPA-SHELL?', s.duplicateOf && `DUP-OF:${s.duplicateOf}`, s.trackingOnlyMedia && 'TRACKING-PIXEL-ONLY', s.filteredInterstitials && `filtered:${s.filteredInterstitials}`].filter(Boolean).join(' ');
-      console.error(`[crawl] OK   ${slug}  ${warn}`);
-    } catch (err) {
-      log.crawl.failures.push({ url, slug, errorClass: err.errorClass || 'Error', message: String(err.message || err), at: new Date().toISOString() });
-      console.error(`[crawl] FAIL ${slug}  ${err.errorClass || 'Error'}: ${err.message}`);
+  await context.close();
+
+  // worker pool: N parallel BrowserContexts drain the shared queue. Consent is
+  // re-established per page (dismissConsent runs inside capturePage), so each
+  // fresh context is covered without cross-context cookie sharing.
+  // During capture we only RECORD content hashes (indexed by queue position);
+  // duplicate attribution happens in a deterministic post-pass below.
+  const results = new Array(urls.length).fill(null); // { slug, file, hash } per queue index
+  let nextIdx = 0;
+  async function worker() {
+    const ctx = await browser.newContext();
+    while (nextIdx < urls.length) {
+      const idx = nextIdx;
+      nextIdx += 1;
+      const url = urls[idx];
+      const slug = slugify(url);
+      try {
+        const rec = await capturePage(ctx, url, slug, args);
+        const hash = crypto.createHash('sha1').update(rec._contentHash).digest('hex');
+        delete rec._contentHash;
+        const file = path.join(outPages, `${slug}.json`);
+        await writeFile(file, JSON.stringify({ slug, url, renderedBy: 'playwright', fetchedAt: new Date().toISOString(), ...rec }, null, 2));
+        results[idx] = { slug, file, hash };
+        ok += 1;
+        const s = rec._signals;
+        const warn = [s.spaShellSuspect && 'SPA-SHELL?', s.trackingOnlyMedia && 'TRACKING-PIXEL-ONLY', s.filteredInterstitials && `filtered:${s.filteredInterstitials}`].filter(Boolean).join(' ');
+        console.error(`[crawl] OK   ${slug}  ${warn}`);
+      } catch (err) {
+        log.crawl.failures.push({ url, slug, errorClass: err.errorClass || 'Error', message: String(err.message || err), at: new Date().toISOString() });
+        console.error(`[crawl] FAIL ${slug}  ${err.errorClass || 'Error'}: ${err.message}`);
+      }
     }
+    await ctx.close();
   }
+  await Promise.all(Array.from({ length: Math.min(args.concurrency, urls.length) }, worker));
   await browser.close();
+
+  // cross-page duplicate (detail == listing) detection — deterministic post-pass
+  // in original queue order: canonical = earliest-QUEUED page per content hash
+  // (not whichever finished first under the pool); later ones marked duplicateOf.
+  const canonicalByHash = new Map();
+  for (const r of results) {
+    if (!r) continue;
+    if (!canonicalByHash.has(r.hash)) { canonicalByHash.set(r.hash, r.slug); continue; }
+    const canonical = canonicalByHash.get(r.hash);
+    const rec = JSON.parse(await readFile(r.file, 'utf8'));
+    rec._signals = rec._signals || {};
+    rec._signals.duplicateOf = canonical;
+    await writeFile(r.file, JSON.stringify(rec, null, 2));
+    console.error(`[crawl] DUP  ${r.slug}  DUP-OF:${canonical}`);
+  }
   // merge into existing _crawl-log.json if present
   const logPath = path.join(args.out, '_crawl-log.json');
   const prev = existsSync(logPath) ? JSON.parse(await readFile(logPath, 'utf8')) : {};

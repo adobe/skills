@@ -58,7 +58,12 @@ refactor (see `notes/migrate-template-canon-refactor.md`):
 ```
 stardust/
 ├── state.json                        # state machine (state-machine.md)
+├── status.jsonl                      # append-only phase-transition log — every skill appends start/end/blocked lines (run-status.md)
 ├── direction.md                      # resolved intent + reasoning trace
+├── learnings.md                      # per-run learnings ledger — rollout writes, maintainers harvest (learnings.md)
+├── dynamic-blocks-map.md             # dynamic-vs-static listing blocks + per-type metadata contract (prepare-migration Phase 4.5 / rollout Phase B2)
+├── redirects.tsv                     # original→normalized path pairs from the path-safety gate (rollout Phase C)
+├── runtime-contract.json             # EDS runtime probe result (deploy § Runtime-detection probe)
 ├── uplift-improvements.md            # 5 specific weaknesses — load-bearing for uplift's variant A (written by `stardust:uplift` Phase 2a; absent otherwise)
 ├── uplift-questions.md               # 6–8 "what if…" candidates with disqualifications (written by `stardust:uplift` Phase 2b; absent otherwise)
 ├── canon/                            # design canon (canon-extraction.md) — written by prototype --prep on first approval, extended on subsequent approvals
@@ -114,11 +119,46 @@ forward-compat signal downstream consumers test for.
 ### `stardust/state.json`
 Owner: every stardust sub-command. Schema in `state-machine.md`.
 
+### `stardust/status.jsonl`
+Owner: every stardust sub-command (append-only). One JSON line per
+phase start/end/blocked event; contract in `reference/run-status.md`.
+The deterministic progress surface any harness can tail. Carries no
+provenance block — each line is self-describing (`ts` + `skill`), and
+append-only replaces the overwrite protection provenance provides.
+
 ### `stardust/direction.md`
 Owner: `$stardust direct`. The full reasoning trace for the resolved
 direction, written using the format in
 `skills/direct/reference/direction-format.md`. The agent appends a new
-section every time direction changes.
+section every time direction changes. Under hands-off mode the master
+skill also appends the activation line, named assumptions, and the
+chosen volume caps here.
+
+### `stardust/learnings.md`
+Owner: `$stardust rollout` (report phase), plus any skill that hits a
+failure class its SKILL.md didn't anticipate. Entry shape + lifecycle
+in `reference/learnings.md`. Plugin maintainers harvest `pending`
+entries into skill diffs and flip them to `folded`.
+
+### `stardust/dynamic-blocks-map.md`
+Owner: `$stardust prepare-migration` (Phase 4.5) or `$stardust
+rollout` (Phase B2) — whichever runs first; the other verifies rather
+than redoes. Classifies every listing block dynamic vs static and
+defines the per-content-type metadata contract; `helix-query.yaml`
+(authored at the EDS project root from the same contract) is its
+sibling. Mechanics in `skills/rollout/reference/dynamic-listings.md`.
+
+### `stardust/runtime-contract.json`
+Owner: `$stardust deploy` (runtime-detection probe, before Step 1).
+Records the target EDS runtime's conventions (`runtime`,
+`blockWrapperClass`, `buttonClasses`, `fragmentScriptPolicy`,
+`emptySectionCollapse`) so block CSS/JS generation and the QA harness
+read a probed contract instead of assuming one.
+
+### `stardust/redirects.tsv`
+Owner: `$stardust rollout` (Phase C path-safety gate). One
+`source<TAB>destination` pair per normalized path; wired into the EDS
+redirects mechanism at Phase D so original inbound URLs don't 404.
 
 ### `stardust/current/PRODUCT.md` and `DESIGN.md`
 Owner: `$stardust extract`. Authored by `$impeccable teach` /
