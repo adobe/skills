@@ -53,6 +53,31 @@ Three CS-specific constraints every listener must satisfy:
 
 ---
 
+## Discovery
+
+Detection is performed by the analyzer ([`../scripts/analyze.sh`](../scripts/README.md)), run by the runbook:
+
+```bash
+bash ../scripts/analyze.sh <workspace-root> --pattern resource-change-listener
+```
+
+**Match criteria (what the detector flags):** a class that **`implements org.apache.sling.api.resource.observation.ResourceChangeListener`** or **`ExternalResourceChangeListener`** (import-aware) — the modern API, flagged for review against the lightweight + JobConsumer contract.
+
+Emitted at the class declaration, with the class header as the snippet. Parse-level only — direct `implements` clause; reached-via-base-class is not resolved. Legacy `javax.jcr.observation.EventListener` is detected by the `event-migration` pattern (matching the BPA subtype taxonomy); when its logic is plain content observation, that guide routes it back here. A class implementing both `ResourceChangeListener` and an event interface is flagged by both patterns (rare).
+
+## Resolution contract
+
+**guided** — `apply (guided)`. The analyzer locates each `ResourceChangeListener`; remediation is judgment-based and applied via R0–R5 (per the Classification above) in an apply session.
+
+| Site shape | Disposition |
+|---|---|
+| `implements ResourceChangeListener`, `onChange()` does repository/JCR/heavy work | apply (guided) → R1–R5 |
+| Legacy `javax.jcr.observation.EventListener` / resource-topic `EventHandler` routed here *(arrives via `event-migration` redirect or migration handoff — this pattern's own detector flags only the modern API)* | apply (guided) → R0 then R1–R5 |
+| `implements ResourceChangeListener`, `onChange()` only enqueues a Sling Job | skipped: `already-compliant` |
+| Test code (`src/test/`) | skipped: `test-scope` |
+
+---
+
 ## Complete example — before and after
 
 ### Before (legacy JCR `EventListener` with inline logic and admin resolver)
