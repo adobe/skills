@@ -263,6 +263,31 @@ Naming rules:
 
 Lock the answers in writing (in `stardust/eds-conversion-log.md` or similar). This is the single highest-leverage step in the whole process.
 
+### 2b. Section schema + decode tier — close the round-trip BEFORE writing code (#93, #95)
+
+The dropped-CTA / role-swap / flattened-variant class has ONE root cause: the authored rows (ENCODE) and the block's `decorate()` (DECODE) are written independently and hoped to be inverses. Two moves close the loop up front; the in-loop `block-roundtrip` gate (#94, Step 8) then proves it closed.
+
+**Emit the section schema — the shared ENCODE/DECODE contract (#93).** Once names are locked, generate the per-section contract both sides are written FROM:
+
+```bash
+node skills/deploy/scripts/section-schema.mjs "http://localhost:8791/<prototype>.html" \
+  --out stardust/eds-schema/<page>.json
+```
+
+Per section it emits the ordered role-classified inventory (heading / eyebrow / cta+href / body — the SAME classifier `content-diff` and `block-roundtrip` measure with, from `skills/diff/scripts/content-inventory.mjs`) and the repeating-unit groups (count + per-unit composition: headings/ctas/imgs/textRuns, uniform or not). Use it on both sides:
+
+- **ENCODE**: one row per repeat unit, fields in schema order; every schema item appears in the authored content. An item you deliberately drop is a decision recorded in the conversion log — never an accident.
+- **DECODE**: the block's JSDoc cites its section's schema path; `decorate()` classifies exactly the roles the schema lists, and the schema's unit count is the post-decorate count assertion (#48/#52).
+
+Cross-check `repeats[].uniform` against the #90 fingerprint: `uniform: false` means a per-instance variant (active chip, accent CTA, image-less card) the block must reproduce, not flatten.
+
+**Pick the decode tier per section — template-slotted vs reconstructive (#95).** Reconstruction is where decode bugs live, so only reconstruct where authors need the structural freedom:
+
+- **Template-slotted (fidelity by construction).** For fixed-composition sections whose structure never changes at authoring time (a bespoke hero, a cinematic band, a stat/countdown composition): `decorate()` holds the prototype section's inner DOM verbatim as a template literal and SLOTS the authored values into it by role — eyebrow text into the template's eyebrow node, heading into the `<h1>`, each CTA's text+href, the authored `<picture>` into the media slot. The decorated DOM ships byte-equal to the prototype, so the segmentation-bug class (#48/#52/#56/#76) cannot occur. Editors still own every line of copy — the content page is unchanged and server-rendered (this is NOT client-injected chrome; #86 doesn't bite). Structure edits need a developer: the right trade for sections whose structure nobody edits.
+- **Reconstructive (authorable structure).** For repeating/data sections where authors add/remove units (cards, FAQs, listings, menus): classify + segment defensively per #48/#50/#52 — and let the schema + round-trip gate carry the burden of proof.
+
+Record the tier per block in the conversion log. Default: template-slotted for bespoke one-offs, reconstructive for repeat groups.
+
 ### 3. Foundation
 
 Update `styles/styles.css` to the following — and ONLY the following:
@@ -570,6 +595,8 @@ The brief template:
 >
 > **Brand tokens** are global in `styles/styles.css`; do not redefine.
 >
+> **Round-trip contract (#93/#94)**: the page's authored rows AND your block's decode are both written from `stardust/eds-schema/<page>.json` (roles + repeat units — Step 2b); cite the schema path in the block JSDoc. After writing each block, run `node skills/deploy/scripts/block-roundtrip.mjs "<protoURL>" content/<page>.html --blocks <name>` — the block is NOT done until it exits 0 (0 structural 🔴).
+>
 > **Section layout — reproduce the prototype's max-width container (#13)**: if the prototype section wraps its content in a centered max-width container (`<div class="wrap">` / `.container` / `.inner`), your block MUST recreate it — build the content into a `.wrap` div (`block.replaceChildren(wrap)`), so the colored/section background bleeds full-width but the **content** stays within the page max-width. Only render content edge-to-edge where the prototype section itself is full-bleed (no inner wrapper). Getting this wrong is invisible at ≤1440px and only shows at wide viewports.
 >
 > **Images — `<image-slot>` placeholders (#2)**: claude-design prototypes use `<image-slot>` custom elements as image drop-targets; there are usually NO real image assets. Treat each image as an **optional** authored cell holding a `<picture>`/`<img>` (`const pic = cell.querySelector('picture, img'); if (pic) …`). When the cell is empty, fall back to the prototype's background treatment (e.g. dark `--ink`, or a placeholder rectangle) via the block CSS so the section still looks right with no image. Leave image cells EMPTY in the authoring snippet.
@@ -625,6 +652,15 @@ export default async function decorate(block) {
   // 4. block.replaceChildren(...newMarkup);
 }
 ```
+
+**Prove each block's round-trip IN THE LOOP — per block, before deploy (#94).** Step 10's `content-diff` is the post-deploy proof; it must not be where defects are FOUND. After writing a block (and its authored rows), run the harness round-trip:
+
+```bash
+node skills/deploy/scripts/block-roundtrip.mjs \
+  "http://localhost:8791/<prototype>.html" content/<page>.html --blocks <name>   # omit --blocks for all
+```
+
+It decorates the authored content locally with the block's own JS+CSS (the render-harness technique — no DA, no dev server), extracts the role inventory from the decorated section AND the matching prototype section with the SAME classifier as `content-diff` (`skills/diff/scripts/content-inventory.mjs`), and diffs them. Pass `--map <name>=<selector>` when the prototype section class differs from the block name; `--styles`/`--blocks-dir` when the repo layout isn't `eds/`- or root-level. Exit 2 on any structural 🔴 (MISSING CTA/HEADING/EYEBROW, ROLE SWAP) — fix the decode (or the authored rows) and re-run; the block is done when it exits 0. Font forks are deliberately NOT checked here (the harness renders local fonts; faces are Step 4 + Step 10's business). A `decorate() errors` line means the block threw and rendered raw rows — fix that before reading the diff. Template-slotted blocks (#95) still run the gate: it catches slot-fill mistakes and authored-row drift.
 
 **Lead/hero blocks: query content, don't hard-index rows (#42).** A hero that reads `rows[3]=headline, rows[4]=lede, rows[5]=CTA` breaks the moment the content shape differs — and the mandatory-metadata / single-`<h1>` SEO rework (#34/#35) actively **consolidates** the headline + lede + CTAs into ONE cell, so the fixed indices come back `undefined` and the hero `.wrap` (the LCP element and the only `<h1>`) renders EMPTY with no error. Decorate lead blocks by querying (`block.querySelector('h1,h2')`; link-bearing `<p>` = CTAs; `picture` from anywhere) so they tolerate BOTH the rich multi-row shape and the consolidated single-cell shape. **Disambiguate eyebrow vs lede by ORDER/length, not "first `<p>`" (#51):** both are link-free `<p>`s, so "first link-free paragraph = lede" swaps them (the short eyebrow comes first). The canonical lead order is **eyebrow → heading → lede**: the eyebrow is the short/uppercase line *before* the heading; the lede is the sentence-length `<p>` *after* it. Local-QA check: after decoration, assert the hero's inner wrap is non-empty and contains the `<h1>`.
 
@@ -738,6 +774,8 @@ node skills/deploy/scripts/build-harness.mjs content/<path>.html qa/page.html   
 
 Open `http://localhost:3000/qa/page.html` — `scripts.js` runs `loadArea()`, blocks load from the code origin, fragments inject via `postlcp.js`. Screenshot / inspect with headless Chrome (`--virtual-time-budget=9000 --screenshot` / `--dump-dom`) or Playwright.
 
+**Before any DA push, run the whole-page round-trip gate (#94)** — `block-roundtrip.mjs` with no `--blocks` (all blocks, DA-free): it catches cross-block drops a per-block run can miss (a section head absorbed by the wrong block, an instance-count mismatch between authored blocks and prototype sections).
+
 **Capture at a real viewport and scroll — not one giant window (#19).** A `min-height:100vh` hero becomes *window-tall* under a huge capture window (e.g. 7800px), pushing its centered content far down and off the top crop — it looks like the hero text vanished. Instead, use Playwright at a normal viewport (e.g. 1440×900) and `scrollIntoView()` each section before each screenshot.
 
 **Visually diff each section against the prototype (#23).** Programmatic checks (width, decoration counts, interactivity) pass things the eye catches — header alignment, intentional line breaks (`<br>`), heading **weight**, and a section root's **background/color** (e.g. a footer that should be a brand color but renders on the body background). Open the prototype itself (`<x-dc>`/JSX prototypes self-render from their file via their `support.js`/bundle) and the harness at the **same viewport, section by section**, and compare.
@@ -770,6 +808,13 @@ active chip rendered like its siblings. Those are exactly the misses `content-di
 gates cannot. So the page is not `deployed` until `content-diff` shows **0 structural 🔴** for the first
 page of each template. Pair it with the Step 1 fingerprint (#90): the fingerprint catches the variation
 BEFORE block code, `content-diff` confirms it survived DA AFTER deploy.
+
+**With #93–#95 in place, Step 10 is the PROOF, not the repair loop.** Every block already passed
+`block-roundtrip` (#94) before deploy, so the first Step-10 run should be GREEN. What Step 10 adds
+over the in-loop gate is the DA TRANSPORT: a 🔴 here that #94 did not show means the pipeline
+reshaped the content (a stripped tag, an unwrapped `<p>` #79, a flattened row #50/#62) — fix the
+decode's flattened-shape fallback, then re-run both. If Step 10 keeps being where defects are first
+FOUND, the loop is being run out of order.
 
 1. **`skills/diff/scripts/visual-diff.mjs` — the PIXEL/layout probe.** Reasons about rendered geometry: stretched images (#36), dropped max-width wraps (#37), blank renders (#40), surface/ground colour flips (#59). Good at "this looks broken." STRUCTURALLY BLIND to "the right text is in the wrong slot" or "one CTA is gone" — those keep full pixels and plausible colours, so no flag fires.
 2. **`skills/diff/scripts/content-diff.mjs` — the STRUCTURAL content+type probe.** Extracts an ordered, role-classified inventory ({heading, eyebrow, cta+href, body}) from each `<main>` — classifying by computed style + tag so the prototype's `.ds-*` DOM and the EDS block DOM compare symmetrically — and DIFFS them: `MISSING CTA/HEADING/EYEBROW` (🔴 dropped content — caught the `the-place` CTA), `ROLE SWAP` (🔴 same text, wrong slot — caught the `the-people` eyebrow↔body scramble #76), `MISSING BODY`/`EXTRA` (🟡 placeholder→real-copy or invented prose), and `FONT FORK` (🟠 a matched line whose rendered FACE differs, by **width probe** not `document.fonts.check` — the #77 method, grouped into one advisory). This is the layer the pixel probe can't see.
@@ -890,6 +935,9 @@ A block that builds its own layout/view wrapper (common for interactive blocks t
 - [ ] **Per-instance variation fingerprinted (#90)** — ran `style-fingerprint.mjs` on the prototype BEFORE block code; every group with >1 style/structural cluster (active chip, accent CTA, image vs image-less card) is reproduced by its block, not flattened.
 - [ ] **Token-completeness clean (#91)** — every `var(--x)` referenced in `blocks/**/*.css` is defined in `styles.css` `:root` (the `comm -23` grep prints nothing); no undefined-var-dropped background/color.
 - [ ] **`content-diff` shows 0 structural 🔴 (#92)** for the first page of each template — required, not optional.
+- [ ] **Section schema emitted + used (#93)** — `stardust/eds-schema/<page>.json` exists; authored rows follow its order/units; each block's JSDoc cites its section's schema; deliberate drops recorded in the conversion log.
+- [ ] **Every block passed `block-roundtrip` BEFORE deploy (#94)** — exit 0 (0 structural 🔴) per block against its prototype section, plus one whole-page run (no `--blocks`) clean before the DA push.
+- [ ] **Decode tier chosen per section (#95)** — bespoke fixed-composition sections are template-slotted (verbatim prototype DOM + role slots); only repeat/authorable sections are reconstructive; tiers recorded in the conversion log.
 - [ ] `<header></header>` and `<footer></footer>` are EMPTY (static fragments load automatically via `postlcp.js`).
 - [ ] **Page begins with a `metadata` block** (#34): real Title (≤60 chars, from the `<h1>`, never a block name) + Description (~155 chars). `header: off` / `footer: off` / `Robots` rows go in the same block when needed.
 - [ ] **Exactly one `<h1>` per page** (#35): the hero/lead headline is `<h1>`; section titles are `<h2>`/`<h3>`; no headline left as a bare `<div>` (interactive blocks included — the lead title is `<h1>` in server-visible markup).

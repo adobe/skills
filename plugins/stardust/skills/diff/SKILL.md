@@ -78,6 +78,17 @@ strings.
 
 Add a profile by copying `generic` in `diff-profiles.mjs` and editing `hints`.
 
+## Shared engine + the in-loop sibling
+
+The structural probe's classifier + differ live in `skills/diff/scripts/content-inventory.mjs`,
+SHARED with two `stardust:deploy` gates so every fidelity layer measures with the same instrument:
+`section-schema.mjs` (the pre-code ENCODE/DECODE contract, deploy #93) and `block-roundtrip.mjs`
+(the in-loop per-block gate, deploy #94 — the same inventory diff, run per block at authoring time
+against a local decorate() harness, no DA needed, exit-code gated). Run the in-loop gate while
+converting; run THIS skill's two probes as the final post-deploy proof. A defect first found here
+that the in-loop gate passed = the delivery pipeline reshaped the content in transport — fix the
+block's flattened-shape fallback, not the authoring.
+
 ## Workflow use
 
 Call both scripts in a validation phase and gate on the output. The
