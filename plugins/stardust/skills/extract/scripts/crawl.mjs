@@ -157,18 +157,18 @@ function isChallengeResponse(resp) {
   const h = resp.headers();
   // Cloudflare stamps this header specifically on managed/JS-challenge responses.
   if ((h['cf-mitigated'] || '').toLowerCase() === 'challenge') return true;
-  // A real page effectively never serves the ENTRY URL as a hard 403/429/503;
-  // when it does it's an edge interstitial (Cloudflare / Akamai / F5 / Imperva),
-  // and headed real Chrome is the correct response regardless of vendor. The
-  // CDN-signal check keeps a legitimate app-level 403 (e.g. an auth-gated deep
-  // page) from needlessly triggering the headed relaunch.
+  // A hard 403/429/503 that ALSO carries an edge/CDN signature is an edge
+  // interstitial (Cloudflare / Akamai / F5 / Imperva) — headed real Chrome is the
+  // correct response regardless of vendor. Requiring the edge signature (not the
+  // bare status) is deliberate: isChallengeResponse gates clearChallenge() on
+  // EVERY page, so a legitimate app-level 403 (e.g. an auth-gated deep page with
+  // no CDN header) must fail fast, not eat the ~12s challenge-solve retry loop.
   if (status === 403 || status === 429 || status === 503) {
     const server = (h['server'] || '').toLowerCase();
     if (h['cf-ray'] || server.includes('cloudflare')) return true;
     if (h['x-akamai-transformed'] || server.includes('akamai')) return true;
     if (server.includes('big-ip') || server.includes('imperva') || h['x-iinfo']) return true;
-    // Unknown edge, but an entry-URL hard block is still worth one headed retry.
-    return true;
+    // no edge signature — treat as a genuine app-level status, not a challenge.
   }
   return false;
 }
