@@ -27,7 +27,14 @@
  *     --profile <p>      eds | generic (default eds)
  *     --json             dump per-block inventories
  *
- * Exit codes: 0 = round-trip closed (no structural 🔴), 2 = structural 🔴 found, 1 = error.
+ * Exit codes: 0 = round-trip closed (no structural 🔴, no decorate errors),
+ * 2 = structural 🔴 found OR a block's decorate() failed to install/run (a block
+ * that cannot be decorated must never pass — its raw rows would match the
+ * prototype and green-light a decode that was never exercised), 1 = tool error.
+ *
+ * Limitation: block JS is INLINED into the harness page, so module-scope
+ * `import` statements cannot be resolved — such a block FAILS the gate loudly
+ * (inline the helper, or verify that block via the dev-server harness + Step 10).
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, no-continue */
@@ -81,18 +88,30 @@ function tagProtoSections(specs) {
 // same round-trip unit). Also returns every block name found (for --blocks default).
 function tagHarnessSections(names) {
   const found = {};
+  // metadata + section-metadata are pipeline config, never rendered content.
+  const isBlock = (d) => {
+    const c = (d.className || '').trim().split(' ')[0];
+    return !!c && c !== 'metadata' && c !== 'section-metadata';
+  };
   [...document.querySelectorAll('main > div')].forEach((sec) => {
-    const cands = [...sec.querySelectorAll(':scope > div[class]'), ...sec.querySelectorAll(':scope div[class]')];
-    const block = cands.find((d) => d.className.trim() && d.className.split(' ')[0] !== 'metadata');
-    if (!block) return;
-    const name = block.className.split(' ')[0];
-    if (names && !names.includes(name)) return;
-    (found[name] ||= []).push(sec);
+    // Blocks are DIRECT children of the section (the EDS authored shape); keep a
+    // single-descendant fallback for a nested one-off. ALL blocks in a section
+    // are tagged — a section may hold more than one.
+    let blocks = [...sec.querySelectorAll(':scope > div[class]')].filter(isBlock);
+    if (!blocks.length) blocks = [...sec.querySelectorAll(':scope div[class]')].filter(isBlock).slice(0, 1);
+    blocks.forEach((block) => {
+      const name = block.className.split(' ')[0];
+      if (names && !names.includes(name)) return;
+      // One block in the section → tag the SECTION (default-content siblings the
+      // block reabsorbs belong to the round-trip unit); several blocks → tag each
+      // block element itself (section-level text can't be attributed to one).
+      (found[name] ||= []).push(blocks.length === 1 ? sec : block);
+    });
   });
   const counts = {};
-  Object.entries(found).forEach(([name, secs]) => {
-    secs.forEach((sec, i) => sec.setAttribute('data-rt', `${name}-${i}`));
-    counts[name] = secs.length;
+  Object.entries(found).forEach(([name, els]) => {
+    els.forEach((el, i) => el.setAttribute('data-rt', `${name}-${i}`));
+    counts[name] = els.length;
   });
   return counts;
 }
@@ -122,17 +141,22 @@ async function main() {
   const raw = fs.readFileSync(content, 'utf8');
   const mainMatch = raw.match(/<main>([\s\S]*?)<\/main>/);
   if (!mainMatch) throw new Error(`${content} has no <main> element`);
-  const mainHtml = mainMatch[1]
-    .replace(/<div class="metadata">[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/, ''); // drop metadata block
+  const mainHtml = mainMatch[1];
+  // metadata + section-metadata are pipeline config, never rendered content —
+  // removed in the DOM after setContent (never by regexing the HTML: a lazy regex
+  // over-swallows past a shallow/empty metadata block and silently deletes real
+  // sections).
+  const dropMetadata = () => document.querySelectorAll('main div.metadata, main div.section-metadata').forEach((el) => el.remove());
 
   const browser = await chromium.launch();
   let failed = false;
   try {
     // ── harness: authored content + foundation/block CSS, decorate locally ──
-    const harness = await browser.newPage({ viewport: { width: opts.width, height: 1000 } });
+    const harness = await browser.newPage({ viewport: { width: opts.width, height: 1000 }, reducedMotion: 'reduce' });
     const styles = fs.readFileSync(stylesPath, 'utf8');
     // First pass with no block CSS just to discover block names when --blocks omitted.
     await harness.setContent(`<!doctype html><html><head><meta charset="utf-8"></head><body><main>${mainHtml}</main></body></html>`);
+    await harness.evaluate(dropMetadata);
     const discovered = await harness.evaluate(tagHarnessSections, opts.blocks);
     const names = opts.blocks || Object.keys(discovered);
     if (!names.length) throw new Error('no block divs found in the content page');
@@ -142,13 +166,22 @@ async function main() {
       `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0}main .section{padding:0}${styles}\n${blockCss}</style></head><body><main>${mainHtml}</main></body></html>`,
       { waitUntil: 'networkidle' },
     );
+    await harness.evaluate(dropMetadata);
     const harnessCounts = await harness.evaluate(tagHarnessSections, names);
     const decorateErrs = [];
+    const withJs = [];
     for (const name of names) {
       let js;
       try { js = fs.readFileSync(`${blocksDir}/${name}/${name}.js`, 'utf8'); } catch { continue; } // CSS-only block: nothing to decode
+      withJs.push(name);
       await harness.addScriptTag({ content: `window.__b=window.__b||{};window.__b[${JSON.stringify(name)}]=(function(){${js.replace(/export default\s+/, '')}\nreturn decorate;})();` });
     }
+    // A block whose inlined JS failed to evaluate (module-scope import/export, a
+    // syntax error) leaves window.__b[name] undefined — that MUST fail the gate:
+    // the undecorated raw rows would match the prototype and exit 0 while the
+    // decode was never exercised.
+    const notInstalled = await harness.evaluate((ns) => ns.filter((n) => !(window.__b && window.__b[n])), withJs);
+    notInstalled.forEach((n) => decorateErrs.push(`${n}: block JS failed to install — module-scope import/export or a syntax error (the harness inlines block JS and cannot resolve imports; inline the helper or verify this block via the dev-server harness)`));
     const errs = await harness.evaluate(async (ns) => {
       const out = [];
       for (const n of ns) {
@@ -163,14 +196,14 @@ async function main() {
     await harness.waitForTimeout(800);
 
     // ── prototype ──
-    const protoPage = await browser.newPage({ viewport: { width: opts.width, height: 1000 } });
+    const protoPage = await browser.newPage({ viewport: { width: opts.width, height: 1000 }, reducedMotion: 'reduce' });
     await protoPage.goto(proto, { waitUntil: 'networkidle', timeout: 60000 });
     await settle(protoPage);
     const protoCounts = await protoPage.evaluate(tagProtoSections, names.map((name) => ({ name, selector: opts.map[name] || null })));
 
     // ── per-block round-trip ──
     process.stdout.write(`\nBlock round-trip @ ${opts.width}px (profile "${prof.name}", ${blocksDir}, ${stylesPath})\n`);
-    if (decorateErrs.length) process.stdout.write(`⚠ decorate() errors (fix first — an erroring block renders raw rows):\n${decorateErrs.map((e) => `  ${e}`).join('\n')}\n`);
+    if (decorateErrs.length) process.stdout.write(`🔴 decorate errors (these alone fail the gate — an erroring/uninstalled block renders raw rows that can false-match the prototype):\n${decorateErrs.map((e) => `  ${e}`).join('\n')}\n`);
     let totalRed = 0;
     const dump = {};
     for (const name of names) {
@@ -197,8 +230,11 @@ async function main() {
       }
     }
     if (opts.json) process.stdout.write(`\nInventories JSON:\n${JSON.stringify(dump, null, 1)}\n`);
-    process.stdout.write(`\n${totalRed ? `✗ ${totalRed} structural 🔴 — the decode does not close the round-trip; fix before deploy.` : '✓ all blocks: round-trip closed (0 structural 🔴).'}\n`);
-    failed = totalRed > 0;
+    const bad = [];
+    if (totalRed) bad.push(`${totalRed} structural 🔴`);
+    if (decorateErrs.length) bad.push(`${decorateErrs.length} decorate error(s)`);
+    process.stdout.write(`\n${bad.length ? `✗ ${bad.join(' + ')} — the round-trip is not closed; fix before deploy.` : '✓ all blocks: round-trip closed (0 structural 🔴).'}\n`);
+    failed = bad.length > 0;
   } finally {
     await browser.close();
   }

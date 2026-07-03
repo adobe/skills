@@ -40,6 +40,8 @@ prototype's DOM and the built DOM compare symmetrically, then diffs them.
 # and re-install (npm i -D playwright --no-save --legacy-peer-deps) on failure:
 # a --no-save install from extract is PRUNED by any later real npm i
 # (extract SKILL.md § Setup). Run the copied scripts from the project, not the plugin.
+# Copy the WHOLE skills/diff/scripts/ dir: content-diff imports diff-profiles.mjs AND
+# content-inventory.mjs, and the deploy gates (#93/#94) import ../../diff/scripts/*.
 # Prereq: a RENDERABLE source. Static → serve from its own dir (python3 -m http.server).
 # The build URL must be the DECORATED page (live/preview or a local harness), not raw markup.
 PROTO="http://localhost:8791/<prototype>.html"

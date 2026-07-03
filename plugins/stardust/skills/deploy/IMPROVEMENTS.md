@@ -771,10 +771,15 @@ independently and hoped to be inverses. This pass moves the defect-FINDING to co
 - [x] #94 **In-loop per-block round-trip gate** (`scripts/block-roundtrip.mjs`) — decorates the
   authored content locally with the block's own JS+CSS (render-harness technique; no DA, no dev
   server), inventories the decorated section vs the matching prototype section, exits 2 on any
-  structural 🔴. Font forks deliberately excluded (harness fonts are local — faces are Step 4/10's
-  business). Validated on a synthetic fixture: a buggy hero decode produced exactly MISSING EYEBROW +
-  ROLE SWAP + MISSING CTA (exit 2); the fixed decode exits 0; a correct cards block closes on the
-  first run. — SKILL.md Step 8 + Local QA + Step 10 reframe + Checklist.
+  structural 🔴 OR any decorate error — a block that throws, or whose inlined JS fails to install
+  (module-scope import/export), must never pass: its raw rows can false-match the prototype and
+  green-light a decode that was never exercised. Font forks deliberately excluded (harness fonts are
+  local — faces are Step 4/10's business). Validated on a synthetic fixture: a buggy hero decode
+  produced exactly MISSING EYEBROW + ROLE SWAP + MISSING CTA (exit 2); the fixed decode exits 0; a
+  correct cards block closes on the first run; an import-bearing/throwing block exits 2 with a
+  decorate-error report; a shallow/empty metadata block, a section-metadata row before the block, and
+  a two-block section are all handled (metadata dropped in the DOM, not by regex; every block in a
+  section tagged, section-metadata excluded). — SKILL.md Step 8 + Local QA + Step 10 reframe + Checklist.
 - [x] #95 **Per-section decode tier: template-slotted vs reconstructive** — fixed-composition bespoke
   sections keep the prototype section's inner DOM verbatim in decorate() and slot authored values in
   by role: fidelity by construction, the #48/#52/#56/#76 segmentation class cannot occur, and the

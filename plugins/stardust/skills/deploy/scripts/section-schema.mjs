@@ -30,6 +30,7 @@
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus */
 import { chromium } from 'playwright';
 import fs from 'fs';
+import path from 'path';
 import { resolveProfile } from '../../diff/scripts/diff-profiles.mjs';
 import { inventory } from '../../diff/scripts/content-inventory.mjs';
 
@@ -109,7 +110,9 @@ async function main() {
   const browser = await chromium.launch();
   let sections;
   try {
-    const page = await browser.newPage({ viewport: { width: opts.width, height: 1000 } });
+    // reducedMotion matches content-diff's grab(): all three gates must inventory
+    // the same settled DOM, or an entrance animation flips a role across gates.
+    const page = await browser.newPage({ viewport: { width: opts.width, height: 1000 }, reducedMotion: 'reduce' });
     await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
     await page.waitForTimeout(1200);
     await page.evaluate(async () => {
@@ -136,7 +139,7 @@ async function main() {
   const schema = { source: url, width: opts.width, profile: prof.name, sections };
   const json = JSON.stringify(schema, null, 1);
   if (opts.out) {
-    fs.mkdirSync(opts.out.replace(/\/[^/]*$/, '') || '.', { recursive: true });
+    fs.mkdirSync(path.dirname(opts.out), { recursive: true });
     fs.writeFileSync(opts.out, `${json}\n`);
     const totals = sections.map((s) => `${s.section}(${s.items.length} items${s.repeats.length ? `, ${s.repeats.map((r) => `${r.count}×${r.unitSelector}`).join('+')}` : ''})`).join(', ');
     process.stdout.write(`schema → ${opts.out}\n${sections.length} sections: ${totals}\n`);

@@ -20,7 +20,9 @@ becomes a proof, not a repair loop:
 - **#94 `block-roundtrip.mjs`** (deploy, new): in-loop per-block gate —
   decorates the authored content locally with the block's own JS+CSS (no DA,
   no dev server), diffs the decorated section against the prototype section
-  with content-diff's own classifier, exit 2 on structural 🔴. Required per
+  with content-diff's own classifier, exit 2 on structural 🔴 or on any
+  decorate error (a block that throws or whose inlined JS fails to install
+  must never pass — its raw rows can false-match the prototype). Required per
   block before deploy, plus one whole-page run before the DA push.
 - **#95 decode tiers** (deploy): template-slotted (verbatim prototype DOM +
   role slots — fidelity by construction, for fixed-composition sections
