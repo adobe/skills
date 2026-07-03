@@ -4,6 +4,17 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.14.4 — Tessl quality pass, part 1 (descriptions)
+
+Description rewrites for the two skills whose tessl-review drag included
+description criteria: `extract` (adds a "Use when…" clause + natural trigger
+terms — analyze/reverse-engineer/capture design tokens — and a "Not for"
+scraping disambiguation) and `prepare-migration` (plain-language framing of
+the prep cascade + trigger phrases + "Not for" migrate/deploy
+disambiguation). Body text untouched — zero behavioral surface; the
+conciseness/progressive-disclosure restructuring of extract/deploy is a
+separate follow-up with its own validation run.
+
 ## 0.14.3 — seventh-site validation harvest (stardust.style) + review fixes
 
 Learnings L1–L9 from the final validation run (full pipeline on
