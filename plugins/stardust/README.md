@@ -37,10 +37,16 @@ extract  →  direct  →  prototype  →  migrate
    with declared fidelity tiers. Per-page state makes it incremental and
    resumable.
 
-Two more core entry points sit alongside the pipeline: **uplift** (one-shot
-brand-faithful presales redesign — URL in, three differentiated variants out)
-and **audit** (design + SEO + LLM-visibility audit of any site, producing a
-scored HTML report).
+Four more core entry points sit alongside the pipeline: **uplift** (one-shot
+brand-faithful presales redesign — URL in, three differentiated variants out),
+**audit** (design + SEO + LLM-visibility audit of any site, producing a
+scored HTML report), **replica** (same-design migration — recreate the site's
+key pages near pixel-perfect as clean re-authored HTML, verified by a measured
+source-fidelity gate, the only permitted design changes being an explicit
+inconsistency register; the design stays, the platform changes), and
+**reskin** (byte-faithful content from one site re-laid-out onto a
+separately-defined donor design system — another live site or local
+prototypes — with dual content/design-adoption gates).
 
 **EDS delivery** — optional second half that ships the migrated site to AEM
 Edge Delivery Services via Document Authoring: **deploy** (one page →

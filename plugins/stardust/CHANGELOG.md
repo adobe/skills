@@ -4,6 +4,49 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.16.0 — two new entry points: replica (same-design migration) and reskin (content × donor design)
+
+Round-1 outcome of the three-new-use-cases exploration (research, candidate
+designs, and validation evidence in `notes/new-use-cases/`). Both flows were
+validated on real pages before codification — replica converged aesop.com to
+a 1.31% pixel diff with zero structural findings in 3 measured iterations;
+reskin carried hirslanden.ch content byte-identically (2281/2281 chars,
+47/47 slots, 13/13 metadata) onto stripe.com's token system with 91% of
+slots mapped to named donor modules. No existing skill was modified (round-2
+synergy candidates are listed in `notes/new-use-cases/ROUND-1-REPORT.md`).
+
+- **`stardust:replica`** (new): same-design migration to AEM EDS. extract
+  `--prep` unchanged → mechanical preserve-direction (current-state spec
+  promoted verbatim as target; deltas only via the inconsistency register) →
+  clean re-authored archetype recreation (values lifted from the source
+  site's own CSS, never DOM copies) → measured source-fidelity gate per
+  breakpoint (diff's two probes `--profile generic` + new
+  `stitch-shot.mjs`/`pixel-compare.mjs` stitched pixel probe with per-band
+  breakdown, ≤3 iterations) → migrate sibling tier / deploy
+  (template-slotted bias) / rollout unchanged.
+- **`stardust:reskin`** (new): byte-faithful content onto a donor design
+  system (live URL via extract `--design-source`, or local prototypes;
+  Figma donor contract-defined, not implemented). Content-model capture with
+  scope declaration + executable normalization ledger → mapping brief
+  (≥80% slots mapped to named donor modules, no silent improvisation) →
+  programmatic render from the model (never retyped) → dual gates: content
+  (vendored `dom-equality.mjs`, Apache-2.0 attribution, structure
+  informational + `slot-coverage.mjs` incl. metadata) and design-adoption
+  (`donor-probe.mjs` token assertions; selector-missing = FAIL).
+- Both skills were smoke-tested for generalization on fresh sites before
+  shipping (replica: hay.dk, desktop converged to 1.06%; reskin:
+  ethz.ch × posthog.com, 4883/4883 text bytes, 101/101 slot checks) and
+  hardened from the findings: replica gained pointer-park capture hygiene,
+  the fixed/sticky-chrome × stitched-capture procedure, per-breakpoint CSS
+  lifting, and the full four-patch adaptation set for the diff probes
+  (upstreaming them as diff flags is the recorded round-2 candidate);
+  reskin gained the document-ordered render stream in the content model
+  (`ordered` + tiling verification), root-kind slot classification, a
+  shared image-visibility predicate across capture and gate, the
+  scope-granularity smell check, and the bounded donor-sampling recipe.
+  Smoke evidence: `/Users/paolo/stardust/smoke-{replica,reskin}/SMOKE-REPORT.md`.
+- New evals: `replica-source-fidelity/`, `reskin-content-fidelity/`.
+
 ## 0.14.5 — crawler clears Cloudflare managed challenges
 
 `extract/scripts/crawl.mjs` — the bot-management fallback now validates the

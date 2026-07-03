@@ -1,6 +1,6 @@
 {
   "name": "adobe/stardust",
-  "version": "0.14.5",
+  "version": "0.16.0",
   "summary": "Redesign an existing website to make it better. Built on top of impeccable.",
   "skills": {
     "stardust": {
@@ -26,6 +26,12 @@
     },
     "audit": {
       "path": "skills/audit/SKILL.md"
+    },
+    "replica": {
+      "path": "skills/replica/SKILL.md"
+    },
+    "reskin": {
+      "path": "skills/reskin/SKILL.md"
     },
     "deploy": {
       "path": "skills/deploy/SKILL.md"
