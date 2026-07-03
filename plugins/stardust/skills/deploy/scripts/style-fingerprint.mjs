@@ -1,6 +1,16 @@
-// Style-fingerprint probe: render a prototype and, for every group of sibling
-// elements, flag where instances DIFFER in computed style — the per-instance
-// details that a copy-only conversion flattens. Output feeds the block author.
+/**
+ * style-fingerprint.mjs — proactive per-instance variation probe (deploy Step 1, #90).
+ *
+ * Renders a prototype and, for every group of sibling instances, clusters each by a
+ * COMBINED signature — computed style-delta (bg/border/color/bg-image/weight/align) AND
+ * structural (hasImg/hasSvg/childCount). Any group with >1 cluster is a candidate
+ * per-instance variation the owning block should reproduce (the agent filters legitimate
+ * variation). The structural half catches :has()/:not() variants a style-only probe misses.
+ *
+ * Usage:
+ *   node style-fingerprint.mjs "file:///abs/path/to/<prototype>.html"
+ * Output: JSON — [{ section, bg, color, variationGroups:[{selector,count,variants:[{style,indices}]}] }]
+ */
 import { chromium } from 'playwright';
 const url = process.argv[2];
 const b = await chromium.launch();
@@ -12,7 +22,7 @@ const out = await p.evaluate(() => {
     // STYLE-DELTA signals (the instance's own computed style)
     bg: s.backgroundColor, border: s.borderColor + ' ' + s.borderWidth, color: s.color,
     bgImg: s.backgroundImage === 'none' ? 'none' : 'img', weight: s.fontWeight,
-    align: s.textAlign, radius: s.borderTopLeftRadius,
+    align: s.textAlign,
     // STRUCTURAL/CONTENT signals (what the instance CONTAINS — catches :has()/:not() variants)
     hasImg: !!el.querySelector('img,picture'), hasSvg: !!el.querySelector('svg'),
     kids: el.children.length }; };

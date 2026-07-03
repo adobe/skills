@@ -235,7 +235,10 @@ compute `grid`) still pass. So run the proactive probe up front:
 `node skills/deploy/scripts/style-fingerprint.mjs "file://<abs>/<proto>.html"`. For every group of
 sibling instances it clusters each instance by a COMBINED signature — computed **style-delta**
 (`background/border/color/background-image/weight/align`) AND **structural** (`hasImg`, `hasSvg`,
-child count) — and reports any group with >1 cluster as a variation the owning block MUST reproduce.
+child count) — and reports any group with >1 cluster as a **candidate** per-instance variation for
+the owning block to reproduce. It is advisory: it will also flag legitimate variation (a footer with
+one bold link among plain ones), so filter false positives with judgment — but never flatten a real
+variant (an active chip, an accent CTA, an image-less card) just because the block treats siblings uniformly.
 The structural half is load-bearing: image-vs-image-less cards (and any `:has()`/`:not()`-driven
 variant) share the same top-level computed style, so a style-only probe misses them — include the
 structural signals. The manifest becomes the block author's checklist; this is the pre-block

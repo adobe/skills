@@ -1,4 +1,13 @@
-// Reproduce EDS block decoration locally (no DA / dev-server) to verify conversion fidelity.
+/**
+ * render-harness.mjs — reproduce EDS block decoration locally (no DA / dev-server).
+ *
+ * Injects styles.css + each block's CSS, runs every block's decorate() over the authored
+ * content, and screenshots — so first-pass conversion fidelity is verifiable even when
+ * DA_TOKEN is expired (fidelity is decided at conversion time, not deploy time).
+ *
+ * Usage:
+ *   node render-harness.mjs <content/path.html> <out.png> <block-name> [block-name ...]
+ */
 import { chromium } from 'playwright';
 import fs from 'fs';
 const contentPath = process.argv[2], out = process.argv[3];
