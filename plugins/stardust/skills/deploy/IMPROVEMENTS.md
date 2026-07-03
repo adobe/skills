@@ -724,3 +724,30 @@ Implemented and smoke-tested in crawl.mjs.
 - [ ] #87 content-diff JOIN/SPLIT concat-matching (node-granularity false 🔴 → 🟡 advisory) — diff SKILL.md documents the limitation; code fix pending (stardust-style e2e, learning L8)
 - [x] #88 crawl.mjs: verbatim slash forms + key-dedupe + 404 slash-retry; reducedMotion emulation + settle; codeBlocks[] capture — extract (stardust-style e2e, learnings L1/L2/L3, smoke-tested live)
 - [x] #89 --no-save playwright installs pruned by later npm i → per-skill re-probe rule; token-hygiene check moved to first hands-off commit; partial-inventory broken-link carve-out; cinematic-pickup sentence corrected — extract/stardust/migrate/prototype SKILLs (learnings L7/L6/L4/L5)
+
+---
+
+## 2026-07 Fairmas e2e — per-instance fidelity on the first pass
+
+- [x] #90 Front-loaded **style-fingerprint probe** (`scripts/style-fingerprint.mjs`) added as a Step-1
+  pre-block gate: clusters each sibling instance by a COMBINED signature — computed style-delta
+  (bg/border/color/bg-image/weight/align) **and** structural (`hasImg`/`hasSvg`/childCount) — and flags
+  any group with >1 cluster as a per-instance variation the block must reproduce. The structural half is
+  load-bearing: image-vs-image-less cards and other `:has()`/`:not()` variants share top-level computed
+  style, so a style-only probe misses them. Complements Step 10's post-deploy `content-diff` by catching
+  the variation BEFORE block code. Evidence: contact dept buttons flattened (all styled alike when only
+  the middle is accent) with no probe → blog listing (active filter chip + 24 image vs 4 image-less
+  navy title-cards) correct on the first pass with it. — SKILL.md Step 1 + Checklist.
+- [x] #91 **Token-completeness gate** — SKILL.md Step 3. A `var(--x)` a lifted block CSS references but
+  the foundation `:root` never defines **silently invalidates the whole declaration** (undefined
+  `--navy-700` in a gradient → background dropped → navy card renders light, no error/lint). Added the
+  `comm -23` grep of `blocks/**/*.css` `var()`s vs `styles.css` `:root` (must be empty) to the foundation
+  and checklist. Distinct class from variation-flattening; caught by grep, not eyeball.
+- [x] #92 **`content-diff` per-instance/role check promoted from "optional" to REQUIRED** for the first
+  page of each template — SKILL.md Step 10. The atomic-delivery/layout gates (one `<h1>`, grids compute
+  `grid`) pass GREEN while a per-instance detail is wrong (uniform card grid when one card is accent), so
+  those gates cannot be the last word. Pairs with #90: fingerprint catches variation before block code,
+  content-diff confirms it survived DA after deploy.
+- [x] Added `scripts/render-harness.mjs` — reproduces EDS block decoration locally (inject styles + block
+  CSS, run each `decorate()`, screenshot) so first-pass fidelity is verifiable with NO DA/dev-server and
+  even when `DA_TOKEN` is expired (fidelity is decided at conversion time, not deploy time).

@@ -226,6 +226,21 @@ team: team-hero, team-roster, work-style, recent, careers, closing
 
 A useful pattern: dispatch the `Explore` subagent at thoroughness=quick with this exact ask. You don't need a 22-pattern punch list — you need filenames + section names. **Resist the urge to "find shared patterns."** Pattern reuse will emerge organically when two sections turn out to be byte-identical.
 
+**Fingerprint per-instance variation BEFORE writing block code (#90).** A section-name list is
+copy-level; it does NOT reveal that instances *inside* a repeated group look different — an active
+filter chip vs its outline siblings, a filled accent CTA among outline CTAs, image cards vs
+image-less title-cards. Those are the details a copy-driven conversion silently flattens (a whole
+grid of identical cards, one CTA styled like the rest), and the mandatory gates (one `<h1>`, grids
+compute `grid`) still pass. So run the proactive probe up front:
+`node skills/deploy/scripts/style-fingerprint.mjs "file://<abs>/<proto>.html"`. For every group of
+sibling instances it clusters each instance by a COMBINED signature — computed **style-delta**
+(`background/border/color/background-image/weight/align`) AND **structural** (`hasImg`, `hasSvg`,
+child count) — and reports any group with >1 cluster as a variation the owning block MUST reproduce.
+The structural half is load-bearing: image-vs-image-less cards (and any `:has()`/`:not()`-driven
+variant) share the same top-level computed style, so a style-only probe misses them — include the
+structural signals. The manifest becomes the block author's checklist; this is the pre-block
+complement to Step 10's post-deploy `content-diff` (which catches the same class of miss too late).
+
 ### 2. Decide names + reuse — LOCK BEFORE WRITING ANY CODE
 
 Naming rules:
@@ -270,6 +285,18 @@ Update `styles/styles.css` to the following — and ONLY the following:
 That's it. No section-style classes. No motion primitives. No utility classes beyond the button system.
 
 `scripts/scripts.js` stays minimal — only the page boot. No reveal-on-scroll. No marquee init. No header scroll-state. Per-block animation is owned by per-block CSS.
+
+**Token-completeness gate — every `var(--x)` a block references MUST be defined in `:root` (#91).**
+Lifting a section's CSS into a block routinely drags in a token the block author never added to the
+foundation (`var(--navy-700)` in a gradient, `var(--accent-2)` in a hover). A referenced-but-undefined
+custom property **silently invalidates the WHOLE declaration** — `background: linear-gradient(var(--navy) 0%, var(--navy-700) 100%)`
+with `--navy-700` undefined drops the entire background and the element falls back (a navy card renders
+light), with no error and no lint flag. Gate it mechanically after the foundation and before deploy:
+```bash
+comm -23 <(grep -rhoE 'var\(--[a-z0-9-]+\)' blocks/**/*.css | sed 's/var(//;s/)//' | sort -u) \
+        <(grep -oE '\--[a-z0-9-]+' styles/styles.css | sort -u)   # MUST be empty
+```
+Any line printed is a token a block uses that `:root` doesn't define — add it to the foundation `:root`.
 
 ### 4. Self-host fonts and minimize CLS — never put font loads in `head.html`
 
@@ -729,9 +756,17 @@ for (const n of ['hero','quick','used','stats','service','offers','brands','loca
 
 Cross-check each flag against the prototype: full-bleed is correct only where the prototype section has no inner max-width wrapper.
 
-## Step 10 — Visual + structural diff & reconcile (optional, recommended)
+## Step 10 — Visual + structural diff & reconcile (content-diff REQUIRED)
 
 After deploy, reconcile the EDS page against the source prototype with **two complementary probes — run BOTH** (#78). They catch disjoint failure classes; either alone gives a false "looks fine":
+
+**The `content-diff` per-instance/role check is a REQUIRED gate for the first page of each template (#92),
+not optional.** The atomic-delivery gates verify structure/layout (one `<h1>`, grids compute `grid`) and
+pass GREEN while a per-instance detail is wrong — a card grid styled uniformly when one card is accent, an
+active chip rendered like its siblings. Those are exactly the misses `content-diff` sees and the layout
+gates cannot. So the page is not `deployed` until `content-diff` shows **0 structural 🔴** for the first
+page of each template. Pair it with the Step 1 fingerprint (#90): the fingerprint catches the variation
+BEFORE block code, `content-diff` confirms it survived DA AFTER deploy.
 
 1. **`skills/diff/scripts/visual-diff.mjs` — the PIXEL/layout probe.** Reasons about rendered geometry: stretched images (#36), dropped max-width wraps (#37), blank renders (#40), surface/ground colour flips (#59). Good at "this looks broken." STRUCTURALLY BLIND to "the right text is in the wrong slot" or "one CTA is gone" — those keep full pixels and plausible colours, so no flag fires.
 2. **`skills/diff/scripts/content-diff.mjs` — the STRUCTURAL content+type probe.** Extracts an ordered, role-classified inventory ({heading, eyebrow, cta+href, body}) from each `<main>` — classifying by computed style + tag so the prototype's `.ds-*` DOM and the EDS block DOM compare symmetrically — and DIFFS them: `MISSING CTA/HEADING/EYEBROW` (🔴 dropped content — caught the `the-place` CTA), `ROLE SWAP` (🔴 same text, wrong slot — caught the `the-people` eyebrow↔body scramble #76), `MISSING BODY`/`EXTRA` (🟡 placeholder→real-copy or invented prose), and `FONT FORK` (🟠 a matched line whose rendered FACE differs, by **width probe** not `document.fonts.check` — the #77 method, grouped into one advisory). This is the layer the pixel probe can't see.
@@ -849,6 +884,9 @@ A block that builds its own layout/view wrapper (common for interactive blocks t
 - [ ] Each section in the prototype `<main>` has a corresponding block call in the content page.
 - [ ] **Content page is a body fragment** for the Source-API deploy: starts at `<body>`, **no `<!DOCTYPE>`/`<html>`/`<head>`** — EDS injects the project `head.html` at delivery. (Only the mount deploy tolerates a full doc.)
 - [ ] Ran `node skills/deploy/scripts/sanitise.js` on the content before any DA write (non-ASCII → entities).
+- [ ] **Per-instance variation fingerprinted (#90)** — ran `style-fingerprint.mjs` on the prototype BEFORE block code; every group with >1 style/structural cluster (active chip, accent CTA, image vs image-less card) is reproduced by its block, not flattened.
+- [ ] **Token-completeness clean (#91)** — every `var(--x)` referenced in `blocks/**/*.css` is defined in `styles.css` `:root` (the `comm -23` grep prints nothing); no undefined-var-dropped background/color.
+- [ ] **`content-diff` shows 0 structural 🔴 (#92)** for the first page of each template — required, not optional.
 - [ ] `<header></header>` and `<footer></footer>` are EMPTY (static fragments load automatically via `postlcp.js`).
 - [ ] **Page begins with a `metadata` block** (#34): real Title (≤60 chars, from the `<h1>`, never a block name) + Description (~155 chars). `header: off` / `footer: off` / `Robots` rows go in the same block when needed.
 - [ ] **Exactly one `<h1>` per page** (#35): the hero/lead headline is `<h1>`; section titles are `<h2>`/`<h3>`; no headline left as a bare `<div>` (interactive blocks included — the lead title is `<h1>` in server-visible markup).
