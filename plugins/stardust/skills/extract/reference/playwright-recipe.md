@@ -49,13 +49,47 @@ of an existing commercial site, agent-driven from a developer's
 machine) — the alternative is silently failing on most
 enterprise / large-retail / commerce origins.
 
-**Retry rule.** When the first navigation in a run returns any
-of `ERR_HTTP2_PROTOCOL_ERROR`, `ERR_QUIC_PROTOCOL_ERROR`, or
-hangs for the entire hard-cap on a connection that doesn't
-fingerprint cleanly: do **not** retry headless. Switch to
+**Retry rule.** Two distinct reject modes must both trigger the
+fallback — validate the *response*, not just that the navigation
+resolved:
+
+1. **Network fingerprint block** — the first navigation *throws*
+   `ERR_HTTP2_PROTOCOL_ERROR`, `ERR_QUIC_PROTOCOL_ERROR`, or hangs
+   for the entire hard-cap on a connection that doesn't fingerprint
+   cleanly.
+2. **Challenge / edge block** — the navigation *succeeds*
+   (`domcontentloaded` fires, no throw) but the response is a
+   **403/429/503 interstitial**, not the page. Cloudflare's managed
+   challenge is the canonical case: `cf-mitigated: challenge` +
+   HTTP 403. Because the goto resolves, a probe that only catches
+   throws sails straight past it and the block only surfaces later
+   as a fatal capture-time `HTTPError`. Detect it by inspecting the
+   probe response status/headers (`cf-mitigated`, `cf-ray`,
+   `server: cloudflare`/`akamai`, edge 403/429/503).
+
+On either: do **not** retry headless. Switch to
 `headless: false, channel: 'chrome'` immediately and record the
-switch in `_crawl-log.json#discovery.fetchTechnique` so re-runs
-start in headed mode without rediscovering the issue.
+switch in `_crawl-log.json#discovery.fetchTechnique` (with
+`#discovery.botBlock` = `fingerprint | challenge`) so re-runs start
+in headed mode without rediscovering the issue.
+
+**Clearing a managed challenge.** Headed real Chrome alone clears
+the *fingerprint* block, but Cloudflare's managed challenge also
+probes for automation signals — clearing it additionally needs the
+automation flags stripped: launch with
+`args: ['--disable-blink-features=AutomationControlled']` +
+`ignoreDefaultArgs: ['--enable-automation']`, and spoof
+`navigator.webdriver → undefined` via `context.addInitScript` on
+**every** context (the challenge re-fires per context — no
+cross-context cookie sharing — so a worker that skipped the spoof
+is re-challenged even after the probe cleared it). The
+non-interactive challenge serves the interstitial, runs its JS,
+sets a clearance cookie, then the page becomes reachable: wait
+~4s and `reload()` to pick up the cookie before validating the
+status. If headed + stealth + the solve window still can't clear
+it, the site requires an *interactive* solve — surface that as a
+hard failure (`BotChallengeError`) rather than capturing the
+interstitial as content.
 
 **Sub-resource fetches.** Once a page context is open in headed
 Chrome, additional fetches (sitemap, logo file, ad-hoc inspection

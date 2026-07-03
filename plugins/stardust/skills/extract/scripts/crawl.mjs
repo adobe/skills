@@ -107,14 +107,84 @@ function assignSlugs(urls) {
   });
 }
 
-// ---- bot-management fallback: headless first, headed real Chrome on H2 reject ----
+// ---- bot-management fallback: headless first, headed real Chrome on reject ----
 async function launchWithFallback() {
   const headless = await chromium.launch({ headless: true });
   return { browser: headless, technique: 'headless' };
 }
+// Stealth-hardened headed real Chrome. Headed alone clears TLS/H2-fingerprint
+// blocks, but Cloudflare's *managed challenge* also probes for automation
+// signals — clearing it needs the automation flags stripped (sagora.com e2e
+// finding). `--disable-blink-features=AutomationControlled` +
+// dropping `--enable-automation` + the navigator.webdriver spoof (applied
+// per-context in newContext) are what let the non-interactive challenge solve.
+const STEALTH_ARGS = ['--disable-blink-features=AutomationControlled'];
+async function launchHeadedStealth() {
+  return chromium.launch({
+    headless: false,
+    channel: 'chrome',
+    args: STEALTH_ARGS,
+    ignoreDefaultArgs: ['--enable-automation'],
+  });
+}
+// A context factory so the stealth init script lands on EVERY context (probe +
+// workers) once the run is in stealth mode — the challenge re-fires per context
+// (no cross-context cookie sharing), so a worker that skipped the spoof would be
+// re-challenged even after the probe cleared it.
+async function newContext(browser, stealth) {
+  const ctx = await browser.newContext(CRAWL_CONTEXT);
+  if (stealth) {
+    await ctx.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    });
+  }
+  return ctx;
+}
+// Network-level fingerprint reject: navigation THROWS before any JS runs.
 function isFingerprintBlock(err) {
   const m = String(err && err.message || err);
   return /ERR_HTTP2_PROTOCOL_ERROR|ERR_QUIC_PROTOCOL_ERROR|ERR_CONNECTION_RESET|net::ERR/.test(m);
+}
+// Bot-management CHALLENGE / block: navigation SUCCEEDS (domcontentloaded fires,
+// no throw) but the response is a 403/429/503 interstitial, not the page. The
+// original fallback only caught isFingerprintBlock() throws, so a Cloudflare
+// managed challenge (cf-mitigated: challenge, HTTP 403) sailed past the probe
+// and only blew up at capture-time as a fatal HTTPError. Validate the RESPONSE,
+// not just DOM-ready.
+function isChallengeResponse(resp) {
+  if (!resp) return false;
+  const status = resp.status();
+  const h = resp.headers();
+  // Cloudflare stamps this header specifically on managed/JS-challenge responses.
+  if ((h['cf-mitigated'] || '').toLowerCase() === 'challenge') return true;
+  // A real page effectively never serves the ENTRY URL as a hard 403/429/503;
+  // when it does it's an edge interstitial (Cloudflare / Akamai / F5 / Imperva),
+  // and headed real Chrome is the correct response regardless of vendor. The
+  // CDN-signal check keeps a legitimate app-level 403 (e.g. an auth-gated deep
+  // page) from needlessly triggering the headed relaunch.
+  if (status === 403 || status === 429 || status === 503) {
+    const server = (h['server'] || '').toLowerCase();
+    if (h['cf-ray'] || server.includes('cloudflare')) return true;
+    if (h['x-akamai-transformed'] || server.includes('akamai')) return true;
+    if (server.includes('big-ip') || server.includes('imperva') || h['x-iinfo']) return true;
+    // Unknown edge, but an entry-URL hard block is still worth one headed retry.
+    return true;
+  }
+  return false;
+}
+// Cloudflare's non-interactive managed challenge serves the 403/503 interstitial,
+// runs its JS, sets a clearance cookie, then the real page becomes reachable.
+// Wait for that window and reload to pick up the cookie before treating the
+// status as a hard failure. No-op for a normal 200 (isChallengeResponse false),
+// so zero overhead on the common path.
+async function clearChallenge(page, resp) {
+  for (let attempt = 0; attempt < 3 && isChallengeResponse(resp); attempt += 1) {
+    await page.waitForTimeout(4000);
+    const reloaded = await page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 })
+      .catch(() => null);
+    if (reloaded) resp = reloaded;
+  }
+  return resp;
 }
 
 // ---- URL normalization: one canonical form for entry, --pages, sitemap, BFS ----
@@ -410,6 +480,11 @@ async function capturePage(context, url, slug, args) {
   let resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
   // response validation
   if (!resp) throw Object.assign(new Error('no response'), { errorClass: 'TimeoutError' });
+  // bot-management challenge (Cloudflare cf-mitigated: challenge, etc.): the
+  // worker's fresh context is re-challenged even after the probe cleared it, so
+  // give the interstitial its JS-solve window and reload before validating —
+  // otherwise a solvable 403 is thrown as a fatal HTTPError.
+  resp = await clearChallenge(page, resp);
   let status = resp.status();
   // 404 on a slash variant: retry ONCE with the trailing slash flipped before
   // recording a failure (stardust-style e2e finding — slash-required hosts).
@@ -497,23 +572,45 @@ async function main() {
   const outPages = path.join(args.out, 'pages');
   await mkdir(outPages, { recursive: true });
 
+  let stealth = false;
   let { browser, technique } = await launchWithFallback();
-  let context = await browser.newContext(CRAWL_CONTEXT);
+  let context = await newContext(browser, stealth);
   let probe = await context.newPage();
 
   // bot-management probe on the entry URL; switch to headed real Chrome on reject.
+  // Two distinct reject modes must both trigger the fallback:
+  //   1. a network fingerprint block — the goto THROWS (isFingerprintBlock);
+  //   2. a challenge / edge block — the goto SUCCEEDS but returns a 403/429/503
+  //      interstitial (isChallengeResponse). This one previously slipped through
+  //      the probe and only failed at capture-time (sagora.com Cloudflare finding).
+  let botBlock = null; // 'fingerprint' | 'challenge'
   try {
-    await probe.goto(args.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    const probeResp = await probe.goto(args.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    if (isChallengeResponse(probeResp)) botBlock = 'challenge';
   } catch (err) {
-    if (isFingerprintBlock(err)) {
+    if (isFingerprintBlock(err)) botBlock = 'fingerprint';
+    else throw err;
+  }
+  if (botBlock) {
+    await browser.close();
+    console.error(`[crawl] bot-management block (${botBlock}) — switching to headed real Chrome (channel:chrome) with stealth hardening`);
+    browser = await launchHeadedStealth();
+    technique = 'headed-chrome-stealth';
+    stealth = true;
+    context = await newContext(browser, stealth);
+    probe = await context.newPage();
+    let probeResp = await probe.goto(args.url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    probeResp = await clearChallenge(probe, probeResp);
+    // If headed + stealth + the challenge-solve window STILL can't clear it, do
+    // not proceed to capture the interstitial as if it were content — surface a
+    // clear, actionable failure (this is stop-condition (a) for the skill).
+    if (isChallengeResponse(probeResp)) {
       await browser.close();
-      console.error('[crawl] fingerprint block — switching to headed real Chrome (channel:chrome)');
-      browser = await chromium.launch({ headless: false, channel: 'chrome' });
-      technique = 'headed-chrome';
-      context = await browser.newContext(CRAWL_CONTEXT);
-      probe = await context.newPage();
-      await probe.goto(args.url, { waitUntil: 'domcontentloaded', timeout: 45000 });
-    } else throw err;
+      throw Object.assign(
+        new Error(`bot-management challenge not cleared after headed real-Chrome + stealth fallback (entry status ${probeResp ? probeResp.status() : 'n/a'}) — the site requires an interactive challenge solve; run against it in a headed session you can complete by hand`),
+        { errorClass: 'BotChallengeError' },
+      );
+    }
   }
 
   // adopt the post-redirect origin (apex→www etc.): the same-origin filter and
@@ -534,7 +631,7 @@ async function main() {
   await probe.close();
   console.error(`[crawl] technique=${technique} pages=${urls.length}`);
 
-  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...(originRedirect ? { originRedirect } : {}) }, consent: { method: args.consent ? 'auto' : 'skipped' }, crawl: { failures: [] } };
+  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...(botBlock ? { botBlock } : {}), ...(originRedirect ? { originRedirect } : {}) }, consent: { method: args.consent ? 'auto' : 'skipped' }, crawl: { failures: [] } };
   let ok = 0;
   await context.close();
 
@@ -547,7 +644,7 @@ async function main() {
   const slugs = assignSlugs(urls);
   let nextIdx = 0;
   async function worker() {
-    const ctx = await browser.newContext(CRAWL_CONTEXT);
+    const ctx = await newContext(browser, stealth);
     while (nextIdx < urls.length) {
       const idx = nextIdx;
       nextIdx += 1;

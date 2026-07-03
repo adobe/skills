@@ -4,6 +4,43 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.14.5 — crawler clears Cloudflare managed challenges
+
+`extract/scripts/crawl.mjs` — the bot-management fallback now validates the
+probe **response**, not just that the navigation resolved. A Cloudflare managed
+challenge returns an HTTP 403 interstitial (`cf-mitigated: challenge`) *without
+throwing* — `domcontentloaded` fires — so the old fallback (which only fired on
+a thrown network-fingerprint error) sailed past it and the block surfaced later
+as a fatal capture-time `HTTPError`. Observed on sagora.com during the 0.14.4
+uplift validation batch, where it required hand-patching the crawler mid-run.
+
+- **Challenge detection at the probe:** `isChallengeResponse()` flags an
+  entry-URL 403/429/503 interstitial (`cf-mitigated`, `cf-ray`,
+  `server: cloudflare`/`akamai`/edge markers). Either reject mode — a thrown
+  fingerprint block *or* a challenge response — now triggers the headed
+  fallback; the reason is recorded in `_crawl-log.json#discovery.botBlock`
+  (`fingerprint | challenge`).
+- **Stealth-hardened headed Chrome:** the fallback launches real Chrome with
+  `--disable-blink-features=AutomationControlled` +
+  `ignoreDefaultArgs: ['--enable-automation']` and spoofs
+  `navigator.webdriver` via an init script on **every** context (probe +
+  workers — the challenge re-fires per context, no cross-context cookie
+  sharing). `fetchTechnique` becomes `headed-chrome-stealth`.
+- **Challenge-solve window:** `clearChallenge()` waits for the non-interactive
+  challenge's JS to set its clearance cookie and reloads before validating
+  status — no-op on a normal 200, so zero overhead on the common path. If
+  headed + stealth + the solve window still can't clear it, the run fails with
+  a clear `BotChallengeError` (interactive solve required) rather than
+  capturing the interstitial as content.
+- Recipe doc (`extract/reference/playwright-recipe.md` § Bot-management
+  fallback) updated with the two-reject-mode retry rule and the managed-
+  challenge clearing procedure.
+
+Validated end-to-end: patched crawler on sagora.com auto-detects the challenge,
+switches to `headed-chrome-stealth`, and captures the homepage at HTTP 200
+(2 headings, ~8.9k chars, 9 images); the common headless path (example.com) is
+unchanged (no fallback, no botBlock).
+
 ## 0.14.4 — Tessl quality pass, part 1 (descriptions)
 
 Description rewrites for the two skills whose tessl-review drag included
