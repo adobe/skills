@@ -282,7 +282,7 @@ surpriseMoves:
   captured site doesn't actually have a brand asset that warrants
   this treatment) fails Discipline 2: the move reads as
   "size-as-personality" — a C-cliff failure pattern per
-  `direct/SKILL.md` § C-cliff failure mode.
+  `direct/SKILL.md` § The C-cliff: render-refusal conditions.
 - Scale-displacement on a page whose IA priority depends on
   multiple beats (conversion path with steps) conflicts with the
   IA preservation rule and refuses.

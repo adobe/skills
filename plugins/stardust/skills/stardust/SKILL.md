@@ -21,7 +21,7 @@ sub-commands that delegate the actual design work to **impeccable**.
    > Stardust requires impeccable. Install it from
    > <https://github.com/pbakaus/impeccable> and re-run the command.
 2. **Run impeccable's context loader once per session.** Execute the loader at
-   `<harness>/skills/impeccable/scripts/load-context.mjs`. Its JSON output
+   `<harness>/skills/impeccable/scripts/load-context.mjs` (newer impeccable versions name it `scripts/context.mjs`; run whichever exists). Its JSON output
    tells you whether `PRODUCT.md` and `DESIGN.md` exist at the project root
    (these are the *target* state for stardust). Skip the loader if it already
    ran in this session's history.

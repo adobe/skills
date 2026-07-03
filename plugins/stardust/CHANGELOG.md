@@ -4,6 +4,31 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.14.5 — Tessl quality pass, part 2 (rules-inline / rationale-out restructure)
+
+The four remaining sub-80 SKILL.mds restructured under a strict contract:
+every rule, gate, discipline, and refusal condition stays inline (tersened);
+only rationale, historical narratives, worked examples, and flag-gated modal
+flows move to reference files, each wired with an imperative READ gate at its
+consumption point. Rule-preservation audited per skill (zero deletions;
+deploy's #NN set verified by comm).
+
+- deploy 892→475 (+5 refs: decode-disciplines, encode-contract, font-strategy,
+  anti-patterns, runtime-bootstrap) · direct 1596→398 (+prep-mode, add-variant,
+  mode-notes) · prototype 1486→1215 (+prep-mode, lessons — most conservative;
+  design-critical core stays inline) · uplift 593→430 (+output-templates).
+- Validated by A/B runs following the restructured docs as written: deploy
+  docs-page conversion 41/41 QA green, full baseline match (+1 focus-ring bug
+  caught that baseline missed); direct re-run structurally equivalent on every
+  load-bearing field (mode, pins, 4 seed dims, 4 inversions, improvements
+  F-ids, register, density).
+- A/B-evidenced additions: § Page templates (Template: metadata → body
+  <name>-template + template-vs-block specificity warning), harness-parity
+  notes, hardened collectNodes (mixed text+inline cells), Mode A research
+  sentence + craft in the roll list, dangling impeccable pointers
+  (teach.md/load-context.mjs) softened for current impeccable versions,
+  cross-refs to moved sections repaired.
+
 ## 0.14.4 — Tessl quality pass, part 1 (descriptions)
 
 Description rewrites for the two skills whose tessl-review drag included

@@ -724,3 +724,26 @@ Implemented and smoke-tested in crawl.mjs.
 - [ ] #87 content-diff JOIN/SPLIT concat-matching (node-granularity false 🔴 → 🟡 advisory) — diff SKILL.md documents the limitation; code fix pending (stardust-style e2e, learning L8)
 - [x] #88 crawl.mjs: verbatim slash forms + key-dedupe + 404 slash-retry; reducedMotion emulation + settle; codeBlocks[] capture — extract (stardust-style e2e, learnings L1/L2/L3, smoke-tested live)
 - [x] #89 --no-save playwright installs pruned by later npm i → per-skill re-probe rule; token-hygiene check moved to first hands-off commit; partial-inventory broken-link carve-out; cinematic-pickup sentence corrected — extract/stardust/migrate/prototype SKILLs (learnings L7/L6/L4/L5)
+
+---
+
+## 2026-07 Tessl quality pass, part 2 — SKILL.md restructure (no findings changed)
+
+SKILL.md was restructured for conciseness/progressive disclosure (892 → 475 lines). **All
+numbered findings (#NN) keep their numbers and remain enforced**: every rule/gate/checklist
+item stays inline in SKILL.md as a terse one-liner; only rationale paragraphs, failure
+narratives, worked examples, and deep-dive recipes moved to `reference/`:
+
+- `reference/runtime-bootstrap.md` — port manifest, #4/#21 edit mechanics, lint list (#6).
+- `reference/font-strategy.md` — #11/#12/#22/#30/#65/#77/#80 recipes + #81 header-reservation
+  deep dive.
+- `reference/encode-contract.md` — section-head reabsorption, #2/#86 image procedures,
+  #25/#41 button narratives + worked CSS.
+- `reference/decode-disciplines.md` — full #42–#79 narratives + QA probes (#13/#19/#29).
+- `reference/anti-patterns.md` — the 17 anti-pattern narratives (incl. 1b/9b — #58, #44/#67,
+  #74, #37).
+
+Each reference is wired in with a mandatory read gate at its consumption point, and the
+Step 7 sub-agent brief template instructs dispatched block agents to READ
+`reference/decode-disciplines.md` and `reference/encode-contract.md` before writing code.
+The `stardust:diff` `eds` profile citations (#NN) resolve as before.

@@ -249,7 +249,7 @@ Soft (log):
   render path selection (where this metadata gets emitted)
 - `skills/migrate/reference/content-preservation.md` — content
   rules (this doc handles head; that doc handles body)
-- `skills/direct/SKILL.md` § Prep mode — where brand-level
+- `skills/direct/reference/prep-mode.md` (direct prep mode) — where brand-level
   metadata is captured
 - `skills/stardust/reference/state-machine.md` — `deployUrl`
   configuration on `state.json.site`

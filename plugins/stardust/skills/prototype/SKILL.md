@@ -8,84 +8,79 @@ license: Apache-2.0
 
 For each `directed` page, render a **proposed redesign** as a
 self-contained static HTML file at
-`stardust/prototypes/<slug>-proposed.html`. Open the file in the
-browser; iterate via chat-driven impeccable commands ("make the
-hero bolder", "tighten the cup-note grid"). Mark `approved` once
-the user signs off in the conversation.
+`stardust/prototypes/<slug>-proposed.html`. Open it in the browser;
+iterate via chat-driven impeccable commands ("make the hero bolder",
+"tighten the cup-note grid"); mark `approved` once the user signs
+off in the conversation.
 
 `prototype` is not a renderer of its own design — it composes the
 target spec written by `direct` (`PRODUCT.md`, `DESIGN.md`,
-`DESIGN.json`, `stardust/direction.md`) onto the page content captured
-by `extract` (`stardust/current/pages/<slug>.json`). Visual creativity
-is delegated to `$impeccable craft` and the iteration commands
-(`bolder`, `quieter`, `distill`, `polish`, `colorize`, `typeset`,
-`layout`, `adapt`, `animate`, `delight`, `overdrive`, `impeccable`).
+`DESIGN.json`, `stardust/direction.md`) onto the page content
+captured by `extract` (`stardust/current/pages/<slug>.json`). Visual
+creativity is delegated to `$impeccable craft` and the iteration
+commands (`bolder`, `quieter`, `distill`, `polish`, `colorize`,
+`typeset`, `layout`, `adapt`, `animate`, `delight`, `overdrive`,
+`impeccable`).
 
 ## Inputs
 
 - `<slug>` — optional positional. Prototype just this page. Without
   it, prototype every `directed` page that is not `stale`.
 - `--all` — prototype every `directed` page including stale ones.
-- `--prep` — optional. Run in **migrate-prep mode**: fill page-type
-  gaps (prototype one representative archetype per type) and, on
-  approval, write canon back to `stardust/canon/` and
-  `DESIGN.json.extensions.canon`. See § Prep mode below and
-  `reference/canon-extraction.md`. Typically invoked via the
-  `prepare-migration` orchestrator.
-- `--canon-from <slug>` — optional. Override the default canon-
-  author (which is the first approved prototype, typically `home`).
-  Used when a different page should establish the design canon.
-- `--publish-sample <slug>` — submit the named slug to the
-  stardust showcase. Triggers the publish-sample sub-flow
-  documented in `reference/publish-sample.md`: eligibility checks,
+- `--prep` — run in **migrate-prep mode**: fill page-type gaps (one
+  representative archetype per type) and, on approval, write canon
+  back to `stardust/canon/` and `DESIGN.json.extensions.canon`.
+  **When `--prep` is passed, READ `reference/prep-mode.md`** before
+  proceeding — it carries the gap-fill procedure, canon write-back
+  rules, and prep summary. See also `reference/canon-extraction.md`.
+  Typically invoked via the `prepare-migration` orchestrator.
+- `--canon-from <slug>` — override the default canon-author (the
+  first approved prototype, typically `home`).
+- `--publish-sample <slug>` — submit the named slug to the stardust
+  showcase per `reference/publish-sample.md`: eligibility checks,
   file staging, PR creation against the upstream stardust repo.
   Requires `gh` installed and authenticated. The showcase is a
-  visual demonstration, not a deployable site — placeholder
-  content is allowed and recorded in the PR body's § Unsourced
-  content section. Design-quality gates stay strict: refuses on
-  unjustified anti-toolbox hits, `:root` token contract failure,
+  visual demonstration, not a deployable site — placeholder content
+  is allowed and recorded in the PR body's § Unsourced content
+  section. Design-quality gates stay strict: refuses on unjustified
+  anti-toolbox hits, `:root` token contract failure,
   data-attributes contract failure, or impeccable hard-rule
   violations. P0/P1 critique findings warn but don't refuse.
-  The showcase publishes via GitHub Pages on merge.
-- `--cinematic` — optional. Layer a cinematic motion register
-  on top of the static prototype. The register is read from
+  Publishes via GitHub Pages on merge.
+- `--cinematic` — layer a cinematic motion register on top of the
+  static prototype. The register is read from
   `DESIGN.json.extensions.motion.register` (written by `direct`);
-  if absent, the prototype phase picks one using the same
-  heuristic per `reference/motion-registers.md` § Selection
-  heuristic. Output filename is `<slug>-cinematic.html`
-  (alongside the static `<slug>-proposed.html`, never replacing
-  it). Triggers the cinematic gates in motion validation
-  (`reference/motion-validation.md` § Pass 6).
-- `--cinematic=<register>` — optional. Same as `--cinematic` but
-  forces a specific register (`arrival`, `kinetic-display`,
-  `live-systems`, `editorial`, `kinetic-grid`). The override is
-  recorded in `_provenance.motion.registerSource = "user-override"`
-  so reviewers can spot when direction's heuristic was bypassed.
+  if absent, pick one per `reference/motion-registers.md`
+  § Selection heuristic. Output is `<slug>-cinematic.html`
+  alongside the static `<slug>-proposed.html` — never replacing it.
+  Triggers the cinematic gates in `reference/motion-validation.md`
+  § Pass 6.
+- `--cinematic=<register>` — same, forcing a register (`arrival`,
+  `kinetic-display`, `live-systems`, `editorial`, `kinetic-grid`).
+  Record `_provenance.motion.registerSource = "user-override"` so
+  reviewers can spot when direction's heuristic was bypassed.
 
 ### No opt-outs
 
 `prototype` does not carry `--no-*` or `--skip-*` flags. The
 quality gates (critique, audit, mobile-adapt audit, anti-toolbox
-audit, content-sourcing scan) are the product — they're not
-optional. If a gate refuses a file, the remediation is to fix
-the file or override the gate by editing the file directly, not
-to pass a flag that silently lowers the bar. Manual chat
+audit, content-sourcing scan) are the product — not optional. If a
+gate refuses a file, the remediation is to fix the file or edit it
+directly, never a flag that silently lowers the bar. Manual chat
 overrides ("ship as-is", "accept the P1 findings") are still
-available; the agent records the override verbatim in
-`_provenance` so downstream consumers see the explicit
-acknowledgement.
+available; the agent records the override verbatim in `_provenance`
+so downstream consumers see the explicit acknowledgement.
 
 ## Setup
 
-0. **Playwright re-probe (mandatory first step).** `--no-save` playwright
-   installs from earlier phases are pruned by any later real `npm i`
-   (extract SKILL.md § Setup → `--no-save` installs are ephemeral). Before
-   any rendering step, probe
-   `node -e "import('playwright').then(()=>process.exit(0))"` from the
-   project root and re-install (`npm i -D playwright --no-save
-   --legacy-peer-deps`) on failure.
-1. Run the master skill's setup
-   (`skills/stardust/SKILL.md` § Setup).
+0. **Playwright re-probe (mandatory first step).** `--no-save`
+   playwright installs from earlier phases are pruned by any later
+   real `npm i` (extract SKILL.md § Setup). Before any rendering
+   step, probe
+   `node -e "import('playwright').then(()=>process.exit(0))"` from
+   the project root; on failure re-install
+   `npm i -D playwright --no-save --legacy-peer-deps`.
+1. Run the master skill's setup (`skills/stardust/SKILL.md` § Setup).
 2. Verify `stardust/state.json` exists and contains at least one
    `directed` page. If not, recommend `$stardust direct` and stop.
 3. Verify the project-root `DESIGN.md` and `DESIGN.json` exist. If
@@ -96,36 +91,33 @@ acknowledgement.
 5. **Validate provenance on every page in scope.** Call
    `validateProvenance(page)` per
    `skills/stardust/reference/state-machine.md` § Provenance
-   validation for every page that this run will render (the
-   single `<slug>` argument when present, otherwise every
-   non-stale `directed`/`prototyped`/`approved` page). Abort with
-   the helper's error when any page lacks live-render evidence
-   — re-running `prototype` against a synthesized page record
-   silently propagates the synthesis into the rendered prototype.
-   Surface `Provenance OK on N pages` once the check passes.
-6. Read `stardust/current/DESIGN.md` (the descriptive snapshot of the
-   existing site, used as a fallback reference during render when the
-   proposed file needs to mirror an aspect of the captured surface).
+   validation for every page this run will render (the single
+   `<slug>` when present, otherwise every non-stale
+   `directed`/`prototyped`/`approved` page). Abort with the helper's
+   error when any page lacks live-render evidence — re-running
+   `prototype` against a synthesized page record silently propagates
+   the synthesis into the rendered prototype. Surface
+   `Provenance OK on N pages` once the check passes.
+6. Read `stardust/current/DESIGN.md` (descriptive snapshot of the
+   existing site; fallback reference when the proposed file must
+   mirror an aspect of the captured surface).
 
 ## Delegation mechanic
 
 `prototype` does **not** author `<slug>-proposed.html` directly. The
 heavy creative lift is delegated to `$impeccable craft`, and (when
-needed) the structural plan to `$impeccable shape`. Spelling out the
-mechanic matters because the carve-out documented in
-`skills/stardust/reference/artifact-map.md` (where stardust authors
+needed) the structural plan to `$impeccable shape`. The carve-out in
+`skills/stardust/reference/artifact-map.md` — where stardust authors
 `PRODUCT.md`, `DESIGN.md`, `DESIGN.json`, `current/PRODUCT.md`,
 `current/DESIGN.md` directly, treating impeccable's references as
-*format specs*, not runtime commands) is **load-bearing for those
-five files only**. It does NOT extend to:
+*format specs* — is **load-bearing for those five files only**. It
+does NOT extend to:
 
-- `stardust/prototypes/<slug>-proposed.html` — must be authored by
-  `$impeccable craft`, not by stardust direct authoring.
-- Iteration on the proposed file — must be driven through a
-  chat-driven invocation of an explicit impeccable command (per
-  the iteration paths section).
-- Structural planning when a page is complex enough to need it —
-  `$impeccable shape`.
+- `stardust/prototypes/<slug>-proposed.html` — authored by
+  `$impeccable craft`, never by stardust direct authoring.
+- Iteration on the proposed file — driven through a chat-driven
+  invocation of an explicit impeccable command (§ Iteration paths).
+- Structural planning when a page needs it — `$impeccable shape`.
 
 The proximate cause of past content fabrication was the agent
 over-generalizing the direct-authoring carve-out to the proposed
@@ -133,10 +125,9 @@ HTML. Don't.
 
 ### Invoking impeccable
 
-When stardust runs in a Claude Code skill context (impeccable
-exposed as the `impeccable:impeccable` Skill, not as a CLI), invoke
-impeccable via the Skill tool with the sub-command and its args
-mirroring the slash-command form:
+In a Claude Code skill context (impeccable exposed as the
+`impeccable:impeccable` Skill, not a CLI), invoke via the Skill tool
+with the sub-command and args mirroring the slash-command form:
 
 ```
 Skill {
@@ -145,19 +136,19 @@ Skill {
 }
 ```
 
-Sub-commands referenced from this skill are all routed through the
-same Skill: `craft`, `shape`, plus the iteration commands
-(`bolder`, `quieter`, `distill`, `polish`, `colorize`, `typeset`,
-`layout`, `adapt`, `animate`, `delight`, `overdrive`, `impeccable`).
+All sub-commands route through the same Skill: `craft`, `shape`,
+plus the iteration commands (`bolder`, `quieter`, `distill`,
+`polish`, `colorize`, `typeset`, `layout`, `adapt`, `animate`,
+`delight`, `overdrive`, `impeccable`).
 
-When impeccable is **not** available (CLI-only environments,
-plugin uninstalled, sandbox without skill access), stop and tell
-the user impeccable is required for prototype rendering. Recommend
-installing the impeccable plugin. Do not fall back to direct
-authoring of `<slug>-proposed.html` — the validation contract
-craft enforces (anti-toolbox audit, divergence rules, type ratios,
-content sourcing hierarchy) is not reproducible by direct
-authoring, and falling back silently ships unverified output.
+When impeccable is **not** available (CLI-only environment, plugin
+uninstalled, sandbox without skill access), stop and tell the user
+impeccable is required; recommend installing the plugin. Do not
+fall back to direct authoring of `<slug>-proposed.html` — the
+validation contract craft enforces (anti-toolbox audit, divergence
+rules, type ratios, content sourcing hierarchy) is not reproducible
+by direct authoring, and falling back silently ships unverified
+output.
 
 Stardust's job inside Phase 2 is therefore:
 
@@ -169,8 +160,8 @@ Stardust's job inside Phase 2 is therefore:
 - Invoke craft via the Skill tool.
 - Validate the result against the contract (`:root` block, data
   attributes, divergence audit, impeccable hard rules, content
-  sourcing). If validation fails, refuse to write — never paper over
-  craft output the agent thinks is "close enough."
+  sourcing). If validation fails, refuse to write — never paper
+  over craft output that looks "close enough."
 
 The proposed file is whatever craft writes plus the validation
 report; it is not stardust's authored artifact.
@@ -181,58 +172,53 @@ report; it is not stardust's authored artifact.
 
 For each page in scope:
 
-1. Read `stardust/current/pages/<slug>.json` for the page's structure
-   and content.
-2. Read `stardust/current/_brand-extraction.json` for system
-   components and cross-promo data (the page's site-wide repeated
-   surfaces).
-3. Read `stardust/direction.md` Active section for the resolved
-   direction, divergence inputs, and command sequence.
-4. Read project-root `DESIGN.md` + `DESIGN.json` for the target
-   site system — tokens, abstract component vocabulary, named
-   system-component roles. The site system tells the agent *what
-   the design language is*; this Phase decides *how it deploys to
-   this specific page*.
+1. Read `stardust/current/pages/<slug>.json` — page structure and
+   content.
+2. Read `stardust/current/_brand-extraction.json` — system
+   components and cross-promo data (site-wide repeated surfaces).
+3. Read `stardust/direction.md` Active section — resolved direction,
+   divergence inputs, command sequence.
+4. Read project-root `DESIGN.md` + `DESIGN.json` — the target site
+   system (tokens, abstract component vocabulary, named
+   system-component roles). The site system says *what the design
+   language is*; this phase decides *how it deploys to this page*.
 5. **Author `stardust/prototypes/<slug>-shape.md`** — the per-page
-   compositional brief. Format spec:
-   `reference/page-shape-brief.md`. The brief carries the section
-   list, layout strategy, key states, interaction model, structural
-   data attributes, and the unsourced-content list (bridge to the
-placeholder contract). Author directly — no interview, no
+   compositional brief, format per `reference/page-shape-brief.md`:
+   section list, layout strategy, key states, interaction model,
+   structural data attributes, unsourced-content list (bridge to
+   the placeholder contract). Author directly — no interview, no
    impeccable invocation; this is stardust's reasoning about how
    the system deploys to this page given this content.
 6. Show the brief to the user and wait for confirmation before
-   moving to Phase 2. The user can edit the brief in place
-   (rearrange sections, kill open questions, change composition
-   decisions); re-rendering Phase 2 will rebuild the proposed file
-   from the edited brief.
+   Phase 2. The user can edit the brief in place (rearrange
+   sections, kill open questions, change composition decisions);
+   re-rendering Phase 2 rebuilds the proposed file from the edited
+   brief.
 
    **Hands-off compliance.** When `state.json.handsOff` is true,
-   the shape brief is still authored and validated but the
-   user-confirmation wait is skipped — the brief is its own record.
-   Approval (Phase 5) under hands-off follows the mode's contract
-   defined in `skills/stardust/SKILL.md` § Hands-off mode.
+   the brief is still authored and validated but the confirmation
+   wait is skipped — the brief is its own record. Approval
+   (Phase 5) under hands-off follows
+   `skills/stardust/SKILL.md` § Hands-off mode.
 
-`$impeccable shape` is **not** invoked in v0.2 (see
-`reference/page-shape-brief.md` § Authoring procedure for the
-rationale; revisit if per-page hand-authoring proves insufficient
-across sites).
+`$impeccable shape` is **not** invoked in v0.2 (rationale:
+`reference/page-shape-brief.md` § Authoring procedure; revisit if
+per-page hand-authoring proves insufficient across sites).
 
-The brief decouples site-level concerns (in DESIGN.md) from
-page-level deployment (per-page brief). A direction change
-invalidates the system; existing briefs are content-aware-stale
-only when the system change makes their composition impossible.
-This recalibration of stale-flagging is documented in
-`skills/stardust/reference/state-machine.md` § Stale flagging.
+The brief decouples site-level concerns (DESIGN.md) from page-level
+deployment (per-page brief). A direction change invalidates the
+system; existing briefs are content-aware-stale only when the system
+change makes their composition impossible (see
+`skills/stardust/reference/state-machine.md` § Stale flagging).
 
 #### Brief-time disciplines (validator-enforced)
 
 Five disciplines fire when the brief is authored. The brief
 validator rejects briefs missing any of them; failure surfaces the
 specific rule violated and stops Phase 1 before Phase 2 renders
-anything. The disciplines exist to prevent the AI-slop failure mode
-where a brief with only `(DESIGN tokens) + (captured content)` as
-input produces template-shaped output regardless of brand.
+anything. They exist to prevent the AI-slop failure mode where
+`(DESIGN tokens) + (captured content)` alone produces
+template-shaped output regardless of brand.
 
 **Discipline 1 — Captured-source lineage per section.** Every
 section in `## Sections` declares its captured-source origin. Forms:
@@ -240,11 +226,11 @@ section in `## Sections` declares its captured-source origin. Forms:
 - *"subscription-card-on-bay (consolidates captured banner 2 +
   dual-card right of `pages/home.json#landmarks[hero]`)"* — derived
   from one or more captured surfaces
-- *"site-wide system-component (carried from `_brand-extraction.json
-  #systemComponents[kind=footer]`)"* — chrome inherited from the
-  brand-surface
+- *"site-wide system-component (carried from
+  `_brand-extraction.json#systemComponents[kind=footer]`)"* —
+  chrome inherited from the brand-surface
 - *"direction-authorized new"* — composed against direction.md, not
-  derived from a captured source (require a one-line note naming
+  derived from a captured source (requires a one-line note naming
   which direction movement justifies the new section)
 
 Sections without lineage are rejected. The lineage list lives in
@@ -254,39 +240,36 @@ the rendered file.
 **Discipline 2 — Anti-template pass.** For each captured component
 pattern the page deploys (cards / banners / search rows / CTA bands
 / hero composition), the brief considers 2–3 layout alternatives
-and picks the most differentiated. Curated default-patterns-to-escape
-flags reflex picks:
+and picks the most differentiated. Curated
+default-patterns-to-escape flags reflex picks:
 
 - hero-then-bands silhouette (the universal AI silhouette)
 - 5-up image-card grid as category nav
-- nav-icon glyphs (search / cart / account) in a typographic
-  register
+- nav-icon glyphs (search / cart / account) in a typographic register
 - centered-stack hero with two-button CTA pair
 - captured-shape mirror-translated into new tokens
 
-The brief justifies any reach for a default-pattern with a
+Any reach for a default pattern must be justified with a
 captured-source citation that makes the pattern brand-appropriate
-(e.g., *"5-up grid preserved because the captured site's grid IS
-the brand's signature catalogue shape; the alternative consideration
-was a vertical ledger which the brand register rejects"*).
+(e.g. *"5-up grid preserved because the captured grid IS the
+brand's signature catalogue shape; the alternative considered was a
+vertical ledger, which the brand register rejects"*).
 
-The alternatives SHOULD be reference-grounded when reference
-research is available (per
-`skills/stardust/reference/reference-research.md`): an alternative
-cites a real reference screen in the entry's `reference?` field
-using that file's evidence shape. Taste-only alternatives remain
-valid when research is unavailable.
+Alternatives SHOULD be reference-grounded when reference research is
+available (per `skills/stardust/reference/reference-research.md`):
+an alternative cites a real reference screen in the entry's
+`reference?` field using that file's evidence shape. Taste-only
+alternatives remain valid when research is unavailable.
 
-The audit lives in `_provenance.antiTemplatePass[]` with one entry
-per captured pattern: `{ pattern, defaultReflex, alternatives[],
+The audit lives in `_provenance.antiTemplatePass[]`, one entry per
+captured pattern: `{ pattern, defaultReflex, alternatives[],
 picked, rationale, reference? }`.
 
-**Discipline 3 — Surprise budget.** The brief declares a `surprise`
-field with one of: `low | medium | high`. Moves come from the bank
-of non-template moves — see
-`skills/stardust/reference/divergence-toolkit.md` § Non-template
-move bank, with worked examples in
-`reference/anti-template-bank.md` — or an evidence-shaped extension
+**Discipline 3 — Surprise budget.** The brief declares
+`surprise: low | medium | high`. Moves come from the bank of
+non-template moves (`skills/stardust/reference/divergence-toolkit.md`
+§ Non-template move bank; worked examples in
+`reference/anti-template-bank.md`) or an evidence-shaped extension
 per the bank's § Extension rule. Tier semantics:
 
 - `low` — brand-faithful + improvements only. Variant A's role
@@ -302,59 +285,58 @@ surprise budget is **capped at `low` site-wide**. The validator
 refuses any verbatim-direction brief with `surprise: medium` or
 `high`.
 
-**`low` ≠ generic.** The budget bounds *added* divergence, not craft
-or fidelity. `low` means **brand-faithful + improvements + full
-signature preservation**, NOT "the most obvious faithful
-interpretation." The recurring failure mode (moneyhub.com migration)
-is the agent reading `low` / `verbatim` as license to strip the page
-to a plain type-hero on a flat ground — the result is faithful but
-forgettable and under-sells the redesign. Hold the craft bar at `low`:
-keep the brand's distinctive elements, apply the improvements list,
-and reproduce the signature.
+**`low` ≠ generic.** The budget bounds *added* divergence, not
+craft or fidelity. `low` means **brand-faithful + improvements +
+full signature preservation**, NOT "the most obvious faithful
+interpretation." The recurring failure mode is reading `low` /
+`verbatim` as license to strip the page to a plain type-hero on a
+flat ground — faithful but forgettable (moneyhub — see
+`reference/lessons.md`). Hold the craft bar at `low`: keep the
+brand's distinctive elements, apply the improvements list, and
+reproduce the signature.
 
 **Signature preservation is mandatory and budget-exempt.** When the
-captured page has a signature hero medium (background video / canvas /
-WebGL / Lottie), signature motion (scroll / parallax / kinetic), or a
-signature visual motif (per `intent-dimensions.md` § 8b), the brief
-**must** reproduce it — with a static fallback, `prefers-reduced-
-motion` alternative, and (for overlaid text) a legibility scrim. This
-does **not** consume the `low` allowance: carrying the brand's own
-signature forward is fidelity, not divergence (§ 8b § Surprise-budget
-exemption). Record the kept signatures in
-`_provenance.signatureElements[]` as `{ kind, capturedSource,
-mechanism, fallback }`. **Render-refusal:** a brief that flattens a
-captured video/canvas/animation hero to a still, gradient, or
-type-only hero — or drops a site-wide motif — is rejected at the
-shape-brief audit; reproduce the signature instead.
+captured page has a signature hero medium (background video /
+canvas / WebGL / Lottie), signature motion (scroll / parallax /
+kinetic), or a signature visual motif (per `intent-dimensions.md`
+§ 8b), the brief **must** reproduce it — with a static fallback,
+`prefers-reduced-motion` alternative, and (for overlaid text) a
+legibility scrim. This does **not** consume the `low` allowance:
+carrying the brand's own signature forward is fidelity, not
+divergence (§ 8b § Surprise-budget exemption). Record kept
+signatures in `_provenance.signatureElements[]` as `{ kind,
+capturedSource, mechanism, fallback }`. **Render-refusal:** a brief
+that flattens a captured video/canvas/animation hero to a still,
+gradient, or type-only hero — or drops a site-wide motif — is
+rejected at the shape-brief audit; reproduce the signature instead.
 
-**Type-scale yield clause.** When a tier-`medium`-or-higher variant's
-captured-trait amplification structurally conflicts with a
-brand-level type-scale rule from `DESIGN.md` (e.g. a
-"Names-At-Headline-Scale" rule, or any other named type-scale
-floor / ceiling), the brand-level rule may yield per-page. The
-yield must be cited in `_provenance.surpriseTier_typeScaleYields[]`
-with: `{ rule, variantDominantDimension, capturedTraitAmplified,
-yieldedTo, rationale }`. The brand-level yield clause itself
-(the named exception in `DESIGN.md`) is project-side, not
-spec-side; the spec only requires the per-page citation when the
-yield fires. See § Friction carve-out #4 below.
+**Type-scale yield clause.** When a tier-`medium`-or-higher
+variant's captured-trait amplification structurally conflicts with
+a brand-level type-scale rule from `DESIGN.md` (e.g. a
+"Names-At-Headline-Scale" rule, or any named type-scale floor /
+ceiling), the brand-level rule may yield per-page. Cite the yield
+in `_provenance.surpriseTier_typeScaleYields[]` with `{ rule,
+variantDominantDimension, capturedTraitAmplified, yieldedTo,
+rationale }`. The brand-level yield clause itself (the named
+exception in `DESIGN.md`) is project-side, not spec-side; the spec
+only requires the per-page citation when the yield fires. See
+friction carve-out #4.
 
 **Discipline 4 — Substrate transitions are deliberate, named, and
-rare.** Default: single substrate across the page. Each substrate
-exception requires a named purpose in the brief (*"highlights the
+rare.** Default: single substrate across the page. Each exception
+requires a named purpose in the brief (*"highlights the
 featured-coffee promotional moment"*). **More than two substrate
-transitions per page fails the brief.** The transitions live in
+transitions per page fails the brief.** Transitions live in
 `_provenance.substrateTransitions` as `{ default, exceptions[] }`.
 
 **Exception — substrate-keyed document-shapes (friction carve-out
-#2).** When the variant's `surprise: high` move is a
-substrate-keyed document-shape (zine, catalog-card,
-poster-sequence), the per-section substrate IS the document-shape's
-structural rhythm. The ≤ 2-transition cap does not apply; each
-section's substrate must instead carry a **per-section
-captured-source citation** (typically a per-SKU label color, a
-per-page brand color, or a per-content-type ground convention from
-the captured site). The exception is recorded in
+#2).** When the variant's `surprise: high` move is a substrate-keyed
+document-shape (zine, catalog-card, poster-sequence), the
+per-section substrate IS the document-shape's structural rhythm.
+The ≤ 2-transition cap does not apply; each section's substrate must
+instead carry a **per-section captured-source citation** (typically
+a per-SKU label color, per-page brand color, or per-content-type
+ground convention from the captured site). Record the exception in
 `_provenance.substrateTransitions.note` with the document-shape
 named and the citation source. The validator accepts > 2 transitions
 when:
@@ -366,36 +348,35 @@ when:
 3. every transition in `exceptions[]` carries a per-section
    captured-source citation.
 
-If any of the three conditions fails, the cap re-engages.
+If any condition fails, the cap re-engages.
 
-**Discipline 5 — Heading hierarchy + voice classification tracked
-per section.** The brief requires:
+**Discipline 5 — Heading hierarchy + voice classification per
+section.** The brief requires:
 
 - H1 declared once per page; subsequent sections H2; H3 children.
-- Every literal value in copy classified as one of:
-  `captured-verbatim`, `direction-authorized rewrite`, or
-  `placeholder`. No section ships with copy without a classification.
+- Every literal value in copy classified as `captured-verbatim`,
+  `direction-authorized rewrite`, or `placeholder`. No section
+  ships copy without a classification.
 
-The classification list lives in `_provenance.voiceClassification[]`
-as `{ section, classification, copy?, source? }` and propagates to
-the rendered file.
+The classification list lives in
+`_provenance.voiceClassification[]` as `{ section, classification,
+copy?, source? }` and propagates to the rendered file.
 
-**Placeholder-ribbon labels (friction carve-out #3).** System-
-component honesty-signal labels (placeholder ribbons, "TBD" badges,
-"from the brand team at migrate" markers) are **direction-authorized
-chrome**, not placeholder content. They label placeholder prose /
-data; the prose / data is what gets enumerated in
-`_provenance.unsourcedContent[]`. The ribbon text itself does not.
-Classify the ribbon labels as
+**Placeholder-ribbon labels (friction carve-out #3).**
+System-component honesty-signal labels (placeholder ribbons, "TBD"
+badges, "from the brand team at migrate" markers) are
+**direction-authorized chrome**, not placeholder content. They
+label placeholder prose/data; the prose/data is what gets
+enumerated in `_provenance.unsourcedContent[]` — the ribbon text
+itself does not. Classify ribbon labels as
 `direction-authorized chrome (per friction #3)` so the placeholder
-enumerator stays clean (no double-counting across every component
-instance).
+enumerator stays clean (no double-counting per component instance).
 
 ### Phase 2 — Render the proposed page
 
 Render `stardust/prototypes/<slug>-proposed.html` per
 `reference/proposed-file-shell.md` § Required structure. Hard
-requirements there:
+requirements:
 
 - `:root` token block as the first content of the first `<style>`
   (per `skills/stardust/reference/token-contract.md`).
@@ -410,9 +391,9 @@ requirements there:
   come from `current/pages/<slug>.json`, then voice samples, then
   direction-authorised changes — or be rendered with the mandatory
   PLACEHOLDER visual signature. Stats, addresses, quotes, tax IDs,
-  hours, prices, named-person words must never be invented. The
-  proposed file's `_provenance.unsourcedContent[]` lists every
-  placeholder so migrate can refuse to ship unverified content.
+  hours, prices, named-person words must never be invented.
+  `_provenance.unsourcedContent[]` lists every placeholder so
+  migrate can refuse to ship unverified content.
 
 Delegate the heavy creative lift to `$impeccable craft`:
 
@@ -420,158 +401,145 @@ Delegate the heavy creative lift to `$impeccable craft`:
   description.
 - Reference DESIGN.md / DESIGN.json as the design system.
 - Pass `direction.md` § Anti-references and § Divergence inputs as
-  hard constraints (so craft does not silently veer off the resolved
-  direction).
-- Skip craft's "north star mock" generation step (direction.md is the
-  brief). Skip craft's "shape" call (already done if Phase 1 needed
-  it).
+  hard constraints (so craft does not silently veer off the
+  resolved direction).
+- Skip craft's "north star mock" step (direction.md is the brief).
+  Skip craft's "shape" call (already done if Phase 1 needed it).
 
 **Modern-web-guidance consult.** When the render implements
 scroll-driven animation, view transitions, anchor positioning,
 container queries, or perf-sensitive hero media, and the
 `modern-web-guidance` plugin is installed, search it
-(`npx -y modern-web-guidance@latest search "<query>"`) and follow
-the retrieved guide; cite the guide id in
-`_provenance.guidesConsulted[]`. Skip silently when the plugin is
-absent.
+(`npx -y modern-web-guidance@latest search "<query>"`), follow the
+retrieved guide, and cite the guide id in
+`_provenance.guidesConsulted[]`. Skip silently when absent.
 
 After craft returns, validate the output:
 
 - `:root` block present and complete (token-contract.md).
 - Data attributes on every section (data-attributes.md).
-- Anti-toolbox audit clean (each hit justified per divergence-toolkit.md
-  § 1; record audit results in `DESIGN.json.extensions.divergence.anti_toolbox_hits`
-  with the audit's amendments noted).
+- Anti-toolbox audit clean (each hit justified per
+  divergence-toolkit.md § 1; record results in
+  `DESIGN.json.extensions.divergence.anti_toolbox_hits` with the
+  audit's amendments noted).
 - Impeccable hard rules respected (OKLCH, type ratio ≥ 1.25, no
   reflex slop).
 - **Content sourcing scan** — every literal value in the rendered
-  output traces to one of the allowed sources
-  (`reference/proposed-file-shell.md` § Content sourcing hierarchy).
-  Any value that doesn't is either wrapped in a `[data-placeholder]`
-  element with the mandatory visual signature, or the validation
-  fails. Build the `_provenance.unsourcedContent[]` list during
-  this scan.
+  output traces to an allowed source (hierarchy above). Any value
+  that doesn't is either wrapped in a `[data-placeholder]` element
+  with the mandatory visual signature, or validation fails. Build
+  `_provenance.unsourcedContent[]` during this scan.
 
-If validation fails, do not write the file. Surface the failure to
-the user with the specific rule violated and a suggested fix.
+If validation fails, do not write the file. Surface the specific
+rule violated and a suggested fix.
 
 #### Craft-time disciplines (pre-write validators)
 
-Four disciplines fire on the rendered file *before* it lands on
-disk. These run after craft returns its output and before the file
-is written; failure refuses the write with a substitute proposal
-(Discipline 6) or a rule citation (7, 8), and Discipline 9 registers
-detector ignores rather than refusing.
+Four disciplines fire on the rendered file after craft returns and
+*before* it lands on disk. Failure refuses the write with a
+substitute proposal (Discipline 6) or a rule citation (7, 8);
+Discipline 9 registers detector ignores rather than refusing.
 
-**Discipline 6 — Reflex-reject font pre-flight.** Grep the
-declared `font-family` declarations against the reject list in
+**Discipline 6 — Reflex-reject font pre-flight.** Grep declared
+`font-family` values against the reject list in
 `skills/stardust/reference/divergence-toolkit.md` § Reflex-reject
-fonts. If `≥ 3` reject-list families hit, refuse to write and
-propose dimensionally-equivalent off-list substitutes from the
-substitute table.
+fonts. If ≥ 3 reject-list families hit, refuse to write and propose
+dimensionally-equivalent off-list substitutes from the substitute
+table.
 
-The check fires only on rendered files whose `font-family`
-declarations the agent had freedom to pick. **Mode A renders with
-captured display + body families pinned (per
-`direct/SKILL.md` § Mode A — Brand-faithful mode) bypass the
-check** — the inherited families are not a reflex choice. Record
-the bypass reason in `_provenance.reflexRejectAudit.bypassed` with
-the captured families named.
+Fires only on files whose `font-family` declarations the agent had
+freedom to pick. **Mode A renders with captured display + body
+families pinned (per `direct/SKILL.md` § Mode A) bypass the check**
+— inherited families are not a reflex choice. Record the bypass in
+`_provenance.reflexRejectAudit.bypassed` with the captured families
+named.
 
 **Discipline 7 — Variable-font axis engagement.** When the resolved
-direction's `expressive` or `distinctiveness` axes have moved past
-their default (per
-`skills/stardust/reference/intent-dimensions.md` §§ 2 + 5), engage
-≥ 1 variable-font axis non-trivially per page using deck recipes
-from the divergence toolkit. The toolkit's font decks expose named
-axis recipes:
+direction's `expressive` or `distinctiveness` axes moved past their
+default (per `skills/stardust/reference/intent-dimensions.md`
+§§ 2 + 5), engage ≥ 1 variable-font axis non-trivially per page
+using deck recipes from the divergence toolkit:
 
-- `serif-luxury` deck → Fraunces axis recipe: `opsz 144, SOFT 100, WONK 1`
-- `bauhaus-functional` deck → Bricolage axis recipe: `opsz 96, wght 600`
-- `tactile-humanist` deck → Recursive axis recipe: `MONO 1, CRSV 0, CASL 0.5`
+- `serif-luxury` deck → Fraunces: `opsz 144, SOFT 100, WONK 1`
+- `bauhaus-functional` deck → Bricolage: `opsz 96, wght 600`
+- `tactile-humanist` deck → Recursive: `MONO 1, CRSV 0, CASL 0.5`
 
 Static-weight static-style across all type on a page that claims
 expressive or distinctive movement fails the check.
 
-**Static-only-family precedence (friction carve-out #1).** Family
-substitution rules when the captured/pinned display font does not
-ship a variable axis:
+**Static-only-family precedence (friction carve-out #1).** When the
+captured/pinned display font ships no variable axis:
 
-1. If the captured/pinned display font is variable, engage its
-   axes per deck recipes (standard path).
+1. If the captured/pinned display font is variable, engage its axes
+   per deck recipes (standard path).
 2. If the captured display font is **static-only by family**
    (Bellfort, GT Sectra static, hand-lettered custom cuts whose
    `woff2` files don't expose a parseable `fvar` table without
-   runtime inspection), **exempt the display family** from the
-   check and engage the **body family's axes** instead (typically
-   `wght` and `ital` on a workhorse like Public Sans or Hanken
-   Grotesk).
-3. **Document** the family's static-only status in
-   `DESIGN.json.extensions.divergence.font_deck.notes` so downstream
-   pages don't re-run the check.
+   runtime inspection), **exempt the display family** and engage
+   the **body family's axes** instead (typically `wght` and `ital`
+   on a workhorse like Public Sans or Hanken Grotesk).
+3. **Document** the static-only status in
+   `DESIGN.json.extensions.divergence.font_deck.notes` so
+   downstream pages don't re-run the check.
 
 A pre-flight that blindly grep'd for `font-variation-settings`
 would fire on every brand-faithful render of a static-only-display
-brand. The exemption keeps the spirit of the discipline (engage
-variable behavior where it exists) while honoring the letter when
-the captured family literally has no axes to engage.
+brand; the exemption keeps the discipline's spirit (engage variable
+behavior where it exists) while honoring the letter when the family
+has no axes.
 
 Off-deck accent fonts must ship with named **expressive positions**
 (`marginal-tag`, `pointer-scribble`, `headline-callout`,
-`badge-fill` — see toolkit § Font deck — expressive positions).
-A face introduced without a position is a reflex pick, not an
-expressive position.
+`badge-fill` — toolkit § Font deck — expressive positions). A face
+introduced without a position is a reflex pick.
 
-**Discipline 8 — Fidelity tier (`--fidelity=quick|refined|production`).**
+**Discipline 8 — Fidelity tier
+(`--fidelity=quick|refined|production`).**
 
 - `quick` (default) — sketch fidelity. Brief decisions land;
   micro-decisions stay provisional.
-- `refined` — adds a craft micro-pass per
-  `reference/fidelity-refined-pass.md`: formal type scale as CSS
-  custom properties, `font-variant-numeric: tabular-nums` on inline
-  digits, `text-wrap: balance` on headings + `text-wrap: pretty`
-  on body + `hanging-punctuation: first` on `html`, sliding
-  left-rule on nav hover, hairline hover on list items,
-  kicker + title + baseline-aligned more-link section-head triplet,
-  italic display couplet replacing structurally-vague `<b>`,
-  bottom-of-sidebar reworked as typographic plate.
+- `refined` — adds the craft micro-pass per
+  `reference/fidelity-refined-pass.md` (formal type scale as CSS
+  custom properties; `tabular-nums` on inline digits;
+  `text-wrap: balance`/`pretty` + `hanging-punctuation: first`;
+  nav / list hover refinements; kicker + title + more-link
+  section-head triplet; italic display couplet replacing vague
+  `<b>`; sidebar bottom as typographic plate — apply that file's
+  recipes).
 - `production` — `refined` + WCAG AA audit on every render + harden
   pass (loading states, error states, content-overflow edges).
 
-The tier is declared in the run invocation; persisted in
-`_provenance.fidelity`. Default is `quick`.
+The tier is declared in the run invocation and persisted in
+`_provenance.fidelity`. Default `quick`.
 
 **Discipline 9 — Copy-cadence detector bypass under verbatim
-fidelity.** This extends the Mode-A reasoning of Discipline 6 from
-fonts to prose. impeccable's design detector ships prose-voice rules
+fidelity.** Extends Discipline 6's Mode-A reasoning from fonts to
+prose. impeccable's design detector ships prose-voice rules
 (`em-dash-overuse`, `marketing-buzzword`, and similar copy-cadence
 checks) that assume the copy is the agent's to rewrite. Under
-`ia-fidelity: verbatim` — or any faithful/Mode-A render where the body
+`ia-fidelity: verbatim` — or any faithful/Mode-A render where body
 copy is `captured-verbatim` — that assumption is false by
-construction: the prose is the source brand's, reproduced exactly per
-the content-sourcing hierarchy, and rewriting it to satisfy a cadence
-rule *is* the fabrication the fidelity setting exists to prevent. So
+construction: the prose is the source brand's, reproduced exactly
+per the content-sourcing hierarchy, and rewriting it to satisfy a
+cadence rule *is* the fabrication the fidelity setting prevents. So
 when the rendered file's copy classification is `captured-verbatim`
-(per Discipline 5's `voiceClassification`), register those copy-cadence
-rules as intentional ignores for the `<slug>-proposed.html` files
-before the design hook fires — the same way Discipline 6 bypasses the
-font reflex-reject check for pinned families. Scope the ignore to the
-proposed files only, **never** to the project's own source (blocks,
-styles, components), where the rules still apply because that copy
-*is* the agent's. Record the bypass in
+(per Discipline 5's `voiceClassification`), register those
+copy-cadence rules as intentional ignores for the
+`<slug>-proposed.html` files before the design hook fires. Scope
+the ignore to the proposed files only, **never** to the project's
+own source (blocks, styles, components), where the rules still
+apply because that copy *is* the agent's. Record the bypass in
 `_provenance.copyCadenceBypass` with the rules ignored and the
-classification basis. The 2026-06-26 knack.com run hit this: the hook
-flagged em-dashes and "enterprise-grade" on Knack's own headings
-("Built on Enterprise-Grade Components") under a verbatim direction,
-and the only correct response was to leave the captured copy untouched
-and record the bypass.
+classification basis. (Motivating run: knack.com 2026-06-26 — see
+`reference/lessons.md`.)
 
-Bound the bypass: it covers prose-cadence rules only. Structural and
-craft detector rules (`design-system-radius`, contrast failures,
-reflex layout slop) are *not* exempted by verbatim fidelity — those
-govern the agent's own CSS and structure, which faithful mode does not
-freeze. Listing a rule under this bypass requires it be a copy-voice
-rule whose subject is the captured prose.
+Bound the bypass: it covers prose-cadence rules only. Structural
+and craft detector rules (`design-system-radius`, contrast
+failures, reflex layout slop) are *not* exempted by verbatim
+fidelity — those govern the agent's own CSS and structure, which
+faithful mode does not freeze. Listing a rule under this bypass
+requires it be a copy-voice rule whose subject is the captured
+prose.
 
 ### Phase 2.4 — Motion application (when `--cinematic`)
 
@@ -579,86 +547,81 @@ Fires only when `--cinematic` (with or without an explicit
 register) was passed, OR when
 `DESIGN.json.extensions.motion.register` was authored by `direct`
 and the user did not opt out. Produces
-`stardust/prototypes/<slug>-cinematic.html` **alongside** the static
-`<slug>-proposed.html` — the static prototype is never replaced.
+`stardust/prototypes/<slug>-cinematic.html` **alongside** the
+static `<slug>-proposed.html` — the static prototype is never
+replaced.
 
 Procedure:
 
-1. **Resolve the register.** For single-variant runs, read
-   `DESIGN.json.extensions.motion.register`. **For multi-variant
-   runs** (when `DESIGN-<id>.json` files exist at the project
-   root), read `DESIGN-<id>.json.extensions.motion.register` for
-   the variant currently being rendered — each variant may carry
-   its own register, or omit it entirely (variant renders
-   static). If `--cinematic=<register>` was passed at the CLI,
-   the CLI value wins **only for the variants in scope** (every
-   variant when no `<slug>` filter is set, otherwise the
-   variant(s) matching the filter).
+1. **Resolve the register.** Single-variant runs: read
+   `DESIGN.json.extensions.motion.register`. **Multi-variant runs**
+   (when `DESIGN-<id>.json` files exist at the project root): read
+   `DESIGN-<id>.json.extensions.motion.register` for the variant
+   being rendered — each variant may carry its own register or omit
+   it (variant renders static). `--cinematic=<register>` at the CLI
+   wins **only for the variants in scope** (every variant when no
+   `<slug>` filter is set, otherwise the matching variant(s)).
 
-   Record the source in `_provenance.motion.registerSource`
-   (`"direct"` for per-variant DESIGN-authored, `"user-override"`
-   for CLI). If neither path resolved a register for this
-   variant, fall through to the selection heuristic in
+   Record `_provenance.motion.registerSource` (`"direct"` for
+   per-variant DESIGN-authored, `"user-override"` for CLI). If
+   neither path resolves a register, fall through to
    `reference/motion-registers.md` § Selection heuristic. If the
-   heuristic itself returns no register (e.g. the variant's
-   PRODUCT.md Brand Personality maps to none of the five
-   registers, and no evidence-shaped extension register applies
-   per the bank's § Extension rule in
-   `reference/motion-registers.md`), skip Phase 2.4 entirely for
-   that variant — render it static.
+   heuristic itself returns no register (the variant's PRODUCT.md
+   Brand Personality maps to none of the five registers and no
+   evidence-shaped extension register applies per that file's
+   § Extension rule), skip Phase 2.4 for that variant — render it
+   static.
 
-   The per-variant resolution is what lets `uplift` produce a
+   Per-variant resolution is what lets `uplift` produce a
    three-variant set where only variant C engages motion: `direct`
    writes the register into `DESIGN-C.json` only, and Phase 2.4
-   fires for C alone (A and B render static).
+   fires for C alone.
 
 2. **Stage Lenis assets.** Copy
-   `skills/prototype/assets/motion/lenis.min.js` and `lenis.min.css`
-   into `stardust/prototypes/` (idempotent — skip if shas match).
-   Cinematic prototypes load these via relative paths.
+   `skills/prototype/assets/motion/lenis.min.js` and
+   `lenis.min.css` into `stardust/prototypes/` (idempotent — skip
+   if shas match). Cinematic prototypes load these via relative
+   paths.
 
 3. **Read the canonical runtime.** Embed the inline script from
    `reference/motion-runtime.md` § The canonical script verbatim,
-   with the `animConfig` constants rewritten per the active
-   register's token defaults (`reference/motion-registers.md` §
-   The five registers § Token defaults).
+   with `animConfig` constants rewritten per the active register's
+   token defaults (`reference/motion-registers.md` § The five
+   registers § Token defaults).
 
 4. **Layer the register's CSS.** Append the register-specific
-   keyframes and class rules (entrance keyframes, parallax CSS
-   custom properties, marquee animations, pulse animations) to
-   the file's `<style>` block. The set of keyframes is closed
-   per register; see `reference/motion-runtime.md` § Per-register
-   tuning.
+   keyframes and class rules (entrance keyframes, parallax custom
+   properties, marquee/pulse animations) to the file's `<style>`
+   block. The keyframe set is closed per register
+   (`reference/motion-runtime.md` § Per-register tuning).
 
 5. **Annotate target HTML.** Walk the rendered DOM and emit the
-   motion `data-*` attributes per the register's vocabulary:
-   - `arrival`: `[data-anim]` on section heads, body copy,
-     CTAs, and tile cards; `[data-countup]` on numeric values;
-     `[data-parallax]` on the hero photograph.
-   - `kinetic-display`: `[data-anim]` on most sections; `[data-split]`
-     on display-cap headlines (`<h1 data-split>DINE</h1>`);
-     `[data-flip]` on terminal codes / gate numbers; `.word`
-     spans on display headlines for clip-path word wipes.
-   - `live-systems`: `[data-tile-anim]` on every ops-tile and
-     card; `[data-countup]` on every numeric data value;
-     `[data-fill]` on every bar inner element; `.live-sweep`
-     on the live-data container; `.marquee__track` on the top
-     ticker.
-   - `editorial`: `[data-anim]` only; `[data-parallax]` with
-     reduced magnitude on hero imagery; never `[data-flip]` /
+   motion `data-*` attributes per the register's vocabulary —
+   apply the full per-register attribute matrix in
+   `reference/motion-registers.md` § Data-attributes consumed.
+   Summary:
+   - `arrival`: `[data-anim]` on section heads / body copy / CTAs /
+     tile cards; `[data-countup]` on numerics; `[data-parallax]` on
+     the hero photograph.
+   - `kinetic-display`: `[data-anim]` on most sections;
+     `[data-split]` on display-cap headlines; `[data-flip]` on
+     terminal codes / gate numbers; `.word` spans for clip-path
+     word wipes.
+   - `live-systems`: `[data-tile-anim]` on every ops-tile/card;
+     `[data-countup]` on every numeric; `[data-fill]` on bar
+     inners; `.live-sweep` on the live-data container;
+     `.marquee__track` on the top ticker.
+   - `editorial`: `[data-anim]` only; reduced-magnitude
+     `[data-parallax]` on hero imagery; never `[data-flip]` /
      `[data-fill]` / `[data-split]`.
-   - `kinetic-grid`: `[data-tile-anim]` on cards; `[data-anim]`
-     on section heads.
+   - `kinetic-grid`: `[data-tile-anim]` on cards; `[data-anim]` on
+     section heads.
 
-   Full per-register attribute matrix: `reference/motion-registers.md`
-   § Data-attributes consumed.
+6. **Inject the `<noscript>` fallback** from
+   `reference/motion-runtime.md` § No-JS fallback into `<head>` so
+   the file degrades to its static-end state without JavaScript.
 
-6. **Inject the `<noscript>` fallback.** Add the no-JS override
-   from `reference/motion-runtime.md` § No-JS fallback to `<head>`
-   so the file degrades to its static-end state without
-   JavaScript.
-
-7. **Update `_provenance`.** Add the `motion` block:
+7. **Update `_provenance`** with the `motion` block:
 
    ```json
    "motion": {
@@ -672,37 +635,32 @@ Procedure:
 
 8. **Hand off to Phase 2.8** (motion validation). The cinematic
    gates in `reference/motion-validation.md` § Pass 6 fire
-   automatically because the rendered file declares the
-   `_provenance.motion.register` field.
-
-The static `<slug>-proposed.html` is unaffected by this phase.
-Both files are reviewable; the brand owner sees the cinematic
-version when motion is part of the redesign brief, the static
-version when migration / accessibility audit is the focus.
+   automatically because the file declares
+   `_provenance.motion.register`.
 
 #### Output paths
 
-| File                                | Owner phase           | When            |
-|-------------------------------------|----------------------|-----------------|
-| `stardust/prototypes/<slug>-proposed.html`   | Phase 2 (always)   | Always written. |
-| `stardust/prototypes/<slug>-cinematic.html`  | Phase 2.4 (`--cinematic`) | Written alongside; static remains. |
-| `stardust/prototypes/lenis.min.js`           | Phase 2.4 (`--cinematic`) | Copied from skill assets. |
-| `stardust/prototypes/lenis.min.css`          | Phase 2.4 (`--cinematic`) | Copied from skill assets. |
+| File | Owner phase | When |
+|---|---|---|
+| `stardust/prototypes/<slug>-proposed.html` | Phase 2 (always) | Always written. |
+| `stardust/prototypes/<slug>-cinematic.html` | Phase 2.4 (`--cinematic`) | Written alongside; static remains. |
+| `stardust/prototypes/lenis.min.js` | Phase 2.4 (`--cinematic`) | Copied from skill assets. |
+| `stardust/prototypes/lenis.min.css` | Phase 2.4 (`--cinematic`) | Copied from skill assets. |
 
 #### When to use the static-only path
 
 The static prototype remains the load-bearing artifact for:
+
 - Brand-faithful inheritance reviews (motion is additive — the
   static prototype is the canonical "yes, that's us, refreshed"
   surface).
 - Accessibility audits (motion-driven pages are harder to evaluate
   in their reduced-motion state).
 - Migration consumption (`migrate` reads the static prototype as
-  its primary source. It does **not** merge the cinematic layer —
-  per `skills/migrate/SKILL.md` § Phase 2 → Cinematic sibling, it
-  carries the motion assets (`lenis.min.*`) through to
-  `migrated/assets/motion/` and records
-  `cinematic-variant-not-consumed` in the sidecar).
+  its primary source; it does **not** merge the cinematic layer —
+  per `skills/migrate/SKILL.md` § Phase 2 → Cinematic sibling it
+  carries the motion assets through to `migrated/assets/motion/`
+  and records `cinematic-variant-not-consumed` in the sidecar).
 
 The static prototype must pass every gate independently — the
 cinematic layer cannot rescue a static prototype that fails
@@ -710,13 +668,12 @@ Phases 2.5–2.7.
 
 ### Phases 2.5 – 2.8 — Quality gates: Critique → Audit → Adapt → Motion (Discipline 9)
 
-Four mandatory gate phases run by default before any prototype
-can advance to `prototyped`. They implement Discipline 9: critique
-covers *design*, audit covers *technical correctness*, adapt
-covers *viewport behaviour*, motion covers *scroll-driven and
-time-driven choreography correctness*. P0/P1 findings from **any**
-of the four block `prototyped` until acknowledged. None have an
-opt-out flag (per § No opt-outs).
+Four mandatory gate phases run by default before any prototype can
+advance to `prototyped`. Critique covers *design*, audit covers
+*technical correctness*, adapt covers *viewport behaviour*, motion
+covers *scroll- and time-driven choreography correctness*. P0/P1
+findings from **any** of the four block `prototyped` until
+acknowledged. None have an opt-out flag (§ No opt-outs).
 
 | Sub-phase | Focus | Catches |
 |---|---|---|
@@ -727,54 +684,39 @@ opt-out flag (per § No opt-outs).
 
 Phase 2.8 fires only when the rendered file declares ≥ 1 named
 choreography (per the page-shape brief's motion stack) OR uses
-`animation-timeline:`, `@scroll-timeline`, IntersectionObserver-driven
-entry triggers, or rAF loops reading `getBoundingClientRect()`,
-**OR** when Phase 2.4 (motion application under `--cinematic`)
-emitted a `<slug>-cinematic.html` file with motion attributes per
+`animation-timeline:`, `@scroll-timeline`,
+IntersectionObserver-driven entry triggers, or rAF loops reading
+`getBoundingClientRect()`, **OR** when Phase 2.4 emitted a
+`<slug>-cinematic.html` with motion attributes per
 `reference/motion-attributes.md`. Cinematic prototypes additionally
-trigger the cinematic-mode gates in `reference/motion-validation.md`
-§ Pass 6 (Lenis bootstrap, reduced-motion fallback completeness,
-scroll-jack check, three-position screenshots, register-match
-audit, motion C-cliff detector). Static prototypes skip the
-discipline entirely.
+trigger the cinematic-mode gates in
+`reference/motion-validation.md` § Pass 6 (Lenis bootstrap,
+reduced-motion fallback completeness, scroll-jack check,
+three-position screenshots, register-match audit, motion C-cliff
+detector). Static prototypes skip the discipline entirely.
 
-The wasatch dry-run on 2026-05-13 caught two real bugs the brief
-and craft phases missed (a WCAG miscalculation off by 0.27–1.86
-points on multiple pairs of /beers variant C, and an LCP image
-lazy-loaded on the first catalog entry). Both were caught by the
-**audit** half — not by critique. The detector's contrast
-computation and responsive performance check are the load-bearing
-audits; without them the file would have shipped with quantifiable
-WCAG failures.
+The audit half — not critique — caught the two real bugs in the
+wasatch dry-run (2026-05-13 — see `reference/lessons.md`); the
+detector's contrast computation and responsive performance check
+are the load-bearing audits.
 
 ### Phase 2.5 — Critique
 
 Before opening the proposed file in the browser, run **two parallel
-validators** against the rendered proposed file: `critique` and `audit`. They
-are explicitly designed as a complementary pair — critique
-covers *design* (AI-slop reflexes, hierarchy, brand fit,
-cognitive load); audit covers *technical correctness*
-(accessibility / performance / theming / responsive /
+validators** against it: `critique` and `audit`. They are a
+complementary pair — critique covers *design* (AI-slop reflexes,
+hierarchy, brand fit, cognitive load); audit covers *technical
+correctness* (accessibility / performance / theming / responsive /
 anti-patterns). Running only critique misses every quantifiable
 WCAG / perf / responsive failure; running only audit misses
-brand-misalignment and design slop. The pass is a **contract**,
-not a courtesy.
-
-The 2026-05-04 nvidia.com home prototype critique returned
-1 P0 + 2 P1 + 3 P2; the audit on the same artifact returned
-**six additional findings** (no skip-link, theme carousels
-without keyboard arrow nav, hero ~3.5MB without responsive
-`<picture>`, layout-property animation, JS-gated reveal with
-no `<noscript>` fallback, `scroll-behavior: smooth` not
-respecting `prefers-reduced-motion`). None were design issues,
-none would have been caught by critique alone. Without an
-audit gate the page would have been marked `prototyped` with
-quantifiable WCAG failures.
+brand-misalignment and design slop. The pass is a **contract**, not
+a courtesy. (Evidence: nvidia.com 2026-05-04, where audit found six
+findings critique missed — see `reference/lessons.md`.)
 
 Procedure:
 
-1. **Run both validators in parallel.** Invoke `impeccable:impeccable`
-   twice in the same Skill-tool batch:
+1. **Run both validators in parallel.** Invoke
+   `impeccable:impeccable` twice in the same Skill-tool batch:
 
    ```
    Skill { skill: "impeccable:impeccable",
@@ -784,140 +726,115 @@ Procedure:
            args: "audit stardust/prototypes/<slug>-proposed.html --json" }
    ```
 
-   Each returns a JSON findings list — each finding has
-   `priority` (P0 / P1 / P2 / P3), `category` (hierarchy /
-   contrast / motion / a11y / perf / responsive / etc.), and a
-   one-line description. Capture critique findings into
-   `_provenance.critique[]` and audit findings into
-   `_provenance.audit[]` on the proposed file (append; never
-   overwrite previous runs' entries).
+   Each returns a JSON findings list — `priority` (P0–P3),
+   `category` (hierarchy / contrast / motion / a11y / perf /
+   responsive / etc.), one-line description. Capture critique
+   findings into `_provenance.critique[]` and audit findings into
+   `_provenance.audit[]` (append; never overwrite previous runs'
+   entries).
 
-2. **Brand-faithful inversion auto-dismiss.** Both validators
-   ship known false positives on Mode A renders — Arial fallback
-   reads as "overused-font," eyebrow uppercase reads as
-   "all-caps body," pure white / pure black flagged when the
-   brand's captured palette includes them. Before surfacing
-   findings to the user, diff each finding against
+2. **Brand-faithful inversion auto-dismiss.** Both validators ship
+   known false positives on Mode A renders — Arial fallback reads
+   as "overused-font," eyebrow uppercase as "all-caps body," pure
+   white / pure black flagged when the captured palette includes
+   them. Before surfacing findings, diff each against
    `DESIGN.json#extensions.divergence.brand_faithful_inversions[]`
    and `DESIGN.md#narrative.rules` (e.g. permitted uppercase
    contexts). Drop findings whose category and target match an
    approved inversion; keep the original list in
-   `_provenance.<critique|audit>[]` with a
-   `dismissedAsBrandFaithful: true` flag for audit-trail
-   purposes. The user-facing report shows only the real hits.
+   `_provenance.<critique|audit>[]` flagged
+   `dismissedAsBrandFaithful: true` for audit trail. The
+   user-facing report shows only real hits.
 
-3. **Vision gate.** Render a screenshot of the proposed file and
-   study it NEXT TO the captured source screenshot
+3. **Vision gate.** Screenshot the proposed file and study it NEXT
+   TO the captured source screenshot
    (`stardust/current/assets/screenshots/<slug>.png` when present).
-   Judge visually, not from the DOM: **brand-fit** (would the
-   brand owner say "that's us"?), **signature preservation** (hero
-   medium / motif carried, per Discipline 3's signature clause),
-   and **hierarchy at a glance** (does the eye land where the
-   brief says it should?). Record
-   `_provenance.visionCheck = { verdict: pass|fail, observations[] }`;
-   a `fail` is a P1 finding through the same gate mechanics as
-   critique/audit findings. The vision gate complements — never
-   replaces — the deterministic critique/audit pair.
+   Judge visually, not from the DOM: **brand-fit** (would the brand
+   owner say "that's us"?), **signature preservation** (hero medium
+   / motif carried, per Discipline 3's signature clause), and
+   **hierarchy at a glance** (does the eye land where the brief
+   says?). Record `_provenance.visionCheck = { verdict: pass|fail,
+   observations[] }`; a `fail` is a P1 finding through the same
+   gate mechanics. The vision gate complements — never replaces —
+   the deterministic critique/audit pair.
 
 4. **Surface findings in the user-facing report**, grouped by
    priority across both validators with the source attributed
    (`critique:` / `audit:`). List the first 5 P0/P1 verbatim;
-   collapse P2/P3 to per-source counts with an "expand to see
-   all" pointer. Format:
+   collapse P2/P3 to per-source counts with an "expand to see all"
+   pointer. Format:
 
    ```
    Critique + audit on home-proposed.html
 
    P0 (1)
      audit:    skip-link missing — header has no <a href="#main"> as first focusable
-   P1 (4)
-     critique: hierarchy regression — H2 visually heavier than H1 in section #features
-     audit:    hero <img> 3.5MB; no responsive <picture> set despite captured srcset
-     audit:    transition: width animates layout properties (jank)
-     audit:    .hero scroll-behavior: smooth not gated by prefers-reduced-motion
+   P1 (2)
+     critique: hierarchy regression — H2 visually heavier than H1 in #features
+     audit:    hero <img> 3.5MB; no responsive <picture> despite captured srcset
    P2 (3 critique, 1 audit) — expand to see
    P3 (0)
    ```
 
-5. **Gate `prototyped` status on P0/P1 findings from EITHER
-   validator.** If the merged-and-deduped findings list (after
-   the brand-faithful auto-dismiss, plus a vision-gate `fail`
-   from step 3, which counts as P1 here) contains any P0 or P1,
-   do **not** mark the page `prototyped` in `state.json` yet. The
-   proposed file is on disk and openable in the browser, but the
-   page stays in `directed` until either:
+5. **Gate `prototyped` on P0/P1 findings from EITHER validator.**
+   If the merged-and-deduped list (after auto-dismiss, plus a
+   vision-gate `fail`, which counts as P1) contains any P0 or P1,
+   do **not** mark the page `prototyped` yet. The file is on disk
+   and openable, but the page stays `directed` until either:
    - The agent fixes the issue (run a chat-driven impeccable
-     command per Phase 4 iteration paths, then re-run Phase 2.5).
-   - The user explicitly acknowledges (e.g. "ship as-is" /
-     "accept the P1 findings"). Acknowledgement is recorded in
-     `_provenance.critique[]` AND `_provenance.audit[]` with the
-     verbatim user phrase, so re-runs see the existing
-     acknowledgement and don't re-prompt.
+     command per Phase 4, then re-run Phase 2.5).
+   - The user explicitly acknowledges ("ship as-is" / "accept the
+     P1 findings"). Record the acknowledgement verbatim in
+     `_provenance.critique[]` AND `_provenance.audit[]` so re-runs
+     see it and don't re-prompt.
 
-   P2/P3 findings do not block `prototyped`. They surface as
+   P2/P3 findings do not block `prototyped`; they surface as
    advisory.
 
 6. **Optionally spawn an LLM design-review subagent** for an
-   independent take when the user wants more than the
-   deterministic detector. Trigger only when the user explicitly
-   asks ("give me a deeper critique", "second opinion") or when
-   the deterministic pass returns ≥3 P0/P1 findings (signal that
-   the render has multiple issues worth a closer look). Default
-   off to keep the loop fast.
+   independent take — only when the user explicitly asks ("give me
+   a deeper critique", "second opinion") or when the deterministic
+   pass returns ≥ 3 P0/P1 findings. Default off to keep the loop
+   fast.
 
-Both validators are mandatory. There is no opt-out flag — if a
-finding bites and the user wants to ship anyway, they say so in
-chat ("ship as-is" / "accept the P1 findings") and the
-acknowledgement is recorded in `_provenance.critique[]` AND
-`_provenance.audit[]` verbatim. The contract is that the gate
-runs; the user can override the gate but the override is
-explicit and recorded.
-
-Failure handling: when impeccable is unavailable per the
-Delegation mechanic, prototype refuses to run (impeccable is a
-hard requirement). There is no degraded mode that ships
-unverified output.
+Both validators are mandatory; no opt-out flag exists. The user can
+override the gate in chat, but the override is explicit and
+recorded. When impeccable is unavailable per the Delegation
+mechanic, prototype refuses to run — there is no degraded mode that
+ships unverified output.
 
 ### Phase 2.6 — Audit (detector specifics)
 
-The audit sub-phase is implemented as the second parallel arm of
-the impeccable invocation in § Phase 2.5 above. This section
-documents the audit-specific detectors that fire in that arm,
-including ones the parallel critique pass does not cover.
+The audit sub-phase is the second parallel arm of the Phase 2.5
+invocation. Audit-specific detectors:
 
-**WCAG contrast computation.** Audit recomputes contrast ratios
-for every text-on-substrate pair in the file. The previous
-brief-time / craft-time hand-estimated `_provenance.wcagContrast`
-blocks are NOT authoritative; the audit's computed values are.
-Discrepancies of `≥ 0.25` between hand-estimated and computed
-ratios surface as a P1 finding. The wasatch dry-run on 2026-05-13
-surfaced 0.27–1.86 point discrepancies on /beers variant C; the
-audit-driven fix darkened the Cutthroat substrate from `#1c8a7a`
-to `#177566` to clear AA body (4.5:1) and recolored the
-pour-link from yellow to white.
+**WCAG contrast computation.** Audit recomputes contrast ratios for
+every text-on-substrate pair. Earlier hand-estimated
+`_provenance.wcagContrast` blocks are NOT authoritative; the
+audit's computed values are. Discrepancies ≥ 0.25 between
+hand-estimated and computed ratios surface as a P1 finding.
+(Wasatch dry-run evidence: `reference/lessons.md`.)
 
-**Large-text exemption check.** A pair claimed to qualify for
-WCAG's "large-text" 3:1 floor (instead of body 4.5:1) must be
-`≥ 18pt regular` OR `≥ 14pt bold` at rendered size. The audit
-verifies the size at the rendered DOM, not at the source CSS. A
-13px Bellfort 700 link claiming the large-text exemption fails
-the check (Bellfort 700 at 13px is below the 14pt bold floor); the
-finding is P0.
+**Large-text exemption check.** A pair claiming WCAG's "large-text"
+3:1 floor (instead of body 4.5:1) must be ≥ 18pt regular OR ≥ 14pt
+bold at **rendered** size — verified at the rendered DOM, not
+source CSS. A 13px Bellfort 700 link claiming the exemption fails
+(below the 14pt bold floor); the finding is P0.
 
-**LCP image audit.** The first image above the fold on the page
-must declare `loading="eager"` AND `fetchpriority="high"`. A
-lazy-loaded LCP image is a P1 finding. Detection: the first `<img>`
-whose computed `getBoundingClientRect()` intersects the initial
-viewport must satisfy both attributes.
+**LCP image audit.** The first image above the fold must declare
+`loading="eager"` AND `fetchpriority="high"`. A lazy-loaded LCP
+image is a P1 finding. Detection: the first `<img>` whose computed
+`getBoundingClientRect()` intersects the initial viewport must
+satisfy both attributes.
 
 **JS-dependent-hidden-state detector.** Per
-`notes/prototype-broken-by-default-detector-2026-04-29.md`, the
-audit catches initial-state CSS that hides content via `clip-path:
-inset(0 100% ...)`, `opacity: 0`, or `transform: translateX(-100%)`
-where the reveal depends on a JS class flip (typically an
-`IntersectionObserver` toggling `.in-view` / `.is-visible` /
-`html.js-anim`). When the observer fails (slow JS, blocked CDN,
-NoScript), the element stays permanently invisible.
+`notes/prototype-broken-by-default-detector-2026-04-29.md`, catch
+initial-state CSS hiding content via `clip-path: inset(0 100% ...)`,
+`opacity: 0`, or `transform: translateX(-100%)` where the reveal
+depends on a JS class flip (typically an IntersectionObserver
+toggling `.in-view` / `.is-visible` / `html.js-anim`). When the
+observer fails (slow JS, blocked CDN, NoScript), the element stays
+permanently invisible.
 
 Detection regex over the CSS text:
 
@@ -926,36 +843,30 @@ Detection regex over the CSS text:
 ```
 
 When a hit is found AND no `<noscript>` fallback styles the same
-selectors visible AND no `prefers-reduced-motion` rule short-
-circuits the hide, the finding is P0 (the page is broken-by-default
-for any user whose JS doesn't execute). Mitigations the page may
+selectors visible AND no `prefers-reduced-motion` rule
+short-circuits the hide, the finding is P0 (broken-by-default for
+any user whose JS doesn't execute). Mitigations the page may
 declare in `_provenance.audit.acknowledged[]`:
 
-- A `<noscript>` block that re-sets the hidden selectors to
-  visible.
-- A `prefers-reduced-motion: reduce` block that skips the hide
-  entirely.
-- An animation gate selector pattern (`html.js-anim .selector { ...
-  hidden ... }`) where the gate class is set inline in `<head>`
-  BEFORE the stylesheet loads, so observer failure doesn't strand
-  elements (the wasatch /beers variant C confirms this pattern
-  works — detector PASS on all 4 files via the `html.js-anim` gate
-  + CDN-failure fallback).
+- A `<noscript>` block re-setting the hidden selectors visible.
+- A `prefers-reduced-motion: reduce` block skipping the hide.
+- An animation gate selector pattern
+  (`html.js-anim .selector { ... hidden ... }`) where the gate
+  class is set inline in `<head>` BEFORE the stylesheet loads, so
+  observer failure doesn't strand elements (pattern confirmed on
+  wasatch /beers variant C — see `reference/lessons.md`).
 
 ### Phase 2.7 — Adapt (mandatory pre-approval)
 
 Every prototype goes through `$impeccable adapt` and the adapt
-audit before the user's approval is accepted. The cascade ships
-desktop-only HTML otherwise — viewports are tuned to ~1440×900
-through render and iteration, and nothing earlier in the pipeline
-produces responsive coverage.
+audit before approval is accepted — otherwise the cascade ships
+desktop-only HTML (viewports are tuned to ~1440×900 through render
+and iteration, and nothing earlier produces responsive coverage).
 
-This phase was Phase 5.5 in prior versions of stardust (running
-*after* approval). The current spec promotes it to Phase 2.7 so it
-gates `prototyped` alongside critique and audit. The substantive
-adapt logic is unchanged; only the trigger point moved (pre-
-approval vs post-approval). See § Adapt procedure below for the
-unchanged implementation.
+This phase was Phase 5.5 (post-approval) in prior versions; the
+current spec promotes it to Phase 2.7 so it gates `prototyped`
+alongside critique and audit. The adapt logic is unchanged — only
+the trigger point moved.
 
 #### Adapt procedure
 
@@ -972,132 +883,117 @@ Pass the captured viewport breakpoints from
 `DESIGN.json#extensions.breakpoints` if present; otherwise adapt
 picks defaults (640 / 768 / 1024 / 1280 are the stardust spec
 defaults — anything above 640 used as a "mobile breakpoint" is a
-smell per § Mobile-adapt audit below). The full target list is
+smell per § Mobile-adapt audit). The full target list is
 **1920 / 1440 / 1280 / 800 / 414 / 375** — adapt validates each
-viewport's doc-width · overflow · sticky behaviour · grid columns
-· font scaling.
+viewport's doc-width · overflow · sticky behaviour · grid columns ·
+font scaling.
 
 Validate the adapted file against the same contracts Phase 2 ran
 (`:root` token block, data attributes, anti-toolbox audit clean,
-impeccable hard rules, content sourcing). Adapt is an iteration
-over the existing render; it must not reintroduce contract
-violations.
+impeccable hard rules, content sourcing) — adapt must not
+reintroduce contract violations.
 
-Append an entry to the proposed file's `_provenance.adapt[]`
-recording: ISO timestamp, the breakpoint list applied, the number
-of `@media` rules added, and any layout decisions the adapt pass
+Append to `_provenance.adapt[]`: ISO timestamp, breakpoint list
+applied, number of `@media` rules added, and any layout decisions
 surfaced (carousel → stack, sidebar → drawer, hamburger → menu).
 
 #### Mobile-adapt audit
 
-Phase 2.7 also runs a hard audit, separate from the adapt pass
-itself, that the resulting file would survive a publish or
-migrate. The same audit re-runs at `migrate` and `--publish-sample`
-so an adapted-but-broken render can't slip through.
+Phase 2.7 also runs a hard audit, separate from the adapt pass,
+that the file would survive a publish or migrate. The same audit
+re-runs at `migrate` and `--publish-sample` so an adapted-but-broken
+render can't slip through.
 
 Refuse the file when **any** of:
 
 - `<meta name="viewport" content="width=device-width, ...">` is
-  missing or width is set to a fixed pixel value.
-- The file declares zero `@media (max-width: ...)` rules at all
-  (desktop-only).
-- The file declares mobile-targeted breakpoints **above 640px**
-  — `@media (max-width: 1024px)` as the *narrowest* breakpoint
-  is the recognisable shape of "didn't actually adapt for
-  phones." Adapt should produce at least one rule at ≤ 640px.
+  missing or width is a fixed pixel value.
+- Zero `@media (max-width: ...)` rules at all (desktop-only).
+- Mobile-targeted breakpoints **only above 640px** —
+  `@media (max-width: 1024px)` as the *narrowest* breakpoint is the
+  recognisable shape of "didn't actually adapt for phones." At
+  least one rule at ≤ 640px.
 - **At a 360px-wide rendered viewport:** a landmark causes
   `scrollWidth > clientWidth` on `document.documentElement` or
   `document.body`. Refusal code:
   `audit/responsive: horizontal-overflow-at-360px`.
-- **At a 360px-wide rendered viewport:** the computed `font-size`
-  of any descendant of a `<nav>` inside a `<header>` is below
-  11px. Refusal code: `audit/responsive: nav-readability-floor`.
-- **At a 360px-wide rendered viewport:** the computed `gap` (or
-  `column-gap`) of any flex/grid `<nav>` inside a `<header>` is
-  below 10px. Same refusal code.
+- **At 360px:** computed `font-size` of any descendant of a `<nav>`
+  inside a `<header>` below 11px. Refusal code:
+  `audit/responsive: nav-readability-floor`.
+- **At 360px:** computed `gap` (or `column-gap`) of any flex/grid
+  `<nav>` inside a `<header>` below 10px. Same refusal code.
 
-The last three conditions require actually rendering the file —
-they can't be inferred from CSS text. The canonical check is a
-small Playwright snippet (`fixtures/mobile-nav-audit.mjs`) the
-agent runs against the file at 360×800. Audit messages must
-include a pointer to the stock-template doc:
+The last three require actually rendering the file — they can't be
+inferred from CSS text. The canonical check is the Playwright
+snippet `fixtures/mobile-nav-audit.mjs`, run against the file at
+360×800. Audit messages must include:
 
 > Suggested fix: apply the stock hamburger pattern
 >   skills/prototype/reference/mobile-nav-collapse.md
 
 #### Mobile nav collapse
 
-When the audit refuses on either of the nav-related codes above,
-the agent applies the stock CSS-only hamburger pattern documented
-in `reference/mobile-nav-collapse.md` (HTML + CSS + ≤10-line
-inline `<script>` for a11y). The header gains
-`data-nav-collapse="hamburger"` so downstream consumers can detect
-the pattern is applied.
+When the audit refuses on either nav-related code, apply the stock
+CSS-only hamburger pattern from `reference/mobile-nav-collapse.md`
+(HTML + CSS + ≤10-line inline `<script>` for a11y). The header
+gains `data-nav-collapse="hamburger"` so downstream consumers can
+detect the pattern.
 
 **Source order is load-bearing.** The base
-`.ds-nav-burger { display: none; ... }` rule must be placed at
-the **top** of the `<style>` block (after `:root`, before any
-`@media` rules). The post-injection ordering check is a small
-`awk` one-liner documented in `reference/mobile-nav-collapse.md`
-§ Source order — it asserts the base rule appears at a lower line
-number than the first `@media (max-width: 640px)` rule. Exit 0 =
-correct ordering; exit 1 = regression.
+`.ds-nav-burger { display: none; ... }` rule must sit at the
+**top** of the `<style>` block (after `:root`, before any `@media`
+rules). The post-injection ordering check is the `awk` one-liner in
+`reference/mobile-nav-collapse.md` § Source order — it asserts the
+base rule appears at a lower line number than the first
+`@media (max-width: 640px)` rule. Exit 0 = correct; exit 1 =
+regression.
 
 The stock pattern is the default; `reference/mobile-nav-collapse.md`
-§ Alternative patterns documents priority+overflow, bottom nav,
-and side-drawer as valid alternatives the user can request, but
-the agent does not pick between them autonomously.
+§ Alternative patterns documents priority+overflow, bottom nav, and
+side-drawer as alternatives the user can request — the agent does
+not pick between them autonomously.
 
 ### Phase 2.8 — Motion validation (mandatory when motion declared)
 
-Static-DOM gates (2.5 critique, 2.6 audit, 2.7 adapt) all read the
-proposed file at `scrollY=0` with no time elapsed. They cannot
-catch motion-specific failure modes:
-
-- Content stuck `opacity: 0` because an anim-enter trigger fires
-  past the user's reading position.
-- Content rendered outside its parent's `overflow: clip` boundary
-  because a translateY animation magnitude exceeds the parent's
-  slack room.
-- Scroll-driven animations whose `animation-range` completes only
-  after the section has fully scrolled past, leaving the reveal
-  state invisible during the readable window.
-- rAF loops with stale baseline measurements drifting on resize /
-  font-load / lazy-image-load.
-- Section overlaps caused by transforms that don't appear in
-  static DOM.
-- `prefers-reduced-motion` regressions where the choreography is
-  disabled but the element is left at the hidden "from" state.
-- No-JS regressions where the choreography's hidden initial state
-  has no `<noscript>` fallback.
+The static-DOM gates (2.5–2.7) read the file at `scrollY=0` with no
+time elapsed; they cannot catch motion-specific failures: content
+stuck `opacity: 0` because an anim-enter trigger fires past the
+reading position; content rendered outside an `overflow: clip`
+parent because a translateY magnitude exceeds the parent's slack;
+scroll-driven animations whose `animation-range` completes only
+after the section scrolled past; rAF loops with stale baseline
+measurements drifting on resize / font-load / lazy-image-load;
+section overlaps caused by transforms invisible in static DOM;
+`prefers-reduced-motion` regressions leaving elements at the hidden
+"from" state; no-JS regressions where the hidden initial state has
+no `<noscript>` fallback.
 
 The full procedure (5 passes — scroll-position probe, finding
 classification, motion-bug checks, no-JS state, multi-viewport
 scroll-driven check) lives in `reference/motion-validation.md`.
 
 Phase 2.8 fires when the rendered file declares ≥ 1 named
-choreography (per `_provenance.motion.choreographies[]`) OR contains
-any of: `animation-timeline:`, `@scroll-timeline`, IntersectionObserver
-with `target.classList.add('anim-enter-visible')` patterns, or rAF
-loops driven by `getBoundingClientRect()`. Static prototypes skip.
+choreography (per `_provenance.motion.choreographies[]`) OR
+contains any of: `animation-timeline:`, `@scroll-timeline`,
+IntersectionObserver with
+`target.classList.add('anim-enter-visible')` patterns, or rAF loops
+driven by `getBoundingClientRect()`. Static prototypes skip.
 
-Findings are classified as **by-design** (the choreography is
-supposed to produce this state at this position; explained by a
-named choreography in the brief) or **bug** (the choreography
-produces an unintended state). Bugs block `prototyped` until
-acknowledged or fixed.
+Findings are classified **by-design** (the choreography is supposed
+to produce this state at this position; explained by a named
+choreography in the brief) or **bug** (unintended state). Bugs
+block `prototyped` until acknowledged or fixed.
 
-When a bug cannot be auto-fixed within 3 iterations of the recursive
-loop, surface to the user with the finding, the classification
-reasoning, the 3 fix attempts that were tried, and a proposed
-remediation that requires user input. Do not silently lower the
-gate.
+When a bug cannot be auto-fixed within 3 iterations of the
+recursive loop, surface to the user with the finding, the
+classification reasoning, the 3 fix attempts tried, and a proposed
+remediation requiring user input. Do not silently lower the gate.
 
-Append an entry to the proposed file's `_provenance.motionValidation`
-recording: ISO timestamp, probe positions run, viewports tested,
-findings (hiddenInViewport, sectionOverlaps, clippedReveals,
-rangeMismatches) with per-finding classification, and `fixesApplied[]`.
-Save clean-pass screenshots to `stardust/validation/<slug>/motion-<viewport>.png`.
+Append to `_provenance.motionValidation`: ISO timestamp, probe
+positions run, viewports tested, findings (hiddenInViewport,
+sectionOverlaps, clippedReveals, rangeMismatches) with per-finding
+classification, and `fixesApplied[]`. Save clean-pass screenshots
+to `stardust/validation/<slug>/motion-<viewport>.png`.
 
 #### Variant-convergence detector (Discipline 10)
 
@@ -1106,16 +1002,15 @@ When N > 1 variants render, each `<slug>-<id>-shape.md` declares:
 - A distinct `dominantDimension` value (no two variants share it;
   per `notes/variant-convergence.md` Tier 1).
 - A `compositionDelta` field listing ≥ 2 ways the variant's section
-  sequence or layout strategy diverges from each sibling variant.
-  Examples:
-  - `compositionDelta: ["section-order: hero ↔ stats", "layout: 3-up-grid → vertical-narrative"]`
-  - `compositionDelta: ["ia-priority: commercial-conversion → catalog-browse", "hero-layout: split-photo → type-led"]`
+  sequence or layout strategy diverges from each sibling variant,
+  e.g. `compositionDelta: ["section-order: hero ↔ stats",
+  "layout: 3-up-grid → vertical-narrative"]`.
 
-If `compositionDelta` is empty or trivial (only token-level
-deltas — *"Color A vs Color B"*, *"font weight 400 vs 600"*),
-Phase 1 fails the brief and restarts ideation. The validator
-checks pairwise: variant pairs `(A,B)`, `(A,C)`, `(B,C)` each
-need ≥ 2 structural changes.
+If `compositionDelta` is empty or trivial (only token-level deltas
+— *"Color A vs Color B"*, *"font weight 400 vs 600"*), Phase 1
+fails the brief and restarts ideation. The validator checks
+pairwise: variant pairs `(A,B)`, `(A,C)`, `(B,C)` each need ≥ 2
+structural changes.
 
 **Mode-aware contract** (composes with `ia-fidelity` from
 `stardust/reference/intent-dimensions.md` § 9):
@@ -1124,117 +1019,101 @@ need ≥ 2 structural changes.
   axes only (type-weight, type-scale, density, motion-energy,
   color-temperature, spacing-rhythm). Structural deltas (section
   sequence / presence / IA priority / layout strategy) are
-  **forbidden** under verbatim. The detector inverts: a surface-
-  only delta passes, a structural delta refuses.
+  **forbidden**. The detector inverts: a surface-only delta passes,
+  a structural delta refuses.
 - Under `ia-fidelity: reimagined` — A + B + C variants declare
   structural `compositionDelta` with ≥ 2 changes per pair.
   Surface-only deltas **fail** the brief.
 
-The wasatch /beers A / B / C dry-run declared 5 structural deltas
-per pair (`compositionDelta_vs_A`, `compositionDelta_vs_B` blocks
-in `_provenance`) — substrate-strategy, section-presence, photo-
-treatment, section-order, section-completeness. The detector
-PASSED on all three pairs.
-
-Single-variant runs (N = 1) skip Discipline 10 entirely.
+(Worked pass: wasatch /beers A/B/C, 5 structural deltas per pair —
+see `reference/lessons.md`.) Single-variant runs (N = 1) skip
+Discipline 10 entirely.
 
 ### Phase 4 — Open and iterate
 
-(Phase numbering skips 3; the former Phase 3 — *Compose the viewer*
-— was removed when the per-page before/after viewer was dropped.
-Cross-references throughout the docs still name Phases 4, 5, 5.5.)
+(Numbering skips 3 — the former *Compose the viewer* phase was
+removed with the per-page before/after viewer; cross-references
+elsewhere still name Phases 4, 5, 5.5.)
 
-1. Open the just-written or just-updated `<slug>-proposed.html` (or
-   the user-chosen variant suffix when N > 1) in the browser using
-   the `open <vfs-path>` shell command. This routes VFS paths through
+1. Open the just-written `<slug>-proposed.html` (or the user-chosen
+   variant suffix when N > 1) in the browser via the
+   `open <vfs-path>` shell command. This routes VFS paths through
    the preview service worker — **do not use `playwright-cli open`**
-   for local prototype files, as it bypasses the preview service worker
-   and produces a FILE NOT FOUND error. Skip in pipeline-automation mode.
+   for local prototype files; it bypasses the service worker and
+   produces FILE NOT FOUND. Skip in pipeline-automation mode.
 2. Mark the page `prototyped` in `state.json` — **gated on the
-   Phase 2.5 critique + Phase 2.6 audit + Phase 2.7 adapt +
-   Phase 2.8 motion validation (when fired) result** (Discipline 9).
-   If any of the four returned ≥ 1 P0 or P1 finding (after the
-   brand-faithful inversion auto-dismiss) and the user has not
-   acknowledged, the page stays `directed` (not `prototyped`);
-   surface the findings in the report grouped by source
-   (`critique:` / `audit:` / `adapt:` / `motion:`) and recommend
-   either fixing the issue or acknowledging explicitly. The
-   transition itself does not require *approval* (a separate
-   later step) — but it does require all gates to clear, since
-   shipping a `prototyped` flag on work that fails P0/P1 on any
-   gate misleads downstream consumers (migrate, the dashboard)
-   about the prototype's quality.
+   Phase 2.5 critique + 2.6 audit + 2.7 adapt + 2.8 motion (when
+   fired) results** (Discipline 9). If any gate returned ≥ 1 P0/P1
+   finding (after the brand-faithful auto-dismiss) and the user has
+   not acknowledged, the page stays `directed`; surface the
+   findings grouped by source (`critique:` / `audit:` / `adapt:` /
+   `motion:`) and recommend fixing or explicit acknowledgement. The
+   transition does not require *approval* (a separate later step) —
+   but all gates must clear, since a `prototyped` flag on work that
+   fails P0/P1 misleads downstream consumers (migrate, the
+   dashboard) about quality.
 3. Report the prototype path and stop. Iteration happens via
-   chat-driven impeccable commands or direct invocation (see
-   § Iteration paths below).
+   chat-driven impeccable commands or direct invocation (below).
 
 #### Iteration paths
 
-Refinement after the initial render takes one of two forms. They
-are not mutually exclusive — a single page can move through both
-across its lifetime.
+Not mutually exclusive — a page can move through both.
 
-1. **Chat-driven (default).** The user gives a refinement phrase
-   in chat — *"make the hero bolder for home"*, *"tighten the
-   cup-note grid"*, *"less corporate"*. The agent:
+1. **Chat-driven (default).** The user gives a refinement phrase —
+   *"make the hero bolder for home"*, *"less corporate"*. The agent:
    - Reads the phrase against
      `skills/stardust/reference/intent-dimensions.md` to identify
      which axes it moves.
    - Consults
      `skills/stardust/reference/impeccable-command-map.md` to pick
      the matching impeccable command (often `bolder`, `quieter`,
-     `distill`, `typeset`, `colorize`, or `layout`).
+     `distill`, `typeset`, `colorize`, `layout`).
    - Shows the resolved plan to the user before executing.
-   - Runs the chosen command against `<slug>-proposed.html` (or a
-     specific section within it, when the phrase scopes one).
+   - Runs the command against `<slug>-proposed.html` (or a specific
+     section when the phrase scopes one).
    - Re-validates per Phase 2 (`:root` block, data attributes,
-     anti-toolbox audit clean, impeccable hard rules) and updates
-     the proposed file's provenance.
-
-2. **Direct impeccable invocation.** The user runs an impeccable
-   command directly — `$impeccable bolder
+     anti-toolbox audit, impeccable hard rules) and updates the
+     file's provenance.
+2. **Direct impeccable invocation.** The user runs a command
+   directly — `$impeccable bolder
    stardust/prototypes/home-proposed.html`. Stardust isn't in the
-   loop; the browser tab reloads whatever's on disk. This is fine
-   and documented as a supported escape hatch. (Includes
-   `$impeccable live` against the proposed file when the user
-   wants in-browser picker iteration — that's an external tool
-   they invoke directly; stardust does not drive its poll loop.)
+   loop; the browser tab reloads whatever's on disk. Supported
+   escape hatch. (Includes `$impeccable live` against the proposed
+   file for in-browser picker iteration — an external tool the user
+   invokes; stardust does not drive its poll loop.)
 
-The "open and reasoned" principle from the master skill applies to
-path 1: the agent reasons publicly about the phrase before running
-any command, and never silently maps a refinement to a fixed
-command.
+The master skill's "open and reasoned" principle applies to path 1:
+reason publicly about the phrase before running any command; never
+silently map a refinement to a fixed command.
 
 ### Phase 5 — Approval (+ fold-back, Part III)
 
-Approval is **explicit**. Stardust does not auto-approve.
-
-The user signals approval by saying **"approve <slug>"** or simply
-**"approve"** in the conversation. The agent confirms the slug
-before writing state, then proceeds.
+Approval is **explicit**. Stardust does not auto-approve. The user
+signals approval with **"approve <slug>"** or **"approve"**; the
+agent confirms the slug before writing state, then proceeds.
 
 On approval:
 
 1. Verify the proposed file's provenance block lists the *current
-   active* `direction.md` (defensive check — if the direction changed
-   during iteration, the user must re-prototype against the new
-   direction first).
-2. **Run approval fold-back** per
-   `reference/approval-fold-back.md` (Part III of the merged spec).
-   When the approved variant is non-A AND `ia-fidelity` is
-   `reimagined`, the prototype reads the approved file's
-   `_provenance.differentiationFromA[andB]` block plus the brief's
-   `compositionDelta`, diffs against the active direction, and
-   proposes folding any structural moves. The user picks
+   active* `direction.md` (defensive check — if the direction
+   changed during iteration, the user must re-prototype against the
+   new direction first).
+2. **Run approval fold-back** per `reference/approval-fold-back.md`
+   (Part III of the merged spec). When the approved variant is
+   non-A AND `ia-fidelity` is `reimagined`, read the approved
+   file's `_provenance.differentiationFromA[andB]` block plus the
+   brief's `compositionDelta`, diff against the active direction,
+   and propose folding any structural moves. The user picks
    `fold site-wide` (default) / `fold page-local` / `don't fold`.
    Under `ia-fidelity: verbatim` the fold-back is a no-op by
    construction (A1/A2/A3 are surface forks; nothing structural to
    fold). Flags: `--auto-fold` skips the gate; `--no-fold` opts out
    entirely.
-3. Mark the page `approved` in `state.json`. Append a
+3. Mark the page `approved` in `state.json`; append a
    `{ status: "approved", at: <ts> }` history entry.
 4. Clear any `stale` flag on the page.
 5. Print:
+
    ```
    home: approved
      proposed: stardust/prototypes/home-proposed.html
@@ -1245,26 +1124,17 @@ On approval:
    ```
 
 Adapt no longer runs at approval time — it ran at Phase 2.7 as a
-pre-`prototyped` gate. The `mobile:` line reports the Phase 2.7
-result for review continuity.
-
-If multiple pages are in flight, approval is per-page; the user can
-approve some and continue iterating on others.
+pre-`prototyped` gate; the `mobile:` line reports the Phase 2.7
+result for review continuity. If multiple pages are in flight,
+approval is per-page; the user can approve some and keep iterating
+on others.
 
 ### Phase 5.5 — Adapt for mobile (retired; see Phase 2.7)
 
-Adapt and the mobile-adapt audit moved to **Phase 2.7** as part of
-the Discipline 9 critique → audit → adapt cycle, gating
-`prototyped` instead of approval. The 2026-05-03 lovesac.com
-showcase failure mode (stakeholders eyeballing variants on a phone
-getting the unadjusted desktop layout) is unchanged — the gate just
-fires earlier in the lifecycle, so a non-adapted prototype never
-lands as `prototyped` in the first place.
-
-The implementation (impeccable adapt invocation, mobile-adapt
-audit, mobile-nav-collapse stock pattern) lives in § Phase 2.7
-above. This section is retained as an anchor for any external
-cross-reference that still names Phase 5.5.
+Adapt and the mobile-adapt audit moved to **Phase 2.7**, gating
+`prototyped` instead of approval (lovesac 2026-05-03 — see
+`reference/lessons.md`); this anchor is retained for external
+cross-references that still name Phase 5.5.
 
 ### Stale handling
 
@@ -1283,24 +1153,25 @@ flag and update `againstDirection` to the new active direction.
 
 ## Outputs
 
-| Path                                          | Purpose                                       |
-|-----------------------------------------------|-----------------------------------------------|
-| `stardust/prototypes/<slug>-shape.md`         | Per-page compositional brief (Phase 1 output, craft input). |
-| `stardust/prototypes/<slug>-proposed.html`    | Proposed redesign (chat-driven iteration target, migration source, user-facing review surface). |
-| `stardust/state.json`                         | Updated with page status and approval history. |
-| `DESIGN.json`                                 | Updated with `extensions.divergence.anti_toolbox_hits` and any audit amendments from this prototype's render. |
+| Path | Purpose |
+|---|---|
+| `stardust/prototypes/<slug>-shape.md` | Per-page compositional brief (Phase 1 output, craft input). |
+| `stardust/prototypes/<slug>-proposed.html` | Proposed redesign (iteration target, migration source, user-facing review surface). |
+| `stardust/state.json` | Updated with page status and approval history. |
+| `DESIGN.json` | Updated with `extensions.divergence.anti_toolbox_hits` and any audit amendments from this render. |
 
 ## Failure modes
 
 - **No directed pages.** Recommend `$stardust direct` and stop.
 - **Pending direction.** Refuse to run; the user must resolve the
   direction first.
-- **Validation failure (:root block missing, data attributes missing,
-  unjustified anti-toolbox hit, impeccable rule violation).** Do not
-  write the file. Surface the specific failure and a suggested fix.
+- **Validation failure (`:root` block missing, data attributes
+  missing, unjustified anti-toolbox hit, impeccable rule
+  violation).** Do not write the file. Surface the specific failure
+  and a suggested fix.
 - **Impeccable not available.** Refuse to run — impeccable is a
-  hard requirement (Delegation mechanic). Recommend the user
-  install the impeccable plugin and re-invoke.
+  hard requirement (Delegation mechanic). Recommend installing the
+  impeccable plugin and re-invoke.
 
 ## Concurrency
 
@@ -1310,176 +1181,35 @@ are last-write-wins; warn the user if they explicitly try.
 
 ## Prep mode (--prep)
 
-When invoked with `--prep`, prototype runs an extended pass that
-fills page-type gaps and writes canon. Discovery-mode runs are
-unchanged: per-slug shape brief, render via `$impeccable craft`,
-open in browser, iterate, approve.
-
-`--prep` adds three things on top of the standard procedure:
-
-### 1. Fill page-type gaps
-
-Identify every page type in `state.json.pages[].type` that
-doesn't yet have an approved archetype. For each gap, prototype
-one representative page (the user picks which slug, or the first
-page of that type by default):
-
-- `article`-typed pages with no approved article: prototype one
-- `listing`-typed pages with no approved listing: prototype one
-- `program`, `form`, `static` — same pattern
-- `landing` — the home; prototyped first if not already done
-- `unique`-typed pages — these don't get archetypes; they're
-  rendered as one-offs at migrate time
-
-The user picks one variant per type. Subsequent pages of the
-same type are migrated by forking that approval (Path A′ in
-`skills/migrate/SKILL.md`).
-
-### 2. Canon write-back on first approval
-
-The first prototype approved (default the home; override with
-`--canon-from <slug>`) becomes the **canon-author**. On
-approval, extract canon and write back per
-`reference/canon-extraction.md`:
-
-1. Chrome HTML → `stardust/canon/header.html`,
-   `stardust/canon/footer.html`, optional regions.
-2. Compound CSS → `stardust/canon/canon.css`.
-3. Pinned tokens → `DESIGN.json.extensions.canon.pinned`.
-4. Module canonical renderings →
-   `stardust/canon/modules/<id>.html`.
-5. Compositional moves (LLM-authored, 3–7 lines) →
-   `DESIGN.json.extensions.canon.compositionalMoves`.
-
-Reference all extracted files via `{ path, sha }` in
-`DESIGN.json.extensions.canon.files`. Each canon file carries a
-`stardust:canon` provenance comment naming source slug, source
-prototype, and region.
-
-### 3. Canon write-back on subsequent approvals
-
-For non-canon-author template approvals (article, listing, etc.),
-canon-extraction runs in **diff mode** per
-`reference/canon-extraction.md` § Conflict resolution:
-
-- **Net-new items** (a module not yet in canon, a new compound
-  CSS class, a new compositional move) → append to canon
-  additively. Add a history entry naming what was added.
-- **Match canon byte-for-byte** → no-op.
-- **Conflict with canon** → default is **log as deviation**:
-  the migrated/prototyped page carries the deviation inline
-  marked with `data-deviation="<reason>"`, and the page's
-  `migrationDecisions[]` records a `canon-deviation` entry.
-  Canon stays unchanged.
-
-Override the default per-conflict via the prep summary if the
-user wants to promote the new variant to canon (which stale-flags
-downstream pages that consumed the changed item) or reject and
-re-iterate the prototype. Without an explicit override, the
-conflict logs as deviation and approval proceeds.
-
-### Prep summary
-
-```
-prototype --prep complete
-=========================
-
-Approved archetypes:
-  landing   home (V01 Polish)            canon-author
-  article   news/post-housing-summit
-  listing   news (the index)
-  program   programs/shelter
-  form      donate
-  static    about
-
-Canon: stardust/canon/ + DESIGN.json.extensions.canon
-  Sources:  home → article (1 deviation logged), listing (clean),
-            program (1 deviation logged), form (clean), static (clean)
-  Modules:  8 confirmed; canonical renderings written
-  Pinned:   sectionPadding, densityTier, typeScale set
-
-Next: $stardust migrate  (apply canon to every page in inventory)
-```
-
-Default mode is unchanged.
+Moved to `reference/prep-mode.md` — **READ that file when `--prep`
+is passed** (page-type gap fill, canon write-back, prep summary).
+This anchor is retained for external cross-references
+(e.g. `skills/prepare-migration/SKILL.md`).
 
 ## References
 
-- `reference/page-shape-brief.md` — per-page compositional brief
-  format (Phase 1 output, craft input). Page-level deployment
-  decisions live here; site-level system decisions live in
-  DESIGN.md.
-- `reference/canon-extraction.md` — the five-step canon-extraction
-  procedure performed on prototype approval in `--prep` mode.
-- `reference/proposed-file-shell.md` — proposed-file schema and
-  required structure (`:root` token block, data attributes,
-  provenance, content sourcing hierarchy, mobile-adapt audit).
-- `reference/publish-sample.md` — `--publish-sample` sub-flow:
-  eligibility checks, file staging, PR creation against the
-  upstream stardust showcase. Lands the prototype as a public
-  sample at `https://{owner}.github.io/stardust-2/`.
-- `reference/mobile-nav-collapse.md` — stock CSS-only hamburger
-  pattern Phase 2.7 auto-applies when the Mobile-adapt audit
-  refuses on `horizontal-overflow-at-360px` or
-  `nav-readability-floor`. Carries the copy-pasteable
-  HTML+CSS+JS, the audit smoke-test command, and the
-  alternative-pattern vocabulary.
-- `reference/motion-validation.md` — Phase 2.8 procedure:
-  scroll-position probe, finding classification, motion-bug
-  checks (clipped-container reveal timing, animation-range vs
-  reading position, anim-enter trigger reachability,
-  reduced-motion override completeness, no-JS state, multi-
-  viewport scroll-driven check). Reusable Playwright probe
-  patterns documented inline.
-- `reference/motion-registers.md` — five brand-faithful motion
-  registers (`arrival`, `kinetic-display`, `live-systems`,
-  `editorial`, `kinetic-grid`), the selection heuristic that
-  maps PRODUCT.md Brand Personality traits to a register, and the
-  § Extension rule for bespoke registers derived from the site's
-  own captured motion. Consumed by Phase 2.4 (motion application).
-- `reference/motion-stack.md` — technology choice for cinematic
-  prototypes: Lenis + CSS keyframes + rAF + IntersectionObserver.
-  Why not GSAP. Bundle policy + Lenis pinning procedure.
-- `reference/motion-attributes.md` — `data-*` vocabulary the
-  cinematic runtime consumes (`[data-anim]`, `[data-tile-anim]`,
-  `[data-countup]`, `[data-flip]`, `[data-fill]`, `[data-split]`,
-  `[data-parallax]`). Annotated per the active register.
-- `reference/motion-runtime.md` — the canonical inline runtime
-  script that powers every cinematic prototype. Single source of
-  truth; embedded verbatim during Phase 2.4.
-- `reference/fidelity-refined-pass.md` — concrete CSS recipes for
-  the `--fidelity=refined` craft micro-pass (Discipline 8).
-- `reference/anti-template-bank.md` — worked examples of the
-  non-template moves Discipline 3 draws from (typographic
-  substitution / substrate-promotion / inversion / document-shape
-  / scale-displacement), plus the § Extension rule for
-  evidence-shaped new moves.
-- `skills/stardust/reference/reference-research.md` — sourcing
-  real-world design references (refero MCP with WebSearch fallback,
-  graceful skip when unavailable); consumed by Discipline 2's
-  reference-grounded alternatives.
-- `reference/approval-fold-back.md` — Phase 5 fold-back procedure
-  (Part III of the merged spec): diff algorithm, surfacing UX,
-  write logic, stale flagging, `--auto-fold` / `--no-fold` flags,
-  verbatim no-op gating.
-- `fixtures/composition-delta-good.md` — example shape brief with
-  a strong structural `compositionDelta` (passes Discipline 10).
-- `fixtures/composition-delta-trivial.md` — example shape brief
-  with token-only deltas (fails Discipline 10).
-- `../stardust/reference/token-contract.md` — `:root` token
-  block (cross-cutting, used by prototype + migrate).
-- `../stardust/reference/data-attributes.md` — structural data
-  attribute vocabulary (cross-cutting, used by prototype + migrate).
-- `../stardust/reference/divergence-toolkit.md` —
-  anti-mediocrity rules consumed during render and iteration.
-- `../stardust/reference/intent-dimensions.md` — the 7-axis
-  vocabulary used to read a chat-driven refinement phrase
-  (iteration path 2).
-- `../stardust/reference/impeccable-command-map.md` — when to
-  reach for each impeccable command. Consulted during chat-driven
-  iteration (path 2) to pick the command for a refinement phrase.
-- `../stardust/reference/state-machine.md` — page lifecycle
-  and stale rules.
+- `reference/prep-mode.md` — `--prep` pass: gap fill, canon write-back, prep summary. **Read when `--prep` is passed.**
+- `reference/lessons.md` — field history (wasatch, nvidia, knack, lovesac, moneyhub) behind the gates and disciplines.
+- `reference/page-shape-brief.md` — per-page compositional brief format (Phase 1 output, craft input).
+- `reference/canon-extraction.md` — five-step canon extraction on approval in `--prep` mode.
+- `reference/proposed-file-shell.md` — proposed-file schema (`:root` block, data attributes, provenance, content sourcing hierarchy, mobile-adapt audit).
+- `reference/publish-sample.md` — `--publish-sample` sub-flow (eligibility, staging, PR; publishes at `https://{owner}.github.io/stardust-2/`).
+- `reference/mobile-nav-collapse.md` — stock hamburger pattern Phase 2.7 auto-applies; HTML+CSS+JS, smoke-test, alternative patterns.
+- `reference/motion-validation.md` — Phase 2.8 procedure: 5 passes, motion-bug checks, Playwright probe patterns.
+- `reference/motion-registers.md` — five motion registers, selection heuristic, § Extension rule. Consumed by Phase 2.4.
+- `reference/motion-stack.md` — cinematic technology choice (Lenis + CSS keyframes + rAF + IO; why not GSAP; Lenis pinning).
+- `reference/motion-attributes.md` — `data-*` vocabulary the cinematic runtime consumes, per register.
+- `reference/motion-runtime.md` — canonical inline runtime script; embedded verbatim in Phase 2.4.
+- `reference/fidelity-refined-pass.md` — CSS recipes for `--fidelity=refined` (Discipline 8).
+- `reference/anti-template-bank.md` — worked non-template moves for Discipline 3, plus § Extension rule.
+- `reference/approval-fold-back.md` — Phase 5 fold-back: diff algorithm, surfacing UX, write logic, stale flagging, flags, verbatim no-op.
+- `fixtures/composition-delta-good.md` / `fixtures/composition-delta-trivial.md` — shape briefs that pass / fail Discipline 10.
+- `skills/stardust/reference/reference-research.md` — real-world design reference sourcing; consumed by Discipline 2.
+- `../stardust/reference/token-contract.md` — `:root` token block (prototype + migrate).
+- `../stardust/reference/data-attributes.md` — structural data attribute vocabulary (prototype + migrate).
+- `../stardust/reference/divergence-toolkit.md` — anti-mediocrity rules consumed during render and iteration.
+- `../stardust/reference/intent-dimensions.md` — 7-axis vocabulary for chat-driven refinement phrases.
+- `../stardust/reference/impeccable-command-map.md` — which impeccable command fits a refinement phrase.
+- `../stardust/reference/state-machine.md` — page lifecycle and stale rules.
 - `../stardust/reference/artifact-map.md` — provenance shape.
-- impeccable's `reference/craft.md` and `reference/live.md` — the
-  underlying impeccable commands stardust delegates to.
+- impeccable's `reference/craft.md` / `reference/live.md` — the underlying delegated commands.

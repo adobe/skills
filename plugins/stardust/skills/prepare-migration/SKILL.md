@@ -17,7 +17,7 @@ duplicate logic from the underlying skills; it invokes them and
 brokers the per-phase summaries. The substantive work lives in:
 
 - `skills/extract/SKILL.md` § Prep mode
-- `skills/direct/SKILL.md` § Prep mode
+- `skills/direct/reference/prep-mode.md` (direct prep mode)
 - `skills/prototype/SKILL.md` § Prep mode +
   `reference/canon-extraction.md`
 
@@ -363,7 +363,7 @@ canon-author prototype was re-iterated, etc.).
 ## References
 
 - `skills/extract/SKILL.md` § Prep mode
-- `skills/direct/SKILL.md` § Prep mode
+- `skills/direct/reference/prep-mode.md` (direct prep mode)
 - `skills/prototype/SKILL.md` § Prep mode
 - `skills/prototype/reference/canon-extraction.md` — the
   five-step extraction procedure prototype --prep performs on
