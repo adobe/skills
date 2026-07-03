@@ -1,6 +1,6 @@
 ---
 name: prepare-migration
-description: Orchestrate the migrate-prep cascade — extract --prep → direct --prep → prototype --prep → assets prep — with confirmation gates between phases. Builds the data structure migrate consumes.
+description: Prepare a whole site for migration by orchestrating the prep cascade — a full-inventory crawl (extract --prep), page-type and module-catalog confirmation (direct --prep), archetype prototypes plus design canon (prototype --prep), and asset preparation — with confirmation gates between phases. Builds the typed page inventory, confirmed module catalog, and canon that stardust:migrate consumes. Use when the user wants to prepare or set up a full-site migration, run migration prep, confirm page types and modules before migrating a site, get a large site ready to migrate, or invokes /stardust:prepare-migration. Trigger phrases include "prepare the migration", "migration prep", "set up the migration data", "get the site ready to migrate". Not for running the migration itself (stardust:migrate) or converting a single page (stardust:deploy).
 license: Apache-2.0
 ---
 
