@@ -18,8 +18,18 @@ This skill drives migration **from legacy AEM (6.x, AMS, or on-prem) to AEM as a
 - BPA collection, CSV, and CAM/MCP flows (CAM tool schemas and retries: `references/cam-mcp.md`)
 - Manual flow and pattern auto-detection
 - Points to **`code-assessment`** for all detailed transformation steps
+- **Template modernization:** static → editable templates and AEM Modernize Tools rules (`references/template-modernization/`)
+- **Legacy UI migration (`legacy-ui/`)**: Extensible folder for legacy UI remediation. Current sub-folders:
+  - `dialog/` — Classic UI (ExtJS `cq:Dialog`) → Coral 3 `_cq_dialog`; Coral 2 in-place upgrade. BPA `lui` pattern (dialog sub-types only). Handles listeners, optionsProvider, namePrefix, filter.xml.
+  - `cdw/` — Custom ExtJS widget (`cq:Widget` with unknown xtype) → known Coral 3 mapping or scaffolded Granite UI form component. BPA `cdw` pattern.
+  - Future: `foundation-component/`, `cf-template/` sub-folders.
 
 **First run:** In chat, name **one BPA pattern** (e.g. scheduler) and either a **CSV path**, **CAM/MCP**, or **concrete Java files**. See **Quick start** in `SKILL.md` for copy-paste prompts and the CAM happy path in `references/cam-mcp.md`.
+
+**Legacy UI starter prompts:**
+- *"Fix LUI dialog findings using BPA CSV at `./reports/bpa.csv`."*
+- *"Migrate custom ExtJS widgets (CDW findings) from CAM."*
+- *"Fix all Classic UI and custom widget findings — CDW first, then dialogs."*
 
 ## Installation
 
