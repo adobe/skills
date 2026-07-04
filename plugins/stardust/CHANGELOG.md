@@ -4,6 +4,35 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.15.0 — deploy accuracy: close the ENCODE/DECODE round-trip at authoring time (#93–#95)
+
+The six-site e2e campaign showed `stardust:diff`'s structural probe catching
+real dropped-CTA / role-swap defects on every site — post-deploy, when each
+fix costs a redeploy loop. Root cause: authored rows (ENCODE) and block
+decode (DECODE) are written independently and hoped to be inverses. This
+release moves the defect-finding to conversion time so `deploy` Step 10
+becomes a proof, not a repair loop:
+
+- **#93 `section-schema.mjs`** (deploy, new): the per-section ENCODE/DECODE
+  shared contract — ordered role inventory + repeating-unit groups emitted
+  from the rendered prototype; authored rows and block decode are both
+  written from it (new Step 2b).
+- **#94 `block-roundtrip.mjs`** (deploy, new): in-loop per-block gate —
+  decorates the authored content locally with the block's own JS+CSS (no DA,
+  no dev server), diffs the decorated section against the prototype section
+  with content-diff's own classifier, exit 2 on structural 🔴 or on any
+  decorate error (a block that throws or whose inlined JS fails to install
+  must never pass — its raw rows can false-match the prototype). Required per
+  block before deploy, plus one whole-page run before the DA push.
+- **#95 decode tiers** (deploy): template-slotted (verbatim prototype DOM +
+  role slots — fidelity by construction, for fixed-composition sections
+  nobody structurally edits) vs reconstructive (for authorable repeat
+  groups); tier recorded per block.
+- **diff**: classifier + differ factored into
+  `skills/diff/scripts/content-inventory.mjs`, shared by content-diff /
+  section-schema / block-roundtrip so every fidelity gate measures with the
+  same instrument (content-diff CLI behavior unchanged).
+
 ## 0.14.5 — crawler clears Cloudflare managed challenges
 
 `extract/scripts/crawl.mjs` — the bot-management fallback now validates the

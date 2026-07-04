@@ -40,6 +40,8 @@ prototype's DOM and the built DOM compare symmetrically, then diffs them.
 # and re-install (npm i -D playwright --no-save --legacy-peer-deps) on failure:
 # a --no-save install from extract is PRUNED by any later real npm i
 # (extract SKILL.md § Setup). Run the copied scripts from the project, not the plugin.
+# Copy the WHOLE skills/diff/scripts/ dir: content-diff imports diff-profiles.mjs AND
+# content-inventory.mjs, and the deploy gates (#93/#94) import ../../diff/scripts/*.
 # Prereq: a RENDERABLE source. Static → serve from its own dir (python3 -m http.server).
 # The build URL must be the DECORATED page (live/preview or a local harness), not raw markup.
 PROTO="http://localhost:8791/<prototype>.html"
@@ -77,6 +79,17 @@ strings.
 - **`generic`** — neutral source/build language for any stack.
 
 Add a profile by copying `generic` in `diff-profiles.mjs` and editing `hints`.
+
+## Shared engine + the in-loop sibling
+
+The structural probe's classifier + differ live in `skills/diff/scripts/content-inventory.mjs`,
+SHARED with two `stardust:deploy` gates so every fidelity layer measures with the same instrument:
+`section-schema.mjs` (the pre-code ENCODE/DECODE contract, deploy #93) and `block-roundtrip.mjs`
+(the in-loop per-block gate, deploy #94 — the same inventory diff, run per block at authoring time
+against a local decorate() harness, no DA needed, exit-code gated). Run the in-loop gate while
+converting; run THIS skill's two probes as the final post-deploy proof. A defect first found here
+that the in-loop gate passed = the delivery pipeline reshaped the content in transport — fix the
+block's flattened-shape fallback, not the authoring.
 
 ## Workflow use
 
