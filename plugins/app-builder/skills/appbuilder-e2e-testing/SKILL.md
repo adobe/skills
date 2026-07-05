@@ -5,7 +5,8 @@ description: >-
   application. Covers Playwright E2E testing for ExC Shell SPAs, AEM extension UIs, and full-stack
   flows. Use when the user mentions: "E2E test", "end-to-end test", "Playwright", "browser test",
   "test my SPA in the browser", "test my AEM extension", "test the full flow", "integration test
-  with UI", "headless browser test", "E2E in CI".
+  with UI", "headless browser test", "E2E in CI", "test my Content Hub extension",
+  "test Content Hub panel in browser", "test card action", "test bulk action in browser".
   This skill is for BROWSER-based testing only. For Jest unit tests of actions or React components,
   use appbuilder-testing instead.
 metadata:
@@ -27,6 +28,9 @@ Identify the user's intent, then read the referenced sections to generate tailor
 | E2E test for ExC Shell SPA | `references/e2e-testing-patterns.md` | `assets/playwright.config.ts`, `assets/e2e-test-template.spec.ts` |
 | Test AEM extension in browser | `references/aem-extension-testing.md` | `assets/playwright.config.ts` |
 | E2E tests in CI pipeline | `references/ci-integration.md` | `assets/e2e-ci-workflow.yml` |
+| Content Hub extension E2E | `references/aem-extension-testing.md` | `assets/playwright.config.ts` |
+
+Covers E2E tests for Content Hub extensions — testing panel render in the Asset Details Dialog, card action button visibility and click, and selection bar bulk action flow using Playwright with the `?devMode=true&ext=` test URL.
 
 ## Fast Path (for clear requests)
 

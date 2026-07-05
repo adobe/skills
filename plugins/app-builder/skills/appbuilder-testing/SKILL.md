@@ -10,7 +10,9 @@ description: >-
   aio app test, or wants to verify action behavior before deployment. Also trigger when users mention
   Jest configuration for App Builder, test coverage, CI test setup, React component test, Testing
   Library, UI test, Provider wrapper, test my page, test my form, test my table, test my component,
-  mock shell context, mock extension context, debug test failures, or fix Jest errors.
+  mock shell context, mock extension context, debug test failures, or fix Jest errors. Also covers
+  unit and component tests for Content Hub extensions: ExtensionRegistration.js, TabPanel.js,
+  CardActionModal.js, SelectionBarModal.js — using uix-guest mock helpers.
 metadata:
   category: testing
 license: Apache-2.0
@@ -40,6 +42,8 @@ Pick the template or reference that matches the user's intent. Default to `asset
 | Contract test for API interactions | references/testing-patterns.md | — |
 | Pre-deployment verification | references/checklist.md | — |
 | Debug test failures | references/debugging.md | — |
+
+Covers unit and component tests for Content Hub extension files: `ExtensionRegistration.js` (registration mocking), `TabPanel.js` (attach() mock + host API stubs), `CardActionModal.js` / `SelectionBarModal.js` (modal open/close flow). Use `assets/uix-guest-mock-helper.js` for the `@adobe/uix-guest` host API stubs needed by all three namespaces.
 
 ## Fast Path (for clear requests)
 

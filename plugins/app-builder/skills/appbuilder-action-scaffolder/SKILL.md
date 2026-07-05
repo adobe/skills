@@ -1,6 +1,16 @@
 ---
 name: appbuilder-action-scaffolder
-description: Create, implement, deploy, and debug Adobe Runtime actions with consistent layout, validation, and error handling. Use this skill whenever the user needs to add actions to an App Builder project, understand action structure (params, response format, web/raw actions), configure actions in the manifest, use App Builder SDKs (State, Files, Events, database), deploy and invoke actions via CLI, debug action issues, or implement patterns such as webhook receivers, custom event providers, journaling consumers, large payload redirects, action sequence pipelines, and Asset Compute workers. Also trigger when users mention serverless functions in Adobe context, action logging, IMS authentication for actions, or cron-style scheduled actions.
+description: >-
+  Create, implement, deploy, and debug Adobe Runtime actions with consistent layout, validation, and
+  error handling. Use this skill whenever the user needs to add actions to an App Builder project,
+  understand action structure (params, response format, web/raw actions), configure actions in the
+  manifest, use App Builder SDKs (State, Files, Events, database), deploy and invoke actions via CLI,
+  debug action issues, or implement patterns such as webhook receivers, custom event providers,
+  journaling consumers, large payload redirects, action sequence pipelines, and Asset Compute workers.
+  Also covers web actions for Content Hub extensions — the actions/generic/index.js that receives
+  asset IDs from panels or modals, calls the AEM Assets Author API, and returns data back to the
+  Content Hub UI. Trigger on: App Builder action, Runtime action, serverless function, action logging,
+  IMS authentication for actions, Content Hub web action, AEM API from action.
 metadata:
   category: action-lifecycle
 license: Apache-2.0
@@ -27,6 +37,8 @@ Pick the template that matches the user's intent. Default to `assets/action-boil
 | Action sequence pipeline | assets/action-sequence-template.js |
 | Asset Compute worker (AEM renditions) | assets/asset-compute-worker-template.js |
 | Debug Runtime action issues | references/debugging.md |
+
+Also handles web actions for Content Hub extensions — the `actions/generic/index.js` that receives asset IDs, calls AEM Assets Author API, and returns metadata to the panel. Use `assets/action-boilerplate.js` as the starting point and wire it via `app.config.yaml` in the Content Hub extension scaffold.
 
 ## Fast Path (for clear requests)
 

@@ -8,8 +8,9 @@ description: >-
   user mentions CI/CD for App Builder, GitHub Actions for aio deploy, automated deployment
   pipelines, continuous integration, continuous delivery, deploy automation, multi-environment
   promotion, aio app add ci, or wants to automate their App Builder build and release process.
-  Also trigger when users mention deploy workflows, release pipelines, or GitHub secrets for
-  App Builder.
+  Also trigger when users mention deploy workflows, release pipelines, GitHub secrets for
+  App Builder, deploy a Content Hub extension, aio app deploy for AEM extensions, Extension
+  Manager approval, or automate deployment of a Content Hub or AEM UI extension.
 metadata:
   category: deployment-automation
 license: Apache-2.0
@@ -31,6 +32,8 @@ Set up CI/CD pipelines for Adobe App Builder projects — GitHub Actions (primar
 | Azure DevOps / GitLab CI / Jenkins | references/generic-pipeline-guide.md |
 | Secrets setup guide | references/secrets-management.md |
 | Debugging deploy failures | references/debugging.md |
+
+Also covers deployment of Content Hub UI extensions via `aio app deploy` — parsing the CDN URL from deploy output, opening the deployed extension URL, and submitting for Extension Manager approval (Production workspace only).
 
 ## Fast Path (for clear requests)
 

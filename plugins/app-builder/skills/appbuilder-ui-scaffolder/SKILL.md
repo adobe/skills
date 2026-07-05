@@ -1,15 +1,19 @@
 ---
 name: appbuilder-ui-scaffolder
 description: >-
-  Generate React Spectrum UI components for Adobe Experience Cloud Shell SPAs and AEM UI Extensions.
-  Provides patterns for pages, forms, data tables, dialogs, and navigation using @adobe/react-spectrum.
-  Guides ExC Shell integration with @adobe/exc-app including runtime.done(), IMS token passthrough,
-  and shell theming. Guides AEM UI Extension development with @adobe/uix-guest for Content Fragment
-  Console, CF Editor, Universal Editor, and Assets View surfaces. Trigger on: building App Builder UI,
-  React Spectrum components, ExC Shell pages, forms, data tables, dialogs, modals, navigation, theming,
-  web-src, Spectrum design system, @adobe/exc-app, AEM extension, AEM UI extension, Content Fragment
-  Console, Universal Editor extension, uix-guest, @adobe/uix-guest, extension points for AEM,
-  customizing AEM surfaces.
+  Generate React Spectrum UI components and customize existing App Builder UI extensions. Covers:
+  ExC Shell SPAs (@adobe/exc-app, runtime.done(), IMS tokens, theming), AEM UI Extensions
+  (@adobe/uix-guest: CF Console, CF Editor, Universal Editor, Assets View), and Content Hub extensions
+  (panels in Asset Details Dialog, card actions on asset cards and collection tiles, bulk actions in
+  the selection bar, Add Assets wizard panels — all via aem/assets/contenthub/1). Use when the user
+  already has a scaffolded extension and wants to customize or build the UI: add panels, buttons,
+  modals, forms, tables, dialogs, or navigation. Trigger on: Content Hub panel, Content Hub card
+  action, Content Hub bulk action, add assets wizard, hydration panel, asset details panel, asset
+  card button, selection bar button, React Spectrum, @adobe/uix-guest,
+  uix-guest, Tab Panel, ExtensionRegistration, App Builder UI, forms, data tables, dialogs, modals,
+  web-src, Spectrum, @adobe/exc-app, AEM extension UI, customize AEM extension.
+  For CREATING a new extension from scratch (Console setup + file generation + dev server), use
+  appbuilder-project-init instead.
 metadata:
   category: frontend
 license: Apache-2.0
@@ -34,6 +38,8 @@ Identify the user's intent, then read the referenced sections to generate tailor
 | ExC Shell setup | `references/shell-integration.md` | `@adobe/exc-app`, `Provider`, `defaultTheme` |
 | Connect UI to backend actions | `references/action-integration.md` | `fetch()` with IMS token |
 | AEM UI Extension (CF Console, CF Editor, Universal Editor) | `references/aem-extensions.md` | `@adobe/uix-guest`, `register()`, `sharedContext` |
+| Any extension — scaffold NEW from scratch | Extension Scaffolding Mode in `appbuilder-project-init` | Use `appbuilder-project-init` — Extension Scaffolding Mode (handles Console setup, file generation, build, dev server, deploy for every surface) |
+| Content Hub extension (customize existing — panels, card actions, bulk actions, add assets wizard) | `references/contenthub-extensions.md` | `@adobe/uix-guest`, `register()`, `attach()`, `assetDetails.getTabPanels()`, `card`/`selectionBar`/`addAssets` namespaces, `host.modal`, `postMessage` readiness signalling |
 | Debug UI issues | `references/debugging.md` | Shell spinner, CORS, blank screen, auth |
 
 ## Fast Path (for clear requests)
@@ -55,6 +61,7 @@ Examples of fast-path triggers:
 - "Build a Content Fragment Console extension" → Read `references/aem-extensions.md` § CF Console, generate directly
 - "Add a header menu button to the Universal Editor" → Read `references/aem-extensions.md` § Universal Editor, generate directly
 - "Create an AEM extension with uix-guest" → Read `references/aem-extensions.md` § Core Registration, generate directly
+- "Create / scaffold a new extension from scratch" → Redirect to the `appbuilder-project-init` skill (Extension Scaffolding Mode — asks which surface, then handles full lifecycle: Console setup, file generation, build, dev server, deploy)
 
 If there is any ambiguity — multiple patterns could fit, constraints are unclear, or the user hasn't specified enough — fall through to the full workflow below.
 
@@ -93,6 +100,11 @@ If there is any ambiguity — multiple patterns could fit, constraints are uncle
 - "Build a Content Fragment Console extension with an action bar button."
 - "Add a custom RTE toolbar button in the Content Fragment Editor."
 - "Create a Universal Editor extension with a header menu button."
+- "Add a custom panel to the Content Hub Asset Details Dialog."
+- "Build a Content Hub extension that shows asset metadata in a side panel."
+- "Add an action button to Content Hub asset cards."
+- "Add a bulk action to the Content Hub selection bar."
+- "Customize the Content Hub extension UI with React Spectrum."
 
 ## Inputs To Request
 
@@ -126,11 +138,15 @@ If there is any ambiguity — multiple patterns could fit, constraints are uncle
 - Use `references/action-integration.md` for calling backend actions from the SPA.
 - Use `references/checklist.md` for pre-handoff UI quality validation.
 - Use `references/aem-extensions.md` for AEM UI Extension patterns (`@adobe/uix-guest`, Content Fragment Console/Editor, Universal Editor, Assets View).
+- Use `references/contenthub-extensions.md` for Content Hub extension patterns (`@adobe/uix-guest`, `aem/assets/contenthub/1`, asset details tab panels, Host APIs, web actions).
 - Use `references/debugging.md` for common SPA debugging scenarios (shell spinner, CORS, auth, blank screen, performance).
 
 ## Chaining
 
-- Chains FROM `appbuilder-project-init` (after SPA project is scaffolded with `dx/excshell/1` extension)
+- Chains FROM `appbuilder-project-init` (Extension Scaffolding Mode) — once the extension is scaffolded and running locally, this skill handles UI customization and React Spectrum patterns
 - Works alongside `appbuilder-action-scaffolder` for full-stack features (UI calls backend actions)
 - Chains TO `appbuilder-testing` (test generated UI components)
 - Chains TO `appbuilder-cicd-pipeline` (deploy frontend changes)
+- What's Next: After building Content Hub extension UI here, chain TO: `appbuilder-testing` (unit/component tests), `appbuilder-cicd-pipeline` (GitHub Actions deployment), `appbuilder-e2e-testing` (Playwright E2E tests against the deployed extension)
+
+Use `references/contenthub-extensions.md` for Content Hub extension patterns (`@adobe/uix-guest`, `aem/assets/contenthub/1`, asset details tab panels, Host APIs, web actions).

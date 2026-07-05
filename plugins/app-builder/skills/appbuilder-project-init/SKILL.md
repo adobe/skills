@@ -1,11 +1,24 @@
 ---
 name: appbuilder-project-init
-description: Initialize an Adobe App Builder project end-to-end without Developer Console UI clicks. Creates the Console project and workspace, subscribes APIs (including those needing a product profile), maps user intent to the right template, runs non-interactive `aio app init`, and guides post-init customization. Use whenever the user mentions creating an App Builder app, scaffolding a project, `aio app init`, setting up an Experience Cloud extension, adding actions or web assets, creating a Console project or workspace, adding APIs, or bootstrapping App Builder — even if they don't say "App Builder". Also for SPA templates, AEM extensions, API Mesh, Asset Compute workers, and MCP server projects. Also handles debugging init failures — template not found, `aio app init` hangs or times out, Node version mismatches, npm install failures, post-init build errors, `aio login` issues, `aio app run` showing nothing, or `aio console project create` / `workspace create` / `workspace api add` errors.
+description: >-
+  Initialize or scaffold any Adobe App Builder project end-to-end — from a single prompt to a running,
+  browser-open extension — without Developer Console UI clicks. Handles two modes: (1) Standard project
+  init: creates Console project and workspace, subscribes APIs, maps user intent to the right template,
+  runs non-interactive `aio app init`. (2) Extension Scaffolding Mode: full lifecycle for any Adobe UI
+  extension — Content Hub (panels, card actions, bulk actions), CF Console, CF Editor, Universal Editor,
+  Assets View, or ExC Shell SPA — covering surface selection, file generation, npm install, aio app use,
+  build, dev server, cert acceptance, and deploy. Use whenever the user mentions: creating an App Builder
+  app or extension, "scaffold a Content Hub extension", "create an AEM extension", "build an extension for
+  Content Hub / CF Console / Universal Editor / Assets View / ExC Shell", `aio app init`, setting up a
+  Console project or workspace, adding APIs, or bootstrapping App Builder — even if they don't say
+  "App Builder". Also for SPA templates, AEM extensions, API Mesh, Asset Compute workers, MCP server
+  projects, and debugging init failures (template not found, `aio app init` hangs, Node mismatches,
+  npm failures, `aio login` issues, `aio console` errors).
 metadata:
   category: project-initialization
 license: Apache-2.0
 compatibility: Requires aio CLI (Adobe I/O CLI) — install or refresh with `npm install -g @adobe/aio-cli` so the bundled plugins (`aio-cli-plugin-console`, `aio-cli-plugin-app`, etc.) are current. Node.js 18+ (Node 24 supported on Stage runtimes). Bash shell.
-allowed-tools: Bash(aio:*) Bash(npm:*) Bash(node:*) Read Write
+allowed-tools: Bash(aio:*) Bash(npm:*) Bash(node:*) Bash(mkdir:*) Read Write
 ---
 # App Builder Project Initialization
 
@@ -144,6 +157,9 @@ Pick the template that matches the user's intent. When unclear, default to `@ado
 | --- | --- |
 | SPA with actions + React UI | @adobe/generator-app-excshell |
 | AEM Content Fragment Console extension | @adobe/aem-cf-admin-ui-ext-tpl |
+| Content Hub extension (panels, card actions, bulk actions) | Extension Scaffolding Mode — see section below |
+| AEM UI Extension (CF Console, CF Editor, Universal Editor, Assets View) | Extension Scaffolding Mode — see section below |
+| Experience Cloud Shell SPA (full lifecycle with dev server + deploy) | Extension Scaffolding Mode — see section below |
 | AEM React SPA (WKND-based) | @adobe/generator-app-aem-react |
 | Adobe API Mesh (GraphQL) | @adobe/generator-app-api-mesh |
 | Asset Compute custom worker | @adobe/generator-app-asset-compute |
@@ -151,6 +167,14 @@ Pick the template that matches the user's intent. When unclear, default to `@ado
 | Bare / from-scratch project (no pre-scaffolded actions or UI) | init.sh init-bare |
 
 For a headless/backend-only request, prefer `init-bare` when possible. If the user still needs a template that generates UI files, plan a post-init cleanup so the final project has no `web-src` frontend directory or web manifest wiring.
+
+## Extension Scaffolding Mode
+
+For Content Hub extensions (panels, card actions, bulk actions), AEM UI extensions (CF Console, CF Editor, Universal Editor, Assets View), and ExC Shell SPAs — this skill runs a full lifecycle: surface selection → Console setup → file generation → npm install → build → dev server → deploy.
+
+Read [`references/extension-scaffolding.md`](references/extension-scaffolding.md) for the complete step-by-step workflow.
+
+**When it triggers:** user says "create a Content Hub extension", "scaffold an AEM extension", "build an extension for [surface]", or anything in the Template Decision Table rows for extension surfaces.
 
 ## Initialize via Script
 
@@ -287,6 +311,9 @@ After initialization, hand off to:
 
 - `appbuilder-action-scaffolder` — For scaffolding actions with playbook, checklist, boilerplate templates, and manifest validation
 - `appbuilder-ui-scaffolder` — Build React Spectrum UI for ExC Shell SPAs and AEM extensions
+- Chains TO `appbuilder-ui-scaffolder` — for Content Hub panel/modal UI customization, React Spectrum components, and all four Content Hub namespaces (assetDetails, card, selectionBar, addAssets)
+- Chains TO `appbuilder-cicd-pipeline` — for GitHub Actions deployment automation after `aio app deploy` works manually
+- Chains TO `appbuilder-e2e-testing` — for Playwright E2E tests against the deployed extension
 
 ## Pattern Quick-Reference
 
@@ -304,3 +331,5 @@ After initialization, hand off to:
 - [references/bootstrap.md](references/bootstrap.md) — Agentic Developer Console bootstrap (project, workspace, API subscriptions) via raw `aio console …` commands from the latest `@adobe/aio-cli`
 - [references/templates.md](references/templates.md) — Template catalog with intent mapping and per-template post-init guidance
 - [references/debugging.md](references/debugging.md) — Troubleshooting guide for init failures, Node/npm issues, login problems, and first-run errors
+- [`references/extension-scaffolding.md`](references/extension-scaffolding.md) — Complete Extension Scaffolding Mode workflow (Steps 0–17, Surface Config, Interaction Rules, Failure Recovery)
+- [`references/deployment.md`](references/deployment.md) — Stage and Production deployment, Extension Manager approval
