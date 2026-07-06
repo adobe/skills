@@ -6,7 +6,8 @@ description: >-
   flows. Use when the user mentions: "E2E test", "end-to-end test", "Playwright", "browser test",
   "test my SPA in the browser", "test my AEM extension", "test the full flow", "integration test
   with UI", "headless browser test", "E2E in CI", "test my Content Hub extension",
-  "test Content Hub panel in browser", "test card action", "test bulk action in browser".
+  "test Content Hub panel in browser", "test card action", "test bulk action in browser",
+  "test add assets wizard", "test add assets panel", "test hydration panel in browser".
   This skill is for BROWSER-based testing only. For Jest unit tests of actions or React components,
   use appbuilder-testing instead.
 metadata:

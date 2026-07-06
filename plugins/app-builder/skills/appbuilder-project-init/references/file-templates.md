@@ -5,9 +5,10 @@ Complete templates for all scaffold files. Before writing, substitute:
 - `{{DISPLAY_NAME}}` → Title Case name (e.g. `My Asset Viewer`)
 - `{{EXTENSION_DESCRIPTION}}` → one-sentence description
 - `{{EXTENSION_DIR}}` → for Content Hub, `aem-assets-contenthub-1`; for other AEM surfaces, `surfaceConfig.extDir`
+- `{{EXTENSION_POINT}}` → for Content Hub, `aem/assets/contenthub/1`; for other AEM surfaces, `surfaceConfig.extensionPointId`
 
-Extension point used throughout: `aem/assets/contenthub/1`
-Source directory: `src/aem-assets-contenthub-1/`
+Extension point used throughout (Content Hub): `aem/assets/contenthub/1`
+Source directory (Content Hub): `src/aem-assets-contenthub-1/`
 
 > **Dual role.** This file is both the Content Hub template set AND the **shared `@adobe/uix-guest` skeleton** reused by the other AEM surfaces (CF Console, CF Editor, Universal Editor, Assets View). When scaffolding one of those surfaces, reuse every file here — `package.json`, `index.html`, `index.js`, `index.css`, `Constants.js`, `App.js`, `actions/*`, `hooks/post-deploy.js`, `README`/`AGENTS`, `.eslintrc.js` — swapping `aem-assets-contenthub-1` → `surfaceConfig.extDir`, the extension point → `surfaceConfig.extensionPointId`, and the `register()` `methods` object → the surface block in [`aem-surface-templates.md`](aem-surface-templates.md). ExC Shell does NOT share this skeleton (different SDK) — see [`excshell-templates.md`](excshell-templates.md).
 
@@ -57,15 +58,15 @@ Source directory: `src/aem-assets-contenthub-1/`
 
 ```yaml
 extensions:
-  aem/assets/contenthub/1:
-    $include: src/aem-assets-contenthub-1/ext.config.yaml
+  {{EXTENSION_POINT}}:
+    $include: src/{{EXTENSION_DIR}}/ext.config.yaml
 ```
 
-**Critical:** Use `aem/assets/contenthub/1` — not the deprecated `aem/contenthub/assets/details/1`. If the user's existing project has the old extension point ID, update both this file and the directory name.
+**Critical (Content Hub):** Use `aem/assets/contenthub/1` — not the deprecated `aem/contenthub/assets/details/1`. If the user's existing project has the old extension point ID, update both this file and the directory name.
 
 ---
 
-## `src/aem-assets-contenthub-1/ext.config.yaml`
+## `src/{{EXTENSION_DIR}}/ext.config.yaml`
 
 ```yaml
 $schema: https://unpkg.com/@adobe/aio-schemas@latest/schemas/aio.schema.json
@@ -73,7 +74,7 @@ actions: actions
 web: web-src
 runtimeManifest:
   packages:
-    aem-assets-contenthub-1:
+    {{EXTENSION_DIR}}:
       license: Apache-2.0
       actions:
         generic:
@@ -109,7 +110,7 @@ hooks:
   "keywords": ["contenthub", "assets", "extension", "uix"],
   "author": "",
   "license": "Apache-2.0",
-  "extensionPoints": ["aem/assets/contenthub/1"]
+  "extensionPoints": ["{{EXTENSION_POINT}}"]
 }
 ```
 
@@ -150,6 +151,7 @@ module.exports = {
 - `assetDetails` — tab panels in the Asset Details Dialog side rail
 - `card` — action buttons on asset cards (Assets grid, collection, link share) and on collection tiles in the Collections grid
 - `selectionBar` — bulk action buttons in the selection bar (multi-select)
+- `addAssets` — wizard panels before/after the Upload step; `beforeUpload` hook to gate/enrich uploads; `onUploadComplete` hook after upload finishes
 
 (Remove entries for namespaces not wired in ExtensionRegistration.js)
 
