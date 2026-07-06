@@ -3,7 +3,7 @@ name: authoring-analysis
 description: "Use this when the page-import pipeline needs to determine the authoring approach (default content vs blocks) for scraped content before generating import HTML for AEM Edge Delivery Services. Covers validating block selection and section styling for import/migration. Do not invoke directly — called by page-import as a pipeline step."
 license: Apache-2.0
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # Authoring Analysis
