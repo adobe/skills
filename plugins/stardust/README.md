@@ -85,11 +85,12 @@ otherwise with a clear install hint.
 
 ## Status
 
-`v0.14.3` — Fable 5 refactor: reference-grounded direction, the `audit`
-skill, cross-site same-brand extraction, hands-off production mode, vision
-gates, parallelism contracts, and delivery hardening. See
-[CHANGELOG.md](CHANGELOG.md) for the full breakdown; prior versions live in
-git history.
+`v0.16.0` — two new entry points: `replica` (same-design migration with a
+measured source-fidelity gate) and `reskin` (byte-faithful content onto a
+donor design system), both field-tested and hardened, plus the shared
+live-measurement module (`diff/scripts/live-session.mjs`) and diff-probe
+flags. See [CHANGELOG.md](CHANGELOG.md) for the full breakdown; prior
+versions live in git history.
 
 ## License
 

@@ -7,13 +7,15 @@
     "description": "Official Adobe Skills for AI Agents",
     "version": "1.0.0"
   },
-  "allowCrossMarketplaceDependenciesOn": ["impeccable"],
+  "allowCrossMarketplaceDependenciesOn": [
+    "impeccable"
+  ],
   "plugins": [
     {
       "name": "stardust",
       "source": "./plugins/stardust",
       "description": "Redesign an existing website to make it better. Higher-level guided flow on top of impeccable.",
-      "version": "0.14.5",
+      "version": "0.16.0",
       "category": "design",
       "keywords": [
         "design",
