@@ -17,6 +17,14 @@
  *                     whose text contains the captured label.
  *   (3) IMAGES      — each captured image src is present, URL-normalized
  *                     to host+path.
+ *   (3b) PAINT      — each present content image actually RENDERS
+ *                     (naturalWidth > 0 after a lazy-load scroll pass).
+ *                     The src check compares URL strings; an origin-locked
+ *                     source CDN can 403 every hotlinked image while the
+ *                     string gate passes (F-R4, kew: 19 images never
+ *                     painted on a PASSing gate). Zero-painted → FAIL
+ *                     naming the img; downgrade with --paint warn only
+ *                     with a recorded reason.
  *   (4) METADATA    — title, description, canonical, every OG tag, every
  *                     Twitter tag carried VERBATIM; JSON-LD block count
  *                     matches. Fidelity over repair: broken source values
@@ -26,6 +34,7 @@
  *   node slot-coverage.mjs --model <content-model.json> --rendered <url|file>
  *       [--rendered-scope <sel>]   default "main"
  *       [--report <path>]          markdown report
+ *       [--paint fail|warn]        paint-assertion severity (default fail)
  *
  * Exit: 0 all checks pass, 1 any fail, 2 setup error.
  */
@@ -34,21 +43,25 @@ import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 function parseArgs(argv) {
-  const opts = { 'rendered-scope': 'main' };
+  const opts = { 'rendered-scope': 'main', paint: 'fail' };
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
     else if (a.startsWith('--')) opts[a.slice(2)] = argv[++i];
     else { console.error(`[slot-coverage] unknown arg: ${a}`); process.exit(2); }
   }
+  if (!['fail', 'warn'].includes(opts.paint)) { console.error(`[slot-coverage] --paint must be fail|warn, got: ${opts.paint}`); process.exit(2); }
   return opts;
 }
 
 const args = parseArgs(process.argv);
 if (args.help || !args.model || !args.rendered) {
   console.log('usage: node slot-coverage.mjs --model <content-model.json> --rendered <url|file>');
-  console.log('         [--rendered-scope main] [--report <path>]');
-  console.log('Proves every model slot (text, CTAs, images) + all metadata present in the render.');
+  console.log('         [--rendered-scope main] [--report <path>] [--paint fail|warn]');
+  console.log('Proves every model slot (text, CTAs, images) + all metadata present in the render,');
+  console.log('and that every present content image actually PAINTS (naturalWidth > 0) — a URL-string');
+  console.log('match can pass while an origin-locked source CDN 403s every image (gates.md § Image');
+  console.log('paint). --paint warn downgrades paint failures to warnings (record why).');
   console.log('Exit: 0 pass, 1 fail, 2 setup error.');
   process.exit(args.help ? 0 : 2);
 }
@@ -69,6 +82,22 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 await page.goto(toUrl(args.rendered), { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
 await page.waitForTimeout(1500);
 
+// Paint assertion prep (F-R4): scroll so lazy images intersect and load,
+// then wait (bounded) for every in-flight image to settle. An image that
+// 403s fires `error` and stays naturalWidth=0 — exactly what we assert on.
+await page.evaluate(async () => {
+  for (let y = 0; y < document.body.scrollHeight; y += 700) {
+    window.scrollTo(0, y); await new Promise((r) => setTimeout(r, 150));
+  }
+  window.scrollTo(0, 0);
+});
+await page.evaluate(() => Promise.race([
+  Promise.all(Array.from(document.images).map((img) => (img.complete ? null
+    : new Promise((res) => { img.addEventListener('load', res, { once: true }); img.addEventListener('error', res, { once: true }); })))),
+  new Promise((r) => setTimeout(r, 10000)),
+]));
+await page.waitForTimeout(300);
+
 const results = []; // { gate, check, pass, detail }
 const R = (gate, check, pass, detail = '') => results.push({ gate, check, pass, detail });
 
@@ -80,7 +109,10 @@ const rendered = await page.evaluate((scopeSel) => {
   return {
     text: norm(scope.innerText),
     hrefs: Array.from(scope.querySelectorAll('a[href]')).map((a) => ({ href: a.href, text: norm(a.innerText) })),
-    imgs: Array.from(scope.querySelectorAll('img')).map((i) => i.currentSrc || i.src),
+    imgs: Array.from(scope.querySelectorAll('img')).map((i) => ({
+      src: i.currentSrc || i.src,
+      painted: i.complete && i.naturalWidth > 0,
+    })),
   };
 }, args['rendered-scope']);
 if (rendered.error) { console.error(`[slot-coverage] ${rendered.error}`); await browser.close(); process.exit(2); }
@@ -93,7 +125,22 @@ for (const s of model.sections) {
     R('slot-coverage', `${s.slot} CTA "${c.text.slice(0, 30)}" -> ${c.absHref.slice(0, 60)}`, !!hit);
   }
   for (const im of s.images) {
-    R('slot-coverage', `${s.slot} image …${normPath(im.currentSrc).slice(-50)}`, rendered.imgs.some((u) => normPath(u) === normPath(im.currentSrc)));
+    const matches = rendered.imgs.filter((r2) => normPath(r2.src) === normPath(im.currentSrc));
+    R('slot-coverage', `${s.slot} image …${normPath(im.currentSrc).slice(-50)}`, matches.length > 0);
+    if (matches.length > 0) {
+      // (3b) PAINT (F-R4): src-string presence is not rendering. A rendered
+      // content image that never painted (naturalWidth=0 — e.g. the source
+      // CDN 403s hotlinked requests) is a broken page the string gate
+      // cannot see.
+      const painted = matches.some((r2) => r2.painted);
+      const hint = painted ? '' : 'naturalWidth=0 — never painted; origin-locked source CDN? localize assets (Phase 6, gates.md § Image paint)';
+      if (!painted && args.paint === 'warn') {
+        console.log(`  WARN paint: ${s.slot} image …${normPath(im.currentSrc).slice(-50)} — ${hint}`);
+        R('paint', `${s.slot} image …${normPath(im.currentSrc).slice(-50)} painted (WARN-downgraded)`, true, hint);
+      } else {
+        R('paint', `${s.slot} image …${normPath(im.currentSrc).slice(-50)} painted`, painted, hint);
+      }
+    }
   }
 }
 

@@ -37,18 +37,46 @@
  *       [--shot <path>]              full-page screenshot at 1440 for the
  *                                    side-by-side eyeball vs donor screenshots
  *       [--widths 1440,360]          overflow-sanity viewport widths
+ *       [--ua <string>]              user agent (default: live-session's
+ *                                    real-Chrome UA + standard headers)
+ *       [--wait-until <state>]       live-target goto waitUntil (default
+ *                                    domcontentloaded; local/file targets
+ *                                    keep networkidle)
+ *       [--headed]                   headed stealth real Chrome (escalation
+ *                                    for bot-managed sites)
+ *       [--locale <tag>]             pin Accept-Language + locale
  *
- * Exit: 0 all assertions + sanity pass, 1 fail, 2 setup error.
+ * Live --rendered targets (a staged deploy, a served page on a real host)
+ * navigate via the shared diff live-session module (F-G/F-R1): a bot
+ * challenge FAILS LOUD (exit 3) — probing an interstitial's computed styles
+ * is a false measurement. Local/file targets keep legacy networkidle.
+ *
+ * Exit: 0 all assertions + sanity pass, 1 fail, 2 setup error,
+ *       3 bot challenge / blocked live target (fail loud, never probed).
  */
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+// live-session.mjs lives in the diff skill's scripts dir. Two layouts exist:
+// the plugin tree (skills/reskin/scripts ↔ skills/diff/scripts) and the
+// documented project copy (stardust/scripts/reskin ↔ stardust/scripts/diff).
+const HERE = dirname(fileURLToPath(import.meta.url));
+const LIVE_SESSION = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs']
+  .map((p) => resolve(HERE, p)).find((p) => existsSync(p));
+if (!LIVE_SESSION) {
+  console.error('[donor-probe] live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/).');
+  console.error('Copy the diff skill\'s live-session.mjs alongside the reskin scripts (SKILL.md § Setup).');
+  process.exit(2);
+}
+const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = await import(pathToFileURL(LIVE_SESSION).href);
 
 function parseArgs(argv) {
-  const opts = { widths: '1440,360' };
+  const opts = { widths: '1440,360', 'wait-until': 'domcontentloaded' };
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
+    else if (a === '--headed') opts.headed = true;
     else if (a.startsWith('--')) opts[a.slice(2)] = argv[++i];
     else { console.error(`[donor-probe] unknown arg: ${a}`); process.exit(2); }
   }
@@ -59,9 +87,11 @@ const args = parseArgs(process.argv);
 if (args.help || !args.tokens || !args.rendered) {
   console.log('usage: node donor-probe.mjs --tokens <donor-tokens.json> --rendered <url|file>');
   console.log('         [--spec <probe-spec.json>] [--report <path>] [--shot <path>] [--widths 1440,360]');
+  console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed] [--locale <tag>]');
   console.log('Asserts donor token values (computed styles) on the rendered reskin + overflow sanity.');
   console.log('Default spec expects: content in <main>, main .container measure, main .btn primary button.');
-  console.log('Exit: 0 pass, 1 fail, 2 setup error.');
+  console.log('Live --rendered targets get the shared live-session hardening; escalate with --headed.');
+  console.log('Exit: 0 pass, 1 fail, 2 setup error, 3 bot challenge / blocked live target (never probed).');
   process.exit(args.help ? 0 : 2);
 }
 
@@ -114,9 +144,27 @@ function compare(entry, got, want) {
   return String(got) === String(want);
 }
 
-const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-await page.goto(toUrl(args.rendered), { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
+const browser = args.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
+// UA + standard headers + webdriver spoof (live-session) — harmless on
+// local/file targets, mandatory on live ones (F-G/F-R1).
+const ctx = await newLiveContext(browser, {
+  ua: args.ua, locale: args.locale, viewport: { width: 1440, height: 900 },
+});
+const page = await ctx.newPage();
+const renderedUrl = toUrl(args.rendered);
+if (isLiveHttpUrl(renderedUrl)) {
+  // A challenge/blocked interstitial must fail loud — its computed styles
+  // are not the rendered page's.
+  try {
+    await gotoLive(page, renderedUrl, { waitUntil: args['wait-until'], timeoutMs: 60000, settleMs: 0 });
+  } catch (e) {
+    console.error(`[donor-probe] ${e.message}`);
+    await browser.close();
+    process.exit(e.name === 'BotChallengeError' ? 3 : 2);
+  }
+} else {
+  await page.goto(renderedUrl, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
+}
 await page.waitForTimeout(1500);
 
 const results = []; // { check, status: 'PASS'|'FAIL'|'SKIP', detail }

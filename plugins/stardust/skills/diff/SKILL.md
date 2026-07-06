@@ -52,9 +52,29 @@ node skills/diff/scripts/visual-diff.mjs   "$PROTO" "$BUILD" --profile eds --sec
 node skills/diff/scripts/content-diff.mjs  "$PROTO" "$BUILD" --profile eds   # --json dumps both inventories
 ```
 
-Flags (both tools): `--profile eds|generic` (default `eds`), `--width <px>` (default 1280).
+Flags (both tools): `--profile eds|generic` (default `eds`), `--width <px>` (default 1280),
+`--main <selector>` (content root; content-diff defaults from the profile, visual-diff to `main`),
+plus the live-target set (shared engine: `scripts/live-session.mjs` — every context sends the
+real-Chrome UA **and** the standard Chrome request headers; the UA alone still 403s on
+Akamai-class bot management):
+
+- `--ua <string>` — user agent override (default: real-Chrome desktop UA).
+- `--wait-until <state>` — goto wait override. Default rule, decided **per URL side**:
+  `domcontentloaded` for http(s) URLs that are NOT localhost/127.0.0.1 (live sites with
+  analytics beacons never reach networkidle), `networkidle` otherwise (local prototypes /
+  harnesses keep the original behavior).
+- `--dismiss [sel,...]` — dismiss overlays on both sides: cookie consent (clicked, not
+  removed) AND timed marketing/newsletter modals, plus optional extra site-specific
+  selectors; the mouse is parked afterwards.
+- `--headed` — escalation for bot-managed sites: headed stealth real Chrome.
+- `--locale <tag>` — pin Accept-Language + context locale (geo-redirecting sites capture a
+  different locale per run otherwise).
+
 `visual-diff` also: `--out <dir>`, `--sections a,b` (per-section screenshots).
-`content-diff` also: `--main <selector>` (content root; default from profile).
+
+A bot-management challenge/blocked interstitial on either navigation fails LOUD with
+**exit 3** — it is never measured as the source. Escalate with `--headed`; if that is still
+blocked, the site needs crawl.mjs-class capture and the check cannot run headless.
 
 ## Reading content-diff
 

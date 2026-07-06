@@ -21,6 +21,14 @@
  *     responsive duplicate menus poison raw img lists), using the SHARED
  *     predicate capture-content.mjs uses (source-normalize.mjs IMG_VISIBLE)
  *     so capture and gate can never drift on image counts.
+ *   - Live navigation via the shared diff live-session module (F-G/F-R1):
+ *     real-Chrome UA + the standard request headers (UA alone still 403s on
+ *     Akamai), domcontentloaded on live targets, webdriver spoof, challenge
+ *     detection. This gate RE-CRAWLS the live source at gate time — a bot
+ *     challenge or a degraded source page FAILS LOUD (exit 3), it is never
+ *     gated against: measuring an interstitial as the source is the byte
+ *     gate's own correctness bug. Local/file targets (including the
+ *     rendered page and file-path sources) keep the legacy networkidle path.
  *
  * Usage:
  *   node dom-equality.mjs --source <url|file> --rendered <url|file> --report <path>
@@ -28,19 +36,42 @@
  *     [--rendered-scope <sel>]       default "main"
  *     [--normalize <ledger.mjs>]     source-side ledger; MUST be the same
  *                                    file capture-content.mjs was given
+ *     [--ua <string>]                user agent (default: live-session's
+ *                                    real-Chrome UA + standard headers)
+ *     [--wait-until <state>]         live-target goto waitUntil (default
+ *                                    domcontentloaded; local/file keep
+ *                                    networkidle)
+ *     [--headed]                     headed stealth real Chrome (escalation
+ *                                    for bot-managed sites)
+ *     [--locale <tag>]               pin Accept-Language + locale
  *
- * Exit: 0 PASS (text + images), 1 FAIL, 2 setup error.
+ * Exit: 0 PASS (text + images), 1 FAIL, 2 setup error,
+ *       3 bot challenge / blocked live source (fail loud, never measured).
  */
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadNormalize, IMG_VISIBLE } from './source-normalize.mjs';
 
+// live-session.mjs lives in the diff skill's scripts dir. Two layouts exist:
+// the plugin tree (skills/reskin/scripts ↔ skills/diff/scripts) and the
+// documented project copy (stardust/scripts/reskin ↔ stardust/scripts/diff).
+const HERE = dirname(fileURLToPath(import.meta.url));
+const LIVE_SESSION = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs']
+  .map((p) => resolve(HERE, p)).find((p) => existsSync(p));
+if (!LIVE_SESSION) {
+  console.error('[dom-equality] live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/).');
+  console.error('Copy the diff skill\'s live-session.mjs alongside the reskin scripts (SKILL.md § Setup).');
+  process.exit(2);
+}
+const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = await import(pathToFileURL(LIVE_SESSION).href);
+
 function parseArgs(argv) {
-  const opts = { 'source-scope': 'main', 'rendered-scope': 'main' };
+  const opts = { 'source-scope': 'main', 'rendered-scope': 'main', 'wait-until': 'domcontentloaded' };
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
+    else if (a === '--headed') opts.headed = true;
     else if (a.startsWith('--')) opts[a.slice(2)] = argv[++i];
     else { console.error(`[dom-equality] unknown arg: ${a}`); process.exit(2); }
   }
@@ -51,9 +82,12 @@ const args = parseArgs(process.argv);
 if (args.help || !args.source || !args.rendered || !args.report) {
   console.log('usage: node dom-equality.mjs --source <url|file> --rendered <url|file> --report <path>');
   console.log('         [--source-scope selA,selB] [--rendered-scope main] [--normalize ledger.mjs]');
+  console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed] [--locale <tag>]');
   console.log('Gates on byte-equal normalized visible text + ordered visible-image set.');
   console.log('Structure (element count, tag sequence) is reported but informational.');
-  console.log('Exit: 0 pass, 1 fail, 2 setup error.');
+  console.log('Live targets get the shared live-session hardening (real-Chrome UA + standard headers,');
+  console.log('domcontentloaded, challenge detection); escalate bot-managed sites with --headed.');
+  console.log('Exit: 0 pass, 1 fail, 2 setup error, 3 bot challenge / blocked live source (never measured).');
   process.exit(args.help ? 0 : 2);
 }
 
@@ -69,11 +103,31 @@ const toUrl = (p) => (/^(https?|file):/.test(p) ? p : pathToFileURL(resolve(p)).
 const die = (m, c = 2) => { console.error(`[dom-equality] ${m}`); process.exit(c); };
 const { script: NORMALIZE, source: normalizeSource } = await loadNormalize(args.normalize);
 
-const browser = await chromium.launch();
+const browser = args.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
 
 async function capture(url, scopeList, normalize) {
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  const navErr = await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 }).then(() => null, (e) => e);
+  // UA + standard headers + webdriver spoof (live-session) — harmless on
+  // local/file targets, mandatory on live ones (F-G/F-R1).
+  const ctx = await newLiveContext(browser, {
+    ua: args.ua, locale: args.locale, viewport: { width: 1440, height: 900 },
+  });
+  const page = await ctx.newPage();
+  let navErr = null;
+  if (isLiveHttpUrl(url)) {
+    // The gate re-crawls the LIVE source here — a challenge/blocked
+    // interstitial or an HTTP >= 400 page must fail loud, never be measured
+    // as the source (the byte gate's correctness depends on it).
+    try {
+      await gotoLive(page, url, { waitUntil: args['wait-until'], timeoutMs: 60000, settleMs: 0 });
+    } catch (e) {
+      console.error(`[dom-equality] ${e.message}`);
+      await browser.close();
+      process.exit(e.name === 'BotChallengeError' ? 3 : 2);
+    }
+  } else {
+    // local/file target (rendered page, saved source snapshot) — legacy path.
+    navErr = await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 }).then(() => null, (e) => e);
+  }
   await page.waitForTimeout(2000);
   await page.evaluate(async () => {
     for (let y = 0; y < document.body.scrollHeight; y += 700) {

@@ -55,14 +55,21 @@ Before any screenshot-eyeball tuning:
 4. **Capture per-element computed styles** for the elements the gate will
    measure (headings, CTAs, section wrappers). Computed styles resolve the
    cascade the stylesheets only imply.
-5. **Repeat 2–4 at EVERY gate breakpoint, not just desktop.** Capture
+5. **Repeat 2–4 at EVERY gate breakpoint, not just desktop — the 360
+   layout is NOT derivable from the 1440 recreation.** Mobile is its own
+   authoring pass, not a shrink of desktop: lift the source's mobile
+   `@media` geometry (container model, hidden/restacked blocks, mobile nav,
+   grid collapse rules) up front and build 360 against it. Capture
    per-element computed styles at 360 (and any other gate width) BEFORE
    authoring — the 360 gate map is not the moment to discover the mobile
-   container model. Recorded (hay.dk): a 1440-lifted prototype converged
-   desktop in one iteration but opened mobile at 26.8%; every miss — an
+   container model. Recorded twice: hay.dk's 1440-lifted prototype
+   converged desktop in one iteration but opened mobile at 26.8% (an
    `overflow:hidden` whose only layout effect is margin-collapse containment
    at mobile, a different mobile footer container model, a block hidden at
-   mobile — was sitting in the source CSS, discoverable up front. With
+   mobile — all sitting in the source CSS, discoverable up front); and
+   carhartt-wip, where an essentially unbuilt 360 layout measured
+   **−1600px height delta** at 360 vs −169px at 1440 — a desktop-only
+   recreation doesn't degrade gracefully at mobile, it collapses. With
    per-breakpoint lifting, mobile converges in 1–2 iterations; without it,
    expect the full iteration cap.
 
@@ -162,6 +169,31 @@ mirror these classes rather than fighting per-page false-reds:
   justifying) and record each in the gate log. Mirroring is the default;
   justification is the exception, because every justified red is a manual
   re-verification on every subsequent gate run.
+
+## Role parity (wrapping and heading level, not text)
+
+content-diff classifies every string by **DOM wrapping + computed style +
+heading level, never by text alone**: a string inside an `<a>` is a CTA, an
+uppercase small-type node is an eyebrow, an `<h3>` is not an `<h2>`. So a
+recreation that carries every string verbatim can still open with dozens of
+structural 🔴 — recorded (fritzhansen iteration 1): 43 CTAs vs 58 and 12
+eyebrows vs 6, **all role swaps, zero dropped copy** — the live page
+wrapped labels in anchors where the recreation used spans, and vice versa.
+
+Policy:
+
+- **Mirror the live element wrapping per string.** For each text node the
+  gate will inventory, reproduce the live page's wrapping element (`<a>` vs
+  `<button>` vs `<span>`), its heading LEVEL, and the eyebrow-style
+  signature (uppercase + small size) — not just the visible text. This is
+  the same discipline as § Granularity parity, one level up: granularity
+  parity mirrors how text is split, role parity mirrors what it is wrapped
+  in.
+- **Iteration 1's red map IS the parity worklist.** When iteration 1 opens
+  with a wall of ROLE SWAP / MISSING-CTA-plus-EXTRA pairs, fix the wrapping
+  first and re-run before touching geometry — role reds are cheap,
+  mechanical fixes, and every one cleared un-buries the structural reds
+  that are real. Geometry second.
 
 ## Carousels and animated sections
 

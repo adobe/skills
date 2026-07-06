@@ -38,13 +38,15 @@ LIVE="https://<site>/<path>"
 W=1440   # then 360
 GATE="stardust/replica/gates/<slug>-$W"
 
-# 1. structural
+# 1. structural — --dismiss keeps consent + timed marketing modals out of the
+#    inventory on both sides; add extra selectors for non-standard closers
 node scripts/diff/content-diff.mjs "$LIVE" "$PROTO" --profile generic --width $W \
-  --main "<content-root>" | tee "$GATE/content-diff-iter<N>.txt"
+  --main "<content-root>" --dismiss | tee "$GATE/content-diff-iter<N>.txt"
 
-# 2. visual heuristics
+# 2. visual heuristics — --main is a real flag here too (live sites often
+#    have no <main>; without it both sides false-flag BLANK RENDER)
 node scripts/diff/visual-diff.mjs "$LIVE" "$PROTO" --profile generic --width $W \
-  --out "$GATE/vdiff" | tee "$GATE/visual-diff-iter<N>.txt"
+  --main "<content-root>" --dismiss --out "$GATE/vdiff" | tee "$GATE/visual-diff-iter<N>.txt"
 
 # 3. pixel — stitched captures on BOTH sides (never fullPage:true)
 node scripts/replica/stitch-shot.mjs "$LIVE"  "$GATE/live.png"  --width $W --settle
@@ -53,9 +55,17 @@ node scripts/replica/pixel-compare.mjs "$GATE/live.png" "$GATE/proto.png" \
   --out "$GATE/diff-iter<N>.png" --threshold 10
 ```
 
-The live capture is re-taken per iteration only if the earlier one is stale
-(site changed, capture hardening changed); the prototype capture is re-taken
-every iteration.
+On a geo-redirecting site add `--locale <tag>` to all three (a live side that
+redirects to a different locale per run is a nondeterministic source); on a
+bot-managed site that exits 3, escalate with `--headed` (§ Hardening rule 1).
+
+The live capture is taken ONCE per breakpoint per full gate run and reused
+across iterations — re-take it only if it is genuinely stale (site changed,
+capture hardening changed). This is a bot-block control, not just a cost
+note: content-diff + visual-diff each navigate the live URL per run, so a
+full 3-iter, 2-breakpoint gate is already ≈12–18 live hits, and hard-CDN
+sites (recorded: rimowa/Akamai) escalate to an IP block after a handful.
+The prototype capture is re-taken every iteration.
 
 ## Pass bar (all four, per breakpoint)
 
@@ -111,31 +121,64 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
 - After iteration 3: log residuals (§ Residual logging) and move on. A
   documented residual is a pass with an asterisk; an undocumented fourth
   loop is scope creep.
+- **Hit minimization: ONE live navigation per instrument per breakpoint per
+  full gate run.** The live stitch PNG is captured once and reused across
+  iterations; only the prototype side re-captures. On hard-CDN sites
+  (Akamai-class), take the live captures with `--headed` and treat further
+  live hits as spent budget — the recorded failure mode (rimowa) was an
+  IP-level block escalating within ~3–4 automated requests, after which
+  iteration 2's numbers measure the block, not the site.
+- **Media-density budget.** The ≤3-iteration convergence was validated on a
+  typographic, low-image page (aesop.com). Image-dense commerce homes
+  (recorded: carhartt ~130 imgs) spend iterations on media parity —
+  populating grids, matching crops — before geometry work even starts.
+  Budget accordingly: on a media-heavy page, image/media parity IS
+  iteration 1's job; geometry starts at iteration 2.
 
 ## Hardening rules (false-measurement traps)
 
 Each of these was hit live; skipping one silently corrupts the measurement
 rather than erroring.
 
-1. **Real-Chrome UA on every capture and probe.** The default
-   HeadlessChrome UA can receive a Cloudflare managed challenge, and the
-   probe then **measures the challenge page as the source** (3 headings,
-   "Performing security verification" — it diffs cleanly, wrongly). This is
-   a false-measurement trap, not a crash. `stitch-shot.mjs` defaults to a
-   real UA; the diff scripts need the adaptation (§ Script adaptations).
+1. **Real-Chrome UA + the standard request headers on every capture and
+   probe.** The default HeadlessChrome UA can receive a Cloudflare managed
+   challenge, and the probe then **measures the challenge page as the
+   source** (3 headings, "Performing security verification" — it diffs
+   cleanly, wrongly). And the UA alone is NOT sufficient: field-proven
+   (F-R1, redcross.org), a real-Chrome UA with Playwright's minimal default
+   headers still got HTTP 403 from Akamai; adding the standard set every
+   real Chrome sends (`Accept`, `Accept-Language`,
+   `Upgrade-Insecure-Requests`, `sec-ch-ua*`) produced HTTP 200 — Akamai
+   bot-manager fingerprints on the *absence* of those headers, not just the
+   UA. All three instruments now send both by default via the shared
+   `diff/scripts/live-session.mjs`; `--ua` overrides the UA string only.
    Sanity check when numbers shift inexplicably between runs: grep the
    content-diff inventory for challenge-page strings.
-2. **`domcontentloaded`, never `networkidle`.** Live sites with analytics
-   beacons never reach networkidle — hard timeout. Use
-   `domcontentloaded` + a generous timeout (60s) + explicit settle waits.
-3. **Symmetric `--main` scoping.** Live `<main>` often contains header nav
-   + hidden mega-menu; unscoped, those diff as ~dozens of missing CTAs
-   (UC1-E1 iteration 1: 41 of 50 reds were scoping artifacts). Scope BOTH
-   sides with the same selector — have the prototype adopt the live
-   content-root class so one `--main` value fits both. visual-diff ships
-   without a `--main` flag (hardcoded `<main>` — on sites without one, both
-   sides false-flag BLANK RENDER while the main-scoped checks no-op); apply
-   § Script adaptations 3.
+2. **`domcontentloaded`, never `networkidle`, on live targets.** Live sites
+   with analytics beacons never reach networkidle — hard timeout. Built in:
+   the diff scripts default `domcontentloaded` for non-localhost http(s)
+   URLs (decided per side) and keep `networkidle` for local prototypes;
+   `--wait-until` overrides. stitch-shot is always `domcontentloaded`.
+3. **Symmetric `--main` scoping — and never `body`.** Live `<main>` often
+   contains header nav + hidden mega-menu; unscoped, those diff as ~dozens
+   of missing CTAs (UC1-E1 iteration 1: 41 of 50 reds were scoping
+   artifacts). Scope BOTH sides with the same selector — have the prototype
+   adopt the live content-root class so one `--main` value fits both. Both
+   diff scripts take `--main` (visual-diff's is the upstreamed flag: on
+   sites without a `<main>`, both sides otherwise false-flag BLANK RENDER
+   while the main-scoped checks silently no-op). Two guardrails:
+   - **`--main body` is NEVER a valid replica scope.** A too-broad root
+     self-poisons the instrument regardless of symmetry: reproduced
+     (fritzhansen), content-diff run live-vs-ITSELF with `--main body`
+     produced **103 structural 🔴** and asymmetric node counts (461 vs 73)
+     from analytics/inline-script text plus a nondeterministic
+     cookie-settings panel pulled into the inventory. The content root must
+     exclude consent/analytics chrome.
+   - **Verify the consent banner is actually gone post-dismiss before
+     trusting an inventory** — consent UIs render nondeterministically
+     between two sequential captures (one capture caught the expanded
+     cookie panel, the other didn't). If reds cluster on cookie/consent
+     strings, the scope or the dismissal is wrong, not the recreation.
 4. **Stitched captures only, never `fullPage:true`.** Chromium's
    captureBeyondViewport renders lazy-decoded images as gray placeholders
    even when the DOM says loaded. Stitch on BOTH sides — the instrument
@@ -143,10 +186,17 @@ rather than erroring.
 5. **Freeze animations for capture, injected AFTER lazyload settle.**
    Injection before the settle breaks some lazy loaders' swaps (recorded
    failure mode). stitch-shot.mjs orders this correctly.
-6. **Consent dismissed by clicking accept**, not DOM removal, so layout
-   settles as a real visit does (`stitch-shot.mjs --consent <sel>` for
-   non-standard banners). The diff probes run consent-blind as shipped —
-   § Script adaptations 4 covers when that matters and the patch.
+6. **Overlays dismissed — BOTH classes, by clicking, not DOM removal** (so
+   layout settles as a real visit does). Two classes, both handled by the
+   shared `dismissOverlays` (stitch-shot always; diff probes via
+   `--dismiss`): (a) cookie consent (clicked accept; `--consent <sel>` /
+   `--dismiss <sel,...>` for non-standard banners); (b) **timed
+   marketing/newsletter interstitials** — recorded (carhartt-wip): an
+   undismissed "Sign up, stay updated!" modal fired ~5–9s after load and
+   baked a pixel-diff contributor into the LIVE capture, repeated at every
+   chunk seam, that no prototype fidelity could null out. These fire on a
+   timer, so the dismissal polls for late arrivals and stitch-shot sweeps
+   again after the settle pass.
 7. **Granularity parity for JOIN/SPLIT false-reds (#87)** — mirror live
    node granularity or confirm-justify per
    `recreation-procedure.md` § Granularity parity.
@@ -157,13 +207,14 @@ rather than erroring.
    spans (trust the width probe over captured computed styles) and overlay
    scrims (recover by per-row luminance fitting). Both in
    `recreation-procedure.md`.
-10. **Pointer parked after any consent click.** A consent click leaves the
-    virtual cursor at the button's coordinates; a `:hover`-styled element
-    under the resting cursor is silently captured in HOVER state (recorded:
-    a hero's `a.box-hover:hover img{opacity:.4}` shipped the live capture
-    dimmed — measured 0.4 in capture, 1.0 in reality). stitch-shot.mjs
-    parks the mouse after dismissal; mirror it in any ad-hoc capture and in
-    adapted diff probes (§ Script adaptations 4).
+10. **Pointer parked after any dismissal click.** A consent/modal click
+    leaves the virtual cursor at the button's coordinates; a
+    `:hover`-styled element under the resting cursor is silently captured
+    in HOVER state (recorded: a hero's `a.box-hover:hover img{opacity:.4}`
+    shipped the live capture dimmed — measured 0.4 in capture, 1.0 in
+    reality). The shared `dismissOverlays` parks the mouse (bottom-left)
+    after every dismissal pass — all three instruments inherit it; mirror
+    it in any ad-hoc capture that clicks anything.
 11. **Fixed/sticky chrome × stitched capture.** Fixed elements repeat at
     every chunk seam, occlude a band of content per seam, and can morph
     with scroll state — chunks 2+ then capture different chrome than
@@ -171,76 +222,52 @@ rather than erroring.
     including its scroll-state trigger; any height delta turns the seam
     repeats into ghost bands in the diff. Full treatment:
     `recreation-procedure.md` § Fixed and sticky chrome.
+12. **A challenge/blocked response FAILS LOUD — it is never measured.** All
+    three instruments detect bot-management interstitials on every
+    navigation (crawl.mjs semantics: `cf-mitigated: challenge`, or
+    403/429/503 with a Cloudflare/Akamai/F5/Imperva edge signature) and
+    exit **3** with a `BotChallengeError` naming the URL and the marker.
+    Recorded (rimowa): Akamai served "Access Denied" to the headless
+    instruments — which, without this rule, would have silently measured
+    the block page as the source and diffed it cleanly, wrongly. The
+    escalation ladder: default (UA + standard headers) → `--headed`
+    (stealth real Chrome, same tier as crawl.mjs's fallback) → if STILL
+    blocked, the site needs crawl.mjs-class capture and **the gate must
+    not silently degrade** — record the breakpoint as gate-blocked in the
+    ledger and surface it to the user; a gate that can't read the live
+    source has no pass to report.
 
-### Script adaptations (diff project copies)
+### Script adaptations (now built-in flags — hand-edits are a defect)
 
-The shipped diff scripts assume a controlled prototype↔build pair:
-`waitUntil: 'networkidle'`, the default UA, a hardcoded `<main>` content
-root (visual-diff), and no consent handling. Pointing them at a live site
-requires four edits in the project copies (never edit the plugin):
+The four manual adaptations this section used to prescribe are upstreamed
+into the shipped scripts. All live-target hardening lives in one shared
+module — `diff/scripts/live-session.mjs` (UA + standard headers, challenge
+fail-loud, overlay dismissal, headed-stealth escalation) — and the diff
+scripts expose it as flags:
 
-**1. Real-Chrome UA (rule 1)** — in each script's `browser.newContext(...)`
-(content-diff `grab()`, visual-diff `capture()`):
+```bash
+# content-diff against a live source: no source edits, flags only
+node scripts/diff/content-diff.mjs "$LIVE" "$PROTO" --profile generic \
+  --width 1440 --main "<content-root>" --dismiss
 
-```js
-const ctx = await browser.newContext({ viewport: { width: opts.width, height: 1000 }, reducedMotion: 'reduce',
-  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36' }); // replica ADAPTATION: real-Chrome UA (rule 1)
+# visual-diff: --main is a real flag (rule 3), same live hardening
+node scripts/diff/visual-diff.mjs "$LIVE" "$PROTO" --profile generic \
+  --width 1440 --main "<content-root>" --dismiss
+
+# non-standard overlay closer / pinned locale / bot-managed site:
+#   --dismiss "#custom-close"    --locale en-GB    --headed
 ```
 
-**2. `domcontentloaded` (rule 2)** — in each script's `page.goto(...)`:
+Defaults when no flags are passed: real-Chrome UA + standard headers on
+every context; `domcontentloaded` for non-localhost http(s) URLs and
+`networkidle` for local ones (per side); no overlay dismissal (pass
+`--dismiss` for live pairs); exit 3 on a challenge (rule 12).
 
-```js
-await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 }); // replica ADAPTATION: never networkidle on live sites (rule 2)
-```
-
-**3. visual-diff `--main` flag (rule 3).** The shipped probe hardcodes
-`document.querySelector('main')` plus literal `main h1…` selectors; on a
-live site with no `<main>` BOTH sides report `blankRender: true,
-mainHeight: 0` — the probe red-flags BLANK RENDER while its main-scoped
-checks silently no-op, so symmetric `--main` scoping is unsatisfiable as
-shipped (content-diff already has the flag). Thread a content-root selector
-through `analyse()`:
-
-```js
-// parseArgs(): add the flag
-const opts = { out: 'qa/vdiff', width: 1280, sections: [], profile: 'eds', main: null }; // replica ADAPTATION: --main content-root override
-…
-else if (a === '--main') { opts.main = rest[i += 1]; } // replica ADAPTATION
-
-// analyse(): take the selector as a parameter…
-function analyse(mainSel) { // replica ADAPTATION: content root param
-  …
-  const mainEl = document.querySelector(mainSel || 'main');
-  // …and use mainEl everywhere the probe scopes to main:
-  const flushText = [...(mainEl || document).querySelectorAll('h1, h2, h3, p')] /* replica ADAPTATION */
-  let boxes = [...(mainEl ? mainEl.querySelectorAll('[class]') : document.querySelectorAll('main [class]'))] /* replica ADAPTATION */
-
-// capture(): pass it in
-const metrics = await page.evaluate(analyse, opts.main); // replica ADAPTATION
-```
-
-**4. Consent handling (rule 6).** The diff probes run consent-blind:
-stitch-shot dismisses banners, content-diff/visual-diff don't, so the banner
-stays up during both probes. Either verify it is harmless — outside the
-`--main` content root AND image-less, so no probe ever sees it — or add a
-dismiss click after the goto/initial wait in each script's
-`grab()`/`capture()` (same candidates as stitch-shot, and park the pointer
-after the click, rule 10):
-
-```js
-// replica ADAPTATION: consent dismissal (rule 6) + mouse park (rule 10)
-for (const sel of ['#onetrust-accept-btn-handler', 'button:has-text("Accept all")', 'button:has-text("Accept All")', 'button:has-text("Accept")', 'button:has-text("I agree")', '[data-testid*="accept"]']) {
-  try {
-    const btn = page.locator(sel).first();
-    if (await btn.count() && await btn.isVisible()) { await btn.click({ timeout: 3000 }); await page.waitForTimeout(1500); await page.mouse.move(0, 999); break; }
-  } catch { /* candidate absent — try next */ }
-}
-```
-
-Mark every edit with a `// replica ADAPTATION:` comment so a later re-copy
-doesn't silently lose them. (Upstreaming all four as diff flags — `--ua`,
-`--wait-until`, visual-diff `--main`, `--consent` — is the recorded round-2
-candidate; until then the adaptation is manual.)
+**A project copy carrying `// replica ADAPTATION:` hand-edits is now a
+defect**, not diligence: the edits were 10 distinct changes across 2 files,
+and a partial application silently mis-measured (e.g. one `main`-scoped
+selector left hardcoded in visual-diff). If you find adapted copies from an
+older run, re-copy the shipped scripts and pass flags instead.
 
 ## Residual logging format
 

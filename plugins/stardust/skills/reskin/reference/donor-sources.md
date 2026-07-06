@@ -24,12 +24,46 @@ Widen the cap when the donor's module vocabulary looks thin: more
 donor pages = more modules for the mapping brief to map onto (and
 the ≥80% gate to clear).
 
+### Two first-class token-sourcing paths
+
+Which artifacts exist depends on how the donor was captured, and the
+token curation follows from that — **both paths are first-class**,
+not improvisations:
+
+- **Full `--design-source` run** (above): `canon-source/DESIGN.json`
+  + `_brand-extraction.json` exist and `state.json.designSource` is
+  stamped. Curate `donor-tokens.json` from them, **topped up** with
+  bounded direct sampling (below) for the computed-style strings the
+  descriptive artifacts don't carry.
+- **Bounded donor capture** (a single donor page crawled directly —
+  `crawl.mjs --max 1`-class, or any capture that skipped the full
+  extract synthesis): this produces **only** `pages/*.json` + a
+  screenshot + `_crawl-log.json`. There is **no
+  `canon-source/DESIGN.json`, no `_brand-extraction.json`, and no
+  `state.json.designSource` stamp** — the "curate from DESIGN.json"
+  instruction has nothing to read. On this path, `donor-tokens.json`
+  is authored **entirely from raw computed-style sampling** of the
+  donor page (§ Bounded direct sampling) — the parallel of replica's
+  bounded entry. Record in `curatedFrom` that the source is direct
+  sampling of the single donor page. Two knock-ons to declare:
+  `donor-modules.md` is evidenced by that one page's screenshot
+  only, and Phase 6 donor pinning has no `designSource` stamp to
+  read — note the donor origin in the ledger/handoff instead.
+
+Use the full run when the donor's module vocabulary must be wide
+(multi-page mapping targets); the bounded path fits a
+single-reference-page donor or a constrained environment. Either
+way the probe works the same — tokens are exact computed-style
+strings regardless of which path produced them.
+
 ### Bounded direct sampling (the token-evidence recipe)
 
 `donor-tokens.json` values are **computed-style strings**, and the
 extract crawl's artifacts are descriptive, not exhaustive — curating
 the token sheet almost always needs raw `getComputedStyle` values
 from the pinned reference page(s) that no shipped artifact contains.
+On the bounded-donor path (§ Two first-class token-sourcing paths)
+this recipe is not a top-up but the **whole** token source.
 Don't re-crawl for this and don't eyeball values: sample the N key
 donor pages (the pinned reference page per module family — usually
 1–3 pages) with a throwaway playwright script, project-local like the
@@ -164,7 +198,9 @@ on.
 
 `stardust/reskin/donor-tokens.json`, curated by the agent in Phase 1
 from `canon-source/DESIGN.json` + `_brand-extraction.json` + raw
-computed styles. Every value is a **computed-style string** the
+computed styles — or, on the bounded-donor path, from raw
+computed-style sampling alone (§ Two first-class token-sourcing
+paths). Every value is a **computed-style string** the
 Phase 5 probe can assert verbatim (`rgb(…)`, `px` values, the exact
 font-family string). The shape (paths are what
 `scripts/donor-probe.mjs`'s default spec reads; extend freely — extra

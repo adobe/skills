@@ -55,6 +55,22 @@ pointed at a page ledger the capture didn't use.
 same as `--rendered`) — useful for gating against a saved source
 snapshot.
 
+**The gate re-crawls the LIVE source at gate time — so its live
+navigation is hardened exactly like the capture's**, via the shared
+`live-session.mjs` (real-Chrome UA + the standard request headers —
+the UA alone still 403s on Akamai-class bot managers —
+`domcontentloaded` on live targets, challenge detection). This is the
+byte gate's own correctness: a gate that silently measured a
+challenge interstitial or a degraded UA-served document as the
+source would pass/fail the render against the wrong reference. A bot
+challenge exits **3** (distinct from 1=FAIL, 2=setup), never
+measured; a non-challenge HTTP ≥ 400 exits 2. Escalate bot-managed
+sites with `--headed`; pin geo-redirecting sources with `--locale`.
+The reskin scripts resolve `live-session.mjs` from the diff scripts
+copied alongside (`stardust/scripts/diff/`, SKILL.md § Setup).
+Local/file targets keep the legacy `networkidle` path — file-path
+sources and rendered pages behave as before.
+
 ### slot-coverage.mjs — per-slot presence + metadata
 
 ```bash
@@ -71,6 +87,7 @@ localizes any failure to a named slot. It asserts, from the model:
 - every slot's `visibleText` substring-present in the rendered scope;
 - every CTA present as a (text, **absolute** href) pair;
 - every image present (host+path normalized);
+- every present image **painted** (§ Image paint below);
 - metadata carried **verbatim**: title, description, canonical, each
   OG tag, each Twitter tag; JSON-LD block count. Verbatim includes
   source garbage — fidelity over repair; flag, don't fix
@@ -78,6 +95,32 @@ localizes any failure to a named slot. It asserts, from the model:
 
 **Pass bar (content gate):** dom-equality exit 0 AND slot-coverage
 exit 0. No partial credit — one dropped CTA is a fail.
+
+#### Image paint — a PASSing image check is not a rendering image
+
+Both image checks above compare **URL strings** (host+path). A
+string can match perfectly while the pixel never arrives: kew's
+image CDN returns HTTP 403 to any non-kew-origin request, so the
+reskin's 19 hotlinked `currentSrc` images all "passed" the string
+gates while every one rendered as a broken-image icon. The gate was
+provably right and the page was provably broken.
+
+Defenses, in order:
+
+- `slot-coverage.mjs` asserts **paint** per present content image —
+  after a lazy-load scroll pass, the matching rendered `img` must
+  have `naturalWidth > 0`. A zero-painted image is a named **FAIL**
+  line (`--paint warn` downgrades to a warning; do that only with a
+  recorded reason in the ledger).
+- The **eyeball step must check paint explicitly**: open the
+  rendered page (or the `--shot` capture) and look at the images
+  themselves, not just the layout — a broken-image icon in a
+  screenshot is easy to gloss over as "an image".
+- When the source CDN is origin-locked, **Phase 6 asset
+  localization is NOT optional** — it is the only fix. Hotlinking
+  is not a deferrable "delivery concern" in that case: the page is
+  broken *now*, in the gated artifact (see § Failure modes,
+  Hotlinked source images).
 
 ## (b) Design-adoption gate
 
@@ -245,10 +288,15 @@ check, and a human-readable verdict (`accepted` | `needs-owner` |
   **token string** with a local fallback stack; the probe asserts the
   string, which is the honest, probe-able contract.
 - **Hotlinked source images.** `currentSrc` URLs point at the
-  source's CDN; they work in the gate but are a delivery liability.
-  Localize assets during Phase 6 handoff (migrate's asset bundling,
+  source's CDN — a delivery liability always, and on an
+  **origin-locked CDN** (kew: 403 to every non-origin request,
+  verified with curl, real-Chrome UA, with and without referrer) a
+  broken page *now*: the URL-string checks pass while nothing
+  paints. slot-coverage's paint assertion (§ Image paint) catches
+  it; when it fires, Phase 6 asset localization is **mandatory**,
+  not optional (migrate's asset bundling,
   `../../migrate/reference/content-preservation.md` § Media
-  references); the gate compares host+path so localization after
+  references). The gate compares host+path, so localization after
   gating requires a re-run with the localized mapping or acceptance
   as a recorded residual.
 - **Gate/capture drift.** A scope or ledger edited after capture

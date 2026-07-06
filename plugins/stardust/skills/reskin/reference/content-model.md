@@ -22,7 +22,8 @@ It complements — does not replace — extract's design-oriented capture
     "url": "<page-url>",
     "viewport": "1440x900",
     "scope": "<the --scope string, verbatim>",
-    "normalize": { "source": "<ledger path | 'default'>", "ledger": [ { "id", "what", "why" } ] }
+    "normalize": { "source": "<ledger path | 'default'>", "ledger": [ { "id", "what", "why" } ] },
+    "nav": { "live": true, "waitUntil": "domcontentloaded", "headed": false }
   },
   "metadata": {
     "title": "", "description": "", "canonical": null,
@@ -42,6 +43,9 @@ It complements — does not replace — extract's design-oriented capture
       "listItems":  [ "…" ],
       "ctas":       [ { "text": "…", "href": "…", "absHref": "https://…", "classes": "…" } ],
       "images":     [ { "currentSrc": "https://…", "alt": "…", "w": 1200, "h": 675 } ],
+      "formControls": [ { "control": "select", "name": "classType", "text": "Select a Class Type Online Classes …",
+                          "options": [ "Select a Class Type", "Online Classes & Training", "…" ], "selectedIndex": 0 },
+                        { "control": "input", "inputType": "text", "name": "zip", "text": "", "placeholder": "Zip Code" } ],
       "leftovers":  [ { "text": "…", "parentTag": "span", "parentClass": "…" } ],
       "ordered": [
         { "kind": "heading", "level": "h2", "text": "News", "display": "block", "sep": "" },
@@ -50,6 +54,8 @@ It complements — does not replace — extract's design-oriented capture
           "children": [ { "kind": "heading", "level": "h3", "text": "…", "display": "block", "sep": "" } ] },
         { "kind": "text", "text": "02.07.2026", "parentTag": "time", "parentClass": "…", "sep": " " },
         { "kind": "image", "currentSrc": "https://…", "alt": "…", "sep": "" },
+        { "kind": "formControl", "control": "select", "name": "classType", "text": "Select a Class Type …",
+          "options": [ "Select a Class Type", "…" ], "selectedIndex": 0, "display": "block", "sep": " " },
         { "kind": "listItem", "text": "SUPERCOMPUTING", "display": "inline", "sep": " " },
         { "kind": "listItem", "text": "ARTIFICIAL INTELLIGENCE", "display": "inline", "sep": "" }
       ],
@@ -96,6 +102,21 @@ Within a slot:
   admitted even when not yet intersected). `currentSrc` is the
   responsive-resolved URL; the gate compares URL-normalized
   host+path, order-sensitive.
+- **formControls** — visible `select` / `input` / `textarea`
+  controls. A `<select>`'s option text is part of `innerText` — and
+  therefore of the byte-gate reference — but `getComputedStyle` on
+  `<option>` computes `display:none`, so without this array the
+  option bytes exist ONLY inside the concatenated `visibleText`,
+  with no structured field to render from (the redcross
+  course-enrolment form: "Select a Class Type / Online Classes /
+  … / FIND A CLASS"). Any locator / course-finder / country-picker
+  page hits this. Captured: `control` (tag), `name`, `text`
+  (`norm(innerText)` — for a select that includes the option
+  texts), and per control: `options` (**verbatim, in order**) +
+  `selectedIndex` for selects; `inputType` / `value` /
+  `placeholder` for inputs and textareas. Visibility is tested on
+  the CONTROL (an `input[type=hidden]` is excluded), never on the
+  options.
 - **leftovers** — text nodes NOT inside h1..h6/p/li/a: eyebrows,
   spans, button labels, figcaptions. **These carry real content** —
   the experiment's eyebrows, slide titles, and the search-button
@@ -119,16 +140,29 @@ reconstruct order by matching the per-type arrays against
 
 Node shape:
 
-- `kind` ∈ `heading | paragraph | listItem | cta | image | text`.
+- `kind` ∈ `heading | paragraph | listItem | cta | image |
+  formControl | text`.
   `text` nodes are the stream's leftovers — bare text runs
   (eyebrows, dates, photo credits) with `parentTag`/`parentClass`
   for context.
-- `text` — normalized **rendered-case** innerText (text nodes get the
-  parent's computed `text-transform` applied, since raw
-  `textContent` doesn't reflect it).
+- `text` — normalized **rendered-case** innerText. Stream `text`
+  nodes are built on an **innerText-consistent basis**: a text node
+  enters the stream only if its text occurs in its parent's rendered
+  `innerText`, and the emitted string is the matched slice OF that
+  `innerText` — so casing is Chrome's own rendered case
+  (text-transform included), by construction.
 - `level` (headings), `href`/`absHref`/`classes` (ctas),
   `currentSrc`/`alt` (images — admitted by the same shared
   visibility predicate as the `images` array and the gate).
+- `control`/`name` + `options`/`selectedIndex` (selects) or
+  `inputType`/`value`/`placeholder` (inputs, textareas) on
+  `formControl` nodes. The node's `text` is the control's
+  `innerText` (a select's includes its option texts), so the node
+  tiles `visibleText` like any other; the structured fields are the
+  render surface. Renderers emit form controls as **equivalent
+  controls** — a `<select>` carrying the option texts verbatim, in
+  order; an input carrying value/placeholder — restyled with donor
+  tokens, never flattened to plain text and never dropped.
 - `display` — the computed display value, so the renderer knows an
   inline `li` run from a block list without guessing.
 - `children` — present when the node contains structure of its own:
@@ -141,11 +175,53 @@ Node shape:
   inline with no separator, and the reskin must too or the byte gate
   fails). First child is always `''`.
 
+### The consistency guarantee
+
+The stream and the byte gate share ONE definition of "visible text":
+Chrome's `innerText`. `visibleText` (the gate reference) *is*
+`innerText`; stream `text` nodes are admitted **only** when their
+text occurs in the parent's `innerText`, and their string is sliced
+from it. Text that a naive visibility predicate would admit but
+`innerText` omits — SVG `<title>`/`<desc>` a11y labels (kew's
+carousel "Arrow right"/"Arrow left", the video "Play" label),
+duplicated nested link labels, UA-hidden text — never enters the
+stream. Without this basis the stream emits **ghost nodes**: a
+spec-compliant renderer ("emit stream order, never reconstruct from
+visibleText") reproduces them and fails the byte gate through no
+fault of its own — the kew field run hit exactly that on 5 of 8
+slots.
+
 `orderedVerified` (per slot) records that the stream **tiles**
 `visibleText` exactly — every child's text found left-to-right with
-only whitespace gaps, nothing left over. The capturer warns on any
-slot where it is `false`; do not trust that slot's `sep` flags
+only whitespace gaps, nothing left over. Under the consistency
+guarantee this should hold for ordinary slots; the capturer warns on
+any slot where it is `false`; do not trust that slot's `sep` flags
 without inspecting it.
+
+### When `orderedVerified` is false — the sanctioned fallback
+
+Inspect the slot first: the divergence may be real missing structure
+(a content element kind the stream doesn't capture — report it), or
+dynamic text that changed between the two reads. When the inspection
+shows stream text that is genuinely absent from the slot's
+`visibleText`, the **sanctioned resolution** is:
+
+1. drop the stream nodes (or node-text) not present in the slot's
+   `visibleText` before rendering — matching against `visibleText`
+   **for this filtering purpose** is the documented fallback, not
+   the forbidden order-reconstruction move (the prohibition in
+   SKILL.md Phase 4 is against *reconstructing order/separators*
+   from `visibleText`; filtering ghosts against it is how the
+   stream is brought back onto the gate's basis);
+2. record the drop in the model's provenance — add a
+   `streamFilter` note under `_provenance` (or the run report)
+   naming the slot, the dropped text, and why — so the model stays
+   auditable;
+3. treat the slot's `sep` flags as unverified — verify the joins
+   against `visibleText` after filtering.
+
+Never resolve the other direction (adding text to the render that
+isn't a stream node) and never edit `visibleText` itself.
 
 ### Why this exists (the smoke-test history)
 
@@ -233,10 +309,41 @@ Procedure, per page:
    The `!` suffix keeps a scope **whole** as one slot (use it for
    hero blocks and other units whose children are fragments, not
    sections).
+
+   **Each selector captures exactly ONE element** — resolution is
+   `querySelector`, first match, NOT set-matching. The example above
+   works because each selector is unique on its page; a class shared
+   by N siblings captures only the first (kew has three
+   `section.section--highlights` — that class as a scope captured
+   one and silently dropped two). To capture N sibling sections:
+   scope their **common container** without `!` (its children become
+   the slots — the normal move), or give each sibling a
+   per-element-unique selector
+   (`section.section--highlights:nth-of-type(2)`-style). The same
+   first-match rule applies verbatim to `dom-equality.mjs
+   --source-scope`.
 5. **Declare the residue.** Whatever stays outside the scope
    (nav, footer) is a chrome delta (`D1`-style) recorded in the
    mapping brief — an explicit swap to donor chrome, never a silent
    omission.
+
+**Zero-output failures carry the discovery evidence.** When the
+scope matches nothing, the capturer prints the whole-body text
+length and the candidate-root ladder (the largest-text-child chain
+from `<body>`, each with text length and body-coverage ratio) — the
+real content root is on that chain. Start step 2 from its deepest
+high-coverage entry.
+
+**A missing "obvious" root can be a degraded page, not a scope
+problem.** The capture navigates live URLs through the shared
+live-session hardening (real-Chrome UA + the standard request
+headers, `domcontentloaded`, challenge detection — kew served a
+non-hydrated document with no `<main>` to the default headless UA,
+and Akamai-class bot managers 403 on missing standard headers even
+with the real UA). A bot challenge fails loud with **exit 3** and is
+never captured as the source; escalate with `--headed` (stealth real
+Chrome), and a site that still blocks needs crawl.mjs-class capture
+— never gate against whatever the block served.
 
 The final scope string is recorded in `_provenance.scope` and must be
 passed **identically** to `dom-equality.mjs --source-scope` at gate

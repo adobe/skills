@@ -74,7 +74,13 @@ regression check instead of a debugging tool.
    tree ships no `node_modules`. Copy `skills/reskin/scripts/*` (all
    five files — `capture-content.mjs` and `dom-equality.mjs` import
    `source-normalize.mjs` as a sibling) byte-identical to
-   `stardust/scripts/reskin/` and run the copies.
+   `stardust/scripts/reskin/`, **and** `skills/diff/scripts/
+   live-session.mjs` to `stardust/scripts/diff/` — the live-hitting
+   reskin scripts (capture-content, dom-equality, donor-probe)
+   resolve ALL live-target hardening (real-Chrome UA + standard
+   headers, challenge detection, headed-stealth escalation) from it,
+   looking in `../diff/` next to `../reskin/`, so keep the two dirs
+   siblings. Run the copies.
 4. **Origin collision** — if `stardust/state.json` records a different
    `site.originUrl`, stop and ask before mixing sites, per
    `../extract/SKILL.md` § Setup.
@@ -113,7 +119,14 @@ Then author two reskin-owned donor artifacts (contracts in
   specs, radii, shadows, motifs — every value a computed-style string
   the Phase 5 probe can assert verbatim. Curated from
   `canon-source/DESIGN.json` + `_brand-extraction.json` + the raw
-  computed styles; cites the donor page each value came from.
+  computed styles; cites the donor page each value came from. On a
+  **bounded donor capture** (a single donor page, no full
+  `--design-source` run) there is no `DESIGN.json`,
+  `_brand-extraction.json`, or `designSource` stamp to curate from —
+  the token sheet is authored entirely from raw computed-style
+  sampling of the donor page, a first-class parallel path
+  (`reference/donor-sources.md` § Two first-class token-sourcing
+  paths).
 - `stardust/reskin/donor-modules.md` — the **enumerated module
   vocabulary** (M1..Mn): one row per donor module with where-seen
   screenshot evidence and an anatomy description. This is the closed
@@ -234,14 +247,26 @@ modeled on the experiment's `render-reskin.mjs`) that:
   (`sections[].ordered`, `reference/content-model.md` § The ordered
   stream): kind-tagged nodes in document order, nesting preserved
   (a CTA wrapping its heading and vice versa), `sep` flags marking
-  zero-separator inline joins. Emit nodes in stream order; emit
+  zero-separator inline joins. The stream is **innerText-consistent
+  by construction** (its text nodes are sliced from the parent's
+  rendered `innerText` — the byte-gate basis), so emitting it
+  verbatim is safe. Emit nodes in stream order; emit
   `sep: ""` neighbours with no whitespace between them (inline);
-  never reorder, and never reconstruct order from `visibleText` —
+  never reorder, and never reconstruct **order or separators** from
+  `visibleText` —
   the first field run did exactly that (per-type arrays matched
   greedily against `visibleText` as an oracle) and burned three
   debug rounds on duplicate identical strings, both directions of
   CTA/container nesting, and zero-separator inline `li` runs, all
   of which the stream now captures structurally;
+- renders `formControl` nodes as **equivalent controls**, not text:
+  a `<select>` carrying the captured option texts **verbatim, in
+  order**; inputs/textareas carrying value/placeholder — restyled
+  with donor tokens (the new-module composition rules apply), never
+  flattened to prose and never dropped. A select's option text is
+  part of the source's `innerText`, so dropping the control fails
+  the byte gate with nothing structured to render from
+  (`reference/content-model.md` § Slot taxonomy, formControls);
 - carries the metadata block verbatim into `<head>` (title,
   description, canonical, OG, Twitter, JSON-LD — including source
   garbage like broken JSON-LD URLs: fidelity over repair; **flag**
@@ -259,7 +284,13 @@ Renderers may parse a single node's text apart (split a list-item row
 into kicker/date/title) but must **fail loudly** (throw) when a parse
 doesn't reproduce the node's text — a silent partial parse is a silent
 content drop. A slot whose `orderedVerified` is `false` is inspected
-before rendering, never trusted blind.
+before rendering, never trusted blind; when inspection shows stream
+text genuinely absent from the slot's `visibleText`, the
+**sanctioned fallback** is to drop that text before rendering and
+record the drop in the model's provenance — filtering ghosts against
+`visibleText` is the documented resolution, distinct from the
+forbidden order-reconstruction move
+(`reference/content-model.md` § When `orderedVerified` is false).
 
 ### Phase 5 — GATES
 
@@ -330,7 +361,10 @@ pipeline, unchanged:
 
 - **Scale via `stardust:migrate`** (`../migrate/SKILL.md`) with the
   donor-pinned target (the `state.json.designSource` stamp Phase 1
-  wrote is exactly what `direct`/`migrate` read for donor pinning).
+  wrote is exactly what `direct`/`migrate` read for donor pinning;
+  a bounded donor capture wrote no stamp — record the donor origin
+  in the handoff instead, `reference/donor-sources.md` § Two
+  first-class token-sourcing paths).
   Same-type sibling pages render at the **sibling tier** against the
   gated archetype. Content rules are the ones reskin already
   enforces — `../migrate/reference/content-preservation.md` is

@@ -47,6 +47,45 @@ synergy candidates are listed in `notes/new-use-cases/ROUND-1-REPORT.md`).
   Smoke evidence: `/Users/paolo/stardust/smoke-{replica,reskin}/SMOKE-REPORT.md`.
 - New evals: `replica-source-fidelity/`, `reskin-content-fidelity/`.
 
+### Field-test hardening (5+5 home pages, findings ledger in the 2026-07 field report)
+
+A 10-site field test (replica: fritzhansen, rimowa, carhartt-wip, polestar,
+maisonkitsune; reskin: kew×linear PASS, moma×intercom PASS, redcross×vercel)
+produced an 18-finding ledger; all skill-wrong findings are folded:
+
+- **Shared live-measurement hardening (F-G, F-R1, rimowa-1; HIGH).** New
+  `diff/scripts/live-session.mjs` — the one home for hitting live sites to
+  *measure* them, as robust as extract's capture engine: real-Chrome UA
+  **plus the standard request headers** (Akamai fingerprints on the absence
+  of `Accept`/`Accept-Language`/`sec-ch-ua`, so UA alone still 403s —
+  reproduced on redcross.org, fixed to HTTP 200; the same header set
+  un-blocked rimowa's gate headlessly), challenge detection that **fails
+  loud** (exit 3, never silently measured as the source), headed-stealth
+  escalation, and two-class overlay dismissal (consent + timed marketing
+  modals, the carhartt `#wps_popup` case — CH-1). Consumed by diff's two
+  probes, replica's stitch-shot, and reskin's three live-hitting scripts.
+- **diff flags replace replica's 10 hand-edits (F-B).** `--ua`,
+  `--wait-until`, `--dismiss`, `--headed`, `--locale` on both probes and
+  visual-diff `--main`, backward-compatible for local/deploy use;
+  `source-fidelity-gate.md` § Script adaptations rewritten — a hand-edited
+  project copy is now a defect.
+- **replica:** bounded `--single` entry gets a satisfiable promotion
+  contract (`bounded-single` synthesis branch — rimowa-3); `--main body`
+  banned with the 103-false-🔴 reproduction (F-C); hit-minimization +
+  media-density iteration budget (rimowa-2, CH-2); mobile-@media-first and
+  role-parity recreation guidance (CH-3/FH-2); locale pinning for capture
+  determinism.
+- **reskin:** ordered stream is now `innerText`-consistent by construction
+  (F-R2 — kew's a11y ghost labels eliminated at the source; 8/8
+  `orderedVerified` vs 5 false in the field) with a sanctioned documented
+  fallback; `formControl` stream nodes carry select/option/input text
+  verbatim (F-R3 — redcross course form now fully reconstructable, 13/13
+  verified); slot-coverage gains a paint assertion so an origin-locked CDN
+  can't hide behind a passing URL-string gate (F-R4, kew's 19 unpainted
+  images); zero-output scope errors now guide discovery (F-D); first-match
+  scope semantics and bounded-donor token sourcing documented (F-R5, F-R6).
+- Manifest version aligned (F-A).
+
 ## 0.14.5 — crawler clears Cloudflare managed challenges
 
 `extract/scripts/crawl.mjs` — the bot-management fallback now validates the

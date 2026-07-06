@@ -51,8 +51,11 @@ eyeballing.
    (`node -e "import('pixelmatch').then(()=>process.exit(0))"`).
 4. Copy scripts into the project and run them from there, not from the
    plugin: this skill's `scripts/` (stitch-shot.mjs, pixel-compare.mjs) AND
-   the whole `../diff/scripts/` dir (content-diff imports diff-profiles.mjs
-   and content-inventory.mjs).
+   the whole `../diff/scripts/` dir (the diff scripts import
+   diff-profiles.mjs, and ALL live-target hardening — including
+   stitch-shot's — lives in its live-session.mjs; stitch-shot resolves it
+   from `scripts/diff/` next to `scripts/replica/`, so keep the two dirs
+   siblings).
 
 ## Procedure
 
@@ -86,7 +89,14 @@ harvest and per-breakpoint computed styles come from Phase 3's CSS lifting
 either way. What a bounded run skips is the prep-only inventory (page
 typing, module detection), which is only needed when Phase 5 fans out to
 siblings — a pilot that later grows to site scope re-runs Phase 1 with
-`--prep`.
+`--prep`. **A bounded run also skips the descriptive synthesis**: crawl.mjs
+alone writes `pages/<slug>.json`, screenshots, and `_crawl-log.json` — it
+does NOT produce `current/PRODUCT.md` / `DESIGN.md` / `DESIGN.json`, so
+Phase 2's verbatim promotion has nothing to promote. On this path Phase 2
+takes the **bounded promotion branch** instead
+(`reference/preserve-direction.md` § 1a): replica synthesizes a minimal
+descriptive target spec from the captured page JSON + the Phase-3 CSS lift,
+marked `provenance: bounded-single`.
 
 Extract's failure modes apply as-is (bot-management headed fallback, consent
 handling, no-synthesis rule). If extract had to fall back to headed Chrome,
@@ -98,9 +108,16 @@ Full contract: `reference/preserve-direction.md`. Summary:
 
 1. **Promote** `stardust/current/PRODUCT.md`, `DESIGN.md`, `DESIGN.json`
    verbatim to the project root as the target spec. No divergence roll, no
-   re-direction, no Mode A/B — the current state IS the target.
+   re-direction, no Mode A/B — the current state IS the target. **Bounded
+   entry (`--single`/`--pages`): those files don't exist** — take the
+   bounded promotion branch instead (`reference/preserve-direction.md`
+   § 1a): synthesize a minimal descriptive spec from the captured page JSON
+   + the Phase-3 CSS lift (palette, type ramp, container, buttons — exactly
+   the values the lift produces anyway), provenance `bounded-single`. Never
+   mix the branches: if `current/PRODUCT.md` exists, promotion is verbatim.
 2. **Write `stardust/direction.md`** recording preserve mode: what was
-   promoted, from where, provenance, and the register pointer. This is what
+   promoted, from where, provenance (verbatim `--prep` promotion vs
+   `bounded-single` synthesis), and the register pointer. This is what
    tells downstream skills "the direction step happened".
 3. **Build the inconsistency register** at
    `stardust/replica/inconsistency-register.md` — the ONLY permitted design
@@ -156,9 +173,10 @@ breakpoint (default 1440 AND 360), live URL as source vs served prototype:
 PROTO="http://localhost:8791/<slug>-proposed.html"   # python3 -m http.server from the prototypes dir
 LIVE="https://<site>/<path>"
 
-# Probe 1+2 — the diff skill's two probes, generic profile
-node scripts/diff/content-diff.mjs "$LIVE" "$PROTO" --profile generic --width 1440 --main "<content-root>"
-node scripts/diff/visual-diff.mjs  "$LIVE" "$PROTO" --profile generic --width 1440
+# Probe 1+2 — the diff skill's two probes, generic profile (--dismiss keeps
+# consent + timed marketing modals out of both inventories)
+node scripts/diff/content-diff.mjs "$LIVE" "$PROTO" --profile generic --width 1440 --main "<content-root>" --dismiss
+node scripts/diff/visual-diff.mjs  "$LIVE" "$PROTO" --profile generic --width 1440 --main "<content-root>" --dismiss
 
 # Probe 3 — replica's pixel probe (stitched captures, NEVER fullPage:true)
 node scripts/replica/stitch-shot.mjs "$LIVE"  stardust/replica/gates/<slug>-1440/live.png  --width 1440 --settle
@@ -181,13 +199,20 @@ log the residuals in the ledger and move on — a documented 2% residual beats
 an undocumented fourth loop.
 
 **Hardening (each is a recorded false-measurement trap — see the reference
-doc for the full list):** real-Chrome UA on every capture (the default
-HeadlessChrome UA can get a Cloudflare challenge that the probes then
-silently measure AS the source); `domcontentloaded`, never `networkidle`;
-symmetric `--main` scoping on both sides; animations frozen for capture;
-the pointer parked after any consent click (a `:hover`-styled element under
-the resting cursor captures in hover state); fixed/sticky chrome replicated
-fixed, with its scroll-state morph, so seam repeats stay symmetric
+doc for the full list):** real-Chrome UA **plus the standard request
+headers** on every capture (built into the shared
+`diff/scripts/live-session.mjs` — the default HeadlessChrome UA gets a
+Cloudflare challenge that the probes then silently measure AS the source,
+and the UA alone still 403s on Akamai); a challenge/blocked interstitial
+**fails loud (exit 3)**, never measured — escalate with `--headed`, and a
+site that still blocks needs crawl.mjs-class capture (the gate must not
+silently degrade); `domcontentloaded` on live targets, never `networkidle`;
+symmetric `--main` scoping on both sides (`--main body` is never valid);
+both overlay classes dismissed via `--dismiss` (consent AND timed marketing
+modals); animations frozen for capture; the pointer parked after any
+dismissal click (a `:hover`-styled element under the resting cursor
+captures in hover state); fixed/sticky chrome replicated fixed, with its
+scroll-state morph, so seam repeats stay symmetric
 (`reference/recreation-procedure.md` § Fixed and sticky chrome);
 granularity-parity policy for JOIN/SPLIT false-reds (#87); capture-state
 policy for CDN-403 images and hydration placeholders (replicate as captured
@@ -195,10 +220,11 @@ policy for CDN-403 images and hydration placeholders (replicate as captured
 them: rendered-face font forks on inner spans (width probe) and overlay
 scrims invisible to computed styles (recover by per-row luminance fitting).
 
-The two diff scripts ship with `networkidle` + default UA, a hardcoded
-`<main>` content root (visual-diff), and no consent handling; apply the four
-recorded adaptations to the project copies before pointing them at a live
-site (`reference/source-fidelity-gate.md` § Script adaptations).
+The live-target hardening ships as flags on the diff scripts (`--ua`,
+`--wait-until`, `--dismiss`, `--headed`, `--locale`, visual-diff `--main`)
+backed by `live-session.mjs` — copy the scripts and pass flags; a project
+copy carrying hand-edits is a defect
+(`reference/source-fidelity-gate.md` § Script adaptations).
 
 When all breakpoints pass, present the archetype + its gate metrics for
 approval per the standard prototype approval flow (hands-off mode records
@@ -264,8 +290,9 @@ PRODUCT.md / DESIGN.md / DESIGN.json    ← promoted verbatim from current/ (Pha
   inconsistency-register entry schema.
 - `reference/recreation-procedure.md` — CSS-lifting method (per gate
   breakpoint), fonts policy, scrim/luminance recovery, span-face forks,
-  capture-state policy, fixed/sticky chrome, granularity parity,
-  CSS-portation fallback criteria.
+  capture-state policy, fixed/sticky chrome, granularity parity, role
+  parity (mirror the live wrapping per string), CSS-portation fallback
+  criteria.
 - `reference/source-fidelity-gate.md` — full gate contract: commands,
   thresholds, per-breakpoint procedure, hardening rules, band-breakdown
   reading guide, iteration discipline, residual logging format.

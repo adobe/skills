@@ -14,6 +14,15 @@ native preserve mode (a recorded round-2 candidate), replica owns this step.
 
 ## 1. Promotion contract
 
+Two branches, keyed on one observable fact: does
+`stardust/current/PRODUCT.md` exist? (`extract --prep` writes the
+descriptive synthesis; a bounded `--single`/`--pages` run does not —
+crawl.mjs alone writes only `pages/*.json`, screenshots, and
+`_crawl-log.json`.) Never mix them: when the `--prep` artifacts exist,
+promotion is verbatim and synthesis is forbidden.
+
+### Full-prep branch — verbatim promotion (unchanged)
+
 Copy, verbatim, byte-for-byte:
 
 | From (descriptive, written by extract) | To (target spec, read by downstream) |
@@ -34,6 +43,46 @@ Rules:
 - **Refresh rule.** If extract re-runs (e.g. `--refresh <slug>` after a
   source-site change), re-promote. The promoted spec must never be older
   than `stardust/current/`.
+
+### 1a. Bounded promotion branch (`--single` / `--pages` entry)
+
+When `current/PRODUCT.md` / `DESIGN.md` / `DESIGN.json` are absent, there is
+nothing to promote verbatim — and the verbatim rule must NOT be "satisfied"
+by inventing prose that looks like an extract synthesis. Instead, replica
+**synthesizes a minimal descriptive target spec** from the two sources the
+bounded run already has:
+
+- the single page's captured JSON (`current/pages/<slug>.json` — title,
+  metadata, headings, content structure, `customProps`);
+- the Phase-3 CSS lift (palette, type ramp, container model, button specs —
+  exactly the values `recreation-procedure.md` § CSS lifting produces
+  anyway; the spec records them, it never invents beyond them).
+
+Write the three root files with that content, each carrying front-matter
+provenance `bounded-single`:
+
+```yaml
+_provenance:
+  writtenBy: stardust:replica
+  mode: bounded-single
+  synthesizedFrom:
+    - stardust/current/pages/<slug>.json
+    - <the Phase-3 lifted tokens file>
+```
+
+Rules:
+
+- **Descriptive, not creative.** Every value in the synthesized spec traces
+  to the captured JSON or a lifted CSS value. A value with no source is a
+  fidelity bug, exactly as in recreation.
+- **Minimal means minimal.** The spec covers what the single archetype
+  needs (palette, type ramp, container, buttons, the page's own structure);
+  it does not speculate about page types, module catalogs, or site-wide
+  voice — those are `--prep` products.
+- **`direction.md` records the branch** (see § 2): downstream skills and a
+  later site-scope re-run must be able to tell a `bounded-single` spec from
+  a promoted one. When the pilot grows to site scope and Phase 1 re-runs
+  with `--prep`, the verbatim promotion REPLACES the synthesized spec.
 
 ## 2. `stardust/direction.md` — the preserve-mode record
 
@@ -65,6 +114,12 @@ Permitted deltas: ONLY the entries of stardust/replica/inconsistency-register.md
 
 Fidelity: ia verbatim · design verbatim · content verbatim.
 ```
+
+On the bounded branch (§ 1a), the `Promoted:` line instead reads
+`Synthesized (bounded-single): current/pages/<slug>.json + Phase-3 CSS lift
+→ PRODUCT.md · DESIGN.md · DESIGN.json (at <ISO-8601>)` and the register
+statement is unchanged — the branch changes where the spec came from, never
+what is allowed to diverge from it.
 
 ## 3. The inconsistency register
 
