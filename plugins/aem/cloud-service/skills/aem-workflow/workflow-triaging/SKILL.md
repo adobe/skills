@@ -10,7 +10,7 @@ Classify workflow issues, determine what logs and data to gather, and map to the
 
 ## Audience
 
-AEMaaCS support and operations engineers (and the IDE LLM acting on their behalf) classifying workflow incidents across environments — environment ID + time-range + Cloud Manager Logs / Splunk context, before drilling into one instance. Use this skill for cross-environment log mining and symptom classification; switch to `workflow-debugging` once the instance and root cause are identified.
+AEMaaCS developers and operators (and the IDE LLM acting on their behalf) classifying workflow incidents across one or more environments — using environment ID + time-range + Cloud Manager Logs (or a log aggregator such as Splunk, if you forward AEMaaCS logs there), before drilling into one instance. Use this skill for cross-environment log mining and symptom classification; switch to `workflow-debugging` once the instance and root cause are identified.
 
 ## Variant Scope
 
@@ -173,6 +173,8 @@ On AEMaaCS production, use the **Developer Console** status producers and the **
 | Console state (current work item) | Workflow Console UI (`/libs/cq/workflow/admin/...`) or custom API. |
 | Runtime process step code behavior | Requires code review + log correlation. |
 | Pod restart | Adobe Support ticket — Cloud Manager does not expose a customer-facing restart action. |
+
+> **Custom servlets are privileged — secure them before deploying.** The `StaleWorkflowServlet` and any bulk-retry/count servlet above restart, replay, or enumerate workflows. Treat them as admin-only: authorize the caller against an operations group, use a service user (never an admin session), default to `dryRun=true`, scope by model, and keep the endpoint off publish. Follow the secure-write/deploy checklist in `workflow-debugging` Step 6 before shipping one.
 
 Always pair log-based triage with Developer Console diagnostics and the appropriate runbook for actions (Inbox Retry, Purge Scheduler config, Cloud Manager pipeline deploy).
 
