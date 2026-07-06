@@ -1,6 +1,6 @@
 ---
 name: block-inventory
-description: Survey available blocks from local AEM Edge Delivery Services project and Block Collection to understand the block palette available for authoring. Returns block inventory with purposes to inform content modeling decisions.
+description: "Use this when the page-import pipeline needs to survey the block palette available from a local AEM Edge Delivery Services project and the Block Collection to inform content modeling decisions. Covers returning a block inventory annotated with each block's purpose. Do not invoke directly — called by page-import as a pipeline step."
 license: Apache-2.0
 metadata:
   version: "1.0.0"
