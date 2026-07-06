@@ -196,6 +196,7 @@ async function main() {
 
     const chunks = [];
     let y = 0;
+    let prevActualY = null;
     while (y < totalH) {
       const target = Math.max(0, Math.min(y, totalH - opts.vh));
       await page.evaluate((ty) => window.scrollTo(0, ty), target);
@@ -210,6 +211,15 @@ async function main() {
         while (pend() && Date.now() - t0 < 3000) await new Promise((r) => { setTimeout(r, 150); });
       });
       const actualY = await page.evaluate(() => window.scrollY);
+      // Scroll-stall guard: on inner-scroller / scroll-jacked pages (html/body
+      // overflow:hidden with a scrolling wrapper) the document reports totalH px
+      // but window.scrollTo is a NO-OP — window.scrollY stays put, every chunk
+      // captures the top viewport, and the rows below stitch as zero-filled
+      // black: a silently fictitious pixel diff. Fail loud instead.
+      if (prevActualY !== null && actualY <= prevActualY && target - actualY > opts.vh / 2) {
+        throw new Error(`scroll stall at chunk target ${target}px: window scroll is a no-op (window.scrollY stuck at ${actualY}px) while the document reports ${totalH}px — likely an inner scroll container / scroll-jacked layout (html/body overflow:hidden). Stitched capture cannot measure this page class (capturing the inner scroller is future work): record the page as gate-blocked for the pixel probe and rely on content-diff/visual-diff.`);
+      }
+      prevActualY = actualY;
       const buf = await page.screenshot();
       chunks.push({ y: actualY, buf });
       y += opts.vh;

@@ -85,6 +85,17 @@ produced an 18-finding ledger; all skill-wrong findings are folded:
   images); zero-output scope errors now guide discovery (F-D); first-match
   scope semantics and bounded-donor token sourcing documented (F-R5, F-R6).
 - Manifest version aligned (F-A).
+- **PR-review P1 fixes** (multi-agent review of PR #238): donor-probe expands
+  CSS box shorthands canonically (3-value `[t,r,b,r]`, not cyclic — a
+  pixel-perfect render no longer false-fails the design gate); stitch-shot
+  fails loud on scroll-stall (inner-scroller/scroll-jacked pages can no
+  longer produce silent black-row captures); the diff probes regain their
+  advisory exit contract for HTTP errors (`gotoLive httpError:'measure'` —
+  a 404 build side reports flags at exit 0 again; challenges still exit 3;
+  reskin's byte gate keeps fail-loud); `defaultWaitUntil` centralized in
+  live-session with a three-tier rule (localhost and `*.aem.page/.aem.live/
+  .hlx.page/.hlx.live` → networkidle, other live → domcontentloaded) so
+  deploy Step 10 never measures a half-decorated EDS page.
 
 ## 0.14.5 — crawler clears Cloudflare managed challenges
 

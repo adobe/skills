@@ -157,8 +157,11 @@ rather than erroring.
 2. **`domcontentloaded`, never `networkidle`, on live targets.** Live sites
    with analytics beacons never reach networkidle — hard timeout. Built in:
    the diff scripts default `domcontentloaded` for non-localhost http(s)
-   URLs (decided per side) and keep `networkidle` for local prototypes;
-   `--wait-until` overrides. stitch-shot is always `domcontentloaded`.
+   URLs (decided per side; EDS build/preview origins — `*.aem.page`,
+   `*.aem.live`, `*.hlx.page`, `*.hlx.live` — are the exception and get
+   `networkidle`, they decorate async) and keep `networkidle` for local
+   prototypes; `--wait-until` overrides. stitch-shot is always
+   `domcontentloaded`.
 3. **Symmetric `--main` scoping — and never `body`.** Live `<main>` often
    contains header nav + hidden mega-menu; unscoped, those diff as ~dozens
    of missing CTAs (UC1-E1 iteration 1: 41 of 50 reds were scoping
@@ -236,6 +239,17 @@ rather than erroring.
     not silently degrade** — record the breakpoint as gate-blocked in the
     ledger and surface it to the user; a gate that can't read the live
     source has no pass to report.
+13. **Inner-scroller / scroll-jacked pages fail loud — stitched capture
+    cannot measure them.** On pages where `html`/`body` are
+    `overflow:hidden` and an inner container scrolls, the document reports
+    the full content height but `window.scrollTo` is a no-op — every chunk
+    would capture the top viewport and the rows below would stitch as
+    zero-filled black: a silently fictitious pixel diff. stitch-shot now
+    detects the stall and exits 1 with the signature `stitch-shot error:
+    scroll stall at chunk target …px: window scroll is a no-op
+    (window.scrollY stuck at …px) while the document reports …px`.
+    Capturing the inner scroller is future work; for now record the page as
+    gate-blocked for the pixel probe and rely on content-diff/visual-diff.
 
 ### Script adaptations (now built-in flags — hand-edits are a defect)
 

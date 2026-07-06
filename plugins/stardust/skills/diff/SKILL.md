@@ -59,10 +59,17 @@ real-Chrome UA **and** the standard Chrome request headers; the UA alone still 4
 Akamai-class bot management):
 
 - `--ua <string>` — user agent override (default: real-Chrome desktop UA).
-- `--wait-until <state>` — goto wait override. Default rule, decided **per URL side**:
-  `domcontentloaded` for http(s) URLs that are NOT localhost/127.0.0.1 (live sites with
-  analytics beacons never reach networkidle), `networkidle` otherwise (local prototypes /
-  harnesses keep the original behavior).
+- `--wait-until <state>` — goto wait override. Default rule (one shared
+  `defaultWaitUntil` in `scripts/live-session.mjs`), decided **per URL side**, three tiers:
+  - localhost/127.0.0.1 → `networkidle` (local prototypes / harnesses, unchanged);
+  - EDS build/preview origins — hostnames ending in `.aem.page`, `.aem.live`, `.hlx.page`,
+    `.hlx.live` → `networkidle` (they decorate asynchronously and reliably reach
+    networkidle; measuring at domcontentloaded reads the pre-decoration DOM — flaky
+    false reds / FONT FORK on deploy Step 10);
+  - all other live http(s) → `domcontentloaded` (live sites with analytics beacons
+    never reach networkidle).
+
+  `--wait-until` overrides all three tiers.
 - `--dismiss [sel,...]` — dismiss overlays on both sides: cookie consent (clicked, not
   removed) AND timed marketing/newsletter modals, plus optional extra site-specific
   selectors; the mouse is parked afterwards.
@@ -75,6 +82,12 @@ Akamai-class bot management):
 A bot-management challenge/blocked interstitial on either navigation fails LOUD with
 **exit 3** — it is never measured as the source. Escalate with `--headed`; if that is still
 blocked, the site needs crawl.mjs-class capture and the check cannot run headless.
+
+A plain (non-challenge) HTTP error on either side — e.g. a **404 build side, normal on
+aem.page before preview propagation** — is NOT fatal: the probe logs a loud warning,
+measures the error page, and the flags (BLANK RENDER / content asymmetry) carry the
+signal with **exit 0**. That is the probes' advisory contract: 0 = ran (flags advisory),
+1 = probe error, 3 = bot challenge.
 
 ## Reading content-diff
 

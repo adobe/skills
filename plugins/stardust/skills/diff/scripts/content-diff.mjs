@@ -31,11 +31,14 @@
  *     --width <px>          viewport width                 (default 1280)
  *     --json                also print the two raw inventories
  *     --ua <string>         user agent                     (default: real-Chrome desktop UA)
- *     --wait-until <state>  goto wait state override. Default rule: 'domcontentloaded'
- *                           for http(s) URLs that are NOT localhost/127.0.0.1 (live
- *                           sites with analytics beacons never reach networkidle),
- *                           'networkidle' otherwise (local/prototype targets keep
- *                           the original behavior). Decided per URL side.
+ *     --wait-until <state>  goto wait state override. Default rule (three tiers,
+ *                           decided per URL side by live-session's defaultWaitUntil):
+ *                           localhost/127.0.0.1 → 'networkidle'; EDS build/preview
+ *                           origins (*.aem.page, *.aem.live, *.hlx.page, *.hlx.live)
+ *                           → 'networkidle' (they decorate async — measuring at
+ *                           domcontentloaded reads the pre-decoration DOM); all
+ *                           other live http(s) → 'domcontentloaded' (analytics
+ *                           beacons never reach networkidle).
  *     --dismiss [sel,...]   dismiss overlays on both sides via live-session
  *                           (consent + timed marketing modals), plus these extra
  *                           site-specific selectors (optional)
@@ -45,17 +48,20 @@
  * Every context gets the real-Chrome UA + the standard request headers via
  * live-session.mjs (UA alone still 403s on Akamai — F-R1). A bot-management
  * challenge on either navigation FAILS LOUD (exit 3) — a challenge page must
- * never be measured as the source.
+ * never be measured as the source. A plain HTTP error (e.g. a 404 build side
+ * before preview propagation) is NOT fatal: it is measured with a loud
+ * warning and the flags reflect it — the advisory contract Step 10 relies on.
  *
- * Exit codes: 0 ran (flags are advisory, they do NOT fail the run), 1 error,
- * 3 bot challenge/blocked live side (BotChallengeError — escalate with --headed).
+ * Exit codes: 0 ran (flags are advisory, they do NOT fail the run — an
+ * HTTP-error side is measured + flagged, not fatal), 1 error, 3 bot
+ * challenge/blocked live side (BotChallengeError — escalate with --headed).
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, newline-per-chained-call, no-continue, no-multi-spaces */
 /* standalone dev tool: playwright is a devDependency; sequential page ops use awaited loops by design */
 import { chromium } from 'playwright';
 import { resolveProfile } from './diff-profiles.mjs';
-import { REAL_CHROME_UA, isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } from './live-session.mjs';
+import { REAL_CHROME_UA, isLiveHttpUrl, defaultWaitUntil, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } from './live-session.mjs';
 
 const USAGE = `usage: node skills/diff/scripts/content-diff.mjs <sourceURL> <buildURL> [options]
   --profile eds|generic  stack profile (default eds)
@@ -63,18 +69,19 @@ const USAGE = `usage: node skills/diff/scripts/content-diff.mjs <sourceURL> <bui
   --width <px>           viewport width (default 1280)
   --json                 also print the two raw inventories
   --ua <string>          user agent (default: real-Chrome desktop UA)
-  --wait-until <state>   goto wait state. Default: domcontentloaded for non-localhost
-                         http(s) URLs (live sites never reach networkidle), networkidle
-                         for localhost/127.0.0.1 (unchanged local behavior). Per-URL.
+  --wait-until <state>   goto wait state. Default (per URL side, three tiers):
+                         networkidle for localhost/127.0.0.1; networkidle for EDS
+                         build/preview origins (*.aem.page, *.aem.live, *.hlx.page,
+                         *.hlx.live — they decorate async); domcontentloaded for all
+                         other live http(s) (never reach networkidle).
   --dismiss [sel,...]    dismiss overlays (consent + timed marketing modals) on both
                          sides; optional comma-separated extra selectors
   --headed               headed stealth real Chrome (escalation for bot-managed sites)
   --locale <tag>         pin Accept-Language + locale (e.g. en-GB) for geo determinism
-exit codes: 0 ran (flags advisory), 1 error, 3 bot challenge (live side blocked — fail loud)
+exit codes: 0 ran (flags advisory; an HTTP-error side, e.g. a 404 build pre-propagation,
+            is measured + flagged with a warning, not fatal), 1 error,
+            3 bot challenge (live side blocked — fail loud)
 `;
-
-// live http(s) targets default to domcontentloaded; local targets keep networkidle.
-const defaultWaitUntil = (url) => (isLiveHttpUrl(url) ? 'domcontentloaded' : 'networkidle');
 
 function parseArgs(argv) {
   const [, , proto, eds, ...rest] = argv;
@@ -190,8 +197,10 @@ async function grab(browser, url, opts, prof) {
   });
   const page = await ctx.newPage();
   // challenge detection on every navigation — a blocked live side throws
-  // BotChallengeError (exit 3), it is never measured as the source.
-  await gotoLive(page, url, { waitUntil: opts.waitUntil || defaultWaitUntil(url), timeoutMs: 60000, settleMs: 0 });
+  // BotChallengeError (exit 3), it is never measured as the source. A plain
+  // HTTP error side is MEASURED (advisory contract): a 404 build is normal on
+  // aem.page before preview propagation — the flags carry the signal, exit 0.
+  await gotoLive(page, url, { waitUntil: opts.waitUntil || defaultWaitUntil(url), timeoutMs: 60000, settleMs: 0, httpError: 'measure' });
   await page.waitForTimeout(1500);
   // late-modal poll window only on live targets — local prototypes' overlays
   // are not timed third-party scripts, they render immediately.

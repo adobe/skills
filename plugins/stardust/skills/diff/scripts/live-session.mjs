@@ -63,10 +63,9 @@ function acceptLanguage(locale) {
 
 /**
  * Is this a LIVE http(s) URL (not localhost)? The callers key two defaults
- * off it: waitUntil ('domcontentloaded' live — analytics beacons never reach
- * networkidle; 'networkidle' local, unchanged legacy behavior) and the
- * timed-modal late window (0 on local targets — a prototype's overlays are
- * not timed third-party scripts, they render immediately).
+ * off it: waitUntil (via defaultWaitUntil below) and the timed-modal late
+ * window (0 on local targets — a prototype's overlays are not timed
+ * third-party scripts, they render immediately).
  */
 export function isLiveHttpUrl(url) {
   try {
@@ -74,6 +73,31 @@ export function isLiveHttpUrl(url) {
     const local = ['localhost', '127.0.0.1', '[::1]', '0.0.0.0'].includes(u.hostname);
     return (u.protocol === 'http:' || u.protocol === 'https:') && !local;
   } catch { return false; }
+}
+
+// EDS/Helix build + preview origins (…aem.page / …aem.live / …hlx.page /
+// …hlx.live) — they decorate asynchronously after domcontentloaded, so an
+// inventory taken at domcontentloaded measures the undecorated page.
+const EDS_HOST_RE = /(^|\.)(aem|hlx)\.(page|live)$/i;
+
+/**
+ * The SINGLE default-waitUntil rule for every probe (--wait-until always
+ * overrides). Three tiers:
+ *   - localhost/127.0.0.1 (and file:) → 'networkidle' — local prototypes/
+ *     harnesses, unchanged legacy behavior;
+ *   - EDS build/preview origins (hostname ends in .aem.page / .aem.live /
+ *     .hlx.page / .hlx.live) → 'networkidle' — they decorate async and
+ *     reliably reach networkidle; measuring them at domcontentloaded reads
+ *     the pre-decoration DOM (flaky false reds / FONT FORK on deploy Step 10);
+ *   - all other live http(s) → 'domcontentloaded' — the field-proven live-site
+ *     rule (analytics beacons never reach networkidle; hard timeout otherwise).
+ */
+export function defaultWaitUntil(url) {
+  if (!isLiveHttpUrl(url)) return 'networkidle';
+  try {
+    if (EDS_HOST_RE.test(new URL(url).hostname)) return 'networkidle';
+  } catch { /* unparseable — fall through to the live default */ }
+  return 'domcontentloaded';
 }
 
 /**
@@ -154,12 +178,18 @@ export function isChallengeResponse(response) {
  *     reload, 3 attempts — Cloudflare's non-interactive challenge sets its
  *     clearance cookie in that window under a stealth-headed session), then
  *     THROW BotChallengeError. A challenge must NEVER be silently measured
- *     as the source (the rimowa trap).
- *   - non-challenge entry status >= 400 → THROW (LiveHTTPError). Measuring a
- *     404/500 page is as false a measurement as measuring a challenge.
- * Returns the (OK) response.
+ *     as the source (the rimowa trap) — regardless of `httpError`.
+ *   - non-challenge entry status >= 400 → per `httpError`:
+ *       'throw' (default): THROW LiveHTTPError. Measuring a 404/500 page is
+ *         as false a measurement as measuring a challenge — the reskin byte
+ *         gate must never measure an error page.
+ *       'measure': warn loudly and RETURN the response so capture proceeds —
+ *         the diff probes' advisory contract (a 404 build side is normal on
+ *         aem.page before preview propagation; the probe's flags carry the
+ *         signal, exit stays 0).
+ * Returns the response.
  */
-export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', timeoutMs = 60000, settleMs = 1200 } = {}) {
+export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', timeoutMs = 60000, settleMs = 1200, httpError = 'throw' } = {}) {
   let resp = await page.goto(url, { waitUntil, timeout: timeoutMs });
   if (!resp) {
     const err = new Error(`no response navigating to ${url} — network-level failure or non-HTTP navigation`);
@@ -187,10 +217,14 @@ export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', time
   }
   const status = resp.status();
   if (status >= 400) {
-    const err = new Error(`HTTP ${status} at ${url} — not a challenge marker, but not the page either; refusing to measure it`);
-    err.name = 'LiveHTTPError';
-    err.status = status;
-    throw err;
+    if (httpError === 'measure') {
+      console.error(`[live-session] WARNING: HTTP ${status} at ${url} — measuring the error page; flags will reflect it`);
+    } else {
+      const err = new Error(`HTTP ${status} at ${url} — not a challenge marker, but not the page either; refusing to measure it`);
+      err.name = 'LiveHTTPError';
+      err.status = status;
+      throw err;
+    }
   }
   if (settleMs > 0) await page.waitForTimeout(settleMs);
   return resp;

@@ -132,14 +132,25 @@ function compare(entry, got, want) {
     const nums = (v) => String(v).match(/-?\d+(\.\d+)?/g)?.map(Number) ?? [];
     const g = nums(got); const w = nums(want);
     if (!g.length || !w.length) return String(got) === String(want);
-    // Componentwise; a shorthand may expand (e.g. "15.5px 24px 16.5px" →
-    // computed "15.5px 24px 16.5px 24px") — compare up to the shorter list
-    // cyclically against the longer.
-    const len = Math.max(g.length, w.length);
-    for (let i = 0; i < len; i += 1) {
-      if (Math.abs(g[i % g.length] - w[i % w.length]) > entry.tolerancePx) return false;
+    // Componentwise, with CSS BOX-SHORTHAND expansion: a 1–4-value side is
+    // expanded to the canonical [top, right, bottom, left] per the CSS rules
+    // (1 → [v,v,v,v]; 2 → [v1,v2,v1,v2]; 3 → [v1,v2,v3,v2] — the 4th copies
+    // the 2nd, NOT the 1st) so "15.5px 24px 16.5px" matches the computed
+    // "15.5px 24px 16.5px 24px". A side with >4 components is not a box
+    // shorthand (multi-part value): strict positional comparison, and a
+    // component-count mismatch is a FAIL.
+    if (g.length > 4 || w.length > 4) {
+      if (g.length !== w.length) return false; // not a box shorthand; component counts differ
+      return g.every((v, i) => Math.abs(v - w[i]) <= entry.tolerancePx);
     }
-    return true;
+    const expand = (n) => {
+      if (n.length === 1) return [n[0], n[0], n[0], n[0]];
+      if (n.length === 2) return [n[0], n[1], n[0], n[1]];
+      if (n.length === 3) return [n[0], n[1], n[2], n[1]];
+      return n;
+    };
+    const ge = expand(g); const we = expand(w);
+    return ge.every((v, i) => Math.abs(v - we[i]) <= entry.tolerancePx);
   }
   return String(got) === String(want);
 }
