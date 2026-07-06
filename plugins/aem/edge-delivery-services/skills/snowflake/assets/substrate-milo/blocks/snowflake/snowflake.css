@@ -1,0 +1,96 @@
+/*
+ * snowflake (Milo flavor) — intentionally minimal.
+ *
+ * The overlaid body carries its own design system: the captured
+ * template lifts the source's stylesheets (typekit, Milo C2 block CSS)
+ * into <head>, and per-template inline CSS ships at /styles/<template>.css.
+ * Milo's own /libs/c2/styles/styles.css loads via foundation:c2.
+ *
+ * The block element itself only hosts the (consumed) authoring rows
+ * before decorate() replaces <main>, so it needs no paint of its own.
+ */
+.snowflake {
+  display: none;
+}
+
+/* =========================================================================
+ * Prototype interaction contract (paired with snowflake.js).
+ *
+ * Only the mechanics live here (which slide is visible, where the controls
+ * sit). The slide CONTENT keeps the source's lifted block CSS, so the look
+ * stays 1:1 — we only add the behaviour wrapper the source JS would have.
+ * Scoped under [data-overlay] so nothing leaks into Milo's live gnav/footer.
+ * ========================================================================= */
+
+/* Carousel — one slide in view, the track slides horizontally. */
+[data-overlay] .proto-carousel { position: relative; overflow: hidden; }
+
+[data-overlay] .proto-carousel-track {
+  display: flex;
+  transition: transform 0.4s ease;
+}
+
+[data-overlay] .proto-carousel-track > .proto-slide {
+  flex: 0 0 100%;
+  min-width: 100%;
+}
+
+[data-overlay] .proto-carousel-prev,
+[data-overlay] .proto-carousel-next {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: #000;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
+  transform: translateY(-50%);
+}
+
+[data-overlay] .proto-carousel-prev { left: 1rem; }
+[data-overlay] .proto-carousel-next { right: 1rem; }
+
+[data-overlay] .proto-carousel-dots {
+  position: absolute;
+  bottom: 1rem;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+[data-overlay] .proto-carousel-dot {
+  width: 9px;
+  height: 9px;
+  padding: 0;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.3);
+  border: 0;
+  border-radius: 50%;
+}
+
+[data-overlay] .proto-carousel-dot[aria-selected="true"] {
+  background: rgba(0, 0, 0, 0.85);
+}
+
+/* Marquee — only the active slide is shown. */
+[data-overlay] .proto-marquee-slide:not(.is-active) { display: none; }
+
+/* Tabs / accordion — hide inactive panels (JS toggles [hidden]). */
+[data-overlay] .proto-tabpanel[hidden],
+[data-overlay] .proto-acc-panel[hidden] { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-overlay] .proto-carousel-track { transition: none; }
+}
