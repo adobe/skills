@@ -52,12 +52,12 @@ jobs:
         run: |
           CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
 
-          # Build list of all tile directories (parents of tile.json)
-          ALL_TILE_DIRS=$(find plugins -name tile.json -exec dirname {} \; 2>/dev/null | sort)
+          # Build list of all plugin directories (parents of .tessl-plugin/plugin.json)
+          ALL_TILE_DIRS=$(find plugins -path '*/.tessl-plugin/plugin.json' 2>/dev/null | sed 's#/.tessl-plugin/plugin.json$##' | sort)
 
           if [ -z "$ALL_TILE_DIRS" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "No tile.json files found in repo."
+            echo "No .tessl-plugin/plugin.json files found in repo."
           else
             # For each changed file, find which tile directory it belongs to
             DIRS=""
@@ -98,8 +98,8 @@ jobs:
             done
 
             if [ "$UNMATCHED" = "true" ]; then
-              echo "Unmatched changes under plugins/ detected — evaluating all tiles"
-              DIRS=$(find plugins -name tile.json -exec dirname {} \; 2>/dev/null | tr "\n" " " | xargs)
+              echo "Unmatched changes under plugins/ detected — evaluating all plugins"
+              DIRS=$(find plugins -path '*/.tessl-plugin/plugin.json' 2>/dev/null | sed 's#/.tessl-plugin/plugin.json$##' | tr "\n" " " | xargs)
             fi
 
             if [ -z "$DIRS" ]; then
@@ -118,7 +118,7 @@ jobs:
           {
             echo "## Skill Eval"
             echo ""
-            echo "No qualifying skills to evaluate — either no skill files were changed or changed skills have no \`tile.json\`."
+            echo "No qualifying skills to evaluate — either no skill files were changed or changed skills have no \`.tessl-plugin/plugin.json\`."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: tesslio/setup-tessl@v2
