@@ -3,7 +3,7 @@ name: content-modeling
 description: "Use this when you are building new AEM Edge Delivery Services blocks or changing the initial structure that authors work with in an existing block. Covers designing content models that are easy for authors to use."
 license: Apache-2.0
 metadata:
-  version: "2.0.0"
+  version: "2.0.1"
 ---
 
 # Content Modeling for AEM Edge Delivery Blocks
