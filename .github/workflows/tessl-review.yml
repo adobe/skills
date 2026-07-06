@@ -99,7 +99,7 @@ jobs:
         run: |
           THRESHOLD=80
           # Tessl workspace to attribute review runs to (required when --json is set).
-          # Derived from the registry namespace used by this repo's tiles (e.g. tile.json "name": "adobe/...").
+          # Derived from the registry namespace used by this repo's plugins (e.g. .tessl-plugin/plugin.json "name": "adobe/...").
           WORKSPACE=adobe
           PASS=0
           FAIL=0
