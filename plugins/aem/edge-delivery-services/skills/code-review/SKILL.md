@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: Review code for AEM Edge Delivery Services projects. Use at the end of development (before PR) for self-review, or to review pull requests. Validates code quality, performance, accessibility, and adherence to EDS best practices.
+description: "Use this when reviewing AEM Edge Delivery Services (EDS, Franklin, Helix) code, either self-review at the end of development before opening a PR, or reviewing an existing pull request. Validates block structure, CSS and JS patterns, DOM output, Lighthouse performance, and accessibility against EDS best practices, and posts findings as review comments or GitHub suggestions."
 license: Apache-2.0
 metadata:
   version: "2.0.0"
