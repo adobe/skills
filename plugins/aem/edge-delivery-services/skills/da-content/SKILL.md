@@ -1,6 +1,6 @@
 ---
 name: da-content
-description: Reference for producing Adobe Document Authoring (DA, da.live) and Edge Delivery Services (EDS, aka aem.live/Helix) compatible content. Use whenever generating HTML for DA upload, uploading media binaries to DA, publishing to aem.live, or driving the DA admin API (auth, source PUT, preview/publish). Covers block HTML format (canonical div-class form and accepted table alternate), section structure, page/section metadata, icons, links, images, default content, document skeleton constraints, block cell content normalization, the DA Source API contract, IMS auth, media storage, supported formats, Media Bus vs Content Bus delivery, and silent-failure rules that corrupt content.
+description: "Use this when generating HTML for Adobe Document Authoring (DA, da.live) upload, uploading media binaries to DA, publishing to aem.live, or driving the DA admin API (auth, source PUT, preview/publish). Covers block HTML format (canonical div-class form and accepted table alternate), section structure, page and section metadata, icons, links, images, default content, document skeleton constraints, block cell content normalization, the DA Source API contract, IMS auth, media storage, supported formats, Media Bus vs Content Bus delivery, and silent-failure rules that corrupt content."
 license: Apache-2.0
 metadata:
   version: "1.0.0"
