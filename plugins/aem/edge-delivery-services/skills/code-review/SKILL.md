@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: Review code for AEM Edge Delivery Services projects. Use at the end of development (before PR) for self-review, or to review pull requests. Validates code quality, performance, accessibility, and adherence to EDS best practices.
+description: "Use this when reviewing AEM Edge Delivery Services code, either self-review at the end of development before opening a PR, or reviewing an existing pull request. Covers validating code quality, performance, accessibility, and adherence to EDS best practices."
 license: Apache-2.0
 metadata:
   version: "2.0.0"
