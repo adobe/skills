@@ -768,6 +768,28 @@ as `logo.svg`.
 Logo variants (`logo-white.svg`, `logo-mono.svg`) are not extracted in
 v2 — they are derived later by `direct` if the redesign needs them.
 
+## Favicon capture (first-class asset, independent of the logo chain)
+
+Regardless of which step wins the logo chain above, ALWAYS capture the
+site favicon as its own asset — downstream stages depend on it
+(`prototype` embeds it in the proposed page head; `deploy` ships it to
+the Edge Delivery site; `prepare-migration` Phase 4 generates the icon
+variants from it).
+
+Resolution order (first that returns a non-error, non-empty body):
+
+1. `<link rel="icon">` / `<link rel="shortcut icon">` href (largest
+   `sizes` if several), resolved against the base URL.
+2. `<link rel="apple-touch-icon">` href.
+3. `/favicon.svg`, then `/favicon.ico` at the site root.
+
+Save it to `stardust/current/assets/favicon.<ext>` preserving the
+original format (svg/png/ico — never rasterize an SVG). Record the
+chosen source in `_brand-extraction.json` under
+`favicon: { source, url, file }`; when nothing resolves, record
+`favicon: null` and list it in `variantsNotCaptured` — do NOT
+synthesize one.
+
 ## What NOT to capture
 
 - Per-element computed styles for every node. Too noisy. Only the

@@ -483,6 +483,11 @@ them but relies on them being enforced:
 - **No fabricated content** — stats, addresses, quotes, named
   persons rendered as `[data-placeholder]` not invented. Enforced
   by `prototype/SKILL.md` Phase 2 § Content sourcing scan.
+- **Site favicon in every variant's head** — when
+  `stardust/current/assets/favicon.<ext>` exists, each variant page
+  inlines it as a data: URI `<link rel="icon">`. Enforced by
+  `prototype/reference/proposed-file-shell.md` § Hard
+  requirements #8.
 - **C-cliff refusal for variant C** — variant C bets on motion,
   not on "everything from B but more." Enforced by
   `prototype/reference/motion-validation.md` § Pass 6f motion

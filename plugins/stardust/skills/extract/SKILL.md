@@ -349,6 +349,11 @@ extracted pages** to avoid the home-page bias documented in
 - **Logo** by the v1 priority chain: inline SVG → `<img>` with
   logo-ish class/id → `apple-touch-icon` → `og:image` → favicon →
   synthesized placeholder. Save to `stardust/current/assets/logo.<ext>`.
+- **Favicon** — ALWAYS captured as its own asset (independent of the
+  logo chain) to `stardust/current/assets/favicon.<ext>`, per
+  `reference/playwright-recipe.md` § Favicon capture. Downstream,
+  `prototype` embeds it in the proposed page head and `deploy` ships
+  it to the Edge Delivery site.
 - **Palette** — aggregate computed colors across **all extracted
   pages** (background, text, accents, borders, hovers). Frequency-sort,
   cluster near-duplicates, emit a role-named list (background, surface,
@@ -646,6 +651,7 @@ capture (≤ 3 pages). It must never balloon the crawl.
 | `stardust/current/brand-review.html`        | Self-contained visual review of the extraction (first eyeball-able artifact) |
 | `stardust/current/pages/<slug>.json`        | Per-page parsed structure + content                 |
 | `stardust/current/assets/logo.<ext>`        | Extracted logo                                      |
+| `stardust/current/assets/favicon.<ext>`     | Site favicon (first-class asset; prototype head + deploy consume it) |
 | `stardust/current/assets/media/`            | Extracted media referenced by pages                 |
 | `stardust/current/assets/screenshots/`      | Per-page full-page screenshots, script-captured by `crawl.mjs` (Phase 2.5 vision gate + brand-review) |
 | `stardust/current/_brand-extraction.json`   | Consolidated brand surface (palette, type, motifs, voice, system components) |

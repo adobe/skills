@@ -67,7 +67,7 @@ const doc = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Q
 <link rel="stylesheet" href="/styles/styles.css">
 <script src="/scripts/ak.js" type="module"></script>
 <script src="/scripts/scripts.js" type="module"></script>
-<link rel="icon" href="data:,"></head>
+<link rel="icon" href="/favicon.svg"><link rel="icon" href="/favicon.ico"></head>
 <body>
 ${main}
 </body></html>`;

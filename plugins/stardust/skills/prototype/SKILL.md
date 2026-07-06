@@ -403,6 +403,9 @@ requirements there:
   `skills/stardust/reference/data-attributes.md`).
 - Provenance block as the first child of `<head>`.
 - Self-contained: no external CSS, no external JS.
+- The site's favicon inlined in the head as a data: URI when
+  `stardust/current/assets/favicon.<ext>` exists (per
+  `reference/proposed-file-shell.md` § Hard requirements #8).
 - Content preserved from the current page (hero copy, CTAs, nav,
   body) unless `direction.md` authorises content changes.
 - **Content sourcing hierarchy** (`reference/proposed-file-shell.md`

@@ -301,6 +301,23 @@ comm -23 <(grep -rhoE 'var\(--[a-z0-9-]+\)' blocks/**/*.css | sed 's/var(//;s/)/
 ```
 Any line printed is a token a block uses that `:root` doesn't define — add it to the foundation `:root`.
 
+**Favicon — ship the site's icon (the ONE permitted `head.html` addition).**
+Extract captures the source site's favicon at
+`stardust/current/assets/favicon.<ext>`; the deployed EDS site must serve it:
+
+1. Copy it to the repo root as `favicon.<ext>`, preserving the format. A
+   `favicon.ico` is served automatically at `/favicon.ico` — nothing else
+   needed.
+2. When the format is NOT `.ico` (svg/png), add exactly ONE line to
+   `head.html`: `<link rel="icon" href="/favicon.<ext>">`. This favicon link
+   is the only `head.html` edit this skill ever makes — the font ban (Step 4,
+   anti-pattern #10) stands untouched.
+3. Sandboxed/app runs (the `_eds/` bundle contract): write the file to
+   `_eds/code/favicon.<ext>` instead — the host publisher pushes it with the
+   code tree and injects the `head.html` link deterministically.
+
+If extract captured no favicon, skip this step — never invent one.
+
 ### 4. Self-host fonts and minimize CLS — never put font loads in `head.html`
 
 Four principles, applied in this order on every project:
@@ -916,7 +933,8 @@ A block that builds its own layout/view wrapper (common for interactive blocks t
 - [ ] `prefers-reduced-motion: reduce` honored on any animation.
 - [ ] No JS-toggled `opacity:0` reveal lifted from the prototype — content renders visible (prototype scroll-reveal script doesn't run in EDS).
 - [ ] No block named after a reserved EDS class (`section`, `default-content`, `block-content`, `wrap`, `button`).
-- [ ] `head.html` is untouched. No font `<link>`, `<script>`, `<style>`, or `<link rel="preload" as="font">` lines added. All `@font-face` declarations live in `styles/styles.css`. Brand woff2(s) live in `styles/fonts/`.
+- [ ] `head.html` is untouched **except** the single favicon `<link rel="icon">` line (Step 3 § Favicon). No font `<link>`, `<script>`, `<style>`, or `<link rel="preload" as="font">` lines added. All `@font-face` declarations live in `styles/styles.css`. Brand woff2(s) live in `styles/fonts/`.
+- [ ] The site favicon is shipped (repo-root `favicon.<ext>` or `_eds/code/favicon.<ext>` in sandboxed runs) when extract captured one.
 - [ ] EVERY named brand face is self-hosted — including proprietary ones (#80); proprietary `.otf`/`.ttf` from the prototype were converted to woff2 with fontTools. If any proprietary face is shipped, the **licensing alert** exists in all three places (styles.css banner + `styles/fonts/LICENSING.md` + conversion log) and the hand-off message flags "license required before `aem.live`".
 - [ ] Condensed/narrow display faces fall back to a **condensed** face, not plain Arial (#80): `"<Brand>", "Arial Narrow", arial, …` (or a self-hosted free condensed analog). Width-class is part of classification.
 - [ ] Body defaults to a metric-matched system fallback (`arial, sans-serif` for sans brand, `times, "Times New Roman", serif` for serif). `body.session` switches to the brand stack via `var(--font-body)`.
