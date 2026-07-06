@@ -98,6 +98,9 @@ jobs:
         if: steps.detect.outputs.skip != 'true'
         run: |
           THRESHOLD=80
+          # Tessl workspace to attribute review runs to (required when --json is set).
+          # Derived from the registry namespace used by this repo's plugins (e.g. .tessl-plugin/plugin.json "name": "adobe/...").
+          WORKSPACE=adobe
           PASS=0
           FAIL=0
           SUMMARY_FILE=$(mktemp)
@@ -121,30 +124,29 @@ jobs:
             echo "::group::Reviewing $SKILL_NAME"
 
             EXIT_CODE=0
-            OUTPUT=$(tessl skill review "$dir" 2>&1) || EXIT_CODE=$?
+            OUTPUT=$(tessl review run "$dir" --workspace "$WORKSPACE" --json --threshold "$THRESHOLD" 2>&1) || EXIT_CODE=$?
             echo "$OUTPUT"
             echo "::endgroup::"
 
-            if [ "$EXIT_CODE" -ne 0 ]; then
-              echo "::warning::tessl skill review failed for $SKILL_NAME (exit code $EXIT_CODE)"
-              FAIL=$((FAIL + 1))
-              echo "| $SKILL_NAME | error | ❌ |" >> "$SUMMARY_FILE"
-              continue
-            fi
+            # Parse the overall score from the --json payload; fall back to any percentage in the output.
+            SCORE=$(printf '%s' "$OUTPUT" | grep -oiE '"(overall[_]?score|review[_]?score)"[[:space:]]*:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | head -1 || true)
+            [ -z "$SCORE" ] && SCORE=$(printf '%s' "$OUTPUT" | grep -oiE '"score"[[:space:]]*:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | head -1 || true)
+            [ -z "$SCORE" ] && SCORE=$(printf '%s' "$OUTPUT" | grep -oE '[0-9]+%' | tail -1 | tr -d '%' || true)
 
-            SCORE=$(echo "$OUTPUT" | grep -oE '[0-9]+%' | tail -1 | tr -d '%')
-            if [ -z "$SCORE" ]; then
-              echo "::warning::Could not parse score for $SKILL_NAME"
-              SCORE=0
-            fi
-
-            if [ "$SCORE" -lt "$THRESHOLD" ]; then
+            if [ "$EXIT_CODE" -eq 0 ]; then
+              # Review met the threshold — gating is done by the CLI exit code.
+              PASS=$((PASS + 1))
+              echo "| $SKILL_NAME | ${SCORE:-?}% | ✅ |" >> "$SUMMARY_FILE"
+            elif [ -n "$SCORE" ]; then
+              # Non-zero exit with a parseable score = below-threshold failure.
               FAIL=$((FAIL + 1))
               echo "  ❌ $SKILL_NAME: ${SCORE}% (below ${THRESHOLD}%)" >> "$ERRORS_FILE"
               echo "| $SKILL_NAME | ${SCORE}% | ❌ |" >> "$SUMMARY_FILE"
             else
-              PASS=$((PASS + 1))
-              echo "| $SKILL_NAME | ${SCORE}% | ✅ |" >> "$SUMMARY_FILE"
+              # Non-zero exit with no parseable score = tool/auth error.
+              echo "::warning::tessl review run failed for $SKILL_NAME (exit code $EXIT_CODE)"
+              FAIL=$((FAIL + 1))
+              echo "| $SKILL_NAME | error | ❌ |" >> "$SUMMARY_FILE"
             fi
           done < "$SKILL_LIST_FILE"
 

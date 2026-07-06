@@ -134,3 +134,92 @@ jobs:
             exit 1
           fi
 
+      - name: Publish changed plugins
+        env:
+          TESSL_TOKEN: ${{ secrets.TESSL_TOKEN }}
+        run: |
+          # Compare HEAD with its parent to find what changed in this push
+          CHANGED_FILES=$(git diff --name-only ${{ github.event.before }}..${{ github.sha }} 2>/dev/null || git diff --name-only HEAD)
+
+          BEFORE="${{ github.event.before }}"
+
+          PASS=0
+          FAIL=0
+          PUBLISHED=0
+          SUMMARY_ROWS=""
+
+          # Discover all plugin directories (parents of .tessl-plugin/plugin.json)
+          PLUGIN_DIRS=$(find plugins -path '*/.tessl-plugin/plugin.json' 2>/dev/null | sed 's#/.tessl-plugin/plugin.json$##')
+
+          for plugin_dir in $PLUGIN_DIRS; do
+            PLUGIN_NAME=$(basename "$plugin_dir")
+            MANIFEST="$plugin_dir/.tessl-plugin/plugin.json"
+
+            NEW_VER=$(jq -r .version "$MANIFEST")
+
+            # Decide whether this plugin's version changed
+            SHOULD_PUBLISH=false
+            case "$BEFORE" in
+              ""|0000000000000000000000000000000000000000)
+                # before ref unavailable/all-zeros: publish only if the manifest changed
+                case " $CHANGED_FILES " in
+                  *" $MANIFEST "*) SHOULD_PUBLISH=true ;;
+                esac
+                ;;
+              *)
+                OLD_VER=$(git show "$BEFORE:$MANIFEST" 2>/dev/null | jq -r .version 2>/dev/null || true)
+                if [ "$OLD_VER" != "$NEW_VER" ]; then
+                  SHOULD_PUBLISH=true
+                fi
+                ;;
+            esac
+
+            if [ "$SHOULD_PUBLISH" != "true" ]; then
+              continue
+            fi
+
+            echo "::group::Publishing plugin $PLUGIN_NAME ($NEW_VER)"
+
+            EXIT_CODE=0
+            tessl plugin publish "$plugin_dir" || EXIT_CODE=$?
+
+            echo "::endgroup::"
+
+            if [ "$EXIT_CODE" -ne 0 ]; then
+              echo "::error::Publish failed for $PLUGIN_NAME (exit code $EXIT_CODE)"
+              FAIL=$((FAIL + 1))
+              SUMMARY_ROWS="${SUMMARY_ROWS}| ${PLUGIN_NAME} | failed | ❌ |\n"
+            else
+              PASS=$((PASS + 1))
+              SUMMARY_ROWS="${SUMMARY_ROWS}| ${PLUGIN_NAME} | published | ✅ |\n"
+            fi
+            PUBLISHED=$((PUBLISHED + 1))
+          done
+
+          if [ "$PUBLISHED" -eq 0 ]; then
+            echo "No plugin versions changed."
+            exit 0
+          fi
+
+          {
+            echo "## Plugin Publishes"
+            echo ""
+            echo "| Plugin | Result | Status |"
+            echo "|--------|--------|--------|"
+            echo -e "$SUMMARY_ROWS"
+            echo "| **Total** | **$PASS published, $FAIL failed** | $([ "$FAIL" -eq 0 ] && echo '✅' || echo '❌') |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo ""
+          echo "============================="
+          echo "  Plugin Publish Summary"
+          echo "============================="
+          echo "  Published: $PASS"
+          echo "  Failed:    $FAIL"
+          echo "============================="
+
+          if [ "$FAIL" -gt 0 ]; then
+            echo "::error::$FAIL plugin(s) failed to publish"
+            exit 1
+          fi
+

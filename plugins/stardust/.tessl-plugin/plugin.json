@@ -1,0 +1,21 @@
+{
+  "name": "adobe/stardust",
+  "version": "0.15.0",
+  "description": "Redesign an existing website to make it better. Built on top of impeccable.",
+  "skills": [
+    "skills/stardust",
+    "skills/extract",
+    "skills/direct",
+    "skills/prototype",
+    "skills/migrate",
+    "skills/prepare-migration",
+    "skills/uplift",
+    "skills/audit",
+    "skills/deploy",
+    "skills/rollout",
+    "skills/diff"
+  ],
+  "dependencies": [
+    "impeccable"
+  ]
+}
