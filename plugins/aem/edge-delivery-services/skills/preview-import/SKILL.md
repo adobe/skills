@@ -1,6 +1,6 @@
 ---
 name: preview-import
-description: Preview and verify imported content in local AEM Edge Delivery Services dev server. Validates rendering, compares with original page, and troubleshoots common issues.
+description: "Use this when you need to preview and verify content you imported into a local AEM Edge Delivery Services dev server. Covers validating rendering, comparing against the original page, and troubleshooting common import issues."
 license: Apache-2.0
 metadata:
   version: "2.0.0"
