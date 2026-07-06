@@ -3,7 +3,7 @@ name: preview-import
 description: Use this when you need to preview and verify content you imported into a local AEM Edge Delivery Services (EDS, Franklin, Helix) dev server on localhost. Starts the dev server against the imported HTML, checks block rendering, inspects DOM structure, compares against the original page, and troubleshoots broken references and 404s.
 license: Apache-2.0
 metadata:
-  version: "2.0.0"
+  version: "2.0.1"
 ---
 
 # Preview Import
