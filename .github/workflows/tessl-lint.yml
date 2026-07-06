@@ -1,4 +1,4 @@
-name: Tessl Skill Lint
+name: Tessl Plugin Lint
 
 on:
   push:
@@ -20,30 +20,37 @@ jobs:
 
       - uses: tesslio/setup-tessl@v2
 
-      - name: Detect changed tiles
+      - name: Detect changed plugins
         id: detect
         run: |
+          # Discover all plugin directories (parent of each .tessl-plugin dir)
+          discover_plugin_dirs() {
+            find plugins -path '*/.tessl-plugin/plugin.json' 2>/dev/null \
+              | while read -r manifest; do dirname "$(dirname "$manifest")"; done \
+              | sort
+          }
+
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
 
-            # Build list of all tile directories (parents of tile.json)
-            ALL_TILE_DIRS=$(find plugins -name tile.json -exec dirname {} \; 2>/dev/null | sort)
+            # Build list of all plugin directories (parents of .tessl-plugin/plugin.json)
+            ALL_PLUGIN_DIRS=$(discover_plugin_dirs)
 
-            if [ -z "$ALL_TILE_DIRS" ]; then
+            if [ -z "$ALL_PLUGIN_DIRS" ]; then
               echo "skip=true" >> "$GITHUB_OUTPUT"
-              echo "No tile.json files found in repo."
+              echo "No .tessl-plugin/plugin.json files found in repo."
               exit 0
             fi
 
-            # For each changed file, find which tile directory it belongs to
+            # For each changed file, find which plugin directory it belongs to
             DIRS=""
             for changed_file in $CHANGED_FILES; do
-              for tile_dir in $ALL_TILE_DIRS; do
+              for plugin_dir in $ALL_PLUGIN_DIRS; do
                 case "$changed_file" in
-                  "$tile_dir"/*)
+                  "$plugin_dir"/*)
                     case " $DIRS " in
-                      *" $tile_dir "*) ;;
-                      *) DIRS="$DIRS $tile_dir" ;;
+                      *" $plugin_dir "*) ;;
+                      *) DIRS="$DIRS $plugin_dir" ;;
                     esac
                     break
                     ;;
@@ -59,9 +66,9 @@ jobs:
               case "$changed_file" in
                 plugins/*)
                   MATCHED=false
-                  for tile_dir in $ALL_TILE_DIRS; do
+                  for plugin_dir in $ALL_PLUGIN_DIRS; do
                     case "$changed_file" in
-                      "$tile_dir"/*) MATCHED=true; break ;;
+                      "$plugin_dir"/*) MATCHED=true; break ;;
                     esac
                   done
                   if [ "$MATCHED" = "false" ]; then
@@ -73,28 +80,28 @@ jobs:
             done
 
             if [ "$UNMATCHED" = "true" ]; then
-              echo "Unmatched changes under plugins/ detected — linting all tiles"
-              DIRS=$(echo "$ALL_TILE_DIRS" | tr "\n" " " | xargs)
+              echo "Unmatched changes under plugins/ detected — linting all plugins"
+              DIRS=$(echo "$ALL_PLUGIN_DIRS" | tr "\n" " " | xargs)
             fi
 
             if [ -z "$DIRS" ]; then
               echo "skip=true" >> "$GITHUB_OUTPUT"
-              echo "Changed files don't belong to any tile — nothing to lint."
+              echo "Changed files don't belong to any plugin — nothing to lint."
             else
               echo "skip=false" >> "$GITHUB_OUTPUT"
               echo "dirs=$DIRS" >> "$GITHUB_OUTPUT"
-              echo "Tiles to lint: $DIRS"
+              echo "Plugins to lint: $DIRS"
             fi
           else
-            # Push to main: lint all tiles
-            ALL_TILE_DIRS=$(find plugins -name tile.json -exec dirname {} \; 2>/dev/null | tr "\n" " " | xargs)
-            if [ -z "$ALL_TILE_DIRS" ]; then
+            # Push to main: lint all plugins
+            ALL_PLUGIN_DIRS=$(discover_plugin_dirs | tr "\n" " " | xargs)
+            if [ -z "$ALL_PLUGIN_DIRS" ]; then
               echo "skip=true" >> "$GITHUB_OUTPUT"
-              echo "No tile.json files found in repo."
+              echo "No .tessl-plugin/plugin.json files found in repo."
             else
               echo "skip=false" >> "$GITHUB_OUTPUT"
-              echo "dirs=$ALL_TILE_DIRS" >> "$GITHUB_OUTPUT"
-              echo "Push to main — linting all tiles: $ALL_TILE_DIRS"
+              echo "dirs=$ALL_PLUGIN_DIRS" >> "$GITHUB_OUTPUT"
+              echo "Push to main — linting all plugins: $ALL_PLUGIN_DIRS"
             fi
           fi
 
@@ -102,12 +109,12 @@ jobs:
         if: steps.detect.outputs.skip == 'true'
         run: |
           {
-            echo "## Skill Lint"
+            echo "## Plugin Lint"
             echo ""
-            echo "No tiles to lint."
+            echo "No plugins to lint."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Lint tiles
+      - name: Lint plugins
         if: steps.detect.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -126,33 +133,33 @@ jobs:
 
           {
             echo "$MARKER"
-            echo "## Tessl Skill Lint"
+            echo "## Tessl Plugin Lint"
             echo ""
           } > "$COMMENT_FILE"
 
-          for tile_dir in ${{ steps.detect.outputs.dirs }}; do
-            TILE_NAME=$(basename "$tile_dir")
-            echo "::group::Linting $TILE_NAME ($tile_dir)"
+          for plugin_dir in ${{ steps.detect.outputs.dirs }}; do
+            PLUGIN_NAME=$(basename "$plugin_dir")
+            echo "::group::Linting $PLUGIN_NAME ($plugin_dir)"
 
             EXIT_CODE=0
-            OUTPUT=$(tessl skill lint "$tile_dir" 2>&1) || EXIT_CODE=$?
+            OUTPUT=$(tessl plugin lint "$plugin_dir" 2>&1) || EXIT_CODE=$?
             echo "$OUTPUT"
             echo "::endgroup::"
 
             WARN_COUNT=$(echo "$OUTPUT" | grep -c '^⚠' || true)
             TOTAL_WARNINGS=$((TOTAL_WARNINGS + WARN_COUNT))
 
-            # ::warning:: annotation per tile with warnings (visible in run details)
+            # ::warning:: annotation per plugin with warnings (visible in run details)
             if [ "$WARN_COUNT" -gt 0 ]; then
-              echo "::warning::$TILE_NAME has $WARN_COUNT lint warning(s) — see job log or PR comment"
+              echo "::warning::$PLUGIN_NAME has $WARN_COUNT lint warning(s) — see job log or PR comment"
             fi
 
             if [ "$EXIT_CODE" -ne 0 ]; then
               FAIL=$((FAIL + 1))
-              echo "| $TILE_NAME | $WARN_COUNT warnings | ❌ error |" >> "$SUMMARY_FILE"
-              echo "  ❌ $TILE_NAME: lint failed (exit code $EXIT_CODE)" >> "$ERRORS_FILE"
+              echo "| $PLUGIN_NAME | $WARN_COUNT warnings | ❌ error |" >> "$SUMMARY_FILE"
+              echo "  ❌ $PLUGIN_NAME: lint failed (exit code $EXIT_CODE)" >> "$ERRORS_FILE"
               {
-                echo "### ❌ \`$TILE_NAME\` — lint failed"
+                echo "### ❌ \`$PLUGIN_NAME\` — lint failed"
                 echo ""
                 echo '```'
                 echo "$OUTPUT"
@@ -162,10 +169,10 @@ jobs:
             else
               PASS=$((PASS + 1))
               if [ "$WARN_COUNT" -gt 0 ]; then
-                echo "| $TILE_NAME | $WARN_COUNT warnings | ✅ |" >> "$SUMMARY_FILE"
+                echo "| $PLUGIN_NAME | $WARN_COUNT warnings | ✅ |" >> "$SUMMARY_FILE"
                 {
                   echo "<details>"
-                  echo "<summary>⚠️ <strong><code>$TILE_NAME</code></strong> — $WARN_COUNT warning(s)</summary>"
+                  echo "<summary>⚠️ <strong><code>$PLUGIN_NAME</code></strong> — $WARN_COUNT warning(s)</summary>"
                   echo ""
                   echo '```'
                   echo "$OUTPUT"
@@ -174,8 +181,8 @@ jobs:
                   echo ""
                 } >> "$COMMENT_FILE"
               else
-                echo "| $TILE_NAME | clean | ✅ |" >> "$SUMMARY_FILE"
-                echo "✅ \`$TILE_NAME\` — clean" >> "$COMMENT_FILE"
+                echo "| $PLUGIN_NAME | clean | ✅ |" >> "$SUMMARY_FILE"
+                echo "✅ \`$PLUGIN_NAME\` — clean" >> "$COMMENT_FILE"
                 echo "" >> "$COMMENT_FILE"
               fi
             fi
@@ -185,10 +192,10 @@ jobs:
 
           # GitHub Actions step summary
           {
-            echo "## Skill Lint"
+            echo "## Plugin Lint"
             echo ""
-            echo "| Tile | Status | Result |"
-            echo "|------|--------|--------|"
+            echo "| Plugin | Status | Result |"
+            echo "|--------|--------|--------|"
             cat "$SUMMARY_FILE"
             echo "| **Total** | **$PASS/$TOTAL passed** | $([ "$FAIL" -eq 0 ] && echo '✅' || echo '❌') |"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -198,11 +205,11 @@ jobs:
             echo ""
             echo "---"
             if [ "$FAIL" -gt 0 ]; then
-              echo "**$FAIL tile(s) failed lint**, $TOTAL_WARNINGS warning(s) across $TOTAL tile(s) checked."
+              echo "**$FAIL plugin(s) failed lint**, $TOTAL_WARNINGS warning(s) across $TOTAL plugin(s) checked."
             elif [ "$TOTAL_WARNINGS" -gt 0 ]; then
-              echo "✅ All $TOTAL tile(s) lint passed with $TOTAL_WARNINGS warning(s) total."
+              echo "✅ All $TOTAL plugin(s) lint passed with $TOTAL_WARNINGS warning(s) total."
             else
-              echo "✅ All $TOTAL tile(s) clean."
+              echo "✅ All $TOTAL plugin(s) clean."
             fi
             echo ""
             echo "_Updated by [\`tessl-lint\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) for commit ${GITHUB_SHA:0:7}._"
@@ -211,7 +218,7 @@ jobs:
           # stdout summary
           echo ""
           echo "============================="
-          echo "  Skill Lint Summary"
+          echo "  Plugin Lint Summary"
           echo "============================="
           echo "  Total:    $TOTAL"
           echo "  Passed:   $PASS"
@@ -219,7 +226,7 @@ jobs:
           echo "  Warnings: $TOTAL_WARNINGS"
           if [ -s "$ERRORS_FILE" ]; then
             echo ""
-            echo "  Failed tiles:"
+            echo "  Failed plugins:"
             cat "$ERRORS_FILE"
           fi
           echo "============================="
@@ -245,6 +252,6 @@ jobs:
           fi
 
           if [ "$FAIL" -gt 0 ]; then
-            echo "::error::$FAIL tile(s) failed lint"
+            echo "::error::$FAIL plugin(s) failed lint"
             exit 1
           fi
