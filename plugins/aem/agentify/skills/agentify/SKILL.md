@@ -9,6 +9,7 @@ description: >
   "agentify", "make AI native", "set up agent files", "add AGENTS.md /
   CLAUDE.md", "make this repo agent-ready". Works across all repo types:
   Source, Packaging, Infra, Multi-module, Monorepo, Docs, LLM-app, Service.
+license: Apache-2.0
 tools: Bash, Read, Edit, Write, Glob, Grep
 ---
 
