@@ -99,22 +99,26 @@ async function portIn(srcDir, target) {
     if (!existsSync(from)) { missing.push(rel); continue; }
     const to = path.join(target, rel);
     // head.html special case: deploy Step 3 § Favicon adds exactly one
-    // `<link rel="icon" href="/favicon.<ext>">` line for non-.ico formats,
+    // `<link rel="icon" href="/favicon.<ext>">` tag for non-.ico formats,
     // and re-running bootstrap (the documented recovery path) would blind-
     // overwrite it with the stock head.html — nothing downstream re-verifies
-    // head.html. Preserve any existing favicon link line(s) and re-inject
-    // them after the copy (idempotent: identical lines are not duplicated).
-    let faviconLines = [];
+    // head.html. Preserve any existing icon link TAG(S) — matched as complete
+    // <link ...> tags over the whole file (a tag may span lines; a line-based
+    // filter re-injects an unterminated fragment), rel covering icon /
+    // shortcut icon / apple-touch-icon — and re-inject them after the copy.
+    // Only complete matched tags are ever injected (idempotent: identical
+    // trimmed tags are not duplicated).
+    let faviconTags = [];
     if (rel === 'head.html' && existsSync(to)) {
-      faviconLines = (await readFile(to, 'utf8')).split('\n')
-        .map((l) => l.trim())
-        .filter((l) => /<link\b[^>]*\brel=["']icon["']/i.test(l));
+      faviconTags = ((await readFile(to, 'utf8')).match(/<link\b[^>]*>/gi) || [])
+        .filter((t) => /\brel=["'][^"']*icon[^"']*["']/i.test(t))
+        .map((t) => t.trim());
     }
     await cp(from, to, { recursive: true, force: true });
-    if (faviconLines.length) {
+    if (faviconTags.length) {
       let head = await readFile(to, 'utf8');
-      const have = new Set(head.split('\n').map((l) => l.trim()));
-      const inject = faviconLines.filter((l) => !have.has(l));
+      const have = new Set((head.match(/<link\b[^>]*>/gi) || []).map((t) => t.trim()));
+      const inject = faviconTags.filter((t) => !have.has(t));
       if (inject.length) {
         if (head.length && !head.endsWith('\n')) head += '\n';
         head += `${inject.join('\n')}\n`;

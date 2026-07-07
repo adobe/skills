@@ -75,12 +75,15 @@ regression check instead of a debugging tool.
    five files — `capture-content.mjs` and `dom-equality.mjs` import
    `source-normalize.mjs` as a sibling) byte-identical to
    `stardust/scripts/reskin/`, **and** `skills/diff/scripts/
-   live-session.mjs` to `stardust/scripts/diff/` — the live-hitting
-   reskin scripts (capture-content, dom-equality, donor-probe)
-   resolve ALL live-target hardening (real-Chrome UA + standard
-   headers, challenge detection, headed-stealth escalation) from it,
-   looking in `../diff/` next to `../reskin/`, so keep the two dirs
-   siblings. Run the copies.
+   live-session.mjs` to `stardust/scripts/diff/` — every reskin gate
+   script (capture-content, dom-equality, donor-probe, **and**
+   slot-coverage) imports it unconditionally at startup, regardless
+   of target type: without the copy each one exits 2 immediately,
+   even for `--help` or a local-file `--rendered` target. It supplies
+   ALL live-target hardening (real-Chrome UA + standard headers,
+   challenge detection, headed-stealth escalation), resolved from
+   `../diff/` next to `../reskin/`, so keep the two dirs siblings.
+   Run the copies.
 4. **Origin collision** — if `stardust/state.json` records a different
    `site.originUrl`, stop and ask before mixing sites, per
    `../extract/SKILL.md` § Setup.

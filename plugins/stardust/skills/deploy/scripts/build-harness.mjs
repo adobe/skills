@@ -18,10 +18,11 @@
  * /scripts/scripts.js, body = <main> with metadata removed and every absolute
  * .../img/ (or http://localhost:PORT/img/) <img src> rewritten root-relative.
  * The favicon link derives from what actually shipped (deploy Step 3
- * § Favicon is format-preserving — favicon.<ext>): exactly ONE link for the
- * repo-root favicon.{ico,svg,png} that exists, or `href="data:,"` when none
- * does — zero favicon requests either way (probe determinism, no guaranteed
- * 404 per load).
+ * § Favicon is format-preserving — favicon.<ext>): exactly ONE link,
+ * mirroring the icon href in <root>/head.html when present (that line is
+ * what shipped), else the repo-root favicon.{ico,svg,png} that exists, or
+ * `href="data:,"` when none does — zero favicon requests either way (probe
+ * determinism, no guaranteed 404 per load).
  */
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
@@ -77,14 +78,27 @@ if (lead.startsWith('</div>')) {
   process.stderr.write('WARN: harness <main> starts with an orphan </div> — metadata strip mis-balanced.\n');
 }
 
-// 5. favicon: emit ONE link matching the favicon file the repo actually ships
-// (deploy Step 3 § Favicon preserves the source format — .ico/.svg/.png, no
-// fixed pair). Hardcoding two links guaranteed ≥1 404 per load and showed
-// nothing on PNG sites. With no favicon at all, the data: no-op keeps the
-// harness at zero favicon requests (the probe-determinism property the old
-// hardcoded line existed for).
-const faviconExt = ['ico', 'svg', 'png'].find((e) => existsSync(join(root, `favicon.${e}`)));
-const faviconLink = faviconExt ? `<link rel="icon" href="/favicon.${faviconExt}">` : '<link rel="icon" href="data:,">';
+// 5. favicon: emit ONE link matching the favicon that actually shipped.
+// Authority order: (a) the icon link deploy Step 3 § Favicon wrote into
+// <root>/head.html — that href IS what ships, so mirror it (a bare
+// existence probe would link a stale boilerplate favicon.ico even when the
+// deploy shipped favicon.svg/png alongside it); (b) no head.html icon link →
+// file existence, ico first (an ico-only site has no head.html line by
+// design — /favicon.ico is the browser default); (c) nothing → the data:
+// no-op keeps the harness at zero favicon requests (probe determinism, no
+// guaranteed 404 per load).
+let faviconLink = null;
+const headFile = join(root, 'head.html');
+if (existsSync(headFile)) {
+  const head = readFileSync(headFile, 'utf8');
+  const iconTag = (head.match(/<link\b[^>]*>/gi) || []).find((t) => /\brel=["'][^"']*icon[^"']*["']/i.test(t));
+  const href = iconTag && iconTag.match(/\bhref=["']([^"']+)["']/i);
+  if (href) faviconLink = `<link rel="icon" href="${href[1]}">`;
+}
+if (!faviconLink) {
+  const faviconExt = ['ico', 'svg', 'png'].find((e) => existsSync(join(root, `favicon.${e}`)));
+  faviconLink = faviconExt ? `<link rel="icon" href="/favicon.${faviconExt}">` : '<link rel="icon" href="data:,">';
+}
 
 const doc = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>QA harness</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">

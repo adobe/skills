@@ -218,7 +218,14 @@ async function main() {
       // but window.scrollTo is a NO-OP — window.scrollY stays put, every chunk
       // captures the top viewport, and the rows below stitch as zero-filled
       // black: a silently fictitious pixel diff. Fail loud instead.
-      if (prevActualY !== null && actualY <= prevActualY && target - actualY > opts.vh / 2) {
+      // Threshold is a small fractional-scroll tolerance (4px), NOT a material
+      // shortfall (vh/2): a jacked page with settled height between vh+1 and
+      // 1.5*vh puts chunk 2's clamped target at <= vh/2, which a vh/2 bar can
+      // never catch — those pages emitted silent black bands. On a legit page
+      // actualY reaches the clamped target (the last chunk's totalH - vh is
+      // reachable by construction), so the no-advance condition stays false;
+      // the 4px slack absorbs fractional-pixel scroll rounding.
+      if (prevActualY !== null && actualY <= prevActualY && target - actualY > 4) {
         throw new Error(`scroll stall at chunk target ${target}px: window scroll is a no-op (window.scrollY stuck at ${actualY}px) while the document reports ${totalH}px — likely an inner scroll container / scroll-jacked layout (html/body overflow:hidden). Stitched capture cannot measure this page class (capturing the inner scroller is future work): record the page as gate-blocked for the pixel probe and rely on content-diff/visual-diff.`);
       }
       prevActualY = actualY;
