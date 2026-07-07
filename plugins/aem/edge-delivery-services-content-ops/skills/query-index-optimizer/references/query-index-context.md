@@ -2,7 +2,7 @@
 
 > Sources of truth: [Indexing](https://www.aem.live/developer/indexing) and
 > [Spreadsheets: offset and limit](https://www.aem.live/developer/spreadsheets#offset-and-limit).
-> Verify against these docs before relying on any claim below — EDS evolves.
+> Verify against these docs before relying on any claim below, because EDS evolves.
 
 ## How the EDS Query Index Works
 
@@ -10,11 +10,11 @@ The query index is the primary mechanism for blocks and components to discover a
 
 ### Key Concepts
 
-- **Index configuration** — Managed with the [Index Admin tool](https://www.aem.live/developer/indexing) (or the Admin API "Update Indexing Configuration" endpoint), not a file committed to the GitHub repo. The definition specifies which properties to index and how they are sourced (from metadata, headings, or content).
-- **The index endpoint** — `query-index.json` is the **default** name; a site can define additional, differently-named indices. Each returns an array of page entries with the indexed properties.
-- **Consumers** — Blocks and components that fetch the index to build dynamic lists: navigation, footer, card lists, search results, recent posts, tag-filtered collections.
-- **Default limit** — The endpoint returns a maximum of **1000** entries by default. Use the `limit` and `offset` query parameters to paginate beyond that (see [offset and limit](https://www.aem.live/developer/spreadsheets#offset-and-limit)).
-- **Index freshness** — Pages are indexed **when they are published** (whether via Sidekick or programmatically — the method does not matter). Previewing a page does not change the published index.
+- **Index configuration**: Managed with the [Index Admin tool](https://www.aem.live/developer/indexing) (or the Admin API "Update Indexing Configuration" endpoint), not a file committed to the GitHub repo. The definition specifies which properties to index and how they are sourced (from metadata, headings, or content).
+- **The index endpoint**: `query-index.json` is the **default** name; a site can define additional, differently-named indices. Each returns an array of page entries with the indexed properties.
+- **Consumers**: Blocks and components that fetch the index to build dynamic lists: navigation, footer, card lists, search results, recent posts, tag-filtered collections.
+- **Default limit**: The endpoint returns a maximum of **1000** entries by default. Use the `limit` and `offset` query parameters to paginate beyond that (see [offset and limit](https://www.aem.live/developer/spreadsheets#offset-and-limit)).
+- **Index freshness**: Pages are indexed **when they are published** (whether via Sidekick or programmatically; the method does not matter). Previewing a page does not change the published index.
 
 ### Common Properties
 
