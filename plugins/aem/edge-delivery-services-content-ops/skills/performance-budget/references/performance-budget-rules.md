@@ -28,10 +28,12 @@ The 100KB budget is the total transfer size of all resources that must load befo
 
 ## Recommended Allocation
 
+> The **100KB total budget** and the **E-L-D phase model** are the documented EDS performance model (see [keeping-it-100](https://www.aem.live/developer/keeping-it-100)). The per-resource sub-budgets and the letter grades below are this skill's own working heuristics for *distributing* that budget — not official Adobe limits. Treat them as guidance for spotting outliers, not as pass/fail thresholds.
+
 | Resource Category | Target | Maximum | Notes |
 |-------------------|--------|---------|-------|
 | HTML document | 10-15 KB | 25 KB | Minimal DOM, no inline scripts |
-| Core CSS (aem.css) | 3-5 KB | 8 KB | Framework styles only |
+| Main CSS (styles.css) | 3-5 KB | 8 KB | Site stylesheet |
 | Block CSS (eager) | 1-3 KB per block | 5 KB total | Only first-section blocks |
 | Core JS (aem.js) | 5-8 KB | 12 KB | Framework scripts only |
 | Custom JS (scripts.js) | 3-5 KB | 8 KB | Site-level customization |
@@ -53,7 +55,7 @@ The 100KB budget is the total transfer size of all resources that must load befo
 ## E-L-D Phase Rules
 
 ### Eager (counts against budget)
-- aem.css and aem.js always load eager
+- styles.css and aem.js always load eager
 - Block CSS/JS for blocks in the first visible section
 - Images with loading="eager" (first-section images)
 - Preloaded fonts
@@ -69,15 +71,16 @@ The 100KB budget is the total transfer size of all resources that must load befo
 - Non-essential JavaScript
 - Loads 3+ seconds after page load via scripts/delayed.js
 
-## Image Optimization Targets
+## Images: What EDS Optimizes for You
 
-| Format | Quality | Use Case | Expected Size (hero) |
-|--------|---------|----------|---------------------|
-| WebP | 80 | General photos | 25-40 KB |
-| AVIF | 60 | Modern browsers | 15-30 KB |
-| JPEG | 80 | Fallback | 35-60 KB |
-| PNG | — | Graphics with transparency | Varies widely |
-| SVG | — | Icons, logos | Under 5 KB |
+Images that come through **content** are optimized automatically. EDS renders a full `<picture>` element with the resolutions needed for desktop and mobile, and in modern formats (WebP) for browsers that support them — so content images are delivered as WebP at responsive sizes regardless of the source format (JPEG, PNG, etc.). Do not recommend converting or resizing content images; that duplicates the media pipeline's work.
+
+Manual optimization applies only to images bundled in **code** — icons, logos, and decorative graphics shipped in a block or theme rather than authored as content:
+
+- Use SVG for icons and logos, and keep them small (typically under 5 KB).
+- Inline tiny SVGs into CSS/JS where practical; otherwise reference them as external files that load in the correct phase.
+
+To reduce the byte cost of a heavy content LCP image, fix it at the source: upload a source image not far larger than its largest rendered size, and have the block request an appropriate width — don't hand-encode the delivered image.
 
 ## Font Optimization Rules
 
@@ -92,7 +95,7 @@ The 100KB budget is the total transfer size of all resources that must load befo
 
 | Violation | Typical Cost | Fix |
 |-----------|-------------|-----|
-| Unoptimized hero image (PNG/JPEG) | +30-80 KB | Convert to WebP, resize to viewport width |
+| Oversized source image for the LCP hero | +30-80 KB | Upload a smaller source and/or have the block request a smaller width — EDS already delivers content images as WebP, so do not convert format by hand |
 | Google Tag Manager in head | +30-50 KB | Move to delayed.js |
 | Full font family preloaded | +50-150 KB | Subset and limit to 1-2 weights |
 | Below-fold block CSS loading eager | +5-15 KB | Verify aem.js lazy-loads correctly |

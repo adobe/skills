@@ -49,22 +49,21 @@ curl -s -o /dev/null -w "%{size_download}" "https://<branch>--<repo>--<owner>.ae
 curl -s "https://<branch>--<repo>--<owner>.aem.live<path>"
 ```
 
-In EDS, the HTML is intentionally minimal — typically 10-20KB. If it exceeds 30KB, investigate why (inline styles, excessive DOM nodes, server-side includes).
+In EDS, the HTML is intentionally minimal — typically 10-20KB. EDS server-renders the HTML from the source document, so if it exceeds 30KB, investigate why (inline styles, excessive DOM nodes, or an overly long source document).
 
 ---
 
 ## Step 2: Identify the LCP Element
 
-In EDS pages, the LCP element is typically one of:
+Identify the LCP element from measurement, not by guessing from the page structure. The LCP element depends on viewport size and the loading sequence, and in EDS it may only be settled after the first block has processed its DOM changes. Use one of these reliable sources:
 
-1. **Hero image** — The first image in the first section, especially in a hero or columns block.
-2. **Large heading** — An `<h1>` or `<h2>` in the first section, if no image is present.
-3. **Background image** — A CSS background-image on the first section.
+1. **Chrome DevTools** — Record a page load in the Performance panel (with mobile + Slow 4G throttling) and read the LCP marker in the Timings track; it reports the exact LCP element and its timing. The Lighthouse panel also lists it under "Largest Contentful Paint element."
+2. **RUM / Operational Telemetry** — EDS ships a RUM collection that records an `lcp` checkpoint when the Largest Contentful Paint has been made by the browser (usually the most prominent image on the page). Use the site's RUM Explorer to see the real LCP source across real devices.
 
-Examine the HTML to identify the first section (content before the first `<hr>` / section divider). The largest visual element in that section is the likely LCP candidate.
+In most EDS pages the LCP is the hero image at the top, but confirm it with one of the sources above rather than assuming.
 
 If the LCP element is an image, record:
-- The image URL and format (JPEG, PNG, WebP, AVIF).
+- The image URL and served format (EDS delivers content images as WebP via the media pipeline — see Step 3).
 - Whether it has explicit `width` and `height` attributes.
 - Whether it has `loading="eager"` (required for above-fold images in EDS).
 - The image file size (fetch the image headers to get `Content-Length`).
@@ -79,7 +78,7 @@ List every resource that must load before the LCP element can render. Check each
 - Size in bytes (from Step 1).
 
 ### CSS (Eager Phase)
-- `aem.css` — The core EDS stylesheet. Fetch and measure: `https://<domain>/styles/aem.css`
+- `styles.css` — The site's main stylesheet. Fetch and measure: `https://<domain>/styles/styles.css`
 - Block CSS for above-fold blocks — For each block in the first section, check for its CSS: `https://<domain>/blocks/<block-name>/<block-name>.css`
 - Inline styles — Any `<style>` tags in the HTML head.
 
@@ -104,7 +103,7 @@ Sum all resources identified in Step 3 into a budget table:
 | Resource | URL | Size (KB) | Phase | Notes |
 |----------|-----|-----------|-------|-------|
 | HTML document | /page-path | 14.2 | Eager | |
-| aem.css | /styles/aem.css | 3.8 | Eager | |
+| styles.css | /styles/styles.css | 3.8 | Eager | |
 | hero block CSS | /blocks/hero/hero.css | 1.2 | Eager | |
 | aem.js | /scripts/aem.js | 8.4 | Eager | |
 | scripts.js | /scripts/scripts.js | 5.1 | Eager | |
@@ -145,8 +144,9 @@ Verify that resources are loading in the correct phase:
 For each budget violation or E-L-D compliance issue, provide a specific fix:
 
 ### Image Optimization
-- Target under 40KB for the LCP hero image; recommend format changes (JPEG→WebP→AVIF) and viewport-appropriate dimensions.
-- Note: EDS auto-optimizes images via the media pipeline, but very large source images may still exceed the budget.
+- EDS automatically serves content images as WebP at responsive sizes via the media pipeline, so do not recommend converting or resizing images that come through content — that duplicates work EDS already does.
+- If the LCP image is still heavy, fix it at the source: upload a source image not far larger than its largest rendered size, and make sure the block requests an appropriate width. Do not hand-encode the delivered image.
+- Manual format/size optimization applies only to images bundled in code (block/theme icons, logos) — prefer SVG for those.
 
 ### Script Optimization
 - Move third-party scripts from eager to delayed phase.
@@ -160,7 +160,7 @@ For each budget violation or E-L-D compliance issue, provide a specific fix:
 
 ### Font Optimization
 - Subset fonts to the characters needed, limit preloaded weights to 1-2, and use `woff2`.
-- See references/performance-budget-rules.md for full font and image optimization targets.
+- See references/performance-budget-rules.md for full font optimization targets and guidance on which images EDS optimizes for you.
 
 ---
 
@@ -184,6 +184,19 @@ The highest-impact changes, with estimated byte savings for each.
 - [ ] Above-fold images set to eager
 - [ ] Fonts use font-display: swap
 - [ ] No render-blocking resources outside the eager set
+
+---
+
+## Enforcing the Budget in CI
+
+A one-off audit drifts as new blocks and scripts are added, so codify the budget as a check on every change. Run it against the EDS **preview** URL for the branch (`https://<branch>--<repo>--<owner>.aem.page<path>`), which mirrors production delivery.
+
+A practical setup is a GitHub Action on pull requests that fails when the budget regresses:
+
+- **Lighthouse CI** (`treosh/lighthouse-ci-action`) pointed at the preview URL, asserting on `largest-contentful-paint` (e.g. `maxNumericValue: 2500`) and, optionally, resource byte totals. Lighthouse CI can also enforce a `budget.json` performance budget broken down by resource type.
+- **PageSpeed Insights API** — call the PSI endpoint for the preview URL in a workflow step and fail if the mobile LCP or performance score falls below a threshold. This runs the same Lighthouse lab test without self-hosting.
+
+Run the check against a mobile profile with throttling (the conditions EDS targets) and treat a regression past the 100KB / 2.5s LCP threshold as a failing check. Keep this skill's manual, byte-level audit as the companion to the automated gate.
 
 ---
 
