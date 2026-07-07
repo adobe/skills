@@ -15,10 +15,11 @@ permissions:
 jobs:
   tessl-review:
     runs-on: ubuntu-latest
-    # Gate fork PR runs behind the `eval` environment's required reviewers so a
-    # maintainer approves before TESSL_TOKEN reaches PR-supplied content. An
-    # empty environment name means push-to-main reviews still run unattended.
-    environment: ${{ github.event_name == 'pull_request_target' && 'eval' || '' }}
+    # Gate only PRs from forks behind the `eval` environment's required reviewers,
+    # so a maintainer approves before TESSL_TOKEN reaches untrusted PR content.
+    # Same-repo PRs (maintainers / anyone with write access push branches here)
+    # and push-to-main get an empty environment => no approval, run unattended.
+    environment: ${{ (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository) && 'eval' || '' }}
     steps:
       # Fork PRs: review the merged result via the PR merge ref.
       # Push to main: use the pushed commit.
