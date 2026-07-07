@@ -73,11 +73,14 @@ const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = await i
 
 function parseArgs(argv) {
   const opts = { widths: '1440,360', 'wait-until': 'domcontentloaded' };
+  // Enumerated value-taking flags — an unknown --flag (e.g. a typo like
+  // --tokns) must be rejected, not silently stored and defaulted.
+  const VALUE_FLAGS = new Set(['tokens', 'rendered', 'spec', 'report', 'shot', 'widths', 'ua', 'wait-until', 'locale']);
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
     else if (a === '--headed') opts.headed = true;
-    else if (a.startsWith('--')) opts[a.slice(2)] = argv[++i];
+    else if (a.startsWith('--') && VALUE_FLAGS.has(a.slice(2))) opts[a.slice(2)] = argv[++i];
     else { console.error(`[donor-probe] unknown arg: ${a}`); process.exit(2); }
   }
   return opts;
@@ -166,8 +169,10 @@ const renderedUrl = toUrl(args.rendered);
 if (isLiveHttpUrl(renderedUrl)) {
   // A challenge/blocked interstitial must fail loud — its computed styles
   // are not the rendered page's.
+  // solveWindow only under --headed: headless clearance never lands, and the
+  // solve loop would spend the Akamai block budget (1 hit vs up to 4).
   try {
-    await gotoLive(page, renderedUrl, { waitUntil: args['wait-until'], timeoutMs: 60000, settleMs: 0 });
+    await gotoLive(page, renderedUrl, { waitUntil: args['wait-until'], timeoutMs: 60000, settleMs: 0, solveWindow: !!args.headed });
   } catch (e) {
     console.error(`[donor-probe] ${e.message}`);
     await browser.close();

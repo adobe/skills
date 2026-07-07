@@ -9,14 +9,22 @@
  * naive `…</div></div>` match stops a tag too early and leaves an orphan </div>
  * that corrupts the harness DOM — #46). This does it with balanced tag counting.
  *
- * Usage: node skills/deploy/scripts/build-harness.mjs <contentFile> <outHarness>
+ * Usage: node skills/deploy/scripts/build-harness.mjs <contentFile> <outHarness> [--root <dir>]
  *   e.g. node skills/deploy/scripts/build-harness.mjs content/snowflake-blocks/test-12.html qa/test-12.html
+ *   --root <dir>  repo root the harness is served from (favicon detection;
+ *                 default: cwd)
  *
  * Output: a full HTML doc loading /styles/styles.css + /scripts/ak.js +
  * /scripts/scripts.js, body = <main> with metadata removed and every absolute
  * .../img/ (or http://localhost:PORT/img/) <img src> rewritten root-relative.
+ * The favicon link derives from what actually shipped (deploy Step 3
+ * § Favicon is format-preserving — favicon.<ext>): exactly ONE link for the
+ * repo-root favicon.{ico,svg,png} that exists, or `href="data:,"` when none
+ * does — zero favicon requests either way (probe determinism, no guaranteed
+ * 404 per load).
  */
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { join } from 'path';
 
 // Return the index just past the </div> that closes the <div> starting at `start`.
 function matchDivEnd(s, start) {
@@ -31,9 +39,16 @@ function matchDivEnd(s, start) {
   return s.length;
 }
 
-const [, , inFile, outFile] = process.argv;
+const argv = process.argv.slice(2);
+let root = process.cwd();
+const pos = [];
+for (let i = 0; i < argv.length; i++) {
+  if (argv[i] === '--root') root = argv[++i];
+  else pos.push(argv[i]);
+}
+const [inFile, outFile] = pos;
 if (!inFile || !outFile) {
-  process.stderr.write('usage: node skills/deploy/scripts/build-harness.mjs <contentFile> <outHarness>\n');
+  process.stderr.write('usage: node skills/deploy/scripts/build-harness.mjs <contentFile> <outHarness> [--root <dir>]\n');
   process.exit(1);
 }
 let html = readFileSync(inFile, 'utf8');
@@ -62,12 +77,21 @@ if (lead.startsWith('</div>')) {
   process.stderr.write('WARN: harness <main> starts with an orphan </div> — metadata strip mis-balanced.\n');
 }
 
+// 5. favicon: emit ONE link matching the favicon file the repo actually ships
+// (deploy Step 3 § Favicon preserves the source format — .ico/.svg/.png, no
+// fixed pair). Hardcoding two links guaranteed ≥1 404 per load and showed
+// nothing on PNG sites. With no favicon at all, the data: no-op keeps the
+// harness at zero favicon requests (the probe-determinism property the old
+// hardcoded line existed for).
+const faviconExt = ['ico', 'svg', 'png'].find((e) => existsSync(join(root, `favicon.${e}`)));
+const faviconLink = faviconExt ? `<link rel="icon" href="/favicon.${faviconExt}">` : '<link rel="icon" href="data:,">';
+
 const doc = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>QA harness</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="/styles/styles.css">
 <script src="/scripts/ak.js" type="module"></script>
 <script src="/scripts/scripts.js" type="module"></script>
-<link rel="icon" href="/favicon.svg"><link rel="icon" href="/favicon.ico"></head>
+${faviconLink}</head>
 <body>
 ${main}
 </body></html>`;

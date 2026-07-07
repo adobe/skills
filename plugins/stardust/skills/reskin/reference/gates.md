@@ -93,8 +93,19 @@ localizes any failure to a named slot. It asserts, from the model:
   source garbage — fidelity over repair; flag, don't fix
   (`reference/mapping-brief.md` § Flag, don't fix).
 
+Live `--rendered` targets (a staged deploy on a real host) navigate
+via the same shared `live-session.mjs` hardening as its siblings
+(real-Chrome UA + standard headers, `domcontentloaded`, challenge
+detection, webdriver spoof; `--ua` / `--wait-until` / `--headed` /
+`--locale` flags). A byte-adjacent gate must never measure a
+challenge interstitial or an error page: a bot challenge exits **3**
+(never measured; escalate with `--headed`), a non-challenge
+HTTP ≥ 400 exits 2. Local/file targets keep the legacy `networkidle`
+path — rendered page files behave as before.
+
 **Pass bar (content gate):** dom-equality exit 0 AND slot-coverage
-exit 0. No partial credit — one dropped CTA is a fail.
+exit 0. No partial credit — one dropped CTA is a fail. Exit codes:
+0 pass, 1 fail, 2 setup error, 3 bot challenge / blocked live target.
 
 #### Image paint — a PASSing image check is not a rendering image
 

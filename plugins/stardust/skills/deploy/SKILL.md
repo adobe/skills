@@ -316,7 +316,10 @@ Extract captures the source site's favicon at
    `_eds/code/favicon.<ext>` instead — the host publisher pushes it with the
    code tree and injects the `head.html` link deterministically.
 
-If extract captured no favicon, skip this step — never invent one.
+If extract captured no favicon, skip this step — never invent one. A
+re-run of `bootstrap-authorkit.mjs` (the documented recovery path)
+preserves this favicon link: portIn re-injects any existing
+`<link rel="icon">` line after overwriting `head.html`.
 
 ### 4. Self-host fonts and minimize CLS — never put font loads in `head.html`
 

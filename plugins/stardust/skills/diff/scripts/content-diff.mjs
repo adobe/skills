@@ -200,7 +200,9 @@ async function grab(browser, url, opts, prof) {
   // BotChallengeError (exit 3), it is never measured as the source. A plain
   // HTTP error side is MEASURED (advisory contract): a 404 build is normal on
   // aem.page before preview propagation — the flags carry the signal, exit 0.
-  await gotoLive(page, url, { waitUntil: opts.waitUntil || defaultWaitUntil(url), timeoutMs: 60000, settleMs: 0, httpError: 'measure' });
+  // solveWindow only under --headed: headless clearance never lands, and the
+  // solve loop would spend the Akamai block budget (1 hit vs up to 4).
+  await gotoLive(page, url, { waitUntil: opts.waitUntil || defaultWaitUntil(url), timeoutMs: 60000, settleMs: 0, httpError: 'measure', solveWindow: opts.headed });
   await page.waitForTimeout(1500);
   // late-modal poll window only on live targets — local prototypes' overlays
   // are not timed third-party scripts, they render immediately.

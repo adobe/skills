@@ -13,7 +13,10 @@
  * (do not import crawl.mjs — it is a crawler, this is a measurement session):
  *   - challenge/interstitial detection on the entry response
  *     (cf-mitigated: challenge; 403/429/503 + an edge/CDN signature);
- *   - the challenge-solve wait+reload window before declaring a hard block;
+ *   - the challenge-solve wait+reload window before declaring a hard block —
+ *     under STEALTH-HEADED sessions only (gotoLive `solveWindow`): headless
+ *     clearance never lands, and the loop's extra hits would spend the
+ *     ~3–4-request Akamai block budget before --headed escalation;
  *   - headed real-Chrome stealth escalation (`--disable-blink-features=
  *     AutomationControlled`, dropped `--enable-automation`, navigator.webdriver
  *     spoof on EVERY context — the challenge re-fires per context).
@@ -174,11 +177,20 @@ export function isChallengeResponse(response) {
 
 /**
  * Navigate + settle, with the full fail-loud contract:
- *   - challenge/blocked interstitial → the challenge-solve window (wait +
- *     reload, 3 attempts — Cloudflare's non-interactive challenge sets its
- *     clearance cookie in that window under a stealth-headed session), then
- *     THROW BotChallengeError. A challenge must NEVER be silently measured
- *     as the source (the rimowa trap) — regardless of `httpError`.
+ *   - challenge/blocked interstitial → per `solveWindow`:
+ *       false (default — plain headless): THROW BotChallengeError after the
+ *         FIRST challenge-classified response, 1 hit total. Clearance only
+ *         lands under a stealth-headed session (module docstring), so a
+ *         headless solve loop just burns the documented ~3–4-request Akamai
+ *         IP-block budget (source-fidelity-gate.md § Hit minimization)
+ *         before the operator can escalate --headed.
+ *       true (set it when the browser came from launchStealthHeaded): run
+ *         the challenge-solve window first (wait + reload, 3 attempts —
+ *         Cloudflare's non-interactive challenge sets its clearance cookie
+ *         in that window under a stealth-headed session), THEN throw if
+ *         still challenged.
+ *     Either way a challenge must NEVER be silently measured as the source
+ *     (the rimowa trap) — regardless of `httpError`.
  *   - non-challenge entry status >= 400 → per `httpError`:
  *       'throw' (default): THROW LiveHTTPError. Measuring a 404/500 page is
  *         as false a measurement as measuring a challenge — the reskin byte
@@ -189,18 +201,23 @@ export function isChallengeResponse(response) {
  *         signal, exit stays 0).
  * Returns the response.
  */
-export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', timeoutMs = 60000, settleMs = 1200, httpError = 'throw' } = {}) {
+export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', timeoutMs = 60000, settleMs = 1200, httpError = 'throw', solveWindow = false } = {}) {
   let resp = await page.goto(url, { waitUntil, timeout: timeoutMs });
   if (!resp) {
     const err = new Error(`no response navigating to ${url} — network-level failure or non-HTTP navigation`);
     err.name = 'LiveNavigationError';
     throw err;
   }
-  // challenge-solve window (crawl.mjs clearChallenge semantics)
-  for (let attempt = 0; attempt < 3 && isChallengeResponse(resp); attempt += 1) {
-    await page.waitForTimeout(4000);
-    const reloaded = await page.reload({ waitUntil, timeout: timeoutMs }).catch(() => null);
-    if (reloaded) resp = reloaded;
+  // challenge-solve window (crawl.mjs clearChallenge semantics) — HEADED
+  // sessions only (solveWindow). In plain headless the clearance never
+  // lands, so the loop's up-to-3 extra hits are pure spent block budget:
+  // fail loud on the first challenge-classified response instead (1 hit).
+  if (solveWindow) {
+    for (let attempt = 0; attempt < 3 && isChallengeResponse(resp); attempt += 1) {
+      await page.waitForTimeout(4000);
+      const reloaded = await page.reload({ waitUntil, timeout: timeoutMs }).catch(() => null);
+      if (reloaded) resp = reloaded;
+    }
   }
   const marker = challengeMarker(resp);
   if (marker) {

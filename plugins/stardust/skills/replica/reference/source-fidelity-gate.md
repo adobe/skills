@@ -127,7 +127,11 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   (Akamai-class), take the live captures with `--headed` and treat further
   live hits as spent budget — the recorded failure mode (rimowa) was an
   IP-level block escalating within ~3–4 automated requests, after which
-  iteration 2's numbers measure the block, not the site.
+  iteration 2's numbers measure the block, not the site. A challenged
+  headless run costs exactly **1** hit: `gotoLive` throws
+  `BotChallengeError` on the first challenge-classified response (the
+  wait+reload solve window runs only under `--headed`, where clearance can
+  actually land) — so the block budget is still intact when you escalate.
 - **Media-density budget.** The ≤3-iteration convergence was validated on a
   typographic, low-image page (aesop.com). Image-dense commerce homes
   (recorded: carhartt ~130 imgs) spend iterations on media parity —

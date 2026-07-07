@@ -149,8 +149,10 @@ if (isLiveHttpUrl(opts.url)) {
   // Challenge/blocked interstitial or non-challenge HTTP >= 400 → loud
   // failure. A challenge page must NEVER be silently captured as the source:
   // the model built from it would gate the render against an interstitial.
+  // solveWindow only under --headed: headless clearance never lands, and the
+  // solve loop would spend the Akamai block budget (1 hit vs up to 4).
   try {
-    await gotoLive(page, opts.url, { waitUntil: opts.waitUntil, timeoutMs: 60000, settleMs: 0 });
+    await gotoLive(page, opts.url, { waitUntil: opts.waitUntil, timeoutMs: 60000, settleMs: 0, solveWindow: opts.headed });
   } catch (e) {
     console.error(`[capture-content] ${e.message}`);
     await browser.close();
@@ -208,6 +210,32 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
   }));
   const scopes = scopeDefs.map((d) => document.querySelector(d.sel));
   const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  // Case-insensitive locate that NEVER reuses an index across case-folded
+  // strings: some case folds change the string length — Turkish dotted
+  // capital İ (U+0130) lowercases to 'i' + U+0307, ONE UTF-16 unit becoming
+  // TWO — so an index found in haystack.toLowerCase(), applied to the
+  // unlowered haystack, is shifted and returns a corrupted slice
+  // ("İstanbul Hotels" + "Hotels" → "otels…" → orderedVerified:false → the
+  // sanctioned fallback silently drops the node). Instead: exact indexOf on
+  // the original first; else scan the ORIGINAL string's offsets, testing
+  // candidate windows of the needle's length ±1 (the fold can grow/shrink
+  // per İ-class char), accepting a slice only when the slice itself
+  // case-folds to the needle. Returns the verified slice (in the haystack's
+  // rendered case) or null. Dependency-free; O(n·m) worst case is fine at
+  // text-node sizes.
+  const ciFind = (hay, needle) => {
+    if (!hay || !needle) return null;
+    if (hay.indexOf(needle) >= 0) return needle;
+    const nLow = needle.toLowerCase();
+    for (let i = 0; i <= hay.length - needle.length + 1; i += 1) {
+      for (const len of [needle.length, needle.length + 1, needle.length - 1]) {
+        if (len <= 0 || i + len > hay.length) continue;
+        const cand = hay.slice(i, i + len);
+        if (cand.toLowerCase() === nLow) return cand;
+      }
+    }
+    return null;
+  };
   if (scopes.some((s) => !s)) {
     // Scope-discovery hint (F-D): a zero-output failure must carry the
     // evidence the discovery procedure needs — the largest-text-child chain
@@ -404,10 +432,12 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
               // labels ("Arrow right", "Play" — no innerText on SVG
               // elements) and any text the UA renders invisible — the ghost
               // nodes that made spec-compliant renderers fail the byte gate.
+              // Located via ciFind (never an index from a case-folded copy
+              // applied to the original — the İ U+0130 offset-shift trap).
               const pInner = typeof el.innerText === 'string' ? norm(el.innerText) : '';
-              const idx = pInner ? pInner.toLowerCase().indexOf(t.toLowerCase()) : -1;
-              if (idx < 0) continue; // absent from innerText → not in the byte reference → not a stream node
-              t = pInner.slice(idx, idx + t.length);
+              const slice = ciFind(pInner, t);
+              if (slice === null) continue; // absent from innerText → not in the byte reference → not a stream node
+              t = slice;
               out.push({
                 kind: 'text',
                 text: t,

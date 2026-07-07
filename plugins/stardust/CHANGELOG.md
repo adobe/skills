@@ -96,6 +96,17 @@ produced an 18-finding ledger; all skill-wrong findings are folded:
   live-session with a three-tier rule (localhost and `*.aem.page/.aem.live/
   .hlx.page/.hlx.live` → networkidle, other live → domcontentloaded) so
   deploy Step 10 never measures a half-decorated EDS page.
+- **PR-review P2/P3 fixes**: the challenge solve-window runs headed-only —
+  a challenged headless run now costs exactly 1 hit (was 4, the entire
+  recorded Akamai block budget) before exit 3; slot-coverage routes live
+  `--rendered` targets through live-session like its siblings (challenge →
+  exit 3, no more swallowed navigation errors); case-insensitive stream
+  matching no longer reuses indexes across case-folded strings (Turkish İ
+  class — corrupted stream bytes fixed at the source); bootstrap re-runs
+  preserve the favicon `<link>` when overwriting head.html (idempotent
+  re-injection); typo'd `--flags` now error loudly in dom-equality /
+  donor-probe / slot-coverage; the QA harness derives its favicon link from
+  the shipped `favicon.<ext>` (or keeps the request-free `data:,` no-op).
 
 ## 0.14.5 — crawler clears Cloudflare managed challenges
 

@@ -158,7 +158,9 @@ async function main() {
     const page = await ctx.newPage();
     // Challenge/blocked interstitial → loud BotChallengeError (exit 3); a
     // challenge page must never be stitched as if it were the source.
-    await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: opts.timeout, settleMs: 0 });
+    // solveWindow only under --headed: headless clearance never lands, and
+    // the solve loop would spend the Akamai block budget (1 hit vs up to 4).
+    await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: opts.timeout, settleMs: 0, solveWindow: opts.headed });
     await page.waitForTimeout(opts.wait);
     await dismissAndLog(page, url, opts);
 

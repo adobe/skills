@@ -97,7 +97,31 @@ async function portIn(srcDir, target) {
   for (const rel of [...PORT_FILES, ...PORT_DIRS]) {
     const from = path.join(srcDir, rel);
     if (!existsSync(from)) { missing.push(rel); continue; }
-    await cp(from, path.join(target, rel), { recursive: true, force: true });
+    const to = path.join(target, rel);
+    // head.html special case: deploy Step 3 § Favicon adds exactly one
+    // `<link rel="icon" href="/favicon.<ext>">` line for non-.ico formats,
+    // and re-running bootstrap (the documented recovery path) would blind-
+    // overwrite it with the stock head.html — nothing downstream re-verifies
+    // head.html. Preserve any existing favicon link line(s) and re-inject
+    // them after the copy (idempotent: identical lines are not duplicated).
+    let faviconLines = [];
+    if (rel === 'head.html' && existsSync(to)) {
+      faviconLines = (await readFile(to, 'utf8')).split('\n')
+        .map((l) => l.trim())
+        .filter((l) => /<link\b[^>]*\brel=["']icon["']/i.test(l));
+    }
+    await cp(from, to, { recursive: true, force: true });
+    if (faviconLines.length) {
+      let head = await readFile(to, 'utf8');
+      const have = new Set(head.split('\n').map((l) => l.trim()));
+      const inject = faviconLines.filter((l) => !have.has(l));
+      if (inject.length) {
+        if (head.length && !head.endsWith('\n')) head += '\n';
+        head += `${inject.join('\n')}\n`;
+        await writeFile(to, head);
+        log(`[bootstrap] head.html: preserved favicon link across the overwrite (${inject.join(' | ')})`);
+      }
+    }
     copied.push(rel);
   }
   return { copied, missing };

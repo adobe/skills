@@ -68,11 +68,14 @@ const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = await i
 
 function parseArgs(argv) {
   const opts = { 'source-scope': 'main', 'rendered-scope': 'main', 'wait-until': 'domcontentloaded' };
+  // Enumerated value-taking flags — an unknown --flag (e.g. a typo like
+  // --source-scpoe) must be rejected, not silently stored and defaulted.
+  const VALUE_FLAGS = new Set(['source', 'rendered', 'report', 'source-scope', 'rendered-scope', 'normalize', 'ua', 'wait-until', 'locale']);
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
     else if (a === '--headed') opts.headed = true;
-    else if (a.startsWith('--')) opts[a.slice(2)] = argv[++i];
+    else if (a.startsWith('--') && VALUE_FLAGS.has(a.slice(2))) opts[a.slice(2)] = argv[++i];
     else { console.error(`[dom-equality] unknown arg: ${a}`); process.exit(2); }
   }
   return opts;
@@ -117,8 +120,10 @@ async function capture(url, scopeList, normalize) {
     // The gate re-crawls the LIVE source here — a challenge/blocked
     // interstitial or an HTTP >= 400 page must fail loud, never be measured
     // as the source (the byte gate's correctness depends on it).
+    // solveWindow only under --headed: headless clearance never lands, and
+    // the solve loop would spend the Akamai block budget (1 hit vs up to 4).
     try {
-      await gotoLive(page, url, { waitUntil: args['wait-until'], timeoutMs: 60000, settleMs: 0 });
+      await gotoLive(page, url, { waitUntil: args['wait-until'], timeoutMs: 60000, settleMs: 0, solveWindow: !!args.headed });
     } catch (e) {
       console.error(`[dom-equality] ${e.message}`);
       await browser.close();
