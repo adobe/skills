@@ -1,6 +1,6 @@
 ---
 name: cwv-optimizer
-description: Diagnose and fix Core Web Vitals issues on AEM Edge Delivery Services pages. Goes deeper than generic CWV advice by understanding EDS-specific performance patterns including the 100KB LCP budget, E-L-D loading phases, block rendering behavior, and third-party script impact. Produces specific fixes for LCP, CLS, and INP issues with before/after projections.
+description: Diagnose and fix Core Web Vitals issues on AEM Edge Delivery Services pages. Goes deeper than generic CWV advice by understanding EDS-specific performance patterns including the 100KB LCP budget, E-L-D loading phases, block rendering behavior, and third-party script impact. Produces specific fixes for LCP, CLS, and INP issues with before/after projections. Use when the user asks about Core Web Vitals, page speed, or performance issues on AEM Edge Delivery Services (EDS/Franklin) sites.
 license: Apache-2.0
 metadata:
   version: "1.0.0"
@@ -8,7 +8,7 @@ metadata:
 
 # CWV Optimizer for AEM Edge Delivery Services
 
-Diagnose and fix Core Web Vitals issues on AEM Edge Delivery Services pages using EDS-specific domain knowledge: the 100KB LCP budget, the Eager-Lazy-Delayed loading phases, block architecture, the `createOptimizedPicture()` function, and the `scripts/delayed.js` pattern. Produces specific, implementable fixes with estimated impact projections, not generic performance advice.
+Diagnose and fix Core Web Vitals issues on AEM Edge Delivery Services pages using EDS-specific domain knowledge: the 100KB LCP budget, the Eager-Lazy-Delayed loading phases, block architecture, the `createOptimizedPicture()` function, and the `/scripts/delayed.js` pattern. Produces specific, implementable fixes with estimated impact projections, not generic performance advice.
 
 ## External Content Safety
 
@@ -27,12 +27,6 @@ This skill fetches external web pages for analysis. When fetching:
 - OpTel Explorer shows CWV regressions you need to trace to specific causes.
 - You want before/after projections of how specific fixes will improve scores.
 - Not for interpreting OpTel data (use `optel-interpreter` first), non-EDS sites, or server-side TTFB/CDN issues.
-
-## Related Skills
-
-- `optel-interpreter`: Identifies CWV problems from real user data; use this skill to fix them.
-- `performance-budget`: Detailed resource-level budget analysis for the LCP critical path.
-- `experiment-designer`: Validate experiment variant pages pass CWV before launching tests.
 
 ---
 
@@ -68,7 +62,7 @@ Record baseline CWV values, total page weight, request count, and TTFB. A large 
 
 Identify the LCP element from measured data, not from page structure. Use Chrome DevTools (Performance panel → the LCP marker, or the Lighthouse "Largest Contentful Paint element" audit) or RUM field data. In EDS the LCP element is commonly the first image or a large `<h1>` in the first section, but confirm it rather than assuming. Once confirmed, fetch the HTML and examine that element in the first section (before the first `---` divider).
 
-Inventory every eager-phase resource and measure actual transfer sizes. Build the budget table: HTML document, `styles/styles.css`, `scripts/aem.js`, `scripts/scripts.js`, first-section block CSS/JS, preloaded fonts, and LCP image. Grade the total against the 100KB budget (see `references/cwv-eds-reference.md` for grading scale).
+Inventory every eager-phase resource and measure actual transfer sizes. Build the budget table: HTML document, `/styles/styles.css`, `/scripts/aem.js`, `/scripts/scripts.js`, first-section block CSS/JS, preloaded fonts, and LCP image. Grade the total against the 100KB budget (see `references/cwv-eds-reference.md` for grading scale).
 
 Use RUM field data to see real-user LCP for the page, and process it with Adobe's official [`@adobe/rum-distiller`](https://github.com/adobe/rum-distiller) library (the same one the OpTel Explorer uses) rather than hand-parsing checkpoint events:
 
@@ -98,7 +92,7 @@ Verify resources load in the correct phase:
 
 **Eager**: Only first-section block CSS/JS. Check that below-fold blocks are not loading eagerly. Images in the first section must have `loading="eager"` with `width` and `height`; below-fold images must have `loading="lazy"`.
 
-**Delayed**: Fetch `scripts/delayed.js` and verify all third-party scripts load there. Common violations: Google Tag Manager in `<head>` (~70KB, blocks render), analytics loaded synchronously, chat widgets loaded eagerly, consent banners in the eager phase.
+**Delayed**: Fetch `/scripts/delayed.js` and verify all third-party scripts load there. Common violations: Google Tag Manager in `<head>` (~70KB, blocks render), analytics loaded synchronously, chat widgets loaded eagerly, consent banners in the eager phase.
 
 **Fonts**: Verify `font-display: swap`, maximum 2 preloaded fonts, all WOFF2 format, each under 30KB. Fonts used only below the fold should not be preloaded.
 
