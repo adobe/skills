@@ -3,15 +3,28 @@ name: Tessl Skill Review
 on:
   push:
     branches: [main]
-  pull_request:
+  # pull_request_target (instead of pull_request) so the review job can access
+  # TESSL_TOKEN on PRs from forks; secrets are never exposed to plain
+  # `pull_request` fork runs. Fork runs are gated by the `eval` environment below.
+  pull_request_target:
     branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
   tessl-review:
     runs-on: ubuntu-latest
+    # Gate fork PR runs behind the `eval` environment's required reviewers so a
+    # maintainer approves before TESSL_TOKEN reaches PR-supplied content. An
+    # empty environment name means push-to-main reviews still run unattended.
+    environment: ${{ github.event_name == 'pull_request_target' && 'eval' || '' }}
     steps:
+      # Fork PRs: review the merged result via the PR merge ref.
+      # Push to main: use the pushed commit.
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.sha }}
           fetch-depth: 0
 
       - uses: tesslio/setup-tessl@v2
@@ -21,8 +34,10 @@ jobs:
       - name: Detect changed skills
         id: detect
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          if [ "${{ github.event_name }}" = "pull_request_target" ]; then
+            # base.sha/head.sha are hex SHAs (safe to interpolate) and both reachable
+            # from the merge commit, so this diff is exactly the PR's changes.
+            CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }})
 
             # Build list of all skill directories (parents of SKILL.md)
             ALL_SKILL_DIRS=$(find plugins -name SKILL.md -exec dirname {} \; | sort)
