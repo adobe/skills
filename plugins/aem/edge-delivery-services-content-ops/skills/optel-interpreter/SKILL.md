@@ -55,38 +55,87 @@ Before starting, create a checklist of all steps to track progress:
 
 Determine how the user is providing OpTel data:
 
-1. **OpTel Explorer UI** — Screenshots or values from `www.aem.live/tools/oversight/explorer.html`. Ask for the domain, date range, and which views they are looking at.
+1. **OpTel Explorer UI** — Screenshots or values from `www.aem.live/tools/rum/explorer.html`. Ask for the domain, date range, and which views they are looking at.
 2. **Exported CSV/JSON** — Ask them to share the file or paste the contents.
 3. **RUM API** — The user has queried the OpTel API directly (see below). Ask for the response payload.
 
 Record the **domain**, **date range**, and **sampling rate** (if known). If the sampling rate is not provided, note that absolute traffic numbers are estimates.
 
-### Fetching OpTel Data via the RUM API
+### Fetching OpTel Data with `@adobe/rum-distiller`
 
-The RUM Bundler API is path-based — `/bundles/{domain}/{year}/{month}/{day}` (drop the day for a
-whole month, add `/{hour}` for a single hour). The domain key is passed as the `?domainkey=` query
-parameter, not an `Authorization` header.
+OpTel bundles are the same data the OpTel Explorer consumes. Fetch them from the RUM bundle API and
+process them with Adobe's official [`@adobe/rum-distiller`](https://github.com/adobe/rum-distiller)
+library — the same distiller the Explorer itself uses — rather than hand-parsing raw checkpoint
+events.
+
+The bundle API is path-based — `https://bundles.aem.page/bundles/{domain}/{year}/{month}/{day}`
+(drop the day for a whole month, add `/{hour}` for a single hour; use `/orgs/{org}/bundles/...`
+for an org-level view). The domain key is passed as the `?domainkey=` query parameter, not an
+`Authorization` header. Each response body is `{ rumBundles: [...] }`.
 
 ```javascript
-// Fetch one day of RUM bundles for a domain.
+import { DataChunks, series, facets, utils } from '@adobe/rum-distiller';
+
+// 1. Fetch one day of RUM bundles (bundles.aem.page is the current bundle host).
 const domain = 'www.example.com';
-const apiUrl = `https://rum.hlx.page/bundles/${domain}/2026/06/28?domainkey=${domainKey}`;
+const apiUrl = `https://bundles.aem.page/bundles/${domain}/2026/06/28?domainkey=${domainKey}`;
+const { rumBundles } = await (await fetch(apiUrl)).json();
 
-const response = await fetch(apiUrl);
-const data = await response.json();
+// 2. addCalculatedProps derives the top-level CWV props (cwvLCP, cwvCLS, cwvINP, cwvTTFB)
+//    and other convenience fields on each bundle from its raw checkpoint events.
+rumBundles.forEach((b) => utils.addCalculatedProps(b));
 
-// data.rumBundles is an array of session bundles. Each bundle has fields:
-//   id, time, url, userAgent, weight (sampling weight — multiply to estimate real traffic),
-//   and events[] (each event has a checkpoint, e.g. cwv-lcp / cwv-cls / cwv-inp, plus a value).
-// CWV are NOT top-level fields — derive per-page metrics by reading the cwv-* checkpoints from
-// events, and use weight as the traffic stand-in.
-const rumBundles = data.rumBundles;
-console.log(`Total bundles: ${rumBundles.length}`);
+// 3. Load into a DataChunks. load() takes an array of chunks, each shaped { date, rumBundles }.
+const dc = new DataChunks();
+dc.load([{ date: '2026-06-28', rumBundles }]);
+
+// 4. Register the metrics you care about. rum-distiller ships CWV series that read the
+//    calculated props: series.lcp -> cwvLCP, series.cls -> cwvCLS, series.inp -> cwvINP,
+//    plus series.pageViews (weighted page-view count).
+dc.addSeries('pageViews', series.pageViews);
+dc.addSeries('lcp', series.lcp);
+dc.addSeries('cls', series.cls);
+dc.addSeries('inp', series.inp);
+
+// 5. Site-level p75 scorecard for Step 2. totals is keyed by series name; each entry is an
+//    Aggregate exposing sum / mean / percentile(p).
+const totals = dc.totals;
+const scorecard = {
+  pageViews: totals.pageViews.sum,
+  lcpP75: totals.lcp.percentile(75),
+  clsP75: totals.cls.percentile(75),
+  inpP75: totals.inp.percentile(75),
+};
+
+// Optional: filter declaratively before reading totals — e.g. a mobile-only scorecard.
+// dc.addFacet('userAgent', facets.userAgent);
+// dc.filter = { userAgent: ['mobile'] }; // then re-read dc.totals
 ```
 
-The helper functions in the steps below operate on a *normalized* array — one record per page with
-`url`, `cwvLCP`, `cwvCLS`, `cwvINP`, and `pageViews` (page views derived by summing event weights)
-— that you reduce from the raw `rumBundles` above.
+The per-page helper functions in the steps below operate on a *normalized* array — one record per
+page with `url`, `cwvLCP`, `cwvCLS`, `cwvINP`, and `pageViews` — which you roll up from
+`dc.bundles` (every bundle now carries the calculated CWV props from step 2):
+
+```javascript
+// Roll raw bundles up to one weighted, per-URL record (p75) for Steps 2 and 7.
+const byUrl = new Map();
+for (const b of dc.bundles) {
+  const rec = byUrl.get(b.url) ?? { url: b.url, pageViews: 0, lcp: [], cls: [], inp: [] };
+  rec.pageViews += b.weight ?? 0;
+  if (typeof b.cwvLCP === 'number') rec.lcp.push(b.cwvLCP);
+  if (typeof b.cwvCLS === 'number') rec.cls.push(b.cwvCLS);
+  if (typeof b.cwvINP === 'number') rec.inp.push(b.cwvINP);
+  byUrl.set(b.url, rec);
+}
+const p75 = (xs) => (xs.length ? [...xs].sort((a, z) => a - z)[Math.floor(xs.length * 0.75)] : undefined);
+const bundles = [...byUrl.values()].map((r) => ({
+  url: r.url,
+  pageViews: r.pageViews,
+  cwvLCP: p75(r.lcp),
+  cwvCLS: p75(r.cls),
+  cwvINP: p75(r.inp),
+}));
+```
 
 ---
 

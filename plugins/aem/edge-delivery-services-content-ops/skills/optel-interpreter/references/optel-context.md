@@ -2,7 +2,7 @@
 
 ## What Is OpTel Explorer?
 
-Adobe rebranded RUM (Real User Monitoring) Explorer to Operational Telemetry Explorer in early 2025. The tool is available at `www.aem.live/tools/oversight/explorer.html` and requires a domain key (passed as the `?domainkey=` query parameter), which is provisioned when a site is onboarded to EDS. OpTel captures data from real user sessions — not synthetic tests — by injecting a lightweight sampling script into every EDS page. The data includes Core Web Vitals (LCP, CLS, INP), page view counts, traffic referrers, device types (mobile, desktop, tablet), browser types, geographic regions, and engagement signals.
+Adobe renamed the RUM (Real User Monitoring) Explorer to the Operational Telemetry (OpTel) Explorer. The tool is available at `www.aem.live/tools/rum/explorer.html` and requires a domain key (passed as the `?domainkey=` query parameter), which is provisioned when a site is onboarded to EDS. OpTel captures data from real user sessions — not synthetic tests — by injecting a lightweight sampling script into every EDS page. The data includes Core Web Vitals (LCP, CLS, INP), page view counts, traffic referrers, device types (mobile, desktop, tablet), browser types, geographic regions, and engagement signals.
 
 ## How OpTel Sampling Works
 
@@ -25,7 +25,7 @@ The 75th percentile (p75) is the standard reporting percentile — this means 75
 | Traffic numbers seem impossibly low | Sampling rate not accounted for | Multiply the raw count by the sampling ratio (typically 100x) to estimate actual traffic |
 | CWV data is missing for Safari users | Safari does not fully support the Performance Observer API | Acknowledge the gap — CWV data is primarily from Chromium browsers; Safari metrics may be underrepresented |
 | Metrics fluctuate wildly day to day | Low traffic volume produces noisy samples | Use a wider date range (7-30 days) to smooth out sampling variance |
-| LCP shows "good" but pages feel slow | TTFB may be high, which is not captured separately in CWV | Check server response time independently using curl or WebPageTest |
+| LCP shows "good" but pages feel slow | Not TTFB — TTFB is a *component* of LCP (LCP = TTFB + resource load delay + load time + render delay), so a good LCP already implies an acceptable TTFB; the two cannot diverge much. A sluggish *feel* is almost always an INP problem (slow response to clicks, taps, and key presses). | Check the INP breakdown for the affected pages and interactions — not TTFB. |
 
 ## Per-Metric Analysis Detail (Steps 3-5)
 
@@ -49,7 +49,7 @@ CLS problems on EDS sites have distinct, recognizable patterns.
 INP measures responsiveness to user interaction.
 - **Distribution**: Percentage of interactions with INP > 200ms.
 - **Worst pages**: Top N URLs by p75 INP (`cwvINP`).
-- **Common EDS causes**: Heavy block decoration JS (accordions, tabs, carousels), synchronous layout reads followed by DOM writes (forced reflows), third-party scripts adding event listeners globally, or large DOM size from deeply nested block structures.
+- **Common EDS causes**: Heavy block decoration JS (accordions, tabs, carousels), synchronous layout reads followed by DOM writes (forced reflows), long-running `MutationObserver` / observation and mutation listeners that fire on every DOM change during decoration (a frequent and easily overlooked cause), third-party scripts adding event listeners globally, or large DOM size from deeply nested block structures.
 
 ## Final Report Template (Step 8)
 
