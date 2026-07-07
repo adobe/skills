@@ -751,3 +751,41 @@ Implemented and smoke-tested in crawl.mjs.
 - [x] Added `scripts/render-harness.mjs` — reproduces EDS block decoration locally (inject styles + block
   CSS, run each `decorate()`, screenshot) so first-pass fidelity is verifiable with NO DA/dev-server and
   even when `DA_TOKEN` is expired (fidelity is decided at conversion time, not deploy time).
+
+---
+
+## 2026-07 deploy-accuracy pass — close the round-trip at authoring time (#93–#95)
+
+Motivation: the six-site e2e campaign showed the `stardust:diff` structural probe catching real
+dropped-CTA / role-swap / flattened-variant defects on EVERY site — post-deploy, when each fix costs
+a redeploy loop. All of them are one disease: ENCODE (authored rows) and DECODE (block JS) written
+independently and hoped to be inverses. This pass moves the defect-FINDING to conversion time; Step
+10 becomes the proof that the round-trip survived DA transport, not the repair loop.
+
+- [x] #93 **Section schema as the shared ENCODE/DECODE contract** (`scripts/section-schema.mjs`) —
+  per-section ordered role inventory (heading/eyebrow/cta+href/body, the SAME classifier as
+  content-diff) + repeating-unit groups (count, per-unit composition, uniformity flag that
+  cross-checks the #90 fingerprint). Authored rows and block decode are both written FROM it; a
+  deliberately dropped item is a logged decision, never an accident. — SKILL.md Step 2b + Step 7
+  brief + Checklist.
+- [x] #94 **In-loop per-block round-trip gate** (`scripts/block-roundtrip.mjs`) — decorates the
+  authored content locally with the block's own JS+CSS (render-harness technique; no DA, no dev
+  server), inventories the decorated section vs the matching prototype section, exits 2 on any
+  structural 🔴 OR any decorate error — a block that throws, or whose inlined JS fails to install
+  (module-scope import/export), must never pass: its raw rows can false-match the prototype and
+  green-light a decode that was never exercised. Font forks deliberately excluded (harness fonts are
+  local — faces are Step 4/10's business). Validated on a synthetic fixture: a buggy hero decode
+  produced exactly MISSING EYEBROW + ROLE SWAP + MISSING CTA (exit 2); the fixed decode exits 0; a
+  correct cards block closes on the first run; an import-bearing/throwing block exits 2 with a
+  decorate-error report; a shallow/empty metadata block, a section-metadata row before the block, and
+  a two-block section are all handled (metadata dropped in the DOM, not by regex; every block in a
+  section tagged, section-metadata excluded). — SKILL.md Step 8 + Local QA + Step 10 reframe + Checklist.
+- [x] #95 **Per-section decode tier: template-slotted vs reconstructive** — fixed-composition bespoke
+  sections keep the prototype section's inner DOM verbatim in decorate() and slot authored values in
+  by role: fidelity by construction, the #48/#52/#56/#76 segmentation class cannot occur, and the
+  copy stays server-rendered authored content (#86 doesn't bite). Only repeat/authorable sections
+  are reconstructed. — SKILL.md Step 2b + Checklist.
+- [x] Factored content-diff's classifier + differ into `skills/diff/scripts/content-inventory.mjs`,
+  imported by content-diff.mjs / section-schema.mjs / block-roundtrip.mjs — every fidelity gate
+  measures with the same instrument; change the classifier once and all gates move together.
+  content-diff.mjs CLI behavior unchanged.

@@ -1,3 +1,17 @@
+# [1.2.0](https://github.com/adobe/skills/compare/snowflake-v1.1.0...snowflake-v1.2.0) (2026-07-06)
+
+
+### Bug Fixes
+
+* **snowflake:** address PR [#166](https://github.com/adobe/skills/issues/166) review — VERSION/MANIFEST agreement + writeSlot sync comments ([1e0475e](https://github.com/adobe/skills/commit/1e0475ec9e28a3aac1dfd2e3b332da85c86d4242))
+
+
+### Features
+
+* **snowflake:** emit adjustable --pa-* animation sidecars + vendor the runtime (Milo block-level) ([cf64a17](https://github.com/adobe/skills/commit/cf64a17eed7390f25bd4bd49b8c97d58306a663b))
+* **snowflake:** Milo-flavor block-level conversion (editable forge-* blocks) ([cabe937](https://github.com/adobe/skills/commit/cabe9373e62c3398b219723ee3b585f7d41d59a9))
+* **snowflake:** port Milo substrate flavor onto feedback-improvements rework ([fa47da5](https://github.com/adobe/skills/commit/fa47da50c05088465b6e701c41dc259d0614023e)), closes [#162](https://github.com/adobe/skills/issues/162)
+
 # [1.1.0](https://github.com/adobe/skills/compare/snowflake-v1.0.0...snowflake-v1.1.0) (2026-06-01)
 
 

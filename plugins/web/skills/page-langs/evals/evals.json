@@ -1,0 +1,44 @@
+{
+  "skill_name": "page-langs",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "What languages does https://www.wikipedia.org use?",
+      "expected_output": "langs.json is produced with detected languages (CLD3) and declared language signals including hreflang alternates.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_exists",
+          "path": "page-langs-output/langs.json",
+          "description": "langs.json is created with detected, declared, and reconciliation sections."
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Run a language audit on https://www.adobe.com to check for undeclared languages",
+      "expected_output": "langs.json is produced and any languages detected in the body that are not declared via hreflang or html@lang are listed in reconciliation.detectedNotDeclared.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_exists",
+          "path": "page-langs-output/langs.json",
+          "description": "langs.json is created and includes a reconciliation section."
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Detect the language of https://fr.wikipedia.org/wiki/Accueil",
+      "expected_output": "langs.json reports French as the primary detected language and the html@lang declaration matches.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_exists",
+          "path": "page-langs-output/langs.json",
+          "description": "langs.json is created with language detection results."
+        }
+      ]
+    }
+  ]
+}

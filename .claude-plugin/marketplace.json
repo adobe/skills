@@ -32,6 +32,20 @@
       "license": "Apache-2.0"
     },
     {
+      "name": "web",
+      "source": "./plugins/web",
+      "description": "Browser automation and web page analysis skills using playwright-cli: connect via CDP, probe bot protection, dismiss overlays, capture DOM trees, reduce pages to skeletons, extract page resources.",
+      "version": "1.0.0",
+      "category": "web",
+      "keywords": ["browser", "playwright", "cdp", "web-scraping", "page-analysis", "automation"],
+      "author": {
+        "name": "Adobe"
+      },
+      "homepage": "https://github.com/adobe/skills",
+      "repository": "https://github.com/adobe/skills",
+      "license": "Apache-2.0"
+    },
+    {
       "name": "aem-edge-delivery-services",
       "source": "./plugins/aem/edge-delivery-services",
       "description": "Skills for AEM Edge Delivery Services development"

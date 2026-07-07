@@ -1,9 +1,9 @@
 ---
 name: analyze-and-plan
-description: Analyzes development requirements and generates structured acceptance criteria for AEM Edge Delivery Services (EDS) tasks. Use when the user needs to define acceptance criteria, write requirements, scope work, or create a definition of done for EDS blocks, components, variants, bug fixes, or styling changes. Produces task breakdowns, identifies edge cases, and documents analysis for new blocks, variants, behavior modifications, CSS-only changes, and bug fixes.
+description: "Use this when you need to define acceptance criteria, write requirements, scope work, or create a definition of done for AEM Edge Delivery Services (EDS) tasks such as new blocks, variants, behavior modifications, CSS-only changes, or bug fixes. Covers analyzing development requirements, producing task breakdowns, identifying edge cases, and documenting the analysis."
 license: Apache-2.0
 metadata:
-  version: "2.0.0"
+  version: "2.0.1"
 ---
 
 # Analyze & Plan

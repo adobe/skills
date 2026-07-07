@@ -1,3 +1,5 @@
+## [1.0.1](https://github.com/adobe/skills/compare/da-content-v1.0.0...da-content-v1.0.1) (2026-07-06)
+
 # 1.0.0 (2026-05-29)
 
 

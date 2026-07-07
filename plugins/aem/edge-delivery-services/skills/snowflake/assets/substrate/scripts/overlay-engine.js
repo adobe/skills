@@ -41,6 +41,8 @@ function parseFirst(value, selector) {
 
 /**
  * Write a slot value into a template element. Behavior is element-typed.
+ *
+ * Mirrored in assets/substrate-milo/blocks/snowflake/snowflake.js — keep in sync.
  */
 function writeSlot(el, value) {
   const { tagName } = el;
