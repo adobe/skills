@@ -10,7 +10,7 @@ EDS uses a three-phase loading model that is central to its performance architec
 
 1. **Eager (E)**: Loaded immediately with the initial HTML. Includes: the HTML document itself, `styles.css`, `aem.js`, above-fold block CSS/JS, and fonts needed for the first section. Everything in the eager phase counts against the 100KB LCP budget.
 2. **Lazy (L)**: Loaded after the initial paint. Includes: below-fold block CSS/JS, below-fold images, and non-critical styles. Loaded by `aem.js` as the user scrolls or after a short delay.
-3. **Delayed (D)**: Loaded 3+ seconds after page load. Includes: analytics, third-party scripts, chat widgets, social embeds, and any non-essential JavaScript. Loaded by `scripts/delayed.js`.
+3. **Delayed (D)**: Loaded 3+ seconds after page load. Includes: analytics, third-party scripts, chat widgets, social embeds, and any non-essential JavaScript. Loaded by `/scripts/delayed.js`.
 
 ### Why 100KB Matters
 

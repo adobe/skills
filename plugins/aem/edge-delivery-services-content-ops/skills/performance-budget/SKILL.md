@@ -120,22 +120,12 @@ Compare the total against the 100KB budget:
 
 ## Step 5: Check E-L-D Phase Compliance
 
-Verify that resources are loading in the correct phase:
+Verify resources load in the correct phase (see references/performance-budget-rules.md for full phase rules):
 
-### Eager Phase (Must Be Minimal)
-- Only first-section block CSS/JS should load eagerly; below-fold blocks must not load CSS/JS until they scroll into view.
-- First-section images should have `loading="eager"`; below-fold images `loading="lazy"` (EDS sets this automatically but custom blocks may override it).
-
-### Lazy Phase
-- Below-fold block CSS/JS should load on scroll or after initial paint. Check that `aem.js` decorates below-fold blocks with lazy-loading behavior.
-
-### Delayed Phase
-- Third-party scripts (analytics, chat, social) must load via `scripts/delayed.js`, not in the HTML head or eager scripts. Fetch `scripts/delayed.js` and verify they are loaded there.
-- Common violations: Google Tag Manager in the `<head>`, analytics loaded synchronously, chat widgets loaded eagerly.
-
-### Font Loading
-- Verify fonts use `font-display: swap` and `size-adjust` fallback declarations.
-- Only fonts used in the first section should be preloaded.
+- **Eager**: Confirm only first-section block CSS/JS loads eagerly; below-fold blocks must not load eagerly.
+- **Lazy**: Confirm below-fold images have `loading="lazy"` and `aem.js` lazy-loads below-fold blocks.
+- **Delayed**: Fetch `/scripts/delayed.js` and confirm all third-party scripts (analytics, chat, social) load there — not in `<head>` or eager scripts. Common violations: GTM in head, analytics loaded synchronously.
+- **Fonts**: Verify `font-display: swap` and `size-adjust` fallback declarations. Only first-section fonts should be preloaded.
 
 ---
 
@@ -144,9 +134,7 @@ Verify that resources are loading in the correct phase:
 For each budget violation or E-L-D compliance issue, provide a specific fix:
 
 ### Image Optimization
-- EDS automatically serves content images as WebP at responsive sizes via the media pipeline, so do not recommend converting or resizing images that come through content, which duplicates work EDS already does.
-- If the LCP image is still heavy, fix it at the source: upload a source image not far larger than its largest rendered size, and make sure the block requests an appropriate width. Do not hand-encode the delivered image.
-- Manual format/size optimization applies only to images bundled in code (block/theme icons, logos), so prefer SVG for those.
+- Content images are served as WebP automatically by the EDS media pipeline — do not recommend manual format conversion or resizing. To reduce LCP image weight, fix at the source (upload a smaller source image; don't hand-encode the delivery). See references/performance-budget-rules.md for full guidance.
 
 ### Script Optimization
 - Move third-party scripts from eager to delayed phase.
@@ -193,7 +181,7 @@ A one-off audit drifts as new blocks and scripts are added, so codify the budget
 
 A practical setup is a GitHub Action on pull requests that fails when the budget regresses:
 
-- **Lighthouse CI** (`treosh/lighthouse-ci-action`) pointed at the preview URL, asserting on `largest-contentful-paint` (e.g. `maxNumericValue: 2500`) and, optionally, resource byte totals. Lighthouse CI can also enforce a `budget.json` performance budget broken down by resource type.
+- **Lighthouse CI** (treosh/lighthouse-ci-action) pointed at the preview URL, asserting on `largest-contentful-paint` (e.g. `maxNumericValue: 2500`) and, optionally, resource byte totals. Lighthouse CI can also enforce a `budget.json` performance budget broken down by resource type.
 - **PageSpeed Insights API**: Call the PSI endpoint for the preview URL in a workflow step and fail if the mobile LCP or performance score falls below a threshold. This runs the same Lighthouse lab test without self-hosting.
 
 Run the check against a mobile profile with throttling (the conditions EDS targets) and treat a regression past the 100KB / 2.5s LCP threshold as a failing check. Keep this skill's manual, byte-level audit as the companion to the automated gate.
@@ -206,7 +194,7 @@ Run the check against a mobile profile with throttling (the conditions EDS targe
 |---------|-------|----------|
 | Cannot determine LCP element from HTML alone | LCP depends on viewport size and CSS rendering | Ask the user to run Lighthouse and share the LCP element details, or analyze the first section heuristically |
 | Image sizes cannot be measured | Media pipeline serves optimized images on-the-fly | Use curl with `-I` flag to get `Content-Length` headers from the served image URL |
-| Third-party scripts load before delayed.js | Scripts added to head or inline in the document | Move all third-party script tags to `scripts/delayed.js` |
+| Third-party scripts load before delayed.js | Scripts added to head or inline in the document | Move all third-party script tags to `/scripts/delayed.js` |
 | HTML is unexpectedly large | Excessive DOM nodes or inline content | Check for content that should be in blocks rather than inline, or documents that are too long for a single page |
 | Font files are very large | Full Unicode range included | Subset the font to the site's language character set using a tool like glyphhanger |
 | Page loads fast locally but slow on mobile | Local testing does not simulate 3G conditions | Test using Chrome DevTools throttling set to "Slow 3G" or use WebPageTest with a mobile profile |
