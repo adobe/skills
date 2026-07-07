@@ -66,26 +66,28 @@ Record baseline CWV values, total page weight, request count, and TTFB. A large 
 
 ## Step 2: Analyze LCP Waterfall and Check 100KB Budget
 
-Identify the LCP element — in EDS this is almost always the hero image, a large `<h1>`, or a CSS background image in the first section. Fetch the HTML and examine the first section (before the first `---` divider).
+Identify the LCP element from measured data, not from page structure — use Chrome DevTools (Performance panel → the LCP marker, or the Lighthouse "Largest Contentful Paint element" audit) or RUM field data. In EDS the LCP element is commonly the first image or a large `<h1>` in the first section, but confirm it rather than assuming. Once confirmed, fetch the HTML and examine that element in the first section (before the first `---` divider).
 
-Inventory every eager-phase resource and measure actual transfer sizes. Build the budget table: HTML document, `aem.css`, `aem.js`, `scripts.js`, first-section block CSS/JS, preloaded fonts, and LCP image. Grade the total against the 100KB budget (see `references/cwv-eds-reference.md` for grading scale).
+Inventory every eager-phase resource and measure actual transfer sizes. Build the budget table: HTML document, `styles/styles.css`, `scripts/aem.js`, `scripts/scripts.js`, first-section block CSS/JS, preloaded fonts, and LCP image. Grade the total against the 100KB budget (see `references/cwv-eds-reference.md` for grading scale).
 
-Use the RUM API to pull real-user LCP data for the page:
+Use RUM field data to see real-user LCP for the page, and process it with Adobe's official [`@adobe/rum-distiller`](https://github.com/adobe/rum-distiller) library (the same one the OpTel Explorer uses) rather than hand-parsing checkpoint events:
 
 ```javascript
-// Fetch RUM bundles for a domain. The Bundler API is path-based
-// (/bundles/{domain}/{year}/{month}/{day}); the domain key is the ?domainkey=
-// query parameter, not an Authorization header.
+import { DataChunks, series, utils } from '@adobe/rum-distiller';
+
+// The bundle API is path-based — https://bundles.aem.page/bundles/{domain}/{year}/{month}/{day}.
+// The domain key is the ?domainkey= query parameter, not an Authorization header.
 const resp = await fetch(
-  `https://rum.hlx.page/bundles/example.com/2026/06/28?domainkey=${RUM_DOMAIN_KEY}`,
+  `https://bundles.aem.page/bundles/example.com/2026/06/28?domainkey=${RUM_DOMAIN_KEY}`,
 );
 const { rumBundles } = await resp.json();
-// CWV readings live in each bundle's events array as cwv-lcp / cwv-cls / cwv-inp checkpoints.
-const lcpValues = rumBundles.flatMap(
-  (b) => b.events.filter((e) => e.checkpoint === 'cwv-lcp').map((e) => e.value),
-);
-const p75 = lcpValues.sort((a, b) => a - b)[Math.floor(lcpValues.length * 0.75)];
-console.log(`p75 LCP: ${p75}ms`);
+
+// addCalculatedProps derives the cwvLCP/cwvCLS/cwvINP props that the series read.
+rumBundles.forEach((b) => utils.addCalculatedProps(b));
+const dc = new DataChunks();
+dc.load([{ date: '2026-06-28', rumBundles }]);
+dc.addSeries('lcp', series.lcp);
+console.log(`p75 LCP: ${dc.totals.lcp.percentile(75)}ms`);
 ```
 
 ---
@@ -112,7 +114,7 @@ curl -s "https://<domain>/<path>" | grep -oP '<img[^>]*>' | head -10
 
 Images without dimensions cause CLS. The `createOptimizedPicture()` function in `aem.js` does not set `width`/`height` attributes on the images it generates. Fix by adding the attributes in the block's `decorate()` function.
 
-Check image formats and sizes via headers. Targets: hero/LCP image under 40KB (WebP or AVIF), below-fold under 80KB, icons under 5KB (prefer SVG).
+EDS automatically serves content images as responsive WebP through its `<picture>` pipeline (the `?width=…&format=webply&optimize=medium` transform), regardless of the source format — so do not tell the agent to convert content images to WebP/AVIF or resize them by hand. The lever you actually control is the *source* image: an oversized original (e.g. 4000px wide) inflates the delivered derivatives. Check the delivered LCP image's transfer size in the network waterfall; if it is heavy, reduce the source image's intrinsic dimensions or crop it — not its format. Only images bundled in *code* (block icons/SVG) are optimized by you directly — keep those small and prefer inline SVG. (EDS delivers WebP, not AVIF.)
 
 ---
 
@@ -168,7 +170,7 @@ For each issue, produce a specific fix with estimated impact:
 
 | Issue | Metric | Current | Fix | Projected After |
 |-------|--------|---------|-----|-----------------|
-| Hero image 180KB | LCP | 3.2s | Resize to 800px, convert to WebP | 2.1s |
+| Hero image 180KB | LCP | 3.2s | Reduce source image dimensions / crop (EDS already serves WebP) | 2.1s |
 | GTM in head | LCP | 3.2s | Move to delayed.js | 2.4s |
 | Images missing dimensions | CLS | 0.18 | Add width/height to createOptimizedPicture | 0.03 |
 | Font swap without size-adjust | CLS | 0.18 | Add size-adjust to fallback | 0.08 |
