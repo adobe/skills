@@ -1,0 +1,18 @@
+{
+  "skill_name": "browser-probe",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Check if https://example.com has bot protection and get a browser recipe for it",
+      "expected_output": "A browser-recipe.json is generated showing the detected protection level and recommended configuration.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "command_succeeds",
+          "command": "node --check scripts/browser-probe.js",
+          "description": "Browser probe script has valid syntax."
+        }
+      ]
+    }
+  ]
+}
