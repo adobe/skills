@@ -8,9 +8,9 @@ EDS is built around a strict performance budget: the Largest Contentful Paint (L
 
 EDS uses a three-phase loading model that is central to its performance architecture:
 
-1. **Eager (E)** — Loaded immediately with the initial HTML. Includes: the HTML document itself, `aem.css`, `aem.js`, above-fold block CSS/JS, and fonts needed for the first section. Everything in the eager phase counts against the 100KB LCP budget.
-2. **Lazy (L)** — Loaded after the initial paint. Includes: below-fold block CSS/JS, below-fold images, and non-critical styles. Loaded by `aem.js` as the user scrolls or after a short delay.
-3. **Delayed (D)** — Loaded 3+ seconds after page load. Includes: analytics, third-party scripts, chat widgets, social embeds, and any non-essential JavaScript. Loaded by `scripts/delayed.js`.
+1. **Eager (E)**: Loaded immediately with the initial HTML. Includes: the HTML document itself, `styles.css`, `aem.js`, above-fold block CSS/JS, and fonts needed for the first section. Everything in the eager phase counts against the 100KB LCP budget.
+2. **Lazy (L)**: Loaded after the initial paint. Includes: below-fold block CSS/JS, below-fold images, and non-critical styles. Loaded by `aem.js` as the user scrolls or after a short delay.
+3. **Delayed (D)**: Loaded 3+ seconds after page load. Includes: analytics, third-party scripts, chat widgets, social embeds, and any non-essential JavaScript. Loaded by `scripts/delayed.js`.
 
 ### Why 100KB Matters
 
@@ -21,14 +21,14 @@ On a 3G connection (the baseline EDS targets), 100KB takes approximately 1.5 sec
 The 100KB budget is the total transfer size of all resources that must load before the Largest Contentful Paint (LCP) element renders. This includes:
 
 - HTML document
-- Eager CSS (aem.css + above-fold block CSS)
+- Eager CSS (styles.css + above-fold block CSS)
 - Eager JavaScript (aem.js + scripts.js + above-fold block JS)
 - Preloaded fonts
 - Above-fold images (including the LCP image)
 
 ## Recommended Allocation
 
-> The **100KB total budget** and the **E-L-D phase model** are the documented EDS performance model (see [keeping-it-100](https://www.aem.live/developer/keeping-it-100)). The per-resource sub-budgets and the letter grades below are this skill's own working heuristics for *distributing* that budget — not official Adobe limits. Treat them as guidance for spotting outliers, not as pass/fail thresholds.
+> The **100KB total budget** and the **E-L-D phase model** are the documented EDS performance model (see [keeping-it-100](https://www.aem.live/developer/keeping-it-100)). The per-resource sub-budgets and the letter grades below are this skill's own working heuristics for *distributing* that budget, not official Adobe limits. Treat them as guidance for spotting outliers, not as pass/fail thresholds.
 
 | Resource Category | Target | Maximum | Notes |
 |-------------------|--------|---------|-------|
@@ -46,11 +46,11 @@ The 100KB budget is the total transfer size of all resources that must load befo
 
 | Grade | Total Eager Bytes | Assessment |
 |-------|-------------------|------------|
-| A | Under 70 KB | Excellent — significant headroom |
-| B | 70-90 KB | Good — comfortable margin |
-| C | 90-100 KB | Acceptable — at the limit |
-| D | 100-120 KB | Over budget — needs optimization |
-| F | Over 120 KB | Critical — significant performance issues |
+| A | Under 70 KB | Excellent, significant headroom |
+| B | 70-90 KB | Good, comfortable margin |
+| C | 90-100 KB | Acceptable, at the limit |
+| D | 100-120 KB | Over budget, needs optimization |
+| F | Over 120 KB | Critical, significant performance issues |
 
 ## E-L-D Phase Rules
 
@@ -73,14 +73,14 @@ The 100KB budget is the total transfer size of all resources that must load befo
 
 ## Images: What EDS Optimizes for You
 
-Images that come through **content** are optimized automatically. EDS renders a full `<picture>` element with the resolutions needed for desktop and mobile, and in modern formats (WebP) for browsers that support them — so content images are delivered as WebP at responsive sizes regardless of the source format (JPEG, PNG, etc.). Do not recommend converting or resizing content images; that duplicates the media pipeline's work.
+Images that come through **content** are optimized automatically. EDS renders a full `<picture>` element with the resolutions needed for desktop and mobile, and in modern formats (WebP) for browsers that support them, so content images are delivered as WebP at responsive sizes regardless of the source format (JPEG, PNG, etc.). Do not recommend converting or resizing content images; that duplicates the media pipeline's work.
 
-Manual optimization applies only to images bundled in **code** — icons, logos, and decorative graphics shipped in a block or theme rather than authored as content:
+Manual optimization applies only to images bundled in **code**: icons, logos, and decorative graphics shipped in a block or theme rather than authored as content:
 
 - Use SVG for icons and logos, and keep them small (typically under 5 KB).
 - Inline tiny SVGs into CSS/JS where practical; otherwise reference them as external files that load in the correct phase.
 
-To reduce the byte cost of a heavy content LCP image, fix it at the source: upload a source image not far larger than its largest rendered size, and have the block request an appropriate width — don't hand-encode the delivered image.
+To reduce the byte cost of a heavy content LCP image, fix it at the source: upload a source image not far larger than its largest rendered size, and have the block request an appropriate width, not hand-encode the delivered image.
 
 ## Font Optimization Rules
 
@@ -95,7 +95,7 @@ To reduce the byte cost of a heavy content LCP image, fix it at the source: uplo
 
 | Violation | Typical Cost | Fix |
 |-----------|-------------|-----|
-| Oversized source image for the LCP hero | +30-80 KB | Upload a smaller source and/or have the block request a smaller width — EDS already delivers content images as WebP, so do not convert format by hand |
+| Oversized source image for the LCP hero | +30-80 KB | Upload a smaller source and/or have the block request a smaller width. EDS already delivers content images as WebP, so do not convert format by hand |
 | Google Tag Manager in head | +30-50 KB | Move to delayed.js |
 | Full font family preloaded | +50-150 KB | Subset and limit to 1-2 weights |
 | Below-fold block CSS loading eager | +5-15 KB | Verify aem.js lazy-loads correctly |
