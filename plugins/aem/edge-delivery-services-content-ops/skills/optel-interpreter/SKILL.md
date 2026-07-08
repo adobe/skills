@@ -33,8 +33,6 @@ Do not use for configuring OpTel data collection, fixing CWV issues (use `cwv-op
 ## Related Skills
 
 - `cwv-optimizer`: Use after this skill identifies CWV problems; provides specific fixes.
-- `performance-budget`: Complements OpTel interpretation with resource-level budget analysis.
-- `experiment-designer`: Use OpTel data to measure experiment results and statistical significance.
 
 ---
 
