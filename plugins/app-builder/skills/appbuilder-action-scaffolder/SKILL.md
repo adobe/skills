@@ -1,6 +1,6 @@
 ---
 name: appbuilder-action-scaffolder
-description: Create, implement, deploy, and debug Adobe Runtime actions with consistent layout, validation, and error handling. Use this skill whenever the user needs to add actions to an App Builder project, understand action structure (params, response format, web/raw actions), configure actions in the manifest, use App Builder SDKs (State, Files, Events, database), deploy and invoke actions via CLI, debug action issues, or implement patterns such as webhook receivers, custom event providers, journaling consumers, large payload redirects, action sequence pipelines, and Asset Compute workers. Also trigger when users mention serverless functions in Adobe context, action logging, IMS authentication for actions, or cron-style scheduled actions.
+description: Create, implement, deploy, and debug Adobe Runtime actions with consistent layout, validation, and error handling. Use this skill whenever the user needs to add actions to an App Builder project, understand action structure (params, response format, web/raw actions), configure actions in the manifest, use App Builder SDKs (State, Files, Events, database), deploy and invoke actions via CLI, debug action issues, or implement patterns such as webhook receivers, custom event providers, journaling consumers, large payload redirects, action sequence pipelines, Asset Compute workers, and Content Hub web actions (the actions/generic/index.js that receives asset IDs from panels or modals, calls the AEM Assets Author API, and returns data to the Content Hub UI). Also trigger when users mention serverless functions in Adobe context, action logging, IMS authentication for actions, cron-style scheduled actions, or a Content Hub web action calling the AEM API.
 metadata:
   category: action-lifecycle
 license: Apache-2.0
@@ -26,6 +26,7 @@ Pick the template that matches the user's intent. Default to `assets/action-boil
 | Large payload response (>1 MB) | assets/large-payload-template.js |
 | Action sequence pipeline | assets/action-sequence-template.js |
 | Asset Compute worker (AEM renditions) | assets/asset-compute-worker-template.js |
+| Content Hub web action (asset IDs → AEM Assets Author API → panel) | assets/contenthub-action-template.js |
 | Debug Runtime action issues | references/debugging.md |
 
 ## Fast Path (for clear requests)
@@ -138,6 +139,7 @@ If there is any ambiguity — multiple patterns could fit, constraints are uncle
 - `assets/large-payload-template.js` — large payload response starter that writes oversized responses to Files storage and returns a redirect URL.
 - `assets/action-sequence-template.js` — Starter manifest and action layout for a linear action sequence pipeline.
 - `assets/asset-compute-worker-template.js` — Asset Compute worker scaffold for AEM rendition processing with the Asset Compute SDK.
+- `assets/contenthub-action-template.js` — Content Hub web action starter that receives asset ID(s) plus auth context from a Content Hub panel/card/bulk action, calls the AEM Assets Author API server-side, and returns the result to the panel.
 
 ## Agent Integration
 
