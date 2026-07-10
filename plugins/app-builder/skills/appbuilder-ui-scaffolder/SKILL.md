@@ -6,11 +6,11 @@ description: >-
   Guides ExC Shell integration with @adobe/exc-app including runtime.done(), IMS token passthrough,
   and shell theming. Guides AEM UI Extension development with @adobe/uix-guest for Content Fragment
   Console, CF Editor, Universal Editor, Assets View, and Content Hub surfaces (Content Hub via
-  aem/assets/contenthub/1 — asset details panels, card actions, bulk actions, Add Assets wizard).
+  aem/assets/contenthub/1 — asset details panels, card actions, bulk actions).
   Trigger on: building App Builder UI, React Spectrum components, ExC Shell pages, forms, data tables,
   dialogs, modals, navigation, theming, web-src, Spectrum, @adobe/exc-app, AEM extension,
   AEM UI extension, Content Fragment Console, Universal Editor extension, Content Hub panel, Content Hub
-  card action, Content Hub bulk action, add assets wizard, uix-guest, @adobe/uix-guest, extension points
+  card action, Content Hub bulk action, uix-guest, @adobe/uix-guest, extension points
   for AEM, customizing AEM surfaces.
 metadata:
   category: frontend
@@ -36,7 +36,7 @@ Identify the user's intent, then read the referenced sections to generate tailor
 | ExC Shell setup | `references/shell-integration.md` | `@adobe/exc-app`, `Provider`, `defaultTheme` |
 | Connect UI to backend actions | `references/action-integration.md` | `fetch()` with IMS token |
 | AEM UI Extension (CF Console, CF Editor, Universal Editor, Assets View) | `references/aem-extensions.md` | `@adobe/uix-guest`, `register()`, `sharedContext` |
-| Content Hub extension (panels, card actions, bulk actions, add assets wizard) | `references/aem-extensions.md` § Content Hub | `@adobe/uix-guest`, `register()`, `attach()`, `assetDetails`/`card`/`selectionBar`/`addAssets` namespaces, `host.modal.openDialog`, `postMessage` readiness signalling |
+| Content Hub extension (panels, card actions, bulk actions) | `references/aem-extensions.md` § Content Hub | `@adobe/uix-guest`, `register()`, `attach()`, `assetDetails`/`card`/`selectionBar` namespaces, `host.modal.openDialog` |
 | Debug UI issues | `references/debugging.md` | Shell spinner, CORS, blank screen, auth |
 
 ## Fast Path (for clear requests)
@@ -58,7 +58,7 @@ Examples of fast-path triggers:
 - "Build a Content Fragment Console extension" → Read `references/aem-extensions.md` § CF Console, generate directly
 - "Add a header menu button to the Universal Editor" → Read `references/aem-extensions.md` § Universal Editor, generate directly
 - "Create an AEM extension with uix-guest" → Read `references/aem-extensions.md` § Core Registration, generate directly
-- "Add a Content Hub panel / card action / bulk action / add-assets step" → Read `references/aem-extensions.md` § Content Hub, generate directly
+- "Add a Content Hub panel / card action / bulk action" → Read `references/aem-extensions.md` § Content Hub, generate directly
 - "Create / scaffold a new extension from scratch" → Redirect to the `appbuilder-project-init` skill (Console setup, template selection, file generation, dev server)
 
 If there is any ambiguity — multiple patterns could fit, constraints are unclear, or the user hasn't specified enough — fall through to the full workflow below.
@@ -135,7 +135,7 @@ If there is any ambiguity — multiple patterns could fit, constraints are uncle
 - Use `references/routing-patterns.md` for SPA routing with React Router in ExC Shell.
 - Use `references/action-integration.md` for calling backend actions from the SPA.
 - Use `references/checklist.md` for pre-handoff UI quality validation.
-- Use `references/aem-extensions.md` for AEM UI Extension patterns (`@adobe/uix-guest`) — Content Fragment Console/Editor, Universal Editor, Assets View, and Content Hub (`aem/assets/contenthub/1`: asset details tab panels, card/selection-bar/add-assets namespaces, Host APIs, web actions).
+- Use `references/aem-extensions.md` for AEM UI Extension patterns (`@adobe/uix-guest`) — Content Fragment Console/Editor, Universal Editor, Assets View, and Content Hub (`aem/assets/contenthub/1`: asset details tab panels, card/selection-bar namespaces, Host APIs, web actions).
 - Use `references/debugging.md` for common SPA debugging scenarios (shell spinner, CORS, auth, blank screen, performance).
 
 ## Chaining

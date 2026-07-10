@@ -71,7 +71,7 @@ Extension point identifiers:
 - `aem/cf-editor/1` — Content Fragment Editor
 - `aem/universal-editor/1` — Universal Editor
 - `aem/assets/1` — Assets View (requires Assets Ultimate license)
-- `aem/assets/contenthub/1` — Content Hub (unified — asset details, card, selection bar, and add-assets surfaces via one `register()` call)
+- `aem/assets/contenthub/1` — Content Hub (unified — asset details, card, and selection bar surfaces via one `register()` call)
 
 ---
 
@@ -415,18 +415,17 @@ Refer to [Assets View extension docs](https://developer.adobe.com/uix/docs/servi
 
 ## Content Hub Extensions (`aem/assets/contenthub/1`)
 
-Content Hub is a single extension point that spans **four** surfaces, each opted into via a method namespace in one `register()` call:
+Content Hub is a single extension point that spans **three** surfaces, each opted into via a method namespace in one `register()` call:
 
 - **Asset Details Dialog** (`assetDetails`) — custom tab panels in the side rail.
 - **Asset card actions** (`card`) — buttons on asset cards (Assets grid, inside a collection, link-share) **and** on collection tiles in the Collections grid; the surface is passed in `actionContext.context`.
 - **Selection bar / bulk actions** (`selectionBar`) — buttons in the multi-select action bar.
-- **Add Assets wizard** (`addAssets`) — inject panels before/after the upload step, gate uploads, react to upload completion.
 
 > Use the deprecated ID `aem/contenthub/assets/details/1` only for older projects mid-transition; new projects use `aem/assets/contenthub/1`.
 
 **Auth is different from the other AEM surfaces:** Content Hub does *not* use `sharedContext`. Get auth and environment from the `host` namespaces instead (`host.auth.getIMSInfo()`, `host.discovery.getAemHost()` — see Host APIs below).
 
-### Registration (all four namespaces)
+### Registration (all three namespaces)
 
 ```js
 import { register } from '@adobe/uix-guest';
@@ -449,16 +448,11 @@ guestConnection = await register({
       getActionButtons(actionContext) { /* buttons in the bulk-action bar */ },
       async onActionClick(buttonId, assetIds) { /* … */ },
     },
-    addAssets: {
-      getPanels() { /* wizard panels before/after the Upload step */ },
-      async beforeUpload(ctx) { /* gate or enrich metadata before upload */ },
-      async onUploadComplete(ctx) { /* react after upload finishes */ },
-    },
   },
 });
 ```
 
-Opt into any combination — only implement the namespaces you use, and scaffold one component per namespace (`TabPanel.js` for `assetDetails`, `CardActionModal.js` for `card`, `SelectionBarModal.js` for `selectionBar`, `AddAssetsPanel.js` for `addAssets`). `card` and `selectionBar` are gated by the `EXTENSIBILITY_AEM_CONTENTHUB` feature flag; when it is off the host renders no buttons for those surfaces, but `assetDetails` panels still render.
+Opt into any combination — only implement the namespaces you use, and scaffold one component per namespace (`PanelAssetDetailsExtensionTab.js` for `assetDetails`, `CardActionModal.js` for `card`, `SelectionBarModal.js` for `selectionBar`). `card` and `selectionBar` are gated by the `EXTENSIBILITY_AEM_CONTENTHUB` feature flag; when it is off the host renders no buttons for those surfaces, but `assetDetails` panels still render.
 
 `app.config.yaml` includes the unified extension point once:
 
@@ -481,7 +475,7 @@ assetDetails: {
         title: 'My Panel',           // panel header (Content Hub renders it)
         tooltip: 'My Panel',         // side-rail icon tooltip
         icon: 'Extension',           // React-Spectrum workflow icon name
-        contentUrl: '/#tab-panel',   // hash route — must match a <Route> in App.js
+        contentUrl: '/#asset-details-extension-tab',   // hash route — must match a <Route> in App.js
       },
     ];
   },
@@ -549,38 +543,6 @@ selectionBar: {
 
 The host prefixes selection-bar button ids internally (`ext:<extensionId>:<btn.id>`); your code always uses the original `btn.id` — that's what `onActionClick` receives too.
 
-### Add Assets Wizard (`addAssets`)
-
-Integrates with the "Add Assets" (hydration) flow: inject wizard steps, gate/enrich uploads, and react to completion.
-
-```js
-addAssets: {
-  getPanels() {
-    return [
-      { id: 'my-pre-step',  title: 'Select Campaign', position: 'pre',  contentUrl: '/#pre-step' },
-      { id: 'my-post-step', title: 'Tag Assets',       position: 'post', contentUrl: '/#post-step' },
-    ];
-  },
-  // Return { proceed:false, message } to block, or { proceed:true, metadata } to merge metadata.
-  async beforeUpload({ files, metadata, uploadPath }) {
-    return { proceed: true, metadata: { ...metadata, 'xdm:campaignName': 'Q3 Launch' } };
-  },
-  // Fires after all files upload (parallel, fire-and-forget). Return value ignored.
-  async onUploadComplete({ files, metadata, uploadPath }) { /* e.g. post to a webhook */ },
-}
-```
-
-Step order: `[pre panels] → [Upload step] → [post panels]`. A `pre` panel blocks **Next** by default; its iframe must signal readiness via `postMessage` (there is no `host.modal` in a wizard panel):
-
-```js
-window.parent.postMessage(
-  { type: 'addAssets:setReadyToAdvance', panelId: 'my-pre-step', ready: true },
-  '*'
-);
-```
-
-`post` panels default to ready. For `beforeUpload`, multiple extensions merge (last-writer-wins per key) and any single `{ proceed: false }` blocks the upload.
-
 ### Opening a Modal (`modal`)
 
 Card and selection-bar actions have no panel of their own — they open a modal whose content is another hash route in the same guest app. **Content Hub's `openDialog` takes a single config object** — you never pass `{ id }` (the UIX host auto-injects the extension id on its side). This is the **opposite** of the other AEM surfaces, which use `host.modal.showUrl({ title, url })` + `close()`. Don't cross them.
@@ -619,11 +581,9 @@ import { HashRouter as Router, Routes, Route } from 'react-router-dom';
   <Routes>
     <Route index element={<ExtensionRegistration />} />
     <Route path="index.html" element={<ExtensionRegistration />} />
-    <Route path="tab-panel" element={<TabPanel />} />                    {/* assetDetails */}
+    <Route path="asset-details-extension-tab" element={<PanelAssetDetailsExtensionTab />} />  {/* assetDetails */}
     <Route path="card-action-modal" element={<CardActionModal />} />      {/* card modal */}
     <Route path="selection-bar-modal" element={<SelectionBarModal />} />  {/* selectionBar modal */}
-    <Route path="pre-step" element={<AddAssetsPanel />} />                {/* addAssets */}
-    <Route path="post-step" element={<AddAssetsPanel />} />
   </Routes>
 </Router>
 ```
@@ -646,7 +606,7 @@ const assetId = await guestConnection.host.assetDetails.getCurrentAsset();  // p
 Never call AEM APIs from the browser (CORS blocks them) — route through an App Builder web action:
 
 ```js
-// In TabPanel.js
+// In PanelAssetDetailsExtensionTab.js
 const { accessToken, imsOrg } = await guestConnection.host.auth.getIMSInfo();
 const apiKey  = await guestConnection.host.auth.getApiKey();
 const aemHost = await guestConnection.host.discovery.getAemHost();
@@ -754,4 +714,4 @@ extensions:
 | CF Editor | `aem/cf-editor/1` | `headerMenu`, `rte` | `contentFragment`, `modal`, `toaster` |
 | Universal Editor | `aem/universal-editor/1` | `headerMenu` | `modal` |
 | Assets View | `aem/assets/1` | `actionBar`, `headerMenu` | `modal` |
-| Content Hub | `aem/assets/contenthub/1` | `assetDetails`, `card`, `selectionBar`, `addAssets` | `auth`, `discovery`, `toast`, `i18n`, `modal` (`openDialog`/`closeDialog`), `assetDetails` |
+| Content Hub | `aem/assets/contenthub/1` | `assetDetails`, `card`, `selectionBar` | `auth`, `discovery`, `toast`, `i18n`, `modal` (`openDialog`/`closeDialog`), `assetDetails` |

@@ -8,7 +8,7 @@ Complete templates for every Content Hub extension scaffold file. Before writing
 Extension point used throughout: `aem/assets/contenthub/1`
 Source directory: `src/aem-assets-contenthub-1/`
 
-> Only write the namespace components you need — `TabPanel.js` (assetDetails), `CardActionModal.js` (card), `SelectionBarModal.js` (selectionBar), `AddAssetsPanel.js` (addAssets). The shared skeleton (`package.json`, `index.html`, `index.js`, `index.css`, `Constants.js`, `App.js`, `actions/*`, `hooks/post-deploy.js`, `.eslintrc.js`) is always written.
+> Only write the namespace components you need — `PanelAssetDetailsExtensionTab.js` (assetDetails), `CardActionModal.js` (card), `SelectionBarModal.js` (selectionBar). The shared skeleton (`package.json`, `index.html`, `index.js`, `index.css`, `Constants.js`, `App.js`, `actions/*`, `hooks/post-deploy.js`, `.eslintrc.js`) is always written.
 
 
 ---
@@ -150,7 +150,6 @@ module.exports = {
 - `assetDetails` — tab panels in the Asset Details Dialog side rail
 - `card` — action buttons on asset cards (Assets grid, collection, link share) and on collection tiles in the Collections grid
 - `selectionBar` — bulk action buttons in the selection bar (multi-select)
-- `addAssets` — wizard panels before/after the Upload step; `beforeUpload` hook to gate/enrich uploads; `onUploadComplete` hook after upload finishes
 
 (Remove entries for namespaces not wired in ExtensionRegistration.js)
 
@@ -179,7 +178,7 @@ First time: accept the self-signed cert at https://localhost:9080.
 ## Key Files to Customize
 
 - `ExtensionRegistration.js` — declares all namespaces. Uses `let guestConnection` so `onActionClick` can call `host.modal.openDialog()` after `register()` resolves.
-- `TabPanel.js` — panel UI for `assetDetails` namespace (rendered in iframe)
+- `PanelAssetDetailsExtensionTab.js` — panel UI for `assetDetails` namespace (rendered in iframe)
 - `CardActionModal.js` — modal UI for `card` namespace; reads its data from the `contentUrl` query (`URLSearchParams`), NOT `getPayload()`
 - `SelectionBarModal.js` — modal UI for `selectionBar` namespace; reads `assetIds[]` from the `contentUrl` query (`URLSearchParams` + `JSON.parse`), NOT `getPayload()`
 - `actions/generic/index.js` — server-side logic for AEM API calls
@@ -327,7 +326,7 @@ This file is overwritten by `aio app run` (localhost URL) and `aio app deploy` (
 export const extensionId = 'sample-extension';
 ```
 
-The `extensionId` **must** be identical in `register()` (ExtensionRegistration.js) and `attach()` (TabPanel.js). Both import from this file.
+The `extensionId` **must** be identical in `register()` (ExtensionRegistration.js) and `attach()` (PanelAssetDetailsExtensionTab.js). Both import from this file.
 
 ---
 
@@ -340,10 +339,9 @@ import React from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import ExtensionRegistration from './ExtensionRegistration';
-import TabPanel from './TabPanel';                    // assetDetails namespace — remove if not selected
+import PanelAssetDetailsExtensionTab from './PanelAssetDetailsExtensionTab';  // assetDetails namespace — remove if not selected
 import CardActionModal from './CardActionModal';       // card namespace — remove if not selected
 import SelectionBarModal from './SelectionBarModal';  // selectionBar namespace — remove if not selected
-import AddAssetsPanel from './AddAssetsPanel';         // addAssets namespace — remove if not selected
 
 function App() {
   return (
@@ -353,14 +351,11 @@ function App() {
           <Route index element={<ExtensionRegistration />} />
           <Route path="index.html" element={<ExtensionRegistration />} />
           {/* assetDetails namespace — remove if not selected */}
-          <Route path="tab-panel" element={<TabPanel />} />
+          <Route path="asset-details-extension-tab" element={<PanelAssetDetailsExtensionTab />} />
           {/* card namespace — remove if not selected */}
           <Route path="card-action-modal" element={<CardActionModal />} />
           {/* selectionBar namespace — remove if not selected */}
           <Route path="selection-bar-modal" element={<SelectionBarModal />} />
-          {/* addAssets namespace — remove both routes if not selected */}
-          <Route path="pre-step" element={<AddAssetsPanel />} />
-          <Route path="post-step" element={<AddAssetsPanel />} />
         </Routes>
       </ErrorBoundary>
     </Router>
@@ -389,7 +384,7 @@ export default App;
 
 ## `src/aem-assets-contenthub-1/web-src/src/components/ExtensionRegistration.js`
 
-Contains all four Content Hub namespaces. **When scaffolding, include only the namespace blocks the user selected in Step 2.** Each block is clearly marked — remove unused ones. `card` and `selectionBar` require `let guestConnection` (not `const`) because `onActionClick` is called after `register()` resolves. `addAssets` does NOT need `guestConnection` — its lifecycle hooks run synchronously without calling host APIs.
+Contains all three Content Hub namespaces. **When scaffolding, include only the namespace blocks the user selected in Step 2.** Each block is clearly marked — remove unused ones. `card` and `selectionBar` require `let guestConnection` (not `const`) because `onActionClick` is called after `register()` resolves.
 
 ```js
 import React from 'react';
@@ -436,7 +431,7 @@ function ExtensionRegistration() {
                 title: '{{DISPLAY_NAME}}',
                 tooltip: '{{DISPLAY_NAME}}',
                 icon: 'Extension',          // React-Spectrum workflow icon name
-                contentUrl: '/#tab-panel',  // must match a <Route path> in App.js
+                contentUrl: '/#asset-details-extension-tab',  // must match a <Route path> in App.js
               },
             ];
           },
@@ -512,49 +507,6 @@ function ExtensionRegistration() {
           },
         },
 
-        // ── ADD ASSETS NAMESPACE ─────────────────────────────────────────────
-        // Extends the "Add Assets" (hydration) flow with wizard panels and lifecycle hooks.
-        // Remove this block if addAssets was not selected.
-        //
-        // getPanels() returns panels injected before ('pre') or after ('post') the Upload step.
-        // 'pre' panels gate the Next button — the panel must send a postMessage to unlock it.
-        // 'post' panels are always ready (no signal required).
-        //
-        // beforeUpload(ctx) is called before upload starts:
-        //   ctx: { files, metadata, uploadPath }
-        //   return { proceed: true, metadata } to pass through (optionally merging extra metadata)
-        //   return { proceed: false, message: '...' } to block the upload with a user-facing message
-        //
-        // onUploadComplete(ctx) fires after upload finishes (parallel, fire-and-forget).
-        addAssets: {
-          getPanels() {
-            return [
-              {
-                id: '{{EXTENSION_NAME}}-pre-step',
-                title: '{{DISPLAY_NAME}} Pre-Upload',
-                position: 'pre',               // shown BEFORE the Upload step
-                contentUrl: '/#pre-step',      // must match a <Route path> in App.js
-              },
-              // Add more panels here, or remove this array entry if you only need post panels.
-              {
-                id: '{{EXTENSION_NAME}}-post-step',
-                title: '{{DISPLAY_NAME}} Post-Upload',
-                position: 'post',              // shown AFTER the Upload step
-                contentUrl: '/#post-step',
-              },
-            ];
-          },
-          async beforeUpload({ files, metadata, uploadPath }) {
-            // Return { proceed: true, metadata } to continue (optionally inject extra metadata).
-            // Return { proceed: false, message: '...' } to block with a user-facing error.
-            return { proceed: true, metadata };
-          },
-          async onUploadComplete({ files, metadata, uploadPath }) {
-            // Fires after all files finish uploading (fire-and-forget, return value ignored).
-            console.log('{{EXTENSION_NAME}} onUploadComplete', { fileCount: files.length, uploadPath });
-          },
-        },
-
       },
     });
   };
@@ -579,7 +531,7 @@ export default ExtensionRegistration;
 
 ---
 
-## `src/aem-assets-contenthub-1/web-src/src/components/TabPanel.js`
+## `src/aem-assets-contenthub-1/web-src/src/components/PanelAssetDetailsExtensionTab.js`
 
 This is the panel content rendered inside Content Hub's iframe. All Host API calls go through `guestConnection.host`.
 
@@ -599,7 +551,7 @@ import {
 import { extensionId } from './Constants';
 import actions from '../config.json';
 
-export default function TabPanel() {
+export default function PanelAssetDetailsExtensionTab() {
   const [guestConnection, setGuestConnection] = useState(null);
   const [asset, setAsset] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -882,112 +834,6 @@ export default function SelectionBarModal() {
 
 ---
 
-## `src/aem-assets-contenthub-1/web-src/src/components/AddAssetsPanel.js`
-
-Wizard panel rendered inside a `GuestUIFrame` for the `addAssets` namespace. Used for both `pre` and `post` position panels (same component, different route).
-
-**Critical:** `getPanelId()` strips the leading `#` (and optional `/`) from `window.location.hash`.
-`contentUrl: '/#pre-step'` loads as hash `#pre-step` (NOT `#/pre-step`) — using `.replace('#/', '')` silently fails and sends the wrong `panelId` in the `postMessage`, keeping Next permanently disabled.
-Always use the regex `/^#\/?/` as shown below.
-
-```js
-import React, { useState, useEffect } from 'react';
-import { attach } from '@adobe/uix-guest';
-import {
-  Provider,
-  defaultTheme,
-  View,
-  Heading,
-  Text,
-  Button,
-  ProgressCircle,
-} from '@adobe/react-spectrum';
-import { extensionId } from './Constants';
-
-// contentUrl '/#pre-step' loads with hash '#pre-step' (no slash after #).
-// Use /^#\/?/ to strip '#' or '#/' — plain '#/' replace silently fails and breaks the panelId.
-function getPanelId() {
-  const route = window.location.hash.replace(/^#\/?/, '').split('?')[0];
-  return `{{EXTENSION_NAME}}-${route}`;
-}
-
-function isPrePanel() {
-  return window.location.hash.includes('pre-step');
-}
-
-export default function AddAssetsPanel() {
-  const [guestConnection, setGuestConnection] = useState(null);
-  const [ready, setReady] = useState(false);
-  const panelId = getPanelId();
-  const isPre = isPrePanel();
-
-  useEffect(() => {
-    (async () => {
-      const connection = await attach({ id: extensionId });
-      setGuestConnection(connection);
-      // Post panels default to ready (no signalling required).
-      if (!isPre) setReady(true);
-    })();
-  }, []);
-
-  function markReady() {
-    // Signal the wizard host: Next button becomes clickable for this panel.
-    // panelId must exactly match the id returned by getPanels() in ExtensionRegistration.js.
-    window.parent.postMessage(
-      { type: 'addAssets:setReadyToAdvance', panelId, ready: true },
-      '*'
-    );
-    setReady(true);
-  }
-
-  if (!guestConnection) {
-    return (
-      <Provider theme={defaultTheme}>
-        <View padding="size-400" height="100vh">
-          <View UNSAFE_style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '200px' }}>
-            <ProgressCircle aria-label="Loading..." isIndeterminate />
-          </View>
-        </View>
-      </Provider>
-    );
-  }
-
-  return (
-    <Provider theme={defaultTheme}>
-      <View padding="size-400">
-        <Heading level={3}>
-          {{DISPLAY_NAME}} — {isPre ? 'Pre-Upload' : 'Post-Upload'}
-        </Heading>
-
-        <View marginTop="size-300" marginBottom="size-300">
-          <Text>
-            {isPre
-              ? 'Complete any required steps before uploading your assets, then click "Ready to Upload" to proceed.'
-              : 'Your assets have been uploaded. Review or tag them below.'}
-          </Text>
-        </View>
-
-        {/* Add your custom wizard panel UI here */}
-
-        {isPre && !ready && (
-          <Button variant="accent" onPress={markReady}>
-            Ready to Upload
-          </Button>
-        )}
-
-        {ready && (
-          <Text UNSAFE_style={{ color: '#2d9d78' }}>
-            ✓ {isPre ? 'Ready to proceed to upload.' : 'Upload complete.'}
-          </Text>
-        )}
-      </View>
-    </Provider>
-  );
-}
-```
-
----
-
 ## `src/aem-assets-contenthub-1/actions/utils.js`
 
 ```js
@@ -1026,7 +872,7 @@ const { errorResponse, getBearerToken, checkMissingRequestInputs } = require('..
 /**
  * Generic Web Action — {{DISPLAY_NAME}}
  *
- * Called from TabPanel.js with the current asset ID.
+ * Called from PanelAssetDetailsExtensionTab.js with the current asset ID.
  * Customize this to call AEM Assets Author API.
  *
  * Params passed from the panel:
@@ -1098,7 +944,7 @@ Content Hub UI extension for the `aem/assets/contenthub/1` extension point.
 src/aem-assets-contenthub-1/
   web-src/src/components/
     ExtensionRegistration.js  — registers tab panels with Content Hub
-    TabPanel.js               — custom panel UI (rendered in iframe)
+    PanelAssetDetailsExtensionTab.js — custom panel UI (rendered in iframe)
     App.js                    — React routing
     Constants.js              — extensionId (shared between register + attach)
   actions/
@@ -1158,7 +1004,7 @@ getTabPanels() {
       title: '{{DISPLAY_NAME}}',
       tooltip: '{{DISPLAY_NAME}}',
       icon: 'Extension',
-      contentUrl: '/#tab-panel',
+      contentUrl: '/#asset-details-extension-tab',
     },
     {
       id: '{{EXTENSION_NAME}}-second-panel',
@@ -1179,4 +1025,4 @@ import SecondPanel from './SecondPanel';   // create this component
 <Route path="second-panel" element={<SecondPanel />} />
 ```
 
-### Create `SecondPanel.js` — copy the `TabPanel.js` template, rename the component and customize the UI.
+### Create `SecondPanel.js` — copy the `PanelAssetDetailsExtensionTab.js` template, rename the component and customize the UI.

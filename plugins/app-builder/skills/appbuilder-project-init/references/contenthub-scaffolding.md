@@ -4,7 +4,7 @@ Complete step-by-step workflow for scaffolding a **Content Hub** App Builder ext
 
 Read this file when `appbuilder-project-init` is asked to create/scaffold a Content Hub extension.
 
-> **When to use this:** the user wants to create a NEW Content Hub extension — tab panels in Asset Details, card/collection-tile action buttons, bulk-action-bar buttons, or Add Assets wizard panels. This drives the whole lifecycle from one prompt to a running, open browser tab. If the user already has a scaffolded project and only wants to customize the UI, use `appbuilder-ui-scaffolder` (§ Content Hub in `references/aem-extensions.md`) instead.
+> **When to use this:** the user wants to create a NEW Content Hub extension — tab panels in Asset Details, card/collection-tile action buttons, or bulk-action-bar buttons. This drives the whole lifecycle from one prompt to a running, open browser tab. If the user already has a scaffolded project and only wants to customize the UI, use `appbuilder-ui-scaffolder` (§ Content Hub in `references/aem-extensions.md`) instead.
 
 **Fixed facts for this surface** (used by every step below):
 
@@ -14,7 +14,7 @@ Read this file when `appbuilder-project-init` is asked to create/scaffold a Cont
 | Source dir | `src/aem-assets-contenthub-1/` |
 | SDK | `@adobe/uix-guest` |
 | Templates | [`references/contenthub-templates.md`](contenthub-templates.md) |
-| Namespaces | `assetDetails` (tab panels), `card` (asset-card + collection-tile buttons), `selectionBar` (bulk-action bar), `addAssets` (wizard panels + `beforeUpload`/`onUploadComplete` hooks) |
+| Namespaces | `assetDetails` (tab panels), `card` (asset-card + collection-tile buttons), `selectionBar` (bulk-action bar) |
 | Local dev open URL | `https://experience.adobe.com/?devMode=true&ext=https://localhost:9080#/assets/contenthub/` |
 
 Use `AskUserQuestion` for every user decision. Never print a test URL without opening it. Never ask the user to type anything (except when they choose "Other").
@@ -59,7 +59,6 @@ The user can select "Other" to type their own kebab-case name. Store as `extensi
 - "asset card" / "card action" / "buttons on cards" → `["card"]`
 - "asset details panel" / "tab panel in asset details" → `["assetDetails"]`
 - "bulk action" / "selection bar" → `["selectionBar"]`
-- "Add Assets wizard" / "before upload hook" / "hydration panel" → `["addAssets"]`
 - "card and bulk actions" → `["card", "selectionBar"]`
 
 **Only ask when the prompt is generic** ("create a Content Hub extension" with no namespace hint). Use `AskUserQuestion` with `multiSelect: true`:
@@ -73,11 +72,9 @@ options:
     description: "Buttons on asset card menus (Assets grid, inside a collection, link share) and on collection tiles — card namespace. onActionClick(resourceType, buttonId, resourceId, actionContext)."
   - label: "Selection bar (bulk action)"
     description: "Buttons in the bulk-action bar shown when assets are selected — selectionBar namespace. onActionClick(buttonId, assetIds[])."
-  - label: "Add Assets wizard"
-    description: "Panels before/after the Upload step, gate/enrich metadata (beforeUpload), react after upload (onUploadComplete) — addAssets namespace."
 ```
 
-Store the selected keys as `namespaces` (at least one). Notes: `card`/`selectionBar` open a modal on click via `host.modal.openDialog()`, so `ExtensionRegistration.js` uses `let guestConnection` (not `const`). `addAssets` panels use `postMessage` for step readiness — never call `openDialog` from a wizard panel. Step 10 uses `namespaces` to decide which component files to write.
+Store the selected keys as `namespaces` (at least one). Notes: `card`/`selectionBar` open a modal on click via `host.modal.openDialog()`, so `ExtensionRegistration.js` uses `let guestConnection` (not `const`). Step 10 uses `namespaces` to decide which component files to write.
 
 ### Step 3 — Workspace
 
@@ -186,7 +183,7 @@ Read [`references/contenthub-templates.md`](contenthub-templates.md) and write a
 - `src/aem-assets-contenthub-1/web-src/index.html`, `web-src/src/index.js`, `index.css`, `config.json`
 - `web-src/src/components/Constants.js`, `App.js`, `ExtensionRegistration.js`
 - `src/aem-assets-contenthub-1/actions/utils.js`, `actions/generic/index.js`
-- Namespace components — write **only** for namespaces selected in Step 2: `TabPanel.js` (assetDetails), `CardActionModal.js` (card), `SelectionBarModal.js` (selectionBar), `AddAssetsPanel.js` (addAssets)
+- Namespace components — write **only** for namespaces selected in Step 2: `PanelAssetDetailsExtensionTab.js` (assetDetails), `CardActionModal.js` (card), `SelectionBarModal.js` (selectionBar)
 
 Keep `App.js` routes and the `ExtensionRegistration.js` `methods` object limited to the selected namespaces.
 
@@ -285,10 +282,9 @@ All UI files are under `src/aem-assets-contenthub-1/web-src/src/components/`
 | What you want to change | File to edit |
 |---|---|
 | Which panels / buttons appear, their title, icon, or label | `ExtensionRegistration.js` |
-| Asset Details panel content            | `TabPanel.js`          ← only if assetDetails selected |
+| Asset Details panel content            | `PanelAssetDetailsExtensionTab.js` ← only if assetDetails selected |
 | Card action modal content              | `CardActionModal.js`   ← only if card selected |
 | Selection bar (bulk action) content    | `SelectionBarModal.js` ← only if selectionBar selected |
-| Add Assets wizard panel content        | `AddAssetsPanel.js`    ← only if addAssets selected |
 | Server-side logic / AEM API calls      | `actions/generic/index.js` |
 ```
 

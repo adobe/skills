@@ -21,7 +21,7 @@ appbuilder-action-scaffolder/
 │   ├── implementation-template.md    ← Structured delivery artifact template
 │   ├── runtime-reference.md          ← Action structure, params, response formats, SDKs, CLI
 │   └── action-patterns.md            ← 12 complete action patterns with manifest + code
-├── assets/                           ← 10 JavaScript code templates
+├── assets/                           ← 9 JavaScript code templates
 │   ├── action-scaffold-template.js   ← Minimal scaffold for quick prototyping
 │   ├── action-boilerplate.js         ← Production-ready with logging and error handling
 │   ├── database-action-template.js   ← Database CRUD with @adobe/aio-lib-db
@@ -30,8 +30,7 @@ appbuilder-action-scaffolder/
 │   ├── journaling-consumer-template.js ← Scheduled journal poller
 │   ├── large-payload-template.js     ← Files SDK redirect for oversized responses
 │   ├── action-sequence-template.js   ← Linear action sequence pipeline
-│   ├── asset-compute-worker-template.js ← AEM rendition processing worker
-│   └── contenthub-action-template.js ← Content Hub web action (asset IDs → AEM Assets Author API → panel)
+│   └── asset-compute-worker-template.js ← AEM rendition processing worker
 └── evals/
     └── evals.json                    ← 11 evaluation test cases
 ```
@@ -76,7 +75,6 @@ The skill follows a 6-step workflow (detailed in `references/playbook.md`):
 | Response exceeds 1 MB | large-payload-template.js |
 | Multi-action linear pipeline | action-sequence-template.js |
 | AEM rendition processing | asset-compute-worker-template.js |
-| Content Hub web action (asset IDs → AEM Assets Author API → panel) | contenthub-action-template.js |
 
 ### Validate manifest before deploy
 
