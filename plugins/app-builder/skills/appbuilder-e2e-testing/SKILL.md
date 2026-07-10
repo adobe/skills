@@ -5,8 +5,7 @@ description: >-
   application. Covers Playwright E2E testing for ExC Shell SPAs, AEM extension UIs (Content Fragment
   Console, Universal Editor, Content Hub), and full-stack flows. Use when the user mentions: "E2E
   test", "end-to-end test", "Playwright", "browser test", "test my SPA in the browser", "test my AEM
-  extension", "test the
-  full flow", "integration test with UI", "headless browser test", "E2E in CI".
+  extension", "test the full flow", "integration test with UI", "headless browser test", "E2E in CI".
   This skill is for BROWSER-based testing only. For Jest unit tests of actions or React components,
   use appbuilder-testing instead.
 metadata:
