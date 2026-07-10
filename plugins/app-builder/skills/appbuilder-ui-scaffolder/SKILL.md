@@ -135,7 +135,7 @@ If there is any ambiguity — multiple patterns could fit, constraints are uncle
 - Use `references/routing-patterns.md` for SPA routing with React Router in ExC Shell.
 - Use `references/action-integration.md` for calling backend actions from the SPA.
 - Use `references/checklist.md` for pre-handoff UI quality validation.
-- Use `references/aem-extensions.md` for AEM UI Extension patterns (`@adobe/uix-guest`) — Content Fragment Console/Editor, Universal Editor, Assets View, and Content Hub (`aem/assets/contenthub/1`: asset details tab panels, card/selection-bar namespaces, Host APIs, web actions).
+- Use `references/aem-extensions.md` for AEM UI Extension patterns (`@adobe/uix-guest`) — Content Fragment Console/Editor, Universal Editor, Assets View, and Content Hub.
 - Use `references/debugging.md` for common SPA debugging scenarios (shell spinner, CORS, auth, blank screen, performance).
 
 ## Chaining

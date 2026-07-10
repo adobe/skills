@@ -9,8 +9,8 @@ description: >-
   pipelines, continuous integration, continuous delivery, deploy automation, multi-environment
   promotion, aio app add ci, or wants to automate their App Builder build and release process.
   Also trigger when users mention deploy workflows, release pipelines, GitHub secrets for
-  App Builder, deploy a Content Hub extension, aio app deploy for AEM extensions, Extension
-  Manager approval, or automate deployment of a Content Hub or AEM UI extension.
+  App Builder, aio app deploy for AEM extensions, Extension
+  Manager approval, or automate deployment of an AEM UI extension.
 metadata:
   category: deployment-automation
 license: Apache-2.0
@@ -32,7 +32,7 @@ Set up CI/CD pipelines for Adobe App Builder projects — GitHub Actions (primar
 | Azure DevOps / GitLab CI / Jenkins | references/generic-pipeline-guide.md |
 | Secrets setup guide | references/secrets-management.md |
 | Debugging deploy failures | references/debugging.md |
-| Content Hub extension deploy (manual `aio app deploy`, Stage→Prod, CDN URL, Extension Manager approval) | references/contenthub-deploy.md |
+| Content Hub extension deploy | references/contenthub-deploy.md |
 
 ## Fast Path (for clear requests)
 
@@ -95,7 +95,7 @@ If user specifies Azure DevOps, GitLab CI, or Jenkins → use `references/generi
 - Use `references/secrets-management.md` for OAuth S2S credential extraction and GitHub secrets setup.
 - Use `references/debugging.md` for troubleshooting deploy failures, CI errors, and workspace promotion issues.
 - Use `references/checklist.md` for pre-merge CI readiness validation.
-- Use `references/contenthub-deploy.md` for manual Content Hub extension deployment (Stage → Production, CDN URL parsing, Extension Manager approval, re-deploy after code changes).
+- Use `references/contenthub-deploy.md` for Content Hub extension deployment.
 - Use `assets/deploy-stage.yml`, `assets/deploy-prod.yml`, `assets/pr-test.yml` as workflow templates.
 - Use `assets/fetch-secrets.sh` to extract secret values from workspace configuration.
 - Official Adobe docs: [https://developer.adobe.com/app-builder/docs/guides/app_builder_guides/deployment/cicd-using-github-actions](https://developer.adobe.com/app-builder/docs/guides/app_builder_guides/deployment/cicd-using-github-actions)
