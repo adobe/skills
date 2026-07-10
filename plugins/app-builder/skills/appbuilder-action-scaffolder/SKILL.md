@@ -104,7 +104,7 @@ If there is any ambiguity — multiple patterns could fit, constraints are uncle
 - Use `references/runtime-reference.md` for action structure, params, response formats, SDK usage, and CLI operations.
 - Use `references/aem-apis.md` for AEM Content Fragment API surfaces — decision table, Delivery OpenAPI, Management OpenAPI, GraphQL persisted queries, and the deprecated Assets HTTP API — with auth patterns and action code for each.
 - Use `references/action-patterns.md` for common action patterns, including CRUD API, cron, multi-step processing, database CRUD, webhook intake, custom event providers, journaling consumers, large payload redirects, action sequence composition, and Asset Compute workers.
-- Use `assets/database-action-template.js`, `assets/event-webhook-template.js`, `assets/event-provider-template.js`, `assets/journaling-consumer-template.js`, `assets/large-payload-template.js`, `assets/action-sequence-template.js`, `assets/asset-compute-worker-template.js` when the user request maps directly to one of the newer boilerplate patterns.
+- Use `assets/database-action-template.js`, `assets/event-webhook-template.js`, `assets/event-provider-template.js`, `assets/journaling-consumer-template.js`, `assets/large-payload-template.js`, `assets/action-sequence-template.js`, and `assets/asset-compute-worker-template.js` when the user request maps directly to one of the newer boilerplate patterns.
 - Use `../_shared/categories/architecture-runtime.md` for Adobe service-specific guidance.
 
 ## Common Manifest Guardrail
