@@ -93,7 +93,8 @@ for a judgment pass without re-crawling.
 | `broken-internal-link` | error | internal href target ≥400 |
 | `link-via-redirect` | info | href resolves only via redirect |
 | `off-inventory-link` | info | live 200 but untracked |
-| `broken-anchor` | warn | `#fragment` has no matching id in target's full HTML |
+| `broken-anchor` | warn | `#fragment` has no matching id — server HTML first, then re-verified in the rendered DOM (blocks assign ids client-side; without the rendered pass this false-flags) |
+| `anchor-unverified` | info | id absent from server HTML and no browser available to check the rendered DOM |
 | `empty-href` | warn · `malformed-mailto` / `malformed-tel` warn | dead affordances |
 | `broken-external-link` | warn (never error — externals flap) | 404/410/DNS-fail, each unique URL probed once |
 

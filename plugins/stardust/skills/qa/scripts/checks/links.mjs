@@ -4,7 +4,9 @@
  * From every page's full HTML:
  *   - internal hrefs must resolve: inventory hit, or live 200 (off-inventory
  *     info), redirect (info), else broken (error)
- *   - fragment links (#x, /path#x) must target an existing id
+ *   - fragment links (#x, /path#x) must target an existing id — checked in
+ *     server HTML first, then re-verified in the RENDERED DOM before being
+ *     reported (blocks assign ids client-side; server HTML alone false-flags)
  *   - mailto:/tel: must be well-formed
  *   - external links: each unique URL probed once (HEAD, GET fallback);
  *     404/410/DNS-fail -> warn (external sites flap; never an error)
@@ -90,13 +92,44 @@ export async function run(ctx) {
     }
   }, 8);
 
-  // anchor targets: id must exist in the target page's full HTML
+  // anchor targets: pass 1 against server HTML; survivors re-verified in the
+  // rendered DOM (block JS assigns ids at decoration time — e.g. TOC/term ids)
+  const suspects = [];
   for (const a of anchors) {
     const html = pageHtml.get(a.targetPath);
     if (!html) continue; // off-inventory target already reported
     if (!new RegExp(`id=["']${a.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`).test(html)) {
-      findings.push(finding('links', 'broken-anchor', 'warn', a.referrer,
-        `anchor #${a.id} on ${a.targetPath} has no matching id`));
+      suspects.push(a);
+    }
+  }
+  if (suspects.length) {
+    let renderedIds = null; // targetPath -> Set(ids), null = browser unavailable
+    try {
+      const { loadPlaywright } = await import('../lib.mjs');
+      const { chromium } = await loadPlaywright();
+      const browser = await chromium.launch();
+      const page = await browser.newPage();
+      renderedIds = new Map();
+      for (const target of [...new Set(suspects.map((a) => a.targetPath))]) {
+        try {
+          await page.goto(pageUrl(base, target), { waitUntil: 'domcontentloaded', timeout: 30000 });
+          await page.waitForTimeout(3500); // let block decoration assign ids
+          renderedIds.set(target, new Set(await page.evaluate(
+            () => [...document.querySelectorAll('[id]')].map((e) => e.id),
+          )));
+        } catch { renderedIds.set(target, null); }
+      }
+      await browser.close();
+    } catch { /* no playwright — report unverified */ }
+    for (const a of suspects) {
+      const ids = renderedIds?.get(a.targetPath);
+      if (ids === undefined || ids === null) {
+        findings.push(finding('links', 'anchor-unverified', 'info', a.referrer,
+          `anchor #${a.id} on ${a.targetPath} not in server HTML; rendered DOM not checkable here — verify manually`));
+      } else if (!ids.has(a.id)) {
+        findings.push(finding('links', 'broken-anchor', 'warn', a.referrer,
+          `anchor #${a.id} on ${a.targetPath} has no matching id (verified in rendered DOM)`));
+      }
     }
   }
 
