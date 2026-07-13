@@ -37,6 +37,8 @@ for a judgment pass without re-crawling.
 | `micro-paragraph-run` | warn | ≥4 consecutive ≤3-word paragraphs — flattened component |
 | `bare-ordinals` | warn | `<p>1</p>` rows — numbered component flattened |
 | `duplicate-text` | warn | 12-word shingle repeats within 400 words — pasted twice |
+| `flattened-collection` | warn / error (≥6 repeats + >40% of page words unblocked) | a periodic tag cycle (e.g. `h4+p+p` ×24) or ≥5 same-level headings at a steady stride in DEFAULT content — a structured directory/card set rendered as plain prose instead of a block ("masthead + prose dump + CTA" pages). Fixture-tested: `scripts/test/flattened.test.mjs` |
+| `source-images-lost` | error | capture has ≥4 images, delivered page renders <25% of them — pipeline strips imagery authored inside flat content |
 | `unknown-block` | error | authored block class serves no code under /blocks/ |
 | `verbatim-below-threshold` | warn *(triage)* | <95% of captured source text found verbatim; evidence lists missing nodes |
 | `verbatim-missing-nodes` | info | coverage ok but some nodes absent |
