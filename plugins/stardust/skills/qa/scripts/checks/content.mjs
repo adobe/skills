@@ -163,6 +163,84 @@ export function detectFlattenedCollections(sections) {
   return hits;
 }
 
+/* ---------------------------------------- single-block hoard (flatten) -- */
+
+// A block whose NAME marks it a prose container (holds free text, not a
+// structured component): `service-body`, `article-body`, `prose`, `text`,
+// `content`. A rich block (cards/bento/stats) legitimately holds lots of
+// content and is NOT a hoard.
+const PROSE_CONTAINER_RE = /(?:^|-)(?:body|prose|text|content)$/i;
+// Template families that are prose BY DESIGN — a single body block is correct,
+// not a defect. Matched against the page's template assignment.
+const PROSE_FAMILY_RE = /article|blog|news|post|story|wellness|legal|policy|privacy|terms|prose/i;
+const HOARD_RATIO = 0.6;
+const MIN_HOARD_WORDS = 120;
+
+/**
+ * Detect the "fat single block" flatten variant that `unblocked-page` (zero
+ * blocks) and `flattened-collection` (periodic dump in DEFAULT content) both
+ * miss: a page that DOES use a block, but one PROSE-CONTAINER block hoards the
+ * whole page — the source's multi-section structure collapsed into one long
+ * body. Distinguishes a *flatten defect* from an *intentional* single block via
+ * three discriminators (strongest first):
+ *   1. template family — prose-by-design families (article/blog/…) are skipped.
+ *   2. source parity — if the source capture had ≥3 heading-led regions but the
+ *      page is one block, the structure was collapsed (error). If the source was
+ *      itself flat (≤1 region), the single block is faithful → not a defect.
+ *   3. latent structure — with no/ambiguous source, the hoarding block's own
+ *      inner headings/lists reveal structure that wants blocks (defect); genuine
+ *      flowing prose (few headings, no lists) is left alone.
+ * Returns a hit `{ block, concentration, blockWords, totalWords, distinctBlocks,
+ * headings, lists, severity, reason, sourceRegions? }` or null.
+ */
+export function detectSingleBlockHoard(sections, { template = '', scrape = null } = {}) {
+  const isMeta = (c) => { const n = (c.cls || '').split(' ')[0]; return n === 'metadata' || n === 'section-metadata'; };
+  // metadata blocks are config, not page content — exclude from word + block counts
+  const children = sections.flatMap((s) => s.children).filter((c) => !isMeta(c));
+  const totalWords = children.reduce((a, c) => a + c.words, 0);
+  if (totalWords < 150) return null; // too short to carry recoverable structure
+  const blocks = children.filter(isBlock);
+  if (!blocks.length) return null; // zero-blocks is unblocked-page's job
+  const fat = blocks.reduce((a, b) => (b.words > a.words ? b : a), blocks[0]);
+  const name = fat.cls.split(' ')[0];
+  const concentration = fat.words / totalWords;
+  const distinct = new Set(blocks.map((b) => b.cls.split(' ')[0])).size;
+  // candidate: a PROSE-CONTAINER block hoards the page across ≤2 block types
+  if (!(PROSE_CONTAINER_RE.test(name) && concentration >= HOARD_RATIO
+        && fat.words >= MIN_HOARD_WORDS && distinct <= 2)) return null;
+
+  const base = {
+    block: name, concentration: +concentration.toFixed(2), blockWords: fat.words,
+    totalWords, distinctBlocks: distinct, headings: fat.headings, lists: fat.lists,
+  };
+
+  // 1. intentional: prose-by-design template family
+  if (PROSE_FAMILY_RE.test(template)) return null;
+
+  // 2. source parity (strongest) — count SECTION-level headings (h2–h3) in the
+  //    source; the h1 is the page title, not a content region. Supports enrich
+  //    `nodes[]` (type/level) and extract `headings[]` (tag).
+  let sourceRegions = null;
+  if (scrape) {
+    if (Array.isArray(scrape.nodes)) {
+      sourceRegions = scrape.nodes.filter((n) => n.type === 'heading' && n.level >= 2 && n.level <= 3).length;
+    } else if (Array.isArray(scrape.headings)) {
+      sourceRegions = scrape.headings.filter((h) => /^h[23]$/i.test(h.tag || h.level || '')).length;
+    }
+  }
+  if (sourceRegions != null) {
+    if (sourceRegions >= 3) return { ...base, severity: 'error', reason: 'source-parity', sourceRegions };
+    if (sourceRegions <= 1) return null; // source was genuinely flat → faithful, intentional
+    // 2 regions → ambiguous; fall through to latent structure
+  }
+
+  // 3. latent structure inside the hoarding block → structure that wants blocks
+  if (fat.headings >= 3 || fat.lists >= 2) {
+    return { ...base, severity: fat.headings >= 5 ? 'error' : 'warn', reason: 'latent-structure' };
+  }
+  return null; // genuine flowing prose in a structured family → leave it
+}
+
 function loadScrapeMap(scrapeDir) {
   const map = new Map(); // delivered path -> scrape doc
   if (!scrapeDir || !existsSync(scrapeDir)) return map;
@@ -255,6 +333,17 @@ export async function run(ctx) {
     const blocks = blockNames(sections);
     pageBlocks.set(p.path, [...blocks]);
     for (const b of blocks) fleetBlocks.add(b);
+
+    // --- single-block hoard (structured page collapsed into one prose block) --
+    const hoard = detectSingleBlockHoard(sections, { template: p.template || '', scrape: scrapeMap.get(p.path) });
+    if (hoard) {
+      findings.push(finding('content', 'single-block-hoard', hoard.severity, p.path,
+        `one "${hoard.block}" block holds ${Math.round(hoard.concentration * 100)}% of the page's content `
+        + `(${hoard.blockWords}/${hoard.totalWords} words across ${hoard.distinctBlocks} distinct block type(s)) — `
+        + `a structured page collapsed into a single prose block; recover its regions into rich blocks (enrich). `
+        + `[${hoard.reason}]`,
+        hoard));
+    }
 
     // --- verbatim fidelity vs scrape capture --------------------------------
     const scrape = scrapeMap.get(p.path);
