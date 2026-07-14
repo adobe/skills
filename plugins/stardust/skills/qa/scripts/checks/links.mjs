@@ -136,7 +136,8 @@ export async function run(ctx) {
   // externals: probe each unique URL once
   await pMap([...external.entries()], async ([url, referrers]) => {
     let res = await fetchUrl(url, { method: 'HEAD', timeoutMs: 8000, retries: 0 });
-    if (res.status === 0 || res.status === 405 || res.status === 403) {
+    if (res.status === 0 || res.status >= 400) {
+      // many hosts reject HEAD but serve GET (e.g. maps.google.com HEAD=404, GET=200)
       res = await fetchUrl(url, { timeoutMs: 8000, retries: 0 });
     }
     if (res.status === 404 || res.status === 410 || res.status === 0) {

@@ -18,6 +18,9 @@
  *   --out <dir>             output dir (default: stardust/qa)
  *   --baselines <dir>       visual baselines (default: <out>/baselines)
  *   --max-pages <n>         cap the fleet (smoke runs)
+ *   --no-sitemap-merge      inventory from explicit sources only (sitemap still
+ *                           fetched for parity findings) — for sampled runs on
+ *                           large fleets
  *   --perf-pages <n>        cap perf representatives (default 10)
  *   --budget-transfer-kb <n> --budget-js-kb <n>
  *   --skip-a11y             skip axe injection
@@ -67,6 +70,7 @@ const inventory = await buildInventory({
   base: BASE,
   pathsFile: arg('paths-file', null),
   templateMap: arg('template-map', null),
+  mergeSitemap: !flag('no-sitemap-merge'),
 });
 const maxPages = Number(arg('max-pages', 0));
 if (maxPages > 0) inventory.pages = inventory.pages.slice(0, maxPages);

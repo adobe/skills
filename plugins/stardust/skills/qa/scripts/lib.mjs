@@ -220,7 +220,7 @@ export async function loadPlaywright() {
  * Fragments (nav/footer) are tracked separately: they are delivered documents
  * but not pages (no h1/metadata expectations).
  */
-export async function buildInventory({ base, pathsFile, templateMap, fragments = ['/nav', '/footer'] }) {
+export async function buildInventory({ base, pathsFile, templateMap, fragments = ['/nav', '/footer'], mergeSitemap = true }) {
   const pages = new Map(); // path -> {path, sources:[], template}
   const add = (path, source, template) => {
     const p = path.replace(/\/$/, '') || '/';
@@ -249,7 +249,7 @@ export async function buildInventory({ base, pathsFile, templateMap, fragments =
       sitemapPaths = [...res.body.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)]
         .map((m) => { try { return new URL(m[1]).pathname.replace(/\/$/, '') || '/'; } catch { return null; } })
         .filter(Boolean);
-      for (const p of sitemapPaths) if (!fragments.includes(p)) add(p, 'sitemap');
+      if (mergeSitemap) for (const p of sitemapPaths) if (!fragments.includes(p)) add(p, 'sitemap');
     }
   }
   return {
