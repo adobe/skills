@@ -4,13 +4,13 @@ description: >-
   Generate and run tests for Adobe App Builder actions and UI components. Scaffolds Jest unit tests,
   integration tests against deployed actions, contract tests for Adobe API interactions, and React
   component tests using Testing Library. Provides mock helpers for State, Files, Events SDKs,
-  @adobe/aio-lib-* clients, ExC Shell context (@adobe/exc-app), and UIX Guest SDK (@adobe/uix-guest)
-  for AEM and Content Hub extension components. Use this skill whenever the user mentions testing App Builder actions, writing
-  unit tests for Runtime actions, creating integration tests, mocking Adobe SDKs, setting up test
-  fixtures, running aio app test, or wants to verify action behavior before deployment. Also trigger
-  when users mention Jest configuration for App Builder, test coverage, CI test setup, React component
-  test, Testing Library, UI test, mock shell/extension context, debug
-  test failures, or fix Jest errors.
+  @adobe/aio-lib-* clients, ExC Shell context (@adobe/exc-app), and UIX Guest SDK (@adobe/uix-guest).
+  Use this skill whenever the user mentions testing App Builder actions, writing unit tests for
+  Runtime actions, creating integration tests, mocking Adobe SDKs, setting up test fixtures, running
+  aio app test, or wants to verify action behavior before deployment. Also trigger when users mention
+  Jest configuration for App Builder, test coverage, CI test setup, React component test, Testing
+  Library, UI test, Provider wrapper, test my page, test my form, test my table, test my component,
+  mock shell context, mock extension context, debug test failures, or fix Jest errors.
 metadata:
   category: testing
 license: Apache-2.0

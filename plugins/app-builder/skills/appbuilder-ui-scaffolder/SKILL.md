@@ -4,14 +4,13 @@ description: >-
   Generate React Spectrum UI components for Adobe Experience Cloud Shell SPAs and AEM UI Extensions.
   Provides patterns for pages, forms, data tables, dialogs, and navigation using @adobe/react-spectrum.
   Guides ExC Shell integration with @adobe/exc-app including runtime.done(), IMS token passthrough,
-  and shell theming. Guides AEM UI Extension development with @adobe/uix-guest for Content Fragment
-  Console, CF Editor, Universal Editor, Assets View, and Content Hub surfaces (Content Hub via
-  aem/assets/contenthub/1 — asset details panels, card actions, bulk actions).
+  and shell theming. Guides AEM UI Extension development with @adobe/uix-guest, including Content Hub
+  surfaces (aem/assets/contenthub/1 — asset details panels, card actions, bulk actions).
   Trigger on: building App Builder UI, React Spectrum components, ExC Shell pages, forms, data tables,
-  dialogs, modals, navigation, theming, web-src, Spectrum, @adobe/exc-app, AEM extension,
+  dialogs, modals, navigation, theming, web-src, Spectrum design system, @adobe/exc-app, AEM extension,
   AEM UI extension, Content Fragment Console, Universal Editor extension, Content Hub panel, Content Hub
-  card action, Content Hub bulk action, uix-guest, @adobe/uix-guest, extension points
-  for AEM, customizing AEM surfaces.
+  card action, Content Hub bulk action, uix-guest, @adobe/uix-guest, extension points for AEM,
+  customizing AEM surfaces.
 metadata:
   category: frontend
 license: Apache-2.0
