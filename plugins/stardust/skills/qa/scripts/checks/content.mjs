@@ -85,6 +85,8 @@ export function parseSections(html) {
           cls: child.cls,
           words: inner.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length,
           imgs: (inner.match(/<img[\s>]/gi) || []).length,
+          headings: (inner.match(/<h[2-6][\s>]/gi) || []).length,
+          lists: (inner.match(/<(?:ul|ol)[\s>]/gi) || []).length,
         });
         child = null;
       } else if (depth === 0 && section) {

@@ -98,7 +98,8 @@ for a judgment pass without re-crawling.
 | `broken-anchor` | warn | `#fragment` has no matching id — server HTML first, then re-verified in the rendered DOM (blocks assign ids client-side; without the rendered pass this false-flags) |
 | `anchor-unverified` | info | id absent from server HTML and no browser available to check the rendered DOM |
 | `empty-href` | warn · `malformed-mailto` / `malformed-tel` warn | dead affordances |
-| `broken-external-link` | warn (never error — externals flap) | 404/410/DNS-fail, each unique URL probed once |
+| `broken-external-link` | warn (never error — externals flap) | 404/410/DNS-fail, each unique URL probed once — **opt-in via `--probe-externals`** (on blog-scale fleets the unique-external set dominates sweep time) |
+| `externals-skipped` | info | externals not probed this run (the default); count reported so the skip is never silent |
 
 ## a11y (H, browser, desktop, axe-core via CDN)
 

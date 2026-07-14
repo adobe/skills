@@ -24,6 +24,9 @@
  *   --perf-pages <n>        cap perf representatives (default 10)
  *   --budget-transfer-kb <n> --budget-js-kb <n>
  *   --skip-a11y             skip axe injection
+ *   --probe-externals       probe unique external link targets (skipped by
+ *                           default — dominates sweep time on blog fleets;
+ *                           the skip is reported as links/externals-skipped)
  *   --fail-on <error|warn>  exit 1 threshold (default: error)
  *
  * Exit codes: 0 clean (below threshold), 1 findings at/above threshold, 2 infra error.
@@ -51,6 +54,7 @@ const opts = {
   budgetTransferKb: Number(arg('budget-transfer-kb', 800)),
   budgetJsKb: Number(arg('budget-js-kb', 250)),
   skipA11y: flag('skip-a11y'),
+  probeExternals: flag('probe-externals'),
   browserConcurrency: Number(arg('browser-concurrency', 3)),
 };
 

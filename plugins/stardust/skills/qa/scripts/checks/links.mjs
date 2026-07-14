@@ -8,8 +8,11 @@
  *     server HTML first, then re-verified in the RENDERED DOM before being
  *     reported (blocks assign ids client-side; server HTML alone false-flags)
  *   - mailto:/tel: must be well-formed
- *   - external links: each unique URL probed once (HEAD, GET fallback);
- *     404/410/DNS-fail -> warn (external sites flap; never an error)
+ *   - external links: SKIPPED by default (on blog-scale fleets the unique
+ *     external set dominates sweep time — 35 of 38 min on a 1,035-page run).
+ *     Pass --probe-externals to probe each unique URL once (HEAD, GET
+ *     fallback); 404/410/DNS-fail -> warn (external sites flap; never an
+ *     error). The skip is always reported as an info finding, never silent.
  */
 import { fetchUrl, pMap, finding, pageUrl, decodeAttr } from '../lib.mjs';
 
@@ -133,7 +136,14 @@ export async function run(ctx) {
     }
   }
 
-  // externals: probe each unique URL once
+  // externals: probe each unique URL once (opt-in — see header)
+  if (!ctx.opts.probeExternals) {
+    if (external.size) {
+      findings.push(finding('links', 'externals-skipped', 'info', '',
+        `${external.size} unique external link(s) not probed — pass --probe-externals to check them`));
+    }
+    return findings;
+  }
   await pMap([...external.entries()], async ([url, referrers]) => {
     let res = await fetchUrl(url, { method: 'HEAD', timeoutMs: 8000, retries: 0 });
     if (res.status === 0 || res.status >= 400) {
