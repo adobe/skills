@@ -111,10 +111,27 @@ export async function run(ctx) {
 
   const axeAgg = new Map(); // ruleId -> {impact, help, pages:Set, sample}
   const upscaled = new Map(); // src -> {pages:Set, nw, rw}
-  const diffPage = await (await browser.newContext()).newPage(); // canvas diff worker
+  // canvas diff worker; recreated on demand — a crashed tab must not sink the sweep
+  let diffPage = null;
+  const getDiffPage = async () => {
+    if (!diffPage || diffPage.isClosed()) diffPage = await (await browser.newContext()).newPage();
+    return diffPage;
+  };
 
   await pMap(inventory.pages, async (p) => {
     for (const vp of VIEWPORTS) {
+      // one page/viewport failing (tab crash, OOM) is a finding, never a sweep abort
+      try {
+        await sweepPage(p, vp);
+      } catch (e) {
+        findings.push(finding('rendered', 'page-sweep-failed', 'warn', p.path,
+          `[${vp.name}] browser pass aborted mid-page: ${String(e).slice(0, 200)}`));
+      }
+    }
+  }, opts.browserConcurrency || 3);
+
+  async function sweepPage(p, vp) {
+    {
       const context = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
       const page = await context.newPage();
       const consoleErrors = []; const pageErrors = []; const badRequests = [];
@@ -138,7 +155,7 @@ export async function run(ctx) {
         findings.push(finding('rendered', 'load-failed', 'error', p.path,
           `[${vp.name}] page failed to load: ${String(e).slice(0, 200)}`));
         await context.close();
-        continue;
+        return;
       }
       const decorated = await settle(page);
       if (!decorated) {
@@ -255,7 +272,7 @@ export async function run(ctx) {
               `[${vp.name}] no baseline existed — current screenshot saved as baseline`, { file: baseFile }));
           } else {
             const baseline = readFileSync(baseFile);
-            const d = await pixelDiff(diffPage, baseline, shot);
+            const d = await pixelDiff(await getDiffPage(), baseline, shot);
             const heightDelta = Math.abs(d.heightA - d.heightB) / Math.max(d.heightA, 1);
             if (heightDelta > 0.02) {
               findings.push(finding('visual', 'page-height-changed', 'warn', p.path,
@@ -276,7 +293,7 @@ export async function run(ctx) {
 
       await context.close();
     }
-  }, opts.browserConcurrency || 3);
+  }
 
   // fleet-level aggregates
   for (const [src, u] of upscaled) {

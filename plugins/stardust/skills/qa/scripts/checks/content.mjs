@@ -29,10 +29,21 @@ const PLACEHOLDER_RE = /\[placeholder[^\]]*\]|REPLACE_WITH_[A-Z_]+|lorem ipsum|\
 const VERBATIM_THRESHOLD = 0.95;
 const MIN_NODE_WORDS = 5;
 
-function blockNames(html) {
+/**
+ * Block names from parsed sections — only classed divs that are CHILDREN of a
+ * section are blocks. Top-level classed divs are sections carrying a
+ * section-metadata style (e.g. `.article-body`) — styling, not blocks; a
+ * flat regex over `<div class=…>` confuses the two and invents phantom blocks.
+ */
+function blockNames(sections) {
   const names = new Set();
-  for (const m of html.matchAll(/<div class="([a-z][a-z0-9-]*)(?: [^"]*)?">/g)) {
-    if (m[1] !== 'metadata' && m[1] !== 'section-metadata') names.add(m[1]);
+  for (const s of sections) {
+    for (const c of s.children) {
+      if (isBlock(c)) {
+        const name = c.cls.split(' ')[0];
+        if (name !== 'metadata' && name !== 'section-metadata') names.add(name);
+      }
+    }
   }
   return names;
 }
@@ -59,7 +70,7 @@ export function parseSections(html) {
     const isVoid = VOID_TAGS.has(tag) || !!selfClose;
     if (!closing && !isVoid) {
       if (depth === 0 && tag === 'div') {
-        section = { children: [] };
+        section = { cls: (attrs.match(/class=["']([^"']*)["']/i) || [])[1] || '', children: [] };
       } else if (depth === 1 && section && !child) {
         const cls = (attrs.match(/class=["']([^"']*)["']/i) || [])[1] || '';
         child = { tag, cls, start: m.index + m[0].length, depth };
@@ -100,6 +111,9 @@ const isHeading = (t) => /^h[1-6]$/.test(t);
 export function detectFlattenedCollections(sections) {
   const hits = [];
   sections.forEach((section, si) => {
+    // a classed section carries a section-metadata style (template-styled
+    // prose, e.g. `.article-body`) — designed content, not an unstyled dump
+    if (section.cls) return;
     const runs = [];
     let run = [];
     for (const c of section.children) {
@@ -194,7 +208,8 @@ export async function run(ctx) {
     let run = 0; const runs = [];
     for (const t of ptexts) {
       const w = t.split(/\s+/).filter(Boolean).length;
-      if (w > 0 && w <= 3) run += 1;
+      // char cap keeps CJK prose (1 "word" per sentence) out of the signal
+      if (w > 0 && w <= 3 && t.length <= 15) run += 1;
       else { if (run >= 4) runs.push(run); run = 0; }
     }
     if (run >= 4) runs.push(run);
@@ -235,7 +250,7 @@ export async function run(ctx) {
     }
 
     // --- blocks used -------------------------------------------------------
-    const blocks = blockNames(html);
+    const blocks = blockNames(sections);
     pageBlocks.set(p.path, [...blocks]);
     for (const b of blocks) fleetBlocks.add(b);
 

@@ -45,6 +45,9 @@ export async function run(ctx) {
 
   const byTemplate = new Map();
   for (const p of withTemplate) {
+    // no block data = the page didn't deliver (routing owns that failure);
+    // flagging it as "missing every block" would just echo the 404
+    if (pageBlocks[p.path] === undefined) continue;
     if (!byTemplate.has(p.template)) byTemplate.set(p.template, []);
     byTemplate.get(p.template).push(p);
   }
