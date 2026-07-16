@@ -113,6 +113,32 @@ rule. The agent references them by their actual role name in DESIGN.md
 (`Pomodoro`, `Vault`, `Zenith`) when building the `:root` block, with
 a comment showing the role name above the token.
 
+## Sizing `--max-width`
+
+The `1200px` in the example block is illustrative, not normative —
+stardust ships **no default container width**. Derive it per project:
+
+1. **Captured surface first (Mode A).** Inherit the captured
+   container. When it reads dated at modern viewports (≤1024px is the
+   usual smell), widen **one step within the site's own framework
+   vocabulary** — Bootstrap 960 → 1140, Tailwind `max-w-5xl` →
+   `max-w-6xl`/`7xl` — never jump to a generic number.
+2. **Measure-first when there is no usable capture** (rebrand /
+   signal-thin). Body prose caps at 65–75ch regardless of container,
+   so grids and heroes size it: a 3-up card grid wants ~1100–1300px
+   (cards at 340–400px), converging on **1200–1280px** for marketing
+   surfaces. Widths past ~1320px need deliberate inner columns, not a
+   wider text block.
+3. **Record the choice.** Changing the captured container is a
+   surface execution call, not a divergence move — but flag it in the
+   page-shape brief's `## Layout strategy` (and `## Open questions
+   for craft` when the step-up is debatable) so the reviewer can veto
+   it before render.
+
+Anti-patterns: hardcoding one "stardust default" across projects;
+jumping a Bootstrap-960 site straight to 1280 under Mode A; widening
+the container as a substitute for capping prose measure.
+
 ## Why these names
 
 The `--heading-*` / `--body-*` / `--color-*` / `--spacing-*` token
