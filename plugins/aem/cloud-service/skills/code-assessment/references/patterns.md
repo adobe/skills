@@ -20,6 +20,10 @@ Adding a pattern: add a row here, then build the expert skill from
   `planned` rows leave it `-` — the detector is built (and this set to `analyzer`) when the
   pattern reaches `ready`. When the user names targets directly, that's the `with_findings`
   invocation mode (see [`../SKILL.md`](../SKILL.md)), not a per-pattern detection method.
+  One `analyzer` detector — `remove-deprecated-api` — loads its rules dynamically from a
+  preflight-produced TSV cache (`remove-deprecated-api/scripts/detect.sh` runs the AEM
+  Analyser Maven Plugin and writes the cache); the detector's shape and integration are
+  identical to every other detector's.
 - **fix** — `mechanical` (deterministic edit) | `guided` (LLM-judgment remediation).
   Set only when a pattern reaches `ready` and has a recipe to prove it; `planned` rows
   leave it `-` (the fix approach is decided when the pattern is built).
@@ -46,7 +50,7 @@ Adding a pattern: add a row here, then build the expert skill from
 | `unbounded-recursion` | add a depth guard to self-recursive / tree-traversal methods (incl. navigation & breadcrumb) | medium | planned | - | - |
 | `unbounded-graphql` | add pagination (`first` / `limit`) to GraphQL queries | medium | planned | - | - |
 | `logging-in-loops` | move logging out of hot loops / add level guards | low | planned | - | - |
-| [`remove-deprecated-api`](../remove-deprecated-api/SKILL.md) | migrate deprecated and removed Java imports, Maven dependencies, and unmodifiable OSGi configs to comply with AEM as a Cloud Service enforcement policies; uses direct AI edits + AI-assisted build-error fixes | high | ready | analyzer | mechanical |
+| [`remove-deprecated-api`](../remove-deprecated-api/SKILL.md) | migrate deprecated and removed Java APIs to comply with AEM as a Cloud Service enforcement; rules loaded dynamically from a preflight-produced cache (AEM Analyser Maven Plugin's `region-deprecated-api` output) — fixes driven by the plugin's hint (successor package from `deprecated.msg`), with Experience League as fallback | high | ready | analyzer | guided |
 
 > Out-of-memory / leak incidents — a frequent symptom — are usually caused by
 > the patterns above (unbounded queries, unclosed resources, in-process image work, heavy init).

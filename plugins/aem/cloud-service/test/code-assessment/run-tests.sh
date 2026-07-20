@@ -225,16 +225,31 @@ assert_contains "setLimit(-1) flagged"             "$OUT" 'UnboundedJcr.java'
 assert_contains "unbounded via final constant flagged" "$OUT" 'UnboundedConst.java'
 assert_absent  "bounded query (incl. bounded const) not flagged" "$OUT" 'BoundedQuery.java'
 
-echo "[remove-deprecated-api] deprecated imports, deps, and OSGi PIDs flagged; clean + future-deadline skipped"
-OUT="$(run "$FIX/remove-deprecated-api")"
-assert_contains "pattern present"                        "$OUT" '"pattern":"remove-deprecated-api"'
-assert_contains "log4j import flagged"                   "$OUT" 'DeprecatedLog4j.java'
-assert_contains "jetty import flagged"                   "$OUT" 'DeprecatedJetty.java'
-assert_contains "pom log4j dep flagged"                  "$OUT" 'pom.xml'
-assert_contains "unmodifiable OSGi PID flagged"          "$OUT" 'org.apache.sling.commons.log.LogManager.cfg'
-assert_absent   "clean service not flagged"              "$OUT" 'CleanService.java'
-assert_absent   "future-deadline import not flagged"     "$OUT" 'FutureDeadline.java'
-assert_absent   "clean OSGi config not flagged"          "$OUT" 'com.example.MyService.cfg'
+echo "[remove-deprecated-api] dynamic-rules detector — pre-seeded cache drives matches"
+# Detection is analyzer-based but the rules come from a preflight-produced TSV
+# (remove-deprecated-api/scripts/detect.sh). For the test we seed the cache
+# directly, bypassing the mvn plugin invocation, and confirm the detector
+# matches, emits hints, and respects the past-due gate.
+RULES_TSV="$(mktemp)"
+cat > "$RULES_TSV" <<'RULES_EOF'
+# seeded for tests — mirrors what detect.sh would write from a real analyser log
+org.apache.log4j	The log4j 1.x libraries are deprecated. Please use org.slf4j instead.	2024-01-01
+org.eclipse.jetty	The Jetty 9 libraries are deprecated. Please use org.apache.sling.http.client instead.	2024-06-01
+com.example.future	Future deprecation — should not be flagged.	2099-12-31
+RULES_EOF
+OUT="$(AEM_DEPRECATED_API_RULES="$RULES_TSV" run "$FIX/remove-deprecated-api")"
+assert_contains "pattern present"                  "$OUT" '"pattern":"remove-deprecated-api"'
+assert_contains "log4j import flagged"             "$OUT" 'DeprecatedLog4j.java'
+assert_contains "jetty import flagged"             "$OUT" 'DeprecatedJetty.java'
+assert_contains "hint present for log4j"           "$OUT" 'Please use org.slf4j instead'
+assert_absent   "clean service not flagged"        "$OUT" 'CleanService.java'
+assert_absent   "future-dated rule not applied"    "$OUT" 'com.example.future'
+
+echo "[remove-deprecated-api] missing rules cache surfaces a warning, not a crash"
+OUT="$(AEM_DEPRECATED_API_RULES="$(mktemp -u)" run "$FIX/remove-deprecated-api")"
+assert_contains "warning for missing cache"        "$OUT" 'deprecated-api-rules-missing'
+assert_absent   "no findings when cache is missing" "$OUT" '"pattern":"remove-deprecated-api"'
+rm -f "$RULES_TSV"
 
 
 echo "----"

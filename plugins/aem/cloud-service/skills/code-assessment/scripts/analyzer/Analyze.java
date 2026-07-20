@@ -198,7 +198,9 @@ public final class Analyze {
             b.append("{\"pattern\":").append(q(f.pattern))
              .append(",\"file\":").append(q(f.file))
              .append(",\"line\":").append(f.line)
-             .append(",\"snippet\":").append(q(f.snippet)).append("}");
+             .append(",\"snippet\":").append(q(f.snippet));
+            if (f.hint != null) b.append(",\"hint\":").append(q(f.hint));
+            b.append("}");
         }
         b.append("],\"warnings\":[");
         for (int i = 0; i < warnings.size(); i++) { if (i > 0) b.append(","); b.append(q(warnings.get(i))); }
