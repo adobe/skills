@@ -20,10 +20,6 @@ Adding a pattern: add a row here, then build the expert skill from
   `planned` rows leave it `-` — the detector is built (and this set to `analyzer`) when the
   pattern reaches `ready`. When the user names targets directly, that's the `with_findings`
   invocation mode (see [`../SKILL.md`](../SKILL.md)), not a per-pattern detection method.
-  One `analyzer` detector — `remove-deprecated-api` — loads its rules dynamically from a
-  preflight-produced TSV cache (`remove-deprecated-api/scripts/detect.sh` runs the AEM
-  Analyser Maven Plugin and writes the cache); the detector's shape and integration are
-  identical to every other detector's.
 - **fix** — `mechanical` (deterministic edit) | `guided` (LLM-judgment remediation).
   Set only when a pattern reaches `ready` and has a recipe to prove it; `planned` rows
   leave it `-` (the fix approach is decided when the pattern is built).
