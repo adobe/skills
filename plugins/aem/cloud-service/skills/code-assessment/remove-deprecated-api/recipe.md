@@ -32,13 +32,7 @@ Set the Maven command variable — used in all build steps below:
 MVN_CMD = "./mvnw" if mvnw exists, otherwise "mvn"
 ```
 
-### 1b. Network
-
-`detect.sh` resolves the plugin from Maven Central and (transitively) reads the AEM SDK
-feature data through the plugin. If Maven Central is unreachable, the pattern cannot
-run — record `skipped: network-unavailable` and continue with other patterns.
-
-### 1c. Maven output size limit
+### 1b. Maven output size limit
 
 **CRITICAL**: Maven commands produce very verbose output that can exceed the tool output
 buffer limit (1 MB). Every Maven invocation redirects to a log file and only returns
@@ -94,7 +88,7 @@ Sources:
 
 ```
 Migration Progress:
-- [ ] Step 1: Pre-flight (verify Maven and JVM, set MVN_CMD, confirm network)
+- [ ] Step 1: Pre-flight (verify Maven and JVM, set MVN_CMD)
 - [ ] Step 2: Initial build (verify project compiles before changes)
 - [ ] Step 3: Detection — 3a preflight (detect.sh, populates rules cache); 3b analyzer (analyze.sh consumes cache)
 - [ ] Step 4: Apply edits (each fix driven by the finding's hint; Experience League fallback)
@@ -189,7 +183,6 @@ bash "$SKILL_DIR/remove-deprecated-api/scripts/detect.sh" "$PROJECT_ROOT"
    useful for the run log; the authoritative findings come from Phase 2).
 
 **If `detect.sh` exits non-zero** — inspect the reason:
-- Network unreachable → skip pattern with a clear message.
 - Plugin fails to run because the project doesn't declare the AEM SDK BOM → the
   analyser needs the SDK on the reactor's dependency graph; note this as a manual
   action ("add `com.adobe.aem:aem-sdk-api` as a parent BOM or dependency") and skip.
@@ -296,7 +289,7 @@ For each Java finding:
    apply it too.
 4. Add the extra import line if the hint or Experience League guidance requires it
    (e.g. `LoggerFactory`).
-5. Use the `Edit` tool.
+5. Apply the edit.
 6. If the import is no longer present (file modified since discovery), record
    `skipped: deprecated-import-not-found: <prefix> not present in <file>`.
 
@@ -440,10 +433,10 @@ Every AI-applied code change **must** be marked with a comment immediately above
 ### 6a. Build-fix iteration pattern
 
 1. Read the build log to identify the first failing module.
-2. Read the specific file(s) with errors using the `Read` tool.
+2. Read the specific file(s) with errors.
 3. Identify the deprecated API that was partially migrated (import renamed but
    successor class has a different signature, missing method, etc.).
-4. Apply the minimal fix using the `Edit` tool — smallest change that compiles.
+4. Apply the minimal fix — smallest change that compiles.
 5. Add `// Fixed by AEM Modernizer AI` above every changed line.
 6. Re-run the build.
 7. Repeat up to 5 times total.

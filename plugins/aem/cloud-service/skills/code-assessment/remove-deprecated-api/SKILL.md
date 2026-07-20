@@ -43,14 +43,6 @@ package (e.g. *"Please use `org.apache.sling.xss` instead"*). Fixes are derived 
 that hint at plan time. When the hint names no successor, the recipe consults the
 Adobe **Experience League** API-removal guidance as a documented fallback.
 
-## Network requirement (documented exception)
-
-This pattern is the code-assessment skill's one documented **network-required** pattern:
-Maven Central is needed to resolve the plugin (and, transitively, the AEM SDK feature
-data the plugin reads); Experience League is used as a fallback source for successor
-guidance. If the environment is offline, `detect.sh` fails with a clear message and the
-pattern is skipped in the report. All other patterns remain local-only.
-
 ## Classification — confirm this pattern applies
 
 - Any `*.java`, `pom.xml`, or OSGi config file the AEM Analyser Maven Plugin reports
@@ -188,7 +180,7 @@ or record the finding as manual-action-required.
 
 | Symptom | Likely cause | Action |
 |---|---|---|
-| `detect.sh` fails at plugin resolution step | No network to Maven Central | Re-run once network is available, or pass `--pin-plugin <version>` with a cached local version |
+| `detect.sh` fails at plugin resolution step | Plugin not in local Maven cache | Pass `--pin-plugin <version>` with a locally available version |
 | `mvn verify` fails before the analyser runs | Baseline compile failure | Fix the baseline build first (per runbook), then re-run detection |
 | Hint is empty for a finding | SDK deprecation message is descriptive only, or the finding came from `library` grouping without a msg | Consult Experience League for the successor; if still absent, record as manual-only |
 | `Import-Package not satisfied` on rerun | Successor package not on the module's classpath | Add the required Maven dependency (with user consent) or pick a JDK stdlib alternative |
