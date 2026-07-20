@@ -46,14 +46,15 @@ Each eval lives in its own directory and contains exactly two files:
 
 - `task.md` — Setup, User prompt, Expected behavior. Human-readable
   scenario specification.
-- `criteria.json` — Weighted scoring rubric. Each criterion has an
-  `id`, a `weight`, and a `description`. `total` should equal the
-  sum of weights. Used by the eval runner to score the agent's
-  output.
+- `criteria.json` — Weighted scoring rubric in the tessl
+  `weighted_checklist` shape. Top level is `{ "context", "type":
+  "weighted_checklist", "checklist" }`; each checklist item has a
+  `name`, a `max_score`, and a `description`. The `max_score` values
+  sum to 100 per eval. Used by the eval runner (and enforced by
+  `tessl plugin publish`) to score the agent's output.
 
-This format mirrors v1's structure (and the format other Adobe-skills
-plugins use), so the eval runner that worked for v1 should work for
-v2 evals without modification.
+This format matches the one the other Adobe-skills plugins use, so the
+shared eval runner scores these evals without modification.
 
 ## Evals in this suite
 
@@ -100,9 +101,9 @@ in adobe/skills). Each eval is self-describing: a runner reads
 `task.md` for the scenario, executes it against a clean stardust
 project, and scores the output against `criteria.json`.
 
-A criterion passes if its `description` is satisfied as judged by
-the runner. Per-criterion verdicts are combined as a weighted sum
-out of `total` (100 per eval).
+A checklist item passes if its `description` is satisfied as judged by
+the runner. Per-item verdicts are combined as a weighted sum of
+`max_score` (100 per eval).
 
 ## What stardust v2 evals deliberately do NOT test
 
