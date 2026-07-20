@@ -79,8 +79,16 @@ bash plugins/aem/cloud-service/skills/code-assessment/remove-deprecated-api/scri
 
 `detect.sh`:
 
-1. Resolves the latest `com.adobe.aem:aemanalyser-maven-plugin` release from Maven
-   Central (`maven-metadata.xml`); can be pinned with `--pin-plugin <version>`.
+1. Resolves the latest `com.adobe.aem:aemanalyser-maven-plugin` and the latest
+   `com.adobe.aem:aem-sdk-api` releases from Maven Central (`maven-metadata.xml`); each
+   can be pinned with `--pin-plugin <version>` / `--pin-sdk <version>`. The freshest
+   SDK is used by default because Cloud Manager itself runs the analyser against the
+   latest SDK — matching that behaviour surfaces every deprecation the pipeline will
+   flag. If the project's `pom.xml` pins an older SDK via `<sdkVersion>X.Y.Z</sdkVersion>`
+   or `<useDependencyVersions>true</useDependencyVersions>` inside the analyser plugin
+   config, `detect.sh` overrides at the CLI (`-DsdkVersion=<latest>` and
+   `-DsdkUseDependency=false`) so the fresh set is used just for the preflight — no
+   pom edit. Pass `--respect-pom-sdk` to honour the pom's pin instead.
 2. If the project's root `pom.xml` already declares the plugin, upgrades its
    `<version>` in place; otherwise injects a **temporary** `<extensions>true</extensions>`
    plugin block into `<build><plugins>`.

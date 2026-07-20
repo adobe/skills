@@ -167,8 +167,12 @@ bash "$SKILL_DIR/remove-deprecated-api/scripts/detect.sh" "$PROJECT_ROOT"
 
 `$SKILL_DIR` is `plugins/aem/cloud-service/skills/code-assessment`. `detect.sh`:
 
-1. Resolves the latest `aemanalyser-maven-plugin` version from Maven Central (or
-   uses `--pin-plugin <version>`).
+1. Resolves the latest `aemanalyser-maven-plugin` and the latest `aem-sdk-api`
+   versions from Maven Central (each pin-able with `--pin-plugin` / `--pin-sdk`).
+   The latest SDK is forced via `-DsdkVersion=<latest> -DsdkUseDependency=false` so
+   the freshest deprecation metadata is used — this matches Cloud Manager and
+   overrides any `<sdkVersion>` / `<useDependencyVersions>` pin in the plugin
+   config **without touching the pom** (pass `--respect-pom-sdk` to keep the pin).
 2. Upgrades the plugin's `<version>` in the project's root `pom.xml` if the plugin
    is already declared, or injects a temporary block if not.
 3. Runs `mvn verify` and captures the log at `/tmp/aem-analyser.log`.

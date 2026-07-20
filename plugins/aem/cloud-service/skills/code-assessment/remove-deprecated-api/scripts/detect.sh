@@ -27,11 +27,21 @@ set -euo pipefail
 
 usage() {
   cat >&2 <<'EOF'
-usage: detect.sh <project-root> [--pin-plugin <version>] [--rules-out <path>]
-                 [--goal <goal>] [--log <path>] [--keep-log]
+usage: detect.sh <project-root> [--pin-plugin <version>] [--pin-sdk <version>]
+                 [--respect-pom-sdk] [--rules-out <path>] [--goal <goal>]
+                 [--log <path>] [--keep-log]
 
   <project-root>       Absolute or relative path to the Maven project root.
-  --pin-plugin <ver>   Pin aemanalyser-maven-plugin to a specific version.
+  --pin-plugin <ver>   Pin aemanalyser-maven-plugin to a specific version
+                       (default: latest release on Maven Central).
+  --pin-sdk <ver>      Pin the AEM SDK the analyser uses to a specific version
+                       (default: latest release on Maven Central; overrides any
+                       <sdkVersion> or <useDependencyVersions> in the pom
+                       so the freshest deprecation metadata is used, matching
+                       Cloud Manager).
+  --respect-pom-sdk    Do not override the pom's SDK selection. Leaves any
+                       <sdkVersion> / <useDependencyVersions> intact. Use when
+                       the customer has intentionally pinned to an older SDK.
   --rules-out <path>   Path for the rules cache TSV (default:
                        $AEM_DEPRECATED_API_RULES or
                        $TMPDIR/aem-code-assessment/deprecated-api-rules.tsv).
@@ -45,19 +55,23 @@ EOF
 [ $# -ge 1 ] || usage
 PROJECT_ROOT="$1"; shift
 PIN_PLUGIN=""
+PIN_SDK=""
+RESPECT_POM_SDK=0
 RULES_OUT="${AEM_DEPRECATED_API_RULES:-${TMPDIR:-/tmp}/aem-code-assessment/deprecated-api-rules.tsv}"
 GOAL="verify"
 LOG_PATH="/tmp/aem-analyser.log"
 KEEP_LOG=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --pin-plugin)     PIN_PLUGIN="$2"; shift 2 ;;
-    --rules-out)      RULES_OUT="$2"; shift 2 ;;
-    --goal)           GOAL="$2"; shift 2 ;;
-    --log)            LOG_PATH="$2"; shift 2 ;;
-    --keep-log)       KEEP_LOG=1; shift ;;
-    -h|--help)        usage ;;
-    *)                echo "unknown arg: $1" >&2; usage ;;
+    --pin-plugin)        PIN_PLUGIN="$2"; shift 2 ;;
+    --pin-sdk)           PIN_SDK="$2"; shift 2 ;;
+    --respect-pom-sdk)   RESPECT_POM_SDK=1; shift ;;
+    --rules-out)         RULES_OUT="$2"; shift 2 ;;
+    --goal)              GOAL="$2"; shift 2 ;;
+    --log)               LOG_PATH="$2"; shift 2 ;;
+    --keep-log)          KEEP_LOG=1; shift ;;
+    -h|--help)           usage ;;
+    *)                   echo "unknown arg: $1" >&2; usage ;;
   esac
 done
 
@@ -71,16 +85,17 @@ log() { printf '[detect] %s\n' "$*" >&2; }
 
 # ---- 1. Resolve plugin version ---------------------------------------------
 
-resolve_latest() {
-  local url="https://repo1.maven.org/maven2/com/adobe/aem/aemanalyser-maven-plugin/maven-metadata.xml"
+resolve_latest_from_metadata() {
+  # Args: <maven-central group/artifact base URL>
+  local url="$1/maven-metadata.xml"
   local xml
   if ! xml="$(curl -fsS --max-time 30 "$url" 2>/dev/null)"; then
-    echo "error: could not fetch $url" >&2; exit 4
+    echo "error: could not fetch $url" >&2; return 1
   fi
   local v
   v="$(printf '%s' "$xml" | sed -n 's:.*<release>\([^<]*\)</release>.*:\1:p' | head -1)"
   [ -n "$v" ] || v="$(printf '%s' "$xml" | sed -n 's:.*<latest>\([^<]*\)</latest>.*:\1:p' | head -1)"
-  [ -n "$v" ] || { echo "error: latest version not found in maven-metadata.xml" >&2; exit 4; }
+  [ -n "$v" ] || { echo "error: latest version not found in $url" >&2; return 1; }
   printf '%s' "$v"
 }
 
@@ -88,8 +103,39 @@ if [ -n "$PIN_PLUGIN" ]; then
   PLUGIN_VERSION="$PIN_PLUGIN"
   log "using pinned plugin version: $PLUGIN_VERSION"
 else
-  PLUGIN_VERSION="$(resolve_latest)"
+  PLUGIN_VERSION="$(resolve_latest_from_metadata https://repo1.maven.org/maven2/com/adobe/aem/aemanalyser-maven-plugin)" \
+    || exit 4
   log "latest aemanalyser-maven-plugin: $PLUGIN_VERSION"
+fi
+
+# ---- 1b. Resolve the SDK version the analyser will use ---------------------
+
+# By default, force the latest AEM SDK so the analyser sees the current
+# deprecation set — matching Cloud Manager's own runs. Explicit pom
+# overrides (<sdkVersion>, <useDependencyVersions>true</useDependencyVersions>)
+# are logged; passing -DsdkVersion / -DsdkUseDependency on the CLI overrides
+# the plugin config unless the caller opted out with --respect-pom-sdk.
+
+SDK_VERSION=""
+if [ "$RESPECT_POM_SDK" -eq 1 ]; then
+  log "--respect-pom-sdk: leaving pom's <sdkVersion> / <useDependencyVersions> intact"
+else
+  if [ -n "$PIN_SDK" ]; then
+    SDK_VERSION="$PIN_SDK"
+    log "using pinned SDK version: $SDK_VERSION"
+  else
+    SDK_VERSION="$(resolve_latest_from_metadata https://repo1.maven.org/maven2/com/adobe/aem/aem-sdk-api)" \
+      || exit 4
+    log "latest aem-sdk-api: $SDK_VERSION"
+  fi
+  # Surface any pom overrides that would otherwise pin an older SDK.
+  if grep -q '<sdkVersion>' "$ROOT_POM" 2>/dev/null; then
+    POM_PINNED_SDK="$(grep -oE '<sdkVersion>[^<]+</sdkVersion>' "$ROOT_POM" | head -1 | sed 's/<[^>]*>//g')"
+    log "note: pom pins <sdkVersion>${POM_PINNED_SDK}</sdkVersion> — overriding to $SDK_VERSION via -DsdkVersion on the CLI"
+  fi
+  if grep -q '<useDependencyVersions>true</useDependencyVersions>' "$ROOT_POM" 2>/dev/null; then
+    log "note: pom sets <useDependencyVersions>true</useDependencyVersions> — overriding to false via -DsdkUseDependency on the CLI"
+  fi
 fi
 
 # ---- 2. Ensure plugin is wired ---------------------------------------------
@@ -151,16 +197,24 @@ if [ -x "$PROJECT_ROOT/mvnw" ]; then
   MVN_CMD="$PROJECT_ROOT/mvnw"
 fi
 
-log "running: $MVN_CMD $GOAL (log: $LOG_PATH)"
+# Build the mvn argv. Only pass -DsdkVersion / -DsdkUseDependency when we've
+# actually resolved (or been given) an SDK version — otherwise leave the
+# plugin's own resolution alone (--respect-pom-sdk path).
+MVN_ARGS=("$GOAL"
+  -DskipTests
+  -Dcheckstyle.skip=true
+  -Dvault.skipValidation=true
+  -Dsling.install.skip=true
+  -Dexec.skip=true
+  -Djacoco.skip=true
+)
+if [ -n "$SDK_VERSION" ]; then
+  MVN_ARGS+=("-DsdkVersion=$SDK_VERSION" "-DsdkUseDependency=false")
+fi
+
+log "running: $MVN_CMD ${MVN_ARGS[*]} (log: $LOG_PATH)"
 set +e
-( cd "$PROJECT_ROOT" && "$MVN_CMD" "$GOAL" \
-    -DskipTests \
-    -Dcheckstyle.skip=true \
-    -Dvault.skipValidation=true \
-    -Dsling.install.skip=true \
-    -Dexec.skip=true \
-    -Djacoco.skip=true \
-) > "$LOG_PATH" 2>&1
+( cd "$PROJECT_ROOT" && "$MVN_CMD" "${MVN_ARGS[@]}" ) > "$LOG_PATH" 2>&1
 MVN_EXIT=$?
 set -e
 log "maven exit code: $MVN_EXIT"
@@ -294,6 +348,8 @@ done < "$TMP_HINTS"
   fi
   printf '],"meta":{"plugin_version":'
   emit_json_str "$PLUGIN_VERSION"
+  printf ',"sdk_version":'
+  emit_json_str "${SDK_VERSION:-(pom-managed)}"
   printf ',"maven_log":'
   emit_json_str "$LOG_PATH"
   printf ',"maven_exit":%s' "$MVN_EXIT"
