@@ -37,7 +37,3 @@ The Java detector itself lives with the shared analyzer at
 
 - Apache Maven 3.x or newer with a supported JVM (for the preflight; other patterns
   in code-assessment only need a JDK).
-- Network access to Maven Central for the preflight (to resolve the analyser plugin
-  and the AEM SDK feature data it reads). If offline, the preflight is skipped and
-  the Java detector emits a `deprecated-api-rules-missing` warning; other
-  code-assessment patterns remain local-only and continue to work.
