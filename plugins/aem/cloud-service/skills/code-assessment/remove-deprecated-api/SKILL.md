@@ -91,8 +91,11 @@ bash plugins/aem/cloud-service/skills/code-assessment/remove-deprecated-api/scri
 5. **Writes the rules cache TSV** — `<package>\t<hint>\t<for_removal>` per line — at
    `$AEM_DEPRECATED_API_RULES` (env override) or
    `$TMPDIR/aem-code-assessment/deprecated-api-rules.tsv` (default).
-6. Restores `pom.xml` to its pre-run state on exit (EXIT trap, byte-for-byte via a
-   pre-image backup) — the runbook decides whether to persist any plugin upgrade.
+6. **Leaves the plugin wired in.** Both branches persist on disk: an in-place
+   `<version>` bump on an already-declared plugin, and a fresh `<plugin>` block when
+   the plugin was missing — the analyser is genuinely useful to keep wired in for CI
+   and for the final-verification re-run in Step 7 of the recipe. Mid-edit failures
+   fall back to a byte-for-byte pre-image restore via the EXIT trap.
 7. Emits a JSON summary on stdout (findings + meta) for callers that don't chain
    through `analyze.sh`.
 

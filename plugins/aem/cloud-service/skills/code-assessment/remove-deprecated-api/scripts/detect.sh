@@ -98,17 +98,25 @@ has_plugin() {
   grep -q '<artifactId>aemanalyser-maven-plugin</artifactId>' "$ROOT_POM"
 }
 
+# Byte-for-byte backup as a mid-edit safety net. The EXIT trap restores the pom
+# only when POM_MUST_BE_RESTORED == 1 — which is the case if the perl edit or
+# anything else fails partway through. Both the in-place version bump and the
+# new-plugin injection are intentionally **persistent**: the analyser is useful
+# to keep wired in for CI. After a successful pom edit we flip the flag to 0.
 BACKUP_POM="$(mktemp)"
 cp "$ROOT_POM" "$BACKUP_POM"
+POM_MUST_BE_RESTORED=1
 
 restore_pom() {
-  cp "$BACKUP_POM" "$ROOT_POM"
+  if [ "$POM_MUST_BE_RESTORED" -eq 1 ]; then
+    cp "$BACKUP_POM" "$ROOT_POM"
+  fi
   rm -f "$BACKUP_POM"
 }
 trap restore_pom EXIT
 
 if has_plugin; then
-  log "plugin already declared — upgrading <version> to $PLUGIN_VERSION in $ROOT_POM"
+  log "plugin already declared — upgrading <version> to $PLUGIN_VERSION in $ROOT_POM (persisted)"
   perl -0777 -i -pe "
     s{
       (<plugin>[^<]*(?:<(?!/plugin>)[^<]*)*<artifactId>aemanalyser-maven-plugin</artifactId>[^<]*(?:<(?!/plugin>)[^<]*)*<version>)
@@ -118,20 +126,23 @@ if has_plugin; then
     {\${1}${PLUGIN_VERSION}\${2}}xs;
   " "$ROOT_POM"
 else
-  log "plugin not declared — injecting temporary <extensions>true</extensions> block"
+  log "plugin not declared — adding aemanalyser-maven-plugin $PLUGIN_VERSION to $ROOT_POM (persisted)"
   if grep -q '<build>' "$ROOT_POM" && grep -q '</plugins>' "$ROOT_POM"; then
     perl -0777 -i -pe "
       s{</plugins>}
-       {  <!-- code-assessment: temporary aemanalyser injection -->\n        <plugin>\n          <groupId>com.adobe.aem</groupId>\n          <artifactId>aemanalyser-maven-plugin</artifactId>\n          <version>${PLUGIN_VERSION}</version>\n          <extensions>true</extensions>\n        </plugin>\n      </plugins>}m;
+       {  <!-- code-assessment: added by remove-deprecated-api preflight -->\n        <plugin>\n          <groupId>com.adobe.aem</groupId>\n          <artifactId>aemanalyser-maven-plugin</artifactId>\n          <version>${PLUGIN_VERSION}</version>\n          <extensions>true</extensions>\n        </plugin>\n      </plugins>}m;
     " "$ROOT_POM"
   else
     log "warning: could not locate <build><plugins> in $ROOT_POM — attempting <build> injection"
     perl -0777 -i -pe "
       s{</project>}
-       {  <build>\n    <plugins>\n      <!-- code-assessment: temporary aemanalyser injection -->\n      <plugin>\n        <groupId>com.adobe.aem</groupId>\n        <artifactId>aemanalyser-maven-plugin</artifactId>\n        <version>${PLUGIN_VERSION}</version>\n        <extensions>true</extensions>\n      </plugin>\n    </plugins>\n  </build>\n</project>}m;
+       {  <build>\n    <plugins>\n      <!-- code-assessment: added by remove-deprecated-api preflight -->\n      <plugin>\n        <groupId>com.adobe.aem</groupId>\n        <artifactId>aemanalyser-maven-plugin</artifactId>\n        <version>${PLUGIN_VERSION}</version>\n        <extensions>true</extensions>\n      </plugin>\n    </plugins>\n  </build>\n</project>}m;
     " "$ROOT_POM"
   fi
 fi
+# Pom edit complete on both branches — the change persists on exit. The trap
+# still cleans up the backup file, but no longer overwrites the pom.
+POM_MUST_BE_RESTORED=0
 
 # ---- 3. Run Maven -----------------------------------------------------------
 
@@ -294,5 +305,6 @@ done < "$TMP_HINTS"
 rm -f "$TMP_HINTS" "$TMP_FINDINGS"
 if [ "$KEEP_LOG" -eq 0 ]; then :; fi
 
-# EXIT trap restores pom.xml
+# EXIT trap restores pom.xml only if POM_MUST_BE_RESTORED == 1 (mid-edit
+# failure). Successful upgrade + injection both persist.
 exit 0

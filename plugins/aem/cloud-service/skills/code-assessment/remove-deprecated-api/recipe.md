@@ -176,7 +176,11 @@ bash "$SKILL_DIR/remove-deprecated-api/scripts/detect.sh" "$PROJECT_ROOT"
 5. **Writes the rules cache TSV** — `<package>\t<hint>\t<for_removal>` per line —
    at `$AEM_DEPRECATED_API_RULES` (env override) or the default path
    `$TMPDIR/aem-code-assessment/deprecated-api-rules.tsv`.
-6. Restores `pom.xml` to its pre-run state on exit.
+6. **Leaves the plugin wired in.** Both branches persist on disk: an in-place
+   `<version>` bump on an already-declared plugin, and a fresh `<plugin>` block when
+   the plugin was missing — the analyser stays available for CI and for Step 7's
+   final-verification re-run. Mid-edit failures fall back to a byte-for-byte
+   pre-image restore.
 7. Emits a JSON summary on stdout (plugin version, rule count, sample findings —
    useful for the run log; the authoritative findings come from Phase 2).
 
