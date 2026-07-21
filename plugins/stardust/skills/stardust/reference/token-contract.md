@@ -113,6 +113,31 @@ rule. The agent references them by their actual role name in DESIGN.md
 (`Pomodoro`, `Vault`, `Zenith`) when building the `:root` block, with
 a comment showing the role name above the token.
 
+## Sizing `--max-width`
+
+The `1200px` in the example block is illustrative, not normative —
+stardust ships **no default container width**. Derive it per project:
+
+1. **Captured surface first** (Mode A, per `direct/SKILL.md`).
+   Inherit the captured container when it holds up. When it reads
+   dated at modern viewports (≤1024px is the usual smell), widen
+   **one step within the site's own framework vocabulary** —
+   Bootstrap 960 → 1140, Tailwind `max-w-5xl` → `max-w-6xl`/`7xl` —
+   never jump to a generic number.
+2. **Measure-first when the capture has no measurable container**
+   (rebrand / signal-thin capture without one). Body prose caps at
+   65–75ch regardless of container, so grids and heroes size it: a
+   3-up card grid wants ~1100–1300px (cards at 340–400px), converging
+   on **1200–1280px** for marketing surfaces. Widths past ~1320px
+   need deliberate inner columns, not a wider text block.
+3. **Record the choice.** Persist the derived value to DESIGN.json
+   `extensions.breakpoints.containerMaxWidth` (the sourcing table
+   above) so `migrate` re-derives the same width. A change from the
+   captured value needs no divergence justification, but it must be
+   visible: flag it in the page-shape brief's `## Layout strategy`
+   (and `## Open questions for craft` when the step-up is debatable)
+   so the reviewer can veto it before render.
+
 ## Why these names
 
 The `--heading-*` / `--body-*` / `--color-*` / `--spacing-*` token

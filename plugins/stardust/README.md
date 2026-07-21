@@ -85,7 +85,8 @@ otherwise with a clear install hint.
 
 ## Status
 
-`v0.16.0` — two new entry points: `replica` (same-design migration with a
+`v0.16.1` — container-width (`--max-width`) sizing guidance in the token
+contract. Previously in `v0.16.0` — two new entry points: `replica` (same-design migration with a
 measured source-fidelity gate) and `reskin` (byte-faithful content onto a
 donor design system), both field-tested and hardened, plus the shared
 live-measurement module (`diff/scripts/live-session.mjs`) and diff-probe
