@@ -80,7 +80,8 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
   the **distinct** set, assigns each a canonical `edsBlockName` (kebab,
   reserved-class-guarded per deploy #15), and records `usedByPages` /
   `instanceCount`. Chrome (`header`/`nav`/`footer`) is `kind: chrome` → site-wide
-  fragments. In archetypes-only mode the archetype sidecars fully determine the
+  authored documents (`/nav`, `/footer`) fed to the header/footer blocks. In
+  archetypes-only mode the archetype sidecars fully determine the
   block set; `content-pending` pages add none.
 - `plan.mjs` orders pages **representative-first per template** and gives each
   distinct block a **single conversion point**: the first page that uses it
@@ -198,8 +199,10 @@ node skills/rollout/scripts/assemble.mjs   # → rollout/site/{sitemap.xml,robot
 ```
 
 Generates site-wide artifacts: `sitemap.xml` + `robots.txt` from delivered paths,
-and a fragments manifest mapping chrome blocks to `fragments/{header,footer}.html`
-with their `canon/*.html` source (`deploy` pushes the actual fragment content).
+and a fragments manifest mapping chrome blocks to the authored chrome documents
+(`content/nav.html`, `content/footer.html`) with their `canon/*.html` source
+(`deploy` authors + deploys the documents through the normal content chain —
+they MUST be published or the chrome 404s sitewide).
 **Redirects:** if Phase C's path-safety gate emitted `stardust/redirects.tsv`, wire
 it into the EDS redirects mechanism here so original inbound URLs don't 404.
 
@@ -226,7 +229,7 @@ the same row shape either way, so the swap back is a URL change.
 
 When the source has language trees (`/fr/…`, `/en/…`), add them as parallel content
 trees that REUSE the same block library — only authored content and a little wiring
-change (language-routed fragments, per-language indexes, per-language path-safety).
+change (language-routed chrome documents, per-language indexes, per-language path-safety).
 See `reference/multilingual.md`.
 
 ### Phase E — Full-site verify
@@ -244,8 +247,8 @@ flips each page to `verified` or `failed`. Exits non-zero if any page failed.
 blank — decoration failures (missing script, wrong block wrapper class, 404
 chrome) are invisible to a text check. On the FIRST delivered page of each
 template (home included), load the live URL in a headless browser and assert
-decoration ran: the runtime's body class is set (`body.session` under
-AuthorKit — read `stardust/runtime-contract.json`), `main .section` count > 0,
+decoration ran: the runtime's `body.appear` class is set (per
+`stardust/runtime-contract.json`), `main .section` count > 0,
 zero `pageerror` events, zero broken images.
 
 ### Phase E2 — Link-audit completeness
@@ -255,8 +258,9 @@ link **targets** a roster-driven batch misses
 (`reference/operational-learnings.md` § Two verify checks):
 
 - **Nav/footer/landing targets are NOT archetype siblings.** Enumerate every
-  header/footer/nav-fragment `href` plus each section's index/landing page and
-  confirm each is **deployed + published + verified** — otherwise they get
+  `href` in the `/nav` + `/footer` documents plus each section's index/landing
+  page and confirm each is **deployed + published + verified** — and that the
+  chrome documents THEMSELVES are published — otherwise they get
   committed but never published, their links 404, and the dashboard still
   reads 100%.
 - **Localize source-site bounce links** whose path has a delivered local 200

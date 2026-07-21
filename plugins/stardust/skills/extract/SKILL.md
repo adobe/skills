@@ -94,7 +94,7 @@ Additional checks for this sub-command:
    probe alone.
 
    **`--no-save` installs are ephemeral (stardust-style e2e
-   finding).** Any later real `npm i` (e.g. deploy's bootstrap
+   finding).** Any later real `npm i` (e.g. a setup step
    adding a devDependency) prunes non-manifest packages, silently
    removing playwright mid-pipeline. Every downstream skill that
    renders (prototype, migrate, deploy, diff) must re-run the

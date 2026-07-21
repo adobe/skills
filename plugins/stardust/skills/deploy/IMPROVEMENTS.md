@@ -789,3 +789,41 @@ independently and hoped to be inverses. This pass moves the defect-FINDING to co
   imported by content-diff.mjs / section-schema.mjs / block-roundtrip.mjs — every fidelity gate
   measures with the same instrument; change the classifier once and all gates move together.
   content-diff.mjs CLI behavior unchanged.
+
+---
+
+## 2026-07-21 — AuthorKit era retired; David's Model becomes a mechanical gate (#96–#97)
+
+### #96 🔴 AuthorKit runtime dependency removed — vanilla aem-boilerplate is the only target ✅
+**Why:** the port was the pipeline's most fragile step (#84's pin-guard existed because
+author-kit@main drift bricked repos), it forced an `.eslintignore` for a vendored runtime, and
+field runs kept skipping it by agent initiative — the runtime-contract mechanism already made
+vanilla targets work. Existing AuthorKit sites are declared out of scope (product decision).
+**What changed:** `bootstrap-authorkit.mjs` deleted; Runtime-bootstrap chapter replaced by a
+"Target runtime" contract (stock boilerplate, never edited); buttons → `a.button.primary/.secondary/
+.accent` in `p.button-wrapper` (probe `buttonClasses`/`buttonization` per target — current main
+requires emphasis and emits `button-wrapper`, older clones emit `button-container` and buttonize
+bare links); chrome → authored `/nav` + `/footer` documents + template-slotted `header`/`footer`
+blocks (real JS: stock hamburger machinery kept; `nav:`/`footer:` metadata replaces `header: off`);
+fonts → `styles/fonts.css` + metric-matched `<brand>-fallback` faces (stock convention; #40
+inverted — the `body.appear` gate is the runtime's and STAYS); anti-patterns 2/5/6/17 rewritten,
+15 tombstoned. Harness scripts (`build-harness`, `render-harness`, `block-roundtrip`) boot the real
+`scripts.js` / add `body.appear` / synthesize the vanilla wrapper DOM. Two facts verified against
+the live sources while rewriting: section metadata is now applied by the DELIVERY PIPELINE
+(helix-html-pipeline `extract-section-metadata`, rendering v2 / sites created ≥ 2026-05: `style` →
+server-rendered section classes, other keys → `data-*`, the block removed from served DOM), and
+stock `styles.css` natively reserves the header via `--nav-height` + `visibility` gating (#81's
+recipe simplified to "set `--nav-height` responsively").
+
+### #97 🟠 David's Model was ~5/15 rules of advisory prose — now a bundled contract + lint ✅
+**Where:** a prior project's first-pass DA structure needed an explicit second "follow David's
+Model" pass to fix (over-blocked prose, display copy in key-value rows).
+**Fix applied:** `davids-model.md` (all 15 rules mapped to enforcement points, `D#N` citations);
+ENCODE contract gains the missing structural rules (D2 no nested blocks, D3 spans, D4 fully-
+qualified URLs, D10 ≤4 columns, D13 alt-text, D15 no code-as-text, D1 auto-blocked embeds); Step 2
+opens with D1/D11 triage (prose section → default content + a small closed section-`style`
+vocabulary, resolving the old anti-pattern-2 tension; Block Collection pattern → mirror its
+content model); Step 2b records `defaultContent` + the component-model shape (simple/key-value/
+container) per block for UE forward-compat. `scripts/davids-model-lint.mjs` (dependency-free,
+🔴 exits 2) is wired into the atomic delivery contract before sanitise and into the checklist —
+conformance is now mechanical on the FIRST pass, not a second-pass correction.
