@@ -827,3 +827,39 @@ content model); Step 2b records `defaultContent` + the component-model shape (si
 container) per block for UE forward-compat. `scripts/davids-model-lint.mjs` (dependency-free,
 🔴 exits 2) is wired into the atomic delivery contract before sanitise and into the checklist —
 conformance is now mechanical on the FIRST pass, not a second-pass correction.
+
+---
+
+## 2026-07-22 — vanilla-EDS e2e round 2 (flexiloans subfolder site, #98–#100)
+
+Context: second Phase-5 validation run — 11-section fintech page onto stock boilerplate,
+subfolder scope `/flexiloans/`, per-page `nav`/`footer` metadata chrome overrides (worked
+first try live). davids-model-lint again 0 🔴 on the first pass with no model instruction
+in the run prompt. Three live-only findings, all invisible to the local harness:
+
+### #98 🔴 Pipeline wraps nav trigger links in `<p>` — desktop nav renders unstyled ✅
+**Where:** delivered `nav.plain.html` has `<li><p><a>…</p><ul>` where the authored/harness
+shape is `<li><a>…<ul>`. The header block's `:scope > a` trigger lookup and the
+`.nav-links > li > a` CSS silently missed on live → the whole desktop nav rendered as
+run-on plain text while mobile (burger) worked and the harness passed. The #79 class
+hitting CHROME. **Fix applied:** SKILL.md Step 6 nav-DECODE note (match
+`:scope > a, :scope > p > a`, unwrap the `<p>`; verify the styled desktop nav on the
+deployed preview).
+
+### #99 🔴 Authored SVGs with embedded raster data 409 the whole page's preview ✅
+**Where:** preview `POST` returned `409 "error from content-bus"` for any page referencing
+an authored `content.da.live/*.svg` whose SVG embeds base64 raster data behind a `pattern`
+fill (exported award badges, 82–143 KB). Pure-vector SVGs (logo, 10–30 KB) pass. No
+per-asset error anywhere — the page-level 409 is the only signal; bisecting sections was
+required to find it. **Fix applied:** ENCODE Images rule (extract the embedded raster →
+author the PNG) + davids-model-lint 🟡 advisory on any authored `.svg` media URL.
+
+### #100 🔴 Metadata-first empty section defeats waitForFirstImage → hero LCP lazy → CLS ✅
+**Where:** live CLS 0.134 (target <0.1) attributed to the section BELOW the hero, while
+the harness probe measured 0.0007 — local images load instantly, so the harness
+false-passes. Chain: the metadata block leaves the FIRST section empty → the runtime's
+`loadSection(first, waitForFirstImage)` eager-izes nothing → the hero `<img>` stays
+`loading="lazy"`; its `width: auto` contain layout gives the un-loaded img a 0-height box
+→ the hero grows ~380px when the image lands. **Fix applied:** SKILL.md Step 3 bullet
+(hero decorate() sets `loading=eager` + `fetchpriority=high`; CSS reserves the media slot;
+run the CLS probe against the DEPLOYED preview) + checklist line.

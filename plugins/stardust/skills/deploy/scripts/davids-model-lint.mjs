@@ -224,7 +224,14 @@ function lintUrls(file, main, flag) {
   // ingester; repo-relative /img/ delivers as about:error.
   for (const m of main.matchAll(/<img\b[^>]*\bsrc="([^"]+)"/gi)) {
     const src = m[1];
-    if (/^(https?:)?\/\//i.test(src) || src.startsWith('data:')) continue;
+    if (/^(https?:)?\/\//i.test(src) || src.startsWith('data:')) {
+      // #99 — an authored SVG that embeds raster data 409s the preview of every
+      // page referencing it ("error from content-bus"); pure-vector SVGs pass.
+      if (/\.svg(\?|$)/i.test(src)) {
+        flag('🟡', 'D4', `authored SVG media <img src="${src}"> — verify it is pure-vector; SVGs embedding raster data URIs fail the whole page's preview with 409 (#99). Extract/rasterize to PNG when in doubt`);
+      }
+      continue;
+    }
     flag('🔴', 'D4', `authored <img src="${src}"> is not fully qualified — upload to DA /media and author the content.da.live URL (repo-relative delivers as about:error)`);
   }
   // D4 — href: root-relative internal links are the EDS convention; DOCUMENT-
