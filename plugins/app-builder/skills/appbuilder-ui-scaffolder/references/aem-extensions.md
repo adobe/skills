@@ -1,6 +1,6 @@
 # AEM UI Extension Patterns
 
-Patterns for building AEM UI Extensions using `@adobe/uix-guest`. These extensions customize AEM surfaces (Content Fragment Console, Content Fragment Editor, Universal Editor, Assets View) and run as App Builder apps inside iframes.
+Patterns for building AEM UI Extensions using `@adobe/uix-guest`. These extensions customize AEM surfaces (Content Fragment Console, Content Fragment Editor, Universal Editor, Assets View, Content Hub) and run as App Builder apps inside iframes.
 
 **Key difference from `@adobe/exc-app`:** ExC Shell apps use `register()` from `@adobe/exc-app` with `runtime.done()`. AEM extensions use `register()` from `@adobe/uix-guest` with a `methods` object that declares extension points. The two are completely separate APIs.
 
@@ -71,6 +71,7 @@ Extension point identifiers:
 - `aem/cf-editor/1` — Content Fragment Editor
 - `aem/universal-editor/1` — Universal Editor
 - `aem/assets/1` — Assets View (requires Assets Ultimate license)
+- `aem/assets/contenthub/1` — Content Hub (unified — asset details, card, and selection bar surfaces via one `register()` call)
 
 ---
 
@@ -412,6 +413,237 @@ Refer to [Assets View extension docs](https://developer.adobe.com/uix/docs/servi
 
 ---
 
+## Content Hub Extensions (`aem/assets/contenthub/1`)
+
+Content Hub is a single extension point that spans **three** surfaces, each opted into via a method namespace in one `register()` call:
+
+- **Asset Details Dialog** (`assetDetails`) — custom tab panels in the side rail.
+- **Asset card actions** (`card`) — buttons on asset cards (Assets grid, inside a collection, link-share) **and** on collection tiles in the Collections grid; the surface is passed in `actionContext.context`.
+- **Selection bar / bulk actions** (`selectionBar`) — buttons in the multi-select action bar.
+
+> Use the deprecated ID `aem/contenthub/assets/details/1` only for older projects mid-transition; new projects use `aem/assets/contenthub/1`.
+
+**Auth is different from the other AEM surfaces:** Content Hub does *not* use `sharedContext`. Get auth and environment from the `host` namespaces instead (`host.auth.getIMSInfo()`, `host.discovery.getAemHost()` — see Host APIs below).
+
+### Registration (all three namespaces)
+
+```js
+import { register } from '@adobe/uix-guest';
+
+// `let` (not `const`): card/selectionBar onActionClick handlers reference the
+// connection AFTER register() resolves, to open a modal via host.modal.openDialog().
+let guestConnection;
+
+guestConnection = await register({
+  id: 'my.company.extension-name',   // reverse-domain; must match attach() calls
+  methods: {
+    assetDetails: {
+      getTabPanels() { /* tab panels in the Asset Details Dialog */ },
+    },
+    card: {
+      getActionButtons(actionContext) { /* buttons on asset cards + collection tiles */ },
+      async onActionClick(resourceType, buttonId, resourceId, actionContext) { /* … */ },
+    },
+    selectionBar: {
+      getActionButtons(actionContext) { /* buttons in the bulk-action bar */ },
+      async onActionClick(buttonId, assetIds) { /* … */ },
+    },
+  },
+});
+```
+
+Opt into any combination — only implement the namespaces you use, and scaffold one component per namespace (`PanelAssetDetailsExtensionTab.js` for `assetDetails`, `CardActionModal.js` for `card`, `SelectionBarModal.js` for `selectionBar`). `card` and `selectionBar` are gated by the `EXTENSIBILITY_AEM_CONTENTHUB` feature flag; when it is off the host renders no buttons for those surfaces, but `assetDetails` panels still render.
+
+`app.config.yaml` includes the unified extension point once:
+
+```yaml
+extensions:
+  aem/assets/contenthub/1:
+    $include: src/aem-assets-contenthub-1/ext.config.yaml
+```
+
+### Asset Details (`assetDetails`)
+
+Adds tab panels to the Asset Details Dialog side rail. Content Hub manages toggling, deep-linking, and header rendering — the extension only provides the panel content via a hash route.
+
+```js
+assetDetails: {
+  getTabPanels() {
+    return [
+      {
+        id: 'my-panel',              // unique within this extension
+        title: 'My Panel',           // panel header (Content Hub renders it)
+        tooltip: 'My Panel',         // side-rail icon tooltip
+        icon: 'Extension',           // React-Spectrum workflow icon name
+        contentUrl: '/#asset-details-extension-tab',   // hash route — must match a <Route> in App.js
+      },
+    ];
+  },
+}
+```
+
+Restrict to specific repos with an allow-list; leave it empty to load for any repo (safe for local dev):
+
+```js
+const allowedRepos = ['delivery-p12345-e167890.adobeaemcloud.com'];
+const shouldSkipRegistration = (repo) => allowedRepos.length > 0 && !allowedRepos.includes(repo);
+```
+
+### Asset Card Actions (`card`)
+
+Buttons on asset cards (Assets grid / inside a collection / link-share) and on collection tiles. One implementation serves every card surface — the host passes the surface in `actionContext.context`.
+
+```js
+card: {
+  // actionContext.context: 'assets' | 'collection' | 'share' (asset cards) | 'collections' (collection tiles)
+  getActionButtons(actionContext) {
+    return [
+      { id: 'my-card-action', label: 'Edit Metadata', icon: 'Edit' },  // card uses `label`, NOT `title`
+    ];
+  },
+  // Exact arg order the host uses. Optional (host guards with ?.) — needed to open a modal.
+  async onActionClick(resourceType, buttonId, resourceId, actionContext) {
+    // resourceType: 'asset' (cards) | 'collection' (tiles); resourceId: the URN string
+    await guestConnection.host.modal.openDialog({
+      title: 'Edit Metadata',
+      contentUrl: `/#card-action-modal?resourceId=${encodeURIComponent(resourceId)}&resourceType=${resourceType}`,
+      type: 'modal',
+      size: 'M',
+    });
+  },
+}
+```
+
+Only `id`, `label`, `icon` are read for card buttons. Because `onActionClick` fires *after* `register()` resolves, declare `let guestConnection` so the handler can reference it.
+
+### Selection Bar / Bulk Actions (`selectionBar`)
+
+Buttons in the bulk-action bar shown when one or more assets are selected. The signature **differs from `card`**: no `resourceType`, and the click handler receives an **array** of asset IDs.
+
+```js
+selectionBar: {
+  // actionContext: { context: 'assets'|'collections'|'collection'|'share',
+  //                  resourceSelection: { resources: [{ id }, …] } }
+  getActionButtons(actionContext) {
+    return [
+      { id: 'my-bulk-action', label: 'Bulk Export', icon: 'Download' },  // uses `label`, NOT `title`
+    ];
+  },
+  async onActionClick(buttonId, assetIds) {   // assetIds: string[] of selected URNs
+    const ids = encodeURIComponent(JSON.stringify(assetIds || []));
+    await guestConnection.host.modal.openDialog({
+      title: `Bulk Export (${assetIds.length})`,
+      contentUrl: `/#selection-bar-modal?assetIds=${ids}`,
+      type: 'modal',
+      size: 'M',
+    });
+  },
+}
+```
+
+The host prefixes selection-bar button ids internally (`ext:<extensionId>:<btn.id>`); your code always uses the original `btn.id` — that's what `onActionClick` receives too.
+
+### Opening a Modal (`modal`)
+
+Card and selection-bar actions have no panel of their own — they open a modal whose content is another hash route in the same guest app. **Content Hub's `openDialog` takes a single config object** — you never pass `{ id }` (the UIX host auto-injects the extension id on its side). This is the **opposite** of the other AEM surfaces, which use `host.modal.showUrl({ title, url })` + `close()`. Don't cross them.
+
+```js
+// From an onActionClick handler:
+await guestConnection.host.modal.openDialog({
+  title: 'Dialog title',
+  contentUrl: '/#card-action-modal?resourceId=…',  // pass data via query string…
+  type: 'modal',                                   // 'modal' | 'fullscreen'
+  size: 'M',                                       // 'S' | 'M' | 'L'
+  // payload: { … },                               // …or via payload, read with modal.getPayload()
+});
+```
+
+Inside the modal page (its own iframe route), read the data and reconnect with `attach()`:
+
+```js
+import { attach } from '@adobe/uix-guest';
+import { extensionId } from './Constants';
+
+const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
+const resourceId = params.get('resourceId');       // or: const { resourceId } = await connection.host.modal.getPayload();
+const connection = await attach({ id: extensionId });
+await connection.host.modal.closeDialog();          // dismiss
+```
+
+### React Routing (`App.js`)
+
+Hash routing — every panel/modal `contentUrl` must match a `<Route path>`. Keep only the routes for the namespaces you use.
+
+```js
+import { HashRouter as Router, Routes, Route } from 'react-router-dom';
+
+<Router>
+  <Routes>
+    <Route index element={<ExtensionRegistration />} />
+    <Route path="index.html" element={<ExtensionRegistration />} />
+    <Route path="asset-details-extension-tab" element={<PanelAssetDetailsExtensionTab />} />  {/* assetDetails */}
+    <Route path="card-action-modal" element={<CardActionModal />} />      {/* card modal */}
+    <Route path="selection-bar-modal" element={<SelectionBarModal />} />  {/* selectionBar modal */}
+  </Routes>
+</Router>
+```
+
+### Host APIs
+
+All via `guestConnection.host` (from either `register()` or `attach()`); every call returns a Promise.
+
+```js
+const { imsOrg, imsOrgName, accessToken } = await guestConnection.host.auth.getIMSInfo();
+const apiKey  = await guestConnection.host.auth.getApiKey();          // never hardcode
+const aemHost = await guestConnection.host.discovery.getAemHost();    // "author-p12345-e67890.adobeaemcloud.com"
+guestConnection.host.toast.display({ variant: 'positive', message: 'Saved!' });  // neutral|positive|info|negative
+const { locale } = await guestConnection.host.i18n.getLocalizationInfo();
+const assetId = await guestConnection.host.assetDetails.getCurrentAsset();  // plain STRING (e.g. "urn:aaid:aem:…")
+```
+
+### Calling Web Actions from a Panel
+
+Never call AEM APIs from the browser (CORS blocks them) — route through an App Builder web action:
+
+```js
+// In PanelAssetDetailsExtensionTab.js
+const { accessToken, imsOrg } = await guestConnection.host.auth.getIMSInfo();
+const apiKey  = await guestConnection.host.auth.getApiKey();
+const aemHost = await guestConnection.host.discovery.getAemHost();
+const assetId = await guestConnection.host.assetDetails.getCurrentAsset();
+
+const response = await fetch(actions['aem-assets-contenthub-1/generic'], {  // URL from config.json
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ assetId, aemHost, apiKey, imsOrg }),
+});
+```
+
+The web action (`actions/generic/index.js`) makes the authenticated AEM Assets Author API call server-side and returns the result. See the `appbuilder-action-scaffolder` skill for the action itself.
+
+### Local Development
+
+```bash
+aio app build && aio app run
+```
+
+Test URL: `https://experience.adobe.com/?devMode=true&ext=https://localhost:9080#/assets/contenthub/`
+
+First run only: navigate to `https://localhost:9080` and accept the self-signed cert, or the panel stays blank. No `&repo=` needed when `allowedRepos = []`.
+
+### Common Gotchas (Content Hub)
+
+1. **`openDialog` is a single object** — passing `{ id }` yourself makes the host retry every 500ms until it times out (`… timed out after 10000ms`, `[object Object] doesn't exist`) while `host.toast` still works, masking the cause. Never pass `{ id }`.
+2. **`const guestConnection` breaks card/selectionBar** — their `onActionClick` fires after `register()` resolves; use `let` or the handler closes over `undefined`.
+3. **`getCurrentAsset()` returns a STRING**, not `{ id }`. (Assets View's `host.details.getCurrentResourceInfo()` is a different shape — don't mix.)
+4. **Card/selectionBar buttons use `label`, not `title`** — a button with only `title` renders blank. (`assetDetails` panels use `title`/`tooltip`.)
+5. **`card` vs `selectionBar` signatures differ** — card `onActionClick(resourceType, buttonId, resourceId, actionContext)` (single resource); selectionBar `onActionClick(buttonId, assetIds)` (array, no resourceType).
+6. **Buttons missing entirely** — `card`/`selectionBar` are gated by the `EXTENSIBILITY_AEM_CONTENTHUB` flag; asset-details panels still show when it's off.
+7. **`beforeUpload` must return `{ proceed, metadata }`** — omitting `metadata` loses it; pass `{ proceed: true, metadata: ctx.metadata }` for a no-op, and always include `message` when blocking.
+8. **`attach()` id must match `register()` id** — export `extensionId` from `Constants.js` and import it in both.
+
+---
+
 ## Extension Testing & Development
 
 ### Local Development
@@ -482,3 +714,4 @@ extensions:
 | CF Editor | `aem/cf-editor/1` | `headerMenu`, `rte` | `contentFragment`, `modal`, `toaster` |
 | Universal Editor | `aem/universal-editor/1` | `headerMenu` | `modal` |
 | Assets View | `aem/assets/1` | `actionBar`, `headerMenu` | `modal` |
+| Content Hub | `aem/assets/contenthub/1` | `assetDetails`, `card`, `selectionBar` | `auth`, `discovery`, `toast`, `i18n`, `modal` (`openDialog`/`closeDialog`), `assetDetails` |
