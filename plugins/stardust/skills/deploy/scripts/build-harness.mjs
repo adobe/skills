@@ -14,9 +14,13 @@
  *   --root <dir>  repo root the harness is served from (favicon detection;
  *                 default: cwd)
  *
- * Output: a full HTML doc loading /styles/styles.css + /scripts/ak.js +
- * /scripts/scripts.js, body = <main> with metadata removed and every absolute
- * .../img/ (or http://localhost:PORT/img/) <img src> rewritten root-relative.
+ * Output: a full HTML doc loading /styles/styles.css + /scripts/scripts.js
+ * (which imports aem.js, adds body.appear, and loads the sections — the same
+ * boot as head.html), body = empty <header>/<footer> (the runtime's
+ * loadHeader/loadFooter need the elements to exist, and loadLazy would die
+ * before loading any section if <header> is missing) + <main> with metadata
+ * removed and every absolute .../img/ (or http://localhost:PORT/img/)
+ * <img src> rewritten root-relative.
  * The favicon link derives from what actually shipped (deploy Step 3
  * § Favicon is format-preserving — favicon.<ext>): exactly ONE link,
  * mirroring the icon href in <root>/head.html when present (that line is
@@ -103,11 +107,12 @@ if (!faviconLink) {
 const doc = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>QA harness</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="/styles/styles.css">
-<script src="/scripts/ak.js" type="module"></script>
 <script src="/scripts/scripts.js" type="module"></script>
 ${faviconLink}</head>
 <body>
+<header></header>
 ${main}
+<footer></footer>
 </body></html>`;
 writeFileSync(outFile, doc);
 process.stdout.write(`harness written: ${outFile} (${doc.length} bytes)\n`);

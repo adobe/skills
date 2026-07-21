@@ -162,12 +162,44 @@ async function main() {
     if (!names.length) throw new Error('no block divs found in the content page');
 
     const blockCss = names.map((n) => { try { return fs.readFileSync(`${blocksDir}/${n}/${n}.css`, 'utf8'); } catch { return ''; } }).join('\n');
+    // body.appear satisfies the vanilla foundation's body{display:none} gate the
+    // way loadEager() does — without it every computed-style read sees a hidden page.
     await harness.setContent(
-      `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0}main .section{padding:0}${styles}\n${blockCss}</style></head><body><main>${mainHtml}</main></body></html>`,
+      `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0}main .section{padding:0}${styles}\n${blockCss}</style></head><body class="appear"><main>${mainHtml}</main></body></html>`,
       { waitUntil: 'networkidle' },
     );
     await harness.evaluate(dropMetadata);
     const harnessCounts = await harness.evaluate(tagHarnessSections, names);
+    // AFTER tagging (which reads the raw authored shape), mimic the vanilla
+    // runtime's decorateSections/decorateBlock DOM — .section wrappers,
+    // .default-content-wrapper, .<name>-wrapper/.block/.<name>-container — so
+    // block/foundation CSS scoped to the decorated shape matches. data-rt tags
+    // survive: the tagged elements are moved, not recreated.
+    await harness.evaluate(() => {
+      document.querySelectorAll('main > div').forEach((section) => {
+        const wrappers = [];
+        let defaultContent = false;
+        [...section.children].forEach((e) => {
+          if (e.tagName === 'DIV' || !defaultContent) {
+            const wrapper = document.createElement('div');
+            wrappers.push(wrapper);
+            defaultContent = e.tagName !== 'DIV';
+            if (defaultContent) wrapper.classList.add('default-content-wrapper');
+          }
+          wrappers[wrappers.length - 1].append(e);
+        });
+        wrappers.forEach((w) => section.append(w));
+        section.classList.add('section');
+        section.querySelectorAll(':scope > div > div[class]').forEach((block) => {
+          const name = block.classList[0];
+          if (!name) return;
+          block.classList.add('block');
+          block.dataset.blockName = name;
+          block.parentElement.classList.add(`${name}-wrapper`);
+          section.classList.add(`${name}-container`);
+        });
+      });
+    });
     const decorateErrs = [];
     const withJs = [];
     for (const name of names) {
