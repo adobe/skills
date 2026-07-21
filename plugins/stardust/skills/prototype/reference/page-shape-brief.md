@@ -223,9 +223,9 @@ than discover them in the proposed HTML.
 **Optional** but recommended:
 
 - `## Layout strategy` — when the page deploys an unusual layout
-  rule that's not the system default. Container-width changes from
-  the captured value are flagged here (see the stardust skill's
-  `reference/token-contract.md` § Sizing `--max-width`).
+  rule that's not the system default (e.g. container-width changes
+  from the captured value, per
+  `skills/stardust/reference/token-contract.md` § Sizing `--max-width`).
 - `## Key states` — when the page has non-default empty / loading /
   error states the migrate path-B render needs to know about.
 - `## Interaction model` — when the page has non-trivial JS-free

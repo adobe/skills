@@ -4,6 +4,18 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.16.1 — container-width sizing guidance in the token contract
+
+Docs only, no behavioral surface. New `## Sizing --max-width` section in
+`skills/stardust/reference/token-contract.md`: stardust ships no default
+container width — inherit the captured container when it holds up (widening
+one step within the site's own framework vocabulary when it reads dated),
+measure-first (1200–1280px) when the capture has no measurable container,
+and persist the derived value to DESIGN.json
+`extensions.breakpoints.containerMaxWidth` with the change flagged in the
+page-shape brief. Cross-referenced from
+`skills/prototype/reference/page-shape-brief.md` § Layout strategy.
+
 ## 0.16.0 — two new entry points: replica (same-design migration) and reskin (content × donor design)
 
 Round-1 outcome of the three-new-use-cases exploration (research, candidate
