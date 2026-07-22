@@ -863,3 +863,19 @@ false-passes. Chain: the metadata block leaves the FIRST section empty → the r
 → the hero grows ~380px when the image lands. **Fix applied:** SKILL.md Step 3 bullet
 (hero decorate() sets `loading=eager` + `fetchpriority=high`; CSS reserves the media slot;
 run the CLS probe against the DEPLOYED preview) + checklist line.
+
+### #101 🟡 Local-QA scope trimmed to what the harness can actually prove ✅
+**Where:** transcript timing across three e2e runs (surly 74m/6 sections, flexiloans 72m/11,
+sos 42m/13). Three local steps cost 10–15 min/run and caught nothing — or worse:
+harness-side `content-diff`/`visual-diff` found zero defects in any run once
+`block-roundtrip` was green (same classifier, same DOM — nothing left to find by
+construction); the local CLS probe FALSE-PASSED the one time it mattered (0.0007 harness vs
+0.134 live, #100); and every run hand-rolled a fresh probe.mjs (~3–5 min) asserting what the
+section schema already encodes.
+**Fix applied:** (1) new stock `scripts/qa-gate.mjs` — one run asserts the decoration
+contract from the page's eds-schema (boot, one `<h1>`, blocks loaded + non-empty, unit
+counts incl. densest-container + unitSelector-tag proxies, wide-1600 warnings); validated
+42/42 against the sos harness. (2) Local-QA scope boundary in SKILL.md: CLS,
+`content-diff`/`visual-diff`, and `nav:`/`footer:` overrides are DEPLOYED-URL-ONLY checks.
+(3) Step 10 + #81/#100 + checklist reworded accordingly. Expected effect: ~70 → ~55 min per
+single-page conversion with a quality GAIN (no false local CLS confidence).

@@ -4,6 +4,54 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.17.0 — vanilla aem-boilerplate is the only deploy runtime; David's Model becomes a mechanical gate
+
+The AuthorKit runtime dependency is removed end to end: `stardust:deploy`
+targets stock `adobe/aem-boilerplate` — no runtime port, no vendored files,
+no `.eslintignore`, no pinned author-kit ref. Validated by three full e2e
+conversions onto a fresh boilerplate + DA site (6/11/13-section pages, root
+and subfolder scopes); the third run shipped with zero live-only defects.
+
+- **Runtime (deploy):** `bootstrap-authorkit.mjs` deleted; new "Target
+  runtime" contract documents what stock boilerplate provides (never
+  modified). Buttons are the vanilla family (`a.button.primary`/`.secondary`/
+  `.accent` in `p.button-wrapper`; the probe records per-target drift —
+  older clones emit `button-container`). Fonts move to `styles/fonts.css` +
+  metric-matched `<brand>-fallback` faces (the stock convention); the
+  `body.appear` gate is the runtime's and stays. Chrome is authored `/nav` +
+  `/footer` documents fed to template-slotted `header`/`footer` blocks —
+  nav links become authorable and interactive chrome is real block JS;
+  per-page `nav:`/`footer:` metadata replaces `header: off` (and makes
+  multilingual chrome routing a content concern, no runtime patching).
+- **David's Model (deploy):** new `davids-model.md` maps all 15 rules to
+  their enforcement points (`D#N` citations); the ENCODE contract gains the
+  missing structural rules (D2 nested blocks, D3 spans, D4 URLs, D10
+  columns, D13 alt-text, D15 code-as-text, D1 auto-blocked embeds); Step 2
+  opens with D1/D11 triage (prose sections land as default content with a
+  small closed section-`style` vocabulary; Block Collection patterns mirror
+  collection models). New `davids-model-lint.mjs` gates the atomic delivery
+  chain — three consecutive e2e runs produced 0 🔴 first-pass content
+  structure with no model instruction in the run prompt.
+- **New gates + findings from the validation runs:** `qa-gate.mjs` (stock
+  Local-QA assertion run driven by the page's eds-schema — replaces
+  hand-rolled probes); Local-QA scope boundary (CLS, `content-diff`/
+  `visual-diff`, and chrome overrides are deployed-URL-only checks — the
+  harness false-passes CLS); findings #96–#101 in `deploy/IMPROVEMENTS.md`,
+  including: the pipeline `<p>`-wraps nav trigger links (#98),
+  bitmap-embedding SVGs 409 the preview (#99, lint advisory added), and the
+  metadata-first empty section defeats `waitForFirstImage` so hero blocks
+  must eager-load their LCP image and reserve the media slot (#100).
+- **Cross-skill:** rollout delivers chrome as published `/nav` + `/footer`
+  documents (roster + coverage semantics updated; multilingual routing via
+  per-language documents); diff's `BLANK_RENDER` hint now points at the
+  runtime not booting instead of advising removal of the stock display gate;
+  `edsName()` guards `-wrapper`/`-container` suffix collisions.
+
+Measured effect across the validation runs: single-page conversion time fell
+from ~74 to ~42 minutes as findings fed back into the skill, with fidelity
+gates green throughout (content+roles matched 41/41, 94/94, 71/71 text
+nodes; live CLS ≤ 0.01 after #100).
+
 ## 0.16.1 — container-width sizing guidance in the token contract
 
 Docs only, no behavioral surface. New `## Sizing --max-width` section in

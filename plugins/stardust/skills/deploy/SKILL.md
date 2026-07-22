@@ -283,8 +283,8 @@ Rebrand `styles/styles.css` — replace the boilerplate's DEMO layer (roboto tok
   @media (width <= 767px) { :root { --nav-height: 102px; } }
   @media (width <= 480px) { :root { --nav-height: 120px; } }          /* banner wraps to 2 lines */
   ```
-  Make the header's height **deterministic** so the reserved value actually matches: keep the reservation breakpoints in sync with the header block's, and avoid nav-link *wrap zones* (e.g. extend the burger/hamburger breakpoint so the inline links can't wrap to a second row at awkward widths). A multi-row chrome (utility bar + nav) is taller than the stock 64px — measure it, don't keep the default. Reserve slightly OVER the natural height (a few px) so you never under-reserve and shift. **The footer needs NO reservation** — it's below the fold, so its late load shifts nothing above it. Verify with a CLS probe (Playwright `PerformanceObserver({type:'layout-shift'})`) that **delays the woff2/nav fetches** to reproduce the slow-network swap PSI measures — a fast localhost load hides the shift.
-- **The hero must eager-load its LCP image AND reserve its media slot (#100).** The metadata block leaves the page's FIRST section empty, so the runtime's `loadSection(main.querySelector('.section'), waitForFirstImage)` eager-izes NOTHING — the hero's pipeline-emitted `<img loading="lazy">` stays lazy. And a hero image styled `width: auto` (contain-in-a-max-height layouts) has a **zero-height box until it loads**, so the hero grows by the image's full height when it lands, shifting every section below (a real page measured CLS 0.134 attributed to the section under the hero). Both halves in the hero block: `decorate()` sets `loading="eager"` + `fetchpriority="high"` on its first `<img>`, and the CSS reserves the media slot (`min-height` on the figure per breakpoint, or an explicit `aspect-ratio`). **Run the CLS probe against the DEPLOYED preview URL, not only the harness** — harness images are local and instant, so the harness measures ~0 while the live page shifts (this exact false-pass shipped once).
+  Make the header's height **deterministic** so the reserved value actually matches: keep the reservation breakpoints in sync with the header block's, and avoid nav-link *wrap zones* (e.g. extend the burger/hamburger breakpoint so the inline links can't wrap to a second row at awkward widths). A multi-row chrome (utility bar + nav) is taller than the stock 64px — measure it, don't keep the default. Reserve slightly OVER the natural height (a few px) so you never under-reserve and shift. **The footer needs NO reservation** — it's below the fold, so its late load shifts nothing above it. Verify with a CLS probe (Playwright `PerformanceObserver({type:'layout-shift'})`) that **delays the woff2/nav fetches** to reproduce the slow-network swap PSI measures — run it **against the DEPLOYED preview URL only (#101)**: local assets load instantly, so a harness run hides the shift and false-passes.
+- **The hero must eager-load its LCP image AND reserve its media slot (#100).** The metadata block leaves the page's FIRST section empty, so the runtime's `loadSection(main.querySelector('.section'), waitForFirstImage)` eager-izes NOTHING — the hero's pipeline-emitted `<img loading="lazy">` stays lazy. And a hero image styled `width: auto` (contain-in-a-max-height layouts) has a **zero-height box until it loads**, so the hero grows by the image's full height when it lands, shifting every section below (a real page measured CLS 0.134 attributed to the section under the hero). Both halves in the hero block: `decorate()` sets `loading="eager"` + `fetchpriority="high"` on its first `<img>`, and the CSS reserves the media slot (`min-height` on the figure per breakpoint, or an explicit `aspect-ratio`). **Run the CLS probe ONLY against the DEPLOYED preview URL (#101)** — harness images are local and instant, so the harness measures ~0 while the live page shifts (this exact false-pass shipped once); a local CLS number carries no information either way.
 
 That's it. No motion primitives. No utility classes beyond the button system. Section `style` values stay the small closed set above — never a parallel styling system for block-owned sections (see anti-pattern 2).
 
@@ -751,30 +751,31 @@ Open `http://localhost:3000/qa/page.html` — `scripts.js` runs `loadPage()` (wh
 
 **Before any DA push, run the whole-page round-trip gate (#94)** — `block-roundtrip.mjs` with no `--blocks` (all blocks, DA-free): it catches cross-block drops a per-block run can miss (a section head absorbed by the wrong block, an instance-count mismatch between authored blocks and prototype sections).
 
+**Then run the stock QA gate — do NOT hand-roll a probe script (#101):**
+
+```bash
+node skills/deploy/scripts/qa-gate.mjs http://localhost:3000/qa/page.html \
+     --schema stardust/eds-schema/<page>.json     # exit 0 required
+```
+
+One run asserts the whole decoration contract: runtime booted (`body.appear`), exactly one `<h1>` with nothing nested (#35/#55), all blocks `loaded` and rendering non-empty, zero pageerrors/broken images, schema unit counts rendered (the 1-of-N segmentation collapse, #48/#52/#62), and the wide-1600 wrap check (#13, as warnings to cross-check). Interactive drives (#28) are the one thing you still write by hand.
+
+**Local-QA scope boundary (#101) — three things deliberately NOT verified against the harness, because three e2e runs showed they cost time and produce false confidence locally:**
+- **CLS: deployed-URL ONLY.** Harness assets are local and instant — a real page measured 0.0007 locally vs 0.134 live (#100). Never conclude CLS from the harness.
+- **`content-diff`/`visual-diff`: deployed-URL ONLY (Step 10).** With `block-roundtrip` green they find nothing locally BY CONSTRUCTION (same classifier, same DOM); their unique value is the DA transport + live runtime (a stripped tag, a `<p>`-wrap, an ingester failure). Pre-running them against the harness is pure cost.
+- **Per-page chrome overrides (`nav:`/`footer:` metadata): deployed-URL only** — the harness has no pipeline to apply them.
+
 **Capture at a real viewport and scroll — not one giant window (#19).** A `min-height:100vh` hero becomes *window-tall* under a huge capture window (e.g. 7800px), pushing its centered content far down and off the top crop — it looks like the hero text vanished. Instead, use Playwright at a normal viewport (e.g. 1440×900) and `scrollIntoView()` each section before each screenshot.
 
 **Visually diff each section against the prototype (#23).** Programmatic checks (width, decoration counts, interactivity) pass things the eye catches — header alignment, intentional line breaks (`<br>`), heading **weight**, and a section root's **background/color** (e.g. a footer that should be a brand color but renders on the body background). Open the prototype itself (`<x-dc>`/JSX prototypes self-render from their file via their `support.js`/bundle) and the harness at the **same viewport, section by section**, and compare.
 
 **Drive interactive blocks and assert state changes (#28).** For any interactive block, don't stop at the static render — Playwright-drive each control and assert the result: click a selector/tab → expect the active item / filtered count to change; submit an invalid form → expect the error text; submit a valid one → assert the visible state changed (e.g. a balance went `$4,862.13 → $3,862.13`, a confirmation appeared). Run the same drive against the **deployed** preview too — block JS that worked in the harness can still trip on CSP or a missing dependency live.
 
-**Wide-viewport layout check (#13).** Always QA at a **wide** viewport (≥1600px), not just 1440 — a missing max-width container is invisible where the 1320 max ≈ the viewport. Measure each block's inner content width and flag anything spanning full width that shouldn't:
-
-```js
-// Playwright, viewport 1600: for each block, is the content constrained?
-for (const n of ['hero','quick','used','stats','service','offers','brands','locations']) {
-  const w = await page.evaluate((sel) => {
-    const inner = document.querySelector(`.${sel} .wrap`) || document.querySelector(`.${sel}`).firstElementChild;
-    return Math.round(inner.getBoundingClientRect().width);
-  }, n);
-  console.log(n, w, w > 1340 ? '<== FULL-WIDTH (check against prototype)' : '');
-}
-```
-
-Cross-check each flag against the prototype: full-bleed is correct only where the prototype section has no inner max-width wrapper.
+**Wide-viewport layout check (#13).** Always QA at a **wide** viewport (≥1600px), not just 1440 — a missing max-width container is invisible where the 1320 max ≈ the viewport. `qa-gate.mjs` runs this pass automatically (its second-viewport warnings); cross-check each flag against the prototype — full-bleed is correct only where the prototype section has no inner max-width wrapper.
 
 ## Step 10 — Visual + structural diff & reconcile (content-diff REQUIRED)
 
-After deploy, reconcile the EDS page against the source prototype with **two complementary probes — run BOTH** (#78). They catch disjoint failure classes; either alone gives a false "looks fine":
+After deploy, reconcile the EDS page against the source prototype with **two complementary probes — run BOTH, against the DEPLOYED URL only** (#78, #101). They catch disjoint failure classes; either alone gives a false "looks fine". Do NOT pre-run them against the local harness: with `block-roundtrip` green they find nothing there by construction (same classifier, same DOM) — what they uniquely see is the DA transport and the live runtime.
 
 **The `content-diff` per-instance/role check is a REQUIRED gate for the first page of each template (#92),
 not optional.** The atomic-delivery gates verify structure/layout (one `<h1>`, grids compute `grid`) and
@@ -923,8 +924,9 @@ A block that builds its own layout/view wrapper (common for interactive blocks t
 - [ ] Heading outline has no level jumps (`h2 → h3`, never `h2 → h4`).
 - [ ] Each block reproduces the prototype's max-width container — **including plain-background sections** (#37); **no unintended full-width content at a wide (≥1600px) viewport**.
 - [ ] Global `img` reset is `display: block; max-width: 100%; height: auto;` (#36) — EDS adds width/height attrs; without `height: auto` images stretch vertically.
-- [ ] When the header sits in flow above the first section, `--nav-height` is set responsively to the real chrome height (#81) — the header block's late load must NOT push the hero down (verify CLS with a fetch-delayed probe; target < 0.1).
-- [ ] Hero LCP image is `loading="eager"` + `fetchpriority="high"` (set in `decorate()` — the empty metadata-first section defeats the runtime's `waitForFirstImage`, #100) and its media slot is CSS-reserved (`min-height`/`aspect-ratio`); the CLS probe ran against the DEPLOYED preview, not only the harness.
+- [ ] When the header sits in flow above the first section, `--nav-height` is set responsively to the real chrome height (#81) — the header block's late load must NOT push the hero down (verify CLS with a fetch-delayed probe on the DEPLOYED preview; target < 0.1).
+- [ ] Hero LCP image is `loading="eager"` + `fetchpriority="high"` (set in `decorate()` — the empty metadata-first section defeats the runtime's `waitForFirstImage`, #100) and its media slot is CSS-reserved (`min-height`/`aspect-ratio`); the CLS probe ran ONLY against the DEPLOYED preview (#101 — a harness CLS number is meaningless).
+- [ ] **`qa-gate.mjs` exits 0** against the harness (stock script + the page's eds-schema — no hand-rolled probe, #101); `content-diff`/`visual-diff` were run against the DEPLOYED URL only.
 - [ ] Any styling that depends on a `<span>`/class INSIDE a block cell is re-created in `decorate()` (#39) — EDS strips `<span>` in block cells (e.g. wrap a `.stars` run in JS, don't author it).
 - [ ] Every block reads plain-text fields by CELL/`textContent`, NOT `querySelectorAll('p')` (#79) — the pipeline unwraps the `<p>` in single-text cells, so a `p`-based read drops eyebrow/subhead/lede/tag/body on live while the raw-`<p>` harness still shows them. Verify against the decorated live/preview render or a `<p>`-stripping harness, and assert each text field is present (counts alone don't catch it).
 - [ ] No `<style>` or `<script>` tags in the content page, and no code visible as text in any cell (D15).
