@@ -24,15 +24,32 @@ export function htmlReport(report) {
     warn: 'background:#e8b95e;color:#0a1024',
     info: 'background:rgba(245,240,230,0.15);color:#f5f0e6',
   };
+  // filter buckets: allowlisted findings keep their severity in the pill but
+  // filter as their own bucket (they don't count toward the exit code either)
+  const bucketOf = (f) => (f.allowlisted ? 'allow' : f.severity);
+  const fidOf = (f) => `${f.check}/${f.id}`;
   const rows = report.findings.map((f) => `
-    <tr class="${f.allowlisted ? 'allow' : f.severity}">
+    <tr class="${f.allowlisted ? 'allow' : f.severity}" data-bucket="${bucketOf(f)}" data-fid="${esc(fidOf(f))}">
       <td><span class="pill" style="${pill[f.severity]}">${f.severity}</span></td>
       <td>${esc(f.check)}</td><td class="mono">${esc(f.id)}</td>
       <td class="mono">${esc(f.path || '(fleet)')}</td>
       <td>${esc(f.message)}${f.allowlisted ? `<div class="reason">allowlisted · ${esc(f.allowlistReason)}</div>` : ''}
       ${f.evidence ? `<details><summary>evidence</summary><pre>${esc(JSON.stringify(f.evidence, null, 2).slice(0, 3000))}</pre></details>` : ''}</td>
     </tr>`).join('');
-  const s = report.summary;
+
+  const bucketCounts = { error: 0, warn: 0, info: 0, allow: 0 };
+  const fidCounts = new Map();
+  for (const f of report.findings) {
+    bucketCounts[bucketOf(f)] += 1;
+    fidCounts.set(fidOf(f), (fidCounts.get(fidOf(f)) || 0) + 1);
+  }
+  const sevChips = [['error', 'errors'], ['warn', 'warnings'], ['info', 'info'], ['allow', 'allowlisted']]
+    .map(([b, label]) => `<span class="chip sev" data-bucket="${b}">${label} <span class="n">(${bucketCounts[b]})</span></span>`)
+    .join('');
+  const fidChips = [...fidCounts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([fid, n]) => `<span class="chip fid" data-fid="${esc(fid)}">${esc(fid)} <span class="n">(${n})</span></span>`)
+    .join('');
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>stardust:qa — ${esc(report.base)}</title>
 <style>
  :root{--ink:#0a1024;--ink-deep:#060a14;--ink-soft:#141b3a;--dust:#f5f0e6;--dust-50:rgba(245,240,230,0.5);
@@ -45,10 +62,22 @@ export function htmlReport(report) {
  h1{font-family:"SF Pro Display",system-ui,sans-serif;font-weight:600;letter-spacing:-0.02em;font-size:34px;line-height:1.05;margin:0}
  .prov{font:500 12px/1.7 "SF Mono",ui-monospace,monospace;letter-spacing:0.04em;color:var(--dust-50);margin:16px 0 0}
  .prov b{color:var(--dust);font-weight:500}
- .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:32px 0 8px}
- .card{background:var(--ink-soft);border:1px solid var(--dust-08);border-radius:14px;padding:18px 20px}
- .card b{font-family:"SF Pro Display",system-ui,sans-serif;font-size:34px;font-weight:600;letter-spacing:-0.02em;display:block;line-height:1}
- .card small{font:500 10px/1 "SF Mono",ui-monospace,monospace;letter-spacing:0.14em;text-transform:uppercase;color:var(--dust-50);display:block;margin-top:10px}
+ .fgroup{margin-top:26px}
+ .fgroup .eyebrow{margin-bottom:0}
+ .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+ .chip{cursor:pointer;user-select:none;background:var(--ink-soft);border:1px solid var(--dust-08);border-radius:999px;
+   padding:4px 12px;font:500 11px/1.6 "SF Mono",ui-monospace,monospace;letter-spacing:0.06em;color:var(--dust-50)}
+ .chip.sev{text-transform:uppercase;letter-spacing:0.1em}
+ .chip .n{opacity:.55}
+ .chip:hover{border-color:var(--dust-30);color:var(--dust)}
+ .chip.on{border-color:var(--amber);color:var(--amber)}
+ .chip.on[data-bucket="error"]{border-color:var(--red);color:var(--red)}
+ .chip.on[data-bucket="warn"]{border-color:var(--amber);color:var(--amber)}
+ .chip.on[data-bucket="info"]{border-color:var(--dust-30);color:var(--dust)}
+ .chip.on[data-bucket="allow"]{border-color:var(--dust-30);color:var(--dust-50)}
+ .showing{font:500 11px/1 "SF Mono",ui-monospace,monospace;letter-spacing:0.06em;color:var(--dust-30);margin:22px 0 0}
+ .showing .clear{cursor:pointer;color:var(--amber);display:none}
+ .showing.filtered .clear{display:inline}
  table{border-collapse:collapse;width:100%;margin-top:28px}
  th{font:500 10px/1 "SF Mono",ui-monospace,monospace;letter-spacing:0.14em;text-transform:uppercase;color:var(--dust-50);text-align:left;padding:0 10px 10px;border-bottom:1px solid var(--dust-30)}
  td{border-bottom:1px solid var(--dust-08);padding:10px;text-align:left;vertical-align:top;font-size:13px;color:rgba(245,240,230,0.85)}
@@ -67,15 +96,48 @@ export function htmlReport(report) {
 <span class="eyebrow">stardust · qa sweep · read-only</span>
 <header>${STAR_MARK}<h1>${esc(report.base.replace(/^https?:\/\//, ''))}</h1></header>
 <p class="prov">${esc(report.provenance.writtenAt)} · <b>${report.inventory.pages}</b> pages · ${report.durationSeconds != null ? `${report.durationSeconds}s · ` : ''}checks: ${esc(report.checksRun.join(' · '))}</p>
-<div class="cards">
- <div class="card"><b style="color:var(--red)">${s.error}</b><small>errors</small></div>
- <div class="card"><b style="color:var(--amber)">${s.warn}</b><small>warnings</small></div>
- <div class="card"><b style="color:var(--dust-50)">${s.info}</b><small>info</small></div>
- <div class="card"><b style="color:var(--dust-30)">${s.allowlisted}</b><small>allowlisted</small></div>
-</div>
-<table><tr><th>sev</th><th>check</th><th>id</th><th>path</th><th>finding</th></tr>${rows}</table>
+<div class="fgroup"><span class="eyebrow">filter · severity</span><div class="chips" id="sev-chips">${sevChips}</div></div>
+<div class="fgroup"><span class="eyebrow">filter · finding</span><div class="chips" id="fid-chips">${fidChips}</div></div>
+<p class="showing"><span id="shown">${report.findings.length}</span> of ${report.findings.length} findings <span class="clear" id="clear">· clear filters</span></p>
+<table><thead><tr><th>sev</th><th>check</th><th>id</th><th>path</th><th>finding</th></tr></thead><tbody>${rows}</tbody></table>
 <footer><span class="tag">STARDUST</span> · qa report · ${esc(report.provenance.stardustVersion || '')} — findings only; this sweep never edits the site.</footer>
 </div>
+<script>
+(function () {
+  var on = { bucket: {}, fid: {} };
+  function any(set) { for (var k in set) if (set[k]) return true; return false; }
+  function apply() {
+    var rows = document.querySelectorAll('tbody tr');
+    var shown = 0;
+    var sevActive = any(on.bucket); var fidActive = any(on.fid);
+    rows.forEach(function (tr) {
+      var ok = (!sevActive || on.bucket[tr.dataset.bucket])
+            && (!fidActive || on.fid[tr.dataset.fid]);
+      tr.style.display = ok ? '' : 'none';
+      if (ok) shown += 1;
+    });
+    document.getElementById('shown').textContent = shown;
+    document.querySelector('.showing').classList.toggle('filtered', sevActive || fidActive);
+  }
+  function wire(sel, key, attr) {
+    document.querySelectorAll(sel).forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        var v = chip.dataset[attr];
+        on[key][v] = !on[key][v];
+        chip.classList.toggle('on', on[key][v]);
+        apply();
+      });
+    });
+  }
+  wire('.chip.sev', 'bucket', 'bucket');
+  wire('.chip.fid', 'fid', 'fid');
+  document.getElementById('clear').addEventListener('click', function () {
+    on = { bucket: {}, fid: {} };
+    document.querySelectorAll('.chip.on').forEach(function (c) { c.classList.remove('on'); });
+    apply();
+  });
+})();
+</script>
 </body></html>`;
 }
 
