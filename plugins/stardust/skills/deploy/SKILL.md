@@ -841,6 +841,8 @@ node skills/deploy/scripts/content-diff.mjs \
 
 Confirm the deployed eyeball is faithful and the CLS probe is < 0.1; the content-diff summary + the atomic-contract computed-style guard + `.plain.html` are the automated backstops. The flag lists double as a regression checklist — a new silent regression is worth adding both a fix AND a gate signal.
 
+**Step 10 is a per-page, during-conversion reconcile against the PROTOTYPE — not the whole-site sweep.** For a comprehensive post-rollout check of the DEPLOYED site against its extraction capture + visual baselines (routing, content fidelity, template conformance, rendered integrity, metadata/SEO, links, accessibility, performance budgets), use the read-only **`stardust:qa`** skill after `rollout`. The two are complementary: Step 10 asks "does this converted page match its prototype?", `stardust:qa` asks "is everything that shipped across the site actually correct?" — different reference, scope, and phase; they share no code.
+
 ## Anti-patterns (lessons paid for the hard way)
 
 These look reasonable. They will cost a full reset.
