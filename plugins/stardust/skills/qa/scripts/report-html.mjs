@@ -105,11 +105,23 @@ export function htmlReport(report) {
 <script>
 (function () {
   var on = { bucket: {}, fid: {} };
+  var rows = Array.prototype.slice.call(document.querySelectorAll('tbody tr'));
   function any(set) { for (var k in set) if (set[k]) return true; return false; }
   function apply() {
-    var rows = document.querySelectorAll('tbody tr');
+    var sevActive = any(on.bucket);
+    // level 2 depends on level 1: recount each finding chip against the
+    // severity selection; chips with no matching rows hide and deselect
+    document.querySelectorAll('.chip.fid').forEach(function (chip) {
+      var n = rows.filter(function (tr) {
+        return tr.dataset.fid === chip.dataset.fid
+          && (!sevActive || on.bucket[tr.dataset.bucket]);
+      }).length;
+      chip.querySelector('.n').textContent = '(' + n + ')';
+      chip.style.display = n ? '' : 'none';
+      if (!n && on.fid[chip.dataset.fid]) { on.fid[chip.dataset.fid] = false; chip.classList.remove('on'); }
+    });
+    var fidActive = any(on.fid);
     var shown = 0;
-    var sevActive = any(on.bucket); var fidActive = any(on.fid);
     rows.forEach(function (tr) {
       var ok = (!sevActive || on.bucket[tr.dataset.bucket])
             && (!fidActive || on.fid[tr.dataset.fid]);
