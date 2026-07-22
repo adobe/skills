@@ -172,10 +172,25 @@ async function main() {
     const harnessCounts = await harness.evaluate(tagHarnessSections, names);
     // AFTER tagging (which reads the raw authored shape), mimic the vanilla
     // runtime's decorateSections/decorateBlock DOM — .section wrappers,
-    // .default-content-wrapper, .<name>-wrapper/.block/.<name>-container — so
-    // block/foundation CSS scoped to the decorated shape matches. data-rt tags
-    // survive: the tagged elements are moved, not recreated.
+    // .default-content-wrapper, .<name>-wrapper/.block/.<name>-container, AND
+    // wrapTextNodes cell normalization (#104: a media-led / unlisted-first-child
+    // cell's whole content folds into ONE <p> on live; without mimicking it here
+    // a collector that reads cell.children false-passes the gate and drops every
+    // sibling after the image in production) — so block/foundation CSS and
+    // decode both face the live shape. data-rt tags survive: the tagged
+    // elements are moved, not recreated.
     await harness.evaluate(() => {
+      const VALID_WRAPPERS = ['P', 'PRE', 'UL', 'OL', 'PICTURE', 'TABLE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
+      const wrapTextNodes = (block) => {
+        const wrap = (el) => { const w = document.createElement('p'); w.append(...el.childNodes); el.append(w); };
+        block.querySelectorAll(':scope > div > div').forEach((cell) => {
+          if (!cell.hasChildNodes()) return;
+          const first = cell.firstElementChild;
+          const hasWrapper = !!first && VALID_WRAPPERS.includes(first.tagName);
+          if (!hasWrapper) wrap(cell);
+          else if (first.tagName === 'PICTURE' && (cell.children.length > 1 || !!cell.textContent.trim())) wrap(cell);
+        });
+      };
       document.querySelectorAll('main > div').forEach((section) => {
         const wrappers = [];
         let defaultContent = false;
@@ -195,6 +210,7 @@ async function main() {
           if (!name) return;
           block.classList.add('block');
           block.dataset.blockName = name;
+          wrapTextNodes(block);
           block.parentElement.classList.add(`${name}-wrapper`);
           section.classList.add(`${name}-container`);
         });

@@ -21,11 +21,24 @@ const b = await chromium.launch();
 const p = await b.newPage({ viewport: { width: 1280, height: 900 } });
 await p.setContent(`<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0}main .section{padding:0}${styles}\n${blockCss}</style></head><body class="appear"><main>${main}</main></body></html>`, { waitUntil: 'networkidle' });
 // Mimic the vanilla runtime's decorateSections/decorateBlock DOM (aem.js):
-// .section + .default-content-wrapper + .<name>-wrapper/.block/.<name>-container.
-// body.appear above satisfies the stock body{display:none} gate the same way
-// loadEager() does. Without this, block CSS scoped to the decorated shape
-// silently never matches in the harness.
+// .section + .default-content-wrapper + .<name>-wrapper/.block/.<name>-container
+// + wrapTextNodes cell normalization (#104 — media-led cells fold into one <p>
+// on live; the harness must present the same shape to decode). body.appear
+// above satisfies the stock body{display:none} gate the same way loadEager()
+// does. Without this, block CSS scoped to the decorated shape silently never
+// matches in the harness.
 await p.evaluate(() => {
+  const VALID_WRAPPERS = ['P', 'PRE', 'UL', 'OL', 'PICTURE', 'TABLE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
+  const wrapTextNodes = (block) => {
+    const wrap = (el) => { const w = document.createElement('p'); w.append(...el.childNodes); el.append(w); };
+    block.querySelectorAll(':scope > div > div').forEach((cell) => {
+      if (!cell.hasChildNodes()) return;
+      const first = cell.firstElementChild;
+      const hasWrapper = !!first && VALID_WRAPPERS.includes(first.tagName);
+      if (!hasWrapper) wrap(cell);
+      else if (first.tagName === 'PICTURE' && (cell.children.length > 1 || !!cell.textContent.trim())) wrap(cell);
+    });
+  };
   document.querySelectorAll('main > div').forEach((section) => {
     const wrappers = [];
     let defaultContent = false;
@@ -45,6 +58,7 @@ await p.evaluate(() => {
       if (!name) return;
       block.classList.add('block');
       block.dataset.blockName = name;
+      wrapTextNodes(block);
       block.parentElement.classList.add(`${name}-wrapper`);
       section.classList.add(`${name}-container`);
     });

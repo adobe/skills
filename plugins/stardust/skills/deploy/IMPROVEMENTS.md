@@ -906,3 +906,28 @@ reference it root-relative (`/media/<scope>/<file>.mp4`), like any fixed asset (
 semantics); the poster stays an authorable editorial `<img>`. For heavyweight video, an
 external host also works. Never author a `content.da.live` URL for anything the ingester
 doesn't rehost (`<img>`/`<picture>` only) — verified playing live post-fix (readyState 4).
+
+### #104 🔴 wrapTextNodes folds media-led cells into one `<p>` — codified after TWO rediscoveries ✅
+**Where:** flexiloans found it (recorded only in that site's runtime-contract notes, never
+promoted to the skill); interacoustics then paid ~10 min re-discovering it (products
+shipped thumbnails without titles until a cellNodes() expansion landed in 6 blocks); the
+3-site batch timing analysis flagged the repeat cost. The runtime's `decorateBlock` runs
+`wrapTextNodes`: a cell whose FIRST element child is not in `P/PRE/UL/OL/PICTURE/TABLE/
+H1–6` — or that leads with `<picture>` followed by anything — gets its ENTIRE content
+wrapped in ONE `<p>`, so `cell.children`-based collectors see a single node and drop
+every sibling after the image.
+**Fix applied:** (1) Target-runtime section documents the normalization; (2) the #62
+canonical collector now expands the wrapper `<p>` back into its children; (3)
+`block-roundtrip.mjs` + `render-harness.mjs` synthetic decoration now RUN wrapTextNodes,
+so the harness presents the live shape and an unexpanded collector FAILS the gate in-loop
+instead of shipping. Lesson: a runtime quirk recorded per-site is a quirk the next site
+re-pays — promote to the skill the same day it's found.
+
+### #105 🟡 Per-section eyeball capped to flagged sections ✅
+**Where:** 3-site batch timing — interacoustics ran 13 proto-vs-harness section pairs
+(~7.5 min); across all six e2e runs every per-section catch was either visible in the
+full-page pair or in a section already flagged by a probe (roundtrip 🟡, qa-gate warn,
+fingerprint variation).
+**Fix applied:** #23 reworded — full-page pairs at TWO viewports always; per-section pairs
+only for flagged sections, bespoke/cinematic or slot-heavy template-slotted sections, and
+the chrome. Expected ~3–5 min saved on large pages at negligible risk.

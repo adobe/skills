@@ -25,6 +25,7 @@ If the user has prototypes but no EDS scaffolding, stop and ask whether to scaff
 The stock boilerplate provides everything the conversion needs; the runtime is never modified. The load chain (`head.html` → `scripts.js` → `loadEager` → `loadLazy` → `loadDelayed`) gives you:
 
 - **Section DOM:** each `main > div` becomes `<div class="section">`; runs of default content are wrapped in `div.default-content-wrapper`; each block table gets a `div.<name>-wrapper` around `<div class="<name> block" data-block-name="<name>">`, and the section gains `.<name>-container`. Sections are hidden (`data-section-status` + inline `display:none`) until loaded — undecorated-content flash is handled by the runtime, not by foundation CSS.
+- **Cell normalization (`wrapTextNodes`, in `decorateBlock` — #104):** any block cell whose FIRST element child is not in `P/PRE/UL/OL/PICTURE/TABLE/H1–6` — or that leads with a `<picture>` followed by anything else — gets its ENTIRE content folded into **one `<p>`** before your `decorate()` runs. A media-led mixed cell (`<img> + <h3> + <p>`) therefore arrives as a single wrapper `<p>`; a collector reading `cell.children` sees ONE node and silently drops everything after the image. Decode with the wrapper-expanding collector (Step 8, #62/#104).
 - **Body gate:** `styles.css` ships `body { display: none }` + `body.appear { display: block }`; `loadEager()` adds `appear` after `decorateMain()`. This gate is CORRECT — keep it. Any off-pipeline render (harness, probes) must load the real `scripts/scripts.js` so the gate is satisfied; a blank render means the runtime never booted, not that the gate should be removed.
 - **Buttons:** `decorateButtons()` (in `scripts.js`) buttonizes ONLY author-formatted links — see Step 5 for the emitted class family.
 - **Chrome:** `header`/`footer` BLOCKS (loaded by `loadLazy`) fetch authored fragment documents — `/nav` and `/footer` by default, overridable per page via `nav`/`footer` metadata. Block JS runs, so interactive chrome (hamburger, dropdowns) is real JS. See Step 6.
@@ -658,7 +659,22 @@ It decorates the authored content locally with the block's own JS+CSS (the rende
 function collectNodes(block) {
   const out = [];
   block.querySelectorAll(':scope > div > div').forEach((cell) => {
-    const kids = [...cell.children];
+    let kids = [...cell.children];
+    // #104 — the runtime's wrapTextNodes (decorateBlock) folds any MEDIA-LED or
+    // unlisted-first-child cell's ENTIRE content into ONE <p> (first child not in
+    // P/PRE/UL/OL/PICTURE/TABLE/H1-6, or PICTURE followed by anything). Expand it
+    // back, or every sibling after the image silently vanishes (thumbnails
+    // without titles). The roundtrip harness mimics wrapTextNodes, so an
+    // unexpanded collector fails the gate instead of shipping.
+    if (kids.length === 1 && kids[0].tagName === 'P' && kids[0].children.length
+        && kids[0].querySelector('picture, img')) {
+      const inner = [...kids[0].childNodes].map((n) => {
+        if (n.nodeType === 1) return n;
+        if (n.textContent.trim()) { const p = document.createElement('p'); p.textContent = n.textContent.trim(); return p; }
+        return null;
+      }).filter(Boolean);
+      kids = inner;
+    }
     if (kids.length) out.push(...kids);
     else if (cell.textContent.trim()) { const p = document.createElement('p'); p.textContent = cell.textContent.trim(); out.push(p); }
   });
@@ -769,7 +785,7 @@ One run asserts the whole decoration contract: runtime booted (`body.appear`), e
 
 **Capture at a real viewport and scroll — not one giant window (#19).** A `min-height:100vh` hero becomes *window-tall* under a huge capture window (e.g. 7800px), pushing its centered content far down and off the top crop — it looks like the hero text vanished. Instead, use Playwright at a normal viewport (e.g. 1440×900) and `scrollIntoView()` each section before each screenshot.
 
-**Visually diff each section against the prototype (#23).** Programmatic checks (width, decoration counts, interactivity) pass things the eye catches — header alignment, intentional line breaks (`<br>`), heading **weight**, and a section root's **background/color** (e.g. a footer that should be a brand color but renders on the body background). Open the prototype itself (`<x-dc>`/JSX prototypes self-render from their file via their `support.js`/bundle) and the harness at the **same viewport, section by section**, and compare.
+**Visually diff against the prototype — full-page always, per-section only where flagged (#23, #105).** Programmatic checks (width, decoration counts, interactivity) pass things the eye catches — header alignment, intentional line breaks (`<br>`), heading **weight**, and a section root's **background/color** (e.g. a footer that should be a brand color but renders on the body background). Open the prototype itself (`<x-dc>`/JSX prototypes self-render from their file via their `support.js`/bundle) and the harness at the **same viewport** and compare **full-page pairs at two viewports (desktop + mobile), always**. Per-section pairs are NOT a blanket mandate (across six e2e runs every per-section catch was either full-page-visible or in an already-flagged section, while a 13-section sweep cost ~7 minutes) — do them ONLY for sections that earned it: any probe/gate flag (roundtrip 🟡, qa-gate warn, fingerprint variation group), bespoke/cinematic or template-slotted-with-many-slots sections, and the chrome.
 
 **Drive interactive blocks and assert state changes (#28).** For any interactive block, don't stop at the static render — Playwright-drive each control and assert the result: click a selector/tab → expect the active item / filtered count to change; submit an invalid form → expect the error text; submit a valid one → assert the visible state changed (e.g. a balance went `$4,862.13 → $3,862.13`, a confirmation appeared). Run the same drive against the **deployed** preview too — block JS that worked in the harness can still trip on CSP or a missing dependency live.
 
