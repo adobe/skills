@@ -26,7 +26,7 @@ export async function run(ctx) {
 
   const pageHtml = new Map();
   await pMap(inventory.pages, async (p) => {
-    const res = await fetchUrl(pageUrl(base, p.path));
+    const res = await ctx.fetchPage(pageUrl(base, p.path));
     if (res.status === 200) pageHtml.set(p.path, res.body);
   }, 8);
 

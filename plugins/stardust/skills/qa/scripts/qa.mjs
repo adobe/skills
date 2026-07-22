@@ -36,6 +36,7 @@ import { fileURLToPath } from 'node:url';
 import { writeFileSync } from 'node:fs';
 import {
   arg, flag, provenance, writeJSON, ensureDir, loadAllowlist, applyAllowlist, buildInventory,
+  createPageCache,
 } from './lib.mjs';
 import { htmlReport } from './report-html.mjs';
 
@@ -83,7 +84,11 @@ console.error(`qa: inventory ${inventory.pages.length} pages (sitemap ${inventor
 ensureDir(OUT);
 writeJSON(join(OUT, 'inventory.json'), { _provenance: provenance('inventory', BASE), ...inventory });
 
-const ctx = { base: BASE, inventory, opts, shared: {} };
+// page + plain per page, with headroom for fragments and probe GETs
+const ctx = {
+  base: BASE, inventory, opts, shared: {},
+  fetchPage: createPageCache(inventory.pages.length * 2 + 64),
+};
 const findings = [];
 const checksRun = [];
 for (const name of CHECKS) {

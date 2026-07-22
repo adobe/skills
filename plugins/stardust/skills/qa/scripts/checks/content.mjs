@@ -260,7 +260,7 @@ export async function run(ctx) {
   const pageBlocks = new Map(); // path -> Set(block names) — reused by templates check
 
   await pMap(inventory.pages, async (p) => {
-    const res = await fetchUrl(plainUrl(base, p.path));
+    const res = await ctx.fetchPage(plainUrl(base, p.path));
     if (res.status !== 200) return; // routing check owns reachability
     const html = res.body;
     const text = stripTags(html);

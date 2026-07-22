@@ -16,13 +16,13 @@ export async function run(ctx) {
   const pages = inventory.pages;
 
   await pMap(pages, async (p) => {
-    const res = await fetchUrl(pageUrl(base, p.path));
+    const res = await ctx.fetchPage(pageUrl(base, p.path));
     if (res.status !== 200) {
       findings.push(finding('routing', 'page-not-200', 'error', p.path,
         `GET ${p.path} returned ${res.status || `network error: ${res.error}`}`, { url: pageUrl(base, p.path) }));
       return;
     }
-    const plain = await fetchUrl(plainUrl(base, p.path));
+    const plain = await ctx.fetchPage(plainUrl(base, p.path));
     if (plain.status !== 200) {
       findings.push(finding('routing', 'plain-not-200', 'error', p.path,
         `.plain.html returned ${plain.status || `network error: ${plain.error}`}`, { url: plainUrl(base, p.path) }));
@@ -31,7 +31,7 @@ export async function run(ctx) {
 
   // fragments must also be delivered (nav/footer power the chrome)
   await pMap(inventory.fragments, async (f) => {
-    const res = await fetchUrl(plainUrl(base, f));
+    const res = await ctx.fetchPage(plainUrl(base, f));
     if (res.status !== 200) {
       findings.push(finding('routing', 'fragment-not-200', 'error', f,
         `chrome fragment ${f}.plain.html returned ${res.status}`));
