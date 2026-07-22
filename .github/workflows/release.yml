@@ -21,7 +21,7 @@ jobs:
           # Use a token with push access so commits from semantic-release trigger CI
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
