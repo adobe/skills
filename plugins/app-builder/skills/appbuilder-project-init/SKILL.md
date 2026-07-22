@@ -1,6 +1,6 @@
 ---
 name: appbuilder-project-init
-description: Initialize an Adobe App Builder project end-to-end without Developer Console UI clicks. Creates the Console project and workspace, subscribes APIs (including those needing a product profile), maps user intent to the right template, runs non-interactive `aio app init`, and guides post-init customization. Use whenever the user mentions creating an App Builder app, scaffolding a project, `aio app init`, setting up an Experience Cloud extension, adding actions or web assets, creating a Console project or workspace, adding APIs, or bootstrapping App Builder — even if they don't say "App Builder". Also for SPA templates, AEM extensions, API Mesh, Asset Compute workers, and MCP server projects. Also handles debugging init failures — template not found, `aio app init` hangs or times out, Node version mismatches, npm install failures, post-init build errors, `aio login` issues, `aio app run` showing nothing, or `aio console project create` / `workspace create` / `workspace api add` errors.
+description: Initialize an Adobe App Builder project end-to-end and prepare the machine to build one. Creates the Console project and workspace, subscribes APIs (including those needing a product profile), maps intent to the right template, runs non-interactive `aio app init`, and guides post-init customization. Use whenever the user mentions creating an App Builder app, scaffolding a project, `aio app init`, an Experience Cloud extension, adding actions or web assets, or creating a Console project/workspace — even without saying "App Builder". Also for SPA templates, AEM extensions, API Mesh, Asset Compute workers, and MCP servers. Also covers first-time machine/CLI setup (Node 20, aio CLI install, `aio login`, IMS org, stage vs prod) and debugging setup/init failures — `ERR_REQUIRE_ESM`, empty `aio console org list`, `451 accept developer terms`, template not found, init hangs, or Node/npm and post-init build errors.
 metadata:
   category: project-initialization
 license: Apache-2.0
@@ -12,6 +12,52 @@ allowed-tools: Bash(aio:*) Bash(npm:*) Bash(node:*) Read Write
 Maps user intent to the right Adobe App Builder template and runs non-interactive `aio app init`. Default: `@adobe/generator-app-excshell` (SPA + actions). For headless/bare projects, use `init-bare`.
 
 When a Developer Console project / workspace / API subscription does not yet exist, this skill walks the agent through creating them non-interactively by calling `aio console …` directly — see the **Bootstrap** section and [references/bootstrap.md](references/bootstrap.md). The latest `@adobe/aio-cli` bundle exposes non-interactive `aio console project create` / `workspace create` / `api list` / `workspace api add` (with `--license-config` for services that require a product profile), and non-interactive `aio app init --org/--project/--template-options`. Together they remove every blocking "open the Developer Console UI and click" step from the agentic setup path. Just install the latest CLI (`npm install -g @adobe/aio-cli`) and use them.
+
+## Machine setup (first time)
+
+Do this once per machine before initializing a project — plus a login per environment. If the CLI is already installed and you're logged in, skip to **Bootstrap** below.
+
+### 1. Node 20
+
+App Builder needs **Node 20** (npm ships with it). Check what's active: `node -v` → expect `v20.x`.
+
+- **Have nvm?** `nvm install 20 && nvm use 20 && nvm alias default 20` so new shells keep it. If several Node versions are installed, the *active* one must be 20.
+- **No Node / no nvm?** Install nvm, then Node 20:
+  ```bash
+  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+  # reopen the shell, then:
+  nvm install 20 && nvm use 20 && nvm alias default 20
+  ```
+  (Alternatives: `brew install node@20`, or the official installer at nodejs.org.)
+
+> Older Adobe docs say Node 18 — use **20**. A global `aio` belongs to whichever Node was active when you ran `npm i -g`; if you switch Node versions the old `aio` won't be on PATH. Symptom of a mismatch: `aio` dies with `SyntaxError: Unexpected token '??='` (a pre-20 Node parsing the Node-20 `aio`) — fix with `nvm use 20` and reinstall `aio` there.
+
+### 2. Install the aio CLI + log in
+
+```bash
+npm install -g @adobe/aio-cli      # on Node 20
+aio login                          # opens a browser; `aio login -f` forces a fresh prompt
+aio where                          # confirm the correct IMS org/context
+aio console org list               # list orgs and their IDs (then `aio console org select <id>` if needed)
+```
+
+Tokens are stored by the CLI automatically; a normal `aio login` lasts hours/days — one login per session, not per command. Confirm the **correct IMS org** — wrong-org is the most common setup mistake.
+
+### 3. Stage vs prod
+
+The default environment is **prod**. To target **stage**, set the env var and re-authenticate:
+
+```bash
+export AIO_CLI_ENV=stage
+aio logout && aio login
+```
+
+Unset the variable (or open a new shell) to return to prod. The stage CLI talks to the stage Console (`developer-stage`).
+
+### Logging in without a browser (CI / no human)
+
+- **Import creds:** in the Developer Console open the workspace → **Download all** → `console.json`, then `aio app init <app> --import path/to/console.json` (fills `.env`/`.aio` — treat `console.json` as a secret, gitignore it).
+- **CI / pipeline:** add an **OAuth Server-to-Server** credential to the workspace; `aio` and Runtime authenticate from the client id/secret with no human. Don't script SSO/MFA headlessly.
 
 ## Bootstrap the Developer Console (project, workspace, APIs)
 
@@ -280,6 +326,9 @@ Do not place a root-level `runtimeManifest` directly in `app.config.yaml`: the C
 - **No org selected:** Console bootstrap commands will fail with an org-selection error. Run `aio console org list` then `aio console org select <orgId>` (or pass `--orgId` to every command) before retrying.
 - **Validation errors from a freshly scaffolded but partially edited project:** Recent `aio app *` versions validate `app.config.yaml` by default against an OpenWhisk-aligned schema. The validation runs on every `aio app *` command that reads or writes the manifest — concretely: `aio app init`, `aio app add (action|web-assets|extension|event|service)`, `aio app delete (action|web-assets|extension|event|service)`, `aio app build`, `aio app deploy`, `aio app undeploy`, `aio app run`, `aio app dev`, `aio app use`, and `aio app info`. The escape hatch flag is the same on all of them: `--no-config-validation`. Use it on the single command you need to unblock (e.g. `aio app build --no-config-validation` while you're still mid-refactor), then drop it as soon as the manifest is whole. Don't bake it into scripts — silent drift between local config and the deployed shape is exactly what the validator was added to catch.
 - **Template listing hangs behind a corporate proxy:** Older CLI bundles didn't honour `HTTP_PROXY` / `HTTPS_PROXY` during the template registry SSL handshake. Run `npm install -g @adobe/aio-cli` to pick up the proxy fix, confirm `HTTPS_PROXY` is exported in the same shell, and retry.
+- `aio`** commands die instantly with `ERR_REQUIRE_ESM` (exit 127):** A clean install can resolve `@adobe/aio-cli-plugin-certificate` to `2.2.0` (shipped as ESM), which the bundled CommonJS console lib cannot `require()` — every `aio where` / `login` / `console` command exits 127 with `[ERR_REQUIRE_ESM]` (though `aio -v` still prints a version, which is misleading). Pin the plugin to the last CommonJS 2.x *inside the global package*: `cd "$(npm root -g)/@adobe/aio-cli" && npm install @adobe/aio-cli-plugin-certificate@2.1.0`. Re-check after any `aio update`.
+- `aio console org list`** returns nothing / `[]`:** Login succeeded but the org list is empty — almost always the **wrong environment** (internal Adobe/App Builder dev lives on **stage**, but the CLI defaults to **prod**). Switch: `export AIO_CLI_ENV=stage && aio logout && aio login`. If stage is *also* empty, it's an entitlement problem, not an environment one (needs an App Builder license and the user added under **Admin Console → Users → Developers**).
+- `aio console project list`** → `451 … accept developer terms`:** The org's **Adobe Developer Terms of Use** haven't been accepted — a one-time, per-org acceptance the CLI can't do for you. Open the Developer Console (Stage `https://developer-stage.adobe.com/console`, Prod `https://developer.adobe.com/console`), confirm the correct org (top-right), accept the prompt, then re-run the command.
 
 ## Chaining with other skills
 
