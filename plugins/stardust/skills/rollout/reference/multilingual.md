@@ -11,19 +11,17 @@ a ~90-pages-per-language add (≥5 per template).
   agents grouped by template-type, each given the default-language reference file to
   mirror — *no new blocks*.
 
-- **Language-route the static header/footer.** A single `loadStaticFragment`
-  (`postlcp.js`) serves one fragment for all pages; make it pick by path prefix and
-  fall back to the default:
-  ```js
-  const seg = window.location.pathname.split('/')[1];
-  const lang = (seg === 'fr' || seg === 'en') ? `${seg}/` : '';
-  let resp = await fetch(`${codeBase}/fragments/${lang}${name}.html`);
-  if (!resp.ok && lang) resp = await fetch(`${codeBase}/fragments/${name}.html`);
-  ```
-  Add `fragments/fr/{header,footer}.html` + `fragments/en/…`: translated labels,
-  links localized to *live* same-language pages (else a source bounce), and a
-  **language switcher that targets each language's home** — don't try to compute
-  per-page cross-language equivalents.
+- **Language-route the chrome via per-language `/nav` + `/footer` documents.** The
+  stock `header`/`footer` blocks resolve their fragment path from `nav`/`footer`
+  page metadata, falling back to `/nav` and `/footer` — no runtime code changes.
+  Author `content/fr/nav.html` + `content/fr/footer.html` (and `en/…`) and set the
+  metadata on each language tree's pages (or, cleaner, add the path-prefix fallback
+  once in the header/footer BLOCK's `decorate()`: derive `/${lang}/nav` from
+  `window.location.pathname` when no metadata is set). The documents carry
+  translated labels, links localized to *live* same-language pages (else a source
+  bounce), and a **language switcher that targets each language's home** — don't
+  try to compute per-page cross-language equivalents. Per-language chrome documents
+  are published content: they belong on each language's publish roster.
 
 - **Per-language indexes** in `helix-query.yaml`: clone each index with a
   language-scoped `include` glob + a language-prefixed `target`, and **fix the

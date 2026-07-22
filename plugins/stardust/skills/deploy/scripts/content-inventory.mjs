@@ -1,5 +1,5 @@
 /**
- * skills/diff/scripts/content-inventory.mjs
+ * skills/deploy/scripts/content-inventory.mjs
  *
  * The SHARED content-inventory engine: one role classifier + one inventory
  * differ, consumed by every gate that measures content fidelity —
@@ -39,6 +39,10 @@ export function inventory(args) {
   const ARROWS = /[→➔➜›⇒➤>]+/g;
   const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
   // match key: lowercase, arrows + trailing punctuation stripped, whitespace collapsed.
+  // Typographic punctuation is folded to ASCII first — curly vs straight apostrophes/
+  // quotes, ellipsis, en/em dashes were the single largest false-positive source
+  // across the e2e benchmark (a verbatim-captured prototype uses curly, authored copy
+  // uses ASCII → spurious MISSING/ROLE-SWAP on identical text).
   const norm = (s) => clean(s).replace(ARROWS, ' ')
     .replace(/[‘’′]/g, "'").replace(/[“”″]/g, '"')
     .replace(/…/g, '...').replace(/[–—]/g, '-')

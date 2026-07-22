@@ -1,5 +1,5 @@
 /**
- * skills/diff/scripts/diff-profiles.mjs
+ * skills/deploy/scripts/diff-profiles.mjs
  *
  * Stack profiles for the prototype↔build reconcile probes (content-diff.mjs +
  * visual-diff.mjs). The probe ENGINES are framework-agnostic — they compare two

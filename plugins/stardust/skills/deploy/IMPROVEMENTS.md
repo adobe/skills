@@ -789,3 +789,145 @@ independently and hoped to be inverses. This pass moves the defect-FINDING to co
   imported by content-diff.mjs / section-schema.mjs / block-roundtrip.mjs — every fidelity gate
   measures with the same instrument; change the classifier once and all gates move together.
   content-diff.mjs CLI behavior unchanged.
+
+---
+
+## 2026-07-21 — AuthorKit era retired; David's Model becomes a mechanical gate (#96–#97)
+
+### #96 🔴 AuthorKit runtime dependency removed — vanilla aem-boilerplate is the only target ✅
+**Why:** the port was the pipeline's most fragile step (#84's pin-guard existed because
+author-kit@main drift bricked repos), it forced an `.eslintignore` for a vendored runtime, and
+field runs kept skipping it by agent initiative — the runtime-contract mechanism already made
+vanilla targets work. Existing AuthorKit sites are declared out of scope (product decision).
+**What changed:** `bootstrap-authorkit.mjs` deleted; Runtime-bootstrap chapter replaced by a
+"Target runtime" contract (stock boilerplate, never edited); buttons → `a.button.primary/.secondary/
+.accent` in `p.button-wrapper` (probe `buttonClasses`/`buttonization` per target — current main
+requires emphasis and emits `button-wrapper`, older clones emit `button-container` and buttonize
+bare links); chrome → authored `/nav` + `/footer` documents + template-slotted `header`/`footer`
+blocks (real JS: stock hamburger machinery kept; `nav:`/`footer:` metadata replaces `header: off`);
+fonts → `styles/fonts.css` + metric-matched `<brand>-fallback` faces (stock convention; #40
+inverted — the `body.appear` gate is the runtime's and STAYS); anti-patterns 2/5/6/17 rewritten,
+15 tombstoned. Harness scripts (`build-harness`, `render-harness`, `block-roundtrip`) boot the real
+`scripts.js` / add `body.appear` / synthesize the vanilla wrapper DOM. Two facts verified against
+the live sources while rewriting: section metadata is now applied by the DELIVERY PIPELINE
+(helix-html-pipeline `extract-section-metadata`, rendering v2 / sites created ≥ 2026-05: `style` →
+server-rendered section classes, other keys → `data-*`, the block removed from served DOM), and
+stock `styles.css` natively reserves the header via `--nav-height` + `visibility` gating (#81's
+recipe simplified to "set `--nav-height` responsively").
+
+### #97 🟠 David's Model was ~5/15 rules of advisory prose — now a bundled contract + lint ✅
+**Where:** a prior project's first-pass DA structure needed an explicit second "follow David's
+Model" pass to fix (over-blocked prose, display copy in key-value rows).
+**Fix applied:** `davids-model.md` (all 15 rules mapped to enforcement points, `D#N` citations);
+ENCODE contract gains the missing structural rules (D2 no nested blocks, D3 spans, D4 fully-
+qualified URLs, D10 ≤4 columns, D13 alt-text, D15 no code-as-text, D1 auto-blocked embeds); Step 2
+opens with D1/D11 triage (prose section → default content + a small closed section-`style`
+vocabulary, resolving the old anti-pattern-2 tension; Block Collection pattern → mirror its
+content model); Step 2b records `defaultContent` + the component-model shape (simple/key-value/
+container) per block for UE forward-compat. `scripts/davids-model-lint.mjs` (dependency-free,
+🔴 exits 2) is wired into the atomic delivery contract before sanitise and into the checklist —
+conformance is now mechanical on the FIRST pass, not a second-pass correction.
+
+---
+
+## 2026-07-22 — vanilla-EDS e2e round 2 (flexiloans subfolder site, #98–#100)
+
+Context: second Phase-5 validation run — 11-section fintech page onto stock boilerplate,
+subfolder scope `/flexiloans/`, per-page `nav`/`footer` metadata chrome overrides (worked
+first try live). davids-model-lint again 0 🔴 on the first pass with no model instruction
+in the run prompt. Three live-only findings, all invisible to the local harness:
+
+### #98 🔴 Pipeline wraps nav trigger links in `<p>` — desktop nav renders unstyled ✅
+**Where:** delivered `nav.plain.html` has `<li><p><a>…</p><ul>` where the authored/harness
+shape is `<li><a>…<ul>`. The header block's `:scope > a` trigger lookup and the
+`.nav-links > li > a` CSS silently missed on live → the whole desktop nav rendered as
+run-on plain text while mobile (burger) worked and the harness passed. The #79 class
+hitting CHROME. **Fix applied:** SKILL.md Step 6 nav-DECODE note (match
+`:scope > a, :scope > p > a`, unwrap the `<p>`; verify the styled desktop nav on the
+deployed preview).
+
+### #99 🔴 Authored SVGs with embedded raster data 409 the whole page's preview ✅
+**Where:** preview `POST` returned `409 "error from content-bus"` for any page referencing
+an authored `content.da.live/*.svg` whose SVG embeds base64 raster data behind a `pattern`
+fill (exported award badges, 82–143 KB). Pure-vector SVGs (logo, 10–30 KB) pass. No
+per-asset error anywhere — the page-level 409 is the only signal; bisecting sections was
+required to find it. **Fix applied:** ENCODE Images rule (extract the embedded raster →
+author the PNG) + davids-model-lint 🟡 advisory on any authored `.svg` media URL.
+
+### #100 🔴 Metadata-first empty section defeats waitForFirstImage → hero LCP lazy → CLS ✅
+**Where:** live CLS 0.134 (target <0.1) attributed to the section BELOW the hero, while
+the harness probe measured 0.0007 — local images load instantly, so the harness
+false-passes. Chain: the metadata block leaves the FIRST section empty → the runtime's
+`loadSection(first, waitForFirstImage)` eager-izes nothing → the hero `<img>` stays
+`loading="lazy"`; its `width: auto` contain layout gives the un-loaded img a 0-height box
+→ the hero grows ~380px when the image lands. **Fix applied:** SKILL.md Step 3 bullet
+(hero decorate() sets `loading=eager` + `fetchpriority=high`; CSS reserves the media slot;
+run the CLS probe against the DEPLOYED preview) + checklist line.
+
+### #101 🟡 Local-QA scope trimmed to what the harness can actually prove ✅
+**Where:** transcript timing across three e2e runs (surly 74m/6 sections, flexiloans 72m/11,
+sos 42m/13). Three local steps cost 10–15 min/run and caught nothing — or worse:
+harness-side `content-diff`/`visual-diff` found zero defects in any run once
+`block-roundtrip` was green (same classifier, same DOM — nothing left to find by
+construction); the local CLS probe FALSE-PASSED the one time it mattered (0.0007 harness vs
+0.134 live, #100); and every run hand-rolled a fresh probe.mjs (~3–5 min) asserting what the
+section schema already encodes.
+**Fix applied:** (1) new stock `scripts/qa-gate.mjs` — one run asserts the decoration
+contract from the page's eds-schema (boot, one `<h1>`, blocks loaded + non-empty, unit
+counts incl. densest-container + unitSelector-tag proxies, wide-1600 warnings); validated
+42/42 against the sos harness. (2) Local-QA scope boundary in SKILL.md: CLS,
+`content-diff`/`visual-diff`, and `nav:`/`footer:` overrides are DEPLOYED-URL-ONLY checks.
+(3) Step 10 + #81/#100 + checklist reworded accordingly. Expected effect: ~70 → ~55 min per
+single-page conversion with a quality GAIN (no false local CLS confidence).
+
+### #102 🔴 WASM-based players are CSP-blocked on EDS — Lottie needs lottie-web's SVG renderer ✅
+**Where:** baremetrics e2e (3-site parallel batch, 2026-07-22). The hero's dotlottie web
+player worked in every local environment but silently fell back to its static card on the
+deployed preview: `WebAssembly.instantiateStreaming(): … violates Content Security Policy`
+— EDS's delivered CSP has no `wasm-unsafe-eval`, and dotlottie compiles WASM. Module
+`import()` from a pinned CDN is fine (strict-dynamic trusts it — the player JS itself
+loaded); only the WASM compile is blocked, so the failure is silent-with-fallback and
+invisible to every local gate.
+**Fix applied:** use `lottie-web`'s pure-JS **svg renderer** (`lottie.loadAnimation({
+renderer: 'svg', … })`) for Lottie animations — verified animating on the deployed preview
+with zero console errors. General rule for block dependencies: nothing that compiles WASM
+(dotlottie, some video/audio codecs, wasm-backed parsers); check the browser console on
+the DEPLOYED preview for CSP violations as part of Step 10 (a fallback can make the breakage
+invisible to layout gates).
+
+### #103 🔴 DA media bus is images-only — an authored content.da.live mp4 401s for visitors ✅
+**Where:** interacoustics e2e (3-site batch). The hero authored its background video as a
+`content.da.live/...mp4` link; the preview ingester only processes `<img>` content, so the
+URL survives verbatim into the block's `<video src>` — and `content.da.live` is auth-gated,
+so every anonymous browser gets **401** (readyState 0, poster-only). Silent: the poster
+makes the page look intentional; only a live console/video probe catches it.
+**Fix applied:** video ships from the CODE ORIGIN — commit the mp4 to the repo and
+reference it root-relative (`/media/<scope>/<file>.mp4`), like any fixed asset (#67
+semantics); the poster stays an authorable editorial `<img>`. For heavyweight video, an
+external host also works. Never author a `content.da.live` URL for anything the ingester
+doesn't rehost (`<img>`/`<picture>` only) — verified playing live post-fix (readyState 4).
+
+### #104 🔴 wrapTextNodes folds media-led cells into one `<p>` — codified after TWO rediscoveries ✅
+**Where:** flexiloans found it (recorded only in that site's runtime-contract notes, never
+promoted to the skill); interacoustics then paid ~10 min re-discovering it (products
+shipped thumbnails without titles until a cellNodes() expansion landed in 6 blocks); the
+3-site batch timing analysis flagged the repeat cost. The runtime's `decorateBlock` runs
+`wrapTextNodes`: a cell whose FIRST element child is not in `P/PRE/UL/OL/PICTURE/TABLE/
+H1–6` — or that leads with `<picture>` followed by anything — gets its ENTIRE content
+wrapped in ONE `<p>`, so `cell.children`-based collectors see a single node and drop
+every sibling after the image.
+**Fix applied:** (1) Target-runtime section documents the normalization; (2) the #62
+canonical collector now expands the wrapper `<p>` back into its children; (3)
+`block-roundtrip.mjs` + `render-harness.mjs` synthetic decoration now RUN wrapTextNodes,
+so the harness presents the live shape and an unexpanded collector FAILS the gate in-loop
+instead of shipping. Lesson: a runtime quirk recorded per-site is a quirk the next site
+re-pays — promote to the skill the same day it's found.
+
+### #105 🟡 Per-section eyeball capped to flagged sections ✅
+**Where:** 3-site batch timing — interacoustics ran 13 proto-vs-harness section pairs
+(~7.5 min); across all six e2e runs every per-section catch was either visible in the
+full-page pair or in a section already flagged by a probe (roundtrip 🟡, qa-gate warn,
+fingerprint variation).
+**Fix applied:** #23 reworded — full-page pairs at TWO viewports always; per-section pairs
+only for flagged sections, bespoke/cinematic or slot-heavy template-slotted sections, and
+the chrome. Expected ~3–5 min saved on large pages at negligible risk.

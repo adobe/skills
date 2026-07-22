@@ -25,10 +25,12 @@ A roster built from detail-page sitemaps omits these, so they get committed but
 never deployed/published — and every link to them 404s while the dashboard still
 reads 100%:
 - **Nav/footer targets + section landing pages are NOT archetype siblings.**
-  Enumerate the header/footer/nav fragment hrefs (and each section's index/landing
-  page) and confirm each target is in the deploy+publish+verify set, not just the
-  detail pages. (Static header/footer fragments are served from the CODE branch — a
-  fix there is a git push, not a DA write.)
+  Enumerate the hrefs in the `/nav` + `/footer` documents (and each section's
+  index/landing page) and confirm each target is in the deploy+publish+verify set,
+  not just the detail pages. The chrome documents themselves are PUBLISHED CONTENT
+  (`content/nav.html`, `content/footer.html`) — they belong on the roster, and a
+  chrome fix is a DA write + republish of that document (the header/footer BLOCK
+  code is the only part that ships via git push).
 - **Absolute source-site "bounce" links.** Beyond root-relative `href="/…"` that
   404, flag `href="https://<source-host>/…"` links whose path HAS a delivered local
   equivalent — those silently bounce the visitor back to the OLD site (not a 404, so
