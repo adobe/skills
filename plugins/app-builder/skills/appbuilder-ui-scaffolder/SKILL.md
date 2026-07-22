@@ -20,6 +20,8 @@ allowed-tools: Bash(npm:*) Bash(node:*) Bash(npx:*) Read Write Edit
 
 Generate React Spectrum UI for Adobe Experience Cloud Shell SPAs. This is a reference-based skill — the agent reads patterns and generates context-appropriate code rather than copying static templates.
 
+> Building a **Workfront** extension UI? The Workfront extension points (Main Menu, per-object left panel, custom-form widgets) and the Workfront shared context live in `workfront-ui-extension`. Use this skill for the generic Spectrum component patterns (pages, forms, tables, dialogs, navigation) it calls into.
+
 ## Pattern Quick-Reference
 
 Identify the user's intent, then read the referenced sections to generate tailored code.

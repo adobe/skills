@@ -68,7 +68,7 @@
     {
       "name": "app-builder",
       "source": "./plugins/app-builder",
-      "description": "Development, customization, testing, and deployment skills for Adobe App Builder projects"
+      "description": "Development, customization, testing, and deployment skills for Adobe App Builder projects, including the Workfront UI-extension suite (appbuilder-workfront)"
     },
     {
       "name": "aem-eds-content-ops",
