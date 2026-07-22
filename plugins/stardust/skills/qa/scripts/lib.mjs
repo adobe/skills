@@ -74,6 +74,31 @@ export async function fetchUrl(url, { redirect = 'follow', method = 'GET', timeo
   }
 }
 
+/**
+ * Shared page-fetch cache for one sweep: routing, content, metadata, and links
+ * each visit every page, so without this a fleet is fetched ~3× (full HTML)
+ * plus 2× (.plain.html). Only plain GET+follow requests are cached (probes —
+ * HEAD, redirect:'manual' — have distinct semantics and bypass it); network
+ * failures (status 0) are not cached so a transient error can't poison later
+ * checks. Stores in-flight promises, so concurrent callers share one request.
+ */
+export function createPageCache(maxEntries = 4096) {
+  const cache = new Map(); // url -> Promise<fetchUrl result>
+  const cachedFetch = (url, opts = {}) => {
+    const cacheable = (!opts.method || opts.method === 'GET')
+      && (!opts.redirect || opts.redirect === 'follow');
+    if (!cacheable) return fetchUrl(url, opts);
+    if (cache.has(url)) return cache.get(url);
+    const p = fetchUrl(url, opts).then((res) => {
+      if (res.status === 0 || cache.size > maxEntries) cache.delete(url);
+      return res;
+    });
+    cache.set(url, p);
+    return p;
+  };
+  return cachedFetch;
+}
+
 /** Tiny concurrency limiter: run tasks (thunks) with at most n in flight. */
 export async function pMap(items, fn, n = 6) {
   const results = new Array(items.length);
@@ -98,7 +123,8 @@ export function stripTags(html) {
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
     .replace(/&[a-z]+;/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -107,8 +133,8 @@ export function stripTags(html) {
 /** Decode HTML entities in an attribute value (hrefs/content carry &#x26; etc.). */
 export function decodeAttr(s) {
   return (s || '')
-    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
-    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'");
 }
