@@ -879,3 +879,18 @@ counts incl. densest-container + unitSelector-tag proxies, wide-1600 warnings); 
 `content-diff`/`visual-diff`, and `nav:`/`footer:` overrides are DEPLOYED-URL-ONLY checks.
 (3) Step 10 + #81/#100 + checklist reworded accordingly. Expected effect: ~70 → ~55 min per
 single-page conversion with a quality GAIN (no false local CLS confidence).
+
+### #102 🔴 WASM-based players are CSP-blocked on EDS — Lottie needs lottie-web's SVG renderer ✅
+**Where:** baremetrics e2e (3-site parallel batch, 2026-07-22). The hero's dotlottie web
+player worked in every local environment but silently fell back to its static card on the
+deployed preview: `WebAssembly.instantiateStreaming(): … violates Content Security Policy`
+— EDS's delivered CSP has no `wasm-unsafe-eval`, and dotlottie compiles WASM. Module
+`import()` from a pinned CDN is fine (strict-dynamic trusts it — the player JS itself
+loaded); only the WASM compile is blocked, so the failure is silent-with-fallback and
+invisible to every local gate.
+**Fix applied:** use `lottie-web`'s pure-JS **svg renderer** (`lottie.loadAnimation({
+renderer: 'svg', … })`) for Lottie animations — verified animating on the deployed preview
+with zero console errors. General rule for block dependencies: nothing that compiles WASM
+(dotlottie, some video/audio codecs, wasm-backed parsers); check the browser console on
+the DEPLOYED preview for CSP violations as part of Step 10 (a fallback can make the breakage
+invisible to layout gates).
