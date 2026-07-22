@@ -1,0 +1,14 @@
+{
+  "name": "adobe/commerce-app-management",
+  "version": "1.2.0",
+  "description": "Skills for Adobe Commerce App Management — scaffold and configure Commerce apps using the aio-commerce-sdk.",
+  "private": false,
+  "skills": [
+    "skills/commerce-app-init",
+    "skills/commerce-app-eventing",
+    "skills/commerce-app-webhooks",
+    "skills/commerce-app-business-config",
+    "skills/commerce-app-storage",
+    "skills/commerce-app-admin-ui"
+  ]
+}
