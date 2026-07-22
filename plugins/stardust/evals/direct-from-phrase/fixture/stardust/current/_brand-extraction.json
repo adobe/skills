@@ -1,0 +1,269 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:extract",
+    "writtenAt": "2026-07-21T09:46:20Z",
+    "readArtifacts": [
+      "https://www.ledgerline.com/",
+      "stardust/current/pages/home.json",
+      "stardust/current/pages/features.json",
+      "stardust/current/pages/pricing.json",
+      "stardust/current/pages/about.json",
+      "stardust/current/pages/contact.json"
+    ],
+    "synthesizedInputs": [],
+    "stardustVersion": "0.10.0",
+    "notes": "Home-only mode and cross-page mode agree on all visual tokens. Site ships no :root custom properties — all values read from computed styles."
+  },
+  "site": {
+    "name": "Ledgerline",
+    "tagline": "Bookkeeping your accountant will trust",
+    "originUrl": "https://www.ledgerline.com"
+  },
+  "origins": [
+    {
+      "origin": "https://www.ledgerline.com",
+      "role": "primary",
+      "pagesCaptured": 5,
+      "contributedSignals": []
+    }
+  ],
+  "logo": {
+    "source": "inline-svg",
+    "sourceSelector": "header > div.nav-wrap > a.brand svg",
+    "localPath": "stardust/current/assets/logo.svg",
+    "format": "svg",
+    "intrinsicWidth": 180,
+    "intrinsicHeight": 32,
+    "synthesized": false,
+    "synthesizedBasis": null
+  },
+  "palette": [
+    {
+      "role": "background",
+      "value": "#ffffff",
+      "occurrences": 4180,
+      "sourceSelectors": ["body", ".container", "section"],
+      "sources": ["home", "features", "pricing"],
+      "usedAs": ["background"]
+    },
+    {
+      "role": "text-primary",
+      "value": "#2b2f36",
+      "occurrences": 1240,
+      "sourceSelectors": ["h2", "h3", "p", "li"],
+      "sources": ["home", "features", "about"],
+      "usedAs": ["text"]
+    },
+    {
+      "role": "primary",
+      "value": "#1f3a5f",
+      "occurrences": 386,
+      "sourceSelectors": [".btn-primary", "header .nav-wrap", "h1", "section.cta-band"],
+      "sources": ["home", "pricing", "contact"],
+      "usedAs": ["background", "text", "border"]
+    },
+    {
+      "role": "secondary",
+      "value": "#3d6b9e",
+      "occurrences": 214,
+      "sourceSelectors": ["a", ".link-more", ".pricing-tier .price"],
+      "sources": ["home", "features", "pricing"],
+      "usedAs": ["text", "border"]
+    },
+    {
+      "role": "surface",
+      "value": "#f4f6f8",
+      "occurrences": 305,
+      "sourceSelectors": [".card", "section.alt", "footer"],
+      "sources": ["home", "features", "about"],
+      "usedAs": ["background"]
+    },
+    {
+      "role": "border",
+      "value": "#dde3e9",
+      "occurrences": 178,
+      "sourceSelectors": [".card", "input", "table.compare td"],
+      "sources": ["pricing", "contact", "features"],
+      "usedAs": ["border"]
+    }
+  ],
+  "type": {
+    "headingFamily": {
+      "name": "Georgia",
+      "stack": "Georgia, 'Times New Roman', serif",
+      "weights": [400, 700],
+      "sizes": ["2.5rem", "2rem", "1.5rem"],
+      "lineHeights": [1.2, 1.25, 1.3],
+      "letterSpacing": ["normal"],
+      "sourceSelectors": ["h1", "h2", "h3"]
+    },
+    "bodyFamily": {
+      "name": "Arial",
+      "stack": "Arial, Helvetica, sans-serif",
+      "weights": [400, 700],
+      "sizes": ["1rem", "0.875rem"],
+      "lineHeights": [1.6, 1.5],
+      "letterSpacing": ["normal"],
+      "sourceSelectors": ["p", "li", "label", "td"]
+    },
+    "monoFamily": null,
+    "scaleRatio": 1.25,
+    "scaleAudit": {
+      "kind": "modular",
+      "ratios": [1.25, 1.25],
+      "matchedScale": "major-third"
+    },
+    "loadStrategy": null,
+    "files": []
+  },
+  "spacing": {
+    "baseUnit": 8,
+    "scale": [8, 16, 24, 32, 48, 64],
+    "sectionPadding": "64px",
+    "containerMaxWidth": "1140px",
+    "gridGap": "24px"
+  },
+  "motifs": {
+    "borderRadius": {
+      "primary": "4px",
+      "secondary": "2px",
+      "pill": null,
+      "primarySources": ["home", "pricing", "contact"],
+      "occurrences": { "4px": 96, "2px": 34, "0px": 28 }
+    },
+    "shadows": [
+      { "value": "0 1px 3px rgba(20,30,45,0.08)", "uses": "cards" }
+    ],
+    "gradients": [],
+    "patterns": [
+      { "name": "hero-with-image", "evidence": "home hero: navy band, left copy, right CSS-background product photo" },
+      { "name": "feature-3up", "evidence": "home and features both use 3-column feature card rows" },
+      { "name": "social-proof-logos", "evidence": "grayscale customer-logo strip after the home hero" },
+      { "name": "pricing-3up", "evidence": "pricing page: 3 bordered tier cards, middle tier flagged 'Most popular'" },
+      { "name": "cta-band", "evidence": "navy full-width 'Request a demo' band above the footer on home, features, pricing" }
+    ]
+  },
+  "componentStyle": {
+    "buttons": {
+      "primary": {
+        "background": "#1f3a5f",
+        "color": "#ffffff",
+        "borderRadius": "4px",
+        "padding": "12px 28px",
+        "fontWeight": 700,
+        "shadow": null,
+        "hoverDelta": "darken 8%"
+      },
+      "secondary": {
+        "background": "#ffffff",
+        "color": "#1f3a5f",
+        "border": "1px solid #1f3a5f",
+        "borderRadius": "4px",
+        "padding": "12px 28px",
+        "fontWeight": 700,
+        "shadow": null,
+        "hoverDelta": "surface tint #f4f6f8"
+      },
+      "ghost": null
+    },
+    "dualCTAPattern": "primary-then-secondary-link",
+    "cards": {
+      "background": "#ffffff",
+      "borderRadius": "4px",
+      "padding": "24px",
+      "shadow": "0 1px 3px rgba(20,30,45,0.08)",
+      "border": "1px solid #dde3e9"
+    },
+    "inputs": {
+      "borderRadius": "2px",
+      "padding": "10px 12px",
+      "border": "1px solid #dde3e9",
+      "focusRing": "0 0 0 2px rgba(61,107,158,0.3)"
+    }
+  },
+  "systemComponents": [
+    {
+      "name": "site-header",
+      "kind": "header",
+      "occurrences": 5,
+      "headingSequence": ["Features", "Pricing", "About", "Contact"],
+      "ctaLabels": ["Request a demo"],
+      "domFingerprintHash": "sha256:5a1c9e2f7b8d4c6a0e3f1b9d7c5a8e2f4b6d0c9a1e7f3b5d8c2a6e0f4b9d1c7a",
+      "exampleSlug": "home",
+      "exampleSelector": "header > div.nav-wrap",
+      "examplePages": ["home", "features", "pricing", "about", "contact"]
+    },
+    {
+      "name": "demo-cta-band",
+      "kind": "cta-band",
+      "occurrences": 3,
+      "headingSequence": ["Ready to close the books faster?"],
+      "ctaLabels": ["Request a demo"],
+      "domFingerprintHash": "sha256:9c4b2e8f1a7d5c3b6e0a9f2d4c8b1e7a3f5d9c0b2e6a8f4d1c7b3e9a5f0d2c8b",
+      "exampleSlug": "home",
+      "exampleSelector": "main > section.cta-band",
+      "examplePages": ["home", "features", "pricing"]
+    },
+    {
+      "name": "site-footer",
+      "kind": "footer",
+      "occurrences": 5,
+      "headingSequence": ["Product", "Company", "Resources", "Legal"],
+      "ctaLabels": [],
+      "domFingerprintHash": "sha256:2e7a1f9c4b8d0e6a3c5f2b9d1e7c4a0f8b6d3e9c1a5f7b2d0e8c4a6f3b1d9e5c",
+      "exampleSlug": "home",
+      "exampleSelector": "footer[role=\"contentinfo\"]",
+      "examplePages": ["home", "features", "pricing", "about", "contact"]
+    }
+  ],
+  "iconFont": null,
+  "voice": {
+    "heroHeadline": "Bookkeeping your accountant will trust.",
+    "heroSubcopy": "Ledgerline keeps your books reconciled, your reports audit-ready, and your month-end close on schedule.",
+    "heroImage": {
+      "url": "https://www.ledgerline.com/img/hero-ledger.png",
+      "alt": null,
+      "source": "css-background",
+      "domPath": "main > section.hero > div.hero-media",
+      "localPath": "stardust/current/assets/media/hero-ledger-2c1a.png",
+      "rect": { "x": 720, "y": 96, "width": 640, "height": 460 }
+    },
+    "heroMedium": null,
+    "primaryCTALabel": "Request a demo",
+    "ctaSamples": ["Request a demo", "See pricing", "Start 30-day trial", "Contact sales"],
+    "navItems": ["Features", "Pricing", "About", "Contact"],
+    "footerHeadings": ["Product", "Company", "Resources", "Legal"],
+    "firstParagraph": "Ledgerline is double-entry bookkeeping software for growing businesses. Automatic bank reconciliation, audit-ready reporting, and accountant collaboration in one place.",
+    "tone": {
+      "guess": "professional-formal",
+      "evidence": "third-person copy, compliance vocabulary ('audit-ready', 'GAAP'), no contractions, feature-led headings"
+    }
+  },
+  "voiceTable": {
+    "ctaFrequency": [
+      { "label": "Request a demo", "total": 11, "pageCount": 5, "pages": ["home", "features", "pricing", "about", "contact"] },
+      { "label": "Learn more", "total": 7, "pageCount": 3, "pages": ["home", "features", "about"] },
+      { "label": "See pricing", "total": 4, "pageCount": 2, "pages": ["home", "features"] },
+      { "label": "Start 30-day trial", "total": 3, "pageCount": 2, "pages": ["home", "pricing"] },
+      { "label": "Contact sales", "total": 3, "pageCount": 2, "pages": ["pricing", "contact"] }
+    ],
+    "headingFrequency": [
+      { "text": "Ready to close the books faster?", "total": 3, "pageCount": 3, "level": 2 }
+    ],
+    "toneMetrics": {
+      "headingsTotal": 47,
+      "headingsUppercasePercent": 4,
+      "distinctHeadings": 44,
+      "distinctCtaLabels": 5
+    }
+  },
+  "crossPromo": {
+    "detected": false,
+    "anchorHeading": null,
+    "cluster": null,
+    "pages": null,
+    "pageCount": null,
+    "totalPages": null
+  },
+  "register": "brand"
+}
