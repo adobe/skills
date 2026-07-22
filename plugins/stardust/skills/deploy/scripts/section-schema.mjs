@@ -8,7 +8,7 @@
  * explicit and SHARED: it renders the prototype and emits, per <section>, the
  * ordered role-classified content inventory (heading / eyebrow / cta+href / body
  * — the SAME classifier content-diff and block-roundtrip use, from
- * skills/diff/scripts/content-inventory.mjs) plus the repeating-unit groups
+ * skills/deploy/scripts/content-inventory.mjs) plus the repeating-unit groups
  * (count + per-unit composition). Both sides are then written FROM the schema:
  *   - ENCODE: one row per repeat unit, fields in schema order; every schema item
  *     appears in the authored content (an item with no row is a drop you chose).
@@ -31,8 +31,8 @@
 import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
-import { resolveProfile } from '../../diff/scripts/diff-profiles.mjs';
-import { inventory } from '../../diff/scripts/content-inventory.mjs';
+import { resolveProfile } from './diff-profiles.mjs';
+import { inventory } from './content-inventory.mjs';
 
 function parseArgs(argv) {
   const [, , url, ...rest] = argv;

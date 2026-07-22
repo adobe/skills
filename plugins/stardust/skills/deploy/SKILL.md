@@ -254,7 +254,7 @@ node skills/deploy/scripts/section-schema.mjs "http://localhost:8791/<prototype>
   --out stardust/eds-schema/<page>.json
 ```
 
-Per section it emits the ordered role-classified inventory (heading / eyebrow / cta+href / body — the SAME classifier `content-diff` and `block-roundtrip` measure with, from `skills/diff/scripts/content-inventory.mjs`) and the repeating-unit groups (count + per-unit composition: headings/ctas/imgs/textRuns, uniform or not). Use it on both sides:
+Per section it emits the ordered role-classified inventory (heading / eyebrow / cta+href / body — the SAME classifier `content-diff` and `block-roundtrip` measure with, from `skills/deploy/scripts/content-inventory.mjs`) and the repeating-unit groups (count + per-unit composition: headings/ctas/imgs/textRuns, uniform or not). Use it on both sides:
 
 - **ENCODE**: one row per repeat unit, fields in schema order; every schema item appears in the authored content. An item you deliberately drop is a decision recorded in the conversion log — never an accident.
 - **DECODE**: the block's JSDoc cites its section's schema path; `decorate()` classifies exactly the roles the schema lists, and the schema's unit count is the post-decorate count assertion (#48/#52).
@@ -415,7 +415,7 @@ body { font-family: var(--body-font-family); }
 
 Every font stack that names the brand face MUST name its `-fallback` face second — the fallback does nothing from `:root` alone; it works per-stack.
 
-**Keep the `body { display: none }` / `body.appear` gate — it belongs to the runtime, not the foundation (#40).** `loadEager()` adds `appear` right after `decorateMain()`, so on any real page (and any harness that loads the real `scripts/scripts.js`) the gate is satisfied before first paint. A blank OFF-pipeline render means the runtime never booted — the harness didn't load `scripts.js`, or it threw — fix the harness, never remove the gate. (The `visual-diff` probe emits a `BLANK RENDER` red flag as the backstop.)
+**Keep the `body { display: none }` / `body.appear` gate — it belongs to the runtime, not the foundation (#40).** `loadEager()` adds `appear` right after `decorateMain()`, so on any real page (and any harness that loads the real `scripts/scripts.js`) the gate is satisfied before first paint. A blank OFF-pipeline render means the runtime never booted — the harness didn't load `scripts.js`, or it threw — fix the harness, never remove the gate. (The `qa-gate` runtime-booted check + the deployed computed-style guard are the backstops for a blank render.)
 
 The metric-override values come from the `@fontsource-variable/<name>` package's published calibration — fetch their CSS:
 
@@ -636,15 +636,15 @@ node skills/deploy/scripts/block-roundtrip.mjs \
   "http://localhost:8791/<prototype>.html" content/<page>.html --blocks <name>   # omit --blocks for all
 ```
 
-It decorates the authored content locally with the block's own JS+CSS (the render-harness technique — no DA, no dev server), extracts the role inventory from the decorated section AND the matching prototype section with the SAME classifier as `content-diff` (`skills/diff/scripts/content-inventory.mjs`), and diffs them. Pass `--map <name>=<selector>` when the prototype section class differs from the block name; `--styles`/`--blocks-dir` when the repo layout isn't `eds/`- or root-level. Exit 2 on any structural 🔴 (MISSING CTA/HEADING/EYEBROW, ROLE SWAP) **or any decorate error** — fix the decode (or the authored rows) and re-run; the block is done when it exits 0. Font forks are deliberately NOT checked here (the harness renders local fonts; faces are Step 4 + Step 10's business). A `decorate errors` line means the block threw mid-run or its JS never installed (the harness INLINES block JS, so a module-scope `import` cannot resolve — inline the helper, or verify that one block via the dev-server harness + Step 10); either way the raw rows can false-match the prototype, so these fail the gate on their own. Template-slotted blocks (#95) still run the gate: it catches slot-fill mistakes and authored-row drift.
+It decorates the authored content locally with the block's own JS+CSS (the render-harness technique — no DA, no dev server), extracts the role inventory from the decorated section AND the matching prototype section with the SAME classifier as `content-diff` (`skills/deploy/scripts/content-inventory.mjs`), and diffs them. Pass `--map <name>=<selector>` when the prototype section class differs from the block name; `--styles`/`--blocks-dir` when the repo layout isn't `eds/`- or root-level. Exit 2 on any structural 🔴 (MISSING CTA/HEADING/EYEBROW, ROLE SWAP) **or any decorate error** — fix the decode (or the authored rows) and re-run; the block is done when it exits 0. Font forks are deliberately NOT checked here (the harness renders local fonts; faces are Step 4 + Step 10's business). A `decorate errors` line means the block threw mid-run or its JS never installed (the harness INLINES block JS, so a module-scope `import` cannot resolve — inline the helper, or verify that one block via the dev-server harness + Step 10); either way the raw rows can false-match the prototype, so these fail the gate on their own. Template-slotted blocks (#95) still run the gate: it catches slot-fill mistakes and authored-row drift.
 
-**Copy set for the playwright ESM rule:** when copying these gates into the project (extract SKILL.md § Setup — bundled scripts must run from the project so `import 'playwright'` resolves), copy **both** `skills/deploy/scripts/` **and** `skills/diff/scripts/` preserving the directory layout — `section-schema.mjs` and `block-roundtrip.mjs` import `../../diff/scripts/{diff-profiles,content-inventory}.mjs`.
+**Copy set for the playwright ESM rule:** when copying these gates into the project (extract SKILL.md § Setup — bundled scripts must run from the project so `import 'playwright'` resolves), copy `skills/deploy/scripts/` — it is now self-contained (the shared role classifier `content-inventory.mjs` + `diff-profiles.mjs` live there; `block-roundtrip.mjs`/`section-schema.mjs` import them locally). Only if you also run the Step-10 advisory `content-diff` do you additionally need `skills/diff/scripts/` (`content-diff.mjs` + `live-session.mjs`, which import back into `../../deploy/scripts/`).
 
 **Lead/hero blocks: query content, don't hard-index rows (#42).** A hero that reads `rows[3]=headline, rows[4]=lede, rows[5]=CTA` breaks the moment the content shape differs — and the mandatory-metadata / single-`<h1>` SEO rework (#34/#35) actively **consolidates** the headline + lede + CTAs into ONE cell, so the fixed indices come back `undefined` and the hero `.wrap` (the LCP element and the only `<h1>`) renders EMPTY with no error. Decorate lead blocks by querying (`block.querySelector('h1,h2')`; link-bearing `<p>` = CTAs; `picture` from anywhere) so they tolerate BOTH the rich multi-row shape and the consolidated single-cell shape. **Disambiguate eyebrow vs lede by ORDER/length, not "first `<p>`" (#51):** both are link-free `<p>`s, so "first link-free paragraph = lede" swaps them (the short eyebrow comes first). The canonical lead order is **eyebrow → heading → lede**: the eyebrow is the short/uppercase line *before* the heading; the lede is the sentence-length `<p>` *after* it. Local-QA check: after decoration, assert the hero's inner wrap is non-empty and contains the `<h1>`.
 
 **When cloning a cell into your OWN heading element, UNWRAP the cell's heading first (#55).** If you build a live `<h1>` and clone a source cell's *childNodes* into it, and that cell wraps its text in its own `<h1>` (which #35/#42 actively encourage), you get `<h1><h1>…</h1></h1>` — a duplicate heading and a doubled font cascade. Always `const inner = cell.querySelector('h1,h2,h3,h4,h5,h6') || cell;` then clone `inner.childNodes`. Local-QA: exactly one `<h1>`, and 0 descendant headings inside the live headline.
 
-**Marker injection must be IDEMPOTENT (#70).** When `decorate()` PREPENDS a fixed decorative marker to authored heading/link text (a glyph `▶`, a badge, a `CH NN` number), first STRIP a matching leading occurrence from the cloned text node — `firstText.textContent = firstText.textContent.replace(/^\s*▶\s*/, '')` — because the author (or the #34/#35 SEO content rebuild) may already type it, so the marker doubles (`▶ ▶ Latest signal`). Apply the SAME strip at EVERY place the block injects that marker (section titles AND card links), not just some. (The visual-diff text-match catches a doubled glyph `X X …`.)
+**Marker injection must be IDEMPOTENT (#70).** When `decorate()` PREPENDS a fixed decorative marker to authored heading/link text (a glyph `▶`, a badge, a `CH NN` number), first STRIP a matching leading occurrence from the cloned text node — `firstText.textContent = firstText.textContent.replace(/^\s*▶\s*/, '')` — because the author (or the #34/#35 SEO content rebuild) may already type it, so the marker doubles (`▶ ▶ Latest signal`). Apply the SAME strip at EVERY place the block injects that marker (section titles AND card links), not just some. (The deployed eyeball catches a doubled glyph `X X …`.)
 
 **Carousel slide segmentation is HEADING-boundary driven and ORDER-AGNOSTIC (#69).** Segment slides ONLY on the heading boundary — one heading opens one slide (a leading `<picture>` before the first heading may open slide 0). Fold EVERYTHING between two headings into the open slide regardless of authored order (eyebrow/label may come AFTER the heading, not before): first non-link text run = eyebrow, links = CTAs, extra text = description. Never let a post-heading text node open a NEW slide (that steals the heading slot and the CTAs never attach — symptom: N+2 jumbled slides with 0 CTAs). Local-QA: rendered slide count == authored heading count AND each slide's CTA count == authored.
 
@@ -780,85 +780,66 @@ One run asserts the whole decoration contract: runtime booted (`body.appear`), e
 
 **Local-QA scope boundary (#101) — three things deliberately NOT verified against the harness, because three e2e runs showed they cost time and produce false confidence locally:**
 - **CLS: deployed-URL ONLY.** Harness assets are local and instant — a real page measured 0.0007 locally vs 0.134 live (#100). Never conclude CLS from the harness.
-- **`content-diff`/`visual-diff`: deployed-URL ONLY (Step 10).** With `block-roundtrip` green they find nothing locally BY CONSTRUCTION (same classifier, same DOM); their unique value is the DA transport + live runtime (a stripped tag, a `<p>`-wrap, an ingester failure). Pre-running them against the harness is pure cost.
+- **`content-diff` (advisory): deployed-URL ONLY (Step 10).** With `block-roundtrip` green it finds nothing locally BY CONSTRUCTION (same classifier, same DOM); its only value is the DA-transport summary on the live page. Pre-running it against the harness is pure cost. (The pixel `visual-diff` probe is retired — see Step 10.)
 - **Per-page chrome overrides (`nav:`/`footer:` metadata): deployed-URL only** — the harness has no pipeline to apply them.
 
 **Capture at a real viewport and scroll — not one giant window (#19).** A `min-height:100vh` hero becomes *window-tall* under a huge capture window (e.g. 7800px), pushing its centered content far down and off the top crop — it looks like the hero text vanished. Instead, use Playwright at a normal viewport (e.g. 1440×900) and `scrollIntoView()` each section before each screenshot.
 
-**Visually diff against the prototype — full-page always, per-section only where flagged (#23, #105).** Programmatic checks (width, decoration counts, interactivity) pass things the eye catches — header alignment, intentional line breaks (`<br>`), heading **weight**, and a section root's **background/color** (e.g. a footer that should be a brand color but renders on the body background). Open the prototype itself (`<x-dc>`/JSX prototypes self-render from their file via their `support.js`/bundle) and the harness at the **same viewport** and compare **full-page pairs at two viewports (desktop + mobile), always**. Per-section pairs are NOT a blanket mandate (across six e2e runs every per-section catch was either full-page-visible or in an already-flagged section, while a 13-section sweep cost ~7 minutes) — do them ONLY for sections that earned it: any probe/gate flag (roundtrip 🟡, qa-gate warn, fingerprint variation group), bespoke/cinematic or template-slotted-with-many-slots sections, and the chrome.
+**The visual eyeball happens on the DEPLOYED page, not the harness (#23, #105, e2e benchmark).** The local harness is for the automated gates only (`qa-gate`, `block-roundtrip`); do NOT do the prototype↔harness full-page eyeball here — the harness serves the wrong chrome (reverse-proxy) and applies no server-side section-metadata styling, so it is unrepresentative and was actively misleading across the benchmark. The load-bearing visual comparison is Step 10's DEPLOYED full-page eyeball (desktop + mobile), which is the only place the harness blind spots (`<picture>`+`<img>` media-drop #72, un-buttonized multi-CTA, section-metadata layout, font swap) become visible. Programmatic checks still miss what the eye catches (header alignment, intentional `<br>`, heading **weight**, a section's **background/color**) — so save that eyeball for the deployed page.
 
 **Drive interactive blocks and assert state changes (#28).** For any interactive block, don't stop at the static render — Playwright-drive each control and assert the result: click a selector/tab → expect the active item / filtered count to change; submit an invalid form → expect the error text; submit a valid one → assert the visible state changed (e.g. a balance went `$4,862.13 → $3,862.13`, a confirmation appeared). Run the same drive against the **deployed** preview too — block JS that worked in the harness can still trip on CSP or a missing dependency live.
 
 **Wide-viewport layout check (#13).** Always QA at a **wide** viewport (≥1600px), not just 1440 — a missing max-width container is invisible where the 1320 max ≈ the viewport. `qa-gate.mjs` runs this pass automatically (its second-viewport warnings); cross-check each flag against the prototype — full-bleed is correct only where the prototype section has no inner max-width wrapper.
 
-## Step 10 — Visual + structural diff & reconcile (content-diff REQUIRED)
+## Step 10 — Reconcile on the DEPLOYED URL (content-diff ADVISORY + eyeball + CLS)
 
-After deploy, reconcile the EDS page against the source prototype with **two complementary probes — run BOTH, against the DEPLOYED URL only** (#78, #101). They catch disjoint failure classes; either alone gives a false "looks fine". Do NOT pre-run them against the local harness: with `block-roundtrip` green they find nothing there by construction (same classifier, same DOM) — what they uniquely see is the DA transport and the live runtime.
+After deploy, reconcile the EDS page against the source prototype on the **DEPLOYED URL only** (#78, #101). The load-bearing *automated* deployed gates already ran in the per-page atomic-delivery contract: the **computed-style guard** (grids compute `grid`, blocks decorated, 0 broken imgs, 0 pageerrors — the silent grid→block scoping collapse) and the **`.plain.html` verify** (one `<h1>`, 0 `about:error`, authored img/alt count). Step 10 adds a structural summary, an eyeball, and a CLS probe on top.
 
-**The `content-diff` per-instance/role check is a REQUIRED gate for the first page of each template (#92),
-not optional.** The atomic-delivery gates verify structure/layout (one `<h1>`, grids compute `grid`) and
-pass GREEN while a per-instance detail is wrong — a card grid styled uniformly when one card is accent, an
-active chip rendered like its siblings. Those are exactly the misses `content-diff` sees and the layout
-gates cannot. So the page is not `deployed` until `content-diff` shows **0 structural 🔴** for the first
-page of each template. Pair it with the Step 1 fingerprint (#90): the fingerprint catches the variation
-BEFORE block code, `content-diff` confirms it survived DA AFTER deploy.
+> **QA-scope note (e2e benchmark, 5 pages).** Across the benchmark the real defects were caught by
+> `block-roundtrip` (A6, pre-deploy, in-block content), the computed-style guard + `.plain.html`
+> (grid/section-layout + image landing), the deployed eyeball (harness blind spots), and the deployed
+> CLS probe. `content-diff` produced **zero unique catches** (its per-node 🔴 was systematically
+> false on auto-generated href schemes and typography), and the pixel `visual-diff` probe was
+> **retired** (0 unique catches; its flags were lazy-load-timing artifacts and object-fit
+> false-positives needing separate refutation). So `content-diff` is now an **advisory summary**, not
+> a blocking gate, and the deployed eyeball is the load-bearing visual check.
 
-**With #93–#95 in place, Step 10 is the PROOF, not the repair loop.** Every block already passed
-`block-roundtrip` (#94) before deploy, so the first Step-10 run should be GREEN. What Step 10 adds
-over the in-loop gate is the DA TRANSPORT: a 🔴 here that #94 did not show means the pipeline
-reshaped the content (a stripped tag, an unwrapped `<p>` #79, a flattened row #50/#62) — fix the
-decode's flattened-shape fallback, then re-run both. If Step 10 keeps being where defects are first
-FOUND, the loop is being run out of order.
+**1. `content-diff` — advisory structural summary (`skills/diff/scripts/content-diff.mjs`).** Extracts an ordered, role-classified inventory ({heading, eyebrow, cta+href, body}) from each `<main>` (computed-style + tag, so the prototype's `.ds-*` DOM and the EDS block DOM compare symmetrically) and diffs them. **Read the SUMMARY line first** — a large per-role or `img` count delta is a fast dropped-section signal. Treat its per-node `MISSING`/`ROLE SWAP` findings as **advisory leads to verify by eye**, NOT auto-blocking: `block-roundtrip` (#94, A6) already gated in-block content fidelity with the same classifier PRE-deploy, so a Step-10 🔴 that #94 did not show is either a real DA-transport reshape (a stripped tag, an unwrapped `<p>` #79, a flattened row #50/#62 — fix it) **or** a known false-positive class (auto-generated TOC/anchor href schemes; verbatim-vs-authored typography — now largely folded out by apostrophe/quote/ellipsis/dash normalization in the classifier). Confirm which by eye before acting; the script exits 0 (advisory) regardless.
 
-1. **`skills/diff/scripts/visual-diff.mjs` — the PIXEL/layout probe.** Reasons about rendered geometry: stretched images (#36), dropped max-width wraps (#37), blank renders (#40), surface/ground colour flips (#59). Good at "this looks broken." STRUCTURALLY BLIND to "the right text is in the wrong slot" or "one CTA is gone" — those keep full pixels and plausible colours, so no flag fires.
-2. **`skills/diff/scripts/content-diff.mjs` — the STRUCTURAL content+type probe.** Extracts an ordered, role-classified inventory ({heading, eyebrow, cta+href, body}) from each `<main>` — classifying by computed style + tag so the prototype's `.ds-*` DOM and the EDS block DOM compare symmetrically — and DIFFS them: `MISSING CTA/HEADING/EYEBROW` (🔴 dropped content — caught the `the-place` CTA), `ROLE SWAP` (🔴 same text, wrong slot — caught the `the-people` eyebrow↔body scramble #76), `MISSING BODY`/`EXTRA` (🟡 placeholder→real-copy or invented prose), and `FONT FORK` (🟠 a matched line whose rendered FACE differs, by **width probe** not `document.fonts.check` — the #77 method, grouped into one advisory). This is the layer the pixel probe can't see.
+**2. Deployed full-page eyeball, desktop + mobile (#23/#105) — the load-bearing visual check.** Open the DEPLOYED page (NOT the harness — the harness serves the wrong chrome and applies no server-side section-metadata styling) at two viewports and compare to the prototype. This is the only step that reliably catches the harness blind spots the benchmark exposed: `<picture>`+`<img>` media-drops (#72 — invisible to the bare-`<img>` harness), un-buttonized multi-CTA paragraphs (`decorateButtons` doesn't run in the harness), server-side section-metadata layout, and font-swap effects. Per-section shots only where a probe/gate flagged (roundtrip 🟡, qa-gate warn, fingerprint group) or for bespoke/cinematic sections.
 
-Neither is a pixel diff — both use computed-style/geometry measurements; pixels are noise (fonts, animation, dynamic mock data).
+**3. CLS probe on the DEPLOYED URL (#100/#101).** Run the CLS probe with the woff2/nav fetches delayed to reproduce the slow-network swap; target < 0.1. Deployed-only by construction (a harness CLS number is meaningless — local assets load instantly). This is the only step that catches font-fallback-metric shift (compute the fallback `size-adjust` from the **measured rendered width ratio**, not `xAvgCharWidth` alone — a wrong value shipped CLS 0.60 on a benchmark page) and late-chrome shift.
+
+The retired `visual-diff` classes are covered elsewhere: stretched images by the `img { height:auto }` reset (#36) + eyeball; dropped max-width wraps by the qa-gate wide-viewport pass (#13); blank/broken renders by the computed-style guard; imagery gaps by the `.plain.html` img/alt count (#75) + eyeball.
+
+`content-diff` is stack-agnostic via `skills/deploy/scripts/diff-profiles.mjs` (`--profile eds | generic`); it shares the role classifier with `block-roundtrip`/`section-schema` in `skills/deploy/scripts/content-inventory.mjs`.
 
 ```bash
 # Prereq: a RENDERABLE prototype. Static → serve from its own dir so relative
 # ../assets resolve. JSX → pre-render first (#24/#27).
 ( cd <prototype-dir> && python3 -m http.server 8791 & )
 
-node skills/diff/scripts/visual-diff.mjs \
+# Structural content + typography diff — ADVISORY summary. Use the DEPLOYED EDS URL
+# so blocks are decorated; a raw content .plain.html has no roles to classify.
+node skills/deploy/scripts/content-diff.mjs \
   "http://localhost:8791/<prototype>.html" \
   "https://<branch>--<repo>--<owner>.aem.page/<path>" \
-  --profile eds --sections ".hero,.feature-tabs,.compare"   # optional per-section shots
-
-# Structural content + typography diff (same two URLs). Use the LIVE/harness EDS
-# URL so blocks are decorated; a raw content .plain.html has no roles to classify.
-node skills/diff/scripts/content-diff.mjs \
-  "http://localhost:8791/<prototype>.html" \
-  "https://<branch>--<repo>--<owner>.aem.page/<path>" \
-  --profile eds   # --json to dump both inventories
+  --profile eds   # --json to dump both inventories; exits 0 (advisory)
 ```
 
-Both probes are owned by the **`stardust:diff`** skill and share
-`skills/diff/scripts/diff-profiles.mjs`. The `--profile eds` flag supplies the EDS/DA remediation
-language used in the flag messages below; the comparison engines are stack-agnostic
-(`--profile generic` for non-EDS builds).
+`content-diff` shares its role classifier + profiles with `block-roundtrip`/`section-schema`
+(`skills/deploy/scripts/content-inventory.mjs`, `diff-profiles.mjs`); `--profile generic` for non-EDS builds.
 
-Read the output:
-- **Red flags (advisory)** — `BLANK RENDER` (hidden/empty page → #40, the runtime never booted: the harness didn't load `scripts.js` (so `body.appear` was never added) or it threw — fix the harness/boot, never remove the gate); `IMAGE DID NOT LOAD` (rendered box, natural 0×0 → #43, the harness `<img>` 404'd); `STRETCHED IMAGE` (raster aspect ≠ natural → #36, add `height:auto`); `FLUSH-LEFT TEXT` (a left-anchored heading/para at left≈0 → #37, the owning block dropped its max-width wrap). A clean page prints "none".
-- **Harness images (#43):** when building the off-pipeline qa harness, rewrite absolute `…aem.page/img/...` `<img src>` to root-relative `/img/...` (the asset is committed locally) — otherwise the image 404s, natural dims are 0×0, and the stretch check silently skips.
-- **Metrics JSON** — compare `proto` vs `eds`: `eyebrows`/`headings` colors (catches #38 — a primitive styled in the prototype but dropped in one block), `images` dims, and `contentBoxes` (each block's content width + left offset; a wrapped block sits at left ≈ (viewport−maxw)/2 + padding, a dropped-wrap block at left ≈ 0).
-- **Screenshots** in the `--out` dir (default `qa/`): open the full-page pair and any per-section shots and confirm fidelity.
+**Also still run the standalone fixed-asset URL grep (#44)** — independent of any probe:
+`grep -rn "http://localhost\|aem\.page/img\|aem\.live/img" blocks/` MUST be empty. Block JS/CSS that injects fixed imagery (logos/icons/watermarks) must reference assets root-relative `/img/...`; an absolute origin passes local QA (the dev server is localhost:3000) but 404s in every real environment.
 
-- **Justified vs defect `STRETCHED IMAGE` (#45):** a stretch flag is JUSTIFIED — leave the CSS — when (a) the image is an `object-fit: cover` intentional full-bleed background/watermark, OR (b) the SAME flag appears on the proto side of the diff (a faithful lift of the prototype's own `height:Npx; padding; box-sizing:border-box` rule). "Fixing" a faithful flag only makes the EDS diverge. Treat it as a real defect ONLY when the proto renders the image at its natural AR but the EDS does not.
-- **Pre-deploy URL gate (#44):** `grep -rn "http://localhost\|aem\.page/img\|aem\.live/img" blocks/` MUST be empty. Block JS that injects fixed imagery (logos/icons/watermarks) must reference assets root-relative `/img/...`; an absolute origin baked into block JS passes local QA (the dev server is localhost:3000) but 404s in every real environment.
+**Reading `content-diff` (advisory leads, #78):**
+- **The summary line first** — per-role + `img` counts on each side; a large delta is the fast dropped-section signal. This was the most reliable part of the probe in the benchmark.
+- **`MISSING CTA/HEADING/EYEBROW` / `ROLE SWAP`:** an advisory lead, not an auto-block. If `block-roundtrip` (#94) was green pre-deploy, a fresh finding here is EITHER a DA-transport reshape (segmentation drop #76, unwrapped `<p>` #79, flattened row #50/#62 — real, fix the decode) OR a known false-positive (auto-generated href schemes; residual typography). **Verify by eye on the deployed page** before changing code.
+- **`MISSING BODY` / `EXTRA` (🟡):** body prose dropped, or EDS copy with no proto source — usually a prototype placeholder legitimately rewritten. Confirm it's intended.
+- **`FONT FORK` (🟠):** matched lines whose rendered FACE differs (width probe). `proto X→sys` = the prototype named X but fell back to system; EDS self-hosting the intended fallback is CORRECT (#77). Short-string forks (single-word headings, numerals) are width-probe noise — confirm against the deployed eyeball before acting.
 
-- **`FONT MISMATCH` (#66):** a heading whose named display/body family loaded in the proto but NOT in the EDS = a missing `@font-face` falling back to serif/sans (#65). Ship the woff2 self-hosted + root-relative.
-- **`SURFACE/GROUND MISMATCH` (#59):** a heading that matches the proto by text but renders a materially different color (luminance flipped dark↔light) means its band rendered on the wrong ground (e.g. a light intro band fused into a dark scene, #58). Check the owning block's section background.
-- **GAP flags are WHOLE-PAGE, independent of `--sections` (#54):** `IMAGERY GAP` (#47) and `CONTENT GAP` (#49) are computed page-wide; `--sections` only chooses which per-section *screenshots* are saved. So a focused `--sections .hero` run whose hero looks perfect can STILL fire a GAP pointing at a defect in a *different* block (e.g. services dropping 3/4 cards). Never dismiss a GAP flag as "outside my section" — when either fires, run an UNSCOPED full-page diff (or a per-section diff on the suspect block) and locate the dropped/duplicated content before trusting the focused pass.
-
-**Reading `content-diff` (#78):**
-- **`MISSING CTA/HEADING/EYEBROW` (🔴):** real dropped content — FIX. A missing eyebrow is most often a segmentation drop (#76, the eyebrow precedes its heading); a missing CTA means the block never authored/rendered the link cell. These are the failures the pixel probe cannot see (full pixels, plausible colours) — treat 🔴 as blocking.
-- **`ROLE SWAP` (🔴):** the same text rendered under a different role (body painted as eyebrow, eyebrow folded into a teaser) — the #76 mis-classification class. FIX the owning block's node segmentation.
-- **`MISSING BODY` / `EXTRA` (🟡):** body prose dropped, or EDS copy with no proto source. Usually fine — a prototype placeholder ("two paragraphs of prose live here…") legitimately becomes real authored copy. CONFIRM it's an intended rewrite, not lost/hallucinated prose.
-- **`FONT FORK` (🟠):** matched lines whose rendered FACE differs (width probe). A `proto X→sys` means the prototype named font X but never loaded it and fell back to system — EDS self-hosting the intended fallback is then CORRECT (#77), not a bug. Confirm the fork is intended; if instead EDS is the one falling back, ship the missing `@font-face`. The probe groups all forked lines into ONE advisory (a proprietary→fallback swap fires on every display line).
-- The summary line counts nodes per role on each side — a large `headings`/`cta` count delta is itself a fast dropped-section signal before reading individual flags.
-
-Fix the flagged few, then re-run BOTH probes until visual red flags are "none" (or justified) and content-diff shows **0 structural 🔴** (🟡/🟠 confirmed intended). The flag lists double as a regression checklist — seeded from the findings above, so a new silent regression is worth adding both a fix AND a probe signal.
+Confirm the deployed eyeball is faithful and the CLS probe is < 0.1; the content-diff summary + the atomic-contract computed-style guard + `.plain.html` are the automated backstops. The flag lists double as a regression checklist — a new silent regression is worth adding both a fix AND a gate signal.
 
 ## Anti-patterns (lessons paid for the hard way)
 
@@ -928,7 +909,7 @@ A block that builds its own layout/view wrapper (common for interactive blocks t
 - [ ] Ran `node skills/deploy/scripts/sanitise.js` on the content before any DA write (non-ASCII → entities).
 - [ ] **Per-instance variation fingerprinted (#90)** — ran `style-fingerprint.mjs` on the prototype BEFORE block code; every group with >1 style/structural cluster (active chip, accent CTA, image vs image-less card) is reproduced by its block, not flattened.
 - [ ] **Token-completeness clean (#91)** — every `var(--x)` referenced in `blocks/**/*.css` is defined in `styles.css` `:root` (the `comm -23` grep prints nothing); no undefined-var-dropped background/color.
-- [ ] **`content-diff` shows 0 structural 🔴 (#92)** for the first page of each template — required, not optional.
+- [ ] **`content-diff` summary reviewed (advisory)** for the first page of each template — per-role/img count deltas checked; any per-node 🔴 confirmed by the deployed eyeball as a real DA-transport reshape vs a known false-positive (in-block fidelity is already gated pre-deploy by `block-roundtrip`).
 - [ ] **Section schema emitted + used (#93)** — `stardust/eds-schema/<page>.json` exists; authored rows follow its order/units; each block's JSDoc cites its section's schema; deliberate drops recorded in the conversion log.
 - [ ] **Every block passed `block-roundtrip` BEFORE deploy (#94)** — exit 0 (0 structural 🔴) per block against its prototype section, plus one whole-page run (no `--blocks`) clean before the DA push.
 - [ ] **Decode tier chosen per section (#95)** — bespoke fixed-composition sections are template-slotted (verbatim prototype DOM + role slots); only repeat/authorable sections are reconstructive; tiers recorded in the conversion log.
@@ -944,7 +925,7 @@ A block that builds its own layout/view wrapper (common for interactive blocks t
 - [ ] Global `img` reset is `display: block; max-width: 100%; height: auto;` (#36) — EDS adds width/height attrs; without `height: auto` images stretch vertically.
 - [ ] When the header sits in flow above the first section, `--nav-height` is set responsively to the real chrome height (#81) — the header block's late load must NOT push the hero down (verify CLS with a fetch-delayed probe on the DEPLOYED preview; target < 0.1).
 - [ ] Hero LCP image is `loading="eager"` + `fetchpriority="high"` (set in `decorate()` — the empty metadata-first section defeats the runtime's `waitForFirstImage`, #100) and its media slot is CSS-reserved (`min-height`/`aspect-ratio`); the CLS probe ran ONLY against the DEPLOYED preview (#101 — a harness CLS number is meaningless).
-- [ ] **`qa-gate.mjs` exits 0** against the harness (stock script + the page's eds-schema — no hand-rolled probe, #101); `content-diff`/`visual-diff` were run against the DEPLOYED URL only.
+- [ ] **`qa-gate.mjs` run against the harness (advisory smoke test)** — stock script + the page's eds-schema, no hand-rolled probe (#101). Its unique pre-deploy value is the schema unit-counts + one-`<h1>`; decoration/broken-img/grid checks are superseded by the DEPLOYED computed-style guard (a harness qa-gate failure on chrome-empty or auth-gated DA images is a known harness limitation, not a defect). The advisory `content-diff` was run against the DEPLOYED URL only.
 - [ ] Any styling that depends on a `<span>`/class INSIDE a block cell is re-created in `decorate()` (#39) — EDS strips `<span>` in block cells (e.g. wrap a `.stars` run in JS, don't author it).
 - [ ] Every block reads plain-text fields by CELL/`textContent`, NOT `querySelectorAll('p')` (#79) — the pipeline unwraps the `<p>` in single-text cells, so a `p`-based read drops eyebrow/subhead/lede/tag/body on live while the raw-`<p>` harness still shows them. Verify against the decorated live/preview render or a `<p>`-stripping harness, and assert each text field is present (counts alone don't catch it).
 - [ ] No `<style>` or `<script>` tags in the content page, and no code visible as text in any cell (D15).

@@ -75,6 +75,7 @@ const r = await page.evaluate(() => {
       article: b.querySelectorAll('article').length,
       li: b.querySelectorAll('li').length,
       figure: b.querySelectorAll('figure').length,
+      details: b.querySelectorAll('details').length, // accordions/FAQ units (was a false-negative "units 0")
     };
     const headingUnits = b.querySelectorAll('h3, h4, h5').length;
     return {
@@ -88,7 +89,12 @@ const r = await page.evaluate(() => {
       tagCounts,
     };
   });
-  out.brokenImgs = [...document.querySelectorAll('img')].filter((i) => i.complete && !i.naturalWidth).length;
+  // content.da.live / admin.da.live are auth-gated → 401 to an anon harness browser,
+  // so they read as "broken" locally though they ingest fine (was a false-negative).
+  // The delivered-URL check (B1 .plain.html about:error / img-count) is the real image gate.
+  out.brokenImgs = [...document.querySelectorAll('img')]
+    .filter((i) => !/(content|admin)\.da\.live/.test(i.currentSrc || i.src || ''))
+    .filter((i) => i.complete && !i.naturalWidth).length;
   // page sections that hold blocks, in order (for schema matching)
   out.blockSections = [...document.querySelectorAll('main .section')]
     .filter((s) => s.querySelector('[data-block-name]'))

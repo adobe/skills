@@ -222,17 +222,22 @@ function lintText(file, main, flag) {
 function lintUrls(file, main, flag) {
   // D4 — src: only fully-qualified (content.da.live preferred) survives the
   // ingester; repo-relative /img/ delivers as about:error.
+  const svgs = [];
   for (const m of main.matchAll(/<img\b[^>]*\bsrc="([^"]+)"/gi)) {
     const src = m[1];
     if (/^(https?:)?\/\//i.test(src) || src.startsWith('data:')) {
       // #99 — an authored SVG that embeds raster data 409s the preview of every
       // page referencing it ("error from content-bus"); pure-vector SVGs pass.
-      if (/\.svg(\?|$)/i.test(src)) {
-        flag('🟡', 'D4', `authored SVG media <img src="${src}"> — verify it is pure-vector; SVGs embedding raster data URIs fail the whole page's preview with 409 (#99). Extract/rasterize to PNG when in doubt`);
-      }
+      // Collected and reported ONCE (a per-URL advisory was pure noise — 5 e2e
+      // pages, 0 real defects, N manual-verify prompts each).
+      if (/\.svg(\?|$)/i.test(src)) svgs.push(src);
       continue;
     }
     flag('🔴', 'D4', `authored <img src="${src}"> is not fully qualified — upload to DA /media and author the content.da.live URL (repo-relative delivers as about:error)`);
+  }
+  if (svgs.length) {
+    const list = svgs.length <= 4 ? svgs.join(', ') : `${svgs.slice(0, 4).join(', ')} (+${svgs.length - 4} more)`;
+    flag('🟡', 'D4', `${svgs.length} authored SVG media reference(s) — batch-verify pure-vector (an SVG embedding raster data URIs 409s the whole page's preview, #99): ${list}`);
   }
   // D4 — href: root-relative internal links are the EDS convention; DOCUMENT-
   // relative ones (donate.html, ../x) break under path mapping.

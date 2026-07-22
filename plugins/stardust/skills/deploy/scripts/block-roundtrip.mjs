@@ -7,7 +7,7 @@
  * with no DA and no dev server (the render-harness technique): it decorates the
  * authored content locally with the block's own JS+CSS, extracts the role
  * inventory from the decorated section AND from the matching prototype section
- * (the SAME classifier as content-diff — skills/diff/scripts/content-inventory.mjs),
+ * (the SAME classifier as content-diff — skills/deploy/scripts/content-inventory.mjs),
  * and diffs them. A structural 🔴 (MISSING CTA/HEADING/EYEBROW, ROLE SWAP) exits
  * non-zero, so the authoring loop fixes the decode before anything ships. Font
  * forks are NOT checked here (the harness renders local fonts — face fidelity is
@@ -40,8 +40,8 @@
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, no-continue */
 import { chromium } from 'playwright';
 import fs from 'fs';
-import { resolveProfile } from '../../diff/scripts/diff-profiles.mjs';
-import { inventory, diffInventories, summarise } from '../../diff/scripts/content-inventory.mjs';
+import { resolveProfile } from './diff-profiles.mjs';
+import { inventory, diffInventories, summarise } from './content-inventory.mjs';
 
 function parseArgs(argv) {
   const [, , proto, content, ...rest] = argv;
