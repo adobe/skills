@@ -168,6 +168,8 @@ A FOUC is possible (head paints as default content, then reabsorbs); the final l
 
 **`content.da.live` media URLs are auth-gated — don't anon-curl them.** Once you've rehosted to DA, the recommended `https://content.da.live/{org}/{repo}/media/…` src returns **`401` to an anonymous `curl`** even though it is correct and the preview pipeline ingests it fine. Do not treat that `401` as "broken" and omit. The correct verification for an already-rehosted/DA-hosted image is **post-preview**: grep the delivered `.plain.html` for `about:error` (must be 0) and assert the expected `<img>`/alt count — see `da-deploy-protocol.md` step 3b. Exempt `content.da.live` (and `admin.da.live`) URLs from the pre-author 200-check entirely.
 
+**The ingester rehosts `<img>`/`<picture>` ONLY — video/audio/PDF must NOT ride `content.da.live` (#103).** A `content.da.live/....mp4` authored as a link survives verbatim into the block's `<video src>`, and because the host is auth-gated every anonymous VISITOR gets `401` — poster-only, silent (the page looks intentional; only a live video/console probe catches it). Ship video from the CODE ORIGIN: commit the mp4 and reference it root-relative (`/media/<scope>/<file>.mp4`, fixed-asset semantics per #67) or use an external video host; keep the poster as an authorable editorial `<img>`.
+
 ## Steps
 
 ### 1. Audit (light)

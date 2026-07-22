@@ -894,3 +894,15 @@ with zero console errors. General rule for block dependencies: nothing that comp
 (dotlottie, some video/audio codecs, wasm-backed parsers); check the browser console on
 the DEPLOYED preview for CSP violations as part of Step 10 (a fallback can make the breakage
 invisible to layout gates).
+
+### #103 🔴 DA media bus is images-only — an authored content.da.live mp4 401s for visitors ✅
+**Where:** interacoustics e2e (3-site batch). The hero authored its background video as a
+`content.da.live/...mp4` link; the preview ingester only processes `<img>` content, so the
+URL survives verbatim into the block's `<video src>` — and `content.da.live` is auth-gated,
+so every anonymous browser gets **401** (readyState 0, poster-only). Silent: the poster
+makes the page look intentional; only a live console/video probe catches it.
+**Fix applied:** video ships from the CODE ORIGIN — commit the mp4 to the repo and
+reference it root-relative (`/media/<scope>/<file>.mp4`), like any fixed asset (#67
+semantics); the poster stays an authorable editorial `<img>`. For heavyweight video, an
+external host also works. Never author a `content.da.live` URL for anything the ingester
+doesn't rehost (`<img>`/`<picture>` only) — verified playing live post-fix (readyState 4).
