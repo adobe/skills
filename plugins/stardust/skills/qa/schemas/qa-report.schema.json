@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "stardust:qa report (stardust/qa/report.json)",
+  "type": "object",
+  "required": ["provenance", "base", "checksRun", "summary", "findings"],
+  "properties": {
+    "provenance": {
+      "type": "object",
+      "required": ["writtenBy", "writtenAt"],
+      "properties": {
+        "writtenBy": { "type": "string" },
+        "stardustVersion": { "type": "string" },
+        "writtenAt": { "type": "string", "format": "date-time" },
+        "againstInput": { "type": "string" }
+      }
+    },
+    "base": { "type": "string", "format": "uri" },
+    "checksRun": { "type": "array", "items": { "type": "string" } },
+    "inventory": {
+      "type": "object",
+      "properties": {
+        "pages": { "type": "integer" },
+        "sitemapEntries": { "type": ["integer", "null"] }
+      }
+    },
+    "durationSeconds": { "type": "integer" },
+    "summary": {
+      "type": "object",
+      "required": ["error", "warn", "info", "allowlisted"],
+      "properties": {
+        "error": { "type": "integer" },
+        "warn": { "type": "integer" },
+        "info": { "type": "integer" },
+        "allowlisted": { "type": "integer" },
+        "byCheck": { "type": "object", "additionalProperties": { "type": "integer" } }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["check", "id", "severity", "path", "message"],
+        "properties": {
+          "check": { "enum": ["routing", "content", "templates", "rendered", "visual", "metadata", "links", "a11y", "perf"] },
+          "id": { "type": "string", "description": "stable machine id within the check, e.g. broken-internal-link" },
+          "severity": { "enum": ["error", "warn", "info"] },
+          "path": { "type": "string", "description": "delivered path; empty string = fleet-level" },
+          "message": { "type": "string" },
+          "evidence": { "type": "object" },
+          "allowlisted": { "type": "boolean" },
+          "allowlistReason": { "type": "string" }
+        }
+      }
+    }
+  }
+}
