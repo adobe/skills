@@ -47,10 +47,18 @@ for (const evalName of evalNames) {
     await rm(join(dir, "verdicts.json"), { force: true });
     console.log(`${evalName}/${run}: judging…`);
 
+    // Grade against the rubric snapshotted at run time so later edits to the
+    // eval's criteria.json can't skew cross-label comparisons. Runs predating
+    // the snapshot fall back to the live rubric.
+    let criteria = evalDef.criteria;
+    try {
+      criteria = JSON.parse(await readFile(join(dir, "criteria.json"), "utf8"));
+    } catch {}
+
     const prompt = buildJudgePrompt({
       evalName,
       taskMd: evalDef.taskMd,
-      criteria: evalDef.criteria,
+      criteria,
       runPath: dir,
     });
 
@@ -82,7 +90,7 @@ for (const evalName of evalNames) {
       continue;
     }
 
-    const judgment = computeScore(evalDef.criteria, verdicts);
+    const judgment = computeScore(criteria, verdicts);
     judgment.eval = evalName;
     judgment.label = args.label;
     judgment.judgeModel = args.model ?? "(sdk default)";

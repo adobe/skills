@@ -64,6 +64,9 @@ node compare.mjs baseline abraded-v1
 
 ```
 results/<label>/<eval>/run-<i>/
+  criteria.json     # rubric snapshotted at run time — the judge grades
+                    # against this copy, so later rubric edits can't skew
+                    # cross-label comparisons
   workspace/        # final project state, inspected by the judge
   transcript.jsonl  # raw SDK message stream
   session.md        # condensed transcript (assistant text, tool calls, Q&A)

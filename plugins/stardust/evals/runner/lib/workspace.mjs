@@ -5,7 +5,6 @@ import {
   readFile,
   writeFile,
   access,
-  symlink,
   rm,
 } from "node:fs/promises";
 import { join, dirname } from "node:path";
@@ -59,8 +58,10 @@ export function extractUserPrompts(taskMd) {
 // The SDK silently drops a plugin whose manifest "dependencies" reference a
 // marketplace the session doesn't have (stardust depends on
 // impeccable@impeccable, and hermetic sessions register no marketplaces).
-// Stage the plugin in a temp dir with a stripped manifest and symlinked
-// skills so the real, current skill files load.
+// Stage the plugin in a temp dir with a stripped manifest and a COPY of
+// skills/ — copying (not symlinking) pins the skill text for the whole
+// invocation, so editing skills while runs execute can't feed sessions
+// mixed versions.
 export async function stagePlugin(srcDir) {
   const stage = await mkdtemp(join(tmpdir(), "eval-plugin-"));
   let manifest = { name: "stardust", version: "0.0.0-staged" };
@@ -75,7 +76,7 @@ export async function stagePlugin(srcDir) {
     join(stage, ".claude-plugin/plugin.json"),
     JSON.stringify(manifest, null, 2)
   );
-  await symlink(join(srcDir, "skills"), join(stage, "skills"));
+  await cp(join(srcDir, "skills"), join(stage, "skills"), { recursive: true });
   return {
     path: stage,
     name: manifest.name,

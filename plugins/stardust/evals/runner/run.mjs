@@ -53,6 +53,10 @@ if (!args.eval || !args.label) {
 const evalDef = await loadEval(args.eval);
 const n = parseInt(args.n, 10);
 const timeoutMs = parseFloat(args["timeout-min"]) * 60_000;
+if (!Number.isInteger(n) || n < 1 || !Number.isFinite(timeoutMs)) {
+  console.error(`invalid --n "${args.n}" or --timeout-min "${args["timeout-min"]}"`);
+  process.exit(1);
+}
 
 const staged = await stagePlugin(args["plugin-dir"]);
 
@@ -79,6 +83,12 @@ try {
 for (let i = offset + 1; i <= offset + n; i++) {
   const dest = runDir(args.label, evalDef.name, i);
   await mkdir(dest, { recursive: true });
+  // Snapshot the rubric at run time: the judge grades against this copy, so
+  // later edits to criteria.json can't silently skew cross-label comparisons.
+  await writeFile(
+    join(dest, "criteria.json"),
+    JSON.stringify(evalDef.criteria, null, 2)
+  );
   const workspace = await materializeWorkspace(evalDef.name, dest);
   console.log(`\n--- run ${i - offset}/${n} → ${dest}`);
 

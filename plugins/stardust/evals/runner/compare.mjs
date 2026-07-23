@@ -66,15 +66,17 @@ function fmtRate(r) {
   return r ? `${r.pass}/${r.judged}` : "—";
 }
 
+// Buckets reported separately: abrasion's headline metric is fresh input
+// (skill text billed as input or cache-creation); cache reads dominate raw
+// totals and would mask the effect.
 function tokensOf(run) {
   const u = run.usage?.usage;
   if (!u) return null;
-  return (
-    (u.input_tokens ?? 0) +
-    (u.cache_creation_input_tokens ?? 0) +
-    (u.cache_read_input_tokens ?? 0) +
-    (u.output_tokens ?? 0)
-  );
+  return {
+    input: (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0),
+    cacheRead: u.cache_read_input_tokens ?? 0,
+    output: u.output_tokens ?? 0,
+  };
 }
 
 const [a, b] = await Promise.all([loadLabel(labelA), loadLabel(labelB)]);
@@ -98,14 +100,16 @@ for (const evalName of evalNames) {
     );
   }
 
-  const tokA = mean(runsA.map(tokensOf));
-  const tokB = mean(runsB.map(tokensOf));
-  if (tokA !== null && tokB !== null) {
-    console.log(
-      `mean session tokens: ${labelA}=${Math.round(tokA)}  ${labelB}=${Math.round(
-        tokB
-      )}  Δ=${(((tokB - tokA) / tokA) * 100).toFixed(1)}%`
-    );
+  for (const bucket of ["input", "cacheRead", "output"]) {
+    const tokA = mean(runsA.map((r) => tokensOf(r)?.[bucket]));
+    const tokB = mean(runsB.map((r) => tokensOf(r)?.[bucket]));
+    if (tokA !== null && tokB !== null && tokA > 0) {
+      console.log(
+        `mean ${bucket} tokens: ${labelA}=${Math.round(tokA)}  ${labelB}=${Math.round(
+          tokB
+        )}  Δ=${(((tokB - tokA) / tokA) * 100).toFixed(1)}%`
+      );
+    }
   }
 
   const ratesA = passRates(runsA);
