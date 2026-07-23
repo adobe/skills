@@ -47,3 +47,6 @@
 
 # Web (browser automation and page analysis)
 /plugins/web                                           @catalan-adobe
+
+# Adobe Workfront (Planning solution architecture)
+/plugins/workfront                                     @ashot3232

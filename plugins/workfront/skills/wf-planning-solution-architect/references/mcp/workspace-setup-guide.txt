@@ -1,0 +1,325 @@
+WORKSPACE SETUP BEST PRACTICES — ADOBE WORKFRONT PLANNING
+==========================================================
+
+This guide covers best practices for designing and building workspaces
+in Adobe Workfront Planning. Use it when creating workspaces, record
+types, fields, connections, and views to produce well-structured,
+usable environments.
+
+Related MCP resources:
+  - docs://field-types          — field type definitions, configurations, and constraints
+  - docs://field-formats        — value format rules per field type for record creation/updates
+  - docs://formula-syntax       — formula field syntax, functions, and examples
+  - docs://view-types           — table, timeline, and calendar view definitions
+  - docs://filter-operators     — filter operators by field type for search and view filters
+  - schema://record-type/{id}   — per-field value schema for a specific record type
+
+
+CORE CONCEPTS
+=============
+
+Adobe Workfront Planning is a flexible planning system for the full
+work management lifecycle — from strategy to planning to delivery.
+Teams design custom data models matching their workflows by defining
+their own work structures reflecting how they actually operate.
+
+Object hierarchy:
+  Workspace > Section > Record Type > Field / View / Record
+
+Each child requires its parent to exist first.
+
+
+WORKSPACE STRUCTURE
+===================
+
+Sections
+  - Sections are containers that organize record types inside a workspace.
+  - Plan record types first, then group them into 3-6 meaningful sections.
+  - Every section must contain at least one record type (no empty sections).
+  - Do not create sections that duplicate view purposes (e.g., Reporting,
+    Dashboards, Governance — these are view concerns, not structural ones).
+
+Naming conventions
+  - Use creative, domain-oriented business language.
+  - Workspace names: "Global Campaign Hub" not "Campaign Workspace".
+  - Section names: "Campaign Planning & Execution" not "Operational Planning".
+  - Avoid Planning jargon (taxonomy, reference data, operational, execution).
+  - Think like the team thinks — use their everyday language.
+  - Purpose over type: "Launch Calendar" not "Calendar 1".
+  - Specific over generic: "Q1 EMEA Roadmap" not "Timeline".
+
+
+RECORD TYPES
+=============
+
+When to create a record type vs. a field
+  Create a separate record type when the concept:
+  - Has its own attributes beyond just a name
+  - Is reusable across multiple parent record types
+  - Needs relationship tracking
+  - Is emphasized in the user's language ("we manage channels",
+    "regions play a big role")
+
+  Use a field instead when the concept:
+  - Is a simple classification or label
+  - Has fixed values with no data of its own
+  - Is only used for filtering or categorization
+  - Is mentioned as an attribute ("campaign priority", "tactic status")
+
+Two categories of record types
+  Work & Activity types (things with a lifecycle):
+  - Keep the default fields: Name, Description, Start Date, End Date, Status
+  - Add 3-5 workflow fields: Owner, Priority, Budget, Region, domain-specific
+  - Status and Dates represent the lifecycle — always keep them.
+
+  Reference types (static lookup data):
+  - Keep only: Name, Description
+  - Delete Start Date, End Date, and Status — reference data has no lifecycle.
+  - Add classification fields: Type, Tier, Category, domain attributes.
+
+Record type defaults
+  - Auto-created fields: Name, Description, Start Date, End Date, Status
+  - The primary field must be text or number and cannot be changed after creation.
+  - Default fields can be renamed or customized but not deleted.
+
+
+FIELDS
+======
+
+Supported field types
+  Single-line text, Paragraph, Single-select, Multi-select, Date, Number,
+  Percentage, Currency, Checkbox, Formula, People, System fields
+
+  For complete field type definitions, configuration options, and constraints,
+  see the "Field Types Reference" resource (docs://field-types).
+
+  For value format rules when creating or updating records,
+  see the "Field Value Formats" resource (docs://field-formats).
+
+Field rules
+  - Fields do not transfer between record types.
+  - Use lookup fields to surface data from connected records.
+  - Before creating or updating records, read the record type's field value
+    schema (schema://record-type/{recordTypeId}) to learn the exact format
+    for each field.
+
+Formula fields
+  See the FORMULA FIELDS section below for required pre-checks
+  before creating formula fields.
+
+
+CONNECTIONS
+===========
+
+Create all meaningful connections upfront — do not ask permission.
+
+Parent-child connections (one-to-many, bidirectional)
+  - Campaign > Tactic, Launch > Feature, Event > Session
+  - Create the reference field on the CHILD record type pointing to the parent.
+  - Provide backField with a displayName to create a bidirectional link
+    so the parent can see its children.
+  - Example: on "Campaign Tactic", create a reference to "Campaign" with:
+      referenceOptions: {
+        recordTypeId: "<Campaign Rt ID>",
+        multiple: false,
+        backField: { displayName: "Campaign Tactics" }
+      }
+    This automatically creates a "Campaign Tactics" field on Campaign
+    that links back to Campaign Tactic (multiple defaults to true).
+
+Work-to-reference connections (many-to-many, unidirectional)
+  - Campaign > Region, Campaign > Audience, Launch > Product Line
+  - The reference field lives on the work item, not on the reference type.
+  - Many-to-many is typical: many campaigns can use the same audience.
+  - Omit backField — unidirectional links keep reference types clean.
+
+Lookup fields on connections
+  Always create lookup fields on connections — they make the workspace
+  robust and immediately useful without manual cross-referencing.
+  - Count fields: "Number of Tactics", "Number of Sessions"
+  - Rollup fields: "Total Tactic Budget", "Total Session Duration"
+  - Key attributes from the connected record (e.g., status, owner, dates)
+
+Connection rules
+  - To create a bidirectional link, provide backField (with at minimum a
+    displayName) in referenceOptions. The server auto-sets the back-field's
+    type to REFERENCE and its recordTypeId to the source record type.
+  - Omit backField for unidirectional links (the default).
+  - Never create self-references: the target record type must differ from the source.
+  - Default to the sensible cardinality — do not over-ask.
+
+
+VIEWS
+=====
+
+Create 2-3 meaningful views for each work/activity record type on first build.
+Reference types need only the default Table view.
+
+For full view type definitions and capabilities,
+see the "View Types Configuration" resource (docs://view-types).
+
+For filter operator syntax by field type,
+see the "Filter Operators Reference" resource (docs://filter-operators).
+
+Default table view
+  - Every record type comes with a default Table view.
+  - Customize it rather than leaving it generic — rename it, add filters,
+    grouping, and sorting to make it immediately useful.
+
+Table views
+  - Best for: workflow states, focused subsets, day-to-day management.
+  - Always configure: Filters (Status/Owner/Region), Grouping (relevant
+    dimension), Sort (priority or date).
+  - Example names: "Active Campaigns - In Market Now",
+    "High Priority - Q1 Focus", "My Upcoming Launches"
+
+Timeline views
+  - Best for: work over time, spotting overlaps/gaps, parent-child breakdown.
+  - Requires: 2 date fields (Start Date + End Date).
+  - Always configure: Grouping (Region/Market/Owner), Breakdown (child
+    record types if applicable), Date range.
+  - For breakdown: the child record type must also have date fields.
+  - Only one breakdown at a time is supported.
+  - Example names: "Q1 EMEA Campaign Roadmap",
+    "2024 Product Launch Schedule", "Content Production Pipeline"
+
+Calendar views
+  - Best for: daily/weekly scheduling, time-specific moments.
+  - Requires: 2 date fields (Start Date + End Date).
+  - Supports filters only — no grouping or sorting.
+  - Example names: "Campaign Activation Calendar",
+    "Social Content Schedule", "Event & Webinar Calendar"
+
+Field visibility in views
+  - By default, newly created fields are visible in all views (the
+    create_fields tool auto-shows new fields in all existing views).
+  - When adding fields after views already exist, verify the new fields
+    appear where expected.
+  - Use update_view to adjust column visibility if needed.
+
+
+SAMPLE RECORDS
+==============
+
+When populating a new workspace with sample data:
+  - Create 3-5 records per record type with realistic values.
+  - Use domain-appropriate names, dates, statuses, budgets, priorities.
+  - Prefer start dates near the current date for versatility.
+  - Set meaningful end dates based on expected duration.
+  - Fill in all custom fields with appropriate sample data.
+  - Create connections between related sample records.
+  - Read the record type schema (schema://record-type/{recordTypeId})
+    before writing records to ensure correct value formats.
+
+
+BUILD ORDER & EXECUTION DISCIPLINE
+===================================
+
+A workspace is only useful when it is fully built — with record types,
+fields, connections, sample records, and views. An empty workspace with
+just sections has zero value to the user. Never stop after creating the
+workspace shell. Never communicate interim steps or ask the user to wait
+while you build the rest. Execute the entire build in one continuous
+sequence, then present the finished result.
+
+Do not narrate what you are about to do. Do not explain each step as you
+go. Do not pause to ask "shall I continue?" mid-build. Build silently
+and completely, then explain once at the end.
+
+Follow this sequence strictly. Do not skip steps or build out of order.
+
+Step 0: Plan before building
+  - Define all planned record types first (work/activity + reference).
+  - Assign each record type to one specific section before creating anything.
+  - Create sections only from this mapping — every section must contain
+    at least one record type.
+
+Step 1: Create the workspace with sections derived from Step 0.
+
+Step 2: Create all mapped record types in their assigned sections.
+
+Step 3: For EACH record type, complete these in order before moving
+to the next record type:
+  a. Fields beyond defaults (see FIELDS and RECORD TYPES sections above).
+  b. Connections to related record types (see CONNECTIONS section).
+     Always add lookup fields (counts, rollups, key attributes) on
+     connections for robust, useful results.
+  c. Sample records: 3-5 per record type with realistic values
+     (see SAMPLE RECORDS section).
+  d. Views: 2-3 configured views for work types (see VIEWS section).
+
+Step 4: Move to the next record type and repeat Step 3.
+
+CRITICAL: Complete Steps 0-4 fully for ALL record types before
+responding to the user. Do not stop mid-build to narrate, summarize,
+or preview what was created. The user's first view of the workspace
+should be the finished product, not a progress report.
+
+Step 5: Explain what was created (only after Steps 0-4 are complete).
+  - Start with the story: how the workspace is organized and why.
+  - Show the structure: sections, record types, key fields, connections.
+  - Connect the dots: explain how pieces work together.
+  - Provide orientation for first-time users.
+
+
+ERROR HANDLING
+==============
+
+  - If a tool call fails, try to fix and retry once.
+  - If it fails again, explain clearly and suggest alternatives.
+  - Never treat errors as endpoints — continue building the rest of
+    the workspace and address the failed step afterward.
+
+
+TOOL SEQUENCING
+===============
+
+  - When one tool call depends on an ID returned by a previous call,
+    execute them in separate turns. Wait for the actual response before
+    proceeding — never pass placeholder IDs.
+  - Hierarchy: Workspace > Section > Record Type > Field / View / Record.
+    Each child needs its parent's ID from the previous tool's response.
+
+
+FORMULA FIELDS
+==============
+
+  Before creating any formula field, always read the formula documentation
+  resource (docs://formula-syntax) first. Use exact existing field display
+  names (case and spacing) inside {} in formulas. If a referenced field
+  does not exist, create it first. Only use supported functions from the
+  formula documentation.
+
+
+OUTPUT CONSTRAINTS
+==================
+
+  When referencing created objects, render clickable markdown links using
+  the display name — never output raw URLs or technical IDs.
+
+  Link formats:
+    Workspace: [Name]({base_url}/maestro/workspaces/{workspaceId})
+    Record type: [Name]({base_url}/maestro/{workspaceId}/{recordTypeId}/default-view/view)
+    View: [Name]({base_url}/maestro/{workspaceId}/{recordTypeId}/{viewId}/view)
+  Note: Only workspace links use "/workspaces/" in the path.
+
+  Never include in responses:
+    - Technical IDs (record IDs, field IDs, internal references)
+    - Implementation details (API calls, tool names, system operations)
+    - Database terminology (cardinality, schema, entities)
+    - Technical prefixes ("Lookup:", "Rollup:", "Connection ID:")
+
+  Convert ALL_CAPS enum values to lowercase readable text
+  (e.g., ADMINISTRATOR → Manage, FIT_CONTENT → fit content).
+
+
+COMMON PITFALLS
+===============
+
+  - Timeline or Calendar without dates: both require Start Date and End Date.
+  - Breakdown without dates on child type: the child record type needs
+    date fields too.
+  - Cannot change the primary field type after creation.
+  - Cannot delete default Status field — customize or hide it instead.
+  - Fields cannot move between record types — use lookups instead.
+  - Multiple timeline breakdowns: only one at a time — pick the most important.

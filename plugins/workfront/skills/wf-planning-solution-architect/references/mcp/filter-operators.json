@@ -1,0 +1,50 @@
+{
+  "description": "Filter operators for search_records, organized by field type. Filters MUST be a JSON array [], not an object {}.",
+  "syntax": {
+    "singleCondition": {"fieldId": "F123", "$operator": "value"},
+    "logicalGroup": {"$and": [{"fieldId": "F123", "$is": "value"}, {"fieldId": "F456", "$greaterThan": 10}]},
+    "clearFilters": "[] (empty array clears all filters)",
+    "noChange": "null or omit (preserves existing filters)"
+  },
+  "operatorsByFieldType": {
+    "Text / Long-Text / Formula / Attachment": {
+      "operators": ["$is", "$isNot", "$contains", "$doesNotContain", "$isEmpty", "$isNotEmpty"],
+      "valueType": "string"
+    },
+    "Number / Percentage / Currency": {
+      "operators": ["$is", "$isNot", "$greaterThan", "$greaterThanOrEqual", "$lessThan", "$lessThanOrEqual", "$isEmpty", "$isNotEmpty"],
+      "valueType": "number"
+    },
+    "Date / Updated-At / Approved-At": {
+      "operators": ["$is", "$isNot", "$isAfter", "$isBefore", "$isBetween", "$isNotBetween", "$isEmpty", "$isNotEmpty"],
+      "valueType": "ISO 8601 date string",
+      "notes": "$isBetween and $isNotBetween take an array of two dates: [startDate, endDate]"
+    },
+    "Created-At": {
+      "operators": ["$is", "$isNot", "$isAfter", "$isBefore", "$isBetween", "$isNotBetween"],
+      "valueType": "ISO 8601 date string",
+      "notes": "Created-At is never empty, so $isEmpty/$isNotEmpty are not available."
+    },
+    "Single-Select / Updated-By": {
+      "operators": ["$is", "$isNot", "$isAnyOf", "$isNoneOf", "$isEmpty", "$isNotEmpty"],
+      "valueType": "string (option name) or array of strings for $isAnyOf/$isNoneOf"
+    },
+    "Multi-Select / Reference / User / Approved-By": {
+      "operators": ["$hasAnyOf", "$hasAllOf", "$isExactly", "$hasNoneOf", "$isEmpty", "$isNotEmpty"],
+      "valueType": "array of values"
+    },
+    "Created-By": {
+      "operators": ["$is", "$isNot", "$isAnyOf", "$isNoneOf"],
+      "valueType": "string (user ID) or array of user IDs",
+      "notes": "Created-By is never empty, so $isEmpty/$isNotEmpty are not available."
+    },
+    "Boolean": {
+      "operators": ["$is"],
+      "valueType": "true or false"
+    }
+  },
+  "logicalOperators": {
+    "$and": "All conditions must match (default when multiple conditions provided)",
+    "$or": "Any condition must match"
+  }
+}
