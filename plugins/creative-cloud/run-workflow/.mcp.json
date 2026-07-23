@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "run-workflow": {
+      "type": "http",
+      "url": "https://run-workflow.adobe.io/mcp"
+    }
+  }
+}

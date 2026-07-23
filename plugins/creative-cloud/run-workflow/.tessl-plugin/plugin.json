@@ -1,0 +1,9 @@
+{
+  "name": "adobe/run-workflow",
+  "version": "1.0.0",
+  "description": "Discover, compose, run, publish, and save Adobe Firefly workflows through the run-workflow MCP server.",
+  "skills": [
+    "skills/run-workflow",
+    "skills/run-featured-workflow"
+  ]
+}
