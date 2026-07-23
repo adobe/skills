@@ -21,7 +21,7 @@ wf-planning-solution-architect/
     ├── INDEX.md                                # Top-level map of all references
     ├── workspace-build-playbook.md             # Canonical build playbook (synthesized)
     ├── best-practice-template.md               # Fréscopa exemplar + known deviations
-    ├── best-practice-template.json             # Trimmed Fréscopa sample export (~2.7 MB)
+    ├── best-practice-template.json             # Trimmed Fréscopa sample export (minified, ~1.6 MB)
     ├── limits-and-tiers.md                     # SA-ready limit reference by tier
     ├── public-vs-mcp-discrepancies.md          # Reconciliation table
     ├── customer-conversation-framings.md       # Stock SA framings

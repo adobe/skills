@@ -1,0 +1,17 @@
+{
+  "name": "commerce-app-migration",
+  "description": "Migrate an Adobe Commerce App Builder project from the Integration Starter Kit or Checkout Starter Kit to the new App Management approach.",
+  "version": "1.2.0",
+  "author": {
+    "name": "Adobe",
+    "email": "commerce-app-management@adobe.com"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "keywords": [
+    "adobe-commerce",
+    "app-builder",
+    "migration",
+    "app-management",
+    "starter-kit"
+  ]
+}

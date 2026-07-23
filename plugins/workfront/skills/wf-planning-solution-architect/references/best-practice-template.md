@@ -150,5 +150,5 @@ Channel Tactics references Campaigns with `multiple: true`. If a customer instan
 
 ## Source
 
-- File: `references/best-practice-template.json` (trimmed sample export, ~2.7 MB, identifiers scrubbed; full structure with ~5 records per record type)
+- File: `references/best-practice-template.json` (trimmed sample export, minified, ~1.6 MB, identifiers scrubbed; full structure with ~5 records per record type)
 - Date of analysis: May 11, 2026
