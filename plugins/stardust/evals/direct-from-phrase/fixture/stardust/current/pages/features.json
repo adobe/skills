@@ -1,0 +1,134 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:extract",
+    "writtenAt": "2026-07-21T09:44:41Z",
+    "readArtifacts": ["https://www.ledgerline.com/features"],
+    "synthesizedInputs": [],
+    "stardustVersion": "0.10.0",
+    "renderedBy": "playwright",
+    "fetchedAt": "2026-07-21T09:41:58Z",
+    "waitMode": "medium",
+    "waitMs": 2110,
+    "httpStatus": 200,
+    "contentType": "text/html",
+    "heroSource": "dom"
+  },
+  "slug": "features",
+  "url": "https://www.ledgerline.com/features",
+  "finalUrl": "https://www.ledgerline.com/features",
+  "title": "Features — Ledgerline",
+  "metaDescription": "Bank reconciliation, audit-ready reporting, multi-entity consolidation, and accountant collaboration. See everything Ledgerline does.",
+  "heroHeadline": "Every feature answers to the close.",
+  "heroLede": "Ledgerline is organized around one job: an accurate, on-time month-end close.",
+  "og": {
+    "title": "Features — Ledgerline",
+    "description": "Bank reconciliation, audit-ready reporting, multi-entity consolidation, and accountant collaboration.",
+    "image": "https://www.ledgerline.com/img/og-features.png",
+    "type": "website",
+    "siteName": "Ledgerline"
+  },
+  "themeColor": { "light": "#1f3a5f", "dark": null },
+  "language": "en",
+  "headings": [
+    { "level": 1, "text": "Every feature answers to the close.", "id": null, "domPath": "main > section.page-head > h1", "style": { "fontFamily": "Georgia, 'Times New Roman', serif", "fontWeight": 700, "fontSize": "2.5rem", "lineHeight": 1.2, "letterSpacing": "normal", "color": "rgb(43, 47, 54)" } },
+    { "level": 2, "text": "Bank reconciliation", "id": "reconciliation", "domPath": "main > section:nth-child(2) > h2", "style": { "fontFamily": "Georgia, 'Times New Roman', serif", "fontWeight": 700, "fontSize": "2rem", "lineHeight": 1.25, "letterSpacing": "normal", "color": "rgb(43, 47, 54)" } },
+    { "level": 2, "text": "Reporting and audit trail", "id": "reporting", "domPath": "main > section:nth-child(3) > h2", "style": { "fontFamily": "Georgia, 'Times New Roman', serif", "fontWeight": 700, "fontSize": "2rem", "lineHeight": 1.25, "letterSpacing": "normal", "color": "rgb(43, 47, 54)" } },
+    { "level": 2, "text": "Multi-entity consolidation", "id": "entities", "domPath": "main > section:nth-child(4) > h2", "style": { "fontFamily": "Georgia, 'Times New Roman', serif", "fontWeight": 700, "fontSize": "2rem", "lineHeight": 1.25, "letterSpacing": "normal", "color": "rgb(43, 47, 54)" } },
+    { "level": 2, "text": "Ready to close the books faster?", "id": null, "domPath": "main > section.cta-band > h2", "style": { "fontFamily": "Georgia, 'Times New Roman', serif", "fontWeight": 700, "fontSize": "2rem", "lineHeight": 1.25, "letterSpacing": "normal", "color": "rgb(255, 255, 255)" } }
+  ],
+  "landmarks": [
+    {
+      "tag": "header",
+      "role": "banner",
+      "id": null,
+      "classes": ["site-header"],
+      "innerText": "Ledgerline Features Pricing About Contact Request a demo",
+      "children": [
+        { "tag": "nav", "role": "navigation", "id": null, "classes": ["nav-wrap"], "purpose": "unknown", "headlineRef": null, "innerTextSummary": "Ledgerline Features Pricing About Contact Request a demo", "wordCount": 8, "body": [], "lists": [], "qa": [], "quotes": [] }
+      ]
+    },
+    {
+      "tag": "main",
+      "role": "main",
+      "id": null,
+      "classes": [],
+      "innerText": "Every feature answers to the close. Ledgerline is organized around one job: an accurate, on-time month-end close. Bank reconciliation Bank feeds import nightly from 11,000 institutions. Ledgerline proposes matches; your team approves exceptions in a review queue. Reporting and audit trail Balance sheet, P&L, and cash flow statements aligned to GAAP. Every line item carries a change log with author and timestamp. Multi-entity consolidation Consolidate up to 40 entities with automated intercompany eliminations and per-entity close checklists. Ready to close the books faster? Request a demo",
+      "children": [
+        { "tag": "section", "role": null, "id": null, "classes": ["page-head"], "purpose": "hero", "headlineRef": 0, "innerTextSummary": "Every feature answers to the close. Ledgerline is organized around one job: an accurate, on-time month-end close.", "wordCount": 20, "body": ["Ledgerline is organized around one job: an accurate, on-time month-end close."], "lists": [], "qa": [], "quotes": [] },
+        { "tag": "section", "role": null, "id": "reconciliation", "classes": ["feature-detail"], "purpose": "rich-text", "headlineRef": 1, "innerTextSummary": "Bank feeds import nightly from 11,000 institutions. Ledgerline proposes matches; your team approves exceptions in a review queue.", "wordCount": 20, "body": ["Bank feeds import nightly from 11,000 institutions. Ledgerline proposes matches; your team approves exceptions in a review queue."], "lists": [], "qa": [], "quotes": [] },
+        { "tag": "section", "role": null, "id": "reporting", "classes": ["feature-detail", "alt"], "purpose": "rich-text", "headlineRef": 2, "innerTextSummary": "Balance sheet, P&L, and cash flow statements aligned to GAAP. Every line item carries a change log with author and timestamp.", "wordCount": 23, "body": ["Balance sheet, P&L, and cash flow statements aligned to GAAP. Every line item carries a change log with author and timestamp."], "lists": [], "qa": [], "quotes": [] },
+        { "tag": "section", "role": null, "id": "entities", "classes": ["feature-detail"], "purpose": "rich-text", "headlineRef": 3, "innerTextSummary": "Consolidate up to 40 entities with automated intercompany eliminations and per-entity close checklists.", "wordCount": 14, "body": ["Consolidate up to 40 entities with automated intercompany eliminations and per-entity close checklists."], "lists": [], "qa": [], "quotes": [] },
+        { "tag": "section", "role": null, "id": null, "classes": ["cta-band"], "purpose": "cta-band", "headlineRef": 4, "innerTextSummary": "Ready to close the books faster? Request a demo", "wordCount": 9, "body": [], "lists": [], "qa": [], "quotes": [] }
+      ]
+    },
+    {
+      "tag": "footer",
+      "role": "contentinfo",
+      "id": null,
+      "classes": ["site-footer"],
+      "innerText": "Product Features Pricing Security Company About Careers Contact Resources Help center Blog API docs Legal Privacy Terms © 2026 Ledgerline Inc.",
+      "children": [
+        { "tag": "section", "role": null, "id": null, "classes": ["footer-cols"], "purpose": "footer-nav", "headlineRef": null, "innerTextSummary": "Product Company Resources Legal", "wordCount": 22, "body": [], "lists": [ { "ordered": false, "items": ["Features", "Pricing", "Security", "About", "Careers", "Contact", "Help center", "Blog", "API docs", "Privacy", "Terms"] } ], "qa": [], "quotes": [] }
+      ]
+    }
+  ],
+  "ctas": [
+    { "label": "Request a demo", "href": "/contact", "tag": "a", "domPath": "header > div.nav-wrap > a.btn-primary", "style": { "backgroundColor": "rgb(31, 58, 95)", "color": "rgb(255, 255, 255)", "fontFamily": "Arial, Helvetica, sans-serif", "fontWeight": 700, "borderRadius": "4px", "padding": "10px 20px", "boxShadow": "none" }, "appearsAbove": "fold" },
+    { "label": "Request a demo", "href": "/contact", "tag": "a", "domPath": "main > section.cta-band > a.btn-primary", "style": { "backgroundColor": "rgb(255, 255, 255)", "color": "rgb(31, 58, 95)", "fontFamily": "Arial, Helvetica, sans-serif", "fontWeight": 700, "borderRadius": "4px", "padding": "12px 28px", "boxShadow": "none" }, "appearsAbove": "below-fold" },
+    { "label": "See pricing", "href": "/pricing", "tag": "a", "domPath": "main > section#entities > a.btn-secondary", "style": { "backgroundColor": "rgb(255, 255, 255)", "color": "rgb(31, 58, 95)", "fontFamily": "Arial, Helvetica, sans-serif", "fontWeight": 700, "borderRadius": "4px", "padding": "12px 28px", "boxShadow": "none" }, "appearsAbove": "below-fold" }
+  ],
+  "links": {
+    "internal": [
+      { "href": "/features", "text": "Features", "domPath": "header > nav > a:nth-child(2)" },
+      { "href": "/pricing", "text": "Pricing", "domPath": "header > nav > a:nth-child(3)" },
+      { "href": "/about", "text": "About", "domPath": "header > nav > a:nth-child(4)" },
+      { "href": "/contact", "text": "Contact", "domPath": "header > nav > a:nth-child(5)" }
+    ],
+    "external": []
+  },
+  "media": {
+    "images": [
+      { "src": "https://www.ledgerline.com/img/reports-detail.png", "currentSrc": "https://www.ledgerline.com/img/reports-detail.png", "srcset": null, "alt": "Audit trail on a P&L line item", "naturalWidth": 1600, "naturalHeight": 1000, "resolves": true, "localPath": "stardust/current/assets/media/reports-6a2c.png" },
+      { "src": "https://www.ledgerline.com/img/dashboard-overview.png", "currentSrc": "https://www.ledgerline.com/img/dashboard-overview.png", "srcset": null, "alt": "Reconciliation review queue", "naturalWidth": 1920, "naturalHeight": 1200, "resolves": true, "localPath": "stardust/current/assets/media/dashboard-9f3e.png" }
+    ],
+    "inlineSvgs": [
+      { "viewBox": "0 0 180 32", "domPath": "header > div.nav-wrap > a.brand > svg", "markupHash": "sha256:6f2d9b1e4a7c0f8b3e5d2a9c1f7b4e0d8a6c3f1b9e5d7a2c0f4b8e6d1a3c9f5b" }
+    ],
+    "cssBackgrounds": [],
+    "videos": [],
+    "iframes": []
+  },
+  "forms": [],
+  "widgets": { "modals": [], "accordions": [], "tabs": [] },
+  "components": {
+    "cards": { "count": 0, "examples": [] },
+    "grids": { "count": 3, "examples": ["section.feature-detail .row"] },
+    "accordions": { "count": 0, "examples": [] },
+    "tabs": { "count": 0, "examples": [] },
+    "tables": { "count": 0, "examples": [] },
+    "modals": { "count": 0, "examples": [] },
+    "carousels": { "count": 0, "examples": [] },
+    "videos": { "count": 0, "examples": [] },
+    "iframes": { "count": 0, "examples": [] },
+    "dataVizEmbeds": { "count": 0, "examples": [] },
+    "teamTiles": { "count": 0, "examples": [] },
+    "pricingTiles": { "count": 0, "examples": [] },
+    "testimonialCards": { "count": 0, "examples": [] },
+    "logoStrip": { "count": 0, "examples": [] },
+    "timeline": { "count": 0, "examples": [] },
+    "breadcrumbs": { "count": 0, "examples": [] },
+    "statRow": { "count": 0, "examples": [] },
+    "ctaBand": { "count": 1, "examples": ["section.cta-band"] },
+    "formFields": { "count": 0, "examples": [] },
+    "other": []
+  },
+  "perSectionStyle": [
+    { "sectionRef": "main > section.page-head", "purpose": "hero", "background": { "color": "rgb(255, 255, 255)", "hasImage": false, "hasGradient": false }, "text": { "dominantColor": "rgb(43, 47, 54)" }, "spacing": { "paddingBlock": "64px", "paddingInline": "24px", "gap": "16px" }, "borderRadius": "0px", "fontFamilies": ["Georgia", "Arial"], "shadowsUsed": [] },
+    { "sectionRef": "main > section#reporting", "purpose": "rich-text", "background": { "color": "rgb(244, 246, 248)", "hasImage": false, "hasGradient": false }, "text": { "dominantColor": "rgb(43, 47, 54)" }, "spacing": { "paddingBlock": "64px", "paddingInline": "24px", "gap": "24px" }, "borderRadius": "4px", "fontFamilies": ["Georgia", "Arial"], "shadowsUsed": ["0 1px 3px rgba(20,30,45,0.08)"] },
+    { "sectionRef": "main > section.cta-band", "purpose": "cta-band", "background": { "color": "rgb(31, 58, 95)", "hasImage": false, "hasGradient": false }, "text": { "dominantColor": "rgb(255, 255, 255)" }, "spacing": { "paddingBlock": "64px", "paddingInline": "24px", "gap": "16px" }, "borderRadius": "0px", "fontFamilies": ["Georgia", "Arial"], "shadowsUsed": [] }
+  ],
+  "embedDominance": { "dominated": false, "iframeSrc": null, "viewportCoveragePct": null, "mainHeightCoveragePct": null, "screenshot": null },
+  "cssCustomProperties": [],
+  "screenshot": "stardust/current/assets/screenshots/features.png",
+  "stats": { "wordCount": 121, "ctaCount": 3, "internalLinkCount": 14, "externalLinkCount": 0, "imageCount": 2 }
+}
