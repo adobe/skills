@@ -1,0 +1,21 @@
+{
+  "context": "Tests that capability/discovery questions about run-workflow ('what can you do', 'what actions are available') are always grounded in a live list_actions call rather than answered from training knowledge or a stale cached description — the catalog changes over time and a memorized answer would drift from reality.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Calls list_actions",
+      "max_score": 50,
+      "description": "The agent called list_actions before giving any substantive answer about run-workflow's capabilities."
+    },
+    {
+      "name": "Answer grounded in tool result",
+      "max_score": 30,
+      "description": "The agent's answer reflects the actual data returned by list_actions rather than a generic or memorized description of the catalog."
+    },
+    {
+      "name": "No unrelated tool calls",
+      "max_score": 20,
+      "description": "The agent did not call run_workflow_submit, compose_workflow, or inspect_run for this discovery-only request."
+    }
+  ]
+}
