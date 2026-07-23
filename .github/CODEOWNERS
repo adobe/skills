@@ -49,4 +49,5 @@
 /plugins/web                                           @catalan-adobe
 
 # Commerce (promoted from adobe/aio-commerce-sdk)
-/plugins/commerce/                                     @adobe/commerce-decepticons
+/plugins/commerce/app-management/                      @adobe/commerce-decepticons
+/plugins/commerce/app-migration/                       @adobe/commerce-decepticons
