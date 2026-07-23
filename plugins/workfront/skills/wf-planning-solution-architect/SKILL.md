@@ -1,6 +1,17 @@
 ---
 name: wf-planning-solution-architect
-description: "Workfront Planning (WFP/Maestro) solution architecture: workspace design, record connections, formula fixes, Select/Prime/Ultimate tiers, object limits, Planning MCP/API, Fusion & Canvas Dashboards."
+description: >-
+  Expert guidance for architecting and troubleshooting Adobe Workfront Planning (WFP, also called
+  "Maestro"): workspace and record-type design, record connections and hierarchies, formula fields,
+  object and connection limits across Select/Prime/Ultimate tiers, the Planning MCP/API (filtering,
+  bulk actions, agentic workspace builds), Fusion, AI Assistant, GenStudio, Canvas Dashboards, views,
+  access/licensing, and request forms. Use this skill whenever the user asks about Workfront Planning
+  or Maestro: designing or building a workspace, connecting record types, fixing a broken formula,
+  hitting or asking to raise a limit (such as the 500 connected-records or 25,000 records-per-type
+  caps), tier and capacity questions, filtering records through the API/MCP, choosing an automation
+  surface, or reconciling Adobe's public docs against actual MCP/API behavior. Also trigger for
+  "build me a Planning workspace", "why is my formula failing", "what's the max records per type",
+  or "Select vs Prime vs Ultimate limits".
 metadata:
   category: solution-architecture
 license: Apache-2.0
@@ -152,6 +163,19 @@ Mention these when relevant, even if the user did not ask explicitly:
 - **The MCP workspace-setup-guide.txt is the canonical agentic build playbook.** When building via MCP, treat it as system-prompt-quality instruction, not optional guidance.
 
 - **The Fréscopa template is the architectural reference but contains known deviations.** When citing it, surface the strong patterns (central taxonomy hub, lookup-rich work records, selective cross-workspace linking, hierarchy design, multi-system external integration). Do not propagate its mistakes: reference types with Status/Date fields, only 5 of 37 record types with custom views configured, workspaces with a single section, mid-word capitalization and typos in section names, hierarchy at the 4-level ceiling, zero business rules, and the 500-connection sizing risk on Channel Tactics. Details in `references/best-practice-template.md` "Known deviations" section.
+
+## Example
+
+**User:** "A large enterprise customer just hit the 500 connected-records limit on day one of go-live. They want us to raise it to 2,500. They're on Ultimate. What do I tell them?"
+
+**Good response (abridged):**
+1. *Route:* This is Category A (limits) plus Category F (connections). Load `references/limits-and-tiers.md` and `references/customer-conversation-framings.md`.
+2. *Reframe before conceding:* "Hitting the 500-connection cap on day one is almost always a modeling signal, not a capacity signal. Before we talk about raising it, what's connected to what?" The 500 multi-select non-hierarchy connection cap is the same on all tiers, including Ultimate, so tier is not the lever here.
+3. *Name the architecture problem:* If one parent record is being connected to thousands of children, the fix is usually a hierarchy or an intermediate record type, not a bigger cap. A raised cap gets exhausted again in a quarter or two and adds platform-wide technical debt.
+4. *Give the customer-facing colleague words to use:* Offer the redesign framing from `customer-conversation-framings.md` rather than an exception promise.
+5. *Only then* discuss whether an exception is even possible, and set expectations against the roadmap, not the wish.
+
+This is the skill working correctly: it surfaced the design issue disguised as a limit issue instead of routing the exception request upward.
 
 ## When you don't know
 
