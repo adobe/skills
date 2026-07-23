@@ -1,15 +1,56 @@
 {
-  "criteria": [
-    { "id": "donor_ingestion_design_source", "weight": 10, "description": "The donor is captured via stardust:extract --design-source into stardust/canon-source/ without modifying extract; multi-design-system donors get one pinned reference page per module family, recorded in the reskin artifacts." },
-    { "id": "content_model_capture", "weight": 15, "description": "stardust/reskin/content-model/<slug>.json exists with slot-granular text, CTAs with absolute hrefs, ordered visible images, and full SEO metadata; it declares the content-root scope and the executable normalization ledger used at capture time." },
-    { "id": "scope_coverage_guard", "weight": 10, "description": "The content-root scope is validated with the coverage diagnostic (body-vs-scope ratio / h1-in-scope); no whole section of the source page is silently absent from the model." },
-    { "id": "mapping_brief_contract", "weight": 15, "description": "stardust/reskin/mapping.md maps every content slot to a donor module with rationale and status (mapped/new-module/chrome); at least 80% of slots are mapped; new modules are explicitly composed from donor tokens; no silent improvisation." },
-    { "id": "programmatic_render", "weight": 10, "description": "The reskin page is generated from content-model.json by a renderer that interpolates model strings; no content string in the output was hand-retyped or paraphrased." },
-    { "id": "content_gate_passes", "weight": 15, "description": "dom-equality (text bytes + ordered image set, structure informational, shared normalization at both ends) and slot-coverage (every slot present, metadata verbatim) run and pass, with results recorded; any delta is a documented chrome swap or ledger normalization." },
-    { "id": "design_adoption_gate", "weight": 10, "description": "donor-probe token assertions run against the rendered page and pass (selector-missing treated as FAIL, token-missing as SKIP); overflow sanity holds at 1440 and 360." },
-    { "id": "iteration_discipline", "weight": 5, "description": "At most one fix iteration after measurement; remaining deltas land in the residual ledger rather than silently accepted." },
-    { "id": "standard_handoff_no_core_changes", "weight": 5, "description": "Scale/delivery is handed to migrate (donor-pinned, sibling tier) / deploy / rollout unchanged; reskin state stays under stardust/reskin/; no existing skill or the core state machine is modified." },
-    { "id": "provenance", "weight": 5, "description": "Content and donor captures carry live-render provenance; no invented sections, placeholder text, or synthesized facts appear in the reskin." }
-  ],
-  "total": 100
+  "context": "Entry point (reskin): tests a donor via --design-source, content-model capture with a scope guard, the mapping-brief contract (at least 80% mapped), programmatic render, and the dual content/design-adoption gates.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "donor_ingestion_design_source",
+      "max_score": 10,
+      "description": "The donor is captured via stardust:extract --design-source into stardust/canon-source/ without modifying extract; multi-design-system donors get one pinned reference page per module family, recorded in the reskin artifacts."
+    },
+    {
+      "name": "content_model_capture",
+      "max_score": 15,
+      "description": "stardust/reskin/content-model/<slug>.json exists with slot-granular text, CTAs with absolute hrefs, ordered visible images, and full SEO metadata; it declares the content-root scope and the executable normalization ledger used at capture time."
+    },
+    {
+      "name": "scope_coverage_guard",
+      "max_score": 10,
+      "description": "The content-root scope is validated with the coverage diagnostic (body-vs-scope ratio / h1-in-scope); no whole section of the source page is silently absent from the model."
+    },
+    {
+      "name": "mapping_brief_contract",
+      "max_score": 15,
+      "description": "stardust/reskin/mapping.md maps every content slot to a donor module with rationale and status (mapped/new-module/chrome); at least 80% of slots are mapped; new modules are explicitly composed from donor tokens; no silent improvisation."
+    },
+    {
+      "name": "programmatic_render",
+      "max_score": 10,
+      "description": "The reskin page is generated from content-model.json by a renderer that interpolates model strings; no content string in the output was hand-retyped or paraphrased."
+    },
+    {
+      "name": "content_gate_passes",
+      "max_score": 15,
+      "description": "dom-equality (text bytes + ordered image set, structure informational, shared normalization at both ends) and slot-coverage (every slot present, metadata verbatim) run and pass, with results recorded; any delta is a documented chrome swap or ledger normalization."
+    },
+    {
+      "name": "design_adoption_gate",
+      "max_score": 10,
+      "description": "donor-probe token assertions run against the rendered page and pass (selector-missing treated as FAIL, token-missing as SKIP); overflow sanity holds at 1440 and 360."
+    },
+    {
+      "name": "iteration_discipline",
+      "max_score": 5,
+      "description": "At most one fix iteration after measurement; remaining deltas land in the residual ledger rather than silently accepted."
+    },
+    {
+      "name": "standard_handoff_no_core_changes",
+      "max_score": 5,
+      "description": "Scale/delivery is handed to migrate (donor-pinned, sibling tier) / deploy / rollout unchanged; reskin state stays under stardust/reskin/; no existing skill or the core state machine is modified."
+    },
+    {
+      "name": "provenance",
+      "max_score": 5,
+      "description": "Content and donor captures carry live-render provenance; no invented sections, placeholder text, or synthesized facts appear in the reskin."
+    }
+  ]
 }

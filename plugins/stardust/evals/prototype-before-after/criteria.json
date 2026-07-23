@@ -1,18 +1,66 @@
 {
-  "name": "prototype-before-after",
-  "total": 100,
-  "criteria": [
-    { "id": "activated",                 "weight": 5,  "description": "The stardust:prototype skill was invoked." },
-    { "id": "single_proposed_file",      "weight": 15, "description": "Exactly one file is written for the page: stardust/prototypes/home-proposed.html. No separate before/after viewer file (home.html) is composed — the viewer was dropped from the skill." },
-    { "id": "root_token_block",          "weight": 15, "description": "home-proposed.html has the :root block as the first content of the first <style>. All required tokens present per token-contract.md (--heading-*, --body, --body-sm, --line-height-*, --color-bg, --color-fg, --color-accent, --spacing-*, --section-padding, --max-width, --radius)." },
-    { "id": "data_attributes_on_sections","weight": 10, "description": "Every <section> in home-proposed.html has data-section, data-intent, data-layout. Optional attributes (data-items, data-media, data-interactive) used where applicable. Lowercase kebab-case slugs." },
-    { "id": "provenance_complete",       "weight": 10, "description": "home-proposed.html has a stardust:provenance block as the first child of <head> listing: writtenBy, writtenAt, page, pageUrl, againstDirection (with the active direction's resolvedAt), readArtifacts, divergenceVersion, fontDeck, paletteSource." },
-    { "id": "self_contained",            "weight": 10, "description": "home-proposed.html is self-contained: no external CSS files, no external JS files, no analytics, no fonts loaded from CDN that aren't justified by the chosen font deck. The only inline <script> allowed is the ≤10-line mobile-nav a11y shim when the stock hamburger pattern is applied." },
-    { "id": "content_preserved",         "weight": 10, "description": "Content from current/pages/home.json is preserved: hero headline, body copy, CTA labels, navigation labels, link destinations. The redesign restyles, it does not rewrite." },
-    { "id": "delegates_to_craft",        "weight": 5,  "description": "The agent invoked $impeccable craft (or its equivalent flow) to perform the creative rendering, rather than inventing the design from scratch in stardust." },
-    { "id": "browser_opened",            "weight": 5,  "description": "home-proposed.html was opened in the default browser via open / xdg-open / start. Skipped only in pipeline-automation mode." },
-    { "id": "approval_chat_only",        "weight": 5,  "description": "Approval is documented as chat-only ('approve <slug>' or 'approve'). The agent does not reference a viewer button or postMessage mechanism." },
-    { "id": "state_prototyped_not_approved", "weight": 7, "description": "state.json marks home as 'prototyped' with prototypePath pointing at stardust/prototypes/home-proposed.html. Approval is a separate explicit step the user takes; the agent did not auto-approve." },
-    { "id": "no_eds_references",         "weight": 3,  "description": "No mention of EDS, AEM, framework targets, or production CMS output in either file or in narration." }
+  "context": "Phase 3 (prototype): tests one proposed file per page, the :root block and data attributes, content preservation, delegation to impeccable craft, and opening the result in a browser.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "activated",
+      "max_score": 5,
+      "description": "The stardust:prototype skill was invoked."
+    },
+    {
+      "name": "single_proposed_file",
+      "max_score": 15,
+      "description": "Exactly one file is written for the page: stardust/prototypes/home-proposed.html. No separate before/after viewer file (home.html) is composed — the viewer was dropped from the skill."
+    },
+    {
+      "name": "root_token_block",
+      "max_score": 15,
+      "description": "home-proposed.html has the :root block as the first content of the first <style>. All required tokens present per token-contract.md (--heading-*, --body, --body-sm, --line-height-*, --color-bg, --color-fg, --color-accent, --spacing-*, --section-padding, --max-width, --radius)."
+    },
+    {
+      "name": "data_attributes_on_sections",
+      "max_score": 10,
+      "description": "Every <section> in home-proposed.html has data-section, data-intent, data-layout. Optional attributes (data-items, data-media, data-interactive) used where applicable. Lowercase kebab-case slugs."
+    },
+    {
+      "name": "provenance_complete",
+      "max_score": 10,
+      "description": "home-proposed.html has a stardust:provenance block as the first child of <head> listing: writtenBy, writtenAt, page, pageUrl, againstDirection (with the active direction's resolvedAt), readArtifacts, divergenceVersion, fontDeck, paletteSource."
+    },
+    {
+      "name": "self_contained",
+      "max_score": 10,
+      "description": "home-proposed.html is self-contained: no external CSS files, no external JS files, no analytics, no fonts loaded from CDN that aren't justified by the chosen font deck. The only inline <script> allowed is the ≤10-line mobile-nav a11y shim when the stock hamburger pattern is applied."
+    },
+    {
+      "name": "content_preserved",
+      "max_score": 10,
+      "description": "Content from current/pages/home.json is preserved: hero headline, body copy, CTA labels, navigation labels, link destinations. The redesign restyles, it does not rewrite."
+    },
+    {
+      "name": "delegates_to_craft",
+      "max_score": 5,
+      "description": "The agent invoked $impeccable craft (or its equivalent flow) to perform the creative rendering, rather than inventing the design from scratch in stardust."
+    },
+    {
+      "name": "browser_opened",
+      "max_score": 5,
+      "description": "home-proposed.html was opened in the default browser via open / xdg-open / start. Skipped only in pipeline-automation mode."
+    },
+    {
+      "name": "approval_chat_only",
+      "max_score": 5,
+      "description": "Approval is documented as chat-only ('approve <slug>' or 'approve'). The agent does not reference a viewer button or postMessage mechanism."
+    },
+    {
+      "name": "state_prototyped_not_approved",
+      "max_score": 7,
+      "description": "state.json marks home as 'prototyped' with prototypePath pointing at stardust/prototypes/home-proposed.html. Approval is a separate explicit step the user takes; the agent did not auto-approve."
+    },
+    {
+      "name": "no_eds_references",
+      "max_score": 3,
+      "description": "No mention of EDS, AEM, framework targets, or production CMS output in either file or in narration."
+    }
   ]
 }

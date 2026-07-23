@@ -1,29 +1,121 @@
 {
-  "name": "migrate-self-contained-bundle",
-  "total": 100,
-  "criteria": [
-    { "id": "activated",                       "weight": 3,  "description": "The stardust:migrate skill was invoked." },
-    { "id": "no_current_escapes",              "weight": 6,  "description": "After run 1, no HTML file under stardust/migrated/ contains the substring '../current/'. Self-containment verified by absence of escape segments. (Acceptance criterion #1.)" },
-    { "id": "zip_deploy_ready",                "weight": 5,  "description": "Running 'cd stardust/migrated && zip -r out.zip .' produces a zip that renders identically in three contexts: extracted and served at the host root, extracted and served at any subpath, AND opened directly via file://. No 404s on any bundled asset. (Acceptance criteria #2, #3 + the new file:// portability guarantee.)" },
-    { "id": "idempotent_modulo_timestamp",     "weight": 5,  "description": "Re-running migrate without source changes produces output that differs only in the migrate-provenance timestamp line. With --pin-timestamp, output is byte-identical to the prior run. (Acceptance criterion #4.)" },
-    { "id": "asset_count_in_report",           "weight": 3,  "description": "Run summary includes 'N pages, M bundled assets, KKK KB HTML total — self-contained, zip-and-deploy' so the user sees the bundle composition at a glance. (Acceptance criterion #5.)" },
-    { "id": "missing_asset_surfaced",          "weight": 4,  "description": "The 'generated/missing.jpg' reference surfaces in the run report's Missing assets block AND in state.json.migrate.missingAssets[]. Migrate completes successfully (warnings, not errors). (Acceptance criterion #6.)" },
-    { "id": "detection_src_href",              "weight": 3,  "description": "Detection shape #1 (single-URL src/href): the <link rel=\"icon\"> and <img src> references are bundled and rewritten to depth-aware relative paths of the form <prefix>assets/<subpath>, where prefix is './' for depth-0 pages and '../'.repeat(depth) for nested pages." },
-    { "id": "detection_srcset",                "weight": 5,  "description": "Detection shape #2 (srcset multi-URL): each URL in the comma-separated list is rewritten independently to depth-aware relative form; descriptors (1x, 2x, 768w) preserved verbatim; whitespace between entries preserved." },
-    { "id": "detection_inline_style",          "weight": 3,  "description": "Detection shape #3 (inline style=\"...url(...)...\"): background-image url() is rewritten to depth-aware relative form." },
-    { "id": "detection_style_block_url",       "weight": 4,  "description": "Detection shape #4 (<style>-block url()): both @font-face src: url() and .grid background url() are rewritten to depth-aware relative form." },
-    { "id": "depth_aware_paths",               "weight": 6,  "description": "Asset and internal-page references are emitted as depth-aware relative paths, NOT root-relative. From home (depth 0): './assets/foo'. From beers/index.html (depth 1): '../assets/foo' and '../about/index.html'. From docs/api/index.html (depth 2): '../../assets/foo'. Per migration-procedure.md § Reference shape." },
-    { "id": "prefix_normalises_authoring",     "weight": 4,  "description": "Root-relative authoring ('/assets/generated/hero-1x.jpg') and bare-relative authoring ('assets/foo') are BOTH normalised to the depth-aware relative form on the emitted page. Authoring style is not preserved verbatim — the contract is 'one shape, works everywhere'." },
-    { "id": "asset_subpath_preserved",         "weight": 3,  "description": "Source subdir structure preserved verbatim under stardust/migrated/assets/: generated/hero-1x.jpg, fonts/inter-var.woff2, photos/family portrait.jpg all land at the expected paths." },
-    { "id": "percent_encoded_subpath",         "weight": 3,  "description": "The reference to '<prefix>assets/photos/family%20portrait.jpg' is preserved encoded in HTML but the file-system access decodes to 'photos/family portrait.jpg' and the file copies correctly." },
-    { "id": "path_traversal_refused",          "weight": 3,  "description": "The '/assets/../etc/passwd' reference is refused: no copy, the HTML reference is left unchanged (so the issue surfaces visibly on deploy), and the page's _meta.json#migrationDecisions[] records kind: 'asset-path-traversal'." },
-    { "id": "scheme_bearing_url_skipped",      "weight": 2,  "description": "The 'https://fonts.googleapis.com/...' stylesheet link is left external — not bundled, not rewritten, not flagged as missing. CDN URLs are by-design external." },
-    { "id": "pagemap_constructed",             "weight": 6,  "description": "state.json.migrate.pageMap[] is built BEFORE per-page rendering and lists every in-scope source URL with its outputPath (URL-literal rule per migration-procedure.md § Output path mapping): /beers-bev/ -> beers/index.html, /about-us/history.html -> about-us/history.html (preserve .html leaf, no extra index.html). Each entry: { sourceUrl, outputPath, slug }." },
-    { "id": "internal_links_via_pagemap",      "weight": 5,  "description": "Internal <a href> rewrites resolve via pageMap.outputPath lookup, NOT slug synthesis. Same-origin absolute hrefs (https://<origin>/path) are stripped to their path portion and looked up via pageMap, then emitted as depth-aware relative refs. A target URL with no pageMap entry is flagged data-broken-link='true' and logged under provenance.brokenInternalLinks[]." },
-    { "id": "state_json_migrate_block",        "weight": 6,  "description": "state.json.migrate is written with: selfContained: true, outputDir, pageMap[] (built first), totalAssetsBundled, bundledAssets[] (unique subpath set), per-page assetsBundled counts, missingAssets[], cleanedAssets[]. Field order and shapes match migrate-output-format.md § State.json contract." },
-    { "id": "self_contained_signal",           "weight": 2,  "description": "state.json.migrate.selfContained === true is the forward-compat signal — downstream consumers can test for it." },
-    { "id": "cross_page_dedup",                "weight": 3,  "description": "When two pages reference the same asset, the bundler copies it exactly once. The global Set is seeded from state.json.migrate.bundledAssets[] so cross-run dedup works even when only some pages re-render. Each page emits the asset with its own depth-aware prefix; the underlying copy is shared." },
-    { "id": "stale_cleanup_clean_flag",        "weight": 3,  "description": "Run 3 with --clean removes assets that were bundled in the prior run but are no longer referenced. --clean implies --force (every page re-renders so the bundledAssets set is the complete union; idempotent-skipped pages' references are not missed). state.json.migrate.cleanedAssets[] records what was removed. Without --clean, the run is additive and honors the idempotent skip." },
-    { "id": "portability_audit_passes",        "weight": 13, "description": "Phase 3 portability audit (per SKILL.md § Phase 3) passes: (a) no '../current/' escapes; (b) no absolute internal href/src ('grep -rE \"(href|src)=/[^/]\"' empty); (c) no absolute url() ('grep -rE \"url\\(\\s*[\\\"\\']?\\s*/[^/]\"' empty); (d) no directory-only hrefs ('grep -rE \"href=\\\"(\\.{0,2}/|[a-zA-Z0-9_-])[^:\\\"#?]*/\\\"\"' empty); (e) pagemap-audit.mjs exits 0; (f) file-protocol-audit.mjs exits 0. Any non-empty grep output or non-zero fixture exit fails the run." }
+  "context": "Phase 4 (migrate): tests the self-contained zip-and-deploy bundle — six asset detection shapes, nine edge cases, six acceptance criteria, and the state.json migrate block with selfContained: true.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "activated",
+      "max_score": 3,
+      "description": "The stardust:migrate skill was invoked."
+    },
+    {
+      "name": "no_current_escapes",
+      "max_score": 6,
+      "description": "After run 1, no HTML file under stardust/migrated/ contains the substring '../current/'. Self-containment verified by absence of escape segments. (Acceptance criterion #1.)"
+    },
+    {
+      "name": "zip_deploy_ready",
+      "max_score": 5,
+      "description": "Running 'cd stardust/migrated && zip -r out.zip .' produces a zip that renders identically in three contexts: extracted and served at the host root, extracted and served at any subpath, AND opened directly via file://. No 404s on any bundled asset. (Acceptance criteria #2, #3 + the new file:// portability guarantee.)"
+    },
+    {
+      "name": "idempotent_modulo_timestamp",
+      "max_score": 5,
+      "description": "Re-running migrate without source changes produces output that differs only in the migrate-provenance timestamp line. With --pin-timestamp, output is byte-identical to the prior run. (Acceptance criterion #4.)"
+    },
+    {
+      "name": "asset_count_in_report",
+      "max_score": 3,
+      "description": "Run summary includes 'N pages, M bundled assets, KKK KB HTML total — self-contained, zip-and-deploy' so the user sees the bundle composition at a glance. (Acceptance criterion #5.)"
+    },
+    {
+      "name": "missing_asset_surfaced",
+      "max_score": 4,
+      "description": "The 'generated/missing.jpg' reference surfaces in the run report's Missing assets block AND in state.json.migrate.missingAssets[]. Migrate completes successfully (warnings, not errors). (Acceptance criterion #6.)"
+    },
+    {
+      "name": "detection_src_href",
+      "max_score": 3,
+      "description": "Detection shape #1 (single-URL src/href): the <link rel=\"icon\"> and <img src> references are bundled and rewritten to depth-aware relative paths of the form <prefix>assets/<subpath>, where prefix is './' for depth-0 pages and '../'.repeat(depth) for nested pages."
+    },
+    {
+      "name": "detection_srcset",
+      "max_score": 5,
+      "description": "Detection shape #2 (srcset multi-URL): each URL in the comma-separated list is rewritten independently to depth-aware relative form; descriptors (1x, 2x, 768w) preserved verbatim; whitespace between entries preserved."
+    },
+    {
+      "name": "detection_inline_style",
+      "max_score": 3,
+      "description": "Detection shape #3 (inline style=\"...url(...)...\"): background-image url() is rewritten to depth-aware relative form."
+    },
+    {
+      "name": "detection_style_block_url",
+      "max_score": 4,
+      "description": "Detection shape #4 (<style>-block url()): both @font-face src: url() and .grid background url() are rewritten to depth-aware relative form."
+    },
+    {
+      "name": "depth_aware_paths",
+      "max_score": 6,
+      "description": "Asset and internal-page references are emitted as depth-aware relative paths, NOT root-relative. From home (depth 0): './assets/foo'. From beers/index.html (depth 1): '../assets/foo' and '../about/index.html'. From docs/api/index.html (depth 2): '../../assets/foo'. Per migration-procedure.md § Reference shape."
+    },
+    {
+      "name": "prefix_normalises_authoring",
+      "max_score": 4,
+      "description": "Root-relative authoring ('/assets/generated/hero-1x.jpg') and bare-relative authoring ('assets/foo') are BOTH normalised to the depth-aware relative form on the emitted page. Authoring style is not preserved verbatim — the contract is 'one shape, works everywhere'."
+    },
+    {
+      "name": "asset_subpath_preserved",
+      "max_score": 3,
+      "description": "Source subdir structure preserved verbatim under stardust/migrated/assets/: generated/hero-1x.jpg, fonts/inter-var.woff2, photos/family portrait.jpg all land at the expected paths."
+    },
+    {
+      "name": "percent_encoded_subpath",
+      "max_score": 3,
+      "description": "The reference to '<prefix>assets/photos/family%20portrait.jpg' is preserved encoded in HTML but the file-system access decodes to 'photos/family portrait.jpg' and the file copies correctly."
+    },
+    {
+      "name": "path_traversal_refused",
+      "max_score": 3,
+      "description": "The '/assets/../etc/passwd' reference is refused: no copy, the HTML reference is left unchanged (so the issue surfaces visibly on deploy), and the page's _meta.json#migrationDecisions[] records kind: 'asset-path-traversal'."
+    },
+    {
+      "name": "scheme_bearing_url_skipped",
+      "max_score": 2,
+      "description": "The 'https://fonts.googleapis.com/...' stylesheet link is left external — not bundled, not rewritten, not flagged as missing. CDN URLs are by-design external."
+    },
+    {
+      "name": "pagemap_constructed",
+      "max_score": 6,
+      "description": "state.json.migrate.pageMap[] is built BEFORE per-page rendering and lists every in-scope source URL with its outputPath (URL-literal rule per migration-procedure.md § Output path mapping): /beers-bev/ -> beers/index.html, /about-us/history.html -> about-us/history.html (preserve .html leaf, no extra index.html). Each entry: { sourceUrl, outputPath, slug }."
+    },
+    {
+      "name": "internal_links_via_pagemap",
+      "max_score": 5,
+      "description": "Internal <a href> rewrites resolve via pageMap.outputPath lookup, NOT slug synthesis. Same-origin absolute hrefs (https://<origin>/path) are stripped to their path portion and looked up via pageMap, then emitted as depth-aware relative refs. A target URL with no pageMap entry is flagged data-broken-link='true' and logged under provenance.brokenInternalLinks[]."
+    },
+    {
+      "name": "state_json_migrate_block",
+      "max_score": 6,
+      "description": "state.json.migrate is written with: selfContained: true, outputDir, pageMap[] (built first), totalAssetsBundled, bundledAssets[] (unique subpath set), per-page assetsBundled counts, missingAssets[], cleanedAssets[]. Field order and shapes match migrate-output-format.md § State.json contract."
+    },
+    {
+      "name": "self_contained_signal",
+      "max_score": 2,
+      "description": "state.json.migrate.selfContained === true is the forward-compat signal — downstream consumers can test for it."
+    },
+    {
+      "name": "cross_page_dedup",
+      "max_score": 3,
+      "description": "When two pages reference the same asset, the bundler copies it exactly once. The global Set is seeded from state.json.migrate.bundledAssets[] so cross-run dedup works even when only some pages re-render. Each page emits the asset with its own depth-aware prefix; the underlying copy is shared."
+    },
+    {
+      "name": "stale_cleanup_clean_flag",
+      "max_score": 3,
+      "description": "Run 3 with --clean removes assets that were bundled in the prior run but are no longer referenced. --clean implies --force (every page re-renders so the bundledAssets set is the complete union; idempotent-skipped pages' references are not missed). state.json.migrate.cleanedAssets[] records what was removed. Without --clean, the run is additive and honors the idempotent skip."
+    },
+    {
+      "name": "portability_audit_passes",
+      "max_score": 13,
+      "description": "Phase 3 portability audit (per SKILL.md § Phase 3) passes: (a) no '../current/' escapes; (b) no absolute internal href/src ('grep -rE \"(href|src)=/[^/]\"' empty); (c) no absolute url() ('grep -rE \"url\\(\\s*[\\\"\\']?\\s*/[^/]\"' empty); (d) no directory-only hrefs ('grep -rE \"href=\\\"(\\.{0,2}/|[a-zA-Z0-9_-])[^:\\\"#?]*/\\\"\"' empty); (e) pagemap-audit.mjs exits 0; (f) file-protocol-audit.mjs exits 0. Any non-empty grep output or non-zero fixture exit fails the run."
+    }
   ]
 }
