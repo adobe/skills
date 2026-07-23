@@ -26,12 +26,9 @@ downstream sub-commands.
   behaviour without the flag is additive: if a direction already
   exists, the agent asks before replacing.
 - `--rebrand` — optional. Force rebrand mode (full divergence-seed
-  roll, no Mode A inheritance) regardless of whether the captured
-  brand surface has signal. The default mode is brand-faithful
-  whenever `_brand-extraction.json` is `signal-strong` (see § Setup
-  step 5 and Phase 2 § Mode-detection precedence); pass `--rebrand`
-  to opt out explicitly when the user's phrase is ambiguous about
-  whether they want a refresh or a clean-slate redesign.
+  roll, no Mode A inheritance). Without it the default is
+  brand-faithful whenever the captured signal is `signal-strong`
+  (§ Mode-detection precedence).
 - `--prep` — optional. Run in **migrate-prep mode**: confirm the
   type catalog, finalize the module catalog, capture color
   reservations and brand-level metadata defaults, re-evaluate
@@ -41,12 +38,8 @@ downstream sub-commands.
   the existing direction without re-running intent reasoning or
   mode detection. Writes `DESIGN-<name>.{md,json}` at the
   project root and appends a per-variant section to
-  `stardust/direction.md`. The previous direction stays
-  authoritative; existing prototypes are **not** stale-flagged.
-  Used when variants are spec'd incrementally — typical
-  workflow: render variant A, review, then ask for B and C as
-  "the alternatives we discussed earlier." See § Add-variant
-  mode below for the per-field inheritance rules.
+  `stardust/direction.md`; existing prototypes are **not**
+  stale-flagged. See § Add-variant mode below.
 
 ## Setup
 
@@ -160,10 +153,8 @@ Skip this question entirely when:
   reasoning is the higher-value question — defer density to the
   next turn rather than burning a question slot.
 
-The tier propagates to `DESIGN.md`'s `spacing.sectionPadding`
-deterministically per `intent-dimensions.md` § 4: airy = 96px,
-balanced = 64px, packed = 48px. Phase 4 picks the value from this
-stamp without re-asking.
+Phase 4 reads the stamped tier to set `spacing.sectionPadding`;
+it never re-asks.
 
 #### IA-fidelity tuning (one-shot, only when unmoved)
 
@@ -194,9 +185,8 @@ Skip this question entirely when:
 - An existing `direction.md` is being refined (the active tier holds
   unless the user explicitly re-pins).
 
-The tier propagates to `DESIGN.json.extensions.iaPriorities[].mutability`:
-`locked` under verbatim, `movable` under reimagined. Phase 4 stamps
-the field; downstream `prototype` reads it.
+Phase 4 stamps the tier into `iaPriorities[].mutability`;
+downstream `prototype` reads it.
 
 Pair this question with the density-tuning question when both are
 unmoved — *"two things to pin before we resolve: (1) density …, (2)
@@ -218,18 +208,11 @@ whether the seed needs rolling at all.
 
 The default mode for `direct` is determined by whether an extracted
 brand surface exists with usable signal — **not** by the user's
-freeform phrase alone. Stardust's primary use case is migrating an
-existing site with a design refresh; "make it modern" / "stunning new
-version" / "design fatigue cure" are migration-shaped asks. Treating
-those phrases as rebrand triggers (rolling a fresh divergence seed)
-produces output that is recognisably a different brand from the one
-that asked for the refresh — a published failure mode. The
-precedence below catches the common case as the default and reserves
-divergence-seed rolls for explicit rebrand requests.
-
-The precedence is asymmetric on purpose: the safer mode (Mode A —
-brand-faithful) catches ambiguous phrases, and the riskier mode
-(rebrand / full divergence-seed) requires the user to name it.
+freeform phrase alone. Ambiguous refresh phrases ("make it modern",
+"stunning new version", "design fatigue cure") are migration-shaped
+asks, not rebrand triggers. The precedence is asymmetric on purpose:
+the safer mode (Mode A — brand-faithful) catches ambiguous phrases;
+the riskier rebrand mode requires the user to name it.
 
 1. **Site migration / refresh — DEFAULT.** When the captured brand
    signal stamped in § Setup step 6 is `signal-strong`, Mode A is
@@ -295,10 +278,7 @@ type and palette (via explicit phrase: "keep typography and palette",
 constraints listing both as anchors).
 
 In this mode, direct does **not** roll the type or palette
-dimensions of the seed — they are already locked. Going through
-the motions of font-deck and palette picks would be ceremony,
-producing `picked_by = "user-constraint"` records that don't
-reflect any real choice.
+dimensions of the seed — they are already locked.
 
 The mode procedure:
 
@@ -341,12 +321,9 @@ The mode procedure:
    Program-card image stays program-card image. Background-motif
    image stays background motif.
 
-   This is part of brand-faithful inheritance, not a separate
-   content rule. A variant that swaps a captured subject portrait
-   for a gradient placeholder, or moves the captured hero photo to
-   a card thumbnail, erases the brand's most load-bearing trust
-   signal — the named-people stories that almost every nonprofit /
-   service-led site has spent years building.
+   This is part of brand-faithful inheritance: swapping a captured
+   portrait for a placeholder, or demoting the hero photo to a
+   thumbnail, erases the brand's most load-bearing trust signal.
 
    The only legitimate ways to deviate from semantic
    position-preservation under Mode A:
@@ -368,15 +345,9 @@ The mode procedure:
    placeholder-with-signature element so reviewers see the gap
    rather than a fabricated photo.
 
-Mode A is the default whenever § Mode-detection precedence step 1
-applies (captured signal is `signal-strong` and no rebrand override
-fires). It also activates explicitly when the resolved direction's
-constraints list contains `brand-faithful` AND explicit type AND
-palette anchors, OR when the user's phrase contains "keep
-typography" / "preserve the palette" / equivalent. The agent
-surfaces "Brand-faithful mode active" in the plan it shows the
-user before executing — the user can correct (e.g. "actually let
-me move the palette" or "actually rebrand it") before it locks.
+The user can correct the mode at the plan-confirmation gate (e.g.
+"actually let me move the palette" or "actually rebrand it")
+before it locks.
 
 #### Mode A+ — Brand-adjacent refinement (bounded, evidence-gated)
 
@@ -418,12 +389,10 @@ justification is the captured weakness, not an external anchor.
 
 When the user provides anchor references (Q1/Q2 answers like
 "Pentagram nonprofits, This American Life, NYT Opinion longform"),
-those references **already imply** seed dimensions. Pentagram
-implies decade `2025-now` editorial. This American Life implies
-register `Memoir`-adjacent. Rolling those dimensions
-deterministically and getting an accidental alignment is fragile —
-the agent then has to retro-justify the alignment in
-`direction.md`.
+those references **already imply** seed dimensions (Pentagram →
+decade `2025-now` editorial; This American Life → register
+`Memoir`-adjacent). Do not roll dimensions the references already
+imply.
 
 **Agent-sourced anchors (default when the user provides none).**
 Mode B no longer waits for the user to name references: run the
@@ -534,17 +503,11 @@ the v2 storage shape at the bottom of `divergence-toolkit.md`.
 
 Before any variant is rendered downstream, write
 `stardust/prototypes/<slug>-improvements.md` listing **3–5 specific
-weaknesses** observed in the captured site. This is the load-bearing
-artifact for variant A: without it, *"make it better"* has no claim
-the agent can defend, and each variant ends up inventing its own
-"better" — producing rebrand-shaped output even with Mode A active.
-
-The improvements list is the brief variant A renders against. It is
-**not** prescriptive (it does not declare visual targets); it is
+weaknesses** observed in the captured site. It is the brief variant
+A renders against: **not** prescriptive (no visual targets), but
 **descriptive of the gap** between the existing site and a competent
-2026 execution of the same brand. Variant A's job is to close the
-gap; variants B+ honor the list as a floor (they may go further but
-not contradict it).
+2026 execution of the same brand. Variants B+ honor the list as a
+floor (they may go further but not contradict it).
 
 Skip this phase when the resolved mode is rebrand — the improvements
 list assumes brand-faithful inheritance, and a rebrand replaces the
@@ -1576,21 +1539,3 @@ Next: $stardust prototype <slug> --variant B
 - `skills/stardust/reference/artifact-map.md` — provenance shape.
 - `reference/direction-format.md` — schema for `stardust/direction.md`.
 - `reference/palette-picker.md` — palette resolution procedure.
-
-## Default-mode-flip note (2026-04-29)
-
-This skill changed its default behavior in 2026-04-29 to make Mode A
-(brand-faithful) the default whenever the captured brand surface is
-`signal-strong`, rather than activating only on explicit user
-signals. (The rationale: dogfood runs showed ambiguous refresh
-phrases rolling full divergence seeds and shipping rebrand-shaped
-output to brand owners who asked for a refresh.) Behavior summary:
-
-- Before: ambiguous phrases like *"make it more modern"* rolled the
-  full divergence seed and produced rebrand-shaped output.
-- After: ambiguous phrases default to Mode A; rebrand requires
-  explicit phrase signal or `--rebrand` flag.
-
-The flip was driven by dogfood evidence that the typical stardust
-use case (presales refresh of an existing site for a brand owner
-with design fatigue) was getting the wrong default.
