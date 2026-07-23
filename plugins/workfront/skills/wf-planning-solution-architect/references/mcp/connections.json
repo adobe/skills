@@ -1,0 +1,32 @@
+{
+  "description": "Available external connections/integrations and their supported object types",
+  "connections": {
+    "workfront": {
+      "name": "Adobe Workfront",
+      "description": "Workfront objects — users, groups, teams, job roles, and companies. Most common connection for sharing and permission scenarios.",
+      "objectTypes": {
+        "PROJ": "Project",
+        "TASK": "Task",
+        "ISSUE": "Issue (request)",
+        "USER": "User",
+        "PORTFOLIO": "Portfolio",
+        "PROGRAM": "Program",
+        "COMPANY": "Company",
+        "GROUP": "Group"
+      }
+    },
+    "aem": {
+      "name": "Adobe Experience Manager",
+      "description": "AEM assets and repositories"
+    },
+    "brand": {
+      "name": "Adobe Applications (Brands)",
+      "description": "GenStudio Brands objects — listed under Adobe Applications in the connection picker"
+    }
+  },
+  "usage": {
+    "connectionName": "Pass the connection key as-is (lowercase string, e.g. 'workfront')",
+    "objectType": "Pass the object type code as an uppercase string (e.g. 'PROJ')",
+    "defaultConnection": "Use 'workfront' for most sharing/permission scenarios in Workfront Planning"
+  }
+}

@@ -1,0 +1,167 @@
+{
+  "description": "All field types supported by Workfront Planning MCP tools. All types can be created as fields on a record type. The distinction below is whether record values are user-writable or auto-computed.",
+  "userWritableValueFields": [
+    {
+      "type": "text",
+      "valueType": "string",
+      "description": "Single-line plain text. Used as the primary field for record names.",
+      "configOptions": {},
+      "notes": "The primary field (first field) is always text and required."
+    },
+    {
+      "type": "long-text",
+      "valueType": "object",
+      "description": "Multi-line rich text with plain and HTML representations.",
+      "configOptions": {},
+      "valueFormat": {"content": "plain text", "contentHTML": "<p>html markup</p>"}
+    },
+    {
+      "type": "long-text-html",
+      "valueType": "object",
+      "description": "Rich text stored as HTML. Same value format as long-text.",
+      "configOptions": {},
+      "valueFormat": {"content": "plain text", "contentHTML": "<p>html markup</p>"}
+    },
+    {
+      "type": "number",
+      "valueType": "number",
+      "description": "Numeric value with configurable precision and sign.",
+      "configOptions": {
+        "precision": "Decimal places (0-4). Default: 0.",
+        "allowNegatives": "Boolean. Default: true."
+      }
+    },
+    {
+      "type": "percentage",
+      "valueType": "number",
+      "description": "Percentage value (stored as decimal, e.g. 0.75 = 75%).",
+      "configOptions": {
+        "precision": "Decimal places (0-4). Default: 0.",
+        "allowNegatives": "Boolean. Default: true."
+      }
+    },
+    {
+      "type": "currency",
+      "valueType": "number",
+      "description": "Monetary value with currency code.",
+      "configOptions": {
+        "precision": "Decimal places (0-4). Default: 2.",
+        "allowNegatives": "Boolean. Default: true.",
+        "currency": "ISO 4217 currency code (e.g. USD, EUR, GBP). Default: USD."
+      }
+    },
+    {
+      "type": "date",
+      "valueType": "string",
+      "description": "Date or datetime in ISO 8601 format.",
+      "configOptions": {
+        "hasTime": "Boolean. If true, include time component."
+      },
+      "valueFormat": "yyyy-MM-ddTHH:mm:ss.SSSZ (with time) or yyyy-MM-ddT00:00:00.000Z (date only)"
+    },
+    {
+      "type": "single-select",
+      "valueType": "one_of",
+      "description": "Single value from a predefined list of options.",
+      "configOptions": {
+        "options": "Array of {displayName, color} objects. Colors: light-blue, dark-blue, light-cyan, dark-cyan, light-teal, dark-teal, light-green, dark-green, light-yellow, dark-yellow, light-orange, dark-orange, light-red, dark-red, light-pink, dark-pink, light-purple, dark-purple, light-gray, dark-gray."
+      },
+      "notes": "When setting values, use the option 'name' (internal), not 'displayName'."
+    },
+    {
+      "type": "multi-select",
+      "valueType": "any_of",
+      "description": "Multiple values from a predefined list of options.",
+      "configOptions": {
+        "options": "Array of {displayName, color} objects. Same color palette as single-select."
+      },
+      "notes": "Value is always an array of option names."
+    },
+    {
+      "type": "boolean",
+      "valueType": "boolean",
+      "description": "True/false checkbox field.",
+      "configOptions": {}
+    },
+    {
+      "type": "reference",
+      "valueType": "array_of_record_ids",
+      "description": "Link to records in another (or the same) record type.",
+      "configOptions": {
+        "referenceOptions.recordTypeId": "Target record type ID (REQUIRED).",
+        "referenceOptions.multiple": "Boolean. Allow multiple linked records. Default: false.",
+        "referenceOptions.backField": "Provide to create a BIDIRECTIONAL link. Omit for unidirectional. Only displayName is required; multiple defaults to true. Type and recordTypeId are auto-filled by the server.",
+        "referenceOptions.backField.displayName": "Display name for the reverse field on the target record type (REQUIRED when backField is provided).",
+        "referenceOptions.backField.multiple": "Boolean. Whether the back-reference allows multiple links. Default: true.",
+        "referenceOptions.isExternal": "Boolean. True for Workfront/AEM connections.",
+        "referenceOptions.externalOptions": "Connection config for external record types (omit for native)."
+      },
+      "notes": "Values are ALWAYS arrays of record IDs, even for single references: [\"Rc123\"]. For bidirectional links, provide backField with a displayName — the server auto-sets createBackReference=true, type=reference, and recordTypeId=source record type."
+    },
+    {
+      "type": "user",
+      "valueType": "array_of_user_ids",
+      "description": "Link to one or more users (people field).",
+      "configOptions": {
+        "referenceOptions.multiple": "Boolean. Allow multiple users. Default: false."
+      },
+      "notes": "Values are arrays of user objects: [{\"id\": \"userId\"}]."
+    }
+  ],
+  "computedOrSystemFields": [
+    {
+      "type": "formula",
+      "valueType": "computed",
+      "description": "You define the formula expression on the field itself (via configOptions when creating/updating the field). Record values are then auto-computed by the server — you cannot set them directly. Read the docs://formula-syntax resource for syntax reference.",
+      "configOptions": {
+        "formula": "Formula expression string (REQUIRED).",
+        "returnType": "One of: TEXT, NUMBER, PERCENTAGE, CURRENCY, DATE, DATETIME, TEXT_ARRAY."
+      }
+    },
+    {
+      "type": "lookup",
+      "valueType": "derived",
+      "description": "A projection of a field value from the linked record. To change a lookup value, update the source record directly or change which record the reference field points to."
+    },
+    {
+      "type": "created-by",
+      "valueType": "readonly",
+      "description": "System field: user who created the record."
+    },
+    {
+      "type": "created-at",
+      "valueType": "readonly",
+      "description": "System field: timestamp when the record was created."
+    },
+    {
+      "type": "updated-by",
+      "valueType": "readonly",
+      "description": "System field: user who last modified the record."
+    },
+    {
+      "type": "updated-at",
+      "valueType": "readonly",
+      "description": "System field: timestamp of last modification."
+    },
+    {
+      "type": "approved-by",
+      "valueType": "readonly",
+      "description": "System field: user who approved the record."
+    },
+    {
+      "type": "approved-at",
+      "valueType": "readonly",
+      "description": "System field: timestamp of approval."
+    },
+    {
+      "type": "record-id",
+      "valueType": "readonly",
+      "description": "System field: unique record identifier."
+    },
+    {
+      "type": "attachment",
+      "valueType": "readonly",
+      "description": "File attachment field. Not settable via MCP tools."
+    }
+  ]
+}

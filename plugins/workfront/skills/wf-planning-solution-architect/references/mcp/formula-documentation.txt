@@ -1,0 +1,534 @@
+FORMULA FIELDS — ADOBE WORKFRONT PLANNING
+==========================================
+
+Formula fields compute values automatically from other fields in a record type.
+You write a formula expression that references existing fields, and the system
+evaluates it for every record. This document is the complete reference for
+writing formula expressions via MCP or the Planning UI.
+
+
+SYNTAX RULES
+============
+
+Field references
+  Wrap the field's display name (as shown in the Planning UI) in curly braces.
+  Names are case-sensitive and must match exactly.
+    {Name}
+    {Start Date}
+    {Actual Spend}
+
+String literals
+  Use double quotes for string values inside expressions.
+    "hello"
+    "Over Budget"
+
+Logical operators
+  AND, OR, and NOT are infix operators — write them between subexpressions,
+  not as function calls.
+    {Budget}>10000 AND {Status}="planning"
+    {Status}="idea" OR {Status}="planning"
+    NOT {Status}="complete"
+
+Comparison operators
+  =   equal
+  !=  not equal
+  >   greater than
+  <   less than
+  >=  greater than or equal
+  <=  less than or equal
+
+Date wildcards
+  $$TODAY — current calendar date (UTC, no time component)
+  $$NOW  — current date and time (UTC)
+  Do NOT use TODAY() or NOW() — they are not supported. Always use $$TODAY or $$NOW.
+
+Nesting
+  Functions can be nested. Inner functions evaluate first.
+    ROUND(DIV({Actual Spend}, {Budget}), 2)
+    CONCAT("Budget: $", STRING({Budget}))
+
+
+RETURN TYPES
+============
+
+When creating a formula field, set returnType to one of:
+
+  TEXT       — plain text string (default)
+  TEXT_ARRAY — array of text values
+  NUMBER     — numeric value
+  PERCENTAGE — numeric value displayed as a percentage
+  CURRENCY   — numeric value displayed with a currency symbol
+  DATE       — calendar date (no time)
+  DATETIME   — date with time component
+
+
+CONSTRAINTS AND LIMITS
+======================
+
+- Formula fields can only reference fields from the same record type, unless
+  you connect another record type and reference its fields.
+- Connected/lookup field references require view permission on the connected
+  record type.
+- Maximum 20 formula fields per record type (formula lookup fields from
+  connected record types do not count toward this limit).
+- Formula expressions cannot exceed 50,000 characters.
+- You cannot change a field's type away from Formula after saving. You can
+  update the formula expression at any time; results recalculate automatically.
+- A formula displays #ERROR! when: a referenced field is deleted, a lookup
+  field it depends on is in error, or the result cannot be converted to the
+  selected returnType.
+- Date calculations without a time portion (or using $$TODAY / $$NOW) use
+  UTC, which may differ from your local timezone. Use SETTIMEZONE to convert.
+
+
+========================================
+FUNCTION REFERENCE — DATE AND TIME
+========================================
+
+ADDDAYS
+  Adds days to a date. Supports fractional days (e.g. 1.5).
+  Syntax:  ADDDAYS(date, number)
+  Example: ADDDAYS({Start Date}, 7)
+
+ADDWEEKDAYS
+  Adds weekdays (Mon–Fri) to a date. Rounds down to whole days.
+  Syntax:  ADDWEEKDAYS(date, number)
+  Example: ADDWEEKDAYS({Start Date}, 10)
+
+ADDMONTHS
+  Adds months to a date.
+  Syntax:  ADDMONTHS(date, number)
+  Example: ADDMONTHS({Start Date}, 3)
+
+ADDYEARS
+  Adds years to a date.
+  Syntax:  ADDYEARS(date, number)
+  Example: ADDYEARS({Start Date}, 1)
+
+CLEARTIME
+  Strips the time component from a datetime, leaving only the date.
+  Syntax:  CLEARTIME(date)
+  Example: CLEARTIME({Start Date})
+
+DATE
+  Converts a string to a date value.
+  Syntax:  DATE(string)
+  Example: DATE("2026-01-15")
+
+DATEDIFF
+  Returns the number of days between two dates, accounting for timestamps.
+  Syntax:  DATEDIFF(date1, date2)
+  Example: DATEDIFF({End Date}, {Start Date})
+
+DAYOFMONTH
+  Returns the day of the month (1–31).
+  Syntax:  DAYOFMONTH(date)
+  Example: DAYOFMONTH({Start Date})
+
+DAYOFWEEK
+  Returns the day of the week as a number: 1 = Sunday through 7 = Saturday.
+  Syntax:  DAYOFWEEK(date)
+  Example: DAYOFWEEK({Start Date})
+
+DAYSINMONTH
+  Returns the total number of days in the month of the given date.
+  Syntax:  DAYSINMONTH(date)
+  Example: DAYSINMONTH({Start Date})
+
+DAYSINSPLITWEEK
+  Returns weekdays remaining between the date and the end of its week or month
+  (whichever comes first).
+  Syntax:  DAYSINSPLITWEEK(date)
+  Example: DAYSINSPLITWEEK({Start Date})
+
+DAYSINYEAR
+  Returns the total number of days in the year of the given date.
+  Syntax:  DAYSINYEAR(date)
+  Example: DAYSINYEAR({Start Date})
+
+DMAX
+  Returns the latest (most recent) date from a list.
+  Syntax:  DMAX(date1, date2, ...)
+  Example: DMAX({Start Date}, {End Date})
+
+DMIN
+  Returns the earliest date from a list.
+  Syntax:  DMIN(date1, date2, ...)
+  Example: DMIN({Start Date}, {End Date})
+
+HOUR
+  Returns the hour component (0–23) from a datetime.
+  Syntax:  HOUR(date)
+  Example: HOUR($$NOW)
+
+MINUTE
+  Returns the minute component (0–59) from a datetime.
+  Syntax:  MINUTE(date)
+  Example: MINUTE($$NOW)
+
+MONTH
+  Returns the month (1–12) from a date.
+  Syntax:  MONTH(date)
+  Example: MONTH({Start Date})
+
+SECOND
+  Returns the second component (0–59) from a datetime.
+  Syntax:  SECOND(date)
+  Example: SECOND($$NOW)
+
+WEEKDAYDIFF
+  Returns the number of weekdays (Mon–Fri) between two dates.
+  Syntax:  WEEKDAYDIFF(date1, date2)
+  Example: WEEKDAYDIFF({Start Date}, {End Date})
+
+WORKMINUTESDIFF
+  Returns the number of scheduled work minutes between two dates using the
+  default schedule.
+  Syntax:  WORKMINUTESDIFF(date1, date2)
+  Example: WORKMINUTESDIFF({Start Date}, {End Date})
+
+YEAR
+  Returns the four-digit year from a date.
+  Syntax:  YEAR(date)
+  Example: YEAR({Start Date})
+
+SETTIMEZONE  [Planning-specific]
+  Converts a date/datetime to a specific timezone.
+  Syntax:  SETTIMEZONE(date, "timezone")
+  Example: SETTIMEZONE({Start Date}, "America/Los_Angeles")
+
+WEEKOFYEAR  [Planning-specific]
+  Returns the ISO week number. Optional second argument: 1 = weeks start
+  Sunday (default), 2 = weeks start Monday.
+  Syntax:  WEEKOFYEAR(date) or WEEKOFYEAR(date, 2)
+  Example: WEEKOFYEAR({Start Date}, 2)
+
+
+========================================
+FUNCTION REFERENCE — MATHEMATICAL
+========================================
+
+ABS
+  Returns the absolute value of a number.
+  Syntax:  ABS(number)
+  Example: ABS(SUB({Budget}, {Actual Spend}))
+
+AVERAGE
+  Returns the arithmetic mean of the given numbers.
+  Syntax:  AVERAGE(number1, number2, ...)
+  Example: AVERAGE({Budget}, {Actual Spend})
+
+CEIL
+  Rounds a number up to the nearest integer.
+  Syntax:  CEIL(number)
+  Example: CEIL(DIV({Budget}, 3))
+
+DIV
+  Divides numbers in the order given.
+  Syntax:  DIV(number1, number2, ...)
+  Example: DIV({Actual Spend}, {Budget})
+
+FLOOR
+  Rounds a number down to the nearest integer.
+  Syntax:  FLOOR(number)
+  Example: FLOOR(DIV({Budget}, 3))
+
+LN
+  Returns the natural logarithm of a number.
+  Syntax:  LN(number)
+  Example: LN({Budget})
+
+LOG
+  Returns the logarithm of number2 with base number1.
+  Syntax:  LOG(base, number)
+  Example: LOG(10, {Budget})
+
+MAX
+  Returns the largest value from a list.
+  Syntax:  MAX(number1, number2, ...)
+  Example: MAX({Budget}, {Actual Spend}, {KPI Goal})
+
+MIN
+  Returns the smallest value from a list.
+  Syntax:  MIN(number1, number2, ...)
+  Example: MIN({Budget}, {Actual Spend})
+
+NUMBER
+  Converts a string to a number.
+  Syntax:  NUMBER(string)
+  Example: NUMBER("42")
+
+POWER
+  Raises a number to a power.
+  Syntax:  POWER(number, exponent)
+  Example: POWER({KPI Goal}, 2)
+
+PROD
+  Multiplies all given numbers.
+  Syntax:  PROD(number1, number2, ...)
+  Example: PROD({Budget}, 0.1)
+
+ROUND
+  Rounds a number to the specified decimal places.
+  Syntax:  ROUND(number, precision)
+  Example: ROUND(DIV({Actual Spend}, {Budget}), 2)
+
+SORTASCNUM
+  Returns numbers sorted in ascending order.
+  Syntax:  SORTASCNUM(number1, number2, ...)
+  Example: SORTASCNUM({Budget}, {Actual Spend}, {KPI Goal})
+
+SORTDESCNUM
+  Returns numbers sorted in descending order.
+  Syntax:  SORTDESCNUM(number1, number2, ...)
+  Example: SORTDESCNUM({Budget}, {Actual Spend}, {KPI Goal})
+
+SQRT
+  Returns the square root of a number.
+  Syntax:  SQRT(number)
+  Example: SQRT({Budget})
+
+SUB
+  Subtracts numbers in the order given.
+  Syntax:  SUB(number1, number2, ...)
+  Example: SUB({Budget}, {Actual Spend})
+
+SUM
+  Adds all given numbers.
+  Syntax:  SUM(number1, number2, ...)
+  Example: SUM({Budget}, {Actual Spend})
+
+
+========================================
+FUNCTION REFERENCE — TEXT AND LOGIC
+========================================
+
+ARRAY
+  Splits a string into an array using the given delimiter.
+  Syntax:  ARRAY(string, "delimiter")
+  Example: ARRAY({Name}, " ")
+
+ARRAYCONTAINS
+  Returns true if the array contains the given value.
+  Syntax:  ARRAYCONTAINS(array, value)
+  Example: ARRAYCONTAINS(ARRAY({Name}, " "), "Campaign")
+
+ARRAYLENGTH
+  Returns the number of elements in an array.
+  Syntax:  ARRAYLENGTH(array)
+  Example: ARRAYLENGTH(ARRAY({Name}, " "))
+
+ARRAYELEMENT
+  Returns the element at the given index in an array. Returns empty if out of
+  bounds.
+  Syntax:  ARRAYELEMENT(array, index)
+  Example: ARRAYELEMENT(ARRAY({Name}, " "), 0)
+
+CASE
+  Selects a value from a list based on a numeric index. The index is 1-based:
+  index 1 returns value1, index 2 returns value2, and so on.
+  Syntax:  CASE(indexNumber, value1, value2, ...)
+  Example: CASE(DAYOFWEEK({Start Date}), "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
+
+CONCAT
+  Joins strings together. Use a string literal as separator.
+  Syntax:  CONCAT(string1, "separator", string2, ...)
+  Example: CONCAT({Name}, " - ", {Status})
+  Example: CONCAT("Budget: $", STRING({Budget}))
+
+CONTAINS
+  Returns true if findText exists within withinText.
+  Syntax:  CONTAINS(findText, withinText)
+  Example: IF(CONTAINS("launch", {Name}), "Yes", "No")
+
+ENCODEURL
+  URL-encodes special characters in a string.
+  Syntax:  ENCODEURL(string)
+  Example: CONCAT("https://example.com/search?q=", ENCODEURL({Name}))
+
+IF
+  Evaluates a condition and returns one of two values.
+  Syntax:  IF(condition, trueValue, falseValue)
+  Example: IF({Actual Spend}>{Budget}, "Over Budget", "Within Budget")
+  Example: IF({Budget}>10000 AND {Status}="planning", "High Priority", "Standard")
+
+IFIN
+  Checks if a value matches any in a list; returns trueExpression if matched,
+  falseExpression otherwise.
+  Syntax:  IFIN(value, match1, match2, ..., trueExpression, falseExpression)
+  Example: IFIN({Priority}, "high", "critical", "Urgent", "Normal")
+
+IN
+  Returns true if value equals any of the listed values.
+  Syntax:  IN(value, value1, value2, ...)
+  Example: IF(IN({Status}, "planning", "in market"), "Active", "Inactive")
+
+ISBLANK
+  Returns true if the value is null or empty.
+  Syntax:  ISBLANK(value)
+  Example: IF(ISBLANK({Budget}), "No Budget", "Has Budget")
+
+LEFT
+  Returns the first N characters from a string.
+  Syntax:  LEFT(string, length)
+  Example: LEFT({Name}, 10)
+
+LEN
+  Returns the number of characters in a string.
+  Syntax:  LEN(string)
+  Example: LEN({Name})
+
+LOWER
+  Converts a string to lowercase.
+  Syntax:  LOWER(string)
+  Example: LOWER({Name})
+
+PASCAL
+  Converts a string to PascalCase (capitalize first letter of each word,
+  remove spaces).
+  Syntax:  PASCAL(string)
+  Example: PASCAL({Name})
+
+REMOVEACCENTS
+  Strips diacritical marks from accented characters.
+  Syntax:  REMOVEACCENTS(string)
+  Example: REMOVEACCENTS({Name})
+
+REPLACE
+  Replaces all occurrences of a substring within a string.
+  Syntax:  REPLACE(string, find, replaceWith)
+  Example: REPLACE({Name}, " ", "-")
+
+REPLACEPATTERN
+  Replaces regex pattern matches in a string.
+  Syntax:  REPLACEPATTERN(string, pattern, replacement)
+  Example: REPLACEPATTERN({Name}, "\\d+", "#")
+
+RIGHT
+  Returns the last N characters from a string.
+  Syntax:  RIGHT(string, length)
+  Example: RIGHT({Name}, 5)
+
+SEARCH
+  Returns the position of the first occurrence of findText within withinText,
+  starting from the given position. Returns -1 if not found.
+  Syntax:  SEARCH(findText, withinText, startPosition)
+  Example: SEARCH("Campaign", {Name}, 0)
+
+SORTASCSTRING
+  Sorts strings in ascending alphabetical order.
+  Syntax:  SORTASCSTRING(string1, string2, ...)
+  Example: SORTASCSTRING({Name}, {Status})
+
+SORTDESCSTRING
+  Sorts strings in descending alphabetical order.
+  Syntax:  SORTDESCSTRING(string1, string2, ...)
+  Example: SORTDESCSTRING({Name}, {Status})
+
+STRING
+  Converts a number to its string representation.
+  Syntax:  STRING(number)
+  Example: CONCAT("Budget: $", STRING({Budget}))
+
+SUBSTR
+  Returns a substring from start index to end index.
+  Syntax:  SUBSTR(string, startIndex, endIndex)
+  Example: SUBSTR({Name}, 0, 5)
+
+TRIM
+  Removes leading and trailing whitespace.
+  Syntax:  TRIM(string)
+  Example: TRIM({Name})
+
+UPPER
+  Converts a string to uppercase.
+  Syntax:  UPPER(string)
+  Example: UPPER({Name})
+
+
+========================================
+FUNCTION REFERENCE — PLANNING-SPECIFIC
+========================================
+
+These functions are exclusive to Workfront Planning formula fields.
+
+ARRAYJOIN
+  Joins array elements into a single string with the given delimiter.
+  Syntax:  ARRAYJOIN("delimiter", array)
+  Example: ARRAYJOIN(", ", ARRAY({Name}, " "))
+
+ARRAYUNIQUE
+  Returns an array with duplicate values removed.
+  Syntax:  ARRAYUNIQUE(array)
+  Example: ARRAYLENGTH(ARRAYUNIQUE(ARRAY({Name}, " ")))
+
+ID
+  Returns the unique record ID for the current record.
+  Syntax:  {ID}
+  Example: {ID}
+
+JSONELEMENT
+  Extracts a value from a JSON string using JSONPath notation. Returns empty
+  if the path does not exist.
+  Syntax:  JSONELEMENT(jsonString, jsonPath)
+  Example: JSONELEMENT("{\"key\":\"value\"}", "$.key")
+
+SETTIMEZONE
+  Converts a date/datetime to a specific timezone.
+  Syntax:  SETTIMEZONE(date, "timezone")
+  Example: SETTIMEZONE({Start Date}, "America/Los_Angeles")
+
+WEEKOFYEAR
+  Returns the week number within the year. Optional second argument controls
+  week start: 1 = Sunday (default), 2 = Monday.
+  Syntax:  WEEKOFYEAR(date) or WEEKOFYEAR(date, 2)
+  Example: WEEKOFYEAR({Start Date}, 2)
+
+
+========================================
+COMMON FORMULA PATTERNS
+========================================
+
+Budget variance (remaining budget):
+  SUB({Budget}, {Actual Spend})
+
+Spend ratio as a percentage:
+  ROUND(DIV({Actual Spend}, {Budget}), 2)
+
+Campaign duration in days:
+  DATEDIFF({End Date}, {Start Date})
+
+Days until deadline:
+  DATEDIFF({End Date}, $$TODAY)
+
+Status label from condition:
+  IF({Actual Spend}>{Budget}, "Over Budget", "Within Budget")
+
+Conditional with multiple criteria:
+  IF({Budget}>10000 AND {Status}="planning", "High Priority", "Standard")
+
+Check membership in a set:
+  IF(IN({Status}, "planning", "in market"), "Active", "Inactive")
+
+Day name from a date:
+  CASE(DAYOFWEEK({Start Date}), "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
+
+Generate a URL with encoded parameters:
+  CONCAT("https://example.com/search?q=", ENCODEURL({Name}))
+
+Null-safe display:
+  IF(ISBLANK({Budget}), "No Budget", CONCAT("$", STRING({Budget})))
+
+
+========================================
+UNSUPPORTED FUNCTIONS (DO NOT USE)
+========================================
+
+The following functions exist in standard Workfront calculated fields but are
+NOT available in Workfront Planning formulas. Using them will cause an error.
+
+- ADDHOUR
+- SWITCH
+- FORMAT
+- SORTASCARRAY
+- SORTDESCARRAY

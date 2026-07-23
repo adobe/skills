@@ -1,0 +1,23 @@
+{
+  "description": "View types supported by Workfront Planning MCP tools.",
+  "viewTypes": [
+    {
+      "type": "TABLE",
+      "description": "Spreadsheet-style grid view. Default view type created automatically with every record type.",
+      "capabilities": ["column reordering", "row grouping", "filtering", "sorting", "column visibility"],
+      "notes": "Every record type gets a default table view. Do NOT create one unless the user wants an additional table view."
+    },
+    {
+      "type": "TIMELINE",
+      "description": "Gantt-chart / horizontal timeline view for date-based record visualization.",
+      "capabilities": ["date-range display", "grouping", "filtering", "sorting"],
+      "notes": "Requires at least one date field on the record type to be useful."
+    },
+    {
+      "type": "CALENDAR",
+      "description": "Monthly/weekly calendar view for scheduling and date-oriented records.",
+      "capabilities": ["month/week toggle", "filtering", "date-based layout"],
+      "notes": "Requires at least one date field on the record type."
+    }
+  ]
+}
