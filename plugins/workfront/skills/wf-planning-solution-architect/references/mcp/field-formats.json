@@ -1,0 +1,59 @@
+{
+  "description": "Field value format rules for creating and updating records via bulk_record_actions. Read schema://record-type/{recordTypeId} resource for per-field specifics.",
+  "formatsByFieldType": {
+    "text": {
+      "format": "Plain string",
+      "example": "My task name",
+      "notes": "Primary field (first field) is required on create."
+    },
+    "long-text / long-text-html": {
+      "format": "Object with content and contentHTML",
+      "example": {"content": "Plain text version", "contentHTML": "<p>HTML version</p>"},
+      "notes": "Both content and contentHTML should be provided. contentHTML supports basic HTML tags."
+    },
+    "number / percentage / currency": {
+      "format": "Numeric value",
+      "example": 42.5,
+      "notes": "Percentage is stored as decimal (0.75 = 75%). Precision and sign constraints apply per field config."
+    },
+    "date": {
+      "format": "ISO 8601 string",
+      "example": "2026-03-15T14:30:00.000Z",
+      "notes": "Date-only fields: use T00:00:00.000Z. DateTime fields: include actual time. Always include timezone Z."
+    },
+    "single-select": {
+      "format": "Option name string",
+      "example": "not_started",
+      "notes": "Use the option 'name' (internal identifier), NOT 'displayName'. Read schema://record-type/{recordTypeId} resource to see available option names."
+    },
+    "multi-select": {
+      "format": "Array of option name strings",
+      "example": ["tag_a", "tag_b"],
+      "notes": "Same naming rule as single-select. Always an array, even for one value."
+    },
+    "boolean": {
+      "format": "Boolean",
+      "example": true
+    },
+    "reference": {
+      "format": "Array of record IDs",
+      "example": ["Rc69149189a97038623827bbc7"],
+      "notes": "ALWAYS an array, even for single-reference fields. Record IDs start with 'Rc' + 24 hex chars. To find which record type a reference field links to, read schema://record-type/{recordTypeId} resource—it shows the linked record type ID for each reference field."
+    },
+    "user": {
+      "format": "Array of user ID objects",
+      "example": [{"id": "6728b0c5017520659de0a637"}],
+      "notes": "ALWAYS an array. Use search_users to find user IDs first."
+    },
+    "formula / lookup / created-by / created-at / updated-by / updated-at / approved-by / approved-at / record-id / attachment": {
+      "format": "Read-only",
+      "notes": "These fields cannot be set in create/update operations. Values are computed by the server."
+    }
+  },
+  "generalRules": [
+    "Read the schema://record-type/{recordTypeId} resource to get exact field IDs and allowed values.",
+    "Field values are keyed by field ID (e.g., 'F698c581cedd4ad08868b28e6'), not by display name.",
+    "Omitting a field in an update leaves it unchanged. Setting it to null clears the value.",
+    "Bulk operations are NOT atomic — check the hasErrors flag in the response."
+  ]
+}

@@ -115,6 +115,27 @@
       "homepage": "https://github.com/adobe/skills",
       "repository": "https://github.com/adobe/skills",
       "license": "Apache-2.0"
+    },
+    {
+      "name": "workfront",
+      "source": "./plugins/workfront",
+      "description": "Adobe Workfront skills for AI agents, including Workfront Planning (WFP/Maestro) solution architecture",
+      "version": "1.0.0",
+      "category": "project-management",
+      "keywords": [
+        "adobe",
+        "workfront",
+        "workfront-planning",
+        "maestro",
+        "solution-architecture",
+        "mcp"
+      ],
+      "author": {
+        "name": "Adobe"
+      },
+      "homepage": "https://github.com/adobe/skills",
+      "repository": "https://github.com/adobe/skills",
+      "license": "Apache-2.0"
     }
   ]
 }

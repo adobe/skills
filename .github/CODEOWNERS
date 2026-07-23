@@ -51,3 +51,6 @@
 # Commerce (promoted from adobe/aio-commerce-sdk)
 /plugins/commerce/app-management/                      @adobe/commerce-decepticons
 /plugins/commerce/app-migration/                       @adobe/commerce-decepticons
+
+# Adobe Workfront (Planning solution architecture)
+/plugins/workfront                                     @ashot3232

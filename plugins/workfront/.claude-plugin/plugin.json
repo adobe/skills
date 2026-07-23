@@ -1,0 +1,11 @@
+{
+  "name": "workfront",
+  "description": "Adobe Workfront skills for AI agents. Includes Workfront Planning (WFP/Maestro) solution architecture: workspace design, record connections, formula fixes, tier limits, and the Planning MCP/API.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": ["adobe", "workfront", "workfront-planning", "maestro", "solution-architecture", "mcp"]
+}
