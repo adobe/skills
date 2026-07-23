@@ -47,3 +47,6 @@
 
 # Web (browser automation and page analysis)
 /plugins/web                                           @catalan-adobe
+
+# Commerce (promoted from adobe/aio-commerce-sdk)
+/plugins/commerce/                                     @adobe/commerce-decepticons
