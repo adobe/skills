@@ -1,5 +1,15 @@
-import { cp, mkdir, readFile, access } from "node:fs/promises";
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  writeFile,
+  access,
+  symlink,
+  rm,
+} from "node:fs/promises";
 import { join, dirname } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 export const RUNNER_DIR = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -44,6 +54,33 @@ export function extractUserPrompts(taskMd) {
   }
   if (!steps.length) throw new Error("task.md has no '## User prompt' section");
   return steps;
+}
+
+// The SDK silently drops a plugin whose manifest "dependencies" reference a
+// marketplace the session doesn't have (stardust depends on
+// impeccable@impeccable, and hermetic sessions register no marketplaces).
+// Stage the plugin in a temp dir with a stripped manifest and symlinked
+// skills so the real, current skill files load.
+export async function stagePlugin(srcDir) {
+  const stage = await mkdtemp(join(tmpdir(), "eval-plugin-"));
+  let manifest = { name: "stardust", version: "0.0.0-staged" };
+  try {
+    manifest = JSON.parse(
+      await readFile(join(srcDir, ".claude-plugin/plugin.json"), "utf8")
+    );
+  } catch {}
+  delete manifest.dependencies;
+  await mkdir(join(stage, ".claude-plugin"), { recursive: true });
+  await writeFile(
+    join(stage, ".claude-plugin/plugin.json"),
+    JSON.stringify(manifest, null, 2)
+  );
+  await symlink(join(srcDir, "skills"), join(stage, "skills"));
+  return {
+    path: stage,
+    name: manifest.name,
+    cleanup: () => rm(stage, { recursive: true, force: true }),
+  };
 }
 
 export async function materializeWorkspace(evalName, dest) {

@@ -14,7 +14,10 @@ Each run goes through three phases:
    realization of the "Setup" section in `task.md`.
 2. **Session** — the "User prompt" from `task.md` is executed in the workspace
    via the Claude Agent SDK, with the stardust plugin loaded from this
-   checkout (`--plugin-dir` equivalent) and every tool call allowed through
+   checkout (staged into a temp dir with the manifest's `dependencies` field
+   stripped — the SDK silently drops a plugin whose dependencies reference an
+   unregistered marketplace; the runner fails loudly if either plugin is
+   missing from the session init) and every tool call allowed through
    the `canUseTool` callback (`permissionMode: "default"`, not
    `bypassPermissions` — that mode shadows the callback). If the agent asks
    clarifying questions (AskUserQuestion), they are answered automatically

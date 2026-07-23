@@ -60,7 +60,9 @@ export function condense(messages) {
 }
 
 export function extractUsage(messages) {
-  const result = messages.find((m) => m.type === "result");
+  // Multi-turn sessions emit one result per turn; the last carries the
+  // cumulative session totals.
+  const result = [...messages].reverse().find((m) => m.type === "result");
   return {
     subtype: result?.subtype ?? "missing",
     num_turns: result?.num_turns ?? null,
