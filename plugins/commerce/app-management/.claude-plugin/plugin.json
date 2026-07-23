@@ -1,0 +1,11 @@
+{
+  "name": "commerce-app-management",
+  "description": "Skills for Adobe Commerce App Management — scaffold and configure Commerce apps using the aio-commerce-sdk.",
+  "version": "1.2.0",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": ["commerce", "adobe", "app-management", "aio-commerce-sdk"]
+}

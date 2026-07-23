@@ -1,0 +1,7 @@
+{
+  "name": "adobe/commerce-app-migration",
+  "version": "1.2.0",
+  "description": "Migrate an Adobe Commerce App Builder project from the Integration Starter Kit or Checkout Starter Kit to the new App Management approach. Run from the root of the App Builder project to be migrated. Pass --auto to skip confirmation prompts (suitable for CI or batch use).",
+  "private": false,
+  "skills": ["skills/commerce-app-migrate"]
+}

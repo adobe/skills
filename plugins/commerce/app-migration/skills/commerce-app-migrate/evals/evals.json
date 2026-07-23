@@ -1,0 +1,270 @@
+{
+  "skill_name": "commerce-app-migrate",
+  "evals": [
+    {
+      "id": 0,
+      "name": "order-mass-action-worker",
+      "prompt": "I have a Commerce App Builder project using Admin UI SDK v1. The registration is at src/commerce-backend-ui-1/registration.js and registers a worker mass action on the order grid. Migrate it to App Management v2.",
+      "expected_output": "adminUi.order.massActions in app.commerce.config.ts with type: \"worker\", id renamed from actionId, runtimeAction set to \"<FILL_IN>\" (v1 path was a full HTTP URL, not a runtime action name), and an unresolved question emitted for runtimeAction. The existing handler file is updated to use parseMassActionRequest and okMassActionResponse/massActionErrorResponse.",
+      "files": [
+        {
+          "path": "app.config.yaml",
+          "content": "application:\n  extensions:\n    commerce/backend-ui/1:\n      $include: src/commerce-backend-ui-1/ext.config.yaml\n"
+        },
+        {
+          "path": "package.json",
+          "content": "{\"name\": \"acme-app\", \"version\": \"1.0.0\"}\n"
+        },
+        {
+          "path": "src/commerce-backend-ui-1/registration.js",
+          "content": "module.exports = {\n  order: {\n    massActions: [\n      {\n        actionId: 'export-orders',\n        label: 'Export Orders',\n        displayIframe: false,\n        path: 'https://123456.adobeioruntime.net/api/v1/web/acme-app/export-orders'\n      }\n    ]\n  }\n}\n"
+        },
+        {
+          "path": "actions/export-orders/index.js",
+          "content": "async function main (params) {\n  const { ids } = params\n  const results = await exportOrders(ids)\n  return { statusCode: 200, body: { success: true } }\n}\n\nmodule.exports = { main }\n"
+        }
+      ],
+      "assertions": [
+        "Produces adminUi.order.massActions with type: \"worker\"",
+        "Renames actionId to id (value: \"export-orders\")",
+        "Sets runtimeAction to \"<FILL_IN>\" (v1 path was a full HTTP URL, not a runtime action name)",
+        "Emits an unresolved question for adminUi.order.massActions runtimeAction mentioning the v1 path",
+        "Does not include view-only fields (path, sandboxPermissions) on the worker entry",
+        "Does not include adminUiSdk or commerce/backend-ui/1 in the output",
+        "Updates actions/export-orders/index.js to use parseMassActionRequest and okMassActionResponse/massActionErrorResponse"
+      ]
+    },
+    {
+      "id": 1,
+      "name": "order-mass-action-view-sandbox",
+      "prompt": "I have a Commerce App Builder project using Admin UI SDK v1. The registration at src/commerce-backend-ui-1/registration.js has an iframe mass action on the order grid with a space-separated sandbox string that includes an invalid value. Migrate it to App Management v2.",
+      "expected_output": "adminUi.order.massActions in app.commerce.config.ts with type: \"view\", path kept, sandbox string split into sandboxPermissions array — only valid values retained (allow-downloads, allow-modals, allow-popups). The invalid value allow-scripts is dropped.",
+      "files": [
+        {
+          "path": "app.config.yaml",
+          "content": "application:\n  extensions:\n    commerce/backend-ui/1:\n      $include: src/commerce-backend-ui-1/ext.config.yaml\n"
+        },
+        {
+          "path": "package.json",
+          "content": "{\"name\": \"acme-app\", \"version\": \"1.0.0\"}\n"
+        },
+        {
+          "path": "src/commerce-backend-ui-1/registration.js",
+          "content": "module.exports = {\n  order: {\n    massActions: [\n      {\n        actionId: 'review-orders',\n        label: 'Review Orders',\n        displayIframe: true,\n        path: '#/review',\n        sandbox: 'allow-downloads allow-modals allow-scripts'\n      }\n    ]\n  }\n}\n"
+        }
+      ],
+      "assertions": [
+        "Produces adminUi.order.massActions with type: \"view\"",
+        "Renames actionId to id (value: \"review-orders\")",
+        "Keeps path as path (value: \"#/review\")",
+        "Converts sandbox string to sandboxPermissions array [\"allow-downloads\", \"allow-modals\"] — dropping \"allow-scripts\" as an invalid value",
+        "Does not include runtimeAction on the view entry"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "order-mass-action-bannernotification",
+      "prompt": "I have a Commerce App Builder project using Admin UI SDK v1. The registration at src/commerce-backend-ui-1/registration.js has an iframe mass action on the order grid with a matching bannerNotification entry. Migrate it to App Management v2.",
+      "expected_output": "adminUi.order.massActions with type: \"view\", the bannerNotification successMessage and errorMessage folded into notifications.success and notifications.error on the matching mass action entry. No separate bannerNotification key in the configFragment.",
+      "files": [
+        {
+          "path": "app.config.yaml",
+          "content": "application:\n  extensions:\n    commerce/backend-ui/1:\n      $include: src/commerce-backend-ui-1/ext.config.yaml\n"
+        },
+        {
+          "path": "package.json",
+          "content": "{\"name\": \"acme-app\", \"version\": \"1.0.0\"}\n"
+        },
+        {
+          "path": "src/commerce-backend-ui-1/registration.js",
+          "content": "module.exports = {\n  order: {\n    massActions: [\n      {\n        actionId: 'approve-orders',\n        label: 'Approve Orders',\n        displayIframe: true,\n        path: '#/approve'\n      }\n    ]\n  },\n  bannerNotification: {\n    massActions: {\n      order: [\n        {\n          actionId: 'approve-orders',\n          successMessage: 'Orders approved.',\n          errorMessage: 'Approval failed.'\n        }\n      ]\n    }\n  }\n}\n"
+        }
+      ],
+      "assertions": [
+        "Produces adminUi.order.massActions with type: \"view\"",
+        "Folds bannerNotification into notifications.success: \"Orders approved.\" and notifications.error: \"Approval failed.\" on the mass action entry",
+        "Does not produce a separate bannerNotification key in the configFragment",
+        "The mass action entry contains notifications.success and notifications.error at the same level as id and label"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "product-grid-columns",
+      "prompt": "I have a Commerce App Builder project using Admin UI SDK v1. The registration at src/commerce-backend-ui-1/registration.js has product grid columns backed by API Mesh. Migrate it to App Management v2.",
+      "expected_output": "adminUi.product.gridColumns in app.commerce.config.ts with columns array (columnId renamed to id, other fields preserved). runtimeAction set to \"<FILL_IN>\" because v1 used API Mesh. Three unresolved questions emitted: one for the runtimeAction name (mentioning the meshId), one for the grid label, one for the grid description.",
+      "files": [
+        {
+          "path": "app.config.yaml",
+          "content": "application:\n  extensions:\n    commerce/backend-ui/1:\n      $include: src/commerce-backend-ui-1/ext.config.yaml\n"
+        },
+        {
+          "path": "package.json",
+          "content": "{\"name\": \"acme-app\", \"version\": \"1.0.0\"}\n"
+        },
+        {
+          "path": "src/commerce-backend-ui-1/registration.js",
+          "content": "module.exports = {\n  product: {\n    gridColumns: {\n      data: { meshId: 'mesh-abc123' },\n      properties: [\n        { columnId: 'supplier_sku', label: 'Supplier SKU', type: 'string', align: 'left' },\n        { columnId: 'stock_level',  label: 'Stock Level',  type: 'integer', align: 'right' }\n      ]\n    }\n  }\n}\n"
+        }
+      ],
+      "assertions": [
+        "Produces adminUi.product.gridColumns with a columns array containing two entries",
+        "Renames columnId to id in each column (supplier_sku, stock_level)",
+        "Preserves other column fields (label, type, align) unchanged",
+        "Sets runtimeAction to \"<FILL_IN>\" in the configFragment",
+        "Emits an unresolved question for adminUi.product.gridColumns.runtimeAction mentioning meshId \"mesh-abc123\"",
+        "Emits an unresolved question for adminUi.product.gridColumns.label",
+        "Emits an unresolved question for adminUi.product.gridColumns.description",
+        "Does not include data.meshId in the configFragment"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "menu-migration",
+      "prompt": "I have a Commerce App Builder project using Admin UI SDK v1. The registration at src/commerce-backend-ui-1/registration.js has a menuItems array with a section item and a child item whose parent references the section (an app-created grouping, not a Commerce menu). Migrate it to App Management v2.",
+      "expected_output": "adminUi.menu in app.commerce.config.ts with the non-section item only: id unchanged, title renamed to label. parentMenu omitted because the v1 parent referenced an app-created section (not a known Commerce menu ID). sortOrder dropped (no v2 equivalent). description set to \"<FILL_IN>\" with an unresolved question.",
+      "files": [
+        {
+          "path": "app.config.yaml",
+          "content": "application:\n  extensions:\n    commerce/backend-ui/1:\n      $include: src/commerce-backend-ui-1/ext.config.yaml\n"
+        },
+        {
+          "path": "package.json",
+          "content": "{\"name\": \"acme-app\", \"version\": \"1.0.0\"}\n"
+        },
+        {
+          "path": "src/commerce-backend-ui-1/registration.js",
+          "content": "module.exports = {\n  menuItems: [\n    {\n      id: 'acme-app',\n      title: 'Acme App',\n      isSection: true\n    },\n    {\n      id: 'dashboard',\n      title: 'Dashboard',\n      parent: 'acme-app',\n      sortOrder: 10\n    }\n  ]\n}\n"
+        }
+      ],
+      "assertions": [
+        "Produces a single adminUi.menu object (not an array)",
+        "Uses the non-section item (id: \"dashboard\")",
+        "Renames title to label (value: \"Dashboard\")",
+        "Omits parentMenu because the v1 parent (\"acme-app\") was an app-created section, not a known Commerce menu ID",
+        "Drops sortOrder (no v2 equivalent)",
+        "Sets description to \"<FILL_IN>\" and emits an unresolved question for adminUi.menu.description",
+        "Does not include the isSection item in the output"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "order-view-button-worker",
+      "prompt": "I have a Commerce App Builder project using Admin UI SDK v1. The registration at src/commerce-backend-ui-1/registration.js has a non-iframe order view button (displayIframe: false). Migrate it to App Management v2.",
+      "expected_output": "adminUi.order.viewButtons in app.commerce.config.ts with type: \"worker\", buttonId renamed to id, runtimeAction set to \"<FILL_IN>\". An unresolved question emitted for the runtimeAction name, noting the v1 path was an HTTP URL. The existing handler file is updated to use parseOrderViewButtonRequest and okOrderViewButtonResponse/orderViewButtonErrorResponse.",
+      "files": [
+        {
+          "path": "app.config.yaml",
+          "content": "application:\n  extensions:\n    commerce/backend-ui/1:\n      $include: src/commerce-backend-ui-1/ext.config.yaml\n"
+        },
+        {
+          "path": "package.json",
+          "content": "{\"name\": \"acme-app\", \"version\": \"1.0.0\"}\n"
+        },
+        {
+          "path": "src/commerce-backend-ui-1/registration.js",
+          "content": "module.exports = {\n  order: {\n    viewButtons: [\n      {\n        buttonId: 'sync-inventory',\n        label: 'Sync Inventory',\n        displayIframe: false,\n        path: 'https://123456.adobeioruntime.net/api/v1/web/acme-app/sync-inventory'\n      }\n    ]\n  }\n}\n"
+        },
+        {
+          "path": "actions/sync-inventory/index.js",
+          "content": "async function main (params) {\n  const { id, orderId } = params\n  await syncInventory(orderId)\n  return { statusCode: 200, body: {} }\n}\n\nmodule.exports = { main }\n"
+        }
+      ],
+      "assertions": [
+        "Produces adminUi.order.viewButtons with type: \"worker\"",
+        "Renames buttonId to id (value: \"sync-inventory\")",
+        "Sets runtimeAction to \"<FILL_IN>\" (v1 path was an HTTP URL, not a runtime action name)",
+        "Emits an unresolved question for adminUi.order.viewButtons.sync-inventory.runtimeAction mentioning the v1 path",
+        "Does not include path or sandboxPermissions on the worker entry",
+        "Does not produce viewButtons under product or customer",
+        "Updates actions/sync-inventory/index.js to use parseOrderViewButtonRequest and okOrderViewButtonResponse/orderViewButtonErrorResponse"
+      ]
+    },
+    {
+      "id": 6,
+      "name": "custom-fees-notification",
+      "prompt": "I have a Commerce App Builder project using Admin UI SDK v1. The registration at src/commerce-backend-ui-1/registration.js defines order.customFees. Migrate it to App Management v2.",
+      "expected_output": "No configFragment entry for customFees (v2 has no equivalent). The developer is informed that custom fees require manual migration via the webhook on plugin.magento.out_of_process_totals_collector.api.get_total_modifications.custom_fees, with the link https://developer.adobe.com/commerce/extensibility/starter-kit/checkout/totals-collector-fees.",
+      "files": [
+        {
+          "path": "app.config.yaml",
+          "content": "application:\n  extensions:\n    commerce/backend-ui/1:\n      $include: src/commerce-backend-ui-1/ext.config.yaml\n"
+        },
+        {
+          "path": "package.json",
+          "content": "{\"name\": \"acme-app\", \"version\": \"1.0.0\"}\n"
+        },
+        {
+          "path": "src/commerce-backend-ui-1/registration.js",
+          "content": "module.exports = {\n  order: {\n    customFees: [\n      { label: 'Gift Wrapping', code: 'gift_wrap' },\n      { label: 'Rush Processing', code: 'rush_processing' }\n    ]\n  }\n}\n"
+        }
+      ],
+      "assertions": [
+        "Does not produce an adminUi.order.customFees entry in the configFragment",
+        "Informs the developer that custom fees require manual migration",
+        "References the webhook plugin.magento.out_of_process_totals_collector.api.get_total_modifications.custom_fees",
+        "Includes the link https://developer.adobe.com/commerce/extensibility/starter-kit/checkout/totals-collector-fees"
+      ]
+    },
+    {
+      "id": 7,
+      "name": "customer-mass-action-worker",
+      "prompt": "I have a Commerce App Builder project using Admin UI SDK v1. The registration at src/commerce-backend-ui-1/registration.js has a customer grid worker mass action with a customerSelectLimit. Migrate it to App Management v2.",
+      "expected_output": "adminUi.customer.massActions in app.commerce.config.ts with type: \"worker\", actionId renamed to id, customerSelectLimit renamed to selectionLimit, runtimeAction set to \"<FILL_IN>\" with an unresolved question. The existing handler file is updated to use parseMassActionRequest and okMassActionResponse/massActionErrorResponse.",
+      "files": [
+        {
+          "path": "app.config.yaml",
+          "content": "application:\n  extensions:\n    commerce/backend-ui/1:\n      $include: src/commerce-backend-ui-1/ext.config.yaml\n"
+        },
+        {
+          "path": "package.json",
+          "content": "{\"name\": \"acme-app\", \"version\": \"1.0.0\"}\n"
+        },
+        {
+          "path": "src/commerce-backend-ui-1/registration.js",
+          "content": "module.exports = {\n  customer: {\n    massActions: [\n      {\n        actionId: 'sync-customers',\n        label: 'Sync to CRM',\n        displayIframe: false,\n        customerSelectLimit: 50,\n        path: 'https://123456.adobeioruntime.net/api/v1/web/acme-app/sync-customers'\n      }\n    ]\n  }\n}\n"
+        },
+        {
+          "path": "actions/sync-customers/index.js",
+          "content": "async function main (params) {\n  const { ids } = params\n  await syncToCRM(ids)\n  return { statusCode: 200, body: { success: true } }\n}\n\nmodule.exports = { main }\n"
+        }
+      ],
+      "assertions": [
+        "Produces adminUi.customer.massActions with type: \"worker\"",
+        "Renames actionId to id (value: \"sync-customers\")",
+        "Renames customerSelectLimit to selectionLimit (value: 50)",
+        "Sets runtimeAction to \"<FILL_IN>\"",
+        "Emits an unresolved question for the customer mass action runtimeAction mentioning the v1 path",
+        "Does not produce massActions under order or product",
+        "Updates actions/sync-customers/index.js to use parseMassActionRequest and okMassActionResponse/massActionErrorResponse"
+      ]
+    },
+    {
+      "id": 8,
+      "name": "order-view-button-view",
+      "prompt": "I have a Commerce App Builder project using Admin UI SDK v1. The registration at src/commerce-backend-ui-1/registration.js has an iframe order view button (displayIframe: true) with a sandbox string. Migrate it to App Management v2.",
+      "expected_output": "adminUi.order.viewButtons in app.commerce.config.ts with type: \"view\", buttonId renamed to id, path kept, sandbox string split into sandboxPermissions array with only valid values. No runtimeAction field. No unresolved question for runtimeAction.",
+      "files": [
+        {
+          "path": "app.config.yaml",
+          "content": "application:\n  extensions:\n    commerce/backend-ui/1:\n      $include: src/commerce-backend-ui-1/ext.config.yaml\n"
+        },
+        {
+          "path": "package.json",
+          "content": "{\"name\": \"acme-app\", \"version\": \"1.0.0\"}\n"
+        },
+        {
+          "path": "src/commerce-backend-ui-1/registration.js",
+          "content": "module.exports = {\n  order: {\n    viewButtons: [\n      {\n        buttonId: 'order-details',\n        label: 'Order Details',\n        displayIframe: true,\n        path: '#/order-details',\n        sandbox: 'allow-popups allow-modals'\n      }\n    ]\n  }\n}\n"
+        }
+      ],
+      "assertions": [
+        "Produces adminUi.order.viewButtons with type: \"view\"",
+        "Renames buttonId to id (value: \"order-details\")",
+        "Keeps path as path (value: \"#/order-details\")",
+        "Converts sandbox string \"allow-popups allow-modals\" to sandboxPermissions array [\"allow-popups\", \"allow-modals\"]",
+        "Does not include runtimeAction on the view entry",
+        "Does not emit an unresolved question for runtimeAction"
+      ]
+    }
+  ]
+}
