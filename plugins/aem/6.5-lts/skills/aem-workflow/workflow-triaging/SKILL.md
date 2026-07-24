@@ -116,7 +116,7 @@ Logs on 6.5 / AMS are accessible via **direct filesystem** (`crx-quickstart/logs
 
 On 6.5 / AMS, JMX exposes metrics not available from logs alone, plus remediation operations. All workflow maintenance and diagnostic operations live on one MBean, `com.adobe.granite.workflow:type=Maintenance` (via `/system/console/jmx`); a second MBean, `com.adobe.granite.workflow:type=Statistics`, exposes time-series execution metrics for trend analysis.
 
-> **Finding the operations:** open the Maintenance MBean directly at `/system/console/jmx/com.adobe.granite.workflow:type%3DMaintenance`, then scroll **past the attribute block** — the invokable operations are listed below it. Filtering the JMX console for "workflow" also surfaces several `com.adobe.granite.workflow.core.*` event-listener MBeans; those are not the maintenance surface, so target the `type=Maintenance` object specifically.
+> **Targeting the right MBean:** match the object name `com.adobe.granite.workflow:type=Maintenance` exactly (addressed URL-encoded on the JMX console as `.../jmx/com.adobe.granite.workflow:type%3DMaintenance`). A "workflow" filter over the JMX registry also returns several `com.adobe.granite.workflow.core.*` event-listener MBeans — those are not the maintenance surface, so select by the full `type=Maintenance` object name, not a name substring. The entries in the tables below are **operations** (methods to invoke, each taking an optional `model` string), not readable attributes.
 
 **Triage is diagnostic-first — classify with read-only operations:**
 
