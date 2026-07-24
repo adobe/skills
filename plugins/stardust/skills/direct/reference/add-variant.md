@@ -86,7 +86,8 @@ When `--add-variant <name>` is passed:
 - Slot name is a letter + digits (`A1`, `A2`, `B3`, `C2`...):
   parent is the variant whose id is the letter prefix (`A1` → `A`,
   `B3` → `B`). The variant is a **surface fork** of its parent
-  per § Surface forks of role-differentiated variants. The
+  per `reference/multi-variant.md` § Surface forks of
+  role-differentiated variants. The
   parent must already exist; if not, refuse and recommend adding
   the parent first (`--add-variant B` before `--add-variant B3`).
 
