@@ -102,6 +102,13 @@ the phrase in dimensional vocabulary, identify movement, identify
 gaps, ask **at most two** clarifying questions, map to an impeccable
 command sequence, show the plan to the user.
 
+**Visibility contract.** The restatement, the identified gaps, and
+the plan are user-facing deliverables: render each as message text
+the user can actually read, before the questions (restatement,
+gaps) and before the confirmation gate (plan). Reasoning that stays
+in thinking does not count — a gate that says "confirm the plan
+above" must have the plan printed above it.
+
 Worked examples in
 `skills/stardust/reference/intent-examples.md` calibrate the style.
 Hard ceiling on questions: two per turn, no exceptions.
