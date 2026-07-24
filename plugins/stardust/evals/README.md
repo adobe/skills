@@ -32,6 +32,20 @@ rescoping before the suite is run against 0.14.0:
   branch.~~ **Rescoped (2026-07-22):** `divergence_resolved` is now
   mode-aware (Mode A pins from the captured surface; Mode B / default uses
   the research-first procedure with the seed roll as fallback).
+- **Extract cap + wait mode (`extract-multipage`).** **Rescoped
+  (2026-07-24):** the eval was written against the 25-page default cap
+  with a confirmation gate and the `networkidle + 1.5s` recipe. 0.14.0
+  changed the default cap to 5 with a silent-proceed contract (kept +
+  cut lists are informational, no yes/no gate) and made the wait
+  strategy modal (default `medium` = `domcontentloaded` + 2s grace).
+  `page_cap_confirmation`, `playwright_over_webfetch`,
+  `discovery_before_crawl`, `current_design_md_direct` (impeccable's
+  document.md now specs eight canonical sections, not six; omission of
+  irrelevant sections allowed), and `state_json_shape` (`direction`
+  may be `null` or `{resolvedAt: null}` at the extracted stage) were
+  rescoped accordingly; `answers.md` (defaults-only persona, declines
+  sibling brand sources) was added so the runner presents the session
+  as interactive.
 - **Coverage gaps (informational).** The suite predates `audit`, cross-site
   extraction (`--brand-source` / `--design-source`), vision gates, and the
   merge-by-slug parallelism contract; new evals are needed rather than
