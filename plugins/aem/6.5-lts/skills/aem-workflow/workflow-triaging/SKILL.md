@@ -95,26 +95,28 @@ Logs on 6.5 / AMS are accessible via **direct filesystem** (`crx-quickstart/logs
 | Thread pool full | `RejectedExecutionException` | `default` pool saturated with block policy `ABORT` → timeout/auto-advance jobs dropped. |
 | Operation on finished instance | `Workflow is already finished` | Check logic that calls terminate/resume on a completed or aborted instance. |
 
-**Example Splunk searches (replace index/sourcetype/field names as needed):**
+**Example Splunk searches** — `<your_aem_index>` is a placeholder; substitute your organization's AEM log index:
 
 - All workflow step errors (last 24h):
-  `index=aem sourcetype=aem:error "Error executing workflow step" | table _time host message | sort - _time`
+  `index=<your_aem_index> "Error executing workflow step" | table _time host message | sort - _time`
 - Process not registered:
-  `index=aem "getProcess for" "failed" | table _time host message`
+  `index=<your_aem_index> "getProcess for" "failed" | table _time host message`
 - By workflow model or instance:
-  `index=aem ("Error executing workflow step" OR WorkflowException) (message=*<modelName>* OR message=*<instanceId>*) | sort - _time`
+  `index=<your_aem_index> ("Error executing workflow step" OR WorkflowException) (message=*<modelName>* OR message=*<instanceId>*) | sort - _time`
 - Lock contention:
-  `index=aem "refreshing the session since we had to wait for a lock" | table _time host message`
+  `index=<your_aem_index> "refreshing the session since we had to wait for a lock" | table _time host message`
 - Thread pool exhaustion (auto-advance impact):
-  `index=aem "RejectedExecutionException" | table _time host message`
+  `index=<your_aem_index> "RejectedExecutionException" | table _time host message`
 
-> **Note:** Indexes and sourcetypes vary by organization; adapt queries accordingly. Narrow by host, time range, model, and instance ID — both for accuracy and to avoid over-broad data exposure.
+> **Note:** Index names, sourcetypes, and field names are environment-specific — they depend on how your AEM logs are onboarded to Splunk. There is no fixed index; confirm the correct one with whoever owns your Splunk onboarding before running these. Narrow by host, time range, model, and instance ID — both for accuracy and to avoid over-broad data exposure.
 
 ---
 
 ## Step 4: JMX-based diagnostics
 
 On 6.5 / AMS, JMX exposes metrics not available from logs alone, plus remediation operations. All workflow maintenance and diagnostic operations live on one MBean, `com.adobe.granite.workflow:type=Maintenance` (via `/system/console/jmx`); a second MBean, `com.adobe.granite.workflow:type=Statistics`, exposes time-series execution metrics for trend analysis.
+
+> **Finding the operations:** open the Maintenance MBean directly at `/system/console/jmx/com.adobe.granite.workflow:type%3DMaintenance`, then scroll **past the attribute block** — the invokable operations are listed below it. Filtering the JMX console for "workflow" also surfaces several `com.adobe.granite.workflow.core.*` event-listener MBeans; those are not the maintenance surface, so target the `type=Maintenance` object specifically.
 
 **Triage is diagnostic-first — classify with read-only operations:**
 
