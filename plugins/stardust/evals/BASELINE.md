@@ -1,3 +1,7 @@
+# Baseline & abrasion evidence
+
+Durable per-eval records behind the stardust skill-abrasion campaign.
+
 # direct-from-phrase — baseline & abrasion evidence
 
 Durable record of the eval evidence behind the `direct` skill
@@ -80,3 +84,70 @@ continues run numbering within a label, so top-ups are safe; the
 persona responder answers any trailing question with "go", which
 can push a completed session onward into `prototype` — check for
 post-completion Skill invocations before trusting cost numbers.
+
+---
+
+# extract-multipage — baseline & abrasion evidence
+
+Evidence record for the `extract` skill abrasion (2026-07-25).
+This is a **live-network eval** (crawls stripe.com): slower
+(~25 min/run), pricier (~$17–23/run), and noisier than
+direct-from-phrase — both the site and the judge's read of
+network-dependent artifacts drift between runs. The rubric was
+rescoped to the 0.14.0 contracts before baselining (43f2bac; see
+"0.14.0 rescope notes" in `README.md`).
+
+## Baseline (N=3, label `baseline`)
+
+- Skill: `skills/extract/SKILL.md` at 921 lines (main @ b5ffb85).
+- Scores: 70 / 85 / 75 — **mean 76.7/100**. ~$17–23 per run,
+  76–107 turns.
+- Model: claude-fable-5 (session), strong-model judge; criteria
+  snapshotted per run.
+
+### Live-network variance observed
+
+- **Geo-locale drift.** stripe.com 307-redirects by network
+  location and the target itself moved between probes (`/de-ch`
+  one day, `/it` the next). Run-1 asked a locale clarifying
+  question; runs 2–3 did not. Captured copy/voice is locale-
+  dependent — judge content-adjacent criteria by rate, not exact
+  attributes.
+- **Discovery shape.** `sitemap.xml` is 404; discovery resolves via
+  the robots.txt `Sitemap:` directive to a partitioned index
+  (~6,400 URLs). The cut list is only representable elided — see
+  the `page_cap_confirmation` judge-noise note below.
+- Headless Playwright worked in all 3 runs (no bot-management
+  fallback triggered).
+
+### Criterion profile
+
+| criterion | w | baseline | character |
+|---|---|---|---|
+| activated | 5 | 3/3 | stable |
+| impeccable_dep_check | 5 | 2/3 | noisy — r1 skipped the upfront check, located impeccable mid-run at Phase 4 |
+| discovery_before_crawl | 10 | 3/3 | stable |
+| page_cap_confirmation | 10 | 2/3 | noisy, incl. **judge noise**: r1 judge failed a count-only cut summary that r2's judge accepted ("full elision acceptable"); agent behavior was near-identical. Gate on pooled rate only |
+| playwright_over_webfetch | 10 | 3/3 | stable |
+| per_page_json_shape | 10 | 1/3 | noisy — bundled `crawl.mjs` emits a partial schema (no `themeColor`/`landmarks`/`forms`/`widgets`/`perSectionStyle`; r3 used `styleSummary` instead of `perSectionStyle`); passes only when the agent extends `capture()` per SKILL.md. Script↔schema gap, not prose-fixable by abrasion |
+| brand_extraction_shape | 10 | 3/3 | stable |
+| logo_locator_chain | 5 | 3/3 | stable |
+| current_product_md_direct | 10 | 3/3 | stable |
+| current_design_md_direct | 10 | 1/3 | noisy — consistent mechanism in both fails: DESIGN.json missing `schemaVersion`. Extract's SKILL.md Phase 4 never states the schemaVersion-2 contract (it lives in impeccable's document.md / direct's SKILL.md); passes only when the agent infers it. Skill/criterion mismatch — candidate one-line skill fix, out of abrasion scope |
+| state_json_shape | 5 | 3/3 | stable |
+| provenance_stamped | 5 | 0/3 | **known-fail** — every run misplaces stamps on ≥1 artifact (brand-review.html head block, DESIGN.md above-frontmatter position, `_crawl-log.json` first-key order); artifacts vary per run but the criterion never passes |
+| no_eds_references | 5 | 3/3 | stable |
+
+Gate for every abrasion tranche: the **8 stable criteria** (60
+weight) must stay 3/3; on any single flip, pool to 6 runs and gate
+on rates. The **4 noisy criteria** (impeccable_dep_check 2/3,
+page_cap_confirmation 2/3, per_page_json_shape 1/3,
+current_design_md_direct 1/3) must not trend below baseline rate.
+`provenance_stamped` (0/3) is known-fail and tripwire-exempt —
+improvement is upside.
+
+Do not read token/cost means as abrasion payoff (turn-count and
+live-network noise dominate; run costs varied $16.96–$22.82 on
+identical skill text). Payoff framing: structural line cut +
+per-run grep of `session.md` verifying relocated reference files
+stayed unread.
