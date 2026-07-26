@@ -23,9 +23,8 @@ critique, and it does not modify the live site. It writes only under
 - `--cap <N>` — optional. Override the default 5-page cap. The cap
   is intentionally small — a 5-page sample (home + four IA
   pillars/templates) is enough for cross-page brand aggregation,
-  system-component detection, and the brand-review HTML to do
-  useful work. Lift the cap with `--cap 25` (the previous default)
-  or higher when a deeper crawl is genuinely needed.
+  system-component detection, and the brand-review HTML; lift it
+  (e.g. `--cap 25`) when a deeper crawl is genuinely needed.
 - `--all` — optional. Lift the cap entirely; extract every
   discovered page after junk filtering. Equivalent to `--cap 0`.
   Use when the user spontaneously asks for a full crawl.
@@ -42,12 +41,10 @@ critique, and it does not modify the live site. It writes only under
 - `--no-consent-dismiss` — optional. Skip the pre-flight consent /
   cookie banner dismissal (see `reference/playwright-recipe.md`
   § Pre-flight: consent dismissal). Use when the redesign scope
-  explicitly includes the consent surface, or when the
-  dismissal's side-effects (script activation that wouldn't
-  otherwise run) need to be avoided. Default behaviour is to
-  dismiss; the contract preserves screenshots, voice
-  aggregation, and per-section style from being polluted by
-  the banner.
+  includes the consent surface or the dismissal's side-effects
+  (script activation that wouldn't otherwise run) must be
+  avoided. Default is to dismiss, keeping screenshots, voice
+  aggregation, and per-section style unpolluted by the banner.
 - `--concurrency <n>` — optional. Parallel browser contexts for the
   per-page capture loop. Default 4; sane range 4–8. See
   § Concurrency.
@@ -80,21 +77,18 @@ Additional checks for this sub-command:
    (which resolves a global install) but the recipe and
    `scripts/crawl.mjs` do `import { chromium } from 'playwright'`,
    and ESM module resolution does **not** honour a global install or
-   `NODE_PATH`. On a vanilla `aem-boilerplate` target (no
-   `node_modules`) that import throws `ERR_MODULE_NOT_FOUND` even
-   though `npx playwright --version` succeeds. So verify the module is
+   `NODE_PATH` — the import throws `ERR_MODULE_NOT_FOUND` even where
+   `npx playwright --version` succeeds. Verify the module is
    import-resolvable from the project root (probe:
    `node -e "import('playwright').then(()=>process.exit(0))"`); if it
    isn't, run `npm i -D playwright --no-save --legacy-peer-deps` (or
    use the Playwright MCP server) before crawling. The
    `--legacy-peer-deps` flag is required on `aem-boilerplate` targets
-   — its pinned `eslint@8` conflicts with `@babel/eslint-parser@8`'s
-   peer range and a plain `npm i` exits `ERESOLVE` before playwright
-   is even considered (six-site e2e finding). Don't trust the CLI
+   (their pinned `eslint@8` makes a plain `npm i` exit `ERESOLVE`
+   before playwright is even considered). Don't trust the CLI
    probe alone.
 
-   **`--no-save` installs are ephemeral (stardust-style e2e
-   finding).** Any later real `npm i` (e.g. a setup step
+   **`--no-save` installs are ephemeral.** Any later real `npm i` (e.g. a setup step
    adding a devDependency) prunes non-manifest packages, silently
    removing playwright mid-pipeline. Every downstream skill that
    renders (prototype, migrate, deploy, diff) must re-run the
@@ -167,10 +161,8 @@ Discover the page inventory before crawling. Procedure in
 6. Apply the cap (default 5, or `--cap`, or `--all` for no cap)
    and **proceed silently**. Print an informational summary of
    what was kept and what was cut — but do **not** gate on user
-   confirmation. The default cap is small enough that the common
-   case is "extract 5 pages and move on"; pausing for a yes/no
-   reply on every run is friction without value. Users who want
-   different scope set it spontaneously at command time:
+   confirmation. Users who want different scope set it
+   spontaneously at command time:
 
    ```
    $stardust extract https://example.com              # default 5 pages
@@ -240,8 +232,8 @@ Capture per page (full schema in `reference/current-state-schema.md`):
 - **Hero headline + lede (resolved)** — `heroHeadline` / `heroLede`
   picked by font-size × hero-region with a junk/hidden-state filter and
   a clean meta-description fallback (per `reference/playwright-recipe.md`
-  § Capture list 5-bis). Required for JS-rendered enterprise CMSes,
-  where document-order headings surface modal / promo / count junk
+  § Capture list 5-bis). Required for JS-rendered sites whose
+  document-order headings surface modal / promo / count junk
   instead of the real tagline.
 - Content: visible text per section (full innerText, **no
   truncation** per `reference/playwright-recipe.md` § Capture
@@ -258,9 +250,8 @@ Capture per page (full schema in `reference/current-state-schema.md`):
   UA + Referer), intrinsic dimensions, inline SVG count, video/iframe
   presence, `cssBackgrounds[]` (including pseudo-element `::before`/
   `::after` walks per § Capture list 11) so `background-image`
-  heroes and motifs do not silently disappear from extract — and so
-  enterprise-CDN images that 404 are flagged before migrate ships
-  `about:error`.
+  heroes and motifs do not silently disappear and 404ing CDN
+  images are flagged before migrate ships `about:error`.
 - Font files captured via network-intercept (per § Capture list
   16): every `woff2`/`woff`/`ttf`/`otf` response saved under
   `assets/fonts/` and recorded in `_brand-extraction.json#type.files[]`
@@ -372,16 +363,15 @@ extracted pages** to avoid the home-page bias documented in
   `direct` later but extracted now so the network round-trip is over.
 - **Hero image** — elevate the home page's primary visual
   asset to `voice.heroImage` (per `reference/brand-surface.md`
-  § heroImage resolution). Without this elevation, downstream
-  prototype reasons over a 16-image list and frequently picks
-  the `og:image` instead of the live hero.
+  § heroImage resolution), so downstream prototype picks the
+  live hero rather than the `og:image` from the raw media list.
 - **Hero medium (signature)** — when the hero/first viewport carries a
   *moving* asset (background `<video>` / HLS / canvas / WebGL /
   Lottie / animated SVG / scroll-driven motion), elevate it to
   `voice.heroMedium` (per `reference/brand-surface.md` § heroMedium
-  resolution). This is the page's **signature**; without elevation it
-  is lost in the raw media list and downstream prototype flattens it
-  to a static hero. A non-null `heroMedium` triggers signature
+  resolution). This is the page's **signature**; without elevation
+  downstream prototype flattens it to a static hero. A non-null
+  `heroMedium` triggers signature
   preservation (`skills/stardust/reference/intent-dimensions.md`
   § 8b) at prototype time.
 - **Icon font** — when detected per `reference/playwright-recipe.md`
@@ -440,12 +430,11 @@ the current-state brand review per
 `reference/brand-review-template.md`.
 
 The brand-review HTML is the **first surface a human can eyeball** to
-verify the extraction before committing to a redesign direction.
-Misreads in the JSON (a wrong dominant radius, a missing system
-component, a single-page palette bias) are obvious to the eye in five
-seconds and invisible in JSON until someone notices. Putting the
-review at the end of `extract` catches misreads while they are still
-cheap to fix — re-extract is fast; re-direct + re-prototype is not.
+verify the extraction before committing to a redesign direction —
+misreads that are invisible in JSON (a wrong dominant radius, a
+missing system component, a single-page palette bias) are obvious to
+the eye while they are still cheap to fix (re-extract is fast;
+re-direct + re-prototype is not).
 
 The template is mandatory. In particular:
 
@@ -518,13 +507,10 @@ After all Phase 2-5 writes succeed:
    The **per-page evidence table** is mandatory. The `live` column
    is `yes` when `_provenance.renderedBy === "playwright"` AND
    `waitMs > 0`, else `no`. A `no` row means the page record was
-   not produced by a live Playwright render — this should never
-   happen given the write-time guard, but the visible column is
-   the defense-in-depth signal that catches the failure mode
-   when it does (the 2026-04-30 lovesac synthesis bug went four
-   phases deep before being caught because no report column
-   surfaced the missing provenance). A maintainer scanning the
-   summary should see `yes` on every row.
+   not produced by a live Playwright render — the visible column
+   is the defense-in-depth signal for the failure mode the
+   write-time guard exists to prevent (2026-04-30 lovesac). A
+   maintainer scanning the summary should see `yes` on every row.
 
    Compute the wait summary by grouping each page's `_provenance.waitMode`
    and averaging `waitMs`. List slugs whose `waitMode` ends in
@@ -538,17 +524,11 @@ After all Phase 2-5 writes succeed:
    product template) yet has `cssBackgrounds: []` **and** few large
    rasters (no `media.imgs` entry with intrinsic width ≥ 600). That
    combination is the signature of a silently-failed background /
-   lazy-media walk — `getComputedStyle(el).backgroundImage` read
-   before the element was styled, a `::before`/`::after` host missed,
-   or product imagery gated behind interaction the reveal pass did not
-   trigger. The recipe already specs the full background walk
-   (`playwright-recipe.md` § Capture list 11, hardened after the
-   2026-05-04 ups.com dropped-hero failure), but a thorough spec that
-   silently produces nothing still ships an image-less capture: the
-   2026-06-26 knack.com run returned `cssBackgrounds: []` on every
-   page and lost all product screenshots, hero art, and customer
-   logos, and nothing surfaced it because no column reported media
-   coverage. A flagged row is the cue to re-run that page with
+   lazy-media walk — a capture pass that specs the full background
+   walk (`playwright-recipe.md` § Capture list 11) yet silently
+   produces nothing still ships an image-less capture (2026-06-26
+   knack.com: `cssBackgrounds: []` on every page, all product
+   imagery lost). A flagged row is the cue to re-run that page with
    `--refresh` (and, if it persists, to fall back to headed Chrome per
    § Bot-management fallback). A maintainer scanning the summary should
    treat a `brand`-register site with all-zero `bg` counts as suspect,
@@ -721,12 +701,11 @@ this in the user report; do not engineer around it.
   `_crawl-log.json#crawl.failures[]`) and continue. **Synthesizing
   a page record from `_brand-extraction.json` plus URL patterns
   plus captured photos at "semantically matching" template
-  positions is forbidden.** This was the 2026-04-30 lovesac.com
-  failure — 20 of 25 pages synthesized this way and the cascade
-  ran four phases on the synthesized data before the gap was
-  caught by a meta-question. The synthesis shortcut produces
-  output indistinguishable from a successful run and propagates
-  fabricated content through every downstream phase.
+  positions is forbidden.** The shortcut produces output
+  indistinguishable from a successful run and propagates
+  fabricated content through every downstream phase
+  (2026-04-30 lovesac.com: 20 of 25 pages synthesized, caught
+  four phases later).
 
 ## Prep mode (--prep)
 
