@@ -2,7 +2,7 @@
 
 SA-ready reference for Workfront Planning object limits, organized by tier. Use this when a customer asks about capacity, when sizing a new deployment, or when an escalation hits a limit and a "raise it" request comes in.
 
-Source of truth: `references/raw/general/limitations-overview.md` (Adobe Experience League, Last update: April 2026). This file restates the limits in SA-conversation-ready form and adds tier context, framing language, and known sizing risks.
+Source of truth: the Planning "Limitations overview" page on Adobe Experience League (find it with `node scripts/search.js limitations overview`, then fetch the `.md` URL). This file restates the limits in SA-conversation-ready form and adds tier context, framing language, and known sizing risks. Re-verify against the live page before quoting numbers in a customer commitment.
 
 ## Tier overview
 

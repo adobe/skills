@@ -15,24 +15,23 @@ Map of reference files used by the wf-planning-solution-architect skill. Load on
 
 ## Public docs layer (UI/UX surface)
 
-Crawled from Adobe Experience League. Use for "how do I do X in the Planning UI?" questions and for canonical UX documentation. Each file carries source URL and last-update timestamp.
+Public Adobe documentation is **not bundled**. It is fetched live from Experience League, so it never goes stale in this repo.
 
-Folder map:
-- `raw/general/`: Planning overview, AI Designer (beta), limitations.
-- `raw/architecture/`: Workspaces, record types, connections, cross-workspace, hierarchies, templates. The largest cluster.
-- `raw/fields/`: Field types, formulas, primary field, import from Workfront.
-- `raw/records/`: Create, edit, delete, connect records; configure record-creating automations.
-- `raw/views/`: Table, Timeline, Calendar views.
-- `raw/access/`: License types, sharing permissions, share workspaces/types/views, permission requests.
-- `raw/requests/`: Request forms, approvals, submit/unpublish.
-- `raw/best-practices/`: 30-day launchpad, hierarchy patterns, marketing calendar, the bridge, scale playbook.
-- `raw/api/`: API basics, filter syntax, identity model, HTTP semantics.
-- `raw/fusion/`: Fusion modules for Planning (Watch Events, CRUD, search).
-- `raw/ai-assistant/`: Planning-scoped AI Assistant, Workfront-wide AI Assistant. Separate from the beta AI Designer in raw/general.
-- `raw/automations/`: `automations-deep-dive.md` is the canonical decision tree across the 5 automation surfaces (native button-click, native field-change, Fusion, AI Assistant, request-form approval). Load for Category G.
-- `raw/genstudio/`: GenStudio integration, manage GenStudio workspace.
-- `raw/canvas-dashboards/`: Canvas Dashboard overview, create, build table report.
-- `raw/notifications/`: Notification preferences.
+Use `scripts/search.js` to find the right pages, then fetch the `markdownUrl` from the results (any Experience League doc URL with `.md` appended returns clean markdown):
+
+```bash
+node scripts/search.js [--all] <keyword1> [keyword2] [...]
+```
+
+`scripts/docs-index.json` backs the search: one entry per Planning documentation page with its title, section, description, headings, and URL. Sections covered: general, architecture, fields, records, views, access, requests, best-practices, api, fusion, ai-assistant, genstudio, canvas-dashboards.
+
+## Synthesized references (not available on Experience League)
+
+| File | When to load |
+|---|---|
+| `synthesized/automations-deep-dive.md` | Canonical decision tree across the 5 automation surfaces (native button-click, native field-change, Fusion, AI Assistant, request-form approval). Load for Category G. |
+| `synthesized/record-collaboration.md` | Comments, history, record layout, and record sharing behavior. |
+| `synthesized/notification-preferences.md` | Notification preference behavior. |
 
 ## MCP / API reference layer (programmatic surface)
 
@@ -53,14 +52,15 @@ Use for "how do I do X via API or MCP?" questions, formula questions, agentic wo
 
 For any given question, the routing in SKILL.md identifies the category (A through N). Load:
 1. The 1 to 2 top-level synthesis files the category names.
-2. Any raw or mcp files explicitly called out.
-3. Stop. Do not preload neighbors.
+2. Any mcp or synthesized files explicitly called out.
+3. If the question needs public UI/UX documentation, run `scripts/search.js` and fetch the top 2 to 3 results.
+4. Stop. Do not preload neighbors.
 
 If a question spans categories, load only the union of files; do not load every reference.
 
 ## Refresh procedure
 
-**Public docs:** check the "Last update" timestamp in each raw/*.md file. Re-fetch source URL via web_fetch. Diff and update. Update visited URL log if new URLs are added.
+**Public docs:** nothing to refresh. Pages are fetched live from Experience League at answer time. If Adobe publishes new Planning articles, add entries to `scripts/docs-index.json` (path, url, title, section, description, headings) so the search can surface them.
 
 **MCP refs:** retrieve current versions from the Workfront Planning MCP server itself (via `tool_search` or direct resource fetch in Claude Desktop), or request refreshed exports from the WFP engineering team.
 

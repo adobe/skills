@@ -27,7 +27,7 @@ Audience is internal: Adobe engineers, managers, SAs, and account teams. Speak d
 
 1. **Architecture before limits.** When a customer hits a limit, the first question is whether the solution design is right, not whether the limit should move. Granting incremental exceptions delays necessary redesigns. Reference: the 500 connected-records cap pattern.
 
-2. **Two reference layers, both authoritative.** Public Adobe docs (`references/raw/`) describe the UI/UX surface. MCP reference material (`references/mcp/`) describes the API/tool surface. Both are real. When they disagree, see `references/public-vs-mcp-discrepancies.md` and prefer MCP for API behavior, public docs for UI behavior.
+2. **Two reference layers, both authoritative.** Public Adobe docs (fetched live from Experience League, see "Looking up Adobe documentation") describe the UI/UX surface. MCP reference material (`references/mcp/`) describes the API/tool surface. Both are real. When they disagree, see `references/public-vs-mcp-discrepancies.md` and prefer MCP for API behavior, public docs for UI behavior.
 
 3. **Tier shapes everything.** Object limits scale by tier (Select, Prime, Ultimate). Always check the tier before answering a limit question. See `references/limits-and-tiers.md`.
 
@@ -37,9 +37,27 @@ Audience is internal: Adobe engineers, managers, SAs, and account teams. Speak d
 
 6. **Preserve the user's text.** Never introduce em dashes or en dashes into edited content. Use commas, parentheses, semicolons, or regular hyphens instead.
 
+## Looking up Adobe documentation
+
+Public Adobe documentation is **not bundled with this skill**. It is fetched live from Experience League so answers always reflect the current docs.
+
+**Step 1 — find the right pages.** Run the search script with 1 to 3 specific keywords:
+
+```bash
+node scripts/search.js [--all] <keyword1> [keyword2] [...]
+```
+
+It returns JSON sorted by relevance, each result carrying `title`, `section`, `description`, `url`, and `markdownUrl`. Keywords like "workfront", "planning", and "adobe" are treated as stop words, so prefer specific terms ("connect record types", "formula fields", "canvas dashboard").
+
+**Step 2 — fetch the page.** Retrieve the `markdownUrl` (any Experience League doc URL with `.md` appended returns clean markdown). Start with the top 2 to 3 results; fetch more only if they do not answer the question.
+
+**Step 3 — reconcile with the curated references.** The bundled files under `references/` are the insider layer: MCP/API truth, tier limits, architectural exemplars, and playbooks that Experience League does not publish. When public docs and MCP material disagree, see `references/public-vs-mcp-discrepancies.md`: prefer MCP for API behavior, public docs for UI behavior.
+
+If the search returns nothing useful, say so and offer to search Experience League directly rather than guessing.
+
 ## Routing: what kind of question is this?
 
-Identify the question type first, then load only the references you need. Do not read every reference file.
+Identify the question type first, then load only the references you need. Do not read every reference file. Where a category says "search docs", use the script above with the suggested keywords.
 
 ### Category A: Customer is asking about limits, performance, or capacity
 - Load: `references/limits-and-tiers.md` (always), `references/customer-conversation-framings.md`.
@@ -48,7 +66,8 @@ Identify the question type first, then load only the references you need. Do not
 - If they are hitting a limit and asking for an exception, default to the design-vs-limit reframe before agreeing to anything.
 
 ### Category B: Customer or colleague is designing a workspace
-- Load: `references/workspace-build-playbook.md`, `references/best-practice-template.md` (the Fréscopa exemplar plus its known deviations), `references/raw/architecture/` (relevant files), `references/raw/best-practices/`.
+- Load: `references/workspace-build-playbook.md`, `references/best-practice-template.md` (the Fréscopa exemplar plus its known deviations).
+- Search docs: `node scripts/search.js record types workspace` or `node scripts/search.js best practices`.
 - Apply the work-vs-reference record-type split.
 - 3 to 6 sections per workspace, every section has a record type.
 - Default to bidirectional connections via `backField` for parent-child, unidirectional for work-to-reference.
@@ -63,7 +82,8 @@ Identify the question type first, then load only the references you need. Do not
 - Render output as markdown links using display names, never raw IDs or URLs.
 
 ### Category D: Formula field question
-- Load: `references/mcp/formula-documentation.txt` (canonical and most complete), `references/raw/fields/formula-fields.md`.
+- Load: `references/mcp/formula-documentation.txt` (canonical and most complete).
+- Search docs: `node scripts/search.js formula fields`.
 - ~50 supported functions across date/time, math, text/logic, and Planning-specific. The public doc list is much shorter and incomplete.
 - CASE is supported despite being absent from public docs.
 - Unsupported: ADDHOUR, SWITCH, FORMAT, SORTASCARRAY, SORTDESCARRAY.
@@ -71,21 +91,23 @@ Identify the question type first, then load only the references you need. Do not
 - Up to 20 formula fields per record type, 50,000 characters per expression.
 
 ### Category E: Filtering or searching via API/MCP
-- Load: `references/raw/api/api-basics.md`, `references/mcp/filter-operators.json`.
+- Load: `references/mcp/filter-operators.json`.
+- Search docs: `node scripts/search.js api basics`.
 - All operators are `$-prefixed`. Filters MUST be a JSON array, not an object.
 - Field type determines operator set. See the field-type matrix in api-basics.md.
 - Combine with `$and` / `$or`, nest arbitrarily.
 - `bulk_record_actions` is NOT atomic; check `hasErrors` on every response.
 
 ### Category F: Connection or hierarchy question
-- Load: `references/raw/architecture/connect-record-types.md`, `references/raw/architecture/hierarchy-and-breadcrumb-overview.md`, `references/mcp/connections.json`.
+- Load: `references/mcp/connections.json`.
+- Search docs: `node scripts/search.js connect record types` and `node scripts/search.js hierarchy breadcrumb`.
 - Bidirectional vs unidirectional: provide `backField` for bidirectional, omit for unidirectional.
 - Hierarchy: up to 4 record types deep, max 5 hierarchies per workspace, max 10 parents per child inside a hierarchy.
 - Multi-select non-hierarchy connection cap: 500 records connected to one record. This limit has been hit in past customer escalations. Treat further exception requests as a design problem.
 - External connections: Workfront (PROJ/PORT/PROG/COMP/GROUP/TASK), AEM (assets/folders), Brand (GenStudio).
 
 ### Category G: Automation question (when to use which surface)
-- Load: `references/raw/automations/automations-deep-dive.md`.
+- Load: `references/synthesized/automations-deep-dive.md`.
 - Five surfaces: native button-click, native field-value-change, Fusion, AI Assistant, request-form approval.
 - Decision tree:
   - User-initiated, simple action, stable permissions: native button-click.
@@ -95,43 +117,44 @@ Identify the question type first, then load only the references you need. Do not
   - Human gate before record creation: request-form approval.
 
 ### Category H: AI Assistant question
-- Load: `references/raw/ai-assistant/planning-ai-assistant-overview.md`, `references/raw/ai-assistant/workfront-ai-assistant-overview.md`, `references/raw/general/planning-ai-designer.md` (separate beta Designer).
+- Search docs: `node scripts/search.js ai assistant` (covers both the Planning-scoped and Workfront-wide surfaces) and `node scripts/search.js ai designer` for the separate beta Designer.
 - Two surfaces: Planning-scoped AI Assistant and Workfront-wide AI Assistant.
 - Separate from the beta AI Designer for workspace generation.
 - Plan-tier gating applies.
 
 ### Category I: GenStudio integration
-- Load: `references/raw/genstudio/genstudio-integration-overview.md`, `references/raw/genstudio/manage-genstudio-workspace.md`.
+- Search docs: `node scripts/search.js genstudio`.
 - Multi-instance permission rules apply.
 - Activations are read-only from Planning's perspective.
 - Brand connection key in MCP is `Brand` (corresponds to "Adobe Applications" in the picker).
 
 ### Category J: Reporting and dashboards
-- Load: `references/raw/canvas-dashboards/`.
+- Search docs: `node scripts/search.js canvas dashboard`.
 - Canvas Dashboard is the only Workfront-native reporting path that treats Planning record types as base entities.
 - Beta. Cloud-provider exclusions apply. Layout template gate, currency toggle, three report types.
 - Table report: field selector, Planning Record Type as base entity, children-relationship limits.
 
 ### Category K: Access, sharing, license question
-- Load: `references/raw/access/`.
+- Search docs: `node scripts/search.js access overview`, `node scripts/search.js license type`, or `node scripts/search.js sharing permissions`.
 - License types matter: Planning Standard, Light, Contribute, Plan, Work, Review.
 - Sharing entities cap: 100 per WFP object.
 - Workspace, record type, and view all share separately. Permission requests have their own flow.
 
 ### Category L: Fusion modules
-- Load: `references/raw/fusion/`.
+- Search docs: `node scripts/search.js fusion modules`.
 - Fusion has dedicated Planning modules for Watch Events, CRUD operations, search.
 - Use Fusion when triggers come from outside Planning or actions need multi-step orchestration.
 
 ### Category M: Views (Table, Timeline, Calendar)
-- Load: `references/raw/views/`, `references/mcp/view-types.json`.
+- Load: `references/mcp/view-types.json`.
+- Search docs: `node scripts/search.js table view`, `node scripts/search.js timeline view`, or `node scripts/search.js calendar view`.
 - Timeline and Calendar require 2 Date fields.
 - Calendar supports filters only (no grouping, no sorting).
 - Timeline: only one breakdown at a time; the child record type also needs date fields for breakdown to work.
 - Default 2 to 3 configured views per work record type; only the default Table for reference types.
 
 ### Category N: Request forms and approvals
-- Load: `references/raw/requests/`.
+- Search docs: `node scripts/search.js request forms` and `node scripts/search.js approvals`.
 - Request form is the gate between submission and record creation.
 - Approvers can be Any license tier.
 - First-match resolution on default vs custom rules.

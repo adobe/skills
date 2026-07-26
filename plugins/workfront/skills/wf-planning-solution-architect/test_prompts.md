@@ -44,7 +44,7 @@ Each prompt has:
 ### B1. Design from scratch for a marketing org
 **Prompt:** "Help me design a workspace for a global marketing team that runs campaigns across 30 countries with multiple channels and brands."
 **Expected category:** B.
-**Files expected:** `workspace-build-playbook.md`, `best-practice-template.md`, possibly `raw/best-practices/`.
+**Files expected:** `workspace-build-playbook.md`, `best-practice-template.md`, possibly a docs search for `best practices`.
 **Pass criteria:** proposes a multi-workspace design with a central taxonomy hub. Identifies which record types are work types (Campaigns, Tactics, Experiences) vs reference types (Countries, Channels, Brands, Audiences). Recommends 2 to 3 views per work type. Does NOT replicate Fréscopa deviations: no lifecycle fields on pure reference types, no single-section workspaces, no mid-word capitalization in names.
 **Anti-pattern:** dumping the Fréscopa template wholesale. Suggesting a single mega-workspace for all 30 countries.
 
@@ -92,7 +92,7 @@ Each prompt has:
 ### E1. Compound filter
 **Prompt:** "How do I search for active campaigns in EMEA launched after Jan 1 via the API?"
 **Expected category:** E.
-**Files expected:** `raw/api/api-basics.md`, `mcp/filter-operators.json`.
+**Files expected:** docs search: `api basics`, `mcp/filter-operators.json`.
 **Pass criteria:** uses `$-prefixed` operators. Filters as a JSON array. Uses `$and` to combine. ISO 8601 dates with Z timezone. Maps Region field to `$hasAnyOf` since it's a reference field.
 **Anti-pattern:** using UI labels ("Contains") instead of API tokens (`$contains`). Filters as an object instead of an array.
 
@@ -101,7 +101,7 @@ Each prompt has:
 ### F1. Hierarchy depth question
 **Prompt:** "Customer wants Campaign > Tactic > Experience > Asset > Component. Five levels. Can we do that?"
 **Expected category:** F.
-**Files expected:** `workspace-build-playbook.md`, `raw/architecture/hierarchy-and-breadcrumb-overview.md`.
+**Files expected:** `workspace-build-playbook.md`, docs search: `hierarchy breadcrumb`.
 **Pass criteria:** explains the 4-level hierarchy cap. Recommends building at 3 levels with headroom and using non-hierarchy connections for the next layer. Mentions that the Fréscopa template Campaigns hierarchy is at the 4-level ceiling, with no room to extend.
 **Anti-pattern:** saying "yes, just configure it" or proposing 5 levels.
 
@@ -117,14 +117,14 @@ Each prompt has:
 ### G1. Pick the right surface
 **Prompt:** "When a Campaign moves to Status=Approved, I want to auto-create a Workfront Project. Which automation surface should I use?"
 **Expected category:** G.
-**Files expected:** `raw/automations/automations-deep-dive.md`.
+**Files expected:** `synthesized/automations-deep-dive.md`.
 **Pass criteria:** native field-value-change automation. Sysadmin-authored. Action is one of the 6 supported (create project). Notes the no-post-save-edit constraint and the sysadmin-only requirement.
 **Anti-pattern:** recommending Fusion when native automation handles it.
 
 ### G2. External trigger
 **Prompt:** "I want to auto-update a Planning record when a row changes in our external CRM. Which surface?"
 **Expected category:** G.
-**Files expected:** `raw/automations/automations-deep-dive.md`.
+**Files expected:** `synthesized/automations-deep-dive.md`.
 **Pass criteria:** Fusion. External trigger is outside Planning; native automations can't do this. Mentions Fusion has observability via execution history.
 **Anti-pattern:** recommending native automation.
 
@@ -133,7 +133,7 @@ Each prompt has:
 ### H1. AI Assistant scope
 **Prompt:** "What's the difference between Planning AI Assistant and Workfront AI Assistant?"
 **Expected category:** H.
-**Files expected:** `raw/ai-assistant/planning-ai-assistant-overview.md`, `raw/ai-assistant/workfront-ai-assistant-overview.md`.
+**Files expected:** docs search: `ai assistant`.
 **Pass criteria:** distinguishes the Planning-scoped surface from the Workfront-wide one. Mentions that the AI Designer (beta) is separate again.
 **Anti-pattern:** conflating the three.
 
@@ -142,7 +142,7 @@ Each prompt has:
 ### I1. GenStudio Brand connection
 **Prompt:** "How do I connect a Planning workspace to a GenStudio Brand?"
 **Expected category:** I.
-**Files expected:** `raw/genstudio/genstudio-integration-overview.md`, `mcp/connections.json`.
+**Files expected:** docs search: `genstudio`, `mcp/connections.json`.
 **Pass criteria:** explains the connection. Notes that in MCP the connection key is `Brand`; in the UI picker it appears under "Adobe Applications". Notes Activations are read-only from Planning's side.
 **Anti-pattern:** confusing the MCP `Brand` key with the customer-facing "GenStudio" terminology.
 
@@ -151,7 +151,7 @@ Each prompt has:
 ### J1. Planning reporting in legacy Workfront
 **Prompt:** "Can we build a report in Workfront that lists all Planning Campaigns by region?"
 **Expected category:** J.
-**Files expected:** `raw/canvas-dashboards/canvas-dashboards-overview.md`, `customer-conversation-framings.md`.
+**Files expected:** docs search: `canvas dashboard`, `customer-conversation-framings.md`.
 **Pass criteria:** explains that Canvas Dashboard is the only Workfront-native surface that treats Planning record types as base entities. Legacy Workfront reports cannot. Sets expectation around Canvas's current state (beta, prerequisites, cloud-provider exclusions).
 **Anti-pattern:** suggesting it works in legacy Workfront reports.
 
@@ -160,7 +160,7 @@ Each prompt has:
 ### K1. Sharing cap
 **Prompt:** "Can I share a record type with 200 users individually?"
 **Expected category:** K.
-**Files expected:** `raw/access/sharing-permissions-overview.md`, `limits-and-tiers.md`.
+**Files expected:** docs search: `sharing permissions`, `limits-and-tiers.md`.
 **Pass criteria:** notes the 100 sharing entities per WFP object cap. Recommends sharing with groups or teams to scale beyond 100 individual entities.
 **Anti-pattern:** quoting "unlimited" or 100 without explaining the workaround.
 
@@ -169,7 +169,7 @@ Each prompt has:
 ### L1. Fusion modules available
 **Prompt:** "What Fusion modules are available for Planning?"
 **Expected category:** L.
-**Files expected:** `raw/fusion/workfront-planning-modules.md`.
+**Files expected:** docs search: `fusion modules`.
 **Pass criteria:** lists the Watch Events trigger and the CRUD / search modules. Notes when to use Fusion vs native automations.
 
 ## Category M: views
@@ -177,7 +177,7 @@ Each prompt has:
 ### M1. Calendar view limitations
 **Prompt:** "Can I group records by Owner in a Calendar view?"
 **Expected category:** M.
-**Files expected:** `raw/views/manage-the-calendar-view.md`, `mcp/view-types.json`.
+**Files expected:** docs search: `calendar view`, `mcp/view-types.json`.
 **Pass criteria:** answers no. Calendar supports filters only; no grouping or sorting. Recommends Table or Timeline view if grouping is needed.
 **Anti-pattern:** saying yes or being uncertain.
 
@@ -186,7 +186,7 @@ Each prompt has:
 ### N1. Request form approval flow
 **Prompt:** "How do I gate request submissions with an approval before a record is created?"
 **Expected category:** N.
-**Files expected:** `raw/requests/add-approval-to-request-form.md`, `raw/requests/approve-request.md`.
+**Files expected:** docs search: `approval request form`.
 **Pass criteria:** explains the approval mechanism on request forms. Notes default vs custom rules, first-match resolution, team-as-approver semantics.
 
 ## Cross-category and integration prompts

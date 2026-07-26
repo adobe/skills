@@ -97,10 +97,14 @@ Customers expect: submit → approver1 reviews → approver2 reviews → revise 
 ### Anti-pattern: Letting Anyone-with-the-link request forms persist
 The form URL leaks. External submissions land. Audit and unpublish stale forms or restrict sharing to workspace members.
 
-## Cross-references in this corpus
-- Native automations: `raw/records/configure-automations-to-create-records.md`, `raw/records/create-wf-objects-using-planning-automations.md`
-- Fusion: `raw/fusion/workfront-planning-modules.md`
-- AI Assistant: `raw/ai-assistant/planning-ai-assistant-overview.md`
-- API: `raw/api/api-basics.md`
-- Approvals: `raw/requests/add-approval-to-request-form.md`, `raw/requests/approve-request.md`
-- MCP filter operators: `mcp-references/filter-operators.json`
+## Cross-references
+
+Public documentation (find with `node scripts/search.js <keywords>`, then fetch the `.md` URL):
+- Native automations: `configure automations records`, `create workfront objects automations`
+- Fusion: `fusion modules`
+- AI Assistant: `ai assistant`
+- API: `api basics`
+- Approvals: `approval request form`
+
+Bundled references:
+- MCP filter operators: `references/mcp/filter-operators.json`

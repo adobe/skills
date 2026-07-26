@@ -1,6 +1,6 @@
 # MCP reference material vs public Adobe docs
 
-This folder contains 7 reference files for the Workfront Planning MCP server (the API/tool surface used by AI agents to operate Planning). They complement the public Adobe docs crawled in `raw/` — public docs describe the UI/UX, MCP docs describe the API/tooling layer.
+This folder contains 7 reference files for the Workfront Planning MCP server (the API/tool surface used by AI agents to operate Planning). They complement the public Adobe docs on Experience League (searched via `scripts/search.js` and fetched live): public docs describe the UI/UX, MCP docs describe the API/tooling layer.
 
 ## Files
 
@@ -14,9 +14,9 @@ This folder contains 7 reference files for the Workfront Planning MCP server (th
 | `formula-documentation.txt` | Complete formula function reference (~50 functions, patterns, unsupported list) |
 | `workspace-setup-guide.txt` | Opinionated playbook for building workspaces (record-type categories, build sequence, output constraints) |
 
-## How to use these alongside `raw/`
+## How to use these alongside the public docs
 
-- **`raw/`** = canonical UX reference. Use when a user asks "how do I do X in the Planning UI?"
+- **Experience League pages** (via `scripts/search.js`, then fetch) = canonical UX reference. Use when a user asks "how do I do X in the Planning UI?"
 - **`mcp-references/`** = canonical API/tool reference. Use when a user asks "how do I do X programmatically?" or when writing/debugging MCP scripts.
 
 For most SA conversations both layers matter — answer with the UX path and mention the underlying API behavior when relevant.
@@ -81,7 +81,7 @@ Budget variance, spend ratio, duration, days-to-deadline, conditional status lab
 
 1. **The MCP reference set becomes the API backbone for SKILL.md** when authoring agentic flows (e.g., "build me a Q1 campaign workspace"). The workspace-setup-guide.txt is essentially a system-prompt-quality build playbook.
 
-2. **For SA conversations about UI**, public docs in `raw/` still lead.
+2. **For SA conversations about UI**, the public Experience League docs still lead.
 
 3. **Discrepancies above should be reconciled in the SKILL.md** with a "when public docs say X and MCP says Y, prefer Z" pattern. The most critical one is precision (4 vs 6 decimals).
 

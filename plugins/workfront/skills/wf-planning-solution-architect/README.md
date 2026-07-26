@@ -17,6 +17,9 @@ After install, the skill activates automatically when you ask about anything WFP
 wf-planning-solution-architect/
 ├── SKILL.md                                    # Entry point: persona, triggers, routing
 ├── test_prompts.md                             # Eval prompts by category
+├── scripts/
+│   ├── search.js                               # Keyword search over the docs index
+│   └── docs-index.json                         # Experience League page index (titles, URLs)
 └── references/
     ├── INDEX.md                                # Top-level map of all references
     ├── workspace-build-playbook.md             # Canonical build playbook (synthesized)
@@ -25,11 +28,10 @@ wf-planning-solution-architect/
     ├── limits-and-tiers.md                     # SA-ready limit reference by tier
     ├── public-vs-mcp-discrepancies.md          # Reconciliation table
     ├── customer-conversation-framings.md       # Stock SA framings
-    ├── raw/                                    # Public Adobe docs (UI/UX surface)
-    │   ├── general/  architecture/  fields/  records/  views/
-    │   ├── access/   requests/      api/     fusion/   ai-assistant/
-    │   ├── automations/  genstudio/  canvas-dashboards/  notifications/
-    │   └── best-practices/
+    ├── synthesized/                            # Content not published on Experience League
+    │   ├── automations-deep-dive.md            # 5-surface automation decision tree
+    │   ├── record-collaboration.md             # Comments, history, layout, sharing
+    │   └── notification-preferences.md
     └── mcp/                                    # MCP / API reference (programmatic surface)
         ├── README.md
         ├── field-types.json     field-formats.json     filter-operators.json
@@ -38,15 +40,17 @@ wf-planning-solution-architect/
         └── workspace-setup-guide.txt           # Original MCP build playbook
 ```
 
+Public Adobe documentation is deliberately **not** bundled. `scripts/search.js` ranks pages from `docs-index.json` and the agent fetches the live Experience League page (append `.md` to any doc URL for clean markdown), so public docs never go stale in this repo.
+
 ## How it works
 
 SKILL.md routes incoming questions into 14 categories (A through N) plus cross-category cases. For each category, only the relevant references load; the skill does not preload the entire corpus.
 
-Top-level synthesis files (workspace-build-playbook, best-practice-template, limits-and-tiers, public-vs-mcp-discrepancies, customer-conversation-framings) are the primary surfaces. The raw/ and mcp/ folders are the deep layer for specific lookups.
+Top-level synthesis files (workspace-build-playbook, best-practice-template, limits-and-tiers, public-vs-mcp-discrepancies, customer-conversation-framings) are the primary surfaces. The mcp/ and synthesized/ folders are the deep layer for specific lookups, and public UI/UX documentation is searched and fetched live.
 
 ## Preferences honored
 
-- No em dashes or en dashes introduced in skill-authored content (all newly authored .md files audit clean; raw Adobe and MCP source content is preserved as-is).
+- No em dashes or en dashes introduced in skill-authored content (all newly authored .md files audit clean; MCP source content is preserved as-is).
 - Direct, internal, evidence-based tone.
 - Architecture-before-limits posture on escalation framing.
 
