@@ -151,3 +151,40 @@ live-network noise dominate; run costs varied $16.96–$22.82 on
 identical skill text). Payoff framing: structural line cut +
 per-run grep of `session.md` verifying relocated reference files
 stayed unread.
+
+## Abrasion labels (extract)
+
+| label | skill @ | lines | scores | mean | verdict |
+|---|---|---|---|---|---|
+| baseline | b5ffb85 | 921 | 70/85/75 | 76.7 | |
+| abraded-t1 | 5d4de58 | 900 | 65/85/70/95/85/85 (pooled 6) | 80.8 | PASS |
+| abraded-t2 | 0d8ad2b | 752 | 85/75/85/85/85/90 (pooled 6) | 84.2 | PASS |
+
+t1 (narrative trims, rules intact) initially showed two stable
+single-flips at N=3 (`brand_extraction_shape`, `state_json_shape`)
+plus `page_cap_confirmation` at 1/3; pooled to N=6 per protocol:
+both stable criteria settled at 5/6 with variance-consistent
+mechanisms unrelated to the t1 diff (a hand-rolled aggregation
+script omitting palette `sourceSelectors`; a `direction` key
+omitted from state.json), `page_cap_confirmation` recovered to the
+baseline rate (4/6), and `impeccable_dep_check` (6/6),
+`current_design_md_direct` (4/6), `per_page_json_shape` (3/6)
+all met or beat baseline rates. `provenance_stamped` 0/6
+(known-fail, unchanged).
+
+t2 (Prep mode → reference/prep-mode.md, −148 lines) pooled to N=6
+after the recurring `brand_extraction_shape` single-flip (5/6, same
+palette-`sourceSelectors` mechanism as t1 and independent of the
+diff) and a 0/3 dip on `current_design_md_direct` that recovered to
+the baseline rate (2/6, missing-schemaVersion mechanism throughout).
+`per_page_json_shape` 6/6; `provenance_stamped` passed once (1/6) —
+first pass across all labels. reference/prep-mode.md verified unread
+in all 6 sessions (stub + `ls` mentions only).
+
+Operational: extract runs intermittently exceed run.mjs's default
+30-min per-run timeout, which kills the SDK session as
+`done: missing` ("aborted by user") — 5 of 7 attempts on
+2026-07-26 before diagnosis. Launch this eval with
+`--timeout-min 60`; aborted runs are invalid and must be deleted,
+not judged. Never run `judge.mjs` on a label while run.mjs is
+live — it will grade in-flight runs.

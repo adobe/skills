@@ -536,62 +536,28 @@ After all Phase 2-5 writes succeed:
 
 ## Cross-site brand sources
 
-Two flags widen extraction beyond the primary origin. Both are
-opt-in; without them this section is inert.
+Two flags widen extraction beyond the primary origin — **read
+`reference/cross-site-sources.md` in full whenever either flag is
+present**. Both are opt-in; without them this section is inert.
 
-### `--brand-source <url>` (repeatable) — sibling enrichment
+Core contract (merge rules and capture shapes in the reference):
 
-An additional **same-brand** origin whose brand surface enriches the
-primary extraction. Per source: shallow capture only — home page plus
-up to 2 nav-linked pages, full recipe per page (Phase 2 rules apply,
-provenance contract included). Captured records land under
-`stardust/current/brand-sources/<host>/` (own `pages/` +
-`assets/screenshots/`, same page-JSON shape); they are **evidence,
-not inventory** — they never enter `state.json.pages[]`.
-
-Their palette / type / motif / voice / photography evidence
-**aggregates** into `_brand-extraction.json` with per-origin
-provenance (`origins[]` per `reference/brand-surface.md` § Origins).
-Two rules govern the merge:
-
-- **Conflicts resolve toward the primary.** Where primary and
-  brand-source evidence disagree for the same slot (a palette role,
-  the heading family, the signature radius), the primary origin's
-  value wins; the losing value is noted in `_provenance.notes`.
-- **Brand-source evidence widens the surface.** A motif or
-  photography treatment the primary site underuses enters as an
-  *additional* entry, attributed in `origins[].contributedSignals[]`
-  — so downstream `direct` / `uplift` can amplify a trait captured
-  on a sibling property as **captured** evidence with an origin
-  citation, never as invention.
-
-Brand-source pages join palette/type/motif/voice aggregation but are
-**excluded** from § System components, `voiceTable`, and cross-promo
-detection — those describe the primary site's IA.
-
-### `--design-source <url>` — design donor
-
-Formalizes the proven canon.com pattern: a golden design source is
-extracted separately and its design system becomes the fixed
-**target**, while the primary origin supplies content.
-
-- Capture the donor to `stardust/canon-source/` — same page-JSON and
-  brand-extraction shapes as `stardust/current/`, rooted there (own
-  `pages/`, `assets/`, `_brand-extraction.json`, `_crawl-log.json`).
-  The default cap (5) applies unless the user widens it.
-- Derive `stardust/canon-source/DESIGN.md` + `DESIGN.json` from the
-  donor's brand surface — **descriptive**, same authoring rules as
-  Phase 4.
-- Stamp `state.json.designSource = { "url", "capturedAt", "path":
-  "stardust/canon-source/" }`.
-
-`stardust:direct` reads this stamp and pins the donor system as the
-target: Mode A's brand-faithful pins transfer to the **donor**
-surface while content stays with the primary origin — see
-`skills/direct/SKILL.md` § Mode A. The donor records
-`role: "design-source"` in its own
-`canon-source/_brand-extraction.json#origins[]`; donor evidence never
-aggregates into the primary `_brand-extraction.json`.
+- `--brand-source <url>` (repeatable) — a **same-brand** sibling
+  gets a shallow capture (home + ≤2 nav-linked pages, full recipe +
+  provenance) under `stardust/current/brand-sources/<host>/`.
+  Evidence, not inventory: never enters `state.json.pages[]`.
+  Its palette/type/motif/voice evidence aggregates into
+  `_brand-extraction.json` with per-origin attribution
+  (`origins[]`); conflicts resolve toward the primary; widened
+  traits are attributed, never invented. Excluded from system
+  components, `voiceTable`, and cross-promo detection.
+- `--design-source <url>` — a design donor is captured to
+  `stardust/canon-source/` (same shapes as `current/`, default cap),
+  its descriptive DESIGN.md/json derived per Phase 4 rules, and
+  `state.json.designSource = { url, capturedAt, path:
+  "stardust/canon-source/" }` stamped. `direct` pins the donor
+  system as the target (its § Mode A); donor evidence never
+  aggregates into the primary `_brand-extraction.json`.
 
 ## Sibling-site discovery
 
@@ -748,5 +714,6 @@ reference):
 - `reference/brand-surface.md` — consolidated brand-surface schema.
 - `reference/brand-review-template.md` — current-state brand-review HTML contract + Tensions detectors.
 - `reference/prep-mode.md` — full `--prep` procedure (typing, module candidates, typed slots, prep summary, sub-agent requirements).
+- `reference/cross-site-sources.md` — full `--brand-source` / `--design-source` procedure (shallow capture, merge rules, canon-source donor).
 - `skills/stardust/reference/state-machine.md` — state.json contract.
 - `skills/stardust/reference/artifact-map.md` — provenance shape.
