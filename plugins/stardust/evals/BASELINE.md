@@ -159,6 +159,28 @@ stayed unread.
 | baseline | b5ffb85 | 921 | 70/85/75 | 76.7 | |
 | abraded-t1 | 5d4de58 | 900 | 65/85/70/95/85/85 (pooled 6) | 80.8 | PASS |
 | abraded-t2 | 0d8ad2b | 752 | 85/75/85/85/85/90 (pooled 6) | 84.2 | PASS |
+| abraded-t3 | bab5682 | 719 | 75/80/95/85/75/90/95/75/85 (pooled 9) | 83.9 | PASS (flagged¹) |
+
+¹ t3 accepted by user decision with one flag: `page_cap_confirmation`
+read 4/9 (0.44) vs 0.67 at baseline/t1/t2. All five failures are the
+identical pre-existing mechanism (kept/cut narration skipped
+entirely; baseline failed the same way), Phase 1 was untouched by
+the t3 diff, and the delta is not significant at these Ns
+(p≈0.13) — but it is the weakest reading of this criterion in the
+campaign, so t4's planned Phase 1 example condensing was dropped:
+Phase 1 is frozen for the remainder of the campaign. Everything
+else in t3 was at or above cross-label rates: brand_extraction 8/9,
+dep_check 8/9, design_md 5/9, provenance 1/9 (passes now appear at
+a trickle since t2 — still known-fail). cross-site-sources.md
+verified unread in all 9 sessions.
+
+`brand_extraction_shape` reclassification: it flipped exactly once
+per label (t1 5/6, t2 5/6, t3 8/9 — 18/21 = 0.86 across abraded
+labels) with one mechanism every time (palette entries missing
+per-entry `sourceSelectors` when the run's hand-rolled aggregation
+script chose a different field shape). The baseline 3/3 was a lucky
+draw; treat this criterion as noisy (gate on rate) rather than
+stable in future labels.
 
 t1 (narrative trims, rules intact) initially showed two stable
 single-flips at N=3 (`brand_extraction_shape`, `state_json_shape`)

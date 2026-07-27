@@ -133,12 +133,10 @@ Additional checks for this sub-command:
 4. **Bot-management probe.** When the first navigation in the run
    returns `ERR_HTTP2_PROTOCOL_ERROR` or `ERR_QUIC_PROTOCOL_ERROR`,
    or hangs through the entire hard-cap on what should be a fast
-   origin, **do not retry headless**. Switch to
-   `headless: false, channel: 'chrome'` per
-   `reference/playwright-recipe.md` § Bot-management fallback and
-   record the switch in `_crawl-log.json#discovery.fetchTechnique`
-   so re-runs start in headed mode without rediscovering the
-   issue.
+   origin, **do not retry headless** — switch to headed Chrome per
+   § Failure modes → Bot-management block and record the switch in
+   `_crawl-log.json#discovery.fetchTechnique` so re-runs start in
+   headed mode without rediscovering the issue.
 
 ## Procedure
 
@@ -209,10 +207,7 @@ Discover the page inventory before crawling. Procedure in
 
 For each page in the cap-respecting list, render with Playwright
 following `reference/playwright-recipe.md`. Captures run
-**concurrently**: the page queue is drained by `--concurrency`
-parallel browser contexts (default 4, sane range 4–8), each applying
-the full recipe independently; media `resolves` / HEAD checks are
-batched with `Promise.all`. See § Concurrency. The recipe is
+**concurrently** per § Concurrency. The recipe is
 mandatory per page — in particular, do not skip the wait, scroll, or
 capture-list steps:
 
@@ -471,21 +466,15 @@ After all Phase 2-5 writes succeed:
    Extracted https://example.com (5/38 pages, sitemap.xml)
 
    stardust/current/
-     PRODUCT.md            (register: brand, inferred from landing)
-     DESIGN.md             (5 colors, 2 type families, 3 motifs)
-     brand-review.html     (4 tensions surfaced)
-     pages/                (5 files)
-     assets/logo.svg       (extracted from inline SVG)
-     _brand-extraction.json
-     _crawl-log.json
+     PRODUCT.md, DESIGN.md, DESIGN.json, brand-review.html,
+     pages/ (5), assets/logo.svg, _brand-extraction.json, _crawl-log.json
 
    Per-page evidence:
      slug         live  waitMode               waitMs   status  media(img/bg)
      /            yes   medium                 2380     200     38/6
-     /about       yes   medium                 2110     200     12/2
      /pricing     yes   medium                 1940     200     9/0   ⚠ low-media
-     /products    yes   medium                 2640     200     21/4
      /contact     yes   domcontentloaded(fb)   8000     200     3/0
+     ...
 
    Wait summary: 4 resolved at medium (avg 2.4s), 1 fallback (timed out at 8s)
      → /contact may be under-captured; consider --refresh
@@ -495,11 +484,9 @@ After all Phase 2-5 writes succeed:
    Open stardust/current/brand-review.html to verify the extraction
    before running $stardust direct.
 
-   Coverage note: extracted 5 of 38 discovered pages. The brand
-   surface and brand-review use cross-page aggregation, so 5 pages
-   covering distinct templates is usually sufficient. To extract
-   more, re-run with --cap <N> (e.g. --cap 25) or list specific
-   slugs with --pages.
+   Coverage note: extracted 5 of 38 discovered pages; 5 pages
+   covering distinct templates is usually sufficient for the
+   cross-page brand surface. Widen with --cap <N> or --pages.
 
    Next: $stardust direct  (resolve a redesign direction)
    ```
