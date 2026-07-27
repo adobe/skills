@@ -1,8 +1,8 @@
 # Workspace build playbook
 
-The canonical playbook for designing and building a Workfront Planning workspace. Synthesizes the MCP workspace-setup-guide.txt (prescriptive build instructions for agentic flows) with the architectural patterns and deviations of the Fréscopa best-practice template.
+The canonical playbook for designing and building a Workfront Planning workspace. Combines prescriptive build sequencing with the architectural patterns and deviations of the Fréscopa best-practice template.
 
-When building agentically via MCP, treat this file as system-prompt-quality instruction. Read it first, build silently and completely, narrate only at the end.
+When specifying a workspace build, treat this file as system-prompt-quality instruction. Read it first, work through the full design, and present it once at the end.
 
 ## Object hierarchy
 
@@ -90,10 +90,10 @@ Reference and Lookup are also field types, materialized through connections (see
 - Up to 20 paragraph fields per record type, 10,000 chars each.
 - Up to 20 formula fields per record type, 50,000 chars per expression.
 - Up to 30 connection fields per record type.
-- Before creating or updating records via MCP, read the record type's field value schema (`schema://record-type/{recordTypeId}`) to learn the exact format for each field.
+- Before creating or updating records programmatically, check the record type's field value schema to learn the exact format for each field.
 
-### Field value formats (MCP / API surface)
-- Number, Percentage, Currency precision: 0 to 4 decimals (MCP authoritative). Public docs say up to 6; trust MCP for API behavior.
+### Field value formats (API surface)
+- Number, Percentage, Currency precision: 0 to 4 decimals is what the API accepts. Public docs say up to 6; trust the observed API limit.
 - Percentage values stored as decimals (0.75 = 75%).
 - Currency codes: ISO 4217 (USD, EUR, GBP).
 - Date values: ISO 8601 with mandatory Z timezone.
@@ -101,7 +101,7 @@ Reference and Lookup are also field types, materialized through connections (see
 - Single-select and multi-select options support 20 named colors (light-blue, dark-blue, light-cyan, ..., dark-gray) or hex codes.
 
 ### Formula fields
-Before creating any formula field, read `references/mcp/formula-documentation.txt`. Use exact existing field display names (case and spacing) inside `{}` in formulas. If a referenced field does not exist, create it first.
+Before specifying any formula field, check the function support notes in SKILL.md Category D (CASE is supported; ADDHOUR, SWITCH, FORMAT, SORTASCARRAY, and SORTDESCARRAY are not). Use exact existing field display names (case and spacing) inside `{}` in formulas. If a referenced field does not exist, create it first.
 
 Supported function families (~50 functions total):
 - Date/time: ADDDAYS, ADDWEEKDAYS, ADDMONTHS, ADDYEARS, CLEARTIME, DATE, DATEDIFF, DAYOFMONTH, DAYOFWEEK, DAYSINMONTH, DAYSINSPLITWEEK, DAYSINYEAR, DMAX, DMIN, HOUR, MINUTE, MONTH, SECOND, WEEKDAYDIFF, WORKMINUTESDIFF, YEAR, SETTIMEZONE, WEEKOFYEAR.

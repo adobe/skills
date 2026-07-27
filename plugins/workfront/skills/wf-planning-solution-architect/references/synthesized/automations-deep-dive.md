@@ -107,4 +107,4 @@ Public documentation (find with `node scripts/search.js <keywords>`, then fetch 
 - Approvals: `approval request form`
 
 Bundled references:
-- MCP filter operators: `references/mcp/filter-operators.json`
+- API filter operators by field type: SKILL.md Category E
