@@ -160,6 +160,20 @@ stayed unread.
 | abraded-t1 | 5d4de58 | 900 | 65/85/70/95/85/85 (pooled 6) | 80.8 | PASS |
 | abraded-t2 | 0d8ad2b | 752 | 85/75/85/85/85/90 (pooled 6) | 84.2 | PASS |
 | abraded-t3 | bab5682 | 719 | 75/80/95/85/75/90/95/75/85 (pooled 9) | 83.9 | PASS (flagged¹) |
+| abraded-t4 | f8bb6dd | 706 | 75/85/85/85/85/80 (pooled 6) | 82.5 | PASS |
+
+t4 (dedupe + Phase 6 example condensing; Phase 1 frozen per the t3
+flag) pooled to N=6 after `brand_extraction_shape` opened 1/3 — the
+extension went 3/3 (4/6 pooled, same recurring `sourceSelectors`
+mechanism; cross-label 23/30 ≈ 0.77), confirming the 1/3 as a bad
+draw. `page_cap_confirmation` 4/6 = baseline rate, further
+supporting the t3 noise reading. `state_json_shape` 5/6 (one
+`direction`-key-absent flip, same pre-existing mechanism as t1's).
+`provenance_stamped` 0/6. Both relocated reference files verified
+unread in all 6 sessions.
+
+**Final: 921 → 706 lines (−23%), every tranche gated at or above
+the 76.7 baseline mean (t1 80.8, t2 84.2, t3 83.9, t4 82.5).**
 
 ¹ t3 accepted by user decision with one flag: `page_cap_confirmation`
 read 4/9 (0.44) vs 0.67 at baseline/t1/t2. All five failures are the
