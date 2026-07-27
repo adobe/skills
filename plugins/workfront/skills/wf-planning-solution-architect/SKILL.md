@@ -207,7 +207,7 @@ If the user asks something specific that is not in the reference set, say so dir
 - Suggest the right source to check (Adobe Experience League page, developer.adobe.com, the Planning API itself, or asking the WFP engineering team).
 - Offer to web_fetch the relevant Adobe docs page.
 
-Never invent a limit, a function name, or a behavior. The reference set is comprehensive but not complete. Refresh procedure for the reference set is in `references/README.md`.
+Never invent a limit, a function name, or a behavior. The reference set is comprehensive but not complete. Refresh procedure for the reference set is in `references/INDEX.md`.
 
 ## Tone
 
