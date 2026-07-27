@@ -1,0 +1,90 @@
+{
+  "skill_name": "wf-planning-solution-architect",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "A customer on Workfront Planning is hitting the connected-records cap and is asking us to raise it. They have a single record type connected to thousands of others. What should we tell them?",
+      "expected_output": "Frames the cap as an architecture signal first, cites the 500 connected-records cap pattern, and recommends redesigning the workspace/record model before requesting an exception.",
+      "files": [],
+      "assertions": [
+        "Cites the 500 connected-records cap figure",
+        "Treats the cap as an architecture problem before a limit problem and recommends a redesign",
+        "Does not recommend simply raising the limit as the default answer",
+        "Notes that the 500 cap applies to multi-select non-hierarchy connections and does not change by tier",
+        "References limits-and-tiers material rather than answering from memory"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "What are the object limits for Workfront Planning, and do they differ by tier?",
+      "expected_output": "Explains that object limits scale by tier (Select, Prime, Ultimate) and that the tier must be established before answering a limit question.",
+      "files": [],
+      "assertions": [
+        "Names the Select, Prime, and Ultimate tiers",
+        "States that object limits scale by tier",
+        "Asks for or establishes the customer's tier before giving specific numbers",
+        "Reads references/limits-and-tiers.md rather than guessing limit values"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "An account team wants to share the WFP P95 latency numbers with a customer as part of a contract discussion. Is that OK?",
+      "expected_output": "Warns that internal P95 / latency numbers are observed production telemetry, not a contractual SLA, and must be framed that way if shared.",
+      "files": [],
+      "assertions": [
+        "Frames P95 / latency as observed production telemetry",
+        "Explicitly distinguishes telemetry from a contractual SLA or guarantee",
+        "Advises how to frame the numbers if they are shared externally"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "The public Workfront Planning docs describe a field behavior one way, but when I build via the Planning MCP it behaves differently. Which is correct?",
+      "expected_output": "Explains that public docs (UI surface) and the MCP/API are each authoritative for their own surface, prefers MCP for API behavior and public docs for UI behavior, and points to the discrepancies reference.",
+      "files": [],
+      "assertions": [
+        "Treats both the public docs and the MCP/API as authoritative for their respective surfaces",
+        "Prefers MCP behavior for API questions and public docs for UI questions",
+        "Points to references/public-vs-mcp-discrepancies.md",
+        "Reports the discrepancy rather than silently picking one source"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "How do I set up a Canvas Dashboard to report on Workfront Planning records?",
+      "expected_output": "Uses the bundled documentation search to locate the Canvas Dashboards pages on Experience League, fetches the live page, and explains that Canvas Dashboards is the only Workfront-native reporting surface that treats Planning record types as base entities.",
+      "files": [],
+      "assertions": [
+        "Runs scripts/search.js with Canvas Dashboard keywords instead of answering from memory",
+        "Fetches the Experience League page from the returned URL (the .md variant) rather than relying on a bundled copy",
+        "States that Canvas Dashboards is the only Workfront-native reporting path treating Planning record types as base entities",
+        "Notes the beta status of Canvas Dashboards"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "My Workfront Planning formula field keeps failing. I'm trying to use SWITCH to map status values, and I also want to know whether CASE is available.",
+      "expected_output": "Identifies SWITCH as unsupported, confirms CASE is supported despite being absent from public docs, and treats the MCP formula documentation as canonical.",
+      "files": [],
+      "assertions": [
+        "States that SWITCH is not supported in Planning formulas",
+        "Confirms CASE is supported even though public documentation omits it",
+        "Treats references/mcp/formula-documentation.txt as the canonical formula source",
+        "Mentions that field display names must be wrapped in braces exactly as they appear in the UI"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Design a Workfront Planning workspace for a marketing team that runs campaigns across several channels and needs shared taxonomies like regions and product lines.",
+      "expected_output": "Applies the work-vs-reference record-type split, proposes a central taxonomy hub with cross-workspace linking, and follows the build playbook without replicating the known deviations of the Fréscopa exemplar.",
+      "files": [],
+      "assertions": [
+        "Separates work record types from reference/taxonomy record types",
+        "Proposes a central taxonomy hub rather than duplicating shared lists in every workspace",
+        "Loads references/workspace-build-playbook.md and references/best-practice-template.md",
+        "Adds lookup fields on connections and keeps sections within the 3 to 6 range",
+        "Does not replicate the documented Fréscopa deviations, such as lifecycle fields on reference types or single-section workspaces"
+      ]
+    }
+  ]
+}
