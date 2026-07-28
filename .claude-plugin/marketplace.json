@@ -117,6 +117,26 @@
       "license": "Apache-2.0"
     },
     {
+      "name": "workfront",
+      "source": "./plugins/workfront",
+      "description": "Adobe Workfront skills for AI agents, including Workfront Planning (WFP/Maestro) solution architecture",
+      "version": "1.0.0",
+      "category": "project-management",
+      "keywords": [
+        "adobe",
+        "workfront",
+        "workfront-planning",
+        "maestro",
+        "solution-architecture"
+      ],
+      "author": {
+        "name": "Adobe"
+      },
+      "homepage": "https://github.com/adobe/skills",
+      "repository": "https://github.com/adobe/skills",
+      "license": "Apache-2.0"
+    },
+    {
       "name": "run-workflow",
       "source": "./plugins/creative-cloud/run-workflow",
       "description": "Discover, compose, run, publish, and save Adobe Firefly workflows through the run-workflow MCP server, including predefined featured workflows for common marketing and production use cases.",
