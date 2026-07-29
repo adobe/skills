@@ -301,6 +301,7 @@ awk -F '\t' '
       sub(/^package\(s\) *: */, "", pkgs)
       sub(/ *:$/, "", pkgs)
       after = substr(line, RSTART + RLENGTH)
+      sub(/^ */, "", after)
       hint = stripTrailers(after)
       forRemoval = extractRemoval(after)
       n = split(pkgs, arr, /, */)
