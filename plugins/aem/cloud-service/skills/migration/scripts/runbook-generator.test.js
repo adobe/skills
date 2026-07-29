@@ -10,6 +10,7 @@ const { runHtlLint, classify } = require('./htl-lint-runner.js');
 const { runOsgiConfigScan } = require('./osgi-config-runner.js');
 const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
 const { runTemplateScan } = require('./template-scan-runner.js');
+const { runAnalyzer } = require('./analyzer-runner.js');
 const {
   gatherFindings, generateRunbook, renderRunbook, writeRunbookCache,
   samplePrompt, CANONICAL_PATTERNS, PATTERN_META,
@@ -27,10 +28,18 @@ function write(root, rel, content) {
 
 // ── Pattern registry ────────────────────────────────────────────────────────
 
-test('registry includes all migration patterns with a strategy', () => {
-  for (const key of ['scheduler', 'resourceChangeListener', 'event-migration', 'assetApi', 'replication', 'htlLint', 'osgiConfig']) {
+test('registry includes all 10 migration patterns with a valid strategy', () => {
+  const expected = [
+    'scheduler', 'resourceChangeListener', 'event-migration', 'assetApi', 'replication',
+    'htlLint', 'osgiConfig', 'lui', 'cdw', 'templateModernization',
+  ];
+  assert.strictEqual(CANONICAL_PATTERNS.length, expected.length, 'no unexpected patterns');
+  for (const key of expected) {
     assert.ok(CANONICAL_PATTERNS.includes(key), `${key} in CANONICAL_PATTERNS`);
-    assert.ok(['cascade', 'html-scan', 'config-scan'].includes(PATTERN_META[key].strategy), `${key} has a valid strategy`);
+    assert.ok(
+      ['cascade', 'html-scan', 'config-scan', 'content-scan'].includes(PATTERN_META[key].strategy),
+      `${key} has a valid strategy`
+    );
   }
 });
 
@@ -120,7 +129,7 @@ test('gatherFindings dispatches rg + config-scan and tags heuristic in cache', a
 
   assert.strictEqual(gathered.sourceByPattern.htlLint, 'html-scan');
   assert.ok(gathered.findingsByPattern.htlLint.length >= 1);
-  assert.strictEqual(gathered.sourceByPattern.osgiConfig, 'config');
+  assert.strictEqual(gathered.sourceByPattern.osgiConfig, 'config-scan');
   assert.ok(gathered.findingsByPattern.osgiConfig.length >= 1);
 
   const cachePath = path.join(root, 'cache.json');
@@ -283,6 +292,49 @@ test('lui/cdw/template sample prompts route to the migration branches', () => {
   assert.match(samplePrompt('templateModernization', {}), /editable templates/i);
 });
 
+// ── analyzer-runner: slug normalization + ok:false branches (stub analyze.sh) ─
+
+function writeAnalyzeStub(root, body) {
+  const p = path.join(root, 'analyze.sh');
+  fs.writeFileSync(p, body, 'utf8');
+  return p;
+}
+
+test('runAnalyzer normalizes analyzer slugs and skips non-migration patterns', () => {
+  const root = mkworkspace();
+  const payload = { findings: [
+    { pattern: 'scheduler', file: 'A.java', line: 3, snippet: 'Scheduler s;' },
+    { pattern: 'resource-change-listener', file: 'B.java', line: 5, snippet: 'impl RCL' },
+    { pattern: 'asset-manager', file: 'C.java', line: 7, snippet: 'AssetManager.createAsset' },
+    { pattern: 'inject-in-sling-model', file: 'D.java', line: 9, snippet: '@Inject' },
+  ], warnings: ['w1'] };
+  const stub = writeAnalyzeStub(root, `#!/usr/bin/env bash\ncat <<'JSON'\n${JSON.stringify(payload)}\nJSON\n`);
+  const res = runAnalyzer(root, { analyzeScript: stub });
+  assert.strictEqual(res.ok, true);
+  assert.ok(res.findingsByPattern.scheduler, 'scheduler kept');
+  assert.ok(res.findingsByPattern.resourceChangeListener, 'resource-change-listener → resourceChangeListener');
+  assert.ok(res.findingsByPattern.assetApi, 'asset-manager → assetApi');
+  assert.ok(!res.findingsByPattern['inject-in-sling-model'], 'non-migration slug dropped');
+  assert.deepStrictEqual(res.warnings, ['w1']);
+  assert.strictEqual(res.rawFindingsByPattern.scheduler[0].line, 3);
+});
+
+test('runAnalyzer returns ok:false on non-zero exit', () => {
+  const root = mkworkspace();
+  const stub = writeAnalyzeStub(root, '#!/usr/bin/env bash\necho "compile error" >&2\nexit 5\n');
+  const res = runAnalyzer(root, { analyzeScript: stub });
+  assert.strictEqual(res.ok, false);
+  assert.match(res.error, /compile error|code 5/);
+});
+
+test('runAnalyzer returns ok:false on unparseable output', () => {
+  const root = mkworkspace();
+  const stub = writeAnalyzeStub(root, '#!/usr/bin/env bash\necho "not json at all"\n');
+  const res = runAnalyzer(root, { analyzeScript: stub });
+  assert.strictEqual(res.ok, false);
+  assert.match(res.error, /parse/i);
+});
+
 // ── BPA parsing of the new subtypes (parser + reader) ───────────────────────
 
 const { getBpaFindings } = require('./bpa-findings-helper.js');
@@ -323,6 +375,39 @@ test('BPA parser extracts cdw/lui/template/replication and excludes _COUNT rows'
 
   const tpl = await getBpaFindings('templateModernization', opts);
   assert.strictEqual(tpl.targets.length, 2, 'legacy.static.template + custom.static.template');
+});
+
+test('a real BPA fetch failure is surfaced (warning + needsLlmScan), NOT reported clean', async () => {
+  const root = mkworkspace();
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    collectionsDir: path.join(root, 'uc'),                 // no cached collection
+    projectId: 'proj-1',                                   // + mcpFetcher ⇒ bpaMode='mcp'
+    mcpFetcher: async () => { throw new Error('MCP down'); },
+    analyzeScript: path.join(root, 'missing-analyze.sh'),  // analyzer unavailable
+  });
+  // scheduler is a cascade BPA pattern; the fetch threw — it must NOT be marked
+  // as cleanly scanned by BPA, and must be surfaced for follow-up.
+  assert.notStrictEqual(gathered.sourceByPattern.scheduler, 'mcp');
+  assert.ok(gathered.needsLlmScan.includes('scheduler'), 'failed pattern surfaced in needsLlmScan');
+  assert.ok(
+    gathered.analyzerWarnings.some(w => /BPA fetch failed.*scheduler/.test(w)),
+    'a Scan-warnings entry names the failed pattern'
+  );
+});
+
+test('benign "pattern not in CSV" stays silent and counts as clean', async () => {
+  const root = mkworkspace();
+  const csv = writeBpaCsv(root); // has cdw/lui/etc but NOT scheduler
+  const gathered = await gatherFindings({
+    workspaceRoot: root, bpaFilePath: csv, collectionsDir: path.join(root, 'uc'),
+    analyzeScript: path.join(root, 'missing-analyze.sh'),
+  });
+  // scheduler is absent from the report → genuinely clean, sourced from csv, no warning.
+  assert.strictEqual(gathered.sourceByPattern.scheduler, 'csv');
+  assert.strictEqual(gathered.findingsByPattern.scheduler.length, 0);
+  assert.ok(!gathered.needsLlmScan.includes('scheduler'));
+  assert.ok(!gathered.analyzerWarnings.some(w => /scheduler/.test(w)), 'no warning for a benign absence');
 });
 
 test('runbook lui is filtered to dialog sub-types when sourced from BPA', async () => {

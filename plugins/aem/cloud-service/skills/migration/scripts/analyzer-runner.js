@@ -77,6 +77,10 @@ function runAnalyzer(workspaceRoot, options = {}) {
     raw = execFileSync('bash', [analyzeScript, workspaceRoot], {
       encoding: 'utf8',
       maxBuffer: 64 * 1024 * 1024,
+      // Cap runtime so a hung analyze.sh (e.g. a wedged JVM) can't block runbook
+      // generation forever — a timeout throws, and the catch below returns
+      // ok:false so the caller falls through to the LLM-scan tier.
+      timeout: 5 * 60 * 1000,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch (err) {

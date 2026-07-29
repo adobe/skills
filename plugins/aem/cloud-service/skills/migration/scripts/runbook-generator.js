@@ -13,8 +13,8 @@
  *                        → CSV (if uploaded / cached)
  *                           → analyzer (local — code-assessment analyze.sh)
  *                              → LLM scan (last resort — agent, not this script)
- *                   `replication` has no BPA/CSV mapping, so it always falls
- *                   through to the analyzer (or LLM scan).
+ *                   `replication` maps to the BPA `replication.agent` subtype;
+ *                   with no BPA source it falls through to the analyzer (or LLM).
  *   'html-scan'   — `htlLint`: heuristic regex scan of `.html` templates.
  *   'config-scan' — `osgiConfig`: heuristic scan of OSGi config files for
  *                   secret-looking keys and `$[secret:]`/`$[env:]` placeholders
@@ -54,11 +54,14 @@ const { runTemplateScan } = require('./template-scan-runner.js');
 
 // Canonical pattern taxonomy for the runbook — every pattern the migration
 // skill can address. Each declares a detection `strategy`:
-//   'cascade'     — BPA/CAM → CSV → analyzer → LLM (Java code patterns)
-//   'rg'          — ripgrep heuristic scan (htlLint)
-//   'config-scan' — config-file heuristic scan (osgiConfig)
-// `bpaSlugs` applies only to 'cascade' patterns (empty = analyzer-only, e.g.
-// replication). (inject-in-sling-model and outdated-dependencies belong to
+//   'cascade'      — BPA/CAM → CSV → analyzer → LLM (Java code patterns)
+//   'html-scan'    — pure-Node regex scan of .html (htlLint)
+//   'config-scan'  — config-file heuristic scan (osgiConfig)
+//   'content-scan' — .content.xml / template scan (lui, cdw, templateModernization)
+// `bpaSlugs` maps a pattern to its BPA subtype(s): the Java 'cascade' patterns,
+// plus replication (replication.agent) and lui/cdw/templateModernization. When a
+// BPA source is present it is authoritative; html/config/content scans are the
+// local fallback. (inject-in-sling-model and outdated-dependencies belong to
 // code-assessment's own runbook, not the migration runbook, so they stay out.)
 const PATTERN_META = {
   scheduler: {
@@ -234,6 +237,7 @@ async function gatherFindings(options = {}) {
 
   const cascadePatterns = CANONICAL_PATTERNS.filter(p => PATTERN_META[p].strategy === 'cascade');
   const bpaPatterns = CANONICAL_PATTERNS.filter(p => (PATTERN_META[p].bpaSlugs || []).length > 0);
+  const scanWarnings = [];
 
   // ── BPA tier (MCP or CSV) — any pattern with bpaSlugs. When a BPA source is
   //    available it owns the verdict; the pattern's local detector (analyzer /
@@ -243,6 +247,7 @@ async function gatherFindings(options = {}) {
       const { bpaSlugs, bpaSubtypeFilter } = PATTERN_META[pattern];
       const merged = [];
       const mergedRaw = [];
+      let realError = false; // a genuine fetch failure (not "pattern absent")
       for (const slug of bpaSlugs) {
         const res = await getBpaFindings(slug, {
           bpaFilePath, collectionsDir, projectId, mcpFetcher, limit: null, offset: 0,
@@ -256,15 +261,28 @@ async function gatherFindings(options = {}) {
             : res.targets;
           merged.push(...targets.map(normalizeBpaTarget));
           mergedRaw.push(...targets.map(t => rawBpaTarget(pattern, t)));
+        } else if (res.availablePatterns) {
+          // Benign: the report parsed fine but this pattern is absent — a
+          // legitimate "clean" result. Stay silent.
+        } else {
+          // Real failure (mcp-error / mcp-server / bpa-file-error / no-source /
+          // "no CSV path"). Do NOT report as clean.
+          realError = true;
+          scanWarnings.push(
+            `BPA fetch failed for \`${pattern}\` (slug \`${slug}\`, source: ${res.source || 'unknown'}): ${res.error || res.message || 'unknown error'}`
+          );
         }
       }
-      // Mark the pattern scanned by the BPA source even when `merged` is empty.
-      // For CSV, a pattern's absence from the report means BPA found no
-      // instances — a legitimate "clean" result, not a gap to fill from the
-      // analyzer. For MCP, a fetch error must NOT silently chain to the
-      // analyzer either (see migration/SKILL.md "MCP errors and fallback":
-      // stop, don't chain). So once a BPA source is available for a pattern,
-      // it owns the verdict and we do not fall through to the analyzer.
+
+      if (realError && merged.length === 0) {
+        // Nothing usable from BPA and the fetch genuinely failed — leave the
+        // pattern UNSCANNED so its local detector runs as a fallback (and, if
+        // that can't run either, it surfaces in needsLlmScan). Never mark it
+        // as a clean BPA scan.
+        continue;
+      }
+      // Either the fetch succeeded (possibly zero findings = genuinely clean)
+      // or we still got some findings despite a partial error — BPA owns it.
       findingsByPattern[pattern] = merged;
       rawFindingsByPattern[pattern] = mergedRaw;
       sourceByPattern[pattern] = bpaMode;
@@ -274,7 +292,6 @@ async function gatherFindings(options = {}) {
 
   // ── Cascade tier 3: analyzer (fills replication always; fills the other
   //    cascade patterns only when no BPA source scanned them) ──────────────
-  let analyzerWarnings = [];
   let analyzerUsed = false;
   const analyzerCanRun = isAnalyzerAvailable(analyzeScript) && !!workspaceRoot;
   const patternsNeedingAnalyzer = cascadePatterns.filter(p => !scannedBy[p]);
@@ -283,7 +300,7 @@ async function gatherFindings(options = {}) {
     const result = runAnalyzer(workspaceRoot, { analyzeScript });
     if (result.ok) {
       analyzerUsed = true;
-      analyzerWarnings = result.warnings;
+      if (result.warnings && result.warnings.length) scanWarnings.push(...result.warnings);
       for (const pattern of patternsNeedingAnalyzer) {
         findingsByPattern[pattern] = result.findingsByPattern[pattern] || [];
         rawFindingsByPattern[pattern] = result.rawFindingsByPattern[pattern] || [];
@@ -310,9 +327,9 @@ async function gatherFindings(options = {}) {
     if (res.ok) {
       findingsByPattern.osgiConfig = res.findings;
       rawFindingsByPattern.osgiConfig = res.rawFindings;
-      sourceByPattern.osgiConfig = 'config';
-      scannedBy.osgiConfig = 'config';
-      if (res.warnings && res.warnings.length) analyzerWarnings = analyzerWarnings.concat(res.warnings);
+      sourceByPattern.osgiConfig = 'config-scan';
+      scannedBy.osgiConfig = 'config-scan';
+      if (res.warnings && res.warnings.length) scanWarnings.push(...res.warnings);
     }
   }
 
@@ -330,7 +347,7 @@ async function gatherFindings(options = {}) {
         rawFindingsByPattern[pattern] = res.rawFindings;
         sourceByPattern[pattern] = 'content-scan';
         scannedBy[pattern] = 'content-scan';
-        if (res.warnings && res.warnings.length) analyzerWarnings = analyzerWarnings.concat(res.warnings);
+        if (res.warnings && res.warnings.length) scanWarnings.push(...res.warnings);
       }
     }
   }
@@ -338,7 +355,7 @@ async function gatherFindings(options = {}) {
   // ── Tier 4: anything still unscanned → LLM scan (agent handles it) ───────
   const needsLlmScan = CANONICAL_PATTERNS.filter(p => !scannedBy[p]);
 
-  return { findingsByPattern, rawFindingsByPattern, sourceByPattern, needsLlmScan, analyzerWarnings, bpaMode, analyzerUsed };
+  return { findingsByPattern, rawFindingsByPattern, sourceByPattern, needsLlmScan, analyzerWarnings: scanWarnings, bpaMode, analyzerUsed };
 }
 
 /** Build the per-pattern copy-paste sample prompt. */
@@ -481,7 +498,7 @@ const SOURCE_LABEL = {
   csv: 'BPA CSV',
   analyzer: 'analyzer',
   'html-scan': 'HTL scan',
-  config: 'config scan',
+  'config-scan': 'config scan',
   'content-scan': 'content scan',
   llm: 'LLM scan',
 };

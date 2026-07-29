@@ -35,9 +35,14 @@ const PLACEHOLDER_RE = /\$\[(secret|env):/;
 // secret keys for placeholder injection (see osgi-cfg-json-cloud-manager.md).
 const REPOINIT_RE = /RepositoryInitializer/i;
 
-/** A path segment starting with `config` scopes OSGi configuration folders. */
+// An OSGi config folder is `config` or a runmode variant `config.<runmode>`
+// (e.g. config.author.dev). Matches the whole segment — not any segment merely
+// starting with "config" (which would catch e.g. `configuration`).
+const CONFIG_FOLDER_RE = /^config(\.[a-z0-9-]+)*$/i;
+
+/** True if any path segment is a `config` / `config.<runmode>` folder. */
 function inConfigFolder(filePath) {
-  return filePath.split(path.sep).some(seg => seg.toLowerCase().startsWith('config'));
+  return filePath.split(path.sep).some(seg => CONFIG_FOLDER_RE.test(seg));
 }
 
 const CFG_JSON_RE = /\.cfg\.json$/i;
@@ -50,7 +55,7 @@ function collectConfigFiles(dir, acc = []) {
   for (const e of entries) {
     const full = path.join(dir, e.name);
     if (e.isDirectory()) {
-      if (e.name === 'node_modules' || e.name === '.git' || e.name === 'target') continue;
+      if (e.name === 'node_modules' || e.name === '.git' || e.name === 'target' || e.name === 'dist') continue;
       collectConfigFiles(full, acc);
     } else if (e.isFile()) {
       if (!inConfigFolder(full)) continue;
