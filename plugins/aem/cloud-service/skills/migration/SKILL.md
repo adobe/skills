@@ -1,6 +1,6 @@
 ---
 name: migration
-description: Migrates legacy AEM (6.x, AMS, on-prem) to AEM as a Cloud Service using BPA CSV or cache, CAM/MCP target discovery, and a one-pattern-per-session workflow. Use for BPA/CAM findings, Cloud Service blockers, or fixes for scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler, DAM AssetManager, HTL data-sly-test lint, Classic UI dialog migration (lui — ExtJS/Coral 2 → Coral 3), and Custom Design Widgets (cdw). OSGi configs → Cloud Manager — scan ui.config, .cfg.json, secrets, $[secret:]/$[env:] — agent follows references/osgi-cfg-json-cloud-manager.md when prompted. After BPA/CAM discovery, migration hands off each (pattern, file) pair to the code-assessment skill for scheduler/resource-change-listener/replication/event-migration/asset-manager guides and shared SCR→DS/ResourceResolver/HTL-lint references. Template modernization runs a per-template context → execute → validate pipeline. Legacy UI migration (dialog and CDW) follows references/legacy-ui/ modules.
+description: Migrates legacy AEM (6.x, AMS, on-prem) to AEM as a Cloud Service using BPA CSV/cache, CAM/MCP discovery, and a one-pattern-per-session workflow. Use to review/scan a project for AEMaaCS migration (generates a read-only migration-runbook.md covering all patterns via per-pattern detection strategies), for BPA/CAM findings, Cloud Service blockers, or fixes for scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler, DAM AssetManager, HTL data-sly-test lint, Classic UI dialog migration (lui — ExtJS/Coral 2 → Coral 3), Custom Design Widgets (cdw), and static→editable template modernization. OSGi configs → Cloud Manager — scan ui.config/.cfg.json for secrets and $[secret:]/$[env:] placeholders. After discovery, migration hands off each (pattern, file) pair to the code-assessment skill for the pattern guides and shared references; template modernization and legacy UI (dialog/CDW) follow references/ modules.
 license: Apache-2.0
 ---
 
@@ -18,6 +18,7 @@ This skill drives the **migration workflow**: BPA data, CAM/MCP, **one pattern p
 
 | You have… | Say something like… | What happens |
 |-----------|---------------------|--------------|
+| **A whole project to assess** | *"Review my code for AEMaaCS migration"* | Generates read-only `migration-runbook.md` — **all** migration patterns (Java cascade + `htlLint` + `osgiConfig`), affected files, sample prompts. **No edits.** |
 | A **BPA CSV** | *"Fix **scheduler** findings using `./path/to/bpa.csv`"* | Fastest path: CSV → cached collection → files |
 | **CAM + MCP** only | *"Get **scheduler** findings from CAM; I'll pick the project when you list them."* | Agent lists projects → you confirm → MCP fetch ([cam-mcp.md](references/cam-mcp.md)) |
 | **Just a few files** | *"Migrate **scheduler** in `core/.../MyJob.java`"* | Manual flow: no BPA required |
@@ -29,6 +30,7 @@ This skill drives the **migration workflow**: BPA data, CAM/MCP, **one pattern p
 
 **Starter prompts (copy-paste):**
 
+- *"Review my code for AEMaaCS migration"* — **start here** for a full runbook before changing anything.
 - *"Use the migration skill: **scheduler** only, BPA CSV at `./reports/bpa.csv`, then apply the code-assessment pattern guide before editing."*
 - *"**Replication** only from CAM; list projects first, I'll pick one."*
 - *"**Manual:** **event listener** migration for `.../Listener.java` — read the code-assessment pattern guide first."*
@@ -231,6 +233,64 @@ Do **not** duplicate the pattern table here. Use **`{code-assessment}/SKILL.md` 
 
 ## Workflow
 
+### Step 0: Migration runbook (review / scan entry point)
+
+When the user opens with a **broad review/scan** request — *"review my code for AEMaaCS migration"*, *"scan my project for AEM migration"*, or similar — and does **not** name a single pattern, generate a **read-only migration runbook** before any apply work.
+
+The runbook covers **every pattern the migration skill can address**. Each pattern declares a **detection strategy** — CSV-eligible patterns run the priority cascade; the others keep their existing discovery behaviour:
+
+| Pattern(s) | Strategy | How it's detected |
+|---|---|---|
+| `scheduler`, `resourceChangeListener`, `event-migration`, `assetApi` | `cascade` | BPA/CAM → CSV → analyzer → LLM scan (priority list) |
+| `replication` | `cascade` | analyzer → LLM scan (no BPA/CSV subtype mapping) |
+| `htlLint` | `html-scan` | heuristic regex scan of `.html` (pure Node — no `rg` binary needed) |
+| `osgiConfig` | `config-scan` | heuristic scan of OSGi config files for secret-looking keys / `$[secret:]`/`$[env:]` placeholders — **key names + locations only, never secret values** |
+| `lui`, `cdw`, `templateModernization` | BPA `cascade` → `content-scan` fallback | When a BPA CSV/CAM source is present, these come from BPA (subtypes `custom.classic.widget`; `legacy.dialog.classic`/`.coral2`; `legacy.static.template` + `custom.static.template`). With no BPA source, a heuristic `.content.xml` scan is the fallback. Sample prompts route to **Branch D** (legacy-ui) / **Branch C** (templates), not code-assessment |
+
+`htlLint`, `osgiConfig`, and the content-scan **fallback** for `lui`/`cdw`/`templateModernization` are **heuristic** (tagged `confidence: heuristic` in the cache) — candidate matches, not compiler-validated. BPA-sourced `lui`/`cdw`/`templateModernization`/`replication` findings are authoritative. Out of scope: `inject-in-sling-model` and `outdated-dependencies` (those belong to code-assessment's own runbook, not migration).
+
+**BPA is the source of truth when a report is available.** `lui`/`cdw`/`templateModernization`/`replication` are read from the BPA CSV/CAM (the parser now extracts these subtypes and excludes `_COUNT_*`/`_STAT` summary rows), so the runbook counts match your BPA report's LUI-dialog / CDW / static-template / REP tallies. `lui` keeps only the dialog sub-types (`legacy.custom.component` → create-component; `legacy.static.template` is counted under `templateModernization`). The `.content.xml` scan is only the fallback when no BPA source is present — and it can **undercount** relative to BPA when the flagged legacy nodes live in packages (e.g. acs-commons) not in the project source. `replication`: BPA `replication.agent` findings when a report is present, else the analyzer detects `Replicator` usage from source.
+
+The script handles every deterministic strategy (`cascade` tiers 1–3, `html-scan`, `config-scan`); the agent handles only the LLM-scan tier for `cascade` patterns nothing else could scan.
+
+```javascript
+const { generateRunbook, renderRunbook, writeRunbookCache } = require('./scripts/runbook-generator.js');
+
+const result = await generateRunbook({
+  workspaceRoot: '<IDE workspace root>',     // analyzer + html-scan + config-scan
+  bpaFilePath: '<csv path or undefined>',     // cascade tier 2
+  collectionsDir: './unified-collections',
+  projectId, mcpFetcher,                      // cascade tier 1 (MCP), when configured
+  outputPath: './migration-runbook.md',
+});
+// result.needsLlmScan → cascade patterns no deterministic source could scan
+```
+
+**Tier 4 — LLM scan (last resort).** If `result.needsLlmScan` is non-empty (no BPA source **and** the analyzer could not run — e.g. no JDK), the agent scans those patterns itself: read each pattern guide's detection hints under `{code-assessment}/<pattern>/`, locate matches **inside the IDE workspace** (see **Workspace scope**). For **each** pattern the agent scans, update `result.gathered` so the re-render and cache stay consistent:
+
+- Build display findings in the `{ location, detail, severity }` shape and assign them to `result.gathered.findingsByPattern[<pattern>]`.
+- Build raw findings in the canonical `{ pattern, file, line, snippet }` shape and assign them to `result.gathered.rawFindingsByPattern[<pattern>]` (use `null` for `line`/`snippet` when a match can't be pinned to a line).
+- Set `result.gathered.sourceByPattern[<pattern>] = 'llm'`.
+- Remove the pattern from `result.gathered.needsLlmScan` (otherwise the re-render still shows it as _needs LLM scan_ **and** a findings table).
+
+Then re-render with `renderRunbook(result.gathered, ctx)`, overwrite the runbook file, and call `writeRunbookCache(result.gathered, ctx, result.cachePath)` so the sidecar cache reflects the merged findings.
+
+After writing the runbook, tell the user:
+
+> "I've written `migration-runbook.md` — **{totalFindings} findings** across **{N} patterns** (detected via {sources}). It's read-only. Reply with the pattern you want to migrate first (e.g. `scheduler`) and I'll reuse the findings already discovered for that pattern — no re-scan needed — and run the one-pattern-per-session apply workflow."
+
+`generateRunbook()` also writes a sidecar findings cache (default `./migration-runbook.json`, see `result.cachePath`) alongside the markdown, holding each pattern's raw findings and their source. **Step 3** below reads this cache first before falling back to a live BPA/analyzer/scan lookup.
+
+**Skip Step 0** when the user names a **specific pattern** up front (e.g. *"fix scheduler findings"*, *"fix htlLint in ui.apps"*, *"scan my config files for Cloud Manager secrets"*) — go straight to the relevant apply flow. Step 0 is only for a **broad review/scan** request with no single pattern named.
+
+**CLI (development):**
+
+```bash
+node scripts/runbook-generator.js <workspaceRoot> [--csv ./reports/bpa.csv] [--out ./migration-runbook.md]
+```
+
+---
+
 ### One pattern per session
 
 If the user asks to fix everything or BPA mixes patterns, **ask which pattern first**. Prefer one commit per pattern session.
@@ -251,7 +311,38 @@ If the id is missing from the code-assessment catalog ([`{code-assessment}/refer
 
 ### Step 3: Targets
 
-**For BPA patterns** (`scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `lui`, `cdw`): Run **`getBpaFindings`** (with `bpaFilePath` when provided). Internally: cache → CSV → MCP → manual **only when each step is applicable and succeeds**; if MCP fails, obey **MCP errors and fallback** (stop; no silent chain). For MCP details, [references/cam-mcp.md](references/cam-mcp.md).
+**Check for a cached runbook first.** If `./migration-runbook.json` (or the path passed to
+`generateRunbook`'s `cachePath` option) exists and its `findingsByPattern[<active pattern>]` array
+is non-empty, reuse it instead of re-deriving findings:
+
+- Load `{ generatedAt, workspaceRoot, sourceByPattern, findingsByPattern }` from the cache file.
+- Take `allFindings = findingsByPattern[<active pattern>]`. Each entry is
+  `{ pattern, file, line, snippet }` — `file` is **relative to the cache's `workspaceRoot`**
+  (resolve with `path.join(workspaceRoot, file)`); `line`/`snippet` are `null` when the pattern's
+  source was `mcp`/`csv` (BPA-sourced findings never carry line/snippet; only the `analyzer`,
+  `html-scan`, and `config-scan` sources do). `osgiConfig` findings additionally carry a `kind`
+  and, for `already-placeholdered` rows, `informational: true` — skip those when building the fix
+  work list.
+- Slice the batch with the same paginate helper used elsewhere in this file:
+  ```javascript
+  const { paginate } = require('./scripts/unified-collection-reader.js');
+  const { targets, paging } = paginate(allFindings, { offset, limit: 5 });
+  ```
+  This keeps the exact same `{ targets, paging }` envelope, batch-of-5 default, and
+  `paging.nextOffset` semantics as the live `getBpaFindings` path below — only the data source
+  differs. Do not bypass the batch-of-5 discipline just because the whole array is already in
+  memory.
+- Tell the user: *"Reusing N findings for `<pattern>` from the existing runbook (generated at
+  `<generatedAt>`)."*
+- Hand the batch to code-assessment as a **`with_findings (pre-resolved)`** invocation (see
+  `{code-assessment}/references/runbook.md`). Findings with `line`/`snippet` already populated skip
+  the analyzer re-run entirely; findings with only `file` populated (BPA-sourced) still trigger one
+  `analyze.sh --files <paths>` call inside code-assessment to resolve `line`/`snippet` before the
+  edit plan is built.
+- If the cache is missing, has no entries for the active pattern, or the user explicitly says
+  "re-scan" / "refresh", fall through to the live flow below unchanged.
+
+**For BPA patterns** (`scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `lui`, `cdw`) **when no usable cache exists**: Run **`getBpaFindings`** (with `bpaFilePath` when provided). Internally: cache → CSV → MCP → manual **only when each step is applicable and succeeds**; if MCP fails, obey **MCP errors and fallback** (stop; no silent chain). For MCP details, [references/cam-mcp.md](references/cam-mcp.md).
 
 For `lui` findings, the `identifier` in each target is the **JCR component path** (e.g. `/apps/myapp/components/content/mycomp`) — not a Java class name. Resolve it to the filesystem path using the [JCR → filesystem mapping](references/legacy-ui/dialog/context.md#jcr-path--filesystem-path) before opening files. **Note:** `luiCoral2` is not a standalone BPA pattern id — Coral 2 dialogs appear as the `legacy.dialog.coral2` sub-type within `lui` results. Do not call `getBpaFindings('luiCoral2', …)` independently; call `getBpaFindings('lui', …)` and filter by sub-type inside Branch D.
 
@@ -259,7 +350,17 @@ For `lui` findings, the `identifier` in each target is the **JCR component path*
 envelope. The agent processes that batch only; it does **not** request the next batch until
 the user says to continue. See **Batched processing (batch size 5)** below.
 
-**For `htlLint`**: Skip BPA/CSV/MCP — targets come from proactive `rg` discovery. See **htlLint flow** below.
+**For `htlLint`**: Skip BPA/CSV/MCP. If a cached runbook entry already has `htlLint` findings
+(they carry `"confidence": "heuristic"` — regex matches, not compiler-validated), reuse them per
+the cache-first rule above, but **re-open and re-confirm each hit** against the patterns in
+`{code-assessment}/references/data-sly-test-redundant-constant.md` before editing. If there is no
+cache, targets come from proactive `rg` discovery. See **htlLint flow** below.
+
+**For `osgiConfig`** (OSGi → Cloud Manager): the cache holds heuristic, review-only findings
+(`"confidence": "heuristic"`, key names + locations only — **no secret values**). Use them as a
+starting checklist, then follow **Branch A** and [references/osgi-cfg-json-cloud-manager.md](references/osgi-cfg-json-cloud-manager.md)
+to classify each value (real secret? Adobe-owned PID → `needs_user_review`) — never trust the
+heuristic `plaintext-secret` label without confirming.
 
 ### Step 4: Read before edits
 

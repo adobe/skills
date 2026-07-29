@@ -33,6 +33,24 @@ const CSV_SUBTYPE_TO_PATTERN = {
 // Known scheduler identifier
 const SCHEDULER_IDENTIFIER = "org.apache.sling.commons.scheduler";
 
+// Content/legacy-UI subtypes whose findings are keyed by a JCR node path
+// (`identifier`), not a Java class name. Extracted generically into the
+// unified collection so the migration runbook + Branch C/D can consume them.
+//   cdw                    → custom.classic.widget
+//   lui (dialogs + more)   → legacy.dialog.classic / .coral2 / .custom.component / .static.template
+//   template modernization → legacy.static.template / custom.static.template
+//   replication            → forward.replication / reverse.replication
+const CONTENT_SUBTYPES = [
+  'custom.classic.widget',
+  'legacy.dialog.classic',
+  'legacy.dialog.coral2',
+  'legacy.custom.component',
+  'legacy.static.template',
+  'custom.static.template',
+  'forward.replication',
+  'reverse.replication',
+];
+
 /**
  * Parse command line arguments
  */
@@ -199,6 +217,29 @@ function processSchedulerFindings(findings) {
     subtype: PATTERN_TO_SUBTYPE.scheduler,
     identifiers: identifiers
   };
+}
+
+/**
+ * Process a content/legacy-UI subtype whose findings are keyed by JCR path.
+ * Groups by the `identifier` (node path); each finding contributes one entry
+ * (so the count matches the BPA report). Summary rows (code starting with `_`,
+ * e.g. `_COUNT_REP`, `_STAT`) are excluded — they share real subtype strings
+ * and would otherwise inflate counts.
+ *
+ * Returns { subtype, identifiers } where `identifiers` is keyed by the RAW JCR
+ * path (not MongoDB-safed): these paths contain underscores (`design_dialog`,
+ * `_cq_dialog`) that a dot→underscore round-trip would corrupt.
+ */
+function processContentSubtypeFindings(findings, subtype) {
+  const matched = findings.filter(f =>
+    f.subtype === subtype && !String(f.code || '').startsWith('_')
+  );
+  const identifiers = {};
+  matched.forEach(f => {
+    const key = f.identifier || f.context || subtype;
+    (identifiers[key] = identifiers[key] || []).push(f.context || f.message || key);
+  });
+  return { subtype, identifiers };
 }
 
 /**
@@ -487,7 +528,23 @@ function createUnifiedCollection(bpaData, outputDir) {
     
     console.log(`Found ${Object.values(eventHandlerCollection.identifiers).flat().length} event handler classes`);
   }
-  
+
+  // Process content / legacy-UI subtypes (cdw, lui, templates, replication).
+  // Keys are RAW JCR paths (not MongoDB-safed) to avoid corrupting underscores.
+  for (const subtype of CONTENT_SUBTYPES) {
+    const coll = processContentSubtypeFindings(findings, subtype);
+    const ids = Object.keys(coll.identifiers);
+    if (ids.length === 0) continue;
+    const mongoSafeSubtype = toMongoSafeFieldName(subtype);
+    subtypes[mongoSafeSubtype] = {};
+    ids.forEach(identifier => {
+      const values = coll.identifiers[identifier];
+      subtypes[mongoSafeSubtype][identifier] = values;
+      totalFindings += values.length;
+    });
+    console.log(`Found ${Object.values(coll.identifiers).flat().length} ${subtype} findings`);
+  }
+
   // Create unified collection structure with metadata
   const subtypeKeys = Object.keys(subtypes);
   const unifiedCollection = {
