@@ -23,9 +23,8 @@ critique, and it does not modify the live site. It writes only under
 - `--cap <N>` — optional. Override the default 5-page cap. The cap
   is intentionally small — a 5-page sample (home + four IA
   pillars/templates) is enough for cross-page brand aggregation,
-  system-component detection, and the brand-review HTML to do
-  useful work. Lift the cap with `--cap 25` (the previous default)
-  or higher when a deeper crawl is genuinely needed.
+  system-component detection, and the brand-review HTML; lift it
+  (e.g. `--cap 25`) when a deeper crawl is genuinely needed.
 - `--all` — optional. Lift the cap entirely; extract every
   discovered page after junk filtering. Equivalent to `--cap 0`.
   Use when the user spontaneously asks for a full crawl.
@@ -42,12 +41,10 @@ critique, and it does not modify the live site. It writes only under
 - `--no-consent-dismiss` — optional. Skip the pre-flight consent /
   cookie banner dismissal (see `reference/playwright-recipe.md`
   § Pre-flight: consent dismissal). Use when the redesign scope
-  explicitly includes the consent surface, or when the
-  dismissal's side-effects (script activation that wouldn't
-  otherwise run) need to be avoided. Default behaviour is to
-  dismiss; the contract preserves screenshots, voice
-  aggregation, and per-section style from being polluted by
-  the banner.
+  includes the consent surface or the dismissal's side-effects
+  (script activation that wouldn't otherwise run) must be
+  avoided. Default is to dismiss, keeping screenshots, voice
+  aggregation, and per-section style unpolluted by the banner.
 - `--concurrency <n>` — optional. Parallel browser contexts for the
   per-page capture loop. Default 4; sane range 4–8. See
   § Concurrency.
@@ -80,21 +77,18 @@ Additional checks for this sub-command:
    (which resolves a global install) but the recipe and
    `scripts/crawl.mjs` do `import { chromium } from 'playwright'`,
    and ESM module resolution does **not** honour a global install or
-   `NODE_PATH`. On a vanilla `aem-boilerplate` target (no
-   `node_modules`) that import throws `ERR_MODULE_NOT_FOUND` even
-   though `npx playwright --version` succeeds. So verify the module is
+   `NODE_PATH` — the import throws `ERR_MODULE_NOT_FOUND` even where
+   `npx playwright --version` succeeds. Verify the module is
    import-resolvable from the project root (probe:
    `node -e "import('playwright').then(()=>process.exit(0))"`); if it
    isn't, run `npm i -D playwright --no-save --legacy-peer-deps` (or
    use the Playwright MCP server) before crawling. The
    `--legacy-peer-deps` flag is required on `aem-boilerplate` targets
-   — its pinned `eslint@8` conflicts with `@babel/eslint-parser@8`'s
-   peer range and a plain `npm i` exits `ERESOLVE` before playwright
-   is even considered (six-site e2e finding). Don't trust the CLI
+   (their pinned `eslint@8` makes a plain `npm i` exit `ERESOLVE`
+   before playwright is even considered). Don't trust the CLI
    probe alone.
 
-   **`--no-save` installs are ephemeral (stardust-style e2e
-   finding).** Any later real `npm i` (e.g. a setup step
+   **`--no-save` installs are ephemeral.** Any later real `npm i` (e.g. a setup step
    adding a devDependency) prunes non-manifest packages, silently
    removing playwright mid-pipeline. Every downstream skill that
    renders (prototype, migrate, deploy, diff) must re-run the
@@ -139,12 +133,10 @@ Additional checks for this sub-command:
 4. **Bot-management probe.** When the first navigation in the run
    returns `ERR_HTTP2_PROTOCOL_ERROR` or `ERR_QUIC_PROTOCOL_ERROR`,
    or hangs through the entire hard-cap on what should be a fast
-   origin, **do not retry headless**. Switch to
-   `headless: false, channel: 'chrome'` per
-   `reference/playwright-recipe.md` § Bot-management fallback and
-   record the switch in `_crawl-log.json#discovery.fetchTechnique`
-   so re-runs start in headed mode without rediscovering the
-   issue.
+   origin, **do not retry headless** — switch to headed Chrome per
+   § Failure modes → Bot-management block and record the switch in
+   `_crawl-log.json#discovery.fetchTechnique` so re-runs start in
+   headed mode without rediscovering the issue.
 
 ## Procedure
 
@@ -167,10 +159,8 @@ Discover the page inventory before crawling. Procedure in
 6. Apply the cap (default 5, or `--cap`, or `--all` for no cap)
    and **proceed silently**. Print an informational summary of
    what was kept and what was cut — but do **not** gate on user
-   confirmation. The default cap is small enough that the common
-   case is "extract 5 pages and move on"; pausing for a yes/no
-   reply on every run is friction without value. Users who want
-   different scope set it spontaneously at command time:
+   confirmation. Users who want different scope set it
+   spontaneously at command time:
 
    ```
    $stardust extract https://example.com              # default 5 pages
@@ -217,10 +207,7 @@ Discover the page inventory before crawling. Procedure in
 
 For each page in the cap-respecting list, render with Playwright
 following `reference/playwright-recipe.md`. Captures run
-**concurrently**: the page queue is drained by `--concurrency`
-parallel browser contexts (default 4, sane range 4–8), each applying
-the full recipe independently; media `resolves` / HEAD checks are
-batched with `Promise.all`. See § Concurrency. The recipe is
+**concurrently** per § Concurrency. The recipe is
 mandatory per page — in particular, do not skip the wait, scroll, or
 capture-list steps:
 
@@ -240,8 +227,8 @@ Capture per page (full schema in `reference/current-state-schema.md`):
 - **Hero headline + lede (resolved)** — `heroHeadline` / `heroLede`
   picked by font-size × hero-region with a junk/hidden-state filter and
   a clean meta-description fallback (per `reference/playwright-recipe.md`
-  § Capture list 5-bis). Required for JS-rendered enterprise CMSes,
-  where document-order headings surface modal / promo / count junk
+  § Capture list 5-bis). Required for JS-rendered sites whose
+  document-order headings surface modal / promo / count junk
   instead of the real tagline.
 - Content: visible text per section (full innerText, **no
   truncation** per `reference/playwright-recipe.md` § Capture
@@ -258,9 +245,8 @@ Capture per page (full schema in `reference/current-state-schema.md`):
   UA + Referer), intrinsic dimensions, inline SVG count, video/iframe
   presence, `cssBackgrounds[]` (including pseudo-element `::before`/
   `::after` walks per § Capture list 11) so `background-image`
-  heroes and motifs do not silently disappear from extract — and so
-  enterprise-CDN images that 404 are flagged before migrate ships
-  `about:error`.
+  heroes and motifs do not silently disappear and 404ing CDN
+  images are flagged before migrate ships `about:error`.
 - Font files captured via network-intercept (per § Capture list
   16): every `woff2`/`woff`/`ttf`/`otf` response saved under
   `assets/fonts/` and recorded in `_brand-extraction.json#type.files[]`
@@ -372,16 +358,15 @@ extracted pages** to avoid the home-page bias documented in
   `direct` later but extracted now so the network round-trip is over.
 - **Hero image** — elevate the home page's primary visual
   asset to `voice.heroImage` (per `reference/brand-surface.md`
-  § heroImage resolution). Without this elevation, downstream
-  prototype reasons over a 16-image list and frequently picks
-  the `og:image` instead of the live hero.
+  § heroImage resolution), so downstream prototype picks the
+  live hero rather than the `og:image` from the raw media list.
 - **Hero medium (signature)** — when the hero/first viewport carries a
   *moving* asset (background `<video>` / HLS / canvas / WebGL /
   Lottie / animated SVG / scroll-driven motion), elevate it to
   `voice.heroMedium` (per `reference/brand-surface.md` § heroMedium
-  resolution). This is the page's **signature**; without elevation it
-  is lost in the raw media list and downstream prototype flattens it
-  to a static hero. A non-null `heroMedium` triggers signature
+  resolution). This is the page's **signature**; without elevation
+  downstream prototype flattens it to a static hero. A non-null
+  `heroMedium` triggers signature
   preservation (`skills/stardust/reference/intent-dimensions.md`
   § 8b) at prototype time.
 - **Icon font** — when detected per `reference/playwright-recipe.md`
@@ -440,12 +425,11 @@ the current-state brand review per
 `reference/brand-review-template.md`.
 
 The brand-review HTML is the **first surface a human can eyeball** to
-verify the extraction before committing to a redesign direction.
-Misreads in the JSON (a wrong dominant radius, a missing system
-component, a single-page palette bias) are obvious to the eye in five
-seconds and invisible in JSON until someone notices. Putting the
-review at the end of `extract` catches misreads while they are still
-cheap to fix — re-extract is fast; re-direct + re-prototype is not.
+verify the extraction before committing to a redesign direction —
+misreads that are invisible in JSON (a wrong dominant radius, a
+missing system component, a single-page palette bias) are obvious to
+the eye while they are still cheap to fix (re-extract is fast;
+re-direct + re-prototype is not).
 
 The template is mandatory. In particular:
 
@@ -482,21 +466,15 @@ After all Phase 2-5 writes succeed:
    Extracted https://example.com (5/38 pages, sitemap.xml)
 
    stardust/current/
-     PRODUCT.md            (register: brand, inferred from landing)
-     DESIGN.md             (5 colors, 2 type families, 3 motifs)
-     brand-review.html     (4 tensions surfaced)
-     pages/                (5 files)
-     assets/logo.svg       (extracted from inline SVG)
-     _brand-extraction.json
-     _crawl-log.json
+     PRODUCT.md, DESIGN.md, DESIGN.json, brand-review.html,
+     pages/ (5), assets/logo.svg, _brand-extraction.json, _crawl-log.json
 
    Per-page evidence:
      slug         live  waitMode               waitMs   status  media(img/bg)
      /            yes   medium                 2380     200     38/6
-     /about       yes   medium                 2110     200     12/2
      /pricing     yes   medium                 1940     200     9/0   ⚠ low-media
-     /products    yes   medium                 2640     200     21/4
      /contact     yes   domcontentloaded(fb)   8000     200     3/0
+     ...
 
    Wait summary: 4 resolved at medium (avg 2.4s), 1 fallback (timed out at 8s)
      → /contact may be under-captured; consider --refresh
@@ -506,11 +484,9 @@ After all Phase 2-5 writes succeed:
    Open stardust/current/brand-review.html to verify the extraction
    before running $stardust direct.
 
-   Coverage note: extracted 5 of 38 discovered pages. The brand
-   surface and brand-review use cross-page aggregation, so 5 pages
-   covering distinct templates is usually sufficient. To extract
-   more, re-run with --cap <N> (e.g. --cap 25) or list specific
-   slugs with --pages.
+   Coverage note: extracted 5 of 38 discovered pages; 5 pages
+   covering distinct templates is usually sufficient for the
+   cross-page brand surface. Widen with --cap <N> or --pages.
 
    Next: $stardust direct  (resolve a redesign direction)
    ```
@@ -518,13 +494,10 @@ After all Phase 2-5 writes succeed:
    The **per-page evidence table** is mandatory. The `live` column
    is `yes` when `_provenance.renderedBy === "playwright"` AND
    `waitMs > 0`, else `no`. A `no` row means the page record was
-   not produced by a live Playwright render — this should never
-   happen given the write-time guard, but the visible column is
-   the defense-in-depth signal that catches the failure mode
-   when it does (the 2026-04-30 lovesac synthesis bug went four
-   phases deep before being caught because no report column
-   surfaced the missing provenance). A maintainer scanning the
-   summary should see `yes` on every row.
+   not produced by a live Playwright render — the visible column
+   is the defense-in-depth signal for the failure mode the
+   write-time guard exists to prevent (2026-04-30 lovesac). A
+   maintainer scanning the summary should see `yes` on every row.
 
    Compute the wait summary by grouping each page's `_provenance.waitMode`
    and averaging `waitMs`. List slugs whose `waitMode` ends in
@@ -538,17 +511,11 @@ After all Phase 2-5 writes succeed:
    product template) yet has `cssBackgrounds: []` **and** few large
    rasters (no `media.imgs` entry with intrinsic width ≥ 600). That
    combination is the signature of a silently-failed background /
-   lazy-media walk — `getComputedStyle(el).backgroundImage` read
-   before the element was styled, a `::before`/`::after` host missed,
-   or product imagery gated behind interaction the reveal pass did not
-   trigger. The recipe already specs the full background walk
-   (`playwright-recipe.md` § Capture list 11, hardened after the
-   2026-05-04 ups.com dropped-hero failure), but a thorough spec that
-   silently produces nothing still ships an image-less capture: the
-   2026-06-26 knack.com run returned `cssBackgrounds: []` on every
-   page and lost all product screenshots, hero art, and customer
-   logos, and nothing surfaced it because no column reported media
-   coverage. A flagged row is the cue to re-run that page with
+   lazy-media walk — a capture pass that specs the full background
+   walk (`playwright-recipe.md` § Capture list 11) yet silently
+   produces nothing still ships an image-less capture (2026-06-26
+   knack.com: `cssBackgrounds: []` on every page, all product
+   imagery lost). A flagged row is the cue to re-run that page with
    `--refresh` (and, if it persists, to fall back to headed Chrome per
    § Bot-management fallback). A maintainer scanning the summary should
    treat a `brand`-register site with all-zero `bg` counts as suspect,
@@ -556,62 +523,28 @@ After all Phase 2-5 writes succeed:
 
 ## Cross-site brand sources
 
-Two flags widen extraction beyond the primary origin. Both are
-opt-in; without them this section is inert.
+Two flags widen extraction beyond the primary origin — **read
+`reference/cross-site-sources.md` in full whenever either flag is
+present**. Both are opt-in; without them this section is inert.
 
-### `--brand-source <url>` (repeatable) — sibling enrichment
+Core contract (merge rules and capture shapes in the reference):
 
-An additional **same-brand** origin whose brand surface enriches the
-primary extraction. Per source: shallow capture only — home page plus
-up to 2 nav-linked pages, full recipe per page (Phase 2 rules apply,
-provenance contract included). Captured records land under
-`stardust/current/brand-sources/<host>/` (own `pages/` +
-`assets/screenshots/`, same page-JSON shape); they are **evidence,
-not inventory** — they never enter `state.json.pages[]`.
-
-Their palette / type / motif / voice / photography evidence
-**aggregates** into `_brand-extraction.json` with per-origin
-provenance (`origins[]` per `reference/brand-surface.md` § Origins).
-Two rules govern the merge:
-
-- **Conflicts resolve toward the primary.** Where primary and
-  brand-source evidence disagree for the same slot (a palette role,
-  the heading family, the signature radius), the primary origin's
-  value wins; the losing value is noted in `_provenance.notes`.
-- **Brand-source evidence widens the surface.** A motif or
-  photography treatment the primary site underuses enters as an
-  *additional* entry, attributed in `origins[].contributedSignals[]`
-  — so downstream `direct` / `uplift` can amplify a trait captured
-  on a sibling property as **captured** evidence with an origin
-  citation, never as invention.
-
-Brand-source pages join palette/type/motif/voice aggregation but are
-**excluded** from § System components, `voiceTable`, and cross-promo
-detection — those describe the primary site's IA.
-
-### `--design-source <url>` — design donor
-
-Formalizes the proven canon.com pattern: a golden design source is
-extracted separately and its design system becomes the fixed
-**target**, while the primary origin supplies content.
-
-- Capture the donor to `stardust/canon-source/` — same page-JSON and
-  brand-extraction shapes as `stardust/current/`, rooted there (own
-  `pages/`, `assets/`, `_brand-extraction.json`, `_crawl-log.json`).
-  The default cap (5) applies unless the user widens it.
-- Derive `stardust/canon-source/DESIGN.md` + `DESIGN.json` from the
-  donor's brand surface — **descriptive**, same authoring rules as
-  Phase 4.
-- Stamp `state.json.designSource = { "url", "capturedAt", "path":
-  "stardust/canon-source/" }`.
-
-`stardust:direct` reads this stamp and pins the donor system as the
-target: Mode A's brand-faithful pins transfer to the **donor**
-surface while content stays with the primary origin — see
-`skills/direct/SKILL.md` § Mode A. The donor records
-`role: "design-source"` in its own
-`canon-source/_brand-extraction.json#origins[]`; donor evidence never
-aggregates into the primary `_brand-extraction.json`.
+- `--brand-source <url>` (repeatable) — a **same-brand** sibling
+  gets a shallow capture (home + ≤2 nav-linked pages, full recipe +
+  provenance) under `stardust/current/brand-sources/<host>/`.
+  Evidence, not inventory: never enters `state.json.pages[]`.
+  Its palette/type/motif/voice evidence aggregates into
+  `_brand-extraction.json` with per-origin attribution
+  (`origins[]`); conflicts resolve toward the primary; widened
+  traits are attributed, never invented. Excluded from system
+  components, `voiceTable`, and cross-promo detection.
+- `--design-source <url>` — a design donor is captured to
+  `stardust/canon-source/` (same shapes as `current/`, default cap),
+  its descriptive DESIGN.md/json derived per Phase 4 rules, and
+  `state.json.designSource = { url, capturedAt, path:
+  "stardust/canon-source/" }` stamped. `direct` pins the donor
+  system as the target (its § Mode A); donor evidence never
+  aggregates into the primary `_brand-extraction.json`.
 
 ## Sibling-site discovery
 
@@ -721,194 +654,44 @@ this in the user report; do not engineer around it.
   `_crawl-log.json#crawl.failures[]`) and continue. **Synthesizing
   a page record from `_brand-extraction.json` plus URL patterns
   plus captured photos at "semantically matching" template
-  positions is forbidden.** This was the 2026-04-30 lovesac.com
-  failure — 20 of 25 pages synthesized this way and the cascade
-  ran four phases on the synthesized data before the gap was
-  caught by a meta-question. The synthesis shortcut produces
-  output indistinguishable from a successful run and propagates
-  fabricated content through every downstream phase.
+  positions is forbidden.** The shortcut produces output
+  indistinguishable from a successful run and propagates
+  fabricated content through every downstream phase
+  (2026-04-30 lovesac.com: 20 of 25 pages synthesized, caught
+  four phases later).
 
 ## Prep mode (--prep)
 
 When invoked with `--prep`, extract runs an extended pass that
-prepares the inventory for migration. Discovery-mode runs (without
-`--prep`) are unchanged: small cap, no typing, no module detection,
-presales-friendly. `--prep` is the gesture that says "the user is
-committing to migrate; build the data structure migrate consumes."
-
-`--prep` adds five things on top of the standard procedure:
-
-### 1. Lift the cap
-
-`--prep` implies `--all`. Migration coverage requires the full
-inventory — the small discovery cap (5 pages) is insufficient. The
-cap-respecting selection logic from `reference/ia-extraction.md`
-§ Page selection still applies for ordering and junk-filtering;
-it just doesn't truncate.
-
-#### Sub-agent prompt requirements (when delegating)
-
-When `--prep` is heavy enough that the agent delegates extraction
-to a sub-agent (a presales-shaped pattern when the inventory is
-large), the sub-agent prompt **must**:
-
-1. **Forbid synthesis by name.** The literal sentence
-   *"do not synthesize a page record from `_brand-extraction.json`
-   + URL patterns + captured photos; every page must be a live
-   Playwright render"* must appear in the prompt. The earlier
-   wording *"must actually invoke Playwright per page"* was
-   satisfiable in spirit by synthesis-with-photo-reuse and
-   produced the lovesac failure. Naming the shortcut explicitly
-   closes that loophole.
-2. **Require a per-page evidence table in the return.** Columns:
-   `slug | waitMode | waitMs | fetchedAt | httpStatus`. The
-   parent agent reads this table on completion and aborts if
-   any row is missing or shows `waitMs: 0`.
-3. **Require the wait-summary line in the return**, formatted
-   identically to Phase 6's wait summary, so the parent can
-   surface it in the user-facing report without reformatting.
-
-These three are mandatory; missing any of them in the sub-agent
-prompt is itself a recipe violation. The cascade-level guard in
-`prepare-migration` validates the resulting per-page JSONs via
-`validateProvenance()` regardless — but a well-formed sub-agent
-return makes the failure cheaper to diagnose.
-
-### 2. Page typing
-
-For each extracted page, infer the `type` field from URL pattern
-and content shape (LLM judgment). Catalog from
-`skills/stardust/reference/state-machine.md` § Page types:
-`landing | article | listing | program | form | static | unique`.
-
-Write the inferred type to `state.json.pages[].type`. The user
-confirms or refines during `direct --prep`. Discovery-mode runs
-leave `type` as `null`.
-
-### 3. Module candidate detection
-
-After Phase 3 (brand-surface extraction), scan extracted pages for
-**recurring structural patterns**. A pattern that appears in N+
-pages with similar shape (same sequence of elements, same
-`data-section` / `data-purpose`, similar text shape) is surfaced
-as a module candidate.
-
-#### Signal-source priority
-
-Detection consumes per-page captured fields in this priority
-order. Each higher signal is **weighted more heavily** in the
-match-score; lower signals are tie-breakers and corroboration,
-not primary evidence. The priority exists because higher-up
-fields are explicitly extracted and structured (no parsing
-ambiguity), while the bottom of the list (`landmarks[].innerText`
-substring search) is fragile against capture variations and was
-the source of the 2026-04-29 sliccy.com under-detection (0
-hits for `pre-footer-shell`, 1 of 2 hits for `install-tile` —
-both modules genuinely present on every page, both invisible
-because the substrings being searched lived past the truncation
-boundary that has since been removed).
-
-1. **`pages/<slug>.json#headings[]`** — cross-page repeats of
-   the same heading text in the same level. Highest signal:
-   structured, explicit, captured in full regardless of body
-   length.
-2. **`pages/<slug>.json#ctas[]` labels** — cross-page repeats
-   of the same CTA label appearing on similar surfaces.
-3. **`pages/<slug>.json#media.cssBackgrounds[]` URLs** — same
-   asset URL on multiple pages is a strong system-component
-   signal (already specced as a system-component candidate in
-   `reference/brand-surface.md` § Cross-page CSS-background
-   reuse; module detection consumes the same signal at finer
-   granularity).
-4. **`pages/<slug>.json#forms[]` actions** — cross-page repeats
-   of the same form `action` URL. Newsletter / contact / search
-   forms are the typical hits.
-5. **`pages/<slug>.json#components.componentsByLandmark`** when
-   present (per future `current-state-schema.md` extension):
-   per-landmark counts of cards / grids / etc.
-6. **Substring search in `landmarks[].innerText`** — lowest
-   signal. Use only as corroboration once a candidate has
-   already passed the higher-signal checks; never as the
-   primary detector.
-
-A candidate that fires on signals 1 + 2 above the threshold is
-high-confidence; a candidate that fires only on 6 should be
-treated as speculative and surfaced as such for the user to
-confirm in `direct --prep`.
-
-Candidate output is a draft entry under
-`DESIGN.json.extensions.modules[]`:
-
-```json
-{
-  "id": "candidate-<short-hash>",
-  "slots": [
-    { "name": "<inferred>", "type": "text|link|image|...", "required": false }
-  ],
-  "instances": [
-    { "slug": "home",   "selector": "..." },
-    { "slug": "donate", "selector": "..." }
-  ],
-  "status": "candidate"
-}
-```
-
-The `status: "candidate"` flag distinguishes draft entries from
-confirmed modules. `direct --prep` is where the user names them
-and promotes (or prunes).
-
-### 4. Typed content slots
-
-Per-page JSON (`current/pages/<slug>.json`) gains a `slots`
-section that identifies content slots per page-type:
-
-- `article` pages: `headline`, `deck`, `byline`, `meta`,
-  `lead-image`, `body`, `pullquotes[]`, `related[]`
-- `listing` pages: `index-headline`, `filter-controls`,
-  `card-grid` with typed sub-slots per card
-- `program` pages: `program-headline`, `summary`,
-  `feature-grid`, `cta-band`
-- `landing`, `form`, `static` — typed slots inferred per
-  content shape
-
-Schema additions live in `reference/current-state-schema.md`
-§ Typed slots (extend that doc separately).
-
-### 5. Prep summary
-
-Replace Phase 6's standard report with the prep summary format:
-
-```
-extract --prep complete
-=======================
-
-Inventory:    127 pages crawled (5 prior, 122 new)
-Provenance:   127/127 live (every page has Playwright evidence)
-Page types:   landing 1 · article 84 · listing 6 · program 12 · form 3 · static 18 · unique 3
-              (LLM-inferred; refine in direct --prep)
-
-Module candidates: 8
-  hotline-211         5 instances  (home, get-help, donate, news, programs)
-  donate-band         12 instances (home, donate, news, all article footers)
-  story-card          7 instances  (home, news, programs)
-  ...
-
-Typed slots:  filled per page-type (see current/pages/<slug>.json § slots)
-
-Next: $stardust direct --prep  (confirm types, name modules)
-```
-
-The `Provenance: <live>/<total> live` line is mandatory in
-prep-mode output. When the ratio is anything other than
-`<total>/<total>` the prep run has failed the synthesis guard;
-list the affected slugs as a sub-bullet and treat the prep run
-as incomplete (the cascade-level guard in
-`prepare-migration` SKILL.md surfaces the same check between
-phases).
-
-Default mode (no `--prep`) is unchanged. The flag is intended for
+prepares the inventory for migration — **read
+`reference/prep-mode.md` in full before running any `--prep`
+extraction**. Discovery-mode runs (without `--prep`) are unchanged:
+small cap, no typing, no module detection. The flag is intended for
 the `prepare-migration` orchestrator, though direct invocation is
 supported.
+
+Core contract (procedure, formats, and detection rules in the
+reference):
+
+- `--prep` implies `--all` — migration coverage requires the full
+  junk-filtered inventory, not the discovery cap.
+- Page types (`landing | article | listing | program | form |
+  static | unique`) are LLM-inferred into `state.json.pages[].type`
+  (discovery-mode runs leave `type` null); the user confirms in
+  `direct --prep`.
+- Module candidates (cross-page structural repeats, detected by the
+  signal-source priority in the reference) are drafted under
+  `DESIGN.json.extensions.modules[]` with `status: "candidate"`;
+  per-page JSON gains a typed `slots` section per page-type.
+- The prep summary replaces the Phase 6 report; its
+  `Provenance: <live>/<total> live` line is mandatory, and any
+  ratio short of `<total>/<total>` means the run failed the
+  synthesis guard and is incomplete.
+- When delegating extraction to a sub-agent, the sub-agent prompt
+  **must** forbid synthesis by name and require the per-page
+  evidence table and wait-summary line in its return
+  (`reference/prep-mode.md` § Sub-agent prompt requirements);
+  missing any of the three is a recipe violation.
 
 ## References
 
@@ -917,5 +700,7 @@ supported.
 - `reference/current-state-schema.md` — per-page JSON schema.
 - `reference/brand-surface.md` — consolidated brand-surface schema.
 - `reference/brand-review-template.md` — current-state brand-review HTML contract + Tensions detectors.
+- `reference/prep-mode.md` — full `--prep` procedure (typing, module candidates, typed slots, prep summary, sub-agent requirements).
+- `reference/cross-site-sources.md` — full `--brand-source` / `--design-source` procedure (shallow capture, merge rules, canon-source donor).
 - `skills/stardust/reference/state-machine.md` — state.json contract.
 - `skills/stardust/reference/artifact-map.md` — provenance shape.
