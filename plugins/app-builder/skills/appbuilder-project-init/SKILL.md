@@ -1,11 +1,11 @@
 ---
 name: appbuilder-project-init
-description: Initialize an Adobe App Builder project end-to-end without Developer Console UI clicks. Creates the Console project and workspace, subscribes APIs (including those needing a product profile), maps user intent to the right template, runs non-interactive `aio app init`, and guides post-init customization. Use whenever the user mentions creating an App Builder app, scaffolding a project, `aio app init`, setting up an Experience Cloud extension, adding actions or web assets, creating a Console project or workspace, adding APIs, or bootstrapping App Builder — even if they don't say "App Builder". Also for SPA templates, AEM extensions, API Mesh, Asset Compute workers, and MCP server projects. Also handles debugging init failures — template not found, `aio app init` hangs or times out, Node version mismatches, npm install failures, post-init build errors, `aio login` issues, `aio app run` showing nothing, or `aio console project create` / `workspace create` / `workspace api add` errors.
+description: Initialize or scaffold an Adobe App Builder project end-to-end without Developer Console UI clicks. Creates the Console project and workspace, subscribes APIs, maps user intent to the right template, and runs non-interactive `aio app init`. Use whenever the user mentions creating an App Builder app, scaffolding a project, `aio app init`, setting up an Experience Cloud extension, adding actions or APIs, or bootstrapping App Builder — even if they don't say "App Builder". Also for SPA templates, AEM extensions, API Mesh, Asset Compute workers, and MCP projects. Also scaffolds a Content Hub extension (`aem/assets/contenthub/1`) from scratch — Console setup, file generation, build, dev server, deploy — when the user says "scaffold a Content Hub extension" or names a Content Hub surface (asset details panel, card action, bulk action). Also handles debugging init failures — `aio app init` hangs, Node mismatches, npm failures, `aio login` issues, or `aio console` project/workspace/API errors.
 metadata:
   category: project-initialization
 license: Apache-2.0
 compatibility: Requires aio CLI (Adobe I/O CLI) — install or refresh with `npm install -g @adobe/aio-cli` so the bundled plugins (`aio-cli-plugin-console`, `aio-cli-plugin-app`, etc.) are current. Node.js 18+ (Node 24 supported on Stage runtimes). Bash shell.
-allowed-tools: Bash(aio:*) Bash(npm:*) Bash(node:*) Read Write
+allowed-tools: Bash(aio:*) Bash(npm:*) Bash(node:*) Bash(mkdir:*) Bash(lsof:*) Bash(kill:*) Bash(open:*) Read Write
 ---
 # App Builder Project Initialization
 
@@ -143,6 +143,7 @@ Pick the template that matches the user's intent. When unclear, default to `@ado
 | User wants | Template |
 | --- | --- |
 | SPA with actions + React UI | @adobe/generator-app-excshell |
+| Content Hub extension (asset details panel, card action, bulk action) | Content Hub Scaffolding — see section below |
 | AEM Content Fragment Console extension | @adobe/aem-cf-admin-ui-ext-tpl |
 | AEM React SPA (WKND-based) | @adobe/generator-app-aem-react |
 | Adobe API Mesh (GraphQL) | @adobe/generator-app-api-mesh |
@@ -151,6 +152,14 @@ Pick the template that matches the user's intent. When unclear, default to `@ado
 | Bare / from-scratch project (no pre-scaffolded actions or UI) | init.sh init-bare |
 
 For a headless/backend-only request, prefer `init-bare` when possible. If the user still needs a template that generates UI files, plan a post-init cleanup so the final project has no `web-src` frontend directory or web manifest wiring.
+
+## Content Hub Extension Scaffolding
+
+For a Content Hub extension (`aem/assets/contenthub/1` — asset details panels, card actions, bulk actions) this skill runs a dedicated end-to-end workflow instead of a generator template: name → namespace selection → Console setup → file generation → npm install → `aio app use` → build → dev server → cert acceptance → open in Content Hub → deploy.
+
+Read [`references/contenthub-scaffolding.md`](references/contenthub-scaffolding.md) for the full step-by-step workflow and [`references/contenthub-templates.md`](references/contenthub-templates.md) for the scaffold file templates. The workflow's final step does a manual first `aio app deploy`; for the full deployment story (Stage → Production, Extension Manager approval, CI/CD) chain to the `appbuilder-cicd-pipeline` skill.
+
+**When it triggers:** the user says "create/scaffold a Content Hub extension", or names a Content Hub surface ("asset details panel", "card action button", "bulk action"). Once the extension is scaffolded and running, chain to `appbuilder-ui-scaffolder` for UI customization (React Spectrum patterns for each namespace).
 
 ## Initialize via Script
 
@@ -304,3 +313,7 @@ After initialization, hand off to:
 - [references/bootstrap.md](references/bootstrap.md) — Agentic Developer Console bootstrap (project, workspace, API subscriptions) via raw `aio console …` commands from the latest `@adobe/aio-cli`
 - [references/templates.md](references/templates.md) — Template catalog with intent mapping and per-template post-init guidance
 - [references/debugging.md](references/debugging.md) — Troubleshooting guide for init failures, Node/npm issues, login problems, and first-run errors
+- [references/contenthub-scaffolding.md](references/contenthub-scaffolding.md) — Full Content Hub extension scaffolding workflow (Steps 1–17: Console setup, namespace selection, file generation, build, dev server, cert acceptance, deploy)
+- [references/contenthub-templates.md](references/contenthub-templates.md) — All Content Hub scaffold file templates (`app.config.yaml`, `ext.config.yaml`, `ExtensionRegistration.js`, `App.js`, per-namespace components (`PanelAssetDetailsExtensionTab.js`, `CardActionModal.js`, `SelectionBarModal.js`), `actions/generic/index.js`)
+
+For deploying a Content Hub extension (Stage → Production, CDN URL, Extension Manager approval, CI/CD), use the `appbuilder-cicd-pipeline` skill — see its `references/contenthub-deploy.md`.
