@@ -1,0 +1,44 @@
+{
+  "skill_name": "commerce-app-eventing",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "My Commerce app needs to react to order placement. Add an event subscription for when a customer places an order so we can send a confirmation email.",
+      "expected_output": "The agent adds an eventing.commerce entry to app.commerce.config.ts with a provider and at least one Commerce event. The event name follows the plugin.<segments> or observer.<segments> pattern with lowercase segments. A runtimeAction is defined in <package>/<action> format. aio app build completes without errors.",
+      "assertions": [
+        "app.commerce.config.ts contains an eventing.commerce array",
+        "Commerce event name starts with plugin. or observer. and uses only [a-z_]+ segments",
+        "fields array is present on the Commerce event (may be empty)",
+        "runtimeActions contains at least one entry in <package>/<action> format",
+        "No eventing.external key is added",
+        "aio app build completes without errors"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We have an ERP system that pushes inventory updates as events. Add an external event source to my Commerce app so it can consume those events.",
+      "expected_output": "The agent adds an eventing.external entry to app.commerce.config.ts with a provider and at least one external event. The event name matches the [\\w\\-_.]+ pattern. A runtimeAction is defined in <package>/<action> format. No eventing.commerce key is added. aio app build completes without errors.",
+      "assertions": [
+        "app.commerce.config.ts contains an eventing.external array",
+        "External event name matches [\\w\\-_.]+ pattern",
+        "No fields property on the external event",
+        "runtimeActions contains at least one entry in <package>/<action> format",
+        "No eventing.commerce key is added",
+        "aio app build completes without errors"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "I want my Commerce app to handle both native Commerce events (when products are saved) and external events from our Salesforce CRM. Set up both event sources.",
+      "expected_output": "The agent adds both eventing.commerce and eventing.external entries to app.commerce.config.ts. Commerce event names follow the plugin./observer. pattern; external event names match the free-form pattern. Both have valid runtimeActions. After the build passes, the agent suggests using commerce-app-webhooks or commerce-app-business-config to extend the app further.",
+      "assertions": [
+        "app.commerce.config.ts contains both eventing.commerce and eventing.external arrays",
+        "Commerce event name starts with plugin. or observer.",
+        "External event name does not start with plugin. or observer.",
+        "Both event types have valid runtimeActions in <package>/<action> format",
+        "aio app build completes without errors",
+        "Agent mentions commerce-app-webhooks or commerce-app-business-config as next steps"
+      ]
+    }
+  ]
+}

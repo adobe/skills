@@ -42,8 +42,18 @@
 # Adobe for creativity
 /plugins/creative-cloud/adobe-for-creativity           @bossjones @njampani123 @solimant
 
+# Run Workflow (Adobe Firefly workflows via MCP)
+/plugins/creative-cloud/run-workflow                   @thagarwal-sjc
+
 # Stardust
 /plugins/stardust                                      @paolomoz
 
 # Web (browser automation and page analysis)
 /plugins/web                                           @catalan-adobe
+
+# Commerce (promoted from adobe/aio-commerce-sdk)
+/plugins/commerce/app-management/                      @adobe/commerce-decepticons
+/plugins/commerce/app-migration/                       @adobe/commerce-decepticons
+
+# Adobe Workfront (Planning solution architecture)
+/plugins/workfront                                     @ashot3232

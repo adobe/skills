@@ -16,6 +16,7 @@ Repository of Adobe skills for AI coding agents.
 /plugin install app-builder@adobe-skills
 /plugin install aem-cloud-service@adobe-skills
 /plugin install aem-6-5-lts@adobe-skills
+/plugin install workfront@adobe-skills
 ```
 
 ### Vercel Skills (npx skills)
@@ -87,6 +88,20 @@ Available via the [`adobe-cja`](plugins/adobe-cja/README.md) plugin. Talks to th
 | `cja-executive-briefing` | Narrative performance summary ready for leadership or QBR<br>• `Write last week's performance briefing for leadership`<br>• `Draft a monthly business review for the board` |
 
 See the [`adobe-cja` ](plugins/adobe-cja/README.md)doc for the full plugin description, MCP server template, and skill index.
+
+#### Workfront
+
+Solution-architecture guidance for Adobe Workfront Planning (WFP, also called Maestro). Available via the [`workfront`](plugins/workfront/skills/wf-planning-solution-architect/README.md) plugin. No MCP server required; public Adobe documentation is searched and fetched live from Experience League at answer time.
+
+```bash
+/plugin install workfront@adobe-skills
+```
+
+| Skill | Description |
+| ----- | ----------- |
+| `wf-planning-solution-architect` | Workspace and record-type design, connections and hierarchies, formula fields, tier limits, and API behavior for Workfront Planning<br>• `Design a Planning workspace for our marketing team`<br>• `A customer wants us to raise the 500 connected records limit`<br>• `Is the CASE function supported in Planning formulas?` |
+
+See the [`wf-planning-solution-architect`](plugins/workfront/skills/wf-planning-solution-architect/README.md) doc for the routing model, reference layout, and documentation search script.
 
 #### Adobe Experience Manager
 
@@ -442,13 +457,24 @@ plugins/
 │           ├── workfront-ui-extension/
 │           ├── workfront-actions/
 │           └── workfront-local-testing/
-└── creative-cloud/
-    └── adobe-for-creativity/
-        ├── .claude-plugin/
-        │   └── plugin.json
-        ├── skills/
-        │   └── ...
-        └── .mcp.json
+├── creative-cloud/
+│   └── adobe-for-creativity/
+│       ├── .claude-plugin/
+│       │   └── plugin.json
+│       ├── skills/
+│       │   └── ...
+│       └── .mcp.json
+└── workfront/
+    ├── .claude-plugin/
+    │   └── plugin.json
+    ├── .cursor-plugin/
+    │   └── plugin.json
+    └── skills/
+        └── wf-planning-solution-architect/
+            ├── SKILL.md
+            ├── evals/
+            ├── references/
+            └── scripts/
 ```
 
 ## Contributing

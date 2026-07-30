@@ -1,0 +1,31 @@
+{
+  "context": "Tests that naming a known featured workflow (e.g. retargeting) routes through get_featured_workflow's fast path instead of composing a graph from scratch via compose_workflow. Skipping this check wastes a compose step and risks producing a worse, non-template graph when a vetted one already exists.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Calls get_featured_workflow first",
+      "max_score": 35,
+      "description": "The agent called get_featured_workflow (with a query reflecting 'retargeting') before any call to compose_workflow."
+    },
+    {
+      "name": "No premature compose_workflow",
+      "max_score": 25,
+      "description": "The agent did not call compose_workflow when a named featured workflow was requested and a match was available, skipping the from-scratch graph-building path."
+    },
+    {
+      "name": "Uploads local assets correctly",
+      "max_score": 15,
+      "description": "The agent called upload_asset for the local product photos and used the returned presigned URLs verbatim (no truncation or reconstruction) in the submission."
+    },
+    {
+      "name": "Uses session_id submission",
+      "max_score": 15,
+      "description": "When a single prepared match was returned, the agent submitted via run_workflow_submit using session_id and useSessionDefaults rather than re-sending the full actions/connections graph."
+    },
+    {
+      "name": "Reports output or status",
+      "max_score": 10,
+      "description": "The agent reported back batch/run status or output URLs to the user rather than ending the turn silently after submission."
+    }
+  ]
+}

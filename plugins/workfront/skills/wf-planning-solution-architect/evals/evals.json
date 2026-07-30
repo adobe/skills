@@ -1,0 +1,373 @@
+{
+  "skill_name": "wf-planning-solution-architect",
+  "evals": [
+    {
+      "id": 1,
+      "name": "Plain limit question",
+      "prompt": "What's the max number of records per record type in Workfront Planning?",
+      "expected_output": "Answers 25,000, notes the roadmap target of 50,000 initially rather than unlimited, and states that this cap is the same across all tiers.",
+      "files": [],
+      "assertions": [
+        "States the 25,000 records-per-record-type cap",
+        "Notes the roadmap target is 50,000 initially, not unlimited",
+        "Notes this particular cap does not vary by tier",
+        "Reads references/limits-and-tiers.md rather than quoting a number from memory",
+        "Does not claim the limit is unlimited"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Customer asking for a limit exception",
+      "prompt": "A large enterprise customer is asking us to raise the 500 connected records limit to 2,500. They've hit it on day one of go-live. What should I tell them?",
+      "expected_output": "Reframes the request as an architecture problem rather than a limit problem, notes that the projected volume would exhaust even a raised cap within a couple of quarters, and offers customer-ready framing language.",
+      "files": [],
+      "assertions": [
+        "Cites the 500 connected-records cap and treats hitting it on day one as a design signal",
+        "Recommends redesigning the record model before pursuing an exception",
+        "Points out that a raised cap would be exhausted again within a couple of quarters at the customer's projected volume",
+        "Notes that the 500 cap applies to multi-select non-hierarchy connections and does not change by tier",
+        "Loads references/limits-and-tiers.md and references/customer-conversation-framings.md",
+        "Does not negotiate an intermediate number such as 1,500",
+        "Does not concede that the limit is generally negotiable"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Customer asking for P95 data",
+      "prompt": "A customer is meeting with us tomorrow and wants P95 performance numbers for Planning. What can we share?",
+      "expected_output": "Explains that Adobe publishes no public P95 or SLA, and that internal numbers may only be shared framed explicitly as observed production telemetry.",
+      "files": [],
+      "assertions": [
+        "States that Adobe does not publish a public P95 or SLA for Planning",
+        "Frames any internal numbers as observed production telemetry, server-side",
+        "Explicitly distinguishes telemetry from a contractual guarantee",
+        "Advises how to frame the numbers if they are shared externally",
+        "Does not present the numbers as a commitment or suggest they can go into a contract"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "RPM industry comparison",
+      "prompt": "A customer is comparing our 200 RPM API rate limit to other SaaS APIs and saying it's low. How do I defend it?",
+      "expected_output": "Explains that 200 RPM per user is defensible for an interactive planning product, identifies bulk integrations sharing interactive user accounts as the real trap, and recommends separate service accounts for bulk traffic.",
+      "files": [],
+      "assertions": [
+        "States the 200 RPM per-user rate limit and why it suits interactive use",
+        "Identifies bulk integrations sharing user accounts with interactive use as the actual problem",
+        "Recommends separate service accounts for bulk traffic instead of raising the limit",
+        "Does not benchmark against high-frequency data APIs, which are a different product category"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Tier-aware limit question",
+      "prompt": "What are the object limits for Workfront Planning, and do they differ by tier?",
+      "expected_output": "Explains that object limits scale by tier (Select, Prime, Ultimate) and that the tier must be established before answering a limit question.",
+      "files": [],
+      "assertions": [
+        "Names the Select, Prime, and Ultimate tiers",
+        "States that object limits scale by tier",
+        "Asks for or establishes the customer's tier before giving specific numbers",
+        "Reads references/limits-and-tiers.md rather than guessing limit values"
+      ]
+    },
+    {
+      "id": 6,
+      "name": "Workspace design from scratch",
+      "prompt": "Help me design a Workfront Planning workspace for a global marketing team that runs campaigns across 30 countries with multiple channels and brands.",
+      "expected_output": "Proposes a multi-workspace design with a central taxonomy hub, separates work record types from reference record types, and avoids the known deviations of the Fréscopa exemplar.",
+      "files": [],
+      "assertions": [
+        "Separates work record types (Campaigns, Tactics, Experiences) from reference types (Countries, Channels, Brands, Audiences)",
+        "Proposes a central taxonomy hub rather than duplicating shared lists across workspaces",
+        "Recommends 2 to 3 configured views per work record type",
+        "Keeps sections within the 3 to 6 per workspace range",
+        "Loads references/workspace-build-playbook.md and references/best-practice-template.md",
+        "Does not put lifecycle fields on pure reference types",
+        "Does not propose a single mega-workspace for all 30 countries",
+        "Does not reproduce the Fréscopa template wholesale"
+      ]
+    },
+    {
+      "id": 7,
+      "name": "Record type or field",
+      "prompt": "We have 'Priority' and 'Campaign Sponsor' as concepts in Workfront Planning. Should they be record types or fields on Campaign?",
+      "expected_output": "Applies the heuristic: Priority is a single-select field with fixed values and no data of its own; Campaign Sponsor depends on whether sponsors carry attributes worth tracking.",
+      "files": [],
+      "assertions": [
+        "Recommends Priority as a single-select field rather than a record type",
+        "Makes Campaign Sponsor conditional on whether sponsors have attributes worth tracking",
+        "Explains the underlying heuristic rather than only giving the verdict",
+        "Does not reflexively model both concepts as record types"
+      ]
+    },
+    {
+      "id": 8,
+      "name": "Misclassified reference type",
+      "prompt": "In our reference template we have a 'Pillars' record type with Status, Start Date, and End Date fields. Is that right?",
+      "expected_output": "Flags that Pillars is likely misclassified as a reference type when it carries lifecycle attributes, and recommends either reclassifying it or removing the lifecycle fields.",
+      "files": [],
+      "assertions": [
+        "Identifies that lifecycle fields on a reference type indicate misclassification",
+        "Recommends moving it to a work or activity type, or removing the lifecycle fields",
+        "Cites this as a known deviation in the Fréscopa template rather than an endorsed pattern",
+        "Does not approve the structure merely because the reference template contains it"
+      ]
+    },
+    {
+      "id": 9,
+      "name": "Specify a complete workspace build",
+      "prompt": "Specify a Q1 campaign workspace build for Workfront Planning. Marketing team running 4 product lines, 5 regions, and 3 audience segments.",
+      "expected_output": "Produces a complete build specification in the canonical order (workspace, sections, record types, fields, connections, sample records, views), presented once at the end.",
+      "files": [],
+      "assertions": [
+        "Follows the build order: workspace, sections, record types, fields, connections, sample records, views",
+        "Specifies each record type fully before moving to the next",
+        "Includes 2 to 3 views per work record type",
+        "Refers to objects by display name rather than raw IDs",
+        "Presents the finished design once instead of narrating each intermediate step",
+        "Does not stop after specifying only the workspace shell"
+      ]
+    },
+    {
+      "id": 10,
+      "name": "CASE function availability",
+      "prompt": "Is the CASE function supported in Workfront Planning formula fields?",
+      "expected_output": "Answers yes, notes that the public documentation omits CASE, and treats observed API behavior as canonical over the public formula docs.",
+      "files": [],
+      "assertions": [
+        "Confirms CASE is supported",
+        "Notes that public documentation omits it",
+        "Treats observed API behavior as canonical over the public formula docs",
+        "Does not conclude the function is unsupported merely because the public docs omit it"
+      ]
+    },
+    {
+      "id": 11,
+      "name": "Formula authoring and unsupported functions",
+      "prompt": "My Workfront Planning formula field keeps failing. I'm trying to use SWITCH to map status values. Also, write me a formula for budget variance percentage between Total Budget and Actual Spend.",
+      "expected_output": "Identifies SWITCH as unsupported, suggests CASE instead, and produces a variance formula using curly-brace field references with exact display names, noting decimal storage.",
+      "files": [],
+      "assertions": [
+        "States that SWITCH is not supported in Planning formulas",
+        "Suggests CASE as the supported alternative",
+        "Wraps field display names in curly braces with exact case and spacing",
+        "Produces a correct variance expression against Total Budget",
+        "Notes that percentage values are stored as decimals, where 0.15 represents 15 percent",
+        "Does not use other unsupported functions such as FORMAT or ADDHOUR"
+      ]
+    },
+    {
+      "id": 12,
+      "name": "Compound API filter",
+      "prompt": "How do I search for active Workfront Planning campaigns in EMEA launched after Jan 1 via the API?",
+      "expected_output": "Builds a filter as a JSON array using $-prefixed operators combined with $and, ISO 8601 dates with Z timezone, and $hasAnyOf for the reference field.",
+      "files": [],
+      "assertions": [
+        "Uses $-prefixed operator tokens rather than UI labels",
+        "Expresses the filter as a JSON array rather than an object",
+        "Combines conditions with $and",
+        "Uses ISO 8601 dates with a mandatory Z timezone",
+        "Uses $hasAnyOf for the Region reference field rather than a text operator"
+      ]
+    },
+    {
+      "id": 13,
+      "name": "Hierarchy depth limit",
+      "prompt": "A customer wants Campaign > Tactic > Experience > Asset > Component in Workfront Planning. Five levels. Can we do that?",
+      "expected_output": "Explains the 4-level hierarchy cap, recommends building at 3 levels to retain headroom, and suggests non-hierarchy connections for the remaining layer.",
+      "files": [],
+      "assertions": [
+        "States the 4-record-type hierarchy depth cap",
+        "Recommends building at 3 levels to preserve headroom",
+        "Suggests non-hierarchy connections for the layer beyond the cap",
+        "Does not tell the customer that five levels can simply be configured"
+      ]
+    },
+    {
+      "id": 14,
+      "name": "Bidirectional vs unidirectional connection",
+      "prompt": "Should the connection from Tactic to Campaign in Workfront Planning be bidirectional?",
+      "expected_output": "Yes for parent-child: a reference field on the child pointing to the parent, with backField so the children surface on the parent record.",
+      "files": [],
+      "assertions": [
+        "Recommends a bidirectional connection for the parent-child relationship",
+        "Specifies backField as the mechanism that surfaces children on the parent",
+        "Places the reference field on the child record type",
+        "Does not recommend a unidirectional connection for a parent-child relationship"
+      ]
+    },
+    {
+      "id": 15,
+      "name": "Automation surface selection, internal trigger",
+      "prompt": "In Workfront Planning, when a Campaign moves to Status=Approved I want to auto-create a Workfront Project. Which automation surface should I use?",
+      "expected_output": "Recommends a native field-value-change automation, notes the sysadmin-only authoring requirement and the no-post-save-edit constraint.",
+      "files": [],
+      "assertions": [
+        "Recommends the native field-value-change automation surface",
+        "Notes that authoring requires a system administrator",
+        "Notes the constraint that the action cannot make post-save edits",
+        "Loads references/synthesized/automations-deep-dive.md",
+        "Does not recommend Fusion for a case native automation handles"
+      ]
+    },
+    {
+      "id": 16,
+      "name": "Automation surface selection, external trigger",
+      "prompt": "I want to auto-update a Workfront Planning record when a row changes in our external CRM. Which automation surface?",
+      "expected_output": "Recommends Fusion, because the trigger originates outside Planning and native automations cannot respond to external events.",
+      "files": [],
+      "assertions": [
+        "Recommends Fusion",
+        "Explains that native automations cannot be triggered from outside Planning",
+        "Mentions Fusion's execution history as an observability benefit",
+        "Does not recommend a native automation for an external trigger"
+      ]
+    },
+    {
+      "id": 17,
+      "name": "AI Assistant scope",
+      "prompt": "What's the difference between the Planning AI Assistant and the Workfront AI Assistant?",
+      "expected_output": "Distinguishes the Planning-scoped surface from the Workfront-wide surface, and notes that the beta AI Designer is a third, separate thing.",
+      "files": [],
+      "assertions": [
+        "Distinguishes the Planning-scoped assistant from the Workfront-wide assistant",
+        "Notes that the beta AI Designer for workspace generation is separate from both",
+        "Mentions that plan-tier gating applies",
+        "Does not conflate the three surfaces"
+      ]
+    },
+    {
+      "id": 18,
+      "name": "GenStudio Brand connection",
+      "prompt": "How do I connect a Workfront Planning workspace to a GenStudio Brand?",
+      "expected_output": "Explains the connection, noting that the API connection key is Brand while the UI picker shows it under \"Adobe Applications\", and that Activations are read-only from Planning's perspective.",
+      "files": [],
+      "assertions": [
+        "Notes that the API connection key is Brand",
+        "Notes that the UI picker surfaces this under \"Adobe Applications\"",
+        "States that Activations are read-only from Planning's perspective",
+        "Does not confuse the API Brand key with the customer-facing GenStudio terminology"
+      ]
+    },
+    {
+      "id": 19,
+      "name": "Planning reporting expectations",
+      "prompt": "Can we build a report in Workfront that lists all Planning Campaigns by region?",
+      "expected_output": "Explains that Canvas Dashboards is the only Workfront-native surface treating Planning record types as base entities, that legacy Workfront reports cannot, and sets expectations about Canvas's beta state.",
+      "files": [],
+      "assertions": [
+        "States that Canvas Dashboards is the only Workfront-native path treating Planning record types as base entities",
+        "States that legacy Workfront reports cannot report on Planning records this way",
+        "Notes the beta status and its prerequisites or exclusions",
+        "Runs scripts/search.js and fetches the live Experience League page rather than relying on a bundled copy",
+        "Does not suggest this works in legacy Workfront reporting"
+      ]
+    },
+    {
+      "id": 20,
+      "name": "Sharing entity cap",
+      "prompt": "Can I share a Workfront Planning record type with 200 users individually?",
+      "expected_output": "Notes the 100 sharing entities per WFP object cap and recommends sharing with groups or teams to scale beyond it.",
+      "files": [],
+      "assertions": [
+        "States the 100 sharing entities per WFP object cap",
+        "Recommends groups or teams as the way to scale past the cap",
+        "Does not answer with the cap alone and no workaround"
+      ]
+    },
+    {
+      "id": 21,
+      "name": "Fusion modules for Planning",
+      "prompt": "What Fusion modules are available for Workfront Planning?",
+      "expected_output": "Lists the Watch Events trigger plus the CRUD and search modules, and explains when Fusion is the right surface versus native automations.",
+      "files": [],
+      "assertions": [
+        "Mentions the Watch Events trigger module",
+        "Mentions the CRUD and search modules",
+        "Explains when to prefer Fusion over native automations",
+        "Runs scripts/search.js for the Fusion modules documentation"
+      ]
+    },
+    {
+      "id": 22,
+      "name": "Calendar view limitations",
+      "prompt": "Can I group records by Owner in a Workfront Planning Calendar view?",
+      "expected_output": "Answers no. Calendar supports filters only, with no grouping or sorting, and recommends Table or Timeline when grouping is required.",
+      "files": [],
+      "assertions": [
+        "Answers no without hedging",
+        "States that Calendar supports filters only, with no grouping or sorting",
+        "Recommends Table or Timeline view when grouping is needed",
+        "Notes that Timeline and Calendar require date fields"
+      ]
+    },
+    {
+      "id": 23,
+      "name": "Request form approval gate",
+      "prompt": "In Workfront Planning, how do I gate request submissions with an approval before a record is created?",
+      "expected_output": "Explains the approval mechanism on request forms, including default versus custom rules, first-match resolution, and who can be an approver.",
+      "files": [],
+      "assertions": [
+        "Explains that the request form is the gate between submission and record creation",
+        "Describes default versus custom approval rules with first-match resolution",
+        "Notes that approvers can hold any license tier",
+        "Runs scripts/search.js for the request form and approval documentation"
+      ]
+    },
+    {
+      "id": 24,
+      "name": "Template adoption review",
+      "prompt": "A customer wants to instantiate the Fréscopa template for their marketing org. Anything I should flag?",
+      "expected_output": "Leads with the strong architectural patterns, then surfaces the documented deviations so the customer adopts consciously rather than blindly.",
+      "files": [],
+      "assertions": [
+        "Leads with strong patterns such as the central taxonomy hub, lookup-rich work records, and hierarchy design",
+        "Surfaces the known deviations, including lifecycle fields on reference types, the views coverage gap, single-section workspaces, naming typos, the 4-level hierarchy ceiling, missing business rules, and the 500-connection sizing risk",
+        "Recommends the customer decide on each deviation consciously",
+        "Loads references/best-practice-template.md and references/customer-conversation-framings.md",
+        "Does not present the template as turnkey or skip the deviations"
+      ]
+    },
+    {
+      "id": 25,
+      "name": "Public docs versus API behavior",
+      "prompt": "The public Workfront Planning docs say currency fields support 6 decimal places, but my API call only accepts 4. What's going on?",
+      "expected_output": "Explains that observed API behavior is authoritative for API questions, that 4 decimals is the actual accepted precision, and that the public docs are likely outdated.",
+      "files": [],
+      "assertions": [
+        "States that the API accepts 0 to 4 decimals",
+        "Treats observed API behavior as authoritative for the API question",
+        "Notes the public documentation is likely outdated on this point",
+        "Points to references/public-vs-api-discrepancies.md",
+        "Reports the discrepancy rather than silently picking one source",
+        "Does not insist the public docs are correct and the API is broken"
+      ]
+    },
+    {
+      "id": 26,
+      "name": "Internal versus external framing",
+      "prompt": "I'm presenting Workfront Planning performance numbers to internal leadership. What should I say?",
+      "expected_output": "Confirms internal telemetry is appropriate for leadership context when framed correctly, and warns against repackaging the same numbers into customer commitments.",
+      "files": [],
+      "assertions": [
+        "Confirms internal telemetry is fair game for an internal leadership audience",
+        "Anchors the framing words: observed, production, server-side",
+        "Warns that the same numbers must not be repackaged as customer SLA commitments"
+      ]
+    },
+    {
+      "id": 27,
+      "name": "Documentation lookup for an uncovered topic",
+      "prompt": "How do notifications work in Workfront Planning, and can users control what they receive?",
+      "expected_output": "Uses the bundled search to find the relevant Experience League pages, fetches the live page, and supplements with the synthesized notification reference.",
+      "files": [],
+      "assertions": [
+        "Runs scripts/search.js with notification-related keywords",
+        "Fetches the live Experience League page from the returned URL rather than answering from memory",
+        "Consults references/synthesized/notification-preferences.md",
+        "States clearly if the reference set does not cover part of the question rather than inventing behavior"
+      ]
+    }
+  ]
+}

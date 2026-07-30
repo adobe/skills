@@ -15,7 +15,7 @@
       "name": "stardust",
       "source": "./plugins/stardust",
       "description": "Redesign an existing website to make it better. Higher-level guided flow on top of impeccable.",
-      "version": "0.18.0",
+      "version": "0.18.1",
       "category": "design",
       "keywords": [
         "design",
@@ -108,6 +108,46 @@
         "analytics",
         "mcp",
         "reporting"
+      ],
+      "author": {
+        "name": "Adobe"
+      },
+      "homepage": "https://github.com/adobe/skills",
+      "repository": "https://github.com/adobe/skills",
+      "license": "Apache-2.0"
+    },
+    {
+      "name": "workfront",
+      "source": "./plugins/workfront",
+      "description": "Adobe Workfront skills for AI agents, including Workfront Planning (WFP/Maestro) solution architecture",
+      "version": "1.0.0",
+      "category": "project-management",
+      "keywords": [
+        "adobe",
+        "workfront",
+        "workfront-planning",
+        "maestro",
+        "solution-architecture"
+      ],
+      "author": {
+        "name": "Adobe"
+      },
+      "homepage": "https://github.com/adobe/skills",
+      "repository": "https://github.com/adobe/skills",
+      "license": "Apache-2.0"
+    },
+    {
+      "name": "run-workflow",
+      "source": "./plugins/creative-cloud/run-workflow",
+      "description": "Discover, compose, run, publish, and save Adobe Firefly workflows through the run-workflow MCP server, including predefined featured workflows for common marketing and production use cases.",
+      "version": "1.0.0",
+      "category": "creative-cloud",
+      "keywords": [
+        "adobe",
+        "firefly",
+        "run-workflow",
+        "mcp",
+        "creative-cloud"
       ],
       "author": {
         "name": "Adobe"

@@ -1,0 +1,12 @@
+{
+  "name": "run-workflow",
+  "description": "Discover, compose, run, publish, and save Adobe Firefly workflows through the run-workflow MCP server, including predefined featured workflows for common marketing and production use cases.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": ["adobe", "firefly", "run-workflow", "mcp", "creative-cloud"],
+  "skills": "./skills"
+}
