@@ -119,6 +119,14 @@ The build derives the extension's `ext.config.yaml` from your `adminUi` config: 
 
 When a `view` operation is present, init/generate also scaffolds the web frontend automatically (skipped if `web-src/index.html` already exists). It generates `src/commerce-backend-ui-2/web-src/` — `index.html`, `src/app.jsx`, `src/pages/main-page.jsx`, `src/components/welcome.jsx` (`.tsx` plus a `tsconfig.json` when the app config is TypeScript) — adds the `#web/*` import alias to `package.json`, and declares and installs pinned versions of `react`, `react-dom`, `@react-spectrum/s2`, and `@adobe/aio-commerce-lib-admin-ui` (React and Spectrum S2 are optional peer dependencies of the admin-ui library), plus some `devDependencies` for proper TypeScript support/config. Do not hand-pick different versions of these dependencies; the scaffold fails if incompatible versions are already installed.
 
+If the scaffold is skipped because `web-src` already exists, check its `package.json` for classic React Spectrum (`@adobe/react-spectrum` or `@react-spectrum/<component>` without `s2`) instead of `@react-spectrum/s2`. The two are compatible, but S2 is the version Adobe recommends moving to and the one this scaffold targets — suggest upgrading. This skill only configures the Admin UI extension, it doesn't drive the upgrade itself, so point the user to the `commerce-app-migrate` skill for the actual migration:
+
+```sh
+npx skills add adobe/skills --skill commerce-app-migrate
+```
+
+Do not install it or perform the upgrade yourself unless the user asks.
+
 ## Step 4 — Implement the handlers
 
 What you implement depends on the variant. Examples below are in TypeScript; if the project uses JavaScript, omit type imports and annotations.
