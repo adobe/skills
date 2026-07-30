@@ -203,7 +203,7 @@ bash "$SKILL_DIR/remove-deprecated-api/scripts/detect.sh" "$PROJECT_ROOT"
 4. **Writes the rules cache TSV** — `<package>\t<hint>\t<for_removal>` per line —
    at `$AEM_DEPRECATED_API_RULES` (env override) or the default path
    `$TMPDIR/aem-code-assessment/deprecated-api-rules.tsv`.
-5. Emits a JSON summary on stdout (plugin version, rule count, sample findings —
+5. Emits a JSON run-summary on stdout (plugin/SDK version, rule count, maven exit —
    useful for the run log; the authoritative findings come from Phase 2).
 
 **If `detect.sh` exits non-zero** — inspect the reason:

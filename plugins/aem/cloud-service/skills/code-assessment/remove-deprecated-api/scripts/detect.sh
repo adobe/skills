@@ -17,12 +17,11 @@
 # Each rule is one line:  <package>\t<hint>\t<for_removal>
 # Lines starting with # are comments (plugin version, generation timestamp).
 #
-# For callers that also want per-file findings (without invoking analyze.sh),
-# a JSON summary is emitted on stdout, mirroring the shared analyzer's shape.
+# A JSON run-summary (plugin/SDK version, rule count, maven exit) is emitted on
+# stdout. The authoritative per-file findings come from the shared analyzer
+# (analyze.sh), which reads the same rules cache.
 #
-# Usage:
-#   detect.sh <project-root> [--pin-plugin <version>] [--rules-out <path>]
-#             [--goal <goal>] [--log <path>] [--keep-log]
+# Usage: see usage() below (run with -h).
 #
 # Requires: bash, curl, Maven (project's ./mvnw or system `mvn`), a JDK.
 # Network access to Maven Central is required.
@@ -33,7 +32,7 @@ usage() {
   cat >&2 <<'EOF'
 usage: detect.sh <project-root> [--pin-plugin <version>] [--pin-sdk <version>]
                  [--respect-pom-sdk] [--rules-out <path>] [--goal <goal>]
-                 [--log <path>] [--keep-log]
+                 [--log <path>]
 
   <project-root>       Absolute or relative path to the Maven project root.
   --pin-plugin <ver>   Pin aemanalyser-maven-plugin to a specific version
@@ -55,7 +54,6 @@ usage: detect.sh <project-root> [--pin-plugin <version>] [--pin-sdk <version>]
                        (root-scoped fallback); ignored when a module is
                        auto-detected, which always runs a plain `install` first.
   --log <path>         Write the Maven log to <path> (default: /tmp/aem-analyser.log).
-  --keep-log           Do not remove the Maven log at end (for debugging).
 EOF
   exit 2
 }
@@ -68,7 +66,6 @@ RESPECT_POM_SDK=0
 RULES_OUT="${AEM_DEPRECATED_API_RULES:-${TMPDIR:-/tmp}/aem-code-assessment/deprecated-api-rules.tsv}"
 GOAL="package"
 LOG_PATH="/tmp/aem-analyser.log"
-KEEP_LOG=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --pin-plugin)        PIN_PLUGIN="$2"; shift 2 ;;
@@ -77,7 +74,6 @@ while [ $# -gt 0 ]; do
     --rules-out)         RULES_OUT="$2"; shift 2 ;;
     --goal)              GOAL="$2"; shift 2 ;;
     --log)               LOG_PATH="$2"; shift 2 ;;
-    --keep-log)          KEEP_LOG=1; shift ;;
     -h|--help)           usage ;;
     *)                   echo "unknown arg: $1" >&2; usage ;;
   esac
@@ -324,10 +320,7 @@ mkdir -p "$(dirname "$RULES_OUT")"
 } > "$RULES_OUT"
 log "rules cache written: $RULES_OUT ($RULE_COUNT rules)"
 
-# ---- 5. Correlate to source (JSON summary for direct callers) --------------
-
-TMP_FINDINGS="$(mktemp)"
-: > "$TMP_FINDINGS"
+# ---- 5. Emit JSON run-summary ----------------------------------------------
 
 emit_json_str() {
   local s="$1"
@@ -339,50 +332,8 @@ emit_json_str() {
   printf '"%s"' "$s"
 }
 
-emit_finding() {
-  local file="$1" line="$2" snippet="$3" pkg="$4" hint="$5" removal="$6"
-  {
-    printf '{"pattern":"remove-deprecated-api","file":'
-    emit_json_str "$file"
-    printf ',"line":%s,"snippet":' "$line"
-    emit_json_str "$snippet"
-    printf ',"package":'
-    emit_json_str "$pkg"
-    printf ',"hint":'
-    emit_json_str "$hint"
-    printf ',"for_removal":'
-    emit_json_str "$removal"
-    printf '}'
-  } >> "$TMP_FINDINGS"
-  printf '\n' >> "$TMP_FINDINGS"
-}
-
-while IFS=$'\t' read -r PKG HINT REMOVAL; do
-  [ -n "$PKG" ] || continue
-  while IFS=: read -r F L SNIP; do
-    [ -n "$F" ] || continue
-    REL="${F#$PROJECT_ROOT/}"
-    emit_finding "$REL" "$L" "$SNIP" "$PKG" "$HINT" "$REMOVAL"
-  done < <(
-    grep -rn --include='*.java' \
-      --exclude-dir=target --exclude-dir=.git \
-      --exclude-dir=node_modules --exclude-dir=generated-sources \
-      -E "^[[:space:]]*import[[:space:]]+(static[[:space:]]+)?${PKG}[.;]" \
-      "$PROJECT_ROOT" 2>/dev/null || true
-  )
-done < "$TMP_HINTS"
-
-# ---- 6. Emit JSON summary --------------------------------------------------
-
 {
-  printf '{"findings":['
-  first=1
-  while IFS= read -r line; do
-    [ -n "$line" ] || continue
-    if [ $first -eq 1 ]; then first=0; else printf ','; fi
-    printf '%s' "$line"
-  done < "$TMP_FINDINGS"
-  printf '],"warnings":['
+  printf '{"warnings":['
   if [ "$MVN_EXIT" -ne 0 ]; then
     emit_json_str "mvn-exit-nonzero: $MVN_EXIT — see $LOG_PATH"
   fi
@@ -398,7 +349,6 @@ done < "$TMP_HINTS"
   printf ',"rule_count":%s}}\n' "$RULE_COUNT"
 }
 
-rm -f "$TMP_HINTS" "$TMP_FINDINGS"
-if [ "$KEEP_LOG" -eq 0 ]; then :; fi
+rm -f "$TMP_HINTS"
 
 exit 0
