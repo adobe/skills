@@ -303,8 +303,18 @@ export default defineConfig({
   Max 50 chars.
 - `version`: Use `package.json` `version`. Default: `"1.0.0"`.
 - `description`: Use `package.json` `description` if present.
-  If the description exceeds 255 characters, truncate it to 252 characters and append `"..."`.
-  If absent or empty, check `extension-manifest.json` `description` field (truncate to 255 if needed).
+  If the description exceeds 255 characters, do NOT truncate it mid-sentence.
+  Instead, rewrite it: read the full description and compose a shorter one that
+  fits in 255 characters while preserving the essential meaning — what the app
+  does, which systems it connects, and its key capabilities. Prefer complete
+  sentences; drop secondary detail (deployment notes, exhaustive feature lists)
+  before core purpose. Never end with `"..."` — the rewritten description must
+  read as intentional, not cut off.
+  The rewritten value applies only to the config: the Executor records the original
+  `package.json` description before init and restores it afterwards (init writes the
+  config value back into `package.json`).
+  If absent or empty, check `extension-manifest.json` `description` field (apply the
+  same rewrite rule).
   If neither has a description: `"Commerce App Builder application"`.
 
 **productDependencies comment:**

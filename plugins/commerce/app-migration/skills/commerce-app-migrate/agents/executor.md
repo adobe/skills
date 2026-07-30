@@ -26,8 +26,8 @@ Triggered when the orchestrating skill detects an already-migrated project.
 
 - **Skip:** Steps 1–3 (no branch, no file writes, no script migration)
 - **Run:** Step 3a with modified inputs (see Step 3a for details)
-- **Skip:** Steps 4–9
-- **Run:** Step 10 with a restricted output (documentation recommendations only)
+- **Skip:** Steps 4–7
+- **Run:** Step 8 with a restricted output (documentation recommendations only)
 
 In doc-scan-only mode the `assembled config` parameter is `null`. When Step 3a
 reads the config to build migration context, it reads the **existing config file**
@@ -41,7 +41,7 @@ from disk — `app.commerce.config.ts` if it exists, otherwise `app.commerce.con
   and extract the quoted string value as a script path. If none found, use `[]`
 - `convertedYamlFiles`: `[]` (no YAML conversion happened in this mode)
 
-The Step 10 report header is also modified for doc-scan-only mode — see Step 10.
+The Step 8 report header is also modified for doc-scan-only mode — see Step 8.
 
 ---
 
@@ -178,7 +178,7 @@ If the script reads a data file via `fs.readFileSync` (e.g. a YAML or JSON confi
   The `require()` string must be a **static literal** (not a variable) so webpack can
   analyse it at build time.
 
-  **Bookkeeping for Step 10:** Each time you create a `.json` sibling for a `.yaml`
+  **Bookkeeping for Step 8:** Each time you create a `.json` sibling for a `.yaml`
   file, record the original YAML path in an internal list called `convertedYamlFiles`.
   For example, converting `shipping-carriers.yaml` → add `"shipping-carriers.yaml"` to
   `convertedYamlFiles`. This list is used to populate the "Files that can be safely
@@ -435,36 +435,36 @@ Private helpers (e.g. `formatErrorMessage`) are removed — errors now throw dir
 
 **Run this step immediately after Step 3, before init.** Both Category C and
 Category D analyze static files that exist before any install command. Computing them
-now ensures the recommendations are always available in Step 10 regardless of whether
+now ensures the recommendations are always available in Step 8 regardless of whether
 Step 4 succeeds, times out, or is blocked.
 
 In **doc-scan-only mode**, run this step using the modified inputs described in the
 "Operating Modes" section above. Skip Steps 1–3 entirely and begin here.
 
-Apply all computation rules defined below in Step 10 (Categories A, B, C, D). Those rules
-are written in Step 10 for readability but execute here, before npm install.
+Apply all computation rules defined below in Step 8 (Categories A, B, C, D). Those rules
+are written in Step 8 for readability but execute here, before npm install.
 
 - `convertedYamlFiles` for Category B is the list built during Step 3
   (empty `[]` in doc-scan-only mode)
 - All other inputs are drawn from the assembled config and `ProjectSnapshot`
-  as described in Step 10
+  as described in Step 8
 
 Store all results in memory, then:
 
 - **Normal mode:** also print the "Documentation recommendations" block **immediately now**,
-  before Steps 4–9 run. Use the same format as defined in Step 10's
+  before Steps 4–7 run. Use the same format as defined in Step 8's
   "── Documentation recommendations" section. Prefix the block with:
 
       ── Documentation recommendations (computed before install) ────────
 
   This ensures recommendations are visible if a later step (init, commit)
-  blocks, hangs, or fails. Step 10 includes the same block again — that is intentional.
+  blocks, hangs, or fails. Step 8 includes the same block again — that is intentional.
 
 - **Doc-scan-only mode:** store results only. Do **not** print here. There are no risky
-  commands between Step 3a and Step 10, so printing twice would be pure noise. Print once
-  in Step 10's abbreviated report.
+  commands between Step 3a and Step 8, so printing twice would be pure noise. Print once
+  in Step 8's abbreviated report.
 
-Proceed to Step 4 (or Step 10 in doc-scan-only mode) after storing.
+Proceed to Step 4 (or Step 8 in doc-scan-only mode) after storing.
 
 ---
 
@@ -475,7 +475,7 @@ Proceed to Step 4 (or Step 10 in doc-scan-only mode) after storing.
 ### Node version detection
 
 Before running init, detect the Node.js runtime version to use when scaffolding action
-handlers in Step 5a. Apply in order — first match wins:
+handlers in Step 5. Apply in order — first match wins:
 
 1. Scan all `ext.config.yaml` files in the project for a `runtime: nodejs:XX` declaration
    in any action definition. Use the value found (e.g. `nodejs:24`).
@@ -485,7 +485,7 @@ handlers in Step 5a. Apply in order — first match wins:
    Format as `nodejs:<major>`.
 4. Default: `nodejs:24`
 
-Store as `detectedNodeRuntime`. Used only in Step 5a.
+Store as `detectedNodeRuntime`. Used only in Step 5.
 
 ### Pre-flight: ensure `.env` exists
 
@@ -500,16 +500,71 @@ Before running init, check whether `.env` exists at the project root:
 This is required because the init CLI unconditionally reads `.env` during
 the configuration-schema generation sub-step.
 
+### Pre-flight: record the original package.json description
+
+Read `package.json` and store its `description` value as `originalPackageDescription`
+(may be absent). `init` writes the config's `metadata.description` back into
+`package.json` — if that value was rewritten during config assembly to fit the
+255-char limit, the original description would be silently replaced. Step 6
+restores it.
+
+### Pre-flight (pnpm only): approve the esbuild build script
+
+pnpm 10 blocks dependency build scripts by default. `init` runs `pnpm add` inside
+the project to install its dependencies, and the `--allow-build` flag on the outer
+`dlx` command does **not** carry over to that inner install — without persistent
+approval it fails with `ERR_PNPM_IGNORED_BUILDS: Ignored build scripts: esbuild@...`.
+
+Before running init on a pnpm project, approve esbuild persistently. Write the
+approval **where the project already keeps its pnpm configuration** — inspect
+both files and pick the first matching rule:
+
+1.  If either file already has an `onlyBuiltDependencies` list (`pnpm.onlyBuiltDependencies`
+    in `package.json`, or top-level `onlyBuiltDependencies` in `pnpm-workspace.yaml`):
+    merge `esbuild` into **that existing list**. Never create a second list in the
+    other file — pnpm reads only one of them, and a duplicate misleads.
+2.  Else, if `package.json` has a `pnpm` section: add the list there —
+
+        "pnpm": { "onlyBuiltDependencies": ["esbuild"] }
+
+    (This mirrors pnpm's own `approve-builds` behavior: when pnpm settings live in
+    `package.json`, it keeps writing them there.)
+
+3.  Else, if `pnpm-workspace.yaml` exists: add a top-level list there —
+
+        onlyBuiltDependencies:
+          - esbuild
+
+4.  Else (neither location holds pnpm settings): add the `pnpm` section to
+    `package.json` as in rule 2. Do not create `pnpm-workspace.yaml` on a project
+    that does not already have one — its presence declares a pnpm workspace.
+
+If `esbuild` is already present in the list, make no change.
+
+Record which file was modified (or that no change was needed) — it is reported in
+Step 8's "Modified" section.
+
 ### Run init
 
 Run the appropriate command for the `packageManager` from `ProjectSnapshot`:
 
-| packageManager | command                               |
-| -------------- | ------------------------------------- |
-| `npm`          | `npx aio-commerce-lib-app init`       |
-| `pnpm`         | `pnpm exec aio-commerce-lib-app init` |
-| `yarn`         | `yarn exec aio-commerce-lib-app init` |
-| `bun`          | `bunx aio-commerce-lib-app init`      |
+| packageManager | command                                                                  |
+| -------------- | ------------------------------------------------------------------------ |
+| `npm`          | `npx --yes @adobe/aio-commerce-lib-app@latest init`                      |
+| `pnpm`         | `pnpm --allow-build=esbuild dlx @adobe/aio-commerce-lib-app@latest init` |
+| `yarn`         | `yarn dlx @adobe/aio-commerce-lib-app@latest init`                       |
+| `bun`          | `bunx @adobe/aio-commerce-lib-app@latest init`                           |
+
+The scoped package name (`@adobe/aio-commerce-lib-app`) is required: on a project
+where the package is not yet a local dependency, the unscoped bin name
+(`npx aio-commerce-lib-app init`) fails with
+`npm error could not determine executable to run`.
+
+For pnpm, `--allow-build=esbuild` covers the temporary `dlx` install of the CLI
+itself. The flag must come **before** `dlx` — `pnpm dlx --allow-build=...` fails
+with `ERR_PNPM_SPEC_NOT_SUPPORTED_BY_ANY_RESOLVER` on several pnpm versions.
+The install init runs inside the project is covered by the pre-flight approval
+above, not by this flag.
 
 The `init` command installs required dependencies and generates the full `src/` extension
 structure from `app.commerce.config.ts` in one step.
@@ -517,23 +572,22 @@ structure from `app.commerce.config.ts` in one step.
 **If the init command is denied or blocked (permission error, sandbox rejection,
 or non-zero exit with no network output):**
 
-Do NOT retry. Record the failure and emit the following manual instruction in Step 10:
+Do NOT retry. Record the failure and emit the following manual instruction in Step 8,
+substituting the command matching the project's package manager from the table above:
 
     ✗ aio-commerce-lib-app init BLOCKED (Claude Code sandbox restriction)
 
     Run this manually in your terminal before continuing:
-        npx aio-commerce-lib-app init
+        npx --yes @adobe/aio-commerce-lib-app@latest init
 
-    Then update app.config.yaml and install.yaml per the Next steps section.
-
-Continue to Step 5a even if init failed.
+Continue to Step 5 even if init failed.
 
 **Diagnosing init failures:**
 
 If the command exits with an error, inspect the output:
 
 1.  **"CLI was not built!"** — The installed package is missing its compiled `dist/`
-    directory (packaging defect). Record this specific error. In Step 10, emit:
+    directory (packaging defect). Record this specific error. In Step 8, emit:
 
         ✗ aio-commerce-lib-app init FAILED: CLI was not built! (dist/ missing from aio-commerce-lib-app)
 
@@ -543,13 +597,29 @@ If the command exits with an error, inspect the output:
                  npm view @adobe/aio-commerce-lib-app versions --json
           2. Install a newer version that includes dist/:
                  npm install @adobe/aio-commerce-lib-app@<latest>
-          3. Re-run: npx aio-commerce-lib-app init
+          3. Re-run: npx --yes @adobe/aio-commerce-lib-app@latest init
 
-2.  **Schema validation errors** — Record the error and report it in Step 10 so
+2.  **`ERR_PNPM_IGNORED_BUILDS` (pnpm only)** — pnpm 10 blocked a dependency's build
+    script (the output names the package, e.g. `Ignored build scripts: esbuild@...`).
+    This means the blocked package is not covered by the project's persistent
+    approval (the pre-flight above covers `esbuild`; a different package may be
+    named). Add the named package to the same `onlyBuiltDependencies` list the
+    pre-flight wrote, then re-run init **once**. If it still fails, record the
+    failure and emit in Step 8:
+
+        ✗ aio-commerce-lib-app init FAILED: ERR_PNPM_IGNORED_BUILDS (<package> build script blocked)
+
+        pnpm blocks dependency build scripts by default. Approve the build for
+        this project, then re-run init:
+          1. Add <package> to the onlyBuiltDependencies list in <file the
+             pre-flight chose>, or run: pnpm approve-builds
+          2. Re-run: pnpm --allow-build=esbuild dlx @adobe/aio-commerce-lib-app@latest init
+
+3.  **Schema validation errors** — Record the error and report it in Step 8 so
     the developer can fix the config and re-run init manually.
 
-3.  **Any other error** — Record the failure message and skip Step 5a.
-    Report the error in Step 10.
+4.  **Any other error** — Record the failure message and skip Step 5.
+    Report the error in Step 8.
 
 After this command completes successfully, check which directories were created:
 
@@ -560,11 +630,11 @@ After this command completes successfully, check which directories were created:
   it also contains a generated `web-src/` frontend (mounted with `createExtensionApp`
   from `@adobe/aio-commerce-lib-admin-ui/web`), plus additional dependencies installed (if not already present and compatible) needed by the frontend (`react`, `react-dom`, `@react-spectrum/s2`, and some `devDependencies` needed for proper TypeScript support/config).
 
-Note which directories exist — you will need this in Steps 5a and 6.
+Note which directories exist — you will need this in Steps 5 and 6.
 
 ---
 
-## Step 5a: Scaffold Admin UI SDK handlers
+## Step 5: Scaffold Admin UI SDK handlers
 
 Runs immediately after Step 4 init succeeds and `src/commerce-backend-ui-2/` exists.
 Skip this step entirely if the assembled config has no `adminUi` section.
@@ -728,12 +798,21 @@ is no longer generated by `commerce/backend-ui/2` and the hook will fail the bui
 `install.yml` (or merge its extra entries into `install.yaml` first) so only one
 install file remains.
 
+**4. Restore the original `package.json` description.**
+`init` writes the config's `metadata.description` back into `package.json`. If the
+config value was rewritten during assembly, this silently replaces the original.
+Compare `package.json`'s current `description` with the `originalPackageDescription`
+recorded in Step 4 — if they differ, restore `originalPackageDescription`. The
+rewritten value belongs only in `app.commerce.config.ts` (App Management's 255-char
+limit); the full description stays in `package.json`. Record whether a restore
+happened — it is reported in Step 8's "Modified" section.
+
 **Do not modify any other content in `app.config.yaml`, the install file, or
 `package.json`.**
 
 ---
 
-## Step 9: Stage changes and ask to commit
+## Step 7: Stage changes and ask to commit
 
 Stage all migration-related files:
 
@@ -763,15 +842,15 @@ without prompting.
 
       git commit -m "feat: migrate to App Management"
 
-Then proceed to Step 10. Do not wait for the developer to commit before printing the summary.
+Then proceed to Step 8. Do not wait for the developer to commit before printing the summary.
 
 ---
 
-## Step 10: Print migration summary
+## Step 8: Print migration summary
 
 **Use the pre-computed results stored in Step 3a. The computation rules for
 Categories A–D are defined below — they run in Step 3a, not here.
-Step 10 only assembles and prints the report.**
+Step 8 only assembles and prints the report.**
 
 **Category A — Onboarding scripts not in `customInstallationSteps`:**
 
@@ -996,9 +1075,17 @@ constraints, Next steps) when in doc-scan-only mode.
     ║             App Management Migration — Complete                  ║
     ╚══════════════════════════════════════════════════════════════════╝
 
+    TL;DR: staged <N> files · init <✓ ok / ✗ failed / ✗ blocked> · <K> manual follow-up(s)
+
+       ← N = number of files staged in Step 7; K = total count of items requiring
+          developer action across "Safe to delete", "Removable files",
+          "Documentation recommendations" (Category C + D entries), and any failed
+          command that must be re-run manually. Print "no manual follow-ups" if K is 0 →
+
     ── Files written ──────────────────────────────────────────────────
       ✓  app.commerce.config.ts                          new
-      ✓  install.yaml                                    new / updated
+      [✓  install.yaml                                   new / updated]
+         ← omit if init failed →
       [✓  scripts/<name>.js                              migrated → defineCustomInstallationStep]
          ← one line per migrated script; omit section if none were migrated →
 
@@ -1047,6 +1134,12 @@ constraints, Next steps) when in doc-scan-only mode.
       If adminUi is worker-only (no view entries), react and react-dom are
       removable as well.
 
+      Each `view` entry only gets a placeholder page. Porting the old
+      iframe's UI content into it is out of scope for this migration —
+      suggest it to the user, targeting @react-spectrum/s2 (not
+      @adobe/react-spectrum; see ../references/spectrum-s2-upgrade.md),
+      but do not port it yourself unless the user explicitly asks.
+
       Runtime packages replaced by @adobe/aio-commerce-sdk:
         @adobe/aio-sdk  cloudevents  got  node-fetch  oauth-1.0a  uuid
 
@@ -1062,9 +1155,15 @@ constraints, Next steps) when in doc-scan-only mode.
     ← end conditional →
 
     ── Modified ───────────────────────────────────────────────────────
-         ← omit app.config.yaml line if init failed →
+         ← omit the next two lines if init failed →
       app.config.yaml    added extensions block
       package.json       added postinstall hook
+      [package.json      description restored — init wrote the shortened config value back;
+                         the original full description was kept (see Step 6)]
+         ← include only if Step 6 restored the description →
+      [pnpm-workspace.yaml   approved esbuild build script (onlyBuiltDependencies)]
+      [package.json          approved esbuild build script (pnpm.onlyBuiltDependencies)]
+         ← include only the line matching the file the Step 4 pnpm pre-flight modified →
 
     ── Installation steps ─────────────────────────────────────────────
          ← omit this entire section if no customInstallationSteps →
@@ -1219,7 +1318,7 @@ constraints, Next steps) when in doc-scan-only mode.
     ← end conditional block →
 
     ── Next steps ─────────────────────────────────────────────────────
-      [1. npx aio-commerce-lib-app init]   ← include ONLY if Step 4 failed
+      [1. npx --yes @adobe/aio-commerce-lib-app@latest init]   ← include ONLY if Step 4 failed
        2. Review src/commerce-extensibility-1/.generated/ before deploying
        3. aio app deploy
 

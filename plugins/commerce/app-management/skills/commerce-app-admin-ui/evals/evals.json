@@ -4,7 +4,7 @@
     {
       "id": 0,
       "name": "order-grid-column",
-      "prompt": "I've got a base Commerce app scaffolded with the aio-commerce-sdk (app.commerce.config.ts exists and the project is initialized). I need to add a 'Fulfillment' column to the Admin order grid — the value for each order comes from our warehouse API. Wire up the config and the runtime action handler.",
+      "prompt": "I've got a base Commerce app scaffolded with the aio-commerce-sdk (app.commerce.config.ts exists and the project is initialized). I need to add a 'Fulfillment' column to the Admin order grid, the value for each order comes from our warehouse API. Wire up the config and the runtime action handler.",
       "expected_output": "adminUi.order.gridColumns declared in app.commerce.config.ts with a single column (id, label, type, align) and a runtimeAction in <package>/<action> form. A handler under src/commerce-backend-ui-2/actions/ using parseGridRequest + okGridResponse/errorGridResponse from @adobe/aio-commerce-sdk/admin-ui/grid-columns, with row keys matching the column id. The action registered under runtimeManifest in src/commerce-backend-ui-2/ext.config.yaml with function: actions/<action>/index.js, require-adobe-auth: true, and final: true. Uses the v2 adminUi schema, does not use adminUiSdk.registration or commerce/backend-ui/1, and mentions running npx @adobe/aio-commerce-lib-app init and aio app build.",
       "files": [],
       "assertions": [
@@ -93,7 +93,7 @@
       "assertions": [
         "Declares adminUi.menu (single object) with id, label, and description",
         "Sets parentMenu to MENU_SALES imported from @adobe/aio-commerce-sdk/admin-ui/menu",
-        "Menu id uses only valid characters (letters, digits, /, :, _) — no hyphens or spaces",
+        "Menu id uses only valid characters (letters, digits, /, :, _), no hyphens or spaces",
         "Recognizes the menu has no runtime action handler; does not scaffold a menu-specific action under src/commerce-backend-ui-2/actions/",
         "Declares adminUi.order.viewButtons with a type: \"worker\" entry containing id, label, and runtimeAction",
         "View button handler imports parseOrderViewButtonRequest and okOrderViewButtonResponse/orderViewButtonErrorResponse from @adobe/aio-commerce-sdk/admin-ui/order-view-buttons",
@@ -138,6 +138,34 @@
         "Both worker action sources live under src/commerce-backend-ui-2/actions/<action>/index.ts",
         "Both worker actions are registered under runtimeManifest with function paths, require-adobe-auth: true, and final: true",
         "Notes mention running npx @adobe/aio-commerce-lib-app init and aio app build"
+      ]
+    },
+    {
+      "id": 8,
+      "name": "existing-web-src-classic-react-spectrum-suggestion",
+      "prompt": "My initialized Commerce app already has an adminUi.menu entry wired up (commerce/backend-ui/2), with src/commerce-backend-ui-2/web-src/ already scaffolded. Its package.json lists \"@adobe/react-spectrum\": \"^3.34.2\" as a dependency (no @react-spectrum/s2). Add a new order view button 'Sync inventory' as a view (iframe) variant.",
+      "expected_output": "The order view button is added to app.commerce.config.ts (adminUi.order.viewButtons) as a type: \"view\" entry with a path, and a new placeholder page plus route are added to the existing web-src without touching the existing menu page/route. Separately, the agent notices the existing web-src's package.json depends on classic React Spectrum (@adobe/react-spectrum) instead of @react-spectrum/s2, explains the two are compatible but S2 is the version Adobe recommends moving to, and suggests installing/using the commerce-app-migrate skill (npx skills add adobe/skills --skill commerce-app-migrate) to run the upgrade, offering to help but not installing packages or rewriting components itself unless asked.",
+      "files": [
+        {
+          "path": "app.commerce.config.ts",
+          "content": "import { defineConfig } from \"@adobe/aio-commerce-lib-app/config\";\nimport { MENU_SALES } from \"@adobe/aio-commerce-sdk/admin-ui/menu\";\n\nexport default defineConfig({\n  adminUi: {\n    menu: {\n      id: \"acme_dashboard\",\n      label: \"Acme Dashboard\",\n      description: \"Acme app dashboard.\",\n      parentMenu: MENU_SALES,\n    },\n  },\n});\n"
+        },
+        {
+          "path": "src/commerce-backend-ui-2/web-src/package.json",
+          "content": "{\n  \"name\": \"acme-web-src\",\n  \"dependencies\": {\n    \"react\": \"^18.2.0\",\n    \"react-dom\": \"^18.2.0\",\n    \"@adobe/react-spectrum\": \"^3.34.2\",\n    \"@adobe/aio-commerce-lib-admin-ui\": \"^1.0.0\"\n  }\n}\n"
+        },
+        {
+          "path": "src/commerce-backend-ui-2/web-src/src/app.jsx",
+          "content": "import { createExtensionApp } from \"@adobe/aio-commerce-lib-admin-ui/web\";\nimport \"@react-spectrum/s2/page.css\";\n\nimport config from \"#app.commerce.config\";\nimport { MainPage } from \"#web/pages/main-page.jsx\";\n\ncreateExtensionApp({\n  metadata: { extensionId: config.metadata.id },\n  routes: [{ index: true, element: <MainPage /> }],\n});\n"
+        }
+      ],
+      "assertions": [
+        "Adds adminUi.order.viewButtons with a type: \"view\" entry (id, label, path) without touching the existing adminUi.menu entry",
+        "Creates a new placeholder page under web-src/src/pages/ and registers its route in app.jsx as the exact path string from the config, keeping the existing index route and menu page/route untouched",
+        "Detects that web-src's package.json depends on @adobe/react-spectrum (classic React Spectrum) rather than @react-spectrum/s2",
+        "States classic React Spectrum and S2 are compatible, but recommends moving to S2 without claiming classic React Spectrum is unmaintained",
+        "Suggests installing/using the commerce-app-migrate skill (e.g. npx skills add adobe/skills --skill commerce-app-migrate) to run the S1-to-S2 migration, offering to help",
+        "Does not run the codemod, install packages, or rewrite Spectrum components itself unless the user explicitly asks it to proceed"
       ]
     }
   ]
