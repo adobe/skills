@@ -17,6 +17,8 @@ Repository of Adobe skills for AI coding agents.
 /plugin install aem-cloud-service@adobe-skills
 /plugin install aem-6-5-lts@adobe-skills
 /plugin install workfront@adobe-skills
+/plugin install commerce-app-management@adobe-skills
+/plugin install commerce-app-migration@adobe-skills
 ```
 
 ### Vercel Skills (npx skills)
@@ -292,6 +294,43 @@ Development, customization, testing, and deployment skills for Adobe App Builder
 | `appbuilder-e2e-testing`       | Playwright browser E2E tests for ExC Shell SPAs and AEM extensions                        |
 | `appbuilder-cicd-pipeline`     | Set up CI/CD pipelines for GitHub Actions, Azure DevOps, and GitLab CI                    |
 
+### Commerce
+
+Skills that ease developing and integrating with Adobe Commerce alongside other Adobe products.
+
+#### Commerce App Management
+
+Scaffold and configure Adobe Commerce App Builder apps using the `aio-commerce-sdk`. `commerce-app-init` scaffolds a bare app with metadata only; domain skills then extend it one concern at a time.
+
+```bash
+/plugin install commerce-app-management@adobe-skills
+```
+
+| Skill | Description |
+| ----- | ----------- |
+| `commerce-app-init` | Scaffold a new Commerce app with metadata |
+| `commerce-app-eventing` | Manage Commerce and external event sources |
+| `commerce-app-webhooks` | Manage webhook interception |
+| `commerce-app-business-config` | Manage custom business configuration |
+| `commerce-app-storage` | Integrate App Builder Database Storage |
+| `commerce-app-admin-ui` | Extend the Commerce Admin UI |
+
+See the [`commerce-app-management`](plugins/commerce/app-management/README.md) doc for the skill-chaining strategy and full skill index.
+
+#### Commerce App Migration
+
+Migrate an Adobe Commerce App Builder project started from the Integration Starter Kit or Checkout Starter Kit to an App Management project using the `aio-commerce-sdk`.
+
+```bash
+/plugin install commerce-app-migration@adobe-skills
+```
+
+| Skill | Description |
+| ----- | ----------- |
+| `commerce-app-migrate` | Orchestrate the full migration from Integration or Checkout Starter Kit to App Management |
+
+See the [`commerce-app-migration`](plugins/commerce/app-migration/README.md) doc for the full migration workflow and documentation-cleanup recommendations.
+
 ### AEM as a Cloud Service — Code Assessment
 
 **`code-assessment`** (under `plugins/aem/cloud-service/skills/`) detects and fixes AEM CS code-quality issues entirely against the local workspace — no external services. Name the files to fix or ask it to scan the repo; it plans, applies surgical edits (git branch or in-place), and verifies with `mvn compile`. Each issue type is a self-contained expert skill.
@@ -436,6 +475,22 @@ plugins/
 │       ├── appbuilder-testing/
 │       ├── appbuilder-e2e-testing/
 │       └── appbuilder-cicd-pipeline/
+├── commerce/
+│   ├── app-management/
+│   │   ├── .claude-plugin/
+│   │   │   └── plugin.json
+│   │   └── skills/
+│   │       ├── commerce-app-init/
+│   │       ├── commerce-app-eventing/
+│   │       ├── commerce-app-webhooks/
+│   │       ├── commerce-app-business-config/
+│   │       ├── commerce-app-storage/
+│   │       └── commerce-app-admin-ui/
+│   └── app-migration/
+│       ├── .claude-plugin/
+│       │   └── plugin.json
+│       └── skills/
+│           └── commerce-app-migrate/
 ├── creative-cloud/
 │   └── adobe-for-creativity/
 │       ├── .claude-plugin/
