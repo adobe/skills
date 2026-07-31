@@ -137,6 +137,16 @@
       "license": "Apache-2.0"
     },
     {
+      "name": "commerce-app-management",
+      "source": "./plugins/commerce/app-management",
+      "description": "Skills for Adobe Commerce App Management — scaffold and configure Commerce apps using the aio-commerce-sdk."
+    },
+    {
+      "name": "commerce-app-migration",
+      "source": "./plugins/commerce/app-migration",
+      "description": "Migrate an Adobe Commerce App Builder project from the Integration Starter Kit or Checkout Starter Kit to the new App Management approach."
+    },
+    {
       "name": "run-workflow",
       "source": "./plugins/creative-cloud/run-workflow",
       "description": "Discover, compose, run, publish, and save Adobe Firefly workflows through the run-workflow MCP server, including predefined featured workflows for common marketing and production use cases.",
