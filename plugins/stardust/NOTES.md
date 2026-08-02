@@ -8,32 +8,41 @@ recommendation, so the work can start without re-deriving the context.
 
 ## Standing requirement — applies to every note below
 
-**The skills keep design and implementation memory up to date on their own.
-The user never has to ask.**
+**The skills own memory-keeping. The user never has to know it is something
+they need to keep track of.**
 
-This is a hard requirement, not a default to be weighed against tidiness. Any
-mechanic proposed in these notes that ends in "ask the user first" or "offer
-to write it" fails the requirement and needs rewording. Concretely:
+The requirement is about *initiative*, not about avoiding prompts. Asking
+permission is fine — a prompt is itself how the user learns the memory exists.
+What must never happen is memory getting written only because the user thought
+to ask for it, or going stale because nobody remembered to update it. The
+user's mental model should be "stardust keeps its own notes", never "I need to
+remember to have it write these down."
 
-- **Write unprompted.** A skill that produces a durable artifact writes the
-  corresponding memory in the same run, without a flag and without a prompt.
-- **Maintain unprompted.** Memory is refreshed whenever the thing it describes
-  changes — not only at first creation. This is the half that is easy to
-  forget, and the half that decides whether the memory is trustworthy a year
-  in.
+Concretely:
+
+- **The skill raises it, always.** A skill that produces a durable artifact
+  either writes the corresponding memory or asks to — in the same run, every
+  run. Never conditional on the user bringing it up.
+- **Maintain, not just create.** Memory is refreshed whenever the thing it
+  describes changes, not only at first creation. This is the half that is easy
+  to forget, and the half that decides whether the memory is trustworthy a
+  year in.
+- **Prompt where it is a real choice, act where it is not.** Creating a file
+  in the user's repo for the first time is a real choice — ask. Updating
+  stardust's own managed block or a generated registry is not — just do it.
+  Rule of thumb: ask once per artifact at creation, never again for upkeep.
 - **Enforce, don't rely on intent.** "The skill should remember to do this" is
   not a mechanism. Each memory artifact needs either a declared rule the agent
   reads every session (the journal-rule pattern, proven in adobecom per
   `CHANGELOG-redesign-adobecom.md:183`) or a script gate that fails when
   memory is missing or stale. Prefer the gate where the artifact is
   machine-checkable.
-- **Announce, don't interrogate.** Proactive does not mean silent — say what
-  was written in the run summary. It means not blocking on permission.
+- **Say what was written.** Name the memory artifacts touched in the run
+  summary. Silent upkeep is how users end up not knowing the memory is there
+  to be read.
 
-The one legitimate exception is destructive edits to files stardust does not
-own: never overwrite user-authored content unprompted. Managed blocks and
-generated files exist precisely so that writing is additive and needs no
-permission.
+Never overwrite user-authored content unprompted. Managed blocks and generated
+files exist precisely so that upkeep is additive and needs no permission.
 
 ---
 
@@ -100,12 +109,14 @@ working with them. It never duplicates their contents.
   considering if any skill can legitimately run before `extract`.
 - **Existing file.** Append the managed block; never overwrite anything outside
   it. No prompt needed — the block is stardust's own territory.
-- **No existing file.** Create it, unprompted. (Earlier draft of this note said
-  "ask before creating" — that violates the standing requirement above and is
-  withdrawn.) The cost of an unwanted 30-line CLAUDE.md is one `rm`; the cost
-  of not having it is every future session starting blind. This also settles
-  open question 4 in `CHANGELOG-redesign-adobecom.md:222` (auto-seeding
-  `stardust/journal.md` on extract) the same way: auto-create, don't ask.
+- **No existing file.** Ask before creating — dropping a CLAUDE.md into
+  someone's repo unannounced is a real intrusion, and the ask is also how the
+  user learns the file exists and what it is for. The ask is the skill's
+  initiative, raised every first run; it is never something the user has to
+  request. Phrase it as a one-line confirmation with a default, not an
+  open question. Same treatment for open question 4 in
+  `CHANGELOG-redesign-adobecom.md:222` (auto-seeding `stardust/journal.md` on
+  extract): offer it once, unprompted, then never ask again.
 - **Keeping it current.** The block is deliberately spec-independent, so it
   should need rewriting only when the artifact map itself changes (a new
   stardust directory, a renamed spec file). Regenerate-and-compare on every
@@ -201,9 +212,10 @@ creation. Both need to happen with no user prompting.
 - **On write (creation).** The per-block agent in Step 7 writes
   `blocks/<name>/README.md` as part of the block's done-criteria, from a fixed
   template in the brief — same standing as "the block is not done until
-  `block-roundtrip.mjs` exits 0" (`deploy/SKILL.md:590`). Not a follow-up
-  pass, not a question to the user. Regenerate the registry at the end of the
-  run.
+  `block-roundtrip.mjs` exits 0" (`deploy/SKILL.md:590`). No prompt here: this
+  is stardust documenting code it is writing in the same run, so there is no
+  real choice to put to the user. Regenerate the registry at the end of the
+  run and name it in the summary.
 - **On change (maintenance) — the harder half, currently unaddressed.** When a
   later session edits `blocks/cards/cards.js` (adds a variant, changes the row
   contract), the README must move with it. Options, roughly in order of
