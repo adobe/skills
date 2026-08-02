@@ -6,6 +6,37 @@ recommendation, so the work can start without re-deriving the context.
 
 ---
 
+## Standing requirement — applies to every note below
+
+**The skills keep design and implementation memory up to date on their own.
+The user never has to ask.**
+
+This is a hard requirement, not a default to be weighed against tidiness. Any
+mechanic proposed in these notes that ends in "ask the user first" or "offer
+to write it" fails the requirement and needs rewording. Concretely:
+
+- **Write unprompted.** A skill that produces a durable artifact writes the
+  corresponding memory in the same run, without a flag and without a prompt.
+- **Maintain unprompted.** Memory is refreshed whenever the thing it describes
+  changes — not only at first creation. This is the half that is easy to
+  forget, and the half that decides whether the memory is trustworthy a year
+  in.
+- **Enforce, don't rely on intent.** "The skill should remember to do this" is
+  not a mechanism. Each memory artifact needs either a declared rule the agent
+  reads every session (the journal-rule pattern, proven in adobecom per
+  `CHANGELOG-redesign-adobecom.md:183`) or a script gate that fails when
+  memory is missing or stale. Prefer the gate where the artifact is
+  machine-checkable.
+- **Announce, don't interrogate.** Proactive does not mean silent — say what
+  was written in the run summary. It means not blocking on permission.
+
+The one legitimate exception is destructive edits to files stardust does not
+own: never overwrite user-authored content unprompted. Managed blocks and
+generated files exist precisely so that writing is additive and needs no
+permission.
+
+---
+
 ## 1. Write a project-side `CLAUDE.md` from the stardust skills
 
 **Idea.** Have the stardust skills write a `CLAUDE.md` into the project they
@@ -67,12 +98,21 @@ working with them. It never duplicates their contents.
   writes the initial `state.json`. Alternative is a shared step in the master
   skill's § Setup, which would cover projects entered mid-pipeline — worth
   considering if any skill can legitimately run before `extract`.
-- **Existing file.** Append the managed block; never overwrite.
-- **No existing file.** Ask before creating. Same zero-config-vs-stale-clutter
-  tradeoff as open question 4 in `CHANGELOG-redesign-adobecom.md:222`
-  (auto-seeding `stardust/journal.md` on extract). Decide both the same way —
-  they're the same question about how much unrequested scaffolding stardust
-  should drop into someone's repo.
+- **Existing file.** Append the managed block; never overwrite anything outside
+  it. No prompt needed — the block is stardust's own territory.
+- **No existing file.** Create it, unprompted. (Earlier draft of this note said
+  "ask before creating" — that violates the standing requirement above and is
+  withdrawn.) The cost of an unwanted 30-line CLAUDE.md is one `rm`; the cost
+  of not having it is every future session starting blind. This also settles
+  open question 4 in `CHANGELOG-redesign-adobecom.md:222` (auto-seeding
+  `stardust/journal.md` on extract) the same way: auto-create, don't ask.
+- **Keeping it current.** The block is deliberately spec-independent, so it
+  should need rewriting only when the artifact map itself changes (a new
+  stardust directory, a renamed spec file). Regenerate-and-compare on every
+  run: if the block stardust would write differs from what's on disk, rewrite
+  it and note it in the run summary. Cheap enough to do unconditionally, and
+  it means a plugin upgrade propagates to existing projects with no user
+  action.
 - **Re-runs / `--re-direct`.** Block content is spec-independent, so a
   direction change shouldn't need to touch it. Confirm this holds once the
   block contents are final — if anything direction-specific creeps in, it
@@ -153,12 +193,48 @@ section in `registry.json` (generated from the deployed content pages).
   gets easier with a registry: on a repeat run the reuse-vs-new question is
   answered from the registry instead of from the user.
 
+### Proactive maintenance — non-negotiable per the standing requirement
+
+Creation and maintenance are separate problems; layers 1-2 above only solve
+creation. Both need to happen with no user prompting.
+
+- **On write (creation).** The per-block agent in Step 7 writes
+  `blocks/<name>/README.md` as part of the block's done-criteria, from a fixed
+  template in the brief — same standing as "the block is not done until
+  `block-roundtrip.mjs` exits 0" (`deploy/SKILL.md:590`). Not a follow-up
+  pass, not a question to the user. Regenerate the registry at the end of the
+  run.
+- **On change (maintenance) — the harder half, currently unaddressed.** When a
+  later session edits `blocks/cards/cards.js` (adds a variant, changes the row
+  contract), the README must move with it. Options, roughly in order of
+  strength:
+  - A **gate script** comparing each block's README against the block source
+    (at minimum: variant classes named in the CSS vs variants documented; row
+    indices read in `decorate()` vs the documented authoring shape). Fails
+    loud on divergence. Strongest, because it does not depend on the editing
+    agent knowing the convention.
+  - A **rule in the CLAUDE.md managed block** (note 1): "when you change a
+    block's decode contract or variants, update its README in the same
+    change." Cheap, catches the agent-edited case, useless for hand edits.
+  - **Registry `--check` in CI** — catches missing READMEs and a stale index,
+    but not a README that is present and wrong.
+  Recommend the gate + the CLAUDE.md rule together: the rule makes it happen,
+  the gate makes it verifiable. The registry generator should also stamp a
+  source hash per block so staleness is detectable rather than inferred.
+- **Archetype map on change.** Same problem, weaker tooling: adding a page
+  that introduces a new composition should update the archetype map in the
+  same run. Probably falls out of regenerating the map from deployed content
+  pages rather than maintaining it by hand — worth preferring generation here
+  for exactly that reason.
+
 ### Open questions
 
-- Who writes layer 1 — the per-block agent in Step 7 (knows the block best,
-  but 3-4 agents writing in parallel need a fixed template), or a
-  consolidation pass after? Leaning: block agent writes it, from a template in
-  the brief; the registry generator validates presence.
+- Registry generation from source vs from per-block READMEs. Generating the
+  authoring shape directly from block source + section schema would make it
+  self-maintaining (no drift possible), but some of layer 1 is genuinely
+  prose (gotchas, why-this-shape) and cannot be derived. Likely split:
+  generated fields + a hand-written prose section, with the gate covering
+  only the generated half.
 - Does the registry go in `blocks/` or repo root? `blocks/` keeps it adjacent
   to what it indexes; root is more discoverable. Leaning `blocks/`, with the
   CLAUDE.md pointing at it.
