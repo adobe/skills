@@ -380,3 +380,123 @@ wins because it is co-located with the code it describes (an agent opening the
 block directory gets the contract for free; deleting the block deletes its
 doc), not because `stardust/` is unavailable. Reconcile the wording in note 2
 when implementing — as written the two notes appear to disagree.
+
+---
+
+## 4. EDS migration blueprint — deep upfront analysis, contributable plan
+
+**Idea.** For EDS-specific migration, run an initial very deep and broad
+analysis of the site and turn it into a **full implementation plan other users
+can follow to contribute to the migration**. Coverage required:
+
+1. Full list of URLs of the site
+2. Full coverage of page archetypes needed for full migration
+3. Full coverage of dynamic capabilities — item lists, **search**
+4. Full map of EDS indexes
+5. API integrations, reverse-engineered from the live site
+6. Martech reimplementation — what makes sense to carry over
+7. **100% IA fidelity**
+
+### Findings — `prepare-migration` covers about half of this
+
+The five-phase cascade in `skills/prepare-migration/SKILL.md` is the closest
+existing thing. Scoring the seven asks against it:
+
+| # | Ask | Status today |
+|---|-----|--------------|
+| 1 | URL inventory | **Good.** `extract/reference/ia-extraction.md` — sitemap → recursive sitemap-index → `robots.txt` → BFS fallback, with URL normalization and relative-`<loc>` resolution. `--prep` lifts the page cap. |
+| 2 | Page archetypes | **Good.** Phase 1 types every page; Phase 3 approves one archetype prototype per type + writes canon. |
+| 3a | Item lists | **Good, genuinely strong.** Phase 4.5 maps every listing block and classifies each needed field Tier 1 (page-intrinsic DOM) / Tier 2 (page metadata, must be emitted at author time) / Tier 3 (relationships — stays static until modeled). Ordering before bulk import is deliberate. |
+| 3b | **Search** | **Missing entirely.** No mention anywhere in the plugin. |
+| 4 | EDS indexes | **Partial.** Phase 4.5 authors `helix-query.yaml` scoped indexes from the metadata contract, but scoped to listing blocks — not a full site index map. |
+| 5 | **API integrations** | **Missing.** Nothing catalogs the live site's XHR/fetch endpoints. |
+| 6 | **Martech** | **Missing — and currently inverted.** Martech is treated as *noise to remove*, not capability to port: `extract` dismisses consent banners (`playwright-recipe.md:234-238`, OneTrust/Cookiebot/Didomi/osano), `diff` dismisses overlays. Nothing records what tags were on the page or decides their fate. |
+| 7 | 100% IA fidelity | **Partial, and back-to-front.** Redirects only appear late, as a byproduct of `rollout` Phase C's path-safety gate (`rollout/SKILL.md:149` writes `stardust/redirects.tsv`). No coverage ledger reconciling discovered URLs against delivered ones. |
+
+**The bigger structural gap: there is no contributable plan.** Grepping
+`rollout` and `prepare-migration` for contributor / team / work-partition
+concepts returns nothing. The cascade is confirmation-gated for **one
+operator** at a keyboard and terminates in `Next: $stardust migrate`. What is
+being asked for here is a different deliverable: a written plan that partitions
+the migration into independent units other people can pick up.
+
+### Proposal — a `blueprint` deliverable
+
+Probably a new skill (`stardust:blueprint`, or `prepare-migration --deep`)
+that runs *after* extract+direct and produces a durable, reviewable plan
+document rather than only state. Per note 3 it lands at
+`stardust/blueprint/`, and per the standing requirement it is written and
+refreshed without the user asking.
+
+Section-by-section, with where each comes from:
+
+- **§ URL inventory + coverage ledger (asks 1, 7).** Every discovered URL with
+  its disposition: `migrate` (→ target path) / `redirect` (→ target) /
+  `drop` (with a reason). This ledger IS the definition of 100% IA fidelity —
+  fidelity is provable when every discovered URL has a disposition and every
+  `migrate` row is delivered. Derive the redirect map **here, upfront**, from
+  the IA, rather than discovering it in `rollout` Phase C. Feed
+  `stardust/redirects.tsv` from the ledger instead of the other way round.
+- **§ Archetype coverage (ask 2).** Type → page count → representative page →
+  archetype status. Explicitly lists which types have **no** approved
+  archetype yet — that gap list is the contributor work queue.
+- **§ Dynamic capabilities (ask 3).** Extend Phase 4.5's tier model beyond
+  listings to cover **search** — which is distinct: an EDS site search is
+  typically a full-content query-index plus client-side filtering, with its
+  own index scope, its own metadata needs, and a decision about
+  fuzzy/facets/pagination. Also worth cataloguing: filters/facets,
+  sort/pagination, forms, gated content, personalization surfaces.
+- **§ EDS index map (ask 4).** One table of every index: scope glob, target
+  path, properties, which blocks consume it, and estimated row count.
+  `helix-query.yaml` is generated from this table, so the map is the source
+  and the config is the artifact.
+- **§ API integrations (ask 5).** *This is nearly free and should be built
+  first.* `extract`'s Playwright recipe already routes every request through
+  an interception layer (`playwright-recipe.md:134`, `:154`, `:175`) — the
+  plumbing exists, nothing records it. Add a network-capture pass during the
+  prep crawl that logs XHR/fetch per page and catalogs: endpoint, method,
+  request/response shape, auth mechanism, which UI surface consumes it,
+  whether it is third-party or first-party, and a porting verdict (reimplement
+  as EDS block JS / replace with a query-index / proxy / drop).
+- **§ Martech (ask 6).** Inventory what is actually on the live pages —
+  analytics (Adobe Launch/Analytics, GTM/GA4), consent management (the vendors
+  the dismissal code already detects are a free signal), tag managers, A/B
+  testing, personalization, chat, forms/marketing automation. Then a per-tag
+  verdict: **keep** (reimplement on EDS — note EDS ships RUM natively, so some
+  analytics is redundant), **replace**, or **drop**, each with a reason. "What
+  makes sense" is a judgement call per tag, so the plan records the reasoning,
+  not just the outcome. Consent especially needs an explicit decision because
+  today it is auto-dismissed and thus invisible.
+- **§ Work packages (the contributable part).** Partition into units sized for
+  one contributor: which pages, which blocks, which archetype, dependencies
+  ("needs `cards` block from package 3"), and done-criteria per package
+  (round-trip gate exits 0, David's-Model lint clean). This is the section
+  that makes the document a plan rather than a report, and it is what
+  `deploy` Step 7's parallel-agent brief (`deploy/SKILL.md:560`, one agent per
+  archetype cluster) already gestures at for agents — the same partition works
+  for humans.
+
+### Notes / open questions
+
+- **Sequencing.** Ask 5 (API capture) must ride along with the prep crawl —
+  retrofitting means re-crawling the whole site. If only one piece of this
+  gets built first, build the network-capture pass, because it is the only one
+  with a hard ordering constraint.
+- **Cost.** A very deep analysis of a large site is expensive. Worth a
+  `--depth` control, or sampling by archetype (analyse N representatives per
+  type) rather than every URL for the expensive passes — while keeping ask 1
+  exhaustive, since the URL list must be complete for fidelity to mean
+  anything.
+- **Plan staleness.** The blueprint describes a moving target — as packages
+  land it must reflect that. Either regenerate the status columns from
+  `state.json` on every run (preferred; the plan stays a view over live state)
+  or accept it as a point-in-time document and date it. Do **not** hand-
+  maintain checkboxes.
+- **Overlap with `rollout`.** `rollout` Phase A already builds a coverage
+  inventory and Phase B a block-dedup plan. Decide whether blueprint *feeds*
+  rollout or duplicates its front half — most likely blueprint owns the
+  planning and rollout consumes it, with Phase A/B reduced to reading the
+  blueprint.
+- Does this belong in `prepare-migration` as a deeper mode, or as its own
+  skill? Leaning own skill: the output is a document for humans to read and
+  divide up, which is a different job from the cascade's state-and-gates.
