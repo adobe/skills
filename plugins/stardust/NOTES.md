@@ -253,3 +253,130 @@ creation. Both need to happen with no user prompting.
 - Should `stardust/eds-schema/<page>.json` gain a by-block index, or is the
   per-block README enough? Possible that the README's authoring-shape table
   should be generated from the schema rather than written by hand.
+
+---
+
+## 3. Folder structure — skill-named artifact tree, and where it lives
+
+**Idea.**
+
+- For stardust CMS-agnostic work: build a folder structure under a folder
+  called `stardust/`, where the structure reflects **the skill names that
+  produced the artifacts**.
+- For EDS projects: the skill registers the **EDS project GitHub URL**, the
+  **DA folder URL**, and the **`da_token` location**.
+- Stardust artifacts are maintained **inside the EDS project**, under a
+  `stardust/` folder.
+
+### Findings — the current tree is organised by artifact type, not by producer
+
+Today's layout mixes conventions, and one skill already does it the proposed
+way (`audit/`):
+
+| Current path                       | Produced by            | Skill-named target        |
+|------------------------------------|------------------------|---------------------------|
+| `stardust/current/`                | `extract`              | `stardust/extract/current/` |
+| `stardust/canon-source/`           | `extract --design-source` | `stardust/extract/canon-source/` |
+| `stardust/direction.md`            | `direct`               | `stardust/direct/direction.md` |
+| `stardust/prototypes/`             | `prototype`            | `stardust/prototype/`     |
+| `stardust/canon/`                  | `prototype --prep`     | `stardust/prototype/canon/` |
+| `stardust/migrated/`               | `migrate`              | `stardust/migrate/`       |
+| `stardust/eds-schema/`             | `deploy`               | `stardust/deploy/schema/` |
+| `stardust/eds-conversion-log.md`   | `deploy`               | `stardust/deploy/conversion-log.md` |
+| `stardust/runtime-contract.json`   | `deploy`               | `stardust/deploy/runtime-contract.json` |
+| `stardust/audit/<domain-slug>/`    | `audit`                | already correct           |
+| `stardust/dynamic-blocks-map.md`   | (confirm producer)     | TBD                       |
+
+**Cross-cutting files stay at `stardust/` root** — they belong to no single
+skill and every skill reads/writes them: `state.json`, `journal.md`,
+`learnings.md`. Proposed rule: *skill-produced artifacts live under
+`stardust/<skill>/`; only cross-cutting state sits at the root.*
+
+Note that `canon/` is written by `prototype --prep` but consumed by `migrate`
+(`migrate/SKILL.md:73-88`, including the auto-bootstrap path where **migrate**
+writes canon itself). Producer-based naming puts it under `prototype/` even
+though migrate can author it. Either accept that, or carve out a
+`stardust/canon/` shared-artifact exception alongside the root state files.
+Worth deciding explicitly — it is the one case where the rule is ambiguous.
+
+### Migration cost — real, and the reason to do it once, properly
+
+Path references across `skills/` today:
+
+| Path                   | Refs |
+|------------------------|------|
+| `stardust/current`     | 167  |
+| `stardust/migrated`    | 84   |
+| `stardust/prototypes`  | 56   |
+| `stardust/canon`       | 54   |
+| `stardust/direction.md`| 47   |
+| `stardust/audit`       | 11   |
+| `stardust/eds-schema`  | 5    |
+
+64 files touch these paths. Implications:
+
+- This is a **breaking change** for projects already on disk. Needs either a
+  compat shim (read old path if new is absent, migrate on next write) or a
+  clean break with a version bump + a one-shot migration script. Recommend the
+  migration script — a shim doubles every path lookup forever.
+- Do **not** hand-sweep 64 files a second time. Introduce a single paths
+  reference (`skills/stardust/reference/paths.md`, or better a
+  `paths.json` the scripts import) so the next rename is one edit. The current
+  sprawl is itself the argument for the restructure.
+- The eval fixtures (`evals/*/fixture/stardust/`) encode paths too — include
+  them in the sweep or the evals go red.
+
+### EDS project registration
+
+Register once, at first deploy, into `stardust/deploy/project.json`:
+
+```json
+{
+  "github":  "https://github.com/<org>/<repo>",
+  "branch":  "main",
+  "da":      "https://da.live/#/<org>/<repo>",
+  "daToken": { "source": ".env", "key": "DA_TOKEN" }
+}
+```
+
+**Record the token's *location*, never its value.** This file will be
+committed (it lives inside the EDS repo — see below), so it must be safe by
+construction: a pointer to `.env#DA_TOKEN`, never the secret. Reinforces the
+existing token hygiene rule at `deploy/SKILL.md:89` (`.gitignore` must cover
+`.env`, `.env.*`, `qa/`) — the registration file is the natural place to
+assert that gitignore state at write time and fail loudly if `.env` is
+tracked.
+
+Payoff: `deploy`, `rollout`, and `diff` currently re-derive `$ORG`/`$REPO`/
+`$BRANCH` per run (`da-deploy-protocol.md:15-65` builds every preview/live URL
+from them). Registering once makes the branch preview URL, DA edit URL, and
+live URL derivable rather than re-asked.
+
+### Artifacts inside the EDS project — decide what is committed
+
+Putting `stardust/` inside the EDS repo makes the memory travel with the code
+(good, and it is what makes note 2's registry and note 1's CLAUDE.md coherent
+as one system). But some of the tree is heavy and generated:
+
+- **Commit**: `direct/direction.md`, `deploy/` (schema, conversion log,
+  runtime-contract, project.json), `state.json`, `journal.md`, `learnings.md`,
+  `prototype/canon/`. Small, textual, and the actual memory.
+- **Gitignore, probably**: `extract/current/assets/` (downloaded media,
+  screenshots), `migrate/` (a full static site copy — large, regenerable),
+  `extract/canon-source/`. These are reproducible captures, not memory.
+
+Ship a `stardust/.gitignore` written by the same skill that creates the tree,
+so this is decided once rather than per project.
+
+### Interaction with note 2 — one argument there needs revising
+
+Note 2 argued implementation memory belongs in the EDS repo "not `stardust/`",
+partly because *"someone adding a feature months later clones the EDS repo and
+may not have `stardust/` at all."* If `stardust/` lives **inside** the EDS
+project and is committed, that specific argument dissolves.
+
+The rest of note 2 still holds, on different grounds: `blocks/<name>/README.md`
+wins because it is co-located with the code it describes (an agent opening the
+block directory gets the contract for free; deleting the block deletes its
+doc), not because `stardust/` is unavailable. Reconcile the wording in note 2
+when implementing — as written the two notes appear to disagree.
