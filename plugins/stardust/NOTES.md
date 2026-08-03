@@ -538,11 +538,8 @@ Section-by-section, with where each comes from:
   `state.json` on every run (preferred; the plan stays a view over live state)
   or accept it as a point-in-time document and date it. Do **not** hand-
   maintain checkboxes.
-- **Overlap with `rollout`.** `rollout` Phase A already builds a coverage
-  inventory and Phase B a block-dedup plan. Decide whether `prepare-rollout`
-  *feeds* rollout or duplicates its front half — most likely it owns the
-  planning and rollout consumes it, with Phase A/B reduced to reading the
-  plan. This is the main design question left on this note.
+- ~~Overlap with `rollout`~~ — **DECIDED: `prepare-rollout` owns planning,
+  `rollout` reads it.** See § Division of labour below.
 - **Naming.** `prepare-rollout` mirrors `prepare-migration` and states the
   pairing (agnostic prep → agnostic migrate; EDS prep → EDS rollout). Check it
   does not read as "prepare *for* rollout only" — it is also the document
@@ -551,3 +548,51 @@ Section-by-section, with where each comes from:
   mid-cascade. Needs the same treatment as note 3's path moves: relocate, and
   leave `prepare-migration` Phase 4.5 as a gate that points at the new skill
   rather than silently dropping the step.
+
+### Division of labour with `rollout` (DECIDED)
+
+**`prepare-rollout` owns planning. `rollout` reads the plan and executes it.**
+
+There is already a precedent for exactly this in the code — `rollout` Phase B2
+says: *"When `stardust:prepare-migration` Phase 4.5 already ran,
+`stardust/dynamic-blocks-map.md` and `helix-query.yaml` exist — verify them
+against the inventory here instead of redoing them"* (`rollout/SKILL.md`
+§ Phase B2). Generalise that read-verify-don't-redo pattern to Phases A and B.
+
+**The wrinkle: separate decisions from measurements.** `rollout` Phase A/B are
+scripts (`inventory.mjs`, `blocks.mjs`, `plan.mjs`) that compute
+`coverage/pages.json`, `coverage/blocks.json` and `plan.json` **from
+`stardust/migrated/`** — a tree that does not exist yet when `prepare-rollout`
+runs early. So "owns planning" cannot mean "produces those files early". Split
+by kind:
+
+| Concern | Owner | Why |
+|---|---|---|
+| Block naming + dedup identity (canonical `edsBlockName`, reserved-class guard, which instances are the same block) | **prepare-rollout** | A decision. Reviewable, arguable, stable. |
+| Single-conversion-point ordering (first page converts, later pages reuse) | **prepare-rollout** | A decision, and the basis of work packages. |
+| Work packages + contributor assignment | **prepare-rollout** | The whole point of the plan. |
+| Metadata contract, index map, redirect + coverage ledger | **prepare-rollout** | Must exist before bulk import. |
+| Per-page delivery status, `sourceHash`, `stale` re-flagging | **rollout** (Phase A) | A measurement of live state. Cannot be planned ahead. |
+| Driving `deploy` per page, verify/optimize/report | **rollout** (C–I) | Execution. |
+
+So Phase A keeps `inventory.mjs` — it measures what has actually been
+delivered, which is inherently late and inherently rollout's job. Phase B
+stops *deriving* block names and conversion order and instead **loads
+`prepare-rollout`'s plan and reconciles it** against the migrated tree. Where
+they disagree (a block appears that the plan never named, an archetype
+produced different modules than predicted), that is a **flagged
+reconciliation** surfaced to the user — never a silent re-derive, which is how
+the plan and the execution would drift apart.
+
+**Script relocation.** The planning logic currently inside `blocks.mjs` and
+`plan.mjs` (canonical naming, reserved-class guard per deploy #15,
+representative-first ordering) is planning, so it moves to `prepare-rollout`.
+`inventory.mjs` stays. Where the plan needs block data before `migrated/`
+exists, it derives from the archetype sidecars + `state.json` typing — which
+is exactly what rollout's own archetypes-only mode already does
+(`rollout/SKILL.md` § Phase A, `--state`), so the mechanism is proven.
+
+**Consequence worth stating plainly:** with planning hoisted out, `rollout`
+becomes a pure execution engine — inventory, drive `deploy`, verify, report.
+That is a simpler and more testable skill than it is today, and it means the
+plan a contributor reads is the same artifact the machine executes from.
