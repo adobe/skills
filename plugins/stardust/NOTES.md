@@ -833,3 +833,87 @@ fires every run — that is how users learn to ignore the whole block.
   the expensive-to-reverse ones (bulk import, `--re-direct`) a pre-flight
   advisory is worth far more than a post-hoc one. Probably: pre-flight for
   destructive/expensive actions, closing-block for everything else.
+
+---
+
+## 6. Required EDS implementation-architecture references
+
+**Idea.** Pin the EDS architectures a migration must implement, each with its
+canonical reference, so skills cite a source instead of encoding folklore.
+
+URLs verified August 2026 via search (`www.aem.live` returns 403 to automated
+fetches, so re-verify by hand before embedding in a SKILL.md).
+
+Coverage legend: **✅ covered** — the plugin implements and cites it ·
+**🟡 thin** — mentioned but not specified · **❌ absent** — not in the plugin.
+
+### Content model + block architecture
+
+| Architecture | Reference | Coverage |
+|---|---|---|
+| Markup, sections, blocks, auto-blocking | https://www.aem.live/developer/markup-sections-blocks | ✅ `deploy` Steps 7-8 + `runtime-contract.json` |
+| David's Model (authored-structure contract) | https://www.aem.live/docs/davidsmodel | ✅ `deploy/davids-model.md` + `davids-model-lint.mjs` |
+| Block Collection (canonical content models) | https://www.aem.live/developer/block-collection | ✅ `deploy` Step 2 (D11) |
+| Component model definitions (simple / key-value / container) | https://www.aem.live/developer/component-model-definitions | 🟡 named in `deploy` Step 2b, not specified |
+| Universal Editor blocks (instrumentation) | https://www.aem.live/developer/universal-editor-blocks | ❌ only a forward-compat aside |
+| Fragments | https://www.aem.live/docs/fragments | ✅ for `/nav` + `/footer` (`deploy` Step 6) — but **the docs' `noindex` guidance for fragments is missing**, and it affects both query-index and sitemap |
+
+### Data, indexes, metadata
+
+| Architecture | Reference | Coverage |
+|---|---|---|
+| Indexing / query-index | https://www.aem.live/developer/indexing · https://www.aem.live/docs/indexing-reference | ✅ `rollout/reference/dynamic-listings.md` + `helix-query.yaml` |
+| **Tabular data (sheets → JSON)** | https://www.aem.live/docs/authoring-tabular-data | ❌ **the note-4 bucket-2 gap.** No sheet concept anywhere for non-page data (locations, staff, specs, pricing). |
+| **Bulk metadata** | https://www.aem.live/docs/bulk-metadata | ❌ **and it changes a load-bearing assumption — see below.** |
+| Placeholders (i18n strings as a sheet) | https://www.aem.live/docs/placeholders | ❌ |
+| Index Admin / Bulk Operations tooling | https://tools.aem.live/tools/index-admin/index.html · https://tools.aem.live/tools/bulk/index.html | ❌ |
+
+> **Bulk metadata materially affects Phase 4.5's ordering argument.** A
+> `metadata` sheet at the content root applies metadata to many pages by URL
+> pattern (`/docs/**`, `**/docs/**`), rather than per page at author time. The
+> "retrofitting metadata across thousands of published pages is a second
+> migration" premise — which is why Phase 4.5 is a PRE-IMPORT gate
+> (`rollout/reference/dynamic-listings.md`) — is therefore **partly false**:
+> where a field correlates with path, it is a one-row sheet edit after the
+> fact. It stays true for genuinely per-page values (publish date, author,
+> per-item category). Re-derive the gate's strictness against this before
+> implementing note 4; the gate is probably still right, but for a narrower
+> reason than currently stated.
+
+### Delivery, performance, telemetry
+
+| Architecture | Reference | Coverage |
+|---|---|---|
+| Loading sequence — eager / lazy / delayed, `delayed.js` | https://www.aem.live/developer/keeping-it-100 | 🟡 chain listed once at `deploy/SKILL.md:25`; **no guidance on what belongs in `delayed.js`** — the canonical home for martech (note 4) |
+| RUM / operational telemetry | https://www.aem.live/developer/rum | ❌ **not mentioned anywhere in the plugin**, yet it is the basis for judging which source-site analytics is redundant rather than portable |
+| Web performance (Lighthouse 100) | https://www.aem.live/developer/keeping-it-100 | ✅ in spirit (CLS/font/LCP work in `deploy`), uncited |
+| Anatomy of a project | https://www.aem.live/developer/anatomy-of-a-project | 🟡 assumed by `deploy` § Target runtime |
+| **Limits** | https://www.aem.live/docs/limits | ❌ — relevant to "100% IA fidelity" (note 4) on large sites; scale planning should cite real limits, not assume none |
+
+### Site-level concerns
+
+| Architecture | Reference | Coverage |
+|---|---|---|
+| Redirects | https://www.aem.live/docs/redirects | 🟡 late byproduct of `rollout` Phase C. **Docs advise against pattern/wildcard redirects** (loop risk, 301→404) and recommend deriving them from actual usage data — feed that into note 4's upfront redirect map. |
+| Sitemaps | https://www.aem.live/developer/sitemap | 🟡 `rollout` Phase D |
+| Translation and localization | https://www.aem.live/docs/translation-and-localization | 🟡 `rollout` Phase D3; hreflang-in-sitemap guidance not cited |
+| Error pages (404) | https://www.aem.live/docs/error-pages | ❌ — docs recommend fragments for authorable/language-specific 404s |
+| Forms | https://www.aem.live/developer/forms | ❌ — relevant to note 4 bucket 3 (forms are a common "API integration") |
+| Adobe Target integration | https://www.aem.live/developer/target-integration | ❌ — the supported path for personalization martech |
+| SEO & GEO best practices | https://www.aem.live/docs/seo-geo | 🟡 overlaps `audit` / `qa` |
+| Go-live checklist | https://www.aem.live/docs/go-live-checklist | ❌ — natural companion to `rollout` Phases E-H |
+| Authoring surfaces (DA / AEM / gdrive-sharepoint) | https://www.aem.live/docs/authoring-guide · https://www.aem.live/docs/aem-authoring | 🟡 `deploy` assumes DA throughout |
+
+### How these should be used
+
+- **Cite, don't restate.** Where the plugin already encodes a rule, add the
+  reference next to it (the `davids-model.md` mapping is the model to copy —
+  each `D#N` rule mapped to the contract that enforces it).
+- **The ❌ rows are the real backlog.** Sheets, bulk metadata, RUM,
+  `delayed.js`, limits and error pages are all load-bearing for a full
+  migration and none are currently written down.
+- **`prepare-rollout` (note 4) is the natural consumer** of most of this: the
+  index map, sheet decisions, metadata strategy, martech load phases and
+  redirect policy are all planning outputs that should cite these docs.
+- Re-verify URLs before embedding — this table was compiled from search
+  results, not from fetching each page.
