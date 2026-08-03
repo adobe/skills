@@ -4,7 +4,7 @@ Defining a user interface for running a stardust migration in a browser or a
 Mac desktop app. Separate from `plugins/stardust/NOTES.md` (plugin
 implementation notes) — this is product definition.
 
-**Status:** gathering inputs. Nothing decided yet.
+**Status:** gathering inputs. Round 1 decided (D1-D4); D5-D10 open.
 
 ---
 
@@ -31,28 +31,46 @@ implementation notes) — this is product definition.
 
 Numbered so answers can be recorded against them.
 
-### D1. Who is the primary user?
-Practitioner running migrations / customer stakeholder reviewing + approving /
-contributor picking up a work package (note 4) / mixed.
+### D1. Who is the primary user? — **DECIDED: practitioner running migrations**
+An agency / consultant / internal specialist who drives the whole pipeline.
+Optimise for control, state visibility and intervention — not for hiding the
+machinery. Customer-reviewer and contributor personas are out of scope for
+now (revisit once the practitioner surface exists; note-4 work packages make
+the contributor persona a natural second).
 
-### D2. Where does the agent execute?
-The fork that decides how much has to be built:
-- **Mac desktop, local agent** — filesystem, Playwright/Chromium, `DA_TOKEN`
-  in `.env`, git all work as stardust assumes today. Thin shell over existing
-  behaviour.
-- **Browser + hosted backend** — crawling, browser automation, token custody,
-  git and long-running jobs all move server-side. A substantially larger build
-  that changes stardust's operating assumptions.
+### D2. Where does the agent execute? — **DECIDED: Mac desktop, local agent**
+Filesystem, Playwright/Chromium, `DA_TOKEN` in `.env` and git all work exactly
+as stardust assumes today. The app is a shell over existing behaviour rather
+than a re-platforming.
 
-### D3. What is the spine of the interface?
-Chat-first with visual panels / structured dashboard with chat assist /
-linear wizard through the phases. Stardust's craft loop ("make the hero
-bolder") is inherently conversational; its state, coverage and gates are
-inherently structured. The ratio is a real product decision, not a detail.
+Consequences:
+- **No backend to build.** The app reads `stardust/` off disk directly and
+  tails `status.jsonl` for live progress. Every artifact is already a file.
+- **Secrets never leave the machine** — `.env` custody is unchanged.
+- **Browser automation keeps working** — the headed-Chrome fallback for
+  bot-managed origins (`extract/reference/playwright-recipe.md`) is a local
+  capability that a hosted backend would have made hard.
+- **Cost of the choice:** no shared/multi-user state, and nothing to point a
+  customer at. Both were deprioritised by D1.
 
-### D4. How much of the pipeline is in scope?
-Full chain (extract → direct → prototype → migrate → prepare-rollout →
-rollout) / migration execution only / review-and-approve surface only.
+### D3. What is the spine of the interface? — **DECIDED: structured dashboard, chat assist**
+State, coverage and gates are the primary surface. Chat appears where
+iteration genuinely needs it — prototype refinement ("make the hero bolder"),
+direction-setting — rather than as the main navigation.
+
+Open tension to resolve: `direct` is the *least* structured phase (freeform
+intent, palette choice, variants, the "open and reasoned" principle in
+`skills/stardust/SKILL.md`). It fits a dashboard worst. See D11.
+
+### D4. How much of the pipeline is in scope? — **DECIDED: full chain**
+`extract → direct → prototype → migrate → prepare-rollout → rollout`.
+
+Consequence: the UI must cover six phases with genuinely different shapes —
+a long crawl (progress + scope confirmation), a creative step (direction), a
+visual review loop (prototypes), a bulk render (migrate), a plan to read and
+partition (prepare-rollout, note 4), and a resumable delivery run with gates
+and credential expiry (rollout). Designing one screen pattern for all six is
+the main risk.
 
 ### D5. Single project or portfolio?
 One migration at a time, or a dashboard across many projects.
@@ -77,3 +95,15 @@ stop), GitHub auth, DA org/repo binding (note 3's `project.json`).
 ### D10. What the UI must never do.
 Stardust's guarantees — provenance, no synthesized pages, idempotency,
 stale-on-direction-change — must survive a GUI that makes re-running cheap.
+
+### D11. How conversational is the `direct` phase? (new, from D3)
+Direction-setting is freeform intent, mode detection, palette picking and
+variants — the phase that fits a dashboard worst. Options: a dedicated chat
+surface for this phase only; a structured form (palette picker, axis sliders)
+with chat fallback; or keep it in the terminal and have the app pick up from
+`direction.md`.
+
+### D12. Relationship to Claude Code. (new, from D2)
+Does the app replace the terminal entirely, or coexist with an escape hatch to
+a real Claude Code session on the same project? Practitioners (D1) will hit
+cases the GUI does not cover.
