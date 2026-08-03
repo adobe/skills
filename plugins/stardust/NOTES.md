@@ -383,7 +383,7 @@ when implementing — as written the two notes appear to disagree.
 
 ---
 
-## 4. EDS migration blueprint — deep upfront analysis, contributable plan
+## 4. `prepare-rollout` — deep EDS analysis and contributable implementation plan
 
 **Idea.** For EDS-specific migration, run an initial very deep and broad
 analysis of the site and turn it into a **full implementation plan other users
@@ -420,13 +420,59 @@ operator** at a keyboard and terminates in `Next: $stardust migrate`. What is
 being asked for here is a different deliverable: a written plan that partitions
 the migration into independent units other people can pick up.
 
-### Proposal — a `blueprint` deliverable
+### Placement — a new `prepare-rollout`, EDS-specific, run early
 
-Probably a new skill (`stardust:blueprint`, or `prepare-migration --deep`)
-that runs *after* extract+direct and produces a durable, reviewable plan
-document rather than only state. Per note 3 it lands at
-`stardust/blueprint/`, and per the standing requirement it is written and
-refreshed without the user asking.
+**`prepare-migration` is EDS-agnostic; this plan is EDS-specific.** That
+boundary is already in the code: `migrate/SKILL.md:16` describes its own
+output as "agnostic HTML — downstream conversion (AEM EDS, a CMS, a …)" and
+`migrate/SKILL.md:466` explicitly excludes generating EDS. The agnostic/EDS
+seam is `migrate` | `rollout`.
+
+**Phase 4.5 is currently on the wrong side of that seam.** It reasons about
+EDS query-indexes (`prepare-migration/SKILL.md:245`) and authors
+`helix-query.yaml` into the "EDS project root" (`:314`) — the single
+EDS-specific step inside the agnostic cascade. Moving it into
+`prepare-rollout` purifies `prepare-migration`; its Phase 4.5 becomes a
+*check* ("targeting EDS? `prepare-rollout` must have run before migrating at
+scale") rather than an implementation.
+
+**Own skill, not folded into `rollout`.** `rollout`'s Setup gates on
+`stardust/migrated/` already existing (`rollout/SKILL.md:36`) — it runs late by
+construction. But the blueprint's highest-value outputs (metadata contract,
+index map) must exist *before* migrate runs at scale; that ordering constraint
+is the whole reason Phase 4.5 sits where it does. Putting the blueprint inside
+`rollout` would recreate the retrofit problem Phase 4.5 was designed to
+prevent.
+
+So: **`stardust:prepare-rollout`**, positioned flexibly between `extract` and
+`rollout`, re-runnable and incremental — each section fills in as its upstream
+data becomes available:
+
+| Section | Earliest runnable after |
+|---|---|
+| URL inventory + coverage ledger | `extract` |
+| API integration catalog | `extract` (needs the crawl's network log) |
+| Martech inventory + verdicts | `extract` |
+| Dynamic capabilities + index map | `extract` (typing) |
+| Archetype coverage | `direct` / `prototype` |
+| Work packages | once archetypes + block plan exist |
+
+Per note 3 it lands at `stardust/prepare-rollout/`; per the standing
+requirement it is written and refreshed without the user asking.
+
+**Keep raw capture agnostic, keep interpretation EDS-specific.** Two of the
+asks need data collected during the crawl, which is `extract`'s job and must
+stay CMS-agnostic. Split them:
+
+- `extract` records the **network log** and the **third-party tag inventory**
+  as raw evidence — agnostic facts about the live site, useful to any target.
+- `prepare-rollout` **interprets** them: porting verdicts per endpoint
+  (reimplement as block JS / replace with a query-index / proxy / drop) and
+  keep-replace-drop per tag against EDS capabilities (e.g. EDS ships RUM
+  natively, making some analytics redundant).
+
+This keeps the seam clean and solves the ordering constraint below — the
+capture rides along with the crawl that already happens.
 
 Section-by-section, with where each comes from:
 
@@ -493,10 +539,15 @@ Section-by-section, with where each comes from:
   or accept it as a point-in-time document and date it. Do **not** hand-
   maintain checkboxes.
 - **Overlap with `rollout`.** `rollout` Phase A already builds a coverage
-  inventory and Phase B a block-dedup plan. Decide whether blueprint *feeds*
-  rollout or duplicates its front half — most likely blueprint owns the
+  inventory and Phase B a block-dedup plan. Decide whether `prepare-rollout`
+  *feeds* rollout or duplicates its front half — most likely it owns the
   planning and rollout consumes it, with Phase A/B reduced to reading the
-  blueprint.
-- Does this belong in `prepare-migration` as a deeper mode, or as its own
-  skill? Leaning own skill: the output is a document for humans to read and
-  divide up, which is a different job from the cascade's state-and-gates.
+  plan. This is the main design question left on this note.
+- **Naming.** `prepare-rollout` mirrors `prepare-migration` and states the
+  pairing (agnostic prep → agnostic migrate; EDS prep → EDS rollout). Check it
+  does not read as "prepare *for* rollout only" — it is also the document
+  contributors work from throughout, not just a pre-flight.
+- **Migration of Phase 4.5.** Moving it is a behaviour change for anyone
+  mid-cascade. Needs the same treatment as note 3's path moves: relocate, and
+  leave `prepare-migration` Phase 4.5 as a gate that points at the new skill
+  rather than silently dropping the step.
