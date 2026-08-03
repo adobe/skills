@@ -44,7 +44,7 @@ cp -R plugins/app-builder/. ~/.cursor/plugins/local/app-builder/
 # Then in Cursor: Cmd+Shift+P → Developer: Reload Window
 ```
 
-Verify the plugin loaded via **Cursor Settings → Plugins** (it should appear with all six App Builder skills). The skills are also visible in **Settings → Rules** under "Agent Decides".
+Verify the plugin loaded via **Cursor Settings → Plugins** (it should appear with the App Builder skills, including the grouped `appbuilder-workfront` suite). The skills are also visible in **Settings → Rules** under "Agent Decides".
 
 ## Available Skills
 
@@ -287,12 +287,27 @@ Development, customization, testing, and deployment skills for Adobe App Builder
 
 | Skill                            | Description                                                                               |
 | -------------------------------- | ----------------------------------------------------------------------------------------- |
-| `appbuilder-project-init`      | Initialize new Adobe App Builder projects and choose the right bootstrap path             |
+| `appbuilder-project-init`      | Initialize App Builder projects and choose the bootstrap path; also first-time machine/CLI setup (Node 20, aio install/login, stage vs prod) |
 | `appbuilder-action-scaffolder` | Scaffold, implement, deploy, and debug Adobe Runtime actions                              |
 | `appbuilder-ui-scaffolder`     | Generate React Spectrum UI components for ExC Shell SPAs and AEM UI Extensions            |
 | `appbuilder-testing`           | Generate and run Jest unit, integration, and contract tests for actions and UI components |
 | `appbuilder-e2e-testing`       | Playwright browser E2E tests for ExC Shell SPAs and AEM extensions                        |
 | `appbuilder-cicd-pipeline`     | Set up CI/CD pipelines for GitHub Actions, Azure DevOps, and GitLab CI                    |
+
+### App Builder — Workfront UI Extensions
+
+Skills for building customized **Workfront** UI applications on Adobe App Builder — a React/Spectrum SPA embedded through Workfront extension points, backed by Adobe I/O Runtime actions that call the Workfront / Planning / Adobe APIs. Shipped as part of the `app-builder` plugin under `plugins/app-builder/skills/appbuilder-workfront/`, as a parent umbrella skill plus three sub-skills. Machine setup and `aio app init` live in `appbuilder-project-init`.
+
+> **Usage guide:** [`plugins/app-builder/USAGE.md`](plugins/app-builder/USAGE.md) is the end-to-end walkthrough for driving these skills from an AI harness — set up the `aio` CLI → build a new project (or migrate existing code) → deploy → publish — with the start point, harness wiring, the questions the AI will ask, copy-paste prompts, and the gotchas to watch for.
+
+**Journey:** `appbuilder-project-init` (set up + scaffold) → `workfront-ui-extension` + `workfront-actions` (build) → `workfront-local-testing` (test) → deploy & publish. Start at the **`appbuilder-workfront`** umbrella for the end-to-end map.
+
+| Skill                     | Description                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------------- |
+| `appbuilder-workfront`    | Umbrella / onboarding: the end-to-end roadmap and how the SPA, actions, and extension points fit; routes to the three sub-skills below |
+| `workfront-ui-extension`  | Front-end SPA: extension points (Main Menu, per-object left panel, widgets), routing, shared context, `actionWebInvoke` |
+| `workfront-actions`       | Runtime actions: `{data,error}` shape, IMS auth passthrough, inputs/config, CommonJS, and the Workfront Public API v21 (search/count, bulk PUT, custom `DE:` fields) |
+| `workfront-local-testing` | Preview a local (`extensionOverride`) or deployed (Extension Manager BYO) build inside Workfront; fix common "not showing" issues |
 
 ### Commerce
 
@@ -469,12 +484,18 @@ plugins/
 │   │   └── plugin.json
 │   └── skills/
 │       ├── _shared/
-│       ├── appbuilder-project-init/
+│       ├── appbuilder-project-init/     # includes first-time machine/CLI setup
 │       ├── appbuilder-action-scaffolder/
 │       ├── appbuilder-ui-scaffolder/
 │       ├── appbuilder-testing/
 │       ├── appbuilder-e2e-testing/
-│       └── appbuilder-cicd-pipeline/
+│       ├── appbuilder-cicd-pipeline/
+│       └── appbuilder-workfront/         # Workfront suite: parent umbrella + 3 sub-skills
+│           ├── SKILL.md                  # umbrella / router
+│           ├── references/               # troubleshooting.md, commands.md
+│           ├── workfront-ui-extension/
+│           ├── workfront-actions/
+│           └── workfront-local-testing/
 ├── commerce/
 │   ├── app-management/
 │   │   ├── .claude-plugin/
