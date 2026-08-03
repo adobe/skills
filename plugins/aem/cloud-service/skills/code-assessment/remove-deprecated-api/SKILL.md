@@ -1,7 +1,7 @@
 ---
 name: remove-deprecated-api
 description: |
-  [BETA] AEM Cloud Service expert skill — migrate deprecated and removed Java APIs to
+  AEM Cloud Service expert skill — migrate deprecated and removed Java APIs to
   comply with AEM as a Cloud Service enforcement policies. Detection is **plugin-driven,
   not table-driven**: the skill runs the AEM Analyser Maven Plugin
   (`com.adobe.aem:aemanalyser-maven-plugin`) at its latest published version against the
@@ -11,15 +11,8 @@ description: |
   auditing deprecated APIs, fixing Cloud Manager pipeline failures citing
   `region-deprecated-api` / `api-regions-check` / `Import-Package not satisfied`, or
   proactively modernizing AEM projects before enforcement deadlines.
-  This skill is in beta. Verify all outputs before applying them to production projects.
-metadata:
-  status: beta
 license: Apache-2.0
 ---
-
-> **Beta Skill**: This skill is in beta and under active development.
-> Results should be reviewed carefully before use in production.
-> Report issues at https://github.com/adobe/skills/issues
 
 # Remove Deprecated API — AEM as a Cloud Service
 
