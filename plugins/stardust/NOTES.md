@@ -170,7 +170,9 @@ with the code it describes.
 Authoring shape (row/cell table), variant classes and what each does, decode
 tier (template-slotted vs reconstructive, per `deploy/SKILL.md:246`),
 component-model shape (simple / key-value / container), block-specific
-gotchas. Co-location is the point: an agent opening `blocks/cards/` to reuse
+gotchas. **Plus, for any block that calls an endpoint** (see note 4
+§ EDS implementation context): endpoint + method, CORS-allowed origins, auth
+assumption, load phase, and the empty/failure state the block renders. Co-location is the point: an agent opening `blocks/cards/` to reuse
 the block gets the contract for free, and deleting the block deletes its doc.
 Structurally cannot drift from the code.
 
@@ -521,6 +523,74 @@ Section-by-section, with where each comes from:
   `deploy` Step 7's parallel-agent brief (`deploy/SKILL.md:560`, one agent per
   archetype cluster) already gestures at for agents — the same partition works
   for humans.
+
+### EDS implementation context for APIs and martech (addendum)
+
+The earlier split (agnostic capture → EDS interpretation) is right but
+incomplete: it says *where* interpretation happens without saying *what
+decides it*. The verdicts are driven almost entirely by EDS runtime
+constraints, and those constraints are also durable context worth tracking.
+Three buckets, not two.
+
+**Bucket 1 — the EDS constraints that decide each verdict.**
+
+| Constraint | Consequence for an integration / tag |
+|---|---|
+| **No server-side runtime.** EDS delivers static documents. | An endpoint either gets called client-side from block JS, becomes a query-index (if the data is really site content), or needs a proxy/edge function that must be provisioned separately. There is no fourth option. |
+| **Origin changes** (live site → `*.aem.page`/`*.aem.live` → production domain). | Every same-origin XHR on the source site becomes cross-origin. Each retained endpoint needs CORS headers for the *new* origins, or a proxy. Silent 6-months-later breakage if unchecked. |
+| **Nothing is secret.** Block JS is public static. | Any endpoint needing a key/token cannot be called directly — proxy or drop. This is a hard verdict, not a preference. |
+| **Cookie/session auth doesn't survive the origin change.** | Personalization or gated content relying on session cookies needs rethinking, not porting. |
+| **`head.html` is locked down.** `deploy/SKILL.md:884` + the Step-9 checklist forbid `<script>`, CDN `<link>`, and preloads in `head.html`. | Third-party martech has literally nowhere to go except `delayed.js` or block JS. The usual "paste the vendor snippet in `<head>`" answer is unavailable — which is exactly why the martech verdict must be planned, not improvised. |
+| **Three-phase load chain** (`loadEager` → `loadLazy` → `loadDelayed`, `deploy/SKILL.md:25`). | Every retained tag needs a phase assignment. Martech belongs in the delayed phase; getting this wrong costs LCP/CLS on every page. |
+| **Consent gates the delayed phase.** | If consent is retained, it must load early enough to gate what `loadDelayed` fires — an ordering constraint with no equivalent on the source site. |
+
+**Gaps in the plugin found while checking this** — none of the above is
+currently written down:
+
+- `loadDelayed` appears **only** in the load-chain listing at
+  `deploy/SKILL.md:25`. There is no guidance anywhere on what belongs in
+  `delayed.js` — the canonical home for martech.
+- **RUM is not mentioned anywhere in the plugin.** EDS ships real-user
+  monitoring natively, which is the main reason some source-site analytics is
+  redundant rather than portable. The martech verdict rule needs this stated;
+  today an agent would have no basis for it.
+- No CORS / secrets / proxy policy exists for integration endpoints. (The
+  existing CORS hits are about `file://` and the dev server, unrelated.)
+
+**Bucket 2 — what `prepare-rollout` plans.** Per endpoint and per tag, the
+verdict *plus the constraint that forced it*: transport (block JS / query-index
+/ proxy / drop), load phase, CORS requirement against the target origins, auth
+handling, consent dependency. The reasoning matters as much as the verdict —
+"dropped because it needs a server-side key" is re-derivable; "dropped" alone
+gets re-litigated every six months.
+
+**Bucket 3 — what gets tracked as durable context** (notes 1 and 2). This is
+the part the earlier draft missed entirely. Integrations are exactly the kind
+of thing a future contributor must not have to reverse-engineer twice:
+
+- **Per-block README (note 2)** — when a block calls an endpoint, its README
+  documents: endpoint + method, which origins are CORS-allowed, auth
+  assumption, the empty/failure state the block renders, and the load phase.
+  A contributor reusing the block inherits its integration contract, which is
+  the whole argument for co-location.
+- **Site-level integrations ledger** — endpoint → consuming block(s) → verdict
+  → proxy (if any) → owner. Belongs in the EDS repo alongside the block
+  registry, not in the migration workspace: it stays true long after the
+  migration ends, and it is what someone adding a feature needs.
+- **Martech ledger** — what is installed, its load phase, its consent
+  dependency, and **what was deliberately dropped and why**. The dropped list
+  is the highest-value half and the one always lost.
+- **Target-origin/runtime facts** — CORS depends on knowing the deployed
+  origins, so these belong with the note-3 registration
+  (`stardust/deploy/project.json`: GitHub URL, DA URL, token location) and
+  alongside `runtime-contract.json`.
+
+**Precedent worth copying.** `runtime-contract.json`
+(`deploy/SKILL.md:48-69`) is exactly this pattern already working: a probe
+records the target runtime's actual facts, and block generation *reads the
+contract instead of assuming*. An integration/martech context file should be
+built the same way — machine-readable, probed not guessed, consumed by the
+code generators rather than restated in prose.
 
 ### Notes / open questions
 
