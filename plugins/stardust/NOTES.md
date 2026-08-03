@@ -596,3 +596,121 @@ is exactly what rollout's own archetypes-only mode already does
 becomes a pure execution engine — inventory, drive `deploy`, verify, report.
 That is a simpler and more testable skill than it is today, and it means the
 plan a contributor reads is the same artifact the machine executes from.
+
+---
+
+## 5. On-the-job user guidance — next steps, options, and advisories
+
+**Idea.** The skill guides the user with short, insightful next steps and
+options, and when the execution path is not ideal, alerts them to what should
+be done instead. The user can override the suggestion and proceed anyway.
+
+### Findings — guidance today is pull-based, single-valued, and binary
+
+**A state report already exists, but only on demand.** The master skill's
+no-argument route renders "project state, per-page status table, recommended
+next command, with reasoning" (`skills/stardust/SKILL.md` § Routing, per
+`reference/state-machine.md`). That is exactly the right reasoning — it just
+has to be *typed for* rather than offered at the end of a run.
+
+**Each skill ends with one hard-coded `Next:` line.** `direct/SKILL.md:834`
+("Next: $stardust prototype"), `extract/SKILL.md:491`,
+`prototype/SKILL.md:1247` and `:1404`, `prepare-migration/SKILL.md:293`. One
+option, static text, no branching on what actually happened in the run. No
+alternatives offered.
+
+**Guidance is binary — hard stop or silence.** Every "recommend" in the
+codebase is paired with "and stop": `prepare-migration/SKILL.md:56` and `:58`,
+`prototype/SKILL.md:90`, `direct/SKILL.md:852`. There is **no advisory tier**:
+no way to say "this will work, but X is the better path" and continue.
+
+**Nothing detects valid-but-suboptimal execution.** The cases that cost the
+most are all currently silent — see the candidate list below.
+
+**One precedent already does the right thing.** `migrate`'s canon
+auto-bootstrap (`migrate/SKILL.md:76-93`) replaced a hard stop with "do the
+reasonable thing inline and record why", explicitly because stopping was
+observed to strand 4 of 6 e2e sites. That is the advisory posture, already
+proven in this codebase — it just is not generalised.
+
+### Proposal — a shared closing block, and an advisory rule table
+
+**1. A common closing block, emitted by every skill at end of run.** Define it
+once in `skills/stardust/reference/next-steps.md` so all skills render the
+same shape. Two parts, the second only when it fires:
+
+```
+Next
+  → $stardust prototype                 prototype the 6 directed pages
+    $stardust direct --add-variant B    add a second direction to compare
+    $stardust prototype home --cinematic  motion register on the home page
+
+Heads-up
+  ! Only 1 of 7 page types has an approved archetype. Migrating now renders
+    the other 6 from canon alone — usually lower fidelity.
+    Better: $stardust prepare-migration   ·   proceed anyway with $stardust migrate
+```
+
+Hard caps, because this must stay short to stay read: **one recommended step,
+at most two alternatives, one line each**; at most **two advisories**, two
+lines each. The plugin's SKILL.md files are already long — guidance that
+sprawls gets skipped.
+
+**2. Advisories as a rule table, not model judgement.** Condition → severity →
+message → better command. Deterministic, testable, consistent across skills,
+and extendable the way `deploy`'s numbered anti-patterns (#NN) already are.
+Three severities:
+
+| Severity | Behaviour |
+|---|---|
+| **blocker** | Existing hard-stop behaviour, unchanged (no direction, no extracted pages, expired `DA_TOKEN`). |
+| **advisory** | Run proceeds. States what is suboptimal, names the better command, and says plainly that proceeding is fine. |
+| **note** | One-line FYI, no action implied. |
+
+**3. Overrides stick.** If the user proceeds past an advisory, record the
+override (in `state.json`, and in the journal entry for the run) and **do not
+re-raise it**. "The user can override anyway" is worthless if the same warning
+fires every run — that is how users learn to ignore the whole block.
+
+**4. Candidate advisories** — all currently silent, all observed-cost cases:
+
+- Migrating when only a subset of page types has an approved archetype
+  (fidelity drops to canon-only rendering for the rest).
+- Bulk import before the metadata contract exists — per note 4 this is the
+  expensive one; retrofitting metadata across live pages is a second
+  migration. `rollout` calls it a PRE-IMPORT GATE for exactly this reason.
+- `--re-direct` after many pages are already migrated (mass stale-flagging —
+  say how many pages it will invalidate *before* doing it).
+- `deploy` page-by-page when the inventory is large enough that `rollout`
+  would dedup blocks across pages.
+- `--skip-confirm` on a first run, where the catalog has never been reviewed.
+- Deploying with an unreviewed naming lock — `deploy/SKILL.md:244` calls the
+  naming step "the single highest-leverage step in the whole process".
+
+### Mechanics
+
+- **Reuse the state-report engine.** The closing block is the same reasoning
+  the no-arg state report already performs, pushed at end of run instead of
+  pulled. Build one, call it from both — do not write a second recommender.
+- **Hands-off mode** (`skills/stardust/SKILL.md` § Hands-off mode): advisories
+  must never block, but must still be recorded — write them to the journal and
+  as `status.jsonl` lines so an unattended run is auditable afterwards.
+  `reference/run-status.md` has `start | end | blocked` today; an `advisory`
+  event fits the existing line shape with no schema change.
+- **Insightful means state-derived, not static.** Cite the actual numbers from
+  this run ("1 of 7 types", "would stale-flag 43 pages"). A static string is
+  the thing that already exists and is already ignored.
+- **Fits the standing requirement.** This is the skill raising something the
+  user did not ask about, then deferring to their call — proactive guidance,
+  not a gate.
+
+### Open questions
+
+- Where does the rule table live — one shared file, or per-skill sections in
+  each SKILL.md? Leaning shared (`reference/advisories.md`) with a stable ID
+  per rule (`A1`, `A2`…) so overrides can be recorded by ID and cited in the
+  journal.
+- Should advisories ever be raised *before* the work rather than after? For
+  the expensive-to-reverse ones (bulk import, `--re-direct`) a pre-flight
+  advisory is worth far more than a post-hoc one. Probably: pre-flight for
+  destructive/expensive actions, closing-block for everything else.
