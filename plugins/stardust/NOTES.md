@@ -592,6 +592,55 @@ contract instead of assuming*. An integration/martech context file should be
 built the same way — machine-readable, probed not guessed, consumed by the
 code generators rather than restated in prose.
 
+### API integrations — scope decision (DECIDED)
+
+**Keep capture and classify. No reverse-engineering engine, no client codegen.**
+
+Considered and rejected: having the skill reverse-engineer live integrations
+and regenerate their clients for EDS. Recorded here because "why we didn't"
+is the half that otherwise gets re-litigated.
+
+**Why rejected.** Black-box capture is structurally incomplete and, worse,
+*looks* complete. A passive crawl only exercises what it happens to hit —
+form submits, search, filters, pagination and anything behind auth never fire.
+Response shapes are sampled, so optional fields, error shapes and pagination
+edges stay invisible; the auth mechanism is observable but credentials are
+not; rate limits and terms are opaque. Generating a client from that is
+confident code built on a partial contract. And after classification (below)
+very few endpoints even need rebuilding, each one bespoke — a poor target for
+generated code.
+
+**Why keep capture + classify.** The network log already flows through the
+Playwright interception layer during a crawl that happens anyway, so recording
+it is near-free, and classification is a judgement recorded in the plan rather
+than code to maintain. The payoff is **scoping, not reconstruction**: knowing
+on day one that a site has three vendor widgets, two things that are really
+content, and one genuine first-party API changes the estimate and the work
+packages. Learning it in week six is the expensive version.
+
+**Classification — route every observed endpoint into one of four buckets:**
+
+| Bucket | Verdict | Note |
+|---|---|---|
+| 1. Really site content | **Query-index.** | Already covered by the Phase 4.5 tier model. |
+| 2. Data, not pages (locations, staff, specs, FAQs, pricing) | **DA sheet published as JSON.** | Becomes authorable content, no integration at all. **Plugin gap:** `rollout/reference/dynamic-listings.md` covers pages-listing-pages only; there is no sheet concept for non-page data anywhere. Needs writing. |
+| 3. Third-party SaaS widget (chat, forms, maps, reviews, hosted search) | **Re-embed the vendor's supported script**, delayed phase. | Never reverse-engineer a vendor's private XHR — fragile, and frequently against their terms. |
+| 4. Genuinely first-party and must stay dynamic | **Rebuild the client by hand** in block JS, proxy where secrets/CORS demand it. | The observed contract is a starting point handed to a human, not a generated artifact. |
+
+Buckets 1-3 shrink the problem the most; run classification before anyone
+estimates bucket 4.
+
+**Before reverse-engineering anything in bucket 4, ask for the docs.** These
+integrations usually belong to the same organisation running the migration.
+Probe `/openapi.json`, `/swagger.json`, `/.well-known/`, GraphQL introspection
+— a two-minute check that returns the *full* surface — and ask who owns the
+endpoint. Observation is the documented fallback for when nobody does, not the
+default posture.
+
+**Report coverage honestly.** An endpoint that never fired during the crawl is
+unknown, not absent. The plan states what was exercised and what was not,
+rather than implying the inventory is exhaustive.
+
 ### Notes / open questions
 
 - **Sequencing.** Ask 5 (API capture) must ride along with the prep crawl —
