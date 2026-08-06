@@ -1,0 +1,12 @@
+{
+  "name": "adobe-fonts",
+  "description": "Font discovery and recommendations from the licensed Adobe Fonts catalog through the Adobe Fonts MCP server — find fonts by design context, mood, style, or similarity to a font you already like.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": ["adobe", "fonts", "typography", "typekit", "creative-cloud", "mcp"],
+  "skills": "./skills"
+}

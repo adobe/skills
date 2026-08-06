@@ -165,6 +165,27 @@
       "homepage": "https://github.com/adobe/skills",
       "repository": "https://github.com/adobe/skills",
       "license": "Apache-2.0"
+    },
+    {
+      "name": "adobe-fonts",
+      "source": "./plugins/creative-cloud/adobe-fonts",
+      "description": "Font discovery and recommendations from the licensed Adobe Fonts catalog through the Adobe Fonts MCP server — find fonts by design context, mood, style, or similarity to a font you already like.",
+      "version": "1.0.0",
+      "category": "creative-cloud",
+      "keywords": [
+        "adobe",
+        "fonts",
+        "typography",
+        "typekit",
+        "creative-cloud",
+        "mcp"
+      ],
+      "author": {
+        "name": "Adobe"
+      },
+      "homepage": "https://github.com/adobe/skills",
+      "repository": "https://github.com/adobe/skills",
+      "license": "Apache-2.0"
     }
   ]
 }
