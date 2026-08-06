@@ -59,12 +59,18 @@ true` to resolve it before using `selected_font`.
 | Param | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `library` | `"full"` \| `"trial"` | `"full"` | |
-| `writing_systems` | string | `"latn"` | comma-separated, e.g. `"latn,jpan"` |
+| `writing_systems` | string | `"latn"` | comma-separated ISO 15924 script codes, lowercase, e.g. `"latn,jpan"`, `"cyrl"`, `"hang"` |
 | `font_technology` | string | — | `"vf"` variable, `"colr"` color |
 | `font_group` | string | — | e.g. `"Sans Serif,Display"` |
 | `locale` | string | `"en"` | e.g. `"ja_JP"` |
 | `per_page` | int, 1–100 | 10 | |
 | `debug` | bool | `false` | disables caching |
+
+`writing_systems` is passed straight through to the Font Discovery API with
+no validation on the server — an invalid or mismatched script code silently
+returns no results rather than erroring. Map the user's target language(s)
+to the correct ISO 15924 code (e.g. Korean → `hang`, Chinese → `hans`/`hant`,
+Cyrillic → `cyrl`, Arabic → `arab`) rather than guessing.
 
 If the request involves multiple intended uses (e.g. a poster needing both
 display and body text) or multiple documents, call the tool once per
