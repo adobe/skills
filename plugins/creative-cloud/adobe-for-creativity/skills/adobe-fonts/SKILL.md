@@ -16,10 +16,9 @@ metadata:
 # Adobe Fonts
 
 Wraps the `get_font_recommendations` tool exposed through the Adobe for
-Creativity MCP server, which queries the Font Discovery API for real,
-licensable fonts from the Adobe Fonts catalog based on document type, mood,
-style, topic, text hierarchy, or similarity to a font the user already
-likes.
+Creativity MCP server, which returns real, licensable fonts from the Adobe
+Fonts catalog based on document type, mood, style, topic, text hierarchy, or
+similarity to a font the user already likes.
 
 **Hard constraint:** every font returned is a real, licensable Adobe Fonts
 family. Never recommend a font that didn't come back in the tool's results —
@@ -30,7 +29,7 @@ here and must not be substituted.
 
 | Tool | Purpose |
 | --- | --- |
-| `get_font_recommendations` | Query Font Discovery API for contextual font recommendations |
+| `get_font_recommendations` | Return contextual font recommendations from the Adobe Fonts catalog |
 
 ## Mapping a request to parameters
 
@@ -66,9 +65,9 @@ true` to resolve it before using `selected_font`.
 | `per_page` | int, 1–100 | 10 | |
 | `debug` | bool | `false` | disables caching |
 
-`writing_systems` is passed straight through to the Font Discovery API with
-no validation on the server — an invalid or mismatched script code silently
-returns no results rather than erroring. Map the user's target language(s)
+`writing_systems` is passed straight through with no validation on the
+server — an invalid or mismatched script code silently returns no results
+rather than erroring. Map the user's target language(s)
 to the correct ISO 15924 code (e.g. Korean → `hang`, Chinese → `hans`/`hant`,
 Cyrillic → `cyrl`, Arabic → `arab`) rather than guessing.
 
