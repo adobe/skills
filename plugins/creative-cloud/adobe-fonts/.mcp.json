@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "adobe-fonts": {
-      "type": "http",
-      "url": "https://af-fonts-mcp-server.adobe.io/mcp"
-    }
-  }
-}

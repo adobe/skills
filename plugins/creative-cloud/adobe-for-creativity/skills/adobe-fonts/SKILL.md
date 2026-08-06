@@ -15,10 +15,11 @@ metadata:
 
 # Adobe Fonts
 
-Wraps the Adobe Fonts MCP server's `get_font_recommendations` tool, which
-queries the Font Discovery API for real, licensable fonts from the Adobe
-Fonts catalog based on document type, mood, style, topic, text hierarchy, or
-similarity to a font the user already likes.
+Wraps the `get_font_recommendations` tool exposed through the Adobe for
+Creativity MCP server, which queries the Font Discovery API for real,
+licensable fonts from the Adobe Fonts catalog based on document type, mood,
+style, topic, text hierarchy, or similarity to a font the user already
+likes.
 
 **Hard constraint:** every font returned is a real, licensable Adobe Fonts
 family. Never recommend a font that didn't come back in the tool's results —

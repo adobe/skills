@@ -1,12 +1,12 @@
 {
   "name": "adobe-for-creativity",
-  "description": "Brings together Adobe Creative Cloud tools for images, vectors, design, and video. Edit multiple assets at once, adapt for different platforms, and complete multi-step creative workflows for polished results.",
-  "version": "1.1.0",
+  "description": "Brings together Adobe Creative Cloud tools for images, vectors, design, video, and fonts. Edit multiple assets at once, adapt for different platforms, find licensed Adobe fonts, and complete multi-step creative workflows for polished results.",
+  "version": "1.2.0",
   "author": {
     "name": "Adobe"
   },
   "repository": "https://github.com/adobe/skills",
   "license": "Apache-2.0",
-  "keywords": ["adobe", "creative-cloud", "image-editing", "design"],
+  "keywords": ["adobe", "creative-cloud", "image-editing", "design", "fonts", "typography"],
   "skills": "./skills"
 }
