@@ -26,6 +26,7 @@ Extensibility domains other than eventing (webhooks, business config) are added 
   - the project initialized — signalled by the generated `src/commerce-extensibility-1/` directory and installed `node_modules` (the `@adobe/aio-commerce-lib-app` dependency).
 - If `app.commerce.config.ts` is **missing**, stop and invoke `commerce-app-init` first (it writes the config, then runs init).
 - If the config is **present but the project is not initialized** (no `src/commerce-extensibility-1/` or `node_modules`), run `npx @adobe/aio-commerce-lib-app init` before continuing. Init is idempotent — it finds the existing config, skips the interactive prompts, installs dependencies, and generates the project files.
+- Actions can be authored in TypeScript only once the project has the TypeScript build setup (`webpack-config.cjs` + root `tsconfig.json`) that `init` scaffolds for a TypeScript Commerce config — see `commerce-app-init`. Otherwise, author actions in JavaScript.
 - Ensure `CloudIntegrationSDK` (I/O Events) and `commerceeventing` (Adobe I/O Events for Adobe Commerce) are subscribed in the Developer Console workspace:
   1. List currently subscribed services:
 

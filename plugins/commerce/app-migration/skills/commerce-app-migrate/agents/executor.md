@@ -508,63 +508,21 @@ Read `package.json` and store its `description` value as `originalPackageDescrip
 255-char limit, the original description would be silently replaced. Step 6
 restores it.
 
-### Pre-flight (pnpm only): approve the esbuild build script
-
-pnpm 10 blocks dependency build scripts by default. `init` runs `pnpm add` inside
-the project to install its dependencies, and the `--allow-build` flag on the outer
-`dlx` command does **not** carry over to that inner install — without persistent
-approval it fails with `ERR_PNPM_IGNORED_BUILDS: Ignored build scripts: esbuild@...`.
-
-Before running init on a pnpm project, approve esbuild persistently. Write the
-approval **where the project already keeps its pnpm configuration** — inspect
-both files and pick the first matching rule:
-
-1.  If either file already has an `onlyBuiltDependencies` list (`pnpm.onlyBuiltDependencies`
-    in `package.json`, or top-level `onlyBuiltDependencies` in `pnpm-workspace.yaml`):
-    merge `esbuild` into **that existing list**. Never create a second list in the
-    other file — pnpm reads only one of them, and a duplicate misleads.
-2.  Else, if `package.json` has a `pnpm` section: add the list there —
-
-        "pnpm": { "onlyBuiltDependencies": ["esbuild"] }
-
-    (This mirrors pnpm's own `approve-builds` behavior: when pnpm settings live in
-    `package.json`, it keeps writing them there.)
-
-3.  Else, if `pnpm-workspace.yaml` exists: add a top-level list there —
-
-        onlyBuiltDependencies:
-          - esbuild
-
-4.  Else (neither location holds pnpm settings): add the `pnpm` section to
-    `package.json` as in rule 2. Do not create `pnpm-workspace.yaml` on a project
-    that does not already have one — its presence declares a pnpm workspace.
-
-If `esbuild` is already present in the list, make no change.
-
-Record which file was modified (or that no change was needed) — it is reported in
-Step 8's "Modified" section.
-
 ### Run init
 
 Run the appropriate command for the `packageManager` from `ProjectSnapshot`:
 
-| packageManager | command                                                                  |
-| -------------- | ------------------------------------------------------------------------ |
-| `npm`          | `npx --yes @adobe/aio-commerce-lib-app@latest init`                      |
-| `pnpm`         | `pnpm --allow-build=esbuild dlx @adobe/aio-commerce-lib-app@latest init` |
-| `yarn`         | `yarn dlx @adobe/aio-commerce-lib-app@latest init`                       |
-| `bun`          | `bunx @adobe/aio-commerce-lib-app@latest init`                           |
+| packageManager | command                                             |
+| -------------- | --------------------------------------------------- |
+| `npm`          | `npx --yes @adobe/aio-commerce-lib-app@latest init` |
+| `pnpm`         | `pnpm dlx @adobe/aio-commerce-lib-app@latest init`  |
+| `yarn`         | `yarn dlx @adobe/aio-commerce-lib-app@latest init`  |
+| `bun`          | `bunx @adobe/aio-commerce-lib-app@latest init`      |
 
 The scoped package name (`@adobe/aio-commerce-lib-app`) is required: on a project
 where the package is not yet a local dependency, the unscoped bin name
 (`npx aio-commerce-lib-app init`) fails with
 `npm error could not determine executable to run`.
-
-For pnpm, `--allow-build=esbuild` covers the temporary `dlx` install of the CLI
-itself. The flag must come **before** `dlx` — `pnpm dlx --allow-build=...` fails
-with `ERR_PNPM_SPEC_NOT_SUPPORTED_BY_ANY_RESOLVER` on several pnpm versions.
-The install init runs inside the project is covered by the pre-flight approval
-above, not by this flag.
 
 The `init` command installs required dependencies and generates the full `src/` extension
 structure from `app.commerce.config.ts` in one step.
@@ -599,26 +557,10 @@ If the command exits with an error, inspect the output:
                  npm install @adobe/aio-commerce-lib-app@<latest>
           3. Re-run: npx --yes @adobe/aio-commerce-lib-app@latest init
 
-2.  **`ERR_PNPM_IGNORED_BUILDS` (pnpm only)** — pnpm 10 blocked a dependency's build
-    script (the output names the package, e.g. `Ignored build scripts: esbuild@...`).
-    This means the blocked package is not covered by the project's persistent
-    approval (the pre-flight above covers `esbuild`; a different package may be
-    named). Add the named package to the same `onlyBuiltDependencies` list the
-    pre-flight wrote, then re-run init **once**. If it still fails, record the
-    failure and emit in Step 8:
-
-        ✗ aio-commerce-lib-app init FAILED: ERR_PNPM_IGNORED_BUILDS (<package> build script blocked)
-
-        pnpm blocks dependency build scripts by default. Approve the build for
-        this project, then re-run init:
-          1. Add <package> to the onlyBuiltDependencies list in <file the
-             pre-flight chose>, or run: pnpm approve-builds
-          2. Re-run: pnpm --allow-build=esbuild dlx @adobe/aio-commerce-lib-app@latest init
-
-3.  **Schema validation errors** — Record the error and report it in Step 8 so
+2.  **Schema validation errors** — Record the error and report it in Step 8 so
     the developer can fix the config and re-run init manually.
 
-4.  **Any other error** — Record the failure message and skip Step 5.
+3.  **Any other error** — Record the failure message and skip Step 5.
     Report the error in Step 8.
 
 After this command completes successfully, check which directories were created:
@@ -1161,10 +1103,6 @@ constraints, Next steps) when in doc-scan-only mode.
       [package.json      description restored — init wrote the shortened config value back;
                          the original full description was kept (see Step 6)]
          ← include only if Step 6 restored the description →
-      [pnpm-workspace.yaml   approved esbuild build script (onlyBuiltDependencies)]
-      [package.json          approved esbuild build script (pnpm.onlyBuiltDependencies)]
-         ← include only the line matching the file the Step 4 pnpm pre-flight modified →
-
     ── Installation steps ─────────────────────────────────────────────
          ← omit this entire section if no customInstallationSteps →
       These scripts run automatically during App Management installation:

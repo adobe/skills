@@ -1,7 +1,7 @@
 {
   "name": "commerce-app-management",
   "description": "Skills for Adobe Commerce App Management — scaffold and configure Commerce apps using the aio-commerce-sdk.",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "author": {
     "name": "Adobe"
   },

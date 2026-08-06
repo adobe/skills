@@ -45,13 +45,13 @@ A developer creating an app that needs events and webhooks would run `commerce-a
 tessl install github:adobe/skills --skills commerce-app-management
 ```
 
-**pnpx skills:**
+**npx skills:**
 
 ```sh
-pnpx skills add adobe/skills --skill commerce-app-init
-pnpx skills add adobe/skills --skill commerce-app-eventing
-pnpx skills add adobe/skills --skill commerce-app-webhooks
-pnpx skills add adobe/skills --skill commerce-app-business-config
-pnpx skills add adobe/skills --skill commerce-app-storage
-pnpx skills add adobe/skills --skill commerce-app-admin-ui
+npx skills add adobe/skills --skill commerce-app-init
+npx skills add adobe/skills --skill commerce-app-eventing
+npx skills add adobe/skills --skill commerce-app-webhooks
+npx skills add adobe/skills --skill commerce-app-business-config
+npx skills add adobe/skills --skill commerce-app-storage
+npx skills add adobe/skills --skill commerce-app-admin-ui
 ```
