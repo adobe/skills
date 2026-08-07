@@ -14,21 +14,26 @@ description: >
   preview grid and optional Firefly Board link.
   Access: 🔐 Signed-In required | Gen AI: ❌
 license: Apache-2.0
+compatibility: "Runs on both widget-capable surfaces (e.g. Claude Cowork, which supports the asset_add_file picker and asset_preview_file preview widgets) and non-UI agents (e.g. Codex, where those widgets are unavailable). The default flow uses the widgets; each widget step has a text-only fallback. Local files reach Creative Cloud via the asset_add_file picker or (no-widget) asset_initialize_file_upload -> PUT -> asset_finalize_file_upload; raw local paths are never passed to image tools."
+allowed-tools: adobe_mandatory_init image_list_presets asset_add_file read_widget_context asset_initialize_file_upload asset_finalize_file_upload image_auto_straighten image_apply_auto_tone image_apply_adjustments image_apply_preset image_select_subject image_apply_gaussian_blur image_crop_and_resize asset_preview_file create_firefly_board
 metadata:
-  version: 2.1.0
+  version: 3.1.0
   visibility: public
+  surface: [claude, codex]
 ---
 
 # Adobe Batch Edit Photos
 
 A batch editing pipeline focused on **visual cohesion** — making a set of
 photos look like they were edited together. The user picks a look (or
-describes one), and Claude applies it consistently across every image using
+describes one), and the agent applies it consistently across every image using
 Adobe creativity tools.
 
 The core insight: users who want "cohesion" care less about per-image
 perfection and more about the whole set reading as intentional. Prioritize
 consistency of tone and color over squeezing the best out of any single image.
+
+> **Surface note:** The default flow uses Adobe's MCP App widgets (`asset_add_file` picker in Step 1, `asset_preview_file` preview in Steps 2c and 8). Follow it as written. Only if a widget tool is **not available on this surface** (e.g. Codex) use the *No-widget fallback* attached to that step. Present `AskUserQuestion` prompts as plain-text labeled options wherever no question widget exists.
 
 ---
 
@@ -36,7 +41,8 @@ consistency of tone and color over squeezing the best out of any single image.
 
 | Step                | Tool                                              | Notes                                          |
 | ------------------- | ------------------------------------------------- | ---------------------------------------------- |
-| Ingest              | `asset_add_file`                                  | Interactive file picker                        |
+| Ingest              | `asset_add_file` (+ `read_widget_context`)        | Interactive file picker; resolve picker results via `read_widget_context` |
+| Ingest *(no-widget fallback)* | `asset_initialize_file_upload` + `asset_finalize_file_upload` | Only when `asset_add_file` is unavailable — stage local files to CC programmatically |
 | Discover presets    | `image_list_presets`                              | Once at startup; builds look→preset map        |
 | Straighten          | `image_auto_straighten`                           | Per image                                      |
 | Auto-tone           | `image_apply_auto_tone`                           | Per image, `type: "cameraRawFilter"`           |
@@ -46,8 +52,8 @@ consistency of tone and color over squeezing the best out of any single image.
 | Element detection   | `image_select_subject` with full bodyParts array  | Per image, Step 5e opt-in; also crop focus     |
 | Background blur     | `image_apply_gaussian_blur`                       | Per image, only if explicitly requested        |
 | Crop                | `image_crop_and_resize`                           | Per image, optional                            |
-| Sample preview      | `asset_preview_file`                              | Before/after on image[0] only                  |
-| Final preview       | `asset_preview_file`                              | Batch assets array                             |
+| Sample preview      | `asset_preview_file`                              | Before/after on image[0] only *(no-widget fallback: present the 2 URLs directly)* |
+| Final preview       | `asset_preview_file`                              | Batch assets array *(no-widget fallback: present the URLs directly)* |
 | Firefly Board       | `create_firefly_board`                            | All edited outputs                             |
 
 ---
@@ -56,7 +62,7 @@ consistency of tone and color over squeezing the best out of any single image.
 Call `adobe_mandatory_init` first. This returns file handling rules and tool routing guidance required for the rest of the workflow.
 
 ```json
-{ "skill_name": "adobe-batch-edit-photos", "skill_version": "2.1.0" }
+{ "skill_name": "adobe-batch-edit-photos", "skill_version": "3.1.0" }
 ```
 
 ---
@@ -122,6 +128,18 @@ error. Wait for the user to select files; the real URIs arrive in the next
 message. Then call `read_widget_context` with `asset_add_file` to get the
 correct presigned S3 URLs. Use those for all subsequent tool calls.
 `dcx-stage.adobe.io` URIs are network-blocked; resolve them via `read_widget_context` first.
+
+Collect the resulting presigned URLs as `sourceURIs[]` and continue to Step 2.
+
+> **No-widget fallback** *(only if `asset_add_file` is unavailable on this surface, e.g. Codex)* — don't open a picker; get the source URIs from where the files already are. `image_*` tools only accept Creative Cloud storage URIs, never raw local paths, so any local file must be staged to CC first.
+>
+> **Egress check first:** check egress status from `adobe_mandatory_init` (Step 0). If egress is disabled — do NOT call `asset_initialize_file_upload` / `asset_finalize_file_upload`.
+>
+> | Source | Action |
+> |--------|--------|
+> | File(s) at a local path AND egress **enabled** | Stage each file programmatically: get its size and MIME type, call `asset_initialize_file_upload({ path: "<filename>", media_type: "<mime>" })`, PUT the file bytes to the returned upload URL, then `asset_finalize_file_upload({ filename: "<filename>", transfer_document: <from the initialize response> })`. Use each returned presigned CC URL as a source URI. |
+> | File(s) already in Creative Cloud | Reference them directly by their CC URI. |
+> | File(s) at a local path AND egress **disabled**, no picker on this surface | Programmatic staging is blocked and there is no file picker here — tell the user staging isn't possible on this surface and ask them to run the workflow where the `asset_add_file` picker is available. |
 
 ---
 
@@ -223,17 +241,23 @@ Smart crop — it almost always produces a better result than a pure center cut.
 
 **Base look → `image_apply_adjustments` (color temp + vibrance/sat + brightness/contrast, Step 5a) + `image_apply_preset` (from Look→Preset Map, Step 5b):**
 
+Combine ALL columns for the selected look into a **single `image_apply_adjustments` call** — do not make separate calls for color temp, vibrance, and contrast. Omit any parameter whose column says "none".
+
 The preset column below is now **dynamic** — use the preset(s) from your Look→Preset Map for that look (built in Step 0b), not hardcoded names. If no preset was found for a look, skip Step 5b for that look and rely on color temp + manual adjustments alone.
+
+⚠ **Deprecated tools are never used.** All adjustments go through `image_apply_adjustments`. The individual per-dimension adjust-* tools are deprecated — see Hard Constraints below.
 
 | Look              | Color Temp (tempA, tempB, tempLuminance) | Preset (from Look→Preset Map) | Saturation/Vibrance          | Brightness/Contrast |
 | ----------------- | ---------------------------------------- | ----------------------------- | ---------------------------- | ------------------- |
-| Auto (balanced)   | none                                     | Auto (balanced) bucket preset | none                         | none                |
+| Auto (balanced)   | **none** — omit tempA/tempB/tempLuminance | Auto (balanced) bucket preset | none                         | none                |
 | Warm & Golden     | tempA=32, tempB=120, tempLuminance=67    | Warm & Golden bucket preset   | vibrance +15                 | none                |
 | Bright & Airy     | tempA=20, tempB=60, tempLuminance=62     | Bright & Airy bucket preset   | saturation -10, vibrance +10 | brightness +15      |
-| Moody & Cinematic | tempA=20, tempB=-50, tempLuminance=45    | Moody & Cinematic bucket      | saturation -20               | contrast +25        |
+| Moody & Cinematic | tempA=20, **tempB=-50** (negative — cool shift), tempLuminance=45 | Moody & Cinematic bucket | saturation -20 | contrast +25 |
 | Cool & Fresh      | tempA=18, tempB=-123, tempLuminance=45   | Cool & Fresh bucket preset    | vibrance +10                 | none                |
-| Vibrant & Punchy  | none                                     | Vibrant & Punchy bucket       | vibrance +30, saturation +15 | contrast +10        |
-| Muted & Film      | none                                     | Muted & Film bucket preset    | saturation -35, vibrance -10 | contrast +10        |
+| Vibrant & Punchy  | **none** — omit tempA/tempB/tempLuminance | Vibrant & Punchy bucket      | vibrance +30, saturation +15 | contrast +10        |
+| Muted & Film      | **none** — omit tempA/tempB/tempLuminance | Muted & Film bucket preset   | saturation -35, vibrance -10 | contrast +10        |
+
+**For looks with "none" in the Color Temp column** (Auto, Vibrant & Punchy, Muted & Film): do NOT include `tempA`, `tempB`, or `tempLuminance` in the `image_apply_adjustments` call. Adding color temp params to a look that has none will produce incorrect results.
 
 **Fine-tune → `image_apply_adjustments` parameters** (all combined in one call in Step 6):
 - "Recover blown highlights" → `highlights: -60`
@@ -306,6 +330,13 @@ asset_preview_file({
   ]
 })
 ```
+
+> **No-widget fallback** *(only if `asset_preview_file` is unavailable on this surface, e.g. Codex)* — present the two URLs directly in the message, labeled:
+> ```
+> Before: <sourceURIs[0]>
+> After:  <processed_preview_url>
+> ```
+> UI clients that render image URLs inline show both automatically. In Codex or other non-UI agents, download both to the workspace (`curl -L -o before.jpg "<sourceURIs[0]>"`, `curl -L -o after.jpg "<processed_preview_url>"`) and reference those local paths instead.
 
 3. Post this message (append the large-batch timing note here if N > 5):
 ```
@@ -539,6 +570,8 @@ asset_preview_file({
 
 If `asset_preview_file` fails, present the final output URLs as plain text links in the completion summary.
 
+> **No-widget fallback** *(only if `asset_preview_file` is unavailable on this surface, e.g. Codex)* — list the final output URLs directly in the completion message (one per image; Step 8 templates below). UI clients that render image URLs inline display them automatically; in Codex or other non-UI agents they will not, so download each to the workspace (`curl -L -o photo_1.jpg "<final_url_1>"`, etc.) and reference those local paths instead. The per-photo download links are the deliverable in every client either way.
+
 **Before/after preview (Step 2c):** Step 2c first downscales image 1 to 1200px, then runs the pipeline on that downscale. Pass the original full-res `sourceURIs[0]` as "Before" and the processed 1200px output as "After" — `asset_preview_file` handles its own thumbnailing so the resolution difference is invisible to the user. Do not add an extra resize step.
 
 ### Create Firefly Board
@@ -560,7 +593,7 @@ create_firefly_board({
 - `create_firefly_board` returns a board URL. Extract it and store as `board_url`.
 - If `board_url` is present and non-empty, include it in the completion message.
 - If the call throws an error or returns no URL: omit the board link and note "Firefly Board unavailable" in the summary (retrying does not help).
-Then post the completion message. The preview grid is included in every completion message. The board link is included whenever `board_url` was returned.
+Then post the completion message. The per-photo download links are included in every completion message. The board link is included whenever `board_url` was returned.
 
 **If N ≤ 3:**
 ```
@@ -622,8 +655,9 @@ Read `results[N].outputUrl`. On `success: false` → see Error Handling.
 | Any tool returns "No approval received"             | Treat the same as a 403 entitlement error. For optional steps (presets, fine-tune adjustments, preview), skip and note in summary. Retrying does not help for this error — continue per the rules above. |
 | Any tool returns 401                                | Ask user to re-authenticate via Adobe OAuth and retry.                                                                                                                                                   |
 | Any tool returns "file too large or corrupted"      | Stop processing that image immediately. Do not retry. Tell the user: "I couldn't process [filename] — it's either too large or the file may be damaged. Try re-uploading a smaller version, or check that the file opens correctly on your end." Flag the image in the summary and continue with remaining images. |
-| `asset_add_file` shows no files                     | Remind user to select files in the picker.                                                                                                                                                               |
-| URI starts with `dcx-stage.adobe.io`                | Call `read_widget_context` for real presigned S3 URL.                                                                                                                                                    |
+| Programmatic upload fails (PUT 5xx / no egress)     | Fall back to the `asset_add_file` picker (default ingest path) and tell the user you're opening it to stage the file(s).                                                                                  |
+| `asset_add_file` shows no files (picker path)       | Remind the user to select files in the picker.                                                                                                                                                           |
+| URI starts with `dcx-stage.adobe.io` (picker path)  | Resolve it via `read_widget_context` to the real presigned S3 URL.                                                                                                                                       |
 | `image_auto_straighten` fails                       | Use original URI; note "straighten skipped".                                                                                                                                                             |
 | `image_apply_auto_tone` fails                       | Use straightened URI; note in summary.                                                                                                                                                                   |
 | Any adjustment tool fails                           | Use previous step's output; note in summary.                                                                                                                                                             |
@@ -637,6 +671,7 @@ Read `results[N].outputUrl`. On `success: false` → see Error Handling.
 ## Hard Constraints
 
 - Every image in the batch is processed; failures are flagged rather than silently skipped.
+- Never pass a raw local filesystem path to any `image_*` tool. Local files must reach Creative Cloud first — selected via the `asset_add_file` picker, or (no-widget fallback) staged via `asset_initialize_file_upload` → PUT → `asset_finalize_file_upload`; only the resulting presigned CC URI is a valid source for image tools.
 - `image_apply_auto_tone` is called with `type: "cameraRawFilter"`.
 - Apply the **same parameter values** to every image in the batch (cohesion over perfection).
 - Preset selection is always dynamic: call `image_list_presets` at runtime and build both the Look→Preset Map and Selective Adaptive Map; never hardcode preset names.
