@@ -42,6 +42,9 @@
 # Adobe for creativity
 /plugins/creative-cloud/adobe-for-creativity           @bossjones @njampani123 @solimant
 
+# Adobe Fonts skill
+/plugins/creative-cloud/adobe-for-creativity/skills/adobe-fonts/  @joekukish
+
 # Run Workflow (Adobe Firefly workflows via MCP)
 /plugins/creative-cloud/run-workflow                   @thagarwal-sjc
 
