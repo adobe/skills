@@ -13,14 +13,14 @@
 // `module.exports`. The installation action loads each step via
 // `import * as step from "<script>"` and reads `step.default`, so the script
 // must default-export the defineCustomInstallationStep(...) result. The `script`
-// path must end in .js; if you author in TypeScript, compile it and keep the
-// emitted .js an ES module.
+// path must end in .js or .ts — author it directly in TypeScript, no separate
+// compile step needed.
 //
-// Wiring (in app.commerce.config.ts) — the script path is the COMPILED .js:
+// Wiring (in app.commerce.config.ts) — the script path points directly at the .ts file:
 //   installation: {
 //     customInstallationSteps: [
 //       {
-//         script: "./scripts/setup-database.js",
+//         script: "./scripts/setup-database.ts",
 //         name: "Set up held-orders collection",
 //         description: "Creates the held_orders collection and a unique index on order_id",
 //       },
