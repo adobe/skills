@@ -40,7 +40,7 @@
 /plugins/adobe-cja/                                    @rmunix
 
 # Adobe for creativity
-/plugins/creative-cloud/adobe-for-creativity           @bossjones @njampani123 @solimant
+/plugins/creative-cloud/adobe-for-creativity           @bossjones @jaeeunl @kgeorgiev @njampani123 @skovakina @solimant @varshachandanb
 
 # Run Workflow (Adobe Firefly workflows via MCP)
 /plugins/creative-cloud/run-workflow                   @thagarwal-sjc
