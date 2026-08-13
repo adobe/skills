@@ -10,6 +10,7 @@ import analyzer.detectors.Replication;
 import analyzer.detectors.ResourceChangeListener;
 import analyzer.detectors.Scheduler;
 import analyzer.detectors.UnboundedQuery;
+import analyzer.detectors.VaultPackageDependencies;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -28,7 +29,8 @@ public final class Registry {
             new AssetManager(),
             new OutboundCallTimeouts(),
             new UnboundedQuery(),
-            new RemoveDeprecatedApi()
+            new RemoveDeprecatedApi(),
+            new VaultPackageDependencies()
         ));
     }
 }
