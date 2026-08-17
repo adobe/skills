@@ -53,12 +53,51 @@
     {
       "name": "aem-cloud-service",
       "source": "./plugins/aem/cloud-service",
-      "description": "All AEM as a Cloud Service skills: component development and Dispatcher, workflows"
+      "description": "All AEM as a Cloud Service skills: component development, Dispatcher config authoring and hardening, workflow design and debugging, code assessment and migration from legacy AEM, content distribution, and Rapid Development Environment (RDE) support.",
+      "version": "1.0.0",
+      "category": "aem",
+      "keywords": [
+        "adobe",
+        "aem",
+        "aemaacs",
+        "cloud-service",
+        "dispatcher",
+        "component",
+        "workflow",
+        "rde",
+        "code-assessment",
+        "migration",
+        "content-distribution"
+      ],
+      "author": {
+        "name": "Adobe"
+      },
+      "homepage": "https://github.com/adobe/skills",
+      "repository": "https://github.com/adobe/skills",
+      "license": "Apache-2.0"
     },
     {
       "name": "aem-6-5-lts",
       "source": "./plugins/aem/6.5-lts",
-      "description": "All AEM 6.5 LTS skills: Dispatcher, workflows for AEM 6.5 LTS and AMS environment"
+      "description": "All AEM 6.5 LTS and AMS skills: Dispatcher config authoring and hardening, workflow design and debugging, replication agent configuration and troubleshooting, and project bootstrap.",
+      "version": "1.0.0",
+      "category": "aem",
+      "keywords": [
+        "adobe",
+        "aem",
+        "aem6.5",
+        "6.5-lts",
+        "ams",
+        "dispatcher",
+        "workflow",
+        "replication"
+      ],
+      "author": {
+        "name": "Adobe"
+      },
+      "homepage": "https://github.com/adobe/skills",
+      "repository": "https://github.com/adobe/skills",
+      "license": "Apache-2.0"
     },
     {
       "name": "aem-project-management",
