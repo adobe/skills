@@ -1,0 +1,51 @@
+$schema: http://json-schema.org/draft-07/schema
+title: Order Status App
+description: Installs the order status extension
+type: object
+properties:
+  COMMERCE_BASE_URL:
+    type: string
+    title: Commerce Base URL
+    description: "Base URL of your Adobe Commerce instance. SaaS: https://na1.api.commerce.adobe.com/<tenant_id>/  PaaS/On-Premise: https://yourcommerce.com/rest/default/"
+  OAUTH_CLIENT_ID:
+    type: string
+    title: IMS OAuth Client ID
+    description: "SaaS only — Client ID from your Adobe Developer Console credential"
+  OAUTH_CLIENT_SECRETS:
+    type: string
+    title: IMS OAuth Client Secrets
+    description: "SaaS only — JSON array of client secrets, e.g. [\"secret\"]"
+  OAUTH_TECHNICAL_ACCOUNT_ID:
+    type: string
+    title: IMS Technical Account ID
+    description: "SaaS only — Technical account ID from Adobe Developer Console"
+  OAUTH_TECHNICAL_ACCOUNT_EMAIL:
+    type: string
+    title: IMS Technical Account Email
+    description: "SaaS only — Technical account email from Adobe Developer Console"
+  OAUTH_IMS_ORG_ID:
+    type: string
+    title: IMS Org ID
+    description: "SaaS only — Adobe IMS Org ID"
+  OAUTH_SCOPES:
+    type: string
+    title: IMS OAuth Scopes
+    description: "SaaS only — JSON array of OAuth scopes, e.g. [\"AdobeID\",\"openid\"]"
+  COMMERCE_CONSUMER_KEY:
+    type: string
+    title: Commerce Consumer Key
+    description: "PaaS/On-Premise only — Consumer key from your Commerce Integration"
+  COMMERCE_CONSUMER_SECRET:
+    type: string
+    title: Commerce Consumer Secret
+    description: "PaaS/On-Premise only — Consumer secret from your Commerce Integration"
+  COMMERCE_ACCESS_TOKEN:
+    type: string
+    title: Commerce Access Token
+    description: "PaaS/On-Premise only — Access token from your Commerce Integration"
+  COMMERCE_ACCESS_TOKEN_SECRET:
+    type: string
+    title: Commerce Access Token Secret
+    description: "PaaS/On-Premise only — Access token secret from your Commerce Integration"
+required:
+  - COMMERCE_BASE_URL
