@@ -207,7 +207,7 @@ All AEM 6.5 LTS and Adobe Managed Services (AMS) skills — Dispatcher, workflow
 | `ensure-agents-md` | Bootstrap skill — auto-generates `AGENTS.md` and `CLAUDE.md` for AEM 6.5 LTS projects when missing |
 | `dispatcher` | Config authoring, technical advisory, incident response, performance tuning, and security hardening for AEM 6.5 LTS and AMS. Requires Dispatcher MCP (`AEM_DEPLOYMENT_MODE=ams`) |
 | `aem-workflow` | Workflow model design, development, triggering, launchers, debugging, and triaging — with JMX, Felix Console, and direct log access for 6.5 LTS/AMS |
-| `aem-replication` | Replication agent configuration, content activation/deactivation, Replication API usage (49 Java examples), and troubleshooting blocked queues and distribution failures |
+| `aem-replication` | Replication agent configuration, content activation/deactivation, Replication API usage (57 Java examples), lifecycle orchestration, and troubleshooting blocked queues and distribution failures |
 
 See the [`aem-6-5-lts` plugin README](plugins/aem/6.5-lts/README.md) for sub-skill details.
 
@@ -359,31 +359,10 @@ plugins/
 │       │   └── plugin.json
 │       ├── README.md
 │       └── skills/
-│           ├── aem-workflow/
-│           │   ├── SKILL.md
-│           │   ├── workflow-model-design/
-│           │   ├── workflow-development/
-│           │   ├── workflow-triggering/
-│           │   ├── workflow-launchers/
-│           │   ├── workflow-debugging/
-│           │   ├── workflow-triaging/
-│           │   └── workflow-orchestrator/
-│           ├── aem-replication/
-│           │   ├── README.md
-│           │   ├── SKILL.md
-│           │   ├── configure-replication-agent/
-│           │   ├── replicate-content/
-│           │   ├── replication-api/
-│           │   └── troubleshoot-replication/
 │           ├── ensure-agents-md/
-│           └── dispatcher/
-│               ├── SKILL.md
-│               ├── config-authoring/
-│               ├── technical-advisory/
-│               ├── incident-response/
-│               ├── performance-tuning/
-│               ├── security-hardening/
-│               └── workflow-orchestrator/
+│           ├── dispatcher/
+│           ├── aem-workflow/
+│           └── aem-replication/
 ├── app-builder/
 │   ├── .claude-plugin/
 │   │   └── plugin.json

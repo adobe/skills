@@ -79,7 +79,7 @@
     {
       "name": "aem-6-5-lts",
       "source": "./plugins/aem/6.5-lts",
-      "description": "All AEM 6.5 LTS and AMS skills: Dispatcher config authoring and hardening, workflow design and debugging, replication agent configuration and troubleshooting, and project bootstrap.",
+      "description": "All AEM 6.5 LTS and AMS skills: Dispatcher config authoring and hardening, workflow design and debugging, replication agent configuration, content activation, programmatic Replication API, lifecycle orchestration, and troubleshooting, and project bootstrap.",
       "version": "1.0.0",
       "category": "aem",
       "keywords": [

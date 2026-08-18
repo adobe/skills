@@ -120,13 +120,18 @@ Skills for developing and operating AEM 6.5 LTS and Adobe Managed Services (AMS)
 </tr>
 <tr>
   <td><a href="skills/aem-replication/replication-api/SKILL.md">replication-api</a></td>
-  <td>Use the Replication API programmatically in custom code — 49 Java examples for OSGi services, servlets, and workflow steps</td>
+  <td>Use the Replication API programmatically in custom code — 57 Java examples for OSGi services, servlets, and workflow steps</td>
   <td><ul><li><code>Publish content programmatically from a servlet</code></li><li><code>Show me bulk replication examples</code></li></ul></td>
 </tr>
 <tr>
   <td><a href="skills/aem-replication/troubleshoot-replication/SKILL.md">troubleshoot-replication</a></td>
   <td>Diagnose and fix blocked queues, connectivity failures, and distribution problems — 12+ troubleshooting scenarios</td>
   <td><ul><li><code>My replication queue is blocked</code></li><li><code>Content is not appearing on publish</code></li></ul></td>
+</tr>
+<tr>
+  <td><a href="skills/aem-replication/replication-orchestrator/SKILL.md">replication-orchestrator</a></td>
+  <td>End-to-end replication lifecycle orchestration across all sub-skills — new environment setup, production incidents, performance optimization, and migration preparation</td>
+  <td><ul><li><code>Set up replication for a new AEM 6.5 environment end-to-end</code></li></ul></td>
 </tr>
 </tbody>
 </table>
