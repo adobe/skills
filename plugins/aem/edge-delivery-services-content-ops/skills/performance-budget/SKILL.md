@@ -124,7 +124,7 @@ Verify resources load in the correct phase (see references/performance-budget-ru
 
 - **Eager**: Confirm only first-section block CSS/JS loads eagerly; below-fold blocks must not load eagerly.
 - **Lazy**: Confirm below-fold images have `loading="lazy"` and `aem.js` lazy-loads below-fold blocks.
-- **Delayed**: Fetch `/scripts/delayed.js` and confirm all third-party scripts (analytics, chat, social) load there — not in `<head>` or eager scripts. Common violations: GTM in head, analytics loaded synchronously.
+- **Delayed**: Fetch `/scripts/delayed.js` and confirm all third-party scripts (analytics, chat, social) load there, not in `<head>` or eager scripts. Common violations: GTM in head, analytics loaded synchronously.
 - **Fonts**: Verify `font-display: swap` and `size-adjust` fallback declarations. Only first-section fonts should be preloaded.
 
 ---
@@ -134,7 +134,7 @@ Verify resources load in the correct phase (see references/performance-budget-ru
 For each budget violation or E-L-D compliance issue, provide a specific fix:
 
 ### Image Optimization
-- Content images are served as WebP automatically by the EDS media pipeline — do not recommend manual format conversion or resizing. To reduce LCP image weight, fix at the source (upload a smaller source image; don't hand-encode the delivery). See references/performance-budget-rules.md for full guidance.
+- Content images are served as WebP automatically by the EDS media pipeline; do not recommend manual format conversion or resizing. To reduce LCP image weight, fix at the source (upload a smaller source image; don't hand-encode the delivery). See references/performance-budget-rules.md for full guidance.
 
 ### Script Optimization
 - Move third-party scripts from eager to delayed phase.
@@ -197,4 +197,4 @@ Run the check against a mobile profile with throttling (the conditions EDS targe
 | Third-party scripts load before delayed.js | Scripts added to head or inline in the document | Move all third-party script tags to `/scripts/delayed.js` |
 | HTML is unexpectedly large | Excessive DOM nodes or inline content | Check for content that should be in blocks rather than inline, or documents that are too long for a single page |
 | Font files are very large | Full Unicode range included | Subset the font to the site's language character set using a tool like glyphhanger |
-| Page loads fast locally but slow on mobile | Local testing does not simulate 3G conditions | Test using Chrome DevTools throttling set to "Slow 3G" or use WebPageTest with a mobile profile |
+| Page loads fast locally but slow on mobile | Local testing does not simulate throttled mobile conditions | Test using Chrome DevTools throttling set to "Slow 4G" (the PageSpeed Insights mobile profile) or use WebPageTest with a mobile profile |

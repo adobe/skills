@@ -10,11 +10,11 @@ EDS uses a three-phase loading model that is central to its performance architec
 
 1. **Eager (E)**: Loaded immediately with the initial HTML. Includes: the HTML document itself, `styles.css`, `aem.js`, above-fold block CSS/JS, and fonts needed for the first section. Everything in the eager phase counts against the 100KB LCP budget.
 2. **Lazy (L)**: Loaded after the initial paint. Includes: below-fold block CSS/JS, below-fold images, and non-critical styles. Loaded by `aem.js` as the user scrolls or after a short delay.
-3. **Delayed (D)**: Loaded 3+ seconds after page load. Includes: analytics, third-party scripts, chat widgets, social embeds, and any non-essential JavaScript. Loaded by `/scripts/delayed.js`.
+3. **Delayed (D)**: Loaded at least 3 seconds after the LCP event (a guideline; the boilerplate no longer enforces it with a hard-coded timer). Includes: analytics, third-party scripts, chat widgets, social embeds, and any non-essential JavaScript. Loaded by `/scripts/delayed.js`.
 
 ### Why 100KB Matters
 
-On a 3G connection (the baseline EDS targets), 100KB takes approximately 1.5 seconds to transfer. Combined with DNS, TLS, and server response time, this keeps LCP under the 2.5-second "good" threshold in Core Web Vitals.
+On a throttled mobile connection (Lighthouse's Slow 4G profile, which PageSpeed Insights uses), a 100KB budget leaves room to keep LCP under the 2.5-second "good" Core Web Vitals threshold once DNS, TLS, and server response time are included. Measure on the same throttled mobile profile you test with.
 
 ## The 100KB LCP Budget
 
@@ -69,7 +69,7 @@ The 100KB budget is the total transfer size of all resources that must load befo
 - All third-party scripts (analytics, tag managers, chat)
 - Social media embeds
 - Non-essential JavaScript
-- Loads 3+ seconds after page load via scripts/delayed.js
+- Loads at least 3 seconds after the LCP event via scripts/delayed.js
 
 ## Images: What EDS Optimizes for You
 
