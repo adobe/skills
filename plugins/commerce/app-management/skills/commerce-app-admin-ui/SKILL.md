@@ -292,7 +292,7 @@ A build failure with a validation error points directly to the offending `adminU
 - **View route `path`**: register the `{ path }` in `src/app.jsx` as the exact same string as the entry's config `path` — copy it verbatim, hash included, so the two line up.
 - **Menu `id` charset**: the menu `id` allows only letters, digits, `/`, `:`, and `_` — no hyphens or spaces.
 - **`defineConfig` not found**: import `defineConfig` from `@adobe/aio-commerce-lib-app/config`.
-- **Double renders/requests in development**: `createExtensionApp` wraps the app in React `<StrictMode>`, so under `aio app dev` or `aio app run` components render twice and effects run an extra setup + cleanup cycle on mount. Duplicate renders or effect-triggered requests in development are expected StrictMode behavior, not a bug to fix; production builds are unaffected.
+- **Double renders/requests in development**: local builds served by `aio app dev` and `aio app run` are development builds, where `createExtensionApp` wraps the app in React `<StrictMode>` — so components render twice and effects run an extra setup + cleanup cycle on mount. Duplicate renders or effect-triggered requests during local development are expected StrictMode behavior, not a bug to fix. `aio app build` and `aio app deploy` produce production builds, which render without `<StrictMode>` (it is stripped from the bundle).
 
 ## Quality Bar
 
