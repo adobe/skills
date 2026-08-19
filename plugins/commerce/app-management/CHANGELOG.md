@@ -1,5 +1,11 @@
 # @adobe/aio-commerce-plugin-app-management
 
+## 1.3.2
+
+### Patch Changes
+
+- [#635](https://github.com/adobe/aio-commerce-sdk/pull/635) [`71bf666`](https://github.com/adobe/aio-commerce-sdk/commit/71bf66656ef1fc6dd272a0821e8b00aab5dc197e) Thanks [@iivvaannxx](https://github.com/iivvaannxx)! - Update the Admin UI skill guidance so it reflects that StrictMode runs only in development builds and is stripped from production.
+
 ## 1.3.1
 
 ### Patch Changes
