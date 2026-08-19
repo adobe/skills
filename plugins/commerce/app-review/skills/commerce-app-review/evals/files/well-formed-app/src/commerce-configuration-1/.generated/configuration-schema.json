@@ -1,0 +1,79 @@
+[
+  {
+    "default": "",
+    "description": "SaaS: https://<region>.api.commerce.adobe.com/<tenantId>/ — PaaS/On-Premise: https://<store>/rest/default/",
+    "label": "Commerce Base URL",
+    "name": "commerceBaseUrl",
+    "type": "url"
+  },
+  {
+    "default": "",
+    "description": "SaaS only — Client ID from your Adobe Developer Console credential.",
+    "label": "IMS OAuth Client ID",
+    "name": "oauthClientId",
+    "type": "text"
+  },
+  {
+    "default": "",
+    "description": "SaaS only — JSON array of client secrets.",
+    "label": "IMS OAuth Client Secrets",
+    "name": "oauthClientSecrets",
+    "type": "password"
+  },
+  {
+    "default": "",
+    "description": "SaaS only — Technical account ID from Adobe Developer Console.",
+    "label": "IMS Technical Account ID",
+    "name": "oauthTechnicalAccountId",
+    "type": "text"
+  },
+  {
+    "default": "",
+    "description": "SaaS only — Technical account email from Adobe Developer Console.",
+    "label": "IMS Technical Account Email",
+    "name": "oauthTechnicalAccountEmail",
+    "type": "text"
+  },
+  {
+    "default": "",
+    "description": "SaaS only — Adobe IMS Org ID.",
+    "label": "IMS Org ID",
+    "name": "oauthImsOrgId",
+    "type": "text"
+  },
+  {
+    "default": "[]",
+    "description": "SaaS only — JSON array of OAuth scopes.",
+    "label": "IMS OAuth Scopes",
+    "name": "oauthScopes",
+    "type": "text"
+  },
+  {
+    "default": "",
+    "description": "PaaS/On-Premise only — Consumer key from your Commerce Integration.",
+    "label": "Commerce Consumer Key",
+    "name": "commerceConsumerKey",
+    "type": "password"
+  },
+  {
+    "default": "",
+    "description": "PaaS/On-Premise only — Consumer secret from your Commerce Integration.",
+    "label": "Commerce Consumer Secret",
+    "name": "commerceConsumerSecret",
+    "type": "password"
+  },
+  {
+    "default": "",
+    "description": "PaaS/On-Premise only — Access token from your Commerce Integration.",
+    "label": "Commerce Access Token",
+    "name": "commerceAccessToken",
+    "type": "password"
+  },
+  {
+    "default": "",
+    "description": "PaaS/On-Premise only — Access token secret from your Commerce Integration.",
+    "label": "Commerce Access Token Secret",
+    "name": "commerceAccessTokenSecret",
+    "type": "password"
+  }
+]

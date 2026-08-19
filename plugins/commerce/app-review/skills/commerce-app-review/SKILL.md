@@ -29,13 +29,22 @@ If `APP_TYPE` is not provided, ask:
 
 Do not proceed until both are confirmed.
 
+Check whether `aio` is installed (e.g. `command -v aio`). This is a presence check only — do not attempt to authenticate at this stage. If `aio` is not found, note it once:
+
+> Note: `aio` isn't installed. Walkthrough enrichment (Step 8) will use fallback knowledge
+> unless `aio` is installed and authenticated before then.
+
+Continue either way.
+
 ### 2. Load local references
 
 Read `references/finding.md` and all files under `references/exceptions/` (paths relative to this skill file).
 
 Load pattern files conditionally:
-- `references/patterns/cors-storefront-actions.md` — always
-- `references/patterns/admin-ui-sdk.md` — only if `commerce/backend-ui/1` is in `app.config.yaml` or `ext.config.yaml`, or `@adobe/uix-guest`/`@adobe/uix-core` in `package.json`
+- references/patterns/cors-storefront-actions.md — always
+- references/patterns/accs-rest-api-dependency.md — always
+- references/patterns/aio-commerce-sdk.md — always
+- references/patterns/admin-ui-sdk.md — only if commerce/backend-ui/1 is in app.config.yaml or ext.config.yaml, or @adobe/uix-guest/@adobe/uix-core in package.json
 
 Pattern files take precedence over fetched guidelines. Exception files suppress findings from both.
 

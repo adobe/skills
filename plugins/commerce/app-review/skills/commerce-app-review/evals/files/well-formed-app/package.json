@@ -1,18 +1,20 @@
 {
-  "name": "order-status-app",
+  "name": "order-status",
   "version": "1.0.0",
-  "author": "Acme Corp <dev@acme.example>",
+  "description": "Look up order status via the Commerce REST API, configured through App Management.",
+  "author": "Adobe",
   "license": "Apache-2.0",
-  "description": "Order status extension for Adobe Commerce",
   "scripts": {
-    "build": "aio app build",
-    "deploy": "aio app deploy",
-    "test": "jest"
+    "postinstall": "npx aio-commerce-lib-app hooks postinstall"
   },
   "dependencies": {
-    "@adobe/aio-sdk": "^6.0.0"
+    "@adobe/aio-sdk": "^6.0.0",
+    "@adobe/aio-commerce-sdk": "^1.4.0",
+    "@adobe/aio-commerce-lib-app": "^1.7.0",
+    "@adobe/aio-commerce-lib-config": "^1.5.1",
+    "@adobe/aio-commerce-lib-api": "^1.2.1"
   },
-  "devDependencies": {
-    "jest": "^29.0.0"
+  "imports": {
+    "#app.commerce.config": "./src/commerce-extensibility-1/.generated/app.commerce.config.js"
   }
 }

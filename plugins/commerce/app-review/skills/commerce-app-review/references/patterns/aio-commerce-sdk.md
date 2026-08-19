@@ -3,39 +3,57 @@
 ## Context
 
 Adobe publishes an official SDK family for interacting with Adobe Commerce from App Builder
-actions. Using any package from this family is the Adobe-endorsed approach — it provides
-typed clients, built-in auth, retry logic, and alignment with submission guidelines.
+actions. Using packages from this family instead of writing custom HTTP/auth/eventing logic
+is the Adobe-endorsed approach — it provides typed clients, built-in authentication, retry
+logic, and alignment with submission guidelines.
 
-The family includes:
-- `@adobe/aio-commerce-sdk` — umbrella package (recommended entry point)
-- `@adobe/aio-commerce-lib-auth` — IMS and Commerce authentication utilities
-- `@adobe/aio-commerce-lib-core` — core utilities
-- `@adobe/aio-commerce-lib-api` — HTTP/API client builders
-- `@adobe/aio-commerce-lib-events` — Adobe I/O and Commerce Eventing
-- `@adobe/aio-commerce-lib-webhooks` — Commerce Webhooks API
-- `@adobe/aio-commerce-lib-admin-ui` — Admin UI SDK v2 extensions (`commerce/backend-ui/2`)
+**Five packages can be used independently, without adopting App Management:**
+- `@adobe/aio-commerce-lib-auth` — authentication flows for Adobe IMS and Commerce integrations
+- `@adobe/aio-commerce-lib-api` — HTTP/API client builders for Adobe Commerce and Adobe I/O Events
+- `@adobe/aio-commerce-lib-events` — event-driven integrations between Commerce and Adobe I/O Events
+- `@adobe/aio-commerce-lib-webhooks` — utilities for the Adobe Commerce Webhooks API
+- `@adobe/aio-commerce-lib-core` — shared foundational utilities used across the family
+
+**Three packages are specific to apps that adopt full App Management** (per Adobe's App Management overview):
+- `@adobe/aio-commerce-lib-app` — app definition, validation, and manifest generation
+- `@adobe/aio-commerce-lib-config` — configuration management with scope trees and inheritance
+- `@adobe/aio-commerce-lib-admin-ui` — wire contract builders, menu constants, and the permission client for Admin UI SDK extension points
+
+There is also `@adobe/aio-commerce-sdk`, a meta-package bundling the whole family for convenience. Its own independence from App Management is not confirmed — it appears alongside `lib-app` and `lib-config` in Adobe's App Management version requirements, so treat it as potentially tied to App Management rather than assuming it's fully independent.
 
 Reference: https://github.com/adobe/aio-commerce-sdk
 
-An `app.commerce.config` file in the project root enables Commerce app management
-features (deployment tracking, lifecycle hooks, environment configuration).
-Supported formats: `.js`, `.ts`, `.cjs`, `.mjs`, `.mts`, `.cts`.
+Separately, **App Management** lets you define your configuration schema, event
+subscriptions, and Admin UI once in an `app.commerce.config` file, and the system
+auto-generates the required runtime actions and Admin UI. This is Adobe's endorsed approach
+for installing, configuring, and managing App Builder applications in Commerce.
+
+App Management requires:
+- Admin UI SDK version 3.3.1 or later
+- Minimum library versions 1.0.0 or later for `@adobe/aio-commerce-lib-config`, `@adobe/aio-commerce-lib-app`, and `@adobe/aio-commerce-sdk`
+- A hosted (cloud or on-premises) environment — **not currently supported for local Commerce installations**
 
 Reference: https://developer.adobe.com/commerce/extensibility/app-management/
 
-## Required implementation
+## Recommendations (independent of each other)
 
-**SDK:** Declare at least one package from the family above in `package.json` `dependencies`.
-The umbrella package (`@adobe/aio-commerce-sdk`) is the recommended starting point.
+1. **SDK:** Declare at least one package from the standalone-usable set above in
+   `package.json` `dependencies`, instead of writing custom HTTP/auth/eventing logic.
+2. **App Management:** Add an `app.commerce.config` file to the project root (exact
+   supported file extensions not independently verified — check Adobe's current App
+   Management documentation) if the app is hosted (not a local installation) and meets the
+   version requirements above.
 
-**Config file:** Add an `app.commerce.config.*` file to the project root in any of the
-supported formats above.
+An app can adopt one, both, or neither — App Management is a further step beyond basic SDK
+usage, not a prerequisite for it.
+
+> **Note:** as of the current [App submission guidelines](https://developer.adobe.com/commerce/extensibility/app-development/app-submission-guidelines), Adobe Commerce SDK / App Management adoption is listed under Best Practices, not Requirements — so these findings are `NICE`, not `MUST`. This is expected to change to a `MUST` requirement in a future update; when Adobe's guidelines move this section to Requirements, update the severities below accordingly.
 
 ## Findings
 
 | Condition | Severity |
 |---|---|
-| Consider using `@adobe/aio-commerce-sdk` or one of the `@adobe/aio-commerce-lib-*` packages (excluding `@adobe/aio-commerce-lib-admin-ui` which is specific to Admin UI SDK v2) for interacting with Adobe Commerce from your runtime actions — they provide typed API clients, built-in IMS authentication, retry logic, and keep your code aligned with Adobe's recommended patterns | `NICE` |
-| Consider adding `app.commerce.config` to enable App Management — it allows merchants to configure the app directly from the Commerce Admin without needing environment variables or CLI access. | `NICE` |
+| Custom HTTP/auth/eventing logic exists that duplicates what `@adobe/aio-commerce-lib-auth`, `-api`, `-events`, or `-webhooks` already provides | `NICE` |
+| Consider adding `app.commerce.config` to enable App Management — if the app is hosted (not local) and no existing constraint (e.g. Admin UI SDK version) blocks it | `NICE` |
 | Any SDK family package present in `package.json` dependencies | `NA` |
-| An `app.commerce.config.*` file is present in the project root | `NA` |
+| An `app.commerce.config` file is present in the project root | `NA` |

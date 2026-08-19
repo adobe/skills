@@ -2,7 +2,9 @@
 
 ## Context
 
-Non-downloadable apps are installed directly from Adobe Exchange with one click. Merchants never see the source code, never run CLI commands, and never configure environment variables manually. The following checks from the submission guidelines apply **only to downloadable apps** and must be suppressed for non-downloadable apps.
+Non-downloadable apps are installed directly from Adobe Exchange with one click. 
+Merchants never see the source code and never run CLI commands. 
+Merchants also never manually edit a `.env` file or configuration files directly — but values they enter through the Exchange Configure UI (via `configSchema` in `app.config.yaml`, or via App Management's `app.commerce.config`) may still reach the app as environment variables or business config under the hood; the merchant just never manages that mapping themselves. The following checks from the submission guidelines apply **only to downloadable apps** and must be suppressed for non-downloadable apps.
 
 ## Suppress the following findings for non-downloadable apps
 
@@ -17,6 +19,5 @@ Non-downloadable apps are installed directly from Adobe Exchange with one click.
 
 ## What IS required for non-downloadable apps
 
-- `ACCS-REST-API` declared in `deploy.yaml` — Exchange uses this to provision API access
 - Merchant-facing installation guide hosted at the Exchange documentation URL
 - All configuration documented so merchants can use the Exchange Configure UI

@@ -2,7 +2,9 @@
 
 ## Context
 
-App Builder runtime actions called directly from the storefront (e.g. Edge Delivery Services) cannot enforce Adobe IMS authentication (`require-adobe-auth: false`). CORS must be handled explicitly. Two deployment models are supported: API Mesh (CORS at mesh level) and direct call (CORS in the action via an optional installation-time parameter).
+App Builder does not provide built-in CORS handling. This is a **team-validated review pattern**, not an upstream Adobe requirement — there is no official Adobe documentation describing this as an App Builder feature.
+
+When a runtime action is called directly from the storefront (e.g. Edge Delivery Services) and cannot enforce Adobe IMS authentication (`require-adobe-auth: false`), the vendor is responsible for handling CORS explicitly — App Builder does not add any protection in its place. Two deployment models are supported: API Mesh (CORS at mesh level) and direct call (CORS in the action via an optional installation-time parameter).
 
 ## Required implementation
 

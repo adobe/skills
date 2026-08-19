@@ -1,75 +1,65 @@
 # Order Status App
 
-An App Builder extension for Adobe Commerce that adds order status tracking capabilities to your Commerce instance.
+An App Builder extension for Adobe Commerce that adds order status tracking
+capabilities to your Commerce instance, configured through App Management.
 
 ## Prerequisites
 
-- Adobe Commerce 2.4.5 or later (SaaS or PaaS)
-- [Adobe Developer App Builder](https://developer.adobe.com/app-builder/docs/overview/) access
-- Node.js 22 LTS
-- Adobe I/O CLI: `npm install -g @adobe/aio-cli`
+- Adobe Commerce 2.4.5 or later (SaaS or PaaS), hosted (not local)
+- [Admin UI SDK](https://developer.adobe.com/commerce/extensibility/admin-ui-sdk/) 3.3.1 or later
 
-## Setup
+## Installing the app
 
-1. Create an App Builder project in [Adobe Developer Console](https://developer.adobe.com/console) and link it:
-   ```bash
-   aio app use
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Copy the environment template and fill in your values:
-   ```bash
-   cp env.dist .env
-   ```
-4. Deploy:
-   ```bash
-   aio app deploy
-   ```
+Install this app from Adobe Exchange. Adobe automatically creates and
+configures the App Builder environment for you — see
+[Discover and Manage App Builder apps](https://developer.adobe.com/developer-distribution/experience-cloud/docs/guides/discoverAndManage/app-builder-discover)
+for how this works.
 
-## Environment Variables
+## Configuration
 
-| Variable | Deployment | Required | Description |
-|---|---|---|---|
-| `COMMERCE_BASE_URL` | All | Yes | Base URL of your Commerce instance — see [Connecting to Commerce](#connecting-to-commerce) |
-| `LOG_LEVEL` | All | No | Logging verbosity (`error`, `warn`, `info`, `debug`). Defaults to `info`. |
-| `OAUTH_CLIENT_ID` | SaaS | SaaS | Client ID from your Adobe Developer Console credential |
-| `OAUTH_CLIENT_SECRETS` | SaaS | SaaS | JSON array of client secrets, e.g. `["secret"]` |
-| `OAUTH_TECHNICAL_ACCOUNT_ID` | SaaS | SaaS | Technical account ID from Adobe Developer Console |
-| `OAUTH_TECHNICAL_ACCOUNT_EMAIL` | SaaS | SaaS | Technical account email from Adobe Developer Console |
-| `OAUTH_IMS_ORG_ID` | SaaS | SaaS | Adobe IMS Org ID |
-| `OAUTH_SCOPES` | SaaS | SaaS | JSON array of OAuth scopes, e.g. `["AdobeID","openid"]` |
-| `COMMERCE_CONSUMER_KEY` | PaaS | PaaS | Consumer key from your Commerce Integration |
-| `COMMERCE_CONSUMER_SECRET` | PaaS | PaaS | Consumer secret from your Commerce Integration |
-| `COMMERCE_ACCESS_TOKEN` | PaaS | PaaS | Access token from your Commerce Integration |
-| `COMMERCE_ACCESS_TOKEN_SECRET` | PaaS | PaaS | Access token secret from your Commerce Integration |
-
-See `env.dist` for the full template.
-
-## Connecting to Commerce
-
-The env vars you need to set depend on your Commerce deployment type. Copy `env.dist` to `.env` and fill in the relevant section.
+After installing, associate the app and configure it from Commerce Admin —
+see [Manage installed apps](https://experienceleague.adobe.com/en/docs/commerce/app-management/manage-app/manage-app).
+You'll be asked for your Commerce connection details and credentials,
+depending on your deployment type:
 
 **SaaS (Adobe Commerce as a Cloud Service)**
 
-Set `COMMERCE_BASE_URL` to your tenant API base URL (e.g. `https://na1.api.commerce.adobe.com/<tenant_id>/`) and fill in the `SaaS (IMS OAuth)` block in `env.dist`. Retrieve your IMS credentials from the Adobe Developer Console — see [IMS Credentials documentation](https://developer.adobe.com/commerce/extensibility/starter-kit/checkout/connect/#adobe-identity-management-service-ims).
+Provide your Commerce GraphQL/REST base URL and your IMS Server-to-Server
+credentials. Generate these from the
+[Adobe Developer Console](https://developer.adobe.com/console): select your
+project and workspace, then add an **OAuth Server-to-Server** credential.
 
 **PaaS (Adobe Commerce on Cloud Infrastructure) or On-Premise**
 
-Set `COMMERCE_BASE_URL` to your Commerce base URL (e.g. `https://yourcommerce.com/rest/default/`) and fill in the `PaaS (Commerce Integration)` block in `env.dist`. Create a Commerce Integration to obtain the consumer key, consumer secret, access token, and access token secret — see [Commerce Integration documentation](https://developer.adobe.com/commerce/extensibility/starter-kit/checkout/connect/#create-a-commerce-integration).
+Provide your Commerce base URL and Commerce Integration credentials. Create
+these in Commerce Admin under **System > Extensions > Integrations** — see
+[Create a Commerce Integration](https://developer.adobe.com/commerce/extensibility/starter-kit/integration/create-integration#create-an-integration-in-adobe-commerce-as-a-cloud-service)
+for the full steps.
 
 ## Usage
 
-Once deployed, the extension exposes two runtime actions:
+Once configured, the extension exposes two runtime actions, invoked as
+authenticated HTTPS `GET` requests (they require a valid Adobe IMS bearer
+token — `require-adobe-auth: true` — so calls typically come from another
+integration or automation, not directly from a browser):
 
-- **`get-order`** — Returns details for a single order by ID. Requires a valid IMS bearer token.
-- **`list-orders`** — Returns a list of orders. Requires a valid IMS bearer token.
+**`get-order`**
+Query parameter: `orderId` (required).
+Example: `GET <action-url>/get-order?orderId=000000123`
+Response: `{ "orderId": "000000123", "status": "processing" }`, or
+`{ "error": "orderId is required", "statusCode": 400 }` if omitted.
 
-Both actions are protected by Adobe IMS authentication (`require-adobe-auth: true`).
+**`list-orders`**
+Query parameter: `pageSize` (optional, defaults to `20`).
+Example: `GET <action-url>/list-orders?pageSize=50`
+Response: `{ "orders": [ ...Commerce order objects ] }`.
+
+Both actions return `{ "error": "...", "statusCode": 502 }` if the Commerce
+API call itself fails (e.g. invalid credentials, unreachable instance).
 
 ## Resources
 
+- [App Management overview](https://developer.adobe.com/commerce/extensibility/app-management/)
 - [App Builder documentation](https://developer.adobe.com/app-builder/docs/overview/)
 - [Commerce Extensibility documentation](https://developer.adobe.com/commerce/extensibility/)
 - [Adobe Exchange submission guidelines](https://developer.adobe.com/commerce/extensibility/app-development/app-submission-guidelines/)

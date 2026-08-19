@@ -1,4 +1,4 @@
-# app-review
+# commerce-app-review
 
 A Claude Code skill for system integrators, developers, and partners to self-review an Adobe Commerce App Builder app against the submission guidelines before submitting to Adobe Exchange.
 

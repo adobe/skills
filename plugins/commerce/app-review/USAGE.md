@@ -1,4 +1,4 @@
-# app-review usage guide
+# commerce-app-review usage guide
 
 Run this skill against your local app codebase before submitting to Adobe Exchange. It checks for security, deployment, and App Builder misconfiguration issues and walks you through each finding interactively with a concrete before/after fix drawn from your actual files.
 
