@@ -58,6 +58,7 @@ Once setup is done, route on the user's input:
   | `rollout` | `stardust:rollout` | whole migrated site → EDS, with coverage + delivery gates |
   | `diff` | `stardust:diff` | prototype ↔ build fidelity probes (pixel + structural) |
   | `audit` | `stardust:audit` | three-perspective site audit — design tensions, SEO/technical, LLM visibility — scored report + findings ledger |
+  | `qa` | `stardust:qa` | read-only post-deploy QA sweep of the live site — routing, fidelity, template conformance, rendering, visual regression, SEO, links, a11y, perf — findings report only, never fixes |
   | `uplift` | `stardust:uplift` | one-shot presales orchestrator (3 variants) |
 
   - `prototype` accepts `--cinematic` (or `--cinematic=<register>`)

@@ -85,13 +85,14 @@ otherwise with a clear install hint.
 
 ## Status
 
-`v0.16.1` — container-width (`--max-width`) sizing guidance in the token
-contract. Previously in `v0.16.0` — two new entry points: `replica` (same-design migration with a
-measured source-fidelity gate) and `reskin` (byte-faithful content onto a
-donor design system), both field-tested and hardened, plus the shared
-live-measurement module (`diff/scripts/live-session.mjs`) and diff-probe
-flags. See [CHANGELOG.md](CHANGELOG.md) for the full breakdown; prior
-versions live in git history.
+`v0.17.0` — `deploy` targets vanilla `adobe/aem-boilerplate` (the AuthorKit
+runtime dependency is removed end to end), and David's Model is now a
+mechanical gate (`davids-model.md` + `davids-model-lint.mjs`) so first-pass
+DA content structure conforms without a follow-up pass — validated by three
+full e2e conversions. Previously in `v0.16.1` — container-width
+(`--max-width`) sizing guidance in the token contract; `v0.16.0` — two new
+entry points: `replica` and `reskin`. See [CHANGELOG.md](CHANGELOG.md) for
+the full breakdown; prior versions live in git history.
 
 ## License
 

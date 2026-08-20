@@ -1,7 +1,7 @@
 ---
 name: code-assessment
 description: |
-  [BETA] Detect, review, and fix code-quality and correctness issues in an AEM as a Cloud Service
+  Detect, review, and fix code-quality and correctness issues in an AEM as a Cloud Service
   project — locally, with no external services or network calls. Use whenever a user wants to
   check, review, assess, audit, scan, modernize, upgrade, or fix AEM Java, Sling Models, OSGi,
   or Maven code — for example: "check my Sling Models are implemented correctly", "review my
@@ -10,15 +10,8 @@ description: |
   it to scan the repo; it detects issues, plans, and — only when you ask — applies surgical
   edits on a branch or in place, then verifies with mvn compile. It recognises the intent and
   handles each issue type itself, reporting anything it cannot yet fix.
-  This skill is in beta. Verify all outputs before applying them to production projects.
-metadata:
-  status: beta
 license: Apache-2.0
 ---
-
-> **Beta Skill**: This skill is in beta and under active development.
-> Results should be reviewed carefully before use in production.
-> Report issues at https://github.com/adobe/skills/issues
 
 # AEM as a Cloud Service — Code Assessment
 
@@ -33,10 +26,15 @@ Single skill for detecting and fixing AEM CS code-quality issues, **entirely aga
 
 Discovery runs through the deterministic **analyzer** ([`scripts/analyze.sh`](scripts/README.md)):
 it parses the workspace once and runs the enabled detectors, emitting the shared findings shape.
-Every `ready` pattern has an analyzer detector. Patterns without one are `planned` only — not yet
-detectable and not yet built; there is **no LLM-scan fallback** in this version (see Scope &
-limitations) — the `scan` value on `planned` rows in [`references/patterns.md`](references/patterns.md)
-marks the intended future detection method, not an active code path.
+Every `ready` pattern has an analyzer detector. One detector — `remove-deprecated-api` — loads
+its rules dynamically from a preflight-produced cache
+([`remove-deprecated-api/scripts/detect.sh`](remove-deprecated-api/scripts/detect.sh) runs the
+AEM Analyser Maven Plugin and writes the cache TSV before the analyzer is invoked); the
+detector's shape and integration are otherwise identical. Patterns without a detector are
+`planned` only — not yet detectable and not yet built; there is **no LLM-scan fallback** in this
+version (see Scope & limitations) — the `scan` value on `planned` rows in
+[`references/patterns.md`](references/patterns.md) marks the intended future detection method,
+not an active code path.
 
 ## Routing
 
@@ -57,7 +55,7 @@ Route the request to one expert skill. Two pattern families share this skill:
 | "fix @Inject", "modernize Sling Models", `javax.inject.Inject` on `@Model` fields | [`inject-in-sling-model/`](inject-in-sling-model/SKILL.md) |
 | "add HTTP timeouts", "outbound/external call has no timeout", `HttpClient` / `HttpClients` / `OkHttpClient` built without a timeout | [`outbound-call-timeouts/`](outbound-call-timeouts/SKILL.md) |
 | "bound my query", "unbounded query", "query causing OOM", `p.limit=-1`, `setLimit(-1)` | [`unbounded-query/`](unbounded-query/SKILL.md) |
-| "remove deprecated API", "fix deprecated imports", "Cloud Manager deprecated API failure", `import org.apache.log4j`, `import org.apache.commons.lang`, `import com.adobe.granite.xss`, `import com.day.cq.xss`, commons-lang/collections upgrade, log4j migration, unmodifiable OSGi configs | [`remove-deprecated-api/`](remove-deprecated-api/SKILL.md) _(apply uses JAR scripts — see recipe.md)_ |
+| "remove deprecated API", "fix deprecated imports", "Cloud Manager deprecated API failure", `region-deprecated-api` / `api-regions-check` / `Import-Package not satisfied` pipeline failures, log4j migration, commons-lang/collections upgrades, deprecated Maven deps, unmodifiable OSGi configs | [`remove-deprecated-api/`](remove-deprecated-api/SKILL.md) _(analyzer detector with dynamic rules — preflight runs `aemanalyser-maven-plugin`; hint-driven fixes; see recipe.md)_ |
 
 **Architectural migration patterns** (guided remediation — full before/after, troubleshooting, modern alternatives; invoked directly or via `migration` for BPA/CAM-driven discovery):
 
@@ -102,6 +100,10 @@ single-story diff). Refuse "fix everything" for the apply phase. Rationale:
 ## Critical rules
 
 - **Local only** — no network calls or external services; operate solely on the workspace.
+  **Documented exception:** `remove-deprecated-api` is plugin-driven and needs Maven Central
+  (to resolve `aemanalyser-maven-plugin` and, transitively, the AEM SDK's api-regions data) plus
+  optionally Adobe Experience League as a fallback source for successor guidance. If offline,
+  that one pattern is skipped with a clear message; all other patterns remain local-only.
 - **Requires a local JDK** (Java 11+) for detection — the analyzer compiles/runs in memory; no
   install beyond the JDK, no network. If absent, detection stops with a clear message.
 - **The analyzer is detection — never substitute external tooling.** Do not run
@@ -109,7 +111,10 @@ single-story diff). Refuse "fix everything" for the apply phase. Rationale:
   `npm outdated`, or Maven Central / registry lookups in place of analyzer discovery. Those answer
   "what is the latest on the network" — outside this skill's local-only contract. If the user
   explicitly wants a live registry comparison, say it needs network and offer it as a separate step
-  **after** delivering the skill report.
+  **after** delivering the skill report. `remove-deprecated-api`'s preflight
+  (`remove-deprecated-api/scripts/detect.sh`) is the one documented exception: it invokes the AEM
+  Analyser Maven Plugin against the project to populate its rules cache, then hands off to the
+  shared analyzer.
 - **Never commit, push, or open a PR** — branch (git) or in-place edits only; the developer reviews and commits.
 - **Surgical edits** — no reformatting / re-serialization.
 - **Skip with a reason** — record un-applicable findings as `skipped` with an exact reason; never silently drop.

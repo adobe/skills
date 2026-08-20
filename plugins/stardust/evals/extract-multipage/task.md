@@ -17,11 +17,15 @@ The `stardust:extract` skill is invoked. It:
 2. **Discovers** the page inventory before crawling: tries
    `sitemap.xml`, then `sitemap_index.xml`, then `robots.txt`
    `Sitemap:` directives, then BFS crawl.
-3. Applies the **default page cap of 25** and shows the user the
-   discovered list, the cut list, and asks for confirmation.
+3. Applies the **default page cap of 5**, prints an informational
+   summary of the discovered list, the kept list, and the cut list,
+   and **proceeds without asking for confirmation** (silent-proceed
+   contract; scope changes come from flags, not a yes/no gate).
 4. **Uses Playwright** (not WebFetch / curl) for per-page rendering
-   at 1440 × 900 @ 2× DPR with `networkidle` + 1.5 s grace and a
-   scroll-to-bottom pass.
+   at 1440 × 900 @ 2× DPR with the configured wait mode (default
+   `medium`: `domcontentloaded` + 2 s grace, 8 s hard cap) and a
+   scroll-to-bottom pass. Running the bundled `scripts/crawl.mjs`
+   copied into the project satisfies this.
 5. Writes one `stardust/current/pages/<slug>.json` per crawled page
    with the full schema (headings, landmarks, ctas, links, media,
    forms, widgets, per-section style).

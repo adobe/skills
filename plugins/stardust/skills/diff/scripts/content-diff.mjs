@@ -64,6 +64,10 @@
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, newline-per-chained-call, no-continue, no-multi-spaces */
 /* standalone dev tool: playwright is a devDependency; sequential page ops use awaited loops by design */
 import { chromium } from 'playwright';
+// NOTE: deploy's gates (#93/#94) now use their OWN synced copies in skills/deploy/scripts/
+// (so A6/A2 are independent of this skill). This probe keeps its local copies; the two
+// copies of content-inventory.mjs/diff-profiles.mjs must stay in sync until the diff-skill
+// abrasion PR consolidates them. Keep edits (e.g. the classifier's norm()) applied to both.
 import { resolveProfile } from './diff-profiles.mjs';
 import { inventory, diffInventories, summarise } from './content-inventory.mjs';
 import { REAL_CHROME_UA, isLiveHttpUrl, defaultWaitUntil, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } from './live-session.mjs';

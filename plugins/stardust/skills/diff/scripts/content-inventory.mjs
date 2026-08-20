@@ -39,7 +39,10 @@ export function inventory(args) {
   const ARROWS = /[→➔➜›⇒➤>]+/g;
   const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
   // match key: lowercase, arrows + trailing punctuation stripped, whitespace collapsed.
-  const norm = (s) => clean(s).replace(ARROWS, ' ').replace(/\s+/g, ' ').trim()
+  const norm = (s) => clean(s).replace(ARROWS, ' ')
+    .replace(/[‘’′]/g, "'").replace(/[“”″]/g, '"')
+    .replace(/…/g, '...').replace(/[–—]/g, '-')
+    .replace(/\s+/g, ' ').trim()
     .toLowerCase().replace(/[.,;:!?·•]+$/g, '').trim();
 
   // Off-screen probe for rendered-face width (#77 method): a FIXED-size string

@@ -4,7 +4,7 @@
  *
  * Generates the artifacts that only make sense for the whole site (not any single
  * page): sitemap.xml + robots.txt from the delivery coverage, and a fragments
- * manifest mapping the canon chrome to the EDS static fragments deploy injects.
+ * manifest mapping the canon chrome to the authored /nav + /footer documents deploy publishes.
  * Deterministic outputs staged under stardust/rollout/site/; the actual push of
  * fragments is deploy's job (this only prepares + records what to push).
  *
@@ -38,12 +38,15 @@ writeFileSync(join(siteDir, 'sitemap.xml'), sitemap);
 const robots = `User-agent: *\nAllow: /\n${host ? `Sitemap: ${host}/sitemap.xml\n` : ''}`;
 writeFileSync(join(siteDir, 'robots.txt'), robots);
 
-// Fragments manifest — chrome blocks → static fragment targets, with canon source.
+// Fragments manifest — chrome blocks → authored chrome DOCUMENTS (/nav, /footer),
+// deployed + published through the same content chain as any page (the stock
+// header/footer blocks fetch them; they 404 sitewide if left unpublished).
 const chrome = ((blocksDoc && blocksDoc.blocks) || []).filter((b) => b.kind === 'chrome');
+const fragmentTarget = { header: 'content/nav.html', nav: 'content/nav.html', footer: 'content/footer.html' };
 const fragmentSrc = { header: join(CANON, 'header.html'), nav: join(CANON, 'header.html'), footer: join(CANON, 'footer.html') };
 const fragments = chrome.map((b) => ({
   id: b.id,
-  target: b.delivery.blockPath || `fragments/${b.id}.html`,
+  target: b.delivery.blockPath || fragmentTarget[b.id] || `content/${b.id}.html`,
   canonSource: existsSync(fragmentSrc[b.id]) ? fragmentSrc[b.id] : null,
   status: b.delivery.status,
 }));

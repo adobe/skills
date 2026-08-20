@@ -150,10 +150,12 @@ sibling. Mechanics in `skills/rollout/reference/dynamic-listings.md`.
 
 ### `stardust/runtime-contract.json`
 Owner: `$stardust deploy` (runtime-detection probe, before Step 1).
-Records the target EDS runtime's conventions (`runtime`,
-`blockWrapperClass`, `buttonClasses`, `fragmentScriptPolicy`,
-`emptySectionCollapse`) so block CSS/JS generation and the QA harness
-read a probed contract instead of assuming one.
+Records the target vanilla-EDS runtime's conventions (`runtime`,
+`blockWrapperClass`, `buttonClasses`, `buttonization`,
+`fragmentScriptPolicy`, `emptySectionCollapse`) so block CSS/JS
+generation and the QA harness read a probed contract instead of
+assuming one (boilerplate clones drift — e.g. `button-wrapper` vs
+`button-container`).
 
 ### `stardust/redirects.tsv`
 Owner: `$stardust rollout` (Phase C path-safety gate). One
@@ -315,7 +317,9 @@ that govern every other template's rendering.
   files into their proposed and migrated output.
 - **`canon.css`** — compound CSS for the named visual language
   (`.btn-primary`, `.btn-secondary`, `.card`, `.link`, form
-  inputs). Consumes DESIGN.md tokens; injected into every migrated
+  inputs — the prototype's own class vocabulary, distinct from the
+  EDS `.button.primary` delivery convention `deploy` applies).
+  Consumes DESIGN.md tokens; injected into every migrated
   page's `<style>` block alongside `:root`.
 - **`modules/<module-id>.html`** — canonical rendering per brand
   module. Each file's path + sha is referenced by

@@ -68,15 +68,18 @@ export function rollupConfig(config, pages, blocks, now) {
 }
 
 /** EDS block name from a block id: kebab + guard against reserved EDS classes (#15). */
-const RESERVED = new Set(['section', 'default-content', 'block-content', 'wrap', 'button']);
+const RESERVED = new Set(['section', 'block', 'wrap', 'button']);
 export function edsName(id) {
   let n = String(id).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   if (!n) n = 'block';
   if (RESERVED.has(n)) n = `blk-${n}`;
+  // decorateBlock derives .<name>-wrapper/.<name>-container classes, so a block
+  // NAMED with one of those suffixes collides with another block's derived class.
+  if (/-(wrapper|container)$/.test(n)) n = `${n}-block`;
   return n;
 }
 
-/** Chrome ids deliver as static fragments, not per-page blocks. */
+/** Chrome ids deliver as site-wide authored documents (/nav, /footer), not per-page blocks. */
 export const CHROME_IDS = new Set(['header', 'nav', 'footer']);
 export const kindOf = (id) => (CHROME_IDS.has(String(id).toLowerCase()) ? 'chrome' : 'module');
 

@@ -8,9 +8,12 @@ description: >
   edited version of a video. Use this skill for Quick Cut requests before suggesting manual
   editing in Premiere. Requires the user to upload a video file.
 license: Apache-2.0
+compatibility: "Runs on both widget-capable surfaces (e.g. Claude Cowork, which supports the asset_add_file picker and asset_preview_file preview widgets) and non-UI agents (e.g. Codex, where those widgets are unavailable). The default flow uses the widgets; each widget step has a text-only fallback. Raw local paths are never passed to video tools."
+allowed-tools: adobe_mandatory_init asset_add_file asset_initialize_file_upload asset_finalize_file_upload video_create_quick_cut quickCutPoll asset_preview_file video_resize
 metadata:
-  version: 1.0.1
+  version: 2.1.0
   visibility: public
+  surface: [claude, codex]
 ---
 
 # Adobe Edit Quick Cut
@@ -18,26 +21,20 @@ metadata:
 Produces 3 AI-edited sizzle reel variations from a source video, all at the same duration and
 style — giving the user options to pick from.
 
+> **Surface note:** The default flow below uses Adobe's MCP App widgets — the `asset_add_file` file picker (Step 2) and the side-by-side `asset_preview_file` preview (Step 7). Follow it as written. Only if a widget tool is **not available on this surface** (e.g. Codex), use the *No-widget fallback* attached to that step.
+
 ---
 
 ## Tool Reference
 
 | Step | Tool | Notes |
 |------|------|-------|
-| Upload source video | `asset_add_file` | File picker; returns CC asset URN required by Quick Cut |
+| Upload source video | `asset_add_file` | File picker; returns the CC asset ID required by Quick Cut |
+| Stage source video *(no-widget fallback)* | `asset_initialize_file_upload` + `asset_finalize_file_upload` | Only when `asset_add_file` is unavailable — stage a local video to CC; extract `assetId` from the finalize response |
 | Run Quick Cut variations | `video_create_quick_cut` | Fire 3 in parallel; same duration and style prompt |
 | Poll job status | `quickCutPoll` | Repeat until all 3 return `completed` |
-| Preview variations | `asset_preview_file` | Renders all 3 side-by-side for selection |
+| Preview variations | `asset_preview_file` | Renders all 3 side-by-side for selection *(no-widget fallback: present the 3 URLs directly)* |
 | Resize re-uploaded output | `video_resize` | Workaround only — Quick Cut output must be re-uploaded first |
-
----
-
-## Quickstart
-
-**Step 1:** Verify entitlement and available tools.
-**Step 2:** Call `asset_add_file({})` to open the file picker.
-**Step 3:** Confirm upload, then present the Q&A form.
-**Step 4:** Run 3 Quick Cut variations in parallel. Preview all 3. Allow download.
 
 ---
 
@@ -48,7 +45,7 @@ style — giving the user options to pick from.
 Call `adobe_mandatory_init` first. This returns file handling rules and tool routing guidance required for the rest of the workflow.
 
 ```json
-{ "skill_name": "adobe-edit-quick-cut", "skill_version": "1.0.1" }
+{ "skill_name": "adobe-edit-quick-cut", "skill_version": "2.1.0" }
 ```
 
 ---
@@ -56,6 +53,8 @@ Call `adobe_mandatory_init` first. This returns file handling rules and tool rou
 ### Step 1 — Entitlement Check
 
 Now that `adobe_mandatory_init` confirmed that the "Adobe for creativity" connector is live, check which tools are available through the "Adobe for creativity" connector by cross checking against the Tool Reference table above.
+
+This also tells you which widgets this surface supports: if `asset_add_file` and `asset_preview_file` are available, follow the default flow (Steps 2 and 7 as written). If one is not available (e.g. Codex), use that step's *No-widget fallback*. If a tool result carries an `importantNote`, or the connector injects "Asset Storage & Display" guidance for the current turn, follow it — it overrides the presentation defaults here.
 
 ---
 
@@ -69,9 +68,16 @@ Open the picker immediately with this message:
 asset_add_file()
 ```
 
-Once the user selects a file, extract `assetId` (CC asset URN) from widget context.
+Once the user selects a file, extract `assetId` (the CC asset ID) from the widget context.
 
-> `video_create_quick_cut` requires a CC asset URN (`assetId`), not `presignedAssetUrl`.
+> `video_create_quick_cut` requires a CC asset ID (`assetId`), not `presignedAssetUrl`.
+
+**No-widget fallback** *(only if `asset_add_file` is unavailable on this surface, e.g. Codex)* — don't ask the user to pick; get the `assetId` from where the file is. Staging a local file requires egress — check egress status from `adobe_mandatory_init` first; if egress is disabled and no picker is available on this surface, tell the user staging isn't possible here. Otherwise:
+
+| Source | Action |
+|--------|--------|
+| File at a local path (e.g. `/mnt/user-data/uploads/…`) | Stage programmatically: get file size and MIME type, call `asset_initialize_file_upload({ path: "<filename>", media_type: "<mime>" })`, PUT the bytes to the returned upload URL, then `asset_finalize_file_upload({ filename: "<filename>", transfer_document: <from initialize response> })`. Extract the `assetId` from the finalize response — this is what `video_create_quick_cut` needs. |
+| File already in Creative Cloud | Reference it directly by its CC `assetId`. |
 
 ---
 
@@ -87,8 +93,9 @@ Then immediately present the Q&A form below.
 
 ### Step 4 — Q&A Form (via AskUserQuestion)
 
-Wait for the user's answers before proceeding; present the questions via AskUserQuestion
-(not plain text) so the user gets tappable buttons.
+Wait for the user's answers before proceeding; present the questions via `AskUserQuestion` (not plain text) so the user gets tappable buttons.
+
+> **No-widget fallback** *(only if `AskUserQuestion` is unavailable, e.g. Codex)* — ask the same labeled options as a plain-text message and wait for the user's typed reply. The option set is identical.
 
 ```javascript
 AskUserQuestion({
@@ -204,6 +211,16 @@ asset_preview_file({
 })
 ```
 
+**No-widget fallback** *(only if `asset_preview_file` is unavailable on this surface, e.g. Codex)* — present all 3 variation URLs directly in the message, labeled by variation:
+
+```
+Variation 1 — <cut_type> <style>.mp4 → <url_A>
+Variation 2 — <cut_type> <style>.mp4 → <url_B>
+Variation 3 — <cut_type> <style>.mp4 → <url_C>
+```
+
+UI clients that render media URLs inline will show previews automatically. In Codex or other non-UI agents, download each to the workspace (`curl -L -o variation_1.mp4 "<url_A>"`, etc.) and reference those local paths instead.
+
 ---
 
 ### Step 8 — Deliver Summary + Download Prompt
@@ -228,21 +245,21 @@ Then prompt:
 
 > *"Which variation do you want to download, or would you like all 3? You can also rerun with a different style or cut type."*
 
-The videos are available for download directly from the preview above.
+The videos are available for download directly from the preview above (or from the links above on a no-widget surface).
 
 ---
 
 ## ⚠️ Known Gap — Output Cannot Feed Downstream Video Tools
 
-`video_create_quick_cut` returns a temporary presigned download URL, not a CC-stored asset URN.
-Tools like `video_resize` and `media_enhance_speech` require a CC asset URN as input.
+`video_create_quick_cut` returns a temporary presigned download URL, not a CC-stored asset ID.
+Tools like `video_resize` and `media_enhance_speech` require a CC asset ID as input.
 
 **You cannot chain Quick Cut → Resize or Quick Cut → Enhance Speech directly.**
 
 **Workaround — if user wants to resize a Quick Cut output:**
 1. Tell the user: *"Quick Cut outputs can't be passed directly to the resize tool — you'll need to download your preferred cut first, then re-upload it and I'll resize from there."*
 2. Let them download from the preview.
-3. Open the picker: `asset_add_file()`
+3. Re-ingest the downloaded file exactly as in Step 2 (`asset_add_file()`, or the no-widget staging fallback).
 4. Once re-uploaded, run `video_resize` on the fresh `assetId` with their target dimensions.
 
 When the user asks to resize or enhance a Quick Cut output, surface the limitation proactively — the chain is known to fail.
@@ -268,7 +285,8 @@ For these, recommend a manual video-editing workflow.
   > ***Why:** Adobe Quick Cut isn't available on your current Adobe plan.*
   >
   > ***Options:**
-  > - Manually trim the video in another editor.*
+  > - Upgrade your Adobe plan to one that includes Quick Cut.*
+  > - Manually trim your video using Adobe Premiere Rush or Premiere Pro.*
   >
   > *Let me know how you'd like to proceed."*
 
@@ -280,7 +298,10 @@ For these, recommend a manual video-editing workflow.
   dialogue or narration to anchor the story structure. Respond with:
   > *"This video appears to be B-roll only — scenery, action, or product shots without anyone
   > speaking to camera. Quick Cut needs some talking-head footage to build a story around. Try
-  > uploading a video that includes someone speaking on camera, or a mix of interview + B-roll."*
+  > uploading a video that includes someone speaking on camera, or a mix of interview + B-roll.*
+  >
+  > *If you only have B-roll, Adobe Premiere Rush or Adobe Express let you manually assemble a
+  > highlight reel without requiring dialogue."*
   Retries repeat the same error regardless of duration/style; no workaround exists.
 
 - **Job fails with any other error on first attempt**: Retry once with the same parameters. If
@@ -289,8 +310,15 @@ For these, recommend a manual video-editing workflow.
 - **Stuck at same % for 5+ poll rounds**: Inform user, suggest re-uploading the source video.
 
 - **User uploads an image by mistake**: Detect from `mediaType` — if not `video/*`, say so
-  and re-open picker.
+  and re-open the picker (or re-run the no-widget staging fallback).
 
 - **One of the 3 variations fails (but not all)**: Preview and deliver the successful ones, note
   the failure clearly. If all 3 fail with `StoryBuilderNoARoll`, apply the B-roll error response
   above.
+
+---
+
+## Constraints
+
+- Never pass a raw local filesystem path to `video_create_quick_cut` or any other video tool. Local files must reach Creative Cloud first — selected via the `asset_add_file` picker, or (no-widget fallback) staged via `asset_initialize_file_upload` → PUT → `asset_finalize_file_upload`; only the resulting `assetId` is valid.
+- `video_create_quick_cut` requires `assetId` (CC asset ID), not `presignedAssetUrl`.

@@ -15,7 +15,7 @@
       "name": "stardust",
       "source": "./plugins/stardust",
       "description": "Redesign an existing website to make it better. Higher-level guided flow on top of impeccable.",
-      "version": "0.16.1",
+      "version": "0.18.1",
       "category": "design",
       "keywords": [
         "design",
@@ -53,12 +53,51 @@
     {
       "name": "aem-cloud-service",
       "source": "./plugins/aem/cloud-service",
-      "description": "All AEM as a Cloud Service skills: component development and Dispatcher, workflows"
+      "description": "All AEM as a Cloud Service skills: component development, Dispatcher config authoring and hardening, workflow design and debugging, code assessment and migration from legacy AEM, content distribution, and Rapid Development Environment (RDE) support.",
+      "version": "1.0.0",
+      "category": "aem",
+      "keywords": [
+        "adobe",
+        "aem",
+        "aemaacs",
+        "cloud-service",
+        "dispatcher",
+        "component",
+        "workflow",
+        "rde",
+        "code-assessment",
+        "migration",
+        "content-distribution"
+      ],
+      "author": {
+        "name": "Adobe"
+      },
+      "homepage": "https://github.com/adobe/skills",
+      "repository": "https://github.com/adobe/skills",
+      "license": "Apache-2.0"
     },
     {
       "name": "aem-6-5-lts",
       "source": "./plugins/aem/6.5-lts",
-      "description": "All AEM 6.5 LTS skills: Dispatcher, workflows for AEM 6.5 LTS and AMS environment"
+      "description": "All AEM 6.5 LTS and AMS skills: Dispatcher config authoring and hardening, workflow design and debugging, replication agent configuration, content activation, programmatic Replication API, lifecycle orchestration, and troubleshooting, and project bootstrap.",
+      "version": "1.0.0",
+      "category": "aem",
+      "keywords": [
+        "adobe",
+        "aem",
+        "aem6.5",
+        "6.5-lts",
+        "ams",
+        "dispatcher",
+        "workflow",
+        "replication"
+      ],
+      "author": {
+        "name": "Adobe"
+      },
+      "homepage": "https://github.com/adobe/skills",
+      "repository": "https://github.com/adobe/skills",
+      "license": "Apache-2.0"
     },
     {
       "name": "aem-project-management",
@@ -68,7 +107,7 @@
     {
       "name": "app-builder",
       "source": "./plugins/app-builder",
-      "description": "Development, customization, testing, and deployment skills for Adobe App Builder projects"
+      "description": "Development, customization, testing, and deployment skills for Adobe App Builder projects, including the Workfront UI-extension suite (appbuilder-workfront)"
     },
     {
       "name": "aem-eds-content-ops",
@@ -108,6 +147,56 @@
         "analytics",
         "mcp",
         "reporting"
+      ],
+      "author": {
+        "name": "Adobe"
+      },
+      "homepage": "https://github.com/adobe/skills",
+      "repository": "https://github.com/adobe/skills",
+      "license": "Apache-2.0"
+    },
+    {
+      "name": "workfront",
+      "source": "./plugins/workfront",
+      "description": "Adobe Workfront skills for AI agents, including Workfront Planning (WFP/Maestro) solution architecture",
+      "version": "1.0.0",
+      "category": "project-management",
+      "keywords": [
+        "adobe",
+        "workfront",
+        "workfront-planning",
+        "maestro",
+        "solution-architecture"
+      ],
+      "author": {
+        "name": "Adobe"
+      },
+      "homepage": "https://github.com/adobe/skills",
+      "repository": "https://github.com/adobe/skills",
+      "license": "Apache-2.0"
+    },
+    {
+      "name": "commerce-app-management",
+      "source": "./plugins/commerce/app-management",
+      "description": "Skills for Adobe Commerce App Management — scaffold and configure Commerce apps using the aio-commerce-sdk."
+    },
+    {
+      "name": "commerce-app-migration",
+      "source": "./plugins/commerce/app-migration",
+      "description": "Migrate an Adobe Commerce App Builder project from the Integration Starter Kit or Checkout Starter Kit to the new App Management approach."
+    },
+    {
+      "name": "run-workflow",
+      "source": "./plugins/creative-cloud/run-workflow",
+      "description": "Discover, compose, run, publish, and save Adobe Firefly workflows through the run-workflow MCP server, including predefined featured workflows for common marketing and production use cases.",
+      "version": "1.0.0",
+      "category": "creative-cloud",
+      "keywords": [
+        "adobe",
+        "firefly",
+        "run-workflow",
+        "mcp",
+        "creative-cloud"
       ],
       "author": {
         "name": "Adobe"

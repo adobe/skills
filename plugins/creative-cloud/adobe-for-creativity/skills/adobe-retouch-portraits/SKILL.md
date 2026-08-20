@@ -9,18 +9,35 @@ description: >
   uploads/selects a folder of photos and wants them polished and ready to
   review. Automatically applies auto-straighten, auto-tone, and auto-light
   to every image. Outputs a preview grid and download folder.
-  Access: 🔐 Signed-In required | Gen AI: ❌
+  Access: 🔐 Signed-In required | Gen AI: ❌ by default — optional background-only cleanup only where the surface permits generative AI (e.g. Codex); none on Claude
 license: Apache-2.0
+compatibility: "Runs on both widget-capable surfaces (e.g. Claude Cowork, which supports the asset_add_file picker and asset_preview_file preview widgets) and non-UI agents (e.g. Codex, where those widgets are unavailable). The default flow uses the widgets; each widget step has a text-only fallback. Local files are staged to Creative Cloud first; raw local paths are never passed to image tools."
+allowed-tools: adobe_mandatory_init image_list_presets asset_add_file read_widget_context asset_initialize_file_upload asset_finalize_file_upload asset_preview_file image_auto_straighten image_apply_auto_tone image_apply_adjustments image_select_subject image_apply_preset image_apply_lens_blur image_apply_gaussian_blur image_crop_and_resize image_fill_area create_firefly_board
 metadata:
-  version: 2.1.0
+  version: 3.1.0
   visibility: public
+  surface: [claude, codex]
 ---
 
 # Adobe Retouch Portraits
 
 A walk-away bulk retouching pipeline for photographers. The user selects their
-images, optionally adds tweaks, and Claude runs the full batch using Adobe
+images, optionally adds tweaks, and the agent runs the full batch using Adobe
 for creativity tools.
+
+> **Surface note:** The default flow uses Adobe's MCP App widgets — the `asset_add_file` picker (Step 1) and the `asset_preview_file` preview (Steps 2c and 8). Follow it as written. Only if a widget tool is **not available on this surface** (e.g. Codex) use the *No-widget fallback* attached to that step. Present `AskUserQuestion` prompts as plain-text labeled options wherever no question widget exists.
+
+---
+
+## Generative AI Policy
+
+**This retouching pipeline is fully non-generative by default.** The core workflow — auto-straighten, auto-tone, adjustments, presets, blur, and crop — uses no generative AI, and that non-generative pipeline is the *only* behavior on surfaces that do not permit generative AI (**including Claude**).
+
+**Generative editing runs only where the surface permits it.** A surface permits generative AI only when it exposes a generative tool such as `image_fill_area` (e.g. Codex). Where no such tool is available (e.g. Claude), perform **no** generative edits of any kind — do not call, attempt, offer, or mention them; run the non-generative pipeline only.
+
+**Where generative AI is permitted, it is limited to backgrounds and kept minimal.** Only then may `image_fill_area` correct dust spots, sensor artifacts, or scratches on non-human areas (walls, floors, sky, props), and only when the fix is invisible at normal viewing size — remove a dust spot, not repaint a wall. **Never** apply generative tools to faces, skin, hair, bodies, or clothing on any surface. Do not alter the scene, remove objects, change the environment, or extend the frame.
+
+If the user asks you to generatively modify a person (e.g. "change her hair color", "make him look younger"), clarify that this skill does not perform generative edits on people — and, on a surface with no generative capability at all, that generative editing isn't available here — then suggest a dedicated generative workflow instead.
 
 ---
 
@@ -28,7 +45,8 @@ for creativity tools.
 
 | Step                  | Tool                                                        | Notes                                              |
 | --------------------- | ----------------------------------------------------------- | -------------------------------------------------- |
-| Ingest                | `asset_add_file`                                            | Interactive file picker                            |
+| Ingest                | `asset_add_file` + `read_widget_context`                    | Interactive file picker; resolve URIs via `read_widget_context` |
+| Ingest *(no-widget fallback)* | `asset_initialize_file_upload` + `asset_finalize_file_upload` | Only when `asset_add_file` is unavailable — stage a local file to CC |
 | Discover presets      | `image_list_presets`                                        | Once at startup; builds the smart preset plan      |
 | Straighten            | `image_auto_straighten`                                     | Per image                                          |
 | Auto-Tone             | `image_apply_auto_tone` (cameraRawFilter)                   | Per image                                          |
@@ -37,9 +55,10 @@ for creativity tools.
 | Adaptive Enhancements | `image_apply_preset`                                        | Per image, opt-in (see Step 5)                     |
 | Background blur       | `image_apply_lens_blur`                                     | Per image, preferred — depth-aware bokeh           |
 | Heavy/stylized blur   | `image_apply_gaussian_blur`                                 | Per image, only if user explicitly requests heavy  |
+| Background cleanup    | `image_fill_area` (optional; generative)                    | Only where the surface permits generative AI (tool available, e.g. Codex) — backgrounds only, never people; **not used on Claude** |
 | Crop                  | `image_crop_and_resize`                                     | Per image                                          |
-| Sample preview        | `asset_preview_file`                                        | Before/after on image[0] only                      |
-| Final preview         | `asset_preview_file`                                        | All final URLs directly, no resize step            |
+| Sample preview        | `asset_preview_file`                                        | Before/after on image[0] only *(no-widget fallback: present the URLs directly)* |
+| Final preview         | `asset_preview_file`                                        | All final URLs directly, no resize step *(no-widget fallback: present the URLs directly)* |
 | Firefly Board         | `create_firefly_board`                                      | Source presigned URLs from ingestion               |
 
 ---
@@ -48,8 +67,10 @@ for creativity tools.
 Call `adobe_mandatory_init` first. This returns file handling rules and tool routing guidance required for the rest of the workflow.
 
 ```json
-{ "skill_name": "adobe-retouch-portraits", "skill_version": "2.1.0" }
+{ "skill_name": "adobe-retouch-portraits", "skill_version": "3.1.0" }
 ```
+
+This also tells you which widgets this surface supports and whether egress is enabled. If `asset_add_file` and `asset_preview_file` are available, follow the default flow (Steps 1, 2c, and 8 as written). If one is not available (e.g. Codex), use that step's *No-widget fallback*. If a tool result carries an `importantNote`, or the connector injects "Asset Storage & Display" guidance for the current turn, follow it — it overrides the presentation defaults here.
 
 ---
 
@@ -84,7 +105,7 @@ Goal: pick exactly **1** blur-background preset. This replaces `image_apply_gaus
 
 **Fallback strategy:**
 - If no preset matches a bucket, leave that bucket empty rather than forcing a poor fit.
-- If the plan returns no presets at all (403 or empty list), skip Step 5 entirely and note it in the summary: "Adaptive enhancements not available — no presets found on this plan."
+- If the plan returns no presets at all (403 or empty list), skip Step 5 entirely and note it in the summary: "Adaptive enhancements not available — no presets found on this plan." **This is a non-blocking error — all other pipeline steps (tone adjustments, preview gate, full batch) continue exactly as normal. Only Step 5 is skipped.**
 - Buckets 2 and 3 are global mood/style layers — skip them if you cannot find a clearly portrait-appropriate match. It's better to skip than to apply an ill-fitting preset.
 
 Store the chosen presets as your **Preset Plan** before Step 2. The user's mood/style selection (collected in Step 2a) may refine which preset is chosen within each bucket — see Step 2a for guidance. Show the final plan to the user in the confirmation message (Step 2).
@@ -108,6 +129,17 @@ NOT an error. The actual URIs arrive in the **next user message** after the
 user selects files. Wait for that follow-up before continuing.
 
 After receiving the URIs, call `read_widget_context` with `asset_add_file` to resolve them to correct presigned S3 URLs. Use those resolved URLs for all subsequent tool calls — `dcx-stage.adobe.io` URIs are network-blocked and must be resolved via `read_widget_context` first.
+
+Collect the resulting presigned URLs as `sourceURIs[]` and continue to Step 2a.
+
+> **No-widget fallback** *(only if `asset_add_file` is unavailable on this surface, e.g. Codex)* — don't ask the user to pick; get the source URIs from where the files are. `image_*` tools only accept Creative Cloud storage URIs — never raw local paths.
+>
+> | Source | Action |
+> |--------|--------|
+> | File(s) at a local path (e.g. `/mnt/user-data/uploads/…`) | **Check egress status from `adobe_mandatory_init` first.** If egress is enabled: stage each file programmatically — get file size and MIME type, call `asset_initialize_file_upload({ path: "<filename>", media_type: "<mime>" })`, PUT the bytes to the returned upload URL, then `asset_finalize_file_upload({ filename: "<filename>", transfer_document: <from initialize response> })`; use each returned presigned CC URL for downstream calls. If egress is disabled or programmatic upload fails, this fallback cannot proceed on this surface — surface the limitation to the user. |
+> | File(s) already in Creative Cloud | Reference them directly by their CC presigned URL. |
+>
+> The programmatic path uses neither `asset_add_file` nor `read_widget_context`. Collect the resulting presigned CC URLs as `sourceURIs[]`.
 
 ---
 
@@ -280,7 +312,7 @@ Params:
   outputFileType: "jpeg"
 ```
 
-Store the result as `preview_source_url`. Use `preview_source_url` (not `sourceURIs[0]`) as the input to Steps 3–7 for the preview pass only.
+Store the result as `preview_source_url`. Use that downscaled URL — not `sourceURIs[0]` — as the input to Steps 3–7 for the preview pass only.
 
 1. Run the full pipeline on `preview_source_url` only (straighten → tone → tweaks → adaptive → blur → crop).
 2. Call `asset_preview_file` with the original full-res source as "Before" and the processed downscaled output as "After" — `asset_preview_file` handles its own thumbnailing so the size difference is invisible to the user:
@@ -292,6 +324,13 @@ asset_preview_file({
   ]
 })
 ```
+
+> **No-widget fallback** *(only if `asset_preview_file` is unavailable on this surface, e.g. Codex)* — present the two labeled URLs directly in the message:
+> ```
+> Before: <sourceURIs[0]>
+> After:  <processed_preview_url>
+> ```
+> UI clients that render image URLs inline will show both automatically. In Codex or other non-UI agents, download both to the workspace (`curl -L -o before.jpg "<sourceURIs[0]>"`, `curl -L -o after.jpg "<processed_preview_url>"`) and reference those local paths instead.
 
 3. Post this message:
 ```
@@ -498,6 +537,14 @@ asset_preview_file({
 })
 ```
 
+> **No-widget fallback** *(only if `asset_preview_file` is unavailable on this surface, e.g. Codex)* — list the final output URLs directly in the completion message, one entry per image:
+> ```
+> portrait_1.jpg → <final_url_1>
+> portrait_2.jpg → <final_url_2>
+> // ... one entry per image
+> ```
+> UI clients that render image URLs inline will display them automatically. In Codex or other non-UI agents, download each to the workspace (`curl -L -o portrait_1.jpg "<final_url_1>"`, etc.) and reference those local paths instead.
+
 ### Create Firefly Board
 
 Call the firefly board tool with the final output urls as follows:
@@ -572,7 +619,7 @@ Output is read from `results[N].outputUrl`. On `success: false` see Error Handli
 
 | Situation                                                 | Action                                                                                                                                                                                                           |
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `image_list_presets` returns empty or 403                 | Skip Step 5 entirely. Note in summary: "Adaptive enhancements unavailable — no presets found on this plan."                                                                                                     |
+| `image_list_presets` returns empty or 403                 | Skip Step 5 entirely (non-blocking — all other steps continue). Note in summary: "Adaptive enhancements unavailable — no presets found on this plan."                                                            |
 | `image_apply_preset` returns 403 (entitlement)            | Skip that preset. Note in delivery summary: "[Preset name] was skipped — not included in your Adobe plan." Continue with remaining presets.                                                                     |
 | Any tool returns 401 (not authenticated)                  | Ask the user to re-authenticate via Adobe OAuth and retry                                                                                                                                                        |
 | `asset_add_file` shows no files                           | Wait; remind user to select files in the picker                                                                                                                                                                  |
@@ -585,7 +632,7 @@ Output is read from `results[N].outputUrl`. On `success: false` see Error Handli
 | `image_apply_lens_blur` fails                             | Fall back to `image_apply_gaussian_blur` with `blurRadius: 8, blurTarget: "background"`; note "lens blur unavailable" in summary                                                                                |
 | `image_apply_gaussian_blur` fails                         | Use previous step's output; note "blur skipped"                                                                                                                                                                  |
 | `image_crop_and_resize` fails                             | Use blur output as final; note in summary                                                                                                                                                                        |
-| `asset_preview_file` fails                                | Present final output URLs as plain text links in the summary.                                                                                                                                                    |
+| `asset_preview_file` fails or is unavailable              | Present final output URLs as plain text links in the summary (see Step 8 no-widget fallback).                                                                                                                    |
 | All steps fail on one image                               | Return original URI; flag clearly in summary                                                                                                                                                                     |
 | Dead end                                                  | Report the failure clearly and offer to retry.                                                                                                                                                                   |
 
@@ -606,4 +653,6 @@ Output is read from `results[N].outputUrl`. On `success: false` see Error Handli
 - All tonal/colour adjustments use `image_apply_adjustments` — the individual tools (`image_adjust_highlights`, `image_adjust_dark_portions`, `image_adjust_vibrance_and_saturation`, etc.) are deprecated and must not be used.
 - Background blur is handled by the Background Blur preset from the Preset Plan (or `image_apply_lens_blur` for standard blur / `image_apply_gaussian_blur` for heavy blur); the adaptive preset and Step 6 are mutually exclusive per image.
 - Whiten Teeth and body-targeted presets only run when the relevant body part is detected via `image_select_subject`.
+- The pipeline is non-generative by default. Generative tools (`image_fill_area`, `image_generative_expand`) run ONLY where the surface permits generative AI (the tool is available, e.g. Codex) — never on a surface without it (e.g. Claude), and never on people even where permitted. See the Generative AI Policy above.
+- Never pass a raw local filesystem path to any `image_*` tool. Local files must reach Creative Cloud first — selected via the `asset_add_file` picker, or (no-widget fallback) staged via `asset_initialize_file_upload` → PUT → `asset_finalize_file_upload`; only the resulting presigned CC URI is valid.
 - Push notifications (Slack/email/text) are not available from here; completion is communicated through an in-chat summary.

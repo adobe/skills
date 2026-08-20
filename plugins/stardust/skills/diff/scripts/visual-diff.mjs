@@ -123,10 +123,11 @@ function analyse(mainSel) {
   const vw = window.innerWidth;
   const round = (n) => Math.round(n);
 
-  // Blank-render guard: an off-pipeline render can stay hidden (e.g. a foundation
-  // body{display:none}/body.appear gate the runtime never satisfies) — the page
-  // is empty but every other metric is trivially "fine", so the probe would
-  // false-pass. Detect a hidden/zero-height/textless <main> explicitly.
+  // Blank-render guard: an off-pipeline render can stay hidden (the stock
+  // body{display:none}/body.appear gate is only satisfied when the runtime's
+  // scripts.js actually boots) — the page is empty but every other metric is
+  // trivially "fine", so the probe would false-pass. Detect a
+  // hidden/zero-height/textless <main> explicitly.
   const mainEl = document.querySelector(mainSel || 'main');
   const bodyHidden = getComputedStyle(document.body).display === 'none';
   const mainH = mainEl ? mainEl.getBoundingClientRect().height : 0;

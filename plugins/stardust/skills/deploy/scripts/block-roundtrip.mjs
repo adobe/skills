@@ -7,7 +7,7 @@
  * with no DA and no dev server (the render-harness technique): it decorates the
  * authored content locally with the block's own JS+CSS, extracts the role
  * inventory from the decorated section AND from the matching prototype section
- * (the SAME classifier as content-diff — skills/diff/scripts/content-inventory.mjs),
+ * (the SAME classifier as content-diff — skills/deploy/scripts/content-inventory.mjs),
  * and diffs them. A structural 🔴 (MISSING CTA/HEADING/EYEBROW, ROLE SWAP) exits
  * non-zero, so the authoring loop fixes the decode before anything ships. Font
  * forks are NOT checked here (the harness renders local fonts — face fidelity is
@@ -40,8 +40,8 @@
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, no-continue */
 import { chromium } from 'playwright';
 import fs from 'fs';
-import { resolveProfile } from '../../diff/scripts/diff-profiles.mjs';
-import { inventory, diffInventories, summarise } from '../../diff/scripts/content-inventory.mjs';
+import { resolveProfile } from './diff-profiles.mjs';
+import { inventory, diffInventories, summarise } from './content-inventory.mjs';
 
 function parseArgs(argv) {
   const [, , proto, content, ...rest] = argv;
@@ -162,12 +162,60 @@ async function main() {
     if (!names.length) throw new Error('no block divs found in the content page');
 
     const blockCss = names.map((n) => { try { return fs.readFileSync(`${blocksDir}/${n}/${n}.css`, 'utf8'); } catch { return ''; } }).join('\n');
+    // body.appear satisfies the vanilla foundation's body{display:none} gate the
+    // way loadEager() does — without it every computed-style read sees a hidden page.
     await harness.setContent(
-      `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0}main .section{padding:0}${styles}\n${blockCss}</style></head><body><main>${mainHtml}</main></body></html>`,
+      `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0}main .section{padding:0}${styles}\n${blockCss}</style></head><body class="appear"><main>${mainHtml}</main></body></html>`,
       { waitUntil: 'networkidle' },
     );
     await harness.evaluate(dropMetadata);
     const harnessCounts = await harness.evaluate(tagHarnessSections, names);
+    // AFTER tagging (which reads the raw authored shape), mimic the vanilla
+    // runtime's decorateSections/decorateBlock DOM — .section wrappers,
+    // .default-content-wrapper, .<name>-wrapper/.block/.<name>-container, AND
+    // wrapTextNodes cell normalization (#104: a media-led / unlisted-first-child
+    // cell's whole content folds into ONE <p> on live; without mimicking it here
+    // a collector that reads cell.children false-passes the gate and drops every
+    // sibling after the image in production) — so block/foundation CSS and
+    // decode both face the live shape. data-rt tags survive: the tagged
+    // elements are moved, not recreated.
+    await harness.evaluate(() => {
+      const VALID_WRAPPERS = ['P', 'PRE', 'UL', 'OL', 'PICTURE', 'TABLE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
+      const wrapTextNodes = (block) => {
+        const wrap = (el) => { const w = document.createElement('p'); w.append(...el.childNodes); el.append(w); };
+        block.querySelectorAll(':scope > div > div').forEach((cell) => {
+          if (!cell.hasChildNodes()) return;
+          const first = cell.firstElementChild;
+          const hasWrapper = !!first && VALID_WRAPPERS.includes(first.tagName);
+          if (!hasWrapper) wrap(cell);
+          else if (first.tagName === 'PICTURE' && (cell.children.length > 1 || !!cell.textContent.trim())) wrap(cell);
+        });
+      };
+      document.querySelectorAll('main > div').forEach((section) => {
+        const wrappers = [];
+        let defaultContent = false;
+        [...section.children].forEach((e) => {
+          if (e.tagName === 'DIV' || !defaultContent) {
+            const wrapper = document.createElement('div');
+            wrappers.push(wrapper);
+            defaultContent = e.tagName !== 'DIV';
+            if (defaultContent) wrapper.classList.add('default-content-wrapper');
+          }
+          wrappers[wrappers.length - 1].append(e);
+        });
+        wrappers.forEach((w) => section.append(w));
+        section.classList.add('section');
+        section.querySelectorAll(':scope > div > div[class]').forEach((block) => {
+          const name = block.classList[0];
+          if (!name) return;
+          block.classList.add('block');
+          block.dataset.blockName = name;
+          wrapTextNodes(block);
+          block.parentElement.classList.add(`${name}-wrapper`);
+          section.classList.add(`${name}-container`);
+        });
+      });
+    });
     const decorateErrs = [];
     const withJs = [];
     for (const name of names) {

@@ -16,6 +16,9 @@ Repository of Adobe skills for AI coding agents.
 /plugin install app-builder@adobe-skills
 /plugin install aem-cloud-service@adobe-skills
 /plugin install aem-6-5-lts@adobe-skills
+/plugin install workfront@adobe-skills
+/plugin install commerce-app-management@adobe-skills
+/plugin install commerce-app-migration@adobe-skills
 ```
 
 ### Vercel Skills (npx skills)
@@ -41,7 +44,7 @@ cp -R plugins/app-builder/. ~/.cursor/plugins/local/app-builder/
 # Then in Cursor: Cmd+Shift+P → Developer: Reload Window
 ```
 
-Verify the plugin loaded via **Cursor Settings → Plugins** (it should appear with all six App Builder skills). The skills are also visible in **Settings → Rules** under "Agent Decides".
+Verify the plugin loaded via **Cursor Settings → Plugins** (it should appear with the App Builder skills, including the grouped `appbuilder-workfront` suite). The skills are also visible in **Settings → Rules** under "Agent Decides".
 
 ## Available Skills
 
@@ -87,6 +90,20 @@ Available via the [`adobe-cja`](plugins/adobe-cja/README.md) plugin. Talks to th
 | `cja-executive-briefing` | Narrative performance summary ready for leadership or QBR<br>• `Write last week's performance briefing for leadership`<br>• `Draft a monthly business review for the board` |
 
 See the [`adobe-cja` ](plugins/adobe-cja/README.md)doc for the full plugin description, MCP server template, and skill index.
+
+#### Workfront
+
+Solution-architecture guidance for Adobe Workfront Planning (WFP, also called Maestro). Available via the [`workfront`](plugins/workfront/skills/wf-planning-solution-architect/README.md) plugin. No MCP server required; public Adobe documentation is searched and fetched live from Experience League at answer time.
+
+```bash
+/plugin install workfront@adobe-skills
+```
+
+| Skill | Description |
+| ----- | ----------- |
+| `wf-planning-solution-architect` | Workspace and record-type design, connections and hierarchies, formula fields, tier limits, and API behavior for Workfront Planning<br>• `Design a Planning workspace for our marketing team`<br>• `A customer wants us to raise the 500 connected records limit`<br>• `Is the CASE function supported in Planning formulas?` |
+
+See the [`wf-planning-solution-architect`](plugins/workfront/skills/wf-planning-solution-architect/README.md) doc for the routing model, reference layout, and documentation search script.
 
 #### Adobe Experience Manager
 
@@ -156,107 +173,43 @@ Handover documentation and PDF guides generation for AEM Edge Delivery Services 
 | `whitepaper`  | Create professional PDF whitepapers from Markdown          |
 | `auth`        | Authenticate with AEM Config Service API                   |
 
-### AEM as a Cloud Service — Create Component
+##### AEM as a Cloud Service
 
-The `create-component` skill creates complete AEM components following Adobe best practices for AEM Cloud Service and AEM 6.5. It covers:
+All AEM as a Cloud Service skills — component development, Dispatcher, workflows, code assessment, migration, content distribution, RDE, and project bootstrap. Available via the [`aem-cloud-service`](plugins/aem/cloud-service/README.md) plugin.
 
-- Component definition, dialog XML, and HTL template
-- Sling Model and optional child item model (multifield)
-- Unit tests for models and servlets
-- Clientlibs (component and dialog)
-- Optional Sling Servlet for dynamic content
+```bash
+/plugin install aem-cloud-service@adobe-skills
+```
 
-See `plugins/aem/cloud-service/skills/create-component/` for the skill and its reference files.
+| Skill | Description |
+|-------|-------------|
+| `create-component` | Create complete AEM components: definition, dialog XML, HTL template, Sling Model, unit tests, clientlibs, and optional servlet |
+| `ensure-agents-md` | Bootstrap skill — auto-generates `AGENTS.md` and `CLAUDE.md` from `pom.xml` when missing, tailored to the project's modules and add-ons |
+| `dispatcher` | Config authoring, technical advisory, incident response, performance tuning, security hardening, and lifecycle orchestration for the Dispatcher. Requires Dispatcher MCP (`AEM_DEPLOYMENT_MODE=cloud`) |
+| `aem-workflow` | Workflow model design, process step development, launcher configuration, triggering, debugging stuck/failed workflows, and incident triaging for the Granite Workflow Engine |
+| `code-assessment` | Detect and fix AEM CS code-quality issues locally — Sling Model patterns, deprecated APIs, scheduler, replication, resource listeners, unbounded queries, outbound call timeouts, and more. Verifies with `mvn compile` |
+| `migration` | Migrate legacy AEM (6.x, AMS, on-prem) to AEM CS using BPA/CAM data — scheduler, replication, event handlers, HTL lint, dialog migration, template modernization, OSGi config. Delegates refactors to `code-assessment` |
+| `content-distribution` | Programmatic content publishing via the Replication API and distribution event monitoring via Sling Distribution events |
+| `aem-rde` *(beta)* | Expert assistance for `aio aem rde` — deploy, inspect, log-tail, snapshot, and troubleshoot Rapid Development Environments |
 
-### AEM as a Cloud Service — Ensure AGENTS.md (bootstrap)
+See the [`aem-cloud-service` plugin README](plugins/aem/cloud-service/README.md) for sub-skill details and MCP requirements.
 
-The `ensure-agents-md` skill is a **bootstrap skill** that runs first, before any other work. When a
-customer opens their AEM Cloud Service project and asks the agent anything, this skill checks whether
-`AGENTS.md` exists at the repo root. If missing, it:
+##### AEM 6.5 LTS
 
-- Reads root `pom.xml` to resolve the project name and discover actual modules
-- Detects add-ons (CIF, Forms, SPA type, precompiled scripts)
-- Generates a tailored `AGENTS.md` with only the modules that exist, correct frontend variant, conditional
-  Dispatcher MCP section, and the right resource links
-- Creates `CLAUDE.md` (`@AGENTS.md`) so Claude-based tools also discover the guidance
+All AEM 6.5 LTS and Adobe Managed Services (AMS) skills — Dispatcher, workflows, replication, and project bootstrap. Available via the [`aem-6-5-lts`](plugins/aem/6.5-lts/README.md) plugin.
 
-If `AGENTS.md` already exists it is never overwritten.
+```bash
+/plugin install aem-6-5-lts@adobe-skills
+```
 
-See `plugins/aem/cloud-service/skills/ensure-agents-md/` for the skill, template, and module catalog.
+| Skill | Description |
+|-------|-------------|
+| `ensure-agents-md` | Bootstrap skill — auto-generates `AGENTS.md` and `CLAUDE.md` for AEM 6.5 LTS projects when missing |
+| `dispatcher` | Config authoring, technical advisory, incident response, performance tuning, and security hardening for AEM 6.5 LTS and AMS. Requires Dispatcher MCP (`AEM_DEPLOYMENT_MODE=ams`) |
+| `aem-workflow` | Workflow model design, development, triggering, launchers, debugging, and triaging — with JMX, Felix Console, and direct log access for 6.5 LTS/AMS |
+| `aem-replication` | Replication agent configuration, content activation/deactivation, Replication API usage (57 Java examples), lifecycle orchestration, and troubleshooting blocked queues and distribution failures |
 
-### AEM Workflow
-
-Workflow skills cover the full AEM Granite Workflow Engine lifecycle — from designing and implementing workflows to production debugging and incident triaging. Like Dispatcher, they are split by runtime flavor:
-
-- `plugins/aem/cloud-service/skills/aem-workflow` — Cloud Service variant (no JMX, Cloud Manager logs, pipeline deploy)
-- `plugins/aem/6.5-lts/skills/aem-workflow` — 6.5 LTS / AMS variant (JMX, Felix Console, direct log access)
-
-Each flavor contains the same specialist sub-skills:
-
-| Sub-Skill                 | Purpose                                                                |
-| ------------------------- | ---------------------------------------------------------------------- |
-| `workflow-model-design` | Design workflow models, step types, OR/AND splits, variables           |
-| `workflow-development`  | Implement WorkflowProcess steps, ParticipantStepChooser, OSGi services |
-| `workflow-triggering`   | Start workflows from UI, code, HTTP API, or Manage Publication         |
-| `workflow-launchers`    | Configure automatic workflow launchers on JCR events                   |
-| `workflow-debugging`    | Debug stuck, failed, or stale workflows in production                  |
-| `workflow-triaging`     | Classify incidents, determine log patterns, Splunk queries             |
-| `workflow-orchestrator` | Full lifecycle orchestration across all sub-skills                     |
-
-### AEM Dispatcher
-
-Dispatcher skills are split by runtime flavor to avoid mode auto-detection and keep installation explicit.
-Install only one dispatcher flavor in a workspace (`cloud-service` or `6.5-lts`).
-
-Current dispatcher flavors:
-
-- `plugins/aem/cloud-service/skills/dispatcher`
-- `plugins/aem/6.5-lts/skills/dispatcher`
-
-Each flavor contains parallel capability groups (workflow orchestration, config authoring, technical advisory, incident response, performance tuning, and security hardening).
-Shared advisory logic is centralized under each flavor's `dispatcher/shared/references/` to reduce duplication and drift.
-
-### AEM Replication
-
-Replication skills for AEM 6.5 LTS cover the full content distribution lifecycle from agent configuration to troubleshooting.
-
-**Location:** `plugins/aem/6.5-lts/skills/aem-replication`
-
-The aem-replication skill contains four specialist sub-skills:
-
-| Sub-Skill                       | Purpose                                                                                |
-| ------------------------------- | -------------------------------------------------------------------------------------- |
-| `configure-replication-agent` | Configure replication agents for publishing, dispatcher flush, and reverse replication |
-| `replicate-content`           | Activate and deactivate content using UI, workflows, and package manager               |
-| `replication-api`             | Use the Replication API programmatically in custom code with complete Java examples    |
-| `troubleshoot-replication`    | Diagnose and fix blocked queues, connectivity failures, and distribution problems      |
-
-**Key features:**
-
-- All skills based on official AEM 6.5 LTS documentation
-- Complete coverage of public Replication API (Replicator, ReplicationOptions, AgentManager, ReplicationQueue, etc.)
-- 49 Java code examples for OSGi services, servlets, and workflow steps
-- 12+ troubleshooting scenarios with step-by-step resolution
-- 3,575 lines of comprehensive documentation
-
-### AEM as a Cloud Service — Rapid Development Environment (RDE) *(beta)*
-
-The `aem-rde` skill provides expert assistance for the Adobe I/O CLI plugin `@adobe/aio-cli-plugin-aem-rde` — used to deploy, inspect, log-tail, snapshot, and troubleshoot AEM Rapid Development Environments via `aio aem rde …` commands. The skill activates only on explicit RDE references; generic AEMaaCS deployment requests are deferred to Cloud Manager skills.
-
-| Skill                  | Description                                                                                                                                                                                                       |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `aem-rde` *(beta)* | Translate goals into the right `aio aem rde` commands (deploy, status, history, logs, inspect, snapshot, setup); diagnose RDE problems; guide setup, experimental feature flags, and CI/build-environment usage |
-
-See `plugins/aem/cloud-service/skills/aem-rde/` for the skill and its reference files (commands, configuration, deployment types, troubleshooting, workflows).
-
-### AEM as a Cloud Service — Best Practices & Migration
-
-Under `plugins/aem/cloud-service/skills/`, **`best-practices/`** is the **general-purpose** Cloud Service skill: pattern modules, Java baseline references (SCR→OSGi DS, resolver/logging, and related refs), and day-to-day Cloud Service alignment. Use it **without** loading **migration** for greenfield or maintainability work. **`migration/`** (BPA/CAM orchestration) is **scoped to legacy AEM → AEM as a Cloud Service** (not Edge Delivery or 6.5 LTS); it **delegates** concrete refactors to **`best-practices`** (`references/`). **Installing the AEM as a Cloud Service plugin** (`aem-cloud-service`, or the `plugins/aem/cloud-service` path with `npx skills` / `gh upskill`) **includes both**; the agent should load the appropriate `SKILL.md` for the task. Use **`gh upskill` / `npx skills` with `--skill`** when you need a specific bundled skill (see **Installation** above).
-
-**Key features:**
-
-- **Best practices:** one skill for patterns, SCR→OSGi DS, and resolver/logging — applicable to Cloud Service projects generally, not only migration
-- **Migration:** orchestration-only; pattern and transformation content lives in **`best-practices`**
+See the [`aem-6-5-lts` plugin README](plugins/aem/6.5-lts/README.md) for sub-skill details.
 
 ### App Builder
 
@@ -270,18 +223,64 @@ Development, customization, testing, and deployment skills for Adobe App Builder
 
 | Skill                            | Description                                                                               |
 | -------------------------------- | ----------------------------------------------------------------------------------------- |
-| `appbuilder-project-init`      | Initialize new Adobe App Builder projects and choose the right bootstrap path             |
+| `appbuilder-project-init`      | Initialize App Builder projects and choose the bootstrap path; also first-time machine/CLI setup (Node 20, aio install/login, stage vs prod) |
 | `appbuilder-action-scaffolder` | Scaffold, implement, deploy, and debug Adobe Runtime actions                              |
 | `appbuilder-ui-scaffolder`     | Generate React Spectrum UI components for ExC Shell SPAs and AEM UI Extensions            |
 | `appbuilder-testing`           | Generate and run Jest unit, integration, and contract tests for actions and UI components |
 | `appbuilder-e2e-testing`       | Playwright browser E2E tests for ExC Shell SPAs and AEM extensions                        |
 | `appbuilder-cicd-pipeline`     | Set up CI/CD pipelines for GitHub Actions, Azure DevOps, and GitLab CI                    |
 
-### AEM as a Cloud Service — Code Assessment
+### App Builder — Workfront UI Extensions
 
-**`code-assessment`** (under `plugins/aem/cloud-service/skills/`) detects and fixes AEM CS code-quality issues entirely against the local workspace — no external services. Name the files to fix or ask it to scan the repo; it plans, applies surgical edits (git branch or in-place), and verifies with `mvn compile`. Each issue type is a self-contained expert skill.
+Skills for building customized **Workfront** UI applications on Adobe App Builder — a React/Spectrum SPA embedded through Workfront extension points, backed by Adobe I/O Runtime actions that call the Workfront / Planning / Adobe APIs. Shipped as part of the `app-builder` plugin under `plugins/app-builder/skills/appbuilder-workfront/`, as a parent umbrella skill plus three sub-skills. Machine setup and `aio app init` live in `appbuilder-project-init`.
 
-See `plugins/aem/cloud-service/skills/code-assessment/SKILL.md` for routing and classification. **Installing the AEM as a Cloud Service plugin** (`aem-cloud-service`) includes this skill.
+> **Usage guide:** [`plugins/app-builder/USAGE.md`](plugins/app-builder/USAGE.md) is the end-to-end walkthrough for driving these skills from an AI harness — set up the `aio` CLI → build a new project (or migrate existing code) → deploy → publish — with the start point, harness wiring, the questions the AI will ask, copy-paste prompts, and the gotchas to watch for.
+
+**Journey:** `appbuilder-project-init` (set up + scaffold) → `workfront-ui-extension` + `workfront-actions` (build) → `workfront-local-testing` (test) → deploy & publish. Start at the **`appbuilder-workfront`** umbrella for the end-to-end map.
+
+| Skill                     | Description                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------------- |
+| `appbuilder-workfront`    | Umbrella / onboarding: the end-to-end roadmap and how the SPA, actions, and extension points fit; routes to the three sub-skills below |
+| `workfront-ui-extension`  | Front-end SPA: extension points (Main Menu, per-object left panel, widgets), routing, shared context, `actionWebInvoke` |
+| `workfront-actions`       | Runtime actions: `{data,error}` shape, IMS auth passthrough, inputs/config, CommonJS, and the Workfront Public API v21 (search/count, bulk PUT, custom `DE:` fields) |
+| `workfront-local-testing` | Preview a local (`extensionOverride`) or deployed (Extension Manager BYO) build inside Workfront; fix common "not showing" issues |
+
+### Commerce
+
+Skills that ease developing and integrating with Adobe Commerce alongside other Adobe products.
+
+#### Commerce App Management
+
+Scaffold and configure Adobe Commerce App Builder apps using the `aio-commerce-sdk`. `commerce-app-init` scaffolds a bare app with metadata only; domain skills then extend it one concern at a time.
+
+```bash
+/plugin install commerce-app-management@adobe-skills
+```
+
+| Skill | Description |
+| ----- | ----------- |
+| `commerce-app-init` | Scaffold a new Commerce app with metadata |
+| `commerce-app-eventing` | Manage Commerce and external event sources |
+| `commerce-app-webhooks` | Manage webhook interception |
+| `commerce-app-business-config` | Manage custom business configuration |
+| `commerce-app-storage` | Integrate App Builder Database Storage |
+| `commerce-app-admin-ui` | Extend the Commerce Admin UI |
+
+See the [`commerce-app-management`](plugins/commerce/app-management/README.md) doc for the skill-chaining strategy and full skill index.
+
+#### Commerce App Migration
+
+Migrate an Adobe Commerce App Builder project started from the Integration Starter Kit or Checkout Starter Kit to an App Management project using the `aio-commerce-sdk`.
+
+```bash
+/plugin install commerce-app-migration@adobe-skills
+```
+
+| Skill | Description |
+| ----- | ----------- |
+| `commerce-app-migrate` | Orchestrate the full migration from Integration or Checkout Starter Kit to App Management |
+
+See the [`commerce-app-migration`](plugins/commerce/app-migration/README.md) doc for the full migration workflow and documentation-cleanup recommendations.
 
 ### Creativity & Design
 
@@ -345,89 +344,76 @@ plugins/
 │   ├── cloud-service/
 │   │   ├── .claude-plugin/
 │   │   │   └── plugin.json
+│   │   ├── README.md
 │   │   └── skills/
-│   │       ├── best-practices/
-│   │       │   ├── README.md
-│   │       │   ├── SKILL.md
-│   │       │   └── references/
-│   │       ├── migration/
-│   │       │   ├── README.md
-│   │       │   ├── SKILL.md
-│   │       │   ├── references/
-│   │       │   └── scripts/
-│   │       ├── ensure-agents-md/
-│   │       │   ├── SKILL.md
-│   │       │   └── references/
-│   │       │       ├── AGENTS.md.template
-│   │       │       └── module-catalog.md
 │   │       ├── create-component/
-│   │       │   ├── SKILL.md
-│   │       │   ├── assets/
-│   │       │   └── references/
+│   │       ├── ensure-agents-md/
+│   │       ├── dispatcher/
 │   │       ├── aem-workflow/
-│   │       │   ├── SKILL.md
-│   │       │   ├── workflow-model-design/
-│   │       │   ├── workflow-development/
-│   │       │   ├── workflow-triggering/
-│   │       │   ├── workflow-launchers/
-│   │       │   ├── workflow-debugging/
-│   │       │   ├── workflow-triaging/
-│   │       │   └── workflow-orchestrator/
-│   │       └── dispatcher/
-│   │           ├── SKILL.md
-│   │           ├── config-authoring/
-│   │           ├── technical-advisory/
-│   │           ├── incident-response/
-│   │           ├── performance-tuning/
-│   │           ├── security-hardening/
-│   │           └── workflow-orchestrator/
+│   │       ├── code-assessment/
+│   │       ├── migration/
+│   │       ├── content-distribution/
+│   │       └── aem-rde/
 │   └── 6.5-lts/
 │       ├── .claude-plugin/
 │       │   └── plugin.json
+│       ├── README.md
 │       └── skills/
-│           ├── aem-workflow/
-│           │   ├── SKILL.md
-│           │   ├── workflow-model-design/
-│           │   ├── workflow-development/
-│           │   ├── workflow-triggering/
-│           │   ├── workflow-launchers/
-│           │   ├── workflow-debugging/
-│           │   ├── workflow-triaging/
-│           │   └── workflow-orchestrator/
-│           ├── aem-replication/
-│           │   ├── README.md
-│           │   ├── SKILL.md
-│           │   ├── configure-replication-agent/
-│           │   ├── replicate-content/
-│           │   ├── replication-api/
-│           │   └── troubleshoot-replication/
 │           ├── ensure-agents-md/
-│           └── dispatcher/
-│               ├── SKILL.md
-│               ├── config-authoring/
-│               ├── technical-advisory/
-│               ├── incident-response/
-│               ├── performance-tuning/
-│               ├── security-hardening/
-│               └── workflow-orchestrator/
+│           ├── dispatcher/
+│           ├── aem-workflow/
+│           └── aem-replication/
 ├── app-builder/
 │   ├── .claude-plugin/
 │   │   └── plugin.json
 │   └── skills/
 │       ├── _shared/
-│       ├── appbuilder-project-init/
+│       ├── appbuilder-project-init/     # includes first-time machine/CLI setup
 │       ├── appbuilder-action-scaffolder/
 │       ├── appbuilder-ui-scaffolder/
 │       ├── appbuilder-testing/
 │       ├── appbuilder-e2e-testing/
-│       └── appbuilder-cicd-pipeline/
-└── creative-cloud/
-    └── adobe-for-creativity/
-        ├── .claude-plugin/
-        │   └── plugin.json
-        ├── skills/
-        │   └── ...
-        └── .mcp.json
+│       ├── appbuilder-cicd-pipeline/
+│       └── appbuilder-workfront/         # Workfront suite: parent umbrella + 3 sub-skills
+│           ├── SKILL.md                  # umbrella / router
+│           ├── references/               # troubleshooting.md, commands.md
+│           ├── workfront-ui-extension/
+│           ├── workfront-actions/
+│           └── workfront-local-testing/
+├── commerce/
+│   ├── app-management/
+│   │   ├── .claude-plugin/
+│   │   │   └── plugin.json
+│   │   └── skills/
+│   │       ├── commerce-app-init/
+│   │       ├── commerce-app-eventing/
+│   │       ├── commerce-app-webhooks/
+│   │       ├── commerce-app-business-config/
+│   │       ├── commerce-app-storage/
+│   │       └── commerce-app-admin-ui/
+│   └── app-migration/
+│       ├── .claude-plugin/
+│       │   └── plugin.json
+│       └── skills/
+│           └── commerce-app-migrate/
+├── creative-cloud/
+│   └── adobe-for-creativity/
+│       ├── .claude-plugin/
+│       │   └── plugin.json
+│       ├── skills/
+│       │   └── ...
+│       └── .mcp.json
+└── workfront/
+    ├── .claude-plugin/
+    │   └── plugin.json
+    ├── .cursor-plugin/
+    │   └── plugin.json
+    └── skills/
+        └── wf-planning-solution-architect/
+            ├── SKILL.md
+            ├── evals/
+            ├── references/
+            └── scripts/
 ```
 
 ## Contributing
