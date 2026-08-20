@@ -19,6 +19,7 @@ Repository of Adobe skills for AI coding agents.
 /plugin install workfront@adobe-skills
 /plugin install commerce-app-management@adobe-skills
 /plugin install commerce-app-migration@adobe-skills
+/plugin install commerce-app-review@adobe-skills
 ```
 
 ### Vercel Skills (npx skills)
@@ -74,7 +75,7 @@ See the [`adobe-analytics` ](plugins/adobe-analytics/README.md)doc for the full 
 
 ##### Customer Journey Analytics
 
-Available via the [`adobe-cja`](plugins/adobe-cja/README.md) plugin. Talks to the CJA MCP server at `https://cja-mcp.adobe.io/mcp`. 
+Available via the [`adobe-cja`](plugins/adobe-cja/README.md) plugin. Talks to the CJA MCP server at `https://cja-mcp.adobe.io/mcp`.
 
 ```bash
 /plugin install adobe-cja@adobe-skills
@@ -282,6 +283,20 @@ Migrate an Adobe Commerce App Builder project started from the Integration Start
 
 See the [`commerce-app-migration`](plugins/commerce/app-migration/README.md) doc for the full migration workflow and documentation-cleanup recommendations.
 
+#### Commerce App Review
+
+Self-review skill for developers and partners to check an Adobe Commerce App Builder app against the submission guidelines before submitting to Adobe Exchange.
+
+```bash
+/plugin install commerce-app-review@adobe-skills
+```
+
+| Skill | Description |
+| ----- | ----------- |
+| `commerce-app-review` | Reviews a local app directory against Adobe's Commerce submission guidelines and walks through each finding interactively |
+
+See the [`commerce-app-review`](plugins/commerce/app-review/README.md) doc for the reference library and full usage guide.
+
 ### Creativity & Design
 
 | Skill                              | Description                                                                                                           |
@@ -391,11 +406,19 @@ plugins/
 │   │       ├── commerce-app-business-config/
 │   │       ├── commerce-app-storage/
 │   │       └── commerce-app-admin-ui/
-│   └── app-migration/
+│   ├── app-migration/
+│   │   ├── .claude-plugin/
+│   │   │   └── plugin.json
+│   │   └── skills/
+│   │       └── commerce-app-migrate/
+│   └── app-review/
 │       ├── .claude-plugin/
 │       │   └── plugin.json
 │       └── skills/
-│           └── commerce-app-migrate/
+│           └── commerce-app-review/
+│               ├── SKILL.md
+│               ├── evals/
+│               └── references/
 ├── creative-cloud/
 │   └── adobe-for-creativity/
 │       ├── .claude-plugin/

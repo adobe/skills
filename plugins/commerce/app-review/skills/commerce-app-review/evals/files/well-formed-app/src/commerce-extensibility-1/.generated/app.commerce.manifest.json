@@ -1,0 +1,8 @@
+{
+  "metadata": {
+    "description": "Look up order status via the Commerce REST API.",
+    "displayName": "Order Status",
+    "id": "order-status",
+    "version": "1.0.0"
+  }
+}
