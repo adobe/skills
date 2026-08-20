@@ -9,7 +9,12 @@ application:
         license: Apache-2.0
         inputs:
           LOG_LEVEL: $LOG_LEVEL
-          AIO_COMMERCE_CONFIG_ENCRYPTION_KEY: $AIO_COMMERCE_CONFIG_ENCRYPTION_KEY
+          AIO_COMMERCE_AUTH_IMS_CLIENT_ID: $AIO_COMMERCE_AUTH_IMS_CLIENT_ID
+          AIO_COMMERCE_AUTH_IMS_CLIENT_SECRETS: $AIO_COMMERCE_AUTH_IMS_CLIENT_SECRETS
+          AIO_COMMERCE_AUTH_IMS_TECHNICAL_ACCOUNT_ID: $AIO_COMMERCE_AUTH_IMS_TECHNICAL_ACCOUNT_ID
+          AIO_COMMERCE_AUTH_IMS_TECHNICAL_ACCOUNT_EMAIL: $AIO_COMMERCE_AUTH_IMS_TECHNICAL_ACCOUNT_EMAIL
+          AIO_COMMERCE_AUTH_IMS_ORG_ID: $AIO_COMMERCE_AUTH_IMS_ORG_ID
+          AIO_COMMERCE_AUTH_IMS_SCOPES: $AIO_COMMERCE_AUTH_IMS_SCOPES
         actions:
           get-order:
             function: actions/get-order/index.js
@@ -26,7 +31,5 @@ application:
               require-adobe-auth: true
               final: true
 extensions:
-  commerce/configuration/1:
-    $include: src/commerce-configuration-1/ext.config.yaml
   commerce/extensibility/1:
     $include: src/commerce-extensibility-1/ext.config.yaml

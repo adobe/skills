@@ -29,8 +29,11 @@ auto-generates the required runtime actions and Admin UI. This is Adobe's endors
 for installing, configuring, and managing App Builder applications in Commerce.
 
 App Management requires:
-- Admin UI SDK version 3.3.1 or later
-- Minimum library versions 1.0.0 or later for `@adobe/aio-commerce-lib-config`, `@adobe/aio-commerce-lib-app`, and `@adobe/aio-commerce-sdk`
+- Admin UI SDK version 3.3.0 or later (4.2.0 or later specifically for `adminUi` menu entries, grid columns, mass actions, or order view buttons)
+- `@adobe/aio-commerce-lib-config` version 1.0.0 or later — required only if the app defines business configuration
+- `@adobe/aio-commerce-lib-app` version 1.0.0 or later (some features, e.g. the `getCommerceClient`/`getCommerceInstance` helpers, require newer versions — 1.8.0+)
+- `@adobe/aio-commerce-lib-admin-ui` version 1.0.0 or later — required only for the `commerce/backend-ui/2` Admin UI extension point
+- `@adobe/aio-commerce-sdk` version 1.0.0 or later
 - A hosted (cloud or on-premises) environment — **not currently supported for local Commerce installations**
 
 Reference: https://developer.adobe.com/commerce/extensibility/app-management/

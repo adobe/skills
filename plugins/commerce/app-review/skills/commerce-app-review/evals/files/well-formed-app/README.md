@@ -6,7 +6,7 @@ capabilities to your Commerce instance, configured through App Management.
 ## Prerequisites
 
 - Adobe Commerce 2.4.5 or later (SaaS or PaaS), hosted (not local)
-- [Admin UI SDK](https://developer.adobe.com/commerce/extensibility/admin-ui-sdk/) 3.3.1 or later
+- [Admin UI SDK](https://developer.adobe.com/commerce/extensibility/admin-ui-sdk/) 3.3.0 or later
 
 ## Installing the app
 
@@ -17,24 +17,11 @@ for how this works.
 
 ## Configuration
 
-After installing, associate the app and configure it from Commerce Admin —
-see [Manage installed apps](https://experienceleague.adobe.com/en/docs/commerce/app-management/manage-app/manage-app).
-You'll be asked for your Commerce connection details and credentials,
-depending on your deployment type:
-
-**SaaS (Adobe Commerce as a Cloud Service)**
-
-Provide your Commerce GraphQL/REST base URL and your IMS Server-to-Server
-credentials. Generate these from the
-[Adobe Developer Console](https://developer.adobe.com/console): select your
-project and workspace, then add an **OAuth Server-to-Server** credential.
-
-**PaaS (Adobe Commerce on Cloud Infrastructure) or On-Premise**
-
-Provide your Commerce base URL and Commerce Integration credentials. Create
-these in Commerce Admin under **System > Extensions > Integrations** — see
-[Create a Commerce Integration](https://developer.adobe.com/commerce/extensibility/starter-kit/integration/create-integration#create-an-integration-in-adobe-commerce-as-a-cloud-service)
-for the full steps.
+After installing, associate the app with your Commerce instance from
+Commerce Admin — see
+[Manage installed apps](https://experienceleague.adobe.com/en/docs/commerce/app-management/manage-app/manage-app).
+No credentials to enter: App Management stores the association and handles
+Adobe IMS authentication automatically. Nothing further to configure.
 
 ## Usage
 
@@ -44,18 +31,19 @@ token — `require-adobe-auth: true` — so calls typically come from another
 integration or automation, not directly from a browser):
 
 **`get-order`**
-Query parameter: `orderId` (required).
+Query parameter: `orderId` (required, alphanumeric with hyphens allowed).
 Example: `GET <action-url>/get-order?orderId=000000123`
-Response: `{ "orderId": "000000123", "status": "processing" }`, or
-`{ "error": "orderId is required", "statusCode": 400 }` if omitted.
+On success, returns the order's ID and status. Returns a 400 response if
+`orderId` is missing, invalid, or the app isn't associated with a Commerce
+instance yet.
 
 **`list-orders`**
-Query parameter: `pageSize` (optional, defaults to `20`).
+Query parameter: `pageSize` (optional, defaults to `20`; invalid values —
+non-integer, zero, or negative — fall back to the default).
 Example: `GET <action-url>/list-orders?pageSize=50`
-Response: `{ "orders": [ ...Commerce order objects ] }`.
+Returns a list of orders from Commerce.
 
-Both actions return `{ "error": "...", "statusCode": 502 }` if the Commerce
-API call itself fails (e.g. invalid credentials, unreachable instance).
+Both actions return a 500 response if the Commerce API call itself fails.
 
 ## Resources
 

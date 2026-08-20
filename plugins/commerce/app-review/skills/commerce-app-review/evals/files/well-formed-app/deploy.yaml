@@ -4,7 +4,6 @@ application:
   id: order-status
   version: 1.0.0
 extensions:
-  - extensionPointId: commerce/configuration/1
   - extensionPointId: commerce/extensibility/1
 workspaces:
   - Production
