@@ -19,7 +19,7 @@ logic, and alignment with submission guidelines.
 - `@adobe/aio-commerce-lib-config` — configuration management with scope trees and inheritance
 - `@adobe/aio-commerce-lib-admin-ui` — wire contract builders, menu constants, and the permission client for Admin UI SDK extension points
 
-There is also `@adobe/aio-commerce-sdk`, a meta-package bundling the whole family for convenience. Its own independence from App Management is not confirmed — it appears alongside `lib-app` and `lib-config` in Adobe's App Management version requirements, so treat it as potentially tied to App Management rather than assuming it's fully independent.
+There is also `@adobe/aio-commerce-sdk`, a convenience meta-package bundling several of the packages above.
 
 Reference: https://github.com/adobe/aio-commerce-sdk
 
