@@ -30,9 +30,9 @@ section high-confidence and skips the confirmation round-trip.
 Optional page-level annotations:
 
 - **Page metadata** — title, description, image, template, theme — attached to
-  the frame itself (maps to the `metadata` block; see da-content §5).
+  the frame itself (maps to the `metadata` block; see da-content html-content.md §5).
 - **Section styling** — style/layout hints the project's theme supports (maps
-  to a `section-metadata` block; see da-content §4).
+  to a `section-metadata` block; see da-content html-content.md §4).
 
 ---
 
@@ -92,7 +92,7 @@ When `fields` is omitted, map content to the block's content model using:
 2. The section's **visual top-to-bottom, left-to-right** order for text nodes.
 3. Images to image cells in the same order.
 4. A **standalone link** (only content of its paragraph) → EDS button
-   (da-content §8).
+   (da-content html-content.md §8).
 
 Ambiguity (more content nodes than cells, or types that don't line up) is an
 error, not a guess: report the section as needing an explicit `fields` map.

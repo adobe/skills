@@ -153,6 +153,7 @@ Design-phase skills that run *before* implementation. Produces static HTML and J
 | `generate-import-html` | Generate structured HTML |
 | `preview-import` | Preview imported content |
 | `snowflake` | Static-to-EDS overlay conversion — preserves original DOM byte-for-byte (alternative path to `page-import` for AI-generated/static pages) |
+| `figma-to-content` | Turn a Figma design into an EDS content page in DA — resolves each section to an existing block, a new isolated block, or default content (annotation-first, else inferred), then deploys via the DA Source API |
 
 ##### Content & Platform Reference
 

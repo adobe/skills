@@ -1,6 +1,6 @@
 ---
 name: figma-to-content
-description: "Use this to turn a Figma design into an AEM Edge Delivery Services (EDS / AEM / Franklin / Helix) content page in Document Authoring (DA, da.live). Triggers: \"build this Figma frame in EDS\", \"turn this Figma design into a DA page\", \"publish this design to da.live\", or providing a figma.com URL for a page to author. Reads the Figma frame and its annotations via a Figma MCP, maps each section to an EDS block (or to default content), generates DA-compliant body-fragment HTML, and deploys it via the DA Source API (PUT admin.da.live/source) + preview (POST admin.hlx.page/preview). Handles two cases: (1) content-only — every section maps to a block that already exists in the project or to default content; (2) content + code — a section needs a block that does not exist (or an existing block matches structurally but its styling diverges), which is created as a new, isolated block via the block-building skills without modifying existing blocks (project-level design-token theming aside)."
+description: "Use this to turn a Figma design into an AEM Edge Delivery Services (EDS / AEM / Franklin / Helix) content page in Document Authoring (DA, da.live). Triggers: \"build this Figma frame in EDS\", \"turn this Figma design into a DA page\", \"publish this design to da.live\", or providing a figma.com URL for a page. Reads the frame (and any annotations) via a Figma MCP, resolves each section to an existing block, a new isolated block, or default content (annotation-first, else inferred and confirmed), generates DA-compliant body-fragment HTML, and deploys via the DA Source API + preview."
 license: Apache-2.0
 metadata:
   version: "0.1.0"
@@ -223,7 +223,8 @@ variants). Then pour the Figma content into that structure:
 
 ## Phase 3B — Create a NEW block (content + code)
 
-Only for sections in bucket 3. **Guardrails (strict):**
+Only for sections Phase 2 routed here (a needed block is missing, or an existing
+block's look diverges) — the **3B** case. **Guardrails (strict):**
 
 - Create **new, isolated block folders** only (`blocks/<new-name>/`).
 - **Do NOT** skin this block by editing an existing block, `scripts.js`, or
@@ -261,8 +262,9 @@ GitHub and built by Code Sync** before the page can render it — see Phase 5
 
 ## Phase 3C — Author DEFAULT CONTENT (no block)
 
-For bucket 2, emit standard document elements directly inside the section
-`<div>` (see Phase 4 skeleton) — no block wrapper:
+For sections Phase 2 routed to default content — the **3C** case — emit standard
+document elements directly inside the section `<div>` (see Phase 4 skeleton) — no
+block wrapper:
 
 - Headings `<h1>`–`<h6>` (preserve levels), paragraphs, lists, images.
 - A **standalone link** in its own `<p>` becomes a button (`<strong>`/`<em>`
@@ -372,7 +374,16 @@ for i in $(seq 1 24); do
 done
 
 # --- both paths ---
-# Write content — multipart, field name MUST be "data", type text/html
+# 1) Upload referenced media FIRST — every authored <img> must resolve at PREVIEW
+#    time. For each image downloaded in Phase 1, PUT the binary to DA (field name
+#    MUST be "data"; set the real image mime). Skip images that use a stable
+#    external URL the preview can sideload.
+curl -sS -X PUT -H "Authorization: Bearer $TOKEN" \
+  -F "data=@<local-image>;type=<image/mime>" \
+  "https://admin.da.live/source/$ORG/$REPO/<media-path>"      # 201/200
+#    then reference it in the HTML as https://content.da.live/$ORG/$REPO/<media-path>
+
+# 2) Write content — multipart, field name MUST be "data", type text/html
 curl -sS -X PUT -H "Authorization: Bearer $TOKEN" \
   -F "data=@content/$P.html;type=text/html" \
   "https://admin.da.live/source/$ORG/$REPO/$P.html"           # 201 (new) or 200 (update)
