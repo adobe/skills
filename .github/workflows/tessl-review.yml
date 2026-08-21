@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: tessl-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   tessl-review:
     runs-on: ubuntu-latest
@@ -23,17 +27,40 @@ jobs:
     steps:
       # Fork PRs: review the merged result via the PR merge ref.
       # Push to main: use the pushed commit.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.sha }}
           fetch-depth: 0
 
-      - uses: tesslio/setup-tessl@v2
+      - name: Check prerequisites
+        id: prereq
+        env:
+          TESSL_TOKEN: ${{ secrets.TESSL_TOKEN }}
+        run: |
+          if [ -z "$TESSL_TOKEN" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "TESSL_TOKEN is not available — skipping review."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post skip summary (Tessl not configured)
+        if: steps.prereq.outputs.skip == 'true'
+        run: |
+          {
+            echo "## Skill Review"
+            echo ""
+            echo "Review skipped — \`TESSL_TOKEN\` is not configured for this repository."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: tesslio/setup-tessl@25ec223fc0da33b41b8044ff5ab2b85235f4f91e # v2
+        if: steps.prereq.outputs.skip != 'true'
         with:
           token: ${{ secrets.TESSL_TOKEN }}
 
       - name: Detect changed skills
         id: detect
+        if: steps.prereq.outputs.skip != 'true'
         run: |
           if [ "${{ github.event_name }}" = "pull_request_target" ]; then
             # base.sha/head.sha are hex SHAs (safe to interpolate) and both reachable
@@ -104,14 +131,16 @@ jobs:
           fi
 
       - name: Post skip summary
-        if: steps.detect.outputs.skip == 'true'
+        if: steps.prereq.outputs.skip != 'true' && steps.detect.outputs.skip == 'true'
         run: |
-          echo "## Skill Review" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "No skills changed — review skipped." >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## Skill Review"
+            echo ""
+            echo "No skills changed — review skipped."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Review skills
-        if: steps.detect.outputs.skip != 'true'
+        if: steps.prereq.outputs.skip != 'true' && steps.detect.outputs.skip != 'true'
         run: |
           THRESHOLD=80
           # Tessl workspace to attribute review runs to (required when --json is set).
@@ -119,6 +148,7 @@ jobs:
           WORKSPACE=adobe
           PASS=0
           FAIL=0
+          ERROR=0
           SUMMARY_FILE=$(mktemp)
           ERRORS_FILE=$(mktemp)
 
@@ -159,14 +189,17 @@ jobs:
               echo "  ❌ $SKILL_NAME: ${SCORE}% (below ${THRESHOLD}%)" >> "$ERRORS_FILE"
               echo "| $SKILL_NAME | ${SCORE}% | ❌ |" >> "$SUMMARY_FILE"
             else
-              # Non-zero exit with no parseable score = tool/auth error.
-              echo "::warning::tessl review run failed for $SKILL_NAME (exit code $EXIT_CODE)"
-              FAIL=$((FAIL + 1))
-              echo "| $SKILL_NAME | error | ❌ |" >> "$SUMMARY_FILE"
+              # Non-zero exit with no parseable score = tool/auth error. The review
+              # never ran, so this is not a judgement on the skill — don't report it
+              # as a low score.
+              echo "::error::Review could not be run for $SKILL_NAME (tessl exit code $EXIT_CODE) — tooling/auth failure, not a low score"
+              ERROR=$((ERROR + 1))
+              echo "| $SKILL_NAME | not run | ⚠️ |" >> "$SUMMARY_FILE"
+              echo "  ⚠️ $SKILL_NAME: review could not be run (exit code $EXIT_CODE)" >> "$ERRORS_FILE"
             fi
           done < "$SKILL_LIST_FILE"
 
-          TOTAL=$((PASS + FAIL))
+          TOTAL=$((PASS + FAIL + ERROR))
 
           # Fail if no skills were reviewed but some were expected
           if [ "$TOTAL" -eq 0 ] && [ -n "$SKILL_DIRS_INPUT" ]; then
@@ -181,7 +214,12 @@ jobs:
             echo "| Skill | Score | Status |"
             echo "|-------|-------|--------|"
             cat "$SUMMARY_FILE"
-            echo "| **Total** | **$PASS/$TOTAL passed** | $([ "$FAIL" -eq 0 ] && echo '✅' || echo '❌') |"
+            echo "| **Total** | **$PASS/$TOTAL passed** | $([ "$((FAIL + ERROR))" -eq 0 ] && echo '✅' || echo '❌') |"
+            if [ "$ERROR" -gt 0 ]; then
+              echo ""
+              echo "> ⚠️ $ERROR skill(s) could not be reviewed because the Tessl CLI did not complete."
+              echo "> This is a tooling or authentication problem, not a quality result."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
           # Stdout summary for logs
@@ -189,18 +227,21 @@ jobs:
           echo "============================="
           echo "  Skill Review Summary"
           echo "============================="
-          echo "  Total:  $TOTAL"
-          echo "  Passed: $PASS"
-          echo "  Failed: $FAIL"
+          echo "  Total:   $TOTAL"
+          echo "  Passed:  $PASS"
+          echo "  Failed:  $FAIL"
+          echo "  Errored: $ERROR"
           if [ -s "$ERRORS_FILE" ]; then
             echo ""
-            echo "  Failed skills:"
+            echo "  Problem skills:"
             cat "$ERRORS_FILE"
           fi
           echo "============================="
 
           if [ "$FAIL" -gt 0 ]; then
             echo "::error::$FAIL skill(s) scored below ${THRESHOLD}%"
+          fi
+          if [ "$((FAIL + ERROR))" -gt 0 ]; then
             exit 1
           fi
 
