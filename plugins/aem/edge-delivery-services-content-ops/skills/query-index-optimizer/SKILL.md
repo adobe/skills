@@ -89,17 +89,21 @@ From whichever source, document:
 
 If the definition cannot be obtained, proceed with analysis based solely on the live query index output and note the limitation.
 
+### Checkpoint: reconcile the definition against the live index
+
+Before mapping consumers, confirm the documented definition matches what `query-index.json` actually returns (Step 1). Every property in the definition should appear in the live entries, and every property in the live output should be in the definition. A mismatch usually means the configuration was changed but the affected pages were not re-published (the index updates on publish), or a `value` expression computes something different than expected. Resolve mismatches before continuing, so the rest of the analysis reflects the real index.
+
 ---
 
 ## Step 3: Map Property Usage to Downstream Consumers
 
-Identify which blocks and components actually consume query index properties. Check these common consumer patterns:
+Identify which blocks and components consume index properties:
 
-1. **Navigation (nav)**: Fetch `/nav.plain.html`. Typically uses `path` and `title`.
-2. **Footer**: Fetch `/footer.plain.html`. Footers rarely use the query index but some dynamic footers do.
-3. **Card blocks**: Look for blocks that render lists of pages (cards, article-list, recent-posts). These typically use `path`, `title`, `description`, `image`, and sometimes `author`, `date`, or `tags`.
-4. **Search**: If the site has a search feature, it likely consumes `title`, `description`, and possibly `path` and `tags`.
-5. **Filtered collections**: Blocks that filter by `template`, `tags`, or `category` rely on those properties being indexed.
+1. **Navigation** (`/nav.plain.html`): usually `path`, `title`.
+2. **Footer** (`/footer.plain.html`): rarely uses the index.
+3. **Card / list blocks** (cards, article-list, recent-posts): usually `path`, `title`, `description`, `image`; sometimes `author`, `date`, `tags`.
+4. **Search**: usually `title`, `description`, `path`, `tags`.
+5. **Filtered collections**: rely on `template`, `tags`, or `category` being indexed.
 
 For each property in the index, classify it:
 
@@ -116,10 +120,15 @@ For each property in the index, classify it:
 
 Compare the query index against the site's sitemap to find pages that should be indexed but are not.
 
-1. Fetch the sitemap at `https://<branch>--<repo>--<owner>.aem.live/sitemap.xml`.
-2. Extract all paths from the `<url><loc>` entries.
-3. Compare against the paths in the query index.
-4. Report pages in the sitemap but not the index; these pages will not appear in any block-driven lists.
+```bash
+BASE="https://<branch>--<repo>--<owner>.aem.live"
+# Sitemap paths (loc is a full URL; strip scheme + host to a site-relative path):
+curl -s "$BASE/sitemap.xml" | grep -oE '<loc>[^<]+</loc>' | sed -E 's|</?loc>||g; s|https?://[^/]+||' | sort -u > /tmp/sitemap-paths.txt
+# Query-index paths (page with ?offset= if the index exceeds 1000 entries):
+curl -s "$BASE/query-index.json?limit=1000" | jq -r '.data[].path' | sort -u > /tmp/index-paths.txt
+# In the sitemap but NOT the index (these will not appear in block-driven lists):
+comm -23 /tmp/sitemap-paths.txt /tmp/index-paths.txt
+```
 
 Common reasons for missing pages: not published after the index was configured (pages are indexed on publish), excluded by a path filter, or in an uncrawled subfolder.
 
@@ -127,9 +136,17 @@ Common reasons for missing pages: not published after the index was configured (
 
 ## Step 5: Check for Stale Entries
 
-For each page in the query index, verify it still exists by checking for HTTP 200 at the AEM URL. If the site has over 100 pages, check a representative sample; the oldest entries by `lastModified` are most likely stale.
+Check each indexed path for a live `200`. For large sites, sample the oldest entries by `lastModified` (most likely to be stale).
 
-Flag entries that return 404 (deleted: recommend re-publishing or removing the source document) or 301/302 (moved: old path is stale, new path may not be indexed).
+```bash
+BASE="https://<branch>--<repo>--<owner>.aem.live"
+curl -s "$BASE/query-index.json?limit=1000" | jq -r '.data[].path' | while read -r p; do
+  code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE$p")
+  [ "$code" != "200" ] && echo "$code  $p"
+done
+```
+
+Flag entries that return `404` (deleted: re-publish or remove the source document) or `301`/`302` (moved: the old path is stale and the new path may not be indexed).
 
 ---
 
