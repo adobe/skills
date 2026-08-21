@@ -1,6 +1,6 @@
 # Motion registers
 
-A closed catalog of choreography templates that `prototype --cinematic`
+A catalog of choreography templates that `prototype --cinematic`
 can apply to a proposed redesign. Each register is **a brand-faithful
 motion personality**, not an aesthetic preset — the choice of register
 is driven by the captured brand surface and the target PRODUCT.md
@@ -8,9 +8,11 @@ Brand Personality, the same way Mode A's palette + typography are
 brand-faithful.
 
 The five registers below cover the vast majority of redesign briefs.
-New registers may be added (see § Adding a register) but the existing
-five are stable: prototypes from older runs render correctly against
-the current register definitions.
+They are worked exemplars, not a closed set: a bespoke register may
+be derived per § Extension rule, and one that proves out graduates
+into the catalog per § Adding a register. The existing five are
+stable: prototypes from older runs render correctly against the
+current register definitions.
 
 ## When to engage a register
 
@@ -248,6 +250,31 @@ The only exception: an isolated `data-section` may opt out of the
 page's register by declaring `data-motion-register="<other>"`. The
 opt-out is rare, must be justified in the page-shape brief, and
 must not exceed one section per page.
+
+## Extension rule
+
+A **bespoke register derived from the site's own captured motion**
+— for when the captured surface has a real motion identity none of
+the five registers honors — is admissible for a run when it carries
+the same evidence shape as the catalog entries:
+
+1. **Captured-trait citation** — the captured motion behavior it
+   derives from (scroll choreography, transitions, a kinetic
+   signature observed at extract), cited into the capture.
+2. **Signature moves + token defaults** — each move referencing a
+   data-attribute or CSS pattern documented in
+   `motion-attributes.md` / `motion-runtime.md` (new attributes go
+   in those files first).
+3. **A refuses list** — ≥ 3 behaviors the register explicitly
+   excludes.
+4. **Degradation fallbacks** — a complete `prefers-reduced-motion`
+   neutralization and a no-JS static-end state, validated by the
+   same `motion-validation.md` § Pass 6 gates as catalog registers.
+
+Record the extension in `_provenance.motion` with
+`registerSource: "extension"`, the derivation rationale, and the
+citations. An extension register that proves out graduates to the
+catalog via § Adding a register.
 
 ## Adding a register
 

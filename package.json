@@ -8,10 +8,10 @@
     "validate": "find plugins -name SKILL.md -exec dirname {} \\; | xargs -I {} skills-ref validate {}"
   },
   "devDependencies": {
-    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/changelog": "^7.0.0",
     "@semantic-release/commit-analyzer": "^13.0.1",
     "@semantic-release/exec": "^7.0.3",
-    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/git": "^11.0.0",
     "@semantic-release/github": "^12.0.0",
     "@semantic-release/release-notes-generator": "^14.0.3",
     "semantic-release": "^25.0.0",

@@ -1,0 +1,15 @@
+{
+  "criteria": [
+    { "id": "extract_prep_unmodified", "weight": 10, "description": "stardust:extract --prep runs unchanged and produces the standard stardust/current/ artifacts (pages/*.json, screenshots, brand extraction, descriptive PRODUCT/DESIGN specs); no extract file or behavior is modified." },
+    { "id": "mechanical_promotion_no_direct", "weight": 15, "description": "The target spec at the project root is a verbatim promotion of stardust/current/{PRODUCT,DESIGN}.{md,json}; stardust/direction.md records preserve mode; stardust:direct is never invoked and no divergence/palette/type re-selection occurs." },
+    { "id": "inconsistency_register", "weight": 10, "description": "stardust/replica/inconsistency-register.md exists; it is empty when no findings are supplied, and any entry carries captured evidence, the minimal change, and a status (applied/deferred). No design delta appears in the prototype without a register entry." },
+    { "id": "clean_reauthoring", "weight": 15, "description": "Archetype prototypes are clean re-authored HTML/CSS: semantic structure, tokenized CSS with values traceable to the source site's own stylesheets, no copied DOM/class-soup/framework artifacts, content verbatim from the captured page JSON." },
+    { "id": "source_fidelity_gate_runs", "weight": 20, "description": "The source-fidelity gate runs all three probes (content-diff and visual-diff with --profile generic against the live URL, plus stitch-shot + pixel-compare) and its evidence (per-iteration metrics, band breakdown, height delta, diff images) is written under stardust/replica/." },
+    { "id": "both_breakpoints_gated", "weight": 10, "description": "The gate runs at both 1440 and 360; mobile results are recorded, not assumed from desktop." },
+    { "id": "iteration_discipline", "weight": 5, "description": "At most 3 measured iterations per breakpoint; unresolved deltas are logged as residuals rather than silently accepted or endlessly iterated." },
+    { "id": "font_policy", "weight": 5, "description": "Fonts are loaded from the same public source or substituted with a metric-matched free face; no commercial/licensed kit is rehosted; the brand family stays first in the font stack." },
+    { "id": "standard_handoff", "weight": 5, "description": "Archetypes land at stardust/prototypes/<slug>-proposed.html and page lifecycle lives in core state.json, so migrate/deploy/rollout consume them without modification." },
+    { "id": "provenance", "weight": 5, "description": "Captured artifacts carry live-render provenance; no synthesized content or invented sections appear anywhere in the recreation." }
+  ],
+  "total": 100
+}

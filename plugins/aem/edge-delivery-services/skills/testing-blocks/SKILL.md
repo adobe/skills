@@ -1,9 +1,9 @@
 ---
 name: testing-blocks
-description: Guide for testing code changes in AEM Edge Delivery projects including blocks, scripts, and styles. Use this skill after making code changes and before opening a pull request to validate functionality. Covers unit testing for utilities and logic, browser testing with Playwright, linting, and guidance on what to test and how
+description: "Use this when you have made AEM Edge Delivery Services code changes to blocks, scripts, or styles and need to validate them before opening a pull request. Covers unit testing for utilities and logic, browser testing with Playwright, linting, and guidance on what to test and how."
 license: Apache-2.0
 metadata:
-  version: "2.0.0"
+  version: "2.0.1"
 ---
 
 # Testing Blocks

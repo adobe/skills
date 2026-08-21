@@ -54,7 +54,25 @@ and resumable. The state file is `stardust/state.json`. It is written by
 ```
 
 Top-level keys: `_provenance`, `site`, `direction`, `pages`. Always in
-that order. `_provenance` is always the first key.
+that order. `_provenance` is always the first key. A hands-off run adds
+one optional top-level key, `handsOff` (after `direction`; see
+§ Hands-off keys).
+
+---
+
+## Hands-off keys
+
+When the run was activated hands-off (`skills/stardust/SKILL.md`
+§ Hands-off mode), two extra markers appear:
+
+- Top-level `"handsOff": true` — stamped by the master skill at
+  activation; every sub-command reads it to auto-resolve its
+  interactive gates.
+- On a page's `approved` history entry, `"approvedBy": "hands-off"` —
+  the approval was granted by the agent's own judgment after all
+  quality gates passed, not by the user. A later explicit user
+  approval appends a new history entry (without the marker); it does
+  not rewrite the hands-off one.
 
 ---
 
@@ -359,10 +377,38 @@ page only), or unfolded (the moves stay file-local).
 
 ## Concurrency
 
-Stardust does not own a long-running process. Every sub-command reads
-`state.json` at start, writes once at end. If two sub-commands run
-concurrently from different shells, last-write-wins. Document this in
-the `extract` and `migrate` SKILL.md files; do not try to lock.
+Stardust does not own a long-running process, but sub-commands and
+their sub-agents DO run in parallel. `state.json` writers follow a
+**merge-by-slug** contract instead of blind overwrites:
+
+1. **Re-read before write.** Immediately before writing, re-read
+   `state.json` from disk and merge your changes into that fresh
+   copy — never write from a snapshot taken at phase start.
+2. **Merge per page / per key.** Page entries are independent (keyed
+   by `slug`): a writer touches only the entries for pages it worked
+   on and preserves every other entry verbatim. Top-level keys are
+   owned by single phases (`site` → extract, `direction` → direct,
+   `handsOff` → the master skill); a writer never rewrites a
+   top-level key another phase owns.
+
+Safe parallel lanes — all merge cleanly under this contract:
+
+- **N pages may migrate concurrently.** Each writer merges only its
+  own slugs' entries.
+- **Sibling variants may prototype concurrently.** Distinct
+  prototype/shape artifacts, distinct page entries.
+- **Viewport captures batch in one Playwright session.** One browser,
+  all viewports, per `extract/reference/playwright-recipe.md` — no
+  session-per-viewport fan-out.
+- **Extract captures pages concurrently.** Per-page
+  `current/pages/<slug>.json` files are disjoint; the inventory
+  update merges per slug.
+
+**Same-slug concurrent runs remain last-write-wins** — two writers
+racing on the SAME page entry are not merged; the later write wins.
+When the pre-write re-read shows your page's entry changed underneath
+you, surface a warning in the report naming the slug. Do not lock;
+do not engineer around it.
 
 ---
 

@@ -24,13 +24,16 @@ The file is JSON because every consumer is non-human. It carries a
     "waitMode": "networkidle",       // configured mode: fast | medium | spec | networkidle | domcontentloaded(fallback)
     "waitMs": 3820,                  // actual wait time, including grace and scroll pass — must be > 0
     "httpStatus": 200,               // final response status after redirects
-    "contentType": "text/html"       // final response content-type (without charset)
+    "contentType": "text/html",      // final response content-type (without charset)
+    "heroSource": "dom"              // "dom" | "meta-fallback" — which source heroHeadline/heroLede came from (see § Hero headline)
   },
   "slug": "about",
   "url": "https://example.com/about",
   "finalUrl": "https://example.com/about/",
   "title": "About Example",
   "metaDescription": "...",
+  "heroHeadline": "Designed for the way you actually work",   // see § Hero headline
+  "heroLede": "One platform for your whole team, from intake to delivery.",
   "og": {
     "title": "...",
     "description": "...",
@@ -88,6 +91,27 @@ Document order. Computed style snapshot of the heading itself.
 }
 ```
 
+## § Hero headline
+
+Two resolved convenience fields for the page's hero copy, computed per
+`playwright-recipe.md` § Capture list (5-bis). They exist because
+document-order heuristics (`headings[0]`) are unreliable on
+JS-rendered enterprise CMSes, where the visually-dominant tagline is
+buried among many `<h2>`s and the DOM carries hidden modal / promo /
+count states.
+
+- `heroHeadline` — the largest-font-size heading in the hero band
+  (top ≤ ~820 px), after the junk-state filter; or, when that is
+  empty / junk, the first sentence of `metaDescription`.
+- `heroLede` — the first substantial paragraph in the top ~1300 px,
+  after the junk filter; or the full `metaDescription` as fallback.
+- `_provenance.heroSource` records `"dom"` or `"meta-fallback"`.
+
+Both are **required** (emit `""` only when even the meta-description
+fallback is empty). `headings[]` remains the full, unfiltered outline;
+these fields do not replace it. Downstream `prototype` / `migrate`
+prefer `heroHeadline` / `heroLede` over re-deriving from `headings[]`.
+
 ## § Landmarks
 
 One entry per `header`, `nav`, `main`, `aside`, `footer` plus
@@ -143,6 +167,14 @@ and `prototype` reason about IA without re-parsing. When unsure, emit
 `body[]`, `lists[]`, `qa[]`, `quotes[]` are required; emit `[]` when
 the section has none of that shape (a hero card with one heading and
 one CTA legitimately has no paragraphs / lists / accordion / quotes).
+
+`codeBlocks[]` (page-level, sibling of `body`) captures every visible
+`<pre>`'s `innerText` verbatim, in document order. On developer-tool
+sites the install commands are the single most load-bearing content
+and the prose capture skips them (stardust-style e2e finding); every
+downstream phase that needs a command literal reads it from here, not
+from `body[]`. Emit `[]` when the page has no code blocks. Capture
+rule: `playwright-recipe.md` § Capture list 7-ter.
 Capture rules in `playwright-recipe.md` § Capture list (7-bis). These
 fields are what migrate consumes to render real body copy under
 each section heading; without them every body region falls back to
@@ -190,11 +222,13 @@ De-duplicate by `(href, text)`. Keep the first occurrence's `domPath`.
 {
   "images": [
     {
-      "src": "https://example.com/img/hero.jpg",
+      "src": "https://cdn.example.com/connect/9f.../hero.jpg?MOD=AJPERES&CACHEID=...",
+      "currentSrc": "https://cdn.example.com/connect/9f.../hero.jpg?MOD=AJPERES&CACHEID=...",
       "srcset": "...",
       "alt": "Two engineers at a whiteboard",
       "naturalWidth": 2400,
       "naturalHeight": 1600,
+      "resolves": true,
       "localPath": "stardust/current/assets/media/hero-a3f9.jpg"
     }
   ],
@@ -221,6 +255,15 @@ De-duplicate by `(href, text)`. Keep the first occurrence's `domPath`.
 
 `localPath` is set only for media stardust successfully downloaded.
 Failed downloads have `localPath: null` and a `downloadError` field.
+
+`src` / `currentSrc` are captured **with the query string intact**
+(enterprise DAM/CDN URLs carry load-bearing `?MOD=…&CACHEID=…`
+params; stripping them 404s). `resolves` is the result of a
+capture-time `HEAD`/`GET` (2xx + image `content-type`) issued with a
+browser `User-Agent` + `Referer` — see `playwright-recipe.md`
+§ Capture list (11) § Source-URL fidelity. `migrate` omits or repairs
+(never authors) any image whose `resolves` is `false`, which is how
+`about:error` is prevented before it ships.
 
 `cssBackgrounds[]` captures every element whose computed
 `backgroundImage` resolves to one or more `url(...)` references

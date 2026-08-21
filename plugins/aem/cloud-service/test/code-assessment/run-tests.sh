@@ -1,0 +1,257 @@
+#!/usr/bin/env bash
+# Dependency-free harness for the code-assessment analyzer (run via analyze.sh). Runs the analyzer against fixtures
+# and asserts on the JSON it prints to stdout. Requires only a JDK and bash.
+set -u
+HERE="$(cd "$(dirname "$0")" && pwd)"
+# Harness lives at plugins/aem/cloud-service/test/code-assessment; the skill it exercises
+# is its sibling under skills/code-assessment.
+SKILL_ROOT="$(cd "$HERE/../../skills/code-assessment" && pwd)"
+ANALYZE="$SKILL_ROOT/scripts/analyze.sh"
+FIX="$HERE/fixtures"
+PASS=0; FAIL=0
+
+run() { bash "$ANALYZE" "$@" 2>/dev/null; }
+
+assert_contains() { # desc, haystack, needle
+  if printf '%s' "$2" | grep -q -- "$3"; then
+    echo "  PASS: $1"; PASS=$((PASS+1))
+  else
+    echo "  FAIL: $1"; echo "    expected substring: $3"; echo "    in: $2"; FAIL=$((FAIL+1))
+  fi
+}
+assert_absent() { # desc, haystack, needle
+  if printf '%s' "$2" | grep -q -- "$3"; then
+    echo "  FAIL: $1 (unexpected: $3)"; FAIL=$((FAIL+1))
+  else
+    echo "  PASS: $1"; PASS=$((PASS+1))
+  fi
+}
+assert_count() { # desc, haystack, needle (fixed string), expected
+  actual=$(printf '%s' "$2" | grep -oF -- "$3" | wc -l | tr -d ' ')
+  if [ "$actual" = "$4" ]; then
+    echo "  PASS: $1 (count=$actual)"; PASS=$((PASS+1))
+  else
+    echo "  FAIL: $1 (expected $4, got $actual)"; FAIL=$((FAIL+1))
+  fi
+}
+
+echo "[smoke] valid empty/clean output"
+OUT="$(run "$FIX/clean")"
+assert_contains "emits findings array" "$OUT" '"findings":'
+assert_contains "emits warnings array" "$OUT" '"warnings":'
+assert_absent  "clean file yields no inject finding" "$OUT" 'inject-in-sling-model'
+
+echo "[inject] @Inject in @Model detection"
+OUT="$(run "$FIX/inject")"
+assert_contains "HeroModel @Inject field flagged" "$OUT" '"pattern":"inject-in-sling-model"'
+assert_contains "HeroModel file present"          "$OUT" 'HeroModel.java'
+assert_absent  "CleanModel not flagged"           "$OUT" 'CleanModel.java'
+assert_absent  "NotAModel not flagged"            "$OUT" 'NotAModel.java'
+assert_absent  "CollisionModel (non-Sling @Model) not flagged" "$OUT" 'CollisionModel.java'
+
+echo "[deps] dependency declarations located"
+OUT="$(run "$FIX/deps")"
+assert_contains "outdated-dependencies pattern present" "$OUT" '"pattern":"outdated-dependencies"'
+assert_contains "mockito-core located"                  "$OUT" 'mockito-core'
+assert_contains "aem-sdk-api located"                   "$OUT" 'aem-sdk-api'
+
+echo "[enabled-set] --pattern restricts to one detector"
+OUT="$(run "$FIX/mixed" --pattern inject-in-sling-model)"
+assert_contains "inject finding present"           "$OUT" '"pattern":"inject-in-sling-model"'
+assert_absent  "deps excluded by --pattern filter" "$OUT" 'outdated-dependencies'
+
+OUT="$(run "$FIX/mixed")"
+assert_contains "no filter: inject present" "$OUT" 'inject-in-sling-model'
+assert_contains "no filter: deps present"   "$OUT" 'outdated-dependencies'
+
+echo "[resilience] broken file warns; siblings still scanned; exit 0"
+OUT="$(run "$FIX/broken")"
+assert_contains "parse-skip warning recorded" "$OUT" 'parse-skip'
+assert_contains "Broken.java named in warning" "$OUT" 'Broken.java'
+assert_contains "valid sibling still flagged" "$OUT" 'inject-in-sling-model'
+assert_contains "Good.java flagged"           "$OUT" 'Good.java'
+
+echo "[dupdep] duplicate artifactId maps to distinct lines"
+OUT="$(run "$FIX/dupdep")"
+assert_contains "first mockito dep at line 10"  "$OUT" '"line":10'
+assert_contains "second mockito dep at line 15" "$OUT" '"line":15'
+
+echo "[badpom] malformed pom warns, no crash"
+OUT="$(run "$FIX/badpom")"
+assert_contains "malformed pom parse-skip" "$OUT" 'parse-skip'
+
+echo "[unknown-pattern] bad --pattern warns"
+OUT="$(run "$FIX/mixed" --pattern does-not-exist)"
+assert_contains "unknown-pattern warning emitted" "$OUT" 'unknown-pattern: does-not-exist'
+
+echo "[scope] versioned deps in dependencies/dependencyManagement; not plugin/version-less/reactor-self-ref"
+OUT="$(run "$FIX/scope" --all)"
+assert_contains "real-dep (literal version) detected"          "$OUT" 'real-dep'
+assert_contains "managed-dep (dependencyManagement) detected"  "$OUT" 'managed-dep'
+assert_contains "prop-dep (real \${property}) detected"        "$OUT" 'prop-dep'
+assert_absent  "plugin-dep (<plugin>) excluded"                "$OUT" 'plugin-dep'
+assert_absent  "inherited-dep (version-less) skipped"          "$OUT" 'inherited-dep'
+assert_absent  "reactor-module (\${project.version}) skipped"  "$OUT" 'reactor-module'
+
+echo "[scheduler] Sling Scheduler API, implements legacy Job, OSGi-property scheduler; collisions skipped"
+OUT="$(run "$FIX/scheduler")"
+assert_contains "LegacyScheduler (implements Sling Job) flagged"   "$OUT" 'LegacyScheduler.java'
+assert_contains "ProgrammaticScheduler (imports Scheduler) flagged" "$OUT" 'ProgrammaticScheduler.java'
+assert_contains "OsgiPropertyScheduler (Runnable + scheduler.expression) flagged" "$OUT" 'OsgiPropertyScheduler.java'
+assert_contains "scheduler pattern present"                         "$OUT" '"pattern":"scheduler"'
+assert_absent  "NotASchedulerJob (non-Sling Job) not flagged"       "$OUT" 'NotASchedulerJob.java'
+assert_absent  "PlainRunnableHelper (Runnable + @Component, no scheduler.* prop) not flagged" "$OUT" 'PlainRunnableHelper.java'
+assert_absent  "CollisionComponentScheduler (non-OSGi @Component) not flagged" "$OUT" 'CollisionComponentScheduler.java'
+
+echo "[resource-change-listener] modern ResourceChangeListener / ExternalRCL detected, name-collision skipped"
+OUT="$(run "$FIX/resource-change-listener")"
+assert_contains "ModernResourceChangeListener flagged"     "$OUT" 'ModernResourceChangeListener.java'
+assert_contains "ExternalRclListener flagged"              "$OUT" 'ExternalRclListener.java'
+assert_contains "resource-change-listener pattern present" "$OUT" '"pattern":"resource-change-listener"'
+assert_absent  "CollisionRcl (non-Sling RCL) not flagged"  "$OUT" 'CollisionRcl.java'
+
+echo "[replication] CQ Replicator import detected; modern Distributor not flagged"
+OUT="$(run "$FIX/replication")"
+assert_contains "LegacyReplicator flagged"           "$OUT" 'LegacyReplicator.java'
+assert_contains "replication pattern present"        "$OUT" '"pattern":"replication"'
+assert_absent  "CleanDistributor not flagged"        "$OUT" 'CleanDistributor.java'
+
+echo "[event-migration] OSGi EventHandler + legacy JCR EventListener detected, collisions skipped"
+OUT="$(run "$FIX/event-migration")"
+assert_contains "ReplicationEventHandler flagged"           "$OUT" 'ReplicationEventHandler.java'
+assert_contains "LegacyJcrEventListener flagged"            "$OUT" 'LegacyJcrEventListener.java'
+assert_contains "event-migration pattern present"           "$OUT" '"pattern":"event-migration"'
+assert_absent  "CollisionEventHandler (non-OSGi) not flagged" "$OUT" 'CollisionEventHandler.java'
+assert_absent  "JcrListenerCollision (non-JCR EventListener) not flagged" "$OUT" 'JcrListenerCollision.java'
+
+echo "[asset-manager] legacy AssetManager calls detected, unrelated createAsset skipped"
+OUT="$(run "$FIX/asset-manager")"
+assert_contains "LegacyAssetWorkflow flagged"                       "$OUT" 'LegacyAssetWorkflow.java'
+assert_contains "asset-manager pattern present"                     "$OUT" '"pattern":"asset-manager"'
+assert_contains "createAssetForBinary call captured in snippet"     "$OUT" 'createAssetForBinary'
+assert_contains "removeAssetForBinary call captured in snippet"     "$OUT" 'removeAssetForBinary'
+assert_count   "LegacyAssetWorkflow emits one finding per call site (3)" "$OUT" '"file":"LegacyAssetWorkflow.java"' 3
+assert_absent  "UnrelatedCreateAsset (no AssetManager import) skipped" "$OUT" 'UnrelatedCreateAsset.java'
+
+echo "[wiring] each registered detector has an expert skill + ready/analyzer catalog row"
+PATTERNS_MD="$SKILL_ROOT/references/patterns.md"
+for slug in $(bash "$ANALYZE" --list-patterns); do
+  if [ -f "$SKILL_ROOT/$slug/SKILL.md" ]; then
+    echo "  PASS: $slug has expert skill dir"; PASS=$((PASS+1))
+  else
+    echo "  FAIL: $slug missing $SKILL_ROOT/$slug/SKILL.md"; FAIL=$((FAIL+1))
+  fi
+  if grep -E "$slug" "$PATTERNS_MD" | grep -qE 'ready.*analyzer'; then
+    echo "  PASS: $slug is ready+analyzer in catalog"; PASS=$((PASS+1))
+  else
+    echo "  FAIL: $slug not a ready+analyzer row in patterns.md"; FAIL=$((FAIL+1))
+  fi
+done
+
+echo "[wildcard] wildcard import resolved correctly"
+OUT="$(run "$FIX/wildcard")"
+assert_contains "Sling @Model via wildcard flagged" "$OUT" 'WildcardSling.java'
+assert_absent  "non-Sling @Model via wildcard not flagged" "$OUT" 'WildcardAcme.java'
+
+echo "[xxe] doctype-bearing pom is rejected with a warning, no crash"
+OUT="$(run "$FIX/xxe")"
+assert_contains "doctype pom parse-skip" "$OUT" 'parse-skip'
+assert_absent  "no dependency extracted from doctype pom" "$OUT" 'safe-dep'
+
+echo "[revision] CI-friendly reactor versions skipped"
+OUT="$(run "$FIX/revision" --all)"
+assert_contains "real dep detected"               "$OUT" 'real-revision-dep'
+assert_absent  "\${revision} dep skipped"          "$OUT" 'internal-module'
+
+echo "[jakarta] jakarta.inject.Inject in @Model flagged"
+OUT="$(run "$FIX/jakarta")"
+assert_contains "JakartaModel flagged" "$OUT" 'JakartaModel.java'
+assert_contains "inject pattern present" "$OUT" '"pattern":"inject-in-sling-model"'
+
+echo "[files-containment] --files outside workspace root is warned + skipped"
+OUT="$(run "$FIX/clean" --files "../inject/HeroModel.java")"
+assert_contains "outside-root path warned" "$OUT" 'outside-workspace'
+assert_absent  "outside-root file not scanned" "$OUT" '"pattern":"inject-in-sling-model"'
+
+echo "[multiline] unresolved line still emits finding + warning"
+OUT="$(run "$FIX/multiline" --all)"
+assert_contains "split dep still located"   "$OUT" 'split-artifact'
+assert_contains "line-unresolved warning"   "$OUT" 'line-unresolved'
+
+echo "[unknown-exit] unknown --pattern exits non-zero"
+bash "$ANALYZE" "$FIX/mixed" --pattern does-not-exist >/dev/null 2>&1; rc=$?
+if [ "$rc" -ne 0 ]; then echo "  PASS: unknown --pattern non-zero exit ($rc)"; PASS=$((PASS+1));
+else echo "  FAIL: unknown --pattern exited 0"; FAIL=$((FAIL+1)); fi
+
+echo "[dump] analyzer also writes <root>/.autofix/analyzer-output.json"
+run "$FIX/inject" >/dev/null 2>&1
+if [ -f "$FIX/inject/.autofix/analyzer-output.json" ] && grep -q 'inject-in-sling-model' "$FIX/inject/.autofix/analyzer-output.json"; then
+  echo "  PASS: dump file written with findings"; PASS=$((PASS+1))
+else
+  echo "  FAIL: dump file missing or empty"; FAIL=$((FAIL+1))
+fi
+if [ -f "$FIX/inject/.autofix/.gitignore" ] && grep -q '\*' "$FIX/inject/.autofix/.gitignore"; then
+  echo "  PASS: self-ignore (.autofix/.gitignore) written"; PASS=$((PASS+1))
+else
+  echo "  FAIL: .autofix/.gitignore missing"; FAIL=$((FAIL+1))
+fi
+
+# the analyzer writes <root>/.autofix when run; clean the copies left in fixtures by this run
+find "$FIX" -type d -name .autofix -prune -exec rm -rf {} + 2>/dev/null || true
+
+echo "[allowlist] only allowlisted deps by default; --all shows everything"
+OUT="$(run "$FIX/allowlist")"
+assert_contains "allowlisted mockito flagged"              "$OUT" 'mockito-core'
+assert_absent  "non-allowlisted dep skipped by default"   "$OUT" 'random-lib'
+OUT="$(run "$FIX/allowlist" --all)"
+assert_contains "--all surfaces non-allowlisted dep"       "$OUT" 'random-lib'
+
+echo "[outbound-call-timeouts] timeout-less clients + JDK requests flagged; configured ones clean"
+OUT="$(run "$FIX/outbound-call-timeouts")"
+assert_contains "pattern present"                       "$OUT" '"pattern":"outbound-call-timeouts"'
+assert_contains "Apache no-timeout client flagged"      "$OUT" 'BadHttpService.java'
+assert_contains "JDK newHttpClient flagged"             "$OUT" 'JdkHttpService.java'
+assert_contains "JDK request without timeout flagged"   "$OUT" 'JdkRequestBad.java'
+assert_absent  "RequestConfig-timeout client not flagged" "$OUT" 'GoodHttpService.java'
+assert_absent  "JDK request with timeout not flagged"   "$OUT" 'JdkRequestGood.java'
+assert_absent  "non-JDK HttpRequest not flagged"        "$OUT" 'OtherHttpRequest.java'
+assert_absent  "Mockito .build() stub not flagged (CA-12)" "$OUT" 'MockitoStub.java'
+
+echo "[unbounded-query] explicit p.limit=-1 / setLimit(-1) (literal + same-file const) flagged; bounded clean"
+OUT="$(run "$FIX/unbounded-query")"
+assert_contains "pattern present"                  "$OUT" '"pattern":"unbounded-query"'
+assert_contains "p.limit=-1 predicate flagged"     "$OUT" 'UnboundedQuery.java'
+assert_contains "setLimit(-1) flagged"             "$OUT" 'UnboundedJcr.java'
+assert_contains "unbounded via final constant flagged" "$OUT" 'UnboundedConst.java'
+assert_absent  "bounded query (incl. bounded const) not flagged" "$OUT" 'BoundedQuery.java'
+
+echo "[remove-deprecated-api] dynamic-rules detector — pre-seeded cache drives matches"
+# Detection is analyzer-based but the rules come from a preflight-produced TSV
+# (remove-deprecated-api/scripts/detect.sh). For the test we seed the cache
+# directly, bypassing the mvn plugin invocation, and confirm the detector
+# matches, emits hints, and respects the past-due gate.
+RULES_TSV="$(mktemp)"
+cat > "$RULES_TSV" <<'RULES_EOF'
+# seeded for tests — mirrors what detect.sh would write from a real analyser log
+org.apache.log4j	The log4j 1.x libraries are deprecated. Please use org.slf4j instead.	2024-01-01
+org.eclipse.jetty	The Jetty 9 libraries are deprecated. Please use org.apache.sling.http.client instead.	2024-06-01
+com.example.future	Future deprecation — should not be flagged.	2099-12-31
+RULES_EOF
+OUT="$(AEM_DEPRECATED_API_RULES="$RULES_TSV" run "$FIX/remove-deprecated-api")"
+assert_contains "pattern present"                  "$OUT" '"pattern":"remove-deprecated-api"'
+assert_contains "log4j import flagged"             "$OUT" 'DeprecatedLog4j.java'
+assert_contains "jetty import flagged"             "$OUT" 'DeprecatedJetty.java'
+assert_contains "hint present for log4j"           "$OUT" 'Please use org.slf4j instead'
+assert_absent   "clean service not flagged"        "$OUT" 'CleanService.java'
+assert_absent   "future-dated rule not applied"    "$OUT" 'com.example.future'
+
+echo "[remove-deprecated-api] missing rules cache surfaces a warning, not a crash"
+OUT="$(AEM_DEPRECATED_API_RULES="$(mktemp -u)" run "$FIX/remove-deprecated-api")"
+assert_contains "warning for missing cache"        "$OUT" 'deprecated-api-rules-missing'
+assert_absent   "no findings when cache is missing" "$OUT" '"pattern":"remove-deprecated-api"'
+rm -f "$RULES_TSV"
+
+
+echo "----"
+echo "PASS=$PASS FAIL=$FAIL"
+[ "$FAIL" -eq 0 ]

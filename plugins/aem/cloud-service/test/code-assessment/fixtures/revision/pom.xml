@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.example</groupId>
+  <artifactId>example-revision</artifactId>
+  <version>${revision}</version>
+  <dependencies>
+    <dependency>
+      <groupId>com.example.real</groupId>
+      <artifactId>real-revision-dep</artifactId>
+      <version>1.2.3</version>
+    </dependency>
+    <dependency>
+      <groupId>com.example.internal</groupId>
+      <artifactId>internal-module</artifactId>
+      <version>${revision}</version>
+    </dependency>
+  </dependencies>
+</project>

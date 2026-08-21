@@ -1,0 +1,129 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:extract",
+    "writtenAt": "2026-07-21T09:45:27Z",
+    "readArtifacts": ["https://www.ledgerline.com/about"],
+    "synthesizedInputs": [],
+    "stardustVersion": "0.10.0",
+    "renderedBy": "playwright",
+    "fetchedAt": "2026-07-21T09:43:02Z",
+    "waitMode": "medium",
+    "waitMs": 2260,
+    "httpStatus": 200,
+    "contentType": "text/html",
+    "heroSource": "dom"
+  },
+  "slug": "about",
+  "url": "https://www.ledgerline.com/about",
+  "finalUrl": "https://www.ledgerline.com/about",
+  "title": "About us — Ledgerline",
+  "metaDescription": "Ledgerline was founded in 2016 by two former controllers. Today 140 people across Denver and Toronto build bookkeeping software for 4,200 finance teams.",
+  "heroHeadline": "Built by people who have closed the books.",
+  "heroLede": "Ledgerline was founded in 2016 by two former controllers who were tired of reconciling spreadsheets at midnight.",
+  "og": {
+    "title": "About us — Ledgerline",
+    "description": "Founded in 2016 by two former controllers. 140 people across Denver and Toronto.",
+    "image": "https://www.ledgerline.com/img/og-about.png",
+    "type": "website",
+    "siteName": "Ledgerline"
+  },
+  "themeColor": { "light": "#1f3a5f", "dark": null },
+  "language": "en",
+  "headings": [
+    { "level": 1, "text": "Built by people who have closed the books.", "id": null, "domPath": "main > section.page-head > h1", "style": { "fontFamily": "Georgia, 'Times New Roman', serif", "fontWeight": 700, "fontSize": "2.5rem", "lineHeight": 1.2, "letterSpacing": "normal", "color": "rgb(43, 47, 54)" } },
+    { "level": 2, "text": "Our story", "id": "story", "domPath": "main > section:nth-child(2) > h2", "style": { "fontFamily": "Georgia, 'Times New Roman', serif", "fontWeight": 700, "fontSize": "2rem", "lineHeight": 1.25, "letterSpacing": "normal", "color": "rgb(43, 47, 54)" } },
+    { "level": 2, "text": "Leadership", "id": "team", "domPath": "main > section.team > h2", "style": { "fontFamily": "Georgia, 'Times New Roman', serif", "fontWeight": 700, "fontSize": "2rem", "lineHeight": 1.25, "letterSpacing": "normal", "color": "rgb(43, 47, 54)" } }
+  ],
+  "landmarks": [
+    {
+      "tag": "header",
+      "role": "banner",
+      "id": null,
+      "classes": ["site-header"],
+      "innerText": "Ledgerline Features Pricing About Contact Request a demo",
+      "children": [
+        { "tag": "nav", "role": "navigation", "id": null, "classes": ["nav-wrap"], "purpose": "unknown", "headlineRef": null, "innerTextSummary": "Ledgerline Features Pricing About Contact Request a demo", "wordCount": 8, "body": [], "lists": [], "qa": [], "quotes": [] }
+      ]
+    },
+    {
+      "tag": "main",
+      "role": "main",
+      "id": null,
+      "classes": [],
+      "innerText": "Built by people who have closed the books. Ledgerline was founded in 2016 by two former controllers who were tired of reconciling spreadsheets at midnight. Our story We started Ledgerline because the tools we used as controllers treated bookkeeping as data entry rather than as the system of record a business runs on. Today 140 people across Denver and Toronto serve 4,200 finance teams. Leadership Dana Whitfield Chief Executive Officer Marcus Oyelaran Chief Product Officer Priya Natarajan VP Engineering Tom Kowalski VP Finance",
+      "children": [
+        { "tag": "section", "role": null, "id": null, "classes": ["page-head"], "purpose": "hero", "headlineRef": 0, "innerTextSummary": "Built by people who have closed the books. Ledgerline was founded in 2016 by two former controllers.", "wordCount": 26, "body": ["Ledgerline was founded in 2016 by two former controllers who were tired of reconciling spreadsheets at midnight."], "lists": [], "qa": [], "quotes": [] },
+        { "tag": "section", "role": null, "id": "story", "classes": ["story"], "purpose": "rich-text", "headlineRef": 1, "innerTextSummary": "We started Ledgerline because the tools we used as controllers treated bookkeeping as data entry rather than as the system of record...", "wordCount": 46, "body": ["We started Ledgerline because the tools we used as controllers treated bookkeeping as data entry rather than as the system of record a business runs on.", "Today 140 people across Denver and Toronto serve 4,200 finance teams."], "lists": [], "qa": [], "quotes": [] },
+        { "tag": "section", "role": null, "id": "team", "classes": ["team"], "purpose": "unknown", "headlineRef": 2, "innerTextSummary": "Dana Whitfield, Marcus Oyelaran, Priya Natarajan, Tom Kowalski", "wordCount": 17, "body": [], "lists": [ { "ordered": false, "items": ["Dana Whitfield — Chief Executive Officer", "Marcus Oyelaran — Chief Product Officer", "Priya Natarajan — VP Engineering", "Tom Kowalski — VP Finance"] } ], "qa": [], "quotes": [] }
+      ]
+    },
+    {
+      "tag": "footer",
+      "role": "contentinfo",
+      "id": null,
+      "classes": ["site-footer"],
+      "innerText": "Product Features Pricing Security Company About Careers Contact Resources Help center Blog API docs Legal Privacy Terms © 2026 Ledgerline Inc.",
+      "children": [
+        { "tag": "section", "role": null, "id": null, "classes": ["footer-cols"], "purpose": "footer-nav", "headlineRef": null, "innerTextSummary": "Product Company Resources Legal", "wordCount": 22, "body": [], "lists": [ { "ordered": false, "items": ["Features", "Pricing", "Security", "About", "Careers", "Contact", "Help center", "Blog", "API docs", "Privacy", "Terms"] } ], "qa": [], "quotes": [] }
+      ]
+    }
+  ],
+  "ctas": [
+    { "label": "Request a demo", "href": "/contact", "tag": "a", "domPath": "header > div.nav-wrap > a.btn-primary", "style": { "backgroundColor": "rgb(31, 58, 95)", "color": "rgb(255, 255, 255)", "fontFamily": "Arial, Helvetica, sans-serif", "fontWeight": 700, "borderRadius": "4px", "padding": "10px 20px", "boxShadow": "none" }, "appearsAbove": "fold" },
+    { "label": "Learn more", "href": "/features", "tag": "a", "domPath": "main > section#story > a.link-more", "style": { "backgroundColor": "rgba(0, 0, 0, 0)", "color": "rgb(61, 107, 158)", "fontFamily": "Arial, Helvetica, sans-serif", "fontWeight": 700, "borderRadius": "0px", "padding": "0px", "boxShadow": "none" }, "appearsAbove": "below-fold" }
+  ],
+  "links": {
+    "internal": [
+      { "href": "/features", "text": "Features", "domPath": "header > nav > a:nth-child(2)" },
+      { "href": "/pricing", "text": "Pricing", "domPath": "header > nav > a:nth-child(3)" },
+      { "href": "/about", "text": "About", "domPath": "header > nav > a:nth-child(4)" },
+      { "href": "/contact", "text": "Contact", "domPath": "header > nav > a:nth-child(5)" }
+    ],
+    "external": [
+      { "href": "https://www.linkedin.com/company/ledgerline", "text": "LinkedIn", "domPath": "footer > div.social > a:nth-child(1)" }
+    ]
+  },
+  "media": {
+    "images": [
+      { "src": "https://www.ledgerline.com/img/team-denver.jpg", "currentSrc": "https://www.ledgerline.com/img/team-denver.jpg", "srcset": null, "alt": "The Ledgerline team at the Denver office", "naturalWidth": 2000, "naturalHeight": 1250, "resolves": true, "localPath": "stardust/current/assets/media/team-4b7d.png" }
+    ],
+    "inlineSvgs": [
+      { "viewBox": "0 0 180 32", "domPath": "header > div.nav-wrap > a.brand > svg", "markupHash": "sha256:6f2d9b1e4a7c0f8b3e5d2a9c1f7b4e0d8a6c3f1b9e5d7a2c0f4b8e6d1a3c9f5b" }
+    ],
+    "cssBackgrounds": [],
+    "videos": [],
+    "iframes": []
+  },
+  "forms": [],
+  "widgets": { "modals": [], "accordions": [], "tabs": [] },
+  "components": {
+    "cards": { "count": 0, "examples": [] },
+    "grids": { "count": 1, "examples": ["section.team .row"] },
+    "accordions": { "count": 0, "examples": [] },
+    "tabs": { "count": 0, "examples": [] },
+    "tables": { "count": 0, "examples": [] },
+    "modals": { "count": 0, "examples": [] },
+    "carousels": { "count": 0, "examples": [] },
+    "videos": { "count": 0, "examples": [] },
+    "iframes": { "count": 0, "examples": [] },
+    "dataVizEmbeds": { "count": 0, "examples": [] },
+    "teamTiles": { "count": 4, "examples": ["section.team .team-member"] },
+    "pricingTiles": { "count": 0, "examples": [] },
+    "testimonialCards": { "count": 0, "examples": [] },
+    "logoStrip": { "count": 0, "examples": [] },
+    "timeline": { "count": 0, "examples": [] },
+    "breadcrumbs": { "count": 0, "examples": [] },
+    "statRow": { "count": 0, "examples": [] },
+    "ctaBand": { "count": 0, "examples": [] },
+    "formFields": { "count": 0, "examples": [] },
+    "other": []
+  },
+  "perSectionStyle": [
+    { "sectionRef": "main > section.page-head", "purpose": "hero", "background": { "color": "rgb(255, 255, 255)", "hasImage": false, "hasGradient": false }, "text": { "dominantColor": "rgb(43, 47, 54)" }, "spacing": { "paddingBlock": "64px", "paddingInline": "24px", "gap": "16px" }, "borderRadius": "0px", "fontFamilies": ["Georgia", "Arial"], "shadowsUsed": [] },
+    { "sectionRef": "main > section.team", "purpose": "unknown", "background": { "color": "rgb(244, 246, 248)", "hasImage": false, "hasGradient": false }, "text": { "dominantColor": "rgb(43, 47, 54)" }, "spacing": { "paddingBlock": "64px", "paddingInline": "24px", "gap": "24px" }, "borderRadius": "4px", "fontFamilies": ["Georgia", "Arial"], "shadowsUsed": ["0 1px 3px rgba(20,30,45,0.08)"] }
+  ],
+  "embedDominance": { "dominated": false, "iframeSrc": null, "viewportCoveragePct": null, "mainHeightCoveragePct": null, "screenshot": null },
+  "cssCustomProperties": [],
+  "screenshot": "stardust/current/assets/screenshots/about.png",
+  "stats": { "wordCount": 118, "ctaCount": 2, "internalLinkCount": 14, "externalLinkCount": 1, "imageCount": 1 }
+}

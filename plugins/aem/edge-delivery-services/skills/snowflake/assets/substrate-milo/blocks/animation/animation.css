@@ -1,0 +1,3 @@
+/* animation block — no additional styles needed.
+ * Vendored from milo @ origin/page-animator-poc (3fc472a1f) libs/c2/blocks/animation/animation.css
+ * The block hides itself in JS; all animation CSS is generated per-animId by buildCssRule. */

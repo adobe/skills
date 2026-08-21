@@ -161,6 +161,27 @@
           "description": "Builds the bare App Builder project successfully."
         }
       ]
+    },
+    {
+      "id": 6,
+      "prompt": "Set up a brand-new machine to build Adobe App Builder apps. What Node version do I need, and how do I install and authenticate the aio CLI?",
+      "expected_output": "Node 20 (via nvm), install @adobe/aio-cli globally, aio login, confirm the IMS org with aio where / aio console org list; stage needs AIO_CLI_ENV=stage plus a re-login.",
+      "files": [],
+      "assertions": [
+        {"type": "output_contains", "pattern": "Node 20", "description": "Requires Node 20."},
+        {"type": "output_contains", "pattern": "@adobe/aio-cli", "description": "Installs the aio CLI globally."},
+        {"type": "output_contains", "pattern": "aio login", "description": "Authenticates via aio login."}
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Right after installing the aio CLI, every aio command exits 127 with ERR_REQUIRE_ESM mentioning the certificate plugin. How do I fix it?",
+      "expected_output": "Pin @adobe/aio-cli-plugin-certificate to 2.1.0 inside the global aio-cli package; re-check after aio update.",
+      "files": [],
+      "assertions": [
+        {"type": "output_contains", "pattern": "aio-cli-plugin-certificate", "description": "Identifies the certificate plugin as the cause."},
+        {"type": "output_contains", "pattern": "2.1.0", "description": "Pins it to the CommonJS 2.1.0 version."}
+      ]
     }
   ]
 }

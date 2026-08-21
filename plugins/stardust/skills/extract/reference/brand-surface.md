@@ -1,8 +1,11 @@
 # Brand surface
 
 The shape of `stardust/current/_brand-extraction.json` and the
-procedure that produces it. Run once per `extract` invocation, **after
-Phase 2 has finished** so cross-page aggregation has data to work with.
+procedure that produces it. Run once per `extract` invocation, after
+the capture phases have finished. Aggregation may accumulate
+**incrementally** as concurrent page captures complete
+(`extract/SKILL.md` § Concurrency); the file itself is written once,
+when every page has landed.
 
 Some fields are sourced from the home page only (logo, voice samples,
 hero-specific copy). Others must be aggregated across **all extracted
@@ -39,6 +42,7 @@ values, and carries a source citation.
     "tagline": "...",
     "originUrl": "https://example.com"
   },
+  "origins": [ /* see § Origins */ ],
   "logo": { /* see § Logo */ },
   "palette": [ /* see § Palette */ ],
   "type": { /* see § Type */ },
@@ -62,12 +66,14 @@ Each field below is sourced from one of two scopes:
 
 | scope | fields | rationale |
 |---|---|---|
-| home-only | `logo`, `voice.heroHeadline`, `voice.heroSubcopy`, `voice.primaryCTALabel`, `voice.firstParagraph`, `register` | These are the landing surface; aggregating across pages would dilute, not clarify |
+| home-only | `logo`, `voice.heroHeadline`, `voice.heroSubcopy`, `voice.heroImage`, `voice.heroMedium`, `voice.primaryCTALabel`, `voice.firstParagraph`, `register` | These are the landing surface; aggregating across pages would dilute, not clarify |
 | cross-page | `palette`, `type` (sizes, weights, families used), `spacing`, `motifs.borderRadius`, `motifs.shadows`, `motifs.gradients`, `componentStyle`, `voice.ctaSamples`, `voice.navItems`, `voice.footerHeadings` | Home-only readings are biased by hero/CTA-heavy markup; the dominant motif on the site as a whole is what `direct` needs |
 
 Cross-page aggregation rules:
 
-1. Read every `stardust/current/pages/<slug>.json` produced in Phase 2.
+1. Read every `stardust/current/pages/<slug>.json` produced in Phase 2,
+   plus every `brand-sources/<host>/pages/<slug>.json` when brand
+   sources were captured (§ Origins).
 2. For each numeric/categorical value (border-radius, shadow string,
    font-size, padding, etc.), build a frequency table weighted by
    element count, **not** page count — so a page with 30 cards
@@ -84,6 +90,61 @@ cross-page value and surface the divergence in `_provenance.notes`
 (e.g. `"home suggested borderRadius=150px (pill, buttons-only); cross-page mode is 3px (cards/inputs/chips, 122 occurrences)"`).
 This divergence note is the single most important hint for `direct`
 when deciding whether to keep, soften, or replace the existing motif.
+
+## § Origins
+
+Which origins contributed evidence to this file. Always present:
+single-origin runs emit a one-entry array. Multi-origin entries
+appear when `extract` runs with `--brand-source`
+(`extract/SKILL.md` § Cross-site brand sources).
+
+```json
+[
+  {
+    "origin": "https://example.com",
+    "role": "primary",              // "primary" | "brand-source" | "design-source"
+    "pagesCaptured": 5,
+    "contributedSignals": []        // primary owns everything not attributed elsewhere
+  },
+  {
+    "origin": "https://example.co.uk",
+    "role": "brand-source",
+    "pagesCaptured": 3,
+    "contributedSignals": [
+      "motifs.patterns[duotone-photography]",
+      "palette[accent-2]",
+      "voice.ctaSamples[+2]"
+    ]
+  }
+]
+```
+
+Merge rules:
+
+- **Conflicts resolve toward the primary.** When a brand-source's
+  evidence disagrees with the primary's for the same slot (a palette
+  role, the heading family, the signature radius), the primary
+  origin's value wins; the losing value is noted in
+  `_provenance.notes`, not silently dropped.
+- **Brand-source evidence widens, never overrides.** A motif,
+  photography treatment, or voice pattern the primary site underuses
+  may enter the surface from a sibling — as an *additional* entry,
+  attributed in `contributedSignals[]` so downstream `direct` /
+  `uplift` can amplify it as **captured** evidence with an origin
+  citation, not as invention.
+- **Weighting.** Brand-source pages join the cross-page frequency
+  tables (§ Aggregation scope), but a value observed *only* on
+  brand-source pages can never become a token's `primary` / mode —
+  it lands as `secondary`, `accent-N`, or an additional pattern.
+- **Scope exclusions.** Brand-source pages are excluded from
+  § System components, § Voice table, and § Cross-promo detection —
+  those describe the primary site's IA. Home-only fields
+  (§ Aggregation scope) always read from the **primary** origin's
+  home page.
+- `role: "design-source"` appears only in
+  `stardust/canon-source/_brand-extraction.json` (the donor's own
+  capture, per `extract/SKILL.md` § Cross-site brand sources); donor
+  evidence never aggregates into the primary file.
 
 ## § Logo
 
@@ -506,6 +567,14 @@ DESIGN.json.
     "localPath": "stardust/current/assets/media/hero-a3f9.avif",
     "rect": { "x": 0, "y": 80, "width": 1440, "height": 720 }
   },
+  "heroMedium": {
+    "kind": "video",                  // "video" | "canvas" | "lottie" | "animated-svg" | "scroll-motion" | null
+    "mechanism": "hls",               // "video-file" | "hls" | "youtube/vimeo-embed" | "webgl" | "lottie" | "css-keyframes" | "scroll-driven"
+    "src": "https://customer-xxxx.cloudflarestream.com/<id>/manifest/video.m3u8",
+    "domPath": "div.home-video-wrapper > video#background-video",
+    "loader": "hls.js@cdn",           // library the source uses to drive it, if any
+    "rect": { "x": 0, "y": 0, "width": 1440, "height": 900 }
+  },
   "primaryCTALabel": "Start free trial",
   "ctaSamples": ["Start free trial", "Talk to sales", "See pricing", "Read the docs"],
   "navItems": ["Product", "Pricing", "Customers", "Docs", "Sign in"],
@@ -557,6 +626,42 @@ Downstream `prototype` reads `heroImage.url` /
 `heroImage.localPath` directly when composing the hero slot
 under Mode A's image-reuse contract (per
 `skills/direct/SKILL.md` § Mode A).
+
+### `heroMedium` resolution (signature hero medium)
+
+The hero is often **not** a still image but a *moving* asset — a
+background video (file / HLS / Mux / Cloudflare Stream), a
+canvas/WebGL scene, a Lottie/Rive animation, an animated SVG, or a
+scroll-driven motion. This is the page's **signature** and is the most
+common thing a generic redesign silently flattens to a static hero.
+Elevate it here so downstream `prototype` preserves it under
+`intent-dimensions.md` § 8b (Signature preservation) instead of
+re-deriving it from the raw `media` inventory and missing it — the
+exact failure that dropped the moneyhub.com home's HLS brand-animation
+on the first migration pass.
+
+Resolve from the home page's captured media
+(`pages/home.json#media`): the `<video>` / `<iframe>` inventory
+(`playwright-recipe.md` § Capture list — every `<video>`/`<iframe>`
+src), `<canvas>` presence, and any motion library detected among
+loaded scripts (hls.js, lottie, three.js, gsap, lenis).
+
+1. Prefer a `<video>` / `<canvas>` / Lottie mount whose `rect`
+   intersects the first viewport (`rect.top < 800`) and covers a
+   large area (same area/aspect filters as `heroImage`).
+2. Record `kind` + `mechanism` + `src` (the manifest/file/embed URL —
+   reuse it the way image-fidelity reuses image URLs) + `loader`
+   (the driving library, so prototype can wire it).
+3. If the hero's signature is motion without a discrete asset
+   (scroll-pinned, parallax, kinetic type), set
+   `kind: "scroll-motion"` with `mechanism` naming the technique and
+   `src: null`.
+4. When the hero has no moving signature, set `heroMedium: null`
+   (most pages — the still `heroImage` is then the hero).
+
+A non-null `heroMedium` is a § 8b trigger: every Mode A variant must
+reproduce it (graceful fallback + `prefers-reduced-motion` + scrim),
+and doing so is exempt from the per-page `surprise` budget.
 
 The `tone.guess` is a heuristic — never present it as ground truth in
 the user report. `direct` will use it as one of several signals, not
