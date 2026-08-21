@@ -1,0 +1,107 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:extract",
+    "writtenAt": "2026-07-21T09:47:12Z",
+    "readArtifacts": [
+      "stardust/current/_brand-extraction.json",
+      "stardust/current/DESIGN.md"
+    ],
+    "synthesizedInputs": [],
+    "stardustVersion": "0.10.0",
+    "note": "Descriptive sidecar for the CURRENT state. extensions.componentStyle / motifs / voice carry the v1 brand-extraction fields forward so nothing is lost."
+  },
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-21T09:47:12Z",
+  "title": "Design System: Ledgerline (current state)",
+  "extensions": {
+    "colorMeta": {
+      "ledger-navy": { "role": "primary", "displayName": "Ledger Navy", "canonical": "#1f3a5f", "tonalRamp": ["#0a1420", "#14263f", "#1f3a5f", "#2e5083", "#4a6da3", "#7d97bf", "#b3c3da", "#e2e9f2"] },
+      "chart-blue": { "role": "secondary", "displayName": "Chart Blue", "canonical": "#3d6b9e", "tonalRamp": ["#132234", "#254159", "#3d6b9e", "#5583b3", "#7ba0c6", "#a4bfd9", "#cbdae9", "#eaf1f7"] },
+      "slate-ink": { "role": "neutral", "displayName": "Slate Ink", "canonical": "#2b2f36" },
+      "paper-white": { "role": "neutral", "displayName": "Paper White", "canonical": "#ffffff" },
+      "ledger-mist": { "role": "neutral", "displayName": "Ledger Mist", "canonical": "#f4f6f8" },
+      "rule-grey": { "role": "neutral", "displayName": "Rule Grey", "canonical": "#dde3e9" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Page H1s. Georgia 700 at 2.5rem; one per page." },
+      "body": { "displayName": "Body", "purpose": "All prose. Arial 400 at 1rem/1.6." }
+    },
+    "shadows": [
+      { "name": "card-ambient", "value": "0 1px 3px rgba(20,30,45,0.08)", "purpose": "The system's only shadow; cards and pricing tiers." }
+    ],
+    "motion": [],
+    "breakpoints": [
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1140px" }
+    ],
+    "componentStyle": {
+      "buttons": {
+        "primary": { "background": "#1f3a5f", "color": "#ffffff", "borderRadius": "4px", "padding": "12px 28px", "fontWeight": 700, "shadow": null, "hoverDelta": "darken 8%" },
+        "secondary": { "background": "#ffffff", "color": "#1f3a5f", "border": "1px solid #1f3a5f", "borderRadius": "4px", "padding": "12px 28px", "fontWeight": 700, "shadow": null, "hoverDelta": "surface tint #f4f6f8" },
+        "ghost": null
+      },
+      "dualCTAPattern": "primary-then-secondary-link",
+      "cards": { "background": "#ffffff", "borderRadius": "4px", "padding": "24px", "shadow": "0 1px 3px rgba(20,30,45,0.08)", "border": "1px solid #dde3e9" },
+      "inputs": { "borderRadius": "2px", "padding": "10px 12px", "border": "1px solid #dde3e9", "focusRing": "0 0 0 2px rgba(61,107,158,0.3)" }
+    },
+    "motifs": {
+      "borderRadius": { "primary": "4px", "secondary": "2px", "pill": null },
+      "shadows": [ { "value": "0 1px 3px rgba(20,30,45,0.08)", "uses": "cards" } ],
+      "gradients": [],
+      "patterns": ["hero-with-image", "feature-3up", "social-proof-logos", "pricing-3up", "cta-band"]
+    },
+    "voice": {
+      "tone": "professional-formal",
+      "examples": {
+        "do": [
+          "Bookkeeping your accountant will trust.",
+          "GAAP-aligned statements exported to PDF and XLSX, with a change log on every line item.",
+          "Request a demo"
+        ],
+        "dont": []
+      },
+      "ctaSamples": ["Request a demo", "See pricing", "Start 30-day trial", "Contact sales"]
+    }
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Navy demo CTA; the only filled button in the system.",
+      "html": "<a class=\"ds-btn-primary\" href=\"/contact\">Request a demo</a>",
+      "css": ".ds-btn-primary { display: inline-block; background: #1f3a5f; color: #ffffff; font-family: Arial, Helvetica, sans-serif; font-weight: 700; font-size: 1rem; padding: 12px 28px; border-radius: 4px; text-decoration: none; transition: background 0.15s; } .ds-btn-primary:hover { background: #14263f; } .ds-btn-primary:focus-visible { outline: 2px solid #3d6b9e; outline-offset: 2px; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Bordered feature/pricing card with the system's single ambient shadow.",
+      "html": "<div class=\"ds-card\"><h3>Automatic reconciliation</h3><p>Match bank feeds to ledger entries every night.</p></div>",
+      "css": ".ds-card { background: #ffffff; border: 1px solid #dde3e9; border-radius: 4px; padding: 24px; box-shadow: 0 1px 3px rgba(20,30,45,0.08); } .ds-card h3 { font-family: Georgia, 'Times New Roman', serif; font-weight: 700; font-size: 1.5rem; line-height: 1.3; color: #2b2f36; margin: 0 0 8px; } .ds-card p { font-family: Arial, Helvetica, sans-serif; font-size: 1rem; line-height: 1.6; color: #2b2f36; margin: 0; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Filing Cabinet",
+    "overview": "The captured system reads like well-kept paperwork: white pages, navy letterhead, serif headings, thin grey rules. Color is rationed — navy carries authority at hero, header CTA, and CTA band; everything between is white or pale mist. Rhythm is uniform: a 64px section cadence with no compositional surprises.",
+    "keyCharacteristics": [
+      "Conservative two-hue palette (navy + muted blue) on white",
+      "Serif display (Georgia) over utilitarian body (Arial)",
+      "Flat surfaces, hairline borders, one whisper-quiet card shadow",
+      "Identical page anatomy across all five captured pages"
+    ],
+    "rules": [
+      { "name": "The Letterhead Rule", "body": "Navy fills exactly three surfaces per page — hero/page-head accents, the header CTA, and the pre-footer CTA band. It never appears mid-page.", "section": "colors" }
+    ],
+    "dos": [
+      "Do keep navy (#1f3a5f) as the only surface-filling color; it appears at hero, header CTA, and CTA band only.",
+      "Do hold the 64px section rhythm and white/mist alternation on every page.",
+      "Do keep serif display over sans body — it is the system's one deliberate pairing."
+    ],
+    "donts": [
+      "Don't introduce gradients — the captured system has zero.",
+      "Don't use uppercase headings; only 4% of captured headings are uppercase (eyebrow labels).",
+      "Don't add motion; the captured site has no transitions beyond default link hover color."
+    ]
+  }
+}

@@ -1,0 +1,1 @@
+{ "name": "page-langs", "version": "0.0.0-semantically-released", "private": true, "dependencies": { "cld3-asm": "4.0.0" } }

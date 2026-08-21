@@ -24,8 +24,8 @@
 # AEM Project Management (Astha Bhargava is sole author)
 /plugins/aem/project-management/                       @asthabh23
 
-# AEM Cloud Service (in-flight, contributors: abhishekgarg18, pkumargaddam, Himanich, akankshajain18, rombert)
-/plugins/aem/cloud-service/                            @abhishekgarg18 @pkumargaddam @Himanich @akankshajain18 @rombert
+# AEM Cloud Service (in-flight, contributors: abhishekgarg18, pkumargaddam, Himanich, akankshajain18, rombert, mandeep294)
+/plugins/aem/cloud-service/                            @abhishekgarg18 @pkumargaddam @Himanich @akankshajain18 @rombert @mandeep294
 
 # AEM 6.5 LTS (in-flight, contributors: abhishekgarg18, akankshajain18, rombert)
 /plugins/aem/6.5-lts/                                  @abhishekgarg18 @akankshajain18 @rombert
@@ -40,7 +40,21 @@
 /plugins/adobe-cja/                                    @rmunix
 
 # Adobe for creativity
-/plugins/creative-cloud/adobe-for-creativity           @bossjones @njampani123 @solimant
+/plugins/creative-cloud/adobe-for-creativity           @bossjones @jaeeunl @kgeorgiev @njampani123 @skovakina @solimant @varshachandanb
+
+# Run Workflow (Adobe Firefly workflows via MCP)
+/plugins/creative-cloud/run-workflow                   @thagarwal-sjc
 
 # Stardust
 /plugins/stardust                                      @paolomoz
+
+# Web (browser automation and page analysis)
+/plugins/web                                           @catalan-adobe
+
+# Commerce (promoted from adobe/aio-commerce-sdk)
+/plugins/commerce/app-management/                      @adobe/commerce-decepticons
+/plugins/commerce/app-migration/                       @adobe/commerce-decepticons
+/plugins/commerce/app-review/                          @adobe/commerce-decepticons @adobe/commerce-mercury
+
+# Adobe Workfront (Planning solution architecture)
+/plugins/workfront                                     @ashot3232

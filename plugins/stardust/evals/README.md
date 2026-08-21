@@ -1,5 +1,56 @@
 # Stardust v2 evals
 
+### 0.14.0 rescope notes
+
+The 0.14.0 (Fable 5) refactor changes contracts that several criteria below
+hard-pin. The eval definitions are left as-is for now; these criteria need
+rescoping before the suite is run against 0.14.0:
+
+- **`no_eds_references` (every eval).** Written when the plugin was
+  platform-agnostic end-to-end. The plugin now has an EDS delivery half
+  (`deploy`, `rollout`, `diff`, `prepare-migration`), so a plugin-wide EDS ban
+  is wrong. Rescope to: the *core* artifacts (extract/direct/prototype/migrate
+  outputs under `stardust/current/`, the target spec, prototypes, migrated
+  HTML) must stay free of EDS/CMS leakage; delivery skills are exempt.
+- **Two-question ceiling (`direct-from-phrase`).** ~~Still valid for the
+  interactive flow, but 0.14.0 adds a hands-off production mode that asks
+  *zero* questions and resolves ambiguity from captured evidence. Rescope the
+  criterion to interactive invocations only.~~ **Rescoped (2026-07-22):** the
+  criterion now pins the interactive contract explicitly (self-answered
+  "would have been" questions fail), and the eval runner presents sessions
+  with an `answers.md` persona as interactive so headless runs exercise that
+  branch (see `runner/README.md`).
+- **Closed-catalog criteria (uplift/prototype).** Any criterion asserting the
+  agent picks strictly from a fixed catalog (e.g. the what-if candidate list)
+  conflicts with 0.14.0's opened catalogs, which allow evidence-gated
+  extensions. Rescope to: catalog-first, extensions permitted only with cited
+  evidence from the brand surface.
+- **Seed-roll direction procedure (`direct-from-phrase`).** ~~Direction
+  research is now reference-grounded via the optional refero MCP, with the
+  seed roll demoted to fallback; criteria that pin the seed roll as *the*
+  procedure should accept the reference-research path as the preferred
+  branch.~~ **Rescoped (2026-07-22):** `divergence_resolved` is now
+  mode-aware (Mode A pins from the captured surface; Mode B / default uses
+  the research-first procedure with the seed roll as fallback).
+- **Extract cap + wait mode (`extract-multipage`).** **Rescoped
+  (2026-07-24):** the eval was written against the 25-page default cap
+  with a confirmation gate and the `networkidle + 1.5s` recipe. 0.14.0
+  changed the default cap to 5 with a silent-proceed contract (kept +
+  cut lists are informational, no yes/no gate) and made the wait
+  strategy modal (default `medium` = `domcontentloaded` + 2s grace).
+  `page_cap_confirmation`, `playwright_over_webfetch`,
+  `discovery_before_crawl`, `current_design_md_direct` (impeccable's
+  document.md now specs eight canonical sections, not six; omission of
+  irrelevant sections allowed), and `state_json_shape` (`direction`
+  may be `null` or `{resolvedAt: null}` at the extracted stage) were
+  rescoped accordingly; `answers.md` (defaults-only persona, declines
+  sibling brand sources) was added so the runner presents the session
+  as interactive.
+- **Coverage gaps (informational).** The suite predates `audit`, cross-site
+  extraction (`--brand-source` / `--design-source`), vision gates, and the
+  merge-by-slug parallelism contract; new evals are needed rather than
+  rescoped ones.
+
 Evaluation suite for the four-phase redesign pipeline plus the
 "open and reasoned" intent-reasoning principle that governs the
 master skill.
@@ -36,6 +87,8 @@ v2 evals without modification.
 | `migrate-multi-template/`    | Phase 4 (`migrate`)       | Three render branches (Path A / A′ / B) + canon + modules + bespoke-slot promotion + broken-link reporting + color-reservation refusal. |
 | `migrate-self-contained-bundle/` | Phase 4 (`migrate`)   | Self-contained zip-and-deploy bundle — six asset detection shapes, nine edge cases, six acceptance criteria, state.json `migrate` block with `selfContained: true`. |
 | `intent-reasoning-style/`    | Master skill principle    | "Open and reasoned" — vague phrases get clarified, never silently mapped to commands. Pending direction persisted.          |
+| `replica-source-fidelity/`   | Entry point (`replica`)   | Mechanical preserve direction (no `direct`) + inconsistency register + clean re-authoring + the measured source-fidelity gate at both breakpoints + standard handoff. |
+| `reskin-content-fidelity/`   | Entry point (`reskin`)    | Donor via `--design-source` + content-model capture with scope guard + mapping-brief contract (≥80% mapped) + programmatic render + dual content/design-adoption gates. |
 
 ## Coverage map
 

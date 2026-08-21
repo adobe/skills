@@ -234,6 +234,86 @@ sites (the common stardust use case). For product-register sites
 *workflow-priority preservation*: the primary task path on the page
 stays the primary task path. The same principle, different surface.
 
+## 8b. Signature preservation (Mode A constraint)
+
+Brand-faithful inheritance includes the page's *signature* — the
+distinctive, memorable element that makes the page recognizably
+**this** brand and not a template. The signature is usually the first
+thing a returning visitor recognizes and the first thing a generic
+redesign destroys. A refresh that keeps the palette and the type but
+flattens the signature to a static hero has missed the brand as badly
+as one that inverts its IA priority (§ 8). **Preserving the signature
+is fidelity, not surprise** — see the budget-exemption note below.
+
+#### Trigger conditions
+
+When the captured page (`stardust/current/pages/<slug>.json` +
+`_brand-extraction.json`) shows **any** of the following, the
+signature-preservation rule fires for every Mode A variant:
+
+- **Signature hero medium** — a background `<video>` (incl. HLS /
+  `.m3u8` / Cloudflare-Stream / Mux), a `<canvas>` / WebGL / Three.js
+  scene, a Lottie/Rive animation, or an animated SVG that occupies the
+  hero or first viewport. (The moneyhub.com home — an autoplay HLS
+  brand-animation behind the hero — is the canonical example.)
+- **Signature motion** — scroll-driven / parallax / pinned-section
+  motion, a marquee, a hero typewriter/kinetic-type effect, or a
+  recurring entrance choreography that reads as part of the brand
+  voice (not incidental fade-ins).
+- **Signature visual motif** — a distinctive recurring shape language,
+  illustration system, branded interaction, or layout silhouette that
+  the brand surface shows on multiple pages (extract's
+  `_brand-extraction.json#motifs` / `systemComponents`).
+
+#### Rule
+
+When the trigger fires, every Mode A variant must:
+
+1. **Reproduce the signature, do not flatten it.** A captured hero
+   video stays a hero video; a captured canvas/Lottie animation is
+   reproduced (or, if the exact asset can't be carried, replaced with
+   an equivalent brand-faithful motion in the same role) — **never**
+   silently swapped for a still image, a CSS gradient, or a
+   type-only hero. The asset URL/mechanism captured by extract is the
+   source of truth; reuse it the way the real brand asset is reused
+   (same rule as image-fidelity).
+2. **Carry it with production hygiene, not as a toy.** A reproduced
+   signature ships with a graceful static fallback, a
+   `prefers-reduced-motion` alternative, and (for overlaid text) a
+   legibility scrim — the absence of these is what makes a kept
+   signature feel cheap, and is a frequent reason an agent drops it
+   instead of doing it properly.
+3. **Keep it in its captured role / position.** A first-viewport
+   signature stays in the first viewport; a site-wide motif stays
+   site-wide. Demoting the signature below the fold to make room for a
+   generic display headline is the same off-brand move as § 8's
+   IA-priority demotion.
+
+#### Surprise-budget exemption
+
+Reproducing a captured signature is **fidelity, and is exempt from the
+per-page `surprise` budget** (§ 9). It does **not** consume the `low`
+allowance and is **required even at `surprise: low` under
+`ia-fidelity: verbatim`**. The budget governs *added* divergence
+(replacing a captured cliché with a move from the bank); carrying the
+brand's own signature forward is the opposite of divergence. A variant
+may not cite "low surprise" or "verbatim IA" as a reason to drop a
+signature — that reasoning inverts the budget.
+
+#### Render-refusal
+
+A variant that:
+
+- replaces a captured background video / canvas / Lottie hero with a
+  static image, gradient, or type-only hero,
+- strips a signature scroll/parallax/kinetic effect to a plain
+  static page "to stay faithful,"
+- drops a site-wide signature motif present in the brand surface,
+
+is rejected at the Phase 4 / prototype shape-brief audit stage.
+Surface the violation explicitly and reproduce the signature (with the
+hygiene of Rule 2) rather than shipping the flattened variant.
+
 ## 9. IA-fidelity (variant-fork ceiling)
 
 How much the variant set is allowed to move on the *spine* of the
@@ -290,6 +370,14 @@ page-shape-brief.md`). `ia-fidelity` sets a ceiling on `surprise`:
 |---|---|
 | `verbatim` | every page capped at `low` (A1/A2/A3 are surface forks; no IA moves) |
 | `reimagined` | `low` / `medium` / `high` per page; variant A defaults `low`, B `medium`, C `high` |
+
+**`low` is not "generic."** The budget bounds *added* divergence, not
+craft or fidelity. A `low` / `verbatim` page is still **brand-faithful
++ improvements + full § 8b signature preservation** — never the most
+obvious, stripped-down faithful interpretation. Signature media/motion
+(§ 8b) is exempt from this ceiling and is required even at `low`:
+dropping the source's video/animation/motif is a fidelity failure, not
+a low-surprise choice.
 
 The two axes are kept distinct because they have different scopes:
 the ceiling is a site-wide commitment the user pins once at direct

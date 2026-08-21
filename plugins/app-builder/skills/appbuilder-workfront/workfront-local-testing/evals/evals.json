@@ -1,0 +1,35 @@
+{
+  "skill_name": "workfront-local-testing",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "My Workfront extension isn't showing up in Workfront even though aio app dev is running. How do I make Workfront load my local build?",
+      "expected_output": "Set the extensionOverride key in the Workfront tab's Local Storage to your https://localhost:<port> dev URL, accept the cert, reload the layout-template page.",
+      "files": [],
+      "assertions": [
+        {"type": "output_contains", "pattern": "extensionOverride", "description": "Uses the extensionOverride localStorage key."},
+        {"type": "output_contains", "pattern": "localhost", "description": "Points it at the local dev URL."}
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "How can I test a deployed stage app inside Workfront in one org without going through publish and approval?",
+      "expected_output": "Register the deployed app URL in Workfront's Extension Manager as a Bring Your Own extension and toggle it on.",
+      "files": [],
+      "assertions": [
+        {"type": "output_contains", "pattern": "Extension Manager", "description": "Uses Extension Manager."},
+        {"type": "output_contains", "pattern": "Bring Your Own", "description": "Registers a BYO extension."}
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "After a Chrome update my localhost extension override silently stopped working. Why?",
+      "expected_output": "Chrome 142+ Local Network Access blocks a public origin from reaching localhost; disable chrome://flags/#local-network-access-check.",
+      "files": [],
+      "assertions": [
+        {"type": "output_contains", "pattern": "local-network-access", "description": "Identifies the Chrome Local Network Access flag."},
+        {"type": "output_contains", "pattern": "142", "description": "Notes Chrome 142+ behavior."}
+      ]
+    }
+  ]
+}

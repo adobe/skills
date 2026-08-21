@@ -1,9 +1,9 @@
 ---
 name: preview-import
-description: Preview and verify imported content in local AEM Edge Delivery Services dev server. Validates rendering, compares with original page, and troubleshoots common issues.
+description: Use this when you need to preview and verify content you imported into a local AEM Edge Delivery Services (EDS, Franklin, Helix) dev server on localhost. Starts the dev server against the imported HTML, checks block rendering, inspects DOM structure, compares against the original page, and troubleshoots broken references and 404s.
 license: Apache-2.0
 metadata:
-  version: "2.0.0"
+  version: "2.0.1"
 ---
 
 # Preview Import
@@ -143,7 +143,7 @@ Use `paths.documentPath` from metadata.json, but for index files ensure the path
 - **Most common cause:** Missing `--html-folder` flag - restart server with `aem up --html-folder {dirPath}`
 - Verify HTML file exists at expected path
 - Check documentPath from metadata.json matches URL
-- For index files, use `/index` not `/`
+- For index files, use `/` not `/index`
 - Check terminal output confirms "Serving HTML files from folder: {folder}"
 
 ---

@@ -49,13 +49,47 @@ of an existing commercial site, agent-driven from a developer's
 machine) — the alternative is silently failing on most
 enterprise / large-retail / commerce origins.
 
-**Retry rule.** When the first navigation in a run returns any
-of `ERR_HTTP2_PROTOCOL_ERROR`, `ERR_QUIC_PROTOCOL_ERROR`, or
-hangs for the entire hard-cap on a connection that doesn't
-fingerprint cleanly: do **not** retry headless. Switch to
+**Retry rule.** Two distinct reject modes must both trigger the
+fallback — validate the *response*, not just that the navigation
+resolved:
+
+1. **Network fingerprint block** — the first navigation *throws*
+   `ERR_HTTP2_PROTOCOL_ERROR`, `ERR_QUIC_PROTOCOL_ERROR`, or hangs
+   for the entire hard-cap on a connection that doesn't fingerprint
+   cleanly.
+2. **Challenge / edge block** — the navigation *succeeds*
+   (`domcontentloaded` fires, no throw) but the response is a
+   **403/429/503 interstitial**, not the page. Cloudflare's managed
+   challenge is the canonical case: `cf-mitigated: challenge` +
+   HTTP 403. Because the goto resolves, a probe that only catches
+   throws sails straight past it and the block only surfaces later
+   as a fatal capture-time `HTTPError`. Detect it by inspecting the
+   probe response status/headers (`cf-mitigated`, `cf-ray`,
+   `server: cloudflare`/`akamai`, edge 403/429/503).
+
+On either: do **not** retry headless. Switch to
 `headless: false, channel: 'chrome'` immediately and record the
-switch in `_crawl-log.json#discovery.fetchTechnique` so re-runs
-start in headed mode without rediscovering the issue.
+switch in `_crawl-log.json#discovery.fetchTechnique` (with
+`#discovery.botBlock` = `fingerprint | challenge`) so re-runs start
+in headed mode without rediscovering the issue.
+
+**Clearing a managed challenge.** Headed real Chrome alone clears
+the *fingerprint* block, but Cloudflare's managed challenge also
+probes for automation signals — clearing it additionally needs the
+automation flags stripped: launch with
+`args: ['--disable-blink-features=AutomationControlled']` +
+`ignoreDefaultArgs: ['--enable-automation']`, and spoof
+`navigator.webdriver → undefined` via `context.addInitScript` on
+**every** context (the challenge re-fires per context — no
+cross-context cookie sharing — so a worker that skipped the spoof
+is re-challenged even after the probe cleared it). The
+non-interactive challenge serves the interstitial, runs its JS,
+sets a clearance cookie, then the page becomes reachable: wait
+~4s and `reload()` to pick up the cookie before validating the
+status. If headed + stealth + the solve window still can't clear
+it, the site requires an *interactive* solve — surface that as a
+hard failure (`BotChallengeError`) rather than capturing the
+interstitial as content.
 
 **Sub-resource fetches.** Once a page context is open in headed
 Chrome, additional fetches (sitemap, logo file, ad-hoc inspection
@@ -179,7 +213,10 @@ viewport. With default extract behavior the banner:
 Pre-flight a **consent dismissal** before the per-page loop.
 One dismissal in a fresh `BrowserContext` typically persists
 the cookie state across every subsequent page in the same
-context, so the cost is one extra navigation per crawl.
+context — but **not across contexts**: with concurrent capture
+(`extract/SKILL.md` § Concurrency) each worker context re-runs
+the dismissal on its first page, or clones the probe context's
+`storageState`. Cost: one extra navigation per context.
 
 ### Dismissal procedure
 
@@ -296,6 +333,20 @@ the site is JS-driven and `spec` is appropriate. Record the chosen
 mode and the auto-detect basis in `_crawl-log.json` under
 `discovery.waitMode`.
 
+**Enterprise-CMS caveat.** A near-empty-shell test under-detects the
+common hard case: enterprise CMSes (React / SPA layers over WebSphere,
+AEM, Sitecore, or bespoke app shells) ship *some* server markup that
+then re-renders / hydrates client-side, so the raw HTML is not empty
+yet the meaningful content paints after `domcontentloaded`. Treat as
+JS-driven (→ `spec`, and the scroll + reveal passes are non-optional)
+when the raw HTML shows any of: a framework bootstrap
+(`window.__INITIAL_STATE__`, `data-reactroot`, `ng-version`,
+`<div id="__next">`), a vendor app marker, or a body whose visible
+headings don't match the `<title>` / `og:title`. On these sites the
+hero copy and child links arrive late and the DOM carries hidden
+modal / promo / count states — which is exactly what § Capture list
+(5-bis) `heroHeadline` + the junk filter exist to survive.
+
 The default remains `medium` regardless of auto-detect until the
 heuristic is validated across more sites; auto-detect is opt-in via
 `--wait auto`.
@@ -307,6 +358,7 @@ goto(url, { waitUntil: <mode>, timeout: <hardCap> })
 wait <grace> ms              // grace period for late JS paints
 scroll the page to bottom in 4 viewport-height steps with 300 ms pauses
 scroll back to top
+reveal interactive content   // open every closed <details>, click [aria-expanded="false"] disclosure triggers, surface non-active tab panels
 ```
 
 The grace period catches lazy-loaded hero media, fonts that swap after
@@ -315,6 +367,22 @@ scroll-to-bottom pass triggers IntersectionObserver-driven content
 (carousels, fold-in sections, lazy images) so it lands in the captured
 DOM. **Skipping the scroll pass is a recipe violation** — even
 server-rendered sites use lazy images.
+
+The **reveal pass** is the analogous requirement for content gated
+behind interaction rather than scroll. Sites routinely defer FAQ
+answers, tabbed feature panels, and "read more" bodies until a click,
+and the disclosed DOM is frequently *injected on demand* — so it is
+absent (not merely hidden) until the trigger fires. Before the capture
+list runs, set `open` on every closed `<details>`, click each
+`[aria-expanded="false"]` / `[role="button"][aria-controls]`
+disclosure trigger, and activate every non-active `role="tab"` once,
+re-reading content afterward. Guard against dialogs (skip triggers
+inside `[role="dialog"]` and anything whose click navigates away).
+**Skipping the reveal pass is a recipe violation** on any page with
+accordions or tabs. The 2026-06-26 knack.com run captured only 1 of 6
+FAQ answers without it — the five collapsed answers were never in the
+DOM, so they were absent from `qa[]` and from the prototype, which
+then had to placeholder them.
 
 ## Capture list
 
@@ -328,6 +396,57 @@ For each page, capture:
 5. **Heading outline** — every `h1`-`h6` in document order with text
    and computed font-family, font-weight, font-size, line-height,
    letter-spacing, color.
+
+5-bis. **Hero headline + lede (resolved) — JS-rendered robustness.**
+   On semantic / SSR sites the first `<h1>`/`<h2>` *is* the hero
+   headline. On **JS-rendered enterprise CMSes** (React / SPA layers
+   over WebSphere, AEM, Sitecore, Salesforce, and bespoke "SNAPS" /
+   "FUZE"-style shells) the real tagline is buried among many `<h2>`s,
+   and the DOM also carries hidden modal / error / promo / count states
+   that a document-order heuristic grabs as the headline (observed on a
+   3m.com run: `"Thank You!"`, `"Our Apologies…"`, `"629 products"`,
+   `"Limited-time offer…"` all out-ranked the real hero line). Resolve
+   two dedicated fields instead of trusting `headings[0]`:
+
+   - **`heroHeadline`** — among `h1, h2, h3` whose post-layout
+     `getBoundingClientRect().top` is within the hero band (≤ ~820 px)
+     and `width ≥ 120 px`, pick the element with the **largest computed
+     `font-size`**, after dropping any text caught by the junk-state
+     filter below. That is the visually-dominant hero line, which is
+     what `prototype` / `migrate` actually need.
+   - **`heroLede`** — the first `<p>` in the top ~1300 px with
+     `40 ≤ textLength ≤ 400` that is not caught by the junk filter.
+   - **Clean fallback (load-bearing).** When either resolves to empty
+     or junk, fall back to the editor-written
+     `<meta name="description">` — first sentence → `heroHeadline`,
+     full text → `heroLede`. Meta descriptions are present and clean
+     on virtually every enterprise page and are the single most
+     reliable recovery; without this fallback roughly half of
+     JS-rendered pages yield a junk or empty hero. Record which source
+     won in `_provenance` (`heroSource: "dom" | "meta-fallback"`).
+
+   Record both fields per `current-state-schema.md` § Hero headline.
+   The full `headings[]` list is unchanged — these are an additional
+   resolved convenience, not a replacement.
+
+   **Junk / hidden-state filter (shared).** JS frameworks inject hidden
+   modal, error, newsletter, promo, and result-count nodes that are
+   absent from the *rendered* page but present in the *tree*. Drop any
+   candidate heading / lede / CTA-label whose normalised text matches
+   (case-insensitive):
+   - status / modal chrome: `thank you`, `our apologies`, `sign in`,
+     `sign up`, `subscribe`, `newsletter`, `follow us`, `share this`,
+     `related`, a bare `contact us` heading
+   - merchandising chrome: `featured products`, `limited-time offer`,
+     `% off`, `save \d+%`
+   - faceted-listing counts: `^\d[\d,]*\s*(products?|results?|items?)$`
+     and a bare number `^\d[\d,]*$`
+   - leaked CSS / script text: any value containing `{` or `}`
+
+   Apply this filter wherever `headings[]` / `ctas[]` text is reused
+   downstream as a label (module detection, section heads, card titles)
+   — not only for `heroHeadline`.
+
 6. **Landmark structure** — every `header`, `nav`, `main`, `aside`,
    `footer`, plus elements with `role="banner|navigation|main|complementary|contentinfo|region"`. For each: tag, role, id, class, child element count.
 7. **Visible text per landmark** — innerText in full, normalised
@@ -355,6 +474,14 @@ For each page, capture:
    - `qa[]` — when an accordion (`<details>` or
      ARIA-driven disclosure) is detected within the section, capture
      each entry as `{ q: <trigger text>, a: <disclosed textContent> }`.
+     Read `a` from `textContent`, **not** `innerText`: the disclosure
+     is captured after the Navigation reveal pass has expanded it, but
+     a panel whose CSS still resolves to `display:none` yields empty
+     `innerText`, silently dropping the answer. `textContent` survives
+     that. If a trigger has no resolvable answer after the reveal pass
+     (genuinely click-injected and not yet present), emit the entry
+     with `a: null` rather than omitting it — a recorded gap is
+     auditable downstream; a missing entry is not.
    - `quotes[]` — when a review-card / testimonial / pullquote
      pattern is detected (a `<blockquote>` or `[class*="testimonial"
      i]` containing prose plus an optional attribution / rating),
@@ -367,6 +494,14 @@ For each page, capture:
    data — without them, every body region under a heading falls back
    to placeholder-with-signature even when the source page had real
    prose to reuse.
+7-ter. **Code blocks (`codeBlocks[]`, page-level)** — every **visible**
+   `<pre>`'s `innerText` verbatim, in document order (schema:
+   `current-state-schema.md`). Prose capture skips code blocks, and on
+   developer-tool sites the install commands are the most load-bearing
+   content on the page — without this field they never reach
+   `pages/<slug>.json` and downstream phases fabricate or omit them
+   (stardust-style e2e finding). Preserve line structure; emit `[]`
+   when the page has none.
 8. **CTA inventory** — every `button`, `[role="button"]`, and `<a>`
    that visually presents as a button (background-color != transparent,
    `border-radius > 2px`, padding > 4 px). Capture: label, href if any,
@@ -381,10 +516,31 @@ For each page, capture:
       `gap`, `margin-block`)
     - dominant border-radius (mode of non-zero values across direct
       children)
-11. **Media inventory** — for every `<img>`: src, srcset, alt,
-    naturalWidth, naturalHeight. For every inline SVG: serialized
-    markup hash + viewBox. For every `<video>` and `<iframe>`: src and
-    poster.
+11. **Media inventory** — for every `<img>`: `currentSrc || src`
+    captured **with its query string intact** (see § Source-URL
+    fidelity below), `srcset`, `alt`, `naturalWidth`, `naturalHeight`,
+    and a `resolves` boolean. For every inline SVG: serialized markup
+    hash + viewBox. For every `<video>` and `<iframe>`: src and poster.
+
+    **Source-URL fidelity (enterprise CDNs).** The #1 way migration
+    ships `<img src="about:error">` is re-using a source image URL that
+    doesn't actually resolve. Two capture-time rules prevent it:
+    - **Never truncate the URL, and prefer `currentSrc`.** Enterprise
+      DAM / CDN URLs carry load-bearing query strings
+      (`…/connect/<uuid>/file.jpg?MOD=AJPERES&CACHEID=…`); dropping the
+      query (or reading `src` instead of the resolved `currentSrc`)
+      yields a 404. An early reference that sliced `src` to a fixed
+      length produced exactly this on a 3m.com run.
+    - **Record a `resolves` flag.** After capture, issue a `HEAD`
+      (fall back to `GET`) for each `<img>` src and set
+      `resolves: true` only on a 2xx with an image `content-type`.
+      On a bot-managed origin issue it through the page context (the
+      in-page `fetch` / route-fulfiller path that carries the accepted
+      fingerprint, per § Bot-management fallback) **and** with a
+      browser `User-Agent` + `Referer: <page-url>` — bare requests are
+      frequently rejected by enterprise CDNs even when the asset
+      exists. `migrate` must omit or repair (never author) any image
+      whose `resolves` is `false`.
     For each cross-origin `<iframe>` (host different from page host),
     additionally capture: `boundingClientRect` after layout settles,
     `viewportCoveragePct` (its rect area divided by 1440×900), and
@@ -510,6 +666,53 @@ For each page, capture:
     (`<family>`, N distinct classes used) — see
     `_brand-extraction.json#iconFont` for the mapping."*
 
+## Capture hygiene — visibility, interstitials, SPA shells, modals (#7)
+
+The capture list above describes WHAT to read; this section describes what to
+**exclude or flag** so transient and hidden DOM doesn't pollute the record. The
+bundled `extract/scripts/crawl.mjs` implements all of these; a hand-rolled crawl
+must apply them too. They exist because real enterprise/SPA sites routinely
+render non-content DOM that, captured verbatim, propagates wrong headings, fake
+sections, and silent duplicate pages downstream.
+
+1. **Visibility filter (headings, body, CTAs).** Only capture a node if it is
+   actually visible: skip any element that is `display:none`,
+   `visibility:hidden`, `opacity:0`, `[hidden]`, inside `[aria-hidden="true"]`,
+   zero-area, or rendered far off-screen. A captured heading that the user never
+   sees is not page content. (Exception: modal detail — see 4.)
+2. **Interstitial / error-state heuristic.** Drop — and COUNT in a per-page
+   `filteredInterstitials` field — headings/CTAs/paragraphs whose text matches
+   known overlay copy: consent banners ("this site uses cookies", "accept all
+   cookies", "change cookie settings", "privacy notice"), language gates
+   ("continuing to a page", "continue in english", "go back to Spanish"), and
+   soft-error overlays ("temporarily unavailable", "page unavailable"). These
+   sit in the DOM at capture time and otherwise become `h2`s and fake sections
+   (the bankofamerica run authored a "Page unavailable" section from one).
+   Dismissing consent (§ Pre-flight) handles the common case; this is the
+   backstop for custom banners the selector list misses.
+3. **Content-substance / SPA-shell check.** After capture, flag a page
+   `spaShellSuspect` when it has **< 2 distinct in-`<main>` headings AND**
+   tiny `<main>` innerText (< ~200 chars) **AND** zero real media. A
+   client-rendered route that returns the app shell (global `h1` + chrome + a
+   tracking pixel) is otherwise indistinguishable from a real capture and
+   silently ships a wrong title + empty body. Crucially, a **lone off-origin
+   tracking pixel does NOT count as media** (`<= 2px`, or src matching
+   `1x1|pixel|track|beacon|/p?|/b?`) — so the low-media flag fires on a shell
+   instead of being suppressed by the pixel. Re-capture a flagged page with a
+   longer wait or an explicit content selector before trusting it.
+4. **Modal / AJAX-addressable detail.** When a detail route renders its content
+   into a `[role="dialog"]` / `[aria-modal]` / `.modal` container populated by an
+   XHR (and often left `display:none` until opened), `body.innerText` captures
+   none of it — so the page captures byte-identical to its listing (the
+   sycamorepartners `/investment-info/<slug>` case: 35 "identical" detail
+   records). Read such containers via **`textContent` even while hidden**, and
+   when a URL deep-links to a modal, wait for its XHR to settle before capture.
+5. **Cross-page duplicate detection.** Hash each page's main content
+   (`headings ++ main innerText`); if two pages hash equal, flag the later one
+   `duplicateOf: <slug>`. A detail page that equals its listing page is the
+   signature of an under-captured modal/SPA route (4/3), not real duplication —
+   surface it rather than shipping N identical pages.
+
 ## Logo locator chain
 
 For the brand-surface pass (Phase 3 of `extract`), find the logo in
@@ -565,6 +768,28 @@ as `logo.svg`.
 Logo variants (`logo-white.svg`, `logo-mono.svg`) are not extracted in
 v2 — they are derived later by `direct` if the redesign needs them.
 
+## Favicon capture (first-class asset, independent of the logo chain)
+
+Regardless of which step wins the logo chain above, ALWAYS capture the
+site favicon as its own asset — downstream stages depend on it
+(`prototype` embeds it in the proposed page head; `deploy` ships it to
+the Edge Delivery site; `prepare-migration` Phase 4 generates the icon
+variants from it).
+
+Resolution order (first that returns a non-error, non-empty body):
+
+1. `<link rel="icon">` / `<link rel="shortcut icon">` href (largest
+   `sizes` if several), resolved against the base URL.
+2. `<link rel="apple-touch-icon">` href.
+3. `/favicon.svg`, then `/favicon.ico` at the site root.
+
+Save it to `stardust/current/assets/favicon.<ext>` preserving the
+original format (svg/png/ico — never rasterize an SVG). Record the
+chosen source in `_brand-extraction.json` under
+`favicon: { source, url, file }`; when nothing resolves, record
+`favicon: null` and list it in `variantsNotCaptured` — do NOT
+synthesize one.
+
 ## What NOT to capture
 
 - Per-element computed styles for every node. Too noisy. Only the
@@ -611,7 +836,10 @@ Capture the navigation response and apply these checks in order:
    `message: "empty page — possibly soft-404"`. The conjunction is
    deliberately tight: legitimate minimal pages (a Calendly embed
    landing, a single-iframe contact widget) have at least one of
-   those signals.
+   those signals. A page that is non-empty but thin — the SPA-shell
+   case — is NOT failed here; it is captured and flagged
+   `spaShellSuspect` (§ Capture hygiene 3) for review, because a wrong
+   title on a shell is worse than a recorded gap.
 
 Failed pages do **not** appear in `state.json` as `extracted`. They
 appear only in `_crawl-log.json#crawl.failures[]`. The user can

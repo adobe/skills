@@ -1,0 +1,31 @@
+{
+  "context": "Tests the run-workflow skill's BARE ID rule: when the user's entire message is just an ID with no verb, the agent must inspect it, not rerun or re-execute it. This guards against a specific failure mode where pasting an ID (e.g. to check on a run) accidentally triggers a brand-new, possibly costly, workflow execution.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "No clarifying question needed",
+      "max_score": 10,
+      "description": "The agent did not ask the user what they meant by the ID before acting — the bare-ID rule resolves the intent unambiguously without needing to ask."
+    },
+    {
+      "name": "Calls inspect_run",
+      "max_score": 35,
+      "description": "The agent called inspect_run with the pasted ID as its tool call for this turn."
+    },
+    {
+      "name": "Presents inspection results",
+      "max_score": 15,
+      "description": "The agent presented the inspection results (executions, outputs, or diagnostics) back to the user in its response."
+    },
+    {
+      "name": "No run_workflow call",
+      "max_score": 30,
+      "description": "The agent did NOT call run_workflow or run_workflow_submit at any point in this turn."
+    },
+    {
+      "name": "No definition reuse",
+      "max_score": 10,
+      "description": "The agent did NOT extract actions/connections from the inspect_run result and pass them into a new run."
+    }
+  ]
+}

@@ -1,3 +1,5 @@
+## [2.0.1](https://github.com/adobe/skills/compare/building-blocks-v2.0.0...building-blocks-v2.0.1) (2026-07-06)
+
 # [2.0.0](https://github.com/adobe/skills/compare/building-blocks-v1.1.0...building-blocks-v2.0.0) (2026-05-14)
 
 ### Bug Fixes
@@ -11,4 +13,3 @@
 * **da-auth:** add da-auth skill and surface DA auth in CDD workflow (#89) ([fc7a2e8](https://github.com/adobe/skills/commit/fc7a2e8c1dbcb37c65759ba907fe581f8a44e3c8))
 
 # 1.0.0 (2026-04-16)
-
