@@ -140,6 +140,21 @@ background: that carries via a `section-metadata` `Style` class or a block's
 own defined dark/light variant (Phase 4). Read annotations per
 [references/annotation-contract.md](./references/annotation-contract.md).
 
+> **Segmentation heuristic** — when the frame has no explicit grouping, derive
+> the section list like this, not from the raw child order:
+> 1. Sort the frame's direct children by `y` (top to bottom).
+> 2. **Drop pure-decoration layers** from the section list — full-bleed
+>    background rectangles, gradients, blurs, absolutely-positioned shapes with
+>    no text or interactive child. Record each as the *background* of the
+>    content it sits behind (→ Phase 4 `section-metadata`); don't emit it as a
+>    section of its own.
+> 3. **Merge siblings that form one visual band** — nodes whose vertical
+>    extents overlap or sit within ~one line-height of each other (a background
+>    rect + a heading group + a button row are *one* section, not three).
+> 4. **Reconcile the count against the screenshot** before resolving: the eye
+>    sees the real sections; a mismatch means you over- or under-split — fix it
+>    before Phase 2.
+
 > **Placeholder content is common — don't ship it.** Designs routinely contain
 > dummy copy (`Lorem ipsum`, a CTA literally labelled "Button" or "Lorem
 > Ipsum", the same card title repeated across every card) and unfilled slots
@@ -225,6 +240,22 @@ and needs real content before publish.
 Never silently drop a section, and never deploy an **inferred** mapping the
 user has not seen.
 
+**Worked example** — an unannotated 4-section frame; this is the plan you
+present in 2.2 (one line per section):
+
+| # | Section | Decision | Conf. | Why | Content |
+|---|---|---|---|---|---|
+| 1 | Hero band — heading + 2 CTAs over a photo | reuse `hero` | high | model fits; heading **and** CTAs stay legible on the media under the theme | ok |
+| 2 | 3 feature blurbs — icon + title + text | reuse `cards` | high | content model and rendered look both fit | ok |
+| 3 | Metric strip — 3 big numbers + labels | **new block** `stat-cards` | high | bespoke panel look no existing block produces (3B) | ok |
+| 4 | Newsletter row — heading + email field + button | **new block** / confirm | low | carries an interactive control (input) — ask keep vs. flatten (G5) | ⚠ placeholder copy |
+
+Then act on it: sections 1–2 build without blocking; #3 builds (high-confidence
+new block); **#4 stops for a decision** (low-confidence + interactive control);
+and because the plan contains inferred mappings, the whole thing gets **one
+pre-deploy confirmation** before the da.live write. Section #4's ⚠ flag means
+its real copy must be supplied before publish, not shipped as placeholder.
+
 ---
 
 ## Phase 3A — Map content into an EXISTING block
@@ -302,6 +333,15 @@ layout and styling. New-block **CSS must target structure, not authored
 classes** — inline wrappers like `<span class="…">` are stripped inside block
 cells at delivery (da-content html-content.md §3.9), so a class you emit in a
 cell will not survive.
+
+**Make the block responsive.** A Figma page frame is almost always a single
+**desktop** width, but EDS pages are responsive. Author the block mobile-first
+(or with explicit breakpoints) so a multi-column layout collapses to one column
+on narrow viewports, and verify at mobile / tablet / desktop via
+**testing-blocks** — don't ship a fixed desktop-width block. If the design
+provides a **separate mobile frame**, use it to derive the breakpoint behavior
+(what stacks, what hides, how type scales) — it's the *same page*, so it feeds
+one responsive block, **not** a second page (see Inputs on frame variants).
 
 The new block's code must be **committed and pushed to the deploy branch on
 GitHub and built by Code Sync** before the page can render it — see Phase 5
@@ -417,13 +457,17 @@ TOKEN="$DA_TOKEN"    # from da-auth; 401 w/ empty body ⇒ expired, re-auth
 curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
   "https://admin.hlx.page/code/$ORG/$REPO/$BRANCH/*" || true    # 200/202; non-2xx here isn't fatal if push synced
 #   3. poll until the new block's JS is live on the branch host (bounded — don't hang):
+BH="https://$BRANCH--$REPO--$ORG.aem.page"
 for i in $(seq 1 24); do
-  code=$(curl -s -o /dev/null -w '%{http_code}' --compressed \
-    "https://$BRANCH--$REPO--$ORG.aem.page/blocks/<new-block>/<new-block>.js")
+  code=$(curl -s -o /dev/null -w '%{http_code}' --compressed "$BH/blocks/<new-block>/<new-block>.js")
   [ "$code" = "200" ] && break
   [ "$i" = "24" ] && { echo "❌ block JS not live after ~2min — check push/branch/Code Sync"; exit 1; }
   sleep 5
 done
+#      also confirm the block's CSS is live — a block whose JS loads but CSS 404s
+#      renders unstyled:
+csscode=$(curl -s -o /dev/null -w '%{http_code}' --compressed "$BH/blocks/<new-block>/<new-block>.css")
+[ "$csscode" = "200" ] || echo "⚠ block CSS not live ($csscode) — block will render unstyled"
 
 # --- both paths ---
 # 1) Upload referenced media FIRST — every authored <img> must resolve at PREVIEW
@@ -449,13 +493,29 @@ curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
   "https://admin.hlx.page/live/$ORG/$REPO/$BRANCH/$P"
 ```
 
-**Verify (do not skip):**
+**Verify (do not skip).** Two layers — a fragment curl is *not* enough for a new
+block:
+
+*Server-side* — curl the plain fragment (fast, no JS):
 
 ```bash
 BASE="https://$BRANCH--$REPO--$ORG.aem.page/$P.plain.html"
 curl -s --compressed "$BASE" | grep -c about:error        # expect 0 (no broken images)
 curl -s --compressed "$BASE" | grep -o '<img' | wc -l     # expect = authored image count
+curl -s --compressed "$BASE" | grep -o 'class="[a-z][a-z-]*"' | sort -u   # every authored block class present
 ```
+
+Also confirm the **section count matches the plan** and rich default content
+survived (spot-check heading / list / link counts).
+
+*Client-side* — **`.plain.html` shows blocks UNDECORATED** (`<div class="name">`
+with raw rows); a block's JS runs in the **browser**, so the fragment can never
+tell you whether the block decorated. For a **new block** (3B) that decoration
+*is* the deploy's payoff — verify it on the **rendered page**, not the fragment:
+load `https://$BRANCH--$REPO--$ORG.aem.page/$P` in a browser and confirm the
+block element got `data-block-status="loaded"`, shows its expected transformed
+DOM, and that its CSS applied. (Reused existing blocks are already known-good,
+so the server-side checks suffice for them.)
 
 Non-obvious rules *(da-content / EDS)*:
 - multipart field name is exactly **`data`** — other names silently 200 with
