@@ -1,6 +1,6 @@
 ---
 name: figma-to-content
-description: "Use this to turn a Figma design into an AEM Edge Delivery Services (EDS / AEM / Franklin / Helix) content page in Document Authoring (DA, da.live). Triggers: \"build this Figma frame in EDS\", \"turn this Figma design into a DA page\", \"publish this design to da.live\", or providing a figma.com URL for a page. Reads the frame (and any annotations) via a Figma MCP, resolves each section to an existing block, a new isolated block, or default content (annotation-first, else inferred and confirmed), generates DA-compliant body-fragment HTML, and deploys via the DA Source API + preview."
+description: "Use this to turn a Figma design into an AEM Edge Delivery Services (EDS / AEM / Franklin / Helix) content page in Document Authoring (DA, da.live). Triggers: \"build this Figma frame in EDS\", \"turn this Figma design into a DA page\", \"publish this design to da.live\", or providing a figma.com URL for a page. Reads the frame (and any annotations) via a Figma MCP, resolves each section to an existing block, a new isolated block, or default content (inferred against the project's existing blocks and confirmed with you, or read from annotations when the frame happens to have them), generates DA-compliant body-fragment HTML, and deploys via the DA Source API + preview."
 license: Apache-2.0
 metadata:
   version: "0.1.0"
@@ -41,13 +41,16 @@ or two new blocks).
   The common case: a customer **already on EDS**, with their own blocks, gets a
   new design for a new page — some sections reuse existing blocks, some need new
   ones.
-- **Annotations are recommended but optional.** If the frame is annotated (each
-  section declares its block / default content / new block — see
+- **The default path is infer-and-confirm.** Usually the frame is **not**
+  annotated (e.g. the user just says "migrate this page"): the skill **infers**
+  each section's mapping against the project's existing block palette and
+  **confirms the plan** before building, asking whenever a section is ambiguous
+  (Phase 2). This path needs nothing but the design itself.
+- **Annotations are an optional accelerator — never required.** If a frame
+  happens to declare each section's block / default content / new block (see
   [references/annotation-contract.md](./references/annotation-contract.md)),
-  those annotations are authoritative. If it is **not** (e.g. the user just says
-  "migrate this page"), the skill **infers** each section's mapping against the
-  project's existing block palette and **confirms the plan** before building,
-  asking whenever a section is ambiguous (Phase 2).
+  those declarations are taken as authoritative and skip the inference for that
+  section. Absent them, nothing is lost — the skill infers and confirms.
 
 ### When NOT to use
 
@@ -76,7 +79,11 @@ The DA-write contract in Phase 5 is the same one **da-content** documents
 ## Inputs (gather before Phase 1; ask if missing — never guess)
 
 - **Figma reference** — file key + node id of the page frame (from the
-  figma.com URL or the current Figma MCP selection).
+  figma.com URL or the current Figma MCP selection). A file usually holds
+  **many frames** — desktop/mobile variants, A/B versions, work-in-progress
+  copies of the same page. Confirm **exactly which frame** to build; don't
+  assume the first or largest. Two frames that are variants of the *same* page
+  are one page, not two — ask which is canonical rather than deploying both.
 - **Target project** — a local checkout of the EDS project repo (needed to see
   existing blocks under `blocks/`, and required for the content+code path to
   add block code). Its GitHub `{owner}`/`{repo}` and the deploy `{branch}`.
@@ -99,19 +106,47 @@ remote/desktop server takes `fileKey` + optional `nodeId`). The tools you need,
 by capability:
 
 - **Structure** (e.g. `get_metadata`) — the frame's section/layer tree; node
-  ids, names, positions, sizes. Enumerate top-level sections in visual order
-  (sort by `y`). Usually `fileKey` required, `nodeId` optional.
+  ids, names, positions, sizes. Derive the section list from the **content
+  groups** in visual order (sort by `y`) — **not** the raw child list: full-
+  bleed background rectangles, overlays, and decorative shapes are *part of* a
+  section (its background), not sections of their own, and a single visual
+  section is often split across sibling nodes (e.g. a background rect + a tab
+  strip + a text group). Ignore the decorative layers and group the rest into
+  sections by position. Usually `fileKey` required, `nodeId` optional. **Some
+  MCP servers cap response size — even a single frame's structure dump can
+  exceed it; scope the call to the frame or, if that still fails, one section
+  at a time. A truncated, garbled, or JSON parse-error response *is* the cap
+  being hit — retry narrower; do not read it as "no structure."**
 - **Visual** (e.g. `get_screenshot`) — a per-section reference image to
   sanity-check the block/content mapping.
 - **Content & assets** (e.g. `get_design_context`) — text, links, and image
   asset download URLs for a node. For the content+code path this also provides
-  the layout/structure a new block must reproduce.
+  the layout/structure a new block must reproduce. **Request the lean form** —
+  exclude the screenshot from the context call (fetch visuals separately with
+  the screenshot tool) and disable any Code Connect lookup (e.g.
+  `excludeScreenshot` / `disableCodeConnect`-style options) unless you are
+  mapping to a real component library; both add payload and round-trips and can
+  push a large response over the transport cap. Icons are usually **component
+  instances**, not raster fills — obtain their **SVG** (export/copy as SVG),
+  never a PNG, for the `/icons` or DA `/media` reference in Phase 4.
 - **Design tokens** (e.g. `get_variable_defs`) — colors, spacing, type. Read
   annotation values and, for new blocks, source token values.
 
 Produce an ordered **section inventory**: `{ sectionNodeId, annotation,
-screenshot, content }`. Read annotations per
+screenshot, content, background }` — capture each section's **background /
+theme** (e.g. alternating light and dark sections), because the global token
+retheme (Guardrails) recolors blocks but does **not** switch a section's
+background: that carries via a `section-metadata` `Style` class or a block's
+own defined dark/light variant (Phase 4). Read annotations per
 [references/annotation-contract.md](./references/annotation-contract.md).
+
+> **Placeholder content is common — don't ship it.** Designs routinely contain
+> dummy copy (`Lorem ipsum`, a CTA literally labelled "Button" or "Lorem
+> Ipsum", the same card title repeated across every card) and unfilled slots
+> (empty or transparent image cells, blank stat boxes). Author the *real*
+> content when the design carries it; where it's clearly placeholder, **flag it
+> in the plan and confirm the real copy/media with the user** rather than
+> publishing "Lorem Ipsum" to a live page.
 
 > Site chrome (nav bar, footer) is usually **not page body** — in EDS it is
 > sourced from separate `/nav` and `/footer` documents via the header/footer
@@ -157,6 +192,12 @@ mapping — do not dump it as unresolved:
    - **Structure fits but the look diverges** (bespoke card/layout/decoration
      the block's CSS can't produce without editing it), **or nothing fits →
      new block** (3B).
+   - **A section carrying an interactive control** — tabs / segmented switch,
+     accordion, carousel or slider, toggle — is structural divergence no static
+     block reproduces: route it to a **new block** (3B), or, if the control is
+     non-essential chrome, **confirm with the user** whether to keep it or
+     flatten it to static content. Don't silently drop the interaction or fake
+     it with a look-alike static block.
 3. Attach a **confidence** to every inference: `high` (clear reuse match, or
    clearly novel) or `low` (structure fits but styling is borderline; two
    blocks plausibly fit; new-variant-vs-new-block; content model ambiguous).
@@ -164,7 +205,9 @@ mapping — do not dump it as unresolved:
 ### 2.2 — Confirm the plan before deploying (never deploy a guess)
 
 Present a **resolution plan** — one line per section: decision (reuse `X` /
-default content / new block `Y`), confidence, and a one-clause rationale.
+default content / new block `Y`), confidence, a one-clause rationale, and a
+**content flag** on any section whose copy or media is placeholder (Phase 1)
+and needs real content before publish.
 
 - **High-confidence sections auto-proceed through building** (Phases 3–4) —
   don't block on them.
@@ -199,11 +242,17 @@ they are absorbed once by retargeting the project's design tokens (see
 Guardrails). **How to run the visual check — reuse testing-blocks, don't invent
 one:** get a rendered example of the candidate block — its `liveExampleUrl`
 (block-collection-and-party / block-inventory) or the project's own block
-rendered at `localhost:3000` with representative content — then follow
-**testing-blocks**' browser/Playwright-MCP screenshot pass (mobile/tablet/
-desktop) and its "compare implementation to design" step, comparing that
-screenshot against the Figma **section screenshot** from Phase 1. Divergence
-beyond what the token retheme explains ⇒ new block, not reuse.
+rendered at `localhost:3000` with the section's **actual** content — including
+secondary text, captions, and CTAs over whatever background or media the block
+places them on, not just placeholder cells — then follow **testing-blocks**'
+browser/Playwright-MCP screenshot pass (mobile/tablet/desktop) and its "compare
+implementation to design" step, comparing that screenshot against the Figma
+**section screenshot** from Phase 1. Watch for treatments a block applies to
+only its primary element: one that (say) whitens a heading over dark media but
+leaves the supporting text and buttons at body color passes a structural check
+yet renders that text illegibly — a divergence the token retheme cannot fix.
+Divergence beyond what the token retheme explains ⇒ new block (or a new
+variant), not reuse.
 
 Once the gate passes, learn the block's authoring model from
 **block-collection-and-party** (its examples show the row/cell structure and
@@ -320,7 +369,10 @@ section boundary (no `<hr>`). Do NOT emit `<!DOCTYPE>`, `<html>`, `<head>`,
   **repo-relative paths (`/img/…`) render as `about:error`.** So: download the
   image bytes from Figma (Phase 1 asset URLs), **upload each binary to DA**
   (`PUT admin.da.live/source/{daOrg}/{daRepo}/<media-path>` with the image
-  mime), and reference `https://content.da.live/{daOrg}/{daRepo}/<media-path>`.
+  mime — **derive the MIME from the image bytes or the asset's reported
+  `format`, not the filename/URL suffix; design tools often export JPEG bytes
+  under a `.png`-named asset, and the wrong MIME is a latent corruption bug**),
+  and reference `https://content.da.live/{daOrg}/{daRepo}/<media-path>`.
   External image URLs are also accepted (the preview sideloads them). Author a
   bare `<img alt="…">` and let the pipeline build the `<picture>`.
   *(html-content.md §9 + media.md)*
@@ -376,8 +428,8 @@ done
 # --- both paths ---
 # 1) Upload referenced media FIRST — every authored <img> must resolve at PREVIEW
 #    time. For each image downloaded in Phase 1, PUT the binary to DA (field name
-#    MUST be "data"; set the real image mime). Skip images that use a stable
-#    external URL the preview can sideload.
+#    MUST be "data"; set the image mime FROM THE BYTES/format, not the filename).
+#    Skip images that use a stable external URL the preview can sideload.
 curl -sS -X PUT -H "Authorization: Bearer $TOKEN" \
   -F "data=@<local-image>;type=<image/mime>" \
   "https://admin.da.live/source/$ORG/$REPO/<media-path>"      # 201/200
@@ -408,13 +460,18 @@ curl -s --compressed "$BASE" | grep -o '<img' | wc -l     # expect = authored im
 Non-obvious rules *(da-content / EDS)*:
 - multipart field name is exactly **`data`** — other names silently 200 with
   nothing written.
+- verify media on the **render host** (`…aem.page/$P.plain.html` or the page),
+  **not** by GETting `content.da.live/…` directly — a direct GET returns `401`
+  by design even when the upload succeeded and the pipeline internalizes it.
 - payload is a **body fragment**, not a full document.
 - upload only **stages** the doc; the page is not reachable until **preview**.
   Referenced binaries/external image URLs must be reachable at **preview** time.
 - branch host `<branch>--<repo>--<org>` must be **≤ 63 chars** or it won't resolve.
 
 For many pages, drive `PUT → preview → live` with a concurrency pool + retry
-(`429`/`5xx`) rather than a hand-rolled loop.
+(`429`/`5xx`) rather than a hand-rolled loop. An unattended multi-page run can
+outlast a single ~1h token, so **refresh the token before long batches and on
+any `401`-with-empty-body**, then resume — don't abort the whole run.
 
 ---
 
@@ -443,8 +500,9 @@ For many pages, drive `PUT → preview → live` with a concurrency pool + retry
   existing block is not (→ new block).
 - **Reuse needs structural *and* visual fit** — a matching authoring model is
   not enough; if the block's existing rendered look (after the token retheme)
-  doesn't match the design using only its defined variants, it's a new block
-  (Phase 3A reuse gate).
+  doesn't match the design using only its defined variants — including how it
+  treats secondary text and CTAs over any background or media — it's a new
+  block (Phase 3A reuse gate).
 - **Infer, then confirm — never silently guess.** For an unannotated section
   you may *infer* the mapping (Phase 2.1). High-confidence sections build
   without blocking, but you must **ask before building** any low-confidence or
@@ -458,12 +516,18 @@ For many pages, drive `PUT → preview → live` with a concurrency pool + retry
 
 ---
 
-## Open questions (resolve before v1.0.0)
+## Open questions
 
-1. **Annotation spec** — lock the exact annotation format with adopters (Dev
-   Mode annotation vs. layer-name convention; required keys; how "needs a new
-   block" and "default content" are expressed). This is the biggest correctness
-   dependency. See
-   [references/annotation-contract.md](./references/annotation-contract.md).
-2. **Image hosting default** — DA media upload (`content.da.live`) vs. relying
-   on external sideloaded URLs.
+1. **Image hosting default** — DA media upload (`content.da.live`) is the
+   working default (it internalizes to the media bus at preview and supports
+   cross-page reuse); external sideloaded URLs remain supported. Confirm the
+   default for v1.0.0.
+
+**Optional enhancement (not required for v1.0.0):**
+
+- **Annotation spec** — the skill works fully without annotations;
+  infer-and-confirm is the primary path. Teams that want to *pre-declare*
+  section mappings (to skip inference) can formalize the optional annotation
+  format with adopters — Dev Mode annotation vs. layer-name convention, required
+  keys, how "new block" / "default content" are expressed. See
+  [references/annotation-contract.md](./references/annotation-contract.md).

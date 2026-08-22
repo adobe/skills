@@ -2,10 +2,11 @@
 
 Turn a **Figma design** into an Adobe Edge Delivery Services
 (EDS / AEM / Franklin / Helix) **content page** and deploy it to Document
-Authoring (`da.live`). Works whether the design is **annotated** (each section
-declares its block) or **not** ("just migrate this page") — when annotations
-are absent the skill infers each section's mapping against the project's
-existing blocks and confirms the plan with you before building.
+Authoring (`da.live`). Give it a design and the skill **infers** each section's
+mapping against the project's existing blocks and **confirms the plan** with you
+before building — no annotations needed ("just migrate this page"). If a design
+*happens* to be annotated, those annotations are used as an optional
+accelerator, but they are never required.
 
 Runs standalone in plain Claude / Coworker with just a **Figma MCP** (to read
 the design) and a **DA IMS token** (to write content) — no proprietary web app
@@ -32,7 +33,7 @@ A single design usually mixes both, plus default content.
 Figma frame (annotations optional)
         │  Figma MCP (get_metadata, get_design_context, get_screenshot, get_variable_defs)
         ▼
-  section inventory ──► resolve each section  (annotation-first, else infer)
+  section inventory ──► resolve each section  (infer + confirm; annotations optional)
         │                 ├─ existing block (structure + visual fit) ─► author content
         │                 ├─ needs one / look diverges → new block ───► build isolated block (snowflake /
         │                 │                                              content-driven-development), push code
@@ -48,8 +49,8 @@ Figma frame (annotations optional)
 
 It **orchestrates existing public skills** rather than reinventing them — the
 net-new logic is reading the Figma design, resolving each section to a block
-(from annotations, or inferred by structure + visual fit and confirmed with the
-user), and mapping content into it. DA rules, auth, and block-building all defer
+(inferred by structure + visual fit and confirmed with you, or from annotations
+when the frame has them), and mapping content into it. DA rules, auth, and block-building all defer
 to the skills below.
 
 ## What's included
@@ -76,10 +77,12 @@ skills/figma-to-content/
 
 ## Status
 
-**Draft (v0.1.0).** Before v1.0.0, close the open questions in `SKILL.md` —
-chiefly the **annotation contract** (see
-[`references/annotation-contract.md`](./references/annotation-contract.md)),
-which must be agreed with the design team.
+**Draft (v0.1.0).** The infer-and-confirm path is the primary, fully working
+flow. Before v1.0.0, close the open questions in `SKILL.md` (chiefly the default
+image-hosting choice). The **annotation contract**
+([`references/annotation-contract.md`](./references/annotation-contract.md)) is
+an **optional enhancement** for teams that want to pre-declare section mappings
+— nice to have, not required.
 
 Intended destination:
 `adobe/skills → plugins/aem/edge-delivery-services/skills/figma-to-content`.

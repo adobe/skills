@@ -1,8 +1,11 @@
 # Annotation contract — mapping Figma sections to EDS blocks
 
-> **Status: proposed.** This is the single biggest correctness dependency of
-> the `figma-to-content` skill. Lock it with adopters before v1.0.0.
-> Everything below is a recommended starting spec.
+> **Status: proposed — optional.** This spec is **not required** for the skill
+> to work: infer-and-confirm (SKILL.md Phase 2) is the primary path and needs no
+> annotations. This contract is a *good-to-have* for teams that want to
+> pre-declare section mappings and skip the confirmation round-trip. Everything
+> below is a recommended starting spec to formalize with adopters if/when
+> annotations are adopted.
 
 Annotations are the **high-confidence** path. When the design tells the skill,
 per section, **which block** it becomes and **which content goes where** — and,
