@@ -158,10 +158,14 @@ own defined dark/light variant (Phase 4). Read annotations per
 > **Placeholder content is common — don't ship it.** Designs routinely contain
 > dummy copy (`Lorem ipsum`, a CTA literally labelled "Button" or "Lorem
 > Ipsum", the same card title repeated across every card) and unfilled slots
-> (empty or transparent image cells, blank stat boxes). Author the *real*
-> content when the design carries it; where it's clearly placeholder, **flag it
-> in the plan and confirm the real copy/media with the user** rather than
-> publishing "Lorem Ipsum" to a live page.
+> (empty or transparent image cells, blank stat boxes). Author from the **real
+> text and media in the design context** — not from the placeholder and not from
+> invented filler. Where it's clearly placeholder, **flag it in the plan and
+> confirm the real copy/media with the user** rather than publishing "Lorem
+> Ipsum" to a live page. Distinct items (cards, tabs, news entries) need
+> **distinct** copy and images — repeated-identical content is itself a
+> placeholder smell. If the design *itself* carries only placeholder, you cannot
+> manufacture the real content: stop and get it from the user before publish.
 
 > Site chrome (nav bar, footer) is usually **not page body** — in EDS it is
 > sourced from separate `/nav` and `/footer` documents via the header/footer
@@ -283,7 +287,11 @@ only its primary element: one that (say) whitens a heading over dark media but
 leaves the supporting text and buttons at body color passes a structural check
 yet renders that text illegibly — a divergence the token retheme cannot fix.
 Divergence beyond what the token retheme explains ⇒ new block (or a new
-variant), not reuse.
+variant), not reuse. This outcome is **blocking**: the section is not resolved
+until its rendered look — that text included — is faithful, and the fix is a new
+isolated block/variant, never an edit to the shared block. Recording the gap in
+the plan and reusing the block anyway is the single most common failure of an
+autonomous run (see the Phase 5 pre-publish gate).
 
 Once the gate passes, learn the block's authoring model from
 **block-collection-and-party** (its examples show the row/cell structure and
@@ -402,9 +410,15 @@ section boundary (no `<hr>`). Do NOT emit `<!DOCTYPE>`, `<html>`, `<head>`,
   Max 4 cells per row; blocks cannot nest. *(html-content.md §3)*
 - **Default content:** headings/paragraphs/lists/images/buttons live directly
   in the section `<div>`, outside any block. *(html-content.md §6)*
-- **Icons:** emit `<span class="icon icon-<name>"></span>`; the SVG must exist
-  in the project's Code Bus `/icons/<name>.svg` or in DA `/media` (referenced
-  by full URL). Otherwise the icon silently doesn't render. *(html-content.md §7)*
+- **Icons — two non-interchangeable paths; never a stand-in glyph.** The
+  `<span class="icon icon-<name>"></span>` convention resolves **only** to the
+  project's Code Bus `/icons/<name>.svg`, so that SVG must be **committed to the
+  repo `/icons/` folder and pushed on the deploy branch** (content+code path,
+  same as block code) and return `200` on the branch host — uploading it to DA
+  `/media` does **not** satisfy the span (it 404s and the icon silently vanishes).
+  A DA-`/media` SVG must instead be referenced by **full URL on an `<img>`**, not
+  an icon span. Get the real **SVG** in Phase 1; **never emit an emoji or Unicode
+  glyph in place of a designed icon.** *(html-content.md §7)*
 - **Images — MUST be full, fetchable URLs.** Figma render URLs expire, and
   **repo-relative paths (`/img/…`) render as `about:error`.** So: download the
   image bytes from Figma (Phase 1 asset URLs), **upload each binary to DA**
@@ -505,8 +519,10 @@ curl -s --compressed "$BASE" | grep -o '<img' | wc -l     # expect = authored im
 curl -s --compressed "$BASE" | grep -o 'class="[a-z][a-z-]*"' | sort -u   # every authored block class present
 ```
 
-Also confirm the **section count matches the plan** and rich default content
-survived (spot-check heading / list / link counts).
+Also confirm the **section count matches the plan** — count **top-level
+`<main> > div`** sections, not every `<div>` on the page (blocks and rows are
+divs too, so a raw `<div>` count runs several times high) — and that rich
+default content survived (spot-check heading / list / link counts).
 
 *Client-side* — **`.plain.html` shows blocks UNDECORATED** (`<div class="name">`
 with raw rows); a block's JS runs in the **browser**, so the fragment can never
@@ -532,6 +548,58 @@ For many pages, drive `PUT → preview → live` with a concurrency pool + retry
 (`429`/`5xx`) rather than a hand-rolled loop. An unattended multi-page run can
 outlast a single ~1h token, so **refresh the token before long batches and on
 any `401`-with-empty-body**, then resume — don't abort the whole run.
+
+### Pre-publish gate — the page is not "done" until every box is checked
+
+The verify steps above only help if you **act on a failure**. An autonomous run
+tends to *note* a problem in the plan and ship anyway — **a plan note is not a
+check.** Before reporting the page as done, confirm **all** of these — on the
+**rendered** page (`…aem.page/$P`) when a browser is available (`aem up` locally
+or a real browser), otherwise via `curl` of the fragment **plus** the referenced
+block CSS/JS and assets — and fix-and-redeploy any that fail. **Any box you
+cannot positively verify counts as failed, not passed** — an un-run check is a
+blocker, not a green light, and narrowing your attention to this list must not
+drop a check the phases above already require.
+
+- [ ] **The legibility check actually ran on real content** for every section
+      whose text sits over media or a color fill — including secondary text,
+      CTAs, and list items, **not just the heading**. With a browser, read the
+      rendered contrast. **With `curl` only this check is still mandatory:** fetch
+      the section's block CSS on the branch host and confirm **every** text
+      element rendered over the media (`h1`/`h2`/`h3`, `p`, `a`, `.button`, `li`)
+      is given an explicit contrasting color. A block that colors **only** its
+      heading and leaves the subtitle/CTA/body at the inherited color over dark
+      media is illegible — a **failure to resolve, not a caveat to log** → build a
+      dark variant *as a new isolated block/variant* (never edit the shared block)
+      or route to a new block. Flagging it in the plan does **not** satisfy this
+      box, and **if you cannot verify legibility by either route, the box is
+      FAILED — block; never publish on an unchecked assumption.**
+- [ ] **No placeholder survived into the deployed output** — grep the fragment
+      for `lorem`, CTA labels like "Button"/"Lorem Ipsum", and repeated-identical
+      items; every item that should be distinct has distinct copy **and** a
+      distinct image.
+- [ ] **Every referenced icon resolves** — each `<span class="icon icon-x">`
+      returns `200` at `/icons/x.svg` on the branch host (or is a full DA-`/media`
+      URL on an `<img>`); **no emoji or Unicode glyph standing in for a designed
+      icon.**
+- [ ] **Every new block is live *and* decorates** — its JS **and** CSS return
+      `200` on the branch host, and the rendered page shows the block with
+      `data-block-status="loaded"`, its transformed DOM, and applied CSS.
+- [ ] **0 `about:error`**, the `<img>` count matches what you authored, and the
+      count of **top-level `<main> > div` sections** matches the plan.
+- [ ] **The `metadata` block is present** — a `<div class="metadata">` (exact
+      class) is the **last element of the last section** per Phase 4, carrying the
+      keys the plan calls for (title, description, image, …). An
+      intended-but-unauthored block — a bare `<!-- Metadata block -->` comment
+      with no `<div class="metadata">` — is a **failed** box, not a passed one.
+      (Scope note: the `.plain.html` fragment legitimately has **no**
+      `<body>/<header>/<main>/<footer>` wrappers — it is a body fragment, so their
+      absence there is **not** a defect. Check only for the `metadata` block.)
+
+If an item can't be fixed unattended (e.g. the design *itself* only contains
+placeholder copy, or real icon SVGs aren't available), **stop and get the real
+content/decision from the user** — don't publish the failing page and don't
+fabricate the missing piece.
 
 ---
 
