@@ -275,6 +275,11 @@ and needs real content before publish.
   hard to reverse. Skip this pause only if the user pre-authorized an
   unattended run. A **fully annotated** plan needs no pause — the annotations
   are the authorization.
+- **Flag an existing target page.** Before confirming, check whether the target
+  `content/<PATH>.html` already exists in DA (a cheap Source-API `GET`, Phase 5);
+  if it does, deploying **overwrites** it — say so in the plan and get explicit
+  overwrite confirmation. Never silently clobber a page you didn't create, even
+  on an otherwise pre-authorized unattended run.
 - The user can override any line.
 
 Never silently drop a section, and never deploy an **inferred** mapping the
@@ -471,7 +476,14 @@ section boundary (no `<hr>`). Do NOT emit `<!DOCTYPE>`, `<html>`, `<head>`,
 - **Page metadata** → a single `metadata` block (exact class), placed as the
   **last element of the last section inside `<main>`** (never after `</main>`
   or in `<footer>`); keys like `title`, `description`, `image`, `template`,
-  `theme`. *(html-content.md §5)*
+  `theme`. **Author it from the design — don't leave it empty or a bare
+  comment.** Derive `title` from the frame name or the page `<h1>`, `description`
+  from the hero/intro copy (a concise real sentence, never lorem), and `image`
+  from the primary/hero image's uploaded DA URL when the design has one. This
+  block is **required** — the Phase 5 pre-publish gate blocks on its absence — so
+  populate it rather than deferring it. If the design offers no usable
+  title/description text, ask the user rather than inventing marketing copy.
+  *(html-content.md §5)*
 
 Inside block cells the pipeline runs a stricter inline-tag normalization than
 for default content — `<span class>` is unwrapped (class lost), `<b>`→`<strong>`,
@@ -529,7 +541,22 @@ curl -sS -X PUT -H "Authorization: Bearer $TOKEN" \
   "https://admin.da.live/source/$ORG/$REPO/<media-path>"      # 201/200
 #    then reference it in the HTML as https://content.da.live/$ORG/$REPO/<media-path>
 
-# 2) Write content — multipart, field name MUST be "data", type text/html
+# 2) Guard against silent overwrite — the Source-API PUT clobbers an existing
+#    page and still returns 200. GET the path first (same endpoint as the PUT):
+#    200 = it ALREADY exists, so the overwrite MUST have been surfaced and
+#    confirmed in the Phase 2.2 plan; 404 = new, safe to write. Auth is checked
+#    BEFORE existence, so a 401 (empty body) is an expired token — re-auth and
+#    retry; do NOT treat a non-404 as "new" and write over a page blindly.
+exists=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" \
+  "https://admin.da.live/source/$ORG/$REPO/$P.html")
+case "$exists" in
+  200) echo "⚠ $P.html already exists in DA — overwriting (must be confirmed in the plan)";;
+  404) : ;;  # new page, proceed
+  401) echo "❌ 401 on existence check — token expired; re-auth (da-auth) and retry"; exit 1;;
+  *)   echo "❌ unexpected $exists on existence check — resolve before writing"; exit 1;;
+esac
+
+# 3) Write content — multipart, field name MUST be "data", type text/html
 curl -sS -X PUT -H "Authorization: Bearer $TOKEN" \
   -F "data=@content/$P.html;type=text/html" \
   "https://admin.da.live/source/$ORG/$REPO/$P.html"           # 201 (new) or 200 (update)

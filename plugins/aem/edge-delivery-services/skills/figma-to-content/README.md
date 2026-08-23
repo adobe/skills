@@ -30,6 +30,8 @@ A single design usually mixes both, plus default content.
 ## How it works
 
 ```
+preflight: Figma MCP reachable · file access · DA token · project checkout    (fail fast)
+        ▼
 Figma frame (annotations optional)
         │  Figma MCP (get_metadata, get_design_context, get_screenshot, get_variable_defs)
         ▼
@@ -39,13 +41,22 @@ Figma frame (annotations optional)
         │                 │                                              content-driven-development), push code
         │                 └─ default content ──────────────────────────► author prose/media, no block
         ▼
-  resolution plan ──► confirm with user (ask on low-confidence)
+  resolution plan ──► confirm with user (ask on low-confidence; flag overwrite of an existing page)
         ▼
   content/<path>.html  ──► PUT admin.da.live/source  ──►  POST admin.hlx.page/preview
                             (da-content contract)          (+ Code Sync first, for new blocks)
         ▼
+  pre-publish gate: legibility · no placeholder · icons resolve · blocks decorate · metadata present
+        ▼
   da.live edit URL + aem.page preview URL
 ```
+
+The flow is bracketed by two safety gates: a **preflight** (fail fast on a
+missing Figma MCP, no file access, no DA token, or no project checkout — one
+actionable message instead of a half-built page) and a **pre-publish gate**
+(the page is not "done" until legibility, placeholder-free content, resolvable
+icons, decorated new blocks, and a populated `metadata` block are all verified —
+an un-run check counts as failed, never as a pass).
 
 It **orchestrates existing public skills** rather than reinventing them — the
 net-new logic is reading the Figma design, resolving each section to a block
