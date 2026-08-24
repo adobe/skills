@@ -58,7 +58,8 @@ const { runDispatcherScan } = require('./dispatcher-inventory.js');
 //   'cascade'      — BPA/CAM → CSV → analyzer → LLM (Java code patterns)
 //   'html-scan'    — pure-Node regex scan of .html (htlLint)
 //   'config-scan'  — config-file heuristic scan (osgiConfig)
-//   'content-scan' — .content.xml / template scan (lui, cdw, templateModernization)
+//   'content-scan' — .content.xml / template / dispatcher-config scan (lui, cdw,
+//                    templateModernization, dispatcherConversion)
 // `bpaSlugs` maps a pattern to its BPA subtype(s): the Java 'cascade' patterns,
 // plus replication (replication.agent) and lui/cdw/templateModernization. When a
 // BPA source is present it is authoritative; html/config/content scans are the
@@ -345,8 +346,9 @@ async function gatherFindings(options = {}) {
     }
   }
 
-  // ── Strategy 'content-scan': lui / cdw / templateModernization (fallback
-  //    when no BPA source scanned the pattern) ──────────────────────────────
+  // ── Strategy 'content-scan': lui / cdw / templateModernization / dispatcherConversion
+  //    (fallback when no BPA source scanned the pattern; dispatcherConversion has no BPA
+  //     subtype, so it always runs here) ──────────────────────────────────────
   if (workspaceRoot) {
     for (const pattern of CANONICAL_PATTERNS) {
       if (PATTERN_META[pattern].strategy !== 'content-scan') continue;

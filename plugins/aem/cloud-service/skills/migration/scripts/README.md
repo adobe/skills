@@ -93,7 +93,7 @@ The `content-scan` strategy for `dispatcherConversion` — detects an AMS or on-
 
 ### `dispatcher-verify.js`
 
-Output verification for a generated Cloud Service Dispatcher config (`verifyOutput`). The filter/ACL allow-list is a **hard gate** — if the source had filter rules and the converted output has none (or fewer), it fails, so a conversion that would weaken security is caught before it is applied. Also reconciles rewrite/redirect counts (warning — rules may legitimately move to the CDN) and flags mega-inlined vhosts and missing current-SDK conventions (`enabled_farms/farms.any`).
+Output verification for a generated Cloud Service Dispatcher config (`verifyOutput`). The filter/ACL allow-list is a **hard gate** — if the source had filter rules and the converted output has none (or fewer), it fails, so a conversion that would weaken security is caught before it is applied. Baseline and output are counted the **same** way via `countFilterRules` (in `dispatcher-inventory.js`): inline farm `/filter` rules **plus** the standalone filter files an inline `$include` pulls in (`filters/*.any`, `*_filters.any`) — so the canonical AMS `$include` layout can't score zero and slip an emptied output past the gate. (Residual blind spot: filter rules reachable only through an `$include` to a path outside a `filters/` directory aren't resolved — sanity-check `baseline.filter` against the source; see [output-verification.md](../references/dispatcher/output-verification.md).) Also reconciles rewrite/redirect counts (warning — rules may legitimately move to the CDN) and flags mega-inlined vhosts and missing current-SDK conventions (`enabled_farms/farms.any`).
 
 ### `dispatcher-run.js`
 
@@ -137,9 +137,13 @@ node unified-collection-reader.js [pattern] [collections-directory]
 
 ## Testing
 
+The unit tests use Node's built-in test runner (`node --test`), which requires **Node ≥18**. This is a test-tooling prerequisite only — the scripts themselves run on the `package.json` `engines` floor (Node ≥14); running the suite does not raise that runtime floor.
+
 ```bash
 # From the scripts directory
 cd scripts
+npm test                                       # runs the *.test.js suites (requires Node ≥18)
+
 npm run parse-bpa -- <bpa-file-path> [output-dir]
 npm run read-unified -- [pattern] [collections-dir]
 ```

@@ -145,6 +145,31 @@ test('verifyOutput: missing farms.any collector = warning (not failure)', () => 
   assert.ok(res.warnings.some(x => /farms\.any/.test(x)));
 });
 
+// REGRESSION (final review finding #1, CONFIRMED critical): the canonical AMS "standard"
+// layout $include's its filter rules from conf.dispatcher.d/filters/*_filters.any. The
+// baseline counter used to scan only inline farm /filter{} bodies → ruleCounts.filter=0 →
+// the ACL hard gate silently PASSED on empty output, dropping every ACL undetected.
+test('buildInventory + verifyOutput: $include\'d filter rules are counted so the ACL gate cannot silently pass', () => {
+  // Source: AMS-standard layout — the farm $include's the real rules from filters/mysite_filters.any.
+  const r = mk();
+  w(r, 'conf.dispatcher.d/available_farms/mysite.farm',
+    '/mysite {\n  /filter {\n    $include "../filters/mysite_filters.any"\n  }\n}\n');
+  w(r, 'conf.dispatcher.d/filters/mysite_filters.any',
+    '/0001 { /type "allow" /url "*" }\n/0002 { /type "deny" /url "/apps" }\n/0003 { /type "deny" /url "/bin" }\n');
+  const inv = INV.buildInventory(r);
+  assert.strictEqual(inv.mode, 'standard');
+  assert.strictEqual(inv.ruleCounts.filter, 3, 'must count the 3 $include\'d filter rules, not 0');
+
+  // Output: converter emitted an EMPTY filters.any + empty farm /filter → every ACL dropped.
+  const out = mk();
+  w(out, 'conf.dispatcher.d/filters/filters.any', ''); // empty!
+  w(out, 'conf.dispatcher.d/available_farms/mysite.farm', '/mysite { /filter { } }');
+  const res = VERIFY.verifyOutput(out, inv.ruleCounts);
+  assert.strictEqual(res.ok, false, 'empty output must NOT silently pass the ACL gate');
+  assert.ok(res.failures.some(f => f.category === 'filter-acl-loss' && f.severity === 'critical'),
+    'must raise a critical filter-acl-loss failure');
+});
+
 // Task 4: Tool driver — config generation + executor resolution
 const RUN = require('./dispatcher-run.js');
 

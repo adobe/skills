@@ -1,21 +1,20 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { readTextFiles, countSectionRules } = require('./dispatcher-inventory.js');
+const { readTextFiles, countFilterRules } = require('./dispatcher-inventory.js');
 
 function read(p) { try { return fs.readFileSync(p, 'utf8'); } catch { return null; } }
-function nonComment(txt) { return (txt || '').split('\n').filter(l => l.trim() && !l.trim().startsWith('#')).join('\n'); }
 
 function verifyOutput(outputSrcDir, baseline) {
   const failures = [], warnings = [];
   const dispD = path.join(outputSrcDir, 'conf.dispatcher.d');
 
-  // 1. Filter/ACL preservation — HARD GATE.
-  const filtersAny = path.join(dispD, 'filters/filters.any');
-  const farmFiles = readTextFiles(dispD, n => n.endsWith('.farm'));
-  const outFilterRules = countSectionRules([filtersAny].filter(fs.existsSync), 'anything-ignored')
-    + (nonComment(read(filtersAny)).match(/\/[0-9]{3,4}\s*\{/g) || []).length
-    + countSectionRules(farmFiles, 'filter');
+  // 1. Filter/ACL preservation — HARD GATE. Count the output the SAME way buildInventory
+  //    counted the baseline (countFilterRules): inline farm /filter{} rules PLUS standalone
+  //    $include'd filter files (filters/*.any, *_filters.any). Symmetry is essential — an
+  //    $include'd source can't slip past as 0, and a converter that preserves filters into
+  //    filters.any / a *_filters.any include is not falsely flagged as loss.
+  const outFilterRules = countFilterRules(outputSrcDir);
   if ((baseline.filter || 0) > 0 && outFilterRules === 0) {
     failures.push({ severity: 'critical', category: 'filter-acl-loss',
       detail: `Source had ${baseline.filter} filter rules but the output has none (empty filters.any / farm /filter). Filters are security-critical and must not be dropped.` });

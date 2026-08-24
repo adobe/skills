@@ -59,9 +59,13 @@ function ensureToolInstalled(toolDir) {
 function runConverter(workingDir, mode, toolDir) {
   const executor = resolveExecutor(toolDir, mode);
   const r = spawnSync('node', [executor], { cwd: workingDir, encoding: 'utf8' });
+  let stdout = (r.stdout || '') + (r.stderr || '');
+  // On a spawn failure (e.g. node missing, ENOENT) status is null and stdout/stderr are empty;
+  // fold the error in so callers see the cause instead of an opaque { code: null, stdout: '' }.
+  if (r.error) stdout += String(r.error.message || r.error);
   return {
     code: r.status,
-    stdout: (r.stdout || '') + (r.stderr || ''),
+    stdout,
     outputSrcDir: path.join(workingDir, 'target/dispatcher/src'),
     reportPath: path.join(workingDir, 'target/dispatcher/dispatcher-converter-report.md'),
   };

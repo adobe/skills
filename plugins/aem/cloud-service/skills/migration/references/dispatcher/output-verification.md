@@ -6,6 +6,8 @@ This is phase 4 (**VERIFY + NORMALIZE**) of the flow in [context.md](context.md)
 
 **Why this layer exists.** Adobe's converter can silently emit an empty `filters.any` while its own `dispatcher-converter-report.md` reports the filters "consolidated." A consolidated-to-nothing filter set reads as success in the tool's report and as a catastrophe in production: an empty `filters.any` (or empty farm `/filter` section) is a wide-open dispatcher. Nothing in the tool's own output flags this. `dispatcher-verify.js` is the gate that does — it reconciles the output's real rule counts against the counts you captured *before* conversion and refuses to call a dropped ACL a success.
 
+Both sides of that reconciliation use the **same** filter counter (`countFilterRules` in `dispatcher-inventory.js`), which counts filter rules wherever they live: inline farm `/filter { /NNNN {} … }` blocks **and** the standalone filter-rule files an inline `/filter { $include … }` pulls in — a file whose basename is `filters.any`, ends with `_filters.any`, or is a `.any` file in a `filters/` directory. This matters because the canonical AMS "standard" layout keeps its rules in `conf.dispatcher.d/filters/*_filters.any` and only `$include`s them from the farm; counting inline blocks alone would score such a source at **zero** filter rules, and the gate — which only fires when `baseline.filter > 0` — would wave an emptied output straight through. Because baseline and output are counted identically, a converter that legitimately preserves filters into `filters.any` (or a `*_filters.any` include) is *not* falsely flagged as loss either.
+
 ## Running the check
 
 After `runConverter` returns (phase 3), hand its `outputSrcDir` and the **pre-conversion** inventory's `ruleCounts` to the verifier:
@@ -25,13 +27,17 @@ A few things to be precise about:
 - **`outputSrcDir` is the tool's output tree** (`<workingDir>/target/dispatcher/src`), not the in-place project source. The verifier reads `conf.dispatcher.d/` and `conf.d/` under that directory.
 - **`failures` are objects, `warnings` are plain strings.** Each failure is `{ severity, category, detail }`; each warning is a human-readable sentence. `ok` is simply `failures.length === 0` — warnings never flip `ok` to false.
 
+### The residual filter blind spot
+
+`countFilterRules` catches the two layouts that cover essentially every real config — inline farm `/filter` blocks and `$include`'d files under a `filters/` dir (or named `*_filters.any`). One gap remains, and it is the same honesty caveat as the [`cmVarCandidates` blind spot](config-generation.md): a farm that `$include`s its filter rules from a file that is **neither** in a `filters/` directory **nor** named `*_filters.any` (for example `/filter { $include "/etc/httpd/acl/site-acls.any" }` pointing at some absolute container path) is not resolved — the counter never opens that file, so those rules score **zero**. If the baseline reads `filter: 0` on a config you know has ACLs, that is the signal: don't trust a green gate on it. Sanity-check `baseline.filter` against the source before proceeding — grep the source for `/filter` sections and their `$include` targets (`grep -rn '/filter' <configRoot>`), and if rules live behind an unresolvable include, count them yourself rather than letting a `baseline.filter` of 0 disable the gate.
+
 ## The taxonomy (verbatim categories)
 
 These `category` values come straight from `dispatcher-verify.js`. Match on them exactly.
 
 | `category` | `severity` | What it means | What to do |
 |---|---|---|---|
-| `filter-acl-loss` | `critical` | Source had filter rules (`baseline.filter > 0`) but the output's `filters.any` / farm `/filter` is **empty** (zero rules). | **HARD STOP.** Filters are security-critical — NEVER ship a dropped filter ACL. This is the core reason the layer exists: the tool can emit an empty `filters.any` while reporting "consolidated." Do not proceed to phase 5/6; surface to the user. |
+| `filter-acl-loss` | `critical` | Source had filter rules (`baseline.filter > 0`) but the output has **zero** — every place a rule can live is empty: inline farm `/filter` blocks *and* the standalone filter files (`filters/*.any`, `*_filters.any`). | **HARD STOP.** Filters are security-critical — NEVER ship a dropped filter ACL. This is the core reason the layer exists: the tool can emit an empty `filters.any` while reporting "consolidated." Do not proceed to phase 5/6; surface to the user. |
 | `filter-rule-regression` | `important` | Output filter count is > 0 but **below** the baseline — some rules survived, some were lost. | Find the lost rules. Diff the output `filters.any` / farm `/filter` against the source filter files, restore what dropped, or explicitly accept the delta with a recorded reason. |
 | `disorganized` | `important` | A vhost under `conf.d/` exceeds **5000 lines** — mega-inlined, everything crammed into one file. | Restructure the inlined rewrites/filters into named include files and wire them back (see **Normalization** below). |
 

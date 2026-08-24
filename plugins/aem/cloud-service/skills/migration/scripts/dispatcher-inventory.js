@@ -114,6 +114,40 @@ function extractBraceBody(txt, openIdx) {
   return txt.slice(start);
 }
 
+// Count filter/ACL rules across BOTH sources they can live in:
+//   (a) inline `/filter { /NNNN {} … }` bodies in dispatcher.any / *.farm / *_farm.any, and
+//   (b) standalone filter-rule files an inline `/filter { $include … }` pulls in — the
+//       canonical AMS "standard" layout (e.g. conf.dispatcher.d/filters/*_filters.any).
+// Counting only (a) is the confirmed false-negative: a config whose filters are `$include`'d
+// reports 0 filter rules, so the ACL hard gate in verifyOutput silently passes on empty output.
+// buildInventory (baseline) and verifyOutput (output) MUST call this so both sides count the
+// same way. A file qualifies as a standalone filter-rule file when its basename is `filters.any`,
+// ends with `_filters.any`, or it is a `.any` file whose parent directory is named `filters` —
+// excluding files already counted via anyFarms (dispatcher.any / dispatcher.any.tmpl / *_farm.any)
+// to avoid double counting. Comment lines (`#`) are stripped, like the other counters.
+function countFilterRules(root, anyFarms) {
+  if (!anyFarms) {
+    const dispAny = readTextFiles(root, n => n === 'dispatcher.any' || n === 'dispatcher.any.tmpl');
+    const farmFiles = readTextFiles(root, n => n.endsWith('.farm') || n.endsWith('_farm.any'));
+    anyFarms = dispAny.concat(farmFiles);
+  }
+  // (a) inline /filter{} bodies.
+  let n = countSectionRules(anyFarms, 'filter');
+  // (b) standalone filter-rule files. readTextFiles passes ONLY the basename to the predicate,
+  //     so collect .any files first, then filter by path.dirname for the `filters/`-dir check.
+  const standalone = readTextFiles(root, name => name.endsWith('.any')).filter(f => {
+    const base = path.basename(f);
+    if (base === 'dispatcher.any' || base === 'dispatcher.any.tmpl' || base.endsWith('_farm.any')) return false; // already in anyFarms
+    return base === 'filters.any' || base.endsWith('_filters.any') || path.basename(path.dirname(f)) === 'filters';
+  });
+  for (const f of standalone) {
+    let txt; try { txt = fs.readFileSync(f, 'utf8'); } catch { continue; }
+    const filtered = txt.split('\n').filter(l => !l.trim().startsWith('#')).join('\n');
+    n += (filtered.match(/\/[0-9]{3,4}\s*\{/g) || []).length;
+  }
+  return n;
+}
+
 function buildInventory(root) {
   const mode = detectMode(root);
   const dispAny = readTextFiles(root, n => n === 'dispatcher.any' || n === 'dispatcher.any.tmpl');
@@ -143,7 +177,7 @@ function buildInventory(root) {
     dispatcherAny: dispAny[0] || null, httpd,
     vhostFiles, farmFiles,
     ruleCounts: {
-      filter: countSectionRules(anyFarms, 'filter'),
+      filter: countFilterRules(root, anyFarms),
       rewrite: rewriteCount,
       cache: countSectionRules(anyFarms, 'rules'),
       clientheader: countQuotedEntries(anyFarms, 'clientheaders'),
@@ -166,4 +200,4 @@ function runDispatcherScan(workspaceRoot) {
   return { ok: true, findings, rawFindings, warnings: [] };
 }
 
-module.exports = { detectMode, findConfigRoots, looksLikeDispatcher, hasAmsMarkers, walkFind, buildInventory, runDispatcherScan, readTextFiles, countSectionRules, countQuotedEntries };
+module.exports = { detectMode, findConfigRoots, looksLikeDispatcher, hasAmsMarkers, walkFind, buildInventory, runDispatcherScan, readTextFiles, countSectionRules, countQuotedEntries, countFilterRules };
