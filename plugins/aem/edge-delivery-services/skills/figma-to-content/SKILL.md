@@ -468,13 +468,20 @@ section boundary (no `<hr>`). Do NOT emit `<!DOCTYPE>`, `<html>`, `<head>`,
 - **Images — MUST be full, fetchable URLs.** Figma render URLs expire, and
   **repo-relative paths (`/img/…`) render as `about:error`.** So: download the
   image bytes from Figma (Phase 1 asset URLs), **upload each binary to DA**
-  (`PUT admin.da.live/source/{daOrg}/{daRepo}/<media-path>` with the image
-  mime — **derive the MIME from the image bytes or the asset's reported
-  `format`, not the filename/URL suffix; design tools often export JPEG bytes
-  under a `.png`-named asset, and the wrong MIME is a latent corruption bug**),
-  and reference `https://content.da.live/{daOrg}/{daRepo}/<media-path>`.
-  External image URLs are also accepted (the preview sideloads them). Author a
-  bare `<img alt="…">` and let the pipeline build the `<picture>`.
+  (`PUT admin.da.live/source/{daOrg}/{daRepo}/<media-path>`), and reference
+  `https://content.da.live/{daOrg}/{daRepo}/<media-path>`. External image URLs
+  are also accepted (the preview sideloads them). Author a bare `<img alt="…">`
+  and let the pipeline build the `<picture>`.
+  - **Normalize format, extension, and MIME together — from the bytes, never the
+    URL suffix.** Detect the real format from the image's magic bytes (or the
+    asset's reported `format`), then make **all three agree**: the multipart
+    `type=` MIME, the `<media-path>` file extension you PUT to, and the extension
+    in the `content.da.live` URL you author. Design tools routinely export JPEG
+    bytes under a `.png`-named asset; trusting the suffix gives you a `.png` path
+    served as `image/jpeg` (or the reverse) — a latent corruption bug. Canonical
+    mapping: JPEG→`.jpg`/`image/jpeg`, PNG→`.png`/`image/png`, WebP→`.webp`/
+    `image/webp`, GIF→`.gif`/`image/gif`, SVG→`.svg`/`image/svg+xml`. If bytes
+    and asset-reported format disagree, trust the bytes.
   *(html-content.md §9 + media.md)*
 - **Section styling** → a `section-metadata` block **inside** the section
   (`Style` → CSS classes; other rows → `data-*`). *(html-content.md §4)*
@@ -577,7 +584,10 @@ csscode=$(curl -s -o /dev/null -w '%{http_code}' --compressed "$BH/blocks/<new-b
 # --- both paths ---
 # 1) Upload referenced media FIRST — every authored <img> must resolve at PREVIEW
 #    time. For each image downloaded in Phase 1, PUT the binary to DA (field name
-#    MUST be "data"; set the image mime FROM THE BYTES/format, not the filename).
+#    MUST be "data"). Detect the format from the BYTES and keep <image/mime>, the
+#    <media-path> extension, and the authored content.da.live URL extension all in
+#    agreement (see Phase 4 "Normalize format, extension, and MIME together") — the
+#    filename/URL suffix is not authoritative.
 #    Skip images that use a stable external URL the preview can sideload.
 req 200,201 -X PUT -H "Authorization: Bearer $TOKEN" \
   -F "data=@<local-image>;type=<image/mime>" \
