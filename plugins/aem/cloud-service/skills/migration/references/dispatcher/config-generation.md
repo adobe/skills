@@ -49,7 +49,7 @@ A few things worth being precise about:
     httpdSrc: '<path>',
     vhostsToConvert: ['<path>', ...],
     variablesToReplace: [{ from: '<VAR>', to: '<value>' }, ...],
-    appendToVhosts: '<optional scalar>',
+    appendToVhosts: '<optional: path to a file>',   // fs.readFileSync'd verbatim, uncaught — a FILE PATH, never inline text
     pathToPrepend: ['<path>', ...],
     portsToMap: [<port>, ...],
   },
@@ -102,7 +102,7 @@ This is the mode where config generation is real work, not a lookup. Everything 
 | `pathToPrepend` | folders that hold whatever `vhostsToConvert`'s `Include`/`$include` lines reach into | e.g. the `conf.vhost.d/` and `conf.d/` directories. Get this wrong and includes the tool needs simply aren't there. |
 | `portsToMap` | any non-`:80` `<VirtualHost>` ports in the source worth preserving | Always an array, even for one port — see the shape rule above. |
 | `sdkSrc` | same as `standard` mode | Resolve from the workspace or ask the user. |
-| `appendToVhosts` | usually nothing | Optional scalar the executor also reads; leave it blank unless you have specific boilerplate that has to land on every converted vhost. Uncommon — the worked example below leaves it unset. |
+| `appendToVhosts` | usually nothing | **An optional path to a file** — not inline directive text. The executor does `fs.readFileSync(appendToVhosts)` with no `try`/`catch`; the file's contents are appended verbatim to every converted vhost. Pass it a real file path — passing literal directive text instead of a path crashes the whole conversion with `ENOENT`. Leave it blank unless you have a specific file whose contents need to land on every vhost. Uncommon — the worked example below leaves it unset. |
 
 ### The `cmVarCandidates` blind spot
 
