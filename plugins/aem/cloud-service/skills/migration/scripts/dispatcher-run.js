@@ -11,8 +11,13 @@ function yamlList(items) {
 }
 
 // Emit the tool's config.yaml. Keys not applicable to the mode are left blank (the tool ignores them).
+// cfg.onPremise.variablesToReplace: array of {from, to} objects → emitted as YAML mapping (flat key: value pairs).
+// cfg.onPremise.portsToMap: array of numbers → emitted as YAML list.
 function writeToolConfig(workingDir, cfg) {
   const op = cfg.onPremise || {};
+  const variablesToReplaceYaml = (op.variablesToReplace && op.variablesToReplace.length)
+    ? '\n' + op.variablesToReplace.map(v => `            "${v.from}": "${v.to}"`).join('\n')
+    : ' ';
   const lines = [
     'dispatcherConverter:',
     `    sdkSrc: ${cfg.sdkSrc || ''}`,
@@ -20,10 +25,10 @@ function writeToolConfig(workingDir, cfg) {
     `        dispatcherAnySrc: ${op.dispatcherAnySrc || ''}`,
     `        httpdSrc: ${op.httpdSrc || ''}`,
     `        vhostsToConvert:${yamlList(op.vhostsToConvert)}`,
-    `        variablesToReplace:${yamlList((op.variablesToReplace || []).map(v => `${v.from},${v.to}`))}`,
+    `        variablesToReplace:${variablesToReplaceYaml}`,
     `        appendToVhosts: ${op.appendToVhosts || ''}`,
     `        pathToPrepend:${yamlList(op.pathToPrepend)}`,
-    `        portsToMap: ${op.portsToMap || ''}`,
+    `        portsToMap:${yamlList(op.portsToMap)}`,
     '    ams:',
     `        cfg: ${(cfg.ams && cfg.ams.cfg) || ''}`,
     '',

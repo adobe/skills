@@ -152,8 +152,12 @@ test('writeToolConfig: emits a valid dispatcherConverter config.yaml (on-premise
   const wd = mk();
   const p = RUN.writeToolConfig(wd, {
     sdkSrc: '/sdk/src', mode: 'flexible',
-    onPremise: { dispatcherAnySrc: '/x/dispatcher.any', httpdSrc: '/x/httpd.conf',
-      vhostsToConvert: ['/x/conf.vhost.d/vhosts.conf'], variablesToReplace: [], pathToPrepend: ['/x/conf.vhost.d/'], portsToMap: null },
+    onPremise: {
+      dispatcherAnySrc: '/x/dispatcher.any', httpdSrc: '/x/httpd.conf',
+      vhostsToConvert: ['/x/conf.vhost.d/vhosts.conf'],
+      variablesToReplace: [{from: 'PUBLISH_DOCROOT', to: 'DOCROOT'}, {from: 'DISP_ID', to: 'SITE'}],
+      pathToPrepend: ['/x/conf.vhost.d/'], portsToMap: [8000, 8080]
+    },
   });
   const y = fs.readFileSync(p, 'utf8');
   assert.match(y, /dispatcherConverter:/);
@@ -161,6 +165,14 @@ test('writeToolConfig: emits a valid dispatcherConverter config.yaml (on-premise
   assert.match(y, /dispatcherAnySrc: \/x\/dispatcher\.any/);
   assert.match(y, /vhostsToConvert:/);
   assert.match(y, /- "\/x\/conf\.vhost\.d\/vhosts\.conf"/);
+  // Verify variablesToReplace is a YAML mapping (key: value), not a sequence.
+  assert.match(y, /"PUBLISH_DOCROOT": "DOCROOT"/);
+  assert.match(y, /"DISP_ID": "SITE"/);
+  assert.ok(!y.includes('- "PUBLISH_DOCROOT,DOCROOT"'), 'should NOT emit comma-joined list format');
+  // Verify portsToMap is a YAML list, not a scalar.
+  assert.match(y, /- "8000"/);
+  assert.match(y, /- "8080"/);
+  assert.ok(!y.includes('portsToMap: 8000,8080'), 'should NOT emit scalar comma-separated format');
 });
 
 test('resolveExecutor: maps mode to the right entry script', () => {
