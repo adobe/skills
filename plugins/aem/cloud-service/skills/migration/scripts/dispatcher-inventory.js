@@ -8,14 +8,14 @@ const isDir = p => { try { return fs.statSync(p).isDirectory(); } catch { return
 // A dispatcher config root has conf.d/ or conf.dispatcher.d/ or conf.vhost.d/ or a dispatcher.any.
 function looksLikeDispatcher(dir) {
   return ['conf.d', 'conf.dispatcher.d', 'conf.vhost.d'].some(d => isDir(path.join(dir, d)))
-    || walkFind(dir, n => n === 'dispatcher.any' || n === 'dispatcher.any.tmpl', 3);
+    || walkFind(dir, n => n === 'dispatcher.any' || n === 'dispatcher.any.tmpl', 4);
 }
 
 function walkFind(dir, pred, depth, d = 0) {
   if (d > depth) return false;
   let es; try { es = fs.readdirSync(dir, { withFileTypes: true }); } catch { return false; }
   for (const e of es) {
-    if (e.isFile() && pred(e.name)) return true;
+    if ((e.isFile() || e.isSymbolicLink()) && pred(e.name)) return true;
     if (e.isDirectory() && !['node_modules', '.git', 'target', 'dist'].includes(e.name)
         && walkFind(path.join(dir, e.name), pred, depth, d + 1)) return true;
   }
@@ -34,7 +34,7 @@ function detectMode(root) {
   if (!looksLikeDispatcher(root)) return 'not-dispatcher';
   if (alreadyCloud && !amsMarkers) return 'already-cloud';
   if (hasStd) return 'standard';
-  if (hasMonolith || isDir(path.join(root, 'conf.vhost.d'))) return 'flexible';
+  if (hasMonolith || (isDir(path.join(root, 'conf.vhost.d')) && !isDir(dispD))) return 'flexible';
   // has a dispatcher.any + vhosts but not standard v2.0 → treat as flexible-general (v1/unusual)
   if (walkFind(root, n => n === 'dispatcher.any', 4)) return 'v1';
   return 'unknown';
@@ -48,7 +48,7 @@ function hasAmsMarkers(root) {
 function findConfigRoots(workspaceRoot, acc = [], depth = 0) {
   if (depth > 6) return acc;
   let es; try { es = fs.readdirSync(workspaceRoot, { withFileTypes: true }); } catch { return acc; }
-  if (looksLikeDispatcher(workspaceRoot) && detectMode(workspaceRoot) !== 'not-dispatcher') acc.push(workspaceRoot);
+  if (detectMode(workspaceRoot) !== 'not-dispatcher') acc.push(workspaceRoot);
   for (const e of es) {
     if (!e.isDirectory() || ['node_modules', '.git', 'target', 'dist'].includes(e.name)) continue;
     findConfigRoots(path.join(workspaceRoot, e.name), acc, depth + 1);

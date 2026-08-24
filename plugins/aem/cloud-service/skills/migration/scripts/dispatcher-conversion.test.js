@@ -36,3 +36,44 @@ test('detectMode: not a dispatcher config', () => {
   const r = mk(); w(r, 'src/Foo.java', 'class Foo {}');
   assert.strictEqual(INV.detectMode(r), 'not-dispatcher');
 });
+
+test('detectMode: conf.dispatcher.d with conf.vhost.d (not flexible; should be standard or unknown)', () => {
+  const r = mk();
+  fs.mkdirSync(path.join(r, 'conf.dispatcher.d'), { recursive: true });
+  fs.mkdirSync(path.join(r, 'conf.vhost.d'), { recursive: true });
+  w(r, 'conf.vhost.d/vhosts.conf', '<VirtualHost></VirtualHost>');
+  const mode = INV.detectMode(r);
+  assert.notStrictEqual(mode, 'flexible', `Config with conf.dispatcher.d + conf.vhost.d should not be 'flexible', got '${mode}'`);
+});
+
+test('hasAmsMarkers: detects symlinked AMS marker files', () => {
+  const r = mk();
+  const enabled = path.join(r, 'conf.dispatcher.d/enabled_farms');
+  const available = path.join(r, 'conf.dispatcher.d/available_farms');
+  fs.mkdirSync(enabled, { recursive: true });
+  fs.mkdirSync(available, { recursive: true });
+  w(available, 'x_farm.any', '/farm { }');
+  fs.symlinkSync('../available_farms/x_farm.any', path.join(enabled, 'x_farm.any'));
+  assert.strictEqual(INV.hasAmsMarkers(r), true, 'Should detect AMS marker via symlink');
+});
+
+test('detectMode: symlinked AMS marker + cloud marker → standard (not already-cloud)', () => {
+  const r = mk();
+  const enabled = path.join(r, 'conf.dispatcher.d/enabled_farms');
+  const available = path.join(r, 'conf.dispatcher.d/available_farms');
+  fs.mkdirSync(enabled, { recursive: true });
+  fs.mkdirSync(available, { recursive: true });
+  w(available, 'x_farm.any', '/farm { }');
+  fs.symlinkSync('../available_farms/x_farm.any', path.join(enabled, 'x_farm.any'));
+  w(r, 'opt-in/USE_SOURCES_DIRECTLY', '');
+  assert.strictEqual(INV.detectMode(r), 'standard', 'Symlinked AMS marker should block already-cloud classification');
+});
+
+test('findConfigRoots: finds dispatcher config nested in workspace', () => {
+  const r = mk();
+  const nested = path.join(r, 'projects/myapp/dispatcher');
+  fs.mkdirSync(path.join(nested, 'conf.dispatcher.d/enabled_farms'), { recursive: true });
+  fs.mkdirSync(path.join(nested, 'conf.d'), { recursive: true });
+  const roots = INV.findConfigRoots(r);
+  assert.ok(roots.includes(nested), `Expected to find nested dispatcher config at ${nested}, found: ${roots.join(', ')}`);
+});
