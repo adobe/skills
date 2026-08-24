@@ -98,3 +98,20 @@ test('runDispatcherScan: runbook shape, ok:true empty when no dispatcher config'
   assert.strictEqual(res.ok, true);
   assert.strictEqual(res.findings.length, 0);
 });
+
+test('buildInventory: counts quoted entries in clientheaders and virtualhosts sections', () => {
+  const r = mk();
+  w(r, 'conf.d/dispatcher.any',
+    '/farms {\n /website {\n  /clientheaders {\n   "Cookie"\n   "X-Forwarded-For"\n  }\n  /virtualhosts {\n   "*.example.com"\n  }\n } }\n');
+  const inv = INV.buildInventory(r);
+  assert.strictEqual(inv.ruleCounts.clientheader, 2, 'should count 2 quoted entries in clientheaders');
+  assert.strictEqual(inv.ruleCounts.virtualhost, 1, 'should count 1 quoted entry in virtualhosts');
+});
+
+test('buildInventory: filter rule count excludes commented-out rules', () => {
+  const r = mk();
+  w(r, 'conf.d/dispatcher.any',
+    '/farms {\n /website {\n  /filter {\n   # /0009 { /type "deny" /url "*.pdf" }\n   /0001 { /type "allow" /url "*" }\n  }\n } }\n');
+  const inv = INV.buildInventory(r);
+  assert.strictEqual(inv.ruleCounts.filter, 1, 'should count 1 rule and skip the commented /0009');
+});

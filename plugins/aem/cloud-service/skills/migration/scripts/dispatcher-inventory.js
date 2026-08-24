@@ -63,7 +63,7 @@ function readTextFiles(dir, pred) {
     let es; try { es = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
     for (const e of es) {
       const f = path.join(d, e.name);
-      if (e.isDirectory() && !['node_modules', '.git', 'target'].includes(e.name)) rec(f, depth + 1);
+      if (e.isDirectory() && !['node_modules', '.git', 'target', 'dist'].includes(e.name)) rec(f, depth + 1);
       else if (e.isFile() && pred(e.name)) out.push(f);
     }
   })(dir, 0);
@@ -80,7 +80,26 @@ function countSectionRules(files, section) {
     while ((m = secRe.exec(txt))) {
       // scan balanced braces from the section open, count `/NNNN {` entries within
       const body = extractBraceBody(txt, m.index + m[0].length - 1);
-      n += (body.match(/\/[0-9]{3,4}\s*\{/g) || []).length;
+      // filter out comment lines before matching
+      const filtered = body.split('\n').filter(l => !l.trim().startsWith('#')).join('\n');
+      n += (filtered.match(/\/[0-9]{3,4}\s*\{/g) || []).length;
+    }
+  }
+  return n;
+}
+
+// Count quoted-string entries (like "Cookie", "*.example.com") inside a section like `/clientheaders` or `/virtualhosts`.
+function countQuotedEntries(files, section) {
+  let n = 0;
+  for (const f of files) {
+    let txt; try { txt = fs.readFileSync(f, 'utf8'); } catch { continue; }
+    const secRe = new RegExp('/' + section + '\\s*\\{', 'g');
+    let m;
+    while ((m = secRe.exec(txt))) {
+      const body = extractBraceBody(txt, m.index + m[0].length - 1);
+      // count non-comment lines matching quoted-string pattern
+      const lines = body.split('\n').filter(l => !l.trim().startsWith('#'));
+      n += lines.filter(l => /^\s*"[^"]*"\s*$/.test(l)).length;
     }
   }
   return n;
@@ -127,8 +146,8 @@ function buildInventory(root) {
       filter: countSectionRules(anyFarms, 'filter'),
       rewrite: rewriteCount,
       cache: countSectionRules(anyFarms, 'rules'),
-      clientheader: countSectionRules(anyFarms, 'clientheaders'),
-      virtualhost: countSectionRules(anyFarms, 'virtualhosts'),
+      clientheader: countQuotedEntries(anyFarms, 'clientheaders'),
+      virtualhost: countQuotedEntries(anyFarms, 'virtualhosts'),
     },
     tmplUsage, cmVarCandidates, amsMarkers: hasAmsMarkers(root),
   };
@@ -147,4 +166,4 @@ function runDispatcherScan(workspaceRoot) {
   return { ok: true, findings, rawFindings, warnings: [] };
 }
 
-module.exports = { detectMode, findConfigRoots, looksLikeDispatcher, hasAmsMarkers, walkFind, buildInventory, runDispatcherScan, readTextFiles, countSectionRules };
+module.exports = { detectMode, findConfigRoots, looksLikeDispatcher, hasAmsMarkers, walkFind, buildInventory, runDispatcherScan, readTextFiles, countSectionRules, countQuotedEntries };
