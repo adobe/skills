@@ -279,7 +279,12 @@ and needs real content before publish.
   `content/<PATH>.html` already exists in DA (a cheap Source-API `GET`, Phase 5);
   if it does, deploying **overwrites** it — say so in the plan and get explicit
   overwrite confirmation. Never silently clobber a page you didn't create, even
-  on an otherwise pre-authorized unattended run.
+  on an otherwise pre-authorized unattended run. **Record two facts per path** for
+  Phase 5 to enforce: `PLANNED_STATE` (`new` if the check returned 404, `exists`
+  if 200) and `OVERWRITE_OK` (`yes` only when the user confirmed overwriting an
+  existing page). Phase 5 re-checks existence right before writing and **refuses**
+  if the state changed since planning (a page appeared in the gap) or overwrite
+  was never confirmed — the plan-time check alone is not a license to clobber.
 - The user can override any line.
 
 Never silently drop a section, and never deploy an **inferred** mapping the
@@ -500,14 +505,51 @@ source writes (da-auth and da-content both defer to it when present).
 Otherwise use the Source API directly, below.
 
 ```bash
-ORG=<owner>          # GitHub owner AND DA org — same in the standard EDS+DA setup
-REPO=<repo>          # GitHub repo  AND DA repo/site
-BRANCH=<branch>      # deploy branch (usually main). For content+code this MUST be
-                     # the branch the new-block code was pushed to and Code Sync built.
+# Two identities — keep them separate. DA (Document Authoring) and GitHub are the
+# same org/repo in the standard EDS setup, but nothing guarantees it, so never
+# assume one from the other. DA endpoints (admin.da.live/source, content.da.live,
+# da.live/edit) use the DA pair; the render host and admin.hlx.page (code, preview,
+# live) use the GitHub pair.
+DA_ORG=<da-org>        # Document Authoring org
+DA_REPO=<da-repo>      # Document Authoring repo/site
+GH_OWNER=<gh-owner>    # GitHub owner
+GH_REPO=<gh-repo>      # GitHub repo
+# In the standard setup all four match: DA_ORG=GH_OWNER=<owner>, DA_REPO=GH_REPO=<repo>.
+BRANCH=<branch>        # git deploy ref (usually main). For content+code this MUST be
+                       # the branch the new-block code was pushed to and Code Sync built.
+BRANCH_HOST=${BRANCH//\//-}   # host label: slashes → dashes ('feature/x' → 'feature-x').
+                              # Used for the aem.page/aem.live hostname; git + the
+                              # admin.hlx.page path keep the literal $BRANCH ref. A deploy
+                              # ref should be a single path segment — prefer a slash-free
+                              # branch name to avoid ambiguity in the admin API path.
 P=<path-without-extension>
-TOKEN="$DA_TOKEN"    # from da-auth; 401 w/ empty body ⇒ expired, re-auth
-# If daOrg/daRepo differ from the GitHub owner/repo (uncommon), use the DA values
-# for admin.da.live/source and the GitHub values for admin.hlx.page + the aem.page host.
+TOKEN="$DA_TOKEN"      # from da-auth; 401 w/ empty body ⇒ expired, re-auth
+
+# Fail fast if the branch host would be unresolvable (>63 chars won't resolve).
+host="$BRANCH_HOST--$GH_REPO--$GH_OWNER"
+[ "${#host}" -le 63 ] || { echo "❌ branch host '$host' is ${#host} chars (>63) — won't resolve; use a shorter branch/repo/org"; exit 1; }
+
+# --- checked-request helper: every call asserts its status; a bare `curl -sS`
+#     exits 0 on 401/403/409/5xx, so an unchecked curl silently "succeeds" on a
+#     failed write. req <expected-codes> <curl-args…>: prints the body, retries a
+#     few times on network/429/5xx, and aborts (non-zero) on any other mismatch.
+#     Use it for every PUT/POST below; if a DA MCP server is used instead, apply
+#     the same rule — assert the returned status, don't assume success. ---
+req() {
+  local expect="$1"; shift
+  local attempt out code body
+  for attempt in 1 2 3 4 5; do
+    if out=$(curl -sS -w $'\n%{http_code}' "$@"); then code="${out##*$'\n'}"; else code="000"; fi
+    body="${out%$'\n'*}"
+    case ",$expect," in *",$code,"*) printf '%s' "$body"; return 0;; esac
+    case "$code" in
+      000|429|5??) sleep $((attempt * 2)); continue;;   # transient — bounded retry
+      401)         echo "❌ 401 (empty body ⇒ token expired) — re-auth (da-auth) and retry" >&2; return 1;;
+      *)           echo "❌ HTTP $code (expected $expect) — $*" >&2; return 1;;   # 4xx: do not retry
+    esac
+  done
+  echo "❌ giving up after retries (last status $code) — $*" >&2; return 1
+}
 
 # --- content+code path ONLY: block code must be LIVE before the page renders ---
 # (skip this whole block for content-only — the code is already deployed)
@@ -515,11 +557,12 @@ TOKEN="$DA_TOKEN"    # from da-auth; 401 w/ empty body ⇒ expired, re-auth
 #      project protects $BRANCH; the branch that renders the page must contain
 #      the block code):
 #        git add blocks/<new-block> && git commit -m "feat: <new-block> block" && git push origin "$BRANCH"
-#   2. Code Sync builds automatically on push. Optionally force it:
-curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
-  "https://admin.hlx.page/code/$ORG/$REPO/$BRANCH/*" || true    # 200/202; non-2xx here isn't fatal if push synced
+#   2. Code Sync builds automatically on push. Optionally force it (non-2xx here
+#      isn't fatal if the push already synced, so don't abort on it):
+req 200,202 -X POST -H "Authorization: Bearer $TOKEN" \
+  "https://admin.hlx.page/code/$GH_OWNER/$GH_REPO/$BRANCH/*" >/dev/null || true
 #   3. poll until the new block's JS is live on the branch host (bounded — don't hang):
-BH="https://$BRANCH--$REPO--$ORG.aem.page"
+BH="https://$BRANCH_HOST--$GH_REPO--$GH_OWNER.aem.page"
 for i in $(seq 1 24); do
   code=$(curl -s -o /dev/null -w '%{http_code}' --compressed "$BH/blocks/<new-block>/<new-block>.js")
   [ "$code" = "200" ] && break
@@ -536,38 +579,53 @@ csscode=$(curl -s -o /dev/null -w '%{http_code}' --compressed "$BH/blocks/<new-b
 #    time. For each image downloaded in Phase 1, PUT the binary to DA (field name
 #    MUST be "data"; set the image mime FROM THE BYTES/format, not the filename).
 #    Skip images that use a stable external URL the preview can sideload.
-curl -sS -X PUT -H "Authorization: Bearer $TOKEN" \
+req 200,201 -X PUT -H "Authorization: Bearer $TOKEN" \
   -F "data=@<local-image>;type=<image/mime>" \
-  "https://admin.da.live/source/$ORG/$REPO/<media-path>"      # 201/200
-#    then reference it in the HTML as https://content.da.live/$ORG/$REPO/<media-path>
+  "https://admin.da.live/source/$DA_ORG/$DA_REPO/<media-path>" >/dev/null
+#    then reference it in the HTML as https://content.da.live/$DA_ORG/$DA_REPO/<media-path>
 
-# 2) Guard against silent overwrite — the Source-API PUT clobbers an existing
-#    page and still returns 200. GET the path first (same endpoint as the PUT):
-#    200 = it ALREADY exists, so the overwrite MUST have been surfaced and
-#    confirmed in the Phase 2.2 plan; 404 = new, safe to write. Auth is checked
-#    BEFORE existence, so a 401 (empty body) is an expired token — re-auth and
-#    retry; do NOT treat a non-404 as "new" and write over a page blindly.
-exists=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" \
-  "https://admin.da.live/source/$ORG/$REPO/$P.html")
+# 2) Overwrite guard — the Source-API PUT clobbers an existing page and still
+#    returns 200, so the abort MUST be bound to an explicit decision, not to a
+#    warning. Two facts come from the Phase 2.2 plan (record them there, per path):
+#      PLANNED_STATE = new | exists   — what the 2.2 existence check saw
+#      OVERWRITE_OK  = yes            — set ONLY when the user confirmed overwriting
+#                                       an existing page; unset/no otherwise
+#    Re-GET now (auth is checked BEFORE existence, so a 401 empty body = expired
+#    token, NOT "new"). Refuse to write if the state changed since planning or the
+#    overwrite was never confirmed — a page can be created in the gap between
+#    planning and this write.
+exists=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" \
+  "https://admin.da.live/source/$DA_ORG/$DA_REPO/$P.html")
 case "$exists" in
-  200) echo "⚠ $P.html already exists in DA — overwriting (must be confirmed in the plan)";;
-  404) : ;;  # new page, proceed
+  404)  # absent now
+    [ "$PLANNED_STATE" = "exists" ] && { echo "❌ plan expected an existing page but it's gone (404) — STOP and reconfirm"; exit 1; }
+    ;;   # planned-new and still absent → proceed
+  200)  # present now
+    if [ "$OVERWRITE_OK" != "yes" ]; then
+      echo "❌ $P.html exists in DA but overwrite was NOT confirmed in the plan — STOP and reconfirm with the user"; exit 1
+    fi
+    if [ "$PLANNED_STATE" != "exists" ]; then
+      echo "❌ plan saw a NEW path (404) but it exists now (200) — a page was created since planning;"
+      echo "   do NOT overwrite on the stale confirmation — STOP and reconfirm"; exit 1
+    fi
+    echo "→ overwriting $P.html (existing page, confirmed in the plan)"
+    ;;
   401) echo "❌ 401 on existence check — token expired; re-auth (da-auth) and retry"; exit 1;;
   *)   echo "❌ unexpected $exists on existence check — resolve before writing"; exit 1;;
 esac
 
 # 3) Write content — multipart, field name MUST be "data", type text/html
-curl -sS -X PUT -H "Authorization: Bearer $TOKEN" \
+req 200,201 -X PUT -H "Authorization: Bearer $TOKEN" \
   -F "data=@content/$P.html;type=text/html" \
-  "https://admin.da.live/source/$ORG/$REPO/$P.html"           # 201 (new) or 200 (update)
+  "https://admin.da.live/source/$DA_ORG/$DA_REPO/$P.html" >/dev/null   # 201 (new) or 200 (update)
 
 # Preview — separate, required. Path WITHOUT .html; branch = the deploy branch.
 # The deploy sequence STOPS here, at preview. Publishing to the live host is a
 # SEPARATE, FINAL step (see "Publish to the live host" after the pre-publish
 # gate) that runs ONLY after every gate box passes AND only if the user asked to
 # publish — never inline here, before verification.
-curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
-  "https://admin.hlx.page/preview/$ORG/$REPO/$BRANCH/$P"      # expect 200
+req 200 -X POST -H "Authorization: Bearer $TOKEN" \
+  "https://admin.hlx.page/preview/$GH_OWNER/$GH_REPO/$BRANCH/$P" >/dev/null
 ```
 
 **Verify (do not skip).** Two layers — a fragment curl is *not* enough for a new
@@ -576,7 +634,7 @@ block:
 *Server-side* — curl the plain fragment (fast, no JS):
 
 ```bash
-BASE="https://$BRANCH--$REPO--$ORG.aem.page/$P.plain.html"
+BASE="https://$BRANCH_HOST--$GH_REPO--$GH_OWNER.aem.page/$P.plain.html"
 curl -s --compressed "$BASE" | grep -c about:error        # expect 0 (no broken images)
 curl -s --compressed "$BASE" | grep -o '<img' | wc -l     # expect = authored image count
 curl -s --compressed "$BASE" | grep -o 'class="[a-z][a-z-]*"' | sort -u   # every authored block class present
@@ -591,7 +649,7 @@ default content survived (spot-check heading / list / link counts).
 with raw rows); a block's JS runs in the **browser**, so the fragment can never
 tell you whether the block decorated. For a **new block** (3B) that decoration
 *is* the deploy's payoff — verify it on the **rendered page**, not the fragment:
-load `https://$BRANCH--$REPO--$ORG.aem.page/$P` in a browser and confirm the
+load `https://$BRANCH_HOST--$GH_REPO--$GH_OWNER.aem.page/$P` in a browser and confirm the
 block element got `data-block-status="loaded"`, shows its expected transformed
 DOM, and that its CSS applied. (Reused existing blocks are already known-good,
 so the server-side checks suffice for them.)
@@ -605,7 +663,9 @@ Non-obvious rules *(da-content / EDS)*:
 - payload is a **body fragment**, not a full document.
 - upload only **stages** the doc; the page is not reachable until **preview**.
   Referenced binaries/external image URLs must be reachable at **preview** time.
-- branch host `<branch>--<repo>--<org>` must be **≤ 63 chars** or it won't resolve.
+- branch host `<branch-host>--<gh-repo>--<gh-owner>` must be **≤ 63 chars** or it
+  won't resolve (asserted by the `host` length check in the deploy block above;
+  `<branch-host>` is the deploy ref with slashes replaced by dashes).
 
 For many pages, drive `PUT → preview` (publish stays a gated, post-verify step —
 see below) with a concurrency pool + retry (`429`/`5xx`) rather than a
@@ -682,18 +742,18 @@ hold:
 
 ```bash
 # Preconditions asserted by the caller: gate fully passed AND publish requested.
-code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" \
-  "https://admin.hlx.page/live/$ORG/$REPO/$BRANCH/$P")
-[ "$code" = "200" ] || { echo "❌ publish failed ($code) — page stays preview-only"; exit 1; }
+req 200 -X POST -H "Authorization: Bearer $TOKEN" \
+  "https://admin.hlx.page/live/$GH_OWNER/$GH_REPO/$BRANCH/$P" >/dev/null \
+  || { echo "❌ publish failed — page stays preview-only"; exit 1; }
 ```
 
 ---
 
 ## Phase 6 — Report
 
-- **Edit:** `https://da.live/edit#/$ORG/$REPO/$P`
-- **Preview:** `https://$BRANCH--$REPO--$ORG.aem.page/$P`
-- **Live** (if published): `https://$BRANCH--$REPO--$ORG.aem.live/$P`
+- **Edit:** `https://da.live/edit#/$DA_ORG/$DA_REPO/$P`
+- **Preview:** `https://$BRANCH_HOST--$GH_REPO--$GH_OWNER.aem.page/$P`
+- **Live** (if published): `https://$BRANCH_HOST--$GH_REPO--$GH_OWNER.aem.live/$P`
 - **New blocks created** (content+code) and where their code was pushed.
 - **How each section resolved** — the confirmed plan (reuse / default content /
   new block per section), flagging any that were **inferred** (vs. annotated)
