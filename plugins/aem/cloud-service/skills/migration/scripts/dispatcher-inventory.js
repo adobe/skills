@@ -56,4 +56,95 @@ function findConfigRoots(workspaceRoot, acc = [], depth = 0) {
   return acc;
 }
 
-module.exports = { detectMode, findConfigRoots, looksLikeDispatcher, hasAmsMarkers, walkFind };
+function readTextFiles(dir, pred) {
+  const out = [];
+  (function rec(d, depth) {
+    if (depth > 6) return;
+    let es; try { es = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const e of es) {
+      const f = path.join(d, e.name);
+      if (e.isDirectory() && !['node_modules', '.git', 'target'].includes(e.name)) rec(f, depth + 1);
+      else if (e.isFile() && pred(e.name)) out.push(f);
+    }
+  })(dir, 0);
+  return out;
+}
+
+// Count farm-rule blocks like `/0001 { /type ... }` inside a `/filter` section of any dispatcher.any/farm.
+function countSectionRules(files, section) {
+  let n = 0;
+  for (const f of files) {
+    let txt; try { txt = fs.readFileSync(f, 'utf8'); } catch { continue; }
+    const secRe = new RegExp('/' + section + '\\s*\\{', 'g');
+    let m;
+    while ((m = secRe.exec(txt))) {
+      // scan balanced braces from the section open, count `/NNNN {` entries within
+      const body = extractBraceBody(txt, m.index + m[0].length - 1);
+      n += (body.match(/\/[0-9]{3,4}\s*\{/g) || []).length;
+    }
+  }
+  return n;
+}
+
+function extractBraceBody(txt, openIdx) {
+  let depth = 0, i = openIdx, start = openIdx + 1;
+  for (; i < txt.length; i++) {
+    if (txt[i] === '{') depth++;
+    else if (txt[i] === '}') { depth--; if (depth === 0) return txt.slice(start, i); }
+  }
+  return txt.slice(start);
+}
+
+function buildInventory(root) {
+  const mode = detectMode(root);
+  const dispAny = readTextFiles(root, n => n === 'dispatcher.any' || n === 'dispatcher.any.tmpl');
+  const farmFiles = readTextFiles(root, n => n.endsWith('.farm') || n.endsWith('_farm.any'));
+  const anyFarms = dispAny.concat(farmFiles);
+  const vhostFiles = readTextFiles(root, n => n.endsWith('.vhost') || /vhost.*\.conf/.test(n));
+  const ruleFiles = readTextFiles(root, n => n.endsWith('.rules') || n.endsWith('.rules.tmpl'));
+  const httpd = readTextFiles(root, n => n === 'httpd.conf' || n === 'httpd.conf.tmpl')[0] || null;
+  const tmplUsage = readTextFiles(root, n => n.endsWith('.tmpl')).length > 0;
+
+  const rewriteCount = ruleFiles.reduce((a, f) => {
+    let t; try { t = fs.readFileSync(f, 'utf8'); } catch { return a; }
+    return a + (t.match(/^\s*(RewriteRule|Redirect(Match)?)\b/gm) || []).length;
+  }, 0) + vhostFiles.reduce((a, f) => {
+    let t; try { t = fs.readFileSync(f, 'utf8'); } catch { return a; }
+    return a + (t.match(/^\s*(RewriteRule|Redirect(Match)?)\b/gm) || []).length;
+  }, 0);
+
+  const cmVarCandidates = [];
+  for (const f of vhostFiles.concat(readTextFiles(root, n => n.endsWith('.conf') || n.endsWith('.conf.tmpl')))) {
+    let t; try { t = fs.readFileSync(f, 'utf8'); } catch { continue; }
+    for (const m of t.matchAll(/\$\{([A-Z0-9_]+)\}/g)) if (!cmVarCandidates.includes(m[1])) cmVarCandidates.push(m[1]);
+  }
+
+  return {
+    mode, configRoot: root,
+    dispatcherAny: dispAny[0] || null, httpd,
+    vhostFiles, farmFiles,
+    ruleCounts: {
+      filter: countSectionRules(anyFarms, 'filter'),
+      rewrite: rewriteCount,
+      cache: countSectionRules(anyFarms, 'rules'),
+      clientheader: countSectionRules(anyFarms, 'clientheaders'),
+      virtualhost: countSectionRules(anyFarms, 'virtualhosts'),
+    },
+    tmplUsage, cmVarCandidates, amsMarkers: hasAmsMarkers(root),
+  };
+}
+
+function runDispatcherScan(workspaceRoot) {
+  if (!workspaceRoot) return { ok: false, findings: [], rawFindings: [], warnings: [], error: 'no workspaceRoot' };
+  let roots; try { roots = findConfigRoots(workspaceRoot); } catch (e) { return { ok: false, findings: [], rawFindings: [], warnings: [], error: e.message }; }
+  const findings = [], rawFindings = [];
+  for (const root of roots) {
+    const inv = buildInventory(root);
+    if (inv.mode === 'already-cloud' || inv.mode === 'not-dispatcher') continue;
+    findings.push({ location: root, detail: `Dispatcher config (${inv.mode}) — ${inv.ruleCounts.filter} filter / ${inv.ruleCounts.rewrite} rewrite rules → convertible (Branch E)`, severity: 'high' });
+    rawFindings.push({ pattern: 'dispatcherConversion', file: root, line: null, snippet: `mode=${inv.mode}` });
+  }
+  return { ok: true, findings, rawFindings, warnings: [] };
+}
+
+module.exports = { detectMode, findConfigRoots, looksLikeDispatcher, hasAmsMarkers, walkFind, buildInventory, runDispatcherScan, readTextFiles, countSectionRules };

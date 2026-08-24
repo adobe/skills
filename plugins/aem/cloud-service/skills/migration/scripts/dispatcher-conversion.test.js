@@ -77,3 +77,24 @@ test('findConfigRoots: finds dispatcher config nested in workspace', () => {
   const roots = INV.findConfigRoots(r);
   assert.ok(roots.includes(nested), `Expected to find nested dispatcher config at ${nested}, found: ${roots.join(', ')}`);
 });
+
+test('buildInventory: counts filter + rewrite rules and flags tmpl/cm-vars', () => {
+  const r = mk();
+  w(r, 'conf.d/dispatcher.any',
+    '/farms {\n /website {\n  /filter {\n   /0001 { /type "allow" /url "*" }\n   /0002 { /type "deny" /url "/x" }\n  }\n } }\n');
+  w(r, 'conf.vhost.d/rw.rules.tmpl', 'RewriteRule ^/a /b\nRewriteRule ^/c /d\n');
+  w(r, 'conf.d/includes/hdr.conf', 'Header set X-Dispatcher "${DISP_ID}"\n');
+  const inv = INV.buildInventory(r);
+  assert.strictEqual(inv.mode, 'flexible');
+  assert.strictEqual(inv.ruleCounts.filter, 2);
+  assert.strictEqual(inv.ruleCounts.rewrite, 2);
+  assert.strictEqual(inv.tmplUsage, true);
+  assert.ok(inv.cmVarCandidates.includes('DISP_ID'));
+});
+
+test('runDispatcherScan: runbook shape, ok:true empty when no dispatcher config', () => {
+  const r = mk(); w(r, 'core/Foo.java', 'x');
+  const res = INV.runDispatcherScan(r);
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.findings.length, 0);
+});
