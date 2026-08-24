@@ -115,3 +115,32 @@ test('buildInventory: filter rule count excludes commented-out rules', () => {
   const inv = INV.buildInventory(r);
   assert.strictEqual(inv.ruleCounts.filter, 1, 'should count 1 rule and skip the commented /0009');
 });
+
+// Task 3: Output verification (filter/ACL preservation gate)
+const VERIFY = require('./dispatcher-verify.js');
+
+test('verifyOutput: empty filters.any with source filter rules = hard failure', () => {
+  const out = mk();
+  w(out, 'conf.dispatcher.d/filters/filters.any', ''); // empty!
+  w(out, 'conf.dispatcher.d/available_farms/site.farm', '/site { /filter { } }');
+  const res = VERIFY.verifyOutput(out, { filter: 5, rewrite: 3, cache: 0, clientheader: 0, virtualhost: 0 });
+  assert.strictEqual(res.ok, false);
+  assert.ok(res.failures.some(f => f.category === 'filter-acl-loss' && f.severity === 'critical'));
+});
+
+test('verifyOutput: populated filters + collector present = ok', () => {
+  const out = mk();
+  w(out, 'conf.dispatcher.d/filters/filters.any', '/0001 { /type "allow" /url "*" }\n');
+  w(out, 'conf.dispatcher.d/enabled_farms/farms.any', '$include "./*.farm"');
+  w(out, 'conf.dispatcher.d/available_farms/site.farm', '/site { /filter { $include "../filters/filters.any" } }');
+  const res = VERIFY.verifyOutput(out, { filter: 1, rewrite: 0, cache: 0, clientheader: 0, virtualhost: 0 });
+  assert.strictEqual(res.ok, true);
+});
+
+test('verifyOutput: missing farms.any collector = warning (not failure)', () => {
+  const out = mk();
+  w(out, 'conf.dispatcher.d/filters/filters.any', '/0001 { /type "allow" /url "*" }\n');
+  w(out, 'conf.dispatcher.d/available_farms/site.farm', '/site { }');
+  const res = VERIFY.verifyOutput(out, { filter: 1, rewrite: 0, cache: 0, clientheader: 0, virtualhost: 0 });
+  assert.ok(res.warnings.some(x => /farms\.any/.test(x)));
+});
