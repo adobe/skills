@@ -368,6 +368,7 @@ and an un-invoked required skill means this phase is **not complete**:
 - [ ] **da-content** reference docs loaded (`html-content.md` / `platform.md` / `media.md`)
 - [ ] **block-collection-and-party** invoked for every reused block *(if any 3A)*
 - [ ] **content-modeling** + **content-driven-development** invoked for every new block *(if any 3B)*
+- [ ] **Default-content** sections authored via **da-content** alone — **no** block-building skills invoked for them *(if any 3C)*
 - [ ] **testing-blocks** invoked — its browser render + visual comparison **is** the
       Stage B pre-publish check (Phase 5); a run with **no** browser available
       reports the page **preview-only, UNVERIFIED**, never "done".
