@@ -51,6 +51,7 @@ const { runHtlLint } = require('./htl-lint-runner.js');
 const { runOsgiConfigScan } = require('./osgi-config-runner.js');
 const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
 const { runTemplateScan } = require('./template-scan-runner.js');
+const { runDispatcherScan } = require('./dispatcher-inventory.js');
 
 // Canonical pattern taxonomy for the runbook — every pattern the migration
 // skill can address. Each declares a detection `strategy`:
@@ -162,6 +163,16 @@ const PATTERN_META = {
     promptPattern: 'template modernization',
     sampleOverride: 'Use the migration skill: migrate my static templates to editable templates and generate the AEM Modernize Tools rewrite rules.',
   },
+  dispatcherConversion: {
+    label: 'Dispatcher AMS/On-prem → AEMaaCS Conversion',
+    severity: 'high',
+    strategy: 'content-scan',
+    bpaSlugs: [],
+    heuristic: true,
+    description: 'An AMS or on-premise Dispatcher configuration convertible to AEM as a Cloud Service (Branch E). Detected heuristically; the conversion wraps Adobe\'s aem-cs-source-migration dispatcher-converter with mode detection, config generation, output verification, and validation.',
+    promptPattern: 'dispatcher conversion',
+    sampleOverride: 'Use the migration skill: convert my dispatcher configuration to AEM as a Cloud Service.',
+  },
 };
 
 // content-scan strategy → the runner that produces that pattern's findings.
@@ -169,6 +180,7 @@ const CONTENT_SCANNERS = {
   lui: runLuiScan,
   cdw: runCdwScan,
   templateModernization: runTemplateScan,
+  dispatcherConversion: runDispatcherScan,
 };
 
 const CANONICAL_PATTERNS = Object.keys(PATTERN_META);

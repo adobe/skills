@@ -41,6 +41,7 @@ Each pattern declares a **detection strategy** in `PATTERN_META`:
 | `htlLint` | `html-scan` | `htl-lint-runner.js` (pure-Node regex over `.html`) |
 | `osgiConfig` | `config-scan` | `osgi-config-runner.js` (config-file scan) |
 | `lui`, `cdw`, `templateModernization` | BPA + `content-scan` | BPA/CAM → CSV first (`legacy-ui-runner.js` / `template-scan-runner.js` as fallback) |
+| `dispatcherConversion` | `content-scan` | `dispatcher-inventory.js` (`runDispatcherScan` — heuristic, no BPA subtype) |
 
 `html-scan` / `config-scan` findings, and the `content-scan` fallback for `lui`/`cdw`/`templateModernization`, are **heuristic** and tagged `confidence: "heuristic"` in the cache. BPA-sourced findings are authoritative. `osgiConfig` reports key names + locations only — **never secret values**.
 
@@ -85,6 +86,18 @@ The `content-scan` **fallback** for `lui` (Classic UI `cq:Dialog`/`xtype="dialog
 ### `template-scan-runner.js`
 
 The `content-scan` **fallback** for `templateModernization` — static templates (`cq:Template`) under `apps/<appId>/templates/*`. Used only when no BPA source is available.
+
+### `dispatcher-inventory.js`
+
+The `content-scan` strategy for `dispatcherConversion` — detects an AMS or on-premise Dispatcher configuration convertible to AEM as a Cloud Service (Branch E). Walks the workspace for Dispatcher config roots, classifies each via `detectMode` (`standard` / `flexible` / `v1` / `unknown` → convertible; `already-cloud` / `not-dispatcher` → skipped), and builds an inventory (vhost/farm files, filter/rewrite/cache rule counts, AMS markers). Exposes `runDispatcherScan(workspaceRoot)` — the runbook's content-scan entry point — returning `{ ok, findings, rawFindings, warnings }` and silently skipping workspaces that are already Cloud-native or not a Dispatcher at all (no findings, no noise). Heuristic; there is no BPA subtype for dispatcher conversion.
+
+### `dispatcher-verify.js`
+
+Output verification for a generated Cloud Service Dispatcher config (`verifyOutput`). The filter/ACL allow-list is a **hard gate** — if the source had filter rules and the converted output has none (or fewer), it fails, so a conversion that would weaken security is caught before it is applied. Also reconciles rewrite/redirect counts (warning — rules may legitimately move to the CDN) and flags mega-inlined vhosts and missing current-SDK conventions (`enabled_farms/farms.any`).
+
+### `dispatcher-run.js`
+
+Drives the end-to-end conversion: writes the tool `config.yaml`, resolves the mode-specific executor, and wraps Adobe's [`@adobe/aem-cs-source-migration-dispatcher-converter`](https://github.com/adobe/aem-cs-source-migration). That Adobe tool is **not a bundled dependency** — it is auto-installed on first use into the gitignored `scripts/dispatcher-tool/node_modules/` (`ensureToolInstalled`), keeping the core scripts zero-dependency.
 
 ### `bpa-findings-helper.js` (main entry point)
 
