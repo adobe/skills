@@ -144,3 +144,30 @@ test('verifyOutput: missing farms.any collector = warning (not failure)', () => 
   const res = VERIFY.verifyOutput(out, { filter: 1, rewrite: 0, cache: 0, clientheader: 0, virtualhost: 0 });
   assert.ok(res.warnings.some(x => /farms\.any/.test(x)));
 });
+
+// Task 4: Tool driver — config generation + executor resolution
+const RUN = require('./dispatcher-run.js');
+
+test('writeToolConfig: emits a valid dispatcherConverter config.yaml (on-premise)', () => {
+  const wd = mk();
+  const p = RUN.writeToolConfig(wd, {
+    sdkSrc: '/sdk/src', mode: 'flexible',
+    onPremise: { dispatcherAnySrc: '/x/dispatcher.any', httpdSrc: '/x/httpd.conf',
+      vhostsToConvert: ['/x/conf.vhost.d/vhosts.conf'], variablesToReplace: [], pathToPrepend: ['/x/conf.vhost.d/'], portsToMap: null },
+  });
+  const y = fs.readFileSync(p, 'utf8');
+  assert.match(y, /dispatcherConverter:/);
+  assert.match(y, /sdkSrc: \/sdk\/src/);
+  assert.match(y, /dispatcherAnySrc: \/x\/dispatcher\.any/);
+  assert.match(y, /vhostsToConvert:/);
+  assert.match(y, /- "\/x\/conf\.vhost\.d\/vhosts\.conf"/);
+});
+
+test('resolveExecutor: maps mode to the right entry script', () => {
+  const toolDir = mk();
+  const base = path.join(toolDir, 'node_modules/@adobe/aem-cs-source-migration-dispatcher-converter/executors');
+  w(base, 'main.js', ''); w(base, 'singleFileMain.js', '');
+  assert.match(RUN.resolveExecutor(toolDir, 'standard'), /executors\/main\.js$/);
+  assert.match(RUN.resolveExecutor(toolDir, 'flexible'), /executors\/singleFileMain\.js$/);
+  assert.match(RUN.resolveExecutor(toolDir, 'v1'), /executors\/singleFileMain\.js$/);
+});
