@@ -755,10 +755,22 @@ curl -s --compressed "$BASE" | grep -o '<img' | wc -l     # expect = authored im
 curl -s --compressed "$BASE" | grep -o 'class="[a-z][a-z-]*"' | sort -u   # every authored block class present
 ```
 
-Also confirm the **section count matches the plan** — count **top-level
-`<main> > div`** sections, not every `<div>` on the page (blocks and rows are
-divs too, so a raw `<div>` count runs several times high) — and that rich
-default content survived (spot-check heading / list / link counts).
+Also confirm the **section count matches the plan** — top-level sections, not
+every `<div>` (blocks and rows are divs too, so a raw `<div>` count runs several
+times high). **Do not count this on `.plain.html`:** the fragment has **no**
+`<main>` (nor `<section>`) wrappers — see the metadata scope-note below — so a
+`<main> > div` count there is always 0. Count it on an artifact that has them:
+
+```bash
+# rendered (post-preview): EDS wraps each top-level section as <div class="section">
+curl -s --compressed "https://$BRANCH_HOST--$GH_REPO--$GH_OWNER.aem.page/$P" \
+  | grep -oE 'class="section[ "]' | wc -l    # expect = planned section count
+```
+
+or count the **top-level `<main> > div`** in the **local source** `content/$P.html`
+before upload — it carries the Phase 4 `<body>/<main>` skeleton, so its direct
+`<main>` children *are* the sections. Rich default content (heading / list / link
+counts) *does* survive in `.plain.html`, so spot-check that there.
 
 *Stage B — browser (testing-blocks); mandatory, and curl is not a substitute.*
 **`.plain.html` shows blocks UNDECORATED** (`<div class="name">` with raw rows);
@@ -837,8 +849,11 @@ preview-only and never call it "done."**
 - [ ] **Every new block's code is live** — its JS **and** CSS return `200` on the
       branch host. (A `200` on the file proves it *exists*, not that the block
       *decorated* — that is the Stage B decoration box below.)
-- [ ] **0 `about:error`**, the `<img>` count matches what you authored, and the
-      count of **top-level `<main> > div` sections** matches the plan.
+- [ ] **0 `about:error`** and the `<img>` count matches what you authored (both on
+      `.plain.html`), and the **top-level section count** matches the plan —
+      counted on the **rendered page** (`class="section"` under `<main>`) or the
+      **local source**, **never** as `<main> > div` on `.plain.html` (no `<main>`
+      there ⇒ always 0). See the Stage A verify block above.
 - [ ] **The `metadata` block is present** — a `<div class="metadata">` (exact
       class) is the **last element of the last section** per Phase 4, carrying the
       keys the plan calls for (title, description, image, …). An
