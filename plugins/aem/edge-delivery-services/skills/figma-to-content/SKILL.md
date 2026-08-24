@@ -344,13 +344,10 @@ its real copy must be supplied before publish, not shipped as placeholder.
 
 ### 2.3 — Lock the orchestration manifest (which sub-skills this plan requires)
 
-This skill is a **coordinator**, not a self-contained procedure. Before building,
-turn the confirmed plan into an explicit **manifest** of the sub-skills it
-requires, and **invoke each one** — this file's summaries are not a substitute.
-Running Phases 3–5 from general knowledge instead of the sub-skills is the single
-most common failure mode: blocks hand-written without the block skills, DA HTML
-authored from memory, and — most damaging — no browser/visual verification
-because **testing-blocks** was skipped.
+Turn the confirmed plan into an explicit **manifest** of the sub-skills it
+requires and **invoke each one** — this is where the intro's *orchestrate, don't
+inline* rule becomes a concrete, ticked list. This file's summaries never
+substitute for loading the named skill.
 
 Derive the manifest from the plan:
 
@@ -407,8 +404,8 @@ Divergence beyond what the token retheme explains ⇒ new block (or a new
 variant), not reuse. This outcome is **blocking**: the section is not resolved
 until its rendered look — that text included — is faithful, and the fix is a new
 isolated block/variant, never an edit to the shared block. Recording the gap in
-the plan and reusing the block anyway is the single most common failure of an
-autonomous run (see the Phase 5 pre-publish gate).
+the plan and reusing the block anyway is a **plan note, not a fix** — the Phase 5
+pre-publish gate treats such a box as failed.
 
 Once the gate passes, **invoke block-collection-and-party** to learn the block's
 authoring model (its examples show the row/cell structure and variants) — read
@@ -827,18 +824,16 @@ preview-only and never call it "done."**
 **Stage A — server-side (curl the fragment + referenced assets):**
 
 - [ ] **The legibility check actually ran on real content** for every section
-      whose text sits over media or a color fill — including secondary text,
-      CTAs, and list items, **not just the heading**. With a browser, read the
-      rendered contrast. **With `curl` only this check is still mandatory:** fetch
-      the section's block CSS on the branch host and confirm **every** text
-      element rendered over the media (`h1`/`h2`/`h3`, `p`, `a`, `.button`, `li`)
-      is given an explicit contrasting color. A block that colors **only** its
-      heading and leaves the subtitle/CTA/body at the inherited color over dark
-      media is illegible — a **failure to resolve, not a caveat to log** → build a
-      dark variant *as a new isolated block/variant* (never edit the shared block)
-      or route to a new block. Flagging it in the plan does **not** satisfy this
-      box, and **if you cannot verify legibility by either route, the box is
-      FAILED — block; never publish on an unchecked assumption.**
+      whose text sits over media or a color fill — **every** text element, not
+      just the heading (`h1`/`h2`/`h3`, `p`, `a`, `.button`, `li`). With a
+      browser, read the rendered contrast; **with `curl` only it is still
+      mandatory** — fetch the section's block CSS on the branch host and confirm
+      each of those elements is given an explicit contrasting color (the
+      colors-only-the-heading failure mode is the Phase 3A reuse gate). The fix is
+      a dark variant *as a new isolated block/variant*, never an edit to the
+      shared block; flagging it in the plan does **not** satisfy this box, and if
+      you cannot verify legibility by either route the box is **FAILED** — block,
+      never publish on an unchecked assumption.
 - [ ] **No placeholder survived into the deployed output** — grep the fragment
       for `lorem`, CTA labels like "Button"/"Lorem Ipsum", and repeated-identical
       items; every item that should be distinct has distinct copy **and** a
