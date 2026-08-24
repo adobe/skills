@@ -183,3 +183,21 @@ test('resolveExecutor: maps mode to the right entry script', () => {
   assert.match(RUN.resolveExecutor(toolDir, 'flexible'), /executors\/singleFileMain\.js$/);
   assert.match(RUN.resolveExecutor(toolDir, 'v1'), /executors\/singleFileMain\.js$/);
 });
+
+// Task 5: Tool driver — ensure-installed + invoke
+test('isToolInstalled: false when node_modules absent', () => {
+  assert.strictEqual(RUN.isToolInstalled(mk()), false);
+});
+
+test('runConverter: computes the tool output + report paths under the working dir', () => {
+  // Stub an executor that just creates the expected target tree, to test path plumbing without the real tool.
+  const toolDir = mk();
+  const execDir = path.join(toolDir, 'node_modules/@adobe/aem-cs-source-migration-dispatcher-converter/executors');
+  w(execDir, 'singleFileMain.js',
+    'const fs=require("fs"),path=require("path");const t=path.join(process.cwd(),"target/dispatcher/src/conf.dispatcher.d/filters");fs.mkdirSync(t,{recursive:true});fs.writeFileSync(path.join(t,"filters.any"),"/0001 { /type \\"allow\\" /url \\"*\\" }\\n");fs.mkdirSync(path.join(process.cwd(),"target/dispatcher"),{recursive:true});fs.writeFileSync(path.join(process.cwd(),"target/dispatcher/dispatcher-converter-report.md"),"# report");');
+  const wd = mk();
+  const res = RUN.runConverter(wd, 'flexible', toolDir);
+  assert.strictEqual(res.code, 0);
+  assert.ok(fs.existsSync(path.join(res.outputSrcDir, 'conf.dispatcher.d/filters/filters.any')));
+  assert.ok(fs.existsSync(res.reportPath));
+});

@@ -1,6 +1,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const { execFileSync, spawnSync } = require('child_process');
 
 const TOOL_PKG = '@adobe/aem-cs-source-migration-dispatcher-converter';
 const TOOL_DIR = path.join(__dirname, 'dispatcher-tool');
@@ -45,4 +46,25 @@ function resolveExecutor(toolDir, mode) {
   return path.join(execs, entry);
 }
 
-module.exports = { writeToolConfig, resolveExecutor, TOOL_PKG, TOOL_DIR };
+function isToolInstalled(toolDir) {
+  return fs.existsSync(path.join(toolDir, 'node_modules', TOOL_PKG, 'executors'));
+}
+
+function ensureToolInstalled(toolDir) {
+  if (isToolInstalled(toolDir)) return { installed: true, alreadyPresent: true };
+  execFileSync('npm', ['install', '--no-audit', '--no-fund'], { cwd: toolDir, stdio: 'inherit' });
+  return { installed: isToolInstalled(toolDir), alreadyPresent: false };
+}
+
+function runConverter(workingDir, mode, toolDir) {
+  const executor = resolveExecutor(toolDir, mode);
+  const r = spawnSync('node', [executor], { cwd: workingDir, encoding: 'utf8' });
+  return {
+    code: r.status,
+    stdout: (r.stdout || '') + (r.stderr || ''),
+    outputSrcDir: path.join(workingDir, 'target/dispatcher/src'),
+    reportPath: path.join(workingDir, 'target/dispatcher/dispatcher-converter-report.md'),
+  };
+}
+
+module.exports = { writeToolConfig, resolveExecutor, TOOL_PKG, TOOL_DIR, isToolInstalled, ensureToolInstalled, runConverter };
