@@ -561,13 +561,13 @@ curl -sS -X PUT -H "Authorization: Bearer $TOKEN" \
   -F "data=@content/$P.html;type=text/html" \
   "https://admin.da.live/source/$ORG/$REPO/$P.html"           # 201 (new) or 200 (update)
 
-# Preview — separate, required. Path WITHOUT .html; branch = the deploy branch
+# Preview — separate, required. Path WITHOUT .html; branch = the deploy branch.
+# The deploy sequence STOPS here, at preview. Publishing to the live host is a
+# SEPARATE, FINAL step (see "Publish to the live host" after the pre-publish
+# gate) that runs ONLY after every gate box passes AND only if the user asked to
+# publish — never inline here, before verification.
 curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
   "https://admin.hlx.page/preview/$ORG/$REPO/$BRANCH/$P"      # expect 200
-
-# (optional) publish to aem.live
-curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
-  "https://admin.hlx.page/live/$ORG/$REPO/$BRANCH/$P"
 ```
 
 **Verify (do not skip).** Two layers — a fragment curl is *not* enough for a new
@@ -607,10 +607,13 @@ Non-obvious rules *(da-content / EDS)*:
   Referenced binaries/external image URLs must be reachable at **preview** time.
 - branch host `<branch>--<repo>--<org>` must be **≤ 63 chars** or it won't resolve.
 
-For many pages, drive `PUT → preview → live` with a concurrency pool + retry
-(`429`/`5xx`) rather than a hand-rolled loop. An unattended multi-page run can
-outlast a single ~1h token, so **refresh the token before long batches and on
-any `401`-with-empty-body**, then resume — don't abort the whole run.
+For many pages, drive `PUT → preview` (publish stays a gated, post-verify step —
+see below) with a concurrency pool + retry (`429`/`5xx`) rather than a
+hand-rolled loop. An unattended multi-page run can outlast a single ~1h token, so
+**refresh the token before long batches and on any `401`-with-empty-body**, then
+resume — don't abort the whole run. Each page still clears the pre-publish gate
+before it is eligible to publish; a gate failure on one page blocks that page's
+publish, not the batch.
 
 ### Pre-publish gate — the page is not "done" until every box is checked
 
@@ -663,6 +666,26 @@ If an item can't be fixed unattended (e.g. the design *itself* only contains
 placeholder copy, or real icon SVGs aren't available), **stop and get the real
 content/decision from the user** — don't publish the failing page and don't
 fabricate the missing piece.
+
+### Publish to the live host — the FINAL step, gated on the checklist
+
+Publishing (`POST admin.hlx.page/live/...`) is **not** part of the deploy
+sequence in Phase 5 — it is the **last** action, and it runs **only when both**
+hold:
+
+1. **Every** pre-publish gate box above **positively passed** — an unchecked or
+   failed box blocks publish (fail-closed). A page with an unresolved gate item
+   is preview-only, full stop.
+2. The **user asked to publish.** Preview-only is the default deliverable — a
+   page reachable at the preview host is usually enough. Do **not** publish to
+   "save a round-trip," and never publish inline right after preview.
+
+```bash
+# Preconditions asserted by the caller: gate fully passed AND publish requested.
+code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" \
+  "https://admin.hlx.page/live/$ORG/$REPO/$BRANCH/$P")
+[ "$code" = "200" ] || { echo "❌ publish failed ($code) — page stays preview-only"; exit 1; }
+```
 
 ---
 
