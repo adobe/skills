@@ -711,10 +711,10 @@ req 200 -X POST -H "Authorization: Bearer $TOKEN" \
   "https://admin.hlx.page/preview/$GH_OWNER/$GH_REPO/$BRANCH/$P" >/dev/null
 ```
 
-**Verify (do not skip).** Two layers — a fragment curl is *not* enough for a new
-block:
+**Verify (do not skip).** Two stages — a fragment curl is *not* enough for a new
+block, and it can *never* stand in for the browser stage:
 
-*Server-side* — curl the plain fragment (fast, no JS):
+*Stage A — server-side (curl the plain fragment; fast, no JS):*
 
 ```bash
 BASE="https://$BRANCH_HOST--$GH_REPO--$GH_OWNER.aem.page/$P.plain.html"
@@ -728,14 +728,20 @@ Also confirm the **section count matches the plan** — count **top-level
 divs too, so a raw `<div>` count runs several times high) — and that rich
 default content survived (spot-check heading / list / link counts).
 
-*Client-side* — **`.plain.html` shows blocks UNDECORATED** (`<div class="name">`
-with raw rows); a block's JS runs in the **browser**, so the fragment can never
-tell you whether the block decorated. For a **new block** (3B) that decoration
-*is* the deploy's payoff — verify it on the **rendered page**, not the fragment:
-load `https://$BRANCH_HOST--$GH_REPO--$GH_OWNER.aem.page/$P` in a browser and confirm the
-block element got `data-block-status="loaded"`, shows its expected transformed
-DOM, and that its CSS applied. (Reused existing blocks are already known-good,
-so the server-side checks suffice for them.)
+*Stage B — browser (testing-blocks); mandatory, and curl is not a substitute.*
+**`.plain.html` shows blocks UNDECORATED** (`<div class="name">` with raw rows);
+a block's JS runs in the **browser**, so the fragment — and a curl of the block's
+CSS/JS, which only proves the files return `200` — can never tell you whether the
+block **decorated** or whether it **looks like the design**. For a **new block**
+(3B) that decoration and visual fit *are* the deploy's payoff, so this stage runs
+through **testing-blocks**: render `https://$BRANCH_HOST--$GH_REPO--$GH_OWNER.aem.page/$P`
+in a browser, confirm the block got `data-block-status="loaded"` with its
+transformed DOM and applied CSS, and **compare the rendered block against the
+Figma section screenshot** (get_screenshot from Phase 1). If **no browser is
+available**, Stage B is **UNVERIFIED** — the page is **preview-only**, never
+"done" (see the pre-publish gate). (Reused existing blocks are already
+known-good, so Stage A suffices for them; Stage B still applies to their visual
+fit if the token retheme changed their look.)
 
 Non-obvious rules *(da-content / EDS)*:
 - multipart field name is exactly **`data`** — other names silently 200 with
@@ -762,13 +768,18 @@ publish, not the batch.
 
 The verify steps above only help if you **act on a failure**. An autonomous run
 tends to *note* a problem in the plan and ship anyway — **a plan note is not a
-check.** Before reporting the page as done, confirm **all** of these — on the
-**rendered** page (`…aem.page/$P`) when a browser is available (`aem up` locally
-or a real browser), otherwise via `curl` of the fragment **plus** the referenced
-block CSS/JS and assets — and fix-and-redeploy any that fail. **Any box you
-cannot positively verify counts as failed, not passed** — an un-run check is a
-blocker, not a green light, and narrowing your attention to this list must not
-drop a check the phases above already require.
+check.** The boxes below are split into two stages: **Stage A** is server-side
+and can be cleared by `curl` of the fragment plus the referenced block CSS/JS and
+assets; **Stage B** requires a real browser (via **testing-blocks**) and `curl`
+is **not** an accepted substitute — a `200` on a block's CSS/JS proves the file
+exists, never that the block decorated or matches the design. Fix-and-redeploy
+any box that fails. **Any box you cannot positively verify counts as failed, not
+passed** — an un-run check is a blocker, not a green light, and narrowing your
+attention to this list must not drop a check the phases above already require.
+**If no browser is available, the Stage B boxes are UNVERIFIED: report the page
+preview-only and never call it "done."**
+
+**Stage A — server-side (curl the fragment + referenced assets):**
 
 - [ ] **The legibility check actually ran on real content** for every section
       whose text sits over media or a color fill — including secondary text,
@@ -791,9 +802,9 @@ drop a check the phases above already require.
       returns `200` at `/icons/x.svg` on the branch host (or is a full DA-`/media`
       URL on an `<img>`); **no emoji or Unicode glyph standing in for a designed
       icon.**
-- [ ] **Every new block is live *and* decorates** — its JS **and** CSS return
-      `200` on the branch host, and the rendered page shows the block with
-      `data-block-status="loaded"`, its transformed DOM, and applied CSS.
+- [ ] **Every new block's code is live** — its JS **and** CSS return `200` on the
+      branch host. (A `200` on the file proves it *exists*, not that the block
+      *decorated* — that is the Stage B decoration box below.)
 - [ ] **0 `about:error`**, the `<img>` count matches what you authored, and the
       count of **top-level `<main> > div` sections** matches the plan.
 - [ ] **The `metadata` block is present** — a `<div class="metadata">` (exact
@@ -804,6 +815,26 @@ drop a check the phases above already require.
       (Scope note: the `.plain.html` fragment legitimately has **no**
       `<body>/<header>/<main>/<footer>` wrappers — it is a body fragment, so their
       absence there is **not** a defect. Check only for the `metadata` block.)
+
+**Stage B — browser (testing-blocks); mandatory. `curl` cannot clear these:**
+
+- [ ] **Every new block actually decorated** — on the **rendered** page
+      (`…aem.page/$P`, not the fragment) the block element carries
+      `data-block-status="loaded"`, shows its expected transformed DOM, and its
+      CSS applied. The Stage A "code is live" `200` does **not** satisfy this — a
+      block whose JS 500s on load still serves its JS file with a `200`.
+- [ ] **The rendered result matches the design** — run **testing-blocks** to
+      screenshot each new or restyled block on the rendered page and compare it to
+      the Figma section screenshot (get_screenshot, Phase 1). A visible mismatch
+      (layout, spacing, type scale, color, imagery) is a **failure to fix**, not a
+      caveat to log — refine the block (as an isolated block/variant) and
+      redeploy. This is the check whose omission most often ships a page that
+      deploys cleanly but looks nothing like the design.
+
+If **no browser is available**, both Stage B boxes are **UNVERIFIED** — do not
+tick them and do not call the page "done"; report it **preview-only** and say
+which checks could not run (Phase 6). Never substitute a Stage A `curl` for a
+Stage B box.
 
 If an item can't be fixed unattended (e.g. the design *itself* only contains
 placeholder copy, or real icon SVGs aren't available), **stop and get the real
@@ -841,6 +872,9 @@ req 200 -X POST -H "Authorization: Bearer $TOKEN" \
 - **How each section resolved** — the confirmed plan (reuse / default content /
   new block per section), flagging any that were **inferred** (vs. annotated)
   and any the user deferred or skipped, and why.
+- **Verification status** — which pre-publish boxes passed, and explicitly which
+  **Stage B** (browser/testing-blocks) checks could **not** run. A page whose
+  Stage B is unverified is reported **preview-only, UNVERIFIED** — never "done."
 
 ---
 
