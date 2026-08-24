@@ -1,6 +1,6 @@
 ---
 name: migration
-description: Migrates legacy AEM (6.x, AMS, on-prem) to AEM as a Cloud Service using BPA CSV/cache, CAM/MCP discovery, and a one-pattern-per-session workflow. Use to review/scan a project for AEMaaCS migration (generates a read-only migration-runbook.md covering all patterns via per-pattern detection strategies), for BPA/CAM findings, Cloud Service blockers, or fixes for scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler, DAM AssetManager, HTL data-sly-test lint, Classic UI dialog migration (lui — ExtJS/Coral 2 → Coral 3), Custom Design Widgets (cdw), and static→editable template modernization. OSGi configs → Cloud Manager — scan ui.config/.cfg.json for secrets and $[secret:]/$[env:] placeholders. After discovery, migration hands off each (pattern, file) pair to the code-assessment skill for the pattern guides and shared references; template modernization and legacy UI (dialog/CDW) follow references/ modules.
+description: Migrates legacy AEM (6.x, AMS, on-prem) to AEM as a Cloud Service using BPA CSV/cache, CAM/MCP discovery, and a one-pattern-per-session workflow. Use to review/scan a project for AEMaaCS migration (generates a read-only migration-runbook.md covering all patterns via per-pattern detection strategies), for BPA/CAM findings, Cloud Service blockers, or fixes for scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler, DAM AssetManager, HTL data-sly-test lint, Classic UI dialog migration (lui — ExtJS/Coral 2 → Coral 3), Custom Design Widgets (cdw), and static→editable template modernization. OSGi configs → Cloud Manager — scan ui.config/.cfg.json for secrets and $[secret:]/$[env:] placeholders. Also converts AMS / on-premise Apache Dispatcher configurations to AEM as a Cloud Service (Branch E, beta). After discovery, migration hands off each (pattern, file) pair to the code-assessment skill for the pattern guides and shared references; template modernization and legacy UI (dialog/CDW) follow references/ modules.
 license: Apache-2.0
 ---
 
@@ -27,6 +27,7 @@ This skill drives the **migration workflow**: BPA data, CAM/MCP, **one pattern p
 | **Template modernization** | *"**Migrate my static templates to editable templates and generate Modernize Tools rules.**"* / *"Create editable templates from my static templates."* / *"Generate AEM Modernize Tools structure/component/policy rules."* | Agent **auto-reads** [references/template-modernization/template-modernization-context.md](references/template-modernization/template-modernization-context.md) (shared discovery + structured context), produces a **per-template plan table**, then executes the plan using [editable-template-creation.md](references/template-modernization/editable-template-creation.md) and [aem-modernization.md](references/template-modernization/aem-modernization.md), and validates via [template-modernization-validation.md](references/template-modernization/template-modernization-validation.md). No BPA pattern id. |
 | **Dialog migration** | *"Convert my Classic UI / ExtJS dialogs to Touch UI."* / *"Upgrade Coral 2 dialogs to Coral 3."* / *"Fix LUI dialog findings."* | Agent reads [references/legacy-ui/dialog/context.md](references/legacy-ui/dialog/context.md) — filters BPA LUI to dialog sub-types, converts via [extjs-to-coral3.md](references/legacy-ui/dialog/extjs-to-coral3.md) or [coral2-to-coral3.md](references/legacy-ui/dialog/coral2-to-coral3.md), validates via [validation.md](references/legacy-ui/dialog/validation.md). BPA pattern id: `lui`. |
 | **Custom widget migration** | *"Fix my CDW findings."* / *"Migrate custom ExtJS widgets to Coral 3."* | Agent reads [references/legacy-ui/cdw/context.md](references/legacy-ui/cdw/context.md) — inventories xtypes, maps or scaffolds Granite UI components via [conversion.md](references/legacy-ui/cdw/conversion.md), validates via [validation.md](references/legacy-ui/cdw/validation.md). BPA pattern id: `cdw`. Run CDW before dialog migration when both are needed. |
+| **Dispatcher conversion** (beta) | *"Convert my AMS / on-prem Dispatcher config to AEM as a Cloud Service."* | Agent reads [references/dispatcher/context.md](references/dispatcher/context.md) — detects the config **mode**, generates the tool config, runs Adobe's `dispatcher-converter`, **verifies** output (filter/ACL hard-gate), and validates. **Branch E.** Runbook pattern id: `dispatcherConversion` (heuristic). |
 
 **Starter prompts (copy-paste):**
 
@@ -97,6 +98,19 @@ Do not transform **Java or HTL** until the pattern guide (or reference) is read 
 
 **Run order when both are needed: CDW first, then dialog.** CDW resolves custom xtypes so dialog conversion can proceed without stops. **Skip** Branch B. **Skip** Branch C.
 
+**Branch E — Dispatcher Conversion** (AMS / on-premise Apache `httpd` + Dispatcher → AEMaaCS; no Java BPA pattern this session):
+
+> **Beta**: Dispatcher conversion (Branch E) is in beta and under active development. Review its output carefully before using it on production dispatcher configurations.
+
+If the user asks to **convert / migrate a Dispatcher configuration** to AEM as a Cloud Service, follow the **6-phase flow**. It wraps Adobe's maintained `@adobe/aem-cs-source-migration-dispatcher-converter` as the conversion engine and adds detection, config generation, output verification, judgment, and validation on top. Start by reading [references/dispatcher/context.md](references/dispatcher/context.md). **Skip** Branch B.
+
+1. **Inventory** — run `scripts/dispatcher-inventory.js` (`buildInventory`) to detect the **mode** (`standard` / `flexible` / `already-cloud` / `not-dispatcher` / `v1` / `unknown`) and count filter / rewrite / cache rules. Modes and signals are defined in [references/dispatcher/context.md](references/dispatcher/context.md). If the mode is `already-cloud` or `not-dispatcher`, STOP with that finding — there is nothing to convert.
+2. **Plan + generate `config.yaml`** — build the converter config per [references/dispatcher/config-generation.md](references/dispatcher/config-generation.md) (per-mode mapping; `variablesToReplace` is a flat mapping, `portsToMap` is a list, `appendToVhosts` is a file path).
+3. **Execute** — `ensureToolInstalled` (auto-installs the Adobe tool into the gitignored `scripts/dispatcher-tool/node_modules/` on first use) then `runConverter` (`scripts/dispatcher-run.js`); the executor is selected by mode (`standard` → `main.js`, `flexible` / on-prem → `singleFileMain.js`).
+4. **Verify + normalize** — run `scripts/dispatcher-verify.js` and apply [references/dispatcher/output-verification.md](references/dispatcher/output-verification.md). **HARD STOP on `filter-acl-loss`** (an empty `filters.any` when the baseline had filter rules): the conversion is not usable until it is resolved.
+5. **Judgment + cross-boundary** — apply the decision catalog in [references/dispatcher/conversion-patterns.md](references/dispatcher/conversion-patterns.md); hand any Cloud Manager environment variables to **Branch A** (OSGi → Cloud Manager); flag CDN-candidate rules. Target end-state conventions are in [references/dispatcher/current-sdk-conventions.md](references/dispatcher/current-sdk-conventions.md).
+6. **Validate** — validate the converted `src` per [references/dispatcher/validation.md](references/dispatcher/validation.md) (delegates to the `dispatcher` skill's SDK validator + guardrails); iterate until clean. Do not present the result as done on validation failure.
+
 ## When to Use This Skill
 
 - Migrate legacy AEM Java toward **Cloud Service–compatible** patterns
@@ -106,6 +120,7 @@ Do not transform **Java or HTL** until the pattern guide (or reference) is read 
 - **OSGi → Cloud Manager:** **Branch A** — scan scoped **`.cfg.json`**, apply **`$[secret:…]`** / **`$[env:…]`** per rules in **[references/osgi-cfg-json-cloud-manager.md](references/osgi-cfg-json-cloud-manager.md)**; gitignored handoff; **no** secret values in chat.
 - **Template Modernization:** **Branch C** — see the Required-delegation entry above. Per-template plan table; no branch-level ordering between editable templates, structure rules, component rules, policy rules. References: [references/template-modernization/](references/template-modernization/).
 - **Legacy UI Migration:** **Branch D** — `legacy-ui/dialog/` for Classic UI/Coral 2 dialog conversion (BPA `lui` dialog sub-types); `legacy-ui/cdw/` for custom ExtJS widget remediation (BPA `cdw`). Run CDW before dialog when both are needed.
+- **Dispatcher Conversion:** **Branch E** (beta) — convert AMS / on-premise Apache+Dispatcher configs to AEMaaCS via Adobe's `dispatcher-converter`, with mode detection, config generation, output verification (filter/ACL hard-gate), cross-boundary handoff, and SDK validation. References: [references/dispatcher/](references/dispatcher/).
 
 ### OSGi configs and Cloud Manager (no BPA pattern id)
 
@@ -246,6 +261,7 @@ The runbook covers **every pattern the migration skill can address**. Each patte
 | `htlLint` | `html-scan` | heuristic regex scan of `.html` (pure Node — no `rg` binary needed) |
 | `osgiConfig` | `config-scan` | heuristic scan of OSGi config files for secret-looking keys / `$[secret:]`/`$[env:]` placeholders — **key names + locations only, never secret values** |
 | `lui`, `cdw`, `templateModernization` | BPA `cascade` → `content-scan` fallback | When a BPA CSV/CAM source is present, these come from BPA (subtypes `custom.classic.widget`; `legacy.dialog.classic`/`.coral2`; `legacy.static.template` + `custom.static.template`). With no BPA source, a heuristic `.content.xml` scan is the fallback. Sample prompts route to **Branch D** (legacy-ui) / **Branch C** (templates), not code-assessment |
+| `dispatcherConversion` | `content-scan` | Heuristic scan for an AMS / on-prem Dispatcher config layout (a monolithic `dispatcher.any` + `conf.vhost.d/`, or `conf.dispatcher.d/` AMS trees). Detected by `dispatcher-inventory.js`; the sample prompt routes to **Branch E** (beta). |
 
 `htlLint`, `osgiConfig`, and the content-scan **fallback** for `lui`/`cdw`/`templateModernization` are **heuristic** (tagged `confidence: heuristic` in the cache) — candidate matches, not compiler-validated. BPA-sourced `lui`/`cdw`/`templateModernization`/`replication` findings are authoritative. Out of scope: `inject-in-sling-model` and `outdated-dependencies` (those belong to code-assessment's own runbook, not migration).
 
@@ -303,6 +319,8 @@ If the request is **template modernization** — including "create editable temp
 
 If the request involves **legacy UI** (Classic UI dialogs, Coral 2 dialogs, custom ExtJS widgets, LUI or CDW BPA findings) — follow **Branch D**. Route `lui` findings to `legacy-ui/dialog/`, `cdw` findings to `legacy-ui/cdw/`. No Java pattern modules needed.
 
+If the request is **dispatcher conversion** — convert or migrate an AMS or on-premise Dispatcher configuration to AEM as a Cloud Service — follow **Branch E** (beta). No Java pattern module is needed. **Skip** Branch B.
+
 Otherwise map the request to a pattern id: `scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `htlLint`, `lui`, `cdw`. If unclear, use **Manual Pattern Hints** in **`{code-assessment}/SKILL.md`** or ask the user to pick one of those.
 
 ### Step 2: Availability
@@ -345,6 +363,8 @@ is non-empty, reuse it instead of re-deriving findings:
 **For BPA patterns** (`scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `lui`, `cdw`) **when no usable cache exists**: Run **`getBpaFindings`** (with `bpaFilePath` when provided). Internally: cache → CSV → MCP → manual **only when each step is applicable and succeeds**; if MCP fails, obey **MCP errors and fallback** (stop; no silent chain). For MCP details, [references/cam-mcp.md](references/cam-mcp.md).
 
 For `lui` findings, the `identifier` in each target is the **JCR component path** (e.g. `/apps/myapp/components/content/mycomp`) — not a Java class name. Resolve it to the filesystem path using the [JCR → filesystem mapping](references/legacy-ui/dialog/context.md#jcr-path--filesystem-path) before opening files. **Note:** `luiCoral2` is not a standalone BPA pattern id — Coral 2 dialogs appear as the `legacy.dialog.coral2` sub-type within `lui` results. Do not call `getBpaFindings('luiCoral2', …)` independently; call `getBpaFindings('lui', …)` and filter by sub-type inside Branch D.
+
+For **`dispatcherConversion`**, targets are the Dispatcher config root(s) and detected mode from the `dispatcher-inventory.js` scan (surfaced in the Step 0 runbook), not from BPA — go straight to **Branch E**.
 
 `getBpaFindings` returns **a batch of 5 findings** (default `limit=5`) along with a `paging`
 envelope. The agent processes that batch only; it does **not** request the next batch until
