@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+</head>
+<body>
+<header></header>
+<main>
+<div><h1 id="planning-a-mixed-figma-page-migration-orchestration-and-verification">Planning a mixed Figma page migration: orchestration and verification</h1>
+<h2 id="context">Context</h2>
+<p>A user has already confirmed a section-resolution plan for a Figma frame with <code>figma-to-content</code>. The plan resolves as:</p>
+<ul>
+<li><strong>Section 1 (hero)</strong> → reuse the existing <code>hero</code> block (content only)</li>
+<li><strong>Section 2 (three feature cards)</strong> → reuse the existing <code>cards</code> block (content only)</li>
+<li><strong>Section 3 (an interactive comparison table)</strong> → build a <strong>new</strong> isolated block</li>
+<li><strong>Section 4 (intro copy)</strong> → default content (no block)</li>
+</ul>
+<p>A Figma MCP is connected, a DA token is available, and a browser (<code>aem up</code> locally or a real browser) is available.</p>
+<h2 id="output-specification">Output Specification</h2>
+<p>Respond as the agent would when turning the confirmed plan into an execution + verification plan. Your response must:</p>
+<ol>
+<li>List every sub-skill this plan requires the agent to <strong>invoke</strong> (not merely summarize from memory), and map each to the section(s) that require it.</li>
+<li>State explicitly how the new comparison-table block will be <strong>built</strong> and how it will be <strong>verified</strong>.</li>
+<li>Describe the pre-publish verification: what can be checked <strong>server-side</strong> (curl of the fragment + assets) vs. what requires a <strong>browser</strong>, and name the specific checks a curl can NOT establish.</li>
+<li>State the rule for reporting the page when the browser stage cannot run.</li>
+</ol>
+<p>Do NOT execute anything. Do NOT write code or HTML. Do NOT make tool calls beyond planning. Produce the execution/verification plan only.</p></div>
+</main>
+<footer></footer>
+</body>
+</html>

@@ -1,0 +1,17 @@
+<div><h1 id="figma-frame-migration-choosing-the-right-skill">Figma frame migration: choosing the right skill</h1>
+<h2 id="context">Context</h2>
+<p>A user provides the following prompt to the agent:</p>
+<blockquote>
+<p>I have a finished marketing landing page designed in <strong>Figma</strong> (I can share the file and the specific frame). I want to turn it into a page on our AEM Edge Delivery Services site and have it editable in DA. Some sections look like blocks we already have; at least one is a custom interactive module we don't have yet. How should we approach this?</p>
+</blockquote>
+<p>The repo is a standard <code>adobe/aem-boilerplate</code> clone with an existing <code>blocks/</code> palette. A Figma MCP is connected and a DA token is available. No prior conversion work exists.</p>
+<h2 id="output-specification">Output Specification</h2>
+<p>Respond as the agent would. Your response must:</p>
+<ol>
+<li>Identify which skill is the correct choice for this request.</li>
+<li>Explain in one or two sentences <em>why</em> this is <code>figma-to-content</code> and not <code>snowflake</code> or <code>page-import</code> — grounded in the <strong>input type</strong> (a live Figma frame, not an already-rendered HTML page or a source URL).</li>
+<li>Outline the high-level phases <code>figma-to-content</code> will execute, naming them.</li>
+<li>Describe how the two kinds of sections are handled — those that map to <strong>existing</strong> blocks (content only) vs. the <strong>custom module</strong> that needs a new block — and name the sub-skill the new block will be built through.</li>
+<li>State what the user must provide before work can start.</li>
+</ol>
+<p>Do NOT execute the migration. Do NOT write any code or HTML. Do NOT modify any files or make tool calls beyond what is needed to plan. Produce a planning response only.</p></div>
