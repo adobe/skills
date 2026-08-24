@@ -96,8 +96,13 @@ The DA-write contract in Phase 5 is the same one **da-content** documents
   standard EDS+DA setup `daOrg`/`daRepo` **equal** the GitHub `{owner}`/`{repo}`;
   confirm, because Phase 5 writes to `daOrg`/`daRepo` but previews/renders on
   the GitHub `{owner}`/`{repo}`/`{branch}`.
-- **`DA_TOKEN`** — via **da-auth** (cached at `~/.aem/da-token.json`, valid
-  ~1h). A `401` with an empty body means it expired → re-auth.
+- **`DA_TOKEN`** — via **da-auth**, which exports `$DA_TOKEN` and caches it at
+  `~/.aem/da-token.json` (valid ~1h). Prefer the `$DA_TOKEN` da-auth already set
+  in this session; read the cache file only if that's unset. Two distinct
+  failures: a `401` with an empty body means the token **expired** → re-auth; a
+  cache file that **can't be read because the execution sandbox has no `$HOME`
+  access** means the token is *unreachable*, not expired (see Phase 0 step 3) —
+  don't conflate them.
 
 ---
 
@@ -124,9 +129,15 @@ guess or a partial capability.
    the size cap (see Phase 1), **not** an access failure: retry narrower, do not
    report it as no access.
 3. **DA write path available.** Confirm a `DA_TOKEN` is obtainable via **da-auth**
-   (cached at `~/.aem/da-token.json`, or freshly minted). If auth can't be
-   completed, stop: *"Can't obtain a DA token (da-auth) — authenticate to DA and
-   re-run."* Don't spend a full Figma read only to fail at the deploy step.
+   — prefer the `$DA_TOKEN` it exports into the session, else its cache at
+   `~/.aem/da-token.json`, else freshly minted. **If the cache exists but can't be
+   read because this execution sandbox has no `$HOME` access**, the token is not
+   missing — it is *unreachable*; do **not** loop re-minting. Stop with that
+   distinction spelled out: *"A DA token exists but this sandbox can't read
+   `~/.aem/da-token.json` — run where the cache is readable, or provide the token
+   as `$DA_TOKEN` (or a readable path)."* If no token can be obtained at all,
+   stop: *"Can't obtain a DA token (da-auth) — authenticate to DA and re-run."*
+   Either way, don't spend a full Figma read only to fail at the deploy step.
 4. **Project checkout + orchestrated skills present.** The target repo is checked
    out locally (needed to see `blocks/` and to add new-block code) and the skills
    this one orchestrates (**da-auth**, **da-content**, the block skills) are
@@ -171,6 +182,27 @@ by capability:
   never a PNG, for the `/icons` or DA `/media` reference in Phase 4.
 - **Design tokens** (e.g. `get_variable_defs`) — colors, spacing, type. Read
   annotation values and, for new blocks, source token values.
+
+**Call budget & order — Figma MCP calls are rate-limited and payload-capped, so
+spend them deliberately rather than re-fetching:**
+
+1. **`get_metadata` first** (scoped to the frame) — the structure/section tree.
+   The cheapest orienting call; every later call keys off the node ids it returns.
+2. **`get_screenshot` of the whole frame early** — one full-frame reference image
+   up front is the anchor you reconcile the section count against (segmentation
+   heuristic) and, later, compare the rendered page to (Phase 5 Stage B). Take
+   per-section crops afterwards, only for the sections you actually build.
+3. **`get_design_context` targeted and lean, per section** — request the lean
+   form (exclude the screenshot, disable Code Connect) and scope it to **one
+   section's node at a time**. A whole-frame context dump is the single call most
+   likely to blow the transport cap.
+4. **Asset download last** (`download_assets` / export-as-SVG) — only for the
+   assets the **confirmed** plan references, after Phase 2. Don't pull binaries
+   for sections that end up reusing an existing block or being cut.
+
+A `429`/rate-limit or a truncated/garbled response is a **budget/cap signal, not
+"no data"**: back off, narrow the scope (frame → section), and retry — never read
+it as an empty design or as missing access (Phase 0 step 2 draws the same line).
 
 Produce an ordered **section inventory**: `{ sectionNodeId, annotation,
 screenshot, content, background }` — capture each section's **background /
