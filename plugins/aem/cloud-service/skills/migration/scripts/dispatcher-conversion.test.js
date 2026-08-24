@@ -46,27 +46,27 @@ test('detectMode: conf.dispatcher.d with conf.vhost.d (not flexible; should be s
   assert.notStrictEqual(mode, 'flexible', `Config with conf.dispatcher.d + conf.vhost.d should not be 'flexible', got '${mode}'`);
 });
 
-test('hasAmsMarkers: detects symlinked AMS marker files', () => {
+test('hasAmsMarkers: detects symlinked AMS marker files (symlink name matches pattern, backing file does not)', () => {
   const r = mk();
-  const enabled = path.join(r, 'conf.dispatcher.d/enabled_farms');
   const available = path.join(r, 'conf.dispatcher.d/available_farms');
-  fs.mkdirSync(enabled, { recursive: true });
+  const enabled = path.join(r, 'conf.dispatcher.d/enabled_farms');
   fs.mkdirSync(available, { recursive: true });
-  w(available, 'x_farm.any', '/farm { }');
-  fs.symlinkSync('../available_farms/x_farm.any', path.join(enabled, 'x_farm.any'));
-  assert.strictEqual(INV.hasAmsMarkers(r), true, 'Should detect AMS marker via symlink');
+  fs.mkdirSync(enabled, { recursive: true });
+  w(available, 'site.any', '/site { }');
+  fs.symlinkSync('../available_farms/site.any', path.join(enabled, 'site_farm.any'));
+  assert.strictEqual(INV.hasAmsMarkers(r), true, 'Should detect AMS marker only via symlink name matching _farm.any pattern');
 });
 
 test('detectMode: symlinked AMS marker + cloud marker → standard (not already-cloud)', () => {
   const r = mk();
-  const enabled = path.join(r, 'conf.dispatcher.d/enabled_farms');
   const available = path.join(r, 'conf.dispatcher.d/available_farms');
-  fs.mkdirSync(enabled, { recursive: true });
+  const enabled = path.join(r, 'conf.dispatcher.d/enabled_farms');
   fs.mkdirSync(available, { recursive: true });
-  w(available, 'x_farm.any', '/farm { }');
-  fs.symlinkSync('../available_farms/x_farm.any', path.join(enabled, 'x_farm.any'));
+  fs.mkdirSync(enabled, { recursive: true });
+  w(available, 'site.any', '/site { }');
+  fs.symlinkSync('../available_farms/site.any', path.join(enabled, 'site_farm.any'));
   w(r, 'opt-in/USE_SOURCES_DIRECTLY', '');
-  assert.strictEqual(INV.detectMode(r), 'standard', 'Symlinked AMS marker should block already-cloud classification');
+  assert.strictEqual(INV.detectMode(r), 'standard', 'Symlinked AMS marker (whose name matches) should block already-cloud classification');
 });
 
 test('findConfigRoots: finds dispatcher config nested in workspace', () => {
