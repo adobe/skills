@@ -14,8 +14,13 @@ design) and a **DA IMS token** (to write content) — no proprietary tooling
 required.
 
 This skill **orchestrates existing skills**; it does not reimplement DA rules,
-block knowledge, or block-building. When a rule is unclear, read the
-referenced skill.
+block knowledge, or block-building. **Invoke those skills — do not inline them.**
+The condensed rules quoted in this file are *pointers* to jog the right skill,
+never a substitute for loading it: when a phase names a skill, invoke it and work
+from its actual guidance. Running this file as a self-contained procedure —
+hand-writing blocks, authoring DA HTML from memory, skipping the browser/visual
+check — is the single most common way a run goes wrong. Phase 2.3 turns the
+confirmed plan into an explicit manifest of the sub-skills you must invoke.
 
 ## Two paths
 
@@ -305,6 +310,40 @@ and because the plan contains inferred mappings, the whole thing gets **one
 pre-deploy confirmation** before the da.live write. Section #4's ⚠ flag means
 its real copy must be supplied before publish, not shipped as placeholder.
 
+### 2.3 — Lock the orchestration manifest (which sub-skills this plan requires)
+
+This skill is a **coordinator**, not a self-contained procedure. Before building,
+turn the confirmed plan into an explicit **manifest** of the sub-skills it
+requires, and **invoke each one** — this file's summaries are not a substitute.
+Running Phases 3–5 from general knowledge instead of the sub-skills is the single
+most common failure mode: blocks hand-written without the block skills, DA HTML
+authored from memory, and — most damaging — no browser/visual verification
+because **testing-blocks** was skipped.
+
+Derive the manifest from the plan:
+
+| The plan contains… | You MUST invoke |
+|---|---|
+| **Any** section (always) | **da-auth** (token) and **da-content** — load its real `references/html-content.md`, `platform.md`, and `media.md`, *not* the condensed rules in this file — before authoring (Phase 4) and deploying (Phase 5). |
+| An **existing-block reuse** (3A) | **block-collection-and-party** (authoring model + a rendered example) **and testing-blocks** for the visual reuse gate (rendered block vs. the Figma section screenshot). |
+| A **new block** (3B) | **content-modeling** (design the authoring model), then **content-driven-development** (which runs **building-blocks** and **testing-blocks**). Do **not** hand-write block JS/CSS from this file. |
+| **Default content** (3C) | **da-content** only (no block skills). |
+
+Record the manifest as an evidence-bearing checklist and tick each item **only
+after you actually invoked the skill** — "I know what it does" is not invocation,
+and an un-invoked required skill means this phase is **not complete**:
+
+- [ ] **da-content** reference docs loaded (`html-content.md` / `platform.md` / `media.md`)
+- [ ] **block-collection-and-party** invoked for every reused block *(if any 3A)*
+- [ ] **content-modeling** + **content-driven-development** invoked for every new block *(if any 3B)*
+- [ ] **testing-blocks** invoked — its browser render + visual comparison **is** the
+      Stage B pre-publish check (Phase 5); a run with **no** browser available
+      reports the page **preview-only, UNVERIFIED**, never "done".
+
+If the environment genuinely cannot run a required skill (e.g. no browser for
+testing-blocks), **say so explicitly in the report and mark the affected checks
+unverified** — never silently substitute this file's summary and call it passed.
+
 ---
 
 ## Phase 3A — Map content into an EXISTING block
@@ -338,9 +377,10 @@ isolated block/variant, never an edit to the shared block. Recording the gap in
 the plan and reusing the block anyway is the single most common failure of an
 autonomous run (see the Phase 5 pre-publish gate).
 
-Once the gate passes, learn the block's authoring model from
-**block-collection-and-party** (its examples show the row/cell structure and
-variants). Then pour the Figma content into that structure:
+Once the gate passes, **invoke block-collection-and-party** to learn the block's
+authoring model (its examples show the row/cell structure and variants) — read
+the block from the skill, don't guess its model from its CSS source. Then pour
+the Figma content into that structure:
 
 - **Text** → matching cells; preserve heading levels from the design.
 - **Variants** → extra class tokens on the block (e.g. `cards highlight`).
@@ -374,12 +414,14 @@ block's look diverges) — the **3B** case. **Guardrails (strict):**
   (`pricing-table` ✓, `pricing_table` / `2col` / `promo--wide` ✗). Names must
   be unique and not collide with existing blocks.
 
-**Build route — content-driven-development.** Build every new block through
-**content-driven-development**: it invokes **content-modeling** (design the
-authoring model from the Figma structure/tokens) then **building-blocks** and
-**testing-blocks**, and produces a self-contained `blocks/<name>/` — no source
-URL, no installed substrate, no page chrome, and no global styles. That is the
-route that honors the 3B guardrails above. Build a **bespoke, one-off** section
+**Build route — invoke content-driven-development (don't hand-write the block).**
+Build every new block by **invoking content-driven-development** — not by writing
+block JS/CSS from scratch off this file's summary. It invokes **content-modeling**
+(design the authoring model from the Figma structure/tokens) then
+**building-blocks** and **testing-blocks**, and produces a self-contained
+`blocks/<name>/` — no source URL, no installed substrate, no page chrome, and no
+global styles. That is the route that honors the 3B guardrails above, and its
+testing-blocks pass is the block's Stage B verification (Phase 5). Build a **bespoke, one-off** section
 the same way — it is still an ordinary isolated block, and "one-off" changes
 nothing about how it is generated.
 
@@ -429,8 +471,13 @@ block wrapper:
 
 ## Phase 4 — Generate DA body-fragment HTML (da-content)
 
-Emit a **body fragment** (not a full HTML document) per **da-content**. Write
-one file per page to `content/<PATH>.html`.
+Emit a **body fragment** (not a full HTML document) per **da-content**. **Invoke
+da-content and load its `references/html-content.md`, `platform.md`, and
+`media.md` now** — the rules quoted throughout this phase are reminders to jog the
+right skill, not the source of truth. Subtle authoring rules (block-cell inline-
+tag normalization, media MIME/extension derivation, metadata keys) live in those
+docs; authoring from this summary alone is how they get missed. Write one file per
+page to `content/<PATH>.html`.
 
 **Mandatory skeleton** (da-content html-content.md §1–§2): wrap everything in
 `<body>` with an (empty) `<header>`/`<footer>` and a `<main>`; **each section
