@@ -37,8 +37,8 @@ Figma frame (annotations optional)
         ▼
   section inventory ──► resolve each section  (infer + confirm; annotations optional)
         │                 ├─ existing block (structure + visual fit) ─► author content
-        │                 ├─ needs one / look diverges → new block ───► build isolated block (snowflake /
-        │                 │                                              content-driven-development), push code
+        │                 ├─ needs one / look diverges → new block ───► build isolated block
+        │                 │                                              (content-driven-development), push code
         │                 └─ default content ──────────────────────────► author prose/media, no block
         ▼
   resolution plan ──► confirm with user (ask on low-confidence; flag overwrite of an existing page)
@@ -84,7 +84,6 @@ skills/figma-to-content/
 - [`content-modeling`](../content-modeling) — design a content model for a new block
 - [`content-driven-development`](../content-driven-development) — full dev workflow for a reusable new block (invokes [`building-blocks`](../building-blocks), [`testing-blocks`](../testing-blocks))
 - [`testing-blocks`](../testing-blocks) — render a block + screenshot and compare to the design; reused directly for the **reuse gate's visual check**
-- [`snowflake`](../snowflake) — turn a bespoke Figma-derived section into an isolated block
 
 ## Status
 

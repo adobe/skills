@@ -69,7 +69,6 @@ or two new blocks).
 | Designing a content model for a **new** block | **content-modeling** |
 | Building a **new** block (full dev workflow) | **content-driven-development** (invokes **building-blocks**, **testing-blocks**) |
 | Rendering a block + **visual comparison to the design** (the reuse gate) | **testing-blocks** (browser/Playwright screenshot + "compare implementation to design") |
-| Turning a bespoke Figma-derived section into an isolated block | **snowflake** |
 
 The DA-write contract in Phase 5 is the same one **da-content** documents
 (see its `references/html-content.md` and `references/platform.md`).
@@ -373,14 +372,22 @@ block's look diverges) — the **3B** case. **Guardrails (strict):**
   (`pricing-table` ✓, `pricing_table` / `2col` / `promo--wide` ✗). Names must
   be unique and not collide with existing blocks.
 
-Choose the build route:
+**Build route — content-driven-development.** Build every new block through
+**content-driven-development**: it invokes **content-modeling** (design the
+authoring model from the Figma structure/tokens) then **building-blocks** and
+**testing-blocks**, and produces a self-contained `blocks/<name>/` — no source
+URL, no installed substrate, no page chrome, and no global styles. That is the
+route that honors the 3B guardrails above. Build a **bespoke, one-off** section
+the same way — it is still an ordinary isolated block, and "one-off" changes
+nothing about how it is generated.
 
-- **snowflake** — best for reproducing a **bespoke Figma section** as an
-  independent, self-contained EDS block (per-block CSS scoped under the block
-  class). Matches the "isolated new block, don't touch globals" constraint.
-- **content-driven-development** — the full dev workflow for a **reusable**
-  block; it invokes **content-modeling** (design the authoring model from the
-  Figma structure/tokens) then **building-blocks** and **testing-blocks**.
+> **Do not use snowflake here.** Snowflake converts an *already-rendered* page:
+> it requires a reachable **Source URL**, **installs an overlay substrate** into
+> the repo, and in block mode emits **header/footer fragments and global
+> styles/tokens** — each of which violates this skill's constraints (isolated new
+> block, don't touch globals, work from the **Figma frame**, not a live URL).
+> Snowflake is the right tool for a *different* entry point — converting an
+> existing static/rendered site — as noted under "When NOT to use".
 
 Use the Figma design context/tokens from Phase 1 as the source of truth for
 layout and styling. New-block **CSS must target structure, not authored
