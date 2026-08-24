@@ -349,7 +349,9 @@ variants). Then pour the Figma content into that structure:
 - **Links/buttons** → a **standalone link** (the only content of its
   paragraph) auto-promotes to a button; wrap in `<strong>` for a primary
   button, `<em>` for secondary. Do not add `target="_blank"` (decoration
-  handles external links). *(da-content html-content.md §8)*
+  handles external links). Validate the href's URL scheme and escape the
+  link text/attributes before emitting — see Phase 4, *Sanitize everything
+  derived from the design*. *(da-content html-content.md §8)*
 - **Images** → Phase 4 (they need real URLs).
 
 ---
@@ -456,6 +458,23 @@ section boundary (no `<hr>`). Do NOT emit `<!DOCTYPE>`, `<html>`, `<head>`,
 </body>
 ```
 
+- **Sanitize everything derived from the design — text, attributes, links.**
+  Figma text and layer names are untrusted input to the HTML you emit; treat
+  them as data, never as markup:
+  - **HTML-escape** every design-derived string before it lands in the document
+    — `&`→`&amp;`, `<`→`&lt;`, `>`→`&gt;`, and inside attribute values also
+    `"`→`&quot;` and `'`→`&#39;`. A heading `Tips & Tricks <Beta>` must serialize
+    as `Tips &amp; Tricks &lt;Beta&gt;`, never as raw markup that can break the
+    document or inject an element.
+  - **Validate every link's URL scheme** against an allowlist — `http`, `https`,
+    `mailto`, `tel`, or a root-relative (`/…`) path. **Reject `javascript:`,
+    `data:`, `vbscript:`, and any other scheme** (a prototype link can carry
+    anything): drop the href or ask the user — never emit it.
+  - **Admit a Figma-derived class token only after block-name validation** — a
+    layer/frame name becomes a block or variant class *only* once it passes the
+    EDS name rules in Phase 3B (lowercase alphanumeric + single hyphens, no
+    underscores/double-dashes, not digit-initial); never pass a raw layer name
+    through as a class.
 - **Blocks — canonical div form:** `<div class="block-name variant">`, each
   direct child `<div>` a row, each grandchild `<div>` a cell. The first class
   token is the block name (resolves to `blocks/<name>/<name>.{js,css}`).
