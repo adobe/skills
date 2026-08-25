@@ -1,12 +1,14 @@
 'use strict';
-const { test } = require('node:test');
+const { test, after } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const INV = require('./dispatcher-inventory.js');
 
-function mk() { return fs.mkdtempSync(path.join(os.tmpdir(), 'disp-')); }
+const _tmpDirs = [];
+after(() => { for (const d of _tmpDirs) fs.rmSync(d, { recursive: true, force: true }); });
+function mk() { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'disp-')); _tmpDirs.push(d); return d; }
 function w(root, rel, c = 'x') { const f = path.join(root, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, c); return f; }
 // N distinct filter-rule blocks: `/0001 { … }` … `/000N { … }`.
 function rules(n) { return Array.from({ length: n }, (_, i) => `/${String(i + 1).padStart(4, '0')} { /type "allow" /url "*" }`).join('\n') + '\n'; }
@@ -116,6 +118,51 @@ test('buildInventory: filter rule count excludes commented-out rules', () => {
     '/farms {\n /website {\n  /filter {\n   # /0009 { /type "deny" /url "*.pdf" }\n   /0001 { /type "allow" /url "*" }\n  }\n } }\n');
   const inv = INV.buildInventory(r);
   assert.strictEqual(inv.ruleCounts.filter, 1, 'should count 1 rule and skip the commented /0009');
+});
+
+// Fix 1 [SECURITY]: dispatcher labels are conventionally `/0001` but customers legally use `/01`,
+// `/10001`, or non-numeric (`/allow-html`). The old `/[0-9]{3,4}` entry regex counted these as 0,
+// so an emptied output would pass the filter-acl-loss gate (fail-open). The broadened `/[\w.-]+`
+// regex counts all three → 3 (was 0 on the shipped code; the assertion flips on the fix).
+test('buildInventory: counts non-4-digit / non-numeric ACL labels (/01, /allow-html, /10001)', () => {
+  const r = mk();
+  w(r, 'conf.d/dispatcher.any',
+    '/farms {\n /website {\n  /filter {\n   /01 { /type "allow" /url "*" }\n   /allow-html { /type "allow" /url "*.html" }\n   /10001 { /type "deny" /url "/bin" }\n  }\n } }\n');
+  const inv = INV.buildInventory(r);
+  assert.strictEqual(inv.ruleCounts.filter, 3, 'must count /01, /allow-html and /10001 (0 under the old regex)');
+});
+
+// Fix 1 [SECURITY]: the same broadening must apply to standalone $include'd filter files, whose
+// entries are counted by the countFilterRules standalone scan. `/1` + `/22222` → 2 (0 under old).
+test('buildInventory: counts non-4-digit labels in a standalone $include\'d filter file', () => {
+  const r = mk();
+  w(r, 'conf.dispatcher.d/available_farms/site.farm',
+    '/site {\n  /filter {\n    $include "../filters/site_filters.any"\n  }\n}\n');
+  w(r, 'conf.dispatcher.d/filters/site_filters.any',
+    '/1 { /type "allow" /url "*" }\n/22222 { /type "deny" /url "/bin" }\n');
+  const inv = INV.buildInventory(r);
+  assert.strictEqual(inv.ruleCounts.filter, 2, 'must count /1 and /22222 in the $include\'d filter file');
+});
+
+// Fix 2: findConfigRoots must not descend into an identified root. A flexible tree
+// (`conf.d/dispatcher.any`) used to return both <root> AND <root>/conf.d (a bogus sub-root).
+test('findConfigRoots: flexible tree returns exactly [root], not [root, root/conf.d]', () => {
+  const r = mk();
+  w(r, 'conf.d/dispatcher.any', '/farms {\n  /website { }\n}\n');
+  w(r, 'conf.vhost.d/vhosts.conf', '<VirtualHost *:80></VirtualHost>');
+  const roots = INV.findConfigRoots(r);
+  assert.strictEqual(roots.length, 1, `expected exactly [root], got: ${roots.join(', ')}`);
+  assert.strictEqual(roots[0], r);
+});
+
+// Fix 3: a commented-out `# /filter { /9001 {} }` opener must not match and inflate the baseline.
+// One real /filter with one rule + one fully-commented /filter block → 1 (not 2).
+test('buildInventory: a commented-out /filter block does not inflate the filter count (1 not 2)', () => {
+  const r = mk();
+  w(r, 'conf.d/dispatcher.any',
+    '/farms {\n /website {\n  # /filter { /9001 { /type "deny" /url "*" } }\n  /filter {\n   /0001 { /type "allow" /url "*" }\n  }\n } }\n');
+  const inv = INV.buildInventory(r);
+  assert.strictEqual(inv.ruleCounts.filter, 1, 'commented /filter opener must not add a second rule');
 });
 
 // Fix D (inventory): a commented-out `# ... ${OLD}` must not become a phantom cmVar candidate;

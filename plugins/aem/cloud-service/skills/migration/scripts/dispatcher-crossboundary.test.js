@@ -1,12 +1,14 @@
 'use strict';
-const { test } = require('node:test');
+const { test, after } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const CB = require('./dispatcher-crossboundary.js');
 
-function mk() { return fs.mkdtempSync(path.join(os.tmpdir(), 'cb-')); }
+const _tmpDirs = [];
+after(() => { for (const d of _tmpDirs) fs.rmSync(d, { recursive: true, force: true }); });
+function mk() { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'cb-')); _tmpDirs.push(d); return d; }
 function w(root, rel, c) { const f = path.join(root, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, c); return f; }
 
 test('cmVars: external var (no Define) captured with location, not secret', () => {

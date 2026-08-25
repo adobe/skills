@@ -1,13 +1,17 @@
 'use strict';
-const { test } = require('node:test');
+const { test, after } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const REP = require('./dispatcher-report.js');
 
+const _tmpDirs = [];
+after(() => { for (const d of _tmpDirs) fs.rmSync(d, { recursive: true, force: true }); });
+function track(d) { _tmpDirs.push(d); return d; }
+
 function mkOut(filterRules) {
-  const r = fs.mkdtempSync(path.join(os.tmpdir(), 'rep-'));
+  const r = track(fs.mkdtempSync(path.join(os.tmpdir(), 'rep-')));
   const fdir = path.join(r, 'conf.dispatcher.d/filters');
   fs.mkdirSync(fdir, { recursive: true });
   fs.writeFileSync(path.join(fdir, 'filters.any'),
@@ -19,7 +23,7 @@ function mkOut(filterRules) {
 // Adobe-managed default_rewrite.rules (defaultCount RewriteRule). The default_* file
 // must be excluded from the coverage Output count.
 function mkRewriteOut(siteCount, defaultCount) {
-  const r = fs.mkdtempSync(path.join(os.tmpdir(), 'rep-rw-'));
+  const r = track(fs.mkdtempSync(path.join(os.tmpdir(), 'rep-rw-')));
   const rdir = path.join(r, 'conf.d/rewrites');
   fs.mkdirSync(rdir, { recursive: true });
   fs.writeFileSync(path.join(rdir, 'site.rules'),
@@ -34,7 +38,7 @@ function mkRewriteOut(siteCount, defaultCount) {
 // inline counter does not resolve. The inline output cache count is therefore 0 even though the
 // rules were preserved, so the coverage row must NOT read **DROPPED**.
 function mkCacheInIncludeOut() {
-  const r = fs.mkdtempSync(path.join(os.tmpdir(), 'rep-cache-'));
+  const r = track(fs.mkdtempSync(path.join(os.tmpdir(), 'rep-cache-')));
   const fdir = path.join(r, 'conf.dispatcher.d/available_farms');
   fs.mkdirSync(fdir, { recursive: true });
   fs.writeFileSync(path.join(fdir, 'site.farm'),
@@ -84,7 +88,7 @@ test('report echoes the verify verdict and always lists delegated next-checks', 
 });
 
 test('writeReport writes conversion-report.md and returns its path', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'repw-'));
+  const dir = track(fs.mkdtempSync(path.join(os.tmpdir(), 'repw-')));
   const p = REP.writeReport(dir, '# hi');
   assert.strictEqual(p, path.join(dir, 'conversion-report.md'));
   assert.strictEqual(fs.readFileSync(p, 'utf8'), '# hi');

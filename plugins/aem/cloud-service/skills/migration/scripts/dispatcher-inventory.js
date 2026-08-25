@@ -47,8 +47,13 @@ function hasAmsMarkers(root) {
 
 function findConfigRoots(workspaceRoot, acc = [], depth = 0) {
   if (depth > 6) return acc;
+  // A dispatcher config root does not contain another dispatcher config: once a dir is
+  // identified as a root, push it and return WITHOUT recursing into its children. This fixes
+  // the flexible-tree double-add (`conf.d/dispatcher.any` made both <root> and <root>/conf.d
+  // match). Only `not-dispatcher` dirs are recursed, so nested configs (workspace/project/
+  // dispatcher/src) still resolve — the intermediate dirs are not-dispatcher until the root.
+  if (detectMode(workspaceRoot) !== 'not-dispatcher') { acc.push(workspaceRoot); return acc; }
   let es; try { es = fs.readdirSync(workspaceRoot, { withFileTypes: true }); } catch { return acc; }
-  if (detectMode(workspaceRoot) !== 'not-dispatcher') acc.push(workspaceRoot);
   for (const e of es) {
     if (!e.isDirectory() || ['node_modules', '.git', 'target', 'dist'].includes(e.name)) continue;
     findConfigRoots(path.join(workspaceRoot, e.name), acc, depth + 1);
@@ -74,15 +79,19 @@ function readTextFiles(dir, pred) {
 function countSectionRules(files, section) {
   let n = 0;
   for (const f of files) {
-    let txt; try { txt = fs.readFileSync(f, 'utf8'); } catch { continue; }
+    let raw; try { raw = fs.readFileSync(f, 'utf8'); } catch { continue; }
+    // Strip full-line `#` comments from the whole file BEFORE the opener regex so a commented
+    // `# /filter { … }` can't be matched and have its body inflate the baseline. The extracted
+    // body is now already comment-free, so no inner body-level comment filter is needed.
+    const txt = raw.split('\n').filter(l => !l.trim().startsWith('#')).join('\n');
     const secRe = new RegExp('/' + section + '\\s*\\{', 'g');
     let m;
     while ((m = secRe.exec(txt))) {
-      // scan balanced braces from the section open, count `/NNNN {` entries within
+      // scan balanced braces from the section open, count `/<label> {` entries within.
+      // Broadened from `/[0-9]{3,4}` so non-4-digit ACL labels (/01, /10001, /allow-html) count —
+      // under-counting disables the fail-closed ACL gate; any over-match is the safe direction.
       const body = extractBraceBody(txt, m.index + m[0].length - 1);
-      // filter out comment lines before matching
-      const filtered = body.split('\n').filter(l => !l.trim().startsWith('#')).join('\n');
-      n += (filtered.match(/\/[0-9]{3,4}\s*\{/g) || []).length;
+      n += (body.match(/\/[\w.-]+\s*\{/g) || []).length;
     }
   }
   return n;
@@ -92,13 +101,15 @@ function countSectionRules(files, section) {
 function countQuotedEntries(files, section) {
   let n = 0;
   for (const f of files) {
-    let txt; try { txt = fs.readFileSync(f, 'utf8'); } catch { continue; }
+    let raw; try { raw = fs.readFileSync(f, 'utf8'); } catch { continue; }
+    // Strip full-line `#` comments up-front so a commented `# /clientheaders { … }` opener
+    // can't match and inflate the count; body lines are then already comment-free.
+    const txt = raw.split('\n').filter(l => !l.trim().startsWith('#')).join('\n');
     const secRe = new RegExp('/' + section + '\\s*\\{', 'g');
     let m;
     while ((m = secRe.exec(txt))) {
       const body = extractBraceBody(txt, m.index + m[0].length - 1);
-      // count non-comment lines matching quoted-string pattern
-      const lines = body.split('\n').filter(l => !l.trim().startsWith('#'));
+      const lines = body.split('\n');
       n += lines.filter(l => /^\s*"[^"]*"\s*$/.test(l)).length;
     }
   }
@@ -149,7 +160,9 @@ function countFilterRules(root, anyFarms) {
   for (const f of standalone) {
     let txt; try { txt = fs.readFileSync(f, 'utf8'); } catch { continue; }
     const filtered = txt.split('\n').filter(l => !l.trim().startsWith('#')).join('\n');
-    n += (filtered.match(/\/[0-9]{3,4}\s*\{/g) || []).length;
+    // Broadened from `/[0-9]{3,4}` so non-4-digit / non-numeric ACL labels (/01, /10001,
+    // /allow-html) are counted — under-counting would let an emptied output pass the gate.
+    n += (filtered.match(/\/[\w.-]+\s*\{/g) || []).length;
   }
   return n;
 }

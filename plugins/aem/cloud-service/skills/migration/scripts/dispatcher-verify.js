@@ -28,7 +28,7 @@ function verifyOutput(outputSrcDir, baseline) {
   //    this warning agrees with the coverage report's custom-only rewrite figure.
   const outRw = countRewrites(outputSrcDir, { excludeDefault: true });
   if ((baseline.rewrite || 0) > outRw) {
-    warnings.push(`Rewrite/redirect count dropped ${baseline.rewrite} → ${outRw} — confirm the missing rules moved to CDN or were intentional.`);
+    warnings.push(`Rewrite/redirect count dropped ${baseline.rewrite} → ${outRw} — expected when the source uses .tmpl templates (inflated baseline) or when redirects move to the CDN edge; reconcile against the tool's conversion-report.md rather than treating the delta as loss.`);
   }
 
   // 3. Artifact health — oversized vhost (mega-inlined).
