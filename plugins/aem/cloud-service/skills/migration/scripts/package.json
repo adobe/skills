@@ -6,7 +6,7 @@
     "parse-bpa": "node bpa-local-parser.js",
     "read-unified": "node unified-collection-reader.js",
     "check-sources": "node bpa-findings-helper.js",
-    "test": "node --test bpa-findings-helper.test.js runbook-generator.test.js dispatcher-conversion.test.js dispatcher-crossboundary.test.js dispatcher-e2e.test.js"
+    "test": "node --test bpa-findings-helper.test.js runbook-generator.test.js dispatcher-conversion.test.js dispatcher-crossboundary.test.js dispatcher-report.test.js dispatcher-e2e.test.js"
   },
   "engines": {
     "node": ">=14.0.0"
