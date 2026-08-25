@@ -1,32 +1,17 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { buildInventory, readTextFiles } = require('./dispatcher-inventory.js');
+const { buildInventory, countRewrites } = require('./dispatcher-inventory.js');
 
 const BETA = '> **Beta**: This capability is in beta and under active development. Review its output carefully before using it on production dispatcher configurations.';
 const SECTIONS = ['filter', 'rewrite', 'cache', 'clientheader', 'virtualhost'];
 
-// Custom-only rewrite count: exclude Adobe-managed default_* immutables (esp.
-// default_rewrite.rules — SDK boilerplate the converter always adds) so a surviving SDK
-// default can't mask dropped custom rewrites — matching how countFilterRules treats
-// default_*.any. Glob aligned with dispatcher-verify.js (.rules + .vhost). ADVISORY: this
-// only counts; it never imports or calls verifyOutput.
-function countCustomRewrites(dir) {
-  const files = readTextFiles(dir, n =>
-    (n.endsWith('.rules') || n.endsWith('.vhost')) && !n.startsWith('default_'));
-  let n = 0;
-  for (const f of files) {
-    let t; try { t = fs.readFileSync(f, 'utf8'); } catch { continue; }
-    n += (t.match(/^\s*(RewriteRule|Redirect(Match)?)\b/gm) || []).length;
-  }
-  return n;
-}
-
 // Render the conversion coverage + handoff report. ADVISORY: reads verifyResult but never
 // recomputes or changes `ok`. Source counts use the Phase-1 counter (buildInventory).
-// Output counts are custom-only — the rewrite figure is overridden with countCustomRewrites
-// so a surviving Adobe-managed default_rewrite.rules can't mask dropped custom rewrites
-// (matching the filter gate). With no outputSrcDir the Output/Status columns read
+// Output counts are custom-only — the rewrite figure is overridden with the shared
+// countRewrites({excludeDefault:true}) (same counter verifyOutput's rewrite warning uses) so a
+// surviving Adobe-managed default_rewrite.rules can't mask dropped custom rewrites (matching the
+// filter gate) and verify + report agree. With no outputSrcDir the Output/Status columns read
 // "not scanned" (source inventory only), never a false DROPPED.
 function renderReport({ inventory, verifyResult, crossBoundary, outputSrcDir }) {
   const src = (inventory && inventory.ruleCounts) || {};
@@ -34,21 +19,27 @@ function renderReport({ inventory, verifyResult, crossBoundary, outputSrcDir }) 
   const out = scanned ? buildInventory(outputSrcDir).ruleCounts : {};
   // Override the rewrite figure with the custom-only count (excludes default_*) so a
   // surviving SDK default_rewrite.rules can't inflate output and mask dropped custom rewrites.
-  if (scanned) out.rewrite = countCustomRewrites(outputSrcDir);
+  if (scanned) out.rewrite = countRewrites(outputSrcDir, { excludeDefault: true });
   const L = [];
   L.push('# Dispatcher Conversion Report', '', BETA, '');
 
   L.push('## Conversion coverage (source → output)', '');
   L.push('| Section | Source | Output | Status |', '|---|---|---|---|');
+  // Only filter (gate-echoed) and rewrite (reliably file-counted) get hard preserved/DROPPED
+  // verdicts. cache/clientheaders/virtualhosts are counted from inline farm bodies only; their
+  // custom entries may live in $include'd files we don't resolve here, so a hard DROPPED would be
+  // a false alarm — render them advisory and delegate precise reconciliation to validate/lint.
+  const PRECISE = new Set(['filter', 'rewrite']);
   for (const s of SECTIONS) {
     const a = src[s] || 0;
-    if (!scanned) {
-      L.push(`| ${s} | ${a} | not scanned | not scanned |`);
-      continue;
-    }
+    if (!scanned) { L.push(`| ${s} | ${a} | not scanned | not scanned |`); continue; }
     const b = out[s] || 0;
     let status;
-    if (a === 0) status = 'n/a';
+    if (!PRECISE.has(s)) {
+      // Counted from inline farm bodies only; custom entries may live in $include'd files we
+      // don't resolve here — do not assert a false DROPPED. Precise reconciliation is delegated.
+      status = a === 0 ? 'n/a' : 'inline — verify via `validate`/`lint`';
+    } else if (a === 0) status = 'n/a';
     else if (b >= a) status = 'preserved';
     else if (b === 0) status = '**DROPPED**';
     else status = `partial (${b}/${a})`;
@@ -59,7 +50,7 @@ function renderReport({ inventory, verifyResult, crossBoundary, outputSrcDir }) 
   }
   L.push('');
   L.push(scanned
-    ? '> Output counts are **custom-only** — Adobe-managed `default_*` immutables are excluded (matching the filter gate), so the rewrite figure can differ from the raw verify warning.'
+    ? '> Output counts are **custom-only** — Adobe-managed `default_*` immutables are excluded (matching the filter gate), so the rewrite figure can differ from the raw verify warning. Only `filter` and `rewrite` carry hard preserved/DROPPED verdicts; `cache` / `clientheaders` / `virtualhosts` are **inline-counted** (advisory) — custom entries may live in `$include`\'d files, so they are precisely reconciled by the delegated `validate` / `lint` checks, never asserted DROPPED here.'
     : '> Output **not scanned** — no `outputSrcDir` provided; Output/Status show source inventory only. Run against the converted tree to populate coverage.');
   L.push('');
 

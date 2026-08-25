@@ -6,9 +6,15 @@ const { execFileSync, spawnSync } = require('child_process');
 const TOOL_PKG = '@adobe/aem-cs-source-migration-dispatcher-converter';
 const TOOL_DIR = path.join(__dirname, 'dispatcher-tool');
 
+// YAML-safe emission: escape backslashes + double-quotes; quote scalars. Empty → blank (' ')
+// so the tool's `if (config.X)` guards still treat it as unset. A path with a YAML indicator
+// (` #`, leading `*`/`&`/`!`/`%`/quote) or a Windows backslash otherwise mis-parses unquoted.
+const esc = s => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+const yamlScalar = v => (v == null || v === '') ? ' ' : `"${esc(v)}"`;
+
 function yamlList(items) {
   if (!items || !items.length) return ' ';
-  return '\n' + items.map(i => `            - "${i}"`).join('\n');
+  return '\n' + items.map(i => `            - ${yamlScalar(i)}`).join('\n');
 }
 
 // Emit the tool's config.yaml. Keys not applicable to the mode are left blank (the tool ignores them).
@@ -17,21 +23,21 @@ function yamlList(items) {
 function writeToolConfig(workingDir, cfg) {
   const op = cfg.onPremise || {};
   const variablesToReplaceYaml = (op.variablesToReplace && op.variablesToReplace.length)
-    ? '\n' + op.variablesToReplace.map(v => `            "${v.from}": "${v.to}"`).join('\n')
+    ? '\n' + op.variablesToReplace.map(v => `            ${yamlScalar(v.from)}: ${yamlScalar(v.to)}`).join('\n')
     : ' ';
   const lines = [
     'dispatcherConverter:',
-    `    sdkSrc: ${cfg.sdkSrc || ''}`,
+    `    sdkSrc: ${yamlScalar(cfg.sdkSrc)}`,
     '    onPremise:',
-    `        dispatcherAnySrc: ${op.dispatcherAnySrc || ''}`,
-    `        httpdSrc: ${op.httpdSrc || ''}`,
+    `        dispatcherAnySrc: ${yamlScalar(op.dispatcherAnySrc)}`,
+    `        httpdSrc: ${yamlScalar(op.httpdSrc)}`,
     `        vhostsToConvert:${yamlList(op.vhostsToConvert)}`,
     `        variablesToReplace:${variablesToReplaceYaml}`,
-    `        appendToVhosts: ${op.appendToVhosts || ''}`,
+    `        appendToVhosts: ${yamlScalar(op.appendToVhosts)}`,
     `        pathToPrepend:${yamlList(op.pathToPrepend)}`,
     `        portsToMap:${yamlList(op.portsToMap)}`,
     '    ams:',
-    `        cfg: ${(cfg.ams && cfg.ams.cfg) || ''}`,
+    `        cfg: ${yamlScalar(cfg.ams && cfg.ams.cfg)}`,
     '',
   ];
   fs.mkdirSync(workingDir, { recursive: true });

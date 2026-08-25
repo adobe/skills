@@ -154,23 +154,42 @@ function countFilterRules(root, anyFarms) {
   return n;
 }
 
+// Count Apache RewriteRule / RedirectMatch directives across a config tree. ONE shared
+// counter so inventory (source baseline), verifyOutput (gate warning), and the coverage
+// report count rewrites identically — preventing the divergence that let the report and the
+// verify warning disagree.
+//   opts.includeTmpl:    also scan .rules.tmpl / vhost*.conf source templates (source trees are
+//                        templated; resolved output has none). Default false.
+//   opts.excludeDefault: skip Adobe-managed default_* immutables (e.g. default_rewrite.rules) so
+//                        a surviving SDK default can't mask dropped custom rewrites. Default false.
+function countRewrites(root, opts = {}) {
+  const { includeTmpl = false, excludeDefault = false } = opts;
+  const files = readTextFiles(root, n => {
+    if (excludeDefault && n.startsWith('default_')) return false;
+    if (n.endsWith('.rules') || n.endsWith('.vhost')) return true;
+    if (includeTmpl && (n.endsWith('.rules.tmpl') || /vhost.*\.conf/.test(n))) return true;
+    return false;
+  });
+  let count = 0;
+  for (const f of files) {
+    let t; try { t = fs.readFileSync(f, 'utf8'); } catch { continue; }
+    count += (t.match(/^\s*(RewriteRule|Redirect(Match)?)\b/gm) || []).length;
+  }
+  return count;
+}
+
 function buildInventory(root) {
   const mode = detectMode(root);
   const dispAny = readTextFiles(root, n => n === 'dispatcher.any' || n === 'dispatcher.any.tmpl');
   const farmFiles = readTextFiles(root, n => n.endsWith('.farm') || n.endsWith('_farm.any'));
   const anyFarms = dispAny.concat(farmFiles);
   const vhostFiles = readTextFiles(root, n => n.endsWith('.vhost') || /vhost.*\.conf/.test(n));
-  const ruleFiles = readTextFiles(root, n => n.endsWith('.rules') || n.endsWith('.rules.tmpl'));
   const httpd = readTextFiles(root, n => n === 'httpd.conf' || n === 'httpd.conf.tmpl')[0] || null;
   const tmplUsage = readTextFiles(root, n => n.endsWith('.tmpl')).length > 0;
 
-  const rewriteCount = ruleFiles.reduce((a, f) => {
-    let t; try { t = fs.readFileSync(f, 'utf8'); } catch { return a; }
-    return a + (t.match(/^\s*(RewriteRule|Redirect(Match)?)\b/gm) || []).length;
-  }, 0) + vhostFiles.reduce((a, f) => {
-    let t; try { t = fs.readFileSync(f, 'utf8'); } catch { return a; }
-    return a + (t.match(/^\s*(RewriteRule|Redirect(Match)?)\b/gm) || []).length;
-  }, 0);
+  // Same file set the old two-reduce block scanned (.rules + .rules.tmpl + .vhost + vhost*.conf),
+  // now via the shared counter so the source baseline stays identical.
+  const rewriteCount = countRewrites(root, { includeTmpl: true });
 
   const cmVarCandidates = [];
   for (const f of vhostFiles.concat(readTextFiles(root, n => n.endsWith('.conf') || n.endsWith('.conf.tmpl')))) {
@@ -206,4 +225,4 @@ function runDispatcherScan(workspaceRoot) {
   return { ok: true, findings, rawFindings, warnings: [] };
 }
 
-module.exports = { detectMode, findConfigRoots, looksLikeDispatcher, hasAmsMarkers, walkFind, buildInventory, runDispatcherScan, readTextFiles, countSectionRules, countQuotedEntries, countFilterRules };
+module.exports = { detectMode, findConfigRoots, looksLikeDispatcher, hasAmsMarkers, walkFind, buildInventory, runDispatcherScan, readTextFiles, countSectionRules, countQuotedEntries, countFilterRules, countRewrites };

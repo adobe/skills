@@ -214,6 +214,18 @@ test('buildInventory: default_filters.any at input is excluded from the baseline
   assert.strictEqual(inv.ruleCounts.filter, 3, 'default_filters.any (5 rules) excluded → baseline counts only the 3 custom rules');
 });
 
+// Fix 1 (unified rewrite counter): the SAME shared counter backs the verify warning and the
+// coverage report, so they can no longer disagree. {excludeDefault:true} drops the Adobe-managed
+// default_rewrite.rules (5) → 2 custom (what verify + report both use); the default view sees all 7.
+test('countRewrites: excludeDefault yields the custom-only figure both verify and report share', () => {
+  const r = mk();
+  w(r, 'conf.d/rewrites/site.rules', 'RewriteRule ^/a$ /b [L]\nRewriteRule ^/c$ /d [L]\n'); // 2 custom
+  w(r, 'conf.d/rewrites/default_rewrite.rules',
+    Array.from({ length: 5 }, (_, i) => `RewriteRule ^/d${i}$ /e${i} [L]`).join('\n') + '\n'); // 5 SDK default
+  assert.strictEqual(INV.countRewrites(r, { excludeDefault: true }), 2, 'excludeDefault → 2 custom (verify + report agree)');
+  assert.strictEqual(INV.countRewrites(r), 7, 'default view counts all 7 (2 custom + 5 default)');
+});
+
 // Task 4: Tool driver — config generation + executor resolution
 const RUN = require('./dispatcher-run.js');
 
@@ -230,8 +242,8 @@ test('writeToolConfig: emits a valid dispatcherConverter config.yaml (on-premise
   });
   const y = fs.readFileSync(p, 'utf8');
   assert.match(y, /dispatcherConverter:/);
-  assert.match(y, /sdkSrc: \/sdk\/src/);
-  assert.match(y, /dispatcherAnySrc: \/x\/dispatcher\.any/);
+  assert.match(y, /sdkSrc: "\/sdk\/src"/);              // scalars are now YAML-quoted
+  assert.match(y, /dispatcherAnySrc: "\/x\/dispatcher\.any"/);
   assert.match(y, /vhostsToConvert:/);
   assert.match(y, /- "\/x\/conf\.vhost\.d\/vhosts\.conf"/);
   // Verify variablesToReplace is a YAML mapping (key: value), not a sequence.
@@ -242,6 +254,31 @@ test('writeToolConfig: emits a valid dispatcherConverter config.yaml (on-premise
   assert.match(y, /- "8000"/);
   assert.match(y, /- "8080"/);
   assert.ok(!y.includes('portsToMap: 8000,8080'), 'should NOT emit scalar comma-separated format');
+});
+
+// Fix 3 (YAML-safe scalars): a path with a space + `#` (a YAML comment indicator) or a Windows
+// backslash must be quoted and escaped, or the tool mis-parses it (` #c/...` truncated as a comment,
+// `\s` mangled). Empty stays blank so the tool's `if (config.X)` guards still see it as unset.
+test('writeToolConfig: quotes + escapes YAML scalars (space, #, backslash); empty stays blank', () => {
+  const wd = mk();
+  const p = RUN.writeToolConfig(wd, {
+    sdkSrc: 'C:\\aem\\sdk',                                  // Windows path — backslashes must double
+    onPremise: {
+      dispatcherAnySrc: '/tmp/a b#c/dispatcher.any',        // space + # would truncate unquoted
+      appendToVhosts: '/tmp/a b#c/append.vhost',
+      // httpdSrc omitted → must render blank (unset), not "undefined"
+      variablesToReplace: [{ from: 'A B', to: 'x#y' }],
+    },
+    ams: { cfg: '/tmp/a b#c/ams.cfg' },
+  });
+  const y = fs.readFileSync(p, 'utf8');
+  assert.match(y, /dispatcherAnySrc: "\/tmp\/a b#c\/dispatcher\.any"/);
+  assert.match(y, /appendToVhosts: "\/tmp\/a b#c\/append\.vhost"/);
+  assert.match(y, /cfg: "\/tmp\/a b#c\/ams\.cfg"/);
+  assert.match(y, /sdkSrc: "C:\\\\aem\\\\sdk"/);             // backslashes doubled + quoted
+  assert.match(y, /"A B": "x#y"/);                           // variablesToReplace from/to quoted too
+  assert.match(y, /^ *httpdSrc: *$/m);                       // omitted → blank scalar, not "undefined"
+  assert.ok(!y.includes('undefined'), 'no value may serialize as the literal "undefined"');
 });
 
 test('resolveExecutor: maps mode to the right entry script', () => {

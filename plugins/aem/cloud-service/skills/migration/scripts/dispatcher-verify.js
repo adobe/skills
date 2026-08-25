@@ -1,7 +1,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { readTextFiles, countFilterRules } = require('./dispatcher-inventory.js');
+const { readTextFiles, countFilterRules, countRewrites } = require('./dispatcher-inventory.js');
 
 function read(p) { try { return fs.readFileSync(p, 'utf8'); } catch { return null; } }
 
@@ -23,9 +23,10 @@ function verifyOutput(outputSrcDir, baseline) {
       detail: `Filter rule count dropped ${baseline.filter} → ${outFilterRules}.` });
   }
 
-  // 2. Rewrite reconciliation (warning-level; rewrites may legitimately move to CDN).
-  const rwFiles = readTextFiles(outputSrcDir, n => n.endsWith('.rules') || n.endsWith('.vhost'));
-  const outRw = rwFiles.reduce((a, f) => a + ((read(f) || '').match(/^\s*(RewriteRule|Redirect(Match)?)\b/gm) || []).length, 0);
+  // 2. Rewrite reconciliation (warning-level; rewrites may legitimately move to CDN). Count via
+  //    the shared counter, EXCLUDING Adobe-managed default_* immutables (default_rewrite.rules) so
+  //    this warning agrees with the coverage report's custom-only rewrite figure.
+  const outRw = countRewrites(outputSrcDir, { excludeDefault: true });
   if ((baseline.rewrite || 0) > outRw) {
     warnings.push(`Rewrite/redirect count dropped ${baseline.rewrite} → ${outRw} — confirm the missing rules moved to CDN or were intentional.`);
   }

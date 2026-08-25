@@ -29,6 +29,23 @@ function mkRewriteOut(siteCount, defaultCount) {
   return r;
 }
 
+// Build an output tree whose farm has an EMPTY inline /cache { /rules { } } — the converter split
+// the real cache rules into an $include'd file (cache/marketing_query_parameters.any) that the
+// inline counter does not resolve. The inline output cache count is therefore 0 even though the
+// rules were preserved, so the coverage row must NOT read **DROPPED**.
+function mkCacheInIncludeOut() {
+  const r = fs.mkdtempSync(path.join(os.tmpdir(), 'rep-cache-'));
+  const fdir = path.join(r, 'conf.dispatcher.d/available_farms');
+  fs.mkdirSync(fdir, { recursive: true });
+  fs.writeFileSync(path.join(fdir, 'site.farm'),
+    '/site {\n  /cache {\n    /rules {\n      $include "../cache/marketing_query_parameters.any"\n    }\n  }\n}\n');
+  const cdir = path.join(r, 'conf.dispatcher.d/cache');
+  fs.mkdirSync(cdir, { recursive: true });
+  fs.writeFileSync(path.join(cdir, 'marketing_query_parameters.any'),
+    '/rules {\n  /0001 { /glob "*" /type "allow" }\n  /0002 { /glob "*.html" /type "deny" }\n  /0003 { /glob "/api/*" /type "deny" }\n}\n');
+  return r;
+}
+
 test('coverage table: preserved when output >= source; DROPPED when output 0', () => {
   const outputSrcDir = mkOut(3);                 // output has 3 filter rules
   const inventory = { ruleCounts: { filter: 3, rewrite: 10, cache: 0, clientheader: 0, virtualhost: 0 } };
@@ -97,6 +114,21 @@ test('coverage rewrite: preserved when custom output matches source (default_* s
   const crossBoundary = { cmVars: [] };
   const md = REP.renderReport({ inventory, verifyResult, crossBoundary, outputSrcDir });
   assert.match(md, /\| rewrite \| 2 \| 2 \| preserved \|/);
+});
+
+// Fix 2: cache/clientheaders/virtualhosts are counted from inline farm bodies ONLY; when the
+// converter moves custom entries into an $include'd file the inline output count is 0. That must
+// render as advisory ("inline — verify via validate/lint"), NOT a false **DROPPED** on preserved
+// config. Only filter (gate-echoed) and rewrite (reliably file-counted) keep hard verdicts.
+test('coverage: cache rules moved to an $include render advisory (inline — verify), never DROPPED', () => {
+  const outputSrcDir = mkCacheInIncludeOut();    // inline /cache is empty; the real rules live in an include
+  const inventory = { ruleCounts: { filter: 0, rewrite: 0, cache: 3, clientheader: 0, virtualhost: 0 } };
+  const verifyResult = { ok: true, failures: [], warnings: [] };
+  const crossBoundary = { cmVars: [] };
+  const md = REP.renderReport({ inventory, verifyResult, crossBoundary, outputSrcDir });
+  assert.match(md, /\| cache \| 3 \| 0 \| inline — verify/);   // advisory: shows inline 0 but asserts no verdict
+  assert.doesNotMatch(md, /\| cache \|.*DROPPED/);             // must NOT be a false DROPPED
+  assert.match(md, /inline-counted/);                          // under-table advisory note present
 });
 
 // Minor: with no outputSrcDir the Output/Status columns must read "not scanned" — a
