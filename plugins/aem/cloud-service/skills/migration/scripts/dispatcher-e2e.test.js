@@ -5,6 +5,8 @@ const fs = require('fs'); const os = require('os'); const path = require('path')
 const INV = require('./dispatcher-inventory.js');
 const RUN = require('./dispatcher-run.js');
 const VERIFY = require('./dispatcher-verify.js');
+const CB = require('./dispatcher-crossboundary.js');
+const REP = require('./dispatcher-report.js');
 
 const REAL = process.env.DISPATCHER_E2E_SRC;   // path to a real on-prem config root
 const SDK = process.env.DISPATCHER_SDK_SRC;     // path to a Dispatcher SDK src
@@ -38,6 +40,35 @@ test('E2E: convert a real flexible config, and the verify gate catches filter lo
     }
   } finally {
     // Best-effort cleanup of the temp working dir (target/, config.yaml, …).
+    fs.rmSync(wd, { recursive: true, force: true });
+  }
+});
+
+test('E2E: render conversion-report.md from the real converted output', { skip: !REAL || !SDK }, () => {
+  const inv = INV.buildInventory(REAL);
+  const wd = fs.mkdtempSync(path.join(os.tmpdir(), 'disp-rep-'));
+  try {
+    RUN.ensureToolInstalled(RUN.TOOL_DIR);
+    RUN.writeToolConfig(wd, {
+      sdkSrc: SDK, mode: inv.mode,
+      onPremise: {
+        dispatcherAnySrc: inv.dispatcherAny, httpdSrc: inv.httpd,
+        vhostsToConvert: inv.vhostFiles.filter(f => /vhost.*\.conf$/.test(f)),
+        variablesToReplace: [], pathToPrepend: inv.dispatcherAny ? [path.dirname(inv.dispatcherAny) + '/'] : [], portsToMap: null,
+      },
+    });
+    const res = RUN.runConverter(wd, inv.mode, RUN.TOOL_DIR);
+    assert.strictEqual(res.code, 0);
+    const verify = VERIFY.verifyOutput(res.outputSrcDir, inv.ruleCounts);
+    const crossBoundary = CB.analyzeCrossBoundary({ configRoot: REAL, inventory: inv });
+    const md = REP.renderReport({ inventory: inv, verifyResult: verify, crossBoundary, outputSrcDir: res.outputSrcDir });
+    console.log(md);
+    assert.match(md, /## Conversion coverage/);
+    assert.match(md, /## Next checks \(delegated/);
+    assert.match(md, /diff-baseline/);
+    // the report must reflect the same filter verdict the gate produced
+    assert.strictEqual(/ok`: \*\*false\*\*/.test(md), !verify.ok);
+  } finally {
     fs.rmSync(wd, { recursive: true, force: true });
   }
 });
