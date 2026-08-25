@@ -1,24 +1,52 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { buildInventory } = require('./dispatcher-inventory.js');
+const { buildInventory, readTextFiles } = require('./dispatcher-inventory.js');
 
 const BETA = '> **Beta**: This capability is in beta and under active development. Review its output carefully before using it on production dispatcher configurations.';
 const SECTIONS = ['filter', 'rewrite', 'cache', 'clientheader', 'virtualhost'];
 
-// Render the conversion coverage + handoff report. ADVISORY: reads verifyResult
-// but never recomputes or changes `ok`. Output counts are derived with the SAME
-// Phase-1 counter (buildInventory) as the source, so the two columns are symmetric.
+// Custom-only rewrite count: exclude Adobe-managed default_* immutables (esp.
+// default_rewrite.rules — SDK boilerplate the converter always adds) so a surviving SDK
+// default can't mask dropped custom rewrites — matching how countFilterRules treats
+// default_*.any. Glob aligned with dispatcher-verify.js (.rules + .vhost). ADVISORY: this
+// only counts; it never imports or calls verifyOutput.
+function countCustomRewrites(dir) {
+  const files = readTextFiles(dir, n =>
+    (n.endsWith('.rules') || n.endsWith('.vhost')) && !n.startsWith('default_'));
+  let n = 0;
+  for (const f of files) {
+    let t; try { t = fs.readFileSync(f, 'utf8'); } catch { continue; }
+    n += (t.match(/^\s*(RewriteRule|Redirect(Match)?)\b/gm) || []).length;
+  }
+  return n;
+}
+
+// Render the conversion coverage + handoff report. ADVISORY: reads verifyResult but never
+// recomputes or changes `ok`. Source counts use the Phase-1 counter (buildInventory).
+// Output counts are custom-only — the rewrite figure is overridden with countCustomRewrites
+// so a surviving Adobe-managed default_rewrite.rules can't mask dropped custom rewrites
+// (matching the filter gate). With no outputSrcDir the Output/Status columns read
+// "not scanned" (source inventory only), never a false DROPPED.
 function renderReport({ inventory, verifyResult, crossBoundary, outputSrcDir }) {
   const src = (inventory && inventory.ruleCounts) || {};
-  const out = outputSrcDir ? buildInventory(outputSrcDir).ruleCounts : {};
+  const scanned = !!outputSrcDir;
+  const out = scanned ? buildInventory(outputSrcDir).ruleCounts : {};
+  // Override the rewrite figure with the custom-only count (excludes default_*) so a
+  // surviving SDK default_rewrite.rules can't inflate output and mask dropped custom rewrites.
+  if (scanned) out.rewrite = countCustomRewrites(outputSrcDir);
   const L = [];
   L.push('# Dispatcher Conversion Report', '', BETA, '');
 
   L.push('## Conversion coverage (source → output)', '');
   L.push('| Section | Source | Output | Status |', '|---|---|---|---|');
   for (const s of SECTIONS) {
-    const a = src[s] || 0, b = out[s] || 0;
+    const a = src[s] || 0;
+    if (!scanned) {
+      L.push(`| ${s} | ${a} | not scanned | not scanned |`);
+      continue;
+    }
+    const b = out[s] || 0;
     let status;
     if (a === 0) status = 'n/a';
     else if (b >= a) status = 'preserved';
@@ -29,6 +57,10 @@ function renderReport({ inventory, verifyResult, crossBoundary, outputSrcDir }) 
       : '';
     L.push(`| ${s} | ${a} | ${b} | ${status}${note} |`);
   }
+  L.push('');
+  L.push(scanned
+    ? '> Output counts are **custom-only** — Adobe-managed `default_*` immutables are excluded (matching the filter gate), so the rewrite figure can differ from the raw verify warning.'
+    : '> Output **not scanned** — no `outputSrcDir` provided; Output/Status show source inventory only. Run against the converted tree to populate coverage.');
   L.push('');
 
   // Echo the Phase-1 verify verdict verbatim (advisory — never recomputed).
