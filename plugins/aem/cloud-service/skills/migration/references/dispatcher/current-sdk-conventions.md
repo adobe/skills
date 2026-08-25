@@ -28,6 +28,15 @@ A current-SDK dispatcher config uses thin **collector** files that glob-include 
 
 The `default_*.any` files shipped in a project (typically seeded from the AEM project archetype) periodically **fall out of sync** with the live Dispatcher SDK: Adobe updates the managed defaults in the SDK, and the copies committed in the repo do not update themselves. A converted config can validate against a stale local copy yet diverge from what the platform actually runs. When conversion is done, **verify the immutable `default_*` files are current** against the Dispatcher SDK you validate with (see [validation.md](validation.md)) rather than assuming the archetype's copies are fresh; refresh them from the SDK if they have drifted. Flag any drift for the user — it is exactly the kind of silent divergence the honest-automation stance in Branch E is meant to surface, not paper over.
 
+## Runtime invariants the validator enforces (named here, not re-documented)
+
+Beyond the file-shape markers above, a valid cloud dispatcher must satisfy runtime invariants the **Dispatcher SDK validator** checks. This doc only *names* them so the converter's end-state is complete; the authoritative contract and exact values live in the `dispatcher` skill (the guardrails + `validation-playbook.md` §6 linked below), and [validation.md](validation.md) (phase 6) is where they are actually checked — not by the conversion coverage report.
+
+- **Publish host aliases** — at least one vhost advertises `ServerAlias "*.adobeaemcloud.net"` and `ServerAlias "*.adobeaemcloud.com"`; no leftover `ServerName "*"`.
+- **Reserved probe paths untouched** — `/system/probes/live`, `/system/probes/ready`, `/system/probes/start`, `/system/probes/health`, and `/systemready` are not intercepted by custom rewrites, redirects, or filters.
+- **Explicit `/ignoreUrlParams` strategy** — query-parameter (including marketing-parameter) cache handling is stated explicitly. This is a distinct concern from the farm `/cache/rules` count the coverage report tracks; it is validated in phase 6, not counted.
+- **Core vhost defaults intact** unless intentionally replaced with recorded evidence: `AllowEncodedSlashes NoDecode`, `DispatcherUseProcessedURL On`, `DispatcherPassError 0`, `ModMimeUsePathInfo On`, `DirectorySlash Off`.
+
 ## Source of truth (dispatcher skill — link, don't re-document)
 
 For the full target layout, file-family ownership, wrapper-vs-default rules, and the validator-enforced topology invariants, defer to the `dispatcher` skill. These are authoritative; the summary above is only the converter's end-state checklist.

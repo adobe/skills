@@ -95,7 +95,7 @@ Breakdown of what row 16 covers:
 - **Farm renaming** — `*_farm.any` → `*.farm` (drops the `_farm` infix, normalizes the extension).
 - **AMS artifact removal** — deletes files prefixed `ams_*`.
 - **Port stripping** — removes `<VirtualHost>` sections not bound to `:80` (TLS-only sections go; the edge terminates TLS).
-- **Rule consolidation** — collapses customer rewrite/filter/cache/clientheader rule files down to Adobe's canonical single file per concern (`rewrite.rules`, `filters.any`, `rules.any`, `clientheaders.any`), repointing includes to match. Rewrite/redirect rules — including customer vanity-URL redirects — are consolidated this way, not dropped: content survives, only the file layout changes.
+- **Rule consolidation** — collapses customer rewrite/filter/cache/clientheader rule files down to Adobe's canonical single file per concern (`rewrite.rules`, `filters.any`, `rules.any`, `clientheaders.any`), repointing includes to match. Rewrite/redirect rules the tool keeps **on the dispatcher** are consolidated this way — content survives, only the file layout changes. This is **not** a blanket guarantee that every redirect carries over: on AEMaaCS, TLS/host redirects and large **vanity-URL / redirect maps** commonly belong at the **CDN edge**, not the dispatcher (see [CDN candidates](#cdn-candidates-flagged-not-authored) below and the rewrite-drop warning in [output-verification.md](output-verification.md)). Read a large source→output rewrite drop as *consolidation + an expected CDN move* and confirm against the tool's `conversion-report.md` — don't assume either total preservation or total loss.
 
 ## CDN candidates: flagged, not authored
 
