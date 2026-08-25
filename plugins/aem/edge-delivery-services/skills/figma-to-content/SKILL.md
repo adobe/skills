@@ -581,7 +581,12 @@ section boundary (no `<hr>`). Do NOT emit `<!DOCTYPE>`, `<html>`, `<head>`,
     `type=` MIME, the `<media-path>` file extension you PUT to, and the extension
     in the `content.da.live` URL you author. Design tools routinely export JPEG
     bytes under a `.png`-named asset; trusting the suffix gives you a `.png` path
-    served as `image/jpeg` (or the reverse) — a latent corruption bug. Canonical
+    served as `image/jpeg` (or the reverse) — a latent corruption bug. A layer
+    that *looks* vector (an icon, a logo, a shape) often comes back **rasterized**
+    — `download_assets` returns it under `rawImages` with `svgAssets` empty — so a
+    design that implies `.svg` can hand you PNG/JPEG bytes. Author each `<img>`
+    extension from the bytes you actually downloaded, never from the layer's
+    apparent type or name. Canonical
     mapping: JPEG→`.jpg`/`image/jpeg`, PNG→`.png`/`image/png`, WebP→`.webp`/
     `image/webp`, GIF→`.gif`/`image/gif`, SVG→`.svg`/`image/svg+xml`. If bytes
     and asset-reported format disagree, trust the bytes.
@@ -628,10 +633,14 @@ GH_REPO=<gh-repo>      # GitHub repo
 BRANCH=<branch>        # git deploy ref (usually main). For content+code this MUST be
                        # the branch the new-block code was pushed to and Code Sync built.
 BRANCH_HOST=${BRANCH//\//-}   # host label: slashes → dashes ('feature/x' → 'feature-x').
-                              # Used for the aem.page/aem.live hostname; git + the
-                              # admin.hlx.page path keep the literal $BRANCH ref. A deploy
-                              # ref should be a single path segment — prefer a slash-free
-                              # branch name to avoid ambiguity in the admin API path.
+                              # Used BOTH for the aem.page/aem.live hostname AND as the ref
+                              # segment in every admin.hlx.page path (code/preview/live): that
+                              # ref is a SINGLE path segment, so a slashed branch ('figma/x')
+                              # splits it and 404s — pass the dashed label ('figma-x'), which is
+                              # what AEM actually resolves. Only git itself (push/checkout) uses
+                              # the literal slashed $BRANCH. For a slash-free branch the two
+                              # forms are identical, so $BRANCH_HOST is always the safe choice
+                              # for admin.hlx.page.
 P=<path-without-extension>
 TOKEN="$DA_TOKEN"      # from da-auth; 401 w/ empty body ⇒ expired, re-auth
 
@@ -670,7 +679,7 @@ req() {
 #   2. Code Sync builds automatically on push. Optionally force it (non-2xx here
 #      isn't fatal if the push already synced, so don't abort on it):
 req 200,202 -X POST -H "Authorization: Bearer $TOKEN" \
-  "https://admin.hlx.page/code/$GH_OWNER/$GH_REPO/$BRANCH/*" >/dev/null || true
+  "https://admin.hlx.page/code/$GH_OWNER/$GH_REPO/$BRANCH_HOST/*" >/dev/null || true
 #   3. poll until the new block's JS is live on the branch host (bounded — don't hang):
 BH="https://$BRANCH_HOST--$GH_REPO--$GH_OWNER.aem.page"
 for i in $(seq 1 24); do
@@ -732,13 +741,14 @@ req 200,201 -X PUT -H "Authorization: Bearer $TOKEN" \
   -F "data=@content/$P.html;type=text/html" \
   "https://admin.da.live/source/$DA_ORG/$DA_REPO/$P.html" >/dev/null   # 201 (new) or 200 (update)
 
-# Preview — separate, required. Path WITHOUT .html; branch = the deploy branch.
+# Preview — separate, required. Path WITHOUT .html; ref = $BRANCH_HOST (the dashed
+# label, NOT the slashed git branch — see the BRANCH_HOST note above).
 # The deploy sequence STOPS here, at preview. Publishing to the live host is a
 # SEPARATE, FINAL step (see "Publish to the live host" after the pre-publish
 # gate) that runs ONLY after every gate box passes AND only if the user asked to
 # publish — never inline here, before verification.
 req 200 -X POST -H "Authorization: Bearer $TOKEN" \
-  "https://admin.hlx.page/preview/$GH_OWNER/$GH_REPO/$BRANCH/$P" >/dev/null
+  "https://admin.hlx.page/preview/$GH_OWNER/$GH_REPO/$BRANCH_HOST/$P" >/dev/null
 ```
 
 **Verify (do not skip).** Two stages — a fragment curl is *not* enough for a new
@@ -899,8 +909,9 @@ hold:
 
 ```bash
 # Preconditions asserted by the caller: gate fully passed AND publish requested.
+# ref = $BRANCH_HOST (dashed label, not the slashed git branch — see BRANCH_HOST note).
 req 200 -X POST -H "Authorization: Bearer $TOKEN" \
-  "https://admin.hlx.page/live/$GH_OWNER/$GH_REPO/$BRANCH/$P" >/dev/null \
+  "https://admin.hlx.page/live/$GH_OWNER/$GH_REPO/$BRANCH_HOST/$P" >/dev/null \
   || { echo "❌ publish failed — page stays preview-only"; exit 1; }
 ```
 
