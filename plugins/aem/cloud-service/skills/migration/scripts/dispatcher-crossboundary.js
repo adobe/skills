@@ -14,21 +14,22 @@ const SECRET_RE = /(PASSWORD|SECRET|KEY|TOKEN|CREDENTIAL|PWD)/i;
 // `Define NAME ${NAME}` passthrough). VALUES ARE NEVER EMITTED.
 function analyzeCrossBoundary({ configRoot, inventory }) {
   const files = readTextFiles(configRoot, n =>
-    n.endsWith('.vhost') || /vhost.*\.conf/.test(n) ||
+    n.endsWith('.vhost') || n.endsWith('.vhost.tmpl') || /vhost.*\.conf/.test(n) ||
     n.endsWith('.conf') || n.endsWith('.conf.tmpl') ||
     n.endsWith('.rules') || n.endsWith('.rules.tmpl') ||
     n.endsWith('.any') || n.endsWith('.any.tmpl'));
 
   const usages = new Map();       // name -> [{path, line}]
-  const localeDefined = new Set(); // names Defined to a concrete (non-self) value
+  const locallyDefined = new Set(); // names Defined to a concrete (non-self) value
 
   for (const f of files) {
     let txt; try { txt = fs.readFileSync(f, 'utf8'); } catch { continue; }
     txt.split('\n').forEach((line, i) => {
+      if (line.trim().startsWith('#')) return; // skip full-line comments (both Define + ${VAR} detection)
       const d = line.match(/^\s*Define\s+([A-Z0-9_]+)\s+(.*\S)?\s*$/);
       if (d) {
         const name = d[1], val = d[2] || '';
-        if (val && !new RegExp('\\$\\{' + name + '\\}').test(val)) localeDefined.add(name);
+        if (val && !new RegExp('\\$\\{' + name + '\\}').test(val)) locallyDefined.add(name);
       }
       for (const m of line.matchAll(/\$\{([A-Z0-9_]+)\}/g)) {
         const name = m[1];
@@ -41,7 +42,7 @@ function analyzeCrossBoundary({ configRoot, inventory }) {
   const cmVars = [...usages.entries()].map(([name, files]) => ({
     name,
     files,
-    origin: localeDefined.has(name) ? 'config-defined' : 'external',
+    origin: locallyDefined.has(name) ? 'config-defined' : 'external',
     secretLike: SECRET_RE.test(name),
   })).sort((a, b) => a.name.localeCompare(b.name));
 

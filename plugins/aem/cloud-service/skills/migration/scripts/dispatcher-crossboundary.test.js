@@ -50,3 +50,21 @@ test('cmVars: empty when no ${VAR} usages', () => {
   const { cmVars } = CB.analyzeCrossBoundary({ configRoot: r, inventory: {} });
   assert.deepStrictEqual(cmVars, []);
 });
+
+// Fix D (crossboundary): a `${OLD}` on a full-line comment must not surface as a cmVar; a live
+// `${LIVE}` on an uncommented line still does (comment lines are skipped for both Define + ${VAR}).
+test('cmVars: skips ${VAR} inside full-line comments', () => {
+  const r = mk();
+  w(r, 'conf.d/enabled_vhosts/site.vhost', '# ServerName "${OLD}"\nHeader set X-Live "${LIVE}"\n');
+  const { cmVars } = CB.analyzeCrossBoundary({ configRoot: r, inventory: {} });
+  assert.ok(cmVars.find(x => x.name === 'LIVE'), 'LIVE (uncommented) present');
+  assert.ok(!cmVars.find(x => x.name === 'OLD'), 'OLD (commented) excluded');
+});
+
+// Fix F: the file predicate must also scan templated vhosts (*.vhost.tmpl), not only *.vhost.
+test('cmVars: captures ${VAR} inside a *.vhost.tmpl file', () => {
+  const r = mk();
+  w(r, 'conf.d/available_vhosts/site.vhost.tmpl', 'ServerName "${TMPL_DOMAIN}"\n');
+  const { cmVars } = CB.analyzeCrossBoundary({ configRoot: r, inventory: {} });
+  assert.ok(cmVars.find(x => x.name === 'TMPL_DOMAIN'), 'TMPL_DOMAIN captured from .vhost.tmpl');
+});

@@ -6,6 +6,9 @@ const { buildInventory, countRewrites } = require('./dispatcher-inventory.js');
 const BETA = '> **Beta**: This capability is in beta and under active development. Review its output carefully before using it on production dispatcher configurations.';
 const SECTIONS = ['filter', 'rewrite', 'cache', 'clientheader', 'virtualhost'];
 
+// Escape a `|` so a value (e.g. a file path) can't break out of its Markdown table cell.
+const cell = s => String(s).replace(/\|/g, '\\|');
+
 // Render the conversion coverage + handoff report. ADVISORY: reads verifyResult but never
 // recomputes or changes `ok`. Source counts use the Phase-1 counter (buildInventory).
 // Output counts are custom-only — the rewrite figure is overridden with the shared
@@ -74,8 +77,8 @@ function renderReport({ inventory, verifyResult, crossBoundary, outputSrcDir }) 
   } else {
     L.push('| Variable | Origin | Secret-like | First usage |', '|---|---|---|---|');
     for (const v of cmVars) {
-      const first = v.files[0] ? `${v.files[0].path}:${v.files[0].line}` : '';
-      L.push(`| \`${v.name}\` | ${v.origin} | ${v.secretLike ? 'yes' : 'no'} | ${first} |`);
+      const first = v.files[0] ? `${cell(v.files[0].path)}:${v.files[0].line}` : '';
+      L.push(`| \`${cell(v.name)}\` | ${v.origin} | ${v.secretLike ? 'yes' : 'no'} | ${first} |`);
     }
     L.push('', 'Hand this list to **migration Branch A** (OSGi → Cloud Manager). `secret-like` entries get Branch A\'s secret handling. Values are not captured here.');
   }

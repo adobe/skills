@@ -194,7 +194,8 @@ function buildInventory(root) {
   const cmVarCandidates = [];
   for (const f of vhostFiles.concat(readTextFiles(root, n => n.endsWith('.conf') || n.endsWith('.conf.tmpl')))) {
     let t; try { t = fs.readFileSync(f, 'utf8'); } catch { continue; }
-    for (const m of t.matchAll(/\$\{([A-Z0-9_]+)\}/g)) if (!cmVarCandidates.includes(m[1])) cmVarCandidates.push(m[1]);
+    const body = t.split('\n').filter(l => !l.trim().startsWith('#')).join('\n'); // skip full-line comments so a `# ${OLD}` isn't a phantom var
+    for (const m of body.matchAll(/\$\{([A-Z0-9_]+)\}/g)) if (!cmVarCandidates.includes(m[1])) cmVarCandidates.push(m[1]);
   }
 
   return {

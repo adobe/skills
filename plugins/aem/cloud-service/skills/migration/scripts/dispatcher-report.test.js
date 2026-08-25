@@ -143,3 +143,20 @@ test('coverage renders "not scanned" (never DROPPED) when outputSrcDir is absent
   assert.match(md, /\| rewrite \| 4 \| not scanned \| not scanned \|/);
   assert.match(md, /not scanned/);
 });
+
+// Fix C: a `|` in a dynamic handoff cell (variable name or file path) must be escaped as `\|` so
+// it can't break the Markdown row into a spurious extra column.
+test('CM handoff: escapes a | in the variable name and file path cells', () => {
+  const outputSrcDir = mkOut(1);
+  const inventory = { ruleCounts: { filter: 1, rewrite: 0, cache: 0, clientheader: 0, virtualhost: 0 } };
+  const verifyResult = { ok: true, failures: [], warnings: [] };
+  const crossBoundary = { cmVars: [{ name: 'PIPE|VAR', files: [{ path: '/x/a|b/site.vhost', line: 7 }], origin: 'external', secretLike: false }] };
+  const md = REP.renderReport({ inventory, verifyResult, crossBoundary, outputSrcDir });
+  const row = md.split('\n').find(l => l.includes('PIPE'));
+  assert.ok(row, 'handoff row rendered');
+  assert.match(row, /PIPE\\\|VAR/, 'variable-name pipe escaped as \\|');
+  assert.match(row, /\/x\/a\\\|b\/site\.vhost:7/, 'file-path pipe escaped as \\|');
+  // Structural columns must stay at 4: after stripping escaped `\|`, exactly 5 delimiter pipes remain.
+  const structural = row.replace(/\\\|/g, '').split('|').length - 1;
+  assert.strictEqual(structural, 5, 'exactly 5 unescaped | delimiters (4 columns) — no spurious column');
+});

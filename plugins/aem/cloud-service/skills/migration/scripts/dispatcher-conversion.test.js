@@ -118,6 +118,16 @@ test('buildInventory: filter rule count excludes commented-out rules', () => {
   assert.strictEqual(inv.ruleCounts.filter, 1, 'should count 1 rule and skip the commented /0009');
 });
 
+// Fix D (inventory): a commented-out `# ... ${OLD}` must not become a phantom cmVar candidate;
+// a live `${LIVE}` on an uncommented line still counts.
+test('buildInventory: cmVarCandidates skips ${VAR} on full-line comments', () => {
+  const r = mk();
+  w(r, 'conf.d/includes/hdr.conf', '# Header set X-Old "${OLD}"\nHeader set X-Live "${LIVE}"\n');
+  const inv = INV.buildInventory(r);
+  assert.ok(inv.cmVarCandidates.includes('LIVE'), 'LIVE (uncommented) present');
+  assert.ok(!inv.cmVarCandidates.includes('OLD'), 'OLD (commented) excluded');
+});
+
 // Task 3: Output verification (filter/ACL preservation gate)
 const VERIFY = require('./dispatcher-verify.js');
 
@@ -306,4 +316,18 @@ test('runConverter: computes the tool output + report paths under the working di
   assert.strictEqual(res.code, 0);
   assert.ok(fs.existsSync(path.join(res.outputSrcDir, 'conf.dispatcher.d/filters/filters.any')));
   assert.ok(fs.existsSync(res.reportPath));
+});
+
+// Fix A (defense-in-depth): resolveExecutor silently routes any non-`standard` mode to the on-prem
+// executor, so already-cloud / not-dispatcher / unknown would otherwise run the content-blind tool.
+// runConverter must REFUSE — return { code: null, "...not convertible..." } WITHOUT spawning, so no
+// target/ tree is ever created. (Callers already gate on code === 0, so the happy path is unchanged.)
+test('runConverter: refuses non-convertible modes without spawning (no target/ created)', () => {
+  for (const mode of ['already-cloud', 'not-dispatcher', 'unknown']) {
+    const wd = mk();
+    const res = RUN.runConverter(wd, mode, RUN.TOOL_DIR);
+    assert.strictEqual(res.code, null, `${mode} → code null (no spawn)`);
+    assert.match(res.stdout, /not convertible/, `${mode} → "not convertible" message`);
+    assert.ok(!fs.existsSync(path.join(wd, 'target')), `${mode} → no target/ dir created (no spawn)`);
+  }
 });

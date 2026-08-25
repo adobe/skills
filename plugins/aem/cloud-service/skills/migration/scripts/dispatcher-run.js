@@ -6,6 +6,12 @@ const { execFileSync, spawnSync } = require('child_process');
 const TOOL_PKG = '@adobe/aem-cs-source-migration-dispatcher-converter';
 const TOOL_DIR = path.join(__dirname, 'dispatcher-tool');
 
+// Modes the content-blind converter may actually run on. resolveExecutor silently routes any
+// non-`standard` mode to the on-prem executor, so without this guard `already-cloud` /
+// `not-dispatcher` / `unknown` would run the tool on a tree it can't convert. The agent is meant
+// to STOP first; runConverter refuses too (defense-in-depth).
+const CONVERTIBLE = new Set(['standard', 'flexible', 'v1']);
+
 // YAML-safe emission: escape backslashes + double-quotes; quote scalars. Empty → blank (' ')
 // so the tool's `if (config.X)` guards still treat it as unset. A path with a YAML indicator
 // (` #`, leading `*`/`&`/`!`/`%`/quote) or a Windows backslash otherwise mis-parses unquoted.
@@ -63,8 +69,18 @@ function ensureToolInstalled(toolDir) {
 }
 
 function runConverter(workingDir, mode, toolDir) {
+  if (!CONVERTIBLE.has(mode)) {
+    return {
+      code: null,
+      stdout: `runConverter: mode "${mode}" is not convertible (expected standard/flexible/v1) — resolve the mode before converting.`,
+      outputSrcDir: path.join(workingDir, 'target/dispatcher/src'),
+      reportPath: path.join(workingDir, 'target/dispatcher/dispatcher-converter-report.md'),
+    };
+  }
   const executor = resolveExecutor(toolDir, mode);
-  const r = spawnSync('node', [executor], { cwd: workingDir, encoding: 'utf8' });
+  // timeout guards a hung tool; maxBuffer (64 MiB) prevents a big config's verbose stdout from
+  // ENOBUFS-ing a successful run (default 1 MB would set r.error and make it look failed).
+  const r = spawnSync('node', [executor], { cwd: workingDir, encoding: 'utf8', timeout: 600000, maxBuffer: 64 * 1024 * 1024 });
   let stdout = (r.stdout || '') + (r.stderr || '');
   // On a spawn failure (e.g. node missing, ENOENT) status is null and stdout/stderr are empty;
   // fold the error in so callers see the cause instead of an opaque { code: null, stdout: '' }.
