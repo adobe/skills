@@ -124,7 +124,12 @@ function extractBraceBody(txt, openIdx) {
 // same way. A file qualifies as a standalone filter-rule file when its basename is `filters.any`,
 // ends with `_filters.any`, or it is a `.any` file whose parent directory is named `filters` —
 // excluding files already counted via anyFarms (dispatcher.any / dispatcher.any.tmpl / *_farm.any)
-// to avoid double counting. Comment lines (`#`) are stripped, like the other counters.
+// to avoid double counting. Adobe-managed immutable SDK files (basename starting `default_`, e.g.
+// `default_filters.any`) are ALSO excluded: they are fresh SDK boilerplate, never the customer's
+// at-risk custom ACLs. Counting them lets a populated SDK `default_filters.any` mask an emptied
+// custom `filters.any` — the output count stays non-zero so filter-acl-loss never fires. Excluding
+// them makes the count custom-to-custom (AMS baselines have no `default_*.any`, so nothing changes
+// there; an emptied custom output now scores 0 and the gate fires). Comment lines (`#`) are stripped.
 function countFilterRules(root, anyFarms) {
   if (!anyFarms) {
     const dispAny = readTextFiles(root, n => n === 'dispatcher.any' || n === 'dispatcher.any.tmpl');
@@ -138,6 +143,7 @@ function countFilterRules(root, anyFarms) {
   const standalone = readTextFiles(root, name => name.endsWith('.any')).filter(f => {
     const base = path.basename(f);
     if (base === 'dispatcher.any' || base === 'dispatcher.any.tmpl' || base.endsWith('_farm.any')) return false; // already in anyFarms
+    if (base.startsWith('default_')) return false; // Adobe-managed immutable SDK boilerplate (default_filters.any, …) — never the customer's custom ACLs; counting it lets a surviving default mask dropped custom rules.
     return base === 'filters.any' || base.endsWith('_filters.any') || path.basename(path.dirname(f)) === 'filters';
   });
   for (const f of standalone) {

@@ -8,6 +8,8 @@ const INV = require('./dispatcher-inventory.js');
 
 function mk() { return fs.mkdtempSync(path.join(os.tmpdir(), 'disp-')); }
 function w(root, rel, c = 'x') { const f = path.join(root, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, c); return f; }
+// N distinct filter-rule blocks: `/0001 { … }` … `/000N { … }`.
+function rules(n) { return Array.from({ length: n }, (_, i) => `/${String(i + 1).padStart(4, '0')} { /type "allow" /url "*" }`).join('\n') + '\n'; }
 
 test('detectMode: standard AMS v2.0 layout', () => {
   const r = mk();
@@ -168,6 +170,48 @@ test('buildInventory + verifyOutput: $include\'d filter rules are counted so the
   assert.strictEqual(res.ok, false, 'empty output must NOT silently pass the ACL gate');
   assert.ok(res.failures.some(f => f.category === 'filter-acl-loss' && f.severity === 'critical'),
     'must raise a critical filter-acl-loss failure');
+});
+
+// REGRESSION (parked Minor from final whole-branch review): the AEMaaCS SDK ships Adobe-managed
+// immutable `default_filters.any` (populated boilerplate) in conf.dispatcher.d/filters/. If the
+// converter EMPTIES the customer's custom filters.any but the SDK default survives, counting the
+// default keeps the output non-zero → filter-acl-loss (critical) does NOT fire and the dropped
+// custom ACLs are masked. countFilterRules now excludes `default_*` immutables so the count is
+// custom-to-custom and the gate fires. (baseline custom=8, output custom=0, default=12.)
+test('verifyOutput: surviving populated default_filters.any does NOT mask an emptied custom filters.any', () => {
+  const out = mk();
+  w(out, 'conf.dispatcher.d/filters/filters.any', '');            // customer's custom ACLs emptied → dropped
+  w(out, 'conf.dispatcher.d/filters/default_filters.any', rules(12)); // Adobe-managed immutable survives, populated
+  const res = VERIFY.verifyOutput(out, { filter: 8, rewrite: 0, cache: 0, clientheader: 0, virtualhost: 0 });
+  assert.strictEqual(res.ok, false, 'a surviving populated default_filters.any must NOT mask the dropped custom ACLs');
+  assert.ok(res.failures.some(f => f.category === 'filter-acl-loss' && f.severity === 'critical'),
+    'custom count is 0 after excluding default_ → critical filter-acl-loss must fire');
+});
+
+// Positive: the default_ exclusion must not create a FALSE failure when the custom rules are
+// preserved. custom filters.any = 3 rules, default_filters.any = 12 (excluded) → count 3 == 3.
+test('verifyOutput: default_filters.any is excluded so a preserved custom filters.any is not false-flagged', () => {
+  const out = mk();
+  w(out, 'conf.dispatcher.d/filters/filters.any', rules(3));          // 3 preserved custom rules
+  w(out, 'conf.dispatcher.d/filters/default_filters.any', rules(12)); // SDK immutable — excluded from the count
+  w(out, 'conf.dispatcher.d/enabled_farms/farms.any', '$include "./*.farm"');
+  const res = VERIFY.verifyOutput(out, { filter: 3, rewrite: 0, cache: 0, clientheader: 0, virtualhost: 0 });
+  assert.strictEqual(res.ok, true, 'custom count is 3 (default_ excluded), 3==3 → no acl-loss, no regression');
+  assert.ok(!res.failures.some(f => f.category === 'filter-acl-loss' || f.category === 'filter-rule-regression'),
+    'neither filter-acl-loss nor filter-rule-regression may fire when custom rules are preserved 3==3');
+});
+
+// Symmetry: the exclusion lives in the shared countFilterRules, so the BASELINE side excludes
+// default_*.any too. A hypothetical Adobe immutable dropped into an AMS input tree must not
+// inflate ruleCounts.filter beyond the real custom rules.
+test('buildInventory: default_filters.any at input is excluded from the baseline filter count', () => {
+  const r = mk();
+  w(r, 'conf.dispatcher.d/available_farms/site.farm',
+    '/site {\n  /filter {\n    $include "../filters/site_filters.any"\n  }\n}\n');
+  w(r, 'conf.dispatcher.d/filters/site_filters.any', rules(3)); // 3 real custom rules
+  w(r, 'conf.dispatcher.d/filters/default_filters.any', rules(5)); // hypothetical immutable — must NOT count
+  const inv = INV.buildInventory(r);
+  assert.strictEqual(inv.ruleCounts.filter, 3, 'default_filters.any (5 rules) excluded → baseline counts only the 3 custom rules');
 });
 
 // Task 4: Tool driver — config generation + executor resolution
