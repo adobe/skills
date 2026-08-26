@@ -148,6 +148,14 @@ as **clean semantic HTML/CSS** from three sources, in this order:
 (c) **The captured screenshot as ground truth** for everything CSS doesn't
     name (composition, image crops, paint effects).
 
+**Every archetype gets its own standalone prototype — cumulative, never
+skipped.** Never skip to direct platform authoring for a new archetype:
+prototyped archetypes stayed the quality ceiling in the field (3.5%/5.6%)
+while direct-authored pages plateaued at 8–16%. Each new prototype imports
+the shared layers earlier ones already gated (shared canon CSS + a
+per-archetype file) and iterates only on its NEW modules — full contract:
+`reference/recreation-procedure.md` § Cumulative archetype prototypes.
+
 **This is recreation, not redesign — do NOT delegate to impeccable craft.**
 Impeccable's redesign gates (critique, anti-template, divergence) do not
 apply; the source-fidelity gate (Phase 4) replaces them entirely. A
@@ -183,6 +191,10 @@ node scripts/replica/stitch-shot.mjs "$LIVE"  stardust/replica/gates/<slug>-1440
 node scripts/replica/stitch-shot.mjs "$PROTO" stardust/replica/gates/<slug>-1440/proto.png --width 1440
 node scripts/replica/pixel-compare.mjs stardust/replica/gates/<slug>-1440/live.png \
   stardust/replica/gates/<slug>-1440/proto.png --out stardust/replica/gates/<slug>-1440/diff.png
+
+# Iteration inner loop (gate doc § Band breakdown): anchor probe + pixel round
+node scripts/replica/anchor.mjs "$PROTO" --width 1440   # build-side runs are free
+scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
 ```
 
 **Pass bar (all four, per breakpoint):**
@@ -226,6 +238,12 @@ backed by `live-session.mjs` — copy the scripts and pass flags; a project
 copy carrying hand-edits is a defect
 (`reference/source-fidelity-gate.md` § Script adaptations).
 
+**After the static gate passes, run the interaction-parity pass**
+(`reference/recreation-procedure.md` § Interaction parity): the gate is
+static-pixels only — probe hover states and widget behavior (hover diff +
+behavior diff), implement them, log each in the ledger. Widgets are
+implemented, not justified away.
+
 When all breakpoints pass, present the archetype + its gate metrics for
 approval per the standard prototype approval flow (hands-off mode records
 `approvedBy: "hands-off"` per `../stardust/reference/state-machine.md`).
@@ -236,7 +254,11 @@ approval per the standard prototype approval flow (hands-off mode records
   **sibling tier** (`../migrate/reference/fidelity-tiers.md`): structural
   clone of the gated archetype + content-fidelity + delivery-lint +
   media-reconcile. The archetype's source-fidelity gate is what the siblings
-  inherit — never re-author a sibling from scratch.
+  inherit — never re-author a sibling from scratch. Content-fidelity is
+  **measured per page at import time**
+  (`../migrate/reference/fidelity-tiers.md` § Content-count acceptance)
+  so dropped-content importer bugs surface while the importer is still
+  cheap to fix.
 - **Delivery** via `stardust:deploy` per page. Bias the decode tier toward
   **template-slotted** for fixed-composition sections (deploy #95): replica
   sections are by definition fixed compositions matched to a live original;
@@ -244,8 +266,11 @@ approval per the standard prototype approval flow (hands-off mode records
   groups (cards, listings) stay reconstructive.
 - **Site-wide rollout** via `stardust:rollout`, unchanged — its block dedup
   is what implements "same blocks across the whole site".
-- Optional final proof: re-run the pixel probe live-site vs deployed page.
-  Expect small justified deltas (EDS chrome, font loading); log them.
+- **The final gate runs against the PUBLISHED origin — not the harness**
+  (`reference/source-fidelity-gate.md` § The published-origin gate): the
+  delivery pipeline transforms markup, so harness numbers understate.
+  Re-run the full gate per delivered page against the preview/live origin,
+  judged in the published-origin regime; only the published number counts.
 
 **State:** replica writes its own state under `stardust/replica/` — the
 inconsistency register, `progress.json` (per page type: archetype slug,
@@ -290,12 +315,14 @@ PRODUCT.md / DESIGN.md / DESIGN.json    ← promoted verbatim from current/ (Pha
   inconsistency-register entry schema.
 - `reference/recreation-procedure.md` — CSS-lifting method (per gate
   breakpoint), fonts policy, scrim/luminance recovery, span-face forks,
-  capture-state policy, fixed/sticky chrome, granularity parity, role
-  parity (mirror the live wrapping per string), CSS-portation fallback
-  criteria.
+  capture-state policy, wrap-junction margins, fixed/sticky chrome,
+  granularity parity, role parity (mirror the live wrapping per string),
+  interaction parity (hover/behavior probes, Swiper-lock), CSS-portation
+  fallback criteria.
 - `reference/source-fidelity-gate.md` — full gate contract: commands,
   thresholds, per-breakpoint procedure, hardening rules, band-breakdown
-  reading guide, iteration discipline, residual logging format.
+  reading guide (+ the section-anchor inner loop), iteration discipline,
+  the published-origin gate (EDS pipeline deltas), residual logging format.
 - `../diff/SKILL.md` — the two probes replica reuses (`--profile generic`);
   reading content-diff output; the #87 JOIN/SPLIT limitation.
 - `../extract/SKILL.md` § Prep mode — what Phase 1 provides.

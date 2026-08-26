@@ -37,6 +37,13 @@
  *     a different locale per run — nondeterministic live side.
  *   - animation/transition freeze is injected AFTER the lazyload settle
  *     pass: injecting it before breaks some lazy loaders' swap logic.
+ *   - FONT-LOAD assertion before capture (F-B2 companion): a webfont that
+ *     failed to fetch renders the whole capture in fallback type — the same
+ *     silent-false-measurement class as capturing a challenge page. After
+ *     document.fonts.ready, any declared FontFace with status 'error' is
+ *     reported LOUDLY with the family names; the operator must decide
+ *     whether the failure is instrument-induced (a capture defect — fix the
+ *     instrument) or real on the live site (capture-state — log it).
  *   - page height is measured AFTER the settle pass: entrance-animated
  *     sites inflate scrollHeight until elements go inview, so the
  *     pre-settle height is fake.
@@ -187,6 +194,25 @@ async function main() {
     await page.addStyleTag({ content: '*,*::before,*::after{animation-play-state:paused!important;transition:none!important;caret-color:transparent!important;scroll-behavior:auto!important;}html{scroll-behavior:auto!important}' });
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(800);
+
+    // Font-load assertion (F-B2 companion): a webfont that failed to fetch
+    // renders the ENTIRE capture in fallback type — wrong wraps, wrong
+    // heights, wrong doc height — with no error anywhere, the same silent
+    // false-measurement class as capturing a challenge page. Report failed
+    // faces loudly. Not a hard exit: the instrument can't tell an
+    // instrument-induced failure (a capture defect — recorded F-B2: forced
+    // request headers killed the Typekit CORS fetch, live doc height moved
+    // 6669→6518 after the fix) from a face that genuinely fails for real
+    // browsers too (capture-state — fallback is then the truthful capture).
+    // The gate doc (source-fidelity-gate.md § Hardening rule 14) owns the
+    // decision procedure; this warning is what triggers it.
+    const failedFonts = await page.evaluate(async () => {
+      await document.fonts.ready;
+      return [...new Set([...document.fonts].filter((f) => f.status === 'error').map((f) => f.family))];
+    }).catch(() => []);
+    if (failedFonts.length) {
+      console.error(`stitch-shot WARNING: FONT LOAD FAILED for declared face(s) ${failedFonts.join(', ')} — this capture renders fallback type (silent false measurement, F-B2 class). Verify the face loads in a real browser: instrument-induced → fix the capture before gating; genuinely broken on the live site → log as capture-state.`);
+    }
 
     // Height is measured AFTER the settle pass, never before: entrance-
     // animated sites inflate scrollHeight until elements go inview (their

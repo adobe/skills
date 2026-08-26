@@ -88,6 +88,17 @@ Applied inconsistency-register entries create expected deltas: cross-
 reference the entry ID (`R-<nn>`) when justifying a flag over its zone
 (`preserve-direction.md` § Gate interaction).
 
+**Calibration honesty — two fidelity regimes, one bar.** The validated
+numbers above (1.31%, Δ0) describe the **prototype regime**: a standalone
+prototype gated against the live page, on a typographic page. Pages
+converted to the delivery platform and gated against the **published
+origin** (§ The published-origin gate) carry justified block-model deltas —
+control UI, split anchors, nondeterministic elements — and landed at
+6.9–9.9% in the field while visually faithful. The ≤10% bar covers both
+regimes; what burns iteration caps is chasing prototype-regime numbers on a
+published-origin gate. Record which regime a number belongs to in the
+ledger, and judge each against its own regime's precedent.
+
 ## Reading the band breakdown
 
 The overall % hides WHERE drift starts. `pixel-compare.mjs` prints per-500px
@@ -104,6 +115,22 @@ bands (`--band` to change); read them top-down:
   global fault — wrong base font metric, wrong container width, a missing
   background — not a per-section one.
 
+**The section-anchor probe names the section the band table only points
+at.** `../scripts/anchor.mjs` prints `[y, height]` per top-level section
+(+ footer + doc height), same shape on both sides:
+
+```bash
+node scripts/replica/anchor.mjs "$LIVE"  --width $W   # once per fix round at most (live hit)
+node scripts/replica/anchor.mjs "$PROTO" --width $W   # free — build-side only
+```
+
+Diff the two outputs, fix the FIRST section whose `[y, height]` disagrees
+(top-down — everything below it is offset-contaminated, the same rule as
+the band table), re-run pixels. Field-validated (broadridge, 8 pages): this
+loop roughly halved iterations vs band-reading alone. `../scripts/gate.sh`
+wraps one full pixel round (stitch both sides — live cached — + compare +
+verdict) in one command.
+
 Section-level compare (crops) is the escalation when a band stays hot and
 the cause isn't visible in `diff-iter<N>.png` — in the validated run it was
 prepared and never needed, because re-authoring hit exact section heights.
@@ -117,10 +144,29 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
 
 - Measure first (iteration 1 IS the map — do not pre-polish).
 - Every fix cites the instrument line that demanded it.
-- Re-run ALL probes after each fix round; a pixel fix can regress structure.
+- Probe schedule per fix round: **pixels every round; content-diff +
+  visual-diff at milestones** — iteration 1, after any fix that touched
+  content or markup (not pure CSS values), and once at final. Across ~25
+  field fix rounds (broadridge), pixel-only rounds never regressed structure
+  once it passed, and each content/visual re-run costs 2 extra live
+  navigations — against this doc's own hit-minimization rule. A fix that
+  touched markup re-runs all three; a CSS-value fix re-runs pixels only.
+- **The section-anchor probe is the fast inner loop** (`anchor.mjs`, § Band
+  breakdown): run it on both sides, fix the first mismatched section
+  top-down, re-run pixels. Build-side anchor/computed-style passes never
+  navigate the live origin and are FREE — the cap governs live-gate cycles,
+  not measurement.
 - After iteration 3: log residuals (§ Residual logging) and move on. A
   documented residual is a pass with an asterisk; an undocumented fourth
   loop is scope creep.
+- **Instrument-invalidated runs don't consume the cap — once the defect is
+  fixed and named.** The 3-iteration cap assumes valid instruments. When a
+  run is later shown to have measured an instrument defect (a challenge
+  page, a font fork forced by the capture itself — rule 14), the honest
+  ledger practice is: count the runs, mark which ones measured the defect
+  state, and exclude those from the cap, with the instrument fix named in
+  the ledger. This legitimizes the exclusion without weakening the cap — an
+  unnamed "the instrument felt wrong" is still a spent iteration.
 - **Hit minimization: ONE live navigation per instrument per breakpoint per
   full gate run.** The live stitch PNG is captured once and reused across
   iterations; only the prototype side re-captures. On hard-CDN sites
@@ -156,8 +202,13 @@ rather than erroring.
    bot-manager fingerprints on the *absence* of those headers, not just the
    UA. All three instruments now send both by default via the shared
    `diff/scripts/live-session.mjs`; `--ua` overrides the UA string only.
-   Sanity check when numbers shift inexplicably between runs: grep the
-   content-diff inventory for challenge-page strings.
+   The header set rides **document requests only** (F-B2, broadridge):
+   forcing it on every request makes cross-origin CORS-mode webfont fetches
+   non-simple and kills them with `net::ERR_FAILED` — the capture then
+   silently renders fallback type (see rule 14); bot managers fingerprint
+   the navigation request, which still carries the full set. Sanity check
+   when numbers shift inexplicably between runs: grep the content-diff
+   inventory for challenge-page strings.
 2. **`domcontentloaded`, never `networkidle`, on live targets.** Live sites
    with analytics beacons never reach networkidle — hard timeout. Built in:
    the diff scripts default `domcontentloaded` for non-localhost http(s)
@@ -254,8 +305,24 @@ rather than erroring.
     (window.scrollY stuck at …px) while the document reports …px`.
     Capturing the inner scroller is future work; for now record the page as
     gate-blocked for the pixel probe and rely on content-diff/visual-diff.
+14. **Captures assert fonts loaded — a silent font fork is a false
+    measurement.** A webfont that fails to fetch renders the ENTIRE live
+    capture in fallback type: wrong wraps, wrong line counts, wrong section
+    heights, wrong doc height — with no error anywhere. It is the same
+    defect class as silently measuring a Cloudflare interstitial, and it
+    poisons every number the gate reports (recorded, F-B2: an
+    instrument-forced header set killed the live side's Typekit fetch; live
+    doc height moved 6669→6518 once fixed, and a whole class of
+    "one-line-off" defects vanished). stitch-shot now checks after
+    `document.fonts.ready` for declared faces with FontFace status `error`
+    and warns loudly with the family names; mirror the check in any ad-hoc
+    capture. On the warning, decide before gating: load the face in a real
+    browser — if it loads there, the failure is **instrument-induced** (a
+    capture defect: fix the instrument, and the poisoned runs don't consume
+    the iteration cap per § Iteration discipline); if it fails there too,
+    fallback type is the truthful capture (**capture-state** — log it).
 
-### Script adaptations (now built-in flags — hand-edits are a defect)
+### Script adaptations (built-in flags first — but fail-loud outranks script immutability)
 
 The four manual adaptations this section used to prescribe are upstreamed
 into the shipped scripts. All live-target hardening lives in one shared
@@ -281,11 +348,56 @@ every context; `domcontentloaded` for non-localhost http(s) URLs and
 `networkidle` for local ones (per side); no overlay dismissal (pass
 `--dismiss` for live pairs); exit 3 on a challenge (rule 12).
 
-**A project copy carrying `// replica ADAPTATION:` hand-edits is now a
-defect**, not diligence: the edits were 10 distinct changes across 2 files,
-and a partial application silently mis-measured (e.g. one `main`-scoped
-selector left hardcoded in visual-diff). If you find adapted copies from an
-older run, re-copy the shipped scripts and pass flags instead.
+**A project copy re-implementing retired adaptations is a defect**, not
+diligence: the edits were 10 distinct changes across 2 files, and a partial
+application silently mis-measured (e.g. one `main`-scoped selector left
+hardcoded in visual-diff). If you find `// replica ADAPTATION:` copies from
+an older run, re-copy the shipped scripts and pass flags instead.
+
+The narrow exception: **a documented instrument-bug fix is the correct
+move when the shipped instrument measures falsely** — fail-loud outranks
+script immutability. The rule above exists to kill stale re-implementations
+of upstreamed flags, not to force gating on an instrument known to lie
+(recorded, F-B2: the shipped header delivery silently killed live webfont
+loads; the session's most important fix was a hand-edit to the project's
+live-session.mjs). A legitimate instrument fix is (a) commented in the
+script with the defect it corrects, (b) recorded in the ledger with the
+runs it invalidates, and (c) flagged for upstreaming into the plugin. An
+uncommented, unledgered edit is still a defect.
+
+## The published-origin gate (EDS pipeline deltas)
+
+The prototype gate above proves the RECREATION; it does not prove the
+DELIVERED page. Local render harnesses systematically understate deltas
+because the real delivery pipeline transforms the markup — field rule
+(broadridge, 8 pages published): a page gating at X% on the harness lands
+at X±(large) on the published origin until the transforms below are
+handled. **Only the published-origin number counts as the final gate** for
+a platform-delivered page: re-run the full gate (same instruments, same
+pass bar, same iteration discipline) with the live site as source and the
+published page — preview or live origin — as build. Judge the result in the
+published-origin regime (§ Pass bar, calibration honesty), not against
+prototype-regime numbers.
+
+Recurring EDS pipeline transforms that move the number (each recorded;
+none visible on a local harness):
+
+- **Images get wrapped in `<p><picture>`.** The pipeline emits every
+  authored image inside a paragraph. If any base rule makes that `<p>`
+  positioned, absolutely-positioned imgs inside it collapse to 0×0
+  (backgrounds vanish) and the now-empty paragraph box distorts flex/grid
+  flow. Style `p:has(picture)` as the media layer, and expect specificity
+  fights with `:not()`-heavy base selectors — junction/override rules must
+  match or exceed them.
+- **Metadata-only sections render as empty `.section` divs** carrying full
+  section padding — a ~96px phantom band, typically at the page tail (the
+  same class as deploy's `emptySectionCollapse`; the fix there is
+  `main .section:empty { display: none }`, see
+  `../../deploy/SKILL.md` § Runtime-detection probe).
+- **Media URLs are rewritten to `/media_<hash>` renditions** with width
+  params — size/ratio assumptions lifted from the authored URL don't
+  survive; read dimensions from the delivered rendition, not the authored
+  asset.
 
 ## Residual logging format
 
