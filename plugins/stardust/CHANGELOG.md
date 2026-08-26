@@ -4,6 +4,67 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.18.2 — replica field harvest: font-fork instrument fix, interaction parity, published-origin gate
+
+Harvest of a full `stardust:replica` e2e run (broadridge.com → EDS,
+2026-08-25/26, on 0.18.1): a home-page archetype gated to 3.55%/5.56% pixel
+diff, then 8 pages published and gated against the live origin. All changes
+are site-agnostic; the validated discipline (measure-first, fail-loud,
+≤10% / Δ≤8px / 0-structural-red, hit minimization, no DOM copying) is
+unchanged.
+
+- **Instrument fix (diff `live-session.mjs`, F-B2):** the standard
+  anti-bot header set now rides DOCUMENT requests only (via
+  `context.route`), never subresources. Forced on every request it made
+  cross-origin CORS-mode webfont fetches non-simple — they died with
+  `net::ERR_FAILED` and every live capture silently rendered fallback type,
+  poisoning the whole gate (live doc height moved 6669→6518 after the fix).
+  Bot managers fingerprint the navigation request, which still carries the
+  full set. Companion hardening: stitch-shot asserts fonts loaded after
+  `document.fonts.ready` and warns loudly on any declared face with
+  FontFace status `error` (gate doc rule 14 owns the instrument-induced vs
+  capture-state decision).
+- **Replica scripts:** new `anchor.mjs` (per-section `[y, height]` probe —
+  run on both sides, fix the first mismatched section top-down; roughly
+  halved iterations vs band-reading alone in the field) and `gate.sh` (one
+  pixel round in one command, live capture cached, fail-loud on exit 3).
+- **Replica gate doc:** new § The published-origin gate — only the
+  published number counts for platform-delivered pages, with the three
+  recurring EDS pipeline deltas (`<p><picture>` wrapping, empty
+  metadata-section padding, `/media_<hash>` rewrites); calibration honesty
+  (prototype-regime vs published-origin-regime numbers, same ≤10% bar);
+  probe schedule per fix round (pixels every round, content/visual at
+  milestones — content/visual re-runs cost 2 live hits each); iteration-cap
+  bookkeeping (instrument-invalidated runs excluded once the defect is
+  fixed and named; build-side-only probe passes are free); the script-edit
+  rule narrowed (re-implementing retired adaptations stays a defect; a
+  commented, ledgered, flagged-for-upstream instrument-bug fix is the
+  correct move — fail-loud outranks script immutability).
+- **Recreation procedure:** CSS lifting gains the text-rendering group
+  (`text-rendering`, `-webkit-font-smoothing`, `font-synthesis`,
+  `font-variant-numeric`, `font-kerning`) + the literal-string width
+  diagnostic; new § Interaction parity (hover-diff and behavior-diff probe
+  patterns, Swiper-lock semantics and the scroll-based replica that
+  auto-degrades to the static case); new § Wrap-junction margins
+  (collapsing-margin trap on cards-on-a-canvas sites); capture-state policy
+  gains nondeterministic live elements (tickers, dates, counts — freeze a
+  captured value, log as permanent residual); granularity parity states the
+  widget policy: widgets are implemented, not justified away.
+- **Replica SKILL:** archetype prototypes are per-archetype and CUMULATIVE
+  (shared canon CSS + per-archetype CSS; never skip to direct platform
+  authoring — prototyped archetypes held 3.5%/5.6% while direct-authored
+  pages plateaued at 8–16%); Phase 5's final proof is now the mandatory
+  published-origin gate.
+- **Deploy:** preview `409 "error from content-bus"` gets a two-step
+  fail-loud diagnosis (known-good doc to the same path, then a per-image
+  sweep for SVGs over the ~40KB hard pipeline limit — rasterize to PNG);
+  #99 extended accordingly.
+- **Migrate:** sibling content-fidelity is now measured per page at import
+  time — a role-classified node-count acceptance (headings / body / CTAs /
+  images vs the captured page JSON; drops not covered by a logged
+  `contentDeviations[]` entry fail the page), so dropped-content importer
+  bugs surface while the importer is still cheap to fix.
+
 ## 0.17.0 — vanilla aem-boilerplate is the only deploy runtime; David's Model becomes a mechanical gate
 
 The AuthorKit runtime dependency is removed end to end: `stardust:deploy`

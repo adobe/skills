@@ -17,7 +17,7 @@ trade so a reviewer can see, per page, what was and wasn't checked.
 | Tier | Render branch | Gates it MUST pass | When |
 |---|---|---|---|
 | **archetype** | Path A (approved prototype) | Full `prototype` gate stack: critique, audit, mobile-adapt, anti-template, content-sourcing, `:root` + data-attribute contracts | One representative page **per template**. The design canon. |
-| **sibling** | Path A′ (canon-fork) | Structural clone of the archetype + **content-fidelity** (verbatim source copy, no fabrication) + **delivery-lint** + **media-reconcile**. NOT full craft. | Every other page of a template the archetype already covers. **The cheap default for breadth.** |
+| **sibling** | Path A′ (canon-fork) | Structural clone of the archetype + **content-fidelity** (verbatim source copy, no fabrication, **measured** — § Content-count acceptance) + **delivery-lint** + **media-reconcile**. NOT full craft. | Every other page of a template the archetype already covers. **The cheap default for breadth.** |
 | **thin** | unique (graceful) | delivery-lint + media-reconcile + a declared `contentGap`. Renders metadata + hero + whatever real content exists (e.g. a PDF link). No fabricated filler. | Pages with little/no body content (PDF-only, redirect stubs, bodyless landing). |
 
 The point of the table: **archetype is craft-gated once per template; siblings
@@ -27,6 +27,35 @@ without dropping to zero gates. Make sibling-clone the path of least resistance 
 the reflex for "page N of an established template" should be *fork the archetype*,
 never *re-author from scratch*.
 
+## Content-count acceptance (content-fidelity is measured, not asserted)
+
+"Verbatim source copy, no fabrication" needs an instrument, per page, **at
+import time**: a real first-pass importer silently dropped slide titles,
+tab descriptions, and stats copy on every page of a template, and nothing
+caught it until a downstream fidelity gate a day later — after the cheap
+moment to fix the importer had passed. The `content-diff` classifier
+(`skills/diff/scripts/content-diff.mjs`, summary line) classifies exactly
+this failure class, so make it part of the per-page acceptance:
+
+- **Compare role-classified node counts** — headings, body/list nodes,
+  CTAs (+hrefs), images — between the captured source
+  (`stardust/current/pages/<slug>.json`; migrate is offline after extract,
+  so the captured page is the reference, never a fresh live hit) and the
+  rendered result. When both sides are renderable URLs (e.g. an imported
+  page on a preview origin vs the extract capture served locally), a scoped
+  `content-diff` run gives the same summary with per-node detail.
+- **A count drop in any role class fails the page's acceptance** unless a
+  logged `contentDeviations[]` entry covers it. The page does not advance
+  to `migrated`; the remediation is fixing the importer/template while it
+  is still cheap, then re-running the page.
+- Record the pass as `"content-count"` in the page's `gatesPassed[]`.
+
+This is a counts-level gate by design — cheap enough to run on every
+sibling. Per-node structural diffing stays where it lives today (the
+archetype's gates, deploy's `block-roundtrip`, replica's source-fidelity
+gate); the counts catch the dropped-content class those would only see
+later.
+
 ## Declaration (per page)
 
 Every page row in `state.json` and `coverage/pages.json` carries:
@@ -34,7 +63,7 @@ Every page row in `state.json` and `coverage/pages.json` carries:
 ```json
 "fidelityTier": "archetype" | "sibling" | "thin",
 "archetypeSource": "<slug>",        // for sibling/thin: which archetype it forked
-"gatesPassed": ["delivery-lint", "media-reconcile", "content-fidelity"],
+"gatesPassed": ["delivery-lint", "media-reconcile", "content-fidelity", "content-count"],
 "contentGap": "source is a PDF download; no HTML body"   // thin only
 ```
 
