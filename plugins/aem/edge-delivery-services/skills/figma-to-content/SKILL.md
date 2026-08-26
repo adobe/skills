@@ -3,7 +3,7 @@ name: figma-to-content
 description: "Use this to turn a Figma design into an AEM Edge Delivery Services (EDS / AEM / Franklin / Helix) content page in Document Authoring (DA, da.live). Triggers: \"build this Figma frame in EDS\", \"turn this Figma design into a DA page\", \"publish this design to da.live\", or providing a figma.com URL for a page. Reads the frame (and any annotations) via a Figma MCP, resolves each section to an existing block, a new isolated block, or default content (inferred against the project's existing blocks and confirmed with you, or read from annotations when the frame happens to have them), generates DA-compliant body-fragment HTML, and deploys via the DA Source API + preview."
 license: Apache-2.0
 metadata:
-  version: "0.1.0"
+  version: "1.0.0"
 ---
 
 # figma-to-content — Figma design → EDS content page in DA
