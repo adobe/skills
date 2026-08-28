@@ -35,6 +35,9 @@ then 360.
 # port is YOURS first (lsof -nP -iTCP:8791 -sTCP:LISTEN); prefer a per-project
 # port — a stale server from another stardust project on the shared suggested
 # port silently serves a foreign site into the gate (recorded twice, 2026-08).
+# On shared machines run gate.sh with --marker "<brand string>": the slug
+# default can false-pass against another stardust project sharing the slug
+# (both serving a home-proposed.html that contains "home").
 (cd stardust/prototypes && python3 -m http.server 8791 &)
 PROTO="http://localhost:8791/<slug>-proposed.html"
 LIVE="https://<site>/<path>"

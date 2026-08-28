@@ -230,7 +230,14 @@ async function main() {
     // convention. Took the residual 4% → 0.8% in the field.
     await page.evaluate(() => {
       const dot = document.querySelector('.slick-dots li:first-child button');
-      if (dot) dot.click();
+      if (dot) {
+        dot.click();
+        // slick can re-arm its autoplay interval on interaction, and the
+        // chunk loop below is long — clear timers again after the click so
+        // nothing mutates mid-capture.
+        let id = window.setTimeout(() => {}, 0);
+        while (id-- > 0) { window.clearTimeout(id); window.clearInterval(id); }
+      }
     });
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(800);

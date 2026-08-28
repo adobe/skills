@@ -46,9 +46,14 @@ mkdir -p "$DIR"
 # machine). Fetch the build side and require a page-specific marker: default
 # is the <slug> (already in the served filename/URL path, so it normally
 # appears in the HTML); pass --marker when the slug string genuinely doesn't
-# occur in the page. Runs BEFORE any capture so a collision costs one curl,
-# not a gate round.
-PAGE=$(curl -fsS --max-time 10 "$BUILD_URL" 2>/dev/null) || PAGE=""
+# occur in the page. KNOWN LIMIT of the slug default: when the stale server
+# is ANOTHER stardust project sharing the slug (two projects both serving
+# home-proposed.html), its page likely contains the slug too and false-
+# passes — on shared machines pass --marker with a site-specific string
+# (brand name, domain). Runs BEFORE any capture so a collision costs one
+# curl, not a gate round. -L: published/preview origins redirect (https,
+# trailing slash) — an unfollowed redirect must not read as a mismatch.
+PAGE=$(curl -fsSL --max-time 10 "$BUILD_URL" 2>/dev/null) || PAGE=""
 if ! printf '%s' "$PAGE" | grep -qiF -- "$MARKER"; then
   echo "gate.sh: IDENTITY ASSERTION FAILED — $BUILD_URL does not serve a page containing \"$MARKER\" (or did not respond)." >&2
   echo "gate.sh: the server on that port is likely another project's (stale http.server?) — not comparing." >&2

@@ -336,15 +336,21 @@ async function dismissConsent(page) {
 // serve assets even when pages are challenged.
 async function captureFavicon(page, args) {
   try {
-    const href = await page.evaluate(() => document.querySelector('link[rel~="icon" i]')?.href || null);
-    const url = href || new URL('/favicon.ico', args.origin).href;
-    const res = await page.evaluate(async (u) => {
+    const fetchIcon = (u) => page.evaluate(async (iconUrl) => {
       try {
-        const r = await fetch(u);
+        const r = await fetch(iconUrl);
         if (!r.ok) return null;
         return { type: r.headers.get('content-type') || '', bytes: [...new Uint8Array(await r.arrayBuffer())] };
       } catch { return null; }
-    }, url);
+    }, u);
+    const href = await page.evaluate(() => document.querySelector('link[rel~="icon" i]')?.href || null);
+    const fallback = new URL('/favicon.ico', args.origin).href;
+    let url = href || fallback;
+    let res = await fetchIcon(url);
+    // a cross-origin <link> icon (CDN-hosted) dies on the CORS-bound in-page
+    // fetch even when the asset is fine — retry the same-origin /favicon.ico
+    // before giving up.
+    if ((!res || !res.bytes.length) && url !== fallback) { url = fallback; res = await fetchIcon(url); }
     if (!res || !res.bytes.length) return null;
     // content-type is authoritative for <ext> (a /favicon.ico path routinely
     // serves PNG); the URL path is the fallback, .ico the default.
