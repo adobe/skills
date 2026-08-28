@@ -188,6 +188,18 @@ instrument.** Two recurring cases:
   ledger — it can never zero out, and chasing it burns iterations on a
   moving target. This is the one content class where confirm-justify stays
   legitimate under widget mirroring (§ Granularity parity).
+- **Live-data embeds** (stock tickers, YouTube/euroland-style iframe
+  widgets) — the winning move is loading the SAME live embed (same src) on
+  both sides so the moving data cancels out in the pixel diff, NOT freezing
+  a snapshot (confirmed in two independent 2026-08 sessions: a same-src
+  YouTube iframe canceled to zero; a euroland share ticker mirrored same-src
+  stopped contributing). A frozen snapshot guarantees a permanent residual
+  the size of the widget; a mirrored live embed usually zeroes out, and any
+  residual left (frame-timing skew) is logged as permanent.
+- **Randomized decorative elements** (inline positions/paths regenerated per
+  page load — generative line art, particle fields): the live side never
+  pixel-matches ITSELF across captures, so no prototype can zero it out.
+  Class-level permanent residual: log it with its band and %, don't chase it.
 - **Pointer/hover state.** Pointer position is part of capture state: a
   `:hover`-styled element under the resting cursor is a false-measurement
   trap (recorded: a consent click left the cursor over a hero whose
