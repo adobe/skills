@@ -241,11 +241,25 @@ backed by `live-session.mjs` — copy the scripts and pass flags; a project
 copy carrying hand-edits is a defect
 (`reference/source-fidelity-gate.md` § Script adaptations).
 
-**After the static gate passes, run the interaction-parity pass**
-(`reference/recreation-procedure.md` § Interaction parity): the gate is
-static-pixels only — probe hover states and widget behavior (hover diff +
-behavior diff), implement them, log each in the ledger. Widgets are
-implemented, not justified away.
+**After the static gate passes, the interaction-parity pass is a REQUIRED
+gate output per archetype — like content-diff, not a post-pass suggestion**
+(`reference/recreation-procedure.md` § Interaction parity; field-recorded:
+it was skipped on 5 of 7 archetypes when optional, and every skipped one
+shipped visibly static). Motion is OBSERVED, never inferred from static
+classes or CSS rules: run `scripts/replica/motion-observe.mjs` once per
+archetype live URL (full scroll traversal; `--click` each widget control;
+`--hover` each card/teaser/button family) →
+`stardust/replica/motion/<slug>.json`, implement ONLY behaviors that
+measurably fired (one shared motion layer reusing the live class names),
+and record a **motion inventory** in `progress.json`
+(`motion: {observed, implemented, dead[]}`) — per fired behavior: the
+observe-JSON pointer + implementation location; live-classed-but-DEAD
+behaviors are recorded as NOT implemented (the correct replica of a dead
+class). Then re-run pixel-compare per touched archetype: the number must
+return to the gated value (drift means the motion code changed t=0 —
+wrong). Widgets are implemented, not justified away. Any parallel
+archetype fan-out brief must carry the evidence rule + instrument
+invocation verbatim.
 
 When all breakpoints pass, present the archetype + its gate metrics for
 approval per the standard prototype approval flow (hands-off mode records
@@ -277,8 +291,9 @@ approval per the standard prototype approval flow (hands-off mode records
 
 **State:** replica writes its own state under `stardust/replica/` — the
 inconsistency register, `progress.json` (per page type: archetype slug,
-iterations used, per-breakpoint gate results, residuals), and
-`gates/<slug>-<width>/` evidence. Pipeline status (extracted → prototyped →
+iterations used, per-breakpoint gate results, residuals, and the motion
+inventory `motion: {observed, implemented, dead[]}`), `motion/<slug>.json`
+observe evidence, and `gates/<slug>-<width>/` evidence. Pipeline status (extracted → prototyped →
 approved → migrated) stays in the core `state.json` per the standard state
 machine — replica never redefines it.
 
@@ -305,7 +320,8 @@ stardust/
 ├── prototypes/<slug>-proposed.html     ← gated archetypes (one per page type)
 ├── replica/
 │   ├── inconsistency-register.md       ← the ONLY permitted design deltas
-│   ├── progress.json                   ← per-page-type ledger: iterations, gate results, residuals
+│   ├── progress.json                   ← per-page-type ledger: iterations, gate results, residuals, motion inventory
+│   ├── motion/<slug>.json              ← motion-observe evidence (one run per archetype live URL)
 │   └── gates/<slug>-<width>/           ← live.png, proto.png, diff.png, probe outputs per iteration
 └── migrated/                           ← from migrate (Phase 5)
 
@@ -320,8 +336,9 @@ PRODUCT.md / DESIGN.md / DESIGN.json    ← promoted verbatim from current/ (Pha
   breakpoint), fonts policy, scrim/luminance recovery, span-face forks,
   capture-state policy, wrap-junction margins, fixed/sticky chrome,
   granularity parity, role parity (mirror the live wrapping per string),
-  interaction parity (hover/behavior probes, Swiper-lock), CSS-portation
-  fallback criteria.
+  interaction parity (motion observed via motion-observe.mjs, never
+  inferred; mechanism cloning; Swiper-lock; verification protocol),
+  CSS-portation fallback criteria.
 - `reference/source-fidelity-gate.md` — full gate contract: commands,
   thresholds, per-breakpoint procedure, hardening rules, band-breakdown
   reading guide (+ the section-anchor inner loop), iteration discipline,

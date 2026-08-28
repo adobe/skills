@@ -41,6 +41,31 @@ per-project default ports) are deliberately deferred with rationale in
   playback (~20% of one page was video noise) nor slick autoplay (slide
   identity arbitrary per capture; residual 4% → 0.8% once reset). Symmetric
   on both sides; a static page's capture is byte-identical to 0.18.2's.
+- **Replica motion parity (observe, don't infer):** new
+  `motion-observe.mjs` (sibling of stitch-shot, same live-session
+  hardening, exit 3 on challenge) records what the live page actually
+  DOES — animationstart/transitionstart events with element paths + text
+  snippets, class mutations exposing the trigger mechanism, a down+up
+  header-state timeline (dense near the top), `--click` widget frames,
+  `--hover` computed-style diffs with the changed-property list
+  precomputed. The interaction-parity pass is now a REQUIRED gate output
+  per archetype — a motion inventory in `progress.json`
+  (`motion: {observed, implemented, dead[]}`; live-classed-but-dead
+  behaviors recorded as NOT implemented, the correct replica of a dead
+  class) — because when optional it was skipped on 5 of 7 archetypes and
+  every skipped one shipped visibly static. § Interaction parity is
+  rewritten around the evidence rule: implement ONLY behaviors that
+  measurably fired — static lifting invented motion three field-recorded
+  ways (dead animation classes: 2 of 8 classed caption families ever
+  fired; hover rules whose scope never matches at runtime; approximated
+  chrome mechanisms allowing states impossible on live, e.g. a
+  double-rendered header) — with static CSS remaining the authority for
+  the exact keyframe/easing VALUES of fired animations, mechanisms cloned
+  as the observed state machine, and a two-direction verification
+  (pixel-compare must return to the gated number — field: 1.01% gated →
+  1.06% with invented motion → 1.01% exact after the evidence-only
+  rewrite — plus a behavior-match assertion off the observe JSON). Full
+  spec: `notes/replica-motion-parity.md`.
 - **Replica docs:** two new permanent-residual classes in the capture-state
   policy (live-data embeds — load the SAME embed same-src on both sides;
   randomized decorative elements — log, don't chase); AEM-classic richtext

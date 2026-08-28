@@ -302,30 +302,70 @@ Policy:
   logic (recorded UC1-E1 failure mode). stitch-shot.mjs already orders this
   correctly; mirror the ordering in any ad-hoc probe.
 
-## Interaction parity (after the static gate)
+## Interaction parity (after the static gate — observed, never inferred)
 
-The gate measures static pixels only: hover states, transitions, and
-slider behavior are invisible to all three probes — and users notice them
-immediately. After the static gate passes (never before — interaction work
-on unconverged geometry is rework), run an interaction-parity pass over the
-archetype's interactive surfaces. Two probe patterns cover it; both are
-cheap, generic, and read the live site's behavior without reading its JS.
-Budget the live hits like any other probe (one navigation can host many
-element probes — batch them).
+The gate measures static pixels at t=0 only: every scroll-entrance
+animation, header scroll-morph, hover transition, and secondary carousel is
+invisible to all four probes — and users notice them immediately on first
+manual review. After the static gate passes (never before — interaction
+work on unconverged geometry is rework), run the interaction-parity pass.
+It is a REQUIRED per-archetype gate output (SKILL.md Phase 4 — the motion
+inventory), not an optional post-pass: in the field it was skipped on 5 of
+7 archetypes, including under parallel sub-agent briefs, and every skipped
+archetype shipped visibly static. **Any parallel archetype fan-out brief
+must carry this section's evidence rule and instrument invocation
+verbatim** — this is precisely the step agents skip when unprompted.
 
-- **Hover diff.** Per component class (one representative element each):
-  snapshot computed styles — background/color/shadow/transform/border on
-  the element plus its key sub-elements (icon, title, arrow) — hover via
-  `mouse.move` to the box center, snapshot again, report the property-level
-  diff plus `transition-property`/`transition-duration`. Dismiss overlays
-  FIRST (an overlay intercepts the pointer and the probe reads no change),
-  scroll the element into view, and park the mouse between probes. The
-  output translates directly to `:hover` CSS.
-- **Behavior diff.** For a control-driven widget (slider arrow, tab,
-  accordion header): click the control, sample the animated property
-  mid-flight and settled (`transform`/`scrollLeft` plus the computed
-  `transition-*`) — that yields the pitch (px per step), easing, and
-  duration. Two samples bracket the whole animation; no source JS needed.
+**The evidence rule: motion is OBSERVED at runtime, never inferred from
+static classes or CSS rules.** Run `../scripts/motion-observe.mjs` ONCE per
+archetype live URL (full down+up scroll traversal; `--click` each
+carousel/widget control; `--hover` each distinct card/teaser/button
+family; reuse the JSON — observation costs live hits like any probe).
+Implement ONLY behaviors that measurably fired, with the recorded trigger
+mechanism, durations, and thresholds. Static source CSS is then the
+authority for the exact keyframe/easing VALUES of those fired animations.
+A behavior implemented without a runtime trace naming it is a fidelity bug
+— same severity as an unregistered design change.
+
+Static lifting INVENTS motion three distinct ways (all field-recorded, all
+caught in user review — this is why the evidence rule exists):
+
+1. **Dead animation classes.** Sites — component CMSs especially — stamp
+   animation classes on many elements; the runtime JS adds the trigger
+   class (`.animate` etc.) to only SOME of them (recorded: of ~8
+   caption-class families carrying an entrance class, 2 ever fired; 3 whole
+   page types had ZERO firing entrances despite fully classed markup).
+   Tagging from static classes animates elements the real site never
+   animates. A live-classed-but-dead behavior is recorded as NOT
+   implemented — that is the correct replica of a dead class.
+2. **Hover rules whose scope never matches.** A plausible, syntactically
+   applicable `:hover` rule can be dead at runtime (scoping condition,
+   specificity loser, wrong variant) — and the inverse: the fired hover may
+   move a different element than the rule suggests (recorded: media-card
+   hover scaled the caption, not the card). Only a measured hover diff
+   justifies a hover rule in the prototype.
+3. **Approximated mechanisms create impossible states.** Reproducing a
+   header scroll-morph as a cloned fixed overlay bar looked equivalent but
+   allowed bar + original header visible simultaneously — a state that
+   cannot exist on live, which morphs its SINGLE header in place. Users see
+   a double-rendered header. **Mechanism cloning rule:** scroll-chrome and
+   widgets are reproduced as the SAME state machine observed live (same
+   element morphing, same class-state transitions, same restore
+   thresholds — the observe JSON's headerTimeline and classMutations name
+   them) — never as a different mechanism with a similar look.
+
+The two probe patterns the instrument wraps (both cheap, generic, no source
+JS needed): **hover diff** (`--hover`) — computed
+background/color/shadow/transform on the element + key sub-elements,
+before vs after a real pointer hover, plus `transition-*`; overlays
+dismissed first (an overlay intercepts the pointer and the probe reads no
+change), mouse parked between probes; the changed-property list translates
+directly to `:hover` CSS. **Behavior diff** (`--click`) — click the
+control, sample the animated property mid-flight and settled
+(`transform`/`scrollLeft` + computed `transition-*`): pitch, easing,
+duration. Map observed elements to prototype counterparts by the TEXT
+SNIPPET in the event log, never by class names (prototype classes are
+clean re-authored names).
 
 **Swiper-lock semantics** (the dominant carousel library): Swiper hides its
 controls and disables dragging when the content fits the viewport
@@ -340,13 +380,56 @@ case exactly where the live widget locks. Late re-renders (e.g. re-check at
 DOM after the widget initializes — the overflow measurement taken at
 decorate time is stale by first interaction.
 
-Findings land as prototype/block behavior (CSS `:hover` rules, minimal
-widget JS), and the widget DOM stays fully mirrored so content-diff holds
-at zero structural red (§ Granularity parity — widgets are implemented,
-not justified away). Log each implemented interaction in the progress
-ledger the way a CSS portation is logged; the static gate is then re-run
-only if the work touched markup (it usually doesn't — hover CSS and
-scroll JS are capture-invisible under the animation freeze).
+**Implementation pattern — ONE shared motion layer per project, never
+per-page forks:** `css/motion.css` (lifted keyframes verbatim; trigger
+rules reusing the LIVE class names — that keeps the capture instruments
+symmetric, since stitch-shot's animation handling already keys on the live
+conventions; hover rules hover-diff-verified only; chrome-morph classes;
+indicator transitions) + `js/motion.js` (an IntersectionObserver adding
+the live trigger class — threshold as measured, typically ~0.15, once —
+to a tagging map of runtime-FIRED selectors only; the chrome state machine
+on scroll with the measured direction + thresholds; widget drivers
+mirroring observed mechanics). Gate-safety is by construction: entrance
+animations only run once the trigger class is added — verify the live site
+has no pre-animate hidden state (if it does, stitch-shot's entrance-state
+forcing covers it); chrome morph is inert at y=0; hovers need a pointer;
+stitch-shot clears timers so autoplay stays at t=0. Widget DOM stays fully
+mirrored so content-diff holds at zero structural red (§ Granularity
+parity — widgets are implemented, not justified away).
+
+**Verification protocol, both directions:** (1) **no pixel regression** —
+re-run pixel-compare per touched archetype at the gate breakpoints; the
+number must return to (± noise of) the gated value (recorded: 1.01% gated
+→ 1.06% with invented motion → 1.01% exact after the evidence-only
+rewrite). The drift itself is the smell test: motion code that changes t=0
+is wrong. (2) **behavior match** — a headless run against the PROTOTYPE
+asserting, per page: tagged-element count == live fired count; chrome
+state at {top, scrolled-down, scrolled-up, back-to-top} == the live
+headerTimeline states; zero pageerrors. This is the motion analog of the
+anchor probe, trivial to script from the observe JSON.
+
+Pitfalls (each field-recorded):
+
+- Observation needs the same live-session hardening + pacing as the gate
+  captures (bot walls, 429 bursts): ONE observation run per page, reuse the
+  JSON.
+- Autoplay widgets may pause off-viewport — poke them explicitly with
+  `--click` rather than waiting for autoplay events.
+- Indicator "magic dots": the live mechanism may animate `left`/`transform`
+  where an equivalent rendered effect in the recreation animates
+  width/height — equivalence of the RENDERED effect is the bar, but the
+  duration/easing must be the measured ones.
+- Wobble/stagger patterns: delays may be child-order dependent (recorded:
+  2nd child first, 0.5s steps, 1st child last) — read them from the CSS
+  rules of the FIRED animation; they are not guessable.
+- `prefers-reduced-motion`: mirror the live site's handling — do not
+  "improve" by adding it where live has none; that's an
+  inconsistency-register item, not a freebie.
+
+Log each implemented interaction in the progress ledger the way a CSS
+portation is logged; the static gate is then re-run per the verification
+protocol above (markup rarely changes — hover CSS and trigger JS are
+capture-invisible under the freeze, and the pixel re-run proves it).
 
 ## Fixed and sticky chrome (headers, floating tabs × stitched capture)
 
