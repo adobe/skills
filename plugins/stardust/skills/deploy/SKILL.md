@@ -818,6 +818,9 @@ The retired `visual-diff` classes are covered elsewhere: stretched images by the
 # Prereq: a RENDERABLE prototype. Static → serve from its own dir so relative
 # ../assets resolve. JSX → pre-render first (#24/#27).
 ( cd <prototype-dir> && python3 -m http.server 8791 & )
+# verify the port is YOURS first (lsof -nP -iTCP:8791 -sTCP:LISTEN); prefer a
+# per-project port — a stale server from another project makes the diff below
+# silently measure a foreign prototype
 
 # Structural content + typography diff — ADVISORY summary. Use the DEPLOYED EDS URL
 # so blocks are decorated; a raw content .plain.html has no roles to classify.

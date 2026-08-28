@@ -9,7 +9,7 @@
 # delete it explicitly to re-take (site changed, capture hardening changed).
 #
 # Usage:
-#   scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label]
+#   scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>]
 #
 # Example (iteration 2 of the home archetype at 1440):
 #   scripts/replica/gate.sh home "https://<site>/" \
@@ -21,18 +21,45 @@
 # Fail-loud contract: a stitch-shot bot challenge (exit 3) or capture error
 # aborts the round — a missing/blocked side must never be compared. Exit
 # codes: 0 gate PASS, 2 gate FAIL (over threshold), 3 bot challenge,
-# 1 capture/compare error.
+# 1 capture/compare error, 4 build-side identity assertion failed (the URL
+# serves something that isn't this project's page — wrong/stale server).
 set -u
 
-SLUG=${1:?usage: gate.sh <slug> <live-url> <build-url> <width> [iter-label]}
+SLUG=${1:?usage: gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>]}
 LIVE_URL=${2:?missing <live-url>}
 BUILD_URL=${3:?missing <build-url>}
 W=${4:?missing <width>}
 LBL=${5:-iter}
+MARKER="$SLUG"
+[ "${6:-}" = "--marker" ] && MARKER=${7:?--marker needs a value}
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 DIR="stardust/replica/gates/$SLUG-$W"
 mkdir -p "$DIR"
+
+# Identity assertion — NEVER diff an unverified build URL (rwe + centene
+# harvest, 2026-08: the same incident in both sessions, opposite directions —
+# a stale localhost:8791 server from ANOTHER stardust project served a foreign
+# site into a gate round; 73% diff misread as "prototype broke" on one, the
+# foreign prototype measured as "the build" on the other. Every skill doc
+# suggests the same port, so cross-project collision is guaranteed on a shared
+# machine). Fetch the build side and require a page-specific marker: default
+# is the <slug> (already in the served filename/URL path, so it normally
+# appears in the HTML); pass --marker when the slug string genuinely doesn't
+# occur in the page. Runs BEFORE any capture so a collision costs one curl,
+# not a gate round.
+PAGE=$(curl -fsS --max-time 10 "$BUILD_URL" 2>/dev/null) || PAGE=""
+if ! printf '%s' "$PAGE" | grep -qiF -- "$MARKER"; then
+  echo "gate.sh: IDENTITY ASSERTION FAILED — $BUILD_URL does not serve a page containing \"$MARKER\" (or did not respond)." >&2
+  echo "gate.sh: the server on that port is likely another project's (stale http.server?) — not comparing." >&2
+  PORT=$(printf '%s' "$BUILD_URL" | sed -nE 's|^[a-z]+://[^:/]+:([0-9]+).*|\1|p')
+  if [ -n "$PORT" ]; then
+    echo "gate.sh: port $PORT listener:" >&2
+    lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >&2 || echo "gate.sh: (nothing listening on :$PORT)" >&2
+  fi
+  echo "gate.sh: kill/replace the stale server, or pass --marker <string> if the slug legitimately doesn't appear in the page." >&2
+  exit 4
+fi
 
 # Live side: captured once per breakpoint per full gate run and reused
 # (--settle: live JS-heavy pages need the lazyload pass). Never swallow the

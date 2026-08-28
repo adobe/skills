@@ -31,7 +31,10 @@ iteration budget. Gate 1440 first (the geometry lifted from desktop CSS),
 then 360.
 
 ```bash
-# Serve the prototype from its own dir so relative assets resolve
+# Serve the prototype from its own dir so relative assets resolve. Verify the
+# port is YOURS first (lsof -nP -iTCP:8791 -sTCP:LISTEN); prefer a per-project
+# port — a stale server from another stardust project on the shared suggested
+# port silently serves a foreign site into the gate (recorded twice, 2026-08).
 (cd stardust/prototypes && python3 -m http.server 8791 &)
 PROTO="http://localhost:8791/<slug>-proposed.html"
 LIVE="https://<site>/<path>"

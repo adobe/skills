@@ -179,6 +179,9 @@ breakpoint (default 1440 AND 360), live URL as source vs served prototype:
 
 ```bash
 PROTO="http://localhost:8791/<slug>-proposed.html"   # python3 -m http.server from the prototypes dir
+# verify the port is YOURS first (lsof -nP -iTCP:8791 -sTCP:LISTEN); prefer a
+# per-project port — a stale server from another project silently gates a
+# foreign site (gate.sh asserts a page marker before comparing, exit 4 on mismatch)
 LIVE="https://<site>/<path>"
 
 # Probe 1+2 — the diff skill's two probes, generic profile (--dismiss keeps
