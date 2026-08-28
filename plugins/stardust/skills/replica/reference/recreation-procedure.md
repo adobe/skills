@@ -138,6 +138,16 @@ section top drifting further down the page. Two safe constructions:
   the `:has()`-based wrap rules they override, or the wrap rule silently
   wins and the junction re-collapses.
 
+The inverse case — the SOURCE's margins do NOT collapse where a clean
+recreation's would: AEM-classic (and any clearfix-era) components wrap each
+section in a clearfix, whose block formatting context contains child margins.
+`display: flow-root` on the recreated section wrapper reproduces that
+containment exactly — one rule fixed systematic −48/−20px per-section errors
+across a whole page in the field. Corollary for responsive work: a column
+that is floated on desktop loses its BFC when a media query un-floats it, and
+the last child's margin escapes at mobile only — add `flow-root` to the
+un-floating override.
+
 ## Fonts policy
 
 - **Same public source when available.** Extract intercepts the page's own
@@ -226,6 +236,14 @@ mirror these classes rather than fighting per-page false-reds:
   carousel clone slides, hidden tab-panel links, sr-only labels ("Old
   price"), even server-truncated strings. Content parity means DOM parity,
   not visible-text parity — reproduce them hidden, exactly as captured.
+- **AEM-classic richtext byte patterns are load-bearing** (general to the
+  source-CMS class, not one site): an empty spacer paragraph is
+  `<p><br>\r\n </p>` and renders TWO line boxes (the `<br>` plus the still-
+  collapsible space); headings lead with `<br>` (`<h1><br>\r\nTitle`); a
+  trailing `&nbsp;` after an inline close is a REAL extra line. Approximating
+  these as clean `<p><br></p>` measures 20–36px short per instance. Mirror
+  the byte patterns as captured; when a wrap-count mismatch survives width
+  parity, diff `innerHTML` — the byte-level difference is usually the cause.
 - Alternatively, where mirroring would be genuinely absurd, treat the
   specific JOIN/SPLIT reds as **confirmed-justified** per diff SKILL.md's
   #87 guidance (verify the fragments concatenate into a matched EXTRA before

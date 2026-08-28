@@ -973,3 +973,39 @@ moment a rollout adds variants (centene's `feature`/`panel` variants have
 exactly this shape).
 **Fix applied:** block-brief template requires mobile overrides at the
 variant's own specificity (or `:where()` the variant selectors down).
+### #110 🟠 Pipeline fallback `<img src>` copied into CSS `background` ships the 750px rendition ✅
+**Where:** centene.com deploy. The `<picture>` fallback `<img src>` carries
+`width=750`; copied into a full-bleed CSS `background-image` it renders soft
+at any hero width. `<picture>`-rendered images are unaffected (the browser
+picks a real rendition).
+**Fix applied:** images→background-LAYER rule now says: never copy the
+fallback src into CSS — rewrite the width param (`width=2000`) first.
+
+### #111 🟡 `<picture>` wrapper adds an inline baseline descender (+6/7px per image paragraph) ✅
+**Where:** centene.com deploy. The pipeline's `<p><picture>…` wrapper leaves
+the image inline on the text baseline — each image paragraph measured +6/+7px
+vs the bare-`<img>` source; systematic, per-image, invisible to text gates.
+**Fix applied:** documented `line-height: 0` on the image paragraph as the
+parity fix.
+
+### #112 🟡 Pipeline drops whitespace-only authored content — model spacer line boxes as CSS ✅
+**Where:** centene.com deploy. Authored `<p>&nbsp;</p>` / trailing
+`<br>&nbsp;` (real line boxes on AEM-classic sources) are dropped by the
+pipeline; the height difference surfaced only in the pixel probe.
+**Fix applied:** ENCODE contract: never model live line boxes as authored
+whitespace — express them as block CSS (padding/margin).
+
+### #113 🟡 Un-floating columns in a media query loses the float's BFC margin containment ✅
+**Where:** centene.com deploy. The desktop float established a BFC that
+contained the last child's margin; the mobile override un-floated the column
+and the margin escaped (−10px, mobile only).
+**Fix applied:** block-brief template: when a mobile override un-floats, add
+`display: flow-root` to the override.
+
+### #114 🟡 A wrapper reset can out-specify the block's own rules — padding silently 0 ✅
+**Where:** centene.com deploy. `footer .footer > div { padding: 0 }` (a
+wrapper reset) beat `footer .f-root { padding: … }` — the block's own rule
+never applied, no error anywhere.
+**Fix applied:** block-brief template warns: keep wrapper resets at LOWER
+specificity than the block's own rules (`:where()` them down), and check any
+`> div` reset against every rule it might shadow.
