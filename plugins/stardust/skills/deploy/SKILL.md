@@ -320,7 +320,13 @@ Extract captures the source site's favicon at
    `_eds/code/favicon.<ext>` instead — the host publisher pushes it with the
    code tree and injects the `head.html` link deterministically.
 
-If extract captured no favicon, skip this step — never invent one.
+If extract captured no favicon, **WARN LOUDLY and record it in the deploy
+log — never invent one, never skip silently.** A missing
+`stardust/current/assets/favicon.<ext>` usually means a bounded extract
+(`--single`/`--pages`) ran before crawl.mjs captured favicons in all modes —
+one crawl of the entry page (or a manual fetch of `link[rel~="icon"]` /
+`/favicon.ico`) recovers it; otherwise the deployed site ships the default
+icon, which reads as broken to the client.
 
 ### 4. Self-host fonts and minimize CLS — never put font loads in `head.html`
 
@@ -947,7 +953,7 @@ A block that builds its own layout/view wrapper (common for interactive blocks t
 - [ ] No JS-toggled `opacity:0` reveal lifted from the prototype — content renders visible (prototype scroll-reveal script doesn't run in EDS).
 - [ ] No block named after a reserved EDS class (`section`, `block`, `wrap`, `button`, or a name ending `-wrapper`/`-container`).
 - [ ] `head.html` is untouched **except** the single favicon `<link rel="icon">` line (Step 3 § Favicon). No font `<link>`, `<script>`, `<style>`, or `<link rel="preload" as="font">` lines added. Brand `@font-face` lives in `styles/fonts.css`; `-fallback` faces in `styles/styles.css`. Brand woff2(s) live in `fonts/`.
-- [ ] The site favicon is shipped (repo-root `favicon.<ext>` or `_eds/code/favicon.<ext>` in sandboxed runs) when extract captured one.
+- [ ] The site favicon is shipped (repo-root `favicon.<ext>` or `_eds/code/favicon.<ext>` in sandboxed runs) when extract captured one; when none was captured, the deploy log records a loud WARN (likely a bounded extract — recover the icon rather than shipping the default silently).
 - [ ] EVERY named brand face is self-hosted — including proprietary ones (#80); proprietary `.otf`/`.ttf` from the prototype were converted to woff2 with fontTools. If any proprietary face is shipped, the **licensing alert** exists in all three places (styles.css banner + `fonts/LICENSING.md` + conversion log) and the hand-off message flags "license required before `aem.live`".
 - [ ] Condensed/narrow display faces fall back to a **condensed** face, not plain Arial (#80): `"<Brand>", "Arial Narrow", arial, …` (or a self-hosted free condensed analog). Width-class is part of classification.
 - [ ] Every brand family's stack names its metric-matched `-fallback` face second (`"<Brand>", "<brand>-fallback", sans-serif`) — first paint renders the fallback until `loadFonts()` lands `fonts.css`.

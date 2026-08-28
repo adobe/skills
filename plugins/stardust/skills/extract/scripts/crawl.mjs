@@ -328,6 +328,38 @@ async function dismissConsent(page) {
   });
 }
 
+// Favicon — captured on the ENTRY page in ALL modes (centene harvest, 2026-08:
+// bounded --pages extracts skip Phase 3 (brand surface) where favicon capture
+// otherwise lives, and deploy's favicon step then skips SILENTLY — the deployed
+// site shipped the default icon). One cheap request. The fetch runs in-page so
+// it inherits the context's fingerprint + cookies — bot-walled origins usually
+// serve assets even when pages are challenged.
+async function captureFavicon(page, args) {
+  try {
+    const href = await page.evaluate(() => document.querySelector('link[rel~="icon" i]')?.href || null);
+    const url = href || new URL('/favicon.ico', args.origin).href;
+    const res = await page.evaluate(async (u) => {
+      try {
+        const r = await fetch(u);
+        if (!r.ok) return null;
+        return { type: r.headers.get('content-type') || '', bytes: [...new Uint8Array(await r.arrayBuffer())] };
+      } catch { return null; }
+    }, url);
+    if (!res || !res.bytes.length) return null;
+    // content-type is authoritative for <ext> (a /favicon.ico path routinely
+    // serves PNG); the URL path is the fallback, .ico the default.
+    const extFromType = /svg/.test(res.type) ? 'svg' : /png/.test(res.type) ? 'png'
+      : /jpe?g/.test(res.type) ? 'jpg' : /gif/.test(res.type) ? 'gif'
+        : /webp/.test(res.type) ? 'webp' : /icon/.test(res.type) ? 'ico' : '';
+    const extFromPath = (path.extname(new URL(url).pathname).slice(1) || '').toLowerCase();
+    const ext = extFromType || extFromPath || 'ico';
+    await mkdir(path.join(args.out, 'assets'), { recursive: true });
+    const file = `assets/favicon.${ext}`;
+    await writeFile(path.join(args.out, file), Buffer.from(res.bytes));
+    return { url, file };
+  } catch { return null; }
+}
+
 // ---- the capture, run in-page; returns the per-page record + hardening signals ----
 function capture() {
   const vis = (el) => {
@@ -664,10 +696,15 @@ async function main() {
   } catch { /* keep declared origin */ }
 
   const urls = await discover(args, probe);
+  // favicon rides the probe page (already on the entry URL) — runs in every
+  // mode, so bounded extracts can't silently drop it (CEN-4).
+  const favicon = await captureFavicon(probe, args);
+  if (favicon) console.error(`[crawl] favicon captured: ${favicon.file} (${favicon.url})`);
+  else console.error('[crawl] WARN no favicon captured — no link[rel~=icon] and /favicon.ico unreachable; deploy will ship the default icon unless one is provided');
   await probe.close();
   console.error(`[crawl] technique=${technique} pages=${urls.length}`);
 
-  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...(botBlock ? { botBlock } : {}), ...(originRedirect ? { originRedirect } : {}) }, consent: { method: args.consent ? 'auto' : 'skipped' }, crawl: { failures: [] } };
+  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...(botBlock ? { botBlock } : {}), ...(originRedirect ? { originRedirect } : {}) }, consent: { method: args.consent ? 'auto' : 'skipped' }, favicon: favicon || null, crawl: { failures: [] } };
   let ok = 0;
   await context.close();
 
