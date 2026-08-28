@@ -147,6 +147,13 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
 
 - Measure first (iteration 1 IS the map — do not pre-polish).
 - Every fix cites the instrument line that demanded it.
+- **Before counting an iteration, verify the fix changed the render.** A
+  byte-identical differing-pixel count after a "fix" means the rule was a
+  no-op (recorded: a padding whose value the EDS section wrapper already
+  carried — the round measured nothing and was burned). The check is free —
+  the count is already on the verdict line; if it didn't move at all, find
+  out why the rule never applied (specificity, wrong selector, value already
+  in effect) before spending another round.
 - Probe schedule per fix round: **pixels every round; content-diff +
   visual-diff at milestones** — iteration 1, after any fix that touched
   content or markup (not pure CSS values), and once at final. Across ~25
