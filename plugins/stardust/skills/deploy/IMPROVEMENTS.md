@@ -931,3 +931,81 @@ fingerprint variation).
 **Fix applied:** #23 reworded — full-page pairs at TWO viewports always; per-section pairs
 only for flagged sections, bespoke/cinematic or slot-heavy template-slotted sections, and
 the chrome. Expected ~3–5 min saved on large pages at negligible risk.
+
+## 2026-08-26/27 — replica+deploy field harvest (rwe.com, centene.com; #106–#114)
+
+Two independent sessions; each finding below bit with green text gates and was
+caught only by a pixel probe or eyeball. All are source-class-general (any
+bootstrap-era grid, any AEM-classic richtext source), none site-specific.
+
+### #106 🔴 Boilerplate ships no global `border-box` — %-width+padding grids silently wrap ✅
+**Where:** centene.com deploy. Block CSS ported a bootstrap-era grid
+(`width: 33%` + padding); under the default `content-box` every column
+overflowed its track: 3-col cards rendered 2+1, 2-col bands stacked, the
+footer wrapped — **+1731px doc height with ALL text gates green**.
+**Fix applied:** Step 3 Document reset now REQUIRES the global
+`*, *::before, *::after { box-sizing: border-box }` reset; absent that, any
+block CSS combining `width: N%` with `padding` is called out as a defect.
+
+### #107 🔴 `header { height: var(--nav-height) }` collapses every block-internal `<header>` ✅
+**Where:** rwe.com deploy. Blocks that emitted semantic `<header>` (natural
+when porting prototype DOM verbatim) all broke at once — the stock chrome
+reservation matches EVERY `<header>`, clamping each to nav height and hiding
+it; text gates stayed green.
+**Fix applied:** Step 3 #81 passage warns: no `<header>` in block DOM (use a
+`.…-head` div); scope the stock selector to `body > header` only if the
+foundation pass is already editing the boilerplate's structural layer (#106).
+
+### #108 🟡 Overlay chrome is an uncovered #81 case — `--nav-height: 0` + absolute header ✅
+**Where:** rwe.com deploy. The prototype's transparent header floats OVER the
+hero; reserving any `--nav-height` would push the hero below where the source
+renders it.
+**Fix applied:** Step 3 documents the pattern: `--nav-height: 0` + absolutely
+positioned header, no reservation — nothing in flow, so the late chrome load
+shifts nothing (measured CLS 0.0004).
+
+### #109 🔴 Mobile override loses to desktop VARIANT specificity regardless of media query ✅
+**Where:** rwe.com deploy iteration. A generic mobile rule
+(`.cards .card-list`) lost to the desktop variant rule
+(`.cards.color .card-list`) — a media query changes *when* a rule applies,
+never *how strongly*. Silent on single-variant blocks; guaranteed to recur the
+moment a rollout adds variants (centene's `feature`/`panel` variants have
+exactly this shape).
+**Fix applied:** block-brief template requires mobile overrides at the
+variant's own specificity (or `:where()` the variant selectors down).
+### #110 🟠 Pipeline fallback `<img src>` copied into CSS `background` ships the 750px rendition ✅
+**Where:** centene.com deploy. The `<picture>` fallback `<img src>` carries
+`width=750`; copied into a full-bleed CSS `background-image` it renders soft
+at any hero width. `<picture>`-rendered images are unaffected (the browser
+picks a real rendition).
+**Fix applied:** images→background-LAYER rule now says: never copy the
+fallback src into CSS — rewrite the width param (`width=2000`) first.
+
+### #111 🟡 `<picture>` wrapper adds an inline baseline descender (+6/7px per image paragraph) ✅
+**Where:** centene.com deploy. The pipeline's `<p><picture>…` wrapper leaves
+the image inline on the text baseline — each image paragraph measured +6/+7px
+vs the bare-`<img>` source; systematic, per-image, invisible to text gates.
+**Fix applied:** documented `line-height: 0` on the image paragraph as the
+parity fix.
+
+### #112 🟡 Pipeline drops whitespace-only authored content — model spacer line boxes as CSS ✅
+**Where:** centene.com deploy. Authored `<p>&nbsp;</p>` / trailing
+`<br>&nbsp;` (real line boxes on AEM-classic sources) are dropped by the
+pipeline; the height difference surfaced only in the pixel probe.
+**Fix applied:** ENCODE contract: never model live line boxes as authored
+whitespace — express them as block CSS (padding/margin).
+
+### #113 🟡 Un-floating columns in a media query loses the float's BFC margin containment ✅
+**Where:** centene.com deploy. The desktop float established a BFC that
+contained the last child's margin; the mobile override un-floated the column
+and the margin escaped (−10px, mobile only).
+**Fix applied:** block-brief template: when a mobile override un-floats, add
+`display: flow-root` to the override.
+
+### #114 🟡 A wrapper reset can out-specify the block's own rules — padding silently 0 ✅
+**Where:** centene.com deploy. `footer .footer > div { padding: 0 }` (a
+wrapper reset) beat `footer .f-root { padding: … }` — the block's own rule
+never applied, no error anywhere.
+**Fix applied:** block-brief template warns: keep wrapper resets at LOWER
+specificity than the block's own rules (`:where()` them down), and check any
+`> div` reset against every rule it might shadow.

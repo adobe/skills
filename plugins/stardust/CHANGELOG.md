@@ -4,6 +4,94 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.18.3 — dual-session field harvest: consent fallback, gate identity assertion, capture-freeze hardening
+
+Harvest of two independent replica+deploy sessions (rwe.com and centene.com,
+2026-08-26/27, on 0.18.2). Three failures recurred in BOTH sessions and lead
+the release: a stale cross-project `:8791` server silently gated a foreign
+site (once in each direction — every skill doc suggests the same port, so
+collision on a shared machine is guaranteed); consent widgets missed by the
+selector list (on centene the banner baked into ground truth AND all 7 stitch
+seams → 32% false pixel diff, one gate round invalidated); and live-data
+embeds (mirroring the SAME src cancels the data out in the pixel diff —
+freezing a snapshot guarantees a widget-sized residual). All changes are
+site-agnostic and additive; the high-impact-but-not-low-risk items
+(shared-classifier element-boundary separators, stitch-shot `--fullpage`,
+per-project default ports) are deliberately deferred with rationale in
+`notes/improvement-plan-2026-08-rwe-centene.md`.
+
+- **Extract:** `crawl.mjs` consent dismissal gains a visible-button
+  text-match fallback — exact short labels (Accept / Accept all / Allow all /
+  Agree / OK / Decline / Alle akzeptieren / Accepter), overlay-container
+  scoped, runs ONLY when the selector pass matched nothing, so existing
+  selectors keep priority and an in-content link can never match. Favicon is
+  now captured on the ENTRY page in every mode (bounded `--pages` extracts
+  skip Phase 3 where favicon capture lived; deploy then skipped silently and
+  shipped the default icon) via an in-page fetch that inherits the context's
+  fingerprint. Bot-wall note: page-level walls usually do NOT gate assets —
+  probe one asset with a browser-UA curl before building in-page-fetch
+  machinery.
+- **Replica scripts:** `gate.sh` asserts build-side identity BEFORE any
+  capture — the fetched page must contain a marker (default: the `<slug>`;
+  `--marker` overrides), exit 4 names the port listener via `lsof`; the
+  documented default port is unchanged (the assertion makes collisions loud
+  at near-zero cost). `stitch-shot.mjs`'s freeze now also pauses every
+  `<video>` at t=0, clears all pending JS timers, and clicks the first
+  slick-convention carousel dot — CSS-only freezing stopped neither video
+  playback (~20% of one page was video noise) nor slick autoplay (slide
+  identity arbitrary per capture; residual 4% → 0.8% once reset). Symmetric
+  on both sides; a static page's capture is byte-identical to 0.18.2's.
+- **Replica motion parity (observe, don't infer):** new
+  `motion-observe.mjs` (sibling of stitch-shot, same live-session
+  hardening, exit 3 on challenge) records what the live page actually
+  DOES — animationstart/transitionstart events with element paths + text
+  snippets, class mutations exposing the trigger mechanism, a down+up
+  header-state timeline (dense near the top), `--click` widget frames,
+  `--hover` computed-style diffs with the changed-property list
+  precomputed. The interaction-parity pass is now a REQUIRED gate output
+  per archetype — a motion inventory in `progress.json`
+  (`motion: {observed, implemented, dead[]}`; live-classed-but-dead
+  behaviors recorded as NOT implemented, the correct replica of a dead
+  class) — because when optional it was skipped on 5 of 7 archetypes and
+  every skipped one shipped visibly static. § Interaction parity is
+  rewritten around the evidence rule: implement ONLY behaviors that
+  measurably fired — static lifting invented motion three field-recorded
+  ways (dead animation classes: 2 of 8 classed caption families ever
+  fired; hover rules whose scope never matches at runtime; approximated
+  chrome mechanisms allowing states impossible on live, e.g. a
+  double-rendered header) — with static CSS remaining the authority for
+  the exact keyframe/easing VALUES of fired animations, mechanisms cloned
+  as the observed state machine, and a two-direction verification
+  (pixel-compare must return to the gated number — field: 1.01% gated →
+  1.06% with invented motion → 1.01% exact after the evidence-only
+  rewrite — plus a behavior-match assertion off the observe JSON). Full
+  spec: `notes/replica-motion-parity.md`.
+- **Replica docs:** two new permanent-residual classes in the capture-state
+  policy (live-data embeds — load the SAME embed same-src on both sides;
+  randomized decorative elements — log, don't chase); AEM-classic richtext
+  byte patterns are load-bearing (mirror them; diff `innerHTML` when a
+  wrap-count mismatch survives width parity); `display: flow-root`
+  reproduces clearfix margin containment (fixed −48/−20px per-section errors
+  in one rule); iteration discipline gains the no-op-fix check (an unchanged
+  differing-pixel count means the rule never applied — the round doesn't
+  count); a "verify the port is yours" line wherever `:8791` is suggested
+  (also in deploy Step 10 and the diff SKILL).
+- **Deploy:** Step 3's reset now REQUIRES the global `border-box` the
+  boilerplate doesn't ship — a bootstrap-era %-width+padding grid silently
+  wrapped every column, +1731px doc height, all text gates green (#106);
+  block DOM must not emit semantic `<header>` (the stock reservation clamps
+  every one at once, #107); overlay chrome documented as the no-reservation
+  #81 case (`--nav-height: 0` + absolute header, measured CLS 0.0004, #108);
+  the block brief requires mobile overrides at the variant's own specificity
+  (#109), `flow-root` on un-floating overrides (#113), and wrapper resets at
+  lower specificity than the block's own rules (#114); never copy the
+  pipeline's fallback `<img src>` (750px rendition) into a CSS background —
+  rewrite `width=2000` (#110); `line-height: 0` on image paragraphs cancels
+  the `<picture>` wrapper's baseline descender (#111); whitespace-only
+  authored content is dropped by the pipeline — model live spacer line boxes
+  as block CSS (#112); the no-favicon path is a loud WARN recorded in the
+  deploy log, never a silent skip.
+
 ## 0.18.2 — replica field harvest: font-fork instrument fix, interaction parity, published-origin gate
 
 Harvest of a full `stardust:replica` e2e run (broadridge.com → EDS,

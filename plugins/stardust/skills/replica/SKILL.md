@@ -50,8 +50,8 @@ eyeballing.
    real `npm i` — re-probe before every gate run
    (`node -e "import('pixelmatch').then(()=>process.exit(0))"`).
 4. Copy scripts into the project and run them from there, not from the
-   plugin: this skill's `scripts/` (stitch-shot.mjs, pixel-compare.mjs) AND
-   the whole `../diff/scripts/` dir (the diff scripts import
+   plugin: this skill's whole `scripts/` dir (stitch-shot, pixel-compare,
+   anchor, gate.sh, motion-observe) AND the whole `../diff/scripts/` dir (the diff scripts import
    diff-profiles.mjs, and ALL live-target hardening — including
    stitch-shot's — lives in its live-session.mjs; stitch-shot resolves it
    from `scripts/diff/` next to `scripts/replica/`, so keep the two dirs
@@ -179,6 +179,8 @@ breakpoint (default 1440 AND 360), live URL as source vs served prototype:
 
 ```bash
 PROTO="http://localhost:8791/<slug>-proposed.html"   # python3 -m http.server from the prototypes dir
+# verify the port is YOURS (lsof -nP -iTCP:8791 -sTCP:LISTEN) — a stale foreign
+# server silently poisons the gate (gate.sh asserts a page marker, exit 4)
 LIVE="https://<site>/<path>"
 
 # Probe 1+2 — the diff skill's two probes, generic profile (--dismiss keeps
@@ -238,11 +240,18 @@ backed by `live-session.mjs` — copy the scripts and pass flags; a project
 copy carrying hand-edits is a defect
 (`reference/source-fidelity-gate.md` § Script adaptations).
 
-**After the static gate passes, run the interaction-parity pass**
-(`reference/recreation-procedure.md` § Interaction parity): the gate is
-static-pixels only — probe hover states and widget behavior (hover diff +
-behavior diff), implement them, log each in the ledger. Widgets are
-implemented, not justified away.
+**After the static gate passes, interaction parity is a REQUIRED gate
+output per archetype — not a post-pass**
+(`reference/recreation-procedure.md` § Interaction parity; optional, it was
+skipped on 5 of 7 archetypes — all shipped static). Motion is OBSERVED,
+never inferred from static classes or CSS: run
+`scripts/replica/motion-observe.mjs` per archetype live URL →
+`stardust/replica/motion/<slug>.json`, implement ONLY behaviors that
+fired (dead classes = NOT implemented), record
+`motion: {observed, implemented, dead[]}` in `progress.json`, and re-run
+pixel-compare — the number must return to the gated value.
+Widgets are implemented, not justified away. Fan-out briefs carry the
+evidence rule + instrument invocation verbatim.
 
 When all breakpoints pass, present the archetype + its gate metrics for
 approval per the standard prototype approval flow (hands-off mode records
@@ -274,8 +283,8 @@ approval per the standard prototype approval flow (hands-off mode records
 
 **State:** replica writes its own state under `stardust/replica/` — the
 inconsistency register, `progress.json` (per page type: archetype slug,
-iterations used, per-breakpoint gate results, residuals), and
-`gates/<slug>-<width>/` evidence. Pipeline status (extracted → prototyped →
+iterations used, per-breakpoint gate results, residuals, motion
+inventory), `motion/<slug>.json`, and `gates/<slug>-<width>/` evidence. Pipeline status (extracted → prototyped →
 approved → migrated) stays in the core `state.json` per the standard state
 machine — replica never redefines it.
 
@@ -302,7 +311,8 @@ stardust/
 ├── prototypes/<slug>-proposed.html     ← gated archetypes (one per page type)
 ├── replica/
 │   ├── inconsistency-register.md       ← the ONLY permitted design deltas
-│   ├── progress.json                   ← per-page-type ledger: iterations, gate results, residuals
+│   ├── progress.json                   ← per-page-type ledger: iterations, gate results, residuals, motion inventory
+│   ├── motion/<slug>.json              ← motion-observe evidence
 │   └── gates/<slug>-<width>/           ← live.png, proto.png, diff.png, probe outputs per iteration
 └── migrated/                           ← from migrate (Phase 5)
 
@@ -317,8 +327,8 @@ PRODUCT.md / DESIGN.md / DESIGN.json    ← promoted verbatim from current/ (Pha
   breakpoint), fonts policy, scrim/luminance recovery, span-face forks,
   capture-state policy, wrap-junction margins, fixed/sticky chrome,
   granularity parity, role parity (mirror the live wrapping per string),
-  interaction parity (hover/behavior probes, Swiper-lock), CSS-portation
-  fallback criteria.
+  interaction parity (motion observed, never inferred; Swiper-lock),
+  CSS-portation fallback criteria.
 - `reference/source-fidelity-gate.md` — full gate contract: commands,
   thresholds, per-breakpoint procedure, hardening rules, band-breakdown
   reading guide (+ the section-anchor inner loop), iteration discipline,

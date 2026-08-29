@@ -31,7 +31,13 @@ iteration budget. Gate 1440 first (the geometry lifted from desktop CSS),
 then 360.
 
 ```bash
-# Serve the prototype from its own dir so relative assets resolve
+# Serve the prototype from its own dir so relative assets resolve. Verify the
+# port is YOURS first (lsof -nP -iTCP:8791 -sTCP:LISTEN); prefer a per-project
+# port — a stale server from another stardust project on the shared suggested
+# port silently serves a foreign site into the gate (recorded twice, 2026-08).
+# On shared machines run gate.sh with --marker "<brand string>": the slug
+# default can false-pass against another stardust project sharing the slug
+# (both serving a home-proposed.html that contains "home").
 (cd stardust/prototypes && python3 -m http.server 8791 &)
 PROTO="http://localhost:8791/<slug>-proposed.html"
 LIVE="https://<site>/<path>"
@@ -144,6 +150,13 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
 
 - Measure first (iteration 1 IS the map — do not pre-polish).
 - Every fix cites the instrument line that demanded it.
+- **Before counting an iteration, verify the fix changed the render.** A
+  byte-identical differing-pixel count after a "fix" means the rule was a
+  no-op (recorded: a padding whose value the EDS section wrapper already
+  carried — the round measured nothing and was burned). The check is free —
+  the count is already on the verdict line; if it didn't move at all, find
+  out why the rule never applied (specificity, wrong selector, value already
+  in effect) before spending another round.
 - Probe schedule per fix round: **pixels every round; content-diff +
   visual-diff at milestones** — iteration 1, after any fix that touched
   content or markup (not pure CSS values), and once at final. Across ~25

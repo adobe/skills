@@ -271,25 +271,99 @@ async function discover(args, page) {
 async function dismissConsent(page) {
   const sels = ['#onetrust-accept-btn-handler', '.truste-button2', '[aria-label*="Accept" i]',
     'button[id*="accept" i]', 'button[class*="accept" i]'];
+  let matched = false;
   for (const s of sels) {
     const el = await page.$(s);
-    if (el) { await el.click().catch(() => {}); await page.waitForTimeout(300); break; }
+    if (el) { await el.click().catch(() => {}); matched = true; await page.waitForTimeout(300); break; }
   }
   // Usercentrics renders inside shadow DOM (#usercentrics-root) — regular
   // selectors can't reach it (festool e2e finding).
-  await page.evaluate(() => {
+  const ucMatched = await page.evaluate(() => {
     const root = document.querySelector('#usercentrics-root')?.shadowRoot;
     if (root) {
       const btn = root.querySelector('[data-testid="uc-deny-all-button"], [data-testid="uc-accept-all-button"]');
-      if (btn) btn.click();
+      if (btn) { btn.click(); return true; }
     }
-  }).catch(() => {});
+    return false;
+  }).catch(() => false);
+  // Text-match fallback, only when the selector pass matched NOTHING (rwe.com +
+  // centene.com harvests, 2026-08: two different consent widgets — a custom
+  // dialog, cookieconsent's a.cc-btn — were missed by the list above; on
+  // centene the banner baked into the ground-truth screenshot AND repeated at
+  // all 7 stitch seams → 32% false pixel diff). Guards keep it from ever
+  // hitting an in-content link: exact match on a short consent label (≤25
+  // chars after whitespace collapse), visible, and inside a fixed/sticky or
+  // high-z overlay container. Worst case = today's behavior (banner stays).
+  if (!matched && !ucMatched) {
+    const hit = await page.evaluate(() => {
+      const LABELS = new Set(['accept', 'accept all', 'allow all', 'agree', 'ok', 'decline',
+        'alle akzeptieren', 'accepter']);
+      const inOverlay = (el) => {
+        for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
+          const cs = getComputedStyle(n);
+          if (cs.position === 'fixed' || cs.position === 'sticky') return true;
+          if (cs.position !== 'static' && +cs.zIndex >= 100) return true;
+        }
+        return false;
+      };
+      for (const el of document.querySelectorAll('button, a, [role="button"]')) {
+        const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+        if (!t || t.length > 25 || !LABELS.has(t.toLowerCase())) continue;
+        const cs = getComputedStyle(el);
+        const r = el.getBoundingClientRect();
+        if (cs.display === 'none' || cs.visibility === 'hidden' || r.width < 2 || r.height < 2) continue;
+        if (!inOverlay(el)) continue;
+        el.click();
+        return t;
+      }
+      return null;
+    }).catch(() => null);
+    if (hit) { console.error(`[crawl] consent dismissed via text-match fallback ("${hit}")`); await page.waitForTimeout(300); }
+  }
   await page.waitForTimeout(300);
   // assert: prune any consent container still present (don't leave it for capture).
   await page.evaluate(() => {
     document.querySelectorAll('#onetrust-banner-sdk, #truste-consent-track, #usercentrics-root, [class*="cookie" i][class*="banner" i], [id*="consent" i]')
       .forEach((n) => n.remove());
   });
+}
+
+// Favicon — captured on the ENTRY page in ALL modes (centene harvest, 2026-08:
+// bounded --pages extracts skip Phase 3 (brand surface) where favicon capture
+// otherwise lives, and deploy's favicon step then skips SILENTLY — the deployed
+// site shipped the default icon). One cheap request. The fetch runs in-page so
+// it inherits the context's fingerprint + cookies — bot-walled origins usually
+// serve assets even when pages are challenged.
+async function captureFavicon(page, args) {
+  try {
+    const fetchIcon = (u) => page.evaluate(async (iconUrl) => {
+      try {
+        const r = await fetch(iconUrl);
+        if (!r.ok) return null;
+        return { type: r.headers.get('content-type') || '', bytes: [...new Uint8Array(await r.arrayBuffer())] };
+      } catch { return null; }
+    }, u);
+    const href = await page.evaluate(() => document.querySelector('link[rel~="icon" i]')?.href || null);
+    const fallback = new URL('/favicon.ico', args.origin).href;
+    let url = href || fallback;
+    let res = await fetchIcon(url);
+    // a cross-origin <link> icon (CDN-hosted) dies on the CORS-bound in-page
+    // fetch even when the asset is fine — retry the same-origin /favicon.ico
+    // before giving up.
+    if ((!res || !res.bytes.length) && url !== fallback) { url = fallback; res = await fetchIcon(url); }
+    if (!res || !res.bytes.length) return null;
+    // content-type is authoritative for <ext> (a /favicon.ico path routinely
+    // serves PNG); the URL path is the fallback, .ico the default.
+    const extFromType = /svg/.test(res.type) ? 'svg' : /png/.test(res.type) ? 'png'
+      : /jpe?g/.test(res.type) ? 'jpg' : /gif/.test(res.type) ? 'gif'
+        : /webp/.test(res.type) ? 'webp' : /icon/.test(res.type) ? 'ico' : '';
+    const extFromPath = (path.extname(new URL(url).pathname).slice(1) || '').toLowerCase();
+    const ext = extFromType || extFromPath || 'ico';
+    await mkdir(path.join(args.out, 'assets'), { recursive: true });
+    const file = `assets/favicon.${ext}`;
+    await writeFile(path.join(args.out, file), Buffer.from(res.bytes));
+    return { url, file };
+  } catch { return null; }
 }
 
 // ---- the capture, run in-page; returns the per-page record + hardening signals ----
@@ -628,10 +702,15 @@ async function main() {
   } catch { /* keep declared origin */ }
 
   const urls = await discover(args, probe);
+  // favicon rides the probe page (already on the entry URL) — runs in every
+  // mode, so bounded extracts can't silently drop it (CEN-4).
+  const favicon = await captureFavicon(probe, args);
+  if (favicon) console.error(`[crawl] favicon captured: ${favicon.file} (${favicon.url})`);
+  else console.error('[crawl] WARN no favicon captured — no link[rel~=icon] and /favicon.ico unreachable; deploy will ship the default icon unless one is provided');
   await probe.close();
   console.error(`[crawl] technique=${technique} pages=${urls.length}`);
 
-  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...(botBlock ? { botBlock } : {}), ...(originRedirect ? { originRedirect } : {}) }, consent: { method: args.consent ? 'auto' : 'skipped' }, crawl: { failures: [] } };
+  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...(botBlock ? { botBlock } : {}), ...(originRedirect ? { originRedirect } : {}) }, consent: { method: args.consent ? 'auto' : 'skipped' }, favicon: favicon || null, crawl: { failures: [] } };
   let ok = 0;
   await context.close();
 
