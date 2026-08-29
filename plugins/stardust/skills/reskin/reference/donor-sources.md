@@ -147,7 +147,12 @@ Recipe notes:
 - **Port hygiene**: kill the server when the capture ends; a stale
   server on the port silently serves an old donor to a re-run.
 
-## 3. Figma (`--donor-figma <url>`) — FUTURE, contract defined
+## 3. Figma (`--donor-figma <url>`) — adapter available: skills/figma-to-eds
+
+The contract below is implemented by the `figma-to-eds` skill (capture
++ curate phases produce these canon-source artifacts via the Figma
+desktop MCP; apply + gate phases add an EDS block target). Original
+contract text retained as the normative shape:
 
 **Not implemented.** When a user asks for a Figma donor, say exactly
 what SKILL.md § Inputs prescribes (export as static HTML →

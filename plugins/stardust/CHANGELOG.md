@@ -431,3 +431,16 @@ learnings digest.
   carry one version, and the impeccable dependency is declared consistently
   as **hard** everywhere (tile.json previously listed it as a soft
   dependency).
+
+## figma-to-eds (new skill)
+
+Implements the reskin `--donor-figma` adapter contract
+(donor-sources.md § 3, provenance class `figma-mcp`) and extends it
+with an EDS apply/gate layer: token probe (byte-equality), geometry
+gate (variant matrix from Figma metadata with gap semantics), pixel
+gate (scaled component diffs with recorded crops), full-suite sweep,
+and a divergence-attribution register. Ships a synthetic self-eval
+(eval/run-eval.mjs, 4 checks, no Figma connection needed) and method
+references distilled from a full production validation run: 35 modules
+gated (~2,700 geometry checks, ~120 pixel gates, functional gates for
+interactive chrome), 13 page archetypes register-audited.
