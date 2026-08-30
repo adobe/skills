@@ -1,5 +1,8 @@
 'use strict';
 
+/**
+ * @param {{ inputId: string, logger?: object }} params
+ */
 exports.main = async function main(params) {
   const logger = params.logger || console;
 
