@@ -9,7 +9,7 @@ const path = require('path');
 const { runHtlLint, classify } = require('./htl-lint-runner.js');
 const { runOsgiConfigScan } = require('./osgi-config-runner.js');
 const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
-const { runTemplateScan } = require('./template-scan-runner.js');
+const { runTemplateScan, classifyStaticTemplate } = require('./template-scan-runner.js');
 const { runAnalyzer } = require('./analyzer-runner.js');
 const {
   gatherFindings, generateRunbook, renderRunbook, writeRunbookCache,
@@ -281,6 +281,29 @@ test('runTemplateScan classifies foundation-derived templates as legacy', () => 
   assert.ok(bySub['custom.static.template'], 'project RT → custom');
   assert.match(bySub['legacy.static.template'].file, /legacy-page/);
   assert.match(bySub['custom.static.template'].file, /custom-page/);
+});
+
+test('classifyStaticTemplate strips leading /libs and /apps prefixes', () => {
+  assert.strictEqual(
+    classifyStaticTemplate('<jcr:content sling:resourceType="/libs/wcm/foundation/components/page"/>'),
+    'legacy.static.template');
+  assert.strictEqual(
+    classifyStaticTemplate('<jcr:content sling:resourceType="/apps/my/components/page"/>'),
+    'custom.static.template');
+});
+
+test('classifyStaticTemplate prefers jcr:content over a descendant parsys', () => {
+  // jcr:content has no RT of its own but a child parsys is foundation-derived;
+  // the template is still project-authored → must not be flagged legacy.
+  const xml = '<jcr:root jcr:primaryType="cq:Template">' +
+    '<jcr:content jcr:primaryType="cq:PageContent">' +
+    '<par sling:resourceType="wcm/foundation/components/responsivegrid"/>' +
+    '</jcr:content></jcr:root>';
+  assert.strictEqual(classifyStaticTemplate(xml), 'custom.static.template');
+  // When jcr:content itself is foundation-derived, it is legacy.
+  const legacy = '<jcr:content sling:resourceType="wcm/foundation/components/page">' +
+    '<par sling:resourceType="my/components/parsys"/></jcr:content>';
+  assert.strictEqual(classifyStaticTemplate(legacy), 'legacy.static.template');
 });
 
 test('runTemplateScan detects nested static templates', () => {

@@ -5,7 +5,8 @@
  * **templateModernization** pattern — static templates that should become
  * editable templates. Mirrors the discovery in
  * `{migration}/references/template-modernization/template-modernization-context.md`
- * (static templates live under `**​/jcr_root/apps/<appId>/templates/*​/.content.xml`).
+ * (static templates live under any `jcr_root/apps/<appId>/templates/` subtree,
+ * in a `.content.xml` that declares a `cq:Template`).
  *
  * Pure-Node fs walk (no external tools). Heuristic — the agent runs the full
  * per-template context → execute → validate pipeline (Branch C) to confirm and
@@ -30,9 +31,9 @@ const LEGACY_RT_PREFIXES = [
 
 /**
  * Recursively find static-template `.content.xml` files: a `.content.xml`
- * whose path is `.../apps/<appId>/templates/**​/<name>/.content.xml` (any depth
- * under `templates/`, so nested/grouped templates are not missed) and whose
- * content declares a `cq:Template` (the static-template marker).
+ * that lives at any depth under an `apps/<appId>/templates/` folder (so
+ * nested/grouped templates are not missed) and whose content declares a
+ * `cq:Template` (the static-template marker).
  */
 function collectStaticTemplates(dir, acc = []) {
   let entries;
@@ -43,7 +44,7 @@ function collectStaticTemplates(dir, acc = []) {
       if (e.name === 'node_modules' || e.name === '.git' || e.name === 'target' || e.name === 'dist') continue;
       collectStaticTemplates(full, acc);
     } else if (e.isFile() && e.name === '.content.xml') {
-      // Path shape: .../jcr_root/apps/<appId>/templates/**​/<templateName>/.content.xml
+      // Path shape: .../jcr_root/apps/<appId>/templates/.../<templateName>/.content.xml
       // Anchor on `apps/<appId>/templates/` but allow any nesting below it — the
       // `cq:Template` content check below is what actually confirms a template,
       // so we don't need an exact depth clamp (which dropped nested templates).
@@ -70,7 +71,13 @@ function collectStaticTemplates(dir, acc = []) {
  * @returns {'custom.static.template' | 'legacy.static.template'}
  */
 function classifyStaticTemplate(content) {
-  const m = /sling:resourceType="([^"]+)"/.exec(content || '');
+  const xml = content || '';
+  // Only the page component on the template's own `jcr:content` node is a
+  // reliable signal. Scanning any resourceType in the file would pick up a
+  // descendant (e.g. a foundation parsys) and misclassify an otherwise-custom
+  // template as legacy, so when jcr:content declares no resourceType we default
+  // to custom (the template lives under the project's own apps/<appId> tree).
+  const m = /<jcr:content\b[^>]*\bsling:resourceType="([^"]+)"/.exec(xml);
   const rt = m ? m[1].replace(/^\/(?:apps|libs)\//, '') : '';
   if (rt && LEGACY_RT_PREFIXES.some((p) => rt.startsWith(p))) {
     return 'legacy.static.template';
