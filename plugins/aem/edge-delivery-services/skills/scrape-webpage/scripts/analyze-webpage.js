@@ -30,6 +30,9 @@
  * Requirements:
  *   npm install playwright
  *   npx playwright install chromium
+ *
+ * Uses the locally installed Google Chrome when available and falls back to the
+ * Playwright-managed Chromium otherwise, so no browser install is mandatory.
  */
 
 import { chromium } from 'playwright';
@@ -41,6 +44,68 @@ import { setupImageCapture, waitForPendingImages, replaceImageUrls } from './ima
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const NAVIGATION_TIMEOUT_MS = 60000;
+const NAVIGATION_SETTLE_MS = 5000;
+const SCREENSHOT_TIMEOUT_MS = 60000;
+
+/**
+ * Chromium launch flags.
+ *
+ * --disable-http2 stops servers that reject HTTP/2 from headless clients from
+ * failing the navigation with ERR_HTTP2_PROTOCOL_ERROR.
+ */
+const BROWSER_ARGS = ['--disable-http2'];
+
+/**
+ * Per-platform User-Agent fragment and matching sec-ch-ua-platform value.
+ */
+const UA_PLATFORMS = {
+  darwin: { ua: 'Macintosh; Intel Mac OS X 10_15_7', clientHint: 'macOS' },
+  win32: { ua: 'Windows NT 10.0; Win64; x64', clientHint: 'Windows' },
+  linux: { ua: 'X11; Linux x86_64', clientHint: 'Linux' }
+};
+
+/**
+ * Launch a browser, preferring the locally installed Google Chrome.
+ *
+ * Chrome carries a real TLS fingerprint and a non-headless build string, which
+ * gets past bot detection that rejects bundled Chromium. When Chrome is not
+ * installed the Playwright-managed Chromium is used instead, so the script
+ * keeps working in containers and CI.
+ */
+async function launchBrowser() {
+  try {
+    return await chromium.launch({ channel: 'chrome', args: BROWSER_ARGS });
+  } catch (error) {
+    return chromium.launch({ args: BROWSER_ARGS });
+  }
+}
+
+/**
+ * Build context options presenting a consistent desktop Chrome identity.
+ *
+ * The User-Agent and the sec-ch-ua hints are derived from the browser that
+ * actually launched, so they agree with each other and do not go stale as
+ * Chrome versions move on. Bot detection flags disagreement between these
+ * signals, which makes a hardcoded version worse than none at all.
+ */
+function buildContextOptions(browser) {
+  const platform = UA_PLATFORMS[process.platform] || UA_PLATFORMS.linux;
+  const majorVersion = browser.version().split('.')[0];
+
+  return {
+    userAgent: `Mozilla/5.0 (${platform.ua}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${majorVersion}.0.0.0 Safari/537.36`,
+    locale: 'en-US',
+    timezoneId: 'America/Los_Angeles',
+    ignoreHTTPSErrors: true,
+    extraHTTPHeaders: {
+      'sec-ch-ua': `"Google Chrome";v="${majorVersion}", "Chromium";v="${majorVersion}", "Not=A?Brand";v="24"`,
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': `"${platform.clientHint}"`
+    }
+  };
+}
 
 /**
  * Scroll through the entire page to trigger lazy-loaded images
@@ -335,8 +400,9 @@ async function analyzeWebpage(url, outputDir) {
   console.error(`Output directory: ${outputDir}`);
 
   // Launch browser
-  const browser = await chromium.launch();
-  const page = await browser.newPage();
+  const browser = await launchBrowser();
+  const context = await browser.newContext(buildContextOptions(browser));
+  const page = await context.newPage();
 
   try {
     // Set up image capture BEFORE navigation
@@ -344,16 +410,13 @@ async function analyzeWebpage(url, outputDir) {
     const captureState = setupImageCapture(page, outputDir);
 
     // Navigate to page
+    //
+    // domcontentloaded rather than load/networkidle: pages carrying analytics,
+    // chat widgets or ad slots keep the network busy indefinitely and never
+    // reach a quiet state, so waiting for one only burns the timeout.
     console.error('Navigating to page...');
-    try {
-      // Try networkidle first (most reliable when it works)
-      await page.goto(url);
-    } catch (error) {
-      // Fall back to domcontentloaded if networkidle times out
-      console.error('⚠️  networkidle timeout, falling back to domcontentloaded...');
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await page.waitForTimeout(3000); // Give page extra time to settle
-    }
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAVIGATION_TIMEOUT_MS });
+    await page.waitForTimeout(NAVIGATION_SETTLE_MS); // Let deferred content render
 
     // Scroll to trigger lazy loading
     console.error('Scrolling to trigger lazy-loaded content...');
@@ -368,7 +431,7 @@ async function analyzeWebpage(url, outputDir) {
     // Take screenshot
     console.error('Capturing screenshot...');
     const screenshot = path.join(outputDir, 'screenshot.png');
-    await page.screenshot({ path: screenshot, fullPage: true });
+    await page.screenshot({ path: screenshot, fullPage: true, timeout: SCREENSHOT_TIMEOUT_MS });
 
     // Extract metadata
     console.error('Extracting metadata...');
