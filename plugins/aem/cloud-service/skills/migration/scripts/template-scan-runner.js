@@ -17,10 +17,22 @@
 const fs = require('fs');
 const path = require('path');
 
+// Page-component resource types that mark a static template as legacy/OOTB-derived
+// rather than a project-authored custom template. Mirrors the BPA distinction
+// between `legacy.static.template` and `custom.static.template`.
+const LEGACY_RT_PREFIXES = [
+  'wcm/foundation',
+  'foundation/components',
+  'wcm/core/components',
+  'cq/',
+  'geometrixx',
+];
+
 /**
  * Recursively find static-template `.content.xml` files: a `.content.xml`
- * whose path contains `.../apps/<appId>/templates/<name>/.content.xml` and
- * whose content declares a `cq:Template` (the static-template marker).
+ * whose path is `.../apps/<appId>/templates/**​/<name>/.content.xml` (any depth
+ * under `templates/`, so nested/grouped templates are not missed) and whose
+ * content declares a `cq:Template` (the static-template marker).
  */
 function collectStaticTemplates(dir, acc = []) {
   let entries;
@@ -31,17 +43,39 @@ function collectStaticTemplates(dir, acc = []) {
       if (e.name === 'node_modules' || e.name === '.git' || e.name === 'target' || e.name === 'dist') continue;
       collectStaticTemplates(full, acc);
     } else if (e.isFile() && e.name === '.content.xml') {
-      // Path shape: .../jcr_root/apps/<appId>/templates/<templateName>/.content.xml
+      // Path shape: .../jcr_root/apps/<appId>/templates/**​/<templateName>/.content.xml
+      // Anchor on `apps/<appId>/templates/` but allow any nesting below it — the
+      // `cq:Template` content check below is what actually confirms a template,
+      // so we don't need an exact depth clamp (which dropped nested templates).
       const parts = full.split(path.sep);
       const ti = parts.lastIndexOf('templates');
-      const inAppsTemplates = ti > 0 && parts[ti - 2] === 'apps' && parts.length === ti + 3;
+      const inAppsTemplates =
+        ti > 0 && parts[ti - 2] === 'apps' && parts.length >= ti + 3;
       if (!inAppsTemplates) continue;
       let content = '';
       try { content = fs.readFileSync(full, 'utf8'); } catch { continue; }
-      if (/jcr:primaryType="cq:Template"/.test(content)) acc.push(full);
+      if (/jcr:primaryType="cq:Template"/.test(content)) acc.push({ file: full, content });
     }
   }
   return acc;
+}
+
+/**
+ * Classify a static template as `custom.static.template` (project-authored) or
+ * `legacy.static.template` (OOTB/foundation-derived) from its page-component
+ * resource type. Heuristic: a template whose page component points at a
+ * foundation/OOTB ancestor is legacy; anything else authored under the
+ * project's own `apps/<appId>` tree defaults to custom.
+ *
+ * @returns {'custom.static.template' | 'legacy.static.template'}
+ */
+function classifyStaticTemplate(content) {
+  const m = /sling:resourceType="([^"]+)"/.exec(content || '');
+  const rt = m ? m[1].replace(/^\/(?:apps|libs)\//, '') : '';
+  if (rt && LEGACY_RT_PREFIXES.some((p) => rt.startsWith(p))) {
+    return 'legacy.static.template';
+  }
+  return 'custom.static.template';
 }
 
 /**
@@ -53,16 +87,18 @@ function runTemplateScan(workspaceRoot) {
   if (!workspaceRoot) return { ok: false, findings: [], rawFindings: [], warnings: [], error: 'no workspaceRoot' };
   const findings = [];
   const rawFindings = [];
-  for (const file of collectStaticTemplates(workspaceRoot)) {
+  for (const { file, content } of collectStaticTemplates(workspaceRoot)) {
     const templateName = file.split(path.sep).slice(-2, -1)[0];
+    const subType = classifyStaticTemplate(content);
+    const kind = subType === 'custom.static.template' ? 'custom' : 'legacy';
     findings.push({
       location: file,
-      detail: `static-template '${templateName}' — modernize to an editable template (Branch C)`,
+      detail: `${kind} static-template '${templateName}' — modernize to an editable template (Branch C)`,
       severity: 'medium',
     });
-    rawFindings.push({ pattern: 'templateModernization', file, line: null, snippet: 'static template (cq:Template)', subType: 'legacy.static.template' });
+    rawFindings.push({ pattern: 'templateModernization', file, line: null, snippet: `static template (cq:Template, ${kind})`, subType });
   }
   return { ok: true, findings, rawFindings, warnings: [] };
 }
 
-module.exports = { runTemplateScan, collectStaticTemplates };
+module.exports = { runTemplateScan, collectStaticTemplates, classifyStaticTemplate };

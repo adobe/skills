@@ -263,8 +263,33 @@ test('runTemplateScan flags static templates under apps/*/templates/*', () => {
     '<jcr:root jcr:primaryType="cq:Template"/>'); // not under templates/ → ignored
   const res = runTemplateScan(root);
   assert.strictEqual(res.rawFindings.length, 1);
-  assert.strictEqual(res.rawFindings[0].subType, 'legacy.static.template');
+  // No foundation resource type → project-authored custom template.
+  assert.strictEqual(res.rawFindings[0].subType, 'custom.static.template');
   assert.match(res.findings[0].detail, /content-page/);
+  assert.match(res.findings[0].detail, /custom/);
+});
+
+test('runTemplateScan classifies foundation-derived templates as legacy', () => {
+  const root = mkworkspace();
+  write(root, 'ui.apps/jcr_root/apps/my/templates/legacy-page/.content.xml',
+    '<jcr:root jcr:primaryType="cq:Template"><jcr:content sling:resourceType="wcm/foundation/components/page"/></jcr:root>');
+  write(root, 'ui.apps/jcr_root/apps/my/templates/custom-page/.content.xml',
+    '<jcr:root jcr:primaryType="cq:Template"><jcr:content sling:resourceType="my/components/structure/page"/></jcr:root>');
+  const res = runTemplateScan(root);
+  const bySub = Object.fromEntries(res.rawFindings.map(f => [f.subType, f]));
+  assert.ok(bySub['legacy.static.template'], 'foundation RT → legacy');
+  assert.ok(bySub['custom.static.template'], 'project RT → custom');
+  assert.match(bySub['legacy.static.template'].file, /legacy-page/);
+  assert.match(bySub['custom.static.template'].file, /custom-page/);
+});
+
+test('runTemplateScan detects nested static templates', () => {
+  const root = mkworkspace();
+  write(root, 'ui.apps/jcr_root/apps/my/templates/marketing/hero/.content.xml',
+    '<jcr:root jcr:primaryType="cq:Template"/>');
+  const res = runTemplateScan(root);
+  assert.strictEqual(res.rawFindings.length, 1, 'nested template must be found');
+  assert.match(res.findings[0].detail, /hero/);
 });
 
 test('gatherFindings dispatches content-scan patterns as heuristic', async () => {
