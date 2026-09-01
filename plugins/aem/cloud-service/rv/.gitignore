@@ -1,0 +1,7 @@
+# Auto-generated regression fixtures from RV runs (promote deliberately, don't commit raw output)
+evals/
+node_modules/
+
+# Maven build output — every project under projects/ and rv-probes/
+**/target/
+target/
