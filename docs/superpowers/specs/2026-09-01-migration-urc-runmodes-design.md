@@ -59,14 +59,21 @@ Real flagged examples confirming the ordering rule: `config.dev.author`,
 2. **Home:** URC stays **under the `osgiConfig` pattern** — not a new top-level
    canonical pattern. Only the URC *sub-portion* becomes report-first; the
    secret/legacy/placeholder scan stays always-local.
-3. **Behavior:** everything is **read-only** — the tool never renames. Detection
-   is flag-only. For the deterministic subset — *ordering-only* violations where
-   every token is a valid tier/env in the wrong order (`config.dev.author` →
-   `config.author.dev`) — the tool emits ready-to-run **`git mv` commands** the
-   user runs themselves (human-gated, reversible, preserves git rename history).
-   Unknown-token folders (`config.preprod`, `install.local`), duplicate tier/env
-   folders, and any reorder whose target folder already exists (collision) are
-   **never** emitted as a command — flag-only, listed for manual decision.
+3. **Behavior:** matches the fix UX shared by Branch A (OSGi) and code-assessment
+   — *detect → (opt-in) the skill applies the edit directly → the developer
+   reviews the diff and commits.*
+   - **Runbook / discovery = read-only:** URC is flagged, nothing is moved.
+   - **Apply (opt-in, Branch A):** for the deterministic subset — *ordering-only*
+     violations where every token is a valid tier/env in the wrong order
+     (`config.dev.author` → `config.author.dev`) — the skill applies the reorder
+     itself with **`git mv`** (preserves rename history; falls back to a plain
+     move if the path isn't git-tracked), exactly as Phase 0 auto-converts legacy
+     configs. Applied reorders are recorded in the handoff for an audit trail.
+   - **Never auto-applied → handoff `cleanup` for a human decision:** unknown-token
+     folders (`config.preprod`, `install.local`), duplicate tier/env folders, and
+     any reorder whose target already exists (collision).
+   - The skill **never commits** — the developer reviews the diff and commits,
+     per both skills' rules.
 4. **Coverage:** `config.<runmode>` **and** `install.<runmode>` folders.
 5. **Subtype:** map BPA `subtype` = `unsupported.runmode`, path-keyed by
    `identifier` (like the existing content/legacy-UI subtypes).
@@ -89,7 +96,7 @@ in the config-scan block of runbook-generator.js:
 This satisfies "keep inside osgiConfig but make it BPA-first" without suppressing
 the always-local secret/legacy scan.
 
-### Safe auto-reorder fix — emitted as `git mv` commands (`osgi-config-runner.js`)
+### Safe auto-reorder fix — planner + skill-applied `git mv` (`osgi-config-runner.js`)
 
 `reorderRunmodeFolder(folderName)` — pure. Returns `{ from, to }` (basename-level)
 only when the folder is a **pure ordering** problem: every token a known
@@ -97,15 +104,19 @@ tier/env, at most one of each, currently out of canonical order. Returns `null`
 for valid folders, unknown tokens, or duplicate tier/env (those are not
 deterministically fixable). Canonical order is `<prefix>.<tier>.<env>`.
 
-`planRunmodeReorders(workspaceRoot)` — **read-only** (walks the tree, writes
-nothing). For each unsupported folder that `reorderRunmodeFolder` can fix and
-whose target folder does **not** already exist, it emits
+`planRunmodeReorders(workspaceRoot)` — **read-only** planner (walks the tree,
+writes nothing). For each unsupported folder that `reorderRunmodeFolder` can fix
+and whose target folder does **not** already exist, it emits
 `{ from, to, command }` where `command` is `git mv "<rel-from>" "<rel-to>"`
 (paths relative to `workspaceRoot`). Folders that are not auto-fixable (unknown
 token / duplicate tier/env) or whose target already exists (**collision** —
 renaming would change PID resolution) go to `manual` with a reason. Returns
 `{ ok, reorders: [{from,to,command}], manual: [{folder, target?, reason}] }`.
-The **user** runs the emitted commands; the tool never mutates.
+
+The planner never mutates. During **apply** (opt-in, Branch A), the skill runs
+each `reorders[].command` itself — the same way Phase 0 applies its conversions —
+records the applied moves in the handoff, and routes `manual` items to the
+handoff `cleanup` array. The developer reviews the resulting diff and commits.
 
 ### Local fallback detector (`osgi-config-runner.js`)
 

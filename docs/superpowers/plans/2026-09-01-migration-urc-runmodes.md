@@ -4,7 +4,7 @@
 
 **Goal:** Detect AEM-as-a-Cloud-Service Unsupported Run Modes Configuration (URC) in the migration skill's OSGi config handling — sourced BPA-report-first with a local run-mode folder detector as fallback — surface it flag-only, and offer a safe auto-reorder fix for the deterministic (ordering-only) subset.
 
-**Architecture:** URC stays under the existing `osgiConfig` pattern. The always-local secret/legacy/placeholder scan is unchanged; a new URC sub-step prefers BPA report findings (subtype `unsupported.runmode`) and falls back to a new local detector over `config.*` and `install.*` folders that enforces the supported run-mode set and the tier-before-environment ordering rule. A separate read-only step emits `git mv` commands for ordering-only violations (`config.dev.author` → `config.author.dev`) for the user to run; collisions, unknown tokens, and duplicate tier/env folders are listed for manual decision, never auto-fixed.
+**Architecture:** URC stays under the existing `osgiConfig` pattern. The always-local secret/legacy/placeholder scan is unchanged; a new URC sub-step prefers BPA report findings (subtype `unsupported.runmode`) and falls back to a new local detector over `config.*` and `install.*` folders that enforces the supported run-mode set and the tier-before-environment ordering rule. A read-only planner (`planRunmodeReorders`) identifies the deterministic ordering-only fixes; during the opt-in Branch A apply the skill runs those `git mv` reorders itself (history-preserving, like Phase 0 conversions) and routes collisions / unknown tokens / duplicate tier/env to the handoff `cleanup` for a human decision. The developer reviews the diff and commits — the skill never commits.
 
 **Tech Stack:** Node.js (>=14), CommonJS, `node:test` + `node:assert`. No new dependencies.
 
@@ -13,7 +13,7 @@
 - **Node engine:** `>=14.0.0` — no syntax beyond ES2020; CommonJS `require`/`module.exports` only.
 - **No new dependencies** — standard library (`fs`, `path`, `os`) only.
 - **Never emit a secret value** — the OSGi runner's hard safety rule; URC code touches only folder names, never file contents.
-- **Everything is read-only** — no script renames, moves, or deletes folders. The auto-reorder fix (Task 6) only *emits* `git mv` commands for the user to run; it only ever proposes reordering known-valid tokens, and never proposes a command whose target folder already exists.
+- **Discovery/runbook is read-only** — the scanner and planner never rename, move, or delete folders. The auto-reorder fix is applied only during the **opt-in Branch A apply**, where the skill runs the planned `git mv` itself (like Phase 0 conversions), records it in the handoff, and **never commits** (the developer reviews the diff and commits — per both skills' rules). It only ever reorders known-valid tokens, and never touches a folder whose target already exists (→ handoff `cleanup`).
 - **Supported run-mode tokens (verbatim):** tier = `author`, `publish`; environment = `dev`, `stage`, `prod`. `preview` cannot be declared as a folder. Ordering: tier token precedes environment token. Bare `config` / `install` (no dotted suffix) is valid.
 - **BPA subtype (verbatim):** `unsupported.runmode` (the `subtype` column; the `type` column is `unsupported.runmode.configuration`).
 - **Report-first semantics:** when a BPA source is present it owns the URC verdict (even zero findings = clean); the local detector runs only when no BPA source is present or the fetch genuinely failed. Mirrors the existing cascade at `runbook-generator.js` (BPA tier → local fallback).
@@ -584,9 +584,9 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
-### Task 6: Safe auto-reorder fix — emit `git mv` commands (ordering-only)
+### Task 6: Safe auto-reorder fix — read-only planner + skill-applied `git mv`
 
-Deterministic fix for the subset where every token is a valid tier/env in the wrong order. The tool is **read-only**: it emits ready-to-run `git mv` commands the user runs themselves. Unknown tokens, duplicate tier/env, and collisions are listed for manual decision, never emitted as a command. Detection (Tasks 1–4) is unaffected.
+Deterministic fix for the subset where every token is a valid tier/env in the wrong order. `planRunmodeReorders` is a **read-only planner** (writes nothing). During the opt-in Branch A apply, the skill runs the planned `git mv` itself (history-preserving, like Phase 0 conversions) — the developer reviews the diff and commits. Unknown tokens, duplicate tier/env, and collisions go to the handoff `cleanup` for a human decision, never auto-applied. Detection (Tasks 1–4) is unaffected.
 
 **Files:**
 - Modify: `plugins/aem/cloud-service/skills/migration/scripts/osgi-config-runner.js`
@@ -739,19 +739,24 @@ Expected: PASS (3 tests).
 In `references/osgi-cfg-json-cloud-manager.md`, immediately after the Phase 1a URC subsection (added in Task 5), add:
 
 ```markdown
-**URC auto-fix (opt-in, user-run).** Ordering-only violations — every token a
-valid tier/env in the wrong order, e.g. `config.dev.author` → `config.author.dev`
-(and `install.<env>.<tier>` likewise) — are **deterministically** fixable by
-reordering to `<prefix>.<tier>.<env>`. The skill **does not rename anything**; it
-runs `planRunmodeReorders(workspaceRoot)` (read-only) and presents the emitted
-`git mv` commands for the **user to run**, for example:
+**URC auto-fix (apply step).** Ordering-only violations — every token a valid
+tier/env in the wrong order, e.g. `config.dev.author` → `config.author.dev` (and
+`install.<env>.<tier>` likewise) — are **deterministically** fixable by
+reordering to `<prefix>.<tier>.<env>`. Discovery/runbook only flags them; the fix
+happens during **apply** (the same phase that runs Phase 0 conversions):
 
-    git mv "ui.config/.../config.dev.author" "ui.config/.../config.author.dev"
+1. Run `planRunmodeReorders(workspaceRoot)` (read-only) to get the safe reorder
+   set and the `manual` list.
+2. For each safe reorder, the skill runs its `git mv "<from>" "<to>"` itself
+   (preserve history; fall back to a plain move if the path isn't git-tracked),
+   and records the move under a `runmode_reorders` array in the handoff file.
+3. The skill **does not commit** — the developer reviews the diff and commits.
 
-**Never emitted as a command** (listed under `manual` for a human decision):
-unknown-token folders (`config.preprod`, `config.qa`, `install.local`), duplicate
-tier/env folders (`config.author.publish`), and any reorder whose **target folder
-already exists** (renaming would change PID resolution — merge manually).
+**Never auto-applied** (routed to the handoff `cleanup` array for a human
+decision): unknown-token folders (`config.preprod`, `config.qa`, `install.local`),
+duplicate tier/env folders (`config.author.publish`), and any reorder whose
+**target folder already exists** (renaming would change PID resolution — merge
+manually).
 ```
 
 - [ ] **Step 6: Run the full suite (no regressions)**
@@ -763,11 +768,12 @@ Expected: PASS — all prior tests plus the 3 new fix tests.
 
 ```bash
 git add plugins/aem/cloud-service/skills/migration/scripts/osgi-config-runner.js plugins/aem/cloud-service/skills/migration/scripts/runbook-generator.test.js plugins/aem/cloud-service/skills/migration/references/osgi-cfg-json-cloud-manager.md
-git commit -m "feat(migration): emit git mv commands for safe URC reorders (read-only)
+git commit -m "feat(migration): planner for safe URC reorders (skill-applied git mv on apply)
 
 Deterministic reorder of ordering-only run-mode folders (config.dev.author ->
-config.author.dev) surfaced as user-run git mv commands. Unknown tokens,
-duplicate tier/env, and collisions are routed to manual. The tool never renames.
+config.author.dev). planRunmodeReorders is a read-only planner; the Branch A
+apply runs the git mv itself and records it in the handoff. Unknown tokens,
+duplicate tier/env, and collisions route to the handoff cleanup for a human.
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
@@ -782,7 +788,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - Subtype `unsupported.runmode`, path-keyed → Task 3. ✓
 - Local detector over `config.*` + `install.*`, ordering rule, preview, unknown tokens → Tasks 1–2. ✓
 - Detection flag-only → Tasks 2, 5. ✓
-- Safe auto-reorder fix emitted as user-run `git mv` commands (read-only tool), collisions/unknown/duplicate routed to `manual` → Task 6. ✓
+- Safe auto-reorder: read-only planner (`planRunmodeReorders`), skill-applied `git mv` on the opt-in apply (like Phase 0), developer commits; collisions/unknown/duplicate routed to handoff `cleanup` → Task 6. ✓
 - Reference doc relabel + remediation + install scope + cleanup enum → Task 5. ✓
 - README supported-patterns table → Task 5. ✓
 - Tests: report-first wins, local fallback, ordering violation, unknown token, valid pass, no regressions → Tasks 1–4. ✓
