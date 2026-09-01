@@ -685,9 +685,10 @@ function reorderRunmodeFolder(folderName) {
 /**
  * Plan safe auto-reorder fixes across a workspace. READ-ONLY: writes nothing.
  * For each ordering-only violation whose target folder does not already exist,
- * emits a ready-to-run `git mv` command (paths relative to `workspaceRoot`) for
- * the user to run. Unknown tokens, duplicate tier/env, and collisions (target
- * already exists — renaming would change PID resolution) are routed to `manual`.
+ * emits a `git mv` command (paths relative to `workspaceRoot`) that the Branch A
+ * apply runs to perform the reorder. Unknown tokens, duplicate tier/env, and
+ * collisions (target already exists — renaming would change PID resolution) are
+ * routed to `manual` for the handoff cleanup array.
  *
  * @param {string} workspaceRoot
  * @returns {{ ok: boolean, reorders: Array, manual: Array, error?: string }}
