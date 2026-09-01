@@ -175,5 +175,6 @@ Matches the cloud-adoption-service format with MongoDB-safe field names (dots â†
 | lui | legacy.dialog.classic, legacy.dialog.coral2, legacy.custom.component, legacy.static.template |
 | templateModernization | legacy.static.template, custom.static.template |
 | replication | forward.replication, reverse.replication |
+| urc | unsupported.runmode |
 
 Summary rows (`code` starting with `_`, e.g. `_COUNT_*`, `_STAT`) are excluded. Content/legacy-UI subtypes (cdw/lui/template/replication) are keyed by JCR node path (stored raw, not MongoDB-safed, so underscores like `design_dialog` survive).
