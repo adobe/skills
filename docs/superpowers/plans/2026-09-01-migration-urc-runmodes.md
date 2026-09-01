@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Detect AEM-as-a-Cloud-Service Unsupported Run Modes Configuration (URC) in the migration skill's OSGi config handling — sourced BPA-report-first with a local run-mode folder detector as fallback — and surface it flag-only.
+**Goal:** Detect AEM-as-a-Cloud-Service Unsupported Run Modes Configuration (URC) in the migration skill's OSGi config handling — sourced BPA-report-first with a local run-mode folder detector as fallback — surface it flag-only, and offer a safe auto-reorder fix for the deterministic (ordering-only) subset.
 
-**Architecture:** URC stays under the existing `osgiConfig` pattern. The always-local secret/legacy/placeholder scan is unchanged; a new URC sub-step prefers BPA report findings (subtype `unsupported.runmode`) and falls back to a new local detector over `config.*` and `install.*` folders that enforces the supported run-mode set and the tier-before-environment ordering rule. Nothing is auto-renamed.
+**Architecture:** URC stays under the existing `osgiConfig` pattern. The always-local secret/legacy/placeholder scan is unchanged; a new URC sub-step prefers BPA report findings (subtype `unsupported.runmode`) and falls back to a new local detector over `config.*` and `install.*` folders that enforces the supported run-mode set and the tier-before-environment ordering rule. A separate, apply-time fix reorders ordering-only violations (`config.dev.author` → `config.author.dev`) with a collision guard; unknown-token and duplicate tier/env folders are never auto-fixed.
 
 **Tech Stack:** Node.js (>=14), CommonJS, `node:test` + `node:assert`. No new dependencies.
 
@@ -13,7 +13,7 @@
 - **Node engine:** `>=14.0.0` — no syntax beyond ES2020; CommonJS `require`/`module.exports` only.
 - **No new dependencies** — standard library (`fs`, `path`, `os`) only.
 - **Never emit a secret value** — the OSGi runner's hard safety rule; URC code touches only folder names, never file contents.
-- **Flag-only** — URC detection reports; it never renames, moves, or deletes folders.
+- **Detection is flag-only** — the scanner never renames, moves, or deletes folders. The separate auto-reorder fix (Task 6) mutates only via an explicit apply call (`dryRun: false`), is never invoked from `gatherFindings`, only ever reorders known-valid tokens, and never overwrites an existing target folder.
 - **Supported run-mode tokens (verbatim):** tier = `author`, `publish`; environment = `dev`, `stage`, `prod`. `preview` cannot be declared as a folder. Ordering: tier token precedes environment token. Bare `config` / `install` (no dotted suffix) is valid.
 - **BPA subtype (verbatim):** `unsupported.runmode` (the `subtype` column; the `type` column is `unsupported.runmode.configuration`).
 - **Report-first semantics:** when a BPA source is present it owns the URC verdict (even zero findings = clean); the local detector runs only when no BPA source is present or the fetch genuinely failed. Mirrors the existing cascade at `runbook-generator.js` (BPA tier → local fallback).
@@ -584,6 +584,213 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
+### Task 6: Safe auto-reorder fix (ordering-only)
+
+Deterministic fix for the subset where every token is a valid tier/env in the wrong order. Unknown tokens and duplicate tier/env are never touched. Detection (Tasks 1–4) is unaffected; this is an apply-time mutation with a collision guard and a default dry-run.
+
+**Files:**
+- Modify: `plugins/aem/cloud-service/skills/migration/scripts/osgi-config-runner.js`
+- Modify: `plugins/aem/cloud-service/skills/migration/references/osgi-cfg-json-cloud-manager.md`
+- Test: `plugins/aem/cloud-service/skills/migration/scripts/runbook-generator.test.js`
+
+**Interfaces:**
+- Consumes: `validateRunmodeFolder`, `collectRunmodeFolders`, `RUNMODE_FOLDER_RE`, `TIER_TOKENS`, `ENV_TOKENS` (Tasks 1–2, same module).
+- Produces:
+  - `reorderRunmodeFolder(folderName: string) => null | { from: string, to: string }` — `null` unless a pure ordering fix exists.
+  - `applyRunmodeReorders(workspaceRoot: string, options?: { dryRun?: boolean }) => { ok: boolean, dryRun: boolean, renamed: Array<{from,to}>, skipped: Array<{folder, target?, reason}>, error?: string }`. Both exported from `osgi-config-runner.js`.
+
+- [ ] **Step 1: Write the failing tests**
+
+Extend the `osgi-config-runner` import in `runbook-generator.test.js` (the line edited in Task 1) to:
+
+```js
+const { runOsgiConfigScan, validateRunmodeFolder, scanUnsupportedRunmodes, reorderRunmodeFolder, applyRunmodeReorders } = require('./osgi-config-runner.js');
+```
+
+Add this test block after the Task 2 tests:
+
+```js
+// ── URC: safe auto-reorder fix ──────────────────────────────────────────────
+
+test('reorderRunmodeFolder fixes ordering-only violations and skips the rest', () => {
+  assert.deepStrictEqual(reorderRunmodeFolder('config.dev.author'), { from: 'config.dev.author', to: 'config.author.dev' });
+  assert.deepStrictEqual(reorderRunmodeFolder('install.stage.publish'), { from: 'install.stage.publish', to: 'install.publish.stage' });
+  assert.strictEqual(reorderRunmodeFolder('config.author.dev'), null, 'already valid');
+  assert.strictEqual(reorderRunmodeFolder('config.preprod'), null, 'unknown token — not auto-fixable');
+  assert.strictEqual(reorderRunmodeFolder('config.author.publish'), null, 'two tiers — not auto-fixable');
+});
+
+test('applyRunmodeReorders dry-run plans the rename without touching disk', () => {
+  const root = mkworkspace();
+  const bad = write(root, 'ui.config/jcr_root/apps/my/config.dev.author/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const badDir = path.dirname(bad);
+  const res = applyRunmodeReorders(root); // dryRun defaults to true
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.dryRun, true);
+  assert.strictEqual(res.renamed.length, 1);
+  assert.match(res.renamed[0].to, /config\.author\.dev$/);
+  assert.ok(fs.existsSync(badDir), 'dry-run must NOT rename on disk');
+});
+
+test('applyRunmodeReorders apply renames ordering-only folders on disk', () => {
+  const root = mkworkspace();
+  const bad = write(root, 'ui.config/jcr_root/apps/my/config.dev.author/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const badDir = path.dirname(bad);
+  const goodDir = path.join(path.dirname(badDir), 'config.author.dev');
+  const res = applyRunmodeReorders(root, { dryRun: false });
+  assert.strictEqual(res.renamed.length, 1);
+  assert.ok(!fs.existsSync(badDir), 'old folder gone');
+  assert.ok(fs.existsSync(path.join(goodDir, 'com.my.Svc.cfg.json')), 'renamed folder + contents present');
+});
+
+test('applyRunmodeReorders skips on collision and skips unknown tokens', () => {
+  const root = mkworkspace();
+  // Collision: valid target already exists next to the bad folder.
+  write(root, 'ui.config/jcr_root/apps/my/config.dev.author/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const collidedTarget = write(root, 'ui.config/jcr_root/apps/my/config.author.dev/com.my.Other.cfg.json', '{ "b": 2 }\n');
+  // Unknown token: never auto-fixed.
+  const unknown = write(root, 'ui.config/jcr_root/apps/my/config.preprod/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const res = applyRunmodeReorders(root, { dryRun: false });
+  assert.strictEqual(res.renamed.length, 0, 'nothing renamed');
+  const reasons = res.skipped.map(s => s.reason).join(' | ');
+  assert.match(reasons, /already exists/i);
+  assert.match(reasons, /not auto-fixable/i);
+  assert.ok(fs.existsSync(path.dirname(collidedTarget)), 'existing target untouched');
+  assert.ok(fs.existsSync(path.dirname(unknown)), 'unknown-token folder untouched');
+});
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `cd plugins/aem/cloud-service/skills/migration/scripts && node --test --test-name-pattern='reorderRunmodeFolder|applyRunmodeReorders' runbook-generator.test.js`
+Expected: FAIL — `reorderRunmodeFolder is not a function`.
+
+- [ ] **Step 3: Implement the reorder + apply functions**
+
+In `osgi-config-runner.js`, after `scanUnsupportedRunmodes` (Task 2), add:
+
+```js
+/**
+ * If `folderName` is a pure ordering violation — every token a known tier/env,
+ * at most one of each, currently out of canonical `<prefix>.<tier>.<env>` order —
+ * return the corrected name. Otherwise (valid, unknown token, or duplicate
+ * tier/env) return null. Deterministic and side-effect free.
+ *
+ * @returns {null | {from: string, to: string}}
+ */
+function reorderRunmodeFolder(folderName) {
+  const m = RUNMODE_FOLDER_RE.exec(folderName);
+  if (!m) return null;
+  const prefix = m[1].toLowerCase();
+  const tokens = m[2].slice(1).toLowerCase().split('.');
+  const tiers = tokens.filter(t => TIER_TOKENS.has(t));
+  const envs = tokens.filter(t => ENV_TOKENS.has(t));
+  if (tiers.length + envs.length !== tokens.length) return null; // unknown token(s)
+  if (tiers.length > 1 || envs.length > 1) return null;          // duplicate tier/env
+  const canonical = [prefix, ...tiers, ...envs].join('.');
+  if (canonical === folderName.toLowerCase()) return null;       // already valid
+  return { from: folderName, to: canonical };
+}
+
+/**
+ * Apply safe auto-reorder fixes across a workspace. Only ordering-only
+ * violations are renamed; unknown tokens and duplicate tier/env are skipped.
+ * A rename is skipped when its target folder already exists (renaming would
+ * change PID resolution — manual merge required).
+ *
+ * MUTATION: with `dryRun: false` this renames folders on disk. Defaults to
+ * `dryRun: true` (plan only). Never called during runbook generation.
+ *
+ * @param {string} workspaceRoot
+ * @param {{dryRun?: boolean}} [options]
+ * @returns {{ ok: boolean, dryRun: boolean, renamed: Array, skipped: Array, error?: string }}
+ */
+function applyRunmodeReorders(workspaceRoot, options = {}) {
+  const { dryRun = true } = options;
+  if (!workspaceRoot) return { ok: false, dryRun, renamed: [], skipped: [], error: 'no workspaceRoot' };
+  let folders;
+  try { folders = collectRunmodeFolders(workspaceRoot); }
+  catch (err) { return { ok: false, dryRun, renamed: [], skipped: [], error: err.message }; }
+
+  const renamed = [];
+  const skipped = [];
+  for (const folder of folders) {
+    const name = path.basename(folder);
+    const bad = validateRunmodeFolder(name);
+    if (!bad) continue; // valid folder — nothing to fix
+    const fix = reorderRunmodeFolder(name);
+    if (!fix) { skipped.push({ folder, reason: `not auto-fixable (${bad.reason})` }); continue; }
+    const target = path.join(path.dirname(folder), fix.to);
+    if (fs.existsSync(target)) {
+      skipped.push({ folder, target, reason: 'target folder already exists — manual merge required' });
+      continue;
+    }
+    if (!dryRun) {
+      try { fs.renameSync(folder, target); }
+      catch (err) { skipped.push({ folder, target, reason: `rename failed: ${err.message}` }); continue; }
+    }
+    renamed.push({ from: folder, to: target });
+  }
+  return { ok: true, dryRun, renamed, skipped };
+}
+```
+
+Update `module.exports` (the line from Task 1) to:
+
+```js
+module.exports = {
+  runOsgiConfigScan, collectConfigFiles, SECRET_KEY_RE,
+  validateRunmodeFolder, scanUnsupportedRunmodes,
+  reorderRunmodeFolder, applyRunmodeReorders,
+};
+```
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `cd plugins/aem/cloud-service/skills/migration/scripts && node --test --test-name-pattern='reorderRunmodeFolder|applyRunmodeReorders' runbook-generator.test.js`
+Expected: PASS (4 tests).
+
+- [ ] **Step 5: Document the fix in the reference doc**
+
+In `references/osgi-cfg-json-cloud-manager.md`, immediately after the Phase 1a URC subsection (added in Task 5), add:
+
+```markdown
+**URC auto-fix (apply step, opt-in).** Ordering-only violations — every token a
+valid tier/env in the wrong order, e.g. `config.dev.author` → `config.author.dev`
+(and `install.<env>.<tier>` likewise) — can be fixed **deterministically** by
+reordering to `<prefix>.<tier>.<env>`. This is a folder rename (a mutation), so
+it runs only in the apply flow, never during runbook generation:
+
+1. Run `applyRunmodeReorders(workspaceRoot)` (dry-run) and show the planned
+   renames.
+2. On user confirmation, run `applyRunmodeReorders(workspaceRoot, { dryRun: false })`.
+
+**Never auto-fixed** (flag-only, human decision required): unknown-token folders
+(`config.preprod`, `config.qa`, `install.local`) and duplicate tier/env folders
+(`config.author.publish`). A reorder whose **target folder already exists** is
+also skipped — renaming would change PID resolution and needs a manual merge.
+```
+
+- [ ] **Step 6: Run the full suite (no regressions)**
+
+Run: `cd plugins/aem/cloud-service/skills/migration/scripts && npm test`
+Expected: PASS — all prior tests plus the 4 new fix tests.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add plugins/aem/cloud-service/skills/migration/scripts/osgi-config-runner.js plugins/aem/cloud-service/skills/migration/scripts/runbook-generator.test.js plugins/aem/cloud-service/skills/migration/references/osgi-cfg-json-cloud-manager.md
+git commit -m "feat(migration): safe URC auto-reorder fix with collision guard
+
+Deterministic reorder of ordering-only run-mode folders (config.dev.author ->
+config.author.dev). Unknown tokens and duplicate tier/env stay flag-only;
+targets that already exist are skipped. Mutating apply defaults to dry-run.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+```
+
+---
+
 ## Self-Review
 
 **Spec coverage:**
@@ -591,7 +798,8 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - URC kept under `osgiConfig` (not a new canonical pattern) → Task 4 (registry test unchanged). ✓
 - Subtype `unsupported.runmode`, path-keyed → Task 3. ✓
 - Local detector over `config.*` + `install.*`, ordering rule, preview, unknown tokens → Tasks 1–2. ✓
-- Flag-only, no rename → Tasks 2, 5. ✓
+- Detection flag-only → Tasks 2, 5. ✓
+- Safe auto-reorder fix (ordering-only, collision guard, dry-run default) + unknown/duplicate stay flag-only → Task 6. ✓
 - Reference doc relabel + remediation + install scope + cleanup enum → Task 5. ✓
 - README supported-patterns table → Task 5. ✓
 - Tests: report-first wins, local fallback, ordering violation, unknown token, valid pass, no regressions → Tasks 1–4. ✓
@@ -599,4 +807,4 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 **Placeholder scan:** No TBD/TODO; every code and test step contains full content. ✓
 
-**Type consistency:** `validateRunmodeFolder` return shape `{folder, runmode, reason}` used identically in Tasks 1–2; `scanUnsupportedRunmodes` return shape used in Tasks 2 and 4; `getBpaFindings('urc', …)` target fields (`className`, `identifier`) consistent with `normalizeBpaTarget`/`rawBpaTarget`. ✓
+**Type consistency:** `validateRunmodeFolder` return shape `{folder, runmode, reason}` used identically in Tasks 1–2 and consumed in Task 6; `scanUnsupportedRunmodes` return shape used in Tasks 2 and 4; `reorderRunmodeFolder` `{from,to}` and `applyRunmodeReorders` `{ok,dryRun,renamed,skipped}` consistent across Task 6 code + tests; `getBpaFindings('urc', …)` target fields (`className`, `identifier`) consistent with `normalizeBpaTarget`/`rawBpaTarget`. Task 6 reuses `RUNMODE_FOLDER_RE`, `TIER_TOKENS`, `ENV_TOKENS`, `collectRunmodeFolders` from Tasks 1–2 (same module — must be defined before use). ✓
