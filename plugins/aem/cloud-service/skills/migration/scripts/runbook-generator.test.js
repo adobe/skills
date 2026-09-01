@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 
 const { runHtlLint, classify } = require('./htl-lint-runner.js');
-const { runOsgiConfigScan, validateRunmodeFolder, scanUnsupportedRunmodes } = require('./osgi-config-runner.js');
+const { runOsgiConfigScan, validateRunmodeFolder, scanUnsupportedRunmodes, reorderRunmodeFolder, planRunmodeReorders } = require('./osgi-config-runner.js');
 const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
 const { runTemplateScan } = require('./template-scan-runner.js');
 const { runAnalyzer } = require('./analyzer-runner.js');
@@ -168,6 +168,45 @@ test('scanUnsupportedRunmodes returns ok with no findings for a clean tree', () 
   const res = scanUnsupportedRunmodes(root);
   assert.strictEqual(res.ok, true);
   assert.strictEqual(res.rawFindings.length, 0);
+});
+
+// ── URC: safe auto-reorder fix (emit git mv commands, read-only) ─────────────
+
+test('reorderRunmodeFolder fixes ordering-only violations and skips the rest', () => {
+  assert.deepStrictEqual(reorderRunmodeFolder('config.dev.author'), { from: 'config.dev.author', to: 'config.author.dev' });
+  assert.deepStrictEqual(reorderRunmodeFolder('install.stage.publish'), { from: 'install.stage.publish', to: 'install.publish.stage' });
+  assert.strictEqual(reorderRunmodeFolder('config.author.dev'), null, 'already valid');
+  assert.strictEqual(reorderRunmodeFolder('config.preprod'), null, 'unknown token — not auto-fixable');
+  assert.strictEqual(reorderRunmodeFolder('config.author.publish'), null, 'two tiers — not auto-fixable');
+});
+
+test('planRunmodeReorders emits a git mv command and never touches disk', () => {
+  const root = mkworkspace();
+  const bad = write(root, 'ui.config/jcr_root/apps/my/config.dev.author/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const badDir = path.dirname(bad);
+  const res = planRunmodeReorders(root);
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.reorders.length, 1);
+  // Relative paths (not absolute) in a runnable git mv command.
+  assert.match(res.reorders[0].command, /^git mv "ui\.config\/.*config\.dev\.author" "ui\.config\/.*config\.author\.dev"$/);
+  assert.ok(!path.isAbsolute(res.reorders[0].from), 'from path is workspace-relative');
+  assert.ok(fs.existsSync(badDir), 'plan is read-only — nothing renamed on disk');
+});
+
+test('planRunmodeReorders routes collisions and unknown tokens to manual', () => {
+  const root = mkworkspace();
+  // Collision: valid target already exists next to the bad folder.
+  const collidedTarget = write(root, 'ui.config/jcr_root/apps/my/config.author.dev/com.my.Other.cfg.json', '{ "b": 2 }\n');
+  write(root, 'ui.config/jcr_root/apps/my/config.dev.author/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  // Unknown token: never a command.
+  const unknown = write(root, 'ui.config/jcr_root/apps/my/config.preprod/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const res = planRunmodeReorders(root);
+  assert.strictEqual(res.reorders.length, 0, 'no git mv commands emitted');
+  const reasons = res.manual.map(s => s.reason).join(' | ');
+  assert.match(reasons, /already exists/i);
+  assert.match(reasons, /not auto-fixable/i);
+  assert.ok(fs.existsSync(path.dirname(collidedTarget)), 'existing target untouched');
+  assert.ok(fs.existsSync(path.dirname(unknown)), 'unknown-token folder untouched');
 });
 
 // ── orchestrator dispatch + cache tagging ────────────────────────────────────

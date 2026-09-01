@@ -145,6 +145,65 @@ function scanUnsupportedRunmodes(workspaceRoot) {
   return { ok: true, findings, rawFindings };
 }
 
+/**
+ * If `folderName` is a pure ordering violation — every token a known tier/env,
+ * at most one of each, currently out of canonical `<prefix>.<tier>.<env>` order —
+ * return the corrected basename. Otherwise (valid, unknown token, or duplicate
+ * tier/env) return null. Deterministic and side-effect free.
+ *
+ * @returns {null | {from: string, to: string}}
+ */
+function reorderRunmodeFolder(folderName) {
+  const m = RUNMODE_FOLDER_RE.exec(folderName);
+  if (!m) return null;
+  const prefix = m[1].toLowerCase();
+  const tokens = m[2].slice(1).toLowerCase().split('.');
+  const tiers = tokens.filter(t => TIER_TOKENS.has(t));
+  const envs = tokens.filter(t => ENV_TOKENS.has(t));
+  if (tiers.length + envs.length !== tokens.length) return null; // unknown token(s)
+  if (tiers.length > 1 || envs.length > 1) return null;          // duplicate tier/env
+  const canonical = [prefix, ...tiers, ...envs].join('.');
+  if (canonical === folderName.toLowerCase()) return null;       // already valid
+  return { from: folderName, to: canonical };
+}
+
+/**
+ * Plan safe auto-reorder fixes across a workspace. READ-ONLY: writes nothing.
+ * For each ordering-only violation whose target folder does not already exist,
+ * emits a `git mv` command (paths relative to `workspaceRoot`) that the Branch A
+ * apply runs to perform the reorder. Unknown tokens, duplicate tier/env, and
+ * collisions (target already exists — renaming would change PID resolution) are
+ * routed to `manual` for the handoff cleanup array.
+ *
+ * @param {string} workspaceRoot
+ * @returns {{ ok: boolean, reorders: Array, manual: Array, error?: string }}
+ */
+function planRunmodeReorders(workspaceRoot) {
+  if (!workspaceRoot) return { ok: false, reorders: [], manual: [], error: 'no workspaceRoot' };
+  let folders;
+  try { folders = collectRunmodeFolders(workspaceRoot); }
+  catch (err) { return { ok: false, reorders: [], manual: [], error: err.message }; }
+
+  const reorders = [];
+  const manual = [];
+  for (const folder of folders) {
+    const name = path.basename(folder);
+    const bad = validateRunmodeFolder(name);
+    if (!bad) continue; // valid folder — nothing to fix
+    const relFolder = path.relative(workspaceRoot, folder);
+    const fix = reorderRunmodeFolder(name);
+    if (!fix) { manual.push({ folder: relFolder, reason: `not auto-fixable (${bad.reason})` }); continue; }
+    const targetAbs = path.join(path.dirname(folder), fix.to);
+    const relTarget = path.relative(workspaceRoot, targetAbs);
+    if (fs.existsSync(targetAbs)) {
+      manual.push({ folder: relFolder, target: relTarget, reason: 'target folder already exists — manual merge required' });
+      continue;
+    }
+    reorders.push({ from: relFolder, to: relTarget, command: `git mv "${relFolder}" "${relTarget}"` });
+  }
+  return { ok: true, reorders, manual };
+}
+
 const CFG_JSON_RE = /\.cfg\.json$/i;
 const LEGACY_RE = /\.(cfg|config)$/i;
 
@@ -270,4 +329,8 @@ function runOsgiConfigScan(workspaceRoot, options = {}) {
   return { ok: true, findings, rawFindings, warnings };
 }
 
-module.exports = { runOsgiConfigScan, collectConfigFiles, SECRET_KEY_RE, validateRunmodeFolder, scanUnsupportedRunmodes };
+module.exports = {
+  runOsgiConfigScan, collectConfigFiles, SECRET_KEY_RE,
+  validateRunmodeFolder, scanUnsupportedRunmodes,
+  reorderRunmodeFolder, planRunmodeReorders,
+};
