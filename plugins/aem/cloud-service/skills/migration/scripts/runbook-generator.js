@@ -48,7 +48,7 @@ const path = require('path');
 const { getBpaFindings, checkAvailableSources } = require('./bpa-findings-helper.js');
 const { runAnalyzer, isAnalyzerAvailable, DEFAULT_ANALYZE_SCRIPT } = require('./analyzer-runner.js');
 const { runHtlLint } = require('./htl-lint-runner.js');
-const { runOsgiConfigScan } = require('./osgi-config-runner.js');
+const { runOsgiConfigScan, scanUnsupportedRunmodes } = require('./osgi-config-runner.js');
 const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
 const { runTemplateScan } = require('./template-scan-runner.js');
 
@@ -330,6 +330,35 @@ async function gatherFindings(options = {}) {
       sourceByPattern.osgiConfig = 'config-scan';
       scannedBy.osgiConfig = 'config-scan';
       if (res.warnings && res.warnings.length) scanWarnings.push(...res.warnings);
+
+      // URC (unsupported run modes) — report-first, local fallback. Kept under
+      // osgiConfig: the secret/legacy scan above is always local; only this URC
+      // sub-portion prefers the BPA report. When a BPA source is present it owns
+      // the URC verdict (even zero findings = clean); the local scanner runs
+      // only when there is no BPA source or the fetch genuinely failed.
+      let urcFindings = [];
+      let urcRaw = [];
+      let bpaOwnsUrc = false;
+      if (bpaMode) {
+        const urc = await getBpaFindings('urc', {
+          bpaFilePath, collectionsDir, projectId, mcpFetcher, limit: null, offset: 0,
+        });
+        if (urc.success && Array.isArray(urc.targets)) {
+          urcFindings = urc.targets.map(normalizeBpaTarget);
+          urcRaw = urc.targets.map(t => rawBpaTarget('osgiConfig', t));
+          bpaOwnsUrc = true;
+        } else if (urc.availablePatterns) {
+          // Report parsed fine but URC absent → genuinely clean; report owns it.
+          bpaOwnsUrc = true;
+        }
+        // else: real fetch error → fall through to the local scanner.
+      }
+      if (!bpaOwnsUrc) {
+        const localUrc = scanUnsupportedRunmodes(workspaceRoot);
+        if (localUrc.ok) { urcFindings = localUrc.findings; urcRaw = localUrc.rawFindings; }
+      }
+      findingsByPattern.osgiConfig.push(...urcFindings);
+      rawFindingsByPattern.osgiConfig.push(...urcRaw);
     }
   }
 

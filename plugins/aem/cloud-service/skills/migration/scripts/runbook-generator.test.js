@@ -488,3 +488,30 @@ test('getBpaFindings resolves the urc pattern from a BPA CSV, excluding count ro
   const locations = res.targets.map(t => t.className).sort();
   assert.deepStrictEqual(locations, ['/apps/demo/config.dev.author', '/apps/demo/config.preprod']);
 });
+
+// ── URC: report-first with local fallback (end to end) ──────────────────────
+
+test('URC comes from the BPA report when a report is present (report owns it)', async () => {
+  const root = mkworkspace();
+  // Bad folder on disk that the report does NOT list — report ownership means
+  // it is treated as clean and the local scanner is not consulted.
+  write(root, 'ui.config/jcr_root/apps/my/config.stage.author/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const csv = path.join(root, 'bpa.csv');
+  fs.copyFileSync(path.join(__dirname, 'fixtures', 'urc-bpa.csv'), csv);
+  const gathered = await gatherFindings({ workspaceRoot: root, bpaFilePath: csv, collectionsDir: path.join(root, 'collections') });
+  const urc = gathered.rawFindingsByPattern.osgiConfig.filter(f => f.kind === 'unsupported-runmode');
+  // No local-kind findings (kind is only set by the local scanner)…
+  assert.strictEqual(urc.length, 0, 'local scanner did not run because BPA owns URC');
+  // …but the report URC folders are present as osgiConfig findings.
+  const locations = gathered.findingsByPattern.osgiConfig.map(f => f.location);
+  assert.ok(locations.some(l => String(l).includes('config.dev.author')), 'URC from report present');
+});
+
+test('URC falls back to local detection when no BPA source is present', async () => {
+  const root = mkworkspace();
+  write(root, 'ui.config/jcr_root/apps/my/config.dev.author/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const gathered = await gatherFindings({ workspaceRoot: root });
+  const urc = gathered.rawFindingsByPattern.osgiConfig.filter(f => f.kind === 'unsupported-runmode');
+  assert.strictEqual(urc.length, 1, 'local scanner produced the URC finding');
+  assert.strictEqual(urc[0].runmode, 'dev.author');
+});
