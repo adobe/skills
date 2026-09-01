@@ -11,6 +11,7 @@ const { runOsgiConfigScan, validateRunmodeFolder, scanUnsupportedRunmodes } = re
 const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
 const { runTemplateScan } = require('./template-scan-runner.js');
 const { runAnalyzer } = require('./analyzer-runner.js');
+const { getBpaFindings } = require('./bpa-findings-helper.js');
 const {
   gatherFindings, generateRunbook, renderRunbook, writeRunbookCache,
   samplePrompt, CANONICAL_PATTERNS, PATTERN_META,
@@ -388,8 +389,6 @@ test('runAnalyzer returns ok:false on unparseable output', () => {
 
 // ── BPA parsing of the new subtypes (parser + reader) ───────────────────────
 
-const { getBpaFindings } = require('./bpa-findings-helper.js');
-
 function writeBpaCsv(root) {
   const rows = [
     'code,type,subtype,importance,identifier,message,context',
@@ -474,4 +473,18 @@ test('runbook lui is filtered to dialog sub-types when sourced from BPA', async 
   assert.strictEqual(result.patternCounts.cdw, 2);
   assert.strictEqual(result.patternCounts.templateModernization, 2);
   assert.strictEqual(result.gathered.sourceByPattern.lui, 'csv');
+});
+
+// ── URC: BPA report mapping ─────────────────────────────────────────────────
+
+test('getBpaFindings resolves the urc pattern from a BPA CSV, excluding count rows', async () => {
+  const dir = mkworkspace();
+  const csv = path.join(dir, 'bpa.csv');
+  fs.copyFileSync(path.join(__dirname, 'fixtures', 'urc-bpa.csv'), csv);
+  const collectionsDir = path.join(dir, 'collections');
+  const res = await getBpaFindings('urc', { bpaFilePath: csv, collectionsDir, limit: null, offset: 0 });
+  assert.strictEqual(res.success, true);
+  assert.strictEqual(res.targets.length, 2, 'two URC detail rows, count row excluded');
+  const locations = res.targets.map(t => t.className).sort();
+  assert.deepStrictEqual(locations, ['/apps/demo/config.dev.author', '/apps/demo/config.preprod']);
 });

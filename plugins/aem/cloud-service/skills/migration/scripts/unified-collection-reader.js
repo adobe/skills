@@ -44,10 +44,11 @@ const PATTERN_TO_SUBTYPES = {
   lui: ["legacy.dialog.classic", "legacy.dialog.coral2", "legacy.custom.component", "legacy.static.template"],
   templateModernization: ["legacy.static.template", "custom.static.template"],
   replication: ["forward.replication", "reverse.replication"],
+  urc: ["unsupported.runmode"],
 };
 
 // Patterns whose findings are keyed by JCR path (raw keys, generic processor).
-const CONTENT_PATTERNS = new Set(["cdw", "lui", "templateModernization", "replication"]);
+const CONTENT_PATTERNS = new Set(["cdw", "lui", "templateModernization", "replication", "urc"]);
 
 /** MongoDB-safe subtype key: dots → underscores (matches the parser). */
 function toMongoSafeSubtype(subtype) {
