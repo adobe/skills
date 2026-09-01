@@ -361,11 +361,16 @@ async function gatherFindings(options = {}) {
       scannedBy.osgiConfig = 'config-scan';
       if (res.warnings && res.warnings.length) scanWarnings.push(...res.warnings);
 
-      // URC (unsupported run modes) — report-first, local fallback. Kept under
+      // URC (unsupported run modes) — report-first, local safety net. Kept under
       // osgiConfig: the secret/legacy scan above is always local; only this URC
-      // sub-portion prefers the BPA report. When a BPA source is present it owns
-      // the URC verdict (even zero findings = clean); the local scanner runs
-      // only when there is no BPA source or the fetch genuinely failed.
+      // sub-portion prefers the BPA report. BPA owns the verdict ONLY when it
+      // actually reports URC findings (non-empty targets). A report that is
+      // present but reports NO URC rows — pattern absent from a CSV, or an MCP
+      // fetch that came back with an empty target list — does NOT by itself
+      // prove the project is URC-clean (the report may predate URC detection
+      // or be scoped to other patterns), so we warn and still run the local
+      // config.*/install.* scan as a safety net. The local scanner also runs
+      // when there is no BPA source at all, or the fetch genuinely failed.
       let urcFindings = [];
       let urcRaw = [];
       let bpaOwnsUrc = false;
@@ -373,14 +378,17 @@ async function gatherFindings(options = {}) {
         const urc = await getBpaFindings('urc', {
           bpaFilePath, collectionsDir, projectId, mcpFetcher, limit: null, offset: 0,
         });
-        if (urc.success && Array.isArray(urc.targets)) {
+        if (urc.success && Array.isArray(urc.targets) && urc.targets.length > 0) {
           const built = urc.targets.map(urcBpaTarget);
           urcFindings = built.map(b => b.finding);
           urcRaw = built.map(b => b.raw);
           bpaOwnsUrc = true;
-        } else if (urc.availablePatterns) {
-          // Report parsed fine but URC absent → genuinely clean; report owns it.
-          bpaOwnsUrc = true;
+        } else if (urc.availablePatterns || (urc.success && Array.isArray(urc.targets))) {
+          // BPA source present but reported no URC rows — not proof of
+          // "clean"; warn and fall through to the local safety-net scan below.
+          scanWarnings.push(
+            'BPA source present but reported no URC (unsupported.runmode) findings — running the local config.*/install.* run-mode scan as a safety net (the report may predate URC detection or be scoped to other patterns).'
+          );
         }
         // else: real fetch error → fall through to the local scanner.
       }

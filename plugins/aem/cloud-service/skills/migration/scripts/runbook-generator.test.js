@@ -148,6 +148,15 @@ test('validateRunmodeFolder flags duplicate tier/environment tokens', () => {
   assert.match(validateRunmodeFolder('config.author.dev.stage').reason, /environment/i);
 });
 
+test('validateRunmodeFolder is case-sensitive — capitalized tokens are unsupported', () => {
+  const bad1 = validateRunmodeFolder('config.Author.dev');
+  assert.ok(bad1, 'config.Author.dev is unsupported (case-sensitive)');
+  assert.match(bad1.reason, /'Author'/);
+  const bad2 = validateRunmodeFolder('config.PUBLISH');
+  assert.ok(bad2, 'config.PUBLISH is unsupported (case-sensitive)');
+  assert.match(bad2.reason, /'PUBLISH'/);
+});
+
 test('scanUnsupportedRunmodes flags unsupported config/install folders only', () => {
   const root = mkworkspace();
   write(root, 'ui.config/jcr_root/apps/my/config.dev.author/com.my.Svc.cfg.json', '{ "a": 1 }\n');
@@ -160,6 +169,26 @@ test('scanUnsupportedRunmodes flags unsupported config/install folders only', ()
   assert.ok(kinds.every(k => k === 'unsupported-runmode'));
   const runmodes = res.rawFindings.map(f => f.runmode).sort();
   assert.deepStrictEqual(runmodes, ['dev.author', 'local']);
+});
+
+test('validateRunmodeFolder flags malformed run-mode folder names', () => {
+  assert.match(validateRunmodeFolder('config.').reason, /malformed/i);
+  assert.match(validateRunmodeFolder('config..dev').reason, /malformed/i);
+  // Bare config/install (no dot) and non-config names stay out of scope.
+  assert.strictEqual(validateRunmodeFolder('config'), null);
+  assert.strictEqual(validateRunmodeFolder('install'), null);
+  assert.strictEqual(validateRunmodeFolder('configuration'), null);
+});
+
+test('scanUnsupportedRunmodes flags a malformed run-mode folder on disk', () => {
+  const root = mkworkspace();
+  write(root, 'ui.config/jcr_root/apps/my/config./com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const res = scanUnsupportedRunmodes(root);
+  assert.strictEqual(res.ok, true);
+  const malformedRaw = res.rawFindings.find(f => f.kind === 'unsupported-runmode');
+  assert.ok(malformedRaw, 'a finding is produced for the malformed folder');
+  const malformedFinding = res.findings.find(f => /malformed/i.test(f.detail));
+  assert.ok(malformedFinding, 'reason mentions the malformed folder name');
 });
 
 test('scanUnsupportedRunmodes returns ok with no findings for a clean tree', () => {
@@ -178,6 +207,12 @@ test('reorderRunmodeFolder fixes ordering-only violations and skips the rest', (
   assert.strictEqual(reorderRunmodeFolder('config.author.dev'), null, 'already valid');
   assert.strictEqual(reorderRunmodeFolder('config.preprod'), null, 'unknown token — not auto-fixable');
   assert.strictEqual(reorderRunmodeFolder('config.author.publish'), null, 'two tiers — not auto-fixable');
+});
+
+test('reorderRunmodeFolder does not silently case-fold a capitalized token', () => {
+  assert.strictEqual(reorderRunmodeFolder('config.DEV.author'), null, 'mixed-case token routed to manual, not auto-folded');
+  assert.deepStrictEqual(reorderRunmodeFolder('config.dev.author'), { from: 'config.dev.author', to: 'config.author.dev' },
+    'lowercase ordering violation is still auto-fixed');
 });
 
 test('planRunmodeReorders emits a git mv command and never touches disk', () => {
@@ -568,4 +603,78 @@ test('URC falls back to local detection when no BPA source is present', async ()
   const urc = gathered.rawFindingsByPattern.osgiConfig.filter(f => f.kind === 'unsupported-runmode');
   assert.strictEqual(urc.length, 1, 'local scanner produced the URC finding');
   assert.strictEqual(urc[0].runmode, 'dev.author');
+});
+
+// ── URC: MCP path (the masking hole also exists via MCP, not just CSV) ──────
+
+test('URC comes from MCP when the mcpFetcher reports URC targets', async () => {
+  const root = mkworkspace();
+  const mcpFetcher = async ({ pattern }) => {
+    if (pattern === 'urc') {
+      return {
+        success: true,
+        targets: [
+          { className: '/apps/demo/config.dev.author', identifier: 'unsupported.runmode', issue: 'bad runmode' },
+        ],
+      };
+    }
+    // Any other pattern (scheduler, resourceChangeListener, ...) — report clean.
+    return { success: true, targets: [] };
+  };
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    collectionsDir: path.join(root, 'mcp-collections'),
+    projectId: 'proj-mcp-urc',
+    mcpFetcher,
+  });
+  const urc = gathered.rawFindingsByPattern.osgiConfig.filter(f => f.kind === 'unsupported-runmode');
+  assert.strictEqual(urc.length, 1, 'MCP-sourced URC finding surfaces');
+  assert.strictEqual(urc[0].file, '/apps/demo/config.dev.author');
+  assert.strictEqual(urc[0].runmode, 'dev.author');
+  assert.ok(!gathered.analyzerWarnings.some(w => w.includes('safety net')),
+    'no safety-net warning when MCP actually reports URC findings');
+});
+
+test('URC safety-net scan also runs when the mcpFetcher reports success with EMPTY URC targets', async () => {
+  const root = mkworkspace();
+  // On-disk unsupported folder the (URC-empty) MCP response does not mention.
+  write(root, 'ui.config/jcr_root/apps/my/config.qa/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const mcpFetcher = async ({ pattern }) => {
+    if (pattern === 'urc') return { success: true, targets: [] };
+    return { success: true, targets: [] };
+  };
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    collectionsDir: path.join(root, 'mcp-collections'),
+    projectId: 'proj-mcp-urc-empty',
+    mcpFetcher,
+  });
+  const urc = gathered.rawFindingsByPattern.osgiConfig.filter(f => f.kind === 'unsupported-runmode');
+  assert.ok(urc.some(f => String(f.file).includes('config.qa')),
+    'on-disk URC finding surfaces via the local safety-net scan even though MCP is configured');
+  assert.ok(
+    gathered.analyzerWarnings.some(w => w.includes(
+      'BPA source present but reported no URC (unsupported.runmode) findings — running the local config.*/install.* run-mode scan as a safety net (the report may predate URC detection or be scoped to other patterns).'
+    )),
+    'a safety-net warning is surfaced for the MCP masking path too'
+  );
+});
+
+test('a BPA report present but with NO URC rows warns and still runs the local safety-net scan', async () => {
+  const root = mkworkspace();
+  // On-disk unsupported folder the (URC-less) BPA report does not mention.
+  write(root, 'ui.config/jcr_root/apps/my/config.qa/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const bpaFilePath = path.join(__dirname, 'fixtures', 'minimal-scheduler-bpa.csv');
+  const gathered = await gatherFindings({
+    workspaceRoot: root, bpaFilePath, collectionsDir: path.join(root, 'uc'),
+  });
+  const urc = gathered.rawFindingsByPattern.osgiConfig.filter(f => f.kind === 'unsupported-runmode');
+  assert.ok(urc.some(f => String(f.file).includes('config.qa')),
+    'on-disk URC finding surfaces even though a BPA source is present');
+  assert.ok(
+    gathered.analyzerWarnings.some(w => w.includes(
+      'BPA source present but reported no URC (unsupported.runmode) findings — running the local config.*/install.* run-mode scan as a safety net (the report may predate URC detection or be scoped to other patterns).'
+    )),
+    'a safety-net warning is surfaced'
+  );
 });

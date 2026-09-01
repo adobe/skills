@@ -52,8 +52,12 @@ const ENV_TOKENS = new Set(['dev', 'stage', 'prod']);
 
 // A run-mode-qualified config/install folder: `config` or `install` followed by
 // one or more `.token` segments. Bare `config`/`install` (no suffix) does not
-// match and is always valid.
-const RUNMODE_FOLDER_RE = /^(config|install)((?:\.[a-z0-9-]+)+)$/i;
+// match and is always valid. Case-sensitive: AEM run modes are case-sensitive
+// (e.g. `config.Author.dev` is not the same as `config.author.dev`), so the
+// prefix is matched lowercase-only and tokens may be any case — capitalized
+// tokens fall through validation as unsupported rather than being silently
+// treated as their lowercase equivalent.
+const RUNMODE_FOLDER_RE = /^(config|install)((?:\.[A-Za-z0-9-]+)+)$/;
 
 /**
  * Validate one OSGi config / bundle install folder name against the AEM CS
@@ -66,8 +70,23 @@ const RUNMODE_FOLDER_RE = /^(config|install)((?:\.[a-z0-9-]+)+)$/i;
  */
 function validateRunmodeFolder(folderName) {
   const m = RUNMODE_FOLDER_RE.exec(folderName);
-  if (!m) return null; // bare config/install or not a config/install folder
-  const tokens = m[2].slice(1).toLowerCase().split('.'); // drop leading dot
+  if (!m) {
+    // Not a well-formed `(config|install).<token>(.<token>)*` name. If it is
+    // still run-mode-qualified with a lowercase `config.`/`install.` prefix
+    // (e.g. `config.` with a trailing dot and no token, or `config..dev` with
+    // an empty segment), it is a malformed folder name rather than a bare
+    // `config`/`install` — flag it. Bare `config`/`install` (no dot),
+    // capitalized prefixes, and non-config names (e.g. `configuration`) stay
+    // out of scope and remain valid/null.
+    if (/^(config|install)\./.test(folderName)) {
+      return { folder: folderName, runmode: folderName, reason: 'malformed run-mode folder name' };
+    }
+    return null; // bare config/install or not a config/install folder
+  }
+  // Case-sensitive: tokens are compared as-is against the lowercase
+  // TIER_TOKENS/ENV_TOKENS sets, so a capitalized token (e.g. 'Author') falls
+  // through to the "unsupported run mode token" branch below.
+  const tokens = m[2].slice(1).split('.'); // drop leading dot
   const runmode = tokens.join('.');
 
   let tierCount = 0;
@@ -156,14 +175,20 @@ function scanUnsupportedRunmodes(workspaceRoot) {
 function reorderRunmodeFolder(folderName) {
   const m = RUNMODE_FOLDER_RE.exec(folderName);
   if (!m) return null;
-  const prefix = m[1].toLowerCase();
-  const tokens = m[2].slice(1).toLowerCase().split('.');
+  // Case-sensitive: the regex prefix match already guarantees a lowercase
+  // `config`/`install` prefix, and tokens are compared as-is (no lowercasing)
+  // against the lowercase TIER_TOKENS/ENV_TOKENS sets. A mixed-case token
+  // (e.g. 'DEV') therefore will not match either set, so
+  // `tiers.length + envs.length !== tokens.length` below routes it to manual
+  // instead of silently case-folding it into a "fixed" reorder.
+  const prefix = m[1];
+  const tokens = m[2].slice(1).split('.');
   const tiers = tokens.filter(t => TIER_TOKENS.has(t));
   const envs = tokens.filter(t => ENV_TOKENS.has(t));
   if (tiers.length + envs.length !== tokens.length) return null; // unknown token(s)
   if (tiers.length > 1 || envs.length > 1) return null;          // duplicate tier/env
   const canonical = [prefix, ...tiers, ...envs].join('.');
-  if (canonical === folderName.toLowerCase()) return null;       // already valid
+  if (canonical === folderName) return null;                     // already valid
   return { from: folderName, to: canonical };
 }
 
@@ -174,6 +199,12 @@ function reorderRunmodeFolder(folderName) {
  * apply runs to perform the reorder. Unknown tokens, duplicate tier/env, and
  * collisions (target already exists — renaming would change PID resolution) are
  * routed to `manual` for the handoff cleanup array.
+ *
+ * NOTE: each reorder's `command` string is a human-readable convenience only
+ * (for display in the runbook/handoff file). The apply step must NOT
+ * shell-evaluate it — it should perform the rename using the structured
+ * `from`/`to` fields directly via argv, e.g. `spawn('git', ['mv', from, to])`,
+ * to avoid any shell-quoting/injection risk from path segments.
  *
  * @param {string} workspaceRoot
  * @returns {{ ok: boolean, reorders: Array, manual: Array, error?: string }}
@@ -199,6 +230,9 @@ function planRunmodeReorders(workspaceRoot) {
       manual.push({ folder: relFolder, target: relTarget, reason: 'target folder already exists — manual merge required' });
       continue;
     }
+    // `command` is display-only (human-readable convenience for the runbook/
+    // handoff file). The apply step must execute the rename via argv using
+    // `from`/`to` directly — not by shell-evaluating this string.
     reorders.push({ from: relFolder, to: relTarget, command: `git mv "${relFolder}" "${relTarget}"` });
   }
   return { ok: true, reorders, manual };
