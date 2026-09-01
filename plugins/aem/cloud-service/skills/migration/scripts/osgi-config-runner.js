@@ -45,6 +45,53 @@ function inConfigFolder(filePath) {
   return filePath.split(path.sep).some(seg => CONFIG_FOLDER_RE.test(seg));
 }
 
+// AEM as a Cloud Service supported run-mode tokens. Custom tokens are
+// unsupported; `preview` inherits from publish and cannot be declared.
+const TIER_TOKENS = new Set(['author', 'publish']);
+const ENV_TOKENS = new Set(['dev', 'stage', 'prod']);
+
+// A run-mode-qualified config/install folder: `config` or `install` followed by
+// one or more `.token` segments. Bare `config`/`install` (no suffix) does not
+// match and is always valid.
+const RUNMODE_FOLDER_RE = /^(config|install)((?:\.[a-z0-9-]+)+)$/i;
+
+/**
+ * Validate one OSGi config / bundle install folder name against the AEM CS
+ * supported run-mode set and the tier-before-environment ordering rule.
+ *
+ * @param {string} folderName e.g. 'config.author.dev' or 'install.local'
+ * @returns {null | {folder: string, runmode: string, reason: string}}
+ *   null when valid (or not run-mode-qualified); otherwise the offending
+ *   run-mode string (dot-joined) and a human-readable reason.
+ */
+function validateRunmodeFolder(folderName) {
+  const m = RUNMODE_FOLDER_RE.exec(folderName);
+  if (!m) return null; // bare config/install or not a config/install folder
+  const tokens = m[2].slice(1).toLowerCase().split('.'); // drop leading dot
+  const runmode = tokens.join('.');
+
+  let tierCount = 0;
+  let envCount = 0;
+  let seenEnv = false;
+  for (const tok of tokens) {
+    if (TIER_TOKENS.has(tok)) {
+      if (seenEnv) {
+        return { folder: folderName, runmode,
+          reason: `tier run mode '${tok}' must precede the environment run mode` };
+      }
+      tierCount += 1;
+    } else if (ENV_TOKENS.has(tok)) {
+      envCount += 1;
+      seenEnv = true;
+    } else {
+      return { folder: folderName, runmode, reason: `unsupported run mode token '${tok}'` };
+    }
+  }
+  if (tierCount > 1) return { folder: folderName, runmode, reason: 'more than one tier run mode' };
+  if (envCount > 1) return { folder: folderName, runmode, reason: 'more than one environment run mode' };
+  return null;
+}
+
 const CFG_JSON_RE = /\.cfg\.json$/i;
 const LEGACY_RE = /\.(cfg|config)$/i;
 
@@ -170,4 +217,4 @@ function runOsgiConfigScan(workspaceRoot, options = {}) {
   return { ok: true, findings, rawFindings, warnings };
 }
 
-module.exports = { runOsgiConfigScan, collectConfigFiles, SECRET_KEY_RE };
+module.exports = { runOsgiConfigScan, collectConfigFiles, SECRET_KEY_RE, validateRunmodeFolder };

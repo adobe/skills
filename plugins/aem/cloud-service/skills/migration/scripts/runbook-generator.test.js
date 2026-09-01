@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 
 const { runHtlLint, classify } = require('./htl-lint-runner.js');
-const { runOsgiConfigScan } = require('./osgi-config-runner.js');
+const { runOsgiConfigScan, validateRunmodeFolder } = require('./osgi-config-runner.js');
 const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
 const { runTemplateScan } = require('./template-scan-runner.js');
 const { runAnalyzer } = require('./analyzer-runner.js');
@@ -116,6 +116,35 @@ test('runOsgiConfigScan ignores non-config folders and repoinit secret keys', ()
   const res = runOsgiConfigScan(root);
   assert.ok(!res.rawFindings.some(f => f.kind === 'plaintext-secret'),
     'files outside config folders and repoinit files are not flagged for plaintext secrets');
+});
+
+// ── URC: run-mode folder validation ─────────────────────────────────────────
+
+test('validateRunmodeFolder accepts valid supported run-mode folders', () => {
+  for (const name of ['config', 'install', 'config.author', 'config.publish',
+    'config.dev', 'config.stage', 'config.prod', 'config.author.dev',
+    'config.publish.prod', 'install.author', 'install.publish.stage']) {
+    assert.strictEqual(validateRunmodeFolder(name), null, `${name} should be valid`);
+  }
+});
+
+test('validateRunmodeFolder flags tier-after-environment ordering violations', () => {
+  const bad = validateRunmodeFolder('config.dev.author');
+  assert.ok(bad, 'config.dev.author is unsupported');
+  assert.strictEqual(bad.runmode, 'dev.author');
+  assert.match(bad.reason, /must precede/i);
+});
+
+test('validateRunmodeFolder flags unknown tokens and preview', () => {
+  assert.ok(validateRunmodeFolder('config.preprod'), 'preprod is unknown');
+  assert.ok(validateRunmodeFolder('config.author.preprod'), 'preprod after author still unknown');
+  assert.ok(validateRunmodeFolder('install.local'), 'local is unknown');
+  assert.ok(validateRunmodeFolder('config.preview'), 'preview cannot be declared');
+});
+
+test('validateRunmodeFolder flags duplicate tier/environment tokens', () => {
+  assert.match(validateRunmodeFolder('config.author.publish').reason, /tier/i);
+  assert.match(validateRunmodeFolder('config.author.dev.stage').reason, /environment/i);
 });
 
 // ── orchestrator dispatch + cache tagging ────────────────────────────────────
