@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 
 const { runHtlLint, classify } = require('./htl-lint-runner.js');
-const { runOsgiConfigScan, validateRunmodeFolder } = require('./osgi-config-runner.js');
+const { runOsgiConfigScan, validateRunmodeFolder, scanUnsupportedRunmodes } = require('./osgi-config-runner.js');
 const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
 const { runTemplateScan } = require('./template-scan-runner.js');
 const { runAnalyzer } = require('./analyzer-runner.js');
@@ -145,6 +145,28 @@ test('validateRunmodeFolder flags unknown tokens and preview', () => {
 test('validateRunmodeFolder flags duplicate tier/environment tokens', () => {
   assert.match(validateRunmodeFolder('config.author.publish').reason, /tier/i);
   assert.match(validateRunmodeFolder('config.author.dev.stage').reason, /environment/i);
+});
+
+test('scanUnsupportedRunmodes flags unsupported config/install folders only', () => {
+  const root = mkworkspace();
+  write(root, 'ui.config/jcr_root/apps/my/config.dev.author/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  write(root, 'ui.apps/jcr_root/apps/my/install.local/my-bundle.jar', 'x');
+  write(root, 'ui.config/jcr_root/apps/my/config.author.dev/com.my.Ok.cfg.json', '{ "a": 1 }\n');
+  write(root, 'ui.apps/jcr_root/apps/my/install.publish/ok-bundle.jar', 'x');
+  const res = scanUnsupportedRunmodes(root);
+  assert.strictEqual(res.ok, true);
+  const kinds = res.rawFindings.map(f => f.kind);
+  assert.ok(kinds.every(k => k === 'unsupported-runmode'));
+  const runmodes = res.rawFindings.map(f => f.runmode).sort();
+  assert.deepStrictEqual(runmodes, ['dev.author', 'local']);
+});
+
+test('scanUnsupportedRunmodes returns ok with no findings for a clean tree', () => {
+  const root = mkworkspace();
+  write(root, 'ui.config/jcr_root/apps/my/config.author.stage/com.my.Ok.cfg.json', '{ "a": 1 }\n');
+  const res = scanUnsupportedRunmodes(root);
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.rawFindings.length, 0);
 });
 
 // ── orchestrator dispatch + cache tagging ────────────────────────────────────

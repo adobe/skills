@@ -92,6 +92,59 @@ function validateRunmodeFolder(folderName) {
   return null;
 }
 
+// A folder whose name is run-mode-qualified (`config.<x>` / `install.<x>`).
+const RUNMODE_QUALIFIED_DIR_RE = /^(config|install)\./i;
+
+/** Recursively collect run-mode-qualified folder paths. Skips build/vcs dirs. */
+function collectRunmodeFolders(dir, acc = []) {
+  let entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return acc; }
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    if (e.name === 'node_modules' || e.name === '.git' || e.name === 'target' || e.name === 'dist') continue;
+    const full = path.join(dir, e.name);
+    if (RUNMODE_QUALIFIED_DIR_RE.test(e.name)) acc.push(full);
+    collectRunmodeFolders(full, acc);
+  }
+  return acc;
+}
+
+/**
+ * Scan a workspace for URC (Unsupported Run modes Configuration): OSGi
+ * `config.<runmode>` and bundle `install.<runmode>` folders whose run mode is
+ * not supported on AEM as a Cloud Service. Flag-only — never modifies anything.
+ * Local fallback for when no BPA report is available.
+ *
+ * @returns {{ ok: boolean, findings: Array, rawFindings: Array, error?: string }}
+ */
+function scanUnsupportedRunmodes(workspaceRoot) {
+  if (!workspaceRoot) return { ok: false, findings: [], rawFindings: [], error: 'no workspaceRoot' };
+  let folders;
+  try { folders = collectRunmodeFolders(workspaceRoot); }
+  catch (err) { return { ok: false, findings: [], rawFindings: [], error: err.message }; }
+
+  const findings = [];
+  const rawFindings = [];
+  for (const folder of folders) {
+    const bad = validateRunmodeFolder(path.basename(folder));
+    if (!bad) continue;
+    findings.push({
+      location: folder,
+      detail: `unsupported-runmode — folder '${path.basename(folder)}' (${bad.reason}); rename to a supported run mode or remove`,
+      severity: 'high',
+    });
+    rawFindings.push({
+      pattern: 'osgiConfig',
+      file: folder,
+      line: null,
+      snippet: `unsupported run mode '${bad.runmode}'`,
+      kind: 'unsupported-runmode',
+      runmode: bad.runmode,
+    });
+  }
+  return { ok: true, findings, rawFindings };
+}
+
 const CFG_JSON_RE = /\.cfg\.json$/i;
 const LEGACY_RE = /\.(cfg|config)$/i;
 
@@ -217,4 +270,4 @@ function runOsgiConfigScan(workspaceRoot, options = {}) {
   return { ok: true, findings, rawFindings, warnings };
 }
 
-module.exports = { runOsgiConfigScan, collectConfigFiles, SECRET_KEY_RE, validateRunmodeFolder };
+module.exports = { runOsgiConfigScan, collectConfigFiles, SECRET_KEY_RE, validateRunmodeFolder, scanUnsupportedRunmodes };
