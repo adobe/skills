@@ -41,6 +41,7 @@ Each pattern declares a **detection strategy** in `PATTERN_META`:
 | `htlLint` | `html-scan` | `htl-lint-runner.js` (pure-Node regex over `.html`) |
 | `osgiConfig` | `config-scan` | `osgi-config-runner.js` (config-file scan) |
 | `lui`, `cdw`, `templateModernization` | BPA + `content-scan` | BPA/CAM → CSV first (`legacy-ui-runner.js` / `template-scan-runner.js` as fallback) |
+| `dispatcherConversion` | `content-scan` | `dispatcher-inventory.js` (`runDispatcherScan` — heuristic, no BPA subtype) |
 
 `html-scan` / `config-scan` findings, and the `content-scan` fallback for `lui`/`cdw`/`templateModernization`, are **heuristic** and tagged `confidence: "heuristic"` in the cache. BPA-sourced findings are authoritative. `osgiConfig` reports key names + locations only — **never secret values**.
 
@@ -86,6 +87,18 @@ The `content-scan` **fallback** for `lui` (Classic UI `cq:Dialog`/`xtype="dialog
 
 The `content-scan` **fallback** for `templateModernization` — static templates (`cq:Template`) under `apps/<appId>/templates/*`. Used only when no BPA source is available.
 
+### `dispatcher-inventory.js`
+
+The `content-scan` strategy for `dispatcherConversion` — detects an AMS or on-premise Dispatcher configuration convertible to AEM as a Cloud Service (Branch E). Walks the workspace for Dispatcher config roots, classifies each via `detectMode` (`standard` / `flexible` / `v1` / `unknown` → convertible; `already-cloud` / `not-dispatcher` → skipped), and builds an inventory (vhost/farm files, filter/rewrite/cache rule counts, AMS markers). Exposes `runDispatcherScan(workspaceRoot)` — the runbook's content-scan entry point — returning `{ ok, findings, rawFindings, warnings }` and silently skipping workspaces that are already Cloud-native or not a Dispatcher at all (no findings, no noise). Heuristic; there is no BPA subtype for dispatcher conversion.
+
+### `dispatcher-verify.js`
+
+Output verification for a generated Cloud Service Dispatcher config (`verifyOutput`). The filter/ACL allow-list is a **hard gate** — if the source had filter rules and the converted output has none (or fewer), it fails, so a conversion that would weaken security is caught before it is applied. Baseline and output are counted the **same** way via `countFilterRules` (in `dispatcher-inventory.js`): inline farm `/filter` rules **plus** the standalone filter files an inline `$include` pulls in (`filters/*.any`, `*_filters.any`) — so the canonical AMS `$include` layout can't score zero and slip an emptied output past the gate. Adobe-managed immutable SDK files (`default_*.any`) are **excluded** from the count, so a populated SDK `default_filters.any` can't mask an emptied custom `filters.any` — the count is custom-to-custom and the acl-loss gate still fires. (Residual blind spot: filter rules reachable only through an `$include` to a path outside a `filters/` directory aren't resolved — sanity-check `baseline.filter` against the source; see [output-verification.md](../references/dispatcher/output-verification.md).) Also reconciles rewrite/redirect counts (warning — rules may legitimately move to the CDN) and flags mega-inlined vhosts and missing current-SDK conventions (`enabled_farms/farms.any`).
+
+### `dispatcher-run.js`
+
+Drives the end-to-end conversion: writes the tool `config.yaml`, resolves the mode-specific executor, and wraps Adobe's [`@adobe/aem-cs-source-migration-dispatcher-converter`](https://github.com/adobe/aem-cs-source-migration). That Adobe tool is **not a bundled dependency** — it is auto-installed on first use into the gitignored `scripts/dispatcher-tool/node_modules/` (`ensureToolInstalled`), keeping the core scripts zero-dependency.
+
 ### `bpa-findings-helper.js` (main entry point)
 
 Orchestrates finding BPA data. Called by the skill internally.
@@ -124,9 +137,13 @@ node unified-collection-reader.js [pattern] [collections-directory]
 
 ## Testing
 
+The unit tests use Node's built-in test runner (`node --test`), which requires **Node ≥18**. This is a test-tooling prerequisite only — the scripts themselves run on the `package.json` `engines` floor (Node ≥14); running the suite does not raise that runtime floor.
+
 ```bash
 # From the scripts directory
 cd scripts
+npm test                                       # runs the *.test.js suites (requires Node ≥18)
+
 npm run parse-bpa -- <bpa-file-path> [output-dir]
 npm run read-unified -- [pattern] [collections-dir]
 ```

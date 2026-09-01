@@ -51,13 +51,15 @@ const { runHtlLint } = require('./htl-lint-runner.js');
 const { runOsgiConfigScan } = require('./osgi-config-runner.js');
 const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
 const { runTemplateScan } = require('./template-scan-runner.js');
+const { runDispatcherScan } = require('./dispatcher-inventory.js');
 
 // Canonical pattern taxonomy for the runbook — every pattern the migration
 // skill can address. Each declares a detection `strategy`:
 //   'cascade'      — BPA/CAM → CSV → analyzer → LLM (Java code patterns)
 //   'html-scan'    — pure-Node regex scan of .html (htlLint)
 //   'config-scan'  — config-file heuristic scan (osgiConfig)
-//   'content-scan' — .content.xml / template scan (lui, cdw, templateModernization)
+//   'content-scan' — .content.xml / template / dispatcher-config scan (lui, cdw,
+//                    templateModernization, dispatcherConversion)
 // `bpaSlugs` maps a pattern to its BPA subtype(s): the Java 'cascade' patterns,
 // plus replication (replication.agent) and lui/cdw/templateModernization. When a
 // BPA source is present it is authoritative; html/config/content scans are the
@@ -162,6 +164,16 @@ const PATTERN_META = {
     promptPattern: 'template modernization',
     sampleOverride: 'Use the migration skill: migrate my static templates to editable templates and generate the AEM Modernize Tools rewrite rules.',
   },
+  dispatcherConversion: {
+    label: 'Dispatcher AMS/On-prem → AEMaaCS Conversion',
+    severity: 'high',
+    strategy: 'content-scan',
+    bpaSlugs: [],
+    heuristic: true,
+    description: 'An AMS or on-premise Dispatcher configuration convertible to AEM as a Cloud Service (Branch E). Detected heuristically; the conversion wraps Adobe\'s aem-cs-source-migration dispatcher-converter with mode detection, config generation, output verification, and validation.',
+    promptPattern: 'dispatcher conversion',
+    sampleOverride: 'Use the migration skill: convert my dispatcher configuration to AEM as a Cloud Service.',
+  },
 };
 
 // content-scan strategy → the runner that produces that pattern's findings.
@@ -169,6 +181,7 @@ const CONTENT_SCANNERS = {
   lui: runLuiScan,
   cdw: runCdwScan,
   templateModernization: runTemplateScan,
+  dispatcherConversion: runDispatcherScan,
 };
 
 const CANONICAL_PATTERNS = Object.keys(PATTERN_META);
@@ -333,8 +346,9 @@ async function gatherFindings(options = {}) {
     }
   }
 
-  // ── Strategy 'content-scan': lui / cdw / templateModernization (fallback
-  //    when no BPA source scanned the pattern) ──────────────────────────────
+  // ── Strategy 'content-scan': lui / cdw / templateModernization / dispatcherConversion
+  //    (fallback when no BPA source scanned the pattern; dispatcherConversion has no BPA
+  //     subtype, so it always runs here) ──────────────────────────────────────
   if (workspaceRoot) {
     for (const pattern of CANONICAL_PATTERNS) {
       if (PATTERN_META[pattern].strategy !== 'content-scan') continue;

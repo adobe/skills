@@ -1,0 +1,380 @@
+'use strict';
+const { test, after } = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const INV = require('./dispatcher-inventory.js');
+
+const _tmpDirs = [];
+after(() => { for (const d of _tmpDirs) fs.rmSync(d, { recursive: true, force: true }); });
+function mk() { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'disp-')); _tmpDirs.push(d); return d; }
+function w(root, rel, c = 'x') { const f = path.join(root, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, c); return f; }
+// N distinct filter-rule blocks: `/0001 { … }` … `/000N { … }`.
+function rules(n) { return Array.from({ length: n }, (_, i) => `/${String(i + 1).padStart(4, '0')} { /type "allow" /url "*" }`).join('\n') + '\n'; }
+
+test('detectMode: standard AMS v2.0 layout', () => {
+  const r = mk();
+  fs.mkdirSync(path.join(r, 'conf.dispatcher.d/enabled_farms'), { recursive: true });
+  fs.mkdirSync(path.join(r, 'conf.dispatcher.d/available_farms'), { recursive: true });
+  fs.mkdirSync(path.join(r, 'conf.d/enabled_vhosts'), { recursive: true });
+  assert.strictEqual(INV.detectMode(r), 'standard');
+});
+
+test('detectMode: flexible/on-prem (monolithic dispatcher.any, no conf.dispatcher.d)', () => {
+  const r = mk();
+  w(r, 'conf.d/dispatcher.any', '/farms {\n  /website { }\n}\n');
+  w(r, 'conf.vhost.d/vhosts.conf', '<VirtualHost *:80></VirtualHost>');
+  assert.strictEqual(INV.detectMode(r), 'flexible');
+});
+
+test('detectMode: already-cloud (has opt-in / default_*.any, no AMS markers)', () => {
+  const r = mk();
+  fs.mkdirSync(path.join(r, 'conf.dispatcher.d/enabled_farms'), { recursive: true });
+  w(r, 'conf.dispatcher.d/enabled_farms/farms.any', '$include "./*.farm"');
+  w(r, 'opt-in/USE_SOURCES_DIRECTLY', '');
+  assert.strictEqual(INV.detectMode(r), 'already-cloud');
+});
+
+test('detectMode: not a dispatcher config', () => {
+  const r = mk(); w(r, 'src/Foo.java', 'class Foo {}');
+  assert.strictEqual(INV.detectMode(r), 'not-dispatcher');
+});
+
+test('detectMode: conf.dispatcher.d with conf.vhost.d (not flexible; should be standard or unknown)', () => {
+  const r = mk();
+  fs.mkdirSync(path.join(r, 'conf.dispatcher.d'), { recursive: true });
+  fs.mkdirSync(path.join(r, 'conf.vhost.d'), { recursive: true });
+  w(r, 'conf.vhost.d/vhosts.conf', '<VirtualHost></VirtualHost>');
+  const mode = INV.detectMode(r);
+  assert.notStrictEqual(mode, 'flexible', `Config with conf.dispatcher.d + conf.vhost.d should not be 'flexible', got '${mode}'`);
+});
+
+test('hasAmsMarkers: detects symlinked AMS marker files (symlink name matches pattern, backing file does not)', () => {
+  const r = mk();
+  const available = path.join(r, 'conf.dispatcher.d/available_farms');
+  const enabled = path.join(r, 'conf.dispatcher.d/enabled_farms');
+  fs.mkdirSync(available, { recursive: true });
+  fs.mkdirSync(enabled, { recursive: true });
+  w(available, 'site.any', '/site { }');
+  fs.symlinkSync('../available_farms/site.any', path.join(enabled, 'site_farm.any'));
+  assert.strictEqual(INV.hasAmsMarkers(r), true, 'Should detect AMS marker only via symlink name matching _farm.any pattern');
+});
+
+test('detectMode: symlinked AMS marker + cloud marker → standard (not already-cloud)', () => {
+  const r = mk();
+  const available = path.join(r, 'conf.dispatcher.d/available_farms');
+  const enabled = path.join(r, 'conf.dispatcher.d/enabled_farms');
+  fs.mkdirSync(available, { recursive: true });
+  fs.mkdirSync(enabled, { recursive: true });
+  w(available, 'site.any', '/site { }');
+  fs.symlinkSync('../available_farms/site.any', path.join(enabled, 'site_farm.any'));
+  w(r, 'opt-in/USE_SOURCES_DIRECTLY', '');
+  assert.strictEqual(INV.detectMode(r), 'standard', 'Symlinked AMS marker (whose name matches) should block already-cloud classification');
+});
+
+test('findConfigRoots: finds dispatcher config nested in workspace', () => {
+  const r = mk();
+  const nested = path.join(r, 'projects/myapp/dispatcher');
+  fs.mkdirSync(path.join(nested, 'conf.dispatcher.d/enabled_farms'), { recursive: true });
+  fs.mkdirSync(path.join(nested, 'conf.d'), { recursive: true });
+  const roots = INV.findConfigRoots(r);
+  assert.ok(roots.includes(nested), `Expected to find nested dispatcher config at ${nested}, found: ${roots.join(', ')}`);
+});
+
+test('buildInventory: counts filter + rewrite rules and flags tmpl/cm-vars', () => {
+  const r = mk();
+  w(r, 'conf.d/dispatcher.any',
+    '/farms {\n /website {\n  /filter {\n   /0001 { /type "allow" /url "*" }\n   /0002 { /type "deny" /url "/x" }\n  }\n } }\n');
+  w(r, 'conf.vhost.d/rw.rules.tmpl', 'RewriteRule ^/a /b\nRewriteRule ^/c /d\n');
+  w(r, 'conf.d/includes/hdr.conf', 'Header set X-Dispatcher "${DISP_ID}"\n');
+  const inv = INV.buildInventory(r);
+  assert.strictEqual(inv.mode, 'flexible');
+  assert.strictEqual(inv.ruleCounts.filter, 2);
+  assert.strictEqual(inv.ruleCounts.rewrite, 2);
+  assert.strictEqual(inv.tmplUsage, true);
+  assert.ok(inv.cmVarCandidates.includes('DISP_ID'));
+});
+
+test('runDispatcherScan: runbook shape, ok:true empty when no dispatcher config', () => {
+  const r = mk(); w(r, 'core/Foo.java', 'x');
+  const res = INV.runDispatcherScan(r);
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.findings.length, 0);
+});
+
+test('buildInventory: counts quoted entries in clientheaders and virtualhosts sections', () => {
+  const r = mk();
+  w(r, 'conf.d/dispatcher.any',
+    '/farms {\n /website {\n  /clientheaders {\n   "Cookie"\n   "X-Forwarded-For"\n  }\n  /virtualhosts {\n   "*.example.com"\n  }\n } }\n');
+  const inv = INV.buildInventory(r);
+  assert.strictEqual(inv.ruleCounts.clientheader, 2, 'should count 2 quoted entries in clientheaders');
+  assert.strictEqual(inv.ruleCounts.virtualhost, 1, 'should count 1 quoted entry in virtualhosts');
+});
+
+test('buildInventory: filter rule count excludes commented-out rules', () => {
+  const r = mk();
+  w(r, 'conf.d/dispatcher.any',
+    '/farms {\n /website {\n  /filter {\n   # /0009 { /type "deny" /url "*.pdf" }\n   /0001 { /type "allow" /url "*" }\n  }\n } }\n');
+  const inv = INV.buildInventory(r);
+  assert.strictEqual(inv.ruleCounts.filter, 1, 'should count 1 rule and skip the commented /0009');
+});
+
+// Fix 1 [SECURITY]: dispatcher labels are conventionally `/0001` but customers legally use `/01`,
+// `/10001`, or non-numeric (`/allow-html`). The old `/[0-9]{3,4}` entry regex counted these as 0,
+// so an emptied output would pass the filter-acl-loss gate (fail-open). The broadened `/[\w.-]+`
+// regex counts all three → 3 (was 0 on the shipped code; the assertion flips on the fix).
+test('buildInventory: counts non-4-digit / non-numeric ACL labels (/01, /allow-html, /10001)', () => {
+  const r = mk();
+  w(r, 'conf.d/dispatcher.any',
+    '/farms {\n /website {\n  /filter {\n   /01 { /type "allow" /url "*" }\n   /allow-html { /type "allow" /url "*.html" }\n   /10001 { /type "deny" /url "/bin" }\n  }\n } }\n');
+  const inv = INV.buildInventory(r);
+  assert.strictEqual(inv.ruleCounts.filter, 3, 'must count /01, /allow-html and /10001 (0 under the old regex)');
+});
+
+// Fix 1 [SECURITY]: the same broadening must apply to standalone $include'd filter files, whose
+// entries are counted by the countFilterRules standalone scan. `/1` + `/22222` → 2 (0 under old).
+test('buildInventory: counts non-4-digit labels in a standalone $include\'d filter file', () => {
+  const r = mk();
+  w(r, 'conf.dispatcher.d/available_farms/site.farm',
+    '/site {\n  /filter {\n    $include "../filters/site_filters.any"\n  }\n}\n');
+  w(r, 'conf.dispatcher.d/filters/site_filters.any',
+    '/1 { /type "allow" /url "*" }\n/22222 { /type "deny" /url "/bin" }\n');
+  const inv = INV.buildInventory(r);
+  assert.strictEqual(inv.ruleCounts.filter, 2, 'must count /1 and /22222 in the $include\'d filter file');
+});
+
+// Fix 2: findConfigRoots must not descend into an identified root. A flexible tree
+// (`conf.d/dispatcher.any`) used to return both <root> AND <root>/conf.d (a bogus sub-root).
+test('findConfigRoots: flexible tree returns exactly [root], not [root, root/conf.d]', () => {
+  const r = mk();
+  w(r, 'conf.d/dispatcher.any', '/farms {\n  /website { }\n}\n');
+  w(r, 'conf.vhost.d/vhosts.conf', '<VirtualHost *:80></VirtualHost>');
+  const roots = INV.findConfigRoots(r);
+  assert.strictEqual(roots.length, 1, `expected exactly [root], got: ${roots.join(', ')}`);
+  assert.strictEqual(roots[0], r);
+});
+
+// Fix 3: a commented-out `# /filter { /9001 {} }` opener must not match and inflate the baseline.
+// One real /filter with one rule + one fully-commented /filter block → 1 (not 2).
+test('buildInventory: a commented-out /filter block does not inflate the filter count (1 not 2)', () => {
+  const r = mk();
+  w(r, 'conf.d/dispatcher.any',
+    '/farms {\n /website {\n  # /filter { /9001 { /type "deny" /url "*" } }\n  /filter {\n   /0001 { /type "allow" /url "*" }\n  }\n } }\n');
+  const inv = INV.buildInventory(r);
+  assert.strictEqual(inv.ruleCounts.filter, 1, 'commented /filter opener must not add a second rule');
+});
+
+// Fix D (inventory): a commented-out `# ... ${OLD}` must not become a phantom cmVar candidate;
+// a live `${LIVE}` on an uncommented line still counts.
+test('buildInventory: cmVarCandidates skips ${VAR} on full-line comments', () => {
+  const r = mk();
+  w(r, 'conf.d/includes/hdr.conf', '# Header set X-Old "${OLD}"\nHeader set X-Live "${LIVE}"\n');
+  const inv = INV.buildInventory(r);
+  assert.ok(inv.cmVarCandidates.includes('LIVE'), 'LIVE (uncommented) present');
+  assert.ok(!inv.cmVarCandidates.includes('OLD'), 'OLD (commented) excluded');
+});
+
+// Task 3: Output verification (filter/ACL preservation gate)
+const VERIFY = require('./dispatcher-verify.js');
+
+test('verifyOutput: empty filters.any with source filter rules = hard failure', () => {
+  const out = mk();
+  w(out, 'conf.dispatcher.d/filters/filters.any', ''); // empty!
+  w(out, 'conf.dispatcher.d/available_farms/site.farm', '/site { /filter { } }');
+  const res = VERIFY.verifyOutput(out, { filter: 5, rewrite: 3, cache: 0, clientheader: 0, virtualhost: 0 });
+  assert.strictEqual(res.ok, false);
+  assert.ok(res.failures.some(f => f.category === 'filter-acl-loss' && f.severity === 'critical'));
+});
+
+test('verifyOutput: populated filters + collector present = ok', () => {
+  const out = mk();
+  w(out, 'conf.dispatcher.d/filters/filters.any', '/0001 { /type "allow" /url "*" }\n');
+  w(out, 'conf.dispatcher.d/enabled_farms/farms.any', '$include "./*.farm"');
+  w(out, 'conf.dispatcher.d/available_farms/site.farm', '/site { /filter { $include "../filters/filters.any" } }');
+  const res = VERIFY.verifyOutput(out, { filter: 1, rewrite: 0, cache: 0, clientheader: 0, virtualhost: 0 });
+  assert.strictEqual(res.ok, true);
+});
+
+test('verifyOutput: missing farms.any collector = warning (not failure)', () => {
+  const out = mk();
+  w(out, 'conf.dispatcher.d/filters/filters.any', '/0001 { /type "allow" /url "*" }\n');
+  w(out, 'conf.dispatcher.d/available_farms/site.farm', '/site { }');
+  const res = VERIFY.verifyOutput(out, { filter: 1, rewrite: 0, cache: 0, clientheader: 0, virtualhost: 0 });
+  assert.ok(res.warnings.some(x => /farms\.any/.test(x)));
+});
+
+// REGRESSION (final review finding #1, CONFIRMED critical): the canonical AMS "standard"
+// layout $include's its filter rules from conf.dispatcher.d/filters/*_filters.any. The
+// baseline counter used to scan only inline farm /filter{} bodies → ruleCounts.filter=0 →
+// the ACL hard gate silently PASSED on empty output, dropping every ACL undetected.
+test('buildInventory + verifyOutput: $include\'d filter rules are counted so the ACL gate cannot silently pass', () => {
+  // Source: AMS-standard layout — the farm $include's the real rules from filters/mysite_filters.any.
+  const r = mk();
+  w(r, 'conf.dispatcher.d/available_farms/mysite.farm',
+    '/mysite {\n  /filter {\n    $include "../filters/mysite_filters.any"\n  }\n}\n');
+  w(r, 'conf.dispatcher.d/filters/mysite_filters.any',
+    '/0001 { /type "allow" /url "*" }\n/0002 { /type "deny" /url "/apps" }\n/0003 { /type "deny" /url "/bin" }\n');
+  const inv = INV.buildInventory(r);
+  assert.strictEqual(inv.mode, 'standard');
+  assert.strictEqual(inv.ruleCounts.filter, 3, 'must count the 3 $include\'d filter rules, not 0');
+
+  // Output: converter emitted an EMPTY filters.any + empty farm /filter → every ACL dropped.
+  const out = mk();
+  w(out, 'conf.dispatcher.d/filters/filters.any', ''); // empty!
+  w(out, 'conf.dispatcher.d/available_farms/mysite.farm', '/mysite { /filter { } }');
+  const res = VERIFY.verifyOutput(out, inv.ruleCounts);
+  assert.strictEqual(res.ok, false, 'empty output must NOT silently pass the ACL gate');
+  assert.ok(res.failures.some(f => f.category === 'filter-acl-loss' && f.severity === 'critical'),
+    'must raise a critical filter-acl-loss failure');
+});
+
+// REGRESSION (parked Minor from final whole-branch review): the AEMaaCS SDK ships Adobe-managed
+// immutable `default_filters.any` (populated boilerplate) in conf.dispatcher.d/filters/. If the
+// converter EMPTIES the customer's custom filters.any but the SDK default survives, counting the
+// default keeps the output non-zero → filter-acl-loss (critical) does NOT fire and the dropped
+// custom ACLs are masked. countFilterRules now excludes `default_*` immutables so the count is
+// custom-to-custom and the gate fires. (baseline custom=8, output custom=0, default=12.)
+test('verifyOutput: surviving populated default_filters.any does NOT mask an emptied custom filters.any', () => {
+  const out = mk();
+  w(out, 'conf.dispatcher.d/filters/filters.any', '');            // customer's custom ACLs emptied → dropped
+  w(out, 'conf.dispatcher.d/filters/default_filters.any', rules(12)); // Adobe-managed immutable survives, populated
+  const res = VERIFY.verifyOutput(out, { filter: 8, rewrite: 0, cache: 0, clientheader: 0, virtualhost: 0 });
+  assert.strictEqual(res.ok, false, 'a surviving populated default_filters.any must NOT mask the dropped custom ACLs');
+  assert.ok(res.failures.some(f => f.category === 'filter-acl-loss' && f.severity === 'critical'),
+    'custom count is 0 after excluding default_ → critical filter-acl-loss must fire');
+});
+
+// Positive: the default_ exclusion must not create a FALSE failure when the custom rules are
+// preserved. custom filters.any = 3 rules, default_filters.any = 12 (excluded) → count 3 == 3.
+test('verifyOutput: default_filters.any is excluded so a preserved custom filters.any is not false-flagged', () => {
+  const out = mk();
+  w(out, 'conf.dispatcher.d/filters/filters.any', rules(3));          // 3 preserved custom rules
+  w(out, 'conf.dispatcher.d/filters/default_filters.any', rules(12)); // SDK immutable — excluded from the count
+  w(out, 'conf.dispatcher.d/enabled_farms/farms.any', '$include "./*.farm"');
+  const res = VERIFY.verifyOutput(out, { filter: 3, rewrite: 0, cache: 0, clientheader: 0, virtualhost: 0 });
+  assert.strictEqual(res.ok, true, 'custom count is 3 (default_ excluded), 3==3 → no acl-loss, no regression');
+  assert.ok(!res.failures.some(f => f.category === 'filter-acl-loss' || f.category === 'filter-rule-regression'),
+    'neither filter-acl-loss nor filter-rule-regression may fire when custom rules are preserved 3==3');
+});
+
+// Symmetry: the exclusion lives in the shared countFilterRules, so the BASELINE side excludes
+// default_*.any too. A hypothetical Adobe immutable dropped into an AMS input tree must not
+// inflate ruleCounts.filter beyond the real custom rules.
+test('buildInventory: default_filters.any at input is excluded from the baseline filter count', () => {
+  const r = mk();
+  w(r, 'conf.dispatcher.d/available_farms/site.farm',
+    '/site {\n  /filter {\n    $include "../filters/site_filters.any"\n  }\n}\n');
+  w(r, 'conf.dispatcher.d/filters/site_filters.any', rules(3)); // 3 real custom rules
+  w(r, 'conf.dispatcher.d/filters/default_filters.any', rules(5)); // hypothetical immutable — must NOT count
+  const inv = INV.buildInventory(r);
+  assert.strictEqual(inv.ruleCounts.filter, 3, 'default_filters.any (5 rules) excluded → baseline counts only the 3 custom rules');
+});
+
+// Fix 1 (unified rewrite counter): the SAME shared counter backs the verify warning and the
+// coverage report, so they can no longer disagree. {excludeDefault:true} drops the Adobe-managed
+// default_rewrite.rules (5) → 2 custom (what verify + report both use); the default view sees all 7.
+test('countRewrites: excludeDefault yields the custom-only figure both verify and report share', () => {
+  const r = mk();
+  w(r, 'conf.d/rewrites/site.rules', 'RewriteRule ^/a$ /b [L]\nRewriteRule ^/c$ /d [L]\n'); // 2 custom
+  w(r, 'conf.d/rewrites/default_rewrite.rules',
+    Array.from({ length: 5 }, (_, i) => `RewriteRule ^/d${i}$ /e${i} [L]`).join('\n') + '\n'); // 5 SDK default
+  assert.strictEqual(INV.countRewrites(r, { excludeDefault: true }), 2, 'excludeDefault → 2 custom (verify + report agree)');
+  assert.strictEqual(INV.countRewrites(r), 7, 'default view counts all 7 (2 custom + 5 default)');
+});
+
+// Task 4: Tool driver — config generation + executor resolution
+const RUN = require('./dispatcher-run.js');
+
+test('writeToolConfig: emits a valid dispatcherConverter config.yaml (on-premise)', () => {
+  const wd = mk();
+  const p = RUN.writeToolConfig(wd, {
+    sdkSrc: '/sdk/src', mode: 'flexible',
+    onPremise: {
+      dispatcherAnySrc: '/x/dispatcher.any', httpdSrc: '/x/httpd.conf',
+      vhostsToConvert: ['/x/conf.vhost.d/vhosts.conf'],
+      variablesToReplace: [{from: 'PUBLISH_DOCROOT', to: 'DOCROOT'}, {from: 'DISP_ID', to: 'SITE'}],
+      pathToPrepend: ['/x/conf.vhost.d/'], portsToMap: [8000, 8080]
+    },
+  });
+  const y = fs.readFileSync(p, 'utf8');
+  assert.match(y, /dispatcherConverter:/);
+  assert.match(y, /sdkSrc: "\/sdk\/src"/);              // scalars are now YAML-quoted
+  assert.match(y, /dispatcherAnySrc: "\/x\/dispatcher\.any"/);
+  assert.match(y, /vhostsToConvert:/);
+  assert.match(y, /- "\/x\/conf\.vhost\.d\/vhosts\.conf"/);
+  // Verify variablesToReplace is a YAML mapping (key: value), not a sequence.
+  assert.match(y, /"PUBLISH_DOCROOT": "DOCROOT"/);
+  assert.match(y, /"DISP_ID": "SITE"/);
+  assert.ok(!y.includes('- "PUBLISH_DOCROOT,DOCROOT"'), 'should NOT emit comma-joined list format');
+  // Verify portsToMap is a YAML list, not a scalar.
+  assert.match(y, /- "8000"/);
+  assert.match(y, /- "8080"/);
+  assert.ok(!y.includes('portsToMap: 8000,8080'), 'should NOT emit scalar comma-separated format');
+});
+
+// Fix 3 (YAML-safe scalars): a path with a space + `#` (a YAML comment indicator) or a Windows
+// backslash must be quoted and escaped, or the tool mis-parses it (` #c/...` truncated as a comment,
+// `\s` mangled). Empty stays blank so the tool's `if (config.X)` guards still see it as unset.
+test('writeToolConfig: quotes + escapes YAML scalars (space, #, backslash); empty stays blank', () => {
+  const wd = mk();
+  const p = RUN.writeToolConfig(wd, {
+    sdkSrc: 'C:\\aem\\sdk',                                  // Windows path — backslashes must double
+    onPremise: {
+      dispatcherAnySrc: '/tmp/a b#c/dispatcher.any',        // space + # would truncate unquoted
+      appendToVhosts: '/tmp/a b#c/append.vhost',
+      // httpdSrc omitted → must render blank (unset), not "undefined"
+      variablesToReplace: [{ from: 'A B', to: 'x#y' }],
+    },
+    ams: { cfg: '/tmp/a b#c/ams.cfg' },
+  });
+  const y = fs.readFileSync(p, 'utf8');
+  assert.match(y, /dispatcherAnySrc: "\/tmp\/a b#c\/dispatcher\.any"/);
+  assert.match(y, /appendToVhosts: "\/tmp\/a b#c\/append\.vhost"/);
+  assert.match(y, /cfg: "\/tmp\/a b#c\/ams\.cfg"/);
+  assert.match(y, /sdkSrc: "C:\\\\aem\\\\sdk"/);             // backslashes doubled + quoted
+  assert.match(y, /"A B": "x#y"/);                           // variablesToReplace from/to quoted too
+  assert.match(y, /^ *httpdSrc: *$/m);                       // omitted → blank scalar, not "undefined"
+  assert.ok(!y.includes('undefined'), 'no value may serialize as the literal "undefined"');
+});
+
+test('resolveExecutor: maps mode to the right entry script', () => {
+  const toolDir = mk();
+  const base = path.join(toolDir, 'node_modules/@adobe/aem-cs-source-migration-dispatcher-converter/executors');
+  w(base, 'main.js', ''); w(base, 'singleFileMain.js', '');
+  assert.match(RUN.resolveExecutor(toolDir, 'standard'), /executors\/main\.js$/);
+  assert.match(RUN.resolveExecutor(toolDir, 'flexible'), /executors\/singleFileMain\.js$/);
+  assert.match(RUN.resolveExecutor(toolDir, 'v1'), /executors\/singleFileMain\.js$/);
+});
+
+// Task 5: Tool driver — ensure-installed + invoke
+test('isToolInstalled: false when node_modules absent', () => {
+  assert.strictEqual(RUN.isToolInstalled(mk()), false);
+});
+
+test('runConverter: computes the tool output + report paths under the working dir', () => {
+  // Stub an executor that just creates the expected target tree, to test path plumbing without the real tool.
+  const toolDir = mk();
+  const execDir = path.join(toolDir, 'node_modules/@adobe/aem-cs-source-migration-dispatcher-converter/executors');
+  w(execDir, 'singleFileMain.js',
+    'const fs=require("fs"),path=require("path");const t=path.join(process.cwd(),"target/dispatcher/src/conf.dispatcher.d/filters");fs.mkdirSync(t,{recursive:true});fs.writeFileSync(path.join(t,"filters.any"),"/0001 { /type \\"allow\\" /url \\"*\\" }\\n");fs.mkdirSync(path.join(process.cwd(),"target/dispatcher"),{recursive:true});fs.writeFileSync(path.join(process.cwd(),"target/dispatcher/dispatcher-converter-report.md"),"# report");');
+  const wd = mk();
+  const res = RUN.runConverter(wd, 'flexible', toolDir);
+  assert.strictEqual(res.code, 0);
+  assert.ok(fs.existsSync(path.join(res.outputSrcDir, 'conf.dispatcher.d/filters/filters.any')));
+  assert.ok(fs.existsSync(res.reportPath));
+});
+
+// Fix A (defense-in-depth): resolveExecutor silently routes any non-`standard` mode to the on-prem
+// executor, so already-cloud / not-dispatcher / unknown would otherwise run the content-blind tool.
+// runConverter must REFUSE — return { code: null, "...not convertible..." } WITHOUT spawning, so no
+// target/ tree is ever created. (Callers already gate on code === 0, so the happy path is unchanged.)
+test('runConverter: refuses non-convertible modes without spawning (no target/ created)', () => {
+  for (const mode of ['already-cloud', 'not-dispatcher', 'unknown']) {
+    const wd = mk();
+    const res = RUN.runConverter(wd, mode, RUN.TOOL_DIR);
+    assert.strictEqual(res.code, null, `${mode} → code null (no spawn)`);
+    assert.match(res.stdout, /not convertible/, `${mode} → "not convertible" message`);
+    assert.ok(!fs.existsSync(path.join(wd, 'target')), `${mode} → no target/ dir created (no spawn)`);
+  }
+});
