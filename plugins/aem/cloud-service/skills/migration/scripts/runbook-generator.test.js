@@ -539,11 +539,26 @@ test('URC comes from the BPA report when a report is present (report owns it)', 
   fs.copyFileSync(path.join(__dirname, 'fixtures', 'urc-bpa.csv'), csv);
   const gathered = await gatherFindings({ workspaceRoot: root, bpaFilePath: csv, collectionsDir: path.join(root, 'collections') });
   const urc = gathered.rawFindingsByPattern.osgiConfig.filter(f => f.kind === 'unsupported-runmode');
-  // No local-kind findings (kind is only set by the local scanner)…
-  assert.strictEqual(urc.length, 0, 'local scanner did not run because BPA owns URC');
-  // …but the report URC folders are present as osgiConfig findings.
-  const locations = gathered.findingsByPattern.osgiConfig.map(f => f.location);
-  assert.ok(locations.some(l => String(l).includes('config.dev.author')), 'URC from report present');
+  // BPA-sourced URC findings now carry the same `kind`/`runmode` shape as the
+  // local scanner — two report rows, not the on-disk bad folder the test
+  // planted (which the report does NOT list).
+  assert.strictEqual(urc.length, 2, 'both report URC rows enriched with kind: unsupported-runmode');
+  const urcFiles = urc.map(f => f.file).sort();
+  assert.deepStrictEqual(
+    urcFiles,
+    ['/apps/demo/config.dev.author', '/apps/demo/config.preprod'],
+    'URC raw findings come from the report paths, not the on-disk config.stage.author folder — proving report ownership'
+  );
+  const devAuthor = urc.find(f => f.file === '/apps/demo/config.dev.author');
+  assert.strictEqual(devAuthor.runmode, 'dev.author', 'runmode derived from the folder basename via validateRunmodeFolder');
+
+  // …and the report URC folders are present as osgiConfig findings, with a
+  // rich detail carrying the folder basename (not the bare BPA identifier
+  // string 'unsupported.runmode').
+  const finding = gathered.findingsByPattern.osgiConfig.find(f => String(f.location).includes('config.dev.author'));
+  assert.ok(finding, 'URC from report present');
+  assert.ok(finding.detail.includes('config.dev.author'), 'detail contains the folder basename');
+  assert.ok(!finding.detail.includes('unsupported.runmode'), 'detail is not the bare BPA identifier string');
 });
 
 test('URC falls back to local detection when no BPA source is present', async () => {

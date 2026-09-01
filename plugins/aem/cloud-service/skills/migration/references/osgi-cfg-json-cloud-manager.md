@@ -310,6 +310,13 @@ Write gitignored **`cloudmanager-osgi-secrets.local.json`** at the AEM repo root
       "original": "relative/path/to/legacy.config",
       "converted": "relative/path/to/PID.cfg.json"
     }
+  ],
+  "runmode_reorders": [
+    {
+      "from": "ui.config/.../config.dev.author",
+      "to": "ui.config/.../config.author.dev",
+      "command": "git mv \"ui.config/.../config.dev.author\" \"ui.config/.../config.author.dev\""
+    }
   ]
 }
 ```
