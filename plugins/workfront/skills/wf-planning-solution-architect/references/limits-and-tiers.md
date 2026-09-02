@@ -69,10 +69,10 @@ Default response: the architecture is wrong, not the limit. See `customer-conver
 - Reference the documented prior conversations to establish accountability if there is escalation history.
 
 ### When a customer asks for performance numbers
-Workfront Planning does not publish a public P95 / SLA contract. Internal production telemetry from the maestro backend is available and can be shared with leadership audiences as "observed production telemetry":
-- P95 server-side request latency: ~233 ms (across roughly 1.94M requests per day, 14-day window observed).
-- P99: ~402 ms.
-- Endpoint range: sub-100 ms P95 (record type and breadcrumb fetches) up to low-300 ms P95 (record fetch, workspace fetch, record search). Search is the most variable (153 to 530 ms).
+Workfront Planning does not publish a public P95 / SLA contract. Production telemetry exists internally and may be shared with leadership audiences as "observed production telemetry", subject to whatever approval your organization requires:
+- Commonly used Planning APIs run in the low hundreds of milliseconds P95, server-side.
+- Read endpoints (record type and breadcrumb fetches) are the fastest; record fetch, workspace fetch, and record search are slower, with search the most variable.
+- Obtain current figures from the WFP engineering team before quoting anything specific. Do not quote numbers from this file or from memory.
 
 These are backend server-side response times, not browser-perceived page loads, and they are not contractual. Frame as telemetry, not SLA.
 
