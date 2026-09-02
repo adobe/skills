@@ -62,12 +62,12 @@
       "id": 5,
       "name": "Tier-aware limit question",
       "prompt": "What are the object limits for Workfront Planning, and do they differ by tier?",
-      "expected_output": "Explains that object limits scale by tier (Select, Prime, Ultimate) and that the tier must be established before answering a limit question.",
+      "expected_output": "Explains that most object limits are identical across Select, Prime, and Ultimate, and that only records per workspace and total records per instance vary by tier.",
       "files": [],
       "assertions": [
         "Names the Select, Prime, and Ultimate tiers",
-        "States that object limits scale by tier",
-        "Asks for or establishes the customer's tier before giving specific numbers",
+        "States that only records per workspace and total records per instance vary by tier, and that the per-object limits are the same on all tiers",
+        "Answers directly for limits that do not vary by tier, and asks which tier only for records per workspace or total records per instance",
         "Reads references/limits-and-tiers.md rather than guessing limit values"
       ]
     },

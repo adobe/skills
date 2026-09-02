@@ -6,7 +6,7 @@ Source of truth: the Planning "Limitations overview" page on Adobe Experience Le
 
 ## Tier overview
 
-Workfront Planning ships in three license tiers. The tier shapes every capacity question.
+Workfront Planning ships in three license tiers. Tier affects total record volume, not the per-object limits listed further down.
 
 | Tier | Records per workspace | Total records per WFP instance |
 |---|---|---|
@@ -14,7 +14,7 @@ Workfront Planning ships in three license tiers. The tier shapes every capacity 
 | Prime | 500,000 | 2,000,000 |
 | Ultimate | 1,000,000 | Unlimited |
 
-Always confirm the customer's tier before quoting numbers. Customers and AMs sometimes do not know which tier is provisioned. The provisioning system or account team record is authoritative.
+The two limits in the table above are the only ones that vary by tier. Confirm the customer's tier before quoting either of them, or when sizing a deployment; every other limit below is the same on all three tiers and can be answered directly. Customers and AMs sometimes do not know which tier is provisioned. The provisioning system or account team record is authoritative.
 
 ## Object limits (apply to all tiers unless noted)
 

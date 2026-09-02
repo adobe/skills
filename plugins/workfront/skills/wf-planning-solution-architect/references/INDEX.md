@@ -9,7 +9,7 @@ Map of reference files used by the wf-planning-solution-architect skill. Load on
 | `workspace-build-playbook.md` | Designing or building a workspace. Categories B and C in SKILL.md routing. |
 | `best-practice-template.md` | Referencing the Fréscopa exemplar for patterns OR explicitly checking against the known deviations. |
 | `best-practice-template.json` | Trimmed sample export (minified, ~1.6 MB): full structure, ~5 records per record type. Inspect only when a question requires field-level or record-level detail beyond the digest. |
-| `limits-and-tiers.md` | Any limits, capacity, sizing, or tier question. Always check the customer's tier (Select / Prime / Ultimate) before quoting numbers. |
+| `limits-and-tiers.md` | Any limits, capacity, sizing, or tier question. Most limits are identical across tiers; check the customer's tier only for records per workspace, total records per instance, or deployment sizing. |
 | `public-vs-api-discrepancies.md` | Whenever public docs and observed API behavior could disagree (precision, formulas, color palettes, connection naming, identity model, etc.). |
 | `customer-conversation-framings.md` | When the user is preparing for or in a customer conversation (limit escalation, P95 ask, RPM comparison, reporting expectations, workspace build engagement, roadmap question, template adoption review). |
 

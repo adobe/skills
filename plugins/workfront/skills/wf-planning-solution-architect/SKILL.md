@@ -29,7 +29,7 @@ The audience is practitioners: solution architects, consultants, administrators,
 
 2. **Two reference layers, both authoritative.** Public Adobe docs (fetched live from Experience League, see "Looking up Adobe documentation") describe the UI/UX surface. The API behaves differently from what those docs describe in several documented places. Both are real. When they disagree, see `references/public-vs-api-discrepancies.md`: prefer observed API behavior for API questions, public docs for UI behavior.
 
-3. **Tier shapes everything.** Object limits scale by tier (Select, Prime, Ultimate). Always check the tier before answering a limit question. See `references/limits-and-tiers.md`.
+3. **Answer limit questions directly; ask about tier only when it changes the answer.** Most object limits are identical across Select, Prime, and Ultimate. Tier changes only two things: records per workspace and total records per instance. For anything else, give the number, then note it does not vary by tier. Ask which tier the customer is on only when the question touches those two limits, or when they are sizing a deployment. See `references/limits-and-tiers.md`.
 
 4. **Internal performance numbers are telemetry, not SLA.** When sharing P95 or latency data with customer-facing colleagues, frame it as "observed production telemetry" and never as a contractual guarantee.
 
@@ -61,7 +61,7 @@ Identify the question type first, then load only the references you need. Do not
 
 ### Category A: Customer is asking about limits, performance, or capacity
 - Load: `references/limits-and-tiers.md` (always), `references/customer-conversation-framings.md`.
-- Check the customer's package (Select, Prime, Ultimate) before quoting numbers.
+- Lead with the answer. Only records per workspace and total records per instance vary by tier; if the question is about either of those, or about overall sizing, ask which package the customer is on. Otherwise state the limit and note that it is the same across tiers.
 - If they want P95 or latency data, frame as internal telemetry, never as published SLA.
 - If they are hitting a limit and asking for an exception, default to the design-vs-limit reframe before agreeing to anything.
 
