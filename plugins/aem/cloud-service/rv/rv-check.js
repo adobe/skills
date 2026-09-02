@@ -26,6 +26,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { build } = require('./build.js');
 const { deploy } = require('./deploy.js');
+const { runTests } = require('./run-tests.js');
 
 const PROBES_BUNDLE = path.join(__dirname, 'rv-probes/target/rv-probes-1.0.0.jar');
 const PROBES_BSN = 'com.adobe.aem.rv.probes';
@@ -206,7 +207,30 @@ async function main() {
   const opts = { fqcn: args.fqcn, method: args.method };
   const outcome = await pat.verify({ sdkUrl, auth, discovered, opts });
   console.log(`  ${outcome.result === 'pass' ? 'ok' : 'FAIL'} — ${JSON.stringify(outcome.checks)}\n`);
-  return finish(outcome, { discovered });
+
+  // 6. customer's own tests (optional, --tests). Runs `mvn verify` in the
+  //    project dir with the SDK URL wired into every common IT property. If
+  //    business functionality was working before and their tests pass now,
+  //    the migration preserved it.
+  let tests = null;
+  if (args.tests !== undefined && args.project) {
+    step('customer tests (mvn verify → SDK)');
+    const t = runTests({ projectDir: args.project, sdkUrl, user, password });
+    tests = { ok: t.ok, summary: t.summary, elapsedMs: t.elapsedMs };
+    const s = t.summary || {};
+    const line = s.note ? s.note : `tests=${s.tests} failures=${s.failures} errors=${s.errors} skipped=${s.skipped}`;
+    console.log(`  ${t.ok ? 'ok' : 'FAIL'} — ${line} (${t.elapsedMs}ms)\n`);
+    // A failure in customer tests degrades the overall verdict.
+    if (!t.ok && outcome.result === 'pass') {
+      outcome.result = 'fail';
+      outcome.failure_class = outcome.failure_class || 'tests.failed';
+      outcome.evidence = outcome.evidence || 'customer tests failed against the migrated bundle on the SDK';
+    }
+  } else if (args.tests !== undefined && !args.project) {
+    console.log(`▸ customer tests\n  skipped — needs --project (not --jar) to run mvn verify\n`);
+  }
+
+  return finish(outcome, { discovered, tests });
 }
 
 // ---- helpers ----
@@ -256,7 +280,7 @@ function finish(outcome, extra) {
 }
 function parseArgs(argv) {
   const out = { pattern: argv[0] };
-  const bools = new Set([]);
+  const bools = new Set(['tests']);
   for (let i = 1; i < argv.length; i++) {
     if (!argv[i].startsWith('--')) continue;
     const k = argv[i].replace(/^--/, '');
