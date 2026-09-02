@@ -274,4 +274,4 @@ Convert ALL_CAPS enum values to lowercase readable text (ADMINISTRATOR becomes M
 - IMS userId vs Workfront userId mixup in integrations: Planning returns IMS IDs.
 - Bulk record operation partial success: always check the response for per-record errors.
 - 500-connection cap on multi-select non-hierarchy connections: the architecture is wrong, not the limit.
-- 4-level hierarchy ceiling: leave headroom if the roadmap may extend.
+- 4-level hierarchy ceiling: leave headroom if the customer's structure may deepen later.

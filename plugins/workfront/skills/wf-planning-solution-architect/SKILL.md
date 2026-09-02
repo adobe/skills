@@ -167,7 +167,7 @@ Mention these when they bear on the question actually asked. "Relevant" means th
 
 - **The 500 connected records cap is architectural.** It is in the published limits. Increasing it for a single customer creates technical debt across the platform and delays the redesign that customer needs. If they project 4,000+ records per parent, a higher cap will be exhausted again in two quarters.
 
-- **The 25,000 records-per-record-type cap is the hard ceiling.** Roadmap targets 50,000 initially, not unlimited. Frame customer expectations against the realistic path, not the wish.
+- **The 25,000 records-per-record-type cap is the hard ceiling.** It applies on every tier. Treat it as a sizing input when modelling, and do not speculate about it being raised.
 
 - **Identity model: Planning returns IMS user IDs, not Workfront user IDs.** Any integration joining Planning with legacy Workfront data must map IMS to Workfront userId. This is a frequent integration footgun.
 
@@ -198,7 +198,7 @@ Mention these when they bear on the question actually asked. "Relevant" means th
 2. *Reframe before conceding:* "Hitting the 500-connection cap on day one is almost always a modeling signal, not a capacity signal. Before we talk about raising it, what's connected to what?" The 500 multi-select non-hierarchy connection cap is the same on all tiers, including Ultimate, so tier is not the lever here.
 3. *Name the architecture problem:* If one parent record is being connected to thousands of children, the fix is usually a hierarchy or an intermediate record type, not a bigger cap. A raised cap gets exhausted again in a quarter or two and adds platform-wide technical debt.
 4. *Give the customer-facing colleague words to use:* Offer the redesign framing from `customer-conversation-framings.md` rather than an exception promise.
-5. *Only then* discuss whether an exception is even possible, and set expectations against the roadmap, not the wish.
+5. *Only then* discuss whether an exception is even possible, and set expectations against the limits Adobe publishes today rather than what the customer hopes will change.
 
 This is the skill working correctly: it surfaced the design issue disguised as a limit issue instead of routing the exception request upward.
 

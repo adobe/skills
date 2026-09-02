@@ -7,7 +7,7 @@ These are not scripts. Adapt to context. The goal is consistency across the team
 ## 1. Customer is hitting a limit and asking for an exception
 
 ### Situation
-Customer (often via account team or the implementation partner) escalates that they have hit a published platform limit (records per record type, connected records cap, fields per record type, etc.) and asks for the limit to be raised for them.
+A customer, often via the account team or an implementation partner, reports that they have hit a published platform limit (records per record type, connected records cap, fields per record type, etc.) and asks for the limit to be raised for them.
 
 ### Recommended framing
 The architecture is wrong, not the limit. Granting incremental exceptions does three damaging things:
@@ -15,7 +15,7 @@ The architecture is wrong, not the limit. Granting incremental exceptions does t
 2. Delays the redesign that this customer actually needs.
 3. Buys 1 to 2 quarters at most before they hit the new cap.
 
-If the customer has previously been granted an exception and is now back asking for more, name that pattern explicitly. Documented prior conversations are accountability anchors.
+If the same limit has already been stretched once for this customer and they are back asking for more, name that pattern explicitly. It is evidence that the design, not the cap, is the constraint.
 
 ### Key sentences to anchor on
 - "The limit exists because the underlying architecture requires it. Raising it for one customer means absorbing that complexity across the platform."
@@ -27,7 +27,7 @@ If the customer has previously been granted an exception and is now back asking 
 Do not negotiate the number ("we can do 1500 not 2500"). Once you negotiate the number, you have conceded that the limit is negotiable, which it is not. Hold the architectural line.
 
 ### Reference case
-A multi-quarter escalation pattern observed in production: an implementation-partner-built solution hits the 500-connection cap on day one of go-live, despite the solution architect flagging the risk months earlier. An initial exception is granted, then a second exception request follows. The customer's own projection puts them back at the new cap within two quarters, confirming this is design-driven rather than sizing-driven. The accountability anchor in these conversations is the documented prior risk acknowledgment from the implementation team.
+A recurring pattern: a solution hits the 500-connection cap on day one of go-live, even though the cap is documented and the risk was raised during design. Stretching the cap once leads to a second request, because the customer's own projection puts them back at the new ceiling within two quarters. That projection is the clearest evidence the problem is design-driven rather than sizing-driven.
 
 ## 2. Customer asks for performance numbers (P95, SLA)
 
@@ -127,25 +127,7 @@ The bridge is the connection from a Planning record (e.g., Campaign) to a Workfr
 ### Trap to avoid
 Do not suggest that Planning replaces Workfront, or that Workfront should be deprecated in favor of Planning. They are designed to work together. Customers on Planning Prime or Ultimate are licensed for both.
 
-## 7. AM or customer asks "is this a roadmap item?"
-
-### Situation
-Customer or AM asks whether a feature gap will be addressed in a future release.
-
-### Recommended framing
-Be honest about what is committed vs what is being explored. Do not over-promise. Three tiers of language:
-- **Committed:** "This is on the roadmap for [quarter]."
-- **Being explored:** "This is in discovery. We have not committed to a delivery quarter."
-- **Not on the roadmap:** "This is not on the roadmap today. If the use case is important, I can route it to product for consideration."
-
-### Key sentences to anchor on
-- "I want to be precise here: this is in discovery, which means we are validating the approach but not yet committed to delivery. The structure is intentional: discover in one quarter, deliver in the next, only if discovery validates the path."
-- "Nothing in this roadmap locks us into delivering something we have not yet validated."
-
-### Trap to avoid
-Do not say "yes, that is coming" without a specific commitment behind it. Customers remember these answers verbatim and bring them back. Anchor in discovery vs delivery phasing if uncertain.
-
-## 8. Customer instantiates a reference template and asks "is this good for us?"
+## 7. Customer instantiates a reference template and asks "is this good for us?"
 
 ### Situation
 Customer adopts the Fréscopa template (or similar reference) and asks whether it is the right starting point.
