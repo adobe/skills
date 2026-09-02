@@ -9,7 +9,7 @@ const path = require('path');
 const { runHtlLint, classify } = require('./htl-lint-runner.js');
 const { runOsgiConfigScan } = require('./osgi-config-runner.js');
 const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
-const { runTemplateScan } = require('./template-scan-runner.js');
+const { runTemplateScan, classifyStaticTemplate } = require('./template-scan-runner.js');
 const { runAnalyzer } = require('./analyzer-runner.js');
 const {
   gatherFindings, generateRunbook, renderRunbook, writeRunbookCache,
@@ -263,8 +263,56 @@ test('runTemplateScan flags static templates under apps/*/templates/*', () => {
     '<jcr:root jcr:primaryType="cq:Template"/>'); // not under templates/ → ignored
   const res = runTemplateScan(root);
   assert.strictEqual(res.rawFindings.length, 1);
-  assert.strictEqual(res.rawFindings[0].subType, 'legacy.static.template');
+  // No foundation resource type → project-authored custom template.
+  assert.strictEqual(res.rawFindings[0].subType, 'custom.static.template');
   assert.match(res.findings[0].detail, /content-page/);
+  assert.match(res.findings[0].detail, /custom/);
+});
+
+test('runTemplateScan classifies foundation-derived templates as legacy', () => {
+  const root = mkworkspace();
+  write(root, 'ui.apps/jcr_root/apps/my/templates/legacy-page/.content.xml',
+    '<jcr:root jcr:primaryType="cq:Template"><jcr:content sling:resourceType="wcm/foundation/components/page"/></jcr:root>');
+  write(root, 'ui.apps/jcr_root/apps/my/templates/custom-page/.content.xml',
+    '<jcr:root jcr:primaryType="cq:Template"><jcr:content sling:resourceType="my/components/structure/page"/></jcr:root>');
+  const res = runTemplateScan(root);
+  const bySub = Object.fromEntries(res.rawFindings.map(f => [f.subType, f]));
+  assert.ok(bySub['legacy.static.template'], 'foundation RT → legacy');
+  assert.ok(bySub['custom.static.template'], 'project RT → custom');
+  assert.match(bySub['legacy.static.template'].file, /legacy-page/);
+  assert.match(bySub['custom.static.template'].file, /custom-page/);
+});
+
+test('classifyStaticTemplate strips leading /libs and /apps prefixes', () => {
+  assert.strictEqual(
+    classifyStaticTemplate('<jcr:content sling:resourceType="/libs/wcm/foundation/components/page"/>'),
+    'legacy.static.template');
+  assert.strictEqual(
+    classifyStaticTemplate('<jcr:content sling:resourceType="/apps/my/components/page"/>'),
+    'custom.static.template');
+});
+
+test('classifyStaticTemplate prefers jcr:content over a descendant parsys', () => {
+  // jcr:content has no RT of its own but a child parsys is foundation-derived;
+  // the template is still project-authored → must not be flagged legacy.
+  const xml = '<jcr:root jcr:primaryType="cq:Template">' +
+    '<jcr:content jcr:primaryType="cq:PageContent">' +
+    '<par sling:resourceType="wcm/foundation/components/responsivegrid"/>' +
+    '</jcr:content></jcr:root>';
+  assert.strictEqual(classifyStaticTemplate(xml), 'custom.static.template');
+  // When jcr:content itself is foundation-derived, it is legacy.
+  const legacy = '<jcr:content sling:resourceType="wcm/foundation/components/page">' +
+    '<par sling:resourceType="my/components/parsys"/></jcr:content>';
+  assert.strictEqual(classifyStaticTemplate(legacy), 'legacy.static.template');
+});
+
+test('runTemplateScan detects nested static templates', () => {
+  const root = mkworkspace();
+  write(root, 'ui.apps/jcr_root/apps/my/templates/marketing/hero/.content.xml',
+    '<jcr:root jcr:primaryType="cq:Template"/>');
+  const res = runTemplateScan(root);
+  assert.strictEqual(res.rawFindings.length, 1, 'nested template must be found');
+  assert.match(res.findings[0].detail, /hero/);
 });
 
 test('gatherFindings dispatches content-scan patterns as heuristic', async () => {
