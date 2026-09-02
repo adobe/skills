@@ -200,9 +200,9 @@ Populate a new workspace with 3 to 5 records per record type using realistic val
 - Meaningful end dates based on expected duration.
 - Fill all custom fields.
 - Create connections between related sample records.
-- Read the record type schema (`schema://record-type/{recordTypeId}`) before writing records to ensure correct value formats.
+- Read the record type's field schema before writing records to ensure correct value formats.
 
-`bulk_record_actions` is NOT atomic. Always check `hasErrors` on the response.
+Bulk record operations are NOT atomic. Always check the response for per-record errors.
 
 ## Business rules
 
@@ -272,6 +272,6 @@ Convert ALL_CAPS enum values to lowercase readable text (ADMINISTRATOR becomes M
 - Fields cannot move between record types; use lookups instead.
 - Multiple timeline breakdowns: only one at a time.
 - IMS userId vs Workfront userId mixup in integrations: Planning returns IMS IDs.
-- `bulk_record_actions` partial success: always check `hasErrors`.
+- Bulk record operation partial success: always check the response for per-record errors.
 - 500-connection cap on multi-select non-hierarchy connections: the architecture is wrong, not the limit.
 - 4-level hierarchy ceiling: leave headroom if the roadmap may extend.

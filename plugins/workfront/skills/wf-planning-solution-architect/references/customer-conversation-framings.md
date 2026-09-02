@@ -37,11 +37,11 @@ Customer wants performance guarantees, P95 numbers, or SLA documentation. Often 
 ### Recommended framing
 Workfront Planning does not publish a public P95 / SLA contract. We do have internal production telemetry that can be shared as observed behavior, NOT as a commitment.
 
-Frame as: "Internal production monitoring shows commonly used Planning APIs running at low-hundreds-of-milliseconds P95 server-side latency in production." Anchor the words **observed**, **production telemetry**, **server-side**.
+Frame as: "Production monitoring shows commonly used Planning APIs running at low-hundreds-of-milliseconds P95 server-side latency in production." Anchor the words **observed**, **production telemetry**, **server-side**.
 
 ### Key sentences to anchor on
 - "We do not publish a contractual P95 / SLA for Planning today."
-- "What I can share is observed production telemetry: P95 around 233 ms across roughly 1.94M requests per day in the most recent 14-day window. P99 around 402 ms."
+- "What I can share is observed production telemetry: commonly used Planning APIs run in the low hundreds of milliseconds P95, server-side." Obtain current figures from the WFP engineering team before quoting anything more specific.
 - "These are backend server-side response times, not browser-perceived page loads."
 - "I want to set expectations: this is what we observe, not what we commit to."
 
