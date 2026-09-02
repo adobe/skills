@@ -69,12 +69,12 @@ Default response: the architecture is wrong, not the limit. See `customer-conver
 - Reference the documented prior conversations to establish accountability if there is escalation history.
 
 ### When a customer asks for performance numbers
-Workfront Planning does not publish a public P95 / SLA contract. Production telemetry exists internally and may be shared with leadership audiences as "observed production telemetry", subject to whatever approval your organization requires:
+Workfront Planning does not publish a public P95 / SLA contract. Where performance figures are available to you, present them as observed behavior, subject to whatever approval your organization requires:
 - Commonly used Planning APIs run in the low hundreds of milliseconds P95, server-side.
 - Read endpoints (record type and breadcrumb fetches) are the fastest; record fetch, workspace fetch, and record search are slower, with search the most variable.
-- Obtain current figures from the WFP engineering team before quoting anything specific. Do not quote numbers from this file or from memory.
+- Confirm current figures with Adobe before quoting anything specific. Do not quote numbers from this file or from memory.
 
-These are backend server-side response times, not browser-perceived page loads, and they are not contractual. Frame as telemetry, not SLA.
+These are backend server-side response times, not browser-perceived page loads, and they are not contractual. Frame as observed behavior, not SLA.
 
 ### When a customer asks about tier upgrade triggers
 Common triggers for moving from Select to Prime:
@@ -99,5 +99,5 @@ These are limits that customers commonly hit and that have known roadmap motion.
 ## Known escalation patterns
 
 - **500-connection cap on day-one go-live:** customers whose implementation partner built a solution that hits the 500-connection cap on day one of go-live, despite the limit being documented and the risk being known. Solution-architecture issue, not a limit issue. Reference framing: "If it were just a matter of asking to increase them, why would we have them in the first place?"
-- **Customer requests for P95 data ahead of meetings:** standard prep is to share the published limits page plus internal telemetry framed as observed production behavior, not as a contractual SLA.
+- **Customer requests for P95 data ahead of meetings:** lead with the published limits page, and present any performance figures as observed behavior rather than a contractual SLA.
 - **Enterprise customers in ongoing scale conversations:** apply the standard limit-vs-design reframe. Common in regulated industries (healthcare, financial services) where customers may be at the edge of one or more caps.

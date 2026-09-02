@@ -35,21 +35,21 @@ A multi-quarter escalation pattern observed in production: an implementation-par
 Customer wants performance guarantees, P95 numbers, or SLA documentation. Often surfaces in pre-sale, contract renewal, or "is this product mature enough?" conversations.
 
 ### Recommended framing
-Workfront Planning does not publish a public P95 / SLA contract. We do have internal production telemetry that can be shared as observed behavior, NOT as a commitment.
+Workfront Planning does not publish a public P95 / SLA contract. Any performance figures available to you are observed behavior, NOT a commitment.
 
 Frame as: "Production monitoring shows commonly used Planning APIs running at low-hundreds-of-milliseconds P95 server-side latency in production." Anchor the words **observed**, **production telemetry**, **server-side**.
 
 ### Key sentences to anchor on
 - "We do not publish a contractual P95 / SLA for Planning today."
-- "What I can share is observed production telemetry: commonly used Planning APIs run in the low hundreds of milliseconds P95, server-side." Obtain current figures from the WFP engineering team before quoting anything more specific.
+- "What I can share is observed behavior: commonly used Planning APIs run in the low hundreds of milliseconds P95, server-side." Confirm current figures with Adobe before quoting anything more specific.
 - "These are backend server-side response times, not browser-perceived page loads."
 - "I want to set expectations: this is what we observe, not what we commit to."
 
 ### Trap to avoid
-Do not let telemetry numbers harden into commitments. If a customer asks you to put the numbers in a contract or signed document, route through legal and product. Internal telemetry is for verbal context and slide-level talking points, not for SLA commitments.
+Do not let observed numbers harden into commitments. If a customer asks to put the numbers in a contract or signed document, route the request to Adobe through the account team. Observed figures are for verbal context and slide-level talking points, not for SLA commitments.
 
 ### Reference case
-A regulated-industry customer asks for limits documentation and P95 data ahead of a customer meeting. Internal prep for leadership uses the same telemetry framed explicitly as observed production behavior, never as contractual SLA. The customer ultimately receives the published limits page and verbal positioning of the latency numbers without those numbers entering any signed document.
+A regulated-industry customer asks for limits documentation and P95 data ahead of a meeting. Preparation for that meeting uses the same figures framed explicitly as observed behavior, never as contractual SLA. The customer ultimately receives the published limits page and verbal positioning of the latency numbers without those numbers entering any signed document.
 
 ## 3. Customer asks how API rate limits compare to industry
 
@@ -86,7 +86,7 @@ Do not promise that legacy Workfront reports will eventually support Planning re
 ## 5. Customer wants a workspace built end-to-end
 
 ### Situation
-Customer (or internal AM) asks for help designing or building out a workspace, often vaguely ("help me set up Planning for our marketing org").
+A customer or account team asks for help designing or building out a workspace, often vaguely ("help me set up Planning for our marketing org").
 
 ### Recommended framing
 Ground the design in their actual operating model, not a generic template. Apply the workspace build playbook:

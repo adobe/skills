@@ -53,7 +53,7 @@ If a question spans categories, load only the union of files; do not load every 
 
 **Public docs:** nothing to refresh. Pages are fetched live from Experience League at answer time. If Adobe publishes new Planning articles, add entries to `scripts/docs-index.json` (path, url, title, section, description, headings) so the search can surface them.
 
-**API-surface facts:** the operator sets, precision limits, and function support notes live inline in SKILL.md. Re-verify them against the live Planning API, or request refreshed detail from the WFP engineering team, when the product changes.
+**API-surface facts:** the operator sets, precision limits, and function support notes live inline in SKILL.md. Re-verify them against the live Planning API, or confirm with Adobe, when the product changes.
 
 **Best-practice template:** re-export when the canonical template changes meaningfully. Update both the .json (raw) and the .md (digest). Re-validate the "Known deviations" section against the current template state.
 
