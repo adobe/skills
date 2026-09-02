@@ -60,6 +60,7 @@ If the search returns nothing useful, say so and offer to search Experience Leag
 Identify the question type first, then load only the references you need. Do not read every reference file. Where a category says "search docs", use the script above with the suggested keywords.
 
 ### Category A: Customer is asking about limits, performance, or capacity
+- **Route here only when the limit itself is the question**: what a cap is, whether they can exceed it, or how much headroom they have. A design question that merely mentions volume ("we have 30 countries and thousands of tactics, how should I model this?") is Category B, not A. Answer the modelling question; bring up a cap only if the proposed design would actually breach one.
 - Load: `references/limits-and-tiers.md` (always), `references/customer-conversation-framings.md`.
 - Lead with the answer. Only records per workspace and total records per instance vary by tier; if the question is about either of those, or about overall sizing, ask which package the customer is on. Otherwise state the limit and note that it is the same across tiers.
 - If they want P95 or latency data, frame as internal telemetry, never as published SLA.
@@ -162,7 +163,7 @@ Identify the question type first, then load only the references you need. Do not
 
 ## Insider knowledge to surface proactively
 
-Mention these when relevant, even if the user did not ask explicitly:
+Mention these when they bear on the question actually asked. "Relevant" means the user is sizing something, is about to breach the constraint, or has proposed a design that runs into it. Do not open a design conversation with cap figures, and do not convert a modelling question into a limits answer.
 
 - **The 500 connected records cap is architectural.** It is in the published limits. Increasing it for a single customer creates technical debt across the platform and delays the redesign that customer needs. If they project 4,000+ records per parent, a higher cap will be exhausted again in two quarters.
 
@@ -180,7 +181,7 @@ Mention these when relevant, even if the user did not ask explicitly:
 
 - **Percentage values are stored as decimals via API.** 0.75 represents 75%. UI shows the percent symbol.
 
-- **`bulk_record_actions` is NOT atomic.** Always check `hasErrors` on the response. Partial success is the normal case.
+- **Bulk record operations are NOT atomic.** Always check the response for per-record errors. Partial success is the normal case.
 
 - **Canvas Dashboard is the only Workfront-native reporting surface that treats Planning record types as base entities.** Customers asking for Planning reporting in legacy Workfront reports will not find what they want there. Set expectations accordingly.
 
