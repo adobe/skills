@@ -31,7 +31,7 @@ The audience is practitioners: solution architects, consultants, administrators,
 
 3. **Answer limit questions directly; ask about tier only when it changes the answer.** Most object limits are identical across Select, Prime, and Ultimate. Tier changes only two things: records per workspace and total records per instance. For anything else, give the number, then note it does not vary by tier. Ask which tier the customer is on only when the question touches those two limits, or when they are sizing a deployment. See `references/limits-and-tiers.md`.
 
-4. **Internal performance numbers are telemetry, not SLA.** When sharing P95 or latency data with customer-facing colleagues, frame it as "observed production telemetry" and never as a contractual guarantee.
+4. **Performance numbers are observations, not commitments.** Adobe does not publish a P95 or SLA contract for Planning. Present any performance figures as observed behavior, never as a guarantee. Send requests to put numbers in a contract or signed document to Adobe through the account team rather than answering them from observed figures.
 
 5. **Workspace design follows the playbook.** When the user wants a workspace designed end-to-end, follow `references/workspace-build-playbook.md` strictly. Work through the full design before narrating it. Do not pause halfway to ask for confirmation on every record type.
 
@@ -63,7 +63,7 @@ Identify the question type first, then load only the references you need. Do not
 - **Route here only when the limit itself is the question**: what a cap is, whether they can exceed it, or how much headroom they have. A design question that merely mentions volume ("we have 30 countries and thousands of tactics, how should I model this?") is Category B, not A. Answer the modelling question; bring up a cap only if the proposed design would actually breach one.
 - Load: `references/limits-and-tiers.md` (always), `references/customer-conversation-framings.md`.
 - Lead with the answer. Only records per workspace and total records per instance vary by tier; if the question is about either of those, or about overall sizing, ask which package the customer is on. Otherwise state the limit and note that it is the same across tiers.
-- If they want P95 or latency data, frame as internal telemetry, never as published SLA.
+- If they want P95 or latency data, say that Adobe publishes no SLA for Planning, and present any figures as observed behavior rather than a commitment.
 - If they are hitting a limit and asking for an exception, default to the design-vs-limit reframe before agreeing to anything.
 
 ### Category B: Customer or colleague is designing a workspace
@@ -167,7 +167,7 @@ Mention these when they bear on the question actually asked. "Relevant" means th
 
 - **The 500 connected records cap is architectural.** It is in the published limits. Increasing it for a single customer creates technical debt across the platform and delays the redesign that customer needs. If they project 4,000+ records per parent, a higher cap will be exhausted again in two quarters.
 
-- **The 25,000 records-per-record-type cap is the hard ceiling.** Roadmap targets 50,000 initially, not unlimited. Frame customer expectations against the realistic path, not the wish.
+- **The 25,000 records-per-record-type cap is the hard ceiling.** It applies on every tier. Treat it as a sizing input when modelling, and do not speculate about it being raised.
 
 - **Identity model: Planning returns IMS user IDs, not Workfront user IDs.** Any integration joining Planning with legacy Workfront data must map IMS to Workfront userId. This is a frequent integration footgun.
 
@@ -198,14 +198,14 @@ Mention these when they bear on the question actually asked. "Relevant" means th
 2. *Reframe before conceding:* "Hitting the 500-connection cap on day one is almost always a modeling signal, not a capacity signal. Before we talk about raising it, what's connected to what?" The 500 multi-select non-hierarchy connection cap is the same on all tiers, including Ultimate, so tier is not the lever here.
 3. *Name the architecture problem:* If one parent record is being connected to thousands of children, the fix is usually a hierarchy or an intermediate record type, not a bigger cap. A raised cap gets exhausted again in a quarter or two and adds platform-wide technical debt.
 4. *Give the customer-facing colleague words to use:* Offer the redesign framing from `customer-conversation-framings.md` rather than an exception promise.
-5. *Only then* discuss whether an exception is even possible, and set expectations against the roadmap, not the wish.
+5. *Only then* discuss whether an exception is even possible, and set expectations against the limits Adobe publishes today rather than what the customer hopes will change.
 
 This is the skill working correctly: it surfaced the design issue disguised as a limit issue instead of routing the exception request upward.
 
 ## When you don't know
 
 If the user asks something specific that is not in the reference set, say so directly and either:
-- Suggest the right source to check (Adobe Experience League page, developer.adobe.com, the Planning API itself, or asking the WFP engineering team).
+- Suggest the right source to check (Adobe Experience League page, developer.adobe.com, the Planning API itself, or Adobe support through the account team).
 - Offer to web_fetch the relevant Adobe docs page.
 
 Never invent a limit, a function name, or a behavior. The reference set is comprehensive but not complete. Refresh procedure for the reference set is in `references/INDEX.md`.

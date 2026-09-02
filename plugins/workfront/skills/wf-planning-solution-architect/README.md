@@ -26,7 +26,7 @@ wf-planning-solution-architect/
     ├── workspace-build-playbook.md             # Canonical build playbook (synthesized)
     ├── best-practice-template.md               # Fréscopa exemplar + known deviations
     ├── best-practice-template.json             # Trimmed Fréscopa sample export (minified, ~1.6 MB)
-    ├── limits-and-tiers.md                     # SA-ready limit reference by tier
+    ├── limits-and-tiers.md                     # Practitioner limit reference by tier
     ├── public-vs-api-discrepancies.md          # Reconciliation table
     ├── customer-conversation-framings.md       # Stock SA framings
     └── synthesized/                            # Content not published on Experience League
