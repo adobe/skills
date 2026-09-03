@@ -106,32 +106,11 @@ per the final section with verification stated as reasoned-but-unproven.
    itself for the specific field you care about, not just whether *some* index got a finite cost.
    - **`explain` only tells you which index and cost/plan get picked — it says nothing about whether a
      feature that doesn't work through the cost-plan mechanism actually behaves correctly**: suggestions
-     (`rep:suggest`), spellcheck (`rep:spellcheck`), facet *counts* (vs. just "the query ran"), similarity
-     ranking (`rep:similar`/feature vectors), and raw native-query strings (`rep:native`) all fall in this
-     category. For these, don't rely on a live instance + a short wait (suggestions rebuild on a real
-     10-minute interval by default — a short wait just produces a false "it doesn't work"). Two ways to get
-     real signal, in order of how likely they are to be available:
-     - **Portable, works in any codebase with a reachable Oak/AEM instance**: dump the effective index
-       definition via the Felix `InventoryPrinter` status page (`GET /system/console/status-oak-index-defn.json`
-       on any Sling/Felix-based Oak deployment — see step 1) and confirm the feature's own config flag is
-       actually set (`useInSuggest`, `useInSpellcheck`, `facets`, `useInSimilarity`) and that the index
-       definition is the *effective* one (§4.9's `refresh`/reindex distinction — a flag that "looks" set in
-       the saved node may not be live yet). Cross-check the relevant `IndexStatsMBean` (`LastIndexedTime`,
-       `Status`, `Failing`) to rule out a stuck or corrupt async lane. This narrows most "it doesn't work"
-       reports to either a genuine timing issue (wait longer/re-check after a real rebuild cycle) or a
-       config flag that's missing/not yet effective — without needing to run anything.
-     - **Deterministic, but only if you're working inside an actual checkout of Oak's own Java source**
-       (rare outside the Oak project itself — check for a Maven `pom.xml` and an `oak-lucene` module before
-       assuming this is available; a typical AEM application/content project does **not** have this): run
-       the matching unmodified Oak test (`mvn test -pl oak-lucene -Dtest=<Class>#<method>`, needs JDK 17)
-       — `SuggestTest`/`SpellcheckTest` (`oak-lucene/.../jcr/query/`), `FacetTest` (asserts real
-       `FacetResult.getCount()` values), `LucenePropertyIndexTest` (boost, aggregation-exclude, similarity
-       feature-vectors — grep it for the property/flag name), `LuceneDynamicBoostTest`. These give a
-       deterministic pass/fail in seconds and often show you the *exact* test setup a feature needs (e.g.
-       `SuggestTest` sets `suggestUpdateFrequencyMinutes: 0` specifically to make the suggester rebuild fast
-       enough to test).
-     If neither is available, say so plainly in the report and reason from the bundled reference doc's
-     documented defaults instead of guessing.
+     (`rep:suggest`), spellcheck (`rep:spellcheck`), facet *counts*, similarity ranking (`rep:similar`),
+     and `rep:native` all fall in this category and need their own verification, not an `explain` check.
+     See `ai-agent-indexing-guide.md`'s "Verifying features `explain` can't reach" (Appendix B) for the two
+     ways to get real signal (a live-instance config/MBean cross-check, or the exact Oak trunk unit tests to
+     run) — and if neither is available, say so plainly in the report rather than guessing.
 7. **Identify the single existing index the fix belongs on before writing any change.** Never invent a
    brand-new index or silently pick one of several plausible candidates — the target index changes the
    whole recommendation (which properties it already has, its current tags/weight/reindex history), so
@@ -223,9 +202,9 @@ index that has to compensate for an unnecessarily broad query.
 
 ## Common mistakes (each one live-verified during this skill's development)
 
-- Query has no nodetype restriction → a nodetype-scoped index is skipped entirely, not just deprioritized.
-- `includedPaths` set without matching `queryPaths` → wrong index selected outside its real coverage,
-  silently returns fewer results than exist — no error, no warning.
+Beyond the two scoping gotchas in step 5 (a nodetype-scoped index skipped entirely when the query has no
+matching restriction; `includedPaths`/`queryPaths` mismatches silently returning fewer results):
+
 - `sync`/`unique` on a Lucene property definition, but the index's own `async` is still a single string
   (not `["async","sync"]`/`["async","nrt"]`) → silently never synchronous, never enforced.
 - A property IS indexed, but a *different*, cheaper index still wins → check `weight` (lower = cheaper,

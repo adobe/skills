@@ -1363,6 +1363,35 @@ just HTTP caching.
   including `lc dump`/`lc info` for raw Lucene-file inspection with Luke.
 - `oak-run json-index --script -` for the scripted-node/query REPL described in §16.
 
+### Verifying features `explain` can't reach: suggest, spellcheck, facets, similarity, `rep:native`
+
+`explain` only reports which index and cost/plan get picked — it says nothing about whether a feature that
+doesn't work through that cost-plan mechanism actually behaves correctly. Suggestions (`rep:suggest`),
+spellcheck (`rep:spellcheck`), facet *counts* (vs. just "the query ran"), similarity ranking
+(`rep:similar`/feature vectors), and raw native-query strings (`rep:native`) all need their own checks:
+
+- **Portable — works against any reachable Oak/AEM instance, no source checkout needed**: dump the
+  effective index definition via the `status-oak-index-defn.json` `InventoryPrinter` (above) and confirm
+  the feature's own config flag is actually set (`useInSuggest`, `useInSpellcheck`, `facets`,
+  `useInSimilarity`) *and* that the index definition is the effective one — a flag that "looks" set in the
+  saved node may not be live yet if a `reindex`/`refresh` cycle hasn't completed (§15). Cross-check the
+  matching lane's `IndexStatsMBean` (`LastIndexedTime`, `Status`, `Failing` — §7) to rule out a stuck or
+  corrupt async lane. This narrows most "it doesn't work" reports to either a genuine timing issue (wait
+  longer, or re-check after a real rebuild cycle — suggestions rebuild on a real `suggestUpdateFrequencyMinutes`
+  interval, default 10 minutes on Lucene; don't mistake a short wait for a broken feature) or a config flag
+  that isn't effective yet — without needing to run anything beyond the one HTTP request.
+- **Deterministic, but only inside an actual Oak trunk checkout** (rare outside the Oak project itself —
+  check for a Maven `pom.xml` and an `oak-lucene` module before assuming this is available; a typical AEM
+  application/content project does **not** have this): run the matching unmodified Oak test
+  (`mvn test -pl oak-lucene -Dtest=<Class>#<method>`, needs JDK 17) — `SuggestTest`/`SpellcheckTest`
+  (`oak-lucene/.../jcr/query/`), `FacetTest` (asserts real `FacetResult.getCount()` values),
+  `LucenePropertyIndexTest` (boost, aggregation-exclude, similarity feature-vectors — grep it for the
+  property/flag name), `LuceneDynamicBoostTest`. These give a deterministic pass/fail in seconds and often
+  show you the exact test setup a feature needs (e.g. `SuggestTest` sets `suggestUpdateFrequencyMinutes: 0`
+  specifically to make the suggester rebuild fast enough to test).
+
+If neither is available, reason from this doc's documented defaults and say so plainly rather than guessing.
+
 ---
 
 ## Appendix C: Live Verification Log
