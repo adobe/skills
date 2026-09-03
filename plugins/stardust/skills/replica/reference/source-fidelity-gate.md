@@ -73,7 +73,7 @@ full 3-iter, 2-breakpoint gate is already ≈12–18 live hits, and hard-CDN
 sites (recorded: rimowa/Akamai) escalate to an IP block after a handful.
 The prototype capture is re-taken every iteration.
 
-## Pass bar (all four, per breakpoint)
+## Pass bar (all five, per breakpoint)
 
 1. **content-diff: 0 structural 🔴.** 🟡 (body/EXTRA) and 🟠 (font fork)
    confirmed intended — a substituted licensed font is a permanent justified
@@ -89,6 +89,27 @@ The prototype capture is re-taken every iteration.
    residual, not a pass. A large delta invalidates the % — the overlap crop
    silently discards the tail, so a short prototype can score deceptively
    well. Fix heights before trusting anything else.
+5. **Chrome crop gate: header band AND footer band each ≤ 2% diff (≥98%
+   match, #115).** The full-page bar dilutes the chrome — header/footer are
+   a small share of page pixels but carry disproportionate visual weight
+   and repeat on every page of a rollout. Two field runs shipped
+   full-page-green pages whose chrome measured only 93–97% (lookalike
+   icons, wrong micro-weights, off-by-10px nav rows all fit inside a ≤10%
+   full-page bar). Run `../scripts/crop-compare.mjs` over the SAME stitched
+   captures the pixel probe used — no extra live hit:
+
+   ```bash
+   node scripts/replica/crop-compare.mjs "$GATE/live.png" "$GATE/proto.png" \
+     --y 0 --height <nav-height> --out "$GATE/chrome-header-diff.png"
+   node scripts/replica/crop-compare.mjs "$GATE/live.png" "$GATE/proto.png" \
+     --y <liveDocH - footerH> --y-b <protoDocH - footerH> --height <footerH> \
+     --out "$GATE/chrome-footer-diff.png"
+   ```
+
+   `--y-b` gives the footer crop a per-side offset so a small doc-height
+   delta doesn't contaminate it with a false full-band diff. Read the band
+   heights off the section-anchor probe (`anchor.mjs` prints the footer's
+   `[y, height]` on both sides).
 
 Applied inconsistency-register entries create expected deltas: cross-
 reference the entry ID (`R-<nn>`) when justifying a flag over its zone
@@ -140,6 +161,26 @@ verdict) in one command.
 Section-level compare (crops) is the escalation when a band stays hot and
 the cause isn't visible in `diff-iter<N>.png` — in the validated run it was
 prepared and never needed, because re-authoring hit exact section heights.
+`crop-compare.mjs` (the chrome-gate script, pass-bar item 5) does exactly
+this for any y-band, not just chrome.
+
+## Wide-viewport fluid check (fluid-vs-fixed is invisible at the gate widths, #116)
+
+Both gate breakpoints render a frozen `width: 720px` and an authored
+`width: 50%` byte-identically at 1440 — and 360 collapses both — so a
+computed-style lift that recorded the resolved px instead of the sizing
+MODEL passes every gate and diverges only on wider screens (recorded: a
+live hero card 940px at 1920 vs a frozen 720px; the CTA row wrapped as a
+side effect). After the 1440 pass, run a cheap **box-map spot check at
+≥1920**: sample the text-bearing elements' x/width on both sides (the
+anchor-probe technique at `--width 1920`, or one extra stitched capture)
+and compare — a box whose width scales on live but not on the prototype is
+a frozen fluid value. No full pixel gate is needed at 1920; the box map
+alone catches the mismatch class. Two rules when reading it: compare the
+same DOM tier (EDS/section wrappers are full-width by design and
+false-flag against live INNER containers), and fix upstream — re-lift the
+authored rule per `recreation-procedure.md` § Lift the sizing MODEL, don't
+nudge the px.
 
 ## Iteration discipline
 
@@ -157,6 +198,21 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   the count is already on the verdict line; if it didn't move at all, find
   out why the rule never applied (specificity, wrong selector, value already
   in effect) before spending another round.
+- **Verify geometry fixes on the RULE-BEARING element, cache-free (#117).**
+  One field "parity verified" claim was wrong three ways at once: the probe
+  matched a heuristic element ("white column wider than 400px") that wasn't
+  the box carrying the lifted rule — always pair the same semantic element
+  on both sides (the element the fixed rule targets on the build; the
+  element whose source rule was lifted on live); the re-check ran through a
+  CACHED stylesheet (DevTools showed the old rule at its old line number
+  while both hosts already served the fix) — verify serving out-of-band
+  (`curl --compressed <css-url> | grep '<new-rule>'`; the CSS is
+  gzip-encoded, a bare `curl | grep` scans binary and silently matches
+  nothing) and re-render in a fresh headless context; and a reviewer's
+  screenshot encodes their zoom — back-compute their CSS viewport from any
+  element with a known percentage rule (a card at 851px under `width: 50%`
+  → viewport 1702px) and reproduce THAT viewport headlessly before letting
+  their numbers overturn a fix.
 - Probe schedule per fix round: **pixels every round; content-diff +
   visual-diff at milestones** — iteration 1, after any fix that touched
   content or markup (not pure CSS values), and once at final. Across ~25

@@ -123,6 +123,13 @@ Defenses, in order:
   have `naturalWidth > 0`. A zero-painted image is a named **FAIL**
   line (`--paint warn` downgrades to a warning; do that only with a
   recorded reason in the ledger).
+- Paint is necessary but not sufficient: an image with
+  `naturalWidth > 0` can still RENDER 0×0 (circular flex sizing —
+  the item's width derives from the image while the image's
+  `max-width: 100%` derives from the item — collapses both to
+  zero). When eyeballing, confirm each content image occupies real
+  area; a rendered-size assertion (`clientWidth > 0` on visible
+  content images) closes the gap the string and paint checks share.
 - The **eyeball step must check paint explicitly**: open the
   rendered page (or the `--shot` capture) and look at the images
   themselves, not just the layout — a broken-image icon in a

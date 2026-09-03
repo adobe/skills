@@ -120,6 +120,30 @@ Both were caught only by the gate in UC1-E1; check for them proactively:
   `linear-gradient(transparent 68%, rgba(0,0,0,.45) 80%, #000 100%)`), apply,
   and let the pixel probe confirm the fit.
 
+### Lift the sizing MODEL, not the resolved value (#116)
+
+A computed-style lift records `width: 720px` from an element whose authored
+rule is `width: 50%`. At the gate widths the two are byte-identical — BOTH
+gate breakpoints render them the same — so the frozen value ships invisibly
+and diverges only on wider screens (recorded: a live hero card 940px at
+1920 vs the frozen 720px; the CTA row wrapped as a side effect). The same
+trap applies to DOM: capturing the 1440 layout OUTCOME (a button row that
+wrapped 3+1, authored as two rows / styled with an `.x + .x` sibling rule)
+instead of the layout MODEL (one wrapping flex row) freezes a
+viewport-specific artifact into content and CSS.
+
+- **Lift at TWO widths (e.g. 1440 + 1920) and diff the two lifts.** Any box
+  whose width scales between them is FLUID: find the authored rule
+  (`%` / `vw` / max-width model) in the source CSS and encode the RULE,
+  never the resolved px. Boxes that hold constant are legitimately fixed.
+- **Layout groups get the same test**: if a row's children redistribute
+  between the two widths, the model is a wrapping flex/grid row — author
+  ONE row and let it wrap; never encode the wrap point as structure.
+- The gate-side backstop is the ≥1920 box-map spot check
+  (`source-fidelity-gate.md` § Wide-viewport fluid check) — but the check
+  only catches what this rule prevents; lifting the model up front is the
+  cheap half.
+
 ## Wrap-junction margins (cards-on-a-canvas sites)
 
 Sites built as "cards on a canvas" — white/tinted wrap sections floating on

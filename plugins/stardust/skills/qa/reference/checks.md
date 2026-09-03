@@ -61,6 +61,7 @@ for a judgment pass without re-crawling.
 | `main-collapsed` | error | `<main>` < 50px tall — blank page (gate on rect height, not computed display) |
 | `section-collapsed` | error | content-bearing section renders 0px |
 | `broken-image` | error | `img.complete && naturalWidth === 0` |
+| `zero-size-image` | warn | loaded image (`naturalWidth > 0`) renders 0px wide while in layout — circular flex sizing collapse; the broken-image probe misses it |
 | `upscaled-image` | warn | rendered >2× a <200px source — blurry logo class of bug |
 | `horizontal-overflow` | error (mobile) / warn (desktop) | page scrolls sideways |
 | `page-error` | error | uncaught JS exception |
