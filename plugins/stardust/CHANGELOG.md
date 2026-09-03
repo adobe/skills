@@ -4,7 +4,7 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.19.0 — wijnvoordeel/wijnbeurs field harvest: chrome crop gate, sizing-model lifts, EDS authoring traps
+## 0.18.4 — wijnvoordeel/wijnbeurs field harvest: chrome crop gate, sizing-model lifts, EDS authoring traps
 
 Harvest of three learnings ledgers from a five-design Magento-PageBuilder →
 EDS migration (wijnvoordeel-be/nl + wijnbeurs-nl, 2026-08, published-origin
