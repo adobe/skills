@@ -4,6 +4,35 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.18.5 — migration-flow routing: replica subsumes prepare-migration
+
+Routing-surface fix, no pipeline behaviour change. Field finding
+(swacargo.com, 2026-09-03): asked "how do I migrate X to EDS with
+stardust", the agent correctly proposed `replica` for the keep-the-design
+route but could not say whether `prepare-migration` was also needed — the
+subsumption fact lived only in `replica/SKILL.md`'s Phase 1–5 body, which
+is never in context until replica is already invoked, and `replica` was
+absent from the master skill's routing table altogether. One clarification
+round-trip per migration conversation.
+
+- **Master skill:** routing table gains the missing `replica` and `reskin`
+  rows and marks `prepare-migration` as redesign-flow only. New § Two
+  migration flows — pick one, never mix: redesign
+  (`prepare-migration` → `migrate` → `deploy`/`rollout`) vs. keep-design
+  (`replica` → `migrate` → `deploy`/`rollout`, where replica runs
+  `extract --prep`, a mechanical direction-preservation step, and gated
+  archetype recreation in place of the prep cascade), plus `reskin` for
+  donor-design/same-content. Instructs stating the chosen flow — and that
+  replica needs no separate prep — in the first response.
+- **prepare-migration description:** "Redesign-flow only — for same-design
+  migrations `stardust:replica` runs its own preserve-mode prep cascade;
+  never chain prepare-migration with replica."
+- **replica description:** "subsumes the `stardust:prepare-migration` prep
+  cascade in preserve mode — no separate prep step; never chain the two."
+
+Descriptions are the always-loaded routing surface, so the disambiguation
+now holds even when only the sub-skill frontmatter is in context.
+
 ## 0.18.4 — wijnvoordeel/wijnbeurs field harvest: chrome crop gate, sizing-model lifts, EDS authoring traps
 
 Harvest of three learnings ledgers from a five-design Magento-PageBuilder →
