@@ -262,17 +262,16 @@ approval per the standard prototype approval flow (hands-off mode records
 - **Pages beyond the archetypes** go through `stardust:migrate` at
   **sibling tier** (`../migrate/reference/fidelity-tiers.md`): structural
   clone of the gated archetype + content-fidelity + delivery-lint +
-  media-reconcile. The archetype's source-fidelity gate is what the siblings
-  inherit — never re-author a sibling from scratch. Content-fidelity is
-  **measured per page at import time**
-  (`../migrate/reference/fidelity-tiers.md` § Content-count acceptance)
-  so dropped-content importer bugs surface while the importer is still
-  cheap to fix.
+  media-reconcile. Siblings inherit the archetype's source-fidelity gate —
+  never re-author one from scratch. Content-fidelity is
+  **measured per page at import time** (same file, § Content-count
+  acceptance) so importer bugs surface while cheap to fix.
 - **Delivery** via `stardust:deploy` per page. Bias the decode tier toward
   **template-slotted** for fixed-composition sections (deploy #95): replica
-  sections are by definition fixed compositions matched to a live original;
-  reconstruction freedom is risk with no payoff here. Repeat/authorable
-  groups (cards, listings) stay reconstructive.
+  sections are fixed compositions matched to a live original.
+  Repeat groups (cards, listings) stay reconstructive. **Blocks
+  obey the Experience Workspace editability contract (deploy § 8, EW1–EW10:
+  node-slotting, never value-slotting) and pass `block-roundtrip --ew`.**
 - **Site-wide rollout** via `stardust:rollout`, unchanged — its block dedup
   is what implements "same blocks across the whole site".
 - **The final gate runs against the PUBLISHED origin — not the harness**

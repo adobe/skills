@@ -37,6 +37,12 @@ One entry per learning, four fields:
 - proposed change: `skills/deploy/SKILL.md` § Runtime-detection probe — assert `blockWrapperClass` from `stardust/runtime-contract.json` before generating any block CSS
 - status: folded
 
+### Generated block text uneditable in Experience Workspace
+- failure class: silent-render (authored elements rebuilt from `textContent`/`innerHTML`, so the canvas's `data-prose-index` is lost; every fidelity gate green)
+- evidence: rwe.com 2026-09-03, `da.live/canvas` — 841/1452 authored texts editable over a 29-page sample; 20 stardust blocks 395/970; template-slotted blocks 0 %. Mechanism verified in da.live `editor-utils.js` + da-nx `quick-edit.js`: only elements still carrying their index after `decorate()` become editors; `cloneNode` keeps it (clone-based blocks worked), value-slotting does not. Wrapper selectors written `.x a` instead of `.x :where(a)` flipped link colour (specificity trap); the editor inserts two wrapper divs, so `>`/`:first-child` paths break while editing.
+- proposed change: `skills/deploy/SKILL.md` § 8 — named contract EW1–EW10 (move, wrapper-descendant selectors, CTA `<p>`, strip clones, declared exemptions), node-slotting in § 2b, edit-mode foundation in § 3, `block-roundtrip --ew` + `ew-editability-probe.mjs` gate; brief carries the contract (deploy IMPROVEMENTS #123)
+- status: folded
+
 ## Rules
 
 - **Entries are never deleted.** `folded` entries stay as the audit

@@ -69,7 +69,9 @@ import { chromium } from 'playwright';
 // copies of content-inventory.mjs/diff-profiles.mjs must stay in sync until the diff-skill
 // abrasion PR consolidates them. Keep edits (e.g. the classifier's norm()) applied to both.
 import { resolveProfile } from './diff-profiles.mjs';
-import { inventory, diffInventories, summarise } from './content-inventory.mjs';
+// editableInventory = the Experience Workspace outermost-editable classifier, shared
+// with the deploy gates (section-schema editableTexts, block-roundtrip --ew).
+import { inventory, diffInventories, summarise, editableInventory } from './content-inventory.mjs';
 import { REAL_CHROME_UA, isLiveHttpUrl, defaultWaitUntil, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } from './live-session.mjs';
 
 const USAGE = `usage: node skills/diff/scripts/content-diff.mjs <sourceURL> <buildURL> [options]
@@ -142,6 +144,7 @@ async function grab(browser, url, opts, prof) {
   });
   await page.waitForTimeout(400);
   const inv = await page.evaluate(inventory, [opts.main || prof.mainDefault, prof.eyebrow]);
+  inv.editable = await page.evaluate(editableInventory, [opts.main || prof.mainDefault]);
   await ctx.close();
   return inv;
 }
@@ -166,6 +169,14 @@ async function main() {
   process.stdout.write(`\nContent diff @ ${opts.width}px (profile "${prof.name}", root "${opts.main || prof.mainDefault}")\n`);
   process.stdout.write(`  ${prof.source}: ${summarise(srcInv)}\n`);
   process.stdout.write(`  ${prof.target}: ${summarise(tgtInv)}\n`);
+  // Experience Workspace editability advisory (deploy SKILL.md § Experience Workspace
+  // editability contract): the canvas can only attach an editor to an OUTERMOST
+  // h1-h6/p/ul/ol element that survives decorate(); fewer on the build than on the
+  // source means authored elements were rebuilt/merged into wrappers or text.
+  const srcEd = srcInv.editable ? srcInv.editable.count : 0;
+  const tgtEd = tgtInv.editable ? tgtInv.editable.count : 0;
+  process.stdout.write(`  editable texts (outermost h*/p/ul/ol): ${prof.source} ${srcEd} / ${prof.target} ${tgtEd}\n`);
+  if (tgtEd < srcEd) flags.push({ sev: '🟡', kind: 'EDITABLE COUNT', msg: `${prof.target} has ${tgtEd} outermost editable element(s) vs ${srcEd} in the ${prof.source} — fewer outermost editable elements after decoration usually means authored elements were rebuilt/merged — see deploy SKILL.md § Experience Workspace editability contract (run ew-editability-probe.mjs on the build URL for the per-block verdict).` });
 
   if ((srcInv.items.length < 3 || tgtInv.items.length < 3)) {
     process.stdout.write('\n⚠ one side has almost no content — a blank/failed render; fix that before trusting the diff.\n');
