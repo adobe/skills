@@ -37,10 +37,16 @@ and have drifted from trunk in a few places. This doc:
    - `[PRIVATE?]` — exists in code but looks internal/experimental; flagged so a human can decide
      whether it belongs in the public docs at all.
 3. Every runnable example is something you can paste into a JCR session, `oak-run console`,
-   or an AEM CRXDE Lite / query-debugger call — see [Appendix B](#appendix-b-how-to-test-any-of-this-yourself).
+   or an AEM query-debugger call — see [Appendix B](#appendix-b-how-to-test-any-of-this-yourself). (CRXDE
+   Lite isn't present on AEM as a Cloud Service, so this doc doesn't rely on it — see Appendix B.)
 
 If you only read one thing, read [Section 1 (Mental Model)](#1-mental-model) and
 [Section 8 (Decision Checklist)](#8-decision-checklist-which-index-do-i-need).
+
+**A note on the `http://{host}:{port}` placeholder used throughout the curl examples**: substitute your
+actual AEM instance's address. For a local AEM SDK/quickstart author instance, that default is
+`http://localhost:4502` — swap in `localhost:4503` for a local publish instance, or your real
+author/publish host and port for anything else.
 
 ---
 
@@ -558,16 +564,16 @@ curl -u admin:admin -F"jcr:primaryType=oak:QueryIndexDefinition" -F"type=lucene"
   -F"indexRules/nt:unstructured/properties/uniqueProp/propertyIndex@TypeHint=Boolean" -F"indexRules/nt:unstructured/properties/uniqueProp/propertyIndex=true" \
   -F"indexRules/nt:unstructured/properties/uniqueProp/sync@TypeHint=Boolean" -F"indexRules/nt:unstructured/properties/uniqueProp/sync=true" \
   -F"indexRules/nt:unstructured/properties/uniqueProp/unique@TypeHint=Boolean" -F"indexRules/nt:unstructured/properties/uniqueProp/unique=true" \
-  http://localhost:4502/oak:index/aiDocTestHybrid
+  http://{host}:{port}/oak:index/aiDocTestHybrid
 # ... wait for initial build (reindexCount:1) ...
-curl -u admin:admin -F"jcr:primaryType=nt:unstructured" -F"uniqueProp=dup-value" http://localhost:4502/content/aiDocTest/hybrid/node2   # -> HTTP 201
-curl -u admin:admin -F"jcr:primaryType=nt:unstructured" -F"uniqueProp=dup-value" http://localhost:4502/content/aiDocTest/hybrid/node3   # -> HTTP 201  (should have been rejected!)
+curl -u admin:admin -F"jcr:primaryType=nt:unstructured" -F"uniqueProp=dup-value" http://{host}:{port}/content/aiDocTest/hybrid/node2   # -> HTTP 201
+curl -u admin:admin -F"jcr:primaryType=nt:unstructured" -F"uniqueProp=dup-value" http://{host}:{port}/content/aiDocTest/hybrid/node3   # -> HTTP 201  (should have been rejected!)
 ```
 **After** (index-level `async=["async","sync"]`) — same property flags, now correctly enforced:
 ```bash
-curl -u admin:admin ... -F"async=async" -F"async=sync" -F"async@TypeHint=String[]" ... http://localhost:4502/oak:index/aiDocTestHybrid2
-curl -u admin:admin -F"jcr:primaryType=nt:unstructured" -F"uniqueProp2=dup2" http://localhost:4502/content/aiDocTest/hybrid2/a   # -> HTTP 201
-curl -u admin:admin -F"jcr:primaryType=nt:unstructured" -F"uniqueProp2=dup2" http://localhost:4502/content/aiDocTest/hybrid2/b   # -> HTTP 500 "Unable to commit changes to session." (correctly rejected)
+curl -u admin:admin ... -F"async=async" -F"async=sync" -F"async@TypeHint=String[]" ... http://{host}:{port}/oak:index/aiDocTestHybrid2
+curl -u admin:admin -F"jcr:primaryType=nt:unstructured" -F"uniqueProp2=dup2" http://{host}:{port}/content/aiDocTest/hybrid2/a   # -> HTTP 201
+curl -u admin:admin -F"jcr:primaryType=nt:unstructured" -F"uniqueProp2=dup2" http://{host}:{port}/content/aiDocTest/hybrid2/b   # -> HTTP 500 "Unable to commit changes to session." (correctly rejected)
 ```
 **Practical rule**: to get a working synchronous/unique Lucene property, you need *both* the property-level
 `sync=true`/`unique=true` *and* the index-level `async` set to `["async", "sync"]` (or `"nrt"`) — never just
@@ -815,13 +821,13 @@ apply `limit`/`offset`.
   [oak:scoreExplanation], * from [...] where contains(*, '...')`) — the actual explanation *text* couldn't
   be inspected via the HTTP tooling used here (same `Row` pseudo-column limitation as excerpts/facets),
   so this only confirms the column is accepted, not the content of what it returns.
-- `[GOTCHA]` **tooling caveat, not a product limitation**: this doc's own AEM curl-testable tools both have
-  trouble with literal `explain`/`measure` keywords — `crx/de/query.jsp` 500s on a `stmt` containing either,
-  and the `granite_queryperformance.explain.json` diagnostic endpoint wraps *every* statement in its own
-  `explain` server-side regardless of what you pass it, so a literal `measure select ...` through that
-  endpoint just becomes `explain measure select ...` and never exercises real `MEASURE` scan-count output.
-  To actually exercise `explain`/`measure` semantics, use the JCR API directly
-  (`QueryManager.createQuery(...).execute()`) or `oak-run console`, not these two AEM HTTP endpoints.
+- `[GOTCHA]` **tooling caveat, not a product limitation**: this doc's own AEM curl-testable tool has
+  trouble with literal `explain`/`measure` keywords — the `granite_queryperformance.explain.json`
+  diagnostic endpoint wraps *every* statement in its own `explain` server-side regardless of what you pass
+  it, so a literal `measure select ...` through that endpoint just becomes `explain measure select ...` and
+  never exercises real `MEASURE` scan-count output. To actually exercise `explain`/`measure` semantics, use
+  the JCR API directly (`QueryManager.createQuery(...).execute()`) or `oak-run console`, not this AEM HTTP
+  endpoint.
 - **Keyset pagination** is the documented alternative to `OFFSET` for large result sets (`OFFSET` beyond a
   few hundred rows is a real perf/memory risk): order by an ordered index column + `jcr:path` tiebreaker,
   carry the last seen value as a bind variable for the next page. If there's no natural sort column, use
@@ -1288,27 +1294,27 @@ propIndex (oak:QueryIndexDefinition)
 ## Appendix B: How to Test Any of This Yourself
 
 Two environments were used while writing this doc: this Oak trunk checkout (source reading, `mvn test`),
-and a live AEM author instance at `http://localhost:4502` (admin/admin), bundled Oak **1.88.0**.
+and a live AEM author instance at `http://{host}:{port}` (admin/admin), bundled Oak **1.88.0**.
 
 ### Against a live AEM/Oak instance (no oak-run needed)
 
-**Run any query (XPath or SQL-2)**, via CRXDE Lite's query servlet:
-```bash
-curl -s -u admin:admin -G "http://localhost:4502/crx/de/query.jsp" \
-  --data-urlencode "_dc=1" --data-urlencode "path=/" \
-  --data-urlencode "type=xpath" \
-  --data-urlencode "stmt=/jcr:root/oak:index/*[@type='lucene']" \
-  --data-urlencode "showResults=true"
-```
-`type` can be `xpath` or `JCR-SQL2`. **Do not** put `explain`/`measure` in `stmt` here — this endpoint
-assumes every result row is a real JCR node and 500s on plan-only/measure rows.
+**Run any query (XPath or SQL-2)**: use the Query Performance diagnostic endpoint below with
+`resultCount=true`/`executionTime=true` — it returns a bounded `heuristics` object (row count, timing),
+not the raw result rows themselves, so it can't blow up on a query that matches a huge number of nodes.
+Don't reach for CRXDE Lite's `/crx/de/query.jsp` query servlet for this: it isn't present on AEM as a
+Cloud Service at all (author-tier-only, and disabled in most environments even there), and even where it
+does exist it has no `limit`/`stop` — it reads the *entire* result set into memory before returning
+anything, which is a real resource risk on a query that turns out to be unexpectedly broad (exactly the
+kind of query this skill is often invoked to fix). If you need actual result rows rather than a count, use
+the JCR API directly (`QueryManager.createQuery(...).execute()`, with your own `Query.setLimit(...)`) or
+`oak-run console`, both of which let you bound how much you read back.
 
 **Get an actual query plan + full cost-calculation debug log** (this is the one that matters — it's the
 same information as enabling DEBUG on `org.apache.jackrabbit.oak.query`, without touching log config), via
 the AEM Operations "Query Performance" diagnostic tool's backing servlet:
 ```bash
 curl -s -u admin:admin -X POST \
-  "http://localhost:4502/libs/settings/granite/operations/diagnosis/granite_queryperformance.explain.json" \
+  "http://{host}:{port}/libs/settings/granite/operations/diagnosis/granite_queryperformance.explain.json" \
   --data-urlencode "statement=/jcr:root/oak:index/*[@type='lucene']" \
   --data-urlencode "language=xpath" \
   --data-urlencode "executionTime=false" \
@@ -1323,7 +1329,7 @@ Oak-native, not an AEM-specific tool: `oak-core` registers a standard Apache Fel
 (`IndexDefinitionPrinter.java`, `felix.inventory.printer.name=oak-index-defn`), which the Felix Web
 Console's status-page convention exposes on **any** Sling/Felix-based Oak deployment (AEM included) at:
 ```bash
-curl -s -u admin:admin "http://localhost:4502/system/console/status-oak-index-defn.json"
+curl -s -u admin:admin "http://{host}:{port}/system/console/status-oak-index-defn.json"
 ```
 This dumps every index definition's config (via `IndexPathService.getIndexPaths()`, so it also finds
 **non-root** Lucene/Elastic indexes that a plain `/jcr:root/oak:index/*` query would miss) in the same
@@ -1332,29 +1338,27 @@ This dumps every index definition's config (via `IndexPathService.getIndexPaths(
 the fastest way to get "every index definition a query could plausibly use" without guessing candidate
 index names one at a time.
 
-**Create/modify content or index definitions** via the Sling POST servlet:
+**Create/modify content or index definitions** via the Sling POST servlet — **write operation: ask the
+user for explicit approval before running this against any real instance**, the same way you would before
+any other repository-mutating command; only the read-only commands elsewhere in this appendix (queries,
+`explain`, `status-oak-index-defn.json`, `.json`/`.infinity.json` reads) are safe to run unprompted:
 ```bash
 curl -u admin:admin \
   -F"jcr:primaryType=oak:QueryIndexDefinition" -F"type=property" \
   -F"propertyNames=myProp" -F"propertyNames@TypeHint=Name[]" \
-  http://localhost:4502/oak:index/myIndex
+  http://{host}:{port}/oak:index/myIndex
 ```
 Nested structure in one request via relative-path field names
 (`-F"indexRules/nt:base/properties/status/propertyIndex=true" -F"...@TypeHint=Boolean"`); read back with
-`curl -u admin:admin http://localhost:4502/oak:index/myIndex.json` (add `.infinity.json` for full depth,
+`curl -u admin:admin http://{host}:{port}/oak:index/myIndex.json` (add `.infinity.json` for full depth,
 carefully — can be large).
 
-**Delete**: `curl -u admin:admin -X DELETE http://localhost:4502/path/to/node`.
+**Delete** (write operation — same approval requirement as above):
+`curl -u admin:admin -X DELETE http://{host}:{port}/path/to/node`.
 
 **Caveats**: Lucene/Elastic indexes are async — allow ~5-15s (poll) after a content or index-definition
 change before querying. Property indexes are synchronous — visible immediately. Don't test against a
 shared/production AEM instance without a disposable content namespace and a cleanup step.
-
-`[GOTCHA — testing artifact, not an Oak bug]` the `crx/de/query.jsp` endpoint can return a **stale cached
-empty result** (`{"results":[],"total":0,"success":true}`) for a perfectly valid query if you reuse the same
-`_dc` cache-buster value across requests. Always generate a fresh one per call
-(e.g. `--data-urlencode "_dc=$(date +%s%N)"`), or you'll chase a phantom "no results" bug that's actually
-just HTTP caching.
 
 ### Against a plain Oak checkout (no AEM)
 
@@ -1411,16 +1415,16 @@ curl -u admin:admin -F"jcr:primaryType=oak:QueryIndexDefinition" -F"type=propert
   -F"propertyNames=aiUniqueVal" -F"propertyNames@TypeHint=Name[]" \
   -F"declaringNodeTypes=nt:unstructured" -F"declaringNodeTypes@TypeHint=Name[]" \
   -F"unique@TypeHint=Boolean" -F"unique=true" -F"reindex@TypeHint=Boolean" -F"reindex=true" \
-  http://localhost:4502/oak:index/aiDocTestUniqueProp   # -> HTTP 201
+  http://{host}:{port}/oak:index/aiDocTestUniqueProp   # -> HTTP 201
 
-curl -u admin:admin -F"jcr:primaryType=nt:unstructured" -F"aiUniqueVal=dup" http://localhost:4502/content/aiDocTest/uniq/a   # -> HTTP 201
-curl -u admin:admin -F"jcr:primaryType=nt:unstructured" -F"aiUniqueVal=dup" http://localhost:4502/content/aiDocTest/uniq/b
+curl -u admin:admin -F"jcr:primaryType=nt:unstructured" -F"aiUniqueVal=dup" http://{host}:{port}/content/aiDocTest/uniq/a   # -> HTTP 201
+curl -u admin:admin -F"jcr:primaryType=nt:unstructured" -F"aiUniqueVal=dup" http://{host}:{port}/content/aiDocTest/uniq/b
 # -> HTTP 500, Message: "org.apache.sling.api.resource.PersistenceException: Unable to commit changes to session."
 
 # first-100-characters-only comparison, confirmed:
 V1="$(python3 -c "print('x'*100 + 'AAA')")"; V2="$(python3 -c "print('x'*100 + 'BBB')")"
-curl -u admin:admin -F"jcr:primaryType=nt:unstructured" -F"aiUniqueVal=$V1" http://localhost:4502/content/aiDocTest/uniq/d   # -> HTTP 201
-curl -u admin:admin -F"jcr:primaryType=nt:unstructured" -F"aiUniqueVal=$V2" http://localhost:4502/content/aiDocTest/uniq/e   # -> HTTP 500 (collided on first 100 chars despite differing after char 100)
+curl -u admin:admin -F"jcr:primaryType=nt:unstructured" -F"aiUniqueVal=$V1" http://{host}:{port}/content/aiDocTest/uniq/d   # -> HTTP 201
+curl -u admin:admin -F"jcr:primaryType=nt:unstructured" -F"aiUniqueVal=$V2" http://{host}:{port}/content/aiDocTest/uniq/e   # -> HTTP 500 (collided on first 100 chars despite differing after char 100)
 ```
 Both the basic uniqueness rejection and the "only the first 100 characters are compared" claim from
 property-index.md are confirmed exactly as documented — this is a synchronous, immediate check (no async
@@ -1432,22 +1436,22 @@ wait needed), consistent with property indexes being sync by default.
 # commit 1: create the old index, then the new one with supersedes+reindex
 curl -u admin:admin -F"jcr:primaryType=oak:QueryIndexDefinition" -F"type=property" \
   -F"propertyNames=aiDocTestSupersedeProp1" -F"propertyNames@TypeHint=Name[]" \
-  http://localhost:4502/oak:index/aiDocTestSupersede1
+  http://{host}:{port}/oak:index/aiDocTestSupersede1
 
 curl -u admin:admin -F"jcr:primaryType=oak:QueryIndexDefinition" -F"type=property" \
   -F"propertyNames=aiDocTestSupersedeProp2" -F"propertyNames@TypeHint=Name[]" \
   -F"supersedes=/oak:index/aiDocTestSupersede1" -F"supersedes@TypeHint=String[]" \
   -F"reindex=true" -F"reindex@TypeHint=Boolean" \
-  http://localhost:4502/oak:index/aiDocTestSupersede2
+  http://{host}:{port}/oak:index/aiDocTestSupersede2
 
 # check immediately: index1 still type=property
-curl -u admin:admin http://localhost:4502/oak:index/aiDocTestSupersede1.json
+curl -u admin:admin http://{host}:{port}/oak:index/aiDocTestSupersede1.json
 # => {"type":"property", ...}   <-- NOT yet disabled
 
 # commit 2: any trivial follow-up save
-curl -u admin:admin -F"aiDocTestTouch=1" http://localhost:4502/oak:index/aiDocTestSupersede2
+curl -u admin:admin -F"aiDocTestTouch=1" http://{host}:{port}/oak:index/aiDocTestSupersede2
 
-curl -u admin:admin http://localhost:4502/oak:index/aiDocTestSupersede1.json
+curl -u admin:admin http://{host}:{port}/oak:index/aiDocTestSupersede1.json
 # => {"type":"disabled", ...}   <-- disabled only now, confirming the 2-commit mechanism
 ```
 
@@ -1507,7 +1511,7 @@ All tested under `/content/aiDocTest/lucene/*` content and `/oak:index/aiDocTest
 
 ```bash
 curl -s -u admin:admin -X POST \
-  "http://localhost:4502/libs/settings/granite/operations/diagnosis/granite_queryperformance.explain.json" \
+  "http://{host}:{port}/libs/settings/granite/operations/diagnosis/granite_queryperformance.explain.json" \
   --data-urlencode "statement=/jcr:root/oak:index/*[@type='lucene']" \
   --data-urlencode "language=xpath" --data-urlencode "executionTime=false" \
   --data-urlencode "resultCount=false" --data-urlencode "_charset_=UTF-8"

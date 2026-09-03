@@ -168,8 +168,12 @@ per the final section with verification stated as reasoned-but-unproven.
    Only after the query is as constrained as the use case genuinely allows should the index definition
    itself be widened — widening the index is the more expensive, more permanent change (more storage, more
    indexing time, affects every other query that hits it), while tightening the query text is free and
-   query-request-local.
-9. **Re-verify with `explain`** after applying the change (and after the async cycle, if applicable) —
+   query-request-local. **Producing the corrected index definition (the JSON/content diff) is not the same
+   as applying it** — writing it out for review is fine to do unprompted, but actually pushing it to a live
+   instance (a Sling POST/`curl -F`, a `.content.xml` commit, or any other write) is a repository-mutating
+   change like any other and needs the user's explicit go-ahead first, same as `ai-agent-indexing-guide.md`
+   Appendix B requires for its create/modify/delete commands.
+9. **Re-verify with `explain`** after the change has been applied (and after the async cycle, if applicable) —
    confirm no residual/in-memory filtering remains, and any `ORDER BY` is served by the index, not a full
    in-memory sort.
 

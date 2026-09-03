@@ -160,19 +160,16 @@ line-based `grep -E` cannot express "two keys within 150 chars, possibly across 
 per key), then open each hit and read the surrounding `-B3 -A8` by hand to see whether the keys belong to
 the same predicate map. Slower and noisier, but doesn't silently miss the construction sites.
 
-**Scope this one by file type before running it repo-wide** — `path`/`type` are common JSON keys with no
-JCR meaning at all, and combined with `-U`'s cross-line matching this pattern is the noisiest of the four.
-Live-confirmed on a real ~7000-file repo: unscoped, it returned 6543 hits, almost all noise from
-`package-lock.json`/`*.js`/generic `*.json` (22 hits in `package-lock.json` alone); restricting to the
-languages that actually build QueryBuilder predicate maps (`rg ... -g '*.java' -g '*.jsp' -g '*.js' -g
-'!**/target/**' -g '!**/node_modules/**' -g '!package-lock.json'`) cut it to 1533 (dropping to 1206 if you
-narrow further to `-g '*.java'` alone, since Java is where most real predicate-map construction lives in
-an AEM codebase) — still noisy enough to
-need the `-B3 -A8`-and-read-by-hand step above, but tractable. Don't skip the scoping flags and conclude
-the pattern is useless from an unscoped run's noise; the real signal is in there — e.g. this exact scoped
-command found a genuine, otherwise-invisible-to-Technique-1 QueryBuilder call in this repo
-(`tests/testing-clients/.../DAMClient.java`: `params.add("1_group.2_tagsearch.property", ...)`, a REST-style
-predicate map with no `createQuery(`/`PredicateGroup.create(` anywhere in the file).
+**Scope this one by file type before running it repo-wide** — `path`/`type` are common JSON/config keys
+with no JCR meaning at all, and combined with `-U`'s cross-line matching this pattern is the noisiest of
+the four; run unscoped and expect heavy noise from `package-lock.json`, generic `*.json`, and `*.js`.
+Restrict to the languages that actually build QueryBuilder predicate maps and exclude generated/vendored
+files, e.g. `rg ... -g '*.java' -g '*.jsp' -g '*.js' -g '!**/target/**' -g '!**/node_modules/**' -g
+'!package-lock.json'` (adjust the excludes to your stack's lockfiles/build output). Even scoped, expect
+enough noise that you still need the `-B3 -A8`-and-read-by-hand step above — don't skip the scoping flags
+and conclude the pattern is useless because an unscoped run is noisy; the real signal (a predicate map
+built from numeric-prefixed literal keys, in a file with no `createQuery(`/`PredicateGroup.create(` call
+for Technique 1 to anchor on) is still in there.
 
 This flags a hit on the *first* two keys in a block. Pull `-B3 -A8` context
 and read the whole predicate map by hand — don't trust the snippet alone.
