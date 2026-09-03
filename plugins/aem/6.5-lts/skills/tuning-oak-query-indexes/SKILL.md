@@ -1,8 +1,8 @@
 ---
 name: tuning-oak-query-indexes
-description: Use when a Jackrabbit Oak/AEM JCR query is slow, logs a traversal warning, or you're adding/changing a query and need to check or update its property/Lucene/Elastic index definition so the query is answered by the index instead of in-memory filtering or sorting.
+description: Use when a Jackrabbit Oak/AEM JCR query is slow, logs a traversal warning, or you're adding/changing a query and need to check or update its property/Lucene index definition so the query is answered by the index instead of in-memory filtering or sorting.
 license: Apache-2.0
-compatibility: Any Jackrabbit Oak-backed repository (AEM 6.5 LTS/AMS or AEM as a Cloud Service) using property, Lucene, or Elastic query indexes.
+compatibility: Any Jackrabbit Oak-backed repository (AEM 6.5 LTS/AMS or AEM as a Cloud Service) using property or Lucene query indexes.
 ---
 
 # Tuning Oak Query Indexes
@@ -100,10 +100,10 @@ per the final section with verification stated as reasoned-but-unproven.
    - **Nodetype scoping**: does the query's own `FROM`/`element()` restriction name the index's declared
      type (or a subtype)? If the query is unrestricted (bare `*` / implicit `nt:base`) but the index only
      declares rules for one type (`declaringNodeTypes` on a property index, or `indexRules` not including
-     `nt:base` on Lucene/Elastic), the index is invisible to the planner — cost `Infinity`, or absent from
+     `nt:base` on Lucene), the index is invisible to the planner — cost `Infinity`, or absent from
      the candidate list entirely. Fix by adding the nodetype restriction to the query, not by changing the
      index.
-   - **Path scoping** (Lucene/Elastic only): do `includedPaths` and `queryPaths` match each other, and
+   - **Path scoping** (Lucene only): do `includedPaths` and `queryPaths` match each other, and
      does the query's actual path restriction fall inside them? Leaving `queryPaths` at its default (`/`)
      while narrowing only `includedPaths` is worse than not being selected — the index gets picked outside
      its real coverage and silently returns fewer results than actually exist.
@@ -179,7 +179,7 @@ per the final section with verification stated as reasoned-but-unproven.
 
 ## Field construct → required index flag
 
-| Query construct | Property index (`type=property`) | Lucene/Elastic property definition |
+| Query construct | Property index (`type=property`) | Lucene property definition |
 |---|---|---|
 | Equality / `IN` | in `propertyNames` | `propertyIndex: true` |
 | `IS NOT NULL` | in `propertyNames` (property index has no dedicated existence-only flag) | `propertyIndex: true`, **or** the cheaper `notNullCheckEnabled: true` alone if you never need equality/range/ordering on the value — see the cost note below |
@@ -207,7 +207,7 @@ surface the tradeoff when a proposed change triggers one of these, don't just ad
 | `evaluatePathRestrictions` | Slight but real per-document storage increase (stores ancestor-path terms). Only enable on indexes that actually need native path-restriction evaluation (§4.2's `queryPaths` correctness case), not by default. |
 | `ordered` on a property | Increases index size (doc-values field per ordered property). Intended for single-valued properties only — but enabling it on a multi-valued one does **not** hard-fail: it just logs a `WARN` and skips the doc-values field for that document, so `ORDER BY` silently degrades to an unpredictable position for multi-valued documents instead of erroring. Only mark properties `ordered` that a real `ORDER BY` actually uses, and don't rely on a hard failure to catch a multi-valued mistake — check your data. |
 | Many properties in one broad index "just in case" | Bigger index, slower indexing, and — per the nodetype/path scoping gotchas above — no selection benefit if the query doesn't ask for them. Prefer narrow, cohesive indexes over one large catch-all. |
-| A single Lucene index approaching **~2^31 documents** | Hard ceiling in the Lucene version Oak ships — the index can stop being openable past this. Split into multiple narrower (nodetype- or path-scoped) indexes, or use Elastic, which doesn't have this limit (Solr used to be the other escape hatch; it was removed in Oak 1.82). |
+| A single Lucene index approaching **~2^31 documents** | Hard ceiling in the Lucene version Oak ships — the index can stop being openable past this. Split into multiple narrower (nodetype- or path-scoped) indexes (Solr used to be an escape hatch for this; it was removed in Oak 1.82). |
 | Long text values with no `maxFieldLength` override | Only the first ~10000 terms per field are indexed by default — a large document field is silently truncated, not indexed in full, which can produce fulltext misses on content past that boundary. |
 | `propertyIndex: true` used purely for `IS NOT NULL`/`IS NULL`, with no equality/range/ordering ever needed | Wastes storage — `propertyIndex` indexes every distinct *value* as its own term in a dedicated field. `notNullCheckEnabled`/`nullCheckEnabled` alone (no `propertyIndex` needed) do the same existence check via one lightweight, unstored term in a *shared* field across the whole index (`:notNullProps`/`:nullProps`) — genuinely cheaper, live-confirmed to work standalone. The flip side: `nullCheckEnabled` on a broad/generic nodetype where the property is rarely set can itself create an entry for nearly every document (an entry per node *without* the value) — scope it to a narrow nodetype. |
 

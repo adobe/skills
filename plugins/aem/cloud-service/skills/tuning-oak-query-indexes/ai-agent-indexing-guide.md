@@ -19,8 +19,13 @@
 
 This is a **single-file, task-oriented rewrite** of the public Oak query/indexing docs
 ([Query Engine][pub-qe], [XPath Grammar][pub-xp], [SQL-2 Grammar][pub-sql2], [Indexing][pub-idx],
-[Lucene Index][pub-lucene], [Elastic Index][pub-elastic], [Property Index][pub-prop],
+[Lucene Index][pub-lucene], [Property Index][pub-prop],
 [Hybrid Index][pub-hybrid], [Oak-Run Indexing][pub-oakrun]).
+
+**Scope note:** this rewrite covers property and Lucene indexes only. Oak's Elastic index type is
+intentionally out of scope — Lucene is the default and by far the most common index type in AEM
+deployments, and keeping Elastic out lets every claim below stay scoped to what was actually
+live-verified.
 
 **Why this doc exists:** the public docs are spread over 9 pages, assume a lot of background,
 and have drifted from trunk in a few places. This doc:
@@ -56,7 +61,6 @@ author/publish host and port for anything else.
 2. [Index Definitions: the Common Shape](#2-index-definitions-the-common-shape)
 3. [Property Index](#3-property-index)
 4. [Lucene Index](#4-lucene-index)
-5. [Elastic Index](#5-elastic-index)
 6. [Hybrid / Synchronous / NRT Indexing](#6-hybrid--synchronous--nrt-indexing)
 7. [Async Indexing Machinery](#7-async-indexing-machinery)
 8. [Decision Checklist: Which Index Do I Need?](#8-decision-checklist-which-index-do-i-need)
@@ -85,8 +89,8 @@ author/publish host and port for anything else.
 - Oak does **not** index everything by default (unlike Jackrabbit 2). If there's no usable index for
   a query, Oak **traverses** the repository (walks every node under the query's path restriction and
   evaluates constraints in Java) — the query still works, but can be very slow at scale.
-- Index definitions live under `oak:index` nodes. `oak:index` can exist at **any** path (Lucene/Elastic
-  support this; property indexes only work at the repository root `/oak:index`), and an `oak:index` node
+- Index definitions live under `oak:index` nodes. `oak:index` can exist at **any** path (Lucene
+  supports this; property indexes only work at the repository root `/oak:index`), and an `oak:index` node
   found at a given path only indexes content under that path.
 - Every query is planned by a **cost-based optimizer**: each available index estimates a cost to answer
   the query; the query engine picks the cheapest plan (traversal is itself modeled as an index with a cost
@@ -103,7 +107,7 @@ author/publish host and port for anything else.
   | Mode | Consistency | Used by |
   |---|---|---|
   | **Synchronous** | Index updated in the same commit as the content | `property`, `reference` |
-  | **Asynchronous** | Index updated by a periodic background job (default every 5s), eventually consistent | `lucene`, `elasticsearch` |
+  | **Asynchronous** | Index updated by a periodic background job (default every 5s), eventually consistent | `lucene` |
   | **Near-Real-Time (NRT)** | A small in-memory/local Lucene index per cluster node, refreshed every 1-2s, unioned with the async persisted index at query time | `lucene` only, opt-in via `async` property |
 
 ---
@@ -115,7 +119,7 @@ author/publish host and port for anything else.
 ```
 /oak:index/<indexName>
   - jcr:primaryType = "oak:QueryIndexDefinition"   (mandatory)
-  - type            = "property" | "lucene" | "elasticsearch" | "disabled" | "reference" | "counter"
+  - type            = "property" | "lucene" | "disabled" | "reference" | "counter"
   - async           (string, multi)   sync if absent; async lane name; "nrt"/"sync" for NRT
   - reindex         (boolean)         set true to force a full reindex
 ```
@@ -130,7 +134,7 @@ author/publish host and port for anything else.
   `async` = a custom lane (see [Section 7](#7-async-indexing-machinery)). Can also be a **multi-valued**
   array combining a lane name with an NRT mode, e.g. `["async", "nrt"]` or `["async", "sync"]`.
 - Index location matters: an `oak:index` node under `/content/foo/oak:index/bar` only indexes/queries
-  content under `/content/foo`. Only **lucene** and **elasticsearch** support non-root index locations;
+  content under `/content/foo`. Only **lucene** supports non-root index locations;
   **property** indexes must be at `/oak:index`.
 
 ---
@@ -431,7 +435,7 @@ will silently miss it, with no error or warning anywhere.
 
 ### 4.10 Non-root indexes, Native Query selection, Persistence, CopyOnRead/Write
 
-- Non-root: put `oak:index` under any content path to scope both indexing and (for lucene/elastic) query
+- Non-root: put `oak:index` under any content path to scope both indexing and (for lucene) query
   eligibility to that subtree — good for multi-tenant repos.
 - `functionName` (`@deprecated 1.46`) lets `rep:native('<functionName>', '<lucene query>')` target one
   specific Lucene index by name when several are registered.
@@ -454,47 +458,6 @@ will silently miss it, with no error or warning anywhere.
   avoid remote-NodeStore read/write latency during query/indexing; configured via the
   `LuceneIndexProviderService` OSGi PID.
 
----
-
-## 5. Elastic Index
-
-`[PUBLIC]` (elastic.md), spot-checked against `ElasticIndexDefinition.java` — no inaccuracies found in the
-differences list. Elastic reuses most of the Lucene index-definition vocabulary (`indexRules`, property
-definitions, `analyzers`, aggregation) through the shared `oak-search` module, but:
-
-- `type = "elasticsearch"`; must live at `/oak:index` (no non-root indexes); `async` must be exactly
-  `"elastic-async"` (no sync/nrt lanes); **not** auto-built on save — you must set `reindex=true` or (the
-  recommended path) drive it via `oak-run` — see `[CODE]` note in [Section 16](#16-oak-run-indexing-tool):
-  oak-run has Elastic-specific connection flags (`--scheme`, `--host`, `--port`, `--apiKeyId`,
-  `--apiKeySecret`, `--indexPrefix`) that **oak-run-indexing.md never mentions at all** — this is a real
-  documentation gap, not just an omission of detail.
-- Ignored properties (accepted but no-op, for Lucene index-definition compatibility during migration):
-  `codec`, `compatVersion`, `useIfExists`, `blobSize`, `name`, `indexPath`. `refresh` is also ignored because
-  Elastic index-definition changes take effect immediately (no "effective/stored definition" snapshotting).
-- `evaluatePathRestrictions` cannot be turned off — path restrictions are always evaluated at the index
-  level when possible.
-- Field-count limit: Elasticsearch caps fields per index at **1000** by default
-  (`index.mapping.total_fields.limit`, overridable via `limitTotalFields` — raising it is discouraged, it
-  risks ES-side memory issues). Wide regex property definitions can blow through this; set `isFlattened=true`
-  to store all matches of a regex property under one ES `flattened` field instead of one field each. Trade-off:
-  flattened fields only support filter queries, treat all values as string keywords (so numeric `range`
-  becomes lexicographic!), don't support wildcard key lookups or highlighting, and `isFlattened` is silently
-  forced back to `false` if `analyzed=true` on the same property (flattened fields can't be full-text
-  analyzed).
-- `dynamicBoost` timing differs: Lucene boosts at **index time**; Elasticsearch boosts at **query time**. To
-  use dynamic-boost values purely as a relevance signal without affecting which documents match, set
-  `{"dynamicBoost": true, "useInFullTextQuery": false}`.
-- `sync`/`unique` on property definitions are accepted but **ignored** — no synchronous/hybrid indexing on
-  Elastic.
-- Suggestions update immediately on Elastic (no `suggestUpdateFrequencyMinutes` delay like Lucene's default
-  10-minute suggester rebuild).
-- 🔒 `[CODE]` **Elastic-only KNN vector search properties**, not in elastic.md at all: `similarityMetric`,
-  `similarity`, `k`, `candidates` on `ElasticPropertyDefinition` — a native Elasticsearch dense-vector KNN
-  search path distinct from Lucene's approximate-nearest-neighbor `useInSimilarity` mechanism (§4.8-adjacent).
-  Everything else elastic.md claims about ignored/no-op properties was confirmed accurate against
-  `ElasticIndexDefinition.java`.
-
----
 
 ## 6. Hybrid / Synchronous / NRT Indexing
 
@@ -619,9 +582,8 @@ one or the other.
 |---|---|
 | Exact/range match on one property, must be visible in the **same commit**, or need a **uniqueness constraint** | Property index (sync) |
 | Same as above, but only *one* property in an existing Lucene index needs sync guarantees and you don't want a whole separate index | Lucene property definition with `sync=true` (§6) |
-| Full-text search (`contains`) | Lucene or Elastic (fulltext) |
+| Full-text search (`contains`) | Lucene (fulltext) |
 | Structured queries (equality/range/sort) at scale, self-hosted Lucene fine, no need for external cluster | Lucene |
-| Structured + full-text at scale, willing to run/operate an Elasticsearch cluster, need field-count/scale headroom Lucene sparse-field storage doesn't give you | Elastic |
 | Query needs the result "soon" (1-2s) without paying full sync cost, single- or multi-cluster-node | Lucene with `async=["<lane>","nrt"]` |
 | Node type restriction only, few nodes of that type expected | add nodetype to the built-in `nodetype` index (property index under the hood) |
 | A query is known to traverse a small, bounded number of nodes | no index needed — use `option(traversal ok)` |
@@ -635,7 +597,7 @@ examples — **this generalizes across property indexes *and* Lucene indexes**, 
 single most common reason a seemingly-correct, seemingly-precise index doesn't get picked:
 
 > **If an index is scoped to a specific nodetype (`declaringNodeTypes` on a property index, or an
-> `indexRules/<nodeType>` block on a Lucene/Elastic index that doesn't include `nt:base`), the index is
+> `indexRules/<nodeType>` block on a Lucene index that doesn't include `nt:base`), the index is
 > only even *considered* by the cost planner if the query *itself* explicitly restricts to that nodetype
 > (or a subtype of it) — in the query text, not just in the actual shape of the underlying content.**
 
@@ -879,7 +841,7 @@ JMX, but no test query visibly picked up mapped defaults; the asymmetry above is
 itself unconfirmed.)
 
 Also present, `[CODE]` `[PRIVATE?]` `[LIVE]`: `QueryEngineSettingsMBean.strictPathRestriction` (`ENABLE`/
-`WARN`/`DISABLE`, default `DISABLE`). When `ENABLE`, a Lucene/Elastic index plan is **rejected outright**
+`WARN`/`DISABLE`, default `DISABLE`). When `ENABLE`, a Lucene index plan is **rejected outright**
 (forcing a different plan, possibly traversal) if the query's path filter doesn't line up with that
 index's own `queryPaths`; `WARN` logs instead of rejecting. This is the runtime enforcement of exactly the
 pitfall lucene.md warns about under "Avoid overlapping index definition" (§4.2 above) — but the JMX knob to
@@ -988,7 +950,7 @@ per-query knob.
   `indexSimilarityBinaries`/`indexSimilarityStrings` (`[CODE]`, default `true` each) toggle whether
   binary-encoded vs. string-encoded vectors get indexed at all — not in lucene.md's similarity section.
 - **Spellcheck**/**Suggest**: `useInSpellcheck`/`useInSuggest` per property, compatVersion 2 required.
-  Suggestions rebuild every `suggestUpdateFrequencyMinutes` (default 10) on Lucene (immediate on Elastic).
+  Suggestions rebuild every `suggestUpdateFrequencyMinutes` (default 10) on Lucene.
   Both support a very limited subtree scoping via `evaluatePathRestrictions=true` — internally implemented
   as "filter the top 10 candidates", so a subtree query can legitimately return **zero** results even though
   matches exist deeper in the ranked list.
@@ -1034,7 +996,7 @@ definition, then `resume()`.
 ## 16. oak-run Indexing Tool
 
 `[PUBLIC]` (oak-run-indexing.md) is explicitly labeled **work in progress, not for production**. `[CODE]`
-found substantially more flags than documented (see `IndexOptions`/`ElasticIndexOptions` in
+found substantially more flags than documented (see `IndexOptions` in
 `oak-run-commons`) — the delta below is the actual gap, not the full flag list (run `--help` for that):
 
 | Flag | Purpose |
@@ -1045,7 +1007,6 @@ found substantially more flags than documented (see `IndexOptions`/`ElasticIndex
 | `--enable-cow-cor` | Enable CopyOnWrite/CopyOnRead (§4.10) during an oak-run indexing run. |
 | `--ignore-missing-tika-dep` | Continue even if the Tika classpath dependency (§ Tika Setup) is missing. |
 | `--existing-data-dump-dir` | Reuse a previously captured DocumentStore dump instead of re-traversing. |
-| `--scheme`, `--host`, `--port`, `--apiKeyId`, `--apiKeySecret`, `--indexPrefix` | **Elastic-specific** connection flags for reindexing an `elasticsearch`-type index via oak-run — elastic.md tells you to "use oak-run" for building Elastic indexes but neither doc explains how; these flags are how. |
 
 Documented flags (`--index-paths`, `--index-info`, `--index-definitions`, `--index-dump`,
 `--index-consistency-check[=1|2]`, `--reindex`, `--read-write`, `--checkpoint`, `--index-definitions-file`,
@@ -1150,7 +1111,7 @@ this pass (judged too disruptive/uncertain to invoke experimentally on a shared 
 a human knows they exist before reaching for a full reindex or a lane-config change to solve a problem one
 of these might address more directly.
 
-**Additional Lucene/Elastic index-definition properties** (`FulltextIndexConstants`/`LuceneIndexConstants`),
+**Additional Lucene index-definition properties** (`FulltextIndexConstants`/`LuceneIndexConstants`),
 not in lucene.md's canonical property lists at all:
 
 | Property | Level | `[CODE]`/`[PRIVATE?]` | What it does |
@@ -1257,7 +1218,6 @@ propNode (nt:unstructured)
   - stats (string, JSON)                          {"common":{"value": pct}}
   - function (string)
   - dynamicBoost (boolean)
-  - useInFullTextQuery (boolean)                  [with dynamicBoost, Elastic-relevant]
   - useInSimilarity (boolean)
   - similarityTags (boolean)
   - similarityRerank (boolean) = true
@@ -1332,7 +1292,7 @@ Console's status-page convention exposes on **any** Sling/Felix-based Oak deploy
 curl -s -u admin:admin "http://{host}:{port}/system/console/status-oak-index-defn.json"
 ```
 This dumps every index definition's config (via `IndexPathService.getIndexPaths()`, so it also finds
-**non-root** Lucene/Elastic indexes that a plain `/jcr:root/oak:index/*` query would miss) in the same
+**non-root** Lucene indexes that a plain `/jcr:root/oak:index/*` query would miss) in the same
 `nam:`/`str:`/`dat:`/`pat:`/`uri:` type-prefixed JSON encoding documented in §16's JSON File Format table
 — hidden storage nodes (`:data`, `:index`) are excluded, so it's cheap even on a large repository. This is
 the fastest way to get "every index definition a query could plausibly use" without guessing candidate
@@ -1356,7 +1316,7 @@ carefully — can be large).
 **Delete** (write operation — same approval requirement as above):
 `curl -u admin:admin -X DELETE http://{host}:{port}/path/to/node`.
 
-**Caveats**: Lucene/Elastic indexes are async — allow ~5-15s (poll) after a content or index-definition
+**Caveats**: Lucene indexes are async — allow ~5-15s (poll) after a content or index-definition
 change before querying. Property indexes are synchronous — visible immediately. Don't test against a
 shared/production AEM instance without a disposable content namespace and a cleanup step.
 
@@ -1405,8 +1365,7 @@ Each entry lists the feature, the exact command, and the key evidence.
 
 *(Live verification passes for property-index.md, lucene.md, and query-engine.md are complete as of this
 revision — see the three sections below. Diff Indexes (indexing.md, requires Oak ≥ 1.92) remains code-verified
-only, since the AEM instance used here bundles Oak 1.88.0; Elastic (elastic.md) likewise remains code-verified
-only, since no Elasticsearch cluster/bundle was available in this environment.)*
+only, since the AEM instance used here bundles Oak 1.88.0.)*
 
 ### Property index `unique` (§3) — `[LIVE]` confirmed
 
@@ -1535,7 +1494,6 @@ confirming: cost-based selection across multiple candidate Lucene indexes really
 [pub-sql2]: https://jackrabbit.apache.org/oak/docs/query/grammar-sql2.html
 [pub-idx]: https://jackrabbit.apache.org/oak/docs/query/indexing.html
 [pub-lucene]: https://jackrabbit.apache.org/oak/docs/query/lucene.html
-[pub-elastic]: https://jackrabbit.apache.org/oak/docs/query/elastic.html
 [pub-prop]: https://jackrabbit.apache.org/oak/docs/query/property-index.html
 [pub-hybrid]: https://jackrabbit.apache.org/oak/docs/query/hybrid-index.html
 [pub-oakrun]: https://jackrabbit.apache.org/oak/docs/query/oak-run-indexing.html
