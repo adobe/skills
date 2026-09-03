@@ -4,6 +4,49 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.19.0 — wijnvoordeel/wijnbeurs field harvest: chrome crop gate, sizing-model lifts, EDS authoring traps
+
+Harvest of three learnings ledgers from a five-design Magento-PageBuilder →
+EDS migration (wijnvoordeel-be/nl + wijnbeurs-nl, 2026-08, published-origin
+gated). The headline failure class: **small-area, high-salience defects that
+pass the full-page bar** — both pilot runs shipped "green" pages whose
+header/footer measured only 93–97% match, and a frozen `width:720px` lifted
+from an authored `width:50%` passed both gate breakpoints byte-identically.
+All changes are site-agnostic; deploy improvements #115–#122.
+
+- **Replica:** new `scripts/crop-compare.mjs` (per-y-band pixelmatch,
+  per-side offsets, default bar 2%); the pass bar gains item 5 — header AND
+  footer bands each ≥98% over the same stitched captures, no extra live hit
+  (#115). New § Wide-viewport fluid check: a ≥1920 box-map spot check
+  catches fluid-vs-fixed width freezes both standard breakpoints render
+  identically (#116). Recreation procedure gains § Lift the sizing MODEL,
+  not the resolved value (two-width lift diff; encode the authored
+  `%`/`vw`/max-width rule, never the resolved px; layout models, not
+  wrap outcomes). Iteration discipline gains geometry-fix verification
+  hygiene — rule-bearing element, cache-free serving check
+  (`curl --compressed | grep`), back-computed reviewer viewport (#117).
+- **Deploy:** ENCODE contract — never author `<hr>` (it is the section
+  delimiter; fractures the section at ingestion — lint 🔴, rule `HR`,
+  #119); rehost assets only from the CAPTURED src and diff
+  dimensions/bytes after fetch (commerce CDNs answer 200 with a generic
+  fallback for guessed paths, #118). Step 3 — one section-metadata `style`
+  value per section (multi-value delivered only the first class; anchor a
+  second axis with content-scoped `:has()`, #120); empty-section
+  `display` overrides must scope to `[data-section-status='loaded']` or
+  they defeat pre-load hiding (measured 0.75 CLS, #121). Step 10 gains the
+  chrome crop gate, the ≥1920 box check, and the verification-hygiene
+  items. The deployed computed-style guard also asserts `clientWidth > 0`
+  per visible loaded image — loaded ≠ rendered; circular flex sizing
+  collapses an image to 0×0 with `naturalWidth` still > 0 (#122).
+  `sanitise.js` now refuses >2 arguments: the two-arg <input> <output>
+  convention made a 3-file batch silently overwrite the second file with
+  the first's content.
+- **QA:** new `zero-size-image` check (warn) — loaded image renders 0px
+  wide while participating in layout (`getClientRects()` guards against
+  display:none false-flags).
+- **Reskin:** Image-paint gate documents the same loaded-≠-rendered blind
+  spot (paint asserts `naturalWidth`, not rendered area).
+
 ## 0.18.3 — dual-session field harvest: consent fallback, gate identity assertion, capture-freeze hardening
 
 Harvest of two independent replica+deploy sessions (rwe.com and centene.com,

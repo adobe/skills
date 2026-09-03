@@ -1009,3 +1009,80 @@ never applied, no error anywhere.
 **Fix applied:** block-brief template warns: keep wrapper resets at LOWER
 specificity than the block's own rules (`:where()` them down), and check any
 `> div` reset against every rule it might shadow.
+
+### #115 🔴 Full-page pixel bar dilutes chrome — header/footer shipped at 93–97% while pages gated green ✅
+**Where:** wijnvoordeel/wijnbeurs migrations (e-luscious, 2026-08). The
+header/footer are a small share of page pixels but carry disproportionate
+visual weight and repeat on every page of a rollout; hand-drawn lookalike
+icons, wrong micro-weights, and off-by-10px nav rows all fit inside the ≤10%
+full-page bar. Both field runs shipped "green" pages with visibly-off chrome.
+**Fix applied:** new `replica/scripts/crop-compare.mjs` (per-y-band
+pixelmatch with per-side offsets, default bar 2%); replica pass bar gains
+item 5 (header + footer bands each ≥98%, over the same stitched captures);
+deploy Step 10 gains the chrome crop gate (per template minimum).
+
+### #116 🔴 Computed-style lift freezes fluid widths — invisible at both gate breakpoints ✅
+**Where:** wijnbeurs.nl migration. A lift recorded `width: 720px` from an
+element authored `width: 50%`; 1440 and 360 render both identically, so the
+frozen value shipped and diverged only at ≥1920 (live hero card 940px vs
+720px; CTA row wrapped as a side effect). Same trap on DOM: the 1440 layout
+OUTCOME (a 3+1-wrapped button row authored as two rows) captured instead of
+the layout MODEL (one wrapping flex row).
+**Fix applied:** recreation-procedure gains § Lift the sizing MODEL (lift at
+two widths, diff, encode the authored rule); source-fidelity-gate gains the
+≥1920 box-map spot check (same-DOM-tier rule included); deploy Step 10 item
+5 mirrors it on the deployed URL.
+
+### #117 🟠 Geometry-fix verification: wrong element, cached CSS, reviewer-zoom viewport — one claim wrong three ways ✅
+**Where:** wijnbeurs.nl migration. A "parity verified" claim probed a
+heuristically-matched element instead of the rule-bearing one; the re-check
+read a CACHED block stylesheet (DevTools showed the old rule while both
+hosts served the fix); and the reviewer's screenshot encoded a zoomed
+viewport — their numbers contradicted a correct fix until back-computed
+(card 851px under `width:50%` → viewport 1702px) and reproduced headlessly.
+**Fix applied:** deploy Step 10 item 6 + a replica iteration-discipline
+bullet: pair the rule-bearing element on both sides, verify serving with
+`curl --compressed | grep` (bare curl greps gzip binary and matches
+nothing), re-render in a fresh headless context, back-compute the
+reviewer's viewport from any known %-rule element.
+
+### #118 🟠 Guessed asset URLs ship wrong pixels — CDNs answer 200 with a generic fallback ✅
+**Where:** wijnvoordeel.nl migration. Six product images were uploaded from
+GUESSED catalog URLs; the commerce CDN answered 200 with the same generic
+placeholder for all six — no error anywhere, wrong pixels shipped.
+**Fix applied:** ENCODE contract → Images: rehost only from the exact
+captured URL string (lift/extract map), and diff the fetched asset's
+dimensions + byte size against the captured copy before uploading.
+
+### #119 🔴 Authored `<hr>` is the section delimiter — it silently fractures the section ✅
+**Where:** wijnbeurs.nl migration. An `<hr>` authored inside a section split
+it into multiple sections at ingestion; every downstream section
+selector/style broke.
+**Fix applied:** ENCODE contract rule (draw rules in CSS via an empty styled
+section); `davids-model-lint.mjs` flags any `<hr>` as 🔴 (rule `HR`) and
+`hr` left the prose-expressible tag set.
+
+### #120 🟠 Multi-value section-metadata `style` delivers only the first class ✅
+**Where:** wijnbeurs.nl migration. `style: a, b` (comma- or space-separated)
+delivered only `a` on a real stack.
+**Fix applied:** Step 3: one `style` value per section; a second styling
+axis anchors to content (`main .section.a:has(img[alt^="…"])` — 
+content-anchored `:has()` survives the metadata pipeline).
+
+### #121 🔴 Unscoped empty-section `display` override defeats pre-load hiding — 0.75 CLS ✅
+**Where:** wijnbeurs.nl migration. `main .section.x { display:block
+!important }` (needed against `:empty { display:none }`) also defeated the
+runtime's pre-load hiding (`data-section-status`), painting the section
+before the rest of the page — measured 0.75 CLS.
+**Fix applied:** Step 3: always scope the override to
+`main .section.x[data-section-status='loaded']`.
+
+### #122 🟡 Loaded ≠ rendered — an img with naturalWidth > 0 can render 0×0 ✅
+**Where:** wijnvoordeel.be migration. A flex item's width derived from the
+image while the image's `max-width:100%` derived from the item — circular
+sizing collapsed to zero; `.plain.html` checks and the `naturalWidth === 0`
+broken-image probe both passed.
+**Fix applied:** the deployed computed-style guard also asserts
+`clientWidth > 0` per visible loaded image; qa gains the `zero-size-image`
+check (in-layout via `getClientRects()` so display:none images don't
+false-flag); reskin's Image-paint gate documents the same blind spot.
