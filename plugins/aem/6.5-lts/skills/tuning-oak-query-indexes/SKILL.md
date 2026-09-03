@@ -80,6 +80,18 @@ per the final section with verification stated as reasoned-but-unproven.
    `IS NOT NULL`, `ORDER BY` columns, `contains(...)`/fulltext, `rep:facet`/`rep:similar`/`rep:suggest`/
    `rep:spellcheck`, path restriction (`ISDESCENDANTNODE`/`//`), and the query's own nodetype restriction
    (`FROM [type]` / XPath `element(*, type)`).
+   - **AEM QueryBuilder predicate maps — the field name is usually a *value*, not a key.** For the
+     `property`, `relativedaterange`, `daterange`, `boolproperty`, and `similar` predicate types, the map
+     key (`1_property`, `5_relativedaterange.property`, ...) is just the predicate-type token plus its
+     group index — it names *which predicate*, not *which JCR property*. The actual field the index needs
+     to cover is the **string value** assigned to that key, e.g. `map.put("1_property",
+     "jcr:content/hasValidMetadata")` → the field to check index coverage for is
+     `jcr:content/hasValidMetadata`, read from the *value*, not from the literal text `1_property`. Same
+     pattern for `map.put("1_relativedaterange.property", "jcr:created")` → field is `jcr:created`. Don't
+     let this trip up the Section A/B call in step 2: the field name here is still a hardcoded string
+     literal in source (Section A), even though it doesn't look like a typical `WHERE`-clause field the way
+     a SQL2/XPath condition does — it only becomes Section B if *that value itself* is a variable/request
+     parameter rather than a literal.
 4. **For each field, look up the required flag** (table below) and check the index has a property
    definition with a matching `name` carrying it.
 5. **Check the two scoping gotchas before anything else** — these skip the index entirely regardless of

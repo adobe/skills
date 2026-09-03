@@ -111,36 +111,68 @@ than one `select`/`from` pair, review hits by hand):
 grep -rniE "select.{0,200}from[[:space:]]*\[[A-Za-z0-9_:.]+\]" .
 ```
 
-**XPath** — `/jcr:root/...` or `//name[predicate]`:
+**XPath** — `/jcr:root/...`, `//name[predicate]`, or `//element(*, NodeType)[predicate]`:
 ```
-rg -n -P "(?:/jcr:root(?:/[^\s\"'\[\]]+)*|//[\w:*]+(?:/[\w:*]+)*)\[[^\[\]]*\]"
+rg -n -P "(?:/jcr:root(?:/[^\s\"'\[\]]+)*|//(?:[\w:*]+|element\([^()]*\))(?:/(?:[\w:*]+|element\([^()]*\)))*)\[[^\[\]]*\]"
 ```
 No `rg`? (non-capturing groups become plain groups — harmless, only matters if you'd used `-o`):
 ```
-grep -rnE "(/jcr:root(/[^][:space:]\"'\[\]]+)*|//[A-Za-z0-9_:*]+(/[A-Za-z0-9_:*]+)*)\[[^][]*\]" .
+grep -rnE "(/jcr:root(/[^][:space:]\"'\[\]]+)*|//([A-Za-z0-9_:*]+|element\([^()]*\))(/([A-Za-z0-9_:*]+|element\([^()]*\)))*)\[[^][]*\]" .
 ```
-The bracketed-predicate requirement is deliberate: it's what stops a bare
-`//` line comment followed by unrelated `array[0]` code from matching.
+The double-slash and the bracketed-predicate requirement are both deliberate: they're what stops a bare
+single-`/` path fragment (e.g. `/docs/readme[1]`) or a `//` line comment followed by unrelated `array[0]`
+code from matching — use `//`, not `//?`, or that false-positive comes right back. The `element(*, NodeType)` branch is
+required, not optional — the plain `//[\w:*]+` name-token alternative alone cannot match through the
+parens/comma inside `element(*, dam:Asset)`, so a query already using an explicit nodetype restriction
+(the fix the paired `tuning-oak-query-indexes` skill recommends for its nodetype-scoping gotcha) is
+otherwise invisible to this technique — live-confirmed miss before this branch was added.
 
-**QueryBuilder, query-string form** — `path=...&type=...`:
+**QueryBuilder, query-string form** — `path=...&type=...` (`&`-joined, e.g. a URL) or space-joined (e.g. a
+stored `dam:query`/Smart Collection predicate string, which also uses numeric-prefixed nested keys like
+`1_group.0_property=...` or `5_relativedaterange.property=...`):
 ```
-rg -n -P "(?:^|[?&\"'\s])(?:path|type|property(?:\.\d+)?|fulltext|group\.\d+_group|nodename|orderby)=[^\s&\"']+(?:&(?:path|type|property(?:\.\d+)?|fulltext|group\.\d+_group|nodename|orderby)=[^\s&\"']+)+"
+rg -n -P "(?:^|[?&\"'\s])(?:\d+_)?(?:path|type|property|fulltext|group|nodename|orderby|relativedaterange|daterange|boolproperty|tagid|similar)(?:\.(?:\d+_)?[A-Za-z]\w*)*=[^\s&\"']*(?:[&\s](?:\d+_)?(?:path|type|property|fulltext|group|nodename|orderby|relativedaterange|daterange|boolproperty|tagid|similar)(?:\.(?:\d+_)?[A-Za-z]\w*)*=[^\s&\"']*)+"
 ```
 No `rg`? (`\d` → `[0-9]`, `\s` → `[[:space:]]`, non-capturing groups → plain groups):
 ```
-grep -rnE "(^|[?&\"'[:space:]])(path|type|property(\.[0-9]+)?|fulltext|group\.[0-9]+_group|nodename|orderby)=[^[:space:]&\"']+(&(path|type|property(\.[0-9]+)?|fulltext|group\.[0-9]+_group|nodename|orderby)=[^[:space:]&\"']+)+" .
+grep -rnE "(^|[?&\"'[:space:]])([0-9]+_)?(path|type|property|fulltext|group|nodename|orderby|relativedaterange|daterange|boolproperty|tagid|similar)(\.([0-9]+_)?[A-Za-z][A-Za-z0-9_]*)*=[^[:space:]&\"']*([&[:space:]]([0-9]+_)?(path|type|property|fulltext|group|nodename|orderby|relativedaterange|daterange|boolproperty|tagid|similar)(\.([0-9]+_)?[A-Za-z][A-Za-z0-9_]*)*=[^[:space:]&\"']*)+" .
 ```
+Live-confirmed against a real stored predicate string in this repo
+(`bundles/core/src/test/java/.../CollectionServletTest.java`, `1_group.0_property=...4_group.property=...`
+space-separated) — the previous version of this pattern (bare `property`/`group\.\d+_group` keys, `&`-only
+separator) missed it entirely; a Smart-Collection-style query is exactly the case the paired
+`tuning-oak-query-indexes` skill's Section B flags as needing manual field identification, so silently
+missing it here means it never even reaches that step.
 
 **QueryBuilder, map/predicate form with literal keys** — `map.put("path", ...); map.put("type", ...)`
 or `{"path": ..., "type": ...}`:
 ```
-rg -n -U -P "\"(?:path|type|property(?:\.\d+)?|fulltext|group\.\d+_group|nodename|orderby)\"[\s\S]{0,150}?\"(?:path|type|property(?:\.\d+)?|fulltext|group\.\d+_group|nodename|orderby)\""
+rg -n -U -P "\"(?:\d+_)?(?:path|type|property|fulltext|group|nodename|orderby|relativedaterange|daterange|boolproperty|tagid|similar)(?:\.(?:\d+_)?[A-Za-z]\w*)*\"[\s\S]{0,150}?\"(?:\d+_)?(?:path|type|property|fulltext|group|nodename|orderby|relativedaterange|daterange|boolproperty|tagid|similar)(?:\.(?:\d+_)?[A-Za-z]\w*)*\""
 ```
+Same key list as the query-string pattern above (and the same fix applies here: this used to require bare
+`property(\.\d+)?`/`group\.\d+_group` keys only, which misses numeric-prefixed nested keys like
+`"1_group.0_property"` if a predicate map is ever built with literal quoted keys in that shape instead of
+named constants).
+
 **No portable fallback for this one** — it needs `rg -U`'s cross-line `[\s\S]{0,150}?` matching; a
 line-based `grep -E` cannot express "two keys within 150 chars, possibly across lines" at all. Without
 `rg`, degrade to a two-step manual correlation instead: `grep -rn '"path"'`, `grep -rn '"type"'` (repeat
 per key), then open each hit and read the surrounding `-B3 -A8` by hand to see whether the keys belong to
 the same predicate map. Slower and noisier, but doesn't silently miss the construction sites.
+
+**Scope this one by file type before running it repo-wide** — `path`/`type` are common JSON keys with no
+JCR meaning at all, and combined with `-U`'s cross-line matching this pattern is the noisiest of the four.
+Live-confirmed on a real ~7000-file repo: unscoped, it returned 6543 hits, almost all noise from
+`package-lock.json`/`*.js`/generic `*.json` (22 hits in `package-lock.json` alone); restricting to the
+languages that actually build QueryBuilder predicate maps (`rg ... -g '*.java' -g '*.jsp' -g '*.js' -g
+'!**/target/**' -g '!**/node_modules/**' -g '!package-lock.json'`) cut it to 1533 (dropping to 1206 if you
+narrow further to `-g '*.java'` alone, since Java is where most real predicate-map construction lives in
+an AEM codebase) — still noisy enough to
+need the `-B3 -A8`-and-read-by-hand step above, but tractable. Don't skip the scoping flags and conclude
+the pattern is useless from an unscoped run's noise; the real signal is in there — e.g. this exact scoped
+command found a genuine, otherwise-invisible-to-Technique-1 QueryBuilder call in this repo
+(`tests/testing-clients/.../DAMClient.java`: `params.add("1_group.2_tagsearch.property", ...)`, a REST-style
+predicate map with no `createQuery(`/`PredicateGroup.create(` anywhere in the file).
 
 This flags a hit on the *first* two keys in a block. Pull `-B3 -A8` context
 and read the whole predicate map by hand — don't trust the snippet alone.
