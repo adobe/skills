@@ -139,7 +139,7 @@ neither is configured, the helper reports `no-source` and the agent asks for one
 ### CAM via MCP (summary)
 
 Use **`fetch-cam-bpa-findings-by-pattern`** for code-transformer pattern flows (scheduler,
-assetApi, eventListener, resourceChangeListener, eventHandler, lui, cdw) and
+assetApi, eventListener, resourceChangeListener, eventHandler, guavaCache, lui, cdw) and
 **`fetch-cam-bpa-findings-by-importance`** when the user instead asks "what are the
 critical/major/advisory/info findings?" (returns the latest BPA report's authoritative
 `_COUNT_<code>` rows at one importance level, sorted by descending count). Either tool
