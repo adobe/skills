@@ -1,6 +1,6 @@
 ---
 name: page-import
-description: Import a single webpage from any URL into canonical EDS block format — structured HTML that authors edit in DA. Scrapes the page, analyzes structure, maps to existing blocks, and generates HTML for immediate local preview. Also triggered by terms like "migrate", "migration", or "migrating". Use this when the goal is canonical EDS authoring; use the snowflake skill instead when the user wants to preserve the original DOM byte-for-byte (static-to-EDS overlay).
+description: Use this when importing or migrating a single webpage from any URL into canonical EDS block format — structured HTML that authors edit in DA — including when the request uses terms like migrate, migration, or migrating. Covers scraping the page, analyzing structure, mapping to existing blocks, and generating HTML for immediate local preview. Use the snowflake skill instead when the user wants to preserve the original DOM byte-for-byte (static-to-EDS overlay); for building new blocks from scratch use content-driven-development.
 license: Apache-2.0
 metadata:
   version: "1.1.1"
