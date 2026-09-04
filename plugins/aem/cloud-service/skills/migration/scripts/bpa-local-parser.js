@@ -20,14 +20,16 @@ const path = require('path');
 const PATTERN_TO_SUBTYPE = {
   scheduler: "sling.commons.scheduler",
   assetApi: "unsupported.asset.api",
+  guavaCache: "com.google.common.cache",
 };
 
 // CSV subtype to pattern mapping (based on actual CSV structure)
 const CSV_SUBTYPE_TO_PATTERN = {
   "unsupported.asset.api": "assetApi",
-  "javax.jcr.observation.EventListener": "eventListener", 
+  "javax.jcr.observation.EventListener": "eventListener",
   "org.apache.sling.api.resource.observation.ResourceChangeListener": "resourceChangeListener",
-  "org.osgi.service.event.EventHandler": "eventHandler"
+  "org.osgi.service.event.EventHandler": "eventHandler",
+  "com.google.common.cache": "guavaCache"
 };
 
 // Known scheduler identifier
@@ -421,6 +423,36 @@ function processEventHandlerFindings(findings) {
 }
 
 /**
+ * Process Guava cache findings from CSV. One entry per file/class — a file
+ * with several `com.google.common.cache.*` imports is still a single
+ * migration unit, not one finding per import.
+ */
+function processGuavaCacheFindings(findings) {
+  const guavaCacheFindings = findings.filter(finding =>
+    finding.subtype === 'com.google.common.cache'
+  );
+
+  const identifiers = {};
+  const classNames = [];
+
+  guavaCacheFindings.forEach(finding => {
+    const className = extractClassNameFromCsvFinding(finding);
+    if (className && !classNames.includes(className)) {
+      classNames.push(className);
+    }
+  });
+
+  if (classNames.length > 0) {
+    identifiers['com.google.common.cache'] = classNames;
+  }
+
+  return {
+    subtype: 'com.google.common.cache',
+    identifiers: identifiers
+  };
+}
+
+/**
  * Convert subtype to MongoDB-safe field name (matching cloud-adoption-service)
  */
 function toMongoSafeFieldName(fieldName) {
@@ -527,6 +559,21 @@ function createUnifiedCollection(bpaData, outputDir) {
     });
     
     console.log(`Found ${Object.values(eventHandlerCollection.identifiers).flat().length} event handler classes`);
+  }
+
+  // Process Guava cache findings
+  const guavaCacheCollection = processGuavaCacheFindings(findings);
+  if (Object.keys(guavaCacheCollection.identifiers).length > 0) {
+    const mongoSafeSubtype = toMongoSafeFieldName(guavaCacheCollection.subtype);
+    subtypes[mongoSafeSubtype] = {};
+
+    Object.entries(guavaCacheCollection.identifiers).forEach(([identifier, classNames]) => {
+      const mongoSafeIdentifier = toMongoSafeIdentifier(identifier);
+      subtypes[mongoSafeSubtype][mongoSafeIdentifier] = classNames;
+      totalFindings += classNames.length;
+    });
+
+    console.log(`Found ${Object.values(guavaCacheCollection.identifiers).flat().length} guava cache files`);
   }
 
   // Process content / legacy-UI subtypes (cdw, lui, templates, replication).

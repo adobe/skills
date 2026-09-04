@@ -2,7 +2,6 @@ package analyzer;
 
 import analyzer.detectors.AssetManager;
 import analyzer.detectors.EventMigration;
-import analyzer.detectors.GuavaCache;
 import analyzer.detectors.InjectInSlingModel;
 import analyzer.detectors.OutboundCallTimeouts;
 import analyzer.detectors.OutdatedDependencies;
@@ -29,8 +28,7 @@ public final class Registry {
             new AssetManager(),
             new OutboundCallTimeouts(),
             new UnboundedQuery(),
-            new RemoveDeprecatedApi(),
-            new GuavaCache()
+            new RemoveDeprecatedApi()
         ));
     }
 }

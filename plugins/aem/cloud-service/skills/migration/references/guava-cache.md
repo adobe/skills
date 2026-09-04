@@ -1,18 +1,32 @@
-# Recipe — Guava cache → Caffeine
+# Guava cache → Caffeine on AEM as a Cloud Service
 
-> Read this fully before editing. Control plane: [SKILL.md](SKILL.md).
+BPA pattern id: **`guavaCache`**. Not a Cloud-Service-native code-quality issue — it only shows up in code carried over from a pre-cloud (legacy AEM 6.x / AMS / on-prem) codebase, so this is a migration reference, not a `code-assessment` pattern.
 
-## Input contract
+## Why it's flagged
 
-Per finding, regardless of how it was obtained:
+On AEM as a Cloud Service the supported in-process cache library is **Caffeine** (`com.github.benmanes.caffeine.cache.*`). Bundles importing `com.google.common.cache.*` are flagged because Guava is shrinking in the CS uber-jar and relying on Guava's cache from a third-party classloader is unstable. Caffeine is the recommended successor (same author as Guava cache) and its API is intentionally near-identical, so the swap is mechanical with a few well-known call-site renames.
 
-| Field | Example | Source |
-|---|---|---|
-| `file` | `core/.../UserCache.java` | Repo-relative path to the flagged Java file |
-| `line` | `7` | Line of the `com.google.common.cache.*` import |
-| `snippet` | `import com.google.common.cache.CacheBuilder;` | The flagged import |
+## Discovery — BPA is the source of truth
 
-The fix parameters are **self-evident** — the Guava → Caffeine mapping below is fixed. The only choice is the Caffeine version: pin to the AEM CS SDK BOM (default `3.1.8`).
+Findings come from **`getBpaFindings('guavaCache', …)`** (BPA CSV column `subtype` = `com.google.common.cache`). When no BPA/CAM source is available, scan the workspace's `.java` files for `import com.google.common.cache.…` — treat this as a manual, unconfirmed lead per file, not a substitute for BPA.
+
+Group by **file**, not by import: a file with multiple `com.google.common.cache.*` imports is one finding, one migration unit — apply the full recipe to that file once.
+
+BPA gives only a `file` (no `line`/`snippet`) — there is no analyzer detector to resolve those, unlike the `code-assessment` cascade patterns. Open the file directly and locate the `com.google.common.cache.*` imports yourself before editing; do not look for a `guava-cache` entry in the analyzer.
+
+## Classification
+
+A file is in scope when it imports `com.google.common.cache.*` — `Cache`, `CacheBuilder`, `LoadingCache`, `CacheLoader`, `RemovalListener`, or `RemovalNotification`.
+
+1. **Bundle uses Guava cache** (import + real usage) → apply the full recipe: **C1 (pom)** + **C2 (imports)** + **C3 (builder / API call sites)**.
+2. **Leftover import, no real usage** → just remove the dead `com.google.common.cache.*` import; no Caffeine dependency needed.
+3. **Cache plus unrelated Guava utilities** (`com.google.common.collect.*`, `com.google.common.base.*`) → only the cache portion is in scope; leave other Guava usages alone unless the user asks. Keep the `guava` dependency if other code still imports `com.google.common.*`.
+
+**Not in scope:** look-alike cache classes from other packages — e.g. `io.micrometer.core.instrument.binder.cache.GuavaCacheMetrics` — are not `com.google.common.cache.*` and should not be flagged. If a manual scan flags one of these, treat it as a scan error and skip it; it is not a Guava cache usage.
+
+## Resolution contract
+
+**Self-evident** — the Guava → Caffeine API mapping below is fixed; no user input is required to plan the edit. The only judgment call is the Caffeine version: pin it to the AEM CS SDK BOM (default `3.1.8`).
 
 ## API mapping (Guava → Caffeine)
 
@@ -128,11 +142,6 @@ RemovalListener<String, User> rl = (key, value, cause) ->
         log.info("evicted {} cause={}", key, cause);
 ```
 
-## Unlocatable / skip
-
-- `import-not-found: com.google.common.cache.* not present in <file>` — the flagged import is no longer there (already migrated). Record `skipped`.
-- `guava-still-required: non-cache com.google.common.* usage in <file>` — only remove the cache imports; keep the Guava dependency. Record as a partial apply note, not a skip.
-
 ## Editing strategy
 
 Surgical, formatting-preserving text edits — no reformatting / re-serialization:
@@ -143,6 +152,29 @@ Surgical, formatting-preserving text edits — no reformatting / re-serializatio
 5. Swap the C1 pom dependency.
 
 Anchor each replace on the smallest unique substring so unrelated identical text is not touched.
+
+## Unlocatable / skip
+
+- `import-not-found: com.google.common.cache.* not present in <file>` — the flagged import is no longer there (already migrated). Record `skipped`.
+- `guava-still-required: non-cache com.google.common.* usage in <file>` — only remove the cache imports; keep the Guava dependency. Record as a partial apply note, not a skip.
+
+## Review checklist
+
+- [ ] No `import com.google.common.cache.*` remains in changed files.
+- [ ] No `CacheBuilder.newBuilder()` remains; all builders use `Caffeine.newBuilder()`.
+- [ ] No `LoadingCache.getUnchecked(...)` remains; replaced with `.get(...)`.
+- [ ] No `cache.get(key, Callable)` remains; the `Callable` is a `Function` (lambda).
+- [ ] `RemovalListener` callbacks use the `(key, value, cause)` signature, not `RemovalNotification`.
+- [ ] `Caffeine` is on the bundle's `pom.xml` with `<scope>provided</scope>`, version pinned to the AEM CS SDK BOM.
+- [ ] `mvn clean install` passes.
+- [ ] Guava dependency kept only if non-cache `com.google.common.*` usage remains.
+
+## Common pitfalls
+
+- **Embedding Caffeine** — use `<scope>provided</scope>`; Caffeine is supplied by the CS runtime, never embed it in the bundle.
+- **Removing Guava too eagerly** — if other code still imports `com.google.common.collect/base`, keep the dependency and add Caffeine alongside.
+- **`getUnchecked` left in place** — Caffeine has no `getUnchecked`; `LoadingCache.get(key)` already throws unchecked.
+- **`Callable` vs `Function`** — `cache.get(key, …)` takes a `Function<K,V>` in Caffeine, not a `Callable<V>`.
 
 ## Test generation
 
@@ -189,5 +221,4 @@ public class UserCacheTest {
 
 ## See also
 
-- [`../references/aem-cloud-service-pattern-prerequisites.md`](../references/aem-cloud-service-pattern-prerequisites.md) — SCR → DS, service-user resolvers, SLF4J.
 - Caffeine wiki: <https://github.com/ben-manes/caffeine/wiki> — behaviour differences (async loading, weight-based eviction) beyond this near-1:1 swap.
