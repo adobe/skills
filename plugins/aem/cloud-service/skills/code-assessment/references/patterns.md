@@ -46,7 +46,6 @@ Adding a pattern: add a row here, then build the expert skill from
 | `unbounded-recursion` | add a depth guard to self-recursive / tree-traversal methods (incl. navigation & breadcrumb) | medium | planned | - | - |
 | `unbounded-graphql` | add pagination (`first` / `limit`) to GraphQL queries | medium | planned | - | - |
 | `logging-in-loops` | move logging out of hot loops / add level guards | low | planned | - | - |
-| [`vault-package-dependencies`](../vault-package-dependencies/SKILL.md) | remove AEM 6.x Vault install-time package dependencies (`day/cq60/product:*`) from `content-package-maven-plugin` that block installation on AEMaaCS | high | ready | analyzer | mechanical |
 | [`remove-deprecated-api`](../remove-deprecated-api/SKILL.md) | migrate deprecated and removed Java APIs to comply with AEM as a Cloud Service enforcement | high | ready | analyzer | guided |
 
 > Out-of-memory / leak incidents — a frequent symptom — are usually caused by

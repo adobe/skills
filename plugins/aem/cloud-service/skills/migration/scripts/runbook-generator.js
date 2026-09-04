@@ -15,15 +15,15 @@
  *                              → LLM scan (last resort — agent, not this script)
  *                   `replication` maps to the BPA `replication.agent` subtype;
  *                   with no BPA source it falls through to the analyzer (or LLM).
- *                   `vault-package-dependencies` has **no BPA subtype at all**
- *                   (pom.xml install-time deps are invisible to a deployed-
- *                   artifact BPA scan) — its `bpaSlugs` is empty, so the BPA
- *                   tier is skipped entirely and it goes straight to the
- *                   analyzer (or LLM scan if the analyzer can't run).
  *   'html-scan'   — `htlLint`: heuristic regex scan of `.html` templates.
  *   'config-scan' — `osgiConfig`: heuristic scan of OSGi config files for
  *                   secret-looking keys and `$[secret:]`/`$[env:]` placeholders
  *                   (key names + locations only — never secret values).
+ *   'pom-scan'    — `vault-package-dependencies`: heuristic regex/text scan of
+ *                   `pom.xml`. There is **no BPA subtype at all** for this
+ *                   pattern (a pom.xml install-time dependency declaration is
+ *                   invisible to a deployed-artifact BPA scan) and no analyzer
+ *                   detector — this scan is the only tier.
  *   'content-scan'— `lui` / `cdw` / `templateModernization`. These ALSO carry
  *                   `bpaSlugs`, so when a BPA source is present they come from
  *                   BPA (authoritative); the `.content.xml` scan (Classic/Coral 2
@@ -54,6 +54,7 @@ const { getBpaFindings, checkAvailableSources } = require('./bpa-findings-helper
 const { runAnalyzer, isAnalyzerAvailable, DEFAULT_ANALYZE_SCRIPT } = require('./analyzer-runner.js');
 const { runHtlLint } = require('./htl-lint-runner.js');
 const { runOsgiConfigScan } = require('./osgi-config-runner.js');
+const { runVaultPackageScan } = require('./vault-package-scan-runner.js');
 const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
 const { runTemplateScan } = require('./template-scan-runner.js');
 
@@ -111,19 +112,6 @@ const PATTERN_META = {
     description: 'Usage of `com.day.cq.replication.Replicator` / Sling Replication Agent. Migrate to the Sling Distribution API (`Distributor` + `SimpleDistributionRequest`).',
     promptPattern: 'replication',
   },
-  'vault-package-dependencies': {
-    label: 'Vault Package Dependencies',
-    severity: 'high',
-    strategy: 'cascade',
-    // No BPA subtype exists for this pattern — it's a pom.xml / build-time
-    // concern (content-package-maven-plugin install-time dependencies), never
-    // visible in a deployed-artifact BPA scan. The analyzer is the only tier;
-    // there is no MCP/CSV fallback to attempt, unlike every other cascade
-    // pattern above.
-    bpaSlugs: [],
-    description: 'Legacy AEM 6.x Vault install-time package dependencies (`day/cq60/product:*` in `content-package-maven-plugin`) that block package installation on AEMaaCS. Detected only by the analyzer (parses `pom.xml`) — not a BPA/CAM pattern.',
-    promptPattern: 'vault-package-dependencies',
-  },
   htlLint: {
     label: 'HTL data-sly-test Lint',
     severity: 'medium',
@@ -145,6 +133,20 @@ const PATTERN_META = {
     // Override — the OSGi → Cloud Manager branch uses a natural-language prompt,
     // not a `<pattern> only` invocation.
     sampleOverride: 'Use the migration skill: scan my config files and create Cloud Manager environment secrets or variables.',
+  },
+  'vault-package-dependencies': {
+    label: 'Vault Package Dependencies',
+    severity: 'high',
+    strategy: 'pom-scan',
+    // No BPA subtype exists for this pattern at all — a pom.xml install-time
+    // dependency declaration (content-package-maven-plugin) is invisible to a
+    // deployed-artifact BPA scan. This is the sole detection tier: a regex/text
+    // scan of pom.xml, same model as htlLint's html-scan — no analyzer, no
+    // BPA/CSV/MCP fallback to attempt.
+    bpaSlugs: [],
+    heuristic: true,
+    description: 'Legacy AEM 6.x Vault install-time package dependencies (`day/cq60/product:*`, `day/cq560/*`, `adobe/cq60` in `content-package-maven-plugin`) that block package installation on AEMaaCS. Detected heuristically by scanning `pom.xml` — not a BPA/CAM pattern, and not the code-assessment analyzer — so re-confirm each hit before editing.',
+    promptPattern: 'vault-package-dependencies',
   },
   lui: {
     label: 'Classic UI / Coral 2 Dialogs (LUI)',
@@ -348,6 +350,17 @@ async function gatherFindings(options = {}) {
       sourceByPattern.osgiConfig = 'config-scan';
       scannedBy.osgiConfig = 'config-scan';
       if (res.warnings && res.warnings.length) scanWarnings.push(...res.warnings);
+    }
+  }
+
+  // ── Strategy 'pom-scan': vault-package-dependencies (independent of the cascade) ──
+  if (CANONICAL_PATTERNS.includes('vault-package-dependencies') && workspaceRoot) {
+    const res = runVaultPackageScan(workspaceRoot);
+    if (res.ok) {
+      findingsByPattern['vault-package-dependencies'] = res.findings;
+      rawFindingsByPattern['vault-package-dependencies'] = res.rawFindings;
+      sourceByPattern['vault-package-dependencies'] = 'pom-scan';
+      scannedBy['vault-package-dependencies'] = 'pom-scan';
     }
   }
 

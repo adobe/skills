@@ -60,7 +60,6 @@ Route the request to one expert skill. Two pattern families share this skill:
 | User said / saw | Expert skill |
 |---|---|
 | "update aem sdk", "upgrade mockito", stale `<version>` or `${property}` in pom | [`outdated-dependencies/`](outdated-dependencies/SKILL.md) |
-| "package install fails on AEMaaCS", `day/cq60/product`, "CRX refuses install", Vault dependency not found at deploy time | [`vault-package-dependencies/`](vault-package-dependencies/SKILL.md) |
 | "fix @Inject", "modernize Sling Models", `javax.inject.Inject` on `@Model` fields | [`inject-in-sling-model/`](inject-in-sling-model/SKILL.md) |
 | "add HTTP timeouts", "outbound/external call has no timeout", `HttpClient` / `HttpClients` / `OkHttpClient` built without a timeout | [`outbound-call-timeouts/`](outbound-call-timeouts/SKILL.md) |
 | "bound my query", "unbounded query", "query causing OOM", `p.limit=-1`, `setLimit(-1)` | [`unbounded-query/`](unbounded-query/SKILL.md) |
