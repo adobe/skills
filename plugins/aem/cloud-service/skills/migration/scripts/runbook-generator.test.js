@@ -28,10 +28,10 @@ function write(root, rel, content) {
 
 // ── Pattern registry ────────────────────────────────────────────────────────
 
-test('registry includes all 10 migration patterns with a valid strategy', () => {
+test('registry includes all 11 migration patterns with a valid strategy', () => {
   const expected = [
     'scheduler', 'resourceChangeListener', 'event-migration', 'assetApi', 'replication',
-    'htlLint', 'osgiConfig', 'lui', 'cdw', 'templateModernization',
+    'vault-package-dependencies', 'htlLint', 'osgiConfig', 'lui', 'cdw', 'templateModernization',
   ];
   assert.strictEqual(CANONICAL_PATTERNS.length, expected.length, 'no unexpected patterns');
   for (const key of expected) {
@@ -46,6 +46,12 @@ test('registry includes all 10 migration patterns with a valid strategy', () => 
 test('inject-in-sling-model and outdated-dependencies stay out of scope', () => {
   assert.ok(!CANONICAL_PATTERNS.includes('inject-in-sling-model'));
   assert.ok(!CANONICAL_PATTERNS.includes('outdated-dependencies'));
+});
+
+test('vault-package-dependencies is cascade with no BPA tier — analyzer only', () => {
+  assert.strictEqual(PATTERN_META['vault-package-dependencies'].strategy, 'cascade');
+  assert.deepStrictEqual(PATTERN_META['vault-package-dependencies'].bpaSlugs, []);
+  assert.ok(!PATTERN_META['vault-package-dependencies'].heuristic, 'analyzer-detected, not heuristic');
 });
 
 // ── htl-lint-runner ───────────────────────────────────────────────────────
@@ -355,6 +361,7 @@ test('runAnalyzer normalizes analyzer slugs and skips non-migration patterns', (
     { pattern: 'resource-change-listener', file: 'B.java', line: 5, snippet: 'impl RCL' },
     { pattern: 'asset-manager', file: 'C.java', line: 7, snippet: 'AssetManager.createAsset' },
     { pattern: 'inject-in-sling-model', file: 'D.java', line: 9, snippet: '@Inject' },
+    { pattern: 'vault-package-dependencies', file: 'pom.xml', line: 12, snippet: '<group>day/cq60/product</group>' },
   ], warnings: ['w1'] };
   const stub = writeAnalyzeStub(root, `#!/usr/bin/env bash\ncat <<'JSON'\n${JSON.stringify(payload)}\nJSON\n`);
   const res = runAnalyzer(root, { analyzeScript: stub });
@@ -363,8 +370,10 @@ test('runAnalyzer normalizes analyzer slugs and skips non-migration patterns', (
   assert.ok(res.findingsByPattern.resourceChangeListener, 'resource-change-listener → resourceChangeListener');
   assert.ok(res.findingsByPattern.assetApi, 'asset-manager → assetApi');
   assert.ok(!res.findingsByPattern['inject-in-sling-model'], 'non-migration slug dropped');
+  assert.ok(res.findingsByPattern['vault-package-dependencies'], 'vault-package-dependencies kept (analyzer-only, no BPA subtype)');
   assert.deepStrictEqual(res.warnings, ['w1']);
   assert.strictEqual(res.rawFindingsByPattern.scheduler[0].line, 3);
+  assert.strictEqual(res.rawFindingsByPattern['vault-package-dependencies'][0].file, 'pom.xml');
 });
 
 test('runAnalyzer returns ok:false on non-zero exit', () => {

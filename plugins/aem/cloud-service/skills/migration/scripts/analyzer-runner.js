@@ -31,6 +31,7 @@ const ANALYZER_TO_CANONICAL = {
   'event-migration': 'event-migration',
   'replication': 'replication',
   'asset-manager': 'assetApi',
+  'vault-package-dependencies': 'vault-package-dependencies',
 };
 
 /** Collapse a (possibly multi-line) code snippet into a single, table-safe cell. */

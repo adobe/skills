@@ -15,6 +15,11 @@
  *                              → LLM scan (last resort — agent, not this script)
  *                   `replication` maps to the BPA `replication.agent` subtype;
  *                   with no BPA source it falls through to the analyzer (or LLM).
+ *                   `vault-package-dependencies` has **no BPA subtype at all**
+ *                   (pom.xml install-time deps are invisible to a deployed-
+ *                   artifact BPA scan) — its `bpaSlugs` is empty, so the BPA
+ *                   tier is skipped entirely and it goes straight to the
+ *                   analyzer (or LLM scan if the analyzer can't run).
  *   'html-scan'   — `htlLint`: heuristic regex scan of `.html` templates.
  *   'config-scan' — `osgiConfig`: heuristic scan of OSGi config files for
  *                   secret-looking keys and `$[secret:]`/`$[env:]` placeholders
@@ -105,6 +110,19 @@ const PATTERN_META = {
     bpaSlugs: ['replication'],
     description: 'Usage of `com.day.cq.replication.Replicator` / Sling Replication Agent. Migrate to the Sling Distribution API (`Distributor` + `SimpleDistributionRequest`).',
     promptPattern: 'replication',
+  },
+  'vault-package-dependencies': {
+    label: 'Vault Package Dependencies',
+    severity: 'high',
+    strategy: 'cascade',
+    // No BPA subtype exists for this pattern — it's a pom.xml / build-time
+    // concern (content-package-maven-plugin install-time dependencies), never
+    // visible in a deployed-artifact BPA scan. The analyzer is the only tier;
+    // there is no MCP/CSV fallback to attempt, unlike every other cascade
+    // pattern above.
+    bpaSlugs: [],
+    description: 'Legacy AEM 6.x Vault install-time package dependencies (`day/cq60/product:*` in `content-package-maven-plugin`) that block package installation on AEMaaCS. Detected only by the analyzer (parses `pom.xml`) — not a BPA/CAM pattern.',
+    promptPattern: 'vault-package-dependencies',
   },
   htlLint: {
     label: 'HTL data-sly-test Lint',
