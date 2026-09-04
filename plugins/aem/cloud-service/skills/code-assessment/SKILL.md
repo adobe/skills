@@ -24,17 +24,17 @@ Single skill for detecting and fixing AEM CS code-quality issues, **entirely aga
 | **User-named** | the user names files or coordinates | user-supplied |
 | **Discover** | the user asks to scan, or names no files | user-supplied (per the pattern's resolution contract) |
 
-Discovery runs through the deterministic **analyzer** — parse the workspace once and run enabled detectors, emitting the shared findings shape:
-
-```bash
-bash scripts/analyze.sh                       # scan the workspace, all ready detectors
-bash scripts/analyze.sh --pattern <name>      # scan for one pattern only
-bash scripts/analyze.sh --paths src/main/…    # scan named paths
-```
-
-Every `ready` pattern has an analyzer detector. Patterns without a detector are `planned` only — not yet detectable and not yet built; there is **no LLM-scan fallback** in this version. The `scan` value on `planned` rows in [`references/patterns.md`](references/patterns.md) marks the intended future detection method, not an active code path.
-
-See [`scripts/README.md`](scripts/README.md) for full analyzer options. The `remove-deprecated-api` preflight is a documented exception — see **Critical rules** below.
+Discovery runs through the deterministic **analyzer** ([`scripts/analyze.sh`](scripts/README.md)):
+it parses the workspace once and runs the enabled detectors, emitting the shared findings shape.
+Every `ready` pattern has an analyzer detector. One detector — `remove-deprecated-api` — loads
+its rules dynamically from a preflight-produced cache
+([`remove-deprecated-api/scripts/detect.sh`](remove-deprecated-api/scripts/detect.sh) runs the
+AEM Analyser Maven Plugin and writes the cache TSV before the analyzer is invoked); the
+detector's shape and integration are otherwise identical. Patterns without a detector are
+`planned` only — not yet detectable and not yet built; there is **no LLM-scan fallback** in this
+version (see Scope & limitations) — the `scan` value on `planned` rows in
+[`references/patterns.md`](references/patterns.md) marks the intended future detection method,
+not an active code path.
 
 ## Routing
 
@@ -42,14 +42,6 @@ See [`scripts/README.md`](scripts/README.md) for full analyzer options. The `rem
 2. **"Scan my repo" / no files named** → run the runbook in `discover` mode (per-pattern Discovery, workspace roots only).
 
 Then follow the runbook: [`references/runbook.md`](references/runbook.md).
-
-**Inline checkpoint loop** (the runbook expands each step; use these as a quick sanity check for any pattern):
-
-1. **detect** — run `bash scripts/analyze.sh` (or the pattern's detector), collect the shared findings envelope.
-2. **plan** — one pattern per session; batch findings by file; refuse "fix everything".
-3. **apply** — surgical edits only (branch or in-place per `edit_mode`); checkpoint each file to `.autofix/last-run.json`.
-4. **validate** — `mvn compile` (or the pattern's `verify.sh`); on failure, revert that file and mark it `skipped` with the exact reason.
-5. **retry / continue** — resume with `apply <pattern>` if the batch paused at the per-pass cap.
 
 ## Manual Pattern Hints (classification → expert skill)
 
@@ -120,9 +112,9 @@ single-story diff). Refuse "fix everything" for the apply phase. Rationale:
   "what is the latest on the network" — outside this skill's local-only contract. If the user
   explicitly wants a live registry comparison, say it needs network and offer it as a separate step
   **after** delivering the skill report. `remove-deprecated-api`'s preflight
-  ([`remove-deprecated-api/scripts/detect.sh`](remove-deprecated-api/scripts/detect.sh))
-  is the one documented exception: it invokes the AEM Analyser Maven Plugin against the project
-  to populate its rules cache TSV, then hands off to the shared analyzer.
+  (`remove-deprecated-api/scripts/detect.sh`) is the one documented exception: it invokes the AEM
+  Analyser Maven Plugin against the project to populate its rules cache, then hands off to the
+  shared analyzer.
 - **Never commit, push, or open a PR** — branch (git) or in-place edits only; the developer reviews and commits.
 - **Surgical edits** — no reformatting / re-serialization.
 - **Skip with a reason** — record un-applicable findings as `skipped` with an exact reason; never silently drop.
