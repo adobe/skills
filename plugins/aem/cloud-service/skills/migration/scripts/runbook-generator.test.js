@@ -28,19 +28,25 @@ function write(root, rel, content) {
 
 // ── Pattern registry ────────────────────────────────────────────────────────
 
-test('registry includes all 10 migration patterns with a valid strategy', () => {
+test('registry includes all 11 migration patterns with a valid strategy', () => {
   const expected = [
     'scheduler', 'resourceChangeListener', 'event-migration', 'assetApi', 'replication',
-    'htlLint', 'osgiConfig', 'lui', 'cdw', 'templateModernization',
+    'htlLint', 'osgiConfig', 'lui', 'cdw', 'templateModernization', 'guavaCache',
   ];
   assert.strictEqual(CANONICAL_PATTERNS.length, expected.length, 'no unexpected patterns');
   for (const key of expected) {
     assert.ok(CANONICAL_PATTERNS.includes(key), `${key} in CANONICAL_PATTERNS`);
     assert.ok(
-      ['cascade', 'html-scan', 'config-scan', 'content-scan'].includes(PATTERN_META[key].strategy),
+      ['cascade', 'html-scan', 'config-scan', 'content-scan', 'bpa-only'].includes(PATTERN_META[key].strategy),
       `${key} has a valid strategy`
     );
   }
+});
+
+test('guavaCache has no analyzer/content-scan fallback — bpaSlugs only, no heuristic flag', () => {
+  assert.strictEqual(PATTERN_META.guavaCache.strategy, 'bpa-only');
+  assert.deepStrictEqual(PATTERN_META.guavaCache.bpaSlugs, ['guavaCache']);
+  assert.ok(!PATTERN_META.guavaCache.heuristic, 'guavaCache findings are BPA-authoritative, not heuristic');
 });
 
 test('inject-in-sling-model and outdated-dependencies stay out of scope', () => {

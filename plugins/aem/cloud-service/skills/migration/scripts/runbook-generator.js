@@ -25,6 +25,17 @@
  *                   dialogs, custom `cq:Widget` xtypes, static templates) is the
  *                   heuristic fallback when no BPA source is available. Routed to
  *                   migration Branches D / C, not code-assessment.
+ *   'bpa-only'    — `guavaCache`: BPA/CAM/CSV only (subtype `custom.guava.cache`),
+ *                   one finding per bundle. `identifier` on this subtype is a
+ *                   Guava-internal class, not a customer class — BPA reports
+ *                   every Guava-internal class reachable on a bundle's
+ *                   classpath, so raw rows are deduped to the bundle named in
+ *                   the message, not surfaced per row. No analyzer, no
+ *                   content-scan — Guava cache usage does not occur in native
+ *                   AEMaaCS code, so there is deliberately no compiled
+ *                   detector for it. With no BPA source the pattern surfaces
+ *                   in `needsLlmScan` like any other
+ *                   unscanned pattern.
  *
  * `html-scan`/`config-scan`/`content-scan` (fallback) findings are tagged `confidence: 'heuristic'` in the
  * cache. Patterns no available strategy could scan (e.g. a cascade pattern
@@ -58,11 +69,14 @@ const { runTemplateScan } = require('./template-scan-runner.js');
 //   'html-scan'    — pure-Node regex scan of .html (htlLint)
 //   'config-scan'  — config-file heuristic scan (osgiConfig)
 //   'content-scan' — .content.xml / template scan (lui, cdw, templateModernization)
+//   'bpa-only'     — BPA/CAM/CSV only, no local fallback (guavaCache)
 // `bpaSlugs` maps a pattern to its BPA subtype(s): the Java 'cascade' patterns,
-// plus replication (replication.agent) and lui/cdw/templateModernization. When a
-// BPA source is present it is authoritative; html/config/content scans are the
-// local fallback. (inject-in-sling-model and outdated-dependencies belong to
-// code-assessment's own runbook, not the migration runbook, so they stay out.)
+// plus replication (replication.agent), lui/cdw/templateModernization, and
+// guavaCache (com.google.common.cache). When a BPA source is present it is
+// authoritative; html/config/content scans are the local fallback for the
+// patterns that have one. (inject-in-sling-model and outdated-dependencies
+// belong to code-assessment's own runbook, not the migration runbook, so they
+// stay out.)
 const PATTERN_META = {
   scheduler: {
     label: 'Scheduler',
@@ -161,6 +175,15 @@ const PATTERN_META = {
     description: 'Static templates under `apps/<appId>/templates/*` (`cq:Template`) that should become editable templates. Detected heuristically by globbing template `.content.xml`; the template modernization pipeline (Branch C) runs per-template context → execute → validate.',
     promptPattern: 'template modernization',
     sampleOverride: 'Use the migration skill: migrate my static templates to editable templates and generate the AEM Modernize Tools rewrite rules.',
+  },
+  guavaCache: {
+    label: 'Guava Cache → Caffeine',
+    severity: 'info',
+    strategy: 'bpa-only',
+    bpaSlugs: ['guavaCache'],
+    description: 'Bundles importing `com.google.common.cache.*` (Guava in-process cache). Migrate to Caffeine (`com.github.benmanes.caffeine.cache.*`) — a near 1:1 API swap. Not a Cloud-Service-native pattern — only found in code carried over from legacy AEM — so BPA is the sole source of truth; there is no analyzer or content-scan fallback. BPA reports one finding per bundle (identifier is a Guava-internal class, not a customer class).',
+    promptPattern: 'guavaCache',
+    sampleOverride: 'Use the migration skill: fix guavaCache findings using BPA CSV — swap Guava cache for Caffeine.',
   },
 };
 
