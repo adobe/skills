@@ -1086,3 +1086,61 @@ broken-image probe both passed.
 `clientWidth > 0` per visible loaded image; qa gains the `zero-size-image`
 check (in-layout via `getClientRects()` so display:none images don't
 false-flag); reskin's Image-paint gate documents the same blind spot.
+
+### #123 🔴 Every generated block was uneditable in Experience Workspace — value-slotting, `text(cell)`, clone-the-anchor were the skill's own guidance ✅
+**Where:** rwe.com migration (2026-09-03), `da.live/canvas#/…/index`. Clicking
+hero or spotlight text did nothing; `columns` body paragraphs edited fine but
+its CTA did not. Probe over a 29-page covering sample: **841 / 1452** authored
+texts editable — default content 446/446, the 20 stardust blocks 395/970.
+Census over 27 blocks: 25 call `textContent`, 13 assign `innerHTML`, 16 clone,
+23 `replaceChildren`. Two external analyses had the symptom right and the
+mechanism wrong.
+**Mechanism (verified in da.live `editor-utils.js`/`prose2aem.js` and da-nx
+`quick-edit.js`/`prose.js`):** the canvas stamps `data-prose-index` on every
+OUTERMOST `h1–h6/p/ol/ul/pre/blockquote`, swaps the instrumented HTML into
+`document.body`, re-runs the page's own `loadPage()` (so `decorate()` runs over
+it), then `querySelector('[data-prose-index="N"]').replaceWith(editor)` per
+index. Only `data-block-index` is repaired afterwards. A text is editable iff
+exactly ONE element still carries its index; zero = dead (rebuilt from
+`textContent`/`innerHTML`, synthesized `<p>`, retagged); several = editor on the
+FIRST in DOM order (hidden carousel clone). The editor renders the DOC node —
+same tag, no classes, no spans, inline marks only — inside TWO wrapper divs
+(`div.prosemirror-editor > div.ProseMirror > <tag>`), and cursor math uses
+`textContent` length. In the workspace every block cell contains a `<p>`
+(published pipeline unwraps it; runtime `wrapTextNodes` re-wraps).
+**The clone corollary:** `cloneNode(true)` is NOT what kills editing — the
+clone keeps the attribute (that is exactly why clone-based `columns` worked
+while `textContent`-based `hero` did not). Cloning is still wrong (duplicate
+indices, stale identity); the fix is MOVE, not "avoid clone".
+**The specificity trap:** a wrapper variant written as `.affordance-wrap a`
+out-ranks `a:any-link` and silently flipped link colour navy → teal;
+`.affordance-wrap :where(a)` keeps `.affordance`'s specificity.
+**The two-wrapper selector rule:** `h3.headline {…}` → `.headline :is(h2, h3, h4)
+{…}` (same specificity, still matches the editor's re-rendered `<h3>`); no
+child combinators or positional pseudo-classes on the path to an authored
+element; exclude a moved CTA `<p>` from a lede rule with
+`p:where(:not(.affordance p))`.
+**Root cause in the skill:** § 2b template-slotted tier slotted authored
+VALUES by role; § 8 scaffold taught `text(cell)` + "build the prototype's DOM";
+§ 5 said "block JS just clones them as-is"; #55 cloned `childNodes` into a new
+heading; #62/#71 synthesized `<p>`s; #70 edited the authored text node;
+§ Section heads rebuilt the `.section-head`; no gate measured editability.
+**Fix applied:** § Target runtime documents the instrumentation; § 2b redefines
+template-slotted as NODE-slotting and bans value-slotting; § 3 ships three
+edit-mode foundation snippets (CTA repaint from `<strong>/<em>` marks under
+`.prosemirror-editor`, card-as-link inner anchor, `:where()` wrapper variants)
++ EW10; § 5/#55/#62/#70/§ Section heads rewritten to MOVE; § 8 gets a
+move-based scaffold (`wrapNode`, `labelWrap`, `stripInstrumentation`) and the
+named **Experience Workspace editability contract (EW1–EW10)**; new
+`scripts/ew-editability-probe.mjs` (URL + `--content` harness modes,
+`--simulate-editor` drift, `@ew-exempt` JSDoc tags); `block-roundtrip --ew`
+(default on) fails dead/duplicated texts 🔴; `render-harness --ew
+--simulate-editor`; `section-schema` emits `editableTexts`;
+`content-inventory` exports the outermost-editable classifier for
+`content-diff`'s advisory; qa gains the `editability` check; the Step-7 brief
+carries the contract (it skipped 27/27 blocks because the brief did not);
+replica/rollout/reskin/fidelity-tiers cite it; eval `ew-editability`.
+**Result on rwe (2 rounds, 3 + 17 blocks):** 841 → **1416 / 1452** editable;
+the 36 left are declared exemptions (index-driven listings, derived dates, a
+breadcrumb needing an ENCODE `<ul>`); 27 block instances pixel-identical at
+1440; 0 edit-mode drift except the hero's per-line span gap.

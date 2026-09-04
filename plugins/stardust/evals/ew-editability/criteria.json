@@ -1,0 +1,55 @@
+{
+  "criteria": [
+    {
+      "id": "node_slotting_no_value_slotting",
+      "weight": 20,
+      "description": "No block copies authored text into generated markup: no `textContent =`/`innerHTML =` assignments or template-literal interpolation whose source is an authored element; template-slotted blocks hold empty slot containers and MOVE the authored elements into them (Step 2b node-slotting)."
+    },
+    {
+      "id": "move_not_rebuild",
+      "weight": 15,
+      "description": "Every authored h1–h6/p/ul/ol/picture is placed with append()/prepend()/before(); no cloneNode+discard, no retagging, no .trim()/normalisation of displayed text; sibling walks capture nextElementSibling before append() (EW1)."
+    },
+    {
+      "id": "wrapper_descendant_selectors",
+      "weight": 15,
+      "description": "Layout classes live on generated wrappers; block CSS styles authored elements as wrapper descendants (`.headline :is(h2, h3)`), with no class on the authored element and no child combinator or positional pseudo-class between a wrapper class and an authored element (EW2/EW10)."
+    },
+    {
+      "id": "cta_paragraph_moves",
+      "weight": 10,
+      "description": "CTAs move as their paragraph (`a.closest('p') || a`); card-as-link blocks unwrap the inner anchor in the live DOM after reading its href; no manufactured button anchors (EW3/EW6)."
+    },
+    {
+      "id": "clones_stripped_interactive_hosts",
+      "weight": 10,
+      "description": "Presentational clones (loop slides, marquee copies) pass through stripInstrumentation(); no authored text is hosted inside a <button>/<summary> (EW4/EW7)."
+    },
+    {
+      "id": "foundation_edit_mode_snippets",
+      "weight": 5,
+      "description": "styles/styles.css ships the `.prosemirror-editor` CTA repaint from <strong>/<em> marks (on-media variants last), `a .prosemirror-editor a:any-link { color: inherit; text-decoration: none }`, and `:where()` wrapper variants at equal specificity for every styled-text-link utility introduced (Step 3)."
+    },
+    {
+      "id": "ew_gate_run_and_green",
+      "weight": 15,
+      "description": "block-roundtrip runs with --ew on (per block and whole page) and ew-editability-probe.mjs --content runs before done: evidence on disk/in the log shows dead = 0 outside declared @ew-exempt and duplicated = 0; --no-ew is not used to pass."
+    },
+    {
+      "id": "edit_mode_simulation_clean",
+      "weight": 5,
+      "description": "ew-editability-probe.mjs --simulate-editor reports no font/colour/line-height drift per text and block height Δ ≤ 2 px."
+    },
+    {
+      "id": "exemptions_declared",
+      "weight": 5,
+      "description": "Any dead text is declared with an @ew-exempt JSDoc tag in one of the three categories (metadata / derived / index-driven) and recorded in the conversion log; nothing is dropped silently."
+    },
+    {
+      "id": "fidelity_not_traded",
+      "weight": 5,
+      "description": "The role round-trip still closes (0 structural 🔴) and the published render is unchanged — editability was not achieved by rendering less."
+    }
+  ],
+  "total": 100
+}

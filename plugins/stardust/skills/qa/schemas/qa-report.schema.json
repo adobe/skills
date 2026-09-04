@@ -41,7 +41,7 @@
         "type": "object",
         "required": ["check", "id", "severity", "path", "message"],
         "properties": {
-          "check": { "enum": ["routing", "content", "templates", "rendered", "visual", "metadata", "links", "a11y", "perf"] },
+          "check": { "enum": ["routing", "content", "templates", "rendered", "visual", "metadata", "links", "a11y", "perf", "editability"] },
           "id": { "type": "string", "description": "stable machine id within the check, e.g. broken-internal-link" },
           "severity": { "enum": ["error", "warn", "info"] },
           "path": { "type": "string", "description": "delivered path; empty string = fleet-level" },

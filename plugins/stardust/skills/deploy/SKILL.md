@@ -32,6 +32,7 @@ The stock boilerplate provides everything the conversion needs; the runtime is n
 - **Fonts:** `@font-face` lives in `styles/fonts.css`, loaded by `loadFonts()` (eagerly on desktop / repeat views via a `fonts-loaded` session flag, always in `loadLazy`); `styles.css` carries the metric-matched fallback faces. See Step 4.
 - **Auto-blocking hook:** `buildAutoBlocks()` in `scripts.js` is project-owned — the home for D1 auto-blocks (video/embed URLs, fragment links).
 - **Lint:** generated blocks and styles lint under the project's own config; there is no vendored runtime to exempt. Do not create an `.eslintignore` for runtime files.
+- **Experience Workspace instrumentation (da.live canvas "quick-edit" — the inline editor your blocks must survive).** The workspace stamps `data-prose-index` on every OUTERMOST `h1–h6 / p / ol / ul / pre / blockquote` of the authored document, `data-image-index` on every `img` and `data-block-index` on every block div, swaps that instrumented HTML into `document.body`, and re-runs the page's own `loadPage()` — so every block's `decorate()` runs over the instrumented markup. In the workspace **every block cell contains a `<p>`** (prose2aem copies cell innerHTML; the published pipeline unwraps single-paragraph cells to bare text and the runtime's `wrapTextNodes` re-wraps them, so `decorate()` sees a `<p>` in both worlds). Afterwards ONLY elements that still carry their `data-prose-index` become editors (`querySelector('[data-prose-index="N"]').replaceWith(editor)`); nothing repairs a lost index. A text your block rebuilt from `textContent`/`innerHTML`, synthesized, or retagged is silently uneditable. Contract + gate: Step 8 § Experience Workspace editability contract (EW1–EW10).
 
 **The boilerplate itself drifts** (e.g. current `main` emits `p.button-wrapper`; older clones emit `p.button-container` and buttonize bare links). Never assume — the Runtime-detection probe below records what THIS target actually does, from its own `scripts.js`/`aem.js`.
 
@@ -145,7 +146,7 @@ Structural rules (the lint's 🔴 tier):
 A head-bearing block (one with a section eyebrow/heading/lede above repeating units) should NOT carry that head as block rows. Author the head as **default content** in the section, before the block; the block table holds only the repeating units. Then the block **reabsorbs** the head so the decorated DOM — and every pixel — is identical to the old in-table form:
 
 - **First choice — style the head IN PLACE, no JS at all.** The runtime gives the section a `.<name>-container` class, so the head is directly addressable: `.cards-container .default-content-wrapper { … }`. When the prototype's head sits visually OUTSIDE the block's grid (the common case), this is the whole implementation — no reabsorption needed.
-- **Reabsorb only when the head must live INSIDE the block's layout container** (e.g. the head is a grid cell of the same grid as the units). On `decorate(block)`, read the section's leading default-content wrapper, build the SAME `.section-head` the block used to build from its first rows, and **remove the wrapper**. The head wrapper is a sibling of the block's `.<name>-wrapper`, not of the block itself: use `block.parentElement.previousElementSibling`, match `.default-content-wrapper` (`block.previousElementSibling` alone is `null` — the block is nested in its wrapper).
+- **Reabsorb only when the head must live INSIDE the block's layout container** (e.g. the head is a grid cell of the same grid as the units). On `decorate(block)`, read the section's leading default-content wrapper, build the SAME `.section-head` layout the block used to build from its first rows — **MOVING the wrapper's children into it** (`head.append(...wrapper.childNodes)`; they are already inline-editable as default content and a rebuild from `textContent` kills that — EW8) — and **remove the emptied wrapper**. The head wrapper is a sibling of the block's `.<name>-wrapper`, not of the block itself: use `block.parentElement.previousElementSibling`, match `.default-content-wrapper` (`block.previousElementSibling` alone is `null` — the block is nested in its wrapper).
 - Keep the old in-table head (leading non-unit rows) as a **defensive decode fallback**.
 - **Verify zero change:** diff the *decorated* block `outerHTML` (ids/`media_<hash>` normalised) old-vs-new — it must be byte-identical, with 0 default-content wrappers left after decorate.
 
@@ -268,10 +269,10 @@ Cross-check `repeats[].uniform` against the #90 fingerprint: `uniform: false` me
 
 **Pick the decode tier per section — template-slotted vs reconstructive (#95).** Reconstruction is where decode bugs live, so only reconstruct where authors need the structural freedom:
 
-- **Template-slotted (fidelity by construction).** For fixed-composition sections whose structure never changes at authoring time (a bespoke hero, a cinematic band, a stat/countdown composition): `decorate()` holds the prototype section's inner DOM verbatim as a template literal and SLOTS the authored values into it by role — eyebrow text into the template's eyebrow node, heading into the `<h1>`, each CTA's text+href, the authored `<picture>` into the media slot. The decorated DOM ships byte-equal to the prototype, so the segmentation-bug class (#48/#52/#56/#76) cannot occur. Editors still own every line of copy — the content page is unchanged and server-rendered (this is NOT client-injected chrome; #86 doesn't bite). Structure edits need a developer: the right trade for sections whose structure nobody edits.
+- **Template-slotted = NODE-slotting (fidelity by construction, editability by construction).** For fixed-composition sections whose structure never changes at authoring time (a bespoke hero, a cinematic band, a stat/countdown composition): `decorate()` holds the prototype section's inner DOM as a template literal whose text positions are **empty slot containers** (`<div class="headline"></div>`, `<div class="eyebrow"></div>`, `<div class="actions"></div>`, `<div class="media"></div>`), and MOVES the authored elements into them by role — the authored `<h1>` into `.headline`, the eyebrow `<p>` into `.eyebrow`, each CTA's `<p>` into `.actions`, the authored `<picture>` into `.media`. The wrapper carries the layout class; the authored element keeps its tag, its attributes and its identity. The decorated DOM ships structurally equal to the prototype, so the segmentation-bug class (#48/#52/#56/#76) cannot occur, AND every authored text stays inline-editable in Experience Workspace (EW1/EW2). **Value-slotting — copying authored TEXT into template nodes (`slot.textContent = cell.textContent`, `innerHTML` templates with `${text}` interpolation) — is banned:** it renders pixel-perfect and is 100 % uneditable in the workspace (every template-slotted block on a real site failed this way; anti-pattern 18). Editors still own every line of copy — the content page is unchanged and server-rendered (this is NOT client-injected chrome; #86 doesn't bite). Structure edits need a developer: the right trade for sections whose structure nobody edits.
 - **Reconstructive (authorable structure).** For repeating/data sections where authors add/remove units (cards, FAQs, listings, menus): classify + segment defensively per #48/#50/#52 — and let the schema + round-trip gate carry the burden of proof.
 
-Record the tier per block in the conversion log. Default: template-slotted for bespoke one-offs, reconstructive for repeat groups.
+Record the tier per block in the conversion log. Default: template-slotted for bespoke one-offs, reconstructive for repeat groups. **Both tiers are subject to the Experience Workspace editability contract (Step 8, EW1–EW10); the gate is `block-roundtrip --ew` (default on) / `ew-editability-probe.mjs`** — a block that passes the role round-trip but leaves a dead text is not done.
 
 **Record two more things per section in the schema (D1/D11 + forward-compat):** sections triaged to default content in Step 2 carry `"defaultContent": true` (the encode side emits prose, not a table — the lint flags a block wrapping bare default content); and every block's authored shape must be expressible as one of the three component-model shapes — **simple** (one property per row), **key-value** (config), or **container** (own rows + one row per child) — so a later Universal Editor adoption needs no content migration (see aem.live "component model definitions"). A shape that fits none of the three is a signal the model is wrong, not that a fourth shape is needed.
 
@@ -286,6 +287,22 @@ Rebrand `styles/styles.css` — replace the boilerplate's DEMO layer (roboto tok
 - **One `style` value per section — multi-value `style` is unreliable (#120).** `style: a, b` (comma- or space-separated) delivered only the FIRST class on a real stack. When a section needs a second styling axis, anchor it to content instead: `main .section.a:has(img[alt^="…"])` — content-anchored `:has()` selectors survive the metadata pipeline; second style tokens may not.
 - **Empty styled sections must respect the section-status hiding (#121).** A `style`-carrying section that is otherwise empty needs `display: block !important` to defeat the boilerplate's `:empty { display: none }` — but an unscoped override ALSO defeats the runtime's PRE-LOAD hiding (`data-section-status` + inline `display:none`, see the scaffold rule above), so the section paints before the rest of the page and produces a massive layout shift (measured 0.75 CLS). Always scope the override: `main .section.x[data-section-status='loaded'] { display: block !important }`.
 - A global button system (see next section). This is the one place per-block CSS does NOT own its paint — buttons are site-wide and convention-driven.
+- **Experience Workspace edit-mode foundation (EW3/EW6/EW10 — Step 8 § contract).** Three snippets ship in `styles.css`; all are scoped on `.prosemirror-editor`, which exists ONLY inside the da.live inline editor, so they cost nothing on published pages:
+  - **(a) Edit-mode CTA repaint.** `decorateButtons()` put `.button.primary/.secondary` on authored anchors BEFORE `decorate()`; the editor re-renders the CTA paragraph from its authored `<strong>`/`<em>` marks with NO classes, so the button look collapses the moment an author clicks. Repaint it from the marks with the project's own button declarations (`strong` = primary paint, `em` = secondary paint):
+    ```css
+    /* Experience Workspace edit mode: repaint CTAs from their authored marks */
+    .prosemirror-editor p > :is(strong, em) > a:any-link,
+    .prosemirror-editor p > a:any-link:has(> :is(strong, em):only-child) { /* the project's a.button declarations */ }
+    .prosemirror-editor p > a:any-link > :is(strong, em) { font-weight: inherit; font-style: inherit; }
+    .prosemirror-editor p > strong > a:any-link,
+    .prosemirror-editor p > a:any-link:has(> strong:only-child) { /* a.button.primary paint */ }
+    .prosemirror-editor p > em > a:any-link,
+    .prosemirror-editor p > a:any-link:has(> em:only-child) { /* a.button.secondary paint */ }
+    ```
+    On-media/on-dark variants of this repaint go **LAST in the file** (`main :is(.on-media, .banner, .hero .gradient) .prosemirror-editor p > em > a:any-link { color: #fff }`) — nothing may follow them.
+  - **(b) Card-as-link inner anchor.** A CTA paragraph moved into a card `<a>` (EW6) re-renders its inner link while editing; it must read like the card text: `a .prosemirror-editor a:any-link { color: inherit; text-decoration: none; }`.
+  - **(c) Styled-text-link utilities exist as WRAPPER variants at EQUAL specificity.** Any utility a block applies to an authored link or list (`.affordance`, `.eyebrow`, `.meta`, `.link-download`) dies in edit mode (the editor drops classes on authored elements), so each also exists as a wrapper-descendant variant written with `:where()` so the cascade does not move: `.affordance, .affordance-wrap :where(a) { … }`, `.affordance::after, .affordance-wrap :where(a)::after { … }`. A plain `.affordance-wrap a` out-ranks `a:any-link` and silently flips the link colour (navy → teal on a real site); `:where()` keeps it at `.affordance`'s specificity.
+  - **(EW10) Section prose rules follow the same selector rules.** The editor inserts TWO wrapper divs above an authored element (`div.prosemirror-editor > div.ProseMirror > <tag>`), so section styles on default content written as `main .section.x .default-content-wrapper > p:first-child` or `p:has(picture) + p` stop matching while editing. Use descendant selectors and no positional pseudo-classes on prose elements (`main .section.x .default-content-wrapper p`).
 - **Reserve the header's real height — or the late chrome load shifts the first section → CLS (#81).** The `header` block loads in `loadLazy`, AFTER first paint. In the common layout where the header sits in flow ABOVE the first section (full-bleed hero *below* the nav), the hero would render at `y=0`, then jump DOWN by the header's height when the nav lands — a large layout shift the browser attributes to the hero block (a real page measured **CLS 0.143, ~0.13 of it the hero**; metric-matched fonts do NOT fix it because the cause is the header box appearing, not a font swap). The boilerplate reserves this natively — `header { height: var(--nav-height) }` plus `header .header { visibility: hidden }` until `[data-block-status="loaded"]` — so the job is to make the reservation MATCH your chrome: set `--nav-height` (responsive, per breakpoint) to the prototype header's real rendered height, and give the bare `<header>` the chrome's own `background` so any reserve-vs-actual delta is invisible:
   ```css
   :root { --nav-height: 98px; }                                       /* desktop nav+banner height */
@@ -464,7 +481,7 @@ Never substitute classifications (don't match a serif brand to Arial; don't matc
 
 ### 5. Lean on EDS button conventions — DO NOT manufacture button anchors in block JS
 
-The boilerplate's `decorateButtons()` (in `scripts/scripts.js`) applies button classes when authors wrap a link in inline emphasis (D6). It runs in `decorateMain()`, BEFORE any block's `decorate()` — so by the time block JS sees a cell, its anchors already carry the button classes; block JS just clones them as-is.
+The boilerplate's `decorateButtons()` (in `scripts/scripts.js`) applies button classes when authors wrap a link in inline emphasis (D6). It runs in `decorateMain()`, BEFORE any block's `decorate()` — so by the time block JS sees a cell, its anchors already carry the button classes. Block JS **MOVES the CTA's paragraph** — `actions.append(a.closest('p') || a)` — never clones it: the index the workspace's inline editor keys on sits on the `<p>`, not the `<a>` (EW3), and a `cloneNode`/childNodes copy leaves the authored paragraph behind, dead. The `.button.*` classes die while editing; the foundation's edit-mode repaint (Step 3 (a)) covers that.
 
 **Author markup → auto-applied class (current `adobe/aem-boilerplate` main — confirm per target in `runtime-contract.json`, older clones differ):**
 
@@ -514,7 +531,7 @@ p.button-wrapper { display: inline-flex; flex-wrap: wrap; gap: 16px; align-items
 
 **Surface-aware variants: scope to the BLOCK class, not just the section (#41).** When a button/link/text treatment differs on dark vs light surfaces, the prototype's dark-surface cue (e.g. `.hero`, `.cta-dark`) becomes a **block class** after conversion — a `<div class="hero block">` nested inside the `<div class="section">`. So an override written as `main .section.hero a.button.secondary` never matches (the `.hero` is one level below `.section`), and the on-dark CTA silently renders dark-on-dark. Scope on-dark overrides to BOTH: `main .section.dark a.button.secondary, main .hero a.button.secondary { … }`. QA any block on a dark background for secondary/ghost-CTA contrast (light outline + light text) — the button "exists" in metrics, so only contrast/eyeball catches this.
 
-**Block JS pattern — just clone the cell:**
+**Block JS pattern — MOVE the CTA paragraphs (EW3):**
 
 ```js
 // Get the cell that holds the CTAs
@@ -522,10 +539,14 @@ const ctaCell = rows[N]?.firstElementChild;
 if (ctaCell && ctaCell.querySelector('a')) {
   const actions = document.createElement('div');
   actions.className = 'actions';
-  [...ctaCell.childNodes].forEach((n) => actions.append(n.cloneNode(true)));
+  // the workspace's editor index is on the <p>, so move the paragraph, not the anchor;
+  // capture the list BEFORE moving (append() ends a live sibling walk — EW1)
+  [...ctaCell.querySelectorAll('a')].forEach((a) => actions.append(a.closest('p') || a));
   container.append(actions);
 }
 ```
+
+Never `cloneNode(true)` the anchor or copy `childNodes` — the clone renders identically and is dead in Experience Workspace (the authored `<p>` carrying `data-prose-index` was discarded). When the block itself needs a variant class on the CTA (#25 multi-variant systems), put it on the `.actions` wrapper and style `.actions.ghost a`, not on the authored anchor.
 
 DO NOT manufacture anchors with `cta.className = 'btn-loud'` or inject custom SVG arrows. The global `::after` arrow + the convention's class system handle 95% of cases.
 
@@ -598,7 +619,9 @@ The brief template:
 >
 > **David's Model (the authored-structure contract — `davids-model.md`)**: a prose section with no repeating units and no bespoke structure is DEFAULT CONTENT, not a block (D1 — the Step-2 triage in the conversion log says which of your sections these are); no nested block tables (D2); blocks stay ≤4 columns (D10); if your section matches a Block Collection pattern the conversion log names, follow that block's authoring shape (D11); no code visible as text in cells (D15). Your pages must pass `node skills/deploy/scripts/davids-model-lint.mjs content/<page>.html` with 0 🔴.
 >
-> **Buttons**: do NOT manufacture button anchors. Author CTAs paragraph-wrapped as `<strong><a>` (primary) or `<em><a>` (secondary) in the content page — `decorateButtons()` classes them (`a.button.primary`/`.secondary`) BEFORE your `decorate()` runs; in block JS, clone the cell's child nodes into a `.actions` wrapper. Block CSS only overrides global button styles when something is genuinely different (e.g. larger size). Text links with flourish (wavelength underline) are NOT buttons — leave as plain `<a>` and style per-block.
+> **Buttons**: do NOT manufacture button anchors. Author CTAs paragraph-wrapped as `<strong><a>` (primary) or `<em><a>` (secondary) in the content page — `decorateButtons()` classes them (`a.button.primary`/`.secondary`) BEFORE your `decorate()` runs; in block JS, MOVE the CTA paragraph into a `.actions` wrapper (`actions.append(a.closest('p') || a)`) — never clone it (EW3). Block CSS only overrides global button styles when something is genuinely different (e.g. larger size). Text links with flourish (wavelength underline) are NOT buttons — leave as plain `<a>` and style per-block.
+>
+> **Experience Workspace editability contract (Step 8, EW1–EW10) — every block you write obeys it and passes the EW gate before it is done.** MOVE authored `h1–h6/p/ul/ol/picture` into generated wrappers (`wrap.append(heading)`); never rebuild from `textContent`/`innerHTML`, never `cloneNode` + discard, never retag, never `.trim()` displayed text (EW1). Wrappers carry the layout classes; style the authored element through the wrapper with DESCENDANT selectors (`.headline :is(h2, h3)`), never a class on the authored element and never `>`/`:first-child`/`:nth-child` on the path to it (EW2). CTAs move as their `<p>` (EW3). Presentational clones (loop slides, marquee copies) get `stripInstrumentation()` (EW4). Text you cannot make editable is declared with an `@ew-exempt` JSDoc tag, never dropped silently (EW5). A `<button>`/`<summary>` cannot host the editor (EW7). `block-roundtrip` runs with `--ew` by default: a dead non-exempt text or a duplicated index is a 🔴.
 >
 > **EDS block convention**: each block at `blocks/<name>/<name>.{js,css}`. JS exports `default async function decorate(block)`. Block input is `<div class="block-name"><div>row<div>cell</div></div>…</div>` (the runtime adds `.block` + `data-block-name` and nests it in `.<name>-wrapper` before your JS runs). CSS scoped under `.block-name`. Inline SVG markup per-block (no shared utility). Honor `prefers-reduced-motion`.
 >
@@ -626,25 +649,102 @@ Agents do not need to coordinate on shared blocks — the brief tells them which
  *   6..N: card rows — cells: num | label | description
  */
 
-function text(cell) { return cell ? cell.textContent.trim() : ''; }
-function pic(cell)  { return cell ? cell.querySelector('picture, img') : null; }
+// ── Experience Workspace helpers (EW1–EW4) — copy into every block, no shared import ──
+// Wrap an AUTHORED element in a generated wrapper that carries the layout class.
+// The element moves (keeps its tag, attributes and data-prose-index); never copy it.
+function wrapNode(node, className) {
+  const w = document.createElement('div');
+  w.className = className;
+  w.append(node);
+  return w;
+}
+// CTA label: MOVE the authored <p> (the editor index is on the paragraph) and,
+// for card-as-link layouts (EW6), unwrap the inner anchor after reading its href.
+function labelWrap(link, className, { unwrap = false } = {}) {
+  const w = document.createElement('div');
+  w.className = className;
+  const par = link.closest('p');
+  w.append(par || link);
+  if (unwrap && par) link.replaceWith(...link.childNodes);
+  return w;
+}
+// Presentational clones (loop slides, marquee duplicates) must not keep the
+// editor's indices — one element per index, and it must be the visible one (EW4).
+function stripInstrumentation(el) {
+  el.querySelectorAll('[data-prose-index], [data-image-index]').forEach((n) => {
+    n.removeAttribute('data-prose-index');
+    n.removeAttribute('data-image-index');
+  });
+  el.removeAttribute('data-prose-index');
+  return el;
+}
+// Read-only classification helper — use for DECISIONS (is this the eyebrow?),
+// never to produce displayed text (EW1).
+const text = (el) => (el ? el.textContent.trim() : '');
+const pic = (cell) => (cell ? cell.querySelector('picture, img') : null);
 
 export default async function decorate(block) {
   const rows = [...block.children];
   if (!rows.length) return;
 
-  // 1. Read content by QUERYING, not by hard row index, for lead/hero blocks (#42):
-  //    const h = block.querySelector('h1, h2');           // the heading
+  // 1. QUERY content and CAPTURE traversal starts before moving anything (#42, EW1):
+  //    const heading = block.querySelector('h1, h2, h3');
   //    const ps = [...block.querySelectorAll('p')];
-  //    const lede = ps.find((p) => !p.querySelector('a')); // first link-free <p>
-  //    const ctaP = ps.find((p) => p.querySelector('a'));  // link-bearing <p>
-  //    const pic = block.querySelector('picture, img');
-  // 2. Build the prototype's DOM (with prototype-style class names)
-  // 3. For CTA rows, clone the cell's child nodes into a .actions wrapper —
-  //    do NOT manufacture button anchors with custom classes.
-  // 4. block.replaceChildren(...newMarkup);
+  //    const lede = ps.find((p) => !p.querySelector('a, picture, img'));
+  //    const ctas = ps.filter((p) => p.querySelector('a'));
+  //    const media = block.querySelector('picture, img');
+  //    const start = heading ? heading.nextElementSibling : null; // capture BEFORE append()
+  // 2. CREATE wrappers that carry the prototype's layout classes:
+  //    const box = document.createElement('div'); box.className = 'stage-box';
+  // 3. MOVE the authored nodes into them — never textContent/innerHTML/cloneNode/retag:
+  //    if (media) box.append(wrapNode(media, 'media'));
+  //    if (heading) box.append(wrapNode(heading, 'headline'));   // CSS: .headline :is(h1, h2, h3)
+  //    if (lede) box.append(wrapNode(lede, 'lede'));
+  //    if (ctas.length) { const a = document.createElement('div'); a.className = 'actions'; a.append(...ctas); box.append(a); }
+  //    Sibling walks: `const next = node.nextElementSibling; wrapper.append(node); node = next;`
+  // 4. block.replaceChildren(box); — the emptied rows go; the authored nodes already moved.
 }
 ```
+
+#### Experience Workspace editability contract (EW1–EW10)
+
+The hard property of stardust output: **any text an author wrote in a DA document is inline-editable in Experience Workspace (da.live canvas, "quick-edit") once the page is decorated by generated block JS — and the block looks the same while it is being edited.** Mechanism: § Target runtime → *Experience Workspace instrumentation*. The generated blocks were correct implementations of the old guidance (value-slotting, `text(cell)`, clone-the-anchor); the guidance was the bug — a 29-page sample measured 841 of 1452 authored texts editable before, 1416 after, with 0 px visual change and every remaining one a declared exemption.
+
+**EW1 — Move authored elements; never rebuild them.** Every authored `h1–h6 / p / ul / ol / pre / blockquote / picture / img` is slotted into the generated layout with `append()`/`prepend()`/`before()`. Never re-create it from `textContent`/`innerHTML`, never `cloneNode` + discard, never retag (an authored `<h2>` stays an `<h2>`; the ENCODE side authors the tag the design needs), never `.trim()`/normalise displayed text (the editor's cursor math uses `textContent` length). Discarding the emptied rows afterwards (`block.replaceChildren(...)`) is fine — the nodes have already moved. When you walk siblings while moving them, capture `nextElementSibling` **before** `append()` — moving a node ends the walk otherwise (a real block dropped every subsidiary link silently).
+
+**EW2 — Wrappers carry layout classes; style the authored element through the wrapper with descendant selectors.** The editor swap re-renders the same tag *without classes or spans* and inserts **two wrapper divs** (`div.prosemirror-editor > div.ProseMirror > <tag>`), so:
+- rewrite `h3.headline { … }` as `.headline :is(h2, h3, h4) { … }` — same specificity, same cascade (the element keeps its global heading type and margins), and it still matches the editor's `<h3>`;
+- never use child combinators or positional pseudo-classes on the path to an authored element (`.affordance > p`, `header > p`, `:first-child`, `:nth-child`); to exclude a moved CTA paragraph from a lede rule use `header p:where(:not(.affordance p))` (zero-specificity exclusion);
+- only when the old rule itself set the type (a bespoke hero headline) does the wrapper carry `font-*` and the inner element gets `font: inherit; color: inherit; margin: 0`;
+- `color` on the wrapper must be explicit when spans used to carry it (global `h1–h6 { color }` beats inheritance);
+- inner restructuring of the authored element (per-line `<span>`s) is allowed only as a presentation refinement the wrapper does not depend on.
+
+**EW3 — CTAs move as their paragraph.** The index is on the `<p>`, not the `<a>`: `actions.append(a.closest('p') || a)`. `decorateButtons()` already put `.button.primary/.secondary` on the anchor before `decorate()` ran; those classes die while editing, so the foundation ships an **edit-mode repaint** derived from the authored marks (Step 3 (a)) — zero effect on published pages. Classes a block itself adds to an authored anchor or list (`a.link-download`, `ul.icon-list-items`) die the same way: style by element or attribute instead (`.icon-list ul`, `a[href*=".pdf"]`).
+
+**EW4 — Presentational clones strip instrumentation.** Carousel loop slides, marquee duplicates, sticky copies: `stripInstrumentation(clone)` (scaffold helper). One element per index, and it must be the visible one — a duplicated index attaches the editor to the FIRST copy in DOM order, often a hidden clone.
+
+**EW5 — Exempt text is declared, not silently dropped.** Three categories: (a) *text-as-metadata* never displayed (glyph keys, `label | value` keys, variant selectors, video/embed source links, hidden config rows); (b) *derived text* (an ISO date re-rendered as day/month spans) — prefer authoring the displayed form; (c) *index/API-driven blocks* whose authored rows are only the no-JS fallback (press listings, job lists, forms, maps). Declare each in the block JSDoc with a machine-readable tag — `@ew-exempt <p> ISO date (cell 1) — derived`, or `@ew-exempt all — index-driven listing, authored rows are the no-JS fallback` — so the gate whitelists it. A fourth shape — one authored paragraph rendered as N elements (a breadcrumb trail) — cannot be made editable by the block: the ENCODE side must author a `<ul>` (a list is one editable unit).
+
+**EW6 — Card-as-link: unwrap the authored inner anchor in the live DOM** (`link.replaceWith(...link.childNodes)`) after reading its `href`; the indexed paragraph survives inside the card `<a>`, no nested anchors on the published page (`labelWrap(link, 'affordance-wrap', { unwrap: true })`). The editor re-renders the inner link while editing, so the foundation ships `a .prosemirror-editor a:any-link { color: inherit; text-decoration: none }` (Step 3 (b)).
+
+**EW7 — Interactive containers cannot host the editor.** A `<button>` (or `<summary>`) swallows focus and clicks: an accordion title moves into a sibling `div.accordion-title`, the whole headline row takes the click handler, and the button becomes a chevron-only toggle with an `aria-label`. Content hidden at rest (collapsed panels, inactive tabs, non-active slides) is editable but only reachable after the author opens it — keep those controls working inside the workspace (link navigation is blocked there, buttons are not).
+
+**EW8 — Section heads reabsorbed from default content MOVE the wrapper's children** (they are already editable as default content) and remove the empty wrapper (§ Section heads).
+
+**EW9 — Re-entrancy.** `setBody()` re-runs `loadPage()` on a fresh body every time; blocks that adopt sibling sections (tabs, accordions) must move those decorated blocks whole and must not depend on module-level state from the previous run.
+
+**EW10 — Default content styling follows the same selector rules.** Section styles on prose (`main .section.x .default-content-wrapper > p:first-child`, `p:has(picture) + p`) drift in edit mode for the same two-wrapper reason; use descendant selectors and avoid positional pseudo-classes on prose elements (Step 3).
+
+**The EW gate — run it per block, in the loop.** `block-roundtrip.mjs` runs with `--ew` on by default (below) and fails on a dead non-exempt text or a duplicated index. The standalone probe measures the same thing on a whole page, and `--simulate-editor` performs the editor swap to report font/colour/height drift per text and block height Δ:
+
+```bash
+# harness mode — no server, same technique as block-roundtrip
+node skills/deploy/scripts/ew-editability-probe.mjs --content content/<page>.html --verbose --simulate-editor
+# URL mode — a served page (dev server, preview origin); --blocks-dir lets it read @ew-exempt tags
+node skills/deploy/scripts/ew-editability-probe.mjs http://localhost:3000/qa/page.html --blocks-dir blocks --verbose --simulate-editor
+```
+
+Exit 0 = every non-exempt authored text editable, no duplicates; 1 = dead/duplicated; 2 = probe error. Fix by moving the offending element (EW1) or the offending selector to wrapper-descendant form (EW2) — never by weakening the gate. Corollary the two external write-ups missed: `cloneNode(true)` is *not* what kills editing (the clone carries the attribute — that is why clone-based blocks worked while `textContent`-based ones did not); cloning is still wrong (duplicates, stale identity), but the fix is "move", not "avoid clone".
 
 **Prove each block's round-trip IN THE LOOP — per block, before deploy (#94).** Step 10's `content-diff` is the post-deploy proof; it must not be where defects are FOUND. After writing a block (and its authored rows), run the harness round-trip:
 
@@ -653,15 +753,15 @@ node skills/deploy/scripts/block-roundtrip.mjs \
   "http://localhost:8791/<prototype>.html" content/<page>.html --blocks <name>   # omit --blocks for all
 ```
 
-It decorates the authored content locally with the block's own JS+CSS (the render-harness technique — no DA, no dev server), extracts the role inventory from the decorated section AND the matching prototype section with the SAME classifier as `content-diff` (`skills/deploy/scripts/content-inventory.mjs`), and diffs them. Pass `--map <name>=<selector>` when the prototype section class differs from the block name; `--styles`/`--blocks-dir` when the repo layout isn't `eds/`- or root-level. Exit 2 on any structural 🔴 (MISSING CTA/HEADING/EYEBROW, ROLE SWAP) **or any decorate error** — fix the decode (or the authored rows) and re-run; the block is done when it exits 0. Font forks are deliberately NOT checked here (the harness renders local fonts; faces are Step 4 + Step 10's business). A `decorate errors` line means the block threw mid-run or its JS never installed (the harness INLINES block JS, so a module-scope `import` cannot resolve — inline the helper, or verify that one block via the dev-server harness + Step 10); either way the raw rows can false-match the prototype, so these fail the gate on their own. Template-slotted blocks (#95) still run the gate: it catches slot-fill mistakes and authored-row drift.
+It decorates the authored content locally with the block's own JS+CSS (the render-harness technique — no DA, no dev server), extracts the role inventory from the decorated section AND the matching prototype section with the SAME classifier as `content-diff` (`skills/deploy/scripts/content-inventory.mjs`), and diffs them. Pass `--map <name>=<selector>` when the prototype section class differs from the block name; `--styles`/`--blocks-dir` when the repo layout isn't `eds/`- or root-level. Exit 2 on any structural 🔴 (MISSING CTA/HEADING/EYEBROW, ROLE SWAP) **or any decorate error** — fix the decode (or the authored rows) and re-run; the block is done when it exits 0. Font forks are deliberately NOT checked here (the harness renders local fonts; faces are Step 4 + Step 10's business). A `decorate errors` line means the block threw mid-run or its JS never installed (the harness INLINES block JS, so a module-scope `import` cannot resolve — inline the helper, or verify that one block via the dev-server harness + Step 10); either way the raw rows can false-match the prototype, so these fail the gate on their own. Template-slotted blocks (#95) still run the gate: it catches slot-fill mistakes and authored-row drift. **With `--ew` (default on) the same run stamps the workspace's `data-prose-index` on the authored editables BEFORE `decorate()` and reports, per block, `editable N/M, dead K, duplicated D, exempt E` — a dead non-exempt text (`DEAD TEXT`) or a duplicated index (`DUPLICATED INDEX`) is a 🔴 alongside MISSING CTA/HEADING (§ contract above); `--no-ew` exists only for diagnosing the role diff in isolation.**
 
 **Copy set for the playwright ESM rule:** when copying these gates into the project (extract SKILL.md § Setup — bundled scripts must run from the project so `import 'playwright'` resolves), copy `skills/deploy/scripts/` — it is now self-contained (the shared role classifier `content-inventory.mjs` + `diff-profiles.mjs` live there; `block-roundtrip.mjs`/`section-schema.mjs` import them locally). Only if you also run the Step-10 advisory `content-diff` do you additionally need `skills/diff/scripts/` (`content-diff.mjs` + `live-session.mjs`, which import back into `../../deploy/scripts/`).
 
 **Lead/hero blocks: query content, don't hard-index rows (#42).** A hero that reads `rows[3]=headline, rows[4]=lede, rows[5]=CTA` breaks the moment the content shape differs — and the mandatory-metadata / single-`<h1>` SEO rework (#34/#35) actively **consolidates** the headline + lede + CTAs into ONE cell, so the fixed indices come back `undefined` and the hero `.wrap` (the LCP element and the only `<h1>`) renders EMPTY with no error. Decorate lead blocks by querying (`block.querySelector('h1,h2')`; link-bearing `<p>` = CTAs; `picture` from anywhere) so they tolerate BOTH the rich multi-row shape and the consolidated single-cell shape. **Disambiguate eyebrow vs lede by ORDER/length, not "first `<p>`" (#51):** both are link-free `<p>`s, so "first link-free paragraph = lede" swaps them (the short eyebrow comes first). The canonical lead order is **eyebrow → heading → lede**: the eyebrow is the short/uppercase line *before* the heading; the lede is the sentence-length `<p>` *after* it. Local-QA check: after decoration, assert the hero's inner wrap is non-empty and contains the `<h1>`.
 
-**When cloning a cell into your OWN heading element, UNWRAP the cell's heading first (#55).** If you build a live `<h1>` and clone a source cell's *childNodes* into it, and that cell wraps its text in its own `<h1>` (which #35/#42 actively encourage), you get `<h1><h1>…</h1></h1>` — a duplicate heading and a doubled font cascade. Always `const inner = cell.querySelector('h1,h2,h3,h4,h5,h6') || cell;` then clone `inner.childNodes`. Local-QA: exactly one `<h1>`, and 0 descendant headings inside the live headline.
+**Never build your OWN heading element — MOVE the authored one (#55, EW1).** The old recipe (build a live `<h1>`, clone the cell's `childNodes` into it) produced `<h1><h1>…</h1></h1>` when the cell already carried a heading (#35/#42 encourage that), and even the "unwrap first, clone `inner.childNodes`" fix leaves a dead headline in Experience Workspace — childNodes carry no `data-prose-index`. The rule now: `const heading = cell.querySelector('h1,h2,h3,h4,h5,h6'); box.append(wrapNode(heading, 'headline'))` — the authored tag is the tag (the ENCODE side authors `<h1>` for the lead, `<h2>` elsewhere, #35/#57); the wrapper carries the class; CSS is `.headline :is(h1, h2, h3)`. Only a cell with NO heading element (off-pipeline harness content) falls back to wrapping the bare text — flag that branch in the JSDoc, it never fires on DA content. Local-QA: exactly one `<h1>`, 0 descendant headings inside `.headline`, and the EW gate shows the headline editable.
 
-**Marker injection must be IDEMPOTENT (#70).** When `decorate()` PREPENDS a fixed decorative marker to authored heading/link text (a glyph `▶`, a badge, a `CH NN` number), first STRIP a matching leading occurrence from the cloned text node — `firstText.textContent = firstText.textContent.replace(/^\s*▶\s*/, '')` — because the author (or the #34/#35 SEO content rebuild) may already type it, so the marker doubles (`▶ ▶ Latest signal`). Apply the SAME strip at EVERY place the block injects that marker (section titles AND card links), not just some. (The deployed eyeball catches a doubled glyph `X X …`.)
+**Marker injection must be IDEMPOTENT — and must never edit the authored text node (#70, EW1).** When `decorate()` PREPENDS a fixed decorative marker to authored heading/link text (a glyph `▶`, a badge, a `CH NN` number), the author (or the #34/#35 SEO content rebuild) may already type it, so the marker doubles (`▶ ▶ Latest signal`). Resolve it on the GENERATED side: emit the marker as a separate element (`<span class="marker" aria-hidden="true">▶</span>` before the moved heading, or a CSS `::before` on the wrapper) and SKIP emitting it when the authored text already starts with the glyph (`/^\s*▶/.test(heading.textContent)`). Never `replace()` the authored text node — that changes its `textContent` length and breaks the editor's cursor offsets (EW1). Apply the SAME check at EVERY place the block injects that marker (section titles AND card links), not just some. (The deployed eyeball catches a doubled glyph `X X …`.)
 
 **Carousel slide segmentation is HEADING-boundary driven and ORDER-AGNOSTIC (#69).** Segment slides ONLY on the heading boundary — one heading opens one slide (a leading `<picture>` before the first heading may open slide 0). Fold EVERYTHING between two headings into the open slide regardless of authored order (eyebrow/label may come AFTER the heading, not before): first non-link text run = eyebrow, links = CTAs, extra text = description. Never let a post-heading text node open a NEW slide (that steals the heading slot and the CTAs never attach — symptom: N+2 jumbled slides with 0 CTAs). Local-QA: rendered slide count == authored heading count AND each slide's CTA count == authored.
 
@@ -687,17 +787,25 @@ function collectNodes(block) {
         && kids[0].querySelector('picture, img')) {
       const inner = [...kids[0].childNodes].map((n) => {
         if (n.nodeType === 1) return n;
-        if (n.textContent.trim()) { const p = document.createElement('p'); p.textContent = n.textContent.trim(); return p; }
+        // HARNESS-ONLY fallback (EW5): a bare text node inside the wrapper <p>. In DA
+        // content every text is already a <p>/<h*> (prose2aem keeps the <p> in every
+        // cell), so this branch never fires there; a synthesized <p> is dead in the
+        // workspace. Move the TEXT NODE into a fresh <p> (p.append(n)) — never copy
+        // its textContent — so the harness and the gate see the same node.
+        if (n.textContent.trim()) { const p = document.createElement('p'); p.append(n); return p; }
         return null;
       }).filter(Boolean);
       kids = inner;
     }
     if (kids.length) out.push(...kids);
-    else if (cell.textContent.trim()) { const p = document.createElement('p'); p.textContent = cell.textContent.trim(); out.push(p); }
+    // HARNESS-ONLY fallback (EW5) — same rule: wrap the existing text nodes, never
+    // synthesize from textContent. Flag the branch in the block JSDoc.
+    else if (cell.textContent.trim()) { const p = document.createElement('p'); p.append(...cell.childNodes); out.push(p); }
   });
   return out.length ? out : [...block.children]; // last-ditch: direct children
 }
 ```
+`collectNodes()` returns EXISTING authored elements — that is the point: everything it returns is then MOVED into the layout (EW1). The two synthesized-`<p>` branches are harness-only fallbacks for off-pipeline content and must be commented as such; if the EW gate reports a dead text on DA-shaped content, the block is copying text somewhere downstream of the collector.
 Then segment/classify the returned nodes by content; one-cell-per-row is a fallback. **Local-QA: assert every block's primary content container is non-empty post-decorate (childCount>0 / height>0)** — a 0-node selector mismatch otherwise renders a silent blank box (a blank hero only surfaces via a per-block height probe; testimonials surfaced as a CONTENT GAP). **Local-QA / Checklist assertion:** after `decorate()`, the rendered count must equal the authored count — the hero wrap is non-empty and has the `<h1>`; a card grid holds N cards (= N repeat-headings in source), never 1. Index-based contracts pass lint but silently render 1/N.
 
 **Card grids that alternate ground: reconstruct the rhythm by INDEX when no marker survives (#61).** A prototype encodes a grid's light/dark alternation structurally (the 2nd card has `--dark`), but that marker does NOT survive into DA content. A block that flips dark only on an explicit authored "dark" cell renders every card light — the dark card's white heading/CTA go invisible (caught by the #59 `SURFACE/GROUND MISMATCH` flag). Fallback to the positional pattern: `const dark = explicitMarker ?? (i % 2 === 1)`. Then scope on-dark button/text overrides to the resulting `.card.dark` block class (#41).
@@ -784,7 +892,11 @@ node skills/deploy/scripts/build-harness.mjs content/<path>.html qa/page.html   
 
 Open `http://localhost:3000/qa/page.html` — `scripts.js` runs `loadPage()` (which adds `body.appear`, decorates, and loads sections), blocks load from the code origin, chrome loads via the `header`/`footer` blocks fetching `/nav` and `/footer`. Screenshot / inspect with headless Chrome (`--virtual-time-budget=9000 --screenshot` / `--dump-dom`) or Playwright.
 
-**Before any DA push, run the whole-page round-trip gate (#94)** — `block-roundtrip.mjs` with no `--blocks` (all blocks, DA-free): it catches cross-block drops a per-block run can miss (a section head absorbed by the wrong block, an instance-count mismatch between authored blocks and prototype sections).
+**Before any DA push, run the whole-page round-trip gate (#94)** — `block-roundtrip.mjs` with no `--blocks` (all blocks, DA-free): it catches cross-block drops a per-block run can miss (a section head absorbed by the wrong block, an instance-count mismatch between authored blocks and prototype sections). Its `--ew` pass (default on) is the whole-page **Experience Workspace editability gate**: 0 dead texts outside declared `@ew-exempt`, 0 duplicated indices.
+
+**Then the edit-mode simulation (Step 8 § contract)** — `node skills/deploy/scripts/ew-editability-probe.mjs --content content/<page>.html --simulate-editor --verbose`: it performs the workspace's editor swap on every surviving text and reports font-family/size/weight, line-height and colour drift per text plus the per-block height delta. Target: no drift, block height Δ ≤ 2 px. Drift means a class sits on the authored element or its spans, or a `>`/`:first-child` path — move the selector to wrapper-descendant form (EW2). `render-harness.mjs --ew --simulate-editor` screenshots the same state for eyeballing (it hides `body > header`, so tall-block element shots are not polluted by a sticky header).
+
+**Pixel parity of the published render before/after an editability conversion** — when converting an already-shipped block to the move-based pattern, capture element screenshots of every block instance at 1440 with `body > header` hidden and live-widget iframes excluded, convert, re-shoot, `pixelmatch` = 0 per instance. The gate must never trade fidelity for editability (a 27-instance conversion shipped 0 px difference).
 
 **Then run the stock QA gate — do NOT hand-roll a probe script (#101):**
 
@@ -886,7 +998,7 @@ Defining `.section.dark`, `.section.prose-2col`, `.section.eyebrow`, etc. as a s
 A wave SVG that all blocks import seems reusable. But each prototype section uses its wave differently (different dimensions, colors, animation). Inlining the SVG inside the owning block is more code on paper but eliminates a coupling and makes each block self-contained.
 
 **4. Manually creating button anchors in block JS.**
-Code like `cta.className = 'btn-loud'; cta.innerHTML = '<span>…</span>' + ARROW_SVG;` duplicates the EDS button decorator's job, fights its class-application order, and ties block JS to specific button classes. **Clone the cell anchor — `decorateButtons()` already classed it before your block ran.** Block CSS overrides the global button style only when something is actually different (size, hover variant).
+Code like `cta.className = 'btn-loud'; cta.innerHTML = '<span>…</span>' + ARROW_SVG;` duplicates the EDS button decorator's job, fights its class-application order, and ties block JS to specific button classes. **Move the CTA's paragraph (`a.closest('p')`) — `decorateButtons()` already classed the anchor before your block ran, and the paragraph carries the workspace's editor index (EW3).** Block CSS overrides the global button style only when something is actually different (size, hover variant).
 
 **5. Reconstructive parsing of chrome content.**
 Chrome blocks that heuristically re-classify arbitrary authored content ("first list = nav, second link = CTA, guess the rest") are fragile and lossy — one authored change scrambles the header. Chrome is **template-slotted** (Step 6): the block holds the prototype's chrome DOM and fills fixed role slots from the `/nav`/`/footer` documents' fixed section contract (brand / links / tools). If you find yourself writing open-ended parsing heuristics for header/footer, stop and pin the document contract instead.
@@ -929,6 +1041,12 @@ Prototypes often hide sections with `.reveal { opacity:0 }` and reveal them via 
 **17. Injecting a `<main>` element from block JS.**
 A block that builds its own layout/view wrapper (common for interactive blocks that swap views, #33) must NOT use `<main>`. The page already has one `<main>` — a second is invalid HTML and a duplicated landmark, and any runtime or probe code that does `document.querySelector('main')` (the runtime's own `loadSections`, the diff probes' inventory extraction) can bind to the WRONG one, silently skipping or double-processing sections. Structural CSS scoped to `main .section`/`main > .section` can also start matching injected DOM it was never meant for. Use a `<section>` (or keep injected nodes scoped under the block element). Don't port a prototype's `<main>` wrapper literally into block-injected DOM.
 
+**18. Value-slotting: copying authored text into template nodes.**
+`slot.textContent = cell.textContent`, `h.innerHTML = heading.innerHTML`, `` `<h2 class="t">${text(cell)}</h2>` `` — every template-slotted and reconstructive block on a real site did this because the old scaffold taught it. It looks perfect on the published page, is **100 % uneditable in Experience Workspace** (the authored element carrying `data-prose-index` was discarded), and no fidelity gate catches it — role round-trip, content-diff and pixel diff all pass. Found by the customer clicking text in the canvas. Node-slot instead: empty slot containers in the template, authored elements MOVED into them (Step 2b, EW1). The `--ew` gate now fails it in the loop.
+
+**19. A class on the authored element (`h3.headline`, `ul.items`, `a.link-download`, `a.button`).**
+Editable, but the look collapses the moment the author clicks: the editor re-renders the same tag with no classes and two wrapper divs above it. Wrappers carry the classes; style the authored element as a descendant of the wrapper (`.headline :is(h2, h3)`), by element (`.icon-list ul`) or by attribute (`a[href*=".pdf"]`); repaint buttons from their `<strong>`/`<em>` marks under `.prosemirror-editor` (Step 3, EW2/EW3). The `--simulate-editor` probe measures the drift.
+
 ## Checklist (per page)
 
 - [ ] Each section in the prototype `<main>` has a corresponding section in the content page — a block for pattern sections, default content for prose sections (D1, Step 2 triage recorded in the conversion log).
@@ -940,6 +1058,10 @@ A block that builds its own layout/view wrapper (common for interactive blocks t
 - [ ] **`content-diff` summary reviewed (advisory)** for the first page of each template — per-role/img count deltas checked; any per-node 🔴 confirmed by the deployed eyeball as a real DA-transport reshape vs a known false-positive (in-block fidelity is already gated pre-deploy by `block-roundtrip`).
 - [ ] **Section schema emitted + used (#93)** — `stardust/eds-schema/<page>.json` exists; authored rows follow its order/units; each block's JSDoc cites its section's schema; deliberate drops recorded in the conversion log.
 - [ ] **Every block passed `block-roundtrip` BEFORE deploy (#94)** — exit 0 (0 structural 🔴) per block against its prototype section, plus one whole-page run (no `--blocks`) clean before the DA push.
+- [ ] **EW gate exits 0 for every block (EW1–EW10)** — `block-roundtrip --ew` (default) / `ew-editability-probe.mjs`: dead = 0 outside declared `@ew-exempt` tags, duplicated = 0; every exemption is one of the three declared categories (metadata / derived / index-driven) and is written in the block JSDoc, never implied.
+- [ ] **Edit-mode simulation clean** — `ew-editability-probe.mjs --simulate-editor`: no font/colour/line-height drift on any text, block height Δ ≤ 2 px; the foundation ships the edit-mode CTA repaint, the card-as-link inner-anchor rule and `:where()` wrapper variants for every styled-text-link utility (Step 3).
+- [ ] **Block JS/CSS static review (EW1/EW2/EW4)** — no `textContent =`/`innerHTML =`/`${…}` interpolation producing displayed text from an authored element; no `cloneNode` of an indexed element without `stripInstrumentation()`; no `>`/`:first-child`/`:nth-child` between a wrapper class and an authored element; no class added to an authored `h*/p/ul/a` (wrappers carry classes); no `<button>`/`<summary>` hosting authored text (EW7).
+- [ ] **Pixel parity before/after an editability conversion** — element screenshots of every block instance at 1440 with `body > header` hidden and live-widget iframes excluded: `pixelmatch` = 0 per instance (fidelity is never traded for editability).
 - [ ] **Decode tier chosen per section (#95)** — bespoke fixed-composition sections are template-slotted (verbatim prototype DOM + role slots); only repeat/authorable sections are reconstructive; tiers recorded in the conversion log.
 - [ ] `<header></header>` and `<footer></footer>` are EMPTY (the `header`/`footer` blocks load `/nav` and `/footer` automatically); `content/nav.html` + `content/footer.html` exist, follow the section contract (brand / links / tools), and are on the publish roster.
 - [ ] **Page begins with a `metadata` block** (#34): real Title (≤60 chars, from the `<h1>`, never a block name) + Description (~155 chars). `nav` / `footer` path overrides / `Robots` rows go in the same block when needed.
@@ -956,7 +1078,7 @@ A block that builds its own layout/view wrapper (common for interactive blocks t
 - [ ] Hero LCP image is `loading="eager"` + `fetchpriority="high"` (set in `decorate()` — the empty metadata-first section defeats the runtime's `waitForFirstImage`, #100) and its media slot is CSS-reserved (`min-height`/`aspect-ratio`); the CLS probe ran ONLY against the DEPLOYED preview (#101 — a harness CLS number is meaningless).
 - [ ] **`qa-gate.mjs` run against the harness (advisory smoke test)** — stock script + the page's eds-schema, no hand-rolled probe (#101). Its unique pre-deploy value is the schema unit-counts + one-`<h1>`; decoration/broken-img/grid checks are superseded by the DEPLOYED computed-style guard (a harness qa-gate failure on chrome-empty or auth-gated DA images is a known harness limitation, not a defect). The advisory `content-diff` was run against the DEPLOYED URL only.
 - [ ] Any styling that depends on a `<span>`/class INSIDE a block cell is re-created in `decorate()` (#39) — EDS strips `<span>` in block cells (e.g. wrap a `.stars` run in JS, don't author it).
-- [ ] Every block reads plain-text fields by CELL/`textContent`, NOT `querySelectorAll('p')` (#79) — the pipeline unwraps the `<p>` in single-text cells, so a `p`-based read drops eyebrow/subhead/lede/tag/body on live while the raw-`<p>` harness still shows them. Verify against the decorated live/preview render or a `<p>`-stripping harness, and assert each text field is present (counts alone don't catch it).
+- [ ] Every block CLASSIFIES plain-text fields by CELL (`cell.textContent` for the decision, #79) but DISPLAYS them by MOVING the cell's element (EW1) — the runtime's `wrapTextNodes` (#104) re-wraps a bare-text cell in a `<p>` before `decorate()`, and the workspace always delivers a `<p>`, so the element to move exists in both worlds; a `p`-only *read* that skips a cell still drops content on older runtimes. Verify against the decorated live/preview render, and assert each text field is present AND editable (counts alone don't catch it).
 - [ ] No `<style>` or `<script>` tags in the content page, and no code visible as text in any cell (D15).
 - [ ] Section-metadata blocks appear ONLY on default-content sections, `style` values from the Step-3 closed set (never on block sections — anti-pattern 2).
 - [ ] Closing CTA reuses the shared `closing` block.
@@ -988,3 +1110,5 @@ Update `stardust/eds-conversion-log.md` (or create one) with: final block invent
 - `davids-model.md` — David's Model (aem.live) distilled: the 15 rules (`D#N`), each mapped to the contract or gate in this skill that enforces it, plus the component-model shape compatibility notes.
 - `da-deploy-protocol.md` — the curl-based DA Source API deploy contract (auth, source PUT, preview/publish, asset-before-preview ordering).
 - `IMPROVEMENTS.md` — running log of friction/gaps and the numbered findings (#NN) that the `stardust:diff` `eds` profile cites.
+- `scripts/ew-editability-probe.mjs` — the Experience Workspace editability gate (Step 8 § contract): instrument → decorate → count survivors; `--simulate-editor` edit-mode drift; URL and `--content` harness modes; reads `@ew-exempt` JSDoc tags.
+- Experience Workspace sources the contract was verified against (read them when the mechanism seems to have changed): da.live `blocks/canvas/editor-utils/editor-utils.js` (`getInstrumentedHTML` — what is stamped), `blocks/canvas/ew-editor-wysiwyg/ew-editor-wysiwyg.js`, `blocks/shared/prose2aem.js` (cells keep their `<p>`); da-nx `nx/public/plugins/quick-edit/quick-edit.js` (`setBody` → `loadPage` → `restoreBlockIndices`), `src/prose.js` (`createEditor` swap shape), `src/images.js`, `src/dom-index.js`, `src/selection.js` (cursor math on `textContent` length).

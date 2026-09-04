@@ -118,7 +118,11 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
 1. **Convert + push** the migrated HTML (`source.migratedHtml`) to AEM via the
    `deploy` methodology. **Pass the plan step into deploy's brief**: create only the
    blocks in `convert`; for each block in `reuse`, REUSE the existing block by its
-   `edsBlockName` (do not recreate).
+   `edsBlockName` (do not recreate). **The brief MUST carry the Experience Workspace
+   editability contract** (deploy SKILL.md § 8, EW1–EW10): every converted block
+   moves authored elements into wrappers (never rebuilds from text) and passes the
+   EW gate (`block-roundtrip --ew`) before it counts as delivered — a brief without
+   it skipped the contract on 27/27 blocks of a real site.
 
    **`content-pending` pages** (archetypes-only): no migrated HTML — skip the
    document push entirely (no shell/placeholder), record `content-pending`, surface
