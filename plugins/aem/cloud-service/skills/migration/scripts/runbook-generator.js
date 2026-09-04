@@ -48,7 +48,7 @@ const path = require('path');
 const { getBpaFindings, checkAvailableSources } = require('./bpa-findings-helper.js');
 const { runAnalyzer, isAnalyzerAvailable, DEFAULT_ANALYZE_SCRIPT } = require('./analyzer-runner.js');
 const { runHtlLint } = require('./htl-lint-runner.js');
-const { runOsgiConfigScan } = require('./osgi-config-runner.js');
+const { runOsgiConfigScan, scanUnsupportedRunmodes, validateRunmodeFolder } = require('./osgi-config-runner.js');
 const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
 const { runTemplateScan } = require('./template-scan-runner.js');
 
@@ -200,6 +200,36 @@ function rawBpaTarget(pattern, t) {
 }
 
 /**
+ * Build a BPA-sourced URC (unsupported run mode) finding/raw pair in the SAME
+ * shape `scanUnsupportedRunmodes` (the local scanner) emits. BPA's URC target
+ * carries the JCR folder path as `className` (e.g. `/apps/demo/config.dev.author`)
+ * and only the bare subtype string `unsupported.runmode` as `identifier` — not
+ * the offending run mode — so `normalizeBpaTarget`/`rawBpaTarget` would lose the
+ * useful detail. Re-derive it by running `validateRunmodeFolder` on the folder
+ * basename, same as the local scanner does on disk.
+ */
+function urcBpaTarget(t) {
+  const folderPath = t.className || t.filePath || '—';
+  const basename = path.basename(folderPath);
+  const bad = validateRunmodeFolder(basename);
+  const runmode = bad ? bad.runmode : (basename.includes('.') ? basename.slice(basename.indexOf('.') + 1) : basename);
+  const detail = bad
+    ? `unsupported-runmode — folder '${basename}' (${bad.reason}); rename to a supported run mode or remove`
+    : `unsupported-runmode — ${folderPath}`;
+  return {
+    finding: { location: folderPath, detail, severity: 'high' },
+    raw: {
+      pattern: 'osgiConfig',
+      file: folderPath,
+      line: null,
+      snippet: `unsupported run mode '${runmode}'`,
+      kind: 'unsupported-runmode',
+      runmode,
+    },
+  };
+}
+
+/**
  * Gather findings for every canonical pattern via the per-pattern cascade.
  *
  * @returns {Promise<{
@@ -330,6 +360,44 @@ async function gatherFindings(options = {}) {
       sourceByPattern.osgiConfig = 'config-scan';
       scannedBy.osgiConfig = 'config-scan';
       if (res.warnings && res.warnings.length) scanWarnings.push(...res.warnings);
+
+      // URC (unsupported run modes) — report-first, local safety net. Kept under
+      // osgiConfig: the secret/legacy scan above is always local; only this URC
+      // sub-portion prefers the BPA report. BPA owns the verdict ONLY when it
+      // actually reports URC findings (non-empty targets). A report that is
+      // present but reports NO URC rows — pattern absent from a CSV, or an MCP
+      // fetch that came back with an empty target list — does NOT by itself
+      // prove the project is URC-clean (the report may predate URC detection
+      // or be scoped to other patterns), so we warn and still run the local
+      // config.*/install.* scan as a safety net. The local scanner also runs
+      // when there is no BPA source at all, or the fetch genuinely failed.
+      let urcFindings = [];
+      let urcRaw = [];
+      let bpaOwnsUrc = false;
+      if (bpaMode) {
+        const urc = await getBpaFindings('urc', {
+          bpaFilePath, collectionsDir, projectId, mcpFetcher, limit: null, offset: 0,
+        });
+        if (urc.success && Array.isArray(urc.targets) && urc.targets.length > 0) {
+          const built = urc.targets.map(urcBpaTarget);
+          urcFindings = built.map(b => b.finding);
+          urcRaw = built.map(b => b.raw);
+          bpaOwnsUrc = true;
+        } else if (urc.availablePatterns || (urc.success && Array.isArray(urc.targets))) {
+          // BPA source present but reported no URC rows — not proof of
+          // "clean"; warn and fall through to the local safety-net scan below.
+          scanWarnings.push(
+            'BPA source present but reported no URC (unsupported.runmode) findings — running the local config.*/install.* run-mode scan as a safety net (the report may predate URC detection or be scoped to other patterns).'
+          );
+        }
+        // else: real fetch error → fall through to the local scanner.
+      }
+      if (!bpaOwnsUrc) {
+        const localUrc = scanUnsupportedRunmodes(workspaceRoot);
+        if (localUrc.ok) { urcFindings = localUrc.findings; urcRaw = localUrc.rawFindings; }
+      }
+      findingsByPattern.osgiConfig.push(...urcFindings);
+      rawFindingsByPattern.osgiConfig.push(...urcRaw);
     }
   }
 

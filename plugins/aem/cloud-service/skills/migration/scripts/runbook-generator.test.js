@@ -7,10 +7,11 @@ const os = require('os');
 const path = require('path');
 
 const { runHtlLint, classify } = require('./htl-lint-runner.js');
-const { runOsgiConfigScan } = require('./osgi-config-runner.js');
+const { runOsgiConfigScan, validateRunmodeFolder, scanUnsupportedRunmodes, reorderRunmodeFolder, planRunmodeReorders } = require('./osgi-config-runner.js');
 const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
 const { runTemplateScan, classifyStaticTemplate } = require('./template-scan-runner.js');
 const { runAnalyzer } = require('./analyzer-runner.js');
+const { getBpaFindings } = require('./bpa-findings-helper.js');
 const {
   gatherFindings, generateRunbook, renderRunbook, writeRunbookCache,
   samplePrompt, CANONICAL_PATTERNS, PATTERN_META,
@@ -116,6 +117,131 @@ test('runOsgiConfigScan ignores non-config folders and repoinit secret keys', ()
   const res = runOsgiConfigScan(root);
   assert.ok(!res.rawFindings.some(f => f.kind === 'plaintext-secret'),
     'files outside config folders and repoinit files are not flagged for plaintext secrets');
+});
+
+// ── URC: run-mode folder validation ─────────────────────────────────────────
+
+test('validateRunmodeFolder accepts valid supported run-mode folders', () => {
+  for (const name of ['config', 'install', 'config.author', 'config.publish',
+    'config.dev', 'config.stage', 'config.prod', 'config.author.dev',
+    'config.publish.prod', 'install.author', 'install.publish.stage']) {
+    assert.strictEqual(validateRunmodeFolder(name), null, `${name} should be valid`);
+  }
+});
+
+test('validateRunmodeFolder flags tier-after-environment ordering violations', () => {
+  const bad = validateRunmodeFolder('config.dev.author');
+  assert.ok(bad, 'config.dev.author is unsupported');
+  assert.strictEqual(bad.runmode, 'dev.author');
+  assert.match(bad.reason, /must precede/i);
+});
+
+test('validateRunmodeFolder flags unknown tokens and preview', () => {
+  assert.ok(validateRunmodeFolder('config.preprod'), 'preprod is unknown');
+  assert.ok(validateRunmodeFolder('config.author.preprod'), 'preprod after author still unknown');
+  assert.ok(validateRunmodeFolder('install.local'), 'local is unknown');
+  assert.ok(validateRunmodeFolder('config.preview'), 'preview cannot be declared');
+});
+
+test('validateRunmodeFolder flags duplicate tier/environment tokens', () => {
+  assert.match(validateRunmodeFolder('config.author.publish').reason, /tier/i);
+  assert.match(validateRunmodeFolder('config.author.dev.stage').reason, /environment/i);
+});
+
+test('validateRunmodeFolder is case-sensitive — capitalized tokens are unsupported', () => {
+  const bad1 = validateRunmodeFolder('config.Author.dev');
+  assert.ok(bad1, 'config.Author.dev is unsupported (case-sensitive)');
+  assert.match(bad1.reason, /'Author'/);
+  const bad2 = validateRunmodeFolder('config.PUBLISH');
+  assert.ok(bad2, 'config.PUBLISH is unsupported (case-sensitive)');
+  assert.match(bad2.reason, /'PUBLISH'/);
+});
+
+test('scanUnsupportedRunmodes flags unsupported config/install folders only', () => {
+  const root = mkworkspace();
+  write(root, 'ui.config/jcr_root/apps/my/config.dev.author/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  write(root, 'ui.apps/jcr_root/apps/my/install.local/my-bundle.jar', 'x');
+  write(root, 'ui.config/jcr_root/apps/my/config.author.dev/com.my.Ok.cfg.json', '{ "a": 1 }\n');
+  write(root, 'ui.apps/jcr_root/apps/my/install.publish/ok-bundle.jar', 'x');
+  const res = scanUnsupportedRunmodes(root);
+  assert.strictEqual(res.ok, true);
+  const kinds = res.rawFindings.map(f => f.kind);
+  assert.ok(kinds.every(k => k === 'unsupported-runmode'));
+  const runmodes = res.rawFindings.map(f => f.runmode).sort();
+  assert.deepStrictEqual(runmodes, ['dev.author', 'local']);
+});
+
+test('validateRunmodeFolder flags malformed run-mode folder names', () => {
+  assert.match(validateRunmodeFolder('config.').reason, /malformed/i);
+  assert.match(validateRunmodeFolder('config..dev').reason, /malformed/i);
+  // Bare config/install (no dot) and non-config names stay out of scope.
+  assert.strictEqual(validateRunmodeFolder('config'), null);
+  assert.strictEqual(validateRunmodeFolder('install'), null);
+  assert.strictEqual(validateRunmodeFolder('configuration'), null);
+});
+
+test('scanUnsupportedRunmodes flags a malformed run-mode folder on disk', () => {
+  const root = mkworkspace();
+  write(root, 'ui.config/jcr_root/apps/my/config./com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const res = scanUnsupportedRunmodes(root);
+  assert.strictEqual(res.ok, true);
+  const malformedRaw = res.rawFindings.find(f => f.kind === 'unsupported-runmode');
+  assert.ok(malformedRaw, 'a finding is produced for the malformed folder');
+  const malformedFinding = res.findings.find(f => /malformed/i.test(f.detail));
+  assert.ok(malformedFinding, 'reason mentions the malformed folder name');
+});
+
+test('scanUnsupportedRunmodes returns ok with no findings for a clean tree', () => {
+  const root = mkworkspace();
+  write(root, 'ui.config/jcr_root/apps/my/config.author.stage/com.my.Ok.cfg.json', '{ "a": 1 }\n');
+  const res = scanUnsupportedRunmodes(root);
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.rawFindings.length, 0);
+});
+
+// ── URC: safe auto-reorder fix (emit git mv commands, read-only) ─────────────
+
+test('reorderRunmodeFolder fixes ordering-only violations and skips the rest', () => {
+  assert.deepStrictEqual(reorderRunmodeFolder('config.dev.author'), { from: 'config.dev.author', to: 'config.author.dev' });
+  assert.deepStrictEqual(reorderRunmodeFolder('install.stage.publish'), { from: 'install.stage.publish', to: 'install.publish.stage' });
+  assert.strictEqual(reorderRunmodeFolder('config.author.dev'), null, 'already valid');
+  assert.strictEqual(reorderRunmodeFolder('config.preprod'), null, 'unknown token — not auto-fixable');
+  assert.strictEqual(reorderRunmodeFolder('config.author.publish'), null, 'two tiers — not auto-fixable');
+});
+
+test('reorderRunmodeFolder does not silently case-fold a capitalized token', () => {
+  assert.strictEqual(reorderRunmodeFolder('config.DEV.author'), null, 'mixed-case token routed to manual, not auto-folded');
+  assert.deepStrictEqual(reorderRunmodeFolder('config.dev.author'), { from: 'config.dev.author', to: 'config.author.dev' },
+    'lowercase ordering violation is still auto-fixed');
+});
+
+test('planRunmodeReorders emits a git mv command and never touches disk', () => {
+  const root = mkworkspace();
+  const bad = write(root, 'ui.config/jcr_root/apps/my/config.dev.author/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const badDir = path.dirname(bad);
+  const res = planRunmodeReorders(root);
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.reorders.length, 1);
+  // Relative paths (not absolute) in a runnable git mv command.
+  assert.match(res.reorders[0].command, /^git mv "ui\.config\/.*config\.dev\.author" "ui\.config\/.*config\.author\.dev"$/);
+  assert.ok(!path.isAbsolute(res.reorders[0].from), 'from path is workspace-relative');
+  assert.ok(fs.existsSync(badDir), 'plan is read-only — nothing renamed on disk');
+});
+
+test('planRunmodeReorders routes collisions and unknown tokens to manual', () => {
+  const root = mkworkspace();
+  // Collision: valid target already exists next to the bad folder.
+  const collidedTarget = write(root, 'ui.config/jcr_root/apps/my/config.author.dev/com.my.Other.cfg.json', '{ "b": 2 }\n');
+  write(root, 'ui.config/jcr_root/apps/my/config.dev.author/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  // Unknown token: never a command.
+  const unknown = write(root, 'ui.config/jcr_root/apps/my/config.preprod/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const res = planRunmodeReorders(root);
+  assert.strictEqual(res.reorders.length, 0, 'no git mv commands emitted');
+  const reasons = res.manual.map(s => s.reason).join(' | ');
+  assert.match(reasons, /already exists/i);
+  assert.match(reasons, /not auto-fixable/i);
+  assert.ok(fs.existsSync(path.dirname(collidedTarget)), 'existing target untouched');
+  assert.ok(fs.existsSync(path.dirname(unknown)), 'unknown-token folder untouched');
 });
 
 // ── orchestrator dispatch + cache tagging ────────────────────────────────────
@@ -385,8 +511,6 @@ test('runAnalyzer returns ok:false on unparseable output', () => {
 
 // ── BPA parsing of the new subtypes (parser + reader) ───────────────────────
 
-const { getBpaFindings } = require('./bpa-findings-helper.js');
-
 function writeBpaCsv(root) {
   const rows = [
     'code,type,subtype,importance,identifier,message,context',
@@ -471,4 +595,134 @@ test('runbook lui is filtered to dialog sub-types when sourced from BPA', async 
   assert.strictEqual(result.patternCounts.cdw, 2);
   assert.strictEqual(result.patternCounts.templateModernization, 2);
   assert.strictEqual(result.gathered.sourceByPattern.lui, 'csv');
+});
+
+// ── URC: BPA report mapping ─────────────────────────────────────────────────
+
+test('getBpaFindings resolves the urc pattern from a BPA CSV, excluding count rows', async () => {
+  const dir = mkworkspace();
+  const csv = path.join(dir, 'bpa.csv');
+  fs.copyFileSync(path.join(__dirname, 'fixtures', 'urc-bpa.csv'), csv);
+  const collectionsDir = path.join(dir, 'collections');
+  const res = await getBpaFindings('urc', { bpaFilePath: csv, collectionsDir, limit: null, offset: 0 });
+  assert.strictEqual(res.success, true);
+  assert.strictEqual(res.targets.length, 2, 'two URC detail rows, count row excluded');
+  const locations = res.targets.map(t => t.className).sort();
+  assert.deepStrictEqual(locations, ['/apps/demo/config.dev.author', '/apps/demo/config.preprod']);
+});
+
+// ── URC: report-first with local fallback (end to end) ──────────────────────
+
+test('URC comes from the BPA report when a report is present (report owns it)', async () => {
+  const root = mkworkspace();
+  // Bad folder on disk that the report does NOT list — report ownership means
+  // it is treated as clean and the local scanner is not consulted.
+  write(root, 'ui.config/jcr_root/apps/my/config.stage.author/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const csv = path.join(root, 'bpa.csv');
+  fs.copyFileSync(path.join(__dirname, 'fixtures', 'urc-bpa.csv'), csv);
+  const gathered = await gatherFindings({ workspaceRoot: root, bpaFilePath: csv, collectionsDir: path.join(root, 'collections') });
+  const urc = gathered.rawFindingsByPattern.osgiConfig.filter(f => f.kind === 'unsupported-runmode');
+  // BPA-sourced URC findings now carry the same `kind`/`runmode` shape as the
+  // local scanner — two report rows, not the on-disk bad folder the test
+  // planted (which the report does NOT list).
+  assert.strictEqual(urc.length, 2, 'both report URC rows enriched with kind: unsupported-runmode');
+  const urcFiles = urc.map(f => f.file).sort();
+  assert.deepStrictEqual(
+    urcFiles,
+    ['/apps/demo/config.dev.author', '/apps/demo/config.preprod'],
+    'URC raw findings come from the report paths, not the on-disk config.stage.author folder — proving report ownership'
+  );
+  const devAuthor = urc.find(f => f.file === '/apps/demo/config.dev.author');
+  assert.strictEqual(devAuthor.runmode, 'dev.author', 'runmode derived from the folder basename via validateRunmodeFolder');
+
+  // …and the report URC folders are present as osgiConfig findings, with a
+  // rich detail carrying the folder basename (not the bare BPA identifier
+  // string 'unsupported.runmode').
+  const finding = gathered.findingsByPattern.osgiConfig.find(f => String(f.location).includes('config.dev.author'));
+  assert.ok(finding, 'URC from report present');
+  assert.ok(finding.detail.includes('config.dev.author'), 'detail contains the folder basename');
+  assert.ok(!finding.detail.includes('unsupported.runmode'), 'detail is not the bare BPA identifier string');
+});
+
+test('URC falls back to local detection when no BPA source is present', async () => {
+  const root = mkworkspace();
+  write(root, 'ui.config/jcr_root/apps/my/config.dev.author/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const gathered = await gatherFindings({ workspaceRoot: root });
+  const urc = gathered.rawFindingsByPattern.osgiConfig.filter(f => f.kind === 'unsupported-runmode');
+  assert.strictEqual(urc.length, 1, 'local scanner produced the URC finding');
+  assert.strictEqual(urc[0].runmode, 'dev.author');
+});
+
+// ── URC: MCP path (the masking hole also exists via MCP, not just CSV) ──────
+
+test('URC comes from MCP when the mcpFetcher reports URC targets', async () => {
+  const root = mkworkspace();
+  const mcpFetcher = async ({ pattern }) => {
+    if (pattern === 'urc') {
+      return {
+        success: true,
+        targets: [
+          { className: '/apps/demo/config.dev.author', identifier: 'unsupported.runmode', issue: 'bad runmode' },
+        ],
+      };
+    }
+    // Any other pattern (scheduler, resourceChangeListener, ...) — report clean.
+    return { success: true, targets: [] };
+  };
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    collectionsDir: path.join(root, 'mcp-collections'),
+    projectId: 'proj-mcp-urc',
+    mcpFetcher,
+  });
+  const urc = gathered.rawFindingsByPattern.osgiConfig.filter(f => f.kind === 'unsupported-runmode');
+  assert.strictEqual(urc.length, 1, 'MCP-sourced URC finding surfaces');
+  assert.strictEqual(urc[0].file, '/apps/demo/config.dev.author');
+  assert.strictEqual(urc[0].runmode, 'dev.author');
+  assert.ok(!gathered.analyzerWarnings.some(w => w.includes('safety net')),
+    'no safety-net warning when MCP actually reports URC findings');
+});
+
+test('URC safety-net scan also runs when the mcpFetcher reports success with EMPTY URC targets', async () => {
+  const root = mkworkspace();
+  // On-disk unsupported folder the (URC-empty) MCP response does not mention.
+  write(root, 'ui.config/jcr_root/apps/my/config.qa/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const mcpFetcher = async ({ pattern }) => {
+    if (pattern === 'urc') return { success: true, targets: [] };
+    return { success: true, targets: [] };
+  };
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    collectionsDir: path.join(root, 'mcp-collections'),
+    projectId: 'proj-mcp-urc-empty',
+    mcpFetcher,
+  });
+  const urc = gathered.rawFindingsByPattern.osgiConfig.filter(f => f.kind === 'unsupported-runmode');
+  assert.ok(urc.some(f => String(f.file).includes('config.qa')),
+    'on-disk URC finding surfaces via the local safety-net scan even though MCP is configured');
+  assert.ok(
+    gathered.analyzerWarnings.some(w => w.includes(
+      'BPA source present but reported no URC (unsupported.runmode) findings — running the local config.*/install.* run-mode scan as a safety net (the report may predate URC detection or be scoped to other patterns).'
+    )),
+    'a safety-net warning is surfaced for the MCP masking path too'
+  );
+});
+
+test('a BPA report present but with NO URC rows warns and still runs the local safety-net scan', async () => {
+  const root = mkworkspace();
+  // On-disk unsupported folder the (URC-less) BPA report does not mention.
+  write(root, 'ui.config/jcr_root/apps/my/config.qa/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const bpaFilePath = path.join(__dirname, 'fixtures', 'minimal-scheduler-bpa.csv');
+  const gathered = await gatherFindings({
+    workspaceRoot: root, bpaFilePath, collectionsDir: path.join(root, 'uc'),
+  });
+  const urc = gathered.rawFindingsByPattern.osgiConfig.filter(f => f.kind === 'unsupported-runmode');
+  assert.ok(urc.some(f => String(f.file).includes('config.qa')),
+    'on-disk URC finding surfaces even though a BPA source is present');
+  assert.ok(
+    gathered.analyzerWarnings.some(w => w.includes(
+      'BPA source present but reported no URC (unsupported.runmode) findings — running the local config.*/install.* run-mode scan as a safety net (the report may predate URC detection or be scoped to other patterns).'
+    )),
+    'a safety-net warning is surfaced'
+  );
 });
