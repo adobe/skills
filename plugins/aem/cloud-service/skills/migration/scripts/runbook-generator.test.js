@@ -8,6 +8,7 @@ const path = require('path');
 
 const { runHtlLint, classify } = require('./htl-lint-runner.js');
 const { runOsgiConfigScan } = require('./osgi-config-runner.js');
+const { runVaultPackageScan, isLegacyGroup } = require('./vault-package-scan-runner.js');
 const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
 const { runTemplateScan, classifyStaticTemplate } = require('./template-scan-runner.js');
 const { runAnalyzer } = require('./analyzer-runner.js');
@@ -28,16 +29,16 @@ function write(root, rel, content) {
 
 // ── Pattern registry ────────────────────────────────────────────────────────
 
-test('registry includes all 10 migration patterns with a valid strategy', () => {
+test('registry includes all 11 migration patterns with a valid strategy', () => {
   const expected = [
     'scheduler', 'resourceChangeListener', 'event-migration', 'assetApi', 'replication',
-    'htlLint', 'osgiConfig', 'lui', 'cdw', 'templateModernization',
+    'vault-package-dependencies', 'htlLint', 'osgiConfig', 'lui', 'cdw', 'templateModernization',
   ];
   assert.strictEqual(CANONICAL_PATTERNS.length, expected.length, 'no unexpected patterns');
   for (const key of expected) {
     assert.ok(CANONICAL_PATTERNS.includes(key), `${key} in CANONICAL_PATTERNS`);
     assert.ok(
-      ['cascade', 'html-scan', 'config-scan', 'content-scan'].includes(PATTERN_META[key].strategy),
+      ['cascade', 'html-scan', 'config-scan', 'content-scan', 'pom-scan'].includes(PATTERN_META[key].strategy),
       `${key} has a valid strategy`
     );
   }
@@ -46,6 +47,65 @@ test('registry includes all 10 migration patterns with a valid strategy', () => 
 test('inject-in-sling-model and outdated-dependencies stay out of scope', () => {
   assert.ok(!CANONICAL_PATTERNS.includes('inject-in-sling-model'));
   assert.ok(!CANONICAL_PATTERNS.includes('outdated-dependencies'));
+});
+
+test('vault-package-dependencies is pom-scan with no BPA tier and no analyzer', () => {
+  assert.strictEqual(PATTERN_META['vault-package-dependencies'].strategy, 'pom-scan');
+  assert.deepStrictEqual(PATTERN_META['vault-package-dependencies'].bpaSlugs, []);
+  assert.ok(PATTERN_META['vault-package-dependencies'].heuristic, 'regex/text scan, not compiler-validated');
+});
+
+// ── vault-package-scan-runner ────────────────────────────────────────────────
+
+test('isLegacyGroup matches day/cq60, day/cq560, adobe/cq60 prefixes only', () => {
+  assert.ok(isLegacyGroup('day/cq60/product'));
+  assert.ok(isLegacyGroup('day/cq560/social/commons'));
+  assert.ok(isLegacyGroup('adobe/cq60'));
+  assert.ok(!isLegacyGroup('adobe/aem6/sample'));
+  assert.ok(!isLegacyGroup('com.example'));
+  assert.ok(!isLegacyGroup(null));
+});
+
+test('runVaultPackageScan flags a legacy <dependencies> block, one finding per block', () => {
+  const root = mkworkspace();
+  write(root, 'ui.apps/pom.xml', [
+    '<project>', '  <build>', '    <plugins>', '      <plugin>',
+    '        <artifactId>content-package-maven-plugin</artifactId>',
+    '        <configuration>', '          <dependencies>',
+    '            <dependency><group>day/cq60/product</group><name>cq-content</name></dependency>',
+    '            <dependency><group>day/cq60/product</group><name>cq-commerce-content</name></dependency>',
+    '          </dependencies>', '        </configuration>', '      </plugin>',
+    '    </plugins>', '  </build>', '</project>',
+  ].join('\n'));
+  const res = runVaultPackageScan(root);
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.findings.length, 1, 'one finding per <dependencies> block, not per <dependency>');
+  assert.match(res.findings[0].detail, /day\/cq60\/product/);
+  assert.strictEqual(res.rawFindings[0].pattern, 'vault-package-dependencies');
+});
+
+test('runVaultPackageScan does not flag a legacy group under an unrelated plugin', () => {
+  const root = mkworkspace();
+  write(root, 'pom.xml', [
+    '<project>', '  <build>', '    <plugins>', '      <plugin>',
+    '        <artifactId>some-other-plugin</artifactId>',
+    '        <configuration>', '          <dependencies>',
+    '            <dependency><group>day/cq60/product</group></dependency>',
+    '          </dependencies>', '        </configuration>', '      </plugin>',
+    '      <plugin>', '        <artifactId>content-package-maven-plugin</artifactId>',
+    '        <configuration><group>adobe/aem6/sample</group></configuration>',
+    '      </plugin>', '    </plugins>', '  </build>', '</project>',
+  ].join('\n'));
+  const res = runVaultPackageScan(root);
+  assert.strictEqual(res.findings.length, 0, 'legacy group under a different plugin must not match');
+});
+
+test('runVaultPackageScan returns empty (ok) when no pom.xml has the plugin', () => {
+  const root = mkworkspace();
+  write(root, 'pom.xml', '<project></project>\n');
+  const res = runVaultPackageScan(root);
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.findings.length, 0);
 });
 
 // ── htl-lint-runner ───────────────────────────────────────────────────────
@@ -120,10 +180,17 @@ test('runOsgiConfigScan ignores non-config folders and repoinit secret keys', ()
 
 // ── orchestrator dispatch + cache tagging ────────────────────────────────────
 
-test('gatherFindings dispatches rg + config-scan and tags heuristic in cache', async () => {
+test('gatherFindings dispatches rg + config-scan + pom-scan and tags heuristic in cache', async () => {
   const root = mkworkspace();
   write(root, 'ui.apps/jcr_root/apps/comp/hero.html', '<div data-sly-test="${x == false}">x</div>\n');
   write(root, 'ui.config/jcr_root/apps/my/config/com.my.Svc.cfg.json', '{ "secret-token": "abc123" }\n');
+  write(root, 'pom.xml', [
+    '<project><build><plugins><plugin>',
+    '<artifactId>content-package-maven-plugin</artifactId>',
+    '<configuration><dependencies>',
+    '<dependency><group>day/cq60/product</group></dependency>',
+    '</dependencies></configuration></plugin></plugins></build></project>',
+  ].join('\n'));
   // No BPA source, no Java project → cascade patterns go to needsLlmScan or analyzer(empty).
   const gathered = await gatherFindings({ workspaceRoot: root });
 
@@ -131,6 +198,8 @@ test('gatherFindings dispatches rg + config-scan and tags heuristic in cache', a
   assert.ok(gathered.findingsByPattern.htlLint.length >= 1);
   assert.strictEqual(gathered.sourceByPattern.osgiConfig, 'config-scan');
   assert.ok(gathered.findingsByPattern.osgiConfig.length >= 1);
+  assert.strictEqual(gathered.sourceByPattern['vault-package-dependencies'], 'pom-scan');
+  assert.ok(gathered.findingsByPattern['vault-package-dependencies'].length >= 1);
 
   const cachePath = path.join(root, 'cache.json');
   writeRunbookCache(gathered, { generatedAt: 'now' }, cachePath);
@@ -139,6 +208,9 @@ test('gatherFindings dispatches rg + config-scan and tags heuristic in cache', a
     assert.strictEqual(f.confidence, 'heuristic');
   }
   for (const f of cache.findingsByPattern.htlLint) {
+    assert.strictEqual(f.confidence, 'heuristic');
+  }
+  for (const f of cache.findingsByPattern['vault-package-dependencies']) {
     assert.strictEqual(f.confidence, 'heuristic');
   }
 });
@@ -355,6 +427,7 @@ test('runAnalyzer normalizes analyzer slugs and skips non-migration patterns', (
     { pattern: 'resource-change-listener', file: 'B.java', line: 5, snippet: 'impl RCL' },
     { pattern: 'asset-manager', file: 'C.java', line: 7, snippet: 'AssetManager.createAsset' },
     { pattern: 'inject-in-sling-model', file: 'D.java', line: 9, snippet: '@Inject' },
+    { pattern: 'vault-package-dependencies', file: 'pom.xml', line: 12, snippet: '<group>day/cq60/product</group>' },
   ], warnings: ['w1'] };
   const stub = writeAnalyzeStub(root, `#!/usr/bin/env bash\ncat <<'JSON'\n${JSON.stringify(payload)}\nJSON\n`);
   const res = runAnalyzer(root, { analyzeScript: stub });
@@ -363,6 +436,7 @@ test('runAnalyzer normalizes analyzer slugs and skips non-migration patterns', (
   assert.ok(res.findingsByPattern.resourceChangeListener, 'resource-change-listener → resourceChangeListener');
   assert.ok(res.findingsByPattern.assetApi, 'asset-manager → assetApi');
   assert.ok(!res.findingsByPattern['inject-in-sling-model'], 'non-migration slug dropped');
+  assert.ok(!res.findingsByPattern['vault-package-dependencies'], 'vault-package-dependencies has no analyzer detector — dropped like non-migration slugs, detected via pom-scan instead');
   assert.deepStrictEqual(res.warnings, ['w1']);
   assert.strictEqual(res.rawFindingsByPattern.scheduler[0].line, 3);
 });
