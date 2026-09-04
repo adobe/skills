@@ -6,13 +6,19 @@ BPA pattern id: **`guavaCache`**. Not a Cloud-Service-native code-quality issue 
 
 On AEM as a Cloud Service the supported in-process cache library is **Caffeine** (`com.github.benmanes.caffeine.cache.*`). Bundles importing `com.google.common.cache.*` are flagged because Guava is shrinking in the CS uber-jar and relying on Guava's cache from a third-party classloader is unstable. Caffeine is the recommended successor (same author as Guava cache) and its API is intentionally near-identical, so the swap is mechanical with a few well-known call-site renames.
 
-## Discovery — BPA is the source of truth
+## Discovery — BPA is the source of truth, at bundle granularity
 
-Findings come from **`getBpaFindings('guavaCache', …)`** (BPA CSV column `subtype` = `com.google.common.cache`). When no BPA/CAM source is available, scan the workspace's `.java` files for `import com.google.common.cache.…` — treat this as a manual, unconfirmed lead per file, not a substitute for BPA.
+Findings come from **`getBpaFindings('guavaCache', …)`** (BPA CSV column `subtype` = `custom.guava.cache`, importance `INFO`).
 
-Group by **file**, not by import: a file with multiple `com.google.common.cache.*` imports is one finding, one migration unit — apply the full recipe to that file once.
+**BPA's `identifier` on this subtype is a Guava-internal class** (e.g. `com.google.common.cache.AbstractCache`), not a customer class — BPA is bytecode-scanning Guava's own cache implementation wherever it's reachable on a bundle's classpath, not the customer code that imports it. A single bundle that embeds Guava can produce **hundreds of raw CSV rows** (one per Guava-internal class pulled in transitively), all for the same bundle.
 
-BPA gives only a `file` (no `line`/`snippet`) — there is no analyzer detector to resolve those, unlike the `code-assessment` cascade patterns. Open the file directly and locate the `com.google.common.cache.*` imports yourself before editing; do not look for a `guava-cache` entry in the analyzer.
+The actionable unit is the **bundle**, named in the free-text `message` field ("The `<Guava class>` class in the `<bundle>` bundle uses `<Guava class>`."). `getBpaFindings('guavaCache', …)` already dedupes to one target per bundle — do not iterate the raw per-class rows.
+
+Once you have the bundle name, locate the actual customer files: search that bundle's module (`find <module>/src/main/java -name '*.java' | xargs grep -l 'import com.google.common.cache'`) for the real `import com.google.common.cache.*` occurrences — those are what you edit, not the Guava-internal class named in the BPA row.
+
+When no BPA/CAM source is available, scan the workspace's `.java` files directly for `import com.google.common.cache.…` per bundle/module — treat this as a manual, unconfirmed lead, not a substitute for BPA.
+
+BPA gives only a bundle name (no file, no `line`/`snippet`) — there is no analyzer detector to resolve those, unlike the `code-assessment` cascade patterns. Do not look for a `guava-cache` entry in the analyzer; open the module's files directly.
 
 ## Classification
 

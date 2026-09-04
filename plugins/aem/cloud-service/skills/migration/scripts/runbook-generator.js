@@ -25,11 +25,16 @@
  *                   dialogs, custom `cq:Widget` xtypes, static templates) is the
  *                   heuristic fallback when no BPA source is available. Routed to
  *                   migration Branches D / C, not code-assessment.
- *   'bpa-only'    — `guavaCache`: BPA/CAM/CSV only (subtype `com.google.common.cache`),
- *                   one finding per file. No analyzer, no content-scan — Guava
- *                   cache usage does not occur in native AEMaaCS code, so there is
- *                   deliberately no compiled detector for it. With no BPA source
- *                   the pattern surfaces in `needsLlmScan` like any other
+ *   'bpa-only'    — `guavaCache`: BPA/CAM/CSV only (subtype `custom.guava.cache`),
+ *                   one finding per bundle. `identifier` on this subtype is a
+ *                   Guava-internal class, not a customer class — BPA reports
+ *                   every Guava-internal class reachable on a bundle's
+ *                   classpath, so raw rows are deduped to the bundle named in
+ *                   the message, not surfaced per row. No analyzer, no
+ *                   content-scan — Guava cache usage does not occur in native
+ *                   AEMaaCS code, so there is deliberately no compiled
+ *                   detector for it. With no BPA source the pattern surfaces
+ *                   in `needsLlmScan` like any other
  *                   unscanned pattern.
  *
  * `html-scan`/`config-scan`/`content-scan` (fallback) findings are tagged `confidence: 'heuristic'` in the
@@ -176,7 +181,7 @@ const PATTERN_META = {
     severity: 'info',
     strategy: 'bpa-only',
     bpaSlugs: ['guavaCache'],
-    description: 'Bundles importing `com.google.common.cache.*` (Guava in-process cache). Migrate to Caffeine (`com.github.benmanes.caffeine.cache.*`) — a near 1:1 API swap. Not a Cloud-Service-native pattern — only found in code carried over from legacy AEM — so BPA is the sole source of truth; there is no analyzer or content-scan fallback.',
+    description: 'Bundles importing `com.google.common.cache.*` (Guava in-process cache). Migrate to Caffeine (`com.github.benmanes.caffeine.cache.*`) — a near 1:1 API swap. Not a Cloud-Service-native pattern — only found in code carried over from legacy AEM — so BPA is the sole source of truth; there is no analyzer or content-scan fallback. BPA reports one finding per bundle (identifier is a Guava-internal class, not a customer class).',
     promptPattern: 'guavaCache',
     sampleOverride: 'Use the migration skill: fix guavaCache findings using BPA CSV — swap Guava cache for Caffeine.',
   },

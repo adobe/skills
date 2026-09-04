@@ -20,7 +20,7 @@ const path = require('path');
 const PATTERN_TO_SUBTYPE = {
   scheduler: "sling.commons.scheduler",
   assetApi: "unsupported.asset.api",
-  guavaCache: "com.google.common.cache",
+  guavaCache: "custom.guava.cache",
 };
 
 // CSV subtype to pattern mapping (based on actual CSV structure)
@@ -29,7 +29,7 @@ const CSV_SUBTYPE_TO_PATTERN = {
   "javax.jcr.observation.EventListener": "eventListener",
   "org.apache.sling.api.resource.observation.ResourceChangeListener": "resourceChangeListener",
   "org.osgi.service.event.EventHandler": "eventHandler",
-  "com.google.common.cache": "guavaCache"
+  "custom.guava.cache": "guavaCache"
 };
 
 // Known scheduler identifier
@@ -423,31 +423,50 @@ function processEventHandlerFindings(findings) {
 }
 
 /**
- * Process Guava cache findings from CSV. One entry per file/class — a file
- * with several `com.google.common.cache.*` imports is still a single
- * migration unit, not one finding per import.
+ * Extract the bundle/module name from a `custom.guava.cache` finding's message.
+ *
+ * Unlike scheduler/eventListener/etc., `identifier` on this subtype is a
+ * *Guava-internal* class (e.g. `com.google.common.cache.AbstractCache`) —
+ * BPA is bytecode-scanning Guava's own cache implementation classes wherever
+ * they are reachable, not the customer's classes that import them. The only
+ * customer-relevant unit is the **bundle** the message names ("The X class
+ * in the <bundle> bundle uses Y."). A real bundle can produce hundreds of
+ * these rows (one per Guava-internal class pulled in) — dedupe to one entry
+ * per bundle, not per row.
+ */
+function extractGuavaBundleFromMessage(finding) {
+  const message = finding.message || '';
+  const match = message.match(/\bin the ([\w.-]+) bundle\b/);
+  return match ? match[1] : null;
+}
+
+/**
+ * Process Guava cache findings from CSV. One entry per bundle — BPA reports
+ * every Guava-internal class it finds on that bundle's classpath, not one
+ * finding per customer file, so grouping by row or by `identifier` would
+ * bloat to hundreds of entries for a single bundle that just embeds Guava.
  */
 function processGuavaCacheFindings(findings) {
   const guavaCacheFindings = findings.filter(finding =>
-    finding.subtype === 'com.google.common.cache'
+    finding.subtype === 'custom.guava.cache' && !String(finding.code || '').startsWith('_')
   );
 
   const identifiers = {};
-  const classNames = [];
+  const bundleNames = [];
 
   guavaCacheFindings.forEach(finding => {
-    const className = extractClassNameFromCsvFinding(finding);
-    if (className && !classNames.includes(className)) {
-      classNames.push(className);
+    const bundleName = extractGuavaBundleFromMessage(finding);
+    if (bundleName && !bundleNames.includes(bundleName)) {
+      bundleNames.push(bundleName);
     }
   });
 
-  if (classNames.length > 0) {
-    identifiers['com.google.common.cache'] = classNames;
+  if (bundleNames.length > 0) {
+    identifiers['custom.guava.cache'] = bundleNames;
   }
 
   return {
-    subtype: 'com.google.common.cache',
+    subtype: 'custom.guava.cache',
     identifiers: identifiers
   };
 }
@@ -567,13 +586,13 @@ function createUnifiedCollection(bpaData, outputDir) {
     const mongoSafeSubtype = toMongoSafeFieldName(guavaCacheCollection.subtype);
     subtypes[mongoSafeSubtype] = {};
 
-    Object.entries(guavaCacheCollection.identifiers).forEach(([identifier, classNames]) => {
+    Object.entries(guavaCacheCollection.identifiers).forEach(([identifier, bundleNames]) => {
       const mongoSafeIdentifier = toMongoSafeIdentifier(identifier);
-      subtypes[mongoSafeSubtype][mongoSafeIdentifier] = classNames;
-      totalFindings += classNames.length;
+      subtypes[mongoSafeSubtype][mongoSafeIdentifier] = bundleNames;
+      totalFindings += bundleNames.length;
     });
 
-    console.log(`Found ${Object.values(guavaCacheCollection.identifiers).flat().length} guava cache files`);
+    console.log(`Found ${Object.values(guavaCacheCollection.identifiers).flat().length} bundles using Guava cache`);
   }
 
   // Process content / legacy-UI subtypes (cdw, lui, templates, replication).

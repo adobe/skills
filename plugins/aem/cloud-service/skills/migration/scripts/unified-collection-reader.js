@@ -19,7 +19,7 @@ const PATTERN_TO_SUBTYPE = {
   eventListener: "javax.jcr.observation.EventListener",
   resourceChangeListener: "org.apache.sling.api.resource.observation.ResourceChangeListener",
   eventHandler: "org.osgi.service.event.EventHandler",
-  guavaCache: "com.google.common.cache"
+  guavaCache: "custom.guava.cache"
 };
 
 // MongoDB-safe to pattern mapping
@@ -29,7 +29,7 @@ const MONGO_SAFE_TO_PATTERN = {
   "javax_jcr_observation_EventListener": "eventListener",
   "org_apache_sling_api_resource_observation_ResourceChangeListener": "resourceChangeListener",
   "org_osgi_service_event_EventHandler": "eventHandler",
-  "com_google_common_cache": "guavaCache"
+  "custom_guava_cache": "guavaCache"
 };
 
 // Pattern → subtype(s), 1:many. Covers the Java patterns above plus the
@@ -46,7 +46,7 @@ const PATTERN_TO_SUBTYPES = {
   lui: ["legacy.dialog.classic", "legacy.dialog.coral2", "legacy.custom.component", "legacy.static.template"],
   templateModernization: ["legacy.static.template", "custom.static.template"],
   replication: ["forward.replication", "reverse.replication"],
-  guavaCache: ["com.google.common.cache"],
+  guavaCache: ["custom.guava.cache"],
 };
 
 // Patterns whose findings are keyed by JCR path (raw keys, generic processor).
@@ -327,23 +327,27 @@ function processEventHandlerFromUnified(subtypeData, targets) {
 
 /**
  * Process Guava cache data from unified collection. One target per
- * file/class — BPA already reports at file granularity, not per import.
+ * **bundle** — `identifier` here is a Guava-internal class BPA found on
+ * that bundle's classpath (e.g. `com.google.common.cache.AbstractCache`),
+ * not a customer class; the bundle name (in `className`) is the actionable
+ * unit. A bundle can produce hundreds of raw CSV rows (one per Guava
+ * internal class reachable) but is still exactly one migration unit.
  */
 function processGuavaCacheFromUnified(subtypeData, targets) {
   let count = 0;
 
   const identifierKeys = Object.keys(subtypeData || {}).sort();
   for (const mongoSafeIdentifier of identifierKeys) {
-    const classNames = subtypeData[mongoSafeIdentifier] || [];
+    const bundleNames = subtypeData[mongoSafeIdentifier] || [];
     const identifier = fromMongoSafeFieldName(mongoSafeIdentifier);
 
-    for (const className of classNames) {
+    for (const bundleName of bundleNames) {
       count++;
       targets.push(new BpaTarget(
         "guavaCache",
-        className,
+        bundleName,
         identifier,
-        `Imports Guava cache: ${identifier}`,
+        `Bundle uses Guava cache: ${bundleName}`,
         "info"
       ));
     }
