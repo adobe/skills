@@ -300,14 +300,18 @@ See the [`commerce-app-review`](plugins/commerce/app-review/README.md) doc for t
 
 ### Creativity & Design
 
-| Skill                              | Description                                                                                                           |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `adobe-batch-edit-photos`        | Apply consistent, cohesive photo adjustments across a set of images — matched tones, presets, and cinematic looks    |
-| `adobe-design-from-template`     | Create flyers, posters, social posts, invitations, business cards, and other visuals from Adobe Express templates     |
-| `adobe-retouch-portraits`        | Bulk walk-away retouching for wedding and event portraits: auto-straighten, auto-tone, and auto-light across a folder |
-| `adobe-edit-quick-cut`           | Turn a long video into a punchy sizzle or highlight reel using Adobe Quick Cut                                        |
-| `adobe-resize-photos-and-videos` | Resize images and videos to exact pixel dimensions, aspect ratios, or named sizes (4K, HD, A4)                        |
+#### Adobe for Creativity (for Claude desktop app only)
+
+| Skill                            | Description                                                                                                           |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `adobe`                          | A one-glance orientation to the Adobe for creativity connector                                                        |
+| `adobe-batch-edit-photos`        | Apply consistent, cohesive photo adjustments across a set of images — matched tones, presets, and cinematic looks     |
+| `adobe-create-pdfs-from-data`    | Perform a full InDesign data merge from a `.CSV`/`.TSV` and an `.INDD` template                                       |
 | `adobe-create-social-variations` | Produce platform-ready image and video crops for Instagram, TikTok, LinkedIn, YouTube, and other social platforms     |
+| `adobe-design-from-template`     | Create flyers, posters, social posts, invitations, business cards, and other visuals from Adobe Express templates     |
+| `adobe-edit-quick-cut`           | Turn a long video into a punchy sizzle or highlight reel using Adobe Quick Cut                                        |
+| `adobe-retouch-portraits`        | Bulk walk-away retouching for wedding and event portraits: auto-straighten, auto-tone, and auto-light across a folder |
+| `adobe-resize-photos-and-videos` | Resize images and videos to exact pixel dimensions, aspect ratios, or named sizes (4K, HD, A4)                        |
 
 ## Repository Structure
 
