@@ -16,6 +16,16 @@
  *     schema's unit composition is the post-decorate count assertion.
  * block-roundtrip.mjs (#94) then verifies the round-trip actually closed.
  *
+ * `editableTexts` (per section) is the ENCODE-side expected editable count for
+ * the Experience Workspace gate: the number of OUTERMOST h1-h6/p/ul/ol/pre/
+ * blockquote elements in the prototype section that carry visible text — the set
+ * the da.live canvas stamps `data-prose-index` on and can attach an inline editor
+ * to (deploy SKILL.md § Experience Workspace editability contract). ENCODE authors
+ * one such element per item (a list is ONE editable unit); after decorate() the
+ * `--ew` gate (block-roundtrip / ew-editability-probe) must find the same number
+ * of surviving instrumented elements — fewer means authored elements were rebuilt,
+ * merged or synthesized (EW1), and the block is not editable in the workspace.
+ *
  * Usage:
  *   node skills/deploy/scripts/section-schema.mjs <prototypeURL> [options]
  *     --out <file>     write JSON here (default stdout)
@@ -32,7 +42,7 @@ import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
 import { resolveProfile } from './diff-profiles.mjs';
-import { inventory } from './content-inventory.mjs';
+import { inventory, editableInventory } from './content-inventory.mjs';
 
 function parseArgs(argv) {
   const [, , url, ...rest] = argv;
@@ -125,10 +135,12 @@ async function main() {
     sections = [];
     for (const m of mapped) {
       const inv = await page.evaluate(inventory, [`[data-ss-idx="${m.idx}"]`, prof.eyebrow]);
+      const editable = await page.evaluate(editableInventory, [`[data-ss-idx="${m.idx}"]`]);
       sections.push({
         section: m.section,
         items: inv.items.map(({ role, order, text, href }) => (href !== undefined ? { role, order, text, href } : { role, order, text })),
         imgCount: inv.imgCount,
+        editableTexts: editable.count,
         repeats: m.repeats,
       });
     }
@@ -141,7 +153,7 @@ async function main() {
   if (opts.out) {
     fs.mkdirSync(path.dirname(opts.out), { recursive: true });
     fs.writeFileSync(opts.out, `${json}\n`);
-    const totals = sections.map((s) => `${s.section}(${s.items.length} items${s.repeats.length ? `, ${s.repeats.map((r) => `${r.count}×${r.unitSelector}`).join('+')}` : ''})`).join(', ');
+    const totals = sections.map((s) => `${s.section}(${s.items.length} items${s.repeats.length ? `, ${s.repeats.map((r) => `${r.count}×${r.unitSelector}`).join('+')}` : ''}, ${s.editableTexts} editable)`).join(', ');
     process.stdout.write(`schema → ${opts.out}\n${sections.length} sections: ${totals}\n`);
   } else {
     process.stdout.write(`${json}\n`);

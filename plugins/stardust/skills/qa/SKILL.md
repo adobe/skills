@@ -39,6 +39,9 @@ delivered HTML ≠ rendered correctly.
    - `--scrape stardust/scrape` — verbatim fidelity vs the extraction capture
    - `--expected-blocks <json>` — explicit per-template block expectations
      (otherwise derived by fleet consensus)
+   - `--blocks-dir <dir>` — the site's `blocks/` checkout, so the
+     `editability` check can honour `@ew-exempt` JSDoc tags (otherwise
+     pass `--ew-exempt a,b` for index-driven blocks)
 5. Browser checks need **playwright resolvable from the project** (`node_modules/playwright`).
    If missing, run the delivery-layer checks only (`--checks routing,content,templates,metadata,links`)
    and tell the user what was skipped.
@@ -62,6 +65,15 @@ under `stardust/qa/shots/`, and (first run) visual baselines under
 2 = infra failure. `reference/checks.md` documents every check, its finding
 ids, and severity rationale. Useful variants: `--checks <subset>`,
 `--max-pages <n>` (smoke run), `--fail-on warn` (strict gate).
+
+The `editability` check is the post-deploy **Experience Workspace
+editability gate** (deploy SKILL.md § 8, EW1–EW10): per page it re-creates
+the da.live canvas's instrumentation on the served document, lets the live
+page decorate, and counts which authored texts still carry their editor
+index. `editability/dead-text` (error) = a block rebuilt authored text and
+the author cannot click it in the canvas; `editability/duplicated-index`
+(warn) = a presentational clone kept the index. Dead texts inside blocks
+declared `@ew-exempt` (or listed in `--ew-exempt`) are info, not errors.
 
 First run on a site: expect a wave of `visual/baseline-created` info findings —
 that is the baseline being established, not a defect. Baselines should be

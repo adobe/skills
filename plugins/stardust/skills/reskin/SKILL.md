@@ -372,7 +372,10 @@ pipeline, unchanged:
   gated archetype. Content rules are the ones reskin already
   enforces — `../migrate/reference/content-preservation.md` is
   inherited wholesale.
-- **Ship via `stardust:deploy` / `stardust:rollout`**, unchanged.
+- **Ship via `stardust:deploy` / `stardust:rollout`**, unchanged. Blocks
+  written for donor modules obey the Experience Workspace editability
+  contract (deploy SKILL.md § 8, EW1–EW10) and pass the EW gate
+  (`block-roundtrip --ew`) before they are done.
 
 Reskin writes its own state under `stardust/reskin/` — `ledger.json`
 holds per-page status (`captured → mapped → rendered → gated`), gate

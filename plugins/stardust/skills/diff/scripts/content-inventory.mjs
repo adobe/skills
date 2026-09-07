@@ -25,6 +25,17 @@
  * from a diff-profiles.mjs profile. Pass fontDelta: Infinity to suppress the
  * FONT FORK pass (the in-loop harness renders with local fonts, so face
  * fidelity is Step 4/10's business there, not the round-trip's).
+
+ * `editableInventory` runs IN the page (ONE arg): page.evaluate(editableInventory, [rootSel])
+ * returns { count, items: [{tag, text}] } — the OUTERMOST h1-h6/p/ul/ol/pre/
+ * blockquote elements under the root that carry visible text (outermost = no
+ * ancestor matching the same list inside the root; empty and image-only elements
+ * skipped). That is exactly the set Experience Workspace stamps `data-prose-index`
+ * on (deploy SKILL.md § Experience Workspace editability contract): the ENCODE side
+ * counts it on the prototype (section-schema `editableTexts`), the DECODE side on
+ * the decorated page (content-diff's "editable texts" advisory, the --ew gate) —
+ * fewer surviving outermost editables after decoration means authored elements
+ * were rebuilt or merged.
  */
 
 /* eslint-disable no-plusplus, no-continue, max-len */
@@ -110,6 +121,22 @@ export function inventory(args) {
   });
   probe.remove();
   return { items: out, imgCount };
+}
+// Runs IN the page (ONE arg). args = [rootSel]. Outermost editable elements with
+// visible text — the Experience Workspace instrumentation set (see header).
+export function editableInventory(args) {
+  const [rootSel] = args;
+  const root = document.querySelector(rootSel) || document.querySelector('main') || document.body;
+  const SEL = 'h1, h2, h3, h4, h5, h6, p, ul, ol, pre, blockquote';
+  const items = [];
+  root.querySelectorAll(SEL).forEach((el) => {
+    const anc = el.parentElement && el.parentElement.closest(SEL);
+    if (anc && anc !== root && root.contains(anc)) return; // nested inside another editable
+    const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!text) return; // empty or image-only (edited via data-image-index, not a text editor)
+    items.push({ tag: el.tagName.toLowerCase(), text: text.slice(0, 70) });
+  });
+  return { count: items.length, items };
 }
 /* eslint-enable no-undef */
 
