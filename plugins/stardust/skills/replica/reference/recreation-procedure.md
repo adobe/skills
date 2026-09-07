@@ -34,6 +34,22 @@ exception). Adopt the live page's content-root
 class on the prototype's main wrapper so one `--main` selector scopes both
 sides of the diff symmetrically.
 
+## Cumulative archetype prototypes
+
+Every archetype keeps its own standalone reference prototype — never skip
+to direct platform authoring for a new archetype "because the blocks
+already exist". Field evidence (broadridge, 8 pages): the prototyped
+archetype reached 3.5%/5.6% pixel diff and stayed the quality ceiling for
+its conversion; pages authored directly on the platform plateaued at
+8–16%. Prototypes are **cumulative**: each new one imports the shared
+layers earlier prototypes already gated — tokens, chrome, shared module
+CSS, the interaction spec — and iterates only on its NEW modules.
+Concretely, split the prototype CSS into a shared canon file plus a
+per-archetype file; the platform conversion inherits both; and the
+prototype remains the per-archetype fidelity reference (full gate: ≤10%,
+Δ≤8px, 0 structural red) that the published page is judged against
+(`source-fidelity-gate.md` § The published-origin gate).
+
 ## CSS lifting — fidelity values come from the original site's CSS, not the eye
 
 (Prior art: heathrow SKILL-IMPROVEMENTS §3.6; re-confirmed in UC1-E1 where
@@ -48,7 +64,16 @@ Before any screenshot-eyeball tuning:
    pattern): container max-widths, the full type ramp (family / size /
    line-height / letter-spacing / weight per level), button specs (border,
    radius, padding — the whole spec, not just color), section paddings,
-   radii, shadows, hero heights, breakpoint values.
+   radii, shadows, hero heights, breakpoint values — **and the
+   text-rendering group**: `text-rendering`, `-webkit-font-smoothing`,
+   `font-synthesis`, `font-variant-numeric`, `font-kerning`. Sites commonly
+   set these globally, and the ramp alone doesn't carry them: a ±1%
+   glyph-width difference from a mismatched rendering mode produces
+   systematic one-line-fewer/more wraps that present as inexplicable
+   per-section height errors at every breakpoint. Diagnostic when wraps
+   disagree at identical computed family/size/width: measure a literal
+   string's rendered width on both sides (`canvas.measureText` or an
+   offscreen span) — it settles whether the fork is metric or layout.
 3. **Replicate the container model**, not just the tokens: left-offset vs
    centered hero content, %-of-viewport heights, grid gutters. The container
    model is where "looks close but drifts" comes from.
@@ -95,6 +120,58 @@ Both were caught only by the gate in UC1-E1; check for them proactively:
   `linear-gradient(transparent 68%, rgba(0,0,0,.45) 80%, #000 100%)`), apply,
   and let the pixel probe confirm the fit.
 
+### Lift the sizing MODEL, not the resolved value (#116)
+
+A computed-style lift records `width: 720px` from an element whose authored
+rule is `width: 50%`. At the gate widths the two are byte-identical — BOTH
+gate breakpoints render them the same — so the frozen value ships invisibly
+and diverges only on wider screens (recorded: a live hero card 940px at
+1920 vs the frozen 720px; the CTA row wrapped as a side effect). The same
+trap applies to DOM: capturing the 1440 layout OUTCOME (a button row that
+wrapped 3+1, authored as two rows / styled with an `.x + .x` sibling rule)
+instead of the layout MODEL (one wrapping flex row) freezes a
+viewport-specific artifact into content and CSS.
+
+- **Lift at TWO widths (e.g. 1440 + 1920) and diff the two lifts.** Any box
+  whose width scales between them is FLUID: find the authored rule
+  (`%` / `vw` / max-width model) in the source CSS and encode the RULE,
+  never the resolved px. Boxes that hold constant are legitimately fixed.
+- **Layout groups get the same test**: if a row's children redistribute
+  between the two widths, the model is a wrapping flex/grid row — author
+  ONE row and let it wrap; never encode the wrap point as structure.
+- The gate-side backstop is the ≥1920 box-map spot check
+  (`source-fidelity-gate.md` § Wide-viewport fluid check) — but the check
+  only catches what this rule prevents; lifting the model up front is the
+  cheap half.
+
+## Wrap-junction margins (cards-on-a-canvas sites)
+
+Sites built as "cards on a canvas" — white/tinted wrap sections floating on
+a page background — tempt the recreation into margin-based boxes, and
+margins collapse: two adjacent wraps each carrying a section-pad margin
+lose one pad at every junction (recorded: 96px designed → 48px rendered),
+a systematic per-junction height error the anchor probe reads as every
+section top drifting further down the page. Two safe constructions:
+
+- **Transparent padded sections with an inner wrap** (padding never
+  collapses): the section keeps the page background and the vertical pad;
+  the visible card is an inner element carrying the surface color/radius.
+  Prefer this — it matches how most such sites are actually built.
+- **Explicit junction margins**, documented per junction, when the inner
+  wrap can't work. Specificity trap: junction rules must match or exceed
+  the `:has()`-based wrap rules they override, or the wrap rule silently
+  wins and the junction re-collapses.
+
+The inverse case — the SOURCE's margins do NOT collapse where a clean
+recreation's would: AEM-classic (and any clearfix-era) components wrap each
+section in a clearfix, whose block formatting context contains child margins.
+`display: flow-root` on the recreated section wrapper reproduces that
+containment exactly — one rule fixed systematic −48/−20px per-section errors
+across a whole page in the field. Corollary for responsive work: a column
+that is floated on desktop loses its BFC when a media query un-floats it, and
+the last child's margin escapes at mobile only — add `flow-root` to the
+un-floating override.
+
 ## Fonts policy
 
 - **Same public source when available.** Extract intercepts the page's own
@@ -137,6 +214,26 @@ instrument.** Two recurring cases:
   skeleton screens, etc. Replicate as captured, log, flag for delivery.
   "Fixing" the hydration state creates a pixel delta against the live
   capture AND fabricates a state the source never showed this instrument.
+- **Nondeterministic live elements** — stock tickers, "last updated" dates,
+  view/result counts, personalization slots. The live capture itself varies
+  run-to-run on these (recorded: a ticker populated in one gate capture,
+  empty in the next). Replicate the STRUCTURE, freeze one captured value in
+  the prototype, and log the element as a **permanent residual** in the
+  ledger — it can never zero out, and chasing it burns iterations on a
+  moving target. This is the one content class where confirm-justify stays
+  legitimate under widget mirroring (§ Granularity parity).
+- **Live-data embeds** (stock tickers, YouTube/euroland-style iframe
+  widgets) — the winning move is loading the SAME live embed (same src) on
+  both sides so the moving data cancels out in the pixel diff, NOT freezing
+  a snapshot (confirmed in two independent 2026-08 sessions: a same-src
+  YouTube iframe canceled to zero; a euroland share ticker mirrored same-src
+  stopped contributing). A frozen snapshot guarantees a permanent residual
+  the size of the widget; a mirrored live embed usually zeroes out, and any
+  residual left (frame-timing skew) is logged as permanent.
+- **Randomized decorative elements** (inline positions/paths regenerated per
+  page load — generative line art, particle fields): the live side never
+  pixel-matches ITSELF across captures, so no prototype can zero it out.
+  Class-level permanent residual: log it with its band and %, don't chase it.
 - **Pointer/hover state.** Pointer position is part of capture state: a
   `:hover`-styled element under the resting cursor is a false-measurement
   trap (recorded: a consent click left the cursor over a hero whose
@@ -163,12 +260,32 @@ mirror these classes rather than fighting per-page false-reds:
   carousel clone slides, hidden tab-panel links, sr-only labels ("Old
   price"), even server-truncated strings. Content parity means DOM parity,
   not visible-text parity — reproduce them hidden, exactly as captured.
+- **AEM-classic richtext byte patterns are load-bearing** (general to the
+  source-CMS class, not one site): an empty spacer paragraph is
+  `<p><br>\r\n </p>` and renders TWO line boxes (the `<br>` plus the still-
+  collapsible space); headings lead with `<br>` (`<h1><br>\r\nTitle`); a
+  trailing `&nbsp;` after an inline close is a REAL extra line. Approximating
+  these as clean `<p><br></p>` measures 20–36px short per instance. Mirror
+  the byte patterns as captured; when a wrap-count mismatch survives width
+  parity, diff `innerHTML` — the byte-level difference is usually the cause.
 - Alternatively, where mirroring would be genuinely absurd, treat the
   specific JOIN/SPLIT reds as **confirmed-justified** per diff SKILL.md's
   #87 guidance (verify the fragments concatenate into a matched EXTRA before
   justifying) and record each in the gate log. Mirroring is the default;
   justification is the exception, because every justified red is a manual
   re-verification on every subsequent gate run.
+
+**Widgets are implemented, not justified away.** Mirroring is the default
+for widget content, hidden or not — and beyond mirroring the DOM, widgets
+must WORK wherever the live site's do: a live carousel becomes a working
+carousel, a live select carries its real option list, tabs switch,
+accordions open. Justifying a whole widget away as a class-level residual
+is not acceptable; confirm-justify stays reserved for genuinely
+unreachable or nondeterministic content (ticker values, personalization —
+§ Asset harvest, capture-state policy). The interaction-parity pass
+(§ Interaction parity) is what makes this affordable: probe the live
+behavior cheaply, replicate it, and mirror the full widget DOM so
+content-diff stays at zero structural red.
 
 ## Role parity (wrapping and heading level, not text)
 
@@ -208,6 +325,135 @@ Policy:
   lazyload settle pass — injecting before it breaks some loaders' swap
   logic (recorded UC1-E1 failure mode). stitch-shot.mjs already orders this
   correctly; mirror the ordering in any ad-hoc probe.
+
+## Interaction parity (after the static gate — observed, never inferred)
+
+The gate measures static pixels at t=0 only: every scroll-entrance
+animation, header scroll-morph, hover transition, and secondary carousel is
+invisible to all four probes — and users notice them immediately on first
+manual review. After the static gate passes (never before — interaction
+work on unconverged geometry is rework), run the interaction-parity pass.
+It is a REQUIRED per-archetype gate output (SKILL.md Phase 4 — the motion
+inventory), not an optional post-pass: in the field it was skipped on 5 of
+7 archetypes, including under parallel sub-agent briefs, and every skipped
+archetype shipped visibly static. **Any parallel archetype fan-out brief
+must carry this section's evidence rule and instrument invocation
+verbatim** — this is precisely the step agents skip when unprompted.
+
+**The evidence rule: motion is OBSERVED at runtime, never inferred from
+static classes or CSS rules.** Run `../scripts/motion-observe.mjs` ONCE per
+archetype live URL (full down+up scroll traversal; `--click` each
+carousel/widget control; `--hover` each distinct card/teaser/button
+family; reuse the JSON — observation costs live hits like any probe).
+Implement ONLY behaviors that measurably fired, with the recorded trigger
+mechanism, durations, and thresholds. Static source CSS is then the
+authority for the exact keyframe/easing VALUES of those fired animations.
+A behavior implemented without a runtime trace naming it is a fidelity bug
+— same severity as an unregistered design change.
+
+Static lifting INVENTS motion three distinct ways (all field-recorded, all
+caught in user review — this is why the evidence rule exists):
+
+1. **Dead animation classes.** Sites — component CMSs especially — stamp
+   animation classes on many elements; the runtime JS adds the trigger
+   class (`.animate` etc.) to only SOME of them (recorded: of ~8
+   caption-class families carrying an entrance class, 2 ever fired; 3 whole
+   page types had ZERO firing entrances despite fully classed markup).
+   Tagging from static classes animates elements the real site never
+   animates. A live-classed-but-dead behavior is recorded as NOT
+   implemented — that is the correct replica of a dead class.
+2. **Hover rules whose scope never matches.** A plausible, syntactically
+   applicable `:hover` rule can be dead at runtime (scoping condition,
+   specificity loser, wrong variant) — and the inverse: the fired hover may
+   move a different element than the rule suggests (recorded: media-card
+   hover scaled the caption, not the card). Only a measured hover diff
+   justifies a hover rule in the prototype.
+3. **Approximated mechanisms create impossible states.** Reproducing a
+   header scroll-morph as a cloned fixed overlay bar looked equivalent but
+   allowed bar + original header visible simultaneously — a state that
+   cannot exist on live, which morphs its SINGLE header in place. Users see
+   a double-rendered header. **Mechanism cloning rule:** scroll-chrome and
+   widgets are reproduced as the SAME state machine observed live (same
+   element morphing, same class-state transitions, same restore
+   thresholds — the observe JSON's headerTimeline and classMutations name
+   them) — never as a different mechanism with a similar look.
+
+The two probe patterns the instrument wraps (both cheap, generic, no source
+JS needed): **hover diff** (`--hover`) — computed
+background/color/shadow/transform on the element + key sub-elements,
+before vs after a real pointer hover, plus `transition-*`; overlays
+dismissed first (an overlay intercepts the pointer and the probe reads no
+change), mouse parked between probes; the changed-property list translates
+directly to `:hover` CSS. **Behavior diff** (`--click`) — click the
+control, sample the animated property mid-flight and settled
+(`transform`/`scrollLeft` + computed `transition-*`): pitch, easing,
+duration. Map observed elements to prototype counterparts by the TEXT
+SNIPPET in the event log, never by class names (prototype classes are
+clean re-authored names).
+
+**Swiper-lock semantics** (the dominant carousel library): Swiper hides its
+controls and disables dragging when the content fits the viewport
+(`swiper-lock`/watch-overflow), so per-breakpoint the same widget is
+sometimes a carousel, sometimes a static row. A scroll-based replica
+reproduces the entire behavior with no DOM restructuring: arrows drive
+`scrollTo` on the already-`overflow:hidden` track, position count =
+`round((scrollWidth − clientWidth) / pitch) + 1`, and controls
+hide when `scrollWidth <= clientWidth` — which auto-degrades to the static
+case exactly where the live widget locks. Late re-renders (e.g. re-check at
+400/1200/3000ms and window `load`) are needed when the platform decorates
+DOM after the widget initializes — the overflow measurement taken at
+decorate time is stale by first interaction.
+
+**Implementation pattern — ONE shared motion layer per project, never
+per-page forks:** `css/motion.css` (lifted keyframes verbatim; trigger
+rules reusing the LIVE class names — that keeps the capture instruments
+symmetric, since stitch-shot's animation handling already keys on the live
+conventions; hover rules hover-diff-verified only; chrome-morph classes;
+indicator transitions) + `js/motion.js` (an IntersectionObserver adding
+the live trigger class — threshold as measured, typically ~0.15, once —
+to a tagging map of runtime-FIRED selectors only; the chrome state machine
+on scroll with the measured direction + thresholds; widget drivers
+mirroring observed mechanics). Gate-safety is by construction: entrance
+animations only run once the trigger class is added — verify the live site
+has no pre-animate hidden state (if it does, stitch-shot's entrance-state
+forcing covers it); chrome morph is inert at y=0; hovers need a pointer;
+stitch-shot clears timers so autoplay stays at t=0. Widget DOM stays fully
+mirrored so content-diff holds at zero structural red (§ Granularity
+parity — widgets are implemented, not justified away).
+
+**Verification protocol, both directions:** (1) **no pixel regression** —
+re-run pixel-compare per touched archetype at the gate breakpoints; the
+number must return to (± noise of) the gated value (recorded: 1.01% gated
+→ 1.06% with invented motion → 1.01% exact after the evidence-only
+rewrite). The drift itself is the smell test: motion code that changes t=0
+is wrong. (2) **behavior match** — a headless run against the PROTOTYPE
+asserting, per page: tagged-element count == live fired count; chrome
+state at {top, scrolled-down, scrolled-up, back-to-top} == the live
+headerTimeline states; zero pageerrors. This is the motion analog of the
+anchor probe, trivial to script from the observe JSON.
+
+Pitfalls (each field-recorded):
+
+- Observation needs the same live-session hardening + pacing as the gate
+  captures (bot walls, 429 bursts): ONE observation run per page, reuse the
+  JSON.
+- Autoplay widgets may pause off-viewport — poke them explicitly with
+  `--click` rather than waiting for autoplay events.
+- Indicator "magic dots": the live mechanism may animate `left`/`transform`
+  where an equivalent rendered effect in the recreation animates
+  width/height — equivalence of the RENDERED effect is the bar, but the
+  duration/easing must be the measured ones.
+- Wobble/stagger patterns: delays may be child-order dependent (recorded:
+  2nd child first, 0.5s steps, 1st child last) — read them from the CSS
+  rules of the FIRED animation; they are not guessable.
+- `prefers-reduced-motion`: mirror the live site's handling — do not
+  "improve" by adding it where live has none; that's an
+  inconsistency-register item, not a freebie.
+
+Log each implemented interaction in the progress ledger the way a CSS
+portation is logged; the static gate is then re-run per the verification
+protocol above (markup rarely changes — hover CSS and trigger JS are
+capture-invisible under the freeze, and the pixel re-run proves it).
 
 ## Fixed and sticky chrome (headers, floating tabs × stitched capture)
 

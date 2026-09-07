@@ -46,6 +46,8 @@ prototype's DOM and the built DOM compare symmetrically, then diffs them.
 # sync until the diff-skill abrasion PR consolidates them.)
 # Prereq: a RENDERABLE source. Static → serve from its own dir (python3 -m http.server).
 # The build URL must be the DECORATED page (live/preview or a local harness), not raw markup.
+# verify the port is YOURS first (lsof -nP -iTCP:8791 -sTCP:LISTEN); prefer a per-project
+# port — a stale server from another project makes both probes measure a foreign page
 PROTO="http://localhost:8791/<prototype>.html"
 BUILD="https://<branch>--<repo>--<owner>.aem.page/<path>"   # or http://localhost:3000/<harness>
 

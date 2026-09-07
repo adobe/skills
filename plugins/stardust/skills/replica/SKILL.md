@@ -1,6 +1,6 @@
 ---
 name: replica
-description: Same-design migration — re-platform a site to AEM Edge Delivery (or any clean front end) keeping its current design near pixel-perfect. Recreates key pages (one archetype per page type) as clean re-authored HTML/CSS (never DOM copies), verifies each against the live site with a measured source-fidelity gate (structural diff + visual diff + stitched pixel diff per breakpoint), then hands off to migrate/deploy/rollout for site-wide delivery with reusable blocks. The only permitted design changes are entries in an explicit inconsistency register. Use when the user says "migrate this site keeping its current design", "same-design migration", "pixel-perfect replatform to AEM", "rebuild the site exactly as it is but clean", or "keep the design, change the platform". NOT for redesigns — a new or refreshed design is the stardust core pipeline (direct/prototype) or uplift.
+description: Same-design migration — re-platform a site to AEM Edge Delivery (or any clean front end) keeping its current design near pixel-perfect. Recreates key pages (one archetype per page type) as clean re-authored HTML/CSS (never DOM copies), verifies each against the live site with a measured source-fidelity gate (structural + visual + stitched pixel diff per breakpoint), then hands off to migrate/deploy/rollout for site-wide delivery (subsumes prepare-migration's prep cascade — never chain the two). The only permitted design changes are entries in an explicit inconsistency register. Use when the user says "migrate this site keeping its current design", "same-design migration", "pixel-perfect replatform to AEM", or "keep the design, change the platform". NOT for redesigns — those are the stardust core pipeline (direct/prototype) or uplift.
 license: Apache-2.0
 ---
 
@@ -50,8 +50,8 @@ eyeballing.
    real `npm i` — re-probe before every gate run
    (`node -e "import('pixelmatch').then(()=>process.exit(0))"`).
 4. Copy scripts into the project and run them from there, not from the
-   plugin: this skill's `scripts/` (stitch-shot.mjs, pixel-compare.mjs) AND
-   the whole `../diff/scripts/` dir (the diff scripts import
+   plugin: this skill's whole `scripts/` dir (stitch-shot, pixel-compare,
+   anchor, gate.sh, motion-observe) AND the whole `../diff/scripts/` dir (the diff scripts import
    diff-profiles.mjs, and ALL live-target hardening — including
    stitch-shot's — lives in its live-session.mjs; stitch-shot resolves it
    from `scripts/diff/` next to `scripts/replica/`, so keep the two dirs
@@ -148,6 +148,14 @@ as **clean semantic HTML/CSS** from three sources, in this order:
 (c) **The captured screenshot as ground truth** for everything CSS doesn't
     name (composition, image crops, paint effects).
 
+**Every archetype gets its own standalone prototype — cumulative, never
+skipped.** Never skip to direct platform authoring for a new archetype:
+prototyped archetypes stayed the quality ceiling in the field (3.5%/5.6%)
+while direct-authored pages plateaued at 8–16%. Each new prototype imports
+the shared layers earlier ones already gated (shared canon CSS + a
+per-archetype file) and iterates only on its NEW modules — full contract:
+`reference/recreation-procedure.md` § Cumulative archetype prototypes.
+
 **This is recreation, not redesign — do NOT delegate to impeccable craft.**
 Impeccable's redesign gates (critique, anti-template, divergence) do not
 apply; the source-fidelity gate (Phase 4) replaces them entirely. A
@@ -171,6 +179,8 @@ breakpoint (default 1440 AND 360), live URL as source vs served prototype:
 
 ```bash
 PROTO="http://localhost:8791/<slug>-proposed.html"   # python3 -m http.server from the prototypes dir
+# verify the port is YOURS (lsof -nP -iTCP:8791 -sTCP:LISTEN) — a stale foreign
+# server silently poisons the gate (gate.sh asserts a page marker, exit 4)
 LIVE="https://<site>/<path>"
 
 # Probe 1+2 — the diff skill's two probes, generic profile (--dismiss keeps
@@ -183,6 +193,10 @@ node scripts/replica/stitch-shot.mjs "$LIVE"  stardust/replica/gates/<slug>-1440
 node scripts/replica/stitch-shot.mjs "$PROTO" stardust/replica/gates/<slug>-1440/proto.png --width 1440
 node scripts/replica/pixel-compare.mjs stardust/replica/gates/<slug>-1440/live.png \
   stardust/replica/gates/<slug>-1440/proto.png --out stardust/replica/gates/<slug>-1440/diff.png
+
+# Iteration inner loop (gate doc § Band breakdown): anchor probe + pixel round
+node scripts/replica/anchor.mjs "$PROTO" --width 1440   # build-side runs are free
+scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
 ```
 
 **Pass bar (all four, per breakpoint):**
@@ -226,6 +240,19 @@ backed by `live-session.mjs` — copy the scripts and pass flags; a project
 copy carrying hand-edits is a defect
 (`reference/source-fidelity-gate.md` § Script adaptations).
 
+**After the static gate passes, interaction parity is a REQUIRED gate
+output per archetype — not a post-pass**
+(`reference/recreation-procedure.md` § Interaction parity; optional, it was
+skipped on 5 of 7 archetypes — all shipped static). Motion is OBSERVED,
+never inferred from static classes or CSS: run
+`scripts/replica/motion-observe.mjs` per archetype live URL →
+`stardust/replica/motion/<slug>.json`, implement ONLY behaviors that
+fired (dead classes = NOT implemented), record
+`motion: {observed, implemented, dead[]}` in `progress.json`, and re-run
+pixel-compare — the number must return to the gated value.
+Widgets are implemented, not justified away. Fan-out briefs carry the
+evidence rule + instrument invocation verbatim.
+
 When all breakpoints pass, present the archetype + its gate metrics for
 approval per the standard prototype approval flow (hands-off mode records
 `approvedBy: "hands-off"` per `../stardust/reference/state-machine.md`).
@@ -235,22 +262,28 @@ approval per the standard prototype approval flow (hands-off mode records
 - **Pages beyond the archetypes** go through `stardust:migrate` at
   **sibling tier** (`../migrate/reference/fidelity-tiers.md`): structural
   clone of the gated archetype + content-fidelity + delivery-lint +
-  media-reconcile. The archetype's source-fidelity gate is what the siblings
-  inherit — never re-author a sibling from scratch.
+  media-reconcile. Siblings inherit the archetype's source-fidelity gate —
+  never re-author one from scratch. Content-fidelity is
+  **measured per page at import time** (same file, § Content-count
+  acceptance) so importer bugs surface while cheap to fix.
 - **Delivery** via `stardust:deploy` per page. Bias the decode tier toward
   **template-slotted** for fixed-composition sections (deploy #95): replica
-  sections are by definition fixed compositions matched to a live original;
-  reconstruction freedom is risk with no payoff here. Repeat/authorable
-  groups (cards, listings) stay reconstructive.
+  sections are fixed compositions matched to a live original.
+  Repeat groups (cards, listings) stay reconstructive. **Blocks
+  obey the Experience Workspace editability contract (deploy § 8, EW1–EW10:
+  node-slotting, never value-slotting) and pass `block-roundtrip --ew`.**
 - **Site-wide rollout** via `stardust:rollout`, unchanged — its block dedup
   is what implements "same blocks across the whole site".
-- Optional final proof: re-run the pixel probe live-site vs deployed page.
-  Expect small justified deltas (EDS chrome, font loading); log them.
+- **The final gate runs against the PUBLISHED origin — not the harness**
+  (`reference/source-fidelity-gate.md` § The published-origin gate): the
+  delivery pipeline transforms markup, so harness numbers understate.
+  Re-run the full gate per delivered page against the preview/live origin,
+  judged in the published-origin regime; only the published number counts.
 
 **State:** replica writes its own state under `stardust/replica/` — the
 inconsistency register, `progress.json` (per page type: archetype slug,
-iterations used, per-breakpoint gate results, residuals), and
-`gates/<slug>-<width>/` evidence. Pipeline status (extracted → prototyped →
+iterations used, per-breakpoint gate results, residuals, motion
+inventory), `motion/<slug>.json`, and `gates/<slug>-<width>/` evidence. Pipeline status (extracted → prototyped →
 approved → migrated) stays in the core `state.json` per the standard state
 machine — replica never redefines it.
 
@@ -277,7 +310,8 @@ stardust/
 ├── prototypes/<slug>-proposed.html     ← gated archetypes (one per page type)
 ├── replica/
 │   ├── inconsistency-register.md       ← the ONLY permitted design deltas
-│   ├── progress.json                   ← per-page-type ledger: iterations, gate results, residuals
+│   ├── progress.json                   ← per-page-type ledger: iterations, gate results, residuals, motion inventory
+│   ├── motion/<slug>.json              ← motion-observe evidence
 │   └── gates/<slug>-<width>/           ← live.png, proto.png, diff.png, probe outputs per iteration
 └── migrated/                           ← from migrate (Phase 5)
 
@@ -290,12 +324,14 @@ PRODUCT.md / DESIGN.md / DESIGN.json    ← promoted verbatim from current/ (Pha
   inconsistency-register entry schema.
 - `reference/recreation-procedure.md` — CSS-lifting method (per gate
   breakpoint), fonts policy, scrim/luminance recovery, span-face forks,
-  capture-state policy, fixed/sticky chrome, granularity parity, role
-  parity (mirror the live wrapping per string), CSS-portation fallback
-  criteria.
+  capture-state policy, wrap-junction margins, fixed/sticky chrome,
+  granularity parity, role parity (mirror the live wrapping per string),
+  interaction parity (motion observed, never inferred; Swiper-lock),
+  CSS-portation fallback criteria.
 - `reference/source-fidelity-gate.md` — full gate contract: commands,
   thresholds, per-breakpoint procedure, hardening rules, band-breakdown
-  reading guide, iteration discipline, residual logging format.
+  reading guide (+ the section-anchor inner loop), iteration discipline,
+  the published-origin gate (EDS pipeline deltas), residual logging format.
 - `../diff/SKILL.md` — the two probes replica reuses (`--profile generic`);
   reading content-diff output; the #87 JOIN/SPLIT limitation.
 - `../extract/SKILL.md` § Prep mode — what Phase 1 provides.

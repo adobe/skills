@@ -931,3 +931,216 @@ fingerprint variation).
 **Fix applied:** #23 reworded — full-page pairs at TWO viewports always; per-section pairs
 only for flagged sections, bespoke/cinematic or slot-heavy template-slotted sections, and
 the chrome. Expected ~3–5 min saved on large pages at negligible risk.
+
+## 2026-08-26/27 — replica+deploy field harvest (rwe.com, centene.com; #106–#114)
+
+Two independent sessions; each finding below bit with green text gates and was
+caught only by a pixel probe or eyeball. All are source-class-general (any
+bootstrap-era grid, any AEM-classic richtext source), none site-specific.
+
+### #106 🔴 Boilerplate ships no global `border-box` — %-width+padding grids silently wrap ✅
+**Where:** centene.com deploy. Block CSS ported a bootstrap-era grid
+(`width: 33%` + padding); under the default `content-box` every column
+overflowed its track: 3-col cards rendered 2+1, 2-col bands stacked, the
+footer wrapped — **+1731px doc height with ALL text gates green**.
+**Fix applied:** Step 3 Document reset now REQUIRES the global
+`*, *::before, *::after { box-sizing: border-box }` reset; absent that, any
+block CSS combining `width: N%` with `padding` is called out as a defect.
+
+### #107 🔴 `header { height: var(--nav-height) }` collapses every block-internal `<header>` ✅
+**Where:** rwe.com deploy. Blocks that emitted semantic `<header>` (natural
+when porting prototype DOM verbatim) all broke at once — the stock chrome
+reservation matches EVERY `<header>`, clamping each to nav height and hiding
+it; text gates stayed green.
+**Fix applied:** Step 3 #81 passage warns: no `<header>` in block DOM (use a
+`.…-head` div); scope the stock selector to `body > header` only if the
+foundation pass is already editing the boilerplate's structural layer (#106).
+
+### #108 🟡 Overlay chrome is an uncovered #81 case — `--nav-height: 0` + absolute header ✅
+**Where:** rwe.com deploy. The prototype's transparent header floats OVER the
+hero; reserving any `--nav-height` would push the hero below where the source
+renders it.
+**Fix applied:** Step 3 documents the pattern: `--nav-height: 0` + absolutely
+positioned header, no reservation — nothing in flow, so the late chrome load
+shifts nothing (measured CLS 0.0004).
+
+### #109 🔴 Mobile override loses to desktop VARIANT specificity regardless of media query ✅
+**Where:** rwe.com deploy iteration. A generic mobile rule
+(`.cards .card-list`) lost to the desktop variant rule
+(`.cards.color .card-list`) — a media query changes *when* a rule applies,
+never *how strongly*. Silent on single-variant blocks; guaranteed to recur the
+moment a rollout adds variants (centene's `feature`/`panel` variants have
+exactly this shape).
+**Fix applied:** block-brief template requires mobile overrides at the
+variant's own specificity (or `:where()` the variant selectors down).
+### #110 🟠 Pipeline fallback `<img src>` copied into CSS `background` ships the 750px rendition ✅
+**Where:** centene.com deploy. The `<picture>` fallback `<img src>` carries
+`width=750`; copied into a full-bleed CSS `background-image` it renders soft
+at any hero width. `<picture>`-rendered images are unaffected (the browser
+picks a real rendition).
+**Fix applied:** images→background-LAYER rule now says: never copy the
+fallback src into CSS — rewrite the width param (`width=2000`) first.
+
+### #111 🟡 `<picture>` wrapper adds an inline baseline descender (+6/7px per image paragraph) ✅
+**Where:** centene.com deploy. The pipeline's `<p><picture>…` wrapper leaves
+the image inline on the text baseline — each image paragraph measured +6/+7px
+vs the bare-`<img>` source; systematic, per-image, invisible to text gates.
+**Fix applied:** documented `line-height: 0` on the image paragraph as the
+parity fix.
+
+### #112 🟡 Pipeline drops whitespace-only authored content — model spacer line boxes as CSS ✅
+**Where:** centene.com deploy. Authored `<p>&nbsp;</p>` / trailing
+`<br>&nbsp;` (real line boxes on AEM-classic sources) are dropped by the
+pipeline; the height difference surfaced only in the pixel probe.
+**Fix applied:** ENCODE contract: never model live line boxes as authored
+whitespace — express them as block CSS (padding/margin).
+
+### #113 🟡 Un-floating columns in a media query loses the float's BFC margin containment ✅
+**Where:** centene.com deploy. The desktop float established a BFC that
+contained the last child's margin; the mobile override un-floated the column
+and the margin escaped (−10px, mobile only).
+**Fix applied:** block-brief template: when a mobile override un-floats, add
+`display: flow-root` to the override.
+
+### #114 🟡 A wrapper reset can out-specify the block's own rules — padding silently 0 ✅
+**Where:** centene.com deploy. `footer .footer > div { padding: 0 }` (a
+wrapper reset) beat `footer .f-root { padding: … }` — the block's own rule
+never applied, no error anywhere.
+**Fix applied:** block-brief template warns: keep wrapper resets at LOWER
+specificity than the block's own rules (`:where()` them down), and check any
+`> div` reset against every rule it might shadow.
+
+### #115 🔴 Full-page pixel bar dilutes chrome — header/footer shipped at 93–97% while pages gated green ✅
+**Where:** wijnvoordeel/wijnbeurs migrations (e-luscious, 2026-08). The
+header/footer are a small share of page pixels but carry disproportionate
+visual weight and repeat on every page of a rollout; hand-drawn lookalike
+icons, wrong micro-weights, and off-by-10px nav rows all fit inside the ≤10%
+full-page bar. Both field runs shipped "green" pages with visibly-off chrome.
+**Fix applied:** new `replica/scripts/crop-compare.mjs` (per-y-band
+pixelmatch with per-side offsets, default bar 2%); replica pass bar gains
+item 5 (header + footer bands each ≥98%, over the same stitched captures);
+deploy Step 10 gains the chrome crop gate (per template minimum).
+
+### #116 🔴 Computed-style lift freezes fluid widths — invisible at both gate breakpoints ✅
+**Where:** wijnbeurs.nl migration. A lift recorded `width: 720px` from an
+element authored `width: 50%`; 1440 and 360 render both identically, so the
+frozen value shipped and diverged only at ≥1920 (live hero card 940px vs
+720px; CTA row wrapped as a side effect). Same trap on DOM: the 1440 layout
+OUTCOME (a 3+1-wrapped button row authored as two rows) captured instead of
+the layout MODEL (one wrapping flex row).
+**Fix applied:** recreation-procedure gains § Lift the sizing MODEL (lift at
+two widths, diff, encode the authored rule); source-fidelity-gate gains the
+≥1920 box-map spot check (same-DOM-tier rule included); deploy Step 10 item
+5 mirrors it on the deployed URL.
+
+### #117 🟠 Geometry-fix verification: wrong element, cached CSS, reviewer-zoom viewport — one claim wrong three ways ✅
+**Where:** wijnbeurs.nl migration. A "parity verified" claim probed a
+heuristically-matched element instead of the rule-bearing one; the re-check
+read a CACHED block stylesheet (DevTools showed the old rule while both
+hosts served the fix); and the reviewer's screenshot encoded a zoomed
+viewport — their numbers contradicted a correct fix until back-computed
+(card 851px under `width:50%` → viewport 1702px) and reproduced headlessly.
+**Fix applied:** deploy Step 10 item 6 + a replica iteration-discipline
+bullet: pair the rule-bearing element on both sides, verify serving with
+`curl --compressed | grep` (bare curl greps gzip binary and matches
+nothing), re-render in a fresh headless context, back-compute the
+reviewer's viewport from any known %-rule element.
+
+### #118 🟠 Guessed asset URLs ship wrong pixels — CDNs answer 200 with a generic fallback ✅
+**Where:** wijnvoordeel.nl migration. Six product images were uploaded from
+GUESSED catalog URLs; the commerce CDN answered 200 with the same generic
+placeholder for all six — no error anywhere, wrong pixels shipped.
+**Fix applied:** ENCODE contract → Images: rehost only from the exact
+captured URL string (lift/extract map), and diff the fetched asset's
+dimensions + byte size against the captured copy before uploading.
+
+### #119 🔴 Authored `<hr>` is the section delimiter — it silently fractures the section ✅
+**Where:** wijnbeurs.nl migration. An `<hr>` authored inside a section split
+it into multiple sections at ingestion; every downstream section
+selector/style broke.
+**Fix applied:** ENCODE contract rule (draw rules in CSS via an empty styled
+section); `davids-model-lint.mjs` flags any `<hr>` as 🔴 (rule `HR`) and
+`hr` left the prose-expressible tag set.
+
+### #120 🟠 Multi-value section-metadata `style` delivers only the first class ✅
+**Where:** wijnbeurs.nl migration. `style: a, b` (comma- or space-separated)
+delivered only `a` on a real stack.
+**Fix applied:** Step 3: one `style` value per section; a second styling
+axis anchors to content (`main .section.a:has(img[alt^="…"])` — 
+content-anchored `:has()` survives the metadata pipeline).
+
+### #121 🔴 Unscoped empty-section `display` override defeats pre-load hiding — 0.75 CLS ✅
+**Where:** wijnbeurs.nl migration. `main .section.x { display:block
+!important }` (needed against `:empty { display:none }`) also defeated the
+runtime's pre-load hiding (`data-section-status`), painting the section
+before the rest of the page — measured 0.75 CLS.
+**Fix applied:** Step 3: always scope the override to
+`main .section.x[data-section-status='loaded']`.
+
+### #122 🟡 Loaded ≠ rendered — an img with naturalWidth > 0 can render 0×0 ✅
+**Where:** wijnvoordeel.be migration. A flex item's width derived from the
+image while the image's `max-width:100%` derived from the item — circular
+sizing collapsed to zero; `.plain.html` checks and the `naturalWidth === 0`
+broken-image probe both passed.
+**Fix applied:** the deployed computed-style guard also asserts
+`clientWidth > 0` per visible loaded image; qa gains the `zero-size-image`
+check (in-layout via `getClientRects()` so display:none images don't
+false-flag); reskin's Image-paint gate documents the same blind spot.
+
+### #123 🔴 Every generated block was uneditable in Experience Workspace — value-slotting, `text(cell)`, clone-the-anchor were the skill's own guidance ✅
+**Where:** rwe.com migration (2026-09-03), `da.live/canvas#/…/index`. Clicking
+hero or spotlight text did nothing; `columns` body paragraphs edited fine but
+its CTA did not. Probe over a 29-page covering sample: **841 / 1452** authored
+texts editable — default content 446/446, the 20 stardust blocks 395/970.
+Census over 27 blocks: 25 call `textContent`, 13 assign `innerHTML`, 16 clone,
+23 `replaceChildren`. Two external analyses had the symptom right and the
+mechanism wrong.
+**Mechanism (verified in da.live `editor-utils.js`/`prose2aem.js` and da-nx
+`quick-edit.js`/`prose.js`):** the canvas stamps `data-prose-index` on every
+OUTERMOST `h1–h6/p/ol/ul/pre/blockquote`, swaps the instrumented HTML into
+`document.body`, re-runs the page's own `loadPage()` (so `decorate()` runs over
+it), then `querySelector('[data-prose-index="N"]').replaceWith(editor)` per
+index. Only `data-block-index` is repaired afterwards. A text is editable iff
+exactly ONE element still carries its index; zero = dead (rebuilt from
+`textContent`/`innerHTML`, synthesized `<p>`, retagged); several = editor on the
+FIRST in DOM order (hidden carousel clone). The editor renders the DOC node —
+same tag, no classes, no spans, inline marks only — inside TWO wrapper divs
+(`div.prosemirror-editor > div.ProseMirror > <tag>`), and cursor math uses
+`textContent` length. In the workspace every block cell contains a `<p>`
+(published pipeline unwraps it; runtime `wrapTextNodes` re-wraps).
+**The clone corollary:** `cloneNode(true)` is NOT what kills editing — the
+clone keeps the attribute (that is exactly why clone-based `columns` worked
+while `textContent`-based `hero` did not). Cloning is still wrong (duplicate
+indices, stale identity); the fix is MOVE, not "avoid clone".
+**The specificity trap:** a wrapper variant written as `.affordance-wrap a`
+out-ranks `a:any-link` and silently flipped link colour navy → teal;
+`.affordance-wrap :where(a)` keeps `.affordance`'s specificity.
+**The two-wrapper selector rule:** `h3.headline {…}` → `.headline :is(h2, h3, h4)
+{…}` (same specificity, still matches the editor's re-rendered `<h3>`); no
+child combinators or positional pseudo-classes on the path to an authored
+element; exclude a moved CTA `<p>` from a lede rule with
+`p:where(:not(.affordance p))`.
+**Root cause in the skill:** § 2b template-slotted tier slotted authored
+VALUES by role; § 8 scaffold taught `text(cell)` + "build the prototype's DOM";
+§ 5 said "block JS just clones them as-is"; #55 cloned `childNodes` into a new
+heading; #62/#71 synthesized `<p>`s; #70 edited the authored text node;
+§ Section heads rebuilt the `.section-head`; no gate measured editability.
+**Fix applied:** § Target runtime documents the instrumentation; § 2b redefines
+template-slotted as NODE-slotting and bans value-slotting; § 3 ships three
+edit-mode foundation snippets (CTA repaint from `<strong>/<em>` marks under
+`.prosemirror-editor`, card-as-link inner anchor, `:where()` wrapper variants)
++ EW10; § 5/#55/#62/#70/§ Section heads rewritten to MOVE; § 8 gets a
+move-based scaffold (`wrapNode`, `labelWrap`, `stripInstrumentation`) and the
+named **Experience Workspace editability contract (EW1–EW10)**; new
+`scripts/ew-editability-probe.mjs` (URL + `--content` harness modes,
+`--simulate-editor` drift, `@ew-exempt` JSDoc tags); `block-roundtrip --ew`
+(default on) fails dead/duplicated texts 🔴; `render-harness --ew
+--simulate-editor`; `section-schema` emits `editableTexts`;
+`content-inventory` exports the outermost-editable classifier for
+`content-diff`'s advisory; qa gains the `editability` check; the Step-7 brief
+carries the contract (it skipped 27/27 blocks because the brief did not);
+replica/rollout/reskin/fidelity-tiers cite it; eval `ew-editability`.
+**Result on rwe (2 rounds, 3 + 17 blocks):** 841 → **1416 / 1452** editable;
+the 36 left are declared exemptions (index-driven listings, derived dates, a
+breadcrumb needing an ENCODE `<ul>`); 27 block instances pixel-identical at
+1440; 0 edit-mode drift except the hero's per-line span gap.

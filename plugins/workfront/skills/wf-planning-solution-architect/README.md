@@ -1,6 +1,6 @@
 # wf-planning-solution-architect skill
 
-A Claude skill that turns Claude into an experienced Workfront Planning (WFP) solution architect for internal Adobe use: engineers, EMs, SAs, AMs, and the WFP product team.
+A Claude skill that turns Claude into an experienced Workfront Planning (WFP) solution architect. Written for practitioners who design and troubleshoot WFP implementations: solution architects, consultants, admins, engineers, and account teams.
 
 ## Install
 
@@ -26,7 +26,7 @@ wf-planning-solution-architect/
     ├── workspace-build-playbook.md             # Canonical build playbook (synthesized)
     ├── best-practice-template.md               # Fréscopa exemplar + known deviations
     ├── best-practice-template.json             # Trimmed Fréscopa sample export (minified, ~1.6 MB)
-    ├── limits-and-tiers.md                     # SA-ready limit reference by tier
+    ├── limits-and-tiers.md                     # Practitioner limit reference by tier
     ├── public-vs-api-discrepancies.md          # Reconciliation table
     ├── customer-conversation-framings.md       # Stock SA framings
     └── synthesized/                            # Content not published on Experience League
@@ -46,7 +46,7 @@ Top-level synthesis files (workspace-build-playbook, best-practice-template, lim
 ## Preferences honored
 
 - No em dashes or en dashes introduced in skill-authored content (all newly authored .md files audit clean).
-- Direct, internal, evidence-based tone.
+- Direct, evidence-based tone.
 - Architecture-before-limits posture on escalation framing.
 
 ## Refresh

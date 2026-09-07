@@ -28,6 +28,13 @@
  *     Upgrade-Insecure-Requests / sec-ch-ua* produced HTTP 200. Akamai
  *     bot-manager fingerprints on the ABSENCE of the standard headers every
  *     real Chrome sends, not just on the UA string.
+ *   - The standard headers ride DOCUMENT requests only, never subresources
+ *     (F-B2, broadridge.com): forcing them via extraHTTPHeaders on every
+ *     request makes cross-origin CORS-mode font fetches (Typekit, Google
+ *     Fonts, any font CDN) non-simple; they die with net::ERR_FAILED and the
+ *     live capture silently renders FALLBACK type — wrong wraps, wrong
+ *     heights, wrong doc height, no error anywhere. Bot managers fingerprint
+ *     the navigation request, which still carries the full set.
  *   - A challenge/blocked interstitial FAILS LOUD (BotChallengeError), never
  *     silently measured as the source (the rimowa trap: an "Access Denied"
  *     page diffs cleanly — wrongly).
@@ -123,6 +130,9 @@ export function standardHeaders(locale = 'en') {
  * Ready-to-spread options for browser.newContext(): UA + standard headers
  * (+ viewport, + navigator.language coherence when a locale is pinned).
  * Callers add their own instrument-specific options (reducedMotion etc.).
+ * NOTE: newLiveContext strips extraHTTPHeaders back out and delivers the
+ * header set per-request instead (document requests only — F-B2 below);
+ * spreading these options raw would re-introduce the font-fork trap.
  */
 export function contextOptions({ ua, locale, viewport } = {}) {
   const opts = {
@@ -142,7 +152,22 @@ export function contextOptions({ ua, locale, viewport } = {}) {
  * Playwright context options pass through (reducedMotion, ...).
  */
 export async function newLiveContext(browser, { ua, locale, viewport, ...rest } = {}) {
-  const ctx = await browser.newContext({ ...rest, ...contextOptions({ ua, locale, viewport }) });
+  // F-B2 (broadridge, 2026-08-25): the standard header set must ride on
+  // DOCUMENT requests only. Forcing it via extraHTTPHeaders on every request
+  // makes cross-origin CORS-mode subresource fetches (Typekit/webfont CDNs)
+  // non-simple; they die with net::ERR_FAILED and the live capture silently
+  // renders FALLBACK type — an asymmetric false measurement (the prototype
+  // side loads the same kit fine). Bot-manager fingerprinting happens on the
+  // navigation request, which still carries the full set below.
+  const { extraHTTPHeaders, ...base } = contextOptions({ ua, locale, viewport });
+  const ctx = await browser.newContext({ ...rest, ...base });
+  await ctx.route('**/*', (route) => {
+    if (route.request().resourceType() === 'document') {
+      route.continue({ headers: { ...route.request().headers(), ...extraHTTPHeaders } });
+    } else {
+      route.continue();
+    }
+  });
   await ctx.addInitScript(() => {
     Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
   });

@@ -36,7 +36,20 @@
  *     (recorded: polestar → /ch-de/, maisonkitsune → /ww/) otherwise capture
  *     a different locale per run — nondeterministic live side.
  *   - animation/transition freeze is injected AFTER the lazyload settle
- *     pass: injecting it before breaks some lazy loaders' swap logic.
+ *     pass: injecting it before breaks some lazy loaders' swap logic. The
+ *     freeze also pauses every <video> at t=0 and clears all pending JS
+ *     timeouts/intervals (CSS-only freezing stops neither <video> playback
+ *     nor slick-style autoplay timers — the same page never pixel-matched
+ *     itself), then clicks the first slick-convention carousel dot so both
+ *     sides capture slide 1 deterministically. All symmetric — applied
+ *     identically to live and prototype, so it cannot bias the diff.
+ *   - FONT-LOAD assertion before capture (F-B2 companion): a webfont that
+ *     failed to fetch renders the whole capture in fallback type — the same
+ *     silent-false-measurement class as capturing a challenge page. After
+ *     document.fonts.ready, any declared FontFace with status 'error' is
+ *     reported LOUDLY with the family names; the operator must decide
+ *     whether the failure is instrument-induced (a capture defect — fix the
+ *     instrument) or real on the live site (capture-state — log it).
  *   - page height is measured AFTER the settle pass: entrance-animated
  *     sites inflate scrollHeight until elements go inview, so the
  *     pre-settle height is fake.
@@ -185,8 +198,68 @@ async function main() {
 
     // Freeze animations/transitions/carets for stable chunks — AFTER settle.
     await page.addStyleTag({ content: '*,*::before,*::after{animation-play-state:paused!important;transition:none!important;caret-color:transparent!important;scroll-behavior:auto!important;}html{scroll-behavior:auto!important}' });
+    // The CSS freeze above stabilizes CSS animations only (rwe replica run,
+    // 2026-08-26 — field-validated instrument fix). It does NOT stop
+    // (a) <video> playback — autoplaying teaser videos capture an arbitrary
+    // frame per run, so the same page never pixel-matches itself; (b) JS-timer
+    // carousels (slick autoplay swaps slides between/during chunk captures
+    // even with transition:none). Fix, applied symmetrically to both sides:
+    // pause every video and seek it to t=0 (frame 0 is deterministic), and
+    // clear all pending timeouts/intervals so timer-driven UI stops mutating
+    // mid-capture. Runs AFTER settle, so clearing timers can't starve
+    // lazyload — the settle pass already ran.
+    await page.evaluate(async () => {
+      const vids = [...document.querySelectorAll('video')];
+      await Promise.all(vids.map((v) => new Promise((res) => {
+        try {
+          v.pause();
+          v.removeAttribute('autoplay');
+          if (v.readyState >= 1) { v.currentTime = 0; }
+          if (v.seeking) { v.addEventListener('seeked', () => res(), { once: true }); setTimeout(res, 1500); }
+          else { setTimeout(res, 200); }
+        } catch { res(); }
+      })));
+      let id = window.setTimeout(() => {}, 0);
+      while (id-- > 0) { window.clearTimeout(id); window.clearInterval(id); }
+    });
+    // Carousel t=0 determinism (same field run): autoplay advances during the
+    // settle window, so each capture lands on an arbitrary slide (the replica
+    // freeze policy is slide 1 at t=0). Clicking the first slick-convention
+    // dot resets BOTH sides to slide 1 — transitions are already frozen, so
+    // the reset is instant and symmetric; no-op on pages without the
+    // convention. Took the residual 4% → 0.8% in the field.
+    await page.evaluate(() => {
+      const dot = document.querySelector('.slick-dots li:first-child button');
+      if (dot) {
+        dot.click();
+        // slick can re-arm its autoplay interval on interaction, and the
+        // chunk loop below is long — clear timers again after the click so
+        // nothing mutates mid-capture.
+        let id = window.setTimeout(() => {}, 0);
+        while (id-- > 0) { window.clearTimeout(id); window.clearInterval(id); }
+      }
+    });
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(800);
+
+    // Font-load assertion (F-B2 companion): a webfont that failed to fetch
+    // renders the ENTIRE capture in fallback type — wrong wraps, wrong
+    // heights, wrong doc height — with no error anywhere, the same silent
+    // false-measurement class as capturing a challenge page. Report failed
+    // faces loudly. Not a hard exit: the instrument can't tell an
+    // instrument-induced failure (a capture defect — recorded F-B2: forced
+    // request headers killed the Typekit CORS fetch, live doc height moved
+    // 6669→6518 after the fix) from a face that genuinely fails for real
+    // browsers too (capture-state — fallback is then the truthful capture).
+    // The gate doc (source-fidelity-gate.md § Hardening rule 14) owns the
+    // decision procedure; this warning is what triggers it.
+    const failedFonts = await page.evaluate(async () => {
+      await document.fonts.ready;
+      return [...new Set([...document.fonts].filter((f) => f.status === 'error').map((f) => f.family))];
+    }).catch(() => []);
+    if (failedFonts.length) {
+      console.error(`stitch-shot WARNING: FONT LOAD FAILED for declared face(s) ${failedFonts.join(', ')} — this capture renders fallback type (silent false measurement, F-B2 class). Verify the face loads in a real browser: instrument-induced → fix the capture before gating; genuinely broken on the live site → log as capture-state.`);
+    }
 
     // Height is measured AFTER the settle pass, never before: entrance-
     // animated sites inflate scrollHeight until elements go inview (their

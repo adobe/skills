@@ -16,6 +16,12 @@
  *   node skills/deploy/scripts/sanitise.js < input.html               # stdin -> stdout
  *   npm run da:sanitise -- content/page.html
  *
+ * NEVER pass more than two paths. The two-arg form is <input> <output>, so a
+ * batch invocation (`sanitise.js a.html b.html c.html`) would treat b as the
+ * OUTPUT and silently overwrite it with a's content (recorded field failure —
+ * the third file was ignored on top). The script now refuses >2 args; batch
+ * by running once per file:  for f in content/*.html; do node …/sanitise.js "$f"; done
+ *
  * Exit codes: 0 success, 1 error.
  */
 
@@ -77,6 +83,18 @@ function encode(input) {
 
 const args = process.argv.slice(2);
 const fromStdin = args.length === 0 || args[0] === '-';
+
+// Batch foot-gun guard: with >2 paths the two-arg <input> <output> convention
+// would silently overwrite the second file with the first's content and drop
+// the rest (recorded). Refuse loudly instead.
+if (args.length > 2) {
+  process.stderr.write(
+    'da-sanitise: too many arguments — usage is <input> (in-place) or <input> <output>.\n'
+    + 'A batch call would overwrite the second file with the first\'s content; run once per file:\n'
+    + '  for f in content/*.html; do node skills/deploy/scripts/sanitise.js "$f"; done\n',
+  );
+  process.exit(1);
+}
 
 let input;
 if (fromStdin) {

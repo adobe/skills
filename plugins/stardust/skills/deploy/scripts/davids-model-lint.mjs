@@ -23,6 +23,7 @@
  *   D4  relative/repo-relative src or href         a span-shaped structure)
  *   D14 display copy in a key-value block     D10 block rows wider than 4 columns
  *   D15 code visible as text (tags/{{}}/CSS)  D5  complex nested list inside a cell
+ *   HR  authored <hr> (#119 — the section delimiter; fractures the section)
  *
  * Dependency-free by design (regex + balanced-div walking, same technique as
  * build-harness.mjs) — content pages are machine-generated and regular; this
@@ -35,7 +36,7 @@ const WRAPPER_BLOCK_NAMES = new Set(['text', 'heading', 'title', 'image']);
 const KEY_VALUE_BLOCKS = new Set(['metadata', 'section-metadata']);
 const EMBED_HOST = /(youtube\.com|youtu\.be|vimeo\.com|player\.|\/embed\/)/i;
 // Default-content-expressible tags: what a prose section can carry natively.
-const PROSE_TAGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'a', 'ul', 'ol', 'li', 'picture', 'img', 'source', 'strong', 'em', 'code', 'br', 'hr']);
+const PROSE_TAGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'a', 'ul', 'ol', 'li', 'picture', 'img', 'source', 'strong', 'em', 'code', 'br']);
 
 // ---------------------------------------------------------------- primitives
 
@@ -109,6 +110,15 @@ function lintPage(file, html, findings) {
 
   lintText(file, main, flag);
   lintUrls(file, main, flag);
+
+  // HR (#119) — <hr> is the EDS section delimiter: authored inside a section
+  // it silently fractures that section into several at ingestion, and every
+  // downstream section selector/style breaks. Visual rules are drawn in CSS
+  // (an empty section with a section-metadata style value + a border).
+  const hrs = [...main.matchAll(/<hr\b/gi)].length;
+  if (hrs) {
+    flag('🔴', 'HR', `${hrs} authored <hr> element(s) — <hr> is the section delimiter and fractures the section at ingestion; author an empty styled section and draw the rule in CSS (#119)`);
+  }
 }
 
 // HTML of a container minus its direct child divs (the default-content part).

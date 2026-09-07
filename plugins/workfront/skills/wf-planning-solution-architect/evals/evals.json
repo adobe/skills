@@ -62,12 +62,12 @@
       "id": 5,
       "name": "Tier-aware limit question",
       "prompt": "What are the object limits for Workfront Planning, and do they differ by tier?",
-      "expected_output": "Explains that object limits scale by tier (Select, Prime, Ultimate) and that the tier must be established before answering a limit question.",
+      "expected_output": "Explains that most object limits are identical across Select, Prime, and Ultimate, and that only records per workspace and total records per instance vary by tier.",
       "files": [],
       "assertions": [
         "Names the Select, Prime, and Ultimate tiers",
-        "States that object limits scale by tier",
-        "Asks for or establishes the customer's tier before giving specific numbers",
+        "States that only records per workspace and total records per instance vary by tier, and that the per-object limits are the same on all tiers",
+        "Answers directly for limits that do not vary by tier, and asks which tier only for records per workspace or total records per instance",
         "Reads references/limits-and-tiers.md rather than guessing limit values"
       ]
     },
@@ -367,6 +367,21 @@
         "Fetches the live Experience League page from the returned URL rather than answering from memory",
         "Consults references/synthesized/notification-preferences.md",
         "States clearly if the reference set does not cover part of the question rather than inventing behavior"
+      ]
+    },
+    {
+      "id": 28,
+      "name": "Design question mentioning volume is not a limits question",
+      "prompt": "We run about 30 country programmes, each with several hundred tactics a year, and marketing wants everything linked back to one campaign record. How should I model this in Workfront Planning?",
+      "expected_output": "Answers the modelling question: work versus reference record types, a hierarchy or intermediate record type rather than one parent connected to everything. Raises the 500-connection cap only as a consequence of the proposed shape, not as the headline.",
+      "files": [],
+      "assertions": [
+        "Treats this as a workspace design question and answers how to model it",
+        "Recommends a hierarchy or intermediate record type instead of connecting everything to a single campaign record",
+        "Loads references/workspace-build-playbook.md rather than leading with references/limits-and-tiers.md",
+        "Mentions the 500-connection cap only as a consequence of the proposed design, not as the opening answer",
+        "Does not answer with a list of object limits",
+        "Does not ask which tier the customer is on, since no tier-dependent limit is involved"
       ]
     }
   ]

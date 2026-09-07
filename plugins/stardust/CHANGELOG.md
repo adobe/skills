@@ -4,6 +4,275 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.19.0 — Experience Workspace editability contract (EW1–EW10) + gate
+
+Every text an author wrote in a DA document must be inline-editable in
+Experience Workspace (da.live canvas, "quick-edit") once generated block JS
+has decorated the page — and the block must look the same while it is being
+edited. Field finding (rwe.com, 2026-09-03, two rounds: 3 blocks, then 17):
+over a 29-page covering sample only 841 of 1452 authored texts were
+editable; every template-slotted block was 0 %. The generated blocks were
+correct implementations of the skill's own guidance (value-slotting,
+`text(cell)`, clone-the-anchor) — the guidance was the bug. Mechanism
+verified against da.live `editor-utils.js`/`prose2aem.js` and da-nx
+`quick-edit.js`/`prose.js`; deploy improvement #123. Minor bump: new gate +
+new qa check.
+
+- **Deploy:** § Target runtime documents the workspace instrumentation
+  (`data-prose-index` on outermost editables, `decorate()` re-runs over it,
+  only surviving indices become editors). § 2b redefines template-slotted as
+  **node-slotting** and bans value-slotting. § 3 ships three edit-mode
+  foundation snippets (CTA repaint from `<strong>/<em>` marks under
+  `.prosemirror-editor`, card-as-link inner anchor, `:where()` wrapper
+  variants at equal specificity) + EW10 for section prose. § 5 Buttons,
+  #55, #62/#71, #70 and § Section heads rewritten to MOVE authored elements.
+  § 8 gets a move-based scaffold (`wrapNode`, `labelWrap`,
+  `stripInstrumentation`) and the named **Experience Workspace editability
+  contract (EW1–EW10)** with the gate command; Step-7 brief carries the
+  contract; Local QA + Checklist gain the EW gate, edit-mode simulation,
+  static review and pixel-parity lines; anti-patterns 18 (value-slotting)
+  and 19 (class on the authored element); References cite the da.live/da-nx
+  sources.
+- **Scripts:** new `deploy/scripts/ew-editability-probe.mjs` (URL and
+  `--content` harness modes, `--simulate-editor` drift report, `@ew-exempt`
+  JSDoc tags); `block-roundtrip.mjs --ew` (default on) fails dead
+  non-exempt texts and duplicated indices 🔴; `render-harness.mjs --ew
+  --simulate-editor` + hides `body > header`; `section-schema.mjs` emits
+  `editableTexts` per section; `content-inventory.mjs` exports the
+  outermost-editable classifier and `content-diff` reports an
+  `EDITABLE COUNT` advisory.
+- **qa:** new `editability` check (`editability/dead-text` error,
+  `editability/duplicated-index` warn, per-page summary; `--blocks-dir` /
+  `--ew-exempt` for exemptions).
+- **replica / rollout / reskin / migrate fidelity-tiers:** every block-authoring
+  handoff cites the contract and the EW gate (the brief skipped it on 27/27
+  blocks because it did not carry it).
+- **Evals:** new `ew-editability` (node-slotting, move-not-rebuild,
+  wrapper-descendant selectors, gate evidence, fidelity not traded).
+- **Ledger:** deploy `IMPROVEMENTS.md` #123; master `reference/learnings.md`
+  example entry.
+
+## 0.18.5 — migration-flow routing: replica subsumes prepare-migration
+
+Routing-surface fix, no pipeline behaviour change. Field finding
+(swacargo.com, 2026-09-03): asked "how do I migrate X to EDS with
+stardust", the agent correctly proposed `replica` for the keep-the-design
+route but could not say whether `prepare-migration` was also needed — the
+subsumption fact lived only in `replica/SKILL.md`'s Phase 1–5 body, which
+is never in context until replica is already invoked, and `replica` was
+absent from the master skill's routing table altogether. One clarification
+round-trip per migration conversation.
+
+- **Master skill:** routing table gains the missing `replica` and `reskin`
+  rows and marks `prepare-migration` as redesign-flow only. New § Two
+  migration flows — pick one, never mix: redesign
+  (`prepare-migration` → `migrate` → `deploy`/`rollout`) vs. keep-design
+  (`replica` → `migrate` → `deploy`/`rollout`, where replica runs
+  `extract --prep`, a mechanical direction-preservation step, and gated
+  archetype recreation in place of the prep cascade), plus `reskin` for
+  donor-design/same-content. Instructs stating the chosen flow — and that
+  replica needs no separate prep — in the first response.
+- **prepare-migration description:** "Redesign-flow only — for same-design
+  migrations `stardust:replica` runs its own preserve-mode prep cascade;
+  never chain prepare-migration with replica."
+- **replica description:** "subsumes the `stardust:prepare-migration` prep
+  cascade in preserve mode — no separate prep step; never chain the two."
+
+Descriptions are the always-loaded routing surface, so the disambiguation
+now holds even when only the sub-skill frontmatter is in context.
+
+## 0.18.4 — wijnvoordeel/wijnbeurs field harvest: chrome crop gate, sizing-model lifts, EDS authoring traps
+
+Harvest of three learnings ledgers from a five-design Magento-PageBuilder →
+EDS migration (wijnvoordeel-be/nl + wijnbeurs-nl, 2026-08, published-origin
+gated). The headline failure class: **small-area, high-salience defects that
+pass the full-page bar** — both pilot runs shipped "green" pages whose
+header/footer measured only 93–97% match, and a frozen `width:720px` lifted
+from an authored `width:50%` passed both gate breakpoints byte-identically.
+All changes are site-agnostic; deploy improvements #115–#122.
+
+- **Replica:** new `scripts/crop-compare.mjs` (per-y-band pixelmatch,
+  per-side offsets, default bar 2%); the pass bar gains item 5 — header AND
+  footer bands each ≥98% over the same stitched captures, no extra live hit
+  (#115). New § Wide-viewport fluid check: a ≥1920 box-map spot check
+  catches fluid-vs-fixed width freezes both standard breakpoints render
+  identically (#116). Recreation procedure gains § Lift the sizing MODEL,
+  not the resolved value (two-width lift diff; encode the authored
+  `%`/`vw`/max-width rule, never the resolved px; layout models, not
+  wrap outcomes). Iteration discipline gains geometry-fix verification
+  hygiene — rule-bearing element, cache-free serving check
+  (`curl --compressed | grep`), back-computed reviewer viewport (#117).
+- **Deploy:** ENCODE contract — never author `<hr>` (it is the section
+  delimiter; fractures the section at ingestion — lint 🔴, rule `HR`,
+  #119); rehost assets only from the CAPTURED src and diff
+  dimensions/bytes after fetch (commerce CDNs answer 200 with a generic
+  fallback for guessed paths, #118). Step 3 — one section-metadata `style`
+  value per section (multi-value delivered only the first class; anchor a
+  second axis with content-scoped `:has()`, #120); empty-section
+  `display` overrides must scope to `[data-section-status='loaded']` or
+  they defeat pre-load hiding (measured 0.75 CLS, #121). Step 10 gains the
+  chrome crop gate, the ≥1920 box check, and the verification-hygiene
+  items. The deployed computed-style guard also asserts `clientWidth > 0`
+  per visible loaded image — loaded ≠ rendered; circular flex sizing
+  collapses an image to 0×0 with `naturalWidth` still > 0 (#122).
+  `sanitise.js` now refuses >2 arguments: the two-arg <input> <output>
+  convention made a 3-file batch silently overwrite the second file with
+  the first's content.
+- **QA:** new `zero-size-image` check (warn) — loaded image renders 0px
+  wide while participating in layout (`getClientRects()` guards against
+  display:none false-flags).
+- **Reskin:** Image-paint gate documents the same loaded-≠-rendered blind
+  spot (paint asserts `naturalWidth`, not rendered area).
+
+## 0.18.3 — dual-session field harvest: consent fallback, gate identity assertion, capture-freeze hardening
+
+Harvest of two independent replica+deploy sessions (rwe.com and centene.com,
+2026-08-26/27, on 0.18.2). Three failures recurred in BOTH sessions and lead
+the release: a stale cross-project `:8791` server silently gated a foreign
+site (once in each direction — every skill doc suggests the same port, so
+collision on a shared machine is guaranteed); consent widgets missed by the
+selector list (on centene the banner baked into ground truth AND all 7 stitch
+seams → 32% false pixel diff, one gate round invalidated); and live-data
+embeds (mirroring the SAME src cancels the data out in the pixel diff —
+freezing a snapshot guarantees a widget-sized residual). All changes are
+site-agnostic and additive; the high-impact-but-not-low-risk items
+(shared-classifier element-boundary separators, stitch-shot `--fullpage`,
+per-project default ports) are deliberately deferred with rationale in
+`notes/improvement-plan-2026-08-rwe-centene.md`.
+
+- **Extract:** `crawl.mjs` consent dismissal gains a visible-button
+  text-match fallback — exact short labels (Accept / Accept all / Allow all /
+  Agree / OK / Decline / Alle akzeptieren / Accepter), overlay-container
+  scoped, runs ONLY when the selector pass matched nothing, so existing
+  selectors keep priority and an in-content link can never match. Favicon is
+  now captured on the ENTRY page in every mode (bounded `--pages` extracts
+  skip Phase 3 where favicon capture lived; deploy then skipped silently and
+  shipped the default icon) via an in-page fetch that inherits the context's
+  fingerprint. Bot-wall note: page-level walls usually do NOT gate assets —
+  probe one asset with a browser-UA curl before building in-page-fetch
+  machinery.
+- **Replica scripts:** `gate.sh` asserts build-side identity BEFORE any
+  capture — the fetched page must contain a marker (default: the `<slug>`;
+  `--marker` overrides), exit 4 names the port listener via `lsof`; the
+  documented default port is unchanged (the assertion makes collisions loud
+  at near-zero cost). `stitch-shot.mjs`'s freeze now also pauses every
+  `<video>` at t=0, clears all pending JS timers, and clicks the first
+  slick-convention carousel dot — CSS-only freezing stopped neither video
+  playback (~20% of one page was video noise) nor slick autoplay (slide
+  identity arbitrary per capture; residual 4% → 0.8% once reset). Symmetric
+  on both sides; a static page's capture is byte-identical to 0.18.2's.
+- **Replica motion parity (observe, don't infer):** new
+  `motion-observe.mjs` (sibling of stitch-shot, same live-session
+  hardening, exit 3 on challenge) records what the live page actually
+  DOES — animationstart/transitionstart events with element paths + text
+  snippets, class mutations exposing the trigger mechanism, a down+up
+  header-state timeline (dense near the top), `--click` widget frames,
+  `--hover` computed-style diffs with the changed-property list
+  precomputed. The interaction-parity pass is now a REQUIRED gate output
+  per archetype — a motion inventory in `progress.json`
+  (`motion: {observed, implemented, dead[]}`; live-classed-but-dead
+  behaviors recorded as NOT implemented, the correct replica of a dead
+  class) — because when optional it was skipped on 5 of 7 archetypes and
+  every skipped one shipped visibly static. § Interaction parity is
+  rewritten around the evidence rule: implement ONLY behaviors that
+  measurably fired — static lifting invented motion three field-recorded
+  ways (dead animation classes: 2 of 8 classed caption families ever
+  fired; hover rules whose scope never matches at runtime; approximated
+  chrome mechanisms allowing states impossible on live, e.g. a
+  double-rendered header) — with static CSS remaining the authority for
+  the exact keyframe/easing VALUES of fired animations, mechanisms cloned
+  as the observed state machine, and a two-direction verification
+  (pixel-compare must return to the gated number — field: 1.01% gated →
+  1.06% with invented motion → 1.01% exact after the evidence-only
+  rewrite — plus a behavior-match assertion off the observe JSON). Full
+  spec: `notes/replica-motion-parity.md`.
+- **Replica docs:** two new permanent-residual classes in the capture-state
+  policy (live-data embeds — load the SAME embed same-src on both sides;
+  randomized decorative elements — log, don't chase); AEM-classic richtext
+  byte patterns are load-bearing (mirror them; diff `innerHTML` when a
+  wrap-count mismatch survives width parity); `display: flow-root`
+  reproduces clearfix margin containment (fixed −48/−20px per-section errors
+  in one rule); iteration discipline gains the no-op-fix check (an unchanged
+  differing-pixel count means the rule never applied — the round doesn't
+  count); a "verify the port is yours" line wherever `:8791` is suggested
+  (also in deploy Step 10 and the diff SKILL).
+- **Deploy:** Step 3's reset now REQUIRES the global `border-box` the
+  boilerplate doesn't ship — a bootstrap-era %-width+padding grid silently
+  wrapped every column, +1731px doc height, all text gates green (#106);
+  block DOM must not emit semantic `<header>` (the stock reservation clamps
+  every one at once, #107); overlay chrome documented as the no-reservation
+  #81 case (`--nav-height: 0` + absolute header, measured CLS 0.0004, #108);
+  the block brief requires mobile overrides at the variant's own specificity
+  (#109), `flow-root` on un-floating overrides (#113), and wrapper resets at
+  lower specificity than the block's own rules (#114); never copy the
+  pipeline's fallback `<img src>` (750px rendition) into a CSS background —
+  rewrite `width=2000` (#110); `line-height: 0` on image paragraphs cancels
+  the `<picture>` wrapper's baseline descender (#111); whitespace-only
+  authored content is dropped by the pipeline — model live spacer line boxes
+  as block CSS (#112); the no-favicon path is a loud WARN recorded in the
+  deploy log, never a silent skip.
+
+## 0.18.2 — replica field harvest: font-fork instrument fix, interaction parity, published-origin gate
+
+Harvest of a full `stardust:replica` e2e run (broadridge.com → EDS,
+2026-08-25/26, on 0.18.1): a home-page archetype gated to 3.55%/5.56% pixel
+diff, then 8 pages published and gated against the live origin. All changes
+are site-agnostic; the validated discipline (measure-first, fail-loud,
+≤10% / Δ≤8px / 0-structural-red, hit minimization, no DOM copying) is
+unchanged.
+
+- **Instrument fix (diff `live-session.mjs`, F-B2):** the standard
+  anti-bot header set now rides DOCUMENT requests only (via
+  `context.route`), never subresources. Forced on every request it made
+  cross-origin CORS-mode webfont fetches non-simple — they died with
+  `net::ERR_FAILED` and every live capture silently rendered fallback type,
+  poisoning the whole gate (live doc height moved 6669→6518 after the fix).
+  Bot managers fingerprint the navigation request, which still carries the
+  full set. Companion hardening: stitch-shot asserts fonts loaded after
+  `document.fonts.ready` and warns loudly on any declared face with
+  FontFace status `error` (gate doc rule 14 owns the instrument-induced vs
+  capture-state decision).
+- **Replica scripts:** new `anchor.mjs` (per-section `[y, height]` probe —
+  run on both sides, fix the first mismatched section top-down; roughly
+  halved iterations vs band-reading alone in the field) and `gate.sh` (one
+  pixel round in one command, live capture cached, fail-loud on exit 3).
+- **Replica gate doc:** new § The published-origin gate — only the
+  published number counts for platform-delivered pages, with the three
+  recurring EDS pipeline deltas (`<p><picture>` wrapping, empty
+  metadata-section padding, `/media_<hash>` rewrites); calibration honesty
+  (prototype-regime vs published-origin-regime numbers, same ≤10% bar);
+  probe schedule per fix round (pixels every round, content/visual at
+  milestones — content/visual re-runs cost 2 live hits each); iteration-cap
+  bookkeeping (instrument-invalidated runs excluded once the defect is
+  fixed and named; build-side-only probe passes are free); the script-edit
+  rule narrowed (re-implementing retired adaptations stays a defect; a
+  commented, ledgered, flagged-for-upstream instrument-bug fix is the
+  correct move — fail-loud outranks script immutability).
+- **Recreation procedure:** CSS lifting gains the text-rendering group
+  (`text-rendering`, `-webkit-font-smoothing`, `font-synthesis`,
+  `font-variant-numeric`, `font-kerning`) + the literal-string width
+  diagnostic; new § Interaction parity (hover-diff and behavior-diff probe
+  patterns, Swiper-lock semantics and the scroll-based replica that
+  auto-degrades to the static case); new § Wrap-junction margins
+  (collapsing-margin trap on cards-on-a-canvas sites); capture-state policy
+  gains nondeterministic live elements (tickers, dates, counts — freeze a
+  captured value, log as permanent residual); granularity parity states the
+  widget policy: widgets are implemented, not justified away.
+- **Replica SKILL:** archetype prototypes are per-archetype and CUMULATIVE
+  (shared canon CSS + per-archetype CSS; never skip to direct platform
+  authoring — prototyped archetypes held 3.5%/5.6% while direct-authored
+  pages plateaued at 8–16%); Phase 5's final proof is now the mandatory
+  published-origin gate.
+- **Deploy:** preview `409 "error from content-bus"` gets a two-step
+  fail-loud diagnosis (known-good doc to the same path, then a per-image
+  sweep for SVGs over the ~40KB hard pipeline limit — rasterize to PNG);
+  #99 extended accordingly.
+- **Migrate:** sibling content-fidelity is now measured per page at import
+  time — a role-classified node-count acceptance (headings / body / CTAs /
+  images vs the captured page JSON; drops not covered by a logged
+  `contentDeviations[]` entry fail the page), so dropped-content importer
+  bugs surface while the importer is still cheap to fix.
+
 ## 0.17.0 — vanilla aem-boilerplate is the only deploy runtime; David's Model becomes a mechanical gate
 
 The AuthorKit runtime dependency is removed end to end: `stardust:deploy`

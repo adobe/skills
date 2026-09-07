@@ -639,7 +639,12 @@ this in the user report; do not engineer around it.
   hatch for the residual cases. The headed window pops visibly,
   which is acceptable for interactive runs and unacceptable for
   unattended pipelines — surface this to the user when first
-  triggered.
+  triggered. Note for asset harvest: a page-level bot wall usually
+  does NOT gate assets — media/CSS/font URLs commonly return 200 to
+  a plain browser-UA curl even while every page navigation is
+  challenged (Cloudflare challenge, field-confirmed). Probe one
+  asset with curl BEFORE reaching for in-page-fetch machinery; the
+  in-page harvest is the fallback, not the default.
 - **JavaScript-only content.** Playwright already handles this. If
   the configured wait condition never fires within the mode's hard
   cap (`reference/playwright-recipe.md` § Wait modes), fall back to
