@@ -29,10 +29,11 @@ function write(root, rel, content) {
 
 // ── Pattern registry ────────────────────────────────────────────────────────
 
-test('registry includes all 11 migration patterns with a valid strategy', () => {
+test('registry includes all 12 migration patterns with a valid strategy', () => {
   const expected = [
     'scheduler', 'resourceChangeListener', 'event-migration', 'assetApi', 'replication',
     'vault-package-dependencies', 'htlLint', 'osgiConfig', 'lui', 'cdw', 'templateModernization',
+    'dispatcherConversion',
   ];
   assert.strictEqual(CANONICAL_PATTERNS.length, expected.length, 'no unexpected patterns');
   for (const key of expected) {
@@ -42,6 +43,8 @@ test('registry includes all 11 migration patterns with a valid strategy', () => 
       `${key} has a valid strategy`
     );
   }
+  assert.strictEqual(PATTERN_META.dispatcherConversion.strategy, 'content-scan');
+  assert.deepStrictEqual(PATTERN_META.dispatcherConversion.bpaSlugs, []);
 });
 
 test('inject-in-sling-model and outdated-dependencies stay out of scope', () => {

@@ -9,7 +9,7 @@
  *
  * Options:
  *   --base <url>            live host to sweep (required)
- *   --checks <list>         comma list: routing,content,templates,metadata,links,browse,perf (default: all)
+ *   --checks <list>         comma list: routing,content,templates,metadata,links,browse,perf,editability (default: all)
  *   --paths-file <txt>      inventory source: one path per line
  *   --template-map <json>   inventory + template assignments (stardust/template-map.json)
  *   --scrape <dir>          stardust scrape captures for verbatim fidelity
@@ -27,6 +27,11 @@
  *   --probe-externals       probe unique external link targets (skipped by
  *                           default — dominates sweep time on blog fleets;
  *                           the skip is reported as links/externals-skipped)
+ *   --ew-exempt <list>      editability: comma list of blocks whose authored rows are
+ *                           config / derived / index fallback (dead texts reported as
+ *                           exempt, not errors)
+ *   --blocks-dir <dir>      editability: local blocks root — `@ew-exempt <reason>`
+ *                           JSDoc tags in <dir>/<name>/<name>.js are honoured
  *   --fail-on <error|warn>  exit 1 threshold (default: error)
  *
  * Exit codes: 0 clean (below threshold), 1 findings at/above threshold, 2 infra error.
@@ -45,7 +50,7 @@ const BASE = (arg('base') || '').replace(/\/$/, '');
 if (!BASE) { console.error('qa: --base <live-url> is required'); process.exit(2); }
 
 const OUT = arg('out', 'stardust/qa');
-const CHECKS = (arg('checks', 'routing,content,templates,metadata,links,browse,perf')).split(',').map((s) => s.trim()).filter(Boolean);
+const CHECKS = (arg('checks', 'routing,content,templates,metadata,links,browse,perf,editability')).split(',').map((s) => s.trim()).filter(Boolean);
 const opts = {
   outDir: OUT,
   scrapeDir: arg('scrape', null),
@@ -67,6 +72,7 @@ const MODULES = {
   links: 'checks/links.mjs',
   browse: 'checks/browse.mjs',
   perf: 'checks/perf.mjs',
+  editability: 'checks/editability.mjs',
 };
 
 const started = Date.now();

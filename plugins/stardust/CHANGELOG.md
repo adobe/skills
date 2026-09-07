@@ -4,6 +4,83 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.19.0 — Experience Workspace editability contract (EW1–EW10) + gate
+
+Every text an author wrote in a DA document must be inline-editable in
+Experience Workspace (da.live canvas, "quick-edit") once generated block JS
+has decorated the page — and the block must look the same while it is being
+edited. Field finding (rwe.com, 2026-09-03, two rounds: 3 blocks, then 17):
+over a 29-page covering sample only 841 of 1452 authored texts were
+editable; every template-slotted block was 0 %. The generated blocks were
+correct implementations of the skill's own guidance (value-slotting,
+`text(cell)`, clone-the-anchor) — the guidance was the bug. Mechanism
+verified against da.live `editor-utils.js`/`prose2aem.js` and da-nx
+`quick-edit.js`/`prose.js`; deploy improvement #123. Minor bump: new gate +
+new qa check.
+
+- **Deploy:** § Target runtime documents the workspace instrumentation
+  (`data-prose-index` on outermost editables, `decorate()` re-runs over it,
+  only surviving indices become editors). § 2b redefines template-slotted as
+  **node-slotting** and bans value-slotting. § 3 ships three edit-mode
+  foundation snippets (CTA repaint from `<strong>/<em>` marks under
+  `.prosemirror-editor`, card-as-link inner anchor, `:where()` wrapper
+  variants at equal specificity) + EW10 for section prose. § 5 Buttons,
+  #55, #62/#71, #70 and § Section heads rewritten to MOVE authored elements.
+  § 8 gets a move-based scaffold (`wrapNode`, `labelWrap`,
+  `stripInstrumentation`) and the named **Experience Workspace editability
+  contract (EW1–EW10)** with the gate command; Step-7 brief carries the
+  contract; Local QA + Checklist gain the EW gate, edit-mode simulation,
+  static review and pixel-parity lines; anti-patterns 18 (value-slotting)
+  and 19 (class on the authored element); References cite the da.live/da-nx
+  sources.
+- **Scripts:** new `deploy/scripts/ew-editability-probe.mjs` (URL and
+  `--content` harness modes, `--simulate-editor` drift report, `@ew-exempt`
+  JSDoc tags); `block-roundtrip.mjs --ew` (default on) fails dead
+  non-exempt texts and duplicated indices 🔴; `render-harness.mjs --ew
+  --simulate-editor` + hides `body > header`; `section-schema.mjs` emits
+  `editableTexts` per section; `content-inventory.mjs` exports the
+  outermost-editable classifier and `content-diff` reports an
+  `EDITABLE COUNT` advisory.
+- **qa:** new `editability` check (`editability/dead-text` error,
+  `editability/duplicated-index` warn, per-page summary; `--blocks-dir` /
+  `--ew-exempt` for exemptions).
+- **replica / rollout / reskin / migrate fidelity-tiers:** every block-authoring
+  handoff cites the contract and the EW gate (the brief skipped it on 27/27
+  blocks because it did not carry it).
+- **Evals:** new `ew-editability` (node-slotting, move-not-rebuild,
+  wrapper-descendant selectors, gate evidence, fidelity not traded).
+- **Ledger:** deploy `IMPROVEMENTS.md` #123; master `reference/learnings.md`
+  example entry.
+
+## 0.18.5 — migration-flow routing: replica subsumes prepare-migration
+
+Routing-surface fix, no pipeline behaviour change. Field finding
+(swacargo.com, 2026-09-03): asked "how do I migrate X to EDS with
+stardust", the agent correctly proposed `replica` for the keep-the-design
+route but could not say whether `prepare-migration` was also needed — the
+subsumption fact lived only in `replica/SKILL.md`'s Phase 1–5 body, which
+is never in context until replica is already invoked, and `replica` was
+absent from the master skill's routing table altogether. One clarification
+round-trip per migration conversation.
+
+- **Master skill:** routing table gains the missing `replica` and `reskin`
+  rows and marks `prepare-migration` as redesign-flow only. New § Two
+  migration flows — pick one, never mix: redesign
+  (`prepare-migration` → `migrate` → `deploy`/`rollout`) vs. keep-design
+  (`replica` → `migrate` → `deploy`/`rollout`, where replica runs
+  `extract --prep`, a mechanical direction-preservation step, and gated
+  archetype recreation in place of the prep cascade), plus `reskin` for
+  donor-design/same-content. Instructs stating the chosen flow — and that
+  replica needs no separate prep — in the first response.
+- **prepare-migration description:** "Redesign-flow only — for same-design
+  migrations `stardust:replica` runs its own preserve-mode prep cascade;
+  never chain prepare-migration with replica."
+- **replica description:** "subsumes the `stardust:prepare-migration` prep
+  cascade in preserve mode — no separate prep step; never chain the two."
+
+Descriptions are the always-loaded routing surface, so the disambiguation
+now holds even when only the sub-skill frontmatter is in context.
+
 ## 0.18.4 — wijnvoordeel/wijnbeurs field harvest: chrome crop gate, sizing-model lifts, EDS authoring traps
 
 Harvest of three learnings ledgers from a five-design Magento-PageBuilder →
