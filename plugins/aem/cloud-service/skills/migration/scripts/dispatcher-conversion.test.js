@@ -204,6 +204,30 @@ test('verifyOutput: missing farms.any collector = warning (not failure)', () => 
   assert.ok(res.warnings.some(x => /farms\.any/.test(x)));
 });
 
+// PR #309 review follow-up: conf.vhost.d is an AMS on-premise/flexible-mode SOURCE-only
+// convention — it is not part of any valid cloud dispatcher layout (the guardrails require
+// vhosts at conf.d/enabled_vhosts/*.vhost). Its survival into the OUTPUT means the vhost layer
+// likely didn't convert; flag it early (warning, not a hard gate — the real SDK validator is
+// still the authority on cloud topology) instead of leaving it for a later, cryptic validator error.
+test('verifyOutput: conf.vhost.d present in the output = warning (leftover on-prem vhost layout)', () => {
+  const out = mk();
+  w(out, 'conf.dispatcher.d/filters/filters.any', '/0001 { /type "allow" /url "*" }\n');
+  w(out, 'conf.dispatcher.d/available_farms/site.farm', '/site { }');
+  w(out, 'conf.vhost.d/vhosts.conf', '<VirtualHost *:80></VirtualHost>');
+  const res = VERIFY.verifyOutput(out, { filter: 1, rewrite: 0, cache: 0, clientheader: 0, virtualhost: 0 });
+  assert.ok(res.warnings.some(x => /conf\.vhost\.d/.test(x)), 'must warn when conf.vhost.d survives into the output');
+  assert.strictEqual(res.ok, true, 'this is advisory, not a hard gate');
+});
+
+test('verifyOutput: no conf.vhost.d warning when the output is properly normalized', () => {
+  const out = mk();
+  w(out, 'conf.dispatcher.d/filters/filters.any', '/0001 { /type "allow" /url "*" }\n');
+  w(out, 'conf.dispatcher.d/available_farms/site.farm', '/site { }');
+  w(out, 'conf.d/enabled_vhosts/vhosts.conf', '<VirtualHost *:80></VirtualHost>');
+  const res = VERIFY.verifyOutput(out, { filter: 1, rewrite: 0, cache: 0, clientheader: 0, virtualhost: 0 });
+  assert.ok(!res.warnings.some(x => /conf\.vhost\.d/.test(x)), 'must not warn when there is no conf.vhost.d at all');
+});
+
 // REGRESSION (final review finding #1, CONFIRMED critical): the canonical AMS "standard"
 // layout $include's its filter rules from conf.dispatcher.d/filters/*_filters.any. The
 // baseline counter used to scan only inline farm /filter{} bodies → ruleCounts.filter=0 →

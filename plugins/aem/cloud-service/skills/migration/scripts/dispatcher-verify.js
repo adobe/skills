@@ -55,6 +55,14 @@ function verifyOutput(outputSrcDir, baseline) {
   if (!fs.existsSync(path.join(dispD, 'enabled_farms/farms.any'))) {
     warnings.push('Missing enabled_farms/farms.any collector ($include "./*.farm") — add for current-SDK compliance.');
   }
+  // `conf.vhost.d` is an AMS on-premise/Docker-flexible-mode SOURCE-only convention — it is not
+  // part of any valid cloud dispatcher layout (the guardrails require vhosts at
+  // conf.d/enabled_vhosts/*.vhost; the real SDK validator hard-fails without that pattern). Its
+  // survival into what's presented as the OUTPUT means the vhost layer likely didn't convert —
+  // flag it early and specifically rather than waiting for a later, more cryptic validator error.
+  if (fs.existsSync(path.join(outputSrcDir, 'conf.vhost.d'))) {
+    warnings.push('conf.vhost.d found in the output — this is an on-premise/flexible-mode source layout, not a valid cloud shape; the vhost layer may not have converted. Expected conf.d/enabled_vhosts/*.vhost instead.');
+  }
 
   return { ok: failures.length === 0, failures, warnings };
 }
