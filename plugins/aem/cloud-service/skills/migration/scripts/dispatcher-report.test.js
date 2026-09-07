@@ -85,6 +85,8 @@ test('report echoes the verify verdict and always lists delegated next-checks', 
   assert.match(md, /diff-baseline/);        // freshness -> dispatcher sdk
   assert.match(md, /security-hardening/);   // headers
   assert.match(md, /lint/);                 // validation/quality
+  assert.match(md, /Filter\/ACL security posture/); // filter-policy quality delegated (deny-default / allow-all / sensitive-paths)
+  assert.match(md, /security-baseline-checklist/);  // points at the authoritative checklist, not a migration-side heuristic
 });
 
 test('writeReport writes conversion-report.md and returns its path', () => {
