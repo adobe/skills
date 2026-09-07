@@ -14,13 +14,22 @@ function verifyOutput(outputSrcDir, baseline) {
   //    $include'd filter files (filters/*.any, *_filters.any). Symmetry is essential — an
   //    $include'd source can't slip past as 0, and a converter that preserves filters into
   //    filters.any / a *_filters.any include is not falsely flagged as loss.
-  const outFilterRules = countFilterRules(outputSrcDir);
+  const outputFilterIncludesUnresolved = [];
+  const outFilterRules = countFilterRules(outputSrcDir, undefined, outputFilterIncludesUnresolved);
   if ((baseline.filter || 0) > 0 && outFilterRules === 0) {
     failures.push({ severity: 'critical', category: 'filter-acl-loss',
       detail: `Source had ${baseline.filter} filter rules but the output has none (empty filters.any / farm /filter). Filters are security-critical and must not be dropped.` });
   } else if ((baseline.filter || 0) > outFilterRules) {
     failures.push({ severity: 'important', category: 'filter-rule-regression',
       detail: `Filter rule count dropped ${baseline.filter} → ${outFilterRules}.` });
+  }
+  // An unresolved $include (an absolute container path, a glob, or a genuinely missing file) on
+  // EITHER side means that side's filter count may be under-reported — the gate above already
+  // saw the (possibly incomplete) number, so surface this as an honesty warning rather than
+  // silently trusting a clean-looking result.
+  const allUnresolved = [...(baseline.filterIncludesUnresolved || []), ...outputFilterIncludesUnresolved];
+  if (allUnresolved.length) {
+    warnings.push(`Filter/ACL count may be incomplete — ${allUnresolved.length} $include target(s) could not be read from disk (e.g. an absolute container path or a glob): ${allUnresolved.slice(0, 3).join(', ')}${allUnresolved.length > 3 ? ', …' : ''}. Verify the filter rules there by hand rather than trusting the count above.`);
   }
 
   // 2. Rewrite reconciliation (warning-level; rewrites may legitimately move to CDN). Count via
@@ -31,8 +40,12 @@ function verifyOutput(outputSrcDir, baseline) {
     warnings.push(`Rewrite/redirect count dropped ${baseline.rewrite} → ${outRw} — expected when the source uses .tmpl templates (inflated baseline) or when redirects move to the CDN edge; reconcile against the tool's conversion-report.md rather than treating the delta as loss.`);
   }
 
-  // 3. Artifact health — oversized vhost (mega-inlined).
-  for (const v of readTextFiles(path.join(outputSrcDir, 'conf.d'), n => n.endsWith('.vhost'))) {
+  // 3. Artifact health — oversized vhost (mega-inlined). Predicate matches the SAME vhost-file
+  //    shape buildInventory's own vhostFiles uses (n.endsWith('.vhost') || vhost*.conf) — the
+  //    narrower `.vhost`-only predicate missed real converter output like
+  //    `conf.d/enabled_vhosts/vhosts.conf` and `conf.d/dispatcher_vhost.conf` (confirmed on a
+  //    real converted config: these are genuine vhost files, just not suffixed `.vhost`).
+  for (const v of readTextFiles(path.join(outputSrcDir, 'conf.d'), n => n.endsWith('.vhost') || /vhost.*\.conf/.test(n))) {
     const lines = (read(v) || '').split('\n').length;
     if (lines > 5000) failures.push({ severity: 'important', category: 'disorganized',
       detail: `${path.basename(v)} is ${lines} lines — mega-inlined; restructure rewrites into named include files.` });

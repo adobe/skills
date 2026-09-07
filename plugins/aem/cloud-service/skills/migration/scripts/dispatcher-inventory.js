@@ -125,33 +125,91 @@ function extractBraceBody(txt, openIdx) {
   return txt.slice(start);
 }
 
-// Count filter/ACL rules across BOTH sources they can live in:
-//   (a) inline `/filter { /NNNN {} … }` bodies in dispatcher.any / *.farm / *_farm.any, and
-//   (b) standalone filter-rule files an inline `/filter { $include … }` pulls in — the
-//       canonical AMS "standard" layout (e.g. conf.dispatcher.d/filters/*_filters.any).
-// Counting only (a) is the confirmed false-negative: a config whose filters are `$include`'d
-// reports 0 filter rules, so the ACL hard gate in verifyOutput silently passes on empty output.
-// buildInventory (baseline) and verifyOutput (output) MUST call this so both sides count the
-// same way. A file qualifies as a standalone filter-rule file when its basename is `filters.any`,
-// ends with `_filters.any`, or it is a `.any` file whose parent directory is named `filters` —
-// excluding files already counted via anyFarms (dispatcher.any / dispatcher.any.tmpl / *_farm.any)
-// to avoid double counting. Adobe-managed immutable SDK files (basename starting `default_`, e.g.
-// `default_filters.any`) are ALSO excluded: they are fresh SDK boilerplate, never the customer's
-// at-risk custom ACLs. Counting them lets a populated SDK `default_filters.any` mask an emptied
-// custom `filters.any` — the output count stays non-zero so filter-acl-loss never fires. Excluding
-// them makes the count custom-to-custom (AMS baselines have no `default_*.any`, so nothing changes
-// there; an emptied custom output now scores 0 and the gate fires). Comment lines (`#`) are stripped.
-function countFilterRules(root, anyFarms) {
+// Extract every `/<section> { ... }` body in each file (comment-stripped), paired with the
+// file it came from — the pairing lets a caller resolve a `$include "path"` found INSIDE the
+// body relative to the file that actually contains it, not the config root.
+function extractSectionBodies(files, section) {
+  const out = [];
+  for (const f of files) {
+    let raw; try { raw = fs.readFileSync(f, 'utf8'); } catch { continue; }
+    const txt = raw.split('\n').filter(l => !l.trim().startsWith('#')).join('\n');
+    const secRe = new RegExp('/' + section + '\\s*\\{', 'g');
+    let m;
+    while ((m = secRe.exec(txt))) out.push({ body: extractBraceBody(txt, m.index + m[0].length - 1), file: f });
+  }
+  return out;
+}
+
+// Dispatcher `$include` paths are relative to the file containing the directive (an absolute
+// container path is returned as-is; it may not be resolvable from a migration workspace).
+function resolveIncludePath(includingFile, includePath) {
+  return path.isAbsolute(includePath) ? includePath : path.resolve(path.dirname(includingFile), includePath);
+}
+
+// Count `/<label> { ... }` rule entries in a section body, resolving any `$include "path"`
+// found INSIDE the body to its ACTUAL target file — not a naming guess — and counting that
+// file's content too, recursively (an include chain a→b→c is fully walked, not just one hop).
+// `visited` dedupes files already counted (the same include shared by two farms is counted
+// once); `unresolved` collects include targets that could not be read from disk (an absolute
+// container path, a glob like `./*.farm`, or a genuinely missing file) so the caller can flag
+// "this count may be incomplete" instead of silently treating an unreadable include as zero.
+function countRulesInBody(body, includingFile, visited, unresolved) {
+  let n = (body.match(/\/[\w.-]+\s*\{/g) || []).length;
+  const includeRe = /\$include\s+"([^"]+)"/g;
+  let m;
+  while ((m = includeRe.exec(body))) {
+    const target = resolveIncludePath(includingFile, m[1]);
+    if (visited.has(target)) continue;
+    visited.add(target);
+    let txt;
+    try { txt = fs.readFileSync(target, 'utf8'); }
+    catch { unresolved.push(target); continue; }
+    const clean = txt.split('\n').filter(l => !l.trim().startsWith('#')).join('\n');
+    n += countRulesInBody(clean, target, visited, unresolved);
+  }
+  return n;
+}
+
+// Count filter/ACL rules for the whole config tree by resolving the config's ACTUAL `$include`
+// graph starting from every `/filter { ... }` section (in dispatcher.any / *.farm / *_farm.any) —
+// not by guessing from file names. Counting only inline bodies is the confirmed false-negative:
+// a config whose filters are `$include`'d reports 0 filter rules, so the ACL hard gate in
+// verifyOutput silently passes on empty output. buildInventory (baseline) and verifyOutput
+// (output) MUST call this so both sides count the same way.
+//
+// A standalone file matching the naming convention (`filters.any`, `*_filters.any`, or living
+// in a `filters/` directory) is used ONLY as a residual safety net for files that exist on disk
+// but were never reached via a resolvable `$include` above (an orphaned-but-still-wired-in file,
+// or a fixture that writes the file directly) — files already visited via a real `$include` are
+// skipped here, so a real include target is never double-counted. Adobe-managed immutable SDK
+// files (basename starting `default_`, e.g. `default_filters.any`) are excluded everywhere: they
+// are fresh SDK boilerplate, never the customer's at-risk custom ACLs — counting them would let
+// a populated SDK default mask an emptied custom `filters.any` (the count would stay non-zero so
+// filter-acl-loss never fires). Excluding them makes the count custom-to-custom.
+//
+// `unresolvedOut`, if passed, is populated with every `$include` target that could not be read
+// from disk — a non-empty list means this count may be under-reported, and the caller should
+// surface that rather than silently trusting a `0`.
+function countFilterRules(root, anyFarms, unresolvedOut) {
   if (!anyFarms) {
     const dispAny = readTextFiles(root, n => n === 'dispatcher.any' || n === 'dispatcher.any.tmpl');
     const farmFiles = readTextFiles(root, n => n.endsWith('.farm') || n.endsWith('_farm.any'));
     anyFarms = dispAny.concat(farmFiles);
   }
-  // (a) inline /filter{} bodies.
-  let n = countSectionRules(anyFarms, 'filter');
-  // (b) standalone filter-rule files. readTextFiles passes ONLY the basename to the predicate,
-  //     so collect .any files first, then filter by path.dirname for the `filters/`-dir check.
+  const visited = new Set();
+  const unresolved = [];
+
+  // (a) Walk every inline `/filter { ... }` body and resolve its real $include graph.
+  let n = 0;
+  for (const { body, file } of extractSectionBodies(anyFarms, 'filter')) {
+    n += countRulesInBody(body, file, visited, unresolved);
+  }
+
+  // (b) Residual safety net: standalone filter-named files not already reached via a resolvable
+  //     $include above. readTextFiles passes ONLY the basename to the predicate, so collect
+  //     .any files first, then filter by path.dirname for the `filters/`-dir check.
   const standalone = readTextFiles(root, name => name.endsWith('.any')).filter(f => {
+    if (visited.has(f)) return false; // already counted via a real $include — avoid double counting
     const base = path.basename(f);
     if (base === 'dispatcher.any' || base === 'dispatcher.any.tmpl' || base.endsWith('_farm.any')) return false; // already in anyFarms
     if (base.startsWith('default_')) return false; // Adobe-managed immutable SDK boilerplate (default_filters.any, …) — never the customer's custom ACLs; counting it lets a surviving default mask dropped custom rules.
@@ -164,6 +222,8 @@ function countFilterRules(root, anyFarms) {
     // /allow-html) are counted — under-counting would let an emptied output pass the gate.
     n += (filtered.match(/\/[\w.-]+\s*\{/g) || []).length;
   }
+
+  if (unresolvedOut) unresolvedOut.push(...unresolved);
   return n;
 }
 
@@ -211,12 +271,18 @@ function buildInventory(root) {
     for (const m of body.matchAll(/\$\{([A-Z0-9_]+)\}/g)) if (!cmVarCandidates.includes(m[1])) cmVarCandidates.push(m[1]);
   }
 
+  const filterIncludesUnresolved = [];
+
   return {
     mode, configRoot: root,
     dispatcherAny: dispAny[0] || null, httpd,
     vhostFiles, farmFiles,
     ruleCounts: {
-      filter: countFilterRules(root, anyFarms),
+      filter: countFilterRules(root, anyFarms, filterIncludesUnresolved),
+      // Non-empty means an $include target (an absolute container path, a glob, or a missing
+      // file) could not be read, so `filter` above may be under-counted — surface this rather
+      // than silently trusting the number. Flows through to verifyOutput via the baseline object.
+      filterIncludesUnresolved,
       rewrite: rewriteCount,
       cache: countSectionRules(anyFarms, 'rules'),
       clientheader: countQuotedEntries(anyFarms, 'clientheaders'),

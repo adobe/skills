@@ -271,6 +271,70 @@ test('buildInventory: default_filters.any at input is excluded from the baseline
   assert.strictEqual(inv.ruleCounts.filter, 3, 'default_filters.any (5 rules) excluded → baseline counts only the 3 custom rules');
 });
 
+// PR #309 review, Critical #1 (CONFIRMED): countFilterRules relied on file NAMING conventions
+// (`filters.any`, `*_filters.any`, a `filters/` dir) rather than resolving the actual `$include`
+// path string. A valid custom include layout using neither convention counted 0, so the gate
+// could silently pass on real ACLs. Fix: countFilterRules now parses `$include "path"` out of
+// the /filter body and resolves it relative to the including file, regardless of naming.
+test('buildInventory: counts a custom $include path that matches no naming convention (not 0)', () => {
+  const r = mk();
+  w(r, 'conf.dispatcher.d/available_farms/site.farm',
+    '/site {\n  /filter {\n    $include "../acl-policies/prod-rules.any"\n  }\n}\n');
+  w(r, 'conf.dispatcher.d/acl-policies/prod-rules.any',
+    '/allow-home { /type "allow" /url "/" }\n/deny-admin { /type "deny" /url "/admin" }\n/allow-assets { /type "allow" /url "/assets/*" }\n');
+  const inv = INV.buildInventory(r);
+  assert.strictEqual(inv.ruleCounts.filter, 3, 'must resolve the $include by path, not by matching a naming convention (0 under the old heuristic-only code)');
+  assert.deepStrictEqual(inv.ruleCounts.filterIncludesUnresolved, [], 'a resolvable include reports no unresolved targets');
+});
+
+// A chain of $includes (farm -> base.any -> extra.any) must be walked fully, not just one hop.
+test('buildInventory: follows a multi-hop $include chain', () => {
+  const r = mk();
+  w(r, 'conf.dispatcher.d/available_farms/site.farm', '/site {\n  /filter {\n    $include "../rules/base.any"\n  }\n}\n');
+  w(r, 'conf.dispatcher.d/rules/base.any', '/0001 { /type "allow" /url "*" }\n$include "./extra.any"\n');
+  w(r, 'conf.dispatcher.d/rules/extra.any', '/0002 { /type "deny" /url "/x" }\n');
+  const inv = INV.buildInventory(r);
+  assert.strictEqual(inv.ruleCounts.filter, 2, 'must count rules from every hop of the chain, not just the first include');
+});
+
+// PR #309 review, Critical #1 follow-up: an $include that cannot be read from disk (an absolute
+// container path, a glob, or a genuinely missing file) must not be silently treated as "0 rules
+// = safe" — it must be reported so the count is known to be potentially incomplete.
+test('buildInventory: an unresolvable $include target is reported, not silently counted as zero', () => {
+  const r = mk();
+  w(r, 'conf.dispatcher.d/available_farms/site.farm', '/site {\n  /filter {\n    $include "/etc/httpd/acl/site-acls.any"\n  }\n}\n');
+  const inv = INV.buildInventory(r);
+  assert.strictEqual(inv.ruleCounts.filter, 0, 'nothing on disk to count for a genuinely unresolvable path');
+  assert.strictEqual(inv.ruleCounts.filterIncludesUnresolved.length, 1);
+  assert.strictEqual(inv.ruleCounts.filterIncludesUnresolved[0], '/etc/httpd/acl/site-acls.any');
+});
+
+test('verifyOutput: an unresolved $include on the output side surfaces as a warning', () => {
+  const out = mk();
+  w(out, 'conf.dispatcher.d/filters/filters.any', '/0001 { /type "allow" /url "*" }\n'); // preserved, gate passes
+  w(out, 'conf.dispatcher.d/available_farms/site.farm', '/site {\n  /filter {\n    $include "/etc/httpd/acl/site-acls.any"\n  }\n}\n');
+  const res = VERIFY.verifyOutput(out, { filter: 1, rewrite: 0, cache: 0, clientheader: 0, virtualhost: 0 });
+  assert.strictEqual(res.ok, true, 'the resolvable filters.any preserves the gate; the unresolved include is advisory only');
+  assert.ok(res.warnings.some(w => /may be incomplete/.test(w) && /site-acls\.any/.test(w)),
+    'must warn that the count may be incomplete because of the unresolved include');
+});
+
+// PR #309 review, Critical #2 (partially confirmed): the reviewer's literal claim ("the standard
+// conf.vhost.d/*.conf layout is skipped") does not hold — a live run of the real converter shows
+// conf.vhost.d never appears in the OUTPUT tree (the tool always normalizes to conf.d/). The real,
+// verified gap: real converter output contains vhost files that are NOT suffixed `.vhost`
+// (`conf.d/enabled_vhosts/vhosts.conf`, `conf.d/dispatcher_vhost.conf`), which the old
+// `.vhost`-only predicate silently skipped for the mega-inlined-vhost health check.
+test('verifyOutput: a mega-inlined vhost named *.conf (not *.vhost) is still flagged as disorganized', () => {
+  const out = mk();
+  const bigVhostConf = 'RewriteRule ^/x /y\n'.repeat(5001); // >5000 lines, .conf-suffixed like real converter output
+  w(out, 'conf.d/enabled_vhosts/vhosts.conf', bigVhostConf);
+  w(out, 'conf.dispatcher.d/filters/filters.any', '/0001 { /type "allow" /url "*" }\n');
+  const res = VERIFY.verifyOutput(out, { filter: 1, rewrite: 0, cache: 0, clientheader: 0, virtualhost: 0 });
+  assert.ok(res.failures.some(f => f.category === 'disorganized'),
+    'a >5000-line vhost.conf file must be flagged even though it is not suffixed .vhost (0 findings under the old .vhost-only predicate)');
+});
+
 // Fix 1 (unified rewrite counter): the SAME shared counter backs the verify warning and the
 // coverage report, so they can no longer disagree. {excludeDefault:true} drops the Adobe-managed
 // default_rewrite.rules (5) → 2 custom (what verify + report both use); the default view sees all 7.
