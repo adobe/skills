@@ -327,11 +327,17 @@ function processEventHandlerFromUnified(subtypeData, targets) {
 
 /**
  * Process Guava cache data from unified collection. One target per
- * **bundle** — `identifier` here is a Guava-internal class BPA found on
- * that bundle's classpath (e.g. `com.google.common.cache.AbstractCache`),
- * not a customer class; the bundle name (in `className`) is the actionable
- * unit. A bundle can produce hundreds of raw CSV rows (one per Guava
- * internal class reachable) but is still exactly one migration unit.
+ * **bundle** — the bundle name (the actionable unit) is deduped upstream in
+ * `processGuavaCacheFindings` (bpa-local-parser.js), so a bundle that produced
+ * hundreds of raw CSV rows (one per Guava-internal class BPA found on its
+ * classpath, e.g. `com.google.common.cache.AbstractCache` — never a customer
+ * class) still collapses to exactly one migration unit here.
+ *
+ * Field shape is inverted from every other pattern in this file: `className`
+ * carries the actionable bundle name, and `identifier` carries the fixed
+ * subtype string `custom.guava.cache` (not a real class) — because BPA's own
+ * `identifier` column on this subtype is the Guava-internal class, which is
+ * never actionable, so it's discarded rather than round-tripped.
  */
 function processGuavaCacheFromUnified(subtypeData, targets) {
   let count = 0;

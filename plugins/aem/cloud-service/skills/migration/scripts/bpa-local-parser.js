@@ -456,8 +456,15 @@ function processGuavaCacheFindings(findings) {
 
   guavaCacheFindings.forEach(finding => {
     const bundleName = extractGuavaBundleFromMessage(finding);
-    if (bundleName && !bundleNames.includes(bundleName)) {
-      bundleNames.push(bundleName);
+    if (bundleName) {
+      if (!bundleNames.includes(bundleName)) {
+        bundleNames.push(bundleName);
+      }
+    } else {
+      console.warn(
+        `custom.guava.cache row could not be parsed for a bundle name — dropped, not counted. ` +
+        `identifier=${finding.identifier || '(none)'} message=${JSON.stringify(finding.message || '')}`
+      );
     }
   });
 

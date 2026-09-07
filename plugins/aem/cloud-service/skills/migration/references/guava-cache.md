@@ -184,7 +184,14 @@ Anchor each replace on the smallest unique substring so unrelated identical text
 
 ## Test generation
 
-After the swap, generate a JUnit test that confirms cache behaviour is preserved — `getIfPresent` returns `null` for unknown keys, `cache.get(key, Function)` computes and caches, `invalidate(key)` removes the entry, and `LoadingCache.get(key)` does not throw checked exceptions. One test class per production class changed, suffix `Test`, under `src/test/java/…`.
+After the swap, generate a test that confirms cache behaviour is preserved — `getIfPresent` returns `null` for unknown keys, `cache.get(key, Function)` computes and caches, `invalidate(key)` removes the entry, and `LoadingCache.get(key)` does not throw checked exceptions. One test class per production class changed, suffix `Test`, under `src/test/java/…`.
+
+**The skeleton below is illustrative (JUnit 4), not a template to copy verbatim.** Match whatever the target module already uses — check the module's existing tests and `pom.xml` first:
+
+- **JUnit 4** (`org.junit.Test`, `@RunWith(MockitoJUnitRunner.class)`) — use the skeleton as-is.
+- **JUnit 5** (`org.junit.jupiter.api.Test`, `@ExtendWith`) — swap `org.junit.Before`/`Test`/`Assert.*` for `org.junit.jupiter.api.BeforeEach`/`Test`/`Assertions.*`, and if the module uses `io.wcm.testing.mock.aem.junit5.AemContextExtension` for OSGi component activation, register the service via `context.registerInjectActivateService(service)` instead of calling `service.activate(...)` directly.
+
+Do not inject JUnit 4 into a JUnit 5 module (or vice versa) — check the existing test suite's imports before generating.
 
 ```java
 import static org.junit.Assert.assertEquals;
