@@ -6,7 +6,7 @@ craft gates entirely: an archetype ships because it measured true, never
 because it looked right. Every fix in the loop comes off the instruments;
 eyeballing is not an input.
 
-Validated (UC1-E1, aesop.com home): 8.31% → 2.93% → 1.31% pixel diff across
+Validated (UC1-E1, a typographic retail home page): 8.31% → 2.93% → 1.31% pixel diff across
 exactly 3 iterations, 0 structural 🔴, height Δ 0 — and the two defects the
 capture phase missed (span font fork, hero scrim) were both found only by
 these instruments.
@@ -70,7 +70,7 @@ across iterations — re-take it only if it is genuinely stale (site changed,
 capture hardening changed). This is a bot-block control, not just a cost
 note: content-diff + visual-diff each navigate the live URL per run, so a
 full 3-iter, 2-breakpoint gate is already ≈12–18 live hits, and hard-CDN
-sites (recorded: rimowa/Akamai) escalate to an IP block after a handful.
+sites (recorded: an Akamai-defended luggage retailer) escalate to an IP block after a handful.
 The prototype capture is re-taken every iteration.
 
 ## Pass bar (all five, per breakpoint)
@@ -153,7 +153,7 @@ node scripts/replica/anchor.mjs "$PROTO" --width $W   # free — build-side only
 
 Diff the two outputs, fix the FIRST section whose `[y, height]` disagrees
 (top-down — everything below it is offset-contaminated, the same rule as
-the band table), re-run pixels. Field-validated (broadridge, 8 pages): this
+the band table), re-run pixels. Field-validated (a financial-services site, 8 pages): this
 loop roughly halved iterations vs band-reading alone. `../scripts/gate.sh`
 wraps one full pixel round (stitch both sides — live cached — + compare +
 verdict) in one command.
@@ -219,7 +219,7 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
 - Probe schedule per fix round: **pixels every round; content-diff +
   visual-diff at milestones** — iteration 1, after any fix that touched
   content or markup (not pure CSS values), and once at final. Across ~25
-  field fix rounds (broadridge), pixel-only rounds never regressed structure
+  field fix rounds (financial-services site), pixel-only rounds never regressed structure
   once it passed, and each content/visual re-run costs 2 extra live
   navigations — against this doc's own hit-minimization rule. A fix that
   touched markup re-runs all three; a CSS-value fix re-runs pixels only.
@@ -243,7 +243,7 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   full gate run.** The live stitch PNG is captured once and reused across
   iterations; only the prototype side re-captures. On hard-CDN sites
   (Akamai-class), take the live captures with `--headed` and treat further
-  live hits as spent budget — the recorded failure mode (rimowa) was an
+  live hits as spent budget — the recorded failure mode (luggage retailer) was an
   IP-level block escalating within ~3–4 automated requests, after which
   iteration 2's numbers measure the block, not the site. A challenged
   headless run costs exactly **1** hit: `gotoLive` throws
@@ -251,8 +251,8 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   wait+reload solve window runs only under `--headed`, where clearance can
   actually land) — so the block budget is still intact when you escalate.
 - **Media-density budget.** The ≤3-iteration convergence was validated on a
-  typographic, low-image page (aesop.com). Image-dense commerce homes
-  (recorded: carhartt ~130 imgs) spend iterations on media parity —
+  typographic, low-image page (the retail home). Image-dense commerce homes
+  (recorded: a fashion retailer, ~130 imgs) spend iterations on media parity —
   populating grids, matching crops — before geometry work even starts.
   Budget accordingly: on a media-heavy page, image/media parity IS
   iteration 1's job; geometry starts at iteration 2.
@@ -275,14 +275,14 @@ rather than erroring.
    challenge, and the probe then **measures the challenge page as the
    source** (3 headings, "Performing security verification" — it diffs
    cleanly, wrongly). And the UA alone is NOT sufficient: field-proven
-   (F-R1, redcross.org), a real-Chrome UA with Playwright's minimal default
+   (F-R1, a nonprofit site), a real-Chrome UA with Playwright's minimal default
    headers still got HTTP 403 from Akamai; adding the standard set every
    real Chrome sends (`Accept`, `Accept-Language`,
    `Upgrade-Insecure-Requests`, `sec-ch-ua*`) produced HTTP 200 — Akamai
    bot-manager fingerprints on the *absence* of those headers, not just the
    UA. All three instruments now send both by default via the shared
    `diff/scripts/live-session.mjs`; `--ua` overrides the UA string only.
-   The header set rides **document requests only** (F-B2, broadridge):
+   The header set rides **document requests only** (F-B2, financial-services site):
    forcing it on every request makes cross-origin CORS-mode webfont fetches
    non-simple and kills them with `net::ERR_FAILED` — the capture then
    silently renders fallback type (see rule 14); bot managers fingerprint
@@ -307,7 +307,7 @@ rather than erroring.
    while the main-scoped checks silently no-op). Two guardrails:
    - **`--main body` is NEVER a valid replica scope.** A too-broad root
      self-poisons the instrument regardless of symmetry: reproduced
-     (fritzhansen), content-diff run live-vs-ITSELF with `--main body`
+     (a furniture retailer), content-diff run live-vs-ITSELF with `--main body`
      produced **103 structural 🔴** and asymmetric node counts (461 vs 73)
      from analytics/inline-script text plus a nondeterministic
      cookie-settings panel pulled into the inventory. The content root must
@@ -329,7 +329,7 @@ rather than erroring.
    shared `dismissOverlays` (stitch-shot always; diff probes via
    `--dismiss`): (a) cookie consent (clicked accept; `--consent <sel>` /
    `--dismiss <sel,...>` for non-standard banners); (b) **timed
-   marketing/newsletter interstitials** — recorded (carhartt-wip): an
+   marketing/newsletter interstitials** — recorded (fashion retailer): an
    undismissed "Sign up, stay updated!" modal fired ~5–9s after load and
    baked a pixel-diff contributor into the LIVE capture, repeated at every
    chunk seam, that no prototype fidelity could null out. These fire on a
@@ -365,7 +365,7 @@ rather than erroring.
     navigation (crawl.mjs semantics: `cf-mitigated: challenge`, or
     403/429/503 with a Cloudflare/Akamai/F5/Imperva edge signature) and
     exit **3** with a `BotChallengeError` naming the URL and the marker.
-    Recorded (rimowa): Akamai served "Access Denied" to the headless
+    Recorded (luggage retailer): Akamai served "Access Denied" to the headless
     instruments — which, without this rule, would have silently measured
     the block page as the source and diffed it cleanly, wrongly. The
     escalation ladder: default (UA + standard headers) → `--headed`
@@ -450,7 +450,7 @@ uncommented, unledgered edit is still a defect.
 The prototype gate above proves the RECREATION; it does not prove the
 DELIVERED page. Local render harnesses systematically understate deltas
 because the real delivery pipeline transforms the markup — field rule
-(broadridge, 8 pages published): a page gating at X% on the harness lands
+(financial-services site, 8 pages published): a page gating at X% on the harness lands
 at X±(large) on the published origin until the transforms below are
 handled. **Only the published-origin number counts as the final gate** for
 a platform-delivered page: re-run the full gate (same instruments, same

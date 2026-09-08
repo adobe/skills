@@ -279,7 +279,7 @@ via `validateProvenance()` per
 `skills/stardust/reference/state-machine.md` § Provenance
 validation. Synthesizing a page record from
 `_brand-extraction.json` plus URL patterns plus captured photos
-— the 2026-04-30 lovesac shortcut — is the failure mode this
+— the 2026-04-30 e-commerce shortcut — is the failure mode this
 guard exists to prevent. When the agent (or a delegated sub-
 agent) cannot satisfy the contract for a page, treat the page
 as a Phase 2 failure: record under `_crawl-log.json#crawl.failures[]`
@@ -496,7 +496,7 @@ After all Phase 2-5 writes succeed:
    `waitMs > 0`, else `no`. A `no` row means the page record was
    not produced by a live Playwright render — the visible column
    is the defense-in-depth signal for the failure mode the
-   write-time guard exists to prevent (2026-04-30 lovesac). A
+   write-time guard exists to prevent (2026-04-30 e-commerce run). A
    maintainer scanning the summary should see `yes` on every row.
 
    Compute the wait summary by grouping each page's `_provenance.waitMode`
@@ -514,7 +514,7 @@ After all Phase 2-5 writes succeed:
    lazy-media walk — a capture pass that specs the full background
    walk (`playwright-recipe.md` § Capture list 11) yet silently
    produces nothing still ships an image-less capture (2026-06-26
-   knack.com: `cssBackgrounds: []` on every page, all product
+   a SaaS site: `cssBackgrounds: []` on every page, all product
    imagery lost). A flagged row is the cue to re-run that page with
    `--refresh` (and, if it persists, to fall back to headed Chrome per
    § Bot-management fallback). A maintainer scanning the summary should
@@ -662,7 +662,7 @@ this in the user report; do not engineer around it.
   positions is forbidden.** The shortcut produces output
   indistinguishable from a successful run and propagates
   fabricated content through every downstream phase
-  (2026-04-30 lovesac.com: 20 of 25 pages synthesized, caught
+  (2026-04-30 e-commerce run: 20 of 25 pages synthesized, caught
   four phases later).
 
 ## Prep mode (--prep)

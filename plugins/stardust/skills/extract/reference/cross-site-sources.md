@@ -39,7 +39,7 @@ detection — those describe the primary site's IA.
 
 ## `--design-source <url>` — design donor
 
-Formalizes the proven canon.com pattern: a golden design source is
+Formalizes the proven golden-source pattern: a golden design source is
 extracted separately and its design system becomes the fixed
 **target**, while the primary origin supplies content.
 

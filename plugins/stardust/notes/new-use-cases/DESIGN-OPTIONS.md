@@ -5,7 +5,7 @@
 >
 > Research inputs: full plugin capability map (agent report), aemcoder/skills migration analysis
 > (agent report), nebula/greenfield research analysis (agent report), and direct reads of prior
-> experiments (`migrate-heathrowairport{,-eds}`, `migrate-hirslanden`, `migrations/`).
+> experiments (`migrate-<airport-site>{,-eds}`, `migrate-<healthcare-site>`, `migrations/`).
 
 ---
 
@@ -28,11 +28,11 @@ deploy to AEM reusing the same blocks site-wide.
 - **Two real gaps:** (1) no "reproduce the current design" direction mode — Mode A pins palette+type
   but still re-designs surface; `ia-fidelity: verbatim` freezes IA, not surface. (2) no fidelity gate
   pointing at the *source*: all diff machinery verifies prototype↔build, never live-site↔prototype.
-- **Prior art proves the flow end-to-end, manually:** `migrate-heathrowairport` (verbatim content
+- **Prior art proves the flow end-to-end, manually:** `migrate-<airport-site>` (verbatim content
   model + component catalog + deterministic PDF↔site verifier, 83.6% verbatim) and its EDS sibling
   (bespoke-block + content-model fill, 62/62 pages live, harvested SKILL-IMPROVEMENTS.md).
-  `migrate-hirslanden` proved 291-page scale with "Variant A: faithful + identified improvements".
-- **Key methodology lesson (heathrow):** *fidelity values come from the original site's own CSS,
+  `migrate-<healthcare-site>` proved 291-page scale with "Variant A: faithful + identified improvements".
+- **Key methodology lesson (airport site):** *fidelity values come from the original site's own CSS,
   not the eye* — fetch stylesheets, lift exact tokens (container max-width, button spec, type ramp,
   hero heights) before any screenshot-eyeball loop. Converts 3–4 guess loops into one.
 - **aemcoder counter-evidence:** direct-to-EDS with LLM-eyeballed fidelity loops costs ~$35/page,
@@ -50,7 +50,7 @@ deploy to AEM reusing the same blocks site-wide.
    ledger ("inconsistency register"). ia-fidelity implicitly `verbatim`, design-fidelity `verbatim`.
 3. **Recreation loop per archetype** (new): author clean semantic HTML/CSS per page type using
    (a) captured page JSON for content, (b) *source CSS extraction* for exact values
-   (heathrow lesson — pull the live stylesheets, lift tokens/specs), (c) captured screenshot as
+   (airport-site lesson — pull the live stylesheets, lift tokens/specs), (c) captured screenshot as
    ground truth. Gate: **source-fidelity gate** = `diff` scripts pointed at live URL vs prototype
    (`--profile generic`) + pixel-level screenshot compare; iterate to convergence with hard caps.
 4. Existing `migrate` (sibling tier) → `deploy` (favor template-slotted decode) → `rollout`.
