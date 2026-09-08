@@ -4,6 +4,61 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.19.3 — replica field harvest, part 2: row-level instruments, masks, detectors (P1, P11, P22, P16, P19, P15, P20)
+
+Second fold of the 2026-09 same-design-migration ledger: the entries that
+needed a flag or a small script. Each is additive — a new instrument, a new
+flag, or a lint/gate DETECTOR; nothing changes what the pipeline emits.
+
+- **Replica — pass bar item 5 (chrome crop gate):** chrome means every
+  site-wide repeating band (header, sticky strips, footer); crops are
+  element-anchored PER SIDE (fixed-y crops false-read the moment one side's
+  rhythm shifts — a strip read 66% mis-anchored, 1.6% re-anchored); and
+  authored-volatile regions (campaign heroes) are masked out of the number.
+  `pixel-compare.mjs --mask <yA:h[@yB]>` neutralises the row band on both
+  sides, removes it from the denominator and prints every mask on the
+  verdict line (P1).
+- **Replica — new `scripts/row-profile.mjs`:** (1) a per-column colour-class
+  scan (white/dark/brand/photo run lengths at N x positions) to establish
+  section boundaries from the capture instead of eyeballing crops (P11);
+  (2) brand-colour landmarks — rows dominated by a saturated brand colour,
+  paired live-vs-proto in order, with per-pair delta and `gapShift` naming
+  the one inter-landmark gap that absorbed a vertical offset (P22). Gate doc
+  § Reading the band breakdown documents both; replica SKILL setup copies it.
+- **Extract — `crawl.mjs` saves the settled rendered DOM** as
+  `pages/<slug>.html` (`renderedHtml` field): capture once, parse offline;
+  migrate's inputs name it as the structure source for importers (P16).
+- **Deploy — Step 3:** page templates that cap `main > .section > div`
+  define ONE full-bleed escape at template specificity; `qa-gate.mjs
+  --full-bleed a,b` warns when a listed block's section wrapper computes
+  narrower than the viewport (P19).
+- **Deploy — D15 lint:** inline-script text lifted as copy (`window.`,
+  `try {`, `function (`) is 🔴; ALL_CAPS_TOKEN tracking lookalikes are 🟡
+  advisory. Detector only — no capture-time filtering was added (P15).
+- **Deploy — `block-roundtrip`:** a dead text whose words are absent from
+  the decorated unit is reported as **DROPPED CONTENT** (the decoder never
+  consumed that element type) rather than DEAD TEXT; Step 8 names the full
+  default-content set every decorate() must consume. Detector only — no
+  leftovers pass was added to the scaffold (P20).
+
+Deferred by design: P3 (chrome-parity probe), P6 (depends on P3), P12
+(sibling variance probe), P24 (link-localization stage + lint tier).
+
+## 0.19.2 — housekeeping: no site names in the plugin
+
+Every reference to a real customer, test or donor site — in skill text,
+reference docs, script comments, the deploy IMPROVEMENTS log, the notes
+folder and this changelog — is replaced by a generic sector descriptor
+("a financial-services site, 8 pages", "a fashion retailer's newsletter
+modal"). Numbers, dates, finding IDs and technical content are unchanged;
+no script logic was touched (comment lines only, syntax-checked). Kept as
+is: vendor/platform names (Akamai, Cloudflare, OneTrust, Typekit, Shopify,
+DA/EDS), Adobe's own properties, fictional sample brands (Wasatch Back,
+Ledgerline, Evergreen Bank, Meridian Airways), design-vocabulary brands used
+as aesthetic references, and the eval suite's live crawl target.
+`notes/improvement-plan-2026-08-rwe-centene.md` is renamed to
+`notes/improvement-plan-2026-08-replica-deploy.md`.
+
 ## 0.19.1 — replica field harvest (2026-09), part 1: one-bullet learnings (P2, P4, P5, P7–P10, P13, P14, P17, P18, P21, P23, P25)
 
 First fold of a 25-entry learnings ledger from a same-design migration of
@@ -58,7 +113,7 @@ stage + lint tier) follow in separate PRs.
 Every text an author wrote in a DA document must be inline-editable in
 Experience Workspace (da.live canvas, "quick-edit") once generated block JS
 has decorated the page — and the block must look the same while it is being
-edited. Field finding (rwe.com, 2026-09-03, two rounds: 3 blocks, then 17):
+edited. Field finding (an energy-company site, 2026-09-03, two rounds: 3 blocks, then 17):
 over a 29-page covering sample only 841 of 1452 authored texts were
 editable; every template-slotted block was 0 %. The generated blocks were
 correct implementations of the skill's own guidance (value-slotting,
@@ -104,7 +159,7 @@ new qa check.
 ## 0.18.5 — migration-flow routing: replica subsumes prepare-migration
 
 Routing-surface fix, no pipeline behaviour change. Field finding
-(swacargo.com, 2026-09-03): asked "how do I migrate X to EDS with
+(an air-cargo site, 2026-09-03): asked "how do I migrate X to EDS with
 stardust", the agent correctly proposed `replica` for the keep-the-design
 route but could not say whether `prepare-migration` was also needed — the
 subsumption fact lived only in `replica/SKILL.md`'s Phase 1–5 body, which
@@ -130,10 +185,10 @@ round-trip per migration conversation.
 Descriptions are the always-loaded routing surface, so the disambiguation
 now holds even when only the sub-skill frontmatter is in context.
 
-## 0.18.4 — wijnvoordeel/wijnbeurs field harvest: chrome crop gate, sizing-model lifts, EDS authoring traps
+## 0.18.4 — commerce-site field harvest: chrome crop gate, sizing-model lifts, EDS authoring traps
 
 Harvest of three learnings ledgers from a five-design Magento-PageBuilder →
-EDS migration (wijnvoordeel-be/nl + wijnbeurs-nl, 2026-08, published-origin
+EDS migration (two sibling commerce sites, be/nl + nl, 2026-08, published-origin
 gated). The headline failure class: **small-area, high-salience defects that
 pass the full-page bar** — both pilot runs shipped "green" pages whose
 header/footer measured only 93–97% match, and a frozen `width:720px` lifted
@@ -175,19 +230,19 @@ All changes are site-agnostic; deploy improvements #115–#122.
 
 ## 0.18.3 — dual-session field harvest: consent fallback, gate identity assertion, capture-freeze hardening
 
-Harvest of two independent replica+deploy sessions (rwe.com and centene.com,
+Harvest of two independent replica+deploy sessions (an energy-company site and a healthcare-insurer site,
 2026-08-26/27, on 0.18.2). Three failures recurred in BOTH sessions and lead
 the release: a stale cross-project `:8791` server silently gated a foreign
 site (once in each direction — every skill doc suggests the same port, so
 collision on a shared machine is guaranteed); consent widgets missed by the
-selector list (on centene the banner baked into ground truth AND all 7 stitch
+selector list (on the healthcare-insurer site the banner baked into ground truth AND all 7 stitch
 seams → 32% false pixel diff, one gate round invalidated); and live-data
 embeds (mirroring the SAME src cancels the data out in the pixel diff —
 freezing a snapshot guarantees a widget-sized residual). All changes are
 site-agnostic and additive; the high-impact-but-not-low-risk items
 (shared-classifier element-boundary separators, stitch-shot `--fullpage`,
 per-project default ports) are deliberately deferred with rationale in
-`notes/improvement-plan-2026-08-rwe-centene.md`.
+`notes/improvement-plan-2026-08-replica-deploy.md`.
 
 - **Extract:** `crawl.mjs` consent dismissal gains a visible-button
   text-match fallback — exact short labels (Accept / Accept all / Allow all /
@@ -263,7 +318,7 @@ per-project default ports) are deliberately deferred with rationale in
 
 ## 0.18.2 — replica field harvest: font-fork instrument fix, interaction parity, published-origin gate
 
-Harvest of a full `stardust:replica` e2e run (broadridge.com → EDS,
+Harvest of a full `stardust:replica` e2e run (a financial-services site → EDS,
 2026-08-25/26, on 0.18.1): a home-page archetype gated to 3.55%/5.56% pixel
 diff, then 8 pages published and gated against the live origin. All changes
 are site-agnostic; the validated discipline (measure-first, fail-loud,
@@ -386,10 +441,10 @@ page-shape brief. Cross-referenced from
 
 Round-1 outcome of the three-new-use-cases exploration (research, candidate
 designs, and validation evidence in `notes/new-use-cases/`). Both flows were
-validated on real pages before codification — replica converged aesop.com to
+validated on real pages before codification — replica converged a typographic retail home page to
 a 1.31% pixel diff with zero structural findings in 3 measured iterations;
-reskin carried hirslanden.ch content byte-identically (2281/2281 chars,
-47/47 slots, 13/13 metadata) onto stripe.com's token system with 91% of
+reskin carried a healthcare site's content byte-identically (2281/2281 chars,
+47/47 slots, 13/13 metadata) onto a payments-company donor's token system with 91% of
 slots mapped to named donor modules. No existing skill was modified (round-2
 synergy candidates are listed in `notes/new-use-cases/ROUND-1-REPORT.md`).
 
@@ -412,8 +467,8 @@ synergy candidates are listed in `notes/new-use-cases/ROUND-1-REPORT.md`).
   informational + `slot-coverage.mjs` incl. metadata) and design-adoption
   (`donor-probe.mjs` token assertions; selector-missing = FAIL).
 - Both skills were smoke-tested for generalization on fresh sites before
-  shipping (replica: hay.dk, desktop converged to 1.06%; reskin:
-  ethz.ch × posthog.com, 4883/4883 text bytes, 101/101 slot checks) and
+  shipping (replica: a furniture retailer, desktop converged to 1.06%; reskin:
+  a university site × an analytics-vendor donor, 4883/4883 text bytes, 101/101 slot checks) and
   hardened from the findings: replica gained pointer-park capture hygiene,
   the fixed/sticky-chrome × stitched-capture procedure, per-breakpoint CSS
   lifting, and the full four-patch adaptation set for the diff probes
@@ -427,20 +482,21 @@ synergy candidates are listed in `notes/new-use-cases/ROUND-1-REPORT.md`).
 
 ### Field-test hardening (5+5 home pages, findings ledger in the 2026-07 field report)
 
-A 10-site field test (replica: fritzhansen, rimowa, carhartt-wip, polestar,
-maisonkitsune; reskin: kew×linear PASS, moma×intercom PASS, redcross×vercel)
+A 10-site field test (replica: a furniture maker, a luggage brand, a fashion
+retailer, an EV maker, a fashion house; reskin: botanic-garden×SaaS-donor PASS,
+museum×messaging-vendor PASS, humanitarian-nonprofit×hosting-vendor)
 produced an 18-finding ledger; all skill-wrong findings are folded:
 
-- **Shared live-measurement hardening (F-G, F-R1, rimowa-1; HIGH).** New
+- **Shared live-measurement hardening (F-G, F-R1, luggage-brand-1; HIGH).** New
   `diff/scripts/live-session.mjs` — the one home for hitting live sites to
   *measure* them, as robust as extract's capture engine: real-Chrome UA
   **plus the standard request headers** (Akamai fingerprints on the absence
   of `Accept`/`Accept-Language`/`sec-ch-ua`, so UA alone still 403s —
-  reproduced on redcross.org, fixed to HTTP 200; the same header set
-  un-blocked rimowa's gate headlessly), challenge detection that **fails
+  reproduced on the humanitarian nonprofit's origin, fixed to HTTP 200; the same header set
+  un-blocked the luggage brand's gate headlessly), challenge detection that **fails
   loud** (exit 3, never silently measured as the source), headed-stealth
   escalation, and two-class overlay dismissal (consent + timed marketing
-  modals, the carhartt `#wps_popup` case — CH-1). Consumed by diff's two
+  modals, the fashion retailer's `#wps_popup` case — CH-1). Consumed by diff's two
   probes, replica's stitch-shot, and reskin's three live-hitting scripts.
 - **diff flags replace replica's 10 hand-edits (F-B).** `--ua`,
   `--wait-until`, `--dismiss`, `--headed`, `--locale` on both probes and
@@ -448,18 +504,18 @@ produced an 18-finding ledger; all skill-wrong findings are folded:
   `source-fidelity-gate.md` § Script adaptations rewritten — a hand-edited
   project copy is now a defect.
 - **replica:** bounded `--single` entry gets a satisfiable promotion
-  contract (`bounded-single` synthesis branch — rimowa-3); `--main body`
+  contract (`bounded-single` synthesis branch — luggage-brand-3); `--main body`
   banned with the 103-false-🔴 reproduction (F-C); hit-minimization +
-  media-density iteration budget (rimowa-2, CH-2); mobile-@media-first and
+  media-density iteration budget (luggage-brand-2, CH-2); mobile-@media-first and
   role-parity recreation guidance (CH-3/FH-2); locale pinning for capture
   determinism.
 - **reskin:** ordered stream is now `innerText`-consistent by construction
-  (F-R2 — kew's a11y ghost labels eliminated at the source; 8/8
+  (F-R2 — the botanic-garden site's a11y ghost labels eliminated at the source; 8/8
   `orderedVerified` vs 5 false in the field) with a sanctioned documented
   fallback; `formControl` stream nodes carry select/option/input text
-  verbatim (F-R3 — redcross course form now fully reconstructable, 13/13
+  verbatim (F-R3 — the humanitarian nonprofit's course form now fully reconstructable, 13/13
   verified); slot-coverage gains a paint assertion so an origin-locked CDN
-  can't hide behind a passing URL-string gate (F-R4, kew's 19 unpainted
+  can't hide behind a passing URL-string gate (F-R4, the botanic-garden site's 19 unpainted
   images); zero-output scope errors now guide discovery (F-D); first-match
   scope semantics and bounded-donor token sourcing documented (F-R5, F-R6).
 - Manifest version aligned (F-A).
@@ -521,7 +577,7 @@ probe **response**, not just that the navigation resolved. A Cloudflare managed
 challenge returns an HTTP 403 interstitial (`cf-mitigated: challenge`) *without
 throwing* — `domcontentloaded` fires — so the old fallback (which only fired on
 a thrown network-fingerprint error) sailed past it and the block surfaced later
-as a fatal capture-time `HTTPError`. Observed on sagora.com during the 0.14.4
+as a fatal capture-time `HTTPError`. Observed on a bot-challenged site during the 0.14.4
 uplift validation batch, where it required hand-patching the crawler mid-run.
 
 - **Challenge detection at the probe:** `isChallengeResponse()` flags an
@@ -546,7 +602,7 @@ uplift validation batch, where it required hand-patching the crawler mid-run.
   fallback) updated with the two-reject-mode retry rule and the managed-
   challenge clearing procedure.
 
-Validated end-to-end: patched crawler on sagora.com auto-detects the challenge,
+Validated end-to-end: patched crawler on the bot-challenged site auto-detects the challenge,
 switches to `headed-chrome-stealth`, and captures the homepage at HTTP 200
 (2 headings, ~8.9k chars, 9 images); the common headless path (example.com) is
 unchanged (no fallback, no botBlock).
@@ -598,7 +654,8 @@ see git history (`4a61c83`) for the full diff.
 ## 0.14.2 — six-site E2E hardening (round 2)
 
 Fixes folded from validating the pipeline end-to-end on six live sites
-(virginatlantic, festool, hirslanden, theroadhome, 3m, sliccy), ranked by
+(site D (airline), site E (tools retailer), site A (healthcare), site F (nonprofit
+shelter), site B (industrial conglomerate), site C (agency)), ranked by
 cross-site frequency.
 
 - **migrate no longer dead-ends on missing canon (blocking; 4 of 6 sites).**

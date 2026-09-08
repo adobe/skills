@@ -459,7 +459,7 @@ Every per-page JSON file is the result of a Playwright (or
 Playwright MCP) live render against the source URL. Synthesizing
 a page record from `_brand-extraction.json` + URL patterns +
 captured photo IDs is **forbidden**, even when the synthesized
-shape would be plausible. The 2026-04-30 lovesac.com cascade ran
+shape would be plausible. The 2026-04-30 e-commerce cascade ran
 "successfully" for four phases on a 25-page inventory where 20
 pages had been synthesized this way; the failure was invisible
 until a meta-question exposed the missing live-render evidence.

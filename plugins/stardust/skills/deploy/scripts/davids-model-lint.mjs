@@ -22,7 +22,9 @@
  *   D2  block table nested inside a block cell D3  ragged rows (cell-count mismatch —
  *   D4  relative/repo-relative src or href         a span-shaped structure)
  *   D14 display copy in a key-value block     D10 block rows wider than 4 columns
- *   D15 code visible as text (tags/{{}}/CSS)  D5  complex nested list inside a cell
+ *   D15 code visible as text (tags/{{}}/CSS/   D5  complex nested list inside a cell
+ *       inline-script text: window./try {)     D15 ALL_CAPS_TOKEN — tracking-token
+ *                                                  lookalike (advisory: legit acronyms exist)
  *   HR  authored <hr> (#119 — the section delimiter; fractures the section)
  *
  * Dependency-free by design (regex + balanced-div walking, same technique as
@@ -226,6 +228,21 @@ function lintText(file, main, flag) {
   const m = text.match(/&lt;\s*[a-z][a-z0-9-]*|\{\{[^}]*\}\}|<%|%>|\b[a-z-]+\s*:\s*[^;{}]+;\s*\}/i);
   if (m) {
     flag('🔴', 'D15', `code visible as text in authored content ("${m[0].slice(0, 40)}…") — markup/bindings/CSS never appear as author-facing text`);
+  }
+  // D15 — INLINE-SCRIPT text lifted as copy. A live-DOM scraper that reads
+  // textContent picks up analytics/`<script>` bodies ("try { window.X.wcm… }")
+  // and renders them as body paragraphs — a D15 violation the importer itself
+  // created, and it silently displaces real copy when a keep-first-N cap runs.
+  const js = text.match(/\bwindow\.[A-Za-z_$][\w$]*|\btry\s*\{|\bdocument\.(?:querySelector|getElementById|cookie|write)\b|\bfunction\s*\(|=>\s*\{/);
+  if (js) {
+    flag('🔴', 'D15', `inline-script text visible as content ("${js[0].slice(0, 40)}…") — a scraper lifted <script> text as copy; filter code artifacts at capture time`);
+  }
+  // D15 advisory — ALL_CAPS_WITH_UNDERSCORE tokens read like campaign/tracking
+  // identifiers ("SPOFFCAR_PARTNER"). Advisory only: legitimate acronyms and
+  // product codes exist; confirm by eye.
+  const tok = text.match(/\b[A-Z][A-Z0-9]{2,}_[A-Z0-9_]{3,}\b/);
+  if (tok) {
+    flag('🟡', 'D15', `"${tok[0].slice(0, 40)}" reads like a campaign/tracking token lifted as copy — confirm it is genuine content`);
   }
 }
 

@@ -45,8 +45,12 @@
  * clone-and-discard. Wrappers carry the layout classes; presentational clones strip
  * instrumentation; exempt text is declared with `@ew-exempt`, never silently dropped.
  *
+ * A dead text whose words are ABSENT from the decorated unit is reported as
+ * DROPPED CONTENT (the decoder never consumed that element type — an authored
+ * <ul> rendered as nothing) rather than DEAD TEXT (rebuilt, EW1); both are 🔴.
+ *
  * Exit codes: 0 = round-trip closed (no structural 🔴, no dead/duplicated text, no
- * decorate errors), 2 = structural 🔴 found (incl. DEAD TEXT / DUPLICATED INDEX under
+ * decorate errors), 2 = structural 🔴 found (incl. DEAD TEXT / DROPPED CONTENT / DUPLICATED INDEX under
  * --ew) OR a block's decorate() failed to install/run (a block that cannot be
  * decorated must never pass — its raw rows would match the prototype and
  * green-light a decode that was never exercised), 1 = tool error.
@@ -215,6 +219,12 @@ async function main() {
     decorateErrs.push(...await runDecorate(harness, names));
     await harness.waitForTimeout(800);
     const ewRows = opts.ew ? await harness.evaluate(survey, ewTexts) : [];
+    // Per-unit rendered text, to split a dead text into two causes: REBUILT (the
+    // words survive, the authored node was replaced — EW1) vs DROPPED (the words
+    // are gone — the decoder never consumed that element type; recorded: a
+    // feature-row decorate() that copied heading/paragraph/CTAs but not <ul>,
+    // authored benefit lists rendered as nothing on two sections, lint green).
+    const unitText = opts.ew ? await harness.evaluate(() => Object.fromEntries([...document.querySelectorAll('[data-rt]')].map((el) => [el.getAttribute('data-rt'), (el.textContent || '').replace(/\s+/g, ' ').trim()]))) : {};
     const exemptions = opts.ew ? readBlockExemptions(blocksDir, names) : {};
     const ewTotals = { authored: 0, editable: 0, dead: 0, duplicated: 0, exempt: 0 };
 
@@ -251,8 +261,14 @@ async function main() {
             || { authored: 0, editable: 0, dead: 0, duplicated: 0, exempt: 0, deadItems: [], dupItems: [], exemptItems: [], exemptReasons: [] };
           Object.keys(ewTotals).forEach((k) => { ewTotals[k] += ew[k]; });
           const quote = (d) => `<${d.tag}> "${d.text.slice(0, 48)}${d.text.length > 48 ? '…' : ''}"`;
-          ew.deadItems.slice(0, 8).forEach((d) => flags.push({ sev: '🔴', kind: 'DEAD TEXT', msg: `${quote(d)} — rebuilt from textContent/innerHTML, synthesized, or retagged; MOVE the authored element (EW1)` }));
-          if (ew.deadItems.length > 8) flags.push({ sev: '🔴', kind: 'DEAD TEXT', msg: `… and ${ew.deadItems.length - 8} more dead text(s) in this block (${ew.dead} of ${ew.authored} authored) — same cause, same fix (EW1)` });
+          const normed = (s) => (s || '').replace(/\s+/g, ' ').trim();
+          const isDropped = (d) => { const t = normed(d.text); return t.length >= 8 && !(unitText[unit] || '').includes(t); };
+          const dropped = ew.deadItems.filter(isDropped);
+          const rebuilt = ew.deadItems.filter((d) => !isDropped(d));
+          dropped.slice(0, 8).forEach((d) => flags.push({ sev: '🔴', kind: 'DROPPED CONTENT', msg: `${quote(d)} — authored element not rendered at all: the decoder never consumed this element type (handle the full default-content set h1–h6/p/ul/ol/picture/table, or end decorate() with a leftovers pass that appends unconsumed authored nodes)` }));
+          if (dropped.length > 8) flags.push({ sev: '🔴', kind: 'DROPPED CONTENT', msg: `… and ${dropped.length - 8} more authored element(s) not rendered in this block — same cause, same fix` });
+          rebuilt.slice(0, 8).forEach((d) => flags.push({ sev: '🔴', kind: 'DEAD TEXT', msg: `${quote(d)} — rebuilt from textContent/innerHTML, synthesized, or retagged; MOVE the authored element (EW1)` }));
+          if (rebuilt.length > 8) flags.push({ sev: '🔴', kind: 'DEAD TEXT', msg: `… and ${rebuilt.length - 8} more dead text(s) in this block (${ew.dead} of ${ew.authored} authored) — same cause, same fix (EW1)` });
           ew.dupItems.forEach((d) => flags.push({ sev: '🔴', kind: 'DUPLICATED INDEX', msg: `${quote(d)} on ${d.hits} elements — strip instrumentation from presentational clones (EW4)` }));
           if (ew.exemptItems.length) flags.push({ sev: '⚪', kind: 'EXEMPT', msg: `${ew.exemptItems.length} declared non-editable text(s) (${ew.exemptReasons.join('; ')}): ${ew.exemptItems.slice(0, 4).map(quote).join(', ')}${ew.exemptItems.length > 4 ? ', …' : ''} (EW5)` });
         }

@@ -37,8 +37,8 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 DIR="stardust/replica/gates/$SLUG-$W"
 mkdir -p "$DIR"
 
-# Identity assertion — NEVER diff an unverified build URL (rwe + centene
-# harvest, 2026-08: the same incident in both sessions, opposite directions —
+# Identity assertion — NEVER diff an unverified build URL (two field
+# harvests, 2026-08: the same incident in both sessions, opposite directions —
 # a stale localhost:8791 server from ANOTHER stardust project served a foreign
 # site into a gate round; 73% diff misread as "prototype broke" on one, the
 # foreign prototype measured as "the build" on the other. Every skill doc

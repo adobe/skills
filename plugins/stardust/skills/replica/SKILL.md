@@ -23,7 +23,7 @@ Two properties make this a different animal from the redesign pipeline:
    CSS — never DOM copies, never ported page-level stylesheets. Fidelity is
    proven by instruments, not asserted by construction.
 
-Validated end-to-end (aesop.com home, 2026-07-03): 8.31% → 2.93% → **1.31%**
+Validated end-to-end (a typographic retail home page, 2026-07-03): 8.31% → 2.93% → **1.31%**
 pixel diff in 3 measured iterations, height Δ 0, content-diff "findings:
 none" (198/198 nodes). Every fix came off the instruments, never off
 eyeballing.
@@ -51,7 +51,7 @@ eyeballing.
    (`node -e "import('pixelmatch').then(()=>process.exit(0))"`).
 4. Copy scripts into the project and run them from there, not from the
    plugin: this skill's whole `scripts/` dir (stitch-shot, pixel-compare,
-   anchor, gate.sh, motion-observe) AND the whole `../diff/scripts/` dir (the diff scripts import
+   crop-compare, row-profile, anchor, gate.sh, motion-observe) AND the whole `../diff/scripts/` dir (the diff scripts import
    diff-profiles.mjs, and ALL live-target hardening — including
    stitch-shot's — lives in its live-session.mjs; stitch-shot resolves it
    from `scripts/diff/` next to `scripts/replica/`, so keep the two dirs
@@ -165,7 +165,7 @@ apply; the source-fidelity gate (Phase 4) replaces them entirely. A
 woff2 for open/self-hostable faces). For licensed commercial kits: never
 rehost on the new domain — pick a metric-matched substitute, keep the brand
 family name first in the font stack so a licensed drop-in later wins, and
-surface the substitution to the user. (Prior art: heathrow §3.7.)
+surface the substitution to the user. (Prior art: an earlier airport-site migration's improvement notes, §3.7.)
 
 **CSS-portation is the per-section fallback only** — paint-level effects not
 recoverable from computed styles, JS-hydrated commerce widgets, video or

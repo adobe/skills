@@ -48,7 +48,7 @@ sides of the diff symmetrically.
 
 Every archetype keeps its own standalone reference prototype — never skip
 to direct platform authoring for a new archetype "because the blocks
-already exist". Field evidence (broadridge, 8 pages): the prototyped
+already exist". Field evidence (a financial-services site, 8 pages): the prototyped
 archetype reached 3.5%/5.6% pixel diff and stayed the quality ceiling for
 its conversion; pages authored directly on the platform plateaued at
 8–16%. Prototypes are **cumulative**: each new one imports the shared
@@ -72,7 +72,7 @@ back-port into the canon files so later archetypes don't re-discover it.
 
 ## CSS lifting — fidelity values come from the original site's CSS, not the eye
 
-(Prior art: heathrow SKILL-IMPROVEMENTS §3.6; re-confirmed in UC1-E1 where
+(Prior art: an earlier airport-site migration's improvement notes §3.6; re-confirmed in UC1-E1 where
 per-element computed-style capture "did most of the work".)
 
 Before any screenshot-eyeball tuning:
@@ -107,12 +107,12 @@ Before any screenshot-eyeball tuning:
    grid collapse rules) up front and build 360 against it. Capture
    per-element computed styles at 360 (and any other gate width) BEFORE
    authoring — the 360 gate map is not the moment to discover the mobile
-   container model. Recorded twice: hay.dk's 1440-lifted prototype
+   container model. Recorded twice: a design-furniture site's 1440-lifted prototype
    converged desktop in one iteration but opened mobile at 26.8% (an
    `overflow:hidden` whose only layout effect is margin-collapse containment
    at mobile, a different mobile footer container model, a block hidden at
    mobile — all sitting in the source CSS, discoverable up front); and
-   carhartt-wip, where an essentially unbuilt 360 layout measured
+   a fashion retailer, where an essentially unbuilt 360 layout measured
    **−1600px height delta** at 360 vs −169px at 1440 — a desktop-only
    recreation doesn't degrade gracefully at mobile, it collapses. With
    per-breakpoint lifting, mobile converges in 1–2 iterations; without it,
@@ -222,7 +222,7 @@ un-floating override.
   font loads; woff2 files that are freely licensed or already self-hostable
   are self-hosted in the prototype (UC1-E1: same-source fonts, zero
   substitutes needed, which is why the type matched exactly).
-- **Licensed commercial kits: substitute, never rehost** (heathrow §3.7 —
+- **Licensed commercial kits: substitute, never rehost** (prior art: the airport-site migration —
   e.g. a domain-locked Monotype kit). Rules:
   - Never re-host a commercial font on the new public domain.
   - Pick a **metric-matched** substitute (or have the user supply their
@@ -345,7 +345,7 @@ content-diff classifies every string by **DOM wrapping + computed style +
 heading level, never by text alone**: a string inside an `<a>` is a CTA, an
 uppercase small-type node is an eyebrow, an `<h3>` is not an `<h2>`. So a
 recreation that carries every string verbatim can still open with dozens of
-structural 🔴 — recorded (fritzhansen iteration 1): 43 CTAs vs 58 and 12
+structural 🔴 — recorded (furniture retailer, iteration 1): 43 CTAs vs 58 and 12
 eyebrows vs 6, **all role swaps, zero dropped copy** — the live page
 wrapped labels in anchors where the recreation used spans, and vice versa.
 
@@ -510,7 +510,7 @@ capture-invisible under the freeze, and the pixel re-run proves it).
 ## Fixed and sticky chrome (headers, floating tabs × stitched capture)
 
 `position: fixed`/`sticky` chrome interacts with the stitched capture in
-three ways, each observed live on the first fresh-site run (hay.dk):
+three ways, each observed live on the first fresh-site run (a design-furniture site):
 
 1. **Seam repeats.** A fixed element renders in EVERY viewport chunk, so
    the stitched PNG shows it repeated at each chunk seam (every `--vh` px).
@@ -519,7 +519,7 @@ three ways, each observed live on the first fresh-site run (hay.dk):
    that seam; the occluded band is invisible to the pixel probe on both
    sides (again: harmless only while symmetric).
 3. **Scroll-state morph.** Chrome that changes with scroll captures
-   differently per chunk: hay.dk swaps to a `body.header-minimized` 55px
+   differently per chunk: the site swaps to a `body.header-minimized` 55px
    hamburger bar once scrolled, so chunks 2+ carry different chrome than
    chunk 1 — the stitched live capture contains BOTH states.
 
