@@ -20,7 +20,6 @@ it, with every decision reasoned in the open before code runs.
 | LLM and AI-search visibility | Key facts sit in server-rendered HTML where crawlers and AI bots read them. `llms.txt` and schema coverage are checked. |
 | Accessibility | Contrast, alt text, landmarks and a single `<h1>` per page, verified with axe on the delivered site. |
 | Content fidelity | Copy is carried verbatim and counted per page. Nothing is dropped, invented or reworded without a logged reason. |
-| Authoring | Content stays editable by authors after delivery. Generated presentation never swallows authored text. |
 | Platform | A static HTML tree that runs on any host, or a delivery to the target platform through the delivery layer. |
 
 ## Two layers
