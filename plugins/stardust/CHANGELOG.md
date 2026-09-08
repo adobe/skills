@@ -4,6 +4,32 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.19.5 — deploy: link localization as a pipeline stage (P24)
+
+- **New `deploy/scripts/localize-links.mjs`** — dependency-free, idempotent.
+  Builds the URL map from the content tree (every served path, extensionless,
+  `x/index.html` → `/x`) plus `--redirects` (rollout's `stardust/redirects.tsv`
+  or a JSON map), rewrites every source-host `<a href>` (with/without `www.`,
+  http/https/protocol-relative) whose path resolves in the map to the
+  canonical root-relative form — no `.html`, no trailing slash, query and
+  fragment preserved — and normalizes root-relative internal hrefs the same
+  way. Everything else stays absolute and is REPORTED (the not-yet-migrated
+  boundary). `--dry-run`, `--json`, and `--check` (write nothing, exit 2 when
+  localizable links remain — the pre-deploy assertion).
+  Field evidence: ~500 source-domain links across ~150 pages bounced visitors
+  back to the live site for pages that existed on the new origin.
+- **Deploy stage:** the Deploy table and the per-page atomic delivery contract
+  gain the stage (run after every generator and before every write, over the
+  WHOLE tree; re-run after every wave). The ENCODE D4 bullet and
+  `davids-model.md` now say what D4 is — a capture-fidelity rule for media and
+  external targets — and that internal links to migrated pages are
+  root-relative. Checklist item added. Rollout Phase E2 points at the stage
+  instead of a hand rewrite.
+- **Lint (advisory):** `davids-model-lint.mjs --source-host <host[,host]>
+  [--content-root <dir>]` flags a source-host `<a href>` whose path exists in
+  the content tree as 🟡 D4 LOCALIZE. Advisory by design in this release;
+  promote to 🔴 after one rollout has run the stage cleanly.
+
 ## 0.19.4 — replica: chrome-parity probe (P3)
 
 - **New `replica/scripts/chrome-parity.mjs`** — computed-style parity for

@@ -11,7 +11,13 @@
  *
  *   node skills/deploy/scripts/davids-model-lint.mjs content/            # tree
  *   node skills/deploy/scripts/davids-model-lint.mjs content/index.html  # one page
- *   … [--json]
+ *   … [--json] [--source-host <host[,host]> [--content-root content]]
+ *
+ * --source-host enables the D4 LOCALIZE advisory: an <a href> to the live
+ * source host whose path exists in the content tree (--content-root, default:
+ * the first directory argument) is a bounce link — it sends visitors back to
+ * the old site for a page that exists on the new origin. Advisory (🟡) in this
+ * release; the fix is `localize-links.mjs` (the pipeline stage), not a hand edit.
  *
  * Exit codes: 0 = clean (🟡 advisories allowed — review, fix or justify in the
  * conversion log), 2 = at least one 🔴, 1 = usage/parse failure.
@@ -21,6 +27,8 @@
  *   D1  embed/video URL authored as a block        structure (default-content candidate)
  *   D2  block table nested inside a block cell D3  ragged rows (cell-count mismatch —
  *   D4  relative/repo-relative src or href         a span-shaped structure)
+ *                                            D4  source-host href whose path exists
+ *                                                locally (LOCALIZE — run localize-links)
  *   D14 display copy in a key-value block     D10 block rows wider than 4 columns
  *   D15 code visible as text (tags/{{}}/CSS/   D5  complex nested list inside a cell
  *       inline-script text: window./try {)     D15 ALL_CAPS_TOKEN — tracking-token
@@ -246,6 +254,17 @@ function lintText(file, main, flag) {
   }
 }
 
+// D4 LOCALIZE — canonical lookup key for a path (mirrors localize-links.mjs).
+function canonicalPath(p) {
+  let s = (p || '').split(/[?#]/)[0].replace(/\/{2,}/g, '/');
+  if (!s.startsWith('/')) s = `/${s}`;
+  s = s.replace(/\.html?$/i, '');
+  if (s.length > 1) s = s.replace(/\/+$/, '');
+  if (s === '' || s === '/index') s = '/';
+  return s.replace(/\/index$/, '').toLowerCase() || '/';
+}
+let LOCAL = null; // { hosts:Set, paths:Set } when --source-host is given
+
 function lintUrls(file, main, flag) {
   // D4 — src: only fully-qualified (content.da.live preferred) survives the
   // ingester; repo-relative /img/ delivers as about:error.
@@ -270,6 +289,13 @@ function lintUrls(file, main, flag) {
   // relative ones (donate.html, ../x) break under path mapping.
   for (const m of main.matchAll(/<a\b[^>]*\bhref="([^"]+)"/gi)) {
     const href = m[1];
+    if (LOCAL && /^(https?:)?\/\//i.test(href)) {
+      const m = href.match(/^(?:https?:)?\/\/([^/?#]+)([^?#]*)/i);
+      const host = m ? m[1].toLowerCase().replace(/^www\./, '') : '';
+      if (m && LOCAL.hosts.has(host) && LOCAL.paths.has(canonicalPath(m[2]))) {
+        flag('🟡', 'D4', `<a href="${href.slice(0, 80)}"> points at the SOURCE host for a page that exists in this content tree — a bounce link; run localize-links.mjs (LOCALIZE)`);
+      }
+    }
     if (/^(https?:|mailto:|tel:|#|\/)/i.test(href)) continue;
     flag('🔴', 'D4', `authored <a href="${href}"> is document-relative — use a root-relative path or a fully-qualified URL`);
   }
@@ -290,11 +316,21 @@ function collectFiles(target) {
   return out;
 }
 
-const args = process.argv.slice(2).filter((a) => a !== '--json');
-const asJson = process.argv.includes('--json');
+const argv = process.argv.slice(2);
+const asJson = argv.includes('--json');
+const optVal = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; };
+const sourceHost = optVal('--source-host');
+const contentRootOpt = optVal('--content-root');
+const args = argv.filter((a, i) => a !== '--json' && !['--source-host', '--content-root'].includes(a) && !['--source-host', '--content-root'].includes(argv[i - 1]));
 if (!args.length) {
-  console.error('usage: davids-model-lint.mjs <content-file-or-dir> [...] [--json]');
+  console.error('usage: davids-model-lint.mjs <content-file-or-dir> [...] [--json] [--source-host <host[,host]> [--content-root <dir>]]');
   process.exit(1);
+}
+if (sourceHost) {
+  const root = contentRootOpt || args.find((a) => statSync(a).isDirectory()) || path.dirname(args[0]);
+  const paths = new Set();
+  for (const f of collectFiles(root)) paths.add(canonicalPath(`/${path.relative(root, f).split(path.sep).join('/')}`));
+  LOCAL = { hosts: new Set(sourceHost.split(',').map((h) => h.trim().toLowerCase().replace(/^www\./, '')).filter(Boolean)), paths };
 }
 
 const findings = [];
