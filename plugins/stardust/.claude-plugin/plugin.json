@@ -1,7 +1,7 @@
 {
   "name": "stardust",
   "description": "Redesign an existing website to make it better. Higher-level guided flow on top of impeccable.",
-  "version": "0.19.7",
+  "version": "0.19.8",
   "author": {
     "name": "Adobe"
   },
@@ -15,6 +15,9 @@
     "impeccable"
   ],
   "dependencies": [
-    "impeccable@impeccable"
+    {
+      "name": "impeccable",
+      "marketplace": "impeccable"
+    }
   ]
 }
