@@ -114,7 +114,7 @@ async function launchWithFallback() {
 }
 // Stealth-hardened headed real Chrome. Headed alone clears TLS/H2-fingerprint
 // blocks, but Cloudflare's *managed challenge* also probes for automation
-// signals — clearing it needs the automation flags stripped (sagora.com e2e
+// signals — clearing it needs the automation flags stripped (a Cloudflare-fronted e2e
 // finding). `--disable-blink-features=AutomationControlled` +
 // dropping `--enable-automation` + the navigator.webdriver spoof (applied
 // per-context in newContext) are what let the non-interactive challenge solve.
@@ -233,7 +233,7 @@ async function discover(args, page) {
     return out.slice(0, args.max);
   };
   // sitemap.xml — but only trust it if it has >=1 <loc> (a 200-but-empty Drupal
-  // sitemap must fall through to BFS — finding from the paramount run).
+  // sitemap must fall through to BFS — finding from a media-site run).
   for (const sm of ['/sitemap.xml', '/sitemap_index.xml']) {
     try {
       const xml = await page.evaluate(async (u) => {
@@ -277,7 +277,7 @@ async function dismissConsent(page) {
     if (el) { await el.click().catch(() => {}); matched = true; await page.waitForTimeout(300); break; }
   }
   // Usercentrics renders inside shadow DOM (#usercentrics-root) — regular
-  // selectors can't reach it (festool e2e finding).
+  // selectors can't reach it (tools-retailer e2e finding).
   const ucMatched = await page.evaluate(() => {
     const root = document.querySelector('#usercentrics-root')?.shadowRoot;
     if (root) {
@@ -286,10 +286,10 @@ async function dismissConsent(page) {
     }
     return false;
   }).catch(() => false);
-  // Text-match fallback, only when the selector pass matched NOTHING (rwe.com +
-  // centene.com harvests, 2026-08: two different consent widgets — a custom
+  // Text-match fallback, only when the selector pass matched NOTHING (two field
+  // harvests, 2026-08: two different consent widgets — a custom
   // dialog, cookieconsent's a.cc-btn — were missed by the list above; on
-  // centene the banner baked into the ground-truth screenshot AND repeated at
+  // one of them the banner baked into the ground-truth screenshot AND repeated at
   // all 7 stitch seams → 32% false pixel diff). Guards keep it from ever
   // hitting an in-content link: exact match on a short consent label (≤25
   // chars after whitespace collapse), visible, and inside a fixed/sticky or
@@ -328,7 +328,7 @@ async function dismissConsent(page) {
   });
 }
 
-// Favicon — captured on the ENTRY page in ALL modes (centene harvest, 2026-08:
+// Favicon — captured on the ENTRY page in ALL modes (healthcare-site harvest, 2026-08:
 // bounded --pages extracts skip Phase 3 (brand surface) where favicon capture
 // otherwise lives, and deploy's favicon step then skips SILENTLY — the deployed
 // site shipped the default icon). One cheap request. The fetch runs in-page so
@@ -656,7 +656,7 @@ async function main() {
   //   1. a network fingerprint block — the goto THROWS (isFingerprintBlock);
   //   2. a challenge / edge block — the goto SUCCEEDS but returns a 403/429/503
   //      interstitial (isChallengeResponse). This one previously slipped through
-  //      the probe and only failed at capture-time (sagora.com Cloudflare finding).
+  //      the probe and only failed at capture-time (Cloudflare-fronted site finding).
   let botBlock = null; // 'fingerprint' | 'challenge'
   try {
     const probeResp = await probe.goto(args.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -689,7 +689,7 @@ async function main() {
 
   // adopt the post-redirect origin (apex→www etc.): the same-origin filter and
   // sitemap fetch must use where the site actually lives, or discovery silently
-  // collapses to 1 page (sliccy e2e finding).
+  // collapses to 1 page (agency-site e2e finding).
   let originRedirect = null;
   try {
     const landed = new URL(probe.url());

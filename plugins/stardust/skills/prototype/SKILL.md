@@ -305,7 +305,7 @@ refuses any verbatim-direction brief with `surprise: medium` or
 **`low` ≠ generic.** The budget bounds *added* divergence, not craft
 or fidelity. `low` means **brand-faithful + improvements + full
 signature preservation**, NOT "the most obvious faithful
-interpretation." The recurring failure mode (moneyhub.com migration)
+interpretation." The recurring failure mode (a fintech migration)
 is the agent reading `low` / `verbatim` as license to strip the page
 to a plain type-hero on a flat ground — the result is faithful but
 forgettable and under-sells the redesign. Hold the craft bar at `low`:
@@ -563,8 +563,8 @@ proposed files only, **never** to the project's own source (blocks,
 styles, components), where the rules still apply because that copy
 *is* the agent's. Record the bypass in
 `_provenance.copyCadenceBypass` with the rules ignored and the
-classification basis. The 2026-06-26 knack.com run hit this: the hook
-flagged em-dashes and "enterprise-grade" on Knack's own headings
+classification basis. A 2026-06-26 SaaS-site run hit this: the hook
+flagged em-dashes and "enterprise-grade" on the site's own headings
 ("Built on Enterprise-Grade Components") under a verbatim direction,
 and the only correct response was to leave the captured copy untouched
 and record the bypass.
@@ -763,7 +763,7 @@ WCAG / perf / responsive failure; running only audit misses
 brand-misalignment and design slop. The pass is a **contract**,
 not a courtesy.
 
-The 2026-05-04 nvidia.com home prototype critique returned
+A 2026-05-04 hardware-vendor home prototype critique returned
 1 P0 + 2 P1 + 3 P2; the audit on the same artifact returned
 **six additional findings** (no skip-link, theme carousels
 without keyboard arrow nav, hero ~3.5MB without responsive
@@ -1258,7 +1258,7 @@ approve some and continue iterating on others.
 
 Adapt and the mobile-adapt audit moved to **Phase 2.7** as part of
 the Discipline 9 critique → audit → adapt cycle, gating
-`prototyped` instead of approval. The 2026-05-03 lovesac.com
+`prototyped` instead of approval. A 2026-05-03 e-commerce
 showcase failure mode (stakeholders eyeballing variants on a phone
 getting the unadjusted desktop layout) is unchanged — the gate just
 fires earlier in the lifecycle, so a non-adapted prototype never
