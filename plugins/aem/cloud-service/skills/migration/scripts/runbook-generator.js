@@ -25,17 +25,24 @@
  *                   dialogs, custom `cq:Widget` xtypes, static templates) is the
  *                   heuristic fallback when no BPA source is available. Routed to
  *                   migration Branches D / C, not code-assessment.
- *   'bpa-only'    — `guavaCache`: BPA/CAM/CSV only (subtype `custom.guava.cache`),
- *                   one finding per bundle. `identifier` on this subtype is a
+ *   'bpa-only'    — `guavaCache`, `oakIndex`: BPA/CAM/CSV only, no analyzer, no
+ *                   content-scan fallback.
+ *                     `guavaCache` (subtype `custom.guava.cache`): one finding
+ *                   per bundle. `identifier` on this subtype is a
  *                   Guava-internal class, not a customer class — BPA reports
  *                   every Guava-internal class reachable on a bundle's
  *                   classpath, so raw rows are deduped to the bundle named in
- *                   the message, not surfaced per row. No analyzer, no
- *                   content-scan — Guava cache usage does not occur in native
- *                   AEMaaCS code, so there is deliberately no compiled
- *                   detector for it. With no BPA source the pattern surfaces
- *                   in `needsLlmScan` like any other
- *                   unscanned pattern.
+ *                   the message, not surfaced per row. Guava cache usage does
+ *                   not occur in native AEMaaCS code, so there is
+ *                   deliberately no compiled detector for it.
+ *                     `oakIndex` (subtypes `index.rule.violation` /
+ *                   `standard.index.modification`, beta, Branch F): one
+ *                   finding per Oak index JCR path. Legacy `_oak_index/*.xml`
+ *                   layouts only exist in pre-cloud projects, so — like
+ *                   Dispatcher Conversion — this wraps Adobe's index-converter
+ *                   tool rather than a compiled detector.
+ *                     With no BPA source, either pattern surfaces in
+ *                   `needsLlmScan` like any other unscanned pattern.
  *
  * `html-scan`/`config-scan`/`content-scan` (fallback) findings are tagged `confidence: 'heuristic'` in the
  * cache. Patterns no available strategy could scan (e.g. a cascade pattern
@@ -71,10 +78,11 @@ const { runDispatcherScan } = require('./dispatcher-inventory.js');
 //   'config-scan'  — config-file heuristic scan (osgiConfig)
 //   'content-scan' — .content.xml / template / dispatcher-config scan (lui, cdw,
 //                    templateModernization, dispatcherConversion)
-//   'bpa-only'     — BPA/CAM/CSV only, no local fallback (guavaCache)
+//   'bpa-only'     — BPA/CAM/CSV only, no local fallback (guavaCache, oakIndex)
 // `bpaSlugs` maps a pattern to its BPA subtype(s): the Java 'cascade' patterns,
-// plus replication (replication.agent), lui/cdw/templateModernization, and
-// guavaCache (com.google.common.cache). When a BPA source is present it is
+// plus replication (replication.agent), lui/cdw/templateModernization,
+// guavaCache (com.google.common.cache), and oakIndex (index.rule.violation /
+// standard.index.modification). When a BPA source is present it is
 // authoritative; html/config/content scans are the local fallback for the
 // patterns that have one. (inject-in-sling-model and outdated-dependencies
 // belong to code-assessment's own runbook, not the migration runbook, so they
@@ -196,6 +204,15 @@ const PATTERN_META = {
     description: 'An AMS or on-premise Dispatcher configuration convertible to AEM as a Cloud Service (Branch E). Detected heuristically; the conversion wraps Adobe\'s aem-cs-source-migration dispatcher-converter with mode detection, config generation, output verification, and validation.',
     promptPattern: 'dispatcher conversion',
     sampleOverride: 'Use the migration skill: convert my dispatcher configuration to AEM as a Cloud Service.',
+  },
+  oakIndex: {
+    label: 'Oak Index Migration',
+    severity: 'high',
+    strategy: 'bpa-only',
+    bpaSlugs: ['oakIndex'],
+    description: 'Legacy `_oak_index/*.xml` definitions (BPA subtypes `index.rule.violation` / `standard.index.modification`, category OID) convertible to AEM as a Cloud Service Oak index definitions (Branch F, beta). BPA is the sole source of truth — one finding per Oak index JCR path; there is no analyzer or content-scan fallback. Wraps Adobe\'s aem-cs-source-migration index-converter tool rather than re-implementing transformation rules.',
+    promptPattern: 'oakIndex',
+    sampleOverride: 'Use the migration skill: fix oakIndex findings using BPA CSV at ./reports/bpa.csv.',
   },
 };
 
