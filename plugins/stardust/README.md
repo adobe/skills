@@ -104,6 +104,18 @@ reply to any "how do I migrate this site" question.
 
 ### Keep the design: `replica` → `migrate` → `deploy` / `rollout`
 
+Two things set a replica migration apart. First, it does two jobs in the same
+pass: it migrates the page or site, and while doing so it extracts the design
+definition (`PRODUCT.md`, `DESIGN.md`, `DESIGN.json` and the lifted tokens).
+With both in place you can build new pages on the same design system after the
+migration, not only re-platform the existing ones. Second, it follows
+stardust's prototyping approach: it first builds a static HTML clone of each
+page to migrate, gates that clone against the live site, and only then hands
+the static HTML to `stardust:deploy`, which converts it into EDS blocks and
+content (the snowflake approach). Going through the static prototype usually
+gives higher fidelity from the first independent migration pass than
+converting the live page straight into blocks.
+
 1. `extract --prep` runs as replica's first phase and captures the full
    inventory.
 2. The captured design system becomes the target spec by mechanical
