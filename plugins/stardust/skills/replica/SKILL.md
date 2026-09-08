@@ -51,8 +51,8 @@ eyeballing.
    (`node -e "import('pixelmatch').then(()=>process.exit(0))"`).
 4. Copy scripts into the project and run them from there, not from the
    plugin: this skill's whole `scripts/` dir (stitch-shot, pixel-compare,
-   crop-compare, chrome-parity, row-profile, anchor, gate.sh,
-   motion-observe) AND the whole `../diff/scripts/` dir (the diff scripts import
+   crop-compare, chrome-parity, row-profile, sibling-variance, anchor,
+   gate.sh, motion-observe) AND the whole `../diff/scripts/` dir (the diff scripts import
    diff-profiles.mjs, and ALL live-target hardening — including
    stitch-shot's — lives in its live-session.mjs; stitch-shot resolves it
    from `scripts/diff/` next to `scripts/replica/`, so keep the two dirs
@@ -266,7 +266,11 @@ approval per the standard prototype approval flow (hands-off mode records
   **sibling tier** (`../migrate/reference/fidelity-tiers.md`): structural
   clone of the gated archetype + content-fidelity + delivery-lint +
   media-reconcile. Siblings inherit the archetype's source-fidelity gate —
-  never re-author one from scratch. Content-fidelity is
+  never re-author one from scratch. **Template constancy is measured, not
+  assumed**: before cloning, run `scripts/replica/sibling-variance.mjs
+  <archetype> <siblings…> --probe <block>=<sel> …` once per template and
+  budget every delta as a block VARIANT class on the sibling's content (same
+  file, § Sibling variance probe). Content-fidelity is
   **measured per page at import time** (same file, § Content-count
   acceptance) so importer bugs surface while cheap to fix.
 - **Delivery** via `stardust:deploy` per page. Bias the decode tier toward
