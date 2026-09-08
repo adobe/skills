@@ -37,8 +37,8 @@ not improvisations:
   descriptive artifacts don't carry.
 - **Bounded donor capture** (a single donor page crawled directly —
   `crawl.mjs --max 1`-class, or any capture that skipped the full
-  extract synthesis): this produces **only** `pages/*.json` + a
-  screenshot + `_crawl-log.json`. There is **no
+  extract synthesis): this produces **only** `pages/*.json` (+ the
+  `pages/*.html` rendered-DOM sidecar) + a screenshot + `_crawl-log.json`. There is **no
   `canon-source/DESIGN.json`, no `_brand-extraction.json`, and no
   `state.json.designSource` stamp** — the "curate from DESIGN.json"
   instruction has nothing to read. On this path, `donor-tokens.json`

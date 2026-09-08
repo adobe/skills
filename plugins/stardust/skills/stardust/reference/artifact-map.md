@@ -194,7 +194,10 @@ than overwriting. Schema in
 
 ### `stardust/current/pages/<slug>.json`
 Owner: `$stardust extract`. Per-page parsed model. Schema lives in
-`skills/extract/reference/current-state-schema.md` (Phase 1).
+`skills/extract/reference/current-state-schema.md` (Phase 1). The
+crawler writes a `pages/<slug>.html` sidecar next to it — the settled
+rendered DOM (`renderedHtml` field) for offline parsing by importers;
+it is not a page record and never matches `pages/*.json`.
 
 ### `stardust/current/assets/`
 Owner: `$stardust extract`. Logo + media extracted from the live site.

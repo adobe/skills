@@ -111,6 +111,23 @@ The prototype capture is re-taken every iteration.
    heights off the section-anchor probe (`anchor.mjs` prints the footer's
    `[y, height]` on both sides).
 
+   **Chrome crops are ELEMENT-ANCHORED per side, never fixed-y — and
+   "chrome" means every site-wide repeating band: header, sticky/quick-link
+   strips, footer.** Recorded: the header measured 33.9% and a quick-links
+   strip 19.2% while the full page passed at 6.5% — chrome is small-area,
+   highest-salience and repeats on every page. Two traps: (a) a fixed-y crop
+   produces FALSE reads the moment either side's rhythm shifts — a 35px nav
+   fix moved everything below it and the strip crop read 66% while the strip
+   itself, re-anchored to its own band edges, was at 1.6%. Locate each
+   region on EACH side (its element rect via `anchor.mjs`, or its band
+   edges via `row-profile.mjs`'s column scan) and pass both anchors
+   (`--y`/`--y-b`); every gate round re-reads the anchors. (b) Regions whose
+   live content is authored-volatile — campaign heroes, promo creatives that
+   change between capture and gate — are masked out of the fidelity number
+   with `pixel-compare.mjs --mask <yA:h[@yB]>` (printed on the verdict line,
+   never silent): they are authored content, not conversion fidelity, and
+   chasing them burns iterations on a moving target.
+
 Applied inconsistency-register entries create expected deltas: cross-
 reference the entry ID (`R-<nn>`) when justifying a flag over its zone
 (`preserve-direction.md` § Gate interaction).
@@ -163,6 +180,30 @@ the cause isn't visible in `diff-iter<N>.png` — in the validated run it was
 prepared and never needed, because re-authoring hit exact section heights.
 `crop-compare.mjs` (the chrome-gate script, pass-bar item 5) does exactly
 this for any y-band, not just chrome.
+
+**Two row-level instruments replace eyeballing crops (`../scripts/row-profile.mjs`,
+runs over the same stitched PNGs — no live hit):**
+
+- **Column scan for layout boundaries.** Before editing CSS to fix a section
+  height, photo height, band start or card overlap, read the per-column
+  class transitions (white / dark / brand / photo at N x positions) on the
+  capture: `node scripts/replica/row-profile.mjs live.png proto.png
+  --columns 7`. Recorded: a stacked-crop visual read suggested a 415px photo
+  with a white band under it; the scan of the same capture proved the photo
+  full-bleed to 499px with the "white band" being an overlapping card — the
+  wrong read cost two build/measure cycles. Crop eyeballing is hypothesis;
+  the scan is the measurement.
+- **Brand-colour landmarks for vertical alignment.** Band percentages say
+  WHERE diffs are, not by how many pixels sections are offset. When a
+  saturated brand colour recurs in every section (CTA buttons are ideal),
+  `--color <#rrggbb>` lists every row run dominated by it on both sides and
+  pairs them in order: the per-pair delta is each landmark's offset, and the
+  CHANGE in delta between consecutive pairs (`gapShift`) names the one
+  inter-landmark CSS gap that absorbed the shift. Patch that gap, re-measure,
+  top-down — the same contamination rule as the band table. Recorded: three
+  passes driven this way took a page 16.9% → 11.05% and a 1559px height
+  delta → 48px. Do not tune margins by eye against crops. (Crop with pngjs;
+  macOS `sips --cropOffset` is unreliable for band crops.)
 
 ## Wide-viewport fluid check (fluid-vs-fixed is invisible at the gate widths, #116)
 

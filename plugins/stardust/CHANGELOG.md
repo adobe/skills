@@ -4,6 +4,46 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.19.3 — replica field harvest, part 2: row-level instruments, masks, detectors (P1, P11, P22, P16, P19, P15, P20)
+
+Second fold of the 2026-09 same-design-migration ledger: the entries that
+needed a flag or a small script. Each is additive — a new instrument, a new
+flag, or a lint/gate DETECTOR; nothing changes what the pipeline emits.
+
+- **Replica — pass bar item 5 (chrome crop gate):** chrome means every
+  site-wide repeating band (header, sticky strips, footer); crops are
+  element-anchored PER SIDE (fixed-y crops false-read the moment one side's
+  rhythm shifts — a strip read 66% mis-anchored, 1.6% re-anchored); and
+  authored-volatile regions (campaign heroes) are masked out of the number.
+  `pixel-compare.mjs --mask <yA:h[@yB]>` neutralises the row band on both
+  sides, removes it from the denominator and prints every mask on the
+  verdict line (P1).
+- **Replica — new `scripts/row-profile.mjs`:** (1) a per-column colour-class
+  scan (white/dark/brand/photo run lengths at N x positions) to establish
+  section boundaries from the capture instead of eyeballing crops (P11);
+  (2) brand-colour landmarks — rows dominated by a saturated brand colour,
+  paired live-vs-proto in order, with per-pair delta and `gapShift` naming
+  the one inter-landmark gap that absorbed a vertical offset (P22). Gate doc
+  § Reading the band breakdown documents both; replica SKILL setup copies it.
+- **Extract — `crawl.mjs` saves the settled rendered DOM** as
+  `pages/<slug>.html` (`renderedHtml` field): capture once, parse offline;
+  migrate's inputs name it as the structure source for importers (P16).
+- **Deploy — Step 3:** page templates that cap `main > .section > div`
+  define ONE full-bleed escape at template specificity; `qa-gate.mjs
+  --full-bleed a,b` warns when a listed block's section wrapper computes
+  narrower than the viewport (P19).
+- **Deploy — D15 lint:** inline-script text lifted as copy (`window.`,
+  `try {`, `function (`) is 🔴; ALL_CAPS_TOKEN tracking lookalikes are 🟡
+  advisory. Detector only — no capture-time filtering was added (P15).
+- **Deploy — `block-roundtrip`:** a dead text whose words are absent from
+  the decorated unit is reported as **DROPPED CONTENT** (the decoder never
+  consumed that element type) rather than DEAD TEXT; Step 8 names the full
+  default-content set every decorate() must consume. Detector only — no
+  leftovers pass was added to the scaffold (P20).
+
+Deferred by design: P3 (chrome-parity probe), P6 (depends on P3), P12
+(sibling variance probe), P24 (link-localization stage + lint tier).
+
 ## 0.19.2 — housekeeping: no site names in the plugin
 
 Every reference to a real customer, test or donor site — in skill text,
