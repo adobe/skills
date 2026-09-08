@@ -4,6 +4,28 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.19.4 — replica: chrome-parity probe (P3)
+
+- **New `replica/scripts/chrome-parity.mjs`** — computed-style parity for
+  chrome. Probes the same regions on live and build (default header +
+  footer; `--region strip=<liveSel>|<buildSel>` for sticky strips), pairs
+  every text-bearing element by text, and prints only the deltas: font
+  family / size / weight / style / line-height / letter-spacing / transform /
+  colour / background / padding / radius, element rect, the clickable box
+  of links and buttons, plus an icon inventory (count, size, signature)
+  paired by order; MISSING / EXTRA texts on either side. Live-side hardening
+  via the shared `live-session.mjs` (UA + headers, challenge fail-loud exit
+  3, overlay dismissal, `--headed`, `--locale`). Exit 0 quiet, 2 deltas.
+  Field evidence: one run found what many pixel-band rounds had not
+  (italic-vs-normal note, regular-vs-bold link, wrong nav link colour, 12px
+  row offsets, 97×40 vs 71×32 button, six missing icons).
+- **Gate doc, pass bar item 5:** styles diagnose, pixels confirm — run the
+  probe BEFORE any pixel iteration on chrome and clear its deltas; iteration
+  discipline gains the same rule. Replica SKILL setup copies the script and
+  the Phase 4 snippet shows the call; deploy Step 10 item 4 points at it for
+  the deployed-origin chrome gate. The ≥98% crop gate remains the pass bar —
+  the probe is a diagnostic, not a new threshold.
+
 ## 0.19.3 — replica field harvest, part 2: row-level instruments, masks, detectors (P1, P11, P22, P16, P19, P15, P20)
 
 Second fold of the 2026-09 same-design-migration ledger: the entries that
