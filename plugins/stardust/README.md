@@ -24,10 +24,7 @@ it, with every decision reasoned in the open before code runs.
 
 ## Two layers
 
-Stardust has a platform-agnostic core and an EDS-specific delivery layer. The
-core never mentions EDS. The delivery layer consumes the core's output and is
-the only place where blocks, Document Authoring and AEM appear. You can stop
-after the core and host the static tree anywhere.
+Stardust has a platform-agnostic core and an EDS-specific delivery layer.
 
 ```
 platform-agnostic core                          EDS delivery
