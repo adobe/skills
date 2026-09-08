@@ -29,22 +29,28 @@ function write(root, rel, content) {
 
 // ── Pattern registry ────────────────────────────────────────────────────────
 
-test('registry includes all 12 migration patterns with a valid strategy', () => {
+test('registry includes all 13 migration patterns with a valid strategy', () => {
   const expected = [
     'scheduler', 'resourceChangeListener', 'event-migration', 'assetApi', 'replication',
     'vault-package-dependencies', 'htlLint', 'osgiConfig', 'lui', 'cdw', 'templateModernization',
-    'dispatcherConversion',
+    'guavaCache', 'dispatcherConversion',
   ];
   assert.strictEqual(CANONICAL_PATTERNS.length, expected.length, 'no unexpected patterns');
   for (const key of expected) {
     assert.ok(CANONICAL_PATTERNS.includes(key), `${key} in CANONICAL_PATTERNS`);
     assert.ok(
-      ['cascade', 'html-scan', 'config-scan', 'content-scan', 'pom-scan'].includes(PATTERN_META[key].strategy),
+      ['cascade', 'html-scan', 'config-scan', 'content-scan', 'pom-scan', 'bpa-only'].includes(PATTERN_META[key].strategy),
       `${key} has a valid strategy`
     );
   }
   assert.strictEqual(PATTERN_META.dispatcherConversion.strategy, 'content-scan');
   assert.deepStrictEqual(PATTERN_META.dispatcherConversion.bpaSlugs, []);
+});
+
+test('guavaCache has no analyzer/content-scan fallback — bpaSlugs only, no heuristic flag', () => {
+  assert.strictEqual(PATTERN_META.guavaCache.strategy, 'bpa-only');
+  assert.deepStrictEqual(PATTERN_META.guavaCache.bpaSlugs, ['guavaCache']);
+  assert.ok(!PATTERN_META.guavaCache.heuristic, 'guavaCache findings are BPA-authoritative, not heuristic');
 });
 
 test('inject-in-sling-model and outdated-dependencies stay out of scope', () => {
@@ -500,6 +506,45 @@ test('BPA parser extracts cdw/lui/template/replication and excludes _COUNT rows'
 
   const tpl = await getBpaFindings('templateModernization', opts);
   assert.strictEqual(tpl.targets.length, 2, 'legacy.static.template + custom.static.template');
+});
+
+function writeGuavaCacheBpaCsv(root) {
+  const rows = [
+    'code,type,subtype,importance,identifier,message,context',
+    // Three Guava-internal-class rows for the SAME bundle — must dedupe to one target.
+    'GC,development.guideline,custom.guava.cache,INFO,com.google.common.cache.AbstractCache,The com.google.common.cache.AbstractCache class in the com.example.bundle-a bundle uses com.google.common.cache.Cache.,ctx',
+    'GC,development.guideline,custom.guava.cache,INFO,com.google.common.cache.CacheBuilder,The com.google.common.cache.CacheBuilder class in the com.example.bundle-a bundle uses com.google.common.cache.CacheBuilder.,ctx',
+    'GC,development.guideline,custom.guava.cache,INFO,com.google.common.cache.LoadingCache,The com.google.common.cache.LoadingCache class in the com.example.bundle-a bundle uses com.google.common.cache.LoadingCache.,ctx',
+    // A row that matches the subtype but whose message does not match the
+    // "in the <bundle> bundle" phrasing — must be dropped, not counted, with a warning.
+    'GC,development.guideline,custom.guava.cache,INFO,com.google.common.cache.Foo,Some unexpected BPA message format with no bundle phrase.,ctx',
+  ];
+  const p = path.join(root, 'guava.csv');
+  fs.writeFileSync(p, rows.join('\n') + '\n', 'utf8');
+  return p;
+}
+
+test('guavaCache dedupes multiple rows for one bundle to a single target, and warns (not drops silently) on an unparseable message', async () => {
+  const root = mkworkspace();
+  const csv = writeGuavaCacheBpaCsv(root);
+  const opts = { bpaFilePath: csv, collectionsDir: path.join(root, 'uc'), limit: null, offset: 0 };
+
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(' '));
+  let result;
+  try {
+    result = await getBpaFindings('guavaCache', opts);
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.strictEqual(result.targets.length, 1, 'three rows for the same bundle dedupe to one target');
+  assert.strictEqual(result.targets[0].className, 'com.example.bundle-a');
+  assert.ok(
+    warnings.some(w => /could not be parsed for a bundle name/.test(w)),
+    'the unparseable row emits a warning instead of vanishing silently'
+  );
 });
 
 test('a real BPA fetch failure is surfaced (warning + needsLlmScan), NOT reported clean', async () => {

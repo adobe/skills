@@ -17,8 +17,9 @@ const PATTERN_TO_SUBTYPE = {
   scheduler: "sling.commons.scheduler",
   assetApi: "unsupported.asset.api",
   eventListener: "javax.jcr.observation.EventListener",
-  resourceChangeListener: "org.apache.sling.api.resource.observation.ResourceChangeListener", 
-  eventHandler: "org.osgi.service.event.EventHandler"
+  resourceChangeListener: "org.apache.sling.api.resource.observation.ResourceChangeListener",
+  eventHandler: "org.osgi.service.event.EventHandler",
+  guavaCache: "custom.guava.cache"
 };
 
 // MongoDB-safe to pattern mapping
@@ -27,7 +28,8 @@ const MONGO_SAFE_TO_PATTERN = {
   "unsupported_asset_api": "assetApi",
   "javax_jcr_observation_EventListener": "eventListener",
   "org_apache_sling_api_resource_observation_ResourceChangeListener": "resourceChangeListener",
-  "org_osgi_service_event_EventHandler": "eventHandler"
+  "org_osgi_service_event_EventHandler": "eventHandler",
+  "custom_guava_cache": "guavaCache"
 };
 
 // Pattern → subtype(s), 1:many. Covers the Java patterns above plus the
@@ -44,6 +46,7 @@ const PATTERN_TO_SUBTYPES = {
   lui: ["legacy.dialog.classic", "legacy.dialog.coral2", "legacy.custom.component", "legacy.static.template"],
   templateModernization: ["legacy.static.template", "custom.static.template"],
   replication: ["forward.replication", "reverse.replication"],
+  guavaCache: ["custom.guava.cache"],
 };
 
 // Patterns whose findings are keyed by JCR path (raw keys, generic processor).
@@ -323,6 +326,43 @@ function processEventHandlerFromUnified(subtypeData, targets) {
 }
 
 /**
+ * Process Guava cache data from unified collection. One target per
+ * **bundle** — the bundle name (the actionable unit) is deduped upstream in
+ * `processGuavaCacheFindings` (bpa-local-parser.js), so a bundle that produced
+ * hundreds of raw CSV rows (one per Guava-internal class BPA found on its
+ * classpath, e.g. `com.google.common.cache.AbstractCache` — never a customer
+ * class) still collapses to exactly one migration unit here.
+ *
+ * Field shape is inverted from every other pattern in this file: `className`
+ * carries the actionable bundle name, and `identifier` carries the fixed
+ * subtype string `custom.guava.cache` (not a real class) — because BPA's own
+ * `identifier` column on this subtype is the Guava-internal class, which is
+ * never actionable, so it's discarded rather than round-tripped.
+ */
+function processGuavaCacheFromUnified(subtypeData, targets) {
+  let count = 0;
+
+  const identifierKeys = Object.keys(subtypeData || {}).sort();
+  for (const mongoSafeIdentifier of identifierKeys) {
+    const bundleNames = subtypeData[mongoSafeIdentifier] || [];
+    const identifier = fromMongoSafeFieldName(mongoSafeIdentifier);
+
+    for (const bundleName of bundleNames) {
+      count++;
+      targets.push(new BpaTarget(
+        "guavaCache",
+        bundleName,
+        identifier,
+        `Bundle uses Guava cache: ${bundleName}`,
+        "info"
+      ));
+    }
+  }
+
+  return count;
+}
+
+/**
  * Process a content/legacy-UI subtype whose unified data is keyed by RAW JCR
  * path (no MongoDB round-trip). Emits one target per finding, with the JCR path
  * as `className` (so downstream `location`/`file` resolve to the path) and the
@@ -430,6 +470,7 @@ function fetchUnifiedBpaFindings(pattern = "all", collectionsDir = './unified-co
     eventListener: processEventListenerFromUnified,
     resourceChangeListener: processResourceChangeListenerFromUnified,
     eventHandler: processEventHandlerFromUnified,
+    guavaCache: processGuavaCacheFromUnified,
   };
 
   // Process each pattern — a pattern may map to more than one subtype.
