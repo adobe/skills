@@ -28,10 +28,11 @@ function write(root, rel, content) {
 
 // ── Pattern registry ────────────────────────────────────────────────────────
 
-test('registry includes all 12 migration patterns with a valid strategy', () => {
+test('registry includes all 13 migration patterns with a valid strategy', () => {
   const expected = [
     'scheduler', 'resourceChangeListener', 'event-migration', 'assetApi', 'replication',
     'htlLint', 'osgiConfig', 'lui', 'cdw', 'templateModernization', 'guavaCache', 'dispatcherConversion',
+    'oakIndex',
   ];
   assert.strictEqual(CANONICAL_PATTERNS.length, expected.length, 'no unexpected patterns');
   for (const key of expected) {
@@ -49,6 +50,12 @@ test('guavaCache has no analyzer/content-scan fallback — bpaSlugs only, no heu
   assert.strictEqual(PATTERN_META.guavaCache.strategy, 'bpa-only');
   assert.deepStrictEqual(PATTERN_META.guavaCache.bpaSlugs, ['guavaCache']);
   assert.ok(!PATTERN_META.guavaCache.heuristic, 'guavaCache findings are BPA-authoritative, not heuristic');
+});
+
+test('oakIndex has no analyzer/content-scan fallback — bpaSlugs only, no heuristic flag', () => {
+  assert.strictEqual(PATTERN_META.oakIndex.strategy, 'bpa-only');
+  assert.deepStrictEqual(PATTERN_META.oakIndex.bpaSlugs, ['oakIndex']);
+  assert.ok(!PATTERN_META.oakIndex.heuristic, 'oakIndex findings are BPA-authoritative, not heuristic');
 });
 
 test('inject-in-sling-model and outdated-dependencies stay out of scope', () => {
@@ -469,6 +476,50 @@ test('guavaCache dedupes multiple rows for one bundle to a single target, and wa
   assert.ok(
     warnings.some(w => /could not be parsed for a bundle name/.test(w)),
     'the unparseable row emits a warning instead of vanishing silently'
+  );
+});
+
+function writeOakIndexBpaCsv(root) {
+  const rows = [
+    'code,type,subtype,importance,identifier,message,context',
+    // Two rule-violation rows for the SAME index path — must dedupe to one target.
+    'OID,oak.index.definition,index.rule.violation,CRITICAL,/content/oak:index/enablementResourceName,The /content/oak:index/enablementResourceName Oak index has a rule violation: Custom definition name must follow the pattern <name>-custom-<version>,ctx',
+    'OID,oak.index.definition,index.rule.violation,CRITICAL,/content/oak:index/enablementResourceName,The /content/oak:index/enablementResourceName Oak index has a rule violation: Path must begin with /oak:/index,ctx',
+    // A distinct rule-violation path.
+    'OID,oak.index.definition,index.rule.violation,CRITICAL,/oak:index/wkndId,The /oak:index/wkndId Oak index has a rule violation: Custom definition name must follow the pattern <name>-custom-<version>,ctx',
+    // A standard-index-modification finding (OOTB index modified in place).
+    'OID,oak.index.definition,standard.index.modification,CRITICAL,/oak:index/damAssetLucene,The /oak:index/damAssetLucene Oak index modifies a standard OOTB index definition,ctx',
+    // Summary row — bare numeric identifier, must be excluded, not mistaken for a path.
+    '_COUNT_OID,_count.oak.index.definition,index.rule.violation,CRITICAL,182,Count: 182,ctx',
+  ];
+  const p = path.join(root, 'oakindex.csv');
+  fs.writeFileSync(p, rows.join('\n') + '\n', 'utf8');
+  return p;
+}
+
+test('oakIndex dedupes repeat rows for the same index path, excludes _COUNT_OID, and splits by sub-type', async () => {
+  const root = mkworkspace();
+  const csv = writeOakIndexBpaCsv(root);
+  const opts = { bpaFilePath: csv, collectionsDir: path.join(root, 'uc'), limit: null, offset: 0 };
+
+  const result = await getBpaFindings('oakIndex', opts);
+
+  assert.strictEqual(result.targets.length, 3, 'two rule-violation rows for the same path dedupe to one target, plus the distinct path and the standard-modification finding');
+  assert.strictEqual(
+    result.targets.filter(t => t.identifier === 'index.rule.violation').length, 2,
+    'two distinct rule-violation index paths'
+  );
+  assert.strictEqual(
+    result.targets.filter(t => t.identifier === 'standard.index.modification').length, 1,
+    'one standard-index-modification finding'
+  );
+  assert.ok(
+    result.targets.some(t => t.className === '/content/oak:index/enablementResourceName'),
+    'JCR index path preserved as the actionable className'
+  );
+  assert.ok(
+    !result.targets.some(t => t.className === '182'),
+    '_COUNT_OID summary row (bare numeric identifier) must not be mistaken for an index path'
   );
 });
 

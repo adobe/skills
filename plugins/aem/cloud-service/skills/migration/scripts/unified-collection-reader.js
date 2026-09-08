@@ -19,7 +19,8 @@ const PATTERN_TO_SUBTYPE = {
   eventListener: "javax.jcr.observation.EventListener",
   resourceChangeListener: "org.apache.sling.api.resource.observation.ResourceChangeListener",
   eventHandler: "org.osgi.service.event.EventHandler",
-  guavaCache: "custom.guava.cache"
+  guavaCache: "custom.guava.cache",
+  oakIndex: "oak.index.definition"
 };
 
 // MongoDB-safe to pattern mapping
@@ -29,7 +30,8 @@ const MONGO_SAFE_TO_PATTERN = {
   "javax_jcr_observation_EventListener": "eventListener",
   "org_apache_sling_api_resource_observation_ResourceChangeListener": "resourceChangeListener",
   "org_osgi_service_event_EventHandler": "eventHandler",
-  "custom_guava_cache": "guavaCache"
+  "custom_guava_cache": "guavaCache",
+  "oak_index_definition": "oakIndex"
 };
 
 // Pattern → subtype(s), 1:many. Covers the Java patterns above plus the
@@ -47,6 +49,7 @@ const PATTERN_TO_SUBTYPES = {
   templateModernization: ["legacy.static.template", "custom.static.template"],
   replication: ["forward.replication", "reverse.replication"],
   guavaCache: ["custom.guava.cache"],
+  oakIndex: ["oak.index.definition"],
 };
 
 // Patterns whose findings are keyed by JCR path (raw keys, generic processor).
@@ -363,6 +366,41 @@ function processGuavaCacheFromUnified(subtypeData, targets) {
 }
 
 /**
+ * Process Oak index data from unified collection. Unlike the content/LUI
+ * patterns, the unified data here is keyed by the BPA **sub-type** string
+ * (`index.rule.violation` / `standard.index.modification`, MongoDB-safe
+ * round-tripped), each mapping to an array of raw JCR index paths — so a
+ * generic `processContentFromUnified` pass (keyed by JCR path) doesn't fit.
+ *
+ * Field shape mirrors `processGuavaCacheFromUnified`: `className` carries the
+ * actionable JCR index path, and `identifier` carries the BPA sub-type string
+ * (which distinguishes a full rule violation from an OOTB index modified in
+ * place — both need the Index Converter tool, but the message differs).
+ */
+function processOakIndexFromUnified(subtypeData, targets) {
+  let count = 0;
+
+  const identifierKeys = Object.keys(subtypeData || {}).sort();
+  for (const mongoSafeIdentifier of identifierKeys) {
+    const indexPaths = subtypeData[mongoSafeIdentifier] || [];
+    const identifier = fromMongoSafeFieldName(mongoSafeIdentifier);
+
+    for (const indexPath of indexPaths) {
+      count++;
+      targets.push(new BpaTarget(
+        "oakIndex",
+        indexPath,
+        identifier,
+        `Oak index definition (${identifier}): ${indexPath}`,
+        "high"
+      ));
+    }
+  }
+
+  return count;
+}
+
+/**
  * Process a content/legacy-UI subtype whose unified data is keyed by RAW JCR
  * path (no MongoDB round-trip). Emits one target per finding, with the JCR path
  * as `className` (so downstream `location`/`file` resolve to the path) and the
@@ -471,6 +509,7 @@ function fetchUnifiedBpaFindings(pattern = "all", collectionsDir = './unified-co
     resourceChangeListener: processResourceChangeListenerFromUnified,
     eventHandler: processEventHandlerFromUnified,
     guavaCache: processGuavaCacheFromUnified,
+    oakIndex: processOakIndexFromUnified,
   };
 
   // Process each pattern — a pattern may map to more than one subtype.
