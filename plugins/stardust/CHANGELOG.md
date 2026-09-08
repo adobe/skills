@@ -4,6 +4,27 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.19.7 — sibling variance probe (P12)
+
+- **New `replica/scripts/sibling-variance.mjs`** — before cloning a gated
+  archetype onto its siblings, probe the template-defining computed values on
+  every sibling's LIVE page and diff against the archetype: per `--probe
+  name=<sel>` the match count, first match's box + computed group (background
+  layers incl. gradient scrims, colour, padding, font, radius), first heading
+  and image, list-style and `::before` mechanism, and the number of distinct
+  style families among matches; plus the top-level section list. Defaults
+  (first section, most-repeated class, `li`) when no probes are given.
+  Live-session hardening as the other replica instruments. Exit 0 constant,
+  2 variance found. Read-only — it never edits the clone.
+  Field evidence: eight "same-template" siblings varied in hero template
+  (441 vs 528px), scrim direction, bullet mechanism and terms shape — all
+  found late at the pixel gate.
+- **Fidelity tiers:** the sibling tier is "variance-probed" first; new
+  § Sibling variance probe — every delta is budgeted as a block VARIANT class
+  emitted on the sibling's content (blocks stay generic, never forked per
+  page); `gatesPassed` gains `variance-probe`, `_meta.json` gains
+  `variants[]`. Replica Phase 5 and migrate's A′ branch point at it.
+
 ## 0.19.6 — replica: glyph-dense chrome noise floor, evidence-gated (P6)
 
 - **`crop-compare.mjs` reports the diff TEXTURE** — the share of differing
