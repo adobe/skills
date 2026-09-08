@@ -24,6 +24,11 @@
  *     --pm-threshold <n> pixelmatch per-pixel color threshold (default 0.1)
  *     --json          machine-readable summary on stdout
  *
+ *   Also prints the diff TEXTURE (share of differing pixels with ≥5 differing
+ *   neighbours): thin-edge = glyph-antialiasing noise, thick = blocks/bands.
+ *   Reported only — it never changes the exit code (see the gate doc, pass bar
+ *   item 5, for the glyph-dense alternative pass it supports).
+ *
  * Example (header band, then footer band with per-side offsets):
  *   node skills/replica/scripts/crop-compare.mjs live.png proto.png \
  *     --y 0 --height 120 --out gates/home-1440/chrome-header-diff.png
@@ -91,6 +96,28 @@ const diff = new PNG({ width: w, height: h });
 const n = pixelmatch(ca.data, cb.data, diff.data, w, h, { threshold: pmThreshold });
 fs.writeFileSync(out, PNG.sync.write(diff));
 
+// Diff TEXTURE — separates glyph-antialiasing noise from real misalignment.
+// A differing pixel is "thick" when ≥5 of its 8 neighbours also differ: blocks,
+// bands and shifted shapes are thick; per-glyph antialiasing between two font
+// rasterisations (a hinted licensed face vs a self-hosted webfont) is thin —
+// numerically identical family/size/weight/colour/pitch/position can still
+// bottom out at ~5% pixel diff on a ~50-link footer. The share is REPORTED,
+// never used to pass: the alternative pass (source-fidelity-gate.md § Pass bar,
+// item 5 — glyph-dense regions) also needs chrome-parity.mjs quiet for the
+// region and a logged residual carrying both artifacts.
+const isRed = (x, y) => { if (x < 0 || y < 0 || x >= w || y >= h) return false; const i = (y * w + x) * 4; return diff.data[i] === 255 && diff.data[i + 1] < 100; };
+let thick = 0;
+for (let y = 0; y < h; y += 1) {
+  for (let x = 0; x < w; x += 1) {
+    if (!isRed(x, y)) continue;
+    let k = 0;
+    for (let dy = -1; dy <= 1; dy += 1) for (let dx = -1; dx <= 1; dx += 1) if ((dx || dy) && isRed(x + dx, y + dy)) k += 1;
+    if (k >= 5) thick += 1;
+  }
+}
+const thickPct = n ? (thick / n) * 100 : 0;
+const texture = n === 0 ? 'none' : thickPct <= 15 ? 'thin-edge (glyph-antialiasing texture)' : thickPct >= 40 ? 'thick (blocks/bands — misalignment or missing paint)' : 'mixed';
+
 const pct = (n / (w * h)) * 100;
 const pass = pct <= bar;
 if (asJson) {
@@ -98,8 +125,10 @@ if (asJson) {
     a: fileA, b: fileB, y: y0, yB: y1, height: h, width: w,
     diffPixels: n, diffPct: +pct.toFixed(2), matchPct: +(100 - pct).toFixed(2),
     threshold: bar, pass, diffImage: out,
+    texture: { thickPct: +thickPct.toFixed(1), label: texture },
   }));
 } else {
   console.log(`crop y${y0}${y1 !== y0 ? `/y${y1}` : ''}+${h}: ${n} px = ${pct.toFixed(2)}% diff → match ${(100 - pct).toFixed(2)}% — ${pass ? 'PASS' : `FAIL (bar ${bar}%)`}`);
+  if (n) console.log(`  texture: ${thickPct.toFixed(1)}% thick → ${texture}${!pass && thickPct <= 15 ? ' — glyph-dense region? run chrome-parity.mjs; if it is quiet, log as a justified residual (gate doc § Pass bar, item 5)' : ''}`);
 }
 process.exit(pass ? 0 : 2);
