@@ -133,6 +133,28 @@ The prototype capture is re-taken every iteration.
      --region header=header --region footer=footer   # + --region strip=<sel>|<sel>
    ```
 
+   **Glyph-dense chrome has a pixel noise floor — the ONE justified way past
+   the 2% bar, and it is evidence-gated three ways.** A footer of ~50 links
+   bottomed out at ~5% pixel diff with family, size, line-height, weight,
+   colour, pitch and positions all numerically identical (recorded): per-glyph
+   antialiasing between a hinted licensed face and the self-hosted webfont
+   dominates, and raw pixel bars over-iterate against noise. A chrome band
+   that FAILS crop-compare may be logged as a **justified residual** —
+   never a pass — only when ALL three hold, and each is an artifact in the
+   residual entry (§ Residual logging format, `cause: "glyph-antialiasing"`):
+   (1) `chrome-parity.mjs` exits 0 for that region at tolerance 1px — every
+   paired text's metrics and position match, no MISSING/EXTRA, icons paired;
+   (2) `crop-compare.mjs` reports the diff **texture** as thin-edge (≤15% of
+   differing pixels have ≥5 differing neighbours) — glyph antialiasing is
+   thin, misalignment and missing paint are thick; (3) the region is
+   text-dense (link columns, nav rows) — a band with imagery or icons never
+   qualifies (parity's ICONS finding would not be quiet anyway). One or two
+   of the three is not enough: a quiet parity probe with a THICK texture is
+   a paint defect the probe does not model; a thin texture with parity
+   deltas is a real metric error hiding in noise. The 2% bar itself is
+   unchanged, and the residual is re-verified every gate round like any
+   other justified flag.
+
    **Chrome crops are ELEMENT-ANCHORED per side, never fixed-y — and
    "chrome" means every site-wide repeating band: header, sticky/quick-link
    strips, footer.** Recorded: the header measured 33.9% and a quick-links
@@ -588,7 +610,8 @@ Per archetype per breakpoint, in `stardust/replica/progress.json`:
         { "probe": "content", "flag": "🟠 font fork ×2", "why": "licensed kit substituted, R-policy fonts", "permanent": true }
       ],
       "residuals": [
-        { "band": "y 4500–5000", "pct": 6.2, "cause": "capture-state: 3 CDN-403 placeholder tiles", "flaggedFor": "delivery" }
+        { "band": "y 4500–5000", "pct": 6.2, "cause": "capture-state: 3 CDN-403 placeholder tiles", "flaggedFor": "delivery" },
+        { "region": "footer", "pct": 4.8, "cause": "glyph-antialiasing", "parity": "gates/home-1440/chrome-parity-iter3.json", "texture": { "thickPct": 6.1 }, "flaggedFor": "user" }
       ],
       "captureState": [ { "what": "product tiles 4–6 on placeholder data-URIs", "where": "carousel-2" } ]
     },

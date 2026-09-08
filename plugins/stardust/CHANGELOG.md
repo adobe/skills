@@ -4,6 +4,22 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.19.6 — replica: glyph-dense chrome noise floor, evidence-gated (P6)
+
+- **`crop-compare.mjs` reports the diff TEXTURE** — the share of differing
+  pixels with ≥5 differing neighbours: thin-edge = glyph-antialiasing noise,
+  thick = blocks/bands (misalignment, missing paint). Reported in text and
+  `--json`; never changes the exit code.
+- **Gate doc, pass bar item 5:** a glyph-dense chrome band that fails the 2%
+  bar may be logged as a justified residual (`cause: "glyph-antialiasing"`)
+  — never a pass — only when all three hold and are attached as artifacts:
+  `chrome-parity.mjs` exit 0 for the region at 1px tolerance, crop-compare
+  texture thin-edge (≤15% thick), and a text-dense region (no imagery/icons).
+  Field evidence: a ~50-link footer bottomed out at ~5% with every metric
+  numerically identical; a hinted licensed face vs a self-hosted webfont
+  rasterise differently per glyph. The 2% bar is unchanged; residual logging
+  format gains the entry shape.
+
 ## 0.19.5 — deploy: link localization as a pipeline stage (P24)
 
 - **New `deploy/scripts/localize-links.mjs`** — dependency-free, idempotent.
