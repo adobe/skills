@@ -1,163 +1,183 @@
 # stardust
 
-> Modernise an existing website — with or without a redesign — and ship it.
+> Modernise an existing website, with or without a redesign, and ship it.
 
-Stardust is a Claude Code plugin for taking a website that already exists and
-making it measurably better, then delivering the result. It grew out of a
-redesign tool and keeps that DNA: it is opinionated about what *better* looks
-like, reasons every decision in the open before code runs, and delegates the
-design craft itself to **[impeccable](https://github.com/pbakaus/impeccable)**.
-But design is one dimension of a modern site, not the whole job. Stardust
-treats modernisation as several dimensions at once, and lets you decide which
-ones move.
+Stardust is a Claude Code plugin for improving a website that already exists
+and delivering the result. It started as a redesign tool and still puts design
+first, but design is one of several things a modern site needs. Stardust
+measures and works on all of them, and you choose which ones move. The design
+craft itself comes from [impeccable](https://github.com/pbakaus/impeccable);
+stardust owns the job of taking a live site from where it is to where you want
+it, with every decision reasoned in the open before code runs.
 
-| Dimension | What stardust does about it | Where |
+## What stardust improves
+
+| Dimension | What stardust does | Skills |
 |---|---|---|
-| **Design** | Capture the current design system; keep it, refresh it from an intent, or adopt a donor's; anti-template and brand-tension gates | `extract`, `direct`, `prototype`, `replica`, `reskin`, `uplift` |
-| **Performance** | Core Web Vitals scored on the live site; self-hosted metric-matched fonts, reserved chrome, eager LCP images and CLS probes on the delivered pages; perf budgets in QA | `audit`, `deploy`, `qa` |
-| **SEO / technical** | Titles, descriptions, canonicals, sitemap, redirects, robots, JSON-LD; path-safety and link localization at delivery; deterministic autofixes | `audit`, `migrate`, `rollout`, `qa` |
-| **LLM / AI-search visibility** | Answerability, `llms.txt`, schema coverage, key facts crawlable in server-rendered HTML rather than only in chrome | `audit`, `deploy`, `rollout` |
-| **Accessibility** | Contrast, alt coverage, landmarks, one `<h1>`; axe sweep on the deployed site | `audit`, `rollout`, `qa` |
-| **Content fidelity** | Verbatim copy, measured per page at import time; byte-level gates when the design changes | `migrate`, `replica`, `reskin`, `qa` |
-| **Authoring** | Generated blocks stay editable in Experience Workspace; David's Model content structure enforced by a lint | `deploy`, `rollout` |
-| **Platform** | Delivery to AEM Edge Delivery Services via Document Authoring, or platform-agnostic static HTML | `migrate`, `deploy`, `rollout` |
+| Design | Captures the current design system, then keeps it, refreshes it from your intent, or adopts a donor's. Anti-template and brand-tension gates. | extract, direct, prototype, replica, reskin, uplift |
+| Performance | Scores Core Web Vitals on the live site. On delivered pages: self-hosted metric-matched fonts, reserved chrome height, eager LCP image, CLS probes. Perf budgets in QA. | audit, deploy, qa |
+| SEO and technical | Titles, descriptions, canonicals, sitemap, redirects, robots, JSON-LD. Path safety and link localization at delivery. Deterministic autofixes. | audit, migrate, rollout, qa |
+| LLM and AI-search visibility | Answerability, `llms.txt`, schema coverage, key facts kept in server-rendered HTML so crawlers and AI bots see them. | audit, deploy, rollout |
+| Accessibility | Contrast, alt coverage, landmarks, a single `<h1>`. Axe sweep on the deployed site. | audit, rollout, qa |
+| Content fidelity | Copy carried verbatim and measured per page at import. Byte-level gates when the design changes. | migrate, replica, reskin, qa |
+| Authoring | Generated blocks stay editable in Experience Workspace. Content structure follows David's Model, enforced by a lint. | deploy, rollout |
+| Platform | Delivery to AEM Edge Delivery Services through Document Authoring, or a static HTML tree for any host. | migrate, deploy, rollout |
 
-## Start from your goal
+## Two layers
 
-The first question stardust asks about a site is not "what should it look
-like" but "what are you trying to do". The answer picks the flow; the
-delivery chain downstream is shared.
+Stardust has a platform-agnostic core and an EDS-specific delivery layer. The
+core never mentions EDS. The delivery layer consumes the core's output and is
+the only place where blocks, Document Authoring and AEM appear. You can stop
+after the core and host the static tree anywhere.
 
-| You want to… | Flow | Design |
-|---|---|---|
-| Know where the site stands today | `audit <url>` — scored report across the dimensions above | unchanged |
-| **Move to a new platform and keep the current design** | `replica` → `migrate` → `deploy` / `rollout` | kept, near pixel-perfect |
-| **Move to a new platform and redesign on the way** | `prepare-migration` (or `extract` → `direct` → `prototype`) → `migrate` → `deploy` / `rollout` | new, from your intent |
-| Keep the content, take the design from elsewhere | `reskin` (donor = another live site or local prototypes) → `deploy` / `rollout` | donor's |
-| See what a redesign could be, for a pitch | `uplift <url>` — three differentiated variants, one cinematic, from the URL alone | proposed |
-| Redesign without changing platform | `extract` → `direct` → `prototype` → `migrate` (static HTML) | new |
+```
+platform-agnostic core                          EDS delivery
+────────────────────────────────────────────    ─────────────────────────────
+extract → direct → prototype → migrate     ──▶  deploy → rollout → qa
+replica ─────────────────────┘                  (diff is used by both)
+reskin ──────────────────────┘
+audit, uplift (standalone)
+```
 
-Two of these are full **migration flows**. They must never be mixed, and the
-master skill states which one applies in its first answer to any "how do I
-migrate X" question.
+**Platform-agnostic core.** Eleven skills that read a live site and produce
+a redesign, a replica or a reskin as self-contained static HTML under
+`stardust/`. Nothing in them assumes a CMS.
 
-### Migration without redesign — `replica`
+- `extract` crawls the site (capped, multi-page) and writes the captured
+  design system, brand surface, per-page inventory and rendered DOM to
+  `stardust/current/`.
+- `direct` resolves your intent into a target `PRODUCT.md` and `DESIGN.md`,
+  with reference research when the refero MCP is present and the reasoning
+  kept in `stardust/direction.md`.
+- `prototype` renders before/after pages under `stardust/prototypes/` and
+  iterates them through impeccable's craft loop.
+- `prepare-migration` runs extract, direct and prototype in `--prep` mode
+  with confirmation gates, for the redesign migration flow.
+- `replica` recreates one archetype per page type as clean HTML/CSS that
+  matches the live site near pixel-perfect, proven by a measured gate.
+- `reskin` re-lays byte-faithful content onto a donor design system.
+- `migrate` applies the approved design or replica to every page and writes
+  the deployable static tree to `stardust/migrated/`, one fidelity tier per
+  page.
+- `audit` scores any URL across the dimensions above.
+- `uplift` turns a URL into three presales redesign variants without further
+  input.
+- `diff` compares any prototype with any build, pixel and structure, through
+  an `eds` or `generic` profile.
+- `stardust` is the master skill: setup, routing, state report, hands-off
+  mode.
 
-Same pages, same content, same design, new platform. Every judgement call is
-a measurement-policy call, never a taste call.
+Outputs: `stardust/current/`, `stardust/prototypes/`, `stardust/migrated/`,
+`stardust/state.json`, `stardust/status.jsonl`, `stardust/learnings.md`.
 
-1. **Capture** the full inventory (`extract --prep` runs as replica's first
-   phase; no separate `prepare-migration`).
-2. **Preserve the direction** mechanically: the captured design system *is*
-   the target spec. The only permitted design changes are entries in an
-   explicit **inconsistency register**; an empty register is the common case.
-3. **Recreate one archetype per page type** as clean semantic HTML/CSS —
-   never DOM copies — with values lifted from the source's own CSS.
-4. **Gate it against the live site** per breakpoint: structural content
-   diff, visual heuristics, stitched pixel diff with a hard iteration cap,
-   a separate chrome crop gate for header/footer/strips, a computed-style
-   chrome-parity probe, and observed (never inferred) interaction parity.
-5. **Fan out** to siblings via `migrate` at the sibling tier, after a live
-   variance probe budgets template deltas as block variants, then
-   `deploy` / `rollout`. The final gate runs against the **published
-   origin**, not a local harness.
+**EDS delivery.** Three skills that take the migrated tree to AEM Edge
+Delivery Services.
 
-### Migration with redesign — `prepare-migration` → `migrate`
-
-The site is re-platformed *and* moves to a new design resolved from your
-intent ("more expressive for a younger audience", "calmer, more editorial").
-
-1. **`extract --prep`** — full-inventory crawl, page typing, module catalog.
-2. **`direct --prep`** — intent → target `PRODUCT.md` + `DESIGN.md`,
-   grounded in reference research, with the reasoning trace kept.
-3. **`prototype --prep`** — one archetype prototype per page type plus the
-   design canon, iterated through impeccable's craft loop with
-   anti-template, brand-tension and vision-verified checkpoints.
-4. **`migrate`** — apply canon and modules to every page with a declared
-   fidelity tier (archetype / sibling / thin), content preserved verbatim
-   and measured.
-5. **`deploy` / `rollout`** — the shared delivery chain below.
-
-`prepare-migration` orchestrates steps 1–3 with confirmation gates; running
-the three skills yourself is equivalent.
-
-### Shared delivery chain
-
-- **`deploy`** — one page → EDS blocks + Document Authoring content. Each
-  prototype section becomes a block; content structure follows David's
-  Model (mechanical lint); blocks obey the Experience Workspace editability
-  contract; internal links are localized; fonts, chrome reservation and LCP
-  handling keep CLS low; a per-page atomic contract verifies the delivered
-  page before it counts as deployed.
-- **`rollout`** — the whole site: inventory and coverage ledger, block
-  dedup, per-page delivery through `deploy`, site assembly (sitemap,
-  redirects, dynamic listings, multilingual trees), full-site verify and
-  link audit, then an **optimize gate** that aggregates findings from the
-  audit sources (accessibility, SEO, AI-search, brand tensions) and applies
-  deterministic AEM autofixes before the report.
-- **`qa`** — read-only sweep of the live site: routing, content fidelity vs
+- `deploy` converts one page into EDS blocks under `blocks/` and Document
+  Authoring content under `content/`, then writes it through the DA Source
+  API. Each prototype section becomes a block. Content structure passes the
+  David's Model lint, blocks pass the Experience Workspace editability gate,
+  internal links are localized, and a per-page atomic contract checks the
+  delivered page before it counts as deployed.
+- `rollout` delivers the whole site: coverage ledger, block dedup, per-page
+  delivery through `deploy`, site assembly (sitemap, redirects, dynamic
+  listings, multilingual trees), full-site verify and link audit, an
+  optimize gate that aggregates accessibility, SEO, AI-search and
+  brand-tension findings, deterministic AEM autofixes, and a report.
+- `qa` sweeps the live EDS site read-only: routing, content fidelity against
   the capture, template conformance, rendered integrity, visual regression,
   metadata and JSON-LD, links, axe accessibility, performance budgets,
-  editability. Finds; never fixes.
-- **`diff`** — pixel and structural fidelity probes between any prototype
-  and its build, reused by every gate above.
+  editability. It reports and never fixes.
 
-## Skills
+Outputs: `blocks/`, `content/`, `stardust/rollout/` (ledger, coverage,
+findings, dashboard), `stardust/qa/`.
 
-| Skill | Owns |
-|---|---|
-| `stardust` | Master skill: setup, goal-based routing, state report, hands-off mode |
-| `audit` | Design + SEO + LLM-visibility + Core Web Vitals audit of any URL → scored report |
-| `extract` | Capture the current site: design system, brand surface, per-page inventory, rendered DOM |
-| `direct` | Resolve intent into a target design spec with a reasoning trace |
-| `prototype` | Per-page before/after prototypes through the impeccable craft loop; optional motion register |
-| `prepare-migration` | The redesign-flow prep cascade with confirmation gates |
-| `replica` | Same-design migration with a measured source-fidelity gate |
-| `reskin` | Byte-faithful content onto a donor design system |
-| `uplift` | One-shot presales redesign: URL in, three variants out |
-| `migrate` | Render every page to platform-agnostic static HTML with fidelity tiers |
-| `deploy` | One page → EDS blocks + DA delivery |
-| `rollout` | Whole-site delivery, optimize gate, autofix, report |
-| `qa` | Read-only post-deploy QA sweep |
-| `diff` | Prototype ↔ build fidelity probes |
+## Two migration flows
 
-The platform-agnostic core (`extract` → `direct` → `prototype` → `migrate`)
-never leaks EDS concepts; the delivery skills consume its output.
+A migration to EDS starts with one question: does the design stay or change?
+The answer picks the flow. The delivery layer is the same for both, the two
+flows are never mixed, and the master skill names the chosen flow in its first
+reply to any "how do I migrate this site" question.
 
-## Hands-off production mode
+| | Keep the design | Redesign on the way |
+|---|---|---|
+| Core (agnostic) | `replica` → `migrate` | `prepare-migration` (or `extract` → `direct` → `prototype`) → `migrate` |
+| Delivery (EDS) | `deploy` for a pilot page, `rollout` for the site, `qa` after | same |
+| Design source | The captured site. Changes only through an inconsistency register, which is usually empty. | Your intent, resolved into a target spec. |
+| Prep step | None besides replica itself. Never run `prepare-migration` with it. | `prepare-migration`, or the three skills by hand. |
 
-For production migrations the whole chain runs end-to-end without
-conversational gates: decisions that would normally pause for the user are
-resolved from the captured evidence and logged, run status streams to
-`stardust/status.jsonl`, and every run appends to a **learnings ledger** whose
-general findings are folded back into the skills. Much of what the skills
-know today — chrome crop gates, sizing-model lifts, editability contracts,
-link localization, glyph-noise floors — came in through that loop.
+### Keep the design: `replica` → `migrate` → `deploy` / `rollout`
 
-## Optional integrations
+1. `extract --prep` runs as replica's first phase and captures the full
+   inventory.
+2. The captured design system becomes the target spec by mechanical
+   promotion. The only permitted design changes are the entries of an
+   explicit inconsistency register.
+3. One archetype per page type is recreated as clean semantic HTML/CSS with
+   values lifted from the source's own CSS. Never a DOM copy.
+4. Each archetype is gated against the live site per breakpoint: structural
+   content diff, visual heuristics, stitched pixel diff with a three-iteration
+   cap, a crop gate for header, footer and sticky strips, a computed-style
+   chrome-parity probe, and interaction parity observed at runtime rather than
+   inferred from CSS.
+5. Siblings are cloned through `migrate` at the sibling tier after a live
+   variance probe has budgeted template deltas as block variants.
+6. EDS delivery, with the final gate run against the published origin rather
+   than a local harness.
 
-Used when present, degrade gracefully when absent:
+### Redesign on the way: `prepare-migration` → `migrate` → `deploy` / `rollout`
 
-- **refero MCP** — real-site reference research for `direct`.
-- **modern-web-guidance** — current platform best practices.
-- **marketing-skills** — `seo-audit`, `schema`, `ai-seo` and
-  `site-architecture` feed `audit` and rollout's optimize gate.
+1. `extract --prep` crawls the full inventory and types the pages.
+2. `direct --prep` resolves the intent into `PRODUCT.md` and `DESIGN.md` and
+   confirms page types and the module catalog.
+3. `prototype --prep` produces one archetype prototype per page type plus the
+   design canon, through impeccable's craft loop with anti-template,
+   brand-tension and vision-verified checkpoints.
+4. `migrate` applies canon and modules to every page with a declared
+   fidelity tier (archetype, sibling or thin), content preserved verbatim
+   and counted.
+5. EDS delivery.
 
-## Hard dependency
+## Other entry points
 
-Stardust requires impeccable and ships no fallbacks. The dependency is
-deliberately **unpinned** — the design craft should always be the current
-release — and the setup step prints a one-line hint when a newer impeccable
-is available than the one installed.
+- `audit <url>` when you want the scorecard before deciding anything.
+- `reskin` when the content stays and the design comes from another live
+  site or from local prototypes. Content is gated byte for byte; the layout
+  adapts to the donor's modules. Delivery is the same EDS layer.
+- `uplift <url>` when you need a pitch: three differentiated variants, one of
+  them cinematic, from the URL alone.
+- `extract` → `direct` → `prototype` → `migrate` when you want a redesign
+  as static HTML with no platform change.
+
+## Hands-off mode
+
+Production migrations run the whole chain without conversational gates.
+Decisions that would normally pause for you are resolved from the captured
+evidence and logged, run status streams to `stardust/status.jsonl`, and each
+run appends to `stardust/learnings.md`. General findings from that ledger are
+folded back into the skills. The chrome crop gate, the sizing-model lift, the
+editability contract, link localization and the glyph-noise floor all entered
+the plugin that way.
+
+## Dependencies
+
+Stardust requires impeccable and has no fallback. The dependency is
+deliberately unpinned so that the design craft is always the current release,
+and the setup step prints one line when a newer impeccable is available than
+the one installed.
+
+Three integrations are used when present and skipped when absent: the refero
+MCP for `direct`'s reference research, modern-web-guidance for platform best
+practices, and the marketing-skills `seo-audit`, `schema`, `ai-seo` and
+`site-architecture` skills, which feed `audit` and rollout's optimize gate.
 
 ## Status
 
-`v0.19.x` — a series of field harvests from same-design migrations folded
-into the skills: element-anchored chrome crop gates, computed-style
-chrome-parity and row-profile instruments, rendered-DOM capture, link
-localization as a deploy stage, dropped-content and script-text detectors,
-sibling variance probing, and the impeccable update hint. See
-[CHANGELOG.md](CHANGELOG.md) for the full breakdown.
+`v0.19.x` folds a series of field harvests from same-design migrations into
+the skills: element-anchored chrome crop gates, chrome-parity and row-profile
+instruments, rendered-DOM capture, link localization as a deploy stage,
+dropped-content and script-text detectors, sibling variance probing, and the
+impeccable update hint. [CHANGELOG.md](CHANGELOG.md) has the full list.
 
 ## License
 
