@@ -265,7 +265,15 @@ Capture per page (full schema in `reference/current-state-schema.md`):
   `screenshot` field)
 
 Save to `stardust/current/pages/<slug>.json` with `_provenance` as the
-first key. Save referenced media to `stardust/current/assets/media/`
+first key. **The bundled crawler also saves the settled rendered DOM
+verbatim as `stardust/current/pages/<slug>.html`** (`page.content()`
+after the wait/scroll settle; path in the record's `renderedHtml`
+field). Capture once, parse offline: every downstream importer or
+sibling generator iterates its extraction against this artifact —
+free, reproducible, and provenance — instead of re-running live
+probes per selector guess (recorded: 4+ live round-trips per page
+family before the switch). Live probes stay for what the static DOM
+cannot answer: geometry and computed styles. Save referenced media to `stardust/current/assets/media/`
 preserving basename plus a short content hash.
 
 **Live-render evidence (synthesis is forbidden).** Refuse to mark
@@ -583,6 +591,7 @@ capture (≤ 3 pages). It must never balloon the crawl.
 | `stardust/current/DESIGN.json`              | Sidecar with extensions for motifs, voice, components |
 | `stardust/current/brand-review.html`        | Self-contained visual review of the extraction (first eyeball-able artifact) |
 | `stardust/current/pages/<slug>.json`        | Per-page parsed structure + content                 |
+| `stardust/current/pages/<slug>.html`        | Settled rendered DOM (crawler sidecar; parse offline, never re-scrape) |
 | `stardust/current/assets/logo.<ext>`        | Extracted logo                                      |
 | `stardust/current/assets/favicon.<ext>`     | Site favicon (first-class asset; prototype head + deploy consume it) |
 | `stardust/current/assets/media/`            | Extracted media referenced by pages                 |

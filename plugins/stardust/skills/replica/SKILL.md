@@ -51,7 +51,7 @@ eyeballing.
    (`node -e "import('pixelmatch').then(()=>process.exit(0))"`).
 4. Copy scripts into the project and run them from there, not from the
    plugin: this skill's whole `scripts/` dir (stitch-shot, pixel-compare,
-   anchor, gate.sh, motion-observe) AND the whole `../diff/scripts/` dir (the diff scripts import
+   crop-compare, row-profile, anchor, gate.sh, motion-observe) AND the whole `../diff/scripts/` dir (the diff scripts import
    diff-profiles.mjs, and ALL live-target hardening — including
    stitch-shot's — lives in its live-session.mjs; stitch-shot resolves it
    from `scripts/diff/` next to `scripts/replica/`, so keep the two dirs

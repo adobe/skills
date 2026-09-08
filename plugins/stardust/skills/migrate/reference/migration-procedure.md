@@ -13,6 +13,13 @@ preserving by default.
 - `stardust/current/pages/<slug>.json` — source structure +
   content + typed slots (the only content source; the live site
   is not re-fetched).
+- `stardust/current/pages/<slug>.html` — the settled rendered DOM
+  the crawler saved next to the JSON. When a template or sibling
+  importer needs structure the JSON does not carry (paragraph
+  boundaries, list nesting, per-section component counts), parse
+  THIS file offline — never re-scrape the live page. Paragraphs
+  come from its block-level nodes (`content-preservation.md`
+  § Preserve verbatim).
 - `stardust/current/assets/` — extracted media and logo.
 - `DESIGN.md` (project root) — target visual system.
 - `DESIGN.json` (project root) — sidecar with `extensions.canon`,

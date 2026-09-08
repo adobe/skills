@@ -23,6 +23,13 @@
  *   - wide-viewport (#13, second pass at 1600px): block content boxes stay
  *     ≤ --maxw unless the block is genuinely full-bleed in the schema order —
  *     over-wide boxes print as WARN (cross-check against the prototype).
+ *   - --full-bleed a,b (the INVERSE of #13): for blocks the prototype renders
+ *     edge-to-edge, the block's section wrapper must compute the full viewport
+ *     width. A template-level cap (`main > .section > div { max-width }`) that
+ *     out-specifies the block's own `max-width: none` squeezes heroes, dark
+ *     bands and card grids into a capped column with white gutters — it reads
+ *     as a block bug and shipped three times before the template rule was
+ *     found. WARN with the measured widths (cross-check the template CSS).
  *
  * Deliberately NOT here: CLS (deployed-URL only — the harness false-passes,
  * #100/#101), content/visual-diff (Step 10, deployed-URL only), and
@@ -37,7 +44,8 @@ const url = args.find((a) => !a.startsWith('--'));
 const opt = (name, dflt) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : dflt; };
 const schemaPath = opt('schema', null);
 const maxw = Number(opt('maxw', 1340));
-if (!url) { console.error('usage: qa-gate.mjs <harnessURL> [--schema <eds-schema.json>] [--maxw 1340]'); process.exit(2); }
+const fullBleed = (opt('full-bleed', '') || '').split(',').map((s) => s.trim()).filter(Boolean);
+if (!url) { console.error('usage: qa-gate.mjs <harnessURL> [--schema <eds-schema.json>] [--maxw 1340] [--full-bleed hero,band]'); process.exit(2); }
 const schema = schemaPath ? JSON.parse(fs.readFileSync(schemaPath, 'utf8')) : null;
 
 const fails = [];
@@ -140,6 +148,23 @@ if (schema && Array.isArray(schema.sections)) {
   });
 }
 
+// full-bleed pass (inverse of #13): the declared full-bleed blocks' section
+// wrappers must span the viewport; a template-level max-width cap out-specifying
+// the block's `max-width: none` is the recorded cause.
+if (fullBleed.length) {
+  const fb = await page.evaluate((names) => {
+    const vw = document.documentElement.clientWidth;
+    return [...document.querySelectorAll('[data-block-name]')]
+      .filter((b) => names.includes(b.dataset.blockName))
+      .map((b) => {
+        const wrapper = b.closest('main > .section > div') || b.parentElement;
+        return { name: b.dataset.blockName, w: Math.round(wrapper.getBoundingClientRect().width), vw };
+      });
+  }, fullBleed);
+  fullBleed.filter((n) => !fb.some((b) => b.name === n)).forEach((n) => warns.push(`full-bleed: block ${n} not found on the page — check the --full-bleed list`));
+  fb.forEach((b) => (b.w >= b.vw - 2 ? ok : warns).push(`full-bleed: block ${b.name} wrapper spans ${b.w}px of ${b.vw}px viewport${b.w < b.vw - 2 ? ' — a template-level `main > .section > div { max-width }` cap is likely out-specifying the block\'s escape rule; define ONE full-bleed escape at template level and route the block through it' : ''}`));
+}
+
 // wide-viewport pass (#13)
 await page.setViewportSize({ width: 1600, height: 900 });
 await page.waitForTimeout(600);
@@ -147,7 +172,7 @@ const wide = await page.evaluate(() => [...document.querySelectorAll('[data-bloc
   const inner = b.querySelector('.wrap, [class*="inner"], [class*="container"]') || b.firstElementChild;
   return { name: b.dataset.blockName, w: inner ? Math.round(inner.getBoundingClientRect().width) : 0 };
 }));
-wide.filter((b) => b.w > maxw + 40 && !['header', 'footer'].includes(b.name))
+wide.filter((b) => b.w > maxw + 40 && !['header', 'footer'].includes(b.name) && !fullBleed.includes(b.name)) // declared full-bleed blocks are exempt from #13
   .forEach((b) => warns.push(`wide-1600: block ${b.name} content spans ${b.w}px (> ${maxw}) — full-bleed is correct ONLY if the prototype section has no inner max-width wrapper (#13)`));
 
 await browser.close();

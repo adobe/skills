@@ -34,6 +34,13 @@
  *     hash equals another page's is flagged `duplicateOf` (catches detail==listing).
  *     Attribution is deterministic by discovery order: the earliest-queued page
  *     per hash is canonical, regardless of pool completion order.
+ *   - RENDERED DOM: the settled page's `page.content()` is saved verbatim as
+ *     <out>/pages/<slug>.html next to the JSON (path in the record's
+ *     `renderedHtml` field). Capture once, parse offline: importers and sibling
+ *     generators iterate their extraction against this artifact (free,
+ *     reproducible, and provenance) instead of re-running live probes per
+ *     selector guess. Live probes stay for what the static DOM cannot answer
+ *     (geometry, computed styles).
  *   - SCREENSHOT: a full-page PNG per page under <out>/assets/screenshots/<slug>.png
  *     (viewport-only fallback on extremely tall pages; mode in _signals.screenshotMode,
  *     relative path in the page record's `screenshot` field) — feeds the extract
@@ -599,6 +606,9 @@ async function capturePage(context, url, slug, args) {
   await page.waitForTimeout(800);
 
   const rec = await page.evaluate(capture);
+  // rendered DOM sidecar — the settled document as the instrument saw it
+  // (written by the caller as pages/<slug>.html; parse offline, never re-scrape).
+  rec._renderedHtml = await page.content();
   // soft-404: empty page (no text, no headings, no media, no forms)
   if (!rec.headings.length && rec._signals.mainTextLen === 0 && rec._signals.realImageCount === 0) {
     throw Object.assign(new Error('empty page — possibly soft-404'), { errorClass: 'EmptyPageError' });
@@ -743,6 +753,10 @@ async function main() {
           delete rec._resolvedUrl;
         }
         const file = path.join(outPages, `${slug}.json`);
+        const htmlFile = path.join(outPages, `${slug}.html`);
+        await writeFile(htmlFile, rec._renderedHtml);
+        delete rec._renderedHtml;
+        rec.renderedHtml = `pages/${slug}.html`;
         const { _provenance, ...rest } = rec;
         // top-level renderedBy/fetchedAt are legacy-reader aliases of the same
         // _provenance fields — _provenance is the authoritative contract.
