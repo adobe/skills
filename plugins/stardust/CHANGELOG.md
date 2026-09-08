@@ -4,6 +4,28 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.19.8 — impeccable dependency: unpinned by design, with an update hint
+
+- **Dependency declaration** moves to the documented cross-marketplace object
+  form — `{ "name": "impeccable", "marketplace": "impeccable" }` — still with
+  NO version range, on purpose: impeccable's design craft should always be
+  the current one. (The root marketplace's `allowCrossMarketplaceDependenciesOn`
+  already lists `impeccable`.)
+- **New `stardust/scripts/impeccable-version-check.mjs`** — Claude Code only
+  announces plugin updates through marketplace auto-update, which is off by
+  default for third-party marketplaces, so a user can sit on an old
+  impeccable indefinitely. Setup step 1 now runs this check once per session
+  and surfaces its one line when a newer impeccable exists (installed
+  version from the plugin registry or `--local <dir>`; latest from the
+  upstream manifest with a 6s timeout, falling back to the cached
+  marketplace catalog; `--offline`, `--json`). Advisory only: always exits 0,
+  fails silently to "unknown" — the registry paths it reads are Claude Code
+  implementation details, not an API.
+- **Manifest drift fixed:** the adobe-skills marketplace entry and the Tessl
+  manifest both still said 0.18.1 while `plugin.json` was at 0.19.7 (the
+  validator warned; `plugin.json` wins at install, so users were unaffected,
+  but `claude plugin tag` requires agreement). All three now read 0.19.8.
+
 ## 0.19.7 — sibling variance probe (P12)
 
 - **New `replica/scripts/sibling-variance.mjs`** — before cloning a gated

@@ -20,6 +20,18 @@ sub-commands that delegate the actual design work to **impeccable**.
    and tell the user:
    > Stardust requires impeccable. Install it from
    > <https://github.com/pbakaus/impeccable> and re-run the command.
+
+   **Version hint (advisory, never blocking).** Stardust deliberately pins
+   NO impeccable version — the design craft should always be the current
+   one — and Claude Code only announces plugin updates through marketplace
+   auto-update, which is off by default for third-party marketplaces such
+   as impeccable's. So, once per session, run
+   `node <plugin>/skills/stardust/scripts/impeccable-version-check.mjs`
+   (add `--local <impeccable-dir>` when impeccable lives in a harness skills
+   directory rather than the plugin registry) and surface its one output
+   line to the user verbatim when it reports a newer version; it prints the
+   two update commands. Any other outcome (current, unknown, offline) is
+   noise — do not mention it, and never stop or degrade a run over it.
 2. **Run impeccable's context loader once per session.** Execute the loader at
    `<harness>/skills/impeccable/scripts/load-context.mjs`. Its JSON output
    tells you whether `PRODUCT.md` and `DESIGN.md` exist at the project root
