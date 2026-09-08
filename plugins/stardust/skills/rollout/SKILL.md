@@ -267,9 +267,15 @@ link **targets** a roster-driven batch misses
   chrome documents THEMSELVES are published — otherwise they get
   committed but never published, their links 404, and the dashboard still
   reads 100%.
-- **Localize source-site bounce links** whose path has a delivered local 200
-  page (header/footer/home first); keep an absolute source link only when no
-  local page exists (a bounce beats a 404).
+- **Localize source-site bounce links** with the deploy stage, not by hand:
+  `node skills/deploy/scripts/localize-links.mjs --source-host <live-host>
+  --content content --redirects stardust/redirects.tsv` rewrites every
+  source-host href whose path exists in the content tree (header/footer/home
+  included) to the canonical root-relative form and lists the ones it kept
+  absolute (no local page — a bounce beats a 404). **Re-run over the WHOLE
+  tree after every wave**: earlier waves' pages gain newly valid targets only
+  when a later wave ships them. `--check` is the gate (exit 2 = localizable
+  links remain).
 - **Strip trailing slashes and `.html` from internal links.** EDS serves
   extensionless documents with no trailing slash, so `/x/y/` and `/x/y.html`
   both 404 (render the 404 block) while `.plain.html` still passes — nav reads
