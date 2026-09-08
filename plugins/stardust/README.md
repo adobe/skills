@@ -12,16 +12,16 @@ it, with every decision reasoned in the open before code runs.
 
 ## What stardust improves
 
-| Dimension | What stardust does | Skills |
-|---|---|---|
-| Design | Captures the current design system, then keeps it, refreshes it from your intent, or adopts a donor's. Anti-template and brand-tension gates. | extract, direct, prototype, replica, reskin, uplift |
-| Performance | Scores Core Web Vitals on the live site. On delivered pages: self-hosted metric-matched fonts, reserved chrome height, eager LCP image, CLS probes. Perf budgets in QA. | audit, deploy, qa |
-| SEO and technical | Titles, descriptions, canonicals, sitemap, redirects, robots, JSON-LD. Path safety and link localization at delivery. Deterministic autofixes. | audit, migrate, rollout, qa |
-| LLM and AI-search visibility | Answerability, `llms.txt`, schema coverage, key facts kept in server-rendered HTML so crawlers and AI bots see them. | audit, deploy, rollout |
-| Accessibility | Contrast, alt coverage, landmarks, a single `<h1>`. Axe sweep on the deployed site. | audit, rollout, qa |
-| Content fidelity | Copy carried verbatim and measured per page at import. Byte-level gates when the design changes. | migrate, replica, reskin, qa |
-| Authoring | Generated blocks stay editable in Experience Workspace. Content structure follows David's Model, enforced by a lint. | deploy, rollout |
-| Platform | Delivery to AEM Edge Delivery Services through Document Authoring, or a static HTML tree for any host. | migrate, deploy, rollout |
+| Dimension | Outcome |
+|---|---|
+| Design | The site keeps its current design, gets a new one resolved from your intent, or adopts a donor's. The result is measured against the source or the target spec, and template-looking output is rejected. |
+| Performance | Core Web Vitals are scored on the live site before and after. Delivered pages swap fonts without layout shift, reserve space for late-loading chrome, and load the first image eagerly. |
+| SEO and technical | Every page has a title, description and canonical. The site has a sitemap, redirects for changed paths, robots rules and structured data. Internal links resolve on the new origin instead of bouncing to the old one. |
+| LLM and AI-search visibility | Key facts sit in server-rendered HTML where crawlers and AI bots read them. `llms.txt` and schema coverage are checked. |
+| Accessibility | Contrast, alt text, landmarks and a single `<h1>` per page, verified with axe on the delivered site. |
+| Content fidelity | Copy is carried verbatim and counted per page. Nothing is dropped, invented or reworded without a logged reason. |
+| Authoring | Content stays editable by authors after delivery. Generated presentation never swallows authored text. |
+| Platform | A static HTML tree that runs on any host, or a delivery to the target platform through the delivery layer. |
 
 ## Two layers
 
