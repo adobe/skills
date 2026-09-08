@@ -51,7 +51,8 @@ eyeballing.
    (`node -e "import('pixelmatch').then(()=>process.exit(0))"`).
 4. Copy scripts into the project and run them from there, not from the
    plugin: this skill's whole `scripts/` dir (stitch-shot, pixel-compare,
-   crop-compare, row-profile, anchor, gate.sh, motion-observe) AND the whole `../diff/scripts/` dir (the diff scripts import
+   crop-compare, chrome-parity, row-profile, anchor, gate.sh,
+   motion-observe) AND the whole `../diff/scripts/` dir (the diff scripts import
    diff-profiles.mjs, and ALL live-target hardening — including
    stitch-shot's — lives in its live-session.mjs; stitch-shot resolves it
    from `scripts/diff/` next to `scripts/replica/`, so keep the two dirs
@@ -196,6 +197,8 @@ node scripts/replica/pixel-compare.mjs stardust/replica/gates/<slug>-1440/live.p
 
 # Iteration inner loop (gate doc § Band breakdown): anchor probe + pixel round
 node scripts/replica/anchor.mjs "$PROTO" --width 1440   # build-side runs are free
+# Chrome: computed-style parity BEFORE any pixel round on header/footer/strips
+node scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440   # exit 0 = quiet, then crop-compare
 scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
 ```
 

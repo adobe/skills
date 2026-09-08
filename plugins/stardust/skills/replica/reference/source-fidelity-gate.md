@@ -111,6 +111,28 @@ The prototype capture is re-taken every iteration.
    heights off the section-anchor probe (`anchor.mjs` prints the footer's
    `[y, height]` on both sides).
 
+   **Styles diagnose, pixels confirm — run the computed-style parity probe
+   BEFORE any pixel iteration on chrome.** `../scripts/chrome-parity.mjs`
+   probes the same regions on live and build (default `header` + `footer`;
+   add sticky strips with `--region strip=<liveSel>|<buildSel>`), pairs
+   every text-bearing element by its text, and prints only what differs:
+   family / size / weight / style / line-height / letter-spacing /
+   transform / colour / background / padding / radius, the element rect,
+   the clickable box of links and buttons, and the icon inventory
+   (count + size + signature, paired by order). Recorded: one run found
+   what many pixel-band rounds had not — an italic-vs-normal note, a
+   regular-vs-bold link, a wrong nav link colour, 12px row offsets, a 97×40
+   vs 71×32 button, six missing icons. Fix every delta, re-run until it is
+   quiet (exit 0), THEN crop-compare — a pixel loop on chrome with parity
+   deltas outstanding is wasted iterations. Each run is one live
+   navigation (budget it like any live probe); `--json` records both
+   sides as the round's evidence.
+
+   ```bash
+   node scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width $W \
+     --region header=header --region footer=footer   # + --region strip=<sel>|<sel>
+   ```
+
    **Chrome crops are ELEMENT-ANCHORED per side, never fixed-y — and
    "chrome" means every site-wide repeating band: header, sticky/quick-link
    strips, footer.** Recorded: the header measured 33.9% and a quick-links
@@ -234,6 +256,9 @@ followed; more loops mean the inputs were wrong (values eyeballed instead of
 lifted, capture unhardened), and the fix is upstream, not a fourth loop.
 
 - Measure first (iteration 1 IS the map — do not pre-polish).
+- **Chrome: parity probe first, pixels second.** Before a chrome band's first
+  pixel round, run `chrome-parity.mjs` and clear its deltas (§ Pass bar,
+  item 5); style deltas are named in one pass, pixels only say where.
 - Every fix cites the instrument line that demanded it.
 - **Before counting an iteration, verify the fix changed the render.** A
   byte-identical differing-pixel count after a "fix" means the rule was a
