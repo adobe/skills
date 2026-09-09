@@ -51,6 +51,7 @@ The file is JSON because every consumer is non-human. It carries a
   "media": { /* see § Media */ },
   "forms": [ /* see § Forms */ ],
   "widgets": { /* see § Widgets */ },
+  "dynamic": { /* see § Dynamic — script-captured evidence of the page's dynamic surface */ },
   "components": { /* see § Components */ },
   "perSectionStyle": [ /* see § Per-section style */ ],
   "embedDominance": { /* see § Embed dominance */ },
@@ -306,6 +307,75 @@ sites.
 ```
 
 Empty arrays are valid; missing keys are not.
+
+## § Dynamic
+
+Script-captured by `crawl.mjs` on every page — **evidence of what the
+page fetched and how it was rendered, never a classification.** The
+network side is recorded by a response listener attached before
+navigation; the DOM side is read from the settled document. Downstream,
+`prepare-migration` Phase 4.5 reads this (and the site roll-up in
+`_crawl-log.json#dynamicSurface`) and assigns each row a delivery
+strategy in `stardust/dynamic-blocks-map.md`. Interpretation belongs
+there, not here.
+
+```json
+{
+  "endpoints": [                       // xhr/fetch/eventsource responses + anything JSON, deduped by METHOD + host + path pattern
+    {
+      "method": "GET",
+      "host": "www.example.com",
+      "path": "/api/news/{n}",          // ids collapsed: /{n} numeric, /{uuid}, /{hash} (16+ hex)
+      "query": ["page", "sort"],        // query KEY names only, sorted — values are never recorded
+      "resourceType": "fetch",          // playwright resourceType: xhr | fetch | eventsource | other (when matched by JSON content-type)
+      "contentType": "application/json",
+      "status": 200,
+      "bytes": 4812,                    // content-length header; null when chunked
+      "hits": 2,                        // calls collapsed into this row on this page
+      "example": "https://www.example.com/api/news/1234",
+      "sameSite": true                  // loose eTLD+1 match against the page's host
+    }
+  ],
+  "thirdPartyScriptHosts": [{ "host": "js.vendor.com", "count": 3 }],   // script responses from other sites; same-site scripts are not listed
+  "truncated": false,                  // true when the 150-endpoint cap was hit — treat the list as a sample
+  "inlineData": [                      // <script type="application/json"> blobs (ld+json excluded — that's metadata)
+    { "id": "__NEXT_DATA__", "type": "application/json", "bytes": 48213, "topLevelKeys": ["props", "page", "buildId"] }
+  ],
+  "globalState": ["__NEXT_DATA__"],    // well-known hydration globals present on window (dataLayer counts as evidence, not hydration)
+  "frameworkHints": ["next"],          // DOM fingerprints: next | gatsby | nuxt | react | angular | vue | sveltekit | astro | turbo | webflow | wordpress | shopify | hubspot-forms | marketo-forms | aem-sites
+  "forms": [                           // visible forms, ≤20; complements § Forms (which carries the field schema)
+    { "action": "https://www.example.com/search", "hasAction": true, "method": "get", "sameOrigin": true, "fieldCount": 1, "fieldNames": ["q"], "search": true }
+  ],
+  "ariaLiveRegions": 0,
+  "summary": {
+    "sameSiteEndpoints": 2, "thirdPartyEndpoints": 1, "thirdPartyScriptHosts": 1,
+    "inlineDataBlobs": 1, "forms": 2, "searchForms": 1,
+    "hydrated": true                   // frameworkHints or a hydration global present — the page was (at least partly) client-rendered
+  }
+}
+```
+
+Rules:
+
+- `hasAction: false` means the form has no `action` attribute — the
+  `action` value shown is the page URL by HTML default and the form is
+  almost certainly JS-submitted; look for a matching POST in
+  `endpoints`.
+- `search: true` is a heuristic (`role=search`, `type=search`, a
+  `q|s|query|search|keyword(s)|term` field, or `/search` in the action).
+- Empty arrays are valid. A page with no dynamic surface still carries
+  the section with zeroed `summary` counts — its absence means the
+  record was written by an older crawler.
+
+### `_crawl-log.json#dynamicSurface`
+
+The site-level roll-up, written once per crawl: the same rows keyed
+across pages with `pages` (how many pages hit it) and `examples[]`
+(≤3 slugs). Sections: `endpoints` (≤300), `thirdPartyScriptHosts`,
+`frameworkHints`, `globalState`, `formTargets`, plus the counters
+`pages`, `pagesWithSameSiteData`, `pagesWithSearchForm`,
+`pagesHydrated`, `truncatedPages`. This is the view Phase 4.5 reads
+first; per-page `dynamic` is for drilling into one row.
 
 ## § Components
 

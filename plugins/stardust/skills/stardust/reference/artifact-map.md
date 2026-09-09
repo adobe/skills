@@ -61,7 +61,7 @@ stardust/
 ├── status.jsonl                      # append-only phase-transition log — every skill appends start/end/blocked lines (run-status.md)
 ├── direction.md                      # resolved intent + reasoning trace
 ├── learnings.md                      # per-run learnings ledger — rollout writes, maintainers harvest (learnings.md)
-├── dynamic-blocks-map.md             # dynamic-vs-static listing blocks + per-type metadata contract (prepare-migration Phase 4.5 / rollout Phase B2)
+├── dynamic-blocks-map.md             # the dynamic-surface decision table: listing blocks + every other dynamic capability → strategy (prepare-migration Phase 4.5 / rollout Phase B2)
 ├── redirects.tsv                     # original→normalized path pairs from the path-safety gate (rollout Phase C)
 ├── runtime-contract.json             # EDS runtime probe result (deploy § Runtime-detection probe)
 ├── uplift-improvements.md            # >=3 specific weaknesses (cut, not padded) — load-bearing for uplift's variant A (written by `stardust:uplift` Phase 2a; absent otherwise)
@@ -143,10 +143,18 @@ entries into skill diffs and flip them to `folded`.
 ### `stardust/dynamic-blocks-map.md`
 Owner: `$stardust prepare-migration` (Phase 4.5) or `$stardust
 rollout` (Phase B2) — whichever runs first; the other verifies rather
-than redoes. Classifies every listing block dynamic vs static and
-defines the per-content-type metadata contract; `helix-query.yaml`
-(authored at the EDS project root from the same contract) is its
-sibling. Mechanics in `skills/rollout/reference/dynamic-listings.md`.
+than redoes. Two sections. **§ Listings** classifies every listing block
+dynamic vs static and defines the per-content-type metadata contract;
+`helix-query.yaml` (authored at the EDS project root from the same
+contract) is its sibling. **§ Dynamic capabilities** is the decision
+table for everything else the extract evidence surfaced
+(`_crawl-log.json#dynamicSurface`: data endpoints, search, embeds,
+hydrated pages, form targets) — one row per capability, each with a
+strategy from the closed vocabulary `query-index | sheet-json |
+client-fetch | embed-preserved | static-until-modeled | out-of-scope`
+and a reason. The gate fails on an unclassified row. Mechanics in
+`skills/rollout/reference/dynamic-capabilities.md` (strategies) and
+`skills/rollout/reference/dynamic-listings.md` (query-index).
 
 ### `stardust/runtime-contract.json`
 Owner: `$stardust deploy` (runtime-detection probe, before Step 1).

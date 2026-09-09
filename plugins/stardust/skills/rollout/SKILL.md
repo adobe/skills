@@ -93,7 +93,7 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
 > COMPOSITION of the existing block library, not new block code — audit `blocks/`
 > first. See `reference/operational-learnings.md`.
 
-### Phase B2 — Metadata contract for dynamic listings (PRE-IMPORT GATE)
+### Phase B2 — Dynamic surface: listings contract + capability decisions (PRE-IMPORT GATE)
 
 **Do this before Phase C — the import is blocked on it.** What a dynamic listing
 block can show is bounded by what each page emits, and retrofitting metadata across
@@ -106,7 +106,18 @@ per page, and author `helix-query.yaml` from the same contract. When
 and `helix-query.yaml` exist — verify them against the inventory here instead of
 redoing them.
 
-Mechanics (key→meta-name rules, what a row can carry): `reference/dynamic-listings.md`.
+**Beyond listings.** The extract roll-up `_crawl-log.json#dynamicSurface` lists
+every data endpoint, third-party script host, search form, hydration hint and form
+target the crawl saw. Each one must be a row in `dynamic-blocks-map.md § Dynamic
+capabilities` with a strategy from the closed vocabulary (`query-index` ·
+`sheet-json` · `client-fetch` · `embed-preserved` · `static-until-modeled` ·
+`out-of-scope`) and a reason. **An unclassified row fails the gate** — it is the
+one way a dynamic site gets imported as a static one without anybody deciding to.
+Verify the table against the roll-up here (new evidence since prep → new rows).
+
+Mechanics: `reference/dynamic-listings.md` (key→meta-name rules, what an index row
+can carry) · `reference/dynamic-capabilities.md` (the strategies, what each asks of
+deploy, how each is verified live).
 
 ### Phase C — Deliver the site (drive `deploy` per page, per the plan)
 
@@ -210,7 +221,7 @@ they MUST be published or the chrome 404s sitewide).
 **Redirects:** if Phase C's path-safety gate emitted `stardust/redirects.tsv`, wire
 it into the EDS redirects mechanism here so original inbound URLs don't 404.
 
-### Phase D2 — Dynamic listings (query-index) — optional
+### Phase D2 — Dynamic capabilities (query-index and the rest) — optional per row
 
 Blocks that LIST other pages (directories, news/event feeds, "related" rails)
 should read an EDS **query-index** rather than static cards. Build it from the B2
@@ -218,6 +229,15 @@ contract: author `helix-query.yaml` (scoped indexes), rewrite the listing blocks
 `fetch` their index (with filter/sort/paginate + an authored fallback), and
 validate one flagship end-to-end. The index builds from the **published (live)**
 tree — publish before expecting rows. Full mechanics: `reference/dynamic-listings.md`.
+
+**Every non-static row of the map gets a live probe before the report** — one
+line per row in the delivery ledger: `query-index` → index `total` > 0 and a
+flagship card renders; `sheet-json` → the sheet's `.json` returns rows on live;
+`client-fetch` → the delivered block's request succeeds from the live origin (CORS,
+auth, CSP) and the authored fallback renders when it doesn't; `embed-preserved` →
+the embed paints on live under the EDS CSP. A failed probe is an `api-dependency`
+learning (`skills/stardust/reference/learnings.md`), not a silent pass. Probe
+recipes per strategy: `reference/dynamic-capabilities.md`.
 
 **Index resilience.** After a bulk publish, **poll the index `total` with a
 timeout** (indexing is async; a freshly-synced config sits at `building`/404
@@ -477,6 +497,10 @@ Normalize each one's output into the ledger via `findings.mjs record`. See
 - `notes/rollout/PLAN.md` — design, coverage model, phasing, open questions.
 - `reference/delivery-gates.md` — Phase C gates + batched-delivery-at-scale flow.
 - `reference/dynamic-listings.md` — metadata contract + query-index mechanics (B2/D2).
+- `reference/dynamic-capabilities.md` — the strategy vocabulary for every other
+  dynamic capability (sheet-json, client-fetch, embed-preserved, …), what each asks
+  of deploy, and the live probe per strategy (B2/D2). Provisional — grows from
+  `dynamic-gap` / `api-dependency` learnings.
 - `reference/multilingual.md` — per-language trees (D3).
 - `reference/operational-learnings.md` — scaled-rollout gotchas (extend, republish, verify).
 - `reference/audit-sources.md` — the audit-source → layer → fixability → autofix map.

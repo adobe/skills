@@ -1,5 +1,11 @@
 # Dynamic listings: metadata contract + query-index (Phases B2, D2)
 
+> Listings are the one dynamic capability with a fully specified strategy
+> (`query-index`). The other strategies — and the decision table that every
+> dynamic capability, listing or not, must appear in — are in
+> `dynamic-capabilities.md`. This file is that file's `query-index` section, in
+> depth.
+
 Sites have blocks that LIST other pages (directories, news/event feeds, grids,
 "related" rails). Statically authoring those cards doesn't scale and goes stale —
 they should read an EDS **query-index** (a published JSON of pages with per-page

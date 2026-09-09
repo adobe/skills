@@ -23,7 +23,7 @@ One entry per learning, four fields:
 
 ```markdown
 ### <short failure title>
-- failure class: <e.g. silent-render, path-safety, index-empty, capture-gap>
+- failure class: <e.g. silent-render, path-safety, index-empty, capture-gap, dynamic-gap, api-dependency>
 - evidence: <what happened, where — page/URL/ledger row/probe flag>
 - proposed change: <skill file + section to change, and how>
 - status: pending | folded
@@ -42,6 +42,27 @@ One entry per learning, four fields:
 - evidence: an energy-company site, 2026-09-03, `da.live/canvas` — 841/1452 authored texts editable over a 29-page sample; 20 stardust blocks 395/970; template-slotted blocks 0 %. Mechanism verified in da.live `editor-utils.js` + da-nx `quick-edit.js`: only elements still carrying their index after `decorate()` become editors; `cloneNode` keeps it (clone-based blocks worked), value-slotting does not. Wrapper selectors written `.x a` instead of `.x :where(a)` flipped link colour (specificity trap); the editor inserts two wrapper divs, so `>`/`:first-child` paths break while editing.
 - proposed change: `skills/deploy/SKILL.md` § 8 — named contract EW1–EW10 (move, wrapper-descendant selectors, CTA `<p>`, strip clones, declared exemptions), node-slotting in § 2b, edit-mode foundation in § 3, `block-roundtrip --ew` + `ew-editability-probe.mjs` gate; brief carries the contract (deploy IMPROVEMENTS #123)
 - status: folded
+
+## Failure classes for the dynamic surface
+
+Two classes exist specifically so real migrations can grow
+`skills/rollout/reference/dynamic-capabilities.md`, which is
+deliberately thin until they do:
+
+- **`dynamic-gap`** — something dynamic shipped static, or a
+  capability the extract evidence surfaced never reached
+  `dynamic-blocks-map.md` (a listing rendered as frozen cards, a
+  search form pointing at a page that no longer searches, a
+  hydrated page migrated from its SSR shell). Evidence names the
+  `_crawl-log.json#dynamicSurface` row or the map row.
+- **`api-dependency`** — a `client-fetch` / `sheet-json` /
+  `embed-preserved` decision that failed in the field: CORS, auth,
+  rate limits, an endpoint that moved, an embed blocked by the EDS
+  CSP, a sheet that could not carry the shape. Evidence names the
+  endpoint pattern and the failing probe.
+
+`proposed change` for both should point at a strategy section of
+`dynamic-capabilities.md` — that file is where these entries fold.
 
 ## Rules
 

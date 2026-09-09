@@ -169,6 +169,38 @@ Form actions pointing at the origin's own backend (e.g.,
 migrated site's origin, or the form must be re-wired to a static-form
 service."
 
+## Dynamic dependencies
+
+`self-hosted-form` is one instance of a general rule: **nothing the
+extract recorded as dynamic may ship static silently.** Before
+rendering a page, read its `dynamic` section (schema:
+`extract/reference/current-state-schema.md § Dynamic`) and look each
+row up in `stardust/dynamic-blocks-map.md § Dynamic capabilities`:
+
+- Row found, strategy `embed-preserved` → preserve the markup verbatim
+  (iframe, third-party form action, widget mount) — no log entry.
+- Row found, strategy `query-index` / `sheet-json` / `client-fetch` →
+  the section is rendered by the block `deploy` builds for it; migrate
+  emits the block's authored fallback rows and logs
+  `contentDeviations[]` `kind: "dynamic-dependency"` with `strategy`,
+  the map row id, and the endpoint pattern, so the report shows what
+  the page depends on at runtime.
+- Row found, strategy `static-until-modeled` / `out-of-scope` →
+  render the captured state as static content and log
+  `kind: "dynamic-dependency"` with the strategy and the map's reason.
+- **Row not found** → still render, log `kind: "dynamic-dependency"`
+  with `strategy: "unclassified"`, and surface it in the report's
+  first section. An unclassified dynamic dependency at migrate time
+  means Phase 4.5 was skipped or the evidence changed; it is a
+  `dynamic-gap` learning (`skills/stardust/reference/learnings.md`).
+
+Deviation shape:
+
+```json
+{ "kind": "dynamic-dependency", "strategy": "client-fetch", "mapRow": "reviews-rail",
+  "endpoint": "GET api.vendor.com/v1/reviews", "note": "authored fallback: 3 rows" }
+```
+
 ## Voice and tone deviations
 
 When the redesign moves the **tone** axis (per

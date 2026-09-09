@@ -374,6 +374,110 @@ async function captureFavicon(page, args) {
 }
 
 // ---- the capture, run in-page; returns the per-page record + hardening signals ----
+// ---- dynamic-surface evidence (network side) -------------------------------
+// Records WHAT the page fetched while rendering — never what it means. The
+// per-page `dynamic` section and the site roll-up in
+// `_crawl-log.json#dynamicSurface` are the raw material prepare-migration
+// Phase 4.5 classifies into a delivery strategy (query-index, sheet-json,
+// client-fetch, embed-preserved, static-until-modeled, out-of-scope). Evidence
+// only: an unclassified row is a gate failure downstream, not a crawl failure.
+const DYNAMIC_MAX_ENDPOINTS = 150;
+const DYNAMIC_MAX_HOSTS = 60;
+const JSON_CT = /application\/(json|[a-z0-9.+-]*\+json)|text\/json|application\/graphql/i;
+
+// collapse ids so /api/products/1234 and /api/products/5678 read as one endpoint
+function pathPattern(u) {
+  return u.pathname
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '{uuid}')
+    .replace(/\/[0-9a-f]{16,}(?=\/|$)/gi, '/{hash}')
+    .replace(/\/\d+(?=\/|$)/g, '/{n}');
+}
+function queryKeys(u) { return [...new Set([...u.searchParams.keys()])].sort(); }
+// loose eTLD+1: enough to tell cdn.brand.com from analytics.vendor.com
+function registrable(host) { return host.split('.').slice(-2).join('.'); }
+
+function attachDynamicRecorder(page) {
+  const endpoints = new Map(); // "METHOD host/path-pattern" → row
+  const scriptHosts = new Map(); // host → count
+  let truncated = false;
+  page.on('response', (resp) => {
+    try {
+      const req = resp.request();
+      const type = req.resourceType();
+      const ct = (resp.headers()['content-type'] || '').split(';')[0].trim().toLowerCase();
+      const u = new URL(resp.url());
+      if (!/^https?:$/.test(u.protocol)) return;
+      if (type === 'script') { scriptHosts.set(u.host, (scriptHosts.get(u.host) || 0) + 1); return; }
+      if (type === 'document') return; // the page itself (and iframes' documents)
+      const dataLike = type === 'xhr' || type === 'fetch' || type === 'eventsource' || JSON_CT.test(ct);
+      if (!dataLike) return;
+      const method = req.method();
+      const key = `${method} ${u.host}${pathPattern(u)}`;
+      const len = Number(resp.headers()['content-length']) || null;
+      const row = endpoints.get(key);
+      if (row) { row.hits += 1; if (len) row.bytes = Math.max(row.bytes || 0, len); return; }
+      if (endpoints.size >= DYNAMIC_MAX_ENDPOINTS) { truncated = true; return; }
+      endpoints.set(key, {
+        method, host: u.host, path: pathPattern(u), query: queryKeys(u), resourceType: type,
+        contentType: ct || null, status: resp.status(), bytes: len, hits: 1, example: `${u.origin}${u.pathname}`,
+      });
+    } catch { /* evidence only — never fail a capture on it */ }
+  });
+  return {
+    finish(finalUrl) {
+      const site = registrable(new URL(finalUrl).host);
+      return {
+        endpoints: [...endpoints.values()].map((r) => ({ ...r, sameSite: registrable(r.host) === site })),
+        thirdPartyScriptHosts: [...scriptHosts.entries()]
+          .filter(([h]) => registrable(h) !== site)
+          .sort((a, b) => b[1] - a[1]).slice(0, DYNAMIC_MAX_HOSTS)
+          .map(([host, count]) => ({ host, count })),
+        truncated,
+      };
+    },
+  };
+}
+
+// site-level roll-up (written to _crawl-log.json#dynamicSurface): which
+// endpoints / hosts / frameworks / form targets recur across pages, with up to
+// three example slugs each — the view Phase 4.5 reads first.
+function newDynamicRollup() {
+  return { endpoints: new Map(), thirdPartyScriptHosts: new Map(), frameworkHints: new Map(), globalState: new Map(), formTargets: new Map(), pages: 0, pagesWithSameSiteData: 0, pagesWithSearchForm: 0, pagesHydrated: 0, truncatedPages: 0 };
+}
+function bump(map, key, slug, extra) {
+  const row = map.get(key) || { ...extra, pages: 0, examples: [] };
+  row.pages += 1;
+  if (row.examples.length < 3) row.examples.push(slug);
+  map.set(key, row);
+}
+function rollupDynamic(acc, d, slug) {
+  acc.pages += 1;
+  if (d.truncated) acc.truncatedPages += 1;
+  if (d.summary.sameSiteEndpoints) acc.pagesWithSameSiteData += 1;
+  if (d.summary.searchForms) acc.pagesWithSearchForm += 1;
+  if (d.summary.hydrated) acc.pagesHydrated += 1;
+  for (const e of d.endpoints) bump(acc.endpoints, `${e.method} ${e.host}${e.path}`, slug, { method: e.method, host: e.host, path: e.path, query: e.query, resourceType: e.resourceType, contentType: e.contentType, sameSite: e.sameSite, example: e.example });
+  for (const h of d.thirdPartyScriptHosts) bump(acc.thirdPartyScriptHosts, h.host, slug, { host: h.host });
+  for (const f of d.frameworkHints) bump(acc.frameworkHints, f, slug, { hint: f });
+  for (const g of d.globalState) bump(acc.globalState, g, slug, { name: g });
+  for (const f of d.forms) bump(acc.formTargets, `${f.method} ${f.action || '(js-handled)'}`, slug, { action: f.action, method: f.method, sameOrigin: f.sameOrigin, search: f.search, fieldNames: f.fieldNames });
+}
+function finalizeDynamic(acc) {
+  const list = (m, cap) => [...m.values()].sort((a, b) => b.pages - a.pages).slice(0, cap);
+  return {
+    pages: acc.pages,
+    pagesWithSameSiteData: acc.pagesWithSameSiteData,
+    pagesWithSearchForm: acc.pagesWithSearchForm,
+    pagesHydrated: acc.pagesHydrated,
+    truncatedPages: acc.truncatedPages,
+    endpoints: list(acc.endpoints, 300),
+    thirdPartyScriptHosts: list(acc.thirdPartyScriptHosts, DYNAMIC_MAX_HOSTS),
+    frameworkHints: list(acc.frameworkHints, 20),
+    globalState: list(acc.globalState, 20),
+    formTargets: list(acc.formTargets, 50),
+  };
+}
+
 function capture() {
   const vis = (el) => {
     if (!el || el.nodeType !== 1) return false;
@@ -515,7 +619,61 @@ function capture() {
   const codeBlocks = [...document.querySelectorAll('pre')].filter(vis)
     .map((el) => (el.innerText || '').trim()).filter(Boolean);
 
+  // dynamic-surface evidence (DOM side): data blobs, hydration hints, forms.
+  // Evidence only — prepare-migration Phase 4.5 classifies; merged with the
+  // network-side recorder into `dynamic` by capturePage.
+  const inlineData = [...document.querySelectorAll('script[type^="application/"][type*="json"],script#__NEXT_DATA__')]
+    .filter((s) => !/ld\+json/i.test(s.type || ''))
+    .slice(0, 20)
+    .map((s) => {
+      let keys = null;
+      try { const j = JSON.parse(s.textContent); keys = j && typeof j === 'object' ? Object.keys(j).slice(0, 12) : null; } catch { /* not parseable */ }
+      return { id: s.id || null, type: s.type || null, bytes: (s.textContent || '').length, topLevelKeys: keys };
+    });
+  const globalState = ['__NEXT_DATA__', '__NUXT__', '__INITIAL_STATE__', '__PRELOADED_STATE__', '__APOLLO_STATE__', '__remixContext', '__SVELTEKIT__', 'drupalSettings', 'wpApiSettings', 'Shopify', 'dataLayer']
+    .filter((k) => { try { return k in window; } catch { return false; } });
+  const q = (sel) => { try { return !!document.querySelector(sel); } catch { return false; } };
+  const frameworkHints = [
+    q('#__next') && 'next',
+    q('#___gatsby') && 'gatsby',
+    q('#__nuxt,#__layout') && 'nuxt',
+    q('[data-reactroot],[data-reactid]') && 'react',
+    q('[ng-version]') && 'angular',
+    q('[data-v-app],[data-server-rendered]') && 'vue',
+    q('[data-sveltekit-preload-data],[data-sveltekit-hydrate]') && 'sveltekit',
+    q('astro-island') && 'astro',
+    q('[data-turbo],[data-turbolinks]') && 'turbo',
+    q('[data-wf-page],[data-wf-site]') && 'webflow',
+    q('link[href*="/wp-content/"],script[src*="/wp-content/"]') && 'wordpress',
+    q('script[src*="cdn.shopify.com"]') && 'shopify',
+    q('.hs-form,[data-hs-forms-root],script[src*="hsforms"]') && 'hubspot-forms',
+    q('script[src*="marketo"],form[id^="mktoForm"]') && 'marketo-forms',
+    q('.aem-Grid,[data-cmp-is]') && 'aem-sites',
+  ].filter(Boolean);
+  const forms = [...document.querySelectorAll('form')].filter(vis).slice(0, 20).map((f) => {
+    const inputs = [...f.querySelectorAll('input,select,textarea')].filter((i) => !['hidden', 'submit', 'button', 'reset'].includes((i.type || '').toLowerCase()));
+    const names = inputs.map((i) => i.name || i.id || '').filter(Boolean);
+    const rawAction = f.getAttribute('action');
+    let action = null;
+    try { action = new URL(rawAction || location.href, location.href); } catch { /* keep null */ }
+    const search = f.getAttribute('role') === 'search'
+      || inputs.some((i) => (i.type || '').toLowerCase() === 'search')
+      || names.some((n) => /^(q|s|query|search|keyword|keywords|term)$/i.test(n))
+      || (!!action && /search/i.test(action.pathname));
+    return {
+      action: action ? `${action.origin}${action.pathname}` : null,
+      hasAction: !!rawAction, // no action attribute → almost always JS-submitted
+      method: (f.getAttribute('method') || 'get').toLowerCase(),
+      sameOrigin: action ? action.origin === location.origin : true,
+      fieldCount: inputs.length,
+      fieldNames: [...new Set(names)].slice(0, 12),
+      search,
+    };
+  });
+  const ariaLiveRegions = document.querySelectorAll('[aria-live]:not([aria-live="off"])').length;
+
   return {
+    dynamicDom: { inlineData, globalState, frameworkHints, forms, ariaLiveRegions },
     finalUrl: location.href,
     title: document.title || null,
     description: meta('description'),
@@ -557,6 +715,7 @@ function capture() {
 
 async function capturePage(context, url, slug, args) {
   const page = await context.newPage();
+  const recorder = attachDynamicRecorder(page); // must precede goto — load-time fetches are the evidence
   try {
   let resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
   // response validation
@@ -606,6 +765,25 @@ async function capturePage(context, url, slug, args) {
   await page.waitForTimeout(800);
 
   const rec = await page.evaluate(capture);
+  // dynamic surface: network recorder + DOM-side evidence → one `dynamic` section
+  {
+    const net = recorder.finish(rec.finalUrl || resolvedUrl);
+    const dom = rec.dynamicDom;
+    delete rec.dynamicDom;
+    rec.dynamic = {
+      ...net,
+      ...dom,
+      summary: {
+        sameSiteEndpoints: net.endpoints.filter((e) => e.sameSite).length,
+        thirdPartyEndpoints: net.endpoints.filter((e) => !e.sameSite).length,
+        thirdPartyScriptHosts: net.thirdPartyScriptHosts.length,
+        inlineDataBlobs: dom.inlineData.length,
+        forms: dom.forms.length,
+        searchForms: dom.forms.filter((f) => f.search).length,
+        hydrated: dom.frameworkHints.length > 0 || dom.globalState.some((g) => g !== 'dataLayer'),
+      },
+    };
+  }
   // rendered DOM sidecar — the settled document as the instrument saw it
   // (written by the caller as pages/<slug>.html; parse offline, never re-scrape).
   rec._renderedHtml = await page.content();
@@ -730,6 +908,7 @@ async function main() {
   // During capture we only RECORD content hashes (indexed by queue position);
   // duplicate attribution happens in a deterministic post-pass below.
   const results = new Array(urls.length).fill(null); // { slug, file, hash } per queue index
+  const dynamicRollup = newDynamicRollup();
   const slugs = assignSlugs(urls);
   let nextIdx = 0;
   async function worker() {
@@ -741,6 +920,7 @@ async function main() {
       const slug = slugs[idx];
       try {
         const rec = await capturePage(ctx, url, slug, args);
+        if (rec.dynamic) rollupDynamic(dynamicRollup, rec.dynamic, slug);
         const hash = crypto.createHash('sha1').update(rec._contentHash).digest('hex');
         delete rec._contentHash;
         // slash-retry rescue: record the URL that actually served the page and
@@ -764,7 +944,8 @@ async function main() {
         results[idx] = { slug, file, hash };
         ok += 1;
         const s = rec._signals;
-        const warn = [s.spaShellSuspect && 'SPA-SHELL?', s.trackingOnlyMedia && 'TRACKING-PIXEL-ONLY', s.filteredInterstitials && `filtered:${s.filteredInterstitials}`].filter(Boolean).join(' ');
+        const dy = rec.dynamic?.summary || {};
+        const warn = [s.spaShellSuspect && 'SPA-SHELL?', s.trackingOnlyMedia && 'TRACKING-PIXEL-ONLY', s.filteredInterstitials && `filtered:${s.filteredInterstitials}`, dy.sameSiteEndpoints && `data-endpoints:${dy.sameSiteEndpoints}`, dy.searchForms && 'SEARCH-FORM', dy.hydrated && 'HYDRATED'].filter(Boolean).join(' ');
         console.error(`[crawl] OK   ${slug}  ${warn}`);
       } catch (err) {
         log.crawl.failures.push({ url, slug, errorClass: err.errorClass || 'Error', message: String(err.message || err), at: new Date().toISOString() });
@@ -789,6 +970,10 @@ async function main() {
     rec._signals.duplicateOf = canonical;
     await writeFile(r.file, JSON.stringify(rec, null, 2));
     console.error(`[crawl] DUP  ${r.slug}  DUP-OF:${canonical}`);
+  }
+  log.dynamicSurface = finalizeDynamic(dynamicRollup);
+  if (log.dynamicSurface.endpoints.length || log.dynamicSurface.pagesWithSearchForm) {
+    console.error(`[crawl] dynamic surface: ${log.dynamicSurface.endpoints.filter((e) => e.sameSite).length} same-site data endpoints, ${log.dynamicSurface.pagesWithSearchForm} pages with a search form, ${log.dynamicSurface.pagesHydrated} hydrated — classify in prepare-migration Phase 4.5`);
   }
   // merge into existing _crawl-log.json if present
   const logPath = path.join(args.out, '_crawl-log.json');

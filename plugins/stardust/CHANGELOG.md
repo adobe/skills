@@ -4,6 +4,56 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.19.9 — dynamic-surface scaffold: evidence in extract, decisions before import
+
+A deliberately thin layer for everything dynamic that is not a listing — APIs,
+sheets, search, embeds, client-rendered pages. It makes the dynamic surface
+visible and forces a decision per row; the strategy playbooks stay one
+paragraph each until real migrations fill them via the learnings ledger.
+
+- **`extract` records the dynamic surface** (`crawl.mjs`): a response listener
+  attached before navigation captures xhr/fetch/eventsource and JSON responses
+  (ids collapsed to a path pattern, query key names only, no values or
+  bodies), third-party script hosts; the in-page capture adds inline JSON data
+  blobs, hydration globals, framework fingerprints, visible forms with a
+  search heuristic. New per-page `dynamic` section + site roll-up
+  `_crawl-log.json#dynamicSurface` (rows keyed across pages with counts and
+  example slugs). Evidence only — extract never classifies. Schema:
+  `current-state-schema.md § Dynamic`. Console line per page flags
+  `data-endpoints:N`, `SEARCH-FORM`, `HYDRATED`.
+- **`prepare-migration` Phase 4.5 widened** from "dynamic-blocks pre-import
+  gate" to the **dynamic-surface gate**: listings keep their Tier 1/2/3
+  treatment; every other roll-up row gets a strategy from a closed vocabulary
+  — `query-index` · `sheet-json` · `client-fetch` · `embed-preserved` ·
+  `static-until-modeled` · `out-of-scope` — plus a reason.
+  `dynamic-blocks-map.md` gains a **§ Dynamic capabilities** decision table
+  next to § Listings (filename unchanged: rollout B2 and the artifact map
+  already reference it). An unclassified row fails the gate.
+- **New `rollout/reference/dynamic-capabilities.md`** — the vocabulary, the map
+  format, one section per strategy (intent, deploy contract, live probe, open
+  questions), a note on site search, and an explicit list of what it does not
+  contain yet. Marked provisional; it is where `dynamic-gap` /
+  `api-dependency` learnings fold. `dynamic-listings.md` is now its
+  `query-index` section in depth.
+- **`rollout`** B2 verifies the capability table against the current roll-up;
+  D2 runs one live probe per non-static row before the report (index total,
+  sheet `.json`, client fetch from the live origin + fallback, embed under
+  CSP) and records failures as `api-dependency` learnings.
+- **`migrate`** — `content-preservation.md § Dynamic dependencies`
+  generalises `self-hosted-form`: every `dynamic` row is looked up in the map
+  and logged as `contentDeviations[]` `kind: "dynamic-dependency"`
+  (strategy, map row, endpoint); `strategy: "unclassified"` surfaces in the
+  report's first section.
+- **`deploy`** — the "data → rows, behaviour → block JS" rule now explicitly
+  covers `client-fetch` / `sheet-json` blocks: authored rows are the fallback
+  and the first paint; never a block whose only content arrives by fetch.
+- **Learnings ledger** gains two failure classes, `dynamic-gap` and
+  `api-dependency`, with the rule that their proposed change points at a
+  strategy section of `dynamic-capabilities.md`.
+- Not included on purpose: a search block, sheet tooling, API proxy, vendor
+  adapters, eval fixtures — each waits for two ledgers hitting the same
+  strategy.
+
 ## 0.19.8 — impeccable dependency: unpinned by design, with an update hint
 
 - **Dependency declaration** moves to the documented cross-marketplace object

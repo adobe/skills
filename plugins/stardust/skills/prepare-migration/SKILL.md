@@ -68,9 +68,10 @@ this site" a conscious gesture and keeps idempotency obvious.
      `DESIGN.json.extensions.canon` populated.
    - **assets**: favicon variants in
      `stardust/migrated/assets/`; fonts downloaded.
-   - **dynamic-blocks**: `stardust/dynamic-blocks-map.md` and
-     `helix-query.yaml` present — only required when the inventory
-     contains listing blocks (Phase 4.5 records "none" otherwise).
+   - **dynamic-blocks**: `stardust/dynamic-blocks-map.md` present
+     with both sections (§ Listings, § Dynamic capabilities) and no
+     unclassified row; `helix-query.yaml` present when any listing is
+     dynamic (Phase 4.5 records "none" in either section otherwise).
 
    Resume from the earliest incomplete phase unless `--from`
    overrides.
@@ -230,21 +231,31 @@ Font downloads:      4 files (HarmoniaSans 4 weights)
 Brand assets:        all present
 ```
 
-### Phase 4.5 — Dynamic-blocks pre-import gate
+### Phase 4.5 — Dynamic-surface pre-import gate
 
 Runs after assets prep and **before any bulk import downstream**
 (`migrate` at scale, `rollout` Phase C). The ordering is the point:
-what a dynamic listing block can show is bounded by what each page
-emits, and retrofitting metadata across thousands of already-live
-pages is a second migration. Mechanics live in
-`skills/rollout/reference/dynamic-listings.md`; this phase runs them
-at prep time so the contract exists before the first bulk import
-(`rollout` Phase B2 then verifies it rather than redoing it).
+what a dynamic block can show is bounded by what each page emits,
+retrofitting metadata across thousands of already-live pages is a
+second migration, and a dynamic site imported as a static one is a
+silent regression nobody decided on. This phase turns the extract
+evidence into **decisions**; `rollout` Phase B2 then verifies them
+rather than redoing them.
 
-1. **Map every block that LISTS other pages** (directories,
+**Input is evidence, not intuition.** Read
+`stardust/current/_crawl-log.json#dynamicSurface` first (site roll-up:
+data endpoints with page counts, third-party script hosts, framework
+and hydration hints, form targets, search forms), then the per-page
+`dynamic` sections for any row you need to drill into (schema:
+`skills/extract/reference/current-state-schema.md § Dynamic`). A
+listing block you can see in a screenshot is one kind of dynamic
+capability; an endpoint the crawl saw fetched on 40 pages is another,
+and only the evidence shows it.
+
+1. **Listings — map every block that LISTS other pages** (directories,
    news/event feeds, "related" rails) — these must read an EDS
-   query-index, not static cards.
-2. **Classify each field a listing needs by tier:**
+   query-index, not static cards. Classify each field a listing needs
+   by tier:
    - **Tier 1 — page-intrinsic DOM** (`h1`, `og:image`, authored
      links): the index extracts them via CSS selectors — zero
      content change.
@@ -256,23 +267,52 @@ at prep time so the contract exists before the first bulk import
      join field + the related items must themselves be indexed
      pages. Those blocks **stay static until modeled** — record the
      decision in the map, don't fake it.
-3. **Write `stardust/dynamic-blocks-map.md`** — dynamic vs static per
-   listing block, the index each reads, and the metadata contract per
-   content type (the concrete `<meta name="…">` fields).
+2. **Everything else — one row per capability in the evidence.** Walk
+   the roll-up: each same-site data endpoint pattern, each
+   third-party endpoint, each search form, each form target, each
+   embed host, each hydrated page-type. Give every row a **strategy**
+   from the closed vocabulary and a one-line reason:
+
+   | strategy | use when |
+   |---|---|
+   | `query-index` | the data is pages of this site (listings, related, directories) |
+   | `sheet-json` | tabular data with no page identity (rates, specs, store hours, FAQs at scale) — authored as a sheet, served as `.json` |
+   | `client-fetch` | an external or retained API the block calls at runtime, with authored fallback rows |
+   | `embed-preserved` | a third-party surface that stays as-is (iframe, form service, chat/booking widget) |
+   | `static-until-modeled` | genuinely dynamic today, frozen at capture state for now — reason + what would unfreeze it |
+   | `out-of-scope` | not migrating (analytics/consent/AB tags, internal tooling) — reason |
+
+   The vocabulary is fixed on purpose: learnings are keyed on it.
+   Semantics, what each strategy asks of `deploy`, and the live probe
+   per strategy: `skills/rollout/reference/dynamic-capabilities.md`.
+3. **Write `stardust/dynamic-blocks-map.md`** with two sections —
+   **§ Listings** (dynamic vs static per listing block, the index each
+   reads, the metadata contract per content type as concrete
+   `<meta name="…">` fields) and **§ Dynamic capabilities** (the
+   decision table: id · evidence row · pages · strategy · reason ·
+   owner phase). Format in `dynamic-capabilities.md § The map`.
 4. **Author `helix-query.yaml`** (scoped indexes: include globs,
-   `target`, properties) from the same contract, so selectors and
+   `target`, properties) from the listings contract, so selectors and
    emitted meta names line up.
 
-When the inventory has no listing blocks, record "none" in the map
-and pass the gate. Surface summary and final gate:
+**Gate.** Passes only when every listing block and every roll-up row
+has a strategy. When the roll-up is empty and there are no listing
+blocks, record "none" in both sections and pass. An unclassified row
+blocks `migrate` — the map is what `migrate` consults to log
+`dynamic-dependency` deviations and what `deploy` reads to build
+`client-fetch` / `sheet-json` blocks with fallbacks.
+
+Surface summary and final gate:
 
 ```
-dynamic-blocks prep complete
-============================
+dynamic-surface prep complete
+=============================
 
 Listing blocks:      3 dynamic (news-feed, events, related-treatments) · 1 static (Tier-3: specialists rail)
 Metadata contract:   news → PublishDate, Category · event → EventDate, Location
 Indexes authored:    helix-query.yaml (2 scoped indexes)
+Capabilities:        7 rows — 2 query-index · 1 sheet-json (branch hours) · 1 client-fetch (reviews API) · 2 embed-preserved (booking iframe, newsletter form) · 1 out-of-scope (consent tag)
+Unclassified:        0
 
 Migrate-readiness: confirmed
    → Run `$stardust migrate` to apply canon to every page in inventory.
@@ -288,7 +328,7 @@ Phase 1 (extract --prep):      127 pages, 7 types, 8 module candidates
 Phase 2 (direct --prep):       types & modules confirmed; metadata set
 Phase 3 (prototype --prep):    6 archetypes approved; canon written
 Phase 4 (assets prep):         favicon variants + fonts + brand assets ready
-Phase 4.5 (dynamic blocks):    3 dynamic listings mapped; metadata contract + indexes authored
+Phase 4.5 (dynamic surface):   3 dynamic listings mapped; 7 capability rows decided; contract + indexes authored
 
 Next: $stardust migrate
 ```
@@ -310,7 +350,7 @@ After the cascade runs, the project state has:
 | `DESIGN.json.extensions.canon`                          | prototype --prep                |
 | `stardust/migrated/assets/favicon-*`                    | assets prep                     |
 | `stardust/migrated/assets/fonts/`                       | assets prep                     |
-| `stardust/dynamic-blocks-map.md` (metadata contract)    | dynamic-blocks prep (Phase 4.5) |
+| `stardust/dynamic-blocks-map.md` (listings contract + capability decisions) | dynamic-blocks prep (Phase 4.5) |
 | `helix-query.yaml` (scoped indexes, EDS project root)   | dynamic-blocks prep (Phase 4.5) |
 | `stardust/state.json` (per-page status updates)         | each underlying phase           |
 
@@ -370,6 +410,11 @@ canon-author prototype was re-iterated, etc.).
   approval
 - `skills/rollout/reference/dynamic-listings.md` — metadata
   contract + query-index mechanics Phase 4.5 runs at prep time
+- `skills/rollout/reference/dynamic-capabilities.md` — the strategy
+  vocabulary and map format Phase 4.5 decides against
+- `skills/extract/reference/current-state-schema.md § Dynamic` — the
+  evidence Phase 4.5 reads (`dynamic` per page,
+  `_crawl-log.json#dynamicSurface` sitewide)
 - `skills/migrate/SKILL.md` — the consumer of every data
   structure this cascade prepares
 - `notes/migrate-template-canon-refactor.md` — design plan and

@@ -40,15 +40,18 @@ a redesign, a replica or a reskin as self-contained static HTML under
 `stardust/`. Nothing in them assumes a CMS.
 
 - `extract` crawls the site (capped, multi-page) and writes the captured
-  design system, brand surface, per-page inventory and rendered DOM to
-  `stardust/current/`.
+  design system, brand surface, per-page inventory, rendered DOM and the
+  page's dynamic surface (data endpoints, search, embeds, hydration
+  evidence) to `stardust/current/`.
 - `direct` resolves your intent into a target `PRODUCT.md` and `DESIGN.md`,
   with reference research when the refero MCP is present and the reasoning
   kept in `stardust/direction.md`.
 - `prototype` renders before/after pages under `stardust/prototypes/` and
   iterates them through impeccable's craft loop.
 - `prepare-migration` runs extract, direct and prototype in `--prep` mode
-  with confirmation gates, for the redesign migration flow.
+  with confirmation gates, for the redesign migration flow, and closes with
+  the dynamic-surface gate: every listing block and every data endpoint,
+  search form or embed the crawl saw gets a delivery strategy before import.
 - `replica` recreates one archetype per page type as clean HTML/CSS that
   matches the live site near pixel-perfect, proven by a measured gate.
 - `reskin` re-lays byte-faithful content onto a donor design system.
@@ -77,7 +80,8 @@ Delivery Services.
   delivered page before it counts as deployed.
 - `rollout` delivers the whole site: coverage ledger, block dedup, per-page
   delivery through `deploy`, site assembly (sitemap, redirects, dynamic
-  listings, multilingual trees), full-site verify and link audit, an
+  listings and other dynamic capabilities, multilingual trees), full-site
+  verify and link audit, an
   optimize gate that aggregates accessibility, SEO, AI-search and
   brand-tension findings, deterministic AEM autofixes, and a report.
 - `qa` sweeps the live EDS site read-only: routing, content fidelity against
