@@ -252,6 +252,15 @@ assert_absent   "no findings when cache is missing" "$OUT" '"pattern":"remove-de
 rm -f "$RULES_TSV"
 
 
+echo "[vault-package-dependencies] legacy AEM 6.x Vault install-time deps detected; clean pom not flagged"
+OUT="$(run "$FIX/vault-package-dependencies")"
+assert_contains "vault-package-dependencies pattern present" "$OUT" '"pattern":"vault-package-dependencies"'
+assert_contains "antipattern pom flagged"                  "$OUT" 'pom.xml'
+assert_contains "day/cq60/product group in snippet"        "$OUT" 'day/cq60/product'
+
+OUT="$(run "$FIX/vault-package-dependencies-clean")"
+assert_absent  "clean vault pom not flagged" "$OUT" 'vault-package-dependencies'
+
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]
