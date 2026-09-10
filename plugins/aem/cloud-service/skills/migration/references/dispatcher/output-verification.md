@@ -1,5 +1,3 @@
-> **Beta**: This capability is in beta and under active development. Review its output carefully before using it on production dispatcher configurations.
-
 # Dispatcher Conversion — Output Verification + Normalize (Branch E)
 
 This is phase 4 (**VERIFY + NORMALIZE**) of the flow in [context.md](context.md): the layer that checks what Adobe's converter actually emitted against the phase-1 baseline, then normalizes the surviving output into current-SDK shape. Phase 3 (EXECUTE) tells you the tool *ran*; this phase tells you whether it produced a config you can safely ship — and stops the pipeline cold when it didn't.

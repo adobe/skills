@@ -1,5 +1,3 @@
-> **Beta**: This capability is in beta and under active development. Review its output carefully before using it on production dispatcher configurations.
-
 # Dispatcher Conversion — Current-SDK Conventions (Branch E)
 
 This doc describes the **target end-state**: the shape a converted config must reach to be a valid AEM as a Cloud Service dispatcher. It is the convention set that phase-4 normalization aims at (see [output-verification.md](output-verification.md)) and that the phase-6 validator checks against (see [validation.md](validation.md)). See [context.md](context.md) for where these two phases sit in the 6-phase flow.

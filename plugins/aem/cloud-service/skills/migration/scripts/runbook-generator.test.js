@@ -167,6 +167,15 @@ test('samplePrompt uses the OSGi natural-language override', () => {
   assert.match(samplePrompt('scheduler', {}), /migration skill: \*\*scheduler\*\* only/);
 });
 
+test('samplePrompt never leaks the internal code-assessment handoff to the user', () => {
+  // The runbook's copy-paste prompts are user-facing; reading the code-assessment
+  // pattern guide is the migration skill's own job (Branch B), not the user's.
+  for (const pattern of CANONICAL_PATTERNS) {
+    assert.doesNotMatch(samplePrompt(pattern, {}), /code-assessment/, pattern);
+    assert.doesNotMatch(samplePrompt(pattern, { bpaFilePath: './bpa.csv' }), /code-assessment/, pattern);
+  }
+});
+
 test('renderRunbook shows a heuristic note and never emits secret values', async () => {
   const root = mkworkspace();
   write(root, 'ui.config/jcr_root/apps/my/config/com.my.Svc.cfg.json', '{ "password": "leakme-please-9000" }\n');

@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { buildInventory, countRewrites } = require('./dispatcher-inventory.js');
 
-const BETA = '> **Beta**: This capability is in beta and under active development. Review its output carefully before using it on production dispatcher configurations.';
+const ADVISORY = '> **Review before production:** this report and the converted config are generated — verify filter/ACL, cache, and rewrite coverage against the source baseline (and work through the delegated next-checks below) before deploying.';
 const SECTIONS = ['filter', 'rewrite', 'cache', 'clientheader', 'virtualhost'];
 
 // Escape a `|` so a value (e.g. a file path) can't break out of its Markdown table cell.
@@ -24,7 +24,7 @@ function renderReport({ inventory, verifyResult, crossBoundary, outputSrcDir }) 
   // surviving SDK default_rewrite.rules can't inflate output and mask dropped custom rewrites.
   if (scanned) out.rewrite = countRewrites(outputSrcDir, { excludeDefault: true });
   const L = [];
-  L.push('# Dispatcher Conversion Report', '', BETA, '');
+  L.push('# Dispatcher Conversion Report', '', ADVISORY, '');
 
   L.push('## Conversion coverage (source → output)', '');
   L.push('| Section | Source | Output | Status |', '|---|---|---|---|');

@@ -57,6 +57,8 @@ test('coverage table: preserved when output >= source; DROPPED when output 0', (
   const crossBoundary = { cmVars: [] };
   const md = REP.renderReport({ inventory, verifyResult, crossBoundary, outputSrcDir });
   assert.match(md, /## Conversion coverage/);
+  assert.doesNotMatch(md, /beta/i);                 // no longer beta-tagged
+  assert.match(md, /Review before production/);     // but keeps a review advisory
   assert.match(md, /\| filter \| 3 \| 3 \| preserved \|/);
   // rewrite: source 10, output 0 -> DROPPED + edge routing note
   assert.match(md, /\| rewrite \| 10 \| 0 \| \*\*DROPPED\*\*.*edge/);

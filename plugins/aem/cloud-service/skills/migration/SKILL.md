@@ -1,6 +1,15 @@
 ---
 name: migration
-description: Migrates legacy AEM (6.x, AMS, on-prem) to AEM as a Cloud Service using BPA CSV/cache, CAM/MCP discovery, and a one-pattern-per-session workflow. Use to review/scan a project for AEMaaCS migration (generates a read-only migration-runbook.md covering all patterns via per-pattern detection strategies), for BPA/CAM findings, Cloud Service blockers, or fixes for scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler, DAM AssetManager, HTL data-sly-test lint, Classic UI dialog migration (lui — ExtJS/Coral 2 → Coral 3), Custom Design Widgets (cdw), Guava cache → Caffeine swaps (guavaCache), and static→editable template modernization. OSGi configs → Cloud Manager — scan for secrets and $[secret:]/$[env:] placeholders. Converts AMS/on-prem Dispatcher configs to AEMaaCS (Branch E, beta). After discovery, migration hands off each (pattern, file) pair to code-assessment for pattern guides/shared references; template modernization, legacy UI, and Guava cache follow references/ modules.
+description: |
+  Migrates legacy AEM (6.x, AMS, on-prem) to AEM as a Cloud Service via BPA CSV/cache and
+  CAM/MCP discovery, one pattern per session. Use to review/scan a project for AEMaaCS
+  migration — generates a read-only migration-runbook.md — or to fix specific Cloud Service
+  blockers: scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler,
+  DAM AssetManager, HTL data-sly-test lint, Classic UI / ExtJS / Coral 2 → Coral 3 dialog migration (lui),
+  Custom Design Widgets (cdw), Guava cache → Caffeine swaps (guavaCache), and static→editable
+  template modernization. Also externalizes OSGi config secrets to Cloud Manager (scans
+  ui.config/.cfg.json for $[secret:]/$[env:] placeholders) and converts AMS/on-prem Dispatcher
+  configs to AEMaaCS (Branch E).
 license: Apache-2.0
 ---
 
@@ -28,19 +37,14 @@ This skill drives the **migration workflow**: BPA data, CAM/MCP, **one pattern p
 | **Dialog migration** | *"Convert my Classic UI / ExtJS dialogs to Touch UI."* / *"Upgrade Coral 2 dialogs to Coral 3."* / *"Fix LUI dialog findings."* | Agent reads [references/legacy-ui/dialog/context.md](references/legacy-ui/dialog/context.md) — filters BPA LUI to dialog sub-types, converts via [extjs-to-coral3.md](references/legacy-ui/dialog/extjs-to-coral3.md) or [coral2-to-coral3.md](references/legacy-ui/dialog/coral2-to-coral3.md), validates via [validation.md](references/legacy-ui/dialog/validation.md). BPA pattern id: `lui`. |
 | **Custom widget migration** | *"Fix my CDW findings."* / *"Migrate custom ExtJS widgets to Coral 3."* | Agent reads [references/legacy-ui/cdw/context.md](references/legacy-ui/cdw/context.md) — inventories xtypes, maps or scaffolds Granite UI components via [conversion.md](references/legacy-ui/cdw/conversion.md), validates via [validation.md](references/legacy-ui/cdw/validation.md). BPA pattern id: `cdw`. Run CDW before dialog migration when both are needed. |
 | **Guava cache warnings** | *"Fix **guavaCache** findings using BPA CSV."* / *"Swap Guava cache for Caffeine."* | Agent reads [references/guava-cache.md](references/guava-cache.md) — BPA is the source of truth (subtype `custom.guava.cache`); one finding per **bundle**, not per Guava-internal class row. BPA pattern id: `guavaCache`. Not a `code-assessment` pattern — Guava cache usage only occurs in pre-migration code, never native AEMaaCS code. |
-| **Dispatcher conversion** (beta) | *"Convert my AMS / on-prem Dispatcher config to AEM as a Cloud Service."* | Agent reads [references/dispatcher/context.md](references/dispatcher/context.md) — detects the config **mode**, generates the tool config, runs Adobe's `dispatcher-converter`, **verifies** output (filter/ACL hard-gate), and validates. **Branch E.** Runbook pattern id: `dispatcherConversion` (heuristic). |
+| **Dispatcher conversion** | *"Convert my AMS / on-prem Dispatcher config to AEM as a Cloud Service."* | Agent reads [references/dispatcher/context.md](references/dispatcher/context.md) — detects the config **mode**, generates the tool config, runs Adobe's `dispatcher-converter`, **verifies** output (filter/ACL hard-gate), and validates. **Branch E.** Runbook pattern id: `dispatcherConversion` (heuristic). |
 
-**Starter prompts (copy-paste):**
+**Starter prompts (copy-paste)** — the Quick start table above covers each pattern individually; these add the whole-project entry point, source-specific invocations (CSV / CAM / manual), and multi-step combinations:
 
 - *"Review my code for AEMaaCS migration"* — **start here** for a full runbook before changing anything.
-- *"Use the migration skill: **scheduler** only, BPA CSV at `./reports/bpa.csv`, then apply the code-assessment pattern guide before editing."*
+- *"Use the migration skill: **scheduler** only, BPA CSV at `./reports/bpa.csv`."*
 - *"**Replication** only from CAM; list projects first, I'll pick one."*
-- *"**Manual:** **event listener** migration for `.../Listener.java` — read the code-assessment pattern guide first."*
-- *"Scan my config files and create Cloud Manager environment secrets or variables."*
-- *"Fix **htlLint** in `ui.apps` — scan for `data-sly-test` redundant constant warnings and fix them."*
-- *"Migrate my static templates to editable templates and generate the Modernize Tools rewrite rules."*
-- *"Fix LUI dialog findings using BPA CSV at `./reports/bpa.csv`."*
-- *"Migrate custom ExtJS widgets (CDW findings) from CAM."*
+- *"**Manual:** **event listener** migration for `.../Listener.java`."*
 - *"Fix all Classic UI and custom widget findings — CDW first, then dialogs."*
 - *"Fix **guavaCache** findings using BPA CSV at `./reports/bpa.csv`."*
 
@@ -103,8 +107,6 @@ Do not transform **Java or HTL** until the pattern guide (or reference) is read 
 
 **Branch E — Dispatcher Conversion** (AMS / on-premise Apache `httpd` + Dispatcher → AEMaaCS; no Java BPA pattern this session):
 
-> **Beta**: Dispatcher conversion (Branch E) is in beta and under active development. Review its output carefully before using it on production dispatcher configurations.
-
 If the user asks to **convert / migrate a Dispatcher configuration** to AEM as a Cloud Service, follow the **6-phase flow**. It wraps Adobe's maintained `@adobe/aem-cs-source-migration-dispatcher-converter` as the conversion engine and adds detection, config generation, output verification, judgment, and validation on top. Start by reading [references/dispatcher/context.md](references/dispatcher/context.md). **Skip** Branch B.
 
 1. **Inventory** — run `scripts/dispatcher-inventory.js` (`buildInventory`) to detect the **mode** (`standard` / `flexible` / `already-cloud` / `not-dispatcher` / `v1` / `unknown`) and count filter / rewrite / cache rules. Modes and signals are defined in [references/dispatcher/context.md](references/dispatcher/context.md). If the mode is `already-cloud`, `not-dispatcher`, or `unknown`, STOP with that finding — the first two have nothing to convert, and `unknown` is an ambiguous/incomplete layout to confirm with the user before running the content-blind tool (`resolveExecutor` falls `unknown` through to the on-prem executor, so the agent is the gate here).
@@ -121,7 +123,7 @@ If the user asks to **convert / migrate a Dispatcher configuration** to AEM as a
 - Swap **Guava cache** (`com.google.common.cache.*`) for **Caffeine** (`guavaCache`)
 - **OSGi → Cloud Manager** secret/variable externalization (Branch A), **Template Modernization** (Branch C), **Legacy UI** dialog/CDW migration (Branch D)
 - Drive work from **BPA** (CSV or cached collection) or **CAM via MCP**, **one pattern per session**
-- **Dispatcher Conversion:** **Branch E** (beta) — convert AMS / on-premise Apache+Dispatcher configs to AEMaaCS via Adobe's `dispatcher-converter`, with mode detection, config generation, output verification (filter/ACL hard-gate), cross-boundary handoff, and SDK validation. References: [references/dispatcher/](references/dispatcher/).
+- **Dispatcher Conversion:** **Branch E** — convert AMS / on-premise Apache+Dispatcher configs to AEMaaCS via Adobe's `dispatcher-converter`, with mode detection, config generation, output verification (filter/ACL hard-gate), cross-boundary handoff, and SDK validation. References: [references/dispatcher/](references/dispatcher/).
 
 Branch routing and the read-first delegation for each entry above are defined once in **Required delegation** — this list is only the "when."
 
@@ -242,7 +244,7 @@ The runbook covers **every pattern the migration skill can address**. Each patte
 | `osgiConfig` | `config-scan` | heuristic scan of OSGi config files for secret-looking keys / `$[secret:]`/`$[env:]` placeholders — **key names + locations only, never secret values** |
 | `lui`, `cdw`, `templateModernization` | BPA `cascade` → `content-scan` fallback | When a BPA CSV/CAM source is present, these come from BPA (subtypes `custom.classic.widget`; `legacy.dialog.classic`/`.coral2`; `legacy.static.template` + `custom.static.template`). With no BPA source, a heuristic `.content.xml` scan is the fallback — for `templateModernization` it walks `apps/<appId>/templates/**` at **any depth** (nested/grouped templates included) and classifies each static template as `custom.static.template` or `legacy.static.template` from its page-component resource type, so the custom-vs-legacy distinction survives even without a BPA report. Sample prompts route to **Branch D** (legacy-ui) / **Branch C** (templates), not code-assessment |
 | `guavaCache` | `bpa-only` (no analyzer, no content-scan) | BPA is the **sole** source of truth (subtype `custom.guava.cache`), one finding per **bundle** — `identifier` on this subtype is a Guava-internal class, not a customer class, so raw rows are deduped to the bundle named in the message, not surfaced per row. With no BPA source, `guavaCache` has no deterministic fallback and surfaces under **Tier 4 — LLM scan**: the agent greps `.java` files for `import com.google.common.cache` per module, per [references/guava-cache.md](references/guava-cache.md), and tags the result `confidence: llm`. There is deliberately no compiled analyzer detector for this pattern — it does not run inside `code-assessment`'s own discovery. |
-| `dispatcherConversion` | `content-scan` | Heuristic scan for an AMS / on-prem Dispatcher config layout (a monolithic `dispatcher.any` + `conf.vhost.d/`, or `conf.dispatcher.d/` AMS trees). Detected by `dispatcher-inventory.js`; the sample prompt routes to **Branch E** (beta). |
+| `dispatcherConversion` | `content-scan` | Heuristic scan for an AMS / on-prem Dispatcher config layout (a monolithic `dispatcher.any` + `conf.vhost.d/`, or `conf.dispatcher.d/` AMS trees). Detected by `dispatcher-inventory.js`; the sample prompt routes to **Branch E**. |
 
 `htlLint`, `osgiConfig`, and the content-scan **fallback** for `lui`/`cdw`/`templateModernization` are **heuristic** (tagged `confidence: heuristic` in the cache) — candidate matches, not compiler-validated. BPA-sourced `lui`/`cdw`/`templateModernization`/`replication`/`guavaCache` findings are authoritative. Out of scope: `inject-in-sling-model` and `outdated-dependencies` (those belong to code-assessment's own runbook, not migration).
 
@@ -300,7 +302,7 @@ First check the non-Java branches (routed in full under **Required delegation**)
 - **Template modernization** ("create editable templates", "generate `/conf` templates", "static to editable", "structure/component/policy rewrite rules", "parsys to container", "AEM Modernize Tools") → Branch C.
 - **Legacy UI** (Classic UI/Coral 2 dialogs, custom ExtJS widgets, LUI/CDW findings) → Branch D (`lui` → dialog, `cdw` → cdw).
 
-If the request is **dispatcher conversion** — convert or migrate an AMS or on-premise Dispatcher configuration to AEM as a Cloud Service — follow **Branch E** (beta). No Java pattern module is needed. **Skip** Branch B.
+If the request is **dispatcher conversion** — convert or migrate an AMS or on-premise Dispatcher configuration to AEM as a Cloud Service — follow **Branch E**. No Java pattern module is needed. **Skip** Branch B.
 
 Otherwise map the request to a pattern id: `scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `htlLint`, `lui`, `cdw`. If unclear, use **Manual Pattern Hints** in **`{code-assessment}/SKILL.md`** or ask the user to pick one of those.
 

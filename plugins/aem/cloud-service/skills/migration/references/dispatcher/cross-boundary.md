@@ -1,5 +1,3 @@
-> **Beta**: This capability is in beta and under active development. Review its output carefully before using it on production dispatcher configurations.
-
 # Dispatcher Conversion — Cross-Boundary Router (Branch E)
 
 This is **phase 5 (JUDGMENT + CROSS-BOUNDARY)** of the flow in [context.md](context.md): once the tool has converted the config and phase 4 has verified it, route each remaining concern to the owner that already knows how to resolve it instead of reimplementing it here.

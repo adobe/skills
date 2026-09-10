@@ -399,8 +399,8 @@ async function gatherFindings(options = {}) {
 function samplePrompt(pattern, ctx) {
   const meta = PATTERN_META[pattern];
   if (meta.sampleOverride) return meta.sampleOverride;
-  const csvClause = ctx.bpaFilePath ? ` BPA CSV at \`${ctx.bpaFilePath}\`,` : '';
-  return `Use the migration skill: **${meta.promptPattern}** only,${csvClause} then read the code-assessment pattern guide before editing.`;
+  const csvClause = ctx.bpaFilePath ? ` (BPA CSV at \`${ctx.bpaFilePath}\`)` : '';
+  return `Use the migration skill: **${meta.promptPattern}** only${csvClause}.`;
 }
 
 /**
