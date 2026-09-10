@@ -93,6 +93,113 @@ test('runVaultPackageScan flags a legacy <dependencies> block, one finding per b
   assert.strictEqual(res.rawFindings[0].pattern, 'vault-package-dependencies');
 });
 
+test('runVaultPackageScan flags a legacy <dependencies> block under filevault-package-maven-plugin', () => {
+  const root = mkworkspace();
+  write(root, 'ui.apps/pom.xml', [
+    '<project>', '  <build>', '    <plugins>', '      <plugin>',
+    '        <artifactId>filevault-package-maven-plugin</artifactId>',
+    '        <configuration>', '          <dependencies>',
+    '            <dependency><group>day/cq60/product</group><name>cq-content</name></dependency>',
+    '          </dependencies>', '        </configuration>', '      </plugin>',
+    '    </plugins>', '  </build>', '</project>',
+  ].join('\n'));
+  const res = runVaultPackageScan(root);
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.findings.length, 1, 'filevault-package-maven-plugin must be matched, not silently skipped');
+  assert.match(res.findings[0].detail, /day\/cq60\/product/);
+  assert.match(res.findings[0].detail, /^filevault-package-maven-plugin:/, 'snippet must name the plugin that matched');
+});
+
+test('runVaultPackageScan finds the real block when the plugin is also declared under <pluginManagement> without <dependencies>', () => {
+  const root = mkworkspace();
+  write(root, 'pom.xml', [
+    '<project>', '  <build>',
+    '    <pluginManagement>', '      <plugins>', '        <plugin>',
+    '          <artifactId>content-package-maven-plugin</artifactId>',
+    '          <configuration><verbose>true</verbose></configuration>',
+    '        </plugin>', '      </plugins>', '    </pluginManagement>',
+    '    <plugins>', '      <plugin>',
+    '        <artifactId>content-package-maven-plugin</artifactId>',
+    '        <configuration>', '          <dependencies>',
+    '            <dependency><group>day/cq60/product</group><name>cq-content</name></dependency>',
+    '          </dependencies>', '        </configuration>', '      </plugin>',
+    '    </plugins>', '  </build>', '</project>',
+  ].join('\n'));
+  const res = runVaultPackageScan(root);
+  assert.strictEqual(res.findings.length, 1, 'the <build> block must be found even when a <pluginManagement> occurrence precedes it');
+  assert.match(res.findings[0].detail, /day\/cq60\/product/);
+});
+
+test('runVaultPackageScan emits one finding per <dependencies> block when the plugin appears in multiple sections', () => {
+  const root = mkworkspace();
+  write(root, 'pom.xml', [
+    '<project>', '  <build>', '    <plugins>', '      <plugin>',
+    '        <artifactId>content-package-maven-plugin</artifactId>',
+    '        <configuration>', '          <dependencies>',
+    '            <dependency><group>day/cq60/product</group></dependency>',
+    '          </dependencies>', '        </configuration>', '      </plugin>',
+    '    </plugins>', '  </build>',
+    '  <profiles>', '    <profile>', '      <id>legacy-6x</id>', '      <build>', '        <plugins>', '          <plugin>',
+    '            <artifactId>filevault-package-maven-plugin</artifactId>',
+    '            <configuration>', '              <dependencies>',
+    '                <dependency><group>day/cq560/social/commons</group></dependency>',
+    '              </dependencies>', '            </configuration>', '          </plugin>',
+    '        </plugins>', '      </build>', '    </profile>', '  </profiles>',
+    '</project>',
+  ].join('\n'));
+  const res = runVaultPackageScan(root);
+  assert.strictEqual(res.findings.length, 2, 'both <build> and <profiles> plugin blocks must be flagged');
+  const groups = res.findings.map(f => f.detail).join(' | ');
+  assert.match(groups, /day\/cq60\/product/);
+  assert.match(groups, /day\/cq560\/social\/commons/);
+});
+
+test('runVaultPackageScan finds legacy <dependencies> when a per-<execution> <configuration> precedes the plugin-level one', () => {
+  const root = mkworkspace();
+  write(root, 'pom.xml', [
+    '<project>', '  <build>', '    <plugins>', '      <plugin>',
+    '        <artifactId>content-package-maven-plugin</artifactId>',
+    '        <executions>', '          <execution>', '            <id>install-package</id>',
+    '            <configuration><verbose>true</verbose></configuration>',
+    '          </execution>', '        </executions>',
+    '        <configuration>', '          <dependencies>',
+    '            <dependency><group>day/cq60/product</group><name>cq-content</name></dependency>',
+    '          </dependencies>', '        </configuration>',
+    '      </plugin>', '    </plugins>', '  </build>', '</project>',
+  ].join('\n'));
+  const res = runVaultPackageScan(root);
+  assert.strictEqual(res.findings.length, 1, 'plugin-level <configuration> block must be scanned even when a per-<execution> <configuration> comes first');
+  assert.match(res.findings[0].detail, /day\/cq60\/product/);
+});
+
+test('runVaultPackageScan reports the <dependencies> line, not the <artifactId> line', () => {
+  const root = mkworkspace();
+  const lines = [
+    '<project>',                                                     //  1
+    '  <build>',                                                     //  2
+    '    <plugins>',                                                 //  3
+    '      <plugin>',                                                //  4
+    '        <artifactId>content-package-maven-plugin</artifactId>', //  5  <- artifactId line
+    '        <configuration>',                                       //  6
+    '          <verbose>true</verbose>',                             //  7
+    '          <group>day/cq60/product</group>',                     //  8  (unrelated group tag before <dependencies>)
+    '          <name>example</name>',                                //  9
+    '          <version>1.0</version>',                              // 10
+    '          <dependencies>',                                      // 11  <- <dependencies> line
+    '            <dependency><group>day/cq60/product</group></dependency>', // 12
+    '          </dependencies>',                                     // 13
+    '        </configuration>',                                      // 14
+    '      </plugin>',                                               // 15
+    '    </plugins>',                                                // 16
+    '  </build>',                                                    // 17
+    '</project>',                                                    // 18
+  ];
+  write(root, 'pom.xml', lines.join('\n'));
+  const res = runVaultPackageScan(root);
+  assert.strictEqual(res.findings.length, 1);
+  assert.strictEqual(res.rawFindings[0].line, 11, 'expected line 11 (the <dependencies> block), not line 5 (the <artifactId>)');
+});
+
 test('runVaultPackageScan does not flag a legacy group under an unrelated plugin', () => {
   const root = mkworkspace();
   write(root, 'pom.xml', [
