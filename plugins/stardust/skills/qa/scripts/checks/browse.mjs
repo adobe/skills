@@ -183,6 +183,9 @@ export async function run(ctx) {
             nw: img.naturalWidth,
             rw: Math.round(r.width),
             visible: r.width > 0 && r.height > 0,
+            // 0 rects = display:none subtree (intentionally hidden);
+            // ≥1 zero-size rect = in layout but collapsed (the defect class).
+            inLayout: img.getClientRects().length > 0,
           };
         });
         return {
@@ -208,6 +211,16 @@ export async function run(ctx) {
         findings.push(finding('rendered', 'broken-image', 'error', p.path,
           `[${vp.name}] ${broken.length} image(s) failed to load`,
           { srcs: [...new Set(broken.map((i) => i.src))].slice(0, 8) }));
+      }
+      // Loaded ≠ rendered: naturalWidth > 0 but 0px wide while participating
+      // in layout — circular flex sizing (item width derives from the image,
+      // image max-width:100% derives from the item) collapses to zero; the
+      // broken-image probe and .plain.html checks both miss it.
+      const zeroSize = geo.imgs.filter((i) => i.complete && i.nw > 0 && i.rw === 0 && i.inLayout);
+      if (zeroSize.length) {
+        findings.push(finding('rendered', 'zero-size-image', 'warn', p.path,
+          `[${vp.name}] ${zeroSize.length} loaded image(s) render 0px wide (layout collapse — naturalWidth > 0 but clientWidth 0)`,
+          { srcs: [...new Set(zeroSize.map((i) => i.src))].slice(0, 8) }));
       }
       if (vp.name === 'desktop') {
         for (const i of geo.imgs.filter((x) => x.nw > 0 && x.nw < 200 && x.rw > x.nw * 2 && x.rw - x.nw > 100)) {

@@ -4,7 +4,7 @@
  * The single home for "hit a live site to measure it, as robustly as the
  * capture engine". Every live-side navigation in the gate instruments
  * (content-diff, visual-diff, replica's stitch-shot) goes through here, so
- * capture-hardening and gate-hardening are the SAME surface — the rimowa
+ * capture-hardening and gate-hardening are the SAME surface — a luggage retailer's
  * field finding was that they weren't: crawl.mjs's bot-management ladder
  * cleared Akamai while the headless gate instruments were served "Access
  * Denied" and would have silently measured it as the source.
@@ -23,29 +23,29 @@
  *
  * Hardening this module owns (each is a recorded false-measurement trap):
  *   - REAL-CHROME UA **plus the standard request headers** on every context.
- *     Field-proven (F-R1, redcross.org): the real-Chrome UA ALONE still got
+ *     Field-proven (F-R1, a nonprofit site): the real-Chrome UA ALONE still got
  *     HTTP 403 from Akamai; adding Accept / Accept-Language /
  *     Upgrade-Insecure-Requests / sec-ch-ua* produced HTTP 200. Akamai
  *     bot-manager fingerprints on the ABSENCE of the standard headers every
  *     real Chrome sends, not just on the UA string.
  *   - The standard headers ride DOCUMENT requests only, never subresources
- *     (F-B2, broadridge.com): forcing them via extraHTTPHeaders on every
+ *     (F-B2, a financial-services site): forcing them via extraHTTPHeaders on every
  *     request makes cross-origin CORS-mode font fetches (Typekit, Google
  *     Fonts, any font CDN) non-simple; they die with net::ERR_FAILED and the
  *     live capture silently renders FALLBACK type — wrong wraps, wrong
  *     heights, wrong doc height, no error anywhere. Bot managers fingerprint
  *     the navigation request, which still carries the full set.
  *   - A challenge/blocked interstitial FAILS LOUD (BotChallengeError), never
- *     silently measured as the source (the rimowa trap: an "Access Denied"
+ *     silently measured as the source (the Access-Denied trap: an "Access Denied"
  *     page diffs cleanly — wrongly).
  *   - Two overlay classes dismissed, not one: cookie consent (clicked, never
  *     DOM-removed) AND timed marketing/newsletter interstitials (CH-1:
- *     carhartt-wip's "Sign up, stay updated!" modal baked a large pixel-diff
+ *     a fashion retailer's "Sign up, stay updated!" modal baked a large pixel-diff
  *     contributor into the live capture that no prototype fidelity could
  *     null out). The mouse is parked afterwards (bottom-left) so no
  *     :hover-styled element under the resting cursor captures in hover state.
- *   - `--locale` determinism: geo-redirecting sites (polestar → /ch-de/,
- *     maisonkitsune → /ww/) capture a different locale per run unless
+ *   - `--locale` determinism: geo-redirecting sites (a car brand → /ch-de/,
+ *     a fashion brand → /ww/) capture a different locale per run unless
  *     Accept-Language + context locale are pinned.
  *
  * Escalation ladder (documented in replica/reference/source-fidelity-gate.md):
@@ -64,7 +64,7 @@ export const REAL_CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) A
 const CHROME_MAJOR = (REAL_CHROME_UA.match(/Chrome\/(\d+)/) || [])[1] || '143';
 
 // 'en' → the exact field-proven value ('en-US,en;q=0.9' — the B-probe that
-// turned redcross's 403 into a 200); a regioned tag keeps its base as fallback.
+// turned a nonprofit site's 403 into a 200); a regioned tag keeps its base as fallback.
 function acceptLanguage(locale) {
   const tag = locale === 'en' ? 'en-US' : locale;
   const base = tag.split('-')[0];
@@ -152,7 +152,7 @@ export function contextOptions({ ua, locale, viewport } = {}) {
  * Playwright context options pass through (reducedMotion, ...).
  */
 export async function newLiveContext(browser, { ua, locale, viewport, ...rest } = {}) {
-  // F-B2 (broadridge, 2026-08-25): the standard header set must ride on
+  // F-B2 (financial-services site, 2026-08-25): the standard header set must ride on
   // DOCUMENT requests only. Forcing it via extraHTTPHeaders on every request
   // makes cross-origin CORS-mode subresource fetches (Typekit/webfont CDNs)
   // non-simple; they die with net::ERR_FAILED and the live capture silently
@@ -215,7 +215,7 @@ export function isChallengeResponse(response) {
  *         in that window under a stealth-headed session), THEN throw if
  *         still challenged.
  *     Either way a challenge must NEVER be silently measured as the source
- *     (the rimowa trap) — regardless of `httpError`.
+ *     (the Access-Denied trap) — regardless of `httpError`.
  *   - non-challenge entry status >= 400 → per `httpError`:
  *       'throw' (default): THROW LiveHTTPError. Measuring a 404/500 page is
  *         as false a measurement as measuring a challenge — the reskin byte
@@ -301,7 +301,7 @@ const CONSENT_CANDIDATES = [
 
 // Container candidates for timed marketing/newsletter interstitials (CH-1).
 // [role=dialog]/[aria-modal]/.modal alone is NOT enough: the recorded
-// carhartt-wip "Sign up, stay updated!" panel is a bare `#wps_popup` div —
+// fashion-retailer "Sign up, stay updated!" panel is a bare `#wps_popup` div —
 // no role, no modal class, and the wrapper itself measures 0x0 while its
 // visible panel is a fixed child. Hence the popup/newsletter id+class
 // markers, and hence the close-control-visibility test below (the ROOT may
@@ -325,7 +325,7 @@ const MODAL_CLOSE_CANDIDATES = [
  *   (a) cookie consent — clicked (never removed), first candidate wins;
  *   (b) timed marketing/newsletter interstitials (CH-1) — every modal-like
  *       container with a VISIBLE close control gets it clicked, verified
- *       gone. Because these fire on a TIMER (recorded: carhartt-wip's panel
+ *       gone. Because these fire on a TIMER (recorded: a fashion retailer's panel
  *       appears ~5–9s after load), the sweep polls for late arrivals for up
  *       to `lateWindowMs` (default 6000) when nothing was dismissed yet.
  * `extra` selectors are site-specific dismissers, clicked first (each once).
@@ -361,7 +361,7 @@ export async function dismissOverlays(page, { extra = [], lateWindowMs = 6000 } 
 
   // marketing/newsletter interstitials — close every modal container that
   // shows a visible close control. Gate on the CONTROL's visibility, not the
-  // root's: the recorded carhartt-wip wrapper is 0x0 while its panel shows.
+  // root's: the recorded fashion-retailer wrapper is 0x0 while its panel shows.
   const closeVisibleDialogs = async () => {
     let acted = 0;
     const roots = page.locator(MODAL_ROOTS);

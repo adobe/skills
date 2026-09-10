@@ -178,7 +178,9 @@ For each page in scope, follow
 - **Render branch selection** (LLM judgment per T&M §
   Render path selection): A / A′ / B. **Declare the page's
   `fidelityTier`** from the branch — A → `archetype` (craft-gated),
-  A′ → `sibling` (canon-fork, the cheap default for breadth),
+  A′ → `sibling` (canon-fork, the cheap default for breadth — variance-probed
+  once per template before cloning, `reference/fidelity-tiers.md` § Sibling
+  variance probe; deltas become variant classes, never per-page forks),
   B/bodyless → `thin` — per `reference/fidelity-tiers.md`. Record
   `fidelityTier`, `archetypeSource`, and `gatesPassed[]` in
   `_meta.json` so coverage shows what was craft-gated vs cloned.

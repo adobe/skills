@@ -11,7 +11,13 @@
  *
  *   node skills/deploy/scripts/davids-model-lint.mjs content/            # tree
  *   node skills/deploy/scripts/davids-model-lint.mjs content/index.html  # one page
- *   … [--json]
+ *   … [--json] [--source-host <host[,host]> [--content-root content]]
+ *
+ * --source-host enables the D4 LOCALIZE advisory: an <a href> to the live
+ * source host whose path exists in the content tree (--content-root, default:
+ * the first directory argument) is a bounce link — it sends visitors back to
+ * the old site for a page that exists on the new origin. Advisory (🟡) in this
+ * release; the fix is `localize-links.mjs` (the pipeline stage), not a hand edit.
  *
  * Exit codes: 0 = clean (🟡 advisories allowed — review, fix or justify in the
  * conversion log), 2 = at least one 🔴, 1 = usage/parse failure.
@@ -21,8 +27,13 @@
  *   D1  embed/video URL authored as a block        structure (default-content candidate)
  *   D2  block table nested inside a block cell D3  ragged rows (cell-count mismatch —
  *   D4  relative/repo-relative src or href         a span-shaped structure)
+ *                                            D4  source-host href whose path exists
+ *                                                locally (LOCALIZE — run localize-links)
  *   D14 display copy in a key-value block     D10 block rows wider than 4 columns
- *   D15 code visible as text (tags/{{}}/CSS)  D5  complex nested list inside a cell
+ *   D15 code visible as text (tags/{{}}/CSS/   D5  complex nested list inside a cell
+ *       inline-script text: window./try {)     D15 ALL_CAPS_TOKEN — tracking-token
+ *                                                  lookalike (advisory: legit acronyms exist)
+ *   HR  authored <hr> (#119 — the section delimiter; fractures the section)
  *
  * Dependency-free by design (regex + balanced-div walking, same technique as
  * build-harness.mjs) — content pages are machine-generated and regular; this
@@ -35,7 +46,7 @@ const WRAPPER_BLOCK_NAMES = new Set(['text', 'heading', 'title', 'image']);
 const KEY_VALUE_BLOCKS = new Set(['metadata', 'section-metadata']);
 const EMBED_HOST = /(youtube\.com|youtu\.be|vimeo\.com|player\.|\/embed\/)/i;
 // Default-content-expressible tags: what a prose section can carry natively.
-const PROSE_TAGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'a', 'ul', 'ol', 'li', 'picture', 'img', 'source', 'strong', 'em', 'code', 'br', 'hr']);
+const PROSE_TAGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'a', 'ul', 'ol', 'li', 'picture', 'img', 'source', 'strong', 'em', 'code', 'br']);
 
 // ---------------------------------------------------------------- primitives
 
@@ -109,6 +120,15 @@ function lintPage(file, html, findings) {
 
   lintText(file, main, flag);
   lintUrls(file, main, flag);
+
+  // HR (#119) — <hr> is the EDS section delimiter: authored inside a section
+  // it silently fractures that section into several at ingestion, and every
+  // downstream section selector/style breaks. Visual rules are drawn in CSS
+  // (an empty section with a section-metadata style value + a border).
+  const hrs = [...main.matchAll(/<hr\b/gi)].length;
+  if (hrs) {
+    flag('🔴', 'HR', `${hrs} authored <hr> element(s) — <hr> is the section delimiter and fractures the section at ingestion; author an empty styled section and draw the rule in CSS (#119)`);
+  }
 }
 
 // HTML of a container minus its direct child divs (the default-content part).
@@ -217,7 +237,33 @@ function lintText(file, main, flag) {
   if (m) {
     flag('🔴', 'D15', `code visible as text in authored content ("${m[0].slice(0, 40)}…") — markup/bindings/CSS never appear as author-facing text`);
   }
+  // D15 — INLINE-SCRIPT text lifted as copy. A live-DOM scraper that reads
+  // textContent picks up analytics/`<script>` bodies ("try { window.X.wcm… }")
+  // and renders them as body paragraphs — a D15 violation the importer itself
+  // created, and it silently displaces real copy when a keep-first-N cap runs.
+  const js = text.match(/\bwindow\.[A-Za-z_$][\w$]*|\btry\s*\{|\bdocument\.(?:querySelector|getElementById|cookie|write)\b|\bfunction\s*\(|=>\s*\{/);
+  if (js) {
+    flag('🔴', 'D15', `inline-script text visible as content ("${js[0].slice(0, 40)}…") — a scraper lifted <script> text as copy; filter code artifacts at capture time`);
+  }
+  // D15 advisory — ALL_CAPS_WITH_UNDERSCORE tokens read like campaign/tracking
+  // identifiers ("SPOFFCAR_PARTNER"). Advisory only: legitimate acronyms and
+  // product codes exist; confirm by eye.
+  const tok = text.match(/\b[A-Z][A-Z0-9]{2,}_[A-Z0-9_]{3,}\b/);
+  if (tok) {
+    flag('🟡', 'D15', `"${tok[0].slice(0, 40)}" reads like a campaign/tracking token lifted as copy — confirm it is genuine content`);
+  }
 }
+
+// D4 LOCALIZE — canonical lookup key for a path (mirrors localize-links.mjs).
+function canonicalPath(p) {
+  let s = (p || '').split(/[?#]/)[0].replace(/\/{2,}/g, '/');
+  if (!s.startsWith('/')) s = `/${s}`;
+  s = s.replace(/\.html?$/i, '');
+  if (s.length > 1) s = s.replace(/\/+$/, '');
+  if (s === '' || s === '/index') s = '/';
+  return s.replace(/\/index$/, '').toLowerCase() || '/';
+}
+let LOCAL = null; // { hosts:Set, paths:Set } when --source-host is given
 
 function lintUrls(file, main, flag) {
   // D4 — src: only fully-qualified (content.da.live preferred) survives the
@@ -243,6 +289,13 @@ function lintUrls(file, main, flag) {
   // relative ones (donate.html, ../x) break under path mapping.
   for (const m of main.matchAll(/<a\b[^>]*\bhref="([^"]+)"/gi)) {
     const href = m[1];
+    if (LOCAL && /^(https?:)?\/\//i.test(href)) {
+      const m = href.match(/^(?:https?:)?\/\/([^/?#]+)([^?#]*)/i);
+      const host = m ? m[1].toLowerCase().replace(/^www\./, '') : '';
+      if (m && LOCAL.hosts.has(host) && LOCAL.paths.has(canonicalPath(m[2]))) {
+        flag('🟡', 'D4', `<a href="${href.slice(0, 80)}"> points at the SOURCE host for a page that exists in this content tree — a bounce link; run localize-links.mjs (LOCALIZE)`);
+      }
+    }
     if (/^(https?:|mailto:|tel:|#|\/)/i.test(href)) continue;
     flag('🔴', 'D4', `authored <a href="${href}"> is document-relative — use a root-relative path or a fully-qualified URL`);
   }
@@ -263,11 +316,21 @@ function collectFiles(target) {
   return out;
 }
 
-const args = process.argv.slice(2).filter((a) => a !== '--json');
-const asJson = process.argv.includes('--json');
+const argv = process.argv.slice(2);
+const asJson = argv.includes('--json');
+const optVal = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; };
+const sourceHost = optVal('--source-host');
+const contentRootOpt = optVal('--content-root');
+const args = argv.filter((a, i) => a !== '--json' && !['--source-host', '--content-root'].includes(a) && !['--source-host', '--content-root'].includes(argv[i - 1]));
 if (!args.length) {
-  console.error('usage: davids-model-lint.mjs <content-file-or-dir> [...] [--json]');
+  console.error('usage: davids-model-lint.mjs <content-file-or-dir> [...] [--json] [--source-host <host[,host]> [--content-root <dir>]]');
   process.exit(1);
+}
+if (sourceHost) {
+  const root = contentRootOpt || args.find((a) => statSync(a).isDirectory()) || path.dirname(args[0]);
+  const paths = new Set();
+  for (const f of collectFiles(root)) paths.add(canonicalPath(`/${path.relative(root, f).split(path.sep).join('/')}`));
+  LOCAL = { hosts: new Set(sourceHost.split(',').map((h) => h.trim().toLowerCase().replace(/^www\./, '')).filter(Boolean)), paths };
 }
 
 const findings = [];

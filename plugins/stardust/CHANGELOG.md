@@ -4,21 +4,352 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.19.8 — impeccable dependency: unpinned by design, with an update hint
+
+- **Dependency declaration** moves to the documented cross-marketplace object
+  form — `{ "name": "impeccable", "marketplace": "impeccable" }` — still with
+  NO version range, on purpose: impeccable's design craft should always be
+  the current one. (The root marketplace's `allowCrossMarketplaceDependenciesOn`
+  already lists `impeccable`.)
+- **New `stardust/scripts/impeccable-version-check.mjs`** — Claude Code only
+  announces plugin updates through marketplace auto-update, which is off by
+  default for third-party marketplaces, so a user can sit on an old
+  impeccable indefinitely. Setup step 1 now runs this check once per session
+  and surfaces its one line when a newer impeccable exists (installed
+  version from the plugin registry or `--local <dir>`; latest from the
+  upstream manifest with a 6s timeout, falling back to the cached
+  marketplace catalog; `--offline`, `--json`). Advisory only: always exits 0,
+  fails silently to "unknown" — the registry paths it reads are Claude Code
+  implementation details, not an API.
+- **Manifest drift fixed:** the adobe-skills marketplace entry and the Tessl
+  manifest both still said 0.18.1 while `plugin.json` was at 0.19.7 (the
+  validator warned; `plugin.json` wins at install, so users were unaffected,
+  but `claude plugin tag` requires agreement). All three now read 0.19.8.
+
+## 0.19.7 — sibling variance probe (P12)
+
+- **New `replica/scripts/sibling-variance.mjs`** — before cloning a gated
+  archetype onto its siblings, probe the template-defining computed values on
+  every sibling's LIVE page and diff against the archetype: per `--probe
+  name=<sel>` the match count, first match's box + computed group (background
+  layers incl. gradient scrims, colour, padding, font, radius), first heading
+  and image, list-style and `::before` mechanism, and the number of distinct
+  style families among matches; plus the top-level section list. Defaults
+  (first section, most-repeated class, `li`) when no probes are given.
+  Live-session hardening as the other replica instruments. Exit 0 constant,
+  2 variance found. Read-only — it never edits the clone.
+  Field evidence: eight "same-template" siblings varied in hero template
+  (441 vs 528px), scrim direction, bullet mechanism and terms shape — all
+  found late at the pixel gate.
+- **Fidelity tiers:** the sibling tier is "variance-probed" first; new
+  § Sibling variance probe — every delta is budgeted as a block VARIANT class
+  emitted on the sibling's content (blocks stay generic, never forked per
+  page); `gatesPassed` gains `variance-probe`, `_meta.json` gains
+  `variants[]`. Replica Phase 5 and migrate's A′ branch point at it.
+
+## 0.19.6 — replica: glyph-dense chrome noise floor, evidence-gated (P6)
+
+- **`crop-compare.mjs` reports the diff TEXTURE** — the share of differing
+  pixels with ≥5 differing neighbours: thin-edge = glyph-antialiasing noise,
+  thick = blocks/bands (misalignment, missing paint). Reported in text and
+  `--json`; never changes the exit code.
+- **Gate doc, pass bar item 5:** a glyph-dense chrome band that fails the 2%
+  bar may be logged as a justified residual (`cause: "glyph-antialiasing"`)
+  — never a pass — only when all three hold and are attached as artifacts:
+  `chrome-parity.mjs` exit 0 for the region at 1px tolerance, crop-compare
+  texture thin-edge (≤15% thick), and a text-dense region (no imagery/icons).
+  Field evidence: a ~50-link footer bottomed out at ~5% with every metric
+  numerically identical; a hinted licensed face vs a self-hosted webfont
+  rasterise differently per glyph. The 2% bar is unchanged; residual logging
+  format gains the entry shape.
+
+## 0.19.5 — deploy: link localization as a pipeline stage (P24)
+
+- **New `deploy/scripts/localize-links.mjs`** — dependency-free, idempotent.
+  Builds the URL map from the content tree (every served path, extensionless,
+  `x/index.html` → `/x`) plus `--redirects` (rollout's `stardust/redirects.tsv`
+  or a JSON map), rewrites every source-host `<a href>` (with/without `www.`,
+  http/https/protocol-relative) whose path resolves in the map to the
+  canonical root-relative form — no `.html`, no trailing slash, query and
+  fragment preserved — and normalizes root-relative internal hrefs the same
+  way. Everything else stays absolute and is REPORTED (the not-yet-migrated
+  boundary). `--dry-run`, `--json`, and `--check` (write nothing, exit 2 when
+  localizable links remain — the pre-deploy assertion).
+  Field evidence: ~500 source-domain links across ~150 pages bounced visitors
+  back to the live site for pages that existed on the new origin.
+- **Deploy stage:** the Deploy table and the per-page atomic delivery contract
+  gain the stage (run after every generator and before every write, over the
+  WHOLE tree; re-run after every wave). The ENCODE D4 bullet and
+  `davids-model.md` now say what D4 is — a capture-fidelity rule for media and
+  external targets — and that internal links to migrated pages are
+  root-relative. Checklist item added. Rollout Phase E2 points at the stage
+  instead of a hand rewrite.
+- **Lint (advisory):** `davids-model-lint.mjs --source-host <host[,host]>
+  [--content-root <dir>]` flags a source-host `<a href>` whose path exists in
+  the content tree as 🟡 D4 LOCALIZE. Advisory by design in this release;
+  promote to 🔴 after one rollout has run the stage cleanly.
+
+## 0.19.4 — replica: chrome-parity probe (P3)
+
+- **New `replica/scripts/chrome-parity.mjs`** — computed-style parity for
+  chrome. Probes the same regions on live and build (default header +
+  footer; `--region strip=<liveSel>|<buildSel>` for sticky strips), pairs
+  every text-bearing element by text, and prints only the deltas: font
+  family / size / weight / style / line-height / letter-spacing / transform /
+  colour / background / padding / radius, element rect, the clickable box
+  of links and buttons, plus an icon inventory (count, size, signature)
+  paired by order; MISSING / EXTRA texts on either side. Live-side hardening
+  via the shared `live-session.mjs` (UA + headers, challenge fail-loud exit
+  3, overlay dismissal, `--headed`, `--locale`). Exit 0 quiet, 2 deltas.
+  Field evidence: one run found what many pixel-band rounds had not
+  (italic-vs-normal note, regular-vs-bold link, wrong nav link colour, 12px
+  row offsets, 97×40 vs 71×32 button, six missing icons).
+- **Gate doc, pass bar item 5:** styles diagnose, pixels confirm — run the
+  probe BEFORE any pixel iteration on chrome and clear its deltas; iteration
+  discipline gains the same rule. Replica SKILL setup copies the script and
+  the Phase 4 snippet shows the call; deploy Step 10 item 4 points at it for
+  the deployed-origin chrome gate. The ≥98% crop gate remains the pass bar —
+  the probe is a diagnostic, not a new threshold.
+
+## 0.19.3 — replica field harvest, part 2: row-level instruments, masks, detectors (P1, P11, P22, P16, P19, P15, P20)
+
+Second fold of the 2026-09 same-design-migration ledger: the entries that
+needed a flag or a small script. Each is additive — a new instrument, a new
+flag, or a lint/gate DETECTOR; nothing changes what the pipeline emits.
+
+- **Replica — pass bar item 5 (chrome crop gate):** chrome means every
+  site-wide repeating band (header, sticky strips, footer); crops are
+  element-anchored PER SIDE (fixed-y crops false-read the moment one side's
+  rhythm shifts — a strip read 66% mis-anchored, 1.6% re-anchored); and
+  authored-volatile regions (campaign heroes) are masked out of the number.
+  `pixel-compare.mjs --mask <yA:h[@yB]>` neutralises the row band on both
+  sides, removes it from the denominator and prints every mask on the
+  verdict line (P1).
+- **Replica — new `scripts/row-profile.mjs`:** (1) a per-column colour-class
+  scan (white/dark/brand/photo run lengths at N x positions) to establish
+  section boundaries from the capture instead of eyeballing crops (P11);
+  (2) brand-colour landmarks — rows dominated by a saturated brand colour,
+  paired live-vs-proto in order, with per-pair delta and `gapShift` naming
+  the one inter-landmark gap that absorbed a vertical offset (P22). Gate doc
+  § Reading the band breakdown documents both; replica SKILL setup copies it.
+- **Extract — `crawl.mjs` saves the settled rendered DOM** as
+  `pages/<slug>.html` (`renderedHtml` field): capture once, parse offline;
+  migrate's inputs name it as the structure source for importers (P16).
+- **Deploy — Step 3:** page templates that cap `main > .section > div`
+  define ONE full-bleed escape at template specificity; `qa-gate.mjs
+  --full-bleed a,b` warns when a listed block's section wrapper computes
+  narrower than the viewport (P19).
+- **Deploy — D15 lint:** inline-script text lifted as copy (`window.`,
+  `try {`, `function (`) is 🔴; ALL_CAPS_TOKEN tracking lookalikes are 🟡
+  advisory. Detector only — no capture-time filtering was added (P15).
+- **Deploy — `block-roundtrip`:** a dead text whose words are absent from
+  the decorated unit is reported as **DROPPED CONTENT** (the decoder never
+  consumed that element type) rather than DEAD TEXT; Step 8 names the full
+  default-content set every decorate() must consume. Detector only — no
+  leftovers pass was added to the scaffold (P20).
+
+Deferred by design: P3 (chrome-parity probe), P6 (depends on P3), P12
+(sibling variance probe), P24 (link-localization stage + lint tier).
+
+## 0.19.2 — housekeeping: no site names in the plugin
+
+Every reference to a real customer, test or donor site — in skill text,
+reference docs, script comments, the deploy IMPROVEMENTS log, the notes
+folder and this changelog — is replaced by a generic sector descriptor
+("a financial-services site, 8 pages", "a fashion retailer's newsletter
+modal"). Numbers, dates, finding IDs and technical content are unchanged;
+no script logic was touched (comment lines only, syntax-checked). Kept as
+is: vendor/platform names (Akamai, Cloudflare, OneTrust, Typekit, Shopify,
+DA/EDS), Adobe's own properties, fictional sample brands (Wasatch Back,
+Ledgerline, Evergreen Bank, Meridian Airways), design-vocabulary brands used
+as aesthetic references, and the eval suite's live crawl target.
+`notes/improvement-plan-2026-08-rwe-centene.md` is renamed to
+`notes/improvement-plan-2026-08-replica-deploy.md`.
+
+## 0.19.1 — replica field harvest (2026-09), part 1: one-bullet learnings (P2, P4, P5, P7–P10, P13, P14, P17, P18, P21, P23, P25)
+
+First fold of a 25-entry learnings ledger from a same-design migration of
+a large vendor-templated site (2026-08/09, published-origin gated, ~150
+pages). This part ships
+only the findings that scored 3/3/3 on general / safe / small — each is a
+single bullet or an edit to an existing one; no scripts, no new sections.
+The remaining entries (element-anchored + masked chrome crops, a
+computed-style chrome-parity probe, sibling variance probing, capture-time
+code-artifact filtering, rendered-DOM capture, a bundled link-localization
+stage + lint tier) follow in separate PRs.
+
+- **Replica — recreation procedure:** authoring step 1 reconciles component
+  COUNTS from the capture before authoring (vendor templates repeat whole
+  widgets; a big height delta with matching section order is a duplicate,
+  not a missing section) and points at the paragraph-boundary rule; canon
+  chrome is re-verified against EACH new archetype's live page before page
+  content is iterated, with page-level compensation flagged for canon
+  back-port; no foundation `text-wrap: balance` in replica prototypes/block
+  CSS; the overlay-scrim bullet now reads the full computed
+  `background-image` layer list FIRST and luminance-fits only when the scrim
+  is genuinely undiscoverable; the sizing-MODEL lift covers heights and
+  overlaps at two or three widths with the vw encoding formula; icons and
+  vectors are harvested from the live DOM (`svg.outerHTML`), never
+  approximated.
+- **Replica — gate:** iteration discipline gains the post-pass typography
+  spot-check (a pixel pass at the wrong base metric is latent sibling
+  debt; compensating spacing is the tell); the wide-viewport check samples
+  heights and one intermediate width; the published-origin gate gains two
+  rules — re-probe live chrome metrics at deploy time (crawl captures are
+  the content source, live-now the chrome source; mask authored-volatile
+  regions) and budget one anchors-driven reconcile round at the published
+  origin (the harness number is provisional); the EDS transform list notes
+  that authored inner blocks may flatten, so `:has()`/block-class selectors
+  are verified against the delivered `.plain.html`.
+- **Migrate — content preservation:** paragraph boundaries come from the
+  source's block-level nodes, never from splitting captured text on
+  newlines (inline elements fragment a 5-paragraph disclaimer into 16
+  `<p>`s and double the section height).
+- **Deploy:** favicon delivery is verified with a `HEAD` at the published
+  origin; Step 3 section styles that paint several wrappers as one surface
+  contain child margins with `display: flow-root` (margin collapse through
+  an unpadded wrapper paints a ground-colored stripe inside a "card");
+  Step 6 chrome rows never pair a fixed `height` with vertical `padding`
+  under the border-box reset; the Step 7 brief bans `<br>` inside flex/grid
+  containers (it becomes a sized item) and bare `> span`-style child rules
+  in variant CSS (they resurrect hidden elements); Step 10 item 5 samples
+  section heights at an intermediate width.
+
+## 0.19.0 — Experience Workspace editability contract (EW1–EW10) + gate
+
+Every text an author wrote in a DA document must be inline-editable in
+Experience Workspace (da.live canvas, "quick-edit") once generated block JS
+has decorated the page — and the block must look the same while it is being
+edited. Field finding (an energy-company site, 2026-09-03, two rounds: 3 blocks, then 17):
+over a 29-page covering sample only 841 of 1452 authored texts were
+editable; every template-slotted block was 0 %. The generated blocks were
+correct implementations of the skill's own guidance (value-slotting,
+`text(cell)`, clone-the-anchor) — the guidance was the bug. Mechanism
+verified against da.live `editor-utils.js`/`prose2aem.js` and da-nx
+`quick-edit.js`/`prose.js`; deploy improvement #123. Minor bump: new gate +
+new qa check.
+
+- **Deploy:** § Target runtime documents the workspace instrumentation
+  (`data-prose-index` on outermost editables, `decorate()` re-runs over it,
+  only surviving indices become editors). § 2b redefines template-slotted as
+  **node-slotting** and bans value-slotting. § 3 ships three edit-mode
+  foundation snippets (CTA repaint from `<strong>/<em>` marks under
+  `.prosemirror-editor`, card-as-link inner anchor, `:where()` wrapper
+  variants at equal specificity) + EW10 for section prose. § 5 Buttons,
+  #55, #62/#71, #70 and § Section heads rewritten to MOVE authored elements.
+  § 8 gets a move-based scaffold (`wrapNode`, `labelWrap`,
+  `stripInstrumentation`) and the named **Experience Workspace editability
+  contract (EW1–EW10)** with the gate command; Step-7 brief carries the
+  contract; Local QA + Checklist gain the EW gate, edit-mode simulation,
+  static review and pixel-parity lines; anti-patterns 18 (value-slotting)
+  and 19 (class on the authored element); References cite the da.live/da-nx
+  sources.
+- **Scripts:** new `deploy/scripts/ew-editability-probe.mjs` (URL and
+  `--content` harness modes, `--simulate-editor` drift report, `@ew-exempt`
+  JSDoc tags); `block-roundtrip.mjs --ew` (default on) fails dead
+  non-exempt texts and duplicated indices 🔴; `render-harness.mjs --ew
+  --simulate-editor` + hides `body > header`; `section-schema.mjs` emits
+  `editableTexts` per section; `content-inventory.mjs` exports the
+  outermost-editable classifier and `content-diff` reports an
+  `EDITABLE COUNT` advisory.
+- **qa:** new `editability` check (`editability/dead-text` error,
+  `editability/duplicated-index` warn, per-page summary; `--blocks-dir` /
+  `--ew-exempt` for exemptions).
+- **replica / rollout / reskin / migrate fidelity-tiers:** every block-authoring
+  handoff cites the contract and the EW gate (the brief skipped it on 27/27
+  blocks because it did not carry it).
+- **Evals:** new `ew-editability` (node-slotting, move-not-rebuild,
+  wrapper-descendant selectors, gate evidence, fidelity not traded).
+- **Ledger:** deploy `IMPROVEMENTS.md` #123; master `reference/learnings.md`
+  example entry.
+
+## 0.18.5 — migration-flow routing: replica subsumes prepare-migration
+
+Routing-surface fix, no pipeline behaviour change. Field finding
+(an air-cargo site, 2026-09-03): asked "how do I migrate X to EDS with
+stardust", the agent correctly proposed `replica` for the keep-the-design
+route but could not say whether `prepare-migration` was also needed — the
+subsumption fact lived only in `replica/SKILL.md`'s Phase 1–5 body, which
+is never in context until replica is already invoked, and `replica` was
+absent from the master skill's routing table altogether. One clarification
+round-trip per migration conversation.
+
+- **Master skill:** routing table gains the missing `replica` and `reskin`
+  rows and marks `prepare-migration` as redesign-flow only. New § Two
+  migration flows — pick one, never mix: redesign
+  (`prepare-migration` → `migrate` → `deploy`/`rollout`) vs. keep-design
+  (`replica` → `migrate` → `deploy`/`rollout`, where replica runs
+  `extract --prep`, a mechanical direction-preservation step, and gated
+  archetype recreation in place of the prep cascade), plus `reskin` for
+  donor-design/same-content. Instructs stating the chosen flow — and that
+  replica needs no separate prep — in the first response.
+- **prepare-migration description:** "Redesign-flow only — for same-design
+  migrations `stardust:replica` runs its own preserve-mode prep cascade;
+  never chain prepare-migration with replica."
+- **replica description:** "subsumes the `stardust:prepare-migration` prep
+  cascade in preserve mode — no separate prep step; never chain the two."
+
+Descriptions are the always-loaded routing surface, so the disambiguation
+now holds even when only the sub-skill frontmatter is in context.
+
+## 0.18.4 — commerce-site field harvest: chrome crop gate, sizing-model lifts, EDS authoring traps
+
+Harvest of three learnings ledgers from a five-design Magento-PageBuilder →
+EDS migration (two sibling commerce sites, be/nl + nl, 2026-08, published-origin
+gated). The headline failure class: **small-area, high-salience defects that
+pass the full-page bar** — both pilot runs shipped "green" pages whose
+header/footer measured only 93–97% match, and a frozen `width:720px` lifted
+from an authored `width:50%` passed both gate breakpoints byte-identically.
+All changes are site-agnostic; deploy improvements #115–#122.
+
+- **Replica:** new `scripts/crop-compare.mjs` (per-y-band pixelmatch,
+  per-side offsets, default bar 2%); the pass bar gains item 5 — header AND
+  footer bands each ≥98% over the same stitched captures, no extra live hit
+  (#115). New § Wide-viewport fluid check: a ≥1920 box-map spot check
+  catches fluid-vs-fixed width freezes both standard breakpoints render
+  identically (#116). Recreation procedure gains § Lift the sizing MODEL,
+  not the resolved value (two-width lift diff; encode the authored
+  `%`/`vw`/max-width rule, never the resolved px; layout models, not
+  wrap outcomes). Iteration discipline gains geometry-fix verification
+  hygiene — rule-bearing element, cache-free serving check
+  (`curl --compressed | grep`), back-computed reviewer viewport (#117).
+- **Deploy:** ENCODE contract — never author `<hr>` (it is the section
+  delimiter; fractures the section at ingestion — lint 🔴, rule `HR`,
+  #119); rehost assets only from the CAPTURED src and diff
+  dimensions/bytes after fetch (commerce CDNs answer 200 with a generic
+  fallback for guessed paths, #118). Step 3 — one section-metadata `style`
+  value per section (multi-value delivered only the first class; anchor a
+  second axis with content-scoped `:has()`, #120); empty-section
+  `display` overrides must scope to `[data-section-status='loaded']` or
+  they defeat pre-load hiding (measured 0.75 CLS, #121). Step 10 gains the
+  chrome crop gate, the ≥1920 box check, and the verification-hygiene
+  items. The deployed computed-style guard also asserts `clientWidth > 0`
+  per visible loaded image — loaded ≠ rendered; circular flex sizing
+  collapses an image to 0×0 with `naturalWidth` still > 0 (#122).
+  `sanitise.js` now refuses >2 arguments: the two-arg <input> <output>
+  convention made a 3-file batch silently overwrite the second file with
+  the first's content.
+- **QA:** new `zero-size-image` check (warn) — loaded image renders 0px
+  wide while participating in layout (`getClientRects()` guards against
+  display:none false-flags).
+- **Reskin:** Image-paint gate documents the same loaded-≠-rendered blind
+  spot (paint asserts `naturalWidth`, not rendered area).
+
 ## 0.18.3 — dual-session field harvest: consent fallback, gate identity assertion, capture-freeze hardening
 
-Harvest of two independent replica+deploy sessions (rwe.com and centene.com,
+Harvest of two independent replica+deploy sessions (an energy-company site and a healthcare-insurer site,
 2026-08-26/27, on 0.18.2). Three failures recurred in BOTH sessions and lead
 the release: a stale cross-project `:8791` server silently gated a foreign
 site (once in each direction — every skill doc suggests the same port, so
 collision on a shared machine is guaranteed); consent widgets missed by the
-selector list (on centene the banner baked into ground truth AND all 7 stitch
+selector list (on the healthcare-insurer site the banner baked into ground truth AND all 7 stitch
 seams → 32% false pixel diff, one gate round invalidated); and live-data
 embeds (mirroring the SAME src cancels the data out in the pixel diff —
 freezing a snapshot guarantees a widget-sized residual). All changes are
 site-agnostic and additive; the high-impact-but-not-low-risk items
 (shared-classifier element-boundary separators, stitch-shot `--fullpage`,
 per-project default ports) are deliberately deferred with rationale in
-`notes/improvement-plan-2026-08-rwe-centene.md`.
+`notes/improvement-plan-2026-08-replica-deploy.md`.
 
 - **Extract:** `crawl.mjs` consent dismissal gains a visible-button
   text-match fallback — exact short labels (Accept / Accept all / Allow all /
@@ -94,7 +425,7 @@ per-project default ports) are deliberately deferred with rationale in
 
 ## 0.18.2 — replica field harvest: font-fork instrument fix, interaction parity, published-origin gate
 
-Harvest of a full `stardust:replica` e2e run (broadridge.com → EDS,
+Harvest of a full `stardust:replica` e2e run (a financial-services site → EDS,
 2026-08-25/26, on 0.18.1): a home-page archetype gated to 3.55%/5.56% pixel
 diff, then 8 pages published and gated against the live origin. All changes
 are site-agnostic; the validated discipline (measure-first, fail-loud,
@@ -217,10 +548,10 @@ page-shape brief. Cross-referenced from
 
 Round-1 outcome of the three-new-use-cases exploration (research, candidate
 designs, and validation evidence in `notes/new-use-cases/`). Both flows were
-validated on real pages before codification — replica converged aesop.com to
+validated on real pages before codification — replica converged a typographic retail home page to
 a 1.31% pixel diff with zero structural findings in 3 measured iterations;
-reskin carried hirslanden.ch content byte-identically (2281/2281 chars,
-47/47 slots, 13/13 metadata) onto stripe.com's token system with 91% of
+reskin carried a healthcare site's content byte-identically (2281/2281 chars,
+47/47 slots, 13/13 metadata) onto a payments-company donor's token system with 91% of
 slots mapped to named donor modules. No existing skill was modified (round-2
 synergy candidates are listed in `notes/new-use-cases/ROUND-1-REPORT.md`).
 
@@ -243,8 +574,8 @@ synergy candidates are listed in `notes/new-use-cases/ROUND-1-REPORT.md`).
   informational + `slot-coverage.mjs` incl. metadata) and design-adoption
   (`donor-probe.mjs` token assertions; selector-missing = FAIL).
 - Both skills were smoke-tested for generalization on fresh sites before
-  shipping (replica: hay.dk, desktop converged to 1.06%; reskin:
-  ethz.ch × posthog.com, 4883/4883 text bytes, 101/101 slot checks) and
+  shipping (replica: a furniture retailer, desktop converged to 1.06%; reskin:
+  a university site × an analytics-vendor donor, 4883/4883 text bytes, 101/101 slot checks) and
   hardened from the findings: replica gained pointer-park capture hygiene,
   the fixed/sticky-chrome × stitched-capture procedure, per-breakpoint CSS
   lifting, and the full four-patch adaptation set for the diff probes
@@ -258,20 +589,21 @@ synergy candidates are listed in `notes/new-use-cases/ROUND-1-REPORT.md`).
 
 ### Field-test hardening (5+5 home pages, findings ledger in the 2026-07 field report)
 
-A 10-site field test (replica: fritzhansen, rimowa, carhartt-wip, polestar,
-maisonkitsune; reskin: kew×linear PASS, moma×intercom PASS, redcross×vercel)
+A 10-site field test (replica: a furniture maker, a luggage brand, a fashion
+retailer, an EV maker, a fashion house; reskin: botanic-garden×SaaS-donor PASS,
+museum×messaging-vendor PASS, humanitarian-nonprofit×hosting-vendor)
 produced an 18-finding ledger; all skill-wrong findings are folded:
 
-- **Shared live-measurement hardening (F-G, F-R1, rimowa-1; HIGH).** New
+- **Shared live-measurement hardening (F-G, F-R1, luggage-brand-1; HIGH).** New
   `diff/scripts/live-session.mjs` — the one home for hitting live sites to
   *measure* them, as robust as extract's capture engine: real-Chrome UA
   **plus the standard request headers** (Akamai fingerprints on the absence
   of `Accept`/`Accept-Language`/`sec-ch-ua`, so UA alone still 403s —
-  reproduced on redcross.org, fixed to HTTP 200; the same header set
-  un-blocked rimowa's gate headlessly), challenge detection that **fails
+  reproduced on the humanitarian nonprofit's origin, fixed to HTTP 200; the same header set
+  un-blocked the luggage brand's gate headlessly), challenge detection that **fails
   loud** (exit 3, never silently measured as the source), headed-stealth
   escalation, and two-class overlay dismissal (consent + timed marketing
-  modals, the carhartt `#wps_popup` case — CH-1). Consumed by diff's two
+  modals, the fashion retailer's `#wps_popup` case — CH-1). Consumed by diff's two
   probes, replica's stitch-shot, and reskin's three live-hitting scripts.
 - **diff flags replace replica's 10 hand-edits (F-B).** `--ua`,
   `--wait-until`, `--dismiss`, `--headed`, `--locale` on both probes and
@@ -279,18 +611,18 @@ produced an 18-finding ledger; all skill-wrong findings are folded:
   `source-fidelity-gate.md` § Script adaptations rewritten — a hand-edited
   project copy is now a defect.
 - **replica:** bounded `--single` entry gets a satisfiable promotion
-  contract (`bounded-single` synthesis branch — rimowa-3); `--main body`
+  contract (`bounded-single` synthesis branch — luggage-brand-3); `--main body`
   banned with the 103-false-🔴 reproduction (F-C); hit-minimization +
-  media-density iteration budget (rimowa-2, CH-2); mobile-@media-first and
+  media-density iteration budget (luggage-brand-2, CH-2); mobile-@media-first and
   role-parity recreation guidance (CH-3/FH-2); locale pinning for capture
   determinism.
 - **reskin:** ordered stream is now `innerText`-consistent by construction
-  (F-R2 — kew's a11y ghost labels eliminated at the source; 8/8
+  (F-R2 — the botanic-garden site's a11y ghost labels eliminated at the source; 8/8
   `orderedVerified` vs 5 false in the field) with a sanctioned documented
   fallback; `formControl` stream nodes carry select/option/input text
-  verbatim (F-R3 — redcross course form now fully reconstructable, 13/13
+  verbatim (F-R3 — the humanitarian nonprofit's course form now fully reconstructable, 13/13
   verified); slot-coverage gains a paint assertion so an origin-locked CDN
-  can't hide behind a passing URL-string gate (F-R4, kew's 19 unpainted
+  can't hide behind a passing URL-string gate (F-R4, the botanic-garden site's 19 unpainted
   images); zero-output scope errors now guide discovery (F-D); first-match
   scope semantics and bounded-donor token sourcing documented (F-R5, F-R6).
 - Manifest version aligned (F-A).
@@ -352,7 +684,7 @@ probe **response**, not just that the navigation resolved. A Cloudflare managed
 challenge returns an HTTP 403 interstitial (`cf-mitigated: challenge`) *without
 throwing* — `domcontentloaded` fires — so the old fallback (which only fired on
 a thrown network-fingerprint error) sailed past it and the block surfaced later
-as a fatal capture-time `HTTPError`. Observed on sagora.com during the 0.14.4
+as a fatal capture-time `HTTPError`. Observed on a bot-challenged site during the 0.14.4
 uplift validation batch, where it required hand-patching the crawler mid-run.
 
 - **Challenge detection at the probe:** `isChallengeResponse()` flags an
@@ -377,7 +709,7 @@ uplift validation batch, where it required hand-patching the crawler mid-run.
   fallback) updated with the two-reject-mode retry rule and the managed-
   challenge clearing procedure.
 
-Validated end-to-end: patched crawler on sagora.com auto-detects the challenge,
+Validated end-to-end: patched crawler on the bot-challenged site auto-detects the challenge,
 switches to `headed-chrome-stealth`, and captures the homepage at HTTP 200
 (2 headings, ~8.9k chars, 9 images); the common headless path (example.com) is
 unchanged (no fallback, no botBlock).
@@ -429,7 +761,8 @@ see git history (`4a61c83`) for the full diff.
 ## 0.14.2 — six-site E2E hardening (round 2)
 
 Fixes folded from validating the pipeline end-to-end on six live sites
-(virginatlantic, festool, hirslanden, theroadhome, 3m, sliccy), ranked by
+(site D (airline), site E (tools retailer), site A (healthcare), site F (nonprofit
+shelter), site B (industrial conglomerate), site C (agency)), ranked by
 cross-site frequency.
 
 - **migrate no longer dead-ends on missing canon (blocking; 4 of 6 sites).**

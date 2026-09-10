@@ -265,7 +265,15 @@ Capture per page (full schema in `reference/current-state-schema.md`):
   `screenshot` field)
 
 Save to `stardust/current/pages/<slug>.json` with `_provenance` as the
-first key. Save referenced media to `stardust/current/assets/media/`
+first key. **The bundled crawler also saves the settled rendered DOM
+verbatim as `stardust/current/pages/<slug>.html`** (`page.content()`
+after the wait/scroll settle; path in the record's `renderedHtml`
+field). Capture once, parse offline: every downstream importer or
+sibling generator iterates its extraction against this artifact —
+free, reproducible, and provenance — instead of re-running live
+probes per selector guess (recorded: 4+ live round-trips per page
+family before the switch). Live probes stay for what the static DOM
+cannot answer: geometry and computed styles. Save referenced media to `stardust/current/assets/media/`
 preserving basename plus a short content hash.
 
 **Live-render evidence (synthesis is forbidden).** Refuse to mark
@@ -279,7 +287,7 @@ via `validateProvenance()` per
 `skills/stardust/reference/state-machine.md` § Provenance
 validation. Synthesizing a page record from
 `_brand-extraction.json` plus URL patterns plus captured photos
-— the 2026-04-30 lovesac shortcut — is the failure mode this
+— the 2026-04-30 e-commerce shortcut — is the failure mode this
 guard exists to prevent. When the agent (or a delegated sub-
 agent) cannot satisfy the contract for a page, treat the page
 as a Phase 2 failure: record under `_crawl-log.json#crawl.failures[]`
@@ -496,7 +504,7 @@ After all Phase 2-5 writes succeed:
    `waitMs > 0`, else `no`. A `no` row means the page record was
    not produced by a live Playwright render — the visible column
    is the defense-in-depth signal for the failure mode the
-   write-time guard exists to prevent (2026-04-30 lovesac). A
+   write-time guard exists to prevent (2026-04-30 e-commerce run). A
    maintainer scanning the summary should see `yes` on every row.
 
    Compute the wait summary by grouping each page's `_provenance.waitMode`
@@ -514,7 +522,7 @@ After all Phase 2-5 writes succeed:
    lazy-media walk — a capture pass that specs the full background
    walk (`playwright-recipe.md` § Capture list 11) yet silently
    produces nothing still ships an image-less capture (2026-06-26
-   knack.com: `cssBackgrounds: []` on every page, all product
+   a SaaS site: `cssBackgrounds: []` on every page, all product
    imagery lost). A flagged row is the cue to re-run that page with
    `--refresh` (and, if it persists, to fall back to headed Chrome per
    § Bot-management fallback). A maintainer scanning the summary should
@@ -583,6 +591,7 @@ capture (≤ 3 pages). It must never balloon the crawl.
 | `stardust/current/DESIGN.json`              | Sidecar with extensions for motifs, voice, components |
 | `stardust/current/brand-review.html`        | Self-contained visual review of the extraction (first eyeball-able artifact) |
 | `stardust/current/pages/<slug>.json`        | Per-page parsed structure + content                 |
+| `stardust/current/pages/<slug>.html`        | Settled rendered DOM (crawler sidecar; parse offline, never re-scrape) |
 | `stardust/current/assets/logo.<ext>`        | Extracted logo                                      |
 | `stardust/current/assets/favicon.<ext>`     | Site favicon (first-class asset; prototype head + deploy consume it) |
 | `stardust/current/assets/media/`            | Extracted media referenced by pages                 |
@@ -662,7 +671,7 @@ this in the user report; do not engineer around it.
   positions is forbidden.** The shortcut produces output
   indistinguishable from a successful run and propagates
   fabricated content through every downstream phase
-  (2026-04-30 lovesac.com: 20 of 25 pages synthesized, caught
+  (2026-04-30 e-commerce run: 20 of 25 pages synthesized, caught
   four phases later).
 
 ## Prep mode (--prep)

@@ -1,6 +1,6 @@
 # Best-practice multi-workspace template: Fréscopa reference
 
-This reference summarizes the Fréscopa multi-workspace template that the WF Planning team treats as an internal best-practice exemplar. A trimmed sample export is preserved as `best-practice-template.json` in this folder — it keeps the full structure (all 6 workspaces, 37 record types, and their fields/views/hierarchies) but caps sample data at ~5 records per record type. This .md file is the digest the skill should read first; consult the JSON only when a question requires field-level or record-level detail.
+This reference summarizes the Fréscopa multi-workspace template, a best-practice exemplar for a multi-workspace Planning build. A trimmed sample export is preserved as `best-practice-template.json` in this folder — it keeps the full structure (all 6 workspaces, 37 record types, and their fields/views/hierarchies) but caps sample data at ~5 records per record type. This .md file is the digest the skill should read first; consult the JSON only when a question requires field-level or record-level detail.
 
 **Use this file in two distinct ways:**
 1. **Pattern source** for "what should a real multi-workspace build look like" questions.

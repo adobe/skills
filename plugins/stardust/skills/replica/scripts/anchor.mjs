@@ -9,7 +9,7 @@
  *
  * Why it exists: the pixel probe's band table says WHERE drift is; this
  * probe says WHICH SECTION owns it. The fastest converging loop in the
- * field (broadridge, 2026-08-25/26 — roughly HALVED iterations vs
+ * field (a financial-services site, 2026-08-25/26 — roughly HALVED iterations vs
  * band-reading alone): run anchor.mjs on both sides, fix the FIRST
  * mismatched section top-down (everything below it is offset-contaminated,
  * same top-down rule as the band table), then re-run pixels. Build-side

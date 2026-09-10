@@ -17,7 +17,7 @@ trade so a reviewer can see, per page, what was and wasn't checked.
 | Tier | Render branch | Gates it MUST pass | When |
 |---|---|---|---|
 | **archetype** | Path A (approved prototype) | Full `prototype` gate stack: critique, audit, mobile-adapt, anti-template, content-sourcing, `:root` + data-attribute contracts | One representative page **per template**. The design canon. |
-| **sibling** | Path A′ (canon-fork) | Structural clone of the archetype + **content-fidelity** (verbatim source copy, no fabrication, **measured** — § Content-count acceptance) + **delivery-lint** + **media-reconcile**. NOT full craft. | Every other page of a template the archetype already covers. **The cheap default for breadth.** |
+| **sibling** | Path A′ (canon-fork) | **Variance-probed** (§ Sibling variance probe — run once per template BEFORE cloning) + structural clone of the archetype + **content-fidelity** (verbatim source copy, no fabrication, **measured** — § Content-count acceptance) + **delivery-lint** + **media-reconcile**. NOT full craft. | Every other page of a template the archetype already covers. **The cheap default for breadth.** |
 | **thin** | unique (graceful) | delivery-lint + media-reconcile + a declared `contentGap`. Renders metadata + hero + whatever real content exists (e.g. a PDF link). No fabricated filler. | Pages with little/no body content (PDF-only, redirect stubs, bodyless landing). |
 
 The point of the table: **archetype is craft-gated once per template; siblings
@@ -26,6 +26,46 @@ inherit that validated structure and only re-check the things that vary per page
 without dropping to zero gates. Make sibling-clone the path of least resistance —
 the reflex for "page N of an established template" should be *fork the archetype*,
 never *re-author from scratch*.
+
+## Sibling variance probe (template constancy is measured, not assumed)
+
+"Same template" is a hypothesis the crawl JSON cannot confirm: eight siblings
+of one gated archetype varied in ways no structure capture showed — a compact
+hero template (441 vs 528px, a wider card, a smaller logo), an INVERTED hero
+scrim (0.6→0.1 vs 0.1→0.5), tier lists split into two visual families
+(arrow-image `::before` rows vs plain discs), terms sections in three shapes
+(h2+paragraph, h2+list, inline-bold prefix), and three pages reusing another
+page's hero image (the source's own choice — replicate, don't "fix"). Every
+one surfaced late, at the pixel gate, as rework on an already-cloned page.
+
+**Before generating a template's siblings, run ONE automated probe of the
+template-defining computed values on every sibling's live page and diff
+against the archetype:**
+
+```bash
+node scripts/replica/sibling-variance.mjs "<archetype-live-url>" "<sibling-1>" "<sibling-2>" … \
+  --probe hero=".hero" --probe card=".offer-card" --probe tier="ul.tiers li" --width 1440
+# exit 0 = clone as-is; exit 2 = deltas printed per sibling — budget them
+```
+
+Per probe it compares match count, the first match's box and computed group
+(background layers incl. gradient scrims, colour, padding, font, radius), its
+first heading and image, list-style and `::before` mechanism, and the number
+of distinct style families among the matches; plus the top-level section
+list. Pass the archetype's own block selectors as probes — the defaults
+(first section, most-repeated class, `li`) are a fallback.
+
+Reading it: **every delta is first-class work, budgeted before the clone,
+not an edge case.** A hero height/scrim delta → a hero VARIANT class
+(`hero compact`, `hero scrim-inverted`); a second bullet mechanism → a list
+variant; a different terms shape → the terms block handles both shapes.
+Emit the variant on the sibling's generated content — the block stays
+generic (deploy SKILL.md § The one rule → same-pattern sections collapse into
+one block + variant classes); never fork a block per page. Record the probe's
+JSON next to the fan-out brief and list the variants in each sibling's
+`_meta.json` `variants[]`. The probe is read-only evidence — it never edits
+the clone — and it costs one live navigation per sibling, so run a
+template's siblings in one pass and reuse the JSON.
 
 ## Content-count acceptance (content-fidelity is measured, not asserted)
 
@@ -54,7 +94,9 @@ This is a counts-level gate by design — cheap enough to run on every
 sibling. Per-node structural diffing stays where it lives today (the
 archetype's gates, deploy's `block-roundtrip`, replica's source-fidelity
 gate); the counts catch the dropped-content class those would only see
-later.
+later. Any block JS written for a sibling or archetype obeys the
+Experience Workspace editability contract (deploy SKILL.md § 8, EW1–EW10)
+and passes the EW gate (`block-roundtrip --ew`) before the page is done.
 
 ## Declaration (per page)
 
@@ -63,7 +105,8 @@ Every page row in `state.json` and `coverage/pages.json` carries:
 ```json
 "fidelityTier": "archetype" | "sibling" | "thin",
 "archetypeSource": "<slug>",        // for sibling/thin: which archetype it forked
-"gatesPassed": ["delivery-lint", "media-reconcile", "content-fidelity", "content-count"],
+"gatesPassed": ["variance-probe", "delivery-lint", "media-reconcile", "content-fidelity", "content-count"],
+"variants": ["hero compact", "tiers disc"],   // sibling: variant classes the probe called for (empty = template-constant)
 "contentGap": "source is a PDF download; no HTML body"   // thin only
 ```
 

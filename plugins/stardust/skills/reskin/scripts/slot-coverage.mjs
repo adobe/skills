@@ -21,7 +21,7 @@
  *                     (naturalWidth > 0 after a lazy-load scroll pass).
  *                     The src check compares URL strings; an origin-locked
  *                     source CDN can 403 every hotlinked image while the
- *                     string gate passes (F-R4, kew: 19 images never
+ *                     string gate passes (F-R4, a botanical-garden site: 19 images never
  *                     painted on a PASSing gate). Zero-painted → FAIL
  *                     naming the img; downgrade with --paint warn only
  *                     with a recorded reason.

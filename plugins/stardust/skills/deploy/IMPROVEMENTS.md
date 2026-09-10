@@ -45,7 +45,7 @@ above it).
 
 ## Run log
 
-### test-1 — Wheeler CAT (`samples/Wheelercat`)
+### test-1 — heavy-equipment dealer (single-file HTML + inline `<style>`; `samples/<test-1 sample>`)
 - Branch: `snowflake-blocks-test-1`
 - DA: `https://da.live/#/paolomoz/claude-design-eds/snowflake-blocks/test-1`
 - Preview: `https://snowflake-blocks-test-1--claude-design-eds--paolomoz.aem.page/snowflake-blocks/test-1`
@@ -55,7 +55,7 @@ above it).
   semantic `<section class="…">` — the **closest** of the samples to what the
   skill expects.
 
-### test-2 — Festool (`samples/Festool`)
+### test-2 — tools retailer (single-file HTML + external CSS; `samples/<test-2 sample>`)
 - Branch: `snowflake-blocks-test-2` (off the **improved** `snowflake-blocks`)
 - DA: `https://da.live/#/paolomoz/claude-design-eds/snowflake-blocks/test-2`
 - Preview: `https://snowflake-blocks-test-2--claude-design-eds--paolomoz.aem.page/snowflake-blocks/test-2`
@@ -71,7 +71,7 @@ above it).
   headless deploy (#10) all worked from the skill as written.
 - **New findings surfaced:** #14, #15, #16 below.
 
-### test-3 — Beehive Brewing (`samples/Beer maker Utah design`)
+### test-3 — craft brewery (`<x-dc>` document-content; `samples/<test-3 sample>`)
 - Branch: `snowflake-blocks-test-3` (off `snowflake-blocks`)
 - DA: `https://da.live/#/paolomoz/claude-design-eds/snowflake-blocks/test-3`
 - Preview: `https://snowflake-blocks-test-3--claude-design-eds--paolomoz.aem.page/snowflake-blocks/test-3`
@@ -89,7 +89,7 @@ above it).
   no reserved-class block names. The improved skill carried this hard case.
 - **New findings surfaced:** #17, #18, #19, #20 below.
 
-### test-4 — JFK International (`samples/JFKAirport`)
+### test-4 — airport (React/JSX app; `samples/<test-4 sample>`)
 - Branch: `snowflake-blocks-test-4` (off `snowflake-blocks`)
 - DA: `https://da.live/#/paolomoz/claude-design-eds/snowflake-blocks/test-4`
 - Preview: `https://snowflake-blocks-test-4--claude-design-eds--paolomoz.aem.page/snowflake-blocks/test-4`
@@ -97,14 +97,14 @@ above it).
   live wait-times table, wc-strip, guide, essentials, redev, accessibility, news)
   + 2 chrome fragments.
 - Prototype type: **React/JSX app** (HTML shell mounts `.jsx` into `#root`) with an
-  external `jfk-styles.css`. The **last untested input shape** — validated the
+  external `<test-4>-styles.css`. The **last untested input shape** — validated the
   "pre-render JSX → static HTML first" path (#1).
 - **Skill fixes validated:** #21 footer-class fix held on a fresh conversion (navy
   footer renders); #13 (`.wrap` reproduced), #14 (no JS-reveal), #19/#23 QA, body
   fragment, headless deploy, non-variable/variable fonts all held.
 - **New findings surfaced:** #24, #25, #26 below.
 
-### test-5 — Evergreen Bank (`samples/Wells Fargo`)
+### test-5 — Evergreen Bank, retail bank (React/JSX app; `samples/<test-5 sample>`)
 - Branch: `snowflake-blocks-test-5` (off `snowflake-blocks`)
 - DA: `https://da.live/#/paolomoz/claude-design-eds/snowflake-blocks/test-5`
 - Preview: `https://snowflake-blocks-test-5--claude-design-eds--paolomoz.aem.page/snowflake-blocks/test-5`
@@ -119,7 +119,7 @@ above it).
 - **New findings surfaced:** #27, #28 below. (Goal of this run: reproduce the
   *interactive* JSX, not just static markup.)
 
-### test-6 — Meridian Airways (`samples/Virgin Atlantic`)
+### test-6 — Meridian Airways, airline (React/JSX app; `samples/<test-6 sample>`)
 - Branch: `snowflake-blocks-test-6` (off `snowflake-blocks`)
 - DA: `https://da.live/#/paolomoz/claude-design-eds/snowflake-blocks/test-6`
 - Preview: `https://snowflake-blocks-test-6--claude-design-eds--paolomoz.aem.page/snowflake-blocks/test-6`
@@ -139,7 +139,7 @@ above it).
 
 ---
 
-## Findings (test-8 — Knack, native stardust `uplift-knack/home-C-cinematic`)
+## Findings (test-8 — no-code platform, native stardust `uplift-<test-8>/home-C-cinematic`)
 
 First conversion of a real stardust prototype (10 blocks) with the SEO-hardened
 skill. SEO #34/#35 held perfectly as a forward design (1 `<h1>` + 8 `<h2>` server-
@@ -185,7 +185,7 @@ A hero block hard-indexed `rows[3]=headline, rows[4]=lede, rows[5]=CTA` (the ric
 **Implemented:** Step 8 + the #35 Headings rule — lead/hero blocks decorate by querying content (`block.querySelector('h1,h2…')`; first link-free `<p>` = lede; link-bearing `<p>` = CTAs; `picture` from anywhere), tolerating BOTH the rich multi-row shape and the consolidated single-cell shape. Local-QA: assert the hero inner wrap is non-empty and contains the `<h1>` after decoration.
 
 ### 43. 🟠 visual-diff STRETCHED-IMAGE check false-passes when the EDS image fails to load (natural 0×0)
-Snowflake images use absolute `aem.page` origin URLs (#2/#9). In the OFF-pipeline local harness those 404 (cross-origin / not-yet-deployed), so `naturalWidth/Height` come back `0×0`. The #36 stretch test is `!isSvg && natAR && renAR && …` — with `natAR=0` it short-circuits to `false`, so the probe printed "red flags: none" without ever running the check, precisely when the asset didn't load. Surfaced on test-9 (Stripe hero `wave.webp`).
+Snowflake images use absolute `aem.page` origin URLs (#2/#9). In the OFF-pipeline local harness those 404 (cross-origin / not-yet-deployed), so `naturalWidth/Height` come back `0×0`. The #36 stretch test is `!isSvg && natAR && renAR && …` — with `natAR=0` it short-circuits to `false`, so the probe printed "red flags: none" without ever running the check, precisely when the asset didn't load. Surfaced on test-9 (a payments-company sample's hero `wave.webp`).
 **Implemented:** (a) `visual-diff.mjs` now emits an `IMAGE DID NOT LOAD` red flag when an `<img>` rendered a box but has natural `0×0`. (b) The Local-QA harness recipe (Step 10): when building the harness, rewrite absolute `…aem.page/img/...` URLs to root-relative `/img/...` (the asset is committed locally) so the image loads and the stretch check has real dimensions. convert.workflow.js validate phase does this rewrite.
 
 ### 44. 🔴 Block JS that injects fixed brand imagery must use root-relative `/img/...`, never an absolute origin
@@ -346,7 +346,7 @@ So `block.querySelectorAll('p')` (and `[...].filter(p => !p.querySelector('a'))`
 **Implemented:** SKILL.md per-page checklist entry — read plain-text fields by CELL/`textContent`, verify against the decorated live/preview render. Guard 1 (a `<p>`-stripping mode in `build-harness.mjs`) is a recommended follow-up, not yet coded.
 
 ### 80. 🟠 Proprietary brand fonts were dropped to Arial (silent brand divergence) + condensed faces need a condensed fallback
-**Context:** CardValet (Fiserv brand) conversion, `paolomoz/stardust-deploy-test-2`. Prototype names proprietary faces — **PP Formula** (Pangram Pangram, a *narrow* display face) + **Univers for Fiserv** (Monotype) — and ships them as `.otf` under `assets/fonts/`.
+**Context:** a banking-app product conversion, `paolomoz/stardust-deploy-test-2`. Prototype names proprietary faces — **PP Formula** (Pangram Pangram, a *narrow* display face) + **a corporate-licensed Univers cut** (Monotype) — and ships them as `.otf` under `assets/fonts/`.
 **Symptom:** stakeholder immediately noticed the EDS headings "looked different." Width-probe vs prototype: every metric (size/weight/line-height/letter-spacing/transform) matched EXACTLY, but the rendered FACE was Arial — PP Formula H1 string measured **839px** in the proto vs **975px** (Arial) in EDS (~16% wider, different letterforms).
 **Root cause (two faults):**
 1. The old skill guidance said proprietary → "keep CDN / accept Arial / document the CLS trade-off." For a brand-faithful/presales conversion that silent degrade reads as broken.
@@ -433,11 +433,11 @@ The JSX prototype mounts `.jsx` into `#root` via babel-standalone, which fetches
 **Proposed:** put the concrete recipe in the #1 pre-render note: static server + Playwright capture of `#root`, save `_rendered.html`, then convert the rendered DOM.
 
 ### 25. 🟠 Multi-variant button systems don't fit the strong/em convention
-JFK ships four context-specific button variants (`.btn--accent`, `.btn--primary`, `.btn--ghost`, `.btn--onblue`). The skill's strong/em → primary/secondary/accent convention only has three slots and can't express "white-on-blue" vs "ghost" vs "accent" by author emphasis. What worked: **lift the prototype's full `.btn` + variant system into `styles/styles.css`** and have each block apply the right variant class to the cloned CTA (author CTAs as plain `<a>`; the block knows the section's variant). This is the documented "convention is for simple primary/secondary; if it doesn't fit, style per-prototype" escape hatch — just applied at the button-system level.
+test-4 ships four context-specific button variants (`.btn--accent`, `.btn--primary`, `.btn--ghost`, `.btn--onblue`). The skill's strong/em → primary/secondary/accent convention only has three slots and can't express "white-on-blue" vs "ghost" vs "accent" by author emphasis. What worked: **lift the prototype's full `.btn` + variant system into `styles/styles.css`** and have each block apply the right variant class to the cloned CTA (author CTAs as plain `<a>`; the block knows the section's variant). This is the documented "convention is for simple primary/secondary; if it doesn't fit, style per-prototype" escape hatch — just applied at the button-system level.
 **Proposed:** add to Step 5: when a prototype has >3 button variants or variants the convention can't name, lift the variant system globally and let blocks assign variant classes; don't force it into strong/em.
 
 ### 26. 🟡 Fragment root class: wrap content in the prototype's root class
-postlcp sets the host element's class to `header`/`footer` (#21). If the prototype's chrome styling is keyed to a different root class (JFK footer = `.site-footer`, header = `.utilnav`), wrap the fragment content in a `<div class="<that-class>">` so the lifted CSS root selector matches — or rewrite the selector to `footer.footer`. Wrapping is the lower-friction choice (keeps the lifted CSS verbatim).
+postlcp sets the host element's class to `header`/`footer` (#21). If the prototype's chrome styling is keyed to a different root class (test-4 footer = `.site-footer`, header = `.utilnav`), wrap the fragment content in a `<div class="<that-class>">` so the lifted CSS root selector matches — or rewrite the selector to `footer.footer`. Wrapping is the lower-friction choice (keeps the lifted CSS verbatim).
 **Proposed:** note in Step 6 — fragment content goes in a `<div>` with the prototype's chrome root class; `header.header`/`footer.footer` is just the host.
 
 **Implemented (#24–26):** #24 + #26 added to SKILL.md (Step 1 pre-render recipe; Step 6 fragment-root-class note); #25 added to Step 5 (lift multi-variant button systems). The JSX pre-render also exercised the agent-resilience path: when subagents died on transient API 500s mid-build, the finished lint-clean blocks were kept and the one missing block + the content page were authored by hand from each block's JSDoc contract + the captured `_rendered.html`.
@@ -447,7 +447,7 @@ postlcp sets the host element's class to `header`/`footer` (#21). If the prototy
 ## Findings (test-3)
 
 ### 17. 🟠 Component-driven prototypes → authorable rows + block JS (block JS *can* run)
-Beehive's logic lives in a `<script type="text/x-dc">` `Component` class: state (`active` beer), a `baseBeers()` data array, a `<sc-for>` list loop, `{{ activeBeer.* }}` bindings, count-up via IntersectionObserver. The conversion pattern that worked:
+test-3's logic lives in a `<script type="text/x-dc">` `Component` class: state (`active` beer), a `baseBeers()` data array, a `<sc-for>` list loop, `{{ activeBeer.* }}` bindings, count-up via IntersectionObserver. The conversion pattern that worked:
 - **Data → authorable rows.** The 5 beers became 5 block rows (`name | style | abv | ibu | notes | blurb | glass-color`); the stats became `number | label` rows.
 - **Behavior → block JS.** Unlike static *fragments*, **block JS runs** — so `decorate()` wires the click-to-select interactivity, builds the glass gradient from the authored color, and runs the count-up observer. State that lived in the component becomes local state in the block.
 - Template bindings (`{{ }}`), `<sc-for>`, `<sc-if>` are NOT EDS syntax — read them as "loop over these rows" / "show one state"; render the default/active state and drive the rest from JS.
@@ -465,12 +465,12 @@ The footer had a newsletter `<form onsubmit="return false">`. EDS's delivered CS
 **Proposed:** add to Step 6 (fragments): "no `<form onsubmit>` / inline `on*` — CSP blocks them; render decorative controls as non-submitting (`type="button"`, no `<form>`)."
 
 ### 21. 🔴 The #4 footer fix silently breaks fragment ROOT styling (regression)
-Found by visual review: the Beehive footer should be **yellow**, but it rendered on the dark body background. Cause: `postlcp.js` only does `el.innerHTML = html` — it does NOT set a class on the `<footer>`. `decorateHeader()` sets the *header's* class, but the **footer's** class was set by `utils/footer.js` → which the #4 fix removed. So `footer.footer { background: … }` (the fragment's own root selector) never matches, and any styling on the fragment ROOT (background, padding, color) silently no-ops. It was invisible in test-1/test-2 only because their dark footers ≈ the dark body.
+Found by visual review: the test-3 footer should be **yellow**, but it rendered on the dark body background. Cause: `postlcp.js` only does `el.innerHTML = html` — it does NOT set a class on the `<footer>`. `decorateHeader()` sets the *header's* class, but the **footer's** class was set by `utils/footer.js` → which the #4 fix removed. So `footer.footer { background: … }` (the fragment's own root selector) never matches, and any styling on the fragment ROOT (background, padding, color) silently no-ops. It was invisible in test-1/test-2 only because their dark footers ≈ the dark body.
 **Fix applied (test-3):** `postlcp.js` sets `el.className = name` before injecting, so `header.header` / `footer.footer` match.
 **Proposed:** fold this into the Runtime bootstrap right next to the #4 lazy.js edit — two halves of the same change. Future runtime ports must include BOTH (port from the latest test branch that has both fixes, not test-1).
 
 ### 22. 🟠 Single-weight display fonts: match the prototype's effective (faux-bold) weight
-Beehive's display face is **Anton** (ships only weight 400). The prototype renders headings via the browser-default heading bold (700) → faux-bold. My foundation set `h1,h2,h3 { font-weight: 400 }`, so headings rendered visibly **lighter** than the prototype. Match the *effective* weight the prototype shows (here 700, synthesized from the 400-only Anton) — don't assume "single-weight font ⇒ font-weight 400".
+test-3's display face is **Anton** (ships only weight 400). The prototype renders headings via the browser-default heading bold (700) → faux-bold. My foundation set `h1,h2,h3 { font-weight: 400 }`, so headings rendered visibly **lighter** than the prototype. Match the *effective* weight the prototype shows (here 700, synthesized from the 400-only Anton) — don't assume "single-weight font ⇒ font-weight 400".
 **Proposed:** add to Step 4: when the display font has one weight but the prototype shows it bold (default `<h1>`/`<h2>` weight), set that weight explicitly so the faux-bold matches.
 
 ### 23. 🟠 Visually diff each section against the prototype — parallel agents drift on layout
@@ -484,12 +484,12 @@ Two agent-built fidelity bugs only showed on a side-by-side: the taproom header 
 ## Findings (test-2)
 
 ### 14. 🔴 Scroll-reveal animations rely on JS — never ship the `opacity:0`
-Festool sections carry a `.reveal` class (`opacity:0; transform:translateY()`) that an IntersectionObserver flips to `.in` on scroll. That observer lives in the prototype's inline `<script>`, which **does not run** in EDS (block JS rebuilds the DOM; the prototype script is discarded). If a block lifts `.reveal { opacity:0 }` verbatim, the content is **permanently invisible**.
+test-2 sections carry a `.reveal` class (`opacity:0; transform:translateY()`) that an IntersectionObserver flips to `.in` on scroll. That observer lives in the prototype's inline `<script>`, which **does not run** in EDS (block JS rebuilds the DOM; the prototype script is discarded). If a block lifts `.reveal { opacity:0 }` verbatim, the content is **permanently invisible**.
 **Fix applied (test-2):** drop the reveal entirely — render content visible; keep only hover transitions. (Optional: a per-block IntersectionObserver could re-add a reveal, but it wasn't worth it.)
 **Proposed:** add to Step 7 brief + a checklist line + an anti-pattern: "if the prototype hides content behind a JS-toggled reveal class, render it visible — never ship `opacity:0` without an observer." Generalizes #5 (fragments can't run JS) to **block** content.
 
 ### 15. 🟠 Block name must not collide with reserved EDS classes
-Festool's two main sections both use `class="section"` (`section` + `section tinted`). `section` is a **reserved EDS class** (the section wrapper becomes `<div class="section">`), and `default-content` / `block-content` are reserved too. Naming a block `section` would break decoration. Had to rename to semantic block names (`new-products`, `discover`) and apply the `tinted` treatment as a block variant.
+test-2's two main sections both use `class="section"` (`section` + `section tinted`). `section` is a **reserved EDS class** (the section wrapper becomes `<div class="section">`), and `default-content` / `block-content` are reserved too. Naming a block `section` would break decoration. Had to rename to semantic block names (`new-products`, `discover`) and apply the `tinted` treatment as a block variant.
 **Proposed:** add to Step 2 naming rules: "block name = the section's class, EXCEPT when that class is generic/reserved (`section`, `default-content`, `block-content`, `wrap`, `button`) — then derive a semantic name from the section's `data-screen-label`/intent."
 
 ### 16. 🟠 Secure `.env` (DA token) on the PARENT branch, not per-test
@@ -505,9 +505,9 @@ The DA token lives in repo `.env`. Test subbranches branch from `snowflake-block
 ### 1. 🟠 Input scope assumes stardust, not claude-design prototypes
 The skill keys off `stardust/prototypes/**/*.html`. Our inputs are
 `samples/<Name>/*.html` claude-design outputs in three shapes:
-- single-file inline-`<style>` + `<section>` (Wheelercat, Festool) — works
-- `<x-dc>` document-content, everything inline-styled (Beehive Brewing)
-- React/JSX (Fable variants, Virgin, Wells Fargo, JFK) — needs rendering first
+- single-file inline-`<style>` + `<section>` (test-1, test-2) — works
+- `<x-dc>` document-content, everything inline-styled (test-3)
+- React/JSX (Fable variants, test-6, test-5, test-4) — needs rendering first
 **Proposed:** generalize the "When to use" + audit steps to any per-page styled
 HTML; add a pre-step for JSX/`<x-dc>` inputs ("render to static HTML first").
 
@@ -611,7 +611,7 @@ woff2 (fonttools, Barlow vs Arial: 116.22% / 86.04% / 17.21%).
 metrics with fonttools when no published fallback exists.
 
 ### 12. 🟡 Multi-family brands: only the body font gets full CLS treatment
-Wheelercat uses 3 families (Barlow body + Barlow Condensed + Barlow Semi
+test-1 uses 3 families (Barlow body + Barlow Condensed + Barlow Semi
 Condensed). `body.session` gates only the body font; the condensed/semi
 families are referenced by class and load with `font-display: swap`, leaving
 minor heading CLS.
@@ -660,13 +660,13 @@ All implemented on `snowflake-blocks` (SKILL.md + da-deploy-protocol.md).
 
 ## Findings (multitest-280626 — 8-site parallel stress test, 2026-06-28)
 
-Eight live sites (xfinity, paramount, bankofamerica, starbucks, sycamorepartners,
-paypal, samsung, sony) migrated in parallel, one branch + DA subfolder each. Four
+Eight live sites (a telecom, a media company, a retail bank, a coffee chain,
+a private-equity firm, a payments company, two electronics makers) migrated in parallel, one branch + DA subfolder each. Four
 fixes implemented here (deploy + extract). The trailing-slash-subfolder-home bug
 (all 8 sites) and the logo-locator misses (3 sites) are tracked separately.
 
 ### #82 🔴 Image-fidelity gate `curl`-omits real imagery on bot-walled origins ✅
-**Where:** 5 sites behind Akamai/Cloudflare (paramount/xfinity/sony/samsung/bofa).
+**Where:** 5 sites behind Akamai/Cloudflare (the media, telecom, two electronics and retail-bank sites).
 **Cause:** the gate said "curl each external `<img>`; if not 200, omit." Bot
 managers 403 a bare curl while serving a real browser, so the rule would strip
 EVERY real brand image. And `content.da.live` media URLs 401 to anon curl though
@@ -705,8 +705,8 @@ clone + a real sibling. `deploy/SKILL.md` Runtime-bootstrap updated to lead with
 the script + pin/sibling guidance.
 
 ### #85 🔴 Extract captures hidden/transient/modal DOM as content ✅
-**Where:** bankofamerica (error/lang interstitials as headings), starbucks (consent
-banner + SPA shell), sycamorepartners (AJAX-modal detail captured byte-identical to
+**Where:** the retail bank (error/lang interstitials as headings), the coffee chain (consent
+banner + SPA shell), the private-equity site (AJAX-modal detail captured byte-identical to
 its listing → 35 silent duplicates).
 **Fix applied (`extract/reference/playwright-recipe.md` § Capture hygiene + crawl.mjs):**
 visibility filter (skip display:none/aria-hidden/off-screen/zero-area), interstitial/
@@ -727,7 +727,7 @@ Implemented and smoke-tested in crawl.mjs.
 
 ---
 
-## 2026-07 Fairmas e2e — per-instance fidelity on the first pass
+## 2026-07 hospitality-software-site e2e — per-instance fidelity on the first pass
 
 - [x] #90 Front-loaded **style-fingerprint probe** (`scripts/style-fingerprint.mjs`) added as a Step-1
   pre-block gate: clusters each sibling instance by a COMBINED signature — computed style-delta
@@ -830,10 +830,10 @@ conformance is now mechanical on the FIRST pass, not a second-pass correction.
 
 ---
 
-## 2026-07-22 — vanilla-EDS e2e round 2 (flexiloans subfolder site, #98–#100)
+## 2026-07-22 — vanilla-EDS e2e round 2 (fintech subfolder site, #98–#100)
 
 Context: second Phase-5 validation run — 11-section fintech page onto stock boilerplate,
-subfolder scope `/flexiloans/`, per-page `nav`/`footer` metadata chrome overrides (worked
+subfolder scope `/<fintech-site>/`, per-page `nav`/`footer` metadata chrome overrides (worked
 first try live). davids-model-lint again 0 🔴 on the first pass with no model instruction
 in the run prompt. Three live-only findings, all invisible to the local harness:
 
@@ -865,8 +865,8 @@ false-passes. Chain: the metadata block leaves the FIRST section empty → the r
 run the CLS probe against the DEPLOYED preview) + checklist line.
 
 ### #101 🟡 Local-QA scope trimmed to what the harness can actually prove ✅
-**Where:** transcript timing across three e2e runs (surly 74m/6 sections, flexiloans 72m/11,
-sos 42m/13). Three local steps cost 10–15 min/run and caught nothing — or worse:
+**Where:** transcript timing across three e2e runs (a brewery site 74m/6 sections, the fintech site 72m/11,
+a third site 42m/13). Three local steps cost 10–15 min/run and caught nothing — or worse:
 harness-side `content-diff`/`visual-diff` found zero defects in any run once
 `block-roundtrip` was green (same classifier, same DOM — nothing left to find by
 construction); the local CLS probe FALSE-PASSED the one time it mattered (0.0007 harness vs
@@ -875,7 +875,7 @@ section schema already encodes.
 **Fix applied:** (1) new stock `scripts/qa-gate.mjs` — one run asserts the decoration
 contract from the page's eds-schema (boot, one `<h1>`, blocks loaded + non-empty, unit
 counts incl. densest-container + unitSelector-tag proxies, wide-1600 warnings); validated
-42/42 against the sos harness. (2) Local-QA scope boundary in SKILL.md: CLS,
+42/42 against that site's harness. (2) Local-QA scope boundary in SKILL.md: CLS,
 `content-diff`/`visual-diff`, and `nav:`/`footer:` overrides are DEPLOYED-URL-ONLY checks.
 (3) Step 10 + #81/#100 + checklist reworded accordingly. Expected effect: ~70 → ~55 min per
 single-page conversion with a quality GAIN (no false local CLS confidence).
@@ -896,7 +896,7 @@ the DEPLOYED preview for CSP violations as part of Step 10 (a fallback can make 
 invisible to layout gates).
 
 ### #103 🔴 DA media bus is images-only — an authored content.da.live mp4 401s for visitors ✅
-**Where:** interacoustics e2e (3-site batch). The hero authored its background video as a
+**Where:** a medical-devices e2e (3-site batch). The hero authored its background video as a
 `content.da.live/...mp4` link; the preview ingester only processes `<img>` content, so the
 URL survives verbatim into the block's `<video src>` — and `content.da.live` is auth-gated,
 so every anonymous browser gets **401** (readyState 0, poster-only). Silent: the poster
@@ -908,8 +908,8 @@ external host also works. Never author a `content.da.live` URL for anything the 
 doesn't rehost (`<img>`/`<picture>` only) — verified playing live post-fix (readyState 4).
 
 ### #104 🔴 wrapTextNodes folds media-led cells into one `<p>` — codified after TWO rediscoveries ✅
-**Where:** flexiloans found it (recorded only in that site's runtime-contract notes, never
-promoted to the skill); interacoustics then paid ~10 min re-discovering it (products
+**Where:** the fintech site found it (recorded only in that site's runtime-contract notes, never
+promoted to the skill); the medical-devices run then paid ~10 min re-discovering it (products
 shipped thumbnails without titles until a cellNodes() expansion landed in 6 blocks); the
 3-site batch timing analysis flagged the repeat cost. The runtime's `decorateBlock` runs
 `wrapTextNodes`: a cell whose FIRST element child is not in `P/PRE/UL/OL/PICTURE/TABLE/
@@ -924,7 +924,7 @@ instead of shipping. Lesson: a runtime quirk recorded per-site is a quirk the ne
 re-pays — promote to the skill the same day it's found.
 
 ### #105 🟡 Per-section eyeball capped to flagged sections ✅
-**Where:** 3-site batch timing — interacoustics ran 13 proto-vs-harness section pairs
+**Where:** 3-site batch timing — the medical-devices run ran 13 proto-vs-harness section pairs
 (~7.5 min); across all six e2e runs every per-section catch was either visible in the
 full-page pair or in a section already flagged by a probe (roundtrip 🟡, qa-gate warn,
 fingerprint variation).
@@ -932,14 +932,14 @@ fingerprint variation).
 only for flagged sections, bespoke/cinematic or slot-heavy template-slotted sections, and
 the chrome. Expected ~3–5 min saved on large pages at negligible risk.
 
-## 2026-08-26/27 — replica+deploy field harvest (rwe.com, centene.com; #106–#114)
+## 2026-08-26/27 — replica+deploy field harvest (an energy-company site, a healthcare-insurer site; #106–#114)
 
 Two independent sessions; each finding below bit with green text gates and was
 caught only by a pixel probe or eyeball. All are source-class-general (any
 bootstrap-era grid, any AEM-classic richtext source), none site-specific.
 
 ### #106 🔴 Boilerplate ships no global `border-box` — %-width+padding grids silently wrap ✅
-**Where:** centene.com deploy. Block CSS ported a bootstrap-era grid
+**Where:** the healthcare-insurer deploy. Block CSS ported a bootstrap-era grid
 (`width: 33%` + padding); under the default `content-box` every column
 overflowed its track: 3-col cards rendered 2+1, 2-col bands stacked, the
 footer wrapped — **+1731px doc height with ALL text gates green**.
@@ -948,7 +948,7 @@ footer wrapped — **+1731px doc height with ALL text gates green**.
 block CSS combining `width: N%` with `padding` is called out as a defect.
 
 ### #107 🔴 `header { height: var(--nav-height) }` collapses every block-internal `<header>` ✅
-**Where:** rwe.com deploy. Blocks that emitted semantic `<header>` (natural
+**Where:** the energy-company deploy. Blocks that emitted semantic `<header>` (natural
 when porting prototype DOM verbatim) all broke at once — the stock chrome
 reservation matches EVERY `<header>`, clamping each to nav height and hiding
 it; text gates stayed green.
@@ -957,7 +957,7 @@ it; text gates stayed green.
 foundation pass is already editing the boilerplate's structural layer (#106).
 
 ### #108 🟡 Overlay chrome is an uncovered #81 case — `--nav-height: 0` + absolute header ✅
-**Where:** rwe.com deploy. The prototype's transparent header floats OVER the
+**Where:** the energy-company deploy. The prototype's transparent header floats OVER the
 hero; reserving any `--nav-height` would push the hero below where the source
 renders it.
 **Fix applied:** Step 3 documents the pattern: `--nav-height: 0` + absolutely
@@ -965,16 +965,16 @@ positioned header, no reservation — nothing in flow, so the late chrome load
 shifts nothing (measured CLS 0.0004).
 
 ### #109 🔴 Mobile override loses to desktop VARIANT specificity regardless of media query ✅
-**Where:** rwe.com deploy iteration. A generic mobile rule
+**Where:** the energy-company deploy iteration. A generic mobile rule
 (`.cards .card-list`) lost to the desktop variant rule
 (`.cards.color .card-list`) — a media query changes *when* a rule applies,
 never *how strongly*. Silent on single-variant blocks; guaranteed to recur the
-moment a rollout adds variants (centene's `feature`/`panel` variants have
+moment a rollout adds variants (the healthcare-insurer site's `feature`/`panel` variants have
 exactly this shape).
 **Fix applied:** block-brief template requires mobile overrides at the
 variant's own specificity (or `:where()` the variant selectors down).
 ### #110 🟠 Pipeline fallback `<img src>` copied into CSS `background` ships the 750px rendition ✅
-**Where:** centene.com deploy. The `<picture>` fallback `<img src>` carries
+**Where:** the healthcare-insurer deploy. The `<picture>` fallback `<img src>` carries
 `width=750`; copied into a full-bleed CSS `background-image` it renders soft
 at any hero width. `<picture>`-rendered images are unaffected (the browser
 picks a real rendition).
@@ -982,30 +982,165 @@ picks a real rendition).
 fallback src into CSS — rewrite the width param (`width=2000`) first.
 
 ### #111 🟡 `<picture>` wrapper adds an inline baseline descender (+6/7px per image paragraph) ✅
-**Where:** centene.com deploy. The pipeline's `<p><picture>…` wrapper leaves
+**Where:** the healthcare-insurer deploy. The pipeline's `<p><picture>…` wrapper leaves
 the image inline on the text baseline — each image paragraph measured +6/+7px
 vs the bare-`<img>` source; systematic, per-image, invisible to text gates.
 **Fix applied:** documented `line-height: 0` on the image paragraph as the
 parity fix.
 
 ### #112 🟡 Pipeline drops whitespace-only authored content — model spacer line boxes as CSS ✅
-**Where:** centene.com deploy. Authored `<p>&nbsp;</p>` / trailing
+**Where:** the healthcare-insurer deploy. Authored `<p>&nbsp;</p>` / trailing
 `<br>&nbsp;` (real line boxes on AEM-classic sources) are dropped by the
 pipeline; the height difference surfaced only in the pixel probe.
 **Fix applied:** ENCODE contract: never model live line boxes as authored
 whitespace — express them as block CSS (padding/margin).
 
 ### #113 🟡 Un-floating columns in a media query loses the float's BFC margin containment ✅
-**Where:** centene.com deploy. The desktop float established a BFC that
+**Where:** the healthcare-insurer deploy. The desktop float established a BFC that
 contained the last child's margin; the mobile override un-floated the column
 and the margin escaped (−10px, mobile only).
 **Fix applied:** block-brief template: when a mobile override un-floats, add
 `display: flow-root` to the override.
 
 ### #114 🟡 A wrapper reset can out-specify the block's own rules — padding silently 0 ✅
-**Where:** centene.com deploy. `footer .footer > div { padding: 0 }` (a
+**Where:** the healthcare-insurer deploy. `footer .footer > div { padding: 0 }` (a
 wrapper reset) beat `footer .f-root { padding: … }` — the block's own rule
 never applied, no error anywhere.
 **Fix applied:** block-brief template warns: keep wrapper resets at LOWER
 specificity than the block's own rules (`:where()` them down), and check any
 `> div` reset against every rule it might shadow.
+
+### #115 🔴 Full-page pixel bar dilutes chrome — header/footer shipped at 93–97% while pages gated green ✅
+**Where:** two sibling commerce-site migrations (same wine-retail group, 2026-08). The
+header/footer are a small share of page pixels but carry disproportionate
+visual weight and repeat on every page of a rollout; hand-drawn lookalike
+icons, wrong micro-weights, and off-by-10px nav rows all fit inside the ≤10%
+full-page bar. Both field runs shipped "green" pages with visibly-off chrome.
+**Fix applied:** new `replica/scripts/crop-compare.mjs` (per-y-band
+pixelmatch with per-side offsets, default bar 2%); replica pass bar gains
+item 5 (header + footer bands each ≥98%, over the same stitched captures);
+deploy Step 10 gains the chrome crop gate (per template minimum).
+
+### #116 🔴 Computed-style lift freezes fluid widths — invisible at both gate breakpoints ✅
+**Where:** a commerce-site migration. A lift recorded `width: 720px` from an
+element authored `width: 50%`; 1440 and 360 render both identically, so the
+frozen value shipped and diverged only at ≥1920 (live hero card 940px vs
+720px; CTA row wrapped as a side effect). Same trap on DOM: the 1440 layout
+OUTCOME (a 3+1-wrapped button row authored as two rows) captured instead of
+the layout MODEL (one wrapping flex row).
+**Fix applied:** recreation-procedure gains § Lift the sizing MODEL (lift at
+two widths, diff, encode the authored rule); source-fidelity-gate gains the
+≥1920 box-map spot check (same-DOM-tier rule included); deploy Step 10 item
+5 mirrors it on the deployed URL.
+
+### #117 🟠 Geometry-fix verification: wrong element, cached CSS, reviewer-zoom viewport — one claim wrong three ways ✅
+**Where:** a commerce-site migration. A "parity verified" claim probed a
+heuristically-matched element instead of the rule-bearing one; the re-check
+read a CACHED block stylesheet (DevTools showed the old rule while both
+hosts served the fix); and the reviewer's screenshot encoded a zoomed
+viewport — their numbers contradicted a correct fix until back-computed
+(card 851px under `width:50%` → viewport 1702px) and reproduced headlessly.
+**Fix applied:** deploy Step 10 item 6 + a replica iteration-discipline
+bullet: pair the rule-bearing element on both sides, verify serving with
+`curl --compressed | grep` (bare curl greps gzip binary and matches
+nothing), re-render in a fresh headless context, back-compute the
+reviewer's viewport from any known %-rule element.
+
+### #118 🟠 Guessed asset URLs ship wrong pixels — CDNs answer 200 with a generic fallback ✅
+**Where:** a commerce-site migration. Six product images were uploaded from
+GUESSED catalog URLs; the commerce CDN answered 200 with the same generic
+placeholder for all six — no error anywhere, wrong pixels shipped.
+**Fix applied:** ENCODE contract → Images: rehost only from the exact
+captured URL string (lift/extract map), and diff the fetched asset's
+dimensions + byte size against the captured copy before uploading.
+
+### #119 🔴 Authored `<hr>` is the section delimiter — it silently fractures the section ✅
+**Where:** a commerce-site migration. An `<hr>` authored inside a section split
+it into multiple sections at ingestion; every downstream section
+selector/style broke.
+**Fix applied:** ENCODE contract rule (draw rules in CSS via an empty styled
+section); `davids-model-lint.mjs` flags any `<hr>` as 🔴 (rule `HR`) and
+`hr` left the prose-expressible tag set.
+
+### #120 🟠 Multi-value section-metadata `style` delivers only the first class ✅
+**Where:** a commerce-site migration. `style: a, b` (comma- or space-separated)
+delivered only `a` on a real stack.
+**Fix applied:** Step 3: one `style` value per section; a second styling
+axis anchors to content (`main .section.a:has(img[alt^="…"])` — 
+content-anchored `:has()` survives the metadata pipeline).
+
+### #121 🔴 Unscoped empty-section `display` override defeats pre-load hiding — 0.75 CLS ✅
+**Where:** a commerce-site migration. `main .section.x { display:block
+!important }` (needed against `:empty { display:none }`) also defeated the
+runtime's pre-load hiding (`data-section-status`), painting the section
+before the rest of the page — measured 0.75 CLS.
+**Fix applied:** Step 3: always scope the override to
+`main .section.x[data-section-status='loaded']`.
+
+### #122 🟡 Loaded ≠ rendered — an img with naturalWidth > 0 can render 0×0 ✅
+**Where:** a commerce-site migration. A flex item's width derived from the
+image while the image's `max-width:100%` derived from the item — circular
+sizing collapsed to zero; `.plain.html` checks and the `naturalWidth === 0`
+broken-image probe both passed.
+**Fix applied:** the deployed computed-style guard also asserts
+`clientWidth > 0` per visible loaded image; qa gains the `zero-size-image`
+check (in-layout via `getClientRects()` so display:none images don't
+false-flag); reskin's Image-paint gate documents the same blind spot.
+
+### #123 🔴 Every generated block was uneditable in Experience Workspace — value-slotting, `text(cell)`, clone-the-anchor were the skill's own guidance ✅
+**Where:** the energy-company migration (2026-09-03), `da.live/canvas#/…/index`. Clicking
+hero or spotlight text did nothing; `columns` body paragraphs edited fine but
+its CTA did not. Probe over a 29-page covering sample: **841 / 1452** authored
+texts editable — default content 446/446, the 20 stardust blocks 395/970.
+Census over 27 blocks: 25 call `textContent`, 13 assign `innerHTML`, 16 clone,
+23 `replaceChildren`. Two external analyses had the symptom right and the
+mechanism wrong.
+**Mechanism (verified in da.live `editor-utils.js`/`prose2aem.js` and da-nx
+`quick-edit.js`/`prose.js`):** the canvas stamps `data-prose-index` on every
+OUTERMOST `h1–h6/p/ol/ul/pre/blockquote`, swaps the instrumented HTML into
+`document.body`, re-runs the page's own `loadPage()` (so `decorate()` runs over
+it), then `querySelector('[data-prose-index="N"]').replaceWith(editor)` per
+index. Only `data-block-index` is repaired afterwards. A text is editable iff
+exactly ONE element still carries its index; zero = dead (rebuilt from
+`textContent`/`innerHTML`, synthesized `<p>`, retagged); several = editor on the
+FIRST in DOM order (hidden carousel clone). The editor renders the DOC node —
+same tag, no classes, no spans, inline marks only — inside TWO wrapper divs
+(`div.prosemirror-editor > div.ProseMirror > <tag>`), and cursor math uses
+`textContent` length. In the workspace every block cell contains a `<p>`
+(published pipeline unwraps it; runtime `wrapTextNodes` re-wraps).
+**The clone corollary:** `cloneNode(true)` is NOT what kills editing — the
+clone keeps the attribute (that is exactly why clone-based `columns` worked
+while `textContent`-based `hero` did not). Cloning is still wrong (duplicate
+indices, stale identity); the fix is MOVE, not "avoid clone".
+**The specificity trap:** a wrapper variant written as `.affordance-wrap a`
+out-ranks `a:any-link` and silently flipped link colour navy → teal;
+`.affordance-wrap :where(a)` keeps `.affordance`'s specificity.
+**The two-wrapper selector rule:** `h3.headline {…}` → `.headline :is(h2, h3, h4)
+{…}` (same specificity, still matches the editor's re-rendered `<h3>`); no
+child combinators or positional pseudo-classes on the path to an authored
+element; exclude a moved CTA `<p>` from a lede rule with
+`p:where(:not(.affordance p))`.
+**Root cause in the skill:** § 2b template-slotted tier slotted authored
+VALUES by role; § 8 scaffold taught `text(cell)` + "build the prototype's DOM";
+§ 5 said "block JS just clones them as-is"; #55 cloned `childNodes` into a new
+heading; #62/#71 synthesized `<p>`s; #70 edited the authored text node;
+§ Section heads rebuilt the `.section-head`; no gate measured editability.
+**Fix applied:** § Target runtime documents the instrumentation; § 2b redefines
+template-slotted as NODE-slotting and bans value-slotting; § 3 ships three
+edit-mode foundation snippets (CTA repaint from `<strong>/<em>` marks under
+`.prosemirror-editor`, card-as-link inner anchor, `:where()` wrapper variants)
++ EW10; § 5/#55/#62/#70/§ Section heads rewritten to MOVE; § 8 gets a
+move-based scaffold (`wrapNode`, `labelWrap`, `stripInstrumentation`) and the
+named **Experience Workspace editability contract (EW1–EW10)**; new
+`scripts/ew-editability-probe.mjs` (URL + `--content` harness modes,
+`--simulate-editor` drift, `@ew-exempt` JSDoc tags); `block-roundtrip --ew`
+(default on) fails dead/duplicated texts 🔴; `render-harness --ew
+--simulate-editor`; `section-schema` emits `editableTexts`;
+`content-inventory` exports the outermost-editable classifier for
+`content-diff`'s advisory; qa gains the `editability` check; the Step-7 brief
+carries the contract (it skipped 27/27 blocks because the brief did not);
+replica/rollout/reskin/fidelity-tiers cite it; eval `ew-editability`.
+**Result on the energy-company site (2 rounds, 3 + 17 blocks):** 841 → **1416 / 1452** editable;
+the 36 left are declared exemptions (index-driven listings, derived dates, a
+breadcrumb needing an ENCODE `<ul>`); 27 block instances pixel-identical at
+1440; 0 edit-mode drift except the hero's per-line span gap.

@@ -6,7 +6,7 @@ craft gates entirely: an archetype ships because it measured true, never
 because it looked right. Every fix in the loop comes off the instruments;
 eyeballing is not an input.
 
-Validated (UC1-E1, aesop.com home): 8.31% → 2.93% → 1.31% pixel diff across
+Validated (UC1-E1, a typographic retail home page): 8.31% → 2.93% → 1.31% pixel diff across
 exactly 3 iterations, 0 structural 🔴, height Δ 0 — and the two defects the
 capture phase missed (span font fork, hero scrim) were both found only by
 these instruments.
@@ -70,10 +70,10 @@ across iterations — re-take it only if it is genuinely stale (site changed,
 capture hardening changed). This is a bot-block control, not just a cost
 note: content-diff + visual-diff each navigate the live URL per run, so a
 full 3-iter, 2-breakpoint gate is already ≈12–18 live hits, and hard-CDN
-sites (recorded: rimowa/Akamai) escalate to an IP block after a handful.
+sites (recorded: an Akamai-defended luggage retailer) escalate to an IP block after a handful.
 The prototype capture is re-taken every iteration.
 
-## Pass bar (all four, per breakpoint)
+## Pass bar (all five, per breakpoint)
 
 1. **content-diff: 0 structural 🔴.** 🟡 (body/EXTRA) and 🟠 (font fork)
    confirmed intended — a substituted licensed font is a permanent justified
@@ -89,6 +89,88 @@ The prototype capture is re-taken every iteration.
    residual, not a pass. A large delta invalidates the % — the overlap crop
    silently discards the tail, so a short prototype can score deceptively
    well. Fix heights before trusting anything else.
+5. **Chrome crop gate: header band AND footer band each ≤ 2% diff (≥98%
+   match, #115).** The full-page bar dilutes the chrome — header/footer are
+   a small share of page pixels but carry disproportionate visual weight
+   and repeat on every page of a rollout. Two field runs shipped
+   full-page-green pages whose chrome measured only 93–97% (lookalike
+   icons, wrong micro-weights, off-by-10px nav rows all fit inside a ≤10%
+   full-page bar). Run `../scripts/crop-compare.mjs` over the SAME stitched
+   captures the pixel probe used — no extra live hit:
+
+   ```bash
+   node scripts/replica/crop-compare.mjs "$GATE/live.png" "$GATE/proto.png" \
+     --y 0 --height <nav-height> --out "$GATE/chrome-header-diff.png"
+   node scripts/replica/crop-compare.mjs "$GATE/live.png" "$GATE/proto.png" \
+     --y <liveDocH - footerH> --y-b <protoDocH - footerH> --height <footerH> \
+     --out "$GATE/chrome-footer-diff.png"
+   ```
+
+   `--y-b` gives the footer crop a per-side offset so a small doc-height
+   delta doesn't contaminate it with a false full-band diff. Read the band
+   heights off the section-anchor probe (`anchor.mjs` prints the footer's
+   `[y, height]` on both sides).
+
+   **Styles diagnose, pixels confirm — run the computed-style parity probe
+   BEFORE any pixel iteration on chrome.** `../scripts/chrome-parity.mjs`
+   probes the same regions on live and build (default `header` + `footer`;
+   add sticky strips with `--region strip=<liveSel>|<buildSel>`), pairs
+   every text-bearing element by its text, and prints only what differs:
+   family / size / weight / style / line-height / letter-spacing /
+   transform / colour / background / padding / radius, the element rect,
+   the clickable box of links and buttons, and the icon inventory
+   (count + size + signature, paired by order). Recorded: one run found
+   what many pixel-band rounds had not — an italic-vs-normal note, a
+   regular-vs-bold link, a wrong nav link colour, 12px row offsets, a 97×40
+   vs 71×32 button, six missing icons. Fix every delta, re-run until it is
+   quiet (exit 0), THEN crop-compare — a pixel loop on chrome with parity
+   deltas outstanding is wasted iterations. Each run is one live
+   navigation (budget it like any live probe); `--json` records both
+   sides as the round's evidence.
+
+   ```bash
+   node scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width $W \
+     --region header=header --region footer=footer   # + --region strip=<sel>|<sel>
+   ```
+
+   **Glyph-dense chrome has a pixel noise floor — the ONE justified way past
+   the 2% bar, and it is evidence-gated three ways.** A footer of ~50 links
+   bottomed out at ~5% pixel diff with family, size, line-height, weight,
+   colour, pitch and positions all numerically identical (recorded): per-glyph
+   antialiasing between a hinted licensed face and the self-hosted webfont
+   dominates, and raw pixel bars over-iterate against noise. A chrome band
+   that FAILS crop-compare may be logged as a **justified residual** —
+   never a pass — only when ALL three hold, and each is an artifact in the
+   residual entry (§ Residual logging format, `cause: "glyph-antialiasing"`):
+   (1) `chrome-parity.mjs` exits 0 for that region at tolerance 1px — every
+   paired text's metrics and position match, no MISSING/EXTRA, icons paired;
+   (2) `crop-compare.mjs` reports the diff **texture** as thin-edge (≤15% of
+   differing pixels have ≥5 differing neighbours) — glyph antialiasing is
+   thin, misalignment and missing paint are thick; (3) the region is
+   text-dense (link columns, nav rows) — a band with imagery or icons never
+   qualifies (parity's ICONS finding would not be quiet anyway). One or two
+   of the three is not enough: a quiet parity probe with a THICK texture is
+   a paint defect the probe does not model; a thin texture with parity
+   deltas is a real metric error hiding in noise. The 2% bar itself is
+   unchanged, and the residual is re-verified every gate round like any
+   other justified flag.
+
+   **Chrome crops are ELEMENT-ANCHORED per side, never fixed-y — and
+   "chrome" means every site-wide repeating band: header, sticky/quick-link
+   strips, footer.** Recorded: the header measured 33.9% and a quick-links
+   strip 19.2% while the full page passed at 6.5% — chrome is small-area,
+   highest-salience and repeats on every page. Two traps: (a) a fixed-y crop
+   produces FALSE reads the moment either side's rhythm shifts — a 35px nav
+   fix moved everything below it and the strip crop read 66% while the strip
+   itself, re-anchored to its own band edges, was at 1.6%. Locate each
+   region on EACH side (its element rect via `anchor.mjs`, or its band
+   edges via `row-profile.mjs`'s column scan) and pass both anchors
+   (`--y`/`--y-b`); every gate round re-reads the anchors. (b) Regions whose
+   live content is authored-volatile — campaign heroes, promo creatives that
+   change between capture and gate — are masked out of the fidelity number
+   with `pixel-compare.mjs --mask <yA:h[@yB]>` (printed on the verdict line,
+   never silent): they are authored content, not conversion fidelity, and
+   chasing them burns iterations on a moving target.
 
 Applied inconsistency-register entries create expected deltas: cross-
 reference the entry ID (`R-<nn>`) when justifying a flag over its zone
@@ -132,7 +214,7 @@ node scripts/replica/anchor.mjs "$PROTO" --width $W   # free — build-side only
 
 Diff the two outputs, fix the FIRST section whose `[y, height]` disagrees
 (top-down — everything below it is offset-contaminated, the same rule as
-the band table), re-run pixels. Field-validated (broadridge, 8 pages): this
+the band table), re-run pixels. Field-validated (a financial-services site, 8 pages): this
 loop roughly halved iterations vs band-reading alone. `../scripts/gate.sh`
 wraps one full pixel round (stitch both sides — live cached — + compare +
 verdict) in one command.
@@ -140,6 +222,53 @@ verdict) in one command.
 Section-level compare (crops) is the escalation when a band stays hot and
 the cause isn't visible in `diff-iter<N>.png` — in the validated run it was
 prepared and never needed, because re-authoring hit exact section heights.
+`crop-compare.mjs` (the chrome-gate script, pass-bar item 5) does exactly
+this for any y-band, not just chrome.
+
+**Two row-level instruments replace eyeballing crops (`../scripts/row-profile.mjs`,
+runs over the same stitched PNGs — no live hit):**
+
+- **Column scan for layout boundaries.** Before editing CSS to fix a section
+  height, photo height, band start or card overlap, read the per-column
+  class transitions (white / dark / brand / photo at N x positions) on the
+  capture: `node scripts/replica/row-profile.mjs live.png proto.png
+  --columns 7`. Recorded: a stacked-crop visual read suggested a 415px photo
+  with a white band under it; the scan of the same capture proved the photo
+  full-bleed to 499px with the "white band" being an overlapping card — the
+  wrong read cost two build/measure cycles. Crop eyeballing is hypothesis;
+  the scan is the measurement.
+- **Brand-colour landmarks for vertical alignment.** Band percentages say
+  WHERE diffs are, not by how many pixels sections are offset. When a
+  saturated brand colour recurs in every section (CTA buttons are ideal),
+  `--color <#rrggbb>` lists every row run dominated by it on both sides and
+  pairs them in order: the per-pair delta is each landmark's offset, and the
+  CHANGE in delta between consecutive pairs (`gapShift`) names the one
+  inter-landmark CSS gap that absorbed the shift. Patch that gap, re-measure,
+  top-down — the same contamination rule as the band table. Recorded: three
+  passes driven this way took a page 16.9% → 11.05% and a 1559px height
+  delta → 48px. Do not tune margins by eye against crops. (Crop with pngjs;
+  macOS `sips --cropOffset` is unreliable for band crops.)
+
+## Wide-viewport fluid check (fluid-vs-fixed is invisible at the gate widths, #116)
+
+Both gate breakpoints render a frozen `width: 720px` and an authored
+`width: 50%` byte-identically at 1440 — and 360 collapses both — so a
+computed-style lift that recorded the resolved px instead of the sizing
+MODEL passes every gate and diverges only on wider screens (recorded: a
+live hero card 940px at 1920 vs a frozen 720px; the CTA row wrapped as a
+side effect). After the 1440 pass, run a cheap **box-map spot check at
+≥1920**: sample the text-bearing elements' x/width on both sides (the
+anchor-probe technique at `--width 1920`, or one extra stitched capture)
+and compare — a box whose width scales on live but not on the prototype is
+a frozen fluid value. No full pixel gate is needed at 1920; the box map
+alone catches the mismatch class. Two rules when reading it: compare the
+same DOM tier (EDS/section wrappers are full-width by design and
+false-flag against live INNER containers), and fix upstream — re-lift the
+authored rule per `recreation-procedure.md` § Lift the sizing MODEL, don't
+nudge the px. Sample heights as well as widths, and take one extra sample
+at an intermediate width (1280 or 1680) when the live layout is fluid: a
+hero that scales with the viewport on live and is fixed-px on the prototype
+is identical at 1440 and visibly off at 1512 (recorded).
 
 ## Iteration discipline
 
@@ -149,6 +278,9 @@ followed; more loops mean the inputs were wrong (values eyeballed instead of
 lifted, capture unhardened), and the fix is upstream, not a fourth loop.
 
 - Measure first (iteration 1 IS the map — do not pre-polish).
+- **Chrome: parity probe first, pixels second.** Before a chrome band's first
+  pixel round, run `chrome-parity.mjs` and clear its deltas (§ Pass bar,
+  item 5); style deltas are named in one pass, pixels only say where.
 - Every fix cites the instrument line that demanded it.
 - **Before counting an iteration, verify the fix changed the render.** A
   byte-identical differing-pixel count after a "fix" means the rule was a
@@ -157,10 +289,25 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   the count is already on the verdict line; if it didn't move at all, find
   out why the rule never applied (specificity, wrong selector, value already
   in effect) before spending another round.
+- **Verify geometry fixes on the RULE-BEARING element, cache-free (#117).**
+  One field "parity verified" claim was wrong three ways at once: the probe
+  matched a heuristic element ("white column wider than 400px") that wasn't
+  the box carrying the lifted rule — always pair the same semantic element
+  on both sides (the element the fixed rule targets on the build; the
+  element whose source rule was lifted on live); the re-check ran through a
+  CACHED stylesheet (DevTools showed the old rule at its old line number
+  while both hosts already served the fix) — verify serving out-of-band
+  (`curl --compressed <css-url> | grep '<new-rule>'`; the CSS is
+  gzip-encoded, a bare `curl | grep` scans binary and silently matches
+  nothing) and re-render in a fresh headless context; and a reviewer's
+  screenshot encodes their zoom — back-compute their CSS viewport from any
+  element with a known percentage rule (a card at 851px under `width: 50%`
+  → viewport 1702px) and reproduce THAT viewport headlessly before letting
+  their numbers overturn a fix.
 - Probe schedule per fix round: **pixels every round; content-diff +
   visual-diff at milestones** — iteration 1, after any fix that touched
   content or markup (not pure CSS values), and once at final. Across ~25
-  field fix rounds (broadridge), pixel-only rounds never regressed structure
+  field fix rounds (financial-services site), pixel-only rounds never regressed structure
   once it passed, and each content/visual re-run costs 2 extra live
   navigations — against this doc's own hit-minimization rule. A fix that
   touched markup re-runs all three; a CSS-value fix re-runs pixels only.
@@ -184,7 +331,7 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   full gate run.** The live stitch PNG is captured once and reused across
   iterations; only the prototype side re-captures. On hard-CDN sites
   (Akamai-class), take the live captures with `--headed` and treat further
-  live hits as spent budget — the recorded failure mode (rimowa) was an
+  live hits as spent budget — the recorded failure mode (luggage retailer) was an
   IP-level block escalating within ~3–4 automated requests, after which
   iteration 2's numbers measure the block, not the site. A challenged
   headless run costs exactly **1** hit: `gotoLive` throws
@@ -192,11 +339,19 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   wait+reload solve window runs only under `--headed`, where clearance can
   actually land) — so the block budget is still intact when you escalate.
 - **Media-density budget.** The ≤3-iteration convergence was validated on a
-  typographic, low-image page (aesop.com). Image-dense commerce homes
-  (recorded: carhartt ~130 imgs) spend iterations on media parity —
+  typographic, low-image page (the retail home). Image-dense commerce homes
+  (recorded: a fashion retailer, ~130 imgs) spend iterations on media parity —
   populating grids, matching crops — before geometry work even starts.
   Budget accordingly: on a media-heavy page, image/media parity IS
   iteration 1's job; geometry starts at iteration 2.
+- **A pixel pass at the wrong metric is debt — spot-check base typography
+  against live computed styles once the gate passes.** An archetype shipped
+  16px card body text (live: 17.6px) and still passed at 5.24% because the
+  tuned spacing absorbed the size error; siblings with more text amplified
+  it into extra wraps and +80..250px heights (recorded). After the pass,
+  read body font-size/line-height per block on both sides (a computed-style
+  probe — build-side runs are free) and re-fit rhythm at the true metric.
+  Compensating spacing is the tell.
 
 ## Hardening rules (false-measurement traps)
 
@@ -208,14 +363,14 @@ rather than erroring.
    challenge, and the probe then **measures the challenge page as the
    source** (3 headings, "Performing security verification" — it diffs
    cleanly, wrongly). And the UA alone is NOT sufficient: field-proven
-   (F-R1, redcross.org), a real-Chrome UA with Playwright's minimal default
+   (F-R1, a nonprofit site), a real-Chrome UA with Playwright's minimal default
    headers still got HTTP 403 from Akamai; adding the standard set every
    real Chrome sends (`Accept`, `Accept-Language`,
    `Upgrade-Insecure-Requests`, `sec-ch-ua*`) produced HTTP 200 — Akamai
    bot-manager fingerprints on the *absence* of those headers, not just the
    UA. All three instruments now send both by default via the shared
    `diff/scripts/live-session.mjs`; `--ua` overrides the UA string only.
-   The header set rides **document requests only** (F-B2, broadridge):
+   The header set rides **document requests only** (F-B2, financial-services site):
    forcing it on every request makes cross-origin CORS-mode webfont fetches
    non-simple and kills them with `net::ERR_FAILED` — the capture then
    silently renders fallback type (see rule 14); bot managers fingerprint
@@ -240,7 +395,7 @@ rather than erroring.
    while the main-scoped checks silently no-op). Two guardrails:
    - **`--main body` is NEVER a valid replica scope.** A too-broad root
      self-poisons the instrument regardless of symmetry: reproduced
-     (fritzhansen), content-diff run live-vs-ITSELF with `--main body`
+     (a furniture retailer), content-diff run live-vs-ITSELF with `--main body`
      produced **103 structural 🔴** and asymmetric node counts (461 vs 73)
      from analytics/inline-script text plus a nondeterministic
      cookie-settings panel pulled into the inventory. The content root must
@@ -262,7 +417,7 @@ rather than erroring.
    shared `dismissOverlays` (stitch-shot always; diff probes via
    `--dismiss`): (a) cookie consent (clicked accept; `--consent <sel>` /
    `--dismiss <sel,...>` for non-standard banners); (b) **timed
-   marketing/newsletter interstitials** — recorded (carhartt-wip): an
+   marketing/newsletter interstitials** — recorded (fashion retailer): an
    undismissed "Sign up, stay updated!" modal fired ~5–9s after load and
    baked a pixel-diff contributor into the LIVE capture, repeated at every
    chunk seam, that no prototype fidelity could null out. These fire on a
@@ -298,7 +453,7 @@ rather than erroring.
     navigation (crawl.mjs semantics: `cf-mitigated: challenge`, or
     403/429/503 with a Cloudflare/Akamai/F5/Imperva edge signature) and
     exit **3** with a `BotChallengeError` naming the URL and the marker.
-    Recorded (rimowa): Akamai served "Access Denied" to the headless
+    Recorded (luggage retailer): Akamai served "Access Denied" to the headless
     instruments — which, without this rule, would have silently measured
     the block page as the source and diffed it cleanly, wrongly. The
     escalation ladder: default (UA + standard headers) → `--headed`
@@ -383,7 +538,7 @@ uncommented, unledgered edit is still a defect.
 The prototype gate above proves the RECREATION; it does not prove the
 DELIVERED page. Local render harnesses systematically understate deltas
 because the real delivery pipeline transforms the markup — field rule
-(broadridge, 8 pages published): a page gating at X% on the harness lands
+(financial-services site, 8 pages published): a page gating at X% on the harness lands
 at X±(large) on the published origin until the transforms below are
 handled. **Only the published-origin number counts as the final gate** for
 a platform-delivered page: re-run the full gate (same instruments, same
@@ -391,6 +546,26 @@ pass bar, same iteration discipline) with the live site as source and the
 published page — preview or live origin — as build. Judge the result in the
 published-origin regime (§ Pass bar, calibration honesty), not against
 prototype-regime numbers.
+
+Two rules for that final run:
+
+- **Re-probe live chrome metrics at deploy time — crawl captures are the
+  CONTENT source, live-now is the chrome/metrics source.** The live site
+  drifts between crawl and deploy (recorded, one day apart: header 141→106px,
+  footer links 13→16px/24px with new 24px column headings, a swapped
+  campaign hero). A deploy gated against crawl-time captures ships
+  yesterday's chrome. Immediately before the published-origin gate, re-run
+  the chrome probes (anchor + crop gate, computed styles of matched
+  header/footer elements) against the live origin, never the crawl
+  snapshot; mask live-content drift (campaign creatives, promo slots) out
+  of the fidelity number — it is authored content, not conversion fidelity.
+- **Budget ONE anchors-driven reconcile round at the published origin.** The
+  pipeline shifts vertical rhythm (section wrappers, `<p><picture>`,
+  fragment chrome): a gate-passed 8.4% prototype first published at 11.75%,
+  and two text-anchor rounds (anchor probe live-vs-published, patch section
+  paddings in block CSS, re-measure) brought it to 6.5% with exact anchor
+  parity (recorded). Treat the pre-publish harness number as provisional
+  and the reconcile round as expected work, not a regression.
 
 Recurring EDS pipeline transforms that move the number (each recorded;
 none visible on a local harness):
@@ -411,6 +586,11 @@ none visible on a local harness):
   params — size/ratio assumptions lifted from the authored URL don't
   survive; read dimensions from the delivered rendition, not the authored
   asset.
+- **Authored inner blocks may be FLATTENED to default content**, so a
+  selector written against the authored markup
+  (`.section:has(.some-block)`) can silently never match the delivered
+  page (recorded). Verify every `:has()` / block-class selector against the
+  delivered `.plain.html` and rendered DOM, not the authored file.
 
 ## Residual logging format
 
@@ -430,7 +610,8 @@ Per archetype per breakpoint, in `stardust/replica/progress.json`:
         { "probe": "content", "flag": "🟠 font fork ×2", "why": "licensed kit substituted, R-policy fonts", "permanent": true }
       ],
       "residuals": [
-        { "band": "y 4500–5000", "pct": 6.2, "cause": "capture-state: 3 CDN-403 placeholder tiles", "flaggedFor": "delivery" }
+        { "band": "y 4500–5000", "pct": 6.2, "cause": "capture-state: 3 CDN-403 placeholder tiles", "flaggedFor": "delivery" },
+        { "region": "footer", "pct": 4.8, "cause": "glyph-antialiasing", "parity": "gates/home-1440/chrome-parity-iter3.json", "texture": { "thickPct": 6.1 }, "flaggedFor": "user" }
       ],
       "captureState": [ { "what": "product tiles 4–6 on placeholder data-URIs", "where": "carousel-2" } ]
     },

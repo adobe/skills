@@ -9,7 +9,7 @@ const path = require('path');
 const { runHtlLint, classify } = require('./htl-lint-runner.js');
 const { runOsgiConfigScan, validateRunmodeFolder, scanUnsupportedRunmodes, reorderRunmodeFolder, planRunmodeReorders } = require('./osgi-config-runner.js');
 const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
-const { runTemplateScan } = require('./template-scan-runner.js');
+const { runTemplateScan, classifyStaticTemplate } = require('./template-scan-runner.js');
 const { runAnalyzer } = require('./analyzer-runner.js');
 const { getBpaFindings } = require('./bpa-findings-helper.js');
 const {
@@ -29,19 +29,27 @@ function write(root, rel, content) {
 
 // ── Pattern registry ────────────────────────────────────────────────────────
 
-test('registry includes all 10 migration patterns with a valid strategy', () => {
+test('registry includes all 12 migration patterns with a valid strategy', () => {
   const expected = [
     'scheduler', 'resourceChangeListener', 'event-migration', 'assetApi', 'replication',
-    'htlLint', 'osgiConfig', 'lui', 'cdw', 'templateModernization',
+    'htlLint', 'osgiConfig', 'lui', 'cdw', 'templateModernization', 'guavaCache', 'dispatcherConversion',
   ];
   assert.strictEqual(CANONICAL_PATTERNS.length, expected.length, 'no unexpected patterns');
   for (const key of expected) {
     assert.ok(CANONICAL_PATTERNS.includes(key), `${key} in CANONICAL_PATTERNS`);
     assert.ok(
-      ['cascade', 'html-scan', 'config-scan', 'content-scan'].includes(PATTERN_META[key].strategy),
+      ['cascade', 'html-scan', 'config-scan', 'content-scan', 'bpa-only'].includes(PATTERN_META[key].strategy),
       `${key} has a valid strategy`
     );
   }
+  assert.strictEqual(PATTERN_META.dispatcherConversion.strategy, 'content-scan');
+  assert.deepStrictEqual(PATTERN_META.dispatcherConversion.bpaSlugs, []);
+});
+
+test('guavaCache has no analyzer/content-scan fallback — bpaSlugs only, no heuristic flag', () => {
+  assert.strictEqual(PATTERN_META.guavaCache.strategy, 'bpa-only');
+  assert.deepStrictEqual(PATTERN_META.guavaCache.bpaSlugs, ['guavaCache']);
+  assert.ok(!PATTERN_META.guavaCache.heuristic, 'guavaCache findings are BPA-authoritative, not heuristic');
 });
 
 test('inject-in-sling-model and outdated-dependencies stay out of scope', () => {
@@ -285,6 +293,15 @@ test('samplePrompt uses the OSGi natural-language override', () => {
   assert.match(samplePrompt('scheduler', {}), /migration skill: \*\*scheduler\*\* only/);
 });
 
+test('samplePrompt never leaks the internal code-assessment handoff to the user', () => {
+  // The runbook's copy-paste prompts are user-facing; reading the code-assessment
+  // pattern guide is the migration skill's own job (Branch B), not the user's.
+  for (const pattern of CANONICAL_PATTERNS) {
+    assert.doesNotMatch(samplePrompt(pattern, {}), /code-assessment/, pattern);
+    assert.doesNotMatch(samplePrompt(pattern, { bpaFilePath: './bpa.csv' }), /code-assessment/, pattern);
+  }
+});
+
 test('renderRunbook shows a heuristic note and never emits secret values', async () => {
   const root = mkworkspace();
   write(root, 'ui.config/jcr_root/apps/my/config/com.my.Svc.cfg.json', '{ "password": "leakme-please-9000" }\n');
@@ -389,8 +406,56 @@ test('runTemplateScan flags static templates under apps/*/templates/*', () => {
     '<jcr:root jcr:primaryType="cq:Template"/>'); // not under templates/ → ignored
   const res = runTemplateScan(root);
   assert.strictEqual(res.rawFindings.length, 1);
-  assert.strictEqual(res.rawFindings[0].subType, 'legacy.static.template');
+  // No foundation resource type → project-authored custom template.
+  assert.strictEqual(res.rawFindings[0].subType, 'custom.static.template');
   assert.match(res.findings[0].detail, /content-page/);
+  assert.match(res.findings[0].detail, /custom/);
+});
+
+test('runTemplateScan classifies foundation-derived templates as legacy', () => {
+  const root = mkworkspace();
+  write(root, 'ui.apps/jcr_root/apps/my/templates/legacy-page/.content.xml',
+    '<jcr:root jcr:primaryType="cq:Template"><jcr:content sling:resourceType="wcm/foundation/components/page"/></jcr:root>');
+  write(root, 'ui.apps/jcr_root/apps/my/templates/custom-page/.content.xml',
+    '<jcr:root jcr:primaryType="cq:Template"><jcr:content sling:resourceType="my/components/structure/page"/></jcr:root>');
+  const res = runTemplateScan(root);
+  const bySub = Object.fromEntries(res.rawFindings.map(f => [f.subType, f]));
+  assert.ok(bySub['legacy.static.template'], 'foundation RT → legacy');
+  assert.ok(bySub['custom.static.template'], 'project RT → custom');
+  assert.match(bySub['legacy.static.template'].file, /legacy-page/);
+  assert.match(bySub['custom.static.template'].file, /custom-page/);
+});
+
+test('classifyStaticTemplate strips leading /libs and /apps prefixes', () => {
+  assert.strictEqual(
+    classifyStaticTemplate('<jcr:content sling:resourceType="/libs/wcm/foundation/components/page"/>'),
+    'legacy.static.template');
+  assert.strictEqual(
+    classifyStaticTemplate('<jcr:content sling:resourceType="/apps/my/components/page"/>'),
+    'custom.static.template');
+});
+
+test('classifyStaticTemplate prefers jcr:content over a descendant parsys', () => {
+  // jcr:content has no RT of its own but a child parsys is foundation-derived;
+  // the template is still project-authored → must not be flagged legacy.
+  const xml = '<jcr:root jcr:primaryType="cq:Template">' +
+    '<jcr:content jcr:primaryType="cq:PageContent">' +
+    '<par sling:resourceType="wcm/foundation/components/responsivegrid"/>' +
+    '</jcr:content></jcr:root>';
+  assert.strictEqual(classifyStaticTemplate(xml), 'custom.static.template');
+  // When jcr:content itself is foundation-derived, it is legacy.
+  const legacy = '<jcr:content sling:resourceType="wcm/foundation/components/page">' +
+    '<par sling:resourceType="my/components/parsys"/></jcr:content>';
+  assert.strictEqual(classifyStaticTemplate(legacy), 'legacy.static.template');
+});
+
+test('runTemplateScan detects nested static templates', () => {
+  const root = mkworkspace();
+  write(root, 'ui.apps/jcr_root/apps/my/templates/marketing/hero/.content.xml',
+    '<jcr:root jcr:primaryType="cq:Template"/>');
+  const res = runTemplateScan(root);
+  assert.strictEqual(res.rawFindings.length, 1, 'nested template must be found');
+  assert.match(res.findings[0].detail, /hero/);
 });
 
 test('gatherFindings dispatches content-scan patterns as heuristic', async () => {
@@ -499,6 +564,45 @@ test('BPA parser extracts cdw/lui/template/replication and excludes _COUNT rows'
 
   const tpl = await getBpaFindings('templateModernization', opts);
   assert.strictEqual(tpl.targets.length, 2, 'legacy.static.template + custom.static.template');
+});
+
+function writeGuavaCacheBpaCsv(root) {
+  const rows = [
+    'code,type,subtype,importance,identifier,message,context',
+    // Three Guava-internal-class rows for the SAME bundle — must dedupe to one target.
+    'GC,development.guideline,custom.guava.cache,INFO,com.google.common.cache.AbstractCache,The com.google.common.cache.AbstractCache class in the com.example.bundle-a bundle uses com.google.common.cache.Cache.,ctx',
+    'GC,development.guideline,custom.guava.cache,INFO,com.google.common.cache.CacheBuilder,The com.google.common.cache.CacheBuilder class in the com.example.bundle-a bundle uses com.google.common.cache.CacheBuilder.,ctx',
+    'GC,development.guideline,custom.guava.cache,INFO,com.google.common.cache.LoadingCache,The com.google.common.cache.LoadingCache class in the com.example.bundle-a bundle uses com.google.common.cache.LoadingCache.,ctx',
+    // A row that matches the subtype but whose message does not match the
+    // "in the <bundle> bundle" phrasing — must be dropped, not counted, with a warning.
+    'GC,development.guideline,custom.guava.cache,INFO,com.google.common.cache.Foo,Some unexpected BPA message format with no bundle phrase.,ctx',
+  ];
+  const p = path.join(root, 'guava.csv');
+  fs.writeFileSync(p, rows.join('\n') + '\n', 'utf8');
+  return p;
+}
+
+test('guavaCache dedupes multiple rows for one bundle to a single target, and warns (not drops silently) on an unparseable message', async () => {
+  const root = mkworkspace();
+  const csv = writeGuavaCacheBpaCsv(root);
+  const opts = { bpaFilePath: csv, collectionsDir: path.join(root, 'uc'), limit: null, offset: 0 };
+
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(' '));
+  let result;
+  try {
+    result = await getBpaFindings('guavaCache', opts);
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.strictEqual(result.targets.length, 1, 'three rows for the same bundle dedupe to one target');
+  assert.strictEqual(result.targets[0].className, 'com.example.bundle-a');
+  assert.ok(
+    warnings.some(w => /could not be parsed for a bundle name/.test(w)),
+    'the unparseable row emits a warning instead of vanishing silently'
+  );
 });
 
 test('a real BPA fetch failure is surfaced (warning + needsLlmScan), NOT reported clean', async () => {

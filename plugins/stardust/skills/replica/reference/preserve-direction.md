@@ -17,8 +17,8 @@ native preserve mode (a recorded round-2 candidate), replica owns this step.
 Two branches, keyed on one observable fact: does
 `stardust/current/PRODUCT.md` exist? (`extract --prep` writes the
 descriptive synthesis; a bounded `--single`/`--pages` run does not —
-crawl.mjs alone writes only `pages/*.json`, screenshots, and
-`_crawl-log.json`.) Never mix them: when the `--prep` artifacts exist,
+crawl.mjs alone writes only `pages/*.json` (+ the `pages/*.html`
+rendered-DOM sidecars), screenshots, and `_crawl-log.json`.) Never mix them: when the `--prep` artifacts exist,
 promotion is verbatim and synthesis is forbidden.
 
 ### Full-prep branch — verbatim promotion (unchanged)

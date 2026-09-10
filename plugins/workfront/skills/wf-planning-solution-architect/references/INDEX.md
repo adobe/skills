@@ -9,9 +9,9 @@ Map of reference files used by the wf-planning-solution-architect skill. Load on
 | `workspace-build-playbook.md` | Designing or building a workspace. Categories B and C in SKILL.md routing. |
 | `best-practice-template.md` | Referencing the Fréscopa exemplar for patterns OR explicitly checking against the known deviations. |
 | `best-practice-template.json` | Trimmed sample export (minified, ~1.6 MB): full structure, ~5 records per record type. Inspect only when a question requires field-level or record-level detail beyond the digest. |
-| `limits-and-tiers.md` | Any limits, capacity, sizing, or tier question. Always check the customer's tier (Select / Prime / Ultimate) before quoting numbers. |
+| `limits-and-tiers.md` | Any limits, capacity, sizing, or tier question. Most limits are identical across tiers; check the customer's tier only for records per workspace, total records per instance, or deployment sizing. |
 | `public-vs-api-discrepancies.md` | Whenever public docs and observed API behavior could disagree (precision, formulas, color palettes, connection naming, identity model, etc.). |
-| `customer-conversation-framings.md` | When the user is preparing for or in a customer conversation (limit escalation, P95 ask, RPM comparison, reporting expectations, workspace build engagement, roadmap question, template adoption review). |
+| `customer-conversation-framings.md` | When the user is preparing for or in a customer conversation (limit escalation, P95 ask, RPM comparison, reporting expectations, workspace build engagement, template adoption review). |
 
 ## Public docs layer (UI/UX surface)
 
@@ -53,7 +53,7 @@ If a question spans categories, load only the union of files; do not load every 
 
 **Public docs:** nothing to refresh. Pages are fetched live from Experience League at answer time. If Adobe publishes new Planning articles, add entries to `scripts/docs-index.json` (path, url, title, section, description, headings) so the search can surface them.
 
-**API-surface facts:** the operator sets, precision limits, and function support notes live inline in SKILL.md. Re-verify them against the live Planning API, or request refreshed detail from the WFP engineering team, when the product changes.
+**API-surface facts:** the operator sets, precision limits, and function support notes live inline in SKILL.md. Re-verify them against the live Planning API, or confirm with Adobe, when the product changes.
 
 **Best-practice template:** re-export when the canonical template changes meaningfully. Update both the .json (raw) and the .md (digest). Re-validate the "Known deviations" section against the current template state.
 

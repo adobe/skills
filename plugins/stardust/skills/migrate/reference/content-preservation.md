@@ -17,6 +17,14 @@ authorises it:
   the headlines say.
 - **Body copy** for every paragraph and list item. Restyle, do not
   rewrite.
+- **Paragraph boundaries** come from the source's block-level nodes
+  (`p`, direct-child `div`s), each node's inline text joined with
+  spaces — never from splitting captured text on newlines.
+  `get_text('\n')`-style extraction breaks on every INLINE element (a
+  bolded lead, a link, a superscript), so "one line = one paragraph"
+  turned a 5-paragraph disclaimer into 16 fragment `<p>`s and doubled
+  the section height — a defect that reads as CSS at the pixel gate
+  but is an import bug (recorded).
 - **CTA labels** for every button and button-styled link. The visual
   treatment changes; the label does not.
 - **Navigation labels** in headers and footers.

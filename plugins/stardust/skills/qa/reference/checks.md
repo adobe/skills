@@ -61,6 +61,7 @@ for a judgment pass without re-crawling.
 | `main-collapsed` | error | `<main>` < 50px tall — blank page (gate on rect height, not computed display) |
 | `section-collapsed` | error | content-bearing section renders 0px |
 | `broken-image` | error | `img.complete && naturalWidth === 0` |
+| `zero-size-image` | warn | loaded image (`naturalWidth > 0`) renders 0px wide while in layout — circular flex sizing collapse; the broken-image probe misses it |
 | `upscaled-image` | warn | rendered >2× a <200px source — blurry logo class of bug |
 | `horizontal-overflow` | error (mobile) / warn (desktop) | page scrolls sideways |
 | `page-error` | error | uncaught JS exception |
@@ -119,6 +120,38 @@ for a judgment pass without re-crawling.
 | `network-degraded` | info | neutral-host TTFB control tripped — all perf findings this run downgraded to info (a slow network must not read as a site regression) |
 | `measurement` | info | per-page numbers, always recorded |
 | `load-timeout` | warn | no load event in 60s |
+
+## editability (J, browser, desktop 1440 — Experience Workspace inline-edit gate)
+
+Reproduces what the da.live canvas does when an author opens a migrated page:
+the document response is intercepted and instrumented like
+`editor-utils.getInstrumentedHTML` (`data-prose-index` on every OUTERMOST
+`h1-h6/p/ul/ol/pre/blockquote` inside `<main>`, bare-text block cells re-wrapped
+as `<p>` first), the live page's own `scripts.js` decorates it, and each authored
+text is then looked up by its index. Exactly one surviving element = editable;
+zero = **dead** (the block rebuilt it from `textContent`/`innerHTML`, synthesized
+or retagged it); several = **duplicated** (clone slides — the editor attaches to
+the first in DOM order). Shared instrument:
+`skills/deploy/scripts/ew-editability-probe.mjs`; contract: deploy SKILL.md
+§ Experience Workspace editability contract (EW1–EW10).
+
+| id | sev | what |
+|---|---|---|
+| `dead-text` | error | a block has ≥1 non-exempt authored text that no longer carries its index after decoration — the author clicks it in the workspace and nothing happens. Message: block name, dead/authored count, first 3 texts; evidence lists up to 8. Fix in the block JS: MOVE the authored element into the wrapper (EW1) |
+| `duplicated-index` | warn | a text's index survives on several elements (presentational clones) — editable, but the editor may attach to a hidden copy; strip instrumentation from clones (EW4) |
+| `summary` | info | per page: authored / editable / dead / duplicated / exempt totals and the per-block breakdown — evidence for the migration ledger |
+| `probe-failed` | warn | navigation or instrumentation failed for the page (timeout, blocked response); nothing measured |
+
+Severity rationale: dead text is an **error** because an author is harmed right
+now (silently uneditable content, found by the customer in the canvas — no other
+gate sees it); duplicates are **warn** because editing still works, on the wrong
+copy at worst. Exemptions (EW5 — declared, never silent): `--ew-exempt a,b`
+(blocks whose rows are config / derived / index fallback) and, with
+`--blocks-dir <dir>`, `@ew-exempt <reason>` tags in each block's leading JSDoc
+(`@ew-exempt all` = the whole block is index/API-driven). Exempt dead texts are
+counted under `exempt` in the summary and never raise `dead-text`. Desktop
+viewport only (instrumentation is viewport-independent); `--max-pages` applies;
+needs playwright like `browse`.
 
 ## Cross-cutting
 

@@ -24,8 +24,8 @@ The two halves have different contracts:
   Structure (element counts, tag sequences) is informational, never
   gating — a reskin re-structures markup by design.
 
-The decisive rule, validated in the UC2-E1 experiment (hirslanden ×
-stripe: 2281/2281 text bytes, 7/7 images, 47/47 slots, 13/13 metadata,
+The decisive rule, validated in the UC2-E1 experiment (a healthcare site ×
+a fintech donor: 2281/2281 text bytes, 7/7 images, 47/47 slots, 13/13 metadata,
 17/17 donor-token probe): **the page is generated programmatically from
 the captured content model — content strings are never retyped.** Byte
 fidelity then holds by construction and the content gate becomes a
@@ -372,7 +372,10 @@ pipeline, unchanged:
   gated archetype. Content rules are the ones reskin already
   enforces — `../migrate/reference/content-preservation.md` is
   inherited wholesale.
-- **Ship via `stardust:deploy` / `stardust:rollout`**, unchanged.
+- **Ship via `stardust:deploy` / `stardust:rollout`**, unchanged. Blocks
+  written for donor modules obey the Experience Workspace editability
+  contract (deploy SKILL.md § 8, EW1–EW10) and pass the EW gate
+  (`block-roundtrip --ew`) before they are done.
 
 Reskin writes its own state under `stardust/reskin/` — `ledger.json`
 holds per-page status (`captured → mapped → rendered → gated`), gate

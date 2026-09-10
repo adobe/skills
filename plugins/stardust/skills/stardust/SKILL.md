@@ -1,6 +1,6 @@
 ---
 name: stardust
-description: Guided multi-page redesign of an existing website through a four-phase pipeline — extract (crawl and capture the current site), direct (set a visual direction), prototype (generate redesigned HTML), and migrate (emit a deployable static site). Tracks progress incrementally per page in stardust/state.json so redesigns are resumable. Delegates the per-page design craft (typography, spacing, color, layout, motion) to the impeccable skill. Use when the user wants to redesign, revamp, modernize, or restyle an existing site they can point to by URL, run the extract/direct/prototype/migrate flow, or resume a multi-page redesign. Not for designing a brand-new site from scratch or one-off single-component edits.
+description: Guided multi-page redesign of an existing website through a four-phase pipeline — extract (crawl and capture the current site), direct (set a visual direction), prototype (generate redesigned HTML), and migrate (emit a deployable static site). Tracks progress incrementally per page in stardust/state.json so redesigns are resumable. Delegates the per-page design craft (typography, spacing, color, layout, motion) to the impeccable skill. Use when the user wants to redesign, revamp, modernize, or restyle an existing site they can point to by URL, run the extract/direct/prototype/migrate flow, or resume a multi-page redesign. Also routes the same-design migration flow (replica) and the donor-design flow (reskin). Not for designing a brand-new site from scratch or one-off single-component edits.
 license: Apache-2.0
 ---
 
@@ -20,6 +20,18 @@ sub-commands that delegate the actual design work to **impeccable**.
    and tell the user:
    > Stardust requires impeccable. Install it from
    > <https://github.com/pbakaus/impeccable> and re-run the command.
+
+   **Version hint (advisory, never blocking).** Stardust deliberately pins
+   NO impeccable version — the design craft should always be the current
+   one — and Claude Code only announces plugin updates through marketplace
+   auto-update, which is off by default for third-party marketplaces such
+   as impeccable's. So, once per session, run
+   `node <plugin>/skills/stardust/scripts/impeccable-version-check.mjs`
+   (add `--local <impeccable-dir>` when impeccable lives in a harness skills
+   directory rather than the plugin registry) and surface its one output
+   line to the user verbatim when it reports a newer version; it prints the
+   two update commands. Any other outcome (current, unknown, offline) is
+   noise — do not mention it, and never stop or degrade a run over it.
 2. **Run impeccable's context loader once per session.** Execute the loader at
    `<harness>/skills/impeccable/scripts/load-context.mjs`. Its JSON output
    tells you whether `PRODUCT.md` and `DESIGN.md` exist at the project root
@@ -53,7 +65,9 @@ Once setup is done, route on the user's input:
   | `direct` | `stardust:direct` | resolve the visual direction |
   | `prototype` | `stardust:prototype` | per-page redesign prototypes |
   | `migrate` | `stardust:migrate` | full-site platform-agnostic static HTML |
-  | `prepare-migration` | `stardust:prepare-migration` | the migrate-prep cascade (prep phases, assets, dynamic-blocks gate) |
+  | `prepare-migration` | `stardust:prepare-migration` | the migrate-prep cascade (prep phases, assets, dynamic-blocks gate) — **redesign flow only** |
+  | `replica` | `stardust:replica` | same-design migration (re-platform, keep the current design) — runs its own preserve-mode prep, then hands off to migrate/deploy/rollout |
+  | `reskin` | `stardust:reskin` | byte-faithful content re-laid onto a separately defined donor design system |
   | `deploy` | `stardust:deploy` | one page → EDS blocks + DA delivery |
   | `rollout` | `stardust:rollout` | whole migrated site → EDS, with coverage + delivery gates |
   | `diff` | `stardust:diff` | prototype ↔ build fidelity probes (pixel + structural) |
@@ -69,12 +83,39 @@ Once setup is done, route on the user's input:
     without further user coordination. Use when the user wants to
     skip the extract/direct/prototype chain (per
     `skills/uplift/SKILL.md`).
+- **Migration to EDS — pick ONE of two flows, never mix them.** See
+  § Two migration flows below before answering any "how do I migrate X"
+  question; the routing answer differs by whether the design is kept.
 - **First word is anything else (a freeform phrase).** Treat it as a
   redesign intent. Load `reference/intent-reasoning.md` and follow the
   procedure step by step. **Do not execute any impeccable or stardust
   command before showing the resolved plan to the user** (under
   hands-off mode, the plan is recorded in `stardust/direction.md`
   instead of awaiting confirmation — see § Hands-off mode).
+
+## Two migration flows — pick one, never mix
+
+When the user wants to migrate a site to AEM Edge Delivery (or any clean
+front end), the FIRST question is whether the design is kept or changed.
+That answer selects the flow; the downstream chain is shared.
+
+- **Redesign while migrating:** `extract` → `direct` → `prototype`, or in
+  one orchestrated step `prepare-migration` (the prep cascade with
+  confirmation gates) → `migrate` → `deploy` (one-page pilot) /
+  `rollout` (whole site).
+- **Keep the current design (re-platform):** `replica` → `migrate` →
+  `deploy` / `rollout`. `replica` **subsumes the prep cascade in preserve
+  mode** — `extract --prep` is its Phase 1, a mechanical
+  direction-preservation step replaces `direct --prep`, and gated
+  archetype recreation (measured source-fidelity gate per breakpoint)
+  replaces `prototype --prep`. **Never run `prepare-migration` before or
+  after `replica`**; there is no separate prep step in this flow.
+- **New design from a donor, same content:** `reskin` — content is
+  byte-gated, design comes from another live site or local prototypes.
+
+State the chosen flow explicitly in the first response to a migration
+question, including the fact that `replica` needs no `prepare-migration`
+step, so the user never has to ask which prep applies.
 
 ## Hands-off mode
 

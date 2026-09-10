@@ -16,7 +16,17 @@ class of guesswork before the next begins:
    sequence and every text node verbatim from
    `stardust/current/pages/<slug>.json` (headings, body, CTAs with hrefs,
    alt text, metadata). Content-preservation rules
-   (`../../migrate/reference/content-preservation.md`) apply from line one.
+   (`../../migrate/reference/content-preservation.md`) apply from line one —
+   including its paragraph-boundary rule: paragraphs come from the source's
+   block-level nodes, never from splitting captured text on newlines.
+   **Reconcile COUNTS before authoring:** group the captured components by
+   section and count them (n widget instances, n cards each) against what
+   you are about to author. Vendor-template pages repeat whole widgets
+   verbatim (recorded: the same 20-card widget twice plus a 6-card "wide"
+   variant on one page — the first build authored ONE instance and the gate
+   read a 1559px height deficit as a missing section). A large height delta
+   with matching section ORDER is usually a duplicated instance, not a
+   missing one.
 2. **Lift exact values from the source site's own CSS** (§ CSS lifting).
 3. **Fonts** (§ Fonts policy).
 4. **Compose against the captured screenshot** — the ground truth for
@@ -38,7 +48,7 @@ sides of the diff symmetrically.
 
 Every archetype keeps its own standalone reference prototype — never skip
 to direct platform authoring for a new archetype "because the blocks
-already exist". Field evidence (broadridge, 8 pages): the prototyped
+already exist". Field evidence (a financial-services site, 8 pages): the prototyped
 archetype reached 3.5%/5.6% pixel diff and stayed the quality ceiling for
 its conversion; pages authored directly on the platform plateaued at
 8–16%. Prototypes are **cumulative**: each new one imports the shared
@@ -50,9 +60,19 @@ prototype remains the per-archetype fidelity reference (full gate: ≤10%,
 Δ≤8px, 0 structural red) that the published page is judged against
 (`source-fidelity-gate.md` § The published-origin gate).
 
+**Canon chrome is a snapshot — re-verify it against EACH new archetype's
+live page before iterating page content.** Header/footer vary per template
+family and the live site drifts continuously (recorded: the gated canon
+header rendered 123px vs 101px live on a second template, and the canon
+footer still carried pre-drift metrics — the two "trusted" regions consumed
+the new page's first two hot bands). Open every new archetype's gate with
+the chrome crop gate (`source-fidelity-gate.md` § Pass bar, item 5) against
+the NEW page's live chrome, and flag any page-level compensation for
+back-port into the canon files so later archetypes don't re-discover it.
+
 ## CSS lifting — fidelity values come from the original site's CSS, not the eye
 
-(Prior art: heathrow SKILL-IMPROVEMENTS §3.6; re-confirmed in UC1-E1 where
+(Prior art: an earlier airport-site migration's improvement notes §3.6; re-confirmed in UC1-E1 where
 per-element computed-style capture "did most of the work".)
 
 Before any screenshot-eyeball tuning:
@@ -87,12 +107,12 @@ Before any screenshot-eyeball tuning:
    grid collapse rules) up front and build 360 against it. Capture
    per-element computed styles at 360 (and any other gate width) BEFORE
    authoring — the 360 gate map is not the moment to discover the mobile
-   container model. Recorded twice: hay.dk's 1440-lifted prototype
+   container model. Recorded twice: a design-furniture site's 1440-lifted prototype
    converged desktop in one iteration but opened mobile at 26.8% (an
    `overflow:hidden` whose only layout effect is margin-collapse containment
    at mobile, a different mobile footer container model, a block hidden at
    mobile — all sitting in the source CSS, discoverable up front); and
-   carhartt-wip, where an essentially unbuilt 360 layout measured
+   a fashion retailer, where an essentially unbuilt 360 layout measured
    **−1600px height delta** at 360 vs −169px at 1440 — a desktop-only
    recreation doesn't degrade gracefully at mobile, it collapses. With
    per-breakpoint lifting, mobile converges in 1–2 iterations; without it,
@@ -101,6 +121,16 @@ Before any screenshot-eyeball tuning:
 This converts 3–4 guess-and-screenshot loops into one. Eyeballing is for
 step 4 of the authoring order only — and even then, the gate's instruments
 outrank the eye.
+
+**No foundation `text-wrap: balance` on headings.** The redesign
+prototype's refined pass prescribes `h1–h6 { text-wrap: balance }`; live
+sites almost never use it, and under it multi-line card titles and band
+headings re-wrap differently from the original at identical width and font
+— persistent 10–20% band diffs that look like font or width errors
+(recorded). Replica prototypes and their block CSS leave `text-wrap` at the
+source's computed value (`initial` unless the lift says otherwise); when a
+heading wraps differently at matched width/font, check `text-wrap` before
+anything else.
 
 ### Two probe classes DOM/style capture misses
 
@@ -112,13 +142,51 @@ Both were caught only by the gate in UC1-E1; check for them proactively:
   the content-diff **width probe** catches it. When the gate reports a 🟠
   font fork on a heading you "captured correctly", inspect the live node's
   inner spans before touching your font stack.
-- **Overlay scrims invisible to computed styles.** A gradient/scrim present
-  in rendered pixels with no discoverable element, pseudo-element, filter,
-  backdrop-filter, or mask. Recover it **empirically by per-row luminance
+- **Overlay scrims — read the FULL `background-image` layer list first;
+  luminance-fit only when the scrim isn't there.** A photo band that resists
+  offset/scale fixes (recorded: 30–40% band diff with position, scale and
+  copy numerically aligned, cross-correlation dy≈0) usually carries its
+  scrim as a gradient layer in the live element's `background-image` stack
+  (`linear-gradient(rgba(0,0,0,.1), rgba(0,0,0,.5)), url(…)`) — invisible in
+  crawl JSON and to the eye, one `getComputedStyle(el).backgroundImage`
+  line to find, and worth 4 pixel points on its own. The CSS lift (step 2)
+  captures every layer (gradients + url + size/position per layer) of any
+  element carrying a photo. Only when a scrim is present in rendered pixels
+  with NO discoverable element, pseudo-element, filter, backdrop-filter, or
+  mask, recover it **empirically by per-row luminance
   fitting**: compare per-row luminance of the live capture region vs the
   decoded raw image, fit the ratio curve to a gradient (UC1-E1's hero fit:
   `linear-gradient(transparent 68%, rgba(0,0,0,.45) 80%, #000 100%)`), apply,
   and let the pixel probe confirm the fit.
+
+### Lift the sizing MODEL, not the resolved value (#116)
+
+A computed-style lift records `width: 720px` from an element whose authored
+rule is `width: 50%`. At the gate widths the two are byte-identical — BOTH
+gate breakpoints render them the same — so the frozen value ships invisibly
+and diverges only on wider screens (recorded: a live hero card 940px at
+1920 vs the frozen 720px; the CTA row wrapped as a side effect). The same
+trap applies to DOM: capturing the 1440 layout OUTCOME (a button row that
+wrapped 3+1, authored as two rows / styled with an `.x + .x` sibling rule)
+instead of the layout MODEL (one wrapping flex row) freezes a
+viewport-specific artifact into content and CSS.
+
+- **Lift at TWO OR THREE widths (e.g. 1280 + 1440 + 1920) and diff the
+  lifts — widths AND heights.** Any box whose width scales between them is
+  FLUID: find the authored rule (`%` / `vw` / max-width model) in the
+  source CSS and encode the RULE, never the resolved px. Boxes that hold
+  constant are legitimately fixed. Section heights and overlaps get the
+  same test: a fixed-height hero gated pixel-perfect at 1440 read "10px
+  off" to a reviewer browsing at 1512 because live scaled it with the
+  viewport (recorded); when a height or overlap scales, encode it
+  vw-proportional (`px@1440 ÷ 14.4 = vw`, or the authored `vh`/`%` rule).
+- **Layout groups get the same test**: if a row's children redistribute
+  between the two widths, the model is a wrapping flex/grid row — author
+  ONE row and let it wrap; never encode the wrap point as structure.
+- The gate-side backstop is the ≥1920 box-map spot check
+  (`source-fidelity-gate.md` § Wide-viewport fluid check) — but the check
+  only catches what this rule prevents; lifting the model up front is the
+  cheap half.
 
 ## Wrap-junction margins (cards-on-a-canvas sites)
 
@@ -154,7 +222,7 @@ un-floating override.
   font loads; woff2 files that are freely licensed or already self-hostable
   are self-hosted in the prototype (UC1-E1: same-source fonts, zero
   substitutes needed, which is why the type matched exactly).
-- **Licensed commercial kits: substitute, never rehost** (heathrow §3.7 —
+- **Licensed commercial kits: substitute, never rehost** (prior art: the airport-site migration —
   e.g. a domain-locked Monotype kit). Rules:
   - Never re-host a commercial font on the new public domain.
   - Pick a **metric-matched** substitute (or have the user supply their
@@ -174,6 +242,14 @@ font files, and even in-page `fetch()` from a headless client. What works:
   events) — the page's own requests are authorized; yours are not.
 - **Canvas readback** (same-origin) for the exact displayed bitmap when the
   rendition URL itself is refused.
+- **Icons and vectors: harvest from the live DOM, never approximate.**
+  Before authoring any icon, run one probe on the live page collecting
+  `svg.outerHTML` (plus `<img src$=".svg">` and `mask-image` urls) near the
+  matched text or `aria-label`. Six hand-drawn lookalikes (person, globe,
+  bell, clock, swap-arrows, check) passed every block gate and read wrong to
+  the eye; all six were extractable verbatim in one probe (recorded). A
+  hand-drawn icon is the fallback only when no live vector exists — and it
+  is a ledger entry.
 
 **Capture-state policy — ground truth is the page as observable by the
 instrument.** Two recurring cases:
@@ -269,7 +345,7 @@ content-diff classifies every string by **DOM wrapping + computed style +
 heading level, never by text alone**: a string inside an `<a>` is a CTA, an
 uppercase small-type node is an eyebrow, an `<h3>` is not an `<h2>`. So a
 recreation that carries every string verbatim can still open with dozens of
-structural 🔴 — recorded (fritzhansen iteration 1): 43 CTAs vs 58 and 12
+structural 🔴 — recorded (furniture retailer, iteration 1): 43 CTAs vs 58 and 12
 eyebrows vs 6, **all role swaps, zero dropped copy** — the live page
 wrapped labels in anchors where the recreation used spans, and vice versa.
 
@@ -434,7 +510,7 @@ capture-invisible under the freeze, and the pixel re-run proves it).
 ## Fixed and sticky chrome (headers, floating tabs × stitched capture)
 
 `position: fixed`/`sticky` chrome interacts with the stitched capture in
-three ways, each observed live on the first fresh-site run (hay.dk):
+three ways, each observed live on the first fresh-site run (a design-furniture site):
 
 1. **Seam repeats.** A fixed element renders in EVERY viewport chunk, so
    the stitched PNG shows it repeated at each chunk seam (every `--vh` px).
@@ -443,7 +519,7 @@ three ways, each observed live on the first fresh-site run (hay.dk):
    that seam; the occluded band is invisible to the pixel probe on both
    sides (again: harmless only while symmetric).
 3. **Scroll-state morph.** Chrome that changes with scroll captures
-   differently per chunk: hay.dk swaps to a `body.header-minimized` 55px
+   differently per chunk: the site swaps to a `body.header-minimized` 55px
    hamburger bar once scrolled, so chunks 2+ carry different chrome than
    chunk 1 — the stitched live capture contains BOTH states.
 
