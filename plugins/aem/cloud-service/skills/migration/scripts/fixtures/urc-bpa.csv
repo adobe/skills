@@ -1,0 +1,5 @@
+code,type,subtype,importance,identifier,message,context
+_COUNT_URC,_count.unsupported.runmode.configuration,unsupported.runmode,CRITICAL,2,Count: 2,"{""data"":{""unfilteredTotal"":2}}"
+URC,unsupported.runmode.configuration,unsupported.runmode,CRITICAL,/apps/demo/config.dev.author,A configuration name based on an unsupported run mode was found at /apps/demo/config.dev.author.,"{""data"":{""runmode"":""dev.author""},""type"":""unsupported.runmode""}"
+URC,unsupported.runmode.configuration,unsupported.runmode,CRITICAL,/apps/demo/config.preprod,A configuration name based on an unsupported run mode was found at /apps/demo/config.preprod.,"{""data"":{""runmode"":""preprod""},""type"":""unsupported.runmode""}"
+BPA-001,issue,sling.commons.scheduler,high,com.demo.Job,Uses Sling scheduler,

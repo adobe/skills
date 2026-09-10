@@ -153,7 +153,7 @@ Secret and env-specific values **live outside Git**. Customers should **govern**
 **Out of scope for automated edits**
 
 - Repoinit and Adobe-owned OSGi override (see above).
-- Reorganizing runmode folder structure (invalid folders are **flagged**, not moved).
+- Reorganizing runmode folder structure (unsupported **`config.*`** / **`install.*`** folders are **flagged** as URC, not moved or renamed).
 
 ---
 
@@ -200,9 +200,36 @@ JCR content XML (`.content.xml`) with `jcr:primaryType="sling:OsgiConfig"`. Each
 
 This phase **flags** issues for user review. **Do not auto-delete or auto-merge** — list findings in the handoff file under a `"cleanup"` array.
 
-**1a. Invalid runmode folders**
+**1a. Unsupported run modes (URC)**
 
-Compare every `config.*` folder name against the **valid Cloud Service runmode tokens** table above. Flag any folder that does not match (e.g. `config.qa`, `config.integration`, `config.local`, `config.ams`, `config.nosamplecontent`). Report: folder path, suggested action ("review and remove or remap to valid runmode").
+Adobe's Pattern Detector reports these as **URC** (Unsupported Run modes Configuration; BPA `subtype` **`unsupported.runmode`**, `importance` **CRITICAL**). Configurations based on unsupported run mode names **have no effect** when deployed to AEM as a Cloud Service.
+
+The migration runbook sources URC **BPA-report-first** (from the CAM/MCP fetch or a local BPA CSV); when the report actually contains URC findings it is authoritative. When a BPA source is present but reports **no** URC findings, the skill also runs local folder detection as a safety net (see below). Local detection covers both **`config.<runmode>`** and bundle **`install.<runmode>`** folders.
+
+A folder is flagged when its run mode is unsupported. Beyond unknown tokens (e.g. `config.qa`, `config.preprod`, `install.local`), note the **ordering rule**: the tier token must **precede** the environment token. `config.author.dev` is valid; **`config.dev.author` is not** — even though `dev` and `author` are individually valid. A folder may carry at most one tier and one environment token, and **`config.preview` cannot be declared** (preview inherits from publish). Run mode tokens are **case-sensitive and lowercase-only** — `config.Author.dev` or `config.PUBLISH` are themselves unsupported run modes, not case variants of a valid one.
+
+A BPA report that reports **no URC findings does not by itself prove the project is URC-clean** — the report may predate URC detection or be scoped to other patterns. The skill treats BPA as authoritative only when it actually reports URC findings; otherwise it warns and runs the local `config.*`/`install.*` safety-net scan.
+
+Report (flag-only): folder path, the offending run mode, and remediation — **evaluate whether the configuration is needed → rename to a supported run mode identifier following the run-mode resolution rules → remove if obsolete**. See the `aem-guides-wknd-legacy` `code/urc` branch for corrected examples. Sources: [URC pattern](https://experienceleague.adobe.com/en/docs/experience-manager-pattern-detection/table-of-contents/urc), [Configuring OSGi](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/deploying/configuring-osgi).
+
+**URC auto-fix (apply step).** Ordering-only violations — every token a valid
+tier/env in the wrong order, e.g. `config.dev.author` → `config.author.dev` (and
+`install.<env>.<tier>` likewise) — are **deterministically** fixable by
+reordering to `<prefix>.<tier>.<env>`. Discovery/runbook only flags them; the fix
+happens during **apply** (the same phase that runs Phase 0 conversions):
+
+1. Run `planRunmodeReorders(workspaceRoot)` (read-only) to get the safe reorder
+   set and the `manual` list.
+2. For each safe reorder, the skill runs its `git mv "<from>" "<to>"` itself
+   (preserve history; fall back to a plain move if the path isn't git-tracked),
+   and records the move under a `runmode_reorders` array in the handoff file.
+3. The skill **does not commit** — the developer reviews the diff and commits.
+
+**Never auto-applied** (routed to the handoff `cleanup` array for a human
+decision): unknown-token folders (`config.preprod`, `config.qa`, `install.local`),
+duplicate tier/env folders (`config.author.publish`), and any reorder whose
+**target folder already exists** (renaming would change PID resolution — merge
+manually).
 
 **1b. Archetype / boilerplate configs**
 
@@ -274,7 +301,7 @@ Write gitignored **`cloudmanager-osgi-secrets.local.json`** at the AEM repo root
   ],
   "cleanup": [
     {
-      "type": "invalid_runmode | archetype_default | duplicate_config | env_specific_url | deprecated_config",
+      "type": "invalid_runmode | unsupported_runmode | archetype_default | duplicate_config | env_specific_url | deprecated_config",
       "path": "relative/path",
       "detail": "human-readable description",
       "suggestion": "what to do"
@@ -284,6 +311,13 @@ Write gitignored **`cloudmanager-osgi-secrets.local.json`** at the AEM repo root
     {
       "original": "relative/path/to/legacy.config",
       "converted": "relative/path/to/PID.cfg.json"
+    }
+  ],
+  "runmode_reorders": [
+    {
+      "from": "ui.config/.../config.dev.author",
+      "to": "ui.config/.../config.author.dev",
+      "command": "git mv \"ui.config/.../config.dev.author\" \"ui.config/.../config.author.dev\""
     }
   ]
 }
@@ -305,4 +339,4 @@ Write gitignored **`cloudmanager-osgi-secrets.local.json`** at the AEM repo root
 
 ## One-line summary
 
-**Phase 0:** convert legacy formats → **Phase 1:** flag invalid runmodes, archetype defaults, duplicates, env-specific URLs, deprecated configs → **Phase 2:** inject `$[secret:]` / `$[env:]` placeholders on custom PIDs → **Phase 3:** gitignored handoff file with variables + cleanup items → **no** secrets in chat.
+**Phase 0:** convert legacy formats → **Phase 1:** flag URC (unsupported run modes, BPA-first / local fallback over `config.*` + `install.*`), archetype defaults, duplicates, env-specific URLs, deprecated configs → **Phase 2:** inject `$[secret:]` / `$[env:]` placeholders on custom PIDs → **Phase 3:** gitignored handoff file with variables + cleanup items → **no** secrets in chat.

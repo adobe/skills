@@ -51,6 +51,7 @@ const CONTENT_SUBTYPES = [
   'custom.static.template',
   'forward.replication',
   'reverse.replication',
+  'unsupported.runmode',
 ];
 
 /**
