@@ -69,6 +69,17 @@ for a judgment pass without re-crawling.
 | `request-failed` | error | same-origin request failed or ≥400 |
 | `decoration-stalled` | warn | sections never reached `data-section-status="loaded"` (hanging tags stall EDS decoration) |
 
+## dynamics (H, browser; replay of `stardust/dynamics/parity.json`)
+
+Flows, not presence — each check replays a user-visible flow through `skills/dynamics/scripts/dynamics-check.mjs` (closed check set: `fetch-json`, `dom-count`, `click-dialog`, `search-query`, `form-flow`, `video-plays`, `consent-gate`, `no-page-errors`). Third-party request statuses are recorded per check so a probe-induced failure is distinguishable from a vendor restriction. Pass `--parity <file>` to point at another parity file; `--auth-header` / `--token-env` for protected origins (sent to the base origin only).
+
+| id | sev | what |
+|---|---|---|
+| `parity-missing` | info | no parity file — the migration never ran `stardust:dynamics` |
+| `parity-failed` | error | a replayed flow did not complete (empty form accepted, dialog did not open, query returned nothing, player never requested playback) |
+| `parity-env-limit` | warn | a failed flow whose feature records an environment limit (geo-fenced hand-off target) |
+| `parity-unchecked` | info | a feature with a non-final status and no replayable check — an owner item |
+
 ## visual (E, browser)
 
 | id | sev | what |

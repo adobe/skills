@@ -50,12 +50,37 @@ const UA = 'stardust-qa/1.0 (+read-only site QA)';
  * Fetch a URL with timeout + one retry. redirect: 'manual' callers get the
  * Location back instead of the followed body.
  */
+/* ---------------------------------------------------------- site auth -- */
+// Protected origins (access allow-list + site secret) 401 every unauthenticated
+// probe. The header is sent to the BASE origin only — never to third parties,
+// whose CORS checks would turn a credentialed request into a false failure.
+let ORIGIN_AUTH = null;
+export function setOriginAuth(base, headerValue) { ORIGIN_AUTH = base && headerValue ? { origin: new URL(base).origin, value: headerValue } : null; }
+export function originAuthFor(url) { return ORIGIN_AUTH && String(url).startsWith(ORIGIN_AUTH.origin) ? ORIGIN_AUTH.value : null; }
+/** browser side: attach the auth header to base-origin requests of a Playwright context (route filter, never extraHTTPHeaders) */
+export async function attachOriginAuth(context) {
+  if (!ORIGIN_AUTH) return;
+  const { origin, value } = ORIGIN_AUTH;
+  await context.route('**/*', (route) => { const u = route.request().url(); if (u === origin || u.startsWith(`${origin}/`)) route.continue({ headers: { ...route.request().headers(), authorization: value } }); else route.continue(); });
+}
+/** `--auth-header "token …"` or `--token-env NAME` (process.env, then a cwd `.env`); default env name SITE_TOKEN */
+export function resolveAuthHeader() {
+  const direct = arg('auth-header'); if (direct) return direct;
+  const name = arg('token-env') || 'SITE_TOKEN';
+  let v = process.env[name];
+  if (!v && existsSync('.env')) v = (readFileSync('.env', 'utf8').match(new RegExp(`^${name}=(.*)$`, 'm')) || [])[1];
+  if (!v) return null;
+  v = v.trim().replace(/^["']|["']$/g, '');
+  return /^(token|bearer) /i.test(v) ? v : `token ${v}`;
+}
+
 export async function fetchUrl(url, { redirect = 'follow', method = 'GET', timeoutMs = 20000, retries = 1 } = {}) {
   for (let attempt = 0; ; attempt += 1) {
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), timeoutMs);
     try {
-      const res = await fetch(url, { method, redirect, signal: ctl.signal, headers: { 'user-agent': UA } });
+      const auth = originAuthFor(url);
+      const res = await fetch(url, { method, redirect, signal: ctl.signal, headers: { 'user-agent': UA, ...(auth ? { authorization: auth } : {}) } });
       const body = method === 'HEAD' ? '' : await res.text();
       clearTimeout(timer);
       return {
