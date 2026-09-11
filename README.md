@@ -11,6 +11,7 @@ Repository of Adobe skills for AI coding agents.
 /plugin install adobe-analytics@adobe-skills
 /plugin install adobe-cja@adobe-skills
 /plugin install aem-design@adobe-skills
+/plugin install stardust@adobe-skills
 /plugin install aem-edge-delivery-services@adobe-skills
 /plugin install aem-project-management@adobe-skills
 /plugin install app-builder@adobe-skills
@@ -119,6 +120,33 @@ Design-phase skills that run *before* implementation. Produces static HTML and J
 | `briefings`  | Captures page intent, audience, key messages, CTAs, and (optionally) final copy under `aem-design/briefings/`        |
 | `wireframes` | Produces grey structural wireframes from briefings (section order, hierarchy, spatial relationships) — optional stage |
 | `prototype`  | Produces branded, high-fidelity static HTML prototypes that iterate in the browser until approved                      |
+
+##### Modernising an existing site with stardust
+
+Modernise a website that already exists, with or without a redesign, and ship it. Stardust reads the live site, works on design, performance, SEO, LLM visibility, accessibility and content fidelity, and delivers a static HTML tree or an Edge Delivery Services site. The design craft comes from [impeccable](https://github.com/pbakaus/impeccable), which is a required dependency. Available via the [`stardust`](plugins/stardust/README.md) plugin.
+
+```bash
+/plugin install stardust@adobe-skills
+```
+
+| Skill | Description |
+|-------|-------------|
+| `stardust` | Master skill: setup, routing of plain-language requests, state report, hands-off mode |
+| `extract` | Crawls the live site (capped, multi-page) and captures the design system, brand surface, per-page inventory and rendered DOM under `stardust/current/` |
+| `direct` | Resolves the redesign intent into a target `PRODUCT.md` and `DESIGN.md`, with the reasoning kept in `stardust/direction.md` |
+| `prototype` | Renders before/after pages under `stardust/prototypes/` and iterates them through impeccable's craft loop |
+| `prepare-migration` | Runs extract, direct and prototype in `--prep` mode with confirmation gates, for the redesign migration flow |
+| `replica` | Same-design migration: recreates one archetype per page type as clean HTML/CSS, gated against the live site per breakpoint |
+| `reskin` | Re-lays byte-faithful content onto a donor design system (another live site or local prototypes) |
+| `migrate` | Applies the approved design or replica to every page and writes the deployable static tree to `stardust/migrated/` |
+| `audit` | Scores any URL on seven dimensions: design, SEO/technical, LLM visibility, accessibility, Core Web Vitals and more |
+| `uplift` | Turns one URL into three presales redesign variants, one of them cinematic, with no further input |
+| `diff` | Compares any prototype with any build, pixel and structure, through an `eds` or `generic` profile |
+| `deploy` | Converts one page into EDS blocks and Document Authoring content and writes it through the DA Source API |
+| `rollout` | Delivers the whole migrated site to EDS: coverage ledger, block dedup, site assembly, verify, optimize gate, report |
+| `qa` | Read-only QA sweep of the live EDS site: routing, content fidelity, visual regression, metadata, links, axe, performance budgets |
+
+See the [`stardust` plugin README](plugins/stardust/README.md) for the two migration flows (keep the design vs redesign on the way) and hands-off mode.
 
 ##### Developing with Edge Delivery Services
 
@@ -431,6 +459,24 @@ plugins/
 │       ├── skills/
 │       │   └── ...
 │       └── .mcp.json
+├── stardust/
+│   ├── .claude-plugin/
+│   │   └── plugin.json
+│   └── skills/
+│       ├── stardust/
+│       ├── extract/
+│       ├── direct/
+│       ├── prototype/
+│       ├── prepare-migration/
+│       ├── replica/
+│       ├── reskin/
+│       ├── migrate/
+│       ├── audit/
+│       ├── uplift/
+│       ├── diff/
+│       ├── deploy/
+│       ├── rollout/
+│       └── qa/
 └── workfront/
     ├── .claude-plugin/
     │   └── plugin.json
