@@ -41,7 +41,7 @@ import { fileURLToPath } from 'node:url';
 import { writeFileSync } from 'node:fs';
 import {
   arg, flag, provenance, writeJSON, ensureDir, loadAllowlist, applyAllowlist, buildInventory,
-  createPageCache,
+  createPageCache, resolveAuthHeader, setOriginAuth,
 } from './lib.mjs';
 import { htmlReport } from './report-html.mjs';
 
@@ -50,7 +50,7 @@ const BASE = (arg('base') || '').replace(/\/$/, '');
 if (!BASE) { console.error('qa: --base <live-url> is required'); process.exit(2); }
 
 const OUT = arg('out', 'stardust/qa');
-const CHECKS = (arg('checks', 'routing,content,templates,metadata,links,browse,perf,editability')).split(',').map((s) => s.trim()).filter(Boolean);
+const CHECKS = (arg('checks', 'routing,content,templates,metadata,links,browse,perf,editability,dynamics')).split(',').map((s) => s.trim()).filter(Boolean);
 const opts = {
   outDir: OUT,
   scrapeDir: arg('scrape', null),
@@ -62,7 +62,10 @@ const opts = {
   skipA11y: flag('skip-a11y'),
   probeExternals: flag('probe-externals'),
   browserConcurrency: Number(arg('browser-concurrency', 3)),
+  parity: arg('parity', null),
+  authHeader: resolveAuthHeader(),
 };
+if (opts.authHeader) setOriginAuth(BASE, opts.authHeader);
 
 const MODULES = {
   routing: 'checks/routing.mjs',
@@ -73,6 +76,7 @@ const MODULES = {
   browse: 'checks/browse.mjs',
   perf: 'checks/perf.mjs',
   editability: 'checks/editability.mjs',
+  dynamics: 'checks/dynamics.mjs',
 };
 
 const started = Date.now();

@@ -30,7 +30,7 @@ this site" a conscious gesture and keeps idempotency obvious.
 
 - `--from <phase>` — optional. Resume the cascade from a specific
   phase. Values: `extract | direct | prototype | assets |
-  dynamic-blocks`. Default starts from the earliest incomplete phase.
+  dynamics`. Default starts from the earliest incomplete phase.
 - `--skip-confirm` — optional. Skip the per-phase confirmation
   gates. Useful for re-runs where the catalog is already settled.
   Default is to gate at every phase boundary. Hands-off mode
@@ -68,9 +68,9 @@ this site" a conscious gesture and keeps idempotency obvious.
      `DESIGN.json.extensions.canon` populated.
    - **assets**: favicon variants in
      `stardust/migrated/assets/`; fonts downloaded.
-   - **dynamic-blocks**: `stardust/dynamic-blocks-map.md` and
-     `helix-query.yaml` present — only required when the inventory
-     contains listing blocks (Phase 4.5 records "none" otherwise).
+   - **dynamics**: `stardust/dynamic-features.md` present with every
+     row carrying a disposition; `helix-query.yaml` present when any
+     listing is index-backed (Phase 4.5 records "none" otherwise).
 
    Resume from the earliest incomplete phase unless `--from`
    overrides.
@@ -230,53 +230,27 @@ Font downloads:      4 files (HarmoniaSans 4 weights)
 Brand assets:        all present
 ```
 
-### Phase 4.5 — Dynamic-blocks pre-import gate
+### Phase 4.5 — Dynamic surface (pre-import gate — `stardust:dynamics` Phases 1–3)
 
-Runs after assets prep and **before any bulk import downstream**
-(`migrate` at scale, `rollout` Phase C). The ordering is the point:
-what a dynamic listing block can show is bounded by what each page
-emits, and retrofitting metadata across thousands of already-live
-pages is a second migration. Mechanics live in
-`skills/rollout/reference/dynamic-listings.md`; this phase runs them
-at prep time so the contract exists before the first bulk import
-(`rollout` Phase B2 then verifies it rather than redoing it).
+Runs after assets prep and **before any bulk import**. Migration-bound:
+this is the step that keeps a dynamic site from being imported as a
+static one. Delegate to `skills/dynamics/SKILL.md`:
 
-1. **Map every block that LISTS other pages** (directories,
-   news/event feeds, "related" rails) — these must read an EDS
-   query-index, not static cards.
-2. **Classify each field a listing needs by tier:**
-   - **Tier 1 — page-intrinsic DOM** (`h1`, `og:image`, authored
-     links): the index extracts them via CSS selectors — zero
-     content change.
-   - **Tier 2 — page metadata** (dates, locations, categories): must
-     be emitted as `<meta>` via each page's metadata block **at
-     author time**; retrofitting across live pages is the expensive
-     path.
-   - **Tier 3 — relationships** (many-to-many): need an explicit
-     join field + the related items must themselves be indexed
-     pages. Those blocks **stay static until modeled** — record the
-     decision in the map, don't fake it.
-3. **Write `stardust/dynamic-blocks-map.md`** — dynamic vs static per
-   listing block, the index each reads, and the metadata contract per
-   content type (the concrete `<meta name="…">` fields).
-4. **Author `helix-query.yaml`** (scoped indexes: include globs,
-   `target`, properties) from the same contract, so selectors and
-   emitted meta names line up.
+1. **Detect** — re-run `extract --dynamics` if Phase 1 ran without it
+   (reach), then `dynamics-detect.mjs --from-state stardust/state.json
+   --reach stardust/current` (depth on archetypes).
+2. **Classify + triage** — `dynamics-plan.mjs [--target-origin <host>]`
+   drafts the four axes per row; curate into
+   `stardust/dynamic-features.md` (§ Listings contract with
+   `helix-query.yaml`, § Features, § Decision batch, § Register) and
+   `stardust/dynamic-features-plan.md`.
+3. **Gate** — passes when every row has a disposition. "none" in both
+   sections is a valid pass. The gate never blocks the static path; it
+   blocks silent regressions.
 
-When the inventory has no listing blocks, record "none" in the map
-and pass the gate. Surface summary and final gate:
-
-```
-dynamic-blocks prep complete
-============================
-
-Listing blocks:      3 dynamic (news-feed, events, related-treatments) · 1 static (Tier-3: specialists rail)
-Metadata contract:   news → PublishDate, Category · event → EventDate, Location
-Indexes authored:    helix-query.yaml (2 scoped indexes)
-
-Migrate-readiness: confirmed
-   → Run `$stardust migrate` to apply canon to every page in inventory.
-```
+Summary line: `dynamic surface: N findings · self K · owner batch M ·
+host-bound H · listings L dynamic / S static`. Contract:
+`skills/dynamics/reference/triage.md`.
 
 ### Final report
 
@@ -288,7 +262,7 @@ Phase 1 (extract --prep):      127 pages, 7 types, 8 module candidates
 Phase 2 (direct --prep):       types & modules confirmed; metadata set
 Phase 3 (prototype --prep):    6 archetypes approved; canon written
 Phase 4 (assets prep):         favicon variants + fonts + brand assets ready
-Phase 4.5 (dynamic blocks):    3 dynamic listings mapped; metadata contract + indexes authored
+Phase 4.5 (dynamic surface):   14 findings · self 6 · owner batch 7 · host-bound 1 · listings 3 index-backed / 1 static
 
 Next: $stardust migrate
 ```
@@ -310,8 +284,8 @@ After the cascade runs, the project state has:
 | `DESIGN.json.extensions.canon`                          | prototype --prep                |
 | `stardust/migrated/assets/favicon-*`                    | assets prep                     |
 | `stardust/migrated/assets/fonts/`                       | assets prep                     |
-| `stardust/dynamic-blocks-map.md` (metadata contract)    | dynamic-blocks prep (Phase 4.5) |
-| `helix-query.yaml` (scoped indexes, EDS project root)   | dynamic-blocks prep (Phase 4.5) |
+| `stardust/dynamic-features.md` + `-plan.md` (inventory, four axes, decision batch) | dynamics gate (Phase 4.5) |
+| `helix-query.yaml` (scoped indexes, EDS project root)   | dynamics gate (Phase 4.5) |
 | `stardust/state.json` (per-page status updates)         | each underlying phase           |
 
 ## Failure modes
@@ -354,7 +328,7 @@ phase). Each underlying skill is itself idempotent — already-
 typed pages are not re-typed, already-confirmed modules are not
 re-proposed, already-approved archetypes are not re-prototyped,
 already-generated favicon variants are not re-generated, and an
-existing `dynamic-blocks-map.md` is refined rather than rewritten.
+existing `dynamic-features.md` is refined rather than rewritten.
 
 Re-running after full completion is a no-op unless inputs
 changed (extract found new pages, direction was edited, the
@@ -368,8 +342,8 @@ canon-author prototype was re-iterated, etc.).
 - `skills/prototype/reference/canon-extraction.md` — the
   five-step extraction procedure prototype --prep performs on
   approval
-- `skills/rollout/reference/dynamic-listings.md` — metadata
-  contract + query-index mechanics Phase 4.5 runs at prep time
+- `skills/dynamics/SKILL.md` + `reference/triage.md`,
+  `reference/listings.md` — Phase 4.5 is its Phases 1–3
 - `skills/migrate/SKILL.md` — the consumer of every data
   structure this cascade prepares
 - `notes/migrate-template-canon-refactor.md` — design plan and

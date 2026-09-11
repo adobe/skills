@@ -38,6 +38,11 @@ delivered HTML ≠ rendered correctly.
 4. Optional inputs that unlock deeper checks:
    - `--scrape stardust/scrape` — verbatim fidelity vs the extraction capture
    - `--expected-blocks <json>` — explicit per-template block expectations
+   - `--parity <json>` — dynamic parity file to replay (default
+     `stardust/dynamics/parity.json`; the `dynamics` check reports
+     `parity-missing` when absent)
+   - `--auth-header "token …"` / `--token-env SITE_TOKEN` — protected
+     origins; the secret is sent to the base origin only
      (otherwise derived by fleet consensus)
    - `--blocks-dir <dir>` — the site's `blocks/` checkout, so the
      `editability` check can honour `@ew-exempt` JSDoc tags (otherwise

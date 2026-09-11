@@ -61,7 +61,9 @@ stardust/
 ├── status.jsonl                      # append-only phase-transition log — every skill appends start/end/blocked lines (run-status.md)
 ├── direction.md                      # resolved intent + reasoning trace
 ├── learnings.md                      # per-run learnings ledger — rollout writes, maintainers harvest (learnings.md)
-├── dynamic-blocks-map.md             # dynamic-vs-static listing blocks + per-type metadata contract (prepare-migration Phase 4.5 / rollout Phase B2)
+├── dynamic-features.md               # the dynamic-surface inventory: listings contract + one row per feature with class · disposition · reproducibility · status (dynamics Phase 3; prepare-migration 4.5 / replica Phase 2 / rollout B2)
+├── dynamic-features-plan.md          # phases with deliverables, authoring contract, verification, owner decision (dynamics Phase 3)
+├── dynamics/                         # dynamics working dir: generated-plan draft, parity.json (Phase 5), snapshot sync logs
 ├── redirects.tsv                     # original→normalized path pairs from the path-safety gate (rollout Phase C)
 ├── runtime-contract.json             # EDS runtime probe result (deploy § Runtime-detection probe)
 ├── uplift-improvements.md            # >=3 specific weaknesses (cut, not padded) — load-bearing for uplift's variant A (written by `stardust:uplift` Phase 2a; absent otherwise)
@@ -140,13 +142,17 @@ failure class its SKILL.md didn't anticipate. Entry shape + lifecycle
 in `reference/learnings.md`. Plugin maintainers harvest `pending`
 entries into skill diffs and flip them to `folded`.
 
-### `stardust/dynamic-blocks-map.md`
-Owner: `$stardust prepare-migration` (Phase 4.5) or `$stardust
-rollout` (Phase B2) — whichever runs first; the other verifies rather
-than redoes. Classifies every listing block dynamic vs static and
-defines the per-content-type metadata contract; `helix-query.yaml`
-(authored at the EDS project root from the same contract) is its
-sibling. Mechanics in `skills/rollout/reference/dynamic-listings.md`.
+### `stardust/dynamic-features.md` (+ `-plan.md`, `dynamics/`)
+Owner: `$stardust dynamics` Phase 3, run from `prepare-migration` (4.5),
+`replica` (Phase 2) or `migrate`'s safety net — whichever comes first;
+`rollout` B2 verifies rather than redoes. § Listings contract (per-type
+`<meta>` fields; `helix-query.yaml` at the EDS project root is its
+sibling), § Features (one row per finding: class · disposition ·
+reproducibility · status · pattern · decision), § Decision batch,
+§ Register (decided-out). The gate fails on a row without a
+disposition. `dynamics/parity.json` is Phase 5's replayable parity
+report; `qa` and `rollout` read it. Contract:
+`skills/dynamics/reference/triage.md`, `parity-report.md`.
 
 ### `stardust/runtime-contract.json`
 Owner: `$stardust deploy` (runtime-detection probe, before Step 1).

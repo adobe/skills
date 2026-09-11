@@ -93,20 +93,16 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
 > COMPOSITION of the existing block library, not new block code — audit `blocks/`
 > first. See `reference/operational-learnings.md`.
 
-### Phase B2 — Metadata contract for dynamic listings (PRE-IMPORT GATE)
+### Phase B2 — Dynamic surface (PRE-IMPORT GATE — verify the inventory)
 
-**Do this before Phase C — the import is blocked on it.** What a dynamic listing
-block can show is bounded by what each page emits, and retrofitting metadata across
-thousands of already-published pages is a second migration. Before importing,
-produce `dynamic-blocks-map.md` (which blocks are dynamic vs static, the index each
-reads, the fields its cards need) and a **metadata contract** (the `<meta name="…">`
-each content TYPE must carry). Then have Phase C's `deploy` brief emit the contract
-per page, and author `helix-query.yaml` from the same contract. When
-`stardust:prepare-migration` Phase 4.5 already ran, `stardust/dynamic-blocks-map.md`
-and `helix-query.yaml` exist — verify them against the inventory here instead of
-redoing them.
-
-Mechanics (key→meta-name rules, what a row can carry): `reference/dynamic-listings.md`.
+**Before Phase C.** `stardust/dynamic-features.md` (from prepare-migration 4.5 or replica
+Phase 2) must exist with a disposition on every row; verify it against fresh evidence here —
+`dynamics-detect.mjs --from-state … --reach stardust/current` and `dynamics-plan.mjs
+--target-origin <live host> --migrated stardust/migrated` (host-bound APIs, rows the capture
+already delivered). New evidence → new rows. The listings contract (per-type `<meta>` fields +
+`helix-query.yaml`) is emitted by Phase C's `deploy` brief per page: retrofitting metadata across
+published pages is a second migration. Missing inventory → run `stardust:dynamics` Phases 1–3 now.
+Contract: `skills/dynamics/reference/triage.md`, `reference/listings.md`.
 
 ### Phase C — Deliver the site (drive `deploy` per page, per the plan)
 
@@ -210,24 +206,16 @@ they MUST be published or the chrome 404s sitewide).
 **Redirects:** if Phase C's path-safety gate emitted `stardust/redirects.tsv`, wire
 it into the EDS redirects mechanism here so original inbound URLs don't 404.
 
-### Phase D2 — Dynamic listings (query-index) — optional
+### Phase D2 — Dynamic features (`stardust:dynamics` Phases 4–5)
 
-Blocks that LIST other pages (directories, news/event feeds, "related" rails)
-should read an EDS **query-index** rather than static cards. Build it from the B2
-contract: author `helix-query.yaml` (scoped indexes), rewrite the listing blocks to
-`fetch` their index (with filter/sort/paginate + an authored fallback), and
-validate one flagship end-to-end. The index builds from the **published (live)**
-tree — publish before expecting rows. Full mechanics: `reference/dynamic-listings.md`.
-
-**Index resilience.** After a bulk publish, **poll the index `total` with a
-timeout** (indexing is async; a freshly-synced config sits at `building`/404
-first) — don't assert once and fail. Decode `"requested path returned a 301 or
-404"` per row as **not-published**, not a bad selector: publish the page and
-re-poll (`reference/dynamic-listings.md` § The publish gotcha). If the index
-never settles inside the timeout, the documented **degraded mode** is a
-committed static index JSON (generated from the coverage ledger, served from
-the code branch) + regeneration on content change — the listing blocks read
-the same row shape either way, so the swap back is a URL change.
+Implement the plan's reproducibility-`self` rows from the pattern catalogue
+(`skills/dynamics/reference/patterns.md` — index-backed listings and search, modal loader,
+media as URL, client-compute blocks, owner-facing tag config disabled, off-origin data tiers,
+sheet sync); emit every other row as **one owner decision batch** and ship its interim tier.
+Query indexes build from the **published** tree — publish per page in Phase C, then poll `total`.
+Each feature ends with a parity row in `stardust/dynamics/parity.json` carrying a replayable check;
+`dynamics-check.mjs --origin <live host>` runs before Phase H and the report carries its table.
+Failed replays are `dynamic-gap` / `api-dependency` learnings, never silent passes.
 
 ### Phase D3 — Multilingual (per-language trees) — optional
 
@@ -351,6 +339,10 @@ Use `--dry-run` first. After applying, **re-deploy** the edited pages, then re-r
 are surfaced, not auto-fixed.
 
 ### Phase H — Report
+
+Include the dynamic parity table (`stardust/qa/dynamics-report.md`, from Phase D2) next to
+the delivery ledger: per feature its class, reach, status, owner decision and the replayed
+check — so the report is honest about what the site *does*, not only what it *shows*.
 
 Read `rollout.json.lastRun` + `optimize/scorecard.json` (or re-run `inventory.mjs`):
 
@@ -476,7 +468,8 @@ Normalize each one's output into the ledger via `findings.mjs record`. See
 
 - `notes/rollout/PLAN.md` — design, coverage model, phasing, open questions.
 - `reference/delivery-gates.md` — Phase C gates + batched-delivery-at-scale flow.
-- `reference/dynamic-listings.md` — metadata contract + query-index mechanics (B2/D2).
+- `skills/dynamics/SKILL.md` + its `reference/` — the dynamic surface: classes, triage axes,
+  listings contract + query-index mechanics, pattern catalogue, parity report (B2/D2).
 - `reference/multilingual.md` — per-language trees (D3).
 - `reference/operational-learnings.md` — scaled-rollout gotchas (extend, republish, verify).
 - `reference/audit-sources.md` — the audit-source → layer → fixability → autofix map.
