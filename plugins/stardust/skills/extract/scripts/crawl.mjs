@@ -69,7 +69,7 @@ const WAIT_MS = { fast: 1200, medium: 2500, slow: 5000 };
 const CRAWL_CONTEXT = { reducedMotion: 'reduce', viewport: { width: 1440, height: 900 } };
 
 function parseArgs(argv) {
-  const a = { out: 'stardust/current', max: 25, wait: 'medium', consent: true, concurrency: 4 };
+  const a = { out: 'stardust/current', max: 25, wait: 'medium', consent: true, concurrency: 4, dynamics: false };
   for (let i = 2; i < argv.length; i += 1) {
     const k = argv[i];
     if (k === '--url') a.url = argv[(i += 1)];
@@ -79,6 +79,7 @@ function parseArgs(argv) {
     else if (k === '--wait') a.wait = argv[(i += 1)];
     else if (k === '--no-consent-dismiss') a.consent = false;
     else if (k === '--concurrency') a.concurrency = Math.max(1, +argv[(i += 1)] || 4);
+    else if (k === '--dynamics') a.dynamics = true; // migration-bound: set by prepare-migration / replica / migrate, never by default
     else throw new Error(`unknown arg: ${k}`);
   }
   if (!a.url) throw new Error('--url is required');
@@ -374,13 +375,13 @@ async function captureFavicon(page, args) {
 }
 
 // ---- the capture, run in-page; returns the per-page record + hardening signals ----
-// ---- dynamic-surface evidence (network side) -------------------------------
-// Records WHAT the page fetched while rendering — never what it means. The
-// per-page `dynamic` section and the site roll-up in
-// `_crawl-log.json#dynamicSurface` are the raw material prepare-migration
-// Phase 4.5 classifies into a delivery strategy (query-index, sheet-json,
-// client-fetch, embed-preserved, static-until-modeled, out-of-scope). Evidence
-// only: an unclassified row is a gate failure downstream, not a crawl failure.
+// ---- dynamic-surface evidence (network side) — OPT-IN (`--dynamics`) --------
+// Records WHAT the page fetched while rendering — never what it means. Cheap
+// per-page REACH signals for the dynamics sub-skill: `dynamics-detect.mjs`
+// probes archetypes in depth and folds these per-page sections (`--reach`) into
+// each finding's reach. Migration-bound: prepare-migration, replica and migrate
+// pass `--dynamics`; a bare extract, uplift and audit never do (dynamics is a
+// migration concern, not a redesign one).
 const DYNAMIC_MAX_ENDPOINTS = 150;
 const DYNAMIC_MAX_HOSTS = 60;
 const JSON_CT = /application\/(json|[a-z0-9.+-]*\+json)|text\/json|application\/graphql/i;
@@ -671,9 +672,16 @@ function capture() {
     };
   });
   const ariaLiveRegions = document.querySelectorAll('[aria-live]:not([aria-live="off"])').length;
+  // reach signals for dynamics-detect --reach: modal-trigger markers and player ids per page
+  const triggers = [...document.querySelectorAll('a, button')].map((el) => {
+    const cls = el.getAttribute('class') || ''; const attrs = [...el.attributes].map((a) => a.name);
+    const marker = (cls.match(/[\w-]*(modal|dialog|lightbox|popup)[\w-]*/i) || [])[0] || attrs.find((n) => /modal|dialog|lightbox|popup/i.test(n)) || (el.getAttribute('aria-haspopup') === 'dialog' ? 'aria-haspopup=dialog' : null);
+    return marker && !/close|dismiss/i.test(cls) ? { marker, href: el.getAttribute('href') || null } : null;
+  }).filter(Boolean).slice(0, 40);
+  const mediaIds = [...document.querySelectorAll('video-js, [data-video-id], [data-videoid], iframe[src*="player" i]')].map((el) => el.getAttribute('data-video-id') || el.getAttribute('data-videoid') || el.getAttribute('src')).filter(Boolean).slice(0, 20);
 
   return {
-    dynamicDom: { inlineData, globalState, frameworkHints, forms, ariaLiveRegions },
+    dynamicDom: { inlineData, globalState, frameworkHints, forms, ariaLiveRegions, triggers, mediaIds },
     finalUrl: location.href,
     title: document.title || null,
     description: meta('description'),
@@ -715,7 +723,7 @@ function capture() {
 
 async function capturePage(context, url, slug, args) {
   const page = await context.newPage();
-  const recorder = attachDynamicRecorder(page); // must precede goto — load-time fetches are the evidence
+  const recorder = args.dynamics ? attachDynamicRecorder(page) : null; // opt-in; must precede goto — load-time fetches are the evidence
   try {
   let resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
   // response validation
@@ -765,8 +773,9 @@ async function capturePage(context, url, slug, args) {
   await page.waitForTimeout(800);
 
   const rec = await page.evaluate(capture);
-  // dynamic surface: network recorder + DOM-side evidence → one `dynamic` section
-  {
+  // dynamic surface (opt-in): network recorder + DOM-side evidence → one `dynamic` section
+  if (!recorder) delete rec.dynamicDom;
+  else {
     const net = recorder.finish(rec.finalUrl || resolvedUrl);
     const dom = rec.dynamicDom;
     delete rec.dynamicDom;
@@ -971,9 +980,9 @@ async function main() {
     await writeFile(r.file, JSON.stringify(rec, null, 2));
     console.error(`[crawl] DUP  ${r.slug}  DUP-OF:${canonical}`);
   }
-  log.dynamicSurface = finalizeDynamic(dynamicRollup);
-  if (log.dynamicSurface.endpoints.length || log.dynamicSurface.pagesWithSearchForm) {
-    console.error(`[crawl] dynamic surface: ${log.dynamicSurface.endpoints.filter((e) => e.sameSite).length} same-site data endpoints, ${log.dynamicSurface.pagesWithSearchForm} pages with a search form, ${log.dynamicSurface.pagesHydrated} hydrated — classify in prepare-migration Phase 4.5`);
+  if (args.dynamics) {
+    log.dynamicSurface = finalizeDynamic(dynamicRollup);
+    console.error(`[crawl] dynamic surface (reach): ${log.dynamicSurface.endpoints.filter((e) => e.sameSite).length} same-site data endpoints, ${log.dynamicSurface.pagesWithSearchForm} pages with a search form, ${log.dynamicSurface.pagesHydrated} hydrated — depth + classification: stardust:dynamics`);
   }
   // merge into existing _crawl-log.json if present
   const logPath = path.join(args.out, '_crawl-log.json');

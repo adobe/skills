@@ -133,9 +133,9 @@ Missing-asset references are recorded as
 `kind: "asset-missing"` so downstream tools can surface the gap
 without parsing the run report. Likewise every runtime dependency a
 page carries is a `contentDeviations[]` entry with
-`kind: "dynamic-dependency"` (strategy, map row, endpoint pattern —
+`kind: "dynamic-dependency"` (disposition, inventory row, endpoint —
 see `skills/migrate/reference/content-preservation.md § Dynamic
-dependencies`); `strategy: "unclassified"` entries go in the report's
+dependencies`); `disposition: "unclassified"` entries go in the report's
 first section because they mean the dynamic-surface gate was skipped.
 
 ## State.json contract

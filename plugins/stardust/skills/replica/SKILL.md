@@ -63,7 +63,7 @@ eyeballing.
 Five phases. Phases 1 and 5 delegate to existing skills unchanged; phases
 2–4 are owned by `replica`.
 
-### Phase 1 — EXTRACT (delegate to `stardust:extract --prep`)
+### Phase 1 — EXTRACT (delegate to `stardust:extract --prep --dynamics`)
 
 Invoke `stardust:extract <URL> --prep`, unchanged. Prep mode is required —
 replica consumes the full migration inventory, not the discovery cap:
@@ -127,6 +127,15 @@ Full contract: `reference/preserve-direction.md`. Summary:
    and/or user-supplied items (`--register`). Every entry needs captured
    evidence + the minimal change + a status. **Empty register = pure
    replica** — that is a valid and common outcome, not a failure.
+
+4. **Dynamic surface (migration gate — `stardust:dynamics` Phases 1–3).**
+   Phase 1 must have run `extract --dynamics`. Run the detector on the
+   archetypes, draft the triage (`--target-origin` when the EDS host is
+   known), curate `stardust/dynamic-features.md` + `-plan.md`. Every row
+   gets a disposition; the static recreation continues regardless. This is
+   what surfaces modals, players, forms, search, tags and host-bound APIs
+   that pixel gates certify as correct. Contract:
+   `skills/dynamics/reference/triage.md`.
 
 Anything not in the register is out of scope for change. When a recreation
 choice would "improve" something not registered, it is a fidelity bug.

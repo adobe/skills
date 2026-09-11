@@ -45,6 +45,13 @@ critique, and it does not modify the live site. It writes only under
   (script activation that wouldn't otherwise run) must be
   avoided. Default is to dismiss, keeping screenshots, voice
   aggregation, and per-section style unpolluted by the banner.
+- `--dynamics` — optional, **migration-bound**. Record per-page reach
+  signals of the dynamic surface (data endpoints, forms, modal
+  triggers, player ids) in each page JSON `dynamic` section and roll
+  them up in `_crawl-log.json#dynamicSurface`. Set by
+  `prepare-migration`, `replica` and `migrate`'s safety net; never by a
+  bare extract, `uplift` or `audit` — dynamics is a migration concern.
+  Depth and classification belong to `stardust:dynamics`.
 - `--concurrency <n>` — optional. Parallel browser contexts for the
   per-page capture loop. Default 4; sane range 4–8. See
   § Concurrency.
@@ -264,18 +271,12 @@ Capture per page (full schema in `reference/current-state-schema.md`):
   `_signals.screenshotMode`, relative path in the page JSON
   `screenshot` field)
 
-- **Dynamic surface** — evidence of what the page fetched while
-  rendering and how it was rendered: xhr/fetch/JSON endpoints (ids
-  collapsed to a path pattern, query keys only), third-party script
-  hosts, inline JSON data blobs, hydration globals and framework
-  fingerprints, visible forms with a search heuristic. Recorded in the
-  page JSON `dynamic` section and rolled up sitewide in
+- **Dynamic surface (only with `--dynamics`)** — per-page reach
+  signals: endpoints, third-party script hosts, forms, modal triggers,
+  player ids, hydration hints, in the page JSON `dynamic` section and
   `_crawl-log.json#dynamicSurface` (schema in
-  `reference/current-state-schema.md § Dynamic`). **Evidence only —
-  extract never classifies it.** `prepare-migration` Phase 4.5 turns
-  every row into a delivery-strategy decision; a site whose roll-up
-  shows same-site data endpoints, a search form, or hydrated pages is
-  NOT a static site and must not be migrated as one.
+  `reference/current-state-schema.md § Dynamic`). Evidence only; the
+  `stardust:dynamics` sub-skill probes archetypes in depth and decides.
 
 Save to `stardust/current/pages/<slug>.json` with `_provenance` as the
 first key. **The bundled crawler also saves the settled rendered DOM
@@ -610,7 +611,7 @@ capture (≤ 3 pages). It must never balloon the crawl.
 | `stardust/current/assets/media/`            | Extracted media referenced by pages                 |
 | `stardust/current/assets/screenshots/`      | Per-page full-page screenshots, script-captured by `crawl.mjs` (Phase 2.5 vision gate + brand-review) |
 | `stardust/current/_brand-extraction.json`   | Consolidated brand surface (palette, type, motifs, voice, system components) |
-| `stardust/current/_crawl-log.json`          | Discovery + crawl audit trail (incl. `visionCheck[]`, `siblingCandidates[]`, `dynamicSurface` — site roll-up of data endpoints, third-party script hosts, hydration hints, form targets) |
+| `stardust/current/_crawl-log.json`          | Discovery + crawl audit trail (incl. `visionCheck[]`, `siblingCandidates[]`; `dynamicSurface` reach roll-up only with `--dynamics`) |
 | `stardust/current/brand-sources/<host>/`    | Shallow same-brand captures (only with `--brand-source`) |
 | `stardust/canon-source/`                    | Design-donor capture + descriptive DESIGN.md/json (only with `--design-source`) |
 | `stardust/state.json`                       | Updated with site + per-page status (+ `designSource` stamp) |

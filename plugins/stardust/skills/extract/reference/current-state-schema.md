@@ -310,14 +310,15 @@ Empty arrays are valid; missing keys are not.
 
 ## § Dynamic
 
-Script-captured by `crawl.mjs` on every page — **evidence of what the
-page fetched and how it was rendered, never a classification.** The
-network side is recorded by a response listener attached before
-navigation; the DOM side is read from the settled document. Downstream,
-`prepare-migration` Phase 4.5 reads this (and the site roll-up in
-`_crawl-log.json#dynamicSurface`) and assigns each row a delivery
-strategy in `stardust/dynamic-blocks-map.md`. Interpretation belongs
-there, not here.
+Script-captured by `crawl.mjs` **only with `--dynamics`** (migration-bound:
+prepare-migration, replica and migrate set it) — **per-page reach evidence
+of what the page fetched and how it was rendered, never a classification.**
+The network side is recorded by a response listener attached before
+navigation; the DOM side is read from the settled document. The
+`stardust:dynamics` sub-skill probes archetypes in depth
+(`_dynamics.json`) and folds these sections into each finding's reach;
+decisions live in `stardust/dynamic-features.md`. Absent section = the
+crawl ran without the flag (redesign-only work).
 
 ```json
 {
@@ -347,6 +348,8 @@ there, not here.
     { "action": "https://www.example.com/search", "hasAction": true, "method": "get", "sameOrigin": true, "fieldCount": 1, "fieldNames": ["q"], "search": true }
   ],
   "ariaLiveRegions": 0,
+  "triggers": [{ "marker": "aria-haspopup=dialog", "href": null }],   // modal-trigger markers per page (reach for M findings)
+  "mediaIds": ["987654"],                                             // player ids / player iframe srcs per page (reach for V findings)
   "summary": {
     "sameSiteEndpoints": 2, "thirdPartyEndpoints": 1, "thirdPartyScriptHosts": 1,
     "inlineDataBlobs": 1, "forms": 2, "searchForms": 1,
@@ -363,9 +366,9 @@ Rules:
   `endpoints`.
 - `search: true` is a heuristic (`role=search`, `type=search`, a
   `q|s|query|search|keyword(s)|term` field, or `/search` in the action).
-- Empty arrays are valid. A page with no dynamic surface still carries
-  the section with zeroed `summary` counts — its absence means the
-  record was written by an older crawler.
+- Empty arrays are valid. A page crawled with `--dynamics` and no
+  dynamic surface still carries the section with zeroed `summary`
+  counts; a missing section means the crawl ran without the flag.
 
 ### `_crawl-log.json#dynamicSurface`
 
