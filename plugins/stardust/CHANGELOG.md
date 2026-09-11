@@ -4,55 +4,64 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.19.9 — dynamic-surface scaffold: evidence in extract, decisions before import
+## 0.20.0 — dynamics: the dynamic surface of a migration
 
-A deliberately thin layer for everything dynamic that is not a listing — APIs,
-sheets, search, embeds, client-rendered pages. It makes the dynamic surface
-visible and forces a decision per row; the strategy playbooks stay one
-paragraph each until real migrations fill them via the learnings ledger.
+Three real migrations (a US health insurer's employers section rebuilt greenfield, a UK
+package-holiday site on an existing EDS library, a consumer-credit site re-platformed at
+~5,900 URLs) found the same thing: a site's dynamic surface — modals, players, forms,
+search, tags, APIs, client-rendered and sheet-backed content — is invisible to a
+block-scoped, pixel-verified pipeline, and invisible in a way every gate certifies as
+correct. This release makes it visible, forces a decision per row before import, and
+proves the behaviour after delivery. Migration-bound by design: default-on in both
+migration flows, never for redesign-only work.
 
-- **`extract` records the dynamic surface** (`crawl.mjs`): a response listener
-  attached before navigation captures xhr/fetch/eventsource and JSON responses
-  (ids collapsed to a path pattern, query key names only, no values or
-  bodies), third-party script hosts; the in-page capture adds inline JSON data
-  blobs, hydration globals, framework fingerprints, visible forms with a
-  search heuristic. New per-page `dynamic` section + site roll-up
-  `_crawl-log.json#dynamicSurface` (rows keyed across pages with counts and
-  example slugs). Evidence only — extract never classifies. Schema:
-  `current-state-schema.md § Dynamic`. Console line per page flags
-  `data-endpoints:N`, `SEARCH-FORM`, `HYDRATED`.
-- **`prepare-migration` Phase 4.5 widened** from "dynamic-blocks pre-import
-  gate" to the **dynamic-surface gate**: listings keep their Tier 1/2/3
-  treatment; every other roll-up row gets a strategy from a closed vocabulary
-  — `query-index` · `sheet-json` · `client-fetch` · `embed-preserved` ·
-  `static-until-modeled` · `out-of-scope` — plus a reason.
-  `dynamic-blocks-map.md` gains a **§ Dynamic capabilities** decision table
-  next to § Listings (filename unchanged: rollout B2 and the artifact map
-  already reference it). An unclassified row fails the gate.
-- **New `rollout/reference/dynamic-capabilities.md`** — the vocabulary, the map
-  format, one section per strategy (intent, deploy contract, live probe, open
-  questions), a note on site search, and an explicit list of what it does not
-  contain yet. Marked provisional; it is where `dynamic-gap` /
-  `api-dependency` learnings fold. `dynamic-listings.md` is now its
-  `query-index` section in depth.
-- **`rollout`** B2 verifies the capability table against the current roll-up;
-  D2 runs one live probe per non-static row before the report (index total,
-  sheet `.json`, client fetch from the live origin + fallback, embed under
-  CSP) and records failures as `api-dependency` learnings.
-- **`migrate`** — `content-preservation.md § Dynamic dependencies`
-  generalises `self-hosted-form`: every `dynamic` row is looked up in the map
-  and logged as `contentDeviations[]` `kind: "dynamic-dependency"`
-  (strategy, map row, endpoint); `strategy: "unclassified"` surfaces in the
-  report's first section.
-- **`deploy`** — the "data → rows, behaviour → block JS" rule now explicitly
-  covers `client-fetch` / `sheet-json` blocks: authored rows are the fallback
-  and the first paint; never a block whose only content arrives by fetch.
-- **Learnings ledger** gains two failure classes, `dynamic-gap` and
-  `api-dependency`, with the rule that their proposed change points at a
-  strategy section of `dynamic-capabilities.md`.
-- Not included on purpose: a search block, sheet tooling, API proxy, vendor
-  adapters, eval fixtures — each waits for two ledgers hitting the same
-  strategy.
+- **New sub-skill `stardust:dynamics`** (`skills/dynamics/`): detect → classify → triage →
+  implement → verify. Triage on **four axes** — class (`L S F M V T A R X I18N CR D`),
+  disposition (`rebuild-native · index-backed · data-fed · embed-passthrough · client-only ·
+  static-snapshot · decided-out`), reproducibility (`self · needs-credential ·
+  needs-human-capture · needs-backend · needs-business-decision`), status. Only `self` ships
+  autonomously; the rest is one owner decision batch. Hard rules: reconcile against the
+  migrated output first, never fabricate a blank client-rendered page, never auto-wire a
+  regulated-PII form, a search box implies a results page, decided-out is explicit.
+- **References** (loaded on demand, not in the always-on skills): classes-and-signals,
+  triage (+ the `stardust/dynamic-features.md` inventory format, which subsumes the former
+  dynamic-blocks map), patterns (catalogue with contracts and three embedded example
+  mechanisms — modal loader, index search, JSON post with honeypot), listings (folded from
+  rollout's dynamic-listings), off-origin-data (host-keyed endpoint indirection, code-bus
+  snapshots, fetch shim, per-state rendered snapshots + `Source` row, sheet sync, chrome URL
+  space), forms (controls not form tags; intake by content source; regulated data),
+  parity-report, locale-trees. The plugin ships **contracts and tooling, not blocks**: no
+  block was reused as-is across the three cases and an existing library must be fed, not
+  forked.
+- **Tooling** (`skills/dynamics/scripts/`, verified end to end on a local fixture):
+  `dynamics-detect.mjs` (network log by host, first-party API paths with status, POST
+  bodies, forms **and form-less control groups**, the trigger → dialog → content graph,
+  player ids, iframes without src, tag-manager mount divs, settings-object keys, framework,
+  auth/commerce/locale, client-rendered slots and pages, listing candidates; `--from-state`
+  for one page per type; `--reach` folds the crawl's per-page signals in),
+  `dynamics-plan.mjs` (four-axis draft per finding, `--target-origin` **host-bound** probe of
+  every recorded API path, `--migrated` reconcile against delivered output, regulated-PII
+  flag), `dynamics-check.mjs` (parity replay over a closed set of check types —
+  `fetch-json`, `dom-count`, `click-dialog`, `search-query`, `form-flow`, `video-plays`,
+  `consent-gate`, `no-page-errors` — third-party request statuses recorded per check),
+  `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs`, `vendors.json` (the
+  classification engine: host pattern → class + role, product names only).
+- **Hooks in the existing skills, ≤15 lines each:** `extract --dynamics` (opt-in per-page
+  reach signals; never set by a bare extract, `uplift` or `audit`); `prepare-migration`
+  Phase 4.5 and `replica` Phase 2 run Phases 1–3 as the pre-import gate; `migrate` Phase 1
+  is the safety net for the hand-run flow; `deploy` reads the inventory as brief input and
+  never flattens `client-only` / modal-bearing sections into prose; `rollout` B2 verifies the
+  inventory against fresh evidence, D2 implements the `self` set and batches the rest, H
+  reports parity; `qa` gains the `dynamics` check (`parity-missing` / `parity-failed` /
+  `parity-env-limit` / `parity-unchecked`); master routing + both flows name it.
+- **Origin-scoped site auth everywhere.** `resolveSiteAuth` / `attachOriginAuth` in the shared
+  live-session helper and the qa runner (`--auth-header` / `--token-env`, default
+  `SITE_TOKEN`): the secret rides a route filter on the base origin only — a context-wide
+  header leaked it to a video vendor's playback API, whose CORS check then produced a player
+  error real users never see.
+- **Learnings ledger** failure classes `dynamic-gap` / `api-dependency` now point at the
+  dynamics references. Removed: `rollout/reference/dynamic-listings.md` and the 0.19.9
+  `dynamic-capabilities.md` (folded into `skills/dynamics/reference/`).
 
 ## 0.19.8 — impeccable dependency: unpinned by design, with an update hint
 
