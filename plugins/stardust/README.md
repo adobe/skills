@@ -40,9 +40,9 @@ a redesign, a replica or a reskin as self-contained static HTML under
 `stardust/`. Nothing in them assumes a CMS.
 
 - `extract` crawls the site (capped, multi-page) and writes the captured
-  design system, brand surface, per-page inventory, rendered DOM and the
-  page's dynamic surface (data endpoints, search, embeds, hydration
-  evidence) to `stardust/current/`.
+  design system, brand surface, per-page inventory and rendered DOM to
+  `stardust/current/` (with `--dynamics`, set by the migration flows, also
+  the per-page reach signals of the dynamic surface).
 - `direct` resolves your intent into a target `PRODUCT.md` and `DESIGN.md`,
   with reference research when the refero MCP is present and the reasoning
   kept in `stardust/direction.md`.
@@ -50,8 +50,9 @@ a redesign, a replica or a reskin as self-contained static HTML under
   iterates them through impeccable's craft loop.
 - `prepare-migration` runs extract, direct and prototype in `--prep` mode
   with confirmation gates, for the redesign migration flow, and closes with
-  the dynamic-surface gate: every listing block and every data endpoint,
-  search form or embed the crawl saw gets a delivery strategy before import.
+  the dynamic-surface gate (`dynamics` Phases 1–3): every API, search box,
+  form, modal, player, tag and client-rendered surface gets a disposition
+  before import.
 - `replica` recreates one archetype per page type as clean HTML/CSS that
   matches the live site near pixel-perfect, proven by a measured gate.
 - `reskin` re-lays byte-faithful content onto a donor design system.
@@ -69,7 +70,7 @@ a redesign, a replica or a reskin as self-contained static HTML under
 Outputs: `stardust/current/`, `stardust/prototypes/`, `stardust/migrated/`,
 `stardust/state.json`, `stardust/status.jsonl`, `stardust/learnings.md`.
 
-**EDS delivery.** Three skills that take the migrated tree to AEM Edge
+**EDS delivery.** Four skills that take the migrated tree to AEM Edge
 Delivery Services.
 
 - `deploy` converts one page into EDS blocks under `blocks/` and Document
@@ -79,11 +80,16 @@ Delivery Services.
   internal links are localized, and a per-page atomic contract checks the
   delivered page before it counts as deployed.
 - `rollout` delivers the whole site: coverage ledger, block dedup, per-page
-  delivery through `deploy`, site assembly (sitemap, redirects, dynamic
-  listings and other dynamic capabilities, multilingual trees), full-site
-  verify and link audit, an
+  delivery through `deploy`, site assembly (sitemap, redirects, multilingual
+  trees), the dynamic features phase (`dynamics` Phases 4–5: index-backed
+  listings and search, modal loader, forms, tags, off-origin data, parity
+  replay), full-site verify and link audit, an
   optimize gate that aggregates accessibility, SEO, AI-search and
   brand-tension findings, deterministic AEM autofixes, and a report.
+- `dynamics` is the dynamic surface of a migration: detect on archetypes,
+  classify, triage on four axes (class, disposition, reproducibility,
+  status), implement from a pattern catalogue, replay parity. Default-on in
+  both migration flows, never for redesign-only work.
 - `qa` sweeps the live EDS site read-only: routing, content fidelity against
   the capture, template conformance, rendered integrity, visual regression,
   metadata and JSON-LD, links, axe accessibility, performance budgets,

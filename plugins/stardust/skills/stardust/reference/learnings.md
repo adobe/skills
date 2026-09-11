@@ -45,24 +45,24 @@ One entry per learning, four fields:
 
 ## Failure classes for the dynamic surface
 
-Two classes exist specifically so real migrations can grow
-`skills/rollout/reference/dynamic-capabilities.md`, which is
-deliberately thin until they do:
+Two classes exist specifically so real migrations can grow the
+`stardust:dynamics` references (`skills/dynamics/reference/`):
 
 - **`dynamic-gap`** — something dynamic shipped static, or a
-  capability the extract evidence surfaced never reached
-  `dynamic-blocks-map.md` (a listing rendered as frozen cards, a
+  capability the evidence surfaced never reached
+  `dynamic-features.md` (a listing rendered as frozen cards, a
   search form pointing at a page that no longer searches, a
   hydrated page migrated from its SSR shell). Evidence names the
-  `_crawl-log.json#dynamicSurface` row or the map row.
-- **`api-dependency`** — a `client-fetch` / `sheet-json` /
-  `embed-preserved` decision that failed in the field: CORS, auth,
+  `_dynamics.json` finding or the inventory row.
+- **`api-dependency`** — a `data-fed` / `embed-passthrough` /
+  `index-backed` decision that failed in the field: CORS, auth,
   rate limits, an endpoint that moved, an embed blocked by the EDS
   CSP, a sheet that could not carry the shape. Evidence names the
   endpoint pattern and the failing probe.
 
-`proposed change` for both should point at a strategy section of
-`dynamic-capabilities.md` — that file is where these entries fold.
+`proposed change` for both should point at a pattern section of
+`skills/dynamics/reference/patterns.md` (or `off-origin-data.md`,
+`forms.md`) — those files are where these entries fold.
 
 ## Rules
 

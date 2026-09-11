@@ -65,11 +65,12 @@ Once setup is done, route on the user's input:
   | `direct` | `stardust:direct` | resolve the visual direction |
   | `prototype` | `stardust:prototype` | per-page redesign prototypes |
   | `migrate` | `stardust:migrate` | full-site platform-agnostic static HTML |
-  | `prepare-migration` | `stardust:prepare-migration` | the migrate-prep cascade (prep phases, assets, dynamic-blocks gate) — **redesign flow only** |
+  | `prepare-migration` | `stardust:prepare-migration` | the migrate-prep cascade (prep phases, assets, dynamics gate) — **redesign flow only** |
   | `replica` | `stardust:replica` | same-design migration (re-platform, keep the current design) — runs its own preserve-mode prep, then hands off to migrate/deploy/rollout |
   | `reskin` | `stardust:reskin` | byte-faithful content re-laid onto a separately defined donor design system |
   | `deploy` | `stardust:deploy` | one page → EDS blocks + DA delivery |
   | `rollout` | `stardust:rollout` | whole migrated site → EDS, with coverage + delivery gates |
+  | `dynamics` | `stardust:dynamics` | the dynamic surface of a migration — detect, classify, triage, implement, verify (APIs, search, forms, modals, media, tags, client-rendered, sheet data); migration-bound, invoked by prepare-migration / replica / migrate / rollout or standalone on an already-migrated site |
   | `diff` | `stardust:diff` | prototype ↔ build fidelity probes (pixel + structural) |
   | `audit` | `stardust:audit` | three-perspective site audit — design tensions, SEO/technical, LLM visibility — scored report + findings ledger |
   | `qa` | `stardust:qa` | read-only post-deploy QA sweep of the live site — routing, fidelity, template conformance, rendering, visual regression, SEO, links, a11y, perf — findings report only, never fixes |
@@ -112,6 +113,13 @@ That answer selects the flow; the downstream chain is shared.
   after `replica`**; there is no separate prep step in this flow.
 - **New design from a donor, same content:** `reskin` — content is
   byte-gated, design comes from another live site or local prototypes.
+- **Both migration flows carry the dynamic surface by default.** The
+  pre-import gate (`prepare-migration` 4.5 / `replica` Phase 2, with
+  `migrate` as the safety net) runs `stardust:dynamics` Phases 1–3 so
+  every API, search box, form, modal, player, tag and client-rendered
+  surface gets a disposition before import; `rollout` D2 implements the
+  reproducible rows and `qa` replays parity. Never for redesign-only
+  work (`uplift`, a bare `extract`): dynamics is a migration concern.
 
 State the chosen flow explicitly in the first response to a migration
 question, including the fact that `replica` needs no `prepare-migration`
@@ -138,6 +146,7 @@ auto-resolves:
 | prototype approval | granted by the agent's own judgment **only after all quality gates pass** (craft bar, validation loop, motion gates); recorded as `approvedBy: "hands-off"` on the page's `approved` history entry in `state.json` |
 | `prepare-migration` phase gates | behave as `--skip-confirm` |
 | `rollout` | runs full-auto end-to-end |
+| `dynamics` owner decisions (backend, tags on the new host, datasource ownership, locale scope) | ship the interim tier, record each decision by name in `dynamic-features.md` and the parity report, continue; regulated-pii forms stay blocked |
 
 Defaults under hands-off (override only when the invocation says
 otherwise):
