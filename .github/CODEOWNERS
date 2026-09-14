@@ -45,6 +45,9 @@
 # Run Workflow (Adobe Firefly workflows via MCP)
 /plugins/creative-cloud/run-workflow                   @thagarwal-sjc
 
+# Run Workflow (Adobe Firefly workflows via MCP)
+/plugins/creative-cloud/run-workflow                   @thagarwal-sjc
+
 # Stardust
 /plugins/stardust                                      @paolomoz
 
