@@ -64,8 +64,9 @@ PATH after `npm install`).
 
 2. **Locate the customer module.** `cd` into the module dir (the one that has a
    `pom.xml` producing the migrated bundle). If the migration skill wrote a
-   `.rv/context.json` there — with `projectId` and `pendingFindings` — RV uses
-   that. Otherwise ask the user for `--finding` and `--project-id`.
+   `.rv/context.json` there — with `projectId` — RV uses that. Otherwise ask
+   the user for `--project-id`. `--finding` is no longer required (each
+   outcome carries per-class detail under `classes[]`).
 
 3. **Run `rv-check <pattern>`.** The command:
    - Builds `mvn clean package -DskipTests`.
@@ -78,6 +79,9 @@ PATH after `npm install`).
      and the Cloud Service contract properties.
    - Prints the outcome record and — on the final attempt only — a JSON payload
      block between `=== report-rv-outcome payload ===` and `=== end payload ===`.
+     The payload is one aggregate record per run: `summary` counts, a `bundle`
+     block, and a `classes[]` array with one entry per verified class
+     (`class_name` = FQCN or dialog path; per-class `result` + evidence).
      rv-check does **not** speak MCP itself; **you (the agent) do**.
 
 4. **Call the `report-rv-outcome` MCP tool** with the payload block from
@@ -95,40 +99,50 @@ PATH after `npm install`).
 | fail | `runtime.bundle_not_active`, `runtime.component_unsatisfied`, `runtime.activation_error`, `runtime.contract_mismatch`, `source.contract_mismatch`, `tests.failed`, `input.jar_missing`, `discovery.no_pattern_match` | Do NOT retry — retrying the same deploy will produce the same failure. Show the evidence and hand back to the migration skill with the structured evidence (bundle_state, component_state, unsatisfied_references, activation_error). |
 
 6. **One outcome, one MCP call.** The `report-rv-outcome` invocation is made
-   once, on the final attempt. When retries happen, the payload's
-   `verification_level` and `failure_class` reflect the last attempt.
-   Adoption-service receives one row per user request.
+   once, on the final attempt. `run_id` is the parent identity — duplicates
+   are idempotent server-side. When some classes pass and some fail, aggregate
+   `result` is `fail` and `summary.classes_pass`/`classes_fail` carry the
+   breakdown; iterate over `classes[]` for per-class evidence.
 
 ## What to show the user on success
 
 ```
 ✓ VERIFIED on Cloud SDK
-  finding: <CAM finding id>
-  pattern: scheduler@1.0
-  bundle:  <BSN> → Active
-  contract: scheduler.expression, concurrent:Boolean, runOn=SINGLE|LEADER
-  outcome recorded via MCP (result: pass, attempts: N)
+  run:      <run_id>
+  pattern:  scheduler@1.0
+  bundle:   <BSN> → Active
+  classes:  N pass / 0 fail
+            • <class_name> → pass  (scheduler.expression, concurrent:Boolean, runOn=SINGLE|LEADER)
+  outcome recorded via MCP
 ```
+
+Also write a customer-facing report at `<project-root>/RV/<pattern>-<run_id>.md`
+so each run leaves a persistent artifact next to the code. Follow the shape of
+the Option C payload: identifiers block, aggregate summary, bundle block,
+per-class table.
 
 ## What to show on a real (non-transient) failure
 
 Never retry these. **Do not dump raw `evidence` at the user** — it's a
 structured field for the MCP payload and adoption-service. Instead, **you (the
-LLM) translate `failure_class` + `evidence` into a short natural-language
-explanation** of what went wrong and what to do next. Keep it to 3–5 lines.
+LLM) translate each failed class's `failure_class` + `evidence` into a short
+natural-language explanation** of what went wrong and what to do next. Keep
+it to 3–5 lines per failed class; iterate over `classes[]` where `result=fail`.
 
-Structure of your reply:
+Structure of your reply, per failed class:
 
 1. One sentence naming the failure in plain terms
-   (e.g. *"The migration compiled but the OSGi component won't activate because
-   it references a service AEM Cloud Service doesn't inject the same way."*)
-2. One or two bullets pulled from the structured fields (below) with the
-   specific values.
+   (e.g. *"`com.acme.LegacyCronTask` compiled but its OSGi component won't
+   activate because it references a service AEM Cloud Service doesn't inject
+   the same way."*)
+2. One or two bullets pulled from that class's structured fields (below) with
+   the specific values.
 3. One line telling the user what typically fixes it, or handing back to the
    migration skill.
 
-Fields to pull from (never paste raw):
+Fields to pull from each `classes[i]` (never paste raw):
 
+- `class_name`
 - `failure_class` (frozen enum)
 - `bundle_state` (Installed | Resolved | Active | Fragment)
 - `component_state` (Active | Satisfied | Unsatisfied)

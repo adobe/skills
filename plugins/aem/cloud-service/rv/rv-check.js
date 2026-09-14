@@ -332,12 +332,9 @@ async function main() {
   const setup = readSetup();
   const context = readContext();
 
-  // Auto-resolve required flags from analyze context if not given.
-  if (!args.finding) {
-    const match = (context.pendingFindings || []).find((f) => f.pattern === args.pattern);
-    if (match) { args.finding = match.id; console.log(`(auto) finding    = ${args.finding}`); }
-    else fatal(`--finding not provided and no pending ${args.pattern} finding in .rv/context.json — run analyze first, or pass --finding <id>`);
-  }
+  // Auto-resolve project-id from analyze context if not given. --finding is
+  // accepted for backward-compat but no longer required (Option C outcome
+  // schema uses run_id as parent identity; per-class detail lives in classes[]).
   if (!args['project-id']) {
     if (context.projectId) { args['project-id'] = context.projectId; console.log(`(auto) project-id = ${args['project-id']}`); }
     else fatal('--project-id not provided and no projectId in .rv/context.json — run analyze first, or pass --project-id <id>');
@@ -398,7 +395,10 @@ async function main() {
   // 3. deploy the customer bundle (— anything from here on touched the SDK, so verification_level = runtime)
   step('deploy customer bundle');
   const d = await deploy({ artifactPath, sdkUrl, user, password });
-  if (!d.ok) return finish({ result: 'fail', failure_class: FAILURE_CLASSES.DEPLOY_FAILED, verification_level: 'runtime', evidence: `${d.log} state=${d.state}` }, null, args);
+  if (!d.ok) {
+    const bundle = d.symbolicName ? { symbolic_name: d.symbolicName, state: normalizeBundleState(d.state) } : null;
+    return finish({ result: 'fail', failure_class: FAILURE_CLASSES.DEPLOY_FAILED, verification_level: 'runtime', evidence: `${d.log} state=${d.state}` }, bundle ? { bundle } : null, args);
+  }
   console.log(`  ok (bundle ${d.bundleId} · ${d.symbolicName})\n`);
   await sleep(3000); // let DS settle
 
@@ -408,7 +408,10 @@ async function main() {
   outcome.verification_level = 'runtime';
   console.log(`  ${outcome.result === 'pass' ? 'ok' : 'FAIL'} — bundle=${outcome.bundle_state} component=${outcome.component_state}${outcome.evidence ? '  ' + outcome.evidence : ''}\n`);
 
-  return finish(outcome, { discovered }, args);
+  return finish(outcome, {
+    discovered,
+    bundle: { symbolic_name: d.symbolicName, state: normalizeBundleState(outcome.bundle_state || d.state) },
+  }, args);
 }
 
 // ---- helpers ----
@@ -476,7 +479,7 @@ function finish(outcome, extra, args) {
   // Emit the MCP payload as a delimited block. The calling agent (skill) reads
   // this block and invokes the `report-rv-outcome` MCP tool with it — rv-check
   // does not speak MCP itself.
-  if (args && args.finding && args['project-id']) {
+  if (args && args['project-id']) {
     const payload = buildMcpPayload(record, args);
     console.log('\n=== report-rv-outcome payload ===');
     console.log(JSON.stringify(payload));
@@ -510,11 +513,53 @@ function readContext() {
 
 // ---- MCP telemetry ----
 const EVIDENCE_MAX = 2048;
+const BUNDLE_STATE_ENUM = new Set(['Installed', 'Resolved', 'Active', 'Fragment', 'Unknown']);
+
+function normalizeBundleState(s) {
+  if (!s) return 'Unknown';
+  const v = String(s);
+  return BUNDLE_STATE_ENUM.has(v) ? v : 'Unknown';
+}
+
+// Zod expects checks as Record<string, string|number|boolean>. verify() may
+// stash nested objects (e.g. `properties`) — flatten one level, drop
+// non-scalar values, and replace `.` with `_` in keys (MongoDB rejects
+// dots in map keys).
+function flattenChecks(checks) {
+  if (!checks || typeof checks !== 'object') return undefined;
+  const safeKey = (k) => String(k).replace(/\./g, '_');
+  const out = {};
+  for (const [k, v] of Object.entries(checks)) {
+    if (['string', 'number', 'boolean'].includes(typeof v)) out[safeKey(k)] = v;
+    else if (v && typeof v === 'object') {
+      for (const [k2, v2] of Object.entries(v)) {
+        if (['string', 'number', 'boolean'].includes(typeof v2)) out[`${safeKey(k)}_${safeKey(k2)}`] = v2;
+      }
+    }
+  }
+  return Object.keys(out).length ? out : undefined;
+}
 
 function buildMcpPayload(outcome, args) {
-  const base = {
+  const className = (outcome.discovered && outcome.discovered.fqcn) || '(unknown)';
+  const cls = { class_name: className, result: outcome.result };
+
+  if (outcome.result === 'fail') {
+    cls.failure_class = outcome.failure_class || FAILURE_CLASSES.UNKNOWN;
+    if (outcome.bundle_state) cls.bundle_state = outcome.bundle_state;
+    if (outcome.component_state) cls.component_state = outcome.component_state;
+    if (outcome.unsatisfied_references && outcome.unsatisfied_references.length) cls.unsatisfied_references = outcome.unsatisfied_references;
+    if (outcome.activation_error) cls.activation_error = outcome.activation_error;
+    if (outcome.evidence) cls.evidence = truncate(outcome.evidence, EVIDENCE_MAX);
+  } else {
+    if (outcome.bundle_state) cls.bundle_state = outcome.bundle_state;
+    if (outcome.component_state) cls.component_state = outcome.component_state;
+    const checks = flattenChecks(outcome.checks);
+    if (checks) cls.checks = checks;
+  }
+
+  const payload = {
     run_id: outcome.run_id,
-    finding_id: args.finding,
     project_id: args['project-id'],
     skill_pattern: args.pattern,
     skill_version: args['skill-version'] || '1.0',
@@ -522,18 +567,16 @@ function buildMcpPayload(outcome, args) {
     verification_level: outcome.verification_level,
     started_at: outcome.started_at,
     finished_at: outcome.finished_at,
+    summary: {
+      classes_total: 1,
+      classes_pass: outcome.result === 'pass' ? 1 : 0,
+      classes_fail: outcome.result === 'fail' ? 1 : 0,
+    },
+    classes: [stripEmpty(cls)],
   };
-  if (outcome.result !== 'fail') return stripEmpty({ ...base, skill_decisions: outcome.skill_decisions });
-  return stripEmpty({
-    ...base,
-    failure_class: outcome.failure_class || FAILURE_CLASSES.UNKNOWN,
-    bundle_state: outcome.bundle_state,
-    component_state: outcome.component_state,
-    unsatisfied_references: outcome.unsatisfied_references,
-    activation_error: outcome.activation_error,
-    evidence: truncate(outcome.evidence, EVIDENCE_MAX),
-    skill_decisions: outcome.skill_decisions,
-  });
+  if (outcome.bundle) payload.bundle = outcome.bundle;
+  if (outcome.skill_decisions) payload.skill_decisions = outcome.skill_decisions;
+  return stripEmpty(payload);
 }
 
 function truncate(s, max) {
