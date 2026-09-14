@@ -3,7 +3,9 @@ name: aem-replication
 description: |
   Single entry point for all AEM 6.5 LTS Replication skills. Covers configuring replication agents,
   activating/deactivating content, using the Replication API programmatically, and troubleshooting
-  distribution issues for Adobe Experience Manager 6.5 LTS.
+  distribution issues for Adobe Experience Manager 6.5 LTS. Use when the user asks about publishing,
+  unpublishing, replicating, or distributing content in AEM 6.5 LTS or AMS — including flushing the
+  dispatcher cache, fixing stuck or blocked replication queues, or configuring replication agents.
 license: Apache-2.0
 compatibility: Requires AEM 6.5 LTS or Adobe Managed Services (AMS). NOT compatible with AEM as a Cloud Service (use Sling Distribution API instead).
 metadata:
@@ -31,61 +33,15 @@ Route user requests to the appropriate specialist skill based on intent.
 2. Read the linked SKILL.md for that specialist skill.
 3. Follow the workflow and guidance defined in that skill.
 4. For complex scenarios spanning multiple skills (e.g., configure agent then troubleshoot), start with the primary intent and cross-reference as needed.
+5. If the request doesn't clearly match a single row, ask the user to clarify before proceeding.
 
 ## Skill Overview
 
-### Configure Replication Agent
-
-Set up and configure replication agents for:
-- **Default agents**: Author to Publish content distribution
-- **Dispatcher Flush agents**: Cache invalidation
-- **Reverse replication**: Publish to Author user-generated content flow
-- **Multiple publish instances**: Load balancing and high availability
-
-**When to use:** First-time setup, adding new publish instances, reconfiguring agents
-
-### Replicate Content
-
-Activate and deactivate content through:
-- **Quick Publish**: Simple one-click activation
-- **Manage Publication**: Advanced scheduling and approval workflows
-- **Tree Activation**: Hierarchical bulk publishing
-- **Package Manager**: Specific content set distribution
-- **Workflows**: Approval-based publishing
-- **Scheduled Activation**: Time-based content publishing
-
-**When to use:** Publishing pages, assets, or DAM content; unpublishing content
-
-### Replication API
-
-Programmatic replication using official AEM 6.5 LTS public APIs:
-- **Replicator interface**: Core replication methods
-- **ReplicationOptions**: Configure synchronous/asynchronous, agent filtering
-- **ReplicationStatus**: Query replication state
-- **AgentManager, ReplicationQueue, ReplicationListener**: Advanced queue management and monitoring
-
-**When to use:** Custom code integration, bulk operations, workflow process steps, servlets
-
-### Troubleshoot Replication
-
-Diagnose and fix common issues:
-- **Blocked queues**: FIFO queue failures
-- **Connection errors**: Network, authentication, SSL issues
-- **Content not appearing**: Dispatcher cache, permissions
-- **Agent configuration**: URI, credentials, triggers
-- **Event queue issues**: Stuck replication jobs
-
-**When to use:** Replication failures, performance issues, content not distributing
-
-### Replication Orchestrator
-
-Coordinates end-to-end replication workflows spanning multiple sub-skills:
-- **New Environment Setup**: Configure agents → Test replication → Troubleshoot
-- **Production Incident Response**: Diagnose → Fix → Verify
-- **Performance Optimization**: Monitor → Tune → Validate
-- **Migration Preparation**: Audit → Plan → Execute
-
-**When to use:** Multi-step scenarios requiring coordination across configure, replicate, API, and troubleshoot skills
+- **Configure Replication Agent** — Set up default, Dispatcher Flush, reverse, and multi-publish agents. Use for first-time setup, adding publish instances, or reconfiguring agents.
+- **Replicate Content** — Activate/deactivate content via Quick Publish, Manage Publication, Tree Activation, Package Manager, workflows, or scheduled activation. Use for publishing/unpublishing pages, assets, or DAM content.
+- **Replication API** — Programmatic replication via `Replicator`, `ReplicationOptions`, `ReplicationStatus`, `AgentManager`, `ReplicationQueue`, and `ReplicationListener`. Use for custom code integration, bulk operations, workflow process steps, or servlets.
+- **Troubleshoot Replication** — Diagnose blocked queues, connection errors, missing content, agent misconfiguration, and stuck jobs. Use when replication fails, underperforms, or content isn't distributing.
+- **Replication Orchestrator** — Coordinates multi-step scenarios across the other sub-skills: environment setup, incident response, performance optimization, migration prep.
 
 ## Common Workflows
 
@@ -129,5 +85,5 @@ All skills reference official Adobe AEM 6.5 LTS documentation:
 
 AEM as a Cloud Service uses the **Sling Distribution API** instead of replication agents. If planning migration:
 - Review [Cloud Service Distribution Documentation](https://experienceleague.adobe.com/docs/experience-manager-cloud-service/content/operations/distribution.html)
-- For code migration patterns, see `skills/aem/cloud-service/skills/best-practices/references/replication.md`
+- For code migration patterns, use the `code-assessment` skill: `skills/aem/cloud-service/skills/code-assessment/replication/SKILL.md`
 - Avoid agent-specific coupling (filter by agent ID) to reduce migration complexity
