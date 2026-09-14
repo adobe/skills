@@ -1,0 +1,15 @@
+{
+ "_comment": "SYNTHETIC eval spec — asserts the fixture page against its own intended geometry",
+ "page": "FIXTURE_PAGE_URL",
+ "origin": "main",
+ "cases": [
+  { "name": "desktop", "viewport": { "width": 1200, "height": 800 },
+    "checks": [
+     { "name": "h1", "selector": "h1", "expect": { "top": 0, "left": 0, "height": 48.4 }, "tol": { "default": 1 }, "source": "1:106" },
+     { "name": "panel", "selector": ".panel", "expect": { "width": 400 }, "tol": { "default": 1 }, "source": "1:102" },
+     { "name": "panel-gap", "selector": ".panel", "gapFrom": "p", "expect": { "gap": 32 }, "tol": { "default": 1 }, "source": "1:103" }
+    ] },
+  { "name": "mobile", "viewport": { "width": 400, "height": 800 },
+    "checks": [ { "name": "h1", "selector": "h1", "expect": { "height": 35.2 }, "tol": { "default": 1 }, "source": "1:106" } ] }
+ ]
+}

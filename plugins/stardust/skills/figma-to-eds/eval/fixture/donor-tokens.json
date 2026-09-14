@@ -1,0 +1,34 @@
+{
+ "provenance": { "class": "figma-mcp", "note": "SYNTHETIC eval fixture — invented design system, no client data" },
+ "normalizations": [
+  { "rule": "lineHeight percent -> unitless" },
+  { "rule": "fontWeight names -> numeric" }
+ ],
+ "tokens": {
+  "colors": {
+   "--color-surface-canvas": { "value": "#fdfdfb", "figma": "color/surface/canvas", "src": "1:100" },
+   "--color-surface-panel": { "value": "#e4ecf7", "figma": "color/surface/panel", "src": "1:100" },
+   "--color-content-ink": { "value": "#101a2e", "figma": "color/content/ink", "src": "1:100" },
+   "--color-action-core": { "value": "#3355aa", "figma": "color/action/core", "src": "1:100" },
+   "--color-action-core-hover": { "value": "#223c80", "figma": "color/action/coreHover", "src": "1:100" }
+  },
+  "radii": { "--border-radius-soft": { "value": "6px", "figma": "borderRadius/soft", "src": "1:101" } },
+  "borderWidths": { "--border-width-hairline": { "value": "1px", "figma": "borderWidth/hairline", "src": "1:101" } },
+  "shadows": { "--shadow-lift": { "value": "0 2px 8px 0 #101a2e1f", "figma": "shadow.lift", "src": "1:102" } },
+  "spacing": { "--spacing-unit-2": { "value": "16px", "figma": "spacing.unit-2", "src": "1:103" }, "--spacing-unit-4": { "value": "32px", "figma": "spacing.unit-4", "src": "1:103" } },
+  "sizing": {}, "spaceSemantic": {}, "sizeSemantic": {},
+  "durations": { "--motion-quick": { "value": "150ms", "figma": "motion.quick", "src": "1:104" } },
+  "easings": { "--motion-ease-out": { "value": "cubic-bezier(0.2, 0, 0, 1)", "figma": "motion.easeOut", "src": "1:104" } },
+  "grid": { "src": "1:105", "desktop": { "pageWidth": "1200px", "pageMargin": "40px", "extendedContainer": { "width": "1120px", "padding": "40px" }, "contentContainer": { "columns": 12, "width": "1040px", "gutter": "24px", "column": "auto" } }, "tablet": { "pageWidth": "800px", "pageMargin": "24px", "extendedContainer": { "width": "752px", "padding": "24px" }, "contentContainer": { "columns": 8, "width": "704px", "gutter": "16px", "column": "auto" } }, "mobile": { "pageWidth": "400px", "pageMargin": "16px", "extendedContainer": { "width": "368px", "padding": "16px" }, "contentContainer": { "columns": 4, "width": "336px", "gutter": "12px", "column": "auto" } } },
+  "typography": {
+   "families": { "primary": "Georgia" },
+   "familyEquivalences": [["Georgia", "georgia"]],
+   "htmlMapping": { "h1": "Display/Big", "p": "Body/Base" },
+   "htmlMappingSrc": "1:106",
+   "styles": {
+    "display-big": { "figma": "Display/Big", "src": "1:106", "props": { "desktop": { "font-family": "Georgia", "font-weight": "400", "font-style": "normal", "font-size": "44px", "line-height": "1.1", "letter-spacing": "0" }, "mobile": { "font-family": "Georgia", "font-weight": "400", "font-style": "normal", "font-size": "32px", "line-height": "1.1", "letter-spacing": "0" }, "tablet": { "font-family": "Georgia", "font-weight": "400", "font-style": "normal", "font-size": "38px", "line-height": "1.1", "letter-spacing": "0" } } },
+    "body-base": { "figma": "Body/Base", "src": "1:106", "props": { "all": { "font-family": "Georgia", "font-weight": "400", "font-style": "normal", "font-size": "17px", "line-height": "1.4", "letter-spacing": "0" } } }
+   }
+  }
+ }
+}
