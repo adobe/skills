@@ -50,7 +50,8 @@ Apply the following validation rules before writing. Surface any issues to the u
 | `webhook.url`              | Must be a valid absolute URL (`https://...`); mutually exclusive with `runtimeAction` |
 | `label`                    | Required, non-empty                                                                   |
 | `description`              | Required, non-empty                                                                   |
-| `method`                   | Required HTTP method (e.g., `POST`)                                                   |
+| `webhook_type`             | Required; must be `before` or `after`                                                 |
+| `method`                   | Required; must be `POST`, `PUT`, `DELETE`, or `GET`                                   |
 | `timeout` / `soft_timeout` | Optional; positive integer (milliseconds)                                             |
 | `priority` / `batch_order` | Optional; positive integer                                                            |
 
@@ -169,7 +170,17 @@ Operation types:
 | `replaceOperation(path, value)` | Replace the value at `path` in the result       |
 | `removeOperation(path)`         | Remove the field at `path` from the result      |
 
-## Step 4 — Validate
+## Step 4 — Regenerate the `installation` action
+
+If `webhooks` is the first install-requiring domain in the config (the others are `eventing.commerce`, `eventing.external`, `adminUi`, `installation.customInstallationSteps`), re-run:
+
+```sh
+npx @adobe/aio-commerce-lib-app init
+```
+
+This is what adds the `installation` action to `ext.config.yaml`'s `app-management` package — `aio app build`/`aio app deploy` only read the existing file, they never regenerate it. Skip this and Commerce has no endpoint to call, so the webhook builds and deploys fine but never actually gets installed. Safe to re-run even when the action already exists.
+
+## Step 5 — Validate
 
 Build the project to confirm the updated config is valid:
 
@@ -177,7 +188,7 @@ Build the project to confirm the updated config is valid:
 aio app build
 ```
 
-A build failure with a validation error points directly to the offending config field.
+A build failure with a validation error points directly to the offending config field. If this webhook needed Step 4, also check that `ext.config.yaml` now has `actions.installation` under `app-management`.
 
 ## Common Issues
 
@@ -187,10 +198,12 @@ A build failure with a validation error points directly to the offending config 
 - **`app-management` package name conflict**: The framework generates this package in `ext.config.yaml` on every build. Use any other name for your own actions.
 - **Function path is relative to `src/commerce-extensibility-1/`**: Do not use `src/...` or project-root-relative paths. `actions/validate-product/index.js` resolves correctly; `src/commerce-extensibility-1/actions/validate-product/index.js` does not.
 - **`defineConfig` not found**: Ensure `@adobe/aio-commerce-lib-app` is installed and `defineConfig` is imported from `@adobe/aio-commerce-lib-app/config`.
+- **Webhook deployed but Commerce never calls it**: `init` wasn't re-run after adding the first install-requiring domain (Step 4) — no `installation` action, no install endpoint.
 
 ## Quality Bar
 
 - `aio app build` completes without errors
+- `installation` action present in `ext.config.yaml` when this webhook requires it
 
 ## Chaining
 

@@ -15,6 +15,7 @@ commerce-app-init
   └─→ commerce-app-business-config
   └─→ commerce-app-admin-ui
   └─→ commerce-app-storage
+  └─→ commerce-app-api-mesh
 ```
 
 A developer creating an app that needs events and webhooks would run `commerce-app-init` first, then chain to `commerce-app-eventing` and `commerce-app-webhooks` in any order.
@@ -29,6 +30,7 @@ A developer creating an app that needs events and webhooks would run `commerce-a
 | [commerce-app-business-config](./skills/commerce-app-business-config/) | Manage custom business configuration       | Available |
 | [commerce-app-storage](./skills/commerce-app-storage/)                 | Integrate App Builder Database Storage     | Available |
 | [commerce-app-admin-ui](./skills/commerce-app-admin-ui/)               | Extend the Commerce Admin UI               | Available |
+| [commerce-app-api-mesh](./skills/commerce-app-api-mesh/)               | Wire API Mesh in front of a Commerce app   | Available |
 
 ## Installation
 
@@ -54,4 +56,5 @@ npx skills add adobe/skills --skill commerce-app-webhooks
 npx skills add adobe/skills --skill commerce-app-business-config
 npx skills add adobe/skills --skill commerce-app-storage
 npx skills add adobe/skills --skill commerce-app-admin-ui
+npx skills add adobe/skills --skill commerce-app-api-mesh
 ```

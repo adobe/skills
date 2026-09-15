@@ -153,12 +153,16 @@ export async function main(params: Record<string, unknown>) {
 }
 ```
 
-For an **event/webhook action** the only differences are `web: "no"` in registration and that the payload arrives in `params.data`:
+Event and webhook actions both register with `web: "no"`, but their payloads have different shapes — do not treat them as the same:
+
+- **Event handler** (wired via `commerce-app-eventing`): the extracted fields arrive in `params.data.value`. `params.data` also carries `_metadata` (Commerce instance metadata) and `source` (the merchant/environment ID pair from the Commerce eventing configuration) — neither is handler input.
+- **Webhook handler** (wired via `commerce-app-webhooks`): there is no `data` wrapper — the Commerce operation payload arrives directly on `params` (e.g. `params.order`), and the response must use the operation helpers from `@adobe/aio-commerce-lib-webhooks/responses` (see `commerce-app-webhooks`), not the plain `ok`/`buildErrorResponse` shape used above.
 
 ```ts
-// Event/webhook handler — same init/connect/close lifecycle
+// Event handler — src/commerce-extensibility-1/actions/store-order/index.ts
 export async function main(params: Record<string, unknown>) {
   const data = params.data as Record<string, unknown>;
+  const value = data.value as Record<string, unknown>;
   let client;
   try {
     const authProvider = getImsAuthProvider(resolveImsAuthParams(params));
@@ -167,8 +171,33 @@ export async function main(params: Record<string, unknown>) {
     client = await db.connect();
     await client
       .collection("orders")
-      .insertOne({ orderId: data.order_id, receivedAt: new Date() });
+      .insertOne({ orderId: value.order_id, receivedAt: new Date() });
     return ok({ body: { processed: true } });
+  } finally {
+    if (client) await client.close();
+  }
+}
+```
+
+```ts
+// Webhook handler — src/commerce-extensibility-1/actions/log-order/index.ts
+import {
+  ok,
+  successOperation,
+} from "@adobe/aio-commerce-lib-webhooks/responses";
+
+export async function main(params: Record<string, unknown>) {
+  const order = params.order as Record<string, unknown>; // Commerce operation payload, directly on params
+  let client;
+  try {
+    const authProvider = getImsAuthProvider(resolveImsAuthParams(params));
+    const token = await authProvider.getAccessToken();
+    const db = await initDb({ token, region: "emea" });
+    client = await db.connect();
+    await client
+      .collection("orders")
+      .insertOne({ orderId: order.entity_id, receivedAt: new Date() });
+    return ok(successOperation());
   } finally {
     if (client) await client.close();
   }
@@ -243,13 +272,23 @@ installation: {
 
 See [assets/setup-database.ts](assets/setup-database.ts) for the full annotated install/uninstall reference.
 
-## Step 7 — Validate
+## Step 7 — Regenerate the `installation` action
+
+If this custom installation step is the first install-requiring domain in the config (the others are `webhooks`, `eventing.commerce`, `eventing.external`, `adminUi`), re-run:
+
+```sh
+npx @adobe/aio-commerce-lib-app init
+```
+
+This is what adds the `installation` action to `ext.config.yaml`'s `app-management` package — `aio app build`/`aio app deploy` only read the existing file, they never regenerate it. Skip this and the script never runs, even though it's registered in code and the DB action is deployed. Safe to re-run even when the action already exists.
+
+## Step 8 — Validate
 
 ```sh
 aio app build
 ```
 
-A build failure points directly to the offending config field. To exercise the action against the real database, deploy and invoke it (`aio app deploy`).
+A build failure points directly to the offending config field. To exercise the action against the real database, deploy and invoke it (`aio app deploy`). If this step needed Step 7, also check that `ext.config.yaml` now has `actions.installation` under `app-management`.
 
 ## Best practices
 
@@ -268,15 +307,37 @@ A build failure points directly to the offending config field. To exercise the a
 - **Connection fails after a region change**: the library region doesn't match the manifest `database.region`. Moving regions is destructive — `aio app db delete`, update `database.region` in the manifest, then re-provision (`aio app deploy`, or the CLI fallback for local dev).
 - **Querying by `_id` from a string returns nothing**: convert it first — `new ObjectId(idString)` from `bson`. A raw string never matches the stored `ObjectId`.
 - **`DbError` vs unexpected error**: errors thrown by the service have `name === "DbError"`; branch on it to separate database failures from application bugs.
+- **`findOne` throws instead of returning `null` on no match**: unlike MongoDB, a miss is not a successful `null` result — it throws a `DbError` with a message containing `"Document not found"`. `name === "DbError"` alone isn't enough to detect this, since every `DbError` (including a genuine connection failure) has that name; check `error.message` too:
+
+  ```ts
+  function isDocumentNotFoundError(error: unknown) {
+    const e = error as { name?: string; message?: string };
+    return e.name === "DbError" && e.message?.includes("Document not found");
+  }
+
+  let existing;
+  try {
+    existing = await records.findOne({ order_id: orderId });
+  } catch (error) {
+    if (!isDocumentNotFoundError(error)) {
+      throw error;
+    }
+  }
+  ```
+
+  See [assets/db-action.ts](assets/db-action.ts) for the full reference.
+
 - **Auth fails inside an installation step**: resolve the IMS auth params from `context.params` (`resolveImsAuthParams(context.params)`) — which carries the injected `AIO_COMMERCE_AUTH_IMS_*` credentials — not from `config`, which holds no credentials. Use `@adobe/aio-commerce-lib-auth`, not `@adobe/aio-lib-core-auth`: the latter's `generateAccessToken` expects `clientId`/`clientSecret` directly and cannot consume the injected params.
 - **Installation step fails to load (`must export a default function or object`)**: the script was authored as CommonJS. Author it as an ES module with `export default`; `module.exports` (or `module.exports.default`) surfaces through the framework's `import * as` loader as `.default.default` and fails validation.
 - **`createIndex` errors or has no effect**: it must be called on a collection object (`client.collection("name").createIndex({ field: 1 })`), not with a collection-name string. Get the collection first, then call `createIndex` on it.
+- **Custom installation step registered and deployed but never runs**: `init` wasn't re-run after registering the first install-requiring domain (Step 7) — no `installation` action, no install endpoint.
 
 ## Quality Bar
 
 - `aio app build` completes without errors
 - Every user-authored DB action declares `include-ims-credentials: true` in its annotations
 - The action closes the client in a `finally` block and initializes the library in the region declared in the manifest `database` block
+- `installation` action present in `ext.config.yaml` when this custom installation step requires it
 
 ## Chaining
 

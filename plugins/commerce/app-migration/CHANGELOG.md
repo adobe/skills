@@ -1,5 +1,13 @@
 # @adobe/aio-commerce-plugin-app-migration
 
+## 1.3.2
+
+### Patch Changes
+
+- [#627](https://github.com/adobe/aio-commerce-sdk/pull/627) [`e5cbdf1`](https://github.com/adobe/aio-commerce-sdk/commit/e5cbdf14f5bda56430eeeaf495889b8a1a514fe3) Thanks [@obarcelonap](https://github.com/obarcelonap)! - Document the allowed values for Commerce webhook types and HTTP methods.
+
+- [#642](https://github.com/adobe/aio-commerce-sdk/pull/642) [`79dcda0`](https://github.com/adobe/aio-commerce-sdk/commit/79dcda035d322d47d2e19566ae4a20fd6124682b) Thanks [@iivvaannxx](https://github.com/iivvaannxx)! - Document automatic and manual desired-state upgrades in migrated app configuration and deployment guidance.
+
 ## 1.3.1
 
 ### Patch Changes

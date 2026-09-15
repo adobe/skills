@@ -38,6 +38,7 @@ export default defineConfig({
     id: "my-commerce-app", // alphanumeric + hyphens only, max 100 chars
     displayName: "My Commerce App", // shown in App Management UI, max 50 chars
     description: "...", // max 255 chars
+    upgradeMode: "manual", // optional; currently defaults to "manual" while upgrade execution stabilizes (will default to "auto" once ready); "auto" (experimental) runs upgrades after deploy and waits for completion, "manual" returns plans without executing them
     version: "1.0.0", // Major.Minor.Patch only, no pre-release identifiers
   },
 });
@@ -55,7 +56,7 @@ npx @adobe/aio-commerce-lib-app init
 
 Since `app.commerce.config.ts` already exists, init skips the interactive prompts. Re-running is safe: when a config is present it installs dependencies and (re)generates the project files — the `app-management` package is regenerated, while user packages under `src/commerce-extensibility-1/actions/` are preserved (see Project structure below).
 
-For a TypeScript Commerce config, init also creates missing `webpack-config.cjs` and root `tsconfig.json` files, installs compatible `typescript`, `ts-loader`, and `@tsconfig/bases` development dependencies, and adds `typecheck:actions` to the project's composed `typecheck` script. Generated Runtime actions remain JavaScript. Once this scaffolding is in place, user-authored runtime actions (added via the domain skills below) and custom installation scripts (`commerce-app-storage`) can be written in `.ts` — see the [aio-commerce-lib-app usage guide](https://github.com/adobe/aio-commerce-sdk/blob/main/packages/aio-commerce-lib-app/docs/usage.md#setup) for the full migration steps if converting an existing JavaScript project.
+For a TypeScript Commerce config, init also creates missing `webpack-config.cjs` and root `tsconfig.json` files, installs compatible `typescript`, `ts-loader`, `@tsconfig/bases`, and `@types/node` development dependencies, and adds `typecheck:actions` to the project's composed `typecheck` script. Generated Runtime actions remain JavaScript. Once this scaffolding is in place, user-authored runtime actions (added via the domain skills below) and custom installation scripts (`commerce-app-storage`) can be written in `.ts` — see the [aio-commerce-lib-app usage guide](https://github.com/adobe/aio-commerce-sdk/blob/main/packages/aio-commerce-lib-app/docs/usage.md#setup) for the full migration steps if converting an existing JavaScript project.
 
 ### Project structure
 
@@ -78,7 +79,7 @@ If the config is invalid, the build fails with a detailed validation error point
 
 ## Common Issues
 
-- **`id` validation error**: `metadata.id` accepts alphanumeric characters and hyphens only — no dots, underscores, or spaces.
+- **`id` validation error**: `metadata.id` accepts alphanumeric characters and hyphens only — no dots, underscores, or spaces. It cannot change during an upgrade; uninstall and reinstall the app to use a different ID.
 - **`version` validation error**: Only numeric semver is accepted (`1.0.0`). Pre-release identifiers (`1.0.0-beta`) are not supported.
 - **`defineConfig` not found**: Ensure `@adobe/aio-commerce-lib-app` is installed and imported from `@adobe/aio-commerce-lib-app/config`.
 
