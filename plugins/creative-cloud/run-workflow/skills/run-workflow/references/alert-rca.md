@@ -168,7 +168,12 @@ email surfacing.
 - `DOWNSTREAM_API_CALL` = **throughput** — requests that succeeded
 - The gap between them is queued/throttled/timed-out requests — the most useful signal during a rate-limit incident
 
-### Rate limit observability queries
+## Ad-hoc observability queries
+
+Use `splunk_rw_search` with these patterns when the user asks about queue wait times,
+most-throttled services, or current service rates — outside of a specific RCA.
+
+### Rate limit queries
 
 ```spl
 # Queue-wait percentiles by service
@@ -190,6 +195,3 @@ data.eventType=RATE_LIMIT_REQUEST data.downstream_service=FIREFLY
 data.eventType=RATE_LIMIT_REQUEST data.downstream_service=FIREFLY | timechart span=1m count as demand
 data.eventType=DOWNSTREAM_API_CALL data.downstream_service=FIREFLY | timechart span=1m count as throughput
 ```
-
-Use `splunk_rw_search` with these patterns when the user asks about queue wait times, most-throttled
-services, or current service rates.
