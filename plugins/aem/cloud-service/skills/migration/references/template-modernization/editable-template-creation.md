@@ -154,6 +154,14 @@ For templates where new pages must start with a specific component already prese
 ```
 Only pre-place components that belong in the editable zone. Components locked in `structure` must **not** be duplicated here.
 
+**Never copy a legacy/custom resourceType verbatim.** If the source page's component at this slot uses a project-specific legacy resourceType with no Cloud Service equivalent (e.g. a custom `<appId>/components/content/adaptiveimage` widget, or anything else not already Core-Component-based), `<componentName>` here must be the **migrated** Core Component equivalent (e.g. `core/wcm/components/image/v2/image`), never the legacy one. Pre-placing the legacy resourceType renders fine on the source (static) template but silently drops the slot on the destination (editable) template — RV's `templateModernization` check surfaces this as `failure_class: runtime.unresolved_component` with the offending `{ name, resource_type }` in `checks.unresolved_components`. Check the app's component library for an existing modernized component before defaulting to a bare core resourceType.
+
+**Known legacy → Core Component patterns** (check this table first, before falling back to prose analysis):
+
+| Legacy `resourceType` pattern | Core Component equivalent |
+|---|---|
+| `<appId>/components/content/adaptiveimage` | `core/wcm/components/image/v2/image` |
+
 **Required runtime nodes (e.g. `targeting`):**
 For each `namedChildren` entry the context classified as `required-runtime` (`placement: initial`) — a named child the page structure component renders via `data-sly-resource` that is **not** a parsys — add it as a direct child of `jcr:content` in initial, not inside `<root>`:
 ```xml
