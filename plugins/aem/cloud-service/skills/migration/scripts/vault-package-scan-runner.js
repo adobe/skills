@@ -12,26 +12,31 @@
  * dependency declaration is invisible to a deployed-artifact BPA scan — so
  * this scan is the **only** detection tier (no cascade, no analyzer fallback).
  *
- * Implemented as a pure-Node fs walk + regex scan, mirroring `htl-lint-runner.js`:
- * a real XML/DOM parser is not available in this dependency-free script
- * environment, so scoping is done textually — locate the vault package plugin
- * block, then its `<configuration>`, then its `<dependencies>` — narrowing at
- * each step so an unrelated top-level `<dependencies>` (regular Maven deps) is
- * never matched.
+ * Detection strategy: ask Maven for the **effective POM** via
+ * `mvn help:effective-pom` and scan that, rather than reasoning about
+ * `<pluginManagement>` inheritance and per-execution `<configuration>`
+ * merging textually against the raw source pom. Maven does the resolution
+ * work; we only look at the resolved output.
  *
- * This is a **heuristic** detector: re-confirm each hit before editing.
+ * Source-pom line reporting: after a legacy block is detected in the
+ * effective POM, the runner searches the customer's own `pom.xml` for the
+ * offending `<group>` tag to report an actionable line. If the block was
+ * inherited from a parent pom and doesn't appear in the source, the finding
+ * is reported with line 1 and marked `(inherited)` in the snippet.
  */
 
 'use strict';
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 // Group-path prefixes whose packages don't exist on AEMaaCS.
 const LEGACY_PREFIXES = ['day/cq60/', 'day/cq560/', 'adobe/cq60'];
 
-// Both artifactIds package the same install-time <dependencies> mechanism;
-// modern migrated projects use filevault-package-maven-plugin, so both must
+// Both artifactIds package the same install-time <dependencies> mechanism.
+// Modern migrated projects use filevault-package-maven-plugin, so both must
 // be matched or those poms' legacy blocks are silently skipped.
 const PLUGIN_ARTIFACTS = ['content-package-maven-plugin', 'filevault-package-maven-plugin'];
 
@@ -40,18 +45,16 @@ function isLegacyGroup(group) {
   return LEGACY_PREFIXES.some(p => group.startsWith(p) || group === p.replace(/\/$/, ''));
 }
 
-/** Recursively collect `pom.xml` files under `dir`, skipping heavy/vendor dirs. */
-function collectPomFiles(dir, acc = []) {
+/** Recursively collect Maven project roots (dirs containing a `pom.xml`). */
+function collectMavenProjectRoots(dir, acc = []) {
   let entries;
   try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return acc; }
+  const hasPom = entries.some((e) => e.isFile() && e.name === 'pom.xml');
+  if (hasPom) acc.push(dir);
   for (const e of entries) {
-    const full = path.join(dir, e.name);
-    if (e.isDirectory()) {
-      if (e.name === 'node_modules' || e.name === '.git' || e.name === 'target' || e.name === 'dist') continue;
-      collectPomFiles(full, acc);
-    } else if (e.isFile() && e.name === 'pom.xml') {
-      acc.push(full);
-    }
+    if (!e.isDirectory()) continue;
+    if (e.name === 'node_modules' || e.name === '.git' || e.name === 'target' || e.name === 'dist') continue;
+    collectMavenProjectRoots(path.join(dir, e.name), acc);
   }
   return acc;
 }
@@ -62,22 +65,55 @@ function lineAt(content, index) {
 }
 
 /**
- * Find every vault package plugin occurrence in `content` and return the
- * `<configuration><dependencies>…</dependencies>` substring for each one that
- * has one. Matches either `content-package-maven-plugin` or
- * `filevault-package-maven-plugin`, and iterates so occurrences under
- * `<pluginManagement>`, `<build>`, and `<profiles>` are all considered — the
- * reference doc says the plugin can appear in more than one section.
+ * Ask Maven to emit the effective POM for `projectDir`. This resolves parent
+ * inheritance, `<pluginManagement>` merging, and per-execution vs plugin-level
+ * `<configuration>` — the three classes of ambiguity we no longer have to
+ * reason about textually.
  *
- * Assumes non-nested <plugin> tags (true for Maven poms).
+ * Requires `mvn` on PATH and (usually) network-reachable dependencies to
+ * resolve the parent chain. Returns `{ ok: true, xml }` on success, or
+ * `{ ok: false, error }` with the tail of the Maven output.
  */
-function findVaultDependenciesBlocks(content) {
+function getEffectivePom(projectDir) {
+  const pom = path.join(projectDir, 'pom.xml');
+  if (!fs.existsSync(pom)) return { ok: false, error: `no pom.xml at ${projectDir}` };
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vault-eff-'));
+  const outFile = path.join(tmpDir, 'effective-pom.xml');
+  try {
+    execFileSync('mvn', ['-q', '-B', '-N', 'help:effective-pom', `-Doutput=${outFile}`],
+      { cwd: projectDir, stdio: 'pipe', encoding: 'utf8' });
+    const xml = fs.readFileSync(outFile, 'utf8');
+    return { ok: true, xml };
+  } catch (err) {
+    const combined = String(err.stdout || '') + String(err.stderr || err.message || '');
+    return { ok: false, error: combined.trim().split('\n').slice(-8).join('\n') };
+  } finally {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
+/**
+ * Find every legacy `<dependencies>` block inside a vault package plugin's
+ * plugin-level `<configuration>` in the given effective POM XML.
+ *
+ * The effective POM has already merged `<pluginManagement>` inheritance and
+ * separated per-execution configs from plugin-level configs, so this scan
+ * only needs to look at each `<plugin>` occurrence's direct
+ * `<configuration>` (everything before `<executions>` inside the plugin).
+ *
+ * Profile-scoped plugins live under `<profiles><profile><build><plugins>` and
+ * appear as separate `<plugin>` occurrences here — no special handling
+ * needed since we iterate every artifactId match in the whole document.
+ *
+ * @returns {Array<{block: string, artifact: string}>}
+ */
+function findVaultDependenciesInEffectivePom(effectiveXml) {
   const occurrences = [];
   for (const artifact of PLUGIN_ARTIFACTS) {
     const needle = `<artifactId>${artifact}</artifactId>`;
     let from = 0;
     for (;;) {
-      const idx = content.indexOf(needle, from);
+      const idx = effectiveXml.indexOf(needle, from);
       if (idx === -1) break;
       occurrences.push({ artifactIdx: idx, artifact });
       from = idx + needle.length;
@@ -87,42 +123,54 @@ function findVaultDependenciesBlocks(content) {
 
   const results = [];
   for (const { artifactIdx, artifact } of occurrences) {
-    const pluginStart = content.lastIndexOf('<plugin>', artifactIdx);
-    const pluginEnd = content.indexOf('</plugin>', artifactIdx);
+    const pluginStart = effectiveXml.lastIndexOf('<plugin>', artifactIdx);
+    const pluginEnd = effectiveXml.indexOf('</plugin>', artifactIdx);
     if (pluginStart === -1 || pluginEnd === -1) continue;
-    const pluginBlock = content.slice(pluginStart, pluginEnd);
+    const pluginBlock = effectiveXml.slice(pluginStart, pluginEnd);
 
-    // Walk every <configuration> block within the plugin — a per-<execution>
-    // <configuration> can appear BEFORE the plugin-level one, so grabbing only
-    // the first one would truncate the search and miss the real <dependencies>.
-    let cursor = 0;
-    for (;;) {
-      const configStart = pluginBlock.indexOf('<configuration>', cursor);
-      if (configStart === -1) break;
-      const configEnd = pluginBlock.indexOf('</configuration>', configStart);
-      if (configEnd === -1) break;
-      const configBlock = pluginBlock.slice(configStart, configEnd);
-      cursor = configEnd + '</configuration>'.length;
+    // Plugin-level <configuration> is anything before <executions>. Per-
+    // execution configs live under <executions> and don't own install-time
+    // <dependencies> — those are a plugin-level concern.
+    const executionsAt = pluginBlock.indexOf('<executions>');
+    const pluginLevel = executionsAt === -1 ? pluginBlock : pluginBlock.slice(0, executionsAt);
 
-      const depsStart = configBlock.indexOf('<dependencies>');
-      const depsEnd = configBlock.indexOf('</dependencies>');
-      if (depsStart === -1 || depsEnd === -1) continue;
+    const configStart = pluginLevel.indexOf('<configuration>');
+    const configEnd = pluginLevel.indexOf('</configuration>', configStart);
+    if (configStart === -1 || configEnd === -1) continue;
+    const configBlock = pluginLevel.slice(configStart, configEnd);
 
-      // Absolute offset of the <dependencies> open tag in `content`, so the
-      // caller can report the block's own line instead of the plugin's
-      // <artifactId> line (which can be far away in a large pom).
-      const depsIdx = pluginStart + configStart + depsStart;
-      results.push({ block: configBlock.slice(depsStart, depsEnd), artifactIdx, depsIdx, artifact });
-    }
+    const depsStart = configBlock.indexOf('<dependencies>');
+    const depsEnd = configBlock.indexOf('</dependencies>');
+    if (depsStart === -1 || depsEnd === -1) continue;
+
+    results.push({ block: configBlock.slice(depsStart, depsEnd), artifact });
   }
   return results;
 }
 
 /**
- * Scan `pom.xml` files under `workspaceRoot` for legacy Vault install-time
+ * Report the source `pom.xml` line where `legacyGroup` first appears. When
+ * the block was inherited from a parent pom and the group isn't in the
+ * source, returns `{ line: 1, inherited: true }` so the finding still has an
+ * anchor the customer can open.
+ */
+function locateInSourcePom(sourceXml, legacyGroup) {
+  const idx = sourceXml.indexOf(`<group>${legacyGroup}</group>`);
+  if (idx === -1) return { line: 1, inherited: true };
+  return { line: lineAt(sourceXml, idx), inherited: false };
+}
+
+/**
+ * Scan Maven projects under `workspaceRoot` for legacy Vault install-time
  * package dependencies. Emits one finding per `<dependencies>` block (not
  * per `<dependency>` entry) — the fix removes the entire block.
  *
+ * @param {string} workspaceRoot
+ * @param {object} [opts]
+ * @param {function(string): {ok: boolean, xml?: string, error?: string}} [opts.getEffectivePom]
+ *        Injectable Maven effective-pom reader. Defaults to shelling out to
+ *        `mvn help:effective-pom`; tests inject a stub that returns canned
+ *        XML.
  * @returns {{
  *   ok: boolean,
  *   findings: Array<{location: string, detail: string, severity: string}>,
@@ -131,41 +179,59 @@ function findVaultDependenciesBlocks(content) {
  *   error?: string,
  * }}
  */
-function runVaultPackageScan(workspaceRoot) {
+function runVaultPackageScan(workspaceRoot, opts = {}) {
   if (!workspaceRoot) {
     return { ok: false, findings: [], rawFindings: [], warnings: [], error: 'no workspaceRoot' };
   }
+  const readEffectivePom = opts.getEffectivePom || getEffectivePom;
 
-  let files;
+  let projectRoots;
   try {
-    files = collectPomFiles(workspaceRoot);
+    projectRoots = collectMavenProjectRoots(workspaceRoot);
   } catch (err) {
     return { ok: false, findings: [], rawFindings: [], warnings: [], error: err.message };
   }
 
   const findings = [];
   const rawFindings = [];
-  for (const file of files) {
-    let content;
-    try { content = fs.readFileSync(file, 'utf8'); } catch { continue; }
+  const warnings = [];
 
-    // One finding per <dependencies> block, not per file — a pom can declare
-    // the plugin under <pluginManagement>, <build>, and <profiles>.
-    for (const depsBlock of findVaultDependenciesBlocks(content)) {
+  for (const projectDir of projectRoots) {
+    const eff = readEffectivePom(projectDir);
+    if (!eff.ok) {
+      warnings.push(`${projectDir}: could not resolve effective pom (${eff.error})`);
+      continue;
+    }
+
+    const blocks = findVaultDependenciesInEffectivePom(eff.xml);
+    if (blocks.length === 0) continue;
+
+    const pomFile = path.join(projectDir, 'pom.xml');
+    let sourceXml;
+    try { sourceXml = fs.readFileSync(pomFile, 'utf8'); } catch { sourceXml = ''; }
+
+    for (const depsBlock of blocks) {
       const groupMatches = depsBlock.block.match(/<group>([^<]*)<\/group>/g) || [];
       const legacyGroup = groupMatches
         .map(m => m.replace(/<\/?group>/g, '').trim())
         .find(isLegacyGroup);
       if (!legacyGroup) continue;
 
-      const line = lineAt(content, depsBlock.depsIdx);
-      const snippet = `${depsBlock.artifact}: legacy Vault dependency group=${legacyGroup}`;
-      findings.push({ location: `${file}:${line}`, detail: snippet, severity: 'high' });
-      rawFindings.push({ pattern: 'vault-package-dependencies', file, line, snippet });
+      const { line, inherited } = locateInSourcePom(sourceXml, legacyGroup);
+      const source = inherited ? ' (inherited)' : '';
+      const snippet = `${depsBlock.artifact}: legacy Vault dependency group=${legacyGroup}${source}`;
+      findings.push({ location: `${pomFile}:${line}`, detail: snippet, severity: 'high' });
+      rawFindings.push({ pattern: 'vault-package-dependencies', file: pomFile, line, snippet });
     }
   }
 
-  return { ok: true, findings, rawFindings, warnings: [] };
+  return { ok: true, findings, rawFindings, warnings };
 }
 
-module.exports = { runVaultPackageScan, collectPomFiles, isLegacyGroup, findVaultDependenciesBlocks };
+module.exports = {
+  runVaultPackageScan,
+  isLegacyGroup,
+  findVaultDependenciesInEffectivePom,
+  getEffectivePom,
+  collectMavenProjectRoots,
+};

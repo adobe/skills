@@ -276,6 +276,7 @@ async function gatherFindings(options = {}) {
     mcpFetcher,
     workspaceRoot = process.cwd(),
     analyzeScript = DEFAULT_ANALYZE_SCRIPT,
+    getEffectivePom,
   } = options;
 
   const sources = checkAvailableSources({ bpaFilePath, collectionsDir, projectId, mcpFetcher });
@@ -391,7 +392,7 @@ async function gatherFindings(options = {}) {
 
   // ── Strategy 'pom-scan': vault-package-dependencies (independent of the cascade) ──
   if (CANONICAL_PATTERNS.includes('vault-package-dependencies') && workspaceRoot) {
-    const res = runVaultPackageScan(workspaceRoot);
+    const res = runVaultPackageScan(workspaceRoot, getEffectivePom ? { getEffectivePom } : undefined);
     if (res.ok) {
       findingsByPattern['vault-package-dependencies'] = res.findings;
       rawFindingsByPattern['vault-package-dependencies'] = res.rawFindings;

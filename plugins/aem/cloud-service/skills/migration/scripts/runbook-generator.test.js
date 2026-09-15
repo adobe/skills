@@ -65,6 +65,21 @@ test('vault-package-dependencies is pom-scan with no BPA tier and no analyzer', 
 });
 
 // ── vault-package-scan-runner ────────────────────────────────────────────────
+//
+// The runner delegates POM resolution to `mvn help:effective-pom`, so tests
+// inject a stub `getEffectivePom` that returns canned effective-POM XML. The
+// source `pom.xml` is still written to the workspace so the runner can look
+// up the source line for the legacy `<group>` tag.
+
+/** Build a stub getEffectivePom that returns canned XML per projectDir. */
+function stubEffective(byDir) {
+  return (projectDir) => {
+    if (Object.prototype.hasOwnProperty.call(byDir, projectDir)) {
+      return { ok: true, xml: byDir[projectDir] };
+    }
+    return { ok: false, error: `no stub for ${projectDir}` };
+  };
+}
 
 test('isLegacyGroup matches day/cq60, day/cq560, adobe/cq60 prefixes only', () => {
   assert.ok(isLegacyGroup('day/cq60/product'));
@@ -77,7 +92,8 @@ test('isLegacyGroup matches day/cq60, day/cq560, adobe/cq60 prefixes only', () =
 
 test('runVaultPackageScan flags a legacy <dependencies> block, one finding per block', () => {
   const root = mkworkspace();
-  write(root, 'ui.apps/pom.xml', [
+  const module = path.join(root, 'ui.apps');
+  const pom = [
     '<project>', '  <build>', '    <plugins>', '      <plugin>',
     '        <artifactId>content-package-maven-plugin</artifactId>',
     '        <configuration>', '          <dependencies>',
@@ -85,8 +101,9 @@ test('runVaultPackageScan flags a legacy <dependencies> block, one finding per b
     '            <dependency><group>day/cq60/product</group><name>cq-commerce-content</name></dependency>',
     '          </dependencies>', '        </configuration>', '      </plugin>',
     '    </plugins>', '  </build>', '</project>',
-  ].join('\n'));
-  const res = runVaultPackageScan(root);
+  ].join('\n');
+  write(root, 'ui.apps/pom.xml', pom);
+  const res = runVaultPackageScan(root, { getEffectivePom: stubEffective({ [module]: pom }) });
   assert.strictEqual(res.ok, true);
   assert.strictEqual(res.findings.length, 1, 'one finding per <dependencies> block, not per <dependency>');
   assert.match(res.findings[0].detail, /day\/cq60\/product/);
@@ -95,24 +112,29 @@ test('runVaultPackageScan flags a legacy <dependencies> block, one finding per b
 
 test('runVaultPackageScan flags a legacy <dependencies> block under filevault-package-maven-plugin', () => {
   const root = mkworkspace();
-  write(root, 'ui.apps/pom.xml', [
+  const module = path.join(root, 'ui.apps');
+  const pom = [
     '<project>', '  <build>', '    <plugins>', '      <plugin>',
     '        <artifactId>filevault-package-maven-plugin</artifactId>',
     '        <configuration>', '          <dependencies>',
     '            <dependency><group>day/cq60/product</group><name>cq-content</name></dependency>',
     '          </dependencies>', '        </configuration>', '      </plugin>',
     '    </plugins>', '  </build>', '</project>',
-  ].join('\n'));
-  const res = runVaultPackageScan(root);
+  ].join('\n');
+  write(root, 'ui.apps/pom.xml', pom);
+  const res = runVaultPackageScan(root, { getEffectivePom: stubEffective({ [module]: pom }) });
   assert.strictEqual(res.ok, true);
   assert.strictEqual(res.findings.length, 1, 'filevault-package-maven-plugin must be matched, not silently skipped');
   assert.match(res.findings[0].detail, /day\/cq60\/product/);
   assert.match(res.findings[0].detail, /^filevault-package-maven-plugin:/, 'snippet must name the plugin that matched');
 });
 
-test('runVaultPackageScan finds the real block when the plugin is also declared under <pluginManagement> without <dependencies>', () => {
+test('runVaultPackageScan flags the block after <pluginManagement> is merged by Maven', () => {
+  // Source pom declares the plugin in both <pluginManagement> (no deps) and
+  // <build> (with deps). Maven's effective pom is what the runner sees: a
+  // single merged <build> entry — no shadow <pluginManagement> occurrence.
   const root = mkworkspace();
-  write(root, 'pom.xml', [
+  const sourcePom = [
     '<project>', '  <build>',
     '    <pluginManagement>', '      <plugins>', '        <plugin>',
     '          <artifactId>content-package-maven-plugin</artifactId>',
@@ -124,15 +146,29 @@ test('runVaultPackageScan finds the real block when the plugin is also declared 
     '            <dependency><group>day/cq60/product</group><name>cq-content</name></dependency>',
     '          </dependencies>', '        </configuration>', '      </plugin>',
     '    </plugins>', '  </build>', '</project>',
-  ].join('\n'));
-  const res = runVaultPackageScan(root);
-  assert.strictEqual(res.findings.length, 1, 'the <build> block must be found even when a <pluginManagement> occurrence precedes it');
+  ].join('\n');
+  const effectivePom = [
+    '<project>', '  <build>', '    <plugins>', '      <plugin>',
+    '        <artifactId>content-package-maven-plugin</artifactId>',
+    '        <configuration>',
+    '          <verbose>true</verbose>',
+    '          <dependencies>',
+    '            <dependency><group>day/cq60/product</group><name>cq-content</name></dependency>',
+    '          </dependencies>', '        </configuration>', '      </plugin>',
+    '    </plugins>', '  </build>', '</project>',
+  ].join('\n');
+  write(root, 'pom.xml', sourcePom);
+  const res = runVaultPackageScan(root, { getEffectivePom: stubEffective({ [root]: effectivePom }) });
+  assert.strictEqual(res.findings.length, 1);
   assert.match(res.findings[0].detail, /day\/cq60\/product/);
 });
 
-test('runVaultPackageScan emits one finding per <dependencies> block when the plugin appears in multiple sections', () => {
+test('runVaultPackageScan flags plugins that only appear in an activated <profile>', () => {
+  // Profiles are not merged into <build> in the effective pom unless activated
+  // — the runner must still scan every <plugin> occurrence, including those
+  // inside a <profiles><profile><build> section.
   const root = mkworkspace();
-  write(root, 'pom.xml', [
+  const pom = [
     '<project>', '  <build>', '    <plugins>', '      <plugin>',
     '        <artifactId>content-package-maven-plugin</artifactId>',
     '        <configuration>', '          <dependencies>',
@@ -146,33 +182,42 @@ test('runVaultPackageScan emits one finding per <dependencies> block when the pl
     '              </dependencies>', '            </configuration>', '          </plugin>',
     '        </plugins>', '      </build>', '    </profile>', '  </profiles>',
     '</project>',
-  ].join('\n'));
-  const res = runVaultPackageScan(root);
+  ].join('\n');
+  write(root, 'pom.xml', pom);
+  const res = runVaultPackageScan(root, { getEffectivePom: stubEffective({ [root]: pom }) });
   assert.strictEqual(res.findings.length, 2, 'both <build> and <profiles> plugin blocks must be flagged');
   const groups = res.findings.map(f => f.detail).join(' | ');
   assert.match(groups, /day\/cq60\/product/);
   assert.match(groups, /day\/cq560\/social\/commons/);
 });
 
-test('runVaultPackageScan finds legacy <dependencies> when a per-<execution> <configuration> precedes the plugin-level one', () => {
+test('runVaultPackageScan ignores a per-<execution> <configuration> — only plugin-level counts', () => {
+  // Maven's effective pom keeps executions separate from the plugin-level
+  // configuration. The runner explicitly scopes to everything before
+  // <executions>, so a per-execution <configuration> with a legacy-looking
+  // <dependencies> can't shadow or forge a finding at plugin-level.
   const root = mkworkspace();
-  write(root, 'pom.xml', [
+  const effectivePom = [
     '<project>', '  <build>', '    <plugins>', '      <plugin>',
     '        <artifactId>content-package-maven-plugin</artifactId>',
+    '        <configuration>',
+    '          <verbose>true</verbose>',
+    '        </configuration>',
     '        <executions>', '          <execution>', '            <id>install-package</id>',
-    '            <configuration><verbose>true</verbose></configuration>',
+    '            <configuration>',
+    '              <dependencies>',
+    '                <dependency><group>day/cq60/product</group></dependency>',
+    '              </dependencies>',
+    '            </configuration>',
     '          </execution>', '        </executions>',
-    '        <configuration>', '          <dependencies>',
-    '            <dependency><group>day/cq60/product</group><name>cq-content</name></dependency>',
-    '          </dependencies>', '        </configuration>',
     '      </plugin>', '    </plugins>', '  </build>', '</project>',
-  ].join('\n'));
-  const res = runVaultPackageScan(root);
-  assert.strictEqual(res.findings.length, 1, 'plugin-level <configuration> block must be scanned even when a per-<execution> <configuration> comes first');
-  assert.match(res.findings[0].detail, /day\/cq60\/product/);
+  ].join('\n');
+  write(root, 'pom.xml', effectivePom);
+  const res = runVaultPackageScan(root, { getEffectivePom: stubEffective({ [root]: effectivePom }) });
+  assert.strictEqual(res.findings.length, 0, 'per-execution <configuration> is not install-time deps');
 });
 
-test('runVaultPackageScan reports the <dependencies> line, not the <artifactId> line', () => {
+test('runVaultPackageScan reports the source-pom line where the legacy <group> appears', () => {
   const root = mkworkspace();
   const lines = [
     '<project>',                                                     //  1
@@ -181,28 +226,51 @@ test('runVaultPackageScan reports the <dependencies> line, not the <artifactId> 
     '      <plugin>',                                                //  4
     '        <artifactId>content-package-maven-plugin</artifactId>', //  5  <- artifactId line
     '        <configuration>',                                       //  6
-    '          <verbose>true</verbose>',                             //  7
-    '          <group>day/cq60/product</group>',                     //  8  (unrelated group tag before <dependencies>)
-    '          <name>example</name>',                                //  9
-    '          <version>1.0</version>',                              // 10
-    '          <dependencies>',                                      // 11  <- <dependencies> line
-    '            <dependency><group>day/cq60/product</group></dependency>', // 12
-    '          </dependencies>',                                     // 13
-    '        </configuration>',                                      // 14
-    '      </plugin>',                                               // 15
-    '    </plugins>',                                                // 16
-    '  </build>',                                                    // 17
-    '</project>',                                                    // 18
+    '          <dependencies>',                                      //  7
+    '            <dependency><group>day/cq60/product</group></dependency>', //  8  <- legacy group line
+    '          </dependencies>',                                     //  9
+    '        </configuration>',                                      // 10
+    '      </plugin>',                                               // 11
+    '    </plugins>',                                                // 12
+    '  </build>',                                                    // 13
+    '</project>',                                                    // 14
   ];
-  write(root, 'pom.xml', lines.join('\n'));
-  const res = runVaultPackageScan(root);
+  const pom = lines.join('\n');
+  write(root, 'pom.xml', pom);
+  const res = runVaultPackageScan(root, { getEffectivePom: stubEffective({ [root]: pom }) });
   assert.strictEqual(res.findings.length, 1);
-  assert.strictEqual(res.rawFindings[0].line, 11, 'expected line 11 (the <dependencies> block), not line 5 (the <artifactId>)');
+  assert.strictEqual(res.rawFindings[0].line, 8, 'expected line 8 (the legacy <group> tag), not the <artifactId> line');
+});
+
+test('runVaultPackageScan flags inherited blocks with (inherited) marker and line 1', () => {
+  // The customer's own pom.xml doesn't contain the legacy block — it comes
+  // from a parent pom Maven pulls in. The runner still detects it via the
+  // effective pom and reports the source pom with the (inherited) marker.
+  const root = mkworkspace();
+  const sourcePom = [
+    '<project>',
+    '  <parent><groupId>com.example</groupId><artifactId>legacy-parent</artifactId><version>1.0</version></parent>',
+    '  <artifactId>my-module</artifactId>',
+    '</project>',
+  ].join('\n');
+  const effectivePom = [
+    '<project>', '  <build>', '    <plugins>', '      <plugin>',
+    '        <artifactId>content-package-maven-plugin</artifactId>',
+    '        <configuration>', '          <dependencies>',
+    '            <dependency><group>day/cq60/product</group><name>cq-content</name></dependency>',
+    '          </dependencies>', '        </configuration>', '      </plugin>',
+    '    </plugins>', '  </build>', '</project>',
+  ].join('\n');
+  write(root, 'pom.xml', sourcePom);
+  const res = runVaultPackageScan(root, { getEffectivePom: stubEffective({ [root]: effectivePom }) });
+  assert.strictEqual(res.findings.length, 1);
+  assert.match(res.findings[0].detail, /\(inherited\)/, 'inherited blocks must be marked');
+  assert.strictEqual(res.rawFindings[0].line, 1, 'inherited blocks anchor at line 1 of the source pom');
 });
 
 test('runVaultPackageScan does not flag a legacy group under an unrelated plugin', () => {
   const root = mkworkspace();
-  write(root, 'pom.xml', [
+  const pom = [
     '<project>', '  <build>', '    <plugins>', '      <plugin>',
     '        <artifactId>some-other-plugin</artifactId>',
     '        <configuration>', '          <dependencies>',
@@ -211,17 +279,31 @@ test('runVaultPackageScan does not flag a legacy group under an unrelated plugin
     '      <plugin>', '        <artifactId>content-package-maven-plugin</artifactId>',
     '        <configuration><group>adobe/aem6/sample</group></configuration>',
     '      </plugin>', '    </plugins>', '  </build>', '</project>',
-  ].join('\n'));
-  const res = runVaultPackageScan(root);
+  ].join('\n');
+  write(root, 'pom.xml', pom);
+  const res = runVaultPackageScan(root, { getEffectivePom: stubEffective({ [root]: pom }) });
   assert.strictEqual(res.findings.length, 0, 'legacy group under a different plugin must not match');
 });
 
 test('runVaultPackageScan returns empty (ok) when no pom.xml has the plugin', () => {
   const root = mkworkspace();
-  write(root, 'pom.xml', '<project></project>\n');
-  const res = runVaultPackageScan(root);
+  const pom = '<project></project>\n';
+  write(root, 'pom.xml', pom);
+  const res = runVaultPackageScan(root, { getEffectivePom: stubEffective({ [root]: pom }) });
   assert.strictEqual(res.ok, true);
   assert.strictEqual(res.findings.length, 0);
+});
+
+test('runVaultPackageScan surfaces effective-pom resolution failures as warnings, not errors', () => {
+  const root = mkworkspace();
+  write(root, 'pom.xml', '<project><parent><artifactId>missing</artifactId></parent></project>\n');
+  const res = runVaultPackageScan(root, {
+    getEffectivePom: () => ({ ok: false, error: 'could not resolve parent com.example:missing:1.0' }),
+  });
+  assert.strictEqual(res.ok, true, 'a single unresolvable pom does not fail the whole scan');
+  assert.strictEqual(res.findings.length, 0);
+  assert.strictEqual(res.warnings.length, 1);
+  assert.match(res.warnings[0], /could not resolve/);
 });
 
 // ── htl-lint-runner ───────────────────────────────────────────────────────
@@ -300,15 +382,21 @@ test('gatherFindings dispatches rg + config-scan + pom-scan and tags heuristic i
   const root = mkworkspace();
   write(root, 'ui.apps/jcr_root/apps/comp/hero.html', '<div data-sly-test="${x == false}">x</div>\n');
   write(root, 'ui.config/jcr_root/apps/my/config/com.my.Svc.cfg.json', '{ "secret-token": "abc123" }\n');
-  write(root, 'pom.xml', [
+  const pom = [
     '<project><build><plugins><plugin>',
     '<artifactId>content-package-maven-plugin</artifactId>',
     '<configuration><dependencies>',
     '<dependency><group>day/cq60/product</group></dependency>',
     '</dependencies></configuration></plugin></plugins></build></project>',
-  ].join('\n'));
+  ].join('\n');
+  write(root, 'pom.xml', pom);
   // No BPA source, no Java project → cascade patterns go to needsLlmScan or analyzer(empty).
-  const gathered = await gatherFindings({ workspaceRoot: root });
+  // The vault-package scan delegates POM resolution to Maven; inject a stub that
+  // returns the source as the effective pom so this stays a unit test.
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    getEffectivePom: (dir) => (dir === root ? { ok: true, xml: pom } : { ok: false, error: 'no stub' }),
+  });
 
   assert.strictEqual(gathered.sourceByPattern.htlLint, 'html-scan');
   assert.ok(gathered.findingsByPattern.htlLint.length >= 1);
