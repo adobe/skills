@@ -20,7 +20,7 @@
  *     sites, and UA alone still 403s on Akamai (F-R1) — the standard headers
  *     (Accept / Accept-Language / sec-ch-ua*) are the other half of the fix.
  *   - a bot-management challenge/blocked interstitial FAILS LOUD (exit 3),
- *     never captured as if it were the source (the rimowa trap). Escalate
+ *     never captured as if it were the source (the Access-Denied trap). Escalate
  *     with --headed (stealth real Chrome).
  *   - waitUntil 'domcontentloaded' (never 'networkidle'): live sites with
  *     analytics beacons never reach networkidle — hard timeout otherwise.
@@ -33,7 +33,7 @@
  *     page, and any :hover-styled element under it would be silently
  *     captured in hover state.
  *   - --locale pins Accept-Language + context locale: geo-redirecting sites
- *     (recorded: polestar → /ch-de/, maisonkitsune → /ww/) otherwise capture
+ *     (recorded: a car brand → /ch-de/, a fashion brand → /ww/) otherwise capture
  *     a different locale per run — nondeterministic live side.
  *   - animation/transition freeze is injected AFTER the lazyload settle
  *     pass: injecting it before breaks some lazy loaders' swap logic. The
@@ -192,13 +192,13 @@ async function main() {
       await page.waitForTimeout(3000);
       // Timed marketing/newsletter modals (CH-1) often fire DURING the settle
       // window — sweep again so a late interstitial isn't baked into the
-      // stitched capture (recorded: carhartt-wip "Sign up, stay updated!").
+      // stitched capture (recorded: a fashion retailer's "Sign up, stay updated!").
       await dismissAndLog(page, url, opts);
     }
 
     // Freeze animations/transitions/carets for stable chunks — AFTER settle.
     await page.addStyleTag({ content: '*,*::before,*::after{animation-play-state:paused!important;transition:none!important;caret-color:transparent!important;scroll-behavior:auto!important;}html{scroll-behavior:auto!important}' });
-    // The CSS freeze above stabilizes CSS animations only (rwe replica run,
+    // The CSS freeze above stabilizes CSS animations only (an energy-company replica run,
     // 2026-08-26 — field-validated instrument fix). It does NOT stop
     // (a) <video> playback — autoplaying teaser videos capture an arbitrary
     // frame per run, so the same page never pixel-matches itself; (b) JS-timer

@@ -11,10 +11,10 @@
 
 | Hypothesis | Verdict | Headline evidence |
 |---|---|---|
-| H1 clean re-authored replica reaches near-pixel fidelity ≤3 iterations | **CONFIRMED** | aesop.com: pixel-diff 8.31% → 2.93% → **1.31%**, height Δ 0px, content-diff "findings: none" (198/198 nodes, 59/59 CTAs) |
+| H1 clean re-authored replica reaches near-pixel fidelity ≤3 iterations | **CONFIRMED** | a typographic retail home page: pixel-diff 8.31% → 2.93% → **1.31%**, height Δ 0px, content-diff "findings: none" (198/198 nodes, 59/59 CTAs) |
 | H2 source-fidelity gate buildable from existing diff scripts + small pixel add-on | **CONFIRMED** | generic profile worked; 4 adaptations needed (see UC1 notes) |
 | H3 direction step can be mechanical (current → target) | **CONFIRMED** | zero creative decisions; only measurement-policy calls |
-| H4 faithful-content reskin in one archetype pass | **CONFIRMED** | hirslanden × stripe: text byte-identical 2281/2281, 7/7 images, 47/47 slots, 13/13 metadata, 17/17 donor-token probe |
+| H4 faithful-content reskin in one archetype pass | **CONFIRMED** | a healthcare site × a payments-company donor: text byte-identical 2281/2281, 7/7 images, 47/47 slots, 13/13 metadata, 17/17 donor-token probe |
 | H5 cross-origin mapping brief decidable (≥80% mapped) | **CONFIRMED** | 91% mapped to named donor modules, 1 explicit new-module, 0 silent improvisation |
 | H6 dom-equality adoptable as content gate | **CONFIRMED** | adapted with structure checks informational; shared normalization module capture↔gate |
 | H7 variant fan-out + axis pinning → distinct non-slop variants | **CONFIRMED** | pairwise axis distance 5/5/5; pins byte-verified; 1 variant partially collapsed via anchor↔signature incoherence (→ new gate) |
@@ -61,9 +61,9 @@ scoped reserve, see below); **UC3-B** thin nebula wrapper (fails multi-input + p
   captured, logged, and flagged for the delivery phase.
 - **CSS-portation reserve** (from UC1-B): only for paint-level effects, JS-hydrated commerce
   components, and video/animated heroes — per-section, never page-level.
-- Prior art to fold into the skill text: heathrow `SKILL-IMPROVEMENTS.md` (fidelity-by-CSS-
+- Prior art to fold into the skill text: the airport-site `SKILL-IMPROVEMENTS.md` (fidelity-by-CSS-
   extraction, neutralize boilerplate block CSS, preserve-and-move, coverage guards) and the
-  hirslanden archetype→sibling scale pattern.
+  the healthcare site's archetype→sibling scale pattern.
 
 ## UC2 — PROMOTED: `stardust:reskin` (existing content × defined new design)
 

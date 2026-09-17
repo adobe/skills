@@ -9,10 +9,10 @@
 # delete it explicitly to re-take (site changed, capture hardening changed).
 #
 # Usage:
-#   scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>]
+#   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>]
 #
 # Example (iteration 2 of the home archetype at 1440):
-#   scripts/replica/gate.sh home "https://<site>/" \
+#   stardust/scripts/replica/gate.sh home "https://<site>/" \
 #     "http://localhost:8791/home-proposed.html" 1440 iter2
 #
 # Evidence lands in stardust/replica/gates/<slug>-<width>/
@@ -37,8 +37,8 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 DIR="stardust/replica/gates/$SLUG-$W"
 mkdir -p "$DIR"
 
-# Identity assertion — NEVER diff an unverified build URL (rwe + centene
-# harvest, 2026-08: the same incident in both sessions, opposite directions —
+# Identity assertion — NEVER diff an unverified build URL (two field
+# harvests, 2026-08: the same incident in both sessions, opposite directions —
 # a stale localhost:8791 server from ANOTHER stardust project served a foreign
 # site into a gate round; 73% diff misread as "prototype broke" on one, the
 # foreign prototype measured as "the build" on the other. Every skill doc

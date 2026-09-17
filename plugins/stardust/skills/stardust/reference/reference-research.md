@@ -84,8 +84,8 @@ Every reference used lands in provenance as:
 ```json
 {
   "source": "refero | websearch | model-memory",
-  "title": "Joby Aviation",
-  "url": "https://www.jobyaviation.com",
+  "title": "Example Aviation Co",
+  "url": "https://www.example.com",
   "previewUrl": "https://images.refero.design/…/preview_0.jpg",
   "styleId": "e38f56d1-…",
   "grounds": "hero density + curved-container motif justify the arrival-register composition",

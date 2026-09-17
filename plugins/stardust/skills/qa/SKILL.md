@@ -38,6 +38,11 @@ delivered HTML ≠ rendered correctly.
 4. Optional inputs that unlock deeper checks:
    - `--scrape stardust/scrape` — verbatim fidelity vs the extraction capture
    - `--expected-blocks <json>` — explicit per-template block expectations
+   - `--parity <json>` — dynamic parity file to replay (default
+     `stardust/dynamics/parity.json`; the `dynamics` check reports
+     `parity-missing` when absent)
+   - `--auth-header "token …"` / `--token-env SITE_TOKEN` — protected
+     origins; the secret is sent to the base origin only
      (otherwise derived by fleet consensus)
    - `--blocks-dir <dir>` — the site's `blocks/` checkout, so the
      `editability` check can honour `@ew-exempt` JSDoc tags (otherwise
@@ -64,7 +69,9 @@ under `stardust/qa/shots/`, and (first run) visual baselines under
 `stardust/qa/baselines/`. Exit 0 = no active errors, 1 = active errors,
 2 = infra failure. `reference/checks.md` documents every check, its finding
 ids, and severity rationale. Useful variants: `--checks <subset>`,
-`--max-pages <n>` (smoke run), `--fail-on warn` (strict gate).
+`--max-pages <n>` (smoke run), `--fail-on warn` (strict gate). The `ai-readability` check
+reproduces Adobe's AI Content Visibility Checker per page (served words ÷ rendered words) and
+attributes the gap per block (`deploy/reference/ai-readability.md`).
 
 The `editability` check is the post-deploy **Experience Workspace
 editability gate** (deploy SKILL.md § 8, EW1–EW10): per page it re-creates
@@ -76,8 +83,11 @@ the author cannot click it in the canvas; `editability/duplicated-index`
 declared `@ew-exempt` (or listed in `--ew-exempt`) are info, not errors.
 
 First run on a site: expect a wave of `visual/baseline-created` info findings —
-that is the baseline being established, not a defect. Baselines should be
-committed to the workspace repo so later runs diff against an approved state.
+that is the baseline being established, not a defect. Baselines are
+screenshots and therefore local (`stardust/.gitignore` excludes
+`qa/baselines/` and `qa/shots/`, master skill § Artifacts): later runs on the
+same machine diff against them; a fresh clone re-establishes them on its
+first sweep. `qa/allowlist.json` is the tracked record of judgement.
 
 ### Phase 2 — triage the ambiguous flags (LLM judgment, still read-only)
 

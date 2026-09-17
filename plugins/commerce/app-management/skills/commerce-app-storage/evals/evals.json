@@ -18,10 +18,10 @@
     {
       "id": 2,
       "prompt": "When an order is placed in Commerce, I want to record it in our database. The order event handler already needs to be created. Scaffold the event action and have it write the order to a collection.",
-      "expected_output": "The agent scaffolds an event/webhook action (web: \"no\") registered with include-ims-credentials: true, reading the payload from params.data, and writing to a collection using the init/connect/close lifecycle. After build passes it suggests commerce-app-eventing to wire the action to the order event via runtimeActions.",
+      "expected_output": "The agent scaffolds an App Builder runtime action to consume the Commerce event (web: \"no\") registered with include-ims-credentials: true, reading the payload from params.data.value, and writing to a collection using the init/connect/close lifecycle. After build passes it suggests commerce-app-eventing to wire the action to the order event via runtimeActions.",
       "assertions": [
         "The action is registered with include-ims-credentials: true",
-        "The handler reads the event payload from params.data",
+        "The handler reads the event payload from params.data.value",
         "The handler uses init() -> connect() -> collection write -> close() in finally",
         "The action is registered with web: \"no\"",
         "Agent mentions commerce-app-eventing (or runtimeActions) to wire the action to the event"

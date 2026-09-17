@@ -110,8 +110,8 @@ exit 0. No partial credit — one dropped CTA is a fail. Exit codes:
 #### Image paint — a PASSing image check is not a rendering image
 
 Both image checks above compare **URL strings** (host+path). A
-string can match perfectly while the pixel never arrives: kew's
-image CDN returns HTTP 403 to any non-kew-origin request, so the
+string can match perfectly while the pixel never arrives: a botanical garden's
+image CDN returned HTTP 403 to any non-origin request, so the
 reskin's 19 hotlinked `currentSrc` images all "passed" the string
 gates while every one rendered as a broken-image icon. The gate was
 provably right and the page was provably broken.
@@ -307,7 +307,7 @@ check, and a human-readable verdict (`accepted` | `needs-owner` |
   string, which is the honest, probe-able contract.
 - **Hotlinked source images.** `currentSrc` URLs point at the
   source's CDN — a delivery liability always, and on an
-  **origin-locked CDN** (kew: 403 to every non-origin request,
+  **origin-locked CDN** (recorded: 403 to every non-origin request,
   verified with curl, real-Chrome UA, with and without referrer) a
   broken page *now*: the URL-string checks pass while nothing
   paints. slot-coverage's paint assertion (§ Image paint) catches

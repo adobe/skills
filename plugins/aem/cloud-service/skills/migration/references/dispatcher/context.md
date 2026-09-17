@@ -1,5 +1,3 @@
-> **Beta**: This capability is in beta and under active development. Review its output carefully before using it on production dispatcher configurations.
-
 # Dispatcher Conversion — Context (Branch E)
 
 Converts an AMS or on-premise Apache **Dispatcher** configuration to AEM as a Cloud Service shape. This branch is a thin, agent-driven wrapper around Adobe's own **`@adobe/aem-cs-source-migration-dispatcher-converter`** tool — it does not reimplement the conversion. Deterministic Node scripts under `scripts/` handle mode detection, driving the tool, and verifying its output; the agent handles config generation, judgment calls the tool can't make, and cross-boundary hand-offs (e.g. to Cloud Manager).

@@ -31,7 +31,7 @@ large), the sub-agent prompt **must**:
    Playwright render"* must appear in the prompt. The earlier
    wording *"must actually invoke Playwright per page"* was
    satisfiable in spirit by synthesis-with-photo-reuse and
-   produced the lovesac failure. Naming the shortcut explicitly
+   produced the e-commerce-run failure. Naming the shortcut explicitly
    closes that loophole.
 2. **Require a per-page evidence table in the return.** Columns:
    `slug | waitMode | waitMs | fetchedAt | httpStatus`. The
@@ -75,7 +75,7 @@ not primary evidence. The priority exists because higher-up
 fields are explicitly extracted and structured (no parsing
 ambiguity), while the bottom of the list (`landmarks[].innerText`
 substring search) is fragile against capture variations and was
-the source of the 2026-04-29 sliccy.com under-detection (0
+the source of the 2026-04-29 agency-site under-detection (0
 hits for `pre-footer-shell`, 1 of 2 hits for `install-tile` —
 both modules genuinely present on every page, both invisible
 because the substrings being searched lived past the truncation

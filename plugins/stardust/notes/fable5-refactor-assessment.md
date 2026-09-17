@@ -74,7 +74,7 @@ roll demoted to a fallback/convergence-tiebreaker.
 | Capability | What it is | Validated |
 |---|---|---|
 | **`stardust:audit`** | One URL → 7-dimension scorecard (brand-expression, hierarchy, conversion, a11y, technical-SEO, LLM-visibility, performance) + prioritized findings + craft-rendered `report.html` + uplift-shaped closing directions. Optional Refero benchmarking, marketing-skills / modern-web-guidance / PageSpeed integration with graceful degradation. | ✅ ran on stardust.style: 68/100, 22 findings (5 P1/8 P2/9 P3), Refero benchmarks (Langbase/Eraser/Metaview), report.html craft-rendered + validated. audit.json matches the designed schema exactly. |
-| **Cross-site same-brand** | `extract --brand-source <url>` (sibling-property enrichment) and `--design-source <url>` (design-donor mode, formalizing the canon.com pattern); sibling-site discovery; `origins[]` provenance. `direct` pins to the donor surface and can amplify traits captured on a sibling. | ✅ implemented + wired; not exercised in the E2E set (single-origin runs). |
+| **Cross-site same-brand** | `extract --brand-source <url>` (sibling-property enrichment) and `--design-source <url>` (design-donor mode, formalizing the design-donor pattern first exercised on a camera-maker site); sibling-site discovery; `origins[]` provenance. `direct` pins to the donor surface and can amplify traits captured on a sibling. | ✅ implemented + wired; not exercised in the E2E set (single-origin runs). |
 | **Hands-off production mode** | Folds the external 298-line master migration prompt into the skills as enforced gates. `--hands-off` (or an explicit phrase): every interactive gate auto-resolves from captured evidence, quality gates never weaken, hard blockers still stop. | ✅ ran end-to-end on all 7 sites. |
 | **Learnings + status contracts** | `stardust/learnings.md` per-run ledger and `stardust/status.jsonl` deterministic progress surface (the stardust app wanted the latter; no model-emitted milestones). | ✅ status.jsonl written by every skill; ~109 learnings captured across sites. |
 | **modern-web-guidance consult** | prototype/audit query the Chrome-team guides for scroll/motion/CWV/modern-CSS best practices when the plugin is installed. | ✅ wired, optional. |
@@ -90,12 +90,12 @@ and DA folder. Diff verdict faithful/clean on all.
 
 | Site | Model | Pages deployed (aem.page) | Diff | Highlight |
 |---|---|---|---|---|
-| **hirslanden.ch** | Fable | `/hirslanden/` | 0 structural | multilingual healthcare; 4 AA/nav defects caught by gates |
-| **3m.com** | Opus | `/3m`, `/3m/abrasives` | faithful | recovered from a broken extract state **without re-crawling** an Akamai-walled site |
-| **sliccy.com** | Opus | `/sliccy/`, `/sliccy/man/git` | 0 structural | hero demo **video reproduced** (static + reduced-motion fallback) |
-| **virginatlantic.com** | Opus | `/virginatlantic`, `/virginatlantic/where-we-fly/north-america/usa/new-york` | 1 defect fixed | **anti-fabrication caught + dropped an invented section** at render |
-| **festool.com** | Opus | `/festool/`, `/festool/products/saws` | 1 inline CTA caught | Usercentrics shadow-DOM consent; listing → real wayfinding |
-| **theroadhome.org** | Opus | `/theroadhome/home`, `/theroadhome/get-help` | 8/8 headings, 0 dropped | nonprofit; **crisis/donation IA fully preserved** |
+| **site A (healthcare)** | Fable | `/site-a/` | 0 structural | multilingual healthcare; 4 AA/nav defects caught by gates |
+| **site B (industrial conglomerate)** | Opus | `/site-b`, `/site-b/abrasives` | faithful | recovered from a broken extract state **without re-crawling** an Akamai-walled site |
+| **site C (agency)** | Opus | `/site-c/`, `/site-c/man/git` | 0 structural | hero demo **video reproduced** (static + reduced-motion fallback) |
+| **site D (airline)** | Opus | `/site-d`, `/site-d/where-we-fly/north-america/usa/new-york` | 1 defect fixed | **anti-fabrication caught + dropped an invented section** at render |
+| **site E (tools retailer)** | Opus | `/site-e/`, `/site-e/products/saws` | 1 inline CTA caught | Usercentrics shadow-DOM consent; listing → real wayfinding |
+| **site F (nonprofit shelter)** | Opus | `/site-f/home`, `/site-f/get-help` | 8/8 headings, 0 dropped | nonprofit; **crisis/donation IA fully preserved** |
 | **stardust.style** | Fable | `/stardust-style/`, `/stardust-style/docs` | clean + SEO/LLM green | **audit-first**; validated both 0.14.2 fixes live |
 
 Base URL pattern: `https://test-<site>--stardust-plugin-refactor-fable--paolomoz.aem.page/<path>`
@@ -103,10 +103,10 @@ Base URL pattern: `https://test-<site>--stardust-plugin-refactor-fable--paolomoz
 stardust.style audit report: `stardust/audit/stardust-style/report.html` (craft-rendered).
 
 ### What the gates caught (that nothing else would have)
-- **Vision gate** — silent capture/render gaps on 3 sites (festool's `opacity:0`
-  above-fold hero; sliccy's invisible demo video the record said didn't exist).
-- **Anti-fabrication** — dropped an invented "atlantic-promo" section on
-  virginatlantic that the shape brief had mislabeled `captured-verbatim`.
+- **Vision gate** — silent capture/render gaps on 3 sites (site E's `opacity:0`
+  above-fold hero; site C's invisible demo video the record said didn't exist).
+- **Anti-fabrication** — dropped an invented "promo" section on
+  site D that the shape brief had mislabeled `captured-verbatim`.
 - **`stardust:diff` structural probe** — real content/decode defects (dropped
   CTAs, quote→heading role swaps) on all 6 EDS sites that the atomic
   `.plain.html` and pixel checks passed green. Strongest single argument for
@@ -118,7 +118,7 @@ stardust.style audit report: `stardust/audit/stardust-style/report.html` (craft-
   bootstrap canon by hand; here it was automatic.
 - **computed-layout gate** — status log: *"computed-layout gate pass (9
   decorated blocks/page, all index grids grid)"* — the assertion that would
-  have caught 3m's silently-stacked layout.
+  have caught site B's silently-stacked layout.
 
 ---
 
@@ -156,7 +156,7 @@ From the consolidated digest, the highest-value remaining items:
   ~600-line extension. (4 sites)
 - **Validator-enforce shape-brief lineage/voice against the page JSON** — make
   Discipline 1/5 mechanical substring checks so a brief cannot self-report
-  `captured-verbatim` on invented copy. (high-leverage; virginatlantic)
+  `captured-verbatim` on invented copy. (high-leverage; site D)
 - **Reconcile migrate's asset-rewrite vs portability contradiction**
   (depth-relative rewrite). (3 sites)
 - **Wire `stardust:diff` into the deploy loop** as a per-page gate (it caught

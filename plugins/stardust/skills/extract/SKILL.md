@@ -45,6 +45,13 @@ critique, and it does not modify the live site. It writes only under
   (script activation that wouldn't otherwise run) must be
   avoided. Default is to dismiss, keeping screenshots, voice
   aggregation, and per-section style unpolluted by the banner.
+- `--dynamics` — optional, **migration-bound**. Record per-page reach
+  signals of the dynamic surface (data endpoints, forms, modal
+  triggers, player ids) in each page JSON `dynamic` section and roll
+  them up in `_crawl-log.json#dynamicSurface`. Set by
+  `prepare-migration`, `replica` and `migrate`'s safety net; never by a
+  bare extract, `uplift` or `audit` — dynamics is a migration concern.
+  Depth and classification belong to `stardust:dynamics`.
 - `--concurrency <n>` — optional. Parallel browser contexts for the
   per-page capture loop. Default 4; sane range 4–8. See
   § Concurrency.
@@ -264,8 +271,23 @@ Capture per page (full schema in `reference/current-state-schema.md`):
   `_signals.screenshotMode`, relative path in the page JSON
   `screenshot` field)
 
+- **Dynamic surface (only with `--dynamics`)** — per-page reach
+  signals: endpoints, third-party script hosts, forms, modal triggers,
+  player ids, hydration hints, in the page JSON `dynamic` section and
+  `_crawl-log.json#dynamicSurface` (schema in
+  `reference/current-state-schema.md § Dynamic`). Evidence only; the
+  `stardust:dynamics` sub-skill probes archetypes in depth and decides.
+
 Save to `stardust/current/pages/<slug>.json` with `_provenance` as the
-first key. Save referenced media to `stardust/current/assets/media/`
+first key. **The bundled crawler also saves the settled rendered DOM
+verbatim as `stardust/current/pages/<slug>.html`** (`page.content()`
+after the wait/scroll settle; path in the record's `renderedHtml`
+field). Capture once, parse offline: every downstream importer or
+sibling generator iterates its extraction against this artifact —
+free, reproducible, and provenance — instead of re-running live
+probes per selector guess (recorded: 4+ live round-trips per page
+family before the switch). Live probes stay for what the static DOM
+cannot answer: geometry and computed styles. Save referenced media to `stardust/current/assets/media/`
 preserving basename plus a short content hash.
 
 **Live-render evidence (synthesis is forbidden).** Refuse to mark
@@ -279,7 +301,7 @@ via `validateProvenance()` per
 `skills/stardust/reference/state-machine.md` § Provenance
 validation. Synthesizing a page record from
 `_brand-extraction.json` plus URL patterns plus captured photos
-— the 2026-04-30 lovesac shortcut — is the failure mode this
+— the 2026-04-30 e-commerce shortcut — is the failure mode this
 guard exists to prevent. When the agent (or a delegated sub-
 agent) cannot satisfy the contract for a page, treat the page
 as a Phase 2 failure: record under `_crawl-log.json#crawl.failures[]`
@@ -496,7 +518,7 @@ After all Phase 2-5 writes succeed:
    `waitMs > 0`, else `no`. A `no` row means the page record was
    not produced by a live Playwright render — the visible column
    is the defense-in-depth signal for the failure mode the
-   write-time guard exists to prevent (2026-04-30 lovesac). A
+   write-time guard exists to prevent (2026-04-30 e-commerce run). A
    maintainer scanning the summary should see `yes` on every row.
 
    Compute the wait summary by grouping each page's `_provenance.waitMode`
@@ -514,7 +536,7 @@ After all Phase 2-5 writes succeed:
    lazy-media walk — a capture pass that specs the full background
    walk (`playwright-recipe.md` § Capture list 11) yet silently
    produces nothing still ships an image-less capture (2026-06-26
-   knack.com: `cssBackgrounds: []` on every page, all product
+   a SaaS site: `cssBackgrounds: []` on every page, all product
    imagery lost). A flagged row is the cue to re-run that page with
    `--refresh` (and, if it persists, to fall back to headed Chrome per
    § Bot-management fallback). A maintainer scanning the summary should
@@ -583,12 +605,13 @@ capture (≤ 3 pages). It must never balloon the crawl.
 | `stardust/current/DESIGN.json`              | Sidecar with extensions for motifs, voice, components |
 | `stardust/current/brand-review.html`        | Self-contained visual review of the extraction (first eyeball-able artifact) |
 | `stardust/current/pages/<slug>.json`        | Per-page parsed structure + content                 |
+| `stardust/current/pages/<slug>.html`        | Settled rendered DOM (crawler sidecar; parse offline, never re-scrape) |
 | `stardust/current/assets/logo.<ext>`        | Extracted logo                                      |
 | `stardust/current/assets/favicon.<ext>`     | Site favicon (first-class asset; prototype head + deploy consume it) |
 | `stardust/current/assets/media/`            | Extracted media referenced by pages                 |
 | `stardust/current/assets/screenshots/`      | Per-page full-page screenshots, script-captured by `crawl.mjs` (Phase 2.5 vision gate + brand-review) |
 | `stardust/current/_brand-extraction.json`   | Consolidated brand surface (palette, type, motifs, voice, system components) |
-| `stardust/current/_crawl-log.json`          | Discovery + crawl audit trail (incl. `visionCheck[]`, `siblingCandidates[]`) |
+| `stardust/current/_crawl-log.json`          | Discovery + crawl audit trail (incl. `visionCheck[]`, `siblingCandidates[]`; `dynamicSurface` reach roll-up only with `--dynamics`) |
 | `stardust/current/brand-sources/<host>/`    | Shallow same-brand captures (only with `--brand-source`) |
 | `stardust/canon-source/`                    | Design-donor capture + descriptive DESIGN.md/json (only with `--design-source`) |
 | `stardust/state.json`                       | Updated with site + per-page status (+ `designSource` stamp) |
@@ -662,7 +685,7 @@ this in the user report; do not engineer around it.
   positions is forbidden.** The shortcut produces output
   indistinguishable from a successful run and propagates
   fabricated content through every downstream phase
-  (2026-04-30 lovesac.com: 20 of 25 pages synthesized, caught
+  (2026-04-30 e-commerce run: 20 of 25 pages synthesized, caught
   four phases later).
 
 ## Prep mode (--prep)

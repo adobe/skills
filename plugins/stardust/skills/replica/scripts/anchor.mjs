@@ -9,7 +9,7 @@
  *
  * Why it exists: the pixel probe's band table says WHERE drift is; this
  * probe says WHICH SECTION owns it. The fastest converging loop in the
- * field (broadridge, 2026-08-25/26 — roughly HALVED iterations vs
+ * field (a financial-services site, 2026-08-25/26 — roughly HALVED iterations vs
  * band-reading alone): run anchor.mjs on both sides, fix the FIRST
  * mismatched section top-down (everything below it is offset-contaminated,
  * same top-down rule as the band table), then re-run pixels. Build-side
@@ -35,8 +35,8 @@
  *     --json              machine-readable output on stdout
  *
  * Example (one line per section; diff the two outputs side by side):
- *   node scripts/replica/anchor.mjs "https://<site>/<path>" --width 1440
- *   node scripts/replica/anchor.mjs "http://localhost:8791/<slug>-proposed.html" --width 1440
+ *   node stardust/scripts/replica/anchor.mjs "https://<site>/<path>" --width 1440
+ *   node stardust/scripts/replica/anchor.mjs "http://localhost:8791/<slug>-proposed.html" --width 1440
  *
  * Requires: playwright, and the diff skill's scripts dir alongside
  * (live-session.mjs — the replica Setup copies both).

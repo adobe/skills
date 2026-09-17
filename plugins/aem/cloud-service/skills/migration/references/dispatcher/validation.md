@@ -1,5 +1,3 @@
-> **Beta**: This capability is in beta and under active development. Review its output carefully before using it on production dispatcher configurations.
-
 # Dispatcher Conversion — Validation (Branch E)
 
 This is **phase 6 (VALIDATE)** of the flow in [context.md](context.md): the final gate that runs the AEM Cloud Service dispatcher validator against the converted config and iterates until it is clean. It runs **after** phase 4's output verification has cleared (no `filter-acl-loss` critical failure) and phase 5's judgment pass has relocated or flagged what the tool didn't resolve.

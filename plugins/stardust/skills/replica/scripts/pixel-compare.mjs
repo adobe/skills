@@ -19,6 +19,16 @@
  *     --threshold <pct>    pass bar; exit 2 above it  (default 10)
  *     --band <px>          band height for breakdown  (default 500)
  *     --pm-threshold <n>   pixelmatch per-pixel color threshold (default 0.1)
+ *     --mask <yA:h[@yB]>   exclude a row band from the number (repeatable, comma
+ *                          list): rows yA..yA+h in A and yB..yB+h in B (yB
+ *                          defaults to yA) are neutralised on BOTH sides before
+ *                          matching and removed from the denominator. For
+ *                          authored-volatile regions — campaign heroes, promo
+ *                          slots — whose live content changes between capture and
+ *                          gate: they are authored content, not conversion
+ *                          fidelity, and they must not consume the fidelity bar.
+ *                          Every mask is printed on the verdict line; a masked
+ *                          number is never reported as an unmasked one.
  *     --json               emit machine-readable summary on stdout
  *
  * Example:
@@ -47,6 +57,8 @@ Usage: node pixel-compare.mjs <a.png> <b.png> [options]
   --threshold <pct>   pass bar as percent; exit 2 above it (default 10)
   --band <px>         band height for the breakdown (default 500)
   --pm-threshold <n>  pixelmatch per-pixel color threshold (default 0.1)
+  --mask <yA:h[@yB]>  exclude a row band (authored-volatile region) on both sides;
+                      repeatable / comma list; yB defaults to yA
   --json              machine-readable summary on stdout
   --help              this text
 
@@ -56,7 +68,7 @@ function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { out: 'diff.png', threshold: 10, band: 500, pmThreshold: 0.1, json: false };
+  const opts = { out: 'diff.png', threshold: 10, band: 500, pmThreshold: 0.1, json: false, masks: [] };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--out') { opts.out = rest[i += 1]; }
@@ -64,6 +76,13 @@ function parseArgs(argv) {
     else if (a === '--band') { opts.band = Number(rest[i += 1]); }
     else if (a === '--pm-threshold') { opts.pmThreshold = Number(rest[i += 1]); }
     else if (a === '--json') { opts.json = true; }
+    else if (a === '--mask') {
+      for (const spec of rest[i += 1].split(',').map((s) => s.trim()).filter(Boolean)) {
+        const m = spec.match(/^(\d+):(\d+)(?:@(\d+))?$/);
+        if (!m) { console.error(`bad --mask "${spec}" — expected yA:h or yA:h@yB\n\n${HELP}`); process.exit(1); }
+        opts.masks.push({ yA: Number(m[1]), h: Number(m[2]), yB: m[3] === undefined ? Number(m[1]) : Number(m[3]) });
+      }
+    }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else pos.push(a);
   }
@@ -89,11 +108,27 @@ function main() {
 
   const ca = cropTo(a, w, h);
   const cb = cropTo(b, w, h);
+  // --mask: neutralise authored-volatile row bands. The masked rows are painted
+  // one flat colour on BOTH sides (so they can never differ) and removed from the
+  // denominator. When yA ≠ yB the UNION of both row ranges is masked on both
+  // sides — masking each side at its own offset would compare grey against real
+  // content on the other side and manufacture a false diff.
+  const masked = new Uint8Array(h);
+  for (const mk of opts.masks) {
+    for (const y0 of [mk.yA, mk.yB]) for (let y = Math.max(0, y0); y < Math.min(h, y0 + mk.h); y += 1) masked[y] = 1;
+  }
+  let maskedRows = 0;
+  for (let y = 0; y < h; y += 1) {
+    if (!masked[y]) continue;
+    maskedRows += 1;
+    for (const img of [ca, cb]) img.data.fill(128, y * w * 4, (y + 1) * w * 4);
+  }
   const diff = new PNG({ width: w, height: h });
   const n = pixelmatch(ca.data, cb.data, diff.data, w, h, { threshold: opts.pmThreshold });
   mkdirSync(dirname(opts.out), { recursive: true });
   writeFileSync(opts.out, PNG.sync.write(diff));
-  const pct = (100 * n) / (w * h);
+  const denom = w * (h - maskedRows);
+  const pct = denom > 0 ? (100 * n) / denom : 0;
 
   // Per-band breakdown: count pixelmatch's red diff pixels (anti-aliased
   // pixels are drawn yellow and are NOT counted — matches pixelmatch's own count).
@@ -112,11 +147,11 @@ function main() {
 
   const pass = pct <= opts.threshold;
   if (opts.json) {
-    console.log(JSON.stringify({ a: aPath, b: bPath, compared: { width: w, height: h }, heightDelta, differingPixels: n, pct: Number(pct.toFixed(2)), threshold: opts.threshold, pass, diff: opts.out, bands: bands.map((x) => ({ ...x, pct: Number(x.pct.toFixed(1)) })) }, null, 2));
+    console.log(JSON.stringify({ a: aPath, b: bPath, compared: { width: w, height: h }, heightDelta, differingPixels: n, pct: Number(pct.toFixed(2)), threshold: opts.threshold, pass, diff: opts.out, masks: opts.masks, maskedRows, bands: bands.map((x) => ({ ...x, pct: Number(x.pct.toFixed(1)) })) }, null, 2));
   } else {
     console.log(`A ${a.width}x${a.height}  B ${b.width}x${b.height}  → compare ${w}x${h}, height delta ${heightDelta}px`);
     if (Math.abs(heightDelta) > 8) console.log(`  ⚠ height delta ${heightDelta}px — overlap-crop hides the tail; fix heights before trusting the %`);
-    console.log(`differing pixels: ${n} / ${w * h} = ${pct.toFixed(2)}%  (threshold ${opts.threshold}%) → ${pass ? 'PASS' : 'FAIL'}`);
+    console.log(`differing pixels: ${n} / ${denom} = ${pct.toFixed(2)}%  (threshold ${opts.threshold}%) → ${pass ? 'PASS' : 'FAIL'}${maskedRows ? `  [MASKED ${maskedRows} rows: ${opts.masks.map((m) => `${m.yA}:${m.h}${m.yB !== m.yA ? `@${m.yB}` : ''}`).join(', ')} — authored-volatile, excluded]` : ''}`);
     console.log(`diff image: ${opts.out}`);
     for (const bd of bands) {
       console.log(`  y ${String(bd.y0).padStart(6)}–${bd.y1}: ${bd.pct.toFixed(1)}%${bd.pct > 15 ? '  ◄◄ hot band' : ''}`);

@@ -296,7 +296,7 @@ Calling `OneTrust.RejectAll()` (and equivalents) commits a
 "non-essential cookies declined" state, which on some sites
 **activates other scripts** that wouldn't have run otherwise —
 analytics, geo-IP detection, locale-cookie writes, A/B test
-slots, live-chat. The 2026-05-03 nvidia.com run observed an
+slots, live-chat. A 2026-05-03 hardware-vendor run observed an
 expanded localization leak after the dismissal step that
 wasn't present in the pre-dismissal run. The dismissal step
 is therefore not behavior-neutral: cleaner screenshots come
@@ -379,7 +379,7 @@ disclosure trigger, and activate every non-active `role="tab"` once,
 re-reading content afterward. Guard against dialogs (skip triggers
 inside `[role="dialog"]` and anything whose click navigates away).
 **Skipping the reveal pass is a recipe violation** on any page with
-accordions or tabs. The 2026-06-26 knack.com run captured only 1 of 6
+accordions or tabs. A 2026-06-26 SaaS-site run captured only 1 of 6
 FAQ answers without it — the five collapsed answers were never in the
 DOM, so they were absent from `qa[]` and from the prototype, which
 then had to placeholder them.
@@ -404,7 +404,7 @@ For each page, capture:
    "FUZE"-style shells) the real tagline is buried among many `<h2>`s,
    and the DOM also carries hidden modal / error / promo / count states
    that a document-order heuristic grabs as the headline (observed on a
-   3m.com run: `"Thank You!"`, `"Our Apologies…"`, `"629 products"`,
+   an industrial-conglomerate run: `"Thank You!"`, `"Our Apologies…"`, `"629 products"`,
    `"Limited-time offer…"` all out-ranked the real hero line). Resolve
    two dedicated fields instead of trusting `headings[0]`:
 
@@ -530,7 +530,7 @@ For each page, capture:
       (`…/connect/<uuid>/file.jpg?MOD=AJPERES&CACHEID=…`); dropping the
       query (or reading `src` instead of the resolved `currentSrc`)
       yields a 404. An early reference that sliced `src` to a fixed
-      length produced exactly this on a 3m.com run.
+      length produced exactly this on an industrial-conglomerate run.
     - **Record a `resolves` flag.** After capture, issue a `HEAD`
       (fall back to `GET`) for each `<img>` src and set
       `resolves: true` only on a 2xx with an image `content-type`.
@@ -582,7 +582,7 @@ For each page, capture:
     element's rect (the pseudo doesn't have its own rect at this
     granularity), and the pseudo's `backgroundSize` /
     `backgroundPosition` / `backgroundRepeat`. The 2026-05-04
-    ups.com home dropped its hero this way: zero `cssBackgrounds[]`
+    a logistics home dropped its hero this way: zero `cssBackgrounds[]`
     hits for the home, prototype defaulted to the `og:image`
     instead of the actual visible hero. Performance: the pseudo
     walk runs only on elements that already passed the rect-size
@@ -621,7 +621,7 @@ For each page, capture:
     weakens visibly on any site whose typography is the most
     distinctive thing about it (private cuts on commercial brands,
     Google-Font-but-licenced-elsewhere combinations on agency
-    sites, etc.). The 2026-05-03 jfkairport.com run had two
+    sites, etc.). A 2026-05-03 airport-site run had two
     private cuts (Sharp Grotesk Semibold, Helvetica Now for PANYNJ)
     visible in network responses and absent from every captured
     artifact until added by a one-off script.
@@ -687,7 +687,7 @@ sections, and silent duplicate pages downstream.
    ("continuing to a page", "continue in english", "go back to Spanish"), and
    soft-error overlays ("temporarily unavailable", "page unavailable"). These
    sit in the DOM at capture time and otherwise become `h2`s and fake sections
-   (the bankofamerica run authored a "Page unavailable" section from one).
+   (a retail-bank run authored a "Page unavailable" section from one).
    Dismissing consent (§ Pre-flight) handles the common case; this is the
    backstop for custom banners the selector list misses.
 3. **Content-substance / SPA-shell check.** After capture, flag a page
@@ -704,7 +704,7 @@ sections, and silent duplicate pages downstream.
    into a `[role="dialog"]` / `[aria-modal]` / `.modal` container populated by an
    XHR (and often left `display:none` until opened), `body.innerText` captures
    none of it — so the page captures byte-identical to its listing (the
-   sycamorepartners `/investment-info/<slug>` case: 35 "identical" detail
+   a private-equity site's `/investment-info/<slug>` case: 35 "identical" detail
    records). Read such containers via **`textContent` even while hidden**, and
    when a URL deep-links to a modal, wait for its XHR to settle before capture.
 5. **Cross-page duplicate detection.** Hash each page's main content

@@ -278,7 +278,7 @@ chrome.
 ### The bar
 
 The bar to beat is
-<https://paolomoz.github.io/semrush-stardust/audit/knack-analysis.html> —
+<https://<host>/audit/<slug>-analysis.html> (a prior published audit) —
 match its content ambition, and beat it substantially on typography,
 hierarchy, and evidence presentation (figures captioned and cited, not
 pasted; numbers set in context, not floated in cards).

@@ -69,11 +69,22 @@ for a judgment pass without re-crawling.
 | `request-failed` | error | same-origin request failed or ≥400 |
 | `decoration-stalled` | warn | sections never reached `data-section-status="loaded"` (hanging tags stall EDS decoration) |
 
+## dynamics (H, browser; replay of `stardust/dynamics/parity.json`)
+
+Flows, not presence — each check replays a user-visible flow through `skills/dynamics/scripts/dynamics-check.mjs` (closed check set: `fetch-json`, `dom-count`, `click-dialog`, `search-query`, `form-flow`, `video-plays`, `consent-gate`, `no-page-errors`). Third-party request statuses are recorded per check so a probe-induced failure is distinguishable from a vendor restriction. Pass `--parity <file>` to point at another parity file; `--auth-header` / `--token-env` for protected origins (sent to the base origin only).
+
+| id | sev | what |
+|---|---|---|
+| `parity-missing` | info | no parity file — the migration never ran `stardust:dynamics` |
+| `parity-failed` | error | a replayed flow did not complete (empty form accepted, dialog did not open, query returned nothing, player never requested playback) |
+| `parity-env-limit` | warn | a failed flow whose feature records an environment limit (geo-fenced hand-off target) |
+| `parity-unchecked` | info | a feature with a non-final status and no replayable check — an owner item |
+
 ## visual (E, browser)
 
 | id | sev | what |
 |---|---|---|
-| `baseline-created` | info | first run — screenshot saved as baseline (commit it) |
+| `baseline-created` | info | first run on this machine — screenshot saved as baseline (local, not tracked; a clone re-creates it) |
 | `visual-diff` | warn >0.5% / error >5% *(triage)* | pixels changed vs baseline; evidence: both PNG paths + per-band ratios. Iframes are masked; judge warn-level diffs before calling them regressions |
 | `page-height-changed` | warn | full-page height moved >2% |
 | `screenshot-failed` | warn | capture failed |
@@ -152,6 +163,20 @@ copy at worst. Exemptions (EW5 — declared, never silent): `--ew-exempt a,b`
 counted under `exempt` in the summary and never raise `dead-text`. Desktop
 viewport only (instrumentation is viewport-independent); `--max-pages` applies;
 needs playwright like `browse`.
+
+## ai-readability (K, browser + raw fetch — Adobe AI Content Visibility Checker, exact formula)
+
+Per page: served HTML (ChatGPT-User UA, no JS) vs the rendered DOM as textContent; landmarks
+stripped by default. `strict` = the tool's popup number; `code` = fragments credited + app blocks
+excluded (`--ai-exclude-blocks`, default `client-app,widget`); `servedGap` = rendered words absent
+from the served HTML, per block. Formula, cause classes and fixes: `deploy/reference/ai-readability.md`.
+
+| id | sev | what |
+|---|---|---|
+| `ai-readability-poor` | error | strict < 75 — the owner's gauge reads Fair/Poor; the rendered DOM carries hundreds of words the document lacks (clones, index cards, fragments) |
+| `ai-readability-low` | warn | strict < 95 or code < 98 — block code adds words the document does not have |
+| `ai-readability-served-gap` | info | ≥ 40 rendered main words never served — non-rendering crawlers miss them (fragment / index / generated text); evidence names the blocks |
+| `ai-readability-unmeasured` | info | page could not be fetched or rendered for the check |
 
 ## Cross-cutting
 

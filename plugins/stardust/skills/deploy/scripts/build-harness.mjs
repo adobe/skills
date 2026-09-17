@@ -10,7 +10,7 @@
  * that corrupts the harness DOM — #46). This does it with balanced tag counting.
  *
  * Usage: node skills/deploy/scripts/build-harness.mjs <contentFile> <outHarness> [--root <dir>]
- *   e.g. node skills/deploy/scripts/build-harness.mjs content/snowflake-blocks/test-12.html qa/test-12.html
+ *   e.g. node skills/deploy/scripts/build-harness.mjs content/snowflake-blocks/test-12.html stardust/.work/harness/test-12.html
  *   --root <dir>  repo root the harness is served from (favicon detection;
  *                 default: cwd)
  *

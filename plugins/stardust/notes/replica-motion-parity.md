@@ -1,7 +1,7 @@
 # stardust:replica improvement — motion parity (observe, don't infer)
 
 Self-contained spec for a general plugin improvement, written from the
-rwe.com migration (2026-08). Everything here is site-agnostic; rwe examples
+an energy-company migration (2026-08). Everything here is site-agnostic; that site's examples
 are marked as evidence. Reference implementation artifacts in this project:
 
 - Instrument: `scripts/replica/motion-observe.mjs` (this repo — copy into
@@ -30,10 +30,10 @@ classes from the site's CSS, element inventory from DOM class names
 `:hover` selectors. This **invents motion** three distinct ways, all caught
 in user review:
 
-1. **Dead animation classes.** Sites (esp. component CMSs — rwe is
+1. **Dead animation classes.** Sites (esp. component CMSs — the energy-company site is
    Sitecore) stamp animation classes on many elements; the runtime JS only
    ever adds the trigger class (`.animate` here) to SOME of them. Evidence:
-   on rwe, of ~8 caption-class families carrying `right-to-left-animation`,
+   on the energy-company site, of ~8 caption-class families carrying `right-to-left-animation`,
    only 2 ever fire; 3 whole page types have ZERO firing entrance
    animations despite fully classed markup. Tagging from static classes
    animated elements the real site never animates.
@@ -152,7 +152,7 @@ timers so autoplay stays at t=0.
 
 1. **No pixel regression:** re-run pixel-compare per touched archetype at
    the gate breakpoints; the number must return to (±noise of) the gated
-   value. rwe evidence: press-hub 1.01% gated → 1.06% with invented motion
+   value. Energy-company-site evidence: press-hub 1.01% gated → 1.06% with invented motion
    (drift!) → 1.01% exact after evidence-only rewrite. The drift itself is
    a smell test: motion code that changes t=0 is wrong.
 2. **Behavior match:** headless run against the PROTOTYPE asserting, per
@@ -174,10 +174,10 @@ timers so autoplay stays at t=0.
   while an equivalent rendered effect in the recreation animates
   width/height — equivalence of the RENDERED effect is the bar, but the
   duration/easing must be the measured ones.
-- Wobble/stagger patterns: delays may be child-order dependent (rwe: 2nd
+- Wobble/stagger patterns: delays may be child-order dependent (energy-company site: 2nd
   child first, 0.5s steps, 1st child last) — read them from the CSS rules
   of the FIRED animation, they're not guessable.
-- `prefers-reduced-motion`: mirror the live site's handling (rwe: none) —
+- `prefers-reduced-motion`: mirror the live site's handling (energy-company site: none) —
   do not "improve" by adding it; that's an inconsistency-register item.
 
 ## 8. Suggested plugin deliverables checklist

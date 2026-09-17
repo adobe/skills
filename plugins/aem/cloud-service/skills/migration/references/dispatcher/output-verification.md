@@ -1,5 +1,3 @@
-> **Beta**: This capability is in beta and under active development. Review its output carefully before using it on production dispatcher configurations.
-
 # Dispatcher Conversion — Output Verification + Normalize (Branch E)
 
 This is phase 4 (**VERIFY + NORMALIZE**) of the flow in [context.md](context.md): the layer that checks what Adobe's converter actually emitted against the phase-1 baseline, then normalizes the surviving output into current-SDK shape. Phase 3 (EXECUTE) tells you the tool *ran*; this phase tells you whether it produced a config you can safely ship — and stops the pipeline cold when it didn't.
@@ -55,6 +53,8 @@ Read the verdict and route on severity — this is the whole point of the gate:
 - **Any `critical` failure (i.e. `filter-acl-loss`) = STOP.** Do **not** proceed to phase 5 (judgment) or phase 6 (validation). Surface the failure to the user with the `detail` string. A dropped filter ACL is never an acceptable auto-pass; it is a security regression that must be resolved before the config goes anywhere. This matches [context.md](context.md): "STOP on any `filter-acl-loss` failure … a hard gate, never a silent pass."
 - **`important` failures = resolve or explicitly accept.** `filter-rule-regression` and `disorganized` don't halt the pipeline, but they don't clear on their own either. Either fix them (restore the lost filter rules; restructure the mega-vhost) or record an explicit, reasoned acceptance in the run report. An unaddressed `important` finding is a manual-residue item the user must sign off on — see [context.md](context.md)'s "Manual residue" list.
 - **`warnings` = advisory.** Note them, confirm the rewrite drop was intentional, add the missing farm collector, and move on. They inform phase 5/6; they don't block.
+
+**Scope note — this gate is quantity, not quality.** `filter-acl-loss` / `filter-rule-regression` verify that filter rules were *preserved* (count), not that the resulting policy is *secure*. A conversion can clear this gate with every rule intact yet still ship an insecure posture — an allow-all rule, a missing default-deny, or a sensitive path (`/crx`, `/system`, `/bin`, `/apps`, `/libs`) left in an allow with no matching deny. That review is **not** re-implemented here (a naive content heuristic gets filter evaluation-order and glob semantics wrong in both directions); it is delegated to the `dispatcher` skill's `security-hardening` — `security-baseline-checklist.md` + `sensitive-paths-catalog.md`, run via `lint(strict)`. It is a **required** post-conversion pass, routed in phase 5 [cross-boundary.md](cross-boundary.md) and listed under "Next checks" in the generated `conversion-report.md`. Passing this gate is necessary, not sufficient.
 
 ## Normalization
 

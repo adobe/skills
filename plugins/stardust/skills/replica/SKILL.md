@@ -23,7 +23,7 @@ Two properties make this a different animal from the redesign pipeline:
    CSS — never DOM copies, never ported page-level stylesheets. Fidelity is
    proven by instruments, not asserted by construction.
 
-Validated end-to-end (aesop.com home, 2026-07-03): 8.31% → 2.93% → **1.31%**
+Validated end-to-end (a typographic retail home page, 2026-07-03): 8.31% → 2.93% → **1.31%**
 pixel diff in 3 measured iterations, height Δ 0, content-diff "findings:
 none" (198/198 nodes). Every fix came off the instruments, never off
 eyeballing.
@@ -51,18 +51,22 @@ eyeballing.
    (`node -e "import('pixelmatch').then(()=>process.exit(0))"`).
 4. Copy scripts into the project and run them from there, not from the
    plugin: this skill's whole `scripts/` dir (stitch-shot, pixel-compare,
-   anchor, gate.sh, motion-observe) AND the whole `../diff/scripts/` dir (the diff scripts import
-   diff-profiles.mjs, and ALL live-target hardening — including
+   crop-compare, chrome-parity, row-profile, sibling-variance, anchor,
+   gate.sh, motion-observe) to `stardust/scripts/replica/` AND the whole
+   `../diff/scripts/` dir to `stardust/scripts/diff/` (the diff scripts
+   import diff-profiles.mjs, and ALL live-target hardening — including
    stitch-shot's — lives in its live-session.mjs; stitch-shot resolves it
-   from `scripts/diff/` next to `scripts/replica/`, so keep the two dirs
-   siblings).
+   from `stardust/scripts/diff/` next to `stardust/scripts/replica/`, so
+   keep the two dirs siblings). Never copy into the project-root
+   `scripts/` — that is the EDS boilerplate's directory (master skill
+   § Artifacts, the write boundary).
 
 ## Procedure
 
 Five phases. Phases 1 and 5 delegate to existing skills unchanged; phases
 2–4 are owned by `replica`.
 
-### Phase 1 — EXTRACT (delegate to `stardust:extract --prep`)
+### Phase 1 — EXTRACT (delegate to `stardust:extract --prep --dynamics`)
 
 Invoke `stardust:extract <URL> --prep`, unchanged. Prep mode is required —
 replica consumes the full migration inventory, not the discovery cap:
@@ -127,6 +131,15 @@ Full contract: `reference/preserve-direction.md`. Summary:
    evidence + the minimal change + a status. **Empty register = pure
    replica** — that is a valid and common outcome, not a failure.
 
+4. **Dynamic surface (migration gate — `stardust:dynamics` Phases 1–3).**
+   Phase 1 must have run `extract --dynamics`. Run the detector on the
+   archetypes, draft the triage (`--target-origin` when the EDS host is
+   known), curate `stardust/dynamic-features.md` + `-plan.md`. Every row
+   gets a disposition; the static recreation continues regardless. This is
+   what surfaces modals, players, forms, search, tags and host-bound APIs
+   that pixel gates certify as correct. Contract:
+   `skills/dynamics/reference/triage.md`.
+
 Anything not in the register is out of scope for change. When a recreation
 choice would "improve" something not registered, it is a fidelity bug.
 
@@ -165,7 +178,7 @@ apply; the source-fidelity gate (Phase 4) replaces them entirely. A
 woff2 for open/self-hostable faces). For licensed commercial kits: never
 rehost on the new domain — pick a metric-matched substitute, keep the brand
 family name first in the font stack so a licensed drop-in later wins, and
-surface the substitution to the user. (Prior art: heathrow §3.7.)
+surface the substitution to the user. (Prior art: an earlier airport-site migration's improvement notes, §3.7.)
 
 **CSS-portation is the per-section fallback only** — paint-level effects not
 recoverable from computed styles, JS-hydrated commerce widgets, video or
@@ -185,18 +198,20 @@ LIVE="https://<site>/<path>"
 
 # Probe 1+2 — the diff skill's two probes, generic profile (--dismiss keeps
 # consent + timed marketing modals out of both inventories)
-node scripts/diff/content-diff.mjs "$LIVE" "$PROTO" --profile generic --width 1440 --main "<content-root>" --dismiss
-node scripts/diff/visual-diff.mjs  "$LIVE" "$PROTO" --profile generic --width 1440 --main "<content-root>" --dismiss
+node stardust/scripts/diff/content-diff.mjs "$LIVE" "$PROTO" --profile generic --width 1440 --main "<content-root>" --dismiss
+node stardust/scripts/diff/visual-diff.mjs  "$LIVE" "$PROTO" --profile generic --width 1440 --main "<content-root>" --dismiss
 
 # Probe 3 — replica's pixel probe (stitched captures, NEVER fullPage:true)
-node scripts/replica/stitch-shot.mjs "$LIVE"  stardust/replica/gates/<slug>-1440/live.png  --width 1440 --settle
-node scripts/replica/stitch-shot.mjs "$PROTO" stardust/replica/gates/<slug>-1440/proto.png --width 1440
-node scripts/replica/pixel-compare.mjs stardust/replica/gates/<slug>-1440/live.png \
+node stardust/scripts/replica/stitch-shot.mjs "$LIVE"  stardust/replica/gates/<slug>-1440/live.png  --width 1440 --settle
+node stardust/scripts/replica/stitch-shot.mjs "$PROTO" stardust/replica/gates/<slug>-1440/proto.png --width 1440
+node stardust/scripts/replica/pixel-compare.mjs stardust/replica/gates/<slug>-1440/live.png \
   stardust/replica/gates/<slug>-1440/proto.png --out stardust/replica/gates/<slug>-1440/diff.png
 
 # Iteration inner loop (gate doc § Band breakdown): anchor probe + pixel round
-node scripts/replica/anchor.mjs "$PROTO" --width 1440   # build-side runs are free
-scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
+node stardust/scripts/replica/anchor.mjs "$PROTO" --width 1440   # build-side runs are free
+# Chrome: computed-style parity BEFORE any pixel round on header/footer/strips
+node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440   # exit 0 = quiet, then crop-compare
+stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
 ```
 
 **Pass bar (all four, per breakpoint):**
@@ -245,7 +260,7 @@ output per archetype — not a post-pass**
 (`reference/recreation-procedure.md` § Interaction parity; optional, it was
 skipped on 5 of 7 archetypes — all shipped static). Motion is OBSERVED,
 never inferred from static classes or CSS: run
-`scripts/replica/motion-observe.mjs` per archetype live URL →
+`stardust/scripts/replica/motion-observe.mjs` per archetype live URL →
 `stardust/replica/motion/<slug>.json`, implement ONLY behaviors that
 fired (dead classes = NOT implemented), record
 `motion: {observed, implemented, dead[]}` in `progress.json`, and re-run
@@ -263,7 +278,11 @@ approval per the standard prototype approval flow (hands-off mode records
   **sibling tier** (`../migrate/reference/fidelity-tiers.md`): structural
   clone of the gated archetype + content-fidelity + delivery-lint +
   media-reconcile. Siblings inherit the archetype's source-fidelity gate —
-  never re-author one from scratch. Content-fidelity is
+  never re-author one from scratch. **Template constancy is measured, not
+  assumed**: before cloning, run `stardust/scripts/replica/sibling-variance.mjs
+  <archetype> <siblings…> --probe <block>=<sel> …` once per template and
+  budget every delta as a block VARIANT class on the sibling's content (same
+  file, § Sibling variance probe). Content-fidelity is
   **measured per page at import time** (same file, § Content-count
   acceptance) so importer bugs surface while cheap to fix.
 - **Delivery** via `stardust:deploy` per page. Bias the decode tier toward

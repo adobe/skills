@@ -24,8 +24,8 @@ The two halves have different contracts:
   Structure (element counts, tag sequences) is informational, never
   gating — a reskin re-structures markup by design.
 
-The decisive rule, validated in the UC2-E1 experiment (hirslanden ×
-stripe: 2281/2281 text bytes, 7/7 images, 47/47 slots, 13/13 metadata,
+The decisive rule, validated in the UC2-E1 experiment (a healthcare site ×
+a fintech donor: 2281/2281 text bytes, 7/7 images, 47/47 slots, 13/13 metadata,
 17/17 donor-token probe): **the page is generated programmatically from
 the captured content model — content strings are never retyped.** Byte
 fidelity then holds by construction and the content gate becomes a

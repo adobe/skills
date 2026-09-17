@@ -1,5 +1,3 @@
-> **Beta**: This capability is in beta and under active development. Review its output carefully before using it on production dispatcher configurations.
-
 # Dispatcher Conversion — Config Generation (Branch E)
 
 This is phase 2 (**PLAN + CONFIG-GEN**) of the flow in [context.md](context.md): turning the phase-1 inventory (`buildInventory(root)`) into the tool's own `config.yaml` contract. This is agent judgment, not a script — `dispatcher-inventory.js` tells you *what's there*; nothing in `scripts/` decides *how the inventory maps onto the tool's config*. That mapping is this document.

@@ -1,12 +1,15 @@
 // Full annotated reference for a Commerce app runtime action backed by
 // App Builder Database Storage (@adobe/aio-lib-db).
 //
-// Lifecycle (identical for web actions and event/webhook handlers):
+// This example is a web action. The DB lifecycle below is identical whichever
+// action type calls it — what differs is the input payload shape and the
+// response format (see the commerce-app-storage skill for event and webhook
+// handler variants):
 //   resolveImsAuthParams -> getAccessToken -> init -> connect -> use collection -> ALWAYS close.
 //
 // Registration requirements (in src/commerce-extensibility-1/ext.config.yaml):
 //   - include-ims-credentials: true   (REQUIRED — provides the IMS token below)
-//   - web: "yes" for an HTTP-invokable web action; "no" for an event/webhook handler
+//   - web: "yes" for an HTTP-invokable web action; "no" for an event or webhook handler
 //   - the "App Builder Data Services" API must be added to the project in the
 //     Adobe Developer Console (every workspace that uses the database)
 //   - the workspace database must be provisioned: declaratively via the
@@ -31,9 +34,6 @@ export async function main(params: Record<string, unknown>) {
     level: (params.LOG_LEVEL as string) || "info",
   });
 
-  // Web actions receive input directly on params; event/webhook handlers
-  // receive the payload on params.data instead:
-  //   const data = params.data as Record<string, unknown>;
   let client: DbClient | undefined;
 
   try {

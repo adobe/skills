@@ -218,7 +218,7 @@ Aggregation rules:
   Picking up `rgba(255, 255, 255, 0)` as a `surface` role with high
   occurrence count (because most elements default to transparent
   backgrounds in CSS) is a real bug observed on
-  theroadhome.org.
+  a nonprofit shelter site.
 - Cluster colors within `ΔE < 5` (CIE76 in Lab space) and pick the
   most frequent member as the cluster representative.
 - Pure `#000` and `#fff` are kept verbatim — do **not** silently tint
@@ -594,7 +594,7 @@ Without this field elevated, downstream `prototype` has to re-derive
 "which captured image is the hero" from a noisy 16-image list every
 render — and frequently picks the `og:image` (a curated thumbnail
 optimised for social cards) instead of the actual visible hero. The
-2026-05-04 ups.com home shipped the wrong hero on three variants
+2026-05-04 logistics home shipped the wrong hero on three variants
 this way before the user noticed.
 
 Resolve from the home page's captured media (both
@@ -637,7 +637,7 @@ common thing a generic redesign silently flattens to a static hero.
 Elevate it here so downstream `prototype` preserves it under
 `intent-dimensions.md` § 8b (Signature preservation) instead of
 re-deriving it from the raw `media` inventory and missing it — the
-exact failure that dropped the moneyhub.com home's HLS brand-animation
+exact failure that dropped a fintech home's HLS brand-animation
 on the first migration pass.
 
 Resolve from the home page's captured media

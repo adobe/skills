@@ -5,6 +5,28 @@ All agents that produce or consume these types must conform to these schemas exa
 
 ---
 
+## Assembled Metadata
+
+The orchestrator always includes `upgradeMode` in the generated
+`app.commerce.config.ts` metadata:
+
+```typescript
+interface AssembledMetadata {
+  id: string;
+  displayName: string;
+  version: string;
+  description: string;
+  upgradeMode: "auto" | "manual";
+}
+```
+
+`"auto"` is the migration default. It lets the generated post-deploy hook call
+the desired-state `POST /installation` endpoint, execute a planned upgrade, and
+wait for its lifecycle result. Use `"manual"` only when the developer explicitly
+wants plans returned without starting execution.
+
+---
+
 ## ProjectSnapshot
 
 Produced by the **Analyzer agent**. Consumed by all domain agents and the Executor agent.

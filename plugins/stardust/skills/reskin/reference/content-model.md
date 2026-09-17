@@ -107,7 +107,7 @@ Within a slot:
   therefore of the byte-gate reference — but `getComputedStyle` on
   `<option>` computes `display:none`, so without this array the
   option bytes exist ONLY inside the concatenated `visibleText`,
-  with no structured field to render from (the redcross
+  with no structured field to render from (a nonprofit's
   course-enrolment form: "Select a Class Type / Online Classes /
   … / FIND A CLASS"). Any locator / course-finder / country-picker
   page hits this. Captured: `control` (tag), `name`, `text`
@@ -182,13 +182,13 @@ Chrome's `innerText`. `visibleText` (the gate reference) *is*
 `innerText`; stream `text` nodes are admitted **only** when their
 text occurs in the parent's `innerText`, and their string is sliced
 from it. Text that a naive visibility predicate would admit but
-`innerText` omits — SVG `<title>`/`<desc>` a11y labels (kew's
+`innerText` omits — SVG `<title>`/`<desc>` a11y labels (a field site's
 carousel "Arrow right"/"Arrow left", the video "Play" label),
 duplicated nested link labels, UA-hidden text — never enters the
 stream. Without this basis the stream emits **ghost nodes**: a
 spec-compliant renderer ("emit stream order, never reconstruct from
 visibleText") reproduces them and fails the byte gate through no
-fault of its own — the kew field run hit exactly that on 5 of 8
+fault of its own — a field run hit exactly that on 5 of 8
 slots.
 
 `orderedVerified` (per slot) records that the stream **tiles**
@@ -225,7 +225,7 @@ isn't a stream node) and never edit `visibleText` itself.
 
 ### Why this exists (the smoke-test history)
 
-The first field run of this skill (ethz.ch × posthog.com) had only
+The first field run of this skill (a university site × a SaaS donor) had only
 the per-type arrays, and reconstructing document order from
 `visibleText` as an oracle consumed the majority of the renderer's
 engineering time — three debug rounds on one page. The three traps
@@ -313,7 +313,7 @@ Procedure, per page:
    **Each selector captures exactly ONE element** — resolution is
    `querySelector`, first match, NOT set-matching. The example above
    works because each selector is unique on its page; a class shared
-   by N siblings captures only the first (kew has three
+   by N siblings captures only the first (one field site has three
    `section.section--highlights` — that class as a scope captured
    one and silently dropped two). To capture N sibling sections:
    scope their **common container** without `!` (its children become
@@ -337,7 +337,7 @@ high-coverage entry.
 **A missing "obvious" root can be a degraded page, not a scope
 problem.** The capture navigates live URLs through the shared
 live-session hardening (real-Chrome UA + the standard request
-headers, `domcontentloaded`, challenge detection — kew served a
+headers, `domcontentloaded`, challenge detection — one field site served a
 non-hydrated document with no `<main>` to the default headless UA,
 and Akamai-class bot managers 403 on missing standard headers even
 with the real UA). A bot challenge fails loud with **exit 3** and is

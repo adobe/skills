@@ -75,6 +75,7 @@ When populating `unresolvedQuestions`:
 | `events.commerce.provider.description` | `eventing.commerce[N].provider.description`           |
 | `events.commerce.provider.key`         | `eventing.commerce[N].provider.key`                   |
 | `events.external.provider.label`       | `eventing.external[N].provider.label`                 |
+| `metadata.upgradeMode`                 | `metadata.upgradeMode`                                |
 | `webhooks.step.N.name`                 | `installation.customInstallationSteps[N].name`        |
 | `webhooks.step.N.description`          | `installation.customInstallationSteps[N].description` |
 | `adminUiSdk.menuItem.N.title`          | `adminUiSdk.registration.menuItems[N].title`          |

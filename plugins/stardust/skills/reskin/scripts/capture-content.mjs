@@ -282,7 +282,7 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
     // part of innerText — the byte-gate reference — but getComputedStyle on
     // <option> is display:none, so without an explicit kind the options are
     // skipped by the stream AND every per-type array, leaving the slot's
-    // bytes unreconstructable from structured fields (redcross s03).
+    // bytes unreconstructable from structured fields (nonprofit site, s03).
     if (t === 'select' || t === 'input' || t === 'textarea') return 'formControl';
     return null;
   };
