@@ -41,16 +41,13 @@ If no prior `-custom-N` index exists for a given base name, the tool's own `-cus
 
 ### Step 3 — Invoke Index Converter
 
-The package has no `bin` entry — it must be run via its executor script. Install to a temp directory and invoke with a `config.yaml`:
+The package has no `bin` entry, so it can't be run as a plain `npx <pkg>` command — it must be `require()`'d as a script, which executes it (it has no `require.main` guard) and reads `config.yaml` from `process.cwd()`. Use `npx -y` to resolve/cache the package (no manual `npm install` or throwaway `node_modules`) and only create a small directory for the required `config.yaml`:
 
 ```bash
-# 1. Install to a temp working directory (no project pollution)
+# 1. config.yaml must live in cwd when the executor runs
 WORK_DIR="/tmp/oak-index-tool-<sessionId>"
 mkdir -p "$WORK_DIR"
 cd "$WORK_DIR"
-npm install @adobe/aem-cs-source-migration-index-converter
-
-# 2. Write config.yaml (must be in cwd when running the executor)
 cat > config.yaml << 'YAML'
 indexConverter:
     ensureIndexDefinitionContentPackageJcrRootPath:
@@ -60,8 +57,12 @@ indexConverter:
     filterXMLPath: <repo>/ui.apps/src/main/content/META-INF/vault/filter.xml
 YAML
 
-# 3. Run the executor
-node node_modules/@adobe/aem-cs-source-migration-index-converter/executors/index-converter.js
+# 2. Resolve the npx-cached install (npx handles install + caching for future runs)
+NODE_PATH="$(npx -y -p @adobe/aem-cs-source-migration-index-converter -c 'echo "${PATH%%:*}"')"
+export NODE_PATH="${NODE_PATH%/.bin}"
+
+# 3. Run the executor (require() triggers it; it reads config.yaml from cwd above)
+node -e "require('@adobe/aem-cs-source-migration-index-converter/executors/index-converter.js')"
 ```
 
 The tool writes output to `./target/index/` under the working directory:
@@ -115,14 +116,6 @@ mvn -pl all aem-analyser:project-analyse
 
 Report PASS or FAIL with file:line evidence on FAIL.
 
-### Step 7 — Telemetry (when enabled)
-
-Emit events through the migration skill's helper:
-- `skill.invoked` (pattern=oakIndex)
-- `tool.run` (tool=index-converter, durationMs, exitCode)
-- `pattern.batch.processed` (count of indexes transformed)
-- `validation.run` (passed=true|false)
-
 ## Naming conventions produced by the tool
 
 The Index Converter applies these naming rules (these are the tool's behavior, documented here for reference; the skill does **not** re-implement them — but does **override** the suffix per Step 2 when a higher `-custom-N` already exists):
@@ -139,17 +132,3 @@ The Index Converter applies these naming rules (these are the tool's behavior, d
 - Does not decide whether to use Lucene vs Elasticsearch
 - Does not modify queries that depend on the renamed indexes (separate task)
 - Does not deploy to a running AEM instance
-
-## Verification on `aem-guides-wknd-legacy`
-
-Reference test project: `aem-guides-wknd-legacy` contains 3 real OID violations:
-- `damAssetLucene` modified in place (`standard.index.modification`)
-- `wkndId` custom index without `-custom-` suffix (`index.rule.violation`)
-- `wkndTerminationDate` custom index without `-custom-` suffix (`index.rule.violation`)
-
-Expected after running this skill:
-- `damAssetLucene` → `<ootb-name-on-target-cloud-services>-<version>-custom-1` — the tool determines the exact name from the bundled Cloud Services baseline XML. With `aemVersion: Cloud_Services` and current tool version (0.2.3) this produces `damAssetStateIndex-3-custom-1` (or the next available `-custom-N` per Step 2, if a prior migration already produced `-custom-1`). The [reference branch `code/oid`](https://github.com/adobe/aem-guides-wknd-legacy/tree/code/oid) (created 2021) shows `damAssetLucene-6-custom-1` because that was the OOTB name at that time — both are correct for their respective baseline versions. The content is the full merged OOTB definition plus the customer's delta properties.
-- `wkndId` — **not converted automatically** (property type, not lucene); must be migrated manually per tool report
-- `wkndTerminationDate` — **not converted automatically** (ordered type, not lucene); must be migrated manually per tool report
-- `mvn -pl ui.apps clean install` passes
-- `aemanalyser-maven-plugin` reports no OID-class errors

@@ -28,7 +28,7 @@ function write(root, rel, content) {
 
 // ── Pattern registry ────────────────────────────────────────────────────────
 
-test('registry includes all 13 migration patterns with a valid strategy', () => {
+test('registry includes all migration patterns with a valid strategy', () => {
   const expected = [
     'scheduler', 'resourceChangeListener', 'event-migration', 'assetApi', 'replication',
     'htlLint', 'osgiConfig', 'lui', 'cdw', 'templateModernization', 'guavaCache', 'dispatcherConversion',
