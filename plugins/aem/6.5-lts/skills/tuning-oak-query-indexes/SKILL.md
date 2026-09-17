@@ -2,7 +2,7 @@
 name: tuning-oak-query-indexes
 description: Use when a Jackrabbit Oak/AEM JCR query is slow, logs a traversal warning, or you're adding/changing a query and need to check or update its property/Lucene index definition so the query is answered by the index instead of in-memory filtering or sorting.
 license: Apache-2.0
-compatibility: Any Jackrabbit Oak-backed repository (AEM 6.5 LTS/AMS or AEM as a Cloud Service) using property or Lucene query indexes.
+compatibility: Any Jackrabbit Oak-backed repository on AEM 6.5 LTS/AMS using property or Lucene query indexes.
 ---
 
 # Tuning Oak Query Indexes
@@ -15,10 +15,10 @@ same for a wrong nodetype or path scope, **even if every field is indexed**. Thi
 for finding exactly which fields/conditions aren't covered and what index-definition change fixes each
 one.
 
-**Ground truth for every claim below**: `ai-agent-indexing-guide.md`, bundled in this skill's own
-directory (`.claude/skills/tuning-oak-query-indexes/ai-agent-indexing-guide.md`) so this skill works the
-same way regardless of which codebase it's copied into. Read it on demand for exact property tables,
-defaults, cost-model details, and edge cases — this skill is the checklist, not the reference.
+**Ground truth for every claim below**: [the AI agent indexing guide](references/ai-agent-indexing-guide.md),
+bundled alongside this skill so it works the same way regardless of which codebase it's copied into. Read
+it on demand for exact property tables, defaults, cost-model details, and edge cases — this skill is the
+checklist, not the reference.
 
 **This skill assumes nothing about the codebase it's used in beyond "you have a query and an index
 definition."** It does not require an AEM instance, a running Oak repository, or a checkout of Oak's own
@@ -120,7 +120,7 @@ per the final section with verification stated as reasoned-but-unproven.
      feature that doesn't work through the cost-plan mechanism actually behaves correctly**: suggestions
      (`rep:suggest`), spellcheck (`rep:spellcheck`), facet *counts*, similarity ranking (`rep:similar`),
      and `rep:native` all fall in this category and need their own verification, not an `explain` check.
-     See `ai-agent-indexing-guide.md`'s "Verifying features `explain` can't reach" (Appendix B) for the two
+     See the [indexing guide](references/ai-agent-indexing-guide.md)'s "Verifying features `explain` can't reach" (Appendix B) for the two
      ways to get real signal (a live-instance config/MBean cross-check, or the exact Oak trunk unit tests to
      run) — and if neither is available, say so plainly in the report rather than guessing.
 7. **Identify the single existing index the fix belongs on before writing any change.** Never invent a
@@ -171,8 +171,8 @@ per the final section with verification stated as reasoned-but-unproven.
    query-request-local. **Producing the corrected index definition (the JSON/content diff) is not the same
    as applying it** — writing it out for review is fine to do unprompted, but actually pushing it to a live
    instance (a Sling POST/`curl -F`, a `.content.xml` commit, or any other write) is a repository-mutating
-   change like any other and needs the user's explicit go-ahead first, same as `ai-agent-indexing-guide.md`
-   Appendix B requires for its create/modify/delete commands.
+   change like any other and needs the user's explicit go-ahead first, same as the
+   [indexing guide](references/ai-agent-indexing-guide.md)'s Appendix B requires for its create/modify/delete commands.
 9. **Re-verify with `explain`** after the change has been applied (and after the async cycle, if applicable) —
    confirm no residual/in-memory filtering remains, and any `ORDER BY` is served by the index, not a full
    in-memory sort.
