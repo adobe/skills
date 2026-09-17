@@ -9,10 +9,10 @@
 # delete it explicitly to re-take (site changed, capture hardening changed).
 #
 # Usage:
-#   scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>]
+#   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>]
 #
 # Example (iteration 2 of the home archetype at 1440):
-#   scripts/replica/gate.sh home "https://<site>/" \
+#   stardust/scripts/replica/gate.sh home "https://<site>/" \
 #     "http://localhost:8791/home-proposed.html" 1440 iter2
 #
 # Evidence lands in stardust/replica/gates/<slug>-<width>/

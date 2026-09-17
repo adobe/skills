@@ -1,18 +1,66 @@
 {
-  "name": "direct-from-phrase",
-  "total": 100,
-  "criteria": [
-    { "id": "activated",                  "weight": 5,  "description": "The stardust:direct skill was invoked with the freeform phrase as input." },
-    { "id": "dimensional_restatement",    "weight": 10, "description": "The agent restated the phrase in stardust's dimensional vocabulary (register / expressive axis / tone / density / distinctiveness / audience / constraints) before doing anything else. Each axis is named and either marked as moved (with direction), pinned, or left alone." },
-    { "id": "gaps_identified",            "weight": 5,  "description": "The agent explicitly identified what's underspecified before asking questions. 'Young' as too coarse (or equivalent) was called out." },
-    { "id": "question_ceiling",           "weight": 10, "description": "Interactive invocation (a user is present in this eval and nothing requested hands-off): the agent asked the USER to sharpen the audience gap rather than self-answering it, asked at most TWO clarifying questions total, and each had concrete options + an 'other' / 'skip' escape hatch and cited which dimension it resolved. Self-answered 'would have been' questions (hands-off behavior) fail this criterion." },
-    { "id": "plan_shown_before_execution","weight": 15, "description": "After answers (or with no questions needed), the agent showed the resolved plan to the user BEFORE running any impeccable command or writing any file. Plan included: one-sentence restatement, assumptions, command sequence with reasoning, pages affected." },
-    { "id": "divergence_resolved",        "weight": 10, "description": "Divergence inputs resolved per the active mode: Mode A (brand-faithful) pins palette/type from the captured surface; Mode B / default mode resolves anchors via the research-first procedure (refero MCP or WebSearch, with the 4-dim seed roll only as fallback or for explicit rebrands). Font and palette resolution recorded in DESIGN.json.extensions.divergence per the v2 storage shape." },
-    { "id": "product_md_direct",          "weight": 10, "description": "PRODUCT.md authored directly at project root using impeccable's teach.md as format spec. The agent did NOT invoke $impeccable teach. Sections present: Register, Users, Product Purpose, Brand Personality, Anti-references, Design Principles, Accessibility & Inclusion." },
-    { "id": "design_md_direct",           "weight": 10, "description": "DESIGN.md and DESIGN.json authored directly at project root. DESIGN.md uses Stitch frontmatter + 6 canonical sections. DESIGN.json schemaVersion 2 with extensions (divergence, componentStyle, voice) and narrative blocks." },
-    { "id": "direction_md_shape",         "weight": 10, "description": "stardust/direction.md exists with provenance + YAML frontmatter + # Active direction section containing required sub-sections: Phrase, Restatement, Movements, Divergence inputs, Command sequence (proposed), User confirmation, Pages in scope. Anti-references explicitly written (or '(none)')." },
-    { "id": "state_updated",              "weight": 5,  "description": "stardust/state.json updated: direction.resolvedAt set, direction.phrase verbatim, in-scope pages move from 'extracted' to 'directed' with history entries." },
-    { "id": "no_silent_command_mapping",  "weight": 5,  "description": "The agent did NOT silently map the phrase to a fixed command lookup. Reasoning was visible (dimensional vocabulary used, command choices justified)." },
-    { "id": "no_eds_references",          "weight": 5,  "description": "No mention of EDS, AEM, dev servers, or framework targets." }
+  "context": "direct from a freeform phrase. Task and setup in task.md; each item is judged pass/fail and weighted by max_score.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "activated",
+      "max_score": 5,
+      "description": "The stardust:direct skill was invoked with the freeform phrase as input."
+    },
+    {
+      "name": "dimensional_restatement",
+      "max_score": 10,
+      "description": "The agent restated the phrase in stardust's dimensional vocabulary (register / expressive axis / tone / density / distinctiveness / audience / constraints) before doing anything else. Each axis is named and either marked as moved (with direction), pinned, or left alone."
+    },
+    {
+      "name": "gaps_identified",
+      "max_score": 5,
+      "description": "The agent explicitly identified what's underspecified before asking questions. 'Young' as too coarse (or equivalent) was called out."
+    },
+    {
+      "name": "question_ceiling",
+      "max_score": 10,
+      "description": "Interactive invocation (a user is present in this eval and nothing requested hands-off): the agent asked the USER to sharpen the audience gap rather than self-answering it, asked at most TWO clarifying questions total, and each had concrete options + an 'other' / 'skip' escape hatch and cited which dimension it resolved. Self-answered 'would have been' questions (hands-off behavior) fail this criterion."
+    },
+    {
+      "name": "plan_shown_before_execution",
+      "max_score": 15,
+      "description": "After answers (or with no questions needed), the agent showed the resolved plan to the user BEFORE running any impeccable command or writing any file. Plan included: one-sentence restatement, assumptions, command sequence with reasoning, pages affected."
+    },
+    {
+      "name": "divergence_resolved",
+      "max_score": 10,
+      "description": "Divergence inputs resolved per the active mode: Mode A (brand-faithful) pins palette/type from the captured surface; Mode B / default mode resolves anchors via the research-first procedure (refero MCP or WebSearch, with the 4-dim seed roll only as fallback or for explicit rebrands). Font and palette resolution recorded in DESIGN.json.extensions.divergence per the v2 storage shape."
+    },
+    {
+      "name": "product_md_direct",
+      "max_score": 10,
+      "description": "PRODUCT.md authored directly at project root using impeccable's teach.md as format spec. The agent did NOT invoke $impeccable teach. Sections present: Register, Users, Product Purpose, Brand Personality, Anti-references, Design Principles, Accessibility & Inclusion."
+    },
+    {
+      "name": "design_md_direct",
+      "max_score": 10,
+      "description": "DESIGN.md and DESIGN.json authored directly at project root. DESIGN.md uses Stitch frontmatter + 6 canonical sections. DESIGN.json schemaVersion 2 with extensions (divergence, componentStyle, voice) and narrative blocks."
+    },
+    {
+      "name": "direction_md_shape",
+      "max_score": 10,
+      "description": "stardust/direction.md exists with provenance + YAML frontmatter + # Active direction section containing required sub-sections: Phrase, Restatement, Movements, Divergence inputs, Command sequence (proposed), User confirmation, Pages in scope. Anti-references explicitly written (or '(none)')."
+    },
+    {
+      "name": "state_updated",
+      "max_score": 5,
+      "description": "stardust/state.json updated: direction.resolvedAt set, direction.phrase verbatim, in-scope pages move from 'extracted' to 'directed' with history entries."
+    },
+    {
+      "name": "no_silent_command_mapping",
+      "max_score": 5,
+      "description": "The agent did NOT silently map the phrase to a fixed command lookup. Reasoning was visible (dimensional vocabulary used, command choices justified)."
+    },
+    {
+      "name": "no_eds_references",
+      "max_score": 5,
+      "description": "No mention of EDS, AEM, dev servers, or framework targets."
+    }
   ]
 }

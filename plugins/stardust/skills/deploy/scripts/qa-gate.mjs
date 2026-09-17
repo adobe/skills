@@ -8,7 +8,7 @@
  * the dev server) and the page's eds-schema JSON and it asserts the whole
  * decoration contract in one run.
  *
- *   node skills/deploy/scripts/qa-gate.mjs http://localhost:3000/qa/page.html \
+ *   node skills/deploy/scripts/qa-gate.mjs http://localhost:3000/stardust/.work/harness/page.html \
  *        --schema stardust/eds-schema/<page>.json [--maxw 1340]
  *
  * Asserts (FAIL → exit 1):

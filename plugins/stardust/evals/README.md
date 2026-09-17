@@ -67,9 +67,10 @@ Each eval lives in its own directory and contains exactly two files:
 
 - `task.md` — Setup, User prompt, Expected behavior. Human-readable
   scenario specification.
-- `criteria.json` — Weighted scoring rubric. Each criterion has an
-  `id`, a `weight`, and a `description`. `total` should equal the
-  sum of weights. Used by the eval runner to score the agent's
+- `criteria.json` — Weighted scoring rubric in the tessl `weighted_checklist`
+  schema (`tessl plugin publish` validates it): `context`, `type`, and a
+  `checklist` of `{ name, max_score, description }`. The runner reads `name` as
+  the criterion id and `max_score` as its weight; the total is the sum. Used by the eval runner to score the agent's
   output.
 
 This format mirrors v1's structure (and the format other Adobe-skills
@@ -90,6 +91,7 @@ v2 evals without modification.
 | `replica-source-fidelity/`   | Entry point (`replica`)   | Mechanical preserve direction (no `direct`) + inconsistency register + clean re-authoring + the measured source-fidelity gate at both breakpoints + standard handoff. |
 | `reskin-content-fidelity/`   | Entry point (`reskin`)    | Donor via `--design-source` + content-model capture with scope guard + mapping-brief contract (≥80% mapped) + programmatic render + dual content/design-adoption gates. |
 | `ew-editability/`            | Entry point (`deploy`)    | Experience Workspace editability contract (EW1–EW10): node-slotting not value-slotting, authored elements moved into wrappers, wrapper-descendant selectors, `block-roundtrip --ew` + probe evidence, exemptions declared, fidelity not traded. |
+| `ai-readability/`            | Entry point (`deploy`)    | AI readability (#100): presentational carousel clones, document-first index-backed listing, explicit fragment decision, no generated visible text, gate run and reported, correct checker facts (no hidden-text or chrome work for the score). |
 
 ## Coverage map
 

@@ -211,6 +211,10 @@ When absent, assess directly:
 - **Key facts in crawlable text** — are pricing, what-it-is, and
   who-it's-for stated in crawlable text, or locked in images and
   JS-rendered widgets?
+- **Citation readability, measured** — run
+  `skills/deploy/scripts/ai-readability.mjs --origin <site> <sampled paths>` and report the
+  strict score per page with the top blocks adding rendered-only words; it is the exact
+  formula of Adobe's AI Content Visibility Checker (`deploy/reference/ai-readability.md`).
 
 Every Phase 4 finding names the concrete fix ("state the three price
 points in the pricing table as text; they currently render only

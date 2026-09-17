@@ -3,7 +3,7 @@ name: find-test-content
 description: "Use this when you need to find existing pages that already use a specific block in an AEM Edge Delivery Services project, for example to locate test content or examples during block development. Covers reporting page URLs with occurrence counts and block variants. This searches existing content; to import a new page from a URL use page-import."
 license: Apache-2.0
 metadata:
-  version: "1.2.0"
+  version: "1.2.1"
 ---
 
 # Find Test Content
@@ -33,6 +33,8 @@ This skill will:
 2. Search each page for the specified block
 3. Detect and report all variants found
 4. Report all matching pages with their URLs
+5. **Retry automatically** on HTTP 429 (Too Many Requests) and 503 (Service Unavailable), honouring the `Retry-After` header when present
+6. **Report incomplete results** explicitly if any pages could not be checked after retries, so the user knows the result is partial
 
 **This skill does NOT:**
 - Validate content quality (you'll do that during implementation)
@@ -44,10 +46,28 @@ This skill will:
 **Required parameter:**
 - `blockName` - Name of the block to search for (e.g., "hero", "cards", "carousel")
 
-**Optional parameter:**
+**Optional parameters:**
 - `host` - Dev server host (default: "localhost:3000")
   - Use "localhost:3000" for local dev server
   - Or use live/preview URLs like "main--mysite--owner.aem.live" or "main--mysite--owner.aem.page"
+- `--concurrency N` - Maximum number of concurrent requests (default: 5). Lower this if you see rate-limit warnings.
+- `--delay MS` - Minimum delay in milliseconds between launching successive requests (default: 50). Increase for large sites or strict rate limits.
+
+## Rate Limiting and Retry Behaviour
+
+The script automatically handles transient HTTP errors:
+
+- **HTTP 429 and 503** responses trigger a retry with exponential backoff (base 1 s, capped at 30 s), with random jitter.
+- The `Retry-After` response header is honoured when present (as seconds or HTTP-date).
+- Each request is retried up to 4 times before being counted as a failure.
+- If any pages cannot be checked after retries, the output prints an explicit **WARNING** with the count and per-page reasons, so you know the results are incomplete.
+- If the query-index pagination is interrupted by errors, a warning is printed and the search proceeds with the partial page list, clearly labelled as truncated.
+
+**If you see rate-limit warnings**, reduce concurrency and/or increase delay:
+
+```bash
+node find-block-content.js hero main--mysite--owner.aem.page --concurrency 2 --delay 200
+```
 
 ## Workflow
 
@@ -63,7 +83,7 @@ Execute the find-block-content script:
 
 ```bash
 # Search for block
-node .claude/skills/find-test-content/scripts/find-block-content.js <block-name> [host]
+node .claude/skills/find-test-content/scripts/find-block-content.js <block-name> [host] [--concurrency N] [--delay MS]
 ```
 
 **Examples:**
@@ -79,12 +99,17 @@ node .claude/skills/find-test-content/scripts/find-block-content.js cards main--
 
 # Find carousel block on preview
 node .claude/skills/find-test-content/scripts/find-block-content.js carousel main--mysite--owner.aem.page
+
+# Gentle crawl for large sites
+node .claude/skills/find-test-content/scripts/find-block-content.js hero main--mysite--owner.aem.page --concurrency 2 --delay 200
 ```
 
 **The script will automatically detect and report:**
 - All pages containing the block
 - Number of block instances per page
 - All variants found on each page
+- Any pages that could not be checked (with reasons)
+- Whether the page inventory is partial due to index fetch errors
 
 ### 3. Report Results
 
@@ -95,6 +120,11 @@ node .claude/skills/find-test-content/scripts/find-block-content.js carousel mai
 - Suggest which URLs might be best for testing based on:
   - Variety (pages with different variants for comprehensive testing)
   - Simplicity (simpler pages easier for initial testing)
+
+**If incomplete results (WARNING printed):**
+- Note the number of pages that could not be checked
+- Suggest re-running with lower concurrency or higher delay
+- Caution the user that more matching pages may exist among the unchecked set
 
 **If no content found:**
 - Report that no content was found
@@ -131,7 +161,7 @@ node .claude/skills/find-test-content/scripts/find-block-content.js hero
 
 **Possible outputs:**
 ```
-✓ Found 3 page(s) containing the "hero" block:
+Found 3 page(s) containing the "hero" block:
 
 1. http://localhost:3000/ - variants: dark
 2. http://localhost:3000/about - variants: featured
@@ -158,7 +188,7 @@ node .claude/skills/find-test-content/scripts/find-block-content.js cards localh
 
 **Possible outputs:**
 ```
-✓ Found 2 page(s) containing the "cards" block:
+Found 2 page(s) containing the "cards" block:
 
 1. http://localhost:3000/services - variants: three-up, dark
 2. http://localhost:3000/team - variants: two-up
@@ -169,6 +199,27 @@ node .claude/skills/find-test-content/scripts/find-block-content.js cards localh
 - Page 1 has both "three-up" and "dark" variants applied
 - Page 2 has "two-up" variant
 - Good starting point for testing existing functionality
+
+### Example 3: Incomplete Results
+
+**Possible output (with rate limiting):**
+```
+Found 8 page(s) containing the "cards" block:
+
+1. https://main--mysite--owner.aem.page/services - variants: three-up
+2. https://main--mysite--owner.aem.page/team
+...
+
+WARNING: 3 page(s) could not be checked (after retries). Results are incomplete.
+  - /products: HTTP 429
+  - /archive/old-page: HTTP 429
+  - /news: HTTP 503
+```
+
+**Interpretation:**
+- 8 pages found, but 3 more could not be checked
+- Re-run with `--concurrency 2 --delay 200` to reduce load
+- The true count may be higher than 8
 
 ## Integration with CDD Workflow
 
@@ -202,6 +253,16 @@ This skill is invoked from **Step 4: Identify/Create Test Content, Option C: Exi
 - Block name may be misspelled: Verify block name matches CSS class
 - Block may be new: No content exists yet
 - Content may not be published: Check in CMS
+
+**"WARNING: N page(s) could not be checked"**
+- The site may be rate-limiting requests: Re-run with `--concurrency 2 --delay 200`
+- The server may be overloaded (503): Wait and retry later
+- Network issues: Check connectivity
+
+**"WARNING: Query index pagination was incomplete"**
+- The query index endpoint returned an error mid-pagination
+- Some pages may be missing from the search
+- Re-run the search; transient errors often resolve
 
 **Script errors**
 - jsdom dependency missing: Run `npm install` in project root

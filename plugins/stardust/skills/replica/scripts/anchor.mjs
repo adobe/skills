@@ -35,8 +35,8 @@
  *     --json              machine-readable output on stdout
  *
  * Example (one line per section; diff the two outputs side by side):
- *   node scripts/replica/anchor.mjs "https://<site>/<path>" --width 1440
- *   node scripts/replica/anchor.mjs "http://localhost:8791/<slug>-proposed.html" --width 1440
+ *   node stardust/scripts/replica/anchor.mjs "https://<site>/<path>" --width 1440
+ *   node stardust/scripts/replica/anchor.mjs "http://localhost:8791/<slug>-proposed.html" --width 1440
  *
  * Requires: playwright, and the diff skill's scripts dir alongside
  * (live-session.mjs — the replica Setup copies both).

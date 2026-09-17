@@ -373,6 +373,12 @@ Policy:
 - **Autoplaying carousels / marquees**: freeze policy — capture and
   recreate the t=0 state; the gate's animation-freeze injection keeps both
   sides stable. Log the freeze.
+- **Loop clones are presentational**: when Splide/Swiper geometry needs
+  `2×perView` clones before and after the track, clones carry no text nodes,
+  `alt=""`, no `href`, no `role`/`aria-*` (`aria-hidden`/`inert` do not
+  help — readability checkers read textContent). A faithful clone of the
+  canon's DOM turns a 5-card rail into 17 cards of text and halves the
+  page's AI-readability score (`deploy/reference/ai-readability.md`).
 - **Style-injection ordering**: inject any freeze CSS only AFTER the
   lazyload settle pass — injecting before it breaks some loaders' swap
   logic (recorded UC1-E1 failure mode). stitch-shot.mjs already orders this

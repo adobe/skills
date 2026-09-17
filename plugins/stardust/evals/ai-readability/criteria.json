@@ -1,0 +1,36 @@
+{
+  "context": "deploy — the published page reads the same to an agent as to a browser. Task and setup in task.md; each item is judged pass/fail and weighted by max_score.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "clones_presentational",
+      "max_score": 20,
+      "description": "Carousel/marquee loop clones carry no text nodes, alt=\"\", no href, no role/aria; the rendered DOM word count of the block equals the authored slide text counted once."
+    },
+    {
+      "name": "document_first_listing",
+      "max_score": 20,
+      "description": "The index-backed band is delivered with one authored row per listed item (card text) plus a label-list row; the block renders from rows and uses the index only for non-text fields and top-up (reference/ai-readability.md § 4 rule 3)."
+    },
+    {
+      "name": "fragment_decision_explicit",
+      "max_score": 15,
+      "description": "The fragment-linked band is either inlined with a `fragment | /fragments/x` section-metadata row or listed in the report as agent-invisible by design with its point cost — never left implicit."
+    },
+    {
+      "name": "no_generated_visible_text",
+      "max_score": 15,
+      "description": "No block generates visible strings that are not authored; any runtime-only value is allowlisted by block + string with a reason, never per page."
+    },
+    {
+      "name": "gate_run_and_reported",
+      "max_score": 15,
+      "description": "ai-readability.mjs runs as part of the delivery contract; the report records strict score, code score and per-block served gap per page; code ≥ 98."
+    },
+    {
+      "name": "checker_facts_correct",
+      "max_score": 15,
+      "description": "No time is spent on hidden text, aria-hidden/inert, or nav/footer inlining for the score; the transcript states the count-ratio formula and that landmarks are ignored by default; chrome inlining, if raised, is presented as a trade-off, not done silently."
+    }
+  ]
+}

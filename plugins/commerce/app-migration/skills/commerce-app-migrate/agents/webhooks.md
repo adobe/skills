@@ -37,6 +37,10 @@ An action that passes all three tests is a Commerce webhook handler candidate. F
 to determine the webhook type (see detection rules below), then emit one entry
 in the `webhooks` array.
 
+Always set `webhook.webhook_type` to `"before"` or `"after"` and
+`webhook.method` to `"POST"`, `"PUT"`, `"DELETE"`, or `"GET"`. Never emit other
+values.
+
 ### Webhook type detection
 
 **OOPE Shipping Carrier**

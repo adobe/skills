@@ -1144,3 +1144,30 @@ replica/rollout/reskin/fidelity-tiers cite it; eval `ew-editability`.
 the 36 left are declared exemptions (index-driven listings, derived dates, a
 breadcrumb needing an ENCODE `<ul>`); 27 block instances pixel-identical at
 1440; 0 edit-mode drift except the hero's per-line span gap.
+
+
+---
+
+## Findings (AI-readability harvest, 2026-09 — four migrations)
+
+### #100 🟠 Pixel-perfect pages scored 40–58 % on Adobe's AI Content Visibility Checker — every gate green ✅
+**Where:** a family-entertainment chain (home 46 %, 809 "missing words"), a semiconductor replica
+(96 %), a UK package-holiday retailer (83 % served-text readable by its own probe), a beverage brand
+pilot (40 %).
+**Cause:** block JavaScript added words to the DOM that the document does not carry — index-built
+listing cards (~850 words on one home page), runtime fragments (a planner form, a newsletter, a
+search panel), Splide-style loop clones with full text (a 5-card rail → 17), generated labels and
+sr-only helpers. Every stardust gate compares pixels or the `.plain.html` structure; none compares
+served text with rendered text.
+**Wrong turns, recorded so they are not repeated:** three sessions modelled the tool three ways
+(served-text word set; hidden text via `display:none`; markdown line diff) and each fitted its own
+site's defect class. One inlined nav and footer into 143 documents for a score that strips
+landmarks by default; one clipped instead of hiding (hidden text counts as rendered); one unwrapped
+generated anchors (hrefs are not text). The extension's analyzer code gives the formula:
+`min(100, servedWords / renderedWords × 100)`, both sides stripped of script/style/media/consent
+and — by default — nav/header/footer landmarks; textContent, so hidden text counts; a count ratio.
+**Fix applied:** `reference/ai-readability.md` (formula, two metrics, cause classes, six block rules,
+chrome as an option), `scripts/ai-readability.mjs` (exact reimplementation, code score with
+fragments credited, per-block attribution, allowlist, gate in the atomic contract), the qa check
+`ai-readability`, the document-first listings contract in dynamics, presentational clones in
+replica, one always-on bullet in this skill, and an eval.

@@ -10,6 +10,7 @@ import {
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { normalizeCriteria } from "./score.mjs";
 
 export const RUNNER_DIR = dirname(dirname(fileURLToPath(import.meta.url)));
 export const EVALS_DIR = dirname(RUNNER_DIR);
@@ -25,7 +26,7 @@ export function runDir(label, evalName, i) {
 
 export async function loadEval(name) {
   const dir = evalDir(name);
-  const criteria = JSON.parse(await readFile(join(dir, "criteria.json"), "utf8"));
+  const criteria = normalizeCriteria(JSON.parse(await readFile(join(dir, "criteria.json"), "utf8")));
   const taskMd = await readFile(join(dir, "task.md"), "utf8");
   const steps = extractUserPrompts(taskMd);
   let answers = null;

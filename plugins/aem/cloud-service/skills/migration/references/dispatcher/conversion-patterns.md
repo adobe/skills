@@ -1,5 +1,3 @@
-> **Beta**: This capability is in beta and under active development. Review its output carefully before using it on production dispatcher configurations.
-
 # Dispatcher Conversion — Decision Catalog (Branch E)
 
 This is Branch E's **decision catalog** — the skill's knowledge center for dispatcher conversion, and the reference the agent consults during **phase 5 (JUDGMENT + CROSS-BOUNDARY)** of the flow in [context.md](context.md), after Adobe's converter tool has run and its output has passed verification. For every AMS/on-premise construct still sitting in the config — because the tool doesn't touch it, only partially resolves it, or deliberately leaves it for a human — this catalog says what to do, why, and which Adobe doc backs the call.

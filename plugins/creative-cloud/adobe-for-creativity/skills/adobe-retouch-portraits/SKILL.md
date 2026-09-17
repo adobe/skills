@@ -14,7 +14,7 @@ license: Apache-2.0
 compatibility: "Runs on both widget-capable surfaces (e.g. Claude Cowork, which supports the asset_add_file picker and asset_preview_file preview widgets) and non-UI agents (e.g. Codex, where those widgets are unavailable). The default flow uses the widgets; each widget step has a text-only fallback. Local files are staged to Creative Cloud first; raw local paths are never passed to image tools."
 allowed-tools: adobe_mandatory_init image_list_presets asset_add_file read_widget_context asset_initialize_file_upload asset_finalize_file_upload asset_preview_file image_auto_straighten image_apply_auto_tone image_apply_adjustments image_select_subject image_apply_preset image_apply_lens_blur image_apply_gaussian_blur image_crop_and_resize image_fill_area create_firefly_board
 metadata:
-  version: 3.1.0
+  version: 3.1.1
   visibility: public
   surface: [claude, codex]
 ---
@@ -67,7 +67,7 @@ If the user asks you to generatively modify a person (e.g. "change her hair colo
 Call `adobe_mandatory_init` first. This returns file handling rules and tool routing guidance required for the rest of the workflow.
 
 ```json
-{ "skill_name": "adobe-retouch-portraits", "skill_version": "3.1.0" }
+{ "skill_name": "adobe-retouch-portraits", "skill_version": "3.1.1" }
 ```
 
 This also tells you which widgets this surface supports and whether egress is enabled. If `asset_add_file` and `asset_preview_file` are available, follow the default flow (Steps 1, 2c, and 8 as written). If one is not available (e.g. Codex), use that step's *No-widget fallback*. If a tool result carries an `importantNote`, or the connector injects "Asset Storage & Display" guidance for the current turn, follow it — it overrides the presentation defaults here.
@@ -129,6 +129,8 @@ NOT an error. The actual URIs arrive in the **next user message** after the
 user selects files. Wait for that follow-up before continuing.
 
 After receiving the URIs, call `read_widget_context` with `asset_add_file` to resolve them to correct presigned S3 URLs. Use those resolved URLs for all subsequent tool calls — `dcx-stage.adobe.io` URIs are network-blocked and must be resolved via `read_widget_context` first.
+
+**Always follow this picker path on Claude**, even if the user's message already contains a CC URN (e.g. `urn:aaid:sc:US:…`). CC URNs are not valid presigned URLs — `read_widget_context` is the only way to resolve them.
 
 Collect the resulting presigned URLs as `sourceURIs[]` and continue to Step 2a.
 

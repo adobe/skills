@@ -46,18 +46,18 @@ GATE="stardust/replica/gates/<slug>-$W"
 
 # 1. structural — --dismiss keeps consent + timed marketing modals out of the
 #    inventory on both sides; add extra selectors for non-standard closers
-node scripts/diff/content-diff.mjs "$LIVE" "$PROTO" --profile generic --width $W \
+node stardust/scripts/diff/content-diff.mjs "$LIVE" "$PROTO" --profile generic --width $W \
   --main "<content-root>" --dismiss | tee "$GATE/content-diff-iter<N>.txt"
 
 # 2. visual heuristics — --main is a real flag here too (live sites often
 #    have no <main>; without it both sides false-flag BLANK RENDER)
-node scripts/diff/visual-diff.mjs "$LIVE" "$PROTO" --profile generic --width $W \
+node stardust/scripts/diff/visual-diff.mjs "$LIVE" "$PROTO" --profile generic --width $W \
   --main "<content-root>" --dismiss --out "$GATE/vdiff" | tee "$GATE/visual-diff-iter<N>.txt"
 
 # 3. pixel — stitched captures on BOTH sides (never fullPage:true)
-node scripts/replica/stitch-shot.mjs "$LIVE"  "$GATE/live.png"  --width $W --settle
-node scripts/replica/stitch-shot.mjs "$PROTO" "$GATE/proto.png" --width $W
-node scripts/replica/pixel-compare.mjs "$GATE/live.png" "$GATE/proto.png" \
+node stardust/scripts/replica/stitch-shot.mjs "$LIVE"  "$GATE/live.png"  --width $W --settle
+node stardust/scripts/replica/stitch-shot.mjs "$PROTO" "$GATE/proto.png" --width $W
+node stardust/scripts/replica/pixel-compare.mjs "$GATE/live.png" "$GATE/proto.png" \
   --out "$GATE/diff-iter<N>.png" --threshold 10
 ```
 
@@ -99,9 +99,9 @@ The prototype capture is re-taken every iteration.
    captures the pixel probe used — no extra live hit:
 
    ```bash
-   node scripts/replica/crop-compare.mjs "$GATE/live.png" "$GATE/proto.png" \
+   node stardust/scripts/replica/crop-compare.mjs "$GATE/live.png" "$GATE/proto.png" \
      --y 0 --height <nav-height> --out "$GATE/chrome-header-diff.png"
-   node scripts/replica/crop-compare.mjs "$GATE/live.png" "$GATE/proto.png" \
+   node stardust/scripts/replica/crop-compare.mjs "$GATE/live.png" "$GATE/proto.png" \
      --y <liveDocH - footerH> --y-b <protoDocH - footerH> --height <footerH> \
      --out "$GATE/chrome-footer-diff.png"
    ```
@@ -110,6 +110,50 @@ The prototype capture is re-taken every iteration.
    delta doesn't contaminate it with a false full-band diff. Read the band
    heights off the section-anchor probe (`anchor.mjs` prints the footer's
    `[y, height]` on both sides).
+
+   **Styles diagnose, pixels confirm — run the computed-style parity probe
+   BEFORE any pixel iteration on chrome.** `../scripts/chrome-parity.mjs`
+   probes the same regions on live and build (default `header` + `footer`;
+   add sticky strips with `--region strip=<liveSel>|<buildSel>`), pairs
+   every text-bearing element by its text, and prints only what differs:
+   family / size / weight / style / line-height / letter-spacing /
+   transform / colour / background / padding / radius, the element rect,
+   the clickable box of links and buttons, and the icon inventory
+   (count + size + signature, paired by order). Recorded: one run found
+   what many pixel-band rounds had not — an italic-vs-normal note, a
+   regular-vs-bold link, a wrong nav link colour, 12px row offsets, a 97×40
+   vs 71×32 button, six missing icons. Fix every delta, re-run until it is
+   quiet (exit 0), THEN crop-compare — a pixel loop on chrome with parity
+   deltas outstanding is wasted iterations. Each run is one live
+   navigation (budget it like any live probe); `--json` records both
+   sides as the round's evidence.
+
+   ```bash
+   node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width $W \
+     --region header=header --region footer=footer   # + --region strip=<sel>|<sel>
+   ```
+
+   **Glyph-dense chrome has a pixel noise floor — the ONE justified way past
+   the 2% bar, and it is evidence-gated three ways.** A footer of ~50 links
+   bottomed out at ~5% pixel diff with family, size, line-height, weight,
+   colour, pitch and positions all numerically identical (recorded): per-glyph
+   antialiasing between a hinted licensed face and the self-hosted webfont
+   dominates, and raw pixel bars over-iterate against noise. A chrome band
+   that FAILS crop-compare may be logged as a **justified residual** —
+   never a pass — only when ALL three hold, and each is an artifact in the
+   residual entry (§ Residual logging format, `cause: "glyph-antialiasing"`):
+   (1) `chrome-parity.mjs` exits 0 for that region at tolerance 1px — every
+   paired text's metrics and position match, no MISSING/EXTRA, icons paired;
+   (2) `crop-compare.mjs` reports the diff **texture** as thin-edge (≤15% of
+   differing pixels have ≥5 differing neighbours) — glyph antialiasing is
+   thin, misalignment and missing paint are thick; (3) the region is
+   text-dense (link columns, nav rows) — a band with imagery or icons never
+   qualifies (parity's ICONS finding would not be quiet anyway). One or two
+   of the three is not enough: a quiet parity probe with a THICK texture is
+   a paint defect the probe does not model; a thin texture with parity
+   deltas is a real metric error hiding in noise. The 2% bar itself is
+   unchanged, and the residual is re-verified every gate round like any
+   other justified flag.
 
    **Chrome crops are ELEMENT-ANCHORED per side, never fixed-y — and
    "chrome" means every site-wide repeating band: header, sticky/quick-link
@@ -164,8 +208,8 @@ at.** `../scripts/anchor.mjs` prints `[y, height]` per top-level section
 (+ footer + doc height), same shape on both sides:
 
 ```bash
-node scripts/replica/anchor.mjs "$LIVE"  --width $W   # once per fix round at most (live hit)
-node scripts/replica/anchor.mjs "$PROTO" --width $W   # free — build-side only
+node stardust/scripts/replica/anchor.mjs "$LIVE"  --width $W   # once per fix round at most (live hit)
+node stardust/scripts/replica/anchor.mjs "$PROTO" --width $W   # free — build-side only
 ```
 
 Diff the two outputs, fix the FIRST section whose `[y, height]` disagrees
@@ -187,7 +231,7 @@ runs over the same stitched PNGs — no live hit):**
 - **Column scan for layout boundaries.** Before editing CSS to fix a section
   height, photo height, band start or card overlap, read the per-column
   class transitions (white / dark / brand / photo at N x positions) on the
-  capture: `node scripts/replica/row-profile.mjs live.png proto.png
+  capture: `node stardust/scripts/replica/row-profile.mjs live.png proto.png
   --columns 7`. Recorded: a stacked-crop visual read suggested a 415px photo
   with a white band under it; the scan of the same capture proved the photo
   full-bleed to 499px with the "white band" being an overlapping card — the
@@ -234,6 +278,9 @@ followed; more loops mean the inputs were wrong (values eyeballed instead of
 lifted, capture unhardened), and the fix is upstream, not a fourth loop.
 
 - Measure first (iteration 1 IS the map — do not pre-polish).
+- **Chrome: parity probe first, pixels second.** Before a chrome band's first
+  pixel round, run `chrome-parity.mjs` and clear its deltas (§ Pass bar,
+  item 5); style deltas are named in one pass, pixels only say where.
 - Every fix cites the instrument line that demanded it.
 - **Before counting an iteration, verify the fix changed the render.** A
   byte-identical differing-pixel count after a "fix" means the rule was a
@@ -453,11 +500,11 @@ scripts expose it as flags:
 
 ```bash
 # content-diff against a live source: no source edits, flags only
-node scripts/diff/content-diff.mjs "$LIVE" "$PROTO" --profile generic \
+node stardust/scripts/diff/content-diff.mjs "$LIVE" "$PROTO" --profile generic \
   --width 1440 --main "<content-root>" --dismiss
 
 # visual-diff: --main is a real flag (rule 3), same live hardening
-node scripts/diff/visual-diff.mjs "$LIVE" "$PROTO" --profile generic \
+node stardust/scripts/diff/visual-diff.mjs "$LIVE" "$PROTO" --profile generic \
   --width 1440 --main "<content-root>" --dismiss
 
 # non-standard overlay closer / pinned locale / bot-managed site:
@@ -563,7 +610,8 @@ Per archetype per breakpoint, in `stardust/replica/progress.json`:
         { "probe": "content", "flag": "🟠 font fork ×2", "why": "licensed kit substituted, R-policy fonts", "permanent": true }
       ],
       "residuals": [
-        { "band": "y 4500–5000", "pct": 6.2, "cause": "capture-state: 3 CDN-403 placeholder tiles", "flaggedFor": "delivery" }
+        { "band": "y 4500–5000", "pct": 6.2, "cause": "capture-state: 3 CDN-403 placeholder tiles", "flaggedFor": "delivery" },
+        { "region": "footer", "pct": 4.8, "cause": "glyph-antialiasing", "parity": "gates/home-1440/chrome-parity-iter3.json", "texture": { "thickPct": 6.1 }, "flaggedFor": "user" }
       ],
       "captureState": [ { "what": "product tiles 4–6 on placeholder data-URIs", "where": "carousel-2" } ]
     },

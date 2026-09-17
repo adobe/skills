@@ -7,55 +7,162 @@
  * helping developers identify existing content for testing during development.
  *
  * Usage:
- *   node find-block-content.js <block-name> [host]
+ *   node find-block-content.js <block-name> [host] [--concurrency N] [--delay MS]
  *
  * Examples:
  *   node find-block-content.js hero
  *   node find-block-content.js hero localhost:3000
  *   node find-block-content.js hero main--mysite--owner.aem.live
  *   node find-block-content.js hero main--mysite--owner.aem.page
+ *   node find-block-content.js hero main--mysite--owner.aem.page --concurrency 3 --delay 100
  *
  * The script will:
  * 1. Query the site's query-index for all pages
- * 2. Check each page for the specified block
+ * 2. Check each page for the specified block (with retry on 429/503)
  * 3. Report all pages containing the block with their URLs and variant info
+ * 4. Report any pages that could not be checked after retries
  *
  * Defaults to localhost:3000 if no host specified
  */
 
 import { JSDOM } from 'jsdom';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 const USER_AGENT = 'AdobeSkills/1.0 (https://github.com/adobe/skills; skill:find-test-content)';
 
+/** Maximum number of retry attempts for a single request. */
+const MAX_RETRIES = 4;
+
+/** Base delay in ms for exponential backoff when no Retry-After header is present. */
+const BASE_BACKOFF_MS = 1000;
+
+/** Upper bound for computed backoff delay (before jitter). */
+const MAX_BACKOFF_MS = 30000;
+
+/** HTTP status codes that are retryable (transient). */
+const RETRYABLE_STATUSES = new Set([429, 503]);
+
 /**
- * Fetch all URLs from the query index with pagination
+ * Sleep for a given number of milliseconds.
+ * @param {number} ms
+ * @returns {Promise<void>}
+ */
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Parse a Retry-After header value into a delay in milliseconds.
+ * The header may be a non-negative integer (seconds) or an HTTP-date.
+ * Returns null if the header is absent or unparseable.
+ * @param {string|null} headerValue
+ * @returns {number|null} delay in ms, or null
+ */
+function parseRetryAfter(headerValue) {
+  if (!headerValue) return null;
+
+  // Try as integer seconds first
+  const seconds = Number(headerValue);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.ceil(seconds * 1000);
+  }
+
+  // Try as HTTP-date
+  const date = new Date(headerValue);
+  if (!Number.isNaN(date.getTime())) {
+    const delayMs = date.getTime() - Date.now();
+    return Math.max(0, delayMs);
+  }
+
+  return null;
+}
+
+/**
+ * Compute backoff delay for a given attempt number.
+ * Uses exponential backoff with jitter, capped at MAX_BACKOFF_MS.
+ * @param {number} attempt - zero-based attempt number
+ * @returns {number} delay in ms
+ */
+function computeBackoff(attempt) {
+  const exponential = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * (2 ** attempt));
+  // Add jitter: 0.5x to 1.0x of the computed delay
+  const jitter = 0.5 + Math.random() * 0.5;
+  return Math.round(exponential * jitter);
+}
+
+/**
+ * Fetch a URL with retry on transient errors (429, 503).
+ * Honours Retry-After header when present.
+ * @param {string} url
+ * @param {object} options - fetch options
+ * @param {number} maxRetries
+ * @returns {Promise<{response: Response|null, error: string|null, retryExhausted: boolean}>}
+ */
+async function fetchWithRetry(url, options = {}, maxRetries = MAX_RETRIES) {
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    try {
+      const res = await fetch(url, options);
+
+      if (RETRYABLE_STATUSES.has(res.status) && attempt < maxRetries) {
+        const retryAfterMs = parseRetryAfter(res.headers.get('Retry-After'));
+        const delay = retryAfterMs != null
+          ? Math.min(retryAfterMs, MAX_BACKOFF_MS)
+          : computeBackoff(attempt);
+        await sleep(delay);
+        continue;
+      }
+
+      return { response: res, error: null, retryExhausted: false };
+    } catch (err) {
+      if (attempt < maxRetries) {
+        await sleep(computeBackoff(attempt));
+        continue;
+      }
+      return { response: null, error: err.message, retryExhausted: true };
+    }
+  }
+  // Should not reach here, but guard
+  return { response: null, error: 'max retries exceeded', retryExhausted: true };
+}
+
+/**
+ * Fetch all URLs from the query index with pagination.
+ * Retries on 429/503. If pagination cannot complete, returns what was
+ * collected and sets the truncated flag.
  * @param {string} host - The host to query
- * @returns {Promise<string[]>} Array of page paths
+ * @returns {Promise<{paths: string[], truncated: boolean, truncationReason: string|null}>}
  */
 async function fetchQueryIndex(host) {
   const limit = 512;
   let offset = 0;
   const paths = [];
   let more = true;
+  let truncated = false;
+  let truncationReason = null;
 
   do {
+    // Use http for localhost, https for everything else
+    const protocol = host.startsWith('localhost') ? 'http' : 'https';
+    const url = `${protocol}://${host}/query-index.json?offset=${offset}&limit=${limit}`;
+
+    const { response: res, error, retryExhausted } = await fetchWithRetry(url, {
+      headers: { 'User-Agent': USER_AGENT },
+    });
+
+    if (error || !res) {
+      truncated = true;
+      truncationReason = `Network error fetching query index at offset ${offset}: ${error}`;
+      console.error(truncationReason);
+      break;
+    }
+
+    if (!res.ok) {
+      truncated = true;
+      truncationReason = `HTTP ${res.status} fetching query index at offset ${offset}${retryExhausted ? ' (after retries)' : ''}`;
+      console.error(truncationReason);
+      break;
+    }
+
     try {
-      // Use http for localhost, https for everything else
-      const protocol = host.startsWith('localhost') ? 'http' : 'https';
-      const url = `${protocol}://${host}/query-index.json?offset=${offset}&limit=${limit}`;
-      const res = await fetch(url, {
-        headers: { 'User-Agent': USER_AGENT },
-      });
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-
       const json = await res.json();
       const data = json.data || [];
 
@@ -68,34 +175,49 @@ async function fetchQueryIndex(host) {
       more = data.length === limit;
       offset += limit;
     } catch (err) {
-      console.error(`Error fetching query index: ${err.message}`);
-      more = false;
+      truncated = true;
+      truncationReason = `Error parsing query index response at offset ${offset}: ${err.message}`;
+      console.error(truncationReason);
+      break;
     }
   } while (more);
 
-  return paths;
+  return { paths, truncated, truncationReason };
 }
 
 /**
- * Check if a page contains the specified block and extract variant info
+ * Result from checking a single page for a block.
+ * - found: { status: 'found', count, variants }
+ * - absent: { status: 'absent' }
+ * - error: { status: 'error', reason }
+ */
+
+/**
+ * Check if a page contains the specified block and extract variant info.
+ * Retries on 429/503. Distinguishes three outcomes: found, absent, error.
  * @param {string} host - The host to query
  * @param {string} path - The page path
  * @param {string} blockName - Name of block to find
- * @returns {Promise<Object|null>} Object with count and variants, or null if not found
+ * @returns {Promise<{status: string, count?: number, variants?: string[], reason?: string}>}
  */
 async function pageContainsBlock(host, path, blockName) {
+  // Use http for localhost, https for everything else
+  const protocol = host.startsWith('localhost') ? 'http' : 'https';
+  const url = `${protocol}://${host}${path}`;
+
+  const { response: res, error } = await fetchWithRetry(url, {
+    headers: { 'User-Agent': USER_AGENT },
+  });
+
+  if (error || !res) {
+    return { status: 'error', reason: error || 'no response' };
+  }
+
+  if (!res.ok) {
+    return { status: 'error', reason: `HTTP ${res.status}` };
+  }
+
   try {
-    // Use http for localhost, https for everything else
-    const protocol = host.startsWith('localhost') ? 'http' : 'https';
-    const url = `${protocol}://${host}${path}`;
-    const res = await fetch(url, {
-      headers: { 'User-Agent': USER_AGENT },
-    });
-
-    if (!res.ok) {
-      return null;
-    }
-
     const html = await res.text();
 
     // Parse HTML with jsdom
@@ -108,7 +230,7 @@ async function pageContainsBlock(host, path, blockName) {
     const blockElements = document.querySelectorAll(selector);
 
     if (blockElements.length === 0) {
-      return null;
+      return { status: 'absent' };
     }
 
     // Extract variants from all block instances
@@ -123,41 +245,52 @@ async function pageContainsBlock(host, path, blockName) {
     });
 
     return {
+      status: 'found',
       count: blockElements.length,
       variants: Array.from(variants).sort(),
     };
   } catch (err) {
-    return null;
+    return { status: 'error', reason: `Parse error: ${err.message}` };
   }
 }
 
 /**
- * Process URLs in batches with concurrency control
+ * Process URLs in batches with concurrency control.
+ * Tracks pages that could not be checked (errors after retries).
  * @param {string} host - The host to query
  * @param {string[]} paths - Array of page paths
  * @param {string} blockName - Name of block to find
  * @param {number} concurrency - Number of concurrent requests
- * @returns {Promise<Array>} Array of objects with path, count, and variants
+ * @param {number} delayMs - Minimum delay between launching successive requests (ms)
+ * @returns {Promise<{matches: Array, errors: Array}>}
  */
-async function findBlockInPages(host, paths, blockName, concurrency = 10) {
+async function findBlockInPages(host, paths, blockName, concurrency = 5, delayMs = 50) {
   const matches = [];
+  const errors = [];
   const inFlight = new Set();
 
   for (let i = 0; i < paths.length; i += 1) {
     const path = paths[i];
 
     const promise = pageContainsBlock(host, path, blockName).then((result) => {
-      if (result) {
+      if (result.status === 'found') {
         matches.push({
           path,
           count: result.count,
           variants: result.variants,
         });
+      } else if (result.status === 'error') {
+        errors.push({ path, reason: result.reason });
       }
       inFlight.delete(promise);
     });
 
     inFlight.add(promise);
+
+    // Inter-request delay to avoid bursting
+    if (delayMs > 0 && i < paths.length - 1) {
+      await sleep(delayMs);
+    }
 
     // Wait if we've hit concurrency limit
     if (inFlight.size >= concurrency) {
@@ -168,7 +301,7 @@ async function findBlockInPages(host, paths, blockName, concurrency = 10) {
   // Wait for remaining requests
   await Promise.all(inFlight);
 
-  return matches;
+  return { matches, errors };
 }
 
 /**
@@ -186,29 +319,59 @@ function getHost(host) {
 }
 
 /**
+ * Parse CLI arguments.
+ * Positional: <block-name> [host]
+ * Flags: --concurrency N, --delay MS
+ */
+function parseArgs(argv) {
+  const args = { blockName: null, host: null, concurrency: 5, delay: 50 };
+  const positional = [];
+
+  for (let i = 2; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === '--concurrency' && i + 1 < argv.length) {
+      i += 1;
+      args.concurrency = Math.max(1, parseInt(argv[i], 10) || 5);
+    } else if (arg === '--delay' && i + 1 < argv.length) {
+      i += 1;
+      args.delay = Math.max(0, parseInt(argv[i], 10) || 0);
+    } else if (!arg.startsWith('--')) {
+      positional.push(arg);
+    }
+  }
+
+  args.blockName = positional[0] || null;
+  args.host = positional[1] || null;
+  return args;
+}
+
+/**
  * Main execution
  */
 async function main() {
-  const blockName = process.argv[2];
-  const hostArg = process.argv[3];
+  const args = parseArgs(process.argv);
 
-  if (!blockName) {
+  if (!args.blockName) {
     console.error('Error: Block name is required');
-    console.error('\nUsage: node find-block-content.js <block-name> [host]');
+    console.error('\nUsage: node find-block-content.js <block-name> [host] [--concurrency N] [--delay MS]');
+    console.error('\nOptions:');
+    console.error('  --concurrency N   Max concurrent requests (default: 5)');
+    console.error('  --delay MS        Min delay between requests in ms (default: 50)');
     console.error('\nExamples:');
     console.error('  node find-block-content.js hero');
     console.error('  node find-block-content.js hero localhost:3000');
     console.error('  node find-block-content.js hero main--mysite--owner.aem.live');
     console.error('  node find-block-content.js cards main--mysite--owner.aem.page');
+    console.error('  node find-block-content.js hero main--mysite--owner.aem.page --concurrency 3 --delay 100');
     process.exit(1);
   }
 
-  const host = getHost(hostArg);
+  const host = getHost(args.host);
 
   // Fetch all pages from query index
-  const paths = await fetchQueryIndex(host);
+  const { paths, truncated, truncationReason } = await fetchQueryIndex(host);
 
-  if (paths.length === 0) {
+  if (paths.length === 0 && !truncated) {
     console.log('No pages found in query index.');
     console.log('\nMake sure:');
     console.log('- Your dev server is running (aem up)');
@@ -216,18 +379,31 @@ async function main() {
     return;
   }
 
+  if (truncated) {
+    console.error(`\nWARNING: Query index pagination was incomplete. ${truncationReason}`);
+    console.error(`Collected ${paths.length} path(s) before truncation. Results may be partial.\n`);
+    if (paths.length === 0) {
+      console.error('No paths collected. Cannot proceed.');
+      process.exit(1);
+    }
+  }
+
   // Search for block in pages
-  const matches = await findBlockInPages(host, paths, blockName);
+  const { matches, errors } = await findBlockInPages(
+    host, paths, args.blockName, args.concurrency, args.delay,
+  );
 
   // Report results
-  if (matches.length === 0) {
-    console.log(`No pages found containing the "${blockName}" block.`);
+  if (matches.length === 0 && errors.length === 0) {
+    console.log(`No pages found containing the "${args.blockName}" block.`);
     console.log('\nThis might mean:');
     console.log('- The block is new and no content exists yet');
     console.log('- The block name is spelled differently');
     console.log('- Content exists but hasn\'t been published');
+  } else if (matches.length === 0 && errors.length > 0) {
+    console.log(`No pages confirmed to contain the "${args.blockName}" block.`);
   } else {
-    console.log(`Found ${matches.length} page(s) containing the "${blockName}" block:\n`);
+    console.log(`Found ${matches.length} page(s) containing the "${args.blockName}" block:\n`);
 
     matches.forEach((match, index) => {
       const protocol = host.startsWith('localhost') ? 'http' : 'https';
@@ -236,9 +412,32 @@ async function main() {
       console.log(`${index + 1}. ${protocol}://${host}${match.path}${countInfo}${variantInfo}`);
     });
   }
+
+  // Report errors explicitly so the user knows the result may be incomplete
+  if (errors.length > 0) {
+    console.error(`\nWARNING: ${errors.length} page(s) could not be checked (after retries). Results are incomplete.`);
+    errors.forEach((e) => {
+      console.error(`  - ${e.path}: ${e.reason}`);
+    });
+  }
+
+  if (truncated) {
+    console.error('\nNOTE: The query index could not be fully retrieved. The page inventory is partial.');
+  }
 }
 
-main().catch((err) => {
-  console.error('Error:', err.message);
-  process.exit(1);
-});
+// Export for testing
+export { fetchWithRetry, parseRetryAfter, computeBackoff, pageContainsBlock, fetchQueryIndex, findBlockInPages, sleep };
+
+// Only run main() when executed directly (not when imported for testing)
+const isDirectRun = process.argv[1] && (
+  process.argv[1].endsWith('find-block-content.js')
+  || process.argv[1].endsWith('find-block-content.mjs')
+);
+
+if (isDirectRun) {
+  main().catch((err) => {
+    console.error('Error:', err.message);
+    process.exit(1);
+  });
+}

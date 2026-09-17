@@ -4,6 +4,229 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.22.0 — stardust owns `stardust/`: write boundary and versioning policy
+
+Field projects answered "what do I commit" by hand, each differently; one lost its state machine
+to a bare `state.json` exclude. Now: stardust writes only to `stardust/`, the impeccable root files
+and the EDS project (via deploy / rollout / dynamics); run-only files go under `stardust/.work/`.
+Three leaks fixed (replica's script copies left the boilerplate `scripts/`, deploy's harness left
+root `qa/`, deploy's pre-render left `samples/`). New Setup step 6 installs `stardust/.gitignore`
+(everything tracked except screenshots, `current/assets/`, `replica/gates/`, `migrated/assets/`,
+`rollout/qa/`, `.work/`, run residue, session state), covers `.env`, lists `stardust/` in
+`.hlxignore`, asserts `state.json` is not ignored, offers LFS above 50 MB. State report gains a
+`Repo:` block; artifact-map gains § Versioning; qa baselines are local.
+
+## 0.21.1 — evals: criteria.json in the tessl `weighted_checklist` schema
+
+`tessl plugin publish` validates every `evals/*/criteria.json` against the registry schema
+(`context`, `type: "weighted_checklist"`, `checklist[{ name, max_score, description }]`); the
+plugin's evals used the runner's own `{ criteria[{ id, weight, description }], total }` shape, so
+0.20.0 and 0.21.0 both failed to publish. All eleven rubrics are converted (ids → `name`, weights →
+`max_score`); the runner normalises either shape (`normalizeCriteria`), so scoring is unchanged.
+
+## 0.21.0 — AI readability: the checker formula, one gate, document-first listings
+
+Four migrations (a family-entertainment chain, a semiconductor company's replica, a UK
+package-holiday retailer, a beverage brand pilot) were scored 40–58 % by Adobe's "AI Content
+Visibility Checker" while every stardust gate was green. Each session reverse-engineered a
+different model of the tool — served-text parity, hidden text, markdown line diff — and each spent
+a round on a fix the score did not reward (inlining nav/footer into 143 documents; clipping instead
+of hiding; unwrapping generated anchors). The extension's own analyzer code settles it:
+**score = min(100, served words ÷ rendered-DOM words)**, landmarks stripped by default, hidden text
+counted as rendered, a count ratio and not a word-set diff. Reproduced to the word on one site.
+
+- **New reference `deploy/reference/ai-readability.md`** (on demand): the formula and its
+  consequences (what JS adds to the DOM is the whole defect; hidden text, chrome and generated
+  anchors are neutral; served-only text inflates; short pages suffer most), the two metrics kept
+  apart (checker score vs served-text parity), a cause-class table with remediation (loop clones,
+  index-fed cards, runtime fragments, definition-driven forms, generated labels), six block rules,
+  chrome inlining as a documented option with its trade-off, and the gate contract.
+- **New gate `deploy/scripts/ai-readability.mjs`**: exact reimplementation, both toggles, `code`
+  score (fragments credited, app blocks excluded), per-block served-gap attribution, allowlist by
+  block + string, JSON report, exit 1 below `--min` (98). Runs in the deploy atomic delivery
+  contract on the published page, as the new `qa` check `ai-readability` (K), and in `audit`
+  Phase 4.
+- **Block rule (deploy, always-on, one bullet): `decorate()` adds no words to the DOM** — clones
+  presentational, listings document-first, generated text only for allowlisted runtime values.
+  The D12 key-facts paragraph shrinks to a one-liner that points at the reference (net always-on
+  growth ≈ 0).
+- **Listings contract rewritten (`dynamics/reference/listings.md`)**: document-first — one authored
+  row per item with the card's text, a heading row per group, a label-list row; the block uses the
+  index for non-text fields and top-up; re-runs replace their own rows. Dynamics Phase 4 and
+  rollout D2 point at it.
+- **Replica**: loop clones carry no text/alt/href/aria (`recreation-procedure.md`).
+- **Eval `evals/ai-readability/`**: clones, document-first listing, explicit fragment decision, no
+  generated text, gate reported, checker facts stated correctly.
+- Not adopted, on evidence: clip-instead-of-hide rules (hidden text is neutral), inlining nav/footer
+  into every document as a default (does not move the default score; two of three owners declined),
+  CSS-stretched links *for the score* (kept as the accessible-name shape only).
+
+## 0.20.0 — dynamics: the dynamic surface of a migration
+
+Three real migrations (a US health insurer's employers section rebuilt greenfield, a UK
+package-holiday site on an existing EDS library, a consumer-credit site re-platformed at
+~5,900 URLs) found the same thing: a site's dynamic surface — modals, players, forms,
+search, tags, APIs, client-rendered and sheet-backed content — is invisible to a
+block-scoped, pixel-verified pipeline, and invisible in a way every gate certifies as
+correct. This release makes it visible, forces a decision per row before import, and
+proves the behaviour after delivery. Migration-bound by design: default-on in both
+migration flows, never for redesign-only work.
+
+- **New sub-skill `stardust:dynamics`** (`skills/dynamics/`): detect → classify → triage →
+  implement → verify. Triage on **four axes** — class (`L S F M V T A R X I18N CR D`),
+  disposition (`rebuild-native · index-backed · data-fed · embed-passthrough · client-only ·
+  static-snapshot · decided-out`), reproducibility (`self · needs-credential ·
+  needs-human-capture · needs-backend · needs-business-decision`), status. Only `self` ships
+  autonomously; the rest is one owner decision batch. Hard rules: reconcile against the
+  migrated output first, never fabricate a blank client-rendered page, never auto-wire a
+  regulated-PII form, a search box implies a results page, decided-out is explicit.
+- **References** (loaded on demand, not in the always-on skills): classes-and-signals,
+  triage (+ the `stardust/dynamic-features.md` inventory format, which subsumes the former
+  dynamic-blocks map), patterns (catalogue with contracts and three embedded example
+  mechanisms — modal loader, index search, JSON post with honeypot), listings (folded from
+  rollout's dynamic-listings), off-origin-data (host-keyed endpoint indirection, code-bus
+  snapshots, fetch shim, per-state rendered snapshots + `Source` row, sheet sync, chrome URL
+  space), forms (controls not form tags; intake by content source; regulated data),
+  parity-report, locale-trees. The plugin ships **contracts and tooling, not blocks**: no
+  block was reused as-is across the three cases and an existing library must be fed, not
+  forked.
+- **Tooling** (`skills/dynamics/scripts/`, verified end to end on a local fixture):
+  `dynamics-detect.mjs` (network log by host, first-party API paths with status, POST
+  bodies, forms **and form-less control groups**, the trigger → dialog → content graph,
+  player ids, iframes without src, tag-manager mount divs, settings-object keys, framework,
+  auth/commerce/locale, client-rendered slots and pages, listing candidates; `--from-state`
+  for one page per type; `--reach` folds the crawl's per-page signals in),
+  `dynamics-plan.mjs` (four-axis draft per finding, `--target-origin` **host-bound** probe of
+  every recorded API path, `--migrated` reconcile against delivered output, regulated-PII
+  flag), `dynamics-check.mjs` (parity replay over a closed set of check types —
+  `fetch-json`, `dom-count`, `click-dialog`, `search-query`, `form-flow`, `video-plays`,
+  `consent-gate`, `no-page-errors` — third-party request statuses recorded per check),
+  `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs`, `vendors.json` (the
+  classification engine: host pattern → class + role, product names only).
+- **Hooks in the existing skills, ≤15 lines each:** `extract --dynamics` (opt-in per-page
+  reach signals; never set by a bare extract, `uplift` or `audit`); `prepare-migration`
+  Phase 4.5 and `replica` Phase 2 run Phases 1–3 as the pre-import gate; `migrate` Phase 1
+  is the safety net for the hand-run flow; `deploy` reads the inventory as brief input and
+  never flattens `client-only` / modal-bearing sections into prose; `rollout` B2 verifies the
+  inventory against fresh evidence, D2 implements the `self` set and batches the rest, H
+  reports parity; `qa` gains the `dynamics` check (`parity-missing` / `parity-failed` /
+  `parity-env-limit` / `parity-unchecked`); master routing + both flows name it.
+- **Origin-scoped site auth everywhere.** `resolveSiteAuth` / `attachOriginAuth` in the shared
+  live-session helper and the qa runner (`--auth-header` / `--token-env`, default
+  `SITE_TOKEN`): the secret rides a route filter on the base origin only — a context-wide
+  header leaked it to a video vendor's playback API, whose CORS check then produced a player
+  error real users never see.
+- **Learnings ledger** failure classes `dynamic-gap` / `api-dependency` now point at the
+  dynamics references. Removed: `rollout/reference/dynamic-listings.md` and the 0.19.9
+  `dynamic-capabilities.md` (folded into `skills/dynamics/reference/`).
+
+## 0.19.8 — impeccable dependency: unpinned by design, with an update hint
+
+- **Dependency declaration** moves to the documented cross-marketplace object
+  form — `{ "name": "impeccable", "marketplace": "impeccable" }` — still with
+  NO version range, on purpose: impeccable's design craft should always be
+  the current one. (The root marketplace's `allowCrossMarketplaceDependenciesOn`
+  already lists `impeccable`.)
+- **New `stardust/scripts/impeccable-version-check.mjs`** — Claude Code only
+  announces plugin updates through marketplace auto-update, which is off by
+  default for third-party marketplaces, so a user can sit on an old
+  impeccable indefinitely. Setup step 1 now runs this check once per session
+  and surfaces its one line when a newer impeccable exists (installed
+  version from the plugin registry or `--local <dir>`; latest from the
+  upstream manifest with a 6s timeout, falling back to the cached
+  marketplace catalog; `--offline`, `--json`). Advisory only: always exits 0,
+  fails silently to "unknown" — the registry paths it reads are Claude Code
+  implementation details, not an API.
+- **Manifest drift fixed:** the adobe-skills marketplace entry and the Tessl
+  manifest both still said 0.18.1 while `plugin.json` was at 0.19.7 (the
+  validator warned; `plugin.json` wins at install, so users were unaffected,
+  but `claude plugin tag` requires agreement). All three now read 0.19.8.
+
+## 0.19.7 — sibling variance probe (P12)
+
+- **New `replica/scripts/sibling-variance.mjs`** — before cloning a gated
+  archetype onto its siblings, probe the template-defining computed values on
+  every sibling's LIVE page and diff against the archetype: per `--probe
+  name=<sel>` the match count, first match's box + computed group (background
+  layers incl. gradient scrims, colour, padding, font, radius), first heading
+  and image, list-style and `::before` mechanism, and the number of distinct
+  style families among matches; plus the top-level section list. Defaults
+  (first section, most-repeated class, `li`) when no probes are given.
+  Live-session hardening as the other replica instruments. Exit 0 constant,
+  2 variance found. Read-only — it never edits the clone.
+  Field evidence: eight "same-template" siblings varied in hero template
+  (441 vs 528px), scrim direction, bullet mechanism and terms shape — all
+  found late at the pixel gate.
+- **Fidelity tiers:** the sibling tier is "variance-probed" first; new
+  § Sibling variance probe — every delta is budgeted as a block VARIANT class
+  emitted on the sibling's content (blocks stay generic, never forked per
+  page); `gatesPassed` gains `variance-probe`, `_meta.json` gains
+  `variants[]`. Replica Phase 5 and migrate's A′ branch point at it.
+
+## 0.19.6 — replica: glyph-dense chrome noise floor, evidence-gated (P6)
+
+- **`crop-compare.mjs` reports the diff TEXTURE** — the share of differing
+  pixels with ≥5 differing neighbours: thin-edge = glyph-antialiasing noise,
+  thick = blocks/bands (misalignment, missing paint). Reported in text and
+  `--json`; never changes the exit code.
+- **Gate doc, pass bar item 5:** a glyph-dense chrome band that fails the 2%
+  bar may be logged as a justified residual (`cause: "glyph-antialiasing"`)
+  — never a pass — only when all three hold and are attached as artifacts:
+  `chrome-parity.mjs` exit 0 for the region at 1px tolerance, crop-compare
+  texture thin-edge (≤15% thick), and a text-dense region (no imagery/icons).
+  Field evidence: a ~50-link footer bottomed out at ~5% with every metric
+  numerically identical; a hinted licensed face vs a self-hosted webfont
+  rasterise differently per glyph. The 2% bar is unchanged; residual logging
+  format gains the entry shape.
+
+## 0.19.5 — deploy: link localization as a pipeline stage (P24)
+
+- **New `deploy/scripts/localize-links.mjs`** — dependency-free, idempotent.
+  Builds the URL map from the content tree (every served path, extensionless,
+  `x/index.html` → `/x`) plus `--redirects` (rollout's `stardust/redirects.tsv`
+  or a JSON map), rewrites every source-host `<a href>` (with/without `www.`,
+  http/https/protocol-relative) whose path resolves in the map to the
+  canonical root-relative form — no `.html`, no trailing slash, query and
+  fragment preserved — and normalizes root-relative internal hrefs the same
+  way. Everything else stays absolute and is REPORTED (the not-yet-migrated
+  boundary). `--dry-run`, `--json`, and `--check` (write nothing, exit 2 when
+  localizable links remain — the pre-deploy assertion).
+  Field evidence: ~500 source-domain links across ~150 pages bounced visitors
+  back to the live site for pages that existed on the new origin.
+- **Deploy stage:** the Deploy table and the per-page atomic delivery contract
+  gain the stage (run after every generator and before every write, over the
+  WHOLE tree; re-run after every wave). The ENCODE D4 bullet and
+  `davids-model.md` now say what D4 is — a capture-fidelity rule for media and
+  external targets — and that internal links to migrated pages are
+  root-relative. Checklist item added. Rollout Phase E2 points at the stage
+  instead of a hand rewrite.
+- **Lint (advisory):** `davids-model-lint.mjs --source-host <host[,host]>
+  [--content-root <dir>]` flags a source-host `<a href>` whose path exists in
+  the content tree as 🟡 D4 LOCALIZE. Advisory by design in this release;
+  promote to 🔴 after one rollout has run the stage cleanly.
+
+## 0.19.4 — replica: chrome-parity probe (P3)
+
+- **New `replica/scripts/chrome-parity.mjs`** — computed-style parity for
+  chrome. Probes the same regions on live and build (default header +
+  footer; `--region strip=<liveSel>|<buildSel>` for sticky strips), pairs
+  every text-bearing element by text, and prints only the deltas: font
+  family / size / weight / style / line-height / letter-spacing / transform /
+  colour / background / padding / radius, element rect, the clickable box
+  of links and buttons, plus an icon inventory (count, size, signature)
+  paired by order; MISSING / EXTRA texts on either side. Live-side hardening
+  via the shared `live-session.mjs` (UA + headers, challenge fail-loud exit
+  3, overlay dismissal, `--headed`, `--locale`). Exit 0 quiet, 2 deltas.
+  Field evidence: one run found what many pixel-band rounds had not
+  (italic-vs-normal note, regular-vs-bold link, wrong nav link colour, 12px
+  row offsets, 97×40 vs 71×32 button, six missing icons).
+- **Gate doc, pass bar item 5:** styles diagnose, pixels confirm — run the
+  probe BEFORE any pixel iteration on chrome and clear its deltas; iteration
+  discipline gains the same rule. Replica SKILL setup copies the script and
+  the Phase 4 snippet shows the call; deploy Step 10 item 4 points at it for
+  the deployed-origin chrome gate. The ≥98% crop gate remains the pass bar —
+  the probe is a diagnostic, not a new threshold.
+
 ## 0.19.3 — replica field harvest, part 2: row-level instruments, masks, detectors (P1, P11, P22, P16, P19, P15, P20)
 
 Second fold of the 2026-09 same-design-migration ledger: the entries that

@@ -20,7 +20,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  loadPlaywright, finding, pageUrl, pathSlug, ensureDir, pMap,
+  loadPlaywright, finding, pageUrl, pathSlug, ensureDir, pMap, attachOriginAuth,
 } from '../lib.mjs';
 
 const VIEWPORTS = [
@@ -114,7 +114,7 @@ export async function run(ctx) {
   // canvas diff worker; recreated on demand — a crashed tab must not sink the sweep
   let diffPage = null;
   const getDiffPage = async () => {
-    if (!diffPage || diffPage.isClosed()) diffPage = await (await browser.newContext()).newPage();
+    if (!diffPage || diffPage.isClosed()) { const dctx = await browser.newContext(); await attachOriginAuth(dctx); diffPage = await dctx.newPage(); }
     return diffPage;
   };
 
@@ -133,6 +133,7 @@ export async function run(ctx) {
   async function sweepPage(p, vp) {
     {
       const context = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
+      await attachOriginAuth(context);
       const page = await context.newPage();
       const consoleErrors = []; const pageErrors = []; const badRequests = [];
       page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text().slice(0, 300)); });

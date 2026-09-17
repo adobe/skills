@@ -55,6 +55,7 @@
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev-tool library: sequential page ops use awaited loops by design */
+import { existsSync, readFileSync } from 'node:fs';
 
 // Current stable Chrome on macOS. Chrome's UA reduction freezes the platform
 // token at 10_15_7 and the minor version at .0.0.0 — only the major matters,
@@ -151,7 +152,7 @@ export function contextOptions({ ua, locale, viewport } = {}) {
  * cleared it; the spoof is harmless on non-challenging sites). Extra
  * Playwright context options pass through (reducedMotion, ...).
  */
-export async function newLiveContext(browser, { ua, locale, viewport, ...rest } = {}) {
+export async function newLiveContext(browser, { ua, locale, viewport, authOrigin, authHeader, ...rest } = {}) {
   // F-B2 (financial-services site, 2026-08-25): the standard header set must ride on
   // DOCUMENT requests only. Forcing it via extraHTTPHeaders on every request
   // makes cross-origin CORS-mode subresource fetches (Typekit/webfont CDNs)
@@ -171,7 +172,39 @@ export async function newLiveContext(browser, { ua, locale, viewport, ...rest } 
   await ctx.addInitScript(() => {
     Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
   });
+  if (authOrigin && authHeader) await attachOriginAuth(ctx, authOrigin, authHeader);
   return ctx;
+}
+
+/**
+ * Origin-scoped site auth (protected demo origins: access allow-list + site
+ * secret). Resolve from `--auth-header "token …"` or `--token-env NAME`
+ * (process.env, then a cwd `.env`; default SITE_TOKEN). Attach through a route
+ * filter on ONE origin — never via extraHTTPHeaders: the secret would ride every
+ * third-party request and their CORS checks would fail a credentialed request,
+ * reporting a vendor error real users never see (recorded on a video vendor's
+ * playback API inside a modal). Every origin-reading instrument (stitch-shot,
+ * qa, rollout verify, dynamics-check) uses these two.
+ */
+export function resolveSiteAuth({ authHeader, tokenEnv } = {}) {
+  const idx = (k) => process.argv.indexOf(`--${k}`);
+  const direct = authHeader || (idx('auth-header') >= 0 ? process.argv[idx('auth-header') + 1] : null);
+  if (direct) return direct;
+  const name = tokenEnv || (idx('token-env') >= 0 ? process.argv[idx('token-env') + 1] : null) || 'SITE_TOKEN';
+  let v = process.env[name];
+  if (!v && existsSync('.env')) v = (readFileSync('.env', 'utf8').match(new RegExp(`^${name}=(.*)$`, 'm')) || [])[1];
+  if (!v) return null;
+  v = v.trim().replace(/^["']|["']$/g, '');
+  return /^(token|bearer) /i.test(v) ? v : `token ${v}`;
+}
+export async function attachOriginAuth(context, origin, headerValue) {
+  if (!headerValue || !origin) return;
+  const o = new URL(origin).origin;
+  await context.route('**/*', (route) => {
+    const u = route.request().url();
+    if (u === o || u.startsWith(`${o}/`)) route.continue({ headers: { ...route.request().headers(), authorization: headerValue } });
+    else route.continue();
+  });
 }
 
 // The marker that classifies a response as a bot-management challenge/block,

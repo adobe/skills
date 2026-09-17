@@ -3,10 +3,11 @@ name: commerce-app-admin-ui
 description: >
   Add or modify Adobe Commerce Admin UI extensions on the
   commerce/backend-ui/2 extension point: custom grid columns, mass actions,
-  order view buttons, and a custom Admin menu entry. Use whenever the user
-  wants to extend the Commerce Admin — add a column to the order, product, or
-  customer grid, add a bulk/mass action to a grid, add a button to the order
-  view page, or add a custom menu item or page — even when they don't name the
+  order view buttons, a custom Admin menu entry, and custom ACL resources. Use
+  whenever the user wants to extend the Commerce Admin — add a column to the
+  order, product, or customer grid, add a bulk/mass action to a grid, add a
+  button to the order view page, add a custom menu item or page, or declare
+  custom permissions the app checks itself — even when they don't name the
   extension point.
 license: Apache-2.0
 compatibility: >
@@ -22,7 +23,7 @@ metadata:
 # Configure Commerce App Admin UI
 
 Adds or modifies the `adminUi` block in an existing `app.commerce.config.ts`.
-The Admin UI extension point (`commerce/backend-ui/2`) lets a Commerce app extend the Commerce Admin with custom grid columns, mass actions, order view buttons, and a menu entry.
+The Admin UI extension point (`commerce/backend-ui/2`) lets a Commerce app extend the Commerce Admin with custom grid columns, mass actions, order view buttons, a menu entry, and custom ACL resources.
 Other extensibility domains (webhooks, events, business config) are added separately via their own skills.
 
 ## Prerequisites
@@ -42,16 +43,18 @@ Other extensibility domains (webhooks, events, business config) are added separa
 | Mass actions       | order, product, customer      | view / worker | worker only    | [mass-actions](references/mass-actions.md)             |
 | Order view buttons | order only                    | view / worker | worker only    | [order-view-buttons](references/order-view-buttons.md) |
 | Menu               | single entry (`adminUi.menu`) | view (iframe) | no             | [menu](references/menu.md)                             |
+| Custom ACL         | list (`adminUi.acl`)          | none          | no             | [custom-acl](references/custom-acl.md)                 |
 
 `view` renders an iframe into the app's web UI (`web-src`) at the entry's `path`; `worker` invokes a runtime action server-side.
+Custom ACL resources have no variant and no handler: they are standalone permissions Commerce renders in the User Roles tree, and the app checks them itself (see [custom-acl](references/custom-acl.md)).
 Grid columns are always worker; the menu is always an iframe.
 
 ## Step 1 — Understand intent
 
 For each thing the user wants to add, gather:
 
-- **Which extension point** — grid columns, mass actions, order view buttons, or menu
-- **Which entity** — `order`, `product`, or `customer` (grid columns and mass actions; view buttons are order-only; menu has no entity)
+- **Which extension point** — grid columns, mass actions, order view buttons, menu, or custom ACL resources
+- **Which entity** — `order`, `product`, or `customer` (grid columns and mass actions; view buttons are order-only; menu and custom ACL resources have no entity)
 - **For mass actions and view buttons, the variant** — `worker` (runtime action) or `view` (iframe into `web-src`)
 - The fields for that extension point (column definitions, button labels, menu parent, etc.) — see the reference file in the table above for the full field set
 
@@ -103,6 +106,13 @@ adminUi: {
     description: "Custom dashboard for my app.",
     parentMenu: MENU_SALES,
   },
+  // Custom ACL resources — standalone permissions the app checks itself (no handler)
+  acl: [
+    { id: "reports", label: "Reports", children: [
+      { id: "export", label: "Export" },
+    ]},
+    { id: "approve_refunds", label: "Approve Refunds" },
+  ],
 }
 ```
 
@@ -118,7 +128,7 @@ npx @adobe/aio-commerce-lib-app init
 
 The build derives the extension's `ext.config.yaml` from your `adminUi` config: each worker `runtimeAction` becomes a `workerProcess` operation, and when you declare a `menu` or any `view`-type entry, a `view` operation plus an explicit `web: web-src` key are written. Those `hooks`, `operations`, and `web` sections are managed by the library — do not hand-edit them.
 
-When a `view` operation is present, init/generate also scaffolds the web frontend automatically (skipped if `web-src/index.html` already exists). It generates `src/commerce-backend-ui-2/web-src/` — `index.html`, `src/app.jsx`, `src/pages/main-page.jsx`, `src/components/welcome.jsx` (`.tsx` plus an independent `tsconfig.json` when the app config is TypeScript) — adds the `#web/*` import alias to `package.json`, and declares and installs pinned versions of `react`, `react-dom`, `@react-spectrum/s2`, and `@adobe/aio-commerce-lib-admin-ui` (React and Spectrum S2 are optional peer dependencies of the admin-ui library), plus some `devDependencies` for proper TypeScript support/config. TypeScript scaffolds also add `typecheck:web-src` to the project’s composed `typecheck` script. Do not hand-pick different versions of these dependencies; the scaffold fails if incompatible versions are already installed.
+When a `view` operation is present, init/generate also scaffolds the web frontend automatically (skipped if `web-src/index.html` already exists). It generates `src/commerce-backend-ui-2/web-src/` — `index.html`, `src/app.jsx`, `src/pages/main-page.jsx`, `src/components/welcome.jsx` (`.tsx` plus an independent `tsconfig.json` when the app config is TypeScript) — adds the `#web/*` import alias to `package.json`, and declares and installs pinned versions of `react`, `react-dom`, `@react-spectrum/s2`, and `@adobe/aio-commerce-lib-admin-ui` (React and Spectrum S2 are optional peer dependencies of the admin-ui library), plus some `devDependencies` for proper TypeScript and Babel support/config. A separate required-file phase runs on every generation to ensure a set of web source support files is present without replacing existing versions. The current set includes `web-src/.babelrc`, which selects React's automatic JSX transform for each environment so development builds retain JSX diagnostics while production builds do not emit `jsxDEV` calls. If `BABEL_ENV` is set, keep it synchronized with `NODE_ENV`, because Babel gives `BABEL_ENV` precedence when selecting the configuration environment. TypeScript scaffolds also add `typecheck:web-src` to the project’s composed `typecheck` script. Do not hand-pick different versions of these dependencies; the scaffold fails if incompatible versions are already installed.
 
 If the scaffold is skipped because `web-src` already exists, check its `package.json` for classic React Spectrum (`@adobe/react-spectrum` or `@react-spectrum/<component>` without `s2`) instead of `@react-spectrum/s2`. The two are compatible, but S2 is the version Adobe recommends moving to and the one this scaffold targets — suggest upgrading. This skill only configures the Admin UI extension, it doesn't drive the upgrade itself, so point the user to the `commerce-app-migrate` skill for the actual migration:
 
@@ -272,6 +282,35 @@ createExtensionApp({
 
 For an order view button, swap the hook for `useOrderViewButtonContext()` and read `data.orderId` after handling `error` — see [order-view-buttons](references/order-view-buttons.md).
 
+### Calling your own action from a menu/view page
+
+A menu or view page sometimes needs to fetch its own data — a custom menu page rendering a table, for example — instead of receiving it from Commerce. For that, it calls one of the app's own actions directly from `web-src`.
+
+Whenever an extension declares both `actions` and `web-src`, `aio app build`/`aio app dev` auto-generate `web-src/src/config.json` (`config.web.injectedConfig`) with every action's live URL — gitignored, regenerated on every build, nothing to scaffold by hand:
+
+```jsx
+// src/commerce-backend-ui-2/web-src/src/hooks/use-config.js
+import { useCallback } from "react";
+import actionUrls from "../config.json";
+
+export function useConfig() {
+  return { getActionUrl: useCallback((action) => actionUrls[action], []) };
+}
+
+// Usage — combine with useIms() for the auth headers:
+import { useIms } from "@adobe/aio-commerce-lib-admin-ui/web";
+
+const { data, error } = useIms();
+if (error) throw error;
+
+const response = await fetch(getActionUrl("my-app/order-grid"), {
+  headers: {
+    authorization: `Bearer ${data.imsToken}`,
+    "x-gw-ims-org-id": data.imsOrgId, // required for require-adobe-auth: true actions, or the request fails
+  },
+});
+```
+
 ## Step 5 — Validate
 
 Build the project to confirm the updated config is valid:
@@ -314,3 +353,4 @@ After `aio app build` passes:
 - [references/mass-actions.md](references/mass-actions.md) — Mass action config (view and worker) and handler contract
 - [references/order-view-buttons.md](references/order-view-buttons.md) — Order view button config (view and worker) and handler contract
 - [references/menu.md](references/menu.md) — Menu config and parent-menu constants
+- [references/custom-acl.md](references/custom-acl.md) — Custom ACL resource config and runtime permission checks
