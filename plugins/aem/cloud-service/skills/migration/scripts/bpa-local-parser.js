@@ -20,18 +20,39 @@ const path = require('path');
 const PATTERN_TO_SUBTYPE = {
   scheduler: "sling.commons.scheduler",
   assetApi: "unsupported.asset.api",
+  guavaCache: "custom.guava.cache",
 };
 
 // CSV subtype to pattern mapping (based on actual CSV structure)
 const CSV_SUBTYPE_TO_PATTERN = {
   "unsupported.asset.api": "assetApi",
-  "javax.jcr.observation.EventListener": "eventListener", 
+  "javax.jcr.observation.EventListener": "eventListener",
   "org.apache.sling.api.resource.observation.ResourceChangeListener": "resourceChangeListener",
-  "org.osgi.service.event.EventHandler": "eventHandler"
+  "org.osgi.service.event.EventHandler": "eventHandler",
+  "custom.guava.cache": "guavaCache"
 };
 
 // Known scheduler identifier
 const SCHEDULER_IDENTIFIER = "org.apache.sling.commons.scheduler";
+
+// Content/legacy-UI subtypes whose findings are keyed by a JCR node path
+// (`identifier`), not a Java class name. Extracted generically into the
+// unified collection so the migration runbook + Branch C/D can consume them.
+//   cdw                    → custom.classic.widget
+//   lui (dialogs + more)   → legacy.dialog.classic / .coral2 / .custom.component / .static.template
+//   template modernization → legacy.static.template / custom.static.template
+//   replication            → forward.replication / reverse.replication
+const CONTENT_SUBTYPES = [
+  'custom.classic.widget',
+  'legacy.dialog.classic',
+  'legacy.dialog.coral2',
+  'legacy.custom.component',
+  'legacy.static.template',
+  'custom.static.template',
+  'forward.replication',
+  'reverse.replication',
+  'unsupported.runmode',
+];
 
 /**
  * Parse command line arguments
@@ -199,6 +220,29 @@ function processSchedulerFindings(findings) {
     subtype: PATTERN_TO_SUBTYPE.scheduler,
     identifiers: identifiers
   };
+}
+
+/**
+ * Process a content/legacy-UI subtype whose findings are keyed by JCR path.
+ * Groups by the `identifier` (node path); each finding contributes one entry
+ * (so the count matches the BPA report). Summary rows (code starting with `_`,
+ * e.g. `_COUNT_REP`, `_STAT`) are excluded — they share real subtype strings
+ * and would otherwise inflate counts.
+ *
+ * Returns { subtype, identifiers } where `identifiers` is keyed by the RAW JCR
+ * path (not MongoDB-safed): these paths contain underscores (`design_dialog`,
+ * `_cq_dialog`) that a dot→underscore round-trip would corrupt.
+ */
+function processContentSubtypeFindings(findings, subtype) {
+  const matched = findings.filter(f =>
+    f.subtype === subtype && !String(f.code || '').startsWith('_')
+  );
+  const identifiers = {};
+  matched.forEach(f => {
+    const key = f.identifier || f.context || subtype;
+    (identifiers[key] = identifiers[key] || []).push(f.context || f.message || key);
+  });
+  return { subtype, identifiers };
 }
 
 /**
@@ -380,6 +424,62 @@ function processEventHandlerFindings(findings) {
 }
 
 /**
+ * Extract the bundle/module name from a `custom.guava.cache` finding's message.
+ *
+ * Unlike scheduler/eventListener/etc., `identifier` on this subtype is a
+ * *Guava-internal* class (e.g. `com.google.common.cache.AbstractCache`) —
+ * BPA is bytecode-scanning Guava's own cache implementation classes wherever
+ * they are reachable, not the customer's classes that import them. The only
+ * customer-relevant unit is the **bundle** the message names ("The X class
+ * in the <bundle> bundle uses Y."). A real bundle can produce hundreds of
+ * these rows (one per Guava-internal class pulled in) — dedupe to one entry
+ * per bundle, not per row.
+ */
+function extractGuavaBundleFromMessage(finding) {
+  const message = finding.message || '';
+  const match = message.match(/\bin the ([\w.-]+) bundle\b/);
+  return match ? match[1] : null;
+}
+
+/**
+ * Process Guava cache findings from CSV. One entry per bundle — BPA reports
+ * every Guava-internal class it finds on that bundle's classpath, not one
+ * finding per customer file, so grouping by row or by `identifier` would
+ * bloat to hundreds of entries for a single bundle that just embeds Guava.
+ */
+function processGuavaCacheFindings(findings) {
+  const guavaCacheFindings = findings.filter(finding =>
+    finding.subtype === 'custom.guava.cache' && !String(finding.code || '').startsWith('_')
+  );
+
+  const identifiers = {};
+  const bundleNames = [];
+
+  guavaCacheFindings.forEach(finding => {
+    const bundleName = extractGuavaBundleFromMessage(finding);
+    if (bundleName) {
+      if (!bundleNames.includes(bundleName)) {
+        bundleNames.push(bundleName);
+      }
+    } else {
+      console.warn(
+        `custom.guava.cache row could not be parsed for a bundle name — dropped, not counted. ` +
+        `identifier=${finding.identifier || '(none)'} message=${JSON.stringify(finding.message || '')}`
+      );
+    }
+  });
+
+  if (bundleNames.length > 0) {
+    identifiers['custom.guava.cache'] = bundleNames;
+  }
+
+  return {
+    subtype: 'custom.guava.cache',
+    identifiers: identifiers
+  };
+}
+
+/**
  * Convert subtype to MongoDB-safe field name (matching cloud-adoption-service)
  */
 function toMongoSafeFieldName(fieldName) {
@@ -487,7 +587,38 @@ function createUnifiedCollection(bpaData, outputDir) {
     
     console.log(`Found ${Object.values(eventHandlerCollection.identifiers).flat().length} event handler classes`);
   }
-  
+
+  // Process Guava cache findings
+  const guavaCacheCollection = processGuavaCacheFindings(findings);
+  if (Object.keys(guavaCacheCollection.identifiers).length > 0) {
+    const mongoSafeSubtype = toMongoSafeFieldName(guavaCacheCollection.subtype);
+    subtypes[mongoSafeSubtype] = {};
+
+    Object.entries(guavaCacheCollection.identifiers).forEach(([identifier, bundleNames]) => {
+      const mongoSafeIdentifier = toMongoSafeIdentifier(identifier);
+      subtypes[mongoSafeSubtype][mongoSafeIdentifier] = bundleNames;
+      totalFindings += bundleNames.length;
+    });
+
+    console.log(`Found ${Object.values(guavaCacheCollection.identifiers).flat().length} bundles using Guava cache`);
+  }
+
+  // Process content / legacy-UI subtypes (cdw, lui, templates, replication).
+  // Keys are RAW JCR paths (not MongoDB-safed) to avoid corrupting underscores.
+  for (const subtype of CONTENT_SUBTYPES) {
+    const coll = processContentSubtypeFindings(findings, subtype);
+    const ids = Object.keys(coll.identifiers);
+    if (ids.length === 0) continue;
+    const mongoSafeSubtype = toMongoSafeFieldName(subtype);
+    subtypes[mongoSafeSubtype] = {};
+    ids.forEach(identifier => {
+      const values = coll.identifiers[identifier];
+      subtypes[mongoSafeSubtype][identifier] = values;
+      totalFindings += values.length;
+    });
+    console.log(`Found ${Object.values(coll.identifiers).flat().length} ${subtype} findings`);
+  }
+
   // Create unified collection structure with metadata
   const subtypeKeys = Object.keys(subtypes);
   const unifiedCollection = {

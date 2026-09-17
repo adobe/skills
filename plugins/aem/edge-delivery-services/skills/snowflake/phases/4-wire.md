@@ -3,6 +3,13 @@
 Goal: copy the Generate output into the target EDS repo's deployed
 paths and build a local-test file.
 
+## Milo flavor (read FIRST if `substrateFlavor` is `milo`)
+
+If `.snowflake/config.json` `substrateFlavor` is `milo`, **read
+[../assets/substrate-milo/FLAVOR.md#wire](../assets/substrate-milo/FLAVOR.md) FIRST**
+and follow its wire steps (both page-level and block-level) instead of the EDS steps
+below, then skip to the lint step. For the EDS flavor, follow the steps as written.
+
 ## Steps
 
 Run from the target repo's root:

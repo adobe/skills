@@ -1,5 +1,13 @@
 # rollout — design package
 
+> **SUPERSEDED.** This folder is the historical design proposal for the
+> `rollout` skill and is kept for context only. The skill has since shipped at
+> `skills/rollout/` and has evolved well past this plan (delivery gates,
+> verify scripts, runtime-contract detection, fidelity-tier coverage). The
+> JSON Schemas are now maintained under `skills/rollout/schemas/` — the copies
+> in this folder's `schemas/` are frozen at proposal time and should not be
+> edited.
+
 Proposal for **`rollout`**: a new skill that delivers a **whole redesigned site
 to AEM Edge Delivery Services**. It is the full-site sibling of the existing
 single-page `deploy`. This folder is the review deliverable; **no skill code is

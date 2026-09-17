@@ -56,7 +56,10 @@ DESIGN.md owns primitive tokens (colors, spacing, type, radii).
 Canon owns the **compound CSS** — the named visual language that
 consumes those tokens to define `.btn-primary`, `.btn-secondary`,
 `.card`, `.link`, form inputs, and any other reusable visual
-treatments the approved prototype establishes.
+treatments the approved prototype establishes. (These class names
+are the PROTOTYPE's own vocabulary — the EDS delivery convention
+is `.button.primary`/`.secondary`, applied at conversion time by
+`deploy`, not by canon.)
 
 Lift those rules from the prototype's `<style>` block into:
 

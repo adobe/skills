@@ -1,6 +1,6 @@
 ---
 name: prepare-migration
-description: Orchestrate the migrate-prep cascade — extract --prep → direct --prep → prototype --prep → assets prep — with confirmation gates between phases. Builds the data structure migrate consumes.
+description: Prepare a whole site for migration by orchestrating the prep cascade — a full-inventory crawl (extract --prep), page-type and module-catalog confirmation (direct --prep), archetype prototypes plus design canon (prototype --prep), and asset preparation — with confirmation gates between phases. Builds the typed page inventory, confirmed module catalog, and canon that stardust:migrate consumes. Use when the user wants to prepare or set up a full-site migration, run migration prep, confirm page types and modules before migrating a site, get a large site ready to migrate, or invokes /stardust:prepare-migration. Trigger phrases include "prepare the migration", "migration prep", "set up the migration data", "get the site ready to migrate". Redesign-flow only — for same-design migrations stardust:replica runs its own preserve-mode prep cascade; never chain prepare-migration with replica. Not for running the migration itself (stardust:migrate) or converting a single page (stardust:deploy).
 license: Apache-2.0
 ---
 
@@ -29,14 +29,24 @@ this site" a conscious gesture and keeps idempotency obvious.
 ## Inputs
 
 - `--from <phase>` — optional. Resume the cascade from a specific
-  phase. Values: `extract | direct | prototype | assets`. Default
-  starts from the earliest incomplete phase.
+  phase. Values: `extract | direct | prototype | assets |
+  dynamics`. Default starts from the earliest incomplete phase.
 - `--skip-confirm` — optional. Skip the per-phase confirmation
   gates. Useful for re-runs where the catalog is already settled.
-  Default is to gate at every phase boundary.
+  Default is to gate at every phase boundary. Hands-off mode
+  (`skills/stardust/SKILL.md` § Hands-off mode, i.e.
+  `state.json.handsOff: true`) implies `--skip-confirm`.
 - `--canon-from <slug>` — optional. Forward to
   `prototype --prep --canon-from <slug>` when that phase runs.
   Override the default canon-author (which is `home`).
+- `--refine-module <module-id>` — optional. Re-enter Phase 2's
+  module-catalog step for one module — the target of `migrate`'s
+  "bespoke slot crossing promotion threshold" hint. Promotes the
+  recurring bespoke slot into that module's slot schema
+  (`DESIGN.json.extensions.modules[]`), surfaces the change for
+  confirmation, then stops; it does not re-run the full cascade.
+  Affected pages are stale-flagged content-aware per
+  `skills/stardust/reference/state-machine.md`.
 
 ## Setup
 
@@ -58,16 +68,19 @@ this site" a conscious gesture and keeps idempotency obvious.
      `DESIGN.json.extensions.canon` populated.
    - **assets**: favicon variants in
      `stardust/migrated/assets/`; fonts downloaded.
+   - **dynamics**: `stardust/dynamic-features.md` present with every
+     row carrying a disposition; `helix-query.yaml` present when any
+     listing is index-backed (Phase 4.5 records "none" otherwise).
 
    Resume from the earliest incomplete phase unless `--from`
    overrides.
 
 ## Procedure
 
-The cascade runs four phases sequentially. Each phase invokes its
+The cascade runs five phases sequentially. Each phase invokes its
 underlying skill via the Skill tool, surfaces the phase's prep
-summary, then waits for user confirmation (unless `--skip-confirm`)
-before advancing.
+summary, then waits for user confirmation (unless `--skip-confirm`
+or hands-off mode) before advancing.
 
 ### Phase 1 — extract --prep
 
@@ -206,7 +219,7 @@ processing + download routine.
    present in `stardust/current/assets/`. Surface missing assets
    to the user.
 
-Surface summary and final gate:
+Surface summary and gate:
 
 ```
 assets prep complete
@@ -215,10 +228,29 @@ assets prep complete
 Favicon variants:    favicon-512.png, apple-touch-icon.png, icon-192.png, icon-512.png
 Font downloads:      4 files (HarmoniaSans 4 weights)
 Brand assets:        all present
-
-Migrate-readiness: confirmed
-   → Run `$stardust migrate` to apply canon to every page in inventory.
 ```
+
+### Phase 4.5 — Dynamic surface (pre-import gate — `stardust:dynamics` Phases 1–3)
+
+Runs after assets prep and **before any bulk import**. Migration-bound:
+this is the step that keeps a dynamic site from being imported as a
+static one. Delegate to `skills/dynamics/SKILL.md`:
+
+1. **Detect** — re-run `extract --dynamics` if Phase 1 ran without it
+   (reach), then `dynamics-detect.mjs --from-state stardust/state.json
+   --reach stardust/current` (depth on archetypes).
+2. **Classify + triage** — `dynamics-plan.mjs [--target-origin <host>]`
+   drafts the four axes per row; curate into
+   `stardust/dynamic-features.md` (§ Listings contract with
+   `helix-query.yaml`, § Features, § Decision batch, § Register) and
+   `stardust/dynamic-features-plan.md`.
+3. **Gate** — passes when every row has a disposition. "none" in both
+   sections is a valid pass. The gate never blocks the static path; it
+   blocks silent regressions.
+
+Summary line: `dynamic surface: N findings · self K · owner batch M ·
+host-bound H · listings L dynamic / S static`. Contract:
+`skills/dynamics/reference/triage.md`.
 
 ### Final report
 
@@ -226,10 +258,11 @@ Migrate-readiness: confirmed
 prepare-migration complete
 ==========================
 
-Phase 1 (extract --prep):    127 pages, 7 types, 8 module candidates
-Phase 2 (direct --prep):     types & modules confirmed; metadata set
-Phase 3 (prototype --prep):  6 archetypes approved; canon written
-Phase 4 (assets prep):       favicon variants + fonts + brand assets ready
+Phase 1 (extract --prep):      127 pages, 7 types, 8 module candidates
+Phase 2 (direct --prep):       types & modules confirmed; metadata set
+Phase 3 (prototype --prep):    6 archetypes approved; canon written
+Phase 4 (assets prep):         favicon variants + fonts + brand assets ready
+Phase 4.5 (dynamic surface):   14 findings · self 6 · owner batch 7 · host-bound 1 · listings 3 index-backed / 1 static
 
 Next: $stardust migrate
 ```
@@ -237,8 +270,8 @@ Next: $stardust migrate
 ## Outputs
 
 `prepare-migration` writes nothing directly — every artifact is
-written by the underlying skill or by Phase 4's image/download
-routine. After the cascade runs, the project state has:
+written by the underlying skill or by the Phase 4 / 4.5 routines.
+After the cascade runs, the project state has:
 
 | Artifact                                                | Phase that wrote it             |
 |---------------------------------------------------------|---------------------------------|
@@ -251,6 +284,8 @@ routine. After the cascade runs, the project state has:
 | `DESIGN.json.extensions.canon`                          | prototype --prep                |
 | `stardust/migrated/assets/favicon-*`                    | assets prep                     |
 | `stardust/migrated/assets/fonts/`                       | assets prep                     |
+| `stardust/dynamic-features.md` + `-plan.md` (inventory, four axes, decision batch) | dynamics gate (Phase 4.5) |
+| `helix-query.yaml` (scoped indexes, EDS project root)   | dynamics gate (Phase 4.5) |
 | `stardust/state.json` (per-page status updates)         | each underlying phase           |
 
 ## Failure modes
@@ -277,10 +312,13 @@ routine. After the cascade runs, the project state has:
 
 ## Concurrency
 
-Per `skills/stardust/reference/state-machine.md`: stardust does
-not lock. Two concurrent `prepare-migration` runs on the same
-project are last-write-wins and likely to corrupt canon. Document
-this in the user report; do not engineer around it.
+Per `skills/stardust/reference/state-machine.md` § Concurrency:
+`state.json` writes merge by slug, so the cascade's per-page writes
+coexist with other parallel lanes. But two concurrent
+`prepare-migration` runs on the same project race on the same
+top-level artifacts (canon, module catalog) — that remains
+last-write-wins with a warning, and is likely to corrupt canon.
+Don't run two cascades at once; do not engineer a lock around it.
 
 ## Idempotency
 
@@ -289,7 +327,8 @@ from the earliest incomplete phase (or the explicit `--from`
 phase). Each underlying skill is itself idempotent — already-
 typed pages are not re-typed, already-confirmed modules are not
 re-proposed, already-approved archetypes are not re-prototyped,
-already-generated favicon variants are not re-generated.
+already-generated favicon variants are not re-generated, and an
+existing `dynamic-features.md` is refined rather than rewritten.
 
 Re-running after full completion is a no-op unless inputs
 changed (extract found new pages, direction was edited, the
@@ -303,6 +342,8 @@ canon-author prototype was re-iterated, etc.).
 - `skills/prototype/reference/canon-extraction.md` — the
   five-step extraction procedure prototype --prep performs on
   approval
+- `skills/dynamics/SKILL.md` + `reference/triage.md`,
+  `reference/listings.md` — Phase 4.5 is its Phases 1–3
 - `skills/migrate/SKILL.md` — the consumer of every data
   structure this cascade prepares
 - `notes/migrate-template-canon-refactor.md` — design plan and

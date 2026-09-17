@@ -10,7 +10,7 @@
  * ("Existing blocks — REUSE, do not recreate: …"), so each block converts once
  * WITHOUT changing deploy.
  *
- * Chrome (header/nav/footer) loads as site-wide static fragments, so it is listed
+ * Chrome (header/nav/footer) loads as site-wide authored documents (/nav, /footer), so it is listed
  * once under `fragments`, not per page.
  *
  * Writes stardust/rollout/plan.json and prints a readable plan.

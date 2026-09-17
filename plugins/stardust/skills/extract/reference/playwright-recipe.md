@@ -49,13 +49,47 @@ of an existing commercial site, agent-driven from a developer's
 machine) — the alternative is silently failing on most
 enterprise / large-retail / commerce origins.
 
-**Retry rule.** When the first navigation in a run returns any
-of `ERR_HTTP2_PROTOCOL_ERROR`, `ERR_QUIC_PROTOCOL_ERROR`, or
-hangs for the entire hard-cap on a connection that doesn't
-fingerprint cleanly: do **not** retry headless. Switch to
+**Retry rule.** Two distinct reject modes must both trigger the
+fallback — validate the *response*, not just that the navigation
+resolved:
+
+1. **Network fingerprint block** — the first navigation *throws*
+   `ERR_HTTP2_PROTOCOL_ERROR`, `ERR_QUIC_PROTOCOL_ERROR`, or hangs
+   for the entire hard-cap on a connection that doesn't fingerprint
+   cleanly.
+2. **Challenge / edge block** — the navigation *succeeds*
+   (`domcontentloaded` fires, no throw) but the response is a
+   **403/429/503 interstitial**, not the page. Cloudflare's managed
+   challenge is the canonical case: `cf-mitigated: challenge` +
+   HTTP 403. Because the goto resolves, a probe that only catches
+   throws sails straight past it and the block only surfaces later
+   as a fatal capture-time `HTTPError`. Detect it by inspecting the
+   probe response status/headers (`cf-mitigated`, `cf-ray`,
+   `server: cloudflare`/`akamai`, edge 403/429/503).
+
+On either: do **not** retry headless. Switch to
 `headless: false, channel: 'chrome'` immediately and record the
-switch in `_crawl-log.json#discovery.fetchTechnique` so re-runs
-start in headed mode without rediscovering the issue.
+switch in `_crawl-log.json#discovery.fetchTechnique` (with
+`#discovery.botBlock` = `fingerprint | challenge`) so re-runs start
+in headed mode without rediscovering the issue.
+
+**Clearing a managed challenge.** Headed real Chrome alone clears
+the *fingerprint* block, but Cloudflare's managed challenge also
+probes for automation signals — clearing it additionally needs the
+automation flags stripped: launch with
+`args: ['--disable-blink-features=AutomationControlled']` +
+`ignoreDefaultArgs: ['--enable-automation']`, and spoof
+`navigator.webdriver → undefined` via `context.addInitScript` on
+**every** context (the challenge re-fires per context — no
+cross-context cookie sharing — so a worker that skipped the spoof
+is re-challenged even after the probe cleared it). The
+non-interactive challenge serves the interstitial, runs its JS,
+sets a clearance cookie, then the page becomes reachable: wait
+~4s and `reload()` to pick up the cookie before validating the
+status. If headed + stealth + the solve window still can't clear
+it, the site requires an *interactive* solve — surface that as a
+hard failure (`BotChallengeError`) rather than capturing the
+interstitial as content.
 
 **Sub-resource fetches.** Once a page context is open in headed
 Chrome, additional fetches (sitemap, logo file, ad-hoc inspection
@@ -179,7 +213,10 @@ viewport. With default extract behavior the banner:
 Pre-flight a **consent dismissal** before the per-page loop.
 One dismissal in a fresh `BrowserContext` typically persists
 the cookie state across every subsequent page in the same
-context, so the cost is one extra navigation per crawl.
+context — but **not across contexts**: with concurrent capture
+(`extract/SKILL.md` § Concurrency) each worker context re-runs
+the dismissal on its first page, or clones the probe context's
+`storageState`. Cost: one extra navigation per context.
 
 ### Dismissal procedure
 
@@ -259,7 +296,7 @@ Calling `OneTrust.RejectAll()` (and equivalents) commits a
 "non-essential cookies declined" state, which on some sites
 **activates other scripts** that wouldn't have run otherwise —
 analytics, geo-IP detection, locale-cookie writes, A/B test
-slots, live-chat. The 2026-05-03 nvidia.com run observed an
+slots, live-chat. A 2026-05-03 hardware-vendor run observed an
 expanded localization leak after the dismissal step that
 wasn't present in the pre-dismissal run. The dismissal step
 is therefore not behavior-neutral: cleaner screenshots come
@@ -342,7 +379,7 @@ disclosure trigger, and activate every non-active `role="tab"` once,
 re-reading content afterward. Guard against dialogs (skip triggers
 inside `[role="dialog"]` and anything whose click navigates away).
 **Skipping the reveal pass is a recipe violation** on any page with
-accordions or tabs. The 2026-06-26 knack.com run captured only 1 of 6
+accordions or tabs. A 2026-06-26 SaaS-site run captured only 1 of 6
 FAQ answers without it — the five collapsed answers were never in the
 DOM, so they were absent from `qa[]` and from the prototype, which
 then had to placeholder them.
@@ -367,7 +404,7 @@ For each page, capture:
    "FUZE"-style shells) the real tagline is buried among many `<h2>`s,
    and the DOM also carries hidden modal / error / promo / count states
    that a document-order heuristic grabs as the headline (observed on a
-   3m.com run: `"Thank You!"`, `"Our Apologies…"`, `"629 products"`,
+   an industrial-conglomerate run: `"Thank You!"`, `"Our Apologies…"`, `"629 products"`,
    `"Limited-time offer…"` all out-ranked the real hero line). Resolve
    two dedicated fields instead of trusting `headings[0]`:
 
@@ -457,6 +494,14 @@ For each page, capture:
    data — without them, every body region under a heading falls back
    to placeholder-with-signature even when the source page had real
    prose to reuse.
+7-ter. **Code blocks (`codeBlocks[]`, page-level)** — every **visible**
+   `<pre>`'s `innerText` verbatim, in document order (schema:
+   `current-state-schema.md`). Prose capture skips code blocks, and on
+   developer-tool sites the install commands are the most load-bearing
+   content on the page — without this field they never reach
+   `pages/<slug>.json` and downstream phases fabricate or omit them
+   (stardust-style e2e finding). Preserve line structure; emit `[]`
+   when the page has none.
 8. **CTA inventory** — every `button`, `[role="button"]`, and `<a>`
    that visually presents as a button (background-color != transparent,
    `border-radius > 2px`, padding > 4 px). Capture: label, href if any,
@@ -485,7 +530,7 @@ For each page, capture:
       (`…/connect/<uuid>/file.jpg?MOD=AJPERES&CACHEID=…`); dropping the
       query (or reading `src` instead of the resolved `currentSrc`)
       yields a 404. An early reference that sliced `src` to a fixed
-      length produced exactly this on a 3m.com run.
+      length produced exactly this on an industrial-conglomerate run.
     - **Record a `resolves` flag.** After capture, issue a `HEAD`
       (fall back to `GET`) for each `<img>` src and set
       `resolves: true` only on a 2xx with an image `content-type`.
@@ -537,7 +582,7 @@ For each page, capture:
     element's rect (the pseudo doesn't have its own rect at this
     granularity), and the pseudo's `backgroundSize` /
     `backgroundPosition` / `backgroundRepeat`. The 2026-05-04
-    ups.com home dropped its hero this way: zero `cssBackgrounds[]`
+    a logistics home dropped its hero this way: zero `cssBackgrounds[]`
     hits for the home, prototype defaulted to the `og:image`
     instead of the actual visible hero. Performance: the pseudo
     walk runs only on elements that already passed the rect-size
@@ -576,7 +621,7 @@ For each page, capture:
     weakens visibly on any site whose typography is the most
     distinctive thing about it (private cuts on commercial brands,
     Google-Font-but-licenced-elsewhere combinations on agency
-    sites, etc.). The 2026-05-03 jfkairport.com run had two
+    sites, etc.). A 2026-05-03 airport-site run had two
     private cuts (Sharp Grotesk Semibold, Helvetica Now for PANYNJ)
     visible in network responses and absent from every captured
     artifact until added by a one-off script.
@@ -642,7 +687,7 @@ sections, and silent duplicate pages downstream.
    ("continuing to a page", "continue in english", "go back to Spanish"), and
    soft-error overlays ("temporarily unavailable", "page unavailable"). These
    sit in the DOM at capture time and otherwise become `h2`s and fake sections
-   (the bankofamerica run authored a "Page unavailable" section from one).
+   (a retail-bank run authored a "Page unavailable" section from one).
    Dismissing consent (§ Pre-flight) handles the common case; this is the
    backstop for custom banners the selector list misses.
 3. **Content-substance / SPA-shell check.** After capture, flag a page
@@ -659,7 +704,7 @@ sections, and silent duplicate pages downstream.
    into a `[role="dialog"]` / `[aria-modal]` / `.modal` container populated by an
    XHR (and often left `display:none` until opened), `body.innerText` captures
    none of it — so the page captures byte-identical to its listing (the
-   sycamorepartners `/investment-info/<slug>` case: 35 "identical" detail
+   a private-equity site's `/investment-info/<slug>` case: 35 "identical" detail
    records). Read such containers via **`textContent` even while hidden**, and
    when a URL deep-links to a modal, wait for its XHR to settle before capture.
 5. **Cross-page duplicate detection.** Hash each page's main content
@@ -722,6 +767,28 @@ as `logo.svg`.
 
 Logo variants (`logo-white.svg`, `logo-mono.svg`) are not extracted in
 v2 — they are derived later by `direct` if the redesign needs them.
+
+## Favicon capture (first-class asset, independent of the logo chain)
+
+Regardless of which step wins the logo chain above, ALWAYS capture the
+site favicon as its own asset — downstream stages depend on it
+(`prototype` embeds it in the proposed page head; `deploy` ships it to
+the Edge Delivery site; `prepare-migration` Phase 4 generates the icon
+variants from it).
+
+Resolution order (first that returns a non-error, non-empty body):
+
+1. `<link rel="icon">` / `<link rel="shortcut icon">` href (largest
+   `sizes` if several), resolved against the base URL.
+2. `<link rel="apple-touch-icon">` href.
+3. `/favicon.svg`, then `/favicon.ico` at the site root.
+
+Save it to `stardust/current/assets/favicon.<ext>` preserving the
+original format (svg/png/ico — never rasterize an SVG). Record the
+chosen source in `_brand-extraction.json` under
+`favicon: { source, url, file }`; when nothing resolves, record
+`favicon: null` and list it in `variantsNotCaptured` — do NOT
+synthesize one.
 
 ## What NOT to capture
 

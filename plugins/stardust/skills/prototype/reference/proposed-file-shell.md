@@ -24,6 +24,7 @@ tabs (the captured screenshot at
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><!-- page title from current/pages/<slug>.json --></title>
+  <link rel="icon" href="data:image/…;base64,…"><!-- the SITE's favicon, inlined — see Hard requirements #8 -->
   <style>
     /* The :root token contract — see skills/stardust/reference/token-contract.md */
     :root { ... }
@@ -110,6 +111,17 @@ The proposed file must satisfy:
    contract — including how to handle content the new design
    *demands* but the page *does not provide* (stat rows, addresses,
    testimonial quotes, etc.).
+8. **The site's favicon in the head.** When
+   `stardust/current/assets/favicon.<ext>` exists (extract captures it
+   — see `../extract/reference/playwright-recipe.md` § Favicon
+   capture), emit `<link rel="icon" href="data:<mime>;base64,…">`
+   right after `<title>`, inlining the file as a data: URI (keeps the
+   prototype self-contained; svg → `image/svg+xml`, png →
+   `image/png`, ico → `image/x-icon`). If the file is larger than
+   ~48 KB, instead copy it next to the prototype as
+   `stardust/prototypes/assets/favicon.<ext>` and link it relatively
+   (`assets/favicon.<ext>`). If no favicon was captured, omit the tag
+   — never invent one.
 
 ## Content sourcing hierarchy
 

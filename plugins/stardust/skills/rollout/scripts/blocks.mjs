@@ -4,7 +4,7 @@
  *
  * Reads coverage/pages.json (produced by inventory.mjs) and derives the set of
  * DISTINCT blocks across the whole site — the dedup unit. Each distinct block is
- * converted to an EDS block (or static fragment, for chrome) exactly ONCE; this
+ * converted to an EDS block (or the /nav + /footer chrome documents) exactly ONCE; this
  * ledger + plan.mjs make that dedup a driving step, not a post-hoc reconcile.
  *
  * Dedup signal (Phase 2): brand-module ids carried per page in the _meta.json

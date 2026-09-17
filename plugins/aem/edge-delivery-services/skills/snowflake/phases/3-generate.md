@@ -38,6 +38,10 @@ resolution from `SKILL.md`):
 - `block-level-conversion.md` — output layout, decorator pattern,
   CSS extraction, content model design, drafts test page format
 
+(On the `milo` flavor, the gated pointer below sends you to
+`assets/substrate-milo/FLAVOR.md`, which carries the Milo block-level
+deltas and the `--pa-*` animation vocabulary.)
+
 Resolution at each lookup: check `.snowflake/knowledge/<file>.md`
 first (project override), then `<SKILL_DIR>/knowledge/<file>.md`
 (bundled). Project overrides win on conflict.
@@ -47,6 +51,14 @@ first (project override), then `<SKILL_DIR>/knowledge/<file>.md`
 # Page-level path
 
 Follow this section when `conversionLevel` is `page-level`.
+
+## Milo flavor deltas (read FIRST if `substrateFlavor` is `milo`)
+
+If `.snowflake/config.json` `substrateFlavor` is `milo`, **STOP and read
+[../assets/substrate-milo/FLAVOR.md#generate-page](../assets/substrate-milo/FLAVOR.md)
+FIRST**, then apply its deltas to the page-level steps below (Milo owns the chrome;
+the bespoke body is drawn by the `blocks/snowflake` overlay block). For the EDS
+flavor, ignore this and follow the steps as written.
 
 ## Output layout (page-level)
 
@@ -334,6 +346,15 @@ Follow this section when `conversionLevel` is `block-level` or
 [../knowledge/block-level-conversion.md](../knowledge/block-level-conversion.md);
 this section is the step-by-step execution.
 
+## Milo flavor deltas (read FIRST if `substrateFlavor` is `milo`)
+
+If `.snowflake/config.json` `substrateFlavor` is `milo`, **STOP and read
+[../assets/substrate-milo/FLAVOR.md#generate-block](../assets/substrate-milo/FLAVOR.md)
+FIRST**, then apply its deltas to the B.* steps below — including **B.5b animation
+sidecars** (`--pa-*` `animation` blocks consumed by the vendored runtime). Milo owns
+the runtime and auto-loads `forge-*` blocks; the decorator pattern and DA block-table
+format below are unchanged. For the EDS flavor, ignore this.
+
 ## Output layout (block-level)
 
 Artifacts are written directly to the EDS repo (not to a project
@@ -416,7 +437,11 @@ where `level === "block"`:
 
 1. **Design the content model** — map the section's authorable
    content to DA block table rows. See
-   `block-level-conversion.md` §"Content model design".
+   `block-level-conversion.md` §"Content model design". **Generator
+   placeholder UIs (`data-placeholder="true"` / visible "PLACEHOLDER · …"
+   text) are static source content — carry them into the content model
+   verbatim; never drop them or reinterpret them as dynamic/commerce
+   slots** (see that section's "Generator placeholder UIs" rule).
 
 2. **Write the block JS** — `blocks/<name>/<name>.js` with a
    `decorate(block)` function that reads authored rows and builds

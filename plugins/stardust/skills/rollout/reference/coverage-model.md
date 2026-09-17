@@ -110,7 +110,8 @@ page (the first in delivery order that uses it). Per page it emits:
   `edsBlockName`, never recreating.
 
 Chrome (`header`/`nav`/`footer`) is not per-page; it's listed once under
-`plan.json.fragments` and delivered as static fragments.
+`plan.json.fragments` and delivered as the authored `/nav` + `/footer` documents
+(published content, on the roster like any page).
 
 ## Verify
 

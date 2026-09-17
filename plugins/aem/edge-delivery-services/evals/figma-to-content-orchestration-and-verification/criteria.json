@@ -1,0 +1,46 @@
+{
+  "context": "Tests the skill's defining behavior as an orchestrator: given a confirmed mixed plan, does the agent commit to INVOKING the referenced sub-skills (rather than inlining them from memory) and map each to the right section, and does it split pre-publish verification into a server-side curl stage and a mandatory browser stage — correctly identifying block decoration and visual fidelity as things a curl of the block's CSS/JS can never establish. Directly guards against the two most damaging failure modes observed in practice: hand-writing blocks instead of using the block skills, and skipping browser/visual verification while still declaring the page done.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "da-auth + da-content always required",
+      "max_score": 10,
+      "description": "Names da-auth (token) and da-content (DA HTML rules / Source API / preview) as required for the whole plan, and treats da-content's reference docs as the source of truth to load — not this skill's condensed summary."
+    },
+    {
+      "name": "Reuse sections map to block-collection-and-party",
+      "max_score": 15,
+      "description": "Maps the hero and cards reuse (Sections 1 and 2) to block-collection-and-party to learn each block's authoring model, rather than guessing the model from CSS."
+    },
+    {
+      "name": "New block maps to content-modeling + content-driven-development",
+      "max_score": 15,
+      "description": "Maps the new comparison-table block (Section 3) to content-modeling then content-driven-development, and notes that content-driven-development runs building-blocks and testing-blocks."
+    },
+    {
+      "name": "Default content needs no block skills",
+      "max_score": 10,
+      "description": "States that the intro copy (Section 4) is authored as default content via da-content, invoking no block-building skills."
+    },
+    {
+      "name": "Commits to invoking, not inlining",
+      "max_score": 10,
+      "description": "Explicitly commits to invoking the sub-skills (e.g. builds the new block through content-driven-development) rather than hand-writing block JS/CSS or authoring DA HTML from general knowledge."
+    },
+    {
+      "name": "Splits verification into server-side and browser stages",
+      "max_score": 15,
+      "description": "Separates pre-publish checks into a server-side stage (curl the fragment + referenced assets: placeholder-free content, icons resolve, image/section counts, metadata block, block code returns 200) and a browser stage."
+    },
+    {
+      "name": "Identifies browser-only checks curl cannot establish",
+      "max_score": 15,
+      "description": "Identifies that whether the new block actually DECORATED (data-block-status=loaded, transformed DOM, applied CSS) and whether the rendered result MATCHES the design require a real browser (testing-blocks); a 200 on the block's CSS/JS only proves the file exists, not decoration or visual fit."
+    },
+    {
+      "name": "No-browser reporting rule",
+      "max_score": 10,
+      "description": "States that if no browser is available the browser-stage checks are UNVERIFIED, so the page is reported preview-only and never called 'done.'"
+    }
+  ]
+}

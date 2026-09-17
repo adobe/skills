@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "stardust:qa allowlist (stardust/qa/allowlist.json)",
+  "description": "Documented non-defects. A finding is allowlisted when every provided field matches. Allowlisted findings remain in the report, marked, so evidence is never deleted. Every entry must say WHY it is a non-defect.",
+  "type": "object",
+  "required": ["entries"],
+  "properties": {
+    "_provenance": { "type": "object" },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["check", "reason"],
+        "properties": {
+          "check": { "type": "string", "description": "check name, or '*'" },
+          "id": { "type": "string", "description": "finding id, or '*' (omit = any)" },
+          "path": { "type": "string", "description": "exact path, or prefix ending in '*' (omit = any)" },
+          "messagePattern": { "type": "string", "description": "JS regex tested against the finding message (omit = any)" },
+          "reason": { "type": "string", "minLength": 10, "description": "why this is a documented non-defect (who decided, when, and the source of truth)" },
+          "addedAt": { "type": "string", "format": "date" }
+        }
+      }
+    }
+  }
+}

@@ -17,6 +17,14 @@ authorises it:
   the headlines say.
 - **Body copy** for every paragraph and list item. Restyle, do not
   rewrite.
+- **Paragraph boundaries** come from the source's block-level nodes
+  (`p`, direct-child `div`s), each node's inline text joined with
+  spaces — never from splitting captured text on newlines.
+  `get_text('\n')`-style extraction breaks on every INLINE element (a
+  bolded lead, a link, a superscript), so "one line = one paragraph"
+  turned a 5-paragraph disclaimer into 16 fragment `<p>`s and doubled
+  the section height — a defect that reads as CSS at the pixel gate
+  but is an import bug (recorded).
 - **CTA labels** for every button and button-styled link. The visual
   treatment changes; the label does not.
 - **Navigation labels** in headers and footers.
@@ -95,6 +103,21 @@ For every `<a href>`:
      not as escape hatches to the live origin. The user resolves
      by extracting the missing page (and re-running migrate) or
      accepting the broken link.
+
+     **Partial-inventory carve-out (stardust-style e2e finding).**
+     When the run is deliberately scoped to a subset of the
+     inventory (an explicit `<slug>` list, or siblings not yet
+     migrated), a rewritten-but-nonexistent migrated path makes the
+     mandatory `file-protocol-audit.mjs` fail on every page that
+     links a not-yet-migrated sibling — the two contracts are only
+     co-satisfiable on full-inventory runs. On a scoped run the
+     link to a known-inventory-but-unmigrated page keeps the
+     resolvable **absolute origin URL** instead, still flagged
+     `data-broken-link="true"` and logged; a later migrate run that
+     covers the target reconciles it to the relative migrated path
+     (the sha change re-renders the linking page). The audit
+     accepts `data-broken-link`-flagged origin URLs as known-broken
+     on scoped runs.
 4. **Preserve** any href fragment (`#section-3`) and query string
    (`?ref=foo`) exactly when rewriting.
 
@@ -145,6 +168,36 @@ Form actions pointing at the origin's own backend (e.g.,
 "the origin's `/api/contact` endpoint must remain available at the
 migrated site's origin, or the form must be re-wired to a static-form
 service."
+
+## Dynamic dependencies
+
+`self-hosted-form` is one instance of a general rule: **nothing the
+evidence recorded as dynamic may ship static silently.** Before
+rendering a page, look up the rows of `stardust/dynamic-features.md`
+that touch it (by reach / evidence; per-page `dynamic` section when
+the crawl ran with `--dynamics`):
+
+- `embed-passthrough` → preserve the markup verbatim (iframe, player
+  link, third-party form action, widget mount) — no log entry.
+- `index-backed` / `data-fed` / `rebuild-native` / `client-only` → the
+  section is rendered by the block `deploy` builds for it; migrate
+  emits the authored fallback rows (or the `#modal` link, the player
+  URL) and logs `contentDeviations[]` `kind: "dynamic-dependency"` with
+  the disposition, the row id and the endpoint, so the report shows
+  what the page depends on at runtime.
+- `static-snapshot` / `decided-out` → render the captured state and log
+  `kind: "dynamic-dependency"` with the disposition and the reason.
+- **No inventory or no row** → the Phase 1 safety net ran
+  `stardust:dynamics` Phases 1–3; if a dynamic dependency still has no
+  row, log `disposition: "unclassified"` and surface it first in the
+  report — a `dynamic-gap` learning.
+
+Deviation shape:
+
+```json
+{ "kind": "dynamic-dependency", "disposition": "data-fed", "row": "reviews-rail",
+  "endpoint": "GET api.example-vendor.test/v1/reviews", "note": "authored fallback: 3 rows" }
+```
 
 ## Voice and tone deviations
 

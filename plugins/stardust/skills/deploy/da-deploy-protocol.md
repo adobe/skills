@@ -48,6 +48,18 @@ done
 curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
   "https://admin.hlx.page/preview/$ORG/$REPO/$BRANCH/$P"       # expect 200
 
+# 3a. preview 409 "error from content-bus" — the error is OPAQUE (no per-asset
+#     detail); do NOT dead-end on it. Two cheap diagnostics, in order:
+#   (i)  upload a known-good doc to the SAME path and re-preview — separates
+#        path-state problems from content problems in one request;
+#   (ii) if the known-good doc previews, check every image URL the real doc
+#        references for an SVG over ~40KB — a hard pipeline limit that
+#        surfaces at PREVIEW, not at upload (and distinct from the
+#        raster-embedding-SVG case, deploy SKILL #99: both present as this
+#        same 409). Remedy: rasterize the SVG to PNG, upload the PNG to DA
+#        media, re-author, re-preview. Field-proven: this turned a dead-end
+#        409 into a 3-minute fix.
+
 # 3b. VERIFY ingestion on the delivered .plain.html (per page; assets gzip → --compressed):
 #   (i)  no broken-image ingestion (#75) — must be 0; if not, an asset wasn't on Code Bus
 #        yet. Re-run step 3 (preview is idempotent; it re-ingests and repairs).

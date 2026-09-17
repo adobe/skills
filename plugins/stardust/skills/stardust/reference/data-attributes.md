@@ -3,8 +3,8 @@
 A small vocabulary of `data-*` attributes that stardust applies to
 section-level elements in every prototype and migrated page. The
 vocabulary is the *structural lingua franca* between stardust's
-sub-commands, between stardust and downstream tools (a future EDS
-skill, a static-site analyser, an audit script), and between two runs
+sub-commands, between stardust and downstream tools (`stardust:deploy`
+and `stardust:rollout` for EDS conversion, `stardust:diff`, `stardust:audit`), and between two runs
 of stardust on the same site.
 
 Carried from stardust v1 (wireframe-guide.md) unchanged.

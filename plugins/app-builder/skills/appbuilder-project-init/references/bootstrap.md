@@ -85,7 +85,11 @@ Capture the JSON output — `id`, `orgId`, and `name` are useful downstream.
 
 ### 2. Create a workspace inside the project
 
-`Stage` is the conventional first non-Production workspace. Pick a more descriptive name (`Dev`, `QA`, `<feature>-test`) for long-lived shared projects.
+**`aio console project create` already auto-provisions both a `Production` and a `Stage`
+workspace** — check first with `aio console workspace list --projectId <id> --json` before running
+`workspace create`, or the conventional first `Stage` workspace will fail with "Workspace Stage
+already exists." Only run the command below if you need an *additional* workspace beyond the two
+that already exist (`Dev`, `QA`, `<feature>-test`, etc. for long-lived shared projects).
 
 ```bash
 aio console workspace create \

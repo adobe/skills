@@ -1,0 +1,18 @@
+{
+  "skill_name": "page-tree",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Capture the visual DOM tree of https://example.com and show me the layout hierarchy",
+      "expected_output": "A structured spatial hierarchy of DOM elements is returned showing positions, dimensions, and nesting.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "command_succeeds",
+          "command": "node --check scripts/page-tree-bundle.js",
+          "description": "Visual tree bundle has valid syntax. (Browser-only IIFE — run in browser via initScript, not Node.)"
+        }
+      ]
+    }
+  ]
+}

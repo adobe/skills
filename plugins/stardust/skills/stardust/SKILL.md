@@ -1,6 +1,6 @@
 ---
 name: stardust
-description: Guided multi-page redesign of an existing website through a four-phase pipeline — extract (crawl and capture the current site), direct (set a visual direction), prototype (generate redesigned HTML), and migrate (emit a deployable static site). Tracks progress incrementally per page in stardust/state.json so redesigns are resumable. Delegates the per-page design craft (typography, spacing, color, layout, motion) to the impeccable skill. Use when the user wants to redesign, revamp, modernize, or restyle an existing site they can point to by URL, run the extract/direct/prototype/migrate flow, or resume a multi-page redesign. Not for designing a brand-new site from scratch or one-off single-component edits.
+description: Guided multi-page redesign of an existing website through a four-phase pipeline — extract (crawl and capture the current site), direct (set a visual direction), prototype (generate redesigned HTML), and migrate (emit a deployable static site). Tracks progress incrementally per page in stardust/state.json so redesigns are resumable. Delegates the per-page design craft (typography, spacing, color, layout, motion) to the impeccable skill. Use when the user wants to redesign, revamp, modernize, or restyle an existing site they can point to by URL, run the extract/direct/prototype/migrate flow, or resume a multi-page redesign. Also routes the same-design migration flow (replica) and the donor-design flow (reskin). Not for designing a brand-new site from scratch or one-off single-component edits.
 license: Apache-2.0
 ---
 
@@ -20,6 +20,18 @@ sub-commands that delegate the actual design work to **impeccable**.
    and tell the user:
    > Stardust requires impeccable. Install it from
    > <https://github.com/pbakaus/impeccable> and re-run the command.
+
+   **Version hint (advisory, never blocking).** Stardust deliberately pins
+   NO impeccable version — the design craft should always be the current
+   one — and Claude Code only announces plugin updates through marketplace
+   auto-update, which is off by default for third-party marketplaces such
+   as impeccable's. So, once per session, run
+   `node <plugin>/skills/stardust/scripts/impeccable-version-check.mjs`
+   (add `--local <impeccable-dir>` when impeccable lives in a harness skills
+   directory rather than the plugin registry) and surface its one output
+   line to the user verbatim when it reports a newer version; it prints the
+   two update commands. Any other outcome (current, unknown, offline) is
+   noise — do not mention it, and never stop or degrade a run over it.
 2. **Run impeccable's context loader once per session.** Execute the loader at
    `<harness>/skills/impeccable/scripts/load-context.mjs`. Its JSON output
    tells you whether `PRODUCT.md` and `DESIGN.md` exist at the project root
@@ -32,6 +44,17 @@ sub-commands that delegate the actual design work to **impeccable**.
    `<harness>/skills/impeccable/scripts/command-metadata.json`. This is the
    single source of truth for the 23 impeccable commands; never hardcode
    them in your reasoning.
+5. **Status ledger.** Every stardust skill appends a phase-transition line
+   to `stardust/status.jsonl` at each phase start/end, per
+   `reference/run-status.md`.
+6. **Project hygiene** (idempotent). Write `stardust/.gitignore` from
+   `reference/stardust.gitignore` if absent; never edit a project's copy.
+   In a git repo: root `.gitignore` covers `.env` / `.env.*` (managed
+   `# >>> stardust` block), `.hlxignore` if present lists `stardust/`, and
+   `git check-ignore -q stardust/state.json` must fail — if it passes,
+   stop and name the rule. Offer, never write, LFS above 50 MB of tracked
+   binaries under `stardust/`. Details in `reference/artifact-map.md`
+   § Versioning.
 
 ## Routing
 
@@ -40,9 +63,27 @@ Once setup is done, route on the user's input:
 - **No argument.** Render the **state report** described in
   `reference/state-machine.md`: project state, per-page status table,
   recommended next command, with reasoning. Do not write anything.
-- **First word is `extract`, `direct`, `prototype`,
-  `migrate`, or `uplift`.** Delegate to the matching sub-command
-  (`stardust:<name>` skill). Pass remaining args through.
+- **First word names a sub-skill.** Delegate to the matching
+  `stardust:<name>` skill and pass remaining args through. The master
+  skill routes **all** sibling sub-skills:
+
+  | keyword | sub-skill | owns |
+  |---|---|---|
+  | `extract` | `stardust:extract` | crawl + capture the current site |
+  | `direct` | `stardust:direct` | resolve the visual direction |
+  | `prototype` | `stardust:prototype` | per-page redesign prototypes |
+  | `migrate` | `stardust:migrate` | full-site platform-agnostic static HTML |
+  | `prepare-migration` | `stardust:prepare-migration` | the migrate-prep cascade (prep phases, assets, dynamics gate) — **redesign flow only** |
+  | `replica` | `stardust:replica` | same-design migration (re-platform, keep the current design) — runs its own preserve-mode prep, then hands off to migrate/deploy/rollout |
+  | `reskin` | `stardust:reskin` | byte-faithful content re-laid onto a separately defined donor design system |
+  | `deploy` | `stardust:deploy` | one page → EDS blocks + DA delivery |
+  | `rollout` | `stardust:rollout` | whole migrated site → EDS, with coverage + delivery gates |
+  | `dynamics` | `stardust:dynamics` | the dynamic surface of a migration — detect, classify, triage, implement, verify (APIs, search, forms, modals, media, tags, client-rendered, sheet data); migration-bound, invoked by prepare-migration / replica / migrate / rollout or standalone on an already-migrated site |
+  | `diff` | `stardust:diff` | prototype ↔ build fidelity probes (pixel + structural) |
+  | `audit` | `stardust:audit` | three-perspective site audit — design tensions, SEO/technical, LLM visibility — scored report + findings ledger |
+  | `qa` | `stardust:qa` | read-only post-deploy QA sweep of the live site — routing, fidelity, template conformance, rendering, visual regression, SEO, links, a11y, perf — findings report only, never fixes |
+  | `uplift` | `stardust:uplift` | one-shot presales orchestrator (3 variants) |
+
   - `prototype` accepts `--cinematic` (or `--cinematic=<register>`)
     to layer a brand-faithful motion register on top of the static
     prototype (per `skills/prototype/reference/motion-registers.md`).
@@ -51,10 +92,97 @@ Once setup is done, route on the user's input:
     without further user coordination. Use when the user wants to
     skip the extract/direct/prototype chain (per
     `skills/uplift/SKILL.md`).
+- **Migration to EDS — pick ONE of two flows, never mix them.** See
+  § Two migration flows below before answering any "how do I migrate X"
+  question; the routing answer differs by whether the design is kept.
 - **First word is anything else (a freeform phrase).** Treat it as a
   redesign intent. Load `reference/intent-reasoning.md` and follow the
   procedure step by step. **Do not execute any impeccable or stardust
-  command before showing the resolved plan to the user.**
+  command before showing the resolved plan to the user** (under
+  hands-off mode, the plan is recorded in `stardust/direction.md`
+  instead of awaiting confirmation — see § Hands-off mode).
+
+## Two migration flows — pick one, never mix
+
+When the user wants to migrate a site to AEM Edge Delivery (or any clean
+front end), the FIRST question is whether the design is kept or changed.
+That answer selects the flow; the downstream chain is shared.
+
+- **Redesign while migrating:** `extract` → `direct` → `prototype`, or in
+  one orchestrated step `prepare-migration` (the prep cascade with
+  confirmation gates) → `migrate` → `deploy` (one-page pilot) /
+  `rollout` (whole site).
+- **Keep the current design (re-platform):** `replica` → `migrate` →
+  `deploy` / `rollout`. `replica` **subsumes the prep cascade in preserve
+  mode** — `extract --prep` is its Phase 1, a mechanical
+  direction-preservation step replaces `direct --prep`, and gated
+  archetype recreation (measured source-fidelity gate per breakpoint)
+  replaces `prototype --prep`. **Never run `prepare-migration` before or
+  after `replica`**; there is no separate prep step in this flow.
+- **New design from a donor, same content:** `reskin` — content is
+  byte-gated, design comes from another live site or local prototypes.
+- **Both migration flows carry the dynamic surface by default.** The
+  pre-import gate (`prepare-migration` 4.5 / `replica` Phase 2, with
+  `migrate` as the safety net) runs `stardust:dynamics` Phases 1–3 so
+  every API, search box, form, modal, player, tag and client-rendered
+  surface gets a disposition before import; `rollout` D2 implements the
+  reproducible rows and `qa` replays parity. Never for redesign-only
+  work (`uplift`, a bare `extract`): dynamics is a migration concern.
+
+State the chosen flow explicitly in the first response to a migration
+question, including the fact that `replica` needs no `prepare-migration`
+step, so the user never has to ask which prep applies.
+
+## Hands-off mode
+
+Activated by `--hands-off` on **any** stardust invocation, or by an
+explicit user phrase ("fully hands-off", "no approval gates", "run
+autonomously"). On activation, stamp `state.json.handsOff: true`
+(schema note in `reference/state-machine.md` § Hands-off keys) and
+append an activation line to `stardust/direction.md`. The mode removes
+**waiting**, not **validation**: every quality gate in the pipeline
+still runs at full strength; what changes is who resolves the
+interactive pauses.
+
+Under hands-off, every interactive gate across the pipeline
+auto-resolves:
+
+| gate | hands-off resolution |
+|---|---|
+| `direct` clarifying questions | derive the answers from the captured evidence (`stardust/current/`), and state each as a **named assumption** in `direction.md` |
+| `prototype` brief-confirmation waits | skip; proceed on the authored brief |
+| prototype approval | granted by the agent's own judgment **only after all quality gates pass** (craft bar, validation loop, motion gates); recorded as `approvedBy: "hands-off"` on the page's `approved` history entry in `state.json` |
+| `prepare-migration` phase gates | behave as `--skip-confirm` |
+| `rollout` | runs full-auto end-to-end |
+| `dynamics` owner decisions (backend, tags on the new host, datasource ownership, locale scope) | ship the interim tier, record each decision by name in `dynamic-features.md` and the parity report, continue; regulated-pii forms stay blocked |
+
+Defaults under hands-off (override only when the invocation says
+otherwise):
+
+- **One canonical direction.** No variant fan-out — commit to a
+  single direction and record the rationale in `direction.md`.
+- **Volume caps as reasoned proposals.** Default **100 pages overall,
+  20 per template**. Roster priority: (1) every page linked from the
+  header and footer, (2) section landing/overview pages, (3) a
+  representative spread of detail pages across all templates. State
+  the chosen caps in `direction.md`.
+- **Commit at the end of each phase** when the project is a git repo.
+  Before the FIRST such commit, re-run Setup step 6 — the first commit
+  lands at the end of the audit phase, long before deploy's SKILL.md is
+  read, and a tracked `.env` poisons every later push (GH013 + history
+  rewrite at deploy time).
+
+**Hard blockers remain stops.** An unreachable source site, an
+expired `DA_TOKEN` that cannot be recovered, or a signal-absent brand
+surface (extract captured no usable brand signal even after a re-run)
+are not judgment calls — state the blocker precisely, append
+`event: "blocked"` to `stardust/status.jsonl`, and halt. Never guess
+around a hard blocker.
+
+**Quality gates NEVER weaken under hands-off.** Provenance
+validation, the validation loop, fidelity gates, delivery gates, and
+rollout's optimize gate all run unchanged. Hands-off changes *who
+answers*, not *what must pass*.
 
 ## The "open and reasoned" principle
 
@@ -88,6 +216,20 @@ Stardust state lives under `stardust/`. Impeccable's `PRODUCT.md` /
 `DESIGN.md` / `DESIGN.json` live at the project root and represent the
 *target* state. The current (extracted) state lives under
 `stardust/current/`. Full layout in `reference/artifact-map.md`.
+
+**Write boundary.** Stardust writes to `stardust/`, the impeccable target
+files at the project root, and the EDS project (only via `deploy`,
+`rollout`, `dynamics`). Run-only files — logs, harness page, pre-renders,
+script copies, drafts — go under `stardust/.work/<skill>/`; the root
+`scripts/` and `qa/` are not stardust's. Anything written elsewhere is a
+bug in that skill.
+
+**Versioning.** Everything under `stardust/` is committed except what
+`reference/stardust.gitignore` lists: screenshots, four heavy folders
+(`current/assets/`, `replica/gates/`, `migrated/assets/`, `rollout/qa/`),
+`.work/`, run residue, session state. Per-directory table and what a clone
+without `current/assets/` can and cannot do: `reference/artifact-map.md`
+§ Versioning.
 
 ## Provenance
 
@@ -164,11 +306,14 @@ motion gate cascade).
 
 - Invent design opinions that contradict impeccable's hard rules. Defer to
   impeccable.
-- Execute a redesign plan without showing it first.
+- Execute a redesign plan without showing it first (hands-off mode records
+  the plan in `stardust/direction.md` instead of waiting — § Hands-off mode).
 - Force a re-run on stale pages without explicit user opt-in.
-- Crawl an existing site beyond the user's confirmed page cap.
-- Emit AEM EDS, a CMS, or a framework. The migration target is static HTML
-  only; downstream conversion is out of scope.
+- Crawl an existing site beyond the user's confirmed page cap (an explicit `--pages` list is itself the confirmed scope — listed pages are never dropped; the crawler warns rather than truncates when the list exceeds `--max`).
+- Emit platform-specific output from `migrate`. `migrate` emits
+  platform-agnostic static HTML; the EDS conversion and delivery are owned
+  by the `stardust:deploy` (one page) and `stardust:rollout` (whole site)
+  sub-skills, routed above.
 
 ## References
 
@@ -177,11 +322,14 @@ motion gate cascade).
 - `reference/intent-examples.md` — worked examples (8-12) of the reasoning style.
 - `reference/impeccable-command-map.md` — when to reach for each of the 23 impeccable commands.
 - `reference/state-machine.md` — page lifecycle, stale rules, state report format.
-- `reference/artifact-map.md` — every file stardust reads or writes, with ownership and provenance shape.
+- `reference/artifact-map.md` — every file stardust reads or writes, with ownership, provenance shape and (§ Versioning) what is tracked.
+- `reference/stardust.gitignore` — installed as `stardust/.gitignore` by Setup step 6.
 - `reference/divergence-toolkit.md` — anti-mediocrity device. Default-moves list, deterministic seed, font decks, role-naming rule. Consumed by `direct` (when authoring target tokens) and `prototype` (when generating variants).
 - `reference/token-contract.md` — `:root` CSS custom-property contract every prototype and migrated page must expose. The token interface between stardust and any downstream consumer.
 - `reference/data-attributes.md` — structural `data-*` vocabulary applied to sections in every prototype and migrated page. The structural lingua franca between stardust sub-commands and downstream tools.
 - `reference/journal-format.md` — `stardust/journal.md` entry format. Append-only chronological log; the shared narrative layer over the state machine.
+- `reference/run-status.md` — the `stardust/status.jsonl` phase-transition contract every skill appends to. The deterministic progress surface for any harness.
+- `reference/learnings.md` — the per-run learnings ledger contract (`stardust/learnings.md`). rollout's report phase writes it; plugin maintainers harvest pending entries into skill diffs.
 
 ### Cinematic-feature references (cross-cutting)
 
@@ -202,4 +350,4 @@ Owned by `uplift/`. Cited by master routing when delegating
 `/stardust:uplift <URL>`:
 
 - `../uplift/SKILL.md` — one-shot presales orchestrator: extract → tension/trait identification → 3-variant direction → prototype × 3 → open + summarize.
-- `../uplift/reference/what-if-candidates.md` — closed catalog of 8 captured-trait amplification candidates that B and C select from in Phase 2b.
+- `../uplift/reference/what-if-candidates.md` — catalog of 8 worked captured-trait amplification candidates that B and C select from in Phase 2b — plus its § Extension rule admitting evidence-shaped `derived` candidates.

@@ -43,6 +43,35 @@ Three properties control every scheduler:
 
 ---
 
+## Discovery
+
+Detection is performed by the analyzer ([`../scripts/analyze.sh`](../scripts/README.md)), run by the runbook:
+
+```bash
+bash ../scripts/analyze.sh <workspace-root> --pattern scheduler
+```
+
+**Match criteria (what the detector flags):**
+
+- A class that **`implements org.apache.sling.commons.scheduler.Job`** (import-aware).
+- The **OSGi-property scheduler** shape — a class that **`implements Runnable`** and carries an OSGi `@Component` declaring a `scheduler.expression` / `scheduler.name` / `scheduler.period` property.
+- A file that **imports `org.apache.sling.commons.scheduler.Scheduler`** (programmatic use via an injected `Scheduler`) but has no class-level match — one finding at the file's primary type.
+
+Emitted at the class declaration, with the class header as the snippet. Parse-level only — direct `implements` clause and same-file `@Component`; reached-via-base-class and constant-valued properties are not resolved.
+
+## Resolution contract
+
+**guided** — `apply (guided)`. The analyzer locates and reports each scheduler class; remediation is judgment-based and routed by the Classification above to **Path A** ([path-a.md](path-a.md), Runnable + OSGi properties) or **Path B** ([path-b.md](path-b.md), Sling Jobs via `JobManager`). Open the chosen path and apply its steps in an apply session.
+
+| Site shape | Disposition |
+|---|---|
+| Single-schedule, hardcoded cron, `implements Runnable` | apply (guided) → path-a.md |
+| Config-driven cron, multiple schedules, `implements Job`, or `ScheduleOptions.config()` | apply (guided) → path-b.md |
+| Already Sling Jobs via `JobManager` with single-execution guard | skipped: `already-compliant` |
+| Test code (`src/test/`) | skipped: `test-scope` |
+
+---
+
 ## Review Checklist
 
 Use the path-specific checklists in [path-a.md](path-a.md) and [path-b.md](path-b.md) for scheduler mechanics.

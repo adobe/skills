@@ -17,8 +17,9 @@ const PATTERN_TO_SUBTYPE = {
   scheduler: "sling.commons.scheduler",
   assetApi: "unsupported.asset.api",
   eventListener: "javax.jcr.observation.EventListener",
-  resourceChangeListener: "org.apache.sling.api.resource.observation.ResourceChangeListener", 
-  eventHandler: "org.osgi.service.event.EventHandler"
+  resourceChangeListener: "org.apache.sling.api.resource.observation.ResourceChangeListener",
+  eventHandler: "org.osgi.service.event.EventHandler",
+  guavaCache: "custom.guava.cache"
 };
 
 // MongoDB-safe to pattern mapping
@@ -27,8 +28,35 @@ const MONGO_SAFE_TO_PATTERN = {
   "unsupported_asset_api": "assetApi",
   "javax_jcr_observation_EventListener": "eventListener",
   "org_apache_sling_api_resource_observation_ResourceChangeListener": "resourceChangeListener",
-  "org_osgi_service_event_EventHandler": "eventHandler"
+  "org_osgi_service_event_EventHandler": "eventHandler",
+  "custom_guava_cache": "guavaCache"
 };
+
+// Pattern → subtype(s), 1:many. Covers the Java patterns above plus the
+// content/legacy-UI patterns whose findings are keyed by JCR path. A subtype
+// may belong to more than one pattern (e.g. legacy.static.template is both a
+// LUI sub-type and a template-modernization candidate).
+const PATTERN_TO_SUBTYPES = {
+  scheduler: ["sling.commons.scheduler"],
+  assetApi: ["unsupported.asset.api"],
+  eventListener: ["javax.jcr.observation.EventListener"],
+  resourceChangeListener: ["org.apache.sling.api.resource.observation.ResourceChangeListener"],
+  eventHandler: ["org.osgi.service.event.EventHandler"],
+  cdw: ["custom.classic.widget"],
+  lui: ["legacy.dialog.classic", "legacy.dialog.coral2", "legacy.custom.component", "legacy.static.template"],
+  templateModernization: ["legacy.static.template", "custom.static.template"],
+  replication: ["forward.replication", "reverse.replication"],
+  urc: ["unsupported.runmode"],
+  guavaCache: ["custom.guava.cache"],
+};
+
+// Patterns whose findings are keyed by JCR path (raw keys, generic processor).
+const CONTENT_PATTERNS = new Set(["cdw", "lui", "templateModernization", "replication", "urc"]);
+
+/** MongoDB-safe subtype key: dots → underscores (matches the parser). */
+function toMongoSafeSubtype(subtype) {
+  return subtype ? subtype.replace(/\./g, '_') : null;
+}
 
 // Known scheduler identifier
 const SCHEDULER_IDENTIFIER = "org.apache.sling.commons.scheduler";
@@ -126,10 +154,12 @@ function getAvailablePatterns(collectionsDir = './unified-collections') {
       return [];
     }
     
-    const patterns = Object.keys(unifiedCollection.subtypes)
-      .map(mongoSafeSubtype => MONGO_SAFE_TO_PATTERN[mongoSafeSubtype])
-      .filter(pattern => pattern);
-    
+    const present = new Set(Object.keys(unifiedCollection.subtypes));
+    // A pattern is available if ANY of its subtypes is present in the collection.
+    const patterns = Object.keys(PATTERN_TO_SUBTYPES).filter(pattern =>
+      PATTERN_TO_SUBTYPES[pattern].some(st => present.has(toMongoSafeSubtype(st)))
+    );
+
     return patterns;
   } catch (error) {
     console.error('Error reading unified collection:', error.message);
@@ -297,6 +327,68 @@ function processEventHandlerFromUnified(subtypeData, targets) {
 }
 
 /**
+ * Process Guava cache data from unified collection. One target per
+ * **bundle** — the bundle name (the actionable unit) is deduped upstream in
+ * `processGuavaCacheFindings` (bpa-local-parser.js), so a bundle that produced
+ * hundreds of raw CSV rows (one per Guava-internal class BPA found on its
+ * classpath, e.g. `com.google.common.cache.AbstractCache` — never a customer
+ * class) still collapses to exactly one migration unit here.
+ *
+ * Field shape is inverted from every other pattern in this file: `className`
+ * carries the actionable bundle name, and `identifier` carries the fixed
+ * subtype string `custom.guava.cache` (not a real class) — because BPA's own
+ * `identifier` column on this subtype is the Guava-internal class, which is
+ * never actionable, so it's discarded rather than round-tripped.
+ */
+function processGuavaCacheFromUnified(subtypeData, targets) {
+  let count = 0;
+
+  const identifierKeys = Object.keys(subtypeData || {}).sort();
+  for (const mongoSafeIdentifier of identifierKeys) {
+    const bundleNames = subtypeData[mongoSafeIdentifier] || [];
+    const identifier = fromMongoSafeFieldName(mongoSafeIdentifier);
+
+    for (const bundleName of bundleNames) {
+      count++;
+      targets.push(new BpaTarget(
+        "guavaCache",
+        bundleName,
+        identifier,
+        `Bundle uses Guava cache: ${bundleName}`,
+        "info"
+      ));
+    }
+  }
+
+  return count;
+}
+
+/**
+ * Process a content/legacy-UI subtype whose unified data is keyed by RAW JCR
+ * path (no MongoDB round-trip). Emits one target per finding, with the JCR path
+ * as `className` (so downstream `location`/`file` resolve to the path) and the
+ * BPA sub-type as `identifier`.
+ */
+function processContentFromUnified(subtypeData, targets, pattern, subtype) {
+  let count = 0;
+  const pathKeys = Object.keys(subtypeData || {}).sort();
+  for (const jcrPath of pathKeys) {
+    const values = subtypeData[jcrPath] || [];
+    for (let i = 0; i < values.length; i++) {
+      count++;
+      targets.push(new BpaTarget(
+        pattern,
+        jcrPath,                       // className → runbook location/file
+        subtype,                       // identifier → runbook detail (the sub-type)
+        `${pattern} finding (${subtype}): ${jcrPath}`,
+        "high"
+      ));
+    }
+  }
+  return count;
+}
+
+/**
  * Fetch findings from unified collection (mimics cam-bpa-fetcher behavior).
  *
  * The full ordered list for the requested `pattern` is assembled, then
@@ -371,42 +463,35 @@ function fetchUnifiedBpaFindings(pattern = "all", collectionsDir = './unified-co
   
   console.log(`[Unified Collection Reader] Reading patterns: ${patternsToFetch.join(', ')}`);
   
-  // Process each pattern
+  // Processors for the Java patterns (keyed by class name). Content/legacy-UI
+  // patterns use the generic JCR-path processor.
+  const JAVA_PROCESSORS = {
+    scheduler: processSchedulerFromUnified,
+    assetApi: processAssetApiFromUnified,
+    eventListener: processEventListenerFromUnified,
+    resourceChangeListener: processResourceChangeListenerFromUnified,
+    eventHandler: processEventHandlerFromUnified,
+    guavaCache: processGuavaCacheFromUnified,
+  };
+
+  // Process each pattern — a pattern may map to more than one subtype.
   for (const pat of patternsToFetch) {
-    const mongoSafeSubtype = Object.keys(MONGO_SAFE_TO_PATTERN).find(key => 
-      MONGO_SAFE_TO_PATTERN[key] === pat
-    );
-    
-    if (!mongoSafeSubtype) {
+    const subtypes = PATTERN_TO_SUBTYPES[pat];
+    if (!subtypes) {
       console.warn(`[Unified Collection Reader] Unknown pattern: ${pat}, skipping`);
       continue;
     }
-    
-    const subtypeData = unifiedCollection.subtypes[mongoSafeSubtype];
-    if (!subtypeData) {
-      console.warn(`[Unified Collection Reader] No data for pattern: ${pat}, skipping`);
-      continue;
-    }
-    
-    // Process data based on pattern type
+
     let count = 0;
-    if (pat === "scheduler") {
-      count = processSchedulerFromUnified(subtypeData, result.targets);
-      result.summary.schedulerCount = count;
-    } else if (pat === "assetApi") {
-      count = processAssetApiFromUnified(subtypeData, result.targets);
-      result.summary.assetApiCount = count;
-    } else if (pat === "eventListener") {
-      count = processEventListenerFromUnified(subtypeData, result.targets);
-      result.summary.eventListenerCount = count;
-    } else if (pat === "resourceChangeListener") {
-      count = processResourceChangeListenerFromUnified(subtypeData, result.targets);
-      result.summary.resourceChangeListenerCount = count;
-    } else if (pat === "eventHandler") {
-      count = processEventHandlerFromUnified(subtypeData, result.targets);
-      result.summary.eventHandlerCount = count;
+    for (const subtype of subtypes) {
+      const subtypeData = unifiedCollection.subtypes[toMongoSafeSubtype(subtype)];
+      if (!subtypeData) continue;
+      count += CONTENT_PATTERNS.has(pat)
+        ? processContentFromUnified(subtypeData, result.targets, pat, subtype)
+        : JAVA_PROCESSORS[pat](subtypeData, result.targets);
     }
-    
+    result.summary[`${pat}Count`] = count;
+
     console.log(`[Unified Collection Reader] Processed ${count} findings for pattern: ${pat}`);
   }
   

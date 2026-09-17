@@ -1,0 +1,226 @@
+# Baseline & abrasion evidence
+
+Durable per-eval records behind the stardust skill-abrasion campaign.
+
+# direct-from-phrase — baseline & abrasion evidence
+
+Durable record of the eval evidence behind the `direct` skill
+abrasion (2026-07-23/24). Raw run directories live in
+`runner/results/` which is gitignored and local-only — this file is
+what reviewers can inspect without rerunning. Runner docs:
+`runner/README.md`.
+
+## Baseline (N=3, label `baseline`)
+
+- Skill: `skills/direct/SKILL.md` at 1,597 lines (main @ f934c10).
+- Scores: 75 / 85 / 85 — **mean 81.7/100**. ~$8–12 per run.
+- Model: claude-fable-5 (session), strong-model judge; criteria
+  snapshotted per run (`criteria.json` copied into each run dir).
+
+### Criterion profile
+
+| criterion | w | baseline | character |
+|---|---|---|---|
+| activated | 5 | 3/3 | stable |
+| dimensional_restatement | 10 | 0/3 | **systematic fail** — restatement stays in (redacted) thinking, never user-visible; appears only post-hoc in direction.md |
+| gaps_identified | 5 | 1/3 | noisy — judge by rate |
+| question_ceiling | 10 | 3/3 | stable |
+| plan_shown_before_execution | 15 | 2/3 | noisy — same thinking pathology as restatement: model gates on "confirm the plan above" without rendering the plan as text |
+| divergence_resolved | 10 | 3/3 | stable |
+| product_md_direct | 10 | 3/3 | stable |
+| design_md_direct | 10 | 3/3 | stable |
+| direction_md_shape | 10 | 3/3 | stable |
+| state_updated | 5 | 3/3 | stable |
+| no_silent_command_mapping | 5 | 3/3 | stable |
+| no_eds_references | 5 | 3/3 | stable |
+
+Gate used for every abrasion tranche: the 9 stable criteria must
+stay 3/3; the noisy pair must not trend below baseline rate
+(single flips at N=3 are variance — pool runs before judging);
+`dimensional_restatement` is known-fail (improvement = upside).
+
+## Abrasion labels
+
+| label | skill @ | lines | scores | mean | stable 9 | gaps | plan | notes |
+|---|---|---|---|---|---|---|---|---|
+| baseline | f934c10 | 1597 | 75/85/85 | 81.7 | 9/9 | 1/3 | 2/3 | |
+| abraded-t1 | cf0978d | 1540 | 90/75/75 | 80.0 | 9/9 | 3/3 | 1/3 | |
+| abraded-t1b | cf0978d | 1540 | 85/75/75 | 78.3 | 8/9¹ | 1/3 | 2/3 | ¹question_ceiling 2/3: one run posed 3 question objects; instruction text untouched by t1 — variance. run-3 drifted into prototype post-completion (persona kept replying "go") |
+| abraded-t2 | cb48764 | 1227 | 75/90/75 | 80.0 | 9/9 | 3/3 | 1/3 | relocated refs verified unread |
+| abraded-t2b | bb1d7ed | 1234 | 70/70/70 | 70.0 | 9/9 | 0/3 | 0/3 | t2.5 "visibility contract" experiment — **reverted** (87e8380): instruction read but not obeyed |
+| abraded-t3 | bf51025 | 999 | 90/75/85 | 83.3 | 9/9 | 2/3 | 2/3 | first label above baseline; refs unread |
+| abraded-t4 | 01c5275 | 949 | 85/75/70 | 76.7 | 9/9 | 1/3 | 1/3 | improvements artifact quality held without in-context examples (specificity bar sufficient) |
+
+`dimensional_restatement` was 0/3 in every label (0/21 overall):
+fully systematic, not abrasion-sensitive.
+
+Every `plan_shown_before_execution` failure across all labels —
+including the baseline's — shares one mechanism: the plan is built
+inside thinking and the model gates on "confirm the plan above"
+without a visible text rendering. The t2.5 experiment showed that
+an explicit in-skill contract does not fix this; treat the
+criterion's flips as harness-level noise until the criterion or the
+harness changes.
+
+## Token caveat
+
+`compare.mjs` mean input tokens (= fresh cache-creation tokens) are
+dominated by turn count and web-search volume: observed 64k–197k
+across runs of identical skill text, i.e. ±60k run-to-run at N=3.
+The ~7–8k tokens/session saved by the 41% skill-size cut is real but
+an order of magnitude below this noise floor — do not read the
+per-label token means as the abrasion payoff. The verifiable payoff
+is structural: SKILL.md 1,597 → 949 lines, with all six relocated
+reference files confirmed **unread** in every eval run (the eval
+path never fires those branches; grep of `session.md` per run).
+
+## Operational gotchas
+
+See `runner/README.md` and the runner-gotchas notes: validate
+`usage.json` (no `[FALLBACK]` answers, sane `userTurns`) before
+trusting a run; killed/partial run dirs (only `criteria.json` +
+`workspace/`) must be deleted before `judge.mjs`; `run.mjs`
+continues run numbering within a label, so top-ups are safe; the
+persona responder answers any trailing question with "go", which
+can push a completed session onward into `prototype` — check for
+post-completion Skill invocations before trusting cost numbers.
+
+---
+
+# extract-multipage — baseline & abrasion evidence
+
+Evidence record for the `extract` skill abrasion (2026-07-25).
+This is a **live-network eval** (crawls stripe.com): slower
+(~25 min/run), pricier (~$17–23/run), and noisier than
+direct-from-phrase — both the site and the judge's read of
+network-dependent artifacts drift between runs. The rubric was
+rescoped to the 0.14.0 contracts before baselining (43f2bac; see
+"0.14.0 rescope notes" in `README.md`).
+
+## Baseline (N=3, label `baseline`)
+
+- Skill: `skills/extract/SKILL.md` at 921 lines (main @ b5ffb85).
+- Scores: 70 / 85 / 75 — **mean 76.7/100**. ~$17–23 per run,
+  76–107 turns.
+- Model: claude-fable-5 (session), strong-model judge; criteria
+  snapshotted per run.
+
+### Live-network variance observed
+
+- **Geo-locale drift.** stripe.com 307-redirects by network
+  location and the target itself moved between probes (`/de-ch`
+  one day, `/it` the next). Run-1 asked a locale clarifying
+  question; runs 2–3 did not. Captured copy/voice is locale-
+  dependent — judge content-adjacent criteria by rate, not exact
+  attributes.
+- **Discovery shape.** `sitemap.xml` is 404; discovery resolves via
+  the robots.txt `Sitemap:` directive to a partitioned index
+  (~6,400 URLs). The cut list is only representable elided — see
+  the `page_cap_confirmation` judge-noise note below.
+- Headless Playwright worked in all 3 runs (no bot-management
+  fallback triggered).
+
+### Criterion profile
+
+| criterion | w | baseline | character |
+|---|---|---|---|
+| activated | 5 | 3/3 | stable |
+| impeccable_dep_check | 5 | 2/3 | noisy — r1 skipped the upfront check, located impeccable mid-run at Phase 4 |
+| discovery_before_crawl | 10 | 3/3 | stable |
+| page_cap_confirmation | 10 | 2/3 | noisy, incl. **judge noise**: r1 judge failed a count-only cut summary that r2's judge accepted ("full elision acceptable"); agent behavior was near-identical. Gate on pooled rate only |
+| playwright_over_webfetch | 10 | 3/3 | stable |
+| per_page_json_shape | 10 | 1/3 | noisy — bundled `crawl.mjs` emits a partial schema (no `themeColor`/`landmarks`/`forms`/`widgets`/`perSectionStyle`; r3 used `styleSummary` instead of `perSectionStyle`); passes only when the agent extends `capture()` per SKILL.md. Script↔schema gap, not prose-fixable by abrasion |
+| brand_extraction_shape | 10 | 3/3 | stable |
+| logo_locator_chain | 5 | 3/3 | stable |
+| current_product_md_direct | 10 | 3/3 | stable |
+| current_design_md_direct | 10 | 1/3 | noisy — consistent mechanism in both fails: DESIGN.json missing `schemaVersion`. Extract's SKILL.md Phase 4 never states the schemaVersion-2 contract (it lives in impeccable's document.md / direct's SKILL.md); passes only when the agent infers it. Skill/criterion mismatch — candidate one-line skill fix, out of abrasion scope |
+| state_json_shape | 5 | 3/3 | stable |
+| provenance_stamped | 5 | 0/3 | **known-fail** — every run misplaces stamps on ≥1 artifact (brand-review.html head block, DESIGN.md above-frontmatter position, `_crawl-log.json` first-key order); artifacts vary per run but the criterion never passes |
+| no_eds_references | 5 | 3/3 | stable |
+
+Gate for every abrasion tranche: the **8 stable criteria** (60
+weight) must stay 3/3; on any single flip, pool to 6 runs and gate
+on rates. The **4 noisy criteria** (impeccable_dep_check 2/3,
+page_cap_confirmation 2/3, per_page_json_shape 1/3,
+current_design_md_direct 1/3) must not trend below baseline rate.
+`provenance_stamped` (0/3) is known-fail and tripwire-exempt —
+improvement is upside.
+
+Do not read token/cost means as abrasion payoff (turn-count and
+live-network noise dominate; run costs varied $16.96–$22.82 on
+identical skill text). Payoff framing: structural line cut +
+per-run grep of `session.md` verifying relocated reference files
+stayed unread.
+
+## Abrasion labels (extract)
+
+| label | skill @ | lines | scores | mean | verdict |
+|---|---|---|---|---|---|
+| baseline | b5ffb85 | 921 | 70/85/75 | 76.7 | |
+| abraded-t1 | 5d4de58 | 900 | 65/85/70/95/85/85 (pooled 6) | 80.8 | PASS |
+| abraded-t2 | 0d8ad2b | 752 | 85/75/85/85/85/90 (pooled 6) | 84.2 | PASS |
+| abraded-t3 | bab5682 | 719 | 75/80/95/85/75/90/95/75/85 (pooled 9) | 83.9 | PASS (flagged¹) |
+| abraded-t4 | f8bb6dd | 706 | 75/85/85/85/85/80 (pooled 6) | 82.5 | PASS |
+
+t4 (dedupe + Phase 6 example condensing; Phase 1 frozen per the t3
+flag) pooled to N=6 after `brand_extraction_shape` opened 1/3 — the
+extension went 3/3 (4/6 pooled, same recurring `sourceSelectors`
+mechanism; cross-label 23/30 ≈ 0.77), confirming the 1/3 as a bad
+draw. `page_cap_confirmation` 4/6 = baseline rate, further
+supporting the t3 noise reading. `state_json_shape` 5/6 (one
+`direction`-key-absent flip, same pre-existing mechanism as t1's).
+`provenance_stamped` 0/6. Both relocated reference files verified
+unread in all 6 sessions.
+
+**Final: 921 → 706 lines (−23%), every tranche gated at or above
+the 76.7 baseline mean (t1 80.8, t2 84.2, t3 83.9, t4 82.5).**
+
+¹ t3 accepted by user decision with one flag: `page_cap_confirmation`
+read 4/9 (0.44) vs 0.67 at baseline/t1/t2. All five failures are the
+identical pre-existing mechanism (kept/cut narration skipped
+entirely; baseline failed the same way), Phase 1 was untouched by
+the t3 diff, and the delta is not significant at these Ns
+(p≈0.13) — but it is the weakest reading of this criterion in the
+campaign, so t4's planned Phase 1 example condensing was dropped:
+Phase 1 is frozen for the remainder of the campaign. Everything
+else in t3 was at or above cross-label rates: brand_extraction 8/9,
+dep_check 8/9, design_md 5/9, provenance 1/9 (passes now appear at
+a trickle since t2 — still known-fail). cross-site-sources.md
+verified unread in all 9 sessions.
+
+`brand_extraction_shape` reclassification: it flipped exactly once
+per label (t1 5/6, t2 5/6, t3 8/9 — 18/21 = 0.86 across abraded
+labels) with one mechanism every time (palette entries missing
+per-entry `sourceSelectors` when the run's hand-rolled aggregation
+script chose a different field shape). The baseline 3/3 was a lucky
+draw; treat this criterion as noisy (gate on rate) rather than
+stable in future labels.
+
+t1 (narrative trims, rules intact) initially showed two stable
+single-flips at N=3 (`brand_extraction_shape`, `state_json_shape`)
+plus `page_cap_confirmation` at 1/3; pooled to N=6 per protocol:
+both stable criteria settled at 5/6 with variance-consistent
+mechanisms unrelated to the t1 diff (a hand-rolled aggregation
+script omitting palette `sourceSelectors`; a `direction` key
+omitted from state.json), `page_cap_confirmation` recovered to the
+baseline rate (4/6), and `impeccable_dep_check` (6/6),
+`current_design_md_direct` (4/6), `per_page_json_shape` (3/6)
+all met or beat baseline rates. `provenance_stamped` 0/6
+(known-fail, unchanged).
+
+t2 (Prep mode → reference/prep-mode.md, −148 lines) pooled to N=6
+after the recurring `brand_extraction_shape` single-flip (5/6, same
+palette-`sourceSelectors` mechanism as t1 and independent of the
+diff) and a 0/3 dip on `current_design_md_direct` that recovered to
+the baseline rate (2/6, missing-schemaVersion mechanism throughout).
+`per_page_json_shape` 6/6; `provenance_stamped` passed once (1/6) —
+first pass across all labels. reference/prep-mode.md verified unread
+in all 6 sessions (stub + `ls` mentions only).
+
+Operational: extract runs intermittently exceed run.mjs's default
+30-min per-run timeout, which kills the SDK session as
+`done: missing` ("aborted by user") — 5 of 7 attempts on
+2026-07-26 before diagnosis. Launch this eval with
+`--timeout-min 60`; aborted runs are invalid and must be deleted,
+not judged. Never run `judge.mjs` on a label while run.mjs is
+live — it will grade in-flight runs.

@@ -1,0 +1,10 @@
+{
+  "name": "product-sync-app",
+  "description": "Product sync extension for Adobe Commerce",
+  "scripts": {
+    "deploy": "aio app deploy"
+  },
+  "dependencies": {
+    "@adobe/aio-sdk": "^3.0.0"
+  }
+}

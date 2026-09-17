@@ -1,0 +1,13 @@
+{
+  "name": "my-commerce-catalog-app",
+  "version": "1.2.0",
+  "description": "Commerce catalog extension",
+  "scripts": {
+    "build": "aio app build",
+    "deploy": "aio app deploy"
+  },
+  "dependencies": {
+    "@adobe/aio-sdk": "^3.0.0",
+    "node-fetch": "^2.6.7"
+  }
+}

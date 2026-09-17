@@ -1,0 +1,1344 @@
+[
+  {
+    "path": "/en/docs/workfront-fusion/using/references/apps-and-their-modules/adobe-connectors/workfront-planning-modules",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront-fusion/using/references/apps-and-their-modules/adobe-connectors/workfront-planning-modules",
+    "title": "Adobe Workfront Planning modules for Workfront Fusion",
+    "section": "fusion",
+    "description": "Base URL: https://{{connection.host}}/maestro/api/{{common.maestroApiVersion}}/",
+    "headings": [
+      "Connector facts",
+      "Access requirements",
+      "Module catalog",
+      "Trigger: Watch Events",
+      "Action: Create a record",
+      "Action: Get a record",
+      "Action: Get records by record type",
+      "Action: Get record types",
+      "Action: Update record",
+      "Action: Delete a record",
+      "Action: Delete a record type",
+      "Search: Search records",
+      "Action: Make a custom API call",
+      "JSONata recipe: human-readable record-types breakdown",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-access/access-information",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-access/access-information",
+    "title": "Access information article index",
+    "section": "access",
+    "description": "Articles:",
+    "headings": []
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-access/access-overview",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-access/access-overview",
+    "title": "Adobe Workfront Planning access overview",
+    "section": "access",
+    "description": "Any Workfront and Planning package, OR any Workflow and Planning package",
+    "headings": [
+      "Access requirements",
+      "Adobe Workfront package",
+      "Adobe Workfront platform",
+      "Adobe Workfront license",
+      "Access level configurations",
+      "Object permissions",
+      "Layout template",
+      "Share Planning area via layout template",
+      "Assign licenses",
+      "Configure access level",
+      "Grant permissions"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-access/license-type-overview",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-access/license-type-overview",
+    "title": "License type overview when using Adobe Workfront Planning",
+    "section": "access",
+    "description": "License type sets the CEILING of permissions a user can be granted.",
+    "headings": [
+      "Standard license",
+      "Light or Contributor license",
+      "Workspace & record type permission ceilings",
+      "Views permission ceilings",
+      "Record type permission inheritance rules",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-access/request-permissions",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-access/request-permissions",
+    "title": "Request permissions to a view or a workspace",
+    "section": "access",
+    "description": "When clicking a shared link without access, user gets \"You have no access\" page with two paths:",
+    "headings": [
+      "Permissions that can be granted via request",
+      "Layout template prerequisite",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-access/share-record-types",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-access/share-record-types",
+    "title": "Share record types",
+    "section": "access",
+    "description": "Workspace permissions automatically grant the same level on record types (\"Inherited permissions\" on by default).",
+    "headings": [
+      "Key principles",
+      "Workspace manager protection",
+      "What sharing a record type lets you do",
+      "What you CANNOT do",
+      "Where sharing happens",
+      "Inherited permissions toggle",
+      "Permission options on share",
+      "Sysadmin behavior",
+      "Global record types",
+      "Notifications",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-access/share-views",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-access/share-views",
+    "title": "Share views",
+    "section": "access",
+    "description": "Granting workspace permissions does NOT grant view permissions.",
+    "headings": [
+      "Key constraints",
+      "Share modes",
+      "Internal sharing details",
+      "Who has access modes",
+      "IMS requirement",
+      "System Administrators on views",
+      "Permissions levels",
+      "Notifications",
+      "Public sharing details",
+      "Public sharing restriction",
+      "Permission request approval flow",
+      "Removing permissions",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-access/share-workspaces",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-access/share-workspaces",
+    "title": "Share workspaces",
+    "section": "access",
+    "description": "Standard license",
+    "headings": [
+      "Access requirements",
+      "Key facts",
+      "Share modes (depending on access level)",
+      "System Administrator options",
+      "Standard workspace manager",
+      "Sharing flow",
+      "Permission request approval",
+      "Removing permissions",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-access/sharing-permissions-overview",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-access/sharing-permissions-overview",
+    "title": "Overview of sharing permissions in Adobe Workfront Planning",
+    "section": "access",
+    "description": "Workspaces : sharing also shares all record types, records, fields. Views are NOT included.",
+    "headings": [
+      "What can be shared manually",
+      "What inherits automatically (no manual sharing)",
+      "Critical constraint: Adobe Admin Console",
+      "Internal sharing entities",
+      "Sharing links",
+      "Permission matrix",
+      "Workspace",
+      "Record type (inherited from workspace, can be reduced)",
+      "Records (inherited from record type)",
+      "Record fields (inherited from record type)",
+      "Views",
+      "License interaction",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/add-existing-record-types-from-another-workspace",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/add-existing-record-types-from-another-workspace",
+    "title": "Add existing record types from another workspace",
+    "section": "architecture",
+    "description": "Lets a workspace manager add a record type from another workspace, IF that type has been designated global.",
+    "headings": [
+      "Package requirements",
+      "License",
+      "What gets added",
+      "What you canNOT see/do from secondary",
+      "What gets added that's new",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/architecture-information",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/architecture-information",
+    "title": "Architecture: article index",
+    "section": "architecture",
+    "description": "Articles in this section:",
+    "headings": []
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/configure-record-type-cross-workspace-capabilities",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/configure-record-type-cross-workspace-capabilities",
+    "title": "Configure cross-workspace capabilities for record types",
+    "section": "architecture",
+    "description": "Standard or higher",
+    "headings": [
+      "License requirements (Production)",
+      "To make a record GLOBAL",
+      "To make a record CONNECTABLE",
+      "Configure global record type",
+      "Effects",
+      "Secondary workspace appearance",
+      "Configure connectable record type",
+      "Effects",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/configure-record-type-settings",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/configure-record-type-settings",
+    "title": "Configure the Settings area of a record type",
+    "section": "architecture",
+    "description": "Settings page is an alternative entry point for record type configuration (same scope as Edit's Cross workspace settings tab). Currently houses:",
+    "headings": []
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/connect-record-types",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/connect-record-types",
+    "title": "Connect record types",
+    "section": "architecture",
+    "description": "Same workspace: Any Workfront + any Planning, OR any Workflow + any Planning",
+    "headings": [
+      "Access requirements",
+      "Connection setup options",
+      "From the same workspace",
+      "From other workspaces",
+      "Workfront Object Types section",
+      "Adobe Applications section",
+      "Connection field properties",
+      "\"Create corresponding field on linked record type\"",
+      "Workfront object connection filter",
+      "AEM Assets connection",
+      "Record appearance options",
+      "Lookup fields",
+      "Aggregator example",
+      "SA notes / warnings",
+      "Editing post-creation"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/connect-record-types-overview",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/connect-record-types-overview",
+    "title": "Connected record types overview",
+    "section": "architecture",
+    "description": "Up to 30 connected fields per record type.",
+    "headings": [
+      "Key limits",
+      "What you can connect",
+      "Ways connections get created",
+      "Connection semantics",
+      "Two WFP record types",
+      "Record type ↔ object from another app",
+      "Lookup fields",
+      "Hierarchies require connections",
+      "Connection cardinality types",
+      "When corresponding field DISABLED",
+      "When corresponding field ENABLED",
+      "Important: NOT available when connecting",
+      "Cardinality migration rules (after save)",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/create-record-types",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/create-record-types",
+    "title": "Create record types",
+    "section": "architecture",
+    "description": "Package: Any Workfront + Planning, OR any Workflow + Planning",
+    "headings": [
+      "Access requirements",
+      "Creation paths",
+      "Constraints",
+      "Default operational record type fields",
+      "Cross-workspace settings (sysadmin only)",
+      "Workflow notes for SA"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/create-workspace-hierarchies",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/create-workspace-hierarchies",
+    "title": "Create workspace hierarchies",
+    "section": "architecture",
+    "description": "1. Open Workspace → Settings → Hierarchies section.",
+    "headings": [
+      "Workflow",
+      "Required precondition",
+      "Notes",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/create-workspaces",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/create-workspaces",
+    "title": "Create workspaces",
+    "section": "architecture",
+    "description": "Workspaces are centralized locations for teams to plan work. A workspace is a collection of record types representing a team's work lifecycle.",
+    "headings": [
+      "Access requirements",
+      "Creating a workspace"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/cross-workspace-record-types-overview",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/cross-workspace-record-types-overview",
+    "title": "Cross-workspace record types overview",
+    "section": "architecture",
+    "description": "Any Workfront + any Planning, OR",
+    "headings": [
+      "Package requirements",
+      "Connectable record types",
+      "Global record types",
+      "Two cross-workspace capabilities",
+      "Global record types — primary (original) workspace properties",
+      "Global record types — secondary workspace properties",
+      "Permissions inherited from secondary workspace",
+      "Cannot from secondary",
+      "Delete behavior in secondary",
+      "Record visibility cross-workspace",
+      "API behavior for global record types",
+      "Connectable record types",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/delete-record-types",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/delete-record-types",
+    "title": "Delete record types",
+    "section": "architecture",
+    "description": "Manage on workspace",
+    "headings": [
+      "Permissions",
+      "What gets deleted",
+      "Recovery",
+      "Global record type rules",
+      "Original workspace deletion",
+      "Secondary workspace deletion",
+      "Deletion path quirks",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/delete-workspaces",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/delete-workspaces",
+    "title": "Delete workspaces",
+    "section": "architecture",
+    "description": "Deleting a workspace deletes ALL record types, records, fields, and views.",
+    "headings": [
+      "Critical considerations",
+      "Permissions",
+      "Confirmation",
+      "Keyboard shortcut for global search"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/edit-record-types",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/edit-record-types",
+    "title": "Edit record types",
+    "section": "architecture",
+    "description": "Editable on the Edit record type box:",
+    "headings": []
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/edit-workspaces",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/edit-workspaces",
+    "title": "Edit workspaces",
+    "section": "architecture",
+    "description": "Workspace name, description, icon",
+    "headings": [
+      "What you can edit",
+      "Section deletion",
+      "Notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/example-connect-record-types-and-records",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/example-connect-record-types-and-records",
+    "title": "Example of connecting record types and records",
+    "section": "architecture",
+    "description": "This article walks two examples that reinforce the concepts captured in connect record types.md and connect record types overview.md.",
+    "headings": [
+      "Example 1: WFP-to-WFP (Campaign ↔ Product)",
+      "Example 2: WFP-to-Workfront Project (Campaign ↔ Project)",
+      "Key reinforced points"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/hierarchy-and-breadcrumb-overview",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/hierarchy-and-breadcrumb-overview",
+    "title": "Hierarchy and breadcrumb overview",
+    "section": "architecture",
+    "description": "Hierarchies are structured parent child relationships between connected record types (and optionally a Workfront project at the leaf).",
+    "headings": [
+      "Hard limits",
+      "What can participate",
+      "What CANNOT participate",
+      "Pre-conditions",
+      "Topology rules",
+      "Breadcrumbs",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/import-file-to-create-record-types",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/import-file-to-create-record-types",
+    "title": "Create record types by importing CSV/Excel",
+    "section": "architecture",
+    "description": "Each sheet of Excel = a record type. Sheet name = type name.",
+    "headings": [
+      "How import works",
+      "Import limits",
+      "Field types NOT supported in import",
+      "Mapping options on import",
+      "Notes for SA"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/overview-of-record-types",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/overview-of-record-types",
+    "title": "Record types overview",
+    "section": "architecture",
+    "description": "WFP object types are called \"record types\". Building blocks of workspaces.",
+    "headings": [
+      "Key points",
+      "Cross-workspace capabilities"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/workspace-templates",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/workspace-templates",
+    "title": "List of workspace templates",
+    "section": "architecture",
+    "description": "WFP ships with templates organized in two sections: Operational Record Types and Taxonomies.",
+    "headings": [
+      "Basic: Marketing Management",
+      "Advanced: Marketing Management",
+      "Enterprise: Marketing Management",
+      "Sales management",
+      "Product management"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/workspaces-overview",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/workspaces-overview",
+    "title": "Workspaces overview",
+    "section": "architecture",
+    "description": "A workspace is a collection of record types used by an organizational unit, representing its work lifecycle and processes. Fully customizable.",
+    "headings": [
+      "Considerations"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-best-practices/30-day-launchpad",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-best-practices/30-day-launchpad",
+    "title": "Roll out your strategic home: a 30-day launchpad",
+    "section": "best-practices",
+    "description": "Requires Planning Prime or higher. Aimed at admins.",
+    "headings": [
+      "Philosophy: team-first adoption",
+      "\"Guided autonomy\" model",
+      "Two pilot paths (first 15 days)",
+      "30-day timeline",
+      "Days 1-10 — Team foundation",
+      "Day 15 — First breakthrough",
+      "Days 16-30 — Toward enterprise scale",
+      "Success markers",
+      "Dos",
+      "Don'ts"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-best-practices/best-practices-article-index",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-best-practices/best-practices-article-index",
+    "title": "Best practices article index",
+    "section": "best-practices",
+    "description": "Requires Planning Prime or higher.",
+    "headings": []
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-best-practices/marketing-calendar",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-best-practices/marketing-calendar",
+    "title": "Build your marketing calendar: no decks, just clarity",
+    "section": "best-practices",
+    "description": "Requires Planning Prime or higher.",
+    "headings": [
+      "Core thesis",
+      "Stats cited (Adobe-sourced)",
+      "Three pillars of live visibility",
+      "Dos",
+      "Don'ts",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-best-practices/model-campaign-hierarchy",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-best-practices/model-campaign-hierarchy",
+    "title": "Architect your success: modeling your campaign hierarchy",
+    "section": "best-practices",
+    "description": "Requires Planning Prime or higher. Aimed at admins and power users.",
+    "headings": [
+      "Core 3-tier model (recommended starting point)",
+      "Level 1 — Campaigns (WFP)",
+      "Level 2 — Channel Tactics (WFP)",
+      "Level 3 — Projects (Planning ↔ Workfront)",
+      "Strategic expansion (optional layers)",
+      "Channel Plans",
+      "Activities",
+      "IMPORTANT volume threshold",
+      "Hub-and-spoke architecture",
+      "Taxonomy hub",
+      "Strategic Planning workspace (executive center)",
+      "Functional spokes",
+      "Noun-based governance",
+      "Handling existing Portfolios and Programs",
+      "Recommendation",
+      "Reporting bridge strategy",
+      "Dos",
+      "Cautions",
+      "Don'ts",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-best-practices/playbook-how-to-scale",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-best-practices/playbook-how-to-scale",
+    "title": "Turn your first win into sustainable momentum: a playbook for managed scaling",
+    "section": "best-practices",
+    "description": "Requires Planning Prime or higher.",
+    "headings": [
+      "The success trap",
+      "Core philosophy: WFP as reconciliation engine",
+      "Key insights",
+      "Guided autonomy governance model",
+      "Global lanes",
+      "Local playgrounds (spokes)",
+      "Two-way street model",
+      "Persona priorities",
+      "Service-led observation phase",
+      "Governance as a service",
+      "Field maturity path",
+      "Retiring fields (soft retirement)",
+      "Avoiding WFP drift",
+      "Read-only access visibility model",
+      "Workshop ideas",
+      "\"Necessary mess\" discovery",
+      "\"Strategic visibility\" alignment",
+      "\"Spoke-to-global\" showcase",
+      "\"Ongoing support\" office hours",
+      "Roles & responsibilities",
+      "Enterprise Architect (CoE / Marketing Ops)",
+      "Spoke Champion (Team Process Owner)",
+      "Executive Sponsor (Marketing Leadership)",
+      "Enablement Lead (Change Management)",
+      "Onboarding-new-team checklist",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-best-practices/the-bridge-connect-strategy-with-projects",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-best-practices/the-bridge-connect-strategy-with-projects",
+    "title": "Build the bridge: connecting strategic intent to projects",
+    "section": "best-practices",
+    "description": "Requires Planning Prime or higher.",
+    "headings": [
+      "Core thesis",
+      "Two layers",
+      "Activating the bridge (table-led path)",
+      "Manual activation",
+      "Native WFP automation",
+      "Activating the bridge (automated path)",
+      "Submission triggers",
+      "Field-value triggers",
+      "Lookup fields for visibility",
+      "Strategic questions WFP can answer post-bridge",
+      "Dos",
+      "Don'ts",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-fields/create-fields",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-fields/create-fields",
+    "title": "Create fields",
+    "section": "fields",
+    "description": "Any Workfront + any Planning (or any Workflow + any Planning)",
+    "headings": [
+      "Access requirements",
+      "Six paths to create fields",
+      "CRITICAL constraint",
+      "Field types (17 total)",
+      "Single-line text",
+      "Paragraph",
+      "Multi-select / Single-select",
+      "Date",
+      "Number",
+      "Percentage",
+      "Currency",
+      "Checkbox",
+      "Formula",
+      "People",
+      "Created by / Last modified by (read-only)",
+      "Created date / Last modified date (read-only)",
+      "Approved date (read-only)",
+      "Approved by (read-only)",
+      "SA notes / irreversibility gotchas"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-fields/delete-fields",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-fields/delete-fields",
+    "title": "Delete fields",
+    "section": "fields",
+    "description": "Standard license",
+    "headings": [
+      "Access requirements",
+      "Where deletion happens",
+      "Cannot delete",
+      "Recovery",
+      "Cascading deletion behavior",
+      "Regular field",
+      "Connection field",
+      "Lookup field",
+      "Field on a global record type (primary workspace)",
+      "Example",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-fields/edit-fields",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-fields/edit-fields",
+    "title": "Edit field settings",
+    "section": "fields",
+    "description": "ONLY from the table view of the record type.",
+    "headings": [
+      "Where editing happens",
+      "What CAN be edited after save",
+      "What CANNOT be changed after save",
+      "CRITICAL warnings about edits",
+      "Data loss with no warning",
+      "Real-time value updates with no audit log",
+      "Inline new-choice creation (table view only)",
+      "SA notes / governance implications"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-fields/fields-overview",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-fields/fields-overview",
+    "title": "Field overview",
+    "section": "fields",
+    "description": "Fields are attributes of record types in WFP.",
+    "headings": [
+      "Where fields can be created",
+      "Creation paths",
+      "Manual",
+      "Automatic",
+      "Field scope",
+      "Limits",
+      "Deletion behavior",
+      "Permissions",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-fields/formula-fields",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-fields/formula-fields",
+    "title": "Formula fields overview",
+    "section": "fields",
+    "description": "Formula fields generate values by combining other fields + functions.",
+    "headings": [
+      "Core mechanics",
+      "Format options",
+      "Update propagation",
+      "Limits",
+      "#ERROR! conditions",
+      "Workfront expressions NOT supported in WFP",
+      "WFP-only expressions (NOT available in standard Workfront calculated fields)",
+      "ARRAYJOIN",
+      "ARRAYUNIQUE",
+      "ID",
+      "JSONELEMENT",
+      "SETTIMEZONE",
+      "WEEKOFYEAR",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-fields/import-fields-from-workfront",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-fields/import-fields-from-workfront",
+    "title": "Import fields from Adobe Workfront",
+    "section": "fields",
+    "description": "Creates COPIES of existing Workfront fields on a WFP record type.",
+    "headings": [
+      "What it does",
+      "Compatible source objects",
+      "Field type translation",
+      "Filter options on import",
+      "Limits",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-fields/primary-field-overview",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-fields/primary-field-overview",
+    "title": "Primary field overview",
+    "section": "fields",
+    "description": "The primary field is the field displayed in the first column of a record type's table view. Its value also serves as the record's title.",
+    "headings": [
+      "Core concept",
+      "Eligibility",
+      "Where the record title displays",
+      "Behaviors and constraints",
+      "Reassignment procedure",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-general-information/limitations-overview",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-general-information/limitations-overview",
+    "title": "Adobe Workfront Planning object limitations overview",
+    "section": "general",
+    "description": "Adobe Workfront Planning has limits on how many objects you can create. Limits are subject to change.",
+    "headings": []
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-general-information/planning-ai-assistant-overview",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-general-information/planning-ai-assistant-overview",
+    "title": "Adobe Workfront Planning AI Assistant overview",
+    "section": "ai-assistant",
+    "description": "A natural language interface to Workfront Planning. Read, create, update, delete records via prompts. Page context aware. Distinct from Workfront AI Assistant (broader Workfront product) but accessed ",
+    "headings": [
+      "What it is",
+      "Access requirements",
+      "Available pages",
+      "Available actions",
+      "Behavioral rules",
+      "Entry points",
+      "Prompt-keyword discipline (system-wide AI Assistant)",
+      "Object types accessible to AI Assistant (org-wide)",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-general-information/planning-ai-designer",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-general-information/planning-ai-designer",
+    "title": "Get started with the Adobe Workfront Planning Designer",
+    "section": "general",
+    "description": "Currently Closed Beta. Enrollment by email to sargism@adobe.com.",
+    "headings": [
+      "What it does",
+      "Prerequisites",
+      "Designer vs AI Assistant",
+      "How it works",
+      "Functionality available via prompt",
+      "Prompt examples (from docs)",
+      "Entry points",
+      "Disabling Planning Designer org-wide",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-general-information/planning-api-basics",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-general-information/planning-api-basics",
+    "title": "Adobe Workfront Planning API basics",
+    "section": "api",
+    "description": "REST ful over HTTP, JSON responses.",
+    "headings": [
+      "Architecture",
+      "Identity model",
+      "HTTP method semantics",
+      "Search modifier syntax (filters)",
+      "Field-type → modifier matrix (canonical)",
+      "Boolean composition",
+      "Field projection",
+      "Sorting",
+      "Pagination & limits",
+      "Search request shape (canonical)",
+      "External lookup field bridge",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-general-information/planning-best-practices",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-general-information/planning-best-practices",
+    "title": "Adobe Workfront Planning implementation recommendations (FAQ-style best practices)",
+    "section": "best-practices",
+    "description": "This is the FAQ style best practices reference (separate from the formal best practices section).",
+    "headings": [
+      "Workspaces",
+      "How to start",
+      "When to create new vs modify existing",
+      "How to use Workspace sections",
+      "Record types",
+      "Defining record types",
+      "Single/multi-select field vs linked record type",
+      "Labeling",
+      "Fields",
+      "Primary field",
+      "Formulas",
+      "URLs",
+      "Hide vs delete",
+      "Views",
+      "Filters and groupings",
+      "Timeline view requires 2 date fields",
+      "Timeline settings (bar style, color)",
+      "Permissions",
+      "Workspaces",
+      "Record types",
+      "Views",
+      "How license types interact",
+      "Workspace ownership",
+      "Request forms",
+      "When to create",
+      "Who can create",
+      "Who can submit (internal options)",
+      "Public form sharing",
+      "Form management best practices",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-general-information/planning-general-article-index",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-general-information/planning-general-article-index",
+    "title": "General information article index",
+    "section": "general",
+    "description": "Articles in general info section:",
+    "headings": []
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-general-information/planning-overview",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-general-information/planning-overview",
+    "title": "Get started with Adobe Workfront Planning",
+    "section": "general",
+    "description": "Adobe Workfront Planning is an additional capability from Adobe Workfront. The purpose of Workfront Planning is to unlock comprehensive visibility into the operational details of an organization, and ",
+    "headings": [
+      "Enabling WFP for users",
+      "Terminology",
+      "Workspaces",
+      "Record Types",
+      "Records",
+      "Workspace templates",
+      "Fields",
+      "Connected record types, records, fields",
+      "Lookup fields",
+      "Hierarchies",
+      "Views",
+      "Automations",
+      "Request forms",
+      "Locating WFP",
+      "Additional features (linked from this page)"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-records/configure-automations-to-create-records",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-records/configure-automations-to-create-records",
+    "title": "Configure Adobe Workfront Planning automations",
+    "section": "records",
+    "description": "Standard license",
+    "headings": [
+      "Access requirements",
+      "Where automations live",
+      "Two trigger types",
+      "Button click",
+      "Field value change",
+      "Six action types",
+      "Create a single project",
+      "Create multiple projects",
+      "Create portfolio",
+      "Create program",
+      "Create group",
+      "Create record (WFP record)",
+      "\"Add connected field\" (when none exists)",
+      "Important constraints",
+      "Disable vs Delete",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-records/connect-records",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-records/connect-records",
+    "title": "Connect records",
+    "section": "records",
+    "description": "WFP records to WFP records",
+    "headings": [
+      "What you can connect",
+      "Access requirements",
+      "Prerequisites",
+      "Where you can connect (UI areas)",
+      "Mechanics",
+      "Click to connect",
+      "One-to-one / One-to-many warning",
+      "Create on the fly",
+      "\"See all\" / Connect objects box",
+      "Workfront object connections",
+      "AEM Assets connection",
+      "Lookup field editing post-connection",
+      "Disconnect",
+      "Connection from Workfront side (via Planning section)",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-records/create-records",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-records/create-records",
+    "title": "Create records",
+    "section": "records",
+    "description": "Standard license",
+    "headings": [
+      "Access requirements",
+      "10 ways to create a record",
+      "Global record type visibility on create",
+      "Permission gates",
+      "Field constraints when creating",
+      "Table view inline creation",
+      "Timeline view creation",
+      "Calendar view creation",
+      "Copy/paste from external",
+      "Connect-and-create",
+      "Request form (View users)",
+      "CSV/Excel import",
+      "Automations",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-records/create-wf-objects-using-planning-automations",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-records/create-wf-objects-using-planning-automations",
+    "title": "Create objects using Workfront Planning record automations",
+    "section": "records",
+    "description": "Workfront Planning record",
+    "headings": [
+      "What can be created via automation",
+      "Access requirements",
+      "Naming patterns",
+      "Single object creation",
+      "Multi-project creation",
+      "Trigger behavior",
+      "Usage flow (Button click automation)",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-records/delete-records",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-records/delete-records",
+    "title": "Delete records",
+    "section": "records",
+    "description": "Companion: https://experienceleague.adobe.com/en/docs/workfront/using/adobe workfront planning/adobe workfront planning records/restore deleted records",
+    "headings": [
+      "Where deletion can happen",
+      "Recoverable for 30 days",
+      "Linked-record impact",
+      "Undo",
+      "Restore flow",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-records/edit-records",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-records/edit-records",
+    "title": "Edit records",
+    "section": "records",
+    "description": "Standard license",
+    "headings": [
+      "Access requirements",
+      "Six places to edit",
+      "Read-only field types (NOT editable)",
+      "Real-time sync",
+      "Bulk edit",
+      "URL behavior",
+      "Records connected across workspaces",
+      "Timeline / Calendar date editing",
+      "Copy/paste mechanics in table view",
+      "Where copy/paste DOESN'T work",
+      "Paragraph field formatting",
+      "Cover image and thumbnail",
+      "Inline adding of single/multi-select choices",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-records/import-file-to-create-records",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-records/import-file-to-create-records",
+    "title": "Create records by importing information from a CSV or Excel file",
+    "section": "records",
+    "description": "Standard license",
+    "headings": [
+      "Access requirements",
+      "File constraints",
+      "Mapping mechanics",
+      "Field types NOT supported in import (cannot be mapped)",
+      "\"Create missing options\" toggle",
+      "Outcome",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-records/manage-records-in-planning-section",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-records/manage-records-in-planning-section",
+    "title": "Manage record connections from Workfront objects",
+    "section": "records",
+    "description": "1. Planning section of a Workfront object: shows ALL connected record types and their connected records (Project, Portfolio, Program only)",
+    "headings": [
+      "Two areas to view WFP records from Workfront",
+      "Access requirements",
+      "Prerequisites",
+      "Planning section behavior",
+      "Planning connection field type behavior",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-requests/add-approval-to-request-form",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-requests/add-approval-to-request-form",
+    "title": "Add an approval to a request form in Adobe Workfront Planning",
+    "section": "requests",
+    "description": "Any Workfront/Planning or Workflow/Planning package.",
+    "headings": [
+      "Access requirements",
+      "What it does",
+      "Approval mechanics",
+      "Default rule",
+      "Custom rules (conditional)",
+      "Rule resolution order",
+      "Team-as-approver semantics",
+      "Multi-approver outcomes",
+      "Captured fields on resulting record",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-requests/approve-request",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-requests/approve-request",
+    "title": "Approve a request in Adobe Workfront Planning",
+    "section": "requests",
+    "description": "Any Workfront/Planning or Workflow/Planning package.",
+    "headings": [
+      "Access requirements",
+      "Request status state machine",
+      "Approval entry points",
+      "Important UX gates",
+      "Reject = single veto",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-requests/create-request-form",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-requests/create-request-form",
+    "title": "Create and manage a request form",
+    "section": "requests",
+    "description": "Associated with a record type.",
+    "headings": [
+      "What request forms do",
+      "Access requirements",
+      "Field type limitations on request forms",
+      "Cannot be added to forms",
+      "Field display differences in form builder vs after submission",
+      "Building a form",
+      "Default form contents",
+      "Subject field behavior",
+      "Field configuration in form",
+      "Content elements",
+      "Preview",
+      "Approval configuration",
+      "Production environment (Configuration tab)",
+      "Preview environment (Settings tab — coming to Production)",
+      "Request completion options",
+      "Publishing",
+      "Sharing",
+      "Internal sharing",
+      "Public sharing",
+      "Managing existing forms",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-requests/submit-requests",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-requests/submit-requests",
+    "title": "Submit Workfront Planning requests to create records",
+    "section": "requests",
+    "description": "Workfront Requests area (Workfront users only)",
+    "headings": [
+      "Three submission paths",
+      "Access requirements",
+      "Prerequisites",
+      "Critical behavior",
+      "Cannot edit a submitted request",
+      "Request ↔ Record relationship",
+      "Visibility/notifications",
+      "Approval flow",
+      "Requests list (Workfront Requests area) fields",
+      "Filters available",
+      "\"Untitled\" record naming",
+      "Copy & draft",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-requests/unpublish-request-form",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-requests/unpublish-request-form",
+    "title": "Unpublish a request form in Adobe Workfront Planning",
+    "section": "requests",
+    "description": "Workfront/Planning or Workflow/Planning package.",
+    "headings": [
+      "Access requirements",
+      "Two operations covered",
+      "Change form sharing (narrow access without unpublishing)",
+      "Unpublish (revoke all access)",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-views/manage-record-views",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-views/manage-record-views",
+    "title": "Manage record views",
+    "section": "views",
+    "description": "Table — structured columns + rows, default",
+    "headings": [
+      "Four view types",
+      "Access requirements",
+      "Key principles",
+      "What's tied to each view (not the record type)",
+      "View capability matrix (key feature differences)",
+      "Creating a view",
+      "Prerequisites",
+      "Start/End date selection for timeline/calendar",
+      "View name auto-format",
+      "Renaming and reordering",
+      "Full screen",
+      "Real-time presence",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-views/manage-the-calendar-view",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-views/manage-the-calendar-view",
+    "title": "Manage the calendar view",
+    "section": "views",
+    "description": "Record type must have at least 2 date fields. Otherwise Calendar option is dimmed.",
+    "headings": [
+      "Prerequisites",
+      "Records that DON'T display",
+      "Time frames",
+      "Month",
+      "Week",
+      "Row height (Month view only)",
+      "Edit operations",
+      "Filters",
+      "Settings panel",
+      "Date and time",
+      "Bar style",
+      "Color",
+      "What calendar DOESN'T have (compared to timeline)",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-views/manage-the-list-view",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-views/manage-the-list-view",
+    "title": "Manage the list view",
+    "section": "views",
+    "description": "Connected records page for projects in a record's details area",
+    "headings": [
+      "Where list view is used",
+      "Connected records page list view",
+      "Request forms list view",
+      "List view feature set",
+      "View management",
+      "Filters",
+      "Columns",
+      "Conditional formatting (Format cells)",
+      "Grouping",
+      "Row height",
+      "Editing inline",
+      "Action bar (multi-select)",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-views/manage-the-table-view",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-views/manage-the-table-view",
+    "title": "Manage the table view",
+    "section": "views",
+    "description": "ONLY view where record EDITING happens.",
+    "headings": [
+      "Why the table view matters",
+      "Row height options",
+      "Limits",
+      "Adding/removing columns",
+      "Primary field",
+      "Search",
+      "Rows (records)",
+      "Filters",
+      "Operators per field type",
+      "Filter scope",
+      "Sort",
+      "Grouping",
+      "Row colors",
+      "Real-time presence",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-views/manage-the-timeline-view",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-views/manage-the-timeline-view",
+    "title": "Manage the timeline view",
+    "section": "views",
+    "description": "Record type must have at least 2 date fields. Otherwise Timeline option is dimmed.",
+    "headings": [
+      "Prerequisites",
+      "Records that DON'T display in timeline",
+      "Time frames",
+      "Modes",
+      "Standard (default)",
+      "Compact",
+      "Custom quarters",
+      "Edit operations on timeline",
+      "Filters",
+      "Grouping",
+      "Settings panel",
+      "Date and time",
+      "Bar style",
+      "Color",
+      "Breakdown feature",
+      "Search",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/planning-and-genstudio-integration/get-started-with-workfront-planning-and-genstudio-integration",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/planning-and-genstudio-integration/get-started-with-workfront-planning-and-genstudio-integration",
+    "title": "Workfront Planning + GenStudio for Performance Marketing integration overview",
+    "section": "genstudio",
+    "description": "A native bidirectional integration that exposes a \"GenStudio workspace\" inside Workfront Planning. GenStudio's marketing domain objects (Campaigns, Products, Activations, Personas, Channels, Regions, ",
+    "headings": [
+      "What it is",
+      "Requirements (ALL must apply)",
+      "Access requirements",
+      "Permission defaults",
+      "Multi-instance behavior",
+      "Standard GenStudio record types in the workspace",
+      "What you CAN do from Planning",
+      "What you CAN'T do from Planning",
+      "Brand connections (special)",
+      "Created by / Approved by",
+      "Preview environment behavior",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/planning-and-genstudio-integration/manage-gen-studio-workspace-in-planning",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/planning-and-genstudio-integration/manage-gen-studio-workspace-in-planning",
+    "title": "Manage the GenStudio workspace in Adobe Workfront Planning",
+    "section": "genstudio",
+    "description": "This is the operational counterpart to the integration overview. Covers the actual permission scoping rules and edit constraints when working in the GenStudio workspace.",
+    "headings": [
+      "Permission scoping summary",
+      "Sharing the GenStudio workspace",
+      "What \"Manage record types\" surfaces in GenStudio workspace",
+      "Fields in GenStudio record types",
+      "Adding Planning-side fields",
+      "Editing existing GenStudio fields",
+      "Hiding fields",
+      "Record CRUD constraints",
+      "Connection capabilities (from this page)",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/planning-and-genstudio-integration/planning-and-genstudio-integration-article-index",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/planning-and-genstudio-integration/planning-and-genstudio-integration-article-index",
+    "title": "GenStudio integration — article index",
+    "section": "genstudio",
+    "description": "1. Get started with the Workfront Planning + GenStudio integration → genstudio integration overview.md",
+    "headings": [
+      "Articles in this section",
+      "Scope"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/basics/ai-assistant/ai-assistant-overview",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/basics/ai-assistant/ai-assistant-overview",
+    "title": "AI Assistant in Workfront (parent product)",
+    "section": "ai-assistant",
+    "description": "This is the broader Workfront AI Assistant (not Planning specific). Same icon, different scope per page context. Documented here because the SA conversation often spans both.",
+    "headings": [
+      "Capabilities",
+      "Access requirements",
+      "Org-level prerequisites (ALL must apply)",
+      "Gen AI agreement workflow",
+      "Object types accessible",
+      "Sub-features and their separate docs",
+      "Keyword routing",
+      "Constraints",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/reporting/canvas-dashboards/add-reports/build-table-report",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/reporting/canvas-dashboards/add-reports/build-table-report",
+    "title": "Build a table report in a Canvas Dashboard",
+    "section": "canvas-dashboards",
+    "description": "The Canvas Dashboard report type most relevant to Planning customers. Table reports are the closest equivalent to a legacy Workfront report and are the primary way to surface Planning records in a cro",
+    "headings": [
+      "Access requirements",
+      "Report build structure",
+      "1. Details",
+      "2. Build table (columns)",
+      "3. Filter",
+      "4. Drilldown Group Settings",
+      "Sections drop-down (field-selector scoping)",
+      "Children-object reporting rules",
+      "Notable lookups",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/reporting/canvas-dashboards/canvas-dashboards-overview",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/reporting/canvas-dashboards/canvas-dashboards-overview",
+    "title": "Canvas Dashboards overview",
+    "section": "canvas-dashboards",
+    "description": "STATUS: BETA. Required reading for any customer who wants to \"report on Workfront Planning data\" — Canvas Dashboards is the ONLY documented Workfront native path for this.",
+    "headings": [
+      "What it is",
+      "Prerequisites",
+      "Beta enrollment",
+      "Report types",
+      "Workfront Planning data access pattern",
+      "Currently shipping features (this beta wave)",
+      "In development",
+      "Roadmap (priorities subject to change)",
+      "Financial data caveat",
+      "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/reporting/canvas-dashboards/create-dashboards/create-dashboards",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/reporting/canvas-dashboards/create-dashboards/create-dashboards",
+    "title": "Create a Canvas Dashboard and add reports",
+    "section": "canvas-dashboards",
+    "description": "Also covers the parallel KPI and Chart report types (cross referenced from build table report.md ).",
+    "headings": [
+      "Access requirements",
+      "Prerequisite layout-template gate",
+      "Dashboard creation fields",
+      "Three report-build types",
+      "Adding an existing legacy Workfront report",
+      "SA notes"
+    ]
+  }
+]

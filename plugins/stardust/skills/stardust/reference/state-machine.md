@@ -54,7 +54,25 @@ and resumable. The state file is `stardust/state.json`. It is written by
 ```
 
 Top-level keys: `_provenance`, `site`, `direction`, `pages`. Always in
-that order. `_provenance` is always the first key.
+that order. `_provenance` is always the first key. A hands-off run adds
+one optional top-level key, `handsOff` (after `direction`; see
+§ Hands-off keys).
+
+---
+
+## Hands-off keys
+
+When the run was activated hands-off (`skills/stardust/SKILL.md`
+§ Hands-off mode), two extra markers appear:
+
+- Top-level `"handsOff": true` — stamped by the master skill at
+  activation; every sub-command reads it to auto-resolve its
+  interactive gates.
+- On a page's `approved` history entry, `"approvedBy": "hands-off"` —
+  the approval was granted by the agent's own judgment after all
+  quality gates passed, not by the user. A later explicit user
+  approval appends a new history entry (without the marker); it does
+  not rewrite the hands-off one.
 
 ---
 
@@ -221,7 +239,23 @@ Stale: 2 pages (home, about) — direction changed since they were migrated.
 
 Recommended next: $stardust prototype features
                   (5 directed pages waiting; closest to migration)
+
+Repo:  tracked 412 files / 31 MB under stardust/; not tracked 1,165 (captures, screenshots)
+       state.json tracked ✓ · outside stardust/: none ✓ · secrets tracked: none ✓
+       current/assets/ absent on this checkout → brand-review has no thumbnails;
+       run `$stardust extract` before migrate/deploy.
 ```
+
+The `Repo:` block is rendered only when the project is a git repo. Its
+four facts come from `git ls-files` / `git check-ignore` and the master
+skill's write boundary (SKILL.md § Artifacts): counts and size of tracked
+files under `stardust/`; whether `stardust/state.json` is tracked (must
+be, or say which ignore rule drops it); any tracked file outside
+`stardust/`, the impeccable root files and the EDS project; any tracked
+file matching a secret shape (`.env*`, `_storage-state.json`,
+`*-clearance.json`). Then one line per consequence that applies on this
+checkout (`current/assets/` missing, baselines missing). Above 50 MB of
+tracked binaries under `stardust/`, add "consider Git LFS (optional)".
 
 The recommended next step uses these heuristics, in order:
 
@@ -359,10 +393,38 @@ page only), or unfolded (the moves stay file-local).
 
 ## Concurrency
 
-Stardust does not own a long-running process. Every sub-command reads
-`state.json` at start, writes once at end. If two sub-commands run
-concurrently from different shells, last-write-wins. Document this in
-the `extract` and `migrate` SKILL.md files; do not try to lock.
+Stardust does not own a long-running process, but sub-commands and
+their sub-agents DO run in parallel. `state.json` writers follow a
+**merge-by-slug** contract instead of blind overwrites:
+
+1. **Re-read before write.** Immediately before writing, re-read
+   `state.json` from disk and merge your changes into that fresh
+   copy — never write from a snapshot taken at phase start.
+2. **Merge per page / per key.** Page entries are independent (keyed
+   by `slug`): a writer touches only the entries for pages it worked
+   on and preserves every other entry verbatim. Top-level keys are
+   owned by single phases (`site` → extract, `direction` → direct,
+   `handsOff` → the master skill); a writer never rewrites a
+   top-level key another phase owns.
+
+Safe parallel lanes — all merge cleanly under this contract:
+
+- **N pages may migrate concurrently.** Each writer merges only its
+  own slugs' entries.
+- **Sibling variants may prototype concurrently.** Distinct
+  prototype/shape artifacts, distinct page entries.
+- **Viewport captures batch in one Playwright session.** One browser,
+  all viewports, per `extract/reference/playwright-recipe.md` — no
+  session-per-viewport fan-out.
+- **Extract captures pages concurrently.** Per-page
+  `current/pages/<slug>.json` files are disjoint; the inventory
+  update merges per slug.
+
+**Same-slug concurrent runs remain last-write-wins** — two writers
+racing on the SAME page entry are not merged; the later write wins.
+When the pre-write re-read shows your page's entry changed underneath
+you, surface a warning in the report naming the slug. Do not lock;
+do not engineer around it.
 
 ---
 

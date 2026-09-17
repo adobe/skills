@@ -1,0 +1,33 @@
+hooks:
+  pre-app-build: >-
+    node scripts/pre-app-build.js extensibility/1 && EXTENSION=extensibility/1
+    npx aio-commerce-lib-app hooks pre-app-build
+operations:
+  workerProcess:
+    - type: action
+      impl: app-management/app-config
+    - type: action
+      impl: app-management/association
+runtimeManifest:
+  packages:
+    app-management:
+      license: Apache-2.0
+      inputs:
+        LOG_LEVEL: $LOG_LEVEL
+      actions:
+        app-config:
+          function: .generated/actions/app-management/app-config.js
+          web: 'yes'
+          runtime: nodejs:24
+          annotations:
+            final: true
+            require-adobe-auth: true
+            code-download: false
+        association:
+          function: .generated/actions/app-management/association.js
+          web: 'yes'
+          runtime: nodejs:24
+          annotations:
+            final: true
+            require-adobe-auth: true
+            code-download: false

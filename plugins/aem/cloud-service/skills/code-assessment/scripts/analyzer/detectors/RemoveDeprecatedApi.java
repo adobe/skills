@@ -4,129 +4,134 @@ import analyzer.Corpus;
 import analyzer.Detector;
 import analyzer.Finding;
 import analyzer.JavaUnit;
-import analyzer.OsgiUnit;
-import analyzer.PomUnit;
-import analyzer.util.Poms;
 import com.sun.source.tree.ImportTree;
-import org.w3c.dom.Element;
-import org.w3c.dom.NodeList;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDate;
-import java.util.HashMap;
+import java.time.format.DateTimeParseException;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Detects Java imports of packages the AEM Analyser Maven Plugin has flagged as
+ * deprecated in the target project.
+ *
+ * <p>Rules are <b>loaded dynamically</b> from a TSV cache produced by the
+ * preflight step ({@code remove-deprecated-api/scripts/detect.sh}). Each cache
+ * row is {@code <package>\t<hint>\t<for_removal_date>}. If the cache is
+ * missing (preflight not run, or offline), the detector emits a single warning
+ * and no findings — the recipe steps direct the user to run detect.sh first.
+ *
+ * <p>Lookup order for the cache path:
+ * <ol>
+ *   <li>{@code AEM_DEPRECATED_API_RULES} environment variable</li>
+ *   <li>{@code $TMPDIR/aem-code-assessment/deprecated-api-rules.tsv}</li>
+ *   <li>{@code /tmp/aem-code-assessment/deprecated-api-rules.tsv} (when TMPDIR unset)</li>
+ * </ol>
+ *
+ * <p>Only past-due deprecations reach the cache — detect.sh filters by the
+ * plugin's log output, and {@code for-removal} dates in the future are dropped
+ * by the plugin itself. As a defence-in-depth, the detector also skips rules
+ * whose {@code for_removal} is after today.
+ */
 public final class RemoveDeprecatedApi implements Detector {
+
     public String pattern() { return "remove-deprecated-api"; }
-    public boolean needsOsgi() { return true; }
+    public boolean needsPoms() { return false; }
+    public boolean needsOsgi() { return false; }
 
-    // {import-prefix, deadline_iso or null for already-enforced}
-    private static final String[][] IMPORT_RULES = {
-        // already enforced (April 14, 2026)
-        {"org.apache.sling.commons.auth.",          null},
-        {"org.eclipse.jetty.",                      null},
-        {"com.mongodb.",                            null},
-        {"org.apache.abdera.",                      null},
-        {"org.apache.felix.http.whiteboard.",       null},
-        {"ch.qos.logback.",                         null},
-        {"org.slf4j.spi.",                          null},
-        {"org.slf4j.event.",                        null},
-        {"org.apache.log4j.",                       null},
-        {"com.google.common.",                      null},
-        {"org.apache.cocoon.xml.",                  null},
-        {"org.apache.felix.webconsole.",            null},
-        {"com.drew.",                               null},
-        {"org.apache.jackrabbit.oak.plugins.memory.", null},
-        // HIGH — March 31, 2027
-        {"com.adobe.granite.xss.",                  "2027-03-31"},
-        {"com.day.cq.xss.",                         "2027-03-31"},
-        {"com.github.jknack.handlebars.",           "2027-03-31"},
-        {"org.apache.tika.",                        "2027-03-31"},
-        {"org.bson.",                               "2027-03-31"},
-        {"org.apache.jackrabbit.oak.plugins.blob.", "2027-03-31"},
-        {"com.day.cq.contentsync.handler.util.",    "2027-03-31"},
-        {"com.day.cq.mailer.commons.",              "2027-03-31"},
-        {"com.adobe.granite.httpcache.api.",        "2027-03-31"},
-        {"org.apache.jackrabbit.webdav.client.methods.", "2027-03-31"},
-        {"org.apache.commons.fileupload.",          "2027-03-31"},
-        {"com.adobe.cq.smartcontent.",              "2027-03-31"},
-        {"opennlp.tools.",                          "2027-03-31"},
-        {"com.day.cq.commons.predicate.",           "2027-03-31"},
-        // MEDIUM — Dec 31, 2027
-        {"org.apache.commons.lang.",                "2027-12-31"},
-        {"org.apache.commons.collections.",         "2027-12-31"},
-        {"org.json.",                               "2027-12-31"},
-        {"org.apache.sling.runmode.",               "2027-12-31"},
-        {"org.apache.sling.commons.json.",          "2027-12-31"},
-        {"org.osgi.service.http.",                  "2027-12-31"},
-    };
-
-    // {groupId, artifactId or "*", deadline_iso or null}
-    private static final String[][] DEP_RULES = {
-        {"log4j",               "log4j",              null},
-        {"ch.qos.logback",      "*",                  null},
-        {"com.github.jknack",   "handlebars",         "2027-03-31"},
-        {"org.apache.opennlp",  "opennlp-tools",      "2027-03-31"},
-        {"commons-lang",        "commons-lang",       "2027-12-31"},
-        {"commons-collections", "commons-collections","2027-12-31"},
-        {"org.json",            "json",               "2027-12-31"},
-    };
-
-    private static final String[] OSGI_PIDS = {
-        "org.apache.sling.commons.log.LogManager",
-        "org.apache.sling.jcr.davex.impl.servlets.SlingDavExServlet",
-        "com.adobe.granite.toggle.impl.dev.DynamicToggleProviderImpl",
-        "org.apache.http.proxyconfigurator",
-        "com.day.cq.auth.impl.cug.CugSupportImpl",
-        "com.day.cq.jcrclustersupport.ClusterStartLevelController",
-    };
-
-    private static boolean isActive(String deadline) {
-        if (deadline == null) return true;
-        return !LocalDate.parse(deadline).isAfter(LocalDate.now());
+    static final class Rule {
+        final String hint;
+        final String forRemoval; // ISO-8601 date, may be empty
+        Rule(String hint, String forRemoval) { this.hint = hint; this.forRemoval = forRemoval; }
     }
 
     public void detect(Corpus c, List<Finding> out, List<String> warnings) {
+        Path cachePath = resolveCachePath();
+        Map<String, Rule> rules;
+        try {
+            rules = loadRules(cachePath);
+        } catch (IOException ioe) {
+            warnings.add("deprecated-api-rules-read-error: " + cachePath + " — " + ioe.getClass().getSimpleName());
+            return;
+        }
+        if (rules == null) {
+            warnings.add("deprecated-api-rules-missing: expected TSV at " + cachePath
+                + " — run remove-deprecated-api/scripts/detect.sh preflight first");
+            return;
+        }
+        if (rules.isEmpty()) {
+            // Preflight ran and reported no past-due deprecations — nothing to flag.
+            return;
+        }
+
+        LocalDate today = LocalDate.now();
+
         for (JavaUnit u : c.java) {
             for (ImportTree imp : u.cu.getImports()) {
                 String q = imp.getQualifiedIdentifier().toString();
-                for (String[] rule : IMPORT_RULES) {
-                    if (!isActive(rule[1]) && !c.allowAll) continue;
-                    if (q.startsWith(rule[0])) {
-                        out.add(new Finding(pattern(), u.rel, u.lineOf(imp), q));
-                        break;
-                    }
-                }
+                Rule matched = longestPrefixMatch(q, rules);
+                if (matched == null) continue;
+                if (!isPastDue(matched.forRemoval, today) && !c.allowAll) continue;
+                out.add(new Finding(pattern(), u.rel, u.lineOf(imp), q, matched.hint));
             }
         }
+    }
 
-        for (PomUnit pom : c.poms) {
-            Map<String, Integer> cursor = new HashMap<>();
-            NodeList deps = pom.doc.getElementsByTagName("dependency");
-            for (int i = 0; i < deps.getLength(); i++) {
-                Element d = (Element) deps.item(i);
-                if (Poms.underAny(d, "build", "plugin", "pluginManagement", "reporting")) continue;
-                String g = Poms.childText(d, "groupId");
-                String a = Poms.childText(d, "artifactId");
-                if (g == null || a == null) continue;
-                for (String[] rule : DEP_RULES) {
-                    if (!isActive(rule[2]) && !c.allowAll) continue;
-                    if (rule[0].equals(g) && ("*".equals(rule[1]) || rule[1].equals(a))) {
-                        long ln = Poms.findLine(pom.lines, "<artifactId>" + a + "</artifactId>", cursor);
-                        out.add(new Finding(pattern(), pom.rel, ln, g + ":" + a));
-                        break;
-                    }
-                }
-            }
+    /** Longest-prefix match of a fully-qualified import against the rule keys. */
+    private static Rule longestPrefixMatch(String fqn, Map<String, Rule> rules) {
+        String[] parts = fqn.split("\\.");
+        for (int i = parts.length; i > 0; i--) {
+            StringBuilder sb = new StringBuilder(parts[0]);
+            for (int j = 1; j < i; j++) sb.append('.').append(parts[j]);
+            Rule r = rules.get(sb.toString());
+            if (r != null) return r;
         }
+        return null;
+    }
 
-        for (OsgiUnit osgi : c.osgi) {
-            for (String pid : OSGI_PIDS) {
-                if (pid.equals(osgi.pid)) {
-                    out.add(new Finding(pattern(), osgi.rel, 1, osgi.pid));
-                    break;
-                }
+    private static boolean isPastDue(String iso, LocalDate today) {
+        if (iso == null || iso.isEmpty()) return true; // empty = already enforced
+        try { return !LocalDate.parse(iso).isAfter(today); }
+        catch (DateTimeParseException ex) { return true; } // unparseable → treat as active
+    }
+
+    /** Resolve the rules-cache path in preference order (env → TMPDIR → /tmp). */
+    private static Path resolveCachePath() {
+        String override = System.getenv("AEM_DEPRECATED_API_RULES");
+        if (override != null && !override.isEmpty()) return Paths.get(override);
+        String tmp = System.getenv("TMPDIR");
+        if (tmp == null || tmp.isEmpty()) tmp = "/tmp";
+        return Paths.get(tmp, "aem-code-assessment", "deprecated-api-rules.tsv");
+    }
+
+    /**
+     * Read the TSV rule cache. Returns {@code null} if the file does not exist;
+     * an empty map if the file exists but contains no rules (preflight found no
+     * past-due deprecations).
+     */
+    private static Map<String, Rule> loadRules(Path cachePath) throws IOException {
+        if (!Files.exists(cachePath)) return null;
+        Map<String, Rule> out = new LinkedHashMap<>();
+        try (BufferedReader br = Files.newBufferedReader(cachePath, StandardCharsets.UTF_8)) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                if (line.isEmpty() || line.startsWith("#")) continue;
+                String[] parts = line.split("\t", -1);
+                if (parts.length < 1) continue;
+                String pkg = parts[0].trim();
+                if (pkg.isEmpty()) continue;
+                String hint = parts.length > 1 ? parts[1] : "";
+                String forRemoval = parts.length > 2 ? parts[2].trim() : "";
+                out.put(pkg, new Rule(hint, forRemoval));
             }
         }
+        return out;
     }
 }

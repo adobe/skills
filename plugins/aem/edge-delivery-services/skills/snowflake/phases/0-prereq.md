@@ -99,6 +99,32 @@ See `assets/substrate/MANIFEST.json` for the authoritative list. Summary:
 `scripts.js` is the only file snowflake hooks rather than replaces, so that
 Adobe's ongoing boilerplate improvements to it survive an install.
 
+## Substrate flavors: EDS vs Milo
+
+The installer auto-detects which **flavor** to install and reports it
+(`substrate flavor: <eds|milo> (auto-detected|explicit)`). Override with
+`--flavor=milo` / `--flavor=eds` (or `--milo` / `--eds`).
+
+- **`eds`** (default for vanilla `adobe/aem-boilerplate`): the full overlay
+  substrate described above — replaces `head.html`, `scripts/scripts.js`,
+  `styles/styles.css`, and the header/footer blocks.
+
+- **`milo`** (auto-detected when the repo boots milolibs — `head.html`
+  contains `milolibs`, or `scripts/scripts.js` calls `setLibs()`): a
+  **minimal** substrate. It installs the project-local blocks Milo auto-loads
+  from `codeRoot` (`blocks/snowflake` for the page-level overlay; `blocks/animation`
+  + `tools/page-animator` for block-level scroll animations) plus the ignore
+  patches, and **leaves Milo's `head.html`, `scripts/scripts.js`, and
+  `styles/styles.css` untouched** — replacing them would rip out the Milo runtime
+  that loads the live gnav/footer from `gnav-source`/`footer-source` metadata. The
+  same minimal substrate serves both levels (unused installed blocks are harmless).
+  `.snowflake/config.json` records `substrateFlavor: "milo"`. The per-phase Milo
+  generation deltas live in
+  [../assets/substrate-milo/FLAVOR.md](../assets/substrate-milo/FLAVOR.md).
+
+The later phases branch on `.snowflake/config.json` `substrateFlavor` — read
+it before Generate/Wire.
+
 ## After install
 
 Confirm `.snowflake/config.json` was written with the bundled version

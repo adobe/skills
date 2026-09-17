@@ -1,0 +1,18 @@
+{
+  "skill_name": "domain-mask",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Mask https://example.com behind the domain mysite.local for a demo",
+      "expected_output": "A local HTTPS proxy is set up so mysite.local serves content from example.com with a valid certificate.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "command_succeeds",
+          "command": "node --check scripts/domain-mask.mjs",
+          "description": "Domain mask script has valid syntax."
+        }
+      ]
+    }
+  ]
+}

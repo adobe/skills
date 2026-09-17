@@ -77,6 +77,13 @@ acknowledgement.
 
 ## Setup
 
+0. **Playwright re-probe (mandatory first step).** `--no-save` playwright
+   installs from earlier phases are pruned by any later real `npm i`
+   (extract SKILL.md § Setup → `--no-save` installs are ephemeral). Before
+   any rendering step, probe
+   `node -e "import('playwright').then(()=>process.exit(0))"` from the
+   project root and re-install (`npm i -D playwright --no-save
+   --legacy-peer-deps`) on failure.
 1. Run the master skill's setup
    (`skills/stardust/SKILL.md` § Setup).
 2. Verify `stardust/state.json` exists and contains at least one
@@ -200,6 +207,12 @@ placeholder contract). Author directly — no interview, no
    decisions); re-rendering Phase 2 will rebuild the proposed file
    from the edited brief.
 
+   **Hands-off compliance.** When `state.json.handsOff` is true,
+   the shape brief is still authored and validated but the
+   user-confirmation wait is skipped — the brief is its own record.
+   Approval (Phase 5) under hands-off follows the mode's contract
+   defined in `skills/stardust/SKILL.md` § Hands-off mode.
+
 `$impeccable shape` is **not** invoked in v0.2 (see
 `reference/page-shape-brief.md` § Authoring procedure for the
 rationale; revisit if per-page hand-authoring proves insufficient
@@ -257,16 +270,24 @@ captured-source citation that makes the pattern brand-appropriate
 the brand's signature catalogue shape; the alternative consideration
 was a vertical ledger which the brand register rejects"*).
 
+The alternatives SHOULD be reference-grounded when reference
+research is available (per
+`skills/stardust/reference/reference-research.md`): an alternative
+cites a real reference screen in the entry's `reference?` field
+using that file's evidence shape. Taste-only alternatives remain
+valid when research is unavailable.
+
 The audit lives in `_provenance.antiTemplatePass[]` with one entry
 per captured pattern: `{ pattern, defaultReflex, alternatives[],
-picked, rationale }`.
+picked, rationale, reference? }`.
 
 **Discipline 3 — Surprise budget.** The brief declares a `surprise`
-field with one of: `low | medium | high`. The bank of non-template
-moves is closed — see
+field with one of: `low | medium | high`. Moves come from the bank
+of non-template moves — see
 `skills/stardust/reference/divergence-toolkit.md` § Non-template
 move bank, with worked examples in
-`reference/anti-template-bank.md`. Tier semantics:
+`reference/anti-template-bank.md` — or an evidence-shaped extension
+per the bank's § Extension rule. Tier semantics:
 
 - `low` — brand-faithful + improvements only. Variant A's role
   under reimagined; all of A1/A2/A3 under verbatim.
@@ -284,7 +305,7 @@ refuses any verbatim-direction brief with `surprise: medium` or
 **`low` ≠ generic.** The budget bounds *added* divergence, not craft
 or fidelity. `low` means **brand-faithful + improvements + full
 signature preservation**, NOT "the most obvious faithful
-interpretation." The recurring failure mode (moneyhub.com migration)
+interpretation." The recurring failure mode (a fintech migration)
 is the agent reading `low` / `verbatim` as license to strip the page
 to a plain type-hero on a flat ground — the result is faithful but
 forgettable and under-sells the redesign. Hold the craft bar at `low`:
@@ -382,6 +403,9 @@ requirements there:
   `skills/stardust/reference/data-attributes.md`).
 - Provenance block as the first child of `<head>`.
 - Self-contained: no external CSS, no external JS.
+- The site's favicon inlined in the head as a data: URI when
+  `stardust/current/assets/favicon.<ext>` exists (per
+  `reference/proposed-file-shell.md` § Hard requirements #8).
 - Content preserved from the current page (hero copy, CTAs, nav,
   body) unless `direction.md` authorises content changes.
 - **Content sourcing hierarchy** (`reference/proposed-file-shell.md`
@@ -404,6 +428,15 @@ Delegate the heavy creative lift to `$impeccable craft`:
 - Skip craft's "north star mock" generation step (direction.md is the
   brief). Skip craft's "shape" call (already done if Phase 1 needed
   it).
+
+**Modern-web-guidance consult.** When the render implements
+scroll-driven animation, view transitions, anchor positioning,
+container queries, or perf-sensitive hero media, and the
+`modern-web-guidance` plugin is installed, search it
+(`npx -y modern-web-guidance@latest search "<query>"`) and follow
+the retrieved guide; cite the guide id in
+`_provenance.guidesConsulted[]`. Skip silently when the plugin is
+absent.
 
 After craft returns, validate the output:
 
@@ -530,8 +563,8 @@ proposed files only, **never** to the project's own source (blocks,
 styles, components), where the rules still apply because that copy
 *is* the agent's. Record the bypass in
 `_provenance.copyCadenceBypass` with the rules ignored and the
-classification basis. The 2026-06-26 knack.com run hit this: the hook
-flagged em-dashes and "enterprise-grade" on Knack's own headings
+classification basis. A 2026-06-26 SaaS-site run hit this: the hook
+flagged em-dashes and "enterprise-grade" on the site's own headings
 ("Built on Enterprise-Grade Components") under a verbatim direction,
 and the only correct response was to leave the captured copy untouched
 and record the bypass.
@@ -572,8 +605,10 @@ Procedure:
    `reference/motion-registers.md` § Selection heuristic. If the
    heuristic itself returns no register (e.g. the variant's
    PRODUCT.md Brand Personality maps to none of the five
-   registers), skip Phase 2.4 entirely for that variant — render
-   it static.
+   registers, and no evidence-shaped extension register applies
+   per the bank's § Extension rule in
+   `reference/motion-registers.md`), skip Phase 2.4 entirely for
+   that variant — render it static.
 
    The per-variant resolution is what lets `uplift` produce a
    three-variant set where only variant C engages motion: `direct`
@@ -631,7 +666,7 @@ Procedure:
    ```json
    "motion": {
      "register": "<register-name>",
-     "registerSource": "direct | user-override | heuristic",
+     "registerSource": "direct | user-override | heuristic | extension",
      "runtimeVersion": "v1",
      "lenisAssets": { "js": "lenis.min.js", "css": "lenis.min.css" },
      "attributesEmitted": ["data-anim", "data-countup", ...]
@@ -666,8 +701,11 @@ The static prototype remains the load-bearing artifact for:
 - Accessibility audits (motion-driven pages are harder to evaluate
   in their reduced-motion state).
 - Migration consumption (`migrate` reads the static prototype as
-  its primary source; it picks up cinematic motion when both files
-  exist).
+  its primary source. It does **not** merge the cinematic layer —
+  per `skills/migrate/SKILL.md` § Phase 2 → Cinematic sibling, it
+  carries the motion assets (`lenis.min.*`) through to
+  `migrated/assets/motion/` and records
+  `cinematic-variant-not-consumed` in the sidecar).
 
 The static prototype must pass every gate independently — the
 cinematic layer cannot rescue a static prototype that fails
@@ -725,7 +763,7 @@ WCAG / perf / responsive failure; running only audit misses
 brand-misalignment and design slop. The pass is a **contract**,
 not a courtesy.
 
-The 2026-05-04 nvidia.com home prototype critique returned
+A 2026-05-04 hardware-vendor home prototype critique returned
 1 P0 + 2 P1 + 3 P2; the audit on the same artifact returned
 **six additional findings** (no skip-link, theme carousels
 without keyboard arrow nav, hero ~3.5MB without responsive
@@ -771,7 +809,20 @@ Procedure:
    `dismissedAsBrandFaithful: true` flag for audit-trail
    purposes. The user-facing report shows only the real hits.
 
-3. **Surface findings in the user-facing report**, grouped by
+3. **Vision gate.** Render a screenshot of the proposed file and
+   study it NEXT TO the captured source screenshot
+   (`stardust/current/assets/screenshots/<slug>.png` when present).
+   Judge visually, not from the DOM: **brand-fit** (would the
+   brand owner say "that's us"?), **signature preservation** (hero
+   medium / motif carried, per Discipline 3's signature clause),
+   and **hierarchy at a glance** (does the eye land where the
+   brief says it should?). Record
+   `_provenance.visionCheck = { verdict: pass|fail, observations[] }`;
+   a `fail` is a P1 finding through the same gate mechanics as
+   critique/audit findings. The vision gate complements — never
+   replaces — the deterministic critique/audit pair.
+
+4. **Surface findings in the user-facing report**, grouped by
    priority across both validators with the source attributed
    (`critique:` / `audit:`). List the first 5 P0/P1 verbatim;
    collapse P2/P3 to per-source counts with an "expand to see
@@ -791,10 +842,11 @@ Procedure:
    P3 (0)
    ```
 
-4. **Gate `prototyped` status on P0/P1 findings from EITHER
+5. **Gate `prototyped` status on P0/P1 findings from EITHER
    validator.** If the merged-and-deduped findings list (after
-   the brand-faithful auto-dismiss) contains any P0 or P1, do
-   **not** mark the page `prototyped` in `state.json` yet. The
+   the brand-faithful auto-dismiss, plus a vision-gate `fail`
+   from step 3, which counts as P1 here) contains any P0 or P1,
+   do **not** mark the page `prototyped` in `state.json` yet. The
    proposed file is on disk and openable in the browser, but the
    page stays in `directed` until either:
    - The agent fixes the issue (run a chat-driven impeccable
@@ -808,7 +860,7 @@ Procedure:
    P2/P3 findings do not block `prototyped`. They surface as
    advisory.
 
-5. **Optionally spawn an LLM design-review subagent** for an
+6. **Optionally spawn an LLM design-review subagent** for an
    independent take when the user wants more than the
    deterministic detector. Trigger only when the user explicitly
    asks ("give me a deeper critique", "second opinion") or when
@@ -1206,7 +1258,7 @@ approve some and continue iterating on others.
 
 Adapt and the mobile-adapt audit moved to **Phase 2.7** as part of
 the Discipline 9 critique → audit → adapt cycle, gating
-`prototyped` instead of approval. The 2026-05-03 lovesac.com
+`prototyped` instead of approval. A 2026-05-03 e-commerce
 showcase failure mode (stakeholders eyeballing variants on a phone
 getting the unadjusted desktop layout) is unchanged — the gate just
 fires earlier in the lifecycle, so a non-adapted prototype never
@@ -1384,9 +1436,10 @@ Default mode is unchanged.
   patterns documented inline.
 - `reference/motion-registers.md` — five brand-faithful motion
   registers (`arrival`, `kinetic-display`, `live-systems`,
-  `editorial`, `kinetic-grid`) and the selection heuristic that
-  maps PRODUCT.md Brand Personality traits to a register.
-  Consumed by Phase 2.4 (motion application).
+  `editorial`, `kinetic-grid`), the selection heuristic that
+  maps PRODUCT.md Brand Personality traits to a register, and the
+  § Extension rule for bespoke registers derived from the site's
+  own captured motion. Consumed by Phase 2.4 (motion application).
 - `reference/motion-stack.md` — technology choice for cinematic
   prototypes: Lenis + CSS keyframes + rAF + IntersectionObserver.
   Why not GSAP. Bundle policy + Lenis pinning procedure.
@@ -1402,7 +1455,12 @@ Default mode is unchanged.
 - `reference/anti-template-bank.md` — worked examples of the
   non-template moves Discipline 3 draws from (typographic
   substitution / substrate-promotion / inversion / document-shape
-  / scale-displacement).
+  / scale-displacement), plus the § Extension rule for
+  evidence-shaped new moves.
+- `skills/stardust/reference/reference-research.md` — sourcing
+  real-world design references (refero MCP with WebSearch fallback,
+  graceful skip when unavailable); consumed by Discipline 2's
+  reference-grounded alternatives.
 - `reference/approval-fold-back.md` — Phase 5 fold-back procedure
   (Part III of the merged spec): diff algorithm, surfacing UX,
   write logic, stale flagging, `--auto-fold` / `--no-fold` flags,

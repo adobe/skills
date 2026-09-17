@@ -1,0 +1,41 @@
+{
+  "context": "Tests the reuse gate and the no-skinning guardrail: a section whose authoring model matches an existing block but whose visual styling diverges (dark background, light text, no matching variant) must NOT reuse the block as-is and must NOT be made to fit by editing the shared block or global CSS. Also tests that the legibility check covers every text element over the media/fill (not just the heading) and that flagging the problem in the plan is not treated as satisfying the check. Guards against the single most common autonomous-run failure: skinning a shared block, or logging an illegibility caveat and shipping anyway.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Rejects reuse-as-is",
+      "max_score": 20,
+      "description": "Concludes the section cannot reuse the existing cards block as-is, because a matching authoring model is not sufficient when the rendered look diverges from the design."
+    },
+    {
+      "name": "Cites structural AND visual fit requirement",
+      "max_score": 10,
+      "description": "States the reuse rule explicitly: reuse requires both structural fit and visual fit (using only the block's defined variants), including how it treats secondary text and CTAs over the background."
+    },
+    {
+      "name": "Forbids skinning shared code",
+      "max_score": 20,
+      "description": "States the agent must NOT modify the shared cards block implementation, scripts.js, or head.html, and must NOT add section- or block-specific rules to global CSS, to force the look."
+    },
+    {
+      "name": "Correct resolution: new isolated block or variant",
+      "max_score": 15,
+      "description": "Gives the correct resolution: build a new isolated block (or a new dark variant as its own block/variant) via the content+code path (Phase 3B), and author content into it."
+    },
+    {
+      "name": "Distinguishes allowed token retheme from disallowed restyle",
+      "max_score": 10,
+      "description": "Notes that retargeting the global design tokens (the one allowed global change) is different from restyling this specific block, which is not allowed and points to a new block."
+    },
+    {
+      "name": "Legibility check covers all text over media",
+      "max_score": 15,
+      "description": "Describes a legibility check that covers every text element rendered over the dark background — headings AND secondary/body text, links/CTAs, and list items — not just the heading."
+    },
+    {
+      "name": "A plan note is not a check",
+      "max_score": 10,
+      "description": "States that flagging the divergence/illegibility in the plan does not satisfy the gate — it must be resolved (new block/variant), and an unresolved item blocks publish (preview-only), never ships."
+    }
+  ]
+}

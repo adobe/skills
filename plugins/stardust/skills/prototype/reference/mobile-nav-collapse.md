@@ -18,7 +18,7 @@ modes recurred across brands before this pattern existed:
    fit. The shrunk nav became unreadable (font ~9–10px, gaps 8–10px).
 2. Some sites still horizontally overflowed despite the shrink. A
    real instance: the Wasatch Back Beerworks prototype derived from
-   birrificiolambrate.com — header content totaled ~447px inside a
+   a real brewery site — header content totaled ~447px inside a
    430px viewport even after font and gap reductions, leaving a
    visible empty column.
 

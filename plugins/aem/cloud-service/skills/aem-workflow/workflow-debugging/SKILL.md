@@ -48,7 +48,7 @@ This skill is largely self-contained but routes back into the dev skills when th
 | Workflow not starting (launcher) | workflow_not_starting_launcher | Launcher enabled; path/event match payload. |
 | Workflow fails or shows error | workflow_fails_or_shows_error | Instance history; error.log for instance ID; payload and process. |
 | Step failed, retries exhausted | step_failed_retries_exhausted | Logs → `process.label` → Inbox Retry, or bulk via custom servlet (see Step 6). |
-| Stale (no current work item) | stale_workflow_no_work_item | Deploy a custom `StaleWorkflowServlet` to your `core` bundle; invoke with `?dryRun=true`. |
+| Stale (no current work item) | stale_workflow_no_work_item | Deploy a custom `StaleWorkflowServlet` to your `core` bundle (a privileged endpoint — secure it per the Step 6 checklist first); invoke with `?dryRun=true`. |
 | Repository bloat / too many instances | repository_bloat_too_many_instances | Purge Scheduler OSGi config in Git (PID: `com.adobe.granite.workflow.purge.Scheduler`). |
 | User cannot see or complete item | user_cannot_see_or_complete_item | Assignee / initiator / superuser group; `enforce*Permissions` flags. |
 | Cannot delete model | cannot_delete_model | Count RUNNING instances via Workflow Console → terminate → delete model. |
@@ -60,7 +60,7 @@ This skill is largely self-contained but routes back into the dev skills when th
 
 ## Step 2: Decision tree (workflow stuck)
 
-1. **No current work item?** → Stale. Deploy a custom `StaleWorkflowServlet` to your `core` bundle; call `GET /bin/support/workflow/stale?dryRun=true` to enumerate, then `POST ...?dryRun=false` to restart.
+1. **No current work item?** → Stale. Deploy a custom `StaleWorkflowServlet` to your `core` bundle — this is a privileged endpoint; secure it per the checklist in Step 6 before deploying. Call `GET /bin/support/workflow/stale?dryRun=true` to enumerate, then `POST ...?dryRun=false` to restart.
 2. **Participant step** → Assignee exists? Inbox visible? Payload accessible? Dynamic participant resolver returning correct user?
 3. **Process step** → Search error.log for instance ID. Check: `process.label` registered, payload path exists, bundle active, no exception in `execute()`.
 4. **OR/AND Split** → Condition evaluates correctly? Routes exist? No dead-end branches? Model synced?
@@ -198,12 +198,19 @@ If the numbers don't change, the PID is Adobe-managed on your environment — **
 |--------|------------------------|
 | Retry failed work item (single) | `/aem/inbox` → select failure → **Retry**. History and audit trail preserved. |
 | Retry failed work items (bulk) | **Preferred:** iterate `/aem/inbox` UI — single-item Retry preserves the original instance, its history, and its audit trail. **Not recommended:** a "bulk" servlet using `terminateWorkflow(wf)` + `startWorkflow(model, data)` — this creates a **new** instance and **loses** the original history, step durations, and comments. Only use the replay approach with explicit customer approval and *never* for audit-regulated workflows (pharma, finance, legal). |
-| Restart stale workflows | Deploy a custom `StaleWorkflowServlet` to your `core` bundle. Always invoke `GET /bin/support/workflow/stale?dryRun=true` first; confirm scope; then `POST ...?dryRun=false`. Scope with `&model=<modelId>` if you only want one model. |
+| Restart stale workflows | Deploy a custom `StaleWorkflowServlet` to your `core` bundle — **secure it per the checklist below before shipping.** Always invoke `GET /bin/support/workflow/stale?dryRun=true` first; confirm scope; then `POST ...?dryRun=false`. Scope with `&model=<modelId>` if you only want one model. |
 | Purge completed | Deploy `com.adobe.granite.workflow.purge.Scheduler-<alias>.cfg.json` with `scheduledpurge.workflowStatus=["COMPLETED"]` (array-typed) and `scheduledpurge.daysold=<N>`. Triggered by the **Granite Maintenance Task window** — this PID has **no** `scheduledpurge.cron`; any cron property is silently ignored. **Do not** reference `/libs/granite/operations/config/maintenance` — on AEMaaCS `/libs` is the read-only code layer. One purge config file per schedule. Deploy via pipeline. |
 | Increase parallelism | `queue.maxparallel` on `org.apache.sling.event.jobs.QueueConfiguration-<alias>.cfg.json` (topics: `com/adobe/granite/workflow/job/*`). Adobe's *Workflows Best Practices* recommends staying between half and three-quarters of available CPU cores. The commonly cited `cq.workflow.job.max.procs` is an **orphaned metatype label** with no Java code path that reads it (verified against AEM source on `master`) — do not waste a deployment on it. **Verify after deploy:** Developer Console → `/system/console/slingevent` → find the **Granite Workflow Queue** row and confirm `queue.maxparallel` shows your value. If it still shows the OOTB value (`0.5` on the AEMaaCS SDK), your override lost the `service.ranking` tiebreak — raise `service.ranking` in your override (e.g. from `100` to `1000`) and redeploy. If your ranking *matches* Adobe's OOB ranking exactly, Sling can register both queues against the same topic and occasionally execute a workflow step twice — always set a higher, non-equal ranking. Watch for `refreshing the session since we had to wait for a lock` after raising; if it appears, lower parallelism or stagger launchers. |
 | Fix thread pool exhaustion | Short-term: **open an Adobe Support ticket** requesting a pod restart for the affected environment — AEMaaCS does **not** expose a customer-facing restart action in Cloud Manager. Long-term, all via Git + pipeline: (1) fix the stuck scheduler (add HTTP timeouts; `@Component scheduler.concurrent=false`); (2) set `blockPolicy=RUN` in `org.apache.sling.commons.threads.impl.DefaultThreadPool-default.cfg.json`; (3) raise `maxPoolSize` to 50. Verify the thread-pool config actually applied — see the AEMaaCS caveat in Step 5. |
 | Fix process not found | Redeploy the `core` bundle; the `@Component process.label` must exactly match the model's Process step. Re-sync the workflow model from `/libs/cq/workflow/admin` after deploy. |
 | Fix auto-advancement | Verify `sling-default-*` pool not saturated in thread dump; `com/adobe/granite/workflow/timeout/job` topic active on the Sling Jobs page (`/system/console/slingevent`) — it is a Sling Job topic, not a Sling Scheduler entry; `blockPolicy=RUN` on the `default` pool. |
+
+> **Securing a custom support servlet (e.g. `StaleWorkflowServlet`, bulk-retry servlet):** These endpoints restart, replay, or purge workflows and must be treated as privileged. A servlet that does any of this with no access control is a remote-code-style hazard — do not ship one without all of the following:
+> - **Author-only, non-public path.** Bind it under an author-only path such as `/bin/support/...` and confirm your Dispatcher/CDN config does **not** route `/bin/support` on publish. Where practical, bind by resource type behind an access-controlled resource rather than an open path.
+> - **Authorize every request in code.** Resolve the request user and verify membership in an operations/admin group (created via `repoinit`) before doing any work; return `403` otherwise. Never rely on the path alone for protection.
+> - **Service user for the elevated work — never an admin session.** Map a dedicated sub-service via `org.apache.sling.serviceusermapping.impl.ServiceUserMapperImpl.amended-*` and grant it only the workflow ACLs it needs (see `workflow-development`). Never call `loginAdministrative()`.
+> - **Default to dry run.** Treat a missing or invalid `dryRun` as `true`; require an explicit `dryRun=false` on `POST` for the destructive path. Log the caller, scope (`model`, instance count), and outcome for audit.
+> - **Scope and cap.** Always support `&model=<modelId>` so an operator can limit blast radius, and cap the number of instances acted on per call.
 
 > **Pod-restart reality on AEMaaCS:** Cloud Manager does **not** expose a customer-facing pod-restart or env-restart action. The only way a customer can trigger a restart is an Adobe Support ticket. A restart bounces the running author/publish node — in-flight authoring sessions are lost, active jobs are requeued, there is no hot-swap. Treat it as last-resort mitigation, not a fix, and always file the long-term code/config fix in the same support conversation.
 
@@ -247,7 +254,7 @@ If the numbers don't change, the PID is Adobe-managed on your environment — **
 
 **Root cause:** `Cannot archive workitem` during transition; JCR session crash during step completion.
 
-**Diagnosis:** grep Cloud Manager logs for `Cannot archive workitem`. For live count, deploy a custom `StaleWorkflowServlet` and invoke `GET /bin/support/workflow/stale?dryRun=true` — it returns a JSON report without side effects.
+**Diagnosis:** grep Cloud Manager logs for `Cannot archive workitem`. For live count, deploy a custom `StaleWorkflowServlet` (secure it per the Step 6 checklist) and invoke `GET /bin/support/workflow/stale?dryRun=true` — it returns a JSON report without side effects.
 
 ---
 

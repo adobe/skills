@@ -1,0 +1,46 @@
+{
+  "skill_name": "workfront-ui-extension",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I registered a Main Menu button in my Workfront extension. It registers (getItems is called) but the button never shows up. What's wrong?",
+      "expected_output": "Points to the id trap: extensionId must be non-empty in Constants.js and id: extensionId must be kept inside methods, or the item registers but silently never renders.",
+      "files": [],
+      "assertions": [
+        {"type": "output_contains", "pattern": "extensionId", "description": "Identifies the empty/misplaced extensionId as the cause."},
+        {"type": "output_contains", "pattern": "methods", "description": "Explains id must be kept inside methods."}
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Add a left-panel item to my Workfront extension that shows only on Project pages.",
+      "expected_output": "Uses secondaryNav with a per-object-type key (PROJECT) inside ExtensionRegistration, with a url that maps to an App.js route.",
+      "files": [],
+      "assertions": [
+        {"type": "output_contains", "pattern": "secondaryNav", "description": "Uses the left-panel extension point."},
+        {"type": "output_contains", "pattern": "PROJECT", "description": "Scopes it to the Project object type."}
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "How do I read the current user and IMS token in my Workfront SPA and pass them to a Runtime action?",
+      "expected_output": "Reads sharedContext.get('auth') for imsToken and imsOrgID (capital ID) and passes them into actionWebInvoke; never fetches Workfront directly from the SPA.",
+      "files": [],
+      "assertions": [
+        {"type": "output_contains", "pattern": "sharedContext", "description": "Reads the shared context."},
+        {"type": "output_contains", "pattern": "imsOrgID", "description": "Uses the correct imsOrgID casing."},
+        {"type": "output_contains", "pattern": "actionWebInvoke", "description": "Passes values to the action via actionWebInvoke."}
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Embed my Workfront app as a widget inside a custom form field, with a fixed height.",
+      "expected_output": "Uses the widgets extension point in ExtensionRegistration with a dimensions object (height/width).",
+      "files": [],
+      "assertions": [
+        {"type": "output_contains", "pattern": "widgets", "description": "Uses the widget extension point."},
+        {"type": "output_contains", "pattern": "dimensions", "description": "Sets widget dimensions."}
+      ]
+    }
+  ]
+}

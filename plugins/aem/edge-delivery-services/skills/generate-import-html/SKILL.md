@@ -1,6 +1,6 @@
 ---
 name: generate-import-html
-description: Generate structured HTML from authoring analysis for AEM Edge Delivery Services. Creates section structure, applies block tables, handles metadata, and manages images folder.
+description: "Use this when the page-import pipeline needs to produce structured HTML from authoring analysis for AEM Edge Delivery Services. Covers building section structure, applying block tables, handling metadata, and managing the images folder. Do not invoke directly — called by page-import as a pipeline step."
 license: Apache-2.0
 metadata:
   version: "2.0.0"

@@ -11,6 +11,8 @@ allowed-tools: Bash(aio:*) Bash(npm:*) Bash(node:*) Bash(python3:*) Read Write E
 
 Full lifecycle skill for Adobe Runtime actions — scaffold, implement, deploy, and debug. Place action code at `src/<extension-dir>/actions/<action-name>/index.js` and register in `src/<extension-dir>/ext.config.yaml`.
 
+> Building a **Workfront** extension? The Workfront-specific action layer — the `{ data, error }` response contract, IMS-token passthrough from the SPA, and Workfront's own Public API v21 — is in `workfront-actions`. Use this skill for generic action patterns, templates, and the App Builder SDKs.
+
 ## Pattern Quick-Reference
 
 Pick the template that matches the user's intent. Default to `assets/action-boilerplate.js` for generic actions.

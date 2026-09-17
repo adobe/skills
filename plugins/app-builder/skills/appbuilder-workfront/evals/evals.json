@@ -1,0 +1,38 @@
+{
+  "skill_name": "appbuilder-workfront",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I'm new to building Workfront UI extensions on Adobe App Builder. Where do I start, and what does the whole process look like?",
+      "expected_output": "An end-to-end roadmap (set up + create project -> scaffold -> build front end + Runtime actions -> test in Workfront -> deploy -> publish) that routes each stage to the right sub-skill.",
+      "files": [],
+      "assertions": [
+        {"type": "output_contains", "pattern": "workfront-ui-extension", "description": "Routes front-end work to the UI extension skill."},
+        {"type": "output_contains", "pattern": "workfront-actions", "description": "Routes back-end work to the actions skill."},
+        {"type": "output_contains", "pattern": "workfront-local-testing", "description": "Routes testing to the local-testing skill."}
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "How do the front end and back end of a Workfront App Builder extension fit together, and what's the golden rule about API calls?",
+      "expected_output": "Explains the two halves (React/Spectrum SPA + serverless Runtime actions) and that the browser never calls Workfront/Adobe APIs directly, only through an action via actionWebInvoke.",
+      "files": [],
+      "assertions": [
+        {"type": "output_contains", "pattern": "actionWebInvoke", "description": "Names the SPA-to-action call mechanism."},
+        {"type": "output_contains", "pattern": "Runtime action", "description": "Describes the serverless back end."},
+        {"type": "output_contains", "pattern": "never", "description": "States the browser must never call Workfront/Adobe APIs directly."}
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "What are the non-negotiable invariants I must follow when building a Workfront App Builder extension?",
+      "expected_output": "Lists the family invariants: auth from sharedContext (no custom login), no direct API calls from the browser, CommonJS actions, inputs via params not process.env, Node 20, Workfront Public API v21.",
+      "files": [],
+      "assertions": [
+        {"type": "output_contains", "pattern": "sharedContext", "description": "Auth comes from the shared context."},
+        {"type": "output_contains", "pattern": "CommonJS", "description": "Actions are CommonJS."},
+        {"type": "output_contains", "pattern": "process.env", "description": "Warns not to read process.env at runtime."}
+      ]
+    }
+  ]
+}

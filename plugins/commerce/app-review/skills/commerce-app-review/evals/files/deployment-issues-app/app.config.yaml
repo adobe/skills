@@ -1,0 +1,13 @@
+application:
+  actions: actions
+  runtimeManifest:
+    packages:
+      product-sync:
+        license: Apache-2.0
+        actions:
+          sync-products:
+            function: actions/sync/index.js
+            web: 'yes'
+            annotations:
+              require-adobe-auth: true
+              final: true

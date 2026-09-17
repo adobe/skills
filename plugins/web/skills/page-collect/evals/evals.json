@@ -1,0 +1,23 @@
+{
+  "skill_name": "page-collect",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Extract all icons and SVGs from https://www.adobe.com",
+      "expected_output": "SVG icons are extracted, classified, and saved to page-collect-output/icons/ with an icons.json manifest ready for use with decorateIcons().",
+      "files": [],
+      "assertions": [
+        {
+          "type": "dir_exists",
+          "path": "page-collect-output/icons",
+          "description": "Icons directory is created with extracted SVGs."
+        },
+        {
+          "type": "file_exists",
+          "path": "page-collect-output/icons.json",
+          "description": "icons.json manifest is produced alongside icon files."
+        }
+      ]
+    }
+  ]
+}

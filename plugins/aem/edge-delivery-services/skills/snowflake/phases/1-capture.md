@@ -140,6 +140,14 @@ grep -oE '<(link|script)[^>]*(href|src)="[^"]+"' "$INPUT/index.html" \
     done
 ```
 
+## Milo flavor: capture the chrome metadata (not the chrome DOM)
+
+If `.snowflake/config.json` `substrateFlavor` is `milo`, **read
+[../assets/substrate-milo/FLAVOR.md#capture](../assets/substrate-milo/FLAVOR.md) FIRST**
+and follow it before continuing — the Milo flavor captures the source's chrome
+metadata (not the chrome DOM) into `state.json.chromeMeta`. For the EDS flavor,
+skip this section and continue below.
+
 ## Write a stub README.md for the project
 
 ```markdown

@@ -182,7 +182,10 @@ Soft contracts (log + surface, don't refuse):
 - **Canon deviations** — logged with reason.
 - **Broken internal links** — every link rewritten to the
   migrated tree; missing-slug targets flagged
-  `data-broken-link="true"` and surfaced in run summary.
+  `data-broken-link="true"` and surfaced in run summary. Scoped
+  (partial-inventory) runs: unmigrated-sibling links keep the
+  flagged origin URL per `content-preservation.md`
+  § Partial-inventory carve-out.
 - **Content overflow** — extra content placed in overflow
   region with a logged `template-adapted` decision.
 

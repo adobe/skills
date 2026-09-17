@@ -57,17 +57,42 @@ inline, or run an impeccable command) and re-invoke migrate.
 
 ## Setup
 
+0. **Playwright re-probe (mandatory first step).** `--no-save` playwright
+   installs from earlier phases are pruned by any later real `npm i`
+   (extract SKILL.md § Setup → `--no-save` installs are ephemeral). Before
+   any rendering step, probe
+   `node -e "import('playwright').then(()=>process.exit(0))"` from the
+   project root and re-install (`npm i -D playwright --no-save
+   --legacy-peer-deps`) on failure.
 1. Run the master skill's setup
    (`skills/stardust/SKILL.md` § Setup).
 2. Verify `stardust/state.json` exists with at least one
    `directed` page.
 3. Verify project-root `DESIGN.md` and `DESIGN.json` exist with
-   `DESIGN.json.extensions.canon` populated. If canon is empty,
-   recommend `$stardust prepare-migration` and stop.
+   `DESIGN.json.extensions.canon` populated.
 4. Verify `stardust/canon/` exists with at least
-   `header.html`, `footer.html`, `canon.css`. Otherwise prep
-   hasn't completed; recommend `$stardust prepare-migration`
-   and stop.
+   `header.html`, `footer.html`, `canon.css`.
+
+   **Canon auto-bootstrap (when steps 3–4 find no canon).** The
+   documented `prototype → migrate → deploy` happy path does not
+   run `prepare-migration`, so a first migrate legitimately arrives
+   with no canon (observed on 4 of 6 e2e sites, where every run had
+   to derive canon by hand to proceed — this is the fix). When
+   canon is absent **and** at least one `approved` prototype exists,
+   do not stop: run the canon write-back inline from the first
+   approved prototype (the canon-author, default `home`) per
+   `../prototype/reference/canon-extraction.md` § Five-step
+   procedure — extract `header.html` / `footer.html` / `canon.css`
+   to `stardust/canon/`, pin tokens + compositional moves to
+   `DESIGN.json.extensions.canon`, and record
+   `canon.source: "auto-bootstrap: <slug>"`. This is exactly what
+   `prototype --prep` does on first approval; migrate performs it
+   on demand so the core pipeline never dead-ends. Only stop and
+   recommend `$stardust prepare-migration` when canon is absent
+   **and** no approved prototype exists (there is nothing to derive
+   canon from). Under `state.json.handsOff` the bootstrap is
+   automatic and logged; interactively, surface it as a one-line
+   notice before proceeding.
 5. Verify `stardust/direction.md` has an active (not pending)
    direction.
 6. Read `state.json.pages[]` and partition into:
@@ -111,6 +136,16 @@ inline, or run an impeccable command) and re-invoke migrate.
 
 ### Phase 1 — Plan
 
+**Dynamic-surface precondition (safety net).** If
+`stardust/dynamic-features.md` is missing, the hand-run flow
+(`extract → direct → prototype → migrate`) never passed a pre-import
+gate: run `stardust:dynamics` Phases 1–3 now (`extract --dynamics`
+for reach if needed, detector on the archetypes, triage draft, curate)
+before rendering any page. Never import a site as static without a
+decision per dynamic row. Per page, rows of the inventory that touch it
+become `contentDeviations[]` `kind: "dynamic-dependency"` entries
+(`reference/content-preservation.md § Dynamic dependencies`).
+
 Print the plan and wait for confirmation when the scope is large:
 
 ```
@@ -153,7 +188,9 @@ For each page in scope, follow
 - **Render branch selection** (LLM judgment per T&M §
   Render path selection): A / A′ / B. **Declare the page's
   `fidelityTier`** from the branch — A → `archetype` (craft-gated),
-  A′ → `sibling` (canon-fork, the cheap default for breadth),
+  A′ → `sibling` (canon-fork, the cheap default for breadth — variance-probed
+  once per template before cloning, `reference/fidelity-tiers.md` § Sibling
+  variance probe; deltas become variant classes, never per-page forks),
   B/bodyless → `thin` — per `reference/fidelity-tiers.md`. Record
   `fidelityTier`, `archetypeSource`, and `gatesPassed[]` in
   `_meta.json` so coverage shows what was craft-gated vs cloned.
@@ -167,6 +204,16 @@ For each page in scope, follow
   `reference/content-preservation.md`. Internal-link rewriting
   always emits migrated-tree paths; missing slugs flagged
   broken.
+- **Content-count acceptance** per
+  `reference/fidelity-tiers.md` § Content-count acceptance:
+  compare role-classified node counts (headings, body/list
+  nodes, CTAs, images) between the captured source page JSON
+  and the rendered result. A count drop in any class not
+  covered by a logged `contentDeviations[]` entry fails the
+  page — dropped-content importer bugs must surface here,
+  while the importer is still cheap to fix, not at a
+  downstream fidelity gate. Record the pass in
+  `_meta.json#gatesPassed[]` as `"content-count"`.
 - **Compose `<head>` metadata** per
   `reference/metadata-and-jsonld.md` (five categories;
   page-type-driven JSON-LD).
@@ -194,6 +241,14 @@ For each page in scope, follow
   repaired (missing `?`-delimiter, wrong host) or omitted, never
   shipped as `about:error`. `rollout` re-runs the authoritative
   network resolve at delivery (`media-reconcile.mjs`).
+- **Cinematic sibling (when `<slug>-cinematic.html` exists).**
+  Migrate consumes the STATIC prototype only — the cinematic layer
+  is never merged. Copy the motion assets (`lenis.min.js`,
+  `lenis.min.css`) from `stardust/prototypes/` to
+  `stardust/migrated/assets/motion/` (idempotent) for downstream
+  consumers (deploy/rollout decide whether to wire them), and
+  record `cinematic-variant-not-consumed` in the page's
+  `_meta.json#migrationDecisions[]`.
 - **Write** the migrated `index.html` and the `_meta.json`
   sidecar in the same directory. Provenance block as first
   child of `<head>`. Record `assetsBundled` (count of unique
@@ -392,8 +447,11 @@ work, they just mark it as out-of-step.
 
 - **No directed pages.** Recommend `$stardust direct` (or
   `$stardust extract` if no extracted state).
-- **No DESIGN.md, DESIGN.json, or canon.** Recommend
-  `$stardust prepare-migration`.
+- **No DESIGN.md or DESIGN.json.** Recommend `$stardust direct`.
+- **No canon, but an approved prototype exists.** Do NOT stop —
+  auto-bootstrap canon from the canon-author inline (Setup step 4).
+- **No canon and no approved prototype.** Recommend
+  `$stardust prepare-migration` (or approve a prototype first).
 - **Pending direction.** Refuse; user must resolve direction
   first.
 - **Validation failure on a single page.** Skip that page,

@@ -9,6 +9,7 @@ For design *why*, see [`shared-principles.md`](shared-principles.md). For git br
 | Mode | How it starts | Findings `files[]` | Target versions (deps) |
 |---|---|---|---|
 | **with_findings** | User named paths or coordinates | Provided — use only these paths | User-supplied target versions before planning. |
+| **with_findings (pre-resolved)** | An upstream caller already supplies a finding list in the canonical `{pattern, file, line, snippet}` shape | Provided directly — see **Step 3, with_findings (pre-resolved)** below | Same as with_findings — ask if missing |
 | **discover** | User asks to scan/fix project without a file list | Empty — run **Discovery** in the active expert skill's `SKILL.md` + recipe under `../<pattern-name>/` (e.g. `../inject-in-sling-model/`, `../outdated-dependencies/`) inside workspace roots | Ask user for coordinates + target versions before building dep plans |
 
 ## Git vs in-place
@@ -51,7 +52,7 @@ Match the request to one expert skill under `code-assessment/<pattern>/` using t
 
 ### 2. Read reference module
 
-Read the chosen expert skill's `SKILL.md` then its `recipe.md` or `path-*.md` in full — **Discovery**, input contract, recipe, Unlocatable, editing strategy.
+Read the chosen expert skill's `SKILL.md` in full, then its `recipe.md` / `path-*.md` if present (guided patterns may carry the migration steps inline instead) — **Discovery**, **Resolution contract**, input contract, recipe/steps, Unlocatable, editing strategy.
 
 ### 3. Resolve findings (with_findings or discover)
 
@@ -59,6 +60,13 @@ Read the chosen expert skill's `SKILL.md` then its `recipe.md` or `path-*.md` in
 
 **with_findings:** Build the work list from user-named paths/coordinates. For outdated dependencies, merge user-supplied fields with local pom inspection for `shape` / `propertyName`. For Sling Model inject migration, use the resolved Java paths only.
 Pass the named paths to the analyzer with `--files a.java,b.java` so detection runs only on them.
+
+**with_findings (pre-resolved):** When an upstream caller already supplies findings in the canonical `{pattern, file, line, snippet}` shape:
+
+- If a finding already has `line` **and** `snippet` populated, **do not** invoke `analyze.sh` for it — treat the supplied array exactly as if it were the analyzer's `findings[]` output and proceed directly to **Discover-time checks** and Step 6.
+- If a finding has `file` but `line`/`snippet` are `null`, run `analyze.sh --files <paths>` once over the named files to resolve `line`/`snippet` before building the plan.
+- If a finding is tagged `"confidence": "heuristic"`, it is a candidate match (e.g. from a regex or config scan, not the analyzer), **not** analyzer-validated — re-confirm each against the matching pattern reference before editing, and call this out in the plan/report so the user knows these are proactive-discovery matches. A heuristic finding may also deliberately omit detail (e.g. a key name only, no value); never assume it is complete.
+- **Re-validate `(file, line)` against the live file when building the plan regardless of source.** If the snippet at that location no longer matches (the workspace changed since the findings were produced), record it as `skipped` with reason `stale-finding: snippet at <file>:<line> no longer matches — re-scan recommended` (see [`git-workflow.md`](git-workflow.md) for the full skip-reason vocabulary) rather than guessing or silently re-locating it.
 
 **discover:** Run the analyzer — it is the detection engine:
 
@@ -181,7 +189,18 @@ Copy this structure; keep section headings so runs are comparable across session
 ## Candidates
 | File | Finding | Planned action | Target / notes |
 |------|---------|----------------|----------------|
-| <path> | <id> | apply \| skipped | <before → after, or skip reason> |
+| <path>:<line> | <snippet> | apply \| skipped \| apply (guided) | <before → after, skip reason, or guide to open> |
+
+**Same columns for every pattern — mechanical *and* guided.** `Finding` is the analyzer `snippet`
+(present for every pattern). `Planned action` is the **per-site disposition from that pattern's own
+Resolution contract** — `apply`, `apply → N`, `skipped — <reason>` (e.g. `needs-pagination`,
+`test-scope`, `already-compliant`), or `apply (guided)` for architectural patterns whose
+Resolution contract has no finer per-site action (remediation opens the expert guide — name it in
+*Target / notes*). **Do not collapse a pattern to one blanket action from its `fix` kind:** a
+`fix: guided` pattern that triages sites (e.g. `unbounded-query`: bound some, skip others) shows
+that triage per row, not a uniform `apply (guided)`. When several patterns are in play, group rows
+under per-pattern subheadings ordered by `severity`; never drop a column or render a pattern as a
+bare file list.
 
 ## Summary counts
 - Apply: <n>

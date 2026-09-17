@@ -1,0 +1,17 @@
+{
+  "name": "adobe/web",
+  "version": "1.0.0",
+  "summary": "Browser automation and web page analysis skills for working with arbitrary sites — probe bot protection, dismiss overlays, capture DOM trees, reduce pages to structural skeletons, and extract page resources. Uses playwright-cli as the single browser layer.",
+  "private": false,
+  "skills": {
+    "cdp-connect":       { "path": "skills/cdp-connect/SKILL.md" },
+    "cdp-ext-pilot":     { "path": "skills/cdp-ext-pilot/SKILL.md" },
+    "browser-probe":     { "path": "skills/browser-probe/SKILL.md" },
+    "page-prep":         { "path": "skills/page-prep/SKILL.md" },
+    "page-tree":         { "path": "skills/page-tree/SKILL.md" },
+    "page-reduce":       { "path": "skills/page-reduce/SKILL.md" },
+    "page-collect":      { "path": "skills/page-collect/SKILL.md" },
+    "domain-mask":       { "path": "skills/domain-mask/SKILL.md" },
+    "page-langs":        { "path": "skills/page-langs/SKILL.md" }
+  }
+}
