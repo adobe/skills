@@ -418,7 +418,7 @@ Refer to [Assets View extension docs](https://developer.adobe.com/uix/docs/servi
 Content Hub is a single extension point that spans **three** surfaces, each opted into via a method namespace in one `register()` call:
 
 - **Asset Details Dialog** (`assetDetails`) — custom tab panels in the side rail.
-- **Asset card actions** (`card`) — buttons on asset cards (Assets grid, inside a collection, link-share) **and** on collection tiles in the Collections grid; the surface is passed in `actionContext.context`.
+- **Asset card actions** (`card`) — buttons on asset cards (Assets grid, inside a collection, link-share) **and** on collection tiles in the Collections grid; the host passes the surface as `actionContext.context` (`'assets'` or `'collections'` — see below).
 - **Selection bar / bulk actions** (`selectionBar`) — buttons in the multi-select action bar.
 
 > Use the deprecated ID `aem/contenthub/assets/details/1` only for older projects mid-transition; new projects use `aem/assets/contenthub/1`.
@@ -441,11 +441,11 @@ guestConnection = await register({
       getTabPanels() { /* tab panels in the Asset Details Dialog */ },
     },
     card: {
-      getActionButtons(actionContext) { /* buttons on asset cards + collection tiles */ },
-      async onActionClick(resourceType, buttonId, resourceId, actionContext) { /* … */ },
+      getActionButtons(actionContext) { /* actionContext.context: 'assets' | 'collections' */ },
+      async onActionClick(resourceType, buttonId, resourceId) { /* … */ },
     },
     selectionBar: {
-      getActionButtons(actionContext) { /* buttons in the bulk-action bar */ },
+      getActionButtons() { /* buttons in the bulk-action bar — no arguments */ },
       async onActionClick(buttonId, assetIds) { /* … */ },
     },
   },
@@ -491,18 +491,20 @@ const shouldSkipRegistration = (repo) => allowedRepos.length > 0 && !allowedRepo
 
 ### Asset Card Actions (`card`)
 
-Buttons on asset cards (Assets grid / inside a collection / link-share) and on collection tiles. One implementation serves every card surface — the host passes the surface in `actionContext.context`.
+Buttons on asset cards (Assets grid / inside a collection / link-share) and on collection tiles. `getActionButtons(actionContext)` receives the surface as `actionContext.context` (`'assets'` or `'collections'`) — vary the buttons per surface, or ignore it for one static set.
 
 ```js
+import { SourceType } from './Constants';   // { ASSETS: 'assets', COLLECTIONS: 'collections' }
+
 card: {
-  // actionContext.context: 'assets' | 'collection' | 'share' (asset cards) | 'collections' (collection tiles)
   getActionButtons(actionContext) {
+    const { context } = actionContext || {};   // 'assets' (cards) | 'collections' (tiles)
     return [
-      { id: 'my-card-action', label: 'Edit Metadata', icon: 'Edit' },  // card uses `label`, NOT `title`
+      { id: 'my-card-action', label: context === SourceType.COLLECTIONS ? 'Edit Collection' : 'Edit Metadata', icon: 'Edit' },  // card uses `label`, NOT `title`
     ];
   },
-  // Exact arg order the host uses. Optional (host guards with ?.) — needed to open a modal.
-  async onActionClick(resourceType, buttonId, resourceId, actionContext) {
+  // The host also passes a 4th actionContext ({ context }) arg — omitted here; add it if you need the surface on click.
+  async onActionClick(resourceType, buttonId, resourceId) {
     // resourceType: 'asset' (cards) | 'collection' (tiles); resourceId: the URN string
     await guestConnection.host.modal.openDialog({
       title: 'Edit Metadata',
@@ -522,9 +524,9 @@ Buttons in the bulk-action bar shown when one or more assets are selected. The s
 
 ```js
 selectionBar: {
-  // actionContext: { context: 'assets'|'collections'|'collection'|'share',
-  //                  resourceSelection: { resources: [{ id }, …] } }
-  getActionButtons(actionContext) {
+  // No arguments here — one static button set. The host does pass an actionContext
+  // ({ context, resourceSelection: { resources: [{ id }, …] } }) — accept it to vary by selection.
+  getActionButtons() {
     return [
       { id: 'my-bulk-action', label: 'Bulk Export', icon: 'Download' },  // uses `label`, NOT `title`
     ];
@@ -637,10 +639,9 @@ First run only: navigate to `https://localhost:9080` and accept the self-signed 
 2. **`const guestConnection` breaks card/selectionBar** — their `onActionClick` fires after `register()` resolves; use `let` or the handler closes over `undefined`.
 3. **`getCurrentAsset()` returns a STRING**, not `{ id }`. (Assets View's `host.details.getCurrentResourceInfo()` is a different shape — don't mix.)
 4. **Card/selectionBar buttons use `label`, not `title`** — a button with only `title` renders blank. (`assetDetails` panels use `title`/`tooltip`.)
-5. **`card` vs `selectionBar` signatures differ** — card `onActionClick(resourceType, buttonId, resourceId, actionContext)` (single resource); selectionBar `onActionClick(buttonId, assetIds)` (array, no resourceType).
-6. **Buttons missing entirely** — `card`/`selectionBar` are gated by the `EXTENSIBILITY_AEM_CONTENTHUB` flag; asset-details panels still show when it's off.
-7. **`beforeUpload` must return `{ proceed, metadata }`** — omitting `metadata` loses it; pass `{ proceed: true, metadata: ctx.metadata }` for a no-op, and always include `message` when blocking.
-8. **`attach()` id must match `register()` id** — export `extensionId` from `Constants.js` and import it in both.
+5. **`card` vs `selectionBar` signatures differ** — `card.getActionButtons(actionContext)` receives `actionContext.context` (`'assets'` | `'collections'`) and `onActionClick(resourceType, buttonId, resourceId)` takes a single resource (the host also passes a 4th `{ context }` you can ignore); `selectionBar.getActionButtons()` takes no arguments and `onActionClick(buttonId, assetIds)` takes an array (no `resourceType`).
+6. **Buttons missing entirely** — `card`/`selectionBar` are gated by the `EXTENSIBILITY_AEM_CONTENTHUB` flag; asset-details panels still show when it's off (they're gated by the separate, older `EXTENSIBILITY_ASSETS_DETAILS` flag).
+7. **`attach()` id must match `register()` id** — export `extensionId` from `Constants.js` and import it in both.
 
 ---
 

@@ -19,6 +19,8 @@ Read this file when `appbuilder-project-init` is asked to create/scaffold a Cont
 
 Use `AskUserQuestion` for every user decision. Never print a test URL without opening it. Never ask the user to type anything (except when they choose "Other").
 
+**Why this skill hand-writes files instead of running a generator:** every other row in the Template Decision Table maps to a real `aio app init` generator (e.g. `@adobe/aem-cf-admin-ui-ext-tpl`). The one published Content Hub sample, `aio app init --repo adobe/aem-uix-examples/aem-contenthub-assets-details-sample`, only scaffolds the older single-namespace extension point (`aem/contenthub/assets/details/1`, source dir `src/aem-contenthub-assets-details-1/`) — it predates `card`/`selectionBar` and has no unified `aem/assets/contenthub/1` generator yet. Don't point users at that `--repo` flag for a new Content Hub extension; it produces the deprecated shape. Scaffold from `references/contenthub-templates.md` instead.
+
 ---
 
 ## Interaction Rules (how to ask, decline, and resume)
@@ -69,7 +71,7 @@ options:
   - label: "Asset Details panel"
     description: "Custom tab panels in the Asset Details Dialog side rail — assetDetails namespace"
   - label: "Asset card / collection tile action"
-    description: "Buttons on asset card menus (Assets grid, inside a collection, link share) and on collection tiles — card namespace. onActionClick(resourceType, buttonId, resourceId, actionContext)."
+    description: "Buttons on asset card menus (Assets grid, inside a collection, link share) and on collection tiles — card namespace. onActionClick(resourceType, buttonId, resourceId)."
   - label: "Selection bar (bulk action)"
     description: "Buttons in the bulk-action bar shown when assets are selected — selectionBar namespace. onActionClick(buttonId, assetIds[])."
 ```

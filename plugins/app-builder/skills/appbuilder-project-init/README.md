@@ -7,6 +7,7 @@ This skill initializes new Adobe App Builder projects end-to-end without the int
 - Walk the agent through standing up a Developer Console project, workspace, and API subscriptions non-interactively, by calling `aio console …` directly (no wrapper script needed — those commands are non-interactive in current `@adobe/aio-cli` releases).
 - Map user intent to the correct App Builder template and run non-interactive `aio app init`, optionally wired to a specific Console org/project via the un-hidden `--org` / `--project` flags.
 - Add actions or web assets to an existing project.
+- Scaffold a Content Hub extension (`aem/assets/contenthub/1`) end-to-end — no generator template publishes this extension point yet, so this skill hand-writes the project files instead of running `aio app init`.
 
 Use it when the user wants to create a new App Builder app, scaffold a project, set up an Experience Cloud extension, bootstrap a Developer Console project/workspace, add APIs to a workspace, or anything related to `aio app init` / `aio console project|workspace|api`.
 
@@ -21,6 +22,8 @@ appbuilder-project-init/
 ├── references/
 │   ├── bootstrap.md        ← Agentic Console bootstrap playbook (project / workspace / APIs)
 │   ├── templates.md        ← Template catalog with intent mapping and post-init guidance
+│   ├── contenthub-scaffolding.md ← Content Hub extension workflow (Console setup through deploy)
+│   ├── contenthub-templates.md   ← Content Hub scaffold file templates
 │   └── debugging.md        ← Troubleshooting (init failures, bootstrap failures, login issues)
 └── evals/
     └── evals.json          ← Evaluation test cases for grading agent output
@@ -112,6 +115,7 @@ Then `aio app deploy` will publish to the namespace owned by that workspace.
 | Asset Compute custom worker | @adobe/generator-app-asset-compute |
 | MCP server on Runtime | @adobe/generator-app-remote-mcp-server-generic |
 | Blank / from scratch | init-bare |
+| Content Hub extension (panels, card actions, bulk actions) | Hand-scaffolded — see `references/contenthub-scaffolding.md` |
 
 See `references/templates.md` for detailed per-template post-init guidance.
 

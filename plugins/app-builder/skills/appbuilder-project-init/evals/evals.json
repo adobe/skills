@@ -161,6 +161,35 @@
           "description": "Builds the bare App Builder project successfully."
         }
       ]
+    },
+    {
+      "id": 6,
+      "prompt": "Scaffold a Content Hub extension that adds a custom tab panel to the Asset Details Dialog.",
+      "expected_output": "Content Hub extension scaffolded under src/aem-assets-contenthub-1/ with the unified aem/assets/contenthub/1 extension point, an assetDetails namespace registered in ExtensionRegistration.js, and only the files needed for that namespace.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "file_contains",
+          "path": "app.config.yaml",
+          "pattern": "aem/assets/contenthub/1",
+          "description": "Registers the unified Content Hub extension point, not the deprecated aem/contenthub/assets/details/1."
+        },
+        {
+          "type": "file_exists",
+          "path": "src/aem-assets-contenthub-1/web-src/src/components/PanelAssetDetailsExtensionTab.js",
+          "description": "Scaffolds the assetDetails panel component."
+        },
+        {
+          "type": "file_not_exists",
+          "path": "src/aem-assets-contenthub-1/web-src/src/components/CardActionModal.js",
+          "description": "Does not scaffold card/selectionBar components when only assetDetails was requested."
+        },
+        {
+          "type": "command_succeeds",
+          "command": "aio app build",
+          "description": "Builds the scaffolded Content Hub extension successfully."
+        }
+      ]
     }
   ]
 }

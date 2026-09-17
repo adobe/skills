@@ -200,29 +200,30 @@ First time: accept the self-signed cert at https://localhost:9080.
 
 ## card: getActionButtons receives actionContext
 
-The host calls `getActionButtons(actionContext)` with:
-- `actionContext.context`: `'assets'` | `'collection'` | `'collections'` | `'share'` — the source view.
-  `assets`, `collection`, and `share` are asset-card surfaces; `collections` is a collection tile
-  on the Collections grid. Use it to vary buttons per surface, or ignore it to show the same set.
+The host calls `getActionButtons(actionContext)` where `actionContext.context` is one of two values:
+- `'assets'` — asset cards (Assets grid, inside a collection, and link-share all report `assets`)
+- `'collections'` — collection tiles on the Collections grid
 
-The same `card` namespace serves both asset cards and collection tiles — distinguish them via
-`actionContext.context` (and `resourceType` on click).
+Use it to vary the button set per surface (e.g. a different label for collection tiles), or ignore
+it to show the same buttons everywhere.
 
 ## card: onActionClick signature
 
-Called by the host as `onActionClick(resourceType, buttonId, resourceId, actionContext)`:
+Called by the host as `onActionClick(resourceType, buttonId, resourceId)`:
 - `resourceType`: `'asset'` (asset cards) or `'collection'` (collection tiles)
 - `buttonId`: the `id` from `getActionButtons()`
 - `resourceId`: the asset or collection URN string
-- `actionContext`: `{ context }` — same surface values as above
 
-## selectionBar: getActionButtons receives actionContext
+The host also passes a 4th `actionContext` (`{ context }`) argument, which the sample ignores — add
+it to the signature only if you need the surface at click time.
 
-The host calls `selectionBar.getActionButtons(actionContext)` with:
-- `actionContext.context`: `'assets'` | `'collections'` | `'collection'` | `'share'` — the source view
+## selectionBar: getActionButtons takes no arguments
+
+The sample declares `getActionButtons()` with no parameter — one static button set is shown whenever
+the selection bar appears. The host does pass an `actionContext` if you want to vary buttons by
+selection:
+- `actionContext.context`: the source view (e.g. `'assets'`, `'collections'`)
 - `actionContext.resourceSelection.resources`: `[{id: string}, ...]` — the current selection
-
-Use this to conditionally show/hide buttons depending on where the bar appears, or ignore it.
 
 ## selectionBar: onActionClick signature
 
@@ -324,9 +325,15 @@ This file is overwritten by `aio app run` (localhost URL) and `aio app deploy` (
 
 ```js
 export const extensionId = 'sample-extension';
+
+// Values the host passes as actionContext.context on card actions.
+export const SourceType = { ASSETS: 'assets', COLLECTIONS: 'collections' };
+
+// Values the host passes as resourceType in card onActionClick.
+export const ResourceType = { ASSET: 'asset', COLLECTION: 'collection' };
 ```
 
-The `extensionId` **must** be identical in `register()` (ExtensionRegistration.js) and `attach()` (PanelAssetDetailsExtensionTab.js). Both import from this file.
+The `extensionId` **must** be identical in `register()` (ExtensionRegistration.js) and `attach()` (PanelAssetDetailsExtensionTab.js). Both import from this file. `SourceType`/`ResourceType` mirror the values the host sends to the `card` namespace — import `SourceType` in `ExtensionRegistration.js` to branch on the surface.
 
 ---
 
@@ -390,7 +397,7 @@ Contains all three Content Hub namespaces. **When scaffolding, include only the 
 import React from 'react';
 import { Text, View } from '@adobe/react-spectrum';
 import { register } from '@adobe/uix-guest';
-import { extensionId } from './Constants';
+import { extensionId, SourceType } from './Constants';
 
 // Restrict extension to specific repos.
 // Format: 'delivery-pXXX-eYYY.adobeaemcloud.com'
@@ -441,25 +448,24 @@ function ExtensionRegistration() {
         // Buttons on individual asset card menus (3-dot / overlay) AND on collection
         // tiles in the Collections grid (the tile's ⋯ menu). Remove this block if card
         // was not selected.
-        // getActionButtons receives an actionContext from the host:
-        //   { context: 'assets'|'collection'|'collections'|'share' }
-        //   'assets' (browse grid), 'collection' (assets inside a collection),
-        //   'share' (link share view) are asset-card surfaces;
-        //   'collections' is a collection tile on the Collections grid.
-        // onActionClick is called with (resourceType, buttonId, resourceId, actionContext)
+        // getActionButtons(actionContext) receives the surface in actionContext.context:
+        //   'assets' (asset cards) | 'collections' (collection tiles). Vary the buttons
+        //   by surface, or ignore it to show the same set everywhere.
+        // onActionClick is called with (resourceType, buttonId, resourceId)
         //   resourceType: 'asset' (asset cards) | 'collection' (collection tiles)
         card: {
           getActionButtons(actionContext) {
-            // Vary buttons by actionContext.context, or ignore it to show the same set.
+            const { context } = actionContext || {};
+            // context is SourceType.ASSETS (asset cards) or SourceType.COLLECTIONS (collection tiles).
             return [
               {
                 id: '{{EXTENSION_NAME}}-card-action',
-                label: '{{DISPLAY_NAME}}',
+                label: context === SourceType.COLLECTIONS ? '{{DISPLAY_NAME}} (collection)' : '{{DISPLAY_NAME}}',
                 icon: 'Edit',               // React-Spectrum workflow icon name
               },
             ];
           },
-          async onActionClick(resourceType, buttonId, resourceId, actionContext) {
+          async onActionClick(resourceType, buttonId, resourceId) {
             // openDialog takes a SINGLE config object — NO { id } first arg, NO payload field.
             // Pass data to the modal via the contentUrl query string (read it there with URLSearchParams).
             await guestConnection.host.modal.openDialog({
@@ -475,18 +481,14 @@ function ExtensionRegistration() {
         // Bulk action buttons in the selection bar (shown when assets are selected).
         // Remove this block if selectionBar was not selected.
         //
-        // getActionButtons receives an actionContext from the host:
-        //   { context: 'assets'|'collections'|'collection'|'share',
-        //     resourceSelection: { resources: [{id: string}, ...] } }
-        // Use it to conditionally show/hide buttons per source, or ignore it to always show.
+        // getActionButtons() takes no arguments here — one static button set is shown
+        // whenever the selection bar appears. (The host does pass an actionContext with
+        // { context, resourceSelection: { resources: [{id}, ...] } } — accept it if you
+        // want to vary buttons by the current selection.)
         //
         // onActionClick is called by the host with (buttonId, assetIds[])
         selectionBar: {
-          getActionButtons(actionContext) {
-            // actionContext.context tells you where the selection bar is shown:
-            //   'assets' (browse grid), 'collections' (collections list),
-            //   'collection' (inside a collection), 'share' (link share view).
-            // actionContext.resourceSelection.resources is the current selection as [{id}, ...].
+          getActionButtons() {
             return [
               {
                 id: '{{EXTENSION_NAME}}-bulk-action',
@@ -679,12 +681,26 @@ import { attach } from '@adobe/uix-guest';
 import {
   Provider,
   defaultTheme,
+  Content,
+  Heading,
+  Divider,
+  Flex,
   View,
   Text,
+  ButtonGroup,
   Button,
   ProgressCircle,
 } from '@adobe/react-spectrum';
 import { extensionId } from './Constants';
+
+// Small uppercase label above each value — reads like a Content Hub detail row.
+const LABEL_STYLE = {
+  fontSize: '11px',
+  fontWeight: 700,
+  letterSpacing: '0.06em',
+  textTransform: 'uppercase',
+  color: 'var(--spectrum-global-color-gray-700)',
+};
 
 export default function CardActionModal() {
   const [guestConnection, setGuestConnection] = useState(null);
@@ -697,53 +713,48 @@ export default function CardActionModal() {
       const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
       setPayload({ resourceId: params.get('resourceId'), resourceType: params.get('resourceType') });
       // attach() is only needed so the Close button can call host.modal.closeDialog().
-      const connection = await attach({ id: extensionId });
-      setGuestConnection(connection);
+      setGuestConnection(await attach({ id: extensionId }));
     })();
   }, []);
 
-  if (!payload) {
-    return (
-      <Provider theme={defaultTheme}>
-        <View padding="size-400" height="100vh">
-          <View UNSAFE_style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '200px' }}>
-            <ProgressCircle aria-label="Loading..." isIndeterminate />
-          </View>
-        </View>
-      </Provider>
-    );
-  }
-
   return (
-    <Provider theme={defaultTheme}>
-      <View padding="size-300">
-        <View marginBottom="size-200">
-          <Text UNSAFE_style={{ display: 'block', fontSize: '12px', color: '#6e6e6e', marginBottom: '4px' }}>
-            Resource Type
-          </Text>
-          <Text UNSAFE_style={{ display: 'block' }}>{payload.resourceType}</Text>
-        </View>
+    <Provider theme={defaultTheme} colorScheme="light" height="100vh">
+      <Content>
+        {!payload ? (
+          <Flex justifyContent="center" alignItems="center" height="size-2000">
+            <ProgressCircle aria-label="Loading…" isIndeterminate />
+          </Flex>
+        ) : (
+          <>
+            <Heading level={3} marginTop="size-0">{{DISPLAY_NAME}}</Heading>
+            <Divider size="M" marginBottom="size-300" />
 
-        <View marginBottom="size-300">
-          <Text UNSAFE_style={{ display: 'block', fontSize: '12px', color: '#6e6e6e', marginBottom: '4px' }}>
-            Resource ID
-          </Text>
-          <View padding="size-100" backgroundColor="gray-100" borderRadius="regular">
-            <Text UNSAFE_style={{ fontFamily: 'monospace', fontSize: '12px', wordBreak: 'break-all', display: 'block' }}>
-              {payload.resourceId}
-            </Text>
-          </View>
-        </View>
+            <Flex direction="column" gap="size-300">
+              <Flex direction="column" gap="size-50">
+                <Text UNSAFE_style={LABEL_STYLE}>Resource type</Text>
+                <Text>{payload.resourceType}</Text>
+              </Flex>
+              <Flex direction="column" gap="size-50">
+                <Text UNSAFE_style={LABEL_STYLE}>Resource ID</Text>
+                <View padding="size-100" backgroundColor="gray-100" borderRadius="regular">
+                  <Text UNSAFE_style={{ fontFamily: 'monospace', fontSize: '12px', wordBreak: 'break-all' }}>
+                    {payload.resourceId}
+                  </Text>
+                </View>
+              </Flex>
+            </Flex>
 
-        {/* Add your custom UI here */}
+            {/* Add your custom UI here */}
 
-        <Button
-          variant="accent"
-          onPress={() => guestConnection?.host.modal.closeDialog()}
-        >
-          Close
-        </Button>
-      </View>
+            <Flex justifyContent="end" marginTop="size-400">
+              <ButtonGroup align="end">
+                <Button variant="secondary" onPress={() => guestConnection?.host.modal.closeDialog()}>Cancel</Button>
+                <Button variant="accent" onPress={() => guestConnection?.host.modal.closeDialog()}>Done</Button>
+              </ButtonGroup>
+            </Flex>
+          </>
+        )}
+      </Content>
     </Provider>
   );
 }
@@ -761,14 +772,28 @@ import { attach } from '@adobe/uix-guest';
 import {
   Provider,
   defaultTheme,
+  Content,
+  Heading,
+  Divider,
+  Flex,
   View,
   Text,
+  ButtonGroup,
   Button,
   ProgressCircle,
   ListView,
   Item,
 } from '@adobe/react-spectrum';
 import { extensionId } from './Constants';
+
+// Small uppercase label above each value — reads like a Content Hub detail row.
+const LABEL_STYLE = {
+  fontSize: '11px',
+  fontWeight: 700,
+  letterSpacing: '0.06em',
+  textTransform: 'uppercase',
+  color: 'var(--spectrum-global-color-gray-700)',
+};
 
 export default function SelectionBarModal() {
   const [guestConnection, setGuestConnection] = useState(null);
@@ -782,51 +807,49 @@ export default function SelectionBarModal() {
       const raw = params.get('assetIds');
       setPayload({ assetIds: raw ? JSON.parse(raw) : [] });
       // attach() is only needed so the Close button can call host.modal.closeDialog().
-      const connection = await attach({ id: extensionId });
-      setGuestConnection(connection);
+      setGuestConnection(await attach({ id: extensionId }));
     })();
   }, []);
 
-  if (!payload) {
-    return (
-      <Provider theme={defaultTheme}>
-        <View padding="size-400" height="100vh">
-          <View UNSAFE_style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '200px' }}>
-            <ProgressCircle aria-label="Loading..." isIndeterminate />
-          </View>
-        </View>
-      </Provider>
-    );
-  }
+  const count = payload?.assetIds.length ?? 0;
+  const countLabel = `${count} asset${count !== 1 ? 's' : ''} selected`;
 
   return (
-    <Provider theme={defaultTheme}>
-      <View padding="size-300">
-        <View marginBottom="size-200">
-          <Text UNSAFE_style={{ display: 'block', fontSize: '12px', color: '#6e6e6e', marginBottom: '4px' }}>
-            {payload.assetIds.length} asset{payload.assetIds.length !== 1 ? 's' : ''} selected
-          </Text>
-        </View>
+    <Provider theme={defaultTheme} colorScheme="light" height="100vh">
+      <Content>
+        {!payload ? (
+          <Flex justifyContent="center" alignItems="center" height="size-2000">
+            <ProgressCircle aria-label="Loading…" isIndeterminate />
+          </Flex>
+        ) : (
+          <>
+            <Heading level={3} marginTop="size-0">{{DISPLAY_NAME}}</Heading>
+            <Divider size="M" marginBottom="size-300" />
 
-        <View marginBottom="size-300" maxHeight="size-3000" overflow="auto">
-          <ListView aria-label="Selected assets" items={payload.assetIds.map(id => ({ id }))}>
-            {item => (
-              <Item key={item.id}>
-                <Text UNSAFE_style={{ fontFamily: 'monospace', fontSize: '12px' }}>{item.id}</Text>
-              </Item>
-            )}
-          </ListView>
-        </View>
+            <Flex direction="column" gap="size-100">
+              <Text UNSAFE_style={LABEL_STYLE}>{countLabel}</Text>
+              <View maxHeight="size-3000" overflow="auto">
+                <ListView aria-label="Selected assets" items={payload.assetIds.map(id => ({ id }))}>
+                  {item => (
+                    <Item key={item.id}>
+                      <Text UNSAFE_style={{ fontFamily: 'monospace', fontSize: '12px' }}>{item.id}</Text>
+                    </Item>
+                  )}
+                </ListView>
+              </View>
+            </Flex>
 
-        {/* Add your bulk-action logic here */}
+            {/* Add your bulk-action logic here */}
 
-        <Button
-          variant="accent"
-          onPress={() => guestConnection?.host.modal.closeDialog()}
-        >
-          Close
-        </Button>
-      </View>
+            <Flex justifyContent="end" marginTop="size-400">
+              <ButtonGroup align="end">
+                <Button variant="secondary" onPress={() => guestConnection?.host.modal.closeDialog()}>Cancel</Button>
+                <Button variant="accent" onPress={() => guestConnection?.host.modal.closeDialog()}>Done</Button>
+              </ButtonGroup>
+            </Flex>
+          </>
+        )}
+      </Content>
     </Provider>
   );
 }
