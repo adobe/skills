@@ -314,17 +314,34 @@ async function gatherFindings(options = {}) {
     collectionsDir = './unified-collections',
     projectId,
     mcpFetcher,
+    preFetchedBpa,
     workspaceRoot = process.cwd(),
     analyzeScript = DEFAULT_ANALYZE_SCRIPT,
     getEffectivePom,
   } = options;
 
   const sources = checkAvailableSources({ bpaFilePath, collectionsDir, projectId, mcpFetcher });
-  const bpaMode = sources.mcpServer.available
+  // `preFetchedBpa` is a slug→targets map the agent already fetched from CAM/MCP
+  // and passed via the CLI's `--bpa-json` (so no in-process `mcpFetcher` bridge
+  // is needed). It counts as a BPA source and is treated as CAM-sourced ('mcp').
+  const bpaMode = preFetchedBpa
     ? 'mcp'
-    : (sources.bpaFile.available || sources.unifiedCollection.available)
-      ? 'csv'
-      : null;
+    : sources.mcpServer.available
+      ? 'mcp'
+      : (sources.bpaFile.available || sources.unifiedCollection.available)
+        ? 'csv'
+        : null;
+
+  // Single BPA fetch entry point: read from the pre-fetched map when present
+  // (an absent slug key = benign "pattern not in report"), else fall back to the
+  // live helper (CSV cache / in-process MCP fetcher).
+  const fetchBpa = async (slug) => {
+    if (preFetchedBpa) {
+      const targets = preFetchedBpa[slug];
+      return Array.isArray(targets) ? { success: true, targets } : { availablePatterns: true };
+    }
+    return getBpaFindings(slug, { bpaFilePath, collectionsDir, projectId, mcpFetcher, limit: null, offset: 0 });
+  };
 
   const findingsByPattern = {};
   const rawFindingsByPattern = {};
@@ -346,9 +363,7 @@ async function gatherFindings(options = {}) {
       const mergedRaw = [];
       let realError = false; // a genuine fetch failure (not "pattern absent")
       for (const slug of bpaSlugs) {
-        const res = await getBpaFindings(slug, {
-          bpaFilePath, collectionsDir, projectId, mcpFetcher, limit: null, offset: 0,
-        });
+        const res = await fetchBpa(slug);
         if (res.success && Array.isArray(res.targets)) {
           // A pattern may map to a broader BPA pattern (e.g. `lui` returns all
           // legacy.user.interface sub-types); keep only the ones this runbook
@@ -387,22 +402,43 @@ async function gatherFindings(options = {}) {
     }
   }
 
-  // ── Cascade tier 3: analyzer (fills replication always; fills the other
-  //    cascade patterns only when no BPA source scanned them) ──────────────
+  // ── Cascade tier 3: analyzer. Runs for EVERY cascade pattern the analyzer can
+  //    reach and UNIONs with BPA: BPA stays authoritative for what it reported,
+  //    and the analyzer fills source-only findings BPA's scan scope missed
+  //    (deduped by class name). This makes the runbook complete in one pass —
+  //    the agent no longer has to reconcile "BPA clean" against real source by
+  //    hand. Patterns with no BPA verdict are owned outright by the analyzer. ──
   let analyzerUsed = false;
   const analyzerCanRun = isAnalyzerAvailable(analyzeScript) && !!workspaceRoot;
-  const patternsNeedingAnalyzer = cascadePatterns.filter(p => !scannedBy[p]);
 
-  if (analyzerCanRun && patternsNeedingAnalyzer.length > 0) {
+  if (analyzerCanRun && cascadePatterns.length > 0) {
     const result = runAnalyzer(workspaceRoot, { analyzeScript });
     if (result.ok) {
       analyzerUsed = true;
       if (result.warnings && result.warnings.length) scanWarnings.push(...result.warnings);
-      for (const pattern of patternsNeedingAnalyzer) {
-        findingsByPattern[pattern] = result.findingsByPattern[pattern] || [];
-        rawFindingsByPattern[pattern] = result.rawFindingsByPattern[pattern] || [];
-        sourceByPattern[pattern] = 'analyzer';
-        scannedBy[pattern] = 'analyzer';
+      for (const pattern of cascadePatterns) {
+        const aFind = result.findingsByPattern[pattern] || [];
+        const aRaw = result.rawFindingsByPattern[pattern] || [];
+        if (!scannedBy[pattern]) {
+          // No BPA verdict — the analyzer owns the pattern outright.
+          findingsByPattern[pattern] = aFind;
+          rawFindingsByPattern[pattern] = aRaw;
+          sourceByPattern[pattern] = 'analyzer';
+          scannedBy[pattern] = 'analyzer';
+        } else if (aRaw.length > 0) {
+          // BPA already owns the verdict — append only the source-only findings
+          // BPA didn't report (deduped by class name), so a "BPA clean" pattern
+          // still surfaces real code BPA's scan scope missed.
+          const seen = new Set(rawFindingsByPattern[pattern].map(r => classKey(r.file)).filter(Boolean));
+          let added = 0;
+          aRaw.forEach((r, i) => {
+            const k = classKey(r.file);
+            if (k && !seen.has(k)) { seen.add(k); rawFindingsByPattern[pattern].push(r); findingsByPattern[pattern].push(aFind[i]); added++; }
+          });
+          if (added > 0 && !String(sourceByPattern[pattern]).includes('analyzer')) {
+            sourceByPattern[pattern] = `${sourceByPattern[pattern]}+analyzer`;
+          }
+        }
       }
     }
   }
@@ -442,9 +478,7 @@ async function gatherFindings(options = {}) {
       let urcRaw = [];
       let bpaOwnsUrc = false;
       if (bpaMode) {
-        const urc = await getBpaFindings('urc', {
-          bpaFilePath, collectionsDir, projectId, mcpFetcher, limit: null, offset: 0,
-        });
+        const urc = await fetchBpa('urc');
         if (urc.success && Array.isArray(urc.targets) && urc.targets.length > 0) {
           const built = urc.targets.map(urcBpaTarget);
           urcFindings = built.map(b => b.finding);
@@ -531,8 +565,26 @@ function samplePrompt(pattern, ctx) {
  */
 function relPath(value, workspaceRoot) {
   if (!value || !workspaceRoot || typeof value !== 'string') return value;
-  const prefix = workspaceRoot.endsWith(path.sep) ? workspaceRoot : workspaceRoot + path.sep;
+  const root = workspaceRoot.endsWith(path.sep) ? workspaceRoot.slice(0, -1) : workspaceRoot;
+  // A finding whose path IS the workspace root (e.g. a Dispatcher config at the
+  // project root) must not render as the absolute root path — collapse it to '.'
+  // so the committed runbook never leaks the local filesystem layout.
+  if (value === root || value === root + path.sep) return '.';
+  const prefix = root + path.sep;
   return value.startsWith(prefix) ? value.slice(prefix.length) : value;
+}
+
+/**
+ * Reduce a BPA `className` (`com.acme.MyJob`) or an analyzer file path
+ * (`core/src/main/java/com/acme/MyJob.java`) to a comparable simple class-name
+ * key, so BPA and analyzer findings for the same class can be de-duplicated
+ * when the two sources are unioned (see the cascade tier in `gatherFindings`).
+ */
+function classKey(fileOrClass) {
+  if (!fileOrClass || typeof fileOrClass !== 'string') return null;
+  const noExt = fileOrClass.replace(/\.java$/i, '');
+  const seg = noExt.split(/[\\/.]/).filter(Boolean);
+  return seg.length ? seg[seg.length - 1].toLowerCase() : null;
 }
 
 /** Findings that represent outstanding work (excludes informational rows). */
@@ -574,7 +626,7 @@ function renderRunbook(gathered, ctx = {}) {
     const count = actionable(findingsByPattern[p]).length;
     const src = needsLlmScan.includes(p)
       ? '_needs LLM scan_'
-      : SOURCE_LABEL[sourceByPattern[p]] || '—';
+      : sourceLabel(sourceByPattern[p]);
     lines.push(`| ${meta.label} | ${meta.severity} | ${count === 0 ? '—' : `**${count}**`} | ${src} |`);
   }
   lines.push('');
@@ -597,12 +649,12 @@ function renderRunbook(gathered, ctx = {}) {
     const infoCount = targets.length - actCount;
     lines.push(`## ${meta.label} (\`${p}\`)`);
     lines.push('');
-    lines.push(`**Severity:** ${meta.severity} | **Findings:** ${actCount}${infoCount > 0 ? ` (+${infoCount} informational)` : ''} | **Detected via:** ${SOURCE_LABEL[sourceByPattern[p]] || '—'}`);
+    lines.push(`**Severity:** ${meta.severity} | **Findings:** ${actCount}${infoCount > 0 ? ` (+${infoCount} informational)` : ''} | **Detected via:** ${sourceLabel(sourceByPattern[p])}`);
     lines.push('');
     lines.push(meta.description);
     lines.push('');
     if (meta.heuristic) {
-      lines.push(`> ⚠️ **Heuristic detection** (${SOURCE_LABEL[sourceByPattern[p]] || 'non-deterministic'}) — these are candidate matches, not compiler/BPA-validated findings. Re-confirm each one before editing.`);
+      lines.push(`> ⚠️ **Heuristic detection** (${sourceLabel(sourceByPattern[p], 'non-deterministic')}) — these are candidate matches, not compiler/BPA-validated findings. Re-confirm each one before editing.`);
       if (meta.needsReview) {
         lines.push('> Secret **values** are intentionally omitted from this runbook — only key names and locations are shown. Classification happens at apply time.');
       }
@@ -660,6 +712,16 @@ const SOURCE_LABEL = {
 };
 
 /**
+ * Human label for a `sourceByPattern` value. Handles unioned sources like
+ * `mcp+analyzer` (BPA authoritative, analyzer filled source-only gaps) by
+ * joining each part's label.
+ */
+function sourceLabel(src, fallback = '—') {
+  if (!src) return fallback;
+  return String(src).split('+').map(s => SOURCE_LABEL[s] || s).join(' + ');
+}
+
+/**
  * Default path for the runbook's raw-findings sidecar cache, written next to
  * the markdown so the apply handoff (migration/SKILL.md Step 3) can reuse
  * already-computed findings for a pattern instead of re-deriving them via
@@ -700,6 +762,32 @@ function writeRunbookCache(gathered, ctx, cachePath = DEFAULT_CACHE_PATH) {
 }
 
 /**
+ * Merge agent-supplied LLM-scan findings into a `gathered` object in one shot,
+ * so the Tier-4 fallback needs no hand-mutation of `gathered` internals or a
+ * second `renderRunbook`/`writeRunbookCache` round-trip. `llmByPattern` maps a
+ * canonical pattern id to an array of raw findings `{file, line?, snippet?,
+ * detail?, severity?}`; the display shape is derived from each. The pattern is
+ * marked `source: 'llm'` and dropped from `needsLlmScan`.
+ */
+function mergeLlmFindings(gathered, llmByPattern) {
+  for (const [pattern, raws] of Object.entries(llmByPattern || {})) {
+    if (!CANONICAL_PATTERNS.includes(pattern)) continue;
+    const rawArr = Array.isArray(raws) ? raws : [];
+    gathered.rawFindingsByPattern[pattern] = rawArr.map(r => ({
+      pattern, file: r.file || null, line: r.line ?? null, snippet: r.snippet ?? null,
+    }));
+    gathered.findingsByPattern[pattern] = rawArr.map(r => ({
+      location: (r.file && r.line) ? `${r.file}:${r.line}` : (r.file || '—'),
+      detail: r.detail || r.snippet || '',
+      severity: r.severity || 'high',
+    }));
+    gathered.sourceByPattern[pattern] = 'llm';
+    gathered.needsLlmScan = gathered.needsLlmScan.filter(p => p !== pattern);
+  }
+  return gathered;
+}
+
+/**
  * Generate the runbook end to end.
  *
  * @returns {Promise<{
@@ -707,16 +795,15 @@ function writeRunbookCache(gathered, ctx, cachePath = DEFAULT_CACHE_PATH) {
  *   totalFindings: number, patternCounts: object,
  *   needsLlmScan: string[], gathered: object,
  * }>}
- *   When `needsLlmScan` is non-empty, the agent should LLM-scan those patterns,
- *   merge them into `gathered.findingsByPattern` (and `gathered.rawFindingsByPattern`
- *   using the same `{pattern, file, line, snippet}` shape where locatable),
- *   re-render via `renderRunbook`, and call `writeRunbookCache` again so the
- *   cache reflects the merged findings.
+ *   When `needsLlmScan` is non-empty, LLM-scan those patterns and pass the
+ *   results back as the `llmByPattern` option (CLI: `--llm-findings <file>`) —
+ *   the generator merges, re-renders, and rewrites the cache in one pass.
  */
 async function generateRunbook(options = {}) {
-  const { outputPath = './migration-runbook.md', cachePath = DEFAULT_CACHE_PATH, bpaFilePath, workspaceRoot } = options;
+  const { outputPath = './migration-runbook.md', cachePath = DEFAULT_CACHE_PATH, bpaFilePath, workspaceRoot, llmByPattern } = options;
 
   const gathered = await gatherFindings(options);
+  if (llmByPattern) mergeLlmFindings(gathered, llmByPattern);
   const ctx = {
     bpaFilePath,
     workspaceRoot,
@@ -750,12 +837,14 @@ async function generateRunbook(options = {}) {
 
 // CLI
 function parseArgs(argv) {
-  const out = { workspaceRoot: undefined, bpaFilePath: undefined, outputPath: './migration-runbook.md', cachePath: DEFAULT_CACHE_PATH };
+  const out = { workspaceRoot: undefined, bpaFilePath: undefined, outputPath: './migration-runbook.md', cachePath: DEFAULT_CACHE_PATH, bpaJsonPath: undefined, llmFindingsPath: undefined };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--csv') out.bpaFilePath = argv[++i];
     else if (a === '--out') out.outputPath = argv[++i];
     else if (a === '--cache') out.cachePath = argv[++i];
+    else if (a === '--bpa-json') out.bpaJsonPath = argv[++i];
+    else if (a === '--llm-findings') out.llmFindingsPath = argv[++i];
     else if (!out.workspaceRoot) out.workspaceRoot = a;
   }
   if (!out.workspaceRoot) out.workspaceRoot = process.cwd();
@@ -763,17 +852,27 @@ function parseArgs(argv) {
 }
 
 async function main() {
-  const { workspaceRoot, bpaFilePath, outputPath, cachePath } = parseArgs(process.argv.slice(2));
+  const { workspaceRoot, bpaFilePath, outputPath, cachePath, bpaJsonPath, llmFindingsPath } = parseArgs(process.argv.slice(2));
+
+  // Pre-fetched BPA (agent dumped its CAM/MCP result to JSON) and LLM-scan
+  // findings are the two inputs that let the whole runbook run as ONE command,
+  // with no in-process require()/mcpFetcher bridge and no Tier-4 re-render.
+  let preFetchedBpa;
+  if (bpaJsonPath) preFetchedBpa = JSON.parse(fs.readFileSync(bpaJsonPath, 'utf8'));
+  let llmByPattern;
+  if (llmFindingsPath) llmByPattern = JSON.parse(fs.readFileSync(llmFindingsPath, 'utf8'));
 
   console.log('Migration Runbook Generator');
   console.log('===========================');
   console.log(`Workspace:  ${workspaceRoot}`);
   if (bpaFilePath) console.log(`BPA CSV:    ${bpaFilePath}`);
+  if (bpaJsonPath) console.log(`BPA JSON:   ${bpaJsonPath}`);
+  if (llmFindingsPath) console.log(`LLM find.:  ${llmFindingsPath}`);
   console.log(`Output:     ${outputPath}`);
   console.log(`Cache:      ${cachePath}`);
   console.log('');
 
-  const result = await generateRunbook({ workspaceRoot, bpaFilePath, outputPath, cachePath });
+  const result = await generateRunbook({ workspaceRoot, bpaFilePath, outputPath, cachePath, preFetchedBpa, llmByPattern });
 
   console.log(`✅ ${result.message}`);
   console.log(`   Findings cache: ${result.cachePath}`);
@@ -788,6 +887,8 @@ async function main() {
   if (result.needsLlmScan.length > 0) {
     console.log('');
     console.log(`⚠️  Needs LLM scan: ${result.needsLlmScan.join(', ')}`);
+    console.log('   LLM-scan these, write the results to a JSON file (pattern → [{file, line, snippet}]),');
+    console.log('   then re-run with `--llm-findings <file>` to fold them in — no manual merge needed.');
   }
 }
 
@@ -800,7 +901,11 @@ module.exports = {
   gatherFindings,
   renderRunbook,
   writeRunbookCache,
+  mergeLlmFindings,
   samplePrompt,
+  relPath,
+  classKey,
+  sourceLabel,
   CANONICAL_PATTERNS,
   PATTERN_META,
   DEFAULT_CACHE_PATH,

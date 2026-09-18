@@ -11,11 +11,11 @@ const { runOsgiConfigScan, validateRunmodeFolder, scanUnsupportedRunmodes, reord
 const { runVaultPackageScan, isLegacyGroup } = require('./vault-package-scan-runner.js');
 const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
 const { runTemplateScan, classifyStaticTemplate } = require('./template-scan-runner.js');
-const { runAnalyzer } = require('./analyzer-runner.js');
+const { runAnalyzer, isAnalyzerAvailable, DEFAULT_ANALYZE_SCRIPT } = require('./analyzer-runner.js');
 const { getBpaFindings } = require('./bpa-findings-helper.js');
 const {
-  gatherFindings, generateRunbook, renderRunbook, writeRunbookCache,
-  samplePrompt, CANONICAL_PATTERNS, PATTERN_META,
+  gatherFindings, generateRunbook, renderRunbook, writeRunbookCache, mergeLlmFindings,
+  samplePrompt, relPath, classKey, sourceLabel, CANONICAL_PATTERNS, PATTERN_META,
 } = require('./runbook-generator.js');
 
 function mkworkspace() {
@@ -1175,4 +1175,104 @@ test('a BPA report present but with NO URC rows warns and still runs the local s
     )),
     'a safety-net warning is surfaced'
   );
+});
+
+// ── Performance-fix behaviors: relPath, classKey, sourceLabel, preFetchedBpa, LLM merge ──
+
+test('relPath collapses a finding AT the workspace root to "." (no absolute-path leak)', () => {
+  const ws = '/Users/me/project';
+  assert.strictEqual(relPath('/Users/me/project', ws), '.');       // config at root — was the leak
+  assert.strictEqual(relPath('/Users/me/project/', ws), '.');      // trailing separator
+  assert.strictEqual(relPath('/Users/me/project/dispatcher', ws), 'dispatcher');
+  assert.strictEqual(relPath('com.acme.MyJob', ws), 'com.acme.MyJob'); // non-path value untouched
+});
+
+test('classKey normalizes a BPA className and an analyzer file path to the same key', () => {
+  assert.strictEqual(classKey('com.acme.jobs.MyJob'), 'myjob');
+  assert.strictEqual(classKey('core/src/main/java/com/acme/jobs/MyJob.java'), 'myjob');
+  assert.strictEqual(classKey('com.acme.jobs.MyJob'), classKey('core/src/main/java/com/acme/jobs/MyJob.java'));
+  assert.strictEqual(classKey(null), null);
+});
+
+test('sourceLabel renders unioned sources (mcp+analyzer) with both labels', () => {
+  assert.strictEqual(sourceLabel('mcp'), 'BPA / CAM');
+  assert.strictEqual(sourceLabel('mcp+analyzer'), 'BPA / CAM + analyzer');
+  assert.strictEqual(sourceLabel('csv+analyzer'), 'BPA CSV + analyzer');
+  assert.strictEqual(sourceLabel(undefined), '—');
+});
+
+test('preFetchedBpa drives BPA findings with no mcpFetcher bridge (CLI --bpa-json path)', async () => {
+  const root = mkworkspace();
+  // Pre-fetched CAM/MCP result: slug → raw BPA targets, exactly what the agent dumps to JSON.
+  const preFetchedBpa = {
+    scheduler: [{ className: 'com.acme.MySchedulerJob', identifier: 'scheduler', severity: 'high' }],
+  };
+  const gathered = await gatherFindings({ workspaceRoot: root, preFetchedBpa });
+  assert.strictEqual(gathered.bpaMode, 'mcp', 'pre-fetched BPA counts as a CAM/MCP source');
+  assert.strictEqual(gathered.sourceByPattern.scheduler, 'mcp');
+  assert.strictEqual(gathered.findingsByPattern.scheduler.length, 1);
+  assert.strictEqual(gathered.findingsByPattern.scheduler[0].location, 'com.acme.MySchedulerJob');
+  // A slug absent from the map is a benign "clean" — not an error, not needsLlmScan.
+  assert.ok(!gathered.needsLlmScan.includes('scheduler'));
+  assert.ok(!gathered.analyzerWarnings.some(w => /scheduler/.test(w)), 'absent slug does not raise a fetch error');
+});
+
+test('mergeLlmFindings folds Tier-4 results in one pass (source llm, dropped from needsLlmScan)', () => {
+  const gathered = {
+    findingsByPattern: { guavaCache: [] },
+    rawFindingsByPattern: { guavaCache: [] },
+    sourceByPattern: {},
+    needsLlmScan: ['guavaCache', 'replication'],
+  };
+  mergeLlmFindings(gathered, {
+    guavaCache: [{ file: 'core/src/main/java/com/acme/Cache.java', line: 42, snippet: 'import com.google.common.cache.CacheBuilder' }],
+  });
+  assert.strictEqual(gathered.sourceByPattern.guavaCache, 'llm');
+  assert.strictEqual(gathered.findingsByPattern.guavaCache.length, 1);
+  assert.strictEqual(gathered.findingsByPattern.guavaCache[0].location, 'core/src/main/java/com/acme/Cache.java:42');
+  assert.strictEqual(gathered.rawFindingsByPattern.guavaCache[0].snippet, 'import com.google.common.cache.CacheBuilder');
+  assert.deepStrictEqual(gathered.needsLlmScan, ['replication'], 'merged pattern is removed; others remain');
+});
+
+test('generateRunbook applies llmByPattern end to end (one command, no re-render)', async () => {
+  const root = mkworkspace();
+  const out = path.join(root, 'runbook.md');
+  const cache = path.join(root, 'runbook.json');
+  const result = await generateRunbook({
+    workspaceRoot: root, outputPath: out, cachePath: cache,
+    llmByPattern: { guavaCache: [{ file: 'bundle/Foo.java', line: 3, snippet: 'com.google.common.cache' }] },
+  });
+  assert.strictEqual(result.gathered.sourceByPattern.guavaCache, 'llm');
+  assert.ok(!result.needsLlmScan.includes('guavaCache'));
+  const md = fs.readFileSync(out, 'utf8');
+  assert.match(md, /LLM scan/);            // rendered "Detected via: LLM scan"
+  assert.match(md, /bundle\/Foo\.java:3/);
+});
+
+test('Fix D: analyzer union fills a BPA-clean cascade pattern and dedups by class name', async (t) => {
+  const root = mkworkspace();
+  write(root, 'core/src/main/java/com/acme/LegacyJob.java',
+    'package com.acme;\n' +
+    'import org.apache.sling.commons.scheduler.Scheduler;\n' +
+    'import org.osgi.service.component.annotations.Component;\n' +
+    '@Component(service = Runnable.class, property = {"scheduler.expression=0 0 * * * ?"})\n' +
+    'public class LegacyJob implements Runnable { private Scheduler scheduler; public void run() {} }\n');
+
+  // Probe: with no BPA source the analyzer owns scheduler. If it can't run here
+  // (no JDK / analyzer), skip — this behavior needs the real analyzer.
+  const probe = await gatherFindings({ workspaceRoot: root });
+  if (!isAnalyzerAvailable(DEFAULT_ANALYZE_SCRIPT) || probe.sourceByPattern.scheduler !== 'analyzer' || probe.findingsByPattern.scheduler.length < 1) {
+    t.skip('analyzer/JDK not available in this environment');
+    return;
+  }
+
+  // BPA reports scheduler CLEAN → the union must still surface the analyzer's finding.
+  const unioned = await gatherFindings({ workspaceRoot: root, preFetchedBpa: { scheduler: [] } });
+  assert.strictEqual(unioned.findingsByPattern.scheduler.length, 1, 'analyzer finding unioned into a BPA-clean pattern');
+  assert.strictEqual(unioned.sourceByPattern.scheduler, 'mcp+analyzer');
+
+  // BPA already reports the SAME class → deduped by class name, no double count.
+  const deduped = await gatherFindings({ workspaceRoot: root, preFetchedBpa: { scheduler: [{ className: 'com.acme.LegacyJob', identifier: 'scheduler' }] } });
+  assert.strictEqual(deduped.findingsByPattern.scheduler.length, 1, 'same class is deduped');
+  assert.strictEqual(deduped.sourceByPattern.scheduler, 'mcp', 'no analyzer suffix when nothing new was added');
 });

@@ -254,43 +254,42 @@ The runbook covers **every pattern the migration skill can address**. Each patte
 
 **BPA is the source of truth when a report is available.** `lui`/`cdw`/`templateModernization`/`replication` are read from the BPA CSV/CAM (the parser now extracts these subtypes and excludes `_COUNT_*`/`_STAT` summary rows), so the runbook counts match your BPA report's LUI-dialog / CDW / static-template / REP tallies. `lui` keeps only the dialog sub-types (`legacy.custom.component` → create-component; `legacy.static.template` is counted under `templateModernization`). The `.content.xml` scan is only the fallback when no BPA source is present — and it can **undercount** relative to BPA when the flagged legacy nodes live in packages (e.g. acs-commons) not in the project source. `replication`: BPA `replication.agent` findings when a report is present, else the analyzer detects `Replicator` usage from source.
 
-The script handles every deterministic strategy (`cascade` tiers 1–3, `html-scan`, `config-scan`); the agent handles only the LLM-scan tier for `cascade` patterns nothing else could scan.
+#### Run it as ONE command (do this — don't read the generator source)
 
-```javascript
-const { generateRunbook, renderRunbook, writeRunbookCache } = require('./scripts/runbook-generator.js');
+The runbook is produced by a **single CLI command**. It runs the local analyzer + every scanner itself, writes both `migration-runbook.md` and the sidecar cache, and prints the summary line. You do **not** need to `require()` the generator, learn its internals, or write an in-process MCP bridge.
 
-const result = await generateRunbook({
-  workspaceRoot: '<IDE workspace root>',     // analyzer + html-scan + config-scan
-  bpaFilePath: '<csv path or undefined>',     // cascade tier 2
-  collectionsDir: './unified-collections',
-  projectId, mcpFetcher,                      // cascade tier 1 (MCP), when configured
-  outputPath: './migration-runbook.md',
-});
-// result.needsLlmScan → cascade patterns no deterministic source could scan
+1. **Base (always):**
+   ```bash
+   node scripts/runbook-generator.js <workspaceRoot> --out ./migration-runbook.md --cache ./migration-runbook.json
+   ```
+   This alone covers the local analyzer (Java cascade patterns), `html-scan`, `config-scan`, `pom-scan`, and the `content-scan` patterns.
+
+2. **If you have a BPA CSV:** add `--csv ./reports/bpa.csv`.
+
+3. **If CAM/MCP is configured:** make the **one** BPA fetch you would make anyway — call the CAM MCP tool for each relevant slug (`scheduler`, `resourceChangeListener`, `eventListener`, `eventHandler`, `assetApi`, `replication`, `lui`, `cdw`, `templateModernization`, `guavaCache`, `urc`), write the raw targets to a JSON file keyed by slug, and pass it:
+   ```bash
+   # bpa.json shape: { "<slug>": [ <raw BPA target>, ... ], ... }   (a slug you omit = "not in report", treated as clean)
+   node scripts/runbook-generator.js <workspaceRoot> --bpa-json ./bpa.json --out ./migration-runbook.md --cache ./migration-runbook.json
+   ```
+
+**The analyzer is always unioned with BPA** — when a BPA source reports a cascade pattern *clean* but real source code exists, the local analyzer's finding is added anyway (deduped by class name, shown as `Detected via: BPA / CAM + analyzer`). So you **don't** reconcile "BPA clean" against the source by hand — the script already does it.
+
+**Tier 4 — LLM scan (only if the command prints `⚠️ Needs LLM scan: …`).** That happens for a `cascade`/`bpa-only` pattern nothing deterministic could scan (e.g. `guavaCache` with no BPA source and no JDK). Grep for it per the pattern guide's hints under `{code-assessment}/<pattern>/` (for `guavaCache`, `import com.google.common.cache` — see [references/guava-cache.md](references/guava-cache.md)), write the hits to a JSON file, and **re-run the same command** with `--llm-findings`:
+```bash
+# llm.json shape: { "<pattern>": [ { "file": "...", "line": 42, "snippet": "..." }, ... ] }
+node scripts/runbook-generator.js <workspaceRoot> --bpa-json ./bpa.json --llm-findings ./llm.json --out ./migration-runbook.md --cache ./migration-runbook.json
 ```
+The generator merges, re-renders, and rewrites the cache in that one pass — no hand-editing of internal objects.
 
-**Tier 4 — LLM scan (last resort).** If `result.needsLlmScan` is non-empty (no BPA source **and** the analyzer could not run — e.g. no JDK), the agent scans those patterns itself: read each pattern guide's detection hints under `{code-assessment}/<pattern>/`, locate matches **inside the IDE workspace** (see **Workspace scope**). For **each** pattern the agent scans, update `result.gathered` so the re-render and cache stay consistent:
-
-- Build display findings in the `{ location, detail, severity }` shape and assign them to `result.gathered.findingsByPattern[<pattern>]`.
-- Build raw findings in the canonical `{ pattern, file, line, snippet }` shape and assign them to `result.gathered.rawFindingsByPattern[<pattern>]` (use `null` for `line`/`snippet` when a match can't be pinned to a line).
-- Set `result.gathered.sourceByPattern[<pattern>] = 'llm'`.
-- Remove the pattern from `result.gathered.needsLlmScan` (otherwise the re-render still shows it as _needs LLM scan_ **and** a findings table).
-
-Then re-render with `renderRunbook(result.gathered, ctx)`, overwrite the runbook file, and call `writeRunbookCache(result.gathered, ctx, result.cachePath)` so the sidecar cache reflects the merged findings.
-
-After writing the runbook, tell the user:
+After the command finishes, tell the user (numbers come from the printed summary line):
 
 > "I've written `migration-runbook.md` — **{totalFindings} findings** across **{N} patterns** (detected via {sources}). It's read-only. Reply with the pattern you want to migrate first (e.g. `scheduler`) and I'll reuse the findings already discovered for that pattern — no re-scan needed — and run the one-pattern-per-session apply workflow."
 
-`generateRunbook()` also writes a sidecar findings cache (default `./migration-runbook.json`, see `result.cachePath`) alongside the markdown, holding each pattern's raw findings and their source. **Step 3** below reads this cache first before falling back to a live BPA/analyzer/scan lookup.
+The command also writes the sidecar findings cache (default `./migration-runbook.json`) alongside the markdown, holding each pattern's raw findings and their source. **Step 3** below reads this cache first before falling back to a live BPA/analyzer/scan lookup.
 
 **Skip Step 0** when the user names a **specific pattern** up front (e.g. *"fix scheduler findings"*, *"fix htlLint in ui.apps"*, *"scan my config files for Cloud Manager secrets"*) — go straight to the relevant apply flow. Step 0 is only for a **broad review/scan** request with no single pattern named.
 
-**CLI (development):**
-
-```bash
-node scripts/runbook-generator.js <workspaceRoot> [--csv ./reports/bpa.csv] [--out ./migration-runbook.md]
-```
+> **Advanced (programmatic).** The same behavior is available as an API — `generateRunbook({ workspaceRoot, bpaFilePath, preFetchedBpa, llmByPattern, outputPath, cachePath })` and `mergeLlmFindings(gathered, llmByPattern)` from `./scripts/runbook-generator.js` — for callers that need to drive it in-process (e.g. an in-session `mcpFetcher` instead of `--bpa-json`). Prefer the CLI above; reach for the API only when the CLI can't express what you need.
 
 ---
 
