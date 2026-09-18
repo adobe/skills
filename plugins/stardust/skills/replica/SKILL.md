@@ -53,7 +53,7 @@ eyeballing.
 4. Copy scripts into the project and run them from there, not from the
    plugin: this skill's whole `scripts/` dir (stitch-shot, pixel-compare,
    crop-compare, chrome-parity, row-profile, sibling-variance, anchor,
-   gate.sh, motion-observe) to `stardust/scripts/replica/` AND the whole
+   gate.sh, run-capped, run-bg, motion-observe) to `stardust/scripts/replica/` AND the whole
    `../diff/scripts/` dir to `stardust/scripts/diff/` (the diff scripts
    import diff-profiles.mjs, and ALL live-target hardening — including
    stitch-shot's — lives in its live-session.mjs; stitch-shot resolves it
@@ -214,8 +214,14 @@ node stardust/scripts/replica/anchor.mjs "$LIVE"  --width 1440 --cache $G/anchor
 node stardust/scripts/replica/anchor.mjs "$PROTO" --width 1440   # build-side runs are free
 # Chrome: computed-style parity BEFORE any pixel round on header/footer/strips
 node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --live-cache $G/chrome-live.json   # exit 0 = quiet, then crop-compare
-# gate.sh: live.png cached, every step under a deadline (exit 124 = re-run, not FAIL), stale instruments reaped
-stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
+# gate.sh: live.png cached, every step under a deadline (exit 124 = re-run, not FAIL), stale instruments reaped.
+# Rounds run in the BACKGROUND and are waited for in bounded slices (gate doc § Iteration discipline,
+# "a step never outlives the context cache"): start every round at once — the slots pace the Chromiums,
+# no `sleep N;` staggering — then `wait` prints verdict lines only. Exit 75 = still going: run `wait`
+# again as your NEXT step, never in a shell loop.
+node stardust/scripts/replica/run-bg.mjs start --name <slug>-1440-iter2 -- stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
+node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter2  -- stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 360  iter2
+node stardust/scripts/replica/run-bg.mjs wait      # returns within 100 s; full output: run-bg.mjs log <job> --grep <re>
 ```
 
 **Pass bar (all four, per breakpoint):**
@@ -229,7 +235,11 @@ stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
 **Iteration discipline: hard cap 3 iterations per breakpoint.** Each
 iteration's fixes come off the instruments, never off eyeballing. After 3,
 log the residuals in the ledger and move on — a documented 2% residual beats
-an undocumented fourth loop.
+an undocumented fourth loop. **No single step waits longer than the context
+cache lives:** instruments that run for minutes go through `run-bg.mjs`
+(start, then `wait` in ≤ 100-second slices). One recorded 15-minute gate
+batch cost a full 513k-token context rewrite — $6.30, more than the rounds
+it waited for (reference doc § Iteration discipline).
 
 **Hardening (each is a recorded false-measurement trap — see the reference
 doc for the full list):** real-Chrome UA **plus the standard request

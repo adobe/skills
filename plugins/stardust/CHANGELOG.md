@@ -23,6 +23,17 @@ such processes from earlier migrations were still alive on the test machine, som
 - **gate.sh**: every capture runs under `run-capped` (`GATE_STITCH_TIMEOUT` 300 s,
   `GATE_COMPARE_TIMEOUT` 120 s), a partial live.png is never left for reuse, and this user's
   replica instruments older than `GATE_REAP_MIN` (15) minutes are reaped before a round.
+- **run-bg.mjs** (new): background runs with a bounded wait, so no agent step outlives the prompt
+  cache. Recorded 2026-09-18 (hands-off run, 26 pages, 1440+360): one gate batch — three parallel
+  steps, each `sleep 5|10|15;` then two rounds and a content-diff — blocked for 15 minutes; the
+  cache (five-minute lifetime) had expired and the next call re-wrote the whole 513k-token context,
+  $6.30 for one silent gap, while every other gap in the session stayed under 184 s at a 96 %
+  cache-hit ratio. `start` detaches a job under run-capped (default 900 s) behind a first-come
+  concurrency cap (3 slots — the `sleep` staggering goes); `wait` returns within `--max` (100 s,
+  clamped to 270) with one line per job plus its verdict lines only, exit 75 while jobs are still
+  going; `log --grep` reads the rest from `stardust/.work/replica/bg/<job>.log`. Contract test in
+  `skills/replica/scripts/test/run-bg.test.mjs`; source-fidelity-gate § Iteration discipline and
+  the replica Phase 4 snippet run rounds through it.
 - **chrome-parity.mjs `--live-cache`, anchor.mjs `--cache`**: the live side's measurement is
   probed once per breakpoint and reused while URL, width and selectors match — the same contract
   gate.sh already had for live.png (recorded: 5½-minute chrome-parity rounds ×3 ×4 archetypes).

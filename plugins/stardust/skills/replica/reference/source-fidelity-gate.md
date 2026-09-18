@@ -357,6 +357,26 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   test), and a page's four rounds then spent a fixed 30 minutes sleeping.
   When a capture legitimately needs longer (a 10k-px page under `--settle`),
   raise the variable for that page and say so in the ledger.
+- **A step never outlives the context cache — long instruments run in the
+  background, and the step that waits for them returns in bounded slices.**
+  The agent's prompt cache lives about five minutes past its last model
+  call; a step that blocks longer evicts it, and the next call re-writes the
+  whole context at the cache-write price. Recorded 2026-09-18 (hands-off
+  run, 26 pages, 1440+360): one gate batch — three parallel steps, each
+  `sleep 5|10|15;` then two rounds and a content-diff — blocked for 15
+  minutes; the next call wrote 513k tokens of cache, **$6.30 for one silent
+  gap, more than the rounds it waited for**, while every other gap in that
+  session stayed under 184 s at a 96 % cache-hit ratio. So: `run-bg.mjs
+  start --name <slug>-<w>-<iter> -- gate.sh …` for every round at once (the
+  default 3 slots launch them first come first served — each capture is a
+  Chromium, and the slots replace the `sleep N;` staggering), then `run-bg.mjs
+  wait` (returns within `--max`, default 100 s, clamped to 270) prints one
+  line per job plus its verdict lines; exit 75 means "still going — `wait`
+  again as your NEXT step". Never wrap `wait` in a shell loop: that
+  recreates the blocked step. The full instrument output stays in
+  `stardust/.work/replica/bg/<job>.log` — read it with `run-bg.mjs log <job>
+  --grep <re>`, not with `cat`; the same session carried 700k characters of
+  tool output in 77 minutes, and a verdict is four lines of it.
 - **Media-density budget.** The ≤3-iteration convergence was validated on a
   typographic, low-image page (the retail home). Image-dense commerce homes
   (recorded: a fashion retailer, ~130 imgs) spend iterations on media parity —
