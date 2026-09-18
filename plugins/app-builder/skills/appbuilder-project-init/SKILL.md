@@ -201,9 +201,13 @@ For a headless/backend-only request, prefer `init-bare` when possible. If the us
 
 ## Content Hub Extension Scaffolding
 
-For a Content Hub extension (`aem/assets/contenthub/1` — asset details panels, card actions, bulk actions) this skill runs a dedicated end-to-end workflow instead of a generator template: name → namespace selection → Console setup → file generation → npm install → `aio app use` → build → dev server → cert acceptance → open in Content Hub → deploy.
+Content Hub (`aem/assets/contenthub/1` — asset details panels, card actions, bulk actions) has **no `aio app init` generator**, so scaffold it from the maintained sample app:
 
-Read [`references/contenthub-scaffolding.md`](references/contenthub-scaffolding.md) for the full step-by-step workflow and [`references/contenthub-templates.md`](references/contenthub-templates.md) for the scaffold file templates. The workflow's final step does a manual first `aio app deploy`; for the full deployment story (Stage → Production, Extension Manager approval, CI/CD) chain to the `appbuilder-cicd-pipeline` skill.
+```bash
+aio app init --repo adobe/aem-uix-examples/aem-assets-contenthub-sample --github-pat <your-github-pat>
+```
+
+See the **"Content Hub extension"** entry in [`references/templates.md`](references/templates.md) for the full catalog entry and post-init customization (extension id, `allowedRepos`, pruning namespaces, testing in Content Hub). The Console/login/workspace/cert steps are the same as any template — see the **Bootstrap** section above. For deployment (Stage → Production, Extension Manager approval), chain to the `appbuilder-cicd-pipeline` skill.
 
 **When it triggers:** the user says "create/scaffold a Content Hub extension", or names a Content Hub surface ("asset details panel", "card action button", "bulk action"). Once the extension is scaffolded and running, chain to `appbuilder-ui-scaffolder` for UI customization (React Spectrum patterns for each namespace).
 
@@ -360,9 +364,7 @@ After initialization, hand off to:
 ## References
 
 - [references/bootstrap.md](references/bootstrap.md) — Agentic Developer Console bootstrap (project, workspace, API subscriptions) via raw `aio console …` commands from the latest `@adobe/aio-cli`
-- [references/templates.md](references/templates.md) — Template catalog with intent mapping and per-template post-init guidance
+- [references/templates.md](references/templates.md) — Template catalog with intent mapping and per-template post-init guidance (includes the Content Hub extension `aio app init --repo` entry)
 - [references/debugging.md](references/debugging.md) — Troubleshooting guide for init failures, Node/npm issues, login problems, and first-run errors
-- [references/contenthub-scaffolding.md](references/contenthub-scaffolding.md) — Full Content Hub extension scaffolding workflow (Steps 1–17: Console setup, namespace selection, file generation, build, dev server, cert acceptance, deploy)
-- [references/contenthub-templates.md](references/contenthub-templates.md) — All Content Hub scaffold file templates (`app.config.yaml`, `ext.config.yaml`, `ExtensionRegistration.js`, `App.js`, per-namespace components (`PanelAssetDetailsExtensionTab.js`, `CardActionModal.js`, `SelectionBarModal.js`), `actions/generic/index.js`)
 
-For deploying a Content Hub extension (Stage → Production, CDN URL, Extension Manager approval, CI/CD), use the `appbuilder-cicd-pipeline` skill — see its `references/contenthub-deploy.md`.
+For deploying a Content Hub extension (Stage → Production, CDN URL, Extension Manager approval, CI/CD), use the `appbuilder-cicd-pipeline` skill — see its **Content Hub Extension Deployment** section.

@@ -32,7 +32,7 @@ Set up CI/CD pipelines for Adobe App Builder projects — GitHub Actions (primar
 | Azure DevOps / GitLab CI / Jenkins | references/generic-pipeline-guide.md |
 | Secrets setup guide | references/secrets-management.md |
 | Debugging deploy failures | references/debugging.md |
-| Content Hub extension deploy | references/contenthub-deploy.md |
+| Content Hub extension deploy | § Content Hub Extension Deployment (below) |
 
 ## Fast Path (for clear requests)
 
@@ -67,6 +67,36 @@ If user specifies Azure DevOps, GitLab CI, or Jenkins → use `references/generi
 7. **Troubleshoot:** If deploy fails, consult `references/debugging.md` for common scenarios
 8. **Test:** Push to a branch and verify workflow runs successfully
 
+## Content Hub Extension Deployment
+
+Content Hub extensions (`aem/assets/contenthub/1`) deploy with the **same `aio app deploy` pipeline** as any App Builder extension — the GitHub Actions / secrets guidance above applies unchanged. Only these steps are Content Hub-specific.
+
+**Prerequisites:** `aio app run` works locally; `allowedRepos` in `ExtensionRegistration.js` is populated with delivery repo IDs before Production; `aio where` shows the right org/project.
+
+**Switch workspace, then deploy** (clean subshell so credentials actually download):
+
+```bash
+bash -c 'unset CI AIO_CLI_NO_TTY TERM; aio app use -w Stage --overwrite --no-input'   # or -w Production
+aio app deploy 2>&1 | tee /tmp/aio-deploy.log
+```
+
+Partial failure is still usable: if web assets deployed but actions failed, the UI still loads — open the CDN URL and note actions are unavailable rather than treating it as blocking.
+
+**Open the deployed extension** (parse the CDN base from the log, keep the Content Hub deep-link hash):
+
+```bash
+CDN_URL=$(grep -Eo 'https://[^ ]+adobeio-static\.net[^ ]*' /tmp/aio-deploy.log | grep 'index\.html' | tail -1)
+open "https://experience.adobe.com/?devMode=true&ext=${CDN_URL}#/assets/contenthub/"
+```
+
+**Extension Manager approval (Production only):** open `https://experience.adobe.com/aem/extension-manager`, find the extension by name, click **Approve** — it then shows for all entitled users with no `ext=` parameter.
+
+**Content Hub-specific troubleshooting:**
+- *Visible with `ext=` but not after approval* → approved in the wrong workspace (`ext=` bypasses workspace checks); confirm with `aio where`, switch, redeploy, re-approve.
+- *Invisible to some users* → the project has extra Adobe services (e.g. Cloud Manager) not all users are entitled to; remove non-required services in Developer Console, keep only Runtime, then redeploy and reapprove.
+
+**Before Production:** `allowedRepos` populated, tested on the CDN URL (not localhost), and verified without the `ext=` parameter after approval.
+
 ## Inputs To Request
 
 - Current repository path and CI/CD platform preference
@@ -95,7 +125,6 @@ If user specifies Azure DevOps, GitLab CI, or Jenkins → use `references/generi
 - Use `references/secrets-management.md` for OAuth S2S credential extraction and GitHub secrets setup.
 - Use `references/debugging.md` for troubleshooting deploy failures, CI errors, and workspace promotion issues.
 - Use `references/checklist.md` for pre-merge CI readiness validation.
-- Use `references/contenthub-deploy.md` for Content Hub extension deployment.
 - Use `assets/deploy-stage.yml`, `assets/deploy-prod.yml`, `assets/pr-test.yml` as workflow templates.
 - Use `assets/fetch-secrets.sh` to extract secret values from workspace configuration.
 - Official Adobe docs: [https://developer.adobe.com/app-builder/docs/guides/app_builder_guides/deployment/cicd-using-github-actions](https://developer.adobe.com/app-builder/docs/guides/app_builder_guides/deployment/cicd-using-github-actions)
