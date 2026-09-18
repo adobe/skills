@@ -11,13 +11,23 @@
  *
  * Usage:
  *   node skills/rollout/scripts/delivery-lint.mjs --file <html> [--path </da/path>]
- *        [--type page|fragment|index] [--json]
+ *        [--type page|fragment|index] [--json] [--optimizing-blocks a,b,c]
  * Exit: 0 = clean (no P0/P1), 1 = P0/P1 findings, 2 = bad invocation.
+ * Writes: nothing — findings (text or --json) go to stdout.
  *
  * Blocks known to run createOptimizedPicture over their images (cross-origin
- * breakage risk) — extend per project via --optimizing-blocks a,b,c.
+ * breakage risk) — extend per project via --optimizing-blocks a,b,c
+ * (default cards,columns,hero).
  */
 import { readFileSync } from 'node:fs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 function arg(name, fb) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fb; }
 const FILE = arg('file', null);

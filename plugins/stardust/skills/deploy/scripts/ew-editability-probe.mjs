@@ -55,6 +55,7 @@
  * 1 = dead non-exempt text OR duplicated index, 2 = probe error (including a
  * block whose JS failed to install/decorate in harness mode — an undecorated
  * block's raw rows would false-pass).
+ * Writes: nothing — the survivor table (or the --json results) goes to stdout.
  *
  * The in-page functions (runtimeMimic, instrument, survey, simulateEditor) and
  * the exemption/aggregation helpers are EXPORTED so block-roundtrip.mjs,
@@ -525,6 +526,13 @@ const USAGE = 'usage: ew-editability-probe.mjs <url> [<url> ...] [--json] [--ver
   + '       ew-editability-probe.mjs --content <content/page.html> [--blocks-dir dir] [--styles css] [--width px] [--json] [--verbose] [--simulate-editor] [--exempt a,b]\n';
 
 async function main() {
+  // --help prints this file's usage header, so an agent never reads the source to learn the flags.
+  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+    const src = fs.readFileSync(new URL(import.meta.url), 'utf8');
+    const header = src.match(/\/\*\*[\s\S]*?\*\//);
+    console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+    process.exit(0);
+  }
   const opts = parseArgs(process.argv);
   if (!opts.urls.length && !opts.content) { process.stderr.write(USAGE); process.exit(2); }
   const chromium = await loadChromium();

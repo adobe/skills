@@ -21,7 +21,7 @@
  */
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const HELP = 'Usage: node html-slice.mjs <file.html> <tag|.class|#id|tag.class> [--all] [--text] [--count] [--keep-attrs a,b] [--max-chars <n>]';
@@ -108,4 +108,11 @@ function cli(argv) {
   } catch (e) { console.error(`html-slice: ${e.message}`); return 125; }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) process.exitCode = cli(process.argv);
+// Main-module guard by REAL path: node resolves the entry's symlinks for import.meta.url but leaves process.argv[1]
+// as typed, so a symlinked checkout or temp dir (e.g. /var → /private/var) would otherwise make the CLI a silent no-op.
+function isMainModule(metaUrl) {
+  const argv1 = process.argv[1];
+  if (!argv1) return false;
+  try { return realpathSync(argv1) === fileURLToPath(metaUrl); } catch { return false; }
+}
+if (isMainModule(import.meta.url)) process.exitCode = cli(process.argv);

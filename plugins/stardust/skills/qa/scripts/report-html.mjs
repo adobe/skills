@@ -4,6 +4,8 @@
  * runnable standalone to (re)generate the HTML from an existing report:
  *
  *   node skills/qa/scripts/report-html.mjs [--report stardust/qa/report.json]
+ *
+ * Writes: report.html next to the --report file (the only flag); one line on stdout.
  */
 import { writeFileSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -156,6 +158,13 @@ export function htmlReport(report) {
 // standalone: regenerate report.html next to a report.json
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain) {
+  // --help prints this file's usage header, so an agent never reads the source to learn the flags.
+  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+    const src = readFileSync(new URL(import.meta.url), 'utf8');
+    const header = src.match(/\/\*\*[\s\S]*?\*\//);
+    console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+    process.exit(0);
+  }
   const i = process.argv.indexOf('--report');
   const reportPath = i !== -1 ? process.argv[i + 1] : 'stardust/qa/report.json';
   const report = JSON.parse(readFileSync(reportPath, 'utf8'));

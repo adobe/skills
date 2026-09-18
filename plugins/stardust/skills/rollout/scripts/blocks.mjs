@@ -14,10 +14,23 @@
  *
  * Idempotent: existing block delivery status is preserved.
  *
- * Usage: node skills/rollout/scripts/blocks.mjs [--out <rolloutDir>]
+ * Usage: node skills/rollout/scripts/blocks.mjs [--out <rolloutDir>]   (default stardust/rollout)
+ *
+ * Reads <out>/coverage/pages.json (required — run inventory.mjs first). Writes
+ * <out>/coverage/blocks.json (the ledger) and refreshes lastRun.blocks in <out>/rollout.json
+ * when that file exists. The summary goes to stdout. Exit 1 when pages.json is missing.
  */
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJSON, writeJSON, edsName, kindOf, blockCounts } from './lib.mjs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 const i = process.argv.indexOf('--out');
 const OUT = i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : 'stardust/rollout';

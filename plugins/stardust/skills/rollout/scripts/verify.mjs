@@ -17,10 +17,23 @@
  * in coverage.
  *
  * Usage: node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--slug <s>] [--all] [--out <rolloutDir>]
+ *   --out defaults to stardust/rollout
+ *
+ * Writes (under <out>/): coverage/pages.json (each checked page flipped to verified | failed),
+ * coverage/templates.json (roll-up) and rollout.json (lastRun) when they exist. The per-page
+ * result lines go to stdout.
  */
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJSON, writeJSON, rollupTemplates, rollupConfig } from './lib.mjs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback; }
 const OUT = arg('out', 'stardust/rollout');

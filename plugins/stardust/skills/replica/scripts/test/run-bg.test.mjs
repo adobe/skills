@@ -5,7 +5,7 @@
 // Run: node plugins/stardust/skills/replica/scripts/test/run-bg.test.mjs   (about 6 s)
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -51,6 +51,21 @@ await check(`wait returns at its ceiling with exit ${STILL_RUNNING_EXIT} while a
   const t0 = Date.now(); const r = bg('wait', '--max', '1', 'w');
   assert.equal(r.code, STILL_RUNNING_EXIT, r.out); assert.ok(Date.now() - t0 < 3500, 'returned promptly'); assert.match(r.out, /^w {2}(running|queued)/m); assert.match(r.out, /still going after \ds \(ceiling 1s\)/); assert.match(r.out, /run `wait` again as your next step/);
 });
+await check('VERDICT_RE covers the gate.sh --full verdict lines and motion-compare\'s summary, not report body lines', () => {
+  for (const line of [
+    'content-diff: none — content + roles match',
+    'content-diff: 3 (1 structural 🔴)',
+    'visual-diff: 2 advisory flag(s) — HEADING COLOR: h2 differs; IMAGE DIMS: hero;',
+    'chrome-parity: ✓ chrome parity within tolerance — run crop-compare (pass bar item 5) to confirm in pixels.',
+    'chrome-parity: ✗ 3 delta(s) — fix these before any pixel iteration on chrome; re-run until quiet, then crop-compare confirms.',
+    'chrome-parity: DEADLINE (exit 124) — re-run, not a verdict',
+    'content-diff: BLOCKED (exit 3) — bot challenge on the live side, escalate --headed',
+    'visual-diff: ERROR (exit 1) — visual-diff error: page.goto failed',
+    'evidence: stardust/replica/gates/home-1440/content-diff-iter2.txt',
+    'motion summary: 6 behaviors — 6 parity, 0 missing on build → PASS',
+  ]) assert.match(line, VERDICT_RE, line);
+  for (const line of ['  live: 12 headings', '  • HEADING COLOR: h2 differs', 'Full metrics JSON:', '{}']) assert.doesNotMatch(line, VERDICT_RE, line);
+});
 await check('wait to completion reports verdict lines only, deadline as no-verdict', () => {
   const r = bg('wait', '--max', '20', 'a', 'b', 'c', 'w');
   assert.equal(r.code, 0, r.out);
@@ -91,6 +106,15 @@ await check('a wrapper killed without an exit is reported lost, not running', as
   await sleep(200);
   const r = bg('status', 'lost');
   assert.match(r.out, /^lost {2}lost — wrapper gone/m, r.out);
+});
+await check('with no names and nothing going, wait/status report the latest batch — --all shows every job on disk', () => {
+  const old = new Date(Date.now() - 3 * 3600 * 1000).toISOString(); // an earlier session's finished job
+  writeFileSync(join(dir, 'old.json'), JSON.stringify({ name: 'old', cmd: 'true', args: [], cwd: dir, timeoutSec: 0, slots: 1, queuedAt: old, wrapperPid: null, launchedAt: old, endedAt: old, exit: 0, timedOut: false }));
+  writeFileSync(join(dir, 'old.log'), 'differing pixels: 0 / 1 = 0.00%  (threshold 10%) → PASS\n');
+  const s = bg('status'); assert.equal(s.code, 0); assert.doesNotMatch(s.out, /^old {2}/m, s.out); assert.match(s.out, /^a {2}done exit=2/m); assert.match(s.out, /run-bg: 1 earlier job\(s\) not shown — `status --all`$/m);
+  const w = bg('wait'); assert.equal(w.code, 0); assert.doesNotMatch(w.out, /^old {2}/m, w.out); assert.match(w.out, /1 earlier job\(s\) not shown/);
+  const all = bg('status', '--all'); assert.match(all.out, /^old {2}done exit=0/m, all.out); assert.doesNotMatch(all.out, /not shown/);
+  const named = bg('status', 'old'); assert.match(named.out, /^old {2}done exit=0/m); assert.doesNotMatch(named.out, /not shown/);
 });
 await check('clean removes ended jobs; wait on an empty dir says so', () => {
   const r = bg('clean');

@@ -17,11 +17,25 @@
  *
  * Usage: node skills/rollout/scripts/optimize.mjs [--base <url> | --root <dir>]
  *          [--slug <s>] [--all] [--out <rolloutDir>]
+ *   --base defaults to rollout.json's site.liveHost; --out to stardust/rollout
+ *
+ * Reads <out>/coverage/pages.json (required — run inventory.mjs first) and rollout.json.
+ * Writes (under <out>/optimize/): findings.json (the ledger, with this run appended) and
+ * scorecard.json (current snapshot + history). The report and the GATE line go to stdout.
+ * Exit 1 on an open P1 finding or a missing pages.json, 2 when neither --base nor --root resolves.
  */
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJSON, writeJSON, loadPageHTML, computeScorecard, autofixFor, ASSESSED_BY_BASELINE } from './lib.mjs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback; }
 const OUT = arg('out', 'stardust/rollout');

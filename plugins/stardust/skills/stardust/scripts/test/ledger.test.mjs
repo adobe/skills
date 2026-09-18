@@ -1,0 +1,187 @@
+#!/usr/bin/env node
+// skills/stardust/scripts/test/ledger.test.mjs — the ledger.mjs contract: run-status.md line
+// shape and key order, skill normalisation, file/dir creation on first write, append-only with
+// newline repair, unknown skill/phase warning vs --strict refusal, blocked-without-detail, tail
+// and last output, usage errors. Run: node <this file>.
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { PHASES, buildLine, canonicalPhase, checkPhase, normaliseSkill, formatTail } from '../ledger.mjs';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const SCRIPT = join(HERE, '..', 'ledger.mjs');
+const root = mkdtempSync(join(tmpdir(), 'ledger-test-'));
+const dir = join(root, 'stardust');
+const run = (...args) => { const r = spawnSync(process.execPath, [SCRIPT, ...args, '--dir', dir], { encoding: 'utf8' }); return { code: r.status, out: r.stdout, err: r.stderr }; };
+const lines = () => readFileSync(join(dir, 'status.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+let failed = 0;
+const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
+
+const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+
+// ---- pure helpers -------------------------------------------------------------------------------
+check('normaliseSkill: with or without prefix, case-folded, rejects junk', () => {
+  assert.equal(normaliseSkill('extract'), 'stardust:extract');
+  assert.equal(normaliseSkill('stardust:extract'), 'stardust:extract');
+  assert.equal(normaliseSkill('Stardust:Rollout'), 'stardust:rollout');
+  assert.throws(() => normaliseSkill('$stardust extract'), /not a skill name/);
+  assert.throws(() => normaliseSkill(''), /not a skill name/);
+});
+check('buildLine: key order ts,skill,phase,event,detail,artifact; detail collapsed to one line; blanks dropped', () => {
+  const l = buildLine({ skill: 'migrate', phase: 'render', event: 'end', detail: '12 pages\n  rendered', artifact: ' stardust/migrated/ ' });
+  assert.deepEqual(Object.keys(l), ['ts', 'skill', 'phase', 'event', 'detail', 'artifact']);
+  assert.match(l.ts, ISO_UTC); assert.equal(l.detail, '12 pages rendered'); assert.equal(l.artifact, 'stardust/migrated/');
+  const bare = buildLine({ skill: 'migrate', phase: 'render', event: 'start', detail: '  ', artifact: '' });
+  assert.deepEqual(Object.keys(bare), ['ts', 'skill', 'phase', 'event']);
+  assert.throws(() => buildLine({ skill: 'migrate', phase: 'render', event: 'done' }), /event must be one of start\|end\|blocked/);
+  assert.throws(() => buildLine({ skill: 'migrate', phase: 'per page', event: 'start' }), /single token/);
+});
+check('checkPhase: canonical and alias forms pass case-insensitively; unknown skill/phase name the known set', () => {
+  assert.equal(checkPhase('stardust:migrate', 'render'), null);
+  assert.equal(checkPhase('stardust:migrate', 'per-page-render'), null);
+  assert.equal(checkPhase('stardust:rollout', 'C-deliver'), null);
+  assert.equal(checkPhase('stardust:rollout', 'c-deliver'), null);
+  assert.equal(checkPhase('stardust:rollout', 'I-dashboard'), null);
+  assert.equal(checkPhase('stardust:replica', 'source-fidelity-gate'), null);
+  assert.equal(checkPhase('stardust:dynamics', 'triage'), null);
+  assert.equal(checkPhase('stardust:deploy', '7-blocks'), null);
+  assert.equal(checkPhase('stardust:prototype', 'approval'), null);
+  assert.equal(checkPhase('stardust:extract', 'discovery'), null);
+  assert.equal(checkPhase('stardust:stardust', 'setup'), null);
+  assert.match(checkPhase('stardust:migrate', 'paint'), /unknown phase "paint" for stardust:migrate \(known: plan, render, assets, state-and-report\)/);
+  assert.match(checkPhase('stardust:nope', 'x'), /unknown skill stardust:nope \(known: stardust, extract/);
+});
+check('PHASES: every requested skill is present, rollout uses the <Letter>-<word> form, no duplicate alias collides with a canonical name', () => {
+  for (const s of ['stardust', 'replica', 'rollout', 'dynamics', 'extract', 'migrate', 'deploy', 'prototype']) assert.ok(PHASES[s], `missing ${s}`);
+  for (const k of Object.keys(PHASES.rollout)) assert.match(k, /^[A-I]\d?-[a-z][a-z-]*$/, k);
+  for (const [skill, table] of Object.entries(PHASES)) {
+    const canon = new Set(Object.keys(table).map((k) => k.toLowerCase()));
+    for (const [k, aliases] of Object.entries(table)) for (const a of aliases) assert.ok(!canon.has(a.toLowerCase()), `${skill}: alias ${a} of ${k} shadows a canonical phase`);
+  }
+});
+
+// ---- CLI: writing ---------------------------------------------------------------------------------
+check('first write creates the directory and the file, prints the line it wrote', () => {
+  assert.ok(!existsSync(dir));
+  const r = run('migrate', 'render', 'start');
+  assert.equal(r.code, 0, r.err); assert.equal(r.err, '');
+  const printed = JSON.parse(r.out.trim());
+  assert.deepEqual(lines(), [printed]);
+  assert.deepEqual(Object.keys(printed), ['ts', 'skill', 'phase', 'event']);
+  assert.equal(printed.skill, 'stardust:migrate'); assert.equal(printed.phase, 'render'); assert.equal(printed.event, 'start'); assert.match(printed.ts, ISO_UTC);
+});
+check('prefixed skill, --detail and --artifact land in the line; the file is append-only', () => {
+  const r = run('stardust:migrate', 'render', 'end', '--detail', '12 pages rendered', '--artifact', 'stardust/migrated/');
+  assert.equal(r.code, 0, r.err);
+  const all = lines(); assert.equal(all.length, 2);
+  assert.equal(all[0].event, 'start', 'earlier line untouched');
+  assert.deepEqual(all[1], { ts: all[1].ts, skill: 'stardust:migrate', phase: 'render', event: 'end', detail: '12 pages rendered', artifact: 'stardust/migrated/' });
+});
+check('rollout letter-phase and blocked with a reason', () => {
+  const r = run('rollout', 'C-deliver', 'blocked', '--detail', 'token expired (401) — checkpointed, awaiting re-auth');
+  assert.equal(r.code, 0, r.err); assert.equal(r.err, '');
+  assert.equal(lines().at(-1).phase, 'C-deliver');
+});
+check('unknown phase: warning on stderr, line still written (exit 0); phase written as given', () => {
+  const before = lines().length;
+  const r = run('extract', 'Paint', 'start');
+  assert.equal(r.code, 0); assert.match(r.err, /warning: unknown phase "Paint" for stardust:extract \(known: discovery, /);
+  assert.equal(lines().length, before + 1); assert.equal(lines().at(-1).phase, 'Paint');
+});
+check('unknown skill: warning, still written', () => {
+  const r = run('reskin', 'tokens', 'start');
+  assert.equal(r.code, 0); assert.match(r.err, /warning: unknown skill stardust:reskin/); assert.equal(lines().at(-1).skill, 'stardust:reskin');
+});
+check('--strict refuses an unknown phase with exit 2 and writes nothing', () => {
+  const before = lines().length;
+  const r = run('extract', 'paint', 'start', '--strict');
+  assert.equal(r.code, 2); assert.match(r.err, /strict: unknown phase "paint".*nothing written/); assert.equal(r.out, '');
+  assert.equal(lines().length, before);
+});
+check('blocked without --detail warns; under --strict it is refused', () => {
+  const before = lines().length;
+  const w = run('dynamics', 'detect', 'blocked');
+  assert.equal(w.code, 0); assert.match(w.err, /blocked without --detail/); assert.equal(lines().length, before + 1);
+  const s = run('dynamics', 'detect', 'blocked', '--strict');
+  assert.equal(s.code, 2); assert.equal(lines().length, before + 1);
+});
+check('a last line missing its newline is repaired before appending (no fused records)', () => {
+  const file = join(dir, 'status.jsonl');
+  writeFileSync(file, readFileSync(file, 'utf8').trimEnd() + '\n{"ts":"2026-01-01T00:00:00Z","skill":"stardust:qa","phase":"sweep","event":"start"}');
+  const before = lines().length;
+  const r = run('prototype', 'render', 'start');
+  assert.equal(r.code, 0, r.err);
+  const all = lines(); assert.equal(all.length, before + 1); assert.equal(all.at(-2).skill, 'stardust:qa'); assert.equal(all.at(-1).skill, 'stardust:prototype');
+});
+check('usage errors exit 2: wrong arity, bad event, unknown option, missing value, no args; --help exits 0', () => {
+  assert.equal(run('migrate', 'render').code, 2);
+  assert.equal(run('migrate', 'render', 'finish').code, 2);
+  assert.equal(run('migrate', 'render', 'start', '--bogus').code, 2);
+  assert.equal(run('migrate', 'render', 'start', '--detail').code, 2);
+  const none = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' }); assert.equal(none.status, 2); assert.match(none.stderr, /Usage:/);
+  const h = run('--help'); assert.equal(h.code, 0); assert.match(h.out, /node ledger\.mjs <skill> <phase> <start\|end\|blocked>/); assert.match(h.out, /Known skills: stardust, extract, prototype, migrate, replica, dynamics, rollout, deploy/);
+});
+check('--help prints the phase table: every ledger-form phase and every alias of every skill, one line per skill', () => {
+  const h = run('--help');
+  for (const [skill, table] of Object.entries(PHASES)) {
+    const line = h.out.split('\n').find((l) => l.startsWith(`  ${skill}: `));
+    assert.ok(line, `no "${skill}:" line in --help`);
+    for (const [canon, aliases] of Object.entries(table)) {
+      assert.ok(line.includes(canon), `${skill}: ${canon} missing`);
+      for (const a of aliases) assert.ok(line.includes(`(${aliases.join(', ')})`), `${skill}: alias ${a} missing`);
+    }
+  }
+  assert.match(h.out, /rollout: .*I-dashboard/); // the runner-matched spelling, case intact
+});
+
+// ---- CLI: reading ---------------------------------------------------------------------------------
+check('tail prints the last n lines compactly: <ts> <skill> <phase> <event> <detail head>', () => {
+  const r = run('tail', '-n', '2');
+  assert.equal(r.code, 0, r.err);
+  const out = r.out.trimEnd().split('\n'); assert.equal(out.length, 2);
+  assert.match(out[0], /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z stardust:qa sweep start$/);
+  assert.match(out[1], /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z stardust:prototype render start$/);
+  const d = run('tail', '-n', '9').out; assert.match(d, /stardust:rollout C-deliver blocked token expired \(401\) — checkpointed, awaiting re-auth$/m);
+  assert.equal(run('tail').out.trimEnd().split('\n').length, 5, 'default n is 5');
+  assert.equal(formatTail({ ts: 't', skill: 's', phase: 'p', event: 'e', detail: 'x'.repeat(100) }).length, 't s p e '.length + 72, 'long detail is cut to a head with an ellipsis');
+});
+check('last prints the last line as JSON; last <skill> filters; no match says so on stderr and exits 0', () => {
+  const r = run('last'); assert.equal(r.code, 0); assert.equal(JSON.parse(r.out).skill, 'stardust:prototype');
+  const m = run('last', 'migrate'); assert.equal(m.code, 0); const l = JSON.parse(m.out); assert.equal(l.skill, 'stardust:migrate'); assert.equal(l.event, 'end');
+  const p = run('last', 'stardust:rollout'); assert.equal(JSON.parse(p.out).phase, 'C-deliver');
+  const none = run('last', 'deploy'); assert.equal(none.code, 0); assert.equal(none.out, ''); assert.match(none.err, /no lines for stardust:deploy/);
+});
+check('malformed lines are skipped with a count on stderr; an absent ledger reads as empty', () => {
+  const file = join(dir, 'status.jsonl');
+  writeFileSync(file, `${readFileSync(file, 'utf8')}not json\n\n`);
+  const r = run('tail', '-n', '1'); assert.equal(r.code, 0); assert.match(r.err, /1 malformed line\(s\) skipped/); assert.match(r.out, /stardust:prototype render start/);
+  const empty = join(root, 'empty'); mkdirSync(empty);
+  const e = spawnSync(process.execPath, [SCRIPT, 'tail', '--dir', empty], { encoding: 'utf8' }); assert.equal(e.status, 0); assert.equal(e.stdout, ''); assert.match(e.stderr, /no lines in/);
+  const e2 = spawnSync(process.execPath, [SCRIPT, 'last', '--dir', empty], { encoding: 'utf8' }); assert.equal(e2.status, 0); assert.equal(e2.stdout, '');
+});
+
+check('a known phase is written in the table\'s own form — aliases and case normalised, unknown names pass through', () => {
+  assert.equal(canonicalPhase('stardust:rollout', 'i-dashboard'), 'I-dashboard');
+  assert.equal(canonicalPhase('stardust:rollout', 'I-DASHBOARD'), 'I-dashboard');
+  assert.equal(canonicalPhase('stardust:replica', 'gate'), 'source-fidelity-gate');
+  assert.equal(canonicalPhase('stardust:migrate', 'per-page-render'), 'render');
+  assert.equal(canonicalPhase('stardust:replica', 'interaction-parity'), 'interaction-parity', 'unknown phase unchanged');
+  assert.equal(canonicalPhase('stardust:nosuch', 'x'), 'x', 'unknown skill unchanged');
+  const r = run('rollout', 'i-dashboard', 'end', '--detail', 'dashboard written');
+  assert.equal(r.code, 0);
+  assert.equal(JSON.parse(r.out).phase, 'I-dashboard', 'the printed line carries the canonical form');
+  assert.match(r.err, /phase "i-dashboard" written as "I-dashboard"/);
+  assert.doesNotMatch(r.err, /unknown phase/);
+  assert.equal(JSON.parse(run('last', 'rollout').out).phase, 'I-dashboard', 'the written line carries the canonical form');
+  const g = run('replica', 'GATE', 'start'); assert.equal(g.code, 0); assert.equal(JSON.parse(g.out).phase, 'source-fidelity-gate');
+  const u = run('replica', 'interaction-parity', 'end', '--detail', 'x'); assert.equal(u.code, 0);
+  assert.equal(JSON.parse(u.out).phase, 'interaction-parity'); assert.match(u.err, /unknown phase/);
+  const s = run('rollout', 'i-dashboard', 'end', '--strict', '--detail', 'x'); assert.equal(s.code, 0, 'a normalised known phase passes --strict');
+});
+
+rmSync(root, { recursive: true, force: true });
+console.log(failed ? `\n${failed} failing` : '\nledger: all checks passed');
+process.exit(failed ? 1 : 0);

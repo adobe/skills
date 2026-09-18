@@ -121,6 +121,15 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    EW gate (`block-roundtrip --ew`) before it counts as delivered — a brief without
    it skipped the contract on 27/27 blocks of a real site.
 
+   **Deploy first, judge on the preview origin.** The local harness
+   (`build-harness.mjs` → `qa-gate.mjs`, `block-roundtrip.mjs --ew`) serves the
+   structural asserts only; every pixel or visual judgment — replica's
+   source-fidelity gate, the header/footer `crop-compare` bands, the deployed
+   eyeball — runs against the page's preview URL after `PUT → preview`, never
+   against the harness before the first PUT (deploy SKILL.md § Local QA before
+   deploy, § Step 10). A recorded delivery session iterated CSS against a local
+   harness pixel diff for its whole budget and delivered no page.
+
    **`content-pending` pages** (archetypes-only): no migrated HTML — skip the
    document push entirely (no shell/placeholder), record `content-pending`, surface
    as "awaiting content track." Their block code is already deployed via the
@@ -143,6 +152,8 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    one-line rule here; mechanics + helpers in `reference/delivery-gates.md`:
    - **Source-fidelity** — don't add sections the source lacks; never fabricate
      facts. `node skills/rollout/scripts/section-fidelity.mjs --file <html> --source <url>`
+     (a static outline check on the authored file — not replica's pixel
+     source-fidelity gate, which runs on the published origin after `deployed`)
    - **Image-fidelity** — every authored `<img>` src must return 200 or be omitted;
      never ship `<img src="about:error">`. Run `media-reconcile.mjs` (step 2).
    - **Path-safety** — normalize source paths to AEM-Edge-safe form (lowercase, no
@@ -174,7 +185,9 @@ prototype, **plus computed-style invariants in a headless render** — grid
 containers compute `display: grid` (not stacked single-column), sections are
 full-bleed where the design says so, and the CTA/button classes are actually
 styled (per `stardust/runtime-contract.json`, `skills/deploy/SKILL.md`
-§ Runtime-detection probe). A wrong runtime assumption (block wrapper class,
+§ Runtime-detection probe). `deployed` means after PUT + preview: the gate's
+probes run against the page's preview URL, never a local harness — a
+pre-deploy harness pixel diff is NOT this gate. A wrong runtime assumption (block wrapper class,
 button classes) is silent and sitewide — typography still looks fine while
 every grid stacks. This one gate is the difference between fixing one page
 and rebuilding every template.
@@ -401,7 +414,7 @@ boundary. (`state.json` is read-only and optional.)
 | Input | Source | Used for |
 |---|---|---|
 | `stardust/migrated/*.html` | `migrate` | the pages to deliver (read-only) |
-| `stardust/migrated/**/_meta.json` | `migrate` | `templateId` (`template`/`type`), `blocks` (`modules`), `title` |
+| `stardust/migrated/**/_meta.json` | `migrate` | `templateId` (`template`; an archetype with `template: null` groups under its own slug; else `type`), `blocks` (`modules` — the inventory report counts sidecars with an empty list: fill them before Phase B), `title` |
 | `stardust/state.json` | stardust core | *(archetypes-only mode)* full page roster + `type` for pages not yet migrated |
 | `stardust/rollout/rollout.json` | rollout / user | DA target coordinates |
 

@@ -7,10 +7,25 @@
  *
  *   node sync-sheets.mjs --source https://main--site--org.aem.live --org <org> --repo <repo> --paths placeholders.json,data/hours.json [--ref main] [--log stardust/dynamics/sheets]
  *   env DA_TOKEN (IMS bearer) — used for admin.da.live and admin.hlx.page; never printed.
+ *
+ * Writes: <log>/_sync.json (default stardust/dynamics/sheets) — per path the source status,
+ * row count and the PUT / preview / live statuses, with _provenance. Network side effects:
+ * one PUT to the DA admin API plus a preview and a publish POST per path on the target repo.
+ * Per-path lines go to stderr. Exit 0 on completion, 2 on usage or a missing DA_TOKEN,
+ * 3 when the token is rejected (401).
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { arg, list, writeJSON, provenance } from './lib.mjs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 const SOURCE = (arg('source') || '').replace(/\/$/, ''); const ORG = arg('org'); const REPO = arg('repo'); const REF = arg('ref', 'main');
 const PATHS = list(arg('paths', ''));

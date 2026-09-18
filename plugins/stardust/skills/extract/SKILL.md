@@ -326,6 +326,13 @@ model reads the image — and verify it against the extracted record:
 - Is the page actually rendered — not a consent wall, bot-block
   page, or blank SPA shell?
 
+Read the whole page through its thumbnail —
+`node stardust/scripts/thumb.mjs stardust/current/assets/screenshots/<slug>.png --width 480`
+(`skills/extract/scripts/thumb.mjs`, copied beside `crawl.mjs`; a
+box-filter downscale, so 1-px rules and hairline borders survive) —
+never the full-resolution screenshot, and read any detail as a crop of
+the full capture.
+
 On mismatch, re-run that page's capture with the escalation ladder
 before proceeding: bump the wait mode one step
 (`reference/playwright-recipe.md` § Wait modes), then headed Chrome
@@ -353,7 +360,22 @@ per `reference/brand-surface.md`. Some fields are home-only (logo,
 voice samples, register heuristic); the visual tokens that drive
 DESIGN.md (palette, radius, shadow, type) are aggregated across **all
 extracted pages** to avoid the home-page bias documented in
-`brand-surface.md` § Aggregation scope. Captures:
+`brand-surface.md` § Aggregation scope.
+
+**Computed-style census — run the shipped instrument; author no
+probe.** `node <plugin>/skills/extract/scripts/style-census.mjs`
+(copied into the project like `crawl.mjs`, § Setup) measures every
+captured page at 1440 and writes
+`stardust/current/_computed-styles.json`; add `--width 360` when the
+breakpoints include it. A long run goes in the background when the
+harness offers it. Read the palette, type, motif and hover values
+from the file's `aggregate` (via `json-query.mjs` where the replica
+copies it, or one `node -e` otherwise) and cite each from its
+`sources[]` (`url`, `selector`, `prop`); the per-page detail —
+headings, buttons with hover, surfaces, histograms, custom
+properties, logo candidates, icon-font glyphs — sits under
+`pages[url][width]`. `--help` lists the flags and the output shape.
+Captures:
 
 - **Logo** by the v1 priority chain: inline SVG → `<img>` with
   logo-ish class/id → `apple-touch-icon` → `og:image` → favicon →
@@ -415,7 +437,9 @@ URL in `_brand-extraction.json` for traceability.
 The current-state PRODUCT.md and DESIGN.md are **descriptive, not
 authored** — there is no interview to run because the user is not
 defining intent here, the agent is describing the existing site. Write
-them directly using impeccable's format specs:
+them directly using impeccable's format specs (impeccable's skill
+directory is what `node <plugin>/skills/stardust/scripts/impeccable-version-check.mjs --where`
+prints; read each spec by section, not whole):
 
 - For PRODUCT.md, follow the section structure in impeccable's
   `reference/init.md` § Write PRODUCT.md. File order: stardust's

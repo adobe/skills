@@ -6,6 +6,62 @@ git history only (plus the branch-scoped notes in
 
 ## 0.22.1 — replica instruments: the pixel-compare hang fixed, deadlines, live-side caches, a path lint
 
+- **rollout/inventory.mjs**: an archetype whose sidecar leaves `template` null (the migrate
+  spec's form) groups under its own slug, so the siblings that name that slug land in the
+  same template — a recorded session got one template per page and hand-filled seven
+  sidecars; a template's representative is its archetype, not the first slug; sidecars
+  with an empty `modules[]` are counted in the report, since Phase B dedups from them. The
+  handoff card and migrate's Phase 2 name `template` and `modules[]` among the sidecar
+  fields to declare. Contract test: rollout/scripts/test/inventory.test.mjs.
+- **run-bg.mjs**: `wait`/`status` with no job names and nothing going report the latest
+  batch (jobs ended within 10 min of the newest) instead of every job on disk — a
+  session's wait had dumped earlier sessions' summaries; `--all` shows everything.
+- **migrate/migrate.mjs** (new): the per-page migrate driver — page map, URL-literal
+  output path, internal-link rewrite, asset bundling, `<head>` composition (provenance,
+  `:root`, canonical and JSON-LD defaults), strict validation, `_meta.json` sidecar,
+  idempotent skip and the `state.json.migrate` block, plus `gate` / `deviation` /
+  `decision` / `variant` / `modules` for the judgments only the agent can record. Until
+  now a recorded session authored all of that by hand on every run — minutes and dollars
+  per page for the same generic steps, with the sidecar shape drifting between pages;
+  the script does them in a second and the session's tokens go to the render decision.
+  Contract test: migrate/scripts/test/migrate.test.mjs.
+- **replica/gate-evidence.mjs** (new): the Phase 5 handoff collector. Walks every migrated
+  page's `_meta.json` sidecar, attributes run-bg jobs to pages by their ARGUMENTS (gate.sh's
+  slug, the `<slug>-proposed.html` file, the page's URL or output path — never by log prose),
+  takes the latest ENDED job per page × instrument × width by run-bg's `endedAt` (never file
+  mtime; running jobs skipped) and derives `pixel-gate-<width>` (PASS with |height delta| ≤ 8 px),
+  `content-count` (0 structural 🔴), `media-reconcile` (no omit, no unresolved), `delivery-lint`
+  (run in-process per page, `0 P0 · 0 P1`) and, for siblings, `variance-probe`. Passing gates
+  are appended to `gatesPassed[]` after the existing entries, each with a one-line
+  `gateEvidence` ending in its `(<job>.log)` pointer; failing or open verdicts land in
+  `gateEvidence` as `FAIL: ` / `OPEN: ` so the reader sees why the gate is missing. The same
+  facts roll into `progress.json` (`migrate` totals, per-gate counts, `missing{}`; `siblings{}`
+  block), other keys and indent preserved. `content-fidelity` is never added — it stays the
+  agent's declaration (`migrate.mjs gate <slug> content-fidelity --evidence …`). `--check`
+  exits 2 naming every sibling short of the acceptance set; `--slug`, `--dry-run`, `--json`.
+  Contract test: replica/scripts/test/gate-evidence.test.mjs (18 checks).
+- **deploy/da-media-upload.mjs**: a 401 from the admin API is retried like a 429 instead of
+  halting the batch at once, and the first upload runs alone to prove the token before the
+  pool opens — a recorded unattended run had the whole first burst (default concurrency 4)
+  answered 401 on a token with hours of validity left, halting at 0 uploaded / 4 failed /
+  116 not attempted, while a single sequential PUT then went through and a re-run at
+  concurrency 1 succeeded. Now only a 401 that still persists after the retries on that
+  lone first upload halts (same FAIL line and stderr instruction); a persistent 401 on a
+  later file, after the token was accepted, is that file's FAIL and the batch continues
+  (re-run the same command to finish). `--retries` covers 401/429/5xx/network for the admin
+  PUT; the source fetch keeps 401/403 as the bot wall. Contract test:
+  deploy/scripts/test/da-media-upload.test.mjs (a burst of 401s lands; the first upload
+  runs alone; a late persistent 401 is a FAIL, not a halt).
+- **replica/reference/handoff-contract.md + rollout/SKILL.md**: Phase C's per-page order is explicit
+  — convert → lints → media-reconcile → harness structural asserts → PUT → preview → `deployed` →
+  THEN pixel gates on the PUBLISHED origin; the harness is structural-only, never a pixel verdict
+  (`build-harness.mjs` folds `section-metadata`, `--media-ledger` rehosts DA images). A recorded
+  session read "source-fidelity" pre-deploy as a local pixel gate, iterated CSS, delivered no page.
+- **deploy/build-harness.mjs**: folds `section-metadata` blocks into their sections exactly as the
+  delivery pipeline does (`style` → normalised classes, `id`, other keys → `data-*`, block removed)
+  and remaps `content.da.live` image URLs to the captured files via `--media-ledger` (auto-detected
+  under `--root`). Ends a recorded failure: styled sections rendered plain and images broke
+  (401), so every probe lied. Contract test: deploy/scripts/test/build-harness.test.mjs (18 checks).
 Evidence base: 48 field sessions (Aug–Sep 2026, 24 projects) plus the notes those runs wrote about
 themselves. `pixel-compare.mjs` was slow or timed out in 17 of 24 runs and on every plugin version
 since 0.18.1; seven projects' own notes name it, four describe it sitting at 0 % CPU after printing
@@ -59,6 +115,133 @@ such processes from earlier migrations were still alive on the test machine, som
   read-by-section rule (across twelve runs deploy/SKILL.md was read whole ~20× per run, once per
   dispatched agent; in one recorded run the watchdog-killed agents carried the fattest briefs); the DA protocol's two
   `until … sleep 3` waits are capped and fail loud.
+
+- **gate.sh `--full` + `--help`**: the whole Phase 4 probe set in one round — after the pixel verdict,
+  content-diff, visual-diff and chrome-parity run in parallel, each under `run-capped`
+  (`GATE_PROBE_TIMEOUT` 300 s), full reports to the gate dir, one verdict line each; exit 124 on any
+  deadline, 2 on a pixel fail / structural 🔴 / chrome delta, 1 when a probe errored (no verdict is
+  never a pass). Recorded 2026-09-18: without it the agent wrote its own wrapper for the full round,
+  which ran the probes one after another with no deadlines (a round took 15 minutes) and a second
+  wrapper for the published-origin gate; the published round is now the same command with the
+  preview URL and a `--marker` (the identity assertion greps the served page, and the slug lives in
+  the prototype's file name, not the preview page). `run-bg.mjs wait` recognises the four probes'
+  verdict lines (`content-diff:` … `evidence:`, DEADLINE / BLOCKED / ERROR), so a round's reason
+  reaches the agent rather than a bare `done exit=2`. Contract test with stub instruments:
+  `skills/replica/scripts/test/gate.test.mjs` (25 checks).
+- **`--help` on every CLI script**: every script a skill ships under `scripts/` — replica, diff, master,
+  deploy, rollout, dynamics, qa, extract, reskin — prints its usage header on `--help` / `-h` and exits 0
+  before it parses arguments, reads a file or opens a browser (recorded: `section-schema` navigated to
+  `--help` as a URL, `style-fingerprint` crashed on it, `davids-model-lint` and `sanitise` read it as a
+  file path, `crawl`, `render-harness` and `ew-editability-probe` rejected it as an unknown flag, the
+  rollout scripts demanded `inventory.mjs` first). A script that writes artifacts carries a `Writes:`
+  block naming every path; `crawl.mjs --help` lists its whole output contract under `--out` and states
+  what it does NOT capture (recorded: four greps over its source in one session to learn what it writes).
+  The new `evals/lint/script-help.mjs` (third step of `npm run lint:stardust`) runs every script with
+  `--help` in an empty cwd and fails on a non-zero exit, missing usage text or a file written; pure
+  libraries are exempt by a documented list. The replica reading discipline now says: run `--help`,
+  never read the source (16 such reads, 66k characters, in one recorded session).
+- **Main-module guards by real path** (`run-capped`, `run-bg`, `section`, `css-rules`, `json-query`,
+  `html-slice`, `ledger`, `state`): node resolves the entry's symlinks for `import.meta.url` but not
+  for `process.argv[1]`, so a symlinked checkout or temp dir made each CLI a silent no-op (exit 0,
+  no output).
+- **Reading discipline, images**: one crop per fact, never a full stitched page or the
+  live/build/diff triplet (21 image reads in one recorded run for facts the verdict lines held).
+- **`skills/stardust/scripts/ledger.mjs` and `state.mjs`** (new, master skill): the ledger and
+  state writers — `ledger.mjs <skill> <phase> <start|end|blocked>` checks the phase name against a
+  table derived from each skill's SKILL.md headings (rollout `A-inventory` … `I-dashboard`) and writes a known one in the table's
+  own form — aliases and case normalised, because supervising runners match these strings exactly
+  (`--strict` refuses an unknown one); `tail`/`last` orient a resuming agent; `state.mjs advance <slug…> --to <status>` follows
+  state-machine.md (forward and re-entry moves, backward refused without `--force`, history and
+  provenance fields, stale cleared where the doc says), `summary` prints counts. Recorded: one run
+  finished gating five archetypes and wrote their end lines a session later from a 3k-character
+  throwaway script. run-status.md states the phase-name derivation rule; 34 checks in
+  `skills/stardust/scripts/test/` (ledger 18, state 16).
+- **`skills/replica/reference/handoff-contract.md`** (new): the Phase 5 contract card — sibling-tier
+  steps, deploy editability/decode/DA protocols, boilerplate lint rules, rollout phases A–I with
+  ledger strings, one usage line per deploy and rollout script, bookkeeping. Every statement cites
+  the source section for `section.mjs`. Recorded: one session read 260k characters of the sibling
+  skills whole (then the overflow again) before its first Phase 5 output.
+- **`motion-compare.mjs`** (new, replica): parity check between two `motion-observe` outputs (live vs
+  build) — one verdict line per behavior, dead-on-live behaviors never required, exit 0 on parity.
+  Where the observer is blind — a widget or hover that reads dead on live while the build fires
+  (class-toggled fades, pseudo-element underlines; recorded on a real page whose carousel fired by
+  class while its four sampled frames were identical), a CSS property transitioned on the build
+  only — the line is advisory, never a hard EXTRA; entrance animations, the header morph and a
+  double header stay hard.
+- **`da-media-upload.mjs`** (new, deploy): the documented DA media protocol as a script — multipart
+  `PUT` to `admin.da.live/source/…/media/<scope>/<file>`, persistent ledger, capped retries, content
+  URLs printed, the token never. Both replace tools agents authored per run (7.6k and 6k characters
+  in one recorded session).
+- **`ledger.mjs --help` prints the phase table** — one line per skill, ledger form with the accepted
+  aliases, generated from the same table the writer normalises against — so the vocabulary a
+  supervising runner matches is one command away. Recorded 2026-09-18: a session grepped and
+  `sed`-ranged the script's source for it, two steps before its first ledger line.
+- **`impeccable-version-check.mjs --where`**: prints impeccable's skill directory (`SKILL.md` +
+  `reference/`) from the registries the check already reads, no network call, exit 1 when no copy
+  exists. Setup step 1 notes it once; extract Phase 4 reads impeccable's `reference/init.md` and
+  `reference/document.md` from there by section. Recorded: a session ran two whole-filesystem
+  `find`s for `reference/document.md`. Contract test
+  `skills/stardust/scripts/test/impeccable-where.test.mjs` (4 checks).
+- **Hands-off defaults — one shell, one working directory**: the harness shell keeps its working
+  directory across tool calls, so a `cd` inside one command moves every later command with it.
+  Paths from the project root, `cd` only in a subshell. Recorded: one `cd` into the capture
+  directory failed the next three reads and cost a re-run turn.
+- **`extract/scripts/thumb.mjs`** (new): box-filter whole-page thumbnails of captured screenshots
+  (`--width 480`, source-row `--max-height` crop, directory input, never overwrites a source), so
+  the brand-gestalt read keeps 1-px rules and hairline borders — a 1-px rule at 3× reads 181 on a
+  255 background where nearest-neighbour drops it two times in three. Recorded: one session probed
+  for image tools (none) and then wrote its own nearest-neighbour downscaler, two turns before its
+  first look at a page. Phase 2.5 and the replica reading discipline point to it (the one exception
+  to "one crop per fact"). Contract test `skills/extract/scripts/test/thumb.test.mjs` (15 checks in
+  an environment with pngjs, 6 pure checks anywhere).
+- **`extract/scripts/style-census.mjs`** (new): the computed-style census Phase 3 requires but never
+  had an instrument for — every captured page (default: all of them, at 1440; `--width` repeatable)
+  measured with generic selectors only: headings and body type, button-looking elements with a
+  real-pointer hover state, in-copy links, landmark surfaces, radius / shadow / gradient / colour
+  histograms with sample selectors, `:root` custom properties, loaded fonts, header logo candidates,
+  private-use-area icon glyphs. Consent overlays are dismissed by label; a fixed element still
+  covering more than 40 % of the viewport is excluded with its subtree, so an undismissed overlay
+  never enters the palette. A deterministic `aggregate` clusters colours (≤ 12 per channel) into
+  role-named entries with `sources[]`, splits families by heading vs body, lists sizes with where
+  they occur (the modular-scale audit's input) and the per-level weighted size, the count- and
+  area-weighted radius modes, top shadows, gradients, distinct hover deltas and the logo chain's
+  pick. Partial evidence stays evidence: failures land in `_provenance.failed[]`, exit 1 only when
+  every page failed. Recorded: one run's hand-written probe measured 5 of 26 pages with that
+  site's class names and took several turns before its first palette value. Phase 3 and
+  brand-surface § Aggregation scope point at `_computed-styles.json#aggregate` as the computed
+  source. Contract test `skills/extract/scripts/test/style-census.test.mjs` (16 checks where
+  playwright is importable — a fixture site with a consent overlay, an undismissed promo overlay
+  and an inline SVG logo — 11 pure checks anywhere).
+- **`replica/scripts/measure.mjs`** (new): the box-by-box instrument Phase 3 compares with —
+  for a caller-supplied selector list, at one or more widths, each match's rect (page-absolute,
+  rounded), visibility, a text snippet and a computed-style group (22 defaults, `--props`
+  replaces); `--against <url2>` measures the same selectors on the prototype and prints one delta
+  line per selector per width (`Δx Δy Δw Δh` in px plus every property that differs, `a → b`),
+  a selector missing on one side reported rather than skipped; `--all-matches` (capped at 12),
+  `--json`, `--out`. A measurement, not a gate: exit 0 with deltas, 1 when a page failed to load
+  (named, the other side still printed), 2 usage. Recorded 2026-09-18: one run authored the same
+  probe twice in two sessions — rects + computed styles for a selector list at one width — while
+  the shipped scripts covered section anchors, sibling variance and chrome only. Contract test
+  `skills/replica/scripts/test/measure.test.mjs` (18 checks where playwright is importable — two
+  fixture pages differing in one element's padding + colour and one element's position — 13 pure
+  checks anywhere).
+- **`replica/scripts/json-query.mjs`**: `--tsv` (with `--no-header`) prints every matching record
+  as one line, the `--fields` tab-separated and whole — a tab or newline inside a value written as
+  `\t`/`\n` — the route for values a command consumes; `--path` to a string prints it whole; the
+  table still cuts cells at `--width` (marked `…`) and now ends with one footer counting the cut
+  cells and naming both whole-value routes. Recorded 2026-09-18: one run read slug→URL pairs off
+  the table and launched two background probes against the cut cells — both killed and restarted
+  from a hand-written map, one turn lost. Replica § Setup names the rule: values that feed a
+  command come from `--tsv` or `--path`, never from the table. Contract test
+  `skills/replica/scripts/test/inspect.test.mjs` (+2 checks).
+- **Hands-off defaults — author large files in parts**: the prompt cache lives about five minutes,
+  and a turn that generates for longer leaves the next request with a cold cache and a re-write of
+  the whole context. Write the skeleton, then append in edits of roughly 150 lines or less.
+  Recorded 2026-09: two such turns in one run — the brand documents written in one go at the end of
+  extract, and a first prototype's whole HTML and CSS in one write — each re-wrote a ~200k-token
+  context (about $2.50 apiece at the cache-write rate); an earlier run re-wrote 513k and 694k the
+  same way ($6–9 each). No compaction was involved; the sessions outran the cache lifetime inside
+  one generation.
 
 ## 0.22.0 — stardust owns `stardust/`: write boundary and versioning policy
 

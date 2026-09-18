@@ -17,8 +17,19 @@
  *   node skills/rollout/scripts/media-reconcile.mjs --file <html>
  *        --deploy-host <host> [--host-rewrite badhost=goodhost] [--json] [--apply]
  *   --apply rewrites the file in place (rewrite → suggested URL, omit → remove <img>).
+ *
+ * Writes: --file IN PLACE, only with --apply; otherwise nothing (the per-image decisions,
+ * text or --json, go to stdout). Resolves every image URL over the network. Exit 2 without --file.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 function arg(name, fb) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fb; }
 const FILE = arg('file', null);

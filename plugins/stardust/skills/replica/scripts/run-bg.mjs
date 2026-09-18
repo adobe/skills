@@ -35,7 +35,8 @@
  *        jobs are running. Each capture is a Chromium; start them all at once
  *        and let the slots pace them — no `sleep N;` staggering.
  * wait   polls until the named jobs (default: every job unfinished when the
- *        wait began; if none, every job) have ended, or --max seconds pass
+ *        wait began; if none, the latest batch — jobs ended within 10 min of the
+ *        newest; --all: every job on disk) have ended, or --max seconds pass
  *        (default 100; clamped to 270 — returning before the context cache
  *        expires is the point), then prints one line per job and, for ended
  *        jobs, its verdict lines: log lines matching --grep (default: the gate
@@ -56,7 +57,7 @@
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
 import { spawn } from 'node:child_process';
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEADLINE_EXIT, runCapped } from './run-capped.mjs';
@@ -68,18 +69,22 @@ export const DEFAULT_MAX_SEC = 100;
 export const MAX_CEILING_SEC = 270;
 export const DEFAULT_TAIL = 8;
 export const STILL_RUNNING_EXIT = 75;
+// With nothing going and no names given, `wait`/`status` report the latest batch: jobs that ended
+// within this window of the newest ending. Earlier sessions' jobs stay on disk (their logs are
+// evidence) but out of the report — one session's wait had dumped every prior session's summary.
+export const RECENT_WINDOW_SEC = 600;
 // The gate instruments' verdict vocabulary: pixel-compare's size/height/percentage/band lines,
 // stitch-shot's completion line, gate.sh's fail-loud prefixes, run-capped's deadline notice,
 // content-diff's structural count. Override with --grep for another instrument.
-export const VERDICT_RE = /differing pixels|height delta|hot band|\bPASS\b|\bFAIL(?:ED)?\b|WARNING|\berror\b|exceeded|IDENTITY|reaped|stitched \S+:|structural|🔴|run-capped:|gate\.sh:/;
+export const VERDICT_RE = /differing pixels|height delta|hot band|\bPASS\b|\bFAIL(?:ED)?\b|WARNING|\berror\b|exceeded|IDENTITY|reaped|stitched \S+:|structural|🔴|run-capped:|gate\.sh:|\b(?:content-diff|visual-diff|chrome-parity|evidence): |DEADLINE|BLOCKED|ERROR \(exit|delta\(s\)|advisory|motion summary:/;
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
 const POLL_MS = Number(process.env.RUN_BG_POLL_MS) || 2000;
 const SELF = fileURLToPath(import.meta.url);
 
 const HELP = `Usage:
   node run-bg.mjs start --name <job> [--timeout <s>=${DEFAULT_TIMEOUT_SEC}] [--slots <n>=${DEFAULT_SLOTS}] -- <cmd> [args…]
-  node run-bg.mjs wait   [--max <s>=${DEFAULT_MAX_SEC}] [--tail <n>=${DEFAULT_TAIL}] [--grep <re>] [<job>…]
-  node run-bg.mjs status [--tail <n>] [--grep <re>] [<job>…]
+  node run-bg.mjs wait   [--max <s>=${DEFAULT_MAX_SEC}] [--tail <n>=${DEFAULT_TAIL}] [--grep <re>] [--all] [<job>…]
+  node run-bg.mjs status [--tail <n>] [--grep <re>] [--all] [<job>…]
   node run-bg.mjs log    <job> [--tail <n>=40] [--grep <re>]
   node run-bg.mjs clean  [--all]
   (all: [--dir <d>], default ${DEFAULT_DIR})`;
@@ -175,7 +180,7 @@ export function describe(st) {
   return st.timedOut ? `${st.name}  deadline ${st.timeoutSec}s exceeded (exit ${DEADLINE_EXIT}: no verdict — re-run, or raise --timeout for a legitimately huge page)${took}` : `${st.name}  done exit=${st.exit}${took}`;
 }
 
-export function report(dir, names, { tail = DEFAULT_TAIL, grep = null, elapsedSec = 0, ceilingSec = 0 } = {}) {
+export function report(dir, names, { tail = DEFAULT_TAIL, grep = null, hidden = 0, elapsedSec = 0, ceilingSec = 0 } = {}) {
   const lines = []; let pending = 0;
   for (const name of names) {
     const st = readState(dir, name);
@@ -187,31 +192,37 @@ export function report(dir, names, { tail = DEFAULT_TAIL, grep = null, elapsedSe
   if (!names.length) lines.push(`run-bg: no jobs in ${dir}`);
   else if (pending) lines.push(`run-bg: ${names.length - pending}/${names.length} ended, ${pending} still going${elapsedSec ? ` after ${Math.round(elapsedSec)}s (ceiling ${ceilingSec}s)` : ''} — run \`wait\` again as your next step; logs: ${dir}/<job>.log`);
   else lines.push(`run-bg: all ${names.length} ended — full output per job: \`log <job> --grep <re>\` (${dir}/<job>.log)`);
+  if (hidden) lines.push(`run-bg: ${hidden} earlier job(s) not shown — \`status --all\``);
   return { text: lines.join('\n'), pending };
 }
 
-function pickNames(dir, requested) {
-  if (requested.length) return requested;
+function pickNames(dir, requested, { all = false } = {}) {
+  if (requested.length) return { names: requested, hidden: 0 };
   const jobs = listJobs(dir).sort((a, b) => (a.queuedAt < b.queuedAt ? -1 : 1));
   const unfinished = jobs.filter(isPending);
-  return (unfinished.length ? unfinished : jobs).map((j) => j.name);
+  if (unfinished.length) return { names: unfinished.map((j) => j.name), hidden: 0 };
+  if (all || !jobs.length) return { names: jobs.map((j) => j.name), hidden: 0 };
+  const at = (j) => new Date(j.endedAt || j.queuedAt).getTime();
+  const newest = Math.max(...jobs.map(at));
+  const recent = jobs.filter((j) => newest - at(j) <= RECENT_WINDOW_SEC * 1000);
+  return { names: recent.map((j) => j.name), hidden: jobs.length - recent.length };
 }
 
-export async function wait(dir, requested, { maxSec = DEFAULT_MAX_SEC, tail, grep } = {}) {
+export async function wait(dir, requested, { maxSec = DEFAULT_MAX_SEC, tail, grep, all = false } = {}) {
   if (!Number.isFinite(maxSec) || maxSec < 0) throw new UsageError(`run-bg: --max must be a number of seconds\n${HELP}`);
   let ceilingSec = maxSec;
   if (maxSec > MAX_CEILING_SEC) { ceilingSec = MAX_CEILING_SEC; console.error(`run-bg: --max ${maxSec} clamped to ${MAX_CEILING_SEC}s — a step must return before the context cache expires`); }
-  const names = pickNames(dir, requested);
+  const { names, hidden } = pickNames(dir, requested, { all });
   const t0 = Date.now();
   for (;;) {
     const pending = names.map((n) => readState(dir, n)).filter((st) => st && isPending(st));
     if (!pending.length || (Date.now() - t0) / 1000 >= ceilingSec) break;
     await sleep(Math.min(POLL_MS, Math.max(50, ceilingSec * 1000 - (Date.now() - t0))));
   }
-  return report(dir, names, { tail, grep, elapsedSec: (Date.now() - t0) / 1000, ceilingSec });
+  return report(dir, names, { tail, grep, hidden, elapsedSec: (Date.now() - t0) / 1000, ceilingSec });
 }
 
-export function status(dir, requested, { tail, grep } = {}) { return report(dir, pickNames(dir, requested), { tail, grep }); }
+export function status(dir, requested, { tail, grep, all = false } = {}) { const { names, hidden } = pickNames(dir, requested, { all }); return report(dir, names, { tail, grep, hidden }); }
 
 export function showLog(dir, name, { tail = 40, grep = null } = {}) {
   if (!name) throw new UsageError(`run-bg: log needs a <job>\n${HELP}`);
@@ -277,8 +288,8 @@ async function cli(argv) {
       console.log(`run-bg: queued ${r.name} → ${r.log}   (next step: node stardust/scripts/replica/run-bg.mjs wait)`);
       return 0;
     }
-    case 'wait': { const r = await wait(o.dir, o.names, { maxSec: o.maxSec, tail: o.tail, grep: o.grep }); console.log(r.text); return r.pending ? STILL_RUNNING_EXIT : 0; }
-    case 'status': { const r = status(o.dir, o.names, { tail: o.tail, grep: o.grep }); console.log(r.text); return 0; }
+    case 'wait': { const r = await wait(o.dir, o.names, { maxSec: o.maxSec, tail: o.tail, grep: o.grep, all: o.all }); console.log(r.text); return r.pending ? STILL_RUNNING_EXIT : 0; }
+    case 'status': { const r = status(o.dir, o.names, { tail: o.tail, grep: o.grep, all: o.all }); console.log(r.text); return 0; }
     case 'log': console.log(showLog(o.dir, o.names[0], { tail: o.tail ?? 40, grep: o.grep })); return 0;
     case 'clean': console.log(await clean(o.dir, { all: o.all })); return 0;
     case '__run': await runWrapper(o.dir, o.name); return process.exitCode ?? 0;
@@ -286,7 +297,9 @@ async function cli(argv) {
   }
 }
 
-if (process.argv[1] && SELF === process.argv[1]) {
+// Compare by real path: a symlinked checkout or temp dir must not turn the CLI into a silent no-op.
+function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
+if (process.argv[1] && SELF === safeRealpath(process.argv[1])) {
   // exitCode, not process.exit(): see run-capped.mjs — a forced exit can hang Node's platform shutdown.
   cli(process.argv.slice(2)).then((code) => { process.exitCode = code; }, (e) => { console.error(e instanceof UsageError ? e.message : `run-bg: ${e.stack || e.message}`); process.exitCode = e instanceof UsageError ? e.code : 1; });
 }

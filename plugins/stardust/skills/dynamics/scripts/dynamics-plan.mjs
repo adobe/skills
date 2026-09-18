@@ -11,16 +11,28 @@
  *   --migrated <dir>             scan migrated HTML for the feature's evidence
  *                                tokens → `alreadyDelivered` (never rebuild what
  *                                the capture pipeline already shipped)
- * Output: `dynamic-features.generated-plan.md` + `.json`. The run curates it
- * into `stardust/dynamic-features.md` (reference/triage.md).
+ * The run curates the draft into `stardust/dynamic-features.md` (reference/triage.md).
  *
  *   node dynamics-plan.mjs [--in stardust/current/_dynamics.json] [--out stardust/dynamics]
  *        [--target-origin https://…] [--auth-header "token …" | --token-env SITE_TOKEN] [--migrated stardust/migrated]
+ *
+ * Writes (under --out, default stardust/dynamics):
+ *   dynamic-features.generated-plan.json   one row per finding, the four axes pre-filled, with _provenance
+ *   dynamic-features.generated-plan.md     the same rows as a table + triage counts by phase
+ * The summary line goes to stderr. Exit 0 on completion; a missing --in file throws (exit 1).
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { arg, readJSON, writeJSON, writeText, provenance, resolveAuthHeader, probe } from './lib.mjs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 const IN = arg('in', 'stardust/current/_dynamics.json');
 const OUT = arg('out', 'stardust/dynamics');

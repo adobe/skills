@@ -5,22 +5,35 @@
  * Records, per probed page, everything the live page renders from JavaScript,
  * a service or a data source, then classifies each finding into the dynamic
  * classes (reference/classes-and-signals.md). Evidence only: no decision is
- * taken here. Output: `<out>/_dynamics.json` (+ `dynamic-features.generated.md`).
+ * taken here.
  *
  *   node dynamics-detect.mjs --urls <url,url,…> [--out stardust/current]
  *        [--from-state stardust/state.json]   one URL per page type + the home page, from extract's inventory
  *        [--reach stardust/current]           roll per-page `dynamic` sections (extract --dynamics) into feature reach
  *        [--settle 5000] [--width 1440] [--headed]
  *
+ * Writes (under --out, default stardust/current):
+ *   _dynamics.json                  per-page evidence + classified findings (+ `reach` with --reach)
+ *   dynamic-features.generated.md   the findings as a table, one row per feature
+ * Progress lines go to stderr. Exit 0 on completion, 2 on usage.
+ *
  * Probes the SOURCE site. No auth header is sent (the source is public); the
  * target-host probe lives in dynamics-plan.mjs.
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
-import { readdirSync, existsSync } from 'node:fs';
+import { readdirSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   arg, flag, list, readJSON, writeJSON, writeText, provenance, loadPlaywright, vendorFor, registrable, sameSite, pathPattern, settlePage, slug,
 } from './lib.mjs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 const OUT = arg('out', 'stardust/current');
 const SETTLE = Number(arg('settle', 5000));

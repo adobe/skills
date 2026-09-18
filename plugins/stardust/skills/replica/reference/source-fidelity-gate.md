@@ -574,6 +574,16 @@ uncommented, unledgered edit is still a defect.
 
 ## The published-origin gate (EDS pipeline deltas)
 
+The published round is the Phase 4 command with the preview origin as the
+build URL — `gate.sh <slug> "$LIVE" "<preview-url>" <width> pub1 --full
+--marker "<brand or domain string>"` through `run-bg.mjs` — so the same four
+probes, deadlines and verdict lines apply; no hand-written wrapper. The
+`--marker` is required here: the identity assertion greps the served page for
+the marker, and the slug sits in the prototype's file name, not in the
+preview page. Keep the ordinary `stardust/replica/gates/<slug>-<width>/`
+evidence dir — the `pub<N>` label keeps the round apart, and a new dir would
+force a fresh live capture against the hit-minimisation rule.
+
 The prototype gate above proves the RECREATION; it does not prove the
 DELIVERED page. Local render harnesses systematically understate deltas
 because the real delivery pipeline transforms the markup — field rule

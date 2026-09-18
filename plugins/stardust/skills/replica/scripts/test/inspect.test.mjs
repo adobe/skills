@@ -2,7 +2,8 @@
 // skills/replica/scripts/test/inspect.test.mjs — the four inspection helpers' contracts:
 // section.mjs (outline, one section, fences ignored, caps), css-rules.mjs (nested @media,
 // raw at-rules, strings/comments/data URIs, filters, minified offsets), json-query.mjs (shape,
-// table, --match/--fields/--keys/--path, caps), html-slice.mjs (nesting, attribute stripping,
+// table, --match/--fields/--keys/--path, caps, --tsv whole values, the truncation footer),
+// html-slice.mjs (nesting, attribute stripping,
 // svg/script removal, --text, --all, void tags). Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -12,7 +13,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseCss, splitDeclarations } from '../css-rules.mjs';
 import { outline, section } from '../section.mjs';
-import { getPath, matches, parseMatch, shape } from '../json-query.mjs';
+import { getPath, matches, parseMatch, shape, tsv } from '../json-query.mjs';
 import { clean, findElements, parseSelector } from '../html-slice.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -35,6 +36,9 @@ const JSON_DOC = { url: 'https://example.test/', width: 1440, docHeight: 3754, f
   { _rect: { x: 0, y: 1100, w: 1440, h: 80 }, _tag: 'footer', _class: 'footer', _text: 'Legal' },
 ], main: [{ type: 'carousel', slides: [{ label: 'Slide 1 of 3', indicator: 'A' }, { label: 'Slide 2 of 3', indicator: 'B' }] }] };
 const json = join(dir, 'styles.json'); writeFileSync(json, JSON.stringify(JSON_DOC));
+const LONG_URL = `https://example.test/${'segment/'.repeat(22)}index.html`; // 207 chars — longer than any table cell
+const CRAWL = { pages: [{ slug: 'home', url: LONG_URL, title: 'Home\tsweet\nhome', depth: 0 }, { slug: 'about', url: 'https://example.test/about', title: 'About', depth: 1 }] };
+const crawl = join(dir, 'crawl.json'); writeFileSync(crawl, JSON.stringify(CRAWL));
 const HTML = `<!DOCTYPE html><html><head><title>t</title><style>.x{}</style></head><body class="page">\n<header class="site-header" data-cmp-is="header" id="top">\n<!-- nav -->\n<nav class="cmp-nav"><ul><li><a href="/a.html" data-track="1" class="lnk">A</a></li><li><a href="/b.html">B</a></li></ul></nav>\n<svg viewBox="0 0 10 10"><path d="M0 0L10 10"/></svg>\n<div class="inner"><div class="deep">deep</div></div>\n<script>window.x = 1;</script>\n<img src="/logo.png" alt="Logo" width="10">\n</header>\n<main><div class="cmp-teaser">One</div><div class="cmp-teaser dark">Two</div></main>\n<footer><p>Legal &nbsp; text</p></footer></body></html>`;
 const html = join(dir, 'page.html'); writeFileSync(html, HTML);
 
@@ -115,6 +119,26 @@ check('json-query: --keys union with counts; nested path table; shape --depth', 
   const n = run('json-query.mjs', json, '--path', 'main[0].slides', '--fields', 'label'); assert.match(n.out, /^1\s+Slide 2 of 3/m);
   assert.ok(shape(JSON_DOC, { depth: 2 }).some((l) => /^\s+\[0\]\._tag: string/.test(l)), 'depth 2 describes the first array item');
   assert.equal(run('json-query.mjs', json, '--match', 'bad').code, 125);
+});
+check('json-query: --tsv prints whole values, escapes tab/newline, honours --fields order and --no-header', () => {
+  const r = run('json-query.mjs', crawl, '--path', 'pages', '--fields', 'url,slug', '--tsv');
+  assert.equal(r.code, 0, r.err); const lines = r.out.trimEnd().split('\n');
+  assert.deepEqual(lines, ['url\tslug', `${LONG_URL}\thome`, 'https://example.test/about\tabout']);
+  const t = run('json-query.mjs', crawl, '--path', 'pages', '--fields', 'slug,title', '--tsv', '--no-header');
+  assert.deepEqual(t.out.trimEnd().split('\n'), ['home\tHome\\tsweet\\nhome', 'about\tAbout']);
+  assert.equal(run('json-query.mjs', crawl, '--path', 'pages', '--tsv', '--no-header', '--match', 'slug=about').out.trimEnd(), 'about\thttps://example.test/about\tAbout\t1'); // default fields = all scalars
+  assert.equal(run('json-query.mjs', crawl, '--path', 'pages', '--tsv', '--max', '1').out.trimEnd().split('\n').length, 3, '--max does not apply to --tsv');
+  assert.deepEqual(tsv([{ a: 'x\ty', b: null, c: { d: 1 } }], ['a', 'b', 'c', 'missing'], { header: false }), ['x\\ty\tnull\t{"d":1}\t']);
+});
+check('json-query: the table marks a cut cell with … and one footer; --path to a long string prints it whole; --help exits 0', () => {
+  const r = run('json-query.mjs', crawl, '--path', 'pages', '--fields', 'slug,url');
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /^0\s+home\s+https:\/\/example\.test\/segment\/\S*…$/m); assert.doesNotMatch(r.out, /index\.html/);
+  assert.equal((r.out.match(/cell\(s\) truncated/g) || []).length, 1);
+  assert.match(r.out, /\n1 cell\(s\) truncated at --width 48 — full values: --tsv, or --path pages\[<#>\]\.<field>\n$/, 'the footer is the last line');
+  assert.doesNotMatch(run('json-query.mjs', crawl, '--path', 'pages', '--fields', 'slug,depth').out, /truncated/, 'no footer when nothing was cut');
+  assert.match(run('json-query.mjs', crawl, '--path', 'pages', '--fields', 'slug,url', '--width', '300').out, /index\.html/);
+  const p = run('json-query.mjs', crawl, '--path', 'pages[0].url'); assert.equal(p.code, 0, p.err); assert.match(p.out, /string\(207\)/); assert.ok(p.out.split('\n').includes(LONG_URL), 'the whole string on its own line');
+  const h = run('json-query.mjs', '--help'); assert.equal(h.code, 0); assert.match(h.out, /Usage/); assert.match(h.out, /--tsv/);
 });
 
 // ---- html-slice ---------------------------------------------------------------------------------

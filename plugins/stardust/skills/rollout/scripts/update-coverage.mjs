@@ -12,9 +12,22 @@
  *   block <status>: pending | converted | deployed | verified | failed
  *
  * Re-derives templates.json + rollout.json roll-ups after every write.
+ *
+ * Writes (under --out, default stardust/rollout): coverage/pages.json (page form) or
+ * coverage/blocks.json (block form), then coverage/templates.json and rollout.json when
+ * they exist. One result line on stdout.
  */
 import { join } from 'node:path';
 import { readJSON, writeJSON, rollupTemplates, rollupConfig } from './lib.mjs';
+import { readFileSync } from 'node:fs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
