@@ -184,7 +184,12 @@ otherwise):
 - **Delegate by file pointer, read by section.** A brief to a delegated
   agent names the files and sections it needs (`state.json`, the page's
   schema, the phase's SKILL.md sections); it never inlines reference docs.
-  Reference documents are read by heading and line range, not end to end.
+  Reference documents are read by heading and line range, not end to end
+  (replica ships `skills/replica/scripts/section.mjs` for exactly this:
+  `--list` for a document's outline, then one heading; it works on any
+  Markdown file — a whole reference doc is 30–40k characters, the section
+  a step needs is 2–4k, and one recorded session paid for three whole docs
+  twice when their `cat` output overflowed and was re-read in full).
   Instruments that can stall run under their shipped deadline (replica
   `gate.sh`, `pixel-compare --timeout`) — never under an agent-authored
   `sleep N; kill` loop — and long steps write a progress file the

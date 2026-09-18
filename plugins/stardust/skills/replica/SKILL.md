@@ -53,7 +53,8 @@ eyeballing.
 4. Copy scripts into the project and run them from there, not from the
    plugin: this skill's whole `scripts/` dir (stitch-shot, pixel-compare,
    crop-compare, chrome-parity, row-profile, sibling-variance, anchor,
-   gate.sh, run-capped, run-bg, motion-observe) to `stardust/scripts/replica/` AND the whole
+   gate.sh, run-capped, run-bg, section, css-rules, json-query, html-slice,
+   motion-observe) to `stardust/scripts/replica/` AND the whole
    `../diff/scripts/` dir to `stardust/scripts/diff/` (the diff scripts
    import diff-profiles.mjs, and ALL live-target hardening — including
    stitch-shot's — lives in its live-session.mjs; stitch-shot resolves it
@@ -61,6 +62,37 @@ eyeballing.
    keep the two dirs siblings). Never copy into the project-root
    `scripts/` — that is the EDS boilerplate's directory (master skill
    § Artifacts, the write boundary).
+
+**Reading and inspection discipline — the context is the budget.**
+Everything a step prints stays in the agent's context for the rest of the
+session and is re-read on every model call. Recorded in one hands-off
+session (2026-09-18, 77 minutes): 172 steps carried 750k characters of tool
+output into a 535k-token context; three whole reference documents `cat`ed
+at once overflowed and were then read again in full (157k characters for
+text paid for twice); 21 ad-hoc `node -e` dumps of capture JSON cost 141k,
+`sed -n` line ranges of a pretty-printed stylesheet 102k. The helpers below
+print the part that matters, capped, and say what they left out:
+
+- **Reference docs**: `node stardust/scripts/replica/section.mjs <doc> --list`
+  for the outline, then `section.mjs <doc> '<heading>'` for the one section
+  the current step needs — never the whole file.
+- **Captured CSS**: `css-rules.mjs <sheet> '<selector regex>' [--media <re>]
+  [--decl <re>]` — the rule blocks, each with its media condition, instead
+  of line ranges of the sheet.
+- **Capture JSON** (computed styles, content trees, motion checks, crawl
+  logs — their shape is the run's own): `json-query.mjs <file>` for the
+  shape, `--path <p> --keys` to learn an array's fields, then `--path <p>
+  --match <key>=<re> --fields <a,b> --max 40` for a bounded table.
+- **Captured HTML**: `html-slice.mjs <page.html> header|footer|main|.class
+  [--text]` — one element, attributes stripped to the structural few,
+  scripts and inline SVG removed, capped.
+- **Instrument output**: never `cat` a log or a capture; gate rounds run
+  through `run-bg.mjs` (Phase 4) and are read back with `wait` summaries
+  and `log --grep`.
+
+Write anything you will need again to a file under `stardust/` (a lifted
+value table, a section map) and read the file back by query, not the
+instrument's output by scroll.
 
 ## Procedure
 

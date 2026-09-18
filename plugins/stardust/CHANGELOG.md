@@ -34,6 +34,17 @@ such processes from earlier migrations were still alive on the test machine, som
   going; `log --grep` reads the rest from `stardust/.work/replica/bg/<job>.log`. Contract test in
   `skills/replica/scripts/test/run-bg.test.mjs`; source-fidelity-gate § Iteration discipline and
   the replica Phase 4 snippet run rounds through it.
+- **Inspection helpers** (new, `skills/replica/scripts/`): `section.mjs` (a Markdown outline, or one
+  section by heading), `css-rules.mjs` (the rule blocks matching a selector regex, each with its
+  @media condition), `json-query.mjs` (shape / key union / bounded filtered table of any capture
+  JSON — schema-agnostic, because capture files are the run's own), `html-slice.mjs` (one element
+  of a captured page, attributes stripped, scripts and inline SVG removed). Recorded 2026-09-18, one
+  hands-off session of 77 minutes: 172 steps carried 750k characters of tool output into a
+  535k-token context — three whole reference docs `cat`ed at once overflowed and were read again in
+  full (157k characters), 21 one-off `node -e` dumps of capture JSON cost 141k, `sed -n` ranges of a
+  pretty-printed stylesheet 102k. Replica Setup gets a reading-and-inspection discipline naming
+  them; the master skill's read-by-section rule points at `section.mjs`. Contract test in
+  `skills/replica/scripts/test/inspect.test.mjs`.
 - **chrome-parity.mjs `--live-cache`, anchor.mjs `--cache`**: the live side's measurement is
   probed once per breakpoint and reused while URL, width and selectors match — the same contract
   gate.sh already had for live.png (recorded: 5½-minute chrome-parity rounds ×3 ×4 archetypes).

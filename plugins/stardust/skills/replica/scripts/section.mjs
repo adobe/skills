@@ -1,0 +1,99 @@
+#!/usr/bin/env node
+/**
+ * skills/replica/scripts/section.mjs — read one section of a Markdown document,
+ * or its outline, instead of the whole file.
+ *
+ * Why: everything a step prints stays in the agent's context for the rest of
+ * the session and is re-read on every model call. In one recorded hands-off
+ * session (2026-09-18) three reference documents were `cat`ed at once; each
+ * overflowed the step's output limit and was then read again in full — 157k
+ * characters for text the agent had already paid for once. A reference doc
+ * is 30–40k characters; the section a phase needs is 2–4k.
+ *
+ * Usage:
+ *   node section.mjs <file.md> --list                 # outline: level, line, title, length
+ *   node section.mjs <file.md> "<heading regex>"      # the first matching heading + its body
+ *       [--level <n>]      only headings of this level (2 = "##")
+ *       [--max-lines <n>]  cap the body (default 400; the rest is named by line range)
+ *       [--all]            every matching section, not just the first
+ *
+ * The body runs to the next heading of the same or a higher level. Headings
+ * inside fenced code blocks are ignored. Exit 0 = printed, 2 = no match
+ * (the outline is printed so the next call can hit), 125 = usage.
+ */
+
+/* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const HELP = 'Usage: node section.mjs <file.md> (--list | "<heading regex>") [--level <n>] [--max-lines <n>] [--all]';
+
+export function outline(text) {
+  const lines = text.split('\n');
+  const out = [];
+  let fence = null;
+  lines.forEach((line, i) => {
+    const f = line.match(/^\s*(```+|~~~+)/);
+    if (f) { if (!fence) fence = f[1][0]; else if (f[1][0] === fence) fence = null; return; }
+    if (fence) return;
+    const m = line.match(/^(#{1,6})\s+(.*?)\s*#*\s*$/);
+    if (m) out.push({ level: m[1].length, line: i + 1, title: m[2] });
+  });
+  out.forEach((h, k) => {
+    let end = lines.length;
+    for (let j = k + 1; j < out.length; j += 1) if (out[j].level <= h.level) { end = out[j].line - 1; break; }
+    h.end = end; h.length = end - h.line + 1;
+  });
+  return out;
+}
+
+export function section(text, headingRe, { level = null, maxLines = 400 } = {}) {
+  const heads = outline(text).filter((h) => (level ? h.level === level : true) && headingRe.test(h.title));
+  if (!heads.length) return null;
+  const lines = text.split('\n');
+  return heads.map((h) => {
+    const body = lines.slice(h.line - 1, h.end);
+    const shown = body.slice(0, maxLines);
+    const note = body.length > maxLines ? `… ${body.length - maxLines} more lines (L${h.line + maxLines}–L${h.end}); pass --max-lines or a narrower heading` : null;
+    return { ...h, text: shown.join('\n'), note };
+  });
+}
+
+export function formatOutline(heads, file) {
+  const rows = heads.map((h) => `L${String(h.line).padStart(4)} ${'  '.repeat(h.level - 1)}${'#'.repeat(h.level)} ${h.title}  (${h.length} lines)`);
+  return [`${file}: ${heads.length} headings`, ...rows].join('\n');
+}
+
+function cli(argv) {
+  const rest = argv.slice(2);
+  if (!rest.length || rest.includes('--help') || rest.includes('-h')) { console.log(HELP); return rest.length ? 0 : 125; }
+  let file = null; let pattern = null; let list = false; let level = null; let maxLines = 400; let all = false;
+  for (let i = 0; i < rest.length; i += 1) {
+    const a = rest[i];
+    if (a === '--list') list = true;
+    else if (a === '--all') all = true;
+    else if (a === '--level') level = Number(rest[++i]);
+    else if (a === '--max-lines') maxLines = Number(rest[++i]);
+    else if (a.startsWith('--')) { console.error(`section: unknown flag ${a}\n${HELP}`); return 125; }
+    else if (!file) file = a;
+    else if (!pattern) pattern = a;
+    else { console.error(`section: unexpected argument ${a}\n${HELP}`); return 125; }
+  }
+  if (!file || (!list && !pattern)) { console.error(`section: need a file and --list or a heading regex\n${HELP}`); return 125; }
+  let text; try { text = readFileSync(file, 'utf8'); } catch (e) { console.error(`section: cannot read ${file}: ${e.message}`); return 1; }
+  const heads = outline(text);
+  if (list) { console.log(formatOutline(heads, file)); return 0; }
+  let re; try { re = new RegExp(pattern, 'i'); } catch (e) { console.error(`section: bad regex ${pattern}: ${e.message}`); return 125; }
+  const found = section(text, re, { level, maxLines });
+  if (!found) { console.error(`section: no heading matches /${pattern}/i in ${file} — outline:\n${formatOutline(heads, file)}`); return 2; }
+  const show = all ? found : found.slice(0, 1);
+  for (const s of show) {
+    console.log(`${file} L${s.line}–L${s.end} (${s.length} lines)`);
+    console.log(s.text);
+    if (s.note) console.log(s.note);
+  }
+  if (!all && found.length > 1) console.log(`\nalso matches: ${found.slice(1).map((h) => `L${h.line} ${'#'.repeat(h.level)} ${h.title}`).join(' | ')}  (--all for every one)`);
+  return 0;
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) process.exitCode = cli(process.argv);
