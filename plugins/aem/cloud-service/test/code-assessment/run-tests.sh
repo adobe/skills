@@ -98,9 +98,11 @@ OUT="$(run "$FIX/scheduler")"
 assert_contains "LegacyScheduler (implements Sling Job) flagged"   "$OUT" 'LegacyScheduler.java'
 assert_contains "ProgrammaticScheduler (imports Scheduler) flagged" "$OUT" 'ProgrammaticScheduler.java'
 assert_contains "OsgiPropertyScheduler (Runnable + scheduler.expression) flagged" "$OUT" 'OsgiPropertyScheduler.java'
+assert_contains "FelixScrScheduler (Felix SCR @Service(Runnable) + scheduler.expression) flagged" "$OUT" 'FelixScrScheduler.java'
 assert_contains "scheduler pattern present"                         "$OUT" '"pattern":"scheduler"'
 assert_absent  "NotASchedulerJob (non-Sling Job) not flagged"       "$OUT" 'NotASchedulerJob.java'
 assert_absent  "PlainRunnableHelper (Runnable + @Component, no scheduler.* prop) not flagged" "$OUT" 'PlainRunnableHelper.java'
+assert_absent  "FelixPlainRunnable (Felix SCR Runnable, no scheduler.* prop) not flagged" "$OUT" 'FelixPlainRunnable.java'
 assert_absent  "CollisionComponentScheduler (non-OSGi @Component) not flagged" "$OUT" 'CollisionComponentScheduler.java'
 
 echo "[resource-change-listener] modern ResourceChangeListener / ExternalRCL detected, name-collision skipped"

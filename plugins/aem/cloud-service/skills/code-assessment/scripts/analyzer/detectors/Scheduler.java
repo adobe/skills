@@ -18,6 +18,11 @@ public final class Scheduler implements Detector {
     static final String JOB_FQN       = "org.apache.sling.commons.scheduler.Job";
     static final String RUNNABLE_FQN  = "java.lang.Runnable";
     static final String COMPONENT_FQN = "org.osgi.service.component.annotations.Component";
+    // Legacy Felix SCR annotations (pre-OSGi-DS): @Service(Runnable.class) + @Property/@Properties.
+    static final String FELIX_COMPONENT_FQN  = "org.apache.felix.scr.annotations.Component";
+    static final String FELIX_SERVICE_FQN    = "org.apache.felix.scr.annotations.Service";
+    static final String FELIX_PROPERTY_FQN   = "org.apache.felix.scr.annotations.Property";
+    static final String FELIX_PROPERTIES_FQN = "org.apache.felix.scr.annotations.Properties";
 
     // OSGi DS property keys that identify a class as a Sling Scheduler component.
     static final String[] SCHEDULER_PROPERTIES = {
@@ -34,7 +39,7 @@ public final class Scheduler implements Detector {
             final boolean[] classLevelMatch = {false};
             new TreePathScanner<Void, Void>() {
                 public Void visitClass(ClassTree cls, Void p) {
-                    if (implementsLegacyJob(cls, u) || isOsgiPropertyScheduler(cls, u)) {
+                    if (implementsLegacyJob(cls, u) || isOsgiPropertyScheduler(cls, u) || isFelixScrScheduler(cls, u)) {
                         out.add(new Finding(pattern(), u.rel, u.lineOf(cls), Types.classHeader(u, cls)));
                         classLevelMatch[0] = true;
                     }
@@ -76,6 +81,32 @@ public final class Scheduler implements Detector {
         if (!Annotations.hasAnnotation(cls.getModifiers(), "Component", COMPONENT_FQN, u)) return false;
         for (AnnotationTree a : cls.getModifiers().getAnnotations()) {
             if (!Annotations.simpleName(a.getAnnotationType().toString()).equals("Component")) continue;
+            String src = a.toString();
+            for (String key : SCHEDULER_PROPERTIES) {
+                if (src.contains(key)) return true;
+            }
+        }
+        return false;
+    }
+
+    // Legacy Felix SCR scheduler: implements Runnable + a Felix SCR annotation
+    // (@Component / @Service(Runnable.class) / @Property / @Properties, import-aware) whose
+    // class-level annotation source declares a scheduler.* property. Mirrors the OSGi-DS check
+    // above for projects still on the old `org.apache.felix.scr.annotations.*` stack. The Felix
+    // annotation gate keeps a plain Runnable with an unrelated scheduler-looking string safe.
+    static boolean isFelixScrScheduler(ClassTree cls, JavaUnit u) {
+        boolean implementsRunnable = false;
+        for (Tree iface : cls.getImplementsClause()) {
+            if (Types.resolvesTo(iface.toString(), RUNNABLE_FQN, u)) { implementsRunnable = true; break; }
+        }
+        if (!implementsRunnable) return false;
+        boolean felixAnnotated =
+               Annotations.hasAnnotation(cls.getModifiers(), "Component", FELIX_COMPONENT_FQN, u)
+            || Annotations.hasAnnotation(cls.getModifiers(), "Service", FELIX_SERVICE_FQN, u)
+            || Annotations.hasAnnotation(cls.getModifiers(), "Properties", FELIX_PROPERTIES_FQN, u)
+            || Annotations.hasAnnotation(cls.getModifiers(), "Property", FELIX_PROPERTY_FQN, u);
+        if (!felixAnnotated) return false;
+        for (AnnotationTree a : cls.getModifiers().getAnnotations()) {
             String src = a.toString();
             for (String key : SCHEDULER_PROPERTIES) {
                 if (src.contains(key)) return true;

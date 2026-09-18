@@ -1276,3 +1276,61 @@ test('Fix D: analyzer union fills a BPA-clean cascade pattern and dedups by clas
   assert.strictEqual(deduped.findingsByPattern.scheduler.length, 1, 'same class is deduped');
   assert.strictEqual(deduped.sourceByPattern.scheduler, 'mcp', 'no analyzer suffix when nothing new was added');
 });
+
+// ── bpaIncomplete: a BPA source that structurally can't report a pattern must not mark it clean ──
+
+test('bpaIncomplete: BPA-clean templateModernization still runs the content-scan fallback (CAM cannot see templates)', async () => {
+  const root = mkworkspace();
+  write(root, 'ui.apps/jcr_root/apps/my/templates/content-page/.content.xml',
+    '<jcr:root jcr:primaryType="cq:Template"/>');
+  // A BPA source is present (isolated collectionsDir) but reports nothing for
+  // templateModernization — CAM can't report templates, so this must NOT be clean.
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    collectionsDir: path.join(root, 'nocollections'),
+    preFetchedBpa: { templateModernization: [] },
+  });
+  assert.strictEqual(gathered.bpaMode, 'mcp');
+  assert.strictEqual(gathered.sourceByPattern.templateModernization, 'content-scan',
+    'content-scan ran despite the BPA source');
+  assert.strictEqual(gathered.findingsByPattern.templateModernization.length, 1);
+  assert.ok(!gathered.needsLlmScan.includes('templateModernization'));
+});
+
+test('bpaIncomplete: BPA-clean guavaCache falls through to needsLlmScan (own bundle may be filtered out)', async () => {
+  const root = mkworkspace();
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    collectionsDir: path.join(root, 'nocollections'),
+    preFetchedBpa: { guavaCache: [] },
+  });
+  assert.ok(gathered.needsLlmScan.includes('guavaCache'),
+    'a zero BPA result for a bpaIncomplete bpa-only pattern is not treated as clean');
+  assert.notStrictEqual(gathered.sourceByPattern.guavaCache, 'mcp');
+});
+
+test('bpaIncomplete does NOT change lui/cdw: CAM reports those reliably, so BPA-clean stays clean', async () => {
+  const root = mkworkspace();
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    collectionsDir: path.join(root, 'nocollections'),
+    preFetchedBpa: { lui: [], cdw: [] },
+  });
+  for (const p of ['lui', 'cdw']) {
+    assert.strictEqual(gathered.sourceByPattern[p], 'mcp', `${p} owned by BPA`);
+    assert.ok(!gathered.needsLlmScan.includes(p), `${p} not pushed to LLM tier`);
+  }
+});
+
+test('bpaIncomplete: when BPA DOES report the pattern, BPA still owns it (no fallback override)', async () => {
+  const root = mkworkspace();
+  write(root, 'ui.apps/jcr_root/apps/my/templates/content-page/.content.xml',
+    '<jcr:root jcr:primaryType="cq:Template"/>');
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    collectionsDir: path.join(root, 'nocollections'),
+    preFetchedBpa: { templateModernization: [{ className: '/apps/my/templates/reported', identifier: 'legacy.static.template' }] },
+  });
+  assert.strictEqual(gathered.sourceByPattern.templateModernization, 'mcp', 'BPA owns it when it reports findings');
+  assert.strictEqual(gathered.findingsByPattern.templateModernization.length, 1, 'BPA finding, not the content-scan one');
+});

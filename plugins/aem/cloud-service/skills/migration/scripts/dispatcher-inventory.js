@@ -34,7 +34,13 @@ function detectMode(root) {
   if (!looksLikeDispatcher(root)) return 'not-dispatcher';
   if (alreadyCloud && !amsMarkers) return 'already-cloud';
   if (hasStd) return 'standard';
-  if (hasMonolith || (isDir(path.join(root, 'conf.vhost.d')) && !isDir(dispD))) return 'flexible';
+  // Monolithic / vhost.d-only layout. Distinguish a genuine AMS on-premise config
+  // (has ams_* / *_farm.any / conf.d/whitelists) from a generic flexible one, so the
+  // runbook labels it honestly instead of a misleading bare "flexible". Both route to
+  // the same on-premise executor (singleFileMain) — this only fixes the label.
+  if (hasMonolith || (isDir(path.join(root, 'conf.vhost.d')) && !isDir(dispD))) {
+    return amsMarkers ? 'ams' : 'flexible';
+  }
   // has a dispatcher.any + vhosts but not standard v2.0 → treat as flexible-general (v1/unusual)
   if (walkFind(root, n => n === 'dispatcher.any', 4)) return 'v1';
   return 'unknown';

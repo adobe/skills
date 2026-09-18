@@ -10,7 +10,7 @@ const TOOL_DIR = path.join(__dirname, 'dispatcher-tool');
 // non-`standard` mode to the on-prem executor, so without this guard `already-cloud` /
 // `not-dispatcher` / `unknown` would run the tool on a tree it can't convert. The agent is meant
 // to STOP first; runConverter refuses too (defense-in-depth).
-const CONVERTIBLE = new Set(['standard', 'flexible', 'v1']);
+const CONVERTIBLE = new Set(['standard', 'flexible', 'ams', 'v1']);
 
 // YAML-safe emission: escape backslashes + double-quotes; quote scalars. Empty → blank (' ')
 // so the tool's `if (config.X)` guards still treat it as unset. A path with a YAML indicator
@@ -54,7 +54,7 @@ function writeToolConfig(workingDir, cfg) {
 
 function resolveExecutor(toolDir, mode) {
   const execs = path.join(toolDir, 'node_modules', TOOL_PKG, 'executors');
-  const entry = (mode === 'standard') ? 'main.js' : 'singleFileMain.js'; // flexible/v1/unknown → on-premise path
+  const entry = (mode === 'standard') ? 'main.js' : 'singleFileMain.js'; // flexible/ams/v1/unknown → on-premise path
   return path.join(execs, entry);
 }
 

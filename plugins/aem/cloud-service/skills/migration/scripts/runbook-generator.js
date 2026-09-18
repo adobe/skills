@@ -204,6 +204,9 @@ const PATTERN_META = {
     strategy: 'content-scan',
     bpaSlugs: ['templateModernization'],
     heuristic: true,
+    // CAM/BPA cannot report static templates at all, so a zero BPA result is
+    // not proof of clean — fall through to the local `.content.xml` content-scan.
+    bpaIncomplete: true,
     description: 'Static templates under `apps/<appId>/templates/*` (`cq:Template`) that should become editable templates. Detected heuristically by globbing template `.content.xml`; the template modernization pipeline (Branch C) runs per-template context → execute → validate.',
     promptPattern: 'template modernization',
     sampleOverride: 'Use the migration skill: migrate my static templates to editable templates and generate the AEM Modernize Tools rewrite rules.',
@@ -213,6 +216,10 @@ const PATTERN_META = {
     severity: 'info',
     strategy: 'bpa-only',
     bpaSlugs: ['guavaCache'],
+    // CAM/BPA reports Guava per-bundle and can filter out the project's own
+    // bundles, so a zero BPA result is not proof of clean — fall through to the
+    // LLM tier (there is no analyzer/content-scan detector for this pattern).
+    bpaIncomplete: true,
     description: 'Bundles importing `com.google.common.cache.*` (Guava in-process cache). Migrate to Caffeine (`com.github.benmanes.caffeine.cache.*`) — a near 1:1 API swap. Not a Cloud-Service-native pattern — only found in code carried over from legacy AEM — so BPA is the sole source of truth; there is no analyzer or content-scan fallback. BPA reports one finding per bundle (identifier is a Guava-internal class, not a customer class).',
     promptPattern: 'guavaCache',
     sampleOverride: 'Use the migration skill: fix guavaCache findings using BPA CSV — swap Guava cache for Caffeine.',
@@ -391,6 +398,15 @@ async function gatherFindings(options = {}) {
         // pattern UNSCANNED so its local detector runs as a fallback (and, if
         // that can't run either, it surfaces in needsLlmScan). Never mark it
         // as a clean BPA scan.
+        continue;
+      }
+      if (merged.length === 0 && PATTERN_META[pattern].bpaIncomplete) {
+        // A BPA source is present but STRUCTURALLY cannot fully report this
+        // pattern (CAM can't see static templates at all; it filters Guava to
+        // specific bundles). A zero result is therefore NOT proof of clean —
+        // leave it UNSCANNED so the local fallback runs: content-scan for
+        // templateModernization, or the LLM tier for bpa-only guavaCache. If
+        // BPA *did* return findings they are kept (below) and own the verdict.
         continue;
       }
       // Either the fetch succeeded (possibly zero findings = genuinely clean)
