@@ -135,6 +135,34 @@
           "description": "Does not suggest using GitHub environment secrets."
         }
       ]
+    },
+    {
+      "id": 5,
+      "prompt": "Deploy my Content Hub extension to Stage and give me the test link.",
+      "expected_output": "Switches to the Stage workspace, runs aio app deploy, parses the CDN URL from the deploy log, and opens/returns the experience.adobe.com test link with the ?devMode=true&ext= parameter and the Content Hub deep-link hash.",
+      "files": [],
+      "assertions": [
+        {
+          "type": "output_contains",
+          "pattern": "aio app deploy",
+          "description": "Runs the standard App Builder deploy command."
+        },
+        {
+          "type": "output_contains",
+          "pattern": "devMode=true&ext=",
+          "description": "Builds the Content Hub test URL with devMode and ext params."
+        },
+        {
+          "type": "output_contains",
+          "pattern": "#/assets/contenthub/",
+          "description": "Includes the Content Hub deep-link hash in the test URL."
+        },
+        {
+          "type": "output_not_contains",
+          "pattern": "showUrl",
+          "description": "Does not use the other AEM surfaces' host.modal.showUrl pattern for Content Hub."
+        }
+      ]
     }
   ]
 }

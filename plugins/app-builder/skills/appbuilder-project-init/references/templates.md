@@ -119,6 +119,43 @@ runtimeManifest:
 2. **Map components.** Map AEM page components to React components using the SPA Editor SDK.
 3. **Update content model.** Replace WKND-specific components and content references with your project's content structure.
 
+## Content Hub extension (`aem/assets/contenthub/1`)
+
+| Field | Value |
+| --- | --- |
+| Extension Point | aem/assets/contenthub/1 |
+| Categories | ui |
+
+**Best for:** A Content Hub UI extension — Asset Details tab panels (`assetDetails`), asset-card / collection-tile action buttons (`card`), and selection-bar bulk actions (`selectionBar`).
+
+**Use when the user says:** "Content Hub extension", "asset details panel", "card action", "collection tile action", "bulk action bar", "aem/assets/contenthub/1"
+
+**No generator template exists for this extension point** — scaffold from the maintained sample app instead of `aio app init --template`:
+
+```bash
+aio app init --repo adobe/aem-uix-examples/aem-assets-contenthub-sample --github-pat <your-github-pat>
+```
+
+The sample is the single source of truth for the correct unified three-namespace shape.
+
+### Post-init customization
+
+1. **Set the extension id.** Change `extensionId` in `src/aem-assets-contenthub-1/web-src/src/components/Constants.js` — it must match between `register()` (ExtensionRegistration.js) and `attach()` (the panel/modal components).
+2. **Populate `allowedRepos`.** In `ExtensionRegistration.js`, keep `allowedRepos = []` for local dev (any repo), and add delivery repo IDs (`delivery-pXXX-eYYY.adobeaemcloud.com`) before deploying to Production.
+3. **Keep only the namespaces you need.** The sample registers all three. To drop one, remove its block in `ExtensionRegistration.js`, its `<Route>` in `App.js`, and its component file. See the namespace contracts in the `appbuilder-ui-scaffolder` skill (`references/aem-extensions.md`).
+4. **Customize the UI** — all files under `src/aem-assets-contenthub-1/web-src/src/components/`:
+   - `ExtensionRegistration.js` — which panels/buttons appear, and their title / icon / label
+   - `PanelAssetDetailsExtensionTab.js` — Asset Details panel content (`assetDetails`)
+   - `CardActionModal.js` — card action modal content (`card`)
+   - `SelectionBarModal.js` — bulk-action modal content (`selectionBar`)
+   - `actions/generic/index.js` — server-side logic / AEM API calls
+
+   See the `appbuilder-ui-scaffolder` skill (`references/aem-extensions.md`) for React Spectrum patterns and the host-API contract per namespace.
+5. **Test in Content Hub.** Run `aio app run`, accept the localhost cert (open `https://localhost:9080` → Advanced → Proceed, or type `thisisunsafe` — the panel stays blank until it's accepted), then open `https://experience.adobe.com/?devMode=true&ext=https://localhost:9080#/assets/contenthub/` (add `&repo=<delivery-repo>` only if `allowedRepos` is populated; no `/index.html` for local).
+6. **If the panel doesn't appear:** confirm `allowedRepos` is empty for local dev, the URL uses `#/assets/contenthub/` with `devMode=true`, and the cert was accepted. Note that the `card` and `selectionBar` surfaces require the host's `EXTENSIBILITY_AEM_CONTENTHUB` feature flag (asset-details panels do not).
+
+**Post-scaffold sanity check:** `app.config.yaml` includes `aem/assets/contenthub/1`; `extensionId` is identical in `Constants.js` and every component that calls `attach()`; if you pruned a namespace, its `ExtensionRegistration.js` block, `App.js` route, and component file are all gone (no dangling route); `npm install` succeeded and `aio app run` serves `localhost:9080`.
+
 ## @adobe/generator-app-api-mesh
 
 | Field | Value |
@@ -205,6 +242,8 @@ User intent ──────────────────────�
   ├─ "AEM extension"  ─────────────────────── @adobe/aem-cf-admin-ui-ext-tpl
   │
   ├─ "AEM React SPA"  ─────────────────────── @adobe/generator-app-aem-react
+  │
+  ├─ "Content Hub extension"  ─────────────── aio app init --repo …/aem-assets-contenthub-sample
   │
   ├─ "API Mesh / GraphQL"  ────────────────── @adobe/generator-app-api-mesh
   │
