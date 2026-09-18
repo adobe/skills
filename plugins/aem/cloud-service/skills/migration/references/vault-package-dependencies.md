@@ -8,9 +8,17 @@ Content packages built for AEM 6.x declare Vault install-time `<dependencies>` i
 
 The fix is mechanical: remove the entire `<dependencies>` block. The functionality the packages provided is still present on AEMaaCS; only the install-time check needs to be removed.
 
-## Discovery — pom.xml scan (no BPA, no analyzer)
+## Discovery — effective-POM scan (with text-scan fallback)
 
-Scan every `pom.xml` in the workspace, mirroring the heuristic model `htlLint` uses for `.html`: a pure regex/text scan (`migration/scripts/vault-package-scan-runner.js`), no analyzer, no BPA/CAM/CSV tier.
+Ask Maven for the **effective POM** and scan that, so `<pluginManagement>` inheritance and per-execution vs plugin-level `<configuration>` merging are Maven's problem, not ours. The runner (`migration/scripts/vault-package-scan-runner.js`):
+
+1. Groups Maven project roots under **reactor roots** (a `pom.xml` declaring `<modules>`) and runs `mvn help:effective-pom` **once per reactor**, splitting the resulting `<projects>` file back into per-module XML. This avoids one network-bound `mvn` subprocess per module on a normal multi-module AEM repo.
+2. Falls back to `mvn -N help:effective-pom` per module for standalone poms not in any reactor.
+3. Falls back to a **raw text-scan of the source `pom.xml`** for every module whose effective-POM resolution failed. Legacy AEM 6.x / AMS projects — the pattern's target audience — frequently can't resolve a build anymore (dead parent repos, missing artifacts, offline), and the text-scan mirrors the pure-Node scan that predated the Maven delegation. It's degraded (inherited-only pluginManagement config that Maven would have merged is invisible without Maven), and every fallback emits a warning so the customer sees the degradation rather than a silent "clean" result.
+
+If every module in the workspace fails **both** the effective-POM path and raw-pom-read, the runner returns `ok:false` and the runbook dispatcher falls the pattern through to the **LLM-scan tier** — never a false "no vault dependency issues" from a scan that couldn't run.
+
+Both the effective-POM and text-scan paths **skip `<plugin>` entries nested under `<pluginManagement>`**. Maven retains pluginManagement blocks in the effective POM even after merging their configuration into `<build><plugins>`, so scanning both would report the same block twice.
 
 Group by **`<dependencies>` block**, not by `<dependency>` entry: a block with several legacy dependencies is still one finding, one migration unit — the fix removes the whole block regardless of how many legacy entries it contains.
 

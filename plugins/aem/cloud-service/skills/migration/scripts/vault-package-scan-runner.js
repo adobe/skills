@@ -12,17 +12,44 @@
  * dependency declaration is invisible to a deployed-artifact BPA scan — so
  * this scan is the **only** detection tier (no cascade, no analyzer fallback).
  *
- * Detection strategy: ask Maven for the **effective POM** via
- * `mvn help:effective-pom` and scan that, rather than reasoning about
- * `<pluginManagement>` inheritance and per-execution `<configuration>`
- * merging textually against the raw source pom. Maven does the resolution
- * work; we only look at the resolved output.
+ * Detection strategy — two paths:
  *
- * Source-pom line reporting: after a legacy block is detected in the
- * effective POM, the runner searches the customer's own `pom.xml` for the
- * offending `<group>` tag to report an actionable line. If the block was
- * inherited from a parent pom and doesn't appear in the source, the finding
- * is reported with line 1 and marked `(inherited)` in the snippet.
+ *   1. Preferred: ask Maven for the **effective POM** via
+ *      `mvn help:effective-pom`. This resolves parent inheritance,
+ *      `<pluginManagement>` merging, and per-execution vs plugin-level
+ *      `<configuration>` — the three classes of ambiguity we don't have to
+ *      reason about textually. Runs **once per reactor root** (not per
+ *      module) — the reactor invocation produces a single wrapper file
+ *      containing every module's effective POM, avoiding N network-bound
+ *      subprocesses. Requires `mvn` on PATH and, for legacy AEM 6.x/AMS
+ *      codebases, resolvable parent poms (often network-reachable).
+ *
+ *   2. Fallback: when `mvn help:effective-pom` fails for a module (dead
+ *      parent repo, missing artifacts, offline — the pattern's target
+ *      audience is legacy projects that often can't build cleanly anymore),
+ *      the runner text-scans the module's raw `pom.xml` as-is. This mirrors
+ *      the pure-Node scan that predated the Maven delegation: coverage is
+ *      degraded (inherited-only deps in a parent's `<pluginManagement>` are
+ *      not detected without Maven merging them) but the scan is not silent —
+ *      a `warnings[]` entry is emitted for every module that fell back so
+ *      the customer sees the degradation.
+ *
+ * Scanner scope: `findVaultDependenciesInEffectivePom` skips any `<plugin>`
+ * nested inside `<pluginManagement>`. The effective POM retains
+ * pluginManagement blocks even after merging their configuration into
+ * `<build><plugins>`, so scanning both would report the same block twice.
+ *
+ * Source-pom line reporting: after a legacy block is detected, the runner
+ * searches the customer's own `pom.xml` for the offending `<group>` tag to
+ * report an actionable line. If the block was inherited from a parent pom
+ * and doesn't appear in the source, the finding is reported with line 1
+ * and marked `(inherited)` in the snippet.
+ *
+ * Failure-mode contract: if the runner collects one or more Maven project
+ * roots but produces **no scan target** for any of them (effective-POM
+ * failed AND the raw pom.xml was unreadable), it returns `ok: false`. The
+ * runbook dispatcher treats that as "pattern not scanned" and falls through
+ * to the LLM-scan tier rather than reporting a clean bill of health.
  */
 
 'use strict';
@@ -65,10 +92,11 @@ function lineAt(content, index) {
 }
 
 /**
- * Ask Maven to emit the effective POM for `projectDir`. This resolves parent
- * inheritance, `<pluginManagement>` merging, and per-execution vs plugin-level
- * `<configuration>` — the three classes of ambiguity we no longer have to
- * reason about textually.
+ * Ask Maven to emit the effective POM for a single `projectDir` via
+ * `mvn -N help:effective-pom`. Used only as the fallback when the reactor
+ * bulk invocation didn't produce output for this module — normal scans go
+ * through `getReactorEffectivePoms` and cost one mvn call per reactor, not
+ * per module.
  *
  * Requires `mvn` on PATH and (usually) network-reachable dependencies to
  * resolve the parent chain. Returns `{ ok: true, xml }` on success, or
@@ -93,13 +121,88 @@ function getEffectivePom(projectDir) {
 }
 
 /**
+ * Ask Maven to emit effective POMs for every module in a reactor in a
+ * single `mvn help:effective-pom` invocation (no `-N`). Maven writes one
+ * output file that wraps every module's `<project>` in a `<projects>` root
+ * element; this splits that file into a map keyed by each module's
+ * artifactId so `runVaultPackageScan` can pair modules to their effective
+ * POM without an additional mvn call per module.
+ *
+ * @returns {{ok: true, byArtifactId: Record<string, string>} | {ok: false, error: string}}
+ */
+function getReactorEffectivePoms(reactorRoot) {
+  const pom = path.join(reactorRoot, 'pom.xml');
+  if (!fs.existsSync(pom)) return { ok: false, error: `no pom.xml at ${reactorRoot}` };
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vault-eff-reactor-'));
+  const outFile = path.join(tmpDir, 'effective-pom.xml');
+  try {
+    execFileSync('mvn', ['-q', '-B', 'help:effective-pom', `-Doutput=${outFile}`],
+      { cwd: reactorRoot, stdio: 'pipe', encoding: 'utf8' });
+    const bulk = fs.readFileSync(outFile, 'utf8');
+    return { ok: true, byArtifactId: splitReactorEffectivePom(bulk) };
+  } catch (err) {
+    const combined = String(err.stdout || '') + String(err.stderr || err.message || '');
+    return { ok: false, error: combined.trim().split('\n').slice(-8).join('\n') };
+  } finally {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
+/**
+ * Split a reactor `mvn help:effective-pom` output (a `<projects>`-wrapped
+ * list of top-level `<project>` children, or a single `<project>` when only
+ * one module) into per-module effective POM XML keyed by artifactId. The
+ * artifactId picked is the FIRST `<artifactId>` in each `<project>` after
+ * stripping any `<parent>` block.
+ */
+function splitReactorEffectivePom(bulkXml) {
+  const byArtifactId = {};
+  const re = /<project\b[\s\S]*?<\/project>/g;
+  const projects = bulkXml.match(re) || [];
+  for (const projectXml of projects) {
+    const stripped = projectXml.replace(/<parent[\s\S]*?<\/parent>/g, '');
+    const m = stripped.match(/<artifactId>([^<]+)<\/artifactId>/);
+    if (m) byArtifactId[m[1].trim()] = projectXml;
+  }
+  return byArtifactId;
+}
+
+/**
+ * Read the module's own artifactId from a raw source `pom.xml`. Returns
+ * null if the file can't be read or no artifactId is declared (rare — an
+ * artifactId is mandatory in a Maven project).
+ */
+function readSourceArtifactId(pomFile) {
+  try {
+    const xml = fs.readFileSync(pomFile, 'utf8');
+    const withoutParent = xml.replace(/<parent[\s\S]*?<\/parent>/g, '');
+    const m = withoutParent.match(/<artifactId>([^<]+)<\/artifactId>/);
+    return m ? m[1].trim() : null;
+  } catch { return null; }
+}
+
+/** True iff the source pom declares a `<modules>` list (reactor root). */
+function isReactorRoot(projectDir) {
+  try {
+    const xml = fs.readFileSync(path.join(projectDir, 'pom.xml'), 'utf8');
+    return /<modules>[\s\S]*?<module>[\s\S]*?<\/module>[\s\S]*?<\/modules>/.test(xml);
+  } catch { return false; }
+}
+
+/**
  * Find every legacy `<dependencies>` block inside a vault package plugin's
- * plugin-level `<configuration>` in the given effective POM XML.
+ * plugin-level `<configuration>` in the given effective POM XML (also used
+ * as the text-scan fallback against a raw source pom.xml).
  *
  * The effective POM has already merged `<pluginManagement>` inheritance and
  * separated per-execution configs from plugin-level configs, so this scan
  * only needs to look at each `<plugin>` occurrence's direct
- * `<configuration>` (everything before `<executions>` inside the plugin).
+ * `<configuration>` (everything before `<executions>` inside the plugin) —
+ * AND must **skip** `<plugin>` entries nested under `<pluginManagement>`.
+ * Maven retains pluginManagement blocks in the effective POM even after
+ * merging their config into `<build><plugins>`; without this skip the same
+ * block is reported once from pluginManagement and once from the merged
+ * `<build><plugins>` entry.
  *
  * Profile-scoped plugins live under `<profiles><profile><build><plugins>` and
  * appear as separate `<plugin>` occurrences here — no special handling
@@ -126,6 +229,16 @@ function findVaultDependenciesInEffectivePom(effectiveXml) {
     const pluginStart = effectiveXml.lastIndexOf('<plugin>', artifactIdx);
     const pluginEnd = effectiveXml.indexOf('</plugin>', artifactIdx);
     if (pluginStart === -1 || pluginEnd === -1) continue;
+
+    // Skip <plugin>s nested inside <pluginManagement>. The effective POM
+    // retains pluginManagement blocks even after merging their config into
+    // <build><plugins>, so without this the same block is reported twice.
+    const pmStart = effectiveXml.lastIndexOf('<pluginManagement>', pluginStart);
+    if (pmStart !== -1) {
+      const pmEnd = effectiveXml.indexOf('</pluginManagement>', pmStart);
+      if (pmEnd !== -1 && pmEnd > pluginEnd) continue;
+    }
+
     const pluginBlock = effectiveXml.slice(pluginStart, pluginEnd);
 
     // Plugin-level <configuration> is anything before <executions>. Per-
@@ -165,12 +278,41 @@ function locateInSourcePom(sourceXml, legacyGroup) {
  * package dependencies. Emits one finding per `<dependencies>` block (not
  * per `<dependency>` entry) — the fix removes the entire block.
  *
+ * Preferred source for the scan is the effective POM (Maven has already
+ * done pluginManagement / parent inheritance / per-execution config merging
+ * for us). To keep this efficient the runner:
+ *
+ *   1. Groups project roots under reactor roots (a `pom.xml` declaring
+ *      `<modules>`) and runs `mvn help:effective-pom` **once per reactor**,
+ *      splitting the resulting `<projects>` file back into per-module XML.
+ *   2. Falls back to `mvn -N help:effective-pom` per module for standalone
+ *      poms not in any reactor, and for reactor members that the reactor
+ *      bulk output didn't cover.
+ *   3. Falls back to a raw text-scan of the source `pom.xml` for every
+ *      module whose effective-POM resolution failed — legacy AEM 6.x/AMS
+ *      projects frequently can't resolve a build anymore (dead repos,
+ *      missing parents, offline). Text-scan is degraded (inherited-only
+ *      pluginManagement config isn't visible without Maven), and every
+ *      fallback emits a warning so the customer knows the scan was
+ *      degraded rather than silently clean.
+ *
+ * If every project root produced no scan target (mvn failed AND the raw
+ * pom.xml was unreadable), the runner returns `ok: false`. The runbook
+ * dispatcher treats that as "pattern not scanned" and falls through to the
+ * LLM-scan tier, so the user never sees "no vault-package findings" from a
+ * scan that couldn't run at all.
+ *
  * @param {string} workspaceRoot
  * @param {object} [opts]
  * @param {function(string): {ok: boolean, xml?: string, error?: string}} [opts.getEffectivePom]
- *        Injectable Maven effective-pom reader. Defaults to shelling out to
- *        `mvn help:effective-pom`; tests inject a stub that returns canned
- *        XML.
+ *        Injectable per-module Maven effective-pom reader. Defaults to
+ *        shelling out to `mvn -N help:effective-pom`; tests inject a stub
+ *        that returns canned XML. Injecting this also disables the reactor
+ *        bulk path so unit tests don't need to stub two boundaries.
+ * @param {function(string): {ok: boolean, byArtifactId?: object, error?: string}} [opts.getReactorEffectivePoms]
+ *        Injectable reactor-wide Maven effective-pom reader. Defaults to
+ *        `getReactorEffectivePoms`; overriding lets a caller test the
+ *        reactor path without a real Maven runtime.
  * @returns {{
  *   ok: boolean,
  *   findings: Array<{location: string, detail: string, severity: string}>,
@@ -184,6 +326,10 @@ function runVaultPackageScan(workspaceRoot, opts = {}) {
     return { ok: false, findings: [], rawFindings: [], warnings: [], error: 'no workspaceRoot' };
   }
   const readEffectivePom = opts.getEffectivePom || getEffectivePom;
+  const readReactor = opts.getReactorEffectivePoms || getReactorEffectivePoms;
+  // If tests inject only a per-module reader, don't try the reactor path —
+  // tests then don't need to stub two boundaries just to keep quiet.
+  const reactorEnabled = !opts.getEffectivePom || !!opts.getReactorEffectivePoms;
 
   let projectRoots;
   try {
@@ -196,14 +342,62 @@ function runVaultPackageScan(workspaceRoot, opts = {}) {
   const rawFindings = [];
   const warnings = [];
 
-  for (const projectDir of projectRoots) {
-    const eff = readEffectivePom(projectDir);
-    if (!eff.ok) {
-      warnings.push(`${projectDir}: could not resolve effective pom (${eff.error})`);
+  // effByProject maps absolute projectDir → effective (or raw-fallback) XML.
+  const effByProject = new Map();
+
+  // Group projects by reactor: the topmost projectRoot with <modules> claims
+  // itself and every projectRoot underneath its directory.
+  const reactorRoots = reactorEnabled ? projectRoots.filter(isReactorRoot) : [];
+  reactorRoots.sort((a, b) => a.length - b.length);
+  const claimed = new Set();
+  const reactorGroups = [];
+  for (const rr of reactorRoots) {
+    if (claimed.has(rr)) continue;
+    const members = projectRoots.filter(p => p === rr || p.startsWith(rr + path.sep));
+    for (const m of members) claimed.add(m);
+    reactorGroups.push({ root: rr, members });
+  }
+
+  // Reactor bulk pass — one mvn per reactor, split output per module.
+  for (const { root, members } of reactorGroups) {
+    const bulk = readReactor(root);
+    if (!bulk.ok) {
+      warnings.push(`${root}: reactor mvn help:effective-pom failed (${bulk.error}); falling back to per-module scan`);
       continue;
     }
+    for (const m of members) {
+      const artifactId = readSourceArtifactId(path.join(m, 'pom.xml'));
+      if (artifactId && bulk.byArtifactId[artifactId]) {
+        effByProject.set(m, bulk.byArtifactId[artifactId]);
+      }
+    }
+  }
 
-    const blocks = findVaultDependenciesInEffectivePom(eff.xml);
+  // Per-module pass — anything not covered by a reactor bulk. This includes
+  // standalone project dirs AND reactor members the bulk didn't emit for.
+  for (const projectDir of projectRoots) {
+    if (effByProject.has(projectDir)) continue;
+    const eff = readEffectivePom(projectDir);
+    if (eff.ok) { effByProject.set(projectDir, eff.xml); continue; }
+
+    // Text-scan fallback: use the raw source pom as the scan target.
+    // Legitimate for detecting blocks declared IN this pom; blind to
+    // parent pluginManagement Maven would have merged in — that trade-off
+    // is called out in the warning.
+    try {
+      const rawXml = fs.readFileSync(path.join(projectDir, 'pom.xml'), 'utf8');
+      warnings.push(`${projectDir}: mvn help:effective-pom failed (${eff.error}); text-scanning raw pom.xml (inherited pluginManagement will not be detected)`);
+      effByProject.set(projectDir, rawXml);
+    } catch (readErr) {
+      warnings.push(`${projectDir}: mvn help:effective-pom failed (${eff.error}) and raw pom.xml unreadable (${readErr.message}); pattern not scanned for this module`);
+    }
+  }
+
+  for (const projectDir of projectRoots) {
+    const effXml = effByProject.get(projectDir);
+    if (!effXml) continue;
+
+    const blocks = findVaultDependenciesInEffectivePom(effXml);
     if (blocks.length === 0) continue;
 
     const pomFile = path.join(projectDir, 'pom.xml');
@@ -225,6 +419,21 @@ function runVaultPackageScan(workspaceRoot, opts = {}) {
     }
   }
 
+  // False-clean guard: if we found modules but couldn't produce a scan
+  // target for a single one of them, do NOT report ok:true / zero findings —
+  // the runbook dispatcher would then mark the pattern as scanned and the
+  // user would see "no vault dependency issues" when nothing ran. Return
+  // ok:false so the pattern falls through to the LLM-scan tier.
+  if (projectRoots.length > 0 && effByProject.size === 0) {
+    return {
+      ok: false,
+      findings: [],
+      rawFindings: [],
+      warnings,
+      error: 'mvn help:effective-pom failed for every module and no raw pom.xml was readable — pattern not scanned',
+    };
+  }
+
   return { ok: true, findings, rawFindings, warnings };
 }
 
@@ -233,5 +442,8 @@ module.exports = {
   isLegacyGroup,
   findVaultDependenciesInEffectivePom,
   getEffectivePom,
+  getReactorEffectivePoms,
+  splitReactorEffectivePom,
   collectMavenProjectRoots,
+  isReactorRoot,
 };

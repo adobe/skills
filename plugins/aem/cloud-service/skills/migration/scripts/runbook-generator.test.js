@@ -307,6 +307,130 @@ test('runVaultPackageScan surfaces effective-pom resolution failures as warnings
   assert.match(res.warnings[0], /could not resolve/);
 });
 
+test('runVaultPackageScan text-scans raw pom.xml when effective-pom fails, so legacy blocks still surface', () => {
+  // Legacy AEM 6.x / AMS projects (the target audience) frequently can't
+  // resolve a Maven build anymore. The runner falls back to a raw text
+  // scan so the pattern doesn't silently report clean, and emits a warning
+  // announcing the degraded coverage.
+  const root = mkworkspace();
+  const pom = [
+    '<project>', '  <build>', '    <plugins>', '      <plugin>',
+    '        <artifactId>content-package-maven-plugin</artifactId>',
+    '        <configuration>', '          <dependencies>',
+    '            <dependency><group>day/cq60/product</group><name>cq-content</name></dependency>',
+    '          </dependencies>', '        </configuration>', '      </plugin>',
+    '    </plugins>', '  </build>', '</project>',
+  ].join('\n');
+  write(root, 'pom.xml', pom);
+  const res = runVaultPackageScan(root, {
+    getEffectivePom: () => ({ ok: false, error: 'offline: cannot download parent' }),
+  });
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.findings.length, 1, 'raw text-scan must still detect the legacy block');
+  assert.match(res.findings[0].detail, /day\/cq60\/product/);
+  assert.strictEqual(res.warnings.length, 1);
+  assert.match(res.warnings[0], /text-scanning raw pom\.xml/);
+});
+
+test('runVaultPackageScan skips <pluginManagement> so effective-pom does not double-report', () => {
+  // Effective POM retains <pluginManagement> even after merging its config
+  // into <build><plugins>. Without the skip the same block is reported
+  // once from pluginManagement and once from the merged <build> entry.
+  const root = mkworkspace();
+  const effectivePom = [
+    '<project>', '  <build>',
+    '    <pluginManagement>', '      <plugins>', '        <plugin>',
+    '          <artifactId>content-package-maven-plugin</artifactId>',
+    '          <configuration>', '            <dependencies>',
+    '              <dependency><group>day/cq60/product</group></dependency>',
+    '            </dependencies>', '          </configuration>',
+    '        </plugin>', '      </plugins>', '    </pluginManagement>',
+    '    <plugins>', '      <plugin>',
+    '        <artifactId>content-package-maven-plugin</artifactId>',
+    '        <configuration>', '          <dependencies>',
+    '            <dependency><group>day/cq60/product</group></dependency>',
+    '          </dependencies>', '        </configuration>',
+    '      </plugin>',
+    '    </plugins>', '  </build>', '</project>',
+  ].join('\n');
+  write(root, 'pom.xml', effectivePom);
+  const res = runVaultPackageScan(root, { getEffectivePom: stubEffective({ [root]: effectivePom }) });
+  assert.strictEqual(res.findings.length, 1, '<pluginManagement> copy must not create a duplicate finding');
+});
+
+test('runVaultPackageScan returns ok:false when no module could be scanned (false-clean guard)', () => {
+  // Effective POM fails AND the raw pom.xml can't be read — the pattern
+  // was NOT scanned, so the runner must return ok:false rather than
+  // ok:true / zero findings, otherwise the runbook would mark the
+  // pattern as clean.
+  const root = mkworkspace();
+  const pomPath = path.join(root, 'pom.xml');
+  write(root, 'pom.xml', '<project/>');
+  // Break read access so the text-scan fallback can't succeed either.
+  const originalRead = fs.readFileSync;
+  fs.readFileSync = (p, ...rest) => {
+    if (p === pomPath) throw new Error('EACCES: permission denied');
+    return originalRead(p, ...rest);
+  };
+  try {
+    const res = runVaultPackageScan(root, {
+      getEffectivePom: () => ({ ok: false, error: 'mvn missing' }),
+    });
+    assert.strictEqual(res.ok, false, 'a scan that ran against 0 modules must not report ok:true');
+    assert.match(res.error || '', /not scanned/);
+  } finally {
+    fs.readFileSync = originalRead;
+  }
+});
+
+test('runVaultPackageScan uses the reactor bulk path when a <modules> pom is present', () => {
+  // A reactor invocation costs one mvn call for every module in the
+  // reactor, not one per module. The runner picks up the reactor via
+  // the source pom's <modules> declaration and pairs modules to their
+  // effective-pom slice via <artifactId>.
+  const root = mkworkspace();
+  const rootPom = [
+    '<project>',
+    '  <artifactId>myapp-reactor</artifactId>',
+    '  <modules><module>ui.apps</module><module>ui.content</module></modules>',
+    '</project>',
+  ].join('\n');
+  const uiAppsPom = '<project><artifactId>myapp-ui.apps</artifactId></project>\n';
+  const uiContentPom = '<project><artifactId>myapp-ui.content</artifactId></project>\n';
+  write(root, 'pom.xml', rootPom);
+  write(root, 'ui.apps/pom.xml', uiAppsPom);
+  write(root, 'ui.content/pom.xml', uiContentPom);
+  const uiAppsEffective = [
+    '<project>', '  <artifactId>myapp-ui.apps</artifactId>',
+    '  <build><plugins><plugin>',
+    '    <artifactId>content-package-maven-plugin</artifactId>',
+    '    <configuration><dependencies>',
+    '      <dependency><group>day/cq60/product</group></dependency>',
+    '    </dependencies></configuration>',
+    '  </plugin></plugins></build>', '</project>',
+  ].join('\n');
+  const uiContentEffective = '<project><artifactId>myapp-ui.content</artifactId></project>';
+  const rootEffective = '<project><artifactId>myapp-reactor</artifactId></project>';
+  let reactorCalls = 0;
+  let perModuleCalls = 0;
+  const res = runVaultPackageScan(root, {
+    getReactorEffectivePoms: (dir) => {
+      reactorCalls++;
+      assert.strictEqual(dir, root, 'reactor call must fire at the reactor root, not per-module');
+      return { ok: true, byArtifactId: {
+        'myapp-reactor': rootEffective,
+        'myapp-ui.apps': uiAppsEffective,
+        'myapp-ui.content': uiContentEffective,
+      } };
+    },
+    getEffectivePom: () => { perModuleCalls++; return { ok: false, error: 'should not be called' }; },
+  });
+  assert.strictEqual(reactorCalls, 1, 'exactly one reactor mvn call, not per-module');
+  assert.strictEqual(perModuleCalls, 0, 'per-module fallback must not run when reactor bulk covers every module');
+  assert.strictEqual(res.findings.length, 1);
+  assert.match(res.findings[0].location, /ui\.apps\/pom\.xml/);
+});
+
 // ── htl-lint-runner ───────────────────────────────────────────────────────
 
 test('classify labels each anti-pattern class', () => {

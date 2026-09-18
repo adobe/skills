@@ -19,11 +19,18 @@
  *   'config-scan' — `osgiConfig`: heuristic scan of OSGi config files for
  *                   secret-looking keys and `$[secret:]`/`$[env:]` placeholders
  *                   (key names + locations only — never secret values).
- *   'pom-scan'    — `vault-package-dependencies`: heuristic regex/text scan of
- *                   `pom.xml`. There is **no BPA subtype at all** for this
- *                   pattern (a pom.xml install-time dependency declaration is
- *                   invisible to a deployed-artifact BPA scan) and no analyzer
- *                   detector — this scan is the only tier.
+ *   'pom-scan'    — `vault-package-dependencies`: prefers Maven's effective
+ *                   POM (`mvn help:effective-pom`, one call per reactor
+ *                   root) so `<pluginManagement>` inheritance and per-
+ *                   execution vs plugin-level `<configuration>` are Maven's
+ *                   problem, not ours; falls back to a raw text-scan of the
+ *                   source `pom.xml` when Maven can't resolve a module
+ *                   (dead parent repos, offline). No BPA subtype exists for
+ *                   this pattern — a `pom.xml` install-time dependency
+ *                   declaration is invisible to a deployed-artifact BPA
+ *                   scan — so this scan is the only tier. Every fallback
+ *                   emits a warning so a scan that couldn't reach Maven
+ *                   isn't reported as clean.
  *   'content-scan'— `lui` / `cdw` / `templateModernization`. These ALSO carry
  *                   `bpaSlugs`, so when a BPA source is present they come from
  *                   BPA (authoritative); the `.content.xml` scan (Classic/Coral 2
@@ -156,12 +163,15 @@ const PATTERN_META = {
     strategy: 'pom-scan',
     // No BPA subtype exists for this pattern at all — a pom.xml install-time
     // dependency declaration (content-package-maven-plugin) is invisible to a
-    // deployed-artifact BPA scan. This is the sole detection tier: a regex/text
-    // scan of pom.xml, same model as htlLint's html-scan — no analyzer, no
-    // BPA/CSV/MCP fallback to attempt.
+    // deployed-artifact BPA scan. The runner prefers Maven's effective POM
+    // (`mvn help:effective-pom`, one call per reactor root) and falls back to
+    // a text-scan of the raw pom.xml when Maven can't resolve a module —
+    // legacy AEM 6.x/AMS projects (the target audience) often can't build
+    // anymore, and the fallback keeps the pattern from silently reporting
+    // clean.
     bpaSlugs: [],
     heuristic: true,
-    description: 'Legacy AEM 6.x Vault install-time package dependencies (`day/cq60/product:*`, `day/cq560/*`, `adobe/cq60` in `content-package-maven-plugin`) that block package installation on AEMaaCS. Detected heuristically by scanning `pom.xml` — not a BPA/CAM pattern, and not the code-assessment analyzer — so re-confirm each hit before editing.',
+    description: 'Legacy AEM 6.x Vault install-time package dependencies (`day/cq60/product:*`, `day/cq560/*`, `adobe/cq60` in `content-package-maven-plugin`) that block package installation on AEMaaCS. Detected by asking Maven for the effective POM (`mvn help:effective-pom`, one call per reactor root) with a raw `pom.xml` text-scan fallback when Maven can\'t resolve a module — not a BPA/CAM pattern and not the code-assessment analyzer, so re-confirm each hit before editing.',
     promptPattern: 'vault-package-dependencies',
   },
   lui: {
@@ -461,11 +471,20 @@ async function gatherFindings(options = {}) {
   // ── Strategy 'pom-scan': vault-package-dependencies (independent of the cascade) ──
   if (CANONICAL_PATTERNS.includes('vault-package-dependencies') && workspaceRoot) {
     const res = runVaultPackageScan(workspaceRoot, getEffectivePom ? { getEffectivePom } : undefined);
+    // Warnings surface effective-pom resolution failures and text-scan
+    // fallbacks — propagate them regardless of ok so a degraded scan is
+    // never silent.
+    if (res.warnings && res.warnings.length) scanWarnings.push(...res.warnings);
     if (res.ok) {
       findingsByPattern['vault-package-dependencies'] = res.findings;
       rawFindingsByPattern['vault-package-dependencies'] = res.rawFindings;
       sourceByPattern['vault-package-dependencies'] = 'pom-scan';
       scannedBy['vault-package-dependencies'] = 'pom-scan';
+    } else if (res.error) {
+      // The scan itself couldn't run against any module — surface the reason
+      // and leave the pattern UNSCANNED so it falls through to needsLlmScan
+      // rather than being reported as clean.
+      scanWarnings.push(`vault-package-dependencies scan did not run: ${res.error}`);
     }
   }
 
