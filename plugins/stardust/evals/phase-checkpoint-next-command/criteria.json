@@ -1,0 +1,56 @@
+{
+  "context": "Phase checkpoint with the one next command, on the direct phase. Task and setup in task.md; each item is judged pass/fail and weighted by max_score. Items marked (W1 target) pin a rule not yet in the 0.23.0 skill text — they are expected to fail on the baseline and pass once the checkpoint rule lands. Only run 1 is executed; run-2 behaviour is judged through what run 1's checkpoint states about a re-run.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "activated",
+      "max_score": 5,
+      "description": "The direct skill was invoked with the phrase 'make the type larger and calmer' as input, after the master setup (impeccable dependency check, state.json read)."
+    },
+    {
+      "name": "phase_runs_to_completion",
+      "max_score": 10,
+      "description": "With the persona accepting defaults, the phase finished in one session: at most two clarifying questions, plan shown and confirmed ('go') before any write, then PRODUCT.md, DESIGN.md, DESIGN.json exist at the project root and stardust/direction.md has an '# Active direction' section. The session did not stall on a question the persona had already answered with a default."
+    },
+    {
+      "name": "checkpoint_completed",
+      "max_score": 10,
+      "description": "The closing report names every file written this phase by path (PRODUCT.md, DESIGN.md, DESIGN.json, stardust/direction.md, stardust/state.json, stardust/journal.md, stardust/status.jsonl) and every path it names exists in the workspace. A named path that does not exist, or a written file that is not named, fails."
+    },
+    {
+      "name": "checkpoint_verified",
+      "max_score": 15,
+      "description": "(W1 target) The closing report has a distinct 'verified' part, separate from 'written': it states what was checked after writing and how — e.g. files listed or re-read, state.json parsed, the directed-page count re-read from state.json rather than remembered — and the transcript shows the check actually ran (a tool call after the writes). A report that only lists what it wrote fails."
+    },
+    {
+      "name": "checkpoint_next_command_verbatim",
+      "max_score": 10,
+      "description": "The closing report ends the phase with exactly ONE next command printed verbatim as a pasteable invocation ('$stardust prototype' or '$stardust prototype <slug>', the recommendation state-machine.md gives for directed pages). No alternatives ('or run X'), no prose-only recommendation, and no question follows it — the checkpoint is the last thing in the turn."
+    },
+    {
+      "name": "checkpoint_rerun_skip",
+      "max_score": 15,
+      "description": "(W1 target) The closing report states what a second invocation of the same prompt would skip because it is already done — no re-reasoning of the phrase, no rewrite of PRODUCT.md / DESIGN.md / DESIGN.json / direction.md, no page status change since the pages are already directed — and what it would do instead (ask before replacing the existing direction, per the skill's --re-direct contract). Either half missing fails."
+    },
+    {
+      "name": "journal_entry_next",
+      "max_score": 10,
+      "description": "stardust/journal.md gained exactly one new entry below the existing extract entry (which is unchanged), in the journal-format shape: timestamp heading, Prompt, Decisions, Artifacts touched, Next. The Next: line carries the same command as the report's next command."
+    },
+    {
+      "name": "status_end_line_next",
+      "max_score": 10,
+      "description": "(W1 target) stardust/status.jsonl was appended (extract lines unchanged) with start/end lines for the direct phases, and the final end line carries a next field whose value is the same command as the report's next command. Start/end lines without the next field fail this item."
+    },
+    {
+      "name": "state_pages_directed",
+      "max_score": 10,
+      "description": "stardust/state.json: all 5 pages moved from extracted to directed with a new history entry each; direction.resolvedAt set, direction.phrase is the verbatim phrase, direction.directionFile is stardust/direction.md; top-level key order (_provenance, site, direction, pages) preserved and _provenance updated to the direct skill."
+    },
+    {
+      "name": "no_eds_references",
+      "max_score": 5,
+      "description": "No mention of EDS, AEM, dev servers, or framework targets anywhere in the session or the written files."
+    }
+  ]
+}
