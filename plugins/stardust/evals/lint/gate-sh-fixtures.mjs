@@ -38,6 +38,10 @@
 //     ledger's masks[] keep kind / class / spec|sel|src / areaPct / asymmetric+side
 //     (defect fixture: a sel mask used to land as `{ areaPct }`);
 //     progress-record --help exits 0;
+//   partial live capture — a live stitch-shot that exits non-zero for ANY
+//     reason (1 error, 3 challenge — not only 124/5) after writing the PNG
+//     leaves no live.png(.json) behind; the next round captures afresh
+//     (defect fixture: only 124 and 5 removed the partial file);
 //   verdict line — `verdict: <V> <pct> % Δh <n>px  iteration k/3` is ONE line;
 //   per-regime cap — three prototype rounds do not exhaust the published-
 //     origin cap (first published round runs as pub1, iteration 1); NO-OP and
@@ -76,7 +80,7 @@ mkdirSync(join(project, 'stardust', 'replica'), { recursive: true });
 // process's event loop, so an in-process server would never answer gate.sh's
 // identity curl.
 const server = spawn(process.execPath, ['-e', `
-  const s = require('node:http').createServer((q, r) => { r.setHeader('content-type', 'text/html'); r.end('<html><body><h1>fresh drift noise noise2 noise3 cap rec orphan regime stale forced proposed</h1></body></html>'); });
+  const s = require('node:http').createServer((q, r) => { r.setHeader('content-type', 'text/html'); r.end('<html><body><h1>fresh drift noise noise2 noise3 cap rec orphan regime stale forced partial proposed</h1></body></html>'); });
   s.listen(0, '127.0.0.1', () => process.stdout.write(String(s.address().port)));
 `], { stdio: ['ignore', 'pipe', 'inherit'] });
 const port = await new Promise((r) => { server.stdout.once('data', (d) => r(String(d).trim())); });
@@ -265,6 +269,14 @@ try {
   const pr = spawnSync(process.execPath, [join(bin, 'progress-record.mjs'), join(dirOf('rec'), 'gate-iter1.json'), '--progress', archetypesLedger, '--dry-run'], { cwd: project, encoding: 'utf8' });
   check(pr.status === 0 && /landing\.breakpoints\.1440/.test(pr.stdout), `progress-record must find the page type in a top-level archetypes[] ledger\n${pr.stdout}${pr.stderr}`);
 
+  // ---- partial live capture (slug partial): any non-zero live rc removes the PNG ----
+  for (const code of ['1', '3']) {
+    r = gate('partial', [], { STUB_STITCH_EXIT: code, STUB_STITCH_PARTIAL: '1' });
+    check(r.status === Number(code) && r.out.includes(`live capture failed (exit ${code})`) && !existsSync(join(dirOf('partial'), 'live.png')) && !existsSync(sidecar('partial')), `a live capture exiting ${code} after writing the PNG must leave no live.png / sidecar behind and re-exit ${code}\n${r.out}`);
+  }
+  r = gate('partial');
+  check(r.status === 0 && readJson(sidecar('partial'))?.docHeight === 3000 && rec('partial', 'iter1')?.iteration === 1, `the round after a failed live capture captures afresh (no partial reuse) and is iteration 1\n${r.out}`);
+
   // ---- verdict line (slug fresh, already on disk) ----
   check(/^verdict: PASS 5 % Δh 0px  iteration 1\/3$/m.test(gateOut.fresh1), `the verdict line carries verdict, the two numbers and iteration k/3 on ONE line\n${gateOut.fresh1}`);
 
@@ -308,4 +320,4 @@ try {
 }
 
 if (failures.length) { console.error(`gate-sh-fixtures: ${failures.length} finding(s)`); for (const f of failures) console.error(`  ✗ ${f}`); process.exit(1); }
-console.log('gate-sh-fixtures: ok (freshness probe, live drift + cache invalidation + stored landmarks (2 hits), probe deadline, noise floor + same flags on live-b + stale floor after drift, iteration cap / --over-cap / --invalidate / NO-OP, per-regime cap + labels, verdict line, stale-procedure version read + safety net, --record ledger copy + masks[] shape + archetypes[] reader, --help)');
+console.log('gate-sh-fixtures: ok (freshness probe, live drift + cache invalidation + stored landmarks (2 hits), probe deadline, noise floor + same flags on live-b + stale floor after drift, iteration cap / --over-cap / --invalidate / NO-OP, per-regime cap + labels, partial live capture removed on any rc, verdict line, stale-procedure version read + safety net, --record ledger copy + masks[] shape + archetypes[] reader, --help)');

@@ -89,7 +89,8 @@
 # is copied from this file, never typed.
 #
 # Fail-loud contract: a stitch-shot bot challenge (exit 3) or capture error
-# aborts the round — a missing/blocked side must never be compared. Exit
+# aborts the round — a missing/blocked side must never be compared, and ANY
+# non-zero live capture removes live.png(.json) so no partial is reused. Exit
 # codes: 0 gate PASS, 2 gate FAIL (over threshold), 3 bot challenge,
 # 1 capture/compare error (incl. incomparable captures), 4 build-side
 # identity assertion failed (the URL serves something that isn't this
@@ -449,7 +450,8 @@ if (out.drift) {
   fs.writeFileSync(`${dir}/anchor-live.json`, `${JSON.stringify({ key: { url, width: Number(width), main: probe.main || 'main' }, probedAt: out.checkedAt, data: { doc: probe.doc, rootMissing: probe.rootMissing, rootWrapsChrome: probe.rootWrapsChrome, sections: probe.sections, footer: probe.footer, ...(probe.landmarks ? { landmarks: probe.landmarks } : {}) } }, null, 2)}\n`);
   console.error(`gate.sh: LIVE DRIFT Δh ${out.deltaPx > 0 ? '+' : ''}${out.deltaPx}px (threshold ${out.thresholdPx}px) sections ${sectionsBefore ?? '?'}→${sectionsAfter ?? '?'} — recapturing live.png; anchor-live.json and chrome-live.json invalidated together (a stale reference is not a residual — this round does not count against the cap)`);
 } else {
-  fs.writeFileSync(`${dir}/freshness.json`, `${JSON.stringify(out, null, 2)}\n`);
+  // an inconclusive check verified nothing: no checkedAt stamp, so the next round probes again once a reference height exists
+  if (!out.skipped) fs.writeFileSync(`${dir}/freshness.json`, `${JSON.stringify(out, null, 2)}\n`);
   console.error(out.skipped ? `gate.sh: drift check inconclusive — ${out.skipped}; keeping the reference` : `gate.sh: reference fresh-checked — Δh ${out.deltaPx > 0 ? '+' : ''}${out.deltaPx}px within ${out.thresholdPx}px${sectionsAfter != null ? `, ${sectionsAfter} sections` : ''}; keeping live.png`);
 }
 fs.rmSync(probePath, { force: true });
@@ -475,9 +477,12 @@ capture_live() {
   # shellcheck disable=SC2086
   capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle --consent-mode "$CONSENT_MODE" $EXPECT_ARGS $STITCH_COMMON
   rc=$?
-  [ $rc -eq 124 ] && rm -f "$DIR/live.png" "$DIR/live.png.json"   # never leave a partial live capture to be reused
-  [ $rc -eq 5 ] && { rm -f "$DIR/live.png" "$DIR/live.png.json"; echo "gate.sh: live capture INVALID (exit 5: short capture / overlay / error page / consent not deniable) — not a verdict, never a FAIL; nothing cached" >&2; exit 5; }
-  [ $rc -ne 0 ] && { echo "gate.sh: live capture failed (exit $rc) — not comparing" >&2; exit $rc; }
+  # ANY non-zero rc (124 deadline, 5 invalid, 3 challenge, 1 error, …) removes
+  # the PNG + sidecar: a partial live capture must never be reused as the
+  # reference on the next round (the cache check above is "live.png exists").
+  [ $rc -ne 0 ] && rm -f "$DIR/live.png" "$DIR/live.png.json"
+  [ $rc -eq 5 ] && { echo "gate.sh: live capture INVALID (exit 5: short capture / overlay / error page / consent not deniable) — not a verdict, never a FAIL; nothing cached" >&2; exit 5; }
+  [ $rc -ne 0 ] && { echo "gate.sh: live capture failed (exit $rc) — not comparing; nothing cached" >&2; exit $rc; }
 }
 [ -f "$DIR/live.png" ] || capture_live
 
