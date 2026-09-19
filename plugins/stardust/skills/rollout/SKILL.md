@@ -302,9 +302,10 @@ node skills/rollout/scripts/verify.mjs            # uses rollout.json site.liveH
 
 `verify` confirms each delivered row renders (200, no `about:error`, typed
 render check) and its internal links resolve, then flips it to `verified` or
-`failed`. Two summary lines: `not delivered: N
-(skipped)` and `pending-target links: N pages`. Which rows, link classes and
-the `links.outsideInventory` policy: `reference/coverage-model.md` § Verify.
+`failed`. Its summary lines (`unverified`, `not delivered`, `pending-target
+links`, `outside-inventory links` — each printed only when non-zero), which
+rows, link classes, the `links.outsideInventory` policy and the exit map:
+`reference/coverage-model.md` § Verify.
 Read `stardust/rollout/verify/summary.md`, triage per class — the per-page
 rows sit below its table, never in the conversation (`skills/stardust/reference/context-hygiene.md`
 § Runner reports and session hand-off).
