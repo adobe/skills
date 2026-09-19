@@ -438,15 +438,9 @@ function lintUrls(file, main, flag) {
         flag('🟡', 'D12', `fragment ${frag[1]} carries ${n} prose words — content-bearing copy is invisible to non-rendering crawlers and costs strict AI-readability points; inline it on the page with a \`fragment | ${frag[1]}\` re-sync row (CONTENT; reference/ai-readability.md § 4 rule 4)`);
       }
     }
-    if (LOCAL && /^(https?:)?\/\//i.test(href)) {
-      const m = href.match(/^(?:https?:)?\/\/([^/?#]+)([^?#]*)/i);
-      const host = m ? m[1].toLowerCase().replace(/^www\./, '') : '';
-      if (m && LOCAL.hosts.has(host) && LOCAL.paths.has(canonicalPath(m[2]))) {
-        flag('🟡', 'D4', `<a href="${href.slice(0, 80)}"> points at the SOURCE host for a page that exists in this content tree — a bounce link; run localize-links.mjs (LOCALIZE)`);
-      }
-    }
-    // D4 — a delivery branch host or a protocol-relative URL is never authored:
+    // D4 🔴 — a delivery branch host or a protocol-relative URL is never authored:
     // the branch dies at merge and `//host` inherits whatever scheme serves the page.
+    // Checked BEFORE the LOCALIZE advisory so `//source-host/p` is one 🔴, not 🔴 + 🟡.
     if (/^(?:https?:)?\/\/[a-z0-9-]+--[a-z0-9-]+--[a-z0-9-]+\.(?:aem|hlx)\.(?:page|live)\b/i.test(href)) {
       flag('🔴', 'D4', `authored <a href="${href.slice(0, 80)}"> points at a delivery branch host — author the root-relative path (localize-links.mjs rewrites it)`);
       continue;
@@ -454,6 +448,13 @@ function lintUrls(file, main, flag) {
     if (/^\/\//.test(href)) {
       flag('🔴', 'D4', `authored <a href="${href.slice(0, 80)}"> is protocol-relative — use a root-relative path or a fully-qualified URL`);
       continue;
+    }
+    if (LOCAL && /^(https?:)?\/\//i.test(href)) {
+      const m = href.match(/^(?:https?:)?\/\/([^/?#]+)([^?#]*)/i);
+      const host = m ? m[1].toLowerCase().replace(/^www\./, '') : '';
+      if (m && LOCAL.hosts.has(host) && LOCAL.paths.has(canonicalPath(m[2]))) {
+        flag('🟡', 'D4', `<a href="${href.slice(0, 80)}"> points at the SOURCE host for a page that exists in this content tree — a bounce link; run localize-links.mjs (LOCALIZE)`);
+      }
     }
     if (/^(https?:|mailto:|tel:|#|\/)/i.test(href)) continue;
     flag('🔴', 'D4', `authored <a href="${href}"> is document-relative — use a root-relative path or a fully-qualified URL`);

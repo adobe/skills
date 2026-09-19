@@ -25,6 +25,10 @@
  *     summary states when the code cache window (max-age=7200) ends.
  *
  * Idempotent: PUT/preview/live are all safe to repeat. Safe to Ctrl-C and re-run.
+ * The two-clocks HEAD answer is recorded once per page (`sharedWithMain`), so a
+ * re-run never counts this branch's own earlier PUTs as shared documents; a
+ * follow-up `--publish` run takes a page the ledger holds as `previewed` and
+ * still delivering on aem.page straight to POST /live/ + verify (no re-PUT).
  *
  * One command = one intent. The default run PUTs and PREVIEWS only (D16: gate
  * on preview); live publish is a SEPARATE `--publish` run, taken when the
@@ -145,34 +149,49 @@ async function deployOne(page, args, ledger, logLine, shared) {
   rec.attempts += 1;
   rec.ts = new Date().toISOString();
 
+  // Publish fast path: a page this ledger already holds as `previewed` and that
+  // still delivers on aem.page needs only POST /live/ + verify — re-running
+  // PUT → preview for every page would double the admin traffic of a 1k-page run.
+  const fastPublish = publish && !args.force && rec.status === 'previewed'
+    && (await deliveredOk({ org, repo, branch, webPath: page.webPath, tld: 'aem.page' })).ok;
+
   // 0. two clocks — a DA document is shared across every code ref. On a
-  //    non-main branch, a document that already exists is also main's.
+  //    non-main branch, a document that already exists is also main's. The
+  //    answer is recorded once per page so a re-run of this branch does not
+  //    count its own earlier PUTs.
   if (branch !== 'main' && shared) {
-    const head = await call('HEAD', `${DA_SRC}/${org}/${repo}${enc}.html`, { token }, 1);
-    if (head.status === 200) shared.push(page.webPath);
+    if (rec.sharedWithMain === undefined) {
+      const head = await call('HEAD', `${DA_SRC}/${org}/${repo}${enc}.html`, { token }, 1);
+      rec.sharedWithMain = head.status === 200;
+    }
+    if (rec.sharedWithMain) shared.push(page.webPath);
   }
 
-  // 1. PUT body fragment (multipart, field name MUST be `data`, type text/html)
-  const buf = await readFile(page.file);
-  const fd = new FormData();
-  fd.append('data', new Blob([buf], { type: 'text/html' }), path.basename(page.file));
-  const put = await call('PUT', `${DA_SRC}/${org}/${repo}${enc}.html`, { token, body: fd }, args.retries);
-  rec.put = put.status;
-  if (put.status >= 400) {
-    rec.status = 'put-fail';
-    rec.lastError = `PUT ${put.status} ${put.text}`;
-    await logLine({ path: page.webPath, step: 'put', ...put });
-    return rec;
-  }
+  if (!fastPublish) {
+    // 1. PUT body fragment (multipart, field name MUST be `data`, type text/html)
+    const buf = await readFile(page.file);
+    const fd = new FormData();
+    fd.append('data', new Blob([buf], { type: 'text/html' }), path.basename(page.file));
+    const put = await call('PUT', `${DA_SRC}/${org}/${repo}${enc}.html`, { token, body: fd }, args.retries);
+    rec.put = put.status;
+    if (put.status >= 400) {
+      rec.status = 'put-fail';
+      rec.lastError = `PUT ${put.status} ${put.text}`;
+      await logLine({ path: page.webPath, step: 'put', ...put });
+      return rec;
+    }
 
-  // 2. preview (path WITHOUT extension; ref = code branch)
-  const prev = await call('POST', `${ADMIN}/preview/${org}/${repo}/${branch}${enc}`, { token }, args.retries);
-  rec.preview = prev.status;
-  if (prev.status >= 400) {
-    rec.status = 'preview-fail';
-    rec.lastError = `preview ${prev.status} ${prev.text}`;
-    await logLine({ path: page.webPath, step: 'preview', ...prev });
-    return rec;
+    // 2. preview (path WITHOUT extension; ref = code branch)
+    const prev = await call('POST', `${ADMIN}/preview/${org}/${repo}/${branch}${enc}`, { token }, args.retries);
+    rec.preview = prev.status;
+    if (prev.status >= 400) {
+      rec.status = 'preview-fail';
+      rec.lastError = `preview ${prev.status} ${prev.text}`;
+      await logLine({ path: page.webPath, step: 'preview', ...prev });
+      return rec;
+    }
+  } else {
+    await logLine({ path: page.webPath, step: 'preview', reused: true });
   }
 
   // 3. publish to live (query-index builds against the LIVE tree — #2)

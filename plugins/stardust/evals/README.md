@@ -142,6 +142,13 @@ each a plain ESM script under `lint/` that exits 1 with one line per finding:
   Claude-only tool names outside lines marked "Claude Code".
 - `script-paths.mjs` — every plugin-internal script or reference path a
   skill doc names exists in the plugin tree.
+- `deploy-lint-fixtures.mjs` — runs `deploy/scripts/davids-model-lint.mjs` over
+  `lint/fixtures/davids-model-lint-shapes/` and `deploy/scripts/block-lint.mjs`
+  over `lint/fixtures/block-lint/`, pinning the pipeline-shape codes (TABLE,
+  branch-host / protocol-relative D4, STYLE-SPACE, JSON, SOLE-EMPH, META,
+  HBR, TEXT-LEAK, TEXT, CHROME, CONTENT) and the block codes (BL-CSS,
+  BL-MEDIA, BL-GUARD, IMG-HARDCODED with `@fixed-asset`), their tiers and
+  exit codes, against a clean page and a clean block that must stay silent.
 - `doc-size.mjs` — byte caps on `SKILL.md` and `reference/*.md`, an
   `## Operator card` heading ahead of the procedure, the always-on total and
   the per-skill delta versus the last release tag; its temporary allowlist

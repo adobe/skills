@@ -28,7 +28,7 @@ The brief template:
 > | `styles/styles-<group>.css` when the coordinator assigned your cluster its own stylesheet | other clusters' stylesheets |
 > | helpers and probes prefixed `_<id>-*` (your agent id) | unprefixed helpers — another agent's `_dump.mjs` is not yours to overwrite |
 >
-> **Block names claimed**: before creating any file, append the block names you intend to create to `stardust/eds-conversion-log.md` § inventory with your agent id; a name already listed there belongs to someone else — reuse that block or choose another name, never overwrite. Write your own rows to `stardust/eds-conversion-log-<id>.md`; the coordinator merges the per-agent logs into the main log when the wave closes (progress goes to the shared ledger, `reference/fan-out.md`).
+> **Block names claimed**: before creating any file, append the block names you intend to create to `stardust/eds-conversion-log.md` § inventory with your agent id; a name already listed there belongs to someone else — reuse that block or choose another name, never overwrite. Write your own rows to `stardust/eds-conversion-log-<id>.md`; the coordinator merges the per-agent logs into the main log when the wave closes (progress goes to the shared ledger — the master skill's `fan-out.md` § progress ledger, under `skills/stardust/reference/`).
 >
 > **Generated content**: a page a generator produced is fixed through the generator, or the hand edit is committed at once — never `git checkout -- content/` to reset pages another agent may have edited since.
 >
