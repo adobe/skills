@@ -9,6 +9,7 @@
 // Pins:
 //   * probe line shape "impeccable <v> at <skillDir> — launcher <x>, <n> commands, <k> drift"
 //   * launcher detection: scripts/impeccable (4.3) vs scripts/hook-admin.mjs (4.1); 0 drift on both
+//   * --local takes the plugin root or the skill dir itself (manifest two levels up, else "unknown")
 //   * drift layout: one "drift: … missing" line per lost load-bearing entry; exit still 0 (A35)
 //   * --state: state.json#impeccable written with the consumer's key names
 //     (skillDir, launcher, version, registryCommands, probedAt, drift), other keys preserved,
@@ -22,7 +23,7 @@
 // Usage: node plugins/stardust/evals/lint/impeccable-probe-fixtures.mjs   (exit 1 on failure)
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync, cpSync } from 'node:fs';
 import { join } from 'node:path';
 import os from 'node:os';
 
@@ -42,6 +43,19 @@ t('4.3.1 layout: launcher, 23 commands, 0 drift', () => {
   assert.equal(r.code, 0);
   assert.match(r.out, /^impeccable 4\.3\.1 at .*4\.3\.1\/skills\/impeccable — launcher scripts\/impeccable, 23 commands, 0 drift$/m);
   assert.doesNotMatch(r.out, /^drift:/m);
+});
+t('--local accepts the skill dir itself: same probe line as the plugin root', () => {
+  const root = run(CHECK, '--local', join(FX, '4.3.1'), '--offline').out.split('\n').find((l) => / at /.test(l));
+  const skill = run(CHECK, '--local', join(FX, '4.3.1', 'skills', 'impeccable'), '--offline').out.split('\n').find((l) => / at /.test(l));
+  assert.ok(root && skill, 'both forms print a probe line');
+  assert.equal(skill, root);
+  // a bare skill dir with no manifest anywhere: version "unknown", probe still runs, state records skillDir
+  const bare = join(tmp, 'bare', 'skills', 'impeccable'); cpSync(join(FX, '4.3.1', 'skills', 'impeccable'), bare, { recursive: true });
+  const state = join(tmp, 'bare-state.json');
+  const r = run(CHECK, '--local', bare, '--offline', '--state', state);
+  assert.equal(r.code, 0);
+  assert.match(r.out, /^impeccable unknown at .*bare\/skills\/impeccable — launcher scripts\/impeccable, 23 commands, 0 drift$/m);
+  assert.equal(JSON.parse(readFileSync(state, 'utf8')).impeccable.skillDir, bare);
 });
 t('4.1.3 layout: legacy hook-admin.mjs launcher, 0 drift', () => {
   const r = run(CHECK, '--local', join(FX, '4.1.3'), '--offline');

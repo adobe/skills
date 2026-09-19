@@ -37,7 +37,7 @@ critique and audit cleanly. Asking would be pedantic.
 **Plan:**
 1. `$impeccable critique stardust/current/` — score the existing site,
    surface P0/P1 issues.
-2. `"<impeccable.skillDir>/scripts/impeccable" detect --json --fast
+2. `"<state.json#impeccable.skillDir>/scripts/impeccable" detect --json --fast
    stardust/current/` — deterministic anti-pattern scan.
 3. For each P0 finding, pick the appropriate refine/fix command
    (`harden`, `clarify`, `optimize`).
@@ -218,7 +218,7 @@ and let the user push back.
 >    SaaS/tech that you find modern. (Optional — say "skip".)
 
 **Plan (after "avoid them"):**
-1. `"<impeccable.skillDir>/scripts/impeccable" detect --json` — flag any
+1. `"<state.json#impeccable.skillDir>/scripts/impeccable" detect --json` — flag any
    existing slop.
 2. `$impeccable shape` — brief with anti-references = the slop list.
 3. `$impeccable distill` — strip dated patterns first.

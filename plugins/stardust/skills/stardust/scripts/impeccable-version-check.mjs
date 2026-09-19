@@ -44,8 +44,10 @@
  *     Update: copilot plugin update impeccable
  *   - project skill directories: ./.claude/skills/impeccable, ./.agents/skills/impeccable,
  *     ./.cursor/skills/impeccable, ./.github/skills/impeccable (version from the dir's own manifest).
- *   - --local <dir> for a skills-directory install (reads <dir>/.claude-plugin/plugin.json or
- *     <dir>/package.json; skillDir = <dir>/skills/impeccable when present, else <dir>).
+ *   - --local <dir> for a skills-directory install: the plugin root (reads
+ *     <dir>/.claude-plugin/plugin.json or <dir>/package.json; skillDir = <dir>/skills/impeccable
+ *     when present, else <dir>) or the skill dir itself (<…>/skills/impeccable — version from the
+ *     plugin root two levels up, "unknown" when no manifest exists; the probe still runs).
  *     Update hint: reinstall through the installer that put it there.
  *
  * Usage:
@@ -102,8 +104,11 @@ const manifest = (dir) => readJson(path.join(dir, '.claude-plugin', 'plugin.json
 function installedCopies() {
   const copies = [];
   if (LOCAL) {
-    const pj = manifest(LOCAL);
-    if (pj?.version) copies.push({ version: pj.version, from: `local ${LOCAL}`, harness: 'skills directory', skillDir: path.resolve(skillDirOf(LOCAL)), update: `reinstall impeccable through the installer that placed it at ${LOCAL}` });
+    const skillDir = path.resolve(skillDirOf(LOCAL));
+    // <dir> may be the skill dir itself (<root>/skills/impeccable): the manifest then lives at the plugin root two levels up.
+    const isSkillDir = skillDir === path.resolve(LOCAL) && path.basename(path.dirname(skillDir)) === 'skills';
+    const pj = manifest(LOCAL) || (isSkillDir ? manifest(path.join(skillDir, '..', '..')) : null);
+    if (pj?.version || existsSync(path.join(skillDir, 'scripts'))) copies.push({ version: pj?.version || 'unknown', from: `local ${LOCAL}`, harness: 'skills directory', skillDir, update: `reinstall impeccable through the installer that placed it at ${LOCAL}` });
     return copies;
   }
   const reg = readJson(path.join(HOME, 'plugins', 'installed_plugins.json'));

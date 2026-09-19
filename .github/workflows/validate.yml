@@ -26,6 +26,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # impeccable is not installed in CI; check out its repo so the
+      # cross-plugin pass below can resolve stardust's cites against HEAD.
+      - uses: actions/checkout@v7
+        with:
+          repository: pbakaus/impeccable
+          path: .impeccable-upstream
+
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
@@ -35,6 +42,13 @@ jobs:
 
       - name: Stardust skill text names only scripts and references that exist
         run: node plugins/stardust/evals/lint/script-paths.mjs
+
+      # Advisory: upstream renames must not block unrelated stardust PRs.
+      # Findings surface as ::warning annotations (GITHUB_ACTIONS is set);
+      # the release checklist runs the same command locally with --strict.
+      - name: Stardust impeccable cites resolve against upstream (advisory)
+        continue-on-error: true
+        run: node plugins/stardust/evals/lint/script-paths.mjs --installed .impeccable-upstream/skill
 
       - name: Stardust davids-model-lint icon/variant rules keep their tiers and exit codes
         run: node plugins/stardust/evals/lint/davids-model-lint-fixtures.mjs

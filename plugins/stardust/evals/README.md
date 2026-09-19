@@ -135,7 +135,7 @@ out of `total` (100 per eval).
 
 ### Lints
 
-`npm run lint:stardust` (repo root) runs eleven static checks over `skills/`,
+`npm run lint:stardust` (repo root) runs twelve static checks over `skills/`,
 each a plain ESM script under `lint/` that exits 1 with one line per finding,
 then the fixture tests under `fixtures/` (plain `node:assert` scripts that
 import a script's exported pure functions — no playwright needed):
@@ -143,7 +143,14 @@ import a script's exported pure functions — no playwright needed):
 - `harness-neutral.mjs` — no namespaced sibling-skill references or
   Claude-only tool names outside lines marked "Claude Code".
 - `script-paths.mjs` — every plugin-internal script or reference path a
-  skill doc names exists in the plugin tree.
+  skill doc names exists in the plugin tree. `--installed [<dir>] [--strict]`
+  is the cross-plugin pass: the five impeccable cite forms (impeccable's
+  `reference/<x>.md`, `scripts/command-metadata.json`, `scripts/impeccable
+  <verb>`, `$impeccable <cmd>`, `npx impeccable`) resolve against an
+  impeccable skill dir — the registry install locally (`<dir>` omitted),
+  `.impeccable-upstream/skill` in CI (`validate.yml`, advisory
+  `::warning` step), `--strict` (exit 1) on the release checklist; exit 2 =
+  no skill dir found.
 - `deploy-lint-fixtures.mjs` — runs `deploy/scripts/davids-model-lint.mjs` over
   `lint/fixtures/davids-model-lint-shapes/` and `deploy/scripts/block-lint.mjs`
   over `lint/fixtures/block-lint/`, pinning the pipeline-shape codes (TABLE,
@@ -184,6 +191,14 @@ import a script's exported pure functions — no playwright needed):
   `lint/fixtures/redirects/redirects.tsv`: the row expansion, the exit-2
   shadow verdict (a Source that is also a delivered page) and `--check`
   writing nothing.
+- `impeccable-probe-fixtures.mjs` — runs `stardust/scripts/impeccable-version-check.mjs
+  --probe/--state` and `script-paths.mjs --installed` over
+  `lint/fixtures/impeccable-layout/` (4.1.3 legacy-launcher, 4.3.1 and a
+  drifted layout; docs-fail / docs-pass cite sets; the real `skills/` tree):
+  pins the probe line shape, `--local` accepting the plugin root or the skill
+  dir itself, the `state.json#impeccable` keys (other keys preserved, an
+  unparsable file untouched), and the exit codes (probe always 0; lint 0
+  advisory / 1 `--strict` / 2 no install dir).
 
 ## What stardust v2 evals deliberately do NOT test
 
