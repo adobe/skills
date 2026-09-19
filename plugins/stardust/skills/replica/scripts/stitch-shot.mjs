@@ -66,8 +66,8 @@
  *     live-session's dismissOverlays({ mode: 'deny' }), which clicks a
  *     reject-all control (--consent <sel> first, then OneTrust / Usercentrics
  *     / "Reject all") and NEVER tries the accept list. A consent dialog that
- *     is present but cannot be denied — or that got accepted anyway — is an
- *     INVALID CAPTURE: exit 5, no PNG, no sidecar, no verdict (never a FAIL,
+ *     is present but cannot be denied — or still up after the reject click —
+ *     is an INVALID CAPTURE: exit 5, no PNG, no sidecar, no verdict (never a FAIL,
  *     never a silently accept-state reference certified as deny-state). Deny
  *     is right when accepting loads nondeterministic third-party walls the
  *     build cannot carry. The mode is recorded in the sidecar; the project's
@@ -120,6 +120,14 @@
  *                         (after one retry with --wait doubled)
  *     --exclude <sel,…>   display:none these after the settle (both sides)
  *     --exclude-live-only marks the --exclude list as applied on this side only
+ *     --mask-sel <sel,…>  record the page-space rects of matched elements in the
+ *                         sidecar masksRects[] (kind sel); fixed/sticky matches
+ *                         are recorded fixed:true and are NOT to be masked
+ *     --mask-iframes      record every iframe box (kind iframe)
+ *     --mask-images       record every img box ≥ 40×40 (kind img)
+ *                         Rects are read at scroll 0 after the settle; nothing
+ *                         is painted — masks are applied by the compare side,
+ *                         symmetrically, from both sidecars
  *     --allow-overlay     capture even when a fixed / dialog element covers
  *                         > 30 % of the first viewport after dismissal
  *     --consent <sel>     extra consent selector, tried before the built-in
@@ -169,7 +177,7 @@
 /* standalone dev tool: sequential page ops use awaited loops by design */
 import { chromium } from 'playwright';
 import { PNG } from 'pngjs';
-import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync, readFileSync, realpathSync } from 'fs';
 import { dirname, resolve as resolvePath } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { writeSidecar } from './capture-sidecar.mjs';
@@ -179,7 +187,7 @@ import { writeSidecar } from './capture-sidecar.mjs';
 // visibly older. Comparability is keyed on instrument.name, not version.
 // 3: pinned chrome hidden on chunks 2+, integer scroll, decode race,
 //    growth re-measure, reducedMotion on the context.
-const INSTRUMENT = { name: 'stitch-shot', version: '3' };
+export const INSTRUMENT = { name: 'stitch-shot', version: '3' };
 // --consent-mode deny is implemented ONCE, in live-session's dismissOverlays
 // ({ mode: 'deny' }): its reject list is tried, its accept list never is.
 class InvalidCaptureError extends Error { constructor(m) { super(m); this.name = 'InvalidCaptureError'; } }
@@ -207,6 +215,9 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --expect-height <px>  exit 5 when the settled height is < 40 % of this (one retry, --wait doubled)
   --exclude <sel,…> display:none these after the settle — run on BOTH sides
   --exclude-live-only   the --exclude list is applied on this side only (verdict line says ASYMMETRIC)
+  --mask-sel <sel,…>  record matched elements' page-space rects in the sidecar masksRects[] (fixed/sticky: fixed:true, never masked)
+  --mask-iframes      record every iframe box in masksRects[]
+  --mask-images       record every img box ≥ 40×40 in masksRects[] (only geometry-matched pairs are masked by the compare)
   --allow-overlay   capture even when a fixed / dialog element covers > 30 % of the first viewport
   --consent <sel>   extra consent selector (clicked, not removed); "text:<label>" for a label match
   --consent-mode <m> accept | deny (default accept; deny with no reject control, or accepted → exit 5)
@@ -226,14 +237,16 @@ Run the SAME command shape against the live page and the served prototype.
 Writes <out.png>.json (provenance sidecar: schema in capture-sidecar.mjs).
 Prints: pinned hidden on chunks 2+, tail below footer, WARN fixed overlay baked into N seams.
 Exit codes: 0 written, 1 error (incl. scroll stall/deflection), 3 bot challenge (live side
-blocked — fail loud), 5 invalid capture — no verdict, never a FAIL (deny mode: consent present
-and not rejected; height < 40 % of --expect-height; error-boundary page; overlay > 30 %).`;
+blocked — fail loud), 5 invalid capture — no PNG, no sidecar, no verdict, never a FAIL:
+  accept mode: consent present, not dismissed (--consent <sel>/"text:<label>" or --allow-consent, BOTH sides);
+  deny mode: consent present and not rejected, or still visible after the reject click;
+  height < 40 % of --expect-height after one retry; error-boundary page; overlay > 30 % (--allow-overlay).`;
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { width: 1440, vh: 900, settle: false, block: [], consent: null, consentMode: 'accept', dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000, keepPinned: false, expectHeight: null, exclude: [], excludeLiveOnly: false, allowOverlay: false, allowConsent: false, hideDefaults: true, removeText: [] };
+  const opts = { width: 1440, vh: 900, settle: false, block: [], consent: null, consentMode: 'accept', dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000, keepPinned: false, expectHeight: null, exclude: [], excludeLiveOnly: false, allowOverlay: false, allowConsent: false, hideDefaults: true, removeText: [], maskSel: [], maskIframes: false, maskImages: false };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -243,6 +256,9 @@ function parseArgs(argv) {
     else if (a === '--expect-height') { opts.expectHeight = Number(rest[i += 1]); if (!(opts.expectHeight > 0)) { console.error(`--expect-height needs a positive px value\n\n${HELP}`); process.exit(1); } }
     else if (a === '--exclude') { opts.exclude = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
     else if (a === '--exclude-live-only') { opts.excludeLiveOnly = true; }
+    else if (a === '--mask-sel') { opts.maskSel = (rest[i += 1] || '').split(',').map((x) => x.trim()).filter(Boolean); }
+    else if (a === '--mask-iframes') { opts.maskIframes = true; }
+    else if (a === '--mask-images') { opts.maskImages = true; }
     else if (a === '--allow-overlay') { opts.allowOverlay = true; }
     else if (a === '--allow-consent') { opts.allowConsent = true; }
     else if (a === '--block') { opts.block = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
@@ -324,8 +340,13 @@ async function dismissAndLog(page, url, opts, prov, { lateWindowMs = isLiveHttpU
     // defect) or a dialog still up with nothing to reject is NOT captured —
     // exit 5, no verdict; a deny-mode sidecar over an accept-state PNG would
     // certify a non-comparable reference.
-    if (d.consent) throw new InvalidCaptureError(`--consent-mode deny: the consent dialog was ACCEPTED via ${d.consent} — instrument defect (accept list ran in deny mode); not captured.`);
-    if (d.consentPresent && !d.rejected) throw new InvalidCaptureError(`--consent-mode deny: a consent dialog is present but no reject-all control was found — pass --consent <reject-sel> (or "text:<label>"), or capture in accept mode on BOTH sides. Not captured: an accepted-state or still-dialogued reference would not be comparable to a deny-state build.`);
+    // live-session never runs the accept list in deny mode (d.consent stays
+    // null), so the only invalid states are: nothing to reject, or a reject
+    // control clicked while the dialog is STILL up (a reject that did not close
+    // the layer — second layer, failed handler). Both are exit 5.
+    if (d.consentPresent && !d.rejected) throw new InvalidCaptureError(`--consent-mode deny: a consent dialog is present (${d.consentContainer}) but no reject-all control was found — pass --consent <reject-sel> (or "text:<label>"), or capture in accept mode on BOTH sides. Not captured: an accepted-state or still-dialogued reference would not be comparable to a deny-state build.`);
+    if (d.consentPresent && d.rejected && !opts.allowConsent) throw new InvalidCaptureError(`--consent-mode deny: reject control ${d.rejected} was clicked but the consent dialog is still visible (${d.consentContainer}) — the click did not close the layer (a second layer, or a handler that failed). Pass --consent <reject-sel> for the control that closes it, or --allow-consent on BOTH sides. Not captured, no verdict.`);
+    if (d.consentPresent && d.rejected) console.log(`WARN consent present after reject via ${d.rejected} (${d.consentContainer}) — captured anyway (--allow-consent)`);
     if (d.rejected) {
       const via = cs && d.rejected === cs.sel ? cs.via : d.rejected;
       console.log(`consent REJECTED via ${via}`);
@@ -367,8 +388,20 @@ async function settlePass(page) {
 
 const measureHeight = (page) => page.evaluate(() => Math.max(document.body.scrollHeight, document.documentElement.scrollHeight));
 
+// Sticky baseline: Chromium's offsetTop INCLUDES the sticky shift, so "displaced
+// from layout" cannot be read off offsetTop (recorded: stuck-sticky chrome was
+// never hidden — only fixed). Record every sticky element's document y at
+// scroll 0, before the chunk loop; hidePinned compares against it.
+function recordStickyBase(page) {
+  return page.evaluate(() => {
+    const m = new WeakMap();
+    for (const el of document.querySelectorAll('body *')) if (getComputedStyle(el).position === 'sticky') m.set(el, el.getBoundingClientRect().top + window.scrollY);
+    window.__stitchStickyBase = m;
+  });
+}
+
 // Pinned chrome on chunks 2+: every position:fixed element and every sticky
-// element currently STUCK (displaced from its layout position and resting at
+// element currently STUCK (displaced from its scroll-0 position and resting at
 // its top/bottom offset) gets opacity:0 !important + a marker; restorePinned
 // undoes exactly that set. Returns short descriptors for the log/sidecar.
 function hidePinned(page) {
@@ -379,7 +412,7 @@ function hidePinned(page) {
       const txt = (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 24);
       return `${el.tagName.toLowerCase()}${id}${cls}${txt ? ` "${txt}"` : ''}`;
     };
-    const layoutY = (el) => { let y = 0; for (let n = el; n; n = n.offsetParent) y += n.offsetTop; return y; };
+    const base = window.__stitchStickyBase;
     const out = [];
     const vh = window.innerHeight;
     for (const el of document.querySelectorAll('body *')) {
@@ -390,7 +423,8 @@ function hidePinned(page) {
       if (r.width < 1 || r.height < 1 || r.bottom <= 0 || r.top >= vh) continue;
       if (cs.position === 'sticky') {
         const docY = r.top + window.scrollY;
-        const displaced = Math.abs(docY - layoutY(el)) > 1;
+        const b = base && base.get(el);
+        const displaced = b === undefined ? true : Math.abs(docY - b) > 1; // no baseline (mounted later): trust the offset test alone
         const top = parseFloat(cs.top); const bottom = parseFloat(cs.bottom);
         const atTop = Number.isFinite(top) && r.top <= top + 2;
         const atBottom = Number.isFinite(bottom) && r.bottom >= vh - bottom - 2;
@@ -424,7 +458,7 @@ function restorePinned(page) {
 // max-width container, side rail, 1px rule, column gutters) that is identical
 // across chunks without anything being baked in. A seam "fires" when ≥ 8
 // remaining rows are byte-identical, or ≥ 60 % of the compared rows are.
-function seamRepeats(chunks, width) {
+export function seamRepeats(chunks, width) {
   const ROWS = 96; const STRIDE = 8;
   const rowOf = (img, row) => img.data.subarray(row * img.width * 4, (row + 1) * img.width * 4);
   const uniform = (buf) => { const [r, g, b] = buf; for (let i = 4; i < buf.length; i += 4) if (buf[i] !== r || buf[i + 1] !== g || buf[i + 2] !== b) return false; return true; };
@@ -480,6 +514,24 @@ function invalidityReason(page, vh) {
   }, vh);
 }
 
+// Mask rects (T17.3, capture side): page-space boxes of --mask-sel matches,
+// iframes and images ≥ 40×40, read at scroll 0 after the settle. Nothing is
+// painted here — the compare applies masks from BOTH sidecars, symmetrically.
+// A match inside fixed/sticky chrome is recorded fixed:true and never masked
+// (it repeats per chunk; the recreation must replicate it — fixed-disc-at-seams).
+function collectMaskRects(page, { sels, iframes, images }) {
+  return page.evaluate(({ sels: ss, iframes: fi, images: im }) => {
+    const sy = window.scrollY; const out = [];
+    const rectOf = (el) => { const r = el.getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top + sy), w: Math.round(r.width), h: Math.round(r.height) }; };
+    const pinned = (el) => { for (let n = el; n && n !== document.body; n = n.parentElement) { const p = getComputedStyle(n).position; if (p === 'fixed' || p === 'sticky') return true; } return false; };
+    const push = (kind, el, extra) => { const r = rectOf(el); if (r.w < 1 || r.h < 1) return; out.push({ kind, ...extra, ...r, ...(pinned(el) ? { fixed: true } : {}) }); };
+    for (const sel of ss) { try { for (const el of document.querySelectorAll(sel)) push('sel', el, { sel }); } catch { out.push({ kind: 'sel', sel, x: 0, y: 0, w: 0, h: 0, error: 'bad selector' }); } }
+    if (fi) for (const el of document.querySelectorAll('iframe')) push('iframe', el, { src: (el.getAttribute('src') || '').slice(0, 80) });
+    if (im) for (const el of document.querySelectorAll('img')) { const r = el.getBoundingClientRect(); if (r.width >= 40 && r.height >= 40) push('img', el, {}); }
+    return out;
+  }, { sels, iframes, images });
+}
+
 // Rows below the footer: a residual there is named, not eyeballed.
 function tailBelowFooter(page, totalH) {
   return page.evaluate((docH) => {
@@ -527,26 +579,36 @@ async function main() {
     // solve window only at tier 3 (live-session gotoLive): headless clearance never lands, and
     // the solve loop would spend the Akamai block budget (1 hit vs up to 4).
     await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: opts.timeout, settleMs: 0, tier });
-    // Tier 3 parks the window off-screen; an occluded/backgrounded tab reports
-    // visibilityState 'hidden' and some edges challenge it where an on-screen
-    // one is admitted (playwright-recipe.md § Bot-management fallback). Never
-    // shoot a hidden renderer — exit 3, same class as a challenge: not the page.
-    const vis = await page.evaluate(() => document.visibilityState);
-    if (vis !== 'visible') {
-      console.error(`[stitch-shot] window not visible to the renderer (visibilityState=${vis}) — capture would be challenged/backgrounded`);
-      process.exit(3);
-    }
-    await page.waitForTimeout(opts.wait);
     // provenance accumulates through the run; written as <out>.json at the end
-    const prov = { consent: { mode: opts.consentMode, via: 'none-detected' }, dismissed: [], fontsFailed: [], hidden: [] };
+    const prov = { consent: { mode: opts.consentMode, via: 'none-detected' }, dismissed: [], fontsFailed: [], hidden: [], visibilityState: 'visible' };
+    // Tier 3 parks the window off-screen with the anti-backgrounding flags
+    // (live-session OFFSCREEN_ARGS); headless renderers are always 'visible'.
+    // A 'hidden' renderer defers media loading (recorded on a CDP-driven tab:
+    // a false 4.75 → 11.49 % regression), so say it loudly — a WARN, not an
+    // exit: a challenge is gotoLive's to detect, and the decode race +
+    // pendingDecodes below report what a backgrounded tab left undecoded.
+    const vis = await page.evaluate(() => document.visibilityState).catch(() => 'visible');
+    if (vis !== 'visible') console.log(`WARN document.visibilityState=${vis} — the renderer is backgrounded/occluded (tier ${tier}); media may load deferred — read pendingDecodes, re-run with STARDUST_HEADED_WINDOW=1 if it is non-zero`);
+    prov.visibilityState = vis;
+    await page.waitForTimeout(opts.wait);
     await dismissAndLog(page, url, opts, prov);
+    // Late-mount watch: overlays that mount AFTER the dismissal window would be
+    // baked into every chunk below their arrival (recorded: a consent banner
+    // in ~7 chunks). A MutationObserver flags new fixed/dialog nodes; the
+    // settle re-sweep and the chunk loop re-sweep (one pass each, no window)
+    // when it reports any. Installed BEFORE the settle so the settle's mounts
+    // are seen too.
+    await installOverlayWatch(page);
 
     if (opts.settle) {
       await settlePass(page);
       // Timed marketing/newsletter modals (CH-1) often fire DURING the settle
       // window — sweep again so a late interstitial isn't baked into the
       // stitched capture (recorded: a fashion retailer's "Sign up, stay updated!").
-      await dismissAndLog(page, url, opts, prov);
+      // ONE pass: the 6 s late window already ran once on this page load; a
+      // second full window doubled every live capture's wall-clock for nothing
+      // the watch + chunk-loop re-sweep would not catch.
+      await dismissAndLog(page, url, opts, prov, { lateWindowMs: 0 });
     }
 
     // --exclude: in-flow third-party widgets (chat launchers, feedback tabs)
@@ -559,12 +621,6 @@ async function main() {
         console.log(`excluded ${counts[i] < 0 ? '(bad selector)' : `${counts[i]} element(s)`} via ${sel}${opts.excludeLiveOnly ? '  ASYMMETRIC (--exclude-live-only: applied on this side only)' : ''}`);
       });
     }
-
-    // Late-mount watch: overlays that mount AFTER the dismissal passes would be
-    // baked into every chunk below their arrival (recorded: a consent banner
-    // in ~7 chunks). A MutationObserver flags new fixed/dialog nodes; the chunk
-    // loop re-sweeps (one pass, no late window) when it reports any.
-    await installOverlayWatch(page);
 
     // Short-capture guard, instrument-internal first: a load race leaves the
     // page short at the settled height (recorded: a 360 capture of 1557 px on
@@ -642,6 +698,11 @@ async function main() {
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(800);
 
+    await recordStickyBase(page).catch(() => {});
+    // --mask-sel / --mask-iframes / --mask-images: rects into the sidecar (scroll 0, settled layout)
+    const wantMasks = opts.maskSel.length || opts.maskIframes || opts.maskImages;
+    const masksRects = wantMasks ? await collectMaskRects(page, { sels: opts.maskSel, iframes: opts.maskIframes, images: opts.maskImages }).catch(() => []) : null;
+
     // Font-load assertion (F-B2 companion): a webfont that failed to fetch
     // renders the ENTIRE capture in fallback type — wrong wraps, wrong
     // heights, wrong doc height — with no error anywhere, the same silent
@@ -690,12 +751,15 @@ async function main() {
         while (pend() && Date.now() - t0 < 3000) await new Promise((r) => { setTimeout(r, 150); });
         const left = Math.max(200, 3000 - (Date.now() - t0));
         const todo = inView().filter((i) => i.complete && i.naturalWidth > 0 && typeof i.decode === 'function');
-        let pending = 0;
+        // count per image: the decodes still unresolved when the bound fires are
+        // the pending ones (counting every image in the race overcounted — one
+        // slow decode read as "all N pending")
+        let done = 0;
         await Promise.race([
-          Promise.all(todo.map((i) => i.decode().catch(() => {}))),
-          new Promise((r) => { setTimeout(() => { pending = todo.length; r(); }, Math.min(1500, left)); }),
+          Promise.all(todo.map((i) => i.decode().catch(() => {}).then(() => { done += 1; }))),
+          new Promise((r) => { setTimeout(r, Math.min(1500, left)); }),
         ]);
-        return pending;
+        return todo.length - done;
       });
       // Integer scroll: a fractional window.scrollY placed every row of the
       // chunk half a width off in the stitch (byte offset mid-row) —
@@ -754,10 +818,11 @@ async function main() {
     const dpr = await page.evaluate(() => window.devicePixelRatio).catch(() => 1);
     const side = writeSidecar(out, {
       url, width: opts.width, vh: opts.vh, dpr, capturedAt: new Date().toISOString(),
-      instrument: { ...INSTRUMENT, options: { settle: opts.settle, headed: opts.headed, startTier: resolveStartTier(opts.headed), locale: opts.locale, wait: opts.wait, timeout: opts.timeout, consent: opts.consent, dismiss: opts.dismiss, keepPinned: opts.keepPinned, exclude: opts.exclude, excludeLiveOnly: opts.excludeLiveOnly, expectHeight: opts.expectHeight, allowOverlay: opts.allowOverlay, allowConsent: opts.allowConsent, hideDefaults: opts.hideDefaults, removeText: opts.removeText, block: opts.block } },
+      instrument: { ...INSTRUMENT, options: { settle: opts.settle, headed: opts.headed, startTier: resolveStartTier(opts.headed), locale: opts.locale, wait: opts.wait, timeout: opts.timeout, consent: opts.consent, dismiss: opts.dismiss, keepPinned: opts.keepPinned, exclude: opts.exclude, excludeLiveOnly: opts.excludeLiveOnly, expectHeight: opts.expectHeight, allowOverlay: opts.allowOverlay, allowConsent: opts.allowConsent, hideDefaults: opts.hideDefaults, removeText: opts.removeText, block: opts.block, maskSel: opts.maskSel, maskIframes: opts.maskIframes, maskImages: opts.maskImages } },
       consent: prov.consent, dismissed: prov.dismissed, fontsFailed: prov.fontsFailed,
       docHeight: totalH, chunks: chunks.length, source: 'stitch-shot', technique: TIERS[tier - 1], tier,
-      pinnedHidden: [...pinnedHidden], pendingDecodes, tail, hidden: prov.hidden, seamRepeats: seams, blocked: parseBlockList(opts.block),
+      pinnedHidden: [...pinnedHidden], pendingDecodes, tail, hidden: prov.hidden, seamRepeats: seams, blocked: parseBlockList(opts.block), visibilityState: prov.visibilityState,
+      ...(masksRects ? { masksRects } : {}),
     });
     console.log(`stitched ${out}: ${opts.width}x${totalH} from ${chunks.length} chunks  (consent ${prov.consent.mode}/${prov.consent.via}; sidecar ${side})`);
     if (!opts.keepPinned && chunks.length > 1) console.log(`pinned hidden on chunks 2+: ${pinnedHidden.size}${pinnedHidden.size ? ` [${[...pinnedHidden].join(', ')}]` : ''}`);
@@ -766,6 +831,10 @@ async function main() {
     if (seams >= 2) console.log(`WARN fixed overlay baked into ${seams} seams — chrome the pinned hide missed (iframe/shadow-hosted, or --keep-pinned): pass --exclude <sel> on both sides, or mask the seam rows (pixel-compare --mask)`);
     if (tail && tail.px > 8) console.log(`tail ${tail.px}px below footer: ${tail.elements.join(', ') || '(no element boxes — margin/padding)'}`);
     if (opts.block.length) console.log(`blocked: ${parseBlockList(opts.block).join(', ')} — run the same --block on the other side (the sidecar refuses an asymmetric pair)`);
+    if (masksRects) {
+      const n = (k) => masksRects.filter((m) => m.kind === k && !m.fixed && !m.error).length; const fixed = masksRects.filter((m) => m.fixed).length; const bad = masksRects.filter((m) => m.error).map((m) => m.sel);
+      console.log(`mask rects: ${masksRects.length - fixed - bad.length} (sel ${n('sel')}, iframe ${n('iframe')}, img ${n('img')}; fixed skipped ${fixed}${bad.length ? `; bad selector ${bad.join(', ')}` : ''}) → sidecar masksRects[] — same flags on the other side`);
+    }
     if (opts.excludeLiveOnly && opts.exclude.length) console.log(`ASYMMETRIC: --exclude applied on this side only (${opts.exclude.join(', ')}) — the pair is not a gate number`);
   });
   await browser.close();
@@ -773,6 +842,11 @@ async function main() {
 
 // exit 3 = bot challenge on the live side (distinct from generic errors, so a
 // gate runner can tell "blocked at tier 3 — interactive solve" from "capture broke").
-// exit 5 = invalid capture (deny mode: consent present and not rejected, or accepted;
-// short capture under --expect-height; error-boundary page; overlay > 30 %): no verdict, never a FAIL.
-main().catch((e) => { console.error(`stitch-shot error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : e.name === 'InvalidCaptureError' ? 5 : 1); });
+// exit 5 = invalid capture (consent present after the window — accept mode: not dismissed;
+// deny mode: not rejected, or still up after the reject click; short capture under
+// --expect-height; error-boundary page; overlay > 30 %): no verdict, never a FAIL.
+// CLI only when invoked directly (real paths — a symlinked tmpdir makes argv[1]
+// and import.meta.url differ); importable otherwise, so the pure halves
+// (parseArgs, seamRepeats, INSTRUMENT) run in the fixture runner without a browser.
+const isMain = (() => { try { return process.argv[1] && pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url; } catch { return false; } })();
+if (isMain) main().catch((e) => { console.error(`stitch-shot error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : e.name === 'InvalidCaptureError' ? 5 : 1); });

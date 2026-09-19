@@ -27,7 +27,10 @@
  *     storageState?: boolean,                            // optional (session pin)
  *     variants?: [ ... ],                                // optional (A/B / geo markers)
  *     blocked: [ '<substr>' ],                             // --block list (refusal key; [] when none)
- *     hidden?: [], pinnedHidden?: [], tail?: {}, pendingDecodes?, seamRepeats?   // optional
+ *     hidden?: [], pinnedHidden?: [], tail?: {}, pendingDecodes?, seamRepeats?, visibilityState?,   // optional
+ *     masksRects?: [ { kind: 'sel'|'iframe'|'img', sel?, src?, x, y, w, h, fixed? } ]
+ *       // --mask-sel / --mask-iframes / --mask-images: page-space rects at scroll 0 after the settle;
+ *       // present only when a --mask-* flag was given; fixed:true = inside pinned chrome, never masked
  *   }
  *
  * Refusal keys — a pair is incomparable when any of these differ, or when
