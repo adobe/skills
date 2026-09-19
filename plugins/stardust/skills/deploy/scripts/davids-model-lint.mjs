@@ -11,7 +11,17 @@
  *
  *   node skills/deploy/scripts/davids-model-lint.mjs content/            # tree
  *   node skills/deploy/scripts/davids-model-lint.mjs content/index.html  # one page
- *   … [--json] [--source-host <host[,host]> [--content-root content]]
+ *   … [--json] [--icons-dir icons] [--styles styles/styles.css]
+ *     [--source-host <host[,host]> [--content-root content]]
+ *
+ * --icons-dir enables the deterministic icon checks: every `:name:` token (and
+ * every already-decorated `<span class="icon icon-name">`) must resolve to
+ * `<dir>/name.svg|png` — the runtime prepends `icon-` itself, so an authored
+ * `:icon-x:` fetches `/icons/icon-x.svg` and renders a broken-image box.
+ * --styles (default: eds/styles/styles.css, then styles/styles.css) feeds the
+ * variant-collision check: an authored block variant token that equals a bare
+ * single-class selector in the foundation CSS (`.illu {`) is restyled by that
+ * rule and collapses the whole block; the fixed reserved list is always on.
  *
  * --source-host enables the D4 LOCALIZE advisory: an <a href> to the live
  * source host whose path exists in the content tree (--content-root, default:
@@ -34,18 +44,34 @@
  *       inline-script text: window./try {)     D15 ALL_CAPS_TOKEN — tracking-token
  *                                                  lookalike (advisory: legit acronyms exist)
  *   HR  authored <hr> (#119 — the section delimiter; fractures the section)
+ *   ICON-PREFIX  :icon-x: token while icons/x.svg ICON-PREFIX  :icon-x: token without
+ *       exists (--icons-dir given; unambiguous)      --icons-dir (a site MAY own icon-x.svg)
+ *   ICON-MISSING :x: token / icon-x class with no VARIANT-COLLIDE variant token equal to a
+ *       icons/x.svg|png (--icons-dir given only)     class inside a compound/descendant
+ *   VARIANT-COLLIDE block variant token in the      selector of --styles (`.hero .x`)
+ *       reserved list or equal to a bare `.x {`
+ *       selector of --styles
+ *
+ * Icon and variant findings are reported ONCE per token with the page count.
  *
  * Dependency-free by design (regex + balanced-div walking, same technique as
  * build-harness.mjs) — content pages are machine-generated and regular; this
  * is a structural lint, not a browser-grade parser.
  */
-import { readFileSync, readdirSync, statSync } from 'fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
 import path from 'path';
 
 const WRAPPER_BLOCK_NAMES = new Set(['text', 'heading', 'title', 'image']);
 const KEY_VALUE_BLOCKS = new Set(['metadata', 'section-metadata']);
 const EMBED_HOST = /(youtube\.com|youtu\.be|vimeo\.com|player\.|\/embed\/)/i;
 // Default-content-expressible tags: what a prose section can carry natively.
+// Variant tokens that collide with classes the boilerplate runtime/foundation
+// owns (decorateButtons, decorateSections, decorateIcons, the `.icon` utility).
+const RESERVED_VARIANTS = new Set(['icon', 'button', 'primary', 'secondary', 'section', 'block', 'wrapper', 'container', 'appear', 'hidden', 'default-content-wrapper', 'highlight']);
+// `:name:` as the pipeline's icon syntax sees it: a lowercase token, not part
+// of a time/URL (10:30:45, https://) — the lookarounds exclude word/colon
+// neighbours.
+const ICON_TOKEN = /(?<![\w:]):([a-z][a-z0-9_-]*):(?![\w:])/g;
 const PROSE_TAGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'a', 'ul', 'ol', 'li', 'picture', 'img', 'source', 'strong', 'em', 'code', 'br']);
 
 // ---------------------------------------------------------------- primitives
@@ -111,8 +137,10 @@ function lintPage(file, html, findings) {
     for (const block of kids) {
       const cls = classOf(block.openTag);
       if (!cls) continue; // an unclassed child div is a stray wrapper, not a block
-      const name = cls.split(/\s+/)[0].toLowerCase();
+      const classes = cls.split(/\s+/);
+      const name = classes[0].toLowerCase();
       lintBlock(file, section, block, name, flag);
+      for (const variant of classes.slice(1)) noteVariant(file, name, variant.toLowerCase());
     }
 
     lintSectionShape(file, section, kids, defaultContentText, flag);
@@ -120,6 +148,7 @@ function lintPage(file, html, findings) {
 
   lintText(file, main, flag);
   lintUrls(file, main, flag);
+  lintIcons(file, main);
 
   // HR (#119) — <hr> is the EDS section delimiter: authored inside a section
   // it silently fractures that section into several at ingestion, and every
@@ -301,6 +330,95 @@ function lintUrls(file, main, flag) {
   }
 }
 
+// ------------------------------------------- icon tokens / variant tokens
+// Both are collected across the run and reported once per token (tree mode):
+// a mis-authored icon recurs on every page that uses it, and a per-page line
+// would bury the one fix under N copies.
+
+let ICONS_DIR = null; // --icons-dir, when given
+let STYLES = null; // { file, bare:Set, compound:Set } from --styles, when resolvable
+const ICON_USES = new Map(); // token → Set(file)
+const VARIANT_USES = new Map(); // token → { files:Set, blocks:Set }
+
+function lintIcons(file, main) {
+  const seen = new Set();
+  for (const m of stripTags(main).matchAll(ICON_TOKEN)) seen.add(m[1]);
+  // Already-decorated form (a pre-rendered import): <span class="icon icon-x">
+  for (const m of main.matchAll(/<span\b[^>]*\bclass="([^"]*)"/gi)) {
+    const cls = m[1].split(/\s+/);
+    if (!cls.includes('icon')) continue;
+    for (const c of cls) if (c.startsWith('icon-') && c.length > 5) seen.add(c.slice(5));
+  }
+  for (const t of seen) {
+    if (!ICON_USES.has(t)) ICON_USES.set(t, new Set());
+    ICON_USES.get(t).add(file);
+  }
+}
+
+function noteVariant(file, blockName, token) {
+  if (!token || token === blockName) return;
+  if (!VARIANT_USES.has(token)) VARIANT_USES.set(token, { files: new Set(), blocks: new Set() });
+  const u = VARIANT_USES.get(token);
+  u.files.add(file);
+  u.blocks.add(blockName);
+}
+
+function iconExists(name) {
+  return ['svg', 'png'].some((ext) => existsSync(path.join(ICONS_DIR, `${name}.${ext}`)));
+}
+
+// Bare single-class selectors (`.illu {`) vs classes that only appear inside
+// compound/descendant selectors (`span.icon`, `.hero .illu`). Comment-stripped
+// regex walk over rule preludes; at-rule preludes (@media …) are skipped.
+function parseStyles(css) {
+  const bare = new Set();
+  const compound = new Set();
+  const clean = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  for (const m of clean.matchAll(/([^{}]+)\{/g)) {
+    const prelude = m[1].trim();
+    if (!prelude || prelude.startsWith('@')) continue;
+    for (const sel of prelude.split(',').map((x) => x.trim()).filter(Boolean)) {
+      const lone = sel.match(/^\.([a-zA-Z_-][\w-]*)$/);
+      if (lone) { bare.add(lone[1].toLowerCase()); continue; }
+      for (const c of sel.matchAll(/\.([a-zA-Z_-][\w-]*)/g)) compound.add(c[1].toLowerCase());
+    }
+  }
+  return { bare, compound };
+}
+
+function pagesLabel(files) {
+  return files.size === 1 ? [...files][0] : `${files.size} pages`;
+}
+
+function reportCollected(findings) {
+  const push = (sev, rule, files, msg) => findings.push({ sev, rule, file: pagesLabel(files), pages: [...files].sort(), msg });
+
+  for (const [token, files] of [...ICON_USES].sort()) {
+    const prefixed = token.startsWith('icon-');
+    if (!ICONS_DIR) {
+      if (prefixed) push('🟡', 'ICON-PREFIX', files, `icon token ":${token}:" carries the icon- prefix the runtime adds itself (→ /icons/${token}.svg) — author ":${token.slice(5)}:" unless the site really owns icons/${token}.svg (pass --icons-dir to decide)`);
+      continue;
+    }
+    if (iconExists(token)) continue;
+    if (prefixed && iconExists(token.slice(5))) {
+      push('🔴', 'ICON-PREFIX', files, `icon token ":${token}:" doubles the prefix — icons/${token.slice(5)}.svg exists, icons/${token}.svg does not, and the runtime fetches /icons/${token}.svg (broken-image box); author ":${token.slice(5)}:"`);
+      continue;
+    }
+    push('🔴', 'ICON-MISSING', files, `icon token ":${token}:" has no icons/${token}.svg|png in ${ICONS_DIR} — the asset must exist in the branch before the page is PUT${prefixed ? ' (note the icon- prefix: the runtime adds it, so ":' + token.slice(5) + ':" may be what was meant)' : ''}`);
+  }
+
+  for (const [token, u] of [...VARIANT_USES].sort()) {
+    const blocks = [...u.blocks].sort().join(', ');
+    if (RESERVED_VARIANTS.has(token)) {
+      push('🔴', 'VARIANT-COLLIDE', u.files, `variant token "${token}" on block(s) ${blocks} is a class the runtime/foundation owns (reserved list, #15) — the block inherits that rule's styling; rename the variant (e.g. "${token}-style")`);
+    } else if (STYLES && STYLES.bare.has(token)) {
+      push('🔴', 'VARIANT-COLLIDE', u.files, `variant token "${token}" on block(s) ${blocks} equals the bare selector ".${token} {" in ${STYLES.file} — that foundation rule restyles the whole block (#15); rename the variant`);
+    } else if (STYLES && STYLES.compound.has(token)) {
+      push('🟡', 'VARIANT-COLLIDE', u.files, `variant token "${token}" on block(s) ${blocks} appears inside a compound/descendant selector of ${STYLES.file} — confirm no rule reaches the block, or rename the variant`);
+    }
+  }
+}
+
 // -------------------------------------------------------------------- main
 
 function collectFiles(target) {
@@ -316,15 +434,32 @@ function collectFiles(target) {
   return out;
 }
 
+const USAGE = 'usage: davids-model-lint.mjs <content-file-or-dir> [...] [--json] [--icons-dir <dir>] [--styles <css>] [--source-host <host[,host]> [--content-root <dir>]]';
 const argv = process.argv.slice(2);
+if (argv.includes('--help') || argv.includes('-h')) { console.log(USAGE); process.exit(0); }
 const asJson = argv.includes('--json');
+const VALUE_OPTS = ['--source-host', '--content-root', '--icons-dir', '--styles'];
 const optVal = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; };
 const sourceHost = optVal('--source-host');
 const contentRootOpt = optVal('--content-root');
-const args = argv.filter((a, i) => a !== '--json' && !['--source-host', '--content-root'].includes(a) && !['--source-host', '--content-root'].includes(argv[i - 1]));
+const iconsDirOpt = optVal('--icons-dir');
+const stylesOpt = optVal('--styles');
+const args = argv.filter((a, i) => a !== '--json' && !VALUE_OPTS.includes(a) && !VALUE_OPTS.includes(argv[i - 1]));
 if (!args.length) {
-  console.error('usage: davids-model-lint.mjs <content-file-or-dir> [...] [--json] [--source-host <host[,host]> [--content-root <dir>]]');
+  console.error(USAGE);
   process.exit(1);
+}
+if (iconsDirOpt) {
+  if (!existsSync(iconsDirOpt) || !statSync(iconsDirOpt).isDirectory()) { console.error(`--icons-dir ${iconsDirOpt}: not a directory`); process.exit(1); }
+  ICONS_DIR = iconsDirOpt;
+}
+{
+  // Same default resolution as render-harness / ew-editability-probe; an
+  // explicit --styles that does not exist is a usage error, a missing default
+  // just disables the measured selector set (the reserved list stays on).
+  const stylesFile = stylesOpt || ['eds/styles/styles.css', 'styles/styles.css'].find((f) => existsSync(f)) || null;
+  if (stylesOpt && !existsSync(stylesOpt)) { console.error(`--styles ${stylesOpt}: file not found`); process.exit(1); }
+  if (stylesFile) STYLES = { file: stylesFile, ...parseStyles(readFileSync(stylesFile, 'utf8')) };
 }
 if (sourceHost) {
   const root = contentRootOpt || args.find((a) => statSync(a).isDirectory()) || path.dirname(args[0]);
@@ -340,6 +475,7 @@ for (const target of args) {
   }
 }
 
+reportCollected(findings);
 findings.sort((a, b) => (a.sev === b.sev ? 0 : a.sev === '🔴' ? -1 : 1));
 const red = findings.filter((f) => f.sev === '🔴').length;
 
