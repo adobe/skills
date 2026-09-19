@@ -103,7 +103,7 @@ capture is re-taken every iteration.
    🟠; record it once in the ledger.
 2. **visual-diff: flags none or justified.** A live page's own quirks are
    justified when the prototype mirrors them (e.g. a 1×1 SEO h1 at x0, a
-   carousel tile at a negative offset — both real UC1-E1 justifications).
+   carousel tile at a negative offset).
 3. **pixel diff ≤ 10% full-page** — AND no band left unexplained (§ Band
    breakdown). 10% is the ship bar, not the target; the validated run
    landed at 1.31%.
@@ -115,8 +115,8 @@ capture is re-taken every iteration.
 5. **Chrome crop gate: header band AND footer band each ≤ 2% diff (≥98%
    match, #115).** The full-page bar dilutes the chrome — header/footer are
    a small share of page pixels but carry disproportionate visual weight
-   and repeat on every page of a rollout. Full-page-green pages have shipped with chrome at 93–97% (lookalike icons, wrong micro-weights, off-by-10px nav rows all fit inside the full-page bar). Run `../scripts/crop-compare.mjs` over the SAME stitched
-   captures the pixel probe used — no extra live hit:
+   and repeat on every page of a rollout. Run `../scripts/crop-compare.mjs`
+   over the SAME stitched captures the pixel probe used — no extra live hit:
 
    ```bash
    node stardust/scripts/replica/crop-compare.mjs "$GATE/live.png" "$GATE/proto.png" \
@@ -212,7 +212,7 @@ prototype gated against the live page, on a typographic page. Pages
 converted to the delivery platform and gated against the **published
 origin** (§ The published-origin gate) carry justified block-model deltas —
 control UI, split anchors, nondeterministic elements — and landed at
-6.9–9.9% while visually faithful. The ≤10% bar covers both
+near the bar while visually faithful. The ≤10% bar covers both
 regimes; what burns iteration caps is chasing prototype-regime numbers on a
 published-origin gate. Record which regime a number belongs to in the
 ledger, and judge each against its own regime's precedent.
@@ -305,10 +305,11 @@ discipline — convergence happened within 3 with the recreation procedure
 followed; more loops mean the inputs were wrong (values eyeballed instead of
 lifted, capture unhardened), and the fix is upstream, not a fourth loop.
 
-- **The cap is mechanical.** `gate.sh` counts the rounds from the round
-  records (`gate-<label>.json` with verdict PASS/FAIL, not excluded, not a
-  live-drift recapture; no-verdict rounds never count), labels rounds
-  `iter<k>` by default and stops at 3 with exit 6 before any capture.
+- **The cap is mechanical, per regime.** `gate.sh` counts the rounds from
+  the round records (`gate-<label>.json` with verdict PASS/FAIL, not
+  excluded, not a live-drift recapture, same `regime`; no-verdict rounds
+  never count), labels rounds `iter<k>` (prototype) / `pub<k>`
+  (published-origin) by default and stops at 3 with exit 6 before any capture.
   `--over-cap <reason>` runs one more round with one of the regime labels
   below, written to the record as `overCap`; `--invalidate <label> <fix>` is
   the instrument-invalidated exclusion as a record field; `--record` copies
@@ -428,7 +429,7 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   replica instruments older than 15 minutes before a round (`GATE_REAP_MIN`,
   0 disables); `pixel-compare.mjs` supervises its own `--timeout` (120 s)
   when run alone. Exit 124 is "no verdict — re-run", never a FAIL. Do not
-  wrap the instruments in your own `sleep N; kill` guard: a fixed sleep spends its whole window every round (the exit-path hang it guarded against is fixed in the script and covered by a test).
+  wrap the instruments in your own `sleep N; kill` guard: a fixed sleep spends its whole window every round.
   When a capture legitimately needs longer (a 10k-px page under `--settle`),
   raise the variable for that page and say so in the ledger.
 - **Your waiting has a ceiling too.** A gate round over several archetypes
@@ -436,17 +437,15 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   foreground `for` loop of `gate.sh` calls. Read its progress file at most
   every 4 minutes, never with a single `sleep` of 5 minutes or more — the
   master skill's wait discipline; its SUMMARY line is the completion.
-- **Media-density budget.** The ≤3-iteration convergence was validated on a
-  typographic, low-image page (the retail home). Image-dense commerce homes
-  spend iterations on media parity —
+- **Media-density budget.** The ≤3-iteration convergence assumes a
+  typographic, low-image page. Image-dense pages spend iterations on media parity —
   populating grids, matching crops — before geometry work even starts.
   Budget accordingly: on a media-heavy page, image/media parity IS
   iteration 1's job; geometry starts at iteration 2.
 - **A pixel pass at the wrong metric is debt — spot-check base typography
-  against live computed styles once the gate passes.** An archetype shipped
-  card body text one size too small and still passed because the tuned
-  spacing absorbed the size error; siblings with more text amplified it
-  into extra wraps and taller pages. After the pass,
+  against live computed styles once the gate passes.** Tuned spacing absorbs
+  a body text one size too small; siblings with more text amplify it into
+  extra wraps and taller pages. After the pass,
   read body font-size/line-height per block on both sides (a computed-style
   probe — build-side runs are free) and re-fit rhythm at the true metric.
   Compensating spacing is the tell.
@@ -710,8 +709,8 @@ uncommented, unledgered edit is still a defect.
 
 The prototype gate above proves the RECREATION; it does not prove the
 DELIVERED page. Local render harnesses systematically understate deltas
-because the real delivery pipeline transforms the markup — field rule: a page gating at X% on the harness lands
-at X±(large) on the published origin until the transforms below are
+because the real delivery pipeline transforms the markup — a page gating at
+X% on the harness lands elsewhere on the published origin until the transforms below are
 handled. **Only the published-origin number counts as the final gate** for
 a platform-delivered page: re-run the full gate (same instruments, same
 pass bar, same iteration discipline) with the live site as source and the
@@ -741,9 +740,9 @@ marker — `../../deploy/reference/deployed-reconcile.md` § The six reconcile c
   campaign slot from a conversion defect before any CSS round is spent.
 - **Budget ONE anchors-driven reconcile round at the published origin.** The
   pipeline shifts vertical rhythm (section wrappers, `<p><picture>`,
-  fragment chrome): a gate-passed 8.4% prototype first published at 11.75%,
-  and two text-anchor rounds (anchor probe live-vs-published, patch section
-  paddings in block CSS, re-measure) brought it to 6.5% with exact anchor
+  fragment chrome): a gate-passed prototype first publishes above the bar,
+  and one or two text-anchor rounds (anchor probe live-vs-published, patch
+  section paddings in block CSS, re-measure) bring it back with anchor
   parity. Treat the pre-publish harness number as provisional
   and the reconcile round as expected work, not a regression.
 - **Two published-origin rounds without improvement → stop editing CSS.**
@@ -763,8 +762,8 @@ marker — `../../deploy/reference/deployed-reconcile.md` § The six reconcile c
   the same condition as `<check>/unmeasured` / exit 2
   (`../../qa/reference/checks.md` § Cross-cutting).
 
-Recurring EDS pipeline transforms that move the number (each recorded;
-none visible on a local harness):
+Recurring EDS pipeline transforms that move the number (none visible on a
+local harness):
 
 - **Images get wrapped in `<p><picture>`.** The pipeline emits every
   authored image inside a paragraph. If any base rule makes that `<p>`
@@ -838,7 +837,11 @@ residual carries `artifacts[]`
 table's **permanent** classes; an entry missing either is invalid and the
 breakpoint is FAIL. `published.<bp>` holds the published-origin result per
 breakpoint (§ The published-origin gate); a breakpoint absent there is
-`ungated` — reported as such, never as passed.
+`ungated` — reported as such, never as passed. `../scripts/gate-ledger-lint.mjs`
+is this ledger's reader (rollout Setup, `migrate` before any A′ render; `--published`
+reports `published.<bp>` and the coverage line): it applies § Pass bar to `result`
+and this residual rule per configured breakpoint — a shape it cannot read is
+not a pass.
 
 `result` fields: `regime` — `prototype` (standalone prototype vs live) or
 `published-origin` (delivered page vs live, § The published-origin gate);
@@ -855,9 +858,10 @@ number without `regime` is not printed, and regimes are never compared
 
 ### Residual classes
 
-A residual's `cause` is a class id from this table or a diagnosed cause in
-the page's own terms; anything else is an unfinished iteration — diagnose
-it or spend the remaining budget on it. `flaggedFor` names who inherits it
+A residual's `cause` starts with a class id from this table or `register:R-nn`
+(a trailing description is fine: `capture-state: 3 CDN-403 tiles`); anything
+else is an unfinished iteration — diagnose it into a class or spend the
+remaining budget on it. `flaggedFor` names who inherits it
 (`delivery` — resolved when authors or wiring land; `user` — an accepted
 trade-off). A permanent class can never zero out: log it once with its band
 and %, do not chase it.

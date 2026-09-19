@@ -2,9 +2,21 @@
 // STUB stitch-shot for the gate.sh fixture runner (evals/lint/gate-sh-fixtures.mjs).
 // Writes a minimal PNG + the provenance sidecar the real instrument writes;
 // no browser. Controlled by env: STUB_DOC (docHeight), STUB_CAPTURED_AT,
-// STUB_STITCH_EXIT.
+// STUB_STITCH_EXIT, STUB_STITCH_VERSION (sidecar instrument.version; default
+// = INSTRUMENT.version below).
+//
+// INSTRUMENT is deliberately declared MULTI-LINE: gate.sh reads the current
+// procedure version from this declaration, and a reformat of the real
+// instrument must not turn its stale-procedure check off silently (defect
+// fixture — the old single-line grep read nothing here).
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+
+const INSTRUMENT = {
+  name: 'stitch-shot',
+  version: '3',
+};
+
 const [url, out, ...rest] = process.argv.slice(2);
 const opt = (f, d) => { const i = rest.indexOf(f); return i >= 0 ? rest[i + 1] : d; };
 const width = Number(opt('--width', 1440));
@@ -17,7 +29,7 @@ png.writeUInt32BE(13, 8); png.write('IHDR', 12); png.writeUInt32BE(width, 16); p
 writeFileSync(out, png);
 writeFileSync(`${out}.json`, `${JSON.stringify({
   url, width, vh: 900, dpr: 1, capturedAt: process.env.STUB_CAPTURED_AT || new Date().toISOString(),
-  instrument: { name: 'stitch-shot', version: 2, options: { settle: rest.includes('--settle') } },
+  instrument: { name: INSTRUMENT.name, version: process.env.STUB_STITCH_VERSION || INSTRUMENT.version, options: { settle: rest.includes('--settle') } },
   consent: { mode, via: 'none-detected' }, dismissed: [], fontsFailed: [],
   docHeight: Number(process.env.STUB_DOC || 3000), chunks: 4, source: 'stitch-shot', technique: 'headless', tier: 1,
 }, null, 2)}\n`);
