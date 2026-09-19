@@ -26,7 +26,7 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 | 2 (branch, path) | `reference/migration-procedure.md` § Three render branches · § Output path mapping · § Idempotent skip · `reference/template-and-module-rendering.md` § Render path selection · § Validation contracts · § Deviation policy · `reference/importer-recipe.md` (before writing or widening a sibling importer) |
 | 2 (fidelity, content) | `reference/fidelity-tiers.md` § The three tiers · § Sibling variance probe · § Content-count acceptance · `reference/content-preservation.md` § Internal link rewriting · § Forms |
 | 2 (head, assets, media) | `reference/metadata-and-jsonld.md` § Categories · § JSON-LD by page-type · `reference/asset-bundling.md` § Detection · § Rewrite · `reference/media-reconciliation.md` § The four decisions · § Cross-origin optimization |
-| 3 | `reference/migration-procedure.md` § Reference shape · § Page map · `reference/metadata-and-jsonld.md` § Sitemap entry · `reference/asset-bundling.md` § Stale asset cleanup |
+| 3 | `reference/migration-procedure.md` § Reference shape · § Page map · § Portability audits · `reference/metadata-and-jsonld.md` § Sitemap entry · `reference/asset-bundling.md` § Stale asset cleanup |
 | 4 | `skills/stardust/reference/migrate-output-format.md` § State.json contract · `skills/stardust/reference/state-machine.md` § Stale flagging (content-aware) |
 
 Headings: Inputs · Setup · Procedure · Outputs · Idempotent and incremental · Stale handling · Failure modes · What migrate does NOT do · References
@@ -62,17 +62,12 @@ sidecars.
   flexibility.
 - `--clean` — delete assets previously bundled but no longer
   referenced from `stardust/migrated/assets/`. Off by default
-  (migrate is additive). **Implies `--force`**: every page is
-  re-rendered so the run's `bundledAssets` Set is the complete
-  union of currently-referenced assets — otherwise `--clean`
-  would risk deleting assets still referenced by
-  idempotent-skipped pages. See
-  `reference/asset-bundling.md` § Stale asset cleanup.
+  (migrate is additive). **Implies `--force`** so the run's
+  `bundledAssets` Set is the complete union of referenced assets
+  (`reference/asset-bundling.md` § Stale asset cleanup).
 - `--pin-timestamp <ISO8601>` — pin the migrate-provenance
   timestamp so re-runs without source changes produce byte-
-  identical HTML. Default re-uses the current wall clock, which
-  is fine for normal use; CI deployment fingerprinting may want
-  the pin.
+  identical HTML (CI fingerprinting).
 
 The mobile-adapt audit, content-sourcing scan, and placeholder
 refusal are all mandatory gates — there is no `--skip-*` or
@@ -319,50 +314,13 @@ assets** that no individual page references explicitly:
    stale subpath from `stardust/migrated/assets/`. Record the
    deletions under `state.json.migrate.cleanedAssets[]`. Per
    `reference/asset-bundling.md` § Stale asset cleanup.
-5. Verify **portability**. The bundle must work via `file://`,
-   at a webserver root, and at any subpath — "one shape, works
-   everywhere". Run every audit; any non-empty grep output or
-   non-zero fixture exit fails the run with the cited error
-   message:
-
-   ```bash
-   # No source-tree escapes
-   find stardust/migrated/ -type f -name '*.html' -exec grep -l '\.\./current/' {} +
-   # Error: "asset still points outside the migrated tree; rewrite via the
-   #   asset-bundling pass per reference/asset-bundling.md § Detection"
-
-   # No absolute internal references in attribute values (404 on file:// and subpath)
-   grep -rE '(href|src)="/[^/]' stardust/migrated/ --include='*.html'
-   # Error: "absolute href `/beers/` will 404 on file:// and on subpath hosts;
-   #   rewrite via the page map per migration-procedure.md § Reference shape"
-
-   # No absolute internal references in url() (inline style, <style> blocks, CSS)
-   grep -rE 'url\(\s*["'\'']?\s*/[^/]' stardust/migrated/ --include='*.html' --include='*.css'
-   # Error: "absolute url(/...) reference will 404 on file:// and on subpath hosts;
-   #   rewrite via the asset-bundling pass per asset-bundling.md § Rewrite"
-
-   # No directory-only nav (doesn't resolve on file://). Pattern accepts
-   # only relative or root-absolute hrefs (./, ../, /, or bare segment)
-   # so external URLs like https://google.com/ aren't false-flagged.
-   grep -rE 'href="(\.{0,2}/|[a-zA-Z0-9_-])[^:"#?]*/"' stardust/migrated/ --include='*.html'
-   # Error: "directory-only href `./beers/` won't resolve on file://;
-   #   append the explicit index.html (or the source URL's .html leaf)
-   #   per § Reference shape"
-
-   # pageMap consistency — every internal href appears as an outputPath
-   node skills/migrate/fixtures/pagemap-audit.mjs stardust/migrated/ stardust/state.json
-   # Error: "internal href has no pageMap entry; link rewriting bypassed the
-   #   page map per § Page map (build once, use everywhere)"
-
-   # Headless file:// round-trip — the test that proves zip-and-deploy works
-   node skills/migrate/fixtures/file-protocol-audit.mjs stardust/migrated/
-   # Error: "<offending file> linked <ref> that 404s under file://; see the
-   #   Playwright network log printed above"
-   ```
-
-   The audits are mandatory — there is no skip flag. The contract
-   is "self-contained, zip-and-deploy" and these audits are the
-   verifiers that back the claim.
+5. Verify **portability** — the bundle must work via `file://`, at a
+   webserver root and at any subpath. Run every audit in
+   `reference/migration-procedure.md` § Portability audits (four
+   greps + `fixtures/pagemap-audit.mjs` + `fixtures/file-protocol-audit.mjs`);
+   any non-empty grep output or non-zero fixture exit fails the run
+   with the cited error. No skip flag: "self-contained,
+   zip-and-deploy" is the contract and the audits back the claim.
 
 Asset migration is idempotent — files are content-hashed and
 copied only when missing; per-page bundling deduplicates across
@@ -406,12 +364,10 @@ Render branches:
 
 Pages with non-trivial decisions: 12
   about            canon-deviation: footer carries financials disclaimer
-  donate           template-adapted: amount-pills slot moved above headline
   ...
 
 Broken internal links: 5
   /events       referenced by 2 pages; not in inventory
-  /press        referenced by 1 page; not in inventory
   ...
 
 Bespoke slots crossing promotion threshold: 1
@@ -419,17 +375,10 @@ Bespoke slots crossing promotion threshold: 1
 
 Missing assets: 2
   generated/orphan-1.jpg     referenced by 1 page  (home)
-  generated/orphan-2.jpg     referenced by 2 pages (about, contact)
   (Re-extract or accept the gap — bundle is deployable; refs 404 at view time.)
 
 Output:  stardust/migrated/  (122 pages, 47 bundled assets, 4.2 MB) — self-contained, zip-and-deploy
-
-Next:
-  - Review:    open stardust/migrated/index.html in a browser
-  - Audit:     $impeccable critique stardust/migrated/
-  - Deploy:    cd stardust/migrated && zip -r ../site.zip .
-               upload the zip to any static host that serves at the host root
-  - Refine:    edit DESIGN.md or canon files, then re-run $stardust migrate
+Next:    review index.html · $impeccable critique stardust/migrated/ · zip-and-deploy · re-run after DESIGN/canon edits
 ```
 
 ## Outputs
@@ -465,6 +414,33 @@ These properties hold even when DESIGN.md, canon, or modules are
 edited mid-run: the edit changes the relevant sha, so the next
 migrate run re-renders every affected page (canon and DESIGN.md
 edits typically affect every page).
+
+Two rules keep them true once a project importer or generator
+writes the tree (the same rules govern generated `content/**` and DA
+documents downstream — deploy's DA protocol points here):
+
+- **Generated content is never hand-edited.** A per-page override
+  lives in `stardust/patches/<slug>.json` (`[{selector, op:
+  replace|attr|remove, value}]`) and is applied by the importer or
+  generator as its last step, so a regen reproduces the fix. The
+  importer writes `stardust/import-manifest.json` (path → sha); on
+  the next run a manifest path whose on-disk sha differs is a hand
+  edit — warn with the path before overwriting. A hand edit found
+  this way moves into a patch file or into the importer; it is
+  never re-applied by hand.
+- **Generated site artifacts own their own path.** Fragments and
+  chrome documents, index inputs and redirect sheets are produced by
+  named scripts under `stardust/scripts/` from `stardust/`-rooted
+  sources (as `stardust/redirects.tsv` already is), run in a
+  recorded order after the importer (import → fragments/chrome →
+  index → redirects → localize-links → deploy). The importer deletes
+  or overwrites only paths in its manifest, never the output root.
+  A generator exits non-zero without writing when a page has 0
+  sections; a bulk driver stops on the first non-zero exit;
+  `state.json.migrate.generators[<template>] = {script, sha}` lets a
+  regen re-drive only pages whose generator or source changed (the
+  redeploy becomes diff-only once the deploy ledger carries a
+  content hash).
 
 ## Stale handling
 
