@@ -27,7 +27,7 @@ Phases, in order: Setup → A Inventory → B Block dedup plan → B2 Dynamic su
 | H | read `rollout.json.lastRun` + `optimize/scorecard.json` + `verify/summary.md`; write `stardust/learnings.md` |
 | I | `node skills/rollout/scripts/dashboard.mjs` |
 
-Gates: Setup — gated-archetype precondition under `flow: replica`. B2 — every dynamic row has a disposition; `dynamics-plan.mjs --lint` exit 0. C — delivery-lint P0/P1 blocks the PUT; source-fidelity, image-fidelity, path-safety, source-content hygiene, fidelity tier declared; EW gate `block-roundtrip --ew`; foundation-first gate on the first deployed archetype. D — `redirects.mjs` exit 2 (a Source shadows a delivered page) blocks the sheet. E — `verify.mjs` exits non-zero on any failed page (folder roots probed on both slash forms); headless render check per template. E2 — `localize-links.mjs --check` exit 2 = links remain. F — `optimize.mjs` exits non-zero on any open in-scope P1. H — `dynamics-check.mjs --gate` exit 0 before the report closes.
+Gates: Setup — gated-archetype precondition under `flow: replica`. B2 — every dynamic row has a disposition; `dynamics-plan.mjs --lint` exit 0. C — delivery-lint P0/P1 blocks the PUT; source-fidelity, image-fidelity, path-safety, source-content hygiene, fidelity tier declared; EW gate `block-roundtrip --ew`; foundation-first gate on the first deployed archetype. D — `redirects.mjs` exit 2 (a Source shadows a delivered page) blocks the sheet. E — `verify.mjs` exit 1 = a failed page (folder roots probed on both slash forms), exit 2 = usage / no coverage; headless render check per template. E2 — `localize-links.mjs --check` exit 2 = links remain. F — `optimize.mjs` exits non-zero on any open in-scope P1. H — `dynamics-check.mjs --gate` exit 0 before the report closes.
 
 Outputs (under `stardust/rollout/`): `coverage/{pages,templates,blocks}.json` · `plan.json` · `rollout.json` · `verify/{summary.json,summary.md,pages.md}` · `optimize/{findings,scorecard}.json` · `site/{sitemap.xml,robots.txt,manifest.json,redirects.json}` · `dashboard/{index.html,data.json}` (schemas: `schemas/rollout-*.schema.json`); plus `stardust/redirects.tsv`, `stardust/learnings.md`, EDS-project edits via autofix.
 
@@ -302,17 +302,14 @@ node skills/rollout/scripts/verify.mjs            # uses rollout.json site.liveH
 # or: --base <url> (explicit host) | --root <dir> (offline, local export or migrated tree)
 ```
 
-For every delivered row, `verify` confirms HTTP 200, no `about:error` (deploy
-#75), the typed render check (one `<h1>` per page, JSON per index) and its
-internal `href="/…"` targets — then flips it to `verified` or `failed`; exit 1
-iff a row failed. `--all` covers the delivered rows only and reports
-`not delivered: N (skipped)` — a never-delivered row is no verdict, not a FAIL.
-A link to a coverage row not yet delivered is advisory (`pending-target links:
-N pages`); a link outside coverage follows `rollout.json links.outsideInventory`
-(`fail` default, `warn` keeps the page verified). Run verify, read
-`stardust/rollout/verify/summary.md`, triage per class — per-page rows live in
-`pages.md`, not the conversation (`reference/coverage-model.md` § Verify;
-`skills/stardust/reference/context-hygiene.md` § Runner reports and session hand-off).
+`verify` confirms each delivered row renders (200, no `about:error`, typed
+render check) and its internal links resolve, then flips it to `verified` or
+`failed`; exit 1 iff a row failed. Two summary lines: `not delivered: N
+(skipped)` and `pending-target links: N pages`. Which rows, link classes and
+the `links.outsideInventory` policy: `reference/coverage-model.md` § Verify.
+Read `stardust/rollout/verify/summary.md`, triage per class — per-page rows
+live in `pages.md`, not the conversation (`skills/stardust/reference/context-hygiene.md`
+§ Runner reports and session hand-off).
 
 **Headless render check (per template).** A 200 `.plain.html` can still render
 blank — decoration failures (missing script, wrong wrapper class, 404 chrome)

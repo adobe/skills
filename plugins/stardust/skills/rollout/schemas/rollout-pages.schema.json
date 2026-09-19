@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://stardust.dev/schemas/rollout-pages.schema.json",
   "title": "stardust rollout/coverage/pages.json",
-  "description": "Delivery ledger: one row per migrated page rollout is responsible for delivering to AEM-EDS. Built by inventorying stardust/migrated/. Tracks the source hash (for stale detection) and per-page delivery status. Owned by stardust:rollout; the agnostic core is never modified.",
+  "description": "Delivery ledger: one row per migrated page rollout is responsible for delivering to AEM-EDS, plus one per typed row (chrome fragment, fragment, index sheet) seeded by inventory --content. Built by inventorying stardust/migrated/. Tracks the source hash (for stale detection) and per-page delivery status; update-coverage and verify write the delivery block. Owned by stardust:rollout; the agnostic core is never modified.",
   "type": "object",
   "required": ["_provenance", "pages"],
   "additionalProperties": false,
@@ -34,15 +34,19 @@
           "type": ["string", "null"],
           "description": "The template grouping this page belongs to (rollout/coverage/templates.json[].id). Drives delivery order and block reuse."
         },
+        "representative": { "type": ["string", "null"], "description": "Archetypes-only mode: slug of the archetype this content-pending sibling clones." },
         "source": {
           "type": "object",
           "description": "The agnostic input rollout delivers (read-only).",
-          "required": ["migratedHtml", "sourceHash"],
+          "required": ["sourceHash"],
           "additionalProperties": false,
           "properties": {
-            "migratedHtml": { "type": "string", "description": "Path, e.g. stardust/migrated/blog/scaling-teams.html." },
+            "migratedHtml": { "type": ["string", "null"], "description": "Path, e.g. stardust/migrated/blog/scaling-teams.html; null for content-pending and typed rows." },
             "metaJson": { "type": ["string", "null"], "description": "Path to the page's _meta.json." },
-            "sourceHash": { "type": "string", "description": "Content hash of the migrated HTML; changes mark the page stale for re-delivery." }
+            "sourceHash": { "type": "string", "description": "Content hash of the migrated HTML (or the typed row's content file / the roster's currentStatePath); changes mark the page stale for re-delivery." },
+            "currentStatePath": { "type": ["string", "null"], "description": "content-pending rows: the state.json currentStatePath the hash was taken from." },
+            "contentFile": { "type": ["string", "null"], "description": "Typed rows: the EDS content file (nav*.html, fragments/**, *.json) the row was seeded from." },
+            "missing": { "type": "boolean", "description": "Typed rows: the source file was gone on the last --content run; the row is kept, never dropped." }
           }
         },
         "blocks": {
@@ -57,9 +61,13 @@
           "properties": {
             "status": {
               "type": "string",
-              "enum": ["pending", "converting", "deployed", "verified", "stale", "failed"],
-              "description": "stale = source hash changed after a prior delivery; needs re-delivery."
+              "enum": ["content-pending", "pending", "converting", "deployed", "verified", "stale", "failed"],
+              "description": "content-pending = rostered from state.json, no migrated HTML yet; stale = source hash changed after a prior delivery, needs re-delivery. Lifecycle: reference/coverage-model.md."
             },
+            "type": { "type": "string", "enum": ["page", "fragment", "index"], "description": "Artifact type; unset means page. Drives the verify render check (fragment: no <h1> rule; index: JSON data[]) and the sitemap (page rows only)." },
+            "deployedPath": { "type": ["string", "null"], "description": "Served path when it differs from path (redirect Source -> Destination); written by update-coverage --from-ledger or seeded by inventory --redirects." },
+            "pendingLinks": { "type": "array", "items": { "type": "string" }, "description": "verify: internal link targets that are coverage rows not yet delivered (advisory; the page stays verified)." },
+            "outsideLinks": { "type": "array", "items": { "type": "string" }, "description": "verify under links.outsideInventory: warn - internal link targets that are no coverage row (the page stays verified)." },
             "deployedUrl": { "type": ["string", "null"], "format": "uri" },
             "deployedAt": { "type": ["string", "null"], "format": "date-time" },
             "verifiedAt": { "type": ["string", "null"], "format": "date-time" },

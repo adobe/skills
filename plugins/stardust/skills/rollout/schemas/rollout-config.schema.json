@@ -29,7 +29,15 @@
             "ref": { "type": "string", "default": "main" }
           }
         },
-        "liveHost": { "type": ["string", "null"], "description": "Resolved aem.live host, e.g. main--site--org.aem.live." }
+        "liveHost": { "type": ["string", "null"], "description": "Resolved aem.live host, e.g. main--site--org.aem.live (with or without a scheme; scripts normalise on read)." }
+      }
+    },
+    "links": {
+      "type": "object",
+      "description": "Link policy read by verify.",
+      "additionalProperties": false,
+      "properties": {
+        "outsideInventory": { "type": "string", "enum": ["fail", "warn"], "default": "fail", "description": "What an internal link to a path that is no coverage row does to the page: fail = the page is failed; warn = recorded in delivery.outsideLinks, the page stays verified." }
       }
     },
     "lastRun": {
@@ -70,6 +78,7 @@
         "verified": { "type": "integer", "minimum": 0 },
         "deployed": { "type": "integer", "minimum": 0 },
         "pending": { "type": "integer", "minimum": 0 },
+        "contentPending": { "type": "integer", "minimum": 0 },
         "stale": { "type": "integer", "minimum": 0 },
         "failed": { "type": "integer", "minimum": 0 }
       }

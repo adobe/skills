@@ -16,7 +16,7 @@ The contract the two scripts maintain. Design rationale is in
 | `optimize/scorecard.json` | optimize + findings + autofix | per-layer health + overall + history |
 | `site/{sitemap.xml,robots.txt,manifest.json}` | assemble | site-level artifacts |
 | `dashboard/{index.html,data.json}` | dashboard | self-contained progress view + snapshot |
-| `verify/{summary.json,summary.md,pages.md}` | verify | ranked class report (≤ 60 lines) + per-page rows |
+| `verify/{summary.json,summary.md,pages.md}` | verify | ranked class report + per-page rows (`slug-<s>/` under `--slug`) |
 
 `rollout.json` fields the scripts read: `site.liveHost` — stored as given, with
 or without a scheme or trailing slash; every script normalises it on read
@@ -67,7 +67,8 @@ of `delivery.status`:
   `**/*.json` → `/<x>.json`; slugs `chrome-<name>` / `fragment-<x>` /
   `index-<x>`); they are preserved across runs (a gone source flags
   `source.missing: true`, never drops the row), excluded from template
-  roll-ups, and `assemble` lists only `page` rows in the sitemap. Scripts infer
+  roll-ups, and `assemble` lists only `page` rows with status `deployed |
+  verified | stale` in the sitemap (a stale URL is still served). Scripts infer
   the type from the path when unset; a one-size `<h1>` check false-fails
   fragments without it.
 - **`delivery.deployedPath`** — the path the row is served on when it differs
@@ -152,12 +153,15 @@ against a local export or the migrated tree.
   No coverage row → **outside-inventory**: `links.outsideInventory: fail`
   (default) fails the page; `warn` records `delivery.outsideLinks` and keeps it
   `verified`. Exit 1 iff a row is `failed`; advisory classes never flip it.
-- **Report.** stdout = counts + the ranked class table, ≤ 60 lines, nothing per
-  page unless `--verbose`. `--report <dir>` (default `verify/`) receives
-  `summary.json` (`total, checked, verified, failed, skipped, classes[{class,
-  count, severity, worstExample, pointer}], pages[]`), `summary.md` (the same
-  table, ≤ 60 lines) and `pages.md` (per-page rows per class — where every
-  pointer leads). Triage per class from `summary.md`.
+- **Report.** stdout = counts + the ranked class table, ≤ 60 lines
+  (`../../stardust/reference/context-hygiene.md` § Runner reports), nothing per
+  page unless `--verbose`. `--report <dir>` (default `verify/`; `verify/slug-<s>/`
+  under `--slug`, so a spot re-check never overwrites the site-wide report)
+  receives `summary.json` (`total, checked, verified, failed, skipped,
+  classes[{class, count, severity, worstExample, pointer}], pages[]`),
+  `summary.md` (the same table) and `pages.md` (per-page rows per class — where
+  every pointer leads). Triage per class from `summary.md`. Exit 1 iff a row is
+  `failed`; 2 = usage or no coverage.
 
 ## Optimize gate (findings lifecycle)
 

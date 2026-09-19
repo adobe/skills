@@ -14,7 +14,15 @@
 //      links.outsideInventory: fail and stays verified under warn (delivery.outsideLinks);
 //      the fetched path is delivery.deployedPath when set and links to the source
 //      path of such a row resolve; fragment rows skip the <h1> rule; index rows are
-//      JSON-checked; siteBase never yields https://https://.
+//      JSON-checked; siteBase never yields https://https://; a --slug run writes its
+//      report under verify/slug-<s>/ and leaves the site-wide verify/summary.json intact.
+//   C. Project-copy layout: verify.mjs + lib.mjs copied to <tmp>/stardust/scripts/rollout/
+//      run --help without the plugin tree; the class-report helper resolves from
+//      stardust/scripts/stardust/ once copied there, and its absence is a clear exit 2.
+//
+// This test is the offline ledger fixture the T27.7 prescription named as
+// `evals/rollout-verify-ledger/` — shipped as a fixture test chained into lint:stardust
+// (B2 rule: every changed script ships one) instead of an LLM-judged eval directory.
 //
 // Usage: node plugins/stardust/skills/rollout/scripts/verify.test.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
@@ -148,8 +156,13 @@ const lines = (s) => s.split('\n').filter((l) => l.length);
 
   // --slug targets any row regardless of status
   seed({ outsideInventory: 'warn' });
+  await runAsync(['--base', BASE, '--all', '--out', OUT]);
+  const siteWide = json(join(OUT, 'verify', 'summary.json')).checked;
+  assert.equal(siteWide, 4, 'site-wide run before the spot check');
   r = await runAsync(['--base', BASE, '--slug', 'c', '--out', OUT]);
   assert.equal(status('c').status, 'failed', '--slug probes a content-pending row on request');
+  assert.equal(json(join(OUT, 'verify', 'slug-c', 'summary.json')).checked, 1, '--slug reports under verify/slug-<s>/');
+  assert.equal(json(join(OUT, 'verify', 'summary.json')).checked, siteWide, 'a --slug re-check leaves the site-wide summary.json untouched');
 
   // usage errors
   seed(undefined); rmSync(join(OUT, 'rollout.json'));
@@ -161,6 +174,22 @@ const lines = (s) => s.split('\n').filter((l) => l.length);
   rmSync(T, { recursive: true, force: true });
 }
 
+// ---- C. project-copy layout: stardust/scripts/rollout/ + stardust/scripts/stardust/ -----
+{
+  const T = mkdtempSync(join(tmpdir(), 'verify-test-c-'));
+  const ROLLOUT = join(T, 'stardust', 'scripts', 'rollout'); mkdirSync(ROLLOUT, { recursive: true });
+  for (const f of ['verify.mjs', 'lib.mjs']) cpSync(join(HERE, f), join(ROLLOUT, f));
+  const copy = (args) => spawnSync(process.execPath, [join(ROLLOUT, 'verify.mjs'), ...args], { encoding: 'utf8', cwd: T });
+  assert.equal(copy(['--help']).status, 0, 'project copy: --help works without the plugin tree');
+  let r = copy(['--base', 'http://127.0.0.1:9', '--out', join(T, 'nowhere')]);
+  assert.equal(r.status, 2); assert.match(r.stderr, /class-report\.mjs not found/, 'project copy without the helper → clear exit 2');
+  mkdirSync(join(T, 'stardust', 'scripts', 'stardust'), { recursive: true });
+  cpSync(join(HERE, '..', '..', 'stardust', 'scripts', 'class-report.mjs'), join(T, 'stardust', 'scripts', 'stardust', 'class-report.mjs'));
+  r = copy(['--base', 'http://127.0.0.1:9', '--out', join(T, 'nowhere')]);
+  assert.equal(r.status, 2); assert.match(r.stderr, /run inventory\.mjs first/, 'project copy resolves the helper from stardust/scripts/stardust/');
+  rmSync(T, { recursive: true, force: true });
+}
+
 // ---- siteBase: one helper, no https://https:// ------------------------------------
 assert.equal(siteBase({ site: { liveHost: 'https://main--x--y.aem.live/' } }), 'https://main--x--y.aem.live');
 assert.equal(siteBase({ site: { liveHost: 'main--x--y.aem.live' } }), 'https://main--x--y.aem.live');
@@ -168,4 +197,4 @@ assert.equal(siteBase({ site: { liveHost: 'http://main--x--y.aem.page' } }), 'ht
 assert.equal(siteBase({ site: { liveHost: 'main--x--y.aem.live' } }, 'http://127.0.0.1:9/'), 'http://127.0.0.1:9', '--base override wins verbatim (trailing slash stripped)');
 assert.equal(siteBase({}), null);
 
-console.log('verify.test: ok (runner-output contract on the shared fixture; --all guard, link classes, deployedPath, typed rows, siteBase)');
+console.log('verify.test: ok (runner-output contract on the shared fixture; --all guard, link classes, deployedPath, typed rows, --slug report dir, project-copy layout, siteBase)');

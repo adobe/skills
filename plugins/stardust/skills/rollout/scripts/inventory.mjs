@@ -28,10 +28,10 @@
  *   nav*.html / footer*.html at the content root → delivery.type `fragment`, path /nav, /footer, /nav-<lang>…, slug chrome-<name>
  *   fragments/**\/*.html                         → `fragment`, path /fragments/<x>, slug fragment-<x-with-dashes>
  *   **\/*.json                                   → `index`, path /<x>.json, slug index-<x-with-dashes>
- * Prior delivery is preserved by slug. A typed row whose source file is gone
- * (or when --content is not passed on a re-run) is KEPT, flagged
- * `source.missing: true` — never silently dropped. Typed rows are excluded
- * from the template roll-ups (templates.json).
+ * Prior delivery is preserved by slug. A typed row whose source file is gone is
+ * KEPT with `source.missing: true` — never silently dropped; a re-run without
+ * --content carries every typed row over unchanged (flag preserved). Typed rows
+ * are excluded from the template roll-ups (templates.json).
  *
  * `--redirects <tsv>` (source<TAB>destination, the Gate 3 file) seeds
  * `delivery.deployedPath` on a row whose `path` is a Source: the page is served

@@ -45,34 +45,47 @@
  *
  * Output (context-hygiene.md § Runner reports): stdout carries the counts and
  * the ranked class table — at most 60 lines, nothing per page unless --verbose.
- * `--report <dir>` (default <out>/verify/) receives summary.json
+ * `--report <dir>` (default <out>/verify/; under --slug <out>/verify/slug-<s>/, so a
+ * spot re-check never overwrites the site-wide report) receives summary.json
  * ({ total, checked, verified, failed, skipped, classes:[{ class, count, severity,
- * worstExample, pointer }], pages:[…] }), summary.md (the same table, ≤ 60 lines)
- * and pages.md (the per-page rows, per class — where the pointers lead).
+ * worstExample, pointer }], pages:[…] }), summary.md (the same table) and pages.md
+ * (the per-page rows, per class — where the pointers lead).
+ *
+ * Runs from the plugin tree or the project copy (stardust/scripts/rollout/): the
+ * class-report helper is loaded from skills/stardust/scripts/ or, beside a project
+ * copy, stardust/scripts/stardust/class-report.mjs — copy it along with this file.
  *
  * Usage: node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--slug <s>]
  *          [--all [--include-undelivered]] [--out <rolloutDir>] [--report <dir>] [--verbose]
  * Exit: 0 no row failed · 1 at least one row is `failed` (advisory classes never set
- *       it) · 2 usage (no base/root, or coverage missing — run inventory.mjs first)
+ *       it) · 2 usage (no base/root, coverage missing — run inventory.mjs first — or
+ *       class-report.mjs not found next to this script)
  */
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJSON, writeJSON, rollupTemplates, rollupConfig, siteBase, deliveredPathOf, isDelivered, artifactType, loadPageHTML } from './lib.mjs';
-import { classReport, renderTable } from '../../stardust/scripts/class-report.mjs';
 
 function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : fallback; }
 const has = (f) => process.argv.includes(`--${f}`);
 if (has('help')) {
-  console.log('Usage: node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--slug <s>] [--all [--include-undelivered]] [--out <rolloutDir>] [--report <dir>] [--verbose]\n  exit 0 no failed row · 1 at least one failed row · 2 usage');
+  console.log('Usage: node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--slug <s>] [--all [--include-undelivered]] [--out <rolloutDir>] [--report <dir>] [--verbose]\n  exit 0 no failed row · 1 at least one failed row · 2 usage (no base/root, no coverage, helper missing)');
   process.exit(0);
 }
+// class-report.mjs lives in skills/stardust/scripts/ (plugin tree) or stardust/scripts/stardust/ (project copy)
+const { classReport, renderTable } = await (async () => {
+  for (const c of ['../../stardust/scripts/class-report.mjs', '../stardust/class-report.mjs']) {
+    try { return await import(new URL(c, import.meta.url)); } catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; }
+  }
+  console.error('rollout verify: class-report.mjs not found next to this script — copy skills/stardust/scripts/class-report.mjs to stardust/scripts/stardust/.');
+  process.exit(2);
+})();
 const OUT = arg('out', 'stardust/rollout');
 const ROOT = arg('root', null);
 const onlySlug = arg('slug', null);
 const ALL = has('all');
 const INCLUDE_UNDELIVERED = has('include-undelivered');
 const VERBOSE = has('verbose');
-const REPORT = arg('report', join(OUT, 'verify'));
+const REPORT = arg('report', onlySlug ? join(OUT, 'verify', `slug-${onlySlug}`) : join(OUT, 'verify'));
 const MAX_LINES = 60;
 
 const pagesPath = join(OUT, 'coverage', 'pages.json');

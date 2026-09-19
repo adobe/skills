@@ -6,7 +6,9 @@
 //              re-run without --content and a re-run whose source file is gone
 //              (source.missing: true, delivery preserved); --redirects seeds
 //              delivery.deployedPath from a Source row; typed rows stay out of
-//              templates.json; rollout.json gains links.outsideInventory: fail.
+//              templates.json; rollout.json gains links.outsideInventory: fail; every key
+//              the written rows and rollout.json carry is one the schemas list (key-walk,
+//              no validator dependency).
 //   assemble   sitemap.xml lists live page rows only (deployed | verified | stale, type
 //              page) at their served path, on the normalised host — no https://https://.
 //   optimize   index rows are skipped; a fragment row runs img-alt only (no single-h1,
@@ -56,6 +58,24 @@ assert.ok(templates.every((t) => !t.pages.some((s) => s.startsWith('chrome-') ||
 assert.equal(templates.reduce((n, t) => n + t.pageCount, 0), 6, 'roll-ups count page rows only');
 const config = json(join(OUT, 'rollout.json'));
 assert.deepEqual(config.links, { outsideInventory: 'fail' }, 'rollout.json seeds the link policy default');
+
+// --- schema contract: written keys ⊆ schema keys (schemas/rollout-*.schema.json) -----
+const schema = (n) => json(join(HERE, '..', 'schemas', n));
+const walk = (obj, node, at, out) => {
+  if (!node || !node.properties || !obj || typeof obj !== 'object') return;
+  for (const k of Object.keys(obj)) {
+    if (!(k in node.properties)) { out.push(`${at}.${k}`); continue; }
+    const sub = node.properties[k]; const ref = sub.$ref ? sub.$ref.replace('#/$defs/', '') : null;
+    walk(obj[k], ref ? node.__defs[ref] : Object.assign(sub, { __defs: node.__defs }), `${at}.${k}`, out);
+  }
+};
+const unknown = (doc, sch, at) => { const out = []; walk(doc, Object.assign(sch, { __defs: Object.fromEntries(Object.entries(sch.$defs || {}).map(([k, v]) => [k, Object.assign(v, { __defs: sch.$defs })])) }), at, out); return out; };
+const pagesSchema = schema('rollout-pages.schema.json'); const pageDef = Object.assign(pagesSchema.$defs.page, { __defs: pagesSchema.$defs });
+const rowKeys = json(pagesPath).pages.flatMap((p) => { const out = []; walk(p, pageDef, p.slug, out); return out; });
+assert.deepEqual(rowKeys, [], `pages.json rows use only schema keys (unknown: ${rowKeys})`);
+assert.deepEqual(unknown(json(join(OUT, 'rollout.json')), schema('rollout-config.schema.json'), 'rollout.json'), [], 'rollout.json uses only schema keys');
+const statusEnum = pagesSchema.$defs.page.properties.delivery.properties.status.enum;
+assert.ok(json(pagesPath).pages.every((p) => statusEnum.includes(p.delivery.status)), 'every status is in the schema enum');
 
 // --- preservation: mark chrome-nav deployed, re-run without --content, then with the file gone
 pages = json(pagesPath); const nav = pages.pages.find((p) => p.slug === 'chrome-nav');
@@ -109,4 +129,4 @@ assert.ok(!findings.findings.some((f) => f.check === 'duplicate-title' && f.scop
 
 for (const s of ['inventory.mjs', 'assemble.mjs', 'optimize.mjs']) assert.equal(node(s, ['--help']).status, 0, `${s} --help exits 0`);
 rmSync(T, { recursive: true, force: true });
-console.log('inventory.test: ok (typed rows seeded + preserved, --redirects deployedPath, sitemap = live page rows, fragment-safe optimize)');
+console.log('inventory.test: ok (typed rows seeded + preserved, --redirects deployedPath, schema key-walk, sitemap = live page rows, fragment-safe optimize)');
