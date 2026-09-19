@@ -115,6 +115,7 @@ check(/\[ \$rc -eq 124 \]/.test(gate), 'gate.sh: exit 124 handling must stay');
 check(/--review "\$DIR\/review-\$LBL\.png"/.test(gate), 'gate.sh: pixel-compare line must pass --review review-<label>.png');
 check(/GATE_LANDMARKS/.test(gate) && /anchor\.mjs" "\$LIVE_URL" --width "\$W" --landmarks --cache/.test(gate) && /--against "\$DIR\/anchor-live\.json"/.test(gate) && /landmark table unavailable/.test(gate), 'gate.sh: landmark hook (live cached + build --against, warn-and-continue, GATE_LANDMARKS=0) missing');
 check(gate.indexOf('anchor.mjs" "$LIVE_URL"') > gate.indexOf('stitch-shot build') && gate.indexOf('anchor.mjs" "$LIVE_URL"') < gate.indexOf('pixel-compare.mjs" "$DIR/live.png"'), 'gate.sh: the landmark passes must sit between the build capture and pixel-compare');
+check(/instrument\.version/.test(gate) && /older stitch-shot procedure/.test(gate), 'gate.sh: a cached live.png from an older stitch-shot procedure version must be treated as stale');
 check(/GATE_BLOCK/.test(gate) && (gate.match(/\$STITCH_COMMON/g) || []).length >= 2, 'gate.sh: GATE_BLOCK must reach BOTH stitch-shot calls');
 
 // ---------------------------------------------------------------- deps
@@ -348,6 +349,14 @@ async function layer2(deps) {
     const rec2Path = join(tmp, 'stardust/replica/gates/landmark-800/gate-iter2.json');
     check([0, 2].includes(g2.status) && existsSync(rec2Path) && !JSON.parse(readFileSync(rec2Path, 'utf8')).landmarks && !/first non-zero Δ/.test(g2.out), `gate.sh GATE_LANDMARKS=0: no landmark table expected (exit ${g2.status})\n${g2.out}${g2.err}`);
     check(/reference: .* captured/.test(g2.out), 'gate.sh: round 2 must reuse the cached live reference');
+    // a live reference from an older stitch-shot procedure is stale: re-captured, one loud line, sidecar now current
+    const liveSide = join(tmp, 'stardust/replica/gates/landmark-800/live.png.json');
+    if (existsSync(liveSide)) {
+      const sc = JSON.parse(readFileSync(liveSide, 'utf8')); const cur = sc.instrument.version; sc.instrument.version = '2'; writeFileSync(liveSide, JSON.stringify(sc));
+      const g3 = await gateRun({ GATE_LANDMARKS: '0' }, 'iter3');
+      const after = existsSync(liveSide) ? JSON.parse(readFileSync(liveSide, 'utf8')) : null;
+      check([0, 2].includes(g3.status) && /older stitch-shot procedure \(instrument\.version 2, current 3/.test(g3.err) && after && after.instrument.version === cur, `gate.sh: a v2 live reference must be re-captured (exit ${g3.status}, version after ${after && after.instrument.version})\n${g3.err}`);
+    }
 
     // ---- T05.4 pixel-compare --offsets: pure helpers + synthetic pair with a 40 px strip inserted at y = 1000
     const pc = await import(pathToFileURL(join(tmp, 'replica', 'pixel-compare.mjs')).href);

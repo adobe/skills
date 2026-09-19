@@ -60,8 +60,9 @@
 # Comparable captures (gate doc § Hardening rule 15): both sides are taken by
 # stitch-shot with the same width, vh, dpr and CONSENT MODE, and each PNG
 # carries its provenance sidecar (<png>.json). A cached live.png WITHOUT a
-# sidecar is a pre-sidecar capture of unknown instrument state: it is deleted
-# and re-taken (one loud line) rather than compared. The consent mode comes
+# sidecar is a pre-sidecar capture of unknown instrument state, and one whose
+# sidecar names an OLDER stitch-shot procedure version is a different-procedure
+# capture: both are deleted and re-taken (one loud line) rather than compared. The consent mode comes
 # from GATE_CONSENT_MODE, else stardust/replica/progress.json#captureState.consent,
 # else accept — and is passed to BOTH captures so the pair stays comparable.
 #
@@ -193,6 +194,19 @@ fi
 if [ -f "$DIR/live.png" ] && [ ! -f "$DIR/live.png.json" ]; then
   echo "gate.sh: $DIR/live.png has no provenance sidecar (pre-sidecar capture, instrument state unknown) — treating it as stale and re-capturing" >&2
   rm -f "$DIR/live.png"
+fi
+# A cached reference taken by an OLDER stitch-shot procedure (instrument.version
+# in its sidecar ≠ this script's) is stale too: v3 hides pinned chrome on
+# chunks 2+, so a v2 live.png against a v3 build.png would be an asymmetric
+# pair the sidecar cannot refuse (comparability is keyed on name, not version).
+# Never applies to an imported extract capture (source: extract-capture).
+STITCH_VER=$(grep -oE "name: 'stitch-shot', version: '[0-9]+'" "$HERE/stitch-shot.mjs" | grep -oE "[0-9]+" | tail -1)
+if [ -f "$DIR/live.png.json" ] && [ -n "$STITCH_VER" ] && [ -z "$FORCE" ]; then
+  OLD_VER=$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(j.source==="extract-capture"?String(process.argv[2]):String(j.instrument&&j.instrument.version||""))' "$DIR/live.png.json" "$STITCH_VER" 2>/dev/null)
+  if [ "$OLD_VER" != "$STITCH_VER" ]; then
+    echo "gate.sh: $DIR/live.png was captured by an older stitch-shot procedure (instrument.version ${OLD_VER:-unknown}, current $STITCH_VER — the capture procedure changed) — treating it as stale and re-capturing so both sides use the same procedure" >&2
+    rm -f "$DIR/live.png" "$DIR/live.png.json" "$DIR/anchor-live.json"
+  fi
 fi
 # Short-capture guard for the LIVE side: when the extract crawl's screenshot
 # of this page exists, its height (PNG IHDR, no deps) is the expectation —
