@@ -12,7 +12,12 @@
  *   node skills/deploy/scripts/davids-model-lint.mjs content/            # tree
  *   node skills/deploy/scripts/davids-model-lint.mjs content/index.html  # one page
  *   … [--json] [--icons-dir icons] [--styles styles/styles.css]
- *     [--allow-empty <name[,name]>] [--source-host <host[,host]> [--content-root content]]
+ *     [--allow-empty <name[,name]>] [--chrome nav.html,footer.html [--chrome-min 8]]
+ *     [--source-host <host[,host]> [--content-root content]]
+ *
+ * --chrome enables the CHROME-LEAK advisory: a content page whose link labels
+ * contain ≥ --chrome-min (default 8) of the labels found in the chrome documents
+ * was captured through an importer's <main> fallback (nav/footer as content).
  *
  * --icons-dir enables the deterministic icon checks: every `:name:` token (and
  * every already-decorated `<span class="icon icon-name">`) must resolve to
@@ -58,6 +63,9 @@
  *       first cell → a `table` block whose CSS 404s; author the `table` block)
  *   EMPTY-HEADING <h1>–<h6> with no text content (the CMS emits one before
  *       the real heading; drop it at import — migrate importer-recipe rule 6)
+ *   WRAPPER unclassed section child <div>, or a classed <div> whose direct
+ *       children are not plain row <div>s (a styling wrapper around blocks —
+ *       aem.js never decorates a block nested under it; lift the blocks)
  *   D1-EMPTY block table with 0 rows, or every cell empty of text/media/links;
  *       a section with nothing in it and no section-metadata (silent content
  *       loss — the encoder's selector missed; --allow-empty <name> declares a
@@ -116,6 +124,13 @@
  *                                            D14 DUPROW two-row block whose ≥ 15-word rows
  *                                                overlap ≥ 60 % (a breakpoint pair; table/
  *                                                accordion/tabs/form/faq exempt)
+ *                                            D5-SERIAL cell text of ≥ 4 segments joined by
+ *                                                |, ; or • (a serialised list)
+ *                                            D2-FLATTEN ≥ 3 headings inside one cell (a
+ *                                                repeating unit flattened; split section)
+ *                                            CHROME-LEAK ≥ --chrome-min chrome link labels on
+ *                                                a page (--chrome), or a ≥ 10-link <ul>
+ *                                                before the first heading
  *
  * Icon and variant findings are reported ONCE per token with the page count;
  * in tree mode (a directory target or > 1 file) the D1 prose advisory is
@@ -150,6 +165,8 @@ const ICON_TOKEN = /(?<![\w:]):([a-z][a-z0-9_-]*):(?![\w:])/g;
 const DUPROW_EXEMPT = new Set(['table', 'accordion', 'tabs', 'form', 'faq']);
 const DUPROW_MIN_WORDS = 15;
 const DUPROW_JACCARD = 0.6;
+const SERIAL_MIN = 4; // D5-SERIAL: segments in one cell joined by |, ; or •
+const FLATTEN_MIN_HEADINGS = 3; // D2-FLATTEN: headings inside one cell
 // D15 VEHICLE-ICON — an icon named as a spacer carries no meaning (fnbo's 67 B empty spacer.svg).
 const SPACER_ICON = /^(spacer|gap|blank|space)(-|$)/;
 const PROSE_TAGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'a', 'ul', 'ol', 'li', 'picture', 'img', 'source', 'strong', 'em', 'code', 'br']);
@@ -225,7 +242,12 @@ function lintPage(file, html, findings) {
 
     for (const block of kids) {
       const cls = classOf(block.openTag);
-      if (!cls) continue; // an unclassed child div is a stray wrapper, not a block
+      if (!cls) {
+        // WRAPPER 🔴 — an unclassed section child <div> is neither a block (no
+        // name) nor default content; the pipeline has no shape for it.
+        flag('🔴', 'WRAPPER', `section ${si + 1}: unclassed <div> child — not a block (no name) and not default content; unwrap its content into the section, or name the block (WRAPPER)`);
+        continue;
+      }
       const classes = cls.split(/\s+/);
       const name = classes[0].toLowerCase();
       lintBlock(file, section, block, name, flag);
@@ -262,6 +284,7 @@ function lintPage(file, html, findings) {
   }
 
   lintText(file, main, flag);
+  lintChromeLeak(file, main, flag);
   lintAlts(file, sections, flag);
   lintUrls(file, main, flag);
   lintIcons(file, main);
@@ -295,6 +318,17 @@ function lintBlock(file, section, block, name, flag) {
   const rows = childDivs(block.inner);
   const label = `section ${classOf(section.openTag) || '(unnamed)'} → block "${name}"`;
   const isKeyValue = KEY_VALUE_BLOCKS.has(name);
+
+  // WRAPPER 🔴 — a classed <div> whose direct children are not plain row
+  // <div>s (a classed child, or content outside the rows) is a styling wrapper
+  // around blocks, not a block table: aem.js never decorates a block nested
+  // under it (a compile step that wraps cards in `<div class="bg dark">`).
+  const classedRow = rows.find((r) => classOf(r.openTag));
+  const loose = stripTags(childlessHtml(block.inner, rows)).replace(/&nbsp;|&#160;|\u00a0/g, '').trim();
+  if (classedRow || loose) {
+    flag('🔴', 'WRAPPER', `${label}: ${classedRow ? `direct child <div class="${classOf(classedRow.openTag)}">` : `content outside its rows ("${loose.slice(0, 40)}")`} — a styling wrapper, not a block table; lift the blocks to the section and carry the background/spacing as a section style (WRAPPER)`);
+    return;
+  }
 
   // D1-EMPTY 🔴 — a block table with no rows, or with every cell empty of text
   // and media, is silent content loss: the encoder's selector missed and the
@@ -350,6 +384,22 @@ function lintBlock(file, section, block, name, flag) {
       const liComplex = /<li\b[^>]*>(?:(?!<\/li>)[\s\S])*<(?:h[1-6]|p)\b[\s\S]*?<\/li>/i;
       if (liComplex.test(cell.inner)) {
         flag('🟡', 'D5', `${where}: nested list whose items carry headings/paragraphs — model as one block row per item`);
+      }
+      if (!isKeyValue) {
+        // D5-SERIAL 🟡 — a list serialised into one cell with an in-band delimiter
+        // (`Canary Islands | Türkiye | … | Tunisia`): authors must learn the syntax.
+        if (!/<(ul|ol)\b/i.test(cell.inner)) {
+          const segments = stripTags(cell.inner).replace(/&[a-z#0-9]+;/gi, ' ').split(/\s\|\s|;|•/).map((x) => x.trim()).filter(Boolean);
+          if (segments.length >= SERIAL_MIN) {
+            flag('🟡', 'D5-SERIAL', `${where}: cell text is a serialised list of ${segments.length} segments joined by |, ; or • — one block row per item (or a <ul> when the items are simple); code pulls the items (D5-SERIAL)`);
+          }
+        }
+        // D2-FLATTEN 🟡 — one cell holding several headings is a repeating unit
+        // flattened into a cell (an accordion expanded into a columns cell).
+        const heads = [...cell.inner.matchAll(/<h[2-6]\b/gi)].length;
+        if (heads >= FLATTEN_MIN_HEADINGS) {
+          flag('🟡', 'D2-FLATTEN', `${where}: ${heads} headings inside one cell — a repeating unit flattened into a cell; split section: the head as default content, the block as a sibling with one row per unit, layout as a NAMED section style (D2-FLATTEN)`);
+        }
       }
     });
 
@@ -558,6 +608,34 @@ function lintText(file, main, flag) {
   // Unicode super/subscript digits; chemical and unit notation (CO₂, m², cm³) is exempt.
   const sup = [...text.matchAll(/(?<!\b(?:CO|H|O|N|SO|NO|CH|m|cm|km|mm|ft|in))[²³¹⁰-⁹₀-₉]/gu)];
   vehicle('sup', sup.length, `Unicode superscript/subscript digit(s) (${sup.length ? `"${text.slice(Math.max(0, sup[0].index - 8), sup[0].index + 1)}"` : ''})`, 'keep <sup>/<sub> from the source DOM; chemical and unit notation (CO₂, m²) is exempt (encode-contract.md § Authoring shapes → <sup>/<sub> row)');
+}
+
+// CHROME-LEAK 🟡 — nav/footer captured into a content page by an importer's
+// <main> fallback (1,394 pages without <main>, 154 published with the leak).
+// Matched on LINK LABELS, never page text (a content page may say "Careers").
+let CHROME_LABELS = null; // Set of lowercased <a> texts from --chrome documents
+let CHROME_MIN = 8;
+const CHROME_LIST_MIN = 10; // links in one <ul> before the first heading
+function linkTexts(html) {
+  return [...html.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/gi)].map((m) => stripTags(m[1]).toLowerCase()).filter((t) => t.length >= 3);
+}
+function lintChromeLeak(file, main, flag) {
+  if (CHROME_PATH.test(file)) return;
+  if (CHROME_LABELS) {
+    const hits = [...new Set(linkTexts(main))].filter((t) => CHROME_LABELS.has(t));
+    if (hits.length >= CHROME_MIN) {
+      flag('🟡', 'CHROME-LEAK', `${hits.length} of this page's link labels are chrome labels from --chrome (${capped(hits).map((h) => `"${h}"`).join(', ')}${hits.length > 5 ? ', …' : ''}) — nav/footer captured as content (an importer's <main> fallback); re-import from the content root, chrome lives in /nav and /footer (CHROME-LEAK)`);
+    }
+  }
+  const firstHead = main.search(/<h[1-6]\b/i);
+  const before = firstHead < 0 ? main : main.slice(0, firstHead);
+  for (const ul of before.matchAll(/<ul\b[\s\S]*?<\/ul>/gi)) {
+    const n = (ul[0].match(/<a\b/gi) || []).length;
+    if (n >= CHROME_LIST_MIN) {
+      flag('🟡', 'CHROME-LEAK', `a list of ${n} links before the first heading — a navigation menu captured as content (an importer's <main> fallback); chrome lives in /nav and /footer (CHROME-LEAK)`);
+      break;
+    }
+  }
 }
 
 // TEXT alt ratio — inside blocks only (chrome/decorative imagery excluded).
@@ -912,11 +990,11 @@ function collectFiles(target) {
   return out;
 }
 
-const USAGE = 'usage: davids-model-lint.mjs <content-file-or-dir> [...] [--json] [--icons-dir <dir>] [--styles <css>] [--allow-empty <name[,name]>] [--source-host <host[,host]> [--content-root <dir>]]';
+const USAGE = 'usage: davids-model-lint.mjs <content-file-or-dir> [...] [--json] [--icons-dir <dir>] [--styles <css>] [--allow-empty <name[,name]>] [--chrome <file[,file]> [--chrome-min 8]] [--source-host <host[,host]> [--content-root <dir>]]';
 const argv = process.argv.slice(2);
 if (argv.includes('--help') || argv.includes('-h')) { console.log(USAGE); process.exit(0); }
 const asJson = argv.includes('--json');
-const VALUE_OPTS = ['--source-host', '--content-root', '--icons-dir', '--styles', '--allow-empty'];
+const VALUE_OPTS = ['--source-host', '--content-root', '--icons-dir', '--styles', '--allow-empty', '--chrome', '--chrome-min'];
 const optVal = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; };
 const sourceHost = optVal('--source-host');
 const contentRootOpt = optVal('--content-root');
@@ -932,6 +1010,16 @@ for (const o of VALUE_OPTS) {
   // a dangling `--icons-dir` would otherwise silently run with the checks off
   const i = argv.indexOf(o);
   if (i >= 0 && (argv[i + 1] === undefined || argv[i + 1].startsWith('--'))) { console.error(`${o} needs a value\n${USAGE}`); process.exit(1); }
+}
+if (optVal('--chrome')) {
+  const files = optVal('--chrome').split(',').map((f) => f.trim()).filter(Boolean);
+  const missing = files.find((f) => !existsSync(f));
+  if (missing) { console.error(`--chrome ${missing}: file not found`); process.exit(1); }
+  CHROME_LABELS = new Set(files.flatMap((f) => linkTexts(readFileSync(f, 'utf8'))));
+}
+if (optVal('--chrome-min') !== null) {
+  CHROME_MIN = Number(optVal('--chrome-min'));
+  if (!Number.isInteger(CHROME_MIN) || CHROME_MIN < 1) { console.error(`--chrome-min ${optVal('--chrome-min')}: expected a positive integer`); process.exit(1); }
 }
 if (iconsDirOpt) {
   if (!existsSync(iconsDirOpt) || !statSync(iconsDirOpt).isDirectory()) { console.error(`--icons-dir ${iconsDirOpt}: not a directory`); process.exit(1); }

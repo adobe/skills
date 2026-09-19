@@ -17,12 +17,13 @@ const LINT = join(HERE, '..', '..', 'skills', 'deploy', 'scripts', 'davids-model
 const FIX = join(HERE, 'fixtures', 'davids-model-lint');
 const ICONS = ['--icons-dir', join(FIX, 'icons')];
 const STYLES = ['--styles', join(FIX, 'styles.css')];
+const CHROME = ['--chrome', `${join(FIX, 'chrome', 'nav.html')},${join(FIX, 'chrome', 'footer.html')}`];
 
 const CASES = [
   { name: 'icons: double prefix + missing asset fail with --icons-dir', args: ['fail-icons.html', ...ICONS, ...STYLES], exit: 2, red: ['ICON-PREFIX', 'ICON-MISSING'], yellow: [] },
   { name: 'icons: without --icons-dir the prefix is advisory only', args: ['fail-icons.html', ...STYLES], exit: 0, red: [], yellow: ['ICON-PREFIX'], absent: ['ICON-MISSING'] },
   { name: 'variants: reserved token, bare selector and pseudo-suffixed bare selector (.tint:hover) fail', args: ['fail-variant.html', ...ICONS, ...STYLES], exit: 2, red: ['VARIANT-COLLIDE'], yellow: [], tokens: ['"icon"', '"illu"', '"tint"'] },
-  { name: 'pass: :name: token, decorated span, compound-selector variant is advisory, :not(.badge) is ignored; census/vehicle/empty rules silent', args: ['pass.html', ...ICONS, ...STYLES], exit: 0, red: [], yellow: ['VARIANT-COLLIDE'], absent: ['ICON-PREFIX', 'ICON-MISSING', 'D9-VOCAB', 'D15-STYLE', 'STYLE-SEL', 'D1-DENSITY', 'D1-SPACER', 'D15', 'D14', 'ICON-EMPTY', 'TEXT', 'D1-EMPTY'], absentTokens: ['"badge"'] },
+  { name: 'pass: :name: token, decorated span, compound-selector variant is advisory, :not(.badge) is ignored; census/vehicle/empty rules silent', args: ['pass.html', ...ICONS, ...STYLES], exit: 0, red: [], yellow: ['VARIANT-COLLIDE'], absent: ['ICON-PREFIX', 'ICON-MISSING', 'D9-VOCAB', 'D15-STYLE', 'STYLE-SEL', 'D1-DENSITY', 'D1-SPACER', 'D15', 'D14', 'ICON-EMPTY', 'TEXT', 'D1-EMPTY', 'WRAPPER', 'D5-SERIAL', 'D2-FLATTEN', 'CHROME-LEAK'], absentTokens: ['"badge"'] },
   { name: 'tree mode: one finding per token with page count', args: ['.', ...ICONS, ...STYLES], exit: 2, oncePer: ['ICON-PREFIX'], pages: 'fail-icons.html' },
   // T30.4 — embed exemption for channel/profile URLs; the D1 prose advisory once per block name in tree mode.
   { name: 'embed: a channel/profile URL inside a block is a navigation link, not an authored embed', args: ['pass-channel.html', ...STYLES], exit: 0, count: 0 },
@@ -83,6 +84,16 @@ const CASES = [
   { name: 'empty: --allow-empty exempts the named placeholders only', args: ['fail-empty.html', ...STYLES, '--allow-empty', 'form,cards'], exit: 2, expect: [{ sev: '🔴', rule: 'D1-EMPTY', msg: 'block "hero"' }, { sev: '🔴', rule: 'D1-EMPTY', msg: 'section 2' }], absentMsg: [{ rule: 'D1-EMPTY', msg: '"form"' }, { rule: 'D1-EMPTY', msg: '"cards"' }], counts: { 'D1-EMPTY': 2 } },
   { name: 'empty: a declared placeholder and a section-metadata-only spacer section pass (D1-SPACER stays advisory)', args: ['pass-empty.html', ...STYLES, '--allow-empty', 'form'], exit: 0, red: [], absent: ['D1-EMPTY'], yellow: ['D1-SPACER'] },
   { name: 'usage: a dangling --allow-empty is a usage error', args: ['pass-empty.html', ...STYLES, '--allow-empty'], exit: 1 },
+  // T30.2 — content-loss detectors: WRAPPER 🔴; D5-SERIAL, D2-FLATTEN, CHROME-LEAK 🟡.
+  { name: 'wrapper: an unclassed section child and a classed wrapper around a block are two WRAPPER 🔴 (no secondary findings on the wrapper)', args: ['fail-wrapper.html', ...STYLES], exit: 2, expect: [{ sev: '🔴', rule: 'WRAPPER', msg: 'section 1: unclassed <div> child' }, { sev: '🔴', rule: 'WRAPPER', msg: 'block "nested-bg": direct child <div class="horizontal-card">' }], counts: { WRAPPER: 2 }, absent: ['D1-EMPTY', 'D2'] },
+  { name: 'serial: five |-joined options in one cell is one D5-SERIAL advisory', args: ['warn-serial.html', ...STYLES], exit: 0, red: [], expect: [{ sev: '🟡', rule: 'D5-SERIAL', msg: 'serialised list of 5 segments' }], counts: { 'D5-SERIAL': 1 } },
+  { name: 'flatten: three headings inside one cell is one D2-FLATTEN advisory', args: ['warn-flatten.html', ...STYLES], exit: 0, red: [], expect: [{ sev: '🟡', rule: 'D2-FLATTEN', msg: '3 headings inside one cell' }], counts: { 'D2-FLATTEN': 1 } },
+  { name: 'chrome-leak: an 11-link list before the first heading fires without --chrome', args: ['warn-chrome-leak.html', ...STYLES], exit: 0, red: [], expect: [{ sev: '🟡', rule: 'CHROME-LEAK', msg: 'a list of 11 links before the first heading' }], counts: { 'CHROME-LEAK': 1 } },
+  { name: 'chrome-leak: 9 chrome link labels on a page fire with --chrome, not without; --chrome-min 10 silences', args: ['warn-chrome-labels.html', ...STYLES, ...CHROME], exit: 0, red: [], expect: [{ sev: '🟡', rule: 'CHROME-LEAK', msg: '9 of this page\'s link labels are chrome labels' }], counts: { 'CHROME-LEAK': 1 } },
+  { name: 'chrome-leak: silent without --chrome (labels are never matched on page text)', args: ['warn-chrome-labels.html', ...STYLES], exit: 0, absent: ['CHROME-LEAK'] },
+  { name: 'chrome-leak: --chrome-min 10 silences the 9-label page', args: ['warn-chrome-labels.html', ...STYLES, ...CHROME, '--chrome-min', '10'], exit: 0, absent: ['CHROME-LEAK'] },
+  { name: 'chrome-leak: a chrome document itself never fires', args: ['chrome/nav.html', ...STYLES, ...CHROME], exit: 0, absent: ['CHROME-LEAK'] },
+  { name: 'usage: a --chrome file that does not exist is a usage error', args: ['pass.html', '--chrome', join(FIX, 'chrome', 'nope.html')], exit: 1 },
   { name: 'usage: --styles that does not exist is a usage error', args: ['pass.html', '--styles', join(FIX, 'nope.css')], exit: 1 },
   { name: 'usage: a dangling --icons-dir is a usage error, not a silent downgrade', args: ['fail-icons.html', ...STYLES, '--icons-dir'], exit: 1 },
 ];
