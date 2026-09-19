@@ -35,13 +35,30 @@
         "byCheck": { "type": "object", "additionalProperties": { "type": "integer" } }
       }
     },
+    "infra": {
+      "type": "object",
+      "description": "infrastructure state of the sweep (lib.mjs infraSummary): throttling is never a page defect; incomplete = unmeasuredPct > throttleMaxPct (qa.mjs exits 2 — re-run)",
+      "required": ["throttled", "retries", "serverErrors", "unmeasuredFindings", "unmeasuredPages", "unmeasuredPct", "unmeasuredFleet", "fleetProbes", "throttleMaxPct", "incomplete"],
+      "properties": {
+        "throttled": { "type": "integer", "description": "responses still 429/503 after the paced retries (fetch and browser paths)" },
+        "retries": { "type": "integer", "description": "paced 429/503 retries, fetchUrl and browser navigations alike" },
+        "serverErrors": { "type": "integer", "description": "5xx responses other than a throttle" },
+        "unmeasuredFindings": { "type": "integer", "description": "<check>/unmeasured + dynamics/parity-unmeasured findings" },
+        "unmeasuredPages": { "type": "integer", "description": "distinct page paths with at least one unmeasured finding" },
+        "unmeasuredPct": { "type": "number", "description": "unmeasuredPages / inventory.pages, one decimal" },
+        "unmeasuredFleet": { "type": "integer", "description": "fleet-level (path '') unmeasured probes: sitemap, favicon, replay entry" },
+        "fleetProbes": { "type": "array", "items": { "type": "string" }, "description": "up to 8 '<check>: <message>' lines for the fleet-level probes" },
+        "throttleMaxPct": { "type": "number", "description": "--throttle-max as run" },
+        "incomplete": { "type": "boolean", "description": "true when unmeasuredPct > throttleMaxPct; the report is not a verdict" }
+      }
+    },
     "findings": {
       "type": "array",
       "items": {
         "type": "object",
         "required": ["check", "id", "severity", "path", "message"],
         "properties": {
-          "check": { "enum": ["routing", "content", "templates", "rendered", "visual", "metadata", "links", "a11y", "perf", "editability"] },
+          "check": { "enum": ["routing", "content", "templates", "rendered", "visual", "metadata", "links", "a11y", "perf", "editability", "dynamics", "ai-readability"] },
           "id": { "type": "string", "description": "stable machine id within the check, e.g. broken-internal-link" },
           "severity": { "enum": ["error", "warn", "info"] },
           "path": { "type": "string", "description": "delivered path; empty string = fleet-level" },

@@ -14,7 +14,8 @@
  *     fallback); 404/410/DNS-fail -> warn (external sites flap; never an
  *     error). The skip is always reported as an info finding, never silent.
  */
-import { fetchUrl, pMap, finding, pageUrl, decodeAttr, isThrottled } from '../lib.mjs';
+import { fetchUrl, pMap, finding, pageUrl, decodeAttr, isThrottled, noteThrottled } from '../lib.mjs';
+import { gotoPaced } from './browse.mjs';
 
 const unmeasured = (path, what, res) => finding('links', 'unmeasured', 'info', path, `${what} throttled (HTTP ${res.status} after retries) — not measured; re-run`, { status: res.status });
 
@@ -120,7 +121,17 @@ export async function run(ctx) {
       renderedIds = new Map();
       for (const target of [...new Set(suspects.map((a) => a.targetPath))]) {
         try {
-          await page.goto(pageUrl(base, target), { waitUntil: 'domcontentloaded', timeout: 30000 });
+          // one limiter slot per navigation, paced 429/503 retries (browse.mjs gotoPaced): a throttled
+          // target has no ids to read — its suspects are links/unmeasured, never broken-anchor
+          const res = await gotoPaced(page, pageUrl(base, target), { waitUntil: 'domcontentloaded', timeout: 30000 });
+          const status = res ? res.status() : 0;
+          if (status === 429 || status === 503) {
+            noteThrottled();
+            renderedIds.set(target, 'throttled');
+            findings.push(finding('links', 'unmeasured', 'info', target,
+              `anchor target throttled (HTTP ${status} after the paced retries) — its fragment links are not verified; re-run`, { status }));
+            continue;
+          }
           await page.waitForTimeout(3500); // let block decoration assign ids
           renderedIds.set(target, new Set(await page.evaluate(
             () => [...document.querySelectorAll('[id]')].map((e) => e.id),
@@ -131,6 +142,7 @@ export async function run(ctx) {
     } catch { /* no playwright — report unverified */ }
     for (const a of suspects) {
       const ids = renderedIds?.get(a.targetPath);
+      if (ids === 'throttled') continue; // reported once per target as links/unmeasured above
       if (ids === undefined || ids === null) {
         findings.push(finding('links', 'anchor-unverified', 'info', a.referrer,
           `anchor #${a.id} on ${a.targetPath} not in server HTML; rendered DOM not checkable here — verify manually`));

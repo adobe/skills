@@ -10,6 +10,10 @@
  *                       'bad' (→ request-failed), off-origin is ignored. gotoPaced() on a fake page:
  *                       429/503 retried to the 200, a wall returns the last response, and every retry is
  *                       counted in infra.retries (the browser path once left it at fetchUrl's count only).
+ *                       Static contracts on the sibling checks that navigate outside gotoPaced: editability's
+ *                       paced retry loop counts noteRetry(); links' anchor re-verification goes through
+ *                       gotoPaced (limiter slot) and reports a throttled target as links/unmeasured, never
+ *                       broken-anchor (the residual false-positive path of the rate-limit-wall class).
  *   browser (playwright) run() against a local server: a document that answers 429 once then 200 renders
  *                       cleanly (no request-failed, no unmeasured, baseline created); a page whose
  *                       stylesheet is throttled gets rendered/unmeasured (info), no request-failed, and
@@ -18,7 +22,7 @@
  * Exit: 0 all assertions pass (or browser half skipped) · 1 an assertion failed.
  */
 import { createServer } from 'node:http';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { sortResponse, gotoPaced, run } from '../checks/browse.mjs';
@@ -52,6 +56,14 @@ nav = await gotoPaced(pg, `${base}/p`, {});
 eq('gotoPaced: a 429 wall → the last response after three attempts', [nav.status(), pg.hits()], [429, 3]);
 eq('gotoPaced: two retries counted; the throttled verdict stays with the caller (noteThrottled)', [infraCounters().retries, infraCounters().throttled], [2, 0]);
 resetInfraCounters();
+
+// static contracts on editability.mjs / links.mjs (no browser)
+const code = (f) => readFileSync(new URL(`../checks/${f}`, import.meta.url), 'utf8').split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+const edit = code('editability.mjs');
+eq('editability: the paced 429/503 retry counts noteRetry() next to onThrottle', /onThrottle\(url\);\s*noteRetry\(\);/.test(edit) && /\bnoteRetry\b[^\n]*from '\.\.\/lib\.mjs'|noteRetry,\n\} from '\.\.\/lib\.mjs'/.test(edit), true);
+const links = code('links.mjs');
+eq('links: anchor re-verification navigates through gotoPaced (limiter slot + paced retries), never a bare page.goto', [/import \{ gotoPaced \} from '\.\/browse\.mjs'/.test(links), /await gotoPaced\(page, pageUrl\(base, target\)/.test(links), /page\.goto\(/.test(links)], [true, true, false]);
+eq('links: a throttled anchor target is links/unmeasured (info) + noteThrottled, and its suspects skip broken-anchor', [/finding\('links', 'unmeasured', 'info', target/.test(links), /noteThrottled\(\);/.test(links), /if \(ids === 'throttled'\) continue;/.test(links)], [true, true, true]);
 
 // browser half
 let pw = null;

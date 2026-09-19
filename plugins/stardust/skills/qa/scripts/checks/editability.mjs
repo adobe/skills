@@ -21,7 +21,7 @@
  * Contract: deploy reference/block-js-scaffold.md § Experience Workspace editability contract (EW1–EW10).
  */
 import {
-  loadPlaywright, finding, pageUrl, pMap, arg, withNavSlot, getFetchLimiter, configureFetch, noteThrottled,
+  loadPlaywright, finding, pageUrl, pMap, arg, withNavSlot, getFetchLimiter, configureFetch, noteThrottled, noteRetry,
 } from '../lib.mjs';
 import {
   probeUrl, aggregate, readBlockExemptions, parseExemptList,
@@ -60,8 +60,9 @@ export async function run(ctx) {
         // the document's own status (navigation timing): a throttled document instruments nothing — unmeasured, not "zero authored texts"
         docStatus = await probe.page.evaluate(() => performance.getEntriesByType('navigation')[0]?.responseStatus ?? 0).catch(() => 0);
         if (!THROTTLE(docStatus) || attempt + 1 >= THROTTLE_ATTEMPTS) break;
-        // paced retry like gotoPaced (Retry-After is not visible through the instrumented probe: back-off only)
+        // paced retry like gotoPaced (Retry-After is not visible through the instrumented probe: back-off only); counted in report.infra.retries like browse/perf
         getFetchLimiter()?.onThrottle(url);
+        noteRetry();
         await bctx.close().catch(() => {}); bctx = null;
         await new Promise((r) => { setTimeout(r, configureFetch({}).backoffMs * 2 ** attempt); });
       }

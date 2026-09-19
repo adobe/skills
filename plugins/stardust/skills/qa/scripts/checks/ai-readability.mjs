@@ -57,7 +57,8 @@ export async function run(ctx) {
   const auth = originAuthFor(base);
   const headers = auth ? { authorization: auth } : {};
   const excludeBlocks = (arg('ai-exclude-blocks', 'client-app,widget') || '').split(',').map((s) => s.trim()).filter(Boolean);
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, extraHTTPHeaders: headers });
+  // no extraHTTPHeaders: the site secret rides origin requests only (attachOriginAuth), never every third party
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await attachOriginAuth(context);
   const summary = [];
   try {
