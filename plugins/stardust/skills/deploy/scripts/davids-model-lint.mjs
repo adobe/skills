@@ -12,7 +12,7 @@
  *   node skills/deploy/scripts/davids-model-lint.mjs content/            # tree
  *   node skills/deploy/scripts/davids-model-lint.mjs content/index.html  # one page
  *   … [--json] [--icons-dir icons] [--styles styles/styles.css]
- *     [--source-host <host[,host]> [--content-root content]]
+ *     [--allow-empty <name[,name]>] [--source-host <host[,host]> [--content-root content]]
  *
  * --icons-dir enables the deterministic icon checks: every `:name:` token (and
  * every already-decorated `<span class="icon icon-name">`) must resolve to
@@ -58,6 +58,10 @@
  *       first cell → a `table` block whose CSS 404s; author the `table` block)
  *   EMPTY-HEADING <h1>–<h6> with no text content (the CMS emits one before
  *       the real heading; drop it at import — migrate importer-recipe rule 6)
+ *   D1-EMPTY block table with 0 rows, or every cell empty of text/media/links;
+ *       a section with nothing in it and no section-metadata (silent content
+ *       loss — the encoder's selector missed; --allow-empty <name> declares a
+ *       runtime-widget mount point, recorded in the conversion log)
  *                                            ADJACENT-BLOCKS N ≥ 2 consecutive
  *                                                same-name block tables in one section
  *                                                (one block with N rows / a repeat
@@ -243,7 +247,7 @@ function lintPage(file, html, findings) {
       run = 1;
     }
 
-    lintSectionShape(file, section, kids, defaultContentText, flag);
+    lintSectionShape(file, section, kids, defaultContentText, flag, si);
   }
 
   lintPipelineShapes(file, main, sections, flag);
@@ -283,9 +287,27 @@ function childlessHtml(inner, kids) {
   return out + inner.slice(cursor);
 }
 
+// A cell (or a cell-less row) that carries neither text nor media nor a link.
+const MEDIA_OR_LINK = /<(img|picture|video|iframe|a|svg|source)\b/i;
+const cellIsEmpty = (html) => !stripTags(html).replace(/&nbsp;|&#160;|\u00a0/g, '').trim() && !MEDIA_OR_LINK.test(html);
+
 function lintBlock(file, section, block, name, flag) {
   const rows = childDivs(block.inner);
   const label = `section ${classOf(section.openTag) || '(unnamed)'} → block "${name}"`;
+  const isKeyValue = KEY_VALUE_BLOCKS.has(name);
+
+  // D1-EMPTY 🔴 — a block table with no rows, or with every cell empty of text
+  // and media, is silent content loss: the encoder's selector missed and the
+  // runtime renders an empty block (three zero-row instances in one wave, one
+  // across 15 pages). A runtime-widget mount point (`<div class="form"></div>`)
+  // is declared with --allow-empty <name> and recorded in the conversion log.
+  if (!ALLOW_EMPTY.has(name)) {
+    if (!rows.length) {
+      flag('🔴', 'D1-EMPTY', `${label}: block table with 0 rows — silent content loss (the encoder's selector missed the source items); fix the encoder, or declare a runtime-widget placeholder with --allow-empty ${name} and record it in the conversion log`);
+    } else if (!isKeyValue && rows.every((row) => { const cells = childDivs(row.inner); return cells.length ? cells.every((c) => cellIsEmpty(c.inner)) : cellIsEmpty(row.inner); })) {
+      flag('🔴', 'D1-EMPTY', `${label}: ${rows.length} row(s) whose every cell is empty of text, media and links — silent content loss (the encoder's cell selectors missed); fix the encoder, or declare a placeholder with --allow-empty ${name}`);
+    }
+  }
 
   // D1 — wrapper block around bare default content.
   if (WRAPPER_BLOCK_NAMES.has(name)) {
@@ -298,7 +320,6 @@ function lintBlock(file, section, block, name, flag) {
     flag('🟡', 'CHROME', `${label}: chrome block "${name}" inlined into a content document — an owner decision recorded in direction.md (or stardust/decisions.md)? Default is the runtime fragment (reference/ai-readability.md § 5)`);
   }
 
-  const isKeyValue = KEY_VALUE_BLOCKS.has(name);
   const cellCounts = [];
 
   rows.forEach((row, ri) => {
@@ -424,7 +445,13 @@ function rollup(file, sev, rule, key, n, mk) {
   r.count += n;
 }
 
-function lintSectionShape(file, section, kids, defaultContentText, flag) {
+function lintSectionShape(file, section, kids, defaultContentText, flag, si) {
+  // D1-EMPTY 🔴 — a section with no text, link or image and no section-metadata
+  // child is an empty band nobody authored (the sanctioned spacer/rule is a
+  // section-metadata-only section, #119; empty blocks are flagged per block).
+  if (!kids.length && cellIsEmpty(section.inner)) {
+    flag('🔴', 'D1-EMPTY', `section ${si + 1}: no text, link, image or block and no section-metadata — an empty band is silent content loss (or an importer artefact); a spacer/rule is a section-metadata-only section (#119)`);
+  }
   // META ALONE — the metadata block is consumed into <head>; a section holding
   // nothing else delivers as an empty padded band (first or trailing).
   if (kids.length === 1 && classOf(kids[0].openTag).split(/\s+/)[0].toLowerCase() === 'metadata' && !defaultContentText) {
@@ -645,6 +672,7 @@ function lintUrls(file, main, flag) {
 // would bury the one fix under N copies.
 
 let ICONS_DIR = null; // --icons-dir, when given
+const ALLOW_EMPTY = new Set(); // --allow-empty block names (runtime-widget mount points)
 let STYLES = null; // { file, bare:Set, compound:Set } from --styles, when resolvable
 const ICON_USES = new Map(); // token → Set(file)
 const VARIANT_USES = new Map(); // token → { files:Set, blocks:Set }
@@ -884,16 +912,17 @@ function collectFiles(target) {
   return out;
 }
 
-const USAGE = 'usage: davids-model-lint.mjs <content-file-or-dir> [...] [--json] [--icons-dir <dir>] [--styles <css>] [--source-host <host[,host]> [--content-root <dir>]]';
+const USAGE = 'usage: davids-model-lint.mjs <content-file-or-dir> [...] [--json] [--icons-dir <dir>] [--styles <css>] [--allow-empty <name[,name]>] [--source-host <host[,host]> [--content-root <dir>]]';
 const argv = process.argv.slice(2);
 if (argv.includes('--help') || argv.includes('-h')) { console.log(USAGE); process.exit(0); }
 const asJson = argv.includes('--json');
-const VALUE_OPTS = ['--source-host', '--content-root', '--icons-dir', '--styles'];
+const VALUE_OPTS = ['--source-host', '--content-root', '--icons-dir', '--styles', '--allow-empty'];
 const optVal = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; };
 const sourceHost = optVal('--source-host');
 const contentRootOpt = optVal('--content-root');
 const iconsDirOpt = optVal('--icons-dir');
 const stylesOpt = optVal('--styles');
+for (const n of (optVal('--allow-empty') || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean)) ALLOW_EMPTY.add(n);
 const args = argv.filter((a, i) => a !== '--json' && !VALUE_OPTS.includes(a) && !VALUE_OPTS.includes(argv[i - 1]));
 if (!args.length) {
   console.error(USAGE);

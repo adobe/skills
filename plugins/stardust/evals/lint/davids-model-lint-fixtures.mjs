@@ -22,7 +22,7 @@ const CASES = [
   { name: 'icons: double prefix + missing asset fail with --icons-dir', args: ['fail-icons.html', ...ICONS, ...STYLES], exit: 2, red: ['ICON-PREFIX', 'ICON-MISSING'], yellow: [] },
   { name: 'icons: without --icons-dir the prefix is advisory only', args: ['fail-icons.html', ...STYLES], exit: 0, red: [], yellow: ['ICON-PREFIX'], absent: ['ICON-MISSING'] },
   { name: 'variants: reserved token, bare selector and pseudo-suffixed bare selector (.tint:hover) fail', args: ['fail-variant.html', ...ICONS, ...STYLES], exit: 2, red: ['VARIANT-COLLIDE'], yellow: [], tokens: ['"icon"', '"illu"', '"tint"'] },
-  { name: 'pass: :name: token, decorated span, compound-selector variant is advisory, :not(.badge) is ignored; census/vehicle/empty rules silent', args: ['pass.html', ...ICONS, ...STYLES], exit: 0, red: [], yellow: ['VARIANT-COLLIDE'], absent: ['ICON-PREFIX', 'ICON-MISSING', 'D9-VOCAB', 'D15-STYLE', 'STYLE-SEL', 'D1-DENSITY', 'D1-SPACER', 'D15', 'D14', 'ICON-EMPTY', 'TEXT'], absentTokens: ['"badge"'] },
+  { name: 'pass: :name: token, decorated span, compound-selector variant is advisory, :not(.badge) is ignored; census/vehicle/empty rules silent', args: ['pass.html', ...ICONS, ...STYLES], exit: 0, red: [], yellow: ['VARIANT-COLLIDE'], absent: ['ICON-PREFIX', 'ICON-MISSING', 'D9-VOCAB', 'D15-STYLE', 'STYLE-SEL', 'D1-DENSITY', 'D1-SPACER', 'D15', 'D14', 'ICON-EMPTY', 'TEXT', 'D1-EMPTY'], absentTokens: ['"badge"'] },
   { name: 'tree mode: one finding per token with page count', args: ['.', ...ICONS, ...STYLES], exit: 2, oncePer: ['ICON-PREFIX'], pages: 'fail-icons.html' },
   // T30.4 — embed exemption for channel/profile URLs; the D1 prose advisory once per block name in tree mode.
   { name: 'embed: a channel/profile URL inside a block is a navigation link, not an authored embed', args: ['pass-channel.html', ...STYLES], exit: 0, count: 0 },
@@ -78,6 +78,11 @@ const CASES = [
     counts: { D14: 1, 'ICON-EMPTY': 1 },
   },
   { name: 'vehicles (tree): one rollup line per vehicle with the page count', args: ['tree-vehicle', ...ICONS, ...STYLES], exit: 0, count: 2, expect: [{ sev: '🟡', rule: 'D15', msg: '2 <u> element(s) across 2 page(s)' }, { sev: '🟡', rule: 'D15', msg: '2 invisible-character spacer paragraph(s) (NBSP/ZWSP/ZWNJ only) across 2 page(s)' }] },
+  // T16.2 — D1-EMPTY 🔴: zero-row block, all-empty cells, empty section; --allow-empty declares placeholders.
+  { name: 'empty: a 0-row block, an all-empty-cells block, an undeclared placeholder and an empty section are four D1-EMPTY 🔴', args: ['fail-empty.html', ...STYLES], exit: 2, expect: [{ sev: '🔴', rule: 'D1-EMPTY', msg: 'block "cards": block table with 0 rows' }, { sev: '🔴', rule: 'D1-EMPTY', msg: 'block "hero": 1 row(s) whose every cell is empty' }, { sev: '🔴', rule: 'D1-EMPTY', msg: 'block "form": block table with 0 rows' }, { sev: '🔴', rule: 'D1-EMPTY', msg: 'section 2: no text, link, image or block' }], counts: { 'D1-EMPTY': 4 } },
+  { name: 'empty: --allow-empty exempts the named placeholders only', args: ['fail-empty.html', ...STYLES, '--allow-empty', 'form,cards'], exit: 2, expect: [{ sev: '🔴', rule: 'D1-EMPTY', msg: 'block "hero"' }, { sev: '🔴', rule: 'D1-EMPTY', msg: 'section 2' }], absentMsg: [{ rule: 'D1-EMPTY', msg: '"form"' }, { rule: 'D1-EMPTY', msg: '"cards"' }], counts: { 'D1-EMPTY': 2 } },
+  { name: 'empty: a declared placeholder and a section-metadata-only spacer section pass (D1-SPACER stays advisory)', args: ['pass-empty.html', ...STYLES, '--allow-empty', 'form'], exit: 0, red: [], absent: ['D1-EMPTY'], yellow: ['D1-SPACER'] },
+  { name: 'usage: a dangling --allow-empty is a usage error', args: ['pass-empty.html', ...STYLES, '--allow-empty'], exit: 1 },
   { name: 'usage: --styles that does not exist is a usage error', args: ['pass.html', '--styles', join(FIX, 'nope.css')], exit: 1 },
   { name: 'usage: a dangling --icons-dir is a usage error, not a silent downgrade', args: ['fail-icons.html', ...STYLES, '--icons-dir'], exit: 1 },
 ];
