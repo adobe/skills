@@ -48,23 +48,38 @@ fails identically; passing `--disable-http2` flips the failure
 mode to a 30-second `TimeoutError` (connection accepted, no
 content) but doesn't recover.
 
-The known-working fallback is **headed real Chrome**:
+**The escalation ladder.** This section is the rule; `crawl.mjs`
+(its probe loop) and `skills/diff/scripts/live-session.mjs` (for the
+single-launch instruments) enforce it — no script or doc launches a
+window on its own.
 
-```
-chromium.launch({ headless: false, channel: 'chrome' })
-```
+| tier | `fetchTechnique` | launch | clears |
+|---|---|---|---|
+| 1 | `headless` | bundled Chromium, `headless: true` | unprotected origins |
+| 2 | `chrome-headless` | `channel: 'chrome'`, `headless: true`, stealth args | TLS/H2/JA3 fingerprint blocks (the Akamai class) — no window |
+| 3 | `chrome-headed-offscreen` | `channel: 'chrome'`, headed, window parked off-screen | JS managed challenges (the Cloudflare class) |
 
-This pops a visible browser window during the run, which is
-acceptable for a local dogfood / interactive session and
-unacceptable for an unattended pipeline. The trade-off is the
-correct one for stardust's primary use case (presales redesign
-of an existing commercial site, agent-driven from a developer's
-machine) — the alternative is silently failing on most
-enterprise / large-retail / commerce origins.
+Stealth args on tiers 2–3: `args:
+['--disable-blink-features=AutomationControlled']`,
+`ignoreDefaultArgs: ['--enable-automation']`, and
+`navigator.webdriver → undefined` via `context.addInitScript` on
+**every** context (the challenge re-fires per context — no
+cross-context cookie sharing — so a worker that skipped the spoof
+is re-challenged even after the probe cleared it).
 
-**Retry rule.** Two distinct reject modes must both trigger the
-fallback — validate the *response*, not just that the navigation
-resolved:
+Tier-3 window flags: `--window-position=-32000,-32000
+--disable-backgrounding-occluded-windows
+--disable-renderer-backgrounding
+--disable-background-timer-throttling`. The backgrounding flags
+keep the off-screen window at `document.visibilityState ===
+'visible'` — an occluded, backgrounded tab is challenged where an
+on-screen one is admitted, so capture instruments assert visibility
+before they shoot. The window is user-visible only under
+`STARDUST_HEADED_WINDOW=1`: a visible window is a cost the user
+pays, never a tier.
+
+**Retry rule.** Two distinct reject modes both escalate — validate
+the *response*, not just that the navigation resolved:
 
 1. **Network fingerprint block** — the first navigation *throws*
    `ERR_HTTP2_PROTOCOL_ERROR`, `ERR_QUIC_PROTOCOL_ERROR`, or hangs
@@ -80,32 +95,26 @@ resolved:
    probe response status/headers (`cf-mitigated`, `cf-ray`,
    `server: cloudflare`/`akamai`, edge 403/429/503).
 
-On either: do **not** retry headless. Switch to
-`headless: false, channel: 'chrome'` immediately and record the
-switch in `_crawl-log.json#discovery.fetchTechnique` (with
-`#discovery.botBlock` = `fingerprint | challenge`) so re-runs start
-in headed mode without rediscovering the issue.
-
-**Clearing a managed challenge.** Headed real Chrome alone clears
-the *fingerprint* block, but Cloudflare's managed challenge also
-probes for automation signals — clearing it additionally needs the
-automation flags stripped: launch with
-`args: ['--disable-blink-features=AutomationControlled']` +
-`ignoreDefaultArgs: ['--enable-automation']`, and spoof
-`navigator.webdriver → undefined` via `context.addInitScript` on
-**every** context (the challenge re-fires per context — no
-cross-context cookie sharing — so a worker that skipped the spoof
-is re-challenged even after the probe cleared it). The
+On either: close the browser and relaunch at the next tier. Tiers
+1–2 get **one** hit per challenge — no wait+reload; the solve
+window never clears without a headed session and only spends the
+block budget. Only tier 3 runs the solve window: the
 non-interactive challenge serves the interstitial, runs its JS,
-sets a clearance cookie, then the page becomes reachable: wait
-~4s and `reload()` to pick up the cookie before validating the
-status. If headed + stealth + the solve window still can't clear
-it, the site requires an *interactive* solve — surface that as a
-hard failure (`BotChallengeError`) rather than capturing the
-interstitial as content.
+sets a clearance cookie, then the page becomes reachable — wait
+~4 s and `reload()` (up to 3×) before validating the status. If
+tier 3 + stealth + the solve window still cannot clear it, the
+site requires an *interactive* solve: fail loud
+(`BotChallengeError`, exit 3) rather than capturing the
+interstitial as content — and only at that point may the run tell
+the user the origin needs an interactive solve or a WAF allowlist.
+Record the tier that worked in
+`_crawl-log.json#discovery.fetchTechnique` (with
+`#discovery.botBlock` = `fingerprint | challenge`); re-runs and
+every downstream live instrument start at that tier. `--headed`
+starts at tier 2, `--headed=window` at tier 3.
 
-**Sub-resource fetches.** Once a page context is open in headed
-Chrome, additional fetches (sitemap, logo file, ad-hoc inspection
+**Sub-resource fetches.** Once a page context is open in real
+Chrome (tier 2+), additional fetches (sitemap, logo file, ad-hoc inspection
 URLs) inherit the JA3 fingerprint when issued via
 `page.evaluate(async () => fetch('/...'))` — the in-page fetch
 goes through the same TLS context. The bare Playwright `request`
@@ -118,13 +127,12 @@ fetch on a bot-managed origin.
 plus `puppeteer-extra-plugin-stealth` works on some Akamai
 configurations but is non-standard and brittle across vendor
 config changes. Stardust does not depend on it; mention to the
-user as a path of last resort when even headed real Chrome is
-blocked.
+user as a path of last resort when even tier 3 is blocked.
 
 #### Route-fulfiller pattern (unattended-pipeline alternative)
 
-When headed real Chrome is unacceptable (CI, scheduled job,
-sandbox without a display), an alternative bypass uses the
+When tier 3 cannot launch at all (CI, scheduled job, sandbox
+without a display), an alternative bypass uses the
 Playwright `request` API as a **route fulfiller** instead of a
 direct browser navigation. The bare `request` API, called with no
 browser-context headers forwarded, presents a default Node TLS/H2
@@ -179,10 +187,10 @@ adobe.com / business.adobe.com — both classify as the first
 class as of 2026-05.
 
 **When it fails.** When the route-fulfiller path also returns
-`ERR_HTTP2_PROTOCOL_ERROR` or hangs, escalate to headed real
-Chrome (the documented fallback above). Do not chain bypasses
-silently — record each attempt in `_crawl-log.json#discovery.fetchTechnique`
-so re-runs start at the first technique that worked.
+`ERR_HTTP2_PROTOCOL_ERROR` or hangs, return to the ladder above.
+Do not chain bypasses silently — record each attempt in
+`_crawl-log.json#discovery.fetchTechnique` so re-runs start at the
+first technique that worked.
 
 **Sub-resource caveat.** When the route-fulfiller pattern is
 active, the page's in-page `fetch()` calls also flow through the
@@ -192,16 +200,14 @@ for headed-Chrome runs is not needed under route-fulfiller; both
 top-level navigations and sub-resources use the same bypass
 path.
 
-**Order of techniques (refined).** When the agent encounters
-`ERR_HTTP2_PROTOCOL_ERROR` on the first navigation, try in this
-order:
+**Order of techniques.** On a bot-management reject the ladder
+(tiers 1 → 2 → 3, one hit each) runs first. Two alternatives sit
+outside it:
 
-1. Route-fulfiller pattern (above). Unattended, no display
-   required, no third-party plugin.
-2. Headed real Chrome (`headless: false, channel: 'chrome'`).
-   Requires a display; works for interactive sessions.
-3. `playwright-extra` + stealth plugin. Non-standard; last
-   resort.
+1. Route-fulfiller pattern (above) — for display-less hosts where
+   tier 3 cannot launch.
+2. `playwright-extra` + stealth plugin — non-standard; last resort
+   after tier 3 has failed.
 
 Record the technique that worked in
 `_crawl-log.json#discovery.fetchTechnique` so the next run starts

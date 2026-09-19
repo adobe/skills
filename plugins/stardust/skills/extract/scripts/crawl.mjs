@@ -49,7 +49,17 @@
  * Usage:
  *   node crawl.mjs --url https://example.com [--pages a,b,c] [--max 25] \
  *     [--out stardust/current] [--wait medium] [--no-consent-dismiss] \
- *     [--concurrency 4]
+ *     [--concurrency 4] [--headed[=window]]
+ *
+ * Bot-management ladder (playwright-recipe.md § Bot-management fallback):
+ *   tier 1 headless → tier 2 chrome-headless → tier 3 chrome-headed-offscreen.
+ *   A challenge at tiers 1–2 escalates after ONE hit; only tier 3 runs the
+ *   wait+reload solve window. --headed starts at tier 2, --headed=window at
+ *   tier 3; a re-run starts at the tier recorded in
+ *   _crawl-log.json#discovery.fetchTechnique. The tier-3 window is parked
+ *   off-screen unless STARDUST_HEADED_WINDOW=1.
+ * Exit codes: 0 done (per-page failures are in the log) · 2 fatal ·
+ *   3 BotChallengeError (tier 3 still challenged — never captured as content).
  *
  * Needs playwright importable from the project (see extract/SKILL.md Setup —
  * `npm i -D playwright` or the Playwright MCP server; the `npx playwright`
@@ -80,6 +90,8 @@ function parseArgs(argv) {
     else if (k === '--no-consent-dismiss') a.consent = false;
     else if (k === '--concurrency') a.concurrency = Math.max(1, +argv[(i += 1)] || 4);
     else if (k === '--dynamics') a.dynamics = true; // migration-bound: set by prepare-migration / replica / migrate, never by default
+    else if (k === '--headed') a.headed = 2; // start the ladder at tier 2 (real Chrome, still headless)
+    else if (k === '--headed=window' || k === '--headed=offscreen') a.headed = 3; // start at tier 3 (off-screen window)
     else throw new Error(`unknown arg: ${k}`);
   }
   if (!a.url) throw new Error('--url is required');
@@ -115,25 +127,34 @@ function assignSlugs(urls) {
   });
 }
 
-// ---- bot-management fallback: headless first, headed real Chrome on reject ----
-async function launchWithFallback() {
-  const headless = await chromium.launch({ headless: true });
-  return { browser: headless, technique: 'headless' };
-}
-// Stealth-hardened headed real Chrome. Headed alone clears TLS/H2-fingerprint
-// blocks, but Cloudflare's *managed challenge* also probes for automation
-// signals — clearing it needs the automation flags stripped (a Cloudflare-fronted e2e
-// finding). `--disable-blink-features=AutomationControlled` +
-// dropping `--enable-automation` + the navigator.webdriver spoof (applied
-// per-context in newContext) are what let the non-interactive challenge solve.
+// ---- bot-management escalation ladder (shared contract with diff/scripts/live-session.mjs) ----
+//   1 headless                 bundled Chromium, headless (default)
+//   2 chrome-headless          real Chrome (channel:'chrome'), headless, stealth args —
+//                              clears TLS/H2/JA3 fingerprint blocks without any window
+//   3 chrome-headed-offscreen  real Chrome headed, window parked off-screen — the only
+//                              tier where a JS managed challenge can solve
+// Tiers 1–2 are 1-hit fail-loud: a challenge escalates at once, no wait+reload
+// solve window (it never clears headless and only burns the block budget). The
+// tier-3 window is visible only under STARDUST_HEADED_WINDOW=1: a window popping
+// over the operator's desk is the interrupt class this ladder exists to remove.
+const TIERS = ['headless', 'chrome-headless', 'chrome-headed-offscreen'];
+const LEGACY_TIER = { 'headed-chrome-stealth': 3 }; // pre-ladder fetchTechnique value
+// Stealth: Cloudflare's managed challenge probes for automation signals —
+// `--disable-blink-features=AutomationControlled` + dropping `--enable-automation`
+// + the navigator.webdriver spoof (per context, newContext) let it solve.
 const STEALTH_ARGS = ['--disable-blink-features=AutomationControlled'];
-async function launchHeadedStealth() {
-  return chromium.launch({
-    headless: false,
-    channel: 'chrome',
-    args: STEALTH_ARGS,
-    ignoreDefaultArgs: ['--enable-automation'],
-  });
+// An off-screen window must stay `visible` to the renderer: occlusion
+// backgrounding flips document.visibilityState to 'hidden', and some edges
+// challenge hidden tabs they admit on-screen. These flags keep it visible.
+const OFFSCREEN_ARGS = ['--window-position=-32000,-32000', '--disable-backgrounding-occluded-windows',
+  '--disable-renderer-backgrounding', '--disable-background-timer-throttling'];
+function tierOf(technique) { return LEGACY_TIER[technique] || (TIERS.indexOf(technique) + 1) || 0; }
+async function launchTier(tier) {
+  if (tier <= 1) return chromium.launch({ headless: true });
+  const stealth = { channel: 'chrome', args: STEALTH_ARGS, ignoreDefaultArgs: ['--enable-automation'] };
+  if (tier === 2) return chromium.launch({ ...stealth, headless: true });
+  const visible = process.env.STARDUST_HEADED_WINDOW === '1';
+  return chromium.launch({ ...stealth, headless: false, args: visible ? STEALTH_ARGS : [...STEALTH_ARGS, ...OFFSCREEN_ARGS] });
 }
 // A context factory so the stealth init script lands on EVERY context (probe +
 // workers) once the run is in stealth mode — the challenge re-fires per context
@@ -729,10 +750,12 @@ async function capturePage(context, url, slug, args) {
   // response validation
   if (!resp) throw Object.assign(new Error('no response'), { errorClass: 'TimeoutError' });
   // bot-management challenge (Cloudflare cf-mitigated: challenge, etc.): the
-  // worker's fresh context is re-challenged even after the probe cleared it, so
-  // give the interstitial its JS-solve window and reload before validating —
-  // otherwise a solvable 403 is thrown as a fatal HTTPError.
-  resp = await clearChallenge(page, resp);
+  // worker's fresh context is re-challenged even after the probe cleared it.
+  // Tier 3 only: give the interstitial its JS-solve window and reload before
+  // validating. Tiers 1–2: one hit, fail loud — the page is recorded as a
+  // BotChallengeError, never captured as content and never retried headless.
+  if (args.solveWindow) resp = await clearChallenge(page, resp);
+  if (isChallengeResponse(resp)) throw Object.assign(new Error(`bot challenge (HTTP ${resp.status()}) at tier ${args.tier} — not the page`), { errorClass: 'BotChallengeError' });
   let status = resp.status();
   // 404 on a slash variant: retry ONCE with the trailing slash flipped before
   // recording a failure (stardust-style e2e finding — slash-required hosts).
@@ -843,46 +866,56 @@ async function main() {
   const outPages = path.join(args.out, 'pages');
   await mkdir(outPages, { recursive: true });
 
-  let stealth = false;
-  let { browser, technique } = await launchWithFallback();
-  let context = await newContext(browser, stealth);
-  let probe = await context.newPage();
+  // previous run's log: re-runs start at the tier that worked last time
+  // instead of rediscovering the block (merged back at the end).
+  const logPath = path.join(args.out, '_crawl-log.json');
+  const prev = existsSync(logPath) ? JSON.parse(await readFile(logPath, 'utf8')) : {};
 
-  // bot-management probe on the entry URL; switch to headed real Chrome on reject.
-  // Two distinct reject modes must both trigger the fallback:
+  // bot-management probe on the entry URL, climbing the ladder on reject. Two
+  // distinct reject modes both escalate:
   //   1. a network fingerprint block — the goto THROWS (isFingerprintBlock);
   //   2. a challenge / edge block — the goto SUCCEEDS but returns a 403/429/503
   //      interstitial (isChallengeResponse). This one previously slipped through
   //      the probe and only failed at capture-time (Cloudflare-fronted site finding).
+  // Each tier gets ONE probe hit; the solve window runs at tier 3 only.
+  let tier = Math.max(1, args.headed || 0, tierOf(prev.discovery?.fetchTechnique));
+  let browser; let context; let probe;
   let botBlock = null; // 'fingerprint' | 'challenge'
-  try {
-    const probeResp = await probe.goto(args.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    if (isChallengeResponse(probeResp)) botBlock = 'challenge';
-  } catch (err) {
-    if (isFingerprintBlock(err)) botBlock = 'fingerprint';
-    else throw err;
-  }
-  if (botBlock) {
-    await browser.close();
-    console.error(`[crawl] bot-management block (${botBlock}) — switching to headed real Chrome (channel:chrome) with stealth hardening`);
-    browser = await launchHeadedStealth();
-    technique = 'headed-chrome-stealth';
-    stealth = true;
-    context = await newContext(browser, stealth);
+  const escalations = []; // { tier, block } per rejected tier
+  for (;;) {
+    browser = await launchTier(tier);
+    context = await newContext(browser, tier >= 2);
     probe = await context.newPage();
-    let probeResp = await probe.goto(args.url, { waitUntil: 'domcontentloaded', timeout: 45000 });
-    probeResp = await clearChallenge(probe, probeResp);
-    // If headed + stealth + the challenge-solve window STILL can't clear it, do
-    // not proceed to capture the interstitial as if it were content — surface a
-    // clear, actionable failure (this is stop-condition (a) for the skill).
-    if (isChallengeResponse(probeResp)) {
-      await browser.close();
+    let blocked = null;
+    try {
+      let probeResp = await probe.goto(args.url, { waitUntil: 'domcontentloaded', timeout: tier === 1 ? 30000 : 45000 });
+      if (tier === 3) probeResp = await clearChallenge(probe, probeResp);
+      if (isChallengeResponse(probeResp)) blocked = { kind: 'challenge', status: probeResp.status() };
+    } catch (err) {
+      if (isFingerprintBlock(err)) blocked = { kind: 'fingerprint' };
+      else throw err;
+    }
+    if (!blocked) break;
+    botBlock = blocked.kind;
+    escalations.push({ tier: TIERS[tier - 1], block: blocked.kind });
+    await browser.close();
+    // Tier 3 + stealth + the solve window STILL challenged: do not capture the
+    // interstitial as content — fail loud (exit 3). Only now may the run report
+    // that the origin needs an interactive solve or a WAF allowlist.
+    if (tier >= TIERS.length) {
       throw Object.assign(
-        new Error(`bot-management challenge not cleared after headed real-Chrome + stealth fallback (entry status ${probeResp ? probeResp.status() : 'n/a'}) — the site requires an interactive challenge solve; run against it in a headed session you can complete by hand`),
-        { errorClass: 'BotChallengeError' },
+        new Error(`bot-management challenge not cleared at tier 3 (${TIERS[2]}, entry status ${blocked.status ?? 'n/a'}) — the site requires an interactive challenge solve: re-run with STARDUST_HEADED_WINDOW=1 and complete it by hand`),
+        { errorClass: 'BotChallengeError', nextTier: null },
       );
     }
+    console.error(`[crawl] bot-management block (${blocked.kind}) at tier ${tier} (${TIERS[tier - 1]}) — escalating to tier ${tier + 1} (${TIERS[tier]})`);
+    tier += 1;
   }
+  const technique = TIERS[tier - 1];
+  const stealth = tier >= 2;
+  args.tier = tier;
+  args.solveWindow = tier === 3;
+  if (tier === 3 && process.env.STARDUST_HEADED_WINDOW !== '1') console.error('[crawl] tier 3: Chrome window parked off-screen (STARDUST_HEADED_WINDOW=1 to show it)');
 
   // adopt the post-redirect origin (apex→www etc.): the same-origin filter and
   // sitemap fetch must use where the site actually lives, or discovery silently
@@ -907,7 +940,7 @@ async function main() {
   await probe.close();
   console.error(`[crawl] technique=${technique} pages=${urls.length}`);
 
-  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...(botBlock ? { botBlock } : {}), ...(originRedirect ? { originRedirect } : {}) }, consent: { method: args.consent ? 'auto' : 'skipped' }, favicon: favicon || null, crawl: { failures: [] } };
+  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...(botBlock ? { botBlock, escalations } : {}), ...(originRedirect ? { originRedirect } : {}) }, consent: { method: args.consent ? 'auto' : 'skipped' }, favicon: favicon || null, crawl: { failures: [] } };
   let ok = 0;
   await context.close();
 
@@ -985,10 +1018,8 @@ async function main() {
     console.error(`[crawl] dynamic surface (reach): ${log.dynamicSurface.endpoints.filter((e) => e.sameSite).length} same-site data endpoints, ${log.dynamicSurface.pagesWithSearchForm} pages with a search form, ${log.dynamicSurface.pagesHydrated} hydrated — depth + classification: stardust:dynamics`);
   }
   // merge into existing _crawl-log.json if present
-  const logPath = path.join(args.out, '_crawl-log.json');
-  const prev = existsSync(logPath) ? JSON.parse(await readFile(logPath, 'utf8')) : {};
   await writeFile(logPath, JSON.stringify({ ...prev, ...log }, null, 2));
   console.error(`[crawl] done. ${ok}/${urls.length} captured, ${log.crawl.failures.length} failed. log: ${logPath}`);
 }
 
-main().catch((e) => { console.error(`[crawl] fatal: ${e.message}`); process.exit(2); });
+main().catch((e) => { console.error(`[crawl] fatal: ${e.errorClass || 'Error'}: ${e.message}`); process.exit(e.errorClass === 'BotChallengeError' ? 3 : 2); });

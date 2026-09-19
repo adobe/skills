@@ -14,7 +14,7 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 | Setup 1–4 | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/extract/scripts/crawl.mjs` → `stardust/scripts/crawl.mjs`; origin-collision and flow guard; consent pre-flight; bot-management probe | flow stamped before a migration crawl | `_crawl-log.json#consent`, `#discovery.fetchTechnique` |
 | 1 Discovery | sitemap → BFS; junk filter; cap via `--cap <N>` / `--all` / `--pages <slugs>` / `--single` | informational summary, no confirmation gate | `stardust/current/_crawl-log.json` |
 | 2 Per-page extraction | `node stardust/scripts/crawl.mjs --url <origin> [--pages …] [--max N] [--concurrency N] [--wait <mode>] [--dynamics]` | live-render evidence contract; synthesis is a Phase 2 failure | `current/pages/<slug>.json` + `.html`, `assets/screenshots/<slug>.png`, `assets/media/`, `state.json` page → `extracted` |
-| 2.5 Vision verification | look at each screenshot against its record; escalation ladder (wait mode → headed Chrome → fresh context) | verdict `ok` / `recaptured` / `suspect` | `_crawl-log.json#visionCheck[]` |
+| 2.5 Vision verification | look at each screenshot against its record; escalation ladder (wait mode → next bot-management tier → fresh context) | verdict `ok` / `recaptured` / `suspect` | `_crawl-log.json#visionCheck[]` |
 | 3 Brand-surface extraction | aggregate across all extracted pages (+ brand-source pages) | source citation per value | `current/_brand-extraction.json`, `assets/logo.<ext>`, `assets/favicon.<ext>` |
 | 4 Seed current-state docs | author directly from impeccable's format specs (no `$impeccable init` / `document`) | provenance block first | `current/PRODUCT.md`, `current/DESIGN.md`, `current/DESIGN.json` |
 | 5 Brand review | render per template; run the Tensions detectors | template mandatory; sections without data omitted | `current/brand-review.html` |
@@ -176,13 +176,13 @@ Additional checks for this sub-command:
    the worker's first page, or clone the probe context's
    `storageState`). Record the resolved method in
    `_crawl-log.json#consent.method`.
-4. **Bot-management probe.** When the first navigation in the run
-   returns `ERR_HTTP2_PROTOCOL_ERROR` or `ERR_QUIC_PROTOCOL_ERROR`,
-   or hangs through the entire hard-cap on what should be a fast
-   origin, **do not retry headless** — switch to headed Chrome per
-   § Failure modes → Bot-management block and record the switch in
-   `_crawl-log.json#discovery.fetchTechnique` so re-runs start in
-   headed mode without rediscovering the issue.
+4. **Bot-management probe.** On a fingerprint reject or a challenge
+   response at the first navigation, climb the escalation ladder in
+   `reference/playwright-recipe.md` § Bot-management fallback
+   (headless → real Chrome headless → real Chrome off-screen; one
+   hit per tier). `crawl.mjs` does this itself and records the tier
+   that worked in `_crawl-log.json#discovery.fetchTechnique` so
+   re-runs start there.
 
 ## Procedure
 
@@ -366,8 +366,9 @@ model reads the image — and verify it against the extracted record:
 
 On mismatch, re-run that page's capture with the escalation ladder
 before proceeding: bump the wait mode one step
-(`reference/playwright-recipe.md` § Wait modes), then headed Chrome
-(§ Bot-management fallback), then a fresh browser context. Record
+(`reference/playwright-recipe.md` § Wait modes), then the next
+bot-management tier (§ Bot-management fallback), then a fresh
+browser context. Record
 the outcome per page in `_crawl-log.json#visionCheck[]`:
 
 ```json
@@ -587,7 +588,7 @@ After all Phase 2-5 writes succeed:
    produces nothing still ships an image-less capture (2026-06-26
    a SaaS site: `cssBackgrounds: []` on every page, all product
    imagery lost). A flagged row is the cue to re-run that page with
-   `--refresh` (and, if it persists, to fall back to headed Chrome per
+   `--refresh` (and, if it persists, to climb the ladder per
    § Bot-management fallback). A maintainer scanning the summary should
    treat a `brand`-register site with all-zero `bg` counts as suspect,
    not as "this site uses no background images."
@@ -699,24 +700,21 @@ this in the user report; do not engineer around it.
   unreachable, and ask the user how to proceed (provide cookies via
   Playwright config, change the entry URL, or scope to public pages).
 - **Bot-management block (Akamai / Cloudflare / F5 / Imperva).**
-  When the first navigation returns `ERR_HTTP2_PROTOCOL_ERROR`,
-  `ERR_QUIC_PROTOCOL_ERROR`, or hangs through the hard-cap on a
-  TLS/H2 fingerprint check, the issue is JA3/H2 fingerprinting on
-  bundled-chromium-default headless mode — not auth, not network.
-  Switch to `headless: false, channel: 'chrome'` per
-  `reference/playwright-recipe.md` § Bot-management fallback. Do
-  **not** retry headless: it will fail identically. The headed
-  fallback works against most enterprise / commerce origins;
-  `playwright-extra` + stealth plugin is a non-standard escape
-  hatch for the residual cases. The headed window pops visibly,
-  which is acceptable for interactive runs and unacceptable for
-  unattended pipelines — surface this to the user when first
-  triggered. Note for asset harvest: a page-level bot wall usually
-  does NOT gate assets — media/CSS/font URLs commonly return 200 to
-  a plain browser-UA curl even while every page navigation is
-  challenged (Cloudflare challenge, field-confirmed). Probe one
-  asset with curl BEFORE reaching for in-page-fetch machinery; the
-  in-page harvest is the fallback, not the default.
+  `ERR_HTTP2_PROTOCOL_ERROR` / `ERR_QUIC_PROTOCOL_ERROR`, a hang
+  through the hard-cap, or a 403/429/503 with an edge signature on
+  the first navigation is fingerprinting or a managed challenge —
+  not auth, not network. Climb the ladder in
+  `reference/playwright-recipe.md` § Bot-management fallback;
+  `crawl.mjs` does so on its own and exits 3 when tier 3 is still
+  challenged. A visible window is a user cost, never a tier — it
+  appears only under `STARDUST_HEADED_WINDOW=1`. Do not tell the
+  user the origin "needs a WAF allowlist" or an interactive solve
+  until tier 3 has failed. Asset harvest: a page-level bot wall
+  usually does NOT gate assets — media/CSS/font URLs commonly
+  return 200 to a plain browser-UA curl even while every page
+  navigation is challenged. Probe one asset with curl BEFORE
+  reaching for in-page-fetch machinery; the in-page harvest is the
+  fallback, not the default.
 - **JavaScript-only content.** Playwright already handles this. If
   the configured wait condition never fires within the mode's hard
   cap (`reference/playwright-recipe.md` § Wait modes), fall back to
