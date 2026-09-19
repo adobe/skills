@@ -34,7 +34,8 @@
  *
  * 🔴 (block the write)                      🟡 (advisory)
  *   D1  wrapper block around default content   D1  block section with no repeating
- *   D1  embed/video URL authored as a block        structure (default-content candidate)
+ *   D1  embed/video URL authored as a block        structure (default-content candidate;
+ *       (channel/profile URLs exempt)                 BREADCRUMB wording for a breadcrumbs block)
  *   D2  block table nested inside a block cell D3  ragged rows (cell-count mismatch —
  *   D4  relative/repo-relative src or href         a span-shaped structure)
  *   D4  protocol-relative or delivery branch-host
@@ -86,7 +87,9 @@
  *                                                tree carrying > 60 prose words (inline it
  *                                                + re-sync row; fragments cost strict pts)
  *
- * Icon and variant findings are reported ONCE per token with the page count.
+ * Icon and variant findings are reported ONCE per token with the page count;
+ * in tree mode (a directory target or > 1 file) the D1 prose advisory is
+ * reported ONCE per block name with the page count (single-file mode: per block).
  *
  * Dependency-free by design (regex + balanced-div walking, same technique as
  * build-harness.mjs) — content pages are machine-generated and regular; this
@@ -99,6 +102,9 @@ const WRAPPER_BLOCK_NAMES = new Set(['text', 'heading', 'title', 'image']);
 const KEY_VALUE_BLOCKS = new Set(['metadata', 'section-metadata']);
 const CHROME_BLOCK_NAMES = new Set(['header', 'footer', 'nav', 'page-chrome']);
 const EMBED_HOST = /(youtube\.com|youtu\.be|vimeo\.com|player\.|\/embed\/)/i;
+// A channel/profile URL on an embed host is a navigation link, not an embed
+// (nothing auto-blocks it) — a `<a>` to it inside a block is legitimate.
+const CHANNEL_URL = /youtube\.com\/(user|channel|c)\/|youtube\.com\/@|vimeo\.com\/(channels|groups)\//i;
 // Default-content-expressible tags: what a prose section can carry natively.
 // Variant tokens that collide with classes the boilerplate runtime/foundation
 // owns (decorateButtons, decorateSections, decorateIcons, the `.icon` utility).
@@ -160,6 +166,7 @@ function tagsIn(html) {
 
 function lintPage(file, html, findings) {
   const flag = (sev, rule, msg) => findings.push({ sev, rule, file, msg });
+  PENDING = findings;
 
   const mainMatch = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i);
   const main = mainMatch ? mainMatch[1] : html; // nav/footer docs may be bare fragments
@@ -259,7 +266,7 @@ function lintBlock(file, section, block, name, flag) {
       if (!isKeyValue) {
         const links = [...cell.inner.matchAll(/<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)];
         const text = stripTags(cell.inner);
-        if (links.length === 1 && EMBED_HOST.test(links[0][1]) && text === stripTags(links[0][2])) {
+        if (links.length === 1 && EMBED_HOST.test(links[0][1]) && !CHANNEL_URL.test(links[0][1]) && text === stripTags(links[0][2])) {
           flag('🔴', 'D1', `${where}: embed/video URL authored inside a block — author it as a plain link in default content and auto-block it in scripts.js buildAutoBlocks()`);
         }
       }
@@ -321,9 +328,30 @@ function lintBlock(file, section, block, name, flag) {
       return tagsIn(htmlIn).every((t) => PROSE_TAGS.has(t));
     });
     if (allProse) {
-      flag('🟡', 'D1', `${label}: single-column, ${rows.length}-row block holding only prose elements — default-content candidate (justify in the conversion log if it is a genuine bespoke widget)`);
+      // Tree mode reports this ONCE per block name (a page-chrome block such
+      // as a breadcrumb trail fires it on every page — 61→93 copies of one advisory).
+      rollup(file, '🟡', 'D1', `prose:${name}`, 1, (n, files, single) => {
+        if (/^breadcrumbs?$/.test(name)) return `authored breadcrumb trail ("${name}" block) on ${single ? 'this page' : `${files.size} pages`} — chrome derived from the URL path: build it in buildAutoBlocks() with a /nav label map (EW5 fourth shape); if authoring is deliberate, author one <ul> per page (BREADCRUMB)`;
+        if (single) return `${label}: single-column, ${rows.length}-row block holding only prose elements — default-content candidate (justify in the conversion log if it is a genuine bespoke widget)`;
+        return `block "${name}": single-column block (≤ 3 rows) holding only prose elements on ${files.size} page(s) — default-content candidate (justify in the conversion log if it is a genuine bespoke widget)`;
+      });
     }
   }
+}
+
+// ----------------------------------------------- tree-mode rollups
+// A finding that recurs on every page of a tree (the same block, the same
+// authoring habit) is collected here and reported ONCE with the page count;
+// in single-file mode it is flagged on the spot with its per-page wording.
+let TREE_MODE = false; // set in main: a directory target or > 1 file
+const ROLLUPS = new Map(); // key → { sev, rule, files:Set, count, mk }
+let PENDING = null; // findings array while lintPage runs (single-file flags)
+function rollup(file, sev, rule, key, n, mk) {
+  if (!TREE_MODE) { PENDING.push({ sev, rule, file, msg: mk(n, new Set([file]), true) }); return; }
+  if (!ROLLUPS.has(key)) ROLLUPS.set(key, { sev, rule, files: new Set(), count: 0, mk });
+  const r = ROLLUPS.get(key);
+  r.files.add(file);
+  r.count += n;
 }
 
 function lintSectionShape(file, section, kids, defaultContentText, flag) {
@@ -586,6 +614,8 @@ function pagesLabel(files) {
 function reportCollected(findings) {
   const push = (sev, rule, files, msg) => findings.push({ sev, rule, file: pagesLabel(files), pages: [...files].sort(), msg });
 
+  for (const [, r] of [...ROLLUPS].sort()) push(r.sev, r.rule, r.files, r.mk(r.count, r.files, false));
+
   for (const [token, files] of [...ICON_USES].sort()) {
     const prefixed = token.startsWith('icon-');
     if (!ICONS_DIR) {
@@ -668,11 +698,9 @@ if (sourceHost) {
 }
 
 const findings = [];
-for (const target of args) {
-  for (const file of collectFiles(target)) {
-    lintPage(file, readFileSync(file, 'utf8'), findings);
-  }
-}
+const files = args.flatMap((target) => collectFiles(target));
+TREE_MODE = files.length > 1 || args.some((a) => statSync(a).isDirectory());
+for (const file of files) lintPage(file, readFileSync(file, 'utf8'), findings);
 
 reportCollected(findings);
 findings.sort((a, b) => (a.sev === b.sev ? 0 : a.sev === '🔴' ? -1 : 1));
