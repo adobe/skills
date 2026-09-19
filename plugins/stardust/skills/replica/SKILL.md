@@ -20,7 +20,7 @@ Phases, in order: Setup → 1 EXTRACT → 2 PRESERVE DIRECTION → 3 RECREATE �
 | 2 | mechanical promotion + `stardust/replica/inconsistency-register.md`; the `dynamics` skill Phases 1–3 |
 | 3 | author `stardust/prototypes/<slug>-proposed.html` (+ per-page CSS) |
 | 4 | probes 1+2: `diff/content-diff.mjs`, `diff/visual-diff.mjs` (`--profile generic --width <w> --main <root> --dismiss`); probe 3: `replica/stitch-shot.mjs`, `replica/pixel-compare.mjs --timeout <s>`, `replica/review-image.mjs --bands|--sheet`; inner loop: `replica/anchor.mjs --landmarks --cache|--against`, `replica/chrome-parity.mjs --live-cache`, `replica/gate.sh <slug> <live> <proto> <width> [iter] [--marker] [--refresh] [--variance] [--over-cap <reason>] [--record → replica/progress-record.mjs]` — env `GATE_STITCH_TIMEOUT`, `GATE_COMPARE_TIMEOUT`, `GATE_ANCHOR_TIMEOUT`, `GATE_REAP_MIN`, `GATE_BLOCK`, `GATE_ALLOW_CONSENT`, `GATE_LANDMARKS=0`; every node step runs under `replica/run-capped.mjs --timeout <s> -- <cmd>`; after the static pass: `replica/motion-observe.mjs <live> [--hover <sel>] [--click <sel>] [--triggers auto]` |
-| 5 | first: `deploy` the approved archetype to a branch preview (`deploy-batch.mjs … --branch <branch>`); `replica/sibling-variance.mjs <archetype> <siblings…> --probe <block>=<sel>`; then the `migrate` (sibling tier) → `deploy` → `rollout` skills; re-run the Phase 4 gate against the published origin |
+| 5 | `replica/gate-ledger-lint.mjs --state stardust/state.json` (exit 2 = blocked types); first: `deploy` the approved archetype to a branch preview (`deploy-batch.mjs … --branch <branch>`); `replica/sibling-variance.mjs <archetype> <siblings…> --probe <block>=<sel>`; then the `migrate` (sibling tier) → `deploy` → `rollout` skills; re-run the Phase 4 gate against the published origin |
 
 Gates: Phase 2 — every dynamic-surface row has a disposition. Phase 4, per breakpoint (default `1440,360`) — content-diff 0 structural 🔴 · visual-diff flags none/justified · pixel diff ≤ 10% with no hot band unexplained · height |Δ| ≤ 8px · cap 3 iterations · interaction parity recorded. `gate.sh` exits: 0 pass · 2 fail · 1 error / incomparable captures · 3 bot challenge · 4 wrong server · 5 invalid capture (consent / short / overlay / error page) · 6 cap reached (decide: residual / register / `--over-cap <reason>`; `--invalidate <label> <fix>` excludes a defect round; `--record` copies the round into `progress.json`) · 124 deadline (re-run, not a FAIL).
 
@@ -189,7 +189,7 @@ as **clean semantic HTML/CSS** from three sources, in this order:
     name (composition, image crops, paint effects).
 
 **Every archetype gets its own standalone prototype — cumulative, never
-skipped.** Never skip to direct platform authoring for a new archetype
+skipped.** Never skip to direct platform authoring for a new archetype.
 Each new prototype imports
 the shared layers earlier ones already gated (shared canon CSS + a
 per-archetype file) and iterates only on its NEW modules — full contract:
@@ -202,9 +202,8 @@ at BOTH breakpoints. A sibling (Phase 5) that introduces a kind absent from
 the ledger triggers a lift plus a Phase 4 gate ON THAT SIBLING at both
 breakpoints before its template counts as recreated.
 
-**This is recreation, not redesign — do NOT delegate to impeccable craft.**
-Impeccable's redesign gates do not apply; the source-fidelity gate
-(Phase 4) replaces them.
+**Recreation, not redesign — never delegate to impeccable craft:** its
+redesign gates do not apply; Phase 4 replaces them.
 
 **Fonts:** same public source when available (extract's intercepted woff2
 for open/self-hostable faces). Licensed commercial kits are never rehosted:
@@ -304,8 +303,8 @@ phase-close checkpoint block (master skill § Phase close) carries
   `deploy-batch.mjs … --branch <branch>` (preview only — D16; live publish
   is a separate `--publish` on PASS, D1) and iterate on the published
   origin (`reference/source-fidelity-gate.md` § The published-origin gate).
-  Approval is the trigger — hands-off never asks "ready to deploy?". No EDS origin yet → the deploy skill's site bootstrap
-  (planned `reference/site-bootstrap.md`).
+  Approval is the trigger — hands-off never asks "ready to deploy?"; no
+  EDS origin yet → stop and ask for the org/repo (rollout Setup step 3).
 - **Pages beyond the archetypes** go through the stardust `migrate` skill at
   **sibling tier** (`../migrate/reference/fidelity-tiers.md`): structural
   clone of the gated archetype + content-fidelity + delivery-lint +

@@ -115,11 +115,8 @@ capture is re-taken every iteration.
 5. **Chrome crop gate: header band AND footer band each ≤ 2% diff (≥98%
    match, #115).** The full-page bar dilutes the chrome — header/footer are
    a small share of page pixels but carry disproportionate visual weight
-   and repeat on every page of a rollout. Two field runs shipped
-   full-page-green pages whose chrome measured only 93–97% (lookalike
-   icons, wrong micro-weights, off-by-10px nav rows all fit inside a ≤10%
-   full-page bar). Run `../scripts/crop-compare.mjs` over the SAME stitched
-   captures the pixel probe used — no extra live hit:
+   and repeat on every page of a rollout. Run `../scripts/crop-compare.mjs`
+   over the SAME stitched captures the pixel probe used — no extra live hit:
 
    ```bash
    node stardust/scripts/replica/crop-compare.mjs "$GATE/live.png" "$GATE/proto.png" \
@@ -312,10 +309,11 @@ discipline — convergence happened within 3 with the recreation procedure
 followed; more loops mean the inputs were wrong (values eyeballed instead of
 lifted, capture unhardened), and the fix is upstream, not a fourth loop.
 
-- **The cap is mechanical.** `gate.sh` counts the rounds from the round
-  records (`gate-<label>.json` with verdict PASS/FAIL, not excluded, not a
-  live-drift recapture; no-verdict rounds never count), labels rounds
-  `iter<k>` by default and stops at 3 with exit 6 before any capture.
+- **The cap is mechanical, per regime.** `gate.sh` counts the rounds from
+  the round records (`gate-<label>.json` with verdict PASS/FAIL, not
+  excluded, not a live-drift recapture, same `regime`; no-verdict rounds
+  never count), labels rounds `iter<k>` (prototype) / `pub<k>`
+  (published-origin) by default and stops at 3 with exit 6 before any capture.
   `--over-cap <reason>` runs one more round with one of the regime labels
   below, written to the record as `overCap`; `--invalidate <label> <fix>` is
   the instrument-invalidated exclusion as a record field; `--record` copies
@@ -439,10 +437,7 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   replica instruments older than 15 minutes before a round (`GATE_REAP_MIN`,
   0 disables); `pixel-compare.mjs` supervises its own `--timeout` (120 s)
   when run alone. Exit 124 is "no verdict — re-run", never a FAIL. Do not
-  wrap the instruments in your own `sleep N; kill` guard: three field
-  migrations did, after `pixel-compare` sat at 0 % CPU for 10+ minutes
-  (a Node exit-path hang, fixed in the script and now reproduced in a
-  test), and a page's four rounds then spent a fixed 30 minutes sleeping.
+  wrap the instruments in your own `sleep N; kill` guard.
   When a capture legitimately needs longer (a 10k-px page under `--settle`),
   raise the variable for that page and say so in the ledger.
 - **Your waiting has a ceiling too.** A gate round over several archetypes
@@ -851,7 +846,11 @@ residual carries `artifacts[]`
 table's **permanent** classes; an entry missing either is invalid and the
 breakpoint is FAIL. `published.<bp>` holds the published-origin result per
 breakpoint (§ The published-origin gate); a breakpoint absent there is
-`ungated` — reported as such, never as passed.
+`ungated` — reported as such, never as passed. `../scripts/gate-ledger-lint.mjs`
+is this ledger's reader (rollout Setup, `migrate` before any A′ render; `--published`
+reports `published.<bp>` and the coverage line): it applies § Pass bar to `result`
+and this residual rule per configured breakpoint — a shape it cannot read is
+not a pass.
 
 `result` fields: `regime` — `prototype` (standalone prototype vs live) or
 `published-origin` (delivered page vs live, § The published-origin gate);
