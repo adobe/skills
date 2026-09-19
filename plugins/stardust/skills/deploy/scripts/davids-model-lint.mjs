@@ -56,6 +56,9 @@
  *                                                in-block <img> with alt=""
  *                                            CHROME header/footer/nav/page-chrome block
  *                                                inlined into a content document
+ *                                            D15 STYLE-SPACE — section-metadata `style`
+ *                                                with space-separated tokens (hyphen-joined
+ *                                                into one class that matches nothing)
  *                                            D12 CONTENT — a /fragments/ target in this
  *                                                tree carrying > 60 prose words (inline it
  *                                                + re-sync row; fragments cost strict pts)
@@ -226,6 +229,14 @@ function lintBlock(file, section, block, name, flag) {
       const pCount = valueTags.filter((t) => t === 'p').length;
       if (valueTags.some((t) => /^h[1-6]$/.test(t) || t === 'picture') || pCount > 1) {
         flag('🔴', 'D14', `${label} row ${ri + 1}: key-value block carries display content (heading/picture/multi-paragraph) in its value cell — name/value is for configuration only`);
+      }
+      // D15 STYLE-SPACE — `style: a b` becomes ONE class `a-b`; tokens are comma-separated (#120).
+      if (name === 'section-metadata') {
+        const k = stripTags(cells[0].inner).toLowerCase();
+        const v = stripTags(cells[1].inner).trim();
+        if (k === 'style' && /\s/.test(v) && !v.includes(',')) {
+          flag('🟡', 'D15', `${label} row ${ri + 1}: style "${v}" is space-separated — the pipeline hyphen-joins it into one class (.${v.replace(/\s+/g, '-')}) that matches no rule; comma-separate the tokens (STYLE-SPACE, #120)`);
+        }
       }
       // D15 JSON — a raw `json-ld` row is pipeline-supported but is JSON in a
       // document; the documented default composes JSON-LD at runtime (D10).

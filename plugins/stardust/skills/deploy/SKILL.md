@@ -9,7 +9,7 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 
 ## Operator card
 
-Read this card, then the one section you are at — never the whole skill. Every chapter under `reference/` opens with its own TOC; read one `##` at a time. No deploy script ships a deadline flag; long steps run in the background with a progress file (Step 7).
+Read this card, then the one section you are at — never the whole skill. Every `reference/` chapter opens with its own TOC; read one `##` at a time. No deploy script ships a deadline flag; long steps run in the background with a progress file (Step 7).
 
 | # | Step | Command / artefact | Pass bar |
 |---|---|---|---|
@@ -100,7 +100,7 @@ When `emptySectionCollapse` is true (a metadata-only section is consumed into `<
 **One distinct visual PATTERN = one EDS block — and a section with NO pattern is NOT a block at all.** The content structure that lands in DA follows **David's Model** (`davids-model.md` — the 15 rules mapped to this skill's contracts; cited as `D#N`). Its first rule shapes everything here:
 
 - **D1 — blocks aren't ideal for authoring.** A block is a table an author must maintain. A section of plain prose — heading, paragraphs, an image, CTAs, with **no repeating units and no bespoke interactive structure** — is **DEFAULT CONTENT** in its own section, never wrapped in a block; its skin rides a minimal section-metadata `style` value (Step 3) and its semantics stay native `<h2>`/`<p>`/`<picture>`/`<a>`. Never wrap bare default content in a `text`/`heading`/`image` block (the D1 anti-pattern).
-- **Blocks are for structure default content can't express:** repeating units (cards, FAQ, logos, team), bespoke compositions (a countdown, a stat band, a cinematic hero) and interactive components — one distinct prototype pattern = one block. Don't abstract speculatively or extract "patterns" across prototypes unless sections are genuinely the same pattern — each pattern's bespoke CSS can't be wrongly shared (`reference/anti-patterns.md` § Structure and decisions).
+- **Blocks are for structure default content can't express:** repeating units (cards, FAQ, logos, team), bespoke compositions (a countdown, a stat band, a cinematic hero) and interactive components — one distinct prototype pattern = one block. Don't abstract speculatively or extract "patterns" across prototypes unless sections are the same pattern — each pattern's bespoke CSS can't be wrongly shared (`reference/anti-patterns.md` § Structure and decisions).
 
 **The one deliberate exception — collapse SAME-PATTERN sections into one block + VARIANT classes.** When two or more sections share a content pattern (card grids, prose/CTA bands, quotes, accordions) and differ only in skin, emit ONE canonical block (`cards`, `text`, `quote`, `accordion`) with each section's look behind a variant class (`class="cards brands"`). The block JS stays generic (classify cells by content); only the CSS differs per variant. This is the David's-Model library win (D9: small, reusable, variant-driven — not 20 bespoke names). Keep genuinely-unique sections (a hero, a countdown widget) bespoke; budget for variant CSS — some grids are count-specific.
 
@@ -111,7 +111,7 @@ The prototype is the visual spec. The block exists to AUTHOR its content — **T
 For a typical 5–10 page site:
 
 - **One block per distinct prototype PATTERN** (D1/D9). A 5-page site with 6 sections each → ~8–14 blocks: prose bands land as default content, same-pattern sections share one block + variants, only bespoke sections get their own.
-- **One EDS content page per prototype page.** Same number of pages.
+- **One EDS content page per prototype page.**
 - **Nav + footer documents** at `content/nav.html` and `content/footer.html` — authored content deployed like any page, fetched by the stock `header`/`footer` blocks (D12).
 - **Per-site `blocks/header` + `blocks/footer` CSS/JS** reproducing the prototype's chrome (Step 6).
 - **Updated `styles/styles.css`** with brand tokens lifted from the prototype's `:root`, a reset, the EDS section scaffold, a global button system (Step 5), and the styles for the few section-metadata `style` values default-content sections use. Nothing more.
