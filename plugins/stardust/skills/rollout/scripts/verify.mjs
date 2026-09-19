@@ -48,8 +48,10 @@
  * the ranked class table — at most 60 lines, nothing per page unless --verbose.
  * `--report <dir>` (default <out>/verify/; under --slug <out>/verify/slug-<s>/, so a
  * spot re-check never overwrites the site-wide report) receives summary.json
- * ({ total, checked, verified, failed, skipped, classes:[{ class, count, severity,
- * worstExample, pointer }], pages:[…] }), summary.md (the same table) and pages.md
+ * ({ total, checked, verified, failed, skipped, undelivered, unverified, classes:[{ class,
+ * count, severity, worstExample, pointer }], pages:[{ slug, path, type, status, class,
+ * reason, severity, advisories[] }] } — one row per slug; the failure is the row's class,
+ * advisory findings ride on advisories[]), summary.md (the same table) and pages.md
  * (the per-page rows, per class — where the pointers lead).
  *
  * Runs from the plugin tree or the project copy (stardust/scripts/rollout/): the
@@ -257,13 +259,24 @@ if (!target.length) tail.push(ALL && skipped ? 'Nothing delivered yet — every 
 const table = report.total ? renderTable(report, { title: 'rollout verify — findings by class', maxLines: MAX_LINES - head.length - tail.length }) : [];
 const lines = [...head, ...table, ...tail];
 
+// one pages[] row per slug: the failure (or the throttle) is the row's class; advisory
+// findings ride on advisories[] and only lend the row its class when nothing failed.
+const rowBySlug = new Map();
+for (const { slug, path, type, status, class: cls, reason, severity } of [...results, ...unverified]) rowBySlug.set(slug, { slug, path, type, status, class: cls, reason, severity: severity ?? null, advisories: [] });
+for (const a of advisories) {
+  const row = rowBySlug.get(a.slug);
+  row.advisories.push({ class: a.class, reason: a.reason, severity: a.severity });
+  if (!row.class) { row.class = a.class; row.reason = a.reason; row.severity = a.severity; }
+}
+const pageRows = [...rowBySlug.values()];
+
 mkdirSync(REPORT, { recursive: true });
 writeJSON(join(REPORT, 'summary.json'), {
   generatedAt: now, source: ROOT ? `root:${ROOT}` : BASE, mode: ROOT ? 'root' : 'http', outsideInventory: OUTSIDE_POLICY,
   total: pages.length, checked: results.length, verified: ok, failed: bad.length, skipped, undelivered, unverified: unverified.length,
   pendingTargetPages: pendingPages, outsideWarnPages,
   classes: report.classes.map((c) => ({ class: c.class, count: c.count, severity: c.severity ?? null, worstExample: c.worst ? `${c.worst.page} — ${c.worst.message}` : null, pointer: c.worst ? c.worst.pointer : null })),
-  pages: [...results, ...unverified, ...advisories].map(({ slug, path, type, status, class: cls, reason, severity }) => ({ slug, path, type, status, class: cls, reason, severity: severity ?? null })),
+  pages: pageRows,
 });
 writeFileSync(join(REPORT, 'summary.md'), `${['# rollout verify', '', `Generated ${now}.`, '', ...lines.slice(0, MAX_LINES - 4)].join('\n')}\n`);
 const md = ['# rollout verify — per-page rows', '', `Generated ${now}. Ranked table: summary.md · data: summary.json`, ''];

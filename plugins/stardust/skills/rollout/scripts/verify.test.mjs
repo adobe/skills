@@ -146,6 +146,10 @@ const lines = (s) => s.split('\n').filter((l) => l.length);
   const sj = json(join(OUT, 'verify', 'summary.json'));
   assert.equal(sj.skipped, 3); assert.equal(sj.classes[0].class, 'outside-inventory link');
   assert.ok(sj.classes.some((c) => c.class === 'pending-target link' && c.severity === 'info'), 'pending-target is an advisory class in the report');
+  // defect 7: one pages[] entry per slug — a failed page with a pending-target advisory used to appear twice
+  assert.equal(new Set(sj.pages.map((p) => p.slug)).size, sj.pages.length, `summary.json.pages[] lists every slug once (${sj.pages.map((p) => p.slug)})`);
+  const aRow = sj.pages.find((p) => p.slug === 'a');
+  assert.deepEqual([aRow.status, aRow.class, aRow.advisories.map((x) => x.class)], ['failed', 'outside-inventory link', ['pending-target link']], 'the failure is the row class; the advisory rides on advisories[]');
 
   // warn policy: A stays verified, both link lists recorded, exit 0
   seed({ outsideInventory: 'warn' });
@@ -154,6 +158,9 @@ const lines = (s) => s.split('\n').filter((l) => l.length);
   assert.equal(status('a').status, 'verified');
   assert.deepEqual([status('a').pendingLinks, status('a').outsideLinks], [['/b'], ['/outside']], 'pendingLinks + outsideLinks recorded');
   assert.match(r.stdout, /pending-target links: 1 page\(s\)/); assert.match(r.stdout, /outside-inventory links: 1 page\(s\) \(links.outsideInventory: warn\)/);
+  const wj = json(join(OUT, 'verify', 'summary.json')); const aWarn = wj.pages.find((p) => p.slug === 'a');
+  assert.equal(wj.pages.filter((p) => p.slug === 'a').length, 1, 'a verified page with two advisories is one pages[] row');
+  assert.deepEqual([aWarn.status, aWarn.class, aWarn.severity, aWarn.advisories.length], ['verified', 'pending-target link', 'info', 2], 'no failure → the first advisory is the row class, both advisories listed');
 
   // --include-undelivered restores the probe of never-delivered rows (404 → failed)
   seed({ outsideInventory: 'warn' });
