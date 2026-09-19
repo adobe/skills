@@ -7,8 +7,11 @@
  *
  * Two passes, scored against expected.json:
  *   reach  (always)      lib.mjs reachSignals() over sidecars/pages/*.json — the rows `--reach`
- *                        mints or annotates from extract --dynamics sidecars; plus a shape check
- *                        that extract/scripts/crawl.mjs still writes every sidecar field they read.
+ *                        mints or annotates from extract --dynamics sidecars; plus the sidecar
+ *                        contract: extract/scripts/crawl.mjs still writes every `dynamic` field
+ *                        they read (lib.mjs REACH_SIDECAR_FIELDS ⊆ crawl's `dynamicDom` keys — read
+ *                        from crawl's DYNAMIC_DOM_FIELDS export when present, else parsed from the
+ *                        object literal with lib.mjs objectLiteralKeys, whatever its formatting).
  *   depth  (playwright)  dynamics-detect.mjs --urls <fixture pages> --reach <sidecars> --offline;
  *                        every `depth` row must be found on its page, every `reach` row must carry
  *                        reach.pages ≥ minPages, and `reachOnly` rows must (not) be hint reach-only.
@@ -36,7 +39,7 @@ const KEEP = process.argv.includes('--keep');
 
 let expected;
 try { expected = JSON.parse(readFileSync(join(FIXTURE, 'expected.json'), 'utf8')).rows; } catch (e) { console.error(`dynamics-recall: fixture unreadable — ${e.message}`); process.exit(2); }
-const { reachSignals } = await import(pathToFileURL(join(PLUGIN, 'skills', 'dynamics', 'scripts', 'lib.mjs')).href);
+const { reachSignals, REACH_SIDECAR_FIELDS, objectLiteralKeys } = await import(pathToFileURL(join(PLUGIN, 'skills', 'dynamics', 'scripts', 'lib.mjs')).href);
 
 let failed = 0;
 const ok = (name, pass, detail = '') => { if (!pass) failed += 1; console.log(`${pass ? 'PASS' : 'FAIL'} ${name}${detail ? ` — ${detail}` : ''}`); };
@@ -58,12 +61,13 @@ recallTable('reach', reachRows, findReach);
 const reachNoise = rows.filter((x) => !reachRows.some((r) => r.class === x.class && new RegExp(r.feature).test(x.feature)));
 if (reachNoise.length) console.log(`reach noise (informational): ${reachNoise.map((x) => `${x.class} "${x.feature}"`).join(' · ')}`);
 
-// crawl.mjs must still write every field the reach pass reads (the sidecar contract, extract/reference/current-state-schema.md § dynamic)
-const crawlSrc = readFileSync(CRAWL, 'utf8');
-const dynamicDomLine = (crawlSrc.match(/dynamicDom:\s*\{([^}]*)\}/) || [])[1] || '';
-for (const field of ['triggers', 'mediaIds', 'forms', 'tabs', 'shadowHosts', 'emptyConfigContainers', 'controlGroups', 'searchShell', 'players', 'chatLoaders', 'federated', 'quiz']) {
-  ok(`crawl.mjs dynamicDom writes ${field}`, new RegExp(`\\b${field}\\b`).test(dynamicDomLine));
-}
+// crawl.mjs must still write every field the reach pass reads (the sidecar contract, extract/reference/current-state-schema.md § dynamic).
+// The key list comes from crawl's own export when it has one; otherwise the `dynamicDom: { … }` literal is parsed
+// (comments, strings, nesting and line breaks are fine) — never a regex over one source line.
+const crawlMod = await import(pathToFileURL(CRAWL).href);
+const crawlFields = Array.isArray(crawlMod.DYNAMIC_DOM_FIELDS) ? crawlMod.DYNAMIC_DOM_FIELDS : objectLiteralKeys(readFileSync(CRAWL, 'utf8'), 'dynamicDom');
+ok('crawl.mjs dynamicDom contract located', Array.isArray(crawlFields) && crawlFields.length > 0, crawlFields ? `${crawlFields.length} field(s) via ${crawlMod.DYNAMIC_DOM_FIELDS ? 'DYNAMIC_DOM_FIELDS export' : 'object-literal parse'}` : 'no `dynamicDom: {…}` literal in crawl.mjs');
+for (const field of REACH_SIDECAR_FIELDS) ok(`crawl.mjs dynamicDom writes ${field}`, !!crawlFields && crawlFields.includes(field));
 
 /* ------------------------------------------------------ depth (browser) -- */
 let playwright = false;
