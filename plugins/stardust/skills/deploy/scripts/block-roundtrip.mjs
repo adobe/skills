@@ -60,22 +60,29 @@
  * decorated must never pass — its raw rows would match the prototype and
  * green-light a decode that was never exercised), 1 = tool error.
  *
- * Limitation: block JS is INLINED into the harness page, so module-scope
- * `import` statements cannot be resolved — such a block FAILS the gate loudly
- * (inline the helper, or verify that block via the dev-server harness + Step 10).
+ * Block JS is installed as a REAL module on a synthetic harness origin served
+ * from the repo root (ew-editability-probe.mjs openHarness; --root overrides the
+ * blocks dir's parent): aem.js, project helpers and sibling-block imports resolve.
+ * An unresolvable specifier is a 404 under that root → the import rejects → the
+ * block is NOT installed → exit 2 (fix the specifier, or verify that block via the
+ * dev-server harness + Step 10). Requests to any other origin are aborted and listed.
+ *     --root <dir>       harness root (default: parent of the blocks dir)
+ *     --strict           exit 2 when a used @ew-exempt is block-granular without `all`
+ *                        or names no category (item-level syntax in the probe header)
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, no-continue */
 import { chromium } from 'playwright';
 import fs from 'fs';
+import path from 'path';
 import { resolveProfile } from './diff-profiles.mjs';
 import { inventory, diffInventories, summarise } from './content-inventory.mjs';
-import { EDITABLE, runtimeMimic, instrument, survey, installBlockJs, runDecorate, readBlockExemptions, aggregate } from './ew-editability-probe.mjs';
+import { EDITABLE, runtimeMimic, instrument, survey, openHarness, installBlockJs, installErrors, runDecorate, readBlockExemptions, aggregate, strictFindings, formatRequests } from './ew-editability-probe.mjs';
 import { pipelineMimic, formatCounts } from './pipeline-mimic.mjs';
 
 function parseArgs(argv) {
   const [, , proto, content, ...rest] = argv;
-  const opts = { blocks: null, map: {}, styles: null, blocksDir: null, width: 1280, profile: 'eds', json: false, ew: true, pipeline: true, styleSplit: 'comma' };
+  const opts = { blocks: null, map: {}, styles: null, blocksDir: null, root: null, strict: false, width: 1280, profile: 'eds', json: false, ew: true, pipeline: true, styleSplit: 'comma' };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--blocks') { opts.blocks = rest[i += 1].split(',').map((s) => s.trim()).filter(Boolean); }
@@ -89,6 +96,8 @@ function parseArgs(argv) {
     else if (a === '--no-ew') { opts.ew = false; }
     else if (a === '--no-pipeline') { opts.pipeline = false; }
     else if (a === '--style-split') { opts.styleSplit = rest[i += 1]; }
+    else if (a === '--root') { opts.root = rest[i += 1]; }
+    else if (a === '--strict') { opts.strict = true; }
     else if (a === '--help' || a === '-h') { opts.help = true; }
   }
   return { proto, content, opts };
@@ -163,7 +172,7 @@ async function settle(page) {
 
 async function main() {
   const { proto, content, opts } = parseArgs(process.argv);
-  const usage = 'usage: node skills/deploy/scripts/block-roundtrip.mjs <prototypeURL> <content/page.html> [--blocks a,b] [--map name=sel] [--styles css] [--blocks-dir dir] [--width px] [--profile p] [--ew|--no-ew] [--json] [--no-pipeline] [--style-split comma|first-only]\n';
+  const usage = 'usage: node skills/deploy/scripts/block-roundtrip.mjs <prototypeURL> <content/page.html> [--blocks a,b] [--map name=sel] [--styles css] [--blocks-dir dir] [--width px] [--profile p] [--ew|--no-ew] [--json] [--no-pipeline] [--style-split comma|first-only] [--root dir] [--strict]\n';
   if (opts.help) { process.stdout.write(usage); process.exit(0); }
   if (!proto || !content || !['comma', 'first-only'].includes(opts.styleSplit)) {
     process.stderr.write(usage);
@@ -197,24 +206,22 @@ async function main() {
   let failed = false;
   try {
     // ── harness: authored content + foundation/block CSS, decorate locally ──
-    const harness = await browser.newPage({ viewport: { width: opts.width, height: 1000 }, reducedMotion: 'reduce' });
+    // The page lives on the harness origin served from `root`, so block JS
+    // installs as a real module (imports resolve; a 404 fails the gate).
     const styles = fs.readFileSync(stylesPath, 'utf8');
-    // First pass with no block CSS just to discover block names when --blocks omitted.
-    await harness.setContent(`<!doctype html><html><head><meta charset="utf-8"></head><body><main>${mainHtml}</main></body></html>`);
+    const root = opts.root || path.dirname(path.resolve(blocksDir));
+    // body.appear satisfies the vanilla foundation's body{display:none} gate the
+    // way loadEager() does — without it every computed-style read sees a hidden page.
+    const hh = await openHarness(browser, { html: `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0}main .section{padding:0}${styles}</style></head><body class="appear"><main>${mainHtml}</main></body></html>`, root, width: opts.width, height: 1000 });
+    const harness = hh.page;
     await harness.evaluate(dropMetadata);
+    // Tag on the raw authored shape (discovers block names when --blocks omitted).
     const discovered = await harness.evaluate(tagHarnessSections, opts.blocks);
     const names = opts.blocks || Object.keys(discovered);
     if (!names.length) throw new Error('no block divs found in the content page');
-
+    const harnessCounts = Object.fromEntries(names.map((n) => [n, discovered[n] || 0]));
     const blockCss = names.map((n) => { try { return fs.readFileSync(`${blocksDir}/${n}/${n}.css`, 'utf8'); } catch { return ''; } }).join('\n');
-    // body.appear satisfies the vanilla foundation's body{display:none} gate the
-    // way loadEager() does — without it every computed-style read sees a hidden page.
-    await harness.setContent(
-      `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0}main .section{padding:0}${styles}\n${blockCss}</style></head><body class="appear"><main>${mainHtml}</main></body></html>`,
-      { waitUntil: 'networkidle' },
-    );
-    await harness.evaluate(dropMetadata);
-    const harnessCounts = await harness.evaluate(tagHarnessSections, names);
+    if (blockCss) await harness.addStyleTag({ content: blockCss });
     // AFTER tagging (which reads the raw authored shape), mimic the vanilla
     // runtime's decorateButtons/decorateSections/decorateBlock DOM — .section
     // wrappers, .default-content-wrapper, .<name>-wrapper/.block/.<name>-container,
@@ -233,8 +240,8 @@ async function main() {
     // syntax error) leaves window.__b[name] undefined — that MUST fail the gate:
     // the undecorated raw rows would match the prototype and exit 0 while the
     // decode was never exercised.
-    const notInstalled = await installBlockJs(harness, names, blocksDir);
-    notInstalled.forEach((n) => decorateErrs.push(`${n}: block JS failed to install — module-scope import/export or a syntax error (the harness inlines block JS and cannot resolve imports; inline the helper or verify this block via the dev-server harness)`));
+    const notInstalled = await installBlockJs(harness, names, blocksDir, { root: hh.root });
+    decorateErrs.push(...installErrors(notInstalled, hh.requests, hh.root));
     decorateErrs.push(...await runDecorate(harness, names));
     await harness.waitForTimeout(800);
     const ewRows = opts.ew ? await harness.evaluate(survey, ewTexts) : [];
@@ -254,8 +261,10 @@ async function main() {
     const protoCounts = await protoPage.evaluate(tagProtoSections, names.map((name) => ({ name, selector: opts.map[name] || null })));
 
     // ── per-block round-trip ──
-    process.stdout.write(`\nBlock round-trip @ ${opts.width}px (profile "${prof.name}", ${blocksDir}, ${stylesPath})\n`);
+    process.stdout.write(`\nBlock round-trip @ ${opts.width}px (profile "${prof.name}", ${blocksDir}, ${stylesPath}, root ${hh.root})\n`);
     if (decorateErrs.length) process.stdout.write(`🔴 decorate errors (these alone fail the gate — an erroring/uninstalled block renders raw rows that can false-match the prototype):\n${decorateErrs.map((e) => `  ${e}`).join('\n')}\n`);
+    const reqLines = formatRequests(hh.requests);
+    if (reqLines.length) process.stdout.write(`${reqLines.join('\n')}\n`);
     let totalRed = 0;
     const dump = {};
     for (const name of names) {
@@ -289,7 +298,8 @@ async function main() {
           rebuilt.slice(0, 8).forEach((d) => flags.push({ sev: '🔴', kind: 'DEAD TEXT', msg: `${quote(d)} — rebuilt from textContent/innerHTML, synthesized, or retagged; MOVE the authored element (EW1)` }));
           if (rebuilt.length > 8) flags.push({ sev: '🔴', kind: 'DEAD TEXT', msg: `… and ${rebuilt.length - 8} more dead text(s) in this block (${ew.dead} of ${ew.authored} authored) — same cause, same fix (EW1)` });
           ew.dupItems.forEach((d) => flags.push({ sev: '🔴', kind: 'DUPLICATED INDEX', msg: `${quote(d)} on ${d.hits} elements — strip instrumentation from presentational clones (EW4)` }));
-          if (ew.exemptItems.length) flags.push({ sev: '⚪', kind: 'EXEMPT', msg: `${ew.exemptItems.length} declared non-editable text(s) (${ew.exemptReasons.join('; ')}): ${ew.exemptItems.slice(0, 4).map(quote).join(', ')}${ew.exemptItems.length > 4 ? ', …' : ''} (EW5)` });
+          if (ew.exemptItems.length) flags.push({ sev: '⚪', kind: 'EXEMPT', msg: `${ew.exemptItems.length} declared non-editable text(s) (${ew.exemptReasons.join('; ')}): ${ew.exemptItems.slice(0, 4).map((d) => `${quote(d)} [${d.category || 'no category'}]`).join(', ')}${ew.exemptItems.length > 4 ? ', …' : ''} (EW5)` });
+          if (opts.strict) strictFindings({ blocks: [ew] }).forEach((f) => flags.push({ sev: '🔴', kind: 'EXEMPT (strict)', msg: `${f} (EW5)` }));
         }
         const red = flags.filter((f) => f.sev === '🔴').length;
         totalRed += red;

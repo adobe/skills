@@ -31,9 +31,23 @@
  *                         metadata's template/theme become body classes as
  *                         decorateTemplateAndTheme would; counts printed once per run)
  *     --style-split       comma (D7 default) | first-only — section-metadata `style` split
+ *     --root <dir>        repo root the block imports resolve against (default: the
+ *                         blocks dir's parent). The harness page has a synthetic origin
+ *                         served from this root (ew-editability-probe.mjs openHarness), so
+ *                         block JS installs as a REAL module — aem.js, project helpers and
+ *                         sibling-block imports resolve; an unresolvable specifier 404s and
+ *                         the block is reported as not installed. Other origins are aborted
+ *                         and listed.
+ *     --fragments <dir>   serve `/x.plain.html` from `<dir>/x.html` (its <main>, through the
+ *                         pipeline emulation) so loadFragment()-driven blocks and per-page
+ *                         `nav:`/`footer:` chrome render from local content (default: content/
+ *                         when it exists; the dev-server harness still cannot do this)
+ *     --strict            with --ew: exit 1 when a used @ew-exempt is block-granular without
+ *                         `all` or names no category (item-level syntax in the probe header)
  *
  * Exit codes: 0 rendered (and, with --ew, no dead/duplicated text), 1 = --ew found
- * dead non-exempt text or a duplicated index, 2 = harness error.
+ * dead non-exempt text or a duplicated index (or a --strict exemption finding),
+ * 2 = harness error.
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, no-continue */
@@ -42,13 +56,13 @@ import fs from 'fs';
 import path from 'path';
 import {
   EDITABLE, firstExisting, readMainHtml, dropMetadata, discoverBlocks, runtimeMimic, instrument, survey, simulateEditor,
-  installBlockJs, runDecorate, readBlockExemptions, aggregate, formatTable, verdict, fetchQuickEditCss,
+  openHarness, installBlockJs, installErrors, runDecorate, readBlockExemptions, aggregate, formatTable, formatRequests, verdict, strictFindings, fetchQuickEditCss,
 } from './ew-editability-probe.mjs';
 import { pipelineMimic, formatCounts, bodyClasses } from './pipeline-mimic.mjs';
 
 function parseArgs(argv) {
   const rest = argv.slice(2);
-  const opts = { positional: [], styles: null, blocksDir: null, width: 1280, ew: false, simulate: false, pipeline: true, styleSplit: 'comma' };
+  const opts = { positional: [], styles: null, blocksDir: null, root: null, fragments: undefined, strict: false, width: 1280, ew: false, simulate: false, pipeline: true, styleSplit: 'comma' };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--styles') { opts.styles = rest[i += 1]; }
@@ -58,6 +72,9 @@ function parseArgs(argv) {
     else if (a === '--simulate-editor') { opts.simulate = true; opts.ew = true; }
     else if (a === '--no-pipeline') { opts.pipeline = false; }
     else if (a === '--style-split') { opts.styleSplit = rest[i += 1]; }
+    else if (a === '--root') { opts.root = rest[i += 1]; }
+    else if (a === '--fragments') { opts.fragments = rest[i += 1]; }
+    else if (a === '--strict') { opts.strict = true; opts.ew = true; }
     else if (a === '--help' || a === '-h') { opts.help = true; }
     else if (a.startsWith('--')) { throw new Error(`unknown option ${a}`); }
     else opts.positional.push(a);
@@ -68,7 +85,7 @@ function parseArgs(argv) {
 
 async function main() {
   const { contentPath, out, blocks, opts } = parseArgs(process.argv);
-  const usage = 'usage: node render-harness.mjs <content/path.html> <out.png> [block-name ...] [--styles css] [--blocks-dir dir] [--width px] [--ew] [--simulate-editor] [--no-pipeline] [--style-split comma|first-only]\n';
+  const usage = 'usage: node render-harness.mjs <content/path.html> <out.png> [block-name ...] [--styles css] [--blocks-dir dir] [--root dir] [--fragments dir] [--width px] [--ew] [--strict] [--simulate-editor] [--no-pipeline] [--style-split comma|first-only]\n';
   if (opts.help) { process.stdout.write(usage); process.exit(0); }
   if (!contentPath || !out || !['comma', 'first-only'].includes(opts.styleSplit)) {
     process.stderr.write(usage);
@@ -86,14 +103,18 @@ async function main() {
     console.log(formatCounts(r.counts));
   }
   const styles = fs.readFileSync(stylesPath, 'utf8');
+  const root = opts.root || path.dirname(path.resolve(blocksDir));
+  const fragments = opts.fragments === undefined ? (fs.existsSync('content') ? 'content' : null) : opts.fragments;
 
   const b = await chromium.launch();
   let fail = false;
   try {
-    const p = await b.newPage({ viewport: { width: opts.width, height: 900 }, reducedMotion: 'reduce' });
     // body.appear satisfies the stock body{display:none} gate the same way
     // loadEager() does; body > header hidden (sticky headers in tall screenshots).
-    await p.setContent(`<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0}body > header{display:none}main .section{padding:0}${styles}</style></head><body class="${bodyCls.join(' ')}"><main>${mainHtml}</main></body></html>`, { waitUntil: 'networkidle' });
+    // The page lives on the harness origin served from `root` (real module imports).
+    const html = `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0}body > header{display:none}main .section{padding:0}${styles}</style></head><body class="${bodyCls.join(' ')}"><main>${mainHtml}</main></body></html>`;
+    const h = await openHarness(b, { html, root, width: opts.width, height: 900, fragments, transformFragment: opts.pipeline ? (frag) => pipelineMimic(frag, { styleSplit: opts.styleSplit }).html : null });
+    const p = h.page;
     await p.evaluate(dropMetadata);
     const names = blocks.length ? blocks : await p.evaluate(discoverBlocks);
     const blockCss = names.map((n) => { try { return fs.readFileSync(path.join(blocksDir, n, `${n}.css`), 'utf8'); } catch { return ''; } }).join('\n');
@@ -106,11 +127,11 @@ async function main() {
     await p.evaluate(runtimeMimic);
     const texts = opts.ew ? (await p.evaluate(instrument, EDITABLE)).texts : [];
     const errs = [];
-    const notInstalled = await installBlockJs(p, names, blocksDir);
-    notInstalled.forEach((n) => errs.push(`${n}: block JS failed to install (module-scope import/export or syntax error)`));
+    const notInstalled = await installBlockJs(p, names, blocksDir, { root: h.root });
+    errs.push(...installErrors(notInstalled, h.requests, h.root));
     errs.push(...await runDecorate(p, names));
     await p.waitForTimeout(1200);
-    let agg = null; let sim = null;
+    let agg = null; let sim = null; let strict = [];
     if (opts.ew) {
       const rows = await p.evaluate(survey, texts);
       if (opts.simulate) {
@@ -121,11 +142,13 @@ async function main() {
       }
       agg = aggregate(rows, { sim, exemptions: readBlockExemptions(blocksDir, names) });
       const v = verdict(agg);
-      fail = v.dead || v.duplicated;
+      strict = opts.strict ? strictFindings(agg) : [];
+      fail = v.dead || v.duplicated || strict.length > 0;
     }
     await p.screenshot({ path: out, fullPage: true });
-    console.log('rendered', out, opts.simulate ? '(simulated edit mode)' : '', '| block errors:', JSON.stringify(errs));
-    if (agg) console.log(formatTable(`EW editability — ${contentPath}`, agg, { sim, verbose: true, errors: [] }));
+    console.log('rendered', out, opts.simulate ? '(simulated edit mode)' : '', `| root ${h.root}${fragments ? `, fragments ${fragments}` : ''} | block errors:`, JSON.stringify(errs));
+    if (agg) console.log(formatTable(`EW editability — ${contentPath}`, agg, { sim, verbose: true, errors: [], requests: h.requests, strict }));
+    else console.log(formatRequests(h.requests).join('\n'));
   } finally {
     await b.close();
   }
