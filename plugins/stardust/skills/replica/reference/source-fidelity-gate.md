@@ -359,9 +359,16 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   top-down, re-run pixels. Build-side anchor/computed-style passes never
   navigate the live origin and are FREE — the cap governs live-gate cycles,
   not measurement.
-- After iteration 3: log residuals (§ Residual logging) and move on. A
-  documented residual is a pass with an asterisk; an undocumented fourth
-  loop is scope creep.
+- **After iteration 3 an over-bar breakpoint is FAIL** unless every residual
+  is a named class (§ Residual classes) with an instrument artifact and an
+  `acceptedBy` (§ Residual logging format); log it and stop — hands-off
+  never approves an over-bar result (it may self-accept only the table's
+  permanent classes as `hands-off-policy:<class>`). An undocumented fourth
+  loop is scope creep; "eyeball matches" is never a verdict. Before calling
+  a hot band "ghosting", run `anchor.mjs` plus one computed-style probe on
+  the hot element — six of twelve field "ghosting" residuals resolved to a
+  named delta on the first probe. Per-row source inconsistency → register
+  entry `R-nn` (`preserve-direction.md` § 3), not a fourth round.
 - **Three named regimes end a loop early or sit outside the cap.** The
   label is the ledger's `overCap` reason; bars are unchanged in all
   three — a justified residual is never a pass.
@@ -661,7 +668,10 @@ a platform-delivered page: re-run the full gate (same instruments, same
 pass bar, same iteration discipline) with the live site as source and the
 published page — preview or live origin — as build. Judge the result in the
 published-origin regime (§ Pass bar, calibration honesty), not against
-prototype-regime numbers.
+prototype-regime numbers. It runs at **every configured breakpoint**: a
+breakpoint without a published-origin number is `ungated` in the ledger
+(`published.<bp>` absent, § Residual logging format) and in every report —
+never passed, never inherited from the prototype number.
 
 Two rules for that final run:
 
@@ -747,15 +757,31 @@ reference dates get mixed up.
         { "probe": "content", "flag": "🟠 font fork ×2", "why": "licensed kit substituted, R-policy fonts", "permanent": true }
       ],
       "residuals": [
-        { "band": "y 4500–5000", "pct": 6.2, "cause": "capture-state", "what": "3 CDN-403 placeholder tiles", "flaggedFor": "delivery" },
-        { "region": "footer", "pct": 4.8, "cause": "glyph-antialiasing", "parity": "gates/home-1440/chrome-parity-iter3.json", "texture": { "thickPct": 6.1 }, "flaggedFor": "user" }
+        { "band": "y 4500–5000", "pct": 6.2, "cause": "capture-state", "what": "3 CDN-403 placeholder tiles", "flaggedFor": "delivery",
+          "artifacts": [ "gates/home-1440/diff-iter3.png", "gates/home-1440/anchor-iter3.txt" ], "acceptedBy": "user" },
+        { "region": "footer", "pct": 4.8, "cause": "glyph-antialiasing", "parity": "gates/home-1440/chrome-parity-iter3.json", "texture": { "thickPct": 6.1 }, "flaggedFor": "user",
+          "artifacts": [ "gates/home-1440/chrome-parity-iter3.json", "gates/home-1440/crop-footer-iter3.json" ], "acceptedBy": "hands-off-policy:glyph-antialiasing" }
       ],
       "captureState": [ { "what": "product tiles 4–6 on placeholder data-URIs", "where": "carousel-2" } ]
     },
     "360": { "...": "..." }
+  },
+  "published": {
+    "1440": { "result": { "regime": "published-origin", "pixelPct": 6.5, "heightDelta": 2, "pass": true, "ref": { "...": "..." } },
+              "url": "https://<branch>--<repo>--<org>.aem.page/", "artifacts": [ "gates/home-1440/gate-pub1.json" ] }
   }
 }
 ```
+
+`iterations` and `result` come from `gate.sh --record` (it counts the
+rounds from the round records and copies `pass`, never typed — a hand-typed
+`pass: true` with Δh 28 shipped once). Every residual carries `artifacts[]`
+(the instrument outputs that show it) and `acceptedBy`: `user`,
+`register:R-nn`, or `hands-off-policy:<class>` — the last only for the
+table's **permanent** classes; an entry missing either is invalid and the
+breakpoint is FAIL. `published.<bp>` holds the published-origin result per
+breakpoint (§ The published-origin gate); a breakpoint absent there is
+`ungated` — reported as such, never as passed.
 
 `result` fields: `regime` — `prototype` (standalone prototype vs live) or
 `published-origin` (delivered page vs live, § The published-origin gate);

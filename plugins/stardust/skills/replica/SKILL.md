@@ -263,36 +263,27 @@ stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
 **Iteration discipline: hard cap 3 iterations per breakpoint.** Each
 iteration's fixes come off the instruments, never off eyeballing; image
 reads follow `../stardust/reference/context-hygiene.md` § Image reads —
-numbers first, band crops, never the stitched page. After 3, log the
-residuals by class (gate doc § Residual classes; `result` copied
-from `gate-<label>.json`) and move on — a documented residual beats an
-undocumented fourth loop. Three named regimes end a loop early or sit
-outside the cap — `source-inconsistent`, `separate-composition`,
-`canon-followup` (gate doc § Iteration discipline).
+numbers first, band crops, never the stitched page. After 3 an over-bar
+breakpoint is **FAIL** unless every residual is a named class with
+`artifacts[]` + `acceptedBy` (gate doc § Residual classes · § Residual
+logging format; `result` copied from `gate-<label>.json`); hands-off never
+approves it. Three named regimes end a loop early or sit outside the cap —
+`source-inconsistent`, `separate-composition`, `canon-followup` (gate doc
+§ Iteration discipline).
 
-**Hardening (each a recorded false-measurement trap — the gate doc
-§ Hardening rules is the list):** real-Chrome UA **plus the standard
-request headers** on every capture (built into the shared
-`diff/scripts/live-session.mjs`); a challenge/blocked interstitial **fails
-loud (exit 3)**, never measured — `--headed` starts the ladder at tier 2
-(real Chrome headless), `--headed=window` at tier 3 (off-screen window;
-visible only under `STARDUST_HEADED_WINDOW=1`) — rule in
-`../extract/reference/playwright-recipe.md` § Bot-management fallback;
-stitch-shot climbs the ladder itself, and a site still blocked at tier 3 is
-gate-blocked, never degraded; `domcontentloaded` on live targets, never
-`networkidle`;
-symmetric `--main` scoping (`--main body` is never valid); both overlay
-classes (consent, timed marketing) dismissed via `--dismiss`; animations
-frozen; the pointer parked after any dismissal click;
-fixed/sticky chrome replicated fixed with its scroll-state morph
-(`reference/recreation-procedure.md` § Fixed and sticky chrome);
-granularity parity for JOIN/SPLIT false-reds (#87); capture-state policy
-for CDN-403 images and hydration placeholders.
-
-Hardening ships as flags on the diff scripts (`--ua`, `--wait-until`,
-`--dismiss`, `--headed[=window]`, `--locale`, `--main`) backed by
-`live-session.mjs`; a project copy carrying hand-edits is a defect
-(`reference/source-fidelity-gate.md` § Script adaptations).
+**Hardening — the gate doc § Hardening rules is the list; each is a
+recorded false-measurement trap** built into the shared
+`diff/scripts/live-session.mjs` and shipped as flags (`--ua`,
+`--wait-until`, `--dismiss`, `--headed[=window]`, `--locale`, `--main`):
+real-Chrome UA + standard headers; a challenge interstitial fails loud
+(exit 3) and the bot-management ladder
+(`../extract/reference/playwright-recipe.md` § Bot-management fallback) is
+climbed, never degraded; `domcontentloaded`, never `networkidle`; symmetric
+`--main` (`body` never valid); both overlay classes dismissed, animations
+frozen, pointer parked; fixed/sticky chrome replicated fixed
+(`reference/recreation-procedure.md` § Fixed and sticky chrome); JOIN/SPLIT
+granularity parity (#87); capture-state policy. A project copy carrying
+hand-edits is a defect (gate doc § Script adaptations).
 
 **After the static gate passes, interaction parity is a REQUIRED gate
 output per archetype — not a post-pass**
@@ -309,6 +300,10 @@ evidence rule + instrument invocation verbatim.
 When all breakpoints pass, present the archetype + its gate metrics for
 approval per the standard prototype approval flow (hands-off mode records
 `approvedBy: "hands-off"` per `../stardust/reference/state-machine.md`).
+The close leads with what is NOT green, per archetype × breakpoint
+(`home 360: FAIL 12 % (register: R-04 mobile normalization)`,
+`… 360: ungated`), then the passes and the coverage line `archetypes gated
+A of T at <bp> · ungated: <slug@bp …>` read from `progress.json`.
 
 ### Phase 5 — HANDOFF (delegate — migrate → deploy → rollout, unchanged)
 
@@ -348,7 +343,8 @@ approval per the standard prototype approval flow (hands-off mode records
   confirmation sweep).
 - **Hand-off shape**: the close-out follows
   `../stardust/reference/handoff-report.md` § Gate table first — gate table
-  before counts, provenance per row.
+  before counts, provenance per row; failing and `ungated` archetype ×
+  breakpoint rows first (Phase 4 close), `published.<bp>` absent = `ungated`.
 - **Wave close chains.** A gate PASS or wave close starts the next planned
   step in the same turn — master `../stardust/SKILL.md` § Hands-off mode →
   Turn-end contract (`approvedChain`).
