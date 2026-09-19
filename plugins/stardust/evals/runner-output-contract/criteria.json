@@ -1,11 +1,11 @@
 {
-  "context": "Runner output contract on rollout's offline full-site verify. Task and setup in task.md; each item is judged pass/fail and weighted by max_score. The batch-reporting rule is context-hygiene.md § Runner reports and session hand-off (0.24.0).",
+  "context": "Runner output contract on rollout's offline full-site verify. Task and setup in task.md; each item is judged pass/fail and weighted by max_score. The batch-reporting rule is context-hygiene.md \u00a7 Runner reports and session hand-off (0.24.0).",
   "type": "weighted_checklist",
   "checklist": [
     {
       "name": "rollout_offline_verify_invoked",
       "max_score": 10,
-      "description": "The rollout skill (not qa, not a hand-built checker) is invoked; inventory.mjs runs before verify.mjs; verify runs offline with --root stardust/migrated and --all (or an equivalent offline invocation covering all six pages). No HTTP request, no --base, no DA_TOKEN lookup, no publish or POST /live/ call. Any agent-authored link checker that replaces the runner is recorded as a named deviation in stardust/direction.md, otherwise the item fails."
+      "description": "The rollout skill (not qa, not a hand-built checker) is invoked; inventory.mjs runs before verify.mjs; verify runs offline with --root stardust/migrated and --all (or an equivalent offline invocation covering all six pages). No HTTP request to an origin, no --base, no publish or POST /live/ call (the master Setup's credentials pre-flight may read the environment; it must not call DA or the admin API). Any agent-authored link checker that replaces the runner is recorded as a named deviation in stardust/direction.md, otherwise the item fails."
     },
     {
       "name": "precondition_stated_not_bypassed",
@@ -15,7 +15,7 @@
     {
       "name": "ranked_class_report",
       "max_score": 20,
-      "description": "The report to the user is a ranked class table with one row per finding class, each row carrying class, count, worst example (slug plus reason) and a file pointer to where the affected pages are listed. Rows are ordered by count (ties by severity). The complete report — table, triage and hand-off — is at most 60 lines. Every class present in the fixture appears: broken internal link(s), about:error, h1 count, blocked-by-precondition."
+      "description": "The report to the user is a ranked class table with one row per finding class, each row carrying class, count, worst example (slug plus reason) and a file pointer to where the affected pages are listed. Rows are ordered by count (ties by severity). The complete report \u2014 table, triage and hand-off \u2014 is at most 60 lines. Every class present in the fixture appears: broken internal link(s), about:error, h1 count, blocked-by-precondition."
     },
     {
       "name": "summary_files_written",
@@ -25,7 +25,7 @@
     {
       "name": "no_per_page_dump",
       "max_score": 15,
-      "description": "No per-page listing is printed into the conversation: the runner's per-page failure lines are summarised rather than pasted, pages.json / summary.json / summary.md contents are not echoed, and no assistant text enumerates pages one line each beyond the single worst example per class. Judge on shape, not length — six pages make a full dump short."
+      "description": "No per-page listing is printed into the conversation: the runner's per-page failure lines are summarised rather than pasted, pages.json / summary.json / summary.md contents are not echoed, and no assistant text enumerates pages one line each beyond the single worst example per class. Judge on shape, not length \u2014 six pages make a full dump short."
     },
     {
       "name": "triage_per_class",
@@ -40,7 +40,7 @@
     {
       "name": "read_only_inputs",
       "max_score": 5,
-      "description": "stardust/migrated/**, stardust/state.json, stardust/replica/progress.json and stardust/direction.md are byte-identical to the fixture after the run. Writes land only under stardust/rollout/, plus an appended journal.md entry and status.jsonl lines."
+      "description": "stardust/migrated/**, stardust/replica/progress.json and stardust/direction.md are byte-identical to the fixture after the run; stardust/state.json may gain only the master Setup's `credentials` pre-flight block (everything else identical). Writes land only under stardust/rollout/, stardust/.work/, plus an appended journal.md entry, status.jsonl lines, and the master Setup's own housekeeping (stardust/.gitignore, stardust/learnings.md)."
     },
     {
       "name": "journal_and_status",

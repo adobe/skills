@@ -51,10 +51,11 @@ critique, and it does not modify the live site. It writes only under
 - `<url>` — required. The origin to crawl. Examples: `https://example.com`,
   `https://example.com/shop`. A path narrows the same-origin crawl to
   that subtree.
-- `--cap <N>` (alias `--max`) — optional. Override the default 25-page
-  cap (the number is `crawl.mjs`'s; the doc follows the code). A
-  small sample (`--cap 5`: home + four IA pillars/templates) already
-  feeds cross-page brand aggregation and the brand-review HTML.
+- `--cap <N>` (alias `--max`) — optional. Override the default 5-page
+  cap (home + four IA pillars/templates; `crawl.mjs` defaults to the
+  same number). The small sample already feeds cross-page brand
+  aggregation and the brand-review HTML; raise it only when a deeper
+  crawl is genuinely needed.
 - `--all` — optional. Lift the cap entirely; extract every
   discovered page after junk filtering. Equivalent to `--cap 0`.
 - `--pages <path,path,...>` — optional. Crawl exactly these paths

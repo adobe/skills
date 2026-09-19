@@ -95,13 +95,13 @@ const WAIT_MS = { fast: 1200, medium: 2500, slow: 5000 };
 const CRAWL_CONTEXT = { reducedMotion: 'reduce', viewport: { width: 1440, height: 900 } };
 
 function parseArgs(argv) {
-  const a = { out: 'stardust/current', max: 25, wait: 'medium', consent: true, concurrency: 4, dynamics: false, refresh: [], force: false, headed: 0 };
+  const a = { out: 'stardust/current', max: 5, wait: 'medium', consent: true, concurrency: 4, dynamics: false, refresh: [], force: false, headed: 0 };
   for (let i = 2; i < argv.length; i += 1) {
     const k = argv[i];
     if (k === '--url') a.url = argv[(i += 1)];
     else if (k === '--pages') a.pages = (argv[(i += 1)] || '').split(',').map((s) => s.trim()).filter(Boolean);
     else if (k === '--out') a.out = argv[(i += 1)];
-    else if (k === '--max' || k === '--cap') { const n = +argv[(i += 1)]; a.max = Number.isFinite(n) && n >= 0 ? n : 25; } // 0 = no cap
+    else if (k === '--max' || k === '--cap') { const n = +argv[(i += 1)]; a.max = Number.isFinite(n) && n >= 0 ? n : 5; } // 0 = no cap; default 5 (the extract contract's small sample)
     else if (k === '--all') a.max = 0;
     else if (k === '--single') a.max = 1;
     else if (k === '--refresh') a.refresh = (argv[(i += 1)] || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -1208,7 +1208,10 @@ export function mergeCrawlLog(prev, log, run, okSlugs) {
   const failedNow = new Set(log.crawl.failures.map((x) => x.slug));
   const okNow = new Set(okSlugs);
   const carried = (prev.crawl?.failures || []).filter((x) => !okNow.has(x.slug) && !failedNow.has(x.slug));
-  const merged = { ...prev, ...log, crawl: { ...log.crawl, failures: [...carried, ...log.crawl.failures] } };
+  // _provenance is the first key of every stardust artifact (master skill § Provenance); the script owns this file.
+  const { _provenance: prevProv, ...prevRest } = prev;
+  const readArtifacts = [...new Set([...(prevProv && prevProv.readArtifacts) || [], log.discovery && log.discovery.sourceUrl].filter(Boolean))];
+  const merged = { _provenance: { writtenBy: 'stardust:extract', writtenAt: new Date().toISOString(), script: 'crawl.mjs', readArtifacts }, ...prevRest, ...log, crawl: { ...log.crawl, failures: [...carried, ...log.crawl.failures] } };
   if (prev.discovery && (prev.discovery.count || 0) > (log.discovery.count || 0)) {
     const { botBlock, escalations } = log.discovery;
     merged.discovery = { ...prev.discovery, fetchTechnique: log.discovery.fetchTechnique, ...(botBlock ? { botBlock, escalations } : {}) };

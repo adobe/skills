@@ -19,12 +19,27 @@ crawl the target. Reachability drift is expected maintenance.
 Prompt 1 is interactive: the runner answers the keep-vs-redesign question
 from `answers.md` ("keep the design") and confirms any plan.
 
-## User prompts (one session each)
+## User prompt
 
-1. "$stardust migrate this page to EDS https://stripe.com"
-2. "$stardust migrate https://stripe.com to EDS keeping the current design"
-3. "$stardust build an exact replica of https://stripe.com on EDS, 1:1"
-4. "$stardust redesign and migrate https://stripe.com to EDS"
+"$stardust migrate this page to EDS https://stripe.com"
+
+The persona answers the keep-vs-redesign question with "keep the design".
+Three further phrasings exercise the phrase-list routing; the runner
+executes only the first prompt today (multi-step evals need a per-step
+hook — see `runner/README.md` § Known caveats), so they are documented
+here for a future runner and are NOT scored by criteria.json:
+
+## User prompt (run 2)
+
+"$stardust migrate https://stripe.com to EDS keeping the current design"
+
+## User prompt (run 3)
+
+"$stardust build an exact replica of https://stripe.com on EDS, 1:1"
+
+## User prompt (run 4)
+
+"$stardust redesign and migrate https://stripe.com to EDS"
 
 ## Expected behavior
 
