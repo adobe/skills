@@ -126,6 +126,8 @@ node skills/deploy/scripts/ew-editability-probe.mjs http://localhost:3000/stardu
 
 Exit 0 = every non-exempt authored text editable, no duplicates; 1 = dead/duplicated; 2 = probe error. Fix by moving the offending element (EW1) or the offending selector to wrapper-descendant form (EW2) — never by weakening the gate. Corollary the two external write-ups missed: `cloneNode(true)` is *not* what kills editing (the clone carries the attribute — that is why clone-based blocks worked while `textContent`-based ones did not); cloning is still wrong (duplicates, stale identity), but the fix is "move", not "avoid clone".
 
+**Sources the contract was verified against** (read them when the mechanism seems to have changed): da.live `blocks/canvas/editor-utils/editor-utils.js` (`getInstrumentedHTML` — what is stamped), `blocks/canvas/ew-editor-wysiwyg/ew-editor-wysiwyg.js`, `blocks/shared/prose2aem.js` (cells keep their `<p>`); da-nx `nx/public/plugins/quick-edit/quick-edit.js` (`setBody` → `loadPage` → `restoreBlockIndices`), `src/prose.js` (`createEditor` swap shape), `src/images.js`, `src/dom-index.js`, `src/selection.js` (cursor math on `textContent` length).
+
 ## Round-trip gate in the loop (#94)
 
 **Prove each block's round-trip IN THE LOOP — per block, before deploy (#94).** Step 10's `content-diff` is the post-deploy proof; it must not be where defects are FOUND. After writing a block (and its authored rows), run the harness round-trip:

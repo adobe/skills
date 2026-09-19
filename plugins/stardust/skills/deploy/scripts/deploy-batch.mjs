@@ -26,16 +26,25 @@
  *
  * Idempotent: PUT/preview/live are all safe to repeat. Safe to Ctrl-C and re-run.
  *
+ * One command = one intent. The default run PUTs and PREVIEWS only (D16: gate
+ * on preview); live publish is a SEPARATE `--publish` run, taken when the
+ * preview gate passed or the decision register says publish-to-live (D1).
+ * A production-affecting action is never joined with edits, commits or
+ * process kills in one shell string.
+ *
  * Usage:
  *   DA_TOKEN=… node deploy-batch.mjs --org <org> --repo <repo> --branch <branch> \
- *     --content content [--paths list.txt] [--concurrency 4] [--no-publish] \
+ *     --content content [--paths list.txt] [--concurrency 4] [--publish] \
  *     [--force] [--ledger path] [--log path]
  *
  * --content   dir of *.html body-fragment files (default: content). Each file's
  *             path relative to this dir, minus .html, is its DA/web path.
  * --paths     optional newline-delimited file of web paths (no extension) to
  *             restrict the run to a subset (re-drive only these).
- * --no-publish  preview only; do not POST /live/ (query-index won't build — see #2).
+ * --publish   also POST /live/ after preview (the query-index builds against the
+ *             LIVE tree — #2 — so a site with listings needs this run before
+ *             the index is checked). Default: preview only.
+ * --no-publish  accepted as a no-op (was the default until 0.24; remove from scripts).
  * --force     ignore the ledger; re-drive every page.
  * --concurrency  parallel pages in flight (default 4; DA admin tolerates ~4-6).
  *
@@ -49,7 +58,7 @@ const DA_SRC = 'https://admin.da.live/source';
 const ADMIN = 'https://admin.hlx.page';
 
 function parseArgs(argv) {
-  const a = { content: 'content', concurrency: 4, publish: true, force: false, retries: 4 };
+  const a = { content: 'content', concurrency: 4, publish: false, force: false, retries: 4 };
   for (let i = 2; i < argv.length; i += 1) {
     const k = argv[i];
     const next = () => argv[(i += 1)];
@@ -62,7 +71,8 @@ function parseArgs(argv) {
     else if (k === '--log') a.log = next();
     else if (k === '--concurrency') a.concurrency = Math.max(1, +next() || 4);
     else if (k === '--retries') a.retries = Math.max(0, +next() || 4);
-    else if (k === '--no-publish') a.publish = false;
+    else if (k === '--publish') a.publish = true;
+    else if (k === '--no-publish') { a.publish = false; console.error('[deploy-batch] --no-publish is the default since 0.24 and will be removed; drop the flag (publish is an explicit --publish run)'); }
     else if (k === '--force') a.force = true;
     else if (k === '--token-env') a.tokenEnv = next();
     else throw new Error(`unknown arg: ${k}`);
