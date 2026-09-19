@@ -39,21 +39,7 @@ const CARD_HEADING = /^##\s+Operator card\b/;
 
 // TEMPORARY — shrink per release. Key: path relative to skills/. Value: why.
 const TEMPORARY_ALLOWLIST = {
-  'deploy/SKILL.md': 'core/reference split in progress; no operator card yet',
-  'audit/SKILL.md': 'operator card not written yet',
-  'diff/SKILL.md': 'operator card not written yet',
-  'direct/SKILL.md': 'operator card not written yet',
-  'dynamics/SKILL.md': 'operator card not written yet',
-  'extract/SKILL.md': 'operator card not written yet',
-  'migrate/SKILL.md': 'operator card not written yet',
-  'prepare-migration/SKILL.md': 'operator card not written yet',
-  'prototype/SKILL.md': 'operator card not written yet',
-  'qa/SKILL.md': 'operator card not written yet',
-  'replica/SKILL.md': 'operator card not written yet',
-  'reskin/SKILL.md': 'operator card not written yet',
-  'rollout/SKILL.md': 'operator card not written yet',
-  'stardust/SKILL.md': 'operator card not written yet',
-  'uplift/SKILL.md': 'operator card not written yet',
+  // empty since B0 (deploy split + operator cards landed); entries added here must shrink per release
 };
 
 const kb = (n) => `${(n / 1000).toFixed(1)}k`;
