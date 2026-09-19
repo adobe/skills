@@ -105,8 +105,7 @@ capture is re-taken every iteration.
    justified when the prototype mirrors them (e.g. a 1×1 SEO h1 at x0, a
    carousel tile at a negative offset).
 3. **pixel diff ≤ 10% full-page** — AND no band left unexplained (§ Band
-   breakdown). 10% is the ship bar, not the target; the validated run
-   landed at 1.31%.
+   breakdown). 10% is the ship bar, not the target (validated run: 1.31%).
 4. **height delta: |Δ| ≤ 8px** — pixel-compare's own warning threshold is
    the bar (it prints ⚠ above 8px), so a −9px result is unambiguously a
    residual, not a pass. A large delta invalidates the % — the overlap crop
@@ -300,10 +299,10 @@ is identical at 1440 and visibly off at 1512.
 
 ## Iteration discipline
 
-**Hard cap: 3 iterations per breakpoint.** Matching the validated run's
-discipline — convergence happened within 3 with the recreation procedure
-followed; more loops mean the inputs were wrong (values eyeballed instead of
-lifted, capture unhardened), and the fix is upstream, not a fourth loop.
+**Hard cap: 3 iterations per breakpoint.** The validated run converged
+within 3 with the recreation procedure followed; more loops mean the inputs
+were wrong (values eyeballed instead of lifted, capture unhardened), and the
+fix is upstream, not a fourth loop.
 
 - **The cap is mechanical, per regime.** `gate.sh` counts the rounds from
   the round records (`gate-<label>.json` with verdict PASS/FAIL, not
@@ -350,10 +349,9 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   their numbers overturn a fix.
 - Probe schedule per fix round: **pixels every round; content-diff +
   visual-diff at milestones** — iteration 1, after any fix that touched
-  content or markup (not pure CSS values), and once at final. Across ~25
-  field fix rounds, pixel-only rounds never regressed structure
-  once it passed, and each content/visual re-run costs 2 extra live
-  navigations — against this doc's own hit-minimization rule. A fix that
+  content or markup (not pure CSS values), and once at final. Pixel-only
+  rounds never regressed structure once it passed, and each content/visual
+  re-run costs 2 extra live navigations. A fix that
   touched markup re-runs all three; a CSS-value fix re-runs pixels only.
 - **The landmark table is the first read of every round; the section-anchor
   probe is the fast inner loop** (`anchor.mjs --landmarks`, § Band
@@ -458,10 +456,9 @@ rather than erroring.
 1. **Real-Chrome UA + the standard request headers on every capture and
    probe.** The default HeadlessChrome UA can receive a Cloudflare managed
    challenge, and the probe then **measures the challenge page as the
-   source** (3 headings, "Performing security verification" — it diffs
-   cleanly, wrongly). And the UA alone is NOT sufficient: field-proven
-   (F-R1, a nonprofit site), a real-Chrome UA with Playwright's minimal default
-   headers still got HTTP 403 from Akamai; adding the standard set every
+   source** (it diffs cleanly, wrongly). And the UA alone is NOT
+   sufficient: field-proven (F-R1), a real-Chrome UA with Playwright's
+   minimal default headers still got HTTP 403 from Akamai; adding the standard set every
    real Chrome sends (`Accept`, `Accept-Language`,
    `Upgrade-Insecure-Requests`, `sec-ch-ua*`) produced HTTP 200 — Akamai
    bot-manager fingerprints on the *absence* of those headers, not just the
@@ -490,12 +487,11 @@ rather than erroring.
    sites without a `<main>`, both sides otherwise false-flag BLANK RENDER
    while the main-scoped checks silently no-op). Two guardrails:
    - **`--main body` is NEVER a valid replica scope.** A too-broad root
-     self-poisons the instrument regardless of symmetry: reproduced
-     (a furniture retailer), content-diff run live-vs-ITSELF with `--main body`
-     produced **103 structural 🔴** and asymmetric node counts (461 vs 73)
-     from analytics/inline-script text plus a nondeterministic
-     cookie-settings panel pulled into the inventory. The content root must
-     exclude consent/analytics chrome.
+     self-poisons the instrument regardless of symmetry: reproduced,
+     content-diff run live-vs-ITSELF with `--main body` produced **103
+     structural 🔴** and asymmetric node counts from analytics/inline-script
+     text plus a nondeterministic cookie-settings panel. The content root
+     must exclude consent/analytics chrome.
    - **Verify the consent banner is actually gone post-dismiss before
      trusting an inventory** — consent UIs render nondeterministically
      between two sequential captures. If reds cluster on cookie/consent
@@ -511,7 +507,7 @@ rather than erroring.
    shared `dismissOverlays` (stitch-shot always; diff probes via
    `--dismiss`): (a) cookie consent (clicked accept; `--consent <sel>` /
    `--dismiss <sel,...>` for non-standard banners); (b) **timed
-   marketing/newsletter interstitials** — they fire on a timer seconds after load and, undismissed, bake a per-seam contributor into the live capture that no prototype fidelity can null out, so the dismissal polls for late arrivals and stitch-shot sweeps
+   marketing/newsletter interstitials** — they fire on a timer seconds after load and, undismissed, bake a per-seam contributor into the live capture, so the dismissal polls for late arrivals and stitch-shot sweeps
    again after the settle pass. **Consent mode is one instrument
    parameter, the same on capture and gate**: `--consent-mode
    accept|deny` (default `accept`) on stitch-shot and every live-session
@@ -588,21 +584,18 @@ rather than erroring.
     `overflow:hidden` and an inner container scrolls, the document reports
     the full content height but `window.scrollTo` is a no-op — every chunk
     would capture the top viewport and the rows below would stitch as
-    zero-filled black: a silently fictitious pixel diff. stitch-shot now
-    detects the stall and exits 1 with the signature `stitch-shot error:
-    scroll stall at chunk target …px: window scroll is a no-op
-    (window.scrollY stuck at …px) while the document reports …px`.
+    zero-filled black: a silently fictitious pixel diff. stitch-shot detects
+    the stall and exits 1 (`stitch-shot error: scroll stall at chunk
+    target …px`).
     Capturing the inner scroller is future work; for now record the page as
     gate-blocked for the pixel probe and rely on content-diff/visual-diff.
 14. **Captures assert fonts loaded — a silent font fork is a false
     measurement.** A webfont that fails to fetch renders the ENTIRE live
     capture in fallback type: wrong wraps, wrong line counts, wrong section
-    heights, wrong doc height — with no error anywhere. It is the same
-    defect class as silently measuring a Cloudflare interstitial, and it
-    poisons every number the gate reports. stitch-shot now
-    checks after `document.fonts.ready` for declared faces with FontFace
-    status `error`
-    and warns loudly with the family names; mirror the check in any ad-hoc
+    heights, wrong doc height — with no error anywhere, and it poisons
+    every number the gate reports. stitch-shot checks after
+    `document.fonts.ready` for declared faces with FontFace status
+    `error` and warns loudly with the family names; mirror the check in any ad-hoc
     capture. On the warning, decide before gating: load the face in a real
     browser — if it loads there, the failure is **instrument-induced** (a
     capture defect: fix the instrument, and the poisoned runs don't consume
@@ -662,6 +655,13 @@ rather than erroring.
     number — and above 60 % image area the verdict prints `photo-dominated`,
     which the ledger copies. A cached `live.png` taken with other mask
     flags is stale and re-captured.
+20. **Session pin — every live-side probe of one gate run uses the same
+    storage state.** Each live-session instrument resolves it the same way:
+    `--storage-state <file>`, else `stardust/current/_storage-state.json`
+    when one of its cookie domains matches the live host (the crawl saves
+    it after clearing a challenge), else none; a local URL never gets one.
+    `--fresh-state` opts out. A state older than the reference capture is
+    not reused — delete it and recapture rather than mix sessions.
 
 ### Script adaptations (built-in flags first — but fail-loud outranks script immutability)
 
