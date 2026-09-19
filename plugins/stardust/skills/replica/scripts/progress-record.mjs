@@ -20,17 +20,22 @@
  *   prototype regime      → <pageType>.breakpoints.<width> = { iterations, result, overCap?, record }
  *   published-origin regime → <pageType>.published.<width>  = { result, url, artifacts: [record] }
  *   result = { regime, pixelPct, pixelPctUnmasked, heightDelta, pass, masks[{spec, areaPct}], ref, at }
- *   iterations = counted rounds in the record's gate dir (verdict PASS|FAIL,
- *   not excluded, not a live-drift recapture) — the same rule gate.sh uses.
+ *   iterations = counted rounds OF THE RECORD'S REGIME in its gate dir
+ *   (verdict PASS|FAIL, not excluded, not a live-drift recapture, same
+ *   regime — a record without `regime` is a prototype round): the same rule
+ *   gate.sh uses, so a published-origin round never inflates the prototype
+ *   block's `iterations`.
  * Existing keys of the breakpoint block other than these (residuals,
  * justified, captureState…) are preserved.
  *
- * Ledger shapes understood: `{ pageTypes: { <t>: { archetype, … } } }`,
- * `{ pageTypes: [ { pageType, archetype, … } ] }`, a top-level array of the
- * same, or a top-level map of page types. No page type with a matching
- * `archetype` (or no ledger file) → the intended block is PRINTED and the
- * exit is 0 without writing — the free-form ledger is never restructured
- * by this script; add the page type, then re-run.
+ * Ledger shapes understood (shared reader `pageTypesOf`, also used by
+ * gate-ledger-lint.mjs): `{ archetypes: [ { pageType, archetype, … } ] }`
+ * (the documented shape), `{ pageTypes: { <t>: { archetype, … } } }`,
+ * `{ pageTypes: [ … ] }`, a top-level array of the same, or a top-level map
+ * of page types. No page type with a matching `archetype` (or no ledger
+ * file) → the intended block is PRINTED and the exit is 0 without writing —
+ * the free-form ledger is never restructured by this script; add the page
+ * type, then re-run.
  *
  * Exit codes: 0 written or dry-printed, 1 unreadable record/ledger or a
  * record without a verdict (no-verdict rounds are not ledger material).
@@ -38,7 +43,7 @@
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
 import { existsSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'fs';
-import { dirname, basename } from 'path';
+import { dirname, basename, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const HELP = `progress-record — copy a gate round record into stardust/replica/progress.json
@@ -48,7 +53,8 @@ Usage: node progress-record.mjs <gate-record.json> [--progress <file>] [--dry-ru
 Upserts <pageType>.breakpoints.<width> (prototype regime) or
 <pageType>.published.<width> (published-origin regime) for the page type whose
 archetype equals the record's slug; iterations are counted from the gate dir's
-records. No matching page type → prints the block, writes nothing, exit 0.
+records of the same regime. No matching page type → prints the block, writes
+nothing, exit 0.
 Exit codes: 0 written/dry, 1 unreadable input or no-verdict record.`;
 
 export function parseArgs(argv) {
@@ -69,10 +75,10 @@ export function parseArgs(argv) {
 
 const readJson = (p) => JSON.parse(readFileSync(p, 'utf8'));
 
-/** Counted rounds in a gate dir — the same rule as gate.sh count_rounds(). */
-export function countRounds(dir) {
+/** Counted rounds of one regime in a gate dir — the same rule as gate.sh count_rounds(). */
+export function countRounds(dir, regime = 'prototype') {
   return readdirSync(dir).filter((f) => /^gate-.*\.json$/.test(f)).reduce((n, f) => {
-    try { const j = readJson(`${dir}/${f}`); return n + (['PASS', 'FAIL'].includes(j.verdict) && !j.excluded && !j.liveDrift ? 1 : 0); } catch { return n; }
+    try { const j = readJson(`${dir}/${f}`); return n + (['PASS', 'FAIL'].includes(j.verdict) && !j.excluded && !j.liveDrift && (j.regime || 'prototype') === regime ? 1 : 0); } catch { return n; }
   }, 0);
 }
 
@@ -87,17 +93,50 @@ export function blockFor(rec, recordPath, iterations) {
   return { key: 'breakpoints', block: { iterations, result, ...(rec.overCap ? { overCap: rec.overCap } : {}), record: recordPath } };
 }
 
+// ---- shared ledger reader (progress-record + gate-ledger-lint) ----
+
+const isEntry = (e) => e && typeof e === 'object' && !Array.isArray(e) && ('archetype' in e || 'breakpoints' in e || 'published' in e);
+
+/**
+ * Every page-type entry of a ledger in any documented shape.
+ * Returns { shape, entries: [{ name, entry }] }; shape 'unknown' (entries [])
+ * when the ledger is not § Residual logging format — callers must fail loud,
+ * never treat an unreadable ledger as a pass.
+ */
+export function pageTypesOf(ledger) {
+  const fromArray = (arr) => arr.map((e, i) => ({ name: e?.pageType || e?.name || `[${i}]`, entry: e })).filter(({ entry }) => isEntry(entry));
+  const fromMap = (obj) => Object.entries(obj).filter(([, e]) => isEntry(e)).map(([k, e]) => ({ name: e.pageType || k, entry: e }));
+  if (Array.isArray(ledger)) { const entries = fromArray(ledger); return { shape: entries.length || !ledger.length ? 'array' : 'unknown', entries }; }
+  if (!ledger || typeof ledger !== 'object') return { shape: 'unknown', entries: [] };
+  if (Array.isArray(ledger.archetypes)) return { shape: 'archetypes[]', entries: fromArray(ledger.archetypes) };
+  if (Array.isArray(ledger.pageTypes)) return { shape: 'pageTypes[]', entries: fromArray(ledger.pageTypes) };
+  if (ledger.pageTypes && typeof ledger.pageTypes === 'object') return { shape: 'pageTypes{}', entries: fromMap(ledger.pageTypes) };
+  const entries = fromMap(ledger);
+  return entries.length ? { shape: 'map', entries } : { shape: 'unknown', entries: [] };
+}
+
+/** Read a ledger file; throws on unreadable JSON. */
+export function readLedger(path) { return readJson(path); }
+
+/**
+ * Residual class ids from the gate doc's § Residual classes table
+ * (`reference/source-fidelity-gate.md` next to this scripts dir, or the path
+ * given). Returns Map<id, { permanent }>; empty when the doc is not found.
+ */
+export function residualClasses(docPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'reference', 'source-fidelity-gate.md')) {
+  const out = new Map();
+  let text = ''; try { text = readFileSync(docPath, 'utf8'); } catch { return out; }
+  const section = text.split(/^### Residual classes\s*$/m)[1] || '';
+  for (const line of section.split('\n')) {
+    const m = line.match(/^\| `([a-z0-9-]+)` \|(?:[^|]*\|){3}\s*([^|]*)\|\s*$/);
+    if (m) out.set(m[1], { permanent: /^yes/i.test(m[2].trim()) });
+  }
+  return out;
+}
+
 /** Find the page-type entry whose archetype is `slug` in any supported ledger shape. */
 export function findPageType(ledger, slug) {
-  const candidates = [];
-  const push = (entry, name) => { if (entry && typeof entry === 'object' && entry.archetype === slug) candidates.push({ entry, name }); };
-  const scan = (coll) => {
-    if (Array.isArray(coll)) coll.forEach((e, i) => push(e, e?.pageType || `[${i}]`));
-    else if (coll && typeof coll === 'object') Object.entries(coll).forEach(([k, e]) => push(e, k));
-  };
-  if (ledger && typeof ledger === 'object' && 'pageTypes' in ledger) scan(ledger.pageTypes);
-  else scan(ledger);
-  return candidates[0] || null;
+  return pageTypesOf(ledger).entries.find(({ entry }) => entry.archetype === slug) || null;
 }
 
 /** Upsert; returns { written, pageType, key, block }. Mutates `ledger`. */
@@ -117,7 +156,7 @@ function main() {
   let rec; try { rec = readJson(record); } catch (e) { console.error(`progress-record: cannot read ${record}: ${e.message}`); process.exit(1); }
   if (!['PASS', 'FAIL'].includes(rec.verdict)) { console.error(`progress-record: ${record} has verdict ${rec.verdict || 'none'} — a no-verdict round is not ledger material`); process.exit(1); }
   const width = String(rec.width);
-  const iterations = countRounds(dirname(record));
+  const iterations = countRounds(dirname(record), rec.regime || 'prototype');
   let ledger = null;
   if (existsSync(opts.progress)) { try { ledger = readJson(opts.progress); } catch (e) { console.error(`progress-record: ${opts.progress} is not valid JSON (${e.message}) — not writing`); process.exit(1); } }
   const r = upsert(ledger, rec, record, iterations, width);

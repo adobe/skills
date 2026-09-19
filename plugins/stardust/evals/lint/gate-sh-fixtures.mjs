@@ -29,7 +29,18 @@
 //     printed when differing pixels did not move;
 //   record — --record upserts breakpoints.<w> (prototype) / published.<w>
 //     (published-origin) for the matching page type and prints-only when the
-//     archetype has no page type; progress-record --help exits 0;
+//     archetype has no page type; iterations count the record's own regime
+//     only; the shared reader resolves a top-level archetypes[] ledger;
+//     progress-record --help exits 0;
+//   verdict line — `verdict: <V> <pct> % Δh <n>px  iteration k/3` is ONE line;
+//   per-regime cap — three prototype rounds do not exhaust the published-
+//     origin cap (first published round runs as pub1, iteration 1); NO-OP and
+//     --invalidate stay inside one regime; the prototype cap still fires;
+//   stale procedure — the current stitch-shot version is read from a
+//     MULTI-LINE INSTRUMENT declaration (a reformat never disables the
+//     check); a live sidecar on an older version is re-taken; a build sidecar
+//     on another version than the cached live one re-takes live once (safety
+//     net); an unreadable version prints a WARN;
 //   --help exits 0.
 //
 // Usage: node plugins/stardust/evals/lint/gate-sh-fixtures.mjs  (exit 1 on findings)
@@ -57,7 +68,7 @@ mkdirSync(join(project, 'stardust', 'replica'), { recursive: true });
 // process's event loop, so an in-process server would never answer gate.sh's
 // identity curl.
 const server = spawn(process.execPath, ['-e', `
-  const s = require('node:http').createServer((q, r) => { r.setHeader('content-type', 'text/html'); r.end('<html><body><h1>fresh drift noise noise2 cap rec orphan proposed</h1></body></html>'); });
+  const s = require('node:http').createServer((q, r) => { r.setHeader('content-type', 'text/html'); r.end('<html><body><h1>fresh drift noise noise2 cap rec orphan regime stale proposed</h1></body></html>'); });
   s.listen(0, '127.0.0.1', () => process.stdout.write(String(s.address().port)));
 `], { stdio: ['ignore', 'pipe', 'inherit'] });
 const port = await new Promise((r) => { server.stdout.once('data', (d) => r(String(d).trim())); });
@@ -87,6 +98,7 @@ try {
   // ---- freshness (slug fresh) ----
   let r = gate('fresh');
   if (r.status !== 0) throw new Error(`fresh round 1: expected exit 0, got ${r.status}\n${r.out}`);
+  const gateOut = { fresh1: r.out };
   const f1 = rec('fresh', 'iter1');
   check(f1?.verdict === 'PASS' && f1.regime === 'prototype' && f1.ref?.capturedAt === liveCapturedAt('fresh') && f1.iteration === 1, 'round 1: default label iter1, verdict PASS, regime prototype, ref.capturedAt from the sidecar, iteration 1');
   check(!f1?.liveDrift && !f1?.freshness && !f1?.noiseFloor && typeof f1?.at === 'string', 'round 1: no drift/freshness/noise keys on a fresh reference; `at` stamped');
@@ -176,7 +188,7 @@ try {
   r = gate('cap', ['--over-cap', 'source-inconsistent'], { STUB_DIFFPX: '400' });
   check(r.status === 0 && rec('cap', 'iter5')?.overCap === 'source-inconsistent' && rec('cap', 'iter5').iteration === 4 && /over-cap: source-inconsistent/.test(r.out), `--over-cap runs the round and records overCap\n${r.out}`);
   r = gate('cap', ['--invalidate', 'iter2', 'consent dialog present in the build capture']);
-  check(r.status === 0 && /counted rounds now 3\/3 \(excluded: 1\)/.test(r.out) && rec('cap', 'iter2')?.excluded?.reason === 'consent dialog present in the build capture', `--invalidate must mark the record excluded and reprint the count\n${r.out}`);
+  check(r.status === 0 && /counted prototype rounds now 3\/3 \(excluded: 1\)/.test(r.out) && rec('cap', 'iter2')?.excluded?.reason === 'consent dialog present in the build capture', `--invalidate must mark the record excluded and reprint the count\n${r.out}`);
   r = gate('cap', ['--invalidate', 'nope', 'x']);
   check(r.status === 1, `--invalidate on a missing record must exit 1, got ${r.status}`);
   r = gate('cap', ['--invalidate', 'iter4', 'stale server']);
@@ -194,13 +206,54 @@ try {
   r = gate('rec', ['--record', '--regime', 'published-origin'], { STUB_PCT: '7' });
   pj = readJson(progress);
   check(r.status === 0 && pj.pageTypes.landing.published?.['1440']?.result?.regime === 'published-origin' && pj.pageTypes.landing.published['1440'].url === BUILD && pj.pageTypes.landing.breakpoints['1440'].iterations === 1, `published-origin --record writes published.1440 and leaves breakpoints.1440 alone\n${r.out}`);
+  // defect: iterations counted across regimes — a published round must not
+  // inflate the prototype block (rounds on disk: iter1 prototype, pub1
+  // published-origin, then this prototype round → iterations 2, not 3)
+  r = gate('rec', ['--record'], { STUB_PCT: '4', STUB_HDELTA: '2' });
+  pj = readJson(progress);
+  check(r.status === 0 && pj.pageTypes.landing.breakpoints['1440'].iterations === 2 && pj.pageTypes.landing.published['1440'].result.pixelPct === 7, `--record counts only the record's own regime: prototype iterations 2 after one published round\n${r.out}\n${JSON.stringify(pj.pageTypes.landing)}`);
   const size = statSync(progress).size;
   r = gate('orphan', ['--record']);
   check(r.status === 0 && /no page type .* has archetype "orphan"/.test(r.out) && /would be:/.test(r.out) && statSync(progress).size === size, `--record with no matching page type must print the block and write nothing\n${r.out}`);
+  // progress-record's shared reader must resolve the documented archetypes[] shape (the reader gap)
+  const archetypesLedger = join(project, 'stardust', 'replica', 'progress-archetypes.json');
+  writeFileSync(archetypesLedger, JSON.stringify({ breakpointsConfigured: [1440], archetypes: [{ pageType: 'landing', archetype: 'rec', breakpoints: {} }] }));
+  const pr = spawnSync(process.execPath, [join(bin, 'progress-record.mjs'), join(dirOf('rec'), 'gate-iter1.json'), '--progress', archetypesLedger, '--dry-run'], { cwd: project, encoding: 'utf8' });
+  check(pr.status === 0 && /landing\.breakpoints\.1440/.test(pr.stdout), `progress-record must find the page type in a top-level archetypes[] ledger\n${pr.stdout}${pr.stderr}`);
+
+  // ---- verdict line (slug fresh, already on disk) ----
+  check(/^verdict: PASS 5 % Δh 0px  iteration 1\/3$/m.test(gateOut.fresh1), `the verdict line carries verdict, the two numbers and iteration k/3 on ONE line\n${gateOut.fresh1}`);
+
+  // ---- per-regime cap (slug regime): prototype and published-origin rounds share the dir, never the cap ----
+  for (const px of ['900', '800', '700']) { r = gate('regime', [], { STUB_DIFFPX: px }); check(r.status === 0, `regime prototype round\n${r.out}`); }
+  r = gate('regime', ['--regime', 'published-origin'], { STUB_DIFFPX: '600' });
+  check(r.status === 0 && rec('regime', 'pub1')?.iteration === 1 && rec('regime', 'pub1').regime === 'published-origin' && /iteration 1\/3/.test(r.out), `the first published-origin round after 3 prototype rounds must run (not exit 6), labelled pub1, iteration 1\n${r.out}`);
+  r = gate('regime', ['--regime', 'published-origin'], { STUB_DIFFPX: '600' });
+  check(r.status === 0 && rec('regime', 'pub2')?.iteration === 2 && rec('regime', 'pub2').noOp?.vs === 'pub1', `NO-OP compares against the previous round of the SAME regime (pub1, not iter3)\n${r.out}`);
+  r = gate('regime', [], { STUB_DIFFPX: '500' });
+  check(r.status === 6 && /3\/3 counted prototype rounds/.test(r.out), `the prototype cap still holds while published rounds run\n${r.out}`);
+  r = gate('regime', ['--invalidate', 'pub1', 'stale CDN edge served the old build']);
+  check(r.status === 0 && /counted published-origin rounds now 1\/3 \(excluded: 1\)/.test(r.out), `--invalidate reports the invalidated record's own regime count\n${r.out}`);
+
+  // ---- stale-procedure check reads the instrument version whatever the source format (slug stale) ----
+  r = gate('stale');
+  check(r.status === 0 && readJson(sidecar('stale'))?.instrument?.version === '3', `stale round 1 captures with the stub's procedure version 3\n${r.out}`);
+  const tsStale = liveCapturedAt('stale');
+  const sc = readJson(sidecar('stale')); sc.instrument.version = '2'; writeFileSync(sidecar('stale'), JSON.stringify(sc, null, 2));
+  r = gate('stale');
+  check(r.status === 0 && /older stitch-shot procedure \(instrument\.version 2, current 3/.test(r.out) && liveCapturedAt('stale') !== tsStale && !/WARN cannot read/.test(r.out), `a live reference from an older procedure must be re-taken — the version is read from a MULTI-LINE INSTRUMENT declaration\n${r.out}`);
+  const tsStale2 = liveCapturedAt('stale');
+  r = gate('stale', [], { STUB_STITCH_VERSION: '4' });
+  check(r.status === 0 && /different-procedure pair/.test(r.out) && liveCapturedAt('stale') !== tsStale2 && readJson(sidecar('stale'))?.instrument?.version === '4', `safety net: a build sidecar on another procedure version than the cached live one re-takes the live reference once\n${r.out}`);
+  const stubSrc = readFileSync(join(bin, 'stitch-shot.mjs'), 'utf8');
+  writeFileSync(join(bin, 'stitch-shot.mjs'), stubSrc.replace(/INSTRUMENT/g, 'INSTR'));
+  r = gate('stale', ['--over-cap', 'canon-followup'], { STUB_STITCH_VERSION: '4' });
+  writeFileSync(join(bin, 'stitch-shot.mjs'), stubSrc);
+  check(r.status === 0 && /WARN cannot read stitch-shot's procedure version/.test(r.out), `an unreadable procedure version is said out loud, never silently disabled\n${r.out}`);
 } finally {
   server.kill();
   rmSync(work, { recursive: true, force: true });
 }
 
 if (failures.length) { console.error(`gate-sh-fixtures: ${failures.length} finding(s)`); for (const f of failures) console.error(`  ✗ ${f}`); process.exit(1); }
-console.log('gate-sh-fixtures: ok (freshness probe, live drift + cache invalidation, probe deadline, noise floor + stale floor after drift, iteration cap / --over-cap / --invalidate / NO-OP, --record ledger copy, --help)');
+console.log('gate-sh-fixtures: ok (freshness probe, live drift + cache invalidation, probe deadline, noise floor + stale floor after drift, iteration cap / --over-cap / --invalidate / NO-OP, per-regime cap + labels, verdict line, stale-procedure version read + safety net, --record ledger copy + archetypes[] reader, --help)');
