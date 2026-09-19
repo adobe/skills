@@ -44,8 +44,11 @@
 # codes: 0 gate PASS, 2 gate FAIL (over threshold), 3 bot challenge,
 # 1 capture/compare error (incl. incomparable captures), 4 build-side
 # identity assertion failed (the URL serves something that isn't this
-# project's page — wrong/stale server), 5 invalid capture (consent dialog
-# present, --consent-mode deny impossible — no verdict), 124 instrument
+# project's page — wrong/stale server), 5 invalid capture — no verdict,
+# never a FAIL (consent dialog present and --consent-mode deny impossible;
+# live settled height < 40 % of the crawl screenshot's after one retry;
+# error-boundary page; an overlay still covering > 30 % of the first
+# viewport — the partial PNG is removed, nothing is cached), 124 instrument
 # deadline exceeded (not a measurement — see below).
 #
 # Comparable captures (gate doc § Hardening rule 15): both sides are taken by
@@ -175,16 +178,29 @@ if [ -f "$DIR/live.png" ] && [ ! -f "$DIR/live.png.json" ]; then
   echo "gate.sh: $DIR/live.png has no provenance sidecar (pre-sidecar capture, instrument state unknown) — treating it as stale and re-capturing" >&2
   rm -f "$DIR/live.png"
 fi
+# Short-capture guard for the LIVE side: when the extract crawl's screenshot
+# of this page exists, its height (PNG IHDR, no deps) is the expectation —
+# a valid capture at any width is never < 40 % of it (a 360 page reflows
+# taller, not shorter). stitch-shot retries once, then exits 5. The build
+# side is not guarded this way: an in-progress prototype may legitimately be
+# short, and the height-delta bar already fails it honestly.
+EXPECT=""
+[ -f "stardust/current/assets/screenshots/$SLUG.png" ] && EXPECT=$(node -e 'const b=require("fs").readFileSync(process.argv[1]);process.stdout.write(String(b.readUInt32BE(20)))' "stardust/current/assets/screenshots/$SLUG.png" 2>/dev/null)
+EXPECT_ARGS=""
+[ -n "$EXPECT" ] && [ "$EXPECT" -gt 0 ] 2>/dev/null && EXPECT_ARGS="--expect-height $EXPECT"
 if [ ! -f "$DIR/live.png" ]; then
-  capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle --consent-mode "$CONSENT_MODE"
+  # shellcheck disable=SC2086
+  capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle --consent-mode "$CONSENT_MODE" $EXPECT_ARGS
   rc=$?
   [ $rc -eq 124 ] && rm -f "$DIR/live.png" "$DIR/live.png.json"   # never leave a partial live capture to be reused
+  [ $rc -eq 5 ] && { rm -f "$DIR/live.png" "$DIR/live.png.json"; echo "gate.sh: live capture INVALID (exit 5: short capture / overlay / error page / consent not deniable) — not a verdict, never a FAIL; nothing cached" >&2; exit 5; }
   [ $rc -ne 0 ] && { echo "gate.sh: live capture failed (exit $rc) — not comparing" >&2; exit $rc; }
 fi
 
 # Build side: re-captured every iteration.
 capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W" --consent-mode "$CONSENT_MODE"
 rc=$?
+[ $rc -eq 5 ] && { rm -f "$DIR/build.png" "$DIR/build.png.json"; echo "gate.sh: build capture INVALID (exit 5: overlay / error page / consent not deniable) — not a verdict, never a FAIL" >&2; exit 5; }
 [ $rc -ne 0 ] && { echo "gate.sh: build capture failed (exit $rc) — not comparing" >&2; exit $rc; }
 
 # pixel-compare supervises its own deadline (--timeout); exit 124 = no verdict.

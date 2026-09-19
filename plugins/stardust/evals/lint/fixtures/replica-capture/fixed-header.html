@@ -1,0 +1,22 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>fixed-header fixture</title>
+<style>
+  html,body{margin:0;padding:0}
+  body{width:800px;font-family:sans-serif}
+  header{position:fixed;top:0;left:0;width:800px;height:60px;background:#102030;color:#fff;line-height:60px;padding-left:16px;box-sizing:border-box}
+  main{padding-top:60px}
+  section{height:400px;margin:0}
+  .s1{background:#ffcc00}.s2{background:#33cc66}.s3{background:#3366ff}
+  footer{height:200px;background:#444;color:#fff}
+  #after{height:100px;background:#eee}
+</style></head>
+<body>
+<header>Pinned header</header>
+<main>
+  <section class="s1"><h1>Section one</h1></section>
+  <section class="s2"><h2>Section two</h2></section>
+  <section class="s3 widget"><h2>Section three</h2></section>
+</main>
+<footer>footer</footer>
+<div id="after">tail element</div>
+</body></html>

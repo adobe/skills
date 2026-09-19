@@ -530,12 +530,12 @@ rather than erroring.
     reality). The shared `dismissOverlays` parks the mouse (bottom-left)
     after every dismissal pass — all three instruments inherit it; mirror
     it in any ad-hoc capture that clicks anything.
-11. **Fixed/sticky chrome × stitched capture.** Fixed elements repeat at
-    every chunk seam, occlude a band of content per seam, and can morph
+11. **Fixed/sticky chrome × stitched capture.** Fixed elements can morph
     with scroll state — chunks 2+ then capture different chrome than
-    chunk 1. Symmetry requires the prototype to replicate the chrome
-    including its scroll-state trigger; any height delta turns the seam
-    repeats into ghost bands in the diff. Full treatment:
+    chunk 1. Seam repeats are now instrument-provided (rule 16 hides pinned
+    chrome on chunks 2+ on both sides); what remains a recreation duty is
+    the chrome itself, replicated fixed with its scroll-state trigger, so
+    chunk 1 and the chrome crop gate match. Full treatment:
     `recreation-procedure.md` § Fixed and sticky chrome.
 12. **A challenge/blocked response FAILS LOUD — it is never measured.** All
     three instruments detect bot-management interstitials on every
@@ -593,6 +593,35 @@ rather than erroring.
     <png>` (bot-walled sites where only the extraction's hand-solved
     capture exists) carries `source: extract-capture`; that compare is
     forced once, said out loud, and its number is marked `forced`.
+16. **Pinned chrome is hidden on chunks 2+, scroll is integer, decodes are
+    raced.** stitch-shot sets `opacity:0 !important` on every fixed and
+    stuck-sticky element before shooting chunks 2+ and restores it after
+    (chunk 1 keeps everything for the chrome crop; `--keep-pinned` is the
+    off-switch), rounds `window.scrollY` before placing a chunk, and
+    `img.decode()`s in-viewport images under a 1.5 s bound — a fixed header
+    repainted per chunk was 5–17 % of "diff" on short pages, a fractional
+    scroll rotated whole chunks by half a width, and two projects patched
+    the script locally for it. Read the verdict block: `pinned hidden on
+    chunks 2+: N […]` is the list; `WARN fixed overlay baked into N seams`
+    means chrome the hide could not reach (iframe/shadow-hosted) — pass
+    `--exclude <sel>` on both sides or mask the seam rows.
+17. **Short and invalid captures are exit 5 — no PNG, no verdict, never a
+    FAIL.** stitch-shot re-measures the settled height after one more
+    `--wait` (> 25 % growth = load race, it settles again and says so);
+    `gate.sh` passes `--expect-height` from the crawl screenshot on the
+    live side and a height under 40 % of it retries once then exits 5; an
+    error-boundary page or a fixed/dialog element still covering > 30 % of
+    the first viewport after dismissal exits 5 too (`--allow-overlay`,
+    both sides, when the overlay is the page). `gate.sh` removes the
+    partial PNG, caches nothing and re-exits 5 like it re-exits 3.
+18. **`--exclude` is the last resort for in-flow widgets, and symmetric.**
+    A chat launcher or feedback tab that no dismissal removes and that
+    takes layout space is `display:none`d after the settle by `--exclude
+    <sel,…>` — on BOTH sides, recorded in the sidecar `hidden[]`.
+    `--exclude-live-only` exists for a widget the build never had; its
+    verdict line says ASYMMETRIC and the number is not a gate number.
+    Read `tail Npx below footer: …` on the same block before chasing a
+    footer-band residual: it names the element under the footer.
 
 ### Script adaptations (built-in flags first — but fail-loud outranks script immutability)
 
