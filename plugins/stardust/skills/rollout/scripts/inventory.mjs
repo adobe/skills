@@ -30,8 +30,9 @@
  *   **\/*.json                                   → `index`, path /<x>.json, slug index-<x-with-dashes>
  * Prior delivery is preserved by slug. A typed row whose source file is gone is
  * KEPT with `source.missing: true` — never silently dropped; a re-run without
- * --content carries every typed row over unchanged (flag preserved). Typed rows
- * are excluded from the template roll-ups (templates.json).
+ * --content, or with a --content dir that does not exist (warned), carries every
+ * typed row over unchanged (flag preserved). Typed rows are excluded from the
+ * template roll-ups (templates.json).
  *
  * `--redirects <tsv>` (source<TAB>destination, the Gate 3 file) seeds
  * `delivery.deployedPath` on a row whose `path` is a Source: the page is served
@@ -225,6 +226,10 @@ if (STATE) {
 // rebuilt from the migrated tree alone and lost).
 const TYPED = new Set(['fragment', 'index']);
 const typedSlugs = new Set();
+// Only a content dir that was actually walked can say a source file is gone: a
+// --content that does not exist carries every typed row over unchanged.
+const CONTENT_DIR = CONTENT && existsSync(CONTENT) ? CONTENT : null;
+if (CONTENT && !CONTENT_DIR) console.error(`rollout inventory: --content "${CONTENT}" not found — typed rows carried over unchanged (source.missing not touched).`);
 const seedTyped = (slug, path, type, absFile) => {
   if (typedSlugs.has(slug) || pages.some((p) => p.slug === slug)) return;
   typedSlugs.add(slug);
@@ -235,7 +240,7 @@ const seedTyped = (slug, path, type, absFile) => {
   delivery.type = type;
   pages.push({ slug, path, title: (prior && prior.title) || slug, templateId: null, source: { contentFile: absFile, sourceHash, missing: false }, blocks: [], delivery });
 };
-if (CONTENT && existsSync(CONTENT)) {
+if (CONTENT_DIR) {
   const walkAll = (dir, root = dir, acc = []) => {
     for (const e of readdirSync(dir, { withFileTypes: true })) {
       if (e.name.startsWith('.')) continue;
@@ -244,8 +249,8 @@ if (CONTENT && existsSync(CONTENT)) {
     }
     return acc;
   };
-  for (const rel of walkAll(CONTENT).sort()) {
-    const abs = join(CONTENT, rel);
+  for (const rel of walkAll(CONTENT_DIR).sort()) {
+    const abs = join(CONTENT_DIR, rel);
     const noExt = rel.replace(/\.(html|json)$/, '');
     const dashed = noExt.replace(/\//g, '-');
     if (/^(nav|footer)[^/]*\.html$/.test(rel)) seedTyped(`chrome-${noExt}`, `/${noExt}`, 'fragment', abs);
@@ -253,12 +258,12 @@ if (CONTENT && existsSync(CONTENT)) {
     else if (/\.json$/.test(rel)) seedTyped(`index-${dashed}`, `/${rel}`, 'index', abs);
   }
 }
-// carry over prior typed rows not re-seeded this run (source gone, or --content not passed)
+// carry over prior typed rows not re-seeded this run (source gone, or no content dir walked)
 for (const prior of priorPages.pages || []) {
   const t = prior.delivery && prior.delivery.type;
   if (!TYPED.has(t) || typedSlugs.has(prior.slug) || pages.some((p) => p.slug === prior.slug)) continue;
   typedSlugs.add(prior.slug);
-  pages.push({ ...prior, source: { ...(prior.source || {}), missing: CONTENT ? true : (prior.source && prior.source.missing) || false } });
+  pages.push({ ...prior, source: { ...(prior.source || {}), missing: CONTENT_DIR ? true : (prior.source && prior.source.missing) || false } });
 }
 
 // --- Redirect-seeded served paths (source slug key, destination served) ----------
@@ -327,7 +332,7 @@ const now = new Date().toISOString();
 mkdirSync(coverageDir, { recursive: true });
 
 const prov = (writtenBy) => ({
-  writtenBy, writtenAt: now, readArtifacts: [MIGRATED, STATE, CONTENT, REDIRECTS].filter(Boolean), stardustVersion: STARDUST_VERSION,
+  writtenBy, writtenAt: now, readArtifacts: [MIGRATED, STATE, CONTENT_DIR, REDIRECTS].filter(Boolean), stardustVersion: STARDUST_VERSION,
 });
 
 writeFileSync(pagesPath, `${JSON.stringify({ _provenance: prov('stardust:rollout/inventory'), generatedAt: now, pages }, null, 2)}\n`);

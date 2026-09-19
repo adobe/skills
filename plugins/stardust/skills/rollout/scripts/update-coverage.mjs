@@ -28,7 +28,9 @@
  * Idempotent: a second run over the same ledger changes nothing but generatedAt.
  *
  * Re-derives templates.json + rollout.json roll-ups after every write.
- * Exit: 0 written · 1 coverage or ledger file missing/invalid · 2 usage.
+ * Exit: 0 written · 1 unknown slug/block · 2 usage (bad status, ledger missing/unreadable/not an
+ *       object, coverage/blocks missing — run inventory.mjs / blocks.mjs first: the rollout family's
+ *       precondition code, coverage-model.md § Verify § Exit).
  */
 import { join, resolve } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
@@ -44,6 +46,11 @@ const now = new Date().toISOString();
 // ---- batch reconcile from the driver's ledger ----
 const LEDGER_OK = new Set(['live', 'previewed']);
 const PROMOTABLE = new Set(['pending', 'converting', 'failed', 'stale']);
+/** Same resource, not a different served path: only `/index` ≡ `/` and a trailing slash are ignored (case and extension differences ARE a different served path). */
+export function sameResource(a, b) {
+  const n = (p) => { const s = String(p || '/').split(/[?#]/)[0].replace(/\/index$/, '/').replace(/\/+$/, ''); return s || '/'; };
+  return n(a) === n(b);
+}
 /** Served-path key: lower-case, no trailing slash, no `.html|.htm|.jsp|.aspx|.php`, `/index` → `/`. */
 export function pathKey(p) {
   let s = String(p || '').trim().toLowerCase().replace(/[?#].*$/, '');
@@ -78,7 +85,7 @@ export function mergeLedgerIntoCoverage(pages, ledger, { urlBase = null, at = no
     const url = urlBase ? `${String(urlBase).replace(/\/+$/, '')}${webPath}` : null;
     if (LEDGER_OK.has(rec.status)) {
       // deployedPath = a path that was SERVED (coverage-model.md § Ledger reconcile); a pending / failed row served nothing
-      if (page.path !== webPath && !d.deployedPath) { d.deployedPath = webPath; counts.deployedPath += 1; }
+      if (!sameResource(page.path, webPath) && !d.deployedPath) { d.deployedPath = webPath; counts.deployedPath += 1; }
       if (PROMOTABLE.has(before)) {
         d.status = 'deployed';
         d.deployedAt = rec.ts || at;
@@ -109,7 +116,7 @@ function main() {
     'usage: update-coverage.mjs <slug> --status <pending|converting|deployed|verified|content-pending|stale|failed> [--url <u>] [--error <m>] [--out <rolloutDir>]',
     '   or: update-coverage.mjs --block <id> --status <pending|converted|deployed|verified|failed> [--eds-name <n>] [--out <rolloutDir>]',
     '   or: update-coverage.mjs --from-ledger <content/.deploy-ledger.json> [--url-base <origin>] [--out <rolloutDir>]',
-    '  exit 0 written · 1 coverage/ledger file missing or invalid · 2 usage',
+    '  exit 0 written · 1 unknown slug/block · 2 usage (bad status, ledger unreadable, coverage/blocks missing)',
   ].join('\n');
   if (process.argv.includes('--help') || process.argv.includes('-h')) { console.log(USAGE); process.exit(0); }
 
@@ -137,10 +144,11 @@ function main() {
   if (fromLedger) {
     if (slug || status || blockId) { console.error(USAGE); process.exit(2); }
     const doc = readJSON(pagesPath);
-    if (!doc) { console.error(`rollout: ${pagesPath} not found — run inventory.mjs first.`); process.exit(1); }
-    if (!existsSync(fromLedger)) { console.error(`rollout: ledger ${fromLedger} not found — run deploy-batch.mjs first.`); process.exit(1); }
+    if (!doc) { console.error(`rollout: ${pagesPath} not found — run inventory.mjs first.`); process.exit(2); }
+    if (fromLedger.startsWith('--') || !existsSync(fromLedger)) { console.error(`rollout: ledger ${fromLedger} not found — run deploy-batch.mjs first.\n${USAGE}`); process.exit(2); }
     let ledger;
-    try { ledger = JSON.parse(readFileSync(fromLedger, 'utf8')); } catch (e) { console.error(`rollout: ledger ${fromLedger} is not valid JSON (${e.message})`); process.exit(1); }
+    try { ledger = JSON.parse(readFileSync(fromLedger, 'utf8')); } catch (e) { console.error(`rollout: ledger ${fromLedger} is not valid JSON (${e.message})`); process.exit(2); }
+    if (!ledger || typeof ledger !== 'object' || Array.isArray(ledger)) { console.error(`rollout: ledger ${fromLedger} is not a ledger object (one row per web path)`); process.exit(2); }
     const { counts, unmatched } = mergeLedgerIntoCoverage(doc.pages || [], ledger, { urlBase: arg('url-base', null) });
     doc.generatedAt = now;
     writeJSON(pagesPath, doc);
@@ -154,7 +162,7 @@ function main() {
     const STATUSES = ['pending', 'converted', 'deployed', 'verified', 'failed'];
     if (!status || !STATUSES.includes(status)) { console.error(`block status must be one of ${STATUSES.join('|')}`); process.exit(2); }
     const doc = readJSON(blocksPath);
-    if (!doc) { console.error(`rollout: ${blocksPath} not found — run blocks.mjs first.`); process.exit(1); }
+    if (!doc) { console.error(`rollout: ${blocksPath} not found — run blocks.mjs first.`); process.exit(2); }
     const b = (doc.blocks || []).find((x) => x.id === blockId);
     if (!b) { console.error(`rollout: no block "${blockId}".`); process.exit(1); }
     b.delivery = b.delivery || {};
@@ -176,7 +184,7 @@ function main() {
     process.exit(2);
   }
   const doc = readJSON(pagesPath);
-  if (!doc) { console.error(`rollout: ${pagesPath} not found — run inventory.mjs first.`); process.exit(1); }
+  if (!doc) { console.error(`rollout: ${pagesPath} not found — run inventory.mjs first.`); process.exit(2); }
   const page = (doc.pages || []).find((p) => p.slug === slug);
   if (!page) { console.error(`rollout: no page with slug "${slug}".`); process.exit(1); }
 

@@ -18,10 +18,11 @@
  *   --all              every DELIVERED row (deployed | verified | failed | stale). Rows
  *                      that were never delivered (pending | content-pending |
  *                      converting) have nothing to GET: they are counted on one
- *                      summary line (`not delivered: N (skipped)`) and never written —
+ *                      summary line (`not delivered: N (skipped)`, N > 0 only) and never written —
  *                      a skipped row is "no verdict", not a FAIL. Offline `--root`
  *                      verifies the tree itself, so `--all` covers every row there.
- *   --include-undelivered   with --all over HTTP: probe the undelivered rows too
+ *   --include-undelivered   with --all over HTTP: probe the undelivered rows too (the line
+ *                      then reads `not delivered: N (probed — --include-undelivered)`)
  *   --slug <s>         that one row, whatever its status
  * The path fetched is `delivery.deployedPath` when set (update-coverage
  * --from-ledger / inventory --redirects), else `path`.
@@ -46,10 +47,14 @@
  * Output (context-hygiene.md § Runner reports): stdout carries the counts and
  * the ranked class table — at most 60 lines, nothing per page unless --verbose.
  * `--report <dir>` (default <out>/verify/; under --slug <out>/verify/slug-<s>/, so a
- * spot re-check never overwrites the site-wide report) receives summary.json
- * ({ total, checked, verified, failed, skipped, classes:[{ class, count, severity,
- * worstExample, pointer }], pages:[…] }), summary.md (the same table) and pages.md
- * (the per-page rows, per class — where the pointers lead).
+ * spot re-check never overwrites the site-wide report) receives two files:
+ *   summary.json  { total, checked, verified, failed, skipped, undelivered, unverified,
+ *                   classes:[{ class, count, severity, worstExample, pointer }],
+ *                   pages:[{ slug, path, type, status, class, reason, severity, advisories[] }] }
+ *                 — one pages[] row per slug; the failure is the row's class, advisory
+ *                 findings ride on advisories[]
+ *   summary.md    the same table, then one `### <class> (<count>)` section per class
+ *                 listing its pages — every pointer in the table leads there.
  *
  * Runs from the plugin tree or the project copy (stardust/scripts/rollout/): the
  * class-report helper is loaded from skills/stardust/scripts/ or, beside a project
@@ -198,15 +203,16 @@ function failureClass(reason) {
 }
 
 // --- select rows ------------------------------------------------------------------
-let skipped = 0;
+let undelivered = 0; // never-delivered rows met under --all over HTTP: skipped, or probed with --include-undelivered
 const target = pages.filter((p) => {
   if (onlySlug) return p.slug === onlySlug;
   if (ALL) {
-    if (ROOT || INCLUDE_UNDELIVERED || isDelivered(p)) return true;
-    skipped += 1; return false;
+    if (ROOT || isDelivered(p)) return true;
+    undelivered += 1; return INCLUDE_UNDELIVERED;
   }
   return ['deployed', 'verified'].includes(p.delivery && p.delivery.status);
 });
+const skipped = INCLUDE_UNDELIVERED ? 0 : undelivered;
 
 const now = new Date().toISOString();
 const results = []; // one row per checked page: { slug, path, type, status, reason, class, severity }
@@ -251,9 +257,9 @@ const byType = results.reduce((a, r) => { a[r.type] = (a[r.type] || 0) + 1; retu
 const pendingPages = advisories.filter((a) => a.severity === 'info').length;
 const outsideWarnPages = advisories.filter((a) => a.severity === 'warn').length;
 const anchor = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-const pagesMd = join(REPORT, 'pages.md');
+const summaryMd = join(REPORT, 'summary.md');
 const report = classReport([...bad, ...unverified, ...advisories], { classKey: ['class'], pageKey: ['slug'], messageKey: ['reason'], pointerKey: ['pointer'], source: 'rollout verify' });
-for (const c of report.classes) { const ptr = `${pagesMd}#${anchor(c.class)}`; for (const pg of c.pages) pg.pointer = ptr; if (c.worst) c.worst.pointer = ptr; }
+for (const c of report.classes) { const ptr = `${summaryMd}#${anchor(`${c.class} (${c.count})`)}`; for (const pg of c.pages) pg.pointer = ptr; if (c.worst) c.worst.pointer = ptr; }
 
 const head = [
   `rollout verify (${ROOT ? `root:${ROOT}` : BASE})`,
@@ -261,30 +267,44 @@ const head = [
   `Checked ${results.length} · ${ok} verified · ${bad.length} failed · types: ${Object.entries(byType).map(([k, v]) => `${k}:${v}`).join(' ') || '—'}`,
 ];
 if (unverified.length) head.push(`unverified: ${unverified.length} page(s) throttled (429/503 through the inline retry) — ledger untouched, exit 2: re-run verify`);
-if (ALL && !ROOT) head.push(`not delivered: ${skipped} (skipped${INCLUDE_UNDELIVERED ? ' 0 — --include-undelivered' : ''})`);
+if (ALL && !ROOT && undelivered) head.push(`not delivered: ${undelivered} (${INCLUDE_UNDELIVERED ? 'probed — --include-undelivered' : 'skipped'})`);
 if (pendingPages) head.push(`pending-target links: ${pendingPages} page(s) (advisory — the targets are coverage rows not yet delivered)`);
 if (outsideWarnPages) head.push(`outside-inventory links: ${outsideWarnPages} page(s) (links.outsideInventory: warn)`);
-const tail = [`summary: ${join(REPORT, 'summary.md')} · per-page rows: ${pagesMd}`];
+const tail = [`report: ${summaryMd} (table, then per-page rows per class) · data: ${join(REPORT, 'summary.json')}`];
 if (!target.length) tail.push(ALL && skipped ? 'Nothing delivered yet — every row is pending/content-pending/converting.' : 'Nothing to verify (no deployed pages). Deliver pages first, or pass --all.');
 const table = report.total ? renderTable(report, { title: 'rollout verify — findings by class', maxLines: MAX_LINES - head.length - tail.length }) : [];
 const lines = [...head, ...table, ...tail];
 
+// one pages[] row per slug: the failure (or the throttle) is the row's class; advisory
+// findings ride on advisories[] and only lend the row its class when nothing failed.
+const rowBySlug = new Map();
+for (const { slug, path, type, status, class: cls, reason, severity } of [...results, ...unverified]) rowBySlug.set(slug, { slug, path, type, status, class: cls, reason, severity: severity ?? null, advisories: [] });
+for (const a of advisories) {
+  const row = rowBySlug.get(a.slug);
+  row.advisories.push({ class: a.class, reason: a.reason, severity: a.severity });
+  if (!row.class) { row.class = a.class; row.reason = a.reason; row.severity = a.severity; }
+}
+const pageRows = [...rowBySlug.values()];
+
 mkdirSync(REPORT, { recursive: true });
 writeJSON(join(REPORT, 'summary.json'), {
   generatedAt: now, source: ROOT ? `root:${ROOT}` : BASE, mode: ROOT ? 'root' : 'http', outsideInventory: OUTSIDE_POLICY,
-  total: pages.length, checked: results.length, verified: ok, failed: bad.length, skipped, unverified: unverified.length,
+  total: pages.length, checked: results.length, verified: ok, failed: bad.length, skipped, undelivered, unverified: unverified.length,
   pendingTargetPages: pendingPages, outsideWarnPages,
   classes: report.classes.map((c) => ({ class: c.class, count: c.count, severity: c.severity ?? null, worstExample: c.worst ? `${c.worst.page} — ${c.worst.message}` : null, pointer: c.worst ? c.worst.pointer : null })),
-  pages: [...results, ...unverified, ...advisories].map(({ slug, path, type, status, class: cls, reason, severity }) => ({ slug, path, type, status, class: cls, reason, severity: severity ?? null })),
+  pages: pageRows,
 });
-writeFileSync(join(REPORT, 'summary.md'), `${['# rollout verify', '', `Generated ${now}.`, '', ...lines.slice(0, MAX_LINES - 4)].join('\n')}\n`);
-const md = ['# rollout verify — per-page rows', '', `Generated ${now}. Ranked table: summary.md · data: summary.json`, ''];
-for (const c of report.classes) {
-  md.push(`## ${c.class} (${c.count})`, '');
-  for (const pg of c.pages) md.push(`- ${pg.page}${pg.severity ? ` [${pg.severity}]` : ''} — ${pg.message}`);
-  md.push('');
+// summary.md = the stdout block, then the per-page rows per class (where the pointers lead)
+const md = ['# rollout verify', '', `Generated ${now}.`, '', ...lines, ''];
+if (report.classes.length) {
+  md.push('## Per-page rows', '', 'One section per class, ranked as in the table. Triage per class; never paste these into the conversation.', '');
+  for (const c of report.classes) {
+    md.push(`### ${c.class} (${c.count})`, '');
+    for (const pg of c.pages) md.push(`- ${pg.page}${pg.severity ? ` [${pg.severity}]` : ''} — ${pg.message}`);
+    md.push('');
+  }
 }
-writeFileSync(pagesMd, md.join('\n'));
+writeFileSync(summaryMd, md.join('\n'));
 
 console.log(lines.join('\n'));
 if (VERBOSE) for (const r of [...bad, ...unverified, ...advisories]) console.log(`  ${r.status === 'failed' ? '✗' : '·'} ${r.slug} (${r.type}): ${r.reason}`);

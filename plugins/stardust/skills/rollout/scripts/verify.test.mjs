@@ -4,9 +4,10 @@
 //   A. Runner output (context-hygiene.md § Runner reports) on the shared post-migrate
 //      fixture (evals/_shared/fixture-post-migrate), offline: --report <dir> writes
 //      summary.json { total, checked, verified, failed, classes:[{ class, count,
-//      worstExample, pointer }] } + summary.md (≤ 60 lines) + pages.md; stdout is
-//      ≤ 60 lines and carries no per-page ✗ row unless --verbose; every seeded defect
-//      class is ranked; the counts on stdout equal the JSON.
+//      worstExample, pointer }], pages[] } + summary.md (the ≤ 60-line table, then the
+//      per-page rows per class — no third file); stdout is ≤ 60 lines and carries no
+//      per-page ✗ row unless --verbose; every seeded defect class is ranked; the counts
+//      on stdout equal the JSON.
 //   B. Ledger semantics over a local HTTP server: --all skips never-delivered rows
 //      (status untouched, one summary line) unless --include-undelivered; a link to a
 //      coverage row not yet delivered is `pending-target` (page stays verified,
@@ -18,9 +19,11 @@
 //      report under verify/slug-<s>/ and leaves the site-wide verify/summary.json intact;
 //      a 429/503 is retried inline (Retry-After honoured) — a page recovering on the retry
 //      is verified, a page still throttled is `unverified` (ledger status untouched) and
-//      the run exits 2, never a failed page. The LAST stdout line of every run is the
-//      completion contract's `SUMMARY verify ok= failed= [noverdict=] exit= details=` line
-//      (progress.mjs); throttled rows ride `noverdict`.
+//      the run exits 2, never a failed page; an all-delivered ledger prints no
+//      `not delivered: 0` line (the summary lines print only when non-zero). The LAST
+//      stdout line of every run is the completion contract's
+//      `SUMMARY verify ok= failed= [noverdict=] exit= details=` line (progress.mjs);
+//      throttled rows ride `noverdict`.
 //   C. Project-copy layout: verify.mjs + lib.mjs copied to <tmp>/stardust/scripts/rollout/
 //      run --help without the plugin tree; the class-report helper resolves from
 //      stardust/scripts/stardust/ once copied there, and its absence is a clear exit 2.
@@ -63,7 +66,8 @@ const lines = (s) => s.split('\n').filter((l) => l.length);
   let r = run(['--root', MIG, '--all', '--out', OUT, '--report', REP]);
   assert.equal(r.status, 0, `clean fixture → exit 0\n${r.stderr}`);
   assert.match(r.stdout.trim().split('\n').at(-1), /^SUMMARY verify ok=\d+ failed=0 exit=0 details=.*summary\.json mode=root$/, 'the LAST stdout line is the SUMMARY line (completion contract)');
-  for (const f of ['summary.json', 'summary.md', 'pages.md']) assert.ok(existsSync(join(REP, f)), `${f} written under --report`);
+  for (const f of ['summary.json', 'summary.md']) assert.ok(existsSync(join(REP, f)), `${f} written under --report`);
+  assert.ok(!existsSync(join(REP, 'pages.md')), 'no third file: the per-page rows live in summary.md');
   let s = json(join(REP, 'summary.json'));
   assert.deepEqual([s.total, s.checked, s.verified, s.failed, s.classes], [6, 6, 6, 0, []], 'clean shape');
   assert.ok(lines(r.stdout).length <= 60 && !/✗/.test(r.stdout), 'stdout ≤ 60 lines, no ✗ rows');
@@ -83,14 +87,16 @@ const lines = (s) => s.split('\n').filter((l) => l.length);
   assert.deepEqual(s.classes.map((c) => c.count), [4, 1, 1], 'class counts (an earlier check masks the link on two pages)');
   for (const c of s.classes) {
     assert.ok(typeof c.worstExample === 'string' && / — /.test(c.worstExample), `${c.class}: worstExample = slug — reason`);
-    assert.ok(c.pointer && c.pointer.startsWith(join(REP, 'pages.md')) && c.pointer.includes('#'), `${c.class}: pointer into pages.md#anchor`);
+    assert.ok(c.pointer && c.pointer.startsWith(`${join(REP, 'summary.md')}#`), `${c.class}: pointer into summary.md#anchor`);
   }
   assert.ok(s.pages.length === 6 && s.pages.every((p) => p.slug && p.class), 'summary.json carries the per-page rows');
   const md = readFileSync(join(REP, 'summary.md'), 'utf8');
-  assert.ok(lines(md).length <= 60, `summary.md ≤ 60 lines (${lines(md).length})`);
-  assert.ok(/\| outside-inventory link \| 4 \|/.test(md), 'summary.md ranks the class table');
-  const pm = readFileSync(join(REP, 'pages.md'), 'utf8');
-  assert.ok(/## h1 count \(1\)\n\n- news__annual-report-2025/.test(pm), 'pages.md lists the affected page under its class');
+  const [top, perPage] = md.split('\n## Per-page rows\n');
+  assert.ok(perPage, 'summary.md carries a Per-page rows section after the table');
+  assert.ok(lines(top).length <= 64, `summary.md table block ≤ 60 lines + title (${lines(top).length})`);
+  assert.ok(/\| outside-inventory link \| 4 \|/.test(top), 'summary.md ranks the class table');
+  assert.ok(/### h1 count \(1\)\n\n- news__annual-report-2025/.test(perPage), 'summary.md lists the affected page under its class section');
+  assert.ok(s.classes.find((c) => c.class === 'h1 count').pointer.endsWith('#h1-count-1'), 'the pointer anchor is the class section heading');
   const out = lines(r.stdout);
   assert.ok(out.length <= 60, `stdout ≤ 60 lines (${out.length})`);
   assert.ok(!/✗/.test(r.stdout), 'no per-page ✗ row on stdout by default');
@@ -150,6 +156,10 @@ const lines = (s) => s.split('\n').filter((l) => l.length);
   const sj = json(join(OUT, 'verify', 'summary.json'));
   assert.equal(sj.skipped, 3); assert.equal(sj.classes[0].class, 'outside-inventory link');
   assert.ok(sj.classes.some((c) => c.class === 'pending-target link' && c.severity === 'info'), 'pending-target is an advisory class in the report');
+  // defect 7: one pages[] entry per slug — a failed page with a pending-target advisory used to appear twice
+  assert.equal(new Set(sj.pages.map((p) => p.slug)).size, sj.pages.length, `summary.json.pages[] lists every slug once (${sj.pages.map((p) => p.slug)})`);
+  const aRow = sj.pages.find((p) => p.slug === 'a');
+  assert.deepEqual([aRow.status, aRow.class, aRow.advisories.map((x) => x.class)], ['failed', 'outside-inventory link', ['pending-target link']], 'the failure is the row class; the advisory rides on advisories[]');
 
   // warn policy: A stays verified, both link lists recorded, exit 0
   seed({ outsideInventory: 'warn' });
@@ -158,12 +168,19 @@ const lines = (s) => s.split('\n').filter((l) => l.length);
   assert.equal(status('a').status, 'verified');
   assert.deepEqual([status('a').pendingLinks, status('a').outsideLinks], [['/b'], ['/outside']], 'pendingLinks + outsideLinks recorded');
   assert.match(r.stdout, /pending-target links: 1 page\(s\)/); assert.match(r.stdout, /outside-inventory links: 1 page\(s\) \(links.outsideInventory: warn\)/);
+  const wj = json(join(OUT, 'verify', 'summary.json')); const aWarn = wj.pages.find((p) => p.slug === 'a');
+  assert.equal(wj.pages.filter((p) => p.slug === 'a').length, 1, 'a verified page with two advisories is one pages[] row');
+  assert.deepEqual([aWarn.status, aWarn.class, aWarn.severity, aWarn.advisories.length], ['verified', 'pending-target link', 'info', 2], 'no failure → the first advisory is the row class, both advisories listed');
 
   // --include-undelivered restores the probe of never-delivered rows (404 → failed)
   seed({ outsideInventory: 'warn' });
   r = await runAsync(['--base', BASE, '--all', '--include-undelivered', '--out', OUT]);
   assert.equal(r.status, 1); assert.equal(status('b').status, 'failed'); assert.equal(status('b').error, 'HTTP 404');
-  assert.match(r.stdout, /not delivered: 0 \(skipped 0 — --include-undelivered\)/);
+  // defect 7: the line must count the undelivered rows that were probed, not print `skipped 0`
+  assert.match(r.stdout, /not delivered: 3 \(probed — --include-undelivered\)/, 'the summary line counts the probed undelivered rows');
+  assert.doesNotMatch(r.stdout, /skipped 0/, 'no `skipped 0` under --include-undelivered');
+  const uj = json(join(OUT, 'verify', 'summary.json'));
+  assert.deepEqual([uj.skipped, uj.undelivered, uj.checked], [0, 3, 7], 'summary.json: skipped 0, undelivered 3, all seven rows checked');
 
   // --slug targets any row regardless of status
   seed({ outsideInventory: 'warn' });
@@ -191,6 +208,20 @@ const lines = (s) => s.split('\n').filter((l) => l.length);
   const tj = json(join(OUT, 'verify', 'summary.json'));
   assert.equal(tj.unverified, 1); assert.ok(tj.classes.some((c) => c.class === 'throttled (429/503)' && c.severity === 'warn'), 'throttled is a warn class in the report');
   assert.ok(tj.pages.some((p) => p.slug === 't429' && p.status === 'unverified'), 'summary.json carries the unverified row');
+
+  // review pass (gap d): the four summary lines print only when non-zero — an all-delivered
+  // ledger under --all used to print `not delivered: 0 (skipped)` / `(probed — …)`
+  rmSync(OUT, { recursive: true, force: true }); mkdirSync(join(OUT, 'coverage'), { recursive: true });
+  writeFileSync(join(OUT, 'coverage', 'pages.json'), JSON.stringify({ pages: [row('new', '/new', 'deployed')] }));
+  writeFileSync(join(OUT, 'rollout.json'), JSON.stringify({ site: { liveHost: 'https://main--x--y.aem.live/' }, lastRun: {} }));
+  for (const flags of [['--all'], ['--all', '--include-undelivered']]) {
+    r = await runAsync(['--base', BASE, ...flags, '--out', OUT]);
+    assert.equal(r.status, 0, `${flags.join(' ')} on an all-delivered ledger → exit 0\n${r.stderr}`);
+    assert.doesNotMatch(r.stdout, /not delivered: 0/, `${flags.join(' ')}: no \`not delivered: 0\` line when every row is delivered`);
+    assert.doesNotMatch(readFileSync(join(OUT, 'verify', 'summary.md'), 'utf8'), /not delivered: 0/, `${flags.join(' ')}: summary.md carries no zero line either`);
+    assert.ok(!/unverified:|pending-target links:|outside-inventory links:/.test(r.stdout), 'the other three lines stay silent at zero');
+    assert.equal(json(join(OUT, 'verify', 'summary.json')).undelivered, 0, 'summary.json still records undelivered: 0');
+  }
 
   // usage errors
   seed(undefined); rmSync(join(OUT, 'rollout.json'));

@@ -27,9 +27,9 @@ Phases, in order: Setup → A Inventory → B Block dedup plan → B2 Dynamic su
 | H | read `rollout.json.lastRun` + `optimize/scorecard.json` + `verify/summary.md`; write `stardust/learnings.md` |
 | I | `node skills/rollout/scripts/dashboard.mjs` |
 
-Gates: Setup — gated-archetype precondition under `flow: replica`. B2 — every dynamic row has a disposition; `dynamics-plan.mjs --lint` exit 0. C — delivery-lint P0/P1 blocks the PUT; source-fidelity, image-fidelity, path-safety, source-content hygiene, fidelity tier declared; EW gate `block-roundtrip --ew`; foundation-first gate on the first deployed archetype; chrome crops consume `pass`, never the pct alone. D — `redirects.mjs` exit 2 (a Source shadows a delivered page) blocks the sheet. E — `verify.mjs` exit 1 = a failed page (folder roots probed on both slash forms), exit 2 = usage / no coverage; a 429/503 through the inline retry leaves the page `unverified` (ledger status untouched) and exits 2 — re-run, never a failed page; headless render check per template. E2 — `localize-links.mjs --check` exit 2 = links remain. F — `optimize.mjs` exits non-zero on any open in-scope P1. H — `dynamics-check.mjs --gate` exit 0 before the report closes.
+Gates: Setup — gated-archetype precondition under `flow: replica`. B2 — every dynamic row has a disposition; `dynamics-plan.mjs --lint` exit 0. C — delivery-lint P0/P1 blocks the PUT; source-fidelity, image-fidelity, path-safety, source-content hygiene, fidelity tier declared; EW gate `block-roundtrip --ew`; foundation-first gate on the first deployed archetype; chrome crops consume `pass`, never the pct alone. D — `redirects.mjs` exit 2 (a Source shadows a delivered page) blocks the sheet. E — `verify.mjs` exit 1 = a failed page (folder roots probed on both slash forms), exit 2 = usage / no coverage; a 429/503 through the inline retry leaves the page `unverified` and exits 2 — re-run, never a failed page; headless render check per template. E2 — `localize-links.mjs --check` exit 2 = links remain. F — `optimize.mjs` exits non-zero on any open in-scope P1. H — `dynamics-check.mjs --gate` exit 0 before the report closes.
 
-Outputs (under `stardust/rollout/`): `coverage/{pages,templates,blocks}.json` · `plan.json` · `rollout.json` · `verify/{summary.json,summary.md,pages.md}` · `optimize/{findings,scorecard}.json` · `site/{sitemap.xml,robots.txt,manifest.json,redirects.json}` · `dashboard/{index.html,data.json}` (schemas: `schemas/rollout-*.schema.json`); plus `stardust/redirects.tsv`, `stardust/learnings.md`, EDS-project edits via autofix.
+Outputs (under `stardust/rollout/`): `coverage/{pages,templates,blocks}.json` · `plan.json` · `rollout.json` · `verify/{summary.json,summary.md}` · `optimize/{findings,scorecard}.json` · `site/{sitemap.xml,robots.txt,manifest.json,redirects.json}` · `dashboard/{index.html,data.json}` (schemas: `schemas/rollout-*.schema.json`); plus `stardust/redirects.tsv`, `stardust/learnings.md`, EDS-project edits via autofix.
 
 | At phase | Read |
 |---|---|
@@ -205,7 +205,7 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    ```bash
    node skills/rollout/scripts/update-coverage.mjs <slug> --status converting
    node skills/rollout/scripts/update-coverage.mjs --block <id> --status converted --eds-name <name>
-   node skills/rollout/scripts/update-coverage.mjs --from-ledger content/.deploy-ledger.json --url-base <branch-preview-origin>   # after each deploy-batch run: deployed/failed from the ledger, one write
+   node skills/rollout/scripts/update-coverage.mjs --from-ledger content/.deploy-ledger.json --url-base <branch-preview-origin>
    node skills/rollout/scripts/update-coverage.mjs <slug> --status content-pending   # no document push
    ```
    **Gate on preview, then publish explicitly.** The driver's default run is
@@ -247,7 +247,7 @@ content; the publish report names the 2 h code-cache window end (`skills/deploy/
 The driver and every batch run in the background; `stardust/.work/deploy/deploy-batch.progress.json`
 is the progress file (`skills/stardust/scripts/progress.mjs read <file>`) and its
 stdout `SUMMARY` line the completion; after a blip, re-run the same command.
-Then `update-coverage.mjs --from-ledger content/.deploy-ledger.json` reconciles the ledger into coverage (one write; no per-page `--status deployed`).
+Then `update-coverage.mjs --from-ledger content/.deploy-ledger.json` reconciles the ledger into coverage (one write; no per-page `--status deployed`; merge rules: `reference/coverage-model.md` § Page delivery status lifecycle).
 Every wave agent follows `skills/stardust/reference/fan-out.md` § Worker contract
 (liveness, resume-once, finisher) and § Scope and type of delegated agents; every
 shell loop, runner and delivery step in a wave follows
@@ -302,11 +302,12 @@ node skills/rollout/scripts/verify.mjs            # uses rollout.json site.liveH
 
 `verify` confirms each delivered row renders (200, no `about:error`, typed
 render check) and its internal links resolve, then flips it to `verified` or
-`failed`. Two summary lines: `not delivered: N
-(skipped)` and `pending-target links: N pages`. Which rows, link classes and
-the `links.outsideInventory` policy: `reference/coverage-model.md` § Verify.
-Read `stardust/rollout/verify/summary.md`, triage per class — per-page rows
-live in `pages.md`, not the conversation (`skills/stardust/reference/context-hygiene.md`
+`failed`. Its summary lines (`unverified`, `not delivered`, `pending-target
+links`, `outside-inventory links` — each printed only when non-zero), which
+rows, link classes, the `links.outsideInventory` policy and the exit map:
+`reference/coverage-model.md` § Verify.
+Read `stardust/rollout/verify/summary.md`, triage per class — the per-page
+rows sit below its table, never in the conversation (`skills/stardust/reference/context-hygiene.md`
 § Runner reports and session hand-off).
 
 **Headless render check (per template).** A 200 `.plain.html` can still render

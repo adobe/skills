@@ -25,7 +25,7 @@
  *
  * Usage: node skills/rollout/scripts/optimize.mjs [--base <url> | --root <dir>]
  *          [--slug <s>] [--all] [--out <rolloutDir>]
- * Exit: 0 no open P1 in scope · 1 open P1 (gate) or coverage missing · 2 usage
+ * Exit: 0 no open P1 in scope · 1 open P1 (gate) · 2 usage or coverage missing (run inventory.mjs first)
  */
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
@@ -33,7 +33,7 @@ import { join } from 'node:path';
 import { readJSON, writeJSON, loadPageHTML, computeScorecard, autofixFor, ASSESSED_BY_BASELINE, siteBase, isDelivered, artifactType } from './lib.mjs';
 
 function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback; }
-if (process.argv.includes('--help')) { console.log('Usage: node skills/rollout/scripts/optimize.mjs [--base <url> | --root <dir>] [--slug <s>] [--all] [--out <rolloutDir>]\n  exit 0 no open P1 · 1 open P1 (gate) · 2 usage'); process.exit(0); }
+if (process.argv.includes('--help')) { console.log('Usage: node skills/rollout/scripts/optimize.mjs [--base <url> | --root <dir>] [--slug <s>] [--all] [--out <rolloutDir>]\n  exit 0 no open P1 · 1 open P1 (gate) · 2 usage / coverage missing'); process.exit(0); }
 const OUT = arg('out', 'stardust/rollout');
 const ROOT = arg('root', null);
 const onlySlug = arg('slug', null);
@@ -46,7 +46,7 @@ const PHASE_FOR = { 'platform-migration': 'deploy', 'design-pass': 'migrate', 'o
 const config = readJSON(join(OUT, 'rollout.json'), {});
 const BASE = siteBase(config, arg('base', null));
 const pagesDoc = readJSON(join(OUT, 'coverage', 'pages.json'));
-if (!pagesDoc) { console.error('rollout optimize: run inventory.mjs first.'); process.exit(1); }
+if (!pagesDoc) { console.error('rollout optimize: run inventory.mjs first.'); process.exit(2); }
 if (!ROOT && !BASE) { console.error('rollout optimize: need --base <url> or --root <dir> (or set site.liveHost).'); process.exit(2); }
 const pages = pagesDoc.pages || [];
 

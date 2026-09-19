@@ -16,7 +16,7 @@ The contract the two scripts maintain. Design rationale is in
 | `optimize/scorecard.json` | optimize + findings + autofix | per-layer health + overall + history |
 | `site/{sitemap.xml,robots.txt,manifest.json}` | assemble | site-level artifacts |
 | `dashboard/{index.html,data.json}` | dashboard | self-contained progress view + snapshot |
-| `verify/{summary.json,summary.md,pages.md}` | verify | ranked class report + per-page rows (`slug-<s>/` under `--slug`) |
+| `verify/{summary.json,summary.md}` | verify | ranked class report, per-page rows per class below the table (`slug-<s>/` under `--slug`) |
 
 `rollout.json` fields the scripts read: `site.liveHost` — stored as given, with
 or without a scheme or trailing slash; every script normalises it on read
@@ -54,6 +54,14 @@ page in verify (default `fail`).
 - **failed** — a delivery error; `error` carries the reason. Non-fatal to the run.
 - **stale** — was deployed/verified, but `migrate` re-emitted the page (its
   `sourceHash` changed). Needs re-delivery.
+- **Ledger reconcile** — `update-coverage --from-ledger <content/.deploy-ledger.json>`
+  folds a `deploy-batch` run into the rows in one pass (replaces the per-page
+  calls): ledger `live | previewed` → `deployed` only from `pending | converting |
+  failed | stale` (`verified` is never downgraded, `content-pending` untouched);
+  `*-fail` → `failed` with the ledger's `lastError`; any other ledger status is no
+  verdict. The ledger path is matched to `path` | `deployedPath` (`/index` ≡ `/`);
+  a match by source slug (`/about.jsp` ↔ `/about`) carries `deployedPath`; a
+  ledger path with no row is listed, never invented. The ledger is read-only here.
 
 ## Artifact type + fidelity tier (orthogonal to status)
 
@@ -68,7 +76,8 @@ of `delivery.status`:
   `index-<x>`); they are preserved across runs (a gone source flags
   `source.missing: true`, never drops the row), excluded from template
   roll-ups, and `assemble` lists only `page` rows with status `deployed |
-  verified | stale` in the sitemap (a stale URL is still served). Scripts infer
+  verified | stale` in the sitemap — a stale URL is still served until its
+  re-delivery, so it stays listed; `failed` and undelivered rows do not. Scripts infer
   the type from the path when unset; a one-size `<h1>` check false-fails
   fragments without it.
 - **`delivery.deployedPath`** — the path the row is served on when it differs
@@ -154,21 +163,32 @@ against a local export or the migrated tree.
   verdict, not a FAIL); `--include-undelivered` probes them anyway. Offline the
   tree is the artefact, so `--root --all` covers every row. `--slug` targets
   any row.
+- **Summary lines** (each printed only when non-zero): `unverified: N page(s)
+  throttled` (429/503 through the inline retry — ledger untouched, re-run);
+  `not delivered: N (skipped)` — or `(probed — --include-undelivered)`;
+  `pending-target links: N page(s)`; `outside-inventory links: N page(s)`
+  (`warn` policy only).
 - **Link classes.** Target is a coverage row that is delivered → ok. A coverage
   row not yet delivered → **pending-target**: the page stays `verified`,
   `delivery.pendingLinks` lists the targets, one summary line counts the pages.
   No coverage row → **outside-inventory**: `links.outsideInventory: fail`
   (default) fails the page; `warn` records `delivery.outsideLinks` and keeps it
-  `verified`. Exit 1 iff a row is `failed`; advisory classes never flip it.
+  `verified`.
+- **Exit.** 0 · 1 iff a row is `failed` (advisory classes never flip it) ·
+  2 = usage (no `--base`/`--root`), coverage missing (run `inventory.mjs`
+  first — the family precondition code, shared by `assemble`, `optimize`,
+  `dashboard` and `update-coverage`; `redirects` alone keeps 1, its 2 being the
+  shadow gate), or a page left `unverified` by throttling.
 - **Report.** stdout = counts + the ranked class table, ≤ 60 lines
   (`../../stardust/reference/context-hygiene.md` § Runner reports), nothing per
   page unless `--verbose`. `--report <dir>` (default `verify/`; `verify/slug-<s>/`
   under `--slug`, so a spot re-check never overwrites the site-wide report)
   receives `summary.json` (`total, checked, verified, failed, skipped,
-  classes[{class, count, severity, worstExample, pointer}], pages[]`),
-  `summary.md` (the same table) and `pages.md` (per-page rows per class — where
-  every pointer leads). Triage per class from `summary.md`. Exit 1 iff a row is
-  `failed`; 2 = usage or no coverage.
+  undelivered, unverified, classes[{class, count, severity, worstExample,
+  pointer}], pages[]` — one row per slug, `class` = its failure else its first
+  advisory, `advisories[]` the rest) and `summary.md` (the same table, then a
+  `### <class> (<count>)` section per class listing its pages — where every
+  pointer leads). Triage per class from the table; the sections stay in the file.
 
 ## Optimize gate (findings lifecycle)
 

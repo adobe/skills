@@ -14,7 +14,7 @@
  * URLs yet. Host = rollout.json site.liveHost normalised (lib.mjs siteBase).
  *
  * Usage: node skills/rollout/scripts/assemble.mjs [--out <rolloutDir>] [--canon <dir>]
- * Exit: 0 written · 1 coverage missing (run inventory.mjs first)
+ * Exit: 0 written · 2 coverage missing (run inventory.mjs first — the family precondition code)
  */
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -22,14 +22,14 @@ import { readJSON, writeJSON, siteBase, deliveredPathOf, artifactType } from './
 import { writeFileSync, mkdirSync } from 'node:fs';
 
 function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback; }
-if (process.argv.includes('--help')) { console.log('Usage: node skills/rollout/scripts/assemble.mjs [--out <rolloutDir>] [--canon <dir>]\n  exit 0 written · 1 coverage missing'); process.exit(0); }
+if (process.argv.includes('--help')) { console.log('Usage: node skills/rollout/scripts/assemble.mjs [--out <rolloutDir>] [--canon <dir>]\n  exit 0 written · 2 coverage missing'); process.exit(0); }
 const OUT = arg('out', 'stardust/rollout');
 const CANON = arg('canon', 'stardust/canon');
 
 const pagesDoc = readJSON(join(OUT, 'coverage', 'pages.json'));
 const blocksDoc = readJSON(join(OUT, 'coverage', 'blocks.json'));
 const config = readJSON(join(OUT, 'rollout.json'), {});
-if (!pagesDoc) { console.error('rollout assemble: run inventory.mjs first.'); process.exit(1); }
+if (!pagesDoc) { console.error('rollout assemble: run inventory.mjs first.'); process.exit(2); }
 
 const pages = pagesDoc.pages || [];
 const host = siteBase(config) || '';
