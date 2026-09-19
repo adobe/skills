@@ -26,7 +26,7 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 | Setup 6, Artifacts | `reference/artifact-map.md` § Versioning — what a clone holds · § Provenance shapes |
 | Routing (migration) | `reference/state-machine.md` § Flow keys |
 | Freeform intent | `reference/intent-reasoning.md` § Procedure · `reference/intent-dimensions.md` § Reading a phrase · `reference/impeccable-command-map.md` § Common sequences |
-| Hands-off | `reference/state-machine.md` § Hands-off keys |
+| Hands-off | `reference/state-machine.md` § Hands-off keys · `reference/decisions.md` § How phases use it · § Default rows |
 | Per-page state | `reference/state-machine.md` § Page lifecycle states · § Stale flagging (content-aware) |
 | Journal | `reference/journal-format.md` § Entry format · § Reading the journal at session start |
 | Validation | `../extract/reference/playwright-recipe.md` § Capture list · `../prototype/reference/motion-validation.md` § Validation procedure |
@@ -243,6 +243,7 @@ auto-resolves:
 | `prepare-migration` phase gates | behave as `--skip-confirm` |
 | `rollout` | runs full-auto end-to-end |
 | `dynamics` owner decisions (backend, tags on the new host, datasource ownership, locale scope) | ship the interim tier, record each decision by name in `dynamic-features.md` and the parity report, continue; regulated-pii forms stay blocked |
+| plan-time decisions (deploy target, branch, publish timing, fonts, link boundary, locale layout, martech, crawl pacing, credentials, copy, scope) | apply the default row of `reference/decisions.md`, status `default-applied`, print the open rows in the first reply; publish stays preview-only — live is an explicit `--publish` run on gate PASS or an owner-decided row (D1, D16); only an owner-only row (chrome inlining, regulated-PII forms, licensed fonts on a public origin) halts, and only the work it gates |
 
 Defaults under hands-off (override only when the invocation says
 otherwise):

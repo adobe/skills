@@ -318,6 +318,10 @@ file matching a secret shape (`.env*`, `_storage-state.json`,
 checkout (`current/assets/` missing, baselines missing). Above 50 MB of
 tracked binaries under `stardust/`, add "consider Git LFS (optional)".
 
+When `stardust/decisions.md` exists, a `Decisions:` line follows `Flow:`
+with the count of `default-applied` rows and, one per line, every
+`owner-only-pending` row by id (`reference/decisions.md`).
+
 The `Flow:` line is omitted when no flow key exists; on a migration ask
 with no flow, the report ends with the two-flow table instead of a
 recommendation (§ Flow keys). Under `flow: replica` the redesign heuristics
