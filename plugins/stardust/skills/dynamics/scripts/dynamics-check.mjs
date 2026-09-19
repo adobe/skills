@@ -13,10 +13,10 @@
  *   node dynamics-check.mjs --origin https://main--site--org.aem.live [--parity stardust/dynamics/parity.json]
  *        [--out stardust/qa] [--auth-header "token …" | --token-env SITE_TOKEN] [--headed] [--gate]
  *
- * Exit: 0 all replays pass · 1 a replay failed · 2 usage · 3 `--gate` blocked (parity.json missing, or a
- * reproducibility `self` feature still `pending*` / `in-progress` — the close-out condition rollout Phase H
- * and the pilot-only chain run before declaring done). The report always ends with "Delivered / interim /
- * decided-out" counts and "Values the owner must supply" (feature · `owner`), from the parity rows.
+ * Exit: 0 all replays pass · 1 a replay failed · 2 usage · 3 `--gate` blocked — the close-out condition
+ * (reference/parity-report.md rule 8 lists the blocking rows; `gate()` below is the implementation and
+ * test/gate.test.mjs the fixture). The report always ends with "Delivered / interim / decided-out" counts
+ * and "Values the owner must supply" (feature · `owner`), from the parity rows.
  *
  * Check types (* = required):
  *   fetch-json     { url*, minRows?, expectKeys? }                 GET on the origin returns JSON with rows / keys
@@ -28,8 +28,11 @@
  *                                                                  (higher than live is logged, never failed; live unreachable → environment-limit note, not FAIL);
  *                                                                  expectIncludes found; itemPattern selectors resolve on the first result / page
  *   form-flow      { path*, form?, submit*, fill*, statusSelector?, endpointPattern?, successIncludes? } empty submit refused, filled submit arrives
- *   video-plays    { path*, trigger?, iframeSelector?, playbackHost? } a <video> plays (currentTime ≥ 0.5 s within 4 s, readyState ≥ 3; HLS/DASH: manifest + ≥ 1 segment < 400)
- *                                                                  or, iframe player, iframe present AND a playbackHost request < 400
+ *   video-plays    { path*, trigger?, videoSelector?, iframeSelector?, playbackHost? }
+ *                                                                  a <video> plays (currentTime ≥ 0.5 s within 4 s, readyState ≥ 3; HLS/DASH: manifest + ≥ 1 segment < 400);
+ *                                                                  videoSelector scopes which <video> is under test (default: dialog / embed / video block first, then any —
+ *                                                                  an autoplaying hero must not pass or fail the check for a player elsewhere); when no scoped <video>
+ *                                                                  advanced and playbackHost is given, falls through to: iframe present AND a playbackHost request < 400
  *   consent-gate   { path*, forbiddenHosts*[] }                    no request to those hosts before consent
  *   no-page-errors { paths*[] }                                    no uncaught exceptions
  *   listing-rows   { path*, block*, index?, minRows? }             authored rows of .<block> in <path>.plain.html (heading / label-list rows excluded) > 0,
@@ -56,6 +59,8 @@ const MEDIA_URL = /\.(m3u8|mpd|ts|m4s|mp4|webm|aac|m4a)$/i;
 const MANIFEST = /\.(m3u8|mpd)$/i;
 const summarize = (tp) => { const m = {}; for (const t of tp) { const k = `${t.host}:${t.status}`; m[k] = (m[k] || 0) + 1; } return Object.entries(m).slice(0, 12).map(([k, n]) => `${k}×${n}`).join(' '); };
 const DIALOG = 'dialog[open], [role=dialog]:not([hidden]), [aria-modal=true]';
+// where the <video> under test lives, most specific first; a page-wide hero/background <video> is the last resort
+const VIDEO_SCOPES = ['dialog video', '[role=dialog] video', '.embed video', '.video video', 'video'];
 
 const RUNNERS = {
   async 'fetch-json'(c, { ctx, origin }) {
@@ -137,8 +142,10 @@ const RUNNERS = {
   async 'video-plays'(c, { ctx, origin }) {
     const { page, thirdParty, media } = await openPage(ctx, origin, c.path);
     if (c.trigger) await page.click(c.trigger, { timeout: 8000 });
-    // a <video> must actually advance: poll up to 4 s after the trigger (poster-only failures look identical at rest)
-    const readVideo = () => page.evaluate(() => { const els = [...document.querySelectorAll('video')]; const el = els.find((x) => x.currentTime > 0) || els[0]; return el ? { currentTime: +el.currentTime.toFixed(2), readyState: el.readyState, src: (el.currentSrc || el.src || '').slice(-60) } : null; });
+    // a <video> must actually advance: poll up to 4 s after the trigger (poster-only failures look identical at rest);
+    // scoped to the first VIDEO_SCOPES entry (or c.videoSelector) that matches, so an unrelated hero <video> is not the one measured
+    const scopes = c.videoSelector ? [c.videoSelector] : VIDEO_SCOPES;
+    const readVideo = () => page.evaluate((sel) => { for (const s of sel) { const els = [...document.querySelectorAll(s)]; if (!els.length) continue; const el = els.find((x) => x.currentTime > 0) || els[0]; return { scope: s, currentTime: +el.currentTime.toFixed(2), readyState: el.readyState, src: (el.currentSrc || el.src || '').slice(-60) }; } return null; }, scopes);
     const deadline = Date.now() + 4000; let v = await readVideo();
     while (Date.now() < deadline && !(v && v.currentTime >= 0.5 && v.readyState >= 3)) { await settle(400); v = await readVideo(); }
     const iframe = await page.evaluate((s) => !!document.querySelector(s), c.iframeSelector || 'iframe[src*="player" i], dialog iframe, [role=dialog] iframe');
@@ -148,9 +155,11 @@ const RUNNERS = {
     const streamOk = !manifests.length || (manifests.some((m) => m.status < 400) && segments.some((m) => m.status < 400));
     const playback = c.playbackHost ? thirdParty.filter((t) => new RegExp(c.playbackHost, 'i').test(t.host)) : [];
     const vendorOk = playback.some((t) => t.status < 400); const failed = playback.filter((t) => t.status >= 400);
-    const pass = v ? playing && streamOk && (!c.playbackHost || vendorOk) : iframe && !!c.playbackHost && vendorOk;
+    // a scoped <video> that never advanced is not the element under test when an iframe player is declared: fall through to the vendor path
+    const pass = playing ? streamOk && (!c.playbackHost || vendorOk) : iframe && !!c.playbackHost && vendorOk;
     const detail = [
-      v ? `<video> currentTime ${v.currentTime}s readyState ${v.readyState}${playing ? '' : ' — NOT PLAYING'}` : `no <video> · iframe: ${iframe}${!c.playbackHost ? ' · no playbackHost to assert — a poster-only render is indistinguishable from playback' : ''}`,
+      v ? `<video> (${v.scope}) currentTime ${v.currentTime}s readyState ${v.readyState}${playing ? '' : ' — NOT PLAYING'}` : 'no <video>',
+      playing ? null : `iframe: ${iframe}${!c.playbackHost ? ' · no playbackHost to assert — a poster-only render is indistinguishable from playback' : ''}`,
       manifests.length ? `stream: manifest ${manifests.map((m) => m.status).join('/')} · segments ${segments.filter((m) => m.status < 400).length}/${segments.length} ok` : null,
       c.playbackHost ? `vendor ${playback.length} request(s) (${vendorOk ? 'ok' : 'none ok'}${failed.length ? `, ${failed.length} ≥400 — check whether the probe leaked auth to the vendor` : ''})` : null,
     ].filter(Boolean).join(' · ');
@@ -218,15 +227,19 @@ export async function replay({ origin, parity, authHeader = null, headed = false
 
 /* --------------------------------------------------------------- gate ---- */
 const bucket = (s) => (/^(pending|in-progress)/.test(s || '') ? 'pending' : /^(done|delivered)/.test(s || '') ? 'delivered' : /^interim/.test(s || '') ? 'interim' : /^scaffolded/.test(s || '') ? 'scaffolded' : /^decided-out/.test(s || '') ? 'decided-out' : 'other');
-/** close-out lint over parity rows (no browser): reasons that block the report; [] = clear */
+// a row this run built (not one the capture pipeline shipped untouched — nothing to replay there)
+const built = (f) => bucket(f.status) === 'delivered' && !/^delivered-by-capture/.test(f.status || '');
+const MEDIA_PATTERN = /^(embed-passthrough|media-as-url|hls-stream)$/;
+/** close-out lint over parity rows (no browser): reasons that block the report; [] = clear. The rule text is parity-report.md rule 8. */
 export function gate(parity) {
   const out = [];
   for (const f of parity.features || []) {
+    const has = (type, pred = () => true) => (f.checks || []).some((c) => c.type === type && pred(c));
     if (f.reproducibility === 'self' && bucket(f.status) === 'pending') out.push(`${f.feature} (${f.class}): reproducibility self, status "${f.status}" — implement it (D2) or set status interim with a reason and a named owner decision`);
-    // a search row is done only when its counts were compared with live or floored explicitly (patterns.md § search-index-backed)
-    if (f.class === 'S' && bucket(f.status) === 'delivered' && !(f.checks || []).some((c) => c.type === 'search-query' && (c.compareLive || c.minResults !== undefined))) out.push(`${f.feature} (S): status "${f.status}" without a search-query check carrying compareLive or minResults — result counts were never compared with live`);
-    // every media row ends in a playable proof (patterns.md § media-as-url / § hls-stream)
-    if (f.class === 'V' && bucket(f.status) === 'delivered' && (f.disposition || 'embed-passthrough') === 'embed-passthrough' && !(f.checks || []).some((c) => c.type === 'video-plays')) out.push(`${f.feature} (V): status "${f.status}" without a video-plays check — a poster-only render is not delivery`);
+    // a built search row carries a search-query compared with live or floored explicitly
+    if (f.class === 'S' && built(f) && !has('search-query', (c) => c.compareLive || c.minResults !== undefined)) out.push(`${f.feature} (S): status "${f.status}" without a search-query check carrying compareLive or minResults — result counts were never compared with live`);
+    // a built media row on an explicit player pattern ends in a playable proof
+    if (f.class === 'V' && built(f) && (MEDIA_PATTERN.test(f.disposition || '') || MEDIA_PATTERN.test(f.pattern || '')) && !has('video-plays')) out.push(`${f.feature} (V): status "${f.status}", ${f.disposition || f.pattern} without a video-plays check — a poster-only render is not delivery`);
   }
   return out;
 }

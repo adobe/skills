@@ -54,10 +54,10 @@ thousands of items or per-user results; such a page needs an authored summary in
 **Programmatic families.** Pages generated from a dataset (routes, locations, products) are one
 listing page each: the generator authors one row per card with the card's text taken from the
 dataset row, and the block adds only non-text fields (images, coordinates, live values). A family
-authored as an empty block renders nothing until the block code syncs and scores 0 served words
-forever. Before fanning out, run `deploy/scripts/ai-readability.mjs` on 3–5 sibling pages; fan out
-only when every sibling reads ≥ 98.
+authored as an empty block serves no words. Before fanning out, run `deploy/scripts/ai-readability.mjs`
+on a sibling sample (§ Verify); fan out only when every sibling reads at the gate bar.
 
 **Verify.** `dynamics-check.mjs` type `listing-rows` on every listing page (authored rows > 0 and
-not fewer than the index's first page); a newly published page appears after publish (top-up); the
-3–5 sibling sample above, then the AI-readability gate on every listing page.
+not fewer than the index's first page); a newly published page appears after publish (top-up); for a
+programmatic family `deploy/scripts/ai-readability.mjs` on 3–5 sibling pages before fan-out, then the
+AI-readability gate on every listing page.

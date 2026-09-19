@@ -56,9 +56,10 @@ const BASE = (arg('base') || '').replace(/\/$/, '');
 if (!BASE) { console.error('qa: --base <live-url> is required'); process.exit(2); }
 
 const OUT = arg('out', 'stardust/qa');
+// preset names never collide with a module name, so `--checks browse` still runs that one module
 const PRESETS = {
   delivery: ['routing', 'content', 'templates', 'metadata', 'links'],
-  browse: ['browse', 'perf', 'editability'],
+  rendered: ['browse', 'perf', 'editability'],
   parity: ['dynamics', 'ai-readability'],
 };
 const CHECKS = [...new Set((arg('checks', 'routing,content,templates,metadata,links,browse,perf,editability,dynamics,ai-readability')).split(',').map((s) => s.trim()).filter(Boolean)

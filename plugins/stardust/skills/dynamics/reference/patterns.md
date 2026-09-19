@@ -39,7 +39,7 @@ explicitly not reproduced. Per locale tree: one results page each and a `lang` i
 on the target and, through `compareLive`, on the live results page: fewer than live = index scope or
 a missing `text` property; more is expected from full-text matching and is logged, never failed.
 `itemPattern` asserts title / href / pagination on the first result. Live has no site search or is
-bot-blocked → `minResults` floor + a journal note. `--gate` blocks a `done` S row carrying neither.
+bot-blocked → `minResults` floor + a journal note. `--gate` enforces this (parity-report.md rule 8).
 
 ```js
 // example — index fetch, token-AND ranking, client paging (adapt selectors, copy, sizes)
@@ -98,10 +98,10 @@ export default async function openModal(href, { decorateMain, playerHosts = [] }
 account, player and video id, plus `#modal` for overlays; inline via the site's video/embed block.
 Ids come from the detector's V rows **per page and per locale** (six of fourteen locale twins
 carried a different id), never from copy, never reused by path. Drive the probe from every
-target-less CTA, not a hand-made list. **Verify.** `video-plays`: for an iframe player, a playback
-request to the vendor with status < 400; for a `<video>`, `currentTime` advancing (≥ 0.5 s within
-4 s, `readyState` ≥ 3); auth scoped to the origin (parity-report.md). Every V row with this pattern
-or `hls-stream` carries one — `dynamics-check.mjs --gate` blocks a `done` row without it.
+target-less CTA, not a hand-made list. **Verify.** `video-plays`: a `<video>` must advance
+(thresholds in the `dynamics-check.mjs` header; `videoSelector` scopes it past an unrelated hero);
+an iframe player needs a vendor request < 400; auth scoped to the origin (parity-report.md).
+`--gate` enforces this for every V row on this pattern or `hls-stream` (parity-report.md rule 8).
 
 ## hls-stream
 
@@ -113,7 +113,8 @@ manifest URL is the content (a link in the embed/video block row, poster image b
 plays natively where `canPlayType('application/vnd.apple.mpegurl')` says so, else loads a pinned
 `hls.js` via `loadScript` on first play — never a vendor iframe, never a copied blob URL. A 401/403 on
 the manifest is a `needs-credential` row (authenticated rendition), not an auto-fix. **Verify.**
-`video-plays` with `currentTime` advance **and** manifest + ≥ 1 segment request < 400.
+`video-plays`: `currentTime` advance **and** a manifest and a segment that loaded (thresholds in the
+script header).
 
 ```js
 // example — blocks/embed: play a manifest natively or through hls.js (adapt class names, CDN pin)

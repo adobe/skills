@@ -84,6 +84,8 @@ listings.md. "none" when there are no listing blocks.>
 
 `dynamics-plan.mjs` drafts the table; the run curates it (merge duplicates, drop noise, keep every
 axis honest) and writes `stardust/dynamic-features-plan.md`: phases with deliverables, authoring
-contract, verification, owner decision, effort. The gate (prepare-migration 4.5, replica Phase 2,
+contract, verification, owner decision, effort; each phase lists its inventory rows as list items
+`- #N …` (one row per item — `dynamics-plan.mjs --lint <inventory> <plan>` checks every row is placed
+once; fixture `scripts/test/lint.test.mjs`). The gate (prepare-migration 4.5, replica Phase 2,
 rollout B2) fails on a row without a disposition — "I don't know yet" is spelled `static-snapshot`
 with reason "undecided — revisit at rollout".

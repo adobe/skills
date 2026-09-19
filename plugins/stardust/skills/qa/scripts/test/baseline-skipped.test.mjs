@@ -9,7 +9,10 @@
  * fixes; two hand re-baselines later the same happened under a 503. The gate
  * refuses to write a baseline unless the page rendered cleanly.
  */
-import { baselineSkipReason } from '../checks/browse.mjs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { baselineSkipReason, establishBaseline } from '../checks/browse.mjs';
 
 let failed = 0;
 const eq = (name, got, want) => { const ok = got === want; if (!ok) failed += 1; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok ? '' : ` — got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`}`); };
@@ -21,6 +24,17 @@ eq('same-origin 429 → skipped', baselineSkipReason({ badRequests: ['HTTP 429 /
 eq('same-origin 503 twice → skipped, count carried', baselineSkipReason({ badRequests: ['HTTP 503 /scripts/aem.js', 'HTTP 503 /nav.plain.html'] }), '2 same-origin response(s) ≥ 400 or failed (HTTP 503)');
 eq('network failure → skipped', baselineSkipReason({ badRequests: ['net::ERR_CONNECTION_RESET /index.plain.html'] }), '1 same-origin response(s) ≥ 400 or failed (net::ERR_CONNECTION_RESET /index.plain.html)');
 eq('collapsed main wins over requests', baselineSkipReason({ mainCollapsed: true, badRequests: ['HTTP 429 /x'] }), 'main collapsed');
+
+// the write path: a forced 429 → baseline-skipped and NO file; a clean render → file written once
+const dir = mkdtempSync(join(tmpdir(), 'qa-baseline-'));
+const shot = Buffer.from('png-bytes');
+const dirty = establishBaseline(join(dir, 'home.desktop.png'), shot, { mainCollapsed: false, badRequests: ['HTTP 429 /index.plain.html'] });
+eq('forced 429 → skip reason returned', dirty.skip, '1 same-origin response(s) ≥ 400 or failed (HTTP 429)');
+eq('forced 429 → no baseline file written', existsSync(join(dir, 'home.desktop.png')), false);
+const clean = establishBaseline(join(dir, 'home.desktop.png'), shot, { mainCollapsed: false, badRequests: [] });
+eq('clean render → created', clean.created, true);
+eq('clean render → baseline file exists', existsSync(join(dir, 'home.desktop.png')), true);
+rmSync(dir, { recursive: true, force: true });
 
 if (failed) { console.error(`${failed} assertion(s) failed`); process.exit(1); }
 console.log('baseline gate: all assertions pass');

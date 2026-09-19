@@ -44,6 +44,13 @@ export function baselineSkipReason({ mainCollapsed = false, badRequests = [] } =
   if (badRequests.length) return `${badRequests.length} same-origin response(s) ≥ 400 or failed (${badRequests[0].split(' ').slice(0, 2).join(' ')})`;
   return null;
 }
+/** write `shot` as the baseline at `baseFile` only when the render was clean → { created } or { skip } (nothing written) */
+export function establishBaseline(baseFile, shot, render) {
+  const skip = baselineSkipReason(render);
+  if (skip) return { skip };
+  writeFileSync(baseFile, shot);
+  return { created: true };
+}
 
 async function settle(page) {
   try {
@@ -292,14 +299,15 @@ export async function run(ctx) {
         writeFileSync(join(shotDir, name), shot);
         if (baselineDir) {
           const baseFile = join(baselineDir, name);
-          const skip = existsSync(baseFile) ? null : baselineSkipReason({ mainCollapsed: geo.mainH < 50, badRequests });
-          if (skip) {
-            findings.push(finding('visual', 'baseline-skipped', 'info', p.path,
-              `[${vp.name}] render not clean (${skip}) — baseline not established, re-run when the host answers cleanly`, { reason: skip }));
-          } else if (!existsSync(baseFile)) {
-            writeFileSync(baseFile, shot);
-            findings.push(finding('visual', 'baseline-created', 'info', p.path,
-              `[${vp.name}] no baseline existed — current screenshot saved as baseline`, { file: baseFile }));
+          if (!existsSync(baseFile)) {
+            const { skip } = establishBaseline(baseFile, shot, { mainCollapsed: geo.mainH < 50, badRequests });
+            if (skip) {
+              findings.push(finding('visual', 'baseline-skipped', 'info', p.path,
+                `[${vp.name}] render not clean (${skip}) — baseline not established, re-run when the host answers cleanly`, { reason: skip }));
+            } else {
+              findings.push(finding('visual', 'baseline-created', 'info', p.path,
+                `[${vp.name}] no baseline existed — current screenshot saved as baseline`, { file: baseFile }));
+            }
           } else {
             const baseline = readFileSync(baseFile);
             const d = await pixelDiff(await getDiffPage(), baseline, shot);

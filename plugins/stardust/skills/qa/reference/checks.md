@@ -85,7 +85,7 @@ Flows, not presence — each check replays a user-visible flow through `skills/d
 | id | sev | what |
 |---|---|---|
 | `baseline-created` | info | first run on this machine — screenshot saved as baseline (local, not tracked; a clone re-creates it) |
-| `baseline-skipped` | info | no baseline yet and the render was not clean (`main-collapsed`, or a same-origin response ≥ 400 / failed — 429 and 503 included): nothing written, re-run; `--baseline-reset` clears baselines after an approved fix batch |
+| `baseline-skipped` | info | no baseline yet and the render was not clean (`main-collapsed`, or a same-origin response ≥ 400 / failed — 429 and 503 included): nothing written, re-run; `--baseline-reset` clears baselines after an approved fix batch. Fixture-tested: `scripts/test/baseline-skipped.test.mjs` |
 | `visual-diff` | warn >0.5% / error >5% *(triage)* | pixels changed vs baseline; evidence: both PNG paths + per-band ratios. Iframes are masked; judge warn-level diffs before calling them regressions |
 | `page-height-changed` | warn | full-page height moved >2% |
 | `screenshot-failed` | warn | capture failed |

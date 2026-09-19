@@ -14,9 +14,9 @@ Steps, in order: Setup (base URL, inventory source, optional inputs) → 1 deter
 | Step | Command |
 |---|---|
 | Setup | base from the user or `stardust/rollout/rollout.json` (`site.liveHost`); inventory = `stardust/template-map.json` ∪ paths file ∪ live `sitemap.xml`; append a line to `stardust/status.jsonl` at start/end |
-| 1 | `node <plugin>/skills/qa/scripts/qa.mjs --base <live-url> --template-map stardust/template-map.json --scrape stardust/scrape [--expected-blocks <json>] [--parity <json>] [--auth-header … | --token-env SITE_TOKEN] [--blocks-dir <dir> | --ew-exempt a,b]` — caps/gates: `--checks <subset or preset: delivery · browse · parity>`, `--max-pages <n>`, `--fail-on warn`, `--baseline-reset` |
+| 1 | `node <plugin>/skills/qa/scripts/qa.mjs --base <live-url> --template-map stardust/template-map.json --scrape stardust/scrape [--expected-blocks <json>] [--parity <json>] [--auth-header … | --token-env SITE_TOKEN] [--blocks-dir <dir> | --ew-exempt a,b]` — caps/gates: `--checks <modules, or preset: delivery · rendered · parity>`, `--max-pages <n>`, `--fail-on warn`, `--baseline-reset` |
 | 1 (no playwright) | `--checks delivery` |
-| 1 (fleet > 100 pages) | `--checks delivery`, `--checks browse`, `--checks parity` as separate, sequential invocations |
+| 1 (fleet > 100 pages) | `--checks delivery`, `--checks rendered`, `--checks parity` as separate, sequential invocations |
 | 2 | judge only `content/verbatim-below-threshold` (`evidence.missingNodes`) and `visual/visual-diff` (`evidence.baseline` vs `evidence.current`, `bands`) |
 | 3 | summarize by severity → `stardust/qa/report.html`; recommend, never apply |
 | allowlist | `stardust/qa/allowlist.json` entries with a reason, only for user-confirmed non-defects |

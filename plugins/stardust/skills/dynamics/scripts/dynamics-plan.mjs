@@ -17,8 +17,10 @@
  *   node dynamics-plan.mjs [--in stardust/current/_dynamics.json] [--out stardust/dynamics]
  *        [--target-origin https://…] [--auth-header "token …" | --token-env SITE_TOKEN] [--migrated stardust/migrated]
  *   node dynamics-plan.mjs --lint stardust/dynamic-features.md stardust/dynamic-features-plan.md
- *        plan↔inventory lint (rollout B2): every inventory row `| N |` appears exactly once as `#N` in the
- *        plan and every `#N` in the plan is an inventory row; exit 1 on misses / duplicates / orphans.
+ *        plan↔inventory lint (rollout B2): every inventory row `| N |` is placed exactly once in the plan as a
+ *        list item starting with `#N` (`- #N …`, one row per item — the shape § Phases of the generated plan
+ *        seeds; `#N` elsewhere in prose is ignored) and every such item names an inventory row; exit 1 on
+ *        misses / duplicates / orphans. Fixture: test/lint.test.mjs.
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
@@ -30,9 +32,9 @@ if (process.argv.includes('--lint')) {
   const i = process.argv.indexOf('--lint');
   const [inv, plan] = [process.argv[i + 1], process.argv[i + 2]];
   if (!inv || !plan || !existsSync(inv) || !existsSync(plan)) { console.error('usage: dynamics-plan.mjs --lint <stardust/dynamic-features.md> <stardust/dynamic-features-plan.md>  (both files must exist)'); process.exit(2); }
-  const ids = [...readFileSync(inv, 'utf8').matchAll(/^\|\s*(\d+)\s*\|/gm)].map((m) => m[1]);
+  const ids = [...new Set([...readFileSync(inv, 'utf8').matchAll(/^\|\s*(\d+)\s*\|/gm)].map((m) => m[1]))];
   const planText = readFileSync(plan, 'utf8');
-  const refs = {}; for (const m of planText.matchAll(/(?<![\w#])#(\d+)\b/g)) refs[m[1]] = (refs[m[1]] || 0) + 1;
+  const refs = {}; for (const m of planText.matchAll(/^\s*[-*]\s*#(\d+)\b/gm)) refs[m[1]] = (refs[m[1]] || 0) + 1;
   const problems = [];
   for (const id of ids) { if (!refs[id]) problems.push(`inventory row ${id} is not placed in the plan (no #${id})`); else if (refs[id] > 1) problems.push(`inventory row ${id} appears ${refs[id]}× in the plan`); }
   for (const id of Object.keys(refs)) if (!ids.includes(id)) problems.push(`plan cites #${id} but the inventory has no row ${id}`);
@@ -133,7 +135,8 @@ const md = [
   `- **One owner decision batch:** ${batch.length} row(s) — ${[...new Set(batch.map((r) => r.decision))].slice(0, 6).join(' · ') || 'none'}.`,
   `- **Already delivered by the capture pipeline:** ${rows.filter((r) => r.alreadyDelivered).length} row(s) — no work.`,
   `- **Host-bound on the target:** ${rows.filter((r) => /dead/.test(r.hostBound || '')).length} of ${Object.keys(hostBound).length} probed API paths — the off-origin data work.`,
-  '', '## Phases', '', ...Object.entries(byPhase).sort((a, b) => b[1] - a[1]).map(([k, n]) => `- **${k}** — ${n}`),
+  '', '## Phases', '', '<!-- one list item per inventory row, `- #N …`; `dynamics-plan.mjs --lint` checks every row is placed once -->',
+  ...Object.entries(byPhase).sort((a, b) => b[1] - a[1]).flatMap(([k, n]) => [`- **${k}** — ${n}`, ...rows.map((r, i) => ({ r, n: i + 1 })).filter(({ r }) => r.phase === k).map(({ r, n: id }) => `  - #${id} ${r.feature.replace(/\|/g, '/')} (${r.class}, ${r.disposition}, ${r.reproducibility})`)]),
 ];
 writeText(join(OUT, 'dynamic-features.generated-plan.md'), md.join('\n'));
 console.error(`[dynamics] ${rows.length} rows → ${OUT}/dynamic-features.generated-plan.md · self ${self.length} · owner batch ${batch.length} · delivered ${Object.keys(delivered).length} · host-bound ${Object.values(hostBound).filter((v) => /dead/.test(v)).length}/${Object.keys(hostBound).length}`);

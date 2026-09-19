@@ -19,7 +19,7 @@ Phases, in order: 1 Detect → 2 Classify → 3 Triage (the gate output) → 4 I
 | 4 | per plan phase, from the pattern catalogue; tooling `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs` |
 | 5 | write `stardust/dynamics/parity.json`; `node skills/dynamics/scripts/dynamics-check.mjs --origin <published origin> [--auth-header … | --token-env SITE_TOKEN] [--gate]` |
 
-Gates: Phase 3 — a row without a disposition fails the caller's pre-import gate (prepare-migration 4.5 / replica Phase 2 / rollout B2). Phase 4 — each plan phase ends with the flow verified on the published origin at both gate widths, a parity row, a journal entry and a commit. Phase 5 — replayed flows, not presence; `--gate` exit 3 = not done (`reference/parity-report.md` rule 8).
+Gates: Phase 3 — a row without a disposition fails the caller's pre-import gate (prepare-migration 4.5 / replica Phase 2 / rollout B2). Phase 4 — each plan phase ends with the flow verified on the published origin at both gate widths, a parity row, a journal entry and a commit. Phase 5 — replayed flows, not presence; `--gate` is the close-out condition (`reference/parity-report.md` rule 8).
 
 Outputs: `stardust/current/_dynamics.json` + `dynamic-features.generated.md` · `stardust/dynamics/dynamic-features.generated-plan.{md,json}` · `stardust/dynamic-features.md` + `-plan.md` · `helix-query.yaml` · `data/<feature>/*.json` + `_provenance.json` · `scripts/site-config.js` · `stardust/dynamics/parity.json` · `stardust/qa/dynamics-report.{md,json}`.
 
@@ -111,7 +111,7 @@ origin-scoped route filter only; third-party request statuses are recorded next 
 | hand-off target unreachable from the test network | `environment-limit` row with the egress region; not a defect |
 | content source cannot receive submissions | local capture with an explicit "no backend connected" message; decision named |
 | class S search box with no results page | interim = the index-backed `/search` over `query-index.json`; if it cannot ship, point the box at the live results page; a submit target that 404s is never promoted |
-| `self` row unshipped at close-out (`--gate` exit 3) | implement it, or set `status: interim` with a one-line reason and a named owner decision — never leave it `pending` |
+| `self` row unshipped at close-out | `reference/parity-report.md` rule 8 remedy |
 
 ## Hard blockers (`event: "blocked"`)
 
