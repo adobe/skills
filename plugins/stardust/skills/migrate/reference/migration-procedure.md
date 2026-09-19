@@ -233,6 +233,11 @@ Schema:
 }
 ```
 
+`modules[]` is never empty when the page carries a block: under `flow:
+replica` the render path writes it from the archetype's eds-schema block
+names (rollout's `blocks.mjs` reads it as the block inventory — an empty
+list reads as "0 distinct blocks" downstream).
+
 The HTML provenance block (in `<head>`) carries a compact pointer
 to the sidecar. Both are redundant on purpose — downstream
 consumers can read either.

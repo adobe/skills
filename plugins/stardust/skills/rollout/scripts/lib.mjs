@@ -83,6 +83,45 @@ export function edsName(id) {
 export const CHROME_IDS = new Set(['header', 'nav', 'footer']);
 export const kindOf = (id) => (CHROME_IDS.has(String(id).toLowerCase()) ? 'chrome' : 'module');
 
+// --- site + row helpers shared by verify / optimize / assemble / redirects / inventory ----
+
+/**
+ * Site base URL. `--base` override wins verbatim (trailing slash stripped);
+ * otherwise rollout.json `site.liveHost` is normalised — with or without a
+ * scheme, with or without a trailing slash — to `https://<host>`. The config
+ * is never rewritten: normalise on read (a `https://https://…` request is the
+ * bug this closes).
+ */
+export function siteBase(config, override) {
+  if (override) return String(override).trim().replace(/\/+$/, '') || null;
+  const raw = config && config.site && config.site.liveHost;
+  if (!raw) return null;
+  const host = String(raw).trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  return host ? `https://${host}` : null;
+}
+
+/** The path a row is actually served on: `delivery.deployedPath` (written by update-coverage --from-ledger or inventory --redirects) else `path`. */
+export const deliveredPathOf = (p) => (p && p.delivery && p.delivery.deployedPath) || (p && p.path) || '/';
+
+/** Statuses meaning "a document exists on the target" — the rows a live verify/optimize/sitemap may act on. pending | content-pending | converting rows have nothing to GET. */
+export const DELIVERED_STATUSES = new Set(['deployed', 'verified', 'failed', 'stale']);
+export const isDelivered = (p) => DELIVERED_STATUSES.has((p && p.delivery && p.delivery.status) || 'pending');
+
+/**
+ * Artifact type `page | fragment | index` — drives what "renders correctly"
+ * means (a fragment has no <h1>, an index is JSON). Explicit `delivery.type`
+ * wins; else inferred from the path, anchored to top-level /nav, /footer
+ * (+ per-language variants), a /fragments/ segment, or a .json leaf.
+ */
+export function artifactType(p) {
+  const t = (p && p.delivery && p.delivery.type) || (p && p.type);
+  if (t === 'page' || t === 'fragment' || t === 'index') return t;
+  const s = ((p && p.path) || '').toLowerCase();
+  if (/^\/(nav|footer)(-[a-z0-9-]+)?$/.test(s) || /\/fragments?\//.test(s)) return 'fragment';
+  if (/\.json$/.test(s)) return 'index';
+  return 'page';
+}
+
 /** Map a delivered (extensionless) path to a file under root (migrated-tree shape). */
 export function resolveLocalFile(root, p) {
   const candidates = p === '/' ? ['index.html'] : [`${p.slice(1)}.html`, `${p.slice(1)}/index.html`, p.slice(1)];
@@ -93,12 +132,12 @@ export function resolveLocalFile(root, p) {
 /** Load a page's HTML by HTTP (base) or from a local root. Returns {ok, body, reason}. */
 export async function loadPageHTML(page, { root, base }) {
   if (root) {
-    const f = resolveLocalFile(root, page.path);
+    const f = resolveLocalFile(root, deliveredPathOf(page)) || resolveLocalFile(root, page.path || '/');
     if (!f) return { ok: false, reason: `not found under ${root}` };
     return { ok: true, body: readFileSync(f, 'utf8') };
   }
   try {
-    const res = await fetch(`${base}${page.path}`);
+    const res = await fetch(`${base}${deliveredPathOf(page)}`);
     const body = await res.text();
     if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
     return { ok: true, body };

@@ -15,15 +15,25 @@
  * (brand-tensions, design-ux, content-conversion) are left null (not assessed) for
  * a future LLM-driven enrichment pass.
  *
+ * Rows are typed (`delivery.type`, lib.mjs artifactType): `index` rows are skipped
+ * (JSON, not a page); `fragment` rows run only the fragment-safe detectors
+ * (img-alt) and are excluded from the site-level duplicate checks — a fragment
+ * has no <h1>, <title> or canonical by design. Over HTTP, `--all` targets the
+ * delivered rows only (an undelivered row has nothing to GET); the row is
+ * fetched at its served path (`delivery.deployedPath` else `path`) on the
+ * normalised host (lib.mjs siteBase).
+ *
  * Usage: node skills/rollout/scripts/optimize.mjs [--base <url> | --root <dir>]
  *          [--slug <s>] [--all] [--out <rolloutDir>]
+ * Exit: 0 no open P1 in scope · 1 open P1 (gate) or coverage missing · 2 usage
  */
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { readJSON, writeJSON, loadPageHTML, computeScorecard, autofixFor, ASSESSED_BY_BASELINE } from './lib.mjs';
+import { readJSON, writeJSON, loadPageHTML, computeScorecard, autofixFor, ASSESSED_BY_BASELINE, siteBase, isDelivered, artifactType } from './lib.mjs';
 
 function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback; }
+if (process.argv.includes('--help')) { console.log('Usage: node skills/rollout/scripts/optimize.mjs [--base <url> | --root <dir>] [--slug <s>] [--all] [--out <rolloutDir>]\n  exit 0 no open P1 · 1 open P1 (gate) · 2 usage'); process.exit(0); }
 const OUT = arg('out', 'stardust/rollout');
 const ROOT = arg('root', null);
 const onlySlug = arg('slug', null);
@@ -34,7 +44,7 @@ const ASSESSED = ASSESSED_BY_BASELINE;
 const PHASE_FOR = { 'platform-migration': 'deploy', 'design-pass': 'migrate', 'out-of-scope': 'rollout' };
 
 const config = readJSON(join(OUT, 'rollout.json'), {});
-const BASE = arg('base', (config.site && config.site.liveHost) ? `https://${config.site.liveHost}` : null);
+const BASE = siteBase(config, arg('base', null));
 const pagesDoc = readJSON(join(OUT, 'coverage', 'pages.json'));
 if (!pagesDoc) { console.error('rollout optimize: run inventory.mjs first.'); process.exit(1); }
 if (!ROOT && !BASE) { console.error('rollout optimize: need --base <url> or --root <dir> (or set site.liveHost).'); process.exit(2); }
@@ -49,13 +59,14 @@ const has = (re, s) => re.test(s);
 const titleOf = (html) => (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1]?.trim() || null;
 const descOf = (html) => (html.match(/<meta[^>]+name=["']description["'][^>]*content=["']([^"']*)["']/i) || [])[1]?.trim() || null;
 
-function detectPage(html, slug) {
+function detectPage(html, slug, type = 'page') {
   const f = [];
   const lvl = 'page'; const id = [slug];
-  // accessibility
-  if (!has(/<main[\s>]/i, html)) f.push(mk('accessibility', 'landmark-main', 'P1', 'platform-migration', lvl, id, 'no <main> landmark in delivered HTML', 'EDS decorates <main>; ensure block output lands inside <main> (deploy anti-pattern 17).'));
+  // accessibility (img-alt is the only detector that applies to a fragment)
   const imgsNoAlt = (html.match(/<img\b(?![^>]*\balt=)[^>]*>/gi) || []).length;
   if (imgsNoAlt) f.push(mk('accessibility', 'img-alt', 'P2', 'design-pass', lvl, id, `${imgsNoAlt} <img> without alt`, 'Author alt text upstream (migrate/prototype); rollout cannot synthesize it.'));
+  if (type !== 'page') return f;
+  if (!has(/<main[\s>]/i, html)) f.push(mk('accessibility', 'landmark-main', 'P1', 'platform-migration', lvl, id, 'no <main> landmark in delivered HTML', 'EDS decorates <main>; ensure block output lands inside <main> (deploy anti-pattern 17).'));
   // seo
   const title = titleOf(html);
   if (!title) f.push(mk('seo', 'title-missing', 'P1', 'platform-migration', lvl, id, 'no <title>', 'Add a metadata block (deploy #34); EDS derives <title> from it.'));
@@ -87,8 +98,9 @@ function detectSite(loaded) {
 
 // --- Select pages + load HTML --------------------------------------------------
 const target = pages.filter((p) => {
+  if (artifactType(p) === 'index') return false; // JSON, not a page
   if (onlySlug) return p.slug === onlySlug;
-  if (ALL) return true;
+  if (ALL) return ROOT ? true : isDelivered(p);
   return ['deployed', 'verified'].includes(p.delivery && p.delivery.status);
 });
 
@@ -99,8 +111,9 @@ for (const p of target) {
   const r = await loadPageHTML(p, { root: ROOT, base: BASE });
   if (!r.ok) continue; // unreachable pages are verify.mjs's concern, not optimize's
   inspectedSlugs.add(p.slug);
-  loaded.push({ slug: p.slug, title: titleOf(r.body), desc: descOf(r.body) });
-  detected.push(...detectPage(r.body, p.slug));
+  const type = artifactType(p);
+  if (type === 'page') loaded.push({ slug: p.slug, title: titleOf(r.body), desc: descOf(r.body) }); // site-level duplicate checks: pages only
+  detected.push(...detectPage(r.body, p.slug, type));
 }
 const ranSite = target.length === pages.length || ALL || !onlySlug;
 if (ranSite) detected.push(...detectSite(loaded));

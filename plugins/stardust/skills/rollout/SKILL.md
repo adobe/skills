@@ -15,26 +15,26 @@ Phases, in order: Setup → A Inventory → B Block dedup plan → B2 Dynamic su
 
 | Phase | Command |
 |---|---|
-| A | `node skills/rollout/scripts/inventory.mjs --site-url <source-url>` (archetypes-only: add `--state stardust/state.json`) |
+| A | `node skills/rollout/scripts/inventory.mjs --site-url <source-url> [--content <eds-root>/content] [--redirects stardust/redirects.tsv]` (archetypes-only: add `--state stardust/state.json`) |
 | B | `node skills/rollout/scripts/blocks.mjs`; `node skills/rollout/scripts/plan.mjs` |
 | B2 | `node skills/dynamics/scripts/dynamics-detect.mjs --from-state … --reach stardust/current`; `node skills/dynamics/scripts/dynamics-plan.mjs --target-origin <live host> --migrated stardust/migrated`; `node skills/dynamics/scripts/dynamics-plan.mjs --lint stardust/dynamic-features.md stardust/dynamic-features-plan.md` |
 | C | per page: `node skills/rollout/scripts/delivery-lint.mjs --file <html> --path </da/path> --icons-dir icons`; `node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <host> [--apply]`; `node skills/rollout/scripts/section-fidelity.mjs --file <html> --source <url>`; `node skills/rollout/scripts/update-coverage.mjs <slug> --status <s>`; batches: `node skills/deploy/scripts/deploy-batch.mjs --org … --repo … --branch … --content <dir> [--concurrency 4]` (preview); live: same command `--publish` after D1 |
 | D | `node skills/rollout/scripts/assemble.mjs`; `node skills/rollout/scripts/redirects.mjs [--post-publish]` |
 | D2 | `node skills/dynamics/scripts/dynamics-check.mjs --origin <live host> --gate` |
-| E / E2 | `node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>]`; `node skills/deploy/scripts/localize-links.mjs --source-host <live-host> --content content --redirects stardust/redirects.tsv [--check]` |
+| E / E2 | `node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--all] [--report <dir>]`; `node skills/deploy/scripts/localize-links.mjs --source-host <live-host> --content content --redirects stardust/redirects.tsv [--check]` |
 | F | `node skills/rollout/scripts/optimize.mjs [--base <url> | --root <dir> | --slug <s> | --all]`; `node skills/rollout/scripts/findings.mjs record … / resolve <id> …` |
 | G | `node skills/rollout/scripts/autofix-aem.mjs --project <eds-root> [--dry-run] [--slug s] [--check c]` |
 | H | read `rollout.json.lastRun` + `optimize/scorecard.json` + `verify/summary.md`; write `stardust/learnings.md` |
 | I | `node skills/rollout/scripts/dashboard.mjs` |
 
-Gates: Setup — gated-archetype precondition under `flow: replica`. B2 — every dynamic row has a disposition; `dynamics-plan.mjs --lint` exit 0. C — delivery-lint P0/P1 blocks the PUT; source-fidelity, image-fidelity, path-safety, source-content hygiene, fidelity tier declared; EW gate `block-roundtrip --ew`; foundation-first gate on the first deployed archetype. D — `redirects.mjs` exit 2 (a Source shadows a delivered page) blocks the sheet. E — `verify.mjs` exits non-zero on any failed page (folder roots probed on both slash forms); headless render check per template. E2 — `localize-links.mjs --check` exit 2 = links remain. F — `optimize.mjs` exits non-zero on any open in-scope P1. H — `dynamics-check.mjs --gate` exit 0 before the report closes.
+Gates: Setup — gated-archetype precondition under `flow: replica`. B2 — every dynamic row has a disposition; `dynamics-plan.mjs --lint` exit 0. C — delivery-lint P0/P1 blocks the PUT; source-fidelity, image-fidelity, path-safety, source-content hygiene, fidelity tier declared; EW gate `block-roundtrip --ew`; foundation-first gate on the first deployed archetype. D — `redirects.mjs` exit 2 (a Source shadows a delivered page) blocks the sheet. E — `verify.mjs` exit 1 = a failed page (folder roots probed on both slash forms), exit 2 = usage / no coverage; headless render check per template. E2 — `localize-links.mjs --check` exit 2 = links remain. F — `optimize.mjs` exits non-zero on any open in-scope P1. H — `dynamics-check.mjs --gate` exit 0 before the report closes.
 
-Outputs (under `stardust/rollout/`): `coverage/{pages,templates,blocks}.json` · `plan.json` · `rollout.json` · `verify/{summary.json,summary.md}` · `optimize/{findings,scorecard}.json` · `site/{sitemap.xml,robots.txt,manifest.json,redirects.json}` · `dashboard/{index.html,data.json}` (schemas: `schemas/rollout-*.schema.json`); plus `stardust/redirects.tsv`, `stardust/learnings.md`, EDS-project edits via autofix.
+Outputs (under `stardust/rollout/`): `coverage/{pages,templates,blocks}.json` · `plan.json` · `rollout.json` · `verify/{summary.json,summary.md,pages.md}` · `optimize/{findings,scorecard}.json` · `site/{sitemap.xml,robots.txt,manifest.json,redirects.json}` · `dashboard/{index.html,data.json}` (schemas: `schemas/rollout-*.schema.json`); plus `stardust/redirects.tsv`, `stardust/learnings.md`, EDS-project edits via autofix.
 
 | At phase | Read |
 |---|---|
 | Setup | `../stardust/reference/state-machine.md` § Flow keys; `../replica/reference/source-fidelity-gate.md` § Residual logging format · § Residual classes |
-| A | `reference/coverage-model.md` § Files · § Page delivery status lifecycle · § Idempotency rules (inventory) |
+| A | `reference/coverage-model.md` § Files · § Page delivery status lifecycle · § Artifact type + fidelity tier · § Idempotency rules (inventory) |
 | B | `reference/coverage-model.md` § Block delivery status lifecycle · § Dedup contract (plan.json); `reference/operational-learnings.md` § Extending a delivered site |
 | B2 / D2 | `../dynamics/reference/triage.md` § Rules; `../dynamics/reference/listings.md` § Why it is a PRE-IMPORT gate · § Block contract; `../dynamics/reference/patterns.md`; `../dynamics/reference/parity-report.md` § Schema |
 | C | `reference/delivery-lint.md` § Run it · § Where it sits in Phase C; `reference/delivery-gates.md` § Gate 1 · § Gate 2 · § Gate 3 · § Gate 4 · § Batched delivery at scale; `../migrate/reference/fidelity-tiers.md` § Declaration (per page); `../migrate/reference/media-reconciliation.md` § The four decisions; waves: `../stardust/reference/fan-out.md` § Worker contract · § Scope and type of delegated agents; `../stardust/reference/harness-quirks.md`; `../deploy/da-deploy-protocol.md` § Two clocks; code-writing waves: `../deploy/reference/block-agents-brief.md` § The brief template · § Shared cores and variants |
@@ -105,16 +105,16 @@ node skills/rollout/scripts/inventory.mjs --site-url <source-url> --state stardu
 Writes `coverage/pages.json` (one row per page: slug, delivered `path`,
 `templateId`, `blocks`, `sourceHash`, `delivery` status), `coverage/templates.json`
 (pages grouped by template), and `rollout.json` (target + DA config + `lastRun`).
+`--content <eds-root>/content` adds the chrome documents, fragments and sheets
+as typed rows (`delivery.type` fragment | index — kept across runs, on the
+roster for verify); `--redirects stardust/redirects.tsv` records the served
+path of a renamed page (`delivery.deployedPath`).
 
-**Archetypes-only mode** (`--state`): pages with a `_meta.json` are seeded as in
-full mode; pages present only in `state.json` are seeded with `templateId` from
-`type`, `blocks` from the archetype sidecar, and `delivery.status:
-content-pending`.
-
-Inventory is **idempotent and incremental**: delivery status is preserved; a page
-whose migrated HTML changed after delivery is re-flagged `stale`. Fill in the DA
-coordinates in `rollout.json` (`site.da.org`, `site.site`, `site.da.ref`,
-`site.liveHost`) if not inferred.
+**Archetypes-only mode** (`--state`): pages only in `state.json` are seeded
+`content-pending`, `templateId` from `type`, `blocks` from the archetype sidecar.
+Inventory is **idempotent and incremental** (delivery preserved; HTML changed
+after delivery → `stale`; `reference/coverage-model.md` § Idempotency rules).
+Fill in `rollout.json` `site.da.*` + `site.liveHost` if not inferred.
 
 **Plan gate.** Present every `stardust/decisions.md` row not yet `owner-decided` as
 one numbered message, default on each line (`skills/stardust/reference/decisions.md`
@@ -128,17 +128,16 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
 ```
 
 - `blocks.mjs` collapses every block instance (per-page `modules` + chrome) into
-  the **distinct** set, assigns each a canonical `edsBlockName` (kebab,
-  reserved-class-guarded per deploy #15), and records `usedByPages` /
-  `instanceCount`. Chrome (`header`/`nav`/`footer`) is `kind: chrome` → site-wide
-  authored documents (`/nav`, `/footer`) fed to the header/footer blocks. In
-  archetypes-only mode the archetype sidecars fully determine the
-  block set; `content-pending` pages add none.
+  the **distinct** set with a canonical `edsBlockName` (kebab, reserved-class
+  guard per deploy #15) and `usedByPages` / `instanceCount`. Chrome
+  (`header`/`nav`/`footer`) is `kind: chrome` → the authored `/nav`, `/footer`
+  documents. In archetypes-only mode the archetype sidecars determine the block
+  set; `content-pending` pages add none.
 - `plan.mjs` orders pages **representative-first per template** and gives each
-  distinct block a **single conversion point**: the first page that uses it
-  CONVERTS it, every later page REUSES it by name. The per-page `convert`/`reuse`
-  lists are exactly `deploy`'s Step-7 brief input, so each block converts once
-  **without changing deploy**. `content-pending` pages are always `convert: []`.
+  distinct block a **single conversion point**: the first page CONVERTS it, every
+  later page REUSES it by name — the per-page `convert`/`reuse` lists are
+  `deploy`'s Step-7 brief input, so each block converts once **without changing
+  deploy**. `content-pending` pages are always `convert: []`.
 
 ### Phase B2 — Dynamic surface (PRE-IMPORT GATE — verify the inventory)
 
@@ -264,15 +263,15 @@ per-agent `eds-conversion-log-<id>.md` files.
 node skills/rollout/scripts/assemble.mjs   # → rollout/site/{sitemap.xml,robots.txt,manifest.json}
 ```
 
-Generates site-wide artifacts: `sitemap.xml` + `robots.txt` from delivered paths,
-and a fragments manifest mapping chrome blocks to the authored chrome documents
-(`content/nav.html`, `content/footer.html`) with their `canon/*.html` source
-(published through the normal content chain — unpublished chrome 404s sitewide).
+Generates `sitemap.xml` (live page rows at their served path) + `robots.txt`, and
+a fragments manifest mapping chrome blocks to the authored chrome documents
+(`content/nav.html`, `content/footer.html`) with their `canon/*.html` source —
+unpublished chrome 404s sitewide.
 **Redirects:** `node skills/rollout/scripts/redirects.mjs` turns
 `stardust/redirects.tsv` into `site/redirects.json` (one row per request form
 per source; exit 2 = a Source shadows a delivered page — fix before Phase E);
-upload it as the `/redirects.json` sheet, then `--post-publish` probes every
-page and both slash forms of every folder root. Rule: `reference/delivery-gates.md` § Gate 3.
+upload it as the `/redirects.json` sheet; `--post-publish` probes every page and
+both slash forms of a folder root (`reference/delivery-gates.md` § Gate 3).
 
 ### Phase D2 — Dynamic features (`dynamics` Phases 4–5)
 
@@ -298,46 +297,46 @@ See `reference/multilingual.md`.
 
 ```bash
 node skills/rollout/scripts/verify.mjs            # uses rollout.json site.liveHost
-# or: --base <url>   (explicit host)   |   --root <dir>   (offline, against a local export)
+# or: --base <url> (explicit host) | --root <dir> (offline, local export or migrated tree)
 ```
 
-For every delivered page, `verify` confirms HTTP 200, no `about:error` (deploy
-#75), and that every internal `href="/…"` resolves to a known delivered path — then
-flips each page to `verified` or `failed`. Exits non-zero if any page failed.
-It writes `stardust/rollout/verify/summary.json` + `summary.md` through
-`skills/stardust/scripts/class-report.mjs` and prints only the ranked class table:
-triage per class from that table, never from per-page `✗` rows
-(`skills/stardust/reference/context-hygiene.md` § Runner reports and session hand-off).
+`verify` confirms each delivered row renders (200, no `about:error`, typed
+render check) and its internal links resolve, then flips it to `verified` or
+`failed`; exit 1 iff a row failed. Two summary lines: `not delivered: N
+(skipped)` and `pending-target links: N pages`. Which rows, link classes and
+the `links.outsideInventory` policy: `reference/coverage-model.md` § Verify.
+Read `stardust/rollout/verify/summary.md`, triage per class — per-page rows
+live in `pages.md`, not the conversation (`skills/stardust/reference/context-hygiene.md`
+§ Runner reports and session hand-off).
 
 **Headless render check (per template).** A 200 `.plain.html` can still render
-blank — decoration failures (missing script, wrong block wrapper class, 404
-chrome) are invisible to a text check. On the FIRST delivered page of each
-template (home included), load the live URL in a headless browser and assert
-decoration ran: the runtime's `body.appear` class is set (per
-`stardust/runtime-contract.json`), `main .section` count > 0,
+blank — decoration failures (missing script, wrong wrapper class, 404 chrome)
+are invisible to a text check. On the FIRST delivered page of each template
+(home included), load the live URL headless and assert decoration ran:
+`body.appear` set (per `stardust/runtime-contract.json`), `main .section` > 0,
 zero `pageerror` events, zero broken images.
 
-**Site-scale fix loop** (template sample → class triage → tail → one
-confirmation sweep against preview): `reference/sweep-protocol.md`.
+**Site-scale fix loop** (sample → class triage → tail → confirmation sweep
+against preview): `reference/sweep-protocol.md`.
 
 ### Phase E2 — Link-audit completeness
 
-`verify.mjs` checks the links on delivered pages; this phase closes the set of
-link **targets** a roster-driven batch misses
-(`reference/operational-learnings.md` § Two verify checks):
+`verify.mjs` checks the links on delivered rows; this phase closes the link
+**targets** a roster-driven batch misses (`reference/operational-learnings.md`
+§ Two verify checks):
 
 - **Nav/footer/landing targets are NOT archetype siblings.** Enumerate every
-  `href` in the `/nav` + `/footer` documents plus each section's index/landing
-  page and confirm each is **deployed + published + verified** — and that the
-  chrome documents THEMSELVES are published.
+  `href` in the `/nav` + `/footer` rows (Phase A `--content`) plus each
+  section's landing page; each must be **deployed + published + verified**,
+  the chrome rows included.
 - **Localize source-site bounce links** with the deploy stage, not by hand:
   `node skills/deploy/scripts/localize-links.mjs --source-host <live-host>
   --content content --redirects stardust/redirects.tsv`; **re-run over the
-  WHOLE tree after every wave** (earlier pages gain valid targets only when a
-  later wave ships them). `--check` is the gate (exit 2 = links remain).
+  WHOLE tree after every wave** (earlier pages gain targets only when a later
+  wave ships them). `--check` is the gate (exit 2 = links remain).
 - **Strip trailing slashes and `.html` from internal links** (EDS 404s both
-  while `.plain.html` still passes); repoint `.html` links with no local page
-  at the working source URL.
+  while `.plain.html` passes); repoint `.html` links with no local page at the
+  working source URL.
 - **The audit GETs each href against the LIVE tree** — ledger resolution misses
   the trailing-slash and case defects only delivery exposes.
 
@@ -370,18 +369,16 @@ node skills/rollout/scripts/findings.mjs resolve <id> --status accepted --note "
 ```
 
 All sources share one id space, dedup, scorecard and the **detect → fix → verify
-loop** (lifecycle: `reference/coverage-model.md` § Optimize gate; fixability routing:
-`reference/audit-sources.md` § Fixability → who fixes it). The gate **exits non-zero
-if any open P1 is in scope** — a page is delivery-clean only when verify passes
-*and* the ledger has no open P1.
+loop** (`reference/coverage-model.md` § Optimize gate; `reference/audit-sources.md`
+§ Fixability → who fixes it). The gate **exits non-zero if any open P1 is in
+scope** — delivery-clean = verify passes *and* no open P1.
 
 > At ~1k-page scale read `reference/operational-learnings.md` § Optimize-gate
 > learnings (site-wide republish for `head.html` fixes, ledger-only audit scope,
 > legitimate duplicate titles across parallel trees).
 
-The judgment layers (brand-tensions, design-ux, content-conversion) are scored
-`null` until populated by the impeccable/tensions sources — the scorecard shows
-not-assessed rather than faking a score.
+The judgment layers (brand-tensions, design-ux, content-conversion) score `null`
+until the impeccable/tensions sources populate them — not-assessed, never faked.
 
 ### Phase G — AEM autofix (close the loop)
 
@@ -389,31 +386,29 @@ not-assessed rather than faking a score.
 node skills/rollout/scripts/autofix-aem.mjs --project <eds-root>   # [--dry-run] [--slug s] [--check c]
 ```
 
-The platform autofix engine (AEM-EDS, v1 — aggressive). For every open finding
-whose `check` has a registered EDS fixer (deterministic / content-draft / manual —
-`reference/audit-sources.md` § AEM autofix registry), it edits the EDS **project**
-files, logs the change on `finding.autofix`, and stages the finding `in-progress`.
-
-Use `--dry-run` first. After applying, **re-deploy** the edited pages, then re-run
-**verify** + **optimize** — staged findings flip to `fixed`. `design-pass` findings
-are surfaced, not auto-fixed.
+The platform autofix engine (AEM-EDS, v1 — aggressive): for every open finding
+whose `check` has a registered EDS fixer (`reference/audit-sources.md` § AEM
+autofix registry) it edits the EDS **project** files, logs the change on
+`finding.autofix` and stages the finding `in-progress`. `--dry-run` first; after
+applying, **re-deploy** the edited pages and re-run **verify** + **optimize** —
+staged findings flip to `fixed`. `design-pass` findings are surfaced, not fixed.
 
 ### Phase H — Report
 
 Hand-off shape: `skills/stardust/reference/handoff-report.md` — gate table first,
-source → target per page, report-check line last; review links open on the live host, the human logging in
-(`skills/deploy/da-deploy-protocol.md` § Site auth — header vs browser).
+source → target per page, report-check line last; review links open on the live
+host, the human logging in (`skills/deploy/da-deploy-protocol.md` § Site auth).
 
-Include the dynamic parity table (`stardust/qa/dynamics-report.md`, from Phase D2) next to
-the delivery ledger: per feature its class, reach, status, owner decision and the replayed
-check — so the report is honest about what the site *does*, not only what it *shows*.
+Include the dynamic parity table (`stardust/qa/dynamics-report.md`, from Phase D2)
+next to the delivery ledger: per feature its class, reach, status, owner decision
+and the replayed check — honest about what the site *does*, not only *shows*.
 `dynamics-check.mjs --origin <live host> --gate` must exit 0 before the report closes
 (exit 3 = `parity.json` missing or a `self` row still pending — `skills/dynamics/reference/parity-report.md`
-rule 8); hands-off sets unshipped `self` rows to `interim` with a one-line reason and a named owner
-decision, never leaves them `pending`. The report lists unplayable media by page
-(`media-reconcile.mjs` rows with decision `unplayable` / `needs-credential`).
+rule 8); hands-off sets unshipped `self` rows to `interim` with a one-line reason
+and a named owner decision, never `pending`. The report lists unplayable media by
+page (`media-reconcile.mjs` rows `unplayable` / `needs-credential`).
 
-Read `rollout.json.lastRun` + `optimize/scorecard.json` (or re-run `inventory.mjs`):
+Read `rollout.json.lastRun` + `optimize/scorecard.json`:
 
 ```
 rollout — <site> → aem-eds
@@ -426,12 +421,10 @@ To deliver  <list of remaining slugs>
 Content     <cp> pages awaiting content track (block code deployed, document not yet pushed)
 ```
 
-Surface `pending`/`stale`/`failed` as the explicit "what's missing" list; for the
-failed pages point at `stardust/rollout/verify/summary.md` — the report carries no
-per-page list.
-`content-pending` pages are listed separately — not failures; their block code is
-live and they advance to `pending` automatically when `migrate` emits their HTML
-and `inventory` is re-run.
+Surface `pending`/`stale`/`failed` as the "what's missing" list; for failed
+rows point at `stardust/rollout/verify/summary.md` — no per-page list.
+`content-pending` pages are listed separately — not failures; they advance to
+`pending` when `migrate` emits their HTML and `inventory` is re-run.
 
 **Also write/refresh `stardust/learnings.md`** per
 `skills/stardust/reference/learnings.md`: one entry per failure class this run

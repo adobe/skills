@@ -27,7 +27,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { readJSON, writeJSON } from './lib.mjs';
+import { readJSON, writeJSON, siteBase } from './lib.mjs';
 
 function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : fallback; }
 const has = (f) => process.argv.includes(`--${f}`);
@@ -96,7 +96,7 @@ if (POST && !existsSync(TSV)) {
 
 // --- Post-publish probe ---------------------------------------------------------
 if (POST) {
-  const BASE = arg('base', (config.site && config.site.liveHost) ? `https://${config.site.liveHost}` : null);
+  const BASE = siteBase(config, arg('base', null));
   if (!BASE) { console.error('rollout redirects --post-publish: need --base <url> or rollout.json site.liveHost.'); process.exit(1); }
   const head = async (url) => {
     try { const r = await fetch(url, { method: 'HEAD', redirect: 'follow' }); return r.status; } catch { return 0; }
