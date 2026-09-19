@@ -72,6 +72,8 @@
  *                           without `all`, or names no category — printing what each
  *                           tag swallowed (recorded: 254 value-slotted texts hidden
  *                           behind a 4-text showcase exemption).
+ *                           (1 is this script's verdict code; block-roundtrip reports the
+ *                           same finding with its verdict code, 2)
  *   metadata / section-metadata cells are pipeline config (never displayed) and
  *   are not counted at all.
  *
@@ -94,7 +96,6 @@ import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
 import { pathToFileURL } from 'url';
-import { execSync } from 'child_process';
 import { pipelineMimic, formatCounts } from './pipeline-mimic.mjs';
 
 export const EDITABLE = 'h1, h2, h3, h4, h5, h6, p, ol, ul, pre, blockquote';
@@ -657,27 +658,46 @@ export async function probeUrl(browser, url, { width = 1440, simulate = false, s
   return { texts, rows, sim, page, ctx };
 }
 
+// Where a global `npm i -g playwright` lands, derived without spawning `npm root -g`
+// (a shell per lint run): STARDUST_PLAYWRIGHT_ROOT (a node_modules dir), then npm's
+// prefix (npm_config_prefix when npm runs us, else the directory above the node
+// binary — nvm/volta/homebrew/official installers all keep lib/node_modules there;
+// Windows keeps node_modules beside node.exe). Only existing directories are returned.
+export function globalNodeModulesCandidates({ env = process.env, execPath = process.execPath, exists = fs.existsSync } = {}) {
+  const bin = path.dirname(execPath);
+  const prefixes = [env.npm_config_prefix, path.resolve(bin, '..'), bin].filter(Boolean);
+  const dirs = [env.STARDUST_PLAYWRIGHT_ROOT, ...prefixes.flatMap((pre) => [path.join(pre, 'lib', 'node_modules'), path.join(pre, 'node_modules')])].filter(Boolean);
+  return [...new Set(dirs)].filter((d) => exists(d));
+}
+
 // Resolve playwright from the cwd project first (plugin scripts live outside any
-// node_modules tree), then bare.
-export async function loadChromium() {
+// node_modules tree), then bare, then a global install (no shell spawned).
+export async function loadChromium({ roots = globalNodeModulesCandidates() } = {}) {
   const normalize = (mod) => (mod.chromium ? mod : (mod.default?.chromium ? mod.default : null));
+  const fromRoot = async (dir) => normalize(await import(pathToFileURL(createRequire(path.join(dir, 'noop.js')).resolve('playwright')).href));
   try {
-    const req = createRequire(path.join(process.cwd(), 'package.json'));
-    const mod = normalize(await import(pathToFileURL(req.resolve('playwright')).href));
+    const mod = await fromRoot(process.cwd());
     if (mod) return mod.chromium;
   } catch { /* fall through */ }
   try {
     const mod = normalize(await import('playwright'));
     if (mod) return mod.chromium;
   } catch { /* fall through */ }
-  try {
-    // global install (npm i -g playwright) — the last resort for a plugin script run outside any project
-    const g = execSync('npm root -g', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-    const req = createRequire(path.join(g, 'noop.js'));
-    const mod = normalize(await import(pathToFileURL(req.resolve('playwright')).href));
-    if (mod) return mod.chromium;
-  } catch { /* fall through */ }
+  for (const dir of roots) {
+    try {
+      const mod = await fromRoot(dir);
+      if (mod) return mod.chromium;
+    } catch { /* next candidate */ }
+  }
   throw new Error('playwright not found: run from a project that has it installed (npm i -D playwright)');
+}
+
+// One launch to learn whether a browser BINARY exists behind a resolvable playwright
+// (a bare `npm i playwright` ships no Chromium): null when it does, else the reason —
+// tests self-skip on it instead of failing.
+export async function browserUnavailable(chromium) {
+  if (!chromium) return 'playwright is not resolvable (project, bare or global)';
+  try { const b = await chromium.launch(); await b.close(); return null; } catch (e) { return `chromium cannot launch: ${String(e.message || e).split('\n')[0].slice(0, 160)}`; }
 }
 
 // ──────────────────────────────────────────────────────────────── CLI ──

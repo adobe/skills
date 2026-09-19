@@ -67,8 +67,10 @@
  * block is NOT installed → exit 2 (fix the specifier, or verify that block via the
  * dev-server harness + Step 10). Requests to any other origin are aborted and listed.
  *     --root <dir>       harness root (default: parent of the blocks dir)
- *     --strict           exit 2 when a used @ew-exempt is block-granular without `all`
- *                        or names no category (item-level syntax in the probe header)
+ *     --strict           exit 2 (this script's verdict code — 1 is its tool error) when a
+ *                        used @ew-exempt is block-granular without `all` or names no
+ *                        category (item-level syntax in the probe header; the probe and
+ *                        render-harness report the same finding with THEIR verdict code, 1)
  *   Flags may precede the positionals; `--help`/`-h` anywhere exits 0 before Playwright
  *   is loaded; an unknown flag is a usage error (exit 1).
  */

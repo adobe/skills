@@ -53,10 +53,18 @@
  *                sits in its own wrapper on the published page, so it never matches.
  *   EW-COMPOSED 🟡 (with --styles) a styles.css selector under `body.<class>`,
  *                `.section:first-of-type` or `main > .section:has(…)` ending on prose.
- * Chrome blocks (header/footer) and any file that DECLARES an `@ew-exempt` item (EW5 —
- * `parseExemptTags` from ew-editability-probe.mjs, any block comment) are capped at 🟡
- * with the reason appended: the static lint cannot see the text, `block-roundtrip --ew`
- * decides per text against the declared tag/regex. Undeclared shapes stay 🔴.
+ * Exemption cap (EW5 — `parseExemptTags` from ew-editability-probe.mjs, any block
+ * comment): the static lint cannot see the text, `block-roundtrip --ew` decides per text
+ * against the declared tag/regex — so a declaration lowers a 🔴 to 🟡 with the reason
+ * appended, but never more than it declares. Chrome blocks (header/footer) and
+ * `@ew-exempt all` cap every 🔴 in the file. An item-level or granular tag caps ONE
+ * value-slotting site (EW-VALUE / EW-JOIN / EW-RETAG, lowest line first) per declared
+ * item; further re-emission sites stay 🔴 with the count of sites the items did cap (the
+ * case the rule exists for: one declared showcase link must not hide 250 value-slotted
+ * texts). An item declares a TEXT, so it never caps a 🔴 EW-CLONE (an authored picture/
+ * a/p/heading cloned without stripInstrumentation() — a duplicated index, not a text):
+ * that 🔴 stays with its own reason; only chrome / `all` cap it. EW-HEADER is a DOM-shape
+ * fact (#107), never text — it stays 🔴 everywhere, chrome included.
  *
  *   node skills/deploy/scripts/block-lint.mjs blocks/ [scripts/scripts.js] [--styles styles/styles.css] [--json]
  *
@@ -89,7 +97,26 @@ const STOCK = new Set(['decorateButtons', 'decorateIcons', 'buildAutoBlocks', 'd
 const findings = [];
 // one finding per (code, file, line): an innerHTML template literal with two
 // interpolations is one defect, reported once
-const add = (level, code, file, line, msg) => { if (!findings.some((f) => f.code === code && f.file === file && f.line === line)) findings.push({ level, code, file, line, msg }); };
+const add = (level, code, file, line, msg, cappable = false) => { if (findings.some((f) => f.code === code && f.file === file && f.line === line)) return false; findings.push({ level, code, file, line, msg, ...(cappable ? { cappable } : {}) }); return true; };
+const VALUE_FAMILY = new Set(['EW-VALUE', 'EW-JOIN', 'EW-RETAG']);
+// EW5 cap, applied after a file's rules ran: chrome / `all` cap every cappable 🔴; N declared
+// items cap the first N value-slotting 🔴 by line; a value-slotting 🔴 left over says how
+// many sites the items DID cap; a 🔴 EW-CLONE is never item-capped and says why itself.
+function applyExemptionCap(file, ew) {
+  const capAll = isChrome(file) ? 'chrome block' : ew && ew.all ? '@ew-exempt all' : null;
+  const mine = findings.filter((f) => f.file === file && f.cappable && f.level === '🔴').sort((a, b) => a.line - b.line);
+  const cap = (f, why) => { f.level = '🟡'; f.msg = `${f.msg} [capped 🟡: ${why} — block-roundtrip --ew decides per text (EW5)]`; };
+  if (capAll) mine.forEach((f) => cap(f, capAll));
+  else if (ew && ew.items.length) {
+    const n = ew.items.length;
+    const capped = mine.filter((f) => VALUE_FAMILY.has(f.code)).slice(0, n);
+    capped.forEach((f) => cap(f, `${n} @ew-exempt item(s) declared (one cap per item)`));
+    for (const f of mine.filter((f) => f.level === '🔴')) {
+      if (VALUE_FAMILY.has(f.code)) f.msg = `${f.msg} [not capped: the ${n} declared @ew-exempt item(s) already cover ${capped.length} re-emission site(s) — declare one item per site, or MOVE the element (EW5)]`;
+      else if (f.code === 'EW-CLONE') f.msg = `${f.msg} [not capped: an @ew-exempt item declares a text, not a clone — call stripInstrumentation() on the copy, or MOVE the element (EW4/EW5)]`;
+    }
+  }
+}
 const lineOf = (s, idx) => s.slice(0, idx).split('\n').length;
 
 // ---- blocks/*/*.js (+ *.css for the EW2/rhythm rules)
@@ -162,11 +189,9 @@ function interpolations(code) {
 for (const file of blockFiles) {
   const src = readFileSync(file, 'utf8');
   const code = stripComments(src);
-  // 🔴 → 🟡 for chrome and for a file that declares an @ew-exempt item (EW5): the lint
-  // cannot see the text, the runtime gate matches it against the declared tag/regex.
+  // cappable findings (EW5): the exemption cap runs once the file's rules are done — see applyExemptionCap
   const ew = parseExemptTags(src);
-  const capWhy = isChrome(file) ? 'chrome block' : ew ? (ew.all ? '@ew-exempt all' : `${ew.items.length} @ew-exempt item(s) declared`) : null;
-  const flag = (level, ruleCode, line, msg) => add(level === '🔴' && capWhy ? '🟡' : level, ruleCode, file, line, level === '🔴' && capWhy ? `${msg} [capped 🟡: ${capWhy} — block-roundtrip --ew decides per text (EW5)]` : msg);
+  const flag = (level, ruleCode, line, msg) => add(level, ruleCode, file, line, msg, level === '🔴');
   // ── EW value-slotting family ──
   // identifiers whose INITIALIZER is a text read: const title = cell.textContent.trim();
   // (a ternary, a template literal or a line that merely mentions .textContent taints nothing)
@@ -252,6 +277,7 @@ for (const file of blockFiles) {
       add('🔴', 'BL-MEDIA', file, lineOf(src, m.index), `querySelectorAll('${sel}') matches every pipelined image twice (<picture><img>) — collect pictures when present, else imgs, never both`);
     }
   }
+  applyExemptionCap(file, ew);
 }
 
 // ---- blocks/*/*.css — EW2-CSS, EW-RHYTHM
@@ -332,6 +358,7 @@ if (scriptsJs && existsSync(scriptsJs)) {
 }
 
 // ---- report
+findings.forEach((f) => { delete f.cappable; });
 const red = findings.filter((f) => f.level === '🔴').length;
 if (json) {
   console.log(JSON.stringify({ files: blockFiles.length, cssFiles: cssFiles.length, scriptsJs, stylesCss, findings, red }, null, 2));
