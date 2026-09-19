@@ -15,10 +15,12 @@
  *   depth  (playwright)  dynamics-detect.mjs --urls <fixture pages> --reach <sidecars> --offline;
  *                        every `depth` row must be found on its page, every `reach` row must carry
  *                        reach.pages ≥ minPages, and `reachOnly` rows must (not) be hint reach-only.
- *                        Skipped with a notice when playwright is not resolvable from the cwd.
+ *                        Skipped with a notice when playwright is not resolvable from the cwd;
+ *                        `--static` leaves it out on purpose (the lint:stardust chain — CI installs
+ *                        no browser; run the full eval from an EDS project before a dynamics release).
  *
  * Prints recall per class and the unexpected findings (noise — informational, never a failure).
- * Usage: node plugins/stardust/evals/lint/dynamics-recall.mjs [--keep] [--help]
+ * Usage: node plugins/stardust/evals/lint/dynamics-recall.mjs [--static] [--keep] [--help]
  * Exit: 0 every expected row found · 1 a miss, a wrong reach-only flag, or a sidecar field the crawl
  *       no longer writes · 2 fixture unreadable. No gate threshold: the eval fails only on its own fixture.
  */
@@ -36,6 +38,7 @@ const FIXTURE = join(PLUGIN, 'evals', '_shared', 'dynamics-recall');
 const DETECT = join(PLUGIN, 'skills', 'dynamics', 'scripts', 'dynamics-detect.mjs');
 const CRAWL = join(PLUGIN, 'skills', 'extract', 'scripts', 'crawl.mjs');
 const KEEP = process.argv.includes('--keep');
+const STATIC = process.argv.includes('--static');
 
 let expected;
 try { expected = JSON.parse(readFileSync(join(FIXTURE, 'expected.json'), 'utf8')).rows; } catch (e) { console.error(`dynamics-recall: fixture unreadable — ${e.message}`); process.exit(2); }
@@ -72,7 +75,9 @@ for (const field of REACH_SIDECAR_FIELDS) ok(`crawl.mjs dynamicDom writes ${fiel
 /* ------------------------------------------------------ depth (browser) -- */
 let playwright = false;
 try { const { createRequire } = await import('node:module'); createRequire(join(process.cwd(), 'package.json')).resolve('playwright'); playwright = true; } catch { try { await import('playwright'); playwright = true; } catch { /* not installed */ } }
-if (!playwright) {
+if (STATIC) {
+  console.log('depth: not run (--static — the lint-chain mode; run without the flag from an EDS project for the browser half)');
+} else if (!playwright) {
   console.log('depth: SKIPPED — playwright not resolvable from the cwd (npm i -D playwright --no-save to run the browser half)');
 } else {
   const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.json': 'application/json' };
@@ -114,4 +119,4 @@ if (!playwright) {
 }
 
 if (failed) { console.error(`dynamics-recall: ${failed} check(s) failed`); process.exit(1); }
-console.log('dynamics-recall: all expected rows found');
+console.log(`dynamics-recall: all expected rows found${STATIC ? ' (reach + sidecar contract; depth not run — --static)' : ''}`);
