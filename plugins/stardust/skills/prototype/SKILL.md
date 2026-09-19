@@ -7,6 +7,38 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 
 # stardust:prototype
 
+## Operator card
+
+Impeccable is invoked through the harness's skill-invocation tool (§ Invoking impeccable); `$impeccable <cmd>` below stands for that call.
+
+| phase | command / instrument | gate | writes |
+|---|---|---|---|
+| Setup 0–6 | `node -e "import('playwright').then(()=>process.exit(0))"`; master setup; `directed` page, `DESIGN.md`/`.json`, active direction; `validateProvenance(page)`; read `current/DESIGN.md` | provenance validation | — |
+| 1 Plan | author the page-shape brief; show it (hands-off: skip the wait) | brief validator — Disciplines 1–5; Discipline 10 when N > 1 | `stardust/prototypes/<slug>-shape.md` |
+| 2 Render | `$impeccable craft <page content + direction>`; modern-web-guidance consult when relevant | contract validation (`:root`, data attributes, anti-toolbox, hard rules, content sourcing); craft-time Disciplines 6–9; `--fidelity=quick/refined/production` | `stardust/prototypes/<slug>-proposed.html` |
+| 2.4 Motion (`--cinematic[=<register>]`) | resolve register; stage Lenis; embed runtime; annotate `data-*`; `<noscript>` | hands to 2.8 | `<slug>-cinematic.html`, `prototypes/lenis.min.js` / `.css` |
+| 2.5 Critique + 2.6 Audit | `$impeccable critique <file> --json` ∥ `$impeccable audit <file> --json`; vision gate against `current/assets/screenshots/<slug>.png` | brand-faithful auto-dismiss; P0/P1 from either arm block `prototyped` | `_provenance.critique[]`, `.audit[]`, `.visionCheck` |
+| 2.7 Adapt | `$impeccable adapt <file>`; mobile-adapt audit via `fixtures/mobile-nav-audit.mjs`; stock hamburger on nav refusals | mobile-adapt audit refusal codes | `_provenance.adapt[]`, `data-nav-collapse` |
+| 2.8 Motion validation | fires when motion is declared or 2.4 ran | by-design vs bug; bugs block `prototyped` | `_provenance.motionValidation`, `stardust/validation/<slug>/motion-<viewport>.png` |
+| 4 Open and iterate | `open <path>` (not `playwright-cli open`); chat-driven impeccable commands or direct `$impeccable <cmd> <file>` | `prototyped` only when 2.5–2.8 clear or are acknowledged | `state.json` page → `prototyped` |
+| 5 Approval | user says `approve <slug>`; fold-back (`--auto-fold` / `--no-fold`) | direction still current | `state.json` page → `approved`, `stale` cleared |
+| `--prep` | fill page-type gaps; canon write-back on approvals (`--canon-from <slug>`) | canon conflict resolution | `stardust/canon/` (`header.html`, `footer.html`, `canon.css`, `modules/`), `DESIGN.json.extensions.canon` |
+| `--publish-sample <slug>` | showcase PR sub-flow | design-quality gates | upstream PR |
+
+| at phase | read |
+|---|---|
+| 1 | `reference/page-shape-brief.md` § File shape · § Validator contract · `reference/anti-template-bank.md` § How the bank composes · `skills/stardust/reference/reference-research.md` § 3. Evidence shape |
+| 2 | `reference/proposed-file-shell.md` § Required structure · § Content sourcing hierarchy · `reference/fidelity-refined-pass.md` · `skills/stardust/reference/divergence-toolkit.md` § 1 · § 3 |
+| 2.4 | `reference/motion-registers.md` § The five registers · § Selection heuristic · `reference/motion-runtime.md` § The canonical script · § No-JS fallback · `reference/motion-attributes.md` § The vocabulary |
+| 2.7 | `reference/mobile-nav-collapse.md` § The stock pattern · § Source order (load-bearing) · § Running the smoke test |
+| 2.8 | `reference/motion-validation.md` § Validation procedure (§ Pass 6 for cinematic files) |
+| 4 | `skills/stardust/reference/intent-dimensions.md` § Reading a phrase · `skills/stardust/reference/impeccable-command-map.md` |
+| 5 | `reference/approval-fold-back.md` § When fold-back runs · § Procedure |
+| `--prep` | `reference/canon-extraction.md` § The five extraction steps · § Conflict resolution on subsequent approvals |
+| `--publish-sample` | `reference/publish-sample.md` § Procedure |
+
+Headings: Inputs · Setup · Delegation mechanic · Procedure · Outputs · Failure modes · Concurrency · Prep mode (--prep) · References
+
 For each `directed` page, render a **proposed redesign** as a
 self-contained static HTML file at
 `stardust/prototypes/<slug>-proposed.html`. Open the file in the
