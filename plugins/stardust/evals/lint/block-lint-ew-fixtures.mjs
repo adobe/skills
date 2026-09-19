@@ -26,6 +26,10 @@
 //                                 "not capped" reason, exit 2 — a single declared showcase link
 //                                 must never hide a file of value-slotted texts (the recorded
 //                                 4-declared / 254-slotted case). `all` still caps the file (promo).
+//   fixtures/block-lint/exempt-clone-ew/ TWO declared items, ONE value-slotting site, ONE authored-picture
+//                                 clone: EW-VALUE 🟡 (capped), EW-CLONE stays 🔴 with its own reason —
+//                                 an item declares a text, never a clone — and the leftover wording never
+//                                 claims the items "cover 2 sites" when only one was capped; exit 2
 // deploy-lint-fixtures.mjs keeps pinning the BL-*/IMG-HARDCODED rules over fail/ and pass/.
 //
 // Usage: node plugins/stardust/evals/lint/block-lint-ew-fixtures.mjs  (exit 1 on findings)
@@ -86,6 +90,19 @@ try {
   check('exempt-overreach-ew: red = 2, no `cappable` field leaks into --json', j.red === 2 && j.findings.every((f) => !('cappable' in f)), `red=${j.red}`);
 } catch (e) { check('exempt-overreach-ew --json parses', false, e.message); }
 
+// ── exempt-clone-ew: items cap texts, never a clone; the leftover reason counts the sites actually capped
+r = run(['exempt-clone-ew/blocks', '--json']);
+check('exempt-clone-ew exits 2 (a 🔴 EW-CLONE is not item-cappable)', r.status === 2, r.stderr || r.stdout);
+try {
+  const j = JSON.parse(r.stdout);
+  const v = j.findings.find((f) => f.code === 'EW-VALUE');
+  const c = j.findings.find((f) => f.code === 'EW-CLONE');
+  check('exempt-clone-ew: the one value-slotting site is capped 🟡 by the two items', v && v.level === '🟡' && /\[capped 🟡: 2 @ew-exempt item\(s\) declared \(one cap per item\)/.test(v.msg), v && `${v.level} ${v.msg.slice(-100)}`);
+  check('exempt-clone-ew: EW-CLONE stays 🔴 and carries the clone reason, not the re-emission one', c && c.level === '🔴' && /\[not capped: an @ew-exempt item declares a text, not a clone/.test(c.msg) && !/already cover/.test(c.msg), c && `${c.level} ${c.msg.slice(-140)}`);
+  check('exempt-clone-ew: no finding claims the items cover more sites than were capped', !j.findings.some((f) => /already cover 2 re-emission site/.test(f.msg)), JSON.stringify(j.findings.map((f) => f.msg.slice(-90))));
+  check('exempt-clone-ew: red = 1 (the clone), 2 findings in all', j.red === 1 && j.findings.length === 2, `red=${j.red} n=${j.findings.length}`);
+} catch (e) { check('exempt-clone-ew --json parses', false, e.message); }
+
 // ── usage
 r = run(['pass-ew/blocks', '--styles']);
 check('--styles without a path is a usage error (exit 1)', r.status === 1);
@@ -99,4 +116,4 @@ if (failures.length) {
   console.log(`block-lint EW fixtures: ${failures.length} finding(s)`);
   process.exit(1);
 }
-console.log(`block-lint EW fixtures: ${expect.length + 16} cases pass (${relative(process.cwd(), CWD)}/{fail-ew,pass-ew,exempt-ew,exempt-overreach-ew})`);
+console.log(`block-lint EW fixtures: ${expect.length + 21} cases pass (${relative(process.cwd(), CWD)}/{fail-ew,pass-ew,exempt-ew,exempt-overreach-ew,exempt-clone-ew})`);

@@ -59,9 +59,12 @@
  * appended, but never more than it declares. Chrome blocks (header/footer) and
  * `@ew-exempt all` cap every 🔴 in the file. An item-level or granular tag caps ONE
  * value-slotting site (EW-VALUE / EW-JOIN / EW-RETAG, lowest line first) per declared
- * item; further re-emission sites stay 🔴 (the case the rule exists for: one declared
- * showcase link must not hide 250 value-slotted texts). EW-HEADER is a DOM-shape fact
- * (#107), never text — it stays 🔴 everywhere, chrome included.
+ * item; further re-emission sites stay 🔴 with the count of sites the items did cap (the
+ * case the rule exists for: one declared showcase link must not hide 250 value-slotted
+ * texts). An item declares a TEXT, so it never caps a 🔴 EW-CLONE (an authored picture/
+ * a/p/heading cloned without stripInstrumentation() — a duplicated index, not a text):
+ * that 🔴 stays with its own reason; only chrome / `all` cap it. EW-HEADER is a DOM-shape
+ * fact (#107), never text — it stays 🔴 everywhere, chrome included.
  *
  *   node skills/deploy/scripts/block-lint.mjs blocks/ [scripts/scripts.js] [--styles styles/styles.css] [--json]
  *
@@ -97,7 +100,8 @@ const findings = [];
 const add = (level, code, file, line, msg, cappable = false) => { if (findings.some((f) => f.code === code && f.file === file && f.line === line)) return false; findings.push({ level, code, file, line, msg, ...(cappable ? { cappable } : {}) }); return true; };
 const VALUE_FAMILY = new Set(['EW-VALUE', 'EW-JOIN', 'EW-RETAG']);
 // EW5 cap, applied after a file's rules ran: chrome / `all` cap every cappable 🔴; N declared
-// items cap the first N value-slotting 🔴 by line; the rest stay 🔴 and say why.
+// items cap the first N value-slotting 🔴 by line; a value-slotting 🔴 left over says how
+// many sites the items DID cap; a 🔴 EW-CLONE is never item-capped and says why itself.
 function applyExemptionCap(file, ew) {
   const capAll = isChrome(file) ? 'chrome block' : ew && ew.all ? '@ew-exempt all' : null;
   const mine = findings.filter((f) => f.file === file && f.cappable && f.level === '🔴').sort((a, b) => a.line - b.line);
@@ -105,8 +109,12 @@ function applyExemptionCap(file, ew) {
   if (capAll) mine.forEach((f) => cap(f, capAll));
   else if (ew && ew.items.length) {
     const n = ew.items.length;
-    mine.filter((f) => VALUE_FAMILY.has(f.code)).slice(0, n).forEach((f) => cap(f, `${n} @ew-exempt item(s) declared (one cap per item)`));
-    mine.filter((f) => f.level === '🔴').forEach((f) => { f.msg = `${f.msg} [not capped: the ${n} declared @ew-exempt item(s) already cover ${n} re-emission site(s) — declare one item per site, or MOVE the element (EW5)]`; });
+    const capped = mine.filter((f) => VALUE_FAMILY.has(f.code)).slice(0, n);
+    capped.forEach((f) => cap(f, `${n} @ew-exempt item(s) declared (one cap per item)`));
+    for (const f of mine.filter((f) => f.level === '🔴')) {
+      if (VALUE_FAMILY.has(f.code)) f.msg = `${f.msg} [not capped: the ${n} declared @ew-exempt item(s) already cover ${capped.length} re-emission site(s) — declare one item per site, or MOVE the element (EW5)]`;
+      else if (f.code === 'EW-CLONE') f.msg = `${f.msg} [not capped: an @ew-exempt item declares a text, not a clone — call stripInstrumentation() on the copy, or MOVE the element (EW4/EW5)]`;
+    }
   }
 }
 const lineOf = (s, idx) => s.slice(0, idx).split('\n').length;

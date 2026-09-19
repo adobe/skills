@@ -9,7 +9,7 @@ export default function decorate(block) {
     const card = document.createElement('div');
     card.className = 'showcase-card';
     const title = document.createElement('h3');
-    title.textContent = titleCell.textContent.trim(); // EW-RETAG: line 13 — capped by the ONE declared item
+    title.textContent = titleCell.textContent.trim(); // EW-RETAG: line 12 — capped by the ONE declared item
     const price = document.createElement('span');
     price.textContent = priceCell.textContent.trim(); // EW-VALUE: stays 🔴 — the item is spent
     const blurb = document.createElement('div');
