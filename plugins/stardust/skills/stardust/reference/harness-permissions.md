@@ -4,6 +4,7 @@
 
 - § Two classes — at Setup step 1, after harness detection: which commands the owner must approve and which can be pre-approved.
 - § Pre-approval (Claude Code) — when the harness is Claude Code: the snippet, how to emit it, the two facts about it.
+- § Privileged-action preflight — at hands-off Setup: the capability probes, bootstrap-first, the one ask, `ship.sh`.
 - § Hygiene pointers — the three rules that live elsewhere and keep the run out of the classifier's way.
 
 A harness that runs stardust hands-off usually puts a permission layer
@@ -52,6 +53,45 @@ Setup step 6's managed root-`.gitignore` block excludes
 `.claude/settings.local.json`; the file is per machine, never committed.
 Other harnesses: no pre-approval mechanism is known; the two classes and
 the ask-once rule apply unchanged.
+
+---
+
+## Privileged-action preflight
+
+A denial found in the first minutes costs minutes; the same denial found
+after the site is converted costs the whole hands-off window. So, at
+hands-off Setup, right after the decision register fixes `target`,
+`branch` and `publish`:
+
+1. **Capability probes** (within the first five minutes) — `gh api user`
+   · `gh api repos/<org>/<repo>` (exists?) or `gh api orgs/<org>` ·
+   `git push --dry-run origin <branch>` · DA `PUT` of a 1-byte
+   `/.stardust-preflight/<ts>` then `DELETE` · admin
+   `GET /status/<org>/<repo>/main/`. Results go to
+   `stardust/.work/env.json` under `transports` (`ok` | `denied` |
+   `unreachable` per transport). A probe proves capability — token,
+   reachability, org access — not permission: the layer judges each
+   action by its nature, and a read that passes says nothing about the
+   write that follows.
+2. **Bootstrap-first** — the actions the register makes privileged run
+   at Setup, never after migrate: repo creation, Code Sync install, the
+   first code push, one scratch preview; scratch live publish and
+   unpublish only when the `publish` row says live (D16). Where the plan
+   never publishes live, the scratch publish is skipped and `ship.sh`
+   carries it.
+3. **On a denial, ask exactly once** — "approve X / run `<command>`, or
+   I write `stardust/.work/ship.sh` and continue" — with the
+   § Pre-approval snippet and its two facts. Record the answer in
+   `direction.md`, append `event: "blocked"` with `owner: "<command>"`
+   to `stardust/status.jsonl` (`run-status.md`), and continue on every
+   piece of work the denial does not gate. While the line is open, the
+   state report, the journal entry and every turn-ending reply lead with
+   `Blocked on owner:` (`state-machine.md` § State report,
+   `journal-format.md` § Entry format).
+4. **`ship.sh` is one command, never a list** — merge, push,
+   `deploy-batch.mjs --publish` (the explicit publish run, D1/D16),
+   the post-ship gate, the issue comment, in that order; the template is
+   the deploy skill's ship-script chapter.
 
 ---
 

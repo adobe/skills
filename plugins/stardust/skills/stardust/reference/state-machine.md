@@ -282,6 +282,9 @@ re-render the proposed file from the existing brief.
 stardust state
 ==============
 
+Blocked on owner:  gh repo create <org>/sdt-<slug> --template adobe/aem-boilerplate --private
+                   (since 2026-04-25T09:12Z · run continues author-only; `stardust/.work/ship.sh` carries the ship step)
+
 Site:        https://example.com (extracted 2026-04-25, 25/38 pages)
 Direction:   "make it more expressive for a young audience"
              (resolved 2026-04-25, see stardust/direction.md)
@@ -317,6 +320,12 @@ file matching a secret shape (`.env*`, `_storage-state.json`,
 `*-clearance.json`). Then one line per consequence that applies on this
 checkout (`current/assets/` missing, baselines missing). Above 50 MB of
 tracked binaries under `stardust/`, add "consider Git LFS (optional)".
+
+The `Blocked on owner:` block leads the report only while a
+`status.jsonl` `blocked` line carrying `owner` has no later `end` line
+for the same phase — one line per open command, verbatim from `owner`,
+plus the timestamp and what continues meanwhile
+(`reference/run-status.md`). Omitted otherwise.
 
 When `stardust/decisions.md` exists, a `Decisions:` line follows `Flow:`
 with the count of `default-applied` rows and, one per line, every

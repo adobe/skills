@@ -14,6 +14,7 @@ One JSON object per line (JSONL — no wrapping array, no pretty-print):
 { "ts": "2026-07-02T14:03:11Z", "skill": "stardust:migrate", "phase": "render", "event": "start" }
 { "ts": "2026-07-02T14:09:47Z", "skill": "stardust:migrate", "phase": "render", "event": "end", "detail": "12 pages rendered", "artifact": "stardust/migrated/" }
 { "ts": "2026-07-02T14:11:02Z", "skill": "stardust:rollout", "phase": "C-deliver", "event": "blocked", "detail": "DA_TOKEN expired (401) — ledger checkpointed, awaiting re-auth" }
+{ "ts": "2026-07-02T09:12:40Z", "skill": "stardust:stardust", "phase": "setup", "event": "blocked", "detail": "repo creation denied by the permission layer", "owner": "gh repo create <org>/sdt-<slug> --template adobe/aem-boilerplate --private" }
 ```
 
 | field | required | contents |
@@ -24,6 +25,7 @@ One JSON object per line (JSONL — no wrapping array, no pretty-print):
 | `event` | yes | `start` \| `end` \| `blocked` |
 | `detail` | no | one human-readable line (counts, blocker reason) |
 | `artifact` | no | path to the phase's primary output, when one exists |
+| `owner` | no | on `blocked` only: the exact command the owner runs to unblock — the `Blocked on owner:` line in the state report, journal and turn-ending reply is rendered from it (master § Hands-off mode) |
 
 ## Rules
 

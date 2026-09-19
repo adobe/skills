@@ -16,7 +16,7 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 | Setup 5–6 | status ledger; project hygiene (`stardust/.gitignore`, root `.gitignore`, `.hlxignore`, `git check-ignore`) | `state.json` must not be ignored | `stardust/status.jsonl`, `stardust/.gitignore` |
 | Routing | no arg / resume → state report; sub-skill keyword → delegate; migration ask → § Two migration flows; freeform → intent reasoning | plan shown before any command (hands-off: recorded instead) | `state.json` flow keys |
 | Freeform intent | § The "open and reasoned" principle, steps 1–6 | plan confirmation | `stardust/direction.md` |
-| Hands-off | gate auto-resolution table; volume caps; background waits; per-phase commits | quality gates unchanged; hard blockers still stop | `state.json.handsOff`, `direction.md` activation line, `status.jsonl` `blocked` |
+| Hands-off | gate auto-resolution table + decision defaults; transport preflight, privileged actions at Setup; volume caps; background waits; per-phase commits | quality gates unchanged; hard blockers still stop; denied privileged action → ask once, `Blocked on owner:` | `state.json.handsOff`, `direction.md` activation line, `status.jsonl` `blocked` (+ `owner`), `stardust/.work/env.json` |
 | Every write | provenance block; journal entry; validate-and-fix loop on human-facing HTML | clean validation pass | `stardust/journal.md`, `stardust/validation/<artifact>/<viewport>.png` |
 
 | at step | read |
@@ -27,7 +27,7 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 | Setup 6, Artifacts | `reference/artifact-map.md` § Versioning — what a clone holds · § Provenance shapes |
 | Routing (migration) | `reference/state-machine.md` § Flow keys |
 | Freeform intent | `reference/intent-reasoning.md` § Procedure · `reference/intent-dimensions.md` § Reading a phrase · `reference/impeccable-command-map.md` § Common sequences |
-| Hands-off | `reference/state-machine.md` § Hands-off keys · `reference/decisions.md` § How phases use it · § Default rows |
+| Hands-off | `reference/state-machine.md` § Hands-off keys · § State report · `reference/decisions.md` § How phases use it · § Default rows · `reference/harness-permissions.md` § Privileged-action preflight |
 | Per-page state | `reference/state-machine.md` § Page lifecycle states · § Stale flagging (content-aware) |
 | Journal | `reference/journal-format.md` § Entry format · § Reading the journal at session start |
 | Phase close / hand-off | `reference/handoff-report.md` § Gate table first · § Report check |
@@ -306,12 +306,17 @@ otherwise):
   read, and a tracked `.env` poisons every later push (GH013 + history
   rewrite at deploy time).
 
-- **A permission denial is not a blocker.** On the first denial print
-  the pre-approval snippet and the two facts of
-  `reference/harness-permissions.md` § Pre-approval, ask once, and
-  continue on unblocked work; a denied privileged action goes on the
-  `Blocked on owner:` line, a denied read or instrument is re-issued
-  once as a bare command.
+- **Transports and privileged actions first.** Probe every transport the
+  plan uses within the first minutes and run the register's privileged
+  actions (repo, Code Sync, first push, scratch preview) at Setup, never
+  after migrate — `reference/harness-permissions.md` § Privileged-action
+  preflight.
+- **A permission denial is not a blocker.** Ask exactly once (approve,
+  run `<command>`, or `stardust/.work/ship.sh` carries it), append
+  `event: "blocked"` with `owner: "<command>"`, continue on unblocked
+  work; the state report, journal entry and turn-ending reply lead with
+  `Blocked on owner:` while it is open. A denied read or instrument is
+  re-issued once as a bare command.
 
 **Hard blockers remain stops.** An unreachable source site, an
 expired `DA_TOKEN` that cannot be recovered, or a signal-absent brand

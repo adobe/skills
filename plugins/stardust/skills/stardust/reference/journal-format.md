@@ -44,7 +44,9 @@ See `skills/stardust/reference/journal-format.md` for entry format.
 ```
 
 The double-rule (`---`) at the end of each entry is mandatory — it makes
-diffs readable and gives the journal a visual scroll rhythm.
+diffs readable and gives the journal a visual scroll rhythm. While a
+`status.jsonl` `blocked` line with `owner` is open, the first line after
+the heading is `**Blocked on owner:** <command>` (`run-status.md`).
 
 ## What to include
 
