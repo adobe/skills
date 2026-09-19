@@ -140,11 +140,11 @@ capture is re-taken every iteration.
    add sticky strips with `--region strip=<liveSel>|<buildSel>`), pairs
    every text-bearing element by its text, and prints only what differs:
    family / size / weight / style / line-height / letter-spacing /
-   transform / colour / background / padding / radius, the element rect,
-   the clickable box of links and buttons, and the icon inventory
-   (count + size + signature, paired by order). Recorded: one run found
-   what many pixel-band rounds had not — weight, colour, offset,
-   button-size and icon deltas. Fix every delta, re-run until it is
+   transform / colour / background / padding / radius / list marker /
+   underline thickness, the element rect, the clickable box of links and
+   buttons (OCCLUDED when another element covers it), the current-page
+   marker (STATE) and the icon inventory (count + size + signature, paired
+   by order). Fix every delta, re-run until it is
    quiet (exit 0), THEN crop-compare — a pixel loop on chrome with parity
    deltas outstanding is wasted iterations. Each run is one live
    navigation (budget it like any live probe); `--json` records both
@@ -154,6 +154,10 @@ capture is re-taken every iteration.
    node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width $W \
      --region header=header --region footer=footer   # + --region strip=<sel>|<sel>
    ```
+
+   States: `--open <liveSel>|<buildSel>` per top-level trigger (opened
+   menus — EXTRA, PSEUDO, OCCLUDED) and `--scroll <y>` for sticky chrome
+   (STICKY) — one state per run, cached per state (`chrome-live-<state>.json`).
 
    **Multi-theme sites (a theme id on `html`/`body`, brand or product
    themes on one template): run `chrome-parity.mjs` on one themed page per
@@ -190,12 +194,9 @@ capture is re-taken every iteration.
 
    **Chrome crops are ELEMENT-ANCHORED per side, never fixed-y — and
    "chrome" means every site-wide repeating band: header, sticky/quick-link
-   strips, footer.** Recorded: header and quick-links strips measured 3–5×
-   the full-page number — chrome is small-area, highest-salience and
-   repeats on every page. Two traps: (a) a fixed-y crop
-   produces FALSE reads the moment either side's rhythm shifts — a 35px nav
-   fix moved everything below it and the strip crop read 66% while the strip
-   itself, re-anchored to its own band edges, was at 1.6%. Locate each
+   strips, footer.** Chrome is small-area, highest-salience and repeats on
+   every page. Two traps: (a) a fixed-y crop produces FALSE reads the moment
+   either side's rhythm shifts (a nav fix moves every strip below it). Locate each
    region on EACH side (its element rect via `anchor.mjs`, or its band
    edges via `row-profile.mjs`'s column scan) and pass both anchors
    (`--y`/`--y-b`); every gate round re-reads the anchors. (b) Regions whose
@@ -241,26 +242,27 @@ bands (`--band` to change); read them top-down:
   container (its margin becomes the section gap). Import-side rule: migrate
   `reference/importer-recipe.md` rule 8 points here.
 
-**The section-anchor probe names the section the band table only points
-at.** `../scripts/anchor.mjs` prints `[y, height]` per top-level section
-(+ footer + doc height), same shape on both sides:
+**Landmark table first — `gate.sh` prints it every round.**
+`../scripts/anchor.mjs --landmarks` pairs h1–h4 and CTAs by text, the first
+image per section and the footer; `--against <other-side.json>` prints
+`landmark | yA | yB | Δy | hA | hB | Δh`, then `first non-zero Δ: <landmark>
+(+N px, section <label>) — fix its section first` or `landmarks clean`
+(`--json-out` for the record; never an exit code). Fix the first non-zero Δ
+top-down (everything below is offset-contaminated), re-run pixels; open the
+band table only when the landmarks are clean or the remaining Δ are named
+residuals.
 
 ```bash
-node stardust/scripts/replica/anchor.mjs "$LIVE"  --width $W   # once per fix round at most (live hit)
-node stardust/scripts/replica/anchor.mjs "$PROTO" --width $W   # free — build-side only
+node stardust/scripts/replica/anchor.mjs "$LIVE"  --width $W --landmarks --cache $G/anchor-live.json    # one live hit per breakpoint
+node stardust/scripts/replica/anchor.mjs "$PROTO" --width $W --landmarks --against $G/anchor-live.json  # free — build side
 ```
 
-Diff the two outputs, fix the FIRST section whose `[y, height]` disagrees
-(top-down — everything below it is offset-contaminated, the same rule as
-the band table), re-run pixels. Field-validated: this loop roughly halved iterations vs band-reading alone. `../scripts/gate.sh`
-wraps one full pixel round (stitch both sides — live cached — + compare +
-verdict) in one command.
-
-Section-level compare (crops) is the escalation when a band stays hot and
-the cause isn't visible in `diff-iter<N>.png` — in the validated run it was
-prepared and never needed, because re-authoring hit exact section heights.
-`crop-compare.mjs` (the chrome-gate script, pass-bar item 5) does exactly
-this for any y-band, not just chrome.
+**Band-row legend** (`pixel-compare`, default on): `offset +48px (0.9)` is
+how many px side B is shifted in that band (confidence 0–1); `◄ seam` marks
+the band where the shift is introduced — name its section with the landmark
+table and fix it first; `—` is a flat band, no measurement; `◄◄ hot band`
+stays > 15 %. `crop-compare.mjs` (pass-bar item 5) is the full-resolution
+escalation for ONE named band; `review-<label>.png` is the round's one image.
 
 **Two row-level instruments replace eyeballing crops (`../scripts/row-profile.mjs`,
 runs over the same stitched PNGs — no live hit):**
@@ -269,10 +271,7 @@ runs over the same stitched PNGs — no live hit):**
   height, photo height, band start or card overlap, read the per-column
   class transitions (white / dark / brand / photo at N x positions) on the
   capture: `node stardust/scripts/replica/row-profile.mjs live.png proto.png
-  --columns 7`. Recorded: a stacked-crop visual read saw a photo with a
-  white band under it; the scan of the same capture proved the photo
-  full-bleed and the "band" an overlapping card — two build/measure cycles
-  lost. Crop eyeballing is hypothesis; the scan is the measurement.
+  --columns 7`. Crop eyeballing is hypothesis; the scan is the measurement.
 - **Brand-colour landmarks for vertical alignment.** Band percentages say
   WHERE diffs are, not by how many pixels sections are offset. When a
   saturated brand colour recurs in every section (CTA buttons are ideal),
@@ -281,8 +280,8 @@ runs over the same stitched PNGs — no live hit):**
   CHANGE in delta between consecutive pairs (`gapShift`) names the one
   inter-landmark CSS gap that absorbed the shift. Patch that gap, re-measure,
   top-down — the same contamination rule as the band table. Do not tune
-  margins by eye against crops. (Crop with pngjs; macOS `sips --cropOffset`
-  is unreliable for band crops.)
+  margins by eye against crops (`review-image.mjs --bands` / `crop-compare`,
+  never `sips`).
 
 ## Wide-viewport fluid check (fluid-vs-fixed is invisible at the gate widths, #116)
 
@@ -566,7 +565,7 @@ rather than erroring.
    ground truth (`recreation-procedure.md` § Capture-state); a probe flag
    over a logged capture-state zone is justified. A third-party widget with
    no close control (iframe/shadow-hosted chat, survey) is blocked at the
-   route, not eyeballed: `--block <host-substr,…>` on every live-session
+   route, not eyeballed: `--block <host-substr,…>` on every replica and diff
    instrument (`GATE_BLOCK` on `gate.sh`) — opt-in, host-substring, never
    the page's own origin, the SAME value on both sides: the sidecar records
    `blocked` and pixel-compare refuses an asymmetric pair. A consent-manager
@@ -599,8 +598,8 @@ rather than erroring.
     § Bot-management fallback (headless → `chrome-headless` →
     `chrome-headed-offscreen`); the instruments start at
     `_crawl-log.json#discovery.fetchTechnique` (`--headed` = tier 2,
-    `--headed=window` = tier 3) and stitch-shot asserts
-    `document.visibilityState === 'visible'` before it shoots. If tier 3
+    `--headed=window` = tier 3); stitch-shot WARNs when
+    `document.visibilityState` is not `visible` (read `pendingDecodes`). If tier 3
     is still blocked **the gate must not silently degrade** — record the
     breakpoint as gate-blocked in the ledger and surface it to the user; a
     gate that can't read the live source has no pass to report.
