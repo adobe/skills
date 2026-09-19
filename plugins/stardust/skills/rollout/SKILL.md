@@ -7,6 +7,42 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 
 # stardust:rollout — whole site → AEM (Edge Delivery Services)
 
+## Operator card
+
+Phases, in order: Setup → A Inventory → B Block dedup plan → B2 Dynamic surface → C Deliver → D Site assembly → D2 Dynamic features → D3 Multilingual (optional) → E Verify → E2 Link audit → F Optimize → G Autofix → H Report → I Dashboard.
+
+| Phase | Command |
+|---|---|
+| A | `node skills/rollout/scripts/inventory.mjs --site-url <source-url>` (archetypes-only: add `--state stardust/state.json`) |
+| B | `node skills/rollout/scripts/blocks.mjs`; `node skills/rollout/scripts/plan.mjs` |
+| B2 | `node skills/dynamics/scripts/dynamics-detect.mjs --from-state … --reach stardust/current`; `node skills/dynamics/scripts/dynamics-plan.mjs --target-origin <live host> --migrated stardust/migrated` |
+| C | per page: `node skills/rollout/scripts/delivery-lint.mjs --file <html> --path </da/path>`; `node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <host> [--apply]`; `node skills/rollout/scripts/section-fidelity.mjs --file <html> --source <url>`; `node skills/rollout/scripts/update-coverage.mjs <slug> --status <s>`; batches: `node skills/deploy/scripts/deploy-batch.mjs --org … --repo … --branch … --content <dir> [--concurrency 4]` |
+| D | `node skills/rollout/scripts/assemble.mjs` |
+| D2 | `node skills/dynamics/scripts/dynamics-check.mjs --origin <live host>` |
+| E / E2 | `node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>]`; `node skills/deploy/scripts/localize-links.mjs --source-host <live-host> --content content --redirects stardust/redirects.tsv [--check]` |
+| F | `node skills/rollout/scripts/optimize.mjs [--base <url> | --root <dir> | --slug <s> | --all]`; `node skills/rollout/scripts/findings.mjs record … / resolve <id> …` |
+| G | `node skills/rollout/scripts/autofix-aem.mjs --project <eds-root> [--dry-run] [--slug s] [--check c]` |
+| H | read `rollout.json.lastRun` + `optimize/scorecard.json`; write `stardust/learnings.md` |
+| I | `node skills/rollout/scripts/dashboard.mjs` |
+
+Gates: Setup — gated-archetype precondition under `flow: replica`. B2 — every dynamic row has a disposition. C — delivery-lint P0/P1 blocks the PUT; source-fidelity, image-fidelity, path-safety, source-content hygiene, fidelity tier declared; EW gate `block-roundtrip --ew`; foundation-first gate on the first deployed archetype. E — `verify.mjs` exits non-zero on any failed page; headless render check per template. E2 — `localize-links.mjs --check` exit 2 = links remain. F — `optimize.mjs` exits non-zero on any open in-scope P1.
+
+Outputs (under `stardust/rollout/`): `coverage/{pages,templates,blocks}.json` · `plan.json` · `rollout.json` · `optimize/{findings,scorecard}.json` · `site/{sitemap.xml,robots.txt,manifest.json}` · `dashboard/{index.html,data.json}`; plus `stardust/redirects.tsv`, `stardust/learnings.md`, EDS-project edits via autofix.
+
+| At phase | Read |
+|---|---|
+| Setup | `../stardust/reference/state-machine.md` § Flow keys; `../replica/reference/source-fidelity-gate.md` § Residual logging format |
+| A | `reference/coverage-model.md` § Files · § Page delivery status lifecycle · § Idempotency rules (inventory) |
+| B | `reference/coverage-model.md` § Block delivery status lifecycle · § Dedup contract (plan.json); `reference/operational-learnings.md` § Extending a delivered site |
+| B2 / D2 | `../dynamics/reference/triage.md` § Rules; `../dynamics/reference/listings.md` § Why it is a PRE-IMPORT gate · § Block contract; `../dynamics/reference/patterns.md`; `../dynamics/reference/parity-report.md` § Schema |
+| C | `reference/delivery-lint.md` § Run it · § Where it sits in Phase C; `reference/delivery-gates.md` § Gate 1 · § Gate 2 · § Gate 3 · § Gate 4 · § Batched delivery at scale; `../migrate/reference/fidelity-tiers.md` § Declaration (per page); `../migrate/reference/media-reconciliation.md` § The four decisions |
+| D3 | `reference/multilingual.md` |
+| E / E2 | `reference/coverage-model.md` § Verify; `reference/operational-learnings.md` § Two verify checks |
+| F / G | `reference/audit-sources.md` § The sources · § Recording an external finding · § Fixability → who fixes it · § AEM autofix registry · § The loop; `reference/checks.md`; `reference/coverage-model.md` § Optimize gate (findings lifecycle); `reference/operational-learnings.md` § Optimize-gate learnings |
+| H | `../stardust/reference/learnings.md` § Entry shape |
+
+Sections: When to use · Setup · Procedure · Inputs · Outputs · Dependencies · What rollout does NOT do · Scripts · References.
+
 `deploy` converts **one** page to AEM. `rollout` delivers the **whole site**: it
 inventories the agnostic output of `migrate`, then drives `deploy` across every
 page, tracking delivery coverage so you always know what's done and what's left.

@@ -7,6 +7,37 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 
 # stardust:prepare-migration
 
+## Operator card
+
+Phases, in order: Setup → 1 `extract --prep` → provenance guard → 2 `direct --prep` → 3 `prototype --prep` → 4 assets prep → 4.5 dynamic surface → final report. Resume: `--from <extract|direct|prototype|assets|dynamics>`; `--skip-confirm` skips the per-phase gates.
+
+| Phase | Command |
+|---|---|
+| 1 | invoke the `extract` skill with `--prep` (Claude Code form in the phase text) |
+| 1→2 | `validateProvenance(page)` on every inventory page; on failure `$stardust extract --refresh <slug>` per affected slug |
+| 2 | invoke the `direct` skill with `--prep` |
+| 3 | invoke the `prototype` skill with `--prep [--canon-from <slug>]` |
+| 4 | favicon variants + `@font-face` downloads + brand-asset audit (no underlying skill) |
+| 4.5 | `node skills/dynamics/scripts/dynamics-detect.mjs --from-state stardust/state.json --reach stardust/current`; `node skills/dynamics/scripts/dynamics-plan.mjs [--target-origin <host>]` |
+| `--refine-module <id>` | re-enter Phase 2's module-catalog step for one module, then stop |
+
+Gates: confirmation after every phase (`yes` / `refine "<phrase>"`; Phase 1 also `switch to replica`) · provenance guard aborts the cascade between 1 and 2 · Phase 4.5 passes when every row has a disposition ("none" is a valid pass).
+
+Outputs (written by the underlying skills): `state.json.pages[].type` · `current/pages/<slug>.json` § slots · `DESIGN.json.extensions.{modules[], colorReservations[], metadata, canon}` · `stardust/canon/` · `stardust/migrated/assets/{favicon-*, fonts/}` · `stardust/dynamic-features.md` + `-plan.md` · `helix-query.yaml`.
+
+| At phase | Read |
+|---|---|
+| Setup | `../stardust/reference/state-machine.md` § Flow keys; `../stardust/SKILL.md` § Two migration flows · § Hands-off mode |
+| 1 | `../extract/SKILL.md` § Prep mode |
+| 1→2 | `../stardust/reference/state-machine.md` § Provenance validation |
+| 2 | `../direct/SKILL.md` § Prep mode |
+| 3 | `../prototype/SKILL.md` § Prep mode; `../prototype/reference/canon-extraction.md` § The five extraction steps · § Conflict resolution on subsequent approvals |
+| 4.5 | `../dynamics/reference/triage.md` § Dispositions · § Rules · § `stardust/dynamic-features.md`; `../dynamics/reference/listings.md` § Why it is a PRE-IMPORT gate |
+| `--refine-module` | `../stardust/reference/state-machine.md` § Stale flagging (content-aware) |
+| Outputs | `../stardust/reference/artifact-map.md` § `DESIGN.json.extensions` · § `stardust/canon/` |
+
+Sections: Inputs · Setup · Procedure · Outputs · Failure modes · Concurrency · Idempotency · References.
+
 Orchestrate the migrate-prep cascade. When the user commits to
 migrating an existing site, this skill runs the upstream phases
 (`extract`, `direct`, `prototype`) in their `--prep` modes,
