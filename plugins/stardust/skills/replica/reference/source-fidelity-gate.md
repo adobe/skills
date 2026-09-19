@@ -78,12 +78,23 @@ redirects to a different locale per run is a nondeterministic source); on a
 bot-managed site that exits 3, escalate with `--headed` (§ Hardening rule 1).
 
 The live capture is taken ONCE per breakpoint per full gate run and reused
-across iterations — re-take it only if it is genuinely stale (site changed,
-capture hardening changed). This is a bot-block control, not just a cost
-note: content-diff + visual-diff each navigate the live URL per run, so a
-full 3-iter, 2-breakpoint gate is already ≈12–18 live hits, and hard-CDN
-sites (recorded: an Akamai-defended luggage retailer) escalate to an IP block after a handful.
-The prototype capture is re-taken every iteration.
+across iterations. **Freshness is an instrument, not a judgment**: `gate.sh`
+re-probes a reference older than `GATE_REF_MAX_AGE_H` (24 h; `--refresh`
+forces it) with ONE `anchor.mjs` hit and recaptures only on `LIVE DRIFT`
+(height beyond a noise-bounded threshold or a changed section count),
+invalidating `live.png`, `anchor-live.json` and `chrome-live.json` together
+— a stale reference is not a residual (§ Residual classes, `live-drift`)
+and the recapture round does not count against the cap. The gate dir's own
+capture is the only reference; never a POC or crawl screenshot. Add
+`--variance` (a second live hit, once per gate dir) for the published-origin
+gate and for the first round of an archetype whose dynamics inventory lists
+index-backed or personalised rows; never on hard-CDN sites. Its `noise floor`
+is printed beside the raw number and its hot bands offered as `--mask`
+suggestions — it is never subtracted and never moves the bar. This is a
+bot-block control, not just a cost note: content-diff + visual-diff each
+navigate the live URL per run, so a full 3-iter, 2-breakpoint gate is
+already ≈12–18 live hits, and hard-CDN sites escalate to an IP block after a handful. The prototype
+capture is re-taken every iteration.
 
 ## Pass bar (all five, per breakpoint)
 
@@ -242,8 +253,7 @@ node stardust/scripts/replica/anchor.mjs "$PROTO" --width $W   # free — build-
 
 Diff the two outputs, fix the FIRST section whose `[y, height]` disagrees
 (top-down — everything below it is offset-contaminated, the same rule as
-the band table), re-run pixels. Field-validated (a financial-services site, 8 pages): this
-loop roughly halved iterations vs band-reading alone. `../scripts/gate.sh`
+the band table), re-run pixels. Field-validated: this loop roughly halved iterations vs band-reading alone. `../scripts/gate.sh`
 wraps one full pixel round (stitch both sides — live cached — + compare +
 verdict) in one command.
 
@@ -305,6 +315,16 @@ discipline — convergence happened within 3 with the recreation procedure
 followed; more loops mean the inputs were wrong (values eyeballed instead of
 lifted, capture unhardened), and the fix is upstream, not a fourth loop.
 
+- **The cap is mechanical.** `gate.sh` counts the rounds from the round
+  records (`gate-<label>.json` with verdict PASS/FAIL, not excluded, not a
+  live-drift recapture; no-verdict rounds never count), labels rounds
+  `iter<k>` by default and stops at 3 with exit 6 before any capture.
+  `--over-cap <reason>` runs one more round with one of the regime labels
+  below, written to the record as `overCap`; `--invalidate <label> <fix>` is
+  the instrument-invalidated exclusion as a record field; `--record` copies
+  `iterations` and `result` into `progress.json` (`progress-record.mjs`).
+  The verdict line prints `iteration k/3` and `NO-OP` when the
+  differing-pixel count did not move.
 - Measure first (iteration 1 IS the map — do not pre-polish).
 - **Chrome: parity probe first, pixels second.** Before a chrome band's first
   pixel round, run `chrome-parity.mjs` and clear its deltas (§ Pass bar,
@@ -342,7 +362,7 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
 - Probe schedule per fix round: **pixels every round; content-diff +
   visual-diff at milestones** — iteration 1, after any fix that touched
   content or markup (not pure CSS values), and once at final. Across ~25
-  field fix rounds (financial-services site), pixel-only rounds never regressed structure
+  field fix rounds, pixel-only rounds never regressed structure
   once it passed, and each content/visual re-run costs 2 extra live
   navigations — against this doc's own hit-minimization rule. A fix that
   touched markup re-runs all three; a CSS-value fix re-runs pixels only.
@@ -358,9 +378,15 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   not a pass bar. Build-side anchor/computed-style passes never navigate
   the live origin and are FREE — the cap governs live-gate cycles, not
   measurement.
-- After iteration 3: log residuals (§ Residual logging) and move on. A
-  documented residual is a pass with an asterisk; an undocumented fourth
-  loop is scope creep.
+- **After iteration 3 an over-bar breakpoint is FAIL** unless every residual
+  is a named class (§ Residual classes) with an instrument artifact and an
+  `acceptedBy` (§ Residual logging format); log it and stop — hands-off
+  never approves an over-bar result (it may self-accept only the table's
+  permanent classes as `hands-off-policy:<class>`). An undocumented fourth
+  loop is scope creep; "eyeball matches" is never a verdict. Before calling
+  a hot band "ghosting", run `anchor.mjs` plus one computed-style probe on
+  the hot element. Per-row source inconsistency → register entry `R-nn`
+  (`preserve-direction.md` § 3), not a fourth round.
 - **Three named regimes end a loop early or sit outside the cap.** The
   label is the ledger's `overCap` reason; bars are unchanged in all
   three — a justified residual is never a pass.
@@ -401,7 +427,7 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   on an AEM site cost 5½ minutes of live settle per iteration, ×3
   iterations ×4 archetypes. On hard-CDN sites
   (Akamai-class), take the live captures with `--headed` and treat further
-  live hits as spent budget — the recorded failure mode (luggage retailer) was an
+  live hits as spent budget — the recorded failure mode was an
   IP-level block escalating within ~3–4 automated requests, after which
   iteration 2's numbers measure the block, not the site. A challenged
   headless run costs exactly **1** hit: `gotoLive` throws
@@ -428,7 +454,7 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   `sleep` of 5 minutes or more — the master skill's wait discipline.
 - **Media-density budget.** The ≤3-iteration convergence was validated on a
   typographic, low-image page (the retail home). Image-dense commerce homes
-  (recorded: a fashion retailer, ~130 imgs) spend iterations on media parity —
+  (recorded: ~130 imgs) spend iterations on media parity —
   populating grids, matching crops — before geometry work even starts.
   Budget accordingly: on a media-heavy page, image/media parity IS
   iteration 1's job; geometry starts at iteration 2.
@@ -458,7 +484,7 @@ rather than erroring.
    bot-manager fingerprints on the *absence* of those headers, not just the
    UA. All three instruments now send both by default via the shared
    `diff/scripts/live-session.mjs`; `--ua` overrides the UA string only.
-   The header set rides **document requests only** (F-B2, financial-services site):
+   The header set rides **document requests only** (F-B2):
    forcing it on every request makes cross-origin CORS-mode webfont fetches
    non-simple and kills them with `net::ERR_FAILED` — the capture then
    silently renders fallback type (see rule 14); bot managers fingerprint
@@ -505,7 +531,7 @@ rather than erroring.
    shared `dismissOverlays` (stitch-shot always; diff probes via
    `--dismiss`): (a) cookie consent (clicked accept; `--consent <sel>` /
    `--dismiss <sel,...>` for non-standard banners); (b) **timed
-   marketing/newsletter interstitials** — recorded (fashion retailer): an
+   marketing/newsletter interstitials** — recorded: an
    undismissed "Sign up, stay updated!" modal fired ~5–9s after load and
    baked a pixel-diff contributor into the LIVE capture, repeated at every
    chunk seam, that no prototype fidelity could null out. These fire on a
@@ -699,15 +725,17 @@ uncommented, unledgered edit is still a defect.
 
 The prototype gate above proves the RECREATION; it does not prove the
 DELIVERED page. Local render harnesses systematically understate deltas
-because the real delivery pipeline transforms the markup — field rule
-(financial-services site, 8 pages published): a page gating at X% on the harness lands
+because the real delivery pipeline transforms the markup — field rule: a page gating at X% on the harness lands
 at X±(large) on the published origin until the transforms below are
 handled. **Only the published-origin number counts as the final gate** for
 a platform-delivered page: re-run the full gate (same instruments, same
 pass bar, same iteration discipline) with the live site as source and the
 published page — preview or live origin — as build. Judge the result in the
 published-origin regime (§ Pass bar, calibration honesty), not against
-prototype-regime numbers.
+prototype-regime numbers. It runs at **every configured breakpoint**: a
+breakpoint without a published-origin number is `ungated` in the ledger
+(`published.<bp>` absent, § Residual logging format) and in every report —
+never passed, never inherited from the prototype number.
 
 Before the final run: `skills/deploy/scripts/served-check.mjs <asset-url> --grep
 <marker> --wait 180` exits 0 for every asset the round touched and the page
@@ -724,6 +752,9 @@ marker — `../../deploy/reference/deployed-reconcile.md` § The six reconcile c
   header/footer elements) against the live origin, never the crawl
   snapshot; mask live-content drift (campaign creatives, promo slots) out
   of the fidelity number — it is authored content, not conversion fidelity.
+  Run the round with `--refresh --variance`: the drift probe decides
+  whether the reference is recaptured, the self-noise floor tells a rotating
+  campaign slot from a conversion defect before any CSS round is spent.
 - **Budget ONE anchors-driven reconcile round at the published origin.** The
   pipeline shifts vertical rhythm (section wrappers, `<p><picture>`,
   fragment chrome): a gate-passed 8.4% prototype first published at 11.75%,
@@ -793,15 +824,31 @@ reference dates get mixed up.
         { "probe": "content", "flag": "🟠 font fork ×2", "why": "licensed kit substituted, R-policy fonts", "permanent": true }
       ],
       "residuals": [
-        { "band": "y 4500–5000", "pct": 6.2, "cause": "capture-state", "what": "3 CDN-403 placeholder tiles", "flaggedFor": "delivery" },
-        { "region": "footer", "pct": 4.8, "cause": "glyph-antialiasing", "parity": "gates/home-1440/chrome-parity-iter3.json", "texture": { "thickPct": 6.1 }, "flaggedFor": "user" }
+        { "band": "y 4500–5000", "pct": 6.2, "cause": "capture-state", "what": "3 CDN-403 placeholder tiles", "flaggedFor": "delivery",
+          "artifacts": [ "gates/home-1440/diff-iter3.png", "gates/home-1440/anchor-iter3.txt" ], "acceptedBy": "user" },
+        { "region": "footer", "pct": 4.8, "cause": "glyph-antialiasing", "parity": "gates/home-1440/chrome-parity-iter3.json", "texture": { "thickPct": 6.1 }, "flaggedFor": "user",
+          "artifacts": [ "gates/home-1440/chrome-parity-iter3.json", "gates/home-1440/crop-footer-iter3.json" ], "acceptedBy": "hands-off-policy:glyph-antialiasing" }
       ],
       "captureState": [ { "what": "product tiles 4–6 on placeholder data-URIs", "where": "carousel-2" } ]
     },
     "360": { "...": "..." }
+  },
+  "published": {
+    "1440": { "result": { "regime": "published-origin", "pixelPct": 6.5, "heightDelta": 2, "pass": true, "ref": { "...": "..." } },
+              "url": "https://<branch>--<repo>--<org>.aem.page/", "artifacts": [ "gates/home-1440/gate-pub1.json" ] }
   }
 }
 ```
+
+`iterations` and `result` come from `gate.sh --record` (it counts the
+rounds from the round records and copies `pass`, never typed). Every
+residual carries `artifacts[]`
+(the instrument outputs that show it) and `acceptedBy`: `user`,
+`register:R-nn`, or `hands-off-policy:<class>` — the last only for the
+table's **permanent** classes; an entry missing either is invalid and the
+breakpoint is FAIL. `published.<bp>` holds the published-origin result per
+breakpoint (§ The published-origin gate); a breakpoint absent there is
+`ungated` — reported as such, never as passed.
 
 `result` fields: `regime` — `prototype` (standalone prototype vs live) or
 `published-origin` (delivered page vs live, § The published-origin gate);

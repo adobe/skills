@@ -422,7 +422,17 @@ verbatim** — this is precisely the step agents skip when unprompted.
 static classes or CSS rules.** Run `../scripts/motion-observe.mjs` ONCE per
 archetype live URL (full down+up scroll traversal; `--click` each
 carousel/widget control; `--hover` each distinct card/teaser/button
-family; reuse the JSON — observation costs live hits like any probe).
+family; `--triggers auto` for the page's own toggles — menus, tabs,
+accordions, `<summary>`; `--width 360` for the drawer; reuse the JSON —
+observation costs live hits like any probe). The motion inventory has two
+REQUIRED lines beyond the class log: **entrance reveals** — `entrances[]`
+(per element family: first/last inline opacity/transform, first y,
+duration; a tween library writes inline style, not classes) and **state
+machines** — `stateMachines[]` (aria-expanded/aria-hidden/hidden/open/
+data-state toggles and re-parented menus, each paired to the click that
+fired it and its `aria-controls` target's display before/after). A hover
+probe that reports `hovered:false` (`no-box`, `intercepted`) is not
+evidence of a dead hover — fix the probe target and re-run.
 Implement ONLY behaviors that measurably fired, with the recorded trigger
 mechanism, durations, and thresholds. Static source CSS is then the
 authority for the exact keyframe/easing VALUES of those fired animations.

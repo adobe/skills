@@ -5,12 +5,54 @@
 # minimization, source-fidelity-gate.md § Iteration discipline), runs
 # pixel-compare, and prints the verdict lines that drive the loop (size /
 # height delta / differing % / hot bands). The prototype/build side is
-# re-captured every round; the live side only when live.png is absent —
-# delete it explicitly to re-take (site changed, capture hardening changed).
+# re-captured every round; the live side only when live.png is absent, has
+# no sidecar, or the freshness probe below finds LIVE DRIFT (delete it
+# explicitly when capture hardening changed).
 #
 # Usage:
 #   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label] \
-#     [--marker <string>] [--live-from-capture <png>] [--regime prototype|published-origin]
+#     [--marker <string>] [--live-from-capture <png>] [--regime prototype|published-origin] \
+#     [--refresh] [--variance] \
+#     [--over-cap <source-inconsistent|separate-composition|canon-followup|instrument-invalidated>] \
+#     [--invalidate <label> <fix>] [--record]
+#
+#   --refresh   force the live-drift probe on a cached live.png (one anchor.mjs
+#     hit) instead of waiting for the reference to age past GATE_REF_MAX_AGE_H.
+#   --variance  live self-noise grade, once per gate dir: a SECOND live capture
+#     (live-b.png) compared against live.png → variance.json; prints
+#     `noise floor N %` and the hot bands as --mask suggestions. Opt-in: it is
+#     a second live hit per breakpoint — the doc names the two triggers
+#     (published-origin gate; first round of an archetype whose dynamics
+#     inventory lists index-backed/personalised rows) and says never on
+#     hard-CDN sites. The floor is PRINTED beside the raw number every later
+#     round and recorded as noiseFloor{}; it is never subtracted from it and
+#     never moves the bar. variance.json carries gradedAgainst (the capturedAt
+#     of the live.png it was graded on): after a LIVE DRIFT recapture the floor
+#     survives (no extra hit) but prints `(graded against the <date>
+#     reference)` and the record says stale: true; a later explicit --variance
+#     re-grades it against the new reference.
+#
+# Reference freshness (instrument, not prose): a stale reference is not a
+# residual (field: a one-day-old reference read 5 % where a fresh one read
+# 31 %; a campaign hero rotated three times in four days). When live.png is
+# older than GATE_REF_MAX_AGE_H hours (default 24; sidecar capturedAt, else
+# mtime, else the last freshness check) or --refresh is given, ONE fresh
+# anchor.mjs --json probe (never --cache — a cache hit is zero live hits and
+# nothing to compare) is compared against the sidecar docHeight / cached
+# anchor-live.json. Over the bounded threshold
+#   |Δh| > max(1 % of height, GATE_DRIFT_PX (default 24), recorded self-noise Δh)
+#   OR the top-level section count changed
+# the round prints `LIVE DRIFT Δh <px> sections <a→b> — recapturing`, deletes
+# ALL THREE live caches together (live.png + .json, anchor-live.json,
+# chrome-live.json — a recaptured PNG next to a stale chrome/anchor cache is
+# the mixed-reference bug one level down), stores the fresh probe as the new
+# anchor-live.json (the hit is not wasted) and records liveDrift{} in the
+# round record. A probe that hits its deadline (124) or is blocked skips the
+# check with a printed reason — never a FAIL, never a recapture. The bounded
+# threshold is what keeps one live.png per breakpoint as the round's truth on
+# pages whose height varies ±700 px between loads; without it every round
+# would recapture. Below the threshold the check is recorded in
+# freshness.json so the probe is not repeated every round.
 #
 #   --live-from-capture <png>  use an EXTRACT capture as the live reference
 #     instead of stitching live (bot-walled sites where only the extraction's
@@ -29,7 +71,9 @@
 #
 # Evidence lands in stardust/replica/gates/<slug>-<width>/
 # (live.png, build.png, diff-<label>.png, review-<label>.png, gate-<label>.json,
-# anchor-live.json, anchor-live.skip, landmarks-<label>.json).
+# anchor-live.json, anchor-live.skip, landmarks-<label>.json; freshness.json
+# after a within-threshold drift check; live-b.png + variance.json after
+# --variance).
 # review-<label>.png is the round's ONE image to read: the 3 worst bands as
 # [live | build] rows with a diff heat bar (pixel-compare --review); open a
 # full-resolution band only via crop-compare --out.
@@ -54,8 +98,27 @@
 # --consent <sel> via the crawl log's consent.method, or GATE_ALLOW_CONSENT=1;
 # live settled height < 40 % of the crawl screenshot's after one retry;
 # error-boundary page; an overlay still covering > 30 % of the first
-# viewport — the partial PNG is removed, nothing is cached), 124 instrument
-# deadline exceeded (not a measurement — see below).
+# viewport — the partial PNG is removed, nothing is cached), 6 cap reached (3
+# counted rounds — decide: residual / register / --over-cap; nothing ran),
+# 124 instrument deadline exceeded (not a measurement — see below), 125 bad
+# argument / duplicate label.
+#
+# Iteration cap (source-fidelity-gate.md § Iteration discipline), mechanical:
+# the count is DERIVED from the round records in the gate dir — a record
+# counts when its verdict is PASS or FAIL and it is neither excluded nor a
+# live-drift recapture; no-verdict rounds never count. The default label is
+# iter<count+1> (next free), an explicit label that already exists is refused
+# (exit 125). At 3 counted rounds the script exits 6 BEFORE any capture.
+#   --over-cap <source-inconsistent|separate-composition|canon-followup|instrument-invalidated>
+#       run one more round; the reason is written to the record as overCap
+#       (the ledger's overCap vocabulary). Bars unchanged — never a pass.
+#   --invalidate <label> <fix>   mark a record excluded {reason, ts} (the
+#       instrument-invalidated exclusion) and print the new count; runs nothing.
+#   --record   after the round, upsert progress.json via progress-record.mjs
+#       (iterations, result{pixelPct, pixelPctUnmasked, heightDelta, pass},
+#       overCap, record path) for the page type whose archetype is <slug>.
+# The verdict line gains `iteration k/3` and `NO-OP` when the differing-pixel
+# count equals the previous counted round's (the fix never applied).
 #
 # Comparable captures (gate doc § Hardening rule 15): both sides are taken by
 # stitch-shot with the same width, vh, dpr and CONSENT MODE, and each PNG
@@ -88,29 +151,93 @@
 #                        an asymmetric pair, so the gate is the only safe place)
 set -u
 
-SLUG=${1:?usage: gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>] [--live-from-capture <png>] [--regime prototype|published-origin]}
+USAGE="usage: gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>] [--live-from-capture <png>] [--regime prototype|published-origin] [--refresh] [--variance] [--over-cap <reason>] [--invalidate <label> <fix>] [--record]"
+OVER_CAP_REASONS="source-inconsistent separate-composition canon-followup instrument-invalidated"
+case "${1:-}" in --help|-h) sed -n '2,/^set -u/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; exit 0 ;; esac
+SLUG=${1:?$USAGE}
 LIVE_URL=${2:?missing <live-url>}
 BUILD_URL=${3:?missing <build-url>}
 W=${4:?missing <width>}
 shift 4
-LBL=iter
+LBL=""
 case "${1:-}" in ''|--*) ;; *) LBL=$1; shift ;; esac
 MARKER="$SLUG"
 FROM_CAPTURE=""
 REGIME_OVERRIDE=""
+REFRESH=""
+VARIANCE=""
+OVER_CAP=""
+INVALIDATE_LBL=""
+INVALIDATE_FIX=""
+RECORD=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --marker) MARKER=${2:?--marker needs a value}; shift 2 ;;
     --live-from-capture) FROM_CAPTURE=${2:?--live-from-capture needs a <png>}; shift 2 ;;
     --regime) REGIME_OVERRIDE=${2:?--regime needs prototype|published-origin}; shift 2
       case "$REGIME_OVERRIDE" in prototype|published-origin) ;; *) echo "gate.sh: --regime must be prototype or published-origin (got $REGIME_OVERRIDE)" >&2; exit 125 ;; esac ;;
-    *) echo "gate.sh: unknown argument $1 (usage: gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>] [--live-from-capture <png>] [--regime prototype|published-origin])" >&2; exit 125 ;;
+    --refresh) REFRESH=1; shift ;;
+    --variance) VARIANCE=1; shift ;;
+    --over-cap) OVER_CAP=${2:?--over-cap needs a reason: $OVER_CAP_REASONS}; shift 2
+      case " $OVER_CAP_REASONS " in *" $OVER_CAP "*) ;; *) echo "gate.sh: --over-cap must be one of: $OVER_CAP_REASONS (got $OVER_CAP) — the regime labels of source-fidelity-gate.md § Iteration discipline" >&2; exit 125 ;; esac ;;
+    --invalidate) INVALIDATE_LBL=${2:?--invalidate needs <label> <instrument-fix>}; INVALIDATE_FIX=${3:?--invalidate needs the instrument fix that names why <label> measured a defect}; shift 3 ;;
+    --record) RECORD=1; shift ;;
+    *) echo "gate.sh: unknown argument $1 ($USAGE)" >&2; exit 125 ;;
   esac
 done
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 DIR="stardust/replica/gates/$SLUG-$W"
 mkdir -p "$DIR"
+
+# Iteration count — DERIVED from the round records, never kept in a counter
+# file: a round counts when its record has verdict PASS or FAIL and is
+# neither excluded (--invalidate) nor a live-drift recapture round. No-verdict
+# rounds (exit 124/3/5) never count. Prints "<count> <excluded> <labels…>".
+count_rounds() {
+  node -e '
+const fs = require("fs"); const dir = process.argv[1];
+const recs = fs.readdirSync(dir).filter((f) => /^gate-.*\.json$/.test(f)).map((f) => { try { return { f, j: JSON.parse(fs.readFileSync(`${dir}/${f}`, "utf8")) }; } catch { return null; } }).filter(Boolean);
+const counted = recs.filter(({ j }) => ["PASS", "FAIL"].includes(j.verdict) && !j.excluded && !j.liveDrift);
+const excluded = recs.filter(({ j }) => j.excluded).length;
+process.stdout.write(`${counted.length} ${excluded} ${recs.map(({ f }) => f.replace(/^gate-|\.json$/g, "")).join(" ")}`);
+' "$DIR"
+}
+set -- $(count_rounds)
+COUNT=${1:-0}; EXCLUDED=${2:-0}; shift 2 2>/dev/null; EXISTING=" $* "
+
+# --invalidate <label> <fix>: the instrument-invalidated exclusion of the gate
+# doc as a record field — nothing is captured or compared.
+if [ -n "$INVALIDATE_LBL" ]; then
+  [ -f "$DIR/gate-$INVALIDATE_LBL.json" ] || { echo "gate.sh: --invalidate: no record $DIR/gate-$INVALIDATE_LBL.json (rounds on disk:$EXISTING)" >&2; exit 1; }
+  node -e '
+const fs = require("fs"); const [p, fix] = process.argv.slice(1);
+const j = JSON.parse(fs.readFileSync(p, "utf8")); j.excluded = { reason: fix, ts: new Date().toISOString() };
+fs.writeFileSync(p, `${JSON.stringify(j, null, 2)}\n`);
+' "$DIR/gate-$INVALIDATE_LBL.json" "$INVALIDATE_FIX"
+  set -- $(count_rounds)
+  echo "gate.sh: round $INVALIDATE_LBL excluded from the cap (instrument-invalidated: $INVALIDATE_FIX) — counted rounds now ${1:-0}/3 (excluded: ${2:-0}). Name the same fix in the ledger."
+  exit 0
+fi
+
+# Default label iter<k>: the next free number from count+1, so records never
+# collide (a shared default label overwrote every round and the count read 1).
+# An explicit label that already exists is refused — re-marking is --invalidate.
+if [ -z "$LBL" ]; then
+  n=$((COUNT + 1)); while case "$EXISTING" in *" iter$n "*) true ;; *) false ;; esac; do n=$((n + 1)); done; LBL="iter$n"
+elif case "$EXISTING" in *" $LBL "*) true ;; *) false ;; esac; then
+  echo "gate.sh: a round labelled $LBL already exists in $DIR — pick a new label (default: iter$((COUNT + 1))) or --invalidate $LBL <fix> to exclude it" >&2; exit 125
+fi
+
+# Hard cap 3 (source-fidelity-gate.md § Iteration discipline) — fires BEFORE
+# any capture so the stop costs nothing and the live cache is untouched. Exit
+# 6 = "cap reached — decide": never a FAIL, never a measurement.
+if [ "$COUNT" -ge 3 ] && [ -z "$OVER_CAP" ]; then
+  echo "gate.sh: cap reached: $COUNT/3 counted rounds in $DIR (excluded: $EXCLUDED; rounds:$EXISTING) — no round run." >&2
+  echo "gate.sh: decide: log a named residual (source-fidelity-gate.md § Residual logging format, § Residual classes) or open a register entry (preserve-direction.md § 3); to run another round: --over-cap <${OVER_CAP_REASONS// /|}> (written to the record as overCap); a round that measured an instrument defect: --invalidate <label> <fix>." >&2
+  exit 6
+fi
+[ -n "$OVER_CAP" ] && echo "gate.sh: over-cap round $LBL (reason $OVER_CAP — counted rounds so far $COUNT/3); bars unchanged, the reason lands in the record as overCap"
 
 STITCH_TIMEOUT=${GATE_STITCH_TIMEOUT:-300}
 CONSENT_MODE=${GATE_CONSENT_MODE:-}
@@ -209,6 +336,71 @@ if [ -f "$DIR/live.png.json" ] && [ -n "$STITCH_VER" ] && [ -z "$FORCE" ]; then
     rm -f "$DIR/live.png" "$DIR/live.png.json" "$DIR/anchor-live.json" "$DIR/anchor-live.skip"
   fi
 fi
+# Reference freshness (see header): probe only when the cached reference is
+# older than GATE_REF_MAX_AGE_H or --refresh asked; never on an imported
+# extract capture (there is no live page it claims to equal).
+DRIFT_JSON=""
+if [ -f "$DIR/live.png" ] && [ -z "$FORCE" ]; then
+  REF_MAX_AGE_H=${GATE_REF_MAX_AGE_H:-24}
+  STALE=$(node - "$DIR/live.png" "$REF_MAX_AGE_H" "${REFRESH:-0}" <<'NODE'
+const fs = require('fs');
+const [live, maxH, refresh] = process.argv.slice(2);
+const read = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } };
+const side = read(`${live}.json`);
+const fresh = read(`${live.replace(/live\.png$/, 'freshness.json')}`);
+const capturedAt = side?.capturedAt || fs.statSync(live).mtime.toISOString();
+const last = [capturedAt, fresh?.checkedAt].filter(Boolean).map((t) => Date.parse(t)).filter(Number.isFinite);
+const ageH = (Date.now() - Math.max(...last)) / 36e5;
+process.stdout.write(refresh === '1' || ageH > Number(maxH) ? `stale ${ageH.toFixed(1)}` : `fresh ${ageH.toFixed(1)}`);
+NODE
+)
+  case "$STALE" in
+    stale*)
+      echo "gate.sh: reference $DIR/live.png is ${STALE#stale } h old${REFRESH:+ (--refresh)} — one fresh anchor probe to check for live drift" >&2
+      PROBE="$DIR/.anchor-probe.json"
+      # shellcheck disable=SC2086
+      capped "$STITCH_TIMEOUT" "anchor probe live $SLUG@$W" node "$HERE/anchor.mjs" "$LIVE_URL" --width "$W" --json --consent-mode "$CONSENT_MODE" ${GATE_BLOCK:+--block $GATE_BLOCK} > "$PROBE"
+      prc=$?
+      if [ $prc -ne 0 ]; then
+        echo "gate.sh: drift check skipped — anchor probe exit $prc ($([ $prc -eq 124 ] && echo 'deadline, no verdict' || echo 'blocked/error')); comparing against the cached reference as-is" >&2
+        rm -f "$PROBE"
+      else
+        DRIFT_JSON=$(node - "$DIR" "$PROBE" "$LIVE_URL" "$W" "${GATE_DRIFT_PX:-24}" <<'NODE'
+const fs = require('fs');
+const [dir, probePath, url, width, driftPx] = process.argv.slice(2);
+const read = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } };
+const probe = read(probePath);
+const side = read(`${dir}/live.png.json`);
+const cache = read(`${dir}/anchor-live.json`);
+const variance = read(`${dir}/variance.json`);
+const docBefore = side?.docHeight ?? cache?.data?.doc ?? null;
+const sectionsBefore = cache?.data?.sections?.length ?? null;
+const docAfter = probe?.doc ?? null;
+const sectionsAfter = Array.isArray(probe?.sections) ? probe.sections.length : null;
+const out = { checkedAt: new Date().toISOString(), previousCapturedAt: side?.capturedAt || fs.statSync(`${dir}/live.png`).mtime.toISOString(), docBefore, docAfter, sectionsBefore, sectionsAfter, drift: false };
+if (docBefore == null || docAfter == null) { out.skipped = 'no reference height (sidecar docHeight / anchor-live.json)'; }
+else {
+  const noise = Math.abs(Number(variance?.heightDelta) || 0);
+  out.thresholdPx = Math.max(Math.round(docBefore / 100), Number(driftPx) || 0, noise);
+  out.deltaPx = docAfter - docBefore;
+  out.drift = Math.abs(out.deltaPx) > out.thresholdPx || (sectionsBefore != null && sectionsAfter != null && sectionsBefore !== sectionsAfter);
+}
+if (out.drift) {
+  for (const f of ['live.png', 'live.png.json', 'anchor-live.json', 'chrome-live.json', 'freshness.json']) fs.rmSync(`${dir}/${f}`, { force: true });
+  fs.writeFileSync(`${dir}/anchor-live.json`, `${JSON.stringify({ key: { url, width: Number(width), main: probe.main || 'main' }, probedAt: out.checkedAt, data: { doc: probe.doc, rootMissing: probe.rootMissing, rootWrapsChrome: probe.rootWrapsChrome, sections: probe.sections, footer: probe.footer } }, null, 2)}\n`);
+  console.error(`gate.sh: LIVE DRIFT Δh ${out.deltaPx > 0 ? '+' : ''}${out.deltaPx}px (threshold ${out.thresholdPx}px) sections ${sectionsBefore ?? '?'}→${sectionsAfter ?? '?'} — recapturing live.png; anchor-live.json and chrome-live.json invalidated together (a stale reference is not a residual — this round does not count against the cap)`);
+} else {
+  fs.writeFileSync(`${dir}/freshness.json`, `${JSON.stringify(out, null, 2)}\n`);
+  console.error(out.skipped ? `gate.sh: drift check inconclusive — ${out.skipped}; keeping the reference` : `gate.sh: reference fresh-checked — Δh ${out.deltaPx > 0 ? '+' : ''}${out.deltaPx}px within ${out.thresholdPx}px${sectionsAfter != null ? `, ${sectionsAfter} sections` : ''}; keeping live.png`);
+}
+fs.rmSync(probePath, { force: true });
+process.stdout.write(JSON.stringify(out));
+NODE
+)
+      fi ;;
+  esac
+fi
+
 # Short-capture guard for the LIVE side: when the extract crawl's screenshot
 # of this page exists, its height (PNG IHDR, no deps) is the expectation —
 # a valid capture at any width is never < 40 % of it (a 360 page reflows
@@ -227,6 +419,46 @@ if [ ! -f "$DIR/live.png" ]; then
   [ $rc -eq 124 ] && rm -f "$DIR/live.png" "$DIR/live.png.json"   # never leave a partial live capture to be reused
   [ $rc -eq 5 ] && { rm -f "$DIR/live.png" "$DIR/live.png.json"; echo "gate.sh: live capture INVALID (exit 5: short capture / overlay / error page / consent not deniable) — not a verdict, never a FAIL; nothing cached" >&2; exit 5; }
   [ $rc -ne 0 ] && { echo "gate.sh: live capture failed (exit $rc) — not comparing" >&2; exit $rc; }
+fi
+
+# --variance: live self-noise grade, once per gate dir (second live hit —
+# opt-in, see header). Compared with the same instrument settings as the
+# reference; its number is a floor to READ, never a bar to move.
+# A floor graded against a reference that LIVE DRIFT has since recaptured is
+# stale: it is kept (no extra hit) and flagged; an explicit --variance re-grades.
+VAR_STALE=$(node -e '
+const fs = require("fs"); const read = (p) => { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; } };
+const v = read(`${process.argv[1]}/variance.json`); const side = read(`${process.argv[1]}/live.png.json`);
+process.stdout.write(v && v.gradedAgainst && side && side.capturedAt && v.gradedAgainst !== side.capturedAt ? v.gradedAgainst : "");
+' "$DIR" 2>/dev/null)
+if [ -n "$VARIANCE" ] && [ -z "$FORCE" ] && { [ ! -f "$DIR/variance.json" ] || [ -n "$VAR_STALE" ]; }; then
+  [ -n "$VAR_STALE" ] && echo "gate.sh: noise floor was graded against the $VAR_STALE reference (recaptured since) — re-grading" >&2
+  capped "$STITCH_TIMEOUT" "stitch-shot live-b $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live-b.png" --width "$W" --settle --consent-mode "$CONSENT_MODE"
+  vrc=$?
+  if [ $vrc -ne 0 ]; then
+    rm -f "$DIR/live-b.png" "$DIR/live-b.png.json"
+    echo "gate.sh: variance capture failed (exit $vrc) — no noise floor recorded this round" >&2
+  else
+    node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/live-b.png" --out "$DIR/variance-diff.png" --timeout "$COMPARE_TIMEOUT" --json-out "$DIR/variance.json" > /dev/null
+    vrc=$?
+    if [ $vrc -eq 124 ] || [ ! -f "$DIR/variance.json" ]; then rm -f "$DIR/variance.json"; echo "gate.sh: variance compare gave no verdict (exit $vrc) — no noise floor recorded" >&2
+    else
+      # stamp the reference the floor was graded against (sidecar capturedAt, else live.png mtime)
+      node -e '
+const fs = require("fs"); const [vp, live] = process.argv.slice(1); const read = (p) => { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; } };
+const v = JSON.parse(fs.readFileSync(vp, "utf8")); v.gradedAgainst = (read(`${live}.json`) || {}).capturedAt || fs.statSync(live).mtime.toISOString(); v.gradedAt = new Date().toISOString();
+fs.writeFileSync(vp, `${JSON.stringify(v, null, 2)}\n`);
+' "$DIR/variance.json" "$DIR/live.png"
+      VAR_STALE=""
+    fi
+  fi
+fi
+if [ -f "$DIR/variance.json" ]; then
+  node -e '
+const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); const stale = process.argv[2];
+const hot = (j.bands || []).filter((b) => b.pct >= 0.5).sort((a, b) => b.pct - a.pct).slice(0, 5);
+console.log(`noise floor ${j.pixelPct} % (live vs itself, Δh ${j.heightDelta}px)${hot.length ? ` — hot bands ${hot.map((b) => `y ${b.y0}–${b.y1} ${b.pct}%`).join(", ")}; mask suggestions: ${hot.map((b) => `--mask ${b.y0}:${b.y1 - b.y0}`).join(" ")}` : ""} — a floor to read beside the raw number, never subtracted from it${stale ? ` (graded against the ${stale} reference — recaptured since; --variance re-grades)` : ""}`);
+' "$DIR/variance.json" "$VAR_STALE"
 fi
 
 # Build side: re-captured every iteration.
@@ -280,6 +512,10 @@ fi
 # shellcheck disable=SC2086
 node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --review "$DIR/review-$LBL.png" --timeout "$COMPARE_TIMEOUT" --json-out "$DIR/gate-$LBL.json" $FORCE
 rc=$?
+# A compare that produced no summary (deadline, incomparable pair) still
+# leaves a no-verdict record: the attempt is on the audit trail, its label is
+# taken, and it never counts against the cap.
+[ -f "$DIR/gate-$LBL.json" ] || printf '{}\n' > "$DIR/gate-$LBL.json"
 
 # Round record: regime + reference + verdict are EMITTED here (see header) so
 # the ledger copies them. capturedAt comes from the live capture's own
@@ -291,20 +527,43 @@ case "$BUILD_URL" in
 esac
 REGIME=${REGIME_OVERRIDE:-$REGIME}
 if [ -f "$DIR/gate-$LBL.json" ]; then
-  node - "$DIR/gate-$LBL.json" "$DIR/live.png" "$SLUG" "$LBL" "$W" "$LIVE_URL" "$BUILD_URL" "$REGIME" "$rc" "$DIR/landmarks-$LBL.json" <<'NODE'
+  GATE_DRIFT_JSON="$DRIFT_JSON" GATE_COUNT="$COUNT" GATE_OVER_CAP="$OVER_CAP" node - "$DIR/gate-$LBL.json" "$DIR/live.png" "$SLUG" "$LBL" "$W" "$LIVE_URL" "$BUILD_URL" "$REGIME" "$rc" "$DIR/landmarks-$LBL.json" <<'NODE'
 const fs = require('fs');
 const [rec, live, slug, label, width, liveUrl, buildUrl, regime, rcStr, lmFile] = process.argv.slice(2);
 const rc = Number(rcStr);
+const read = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } };
 const j = JSON.parse(fs.readFileSync(rec, 'utf8'));
 // landmark table (anchor.mjs --landmarks --against): rows, unpaired, firstDelta — absent when skipped/unavailable
 let landmarks = null; try { const lm = JSON.parse(fs.readFileSync(lmFile, 'utf8')); if (lm.pair) landmarks = { rows: lm.pair.rows, unpaired: lm.pair.unpaired, firstDelta: lm.pair.firstDelta, clean: lm.pair.clean }; } catch { /* no table this round */ }
-let side = null; try { side = JSON.parse(fs.readFileSync(`${live}.json`, 'utf8')); } catch { /* no sidecar: mtime */ }
+const side = read(`${live}.json`); // no sidecar: mtime
 const capturedAt = side?.capturedAt || fs.statSync(live).mtime.toISOString();
-const out = { slug, label, width: Number(width), regime,
+const dir = rec.replace(/\/[^/]+$/, '');
+let drift = null; try { drift = process.env.GATE_DRIFT_JSON ? JSON.parse(process.env.GATE_DRIFT_JSON) : null; } catch { drift = null; }
+const variance = read(`${dir}/variance.json`);
+const prev = fs.readdirSync(dir).filter((f) => /^gate-.*\.json$/.test(f) && f !== rec.replace(/^.*\//, '')).map((f) => read(`${dir}/${f}`)).filter((r) => r && ['PASS', 'FAIL'].includes(r.verdict) && !r.excluded && !r.liveDrift).sort((a, b) => String(a.at || '').localeCompare(String(b.at || ''))).pop() || null;
+const counts = ['PASS', 'FAIL'].includes(rc === 0 ? 'PASS' : rc === 2 ? 'FAIL' : 'no-verdict') && !drift?.drift;
+const out = { slug, label, width: Number(width), regime, at: new Date().toISOString(),
+  ...(counts ? { iteration: Number(process.env.GATE_COUNT || 0) + 1 } : { counted: false }),
+  ...(process.env.GATE_OVER_CAP ? { overCap: process.env.GATE_OVER_CAP } : {}),
   ref: { url: liveUrl, width: Number(width), capturedAt, ...(side ? { sidecar: `${live}.json`, instrument: side.instrument && side.instrument.name, technique: side.technique, consent: side.consent } : { source: 'mtime' }) },
   build: { url: buildUrl }, verdict: rc === 0 ? 'PASS' : rc === 2 ? 'FAIL' : 'no-verdict', exit: rc, ...(landmarks ? { landmarks } : {}), ...j };
+// Live drift is an EVENT on the record (not a progress.json residual): the
+// recapture round does not count against the cap, same rule as skip-link-focus.
+if (drift?.drift) out.liveDrift = { previousCapturedAt: drift.previousCapturedAt, docBefore: drift.docBefore, docAfter: drift.docAfter, sectionsBefore: drift.sectionsBefore, sectionsAfter: drift.sectionsAfter, thresholdPx: drift.thresholdPx, recaptured: true };
+else if (drift && !drift.skipped) out.freshness = { checkedAt: drift.checkedAt, deltaPx: drift.deltaPx, thresholdPx: drift.thresholdPx };
+// Noise floor: read beside the number, never subtracted (thresholds unchanged).
+if (variance) out.noiseFloor = { pixelPct: variance.pixelPct, heightDelta: variance.heightDelta, source: `${dir}/variance.json`, ...(variance.gradedAgainst ? { gradedAgainst: variance.gradedAgainst, ...(variance.gradedAgainst !== capturedAt ? { stale: true } : {}) } : {}) };
+// no-op: the differing-pixel count did not move vs the previous counted round
+// — the fix never applied (gate doc § Iteration discipline); the round still counts.
+if (counts && prev && Number.isFinite(j.differingPixels) && prev.differingPixels === j.differingPixels) out.noOp = { vs: prev.label, differingPixels: j.differingPixels };
 fs.writeFileSync(rec, `${JSON.stringify(out, null, 2)}\n`);
-console.log(`regime: ${regime}  reference: ${liveUrl} @${width} captured ${capturedAt}${side ? ` via ${side.technique || side.instrument?.name || 'unknown'}${side.source && side.source !== 'stitch-shot' ? ` (source: ${side.source})` : ''}` : ' (live.png mtime)'}${j.forced ? '  FORCED (incomparable captures — not a gate number)' : ''}  record: ${rec}`);
+const iterLine = counts ? `iteration ${out.iteration}/3${out.overCap ? ` (over-cap: ${out.overCap})` : ''}${out.noOp ? `  NO-OP — differing pixels unchanged vs ${out.noOp.vs} (${out.noOp.differingPixels}): the fix never applied` : ''}` : 'not counted (no verdict or live-drift recapture)';
+console.log(iterLine);
+console.log(`regime: ${regime}  reference: ${liveUrl} @${width} captured ${capturedAt}${side ? ` via ${side.technique || side.instrument?.name || 'unknown'}${side.source && side.source !== 'stitch-shot' ? ` (source: ${side.source})` : ''}` : ' (live.png mtime)'}${j.forced ? '  FORCED (incomparable captures — not a gate number)' : ''}${out.liveDrift ? `  LIVE DRIFT (Δh ${out.liveDrift.docAfter - out.liveDrift.docBefore}px — reference recaptured, round not counted)` : ''}${out.noiseFloor ? `  noise floor ${out.noiseFloor.pixelPct} % (raw ${j.pixelPct} % is the gated number${out.noiseFloor.stale ? `; floor graded against the ${out.noiseFloor.gradedAgainst} reference` : ''})` : ''}  record: ${rec}`);
 NODE
+  # --record: upsert this breakpoint's block in stardust/replica/progress.json
+  # (iterations + result copied from the records — never typed). Never fails
+  # the round: the number stands whether or not the ledger took it.
+  [ -n "$RECORD" ] && node "$HERE/progress-record.mjs" "$DIR/gate-$LBL.json"
 fi
 exit $rc
