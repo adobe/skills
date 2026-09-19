@@ -14,8 +14,8 @@ metadata:
 | phase | command / instrument | gate | writes |
 |---|---|---|---|
 | Setup 1–4 | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/extract/scripts/crawl.mjs` → `stardust/scripts/crawl.mjs`; origin-collision and flow guard; consent pre-flight; bot-management probe | flow stamped before a migration crawl | `_crawl-log.json#consent`, `#discovery.fetchTechnique` |
-| 1 Discovery | sitemap → BFS; junk filter; cap via `--cap <N>` / `--all` / `--pages <slugs>` / `--single` | informational summary, no confirmation gate | `stardust/current/_crawl-log.json` |
-| 2 Per-page extraction | `node stardust/scripts/crawl.mjs --url <origin> [--pages …] [--cap N \| --all \| --single] [--refresh <slug,…> \| --force] [--headed] [--concurrency N] [--wait <mode>] [--dynamics] [--mobile <mode>] [--dpr N]` | live-render evidence contract; synthesis is a Phase 2 failure | `current/pages/<slug>.json` + `.html`, `assets/screenshots/<slug>.png`, `assets/media/`, `state.json` page → `extracted` |
+| 1 Discovery | robots sitemaps → standard → conventions → nav union → BFS (`--depth`); subtree from the typed path; junk filter; cap via `--cap <N>` / `--all` / `--pages <slugs>` / `--single` | informational summary, no confirmation gate | `stardust/current/_crawl-log.json` |
+| 2 Per-page extraction | `node stardust/scripts/crawl.mjs --url <origin> [--pages …] [--cap N \| --all \| --single] [--refresh <slug,…> \| --force] [--headed] [--concurrency N] [--wait <mode>] [--dynamics] [--mobile <mode>] [--dpr N] [--depth N] [--cookie n=v]` | live-render evidence contract; synthesis is a Phase 2 failure | `current/pages/<slug>.json` + `.html`, `assets/screenshots/<slug>.png`, `assets/media/`, `state.json` page → `extracted` |
 | 2.5 Vision verification | look at each screenshot against its record; `_signals` flags first; escalation ladder (wait mode → next bot-management tier → fresh context); `node evals/lint/crawl-log-lint.mjs --dir stardust/current` | verdict `ok` / `recaptured` / `suspect`; never `ok` on DEGRADED / overlay | `_crawl-log.json#visionCheck[]` |
 | 3 Brand-surface extraction | aggregate across all extracted pages (+ brand-source pages) | source citation per value | `current/_brand-extraction.json`, `assets/logo.<ext>`, `assets/favicon.<ext>` |
 | 4 Seed current-state docs | author directly from impeccable's format specs (no `$impeccable init` / `document`) | provenance block first | `current/PRODUCT.md`, `current/DESIGN.md`, `current/DESIGN.json` |
@@ -49,8 +49,8 @@ critique, and it does not modify the live site. It writes only under
 ## Inputs
 
 - `<url>` — required. The origin to crawl. Examples: `https://example.com`,
-  `https://example.com/shop`. A path narrows the same-origin crawl to
-  that subtree.
+  `https://example.com/shop`. A path scopes the crawl to that subtree
+  (the path as typed; a redirected root entry is not scoped).
 - `--cap <N>` (alias `--max`) — optional. Override the default 5-page
   cap (home + four IA pillars/templates; `crawl.mjs` defaults to the
   same number). The small sample already feeds cross-page brand
@@ -67,6 +67,10 @@ critique, and it does not modify the live site. It writes only under
 - `--single` — optional. Equivalent to `--cap 1`.
 - `--headed` — optional. Start the bot-management ladder at tier 2
   (`--headed=window`: tier 3); re-runs resume the recorded tier.
+- `--depth <1-3>` — optional, default 1. BFS hops (in-page fetches)
+  when no sitemap covers the scope; 1 under a bot block.
+- `--cookie name=value[;Path=/]` — optional, repeatable. Seeds every
+  context (age gates, region pins); names only are logged.
 - `--mobile entry|all|none` — optional, default `entry`. Also shoot the
   page at 360×900 (`<slug>-360.png`, same page, no navigation); `--prep`
   runs pass `all`.
@@ -184,10 +188,11 @@ Additional checks for this sub-command:
 Discover the page inventory before crawling (`reference/ia-extraction.md`);
 in summary:
 
-1. Fetch `<origin>/sitemap.xml`, then `sitemap_index.xml`, then the
-   `robots.txt` `Sitemap:` directives.
-2. No sitemap reachable → same-origin BFS crawl from `<url>`, depth 3,
-   links from rendered HTML.
+1. `robots.txt` `Sitemap:` directives → `sitemap.xml` →
+   `sitemap_index.xml` → CMS conventions; first non-empty tier wins,
+   all fetched in-page; the probe page's nav links are always unioned.
+2. Nothing under the scope → BFS from `<url>` (`--depth`, in-page
+   hops). Census, candidates and `navOnly` are logged either way.
 3. Filter: same origin only; drop `mailto:`, `tel:`, anchor-only
    links, query-only variations, asset paths (`.css`, `.js`, `.pdf`, images).
 4. De-duplicate trailing-slash variations.
@@ -687,26 +692,21 @@ this in the user report; do not engineer around it.
   they appear only in the failure log. Without this validation a 5xx
   page silently lands as an empty success and propagates wrong data
   to `direct` and `prototype`.
-- **Login wall.** Do not attempt to authenticate. If the home page
-  redirects to a login screen, capture that one page, mark the rest as
-  unreachable, and ask the user how to proceed (provide cookies via
-  Playwright config, change the entry URL, or scope to public pages).
+- **Login wall.** Do not authenticate. If the home page redirects to
+  a login screen, capture that one page, mark the rest unreachable,
+  and ask how to proceed (`--cookie`, another entry URL, or public
+  pages only).
 - **Bot-management block (Akamai / Cloudflare / F5 / Imperva).**
   `ERR_HTTP2_PROTOCOL_ERROR` / `ERR_QUIC_PROTOCOL_ERROR`, a hang
-  through the hard-cap, or a 403/429/503 with an edge signature on
-  the first navigation is fingerprinting or a managed challenge —
-  not auth, not network. Climb the ladder in
-  `reference/playwright-recipe.md` § Bot-management fallback;
-  `crawl.mjs` does so on its own — at the probe and again when a
-  worker is challenged mid-crawl — and exits 3 when tier 3 is still
-  challenged (window opt-in per that section). Do not tell the
-  user the origin "needs a WAF allowlist" or an interactive solve
-  until tier 3 has failed. Asset harvest: a page-level bot wall
-  usually does NOT gate assets — media/CSS/font URLs commonly
-  return 200 to a plain browser-UA curl even while every page
-  navigation is challenged. Probe one asset with curl BEFORE
-  reaching for in-page-fetch machinery; the in-page harvest is the
-  fallback, not the default.
+  through the hard cap, or a 403/429/503 with an edge signature on the
+  first navigation is fingerprinting or a managed challenge — not
+  auth, not network. `crawl.mjs` climbs the ladder itself
+  (`reference/playwright-recipe.md` § Bot-management fallback) at the
+  probe and again when a worker is challenged mid-crawl, and exits 3
+  when tier 3 is still challenged; only then say the origin needs an
+  interactive solve or a WAF allowlist. A page-level wall usually does
+  NOT gate assets: probe one media/CSS/font URL with a browser-UA curl
+  before reaching for in-page fetch (the fallback, not the default).
 - **JavaScript-only content.** Playwright already handles this. If
   the configured wait condition never fires within the mode's hard
   cap (`reference/playwright-recipe.md` § Wait modes), fall back to

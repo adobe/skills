@@ -68,8 +68,18 @@
  *   node crawl.mjs --url https://example.com [--pages /a,/b] [--cap 25 | --all | --single] \
  *     [--refresh slug,slug | --force] [--out stardust/current] [--wait medium] \
  *     [--no-consent-dismiss] [--concurrency 4] [--dynamics] [--headed[=window]] \
- *     [--mobile entry|all|none] [--dpr 1]
+ *     [--mobile entry|all|none] [--dpr 1] [--depth 1] [--cookie name=value[;Path=/]]...
  *   node crawl.mjs --help
+ *
+ * Discovery (ia-extraction.md § Discovery order — discoverInventory below):
+ *   --pages > robots.txt `Sitemap:` directives (all of them) > /sitemap.xml,
+ *   /sitemap_index.xml > /.sitemap.xml, /sitemap.aspx (only when the tiers
+ *   above are empty and the origin is not bot-walled) > the probe page's nav
+ *   links (always unioned) > BFS --depth N (≤ 3, in-page fetch hops, breadth
+ *   max(200, cap); depth 1 under a bot block). A non-root --url path scopes
+ *   the roster to that subtree (taken from the URL as TYPED, before any
+ *   redirect); the census of everything declared is logged regardless.
+ *   --cookie seeds every context (age gates, region pins); names only are logged.
  *
  * --dpr <n> sets deviceScaleFactor (default 1, recorded in _provenance.dpr): the
  *   gate captures at DPR 1, and a DPR-2 ground truth would never pixel-match it
@@ -94,8 +104,9 @@
  * Exit codes: 0 done (per-page failures are in the log) · 2 fatal ·
  *   3 BotChallengeError (tier 3 still challenged — never captured as content).
  * Exports (for evals/fixtures/*.test.mjs): slugify, assignSlugs, mergeCrawlLog,
- *   TIERS, tierOf, captureQualityOf, SHOT_WRAP_PX — importing this module runs
- *   nothing; main() runs only when the file is the entry script.
+ *   TIERS, tierOf, captureQualityOf, SHOT_WRAP_PX, discoverInventory,
+ *   parseRobots, parseCookieFlag — importing this module runs nothing; main()
+ *   runs only when the file is the entry script.
  *
  * Needs playwright importable from the project (see extract/SKILL.md Setup —
  * `npm i -D playwright` or the Playwright MCP server; the `npx playwright`
@@ -128,13 +139,15 @@ function readFileSyncSafe(u) { try { return readFileSync(u, 'utf8'); } catch { r
 
 const MOBILE_MODES = ['entry', 'all', 'none'];
 function parseArgs(argv) {
-  const a = { out: 'stardust/current', max: 5, wait: 'medium', consent: true, concurrency: 4, dynamics: false, refresh: [], force: false, headed: 0, mobile: 'entry', dpr: 1 };
+  const a = { out: 'stardust/current', max: 5, wait: 'medium', consent: true, concurrency: 4, dynamics: false, refresh: [], force: false, headed: 0, mobile: 'entry', dpr: 1, depth: 1, cookies: [] };
   for (let i = 2; i < argv.length; i += 1) {
     const k = argv[i];
     if (k === '--help' || k === '-h') { a.help = true; return a; }
     if (k === '--url') a.url = argv[(i += 1)];
     else if (k === '--mobile') { a.mobile = argv[(i += 1)]; if (!MOBILE_MODES.includes(a.mobile)) throw new Error(`--mobile must be one of ${MOBILE_MODES.join('|')}`); }
     else if (k === '--dpr') { const n = +argv[(i += 1)]; if (!(n > 0 && n <= 4)) throw new Error('--dpr must be a number in (0, 4]'); a.dpr = n; }
+    else if (k === '--depth') { const n = +argv[(i += 1)]; if (!(n >= 1 && n <= 3)) throw new Error('--depth must be 1, 2 or 3'); a.depth = n; }
+    else if (k === '--cookie') a.cookies.push(parseCookieFlag(argv[(i += 1)]));
     else if (k === '--pages') a.pages = (argv[(i += 1)] || '').split(',').map((s) => s.trim()).filter(Boolean);
     else if (k === '--out') a.out = argv[(i += 1)];
     else if (k === '--max' || k === '--cap') { const n = +argv[(i += 1)]; a.max = Number.isFinite(n) && n >= 0 ? n : 5; } // 0 = no cap; default 5 (the extract contract's small sample)
@@ -152,6 +165,7 @@ function parseArgs(argv) {
   }
   if (!a.url) throw new Error('--url is required');
   a.origin = new URL(a.url).origin;
+  a.entryPath = new URL(a.url).pathname; // subtree scope comes from the URL as TYPED — origin adoption rewrites a.url later
   a.capLabel = a.max === 0 ? 'all' : a.max;
   if (a.max === 0) a.max = Infinity;
   return a;
@@ -243,8 +257,9 @@ export async function launchTier(chromium, tier) {
 // re-challenged even after the probe cleared it.
 // `extra` = per-run context options (deviceScaleFactor from --dpr, storageState)
 // so probe and workers render under identical conditions.
-async function newContext(browser, stealth, extra = {}) {
+async function newContext(browser, stealth, extra = {}, cookies = []) {
   const ctx = await browser.newContext({ ...CRAWL_CONTEXT, ...extra });
+  if (cookies.length) await ctx.addCookies(cookies);
   if (stealth) {
     await ctx.addInitScript(() => {
       Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
@@ -318,7 +333,155 @@ function dedupeKey(href) {
   return url.origin + url.pathname.replace(/\/+$/, '') + url.search;
 }
 
-// ---- discovery: explicit pages > sitemap (validated) > BFS from nav ----
+// ---- discovery: --pages > robots-declared sitemaps > standard paths > CMS conventions > nav union / BFS ----
+// Precedence is by SOURCE, first non-empty tier wins; <lastmod> is recorded on
+// every candidate but never decisive (dynamic sitemaps stamp "today"; a stale
+// legacy map was 3.5× larger than the authoritative one). Every fetch runs
+// in-page (browser UA, admitted cookies — hit minimisation on bot-walled
+// origins) and every guessed URL counts as a probe: robots.txt (1), the two
+// standard paths only when robots names nothing, the CMS conventions only when
+// those are empty too and the origin is not bot-walled. Typical run: 2–3 probes.
+export function parseRobots(text, origin) {
+  const sitemaps = []; let crawlDelay = null;
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    const line = raw.replace(/#.*$/, '').trim();
+    const m = line.match(/^([a-z-]+)\s*:\s*(.+)$/i);
+    if (!m) continue;
+    const key = m[1].toLowerCase(); const val = m[2].trim();
+    if (key === 'sitemap') { try { sitemaps.push(new URL(val, origin).href); } catch { /* malformed directive */ } }
+    else if (key === 'crawl-delay') { const n = parseFloat(val); if (Number.isFinite(n) && n > 0) crawlDelay = Math.max(crawlDelay || 0, n); }
+  }
+  return { sitemaps: [...new Set(sitemaps)], crawlDelay };
+}
+const SITEMAP_MAX_DEPTH = 3; // ia-extraction.md § Recursive sitemap traversal
+const SITEMAP_MAX_URLS = 10000;
+const ASSET_RE = /\.(css|js|mjs|json|xml|pdf|png|jpe?g|gif|svg|webp|avif|ico|zip|gz|mp4|webm|mp3|woff2?|ttf|otf)(?:[?#]|$)/i;
+// depth-first over <sitemapindex> children (visited set, depth ≤ 3); <urlset>
+// leaves aggregate. Kind is read from the ROOT TAG, not the URL extension.
+async function collectSitemap(url, io, st, depth) {
+  if (st.visited.has(url)) return;
+  if (depth > SITEMAP_MAX_DEPTH) { st.deepDropped += 1; return; }
+  st.visited.add(url); st.fetches += 1;
+  const xml = await io.fetchText(url);
+  if (xml == null) { if (depth === 1) st.rootUnreachable = true; return; }
+  const locs = [...xml.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)].map((m) => m[1].trim());
+  for (const m of xml.matchAll(/<lastmod>\s*([^<]+?)\s*<\/lastmod>/g)) if (!st.maxLastmod || m[1] > st.maxLastmod) st.maxLastmod = m[1].trim();
+  const isIndex = /<sitemapindex[\s>]/i.test(xml) || (locs.length > 0 && locs.every((u) => /\.xml(?:\.gz)?(?:[?#]|$)/i.test(u)));
+  if (isIndex) { for (const child of locs) { try { await collectSitemap(new URL(child, url).href, io, st, depth + 1); } catch { st.malformed.push(child); } } return; }
+  for (const loc of locs) {
+    if (st.leaves.length >= SITEMAP_MAX_URLS) { st.truncated = true; break; }
+    try { st.leaves.push(new URL(loc, url).href); } catch { st.malformed.push(loc); }
+  }
+}
+/**
+ * The roster decision, browser-free (evals/fixtures/crawl-discover.test.mjs
+ * drives it over a local static server). `io.fetchText(url)` → body or null;
+ * `navLinks` are the probe page's same-origin hrefs (0 extra hits).
+ * Returns { urls, discovery } — `discovery` is the block written to
+ * _crawl-log.json (ia-extraction.md § _crawl-log.json shape).
+ */
+export async function discoverInventory({ entry, origin, entryPath = null, max = Infinity, botBlock = null, depth = 1, navLinks = [] }, io) {
+  const scopePath = entryPath && entryPath !== '/' ? entryPath.replace(/\/+$/, '') : null;
+  const sameOrigin = (u) => u === origin || u.startsWith(`${origin}/`);
+  const inScope = (u) => { if (!scopePath) return true; try { const p = new URL(u).pathname.replace(/\/+$/, ''); return p === scopePath || p.startsWith(`${scopePath}/`); } catch { return false; } };
+  const pageLike = (u) => sameOrigin(u) && !ASSET_RE.test(new URL(u).pathname);
+  const candidates = []; const malformed = []; let probes = 0; let fetches = 0;
+  const abs = (p) => new URL(p, origin).href;
+  const fetchTier = async (urls, tier, { all, guessed }) => {
+    const leaves = [];
+    for (const u of urls) {
+      if (!all && leaves.length) { candidates.push({ url: u, tier, rejected: 'lower-precedence' }); continue; }
+      if (guessed) probes += 1;
+      const st = { visited: new Set(), leaves: [], malformed: [], maxLastmod: null, truncated: false, deepDropped: 0, fetches: 0 };
+      await collectSitemap(u, io, st, 1);
+      fetches += st.fetches; malformed.push(...st.malformed);
+      const pages = [...new Set(st.leaves.filter(pageLike))];
+      candidates.push({ url: u, tier, count: pages.length, ...(st.maxLastmod ? { maxLastmod: st.maxLastmod } : {}), ...(st.truncated ? { truncated: true } : {}), ...(st.deepDropped ? { deepDropped: st.deepDropped } : {}), ...(pages.length ? {} : { rejected: st.rootUnreachable ? 'unreachable' : 'empty' }) });
+      leaves.push(...pages);
+    }
+    return leaves;
+  };
+  // tier 1 — robots.txt Sitemap: directives (all of them: they partition the site)
+  probes += 1; fetches += 1;
+  const robots = parseRobots(await io.fetchText(abs('/robots.txt')), origin);
+  let leaves = []; let source = null; let sourceUrl = null;
+  if (robots.sitemaps.length) {
+    leaves = await fetchTier(robots.sitemaps, 'robots', { all: true, guessed: false });
+    if (leaves.length) { source = 'robots.txt'; sourceUrl = robots.sitemaps.length === 1 ? robots.sitemaps[0] : robots.sitemaps; }
+  }
+  // tier 2 — the two standard paths, only when robots named nothing usable
+  if (!leaves.length) {
+    leaves = await fetchTier([abs('/sitemap.xml'), abs('/sitemap_index.xml')], 'standard', { all: false, guessed: true });
+    if (leaves.length) { const w = candidates.find((c) => c.tier === 'standard' && c.count); source = new URL(w.url).pathname.slice(1); sourceUrl = w.url; }
+  }
+  // tier 3 — CMS conventions (AEM dot-prefixed map, ASP.NET handler), never on a bot-walled origin
+  if (!leaves.length && !botBlock) {
+    leaves = await fetchTier([abs('/.sitemap.xml'), abs('/sitemap.aspx')], 'convention', { all: false, guessed: true });
+    if (leaves.length) { const w = candidates.find((c) => c.tier === 'convention' && c.count); source = new URL(w.url).pathname.slice(1); sourceUrl = w.url; }
+  }
+  // census over everything the sitemaps declared (pre-scope): the honest "how many pages" answer
+  const seenAll = new Set(); const byPrefix = {};
+  for (const u of leaves) {
+    const k = dedupeKey(u); if (seenAll.has(k)) continue; seenAll.add(k);
+    const seg = new URL(u).pathname.split('/').filter(Boolean)[0]; const key = seg ? `/${seg}` : '/';
+    byPrefix[key] = (byPrefix[key] || 0) + 1;
+  }
+  const census = { total: seenAll.size, byPrefix: Object.fromEntries(Object.entries(byPrefix).sort((a, b) => b[1] - a[1]).slice(0, 20)) };
+  // scope + nav union (always: sitemap-blind sections live in the nav)
+  const scoped = leaves.filter(inScope);
+  const sitemapKeys = new Set(scoped.map(dedupeKey));
+  const nav = [...new Set(navLinks.map((h) => { try { return normalizeUrl(h, origin); } catch { return null; } }).filter(Boolean).filter(pageLike).filter(inScope))];
+  const navOnly = nav.filter((u) => !sitemapKeys.has(dedupeKey(u)));
+  let union = [...scoped, ...navOnly];
+  let bfs = null;
+  if (!scoped.length) {
+    // BFS fallback — hop 1 is the probe page (0 hits); hops 2..depth fetch HTML
+    // in-page (never full navigations); breadth max(200, cap); depth 1 under botBlock
+    const maxDepth = Math.max(1, Math.min(3, botBlock ? 1 : depth || 1));
+    const breadth = Math.max(200, Number.isFinite(max) ? max : 0);
+    const seen = new Map([[dedupeKey(entry), entry]]); const order = [];
+    let frontier = [];
+    for (const u of nav) { const k = dedupeKey(u); if (!seen.has(k)) { seen.set(k, u); order.push(u); frontier.push(u); } }
+    let fetched = 0; let hop = 1;
+    while (hop < maxDepth && frontier.length && seen.size < breadth) {
+      hop += 1; const next = [];
+      for (const u of frontier) {
+        if (seen.size >= breadth) break;
+        const html = await io.fetchText(u); fetched += 1; fetches += 1;
+        if (!html) continue;
+        for (const m of html.matchAll(/href\s*=\s*["']([^"'#]+)["']/gi)) {
+          if (/^(mailto:|tel:|javascript:)/i.test(m[1])) continue;
+          let h; try { h = normalizeUrl(m[1], u); } catch { continue; }
+          if (!pageLike(h) || !inScope(h)) continue;
+          const k = dedupeKey(h);
+          if (!seen.has(k)) { seen.set(k, h); order.push(h); next.push(h); if (seen.size >= breadth) break; }
+        }
+      }
+      frontier = next;
+    }
+    union = order; bfs = { depth: hop, visited: seen.size, fetched };
+    source = source ? `${source}+bfs` : 'bfs'; // a sitemap that had nothing under the scope still counts as consulted
+  } else if (!source) source = 'nav';
+  // entry first, slash-insensitive dedupe, cap → kept / cut
+  const seen = new Set(); const all = [];
+  for (const u of [entry, ...union]) { const k = dedupeKey(u); if (!seen.has(k)) { seen.add(k); all.push(u); } }
+  const kept = all.slice(0, max); const cut = all.slice(kept.length).map((url) => ({ url, reason: 'cap' }));
+  const discovery = {
+    source, sourceUrl, subtree: scopePath, census, navOnly: navOnly.length, probes, fetches, candidates, malformed: malformed.slice(0, 50),
+    kept, cut: cut.slice(0, 2000), ...(cut.length > 2000 ? { cutTruncated: cut.length } : {}), ...(bfs ? { bfs } : {}), ...(robots.crawlDelay ? { crawlDelay: robots.crawlDelay } : {}),
+  };
+  return { urls: kept, discovery };
+}
+// --cookie name=value[;Path=/] — repeatable; applied to every context via addCookies.
+// Only the NAME is ever logged (runs[].args.cookie) — provenance without secrets (D3 spirit).
+export function parseCookieFlag(spec) {
+  const [pair, ...attrs] = String(spec || '').split(';').map((x) => x.trim()).filter(Boolean);
+  const eq = pair ? pair.indexOf('=') : -1;
+  if (eq <= 0) throw new Error(`--cookie expects name=value[;Path=/] (got ${JSON.stringify(spec)})`);
+  const c = { name: pair.slice(0, eq).trim(), value: pair.slice(eq + 1), path: '/' };
+  for (const a of attrs) { const m = a.match(/^path\s*=\s*(.+)$/i); if (m) c.path = m[1].trim(); }
+  return c;
+}
 async function discover(args, page) {
   const entry = normalizeUrl(args.url);
   // explicit --pages: crawl EXACTLY the listed pages, never drop one. The entry
@@ -333,51 +496,13 @@ async function discover(args, page) {
     if (urls.length > args.max) {
       console.error(`[crawl] WARN --pages lists ${urls.length} page(s), exceeding --cap ${args.capLabel} — crawling all of them (explicitly listed pages are never dropped)`);
     }
-    return urls;
+    return { urls, discovery: { source: '--pages', subtree: null, kept: urls, cut: [] } };
   }
-  // discovered lists (sitemap/BFS): entry always included, normalized dedupe, capped at --max.
-  const withEntry = (list) => {
-    const seen = new Set(); const out = [];
-    for (const u of [entry, ...list.map((x) => normalizeUrl(x, args.origin))]) {
-      const k = dedupeKey(u);
-      if (!seen.has(k)) { seen.add(k); out.push(u); }
-    }
-    return out.slice(0, args.max);
-  };
-  // sitemap.xml — but only trust it if it has >=1 <loc> (a 200-but-empty Drupal
-  // sitemap must fall through to BFS — finding from a media-site run).
-  for (const sm of ['/sitemap.xml', '/sitemap_index.xml']) {
-    try {
-      const xml = await page.evaluate(async (u) => {
-        const r = await fetch(u); return r.ok ? r.text() : '';
-      }, new URL(sm, args.origin).href);
-      const locs = [...xml.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)].map((m) => m[1])
-        .filter((u) => u.startsWith(args.origin));
-      // a sitemap INDEX's <loc>s are child-sitemap .xml URLs, not pages —
-      // recurse one level (capped) instead of queueing them as pages, where
-      // every capture would throw ContentTypeError and discovery would
-      // silently collapse to the entry page.
-      const isXml = (u) => /\.xml(?:[?#]|$)/i.test(u);
-      let pageLocs = locs.filter((u) => !isXml(u));
-      const childMaps = locs.filter(isXml).slice(0, 8);
-      if (!pageLocs.length && childMaps.length) {
-        for (const child of childMaps) {
-          try {
-            const cx = await page.evaluate(async (u) => {
-              const r = await fetch(u); return r.ok ? r.text() : '';
-            }, child);
-            pageLocs = pageLocs.concat([...cx.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)]
-              .map((m) => m[1]).filter((u) => u.startsWith(args.origin) && !isXml(u)));
-          } catch { /* skip unreadable child sitemap */ }
-        }
-      }
-      if (pageLocs.length >= 1) return withEntry(pageLocs);
-    } catch { /* fall through */ }
-  }
-  // BFS depth-1 from the entry page's same-origin nav links.
-  const links = await page.evaluate((origin) => [...document.querySelectorAll('a[href]')]
+  // every discovery fetch rides the probe page: browser UA, admitted cookies, one origin
+  const io = { fetchText: (u) => page.evaluate(async (x) => { try { const r = await fetch(x, { credentials: 'include' }); return r.ok ? await r.text() : null; } catch { return null; } }, u) };
+  const navLinks = await page.evaluate((origin) => [...document.querySelectorAll('a[href]')]
     .map((a) => a.href).filter((h) => h.startsWith(origin)), args.origin);
-  return withEntry(links);
+  return discoverInventory({ entry, origin: args.origin, entryPath: args.entryPath, max: args.max, botBlock: args.botBlock, depth: args.depth, navLinks }, io);
 }
 
 // Consent containers whose presence after the dismissal pass means `failed`
@@ -1088,6 +1213,8 @@ async function main() {
   // per-run context options shared by probe and workers (--dpr; the admitted
   // session, once the probe has one, is added below)
   const ctxExtra = { deviceScaleFactor: args.dpr };
+  // --cookie → Playwright cookie records on the (possibly adopted) origin's host
+  const cookiesFor = (a) => a.cookies.map((c) => ({ name: c.name, value: c.value, domain: new URL(a.origin).hostname, path: c.path }));
   const outPages = path.join(args.out, 'pages');
   await mkdir(outPages, { recursive: true });
 
@@ -1112,7 +1239,7 @@ async function main() {
   const escalations = []; // { tier, block } per rejected tier
   for (;;) {
     browser = await launchTier(chromium, tier);
-    context = await newContext(browser, tier >= 2, ctxExtra);
+    context = await newContext(browser, tier >= 2, ctxExtra, cookiesFor(args));
     probe = await context.newPage();
     let blocked = null;
     try {
@@ -1149,7 +1276,7 @@ async function main() {
   // adopt the post-redirect origin (apex→www etc.): the same-origin filter and
   // sitemap fetch must use where the site actually lives, or discovery silently
   // collapses to 1 page (agency-site e2e finding).
-  let originRedirect = null;
+  let originRedirect = null; let entryRedirect = null;
   try {
     const landed = new URL(probe.url());
     if (landed.origin !== args.origin) {
@@ -1158,9 +1285,21 @@ async function main() {
       args.url = new URL(new URL(args.url).pathname + new URL(args.url).search, landed.origin).href;
       args.origin = landed.origin;
     }
+    // the subtree scope is the path the user TYPED: a root entry that
+    // geo-redirects to /us/en must not silently scope the crawl to /us/en
+    const typed = args.entryPath.replace(/\/+$/, '') || '/'; const got = landed.pathname.replace(/\/+$/, '') || '/';
+    if (!args.pages && typed !== got) {
+      entryRedirect = { from: typed, to: got, note: typed === '/' ? `entry redirected to ${got}; not scoped` : `entry redirected to ${got}; scoped to the typed ${typed}` };
+      console.error(`[crawl] ${entryRedirect.note}`);
+    }
   } catch { /* keep declared origin */ }
+  args.botBlock = botBlock;
 
-  const urls = await discover(args, probe);
+  const { urls, discovery } = await discover(args, probe);
+  if (discovery.census) {
+    const cut = discovery.cutTruncated || discovery.cut.length;
+    console.error(`[crawl] discovered ${urls.length} page(s) via ${discovery.source}${discovery.subtree ? ` under ${discovery.subtree}` : ''} — census ${discovery.census.total} declared, ${discovery.navOnly} nav-only, ${discovery.probes} probe(s); kept ${discovery.kept.length}, cut ${cut}${cut ? ' (--all to lift)' : ''}`);
+  }
   const statePages = await readStatePages(args);
   // --refresh <slug,…>: a named slug outside this run's list is appended from
   // its state.json URL, so a capped-out page can be re-extracted by name.
@@ -1192,7 +1331,7 @@ async function main() {
   console.error(`[crawl] technique=${technique} discovered=${urls.length} queued=${queue.length}`);
 
   const startedAt = new Date().toISOString();
-  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...(botBlock ? { botBlock, escalations } : {}), ...(originRedirect ? { originRedirect } : {}), ...(skipped.length ? { skippedExtracted: skipped } : {}) }, consent: { method: args.consent ? 'none-detected' : 'skipped' }, favicon: favicon || null, crawl: { startedAt, finishedAt: null, successes: 0, failures: [] } };
+  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...discovery, ...(botBlock ? { botBlock, escalations } : {}), ...(originRedirect ? { originRedirect } : {}), ...(entryRedirect ? { entryRedirect } : {}), ...(skipped.length ? { skippedExtracted: skipped } : {}) }, consent: { method: args.consent ? 'none-detected' : 'skipped' }, favicon: favicon || null, crawl: { startedAt, finishedAt: null, successes: 0, failures: [] } };
   let ok = 0;
   await context.close();
 
@@ -1215,7 +1354,7 @@ async function main() {
     let cursor = 0;
     escalate = 0;
     async function worker() {
-      const ctx = await newContext(browser, stealth, ctxExtra);
+      const ctx = await newContext(browser, stealth, ctxExtra, cookiesFor(args));
       while (cursor < order.length && !escalate) {
         const idx = order[cursor];
         cursor += 1;
@@ -1310,7 +1449,7 @@ async function main() {
   log.crawl.finishedAt = new Date().toISOString();
   const merged = mergeCrawlLog(prev, log, {
     at: startedAt,
-    args: { url: args.url, pages: args.pages || null, cap: args.capLabel, wait: args.wait, concurrency: args.concurrency, dynamics: args.dynamics, refresh: args.refresh, force: args.force, headed: args.headed || null },
+    args: { url: args.url, pages: args.pages || null, cap: args.capLabel, wait: args.wait, concurrency: args.concurrency, dynamics: args.dynamics, refresh: args.refresh, force: args.force, headed: args.headed || null, depth: args.depth, cookie: args.cookies.map((c) => c.name), mobile: args.mobile, dpr: args.dpr },
     technique,
     discovered: urls.length,
     skipped: skipped.length,
@@ -1332,6 +1471,7 @@ async function main() {
  *   * runs[] gets one entry per invocation (args, counts, failed slugs).
  * `okSlugs` = the slugs captured in this run.
  */
+export const RUN_LEVEL_DISCOVERY = ['fetchTechnique', 'botBlock', 'escalations', 'concurrency', 'storageState', 'liveBudget', 'skippedExtracted', 'originRedirect', 'entryRedirect'];
 export function mergeCrawlLog(prev, log, run, okSlugs) {
   const failedNow = new Set(log.crawl.failures.map((x) => x.slug));
   const okNow = new Set(okSlugs);
@@ -1341,8 +1481,10 @@ export function mergeCrawlLog(prev, log, run, okSlugs) {
   const readArtifacts = [...new Set([...(prevProv && prevProv.readArtifacts) || [], log.discovery && log.discovery.sourceUrl].filter(Boolean))];
   const merged = { _provenance: { writtenBy: 'stardust:extract', writtenAt: new Date().toISOString(), script: 'crawl.mjs', readArtifacts }, ...prevRest, ...log, crawl: { ...log.crawl, failures: [...carried, ...log.crawl.failures] } };
   if (prev.discovery && (prev.discovery.count || 0) > (log.discovery.count || 0)) {
-    const { botBlock, escalations } = log.discovery;
-    merged.discovery = { ...prev.discovery, fetchTechnique: log.discovery.fetchTechnique, ...(botBlock ? { botBlock, escalations } : {}) };
+    // keep the richer roster block (kept/cut/census/candidates…) and refresh
+    // only the RUN-LEVEL fields this invocation actually observed
+    merged.discovery = { ...prev.discovery };
+    for (const k of RUN_LEVEL_DISCOVERY) if (log.discovery[k] !== undefined) merged.discovery[k] = log.discovery[k];
   }
   merged.runs = [...(Array.isArray(prev.runs) ? prev.runs : []), run];
   return merged;
