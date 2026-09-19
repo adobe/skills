@@ -66,10 +66,14 @@
  *   WRAPPER unclassed section child <div>, or a classed <div> whose direct
  *       children are not plain row <div>s (a styling wrapper around blocks —
  *       aem.js never decorates a block nested under it; lift the blocks)
- *   D1-EMPTY block table with 0 rows, or every cell empty of text/media/links;
- *       a section with nothing in it and no section-metadata (silent content
- *       loss — the encoder's selector missed; --allow-empty <name> declares a
- *       runtime-widget mount point, recorded in the conversion log)
+ *                                            D1-EMPTY block table with 0 rows, or every
+ *                                                cell empty of text/media/links; a section
+ *                                                with nothing in it and no section-metadata
+ *                                                (silent content loss — the encoder's
+ *                                                selector missed — OR a runtime-widget
+ *                                                mount point: --allow-empty <name> declares
+ *                                                those in the conversion log; B7: 🟡 first,
+ *                                                promote to 🔴 after one clean wave)
  *                                            ADJACENT-BLOCKS N ≥ 2 consecutive
  *                                                same-name block tables in one section
  *                                                (one block with N rows / a repeat
@@ -335,16 +339,18 @@ function lintBlock(file, section, block, name, flag) {
     return;
   }
 
-  // D1-EMPTY 🔴 — a block table with no rows, or with every cell empty of text
+  // D1-EMPTY 🟡 — a block table with no rows, or with every cell empty of text
   // and media, is silent content loss: the encoder's selector missed and the
   // runtime renders an empty block (three zero-row instances in one wave, one
   // across 15 pages). A runtime-widget mount point (`<div class="form"></div>`)
   // is declared with --allow-empty <name> and recorded in the conversion log.
+  // Ships 🟡 (B7 — a block-name-only table is also the legitimate shape for a
+  // dynamic mount point); promote to 🔴 after one clean wave.
   if (!ALLOW_EMPTY.has(name)) {
     if (!rows.length) {
-      flag('🔴', 'D1-EMPTY', `${label}: block table with 0 rows — silent content loss (the encoder's selector missed the source items); fix the encoder, or declare a runtime-widget placeholder with --allow-empty ${name} and record it in the conversion log`);
+      flag('🟡', 'D1-EMPTY', `${label}: block table with 0 rows — silent content loss (the encoder's selector missed the source items); fix the encoder, or declare a runtime-widget placeholder with --allow-empty ${name} and record it in the conversion log`);
     } else if (!isKeyValue && rows.every((row) => { const cells = childDivs(row.inner); return cells.length ? cells.every((c) => cellIsEmpty(c.inner)) : cellIsEmpty(row.inner); })) {
-      flag('🔴', 'D1-EMPTY', `${label}: ${rows.length} row(s) whose every cell is empty of text, media and links — silent content loss (the encoder's cell selectors missed); fix the encoder, or declare a placeholder with --allow-empty ${name}`);
+      flag('🟡', 'D1-EMPTY', `${label}: ${rows.length} row(s) whose every cell is empty of text, media and links — silent content loss (the encoder's cell selectors missed); fix the encoder, or declare a placeholder with --allow-empty ${name}`);
     }
   }
 
@@ -501,11 +507,12 @@ function rollup(file, sev, rule, key, n, mk) {
 }
 
 function lintSectionShape(file, section, kids, defaultContentText, flag, si) {
-  // D1-EMPTY 🔴 — a section with no text, link or image and no section-metadata
+  // D1-EMPTY 🟡 — a section with no text, link or image and no section-metadata
   // child is an empty band nobody authored (the sanctioned spacer/rule is a
   // section-metadata-only section, #119; empty blocks are flagged per block).
+  // Same tier as the block rule (B7: 🟡 first).
   if (!kids.length && cellIsEmpty(section.inner)) {
-    flag('🔴', 'D1-EMPTY', `section ${si + 1}: no text, link, image or block and no section-metadata — an empty band is silent content loss (or an importer artefact); a spacer/rule is a section-metadata-only section (#119)`);
+    flag('🟡', 'D1-EMPTY', `section ${si + 1}: no text, link, image or block and no section-metadata — an empty band is silent content loss (or an importer artefact); a spacer/rule is a section-metadata-only section (#119)`);
   }
   // META ALONE — the metadata block is consumed into <head>; a section holding
   // nothing else delivers as an empty padded band (first or trailing).
