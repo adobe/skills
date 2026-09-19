@@ -30,14 +30,16 @@
  *     process exit or via `.release()`.
  *
  * stardust/live-budget.json — { "<host>": { navPerMin, minGapMs, learnedAt,
- *   learnedBy, lastStatus } } (tracked; stardust/reference/artifact-map.md).
+ *   learnedBy, lastStatus } } (tracked; stardust/reference/artifact-map.md). A
+ *   ceiling expires LIVE_BUDGET_TTL_MS (7 days) after `learnedAt`: one 429 must
+ *   not slow every later run forever — the next run re-learns it if it recurs.
  *   STARDUST_LIVE_BUDGET overrides the file, STARDUST_LIVE_LOCK_DIR the lock
  *   dir — both default cwd-relative, like live-session's STORAGE_STATE_PATH.
  *
  * Dependency-free (node:fs, node:path); importing this module runs nothing.
  * Exports (for evals/fixtures): BUDGET_DEFAULT, HostBudget, parseRetryAfter,
  *   mergeLiveBudget, tuneBudget, budgetFor, takeNavigation, recordRateLimit,
- *   acquireLiveLock, LIVE_BUDGET_PATH, LIVE_LOCK_DIR.
+ *   acquireLiveLock, LIVE_BUDGET_PATH, LIVE_LOCK_DIR, LIVE_BUDGET_TTL_MS.
  */
 
 /* eslint-disable no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
@@ -46,6 +48,8 @@ import { join } from 'node:path';
 
 export const LIVE_BUDGET_PATH = process.env.STARDUST_LIVE_BUDGET || 'stardust/live-budget.json';
 export const LIVE_LOCK_DIR = process.env.STARDUST_LIVE_LOCK_DIR || 'stardust/.work';
+// a learned ceiling older than this is ignored (crawl.mjs carries the same constant)
+export const LIVE_BUDGET_TTL_MS = 7 * 24 * 3600 * 1000;
 
 // ---- per-host live budget (crawl.mjs HostBudget — same shape) ----
 export const BUDGET_DEFAULT = { navPerMin: 10, minGapMs: 3000 };
@@ -98,7 +102,13 @@ export function mergeLiveBudget(prev, host, entry) {
   return out;
 }
 function readLearned(file, host) {
-  try { return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8'))[host] || null : null; } catch { return null; }
+  let learned = null;
+  try { learned = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8'))[host] || null : null; } catch { return null; }
+  if (learned && learned.learnedAt && Date.now() - Date.parse(learned.learnedAt) > LIVE_BUDGET_TTL_MS) {
+    console.error(`[live-budget] learned ceiling for ${host} (learnedAt ${learned.learnedAt}) has expired — default pacing; a recurring 429 re-learns it`);
+    return null;
+  }
+  return learned;
 }
 /** Tighten `budget` in place: stricter of current / learned (live-budget.json) / robots Crawl-delay. A 429 already taken is never loosened. */
 export function tuneBudget(budget, host, crawlDelay = null, file = LIVE_BUDGET_PATH) {

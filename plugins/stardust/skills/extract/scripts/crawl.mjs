@@ -133,7 +133,8 @@
  *   diff/scripts/live-budget.mjs; this file ships alone): every navigation
  *   waits for a token (≤ 10/min) AND a minimum gap (≥ 3 s; robots.txt
  *   Crawl-delay widens it — decisions.md `crawl` row; a stricter ceiling
- *   learned earlier is read from stardust/live-budget.json). The pool drops to
+ *   learned earlier is read from stardust/live-budget.json and expires
+ *   LIVE_BUDGET_TTL_MS = 7 days after `learnedAt`). The pool drops to
  *   ONE worker under a bot block (tier > 1 or a cleared challenge — concurrency
  *   4 drew 9 re-challenges even with the cloned session) and after the first
  *   BARE 429 (no edge signature = rate limit, not a challenge): the ceiling is
@@ -156,7 +157,7 @@
  *   RUN_LEVEL_DISCOVERY, TIERS, tierOf, captureQualityOf, SHOT_WRAP_PX,
  *   OVERLAY_FLAG_PCT, discoverInventory, parseRobots, parseCookieFlag,
  *   challengeMarker, CHALLENGE_PHRASE, HostBudget, BUDGET_DEFAULT,
- *   parseRetryAfter, mergeLiveBudget, tuneBudget, sessionReusedOf,
+ *   parseRetryAfter, mergeLiveBudget, tuneBudget, LIVE_BUDGET_TTL_MS, sessionReusedOf,
  *   UNPACED_DISCOVERY —
  *   importing this module runs nothing; main() runs only when the file is
  *   the entry script.
@@ -384,9 +385,11 @@ function liveBudgetPath(args) { return path.resolve(args.out, '..', 'live-budget
 // handled); `tuneBudget` tightens the SAME instance in place once the adopted
 // host and Crawl-delay are known — a 429 already taken is never loosened.
 function makeBudget(args, host, crawlDelay) { return tuneBudget(new HostBudget({ ...BUDGET_DEFAULT, source: 'default' }), args, host, crawlDelay); }
+export const LIVE_BUDGET_TTL_MS = 7 * 24 * 3600 * 1000; // a learned ceiling older than this is ignored (live-budget.mjs carries the same constant)
 export function tuneBudget(budget, args, host, crawlDelay) {
   try {
-    const learned = existsSync(liveBudgetPath(args)) ? JSON.parse(readFileSync(liveBudgetPath(args), 'utf8'))[host] : null;
+    let learned = existsSync(liveBudgetPath(args)) ? JSON.parse(readFileSync(liveBudgetPath(args), 'utf8'))[host] : null;
+    if (learned && learned.learnedAt && Date.now() - Date.parse(learned.learnedAt) > LIVE_BUDGET_TTL_MS) { console.error(`[crawl] learned ceiling for ${host} (learnedAt ${learned.learnedAt}) has expired — default pacing; a recurring 429 re-learns it`); learned = null; }
     if (learned && ((learned.navPerMin || Infinity) < budget.navPerMin || (learned.minGapMs || 0) > budget.minGapMs)) {
       budget.navPerMin = Math.min(budget.navPerMin, learned.navPerMin || budget.navPerMin); budget.minGapMs = Math.max(budget.minGapMs, learned.minGapMs || 0);
       if (!budget.rateLimits) budget.source = 'live-budget.json';

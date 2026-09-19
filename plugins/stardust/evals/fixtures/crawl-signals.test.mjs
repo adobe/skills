@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { captureQualityOf, SHOT_WRAP_PX, OVERLAY_FLAG_PCT, challengeMarker, CHALLENGE_PHRASE, HostBudget, BUDGET_DEFAULT, parseRetryAfter, mergeLiveBudget, tuneBudget, sessionReusedOf, UNPACED_DISCOVERY } from '../../skills/extract/scripts/crawl.mjs';
+import { captureQualityOf, SHOT_WRAP_PX, OVERLAY_FLAG_PCT, challengeMarker, CHALLENGE_PHRASE, HostBudget, BUDGET_DEFAULT, parseRetryAfter, mergeLiveBudget, tuneBudget, LIVE_BUDGET_TTL_MS, sessionReusedOf, UNPACED_DISCOVERY } from '../../skills/extract/scripts/crawl.mjs';
 
 assert.equal(captureQualityOf({ emptyMain: false, subResourceBlock: false, overlayCoverPct: 95, spaShellSuspect: true }), 'ok', 'overlay / SPA-shell flags do not degrade by themselves');
 assert.equal(captureQualityOf({ emptyMain: true, subResourceBlock: false }), 'degraded', 'blank <main> with no real image → degraded');
@@ -78,6 +78,14 @@ assert.deepEqual(tuneBudget(fresh(), args, 'loose.example.test', null).toJSON(),
 assert.deepEqual(tuneBudget(fresh(), args, 'example.test', 12).toJSON(), { navPerMin: 10, minGapMs: 12000, source: 'robots Crawl-delay' }, 'Crawl-delay widens the gap after discovery');
 const hit = fresh(); hit.rateLimited(null); tuneBudget(hit, args, 'www.example.test', 5);
 assert.deepEqual(hit.toJSON(), { navPerMin: 4, minGapMs: 8000, source: 'rate-limited' }, 'a probe 429 already taken keeps its source; the stricter learned values still apply');
+// learned ceilings expire (crawl.mjs header § Live budget: LIVE_BUDGET_TTL_MS after learnedAt) — one 429 must not slow every later run forever
+assert.equal(LIVE_BUDGET_TTL_MS, 7 * 24 * 3600 * 1000, 'same constant as live-budget.mjs');
+writeFileSync(join(dir, 'live-budget.json'), JSON.stringify({ 'old.example.test': { navPerMin: 1, minGapMs: 30000, learnedAt: new Date(Date.now() - LIVE_BUDGET_TTL_MS - 60000).toISOString() }, 'recent.example.test': { navPerMin: 1, minGapMs: 30000, learnedAt: new Date().toISOString() } }));
+const quiet = console.error; console.error = () => {};
+try {
+  assert.deepEqual(tuneBudget(fresh(), args, 'old.example.test', null).toJSON(), { navPerMin: 10, minGapMs: 3000, source: 'default' }, 'an expired ceiling is ignored');
+  assert.deepEqual(tuneBudget(fresh(), args, 'recent.example.test', null).toJSON(), { navPerMin: 1, minGapMs: 30000, source: 'live-budget.json' }, 'a recent one applies');
+} finally { console.error = quiet; }
 // sessionReusedOf — _provenance.storageState is a pin, not a constant (current-state-schema.md § Top-level shape)
 assert.equal(sessionReusedOf({}), false, 'plain headless run, 0 cookies → false');
 assert.equal(sessionReusedOf({ botBlock: 'challenge' }), true, 'a cleared challenge is an admitted session');
