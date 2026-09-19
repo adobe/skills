@@ -251,8 +251,9 @@ Aggregation rules:
   mandatory — CMP buttons are commonly unclassed, so a class-only
   exclusion misses them and their border colour enters the palette),
   is dropped from palette counting and from button-cluster / component
-  style aggregation. This regex is the rule until T19.2's shared consent
-  label table lands in `live-session.mjs`; then it becomes a pointer to it.
+  style aggregation. The regex is the coarse pre-filter; the exact label
+  table is `live-session.mjs` ACCEPT_LABELS / DECLINE_LABELS (crawl.mjs
+  carries a parity-checked copy) — reuse it verbatim, never fork the list.
 - Cap the palette at 8 entries. If the site uses more, keep the top 8
   by occurrences and record the dropped colors in `_provenance.notes`.
 - Track **usage context** per color in `usedAs`: a deduped list drawn

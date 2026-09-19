@@ -829,73 +829,163 @@ const CONSENT_CONTAINERS = '#onetrust-banner-sdk, #truste-consent-track, #userce
 // most informative value seen across pages (a click beats a no-op).
 const consentRank = (m) => (/^(dismissed|text):/.test(m) ? 3 : m === 'failed' ? 2 : m === 'none-detected' ? 1 : 0);
 
+// ---- Shared consent-label tables and DOM helpers -------------------------
+// SOURCE OF TRUTH: skills/diff/scripts/live-session.mjs (ACCEPT_LABELS,
+// DECLINE_LABELS, SETTINGS_LABELS, CLOSE_LABELS, pageFindLabelled,
+// pageClickInShadow). crawl.mjs is copied ALONE into projects (extract/SKILL.md
+// § Setup) so it cannot import them; this is a byte-identical copy and
+// evals/lint/launch-ladder.mjs fails when the two files drift — edit
+// live-session.mjs first, then paste here. The lift, the capture and the gate
+// must click the SAME control (D3), so one table serves all three.
+export const ACCEPT_LABELS = [
+  'accept all', 'accept all cookies', 'allow all', 'allow all cookies', 'accept', 'i accept', 'accept cookies', 'agree', 'i agree', 'ok', 'got it', 'allow cookies', 'yes, i agree',
+  'alle akzeptieren', 'akzeptieren', 'alle cookies akzeptieren', 'zustimmen', 'einverstanden', 'alles akzeptieren',
+  'tout accepter', 'accepter tout', 'accepter', "j'accepte", 'accepter et fermer',
+  'accetta tutto', 'accetta tutti', 'accetta', 'accetto',
+  'aceptar todo', 'aceptar todas', 'aceptar', 'acepto',
+  'alles accepteren', 'accepteren', 'akkoord', 'alle cookies accepteren',
+  'godta alle', 'godta', 'aksepter alle', 'aksepter', 'tillat alle',
+  'tillad alle', 'accepter alle', 'acceptér alle', 'accepter',
+  'godkänn alla', 'acceptera alla', 'acceptera', 'godkänn', 'tillåt alla',
+  'aceitar todos', 'aceitar tudo', 'aceitar',
+  'zaakceptuj wszystkie', 'akceptuj wszystko', 'akceptuję', 'zgadzam się',
+];
+export const DECLINE_LABELS = [
+  'reject all', 'decline all', 'reject', 'decline', 'refuse all', 'only necessary', 'necessary only', 'only essential', 'essential only', 'reject all cookies', 'continue without accepting', 'no thanks', 'no, thanks',
+  'alle ablehnen', 'ablehnen', 'nur notwendige', 'nur erforderliche', 'nur notwendige cookies',
+  'tout refuser', 'refuser', 'refuser tout', 'continuer sans accepter',
+  'rifiuta tutto', 'rifiuta', 'rifiuta tutti', 'solo necessari',
+  'rechazar todo', 'rechazar', 'rechazar todas', 'solo necesarias',
+  'alles weigeren', 'weigeren', 'alleen noodzakelijk', 'alles afwijzen',
+  'avvis alle', 'avvis', 'kun nødvendige',
+  'afvis alle', 'afvis', 'kun nødvendige cookies',
+  'neka alla', 'avböj alla', 'endast nödvändiga',
+  'rejeitar todos', 'rejeitar', 'apenas necessários',
+  'odrzuć wszystkie', 'odrzuć', 'tylko niezbędne',
+];
+export const SETTINGS_LABELS = ['cookie settings', 'manage cookies', 'manage preferences', 'settings', 'preferences', 'customize', 'customise', 'more options', 'einstellungen', 'cookie-einstellungen', 'paramétrer', 'personnaliser', 'preferenze', 'configurar', 'instellingen'];
+const CLOSE_LABELS = ['close', 'no thanks', 'no, thanks', 'not now', 'maybe later', 'dismiss', 'skip', 'nein danke', 'non merci', 'no grazie', 'no, gracias', 'nee bedankt', 'nei takk', 'nej tak', 'nej tack', 'não, obrigado', 'nie, dziękuję', '×', '✕'];
+// Accept selectors tried before the label tables (first VISIBLE match wins —
+// all matches are inspected, never `.first()`: the hidden twin inside a
+// collapsed settings view was clicked in one harvest while the visible one stayed).
+const CONSENT_ACCEPT_SELS = ['#onetrust-accept-btn-handler', '.truste-button2', '#CybotCookiebotDialogBodyLevelButtonAccept',
+  '[aria-label*="Accept" i]', 'button[id*="accept" i]', 'button[class*="accept" i]'];
+
+function pageFindLabelled({ labels, marker, requireOverlay }) {
+  const norm = (s) => String(s || '').toLowerCase().replace(/[\u00a0\u200b]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[.!…»›→]+$/g, '').trim();
+  const set = new Set(labels);
+  const visible = (el) => { const cs = getComputedStyle(el); if (cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) === 0) return false; const r = el.getBoundingClientRect(); return r.width > 4 && r.height > 4 && r.bottom > 0 && r.top < innerHeight; };
+  const overlayScoped = (el) => {
+    for (let n = el, d = 0; n && n !== document.body && d < 10; n = n.parentElement || (n.getRootNode() && n.getRootNode().host) || null, d += 1) {
+      const cs = getComputedStyle(n);
+      if (cs.position === 'fixed' || cs.position === 'sticky') return true;
+      const z = Number(cs.zIndex); if (z >= 100) return true;
+    }
+    return false;
+  };
+  const controls = 'button, a, [role="button"], input[type="button"], input[type="submit"]';
+  const roots = [document];
+  let n = 0;
+  for (const el of document.querySelectorAll('*')) { if (el.shadowRoot) roots.push(el.shadowRoot); if ((n += 1) > 8000) break; }
+  for (const root of roots) {
+    for (const el of root.querySelectorAll(controls)) {
+      const label = norm(el.tagName === 'INPUT' ? el.value : (el.getAttribute('aria-label') && !el.textContent.trim() ? el.getAttribute('aria-label') : el.textContent));
+      if (!label || label.length > 25 || !set.has(label)) continue;
+      if (!visible(el)) continue;
+      if (requireOverlay && !overlayScoped(el)) continue;
+      el.setAttribute(marker, '1');
+      return { label, host: root === document ? null : (root.host.id ? `#${root.host.id}` : root.host.tagName.toLowerCase()) };
+    }
+  }
+  return null;
+}
+
+function pageClickInShadow({ hostSel, sel }) {
+  const host = document.querySelector(hostSel);
+  const root = host && host.shadowRoot;
+  const el = root && root.querySelector(sel);
+  if (!el) return false;
+  const r = el.getBoundingClientRect();
+  if (r.width < 2 || r.height < 2) return false;
+  el.click();
+  return true;
+}
+
 /**
  * Accept-mode consent dismissal (D3: lift, capture and gate click the SAME
  * control — replica's stitch-shot reads the value returned here as its default
- * `--consent`). Returns the resolved method, one of
+ * `--consent`). Mirrors live-session.mjs dismissOverlays' consent pass:
+ * visible-match selector iteration, the known shadow-hosted CMP, the exact-label
+ * text fallback over light DOM + open shadow roots (ACCEPT_LABELS, overlay-scoped),
+ * and a frames() pass for iframe-hosted invites (CLOSE_LABELS + DECLINE_LABELS).
+ * capturePage runs it once after load and AGAIN after WAIT_MS — a banner whose
+ * JS mounts it late was missed by the single pre-wait pass (recorded).
+ * Returns the resolved method, one of
  *   dismissed:<sel>  a selector was clicked   text:<label>  the guarded text-match fallback clicked a label
  *   none-detected    no consent surface seen  failed        a consent container is present and nothing hid it
  * (playwright-recipe.md § Pre-flight: consent dismissal; values listed in extract/SKILL.md Phase 2 step 3).
  */
 async function dismissConsent(page) {
-  const sels = ['#onetrust-accept-btn-handler', '.truste-button2', '#CybotCookiebotDialogBodyLevelButtonAccept',
-    '[aria-label*="Accept" i]', 'button[id*="accept" i]', 'button[class*="accept" i]'];
+  const MARK = 'data-stardust-hit';
+  // Click the first VISIBLE match of a selector (all matches inspected).
+  const clickVisible = async (sel, settleMs) => {
+    try {
+      const loc = page.locator(sel);
+      const n = Math.min(await loc.count(), 12);
+      for (let i = 0; i < n; i += 1) {
+        const el = loc.nth(i);
+        if (await el.isVisible().catch(() => false)) {
+          await el.click({ timeout: 3000 });
+          await page.waitForTimeout(settleMs);
+          return true;
+        }
+      }
+    } catch { /* candidate absent / detached — try next */ }
+    return false;
+  };
   let matched = null;
-  for (const s of sels) {
-    const el = await page.$(s);
-    if (el) { await el.click().catch(() => {}); matched = s; await page.waitForTimeout(300); break; }
-  }
+  for (const s of CONSENT_ACCEPT_SELS) if (await clickVisible(s, 300)) { matched = s; break; }
   // Usercentrics renders inside shadow DOM (#usercentrics-root) — regular
   // selectors can't reach it (tools-retailer e2e finding). Accept first (D3).
-  const ucMatched = await page.evaluate(() => {
-    const root = document.querySelector('#usercentrics-root')?.shadowRoot;
-    if (root) {
-      const btn = root.querySelector('[data-testid="uc-accept-all-button"], [data-testid="uc-deny-all-button"]');
-      if (btn) { btn.click(); return `[data-testid="${btn.dataset.testid}"]`; }
+  let ucMatched = null;
+  if (!matched) {
+    for (const sel of ['[data-testid="uc-accept-all-button"]', '[data-testid="uc-deny-all-button"]']) {
+      if (await page.evaluate(pageClickInShadow, { hostSel: '#usercentrics-root', sel }).catch(() => false)) { ucMatched = sel; await page.waitForTimeout(300); break; }
     }
-    return null;
-  }).catch(() => null);
-  // Text-match fallback, only when the selector pass matched NOTHING (two field
-  // harvests, 2026-08: two different consent widgets — a custom
-  // dialog, cookieconsent's a.cc-btn — were missed by the list above; on
-  // one of them the banner baked into the ground-truth screenshot AND repeated at
-  // all 7 stitch seams → 32% false pixel diff). Guards keep it from ever
-  // hitting an in-content link: exact match on a short consent label (≤25
-  // chars after whitespace collapse), visible, and inside a fixed/sticky or
-  // high-z overlay container. Worst case = today's behavior (banner stays).
+  }
+  // Text-match fallback, only when the selector passes matched NOTHING (two
+  // field harvests, 2026-08: a custom dialog and cookieconsent's a.cc-btn were
+  // missed by the list above; one banner baked into the ground-truth screenshot
+  // AND repeated at all 7 stitch seams → 32% false pixel diff). B28-narrow
+  // guards keep it from ever hitting an in-content link: exact match on a short
+  // consent label (≤25 chars), visible, inside a fixed/sticky or high-z overlay
+  // container; light DOM + open shadow roots. Worst case = banner stays.
   let textHit = null;
   if (!matched && !ucMatched) {
-    const hit = await page.evaluate(() => {
-      const LABELS = new Set(['accept', 'accept all', 'allow all', 'agree', 'ok', 'decline',
-        'alle akzeptieren', 'accepter']);
-      const inOverlay = (el) => {
-        for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
-          const cs = getComputedStyle(n);
-          if (cs.position === 'fixed' || cs.position === 'sticky') return true;
-          if (cs.position !== 'static' && +cs.zIndex >= 100) return true;
-        }
-        return false;
-      };
-      for (const el of document.querySelectorAll('button, a, [role="button"]')) {
-        const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
-        if (!t || t.length > 25 || !LABELS.has(t.toLowerCase())) continue;
-        const cs = getComputedStyle(el);
-        const r = el.getBoundingClientRect();
-        if (cs.display === 'none' || cs.visibility === 'hidden' || r.width < 2 || r.height < 2) continue;
-        if (!inOverlay(el)) continue;
-        el.click();
-        return t;
-      }
-      return null;
-    }).catch(() => null);
-    if (hit) { textHit = hit; console.error(`[crawl] consent dismissed via text-match fallback ("${hit}")`); await page.waitForTimeout(300); }
+    const hit = await page.evaluate(pageFindLabelled, { labels: ACCEPT_LABELS, marker: MARK, requireOverlay: true }).catch(() => null);
+    if (hit) {
+      await page.evaluate((m) => { for (const el of document.querySelectorAll(`[${m}]`)) { el.click(); el.removeAttribute(m); } }, MARK).catch(() => {});
+      textHit = hit.label;
+      console.error(`[crawl] consent dismissed via text-match fallback ("${hit.label}"${hit.host ? `, shadow ${hit.host}` : ''})`);
+      await page.waitForTimeout(300);
+    }
+  }
+  // Survey / feedback invites hosted in an iframe: close/decline label inside
+  // every child frame (no navigation — the frame is already loaded).
+  for (const frame of page.frames()) {
+    if (frame === page.mainFrame()) continue;
+    let hit = null;
+    try { hit = await frame.evaluate(pageFindLabelled, { labels: [...CLOSE_LABELS, ...DECLINE_LABELS], marker: MARK, requireOverlay: false }); } catch { continue; }
+    if (!hit) continue;
+    await frame.evaluate((m) => { for (const el of document.querySelectorAll(`[${m}]`)) { el.click(); el.removeAttribute(m); } }, MARK).catch(() => {});
+    await page.waitForTimeout(300);
   }
   await page.waitForTimeout(300);
   // resolved method BEFORE the prune — a container that survived every pass is `failed`
   const stillPresent = (matched || ucMatched || textHit) ? false : await page.evaluate((sel) => [...document.querySelectorAll(sel)]
     .some((n) => { const r = n.getBoundingClientRect(); return r.width > 1 && r.height > 1; }), CONSENT_CONTAINERS).catch(() => false);
   // assert: prune any consent container still present (don't leave it for capture).
-  await page.evaluate((sel) => { document.querySelectorAll(sel).forEach((n) => n.remove()); }, CONSENT_CONTAINERS);
+  await page.evaluate((sel) => { document.querySelectorAll(sel).forEach((n) => n.remove()); }, CONSENT_CONTAINERS).catch(() => {});
   if (matched) return `dismissed:${matched}`;
   if (ucMatched) return `dismissed:${ucMatched}`;
   if (textHit) return `text:${textHit}`;
@@ -1506,8 +1596,14 @@ async function capturePage(context, url, slug, args, isEntry = false) {
   const ct = resp.headers()['content-type'] || '';
   if (!/text\/html|application\/xhtml/.test(ct)) throw Object.assign(new Error(`content-type ${ct}`), { errorClass: 'ContentTypeError' });
 
-  const consentMethod = args.consent ? await dismissConsent(page) : 'skipped';
+  let consentMethod = args.consent ? await dismissConsent(page) : 'skipped';
   await page.waitForTimeout(WAIT_MS[args.wait] || WAIT_MS.medium);
+  // Second consent pass AFTER the wait: a banner mounted by late JS is missed
+  // by the pre-wait pass (recorded — the project copy had to be patched by hand).
+  if (args.consent && consentRank(consentMethod) < 3) {
+    const late = await dismissConsent(page);
+    if (consentRank(late) > consentRank(consentMethod)) consentMethod = late;
+  }
   // 4-step scroll to trigger lazy content, return to top, then settle: entry
   // animations (hero reveals) must reach their final state before the
   // visibility filter reads computed opacity, or the animated h1 is silently

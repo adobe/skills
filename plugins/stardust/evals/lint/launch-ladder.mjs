@@ -15,7 +15,12 @@
 //     transitional; instruments use launchTier / launchLadder) — a temporary
 //     allowlist names the scripts still to be routed, and must shrink;
 //   * TIERS, STEALTH_ARGS, OFFSCREEN_ARGS and the launchTier function body are
-//     identical in the two files (modulo `export` and whitespace).
+//     identical in the two files (modulo `export` and whitespace);
+//   * the consent-label tables (ACCEPT_LABELS, DECLINE_LABELS, SETTINGS_LABELS,
+//     CLOSE_LABELS) and the DOM helpers pageFindLabelled / pageClickInShadow
+//     are identical too — live-session.mjs is the source of truth, crawl.mjs
+//     dismissConsent carries the copy (D3: lift, capture and gate click the
+//     SAME control; a label added on one side only would split them).
 //
 // Usage: node plugins/stardust/evals/lint/launch-ladder.mjs  (exit 1 on findings)
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -55,6 +60,12 @@ const PARTS = [
   ['STEALTH_ARGS', /const STEALTH_ARGS = \[[^\]]*\];/],
   ['OFFSCREEN_ARGS', /const OFFSCREEN_ARGS = \[[^\]]*\];/],
   ['launchTier', /async function launchTier\(chromium, tier\) \{[\s\S]*?\n\}/],
+  ['ACCEPT_LABELS', /const ACCEPT_LABELS = \[[^\]]*\];/],
+  ['DECLINE_LABELS', /const DECLINE_LABELS = \[[^\]]*\];/],
+  ['SETTINGS_LABELS', /const SETTINGS_LABELS = \[[^\]]*\];/],
+  ['CLOSE_LABELS', /const CLOSE_LABELS = \[[^\]]*\];/],
+  ['pageFindLabelled', /function pageFindLabelled\(\{ labels, marker, requireOverlay \}\) \{[\s\S]*?\n\}/],
+  ['pageClickInShadow', /function pageClickInShadow\(\{ hostSel, sel \}\) \{[\s\S]*?\n\}/],
 ];
 const norm = (s) => s.replace(/^export /gm, '').replace(/\s+/g, ' ').trim();
 const srcs = LADDER.map((l) => readFileSync(join(ROOT, l), 'utf8'));
@@ -67,4 +78,4 @@ for (const [name, re] of PARTS) {
 for (const k of Object.keys(TEMPORARY_ALLOWLIST)) if (!used.has(k)) findings.push(`stale TEMPORARY_ALLOWLIST entry "${k}" — remove it`);
 const uniq = [...new Set(findings)];
 if (uniq.length) { console.error(`launch-ladder lint: ${uniq.length} finding(s)\n${uniq.join('\n')}`); process.exit(1); }
-console.log(`launch-ladder lint: ${files.length} scripts, no window launch outside the ladder (${used.size} allowlisted); ${PARTS.length} shared parts identical`);
+console.log(`launch-ladder lint: ${files.length} scripts, no window launch outside the ladder (${used.size} allowlisted); ${PARTS.length} shared parts (ladder + consent tables/helpers) identical`);

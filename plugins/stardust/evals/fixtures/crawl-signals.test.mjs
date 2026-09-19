@@ -11,7 +11,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { captureQualityOf, SHOT_WRAP_PX, OVERLAY_FLAG_PCT, challengeMarker, CHALLENGE_PHRASE, HostBudget, BUDGET_DEFAULT, parseRetryAfter, mergeLiveBudget, tuneBudget, LIVE_BUDGET_TTL_MS, sessionReusedOf, UNPACED_DISCOVERY, exitCodeOf, noteRateLimited, probeRateLimited, needsStateSave } from '../../skills/extract/scripts/crawl.mjs';
+import { captureQualityOf, SHOT_WRAP_PX, OVERLAY_FLAG_PCT, challengeMarker, CHALLENGE_PHRASE, HostBudget, BUDGET_DEFAULT, parseRetryAfter, mergeLiveBudget, tuneBudget, LIVE_BUDGET_TTL_MS, sessionReusedOf, UNPACED_DISCOVERY, exitCodeOf, noteRateLimited, probeRateLimited, needsStateSave, ACCEPT_LABELS, DECLINE_LABELS, SETTINGS_LABELS } from '../../skills/extract/scripts/crawl.mjs';
+import * as liveSession from '../../skills/diff/scripts/live-session.mjs';
 
 assert.equal(captureQualityOf({ emptyMain: false, subResourceBlock: false, overlayCoverPct: 95, spaShellSuspect: true }), 'ok', 'overlay / SPA-shell flags do not degrade by themselves');
 assert.equal(captureQualityOf({ emptyMain: true, subResourceBlock: false }), 'degraded', 'blank <main> with no real image → degraded');
@@ -121,5 +122,24 @@ assert.equal(needsStateSave({ botBlock: 'challenge', savedState: '/x/_storage-st
 assert.equal(needsStateSave({ saveState: true, savedState: '/x/_storage-state.json', escalatedAtCapture: true }), true, '--save-state follows the same rule');
 assert.equal(needsStateSave({ botBlock: null, saveState: false, escalatedAtCapture: true }), false, 'no cleared challenge and no --save-state → nothing to save');
 assert.ok(UNPACED_DISCOVERY.has('/robots.txt') && UNPACED_DISCOVERY.has('/sitemap.aspx') && !UNPACED_DISCOVERY.has('/sitemaps/pages.xml'), 'only the ≤ 5 guessed probes skip the budget; declared children and BFS hops are paced');
+
+// dismissConsent mirrors live-session.mjs dismissOverlays' consent pass (D3: the
+// lift, the capture and the gate click the SAME control). Static contract on the
+// source — the behaviours a browser run would exercise are pinned by shape:
+assert.deepEqual(ACCEPT_LABELS, liveSession.ACCEPT_LABELS, 'ACCEPT_LABELS is a verbatim copy of live-session.mjs (crawl.mjs ships alone — cannot import)');
+assert.deepEqual(DECLINE_LABELS, liveSession.DECLINE_LABELS, 'DECLINE_LABELS copy');
+assert.deepEqual(SETTINGS_LABELS, liveSession.SETTINGS_LABELS, 'SETTINGS_LABELS copy');
+assert.ok(ACCEPT_LABELS.includes('godta alle') && DECLINE_LABELS.includes('avvis alle'), 'multilingual set reaches nb (the recorded Norwegian banner)');
+const dismissSrc = (crawlSrc.match(/async function dismissConsent\(page\) \{[\s\S]*?\n\}\n/) || [''])[0];
+assert.ok(dismissSrc.length > 200, 'dismissConsent found');
+assert.match(dismissSrc, /isVisible\(\)/, 'visible-match: every candidate iterates all matches and clicks the first visible one');
+assert.doesNotMatch(dismissSrc, /page\.\$\(|\.first\(\)/, 'no page.$ / .first() — the hidden-twin trap');
+assert.match(dismissSrc, /pageClickInShadow, \{ hostSel: '#usercentrics-root'/, 'known shadow-hosted CMP by host + testid');
+assert.match(dismissSrc, /pageFindLabelled, \{ labels: ACCEPT_LABELS, marker: MARK, requireOverlay: true \}/, 'text fallback uses the shared accept table, overlay-scoped, light DOM + open shadow roots');
+assert.match(dismissSrc, /for \(const frame of page\.frames\(\)\)[\s\S]*labels: \[\.\.\.CLOSE_LABELS, \.\.\.DECLINE_LABELS\]/, 'frames() pass closes iframe-hosted invites with close/decline labels');
+assert.match(crawlSrc, /function pageFindLabelled\([\s\S]*?if \(el\.shadowRoot\) roots\.push\(el\.shadowRoot\)/, 'generic open-shadow-root walk in the label finder');
+assert.match(crawlSrc, /waitForTimeout\(WAIT_MS\[args\.wait\] \|\| WAIT_MS\.medium\);[\s\S]{0,600}?const late = await dismissConsent\(page\);/, 'dismissConsent re-runs AFTER the wait (late-mounted banner)');
+assert.equal((crawlSrc.match(/await dismissConsent\(page\)/g) || []).length, 2, 'exactly two consent passes per page: pre-wait and post-wait');
+assert.match(crawlSrc, /SOURCE OF TRUTH: skills\/diff\/scripts\/live-session\.mjs/, 'the copy names its source of truth (launch-ladder.mjs enforces byte parity)');
 
 console.log('crawl-signals test: ok');

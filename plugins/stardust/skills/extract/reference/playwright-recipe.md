@@ -296,8 +296,12 @@ const CONTAINERS = '#onetrust-banner-sdk, #CybotCookiebotDialog, #usercentrics-r
 
 async function dismissConsent(page, mode = 'accept') {
   for (const sel of (mode === 'deny' ? REJECT : ACCEPT)) {
-    const el = await page.$(sel);
-    if (el) { await el.click().catch(() => {}); await page.waitForTimeout(300); return `dismissed:${sel}`; }
+    // first VISIBLE match — never .first()/page.$: a hidden twin inside a collapsed settings view was clicked in one harvest
+    const loc = page.locator(sel);
+    for (let i = 0, n = Math.min(await loc.count(), 12); i < n; i += 1) {
+      const el = loc.nth(i);
+      if (await el.isVisible().catch(() => false)) { await el.click({ timeout: 3000 }); await page.waitForTimeout(300); return `dismissed:${sel}`; }
+    }
   }
   // Usercentrics renders inside shadow DOM (#usercentrics-root) — plain selectors cannot reach it
   const uc = await page.evaluate((m) => {
@@ -308,8 +312,11 @@ async function dismissConsent(page, mode = 'accept') {
   }, mode).catch(() => null);
   if (uc) return `dismissed:${uc}`;
   // Text-match fallback — exact short label (<= 25 chars), visible, inside a
-  // fixed/sticky or high-z overlay; the guards keep it off in-content links.
-  const label = await page.evaluate((m) => { /* crawl.mjs dismissConsent(): LABELS per mode */ return null; }, mode).catch(() => null);
+  // fixed/sticky or high-z overlay, light DOM + open shadow roots; the guards
+  // keep it off in-content links. Labels: live-session.mjs ACCEPT_LABELS /
+  // DECLINE_LABELS (crawl.mjs carries a parity-checked copy); then a frames()
+  // pass for iframe-hosted invites, and the whole pass re-runs after the wait.
+  const label = await page.evaluate((m) => { /* crawl.mjs dismissConsent(): pageFindLabelled per mode */ return null; }, mode).catch(() => null);
   if (label) return `text:${label}`;
   const present = await page.$(CONTAINERS);
   return present ? 'failed' : 'none-detected';
