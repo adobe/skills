@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- stardust:prototype
+  writtenBy:        stardust:replica
+  writtenAt:        2026-09-09T11:48:31Z
+  page:             home
+  slug:             home
+  mode:             preserve
+  sourceCurrent:    stardust/current/pages/home.json
+  againstDirection: stardust/direction.md (Active 2026-09-08T10:05:00Z)
+  designMd:         DESIGN.md (sha: a99e7fb42dee)
+  designJson:       DESIGN.json (sha: 27bf506c8992)
+  stardustVersion:  0.22.2
+-->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Larkspur Mutual — Home and auto insurance, member-owned since 1931</title>
+<meta name="description" content="Larkspur Mutual is a member-owned insurer covering homes, cars and small businesses across the three river counties.">
+<style>
+:root {
+  --heading-font-family: 'Source Serif 4', Georgia, serif;
+  --body-font-family:    'Inter', Arial, sans-serif;
+  --heading-xxl: 64px;
+  --heading-xl:  48px;
+  --heading-lg:  36px;
+  --heading-md:  26px;
+  --body:        17px;
+  --body-sm:     14px;
+  --line-height-heading: 1.12;
+  --line-height-body:    1.6;
+  --color-bg:     #ffffff;
+  --color-fg:     #1f2a37;
+  --color-accent: #2f6b4f;
+  --color-accent-2: #c8a24a;
+  --spacing-xs:  4px;
+  --spacing-sm:  8px;
+  --spacing-md:  16px;
+  --spacing-lg:  24px;
+  --spacing-xl:  48px;
+  --spacing-2xl: 88px;
+  --section-padding: 88px;
+  --max-width:       1160px;
+  --radius:          6px;
+}
+body { margin: 0; font: var(--body)/var(--line-height-body) var(--body-font-family); color: var(--color-fg); background: var(--color-bg); }
+h1, h2, h3 { font-family: var(--heading-font-family); line-height: var(--line-height-heading); margin: 0 0 var(--spacing-md); }
+h1 { font-size: var(--heading-xl); } h2 { font-size: var(--heading-lg); } h3 { font-size: var(--heading-md); }
+header, section, footer { max-width: var(--max-width); margin: 0 auto; padding: var(--section-padding) var(--spacing-lg); }
+.hero { max-width: none; background: var(--color-accent); color: #fff; }
+.hero > * { max-width: var(--max-width); margin-left: auto; margin-right: auto; }
+.coverage ul { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--spacing-lg); list-style: none; padding: 0; margin: 0; }
+.member-stats dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--spacing-lg); margin: 0; }
+.member-stats dd { font-family: var(--heading-font-family); font-size: var(--heading-lg); margin: 0; }
+.btn { display: inline-block; padding: 12px 22px; border-radius: var(--radius); background: var(--color-accent-2); color: var(--color-fg); text-decoration: none; font-weight: 600; margin-right: var(--spacing-sm); }
+.btn-secondary { background: transparent; color: inherit; border: 1px solid currentColor; }
+header, footer { padding-top: var(--spacing-md); padding-bottom: var(--spacing-md); display: flex; gap: var(--spacing-lg); align-items: center; }
+header nav a, footer a { color: var(--color-fg); text-decoration: none; margin-right: var(--spacing-md); }
+footer { border-top: 1px solid #d9dee5; font-size: var(--body-sm); flex-wrap: wrap; }
+footer a { color: #4a5563; }
+@media (max-width: 600px) { h1 { font-size: var(--heading-lg); } section { padding: var(--spacing-xl) var(--spacing-md); } .coverage ul, .member-stats dl { grid-template-columns: 1fr; } header { flex-direction: column; align-items: flex-start; } }
+</style>
+</head>
+<body data-template="landing">
+  <header data-section="header" data-intent="brand and primary navigation" data-layout="bar" data-nav-collapse="hamburger">
+    <a href="/" aria-label="Larkspur Mutual home"><img src="../migrated/assets/logo.svg" alt="Larkspur Mutual" width="168" height="36"></a>
+    <nav aria-label="Primary">
+      <a href="/insurance/home">Home insurance</a>
+      <a href="/insurance/auto">Auto insurance</a>
+      <a href="/business">Business</a>
+      <a href="/news/storm-season-checklist">Member news</a>
+    </nav>
+  </header>
+  <main>
+    <section class="hero" data-section="hero" data-intent="state what we insure and for whom" data-layout="full-bleed">
+      <h1>Insurance that answers the phone.</h1>
+      <p>Member-owned since 1931. Home, auto and small-business coverage written and serviced in the three river counties.</p>
+      <p><a class="btn" href="/insurance/home">Get a home quote</a> <a class="btn btn-secondary" href="/insurance/auto">Get an auto quote</a></p>
+    </section>
+    <section class="coverage" data-section="coverage" data-intent="route visitors to the right product" data-layout="grid" data-items="3">
+      <h2>What we cover</h2>
+      <ul>
+        <li><h3>Home</h3><p>Dwelling, contents and liability, with replacement-cost settlement on every policy.</p></li>
+        <li><h3>Auto</h3><p>Liability, collision and comprehensive, plus a local repair network with lifetime workmanship guarantee.</p></li>
+        <li><h3>Business</h3><p>Property, general liability and commercial auto for shops, farms and contractors.</p></li>
+      </ul>
+    </section>
+    <section class="member-stats" data-section="member-stats" data-intent="proof of mutual model" data-layout="contained" data-items="3">
+      <dl>
+        <div><dt>Members</dt><dd>48,200</dd></div>
+        <div><dt>Claims paid in 2025</dt><dd>$61.4M</dd></div>
+        <div><dt>Average claim response</dt><dd>1.8 days</dd></div>
+      </dl>
+    </section>
+    <section class="find-an-agent" data-section="find-an-agent" data-intent="conversion" data-layout="contained">
+      <h2>Talk to a local agent</h2>
+      <p>Twelve offices, one phone number: 1-800-555-0142.</p>
+      <p><a class="btn" href="/business">Business coverage</a></p>
+    </section>
+  </main>
+  <footer data-section="footer" data-intent="legal and secondary navigation" data-layout="bar">
+    <p>© 2026 Larkspur Mutual Insurance Company. A member-owned mutual insurer.</p>
+    <nav aria-label="Footer">
+      <a href="/">Home</a>
+      <a href="/business">Business</a>
+      <a href="/news/annual-report-2025">Annual report</a>
+    </nav>
+  </footer>
+</body>
+</html>
