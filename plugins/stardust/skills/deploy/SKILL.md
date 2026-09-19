@@ -17,7 +17,7 @@ Read this card, then the one section you are at — never the whole skill. Every
 | 1 | Audit | pre-render JSX to `stardust/.work/prerender/`; `node skills/deploy/scripts/style-fingerprint.mjs "file://<abs>/<proto>.html"` | per-page section list + variation manifest |
 | 2 | Names + reuse | D1/D11 triage per section → `stardust/eds-conversion-log.md` | names locked in writing before any block code |
 | 2b | Schema + tier | `node skills/deploy/scripts/section-schema.mjs "<protoURL>" --out stardust/eds-schema/<page>.json` | schema + decode tier recorded per section |
-| 3 | Foundation | `styles/styles.css` — tokens, reset, scaffold, style values, edit-mode snippets, `--nav-height`, favicon | token-completeness grep prints nothing |
+| 3 | Foundation | `styles/styles.css` — tokens, reset, scaffold, style values (budgeted), edit-mode snippets, `--nav-height`, favicon | token-completeness grep prints nothing |
 | 4 | Fonts | `styles/fonts.css` + `-fallback` faces in `styles.css`; woff2 under `fonts/` | every named family shipped; `head.html` untouched |
 | 5 | Buttons | restyle the boilerplate `a.button` rules; block JS MOVES CTA paragraphs | no manufactured anchors |
 | 6 | Chrome | `content/nav.html`, `content/footer.html`, `blocks/header`, `blocks/footer` | three-section nav contract kept |
@@ -97,9 +97,9 @@ When `emptySectionCollapse` is true (a metadata-only section is consumed into `<
 
 ## The one rule that drives everything else
 
-**One distinct visual PATTERN = one EDS block — and a section with NO pattern is NOT a block at all.** The content structure that lands in DA must follow **David's Model** (`davids-model.md`, bundled with this skill — the 15 rules mapped to this skill's contracts; cited as `D#N` throughout). Its first rule shapes everything here:
+**One distinct visual PATTERN = one EDS block — and a section with NO pattern is NOT a block at all.** The content structure that lands in DA follows **David's Model** (`davids-model.md` — the 15 rules mapped to this skill's contracts; cited as `D#N`). Its first rule shapes everything here:
 
-- **D1 — blocks aren't ideal for authoring.** A block is a table an author must maintain. A section whose content is plain prose — heading, paragraphs, an image, CTAs, with **no repeating units and no bespoke interactive structure** — is authored as **DEFAULT CONTENT** in its own section, never wrapped in a block. Its skin rides a minimal section-metadata `style` value (see Step 3); the section's semantics stay native `<h2>`/`<p>`/`<picture>`/`<a>`. Never wrap bare default content in a `text`/`heading`/`image` block (the D1 anti-pattern).
+- **D1 — blocks aren't ideal for authoring.** A block is a table an author must maintain. A section of plain prose — heading, paragraphs, an image, CTAs, with **no repeating units and no bespoke interactive structure** — is **DEFAULT CONTENT** in its own section, never wrapped in a block; its skin rides a minimal section-metadata `style` value (Step 3) and its semantics stay native `<h2>`/`<p>`/`<picture>`/`<a>`. Never wrap bare default content in a `text`/`heading`/`image` block (the D1 anti-pattern).
 - **Blocks are for structure default content can't express:** repeating units (cards, FAQ, logos, team), genuinely bespoke compositions (a countdown, a stat band, a cinematic hero), and interactive components. For those, one distinct prototype pattern = one block. Don't abstract speculatively or extract "patterns" across prototypes unless sections are genuinely the same pattern — each pattern's bespoke CSS can't be wrongly shared (`reference/anti-patterns.md` § Structure and decisions).
 
 **The one deliberate exception — collapse SAME-PATTERN sections into one block + VARIANT classes.** When two or more sections are the same content pattern (card grids, prose/CTA bands, quotes, accordions) differing only in skin, emit ONE canonical block (`cards`, `text`, `quote`, `accordion`) and put each section's look behind a variant class (`class="cards brands"`), brand styling in the variant CSS. The block JS stays generic (classify cells by content); only the CSS differs per variant. This is the David's-Model library win (D9: small, reusable, variant-driven — not 20 bespoke names). Keep genuinely-unique sections (a hero, a countdown widget) bespoke; budget for variant CSS — some grids are count-specific.
@@ -122,7 +122,7 @@ For a typical 5–10 page site:
 The decode side (a block parses robustly whatever DA hands it) lives in `reference/anti-patterns.md` and `reference/block-js-scaffold.md`; this is the encode side — what the content page EMITS — and where David's Model is enforced (`davids-model.md`; gate: `node skills/deploy/scripts/davids-model-lint.mjs content/` exits 0 before any DA write). Full text with every citation, § Section heads and § Images: `reference/encode-contract.md`.
 
 1. **Decoration that must survive DA rides a semantic inline tag** (`<strong>`, `<em>`, `<code>`, `<a>`, `<picture>`) — never a class, never an invented delimiter; a sub-field leads its cell with the field's tag.
-2. **No nested block tables (D2), no spans beyond the block-name header (D3), blocks stay ≤ 4 columns (D10).**
+2. **No nested block tables (D2), no spans beyond the block-name header (D3), blocks stay ≤ 4 columns (D10)**; section styles and block variants stay inside the vocabulary budget (`reference/foundation.md` § 3. Foundation).
 3. **URLs:** fully-qualified for media and external targets (D4); internal links to migrated pages root-relative, extensionless, no trailing slash — `localize-links.mjs` rewrites them.
 4. **No code visible as text (D15)** — including script bodies a scraper lifted as copy; video/embed URLs stay plain links for `buildAutoBlocks()` (D1); alt text describes the image only (D13).
 5. **Key facts live in server-rendered page content, never solely in chrome or a fragment (#86), and `decorate()` adds no words to the DOM (#100)** — `reference/ai-readability.md`.
@@ -190,7 +190,7 @@ After deploy, reconcile each page against its prototype on the DEPLOYED URL only
 
 ## When you finish
 
-Update `stardust/eds-conversion-log.md` (or create one) with: final block inventory, decisions locked, anti-patterns avoided, anything site-specific the next person should know — the running history of "why does this look the way it does."
+Update `stardust/eds-conversion-log.md` (or create one) with: final block inventory, the locked vocabulary (section styles, variants, counts), decisions locked, anti-patterns avoided, anything site-specific the next person should know — the running history of "why does this look the way it does."
 
 ## References
 
