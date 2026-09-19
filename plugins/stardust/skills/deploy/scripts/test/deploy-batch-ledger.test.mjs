@@ -11,6 +11,8 @@
  *   - `--force --paths` re-drives the selected page and the ledger row count never shrinks;
  *   - a hash-less `live` row is verified-then-skipped and gains `bodyHash`;
  *   - a `--publish` run over a hash-equal `previewed` row takes the fast path (no PUT);
+ *   - a `live` row on a preview run is verified on the RUN's tld (aem.page) — skipped while it
+ *     delivers there, re-driven (→ `previewed`) when it does not; the skip never trusts status alone;
  *   - `--report` and `--help` need no token and exit 0.
  */
 import assert from 'node:assert/strict';
@@ -149,6 +151,23 @@ try {
   assert.match(r.stderr, /previewed-only — needs --publish/);
   led = readLedger();
   assert.equal(led['/c'].bodyHash, sha1(page('C')), 'hash backfilled on a hash-less skip');
+
+  // a `live` row on a preview run: the skip verifies the run's tld (aem.page), never the row's status alone
+  led = readLedger(); led['/a'] = { status: 'live', attempts: 1, bodyHash: sha1(page('A')) }; writeLedger(led);
+  mock.reset();
+  r = await run([]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(mock.requests.filter((q) => q.url.startsWith('/delivery/aem.page/a.')).length, 1, 'live row verified on aem.page (the run tld)');
+  assert.equal(mock.requests.filter((q) => q.method === 'PUT').length, 0, 'delivering on aem.page → skipped');
+  assert.equal(readLedger()['/a'].status, 'live', 'a live row that delivers on aem.page keeps `live`');
+  mock.reset();
+  mock.rules.delivered = (tld, p, n) => (tld === 'aem.page' && p === '/a' && n === 1 ? { status: 404, body: '' } : { status: 200, body: '<main><h1>ok</h1></main>' });
+  r = await run([]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /1 re-verify failed/);
+  assert.equal(mock.requests.filter((q) => q.method === 'PUT' && q.url.endsWith('/a.html')).length, 1, 'a live row absent from aem.page is re-driven');
+  assert.equal(readLedger()['/a'].status, 'previewed', 'the re-drive on a preview run records the run tld');
+  mock.rules.delivered = () => ({ status: 200, body: '<main><h1>ok</h1></main>' });
 
   // --publish over hash-equal previewed rows: fast path (no PUT, POST /live/ + verify on aem.live)
   mock.reset();

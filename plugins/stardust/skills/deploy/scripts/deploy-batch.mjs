@@ -49,7 +49,8 @@
  *   - halt: the FIRST 401 from PUT/preview/live/DA GET stops the pool (401 is
  *     never retried), every in-flight row keeps its PREVIOUS status, the ledger
  *     is persisted, the log gets one `halt` line and stdout the one instruction
- *     with `next=<the same command>` — exit 3. Re-running `next` resumes.
+ *     with `next=<the same command minus --force>` — exit 3. Re-running `next`
+ *     resumes (the delivered pages skip; `--force` would re-drive them all).
  *   - access-restricted: a delivered GET answering 401 `x-error: access-not-allowed`
  *     with no site token resolved halts (exit 3) with the remedy; with a site
  *     token (`--site-token-env`, default SITE_TOKEN_<REPO> then SITE_TOKEN, sent as
@@ -116,7 +117,8 @@
  * Test hooks (fixture tests only): DEPLOY_BATCH_DA_SRC, DEPLOY_BATCH_ADMIN,
  * DEPLOY_BATCH_DELIVERY_BASE and DEPLOY_BATCH_DA_LIST override the hosts;
  * DEPLOY_BATCH_REPAIR_DELAY_MS shortens the 3 s repair/blip wait. The module is importable
- * (normalisePath, readPathList, buildPlan, mergeLedger) — main() runs only as a CLI.
+ * (normalisePath, readPathList, walkHtml, buildPlan, mergeLedger, serialPersister) — main() runs only as a CLI.
+ * Pages are driven in webPath order (readdir order is filesystem-specific).
  *
  * No external deps — uses Node's global fetch/FormData/Blob (Node 18+).
  */
@@ -132,6 +134,7 @@ const DA_SRC = process.env.DEPLOY_BATCH_DA_SRC || 'https://admin.da.live/source'
 const ADMIN = process.env.DEPLOY_BATCH_ADMIN || 'https://admin.hlx.page';
 const DELIVERY_BASE = process.env.DEPLOY_BATCH_DELIVERY_BASE || null;
 const HALT_EXIT = 3;
+const NEXT_STRIP = new Set(['--force']); // one-shot flags never echoed into the resume command
 const OK_STATUS = new Set(['live', 'previewed']);
 const REPAIR_DELAY_MS = Number(process.env.DEPLOY_BATCH_REPAIR_DELAY_MS) || 3000;
 const MIN_BODY_BYTES = 200;
@@ -230,18 +233,19 @@ export function parseArgs(argv) {
   return a;
 }
 
-async function walkHtml(dir, base = dir) {
+/** Every *.html under dir, in webPath order — readdir order is filesystem-specific, the drive order must not be. `list` is injectable for the fixture test. */
+export async function walkHtml(dir, base = dir, list = readdir) {
   const out = [];
-  for (const name of await readdir(dir)) {
+  for (const name of await list(dir)) {
     const full = path.join(dir, name);
     const s = await stat(full);
-    if (s.isDirectory()) out.push(...(await walkHtml(full, base)));
+    if (s.isDirectory()) out.push(...(await walkHtml(full, base, list)));
     else if (name.endsWith('.html')) {
       const rel = path.relative(base, full).replace(/\.html$/, '');
       out.push({ file: full, webPath: `/${rel}` });
     }
   }
-  return out;
+  return out.sort((a, b) => (a.webPath < b.webPath ? -1 : a.webPath > b.webPath ? 1 : 0));
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -382,6 +386,21 @@ export function mergeLedger(onDisk, ledger, touched) {
 async function readLedger(file) {
   if (!existsSync(file)) return {};
   try { return JSON.parse(await readFile(file, 'utf8')); } catch (e) { throw new Error(`ledger ${file} is not valid JSON (${e.message}) — fix or move it; never start from an empty ledger`); }
+}
+
+/**
+ * Serialise writes: two workers reaching a checkpoint inside one persist's await
+ * window must not race the tmp+rename. A REJECTED write reaches only its own
+ * awaiter — the chain resets, so the next checkpoint (and the final write) still
+ * runs instead of every later persist being skipped behind the first failure.
+ */
+export function serialPersister(fn) {
+  let chain = Promise.resolve();
+  return () => {
+    const p = chain.then(fn);
+    chain = p.catch(() => {});
+    return p;
+  };
 }
 
 let persistSeq = 0;
@@ -547,11 +566,10 @@ export async function main(argv = process.argv) {
   const exclude = args.exclude ? await readPathList(args.exclude) : null;
   const touched = new Set();
   const logLine = async (o) => appendFile(args.log, `${JSON.stringify({ t: new Date().toISOString(), ...o })}\n`);
-  // serialised: two workers hitting `done % 5 === 0` inside one persist's await window must not race the tmp+rename
-  let persisting = Promise.resolve();
-  const persist = () => (persisting = persisting.then(() => persistLedger(args.ledger, ledger, touched)));
+  const persist = serialPersister(() => persistLedger(args.ledger, ledger, touched));
   let progress = null; // created once the plan is known; halt() reads it so the SUMMARY counts what this run drove
-  const next = `node ${path.relative(process.cwd(), argv[1]) || argv[1]} ${argv.slice(2).map((x) => (/[\s"']/.test(x) ? JSON.stringify(x) : x)).join(' ')}`;
+  // `next` is the resume command: the same argv minus the one-shot flags — a re-run with `--force` would re-drive every selected page, including the ones this run already delivered
+  const next = `node ${path.relative(process.cwd(), argv[1]) || argv[1]} ${argv.slice(2).filter((x) => !NEXT_STRIP.has(x)).map((x) => (/[\s"']/.test(x) ? JSON.stringify(x) : x)).join(' ')}`;
   const halt = async (err, driven, remaining) => {
     await persist();
     await logLine({ step: 'halt', why: err.why, driven, remaining });
@@ -628,7 +646,8 @@ export async function main(argv = process.argv) {
       const url = ok ? `https://${args.branch}--${args.repo}--${args.org}.${rec.status === 'live' ? 'aem.live' : 'aem.page'}${p.webPath}` : null;
       if (url && !firstUrl) firstUrl = url;
       console.error(`[${done}/${todo.length}] ${ok ? 'OK  ' : 'FAIL'} ${p.webPath} (${rec.status})${url ? `  ${url}` : ''}`);
-      if (done % 5 === 0) await persist();
+      // a failed checkpoint is not a page failure: warn, keep driving — the final write (below) is the one that must succeed
+      if (done % 5 === 0) await persist().catch((e) => console.error(`[deploy-batch] WARN ledger checkpoint failed (${e.message}) — rows are kept in memory and written at the next checkpoint`));
     });
   } catch (err) {
     if (err instanceof HaltError) { progress.set({ halted: err.why }); return halt(err, done, todo.length - done); }

@@ -11,7 +11,9 @@
  *   - delivered 401 + x-error access-not-allowed with no site token → exit 3 naming SITE_TOKEN_<REPO>;
  *     with SITE_TOKEN_<REPO> set → `Authorization: token …` on the delivery host only, 401 is a per-page verify-fail;
  *   - ≥ 3 previously delivered pages 404 at startup → warning sentinel, re-driven, no halt;
- *   - verify log rows carry `ms`; a stale lastError is cleared on success.
+ *   - verify log rows carry `ms`; a stale lastError is cleared on success;
+ *   - a halt under `--force` prints `next=` WITHOUT --force, and running that line drives only the
+ *     pages the halt left behind (defect 5: the echoed --force re-drove every selected page).
  */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -62,6 +64,13 @@ assert.equal(await daSmoke('x', 'o', 'r', { list: 'http://127.0.0.1:9' }), 0, 'd
 const mock = await startMock();
 const run = (extra, env = {}) => new Promise((resolve) => {
   const c = spawn(process.execPath, [CLI, '--org', 'o', '--repo', 'r', '--branch', 'main', '--content', content, '--no-progress', ...extra], { cwd: dir, env: { ...process.env, HOME: home, DA_TOKEN: 'plain', SITE_TOKEN: '', SITE_TOKEN_R: '', DEPLOY_BATCH_REPAIR_DELAY_MS: '20', ...mock.env(), ...env } });
+  let stdout = ''; let stderr = '';
+  c.stdout.on('data', (d) => { stdout += d; }); c.stderr.on('data', (d) => { stderr += d; });
+  const t = setTimeout(() => { c.kill(); stderr += '\n[test] TIMEOUT'; }, 30000);
+  c.on('close', (status) => { clearTimeout(t); resolve({ status, stdout, stderr }); });
+});
+const runArgv = (argvTail, env = {}) => new Promise((resolve) => {
+  const c = spawn(process.execPath, argvTail, { cwd: dir, env: { ...process.env, HOME: home, DA_TOKEN: 'plain', SITE_TOKEN: '', SITE_TOKEN_R: '', DEPLOY_BATCH_REPAIR_DELAY_MS: '20', ...mock.env(), ...env } });
   let stdout = ''; let stderr = '';
   c.stdout.on('data', (d) => { stdout += d; }); c.stderr.on('data', (d) => { stderr += d; });
   const t = setTimeout(() => { c.kill(); stderr += '\n[test] TIMEOUT'; }, 30000);
@@ -135,6 +144,23 @@ try {
   assert.equal(led['/c'].status, 'previewed');
   assert.equal(led['/c'].lastError, undefined, 'lastError cleared on success');
   assert.equal(led['/c'].bodyHash, sha1(page('c')));
+
+  // --force halt: next= drops --force; running that line resumes the two pages the halt left, not all three
+  fresh();
+  writeFileSync(ledgerPath, JSON.stringify(Object.fromEntries(['a', 'b', 'c'].map((x) => [`/${x}`, { status: 'previewed', attempts: 1, bodyHash: sha1(page(x)) }]))));
+  n = 0;
+  mock.rules.putStatus = () => { n += 1; return n === 2 ? 401 : 201; };
+  r = await run(['--force', '--concurrency', '1']);
+  assert.equal(r.status, 3, r.stderr);
+  const nextLine = r.stdout.match(/^next=node (.*)$/m);
+  assert.ok(nextLine, 'next= printed on a --force halt');
+  assert.ok(!/(^|\s)--force(\s|$)/.test(nextLine[1]), `next= must not echo --force: ${nextLine[1]}`);
+  assert.match(nextLine[1], /--concurrency 1$/, 'the other flags survive');
+  mock.reset(); mock.rules.putStatus = () => 201;
+  r = await runArgv(nextLine[1].match(/"[^"]*"|\S+/g).map((x) => x.replace(/^"|"$/g, '')));
+  assert.equal(r.status, 0, `resume via next=: ${r.stderr}`);
+  assert.equal(puts(), 2, 'the resume drives only the halted + never-reached pages (--force would re-drive all three)');
+  assert.ok(Object.values(readLedger()).every((x) => x.status === 'previewed'));
 
   // access-restricted: verify 401 + x-error, no site token → halt exit 3 with the remedy
   fresh();
