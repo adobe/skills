@@ -226,15 +226,19 @@ export async function replay({ origin, parity, authHeader = null, headed = 0 }) 
   const browser = await launchTier(chromium, resolveStartTier(headed));
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await attachOriginAuth(ctx, origin, authHeader);
+  // entry-document statuses per check: a 429/503 on the origin's own document makes the replay unmeasured, not failed (qa dynamics/parity-unmeasured)
+  let entryStatuses = [];
+  ctx.on('response', (r) => { try { if (r.request().resourceType() === 'document' && r.url().startsWith(origin)) entryStatuses.push(r.status()); } catch { /* evidence only */ } });
   const results = [];
   for (const f of parity.features || []) {
     for (const c of f.checks || []) {
       const t0 = Date.now();
       const runner = RUNNERS[c.type];
-      let r;
+      let r; entryStatuses = [];
       if (!runner) r = { pass: false, detail: `unknown check type "${c.type}"` };
       else { try { r = await runner(c, { ctx, origin }); } catch (e) { r = { pass: false, detail: `error: ${String(e.message).slice(0, 140)}` }; } }
-      results.push({ feature: f.feature, id: f.id, class: f.class, status: f.status, type: c.type, pass: !!r.pass, detail: r.detail, thirdParty: summarize(r.thirdParty || []), ms: Date.now() - t0, environmentLimit: f.environmentLimit || null });
+      const throttled = entryStatuses.some((s) => s === 429 || s === 503);
+      results.push({ feature: f.feature, id: f.id, class: f.class, status: f.status, type: c.type, pass: !!r.pass, detail: r.detail, thirdParty: summarize(r.thirdParty || []), ms: Date.now() - t0, environmentLimit: f.environmentLimit || null, entryStatus: throttled ? entryStatuses.find((s) => s === 429 || s === 503) : (entryStatuses[0] ?? null), throttled });
       console.error(`[dynamics-check] ${r.pass ? 'PASS' : 'FAIL'} ${f.feature} · ${c.type} — ${r.detail}`);
     }
   }
@@ -273,6 +277,7 @@ export function closeoutSections(parity) {
 
 /* ---------------------------------------------------------------- cli ---- */
 if (process.argv[1] && process.argv[1].endsWith('dynamics-check.mjs')) {
+  if (flag('help')) { console.log('usage: dynamics-check.mjs --origin <published origin> [--parity stardust/dynamics/parity.json] [--out stardust/qa] [--auth-header "token …" | --token-env SITE_TOKEN] [--headed[=window]] [--gate]\n  exit: 0 all replays pass · 1 a replay failed · 2 usage · 3 --gate blocked; results carry entryStatus / throttled (qa dynamics/parity-unmeasured)'); process.exit(0); }
   const origin = (arg('origin') || '').replace(/\/$/, '');
   if (!origin) { console.error('usage: dynamics-check.mjs --origin <published origin> [--parity stardust/dynamics/parity.json] [--out stardust/qa] [--gate]'); process.exit(2); }
   const parityFile = arg('parity', 'stardust/dynamics/parity.json');

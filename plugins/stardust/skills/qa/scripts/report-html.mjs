@@ -59,6 +59,7 @@ export function htmlReport(report) {
  .container{max-width:1200px;margin:0 auto;padding:56px 48px 80px}
  .eyebrow{font:500 11px/1 "SF Mono",ui-monospace,monospace;letter-spacing:0.18em;text-transform:uppercase;color:var(--amber);display:block;margin-bottom:12px}
  header{display:flex;gap:22px;align-items:center;margin-bottom:8px}
+ .banner{margin:14px 0 0;padding:10px 14px;border:1px solid var(--red);border-radius:8px;color:var(--red);font:500 12px/1.6 "SF Mono",ui-monospace,monospace;letter-spacing:0.06em;text-transform:uppercase}
  h1{font-family:"SF Pro Display",system-ui,sans-serif;font-weight:600;letter-spacing:-0.02em;font-size:34px;line-height:1.05;margin:0}
  .prov{font:500 12px/1.7 "SF Mono",ui-monospace,monospace;letter-spacing:0.04em;color:var(--dust-50);margin:16px 0 0}
  .prov b{color:var(--dust);font-weight:500}
@@ -95,6 +96,7 @@ export function htmlReport(report) {
 <div class="container">
 <span class="eyebrow">stardust · qa sweep · read-only</span>
 <header>${STAR_MARK}<h1>${esc(report.base.replace(/^https?:\/\//, ''))}</h1></header>
+${report.infra && report.infra.incomplete ? `<div class="banner" role="alert">throttled — results incomplete · ${esc(report.infra.unmeasuredPages)} page(s) unmeasured (${esc(report.infra.unmeasuredPct)}% of the fleet, max ${esc(report.infra.throttleMaxPct)}%) · ${esc(report.infra.throttled)} response(s) still 429/503 after retries · re-run the sweep</div>` : ''}
 <p class="prov">${esc(report.provenance.writtenAt)} · <b>${report.inventory.pages}</b> pages · ${report.durationSeconds != null ? `${report.durationSeconds}s · ` : ''}checks: ${esc(report.checksRun.join(' · '))}</p>
 <div class="fgroup"><span class="eyebrow">filter · severity</span><div class="chips" id="sev-chips">${sevChips}</div></div>
 <div class="fgroup"><span class="eyebrow">filter · finding</span><div class="chips" id="fid-chips">${fidChips}</div></div>

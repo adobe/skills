@@ -11,7 +11,7 @@
  * Needs the template assignment from the inventory (template-map source) and
  * the per-page block sets collected by the content check (or re-fetched).
  */
-import { pMap, finding, plainUrl, readJSON } from '../lib.mjs';
+import { pMap, finding, plainUrl, readJSON, isThrottled } from '../lib.mjs';
 
 const CONSENSUS = 0.7;
 
@@ -32,6 +32,7 @@ export async function run(ctx) {
     pageBlocks = {};
     await pMap(withTemplate, async (p) => {
       const res = await ctx.fetchPage(plainUrl(base, p.path));
+      if (isThrottled(res)) { findings.push(finding('templates', 'unmeasured', 'info', p.path, `.plain.html throttled (HTTP ${res.status} after retries) — not measured; re-run`, { status: res.status })); return; }
       if (res.status !== 200) return;
       const names = new Set();
       for (const m of res.body.matchAll(/<div class="([a-z][a-z0-9-]*)(?: [^"]*)?">/g)) {

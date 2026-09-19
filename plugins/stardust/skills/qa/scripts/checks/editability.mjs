@@ -20,7 +20,7 @@
  * Contract: deploy reference/block-js-scaffold.md § Experience Workspace editability contract (EW1–EW10).
  */
 import {
-  loadPlaywright, finding, pageUrl, pMap, arg,
+  loadPlaywright, finding, pageUrl, pMap, arg, withNavSlot,
 } from '../lib.mjs';
 import {
   probeUrl, aggregate, readBlockExemptions, parseExemptList,
@@ -43,13 +43,17 @@ export async function run(ctx) {
   await pMap(inventory.pages, async (p) => {
     let bctx = null;
     try {
-      const probe = await probeUrl(browser, pageUrl(base, p.path), {
+      // one limiter slot per navigation: the probe shares the fetch budget of the sweep (report.infra)
+      const probe = await withNavSlot(pageUrl(base, p.path), () => probeUrl(browser, pageUrl(base, p.path), {
         width: VIEWPORT_WIDTH,
         waitUntil: 'domcontentloaded', // hanging third-party tags never reach networkidle (browse.mjs)
         settleMs: SETTLE_MS,
         timeoutMs: DECORATION_TIMEOUT,
-      });
+      }));
       bctx = probe.ctx;
+      // the document's own status (navigation timing): a throttled document instruments nothing — unmeasured, not "zero authored texts"
+      const docStatus = await probe.page.evaluate(() => performance.getEntriesByType('navigation')[0]?.responseStatus ?? 0).catch(() => 0);
+      if (docStatus === 429 || docStatus === 503) { findings.push(finding('editability', 'unmeasured', 'info', p.path, `document throttled (HTTP ${docStatus}) — not measured; re-run`, { status: docStatus })); return; }
       const { rows } = probe;
       const names = [...new Set(rows.map((r) => r.block))];
       const exemptions = readBlockExemptions(blocksDir, names, cliExempt);
@@ -75,7 +79,7 @@ export async function run(ctx) {
     } finally {
       if (bctx) await bctx.close().catch(() => {});
     }
-  }, opts.browserConcurrency || 3);
+  }, opts.browserConcurrency || 2);
 
   await browser.close();
   return findings;

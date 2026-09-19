@@ -37,8 +37,17 @@
  *   --blocks-dir <dir>      editability: local blocks root — `@ew-exempt <reason>`
  *                           JSDoc tags in <dir>/<name>/<name>.js are honoured
  *   --fail-on <error|warn>  exit 1 threshold (default: error)
+ *   --fetch-concurrency <n> per-host in-flight cap shared by every fetch and browser navigation
+ *                           (default 4; halves on 429/503, +1 after 30 s clean)
+ *   --browser-concurrency <n> parallel browser pages in browse/editability (default 2 — the observed
+ *                           ceiling before aem.live answers 429 to ~3 concurrent headless crawlers)
+ *   --throttle-max <pct>    share of pages left `unmeasured` by 429/503 above which the report is
+ *                           incomplete: banner in report.html and exit 2 (default 5)
  *
- * Exit codes: 0 clean (below threshold), 1 findings at/above threshold, 2 infra error.
+ * Exit codes: 0 clean (below threshold), 1 findings at/above threshold, 2 infra error
+ * (missing --base, empty inventory) OR report incomplete (throttled pages > --throttle-max —
+ * exit 2 wins over exit 1: an incomplete sweep is not a verdict; re-run). report.json carries
+ * `infra` { throttled, retries, serverErrors, unmeasuredPages, unmeasuredPct, incomplete }.
  * report.json is rewritten after every check with `partial: true` — a hang in a
  * later check never loses the findings already collected. stdout carries the
  * ranked class table only (summary.json / summary.md hold the per-page rows).
@@ -46,14 +55,15 @@
 import { join, dirname } from 'node:path';
 import { classReport, renderTable, writeSummary } from '../../stardust/scripts/class-report.mjs';
 import { fileURLToPath } from 'node:url';
-import { writeFileSync, rmSync } from 'node:fs';
+import { writeFileSync, rmSync, readFileSync } from 'node:fs';
 import {
   arg, flag, provenance, writeJSON, ensureDir, loadAllowlist, applyAllowlist, buildInventory,
-  createPageCache, resolveAuthHeader, setOriginAuth,
+  createPageCache, resolveAuthHeader, setOriginAuth, createHostLimiter, setFetchLimiter, infraSummary,
 } from './lib.mjs';
 import { htmlReport } from './report-html.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
+if (flag('help')) { console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('*/')[0].replace(/^\/\*\*|^ \* ?/gm, '')); process.exit(0); }
 const BASE = (arg('base') || '').replace(/\/$/, '');
 if (!BASE) { console.error('qa: --base <live-url> is required'); process.exit(2); }
 
@@ -76,7 +86,9 @@ const opts = {
   budgetJsKb: Number(arg('budget-js-kb', 250)),
   skipA11y: flag('skip-a11y'),
   probeExternals: flag('probe-externals'),
-  browserConcurrency: Number(arg('browser-concurrency', 3)),
+  browserConcurrency: Number(arg('browser-concurrency', 2)),
+  fetchConcurrency: Number(arg('fetch-concurrency', 4)),
+  throttleMaxPct: Number(arg('throttle-max', 5)),
   parity: arg('parity', null),
   blocksDir: arg('blocks-dir', null),
   ewExempt: arg('ew-exempt', null),
@@ -84,6 +96,8 @@ const opts = {
   baselineReset: flag('baseline-reset'),
 };
 if (opts.authHeader) setOriginAuth(BASE, opts.authHeader);
+// every fetch and browser navigation of the sweep takes a slot here (lib.mjs § throttle / limiter)
+setFetchLimiter(createHostLimiter({ maxInFlight: opts.fetchConcurrency }));
 if (opts.baselineReset && opts.baselineDir) { rmSync(opts.baselineDir, { recursive: true, force: true }); console.error(`qa: --baseline-reset — removed ${opts.baselineDir}; this sweep re-establishes baselines`); }
 
 const MODULES = {
@@ -157,6 +171,7 @@ const summary = {
   byCheck: Object.fromEntries(checksRun.map((c) => [c, active.filter((f) => f.check === c || (c === 'browse' && ['rendered', 'visual', 'a11y'].includes(f.check))).length])),
 };
 
+const infra = infraSummary(findings, inventory.pages.length, { throttleMaxPct: opts.throttleMaxPct });
 const report = {
   provenance: provenance('qa', BASE),
   base: BASE,
@@ -164,6 +179,7 @@ const report = {
   inventory: { pages: inventory.pages.length, sitemapEntries: inventory.sitemapPaths ? inventory.sitemapPaths.length : null },
   durationSeconds: Math.round((Date.now() - started) / 1000),
   summary,
+  infra,
   findings,
 };
 writeJSON(join(OUT, 'report.json'), report);
@@ -177,9 +193,12 @@ const summaryFiles = writeSummary(OUT, cls, { title: 'qa sweep' });
 console.log(`\nstardust:qa — ${BASE}`);
 console.log(`pages: ${inventory.pages.length} · duration: ${report.durationSeconds}s · checks: ${checksRun.join(', ')}`);
 console.log(`findings: ${summary.error} error / ${summary.warn} warn / ${summary.info} info (+${summary.allowlisted} allowlisted)`);
+if (infra.throttled || infra.retries) console.log(`infra: ${infra.throttled} throttled response(s) after retries · ${infra.retries} retr${infra.retries === 1 ? 'y' : 'ies'} · ${infra.unmeasuredPages} page(s) unmeasured (${infra.unmeasuredPct}% of the fleet, max ${infra.throttleMaxPct}%)${infra.incomplete ? ' — THROTTLED: results incomplete, re-run' : ''}`);
 console.log(renderTable(cls, { title: 'qa sweep', maxLines: 60 }).join('\n'));
 console.log(`report: ${join(OUT, 'report.json')} · ${join(OUT, 'report.html')} · ${summaryFiles.md}`);
 
 const failOn = arg('fail-on', 'error');
 const failing = failOn === 'warn' ? summary.error + summary.warn : summary.error;
+// exit 2 wins over exit 1: an incomplete sweep is not a verdict on the site
+if (infra.incomplete) { console.error(`qa: throttled — ${infra.unmeasuredPct}% of pages unmeasured (> --throttle-max ${infra.throttleMaxPct}); results incomplete, re-run`); process.exit(2); }
 process.exit(failing > 0 ? 1 : 0);

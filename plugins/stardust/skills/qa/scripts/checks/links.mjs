@@ -14,7 +14,9 @@
  *     fallback); 404/410/DNS-fail -> warn (external sites flap; never an
  *     error). The skip is always reported as an info finding, never silent.
  */
-import { fetchUrl, pMap, finding, pageUrl, decodeAttr } from '../lib.mjs';
+import { fetchUrl, pMap, finding, pageUrl, decodeAttr, isThrottled } from '../lib.mjs';
+
+const unmeasured = (path, what, res) => finding('links', 'unmeasured', 'info', path, `${what} throttled (HTTP ${res.status} after retries) — not measured; re-run`, { status: res.status });
 
 const ASSET_RE = /\.(css|js|png|jpe?g|gif|webp|avif|svg|ico|woff2?|xml|txt|json|pdf|mp4|webm|mov|zip)$/i;
 
@@ -27,7 +29,8 @@ export async function run(ctx) {
   const pageHtml = new Map();
   await pMap(inventory.pages, async (p) => {
     const res = await ctx.fetchPage(pageUrl(base, p.path));
-    if (res.status === 200) pageHtml.set(p.path, res.body);
+    if (isThrottled(res)) findings.push(unmeasured(p.path, `GET ${p.path}`, res));
+    else if (res.status === 200) pageHtml.set(p.path, res.body);
   }, 8);
 
   const internal = new Map(); // path -> Set(referrers)
@@ -80,7 +83,9 @@ export async function run(ctx) {
   await pMap([...internal.entries()], async ([target, referrers]) => {
     if (known.has(target)) return;
     const res = await fetchUrl(pageUrl(base, target), { redirect: 'manual' });
-    if (res.status === 200) {
+    if (isThrottled(res)) {
+      findings.push(unmeasured(target, `internal link target ${target}`, res));
+    } else if (res.status === 200) {
       findings.push(finding('links', 'off-inventory-link', 'info', target,
         `internal link target ${target} serves 200 but is not in the tracked inventory`,
         { referrers: [...referrers].slice(0, 5) }));

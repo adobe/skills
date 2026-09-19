@@ -11,7 +11,9 @@
  *     nesting failure) — "@context" must never appear in rendered text
  *   - favicon serves 200
  */
-import { fetchUrl, pMap, finding, pageUrl, stripTags, decodeAttr } from '../lib.mjs';
+import { fetchUrl, pMap, finding, pageUrl, stripTags, decodeAttr, isThrottled } from '../lib.mjs';
+
+const unmeasured = (path, what, res) => finding('metadata', 'unmeasured', 'info', path, `${what} throttled (HTTP ${res.status} after retries) — not measured; re-run`, { status: res.status });
 
 function meta(html, name) {
   const re = new RegExp(`<meta[^>]+(?:name|property)=["']${name}["'][^>]*>`, 'i');
@@ -28,6 +30,7 @@ export async function run(ctx) {
 
   await pMap(inventory.pages, async (p) => {
     const res = await ctx.fetchPage(pageUrl(base, p.path));
+    if (isThrottled(res)) { findings.push(unmeasured(p.path, `GET ${p.path}`, res)); return; }
     if (res.status !== 200) return;
     const html = res.body;
 
@@ -63,7 +66,8 @@ export async function run(ctx) {
       }
       const imgUrl = ogImage.startsWith('http') ? ogImage : pageUrl(base, ogImage);
       const img = await fetchUrl(imgUrl, { method: 'HEAD' });
-      if (img.status !== 200) {
+      if (isThrottled(img)) findings.push(unmeasured(p.path, 'og:image probe', img));
+      else if (img.status !== 200) {
         findings.push(finding('metadata', 'og-image-broken', 'error', p.path, `og:image returns ${img.status}: ${ogImage}`));
       }
     }
@@ -114,7 +118,8 @@ export async function run(ctx) {
   }
 
   const fav = await fetchUrl(`${base}/favicon.ico`, { method: 'HEAD' });
-  if (fav.status !== 200) findings.push(finding('metadata', 'favicon-broken', 'warn', '', `favicon.ico returns ${fav.status}`));
+  if (isThrottled(fav)) findings.push(unmeasured('', 'favicon probe', fav));
+  else if (fav.status !== 200) findings.push(finding('metadata', 'favicon-broken', 'warn', '', `favicon.ico returns ${fav.status}`));
 
   return findings;
 }

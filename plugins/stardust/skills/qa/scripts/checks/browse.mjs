@@ -20,8 +20,27 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  loadPlaywright, finding, pageUrl, pathSlug, ensureDir, pMap, attachOriginAuth,
+  loadPlaywright, finding, pageUrl, pathSlug, ensureDir, pMap, attachOriginAuth, withNavSlot, retryAfterMs, getFetchLimiter, configureFetch,
 } from '../lib.mjs';
+
+const THROTTLE = (s) => s === 429 || s === 503;
+/**
+ * Navigate holding one limiter slot; a 429/503 document is retried (Retry-After,
+ * else 2/4 s) up to three attempts. Returns the last response (or null) — a
+ * document still throttled is `rendered/unmeasured`, never main-collapsed /
+ * request-failed (fox: 67 + 67 such findings from one 429 wall).
+ */
+export async function gotoPaced(page, url, opts, { attempts = 3, backoffMs = configureFetch({}).backoffMs } = {}) {
+  let res = null;
+  for (let i = 0; i < attempts; i += 1) {
+    res = await withNavSlot(url, () => page.goto(url, opts));
+    const status = res ? res.status() : 0;
+    if (!THROTTLE(status)) return res;
+    getFetchLimiter()?.onThrottle(url);
+    if (i + 1 < attempts) await page.waitForTimeout(retryAfterMs(res.headers()['retry-after']) ?? backoffMs * 2 ** i);
+  }
+  return res;
+}
 
 const VIEWPORTS = [
   { name: 'desktop', width: 1440, height: 900 },
@@ -147,7 +166,7 @@ export async function run(ctx) {
           `[${vp.name}] browser pass aborted mid-page: ${String(e).slice(0, 200)}`));
       }
     }
-  }, opts.browserConcurrency || 3);
+  }, opts.browserConcurrency || 2);
 
   async function sweepPage(p, vp) {
     {
@@ -169,11 +188,19 @@ export async function run(ctx) {
         }
       });
 
+      let nav = null;
       try {
-        await page.goto(pageUrl(base, p.path), { waitUntil: 'domcontentloaded', timeout: 45000 });
+        nav = await gotoPaced(page, pageUrl(base, p.path), { waitUntil: 'domcontentloaded', timeout: 45000 });
       } catch (e) {
         findings.push(finding('rendered', 'load-failed', 'error', p.path,
           `[${vp.name}] page failed to load: ${String(e).slice(0, 200)}`));
+        await context.close();
+        return;
+      }
+      if (nav && THROTTLE(nav.status())) {
+        // the origin throttled the document itself: nothing below is a measurement (no main-collapsed, request-failed, axe, visual)
+        findings.push(finding('rendered', 'unmeasured', 'info', p.path,
+          `[${vp.name}] document throttled (HTTP ${nav.status()} after retries) — not measured; re-run`, { status: nav.status() }));
         await context.close();
         return;
       }
