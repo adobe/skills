@@ -116,8 +116,16 @@ the instruments. Markers beyond the 403/429/503 signatures: **HTTP 400
 `_px3` / `datadome` set-cookie or DataDome header on any 4xx/5xx**
 (a PerimeterX 403 via Varnish carries nothing else), and — DOM stage
 only — `#px-captcha` / Turnstile / hCaptcha / `captcha-delivery`
-iframes inside a 200 body. A bare 429 is a rate limit, not a
-challenge (`SKILL.md` § Concurrency). The challenge re-fires per context, so
+iframes inside a 200 body. Two more classes the ladder does not
+solve: some origins score **sessions**, not requests — a second
+automated launch inside the admitted window re-challenges both
+("admitted-then-escalated"): capture every archetype in the first
+admitted window, one context, human pace (`crawl.mjs` runs one
+worker under any bot block; the per-host lock keeps other live tools
+out). And a **bare 429** (no edge signature) is a rate limit, not a
+challenge: the host ceiling is halved, `Retry-After` honoured
+(≤ 60 s), the page retried once, the ceiling recorded in
+`stardust/live-budget.json` (`SKILL.md` § Concurrency). The challenge re-fires per context, so
 a worker challenged after the probe cleared escalates the same way
 (pool drained, unfinished pages requeued one tier up).
 Record the tier that worked in

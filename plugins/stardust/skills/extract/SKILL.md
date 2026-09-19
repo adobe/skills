@@ -562,35 +562,23 @@ After all Phase 2-5 writes succeed:
    Next: $stardust direct  (resolve a redesign direction)
    ```
 
-   The **per-page evidence table** is mandatory. The `live` column
-   is `yes` when `_provenance.renderedBy === "playwright"` AND
-   `waitMs > 0`, else `no`. A `no` row means the page record was
-   not produced by a live Playwright render — the visible column
-   is the defense-in-depth signal for the failure mode the
-   write-time guard exists to prevent (2026-04-30 e-commerce run). A
-   maintainer scanning the summary should see `yes` on every row.
+   The **per-page evidence table** is mandatory. `live` is `yes` when
+   `_provenance.renderedBy === "playwright"` AND `waitMs > 0`, else
+   `no` — the visible defense-in-depth signal for the synthesis
+   failure the write-time guard prevents; every row should read `yes`.
+   Wait summary: group `_provenance.waitMode`, average `waitMs`; slugs
+   whose mode ends in `(fallback)` (`(fb)` in the table) are `--refresh`
+   candidates.
 
-   Compute the wait summary by grouping each page's `_provenance.waitMode`
-   and averaging `waitMs`. List slugs whose `waitMode` ends in
-   `(fallback)` (rendered as `(fb)` in the table for width) as
-   candidates for `--refresh`.
-
-   The **`media(img/bg)` column** is the analogous defense-in-depth
-   signal for imagery. It prints `<count of media.imgs> / <count of
-   media.cssBackgrounds>`. Flag a row `⚠ low-media` when the page
-   reads as brand/marketing (register `brand`, or a landing/solution/
-   product template) yet has `cssBackgrounds: []` **and** few large
-   rasters (no `media.imgs` entry with intrinsic width ≥ 600). That
-   combination is the signature of a silently-failed background /
-   lazy-media walk — a capture pass that specs the full background
-   walk (`playwright-recipe.md` § Capture list 11) yet silently
-   produces nothing still ships an image-less capture (2026-06-26
-   a SaaS site: `cssBackgrounds: []` on every page, all product
-   imagery lost). A flagged row is the cue to re-run that page with
-   `--refresh` (and, if it persists, to climb the ladder per
-   § Bot-management fallback). A maintainer scanning the summary should
-   treat a `brand`-register site with all-zero `bg` counts as suspect,
-   not as "this site uses no background images."
+   **`media(img/bg)`** prints `<media.imgs> / <media.cssBackgrounds>`
+   counts. Flag `⚠ low-media` when a brand/marketing page (register
+   `brand`, or a landing/solution/product template) has
+   `cssBackgrounds: []` **and** no raster ≥ 600 px wide — the signature
+   of a silently failed background / lazy-media walk (recorded: a SaaS
+   site with `cssBackgrounds: []` on every page, all product imagery
+   lost). Re-run the row with `--refresh`, then up the ladder; a
+   `brand`-register site with all-zero `bg` counts is suspect, not
+   "uses no background images".
 
 ## Cross-site brand sources
 
@@ -666,17 +654,22 @@ capture (≤ 3 pages). It must never balloon the crawl.
 ## Concurrency
 
 Page captures run **concurrently**: the Phase 2 queue is drained by
-4–8 parallel browser contexts (`--concurrency`, default 4). Each
-worker owns its `BrowserContext`; consent state is re-established per
-context (Setup step 3). Media `resolves` / HEAD checks are batched
-with `Promise.all`. Brand-surface aggregation (Phase 3) may proceed
-incrementally as pages complete, so long as the written
-`_brand-extraction.json` reflects every extracted page. The bundled
-crawler implements the pool (`crawl.mjs --concurrency <n>`).
+4–8 parallel browser contexts (`crawl.mjs --concurrency <n>`, default
+4), each on the probe's cloned session (Setup step 3); media
+`resolves` / HEAD checks batch with `Promise.all`; Phase 3 may
+aggregate incrementally as long as `_brand-extraction.json` reflects
+every extracted page.
 
-Across processes, per `state-machine.md`: stardust does not lock. Two
-concurrent extracts on the same project are last-write-wins. Document
-this in the user report; do not engineer around it.
+Live-origin budget (code, not a rule to remember): `crawl.mjs` paces
+every navigation per host (≥ 3 s gap, ≤ 10/min; `robots.txt`
+`Crawl-delay` widens the gap; a learned ceiling persists in
+`stardust/live-budget.json`), drops to **one** worker under a bot
+block or after a bare 429 — a rate limit, not a challenge: retried once
+with `Retry-After`, then a failure row with the hint — and holds
+`stardust/.work/live-<host>.lock` so two live tools never hit one
+origin at once (`STARDUST_LIVE_FORCE=1` overrides; a live holder →
+exit 2). `state.json` itself is never locked: two extracts on one
+project stay last-write-wins (`state-machine.md` § Concurrency).
 
 ## Failure modes
 

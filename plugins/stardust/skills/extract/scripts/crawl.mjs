@@ -129,12 +129,27 @@
  *   tier 2, --headed=window at tier 3; a re-run starts at the tier recorded in
  *   _crawl-log.json#discovery.fetchTechnique, which is the tier that actually
  *   captured. The tier-3 window is parked off-screen unless STARDUST_HEADED_WINDOW=1.
- * Exit codes: 0 done (per-page failures are in the log) · 2 fatal ·
+ * Live budget per host (HostBudget — the crawl-local copy of the planned
+ *   diff/scripts/live-budget.mjs; this file ships alone): every navigation
+ *   waits for a token (≤ 10/min) AND a minimum gap (≥ 3 s; robots.txt
+ *   Crawl-delay widens it — decisions.md `crawl` row; a stricter ceiling
+ *   learned earlier is read from stardust/live-budget.json). The pool drops to
+ *   ONE worker under a bot block (tier > 1 or a cleared challenge — concurrency
+ *   4 drew 9 re-challenges even with the cloned session) and after the first
+ *   BARE 429 (no edge signature = rate limit, not a challenge): the ceiling is
+ *   halved and persisted (merge-by-host), Retry-After honoured (≤ 60 s), the
+ *   page retried ONCE, then recorded as HTTPError { rateLimited: true } with
+ *   the hint. stardust/.work/live-<host>.lock (pid liveness; STARDUST_LIVE_FORCE=1
+ *   overrides) keeps two live tools off one origin at once — the recorded
+ *   "two launches within a minute, both challenged" class.
+ * Exit codes: 0 done (per-page failures are in the log) · 2 fatal (incl.
+ *   LiveLockError: another live tool holds stardust/.work/live-<host>.lock) ·
  *   3 BotChallengeError (tier 3 still challenged, or --solve-wait expired —
  *   never captured as content).
  * Exports (for evals/fixtures/*.test.mjs): slugify, assignSlugs, mergeCrawlLog,
  *   TIERS, tierOf, captureQualityOf, SHOT_WRAP_PX, discoverInventory,
- *   parseRobots, parseCookieFlag, challengeMarker — importing this module runs nothing; main()
+ *   parseRobots, parseCookieFlag, challengeMarker, HostBudget, parseRetryAfter,
+ *   mergeLiveBudget — importing this module runs nothing; main()
  *   runs only when the file is the entry script.
  *
  * Needs playwright importable from the project (see extract/SKILL.md Setup —
@@ -142,7 +157,7 @@
  * availability probe alone does NOT make the ESM module importable).
  */
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { pathToFileURL } from 'node:url';
@@ -303,6 +318,94 @@ async function newContext(browser, stealth, extra = {}, cookies = []) {
     });
   }
   return ctx;
+}
+// ---- per-host live budget (crawl-local copy of the planned diff/scripts/live-budget.mjs; crawl ships alone) ----
+export const BUDGET_DEFAULT = { navPerMin: 10, minGapMs: 3000 };
+/**
+ * Token bucket + minimum gap, serialised across workers. `now`/`sleep` are
+ * injectable (evals/fixtures/crawl-signals.test.mjs drives it with a fake clock).
+ */
+export class HostBudget {
+  constructor({ navPerMin = BUDGET_DEFAULT.navPerMin, minGapMs = BUDGET_DEFAULT.minGapMs, source = 'default', now = Date.now, sleep = (ms) => new Promise((r) => { setTimeout(r, ms); }) } = {}) {
+    Object.assign(this, { navPerMin, minGapMs, source, now, sleep, tokens: navPerMin, lastRefill: now(), lastNav: -Infinity, rateLimits: 0, waitedMs: 0, queue: Promise.resolve() });
+  }
+  /** Resolve when the next navigation may start (one caller at a time). */
+  take() {
+    const run = async () => {
+      for (;;) {
+        const t = this.now();
+        this.tokens = Math.min(this.navPerMin, this.tokens + ((t - this.lastRefill) * this.navPerMin) / 60000);
+        this.lastRefill = t;
+        const wait = Math.max(0, this.lastNav + this.minGapMs - t, this.tokens >= 1 ? 0 : ((1 - this.tokens) * 60000) / this.navPerMin);
+        if (wait <= 0) { this.tokens -= 1; this.lastNav = t; return; }
+        this.waitedMs += wait;
+        await this.sleep(Math.ceil(wait));
+      }
+    };
+    const p = this.queue.then(run);
+    this.queue = p.catch(() => {});
+    return p;
+  }
+  /** A bare 429: halve the rate, double the gap (≤ 60 s), drain tokens. Returns the ms to wait before the ONE retry. */
+  rateLimited(retryAfterSec) {
+    this.navPerMin = Math.max(1, Math.floor(this.navPerMin / 2));
+    this.minGapMs = Math.min(60000, this.minGapMs * 2);
+    this.tokens = 0; this.rateLimits += 1; this.source = 'rate-limited';
+    return retryAfterSec ? Math.min(60, retryAfterSec) * 1000 : Math.min(60000, this.minGapMs * 4);
+  }
+  toJSON() { return { navPerMin: this.navPerMin, minGapMs: this.minGapMs, source: this.source }; }
+}
+/** Retry-After: seconds or an HTTP date → seconds (null when absent/unparseable). */
+export function parseRetryAfter(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  if (Number.isFinite(n)) return n >= 0 ? n : null;
+  const t = Date.parse(v);
+  return Number.isFinite(t) ? Math.max(0, Math.ceil((t - Date.now()) / 1000)) : null;
+}
+/** stardust/live-budget.json — merge-by-host: { "<host>": { navPerMin, minGapMs, learnedAt, learnedBy, lastStatus } }. */
+export function mergeLiveBudget(prev, host, entry) {
+  const out = prev && typeof prev === 'object' ? { ...prev } : {};
+  out[host] = { ...(out[host] || {}), ...entry };
+  return out;
+}
+function liveBudgetPath(args) { return path.resolve(args.out, '..', 'live-budget.json'); }
+// the ceiling for this run: stricter of default / learned (live-budget.json) / robots Crawl-delay
+function makeBudget(args, host, crawlDelay) {
+  let cfg = { ...BUDGET_DEFAULT, source: 'default' };
+  try {
+    const learned = existsSync(liveBudgetPath(args)) ? JSON.parse(readFileSync(liveBudgetPath(args), 'utf8'))[host] : null;
+    if (learned) cfg = { navPerMin: Math.min(cfg.navPerMin, learned.navPerMin || cfg.navPerMin), minGapMs: Math.max(cfg.minGapMs, learned.minGapMs || 0), source: 'live-budget.json' };
+  } catch { /* unreadable — defaults */ }
+  if (crawlDelay && crawlDelay * 1000 > cfg.minGapMs) cfg = { ...cfg, minGapMs: crawlDelay * 1000, source: 'robots Crawl-delay' };
+  return new HostBudget(cfg);
+}
+function persistBudget(args, host, budget) {
+  try {
+    const file = liveBudgetPath(args);
+    const prev = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
+    writeFileSync(file, `${JSON.stringify(mergeLiveBudget(prev, host, { navPerMin: budget.navPerMin, minGapMs: budget.minGapMs, learnedAt: new Date().toISOString(), learnedBy: 'crawl.mjs', lastStatus: 429 }), null, 2)}\n`);
+  } catch (e) { console.error(`[crawl] WARN could not persist live budget: ${e.message}`); }
+}
+// ---- per-host live lock (stardust/.work/live-<host>.lock — run-lock.mjs's shape and directory) ----
+function acquireLiveLock(args, host) {
+  const dir = path.resolve(args.out, '..', '.work');
+  const file = path.join(dir, `live-${host}.lock`);
+  mkdirSync(dir, { recursive: true });
+  if (existsSync(file)) {
+    let held = null;
+    try { held = JSON.parse(readFileSync(file, 'utf8')); } catch { held = null; }
+    let alive = false;
+    if (held && held.pid && held.pid !== process.pid) { try { process.kill(held.pid, 0); alive = true; } catch { alive = false; } }
+    if (alive) {
+      const msg = `${host} is being hit by ${held.tool || 'another live tool'} (pid ${held.pid}, since ${held.startedAt}) — one live tool per origin at a time; wait for it, or STARDUST_LIVE_FORCE=1 to override`;
+      if (process.env.STARDUST_LIVE_FORCE === '1') console.error(`[crawl] WARN live lock overridden: ${msg}`);
+      else throw Object.assign(new Error(msg), { errorClass: 'LiveLockError' });
+    }
+  }
+  writeFileSync(file, JSON.stringify({ host, pid: process.pid, tool: 'crawl.mjs', startedAt: new Date().toISOString() }));
+  process.on('exit', () => { try { unlinkSync(file); } catch { /* already gone */ } });
+  return file;
 }
 // ---- admitted-session reuse (mirror of live-session.mjs resolveStorageState; crawl ships alone) ----
 const STORAGE_STATE_FILE = '_storage-state.json'; // reserved under <out> — never tracked (artifact-map.md)
@@ -1182,6 +1285,7 @@ async function capturePage(context, url, slug, args, isEntry = false) {
   const page = await context.newPage();
   const recorder = args.dynamics ? attachDynamicRecorder(page) : null; // opt-in; must precede goto — load-time fetches are the evidence
   try {
+  if (args.budget) await args.budget.take(); // per-host pacing — every navigation, every worker
   let resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
   // response validation
   if (!resp) throw Object.assign(new Error('no response'), { errorClass: 'TimeoutError' });
@@ -1193,6 +1297,20 @@ async function capturePage(context, url, slug, args, isEntry = false) {
   if (args.solveWindow) resp = await clearChallenge(page, resp);
   if (isChallengeResponse(resp)) throw Object.assign(new Error(`bot challenge (HTTP ${resp.status()}) at tier ${args.tier} — not the page`), { errorClass: 'BotChallengeError' });
   let status = resp.status();
+  // BARE 429 (edge-signed ones were classified above) = rate limit, not a
+  // challenge: halve the host ceiling, drop the pool to one worker, honour
+  // Retry-After (≤ 60 s), retry ONCE, then fail the page with the hint.
+  if (status === 429) {
+    const ra = parseRetryAfter(resp.headers()['retry-after']);
+    const waitMs = args.budget ? args.budget.rateLimited(ra) : Math.min(60, ra || 30) * 1000;
+    args.throttled = true;
+    console.error(`[crawl] HTTP 429 (rate limit, no edge signature) on ${slug} — pool → 1 worker, ceiling halved${args.budget ? ` (${args.budget.navPerMin}/min, ≥ ${args.budget.minGapMs / 1000} s)` : ''}; retrying once in ${Math.round(waitMs / 1000)} s`);
+    await page.waitForTimeout(waitMs);
+    if (args.budget) await args.budget.take();
+    const again = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => null);
+    if (again) { resp = again; status = again.status(); }
+    if (status === 429) throw Object.assign(new Error(`HTTP 429 — rate-limited by ${new URL(url).hostname}; ceiling recorded in stardust/live-budget.json — rerun alone, later`), { errorClass: 'HTTPError', rateLimited: true });
+  }
   // 404 on a slash variant: retry ONCE with the trailing slash flipped before
   // recording a failure (stardust-style e2e finding — slash-required hosts).
   let resolvedUrl = url;
@@ -1202,6 +1320,7 @@ async function capturePage(context, url, slug, args, isEntry = false) {
       u.pathname = u.pathname.endsWith('/') ? u.pathname.replace(/\/+$/, '') : `${u.pathname}/`;
       // guarded + short timeout: a hanging flipped-variant probe must not
       // replace the crisp HTTPError 404 with a raw TimeoutError.
+      if (args.budget) await args.budget.take();
       const retry = await page.goto(u.href, { waitUntil: 'domcontentloaded', timeout: 15000 })
         .catch(() => null);
       if (retry && retry.status() < 400) {
@@ -1338,6 +1457,7 @@ async function main() {
   const probeUrl = args.pages?.length ? normalizeUrl(args.pages[0], args.url) : args.url;
   let botBlock = null; // 'fingerprint' | 'challenge'
   const escalations = []; // { tier, block } per rejected tier
+  acquireLiveLock(args, new URL(probeUrl).hostname); // one live tool per origin; released on exit
   for (;;) {
     browser = await launchTier(chromium, tier);
     context = await newContext(browser, tier >= 2, ctxExtra, cookiesFor(args));
@@ -1390,6 +1510,9 @@ async function main() {
     } catch (e) { console.error(`[crawl] WARN could not save storage state: ${e.message}`); }
   }
   args.sessionReused = true;
+  // one worker under a bot block: concurrency 4 drew 9 re-challenges even with
+  // the cloned session; some origins score SESSIONS, not requests
+  if ((tier > 1 || botBlock) && args.concurrency > 1) { console.error(`[crawl] concurrency ${args.concurrency} → 1 (bot-management tier ${tier}${botBlock ? `, ${botBlock} cleared` : ''}: one context, human pace)`); args.concurrency = 1; }
   let technique = TIERS[tier - 1];
   let stealth = tier >= 2;
   args.tier = tier;
@@ -1420,6 +1543,8 @@ async function main() {
   args.botBlock = botBlock;
 
   const { urls, discovery } = await discover(args, probe);
+  const host = new URL(args.origin).hostname;
+  args.budget = makeBudget(args, host, discovery.crawlDelay);
   if (discovery.census) {
     const cut = discovery.cutTruncated || discovery.cut.length;
     console.error(`[crawl] discovered ${urls.length} page(s) via ${discovery.source}${discovery.subtree ? ` under ${discovery.subtree}` : ''} — census ${discovery.census.total} declared, ${discovery.navOnly} nav-only, ${discovery.probes} probe(s); kept ${discovery.kept.length}, cut ${cut}${cut ? ' (--all to lift)' : ''}`);
@@ -1453,9 +1578,11 @@ async function main() {
   });
   if (skipped.length) console.error(`[crawl] skipping ${skipped.length} already-extracted page(s) (--force or --refresh <slug> to redo): ${skipped.map((x) => x.slug).join(', ')}`);
   console.error(`[crawl] technique=${technique} discovered=${urls.length} queued=${queue.length}`);
+  const perNavMs = Math.max(60000 / args.budget.navPerMin, args.budget.minGapMs);
+  if (queue.length) console.error(`[crawl] pacing ${host}: ≥ ${args.budget.minGapMs / 1000} s between navigations, ≤ ${args.budget.navPerMin}/min (${args.budget.source}) → ETA ~${Math.max(1, Math.ceil((queue.length * perNavMs) / 60000))} min for ${queue.length} page(s)`);
 
   const startedAt = new Date().toISOString();
-  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, storageState: !!args.sessionReused, ...(loadedState || savedState ? { storageStateFile: savedState || loadedState } : {}), ...discovery, ...(botBlock ? { botBlock, escalations } : {}), ...(originRedirect ? { originRedirect } : {}), ...(entryRedirect ? { entryRedirect } : {}), ...(skipped.length ? { skippedExtracted: skipped } : {}) }, consent: { method: args.consent ? 'none-detected' : 'skipped' }, favicon: favicon || null, crawl: { startedAt, finishedAt: null, successes: 0, failures: [] } };
+  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, storageState: !!args.sessionReused, ...(loadedState || savedState ? { storageStateFile: savedState || loadedState } : {}), liveBudget: args.budget.toJSON(), ...discovery, ...(botBlock ? { botBlock, escalations } : {}), ...(originRedirect ? { originRedirect } : {}), ...(entryRedirect ? { entryRedirect } : {}), ...(skipped.length ? { skippedExtracted: skipped } : {}) }, consent: { method: args.consent ? 'none-detected' : 'skipped' }, favicon: favicon || null, crawl: { startedAt, finishedAt: null, successes: 0, failures: [] } };
   let ok = 0;
   await context.close();
 
@@ -1477,9 +1604,9 @@ async function main() {
     const order = [...pending];
     let cursor = 0;
     escalate = 0;
-    async function worker() {
+    async function worker(wi) {
       const ctx = await newContext(browser, stealth, ctxExtra, cookiesFor(args));
-      while (cursor < order.length && !escalate) {
+      while (cursor < order.length && !escalate && (wi === 0 || !args.throttled)) {
         const idx = order[cursor];
         cursor += 1;
         const { url, slug, entry: isEntry } = queue[idx];
@@ -1529,7 +1656,7 @@ async function main() {
       }
       await ctx.close();
     }
-    await Promise.all(Array.from({ length: Math.min(args.concurrency, order.length) }, worker));
+    await Promise.all(Array.from({ length: Math.min(args.concurrency, order.length) }, (_, wi) => worker(wi)));
   }
   for (;;) {
     await runPool();
@@ -1537,6 +1664,7 @@ async function main() {
     if (!escalate) break;
     botBlock = botBlock || 'challenge';
     escalations.push({ tier: TIERS[args.tier - 1], block: 'challenge', at: 'capture' });
+    if (args.concurrency > 1) { console.error('[crawl] concurrency → 1 for the escalated pass'); args.concurrency = 1; }
     args.tier = escalate;
     args.solveWindow = escalate === 3;
     stealth = true;
@@ -1547,6 +1675,8 @@ async function main() {
   // the tier that actually captured is the one re-runs and downstream
   // instruments start at (ia-extraction.md § _crawl-log.json shape)
   log.discovery.fetchTechnique = technique;
+  log.discovery.liveBudget = { ...args.budget.toJSON(), ...(args.budget.rateLimits ? { rateLimits: args.budget.rateLimits } : {}), waitedMs: Math.round(args.budget.waitedMs) };
+  if (args.budget.rateLimits) persistBudget(args, host, args.budget); // the learned ceiling outlives this run
   if (botBlock) Object.assign(log.discovery, { botBlock, escalations });
 
   // cross-page duplicate (detail == listing) detection — deterministic post-pass
