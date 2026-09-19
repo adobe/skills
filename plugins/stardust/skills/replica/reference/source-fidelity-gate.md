@@ -446,10 +446,10 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   When a capture legitimately needs longer (a 10k-px page under `--settle`),
   raise the variable for that page and say so in the ledger.
 - **Your waiting has a ceiling too.** A gate round over several archetypes
-  or siblings runs in the background, not as a foreground `for` loop of
-  `gate.sh` calls. Read the round's ledger at most every 4 minutes, never
-  with a single `sleep` of 5 minutes or more — the master skill's wait
-  discipline.
+  or siblings runs as `gate-batch.mjs <pairs.tsv>` in the background, not a
+  foreground `for` loop of `gate.sh` calls. Read its progress file at most
+  every 4 minutes, never with a single `sleep` of 5 minutes or more — the
+  master skill's wait discipline; its SUMMARY line is the completion.
 - **Media-density budget.** The ≤3-iteration convergence was validated on a
   typographic, low-image page (the retail home). Image-dense commerce homes
   (recorded: ~130 imgs) spend iterations on media parity —

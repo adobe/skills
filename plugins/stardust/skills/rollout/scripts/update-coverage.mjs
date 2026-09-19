@@ -16,7 +16,8 @@
  * --from-ledger reconciles deploy-batch.mjs's ledger (one row per web path) into
  * coverage/pages.json, keyed by the row's served path (`delivery.deployedPath` else
  * `path`; a normalised match — case, trailing slash, `.html|.jsp|.aspx|.php` — also
- * counts and writes `deployedPath` when the served path differs from `path`):
+ * counts and, on a `live | previewed` row only, writes `deployedPath` when the served
+ * path differs from `path` — a pending or failed row served nothing there):
  *   live | previewed  → `deployed` only when coverage is pending | converting | failed | stale;
  *                       `verified` is never downgraded (inventory.mjs owns `stale`);
  *                       `deployed`/`content-pending` rows are kept
@@ -74,9 +75,10 @@ export function mergeLedgerIntoCoverage(pages, ledger, { urlBase = null, at = no
     page.delivery = page.delivery || { status: 'pending' };
     const d = page.delivery;
     const before = d.status || 'pending';
-    if (page.path !== webPath && !d.deployedPath) { d.deployedPath = webPath; counts.deployedPath += 1; }
     const url = urlBase ? `${String(urlBase).replace(/\/+$/, '')}${webPath}` : null;
     if (LEDGER_OK.has(rec.status)) {
+      // deployedPath = a path that was SERVED (coverage-model.md § Ledger reconcile); a pending / failed row served nothing
+      if (page.path !== webPath && !d.deployedPath) { d.deployedPath = webPath; counts.deployedPath += 1; }
       if (PROMOTABLE.has(before)) {
         d.status = 'deployed';
         d.deployedAt = rec.ts || at;

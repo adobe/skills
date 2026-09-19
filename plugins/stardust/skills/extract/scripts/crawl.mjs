@@ -69,8 +69,19 @@
  *     [--refresh slug,slug | --force] [--out stardust/current] [--wait medium] \
  *     [--no-consent-dismiss] [--concurrency 4] [--dynamics] [--headed[=window]] \
  *     [--mobile entry|all|none] [--dpr 1] [--depth 1] [--cookie name=value[;Path=/]]... \
- *     [--storage-state <file> | --fresh-state] [--save-state] [--solve-wait <ms>]
+ *     [--storage-state <file> | --fresh-state] [--save-state] [--solve-wait <ms>] \
+ *     [--progress <file> | --no-progress]
  *   node crawl.mjs --help
+ *
+ * Completion contract (skills/stardust/scripts/progress.mjs): while the pool runs the
+ *   crawler writes <out>/../.work/extract/crawl.progress.json (default; --progress
+ *   overrides, --no-progress disables) — done/ok/failed per page, atomic — and its LAST
+ *   stdout line is `SUMMARY crawl ok=<n> failed=<n> exit=<code> details=<_crawl-log.json> …`.
+ *   Run it in the background and read the progress file (`progress.mjs read <file>`),
+ *   never `sleep N; grep -c` the log. Exit codes unchanged: 0 (per-page failures are in
+ *   the log), 2 fatal, 3 bot challenge. A project copy loads the helper from
+ *   stardust/scripts/stardust/progress.mjs (copy it beside class-report.mjs); without it
+ *   the SUMMARY line still prints and one WARN names the copy.
  *
  * Interactive solve (--solve-wait <ms>): PerimeterX "Press & Hold", Cloudflare
  *   Turnstile and hCaptcha never clear without a human. The flag starts at
@@ -190,8 +201,26 @@ function printHelp() {
 }
 function readFileSyncSafe(u) { try { return readFileSync(u, 'utf8'); } catch { return ''; } }
 
+/** Default progress file — the run-only write boundary beside the live lock: <out>/../.work/extract/crawl.progress.json. */
+export function crawlProgressFile(args) { return path.resolve(args.out, '..', '.work', 'extract', 'crawl.progress.json'); }
+
+// progress.mjs lives in skills/stardust/scripts/ (plugin tree) or stardust/scripts/stardust/
+// (project copy). Missing → the SUMMARY line still prints (inline format), no progress file.
+export async function loadProgressHelper() {
+  for (const c of ['../../stardust/scripts/progress.mjs', './stardust/progress.mjs']) {
+    try { return await import(new URL(c, import.meta.url)); } catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; }
+  }
+  console.error('[crawl] WARN progress.mjs not found next to this script — no progress file this run; copy skills/stardust/scripts/progress.mjs to stardust/scripts/stardust/');
+  const summaryLine = ({ driver, ok = 0, failed = 0, noverdict = 0, exit = 0, details = '-', extra = {} }) => [`SUMMARY ${driver}`, `ok=${ok}`, `failed=${failed}`, ...(noverdict ? [`noverdict=${noverdict}`] : []), `exit=${exit}`, `details=${details}`, ...Object.entries(extra).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `${k}=${String(v).replace(/\s+/g, '_')}`)].join(' ');
+  const createProgress = ({ driver, total = 0 }) => {
+    const state = { driver, total, done: 0, ok: 0, failed: 0, noverdict: 0, lastPath: null };
+    return { state, set() {}, tick({ ok, path: p }) { state.done += 1; if (ok) state.ok += 1; else state.failed += 1; if (p) state.lastPath = p; }, summaryLine({ exit = 0, details = '-', extra = {} } = {}) { return summaryLine({ driver, ok: state.ok, failed: state.failed, exit, details, extra }); } };
+  };
+  return { createProgress, summaryLine };
+}
+
 const MOBILE_MODES = ['entry', 'all', 'none'];
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const a = { out: 'stardust/current', max: 5, wait: 'medium', consent: true, concurrency: 4, dynamics: false, refresh: [], force: false, headed: 0, mobile: 'entry', dpr: 1, depth: 1, cookies: [] };
   for (let i = 2; i < argv.length; i += 1) {
     const k = argv[i];
@@ -222,9 +251,12 @@ function parseArgs(argv) {
     else if (k === '--dynamics') a.dynamics = true; // migration-bound: set by prepare-migration / replica / migrate, never by default
     else if (k === '--headed') a.headed = 2; // start the ladder at tier 2 (real Chrome, still headless)
     else if (k === '--headed=window' || k === '--headed=offscreen') a.headed = 3; // start at tier 3 (off-screen window)
+    else if (k === '--progress') a.progress = argv[(i += 1)];
+    else if (k === '--no-progress') a.progress = null;
     else throw new Error(`unknown arg: ${k}`);
   }
   if (!a.url) throw new Error('--url is required');
+  if (a.progress === undefined) a.progress = crawlProgressFile(a);
   a.origin = new URL(a.url).origin;
   a.entryPath = new URL(a.url).pathname; // subtree scope comes from the URL as TYPED — origin adoption rewrites a.url later
   a.capLabel = a.max === 0 ? 'all' : a.max;
@@ -398,6 +430,7 @@ export function tuneBudget(budget, args, host, crawlDelay) {
 }
 // the fatal path (main().catch) persists a halved ceiling before exit 2, so a probe 429 outlives the aborted run
 let persistOnFatal = null;
+let progress = null; // created once the queue is known; the fatal path summarises what was driven
 function persistBudget(args, host, budget) {
   try {
     const file = liveBudgetPath(args);
@@ -1706,6 +1739,8 @@ async function main() {
   if (queue.length) console.error(`[crawl] pacing ${host}: ≥ ${args.budget.minGapMs / 1000} s between navigations, ≤ ${args.budget.navPerMin}/min (${args.budget.source}) → ETA ~${Math.max(1, Math.ceil((queue.length * perNavMs) / 60000))} min for ${queue.length} page(s)`);
 
   const startedAt = new Date().toISOString();
+  const { createProgress } = await loadProgressHelper();
+  progress = createProgress({ file: args.progress, driver: 'crawl', total: queue.length, extra: { technique, discovered: urls.length, skipped: skipped.length, log: logPath } });
   const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, storageState: !!args.sessionReused, ...(loadedState || savedState ? { storageStateFile: savedState || loadedState } : {}), liveBudget: args.budget.toJSON(), ...discovery, ...(botBlock ? { botBlock, escalations } : {}), ...(originRedirect ? { originRedirect } : {}), ...(entryRedirect ? { entryRedirect } : {}), ...(skipped.length ? { skippedExtracted: skipped } : {}) }, consent: { method: args.consent ? 'none-detected' : 'skipped' }, favicon: favicon || null, crawl: { startedAt, finishedAt: null, successes: 0, failures: [] } };
   let ok = 0;
   await context.close();
@@ -1766,6 +1801,7 @@ async function main() {
           const dy = rec.dynamic?.summary || {};
           const warn = [s.spaShellSuspect && 'SPA-SHELL?', s.trackingOnlyMedia && 'TRACKING-PIXEL-ONLY', s.filteredInterstitials && `filtered:${s.filteredInterstitials}`, s.captureQuality === 'degraded' && 'DEGRADED', s.overlayCoverPct > OVERLAY_FLAG_PCT && 'OVERLAY?', s.screenshotMode !== 'fullPage' && `shot:${s.screenshotMode}`, dy.sameSiteEndpoints && `data-endpoints:${dy.sameSiteEndpoints}`, dy.searchForms && 'SEARCH-FORM', dy.hydrated && 'HYDRATED'].filter(Boolean).join(' ');
           console.error(`[crawl] OK   ${slug}  ${warn}`);
+          progress.tick({ ok: true, path: slug });
         } catch (err) {
           if (err.errorClass === 'BotChallengeError' && args.tier < TIERS.length) {
             if (!escalate) console.error(`[crawl] bot challenge at tier ${args.tier} (${TIERS[args.tier - 1]}) on ${slug} — draining the pool, escalating to tier ${args.tier + 1} (${TIERS[args.tier]}) and requeuing the unfinished pages`);
@@ -1776,6 +1812,7 @@ async function main() {
           const hint = err.errorClass === 'BotChallengeError' ? ' — tier 3 still challenged: interactive solve needed (STARDUST_HEADED_WINDOW=1) or an allowlist' : '';
           log.crawl.failures.push({ url, slug, errorClass: err.errorClass || 'Error', message: `${String(err.message || err)}${hint}`, at: new Date().toISOString() });
           console.error(`[crawl] FAIL ${slug}  ${err.errorClass || 'Error'}: ${err.message}${hint}`);
+          progress.tick({ ok: false, path: slug });
         }
       }
       await ctx.close();
@@ -1836,6 +1873,8 @@ async function main() {
   }, results.filter(Boolean).map((r) => r.slug));
   await writeFile(logPath, JSON.stringify(merged, null, 2));
   console.error(`[crawl] done. ${ok}/${queue.length} captured, ${failedNow.size} failed (${merged.crawl.failures.length} open across runs). log: ${logPath}`);
+  progress.set({ technique });
+  console.log(progress.summaryLine({ exit: 0, details: logPath, extra: { discovered: urls.length, skipped: skipped.length, technique, openFailures: merged.crawl.failures.length } }));
 }
 
 /**
@@ -1871,9 +1910,14 @@ export function mergeCrawlLog(prev, log, run, okSlugs) {
 // run only as the entry script — importing the module (fixture tests) runs nothing
 const entry = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : null;
 if (entry === import.meta.url) {
-  main().catch((e) => {
+  main().catch(async (e) => {
     console.error(`[crawl] fatal: ${e.errorClass || 'Error'}: ${e.message}`);
     try { if (persistOnFatal) persistOnFatal(); } catch { /* best effort */ }
-    process.exit(e.errorClass === 'BotChallengeError' ? 3 : 2);
+    const exit = e.errorClass === 'BotChallengeError' ? 3 : 2;
+    try {
+      const line = progress ? progress.summaryLine({ exit, details: '-', extra: { error: String(e.message || e).slice(0, 80) } }) : (await loadProgressHelper()).summaryLine({ driver: 'crawl', exit, details: '-', extra: { error: String(e.message || e).slice(0, 80) } });
+      console.log(line);
+    } catch { /* the exit code is the contract; the line is best effort */ }
+    process.exit(exit);
   });
 }

@@ -24,6 +24,9 @@ worker side and what the coordinator does when a worker dies.
   replica, the coverage/delivery ledgers in rollout), the agent writes
   its own `progress-<slug>.json` beside it and never edits the shared
   file; the coordinator merges (§ Coordinator contract).
+- Driver progress: a batch driver (deploy-batch, crawl, verify, gate-batch)
+  writes `stardust/.work/<skill>/<driver>.progress.json` and ends with one
+  `SUMMARY` line (`skills/stardust/scripts/progress.mjs`) — poll that, not its log.
 - Everything under `stardust/.work/` is run residue and untracked
   (master § Artifacts, write boundary).
 

@@ -60,6 +60,13 @@
  * `unverified` — its ledger status is NOT written — and the run exits 2: re-run,
  * never a failed page.
  *
+ * Completion contract (skills/stardust/scripts/progress.mjs): the LAST stdout line is
+ * `SUMMARY verify ok=<verified> failed=<failed> [noverdict=<unverified>] exit=<code>
+ * details=<report>/summary.json skipped=<n>` — the line a background launch's hand-off
+ * quotes; `noverdict` carries the throttled rows, never `failed`. The helper resolves
+ * like class-report.mjs (plugin tree, else stardust/scripts/stardust/); missing, the
+ * line still prints in the same format. No progress file: the run is one HTTP pass.
+ *
  * Usage: node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--slug <s>]
  *          [--all [--include-undelivered]] [--out <rolloutDir>] [--report <dir>] [--verbose]
  * Exit: 0 no row failed · 1 at least one row is `failed` (advisory classes never set
@@ -84,6 +91,13 @@ const { classReport, renderTable } = await (async () => {
   }
   console.error('rollout verify: class-report.mjs not found next to this script — copy skills/stardust/scripts/class-report.mjs to stardust/scripts/stardust/.');
   process.exit(2);
+})();
+// progress.mjs (the SUMMARY line format) resolves the same two ways; absent → inline format, never a failure
+const summaryLine = await (async () => {
+  for (const c of ['../../stardust/scripts/progress.mjs', '../stardust/progress.mjs']) {
+    try { return (await import(new URL(c, import.meta.url))).summaryLine; } catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; }
+  }
+  return ({ driver, ok = 0, failed = 0, noverdict = 0, exit = 0, details = '-', extra = {} }) => [`SUMMARY ${driver}`, `ok=${ok}`, `failed=${failed}`, ...(noverdict ? [`noverdict=${noverdict}`] : []), `exit=${exit}`, `details=${details}`, ...Object.entries(extra).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `${k}=${String(v).replace(/\s+/g, '_')}`)].join(' ');
 })();
 const OUT = arg('out', 'stardust/rollout');
 const ROOT = arg('root', null);
@@ -274,4 +288,6 @@ writeFileSync(pagesMd, md.join('\n'));
 
 console.log(lines.join('\n'));
 if (VERBOSE) for (const r of [...bad, ...unverified, ...advisories]) console.log(`  ${r.status === 'failed' ? '✗' : '·'} ${r.slug} (${r.type}): ${r.reason}`);
-process.exit(unverified.length ? 2 : bad.length ? 1 : 0);
+const exitCode = unverified.length ? 2 : bad.length ? 1 : 0;
+console.log(summaryLine({ driver: 'verify', ok, failed: bad.length, noverdict: unverified.length, exit: exitCode, details: join(REPORT, 'summary.json'), extra: { skipped: ALL && !ROOT ? skipped : undefined, mode: ROOT ? 'root' : 'http' } }));
+process.exit(exitCode);

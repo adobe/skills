@@ -205,7 +205,7 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    ```bash
    node skills/rollout/scripts/update-coverage.mjs <slug> --status converting
    node skills/rollout/scripts/update-coverage.mjs --block <id> --status converted --eds-name <name>
-   node skills/rollout/scripts/update-coverage.mjs <slug> --status deployed --url <branch-preview-url>
+   node skills/rollout/scripts/update-coverage.mjs --from-ledger content/.deploy-ledger.json --url-base <branch-preview-origin>   # after each deploy-batch run: deployed/failed from the ledger, one write
    node skills/rollout/scripts/update-coverage.mjs <slug> --status content-pending   # no document push
    ```
    **Gate on preview, then publish explicitly.** The driver's default run is
@@ -247,7 +247,7 @@ content; the publish report names the 2 h code-cache window end (`skills/deploy/
 The driver and every batch run in the background; `stardust/.work/deploy/deploy-batch.progress.json`
 is the progress file (`skills/stardust/scripts/progress.mjs read <file>`) and its
 stdout `SUMMARY` line the completion; after a blip, re-run the same command.
-Then reconcile the ledger into coverage with `update-coverage.mjs`.
+Then `update-coverage.mjs --from-ledger content/.deploy-ledger.json` reconciles the ledger into coverage (one write; no per-page `--status deployed`).
 Every wave agent follows `skills/stardust/reference/fan-out.md` § Worker contract
 (liveness, resume-once, finisher) and § Scope and type of delegated agents; every
 shell loop, runner and delivery step in a wave follows

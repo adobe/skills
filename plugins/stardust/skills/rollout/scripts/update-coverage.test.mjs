@@ -5,7 +5,10 @@
 //                downgraded by a delivery; *-fail → failed with lastError (a newer `verified` verdict
 //                survives an older ledger failure); ledger `pending` kept; content-pending kept.
 //   deployedPath a ledger path that matches a row only by normalised key (`/About-Us.jsp` ↔ `/about-us`)
-//                writes delivery.deployedPath = the served path; an exact match writes none.
+//                writes delivery.deployedPath = the served path on a live|previewed row; an exact
+//                match writes none, and so does a pending or failed row (nothing was served there).
+//   docs agree   rollout/SKILL.md and deploy/da-deploy-protocol.md both name `--from-ledger` as the
+//                reconcile and neither instructs a per-page `--status deployed` call.
 //   unmatched    a ledger path with no coverage row is counted and listed, never invented.
 //   --url-base   deployedUrl = <origin><served path> on promotion.
 //   idempotent   the second run over the same ledger promotes nothing; roll-ups re-derived; exit codes.
@@ -102,6 +105,26 @@ try {
   assert.match(r.stdout.trim(), /0 → deployed · 2 → failed · 7 kept · 1 unmatched$/, `second run: ${r.stdout}`);
   const after = json(pagesPath);
   assert.deepEqual(after.pages, before.pages, 'second run is a no-op on the rows');
+
+  // deployedPath is a SERVED path: a pending (halt-reset) or failed ledger row matching a
+  // coverage row only by normalised key writes none and counts none (before the fix
+  // `/Contact.aspx` pending + ledger `/contact: pending` → deployedPath '/contact')
+  {
+    const pages = [row('k', '/Contact.aspx', { status: 'pending' }), row('m', '/Team.aspx', { status: 'pending' }), row('n', '/News.aspx', { status: 'pending' })];
+    const { counts: c } = mergeLedgerIntoCoverage(pages, { '/contact': { status: 'pending', ts }, '/team': { status: 'put-fail', ts, lastError: 'PUT 500' }, '/news': { status: 'live', ts } });
+    assert.deepEqual([pages[0].delivery.status, pages[0].delivery.deployedPath], ['pending', undefined], 'ledger pending: nothing served → no deployedPath');
+    assert.deepEqual([pages[1].delivery.status, pages[1].delivery.deployedPath], ['failed', undefined], 'ledger failure: nothing served → no deployedPath');
+    assert.deepEqual([pages[2].delivery.status, pages[2].delivery.deployedPath], ['deployed', '/news'], 'a served row still records where it was served');
+    assert.equal(c.deployedPath, 1, 'only the served row counts as deployedPath written');
+  }
+
+  // the two skills that record the procedure agree: the ledger reconcile replaces per-page
+  // `--status deployed` calls (rollout/SKILL.md and deploy/da-deploy-protocol.md name --from-ledger)
+  const rolloutSkill = readFileSync(join(HERE, '..', 'SKILL.md'), 'utf8');
+  const protocol = readFileSync(join(HERE, '..', '..', 'deploy', 'da-deploy-protocol.md'), 'utf8');
+  assert.ok(!/update-coverage\.mjs <slug> --status deployed/.test(rolloutSkill), 'rollout/SKILL.md no longer instructs the per-page --status deployed call');
+  assert.match(rolloutSkill, /update-coverage\.mjs --from-ledger/, 'rollout/SKILL.md names --from-ledger as the reconcile');
+  assert.match(protocol, /update-coverage\.mjs --from-ledger/, 'da-deploy-protocol.md names --from-ledger');
 
   // verified newer than a ledger failure keeps its verdict (pure helper)
   const { counts } = mergeLedgerIntoCoverage([row('v', '/v', { status: 'verified', verifiedAt: NEW })], { '/v': { status: 'put-fail', ts, lastError: 'old' } });

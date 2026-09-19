@@ -147,7 +147,7 @@ export class HaltError extends Error {
   constructor(why, remedy) { super(remedy); this.why = why; this.remedy = remedy; }
 }
 
-// Credential primitives live in ./lib.mjs (shared with da-token-check.mjs); re-exported for existing importers.
+// Credential primitives live in ./lib.mjs (one implementation for every deploy script); re-exported for existing importers.
 export { resolveToken, tokenExpiry, daSmoke };
 
 /** SITE_TOKEN_<REPO> (uppercased, non-alphanumerics → _) then SITE_TOKEN. */

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
- * skills/deploy/scripts/lib.mjs — the DA credential primitives every deploy
- * script shares (deploy-batch.mjs preflight, da-token-check.mjs, the master's
- * preflight-transports.mjs). One implementation, no dependencies (Node 18+).
+ * skills/deploy/scripts/lib.mjs — the DA credential primitives of the deploy
+ * scripts. Consumer today: deploy-batch.mjs (preflight + halt) and its fixture
+ * tests; a later credential CLI imports these instead of re-implementing them.
+ * One implementation, no dependencies (Node 18+).
  *
  *   resolveToken(name, { cwd, home, env })
  *     → { value, source } | null. Order: shell env → ./.env → ~/.claude/.env → ~/.env.

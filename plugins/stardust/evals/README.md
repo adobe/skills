@@ -211,6 +211,21 @@ whose harness cases skip when Playwright is unresolvable:
 - `fixtures/crawl-slugify.test.mjs`, `fixtures/crawl-log-merge.test.mjs` —
   pin crawl.mjs's slug derivation (root → `index`, 200-char cap, `-<hash4>`
   collision suffix) and the append-only `_crawl-log.json` merge.
+- `fixtures/crawl-progress.test.mjs` — crawl.mjs's completion contract:
+  `--progress` / `--no-progress` and the default
+  `stardust/.work/extract/crawl.progress.json`, the progress helper
+  resolving from the plugin tree; the one-page e2e (progress file + last-line
+  `SUMMARY crawl …`) runs when playwright resolves, else one `SKIP` line.
+- `sleep-poll.mjs --self-test` — no `skills/**/*.md` line teaches the
+  `sleep N; tail|grep -c|cat|pgrep` poll (a line saying `never` is the
+  prohibition and passes; `sleep-poll: ignore` exempts). 🟡 advisory this
+  release (`--strict` fails); the self-test over `lint/fixtures/sleep-poll/`
+  (bad.md fires, good.md silent) is the rule's own negative fixture.
+- `gate-batch-fixtures.mjs` — `replica/scripts/gate-batch.mjs` over a stub
+  gate.sh (`lint/fixtures/gate-batch/`): pairs.tsv parsing (duplicate
+  slug@width refused), verdict mapping (0 ok · 2 failed · 124/3/5/6 noverdict,
+  never failed), the pooled sweep's table + last-line `SUMMARY` + progress
+  JSON, batch exit 2 over 124 over other codes, `--dry-run`, usage 125.
 - `redirects-smoke.mjs` — runs `rollout/scripts/redirects.mjs` over
   `lint/fixtures/redirects/redirects.tsv`: the row expansion, the exit-2
   shadow verdict (a Source that is also a delivered page) and `--check`
@@ -239,7 +254,19 @@ whose harness cases skip when Playwright is unresolvable:
   chrome-variant guard both directions (fires on the named shape, silent on a
   clean page); typed inventory rows seeded + preserved, `--redirects`
   deployedPath, sitemap = live page rows; the runner-output contract on the
-  shared fixture, link classes, 429/503 retry → `unverified` / exit 2.
+  shared fixture, link classes, 429/503 retry → `unverified` / exit 2, and the
+  last-line `SUMMARY verify …` (throttled rows as `noverdict`).
+- `rollout/scripts/update-coverage.test.mjs` — `--from-ledger`: the merge
+  rules, `deployedPath` written only from a served (`live|previewed`) row,
+  unmatched paths listed not invented, idempotence, exit codes; and that
+  rollout/SKILL.md + da-deploy-protocol.md both name `--from-ledger` as the
+  reconcile.
+- `deploy/scripts/test/deploy-batch-ledger.test.mjs`, `…-repairs.test.mjs`,
+  `…-halt.test.mjs`, `…-persist.test.mjs`, `deploy/scripts/test/served-check.test.mjs`
+  — the driver against `mock-da.mjs`: ledger idempotence + SUMMARY / progress
+  file, blip repairs, the 401 / access halt (and lib.mjs header claims naming
+  only files that exist), a rejected checkpoint surviving the persist chain and
+  webPath drive order, served-check's 124 (no verdict) vs 1 (served verdict).
 - `impeccable-probe-fixtures.mjs` — runs `stardust/scripts/impeccable-version-check.mjs
   --probe/--state` and `script-paths.mjs --installed` over
   `lint/fixtures/impeccable-layout/` (4.1.3 legacy-launcher, 4.3.1 and a

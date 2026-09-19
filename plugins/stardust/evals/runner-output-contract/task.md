@@ -82,8 +82,10 @@ Interactive session: the runner answers any question from `answers.md`
    link with `dynamics`; demote the second `<h1>`; re-ingest the image), each
    pointing at `summary.md` for the affected pages. No per-page fix list.
 9. The hand-off note names `summary.json` and `summary.md` by
-   path as the place to continue from, and the next command
-   (`$stardust replica insurance__home`, then the class actions).
+   path as the place to continue from, quotes the runner's last stdout
+   line (`SUMMARY verify ok=… failed=… exit=… details=…`) verbatim, and
+   the next command (`$stardust replica insurance__home`, then the class
+   actions).
 10. Inputs stay read-only: `stardust/migrated/**`, `state.json`,
     `progress.json` and `direction.md` are unchanged; writes land only under
     `stardust/rollout/`, plus an appended `journal.md` entry and

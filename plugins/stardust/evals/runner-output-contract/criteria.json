@@ -1,5 +1,5 @@
 {
-  "context": "Runner output contract on rollout's offline full-site verify. Task and setup in task.md; each item is judged pass/fail and weighted by max_score. The batch-reporting rule is context-hygiene.md \u00a7 Runner reports and session hand-off (0.24.0).",
+  "context": "Runner output contract on rollout's offline full-site verify. Task and setup in task.md; each item is judged pass/fail and weighted by max_score. The batch-reporting rule is context-hygiene.md § Runner reports and session hand-off (0.24.0).",
   "type": "weighted_checklist",
   "checklist": [
     {
@@ -15,7 +15,7 @@
     {
       "name": "ranked_class_report",
       "max_score": 20,
-      "description": "The report to the user is a ranked class table with one row per finding class, each row carrying class, count, worst example (slug plus reason) and a file pointer to where the affected pages are listed. Rows are ordered by count (ties by severity). The complete report \u2014 table, triage and hand-off \u2014 is at most 60 lines. Every class present in the fixture appears: broken internal link(s), about:error, h1 count, blocked-by-precondition."
+      "description": "The report to the user is a ranked class table with one row per finding class, each row carrying class, count, worst example (slug plus reason) and a file pointer to where the affected pages are listed. Rows are ordered by count (ties by severity). The complete report — table, triage and hand-off — is at most 60 lines. Every class present in the fixture appears: broken internal link(s), about:error, h1 count, blocked-by-precondition."
     },
     {
       "name": "summary_files_written",
@@ -25,7 +25,7 @@
     {
       "name": "no_per_page_dump",
       "max_score": 15,
-      "description": "No per-page listing is printed into the conversation: the runner's per-page failure lines are summarised rather than pasted, pages.json / summary.json / summary.md contents are not echoed, and no assistant text enumerates pages one line each beyond the single worst example per class. Judge on shape, not length \u2014 six pages make a full dump short."
+      "description": "No per-page listing is printed into the conversation: the runner's per-page failure lines are summarised rather than pasted, pages.json / summary.json / summary.md contents are not echoed, and no assistant text enumerates pages one line each beyond the single worst example per class. Judge on shape, not length — six pages make a full dump short."
     },
     {
       "name": "triage_per_class",
@@ -46,6 +46,11 @@
       "name": "journal_and_status",
       "max_score": 5,
       "description": "stardust/journal.md has a fifth entry appended (the four prior entries intact, append-only) with a Next: line that names the summary files; stardust/status.jsonl gains rollout start/end lines for the phases that ran."
+    },
+    {
+      "name": "summary_line_quoted",
+      "max_score": 5,
+      "description": "The hand-off quotes the runner's completion line verbatim — the last stdout line of verify.mjs, `SUMMARY verify ok=<n> failed=<n> [noverdict=<n>] exit=<code> details=<path>/summary.json …` — and its counts equal the class table's and summary.json's. A hand-off that paraphrases the counts without the line, or quotes a line whose numbers differ from the files, fails."
     }
   ]
 }

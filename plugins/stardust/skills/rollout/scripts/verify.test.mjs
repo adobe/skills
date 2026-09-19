@@ -18,7 +18,9 @@
 //      report under verify/slug-<s>/ and leaves the site-wide verify/summary.json intact;
 //      a 429/503 is retried inline (Retry-After honoured) — a page recovering on the retry
 //      is verified, a page still throttled is `unverified` (ledger status untouched) and
-//      the run exits 2, never a failed page.
+//      the run exits 2, never a failed page. The LAST stdout line of every run is the
+//      completion contract's `SUMMARY verify ok= failed= [noverdict=] exit= details=` line
+//      (progress.mjs); throttled rows ride `noverdict`.
 //   C. Project-copy layout: verify.mjs + lib.mjs copied to <tmp>/stardust/scripts/rollout/
 //      run --help without the plugin tree; the class-report helper resolves from
 //      stardust/scripts/stardust/ once copied there, and its absence is a clear exit 2.
@@ -60,6 +62,7 @@ const lines = (s) => s.split('\n').filter((l) => l.length);
   // clean tree: every row verified, files written, nothing per page
   let r = run(['--root', MIG, '--all', '--out', OUT, '--report', REP]);
   assert.equal(r.status, 0, `clean fixture → exit 0\n${r.stderr}`);
+  assert.match(r.stdout.trim().split('\n').at(-1), /^SUMMARY verify ok=\d+ failed=0 exit=0 details=.*summary\.json mode=root$/, 'the LAST stdout line is the SUMMARY line (completion contract)');
   for (const f of ['summary.json', 'summary.md', 'pages.md']) assert.ok(existsSync(join(REP, f)), `${f} written under --report`);
   let s = json(join(REP, 'summary.json'));
   assert.deepEqual([s.total, s.checked, s.verified, s.failed, s.classes], [6, 6, 6, 0, []], 'clean shape');
@@ -72,6 +75,7 @@ const lines = (s) => s.split('\n').filter((l) => l.length);
   edit('business/index.html', (t) => t.replace(/(<p data-slot="copy">Commercial lines desk[^<]*<\/p>)/, '$1\n      <img src="about:error" alt="x" width="320" height="120">'));
   r = run(['--root', MIG, '--all', '--out', OUT, '--report', REP]);
   assert.equal(r.status, 1, 'seeded defects → exit 1');
+  assert.match(r.stdout.trim().split('\n').at(-1), /^SUMMARY verify ok=0 failed=6 exit=1 details=.*summary\.json mode=root$/, 'SUMMARY carries the failed count and exit 1');
   s = json(join(REP, 'summary.json'));
   assert.deepEqual([s.total, s.checked, s.verified, s.failed], [6, 6, 0, 6], 'every page fails on one class');
   const classes = s.classes.map((c) => c.class);
@@ -178,6 +182,7 @@ const lines = (s) => s.split('\n').filter((l) => l.length);
   writeFileSync(join(OUT, 'rollout.json'), JSON.stringify({ site: { liveHost: 'https://main--x--y.aem.live/' }, lastRun: {} }));
   r = await runAsync(['--base', BASE, '--out', OUT]);
   assert.equal(r.status, 2, `a throttled page → exit 2 (no verdict)\n${r.stderr}`);
+  assert.match(r.stdout.trim().split('\n').at(-1), /^SUMMARY verify ok=2 failed=0 noverdict=1 exit=2 details=.*summary\.json( skipped=\d+)? mode=http$/, 'a throttled row is noverdict on the SUMMARY line, never failed');
   assert.equal(hits503, 2, 'the 503 page was fetched twice: 503, then 200 on the inline retry');
   assert.deepEqual([status('t503').status, status('new').status], ['verified', 'verified'], '503 → 200 on the retry is verified');
   assert.deepEqual([status('t429').status, status('t429').error, status('t429').verifiedAt], ['deployed', null, null], 'a still-throttled row keeps its ledger status, no error written');

@@ -17,7 +17,7 @@
  */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -188,6 +188,19 @@ try {
   assert.match(r.stderr, /WARN 3 previously delivered pages now 404 — content-bus reset/);
   assert.equal(readLog().filter((l) => l.step === 'sentinel' && l.why === 'content-bus-reset' && l.n === 3).length, 1);
   assert.equal(puts(), 3, 'all three re-driven');
+  // lib.mjs / deploy-batch.mjs header claims: every script a comment names exists in the
+  // plugin tree, and the one named consumer really imports lib.mjs (a documented file that
+  // does not exist is a defect — the review found `da-token-check.mjs` and a preflight
+  // script that imports nothing from lib.mjs named as sharers).
+  const skillsRoot = join(here, '..', '..', '..');
+  const scriptFiles = new Set(readdirSync(skillsRoot, { recursive: true }).filter((f) => /\.(mjs|js|sh)$/.test(f)).map((f) => f.split(/[\\/]/).at(-1)));
+  for (const f of ['lib.mjs', 'deploy-batch.mjs']) {
+    const src = readFileSync(join(here, '..', f), 'utf8');
+    const header = src.split('*/')[0];
+    for (const m of header.matchAll(/\b([a-z][a-z0-9-]*\.(?:mjs|js|sh))\b/g)) assert.ok(scriptFiles.has(m[1]), `${f} header names ${m[1]}, which exists nowhere under skills/`);
+  }
+  assert.match(readFileSync(join(here, '..', 'deploy-batch.mjs'), 'utf8'), /from '\.\/lib\.mjs'/, 'deploy-batch.mjs imports the primitives from ./lib.mjs (the header names it as the consumer)');
+  assert.ok(!/da-token-check|preflight-transports/.test(readFileSync(join(here, '..', 'lib.mjs'), 'utf8').split('*/')[0]), 'lib.mjs header claims no sharer that does not import it');
   console.log('deploy-batch-halt test: ok');
 } finally {
   await mock.close();
