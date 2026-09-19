@@ -28,7 +28,7 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 | Routing (migration) | `reference/state-machine.md` § Flow keys |
 | Freeform intent | `reference/intent-reasoning.md` § Procedure · `reference/intent-dimensions.md` § Reading a phrase · `reference/impeccable-command-map.md` § Common sequences |
 | Hands-off | `reference/state-machine.md` § Hands-off keys |
-| Hands-off (delegating) | `reference/fan-out.md` § Worker contract · § Coordinator contract |
+| Hands-off (delegating) | `reference/fan-out.md` § Scope and type · § Worker contract · § Coordinator contract |
 | Per-page state | `reference/state-machine.md` § Page lifecycle states · § Stale flagging (content-aware) |
 | Journal | `reference/journal-format.md` § Entry format · § Reading the journal at session start |
 | Validation | `../extract/reference/playwright-recipe.md` § Capture list · `../prototype/reference/motion-validation.md` § Validation procedure |
@@ -55,10 +55,8 @@ sub-commands that delegate the actual design work to **impeccable**.
 
    **Version hint (advisory, never blocking).** Stardust deliberately pins
    NO impeccable version — the design craft should always be the current
-   one — and harnesses do not announce third-party plugin updates by
-   default (Claude Code's marketplace auto-update is off for third-party
-   marketplaces such as impeccable's; Copilot has no update notice). So,
-   once per session, run
+   one — and no harness announces third-party plugin updates by
+   default. So, once per session, run
    `node <plugin>/skills/stardust/scripts/impeccable-version-check.mjs`
    (add `--local <impeccable-dir>` when impeccable lives in a harness skills
    directory rather than the plugin registry) and surface its one output
@@ -265,6 +263,12 @@ otherwise):
   agent writes, how it is polled, resumed once and then finished from
   its progress file: `reference/fan-out.md` (every brief points at its
   § Worker contract).
+- **Scope and type of delegated agents.** One agent owns at most one
+  archetype gate loop or three sibling pages; anything longer than ~20
+  requests or launching a browser is a fresh-context agent with a
+  file-pointer brief, and the coordinator dispatches and merges rather
+  than authoring inline while workers run — `reference/fan-out.md`
+  § Scope and type.
 - **Wait discipline: never park the conversation past the prompt-cache
   window.** Anything expected to run longer than about 2 minutes — a gate
   round over several pages, a crawl, a batch push, a capture set, a

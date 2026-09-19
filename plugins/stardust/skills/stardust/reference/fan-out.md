@@ -13,6 +13,7 @@ worker side and what the coordinator does when a worker dies.
 - § Worker contract — paste its five rules into every brief (by pointer: "follow `fan-out.md` § Worker contract"); read before starting work as a delegated agent.
 - § Coordinator contract — before dispatching, and on every `failed` / `stalled` / lost-transcript notification.
 - § Progress files — the path convention both sides write and read.
+- § Scope and type of delegated agents — when deciding how many agents, how much each owns and whether it inherits the conversation.
 
 ## Progress files
 
@@ -78,3 +79,27 @@ A delegated agent, in this order:
   append to a shared file.
 - **Record deaths.** Every failure, stall, respawn and finisher is one
   line in the journal entry for the phase, with the slug.
+
+## Scope and type of delegated agents
+
+Cost scales with requests per agent × context per request; the scope cap
+is the primary lever, the agent type the secondary one.
+
+- **Scope.** One agent owns at most one archetype gate loop or up to
+  three sibling pages. Longer work is split into successive agents that
+  resume from the ledger (§ Coordinator contract), not one long-lived
+  agent.
+- **Type.** Any agent expected to run more than ~20 requests or to
+  launch a browser is a **fresh-context agent** — it inherits nothing,
+  and its brief is a file-pointer brief of at most ~4 k tokens:
+  `state.json`, the page list, the ledger and progress paths, the one
+  operator-card row it needs (Claude Code: the `general-purpose`
+  subagent type). An agent that **inherits the conversation** is
+  reserved for tasks that need the parent's history and finish in a few
+  turns (Claude Code: a fork); it never runs a gate loop or a batch.
+- **Coordinator stays thin.** While workers run, the coordinator never
+  authors blocks, encoders or foundation files inline; foundation work
+  is its own dispatched worker, and the coordinator merges.
+- **One capture, many readers.** Extract runs once; parallel audit,
+  prepare and replica agents read `stardust/current/` (the reuse rule in
+  `../audit/SKILL.md` § Setup).
