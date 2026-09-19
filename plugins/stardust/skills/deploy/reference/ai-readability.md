@@ -102,7 +102,11 @@ larger than most info pages), every chrome edit becomes a tool re-run plus a ful
 (≈5 min per 150 pages with the batch driver), and authors see the block in DA. Two of three owners
 asked declined it. Offer it only when the owner wants served-text parity on chrome; ship the code
 before the content so live never renders the raw block; put the re-sync tool and the redeploy
-driver in the hand-off.
+driver in the hand-off. Under hands-off this is **never self-resolved**: it is a row of the plan-time
+owner decision batch (rollout Phase D / `dynamics-plan`) carrying the cost above and the alternative
+(accept the default score, which strips landmarks); until answered, chrome stays a runtime fragment.
+`davids-model-lint` flags a `header`/`footer`/`nav`/`page-chrome` block inside a content document
+(🟡 CHROME) so the decision is visible in the log.
 
 ## 6. The gate
 
@@ -122,8 +126,9 @@ Per page it prints three numbers and a cause table:
 - **servedGap** — rendered words absent from the served HTML, attributed per block (metric 2).
 
 Gate on `code ≥ --min` (default 98) — that is the part the block code owns. Report `strict` as the
-customer number and list what is agent-invisible *by design* with its point cost ("fragments cost
-12 points on this page"), so the owner sees a decision, not a bare 84. Where it runs: the deploy
+customer number and list what is agent-invisible *by design* with its point cost — the script prints
+`fragments cost N pts` per page (strict points the fragment copy would add if inlined) — so the owner
+sees a decision, not a bare 84. Where it runs: the deploy
 atomic delivery contract on the **published** page; the `qa` `ai-readability` check (same code); the
 `audit` LLM-visibility phase on sampled pages. Allowlist entries name a block and the runtime string
 they excuse, with a reason; the script prints every entry it used.

@@ -19,8 +19,9 @@
  *      is a served path (extensionless; `x/index.html` → `/x`; root `/`), plus
  *      the entries of --redirects (source path → destination) when given.
  *   2. Rewrites every <a href> whose host is a --source-host (with or without
- *      `www.`, http or https or protocol-relative) AND whose path resolves in
- *      the map to the canonical root-relative form — extensionless, no
+ *      `www.`, http or https or protocol-relative), a delivery host
+ *      (`<ref>--<repo>--<org>.aem.page|live`, implicit) or the --prod-host,
+ *      AND whose path resolves in the map to the canonical root-relative form — extensionless, no
  *      trailing slash (EDS 404s on `/x/` and `/x.html`) — preserving ?query
  *      and #fragment.
  *   3. Normalizes root-relative internal hrefs that resolve in the map but
@@ -34,6 +35,8 @@
  *        [--dry-run] [--check] [--json]
  *
  *   --source-host  the live site's host(s); `www.` is matched either way
+ *   --prod-host    the new site's production host(s), also localizable
+ *                  (delivery `*.aem.page|live` branch hosts always are)
  *   --content      root of the authored content tree (default: content)
  *   --redirects    TSV `source<TAB>destination` (rollout's stardust/redirects.tsv)
  *                  or JSON ([{source,destination}] or {source: destination})
@@ -55,7 +58,7 @@ function parseArgs(argv) {
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--content') opts.content = rest[i += 1];
-    else if (a === '--source-host') opts.hosts.push(...(rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean));
+    else if (a === '--source-host' || a === '--prod-host') opts.hosts.push(...(rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean));
     else if (a === '--redirects') opts.redirects = rest[i += 1];
     else if (a === '--dry-run') opts.dryRun = true;
     else if (a === '--check') { opts.check = true; opts.dryRun = true; }
@@ -69,7 +72,7 @@ function parseArgs(argv) {
 }
 
 function usage() {
-  console.error('usage: localize-links.mjs --source-host <host[,host]> [--content content] [--redirects file] [--dry-run] [--check] [--json]');
+  console.error('usage: localize-links.mjs --source-host <host[,host]> [--prod-host <host>] [--content content] [--redirects file] [--dry-run] [--check] [--json]');
 }
 
 // ----------------------------------------------------------------- URL map
@@ -138,11 +141,14 @@ function parseHref(href) {
   return { host: m[2] ? bareHost(m[2]) : null, path: m[3] || '', query: m[4] || '', hash: m[5] || '' };
 }
 
+// Delivery hosts are always localizable: a branch host dies at merge.
+const DELIVERY_HOST = /^[a-z0-9-]+--[a-z0-9-]+--[a-z0-9-]+\.(?:aem|hlx)\.(?:page|live)$/i;
+
 export function localizeHref(href, { map, hosts }) {
   if (/^(mailto:|tel:|javascript:|data:|#)/i.test(href) || !href) return { href, action: 'skip' };
   const u = parseHref(href);
   if (!u) return { href, action: 'skip' };
-  const isSource = u.host && hosts.includes(u.host);
+  const isSource = u.host && (hosts.includes(u.host) || DELIVERY_HOST.test(u.host));
   const isRootRel = !u.host && href.startsWith('/') && !href.startsWith('//');
   if (!isSource && !isRootRel) return { href, action: 'skip' };
   const key = canonicalPath(u.path);

@@ -37,6 +37,8 @@
  *   D1  embed/video URL authored as a block        structure (default-content candidate)
  *   D2  block table nested inside a block cell D3  ragged rows (cell-count mismatch —
  *   D4  relative/repo-relative src or href         a span-shaped structure)
+ *   D4  protocol-relative or delivery branch-host
+ *       <a href> (//host/p, main--repo--org.aem.page)
  *                                            D4  source-host href whose path exists
  *                                                locally (LOCALIZE — run localize-links)
  *   D14 display copy in a key-value block     D10 block rows wider than 4 columns
@@ -51,6 +53,32 @@
  *   VARIANT-COLLIDE token in reserved list or     --styles (`.hero .x`, `span.x`)
  *       a bare `.x {` selector of --styles
  *       (pseudo suffixes ignored: `.x:hover {`)
+ *   TABLE raw <table> under <main> (the pipeline names a block after its
+ *       first cell → a `table` block whose CSS 404s; author the `table` block)
+ *                                            D6  SOLE-EMPH — a lone link wrapped by
+ *                                                emphasis in the pipeline-hoisted order
+ *                                                (<a><strong>, <b>/<i>, or in a <li>)
+ *                                                buttonizes on delivery
+ *                                            META ALONE — a section whose only child is
+ *                                                the metadata block (empty band)
+ *                                            META CHROME — metadata block in /nav,
+ *                                                /footer or /fragments/*
+ *                                            HBR heading text carrying <br> (stripped)
+ *                                            D15 TEXT-LEAK — [sup]/[sub] tokens,
+ *                                                label^tooltip carets, ||| runs
+ *                                            D15 JSON — raw `json-ld` metadata row /
+ *                                                value cell starting with { or [
+ *                                                (JSON-LD is composed at runtime, D10)
+ *                                            TEXT punctuation-only <p>; >50 % of
+ *                                                in-block <img> with alt=""
+ *                                            CHROME header/footer/nav/page-chrome block
+ *                                                inlined into a content document
+ *                                            D15 STYLE-SPACE — section-metadata `style`
+ *                                                with space-separated tokens (hyphen-joined
+ *                                                into one class that matches nothing)
+ *                                            D12 CONTENT — a /fragments/ target in this
+ *                                                tree carrying > 60 prose words (inline it
+ *                                                + re-sync row; fragments cost strict pts)
  *
  * Icon and variant findings are reported ONCE per token with the page count.
  *
@@ -63,6 +91,7 @@ import path from 'path';
 
 const WRAPPER_BLOCK_NAMES = new Set(['text', 'heading', 'title', 'image']);
 const KEY_VALUE_BLOCKS = new Set(['metadata', 'section-metadata']);
+const CHROME_BLOCK_NAMES = new Set(['header', 'footer', 'nav', 'page-chrome']);
 const EMBED_HOST = /(youtube\.com|youtu\.be|vimeo\.com|player\.|\/embed\/)/i;
 // Default-content-expressible tags: what a prose section can carry natively.
 // Variant tokens that collide with classes the boilerplate runtime/foundation
@@ -146,7 +175,10 @@ function lintPage(file, html, findings) {
     lintSectionShape(file, section, kids, defaultContentText, flag);
   }
 
+  lintPipelineShapes(file, main, sections, flag);
+
   lintText(file, main, flag);
+  lintAlts(file, sections, flag);
   lintUrls(file, main, flag);
   lintIcons(file, main);
 
@@ -178,6 +210,12 @@ function lintBlock(file, section, block, name, flag) {
   // D1 — wrapper block around bare default content.
   if (WRAPPER_BLOCK_NAMES.has(name)) {
     flag('🔴', 'D1', `${label}: block named "${name}" wraps bare default content — author it as default content in the section instead`);
+  }
+
+  // CHROME — nav/footer inlined into a content document is an owner decision
+  // (David's Model #8 authoring groups, #12 fragments), never the default.
+  if (CHROME_BLOCK_NAMES.has(name) && !CHROME_PATH.test(file)) {
+    flag('🟡', 'CHROME', `${label}: chrome block "${name}" inlined into a content document — an owner decision recorded in direction.md (or stardust/decisions.md)? Default is the runtime fragment (reference/ai-readability.md § 5)`);
   }
 
   const isKeyValue = KEY_VALUE_BLOCKS.has(name);
@@ -221,6 +259,21 @@ function lintBlock(file, section, block, name, flag) {
       if (valueTags.some((t) => /^h[1-6]$/.test(t) || t === 'picture') || pCount > 1) {
         flag('🔴', 'D14', `${label} row ${ri + 1}: key-value block carries display content (heading/picture/multi-paragraph) in its value cell — name/value is for configuration only`);
       }
+      // D15 STYLE-SPACE — `style: a b` becomes ONE class `a-b`; tokens are comma-separated (#120).
+      if (name === 'section-metadata') {
+        const k = stripTags(cells[0].inner).toLowerCase();
+        const v = stripTags(cells[1].inner).trim();
+        if (k === 'style' && /\s/.test(v) && !v.includes(',')) {
+          flag('🟡', 'D15', `${label} row ${ri + 1}: style "${v}" is space-separated — the pipeline hyphen-joins it into one class (.${v.replace(/\s+/g, '-')}) that matches no rule; comma-separate the tokens (STYLE-SPACE, #120)`);
+        }
+      }
+      // D15 JSON — a raw `json-ld` row is pipeline-supported but is JSON in a
+      // document; the documented default composes JSON-LD at runtime (D10).
+      const key = stripTags(cells[0].inner).toLowerCase();
+      const val = stripTags(cells[1].inner);
+      if (/json-?ld|^schema$/.test(key) || /^[{[]/.test(val)) {
+        flag('🟡', 'D15', `${label} row ${ri + 1}: raw JSON in a metadata row ("${key}") — JSON-LD is composed at runtime by scripts.js from the page-type and typed metadata rows (reference/content-page-scaffold.md § 9); a raw json-ld row is a per-page exception, not the default`);
+      }
     }
   });
 
@@ -254,15 +307,52 @@ function lintBlock(file, section, block, name, flag) {
 }
 
 function lintSectionShape(file, section, kids, defaultContentText, flag) {
-  // Reserved for future section-level checks; default content next to blocks
-  // is legitimate (section heads, D1) so nothing to flag here today.
+  // META ALONE — the metadata block is consumed into <head>; a section holding
+  // nothing else delivers as an empty padded band (first or trailing).
+  if (kids.length === 1 && classOf(kids[0].openTag).split(/\s+/)[0].toLowerCase() === 'metadata' && !defaultContentText) {
+    flag('🟡', 'META', 'metadata block alone in its section — put it in the section that holds the first content (an empty band ships otherwise; `main .section:empty` is only a fallback)');
+  }
+}
+
+// Shapes the DA → EDS pipeline rewrites on delivery, invisible in the harness
+// (reference/encode-contract.md § Pipeline-sensitive shapes).
+const CHROME_PATH = /(^|[\\/])(nav|footer)\.html$|[\\/]fragments[\\/]/i;
+const capped = (arr, n = 5) => (arr.length <= n ? arr : arr.slice(0, n));
+function lintPipelineShapes(file, main, sections, flag) {
+  // TABLE 🔴 — a raw <table> is a block named after its first cell.
+  const tables = [...main.matchAll(/<table\b/gi)].length;
+  if (tables) {
+    flag('🔴', 'TABLE', `${tables} raw <table> element(s) — the pipeline turns a table into a block named after its first cell (its CSS 404s); author the \`table\` block (\`no-header\` variant) instead`);
+  }
+  // META CHROME 🟡 — chrome/fragment documents carry no metadata block.
+  if (CHROME_PATH.test(file) && sections.some((s) => childDivs(s.inner).some((k) => classOf(k.openTag).split(/\s+/)[0].toLowerCase() === 'metadata'))) {
+    flag('🟡', 'META', 'metadata block in a chrome/fragment document — /nav, /footer and /fragments/* carry none (an empty band shifts the slot contract); noindex via the metadata sheet or robots');
+  }
+  // HBR 🟡 — <br> inside a heading is stripped at delivery.
+  const hbr = [...main.matchAll(/<h[1-6]\b[^>]*>(?:(?!<\/h[1-6]>)[\s\S])*?<br\b/gi)];
+  if (hbr.length) {
+    flag('🟡', 'HBR', `${hbr.length} heading(s) carry <br> — the pipeline strips layout breaks inside headings; let the heading wrap, or size the block's heading width in CSS`);
+  }
+  // D6 SOLE-EMPH 🟡 — buttonization is decided from the SOURCE shape: a link
+  // that is a paragraph/list-item/cell's sole content buttonizes when emphasis
+  // wraps it in EITHER nesting order (<a><strong> is hoisted to <strong><a>;
+  // <b>/<i> are emitted as <strong>/<em>), and a lone <strong><a> in a <li>
+  // buttonizes too. <p><strong><a> is the intended D6 shape and is not flagged.
+  const A = '<a\\b[^>]*>[^<]*<\\/a>';
+  const inner = new RegExp(`<(p|li|div)\\b[^>]*>\\s*<a\\b[^>]*>\\s*<(strong|em|b|i)\\b[^>]*>[^<]*<\\/\\2>\\s*<\\/a>\\s*<\\/\\1>`, 'gi');
+  const bi = new RegExp(`<(p|li|div)\\b[^>]*>\\s*<(b|i)\\b[^>]*>\\s*${A}\\s*<\\/\\2>\\s*<\\/\\1>`, 'gi');
+  const li = new RegExp(`<li\\b[^>]*>\\s*<(strong|em)\\b[^>]*>\\s*${A}\\s*<\\/\\1>\\s*<\\/li>`, 'gi');
+  const hits = [...main.matchAll(inner), ...main.matchAll(bi), ...main.matchAll(li)].map((m) => stripTags(m[0]).slice(0, 40));
+  if (hits.length) {
+    flag('🟡', 'D6', `${hits.length} lone emphasised link(s) in the pipeline-hoisted shape (<a><strong>, <b>/<i>, or alone in a <li>) will buttonize on delivery — emit a plain link and restore the weight in block CSS, or author the D6 <p><strong><a> shape on purpose: ${capped(hits).map((h) => `"${h}"`).join(', ')}${hits.length > 5 ? ` (+${hits.length - 5} more)` : ''}`);
+  }
 }
 
 function lintText(file, main, flag) {
   // D15 — code visible as text. In raw content HTML, author-visible "<tag>"
   // is entity-encoded, and template/binding syntax survives literally.
   const text = stripTags(main);
-  const m = text.match(/&lt;\s*[a-z][a-z0-9-]*|\{\{[^}]*\}\}|<%|%>|\b[a-z-]+\s*:\s*[^;{}]+;\s*\}/i);
+  const m = text.match(/&(?:lt|#x0*3c|#0*60);\s*[a-z][a-z0-9-]*|\{\{[^}]*\}\}|<%|%>|\b[a-z-]+\s*:\s*[^;{}]+;\s*\}/i);
   if (m) {
     flag('🔴', 'D15', `code visible as text in authored content ("${m[0].slice(0, 40)}…") — markup/bindings/CSS never appear as author-facing text`);
   }
@@ -281,6 +371,34 @@ function lintText(file, main, flag) {
   if (tok) {
     flag('🟡', 'D15', `"${tok[0].slice(0, 40)}" reads like a campaign/tracking token lifted as copy — confirm it is genuine content`);
   }
+  // D15 TEXT-LEAK advisory — converter micro-syntax that leaked into copy:
+  // `[sup]`/`[sub]` markers, `label^tooltip` carets, `|||` field-delimiter runs.
+  const leak = text.match(/\[su[pb]\]|[A-Za-z]\^[A-Za-z]|\|{3,}/);
+  if (leak) {
+    flag('🟡', 'D15', `converter syntax leaked into copy ("${leak[0]}") — [sup]/[sub], ^tooltip carets and ||| runs are encoder artefacts; fix the encoder, then regenerate (TEXT-LEAK)`);
+  }
+  // TEXT hygiene advisories — punctuation-only paragraphs and blank alts.
+  const dots = [...main.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)].filter((p) => { const t = stripTags(p[1]).replace(/&nbsp;|&#160;/g, ''); return t && /^[\s\p{P}]+$/u.test(t); });
+  if (dots.length) {
+    flag('🟡', 'TEXT', `${dots.length} paragraph(s) whose only text is punctuation ("${stripTags(dots[0][1]).slice(0, 10)}") — a converter artefact or a whitespace spacer (#112); drop it`);
+  }
+}
+
+// TEXT alt ratio — inside blocks only (chrome/decorative imagery excluded).
+function lintAlts(file, sections, flag) {
+  let imgs = 0; let blank = 0;
+  for (const section of sections) {
+    for (const block of childDivs(section.inner)) {
+      if (!classOf(block.openTag)) continue;
+      for (const m of block.inner.matchAll(/<img\b[^>]*>/gi)) {
+        imgs += 1;
+        if (/\balt=""/i.test(m[0]) || !/\balt=/i.test(m[0])) blank += 1;
+      }
+    }
+  }
+  if (imgs >= 2 && blank / imgs > 0.5) {
+    flag('🟡', 'TEXT', `${blank} of ${imgs} in-block <img> carry an empty or missing alt — editorial images need a description (D13); only genuinely decorative tiles may be alt=""`);
+  }
 }
 
 // D4 LOCALIZE — canonical lookup key for a path (mirrors localize-links.mjs).
@@ -293,6 +411,27 @@ function canonicalPath(p) {
   return s.replace(/\/index$/, '').toLowerCase() || '/';
 }
 let LOCAL = null; // { hosts:Set, paths:Set } when --source-host is given
+let FRAG_ROOT = null; // content root used to resolve /fragments/ targets (D12 CONTENT)
+const FRAG_WORDS = new Map(); // fragment path → prose word count (memo)
+
+// D12 CONTENT — prose words in a fragment document outside link lists.
+function fragmentProseWords(webPath) {
+  if (FRAG_WORDS.has(webPath)) return FRAG_WORDS.get(webPath);
+  let words = -1;
+  if (FRAG_ROOT) {
+    const file = path.join(FRAG_ROOT, `${webPath.replace(/^\//, '')}.html`);
+    if (existsSync(file)) {
+      const html = readFileSync(file, 'utf8');
+      const mainMatch = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i);
+      const body = (mainMatch ? mainMatch[1] : html)
+        .replace(/<(ul|ol)\b[\s\S]*?<\/\1>/gi, ' ')
+        .replace(/<a\b[^>]*>[\s\S]*?<\/a>/gi, ' ');
+      words = stripTags(body).split(/\s+/).filter((w) => /\w/.test(w)).length;
+    }
+  }
+  FRAG_WORDS.set(webPath, words);
+  return words;
+}
 
 function lintUrls(file, main, flag) {
   // D4 — src: only fully-qualified (content.da.live preferred) survives the
@@ -308,7 +447,7 @@ function lintUrls(file, main, flag) {
       if (/\.svg(\?|$)/i.test(src)) svgs.push(src);
       continue;
     }
-    flag('🔴', 'D4', `authored <img src="${src}"> is not fully qualified — upload to DA /media and author the content.da.live URL (repo-relative delivers as about:error)`);
+    flag('🔴', 'D4', `authored <img src="${src}"> is not fully qualified — upload to DA /media and author the content.da.live URL, or author the verified source URL (the ingester re-hosts it); never move the image into block JS (block-lint IMG-HARDCODED). Repo-relative delivers as about:error`);
   }
   if (svgs.length) {
     const list = svgs.length <= 4 ? svgs.join(', ') : `${svgs.slice(0, 4).join(', ')} (+${svgs.length - 4} more)`;
@@ -316,8 +455,29 @@ function lintUrls(file, main, flag) {
   }
   // D4 — href: root-relative internal links are the EDS convention; DOCUMENT-
   // relative ones (donate.html, ../x) break under path mapping.
+  const fragSeen = new Set();
   for (const m of main.matchAll(/<a\b[^>]*\bhref="([^"]+)"/gi)) {
     const href = m[1];
+    // D12 CONTENT — a fragment link whose local target carries prose (not a link list)
+    const frag = href.match(/^(?:https?:\/\/[^/]+)?((?:\/[^?#]*)?\/fragments\/[^?#]+)/i);
+    if (frag && !fragSeen.has(frag[1])) {
+      fragSeen.add(frag[1]);
+      const n = fragmentProseWords(canonicalPath(frag[1]));
+      if (n > 60) {
+        flag('🟡', 'D12', `fragment ${frag[1]} carries ${n} prose words — content-bearing copy is invisible to non-rendering crawlers and costs strict AI-readability points; inline it on the page with a \`fragment | ${frag[1]}\` re-sync row (CONTENT; reference/ai-readability.md § 4 rule 4)`);
+      }
+    }
+    // D4 🔴 — a delivery branch host or a protocol-relative URL is never authored:
+    // the branch dies at merge and `//host` inherits whatever scheme serves the page.
+    // Checked BEFORE the LOCALIZE advisory so `//source-host/p` is one 🔴, not 🔴 + 🟡.
+    if (/^(?:https?:)?\/\/[a-z0-9-]+--[a-z0-9-]+--[a-z0-9-]+\.(?:aem|hlx)\.(?:page|live)\b/i.test(href)) {
+      flag('🔴', 'D4', `authored <a href="${href.slice(0, 80)}"> points at a delivery branch host — author the root-relative path (localize-links.mjs rewrites it)`);
+      continue;
+    }
+    if (/^\/\//.test(href)) {
+      flag('🔴', 'D4', `authored <a href="${href.slice(0, 80)}"> is protocol-relative — use a root-relative path or a fully-qualified URL`);
+      continue;
+    }
     if (LOCAL && /^(https?:)?\/\//i.test(href)) {
       const m = href.match(/^(?:https?:)?\/\/([^/?#]+)([^?#]*)/i);
       const host = m ? m[1].toLowerCase().replace(/^www\./, '') : '';
@@ -470,8 +630,9 @@ if (iconsDirOpt) {
   if (stylesOpt && !existsSync(stylesOpt)) { console.error(`--styles ${stylesOpt}: file not found`); process.exit(1); }
   if (stylesFile) STYLES = { file: stylesFile, ...parseStyles(readFileSync(stylesFile, 'utf8')) };
 }
+FRAG_ROOT = contentRootOpt || args.find((a) => existsSync(a) && statSync(a).isDirectory()) || path.dirname(args[0]);
 if (sourceHost) {
-  const root = contentRootOpt || args.find((a) => statSync(a).isDirectory()) || path.dirname(args[0]);
+  const root = FRAG_ROOT;
   const paths = new Set();
   for (const f of collectFiles(root)) paths.add(canonicalPath(`/${path.relative(root, f).split(path.sep).join('/')}`));
   LOCAL = { hosts: new Set(sourceHost.split(',').map((h) => h.trim().toLowerCase().replace(/^www\./, '')).filter(Boolean)), paths };

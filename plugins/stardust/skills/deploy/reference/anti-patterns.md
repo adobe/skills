@@ -4,7 +4,8 @@ Full text of the deploy skill's anti-patterns. Read:
 - § Structure and decisions (1–8) — before Step 2 and whenever tempted to abstract, merge grounds or add a parallel style system;
 - § Assets and fonts (9–11) — before Step 3/4 and before any `head.html` or block-asset URL edit;
 - § Blocks and content (12–17) — while writing block JS/CSS (containers #13/#37/#74, placeholders, reveals, `<main>`);
-- § Editability (18–19) — whenever the EW gate or `--simulate-editor` reports a dead text or drift.
+- § Editability (18–19) — whenever the EW gate or `--simulate-editor` reports a dead text or drift;
+- § Runtime (20) — when a control does nothing, a reservation collapses or a built DOM ships unstyled on the deployed page only.
 
 ## Anti-patterns (lessons paid for the hard way)
 
@@ -79,3 +80,8 @@ A block that builds its own layout/view wrapper (common for interactive blocks t
 
 **19. A class on the authored element (`h3.headline`, `ul.items`, `a.link-download`, `a.button`).**
 Editable, but the look collapses the moment the author clicks: the editor re-renders the same tag with no classes and two wrapper divs above it. Wrappers carry the classes; style the authored element as a descendant of the wrapper (`.headline :is(h2, h3)`), by element (`.icon-list ul`) or by attribute (`a[href*=".pdf"]`); repaint buttons from their `<strong>`/`<em>` marks under `.prosemirror-editor` (Step 3, EW2/EW3). The `--simulate-editor` probe measures the drift.
+
+## Runtime (20)
+
+**20. Measuring, styling or collecting as if `decorate()` ran on a visible, finished page.**
+Geometry cached inside `decorate()` is 0 (the section is still hidden); a builder imported from another block ships its DOM without that block's CSS; `querySelectorAll('picture, img')` doubles every image once the pipeline wraps it; decorated icons masquerade as media. Each passes the harness and fails only on the deployed page. Rules and the `block-lint.mjs` checks: `block-js-scaffold.md` § Runtime order.

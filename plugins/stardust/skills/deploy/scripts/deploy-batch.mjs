@@ -17,20 +17,38 @@
  *   - retries 000 / 408 / 429 / 5xx with capped exponential backoff;
  *   - APPENDS to its log (never truncates), so the record survives a restart;
  *   - verifies the delivered .plain.html (200 + 0 about:error) before flipping a
- *     page to `live` — admin 200 != delivered (guardrail #6/#13).
+ *     page to `live` — admin 200 != delivered (guardrail #6/#13);
+ *   - two clocks (da-deploy-protocol.md § Two clocks): when --branch is not
+ *     main, a HEAD per page counts documents that already exist on DA — they
+ *     are SHARED with main, which renders them with main's code until the
+ *     branch merges (one WARN line in the summary); when publishing, the
+ *     summary states when the code cache window (max-age=7200) ends.
  *
  * Idempotent: PUT/preview/live are all safe to repeat. Safe to Ctrl-C and re-run.
+ * The two-clocks HEAD answer is recorded once per page (`sharedWithMain`), so a
+ * re-run never counts this branch's own earlier PUTs as shared documents; a
+ * follow-up `--publish` run takes a page the ledger holds as `previewed` and
+ * still delivering on aem.page straight to POST /live/ + verify (no re-PUT).
+ *
+ * One command = one intent. The default run PUTs and PREVIEWS only (D16: gate
+ * on preview); live publish is a SEPARATE `--publish` run, taken when the
+ * preview gate passed or the decision register says publish-to-live (D1).
+ * A production-affecting action is never joined with edits, commits or
+ * process kills in one shell string.
  *
  * Usage:
  *   DA_TOKEN=… node deploy-batch.mjs --org <org> --repo <repo> --branch <branch> \
- *     --content content [--paths list.txt] [--concurrency 4] [--no-publish] \
+ *     --content content [--paths list.txt] [--concurrency 4] [--publish] \
  *     [--force] [--ledger path] [--log path]
  *
  * --content   dir of *.html body-fragment files (default: content). Each file's
  *             path relative to this dir, minus .html, is its DA/web path.
  * --paths     optional newline-delimited file of web paths (no extension) to
  *             restrict the run to a subset (re-drive only these).
- * --no-publish  preview only; do not POST /live/ (query-index won't build — see #2).
+ * --publish   also POST /live/ after preview (the query-index builds against the
+ *             LIVE tree — #2 — so a site with listings needs this run before
+ *             the index is checked). Default: preview only.
+ * --no-publish  accepted as a no-op (was the default until 0.24; remove from scripts).
  * --force     ignore the ledger; re-drive every page.
  * --concurrency  parallel pages in flight (default 4; DA admin tolerates ~4-6).
  *
@@ -44,7 +62,7 @@ const DA_SRC = 'https://admin.da.live/source';
 const ADMIN = 'https://admin.hlx.page';
 
 function parseArgs(argv) {
-  const a = { content: 'content', concurrency: 4, publish: true, force: false, retries: 4 };
+  const a = { content: 'content', concurrency: 4, publish: false, force: false, retries: 4 };
   for (let i = 2; i < argv.length; i += 1) {
     const k = argv[i];
     const next = () => argv[(i += 1)];
@@ -57,7 +75,8 @@ function parseArgs(argv) {
     else if (k === '--log') a.log = next();
     else if (k === '--concurrency') a.concurrency = Math.max(1, +next() || 4);
     else if (k === '--retries') a.retries = Math.max(0, +next() || 4);
-    else if (k === '--no-publish') a.publish = false;
+    else if (k === '--publish') a.publish = true;
+    else if (k === '--no-publish') { a.publish = false; console.error('[deploy-batch] --no-publish is the default since 0.24 and will be removed; drop the flag (publish is an explicit --publish run)'); }
     else if (k === '--force') a.force = true;
     else if (k === '--token-env') a.tokenEnv = next();
     else throw new Error(`unknown arg: ${k}`);
@@ -123,34 +142,56 @@ async function deliveredOk({ org, repo, branch, webPath, tld = 'aem.live' }) {
   }
 }
 
-async function deployOne(page, args, ledger, logLine) {
+async function deployOne(page, args, ledger, logLine, shared) {
   const { org, repo, branch, token, publish } = args;
   const enc = encodeURI(page.webPath);
   const rec = ledger[page.webPath] || (ledger[page.webPath] = { status: 'pending', attempts: 0 });
   rec.attempts += 1;
   rec.ts = new Date().toISOString();
 
-  // 1. PUT body fragment (multipart, field name MUST be `data`, type text/html)
-  const buf = await readFile(page.file);
-  const fd = new FormData();
-  fd.append('data', new Blob([buf], { type: 'text/html' }), path.basename(page.file));
-  const put = await call('PUT', `${DA_SRC}/${org}/${repo}${enc}.html`, { token, body: fd }, args.retries);
-  rec.put = put.status;
-  if (put.status >= 400) {
-    rec.status = 'put-fail';
-    rec.lastError = `PUT ${put.status} ${put.text}`;
-    await logLine({ path: page.webPath, step: 'put', ...put });
-    return rec;
+  // Publish fast path: a page this ledger already holds as `previewed` and that
+  // still delivers on aem.page needs only POST /live/ + verify — re-running
+  // PUT → preview for every page would double the admin traffic of a 1k-page run.
+  const fastPublish = publish && !args.force && rec.status === 'previewed'
+    && (await deliveredOk({ org, repo, branch, webPath: page.webPath, tld: 'aem.page' })).ok;
+
+  // 0. two clocks — a DA document is shared across every code ref. On a
+  //    non-main branch, a document that already exists is also main's. The
+  //    answer is recorded once per page so a re-run of this branch does not
+  //    count its own earlier PUTs.
+  if (branch !== 'main' && shared) {
+    if (rec.sharedWithMain === undefined) {
+      const head = await call('HEAD', `${DA_SRC}/${org}/${repo}${enc}.html`, { token }, 1);
+      rec.sharedWithMain = head.status === 200;
+    }
+    if (rec.sharedWithMain) shared.push(page.webPath);
   }
 
-  // 2. preview (path WITHOUT extension; ref = code branch)
-  const prev = await call('POST', `${ADMIN}/preview/${org}/${repo}/${branch}${enc}`, { token }, args.retries);
-  rec.preview = prev.status;
-  if (prev.status >= 400) {
-    rec.status = 'preview-fail';
-    rec.lastError = `preview ${prev.status} ${prev.text}`;
-    await logLine({ path: page.webPath, step: 'preview', ...prev });
-    return rec;
+  if (!fastPublish) {
+    // 1. PUT body fragment (multipart, field name MUST be `data`, type text/html)
+    const buf = await readFile(page.file);
+    const fd = new FormData();
+    fd.append('data', new Blob([buf], { type: 'text/html' }), path.basename(page.file));
+    const put = await call('PUT', `${DA_SRC}/${org}/${repo}${enc}.html`, { token, body: fd }, args.retries);
+    rec.put = put.status;
+    if (put.status >= 400) {
+      rec.status = 'put-fail';
+      rec.lastError = `PUT ${put.status} ${put.text}`;
+      await logLine({ path: page.webPath, step: 'put', ...put });
+      return rec;
+    }
+
+    // 2. preview (path WITHOUT extension; ref = code branch)
+    const prev = await call('POST', `${ADMIN}/preview/${org}/${repo}/${branch}${enc}`, { token }, args.retries);
+    rec.preview = prev.status;
+    if (prev.status >= 400) {
+      rec.status = 'preview-fail';
+      rec.lastError = `preview ${prev.status} ${prev.text}`;
+      await logLine({ path: page.webPath, step: 'preview', ...prev });
+      return rec;
+    }
+  } else {
+    await logLine({ path: page.webPath, step: 'preview', reused: true });
   }
 
   // 3. publish to live (query-index builds against the LIVE tree — #2)
@@ -207,9 +248,10 @@ async function main() {
   const logLine = async (o) => appendFile(args.log, `${JSON.stringify({ t: new Date().toISOString(), ...o })}\n`);
 
   console.error(`[deploy-batch] ${pages.length} pages, ${skipped} already live, ${todo.length} to drive (concurrency ${args.concurrency}, publish=${args.publish})`);
+  const shared = args.branch !== 'main' ? [] : null;
   let done = 0;
   await pool(todo, args.concurrency, async (p) => {
-    const rec = await deployOne(p, args, ledger, logLine);
+    const rec = await deployOne(p, args, ledger, logLine, shared);
     done += 1;
     const ok = rec.status === 'live' || rec.status === 'previewed';
     console.error(`[${done}/${todo.length}] ${ok ? 'OK  ' : 'FAIL'} ${p.webPath} (${rec.status})`);
@@ -219,6 +261,13 @@ async function main() {
 
   const fails = Object.entries(ledger).filter(([, r]) => !['live', 'previewed'].includes(r.status));
   console.error(`[deploy-batch] done. ${todo.length - fails.length} ok, ${fails.length} failed.`);
+  if (shared && shared.length) {
+    console.error(`[deploy-batch] WARN two clocks: ${shared.length} document(s) already on DA are shared with main — main renders them with main's code until branch "${args.branch}" is merged (da-deploy-protocol.md § Two clocks).`);
+  }
+  if (args.publish && todo.length) {
+    const until = new Date(Date.now() + 7200 * 1000).toISOString().slice(0, 16).replace('T', ' ');
+    console.error(`[deploy-batch] code is served with max-age=7200 — visitors may hold old code until ${until} UTC; report that window end with the publish.`);
+  }
   if (fails.length) {
     console.error('FAILS (re-run the same command to re-drive — succeeded pages are skipped):');
     for (const [p, r] of fails) console.error(`  ${p}  ${r.status}  ${r.lastError || ''}`);

@@ -4,6 +4,7 @@ Reference for the headless deploy sequence: write the sanitised **body-fragment*
 
 Read:
 - § Deploy (DA Source API + curl) — when writing or debugging a single page's PUT → preview → live, or a preview 409 / `about:error`;
+- § Two clocks — order of operations — before every code push that ships with content: which ref to push first, when to preview, where to gate, how to refactor a content shape without a broken intermediate state;
 - § Delivery pipeline — before the first deploy of a run: the stage table, the batch driver (#4), the per-page atomic delivery contract, link localization, the computed-style guard, token hygiene and the `DA_TOKEN` lifecycle.
 
 ## Deploy (DA Source API + curl)
@@ -12,22 +13,21 @@ Needs an IMS token (`DA_TOKEN`; see the `da-content` / `da-auth` skills — may 
 
 **Two preconditions bite (both cost real debugging):**
 - **Branch-host length ≤ 63 chars.** The host label `<branch>--<repo>--<owner>` must fit the DNS 63-char limit. Over it, the host does not resolve at all (curl `000`, "label too long") — nothing renders. The page PATH is independent of the host, so keep the path descriptive and **shorten the BRANCH** (e.g. `velocity-refined-content-2`, not `velocity-global-refined-content-2`).
-- **Force Code Sync for a fresh/programmatic branch.** The GitHub webhook frequently does NOT fire on a scripted push — symptom: your edited blocks/assets `404` on the branch host (`code.status: 404` via `admin.hlx.page/status/...`) while baseline files serve. Force it: `POST https://admin.hlx.page/code/$ORG/$REPO/$BRANCH/*` (→ `202` + a job), then poll until the edited block JS/CSS are live before previewing.
+- **Force Code Sync after every scripted push (not only a fresh branch).** The GitHub webhook frequently does NOT fire on a scripted push — symptom: your edited blocks/assets `404` on the branch host (`code.status: 404` via `admin.hlx.page/status/...`) while baseline files serve. Force it: `POST https://admin.hlx.page/code/$ORG/$REPO/$BRANCH/*` (→ `202` + a job), then poll until the edited block JS/CSS are live before previewing.
 
 ```bash
 ORG=<daOrg>; REPO=<daRepo>; BRANCH=<branch>; P=<path-without-extension>   # e.g. snowflake-blocks/test-1
 TOKEN="$DA_TOKEN"
 
 # 0. force Code Sync (webhook may not fire for a scripted push) — then wait for
-#    your edited blocks to be live before previewing. Assets gzip → curl --compressed.
+#    your edited blocks to be live before previewing. Served assets are gzip:
+#    every served-asset read goes through served-check.mjs (fetch decodes; a bare
+#    `curl | grep` scans compressed bytes and matches nothing), capped at 3 min.
 curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
   "https://admin.hlx.page/code/$ORG/$REPO/$BRANCH/*"          # expect 202
-for i in $(seq 1 60); do   # capped: ~3 min, then fail loud — never an unbounded wait
-  curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/blocks/<edited-block>/<edited-block>.js" \
-    | grep -q "<a marker string from your edit>" && break
-  [ "$i" = 60 ] && { echo "code sync did not land in 3 min — check the POST above / Code Sync installation" >&2; exit 1; }
-  sleep 3
-done
+node skills/deploy/scripts/served-check.mjs \
+  "https://$BRANCH--$REPO--$ORG.aem.page/blocks/<edited-block>/<edited-block>.js" \
+  --grep "<a marker string from your edit>" --wait 180        # exit 1 = did not land: check the POST / installation
 
 # 1. sanitise non-ASCII to entities (in place, idempotent) — DA corrupts raw UTF-8
 node skills/deploy/scripts/sanitise.js content/$P.html
@@ -71,22 +71,35 @@ curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
 #        same 409). Remedy: rasterize the SVG to PNG, upload the PNG to DA
 #        media, re-author, re-preview. Field-proven: this turned a dead-end
 #        409 into a 3-minute fix.
+#   (iii) whole-document size — a document with more than ~150 authored images
+#        409s as a whole while each half previews 200.
+#        Diagnostic: PUT + preview each half. Remedy order: trim tiles per rail
+#        (D5) → split into a second PAGE → only then a `fragment` (noindex):
+#        fragment words are fetched by JS and cost `strict` AI-readability points.
 
-# 3b. VERIFY ingestion on the delivered .plain.html (per page; assets gzip → --compressed):
+# 3b. VERIFY ingestion on the delivered .plain.html (per page; served-check decodes gzip):
 #   (i)  no broken-image ingestion (#75) — must be 0; if not, an asset wasn't on Code Bus
 #        yet. Re-run step 3 (preview is idempotent; it re-ingests and repairs).
 #   (ii) authored EDITORIAL images actually landed — assert the expected <img>/alt count.
 #        CSS-background images are absent from .plain.html, so "it renders" is NOT proof
 #        that an image is authorable/AI-visible (see `reference/encode-contract.md` § Images).
-curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/$P.plain.html" | grep -c about:error      # expect 0
-curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/$P.plain.html" | grep -oc '<img'          # expect = authored editorial image count
+node skills/deploy/scripts/served-check.mjs "https://$BRANCH--$REPO--$ORG.aem.page/$P.plain.html" --absent about:error   # pass = status 2xx AND grep=0 (exit 0)
+node skills/deploy/scripts/served-check.mjs "https://$BRANCH--$REPO--$ORG.aem.page/$P.plain.html" --grep '<img'        # grep=N must equal the authored editorial image count
 
 # 4. (optional) publish to aem.live
 curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
   "https://admin.hlx.page/live/$ORG/$REPO/$BRANCH/$P"
 ```
 
-URLs: DA edit `https://da.live/#/$ORG/$REPO/$P` · preview `https://$BRANCH--$REPO--$ORG.aem.page/$P` · live `https://$BRANCH--$REPO--$ORG.aem.live/$P`. Token pre-flight: a 401 with empty body means it expired (dev tokens last ~24h) — re-auth.
+URLs: DA edit `https://da.live/#/$ORG/$REPO/$P` · preview `https://$BRANCH--$REPO--$ORG.aem.page/$P` · live `https://$BRANCH--$REPO--$ORG.aem.live/$P`. Sheets are the one exception to the extensionless path: a `.json` document keeps its `.json` in the preview/live admin paths (`/preview/$ORG/$REPO/$BRANCH/$P.json`), or the request 404s. Token pre-flight: a 401 with empty body means it expired (dev tokens last ~24h) — re-auth.
+
+## Two clocks — order of operations
+
+A DA document is one document for every code ref: `main--<repo>--<org>` and `<branch>--<repo>--<org>` render the same content with different code. Content previews are near-instant; code is served with `cache-control: max-age=7200`, so a visitor (and the user checking the page) can hold the old code for up to two hours after a push. Three rules keep the two clocks from producing a report the user cannot reproduce:
+
+1. **Code first, on the ref the user will look at.** Push the code to that ref (usually `main`), force Code Sync and run the capped poll of step 0 for every push — then preview the content, then gate on that ref's host. When the gate must run on a branch host, the report says so and names main's intermediate state: "main renders the new content with old code until the branch merges" (`deploy-batch.mjs` prints the count of shared documents as a WARN when `--branch` is not `main`). A step-0 marker poll is replaced by `code-sync-verify.mjs` when it ships.
+2. **Content-shape refactors ship in two moves, never one.** First push code that accepts BOTH shapes and verify it is served (step 0); then republish the content; then drop the legacy branch in a later push. Never push untested code and republish the tree in the same step — every intermediate state is live for the whole cache window. Before republishing, render the new content once against the previous code: `git push origin <prevSha>:refs/heads/compat-prev` serves the old code on `compat-prev--<repo>--<org>.aem.page` over the same shared document.
+3. **The publish step and the finish report state the window end.** "Code cached until <now + 2 h>" — the driver prints the timestamp when it publishes; a page that looks stale before then is the cache, not a regression.
 
 ## Delivery pipeline — stages, batch driver, per-page atomic contract, token lifecycle
 
@@ -103,7 +116,7 @@ URLs: DA edit `https://da.live/#/$ORG/$REPO/$P` · preview `https://$BRANCH--$RE
 
 The content payload is a **body fragment** (see Step 9). The deploy needs the **code branch pushed to GitHub** so the branch preview (`<branch>--<repo>--<org>.aem.page`) renders with your blocks. See § Deploy (DA Source API + curl) above for the full curl contract.
 
-**For more than a few pages, use the bundled driver instead of a hand-rolled loop (#4).** `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> --content content [--concurrency 4] [--no-publish]` runs `PUT → preview → live` across a content tree with bounded concurrency, a **persistent ledger** (`content/.deploy-ledger.json`) so a re-run **skips pages already live** and only re-drives FAILs, capped-backoff retries on `000/429/5xx`, an **append-only** log (survives a restart), and a delivered-`.plain.html` check before flipping a page to `live` (admin 200 ≠ delivered). It's idempotent — safe to Ctrl-C and re-run, which is the documented recovery for a transient-blip half-deploy. A serial hand-rolled bash loop that truncates its own log on restart is the anti-pattern this replaces.
+**For more than one page, preview and publish go through the bundled driver — the curl sequence above is the single-page diagnostic form only (#4).** `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> --content content [--concurrency 4]` runs `PUT → preview` across a content tree; live publish is a separate `deploy-batch.mjs … --publish` invocation, taken only when the preview gate passed or `decisions.md` records publish-to-live (D1, D16) — one command, one intent (SKILL.md § Deploy). The driver with bounded concurrency, a **persistent ledger** (`content/.deploy-ledger.json`) so a re-run **skips pages already live** and only re-drives FAILs, capped-backoff retries on `000/429/5xx`, an **append-only** log (survives a restart), and a delivered-`.plain.html` check before flipping a page to `live` (admin 200 ≠ delivered). It's idempotent — safe to Ctrl-C and re-run, which is the documented recovery for a transient-blip half-deploy. A serial hand-rolled bash loop that truncates its own log on restart is the anti-pattern this replaces.
 
 **Per-page atomic delivery contract.** A page is `deployed` only when the full chain passes, in order: `localize-links.mjs` run over the content tree (then `--check` exit 0 — no source-host href left whose target exists locally) → `davids-model-lint.mjs` exit 0 (0 🔴 — the content-structure gate) → sanitise-wrapped file (`scripts/sanitise.js`) → `PUT` (multipart field `data`, `type=text/html`) → `POST /preview/` → `POST /live/` → **GET the rendered `.plain.html` and assert**: HTTP 200, the `<body>` wrapper intact, exactly one `<h1>`, zero `about:error`, no `/img/` srcs — plus, when key facts are declared for the site (#86 — `DESIGN.json.extensions.metadata.keyFacts[]`, written by `direct`; skip the gate and note the skip when the field is absent), grep the RAW full-page HTML (not the rendered DOM) for each fact string on the pages that carry them. → **AI-readability gate (#100)**: `node skills/deploy/scripts/ai-readability.mjs --origin <live> <paths>` — the checker score (served words ÷ rendered-DOM words, landmarks ignored) with fragments credited must be **≥ 98** on the published page; record the strict score and the per-block served gap in the gate report (`reference/ai-readability.md`). Only then flip the page's ledger entry to `deployed` — never on the POST codes (admin 200 ≠ delivered).
 
