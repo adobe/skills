@@ -135,10 +135,11 @@ out of `total` (100 per eval).
 
 ### Lints
 
-`npm run lint:stardust` (repo root) runs eleven static checks over `skills/`,
+`npm run lint:stardust` (repo root) runs fourteen static checks over `skills/`,
 each a plain ESM script under `lint/` that exits 1 with one line per finding,
 then the fixture tests under `fixtures/` (plain `node:assert` scripts that
-import a script's exported pure functions — no playwright needed):
+import a script's exported pure functions — no playwright needed) and one
+`node --test` suite whose harness cases skip when Playwright is unresolvable:
 
 - `harness-neutral.mjs` — no namespaced sibling-skill references or
   Claude-only tool names outside lines marked "Claude Code".
@@ -151,6 +152,24 @@ import a script's exported pure functions — no playwright needed):
   HBR, TEXT-LEAK, TEXT, CHROME, CONTENT) and the block codes (BL-CSS,
   BL-MEDIA, BL-GUARD, IMG-HARDCODED with `@fixed-asset`), their tiers and
   exit codes, against a clean page and a clean block that must stay silent.
+- `block-lint-ew-fixtures.mjs` — runs `deploy/scripts/block-lint.mjs` over
+  `lint/fixtures/block-lint/{fail-ew,pass-ew,exempt-ew}`: every EW-* code fires
+  on its signature with the right tier and count (exit 2), the scaffold shape and
+  the #79 classify-by-cell shapes (class from a cell word, attribute interpolation,
+  empty-slot templates) stay silent (exit 0), and a declared item-level
+  `@ew-exempt` caps a 🔴 to 🟡 with the reason appended (exit 0).
+- `pipeline-mimic-fixture.mjs` — `deploy/scripts/pipeline-mimic.mjs --self-test`
+  (the every-rule probe pair equal after normalisation, idempotent on both
+  `.plain.html` fixtures, the recorded delivered shape passed through untouched,
+  the normaliser hiding `<source>`/media hashes/dimensions), its `--help` and
+  usage exits (0 / 1), `--no-<rule>`, `--style-split`, and `build-harness.mjs`
+  emitting `<meta>` tags plus the counts line.
+- `node --test deploy/scripts/test/ew-editability-probe.test.mjs` — the probe's
+  pure parts (`@ew-exempt` parsing anywhere in the file, item matching, `--strict`
+  findings) and `block-roundtrip --help` / flag-first parsing always run; the
+  harness cases (real module install on the synthetic origin, external-origin
+  abort ledger, 404 → exit 2, `--strict` exit 1) are SKIPPED, not failed, when
+  `loadChromium()` cannot resolve Playwright.
 - `doc-size.mjs` — byte caps on `SKILL.md` and `reference/*.md`, an
   `## Operator card` heading ahead of the procedure, the always-on total and
   the per-skill delta versus the last release tag; its temporary allowlist

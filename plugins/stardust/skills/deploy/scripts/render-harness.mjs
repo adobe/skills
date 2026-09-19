@@ -148,7 +148,7 @@ async function main() {
     await p.screenshot({ path: out, fullPage: true });
     console.log('rendered', out, opts.simulate ? '(simulated edit mode)' : '', `| root ${h.root}${fragments ? `, fragments ${fragments}` : ''} | block errors:`, JSON.stringify(errs));
     if (agg) console.log(formatTable(`EW editability — ${contentPath}`, agg, { sim, verbose: true, errors: [], requests: h.requests, strict }));
-    else console.log(formatRequests(h.requests).join('\n'));
+    else { const rq = formatRequests(h.requests); if (rq.length) console.log(rq.join('\n')); }
   } finally {
     await b.close();
   }

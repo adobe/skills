@@ -69,10 +69,11 @@
  *     --root <dir>       harness root (default: parent of the blocks dir)
  *     --strict           exit 2 when a used @ew-exempt is block-granular without `all`
  *                        or names no category (item-level syntax in the probe header)
+ *   Flags may precede the positionals; `--help`/`-h` anywhere exits 0 before Playwright
+ *   is loaded; an unknown flag is a usage error (exit 1).
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, no-continue */
-import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
 import { resolveProfile } from './diff-profiles.mjs';
@@ -80,11 +81,17 @@ import { inventory, diffInventories, summarise } from './content-inventory.mjs';
 import { EDITABLE, runtimeMimic, instrument, survey, openHarness, installBlockJs, installErrors, runDecorate, readBlockExemptions, aggregate, strictFindings, formatRequests } from './ew-editability-probe.mjs';
 import { pipelineMimic, formatCounts } from './pipeline-mimic.mjs';
 
+const VALUE_FLAGS = new Set(['--blocks', '--map', '--styles', '--blocks-dir', '--width', '--profile', '--style-split', '--root']);
 function parseArgs(argv) {
-  const [, , proto, content, ...rest] = argv;
+  const rest = argv.slice(2);
   const opts = { blocks: null, map: {}, styles: null, blocksDir: null, root: null, strict: false, width: 1280, profile: 'eds', json: false, ew: true, pipeline: true, styleSplit: 'comma' };
+  if (rest.includes('--help') || rest.includes('-h')) return { opts: { ...opts, help: true } };
+  // positionals are the non-flag tokens wherever they sit (`--strict a b` == `a b --strict`)
+  const positional = rest.filter((a, i) => !a.startsWith('--') && !(i > 0 && VALUE_FLAGS.has(rest[i - 1])));
+  const [proto, content] = positional;
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
+    if (!a.startsWith('--')) continue;
     if (a === '--blocks') { opts.blocks = rest[i += 1].split(',').map((s) => s.trim()).filter(Boolean); }
     else if (a === '--map') { const [k, ...v] = rest[i += 1].split('='); opts.map[k] = v.join('='); }
     else if (a === '--styles') { opts.styles = rest[i += 1]; }
@@ -98,7 +105,7 @@ function parseArgs(argv) {
     else if (a === '--style-split') { opts.styleSplit = rest[i += 1]; }
     else if (a === '--root') { opts.root = rest[i += 1]; }
     else if (a === '--strict') { opts.strict = true; }
-    else if (a === '--help' || a === '-h') { opts.help = true; }
+    else { process.stderr.write(`block-roundtrip: unknown flag ${a}\n`); process.exit(1); }
   }
   return { proto, content, opts };
 }
@@ -178,6 +185,7 @@ async function main() {
     process.stderr.write(usage);
     process.exit(1);
   }
+  const { chromium } = await import('playwright'); // after --help / usage: the flags work without a browser install
   const prof = resolveProfile(opts.profile);
   const rtProf = { ...prof, fontDelta: Infinity }; // structure only — no FONT FORK in the harness
 
@@ -299,7 +307,7 @@ async function main() {
           if (rebuilt.length > 8) flags.push({ sev: '🔴', kind: 'DEAD TEXT', msg: `… and ${rebuilt.length - 8} more dead text(s) in this block (${ew.dead} of ${ew.authored} authored) — same cause, same fix (EW1)` });
           ew.dupItems.forEach((d) => flags.push({ sev: '🔴', kind: 'DUPLICATED INDEX', msg: `${quote(d)} on ${d.hits} elements — strip instrumentation from presentational clones (EW4)` }));
           if (ew.exemptItems.length) flags.push({ sev: '⚪', kind: 'EXEMPT', msg: `${ew.exemptItems.length} declared non-editable text(s) (${ew.exemptReasons.join('; ')}): ${ew.exemptItems.slice(0, 4).map((d) => `${quote(d)} [${d.category || 'no category'}]`).join(', ')}${ew.exemptItems.length > 4 ? ', …' : ''} (EW5)` });
-          if (opts.strict) strictFindings({ blocks: [ew] }).forEach((f) => flags.push({ sev: '🔴', kind: 'EXEMPT (strict)', msg: `${f} (EW5)` }));
+          if (opts.strict) strictFindings({ blocks: [{ ...ew, block: name }] }).forEach((f) => flags.push({ sev: '🔴', kind: 'EXEMPT (strict)', msg: `${f} (EW5)` }));
         }
         const red = flags.filter((f) => f.sev === '🔴').length;
         totalRed += red;

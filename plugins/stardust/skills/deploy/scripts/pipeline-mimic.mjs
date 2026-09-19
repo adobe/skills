@@ -43,6 +43,16 @@
  *                formatting; adjacent identical <strong>/<em> merged; a block cell
  *                holding ONE <p> is unwrapped to its content. `&#8203;` is kept (D8).
  *
+ * Fixtures (`--self-test`, also run by evals/lint/pipeline-mimic-fixture.mjs):
+ *   fixtures/pipeline-probe.html + .plain.html  one instance of every rule; the .plain.html is
+ *                DERIVED from the fact catalogue (reference/pipeline-facts.md), not recorded —
+ *                rows resting on it alone are marked "assumed" there until T21.2 re-records it.
+ *   fixtures/pipeline-recorded.plain.html  a REAL delivered shape (preview .plain.html, hosts and
+ *                names redacted; /media_<hash> src/srcset, <source> sets, width/height, heading
+ *                ids): every rule must be a no-op on it, and normaliseForCompare() must hide
+ *                exactly those artefacts. Re-record with a fresh DA token: PUT the probe page to a
+ *                scratch path, POST /preview/, GET <preview>/<path>.plain.html.
+ *
  * Module: `pipelineMimic(html, { styleSplit, rules }) → { html, meta, counts }`,
  * `formatCounts(counts)`, `bodyClasses(meta)`, `metaTags(meta)`, `normaliseForCompare(html)`.
  *
@@ -200,7 +210,7 @@ function ruleMeta(root, c) {
 function ruleStrip(root, c) {
   for (const e of all(root, () => true)) {
     for (const k of ['style', 'target', 'aria-label']) if (delAttr(e, k)) c.strip += 1;
-    if (e.tag === 'img') for (const k of ['width', 'height']) if (delAttr(e, k)) c.strip += 1;
+    if (e.tag === 'img' && !ancestors(e).some((p) => p.tag === 'picture')) for (const k of ['width', 'height']) if (delAttr(e, k)) c.strip += 1;
   }
   for (const e of all(root, (n) => n.tag === 'b' || n.tag === 'i' || n.tag === 's')) { e.tag = { b: 'strong', i: 'em', s: 'del' }[e.tag]; c.strip += 1; }
   for (const e of all(root, (n) => n.tag === 'small' || (n.tag === 'span' && !classes(n).some((k) => k === 'icon' || k.startsWith('icon-'))))) { unwrap(e); c.strip += 1; }
@@ -392,7 +402,7 @@ export const metaTags = (meta) => Object.entries(meta).filter(([k]) => k !== 'ti
 export const normaliseForCompare = (html) => html
   .replace(/<source\b[^>]*>/gi, '')
   .replace(/\s(src|srcset)="[^"]*"/gi, ' $1="#"')
-  .replace(/(<img\b[^>]*?)\s(?:width|height)="[^"]*"/gi, '$1')
+  .replace(/<img\b[^>]*>/gi, (tag) => tag.replace(/\s(?:width|height)="[^"]*"/g, ''))
   .replace(/>\s+</g, '>\n<')
   .trim();
 
@@ -415,6 +425,19 @@ export function selfTest(dir = path.join(import.meta.dirname, 'fixtures')) {
     failures.push(`mimic(plain) is not idempotent at line ${at + 1}:\n    got:      ${la[at]}\n    expected: ${lb[at]}`);
   }
   for (const r of RULES) if (!out.counts[r]) failures.push(`rule ${r} never fired on the fixture — the fixture must exercise every rule once`);
+  // recorded delivered shape (redacted preview .plain.html: /media_<hash> src/srcset, <source> sets, real
+  // width/height, heading ids): every rule must leave it untouched, and the normaliser must hide exactly
+  // the artefacts no local mimic can produce
+  const recorded = readFileSync(path.join(dir, 'pipeline-recorded.plain.html'), 'utf8');
+  const again = pipelineMimic(recorded).html;
+  if (again !== recorded) {
+    const la = again.split('\n'); const lb = recorded.split('\n');
+    const at = la.findIndex((l, i) => l !== lb[i]);
+    failures.push(`mimic(recorded .plain.html) is not idempotent at line ${at + 1}:\n    got:      ${la[at]}\n    expected: ${lb[at]}`);
+  }
+  if (!/<source\b/.test(recorded) || !/media_[0-9a-f]{20,}/.test(recorded) || !/<img\b[^>]*\swidth="\d+"[^>]*\sheight="\d+"/.test(recorded)) failures.push('pipeline-recorded.plain.html must stay a real recording: <source> sets, /media_<hash> URLs and image dimensions');
+  const n = normaliseForCompare(recorded);
+  if (/<source\b|media_[0-9a-f]{20,}|\s(?:width|height)="/.test(n)) failures.push('normaliseForCompare left a <source>, a media hash or an image dimension in place');
   if (out.meta.template !== 'Landing Page' || out.meta.nav !== '/nav-minimal') failures.push(`meta rows not returned: ${JSON.stringify(out.meta)}`);
   return { failures, counts: out.counts, meta: out.meta };
 }

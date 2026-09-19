@@ -10,12 +10,16 @@
 // silently re-opens that class of false pass, so the fixture pair pins them:
 //   deploy/scripts/fixtures/pipeline-probe.html        one instance of every rule
 //   deploy/scripts/fixtures/pipeline-probe.plain.html  the expected delivered shape
-// The .plain.html was derived by hand from the catalogued facts
-// (deploy/reference/pipeline-facts.md); T21.2's pipeline-probe.mjs re-records it
-// from a preview origin. Comparison normalises what no local mimic can produce
-// (/media_<hash> src/srcset, <source> children, real image dimensions).
+//   deploy/scripts/fixtures/pipeline-recorded.plain.html  a REAL delivered shape
+// The probe .plain.html is DERIVED by hand from the catalogued facts
+// (deploy/reference/pipeline-facts.md — rows resting on it alone are marked
+// "assumed" there); T21.2's pipeline-probe.mjs re-records it from a preview origin.
+// The recorded file is a redacted preview .plain.html (media hashes, <source> sets,
+// real image dimensions, heading ids): the mimic must be a no-op on it and
+// normaliseForCompare() must hide exactly those artefacts — both asserted by the
+// self-test, so the normaliser is exercised against a recording, not a model.
 //
-// Cases: `--self-test` exit 0 (equality + idempotency + every rule fired);
+// Cases: `--self-test` exit 0 (equality + idempotency on both fixtures + every rule fired + normaliser);
 // `--help` exit 0; unknown rule exit 1; `--no-picture` leaves <img> unwrapped;
 // build-harness emits <meta name="template"> from the metadata block and the
 // counts line; `--no-pipeline` keeps the authored shape.
@@ -49,6 +53,9 @@ r = run(MIMIC, ['--no-picture', FIXTURE]);
 check('--no-picture leaves <img> outside <picture>', r.status === 0 && /<img src=/.test(r.stdout) && !/<picture>/.test(r.stdout));
 r = run(MIMIC, ['--style-split', 'first-only', FIXTURE]);
 check('--style-split first-only keeps only the first style token', r.status === 0 && /<div class="dark" data-background="navy">/.test(r.stdout));
+const RECORDED = join(SCRIPTS, 'fixtures', 'pipeline-recorded.plain.html');
+r = run(MIMIC, [RECORDED]);
+check('the recorded delivered shape passes through unchanged (every counter 0)', r.status === 0 && r.stdout.trim() === readFileSync(RECORDED, 'utf8').trim() && /pipeline emulation: section-metadata 0, meta 0, picture 0, hoist 0, whitespace 0, table→block 0, icon 0, heading-br 0, emph-picture 0, strip 0/.test(r.stderr + r.stdout), (r.stderr || '').trim().slice(0, 200));
 r = run(MIMIC, ['--json', FIXTURE]);
 try { const j = JSON.parse(r.stdout); check('--json carries meta + counts', j.meta.template === 'Landing Page' && j.counts.picture === 3); } catch (e) { check('--json parses', false, e.message); }
 
@@ -73,4 +80,4 @@ if (failures.length) {
   console.log(`pipeline-mimic fixture: ${failures.length} finding(s)`);
   process.exit(1);
 }
-console.log(`pipeline-mimic fixture: 12 cases pass (${rel(FIXTURE)})`);
+console.log(`pipeline-mimic fixture: 13 cases pass (${rel(FIXTURE)}, ${rel(RECORDED)})`);

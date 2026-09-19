@@ -110,6 +110,20 @@ test('installErrors: names the unresolved module paths', () => {
   assert.doesNotMatch(lines[0], /icons\/x\.svg/);
 });
 
+test('block-roundtrip CLI: --help exits 0 wherever it sits; a flag before the positionals is not swallowed as the prototype URL', () => {
+  const RT = join(here, '..', 'block-roundtrip.mjs');
+  const run = (args) => spawnSync(process.execPath, [RT, ...args], { encoding: 'utf8', cwd: FIX });
+  const help = run(['--help']);
+  assert.equal(help.status, 0, help.stderr); assert.match(help.stdout, /^usage:/);
+  assert.equal(run(['-h']).status, 0);
+  assert.equal(run(['a', 'b', '--help']).status, 0);
+  const none = run([]);
+  assert.equal(none.status, 1, 'no positionals is a usage error'); assert.match(none.stderr, /^usage:/);
+  const oneOnly = run(['--strict', 'http://proto.example/']);
+  assert.equal(oneOnly.status, 1, '--strict first must not count as the prototype URL: one positional is still a usage error');
+  assert.equal(run(['--bogus', 'a', 'b']).status, 1, 'an unknown flag is a usage error');
+});
+
 let chromium = null;
 try { chromium = await loadChromium(); } catch { /* skipped below */ }
 const skip = chromium ? false : 'playwright is not resolvable (project, bare or global) — harness tests skipped';

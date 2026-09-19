@@ -25,15 +25,18 @@
  *                single literal path (logo, fallback) never fires; a JSDoc
  *                `@fixed-asset <path> — <reason>` exempts a deliberate one.
  *
- * Experience Workspace rules (the former manual "static review" checklist item;
- * every miss on one recorded 143-page rollout — 1,992 dead texts — had one of
- * these static signatures). POSITION-AWARE: reading `cell.textContent` to
+ * Experience Workspace rules (the former manual "static review" checklist item —
+ * each rule is the static signature of a recorded dead-text class). POSITION-AWARE: reading `cell.textContent` to
  * classify (#79: a class, dataset, attribute or condition) is legal and silent;
  * only text written back into DISPLAYED positions fires.
  *   EW-VALUE 🔴  authored text re-emitted as text: `x.textContent|innerHTML|innerText =`
  *                whose RHS reads `.textContent|.innerHTML|.innerText` (directly or via
- *                a variable assigned from one), or `${…textContent…}` at text position
- *                (between `>` and `<`) in a template literal. EW1: MOVE the element.
+ *                a variable whose initializer IS a text read — `const t = cell.textContent.trim();`;
+ *                a ternary, a template or a line that merely mentions `.textContent` taints
+ *                nothing), or `${…}` of such a read at TEXT position in a template literal
+ *                (after a `>`, before the next `<`; nested literals inherit the position).
+ *                Class/attribute positions (`class="x-${kind}"`, `aria-label="${score}"`)
+ *                and a template of empty `.ew-text` slots are silent. EW1: MOVE the element.
  *   EW-JOIN  🔴  `.join(…)` over collected texts (`[...ps].map((p) => p.textContent).join(' ')`).
  *   EW-RETAG 🔴  an element created as h1–h6/p (`createElement('h2')`, `el('p')`)
  *                filled from authored text — the heading loses its index.
@@ -50,15 +53,20 @@
  *                sits in its own wrapper on the published page, so it never matches.
  *   EW-COMPOSED 🟡 (with --styles) a styles.css selector under `body.<class>`,
  *                `.section:first-of-type` or `main > .section:has(…)` ending on prose.
- * Chrome blocks (header/footer) and blocks tagged `@ew-exempt all` are capped at 🟡.
+ * Chrome blocks (header/footer) and any file that DECLARES an `@ew-exempt` item (EW5 —
+ * `parseExemptTags` from ew-editability-probe.mjs, any block comment) are capped at 🟡
+ * with the reason appended: the static lint cannot see the text, `block-roundtrip --ew`
+ * decides per text against the declared tag/regex. Undeclared shapes stay 🔴.
  *
  *   node skills/deploy/scripts/block-lint.mjs blocks/ [scripts/scripts.js] [--styles styles/styles.css] [--json]
  *
  * Exit codes: 0 = clean (🟡 allowed), 2 = at least one 🔴, 1 = usage failure.
- * Dependency-free (regex over source text — blocks are small and regular).
+ * No npm dependency (regex + a small template-literal scanner over source text — blocks
+ * are small and regular); imports only the pure exemption parser from the probe.
  */
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import path from 'node:path';
+import { parseExemptTags } from './ew-editability-probe.mjs';
 
 const args = process.argv.slice(2);
 if (!args.length || args.includes('--help') || args.includes('-h')) {
@@ -98,38 +106,95 @@ for (const name of readdirSync(blocksDir)) {
 const AUTHORED = 'h[1-6]|p|ul|ol|picture|a';
 const TEXT_READ = /\.(?:textContent|innerHTML|innerText)\b(?!\s*=[^=])/;
 const isChrome = (file) => /[\/\\](?:header|footer)[\/\\][^\/\\]+$/.test(file);
-const cap = (level, file, src) => ((level === '🔴' && (isChrome(file) || /@ew-exempt\s+all\b/.test(src))) ? '🟡' : level);
 // Strip comments and string-literal noise is NOT attempted: blocks are small; a
 // comment quoting a signature is a false positive the author can rephrase.
 const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' ')).replace(/(^|[^:'"`])\/\/[^\n]*/g, '$1');
 
+// Every `${…}` in every template literal, with its POSITION in the literal's own
+// markup: 'text' (after a `>`, before the next `<`), 'attr' (inside a tag), or the
+// inherited position when the literal shows no tag before it (a nested literal
+// inherits from its interpolation; a top-level literal that is the RHS of
+// `.innerHTML =` / `insertAdjacentHTML(…,` starts at 'text', any other at 'none').
+// `target` is the assigned element for the innerHTML case (EW-RETAG needs it).
+function interpolations(code) {
+  const out = [];
+  let i = 0;
+  const skipString = (q) => { i += 1; while (i < code.length && code[i] !== q && code[i] !== '\n') { if (code[i] === '\\') i += 1; i += 1; } i += 1; };
+  const scanTemplate = (inherit, target) => { // code[i] === '`'
+    const start = i; i += 1;
+    let last = null;
+    while (i < code.length) {
+      const ch = code[i];
+      if (ch === '\\') { i += 2; continue; }
+      if (ch === '`') { i += 1; return; }
+      if (ch === '$' && code[i + 1] === '{') {
+        const pos = last === '>' ? 'text' : last === '<' ? 'attr' : inherit;
+        i += 2; const exprStart = i; let depth = 1;
+        while (i < code.length && depth) {
+          const c = code[i];
+          if (c === '{') depth += 1;
+          else if (c === '}') { depth -= 1; if (!depth) break; }
+          if (c === '`') { scanTemplate(pos, target); continue; }
+          if (c === '"' || c === "'") { skipString(c); continue; }
+          i += 1;
+        }
+        out.push({ expr: code.slice(exprStart, i), pos, index: start, target });
+        i += 1; continue;
+      }
+      if (ch === '<' || ch === '>') last = ch;
+      i += 1;
+    }
+  };
+  while (i < code.length) {
+    const ch = code[i];
+    if (ch === '`') {
+      const before = code.slice(Math.max(0, i - 80), i);
+      const html = before.match(/([A-Za-z_$][\w$]*)(?:\.[\w$]+)*\.(?:innerHTML|outerHTML)\s*=\s*$/) || before.match(/insertAdjacentHTML\(\s*['"][^'"]*['"]\s*,\s*$/);
+      scanTemplate(html ? 'text' : 'none', html ? html[1] || null : null);
+      continue;
+    }
+    if (ch === '"' || ch === "'") { skipString(ch); continue; }
+    i += 1;
+  }
+  return out;
+}
+
 for (const file of blockFiles) {
   const src = readFileSync(file, 'utf8');
   const code = stripComments(src);
+  // 🔴 → 🟡 for chrome and for a file that declares an @ew-exempt item (EW5): the lint
+  // cannot see the text, the runtime gate matches it against the declared tag/regex.
+  const ew = parseExemptTags(src);
+  const capWhy = isChrome(file) ? 'chrome block' : ew ? (ew.all ? '@ew-exempt all' : `${ew.items.length} @ew-exempt item(s) declared`) : null;
+  const flag = (level, ruleCode, line, msg) => add(level === '🔴' && capWhy ? '🟡' : level, ruleCode, file, line, level === '🔴' && capWhy ? `${msg} [capped 🟡: ${capWhy} — block-roundtrip --ew decides per text (EW5)]` : msg);
   // ── EW value-slotting family ──
-  // identifiers assigned from an authored text read: const title = cell.textContent.trim()
-  const textVars = new Set([...code.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*[^;\n]*?\.(?:textContent|innerHTML|innerText)\b/g)].map((m) => m[1]));
+  // identifiers whose INITIALIZER is a text read: const title = cell.textContent.trim();
+  // (a ternary, a template literal or a line that merely mentions .textContent taints nothing)
+  const textVars = new Set([...code.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*[\w$.?[\]()'"]*\.(?:textContent|innerText|innerHTML)\b(?:\.\w+\([^)]*\))*\s*[;\n]/g)].map((m) => m[1]));
   const readsText = (expr) => TEXT_READ.test(expr) || [...textVars].some((v) => new RegExp(`(?<![\\w$.])${v.replace(/\$/g, '\\$')}(?![\\w$])`).test(expr));
   // elements created as heading/paragraph: const h = document.createElement('h2') | el('p', …)
   const retagVars = new Set([...code.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:document\.)?(?:createElement|el|create|dom|h)\(\s*['"](?:h[1-6]|p)['"]/g)].map((m) => m[1]));
+  const retag = (target, line, what) => flag('🔴', 'EW-RETAG', line, `${target} was created as a heading/paragraph and is filled from authored text (${what}) — the authored element loses its index; MOVE the authored h*/p into the wrapper (EW1)`);
   for (const m of code.matchAll(/([A-Za-z_$][\w$.]*)\.(textContent|innerHTML|innerText)\s*=(?!=)\s*([^;\n]+)/g)) {
     const [, target, , rhs] = m;
-    if (!readsText(rhs)) continue; // a literal / runtime value: ai-readability's domain, not EW1
+    if (/^\s*`/.test(rhs)) continue; // a template-literal RHS is judged by position below
+    const plain = rhs.replace(/`(?:[^`\\]|\\.)*`/g, '``'); // inline literals inside a call chain: idem
+    if (!readsText(plain)) continue; // a literal / runtime value: ai-readability's domain, not EW1
     const base = target.split('.')[0];
-    if (retagVars.has(base)) add(cap('🔴', file, src), 'EW-RETAG', file, lineOf(code, m.index), `${target} was created as a heading/paragraph and is filled from authored text (${rhs.trim().slice(0, 50)}) — the authored element loses its index; MOVE the authored h*/p into the wrapper (EW1)`);
-    else add(cap('🔴', file, src), 'EW-VALUE', file, lineOf(code, m.index), `${target}.${m[2]} = ${rhs.trim().slice(0, 60)} — authored text re-emitted as text is dead in the workspace; MOVE the element (EW1); classify from textContent, never display from it (#79)`);
+    if (retagVars.has(base)) retag(target, lineOf(code, m.index), rhs.trim().slice(0, 50));
+    else flag('🔴', 'EW-VALUE', lineOf(code, m.index), `${target}.${m[2]} = ${rhs.trim().slice(0, 60)} — authored text re-emitted as text is dead in the workspace; MOVE the element (EW1); classify from textContent, never display from it (#79)`);
   }
-  // template literal, text position: >…${…textContent…}…<
-  for (const m of code.matchAll(/`(?:[^`\\]|\\.)*`/g)) {
-    const lit = m[0];
-    for (const t of lit.matchAll(/>[^<`]*?\$\{([^}]*)\}[^<`]*?</g)) {
-      if (readsText(t[1])) add(cap('🔴', file, src), 'EW-VALUE', file, lineOf(code, m.index), `template literal interpolates authored text at text position (\${${t[1].trim().slice(0, 40)}}) — a rebuilt DOM carries no index; MOVE the authored element into a slot (EW1)`);
-    }
+  // template literals: only an interpolation at TEXT position that reads authored text fires
+  const withoutNested = (expr) => { let e = expr; let prev; do { prev = e; e = e.replace(/`(?:[^`\\]|\\.)*`/g, '``'); } while (e !== prev); return e; };
+  for (const t of interpolations(code)) {
+    if (t.pos !== 'text' || !readsText(withoutNested(t.expr))) continue; // nested literals are judged on their own position
+    if (t.target && retagVars.has(t.target)) retag(t.target, lineOf(code, t.index), `\${${t.expr.trim().slice(0, 40)}}`);
+    else flag('🔴', 'EW-VALUE', lineOf(code, t.index), `template literal interpolates authored text at text position (\${${t.expr.trim().slice(0, 40)}}) — a rebuilt DOM carries no index; MOVE the authored element into an empty slot (EW1); class/attribute positions are legal (#79)`);
   }
   for (const m of code.matchAll(/\.join\(\s*(['"`])[^'"`]*\1\s*\)/g)) {
     const stmtStart = Math.max(code.lastIndexOf(';', m.index), code.lastIndexOf('\n', code.lastIndexOf('\n', m.index) - 1)) + 1;
     const stmt = code.slice(stmtStart, m.index);
-    if (TEXT_READ.test(stmt) || /\.map\(\s*\(?\s*\w+\s*\)?\s*=>\s*\w+\.(?:textContent|innerText)/.test(stmt)) add(cap('🔴', file, src), 'EW-JOIN', file, lineOf(code, m.index), `texts joined into one string (${m[0]}) — N authored elements become one dead node; keep each element and wrap them (EW1)`);
+    if (TEXT_READ.test(stmt) || /\.map\(\s*\(?\s*\w+\s*\)?\s*=>\s*\w+\.(?:textContent|innerText)/.test(stmt)) flag('🔴', 'EW-JOIN', lineOf(code, m.index), `texts joined into one string (${m[0]}) — N authored elements become one dead node; keep each element and wrap them (EW1)`);
   }
   // ── EW-HEADER (#107) ──
   for (const m of code.matchAll(/createElement\(\s*['"]header['"]\s*\)|<header[\s>]/g)) {
@@ -141,7 +206,7 @@ for (const file of blockFiles) {
       const source = m[1];
       const base = source.split(/[.(]/)[0];
       const fromQuery = new RegExp(`(?:const|let|var)\\s+${base}\\s*=\\s*[^;\\n]*querySelector(?:All)?\\(\\s*['"][^'"]*\\b(?:${AUTHORED})\\b`).test(code) || new RegExp(`querySelector(?:All)?\\(\\s*['"][^'"]*\\b(?:${AUTHORED})\\b[^'"]*['"]\\s*\\)\\.cloneNode`).test(m[0]);
-      add(fromQuery ? cap('🔴', file, src) : '🟡', 'EW-CLONE', file, lineOf(code, m.index), `${source}.cloneNode(true) with no stripInstrumentation() in the file — the clone keeps data-prose-index and the editor attaches to the first copy in DOM order (EW4)`);
+      flag(fromQuery ? '🔴' : '🟡', 'EW-CLONE', lineOf(code, m.index), `${source}.cloneNode(true) with no stripInstrumentation() in the file — the clone keeps data-prose-index and the editor attaches to the first copy in DOM order (EW4)`);
     }
   }
   // ── EW-CLASS (EW2) ──

@@ -14,7 +14,13 @@
 //                                 cap 🟡), styles/styles.css (EW-COMPOSED)
 //   fixtures/block-lint/pass-ew/  the scaffold shape (move, labelWrap, stripInstrumentation,
 //                                 classify-by-cell, attribute position, :has() below p,
-//                                 edit-mode foundation rules) — 0 findings
+//                                 edit-mode foundation rules) + shapes/ (a class from a cell
+//                                 word in an innerHTML template, an aria-label interpolation,
+//                                 a template of EMPTY slots built on a line that mentions
+//                                 .textContent — the #79 shapes a rollout repo is full of) — 0 findings
+//   fixtures/block-lint/exempt-ew/ a declared item-level `@ew-exempt <p> /^\d{4}-/ — derived` with a
+//                                 derived-date assignment: EW-VALUE reported 🟡 (capped, reason
+//                                 appended), exit 0 — the runtime gate decides per text (EW5)
 // deploy-lint-fixtures.mjs keeps pinning the BL-*/IMG-HARDCODED rules over fail/ and pass/.
 //
 // Usage: node plugins/stardust/evals/lint/block-lint-ew-fixtures.mjs  (exit 1 on findings)
@@ -52,7 +58,16 @@ check('fail-ew: red count = 🔴 findings', out.red === F.filter((f) => f.level 
 // ── pass-ew: the scaffold shape is silent
 r = run(['pass-ew/blocks', '--styles', 'pass-ew/styles.css', '--json']);
 check('pass-ew exits 0', r.status === 0, r.stderr || r.stdout);
-try { const j = JSON.parse(r.stdout); check('pass-ew has 0 findings', j.findings.length === 0, j.findings.map((f) => `${f.level} ${f.code} ${f.file}:${f.line} ${f.msg.slice(0, 70)}`).join('\n    ')); check('pass-ew read 1 block CSS', j.cssFiles === 1); } catch (e) { check('pass-ew --json parses', false, e.message); }
+try { const j = JSON.parse(r.stdout); check('pass-ew has 0 findings', j.findings.length === 0, j.findings.map((f) => `${f.level} ${f.code} ${f.file}:${f.line} ${f.msg.slice(0, 70)}`).join('\n    ')); check('pass-ew read 3 block JS + 1 block CSS', j.files === 3 && j.cssFiles === 1); } catch (e) { check('pass-ew --json parses', false, e.message); }
+
+// ── exempt-ew: a declared item caps the 🔴 to 🟡 and says why; exit 0
+r = run(['exempt-ew/blocks', '--json']);
+check('exempt-ew exits 0', r.status === 0, r.stderr || r.stdout);
+try {
+  const j = JSON.parse(r.stdout);
+  const v = j.findings.filter((f) => f.code === 'EW-VALUE');
+  check('exempt-ew: EW-VALUE reported once, 🟡, with the cap reason', v.length === 1 && v[0].level === '🟡' && /\[capped 🟡: 1 @ew-exempt item\(s\) declared/.test(v[0].msg) && j.red === 0, JSON.stringify(j.findings.map((f) => `${f.level} ${f.code} ${f.msg.slice(-90)}`)));
+} catch (e) { check('exempt-ew --json parses', false, e.message); }
 
 // ── usage
 r = run(['pass-ew/blocks', '--styles']);
@@ -67,4 +82,4 @@ if (failures.length) {
   console.log(`block-lint EW fixtures: ${failures.length} finding(s)`);
   process.exit(1);
 }
-console.log(`block-lint EW fixtures: ${expect.length + 9} cases pass (${relative(process.cwd(), CWD)}/{fail-ew,pass-ew})`);
+console.log(`block-lint EW fixtures: ${expect.length + 11} cases pass (${relative(process.cwd(), CWD)}/{fail-ew,pass-ew,exempt-ew})`);
