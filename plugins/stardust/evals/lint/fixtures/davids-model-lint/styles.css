@@ -1,3 +1,5 @@
 .illu { width: 72px; height: 72px; display: block; }
 span.icon { display: inline-block; width: 24px; height: 24px; }
 .hero .spot { position: absolute; inset: 0; }
+.tint:hover { background: #eee; }
+a:not(.badge) { text-decoration: underline; }

@@ -44,13 +44,13 @@
  *       inline-script text: window./try {)     D15 ALL_CAPS_TOKEN — tracking-token
  *                                                  lookalike (advisory: legit acronyms exist)
  *   HR  authored <hr> (#119 — the section delimiter; fractures the section)
- *   ICON-PREFIX  :icon-x: token while icons/x.svg ICON-PREFIX  :icon-x: token without
- *       exists (--icons-dir given; unambiguous)      --icons-dir (a site MAY own icon-x.svg)
- *   ICON-MISSING :x: token / icon-x class with no VARIANT-COLLIDE variant token equal to a
- *       icons/x.svg|png (--icons-dir given only)     class inside a compound/descendant
- *   VARIANT-COLLIDE block variant token in the      selector of --styles (`.hero .x`)
- *       reserved list or equal to a bare `.x {`
- *       selector of --styles
+ *   ICON-PREFIX  :icon-x: while icons/x.svg    ICON-PREFIX  :icon-x: without --icons-dir
+ *       exists (--icons-dir; unambiguous)          (a site MAY own icon-x.svg)
+ *   ICON-MISSING :x: with no icons/x.svg|png  VARIANT-COLLIDE token only inside a
+ *       (--icons-dir only)                        compound/descendant selector of
+ *   VARIANT-COLLIDE token in reserved list or     --styles (`.hero .x`, `span.x`)
+ *       a bare `.x {` selector of --styles
+ *       (pseudo suffixes ignored: `.x:hover {`)
  *
  * Icon and variant findings are reported ONCE per token with the page count.
  *
@@ -378,9 +378,13 @@ function parseStyles(css) {
     const prelude = m[1].trim();
     if (!prelude || prelude.startsWith('@')) continue;
     for (const sel of prelude.split(',').map((x) => x.trim()).filter(Boolean)) {
-      const lone = sel.match(/^\.([a-zA-Z_-][\w-]*)$/);
+      // `.x:hover {` / `.x::before {` target the block element exactly like
+      // `.x {`; classes that appear only inside :not()/:where()/:is() arguments
+      // never reach a block, so pseudo suffixes (with arguments) are dropped.
+      const base = sel.replace(/::?[a-z-]+(\([^)]*\))?/g, '').trim();
+      const lone = base.match(/^\.([a-zA-Z_-][\w-]*)$/);
       if (lone) { bare.add(lone[1].toLowerCase()); continue; }
-      for (const c of sel.matchAll(/\.([a-zA-Z_-][\w-]*)/g)) compound.add(c[1].toLowerCase());
+      for (const c of base.matchAll(/\.([a-zA-Z_-][\w-]*)/g)) compound.add(c[1].toLowerCase());
     }
   }
   return { bare, compound };
@@ -448,6 +452,11 @@ const args = argv.filter((a, i) => a !== '--json' && !VALUE_OPTS.includes(a) && 
 if (!args.length) {
   console.error(USAGE);
   process.exit(1);
+}
+for (const o of VALUE_OPTS) {
+  // a dangling `--icons-dir` would otherwise silently run with the checks off
+  const i = argv.indexOf(o);
+  if (i >= 0 && (argv[i + 1] === undefined || argv[i + 1].startsWith('--'))) { console.error(`${o} needs a value\n${USAGE}`); process.exit(1); }
 }
 if (iconsDirOpt) {
   if (!existsSync(iconsDirOpt) || !statSync(iconsDirOpt).isDirectory()) { console.error(`--icons-dir ${iconsDirOpt}: not a directory`); process.exit(1); }

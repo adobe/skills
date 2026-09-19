@@ -16,7 +16,7 @@ Phases, in order: Setup → A Inventory → B Block dedup plan → B2 Dynamic su
 | A | `node skills/rollout/scripts/inventory.mjs --site-url <source-url>` (archetypes-only: add `--state stardust/state.json`) |
 | B | `node skills/rollout/scripts/blocks.mjs`; `node skills/rollout/scripts/plan.mjs` |
 | B2 | `node skills/dynamics/scripts/dynamics-detect.mjs --from-state … --reach stardust/current`; `node skills/dynamics/scripts/dynamics-plan.mjs --target-origin <live host> --migrated stardust/migrated` |
-| C | per page: `node skills/rollout/scripts/delivery-lint.mjs --file <html> --path </da/path>`; `node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <host> [--apply]`; `node skills/rollout/scripts/section-fidelity.mjs --file <html> --source <url>`; `node skills/rollout/scripts/update-coverage.mjs <slug> --status <s>`; batches: `node skills/deploy/scripts/deploy-batch.mjs --org … --repo … --branch … --content <dir> [--concurrency 4]` |
+| C | per page: `node skills/rollout/scripts/delivery-lint.mjs --file <html> --path </da/path> --icons-dir icons`; `node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <host> [--apply]`; `node skills/rollout/scripts/section-fidelity.mjs --file <html> --source <url>`; `node skills/rollout/scripts/update-coverage.mjs <slug> --status <s>`; batches: `node skills/deploy/scripts/deploy-batch.mjs --org … --repo … --branch … --content <dir> [--concurrency 4]` |
 | D | `node skills/rollout/scripts/assemble.mjs` |
 | D2 | `node skills/dynamics/scripts/dynamics-check.mjs --origin <live host>` |
 | E / E2 | `node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>]`; `node skills/deploy/scripts/localize-links.mjs --source-host <live-host> --content content --redirects stardust/redirects.tsv [--check]` |
@@ -44,14 +44,13 @@ Outputs (under `stardust/rollout/`): `coverage/{pages,templates,blocks}.json` ·
 Sections: When to use · Setup · Procedure · Inputs · Outputs · Dependencies · What rollout does NOT do · Scripts · References.
 
 `deploy` converts **one** page to AEM. `rollout` delivers the **whole site**: it
-inventories the agnostic output of `migrate`, then drives `deploy` across every
+inventories the output of `migrate`, then drives `deploy` across every
 page, tracking delivery coverage so you always know what's done and what's left.
 
 `rollout` is **delivery-only** — it does not redesign. The page-by-page redesign
 (`extract → direct → prototype → migrate`) and `deploy` itself are **unchanged**;
-`rollout` is the across-pages layer on top. Design rationale, coverage model, and
-phasing are in [`notes/rollout/PLAN.md`](../../notes/rollout/PLAN.md). The flow
-runs **A→I** below.
+`rollout` is the across-pages layer on top. Rationale, coverage model and phasing:
+[`notes/rollout/PLAN.md`](../../notes/rollout/PLAN.md). The flow runs **A→I** below.
 
 ## When to use
 

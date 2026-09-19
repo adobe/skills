@@ -8,8 +8,9 @@ this skill generates must read as if a thoughtful author wrote it, because after
 thoughtful author WILL maintain it.
 
 Enforcement: `scripts/davids-model-lint.mjs` (🔴 blocks the DA write; 🟡 is advisory —
-review, then fix or justify in the conversion log). Column three names where each rule
-lives in the skill.
+review, then fix or justify in the conversion log); ICON-PREFIX / ICON-MISSING (`--icons-dir`)
+and VARIANT-COLLIDE (`--styles`) extend #15 to icon and variant tokens. Column three names
+where each rule lives in the skill.
 
 | # | Rule | Where it's enforced in this skill |
 |---|------|-----------------------------------|

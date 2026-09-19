@@ -36,6 +36,9 @@ jobs:
       - name: Stardust skill text names only scripts and references that exist
         run: node plugins/stardust/evals/lint/script-paths.mjs
 
+      - name: Stardust davids-model-lint icon/variant rules keep their tiers and exit codes
+        run: node plugins/stardust/evals/lint/davids-model-lint-fixtures.mjs
+
   codeowners-coverage:
     runs-on: ubuntu-latest
     steps:

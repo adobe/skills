@@ -59,6 +59,8 @@ A FOUC is possible (head paints as default content, then reabsorbs); the final l
 3. The block renders the authored `<img>` into a background LAYER (`.hero-bg` / `.card-media` / `.text-media`); the scrim/gradient is a CSS `::before` OVER it. Keep a fixed CSS asset as the no-image fallback. **Never copy the pipeline's fallback `<img src>` into a CSS `background` (#110)** — it carries `width=750` (the smallest rendition), so a full-bleed layer renders soft at any hero width; rewrite the width param (`width=2000`) first. `<picture>`-rendered images are unaffected (the browser picks a real rendition).
 4. **The `<picture>` wrapper adds an inline baseline descender (#111):** the pipeline's `<p><picture>…` leaves the image inline on the text baseline — each image paragraph measures +6/+7px vs a bare-`<img>` source, systematic and invisible to text gates. `line-height: 0` on the image paragraph restores parity.
 
+5. **Icons:** author `:name:` (never `:icon-name:` — the runtime adds the `icon-` prefix and fetches `/icons/name.svg`); `icons/<name>.svg` must exist in the branch before the page is PUT, or the token renders a broken-image box. Lint ICON-PREFIX / ICON-MISSING (`--icons-dir icons`).
+
 **Decorative = CSS only** applies to image-LESS treatments (gradients, scrims, textures, solid washes) and to genuinely fixed brand assets referenced as **CSS backgrounds** root-relative (`/img/<brand>/…` — browser-fetched, never ingested, so no `about:error` and no upload).
 
 **The check that catches the #1 mistake:** after preview, grep the delivered `.plain.html` for the expected `<img>`+alt count. "It renders" hides CSS-background images — they're absent from `.plain.html`, carry no alt, and are neither authorable nor AI/SEO-visible.

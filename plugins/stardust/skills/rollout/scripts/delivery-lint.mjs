@@ -11,13 +11,20 @@
  *
  * Usage:
  *   node skills/rollout/scripts/delivery-lint.mjs --file <html> [--path </da/path>]
- *        [--type page|fragment|index] [--json]
+ *        [--type page|fragment|index] [--icons-dir <dir>] [--json]
  * Exit: 0 = clean (no P0/P1), 1 = P0/P1 findings, 2 = bad invocation.
+ *
+ * --icons-dir <dir> enables the icon-token checks (silent without it): every
+ * `:name:` token / `<span class="icon icon-name">` must resolve to <dir>/name.svg|png
+ * (P0 icon-missing); an authored `:icon-x:` while <dir>/x.svg exists doubles the
+ * prefix the runtime adds and renders a broken-image box (P0 icon-prefix). Same
+ * scan as deploy/scripts/davids-model-lint.mjs ICON-MISSING / ICON-PREFIX.
  *
  * Blocks known to run createOptimizedPicture over their images (cross-origin
  * breakage risk) — extend per project via --optimizing-blocks a,b,c.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 
 function arg(name, fb) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fb; }
 const FILE = arg('file', null);
@@ -25,7 +32,11 @@ const DAPATH = arg('path', null);
 const TYPE = arg('type', null); // page | fragment | index — inferred if absent
 const JSON_OUT = process.argv.includes('--json');
 const OPTIMIZING = (arg('optimizing-blocks', 'cards,columns,hero')).split(',').map((s) => s.trim()).filter(Boolean);
+const ICONS_DIR = arg('icons-dir', null);
 if (!FILE) { console.error('delivery-lint: need --file <html>'); process.exit(2); }
+if (process.argv.includes('--icons-dir') && !(ICONS_DIR && existsSync(ICONS_DIR) && statSync(ICONS_DIR).isDirectory())) {
+  console.error(`delivery-lint: --icons-dir needs an existing directory (got ${ICONS_DIR ?? 'nothing'})`); process.exit(2);
+}
 const html = readFileSync(FILE, 'utf8');
 
 function inferType(p) {
@@ -100,6 +111,26 @@ if (DAPATH) {
     .replace(/\/{2,}/g, '/').replace(/(.)\/$/, '$1');
   if (norm !== DAPATH) add('P0', 'path-safety', `path is not delivery-safe; normalize ${DAPATH} → ${norm} (record in redirects.tsv)`);
   if (/\/\//.test(DAPATH)) add('P0', 'path-safety', 'double slash in path makes the DA PUT 400 while preview/live still 200');
+}
+
+/* ---- icon tokens resolve to an asset (--icons-dir only). The runtime turns
+   `:x:` into <span class="icon icon-x"> and fetches /icons/x.svg — a token with
+   no SVG ships a broken-image box; an authored `:icon-x:` fetches icon-x.svg. ---- */
+if (ICONS_DIR) {
+  const ICON_TOKEN = /(?<![\w:]):([a-z][a-z0-9_-]*):(?![\w:])/g;
+  const mainHtml = (html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i) || [, html])[1];
+  const iconExists = (n) => ['svg', 'png'].some((ext) => existsSync(join(ICONS_DIR, `${n}.${ext}`)));
+  const tokens = new Set();
+  for (const m of mainHtml.replace(/<[^>]+>/g, ' ').matchAll(ICON_TOKEN)) tokens.add(m[1]);
+  for (const m of mainHtml.matchAll(/<span\b[^>]*\bclass="([^"]*)"/gi)) {
+    const cls = m[1].split(/\s+/);
+    if (cls.includes('icon')) for (const c of cls) if (c.startsWith('icon-') && c.length > 5) tokens.add(c.slice(5));
+  }
+  for (const t of [...tokens].sort()) {
+    if (iconExists(t)) continue;
+    if (t.startsWith('icon-') && iconExists(t.slice(5))) add('P0', 'icon-prefix', `:${t}: doubles the icon- prefix the runtime adds (${ICONS_DIR}/${t.slice(5)}.svg exists, ${t}.svg does not) — author :${t.slice(5)}:`);
+    else add('P0', 'icon-missing', `:${t}: has no ${ICONS_DIR}/${t}.svg|png — the asset must exist in the branch before the PUT`);
+  }
 }
 
 /* ---- metadata block present (rich indexes at import time) ---- */

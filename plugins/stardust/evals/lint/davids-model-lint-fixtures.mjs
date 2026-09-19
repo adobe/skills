@@ -20,10 +20,11 @@ const STYLES = ['--styles', join(FIX, 'styles.css')];
 const CASES = [
   { name: 'icons: double prefix + missing asset fail with --icons-dir', args: ['fail-icons.html', ...ICONS, ...STYLES], exit: 2, red: ['ICON-PREFIX', 'ICON-MISSING'], yellow: [] },
   { name: 'icons: without --icons-dir the prefix is advisory only', args: ['fail-icons.html', ...STYLES], exit: 0, red: [], yellow: ['ICON-PREFIX'], absent: ['ICON-MISSING'] },
-  { name: 'variants: reserved token and bare foundation selector fail', args: ['fail-variant.html', ...ICONS, ...STYLES], exit: 2, red: ['VARIANT-COLLIDE'], yellow: [], tokens: ['"icon"', '"illu"'] },
-  { name: 'pass: :name: token, decorated span, compound-selector variant is advisory', args: ['pass.html', ...ICONS, ...STYLES], exit: 0, red: [], yellow: ['VARIANT-COLLIDE'], absent: ['ICON-PREFIX', 'ICON-MISSING'] },
+  { name: 'variants: reserved token, bare selector and pseudo-suffixed bare selector (.tint:hover) fail', args: ['fail-variant.html', ...ICONS, ...STYLES], exit: 2, red: ['VARIANT-COLLIDE'], yellow: [], tokens: ['"icon"', '"illu"', '"tint"'] },
+  { name: 'pass: :name: token, decorated span, compound-selector variant is advisory, :not(.badge) is ignored', args: ['pass.html', ...ICONS, ...STYLES], exit: 0, red: [], yellow: ['VARIANT-COLLIDE'], absent: ['ICON-PREFIX', 'ICON-MISSING'], absentTokens: ['"badge"'] },
   { name: 'tree mode: one finding per token with page count', args: ['.', ...ICONS, ...STYLES], exit: 2, oncePer: ['ICON-PREFIX'], pages: 'fail-icons.html' },
   { name: 'usage: --styles that does not exist is a usage error', args: ['pass.html', '--styles', join(FIX, 'nope.css')], exit: 1 },
+  { name: 'usage: a dangling --icons-dir is a usage error, not a silent downgrade', args: ['fail-icons.html', ...STYLES, '--icons-dir'], exit: 1 },
 ];
 
 const failures = [];
@@ -39,6 +40,7 @@ for (const c of CASES) {
   for (const id of c.yellow || []) if (!rules('🟡').includes(id)) failures.push(`${label}: expected 🟡 ${id}`);
   for (const id of c.absent || []) if (out.findings.some((f) => f.rule === id)) failures.push(`${label}: unexpected ${id}`);
   for (const t of c.tokens || []) if (!out.findings.some((f) => f.rule === 'VARIANT-COLLIDE' && f.msg.includes(t))) failures.push(`${label}: expected VARIANT-COLLIDE for ${t}`);
+  for (const t of c.absentTokens || []) if (out.findings.some((f) => f.rule === 'VARIANT-COLLIDE' && f.msg.includes(t))) failures.push(`${label}: unexpected VARIANT-COLLIDE for ${t}`);
   for (const id of c.oncePer || []) {
     const hits = out.findings.filter((f) => f.rule === id);
     if (hits.length !== 1) failures.push(`${label}: ${id} reported ${hits.length}×, expected once`);

@@ -135,7 +135,7 @@ out of `total` (100 per eval).
 
 ### Lints
 
-`npm run lint:stardust` (repo root) runs three static checks over `skills/`,
+`npm run lint:stardust` (repo root) runs four static checks over `skills/`,
 each a plain ESM script under `lint/` that exits 1 with one line per finding:
 
 - `harness-neutral.mjs` — no namespaced sibling-skill references or
@@ -146,6 +146,10 @@ each a plain ESM script under `lint/` that exits 1 with one line per finding:
   `## Operator card` heading ahead of the procedure, the always-on total and
   the per-skill delta versus the last release tag; its temporary allowlist
   must shrink with each release.
+- `davids-model-lint-fixtures.mjs` — runs `deploy/scripts/davids-model-lint.mjs`
+  over `lint/fixtures/davids-model-lint/` and pins the icon/variant rule tiers
+  (ICON-PREFIX, ICON-MISSING, VARIANT-COLLIDE), the once-per-token report and
+  the exit codes (2 on 🔴, 1 on a usage error, 0 on a legitimate page).
 
 ## What stardust v2 evals deliberately do NOT test
 

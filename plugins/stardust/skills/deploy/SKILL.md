@@ -23,7 +23,7 @@ Read this card, then the one section you are at — never the whole skill. Every
 | 6 | Chrome | `content/nav.html`, `content/footer.html`, `blocks/header`, `blocks/footer` | three-section nav contract kept |
 | 7 | Block agents | one brief per archetype cluster from the template — pointers only | briefs name files + headings, never inline text |
 | 8 | Block JS | `node skills/deploy/scripts/block-roundtrip.mjs "<protoURL>" content/<page>.html --blocks <name>` | exit 0 — no structural 🔴, no dead text, no duplicated index |
-| 9 | Content pages | `node skills/deploy/scripts/davids-model-lint.mjs content/`; `node skills/deploy/scripts/sanitise.js <file>` | lint exit 0 before any DA write |
+| 9 | Content pages | `node skills/deploy/scripts/davids-model-lint.mjs content/ --icons-dir icons --styles styles/styles.css`; `sanitise.js <file>` | lint exit 0 before any DA write |
 | QA | Local harness | `build-harness.mjs` → `qa-gate.mjs <harnessURL> --schema stardust/eds-schema/<page>.json`; whole-page `block-roundtrip` (no `--blocks`); `ew-editability-probe.mjs --simulate-editor` | qa-gate exit 0; no edit-mode drift |
 | D | Deploy | `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> --content content`; `localize-links.mjs --source-host <live-host> --check`; `ai-readability.mjs --origin <live> <paths>` | per-page atomic contract passed; AI-readability ≥ 98 |
 | 10 | Deployed reconcile | `node skills/diff/scripts/content-diff.mjs "<protoURL>" "<deployedURL>" --profile eds` (advisory); fetch-delayed CLS probe; `skills/replica/scripts/crop-compare.mjs` on header/footer bands | CLS < 0.1; chrome bands within the crop gate; deployed eyeball faithful |
@@ -55,10 +55,10 @@ When to use · Target runtime (compressed) · Playwright re-probe · Runtime-det
 The user has:
 1. **Per-page styled HTML prototypes** — one file per page, each carrying its own CSS. Accept any of these shapes:
    - **Single-file with inline `<style>`** and `:root` tokens + semantic `<section class="…">` (e.g. stardust output, or claude-design "Stardust"/Mobirise/Relume-style pages). Easiest — convert directly.
-   - **External per-page `.css`** (the `<style>` lives in a sibling stylesheet). Read the linked CSS the same way you'd read an inline `<style>`.
+   - **External per-page `.css`** (the `<style>` lives in a sibling stylesheet). Read the linked CSS as you would an inline `<style>`.
    - **`<x-dc>` document-content with everything inline-styled** (per-element `style="…"`). Harder — you must lift inline styles into a scoped block stylesheet.
    - **React/JSX prototypes** (an HTML shell that mounts `.jsx` components at runtime). **Pre-render to static HTML first** (run it, or screenshot + read the JSX to reconstruct the DOM); you cannot decorate a shell that has no server-rendered `<main>`.
-   The prototypes typically live under `stardust/prototypes/**` or a `samples/<Name>/` folder — don't hard-code the path; discover them.
+   Prototypes typically live under `stardust/prototypes/**` or `samples/<Name>/` — don't hard-code the path; discover them.
 2. An EDS project at the repo root — **vanilla `aem-boilerplate`** (`github.com/adobe/aem-boilerplate`): `scripts/aem.js` + `scripts/scripts.js`, `blocks/` with `header`/`footer`/`fragment`, `styles/styles.css` + `styles/fonts.css`, `head.html`. This is the ONLY runtime this skill targets — no runtime files are ever ported, vendored, or edited.
 3. A goal to convert: prototypes → authorable EDS blocks + EDS content pages under `content/**`.
 

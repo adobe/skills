@@ -7,7 +7,7 @@ Full text of the deploy skill's per-page checklist. Read:
 ## Checklist (per page)
 
 - [ ] Each section in the prototype `<main>` has a corresponding section in the content page — a block for pattern sections, default content for prose sections (D1, Step 2 triage recorded in the conversion log).
-- [ ] **`davids-model-lint` clean** — `node skills/deploy/scripts/davids-model-lint.mjs content/` exits 0 (0 🔴; 🟡 advisories reviewed and either fixed or justified in the conversion log).
+- [ ] **`davids-model-lint` clean** — `node skills/deploy/scripts/davids-model-lint.mjs content/ --icons-dir icons --styles styles/styles.css` exits 0 (0 🔴; 🟡 advisories reviewed and either fixed or justified in the conversion log).
 - [ ] **Content page is a body fragment** for the Source-API deploy: starts at `<body>`, **no `<!DOCTYPE>`/`<html>`/`<head>`** — EDS injects the project `head.html` at delivery. (Only the mount deploy tolerates a full doc.)
 - [ ] Ran `node skills/deploy/scripts/sanitise.js` on the content before any DA write (non-ASCII → entities).
 - [ ] **Per-instance variation fingerprinted (#90)** — ran `style-fingerprint.mjs` on the prototype BEFORE block code; every group with >1 style/structural cluster (active chip, accent CTA, image vs image-less card) is reproduced by its block, not flattened.
@@ -50,7 +50,7 @@ Full text of the deploy skill's per-page checklist. Read:
 - [ ] Block JS does NOT manufacture button anchors with custom classes.
 - [ ] `prefers-reduced-motion: reduce` honored on any animation.
 - [ ] No JS-toggled `opacity:0` reveal lifted from the prototype — content renders visible (prototype scroll-reveal script doesn't run in EDS).
-- [ ] No block named after a reserved EDS class (`section`, `block`, `wrap`, `button`, or a name ending `-wrapper`/`-container`).
+- [ ] No block named after a reserved EDS class (`section`, `block`, `wrap`, `button`, or a name ending `-wrapper`/`-container`), nor a variant token equal to one or to a bare `styles.css` selector (VARIANT-COLLIDE; list in `audit-and-naming.md` #15).
 - [ ] `head.html` is untouched **except** the single favicon `<link rel="icon">` line (Step 3 § Favicon). No font `<link>`, `<script>`, `<style>`, or `<link rel="preload" as="font">` lines added. Brand `@font-face` lives in `styles/fonts.css`; `-fallback` faces in `styles/styles.css`. Brand woff2(s) live in `fonts/`.
 - [ ] The site favicon is shipped (repo-root `favicon.<ext>` or `_eds/code/favicon.<ext>` in sandboxed runs) when extract captured one; when none was captured, the deploy log records a loud WARN (likely a bounded extract — recover the icon rather than shipping the default silently).
 - [ ] EVERY named brand face is self-hosted — including proprietary ones (#80); proprietary `.otf`/`.ttf` from the prototype were converted to woff2 with fontTools. If any proprietary face is shipped, the **licensing alert** exists in all three places (styles.css banner + `fonts/LICENSING.md` + conversion log) and the hand-off message flags "license required before `aem.live`".

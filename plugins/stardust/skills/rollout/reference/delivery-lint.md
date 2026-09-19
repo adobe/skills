@@ -15,7 +15,7 @@ to "the tool enforces".
 
 ```bash
 node skills/rollout/scripts/delivery-lint.mjs --file <content.html> \
-  --path </da/target/path> [--type page|fragment|index] [--json]
+  --path </da/target/path> [--type page|fragment|index] [--icons-dir icons] [--json]
 ```
 
 `--type` is inferred from the path when omitted (`/nav`, `/footer`, `*/fragments/*`
@@ -36,6 +36,8 @@ advisory (surfaced, never blocks).
 | `trailing-slash` / `html-extension` | P1 | Internal links with a trailing slash or `.html` 404 on EDS (it serves extensionless, no-trailing-slash). |
 | `path-safety` | P0 | The target DA path must be lowercase, hyphenated, no `_`, no `//`. A double slash makes the PUT 400 while preview/live still 200 — a silent partial. Normalize and record the original → safe mapping in `redirects.tsv`. |
 | `metadata` | P2 | No metadata block → thin query-index rows (no description/og:image at import time). |
+| `icon-missing` | P0 | `:x:` (or `<span class="icon icon-x">`) with no `icons/x.svg\|png` in the code tree — the runtime fetches `/icons/x.svg` and renders a broken-image box; the asset must exist in the branch before the PUT. Needs `--icons-dir`; silent without it. |
+| `icon-prefix` | P0 | `:icon-x:` doubles the prefix the runtime adds (`icons/x.svg` exists, `icon-x.svg` does not) — author `:x:`. Same scan as `deploy`'s `davids-model-lint` ICON-PREFIX / ICON-MISSING. |
 
 `--optimizing-blocks a,b,c` overrides the block list for the cross-origin check
 (default `cards,columns,hero`) when a project's block set differs.
