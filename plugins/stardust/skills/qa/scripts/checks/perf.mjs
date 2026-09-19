@@ -13,7 +13,7 @@
  * itself is slow, findings are downgraded to info (a degraded measurement
  * window must not read as a site regression).
  */
-import { loadPlaywright, finding, pageUrl, attachOriginAuth } from '../lib.mjs';
+import { loadPlaywright, finding, pageUrl, attachOriginAuth, noteThrottled } from '../lib.mjs';
 import { gotoPaced } from './browse.mjs';
 
 const BUDGET_TRANSFER_KB = 800;
@@ -44,7 +44,7 @@ export async function run(ctx) {
   let degraded = false;
   const t0 = Date.now();
   try {
-    await fetch(NEUTRAL_HOST, { method: 'HEAD', signal: AbortSignal.timeout(10000) });
+    await fetch(opts.neutralHost || NEUTRAL_HOST, { method: 'HEAD', signal: AbortSignal.timeout(10000) });
     const ttfb = Date.now() - t0;
     if (ttfb > DEGRADED_TTFB_MS) {
       degraded = true;
@@ -84,6 +84,8 @@ export async function run(ctx) {
       continue;
     }
     if (nav && (nav.status() === 429 || nav.status() === 503)) {
+      // report.infra counts this page like browse / editability do — a throttled perf representative is a throttled page
+      noteThrottled();
       findings.push(finding('perf', 'unmeasured', 'info', p.path, `document throttled (HTTP ${nav.status()} after retries) — not measured; re-run`, { status: nav.status() }));
       await context.close();
       continue;

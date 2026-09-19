@@ -229,13 +229,26 @@ export async function pMap(items, fn, n = 6) {
  * (id `unmeasured` or `parity-unmeasured`) name the pages the origin throttled;
  * when their share of the fleet exceeds `throttleMaxPct` the report is
  * incomplete: report.html carries the banner and qa.mjs exits 2 (incomplete
- * beats "errors found"). No gate threshold lives here.
+ * beats "errors found"). Fleet-level probes (path '' — the unknown-path 404
+ * probe, the favicon probe, a replay's entry navigation) are not pages: they
+ * are listed as `unmeasuredFleet` / `fleetProbes` so a throttled probe is
+ * never silently dropped from the summary. No gate threshold lives here.
  */
 export function infraSummary(findings, pageCount, { throttleMaxPct = 5, counters = infraCounters() } = {}) {
   const unmeasured = findings.filter((f) => f.id === 'unmeasured' || f.id === 'parity-unmeasured');
   const pages = [...new Set(unmeasured.map((f) => f.path).filter(Boolean))];
+  const fleet = unmeasured.filter((f) => !f.path);
   const pct = pageCount ? Math.round((pages.length / pageCount) * 1000) / 10 : 0;
-  return { ...counters, unmeasuredFindings: unmeasured.length, unmeasuredPages: pages.length, unmeasuredPct: pct, throttleMaxPct, incomplete: pct > throttleMaxPct };
+  return {
+    ...counters,
+    unmeasuredFindings: unmeasured.length,
+    unmeasuredPages: pages.length,
+    unmeasuredPct: pct,
+    unmeasuredFleet: fleet.length,
+    fleetProbes: fleet.slice(0, 8).map((f) => `${f.check}: ${String(f.message || '').slice(0, 120)}`),
+    throttleMaxPct,
+    incomplete: pct > throttleMaxPct,
+  };
 }
 
 /* ----------------------------------------------------------------- html -- */

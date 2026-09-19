@@ -84,12 +84,12 @@ export function establishBaseline(baseFile, shot, render) {
   return { created: true };
 }
 
-async function settle(page) {
+async function settle(page, timeout = DECORATION_TIMEOUT) {
   try {
     await page.waitForFunction(() => {
       const sections = [...document.querySelectorAll('[data-section-status]')];
       return sections.length === 0 || sections.every((s) => s.dataset.sectionStatus === 'loaded');
-    }, null, { timeout: DECORATION_TIMEOUT });
+    }, null, { timeout });
     await page.waitForTimeout(SETTLE_MS);
     return true;
   } catch {
@@ -217,19 +217,21 @@ export async function run(ctx) {
         await context.close();
         return;
       }
-      const decorated = await settle(page);
-      if (!decorated) {
-        findings.push(finding('rendered', 'decoration-stalled', 'warn', p.path,
-          `[${vp.name}] EDS section decoration did not reach "loaded" within ${DECORATION_TIMEOUT / 1000}s`));
-      }
+      const decorationTimeout = opts.decorationTimeoutMs || DECORATION_TIMEOUT;
+      const decorated = await settle(page, decorationTimeout);
       await autoScroll(page);
       if (throttledRequests.length) {
-        // the origin throttled css/js/img of this page: geometry, images and the screenshot measure the throttle, not the page
+        // the origin throttled css/js/img of this page: geometry, images and the screenshot measure the throttle, not the page —
+        // and so does a stalled decoration (throttled scripts.js never decorates): one `unmeasured` row, nothing else for this pass
         noteThrottled();
         findings.push(finding('rendered', 'unmeasured', 'info', p.path,
           `[${vp.name}] ${throttledRequests.length} same-origin request(s) throttled (${throttledRequests[0].split(' ').slice(0, 2).join(' ')}) — not measured; re-run`, { requests: [...new Set(throttledRequests)].slice(0, 8) }));
         await context.close();
         return;
+      }
+      if (!decorated) {
+        findings.push(finding('rendered', 'decoration-stalled', 'warn', p.path,
+          `[${vp.name}] EDS section decoration did not reach "loaded" within ${decorationTimeout / 1000}s`));
       }
 
       // ---- rendered (D): geometry --------------------------------------

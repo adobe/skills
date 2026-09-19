@@ -47,7 +47,8 @@
  * Exit codes: 0 clean (below threshold), 1 findings at/above threshold, 2 infra error
  * (missing --base, empty inventory) OR report incomplete (throttled pages > --throttle-max —
  * exit 2 wins over exit 1: an incomplete sweep is not a verdict; re-run). report.json carries
- * `infra` { throttled, retries, serverErrors, unmeasuredPages, unmeasuredPct, incomplete }.
+ * `infra` { throttled, retries, serverErrors, unmeasuredPages, unmeasuredPct, unmeasuredFleet,
+ * fleetProbes, incomplete } — fleet-level probes (path '') are listed, never counted as pages.
  * report.json is rewritten after every check with `partial: true` — a hang in a
  * later check never loses the findings already collected. stdout carries the
  * ranked class table only (summary.json / summary.md hold the per-page rows).
@@ -204,7 +205,7 @@ const summaryFiles = writeSummary(OUT, cls, { title: 'qa sweep' });
 console.log(`\nstardust:qa — ${BASE}`);
 console.log(`pages: ${inventory.pages.length} · duration: ${report.durationSeconds}s · checks: ${checksRun.join(', ')}`);
 console.log(`findings: ${summary.error} error / ${summary.warn} warn / ${summary.info} info (+${summary.allowlisted} allowlisted)`);
-if (infra.throttled || infra.retries) console.log(`infra: ${infra.throttled} throttled response(s) after retries · ${infra.retries} retr${infra.retries === 1 ? 'y' : 'ies'} · ${infra.unmeasuredPages} page(s) unmeasured (${infra.unmeasuredPct}% of the fleet, max ${infra.throttleMaxPct}%)${infra.incomplete ? ' — THROTTLED: results incomplete, re-run' : ''}`);
+if (infra.throttled || infra.retries) console.log(`infra: ${infra.throttled} throttled response(s) after retries · ${infra.retries} retr${infra.retries === 1 ? 'y' : 'ies'} · ${infra.unmeasuredPages} page(s) unmeasured (${infra.unmeasuredPct}% of the fleet, max ${infra.throttleMaxPct}%)${infra.unmeasuredFleet ? ` · ${infra.unmeasuredFleet} fleet-level probe(s) unmeasured` : ''}${infra.incomplete ? ' — THROTTLED: results incomplete, re-run' : ''}`);
 console.log(renderTable(cls, { title: 'qa sweep', maxLines: 60 }).join('\n'));
 console.log(`report: ${join(OUT, 'report.json')} · ${join(OUT, 'report.html')} · ${summaryFiles.md}`);
 
