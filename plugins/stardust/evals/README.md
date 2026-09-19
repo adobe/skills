@@ -298,8 +298,14 @@ whose harness cases skip when Playwright is unresolvable:
   drifted layout; docs-fail / docs-pass cite sets; the real `skills/` tree):
   pins the probe line shape, `--local` accepting the plugin root or the skill
   dir itself, the `state.json#impeccable` keys (other keys preserved, an
-  unparsable file untouched), and the exit codes (probe always 0; lint 0
-  advisory / 1 `--strict` / 2 no install dir).
+  unparsable file untouched, an absent file never created), the rewrite rule
+  (only on a changed probe, `probedAt` older than `--max-age` / 24 h, or
+  `--refresh`; a non-numeric `--max-age` warns and falls back) and that
+  `reference/state-machine.md` states it, the lint's launcher verbs derived
+  from the install's own code (never a hard-coded list, never prose), cites
+  read from code only (spans, fences, indented blocks; a stray backtick is a
+  literal), and the exit codes (probe always 0; lint 0 advisory / 1 `--strict`
+  / 2 no install dir).
 
 ## What stardust v2 evals deliberately do NOT test
 

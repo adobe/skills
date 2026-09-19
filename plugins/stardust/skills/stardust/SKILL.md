@@ -48,25 +48,25 @@ delegate the actual design work to **impeccable**.
 
 1. **Resolve the impeccable dependency level.** Read the invoked skill's
    frontmatter `metadata.impeccable` (`required` | `optional` | `none`;
-   absent counts as `required`; the master itself is `required` for its
-   freeform-intent route). `none` → skip this step and step 4, noting
+   absent = `required`; the master is `required` for its freeform-intent
+   route). `none` → skip this step and step 4, noting
    `impeccable: skipped` in the skill's first `status.jsonl` line.
-   Otherwise locate impeccable — once per session run
+   Otherwise, once per session, run
    `node <plugin>/skills/stardust/scripts/impeccable-version-check.mjs
    --probe --state stardust/state.json` (`--local <dir>` for a skills
-   directory): it resolves the installed skill dir, records it as
+   directory): it resolves the skill dir, merges it into an existing
    `state.json#impeccable` (`reference/state-machine.md` § Impeccable
-   key) and prints one advisory line per copy — surface it verbatim only
-   for a newer version or a `drift:` line; never stop or degrade over it.
-   Sub-skills read `state.json#impeccable.skillDir`, never re-locate it.
+   key; never creates the file, rewrites on change only) and prints one
+   advisory line per copy — surface it verbatim only for a newer version
+   or a `drift:` line; never stop or degrade over it. Sub-skills read
+   `state.json#impeccable.skillDir` when present, never re-locate it.
    Under a permission layer read `reference/harness-permissions.md` § Two
-   classes first. If it is absent, `required` skills stop and tell the
-   user:
+   classes first. If absent, `required` skills stop and tell the user:
    > Stardust requires impeccable. Install it from
    > <https://github.com/pbakaus/impeccable> and re-run the command.
 
-   `optional` skills note `impeccable: absent` there and continue on their
-   degrade path.
+   `optional` skills note `impeccable: absent` there and continue
+   degraded.
 2. **Check the target-state files.** `PRODUCT.md` and `DESIGN.md` at the
    project root are the *target* state; check whether they exist. Do not
    run impeccable's context loader here — impeccable runs it itself on
