@@ -145,6 +145,9 @@ so the gates run uniformly:
   redeploy, `DELETE` the stale uppercase DA source, add a redirect.
 - **Long batches run in the background** (a 130-page `PUT`+preview loop exceeds a
   2-min foreground budget); log per-page OK/FAIL and re-drive only the FAILs.
+  The driver's ledger keys on path + body hash: a re-run drives FAILs and changed
+  files, skips verified unchanged pages, and never shrinks the ledger (`--force`
+  resets the selected pages only; `--plan` shows the reasons before any request).
   Transient `PUT=000` → retry; `PUT=201 PRE=4xx/400` → a path-safety case (Gate 3);
   `200 + about:error` → an image case (Gate 2).
 - **Shell and runner quirks** (zsh PATH loss in loops, bash 3.2, the 2-minute
