@@ -117,25 +117,16 @@ it rests on. `switch to redesign` runs `$stardust prepare-migration
 --switch-flow`; the extract is reused, nothing else is.
 
 **Bounded/single-page entry (one-page or pilot runs).** `--prep` is the
-site-wide contract; it is NOT the only way in. When the ask is "replicate
-just this page" — or the user wants to pilot one archetype before committing
-to a full migration — invoke `$stardust extract <URL> --single` (or
-`--pages <slug,...>` for a short list) instead. This is a first-class entry,
-not an improvisation: the recreation phase needs, per page, the captured
-page JSON (verbatim content), the per-page screenshot (ground truth), and
-the captured fonts — all of which a bounded extract provides; the source-CSS
-harvest and per-breakpoint computed styles come from Phase 3's CSS lifting
-either way. What a bounded run skips is the prep-only inventory (page
-typing, module detection), which is only needed when Phase 5 fans out to
-siblings — a pilot that later grows to site scope re-runs Phase 1 with
-`--prep`. **A bounded run also skips the descriptive synthesis**: crawl.mjs
-alone writes `pages/<slug>.json`, screenshots, and `_crawl-log.json` — it
-does NOT produce `current/PRODUCT.md` / `DESIGN.md` / `DESIGN.json`, so
-Phase 2's verbatim promotion has nothing to promote. On this path Phase 2
-takes the **bounded promotion branch** instead
-(`reference/preserve-direction.md` § 1a): replica synthesizes a minimal
-descriptive target spec from the captured page JSON + the Phase-3 CSS lift,
-marked `provenance: bounded-single`.
+site-wide contract, not the only way in: for "replicate just this page" or
+a one-archetype pilot, invoke `$stardust extract <URL> --single` (or
+`--pages <slug,...>`). A first-class entry: recreation needs, per page, the
+captured JSON, the screenshot and the fonts — all provided; the CSS lift is
+Phase 3's either way. A bounded run skips the prep-only inventory (page
+typing, module detection — needed only when Phase 5 fans out; a pilot that
+grows re-runs Phase 1 with `--prep`) AND the descriptive synthesis: no
+`current/PRODUCT.md` / `DESIGN.md` / `DESIGN.json`, so Phase 2 takes the
+**bounded promotion branch** (`reference/preserve-direction.md` § 1a),
+provenance `bounded-single`.
 
 Extract's failure modes apply as-is (bot-management headed fallback, consent
 handling, no-synthesis rule). If extract had to fall back to headed Chrome,
@@ -149,11 +140,10 @@ Full contract: `reference/preserve-direction.md`. Summary:
    verbatim to the project root as the target spec. No divergence roll, no
    re-direction, no Mode A/B — the current state IS the target. **Bounded
    entry (`--single`/`--pages`): those files don't exist** — take the
-   bounded promotion branch instead (`reference/preserve-direction.md`
-   § 1a): synthesize a minimal descriptive spec from the captured page JSON
-   + the Phase-3 CSS lift (palette, type ramp, container, buttons — exactly
-   the values the lift produces anyway), provenance `bounded-single`. Never
-   mix the branches: if `current/PRODUCT.md` exists, promotion is verbatim.
+   bounded promotion branch (`reference/preserve-direction.md` § 1a): a
+   minimal descriptive spec from the captured page JSON + the Phase-3 CSS
+   lift, provenance `bounded-single`. Never mix the branches: if
+   `current/PRODUCT.md` exists, promotion is verbatim.
 2. **Write `stardust/direction.md`** recording preserve mode: what was
    promoted, from where, provenance (verbatim `--prep` promotion vs
    `bounded-single` synthesis), and the register pointer. This is what
@@ -203,6 +193,14 @@ while direct-authored pages plateaued at 8–16%. Each new prototype imports
 the shared layers earlier ones already gated (shared canon CSS + a
 per-archetype file) and iterates only on its NEW modules — full contract:
 `reference/recreation-procedure.md` § Cumulative archetype prototypes.
+
+**Module-kind lift ledger — `progress.json.modules[]`:** one entry per
+module KIND, `{ kind, firstSeen: <slug>, lifted: { "1440": <gate artefact>,
+"360": <gate artefact> } }`. A kind is lifted when it has a gate artefact
+at BOTH breakpoints. A sibling (Phase 5) that introduces a kind absent from
+the ledger triggers a lift plus a Phase 4 gate ON THAT SIBLING at both
+breakpoints before its template counts as recreated — archetype-only
+mobile lifts left whole product families with recorded 360 residuals.
 
 **This is recreation, not redesign — do NOT delegate to impeccable craft.**
 Impeccable's redesign gates (critique, anti-template, divergence) do not
@@ -316,10 +314,13 @@ approval per the standard prototype approval flow (hands-off mode records
   media-reconcile. Siblings inherit the archetype's source-fidelity gate —
   never re-author one from scratch. **Template constancy is measured, not
   assumed**: before cloning, run `stardust/scripts/replica/sibling-variance.mjs
-  <archetype> <siblings…> --probe <block>=<sel> …` once per template and
-  budget every delta as a block VARIANT class on the sibling's content (same
-  file, § Sibling variance probe). Content-fidelity is
-  **measured per page at import time** (same file, § Content-count
+  <archetype> <siblings…> --probe <block>=<sel> … --brief` once per template
+  and budget every delta as a block VARIANT class on the sibling's content
+  (same file, § Sibling variance probe). Its `SECTIONS` block goes INTO each
+  sibling's fan-out brief: the generator walks the sibling's OWN section
+  sequence — the archetype supplies block shapes, never the order. A new
+  module kind on a sibling → the lift ledger rule (Phase 3). Content-fidelity
+  is **measured per page at import time** (same file, § Content-count
   acceptance) so importer bugs surface while cheap to fix.
 - **Delivery** via the stardust `deploy` skill per page. Bias the decode tier toward
   **template-slotted** for fixed-composition sections (deploy #95): replica
@@ -338,7 +339,7 @@ approval per the standard prototype approval flow (hands-off mode records
 **State:** replica writes its own state under `stardust/replica/` — the
 inconsistency register, `progress.json` (per page type: archetype slug,
 iterations used, per-breakpoint gate results, residuals, motion
-inventory; top-level `captureState.consent` = the project's consent mode,
+inventory, `modules[]` lift ledger; top-level `captureState.consent` = the project's consent mode,
 `accept` | `deny`, read by `gate.sh`), `motion/<slug>.json`, and
 `gates/<slug>-<width>/` evidence (each PNG with its provenance sidecar). Pipeline status (extracted → prototyped →
 approved → migrated) stays in the core `state.json` per the standard state

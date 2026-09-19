@@ -38,6 +38,12 @@
  *     --headed               headed stealth real Chrome (bot-managed sites)
  *     --locale <tag>         pin Accept-Language + locale
  *     --json                 machine-readable output
+ *     --brief                after the report, print one paste-ready markdown
+ *                            block per sibling for its fan-out brief: the
+ *                            archetype's and THIS page's section sequences
+ *                            (the generator walks the sibling's OWN sequence —
+ *                            the archetype supplies block shapes, never the
+ *                            order) and every delta to budget as a variant
  *
  * Exit codes: 0 every sibling matches the archetype within tolerance, 2 variance
  * found (budget it), 1 error, 3 bot challenge (fail loud — never measured).
@@ -72,6 +78,7 @@ Usage: node sibling-variance.mjs <archetypeURL> <siblingURL> [<siblingURL>…] [
   --headed              headed stealth real Chrome
   --locale <tag>        pin Accept-Language + locale
   --json                machine-readable output
+  --brief               print a paste-ready brief block per sibling (section sequences + deltas)
   --help                this text
 
 Exit codes: 0 no variance, 2 variance found, 1 error, 3 bot challenge.`;
@@ -80,7 +87,7 @@ function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { probes: [], main: 'main', width: 1440, tolerance: 2, consent: null, dismiss: [], headed: false, locale: null, json: false };
+  const opts = { probes: [], main: 'main', width: 1440, tolerance: 2, consent: null, dismiss: [], headed: false, locale: null, json: false, brief: false };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--probe') {
@@ -97,6 +104,7 @@ function parseArgs(argv) {
     else if (a === '--headed') { opts.headed = true; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--json') { opts.json = true; }
+    else if (a === '--brief') { opts.brief = true; }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else pos.push(a);
   }
@@ -259,6 +267,17 @@ async function main() {
         for (const f of r.findings) console.log(`  ${f.kind.padEnd(16)}${f.probe ? `${f.probe}: ` : ''}${f.msg}`);
       }
       console.log(`\n${varying ? `✗ ${varying} of ${siblings.length} sibling(s) vary from the archetype in: ${probesVarying.join(', ')} — budget variant classes for these before cloning; do not assume template constancy.` : `✓ ${siblings.length} sibling(s) match the archetype within tolerance — clone.`}`);
+      if (opts.brief) {
+        const seq = (raw) => raw.sections.map((x) => x.label).join(' > ') || '-';
+        console.log('\n--- fan-out brief blocks (paste each into its sibling\'s brief BEFORE dispatch) ---');
+        for (const r of results) {
+          console.log(`\n### Sibling variance — ${r.url} (@${opts.width}px, tolerance ${opts.tolerance}px)`);
+          console.log(`- archetype sections: ${seq(A)}`);
+          console.log(`- THIS page's sections: ${seq(r.raw)}  ← the generator walks THIS sequence; the archetype supplies block shapes, never the order`);
+          if (!r.findings.length) console.log('- deltas: none within tolerance — clone the archetype\'s block shapes over this sequence');
+          else { console.log('- deltas to budget as VARIANT classes on this page\'s content (never a forked block):'); for (const f of r.findings) console.log(`  - ${f.kind}${f.probe ? ` ${f.probe}` : ''}: ${f.msg}`); }
+        }
+      }
     }
   } finally {
     await browser.close();

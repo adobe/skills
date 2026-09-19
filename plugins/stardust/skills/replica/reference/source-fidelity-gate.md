@@ -145,6 +145,17 @@ The prototype capture is re-taken every iteration.
      --region header=header --region footer=footer   # + --region strip=<sel>|<sel>
    ```
 
+   **Multi-theme sites (a theme id on `html`/`body`, brand or product
+   themes on one template): run `chrome-parity.mjs` on one themed page per
+   template × theme id, not on the home archetype alone.** Theme tokens
+   bind per theme id, not per brand: an alias derived from the home
+   theme's surface put a white header on every dark theme while the
+   archetype gate passed — the header is a small share of page pixels.
+   Alias only tokens the live CSS actually binds to the measured element,
+   and treat the source's theme/variant classes as probe deltas → block
+   variants on the sibling's content (`../../migrate/reference/fidelity-tiers.md`
+   § Sibling variance probe) — encode the variant, never fix the page.
+
    **Glyph-dense chrome has a pixel noise floor — the ONE justified way past
    the 2% bar, and it is evidence-gated three ways.** A footer of ~50 links
    bottomed out at ~5% pixel diff with family, size, line-height, weight,
