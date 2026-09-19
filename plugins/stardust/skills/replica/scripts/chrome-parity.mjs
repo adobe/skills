@@ -29,6 +29,12 @@
  *     --tolerance <px>   ignore rect/size deltas ≤ this        (default 1)
  *     --consent <sel>    extra consent-accept selector (live side)
  *     --dismiss <sel,…>  extra overlay-dismiss selectors (live side)
+ *     --block <substr,...> abort every request whose URL contains one of the
+ *                         substrings (undismissable iframe/shadow widgets); the
+ *                         main-frame navigation and the page's own origin are
+ *                         never blocked. Run the SAME value on both sides —
+ *                         the sidecar records `blocked` and an asymmetric pair
+ *                         is refused by pixel-compare
  *     --consent-mode <m>  accept | deny (default accept; deny clicks reject-all, never accept — live-session)
  *     --headed[=window]   bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
  *     --locale <tag>     pin Accept-Language + locale (e.g. en-GB)
@@ -70,7 +76,7 @@ if (!LIVE_SESSION) {
   console.error('chrome-parity error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { isLiveHttpUrl, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil } = await import(pathToFileURL(LIVE_SESSION).href);
+const { isLiveHttpUrl, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays, reportOverlayResidue, defaultWaitUntil } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `chrome-parity — computed-style + rect diff of matched chrome elements (live vs build)
 
@@ -94,7 +100,7 @@ function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { regions: [], noDefaults: false, width: 1440, tolerance: 1, consent: null, dismiss: [], consentMode: 'accept', headed: false, locale: null, json: false, jsonFile: null, liveCache: null };
+  const opts = { regions: [], noDefaults: false, block: [], width: 1440, tolerance: 1, consent: null, dismiss: [], consentMode: 'accept', headed: false, locale: null, json: false, jsonFile: null, liveCache: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--region') {
@@ -108,6 +114,7 @@ function parseArgs(argv) {
     else if (a === '--tolerance') { opts.tolerance = Number(rest[i += 1]); }
     else if (a === '--consent') { opts.consent = rest[i += 1]; }
     else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
+    else if (a === '--block') { opts.block = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
     else if (a === '--consent-mode') { opts.consentMode = rest[i += 1]; if (!['accept', 'deny'].includes(opts.consentMode)) { console.error(`--consent-mode must be accept or deny\n\n${HELP}`); process.exit(1); } }
     else if (a === '--headed' || a.startsWith('--headed=')) { opts.headed = parseHeadedFlag(a); }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
@@ -253,10 +260,11 @@ async function settleTop(page) {
 }
 
 async function probeSide(browser, url, opts, isLive) {
-  const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 } });
+  const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 }, block: opts.block });
   const page = await ctx.newPage();
   await gotoLive(page, url, { waitUntil: defaultWaitUntil(url), settleMs: isLiveHttpUrl(url) ? 2500 : 1200, tier: isLive ? opts.tier : 1 });
-  await dismissOverlays(page, { mode: opts.consentMode, reject: isLive && opts.consentMode === 'deny' && opts.consent ? [opts.consent] : [], extra: isLive ? [...(opts.consent && opts.consentMode !== 'deny' ? [opts.consent] : []), ...opts.dismiss] : [], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
+  const dOv = await dismissOverlays(page, { mode: opts.consentMode, reject: isLive && opts.consentMode === 'deny' && opts.consent ? [opts.consent] : [], extra: isLive ? [...(opts.consent && opts.consentMode !== 'deny' ? [opts.consent] : []), ...opts.dismiss] : [], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
+  reportOverlayResidue('chrome-parity', dOv);
   await settleTop(page);
   const out = {};
   for (const reg of opts.regions) out[reg.name] = await page.evaluate(probeRegion, isLive ? reg.live : reg.build);

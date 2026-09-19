@@ -1,0 +1,17 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>consent late fixture</title>
+<style>
+  html,body{margin:0;padding:0} body{width:800px;font-family:sans-serif}
+  section{height:500px;background:#33cc66}
+  .cookie-banner{position:fixed;bottom:0;left:0;width:800px;height:120px;background:#123;color:#fff;padding:12px;box-sizing:border-box}
+</style></head>
+<body>
+<main><section><h1>Innhold</h1></section><section><h2>Mer</h2></section></main>
+<script>
+  setTimeout(() => {
+    const d = document.createElement('div'); d.className = 'cookie-banner'; d.id = 'late-banner';
+    d.innerHTML = '<p>Vi bruker cookies.</p><button onclick="document.body.dataset.consent=\'late-text\';document.getElementById(\'late-banner\').remove()">Godta alle</button>';
+    document.body.appendChild(d);
+  }, 1200);
+</script>
+</body></html>

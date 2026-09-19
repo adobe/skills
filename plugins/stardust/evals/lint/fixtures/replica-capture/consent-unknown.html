@@ -1,0 +1,11 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>consent unknown fixture</title>
+<style>
+  html,body{margin:0;padding:0} body{width:800px;font-family:sans-serif}
+  section{height:500px;background:#ffcc00}
+  .cookie-banner{position:fixed;bottom:0;left:0;width:800px;height:120px;background:#222;color:#fff;padding:12px;box-sizing:border-box}
+</style></head>
+<body>
+<main><section><h1>Content</h1></section><section><h2>More</h2></section></main>
+<div class="cookie-banner" id="unknown-banner"><p>We use cookies to improve the site.</p><button onclick="document.body.dataset.consent='weiter';document.getElementById('unknown-banner').remove()">Weiter</button></div>
+</body></html>

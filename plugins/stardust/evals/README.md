@@ -135,7 +135,7 @@ out of `total` (100 per eval).
 
 ### Lints
 
-`npm run lint:stardust` (repo root) runs fourteen static checks over `skills/`,
+`npm run lint:stardust` (repo root) runs the static checks below over `skills/`,
 each a plain ESM script under `lint/` that exits 1 with one line per finding,
 then the fixture tests under `fixtures/` (plain `node:assert` scripts that
 import a script's exported pure functions — no playwright needed) and one
@@ -203,6 +203,14 @@ import a script's exported pure functions — no playwright needed) and one
   `lint/fixtures/redirects/redirects.tsv`: the row expansion, the exit-2
   shadow verdict (a Source that is also a delivered page) and `--check`
   writing nothing.
+- `replica-capture-fixtures.mjs` — static contracts always (`node --check`,
+  `bash -n`, exit-5 / integer-scroll / opacity-hide / route.fallback greps,
+  the pure live-session and review-image exports); browser fixtures for
+  stitch-shot, dismissOverlays (incl. the sticky-header negative),
+  `--block`, pixel-compare offsets + review, anchor `--landmarks` and gate.sh
+  (landmark cache, `anchor-live.skip`) when `STARDUST_GATE_DEPS=<dir>/node_modules`
+  (or the repo-root `node_modules`) resolves playwright + pngjs + pixelmatch,
+  else one `SKIP` line.
 
 ## What stardust v2 evals deliberately do NOT test
 

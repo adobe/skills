@@ -57,6 +57,12 @@
  *     --hover <sel>       element family to hover-diff (repeatable)
  *     --consent <sel>     extra consent-accept selector
  *     --dismiss <sel,...> extra overlay-dismiss selectors
+ *     --block <substr,...> abort every request whose URL contains one of the
+ *                         substrings (undismissable iframe/shadow widgets); the
+ *                         main-frame navigation and the page's own origin are
+ *                         never blocked. Run the SAME value on both sides —
+ *                         the sidecar records `blocked` and an asymmetric pair
+ *                         is refused by pixel-compare
  *     --headed[=window]    bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
  *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
  *     --ua <string>       user agent                        (default real-Chrome)
@@ -87,7 +93,7 @@ if (!LIVE_SESSION) {
   console.error('motion-observe error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { REAL_CHROME_UA, isLiveHttpUrl, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays } = await import(pathToFileURL(LIVE_SESSION).href);
+const { REAL_CHROME_UA, isLiveHttpUrl, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays, reportOverlayResidue } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `motion-observe — runtime motion observation (implement only what fired)
 
@@ -97,6 +103,7 @@ Usage: node motion-observe.mjs <url> <out.json> [options]
   --hover <sel>     element family to hover-diff (repeatable)
   --consent <sel>   extra consent-accept selector (clicked, not removed)
   --dismiss <sel,…> extra overlay-dismiss selectors
+  --block <substr,…> abort requests whose URL contains a substring (3rd-party widgets with no close control; never the page's own origin) — SAME value on both sides
   --headed[=window]  bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB)
   --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
@@ -111,7 +118,7 @@ function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { width: 1440, clicks: [], hovers: [], consent: null, dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: 2500, timeout: 60000 };
+  const opts = { width: 1440, clicks: [], hovers: [], block: [], consent: null, dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: 2500, timeout: 60000 };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -119,6 +126,7 @@ function parseArgs(argv) {
     else if (a === '--hover') { opts.hovers.push(rest[i += 1]); }
     else if (a === '--consent') { opts.consent = rest[i += 1]; }
     else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
+    else if (a === '--block') { opts.block = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
     else if (a === '--headed' || a.startsWith('--headed=')) { opts.headed = parseHeadedFlag(a); }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--ua') { opts.ua = rest[i += 1]; }
@@ -141,6 +149,7 @@ async function main() {
     const ctx = await newLiveContext(browser, {
       ua: opts.ua, locale: opts.locale,
       viewport: { width: opts.width, height: VH },
+      block: opts.block,
     });
     const page = await ctx.newPage();
     // Challenge/blocked interstitial → loud BotChallengeError (exit 3); a
@@ -153,6 +162,7 @@ async function main() {
     const extra = [...(opts.consent ? [opts.consent] : []), ...opts.dismiss];
     const d = await dismissOverlays(page, { extra, lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
     if (d.consent) console.error(`consent dismissed via ${d.consent}`);
+    reportOverlayResidue('motion-observe', d);
 
     // ---- instrument BEFORE any scrolling, so the traversal exposes every
     // scroll-triggered behavior with its trigger class and scrollY ----

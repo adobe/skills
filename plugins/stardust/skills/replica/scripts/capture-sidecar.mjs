@@ -26,11 +26,13 @@
  *     technique: 'headless' | 'headed-stealth',
  *     storageState?: boolean,                            // optional (session pin)
  *     variants?: [ ... ],                                // optional (A/B / geo markers)
- *     hidden?: [], pinnedHidden?: [], tail?: {}, masksRects?: []   // optional
+ *     blocked: [ '<substr>' ],                             // --block list (refusal key; [] when none)
+ *     hidden?: [], pinnedHidden?: [], tail?: {}, pendingDecodes?, seamRepeats?   // optional
  *   }
  *
  * Refusal keys — a pair is incomparable when any of these differ, or when
- * only one side has a sidecar: instrument.name, width, vh, dpr, consent.mode.
+ * only one side has a sidecar: instrument.name, width, vh, dpr, consent.mode,
+ * blocked (as a set — a --block on one side only is a false measurement).
  * A pair with NO sidecar on either side (pre-sidecar PNGs compared directly)
  * is allowed through with a warning; gate.sh never lets that happen for the
  * live reference (it recaptures a live.png that has no sidecar).
@@ -40,7 +42,7 @@
 import { readFileSync, writeFileSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 
-export const REFUSAL_KEYS = ['instrument.name', 'width', 'vh', 'dpr', 'consent.mode'];
+export const REFUSAL_KEYS = ['instrument.name', 'width', 'vh', 'dpr', 'consent.mode', 'blocked'];
 
 export const sidecarPath = (png) => `${png}.json`;
 
@@ -54,6 +56,9 @@ export function writeSidecar(png, data) {
 }
 
 const get = (o, k) => k.split('.').reduce((x, y) => (x == null ? undefined : x[y]), o);
+// list-valued keys (blocked[]) compare as sorted sets; an absent list equals an empty one.
+const norm = (v) => (Array.isArray(v) ? [...new Set(v.map(String))].sort() : v === undefined ? undefined : v);
+const normKey = (v, k) => (k === 'blocked' && v === undefined ? [] : v);
 
 /**
  * Compare the two sidecars. Returns { sidecars, problems } where problems is
@@ -66,7 +71,7 @@ export function comparability(aPng, bPng) {
   if (!a && !b) return { sidecars: null, problems: [] };
   const problems = [];
   if (!a || !b) problems.push(`only ${a ? 'A' : 'B'} has a provenance sidecar (<png>.json) — the other side was captured by a different or older instrument`);
-  else for (const k of REFUSAL_KEYS) { const x = get(a, k); const y = get(b, k); if (x !== y) problems.push(`${k}: ${JSON.stringify(x)} vs ${JSON.stringify(y)}`); }
+  else for (const k of REFUSAL_KEYS) { const x = norm(normKey(get(a, k), k)); const y = norm(normKey(get(b, k), k)); if (JSON.stringify(x) !== JSON.stringify(y)) problems.push(`${k}: ${JSON.stringify(x)} vs ${JSON.stringify(y)}`); }
   return { sidecars: { a, b }, problems };
 }
 

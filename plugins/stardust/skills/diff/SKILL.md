@@ -73,8 +73,7 @@ prototype's DOM and the built DOM compare symmetrically, then diffs them.
 # content-inventory.mjs (the deploy gates use their own synced copies in skills/deploy/scripts/).
 # Prereq: a RENDERABLE source. Static → serve from its own dir (python3 -m http.server).
 # The build URL must be the DECORATED page (live/preview or a local harness), not raw markup.
-# verify the port is YOURS (lsof -nP -iTCP:8791 -sTCP:LISTEN) — a stale server from another
-# project makes both probes measure a foreign page
+# verify the port is YOURS (lsof -nP -iTCP:8791 -sTCP:LISTEN) — a foreign server = a foreign page
 PROTO="http://localhost:8791/<prototype>.html"
 BUILD="https://<branch>--<repo>--<owner>.aem.page/<path>"   # or http://localhost:3000/<harness>
 
@@ -96,9 +95,8 @@ Akamai-class bot management):
   in `scripts/live-session.mjs`), decided **per URL side**, three tiers:
   - localhost/127.0.0.1 → `networkidle` (local prototypes / harnesses, unchanged);
   - EDS build/preview origins — hostnames ending in `.aem.page`, `.aem.live`, `.hlx.page`,
-    `.hlx.live` → `networkidle` (they decorate asynchronously and reliably reach
-    networkidle; measuring at domcontentloaded reads the pre-decoration DOM — flaky
-    false reds / FONT FORK on deploy Step 10);
+    `.hlx.live` → `networkidle` (they decorate asynchronously; domcontentloaded
+    reads the pre-decoration DOM — false reds / FONT FORK on deploy Step 10);
   - all other live http(s) → `domcontentloaded` (live sites with analytics beacons
     never reach networkidle).
 
@@ -106,6 +104,8 @@ Akamai-class bot management):
 - `--dismiss [sel,...]` — dismiss overlays on both sides: cookie consent (clicked, not
   removed; `--consent-mode deny` clicks reject-all, never accept) AND timed
   marketing/newsletter modals, plus extra site-specific selectors; mouse parked after.
+  `../replica/scripts/stitch-shot.mjs` adds `--allow-consent`, `--no-dismiss-defaults`,
+  `--remove-text`, `--keep-pinned`, `--exclude` (its `--help`).
 - `--headed[=window]` — bot-management ladder start tier (Operator card, live targets row).
 - `--locale <tag>` — pin Accept-Language + context locale (geo-redirecting sites capture a
   different locale per run otherwise).
@@ -159,9 +159,9 @@ block's flattened-shape fallback, not the authoring.
 
 ## Workflow use
 
-Call both scripts in a validation phase and gate on the output. The
-the stardust `deploy` skill's conversion workflow Validate phase runs both after building
-a local harness; mirror that:
+Call both scripts in a validation phase and gate on the output. The stardust
+`deploy` skill's conversion workflow Validate phase runs both after building a
+local harness; mirror that:
 
 1. Build/serve the decorated build page (e.g. a local QA harness, or the branch preview).
 2. `visual-diff … --profile eds` → fix STRETCHED/FLUSH-LEFT/SURFACE-GROUND/GAP flags (unless justified).
@@ -169,5 +169,4 @@ a local harness; mirror that:
 4. Loop until visual none/justified AND content-diff 0 structural 🔴.
 
 > Naming note: this skill ships in the `stardust` plugin and is invoked as
-> the stardust `diff` skill. It pairs with the stardust `deploy` skill, whose Step 10 runs both probes
-> as its Validate gate.
+> the stardust `diff` skill.

@@ -311,8 +311,12 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   item 5); style deltas are named in one pass, pixels only say where.
 - Every fix cites the instrument line that demanded it.
 - Images are read per `../../stardust/reference/context-hygiene.md` § Image
-  reads: at most one band crop per hot band the instruments name, ≤ 10 per
-  round, never `live.png`/`proto.png`/`diff*.png` whole.
+  reads: **`review-<label>.png` first** — `gate.sh` writes it every round
+  (`pixel-compare --review`; standalone `../scripts/review-image.mjs
+  --bands`): the 3 worst bands as [live | build] rows with a diff heat bar,
+  one Read for the whole round. Then at most one full-resolution band per
+  hot band still unexplained (`crop-compare --out`), ≤ 10 per round, never
+  `live.png`/`proto.png`/`diff*.png` whole — the count is the cost.
 - **Before counting an iteration, verify the fix changed the render.** A
   byte-identical differing-pixel count after a "fix" means the rule was a
   no-op (recorded: a padding whose value the EDS section wrapper already
@@ -342,11 +346,18 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   once it passed, and each content/visual re-run costs 2 extra live
   navigations — against this doc's own hit-minimization rule. A fix that
   touched markup re-runs all three; a CSS-value fix re-runs pixels only.
-- **The section-anchor probe is the fast inner loop** (`anchor.mjs`, § Band
-  breakdown): run it on both sides, fix the first mismatched section
-  top-down, re-run pixels. Build-side anchor/computed-style passes never
-  navigate the live origin and are FREE — the cap governs live-gate cycles,
-  not measurement.
+- **The landmark table is the first read of every round; the section-anchor
+  probe is the fast inner loop** (`anchor.mjs --landmarks`, § Band
+  breakdown). `gate.sh` prints it before the band table each round (live
+  side from the cached `anchor-live.json`, build side free) and records it
+  in `gate-<label>.json#landmarks`: headings/CTAs paired by text, first
+  image per section, footer, with `Δy`. Fix the `first non-zero Δ` line's
+  section top-down; open the band table only when it says `landmarks
+  clean` or the remaining Δ are named residuals (nondeterministic
+  landmarks, the T05.1 regimes). It is a diagnosis order inside one round —
+  not a pass bar. Build-side anchor/computed-style passes never navigate
+  the live origin and are FREE — the cap governs live-gate cycles, not
+  measurement.
 - After iteration 3: log residuals (§ Residual logging) and move on. A
   documented residual is a pass with an asterisk; an undocumented fourth
   loop is scope creep.
@@ -511,13 +522,31 @@ rather than erroring.
    `deny` is right when accepting loads nondeterministic third-party
    walls the build cannot carry; in `deny` the accept list is never
    tried, and a dialog that cannot be rejected is an invalid capture
-   (exit 5, no PNG, no verdict) — never a silent accept.
+   (exit 5, no PNG, no verdict) — never a silent accept. The shared
+   dismissal inspects every match of a selector and clicks the first
+   visible one, falls back to an exact multilingual label (en/de/fr/it/
+   es/nl/nb/da/sv/pt/pl, overlay-scoped, selectors first), sweeps child
+   frames and open shadow roots, and re-runs all of it inside one late-mount
+   window. What no click removes — CMP re-open launcher, accessibility
+   trigger, feedback tab — is hidden (`visibility`, layout kept) on BOTH
+   sides (`--no-dismiss-defaults` disables the list; `--remove-text
+   "<phrase>"` is the last resort for one undismissable bar, both sides).
+   A consent container still visible after the window is **exit 5** on
+   stitch-shot (`consent present, not dismissed — <container>`; `--consent
+   <sel>` or `GATE_ALLOW_CONSENT=1` / `--allow-consent` on both sides) and
+   a `WARN consent present` on the structural probes.
 7. **Granularity parity for JOIN/SPLIT false-reds (#87)** — mirror live
    node granularity or confirm-justify per
    `recreation-procedure.md` § Granularity parity.
 8. **Capture-state policy** — CDN-403 placeholders and hydration states are
    ground truth (`recreation-procedure.md` § Capture-state); a probe flag
-   over a logged capture-state zone is justified.
+   over a logged capture-state zone is justified. A third-party widget with
+   no close control (iframe/shadow-hosted chat, survey) is blocked at the
+   route, not eyeballed: `--block <host-substr,…>` on every live-session
+   instrument (`GATE_BLOCK` on `gate.sh`) — opt-in, host-substring, never
+   the page's own origin, the SAME value on both sides: the sidecar records
+   `blocked` and pixel-compare refuses an asymmetric pair. A consent-manager
+   host in that list is a consent decision (D3), and the instrument says so.
 9. **Two classes only the gate sees:** rendered-face font forks on inner
    spans (trust the width probe over captured computed styles) and overlay
    scrims (recover by per-row luminance fitting). Both in
@@ -530,12 +559,12 @@ rather than erroring.
     reality). The shared `dismissOverlays` parks the mouse (bottom-left)
     after every dismissal pass — all three instruments inherit it; mirror
     it in any ad-hoc capture that clicks anything.
-11. **Fixed/sticky chrome × stitched capture.** Fixed elements repeat at
-    every chunk seam, occlude a band of content per seam, and can morph
+11. **Fixed/sticky chrome × stitched capture.** Fixed elements can morph
     with scroll state — chunks 2+ then capture different chrome than
-    chunk 1. Symmetry requires the prototype to replicate the chrome
-    including its scroll-state trigger; any height delta turns the seam
-    repeats into ghost bands in the diff. Full treatment:
+    chunk 1. Seam repeats are now instrument-provided (rule 16 hides pinned
+    chrome on chunks 2+ on both sides); what remains a recreation duty is
+    the chrome itself, replicated fixed with its scroll-state trigger, so
+    chunk 1 and the chrome crop gate match. Full treatment:
     `recreation-procedure.md` § Fixed and sticky chrome.
 12. **A challenge/blocked response FAILS LOUD — it is never measured.** All
     three instruments detect bot-management interstitials on every
@@ -593,6 +622,33 @@ rather than erroring.
     <png>` (bot-walled sites where only the extraction's hand-solved
     capture exists) carries `source: extract-capture`; that compare is
     forced once, said out loud, and its number is marked `forced`.
+16. **Pinned chrome is hidden on chunks 2+, scroll is integer, decodes are
+    raced.** stitch-shot sets `opacity:0 !important` on every fixed and
+    stuck-sticky element before shooting chunks 2+ and restores it after
+    (chunk 1 keeps everything for the chrome crop; `--keep-pinned` is the
+    off-switch), rounds `window.scrollY` before placing a chunk (a
+    fractional scroll rotates the whole chunk by half a width), and bounds
+    the in-viewport `img.decode()` wait. Read the verdict block: `pinned
+    hidden on chunks 2+: N […]` is the list; `WARN fixed overlay baked into N seams`
+    means chrome the hide could not reach (iframe/shadow-hosted) — pass
+    `--exclude <sel>` on both sides or mask the seam rows.
+17. **Short and invalid captures are exit 5 — no PNG, no verdict, never a
+    FAIL.** stitch-shot re-measures the settled height after one more
+    `--wait` (growth = load race: it settles again and says so);
+    `gate.sh` passes `--expect-height` from the crawl screenshot on the
+    live side and a height under 40 % of it retries once then exits 5; an
+    error-boundary page or a fixed/dialog element still covering much of
+    the first viewport after dismissal exits 5 too (`--allow-overlay`,
+    both sides, when the overlay is the page). `gate.sh` removes the
+    partial PNG, caches nothing and re-exits 5 like it re-exits 3.
+18. **`--exclude` is the last resort for in-flow widgets, and symmetric.**
+    A chat launcher or feedback tab that no dismissal removes and that
+    takes layout space is `display:none`d after the settle by `--exclude
+    <sel,…>` — on BOTH sides, recorded in the sidecar `hidden[]`.
+    `--exclude-live-only` exists for a widget the build never had; its
+    verdict line says ASYMMETRIC and the number is not a gate number.
+    Read `tail Npx below footer: …` on the same block before chasing a
+    footer-band residual: it names the element under the footer.
 
 ### Script adaptations (built-in flags first — but fail-loud outranks script immutability)
 
@@ -613,6 +669,8 @@ node stardust/scripts/diff/visual-diff.mjs "$LIVE" "$PROTO" --profile generic \
 
 # non-standard overlay closer / pinned locale / bot-managed site:
 #   --dismiss "#custom-close"    --locale en-GB    --headed
+# undismissable iframe/shadow widget (chat, survey) — same value BOTH sides:
+#   --block "chat-vendor.example,ads.example"   (gate.sh: GATE_BLOCK=…)
 ```
 
 Defaults when no flags are passed: real-Chrome UA + standard headers on

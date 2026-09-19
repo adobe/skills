@@ -28,7 +28,11 @@
 #     "http://localhost:8791/home-proposed.html" 1440 iter2
 #
 # Evidence lands in stardust/replica/gates/<slug>-<width>/
-# (live.png, build.png, diff-<label>.png, gate-<label>.json).
+# (live.png, build.png, diff-<label>.png, review-<label>.png, gate-<label>.json,
+# anchor-live.json, anchor-live.skip, landmarks-<label>.json).
+# review-<label>.png is the round's ONE image to read: the 3 worst bands as
+# [live | build] rows with a diff heat bar (pixel-compare --review); open a
+# full-resolution band only via crop-compare --out.
 #
 # gate-<label>.json is the round's RECORD — pixel-compare's --json-out
 # (pixelPct, pixelPctUnmasked, masks[] with area %, heightDelta, bands) plus
@@ -44,15 +48,21 @@
 # codes: 0 gate PASS, 2 gate FAIL (over threshold), 3 bot challenge,
 # 1 capture/compare error (incl. incomparable captures), 4 build-side
 # identity assertion failed (the URL serves something that isn't this
-# project's page — wrong/stale server), 5 invalid capture (consent dialog
-# present, --consent-mode deny impossible — no verdict), 124 instrument
+# project's page — wrong/stale server), 5 invalid capture — no verdict,
+# never a FAIL (consent dialog still present after the dismissal window —
+# in deny mode nothing to reject, in accept mode nothing matched: pass
+# --consent <sel> via the crawl log's consent.method, or GATE_ALLOW_CONSENT=1;
+# live settled height < 40 % of the crawl screenshot's after one retry;
+# error-boundary page; an overlay still covering > 30 % of the first
+# viewport — the partial PNG is removed, nothing is cached), 124 instrument
 # deadline exceeded (not a measurement — see below).
 #
 # Comparable captures (gate doc § Hardening rule 15): both sides are taken by
 # stitch-shot with the same width, vh, dpr and CONSENT MODE, and each PNG
 # carries its provenance sidecar (<png>.json). A cached live.png WITHOUT a
-# sidecar is a pre-sidecar capture of unknown instrument state: it is deleted
-# and re-taken (one loud line) rather than compared. The consent mode comes
+# sidecar is a pre-sidecar capture of unknown instrument state, and one whose
+# sidecar names an OLDER stitch-shot procedure version is a different-procedure
+# capture: both are deleted and re-taken (one loud line) rather than compared. The consent mode comes
 # from GATE_CONSENT_MODE, else stardust/replica/progress.json#captureState.consent,
 # else accept — and is passed to BOTH captures so the pair stays comparable.
 #
@@ -68,6 +78,14 @@
 #   GATE_STITCH_TIMEOUT  seconds per stitch-shot          (default 300)
 #   GATE_COMPARE_TIMEOUT seconds per pixel-compare        (default 120)
 #   GATE_REAP_MIN        stale-instrument age in minutes  (default 15; 0 disables)
+#   GATE_ALLOW_CONSENT=1 pass --allow-consent to BOTH captures (a consent
+#                        container that survives dismissal is otherwise exit 5)
+#   GATE_ANCHOR_TIMEOUT  seconds per anchor.mjs landmark pass  (default 120)
+#   GATE_LANDMARKS=0     skip the landmark Δy table (anchor.mjs --landmarks);
+#                        also clears anchor-live.skip (see below)
+#   GATE_BLOCK           comma list of URL substrings → --block on BOTH captures
+#                        (undismissable third-party widgets; the sidecar refuses
+#                        an asymmetric pair, so the gate is the only safe place)
 set -u
 
 SLUG=${1:?usage: gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>] [--live-from-capture <png>] [--regime prototype|published-origin]}
@@ -99,6 +117,9 @@ CONSENT_MODE=${GATE_CONSENT_MODE:-}
 [ -z "$CONSENT_MODE" ] && CONSENT_MODE=$(node -e 'try{const j=JSON.parse(require("fs").readFileSync("stardust/replica/progress.json","utf8"));process.stdout.write(j.captureState&&j.captureState.consent||"")}catch{}' 2>/dev/null)
 CONSENT_MODE=${CONSENT_MODE:-accept}
 COMPARE_TIMEOUT=${GATE_COMPARE_TIMEOUT:-120}
+STITCH_COMMON=""
+[ "${GATE_ALLOW_CONSENT:-0}" = "1" ] && STITCH_COMMON="--allow-consent"
+[ -n "${GATE_BLOCK:-}" ] && STITCH_COMMON="$STITCH_COMMON --block $GATE_BLOCK"
 REAP_MIN=${GATE_REAP_MIN:-15}
 capped() { local t=$1 l=$2; shift 2; node "$HERE/run-capped.mjs" --timeout "$t" --label "$l" -- "$@"; }
 
@@ -173,23 +194,91 @@ elif [ -f "$DIR/live.png.json" ] && node -e 'const j=JSON.parse(require("fs").re
 fi
 if [ -f "$DIR/live.png" ] && [ ! -f "$DIR/live.png.json" ]; then
   echo "gate.sh: $DIR/live.png has no provenance sidecar (pre-sidecar capture, instrument state unknown) — treating it as stale and re-capturing" >&2
-  rm -f "$DIR/live.png"
+  rm -f "$DIR/live.png" "$DIR/anchor-live.skip"
 fi
+# A cached reference taken by an OLDER stitch-shot procedure (instrument.version
+# in its sidecar ≠ this script's) is stale too: v3 hides pinned chrome on
+# chunks 2+, so a v2 live.png against a v3 build.png would be an asymmetric
+# pair the sidecar cannot refuse (comparability is keyed on name, not version).
+# Never applies to an imported extract capture (source: extract-capture).
+STITCH_VER=$(grep -oE "name: 'stitch-shot', version: '[0-9]+'" "$HERE/stitch-shot.mjs" | grep -oE "[0-9]+" | tail -1)
+if [ -f "$DIR/live.png.json" ] && [ -n "$STITCH_VER" ] && [ -z "$FORCE" ]; then
+  OLD_VER=$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(j.source==="extract-capture"?String(process.argv[2]):String(j.instrument&&j.instrument.version||""))' "$DIR/live.png.json" "$STITCH_VER" 2>/dev/null)
+  if [ "$OLD_VER" != "$STITCH_VER" ]; then
+    echo "gate.sh: $DIR/live.png was captured by an older stitch-shot procedure (instrument.version ${OLD_VER:-unknown}, current $STITCH_VER — the capture procedure changed) — treating it as stale and re-capturing so both sides use the same procedure" >&2
+    rm -f "$DIR/live.png" "$DIR/live.png.json" "$DIR/anchor-live.json" "$DIR/anchor-live.skip"
+  fi
+fi
+# Short-capture guard for the LIVE side: when the extract crawl's screenshot
+# of this page exists, its height (PNG IHDR, no deps) is the expectation —
+# a valid capture at any width is never < 40 % of it (a 360 page reflows
+# taller, not shorter). stitch-shot retries once, then exits 5. The build
+# side is not guarded this way: an in-progress prototype may legitimately be
+# short, and the height-delta bar already fails it honestly.
+EXPECT=""
+[ -f "stardust/current/assets/screenshots/$SLUG.png" ] && EXPECT=$(node -e 'const b=require("fs").readFileSync(process.argv[1]);process.stdout.write(String(b.readUInt32BE(20)))' "stardust/current/assets/screenshots/$SLUG.png" 2>/dev/null)
+EXPECT_ARGS=""
+[ -n "$EXPECT" ] && [ "$EXPECT" -gt 0 ] 2>/dev/null && EXPECT_ARGS="--expect-height $EXPECT"
 if [ ! -f "$DIR/live.png" ]; then
-  capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle --consent-mode "$CONSENT_MODE"
+  rm -f "$DIR/anchor-live.skip"   # a fresh live reference gets one fresh landmark probe (anchor-live.json is keyed on URL+width: still valid)
+  # shellcheck disable=SC2086
+  capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle --consent-mode "$CONSENT_MODE" $EXPECT_ARGS $STITCH_COMMON
   rc=$?
   [ $rc -eq 124 ] && rm -f "$DIR/live.png" "$DIR/live.png.json"   # never leave a partial live capture to be reused
+  [ $rc -eq 5 ] && { rm -f "$DIR/live.png" "$DIR/live.png.json"; echo "gate.sh: live capture INVALID (exit 5: short capture / overlay / error page / consent not deniable) — not a verdict, never a FAIL; nothing cached" >&2; exit 5; }
   [ $rc -ne 0 ] && { echo "gate.sh: live capture failed (exit $rc) — not comparing" >&2; exit $rc; }
 fi
 
 # Build side: re-captured every iteration.
-capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W" --consent-mode "$CONSENT_MODE"
+# shellcheck disable=SC2086
+capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W" --consent-mode "$CONSENT_MODE" $STITCH_COMMON
 rc=$?
+[ $rc -eq 5 ] && { rm -f "$DIR/build.png" "$DIR/build.png.json"; echo "gate.sh: build capture INVALID (exit 5: overlay / error page / consent not deniable) — not a verdict, never a FAIL" >&2; exit 5; }
 [ $rc -ne 0 ] && { echo "gate.sh: build capture failed (exit $rc) — not comparing" >&2; exit $rc; }
+
+# Landmark Δy table — the round's FIRST diagnostic (gate doc § Reading the
+# band breakdown): anchor.mjs --landmarks on the live side (cached in
+# anchor-live.json — one live probe per breakpoint per full gate run, the
+# sanctioned A4/A115 cache) and on the build side (free), paired by text; the
+# `first non-zero Δ` line names the section to fix before any band is read.
+# Never changes the round's exit code; GATE_LANDMARKS=0 skips it (and clears
+# the skip marker); an imported live reference (--live-from-capture,
+# bot-walled) skips the live probe — no extra live hits there. A live probe
+# that fails (challenge one tier below what stitch-shot cleared, deadline 124)
+# writes nothing to the cache, so without a marker EVERY later round would
+# spend one more live hit on it: anchor-live.skip (rc + timestamp) records the
+# failure once and the live pass is skipped while it exists — it goes with
+# live.png (stale/re-capture branches above). Record: landmarks-<label>.json →
+# gate-<label>.json.
+ANCHOR_TIMEOUT=${GATE_ANCHOR_TIMEOUT:-120}
+ANCHOR_COMMON="--consent-mode $CONSENT_MODE"
+[ -n "${GATE_BLOCK:-}" ] && ANCHOR_COMMON="$ANCHOR_COMMON --block $GATE_BLOCK"
+rm -f "$DIR/landmarks-$LBL.json"
+[ "${GATE_LANDMARKS:-1}" = "0" ] && rm -f "$DIR/anchor-live.skip"
+if [ "${GATE_LANDMARKS:-1}" != "0" ]; then
+  if [ -n "$FORCE" ]; then
+    echo "gate.sh: landmark table skipped — imported live reference (no live hits); run anchor.mjs --landmarks by hand against a stitched reference" >&2
+  elif [ -f "$DIR/anchor-live.skip" ]; then
+    echo "gate.sh: landmark table skipped — the live landmark probe failed earlier for this reference ($(cat "$DIR/anchor-live.skip")); no further live hits for it — delete $DIR/anchor-live.skip (or live.png) to re-probe" >&2
+  else
+    # shellcheck disable=SC2086
+    capped "$ANCHOR_TIMEOUT" "anchor live $SLUG@$W" node "$HERE/anchor.mjs" "$LIVE_URL" --width "$W" --landmarks --cache "$DIR/anchor-live.json" $ANCHOR_COMMON >/dev/null
+    arc=$?
+    if [ $arc -ne 0 ]; then
+      printf 'exit %s at %s\n' "$arc" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$DIR/anchor-live.skip"
+      echo "gate.sh: landmark table unavailable (live anchor exit $arc) — pixel round continues; the live probe is not retried on later rounds (anchor-live.skip written; delete it or live.png to re-probe)" >&2
+    else
+      # shellcheck disable=SC2086
+      capped "$ANCHOR_TIMEOUT" "anchor build $SLUG@$W" node "$HERE/anchor.mjs" "$BUILD_URL" --width "$W" --landmarks --against "$DIR/anchor-live.json" --json-out "$DIR/landmarks-$LBL.json" $ANCHOR_COMMON
+      arc=$?
+      [ $arc -ne 0 ] && echo "gate.sh: landmark table unavailable (build anchor exit $arc) — pixel round continues" >&2
+    fi
+  fi
+fi
 
 # pixel-compare supervises its own deadline (--timeout); exit 124 = no verdict.
 # shellcheck disable=SC2086
-node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --timeout "$COMPARE_TIMEOUT" --json-out "$DIR/gate-$LBL.json" $FORCE
+node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --review "$DIR/review-$LBL.png" --timeout "$COMPARE_TIMEOUT" --json-out "$DIR/gate-$LBL.json" $FORCE
 rc=$?
 
 # Round record: regime + reference + verdict are EMITTED here (see header) so
@@ -202,16 +291,18 @@ case "$BUILD_URL" in
 esac
 REGIME=${REGIME_OVERRIDE:-$REGIME}
 if [ -f "$DIR/gate-$LBL.json" ]; then
-  node - "$DIR/gate-$LBL.json" "$DIR/live.png" "$SLUG" "$LBL" "$W" "$LIVE_URL" "$BUILD_URL" "$REGIME" "$rc" <<'NODE'
+  node - "$DIR/gate-$LBL.json" "$DIR/live.png" "$SLUG" "$LBL" "$W" "$LIVE_URL" "$BUILD_URL" "$REGIME" "$rc" "$DIR/landmarks-$LBL.json" <<'NODE'
 const fs = require('fs');
-const [rec, live, slug, label, width, liveUrl, buildUrl, regime, rcStr] = process.argv.slice(2);
+const [rec, live, slug, label, width, liveUrl, buildUrl, regime, rcStr, lmFile] = process.argv.slice(2);
 const rc = Number(rcStr);
 const j = JSON.parse(fs.readFileSync(rec, 'utf8'));
+// landmark table (anchor.mjs --landmarks --against): rows, unpaired, firstDelta — absent when skipped/unavailable
+let landmarks = null; try { const lm = JSON.parse(fs.readFileSync(lmFile, 'utf8')); if (lm.pair) landmarks = { rows: lm.pair.rows, unpaired: lm.pair.unpaired, firstDelta: lm.pair.firstDelta, clean: lm.pair.clean }; } catch { /* no table this round */ }
 let side = null; try { side = JSON.parse(fs.readFileSync(`${live}.json`, 'utf8')); } catch { /* no sidecar: mtime */ }
 const capturedAt = side?.capturedAt || fs.statSync(live).mtime.toISOString();
 const out = { slug, label, width: Number(width), regime,
   ref: { url: liveUrl, width: Number(width), capturedAt, ...(side ? { sidecar: `${live}.json`, instrument: side.instrument && side.instrument.name, technique: side.technique, consent: side.consent } : { source: 'mtime' }) },
-  build: { url: buildUrl }, verdict: rc === 0 ? 'PASS' : rc === 2 ? 'FAIL' : 'no-verdict', exit: rc, ...j };
+  build: { url: buildUrl }, verdict: rc === 0 ? 'PASS' : rc === 2 ? 'FAIL' : 'no-verdict', exit: rc, ...(landmarks ? { landmarks } : {}), ...j };
 fs.writeFileSync(rec, `${JSON.stringify(out, null, 2)}\n`);
 console.log(`regime: ${regime}  reference: ${liveUrl} @${width} captured ${capturedAt}${side ? ` via ${side.technique || side.instrument?.name || 'unknown'}${side.source && side.source !== 'stitch-shot' ? ` (source: ${side.source})` : ''}` : ' (live.png mtime)'}${j.forced ? '  FORCED (incomparable captures — not a gate number)' : ''}  record: ${rec}`);
 NODE

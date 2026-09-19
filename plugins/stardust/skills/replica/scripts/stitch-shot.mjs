@@ -75,6 +75,39 @@
  *   - the extract crawl's resolved consent selector
  *     (stardust/current/_crawl-log.json#consent.method = "dismissed:<sel>" or
  *     "text:<label>") is picked up as the default --consent when present.
+ *   - PINNED CHROME hidden on chunks 2+ (opacity:0 !important on every
+ *     position:fixed element and every sticky element currently stuck,
+ *     restored after each chunk; --keep-pinned restores the old behaviour).
+ *     A fixed header re-painted once per chunk was 5–17 % of "diff" on short
+ *     pages and 10–20 % across four archetypes in two field runs, and two
+ *     projects patched this script locally for it. Chunk 1 keeps everything
+ *     (the chrome-crop gate reads chunk-1 rows). opacity, not visibility:
+ *     descendants can override visibility (EDS `header .header{visibility:
+ *     visible}`), nothing undoes an ancestor's opacity, and layout is kept.
+ *     A SEAM DETECTOR then compares the same viewport-relative rows of
+ *     consecutive chunks and WARNs when chrome the hide missed (iframe /
+ *     shadow-hosted, --keep-pinned) is still baked into ≥ 2 seams.
+ *   - INTEGER SCROLL: window.scrollY is rounded before a chunk is placed —
+ *     a fractional scrollY put every row of a chunk half a width off
+ *     (recorded twice: "half-width rotation", 26–41 % bands). A scroll that
+ *     lands > 4 px short of its target fails loud (same class as the stall
+ *     guard) instead of leaving an unfilled black band.
+ *   - DECODE RACE: in-viewport images are img.decode()d (1.5 s bound inside
+ *     the existing 3 s window) before the chunk is shot; pendingDecodes is
+ *     recorded in the sidecar.
+ *   - SHORT / INVALID CAPTURE → exit 5, no PNG, no verdict: the settled
+ *     height is re-measured after one more --wait (a > 25 % growth is a load
+ *     race — the settle re-runs and says so); --expect-height <px> (gate.sh
+ *     fills it from the crawl screenshot) makes a height under 40 % of it a
+ *     retry with the wait doubled, then exit 5; an error-boundary page
+ *     ("Something went wrong" in main, height < 2·vh) or a fixed / dialog
+ *     element still covering > 30 % of the first viewport after dismissal
+ *     (--allow-overlay to capture anyway) is exit 5 too.
+ *   - TAIL LINE: rows below the footer are reported (`tail Npx below footer:
+ *     <elements>`) so a residual under the footer is named, not eyeballed.
+ *   - --exclude <sel,…> display:none's in-flow third-party widgets AFTER the
+ *     settle (layout drops them — a chat launcher in flow was Δ+32 px); run it
+ *     on both sides. --exclude-live-only says ASYMMETRIC on the verdict line.
  *
  * Usage:
  *   node skills/replica/scripts/stitch-shot.mjs <url> <out.png> [options]
@@ -82,13 +115,33 @@
  *     --vh <px>           viewport height / chunk size      (default 900)
  *     --settle            slow-scroll lazyload settle pass before capture
  *                         (use on live JS-heavy pages; harmless elsewhere)
+ *     --keep-pinned       do NOT hide fixed / stuck-sticky chrome on chunks 2+
+ *     --expect-height <px> exit 5 when the settled height is < 40 % of this
+ *                         (after one retry with --wait doubled)
+ *     --exclude <sel,…>   display:none these after the settle (both sides)
+ *     --exclude-live-only marks the --exclude list as applied on this side only
+ *     --allow-overlay     capture even when a fixed / dialog element covers
+ *                         > 30 % of the first viewport after dismissal
  *     --consent <sel>     extra consent selector, tried before the built-in
  *                         candidates (the reject list in deny mode);
  *                         "text:<label>" matches a button by its exact label
  *                         (recorded as consent.via "text:<label>")
  *     --consent-mode <m>  accept | deny (default accept; see above)
+ *     --allow-consent     capture even when a consent container is still
+ *                         visible after the dismissal window (default exit 5)
+ *     --no-dismiss-defaults  keep live-session's persistent-widget HIDE list
+ *                         off (the click passes always run)
+ *     --remove-text <phrase>  hide the nearest fixed/sticky ancestor of any
+ *                         element containing <phrase> (repeatable; last
+ *                         resort for an undismissable bar — run on BOTH sides)
  *     --dismiss <sel,...> extra overlay-dismiss selectors (marketing modals
  *                         with non-standard close controls)
+ *     --block <substr,...> abort every request whose URL contains one of the
+ *                         substrings (undismissable iframe/shadow widgets); the
+ *                         main-frame navigation and the page's own origin are
+ *                         never blocked. Run the SAME value on both sides —
+ *                         the sidecar records `blocked` and an asymmetric pair
+ *                         is refused by pixel-compare
  *     --headed[=window]    bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
  *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
  *     --ua <string>       user agent                        (default real-Chrome)
@@ -101,9 +154,15 @@
  *
  * Requires: playwright, pngjs (project devDependencies), and the diff skill's
  * scripts dir alongside (live-session.mjs — the replica Setup copies both).
- * Exit codes: 0 written (PNG + sidecar), 1 error, 3 bot challenge (live side
- * blocked — fail loud, never captured), 5 invalid capture (--consent-mode
- * deny: consent dialog present but no reject control, or accepted — no verdict).
+ * Exit codes: 0 written (PNG + sidecar), 1 error (incl. scroll stall /
+ * deflection), 3 bot challenge (live side blocked — fail loud, never
+ * captured), 5 invalid capture — no PNG, no sidecar, NO VERDICT, never a
+ * FAIL: a consent container still visible after the dismissal window (deny
+ * mode: no reject control, or accepted; accept mode: nothing matched —
+ * --consent <sel>/"text:<label>" or --allow-consent on BOTH sides); settled
+ * height < 40 % of --expect-height after one retry; an
+ * error-boundary page; an overlay still covering > 30 % of the first
+ * viewport after dismissal (--allow-overlay). gate.sh maps 5 like 3.
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
@@ -118,7 +177,9 @@ import { writeSidecar } from './capture-sidecar.mjs';
 // Bump when the capture PROCEDURE changes (settle, freeze, dismissal order):
 // recorded in the sidecar so a reference taken by an older procedure is
 // visibly older. Comparability is keyed on instrument.name, not version.
-const INSTRUMENT = { name: 'stitch-shot', version: '2' };
+// 3: pinned chrome hidden on chunks 2+, integer scroll, decode race,
+//    growth re-measure, reducedMotion on the context.
+const INSTRUMENT = { name: 'stitch-shot', version: '3' };
 // --consent-mode deny is implemented ONCE, in live-session's dismissOverlays
 // ({ mode: 'deny' }): its reject list is tried, its accept list never is.
 class InvalidCaptureError extends Error { constructor(m) { super(m); this.name = 'InvalidCaptureError'; } }
@@ -134,7 +195,7 @@ if (!LIVE_SESSION) {
   console.error('stitch-shot error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { REAL_CHROME_UA, TIERS, isLiveHttpUrl, launchLadder, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays } = await import(pathToFileURL(LIVE_SESSION).href);
+const { REAL_CHROME_UA, TIERS, isLiveHttpUrl, launchLadder, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays, installOverlayWatch, readOverlayWatch, parseBlockList } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `stitch-shot — scroll-and-stitch full-page screenshot (symmetric capture instrument)
 
@@ -142,9 +203,18 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --width <px>      viewport width (default 1440)
   --vh <px>         viewport height / chunk size (default 900)
   --settle          slow-scroll lazyload settle pass before capture
+  --keep-pinned     keep fixed / stuck-sticky chrome painted on chunks 2+ (default: hidden, opacity 0)
+  --expect-height <px>  exit 5 when the settled height is < 40 % of this (one retry, --wait doubled)
+  --exclude <sel,…> display:none these after the settle — run on BOTH sides
+  --exclude-live-only   the --exclude list is applied on this side only (verdict line says ASYMMETRIC)
+  --allow-overlay   capture even when a fixed / dialog element covers > 30 % of the first viewport
   --consent <sel>   extra consent selector (clicked, not removed); "text:<label>" for a label match
   --consent-mode <m> accept | deny (default accept; deny with no reject control, or accepted → exit 5)
+  --allow-consent   capture even when a consent container is still visible after dismissal (default: exit 5)
+  --no-dismiss-defaults  do not hide the persistent-widget list (CMP launcher, feedback tab…); clicks still run
+  --remove-text <phrase> hide the nearest fixed/sticky ancestor of an element containing <phrase> (repeatable; last resort, BOTH sides)
   --dismiss <sel,…> extra overlay-dismiss selectors (marketing modals etc.)
+  --block <substr,…> abort requests whose URL contains a substring (3rd-party widgets with no close control; never the page's own origin) — SAME value on both sides
   --headed[=window]  bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB) for geo determinism
   --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
@@ -154,19 +224,30 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
 
 Run the SAME command shape against the live page and the served prototype.
 Writes <out.png>.json (provenance sidecar: schema in capture-sidecar.mjs).
-Exit codes: 0 written, 1 error, 3 bot challenge (live side blocked — fail loud),
-5 invalid capture (deny mode: consent present and not rejected — no verdict).`;
+Prints: pinned hidden on chunks 2+, tail below footer, WARN fixed overlay baked into N seams.
+Exit codes: 0 written, 1 error (incl. scroll stall/deflection), 3 bot challenge (live side
+blocked — fail loud), 5 invalid capture — no verdict, never a FAIL (deny mode: consent present
+and not rejected; height < 40 % of --expect-height; error-boundary page; overlay > 30 %).`;
 
 function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { width: 1440, vh: 900, settle: false, consent: null, consentMode: 'accept', dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000 };
+  const opts = { width: 1440, vh: 900, settle: false, block: [], consent: null, consentMode: 'accept', dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000, keepPinned: false, expectHeight: null, exclude: [], excludeLiveOnly: false, allowOverlay: false, allowConsent: false, hideDefaults: true, removeText: [] };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
     else if (a === '--vh') { opts.vh = Number(rest[i += 1]); }
     else if (a === '--settle') { opts.settle = true; }
+    else if (a === '--keep-pinned') { opts.keepPinned = true; }
+    else if (a === '--expect-height') { opts.expectHeight = Number(rest[i += 1]); if (!(opts.expectHeight > 0)) { console.error(`--expect-height needs a positive px value\n\n${HELP}`); process.exit(1); } }
+    else if (a === '--exclude') { opts.exclude = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
+    else if (a === '--exclude-live-only') { opts.excludeLiveOnly = true; }
+    else if (a === '--allow-overlay') { opts.allowOverlay = true; }
+    else if (a === '--allow-consent') { opts.allowConsent = true; }
+    else if (a === '--block') { opts.block = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
+    else if (a === '--no-dismiss-defaults') { opts.hideDefaults = false; }
+    else if (a === '--remove-text') { const v = rest[i += 1]; if (!v) { console.error(`--remove-text needs a phrase\n\n${HELP}`); process.exit(1); } opts.removeText.push(v); }
     else if (a === '--consent') { opts.consent = rest[i += 1]; }
     else if (a === '--consent-mode') { opts.consentMode = rest[i += 1]; if (!['accept', 'deny'].includes(opts.consentMode)) { console.error(`--consent-mode must be accept or deny\n\n${HELP}`); process.exit(1); } }
     else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
@@ -205,7 +286,7 @@ function consentSelector(spec) {
 // Dismiss both overlay classes (consent + timed marketing modals) via
 // live-session, log what was closed, and note that the mouse is parked by
 // dismissOverlays itself (bottom-left — rule 10).
-async function dismissAndLog(page, url, opts, prov) {
+async function dismissAndLog(page, url, opts, prov, { lateWindowMs = isLiveHttpUrl(url) ? 6000 : 0 } = {}) {
   const cs = consentSelector(opts.consent);
   const deny = opts.consentMode === 'deny';
   // live-session owns both consent passes: --consent is the accept selector
@@ -216,8 +297,28 @@ async function dismissAndLog(page, url, opts, prov) {
     mode: opts.consentMode,
     reject: deny && cs ? [cs.sel] : [],
     extra: [...(!deny && cs ? [cs.sel] : []), ...opts.dismiss],
-    lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0,
+    lateWindowMs,
+    hideDefaults: opts.hideDefaults,
+    removeText: opts.removeText,
   });
+  // Persistent widgets hidden by live-session (both sides, layout kept) —
+  // printed and recorded so the pair's hidden lists can be compared.
+  // dismissAndLog runs up to three times per capture (initial, --settle, late
+  // overlay re-sweep): a hide already reported is not printed again; a count
+  // that grew (late-mounted target) updates the sidecar entry and prints.
+  for (const h of d.hidden || []) {
+    const prev = prov.hidden.find((x) => x.kind === h.kind && x.sel === h.sel);
+    if (prev && prev.count >= h.count) continue;
+    if (prev) prev.count = h.count; else prov.hidden.push(h);
+    if (h.count > 0) console.log(`hidden ${h.count} persistent widget(s) via ${h.sel} (${h.kind}; visibility, layout kept)`);
+    else if (h.kind === 'remove-text') console.log(`--remove-text ${h.sel.slice(5)}: no element matched`);
+  }
+  // Fail loud (accept mode): a consent container still up after the window
+  // is not the reference state — exit 5 unless --allow-consent (both sides).
+  if (!deny && d.consentPresent) {
+    if (!opts.allowConsent) throw new InvalidCaptureError(`consent present, not dismissed — ${d.consentContainer}: pass --consent <sel> (or "text:<label>") or --allow-consent (BOTH sides). Not captured: a banner baked into every chunk is not the page.`);
+    console.log(`WARN consent present, not dismissed (${d.consentContainer}) — captured anyway (--allow-consent)`);
+  }
   if (deny) {
     // A deny-state capture must be deny-state: an accepted dialog (instrument
     // defect) or a dialog still up with nothing to reject is NOT captured —
@@ -243,7 +344,165 @@ async function dismissAndLog(page, url, opts, prov) {
     if (isConsent && prov.consent.via === 'none-detected') prov.consent.via = cs.via;
   }
   for (const sel of d.marketing) { console.log(`marketing modal dismissed via ${sel}`); prov.dismissed.push({ kind: 'marketing', sel }); }
+  for (const f of d.frames || []) { console.log(`frame overlay dismissed via ${f}`); prov.dismissed.push({ kind: 'frame', sel: f }); }
   return d;
+}
+
+// ---- in-page helpers (serialised into page.evaluate; keep them self-contained) ----
+
+// Slow-scroll settle: fires scroll-triggered lazy loaders the way a real
+// visit does. Do NOT force data-src→src swaps: on CDN-defended sites the
+// forced rendition requests 403 and produce broken-image icons — worse
+// than the site's own designed placeholders. Ground truth is the page as
+// observable by this instrument (capture-state policy).
+async function settlePass(page) {
+  await page.evaluate(async () => {
+    for (let y = 0; y <= document.body.scrollHeight; y += 300) {
+      window.scrollTo(0, y);
+      await new Promise((r) => { setTimeout(r, 220); });
+    }
+  });
+  await page.waitForTimeout(3000);
+}
+
+const measureHeight = (page) => page.evaluate(() => Math.max(document.body.scrollHeight, document.documentElement.scrollHeight));
+
+// Pinned chrome on chunks 2+: every position:fixed element and every sticky
+// element currently STUCK (displaced from its layout position and resting at
+// its top/bottom offset) gets opacity:0 !important + a marker; restorePinned
+// undoes exactly that set. Returns short descriptors for the log/sidecar.
+function hidePinned(page) {
+  return page.evaluate(() => {
+    const desc = (el) => {
+      const id = el.id ? `#${el.id}` : '';
+      const cls = String(el.className && el.className.baseVal !== undefined ? el.className.baseVal : el.className || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map((c) => `.${c}`).join('');
+      const txt = (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 24);
+      return `${el.tagName.toLowerCase()}${id}${cls}${txt ? ` "${txt}"` : ''}`;
+    };
+    const layoutY = (el) => { let y = 0; for (let n = el; n; n = n.offsetParent) y += n.offsetTop; return y; };
+    const out = [];
+    const vh = window.innerHeight;
+    for (const el of document.querySelectorAll('body *')) {
+      const cs = getComputedStyle(el);
+      if (cs.position !== 'fixed' && cs.position !== 'sticky') continue;
+      if (cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) === 0) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1 || r.bottom <= 0 || r.top >= vh) continue;
+      if (cs.position === 'sticky') {
+        const docY = r.top + window.scrollY;
+        const displaced = Math.abs(docY - layoutY(el)) > 1;
+        const top = parseFloat(cs.top); const bottom = parseFloat(cs.bottom);
+        const atTop = Number.isFinite(top) && r.top <= top + 2;
+        const atBottom = Number.isFinite(bottom) && r.bottom >= vh - bottom - 2;
+        if (!displaced || !(atTop || atBottom)) continue;
+      }
+      el.setAttribute('data-stitch-hidden', el.style.getPropertyValue('opacity') || '');
+      el.style.setProperty('opacity', '0', 'important');
+      out.push(desc(el));
+    }
+    return out;
+  });
+}
+function restorePinned(page) {
+  return page.evaluate(() => {
+    for (const el of document.querySelectorAll('[data-stitch-hidden]')) {
+      const prev = el.getAttribute('data-stitch-hidden');
+      el.style.removeProperty('opacity');
+      if (prev) el.style.setProperty('opacity', prev);
+      el.removeAttribute('data-stitch-hidden');
+    }
+  });
+}
+
+// Seam detector: chrome the hide missed (iframe-hosted, shadow DOM,
+// --keep-pinned) repeats at the SAME viewport-relative rows of consecutive
+// chunks. Compare the top 96 and bottom 96 rows of chunk N with chunk N+1 —
+// same viewport rows, different page rows by construction — skipping
+// uniform-colour rows (a white band, a flat header background, would
+// false-positive) AND texture rows: a row byte-identical to its own in-chunk
+// neighbour 8 rows up or down is a persistent vertical texture (bordered
+// max-width container, side rail, 1px rule, column gutters) that is identical
+// across chunks without anything being baked in. A seam "fires" when ≥ 8
+// remaining rows are byte-identical, or ≥ 60 % of the compared rows are.
+function seamRepeats(chunks, width) {
+  const ROWS = 96; const STRIDE = 8;
+  const rowOf = (img, row) => img.data.subarray(row * img.width * 4, (row + 1) * img.width * 4);
+  const uniform = (buf) => { const [r, g, b] = buf; for (let i = 4; i < buf.length; i += 4) if (buf[i] !== r || buf[i + 1] !== g || buf[i + 2] !== b) return false; return true; };
+  let seams = 0;
+  for (let i = 0; i + 1 < chunks.length; i += 1) {
+    const a = chunks[i].img; const b = chunks[i + 1].img;
+    if (a.width !== b.width || a.height !== b.height || a.width !== width) continue;
+    const rows = [...Array(ROWS).keys(), ...Array.from({ length: ROWS }, (_, k) => a.height - 1 - k)].filter((r) => r >= 0 && r < a.height);
+    const texture = (r, ra) => (r - STRIDE >= 0 && Buffer.compare(ra, rowOf(a, r - STRIDE)) === 0) || (r + STRIDE < a.height && Buffer.compare(ra, rowOf(a, r + STRIDE)) === 0);
+    let compared = 0; let same = 0;
+    for (const r of rows) {
+      const ra = rowOf(a, r);
+      if (uniform(ra) || texture(r, ra)) continue;
+      compared += 1;
+      if (Buffer.compare(ra, rowOf(b, r)) === 0) same += 1;
+    }
+    if (same >= 8 || (compared >= 4 && same / compared >= 0.6)) seams += 1;
+  }
+  return seams;
+}
+
+// Validity (exit 5 class): an error-boundary page, or an overlay the
+// dismissal did not clear. Geometric only — the consent-semantic check
+// (consentPresent) is live-session's. Returns null or a reason string.
+function invalidityReason(page, vh) {
+  return page.evaluate((viewH) => {
+    const main = document.querySelector('main, [role=main]');
+    const docH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+    const txt = ((main || document.body).innerText || '').replace(/\s+/g, ' ').trim();
+    if (docH < 2 * viewH && txt.length < 600 && /(something went wrong|application error|an error occurred|this page isn.t working|internal server error|service unavailable|unexpected error)/i.test(txt)) {
+      return `error-boundary text in ${main ? 'main' : 'body'} on a ${docH}px page ("${txt.slice(0, 80)}")`;
+    }
+    const area = window.innerWidth * viewH;
+    for (const el of document.querySelectorAll('[role=dialog], [aria-modal=true], body *')) {
+      const cs = getComputedStyle(el);
+      const dialog = el.getAttribute('role') === 'dialog' || el.getAttribute('aria-modal') === 'true';
+      if (!dialog && cs.position !== 'fixed') continue;
+      if (cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) === 0 || cs.pointerEvents === 'none') continue;
+      const z = Number(cs.zIndex);
+      if (!dialog && !(z >= 100)) continue;
+      if (!dialog && (cs.backgroundColor === 'rgba(0, 0, 0, 0)' || cs.backgroundColor === 'transparent') && !cs.backgroundImage.includes('url')) continue;
+      const r = el.getBoundingClientRect();
+      const x0 = Math.max(0, r.left); const x1 = Math.min(window.innerWidth, r.right);
+      const y0 = Math.max(0, r.top); const y1 = Math.min(viewH, r.bottom);
+      if (x1 <= x0 || y1 <= y0) continue;
+      const cover = ((x1 - x0) * (y1 - y0)) / area;
+      if (cover > 0.3) {
+        const id = el.id ? `#${el.id}` : ''; const cls = String(el.className || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map((c) => `.${c}`).join('');
+        return `${dialog ? 'dialog' : 'fixed'} element ${el.tagName.toLowerCase()}${id}${cls} covers ${Math.round(cover * 100)} % of the first viewport after dismissal (z ${cs.zIndex})`;
+      }
+    }
+    return null;
+  }, vh);
+}
+
+// Rows below the footer: a residual there is named, not eyeballed.
+function tailBelowFooter(page, totalH) {
+  return page.evaluate((docH) => {
+    const footer = document.querySelector('footer');
+    if (!footer) return null;
+    const fb = Math.round(footer.getBoundingClientRect().bottom + window.scrollY);
+    const px = docH - fb;
+    if (px <= 8) return { px: Math.max(0, px), elements: [] };
+    const els = [];
+    for (const el of document.querySelectorAll('body *')) {
+      if (footer.contains(el) || el.contains(footer)) continue;
+      const r = el.getBoundingClientRect();
+      if (r.height < 1 || r.width < 1) continue;
+      const top = r.top + window.scrollY;
+      if (top < fb - 1) continue;
+      const cs = getComputedStyle(el);
+      if (cs.position === 'fixed' || cs.visibility === 'hidden') continue;
+      const id = el.id ? `#${el.id}` : ''; const cls = String(el.className || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map((c) => `.${c}`).join('');
+      els.push(`${el.tagName.toLowerCase()}${id}${cls} ${Math.round(r.height)}px`);
+      if (els.length >= 6) break;
+    }
+    return { px, elements: els };
+  }, totalH);
 }
 
 async function main() {
@@ -254,9 +513,13 @@ async function main() {
   const { browser } = await launchLadder(chromium, resolveStartTier(opts.headed), async (browser, tier) => {
     opts.tier = tier;
     // UA + standard headers + webdriver spoof on the context (live-session).
+    // reducedMotion: 'reduce' — symmetric, and one less class of entrance
+    // animation to freeze (crawl.mjs captures under the same preference).
     const ctx = await newLiveContext(browser, {
       ua: opts.ua, locale: opts.locale,
       viewport: { width: opts.width, height: opts.vh },
+      reducedMotion: 'reduce',
+      block: opts.block,
     });
     const page = await ctx.newPage();
     // Challenge/blocked interstitial → loud BotChallengeError (exit 3); a
@@ -275,27 +538,63 @@ async function main() {
     }
     await page.waitForTimeout(opts.wait);
     // provenance accumulates through the run; written as <out>.json at the end
-    const prov = { consent: { mode: opts.consentMode, via: 'none-detected' }, dismissed: [], fontsFailed: [] };
+    const prov = { consent: { mode: opts.consentMode, via: 'none-detected' }, dismissed: [], fontsFailed: [], hidden: [] };
     await dismissAndLog(page, url, opts, prov);
 
     if (opts.settle) {
-      // Slow-scroll settle: fires scroll-triggered lazy loaders the way a real
-      // visit does. Do NOT force data-src→src swaps: on CDN-defended sites the
-      // forced rendition requests 403 and produce broken-image icons — worse
-      // than the site's own designed placeholders. Ground truth is the page as
-      // observable by this instrument (capture-state policy).
-      await page.evaluate(async () => {
-        for (let y = 0; y <= document.body.scrollHeight; y += 300) {
-          window.scrollTo(0, y);
-          await new Promise((r) => { setTimeout(r, 220); });
-        }
-      });
-      await page.waitForTimeout(3000);
+      await settlePass(page);
       // Timed marketing/newsletter modals (CH-1) often fire DURING the settle
       // window — sweep again so a late interstitial isn't baked into the
       // stitched capture (recorded: a fashion retailer's "Sign up, stay updated!").
       await dismissAndLog(page, url, opts, prov);
     }
+
+    // --exclude: in-flow third-party widgets (chat launchers, feedback tabs)
+    // that no dismissal removes. display:none AFTER the settle so layout
+    // drops them the same way on both sides; the sidecar records the list.
+    if (opts.exclude.length) {
+      const counts = await page.evaluate((sels) => sels.map((sel) => { let n = 0; try { for (const el of document.querySelectorAll(sel)) { el.style.setProperty('display', 'none', 'important'); n += 1; } } catch { n = -1; } return n; }), opts.exclude);
+      opts.exclude.forEach((sel, i) => {
+        prov.hidden.push({ kind: 'exclude', sel, count: counts[i], liveOnly: opts.excludeLiveOnly });
+        console.log(`excluded ${counts[i] < 0 ? '(bad selector)' : `${counts[i]} element(s)`} via ${sel}${opts.excludeLiveOnly ? '  ASYMMETRIC (--exclude-live-only: applied on this side only)' : ''}`);
+      });
+    }
+
+    // Late-mount watch: overlays that mount AFTER the dismissal passes would be
+    // baked into every chunk below their arrival (recorded: a consent banner
+    // in ~7 chunks). A MutationObserver flags new fixed/dialog nodes; the chunk
+    // loop re-sweeps (one pass, no late window) when it reports any.
+    await installOverlayWatch(page);
+
+    // Short-capture guard, instrument-internal first: a load race leaves the
+    // page short at the settled height (recorded: a 360 capture of 1557 px on
+    // a 39 k-px page). Re-measure after one more --wait; > 25 % growth means
+    // the page was still loading — settle again and say so.
+    let h1 = await measureHeight(page);
+    await page.waitForTimeout(opts.wait);
+    let h2 = await measureHeight(page);
+    if (h2 > 1.25 * h1) {
+      console.log(`height grew ${h1}→${h2}px after extra wait (load race) — re-running settle`);
+      if (opts.settle) await settlePass(page); else await page.waitForTimeout(opts.wait);
+      h1 = h2; h2 = await measureHeight(page);
+    }
+    // --expect-height (gate.sh: the crawl screenshot's height): a valid page
+    // is never < 40 % of it. Retry once with the wait doubled, then exit 5.
+    if (opts.expectHeight && h2 < 0.4 * opts.expectHeight) {
+      console.log(`settled height ${h2}px < 40 % of expected ${opts.expectHeight}px — retrying once with --wait ${opts.wait * 2}`);
+      await page.waitForTimeout(opts.wait * 2);
+      if (opts.settle) await settlePass(page);
+      h2 = await measureHeight(page);
+      if (h2 < 0.4 * opts.expectHeight) throw new InvalidCaptureError(`capture invalid (short): settled height ${h2}px is < 40 % of the expected ${opts.expectHeight}px after one retry — load race or a wrong/blocked page; not captured, no verdict. Re-run with a longer --wait, or drop --expect-height if the page is genuinely that short.`);
+    }
+    // Validity: an error-boundary page or an overlay still covering the first
+    // viewport is not the page — exit 5 (--allow-overlay to shoot anyway).
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const invalid = await invalidityReason(page, opts.vh).catch(() => null);
+    if (invalid && !(opts.allowOverlay && !/error-boundary/.test(invalid))) {
+      throw new InvalidCaptureError(`capture invalid: ${invalid} — not captured, no verdict.${/error-boundary/.test(invalid) ? '' : ' Pass --allow-overlay to capture it anyway (both sides), or --dismiss/--exclude the element.'}`);
+    }
+    if (invalid) console.log(`WARN ${invalid} — captured anyway (--allow-overlay)`);
 
     // Freeze animations/transitions/carets for stable chunks — AFTER settle.
     await page.addStyleTag({ content: '*,*::before,*::after{animation-play-state:paused!important;transition:none!important;caret-color:transparent!important;scroll-behavior:auto!important;}html{scroll-behavior:auto!important}' });
@@ -374,65 +673,106 @@ async function main() {
     const chunks = [];
     let y = 0;
     let prevActualY = null;
+    let pendingDecodes = 0;
+    const pinnedHidden = new Set();
     while (y < totalH) {
       const target = Math.max(0, Math.min(y, totalH - opts.vh));
       await page.evaluate((ty) => window.scrollTo(0, ty), target);
       await page.waitForTimeout(450);
-      // wait for in-viewport images to complete (max 3s per chunk)
-      await page.evaluate(async () => {
+      // wait for in-viewport images to complete (max 3s per chunk), then race
+      // img.decode() for the completed ones (1.5 s bound inside the same
+      // window): `complete` says the bytes arrived, not that the bitmap is
+      // decoded — a chunk shot in between paints a placeholder (recorded).
+      pendingDecodes += await page.evaluate(async () => {
         const t0 = Date.now();
-        const pend = () => [...document.querySelectorAll('img')].some((i) => {
-          const r = i.getBoundingClientRect();
-          return r.bottom > 0 && r.top < innerHeight && r.width > 10 && (!i.complete || i.naturalWidth === 0);
-        });
+        const inView = () => [...document.querySelectorAll('img')].filter((i) => { const r = i.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight && r.width > 10; });
+        const pend = () => inView().some((i) => !i.complete || i.naturalWidth === 0);
         while (pend() && Date.now() - t0 < 3000) await new Promise((r) => { setTimeout(r, 150); });
+        const left = Math.max(200, 3000 - (Date.now() - t0));
+        const todo = inView().filter((i) => i.complete && i.naturalWidth > 0 && typeof i.decode === 'function');
+        let pending = 0;
+        await Promise.race([
+          Promise.all(todo.map((i) => i.decode().catch(() => {}))),
+          new Promise((r) => { setTimeout(() => { pending = todo.length; r(); }, Math.min(1500, left)); }),
+        ]);
+        return pending;
       });
-      const actualY = await page.evaluate(() => window.scrollY);
-      // Scroll-stall guard: on inner-scroller / scroll-jacked pages (html/body
-      // overflow:hidden with a scrolling wrapper) the document reports totalH px
-      // but window.scrollTo is a NO-OP — window.scrollY stays put, every chunk
-      // captures the top viewport, and the rows below stitch as zero-filled
-      // black: a silently fictitious pixel diff. Fail loud instead.
-      // Threshold is a small fractional-scroll tolerance (4px), NOT a material
-      // shortfall (vh/2): a jacked page with settled height between vh+1 and
-      // 1.5*vh puts chunk 2's clamped target at <= vh/2, which a vh/2 bar can
-      // never catch — those pages emitted silent black bands. On a legit page
-      // actualY reaches the clamped target (the last chunk's totalH - vh is
-      // reachable by construction), so the no-advance condition stays false;
-      // the 4px slack absorbs fractional-pixel scroll rounding.
-      if (prevActualY !== null && actualY <= prevActualY && target - actualY > 4) {
-        throw new Error(`scroll stall at chunk target ${target}px: window scroll is a no-op (window.scrollY stuck at ${actualY}px) while the document reports ${totalH}px — likely an inner scroll container / scroll-jacked layout (html/body overflow:hidden). Stitched capture cannot measure this page class (capturing the inner scroller is future work): record the page as gate-blocked for the pixel probe and rely on content-diff/visual-diff.`);
+      // Integer scroll: a fractional window.scrollY placed every row of the
+      // chunk half a width off in the stitch (byte offset mid-row) —
+      // recorded as a "half-width rotation" and 26–41 % bands. Round it.
+      const actualY = Math.round(await page.evaluate(() => window.scrollY));
+      if (target - actualY > 4) {
+        // Scroll-stall guard: on inner-scroller / scroll-jacked pages (html/body
+        // overflow:hidden with a scrolling wrapper) the document reports totalH px
+        // but window.scrollTo is a NO-OP — window.scrollY stays put, every chunk
+        // captures the top viewport, and the rows below stitch as zero-filled
+        // black: a silently fictitious pixel diff. Fail loud instead.
+        // Threshold is a small fractional-scroll tolerance (4px), NOT a material
+        // shortfall (vh/2): a jacked page with settled height between vh+1 and
+        // 1.5*vh puts chunk 2's clamped target at <= vh/2, which a vh/2 bar can
+        // never catch — those pages emitted silent black bands. On a legit page
+        // actualY reaches the clamped target (the last chunk's totalH - vh is
+        // reachable by construction). A scroll that ADVANCED but landed short
+        // (scroll snapping, an anchored scroll) is the same class — the rows
+        // between the landing and the next target would stitch black.
+        if (prevActualY !== null && actualY <= prevActualY) {
+          throw new Error(`scroll stall at chunk target ${target}px: window scroll is a no-op (window.scrollY stuck at ${actualY}px) while the document reports ${totalH}px — likely an inner scroll container / scroll-jacked layout (html/body overflow:hidden). Stitched capture cannot measure this page class (capturing the inner scroller is future work): record the page as gate-blocked for the pixel probe and rely on content-diff/visual-diff.`);
+        }
+        throw new Error(`scroll deflection at chunk target ${target}px: window.scrollY landed at ${actualY}px (${target - actualY}px short) — scroll snapping / scroll anchoring moved the viewport; the stitched rows in between would be unfilled. Not captured.`);
       }
       prevActualY = actualY;
+      const late = await readOverlayWatch(page);
+      if (late.length) {
+        console.log(`late overlay mounted before chunk ${chunks.length + 1}: ${late.join(', ')} — re-sweeping`);
+        await dismissAndLog(page, url, opts, prov, { lateWindowMs: 0 });
+        await page.evaluate((ty) => window.scrollTo(0, ty), target);
+        await page.waitForTimeout(200);
+      }
+      // Chunks 2+: hide pinned chrome (fixed + stuck sticky) for the shot,
+      // restore right after — chunk 1 keeps everything for the chrome crop gate.
+      const hideNow = !opts.keepPinned && chunks.length > 0;
+      if (hideNow) { for (const d of await hidePinned(page)) pinnedHidden.add(d); await page.waitForTimeout(60); }
       const buf = await page.screenshot();
-      chunks.push({ y: actualY, buf });
+      if (hideNow) await restorePinned(page);
+      chunks.push({ y: actualY, buf, img: PNG.sync.read(buf) });
       y += opts.vh;
     }
 
     const outPng = new PNG({ width: opts.width, height: totalH });
-    for (const { y: cy, buf } of chunks) {
-      const img = PNG.sync.read(buf);
+    for (const { y: cy, img } of chunks) {
       for (let row = 0; row < img.height; row += 1) {
         const destY = cy + row;
+        if (!Number.isInteger(destY)) throw new Error(`internal: non-integer stitch row ${destY} (chunk y ${cy}) — integer-scroll assertion failed`);
         if (destY >= totalH) break;
         img.data.copy(outPng.data, (destY * opts.width) * 4, (row * img.width) * 4, (row * img.width + Math.min(img.width, opts.width)) * 4);
       }
     }
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, PNG.sync.write(outPng));
+    const seams = seamRepeats(chunks, opts.width);
+    const tail = await tailBelowFooter(page, totalH).catch(() => null);
     const dpr = await page.evaluate(() => window.devicePixelRatio).catch(() => 1);
     const side = writeSidecar(out, {
       url, width: opts.width, vh: opts.vh, dpr, capturedAt: new Date().toISOString(),
-      instrument: { ...INSTRUMENT, options: { settle: opts.settle, headed: opts.headed, startTier: resolveStartTier(opts.headed), locale: opts.locale, wait: opts.wait, timeout: opts.timeout, consent: opts.consent, dismiss: opts.dismiss } },
+      instrument: { ...INSTRUMENT, options: { settle: opts.settle, headed: opts.headed, startTier: resolveStartTier(opts.headed), locale: opts.locale, wait: opts.wait, timeout: opts.timeout, consent: opts.consent, dismiss: opts.dismiss, keepPinned: opts.keepPinned, exclude: opts.exclude, excludeLiveOnly: opts.excludeLiveOnly, expectHeight: opts.expectHeight, allowOverlay: opts.allowOverlay, allowConsent: opts.allowConsent, hideDefaults: opts.hideDefaults, removeText: opts.removeText, block: opts.block } },
       consent: prov.consent, dismissed: prov.dismissed, fontsFailed: prov.fontsFailed,
       docHeight: totalH, chunks: chunks.length, source: 'stitch-shot', technique: TIERS[tier - 1], tier,
+      pinnedHidden: [...pinnedHidden], pendingDecodes, tail, hidden: prov.hidden, seamRepeats: seams, blocked: parseBlockList(opts.block),
     });
     console.log(`stitched ${out}: ${opts.width}x${totalH} from ${chunks.length} chunks  (consent ${prov.consent.mode}/${prov.consent.via}; sidecar ${side})`);
+    if (!opts.keepPinned && chunks.length > 1) console.log(`pinned hidden on chunks 2+: ${pinnedHidden.size}${pinnedHidden.size ? ` [${[...pinnedHidden].join(', ')}]` : ''}`);
+    else if (opts.keepPinned) console.log('pinned chrome kept on every chunk (--keep-pinned)');
+    if (pendingDecodes) console.log(`WARN ${pendingDecodes} in-viewport image decode(s) did not finish inside the 1.5 s bound — chunk may carry a placeholder`);
+    if (seams >= 2) console.log(`WARN fixed overlay baked into ${seams} seams — chrome the pinned hide missed (iframe/shadow-hosted, or --keep-pinned): pass --exclude <sel> on both sides, or mask the seam rows (pixel-compare --mask)`);
+    if (tail && tail.px > 8) console.log(`tail ${tail.px}px below footer: ${tail.elements.join(', ') || '(no element boxes — margin/padding)'}`);
+    if (opts.block.length) console.log(`blocked: ${parseBlockList(opts.block).join(', ')} — run the same --block on the other side (the sidecar refuses an asymmetric pair)`);
+    if (opts.excludeLiveOnly && opts.exclude.length) console.log(`ASYMMETRIC: --exclude applied on this side only (${opts.exclude.join(', ')}) — the pair is not a gate number`);
   });
   await browser.close();
 }
 
 // exit 3 = bot challenge on the live side (distinct from generic errors, so a
 // gate runner can tell "blocked at tier 3 — interactive solve" from "capture broke").
-// exit 5 = invalid capture (deny mode: consent present and not rejected, or accepted): no verdict, never a FAIL.
+// exit 5 = invalid capture (deny mode: consent present and not rejected, or accepted;
+// short capture under --expect-height; error-boundary page; overlay > 30 %): no verdict, never a FAIL.
 main().catch((e) => { console.error(`stitch-shot error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : e.name === 'InvalidCaptureError' ? 5 : 1); });

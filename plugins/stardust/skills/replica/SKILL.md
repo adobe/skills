@@ -19,10 +19,10 @@ Phases, in order: Setup → 1 EXTRACT → 2 PRESERVE DIRECTION → 3 RECREATE �
 | 1 | `$stardust extract <URL> --prep --dynamics` — bounded entry: `--single` / `--pages <slug,...>` |
 | 2 | mechanical promotion + `stardust/replica/inconsistency-register.md`; the `dynamics` skill Phases 1–3 |
 | 3 | author `stardust/prototypes/<slug>-proposed.html` (+ per-page CSS) |
-| 4 | probes 1+2: `diff/content-diff.mjs`, `diff/visual-diff.mjs` (`--profile generic --width <w> --main <root> --dismiss`); probe 3: `replica/stitch-shot.mjs`, `replica/pixel-compare.mjs --timeout <s>`; inner loop: `replica/anchor.mjs --cache`, `replica/chrome-parity.mjs --live-cache`, `replica/gate.sh <slug> <live> <proto> <width> [iter] [--marker <string>]` — deadlines `GATE_STITCH_TIMEOUT`, `GATE_COMPARE_TIMEOUT`, stale reap `GATE_REAP_MIN`; every node step runs under `replica/run-capped.mjs --timeout <s> -- <cmd>`; after the static pass: `replica/motion-observe.mjs <live>` |
+| 4 | probes 1+2: `diff/content-diff.mjs`, `diff/visual-diff.mjs` (`--profile generic --width <w> --main <root> --dismiss`); probe 3: `replica/stitch-shot.mjs`, `replica/pixel-compare.mjs --timeout <s>`, `replica/review-image.mjs --bands|--sheet`; inner loop: `replica/anchor.mjs --landmarks --cache|--against`, `replica/chrome-parity.mjs --live-cache`, `replica/gate.sh <slug> <live> <proto> <width> [iter] [--marker]` — env `GATE_STITCH_TIMEOUT`, `GATE_COMPARE_TIMEOUT`, `GATE_ANCHOR_TIMEOUT`, `GATE_REAP_MIN`, `GATE_BLOCK`, `GATE_ALLOW_CONSENT`, `GATE_LANDMARKS=0`; every node step runs under `replica/run-capped.mjs --timeout <s> -- <cmd>`; after the static pass: `replica/motion-observe.mjs <live>` |
 | 5 | `replica/sibling-variance.mjs <archetype> <siblings…> --probe <block>=<sel>`; then the `migrate` (sibling tier) → `deploy` → `rollout` skills; re-run the Phase 4 gate against the published origin |
 
-Gates: Phase 2 — every dynamic-surface row has a disposition. Phase 4, per breakpoint (default `1440,360`) — content-diff 0 structural 🔴 · visual-diff flags none/justified · pixel diff ≤ 10% with no hot band unexplained · height |Δ| ≤ 8px · cap 3 iterations · interaction parity recorded. `gate.sh` exits: 0 pass · 2 fail · 1 error / incomparable captures · 3 bot challenge · 4 wrong server · 5 invalid capture (consent) · 124 deadline (re-run, not a FAIL).
+Gates: Phase 2 — every dynamic-surface row has a disposition. Phase 4, per breakpoint (default `1440,360`) — content-diff 0 structural 🔴 · visual-diff flags none/justified · pixel diff ≤ 10% with no hot band unexplained · height |Δ| ≤ 8px · cap 3 iterations · interaction parity recorded. `gate.sh` exits: 0 pass · 2 fail · 1 error / incomparable captures · 3 bot challenge · 4 wrong server · 5 invalid capture (consent / short / overlay / error page) · 124 deadline (re-run, not a FAIL).
 
 Outputs: `stardust/direction.md` · `stardust/replica/{inconsistency-register.md, progress.json, motion/<slug>.json, gates/<slug>-<width>/}` · `stardust/prototypes/<slug>-proposed.html` · root `PRODUCT.md` / `DESIGN.md` / `DESIGN.json`.
 
@@ -119,8 +119,8 @@ it rests on. `switch to redesign` runs `$stardust prepare-migration
 **Bounded entry (one-page or pilot runs).** `--prep` is the
 site-wide contract, not the only way in: for "replicate just this page" or
 a one-archetype pilot, invoke `$stardust extract <URL> --single` (or
-`--pages <slug,...>`). A first-class entry: per-page JSON, screenshot and fonts are all
-provided; the CSS lift is Phase 3's either way. A bounded run skips the prep-only inventory (page
+`--pages <slug,...>`). Per-page JSON, screenshot and fonts are provided;
+the CSS lift is Phase 3's either way. A bounded run skips the prep-only inventory (page
 typing, module detection — needed only when Phase 5 fans out; a pilot that
 grows re-runs Phase 1 with `--prep`) AND the descriptive synthesis: no
 `current/PRODUCT.md` / `DESIGN.md` / `DESIGN.json`, so Phase 2 takes the
@@ -153,7 +153,7 @@ Full contract: `reference/preserve-direction.md`. Summary:
    `audit` skill's design findings (only if the user wants improvement
    candidates) and/or `--register` items. Every entry needs captured
    evidence + the minimal change + a status. **Empty register = pure
-   replica** — that is a valid and common outcome, not a failure.
+   replica** — a valid outcome, not a failure.
 
 4. **Dynamic surface (migration gate — the stardust `dynamics` skill Phases 1–3).**
    Phase 1 must have run `extract --dynamics`. Run the detector on the
@@ -197,7 +197,6 @@ as **clean semantic HTML/CSS** from three sources, in this order:
 
 **Every archetype gets its own standalone prototype — cumulative, never
 skipped.** Never skip to direct platform authoring for a new archetype
-(prototypes stayed the quality ceiling; direct-authored pages plateaued).
 Each new prototype imports
 the shared layers earlier ones already gated (shared canon CSS + a
 per-archetype file) and iterates only on its NEW modules — full contract:
@@ -211,8 +210,8 @@ the ledger triggers a lift plus a Phase 4 gate ON THAT SIBLING at both
 breakpoints before its template counts as recreated.
 
 **This is recreation, not redesign — do NOT delegate to impeccable craft.**
-Impeccable's redesign gates (critique, anti-template, divergence) do not
-apply; the source-fidelity gate (Phase 4) replaces them entirely.
+Impeccable's redesign gates do not apply; the source-fidelity gate
+(Phase 4) replaces them.
 
 **Fonts:** same public source when available (extract's intercepted woff2
 for open/self-hostable faces). Licensed commercial kits are never rehosted:
@@ -232,8 +231,7 @@ breakpoint (default 1440 AND 360), live URL as source vs served prototype:
 
 ```bash
 PROTO="http://localhost:8791/<slug>-proposed.html"   # python3 -m http.server from the prototypes dir
-# verify the port is YOURS (lsof -nP -iTCP:8791 -sTCP:LISTEN) — a stale foreign
-# server silently poisons the gate (gate.sh asserts a page marker, exit 4)
+# verify the port is YOURS (lsof -nP -iTCP:8791 -sTCP:LISTEN); gate.sh asserts a page marker (exit 4)
 LIVE="https://<site>/<path>"
 
 # Probe 1+2 — the diff skill's two probes, generic profile (--dismiss: both overlay classes)
@@ -268,13 +266,11 @@ iteration's fixes come off the instruments, never off eyeballing; image
 reads follow `../stardust/reference/context-hygiene.md` § Image reads —
 numbers first, band crops, never the stitched page. After 3, log the
 residuals by class (gate doc § Residual classes; `result` copied
-from `gate-<label>.json`) and move on — a documented residual beats an
-undocumented fourth loop. Three named regimes end a loop early or sit
+from `gate-<label>.json`) and move on. Three named regimes end a loop early or sit
 outside the cap — `source-inconsistent`, `separate-composition`,
 `canon-followup` (gate doc § Iteration discipline).
 
-**Hardening (each a recorded false-measurement trap — the gate doc
-§ Hardening rules is the list):** real-Chrome UA **plus the standard
+**Hardening (the gate doc § Hardening rules is the list):** real-Chrome UA **plus the standard
 request headers** on every capture (built into the shared
 `diff/scripts/live-session.mjs`); a challenge/blocked interstitial **fails
 loud (exit 3)**, never measured — `--headed` starts the ladder at tier 2
@@ -287,14 +283,17 @@ gate-blocked, never degraded; `domcontentloaded` on live targets, never
 symmetric `--main` scoping (`--main body` is never valid); both overlay
 classes (consent, timed marketing) dismissed via `--dismiss`; animations
 frozen; the pointer parked after any dismissal click;
-fixed/sticky chrome replicated fixed with its scroll-state morph
-(`reference/recreation-procedure.md` § Fixed and sticky chrome);
+fixed/sticky chrome replicated fixed with its scroll-state morph — seam
+repeats are instrument-provided (pinned chrome hidden on chunks 2+, both
+sides; `reference/recreation-procedure.md` § Fixed and sticky chrome);
 granularity parity for JOIN/SPLIT false-reds (#87); capture-state policy
 for CDN-403 images and hydration placeholders.
 
 Hardening ships as flags on the diff scripts (`--ua`, `--wait-until`,
 `--dismiss`, `--headed[=window]`, `--locale`, `--main`) backed by
-`live-session.mjs`; a project copy carrying hand-edits is a defect
+`live-session.mjs`; `scripts/stitch-shot.mjs` adds `--allow-consent`,
+`--no-dismiss-defaults`, `--remove-text`, `--keep-pinned`, `--exclude`
+(its `--help`); a project copy carrying hand-edits is a defect
 (`reference/source-fidelity-gate.md` § Script adaptations).
 
 **After the static gate passes, interaction parity is a REQUIRED gate
@@ -328,8 +327,7 @@ approval per the standard prototype approval flow (hands-off mode records
   is **measured per page at import time** (same file, § Content-count
   acceptance) so importer bugs surface while cheap to fix.
 - **Delivery** via the stardust `deploy` skill per page. Bias the decode tier toward
-  **template-slotted** for fixed-composition sections (deploy #95): replica
-  sections are fixed compositions matched to a live original.
+  **template-slotted** for fixed-composition sections (deploy #95).
   Repeat groups (cards, listings) stay reconstructive. **Blocks
   obey the Experience Workspace editability contract (`../deploy/reference/block-js-scaffold.md` § Experience Workspace editability contract, EW1–EW10:
   node-slotting, never value-slotting) and pass `block-roundtrip --ew`.**

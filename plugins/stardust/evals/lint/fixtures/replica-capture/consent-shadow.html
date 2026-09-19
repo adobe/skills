@@ -1,0 +1,14 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>consent shadow fixture</title>
+<style>html,body{margin:0;padding:0} body{width:800px;font-family:sans-serif} section{height:500px;background:#3366ff}</style></head>
+<body>
+<main><section><h1>Inhalt</h1></section><section><h2>Mehr</h2></section></main>
+<div id="usercentrics-root"></div>
+<script>
+  const host = document.getElementById('usercentrics-root');
+  const root = host.attachShadow({ mode: 'open' });
+  root.innerHTML = '<style>.b{position:fixed;bottom:0;left:0;width:800px;height:140px;background:#000;color:#fff;padding:12px;box-sizing:border-box}</style>'
+    + '<div class="b"><p>Wir verwenden Cookies (consent).</p><button data-testid="uc-accept-all-button">Alle akzeptieren</button></div>';
+  root.querySelector('button').addEventListener('click', () => { document.body.dataset.consent = 'shadow'; root.innerHTML = ''; });
+</script>
+</body></html>
