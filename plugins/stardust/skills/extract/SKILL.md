@@ -177,7 +177,8 @@ Additional checks for this sub-command:
    worker (clearance, consent and A/B cookies ride along), loads
    `stardust/current/_storage-state.json` when its cookies match the
    host (`--storage-state <file>` / `--fresh-state`) and saves it on a
-   cleared challenge or `--save-state` — never tracked; fingerprint-bound
+   cleared challenge (again after a mid-crawl escalation) or `--save-state`
+   — never tracked; fingerprint-bound
    clearances (PerimeterX/HUMAN) do not replay. Record the resolved method in
    `_crawl-log.json#consent.method` — one of `dismissed:<sel>`,
    `text:<label>`, `none-detected`, `failed` (`skipped` under
