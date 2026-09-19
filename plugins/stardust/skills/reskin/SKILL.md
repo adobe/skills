@@ -379,7 +379,7 @@ pipeline, unchanged:
   inherited wholesale.
 - **Ship via the stardust `deploy` and `rollout` skills**, unchanged. Blocks
   written for donor modules obey the Experience Workspace editability
-  contract (deploy SKILL.md § 8, EW1–EW10) and pass the EW gate
+  contract (`skills/deploy/reference/block-js-scaffold.md` § Experience Workspace editability contract, EW1–EW10) and pass the EW gate
   (`block-roundtrip --ew`) before they are done.
 
 Reskin writes its own state under `stardust/reskin/` — `ledger.json`

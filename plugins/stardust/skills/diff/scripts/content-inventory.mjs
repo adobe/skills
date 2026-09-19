@@ -31,7 +31,7 @@
  * blockquote elements under the root that carry visible text (outermost = no
  * ancestor matching the same list inside the root; empty and image-only elements
  * skipped). That is exactly the set Experience Workspace stamps `data-prose-index`
- * on (deploy SKILL.md § Experience Workspace editability contract): the ENCODE side
+ * on (deploy reference/block-js-scaffold.md § Experience Workspace editability contract): the ENCODE side
  * counts it on the prototype (section-schema `editableTexts`), the DECODE side on
  * the decorated page (content-diff's "editable texts" advisory, the --ew gate) —
  * fewer surviving outermost editables after decoration means authored elements

@@ -118,7 +118,7 @@ Capture brand-level metadata defaults in
 - `keyFacts` — optional: the short list of crawlable fact strings
   the brand must expose in server-rendered content (price, license,
   maker, requirement). Consumed by deploy's atomic-contract raw-HTML
-  grep (deploy SKILL.md #86); omit when the direction names none.
+  grep (`skills/deploy/da-deploy-protocol.md` § Delivery pipeline, #86); omit when the direction names none.
 
 These are composed with per-page metadata at migrate time. See
 `skills/migrate/reference/metadata-and-jsonld.md` for the

@@ -23,7 +23,7 @@
  *      > <same tag, no classes/spans>) and reports per text any computed-style or
  *      height drift between published and edit mode — a class on the authored
  *      element (or on an inner <span>) dies in that swap; wrapper-descendant
- *      selectors survive it (deploy SKILL.md § Experience Workspace editability
+ *      selectors survive it (deploy reference/block-js-scaffold.md § Experience Workspace editability
  *      contract, EW2).
  *
  * Two modes:

@@ -95,7 +95,7 @@ sibling. Per-node structural diffing stays where it lives today (the
 archetype's gates, deploy's `block-roundtrip`, replica's source-fidelity
 gate); the counts catch the dropped-content class those would only see
 later. Any block JS written for a sibling or archetype obeys the
-Experience Workspace editability contract (deploy SKILL.md § 8, EW1–EW10)
+Experience Workspace editability contract (`skills/deploy/reference/block-js-scaffold.md` § Experience Workspace editability contract, EW1–EW10)
 and passes the EW gate (`block-roundtrip --ew`) before the page is done.
 
 ## Declaration (per page)

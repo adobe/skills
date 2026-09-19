@@ -133,7 +133,7 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    `deploy` methodology. **Pass the plan step into deploy's brief**: create only the
    blocks in `convert`; for each block in `reuse`, REUSE the existing block by its
    `edsBlockName` (do not recreate). **The brief MUST carry the Experience Workspace
-   editability contract** (deploy SKILL.md § 8, EW1–EW10): every converted block
+   editability contract** (`skills/deploy/reference/block-js-scaffold.md` § Experience Workspace editability contract, EW1–EW10): every converted block
    moves authored elements into wrappers (never rebuilds from text) and passes the
    EW gate (`block-roundtrip --ew`) before it counts as delivered — a brief without
    it skipped the contract on 27/27 blocks of a real site.

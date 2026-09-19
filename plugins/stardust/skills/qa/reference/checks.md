@@ -143,7 +143,7 @@ text is then looked up by its index. Exactly one surviving element = editable;
 zero = **dead** (the block rebuilt it from `textContent`/`innerHTML`, synthesized
 or retagged it); several = **duplicated** (clone slides — the editor attaches to
 the first in DOM order). Shared instrument:
-`skills/deploy/scripts/ew-editability-probe.mjs`; contract: deploy SKILL.md
+`skills/deploy/scripts/ew-editability-probe.mjs`; contract: `skills/deploy/reference/block-js-scaffold.md`
 § Experience Workspace editability contract (EW1–EW10).
 
 | id | sev | what |

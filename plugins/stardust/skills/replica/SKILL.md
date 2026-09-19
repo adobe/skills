@@ -305,7 +305,7 @@ approval per the standard prototype approval flow (hands-off mode records
   **template-slotted** for fixed-composition sections (deploy #95): replica
   sections are fixed compositions matched to a live original.
   Repeat groups (cards, listings) stay reconstructive. **Blocks
-  obey the Experience Workspace editability contract (deploy § 8, EW1–EW10:
+  obey the Experience Workspace editability contract (`../deploy/reference/block-js-scaffold.md` § Experience Workspace editability contract, EW1–EW10:
   node-slotting, never value-slotting) and pass `block-roundtrip --ew`.**
 - **Site-wide rollout** via the stardust `rollout` skill, unchanged — its block dedup
   is what implements "same blocks across the whole site".
@@ -372,4 +372,4 @@ PRODUCT.md / DESIGN.md / DESIGN.json    ← promoted verbatim from current/ (Pha
 - `../extract/SKILL.md` § Prep mode — what Phase 1 provides.
 - `../migrate/reference/fidelity-tiers.md` — archetype/sibling model Phase 5
   hands off to.
-- `../deploy/SKILL.md` § decode tiers (#95) — template-slotted bias.
+- `../deploy/reference/audit-and-naming.md` § 2b. Section schema + decode tier (#95) — template-slotted bias.

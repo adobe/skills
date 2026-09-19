@@ -20,7 +20,7 @@
  * the Experience Workspace gate: the number of OUTERMOST h1-h6/p/ul/ol/pre/
  * blockquote elements in the prototype section that carry visible text — the set
  * the da.live canvas stamps `data-prose-index` on and can attach an inline editor
- * to (deploy SKILL.md § Experience Workspace editability contract). ENCODE authors
+ * to (deploy reference/block-js-scaffold.md § Experience Workspace editability contract). ENCODE authors
  * one such element per item (a list is ONE editable unit); after decorate() the
  * `--ew` gate (block-roundtrip / ew-editability-probe) must find the same number
  * of surviving instrumented elements — fewer means authored elements were rebuilt,
@@ -33,7 +33,7 @@
  *     --profile <p>    eds | generic — eyebrow classifier thresholds (default eds)
  *
  * The prototype must be RENDERABLE (serve static prototypes from their own dir;
- * pre-render JSX first — deploy SKILL.md Step 1). file:// works when the
+ * pre-render JSX first — deploy reference/audit-and-naming.md § 1. Audit). file:// works when the
  * prototype's CSS is inline.
  */
 
