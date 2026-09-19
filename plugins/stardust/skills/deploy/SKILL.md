@@ -42,7 +42,7 @@ Outputs: `blocks/<name>/<name>.{js,css}` · `content/**/*.html` (+ `nav.html`, `
 | 8 | `reference/block-js-scaffold.md` § 8. Block JS scaffold, § Experience Workspace editability contract, § Runtime order, § Decode rules |
 | 9 | `reference/content-page-scaffold.md` § 9. Content page scaffold; `reference/encode-contract.md` § Images |
 | QA | `reference/local-qa.md` § Gates, § Local-QA scope boundary |
-| D | `da-deploy-protocol.md` § Delivery pipeline, § Deploy (DA Source API + curl) |
+| D | `da-deploy-protocol.md` § Delivery pipeline, § Deploy (DA Source API + curl), § Two clocks |
 | 10 | `reference/deployed-reconcile.md` § The six reconcile checks, § Reading content-diff |
 | any failure | `reference/anti-patterns.md` (by group); `reference/checklist.md` before each DA push |
 
@@ -89,11 +89,11 @@ Boilerplate clones drift (button classes, wrapper names, buttonization rules), a
 }
 ```
 
-Block CSS/JS generation and the Local-QA harness read this contract instead of assuming. The values above are current `adobe/aem-boilerplate` main; the two known drift axes to verify per target:
+Block CSS/JS generation and the Local-QA harness read this contract. The values above are current `adobe/aem-boilerplate` main; the two known drift axes per target:
 - **`buttonClasses`** — current main emits `a.button` (+ `.primary`/`.secondary`/`.accent`) inside `p.button-wrapper`; older clones emit `p.button-container`, and some buttonize a bare `<a>` alone in a paragraph (`buttonization: bare-links-too`) while current main requires authored `<strong>`/`<em>`. Style the wrong container and group layout silently breaks; assume the wrong buttonization rule and text links ship as buttons (or CTAs as bare links).
 - **`blockWrapperClass`** — `decorateBlock` adds `.block` + `data-block-name` and wraps the block in `div.<name>-wrapper` (section gains `.<name>-container`). Scope block CSS under `.<name>` (the class every vintage sets); confirm by asserting a grid container computes `display: grid` in a headless render — a wrong scoping guess makes every grid fall back to `display: block` ("mobile layout on desktop") while typography still looks fine.
 
-When `emptySectionCollapse` is true (the page-metadata block leaves an empty padded section after its content is consumed into `<head>`), add `main .section:empty { display: none }` to the foundation — or an empty ~88px band sits between the header and the first real section.
+When `emptySectionCollapse` is true (a metadata-only section is consumed into `<head>` and leaves an empty padded band), add `main .section:empty { display: none }` to the foundation as the fallback — the rule is to never author the metadata block alone (Step 9).
 
 ## The one rule that drives everything else
 
@@ -162,7 +162,7 @@ Ship an `@font-face` for EVERY named family (#65) and self-host every brand face
 
 ### 6. Chrome — authored `/nav` + `/footer` documents, template-slotted header/footer blocks
 
-Content lives in `content/nav.html` (three sections: brand / link list / tools — the stock header block's contract) and `content/footer.html` (one section per band), deployed and published like any page; presentation lives in `blocks/header` and `blocks/footer`, template-slotted (#95): the prototype's chrome DOM with authored content moved into role slots, keeping the stock hamburger / `aria-expanded` / `isDesktop` machinery. Normalize the live pipeline's `<li><p><a>` wrap (#98); lift the chrome element's own box styles (#31); add a root-class wrapper when the lifted CSS needs one (#26); never pair a fixed `height` with vertical `padding` on a chrome row (#106). Authored content never carries `<script>` (D15) and the delivered CSP blocks inline handlers and WebAssembly (#20, #102) — chrome forms and scroll state are wired in block JS. Per-page variants ride `nav:` / `footer:` metadata rows. Before this step read `reference/chrome.md` § The nav/footer documents, § The header/footer blocks and § What still cannot run.
+Content lives in `content/nav.html` (three sections: brand / link list / tools — the stock header block's contract) and `content/footer.html` (one section per band), deployed like any page; presentation lives in `blocks/header` and `blocks/footer`, template-slotted (#95): the prototype's chrome DOM with authored content moved into role slots, keeping the stock hamburger / `aria-expanded` / `isDesktop` machinery. Normalize the live pipeline's `<li><p><a>` wrap (#98); lift the chrome element's own box styles (#31); add a root-class wrapper when the lifted CSS needs one (#26); never pair a fixed `height` with vertical `padding` on a chrome row (#106). Authored content never carries `<script>` (D15) and the delivered CSP blocks inline handlers and WebAssembly (#20, #102) — chrome forms and scroll state are wired in block JS. Per-page variants ride `nav:` / `footer:` metadata rows. Before this step read `reference/chrome.md` § The nav/footer documents, § The header/footer blocks and § What still cannot run.
 
 ### 7. Blocks (parallel agents)
 
@@ -182,7 +182,7 @@ Every page carries a `metadata` block — in the first content section, never al
 
 ## Deploy (DA Source API, from a local agent)
 
-Steps 1–9 are the methodology; deploy is the one transport-specific step. The stages — code push with forced Code Sync, `localize-links.mjs` over the WHOLE tree after every generator (D4 is a capture-fidelity rule, never a delivery rule), `sanitise.js`, the multipart `PUT` to `admin.da.live/source`, `POST /preview/` then `/live/` — and the per-page atomic delivery contract (`davids-model-lint` exit 0 → PUT → preview → live → assert the delivered `.plain.html` → the headless computed-style guard on the live URL, every visible image rendering non-zero (#122) → the AI-readability gate (#100) → only then flip the ledger entry to `deployed`) run through `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> --content content` for more than a few pages (#4). Token hygiene (#16) and the `DA_TOKEN` lifecycle — preflight, re-check before each batch, halt with one instruction on a mid-batch `401` (the one legitimate hard stop in a hands-off run) — are part of the contract. Before this step read `da-deploy-protocol.md` § Delivery pipeline and § Deploy (DA Source API + curl).
+Steps 1–9 are the methodology; deploy is the one transport-specific step. The stages — code push with forced Code Sync, `localize-links.mjs` over the WHOLE tree after every generator (D4 is a capture rule, never a delivery rule), `sanitise.js`, multipart `PUT` to `admin.da.live/source`, `POST /preview/` then `/live/` — and the per-page atomic contract (`davids-model-lint` exit 0 → PUT → preview → live → assert the delivered `.plain.html` → headless computed-style guard on the live URL, every visible image non-zero (#122) → AI-readability gate (#100) → only then flip the ledger entry to `deployed`) run through `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> --content content` (#4). Token hygiene (#16) and the `DA_TOKEN` lifecycle — preflight, re-check before each batch, halt with one instruction on a mid-batch `401` (the one legitimate hard stop in a hands-off run) — are part of the contract. Two clocks: code is pushed and Code-Synced on the ref the user will look at before content is previewed and gated there; shape refactors ship accept-both code first; the publish report names the 2 h code-cache window end. Before this step read `da-deploy-protocol.md` § Delivery pipeline, § Deploy (DA Source API + curl) and § Two clocks.
 
 ## Step 10 — Reconcile on the DEPLOYED URL (content-diff ADVISORY + eyeball + CLS)
 

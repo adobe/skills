@@ -17,7 +17,12 @@
  *   - retries 000 / 408 / 429 / 5xx with capped exponential backoff;
  *   - APPENDS to its log (never truncates), so the record survives a restart;
  *   - verifies the delivered .plain.html (200 + 0 about:error) before flipping a
- *     page to `live` — admin 200 != delivered (guardrail #6/#13).
+ *     page to `live` — admin 200 != delivered (guardrail #6/#13);
+ *   - two clocks (da-deploy-protocol.md § Two clocks): when --branch is not
+ *     main, a HEAD per page counts documents that already exist on DA — they
+ *     are SHARED with main, which renders them with main's code until the
+ *     branch merges (one WARN line in the summary); when publishing, the
+ *     summary states when the code cache window (max-age=7200) ends.
  *
  * Idempotent: PUT/preview/live are all safe to repeat. Safe to Ctrl-C and re-run.
  *
@@ -123,12 +128,19 @@ async function deliveredOk({ org, repo, branch, webPath, tld = 'aem.live' }) {
   }
 }
 
-async function deployOne(page, args, ledger, logLine) {
+async function deployOne(page, args, ledger, logLine, shared) {
   const { org, repo, branch, token, publish } = args;
   const enc = encodeURI(page.webPath);
   const rec = ledger[page.webPath] || (ledger[page.webPath] = { status: 'pending', attempts: 0 });
   rec.attempts += 1;
   rec.ts = new Date().toISOString();
+
+  // 0. two clocks — a DA document is shared across every code ref. On a
+  //    non-main branch, a document that already exists is also main's.
+  if (branch !== 'main' && shared) {
+    const head = await call('HEAD', `${DA_SRC}/${org}/${repo}${enc}.html`, { token }, 1);
+    if (head.status === 200) shared.push(page.webPath);
+  }
 
   // 1. PUT body fragment (multipart, field name MUST be `data`, type text/html)
   const buf = await readFile(page.file);
@@ -207,9 +219,10 @@ async function main() {
   const logLine = async (o) => appendFile(args.log, `${JSON.stringify({ t: new Date().toISOString(), ...o })}\n`);
 
   console.error(`[deploy-batch] ${pages.length} pages, ${skipped} already live, ${todo.length} to drive (concurrency ${args.concurrency}, publish=${args.publish})`);
+  const shared = args.branch !== 'main' ? [] : null;
   let done = 0;
   await pool(todo, args.concurrency, async (p) => {
-    const rec = await deployOne(p, args, ledger, logLine);
+    const rec = await deployOne(p, args, ledger, logLine, shared);
     done += 1;
     const ok = rec.status === 'live' || rec.status === 'previewed';
     console.error(`[${done}/${todo.length}] ${ok ? 'OK  ' : 'FAIL'} ${p.webPath} (${rec.status})`);
@@ -219,6 +232,13 @@ async function main() {
 
   const fails = Object.entries(ledger).filter(([, r]) => !['live', 'previewed'].includes(r.status));
   console.error(`[deploy-batch] done. ${todo.length - fails.length} ok, ${fails.length} failed.`);
+  if (shared && shared.length) {
+    console.error(`[deploy-batch] WARN two clocks: ${shared.length} document(s) already on DA are shared with main — main renders them with main's code until branch "${args.branch}" is merged (da-deploy-protocol.md § Two clocks).`);
+  }
+  if (args.publish && todo.length) {
+    const until = new Date(Date.now() + 7200 * 1000).toISOString().slice(0, 16).replace('T', ' ');
+    console.error(`[deploy-batch] code is served with max-age=7200 — visitors may hold old code until ${until} UTC; report that window end with the publish.`);
+  }
   if (fails.length) {
     console.error('FAILS (re-run the same command to re-drive — succeeded pages are skipped):');
     for (const [p, r] of fails) console.error(`  ${p}  ${r.status}  ${r.lastError || ''}`);

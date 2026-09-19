@@ -4,6 +4,7 @@ Reference for the headless deploy sequence: write the sanitised **body-fragment*
 
 Read:
 - § Deploy (DA Source API + curl) — when writing or debugging a single page's PUT → preview → live, or a preview 409 / `about:error`;
+- § Two clocks — order of operations — before every code push that ships with content: which ref to push first, when to preview, where to gate, how to refactor a content shape without a broken intermediate state;
 - § Delivery pipeline — before the first deploy of a run: the stage table, the batch driver (#4), the per-page atomic delivery contract, link localization, the computed-style guard, token hygiene and the `DA_TOKEN` lifecycle.
 
 ## Deploy (DA Source API + curl)
@@ -12,7 +13,7 @@ Needs an IMS token (`DA_TOKEN`; see the `da-content` / `da-auth` skills — may 
 
 **Two preconditions bite (both cost real debugging):**
 - **Branch-host length ≤ 63 chars.** The host label `<branch>--<repo>--<owner>` must fit the DNS 63-char limit. Over it, the host does not resolve at all (curl `000`, "label too long") — nothing renders. The page PATH is independent of the host, so keep the path descriptive and **shorten the BRANCH** (e.g. `velocity-refined-content-2`, not `velocity-global-refined-content-2`).
-- **Force Code Sync for a fresh/programmatic branch.** The GitHub webhook frequently does NOT fire on a scripted push — symptom: your edited blocks/assets `404` on the branch host (`code.status: 404` via `admin.hlx.page/status/...`) while baseline files serve. Force it: `POST https://admin.hlx.page/code/$ORG/$REPO/$BRANCH/*` (→ `202` + a job), then poll until the edited block JS/CSS are live before previewing.
+- **Force Code Sync after every scripted push (not only a fresh branch).** The GitHub webhook frequently does NOT fire on a scripted push — symptom: your edited blocks/assets `404` on the branch host (`code.status: 404` via `admin.hlx.page/status/...`) while baseline files serve. Force it: `POST https://admin.hlx.page/code/$ORG/$REPO/$BRANCH/*` (→ `202` + a job), then poll until the edited block JS/CSS are live before previewing.
 
 ```bash
 ORG=<daOrg>; REPO=<daRepo>; BRANCH=<branch>; P=<path-without-extension>   # e.g. snowflake-blocks/test-1
@@ -87,6 +88,14 @@ curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
 ```
 
 URLs: DA edit `https://da.live/#/$ORG/$REPO/$P` · preview `https://$BRANCH--$REPO--$ORG.aem.page/$P` · live `https://$BRANCH--$REPO--$ORG.aem.live/$P`. Sheets are the one exception to the extensionless path: a `.json` document keeps its `.json` in the preview/live admin paths (`/preview/$ORG/$REPO/$BRANCH/$P.json`), or the request 404s. Token pre-flight: a 401 with empty body means it expired (dev tokens last ~24h) — re-auth.
+
+## Two clocks — order of operations
+
+A DA document is one document for every code ref: `main--<repo>--<org>` and `<branch>--<repo>--<org>` render the same content with different code. Content previews are near-instant; code is served with `cache-control: max-age=7200`, so a visitor (and the user checking the page) can hold the old code for up to two hours after a push. Three rules keep the two clocks from producing a report the user cannot reproduce:
+
+1. **Code first, on the ref the user will look at.** Push the code to that ref (usually `main`), force Code Sync and run the capped poll of step 0 for every push — then preview the content, then gate on that ref's host. When the gate must run on a branch host, the report says so and names main's intermediate state: "main renders the new content with old code until the branch merges" (`deploy-batch.mjs` prints the count of shared documents as a WARN when `--branch` is not `main`). A step-0 marker poll is replaced by `code-sync-verify.mjs` when it ships.
+2. **Content-shape refactors ship in two moves, never one.** First push code that accepts BOTH shapes and verify it is served (step 0); then republish the content; then drop the legacy branch in a later push. Never push untested code and republish the tree in the same step — every intermediate state is live for the whole cache window. Before republishing, render the new content once against the previous code: `git push origin <prevSha>:refs/heads/compat-prev` serves the old code on `compat-prev--<repo>--<org>.aem.page` over the same shared document.
+3. **The publish step and the finish report state the window end.** "Code cached until <now + 2 h>" — the driver prints the timestamp when it publishes; a page that looks stale before then is the cache, not a regression.
 
 ## Delivery pipeline — stages, batch driver, per-page atomic contract, token lifecycle
 
