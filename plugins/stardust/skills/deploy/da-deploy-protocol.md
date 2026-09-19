@@ -29,7 +29,8 @@ curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
   "https://admin.hlx.page/code/$ORG/$REPO/$BRANCH/*"          # expect 202
 node skills/deploy/scripts/served-check.mjs \
   "https://$BRANCH--$REPO--$ORG.aem.page/blocks/<edited-block>/<edited-block>.js" \
-  --grep "<a marker string from your edit>" --wait 180        # exit 1 = did not land: check the POST / installation
+  --grep "<a marker string from your edit>" --wait 180        # exit 124 = did not land in 3 min (re-run or check the POST); exit 1 = served but wrong
+# … --same-as blocks/<edited-block>/<edited-block>.css   # served bytes == local file: the pre-gate check for every CSS/JS the round touched
 
 # 1. sanitise non-ASCII to entities (in place, idempotent) — DA corrupts raw UTF-8.
 #    It writes in place and reports on stderr; NEVER capture its output as the PUT body
