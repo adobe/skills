@@ -242,6 +242,17 @@ Aggregation rules:
   most-frequent text color → `text-primary`; most-frequent
   background-color on `[role="button"]` and `.btn-*` → `primary`; etc.
   When a role can't be assigned, use `accent-N` with `N` ascending.
+- **Exclude third-party chrome.** Consent managers (CMPs), survey and
+  feedback widgets are not the brand: any element inside
+  `#onetrust-consent-sdk, #onetrust-banner-sdk, #CybotCookiebotDialog,
+  #usercentrics-root, #didomi-host, [id*="cookie-banner" i],
+  [class*="cookie-consent" i]`, **or** whose label matches
+  `/^(accept|reject|allow|decline|agree)\b|cookie/i` (the label test is
+  mandatory — CMP buttons are commonly unclassed, so a class-only
+  exclusion misses them and their border colour enters the palette),
+  is dropped from palette counting and from button-cluster / component
+  style aggregation. The label list is the consent table in
+  `crawl.mjs` `dismissConsent` (one source; do not maintain a second).
 - Cap the palette at 8 entries. If the site uses more, keep the top 8
   by occurrences and record the dropped colors in `_provenance.notes`.
 - Track **usage context** per color in `usedAs`: a deduped list drawn
@@ -422,7 +433,8 @@ this is descriptive.
 ## § Component style
 
 The v1 fields, preserved so nothing is lost when DESIGN.json's
-`extensions` block carries them forward.
+`extensions` block carries them forward. Buttons inside third-party
+chrome are excluded first (§ Palette, "Exclude third-party chrome").
 
 ```json
 {

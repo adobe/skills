@@ -1,0 +1,8 @@
+{
+  "_provenance": { "writtenBy": "stardust:extract", "script": "crawl.mjs" },
+  "discovery": { "fetchTechnique": "headless", "count": 4 },
+  "visionCheck": [
+    { "slug": "index", "verdict": "ok", "notes": "a consent modal covers the hero but the palette looks right" },
+    { "slug": "pricing", "verdict": "ok", "notes": "pixels match the record" }
+  ]
+}

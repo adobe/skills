@@ -41,15 +41,39 @@
  *     reproducible, and provenance) instead of re-running live probes per
  *     selector guess. Live probes stay for what the static DOM cannot answer
  *     (geometry, computed styles).
- *   - SCREENSHOT: a full-page PNG per page under <out>/assets/screenshots/<slug>.png
- *     (viewport-only fallback on extremely tall pages; mode in _signals.screenshotMode,
- *     relative path in the page record's `screenshot` field) — feeds the extract
- *     SKILL.md Phase 2.5 vision gate.
+ *   - SCREENSHOT: a full-page PNG per page under <out>/assets/screenshots/<slug>.png.
+ *     Chromium silently WRAPS a full-page raster above its 16,384 px texture
+ *     limit (rows repeat, the tail is lost, nothing throws), so a page taller
+ *     than SHOT_WRAP_PX is captured in clip BANDS (<slug>.png, <slug>.part2.png…;
+ *     _signals.screenshotMode 'banded', screenshotBands, docHeight); a raster
+ *     that throws falls back to the first viewport ('clipped' — the tail is
+ *     missing by instrument, never a vision-gate `suspect`). Mode in
+ *     _signals.screenshotMode, relative path in the record's `screenshot` field.
+ *   - 360 SHOT (--mobile entry|all|none, default entry): the same page, no
+ *     navigation (consent + solved bot state inherited), re-laid out at
+ *     360×900 → <slug>-360.png (`screenshotMobile`, _signals.screenshotMobileMode).
+ *     Replica's 360 pass starts from it instead of guessing the mobile layout.
+ *   - CAPTURE QUALITY: _signals.emptyMain (a <main> exists but is blank with
+ *     no real image — client-rendered page captured before hydration),
+ *     brokenImages / subResourceBlock (images 403'd by the edge while the
+ *     document loaded), overlayCoverPct (fixed-position overlay ∩ first
+ *     viewport — a survey/feedback modal the consent pass did not know).
+ *     captureQuality 'degraded' is recorded, never thrown: the DOM is still
+ *     evidence; Phase 2.5 treats it as `suspect` until recaptured.
+ *   - COMPAT MODE: _provenance.compatMode ('CSS1Compat' | 'BackCompat') — a
+ *     legacy site rendering in quirks mode needs its doctype mirrored, or the
+ *     replica lays out standards-mode boxes against quirks-mode ground truth.
  *
  * Usage:
  *   node crawl.mjs --url https://example.com [--pages /a,/b] [--cap 25 | --all | --single] \
  *     [--refresh slug,slug | --force] [--out stardust/current] [--wait medium] \
- *     [--no-consent-dismiss] [--concurrency 4] [--dynamics] [--headed[=window]]
+ *     [--no-consent-dismiss] [--concurrency 4] [--dynamics] [--headed[=window]] \
+ *     [--mobile entry|all|none] [--dpr 1]
+ *   node crawl.mjs --help
+ *
+ * --dpr <n> sets deviceScaleFactor (default 1, recorded in _provenance.dpr): the
+ *   gate captures at DPR 1, and a DPR-2 ground truth would never pixel-match it
+ *   (decision D4 — keep 1, record it).
  *
  * Scope: ia-extraction.md § Incremental re-runs is the rule (--pages exact
  *   paths, --refresh / --force vs the default skip of slugs already extracted
@@ -70,15 +94,15 @@
  * Exit codes: 0 done (per-page failures are in the log) · 2 fatal ·
  *   3 BotChallengeError (tier 3 still challenged — never captured as content).
  * Exports (for evals/fixtures/*.test.mjs): slugify, assignSlugs, mergeCrawlLog,
- *   TIERS, tierOf — importing this module runs nothing; main() runs only when
- *   the file is the entry script.
+ *   TIERS, tierOf, captureQualityOf, SHOT_WRAP_PX — importing this module runs
+ *   nothing; main() runs only when the file is the entry script.
  *
  * Needs playwright importable from the project (see extract/SKILL.md Setup —
  * `npm i -D playwright` or the Playwright MCP server; the `npx playwright`
  * availability probe alone does NOT make the ESM module importable).
  */
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { pathToFileURL } from 'node:url';
@@ -94,11 +118,23 @@ const WAIT_MS = { fast: 1200, medium: 2500, slow: 5000 };
 // conditions than capture. Viewport here also saves a per-page CDP round-trip.
 const CRAWL_CONTEXT = { reducedMotion: 'reduce', viewport: { width: 1440, height: 900 } };
 
+// --help prints the header block above (the usage lives there once).
+function printHelp() {
+  const src = readFileSyncSafe(new URL(import.meta.url));
+  const block = src.split('\n').slice(1).join('\n').split('*/')[0];
+  console.log(block.split('\n').filter((l) => l !== '/**').map((l) => l.replace(/^ \* ?/, '')).join('\n').trim());
+}
+function readFileSyncSafe(u) { try { return readFileSync(u, 'utf8'); } catch { return ''; } }
+
+const MOBILE_MODES = ['entry', 'all', 'none'];
 function parseArgs(argv) {
-  const a = { out: 'stardust/current', max: 5, wait: 'medium', consent: true, concurrency: 4, dynamics: false, refresh: [], force: false, headed: 0 };
+  const a = { out: 'stardust/current', max: 5, wait: 'medium', consent: true, concurrency: 4, dynamics: false, refresh: [], force: false, headed: 0, mobile: 'entry', dpr: 1 };
   for (let i = 2; i < argv.length; i += 1) {
     const k = argv[i];
+    if (k === '--help' || k === '-h') { a.help = true; return a; }
     if (k === '--url') a.url = argv[(i += 1)];
+    else if (k === '--mobile') { a.mobile = argv[(i += 1)]; if (!MOBILE_MODES.includes(a.mobile)) throw new Error(`--mobile must be one of ${MOBILE_MODES.join('|')}`); }
+    else if (k === '--dpr') { const n = +argv[(i += 1)]; if (!(n > 0 && n <= 4)) throw new Error('--dpr must be a number in (0, 4]'); a.dpr = n; }
     else if (k === '--pages') a.pages = (argv[(i += 1)] || '').split(',').map((s) => s.trim()).filter(Boolean);
     else if (k === '--out') a.out = argv[(i += 1)];
     else if (k === '--max' || k === '--cap') { const n = +argv[(i += 1)]; a.max = Number.isFinite(n) && n >= 0 ? n : 5; } // 0 = no cap; default 5 (the extract contract's small sample)
@@ -205,8 +241,10 @@ export async function launchTier(chromium, tier) {
 // workers) once the run is in stealth mode — the challenge re-fires per context
 // (no cross-context cookie sharing), so a worker that skipped the spoof would be
 // re-challenged even after the probe cleared it.
-async function newContext(browser, stealth) {
-  const ctx = await browser.newContext(CRAWL_CONTEXT);
+// `extra` = per-run context options (deviceScaleFactor from --dpr, storageState)
+// so probe and workers render under identical conditions.
+async function newContext(browser, stealth, extra = {}) {
+  const ctx = await browser.newContext({ ...CRAWL_CONTEXT, ...extra });
   if (stealth) {
     await ctx.addInitScript(() => {
       Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
@@ -719,6 +757,30 @@ function capture() {
   // substance / SPA-shell signal
   const distinctHeadings = new Set(headings.map((h) => h.text)).size;
   const spaShellSuspect = distinctHeadings < 2 && mainText.length < 200 && realImgs.length === 0;
+  // capture-quality signals (recorded, never thrown — the DOM is still evidence):
+  //   emptyMain — a landmark exists but is blank (header/footer headings kept
+  //     the soft-404 check quiet while <main> was an unhydrated shell);
+  //   brokenImages / subResourceBlock — images the edge 403'd while the
+  //     document itself loaded (broken-image icons recorded as a success);
+  //   overlayCoverPct — fixed-position overlay ∩ first viewport, in % of the
+  //     viewport: a survey/feedback modal with a dimming scrim the consent pass
+  //     did not know covers most of it; the dismissal already removed CMPs.
+  const landmark = document.querySelector('main, [role="main"]');
+  const emptyMain = !!landmark && text(landmark).length < 50 && realImgs.length === 0;
+  const withSrc = [...document.querySelectorAll('img[src]')].filter((im) => im.getAttribute('src') && !/^data:/i.test(im.getAttribute('src')));
+  const brokenImages = withSrc.filter((im) => im.complete && im.naturalWidth === 0).length;
+  const subResourceBlock = brokenImages >= Math.max(3, Math.ceil(withSrc.length * 0.3));
+  let overlayArea = 0;
+  const vw = window.innerWidth; const vh = window.innerHeight;
+  for (const el of document.querySelectorAll('body *')) {
+    const cs = getComputedStyle(el);
+    if (cs.position !== 'fixed' || cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity === 0) continue;
+    if (el.closest('[aria-hidden="true"],[hidden]')) continue;
+    const r = el.getBoundingClientRect();
+    const w = Math.min(r.right, vw) - Math.max(r.left, 0); const h = Math.min(r.bottom, vh) - Math.max(r.top, 0);
+    if (w > 0 && h > 0) overlayArea += w * h;
+  }
+  const overlayCoverPct = Math.min(100, Math.round((overlayArea / Math.max(1, vw * vh)) * 100));
 
   // content hash for cross-page duplicate detection (detail == listing)
   const contentHash = `${headings.map((h) => h.text).join('|')}::${mainText.slice(0, 4000)}`;
@@ -826,12 +888,73 @@ function capture() {
       realImageCount: realImgs.length,
       trackingOnlyMedia: imgs.length > 0 && realImgs.length === 0,
       spaShellSuspect,
+      emptyMain,
+      brokenImages,
+      subResourceBlock,
+      overlayCoverPct,
     },
+    _compatMode: document.compatMode, // 'CSS1Compat' | 'BackCompat' (quirks) → _provenance.compatMode
     _contentHash: contentHash,
   };
 }
 
-async function capturePage(context, url, slug, args) {
+// captureQuality from the in-page signals — 'degraded' when the record is real
+// DOM but not the page as a visitor sees it (Phase 2.5 treats it as `suspect`
+// until recaptured at a higher tier). Pure: pinned by evals/fixtures.
+export function captureQualityOf(s) {
+  return s && (s.emptyMain || s.subResourceBlock) ? 'degraded' : 'ok';
+}
+export const OVERLAY_FLAG_PCT = 30; // page line prints OVERLAY? above this
+
+// Chromium wraps (does not throw) a full-page raster above its 16,384 px
+// texture limit: rows repeat and the tail is lost. Above SHOT_WRAP_PX the page
+// is captured in clip bands instead; the fixture pins the threshold.
+export const SHOT_WRAP_PX = 16000;
+const SHOT_BAND_PX = 8000;
+/**
+ * One page → PNG(s) under shotsDir. Returns { mode, files, docHeight, bands? }:
+ *   fullPage  one raster (docHeight ≤ SHOT_WRAP_PX)
+ *   banded    <base>.png + <base>.part2.png… (clip bands of ≤ SHOT_BAND_PX)
+ *   clipped   first viewport only — the raster threw; the tail is missing by
+ *             instrument (never a vision-gate `suspect` for that reason)
+ *   failed    nothing written
+ */
+async function screenshotPage(page, base, shotsDir) {
+  const docHeight = await page.evaluate(() => Math.max(document.documentElement.scrollHeight || 0, document.body ? document.body.scrollHeight : 0)).catch(() => 0);
+  const vp = page.viewportSize() || CRAWL_CONTEXT.viewport;
+  const files = [];
+  if (docHeight > SHOT_WRAP_PX) {
+    try {
+      for (let y = 0, i = 1; y < docHeight; y += SHOT_BAND_PX, i += 1) {
+        const file = i === 1 ? `${base}.png` : `${base}.part${i}.png`;
+        await page.screenshot({ path: path.join(shotsDir, file), fullPage: true, clip: { x: 0, y, width: vp.width, height: Math.min(SHOT_BAND_PX, docHeight - y) }, timeout: 30000 });
+        files.push(file);
+      }
+      return { mode: 'banded', files, docHeight, bands: files.length };
+    } catch { files.length = 0; }
+  } else {
+    try {
+      await page.screenshot({ path: path.join(shotsDir, `${base}.png`), fullPage: true, timeout: 30000 });
+      return { mode: 'fullPage', files: [`${base}.png`], docHeight };
+    } catch { /* fall through to the viewport clip */ }
+  }
+  try {
+    await page.screenshot({ path: path.join(shotsDir, `${base}.png`), fullPage: false, timeout: 30000 });
+    return { mode: 'clipped', files: [`${base}.png`], docHeight };
+  } catch { return { mode: 'failed', files: [], docHeight }; }
+}
+// the 4-step lazy-load scroll + return-to-top + settle used before every capture
+async function lazyScroll(page) {
+  for (let y = 0; y <= 1; y += 0.34) {
+    await page.evaluate((f) => window.scrollTo(0, document.body.scrollHeight * f), y);
+    await page.waitForTimeout(400);
+  }
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(800);
+}
+const MOBILE_VIEWPORT = { width: 360, height: 900 }; // 900 = stitch-shot's default --vh, for gate symmetry
+
+async function capturePage(context, url, slug, args, isEntry = false) {
   const page = await context.newPage();
   const recorder = args.dynamics ? attachDynamicRecorder(page) : null; // opt-in; must precede goto — load-time fetches are the evidence
   try {
@@ -869,22 +992,19 @@ async function capturePage(context, url, slug, args) {
 
   const consentMethod = args.consent ? await dismissConsent(page) : 'skipped';
   await page.waitForTimeout(WAIT_MS[args.wait] || WAIT_MS.medium);
-  // 4-step scroll to trigger lazy content
-  for (let y = 0; y <= 1; y += 0.34) {
-    await page.evaluate((f) => window.scrollTo(0, document.body.scrollHeight * f), y);
-    await page.waitForTimeout(400);
-  }
-  await page.evaluate(() => window.scrollTo(0, 0));
-  // settle after return-to-top: entry animations (hero reveals) must reach
-  // their final state before the visibility filter reads computed opacity, or
-  // the animated h1 is silently dropped. reducedMotion emulation neutralizes
-  // most of it; the settle covers JS-driven reveals. Deliberately a FLAT wait:
-  // gating on document.getAnimations() was tried and re-dropped the h1 — a
-  // JS-delayed reveal has no running animation at check time, so the gate
-  // resolves before the reveal even starts. The 800ms floor is load-bearing.
-  await page.waitForTimeout(800);
+  // 4-step scroll to trigger lazy content, return to top, then settle: entry
+  // animations (hero reveals) must reach their final state before the
+  // visibility filter reads computed opacity, or the animated h1 is silently
+  // dropped. reducedMotion emulation neutralizes most of it; the settle covers
+  // JS-driven reveals. Deliberately a FLAT wait: gating on
+  // document.getAnimations() was tried and re-dropped the h1 — a JS-delayed
+  // reveal has no running animation at check time, so the gate resolves before
+  // the reveal even starts. The 800ms floor inside lazyScroll is load-bearing.
+  await lazyScroll(page);
 
   const rec = await page.evaluate(capture);
+  const compatMode = rec._compatMode || null;
+  delete rec._compatMode;
   // dynamic surface (opt-in): network recorder + DOM-side evidence → one `dynamic` section
   if (!recorder) delete rec.dynamicDom;
   else {
@@ -912,25 +1032,27 @@ async function capturePage(context, url, slug, args) {
   if (!rec.headings.length && rec._signals.mainTextLen === 0 && rec._signals.realImageCount === 0) {
     throw Object.assign(new Error('empty page — possibly soft-404'), { errorClass: 'EmptyPageError' });
   }
-  // full-page screenshot for the Phase 2.5 vision gate. Extremely tall pages
-  // can exceed Playwright's raster limit — catch and retry viewport-only,
-  // recording which mode was used in _signals.
+  // screenshots for the Phase 2.5 vision gate (screenshotPage: fullPage |
+  // banded above SHOT_WRAP_PX | clipped | failed). The record above is the
+  // 1440 DOM; the 360 pass below only re-lays out the same page for its PNG.
   const shotsDir = path.join(args.out, 'assets', 'screenshots');
   await mkdir(shotsDir, { recursive: true });
-  const shotPath = path.join(shotsDir, `${slug}.png`);
-  let screenshotMode = 'fullPage';
-  try {
-    await page.screenshot({ path: shotPath, fullPage: true, timeout: 30000 });
-  } catch {
-    screenshotMode = 'viewport';
-    try {
-      await page.screenshot({ path: shotPath, fullPage: false, timeout: 30000 });
-    } catch {
-      screenshotMode = 'failed';
-    }
+  const shot = await screenshotPage(page, slug, shotsDir);
+  rec.screenshot = shot.files.length ? `assets/screenshots/${shot.files[0]}` : null;
+  rec._signals.screenshotMode = shot.mode;
+  rec._signals.docHeight = shot.docHeight;
+  if (shot.bands) rec._signals.screenshotBands = shot.bands;
+  // 360 shot — same page, no navigation (hit minimisation; consent and solved
+  // bot state inherited). Mobile layouts are taller, so banding fires here first.
+  if (args.mobile === 'all' || (args.mobile === 'entry' && isEntry)) {
+    await page.setViewportSize(MOBILE_VIEWPORT).catch(() => {});
+    await lazyScroll(page);
+    const m = await screenshotPage(page, `${slug}-360`, shotsDir);
+    rec.screenshotMobile = m.files.length ? `assets/screenshots/${m.files[0]}` : null;
+    rec._signals.screenshotMobileMode = m.mode;
+    if (m.bands) rec._signals.screenshotMobileBands = m.bands;
   }
-  rec.screenshot = screenshotMode === 'failed' ? null : `assets/screenshots/${slug}.png`;
-  rec._signals.screenshotMode = screenshotMode;
+  rec._signals.captureQuality = captureQualityOf(rec._signals);
   // live-render evidence per SKILL.md § Phase 2 / current-state-schema.md —
   // validateProvenance() downstream refuses pages without these five fields.
   if (resolvedUrl !== url) rec._resolvedUrl = resolvedUrl;
@@ -947,6 +1069,7 @@ async function capturePage(context, url, slug, args) {
     technique: TIERS[(args.tier || 1) - 1],
     storageState: false, // every worker context is fresh — no admitted session is reused (SKILL.md Phase 2 step 3)
     variants: await collectVariants(page, context),
+    compatMode, // 'CSS1Compat' | 'BackCompat' — a quirks-mode source needs its doctype mirrored (recreation-procedure.md § CSS lifting)
   };
   rec._consentMethod = consentMethod; // hoisted into _crawl-log.json#consent.method by the writer, not persisted per page
   return rec;
@@ -960,7 +1083,11 @@ async function capturePage(context, url, slug, args) {
 
 async function main() {
   const args = parseArgs(process.argv);
+  if (args.help) { printHelp(); return; }
   const { chromium } = await import('playwright');
+  // per-run context options shared by probe and workers (--dpr; the admitted
+  // session, once the probe has one, is added below)
+  const ctxExtra = { deviceScaleFactor: args.dpr };
   const outPages = path.join(args.out, 'pages');
   await mkdir(outPages, { recursive: true });
 
@@ -985,7 +1112,7 @@ async function main() {
   const escalations = []; // { tier, block } per rejected tier
   for (;;) {
     browser = await launchTier(chromium, tier);
-    context = await newContext(browser, tier >= 2);
+    context = await newContext(browser, tier >= 2, ctxExtra);
     probe = await context.newPage();
     let blocked = null;
     try {
@@ -1054,7 +1181,8 @@ async function main() {
   const allSlugs = assignSlugs(urls);
   const explicit = new Set((args.pages || []).map((p) => dedupeKey(normalizeUrl(p, args.url))));
   const skipped = [];
-  const queue = urls.map((url, i) => ({ url, slug: allSlugs[i] })).filter(({ url, slug }) => {
+  const entryKey = dedupeKey(normalizeUrl(args.url));
+  const queue = urls.map((url, i) => ({ url, slug: allSlugs[i], entry: dedupeKey(url) === entryKey })).filter(({ url, slug }) => {
     if (args.force || args.refresh.includes(slug) || explicit.has(dedupeKey(url))) return true;
     const sp = statePages.get(slug);
     if (sp && EXTRACTED_OR_BEYOND.has(sp.status)) { skipped.push({ slug, url, status: sp.status }); return false; }
@@ -1087,13 +1215,13 @@ async function main() {
     let cursor = 0;
     escalate = 0;
     async function worker() {
-      const ctx = await newContext(browser, stealth);
+      const ctx = await newContext(browser, stealth, ctxExtra);
       while (cursor < order.length && !escalate) {
         const idx = order[cursor];
         cursor += 1;
-        const { url, slug } = queue[idx];
+        const { url, slug, entry: isEntry } = queue[idx];
         try {
-          const rec = await capturePage(ctx, url, slug, args);
+          const rec = await capturePage(ctx, url, slug, args, isEntry);
           if (consentRank(rec._consentMethod) > consentRank(log.consent.method)) log.consent.method = rec._consentMethod;
           delete rec._consentMethod;
           if (rec.dynamic) rollupDynamic(dynamicRollup, rec.dynamic, slug);
@@ -1122,7 +1250,7 @@ async function main() {
           ok += 1;
           const s = rec._signals;
           const dy = rec.dynamic?.summary || {};
-          const warn = [s.spaShellSuspect && 'SPA-SHELL?', s.trackingOnlyMedia && 'TRACKING-PIXEL-ONLY', s.filteredInterstitials && `filtered:${s.filteredInterstitials}`, dy.sameSiteEndpoints && `data-endpoints:${dy.sameSiteEndpoints}`, dy.searchForms && 'SEARCH-FORM', dy.hydrated && 'HYDRATED'].filter(Boolean).join(' ');
+          const warn = [s.spaShellSuspect && 'SPA-SHELL?', s.trackingOnlyMedia && 'TRACKING-PIXEL-ONLY', s.filteredInterstitials && `filtered:${s.filteredInterstitials}`, s.captureQuality === 'degraded' && 'DEGRADED', s.overlayCoverPct > OVERLAY_FLAG_PCT && 'OVERLAY?', s.screenshotMode !== 'fullPage' && `shot:${s.screenshotMode}`, dy.sameSiteEndpoints && `data-endpoints:${dy.sameSiteEndpoints}`, dy.searchForms && 'SEARCH-FORM', dy.hydrated && 'HYDRATED'].filter(Boolean).join(' ');
           console.error(`[crawl] OK   ${slug}  ${warn}`);
         } catch (err) {
           if (err.errorClass === 'BotChallengeError' && args.tier < TIERS.length) {

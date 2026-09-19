@@ -9,6 +9,7 @@
 - § Media · § Forms — when recording images, video and form fields.
 - § Dynamic — only on migration-bound runs with `--dynamics`: per-page reach evidence of what was fetched and how it rendered.
 - § Embed dominance — when a page's primary content lives inside a cross-origin iframe.
+- § Signals — before the Phase 2.5 vision pass: the crawler's own capture-quality flags (`_signals`) and what `screenshotMode` / `screenshotMobile` mean.
 - § CSS custom properties · § Per-section style — when capturing `:root` tokens and the per-section style summaries that feed brand-surface aggregation.
 - § Required vs optional · § Versioning — when a key has no data (empty, never omitted) or the schema evolves.
 - § Live-render evidence — before any write: why a synthesized page record is forbidden and how the guard refuses it.
@@ -44,8 +45,9 @@ The file is JSON because every consumer is non-human. It carries a
     "dpr": 1,                        // devicePixelRatio of the capture
     "technique": "headless",         // bot-management tier that captured: "headless" | "chrome-headless" | "chrome-headed-offscreen"
     "storageState": false,           // true when an admitted session (cookies/storage) was reused for the capture
-    "variants": []                   // A/B / geo / personalisation markers observed at capture — { kind: "cookie"|"attribute"|"global", name, value? }
+    "variants": [],                  // A/B / geo / personalisation markers observed at capture — { kind: "cookie"|"attribute"|"global", name, value? }
                                      // from experiment cookies (optimizelyEndUserId, mbox, _vwo_uuid), [data-experiment*] attributes, testing globals
+    "compatMode": "CSS1Compat"       // document.compatMode — "BackCompat" = quirks mode: the replica mirrors the (missing) doctype (../../replica/reference/recreation-procedure.md § CSS lifting)
   },
   "slug": "about",
   "url": "https://example.com/about",
@@ -77,7 +79,9 @@ The file is JSON because every consumer is non-human. It carries a
   "embedDominance": { /* see § Embed dominance */ },
   "cssCustomProperties": [ /* see § CSS custom properties */ ],
 
-  "screenshot": "stardust/current/assets/screenshots/about.png",
+  "screenshot": "stardust/current/assets/screenshots/about.png",         // 1440-wide; band 1 when _signals.screenshotMode is "banded"
+  "screenshotMobile": "stardust/current/assets/screenshots/about-360.png", // 360×900 re-layout of the same page (`--mobile entry|all|none`, default entry); absent when not taken
+  "_signals": { /* see § Signals — crawler capture-quality flags, never content */ },
 
   "stats": {
     "wordCount": 612,
@@ -489,6 +493,42 @@ The screenshot is already captured by every page (per
 pages, surface it explicitly here so `direct` and `prototype` know to
 reason from the screenshot rather than the (empty) computed-style
 data.
+
+## § Signals
+
+`_signals` is written by `crawl.mjs` per page: cheap instrument-side flags
+the Phase 2.5 vision pass reads **before** looking. They describe the
+capture, never the site; none of them alone marks a page `suspect`.
+
+```json
+"_signals": {
+  "filteredInterstitials": 1,      // nodes dropped by the interstitial/consent text filter
+  "distinctHeadings": 7,
+  "mainTextLen": 4120,             // innerText length of <main> (or body)
+  "realImageCount": 9,             // <img> > 2 px that are not tracking pixels
+  "trackingOnlyMedia": false,
+  "spaShellSuspect": false,        // < 2 headings, tiny text, no media — SPA shell captured before render
+  "duplicateOf": "listing",        // post-pass: same content hash as an earlier-queued page (detail == listing)
+  "emptyMain": false,              // a <main>/[role=main] exists, < 50 chars of text, no real image — unhydrated shell
+  "brokenImages": 0,               // <img src> with complete && naturalWidth === 0
+  "subResourceBlock": false,       // brokenImages ≥ max(3, 30 % of <img src>) — the edge 403'd images while the document loaded
+  "overlayCoverPct": 4,            // position:fixed elements ∩ first viewport, % of the viewport; > 30 prints OVERLAY? on the page line
+  "captureQuality": "ok",          // "ok" | "degraded" (emptyMain or subResourceBlock) — degraded is recorded, never thrown
+  "screenshotMode": "fullPage",    // "fullPage" | "banded" (> 16,000 px: <slug>.png + <slug>.part2.png…) | "clipped" (raster threw; first viewport only) | "failed"
+  "screenshotBands": 3,            // banded only
+  "docHeight": 21622,              // document scrollHeight at capture
+  "screenshotMobileMode": "fullPage", // same vocabulary for <slug>-360.png; the 360 layout is taller, so banding fires here first
+  "screenshotMobileBands": 2
+}
+```
+
+Reading rules (Phase 2.5): `degraded` is `suspect` until the page is
+re-crawled (`--refresh <slug>`, one tier up when the cause is an edge
+block); `OVERLAY?` pages are re-captured **before** they are looked at;
+a `banded` page is read band by band; `clipped` means the tail is
+missing by instrument — never `suspect` for that reason alone.
+`evals/lint/crawl-log-lint.mjs --dir stardust/current` fails a run whose
+`visionCheck[]` says `ok` on a degraded page or with an overlay in the note.
 
 ## § CSS custom properties
 

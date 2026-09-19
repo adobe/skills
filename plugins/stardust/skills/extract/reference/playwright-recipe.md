@@ -28,7 +28,7 @@ parameters below are mandatory.
 ```
 browser:        chromium
 viewport:       1440 × 900
-deviceScaleFactor: 2
+deviceScaleFactor: 1       (`--dpr`; the gate captures at 1 — a DPR-2 ground truth never pixel-matches it. Decision D4: keep 1, record it in `_provenance.dpr`)
 colorScheme:    light       (capture again with "dark" only if direction.md needs it later)
 locale:         en-US       (override per-page if site Content-Language differs)
 reducedMotion:  reduce      (so animation transforms don't pollute computed styles)
