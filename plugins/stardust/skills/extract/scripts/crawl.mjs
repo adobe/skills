@@ -789,9 +789,53 @@ function capture() {
     return marker && !/close|dismiss/i.test(cls) ? { marker, href: el.getAttribute('href') || null } : null;
   }).filter(Boolean).slice(0, 40);
   const mediaIds = [...document.querySelectorAll('video-js, [data-video-id], [data-videoid], iframe[src*="player" i]')].map((el) => el.getAttribute('data-video-id') || el.getAttribute('data-videoid') || el.getAttribute('src')).filter(Boolean).slice(0, 20);
+  // wider reach signals (dynamics-detect --reach mints `reach-only` rows from these when no archetype finding
+  // matches): tabs / expanders, open shadow roots, empty data-* config containers, form-less control groups,
+  // search shells, player ids, chat loaders, federated modules, quizzes. Same evaluate — zero extra hits.
+  const chrome = (el) => !!el.closest('header, nav, footer, [role=navigation], [role=banner], [role=contentinfo], [class*="header" i], [class*="footer" i], [class*="cookie" i], [id*="onetrust" i]');
+  const firstCls = (el) => (el.getAttribute('class') || '').split(/\s+/)[0] || '';
+  const tabs = {
+    tablists: document.querySelectorAll('[role=tablist]').length,
+    expanders: [...document.querySelectorAll('[aria-expanded]')].filter((el) => !chrome(el)).length,
+  };
+  const shadowHosts = [...document.querySelectorAll('*')].filter((el) => el.shadowRoot && (el.shadowRoot.textContent || '').trim().length > 40 && !chrome(el))
+    .slice(0, 10).map((el) => ({ tag: el.tagName.toLowerCase(), cls: firstCls(el) }));
+  const CONFIG_SKIP = /^(script|style|meta|link|img|input|br|hr|source|track|iframe|video|audio|canvas|svg|picture|template|noscript)$/;
+  const emptyConfigContainers = [...document.querySelectorAll('[data-component],[data-endpoint],[data-api],[data-url],[data-src-url],[data-config],[data-props],[data-module],[data-widget],[data-app],[data-mount],[data-partner-id],[data-uiconf-id]')]
+    .filter((el) => !CONFIG_SKIP.test(el.tagName.toLowerCase()) && !el.children.length && !(el.textContent || '').trim() && !chrome(el))
+    .slice(0, 10).map((el) => ({ tag: el.tagName.toLowerCase(), attrs: [...el.attributes].filter((a) => a.name.startsWith('data-')).map((a) => a.name).slice(0, 6) }));
+  const looseControls = new Map();
+  for (const el of document.querySelectorAll('input, select, textarea')) {
+    if (el.closest('form') || chrome(el) || ['hidden', 'submit', 'button', 'password'].includes((el.type || '').toLowerCase()) || !vis(el)) continue;
+    const root = el.closest('section, article, [class*="form" i], [data-component], main > div, main') || document.body;
+    const key = root === document.body ? 'body' : `${root.tagName.toLowerCase()}.${firstCls(root)}`;
+    looseControls.set(key, (looseControls.get(key) || 0) + 1);
+  }
+  const controlGroups = [...looseControls].filter(([, n]) => n >= 2).map(([container, controls]) => ({ container, controls })).slice(0, 10);
+  const searchShell = (/(\/(search|suchen|sok|recherche|buscar|zoeken|ricerca)(\/|$)|[?&](q|query|s|search|keyword)=)/i.test(location.pathname + location.search) || !!document.querySelector('input[type=search]'))
+    && mainText.length < 200;
+  const players = [
+    ...[...document.querySelectorAll('[id^="kaltura_player" i], [data-partner-id], [data-uiconf-id], .kWidgetIframeContainer')].map((el) => ({ vendor: 'kaltura', id: el.getAttribute('data-uiconf-id') || el.getAttribute('data-partner-id') || el.id })),
+    ...[...document.querySelectorAll('video-js[data-account], [data-account][data-player]')].map((el) => ({ vendor: 'brightcove', id: `${el.getAttribute('data-account')}/${el.getAttribute('data-player') || 'default'}` })),
+    ...[...document.querySelectorAll('.wistia_embed, [class*="wistia_async_"]')].map((el) => ({ vendor: 'wistia', id: ((el.getAttribute('class') || '').match(/wistia_async_([\w-]+)/) || [])[1] || null })),
+  ].slice(0, 20);
+  // chat markers mirror the `chat: live chat widget` row of dynamics/scripts/vendors.json (DOM side; the network side is thirdPartyScriptHosts)
+  const CHAT_RE = /intercom|drift\.com|zendesk|zdassets|liveperson|salesforceliveagent|genesys|freshchat|tidio|livechatinc|olark|crisp\.chat/i;
+  const chatLoaders = [...new Set([
+    ...[...document.querySelectorAll('script[src]')].map((s) => s.getAttribute('src')).filter((src) => CHAT_RE.test(src)).map((src) => { try { return new URL(src, location.href).host; } catch { return src.slice(0, 60); } }),
+    ...[...document.querySelectorAll('#intercom-container, #drift-widget, [id*="livechat" i], [class*="chat-widget" i], [class*="live-chat" i], [id*="chat-launcher" i]')].map((el) => `${el.tagName.toLowerCase()}#${el.id || firstCls(el)}`),
+  ])].slice(0, 6);
+  const federated = {
+    remoteEntries: [...document.querySelectorAll('script[src*="remoteEntry.js" i]')].map((s) => (s.getAttribute('src') || '').slice(0, 120)).slice(0, 6),
+    registerCalls: [...document.querySelectorAll('script:not([src])')].filter((s) => /registerFederatedComponent\(/.test(s.textContent || '')).length,
+  };
+  const quiz = {
+    markers: [...document.querySelectorAll('[class*="quiz" i], [class*="questionnaire" i], [data-quiz]')].filter((el) => !chrome(el)).length,
+    radioFieldsets: [...document.querySelectorAll('fieldset')].filter((f) => f.querySelectorAll('input[type=radio]').length >= 3).length,
+  };
 
   return {
-    dynamicDom: { inlineData, globalState, frameworkHints, forms, ariaLiveRegions, triggers, mediaIds },
+    dynamicDom: { inlineData, globalState, frameworkHints, forms, ariaLiveRegions, triggers, mediaIds, tabs, shadowHosts, emptyConfigContainers, controlGroups, searchShell, players, chatLoaders, federated, quiz },
     finalUrl: location.href,
     title: document.title || null,
     description: meta('description'),

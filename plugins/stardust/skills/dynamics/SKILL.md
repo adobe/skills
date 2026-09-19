@@ -54,14 +54,14 @@ delivery. It never blocks the static path; every page must still work as a stati
 | **standalone** `$stardust dynamics <origin>` | all phases on a site that was already migrated without them |
 | **chain ends at `deploy`** (pilot, no rollout) | Phases 4–5 run standalone before the pilot is declared done; `parity.json` + `dynamics-check.mjs --gate` exit 0 are required in both flows |
 
-`uplift`, `audit` and a bare `extract` never trigger it: dynamics is a migration concern (EDS today,
-other platforms later), not a redesign one.
+`uplift`, `audit` and a bare `extract` never trigger it: dynamics is a migration concern, not a
+redesign one.
 
 ## Phase 1 — Detect
 
-Command: Operator card row 1 (or `--urls` one per archetype + the home page). Depth on archetypes, reach from the crawl's
-`extract --dynamics` per-page signals. Output `stardust/current/_dynamics.json` +
-`dynamic-features.generated.md`. Evidence only. `reference/classes-and-signals.md`.
+Operator card row 1 (or `--urls` one per archetype + the home page). Depth on archetypes, reach
+from `extract --dynamics` sidecars; a sibling-only signal becomes a `reach-only` row — re-probe one
+such page with `--urls` before triage. Output `_dynamics.json` + `dynamic-features.generated.md`. Evidence only.
 
 ## Phase 2 — Classify
 
@@ -122,7 +122,7 @@ required; an interim tier that would capture regulated data (record as decided-o
 
 ## Artifacts
 
-The Operator card's Outputs line, plus register rows · journal + status lines.
+Operator card Outputs line + register rows, journal and status lines.
 
 ## References
 

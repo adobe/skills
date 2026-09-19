@@ -9,18 +9,22 @@
  *
  *   node dynamics-detect.mjs --urls <url,url,…> [--out stardust/current]
  *        [--from-state stardust/state.json]   one URL per page type + the home page, from extract's inventory
- *        [--reach stardust/current]           roll per-page `dynamic` sections (extract --dynamics) into feature reach
+ *        [--reach stardust/current]           roll per-page `dynamic` sections (extract --dynamics) into feature reach;
+ *                                             a sidecar signal with no archetype finding becomes a `reach-only` row
+ *                                             (pages 0/N, reach n/N) so triage sees it — re-probe one such page with --urls
  *        [--settle 5000] [--width 1440] [--headed[=window]]
+ *        [--offline]                          abort every request off the probed origin (local fixtures: evals/lint/dynamics-recall.mjs)
  *
  * Probes the SOURCE site. No auth header is sent (the source is public); the
  * target-host probe lives in dynamics-plan.mjs.
+ * Exit: 0 report written · 2 usage / live-session.mjs missing. Findings are evidence, never a verdict.
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
 import { readdirSync, existsSync } from 'node:fs';
 import { join, dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
-  arg, list, readJSON, writeJSON, writeText, provenance, loadPlaywright, vendorFor, registrable, sameSite, pathPattern, settlePage, slug,
+  arg, list, flag, readJSON, writeJSON, writeText, provenance, loadPlaywright, vendorFor, registrable, sameSite, pathPattern, settlePage, slug, reachSignals, REACH_FEATURES,
 } from './lib.mjs';
 
 const SCRIPT_NAME = 'dynamics-detect';
@@ -47,7 +51,10 @@ if (!URLS.length && arg('from-state')) {
   for (const p of st.pages || []) { const t = p.type || 'untyped'; if (!byType.has(t)) byType.set(t, p.url); }
   URLS = [...new Set([st.site?.url || st.site?.origin, ...byType.values()].filter(Boolean))];
 }
-if (!URLS.length) { console.error('usage: dynamics-detect.mjs --urls <url,…> | --from-state stardust/state.json [--out dir]'); process.exit(2); }
+const USAGE = 'usage: dynamics-detect.mjs --urls <url,…> | --from-state stardust/state.json [--out dir] [--reach dir] [--settle ms] [--width px] [--headed[=window]] [--offline]';
+if (flag('help')) { console.log(USAGE); process.exit(0); }
+if (!URLS.length) { console.error(USAGE); process.exit(2); }
+const OFFLINE = flag('offline');
 
 const CLASS_NAMES = { L: 'listing', S: 'search', F: 'form', M: 'modal / interactive', V: 'media', T: 'tag / consent', A: 'API / personalisation / settings', R: 'relationship', X: 'auth / commerce', I18N: 'locale', CR: 'client-rendered', D: 'sheet / data file' };
 const API_PATH = /\/(api|graphql|ajax|json|search|autocomplete|typeahead|suggest|client\/|webservices|_next\/data|wp-json|\.rest|odata)/i;
@@ -131,7 +138,26 @@ function domCapture() {
   const inlineScripts = inline.length;
   const inlineFetch = inline.some((s) => /fetch\(|XMLHttpRequest|\.ajax\(|axios|sendBeacon/.test(s.textContent || ''));
   const mainText = norm(document.querySelector('main')?.innerText || document.body.innerText).length;
-  return { title: document.title, forms, controlGroups, triggers, dialogs: dialogSigs, dialogCount: dialogs.length, media, iframes, mounts, auth, commerce, locale, cms, framework, globals, clientRendered, listingCandidates, inlineScripts, inlineFetch, mainText, domAddedAfterLoad: window.__sdDomAfterLoad || 0 };
+  // reach-parity signals (same feature strings as lib.mjs REACH_FEATURES, so `--reach` annotates instead of duplicating):
+  // tabs / expanders, open shadow roots, empty data-* config containers, search shell, player ids, chat loaders, federated modules, quizzes
+  const tabs = { tablists: document.querySelectorAll('[role=tablist]').length, expanders: [...document.querySelectorAll('[aria-expanded]')].filter((el) => !inChrome(el)).length };
+  const shadowHosts = [...document.querySelectorAll('*')].filter((el) => el.shadowRoot && norm(el.shadowRoot.textContent).length > 40 && !inChrome(el)).slice(0, 10).map((el) => `${el.tagName.toLowerCase()}.${cn(el).split(' ')[0]}`);
+  const CONFIG_SKIP = /^(script|style|meta|link|img|input|br|hr|source|track|iframe|video|audio|canvas|svg|picture|template|noscript)$/;
+  const emptyConfigContainers = [...document.querySelectorAll('[data-component],[data-endpoint],[data-api],[data-url],[data-src-url],[data-config],[data-props],[data-module],[data-widget],[data-app],[data-mount]')]
+    .filter((el) => !CONFIG_SKIP.test(el.tagName.toLowerCase()) && !el.children.length && !norm(el.textContent) && !inChrome(el)).slice(0, 10)
+    .map((el) => `<${el.tagName.toLowerCase()} ${[...el.attributes].filter((a) => a.name.startsWith('data-')).map((a) => `${a.name}=${a.value.slice(0, 40)}`).slice(0, 4).join(' ')}>`);
+  const searchShell = (/(\/(search|suchen|sok|recherche|buscar|zoeken|ricerca)(\/|$)|[?&](q|query|s|search|keyword)=)/i.test(location.pathname + location.search) || !!document.querySelector('input[type=search]')) && mainText < 200;
+  const players = [
+    ...[...document.querySelectorAll('[id^="kaltura_player" i], [data-partner-id], [data-uiconf-id], .kWidgetIframeContainer')].map((el) => ({ vendor: 'kaltura', id: el.getAttribute('data-uiconf-id') || el.getAttribute('data-partner-id') || el.id })),
+    ...[...document.querySelectorAll('video-js[data-account], [data-account][data-player]')].map((el) => ({ vendor: 'brightcove', id: `${el.getAttribute('data-account')}/${el.getAttribute('data-player') || 'default'}` })),
+    ...[...document.querySelectorAll('.wistia_embed, [class*="wistia_async_"]')].map((el) => ({ vendor: 'wistia', id: (cn(el).match(/wistia_async_([\w-]+)/) || [])[1] || null })),
+  ].slice(0, 20);
+  const scriptSrcs = [...document.querySelectorAll('script[src]')].map((s) => abs(s.getAttribute('src'))).slice(0, 80);
+  const CHAT_RE = /intercom|drift\.com|zendesk|zdassets|liveperson|salesforceliveagent|genesys|freshchat|tidio|livechatinc|olark|crisp\.chat/i;
+  const chatLoaders = [...new Set([...scriptSrcs.filter((src) => CHAT_RE.test(src)).map((src) => { try { return new URL(src).host; } catch { return src.slice(0, 60); } }), ...[...document.querySelectorAll('#intercom-container, #drift-widget, [id*="livechat" i], [class*="chat-widget" i], [class*="live-chat" i], [id*="chat-launcher" i]')].map((el) => `${el.tagName.toLowerCase()}#${el.id || cn(el).split(' ')[0]}`)])].slice(0, 6);
+  const federated = { remoteEntries: scriptSrcs.filter((src) => /remoteEntry\.js/i.test(src)).slice(0, 6), registerCalls: inline.filter((sc) => /registerFederatedComponent\(/.test(sc.textContent || '')).length };
+  const quiz = { markers: [...document.querySelectorAll('[class*="quiz" i], [class*="questionnaire" i], [data-quiz]')].filter((el) => !inChrome(el)).length, radioFieldsets: [...document.querySelectorAll('fieldset')].filter((f) => f.querySelectorAll('input[type=radio]').length >= 3).length };
+  return { title: document.title, forms, controlGroups, triggers, dialogs: dialogSigs, dialogCount: dialogs.length, media, iframes, mounts, auth, commerce, locale, cms, framework, globals, clientRendered, listingCandidates, inlineScripts, inlineFetch, mainText, domAddedAfterLoad: window.__sdDomAfterLoad || 0, tabs, shadowHosts, emptyConfigContainers, searchShell, players, scriptSrcs, chatLoaders, federated, quiz };
 }
 
 /* ------------------------------------------------------------ classify -- */
@@ -164,7 +190,8 @@ function classify(page, path, add) {
   const byMarker = new Map();
   for (const t of page.triggers) { const k = t.marker; const row = byMarker.get(k) || { n: 0, ex: [], targets: new Set(), titles: 0, chrome: 0 }; row.n += 1; if (row.ex.length < 4) row.ex.push(t.href || t.text); if (t.target) row.targets.add(`${t.target.role}:${t.target.hasForm ? 'form' : t.target.hasVideo ? 'video' : t.target.hasIframe ? 'iframe' : 'content'}`); if (t.titleOnTrigger) row.titles += 1; if (t.inChrome) row.chrome += 1; byMarker.set(k, row); }
   for (const [marker, r] of byMarker) add({ class: 'M', feature: `modal trigger ${marker}${r.chrome === r.n ? ' (chrome only)' : ''} → ${[...r.targets].join('/') || 'target outside DOM at capture'}`, page: path, evidence: [...r.ex, r.titles ? `${r.titles} triggers carry the title (data-*title)` : null].filter(Boolean), hint: r.chrome === r.n ? 'chrome-interaction' : 'modal' });
-  for (const m of page.media) { const v = vendorFor(m.src || ''); if ((v && v.class === 'V') || m.videoId || m.tag === 'video-js' || m.mechanism) add({ class: 'V', feature: m.mechanism ? `video: ${m.mechanism.toUpperCase()} stream (manifest in player config)` : v ? v.role : `player element <${m.tag}>${m.inDialog ? ' in a dialog' : ''}`, page: path, evidence: [m.videoId ? `${m.account || '?'}/${m.player || 'default'}/${m.videoId}` : m.src], mechanism: m.mechanism || undefined, hint: 'media' }); }
+  const hasPlayer = (vendor) => (page.players || []).some((p) => p.vendor === vendor);
+  for (const m of page.media) { if (m.tag === 'video-js' && !m.src && hasPlayer('brightcove')) continue; const v = vendorFor(m.src || ''); if ((v && v.class === 'V') || m.videoId || m.tag === 'video-js' || m.mechanism) add({ class: 'V', feature: m.mechanism ? `video: ${m.mechanism.toUpperCase()} stream (manifest in player config)` : v ? v.role : `player element <${m.tag}>${m.inDialog ? ' in a dialog' : ''}`, page: path, evidence: [m.videoId ? `${m.account || '?'}/${m.player || 'default'}/${m.videoId}` : m.src], mechanism: m.mechanism || undefined, hint: 'media' }); }
   for (const f of page.iframes) if (!f.src) add({ class: 'V', feature: 'iframe without src (runtime-injected embed)', page: path, evidence: [f.title || `${f.w}×${f.h}`], hint: 'embed-runtime' });
   for (const mnt of page.mounts) add({ class: 'T', feature: `third-party mount <div ${mnt.attrs[0] || mnt.cls}> (tag-manager-injected widget)`, page: path, evidence: [mnt.attrs.join(' ') || mnt.cls], hint: 'tags' });
   if (page.auth.length) add({ class: 'X', feature: 'sign-in / account links', page: path, evidence: page.auth.slice(0, 4), hint: 'decided-out' });
@@ -175,6 +202,21 @@ function classify(page, path, add) {
   for (const l of page.listingCandidates.filter((x) => x.hasDate || x.cards >= 6)) add({ class: 'L', feature: `listing candidate ${l.cls} (${l.cards} cards)`, page: path, hint: 'listings' });
   for (const [k, keys] of Object.entries(page.cms)) if (Array.isArray(keys)) { const named = keys.filter((x) => /endpoint|api|url|marketo|eloqua|hubspot|antibot|search|campaign|schema|ddl|analytics|consent|token|form/i.test(x)); add({ class: 'A', feature: `CMS / app settings object ${k}`, page: path, evidence: named.slice(0, 8), hint: 'settings' }); }
   if (page.framework) add({ class: 'CR', feature: `client framework ${page.framework}`, page: path, hint: 'framework' });
+  // reach-parity signals (REACH_FEATURES keys the same rows the --reach pass mints from sidecars)
+  const t = page.tabs || {};
+  if (t.tablists || t.expanders) add({ class: 'M', feature: REACH_FEATURES.tabs, page: path, evidence: [`${t.tablists || 0} tablist(s), ${t.expanders || 0} aria-expanded control(s) on ${path}`], hint: 'modal' });
+  if ((page.shadowHosts || []).length) add({ class: 'M', feature: REACH_FEATURES.shadow, page: path, evidence: page.shadowHosts.slice(0, 4), hint: 'client-rendered' });
+  if ((page.emptyConfigContainers || []).length) add({ class: 'CR', feature: REACH_FEATURES.emptyConfig, page: path, evidence: page.emptyConfigContainers.slice(0, 4), hint: 'client-rendered' });
+  if (page.searchShell) add({ class: 'S', feature: REACH_FEATURES.searchShell, page: path, evidence: [`${path}: main text ${page.mainText} chars at settle`], hint: 'search' });
+  for (const vendor of new Set((page.players || []).map((p) => p.vendor))) add({ class: 'V', feature: REACH_FEATURES.player(vendor), page: path, evidence: page.players.filter((p) => p.vendor === vendor).map((p) => p.id).filter(Boolean).slice(0, 4), hint: 'media' });
+  if ((page.chatLoaders || []).length) add({ class: 'T', feature: REACH_FEATURES.chat, role: REACH_FEATURES.chat, page: path, evidence: page.chatLoaders, hint: 'tags' });
+  const fed = page.federated || {};
+  if ((fed.remoteEntries || []).length || fed.registerCalls) add({ class: 'CR', feature: REACH_FEATURES.federated, page: path, evidence: [...(fed.remoteEntries || []), fed.registerCalls ? `${fed.registerCalls} registerFederatedComponent call(s)` : null].filter(Boolean), hint: 'client-rendered' });
+  const qz = page.quiz || {};
+  if (qz.markers || qz.radioFieldsets) add({ class: 'F', feature: REACH_FEATURES.quiz, page: path, evidence: [`${qz.markers || 0} quiz marker(s), ${qz.radioFieldsets || 0} radio fieldset(s)`], hint: 'client-compute?' });
+  // vendor script tags whose request never landed (blocked, consent-gated, offline fixture) still name the vendor
+  const seenRoles = new Set(Object.keys(page.hosts).map((h) => vendorFor(h)?.role).filter(Boolean));
+  for (const src of page.scriptSrcs || []) { const v = vendorFor(src); if (!v || v.class === '-' || seenRoles.has(v.role)) continue; seenRoles.add(v.role); add({ class: v.class, feature: v.role, role: v.role, page: path, evidence: [src.slice(0, 120)], hint: v.class === 'T' ? 'tags' : v.class === 'F' ? 'forms' : v.class === 'V' ? 'media' : v.class === 'S' ? 'search' : v.class === 'X' ? 'decided-out' : 'inspect' }); }
 }
 
 /* ---------------------------------------------------------------- main -- */
@@ -198,6 +240,7 @@ for (const url of URLS) {
   const path = new URL(url).pathname || '/';
   const ctx = await browser.newContext({ viewport: { width: WIDTH, height: 900 }, locale: 'en-US' });
   await ctx.addInitScript(() => { window.__sdDomAfterLoad = 0; let loaded = false; window.addEventListener('load', () => setTimeout(() => { loaded = true; }, 300)); document.addEventListener('DOMContentLoaded', () => new MutationObserver((ms) => { if (loaded) for (const m of ms) window.__sdDomAfterLoad += m.addedNodes.length; }).observe(document.documentElement, { childList: true, subtree: true })); });
+  if (OFFLINE) await ctx.route('**/*', (r) => (r.request().url().startsWith(origin) ? r.continue() : r.abort()));
   const page = await ctx.newPage();
   const hosts = {}; const scripts = new Set(); const firstPartyApi = new Map(); const thirdPartyXhr = new Set(); const postBodies = [];
   page.on('request', (r) => { if (r.method() === 'POST' && ['xhr', 'fetch'].includes(r.resourceType()) && postBodies.length < 12) postBodies.push({ url: r.url().slice(0, 200), body: (r.postData() || '').slice(0, 400) }); });
@@ -233,25 +276,34 @@ for (const url of URLS) {
 await browser.close().catch(() => {});
 
 /* --------------------------------------------- reach from extract pages -- */
+// Depth on archetypes, reach from the roster: every signal extract --dynamics
+// wrote per page (lib.mjs reachSignals) either annotates the matching archetype
+// finding (`reach: pages/of`) or — when no archetype produced it — becomes a
+// `reach-only` row (pages 0/N) so triage sees the sibling-only feature and can
+// re-probe one of its pages with --urls. Never a re-crawl: zero source hits.
 if (arg('reach') && arg('reach') !== true) {
   const dir = join(arg('reach'), 'pages');
   if (existsSync(dir)) {
     const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
-    let withDyn = 0; const endpointPages = new Map(); const searchPages = new Set(); const formPages = new Set(); const triggerPages = new Map();
-    for (const f of files) {
-      const rec = readJSON(join(dir, f), {}); const d = rec.dynamic; if (!d) continue; withDyn += 1;
-      for (const e of d.endpoints || []) { const k = `${e.method} ${e.host}${e.path}`; endpointPages.set(k, (endpointPages.get(k) || 0) + 1); }
-      if ((d.summary?.searchForms || 0) > 0) searchPages.add(rec.slug);
-      if ((d.forms || []).some((x) => !x.search)) formPages.add(rec.slug);
-      for (const t of d.triggers || []) triggerPages.set(t.marker, (triggerPages.get(t.marker) || 0) + 1);
+    const records = files.map((f) => { const rec = readJSON(join(dir, f), {}); return { slug: rec.slug || f.replace(/\.json$/, ''), dynamic: rec.dynamic }; });
+    const { summary, rows } = reachSignals(records);
+    const of = files.length;
+    const matchFor = (row) => report.findings.find((fnd) => {
+      if (row.api && fnd.api) return fnd.api.method === row.api.method && (fnd.api.path === row.api.path || row.api.path.endsWith(fnd.api.path));
+      if (row.marker) return fnd.class === 'M' && (fnd.feature.match(/modal trigger (\S+)/) || [])[1] === row.marker;
+      if (row.searchForm) return fnd.class === 'S' && /site search form/.test(fnd.feature);
+      return fnd.class === row.class && fnd.feature === row.feature;
+    });
+    let minted = 0;
+    for (const row of rows) {
+      const fnd = matchFor(row);
+      if (fnd) { fnd.reach = { pages: row.pages, of }; continue; }
+      add({ class: row.class, feature: row.feature, role: row.role, api: row.api, page: null, evidence: row.evidence, hint: 'reach-only' });
+      const x = findingsByKey.get(`${row.class}|${row.feature}`); x.pages = []; x.reach = { pages: row.pages, of }; x.reachHint = row.hint; minted += 1;
     }
-    report.reach = { pagesWithEvidence: withDyn, of: files.length, endpoints: Object.fromEntries(endpointPages), searchFormPages: searchPages.size, formPages: formPages.size, triggerPages: Object.fromEntries(triggerPages) };
-    for (const fnd of report.findings) {
-      if (fnd.api) { const n = [...endpointPages.entries()].filter(([k]) => k.startsWith(`${fnd.api.method} `) && k.endsWith(fnd.api.path)).reduce((sum, [, v]) => sum + v, 0); if (n) fnd.reach = { pages: n, of: files.length }; }
-      if (fnd.class === 'S' && /site search form/.test(fnd.feature)) fnd.reach = { pages: searchPages.size, of: files.length };
-      if (fnd.class === 'M') { const marker = (fnd.feature.match(/modal trigger (\S+)/) || [])[1]; if (marker && triggerPages.has(marker)) fnd.reach = { pages: triggerPages.get(marker), of: files.length }; }
-    }
+    report.reach = { ...summary, of, reachOnlyFindings: minted };
     report._provenance.reachSource = dir;
+    console.error(`[dynamics] reach: ${summary.pagesWithEvidence}/${of} sidecars carry evidence · ${minted} reach-only finding(s) minted from sibling pages`);
   }
 }
 
@@ -263,7 +315,7 @@ const md = [
   `Pages probed: ${Object.keys(report.pages).join(', ')} · settle ${SETTLE} ms · width ${WIDTH}${report.reach ? ` · reach from ${report.reach.pagesWithEvidence}/${report.reach.of} crawled pages` : ''}`, '',
   'Evidence only. Every row must receive a disposition in `stardust/dynamic-features.md` (`dynamics-plan.mjs` drafts it).', '',
   '| id | class | feature | pages | reach | evidence | hint |', '|---|---|---|---|---|---|---|',
-  ...report.findings.map((f) => `| ${f.id} | ${f.class} ${CLASS_NAMES[f.class] || ''} | ${f.feature.replace(/\|/g, '/')} | ${f.pages.length}/${Object.keys(report.pages).length} | ${f.reach ? `${f.reach.pages}/${f.reach.of}` : ''} | ${(f.evidence || []).slice(0, 3).join('<br>').replace(/\|/g, '/')} | ${f.hint || ''} |`),
+  ...report.findings.map((f) => `| ${f.id} | ${f.class} ${CLASS_NAMES[f.class] || ''} | ${f.feature.replace(/\|/g, '/')} | ${f.pages.length}/${Object.keys(report.pages).length} | ${f.reach ? `${f.reach.pages}/${f.reach.of}` : ''} | ${(f.evidence || []).slice(0, 3).join('<br>').replace(/\|/g, '/')} | ${f.hint === 'reach-only' ? `reach-only (${f.reachHint || 'inspect'}; re-probe one page with --urls)` : f.hint || ''} |`),
 ];
 writeText(join(OUT, 'dynamic-features.generated.md'), md.join('\n'));
 console.error(`[dynamics] ${report.findings.length} findings → ${join(OUT, '_dynamics.json')}, dynamic-features.generated.md`);

@@ -1,0 +1,21 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Fixture — modal, tabs, accordion</title></head>
+<body>
+<header><nav><a href="/">Home</a> <a href="/search">Search</a></nav></header>
+<main>
+  <h1>Products overview</h1>
+  <p>This fixture page carries a modal trigger with a dialog target, a tablist and an aria-expanded accordion. The copy is long enough to count as content for the detector's substance heuristics and to keep the search-shell rule from firing on this page.</p>
+  <button class="button button--open-modal" data-modal-target="#contact-dialog">Contact us</button>
+  <div id="contact-dialog" role="dialog" aria-modal="true" hidden>
+    <h2>Contact form</h2>
+    <form action="/contact" method="post"><input name="email" type="email"><textarea name="message"></textarea><button type="submit">Send</button></form>
+  </div>
+  <div role="tablist"><button role="tab" aria-selected="true" aria-controls="tab-a">Savings</button><button role="tab" aria-controls="tab-b">Loans</button></div>
+  <div id="tab-a" role="tabpanel">Savings tab content with a paragraph of text about interest rates.</div>
+  <div id="tab-b" role="tabpanel" hidden>Loans tab content.</div>
+  <section class="accordion">
+    <button aria-expanded="false" aria-controls="acc-1">Insurance cover</button><div id="acc-1" hidden>Cover details.</div>
+    <button aria-expanded="false" aria-controls="acc-2">Claims</button><div id="acc-2" hidden>Claims details.</div>
+  </section>
+</main>
+<footer><p>Footer</p></footer>
+</body></html>

@@ -1,0 +1,54 @@
+{
+ "slug": "hjelp",
+ "url": "https://source.example/hjelp",
+ "dynamic": {
+  "endpoints": [],
+  "thirdPartyScriptHosts": [
+   {
+    "host": "static.zdassets.com",
+    "count": 1
+   }
+  ],
+  "inlineData": [],
+  "globalState": [],
+  "frameworkHints": [],
+  "forms": [],
+  "ariaLiveRegions": 0,
+  "triggers": [],
+  "mediaIds": [],
+  "tabs": {
+   "tablists": 0,
+   "expanders": 0
+  },
+  "shadowHosts": [
+   {
+    "tag": "help-widget",
+    "cls": "help"
+   }
+  ],
+  "emptyConfigContainers": [],
+  "controlGroups": [],
+  "searchShell": false,
+  "players": [],
+  "chatLoaders": [
+   "static.zdassets.com"
+  ],
+  "federated": {
+   "remoteEntries": [],
+   "registerCalls": 0
+  },
+  "quiz": {
+   "markers": 0,
+   "radioFieldsets": 0
+  },
+  "summary": {
+   "sameSiteEndpoints": 0,
+   "thirdPartyEndpoints": 0,
+   "thirdPartyScriptHosts": 0,
+   "inlineDataBlobs": 0,
+   "forms": 0,
+   "searchForms": 0,
+   "hydrated": false
+  }
+ }
+}

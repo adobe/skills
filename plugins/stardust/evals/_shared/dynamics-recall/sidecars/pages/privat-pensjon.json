@@ -1,0 +1,58 @@
+{
+ "slug": "privat-pensjon",
+ "url": "https://source.example/privat-pensjon",
+ "dynamic": {
+  "endpoints": [
+   {
+    "method": "GET",
+    "host": "source.example",
+    "path": "/api/pension/{n}",
+    "query": [],
+    "resourceType": "fetch",
+    "contentType": "application/json",
+    "sameSite": true,
+    "example": "https://source.example/api/pension/1"
+   }
+  ],
+  "thirdPartyScriptHosts": [],
+  "inlineData": [],
+  "globalState": [],
+  "frameworkHints": [],
+  "forms": [],
+  "ariaLiveRegions": 0,
+  "triggers": [],
+  "mediaIds": [],
+  "tabs": {
+   "tablists": 0,
+   "expanders": 0
+  },
+  "shadowHosts": [],
+  "emptyConfigContainers": [],
+  "controlGroups": [
+   {
+    "container": "section.pension-calc",
+    "controls": 4
+   }
+  ],
+  "searchShell": false,
+  "players": [],
+  "chatLoaders": [],
+  "federated": {
+   "remoteEntries": [],
+   "registerCalls": 0
+  },
+  "quiz": {
+   "markers": 1,
+   "radioFieldsets": 2
+  },
+  "summary": {
+   "sameSiteEndpoints": 1,
+   "thirdPartyEndpoints": 0,
+   "thirdPartyScriptHosts": 0,
+   "inlineDataBlobs": 0,
+   "forms": 0,
+   "searchForms": 0,
+   "hydrated": false
+  }
+ }
+}
