@@ -12,7 +12,9 @@
 # Usage:
 #   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label] \
 #     [--marker <string>] [--live-from-capture <png>] [--regime prototype|published-origin] \
-#     [--refresh] [--variance]
+#     [--refresh] [--variance] \
+#     [--over-cap <source-inconsistent|separate-composition|canon-followup|instrument-invalidated>] \
+#     [--invalidate <label> <fix>] [--record]
 #
 #   --refresh   force the live-drift probe on a cached live.png (one anchor.mjs
 #     hit) instead of waiting for the reference to age past GATE_REF_MAX_AGE_H.
@@ -24,7 +26,11 @@
 #     inventory lists index-backed/personalised rows) and says never on
 #     hard-CDN sites. The floor is PRINTED beside the raw number every later
 #     round and recorded as noiseFloor{}; it is never subtracted from it and
-#     never moves the bar.
+#     never moves the bar. variance.json carries gradedAgainst (the capturedAt
+#     of the live.png it was graded on): after a LIVE DRIFT recapture the floor
+#     survives (no extra hit) but prints `(graded against the <date>
+#     reference)` and the record says stale: true; a later explicit --variance
+#     re-grades it against the new reference.
 #
 # Reference freshness (instrument, not prose): a stale reference is not a
 # residual (field: a one-day-old reference read 5 % where a fresh one read
@@ -210,7 +216,7 @@ fi
 # 6 = "cap reached — decide": never a FAIL, never a measurement.
 if [ "$COUNT" -ge 3 ] && [ -z "$OVER_CAP" ]; then
   echo "gate.sh: cap reached: $COUNT/3 counted rounds in $DIR (excluded: $EXCLUDED; rounds:$EXISTING) — no round run." >&2
-  echo "gate.sh: decide: log a named residual (source-fidelity-gate.md § Residual logging format, § Residual classes) or open a register entry (preserve-direction.md § 3); to run another round: --over-cap <$OVER_CAP_REASONS | tr ' ' '|'> (written to the record as overCap); a round that measured an instrument defect: --invalidate <label> <fix>." >&2
+  echo "gate.sh: decide: log a named residual (source-fidelity-gate.md § Residual logging format, § Residual classes) or open a register entry (preserve-direction.md § 3); to run another round: --over-cap <${OVER_CAP_REASONS// /|}> (written to the record as overCap); a round that measured an instrument defect: --invalidate <label> <fix>." >&2
   exit 6
 fi
 [ -n "$OVER_CAP" ] && echo "gate.sh: over-cap round $LBL (reason $OVER_CAP — counted rounds so far $COUNT/3); bars unchanged, the reason lands in the record as overCap"
@@ -371,7 +377,15 @@ fi
 # --variance: live self-noise grade, once per gate dir (second live hit —
 # opt-in, see header). Compared with the same instrument settings as the
 # reference; its number is a floor to READ, never a bar to move.
-if [ -n "$VARIANCE" ] && [ -z "$FORCE" ] && [ ! -f "$DIR/variance.json" ]; then
+# A floor graded against a reference that LIVE DRIFT has since recaptured is
+# stale: it is kept (no extra hit) and flagged; an explicit --variance re-grades.
+VAR_STALE=$(node -e '
+const fs = require("fs"); const read = (p) => { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; } };
+const v = read(`${process.argv[1]}/variance.json`); const side = read(`${process.argv[1]}/live.png.json`);
+process.stdout.write(v && v.gradedAgainst && side && side.capturedAt && v.gradedAgainst !== side.capturedAt ? v.gradedAgainst : "");
+' "$DIR" 2>/dev/null)
+if [ -n "$VARIANCE" ] && [ -z "$FORCE" ] && { [ ! -f "$DIR/variance.json" ] || [ -n "$VAR_STALE" ]; }; then
+  [ -n "$VAR_STALE" ] && echo "gate.sh: noise floor was graded against the $VAR_STALE reference (recaptured since) — re-grading" >&2
   capped "$STITCH_TIMEOUT" "stitch-shot live-b $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live-b.png" --width "$W" --settle --consent-mode "$CONSENT_MODE"
   vrc=$?
   if [ $vrc -ne 0 ]; then
@@ -380,15 +394,24 @@ if [ -n "$VARIANCE" ] && [ -z "$FORCE" ] && [ ! -f "$DIR/variance.json" ]; then
   else
     node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/live-b.png" --out "$DIR/variance-diff.png" --timeout "$COMPARE_TIMEOUT" --json-out "$DIR/variance.json" > /dev/null
     vrc=$?
-    if [ $vrc -eq 124 ] || [ ! -f "$DIR/variance.json" ]; then rm -f "$DIR/variance.json"; echo "gate.sh: variance compare gave no verdict (exit $vrc) — no noise floor recorded" >&2; fi
+    if [ $vrc -eq 124 ] || [ ! -f "$DIR/variance.json" ]; then rm -f "$DIR/variance.json"; echo "gate.sh: variance compare gave no verdict (exit $vrc) — no noise floor recorded" >&2
+    else
+      # stamp the reference the floor was graded against (sidecar capturedAt, else live.png mtime)
+      node -e '
+const fs = require("fs"); const [vp, live] = process.argv.slice(1); const read = (p) => { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; } };
+const v = JSON.parse(fs.readFileSync(vp, "utf8")); v.gradedAgainst = (read(`${live}.json`) || {}).capturedAt || fs.statSync(live).mtime.toISOString(); v.gradedAt = new Date().toISOString();
+fs.writeFileSync(vp, `${JSON.stringify(v, null, 2)}\n`);
+' "$DIR/variance.json" "$DIR/live.png"
+      VAR_STALE=""
+    fi
   fi
 fi
 if [ -f "$DIR/variance.json" ]; then
   node -e '
-const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); const stale = process.argv[2];
 const hot = (j.bands || []).filter((b) => b.pct >= 0.5).sort((a, b) => b.pct - a.pct).slice(0, 5);
-console.log(`noise floor ${j.pixelPct} % (live vs itself, Δh ${j.heightDelta}px)${hot.length ? ` — hot bands ${hot.map((b) => `y ${b.y0}–${b.y1} ${b.pct}%`).join(", ")}; mask suggestions: ${hot.map((b) => `--mask ${b.y0}:${b.y1 - b.y0}`).join(" ")}` : ""} — a floor to read beside the raw number, never subtracted from it`);
-' "$DIR/variance.json"
+console.log(`noise floor ${j.pixelPct} % (live vs itself, Δh ${j.heightDelta}px)${hot.length ? ` — hot bands ${hot.map((b) => `y ${b.y0}–${b.y1} ${b.pct}%`).join(", ")}; mask suggestions: ${hot.map((b) => `--mask ${b.y0}:${b.y1 - b.y0}`).join(" ")}` : ""} — a floor to read beside the raw number, never subtracted from it${stale ? ` (graded against the ${stale} reference — recaptured since; --variance re-grades)` : ""}`);
+' "$DIR/variance.json" "$VAR_STALE"
 fi
 
 # Build side: re-captured every iteration.
@@ -438,14 +461,14 @@ const out = { slug, label, width: Number(width), regime, at: new Date().toISOStr
 if (drift?.drift) out.liveDrift = { previousCapturedAt: drift.previousCapturedAt, docBefore: drift.docBefore, docAfter: drift.docAfter, sectionsBefore: drift.sectionsBefore, sectionsAfter: drift.sectionsAfter, thresholdPx: drift.thresholdPx, recaptured: true };
 else if (drift && !drift.skipped) out.freshness = { checkedAt: drift.checkedAt, deltaPx: drift.deltaPx, thresholdPx: drift.thresholdPx };
 // Noise floor: read beside the number, never subtracted (thresholds unchanged).
-if (variance) out.noiseFloor = { pixelPct: variance.pixelPct, heightDelta: variance.heightDelta, source: `${dir}/variance.json` };
+if (variance) out.noiseFloor = { pixelPct: variance.pixelPct, heightDelta: variance.heightDelta, source: `${dir}/variance.json`, ...(variance.gradedAgainst ? { gradedAgainst: variance.gradedAgainst, ...(variance.gradedAgainst !== capturedAt ? { stale: true } : {}) } : {}) };
 // no-op: the differing-pixel count did not move vs the previous counted round
 // — the fix never applied (gate doc § Iteration discipline); the round still counts.
 if (counts && prev && Number.isFinite(j.differingPixels) && prev.differingPixels === j.differingPixels) out.noOp = { vs: prev.label, differingPixels: j.differingPixels };
 fs.writeFileSync(rec, `${JSON.stringify(out, null, 2)}\n`);
 const iterLine = counts ? `iteration ${out.iteration}/3${out.overCap ? ` (over-cap: ${out.overCap})` : ''}${out.noOp ? `  NO-OP — differing pixels unchanged vs ${out.noOp.vs} (${out.noOp.differingPixels}): the fix never applied` : ''}` : 'not counted (no verdict or live-drift recapture)';
 console.log(iterLine);
-console.log(`regime: ${regime}  reference: ${liveUrl} @${width} captured ${capturedAt}${side ? ` via ${side.technique || side.instrument?.name || 'unknown'}${side.source && side.source !== 'stitch-shot' ? ` (source: ${side.source})` : ''}` : ' (live.png mtime)'}${j.forced ? '  FORCED (incomparable captures — not a gate number)' : ''}${out.liveDrift ? `  LIVE DRIFT (Δh ${out.liveDrift.docAfter - out.liveDrift.docBefore}px — reference recaptured, round not counted)` : ''}${out.noiseFloor ? `  noise floor ${out.noiseFloor.pixelPct} % (raw ${j.pixelPct} % is the gated number)` : ''}  record: ${rec}`);
+console.log(`regime: ${regime}  reference: ${liveUrl} @${width} captured ${capturedAt}${side ? ` via ${side.technique || side.instrument?.name || 'unknown'}${side.source && side.source !== 'stitch-shot' ? ` (source: ${side.source})` : ''}` : ' (live.png mtime)'}${j.forced ? '  FORCED (incomparable captures — not a gate number)' : ''}${out.liveDrift ? `  LIVE DRIFT (Δh ${out.liveDrift.docAfter - out.liveDrift.docBefore}px — reference recaptured, round not counted)` : ''}${out.noiseFloor ? `  noise floor ${out.noiseFloor.pixelPct} % (raw ${j.pixelPct} % is the gated number${out.noiseFloor.stale ? `; floor graded against the ${out.noiseFloor.gradedAgainst} reference` : ''})` : ''}  record: ${rec}`);
 NODE
   # --record: upsert this breakpoint's block in stardust/replica/progress.json
   # (iterations + result copied from the records — never typed). Never fails

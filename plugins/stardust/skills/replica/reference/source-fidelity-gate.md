@@ -376,9 +376,8 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   permanent classes as `hands-off-policy:<class>`). An undocumented fourth
   loop is scope creep; "eyeball matches" is never a verdict. Before calling
   a hot band "ghosting", run `anchor.mjs` plus one computed-style probe on
-  the hot element — six of twelve field "ghosting" residuals resolved to a
-  named delta on the first probe. Per-row source inconsistency → register
-  entry `R-nn` (`preserve-direction.md` § 3), not a fourth round.
+  the hot element. Per-row source inconsistency → register entry `R-nn`
+  (`preserve-direction.md` § 3), not a fourth round.
 - **Three named regimes end a loop early or sit outside the cap.** The
   label is the ledger's `overCap` reason; bars are unchanged in all
   three — a justified residual is never a pass.
@@ -784,8 +783,8 @@ reference dates get mixed up.
 ```
 
 `iterations` and `result` come from `gate.sh --record` (it counts the
-rounds from the round records and copies `pass`, never typed — a hand-typed
-`pass: true` with Δh 28 shipped once). Every residual carries `artifacts[]`
+rounds from the round records and copies `pass`, never typed). Every
+residual carries `artifacts[]`
 (the instrument outputs that show it) and `acceptedBy`: `user`,
 `register:R-nn`, or `hands-off-policy:<class>` — the last only for the
 table's **permanent** classes; an entry missing either is invalid and the

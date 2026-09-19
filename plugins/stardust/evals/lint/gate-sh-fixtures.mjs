@@ -18,6 +18,9 @@
 //     skips the check — no recapture, no FAIL;
 //   variance — --variance captures live-b once, writes variance.json, prints
 //     the noise floor and records noiseFloor{} without changing the verdict;
+//     variance.json carries gradedAgainst; a LIVE DRIFT recapture keeps the
+//     floor but flags it stale (line + record) until an explicit --variance
+//     re-grades it;
 //     its Δh bounds the drift threshold;
 //   cap — default labels iter<k> never collide (a no-verdict round keeps its
 //     label and does not count); the 4th counted round exits 6 before any
@@ -54,7 +57,7 @@ mkdirSync(join(project, 'stardust', 'replica'), { recursive: true });
 // process's event loop, so an in-process server would never answer gate.sh's
 // identity curl.
 const server = spawn(process.execPath, ['-e', `
-  const s = require('node:http').createServer((q, r) => { r.setHeader('content-type', 'text/html'); r.end('<html><body><h1>fresh drift noise cap rec orphan proposed</h1></body></html>'); });
+  const s = require('node:http').createServer((q, r) => { r.setHeader('content-type', 'text/html'); r.end('<html><body><h1>fresh drift noise noise2 cap rec orphan proposed</h1></body></html>'); });
   s.listen(0, '127.0.0.1', () => process.stdout.write(String(s.address().port)));
 `], { stdio: ['ignore', 'pipe', 'inherit'] });
 const port = await new Promise((r) => { server.stdout.once('data', (d) => r(String(d).trim())); });
@@ -132,6 +135,25 @@ try {
   const ts8 = liveCapturedAt('noise');
   r = gate('noise', ['--refresh'], { STUB_LIVE_DOC: '3500', STUB_LIVE_SECTIONS: '5', STUB_PCT: '4' });
   check(r.status === 0 && /within 700px/.test(r.out) && liveCapturedAt('noise') === ts8, `self-noise Δh must bound the drift threshold (Δ500 ≤ 700 → keep)\n${r.out}`);
+  const varJson = readJson(join(N, 'variance.json'));
+  check(varJson?.gradedAgainst === ts8 && typeof varJson.gradedAt === 'string', 'variance.json must carry gradedAgainst = the reference capturedAt it was graded on');
+  check(!/graded against the/.test(r.out) && !rec('noise', 'iter3')?.noiseFloor?.stale && rec('noise', 'iter3')?.noiseFloor?.gradedAgainst === ts8, 'a floor graded against the current reference prints no stale note; record.noiseFloor.gradedAgainst set');
+
+  // ---- stale floor (slug noise2): LIVE DRIFT recaptures the reference, the floor survives flagged ----
+  r = gate('noise2', ['--variance'], { STUB_PCT: '4', STUB_HDELTA: '100' });
+  const N2 = dirOf('noise2');
+  const ts9 = liveCapturedAt('noise2');
+  const liveB2 = statSync(join(N2, 'live-b.png.json')).mtimeMs;
+  const gradedAt1 = readJson(join(N2, 'variance.json'))?.gradedAt;
+  check(r.status === 0 && readJson(join(N2, 'variance.json'))?.gradedAgainst === ts9 && typeof gradedAt1 === 'string', `noise2 round 1 grades the floor against the fresh reference\n${r.out}`);
+  r = gate('noise2', ['--refresh'], { STUB_LIVE_DOC: '5000', STUB_PCT: '4' });
+  check(r.status === 0 && /LIVE DRIFT/.test(r.out) && liveCapturedAt('noise2') !== ts9 && existsSync(join(N2, 'variance.json')) && statSync(join(N2, 'live-b.png.json')).mtimeMs === liveB2, `drift must recapture live.png and keep variance.json / live-b.png (no second live hit)\n${r.out}`);
+  const stalePat = new RegExp(`graded against the ${ts9.replace(/[.+]/g, '\\$&')} reference`);
+  check(stalePat.test(r.out) && rec('noise2', 'iter2')?.noiseFloor?.stale === true && rec('noise2', 'iter2').noiseFloor.gradedAgainst === ts9, `after a recapture the noise floor line and the record must name the reference it was graded against\n${r.out}`);
+  r = gate('noise2', [], { STUB_PCT: '4' });
+  check(r.status === 0 && stalePat.test(r.out) && /--variance re-grades/.test(r.out), `the stale note persists on later rounds until --variance re-grades\n${r.out}`);
+  r = gate('noise2', ['--variance'], { STUB_PCT: '4' });
+  check(r.status === 0 && /re-grading/.test(r.out) && readJson(join(N2, 'variance.json'))?.gradedAt !== gradedAt1 && readJson(join(N2, 'variance.json'))?.gradedAgainst === liveCapturedAt('noise2') && !/--variance re-grades\)/.test(r.out) && !rec('noise2', 'iter4')?.noiseFloor?.stale, `an explicit --variance on a stale floor re-grades against the new reference\n${r.out}`);
 
   // ---- cap (slug cap) ----
   r = gate('cap', [], { STUB_DIFFPX: '1000' });
@@ -145,7 +167,7 @@ try {
   const C = dirOf('cap');
   const buildBefore = statSync(join(C, 'build.png.json')).mtimeMs;
   r = gate('cap', []);
-  check(r.status === 6 && /cap reached: 3\/3/.test(r.out) && /--over-cap/.test(r.out) && /Residual classes/.test(r.out), `4th counted round must exit 6 with the decision pointer\n${r.out}`);
+  check(r.status === 6 && /cap reached: 3\/3/.test(r.out) && /--over-cap <source-inconsistent\|separate-composition\|canon-followup\|instrument-invalidated>/.test(r.out) && /Residual classes/.test(r.out), `4th counted round must exit 6 with the decision pointer naming the four --over-cap reasons pipe-separated (no literal tr)\n${r.out}`);
   check(statSync(join(C, 'build.png.json')).mtimeMs === buildBefore && !existsSync(join(C, 'gate-iter5.json')), 'exit 6 must happen before any capture and write no record');
   r = gate('cap', ['--over-cap', 'bogus']);
   check(r.status === 125, `an unknown --over-cap reason must exit 125, got ${r.status}`);
@@ -181,4 +203,4 @@ try {
 }
 
 if (failures.length) { console.error(`gate-sh-fixtures: ${failures.length} finding(s)`); for (const f of failures) console.error(`  ✗ ${f}`); process.exit(1); }
-console.log('gate-sh-fixtures: ok (freshness probe, live drift + cache invalidation, probe deadline, noise floor, iteration cap / --over-cap / --invalidate / NO-OP, --record ledger copy, --help)');
+console.log('gate-sh-fixtures: ok (freshness probe, live drift + cache invalidation, probe deadline, noise floor + stale floor after drift, iteration cap / --over-cap / --invalidate / NO-OP, --record ledger copy, --help)');

@@ -9,7 +9,8 @@
 // childList records grouped per element, click-paired transitions first), and
 // hoverVerdict (a hover probe says hovered:false with a reason — no-box,
 // intercepted — instead of an empty diff, and WARNs when :hover rules exist
-// but nothing changed). Plus the CLI contract: --help exits 0 and names
+// but nothing changed), and isNavigationError (the --triggers auto guard that
+// turns a navigating trigger into navigated:true instead of a lost run). Plus the CLI contract: --help exits 0 and names
 // --triggers; --triggers takes only `auto`; an unknown flag exits 1.
 //
 // Usage: node plugins/stardust/evals/lint/motion-observe-fixtures.mjs  (exit 1 on findings)
@@ -20,7 +21,7 @@ const SCRIPT = join(import.meta.dirname, '..', '..', 'skills', 'replica', 'scrip
 const failures = [];
 const check = (ok, msg) => { if (!ok) failures.push(msg); };
 
-const { SCHEMA, TRIGGER_SELECTOR, summariseEntrances, summariseStateMachines, hoverVerdict } = await import(SCRIPT);
+const { SCHEMA, TRIGGER_SELECTOR, isNavigationError, summariseEntrances, summariseStateMachines, hoverVerdict } = await import(SCRIPT);
 check(SCHEMA === 2, 'SCHEMA must be 2');
 check(/aria-expanded/.test(TRIGGER_SELECTOR) && /summary/.test(TRIGGER_SELECTOR) && /\[role=tab\]/.test(TRIGGER_SELECTOR), 'TRIGGER_SELECTOR must enumerate aria-expanded, role=tab and summary');
 
@@ -70,6 +71,11 @@ check(v.hovered === true && v.changed.length === 0 && /3 :hover rule/.test(v.war
 v = hoverVerdict({ box: okBox, hit: { self: true, path: 'a.card' }, before, after: before, hoverRules: 0 });
 check(v.hovered === true && v.changed.length === 0 && !v.warn, 'hoverVerdict: no rules, no change → quiet');
 
+// isNavigationError — the --triggers auto guard: navigation-class failures end the loop with the JSON still written
+for (const m of ['Execution context was destroyed, most likely because of a navigation', 'Target page, context or browser has been closed', 'Target closed', 'Navigation interrupted by another one', 'Frame was detached']) check(isNavigationError(new Error(m)), `isNavigationError must recognise "${m}"`);
+for (const m of ['locator.click: Timeout 2500ms exceeded', 'Element is not visible', '']) check(!isNavigationError(new Error(m)), `isNavigationError must not flag "${m}"`);
+check(!isNavigationError(null) && !isNavigationError(undefined), 'isNavigationError tolerates null/undefined');
+
 // CLI contract
 const help = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8' });
 check(help.status === 0 && /--triggers auto/.test(help.stdout) && /Usage:/.test(help.stdout), '--help must exit 0 and name --triggers auto');
@@ -79,4 +85,4 @@ const unknown = spawnSync(process.execPath, [SCRIPT, 'https://example.test/', 'o
 check(unknown.status === 1 && /unknown flag --bogus/.test(unknown.stderr), 'an unknown flag must exit 1');
 
 if (failures.length) { console.error(`motion-observe-fixtures: ${failures.length} finding(s)`); for (const f of failures) console.error(`  ✗ ${f}`); process.exit(1); }
-console.log('motion-observe-fixtures: ok (entrances summary, state machines, hover verdicts, CLI contract)');
+console.log('motion-observe-fixtures: ok (entrances summary, state machines, hover verdicts, navigation guard, CLI contract)');

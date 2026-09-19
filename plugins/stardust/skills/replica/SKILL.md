@@ -19,7 +19,7 @@ Phases, in order: Setup → 1 EXTRACT → 2 PRESERVE DIRECTION → 3 RECREATE �
 | 1 | `$stardust extract <URL> --prep --dynamics` — bounded entry: `--single` / `--pages <slug,...>` |
 | 2 | mechanical promotion + `stardust/replica/inconsistency-register.md`; the `dynamics` skill Phases 1–3 |
 | 3 | author `stardust/prototypes/<slug>-proposed.html` (+ per-page CSS) |
-| 4 | probes 1+2: `diff/content-diff.mjs`, `diff/visual-diff.mjs` (`--profile generic --width <w> --main <root> --dismiss`); probe 3: `replica/stitch-shot.mjs`, `replica/pixel-compare.mjs --timeout <s>`; inner loop: `replica/anchor.mjs --cache`, `replica/chrome-parity.mjs --live-cache`, `replica/gate.sh <slug> <live> <proto> <width> [iter] [--marker <string>] [--refresh] [--variance]` (reference freshness + noise floor: gate doc § Per-breakpoint procedure) — deadlines `GATE_STITCH_TIMEOUT`, `GATE_COMPARE_TIMEOUT`, stale reap `GATE_REAP_MIN`; every node step runs under `replica/run-capped.mjs --timeout <s> -- <cmd>`; after the static pass: `replica/motion-observe.mjs <live>` |
+| 4 | probes 1+2: `diff/content-diff.mjs`, `diff/visual-diff.mjs` (`--profile generic --width <w> --main <root> --dismiss`); probe 3: `replica/stitch-shot.mjs`, `replica/pixel-compare.mjs --timeout <s>`; inner loop: `replica/anchor.mjs --cache`, `replica/chrome-parity.mjs --live-cache`, `replica/gate.sh <slug> <live> <proto> <width> [iter] [--marker <string>] [--refresh] [--variance] [--over-cap <reason>] [--record → replica/progress-record.mjs]` — deadlines `GATE_STITCH_TIMEOUT`, `GATE_COMPARE_TIMEOUT`, stale reap `GATE_REAP_MIN`; every node step runs under `replica/run-capped.mjs --timeout <s> -- <cmd>`; after the static pass: `replica/motion-observe.mjs <live> [--hover <sel>] [--click <sel>] [--triggers auto]` |
 | 5 | first: `deploy` the approved archetype to a branch preview (`deploy-batch.mjs … --branch <branch>`); `replica/sibling-variance.mjs <archetype> <siblings…> --probe <block>=<sel>`; then the `migrate` (sibling tier) → `deploy` → `rollout` skills; re-run the Phase 4 gate against the published origin |
 
 Gates: Phase 2 — every dynamic-surface row has a disposition. Phase 4, per breakpoint (default `1440,360`) — content-diff 0 structural 🔴 · visual-diff flags none/justified · pixel diff ≤ 10% with no hot band unexplained · height |Δ| ≤ 8px · cap 3 iterations · interaction parity recorded. `gate.sh` exits: 0 pass · 2 fail · 1 error / incomparable captures · 3 bot challenge · 4 wrong server · 5 invalid capture (consent) · 6 cap reached (decide: residual / register / `--over-cap <reason>`; `--invalidate <label> <fix>` excludes a defect round; `--record` copies the round into `progress.json`) · 124 deadline (re-run, not a FAIL).
@@ -31,7 +31,7 @@ Outputs: `stardust/direction.md` · `stardust/replica/{inconsistency-register.md
 | Setup | `../stardust/reference/state-machine.md` § Flow keys; `reference/preserve-direction.md` § 4. Impeccable ignore set |
 | 2 | `reference/preserve-direction.md` § 1. Promotion contract · § 1a. Bounded promotion branch · § 3. The inconsistency register; `../dynamics/reference/triage.md` § Dispositions |
 | 3 | `reference/recreation-procedure.md` § Authoring order · § Cumulative archetype prototypes · § CSS lifting · § Fonts policy · § Asset harvest and the capture-state policy · § CSS-portation fallback; parallel archetypes: `../stardust/reference/fan-out.md` § Scope and type of delegated agents · § Worker contract |
-| 4 | `reference/source-fidelity-gate.md` § Per-breakpoint procedure · § Pass bar · § Reading the band breakdown · § Iteration discipline · § Hardening rules · § Script adaptations; `../stardust/reference/context-hygiene.md` § Image reads; after a capped round: § Residual classes |
+| 4 | `reference/source-fidelity-gate.md` § Per-breakpoint procedure · § Pass bar · § Reading the band breakdown · § Iteration discipline · § Hardening rules · § Script adaptations; `../stardust/reference/context-hygiene.md` § Image reads; after a capped round: § Residual classes; close: `../stardust/reference/run-status.md` § Phase close |
 | 4, after the static pass | `reference/recreation-procedure.md` § Interaction parity · § Fixed and sticky chrome · § Granularity parity |
 | 5 | `../migrate/reference/fidelity-tiers.md` § Sibling variance probe · § Content-count acceptance; `reference/source-fidelity-gate.md` § The published-origin gate · § Residual logging format; `../rollout/reference/sweep-protocol.md` § The protocol |
 
@@ -298,8 +298,7 @@ The close leads with what is NOT green, per archetype × breakpoint
 `… 360: ungated`), then the passes and the coverage line `archetypes gated
 A of T at <bp> · ungated: <slug@bp …>` read from `progress.json`. The
 phase-close checkpoint block (master skill § Phase close) carries
-`EDS URL: <branch preview URL> | none yet` — two field runs went 3 h and
-25 h before the user had to ask for a URL.
+`EDS URL: <branch preview URL> | none yet`.
 
 ### Phase 5 — HANDOFF (delegate — migrate → deploy → rollout, unchanged)
 
@@ -310,7 +309,7 @@ phase-close checkpoint block (master skill § Phase close) carries
   origin (`reference/source-fidelity-gate.md` § The published-origin gate).
   The approval is the trigger — hands-off never waits for a "ready to
   deploy?". No EDS origin yet → the deploy skill's site bootstrap
-  (planned `reference/site-bootstrap.md`, T12.1).
+  (planned `reference/site-bootstrap.md`).
 - **Pages beyond the archetypes** go through the stardust `migrate` skill at
   **sibling tier** (`../migrate/reference/fidelity-tiers.md`): structural
   clone of the gated archetype + content-fidelity + delivery-lint +
@@ -319,8 +318,8 @@ phase-close checkpoint block (master skill § Phase close) carries
   assumed**: before cloning, run `stardust/scripts/replica/sibling-variance.mjs
   <archetype> <siblings…> --probe <block>=<sel> … --brief` once per template
   and budget every delta as a block VARIANT class on the sibling's content
-  (same file, § Sibling variance probe). A new
-  module kind on a sibling → the lift ledger rule (Phase 3). Content-fidelity
+  (same file, § Sibling variance probe). A new module kind on a sibling →
+  the lift ledger rule (Phase 3). Content-fidelity
   is **measured per page at import time** (same file, § Content-count
   acceptance) so importer bugs surface while cheap to fix.
 - **Delivery** via the stardust `deploy` skill per page: decode tier biased

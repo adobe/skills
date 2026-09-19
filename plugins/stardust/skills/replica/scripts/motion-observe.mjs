@@ -71,8 +71,11 @@
  *      and [type=submit] skipped), run LAST (opened panels must not poison
  *      the hover probes), one at a time: click → transitionend/400 ms →
  *      sample → Escape, re-click if aria-expanded is still true → park. A
- *      trigger that navigates aborts the loop and is recorded navigated:true.
- *      Same page load — no extra live hits.
+ *      trigger that navigates aborts the loop and is recorded navigated:true
+ *      — the whole per-trigger body runs inside a try/catch keyed on
+ *      isNavigationError, so a navigation landing after the flag check (or
+ *      during the restore) still ends with the JSON written; the run and its
+ *      live hit are never lost. Same page load — no extra live hits.
  *
  * Budget live hits like any other probe: ONE observation run per page,
  * reuse the JSON (bot-managed sites escalate to IP blocks within a few
@@ -121,6 +124,11 @@ const LIVE_SESSION = ['../../diff/scripts/live-session.mjs', '../diff/live-sessi
   .map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
 
 export const SCHEMA = 2;
+// A trigger that navigates tears the instrumented document down under the
+// evaluate: Playwright reports it as one of these. Recognised → the trigger is
+// recorded navigated:true, the loop stops and the JSON is still written.
+export const isNavigationError = (e) => /Execution context was destroyed|Target (page|context|browser).*closed|Target closed|navigat|frame was detached|Frame.*detached/i.test(String((e && e.message) || e || ''));
+
 export const TRIGGER_SELECTOR = '[aria-expanded],[aria-haspopup],[aria-controls],header button,[role=tab],summary';
 export const STATE_ATTRS = ['aria-expanded', 'aria-hidden', 'hidden', 'open', 'data-state'];
 const TRIGGER_WINDOW_MS = 300;
@@ -579,32 +587,59 @@ async function main() {
         const target = id && document.getElementById(id);
         return { ariaExpanded: el.getAttribute('aria-expanded'), open: el.hasAttribute('open') || null, controlsDisplay: target ? getComputedStyle(target).display : null, controlsHeight: target ? Math.round(target.getBoundingClientRect().height) : null, attrMutations: window.__motion.attrMutations.length, childList: window.__motion.childList.length, classMutations: window.__motion.classMutations.length };
       }, i);
+      // one trigger per iteration; EVERYTHING that touches the page runs inside
+      // the try — a trigger whose navigation lands after the flag check (or
+      // during the restore) destroys the execution context, and an uncaught
+      // evaluate would lose the whole observation (its live hit included).
       for (const t of list) {
         if (navigated) break;
         const loc = page.locator(`[data-motion-trigger="${t.i}"]`).first();
-        const before = await state(t.i);
-        const rec = { ...t, before };
+        const rec = { ...t };
         try {
-          await loc.scrollIntoViewIfNeeded({ timeout: 2000 });
-          await page.waitForTimeout(150);
-          await loc.click({ timeout: 2500 });
-        } catch (e) { rec.clickFailed = String(e.message || e).split('\n')[0].slice(0, 120); triggers.push(rec); continue; }
-        await page.waitForTimeout(450);
-        if (navigated) { rec.navigated = true; triggers.push(rec); warn(`--triggers auto: ${t.sel} navigated away — loop aborted (record the trigger as a link, not a toggle)`); break; }
-        const after = await state(t.i);
-        rec.after = after;
-        rec.mutations = after && before ? { attr: after.attrMutations - before.attrMutations, childList: after.childList - before.childList, class: after.classMutations - before.classMutations } : null;
-        // restore: Escape, then re-click if still expanded; park the mouse
-        await page.keyboard.press('Escape').catch(() => {});
-        await page.waitForTimeout(200);
-        let restored = await state(t.i);
-        if (restored && restored.ariaExpanded === 'true' && before && before.ariaExpanded !== 'true') {
-          try { await loc.click({ timeout: 2000 }); await page.waitForTimeout(300); } catch { /* leave it */ }
-          restored = await state(t.i);
+          rec.before = await state(t.i);
+          try {
+            await loc.scrollIntoViewIfNeeded({ timeout: 2000 });
+            await page.waitForTimeout(150);
+            // settle promise on the aria-controls target (else the trigger):
+            // transitionend (bubbling) or ≥ 400 ms — same wait as the hover probe
+            await page.evaluate((k) => {
+              const el = document.querySelector(`[data-motion-trigger="${k}"]`);
+              const id = String(el.getAttribute('aria-controls') || '').split(/\s+/)[0];
+              const target = (id && document.getElementById(id)) || el;
+              window.__trigWait = new Promise((r) => { const tm = setTimeout(() => r('timeout'), 400); const done = () => { clearTimeout(tm); setTimeout(() => r('transitionend'), 40); }; target.addEventListener('transitionend', done, { once: true }); el.addEventListener('transitionend', done, { once: true }); });
+            }, t.i);
+            await loc.click({ timeout: 2500 });
+          } catch (e) {
+            if (isNavigationError(e)) throw e;
+            rec.clickFailed = String(e.message || e).split('\n')[0].slice(0, 120); triggers.push(rec); continue;
+          }
+          const settled = await page.evaluate(() => window.__trigWait);
+          if (settled === 'timeout') await page.waitForTimeout(50);
+          if (navigated) { rec.navigated = true; triggers.push(rec); warn(`--triggers auto: ${t.sel} navigated away — loop aborted (record the trigger as a link, not a toggle)`); break; }
+          const after = await state(t.i);
+          rec.after = after;
+          rec.settled = settled;
+          rec.mutations = after && rec.before ? { attr: after.attrMutations - rec.before.attrMutations, childList: after.childList - rec.before.childList, class: after.classMutations - rec.before.classMutations } : null;
+          // restore: Escape, then re-click if still expanded; park the mouse
+          await page.keyboard.press('Escape').catch(() => {});
+          await page.waitForTimeout(200);
+          let restored = await state(t.i);
+          if (restored && restored.ariaExpanded === 'true' && rec.before && rec.before.ariaExpanded !== 'true') {
+            try { await loc.click({ timeout: 2000 }); await page.waitForTimeout(300); } catch (e) { if (isNavigationError(e)) throw e; /* leave it */ }
+            restored = await state(t.i);
+          }
+          rec.restored = restored ? { ariaExpanded: restored.ariaExpanded, controlsDisplay: restored.controlsDisplay } : null;
+          await page.mouse.move(10, VH - 10);
+          triggers.push(rec);
+        } catch (e) {
+          if (navigated || isNavigationError(e)) {
+            rec.navigated = true; triggers.push(rec);
+            warn(`--triggers auto: ${t.sel} navigated away (${String(e.message || e).split('\n')[0].slice(0, 80)}) — loop aborted, observation kept (record the trigger as a link, not a toggle)`);
+            break;
+          }
+          rec.error = String(e.message || e).split('\n')[0].slice(0, 120); triggers.push(rec);
+          warn(`--triggers auto: ${t.sel} failed (${rec.error}) — skipped`);
         }
-        rec.restored = restored ? { ariaExpanded: restored.ariaExpanded, controlsDisplay: restored.controlsDisplay } : null;
-        await page.mouse.move(10, VH - 10);
-        triggers.push(rec);
       }
       page.off('framenavigated', onNav);
       await page.evaluate(() => { for (const el of document.querySelectorAll('[data-motion-trigger]')) el.removeAttribute('data-motion-trigger'); }).catch(() => {});
