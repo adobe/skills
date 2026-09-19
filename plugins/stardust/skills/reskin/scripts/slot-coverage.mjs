@@ -50,6 +50,8 @@
  *                                  keep networkidle)
  *       [--headed[=window]]                 ladder start tier 2; =window tier 3 (escalation
  *                                  for bot-managed sites)
+ *       [--storage-state <file> | --fresh-state] [--solve-wait <ms>]  admitted-session reuse / clean start / interactive solve
+ *                                      (live-session.mjs; --solve-wait implies a visible tier-3 window)
  *       [--locale <tag>]           pin Accept-Language + locale
  *
  * Exit: 0 all checks pass, 1 any fail, 2 setup error,
@@ -70,21 +72,25 @@ if (!LIVE_SESSION) {
   console.error('Copy the diff skill\'s live-session.mjs alongside the reskin scripts (SKILL.md § Setup).');
   process.exit(2);
 }
-const { isLiveHttpUrl, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive } = await import(pathToFileURL(LIVE_SESSION).href);
+const { isLiveHttpUrl, launchTier, parseHeadedFlag, parseSolveWaitFlag, resolveStartTier, newLiveContext, gotoLive, sessionContextOptions } = await import(pathToFileURL(LIVE_SESSION).href);
 
 function parseArgs(argv) {
   const opts = { 'rendered-scope': 'main', paint: 'fail', 'wait-until': 'domcontentloaded' };
   // Enumerated value-taking flags — an unknown --flag (e.g. a typo like
   // --rendered-scpoe) must be rejected, not silently stored and defaulted.
-  const VALUE_FLAGS = new Set(['model', 'rendered', 'rendered-scope', 'report', 'paint', 'ua', 'wait-until', 'locale']);
+  const VALUE_FLAGS = new Set(['model', 'rendered', 'rendered-scope', 'report', 'paint', 'ua', 'wait-until', 'locale', 'storage-state', 'solve-wait']);
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
     else if (a === '--headed' || a.startsWith('--headed=')) opts.headed = parseHeadedFlag(a);
+    else if (a === '--fresh-state') opts.freshState = true;
     else if (a.startsWith('--') && VALUE_FLAGS.has(a.slice(2))) opts[a.slice(2)] = argv[++i];
     else { console.error(`[slot-coverage] unknown arg: ${a}`); process.exit(2); }
   }
   if (!['fail', 'warn'].includes(opts.paint)) { console.error(`[slot-coverage] --paint must be fail|warn, got: ${opts.paint}`); process.exit(2); }
+  // the three session flags, live-session.mjs § Admitted-session reuse
+  opts.storageState = opts['storage-state'] || null;
+  if (opts['solve-wait'] != null) { opts.solveWaitMs = parseSolveWaitFlag(opts['solve-wait']); opts.headed = 3; }
   return opts;
 }
 
@@ -93,6 +99,7 @@ if (args.help || !args.model || !args.rendered) {
   console.log('usage: node slot-coverage.mjs --model <content-model.json> --rendered <url|file>');
   console.log('         [--rendered-scope main] [--report <path>] [--paint fail|warn]');
   console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed[=window]] [--locale <tag>]');
+  console.log('         [--storage-state <file> | --fresh-state] [--solve-wait <ms>]');
   console.log('Proves every model slot (text, CTAs, images) + all metadata present in the render,');
   console.log('and that every present content image actually PAINTS (naturalWidth > 0) — a URL-string');
   console.log('match can pass while an origin-locked source CDN 403s every image (gates.md § Image');
@@ -120,6 +127,7 @@ const browser = await launchTier(chromium, args.tier);
 // local/file targets, mandatory on live ones (F-G/F-R1).
 const ctx = await newLiveContext(browser, {
   ua: args.ua, locale: args.locale, viewport: { width: 1440, height: 900 },
+  ...sessionContextOptions(toUrl(args.rendered), args), // the run's admitted session, live side only (renderedUrl is declared below)
 });
 const page = await ctx.newPage();
 const renderedUrl = toUrl(args.rendered);
@@ -131,11 +139,11 @@ if (isLiveHttpUrl(renderedUrl)) {
   // solve window only at tier 3 (live-session gotoLive): headless clearance never lands, and the
   // solve loop would spend the Akamai block budget (1 hit vs up to 4).
   try {
-    await gotoLive(page, renderedUrl, { waitUntil: args['wait-until'], timeoutMs: 60000, settleMs: 0, tier: args.tier });
+    await gotoLive(page, renderedUrl, { waitUntil: args['wait-until'], timeoutMs: 60000, settleMs: 0, tier: args.tier, solveWaitMs: args.solveWaitMs });
   } catch (e) {
     console.error(`[slot-coverage] ${e.message}`);
     await browser.close();
-    process.exit(e.name === 'BotChallengeError' ? 3 : 2);
+    process.exit(e.name === 'BotChallengeError' ? 3 : e.name === 'LiveLockError' ? 1 : 2); // lock held elsewhere = exit 1 (not a usage/fatal 2)
   }
 } else {
   // local/file target (the usual --rendered: a rendered page file) — legacy

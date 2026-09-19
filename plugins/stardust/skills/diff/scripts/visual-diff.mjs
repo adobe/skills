@@ -37,6 +37,7 @@
  *                           (consent + timed marketing modals + optional extras)
  *     --consent-mode <m>  accept | deny (default accept; deny clicks reject-all, never accept — live-session)
  *     --headed[=window]      bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
+ *     --storage-state <file> | --fresh-state | --solve-wait <ms>  admitted-session reuse / clean start / interactive solve (live-session.mjs § Admitted-session reuse; --solve-wait implies a visible tier-3 window)
  *     --locale <tag>        pin Accept-Language + context locale (geo-redirect determinism)
  *
  * Every context gets the real-Chrome UA + the standard request headers via
@@ -68,7 +69,7 @@ import { chromium } from 'playwright';
 import { mkdirSync } from 'fs';
 import { resolve } from 'path';
 import { resolveProfile } from './diff-profiles.mjs';
-import { REAL_CHROME_UA, isLiveHttpUrl, defaultWaitUntil, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays } from './live-session.mjs';
+import { REAL_CHROME_UA, isLiveHttpUrl, defaultWaitUntil, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, sessionContextOptions, parseSolveWaitFlag, dismissOverlays } from './live-session.mjs';
 
 const USAGE = `usage: node skills/diff/scripts/visual-diff.mjs <sourceURL> <buildURL> [options]
   --profile eds|generic  stack profile (default eds)
@@ -86,6 +87,7 @@ const USAGE = `usage: node skills/diff/scripts/visual-diff.mjs <sourceURL> <buil
                          sides; optional comma-separated extra selectors
   --consent-mode <m>     accept | deny (default accept; deny clicks reject-all, never accept)
   --headed[=window]       bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
+  --storage-state <file> | --fresh-state | --solve-wait <ms>  admitted-session reuse / clean start / interactive solve (live-session.mjs; --solve-wait implies a visible tier-3 window)
   --locale <tag>         pin Accept-Language + locale (e.g. en-GB) for geo determinism
 exit codes: 0 ran (flags advisory; an HTTP-error side, e.g. a 404 build pre-propagation,
             is measured + flagged with a warning, not fatal), 1 error,
@@ -112,6 +114,9 @@ function parseArgs(argv) {
     }
     else if (a === '--consent-mode') { opts.consentMode = rest[i += 1]; if (!['accept', 'deny'].includes(opts.consentMode)) { console.error(`--consent-mode must be accept or deny\n\n${USAGE}`); process.exit(1); } if (!opts.dismiss) opts.dismiss = []; }
     else if (a === '--headed' || a.startsWith('--headed=')) { opts.headed = parseHeadedFlag(a); }
+    else if (a === '--storage-state') { opts.storageState = rest[i += 1]; }
+    else if (a === '--fresh-state') { opts.freshState = true; }
+    else if (a === '--solve-wait') { opts.solveWaitMs = parseSolveWaitFlag(rest[i += 1]); opts.headed = 3; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
   }
   return { proto, eds, opts };
@@ -239,6 +244,7 @@ async function capture(browser, url, tag, opts) {
     ua: opts.ua, locale: opts.locale,
     viewport: { width: opts.width, height: 1000 },
     reducedMotion: 'reduce',
+    ...sessionContextOptions(url, opts), // the run's admitted session, live side only
   });
   const page = await ctx.newPage();
   // challenge detection on every navigation — a blocked live side throws
@@ -247,7 +253,7 @@ async function capture(browser, url, tag, opts) {
   // aem.page before preview propagation — the flags carry the signal, exit 0.
   // solve window only at tier 3 (live-session gotoLive): headless clearance never lands, and the
   // solve loop would spend the Akamai block budget (1 hit vs up to 4).
-  await gotoLive(page, url, { waitUntil: opts.waitUntil || defaultWaitUntil(url), timeoutMs: 60000, settleMs: 0, httpError: 'measure', tier: opts.tier });
+  await gotoLive(page, url, { waitUntil: opts.waitUntil || defaultWaitUntil(url), timeoutMs: 60000, settleMs: 0, httpError: 'measure', tier: opts.tier, solveWaitMs: opts.solveWaitMs });
   await page.waitForTimeout(2000);
   // late-modal poll window only on live targets — local prototypes' overlays
   // are not timed third-party scripts, they render immediately.

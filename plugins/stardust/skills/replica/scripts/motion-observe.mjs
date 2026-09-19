@@ -98,6 +98,7 @@
  *                         the sidecar records `blocked` and an asymmetric pair
  *                         is refused by pixel-compare
  *     --headed[=window]    bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
+ *     --storage-state <file> | --fresh-state | --solve-wait <ms>  admitted-session reuse / clean start / interactive solve (live-session.mjs § Admitted-session reuse; --solve-wait implies a visible tier-3 window)
  *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
  *     --ua <string>       user agent                        (default real-Chrome)
  *     --wait <ms>         initial post-load wait            (default 2500)
@@ -150,6 +151,7 @@ Usage: node motion-observe.mjs <url> <out.json> [options]
   --dismiss <sel,…> extra overlay-dismiss selectors
   --block <substr,…> abort requests whose URL contains a substring (3rd-party widgets with no close control; never the page's own origin) — SAME value on both sides
   --headed[=window]  bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
+  --storage-state <file> | --fresh-state | --solve-wait <ms>  admitted-session reuse / clean start / interactive solve (live-session.mjs; --solve-wait implies a visible tier-3 window)
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB)
   --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
   --wait <ms>       initial post-load wait (default 2500)
@@ -163,7 +165,7 @@ hover probes that say hovered:false (no-box | intercepted) instead of an empty
 diff. One observation run per live page — reuse the JSON. Exit codes: 0 written,
 1 error, 3 bot challenge (fail loud).`;
 
-export function parseArgs(argv, { parseHeadedFlag = (a) => a !== '--headed=none', defaultUa = null } = {}) {
+export function parseArgs(argv, { parseHeadedFlag = (a) => a !== '--headed=none', parseSolveWaitFlag = (v) => { const n = Number(v); if (!(n >= 5000)) throw new Error(`--solve-wait <ms> must be ≥ 5000 (got ${v})`); return n; }, defaultUa = null } = {}) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
@@ -178,6 +180,9 @@ export function parseArgs(argv, { parseHeadedFlag = (a) => a !== '--headed=none'
     else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
     else if (a === '--block') { opts.block = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
     else if (a === '--headed' || a.startsWith('--headed=')) { opts.headed = parseHeadedFlag(a); }
+    else if (a === '--storage-state') { opts.storageState = rest[i += 1]; }
+    else if (a === '--fresh-state') { opts.freshState = true; }
+    else if (a === '--solve-wait') { opts.solveWaitMs = parseSolveWaitFlag(rest[i += 1]); opts.headed = 3; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--ua') { opts.ua = rest[i += 1]; }
     else if (a === '--wait') { opts.wait = Number(rest[i += 1]); }
@@ -277,8 +282,8 @@ async function main() {
     console.error('motion-observe error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
     process.exit(1);
   }
-  const { REAL_CHROME_UA, isLiveHttpUrl, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays, reportOverlayResidue } = await import(pathToFileURL(LIVE_SESSION).href);
-  const { url, out, opts } = parseArgs(process.argv, { parseHeadedFlag, defaultUa: REAL_CHROME_UA });
+  const { REAL_CHROME_UA, isLiveHttpUrl, launchTier, parseHeadedFlag, parseSolveWaitFlag, resolveStartTier, newLiveContext, gotoLive, sessionContextOptions, dismissOverlays, reportOverlayResidue } = await import(pathToFileURL(LIVE_SESSION).href);
+  const { url, out, opts } = parseArgs(process.argv, { parseHeadedFlag, parseSolveWaitFlag, defaultUa: REAL_CHROME_UA });
   const { chromium } = await import('playwright');
   const VH = 900;
   opts.tier = resolveStartTier(opts.headed); // ladder start = max(--headed tier, tier extract recorded) — live-session.mjs
@@ -289,11 +294,12 @@ async function main() {
       ua: opts.ua, locale: opts.locale,
       viewport: { width: opts.width, height: VH },
       block: opts.block,
+      ...sessionContextOptions(url, opts), // the run's admitted session, live side only
     });
     const page = await ctx.newPage();
     // Challenge/blocked interstitial → loud BotChallengeError (exit 3); a
     // challenge page's "motion" must never be recorded as the source's.
-    await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: opts.timeout, settleMs: 0, tier: opts.tier });
+    await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: opts.timeout, settleMs: 0, tier: opts.tier, solveWaitMs: opts.solveWaitMs });
     await page.waitForTimeout(opts.wait);
     // Dismiss BEFORE instrumenting: the dismissal's own class churn must not
     // pollute the mutation log, and an overlay intercepts hover/click probes.

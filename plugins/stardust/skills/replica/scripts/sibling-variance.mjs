@@ -43,6 +43,7 @@
  *                         is refused by pixel-compare
  *     --consent-mode <m>  accept | deny (default accept; deny clicks reject-all, never accept — live-session)
  *     --headed[=window]       bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
+ *     --storage-state <file> | --fresh-state | --solve-wait <ms>  admitted-session reuse / clean start / interactive solve (live-session.mjs § Admitted-session reuse; --solve-wait implies a visible tier-3 window)
  *     --locale <tag>         pin Accept-Language + locale
  *     --json                 machine-readable output
  *     --brief                after the report, print one paste-ready markdown
@@ -71,7 +72,7 @@ if (!LIVE_SESSION) {
   console.error('sibling-variance error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { isLiveHttpUrl, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays, reportOverlayResidue, defaultWaitUntil } = await import(pathToFileURL(LIVE_SESSION).href);
+const { isLiveHttpUrl, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, sessionContextOptions, parseSolveWaitFlag, dismissOverlays, reportOverlayResidue, defaultWaitUntil } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `sibling-variance — diff template-defining computed values of live siblings against the archetype
 
@@ -85,6 +86,7 @@ Usage: node sibling-variance.mjs <archetypeURL> <siblingURL> [<siblingURL>…] [
   --block <substr,…> abort requests whose URL contains a substring (3rd-party widgets with no close control; never the page's own origin) — SAME value on both sides
   --consent-mode <m>    accept | deny (default accept; deny clicks reject-all, never accept)
   --headed[=window]      bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
+  --storage-state <file> | --fresh-state | --solve-wait <ms>  admitted-session reuse / clean start / interactive solve (live-session.mjs; --solve-wait implies a visible tier-3 window)
   --locale <tag>        pin Accept-Language + locale
   --json                machine-readable output
   --brief               print a paste-ready brief block per sibling (section sequences + deltas)
@@ -113,6 +115,9 @@ function parseArgs(argv) {
     else if (a === '--block') { opts.block = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
     else if (a === '--consent-mode') { opts.consentMode = rest[i += 1]; if (!['accept', 'deny'].includes(opts.consentMode)) { console.error(`--consent-mode must be accept or deny\n\n${HELP}`); process.exit(1); } }
     else if (a === '--headed' || a.startsWith('--headed=')) { opts.headed = parseHeadedFlag(a); }
+    else if (a === '--storage-state') { opts.storageState = rest[i += 1]; }
+    else if (a === '--fresh-state') { opts.freshState = true; }
+    else if (a === '--solve-wait') { opts.solveWaitMs = parseSolveWaitFlag(rest[i += 1]); opts.headed = 3; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--json') { opts.json = true; }
     else if (a === '--brief') { opts.brief = true; }
@@ -239,9 +244,9 @@ function compare(arch, sib, tol) {
 // ---------------------------------------------------------------------- main
 
 async function probeUrl(browser, url, opts) {
-  const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 }, block: opts.block });
+  const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 }, block: opts.block, ...sessionContextOptions(url, opts) });
   const page = await ctx.newPage();
-  await gotoLive(page, url, { waitUntil: defaultWaitUntil(url), settleMs: isLiveHttpUrl(url) ? 2500 : 1200, tier: opts.tier });
+  await gotoLive(page, url, { waitUntil: defaultWaitUntil(url), settleMs: isLiveHttpUrl(url) ? 2500 : 1200, tier: opts.tier, solveWaitMs: opts.solveWaitMs });
   const dOv = await dismissOverlays(page, { mode: opts.consentMode, reject: opts.consentMode === 'deny' && opts.consent ? [opts.consent] : [], extra: [...(opts.consent && opts.consentMode !== 'deny' ? [opts.consent] : []), ...opts.dismiss], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
   reportOverlayResidue('sibling-variance', dOv);
   await page.evaluate(async () => {

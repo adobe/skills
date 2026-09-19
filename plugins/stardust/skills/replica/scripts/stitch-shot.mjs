@@ -143,6 +143,7 @@
  *                         the sidecar records `blocked` and an asymmetric pair
  *                         is refused by pixel-compare
  *     --headed[=window]    bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
+ *     --storage-state <file> | --fresh-state | --solve-wait <ms>  admitted-session reuse / clean start / interactive solve (live-session.mjs § Admitted-session reuse; --solve-wait implies a visible tier-3 window)
  *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
  *     --ua <string>       user agent                        (default real-Chrome)
  *     --wait <ms>         initial post-load wait            (default 1200; 3000 with --settle)
@@ -195,7 +196,7 @@ if (!LIVE_SESSION) {
   console.error('stitch-shot error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { REAL_CHROME_UA, TIERS, isLiveHttpUrl, launchLadder, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays, installOverlayWatch, readOverlayWatch, parseBlockList } = await import(pathToFileURL(LIVE_SESSION).href);
+const { REAL_CHROME_UA, TIERS, isLiveHttpUrl, launchLadder, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, sessionContextOptions, parseSolveWaitFlag, dismissOverlays, installOverlayWatch, readOverlayWatch, parseBlockList } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `stitch-shot — scroll-and-stitch full-page screenshot (symmetric capture instrument)
 
@@ -216,6 +217,7 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --dismiss <sel,…> extra overlay-dismiss selectors (marketing modals etc.)
   --block <substr,…> abort requests whose URL contains a substring (3rd-party widgets with no close control; never the page's own origin) — SAME value on both sides
   --headed[=window]  bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
+  --storage-state <file> | --fresh-state | --solve-wait <ms>  admitted-session reuse / clean start / interactive solve (live-session.mjs; --solve-wait implies a visible tier-3 window)
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB) for geo determinism
   --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
   --wait <ms>       initial post-load wait (default 1200; 3000 with --settle)
@@ -252,6 +254,9 @@ function parseArgs(argv) {
     else if (a === '--consent-mode') { opts.consentMode = rest[i += 1]; if (!['accept', 'deny'].includes(opts.consentMode)) { console.error(`--consent-mode must be accept or deny\n\n${HELP}`); process.exit(1); } }
     else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
     else if (a === '--headed' || a.startsWith('--headed=')) { opts.headed = parseHeadedFlag(a); }
+    else if (a === '--storage-state') { opts.storageState = rest[i += 1]; }
+    else if (a === '--fresh-state') { opts.freshState = true; }
+    else if (a === '--solve-wait') { opts.solveWaitMs = parseSolveWaitFlag(rest[i += 1]); opts.headed = 3; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--ua') { opts.ua = rest[i += 1]; }
     else if (a === '--wait') { opts.wait = Number(rest[i += 1]); }
@@ -520,13 +525,14 @@ async function main() {
       viewport: { width: opts.width, height: opts.vh },
       reducedMotion: 'reduce',
       block: opts.block,
+      ...sessionContextOptions(url, opts), // the run's admitted session, live side only
     });
     const page = await ctx.newPage();
     // Challenge/blocked interstitial → loud BotChallengeError (exit 3); a
     // challenge page must never be stitched as if it were the source.
     // solve window only at tier 3 (live-session gotoLive): headless clearance never lands, and
     // the solve loop would spend the Akamai block budget (1 hit vs up to 4).
-    await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: opts.timeout, settleMs: 0, tier });
+    await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: opts.timeout, settleMs: 0, tier, solveWaitMs: opts.solveWaitMs });
     // Tier 3 parks the window off-screen; an occluded/backgrounded tab reports
     // visibilityState 'hidden' and some edges challenge it where an on-screen
     // one is admitted (playwright-recipe.md § Bot-management fallback). Never

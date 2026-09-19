@@ -44,6 +44,8 @@
  *                                    keep networkidle)
  *       [--headed[=window]]                   ladder start tier 2; =window tier 3 (escalation
  *                                    for bot-managed sites)
+ *       [--storage-state <file> | --fresh-state] [--solve-wait <ms>]  admitted-session reuse / clean start / interactive solve
+ *                                      (live-session.mjs; --solve-wait implies a visible tier-3 window)
  *       [--locale <tag>]             pin Accept-Language + locale
  *
  * Live --rendered targets (a staged deploy, a served page on a real host)
@@ -69,20 +71,24 @@ if (!LIVE_SESSION) {
   console.error('Copy the diff skill\'s live-session.mjs alongside the reskin scripts (SKILL.md § Setup).');
   process.exit(2);
 }
-const { isLiveHttpUrl, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive } = await import(pathToFileURL(LIVE_SESSION).href);
+const { isLiveHttpUrl, launchTier, parseHeadedFlag, parseSolveWaitFlag, resolveStartTier, newLiveContext, gotoLive, sessionContextOptions } = await import(pathToFileURL(LIVE_SESSION).href);
 
 function parseArgs(argv) {
   const opts = { widths: '1440,360', 'wait-until': 'domcontentloaded' };
   // Enumerated value-taking flags — an unknown --flag (e.g. a typo like
   // --tokns) must be rejected, not silently stored and defaulted.
-  const VALUE_FLAGS = new Set(['tokens', 'rendered', 'spec', 'report', 'shot', 'widths', 'ua', 'wait-until', 'locale']);
+  const VALUE_FLAGS = new Set(['tokens', 'rendered', 'spec', 'report', 'shot', 'widths', 'ua', 'wait-until', 'locale', 'storage-state', 'solve-wait']);
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
     else if (a === '--headed' || a.startsWith('--headed=')) opts.headed = parseHeadedFlag(a);
+    else if (a === '--fresh-state') opts.freshState = true;
     else if (a.startsWith('--') && VALUE_FLAGS.has(a.slice(2))) opts[a.slice(2)] = argv[++i];
     else { console.error(`[donor-probe] unknown arg: ${a}`); process.exit(2); }
   }
+  // the three session flags, live-session.mjs § Admitted-session reuse
+  opts.storageState = opts['storage-state'] || null;
+  if (opts['solve-wait'] != null) { opts.solveWaitMs = parseSolveWaitFlag(opts['solve-wait']); opts.headed = 3; }
   return opts;
 }
 
@@ -91,6 +97,7 @@ if (args.help || !args.tokens || !args.rendered) {
   console.log('usage: node donor-probe.mjs --tokens <donor-tokens.json> --rendered <url|file>');
   console.log('         [--spec <probe-spec.json>] [--report <path>] [--shot <path>] [--widths 1440,360]');
   console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed[=window]] [--locale <tag>]');
+  console.log('         [--storage-state <file> | --fresh-state] [--solve-wait <ms>]');
   console.log('Asserts donor token values (computed styles) on the rendered reskin + overflow sanity.');
   console.log('Default spec expects: content in <main>, main .container measure, main .btn primary button.');
   console.log('Live --rendered targets get the shared live-session hardening; escalate with --headed.');
@@ -164,6 +171,7 @@ const browser = await launchTier(chromium, args.tier);
 // local/file targets, mandatory on live ones (F-G/F-R1).
 const ctx = await newLiveContext(browser, {
   ua: args.ua, locale: args.locale, viewport: { width: 1440, height: 900 },
+  ...sessionContextOptions(toUrl(args.rendered), args), // the run's admitted session, live side only (renderedUrl is declared below)
 });
 const page = await ctx.newPage();
 const renderedUrl = toUrl(args.rendered);
@@ -173,11 +181,11 @@ if (isLiveHttpUrl(renderedUrl)) {
   // solve window only at tier 3 (live-session gotoLive): headless clearance never lands, and the
   // solve loop would spend the Akamai block budget (1 hit vs up to 4).
   try {
-    await gotoLive(page, renderedUrl, { waitUntil: args['wait-until'], timeoutMs: 60000, settleMs: 0, tier: args.tier });
+    await gotoLive(page, renderedUrl, { waitUntil: args['wait-until'], timeoutMs: 60000, settleMs: 0, tier: args.tier, solveWaitMs: args.solveWaitMs });
   } catch (e) {
     console.error(`[donor-probe] ${e.message}`);
     await browser.close();
-    process.exit(e.name === 'BotChallengeError' ? 3 : 2);
+    process.exit(e.name === 'BotChallengeError' ? 3 : e.name === 'LiveLockError' ? 1 : 2); // lock held elsewhere = exit 1 (not a usage/fatal 2)
   }
 } else {
   await page.goto(renderedUrl, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});

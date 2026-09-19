@@ -66,6 +66,8 @@
  *                                    keep networkidle)
  *       [--headed[=window]]                   ladder start tier 2; =window tier 3 (escalation
  *                                    for bot-managed sites)
+ *       [--storage-state <file> | --fresh-state] [--solve-wait <ms>]  admitted-session reuse / clean start / interactive solve
+ *                                      (live-session.mjs; --solve-wait implies a visible tier-3 window)
  *       [--locale <tag>]             pin Accept-Language + locale (e.g.
  *                                    en-GB) for geo determinism
  *
@@ -90,7 +92,7 @@ if (!LIVE_SESSION) {
   console.error('Copy the diff skill\'s live-session.mjs alongside the reskin scripts (SKILL.md § Setup).');
   process.exit(2);
 }
-const { isLiveHttpUrl, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive } = await import(pathToFileURL(LIVE_SESSION).href);
+const { isLiveHttpUrl, launchTier, parseHeadedFlag, parseSolveWaitFlag, resolveStartTier, newLiveContext, gotoLive, sessionContextOptions } = await import(pathToFileURL(LIVE_SESSION).href);
 
 function parseArgs(argv) {
   const opts = { url: null, out: null, scope: 'main', normalize: null, ua: null, waitUntil: 'domcontentloaded', headed: false, locale: null };
@@ -103,6 +105,9 @@ function parseArgs(argv) {
     else if (a === '--ua') opts.ua = argv[++i];
     else if (a === '--wait-until') opts.waitUntil = argv[++i];
     else if (a === '--headed' || a.startsWith('--headed=')) opts.headed = parseHeadedFlag(a);
+    else if (a === '--storage-state') opts.storageState = argv[++i];
+    else if (a === '--fresh-state') opts.freshState = true;
+    else if (a === '--solve-wait') { opts.solveWaitMs = parseSolveWaitFlag(argv[++i]); opts.headed = 3; }
     else if (a === '--locale') opts.locale = argv[++i];
     else if (a === '--help' || a === '-h') opts.help = true;
     else { console.error(`[capture-content] unknown arg: ${a}`); process.exit(2); }
@@ -114,6 +119,7 @@ const opts = parseArgs(process.argv);
 if (opts.help || !opts.url || !opts.out) {
   console.log('usage: node capture-content.mjs --url <page-url> --out <dir> [--scope sel1,sel2!] [--normalize ledger.mjs]');
   console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed[=window]] [--locale <tag>]');
+  console.log('         [--storage-state <file> | --fresh-state] [--solve-wait <ms>]');
   console.log('Writes <dir>/content-model.json + <dir>/source-full.png.');
   console.log('Scope: comma-separated selectors captured in order; trailing "!" keeps a scope whole as one slot.');
   console.log('Each selector captures exactly ONE element (querySelector, first match) — to capture N');
@@ -144,6 +150,7 @@ const browser = await launchTier(chromium, opts.tier);
 // harmless on local/file targets, mandatory on live ones (F-G/F-R1).
 const ctx = await newLiveContext(browser, {
   ua: opts.ua, locale: opts.locale, viewport: { width: 1440, height: 900 },
+  ...sessionContextOptions(opts.url, opts), // the run's admitted session, live side only
 });
 const page = await ctx.newPage();
 if (isLiveHttpUrl(opts.url)) {
@@ -153,11 +160,11 @@ if (isLiveHttpUrl(opts.url)) {
   // solve window only at tier 3 (live-session gotoLive): headless clearance never lands, and the
   // solve loop would spend the Akamai block budget (1 hit vs up to 4).
   try {
-    await gotoLive(page, opts.url, { waitUntil: opts.waitUntil, timeoutMs: 60000, settleMs: 0, tier: opts.tier });
+    await gotoLive(page, opts.url, { waitUntil: opts.waitUntil, timeoutMs: 60000, settleMs: 0, tier: opts.tier, solveWaitMs: opts.solveWaitMs });
   } catch (e) {
     console.error(`[capture-content] ${e.message}`);
     await browser.close();
-    process.exit(e.name === 'BotChallengeError' ? 3 : 2);
+    process.exit(e.name === 'BotChallengeError' ? 3 : e.name === 'LiveLockError' ? 1 : 2); // lock held elsewhere = exit 1 (not a usage/fatal 2)
   }
 } else {
   // local/file target — legacy behavior (a served prototype reaches
