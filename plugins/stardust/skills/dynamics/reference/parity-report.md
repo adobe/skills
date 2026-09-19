@@ -51,3 +51,8 @@ and owner; `decided-out` rows belong there.
 6. **Owner decisions by name.** `scaffolded-awaiting-owner` lists the exact decision, so the report
    is honest about what runs.
 7. **Re-run after every phase** and before the final report. The check is read-only.
+8. **`--gate` is the close-out condition.** `dynamics-check.mjs --origin <live> --gate` exits 3 when
+   this file is missing or a `reproducibility: self` feature is still `pending*` / `in-progress`;
+   rollout Phase H and the pilot-only chain do not close while it exits non-zero. Only `self` rows
+   block; every other row stays `interim` with a named owner decision. The report always ends with
+   "Delivered / interim / decided-out" counts and "Values the owner must supply" (feature · `owner`).

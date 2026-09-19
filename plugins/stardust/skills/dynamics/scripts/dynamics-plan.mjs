@@ -16,11 +16,31 @@
  *
  *   node dynamics-plan.mjs [--in stardust/current/_dynamics.json] [--out stardust/dynamics]
  *        [--target-origin https://…] [--auth-header "token …" | --token-env SITE_TOKEN] [--migrated stardust/migrated]
+ *   node dynamics-plan.mjs --lint stardust/dynamic-features.md stardust/dynamic-features-plan.md
+ *        plan↔inventory lint (rollout B2): every inventory row `| N |` appears exactly once as `#N` in the
+ *        plan and every `#N` in the plan is an inventory row; exit 1 on misses / duplicates / orphans.
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { arg, readJSON, writeJSON, writeText, provenance, resolveAuthHeader, probe } from './lib.mjs';
+
+/* ---------------------------------------------------------------- lint ---- */
+if (process.argv.includes('--lint')) {
+  const i = process.argv.indexOf('--lint');
+  const [inv, plan] = [process.argv[i + 1], process.argv[i + 2]];
+  if (!inv || !plan || !existsSync(inv) || !existsSync(plan)) { console.error('usage: dynamics-plan.mjs --lint <stardust/dynamic-features.md> <stardust/dynamic-features-plan.md>  (both files must exist)'); process.exit(2); }
+  const ids = [...readFileSync(inv, 'utf8').matchAll(/^\|\s*(\d+)\s*\|/gm)].map((m) => m[1]);
+  const planText = readFileSync(plan, 'utf8');
+  const refs = {}; for (const m of planText.matchAll(/(?<![\w#])#(\d+)\b/g)) refs[m[1]] = (refs[m[1]] || 0) + 1;
+  const problems = [];
+  for (const id of ids) { if (!refs[id]) problems.push(`inventory row ${id} is not placed in the plan (no #${id})`); else if (refs[id] > 1) problems.push(`inventory row ${id} appears ${refs[id]}× in the plan`); }
+  for (const id of Object.keys(refs)) if (!ids.includes(id)) problems.push(`plan cites #${id} but the inventory has no row ${id}`);
+  if (!ids.length) problems.push(`no \`| N |\` rows found in ${inv}`);
+  if (problems.length) { console.error(`[dynamics-plan] lint: ${problems.length} problem(s) — ${ids.length} inventory rows vs ${Object.keys(refs).length} plan references\n${problems.map((p) => `  - ${p}`).join('\n')}`); process.exit(1); }
+  console.error(`[dynamics-plan] lint: ${ids.length} inventory rows each placed once in the plan`);
+  process.exit(0);
+}
 
 const IN = arg('in', 'stardust/current/_dynamics.json');
 const OUT = arg('out', 'stardust/dynamics');

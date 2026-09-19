@@ -11,7 +11,12 @@
  * + `.json`. Also exported as `replay()` for the qa `dynamics` check.
  *
  *   node dynamics-check.mjs --origin https://main--site--org.aem.live [--parity stardust/dynamics/parity.json]
- *        [--out stardust/qa] [--auth-header "token …" | --token-env SITE_TOKEN] [--headed]
+ *        [--out stardust/qa] [--auth-header "token …" | --token-env SITE_TOKEN] [--headed] [--gate]
+ *
+ * Exit: 0 all replays pass · 1 a replay failed · 2 usage · 3 `--gate` blocked (parity.json missing, or a
+ * reproducibility `self` feature still `pending*` / `in-progress` — the close-out condition rollout Phase H
+ * and the pilot-only chain run before declaring done). The report always ends with "Delivered / interim /
+ * decided-out" counts and "Values the owner must supply" (feature · `owner`), from the parity rows.
  *
  * Check types (* = required):
  *   fetch-json     { url*, minRows?, expectKeys? }                 GET on the origin returns JSON with rows / keys
@@ -170,15 +175,39 @@ export async function replay({ origin, parity, authHeader = null, headed = false
   return results;
 }
 
+/* --------------------------------------------------------------- gate ---- */
+const bucket = (s) => (/^(pending|in-progress)/.test(s || '') ? 'pending' : /^(done|delivered)/.test(s || '') ? 'delivered' : /^interim/.test(s || '') ? 'interim' : /^scaffolded/.test(s || '') ? 'scaffolded' : /^decided-out/.test(s || '') ? 'decided-out' : 'other');
+/** close-out lint over parity rows (no browser): reasons that block the report; [] = clear */
+export function gate(parity) {
+  const out = [];
+  for (const f of parity.features || []) {
+    if (f.reproducibility === 'self' && bucket(f.status) === 'pending') out.push(`${f.feature} (${f.class}): reproducibility self, status "${f.status}" — implement it (D2) or set status interim with a reason and a named owner decision`);
+  }
+  return out;
+}
+export function closeoutSections(parity) {
+  const counts = {}; for (const f of parity.features || []) { const b = bucket(f.status); counts[b] = (counts[b] || 0) + 1; }
+  const owner = (parity.features || []).filter((f) => f.owner && bucket(f.status) !== 'delivered');
+  return [
+    '', '## Delivered / interim / decided-out', '',
+    ['delivered', 'interim', 'scaffolded', 'decided-out', 'pending', 'other'].filter((k) => counts[k]).map((k) => `${k} ${counts[k]}`).join(' · ') || 'no features',
+    '', '## Values the owner must supply', '',
+    ...(owner.length ? owner.map((f) => `- ${f.feature} (${f.class}, ${f.status}) — ${f.owner}`) : ['- none']),
+  ];
+}
+
 /* ---------------------------------------------------------------- cli ---- */
 if (process.argv[1] && process.argv[1].endsWith('dynamics-check.mjs')) {
   const origin = (arg('origin') || '').replace(/\/$/, '');
-  if (!origin) { console.error('usage: dynamics-check.mjs --origin <published origin> [--parity stardust/dynamics/parity.json]'); process.exit(2); }
+  if (!origin) { console.error('usage: dynamics-check.mjs --origin <published origin> [--parity stardust/dynamics/parity.json] [--out stardust/qa] [--gate]'); process.exit(2); }
   const parityFile = arg('parity', 'stardust/dynamics/parity.json');
-  const parity = readJSON(parityFile);
+  const gating = flag('gate');
+  const parity = readJSON(parityFile, gating ? null : undefined);
+  if (!parity) { console.error(`[dynamics-check] GATE: ${parityFile} missing — Phase 5 never ran; parity.json is required in both flows`); process.exit(3); }
   const results = await replay({ origin, parity, authHeader: resolveAuthHeader(), headed: flag('headed') });
   const out = arg('out', 'stardust/qa');
   const pass = results.filter((r) => r.pass).length;
+  const blocked = gate(parity);
   const md = [
     `# Dynamics parity check — ${origin} — ${new Date().toISOString()}`, '',
     `Replayed ${results.length} checks over ${(parity.features || []).length} features · pass ${pass} · fail ${results.length - pass}. Flows, not presence.`, '',
@@ -186,9 +215,11 @@ if (process.argv[1] && process.argv[1].endsWith('dynamics-check.mjs')) {
     ...results.map((r) => `| ${r.feature} | ${r.class} | ${r.status || ''} | ${r.type} | ${r.pass ? 'PASS' : 'FAIL'} | ${String(r.detail).replace(/\|/g, '/')} | ${r.thirdParty} |`),
     '', '## Features without checks', '',
     ...(parity.features || []).filter((f) => !(f.checks || []).length).map((f) => `- ${f.feature} (${f.class}) — ${f.status}${f.owner ? ` · owner: ${f.owner}` : ''}${f.environmentLimit ? ` · environment limit: ${f.environmentLimit}` : ''}`),
+    ...closeoutSections(parity),
+    ...(blocked.length ? ['', '## Gate — blocks the report', '', ...blocked.map((b) => `- ${b}`)] : []),
   ];
   writeText(join(out, 'dynamics-report.md'), md.join('\n'));
-  writeJSON(join(out, 'dynamics-report.json'), { _provenance: provenance('check', { origin, parity: parityFile }), results });
+  writeJSON(join(out, 'dynamics-report.json'), { _provenance: provenance('check', { origin, parity: parityFile }), results, gate: blocked });
   console.error(`[dynamics-check] ${pass}/${results.length} pass → ${join(out, 'dynamics-report.md')}`);
-  setTimeout(() => process.exit(pass === results.length ? 0 : 1), 200).unref();
+  if (gating && blocked.length) { console.error(`[dynamics-check] GATE: ${blocked.length} row(s) block the report\n${blocked.map((b) => `  - ${b}`).join('\n')}`); process.exitCode = 3; } else process.exitCode = pass === results.length ? 0 : 1;
 }
