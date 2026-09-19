@@ -28,7 +28,8 @@
 #     "http://localhost:8791/home-proposed.html" 1440 iter2
 #
 # Evidence lands in stardust/replica/gates/<slug>-<width>/
-# (live.png, build.png, diff-<label>.png, review-<label>.png, gate-<label>.json).
+# (live.png, build.png, diff-<label>.png, review-<label>.png, gate-<label>.json,
+# anchor-live.json, landmarks-<label>.json).
 # review-<label>.png is the round's ONE image to read: the 3 worst bands as
 # [live | build] rows with a diff heat bar (pixel-compare --review); open a
 # full-resolution band only via crop-compare --out.
@@ -78,6 +79,8 @@
 #   GATE_REAP_MIN        stale-instrument age in minutes  (default 15; 0 disables)
 #   GATE_ALLOW_CONSENT=1 pass --allow-consent to BOTH captures (a consent
 #                        container that survives dismissal is otherwise exit 5)
+#   GATE_ANCHOR_TIMEOUT  seconds per anchor.mjs landmark pass  (default 120)
+#   GATE_LANDMARKS=0     skip the landmark Δy table (anchor.mjs --landmarks)
 #   GATE_BLOCK           comma list of URL substrings → --block on BOTH captures
 #                        (undismissable third-party widgets; the sidecar refuses
 #                        an asymmetric pair, so the gate is the only safe place)
@@ -217,6 +220,36 @@ rc=$?
 [ $rc -eq 5 ] && { rm -f "$DIR/build.png" "$DIR/build.png.json"; echo "gate.sh: build capture INVALID (exit 5: overlay / error page / consent not deniable) — not a verdict, never a FAIL" >&2; exit 5; }
 [ $rc -ne 0 ] && { echo "gate.sh: build capture failed (exit $rc) — not comparing" >&2; exit $rc; }
 
+# Landmark Δy table — the round's FIRST diagnostic (gate doc § Reading the
+# band breakdown): anchor.mjs --landmarks on the live side (cached in
+# anchor-live.json — one live probe per breakpoint per full gate run, the
+# sanctioned A4/A115 cache) and on the build side (free), paired by text; the
+# `first non-zero Δ` line names the section to fix before any band is read.
+# Never changes the round's exit code; GATE_LANDMARKS=0 skips it; an imported
+# live reference (--live-from-capture, bot-walled) skips the live probe — no
+# extra live hits there. Record: landmarks-<label>.json → gate-<label>.json.
+ANCHOR_TIMEOUT=${GATE_ANCHOR_TIMEOUT:-120}
+ANCHOR_COMMON="--consent-mode $CONSENT_MODE"
+[ -n "${GATE_BLOCK:-}" ] && ANCHOR_COMMON="$ANCHOR_COMMON --block $GATE_BLOCK"
+rm -f "$DIR/landmarks-$LBL.json"
+if [ "${GATE_LANDMARKS:-1}" != "0" ]; then
+  if [ -n "$FORCE" ]; then
+    echo "gate.sh: landmark table skipped — imported live reference (no live hits); run anchor.mjs --landmarks by hand against a stitched reference" >&2
+  else
+    # shellcheck disable=SC2086
+    capped "$ANCHOR_TIMEOUT" "anchor live $SLUG@$W" node "$HERE/anchor.mjs" "$LIVE_URL" --width "$W" --landmarks --cache "$DIR/anchor-live.json" $ANCHOR_COMMON >/dev/null
+    arc=$?
+    if [ $arc -ne 0 ]; then
+      echo "gate.sh: landmark table unavailable (live anchor exit $arc) — pixel round continues" >&2
+    else
+      # shellcheck disable=SC2086
+      capped "$ANCHOR_TIMEOUT" "anchor build $SLUG@$W" node "$HERE/anchor.mjs" "$BUILD_URL" --width "$W" --landmarks --against "$DIR/anchor-live.json" --json-out "$DIR/landmarks-$LBL.json" $ANCHOR_COMMON
+      arc=$?
+      [ $arc -ne 0 ] && echo "gate.sh: landmark table unavailable (build anchor exit $arc) — pixel round continues" >&2
+    fi
+  fi
+fi
+
 # pixel-compare supervises its own deadline (--timeout); exit 124 = no verdict.
 # shellcheck disable=SC2086
 node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --review "$DIR/review-$LBL.png" --timeout "$COMPARE_TIMEOUT" --json-out "$DIR/gate-$LBL.json" $FORCE
@@ -232,16 +265,18 @@ case "$BUILD_URL" in
 esac
 REGIME=${REGIME_OVERRIDE:-$REGIME}
 if [ -f "$DIR/gate-$LBL.json" ]; then
-  node - "$DIR/gate-$LBL.json" "$DIR/live.png" "$SLUG" "$LBL" "$W" "$LIVE_URL" "$BUILD_URL" "$REGIME" "$rc" <<'NODE'
+  node - "$DIR/gate-$LBL.json" "$DIR/live.png" "$SLUG" "$LBL" "$W" "$LIVE_URL" "$BUILD_URL" "$REGIME" "$rc" "$DIR/landmarks-$LBL.json" <<'NODE'
 const fs = require('fs');
-const [rec, live, slug, label, width, liveUrl, buildUrl, regime, rcStr] = process.argv.slice(2);
+const [rec, live, slug, label, width, liveUrl, buildUrl, regime, rcStr, lmFile] = process.argv.slice(2);
 const rc = Number(rcStr);
 const j = JSON.parse(fs.readFileSync(rec, 'utf8'));
+// landmark table (anchor.mjs --landmarks --against): rows, unpaired, firstDelta — absent when skipped/unavailable
+let landmarks = null; try { const lm = JSON.parse(fs.readFileSync(lmFile, 'utf8')); if (lm.pair) landmarks = { rows: lm.pair.rows, unpaired: lm.pair.unpaired, firstDelta: lm.pair.firstDelta, clean: lm.pair.clean }; } catch { /* no table this round */ }
 let side = null; try { side = JSON.parse(fs.readFileSync(`${live}.json`, 'utf8')); } catch { /* no sidecar: mtime */ }
 const capturedAt = side?.capturedAt || fs.statSync(live).mtime.toISOString();
 const out = { slug, label, width: Number(width), regime,
   ref: { url: liveUrl, width: Number(width), capturedAt, ...(side ? { sidecar: `${live}.json`, instrument: side.instrument && side.instrument.name, technique: side.technique, consent: side.consent } : { source: 'mtime' }) },
-  build: { url: buildUrl }, verdict: rc === 0 ? 'PASS' : rc === 2 ? 'FAIL' : 'no-verdict', exit: rc, ...j };
+  build: { url: buildUrl }, verdict: rc === 0 ? 'PASS' : rc === 2 ? 'FAIL' : 'no-verdict', exit: rc, ...(landmarks ? { landmarks } : {}), ...j };
 fs.writeFileSync(rec, `${JSON.stringify(out, null, 2)}\n`);
 console.log(`regime: ${regime}  reference: ${liveUrl} @${width} captured ${capturedAt}${side ? ` via ${side.technique || side.instrument?.name || 'unknown'}${side.source && side.source !== 'stitch-shot' ? ` (source: ${side.source})` : ''}` : ' (live.png mtime)'}${j.forced ? '  FORCED (incomparable captures — not a gate number)' : ''}  record: ${rec}`);
 NODE

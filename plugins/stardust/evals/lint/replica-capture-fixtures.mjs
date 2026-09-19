@@ -97,12 +97,19 @@ const ri = await import(pathToFileURL(join(REPLICA, 'review-image.mjs')).href);
 const pcSrc = src(join(REPLICA, 'pixel-compare.mjs'));
 check(/'--review'/.test(pcSrc) && /renderBands\(/.test(pcSrc) && /review image:/.test(pcSrc), 'pixel-compare: --review must render the strip in-process and print `review image:`');
 check(pcSrc.indexOf('const pass = pct <= opts.threshold') > pcSrc.indexOf('renderBands({') && /verdict unaffected/.test(pcSrc), 'pixel-compare: the review render must sit before the verdict and never touch it (try/catch to stderr)');
+// anchor --landmarks (T05.3): anchor imports playwright statically, so only the
+// static contract is checked here; the pairing helpers run in layer 2.
+const anSrc = src(join(REPLICA, 'anchor.mjs'));
+check(/'--landmarks'/.test(anSrc) && /'--against'/.test(anSrc) && /'--json-out'/.test(anSrc) && /export function pairLandmarks/.test(anSrc) && /first non-zero Δ/.test(anSrc), 'anchor: --landmarks / --against / --json-out / pairLandmarks / first non-zero Δ line missing');
+check(/never changes the exit code/.test(anSrc), 'anchor: header must state the landmark table never changes the exit code');
 // gate.sh contracts
 const gate = src(join(REPLICA, 'gate.sh'));
 check(/\[ \$rc -eq 5 \]/.test(gate), 'gate.sh: rc 5 (invalid capture) branch missing — must remove the partial PNG and re-exit 5, never compare');
 check(/--expect-height \$EXPECT/.test(gate), 'gate.sh: --expect-height from the crawl screenshot missing on the live capture');
 check(/\[ \$rc -eq 124 \]/.test(gate), 'gate.sh: exit 124 handling must stay');
 check(/--review "\$DIR\/review-\$LBL\.png"/.test(gate), 'gate.sh: pixel-compare line must pass --review review-<label>.png');
+check(/GATE_LANDMARKS/.test(gate) && /anchor\.mjs" "\$LIVE_URL" --width "\$W" --landmarks --cache/.test(gate) && /--against "\$DIR\/anchor-live\.json"/.test(gate) && /landmark table unavailable/.test(gate), 'gate.sh: landmark hook (live cached + build --against, warn-and-continue, GATE_LANDMARKS=0) missing');
+check(gate.indexOf('anchor.mjs" "$LIVE_URL"') > gate.indexOf('stitch-shot build') && gate.indexOf('anchor.mjs" "$LIVE_URL"') < gate.indexOf('pixel-compare.mjs" "$DIR/live.png"'), 'gate.sh: the landmark passes must sit between the build capture and pixel-compare');
 check(/GATE_BLOCK/.test(gate) && (gate.match(/\$STITCH_COMMON/g) || []).length >= 2, 'gate.sh: GATE_BLOCK must reach BOTH stitch-shot calls');
 
 // ---------------------------------------------------------------- deps
@@ -298,6 +305,44 @@ async function layer2(deps) {
     }
     const badArgs = await run('review-image.mjs', ['--bands', 'out/A.png']);
     check(badArgs.status === 1, 'review-image: missing --out must exit 1');
+
+    // ---- T05.3 anchor --landmarks: table, first non-zero Δ, cache re-probe, --against, gate.sh record
+    const an = await import(pathToFileURL(join(tmp, 'replica', 'anchor.mjs')).href);
+    const pr = an.pairLandmarks({ rows: [{ key: 'h2 "a"', y: 100, h: 30 }, { key: 'h2 "b"', y: 500, h: 30 }, { key: 'x', y: 900, h: 10 }] }, { rows: [{ key: 'h2 "b"', y: 524, h: 30 }, { key: 'h2 "a"', y: 101, h: 30 }, { key: 'y', y: 1, h: 1 }] });
+    check(pr.rows.length === 2 && pr.rows[0].key === 'h2 "a"' && pr.firstDelta && pr.firstDelta.key === 'h2 "b"' && pr.firstDelta.dy === 24 && pr.unpaired.a[0] === 'x' && pr.unpaired.b[0] === 'y' && pr.clean === false, `pairLandmarks: ${JSON.stringify(pr)}`);
+    check(an.pairLandmarks({ rows: [{ key: 'k', y: 1, h: 1 }] }, { rows: [{ key: 'k', y: 3, h: 1 }] }).clean === true, 'pairLandmarks: |Δy| ≤ 2 must be clean');
+    const a0 = await run('anchor.mjs', [`${base}/landmark-a.html`, '--width', '800', '--cache', 'out/al.json']);
+    check(a0.status === 0 && !/landmarks/.test(a0.stdout), `anchor (no landmarks): exit ${a0.status}\n${a0.stderr}`);
+    const a1 = await run('anchor.mjs', [`${base}/landmark-a.html`, '--width', '800', '--landmarks', '--cache', 'out/al.json']);
+    check(a1.status === 0 && /has no landmarks .* re-probing once/.test(a1.stderr) && /landmarks \(10;/.test(a1.stdout) && /h2 "section two"  \[two\]/.test(a1.stdout), `anchor --landmarks (cache re-probe): exit ${a1.status}\n${a1.stdout}${a1.stderr}`);
+    const a2 = await run('anchor.mjs', [`${base}/landmark-a.html`, '--width', '800', '--landmarks', '--cache', 'out/al.json']);
+    check(a2.status === 0 && /from cache/.test(a2.stdout) && /landmarks \(10;/.test(a2.stdout), 'anchor --landmarks: the rewritten cache must now serve the landmarks');
+    const a3 = await run('anchor.mjs', [`${base}/landmark-b.html`, '--width', '800', '--landmarks', '--against', 'out/al.json', '--json-out', 'out/lm.json']);
+    check(a3.status === 0 && /first non-zero Δ: h2 "section two" \(\+24 px, section two\) — fix its section first/.test(a3.stdout) && /h2 "section one"/.test(a3.stdout), `anchor --against: exit ${a3.status}\n${a3.stdout}${a3.stderr}`);
+    if (existsSync(join(tmp, 'out/lm.json'))) { const lm = JSON.parse(readFileSync(join(tmp, 'out/lm.json'), 'utf8')); check(lm.pair && lm.pair.firstDelta && lm.pair.firstDelta.dy === 24 && lm.pair.rows.length === 10 && lm.landmarks.rows.length === 10, `anchor --json-out: pair/landmarks shape wrong ${JSON.stringify(lm.pair && lm.pair.firstDelta)}`); }
+    const a4 = await run('anchor.mjs', [`${base}/landmark-a.html`, '--width', '800', '--landmarks', '--against', 'out/al.json']);
+    check(a4.status === 0 && /landmarks clean \(all \|Δy\| ≤ 2 px\)/.test(a4.stdout), `anchor --against (same page): expected "landmarks clean"\n${a4.stdout}`);
+    // gate.sh end to end on the two fixtures: rc 0/2, review + landmarks in the record, GATE_LANDMARKS=0 drops them
+    const gateRun = (env, label) => new Promise((resolve) => {
+      const c = spawn('bash', [join(tmp, 'replica', 'gate.sh'), 'landmark', `${base}/landmark-a.html`, `${base}/landmark-b.html`, '800', label, '--marker', 'landmark fixture'], { cwd: tmp, env: { ...process.env, GATE_REAP_MIN: '0', GATE_STITCH_TIMEOUT: '120', ...env } });
+      let out = ''; let err = ''; c.stdout.on('data', (d) => { out += d; }); c.stderr.on('data', (d) => { err += d; });
+      const t = setTimeout(() => c.kill('SIGKILL'), 240000);
+      c.on('close', (status) => { clearTimeout(t); resolve({ status, out, err }); });
+    });
+    const g1 = await gateRun({}, 'iter1');
+    const recPath = join(tmp, 'stardust/replica/gates/landmark-800/gate-iter1.json');
+    check([0, 2].includes(g1.status) && existsSync(recPath), `gate.sh: expected exit 0/2 and a record, got ${g1.status}\n${g1.out}\n${g1.err}`);
+    check(/first non-zero Δ: h2 "section two" \(\+24 px/.test(g1.out) && /review image: /.test(g1.out) && /pinned hidden on chunks 2\+: 0/.test(g1.out), `gate.sh: stdout must carry the landmark line, the review line and the pinned line\n${g1.out}`);
+    if (existsSync(recPath)) {
+      const rec = JSON.parse(readFileSync(recPath, 'utf8'));
+      check(rec.landmarks && rec.landmarks.firstDelta && rec.landmarks.firstDelta.dy === 24 && rec.landmarks.rows.length === 10, `gate record: landmarks missing/wrong ${JSON.stringify(rec.landmarks && rec.landmarks.firstDelta)}`);
+      check(rec.review === 'stardust/replica/gates/landmark-800/review-iter1.png' && existsSync(join(tmp, rec.review)) && rec.regime === 'prototype' && ['PASS', 'FAIL'].includes(rec.verdict), `gate record: review/regime/verdict wrong ${JSON.stringify({ r: rec.review, g: rec.regime, v: rec.verdict })}`);
+      check(existsSync(join(tmp, 'stardust/replica/gates/landmark-800/anchor-live.json')) && existsSync(join(tmp, 'stardust/replica/gates/landmark-800/live.png.json')), 'gate.sh: anchor-live.json cache and live sidecar must exist after a round');
+    }
+    const g2 = await gateRun({ GATE_LANDMARKS: '0' }, 'iter2');
+    const rec2Path = join(tmp, 'stardust/replica/gates/landmark-800/gate-iter2.json');
+    check([0, 2].includes(g2.status) && existsSync(rec2Path) && !JSON.parse(readFileSync(rec2Path, 'utf8')).landmarks && !/first non-zero Δ/.test(g2.out), `gate.sh GATE_LANDMARKS=0: no landmark table expected (exit ${g2.status})\n${g2.out}${g2.err}`);
+    check(/reference: .* captured/.test(g2.out), 'gate.sh: round 2 must reuse the cached live reference');
   } finally {
     third.srv.close();
     srv.close();

@@ -347,11 +347,18 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   once it passed, and each content/visual re-run costs 2 extra live
   navigations — against this doc's own hit-minimization rule. A fix that
   touched markup re-runs all three; a CSS-value fix re-runs pixels only.
-- **The section-anchor probe is the fast inner loop** (`anchor.mjs`, § Band
-  breakdown): run it on both sides, fix the first mismatched section
-  top-down, re-run pixels. Build-side anchor/computed-style passes never
-  navigate the live origin and are FREE — the cap governs live-gate cycles,
-  not measurement.
+- **The landmark table is the first read of every round; the section-anchor
+  probe is the fast inner loop** (`anchor.mjs --landmarks`, § Band
+  breakdown). `gate.sh` prints it before the band table each round (live
+  side from the cached `anchor-live.json`, build side free) and records it
+  in `gate-<label>.json#landmarks`: headings/CTAs paired by text, first
+  image per section, footer, with `Δy`. Fix the `first non-zero Δ` line's
+  section top-down; open the band table only when it says `landmarks
+  clean` or the remaining Δ are named residuals (nondeterministic
+  landmarks, the T05.1 regimes). It is a diagnosis order inside one round —
+  not a pass bar. Build-side anchor/computed-style passes never navigate
+  the live origin and are FREE — the cap governs live-gate cycles, not
+  measurement.
 - After iteration 3: log residuals (§ Residual logging) and move on. A
   documented residual is a pass with an asterisk; an undocumented fourth
   loop is scope creep.
