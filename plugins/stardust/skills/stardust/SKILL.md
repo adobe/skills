@@ -29,6 +29,7 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 | Hands-off | `reference/state-machine.md` § Hands-off keys · `reference/decisions.md` § How phases use it · § Default rows |
 | Per-page state | `reference/state-machine.md` § Page lifecycle states · § Stale flagging (content-aware) |
 | Journal | `reference/journal-format.md` § Entry format · § Reading the journal at session start |
+| Phase close / hand-off | `reference/handoff-report.md` § Gate table first · § Report check |
 | Validation | `../extract/reference/playwright-recipe.md` § Capture list · `../prototype/reference/motion-validation.md` § Validation procedure |
 
 Headings: Setup · Routing · Two migration flows · Hands-off mode · The "open and reasoned" principle · Per-page state and "stale on direction change" · Artifacts you read and write · Provenance · Journal rule · Validation rule · What stardust never does · References
@@ -294,7 +295,9 @@ otherwise):
   `promptCacheTtl: "1h"` in settings.json stretches the window to an hour
   at 1.6× write price — an owner setting, worth it for any multi-hour
   session.)
-- **Commit at the end of each phase** when the project is a git repo.
+- **Commit at the end of each phase** when the project is a git repo;
+  the phase-close message is the hand-off shape in
+  `reference/handoff-report.md` (gate table first, report-check line last).
   Before the FIRST such commit, re-run Setup step 6 — the first commit
   lands at the end of the audit phase, long before deploy's SKILL.md is
   read, and a tracked `.env` poisons every later push (GH013 + history
