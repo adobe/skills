@@ -25,7 +25,8 @@
  * plus one "drift: <path> missing" line per miss, and with --state merges
  *   state.json#impeccable = { skillDir, launcher, version, registryCommands, probedAt, drift }
  * so sub-skills read the path instead of locating impeccable again
- * (replica/reskin `impeccable-ignores.mjs` reads `impeccable.skillDir` first).
+ * (replica `impeccable-ignores.mjs` reads `impeccable.skillDir` before the
+ * registry / cache dirs, after an explicit --impeccable-dir / $IMPECCABLE_DIR).
  * `launcher` is "scripts/impeccable" (4.3+), "scripts/hook-admin.mjs" (older
  * installs) or null. Only that key is touched; other state keys are preserved;
  * an unparsable state file is never overwritten; an ABSENT file is never

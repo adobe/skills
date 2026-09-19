@@ -118,6 +118,7 @@ const config = readJSON(join(OUT, 'rollout.json'), {});
 const pagesDoc = readJSON(pagesPath);
 if (!pagesDoc) { console.error('rollout verify: run inventory.mjs first.'); process.exit(2); }
 const pages = pagesDoc.pages || [];
+if (onlySlug && !pages.some((pg) => pg.slug === onlySlug)) { console.error(`rollout verify: no page with slug "${onlySlug}" in ${pagesPath}`); process.exit(2); } // a typo'd slug once wrote an empty summary and exited 0
 const BASE = siteBase(config, arg('base', null));
 if (!ROOT && !BASE) { console.error('rollout verify: need --base <url> or --root <dir> (or set site.liveHost).'); process.exit(2); }
 const OUTSIDE_POLICY = (config.links && config.links.outsideInventory) === 'warn' ? 'warn' : 'fail';

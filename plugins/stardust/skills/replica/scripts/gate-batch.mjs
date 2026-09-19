@@ -131,7 +131,7 @@ function runGate(gate, row, logFile) {
       const rec = [...out.matchAll(/record: (\S+)/g)].at(-1)?.[1] || null;
       let pixelPct = null; let heightDelta = null;
       if (rec && existsSync(rec)) { try { const j = JSON.parse(readFileSync(rec, 'utf8')); pixelPct = j.pixelPct ?? null; heightDelta = j.heightDelta ?? null; } catch { /* a no-verdict record may be {} */ } }
-      resolve({ code: code ?? 1, record: rec, pixelPct, heightDelta, iteration: out.match(/^iteration (\d+\/3)/m)?.[1] || null });
+      resolve({ code: code ?? 1, record: rec, pixelPct, heightDelta, iteration: out.match(/\biteration (\d+\/3)/)?.[1] || null }); // gate.sh prints it mid-line: `verdict: FAIL … iteration 2/3`
     });
   });
 }

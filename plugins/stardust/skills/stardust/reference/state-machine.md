@@ -107,9 +107,10 @@ Written by the master at Setup 1 (`skills/stardust/scripts/impeccable-version-ch
 --probe --state stardust/state.json`); rewritten when the probe result
 changes, when `probedAt` is older than 24 h (`--max-age`) or with
 `--refresh` — an unchanged fresh record leaves the file byte-identical;
-read by any sub-skill that needs impeccable's files (replica/reskin
-`impeccable-ignores.mjs` reads it first) instead of locating the install
-again:
+read by any sub-skill that needs impeccable's files (replica
+`impeccable-ignores.mjs` reads it before the registry / cache dirs, after
+an explicit `--impeccable-dir` / `$IMPECCABLE_DIR`) instead of locating
+the install again:
 
 ```json
 "impeccable": {

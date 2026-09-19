@@ -56,7 +56,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { basename, join, relative } from 'node:path';
 
-function arg(name, fb) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fb; }
+function arg(name, fb) { const i = process.argv.indexOf(`--${name}`); if (i === -1) return fb; const v = process.argv[i + 1]; if (v === undefined || v.startsWith('--')) { console.error(`rollout delivery-lint: --${name} needs a value`); process.exit(2); } return v; } // never swallow the next flag
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
   console.log(readFileSync(new URL(import.meta.url), 'utf8').match(/\/\*\*([\s\S]*?)\*\//)[1].replace(/^ \* ?/gm, ''));
   process.exit(0);
@@ -209,7 +209,7 @@ if (CHROME_DOCS.length) {
   if (multi.length) {
     const chromeSet = new Set(CHROME_DOCS.map((f) => relative(process.cwd(), f)));
     const pages = [{ file: FILE, html }];
-    const walk = (d) => { for (const e of readdirSync(d, { withFileTypes: true })) { const p = join(d, e.name); if (e.isDirectory()) { if (!/^fragments?$/.test(e.name)) walk(p); } else if (/\.html$/.test(e.name) && !kindOf(p) && !chromeSet.has(relative(process.cwd(), p)) && p !== FILE) pages.push({ file: p, html: readFileSync(p, 'utf8') }); } };
+    const walk = (d) => { for (const e of readdirSync(d, { withFileTypes: true }).sort((x, y) => x.name.localeCompare(y.name))) { /* sorted: chrome-variant order must not depend on the filesystem */ const p = join(d, e.name); if (e.isDirectory()) { if (!/^fragments?$/.test(e.name)) walk(p); } else if (/\.html$/.test(e.name) && !kindOf(p) && !chromeSet.has(relative(process.cwd(), p)) && p !== FILE) pages.push({ file: p, html: readFileSync(p, 'utf8') }); } };
     if (CONTENT_DIR) walk(CONTENT_DIR);
     for (const pg of pages) {
       const meta = (pg.html.match(/<div class="metadata">([\s\S]*?)(?=<div class="|<\/main>)/i) || [])[1] || '';

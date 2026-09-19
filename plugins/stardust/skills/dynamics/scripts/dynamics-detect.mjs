@@ -13,7 +13,8 @@
  *                                             a sidecar signal with no archetype finding becomes a `reach-only` row
  *                                             (pages 0/N, reach n/N) so triage sees it — re-probe one such page with --urls
  *        [--settle 5000] [--width 1440] [--headed[=window]]
- *        [--offline]                          abort every request off the probed origin (local fixtures: evals/lint/dynamics-recall.mjs)
+ *        [--offline]                          abort every request off the probed origin — needs an http(s) origin (the fixture
+ *                                             server of evals/lint/dynamics-recall.mjs); a file:// URL has origin "null" and loads nothing
  *
  * Probes the SOURCE site. No auth header is sent (the source is public); the
  * target-host probe lives in dynamics-plan.mjs.

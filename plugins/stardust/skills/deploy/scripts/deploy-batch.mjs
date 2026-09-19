@@ -183,14 +183,14 @@ export function deliveryUrl({ org, repo, branch, tld, webPath }) {
 }
 
 function usage() {
-  console.log('usage: node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> [--content content] [--paths <file|a,b>] [--exclude <file|a,b>] [--concurrency 4] [--publish] [--force] [--allow-thin] [--allow-shrink] [--ledger <path>] [--log <path>] [--progress <path> | --no-progress] [--token-env DA_TOKEN] [--site-token-env NAME] [--sec-per-page 6] [--ignore-ttl] [--plan | --report]');
+  console.log('usage: node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> [--content content] [--paths <file|a,b>] [--exclude <file|a,b>] [--concurrency 4] [--publish] [--force] [--allow-thin] [--allow-shrink] [--ledger <path>] [--log <path>] [--progress <path> | --no-progress] [--token-env DA_TOKEN] [--site-token-env NAME] [--sec-per-page 6] [--retries 4] [--ignore-ttl] [--plan | --report]');
 }
 
 export function parseArgs(argv) {
   const a = { content: 'content', concurrency: 4, publish: false, force: false, retries: 4, plan: false, report: false, allowThin: false, allowShrink: false, ignoreTtl: false };
   for (let i = 2; i < argv.length; i += 1) {
     const k = argv[i];
-    const next = () => argv[(i += 1)];
+    const next = () => { const v = argv[i + 1]; if (v === undefined || /^--/.test(v)) throw new Error(`${k} needs a value`); i += 1; return v; }; // `--progress --plan` once recorded "--plan" as the progress path
     if (k === '--org') a.org = next();
     else if (k === '--repo') a.repo = next();
     else if (k === '--branch') a.branch = next();
@@ -217,7 +217,7 @@ export function parseArgs(argv) {
     else if (k === '--help' || k === '-h') { usage(); process.exit(0); }
     else throw new Error(`unknown arg: ${k}`);
   }
-  if (!a.org || !a.repo || !a.branch) throw new Error('--org, --repo and --branch are required');
+  if (!a.report && (!a.org || !a.repo || !a.branch)) throw new Error('--org, --repo and --branch are required'); // --report reads the ledger only
   a.offline = a.plan || a.report;
   const tok = resolveToken(a.tokenEnv || 'DA_TOKEN');
   a.token = tok ? tok.value : undefined;

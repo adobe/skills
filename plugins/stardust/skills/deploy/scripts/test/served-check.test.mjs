@@ -57,6 +57,8 @@ try {
   assert.equal(r.status, 1, 'pattern absent on a 2xx = served but wrong');
   assert.match(r.stdout, /grep=0/);
   assert.match(r.stderr, /exit 1 — the origin answered/);
+  r = await run(`${base}/styles.css`, '--grep', '--wait', '1');
+  assert.equal(r.status, 2, 'a value flag followed by another flag is a usage error, never a literal pattern');
   r = await run(`${base}/styles.css`, '--absent', 'about:error');
   assert.equal(r.status, 0, '--absent passes when the pattern is not served');
   r = await run(`${base}/styles.css`, '--absent', 'marker');

@@ -120,7 +120,7 @@ Every page row in `state.json` and `coverage/pages.json` carries:
 "archetypeSource": "<slug>",        // for sibling/thin: which archetype it forked
 "gatesPassed": ["archetype-gate", "variance-probe", "delivery-lint", "media-reconcile", "content-fidelity", "content-count"],
 "variants": ["hero compact", "tiers disc"],   // sibling: variant classes the probe called for (empty = template-constant)
-"contentGap": "source is a PDF download; no HTML body"   // thin only
+"contentGap": "source is a PDF download; no HTML body",   // thin only
 "deviation": "no h1 (source has none)"   // from delivery-lint --json under --allow-no-h1; omitted when the page has its h1
 ```
 

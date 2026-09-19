@@ -21,7 +21,7 @@ import { join } from 'node:path';
 import { readJSON, writeJSON, siteBase, deliveredPathOf, artifactType } from './lib.mjs';
 import { writeFileSync, mkdirSync } from 'node:fs';
 
-function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback; }
+function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); if (i === -1) return fallback; const v = process.argv[i + 1]; if (v === undefined || v.startsWith('--')) { console.error(`rollout assemble: --${name} needs a value`); process.exit(2); } return v; } // never swallow the next flag
 if (process.argv.includes('--help')) { console.log('Usage: node skills/rollout/scripts/assemble.mjs [--out <rolloutDir>] [--canon <dir>]\n  exit 0 written · 2 coverage missing'); process.exit(0); }
 const OUT = arg('out', 'stardust/rollout');
 const CANON = arg('canon', 'stardust/canon');

@@ -30,7 +30,7 @@
  * Re-derives templates.json + rollout.json roll-ups after every write.
  * Exit: 0 written · 1 unknown slug/block · 2 usage (bad status, ledger missing/unreadable/not an
  *       object, coverage/blocks missing — run inventory.mjs / blocks.mjs first: the rollout family's
- *       precondition code, coverage-model.md § Verify § Exit).
+ *       precondition code, coverage-model.md § Verify (Exit)).
  */
 import { join, resolve } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
@@ -39,7 +39,10 @@ import { readJSON, writeJSON, rollupTemplates, rollupConfig, deliveredPathOf } f
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
-  return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
+  if (i === -1) return fallback;
+  const v = process.argv[i + 1];
+  if (v === undefined || v.startsWith('--')) { console.error(`rollout update-coverage: --${name} needs a value`); process.exit(2); } // never swallow the next flag
+  return v;
 }
 const now = new Date().toISOString();
 
@@ -84,7 +87,7 @@ export function mergeLedgerIntoCoverage(pages, ledger, { urlBase = null, at = no
     const before = d.status || 'pending';
     const url = urlBase ? `${String(urlBase).replace(/\/+$/, '')}${webPath}` : null;
     if (LEDGER_OK.has(rec.status)) {
-      // deployedPath = a path that was SERVED (coverage-model.md § Ledger reconcile); a pending / failed row served nothing
+      // deployedPath = a path that was SERVED (coverage-model.md § Page delivery status lifecycle (Ledger reconcile)); a pending / failed row served nothing
       if (!sameResource(page.path, webPath) && !d.deployedPath) { d.deployedPath = webPath; counts.deployedPath += 1; }
       if (PROMOTABLE.has(before)) {
         d.status = 'deployed';

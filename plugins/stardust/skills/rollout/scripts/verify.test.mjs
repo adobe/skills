@@ -227,6 +227,7 @@ const lines = (s) => s.split('\n').filter((l) => l.length);
   seed(undefined); rmSync(join(OUT, 'rollout.json'));
   assert.equal((await runAsync(['--all', '--out', OUT])).status, 2, 'no base/root → exit 2');
   assert.equal((await runAsync(['--base', BASE, '--out', join(T, 'nowhere')])).status, 2, 'coverage missing → exit 2');
+  { const r = await runAsync(['--base', BASE, '--out', OUT, '--slug', 'no-such-slug']); assert.equal(r.status, 2, 'unknown --slug → exit 2, not an empty summary'); assert.match(r.stderr, /no page with slug "no-such-slug"/); }
   assert.equal((await runAsync(['--help'])).status, 0, '--help exits 0');
 
   srv.close();

@@ -32,7 +32,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJSON, writeJSON, loadPageHTML, computeScorecard, autofixFor, ASSESSED_BY_BASELINE, siteBase, isDelivered, artifactType } from './lib.mjs';
 
-function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback; }
+function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); if (i === -1) return fallback; const v = process.argv[i + 1]; if (v === undefined || v.startsWith('--')) { console.error(`rollout optimize: --${name} needs a value`); process.exit(2); } return v; } // never swallow the next flag
 if (process.argv.includes('--help')) { console.log('Usage: node skills/rollout/scripts/optimize.mjs [--base <url> | --root <dir>] [--slug <s>] [--all] [--out <rolloutDir>]\n  exit 0 no open P1 · 1 open P1 (gate) · 2 usage / coverage missing'); process.exit(0); }
 const OUT = arg('out', 'stardust/rollout');
 const ROOT = arg('root', null);

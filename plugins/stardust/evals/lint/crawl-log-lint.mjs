@@ -32,7 +32,8 @@ if (argv.includes('--help') || argv.includes('-h')) {
   process.exit(0);
 }
 const dirIdx = argv.indexOf('--dir');
-const dir = dirIdx >= 0 ? argv[dirIdx + 1] : 'stardust/current';
+const dir = dirIdx >= 0 && argv[dirIdx + 1] && !argv[dirIdx + 1].startsWith('--') ? argv[dirIdx + 1] : dirIdx >= 0 ? null : 'stardust/current';
+if (dirIdx >= 0 && !dir) { console.error('crawl-log lint: --dir needs a value'); process.exit(2); }
 const logPath = join(dir, '_crawl-log.json');
 if (!existsSync(logPath)) { console.error(`crawl-log lint: no ${logPath} — pass --dir <stardust/current>`); process.exit(2); }
 

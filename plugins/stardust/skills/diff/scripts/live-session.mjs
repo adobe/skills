@@ -277,7 +277,7 @@ export function blockDecision({ url, isMainNav = false, targetOrigin = null, aut
 }
 /** Stderr line when a --block substring names a consent manager: that is a consent decision (D3), not a widget block. */
 export function warnCmpBlock(substrings, tool = 'live-session') {
-  const cmp = substrings.filter((s) => CMP_HOSTS.some((h) => s.includes(h) || h.includes(s)));
+  const cmp = substrings.filter((s) => CMP_HOSTS.some((h) => s.includes(h))); // a short substring such as "one" or "trust" is NOT a CMP block
   if (cmp.length) console.error(`[${tool}] --block names a consent manager (${cmp.join(', ')}): blocking a CMP changes the consent state — no banner renders and nothing is accepted or denied; the sidecar records consent.mode as requested but the page is in a third state. Prefer --consent / --consent-mode (D3) unless both sides are captured with the same block.`);
   return cmp;
 }

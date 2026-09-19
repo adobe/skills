@@ -52,7 +52,10 @@ import { fileURLToPath } from 'node:url';
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
-  return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
+  if (i === -1) return fallback;
+  const v = process.argv[i + 1];
+  if (v === undefined || v.startsWith('--')) { console.error(`rollout inventory: --${name} needs a value`); process.exit(2); } // `--state --content <dir>` once read STATE='--content' and silently ran archetypes-only
+  return v;
 }
 
 if (process.argv.includes('--help')) { console.log('Usage: node skills/rollout/scripts/inventory.mjs [--migrated <dir>] [--out <rolloutDir>] [--site-url <url>] [--state <state.json>] [--content <dir>] [--redirects <tsv>]\n  exit 0 written · 1 migrated tree missing'); process.exit(0); }
@@ -267,6 +270,7 @@ for (const prior of priorPages.pages || []) {
 }
 
 // --- Redirect-seeded served paths (source slug key, destination served) ----------
+if (REDIRECTS && !existsSync(REDIRECTS)) console.error(`rollout inventory: --redirects "${REDIRECTS}" not found — no deployedPath seeded (renamed pages verify at their old URL).`);
 if (REDIRECTS && existsSync(REDIRECTS)) {
   const canon = (p) => { let s = String(p).trim().split(/[?#]/)[0].toLowerCase(); s = s.replace(/\.html?$/, '').replace(/\/+$/, ''); return s || '/'; };
   const dest = new Map();

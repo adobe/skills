@@ -42,7 +42,7 @@ if (!args.length || args.includes('--help') || args.includes('-h')) {
   console.log('usage: node skills/deploy/scripts/served-check.mjs <url> [--grep <pattern> | --absent <pattern> | --same-as <file>] [--wait <seconds>] [--no-cache|--cache]\n  exit 0 pass · 1 served but wrong (pattern / bytes / 4xx / x-error) · 124 no verdict (wait expired, 5xx, network) · 2 usage');
   process.exit(args.length ? 0 : 2);
 }
-const opt = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : null; };
+const opt = (n) => { const i = args.indexOf(n); if (i < 0) return null; const v = args[i + 1]; if (v === undefined || v.startsWith('--')) { console.error(`served-check: ${n} needs a value`); process.exit(2); } return v; }; // `--grep --wait 120` once made the regex literally "--wait"
 const url = args.find((a) => /^https?:\/\//.test(a));
 if (!url) { console.error('served-check: a URL is required'); process.exit(2); }
 const pattern = opt('--grep');

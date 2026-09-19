@@ -85,13 +85,9 @@ of `delivery.status`:
   `update-coverage --from-ledger` or seeded by `inventory --redirects
   stardust/redirects.tsv`. verify/optimize fetch it; assemble lists it; links to
   either form resolve.
-- **Ledger reconcile** — `node skills/rollout/scripts/update-coverage.mjs
-  --from-ledger content/.deploy-ledger.json [--url-base <origin>]` is the one
-  write after a `deploy-batch.mjs` run (it replaces per-page `--status deployed`
-  calls): a `live | previewed` row promotes `pending | converting | failed |
-  stale` to `deployed` and never downgrades `verified`; a failed row becomes
-  `failed` with the driver's `lastError`; a served path that differs from `path`
-  lands in `deployedPath`; a ledger path with no row is listed, never invented.
+- **Ledger reconcile** — `update-coverage.mjs --from-ledger` after a
+  `deploy-batch.mjs` run; merge rules once, under § Page delivery status
+  lifecycle (Ledger reconcile).
 - **`fidelityTier`** — `archetype | sibling | thin` (+ `archetypeSource`,
   `gatesPassed[]`), set by `migrate` from the render branch
   (`migrate/reference/fidelity-tiers.md`). Records *how much QA the page carries*:
