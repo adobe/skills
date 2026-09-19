@@ -33,6 +33,18 @@ const DECORATION_TIMEOUT = 15000;
 const DIFF_WARN = 0.005; // 0.5% pixels changed
 const DIFF_ERROR = 0.05; // 5%
 
+/**
+ * A visual baseline is only worth keeping when the page rendered cleanly: a
+ * baseline taken under a 429/503, a blank <main> or a failed load freezes the
+ * broken state and every later honest run reads as a regression. Returns null
+ * when clean, else the one-line reason the baseline was skipped.
+ */
+export function baselineSkipReason({ mainCollapsed = false, badRequests = [] } = {}) {
+  if (mainCollapsed) return 'main collapsed';
+  if (badRequests.length) return `${badRequests.length} same-origin response(s) ≥ 400 or failed (${badRequests[0].split(' ').slice(0, 2).join(' ')})`;
+  return null;
+}
+
 async function settle(page) {
   try {
     await page.waitForFunction(() => {
@@ -280,7 +292,11 @@ export async function run(ctx) {
         writeFileSync(join(shotDir, name), shot);
         if (baselineDir) {
           const baseFile = join(baselineDir, name);
-          if (!existsSync(baseFile)) {
+          const skip = existsSync(baseFile) ? null : baselineSkipReason({ mainCollapsed: geo.mainH < 50, badRequests });
+          if (skip) {
+            findings.push(finding('visual', 'baseline-skipped', 'info', p.path,
+              `[${vp.name}] render not clean (${skip}) — baseline not established, re-run when the host answers cleanly`, { reason: skip }));
+          } else if (!existsSync(baseFile)) {
             writeFileSync(baseFile, shot);
             findings.push(finding('visual', 'baseline-created', 'info', p.path,
               `[${vp.name}] no baseline existed — current screenshot saved as baseline`, { file: baseFile }));

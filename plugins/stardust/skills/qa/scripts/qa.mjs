@@ -9,7 +9,11 @@
  *
  * Options:
  *   --base <url>            live host to sweep (required)
- *   --checks <list>         comma list: routing,content,templates,metadata,links,browse,perf,editability (default: all)
+ *   --checks <list>         comma list: routing,content,templates,metadata,links,browse,perf,editability,dynamics,ai-readability
+ *                           (default: all) or a preset — delivery = routing,content,templates,metadata,links ·
+ *                           browse = browse,perf,editability · parity = dynamics,ai-readability. Fleets > 100 pages:
+ *                           run the three presets as separate, sequential invocations.
+ *   --baseline-reset        delete <baselines> before the sweep (the step after an approved fix batch)
  *   --paths-file <txt>      inventory source: one path per line
  *   --template-map <json>   inventory + template assignments (stardust/template-map.json)
  *   --scrape <dir>          stardust scrape captures for verbatim fidelity
@@ -35,10 +39,12 @@
  *   --fail-on <error|warn>  exit 1 threshold (default: error)
  *
  * Exit codes: 0 clean (below threshold), 1 findings at/above threshold, 2 infra error.
+ * report.json is rewritten after every check with `partial: true` — a hang in a
+ * later check never loses the findings already collected.
  */
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, rmSync } from 'node:fs';
 import {
   arg, flag, provenance, writeJSON, ensureDir, loadAllowlist, applyAllowlist, buildInventory,
   createPageCache, resolveAuthHeader, setOriginAuth,
@@ -50,7 +56,13 @@ const BASE = (arg('base') || '').replace(/\/$/, '');
 if (!BASE) { console.error('qa: --base <live-url> is required'); process.exit(2); }
 
 const OUT = arg('out', 'stardust/qa');
-const CHECKS = (arg('checks', 'routing,content,templates,metadata,links,browse,perf,editability,dynamics,ai-readability')).split(',').map((s) => s.trim()).filter(Boolean);
+const PRESETS = {
+  delivery: ['routing', 'content', 'templates', 'metadata', 'links'],
+  browse: ['browse', 'perf', 'editability'],
+  parity: ['dynamics', 'ai-readability'],
+};
+const CHECKS = [...new Set((arg('checks', 'routing,content,templates,metadata,links,browse,perf,editability,dynamics,ai-readability')).split(',').map((s) => s.trim()).filter(Boolean)
+  .flatMap((s) => PRESETS[s] || [s]))];
 const opts = {
   outDir: OUT,
   scrapeDir: arg('scrape', null),
@@ -64,8 +76,10 @@ const opts = {
   browserConcurrency: Number(arg('browser-concurrency', 3)),
   parity: arg('parity', null),
   authHeader: resolveAuthHeader(),
+  baselineReset: flag('baseline-reset'),
 };
 if (opts.authHeader) setOriginAuth(BASE, opts.authHeader);
+if (opts.baselineReset && opts.baselineDir) { rmSync(opts.baselineDir, { recursive: true, force: true }); console.error(`qa: --baseline-reset — removed ${opts.baselineDir}; this sweep re-establishes baselines`); }
 
 const MODULES = {
   routing: 'checks/routing.mjs',
@@ -102,6 +116,8 @@ const ctx = {
 };
 const findings = [];
 const checksRun = [];
+// incremental: a check that hangs (perf on a throttled host) must not lose earlier findings
+const writePartial = () => writeJSON(join(OUT, 'report.json'), { provenance: provenance('qa', BASE), base: BASE, partial: true, checksRun: [...checksRun], checksPlanned: CHECKS, inventory: { pages: inventory.pages.length }, findings });
 for (const name of CHECKS) {
   if (!MODULES[name]) { console.error(`qa: unknown check "${name}" — skipping`); continue; }
   const t = Date.now();
@@ -116,6 +132,7 @@ for (const name of CHECKS) {
     console.error(`qa: [${name}] FAILED: ${e.stack || e}`);
     findings.push({ check: name, id: 'check-crashed', severity: 'error', path: '', message: `check "${name}" crashed: ${String(e).slice(0, 300)}` });
   }
+  writePartial();
 }
 
 const allowlistFile = arg('allowlist', join(OUT, 'allowlist.json'));
