@@ -18,11 +18,12 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 | Freeform intent | § The "open and reasoned" principle, steps 1–6 | plan confirmation | `stardust/direction.md` |
 | Hands-off | activation block (wave plan + stop point, commit policy); gate auto-resolution table; background waits; turn-end contract (chain after PASS); scoped per-phase commits | quality gates unchanged; hard blockers and owner-only rows still stop; a turn ends only on completion, blocker or a > 45-min wait | `state.json.handsOff` / `approvedChain`, `direction.md` activation line, `status.jsonl` `blocked` |
 | Every write | provenance block; journal entry; validate-and-fix loop on human-facing HTML | clean validation pass | `stardust/journal.md`, `stardust/validation/<artifact>/<viewport>.png` |
+| Phase close | checkpoint block (Completed / Verified / Next / On re-run), nothing after it | `end` line carries `next`; finished phases are never re-run | `status.jsonl` `end` + `next` |
 
 | at step | read |
 |---|---|
 | Setup 3, 7, Routing | `reference/state-machine.md` § File: `stardust/state.json` · § State report · § Concurrency |
-| Setup 5 | `reference/run-status.md` § Line shape · § Rules |
+| Setup 5, Phase close | `reference/run-status.md` § Line shape · § Rules · § Phase close |
 | Setup 6, Artifacts | `reference/artifact-map.md` § Versioning — what a clone holds · § Provenance shapes |
 | Any shell loop, runner, delivery or probe | `reference/harness-quirks.md` (whole card, one page) |
 | Routing (migration) | `reference/state-machine.md` § Flow keys |
@@ -106,11 +107,11 @@ Once setup is done, route on the user's input:
   The same applies to any **resume**: a new session on a project that
   has `stardust/state.json`, "continue", "where are we", or a resume
   driven by a memory file. Start with the state report (it names the
-  flow and the last gate numbers), then enter the next phase **through
-  its skill** — the procedure drives, not memory. (Recorded: a
-  144-hour resume session invoked no stardust skill at all, re-read
-  the procedure through `grep`, and followed whatever the previous
-  context remembered.)
+  flow and the last gate numbers), then execute the last `status.jsonl`
+  `next` **through its skill** — the procedure drives, not memory. A
+  phase whose `end` line exists is neither re-run nor re-narrated; a
+  deliberate re-run asks before replacing its outputs
+  (`reference/run-status.md` § Phase close).
 - **First word names a sub-skill.** Delegate to the matching sub-skill
   and pass remaining args through. Sub-skills are named by their bare
   skill name below; how to address one depends on the harness. Claude
@@ -287,7 +288,8 @@ otherwise):
   While it runs, do independent work; when there is none, check back
   with one short read of the progress file **at most every 4 minutes** —
   never a fixed `sleep` of 5 minutes or more, never a blocking "wait for
-  the agent's output" call with a long timeout. The number is the prompt
+  the agent's output" call with a long timeout; write large files in
+  ≤ 2 chunks and cap tool output (`| tail`, `--reporter=dot`). The number is the prompt
   cache's 5-minute idle window: at migration-size contexts every expiry
   re-writes the whole prefix at write price (field data: CHANGELOG
   0.22.2). Ending the turn to wait helps the user, not the cache, so
@@ -387,7 +389,8 @@ decisions, open questions — that neither `state.json` (*what is*) nor
 provenance (*why an artifact says what it says*) captures. **Maintain it
 per `reference/journal-format.md`**: append an entry before ending any
 turn that made a non-trivial write (any `direct`, `prototype`, `migrate`
-or substantial iteration); append-only — a wrong entry is corrected by a
+or substantial iteration), its `Next:` being the phase's `status.jsonl`
+`next` command; append-only — a wrong entry is corrected by a
 new one, never edited; project-scoped and human-facing, at the level of
 `PRODUCT.md`, not under `stardust/current/`; at the start of a new
 session its last 3–5 entries are read with `state.json` for the "where

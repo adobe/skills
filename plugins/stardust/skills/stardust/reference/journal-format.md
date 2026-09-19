@@ -38,13 +38,16 @@ See `skills/stardust/reference/journal-format.md` for entry format.
 **Open questions:**
 - <question> (or "none")
 
-**Next:** <one-line recommendation for the next prompt>
+**Next:** <the one pasteable command that continues the run>
 
 ---
 ```
 
 The double-rule (`---`) at the end of each entry is mandatory — it makes
-diffs readable and gives the journal a visual scroll rhythm.
+diffs readable and gives the journal a visual scroll rhythm. `Next:` is
+one verbatim command, identical to the `next` field of the phase's last
+`status.jsonl` line (`run-status.md` § Phase close) — not a prose
+recommendation.
 
 ## What to include
 

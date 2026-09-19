@@ -12,7 +12,7 @@ One JSON object per line (JSONL — no wrapping array, no pretty-print):
 
 ```json
 { "ts": "2026-07-02T14:03:11Z", "skill": "stardust:migrate", "phase": "render", "event": "start" }
-{ "ts": "2026-07-02T14:09:47Z", "skill": "stardust:migrate", "phase": "render", "event": "end", "detail": "12 pages rendered", "artifact": "stardust/migrated/" }
+{ "ts": "2026-07-02T14:09:47Z", "skill": "stardust:migrate", "phase": "render", "event": "end", "detail": "12 pages rendered", "artifact": "stardust/migrated/", "next": "$stardust deploy home" }
 { "ts": "2026-07-02T14:11:02Z", "skill": "stardust:rollout", "phase": "C-deliver", "event": "blocked", "detail": "DA_TOKEN expired (401) — ledger checkpointed, awaiting re-auth" }
 ```
 
@@ -23,7 +23,8 @@ One JSON object per line (JSONL — no wrapping array, no pretty-print):
 | `phase` | yes | the skill's own phase name, as its SKILL.md names it |
 | `event` | yes | `start` \| `end` \| `blocked` |
 | `detail` | no | one human-readable line (counts, blocker reason) |
-| `artifact` | no | path to the phase's primary output, when one exists |
+| `artifact` | no | path to the phase's primary output, when one exists; on the `start` line of a long step, its progress or log file |
+| `next` | no | the one pasteable command that continues the run; required on every `end` line, allowed on `blocked` and on the `start` line of a long-running phase |
 
 ## Rules
 
@@ -36,7 +37,9 @@ One JSON object per line (JSONL — no wrapping array, no pretty-print):
   the ledger never goes silent on the failure path.
 - **One line per phase start, one per end.** No intermediate spam;
   per-page progress lives in each phase's own ledgers (e.g., rollout's
-  `coverage/pages.json`).
+  `coverage/pages.json`). The `start` line of any step expected to run
+  over ~2 minutes is written *before* the step, with `artifact` naming
+  the progress or log file the step appends to.
 - **The phase `start` line carries the session lock.** Writing a
   `start` line acquires or refreshes `stardust/.work/run.lock`
   (`state-machine.md` § Concurrency → Session advisory lock); the
@@ -45,6 +48,25 @@ One JSON object per line (JSONL — no wrapping array, no pretty-print):
   harness-specific progress mechanisms (no `emit_milestone`, no
   session APIs). `stardust/status.jsonl` is the only progress
   contract; anything that wants milestones tails this file.
+
+## Phase close
+
+Every phase `end` line carries `next`; the report that closes the phase
+ends with this block and nothing after it:
+
+```
+Completed: <phase> — <one-line result with the numbers re-read from the artifact>
+Verified:  <what was checked and how — paths ls-verified>
+Next:      <one verbatim, pasteable command>
+On re-run: <what is skipped because its `end` line exists>
+```
+
+The journal entry's `Next:` line is the same command as `next`
+(`journal-format.md` § Entry format). On resume, the master skill
+executes the last `next`; a phase whose `end` line exists is neither
+re-run nor re-narrated — a deliberate re-run asks before replacing its
+outputs. Under hands-off the block is written and the next step starts
+in the same turn (master § Hands-off mode → Turn-end contract).
 
 Unlike other stardust artifacts, `status.jsonl` carries no provenance
 block — each line is self-describing via `ts` + `skill`, and the
