@@ -1,68 +1,223 @@
 #!/usr/bin/env node
 /**
- * deploy-batch.mjs — resumable, concurrent PUT → preview → live driver for DA.
+ * deploy-batch.mjs — resumable, concurrent PUT → preview [→ live] driver for DA.
  *
- * Solves the "no bundled batch driver" gap (stardust multitest finding #4):
- * the deploy/rollout docs say "long batches run in the background, re-drive
- * FAILs" but shipped no runnable driver, so every operator hand-rolled a serial
- * bash loop that (a) doesn't parallelise, (b) loses its log on restart, and
- * (c) re-PUTs pages that are already live. A transient API blip mid-run then
- * left a half-deployed tree with no record of what succeeded.
+ * The one bulk-delivery instrument (stardust finding #4): every hand-rolled
+ * bash loop that replaced it lost its log on restart, re-PUT pages that were
+ * already live, and — with `--force --paths` — erased the ledger rows of every
+ * page outside the run (four field sites rebuilt a ledger from git + logs).
  *
- * This driver:
- *   - reads/writes a PERSISTENT ledger (default content/.deploy-ledger.json) so
- *     a re-run skips pages already LIVE (verified on the delivery tree), and
- *     only re-drives the failures;
- *   - runs PUT → preview → live with a bounded concurrency pool;
- *   - retries 000 / 408 / 429 / 5xx with capped exponential backoff;
- *   - APPENDS to its log (never truncates), so the record survives a restart;
- *   - verifies the delivered .plain.html (200 + 0 about:error) before flipping a
- *     page to `live` — admin 200 != delivered (guardrail #6/#13);
- *   - two clocks (da-deploy-protocol.md § Two clocks): when --branch is not
- *     main, a HEAD per page counts documents that already exist on DA — they
- *     are SHARED with main, which renders them with main's code until the
- *     branch merges (one WARN line in the summary); when publishing, the
- *     summary states when the code cache window (max-age=7200) ends.
+ * Ledger (default content/.deploy-ledger.json), one row per web path:
+ *   { status, attempts, ts, put, preview, live, verify, lastError,
+ *     bodyHash, branch, sharedWithMain }
+ *   - `bodyHash` = sha1 of the exact bytes PUT (sanitise writes in place, so file
+ *     bytes and PUT body are the same object); `branch` = the code ref of that PUT.
+ *   - a page is SKIPPED iff its row is `live` (publish run) or `live|previewed`
+ *     (preview run), the delivered .plain.html is 200 without about:error, AND
+ *     `bodyHash` equals the current file bytes. A changed file always re-drives;
+ *     a row without a hash is verified-then-skipped and the hash backfilled.
+ *   - the ledger is ALWAYS loaded; `--force` resets the SELECTED pages to
+ *     `pending` and re-drives them; persist() re-reads the file and merges this
+ *     run's rows into it — the row count never shrinks, two runs on disjoint
+ *     `--paths` never overwrite each other.
+ *   - `live` / `previewed` are set only after the delivered GET — POST codes
+ *     never flip state (admin 200 ≠ delivered).
  *
- * Idempotent: PUT/preview/live are all safe to repeat. Safe to Ctrl-C and re-run.
- * The two-clocks HEAD answer is recorded once per page (`sharedWithMain`), so a
- * re-run never counts this branch's own earlier PUTs as shared documents; a
- * follow-up `--publish` run takes a page the ledger holds as `previewed` and
- * still delivering on aem.page straight to POST /live/ + verify (no re-PUT).
+ * Delivery-side repairs (each one was an operator re-drive turn in the field):
+ *   - body guard: a file under 200 B or without `<main` is `body-invalid` before
+ *     any request (a sanitise log line or an empty file was PUT as the page);
+ *     `--allow-thin` bypasses.
+ *   - shrink guard: the DA source is GET before the PUT; an existing document
+ *     more than 5× the new bytes is `overwrite-guard`, no PUT (rich pages were
+ *     overwritten by 700 B stubs); `--allow-shrink` bypasses. On a non-main
+ *     branch the same GET is the two-clocks existence probe.
+ *   - about:error repair: preview is re-POSTed ONCE, then the page is re-read;
+ *     success is recorded `repaired: 're-preview'`; a persisting about:error is
+ *     `verify-fail` "about:error (persists after re-preview)" — the image case.
+ *   - verify blip: the delivered GET retries once after 3 s on a fetch error,
+ *     5xx or 000 (a 404 is a verdict, not a blip).
  *
- * One command = one intent. The default run PUTs and PREVIEWS only (D16: gate
- * on preview); live publish is a SEPARATE `--publish` run, taken when the
- * preview gate passed or the decision register says publish-to-live (D1).
- * A production-affecting action is never joined with edits, commits or
- * process kills in one shell string.
+ * Token lifecycle (the one credential failure a run cannot self-recover):
+ *   - preflight: DA_TOKEN is resolved shell → ./.env → ~/.claude/.env → ~/.env
+ *     (the SOURCE CLASS is printed, never the value or a home path); its IMS
+ *     expiry is decoded (`created_at` + `expires_in` ms; `exp` s as fallback;
+ *     unknown → warn and run) and ONE authenticated GET admin.da.live/list/… is
+ *     made before any PUT. Exit 2 when that GET is 401, the token is expired, or
+ *     it will expire before `todo × --sec-per-page ÷ concurrency` (`--ignore-ttl`
+ *     to run anyway; the default s/page is the median `ms` of this log ≥ 20 rows, else 6).
+ *   - halt: the FIRST 401 from PUT/preview/live/DA GET stops the pool (401 is
+ *     never retried), every in-flight row keeps its PREVIOUS status, the ledger
+ *     is persisted, the log gets one `halt` line and stdout the one instruction
+ *     with `next=<the same command>` — exit 3. Re-running `next` resumes.
+ *   - access-restricted: a delivered GET answering 401 `x-error: access-not-allowed`
+ *     with no site token resolved halts (exit 3) with the remedy; with a site
+ *     token (`--site-token-env`, default SITE_TOKEN_<REPO> then SITE_TOKEN, sent as
+ *     `Authorization: token …` to the delivery host ONLY) a 401 is a per-page verify-fail.
+ *   - content-bus reset: ≥ 3 previously delivered pages answering 404 at the
+ *     startup re-verify print one warning sentinel (`log step:'sentinel'`) and are
+ *     re-driven — no halt (the driver self-heals; the uppercase-path class also 404s).
+ *
+ * Completion contract (skills/stardust/scripts/progress.mjs): while running, the
+ * driver writes stardust/.work/deploy/deploy-batch.progress.json (atomic; done/ok/
+ * failed/lastPath) — the file the agent's ≤ 4-minute check reads; on every exit
+ * (driving run, --plan/--report with mode=…, halt with halted=…, fatal with error=…)
+ * the LAST stdout line is
+ *   SUMMARY deploy-batch ok=<n> failed=<n> exit=<code> details=<ledger> skipped=<n> published=<n>|preview-only
+ * where ok/failed count the pages THIS run drove (a halt reports them too).
+ * Run it in the background (`nohup node … > stardust/.work/deploy/deploy-batch.log 2>&1 &`)
+ * and read the progress file, then the SUMMARY line — never `sleep N; grep -c`.
  *
  * Usage:
- *   DA_TOKEN=… node deploy-batch.mjs --org <org> --repo <repo> --branch <branch> \
- *     --content content [--paths list.txt] [--concurrency 4] [--publish] \
- *     [--force] [--ledger path] [--log path]
+ *   DA_TOKEN=… node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> \
+ *     --content content [--paths <file|a,b,c>] [--exclude <file|a,b,c>] [--concurrency 4] \
+ *     [--publish] [--force] [--allow-thin] [--allow-shrink] [--ledger path] [--log path] \
+ *     [--progress path | --no-progress] [--token-env DA_TOKEN] [--site-token-env NAME] \
+ *     [--sec-per-page 6] [--ignore-ttl] [--plan | --report]
  *
  * --content   dir of *.html body-fragment files (default: content). Each file's
  *             path relative to this dir, minus .html, is its DA/web path.
- * --paths     optional newline-delimited file of web paths (no extension) to
- *             restrict the run to a subset (re-drive only these).
+ * --paths     restrict the run: a newline-delimited file OR a comma list of web
+ *             paths. Normalised (`//x` → `/x`, `.html` stripped); a requested path
+ *             absent from --content is reported `not in content tree`, never dropped.
+ * --exclude   same shape; matching pages are listed `excluded` and not driven.
  * --publish   also POST /live/ after preview (the query-index builds against the
- *             LIVE tree — #2 — so a site with listings needs this run before
- *             the index is checked). Default: preview only.
+ *             LIVE tree — #2). Default: preview only (D16). A publish run over a
+ *             `previewed` + hash-equal row skips PUT+preview (POST /live/ + verify).
  * --no-publish  accepted as a no-op (was the default until 0.24; remove from scripts).
- * --force     ignore the ledger; re-drive every page.
+ * --force     reset the selected pages to `pending` and re-drive them (ledger kept).
+ * --plan      build and print the plan with one reason per path — no network,
+ *             exit 0. `unchanged (hash)` / `changed` / `new` / `failed-last-time` /
+ *             `excluded` / `not in content tree` / `previewed (publish fast path)`.
+ * --report    print the ledger grouped by status — no network, exit 0.
+ * --allow-thin    PUT a body under 200 B / without `<main` anyway.
+ * --allow-shrink  PUT over an existing DA document more than 5× larger anyway.
+ * --progress <path>  progress JSON path (default stardust/.work/deploy/deploy-batch.progress.json);
+ *             `--no-progress` writes none (the SUMMARY line still prints).
+ * --token-env NAME     env name of the DA (IMS) token — default DA_TOKEN.
+ * --site-token-env NAME  env name of the site token for an access-restricted
+ *             delivery host — default SITE_TOKEN_<REPO> (uppercased, non-alphanumerics → _), then SITE_TOKEN.
+ * --sec-per-page N     wall seconds per page for the TTL projection (default: log median, else 6).
+ * --ignore-ttl         run although the token is projected to expire mid-batch.
  * --concurrency  parallel pages in flight (default 4; DA admin tolerates ~4-6).
+ *
+ * Plan line: `N pages · U unchanged (hash) · C changed · K new · F failed-last-time
+ * · X excluded · T to drive`. Log (append-only jsonl) survives a restart.
+ *
+ * Exit codes: 0 = every driven page verified; 1 = one or more FAILs (re-run the
+ * same command — verified pages are skipped); 2 = fatal (usage, missing/rejected/
+ * expired token — nothing was PUT); 3 = halted on the first 401 mid-batch or an
+ * access-restricted delivery host (ledger checkpointed; re-run the printed `next`).
+ * A row flips to `live`/`previewed` only after the delivered GET — never on POST codes.
+ *
+ * Test hooks (fixture tests only): DEPLOY_BATCH_DA_SRC, DEPLOY_BATCH_ADMIN,
+ * DEPLOY_BATCH_DELIVERY_BASE and DEPLOY_BATCH_DA_LIST override the hosts;
+ * DEPLOY_BATCH_REPAIR_DELAY_MS shortens the 3 s repair/blip wait. The module is importable
+ * (normalisePath, readPathList, buildPlan, mergeLedger) — main() runs only as a CLI.
  *
  * No external deps — uses Node's global fetch/FormData/Blob (Node 18+).
  */
-import { readFile, writeFile, appendFile, readdir, stat } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { readFile, writeFile, appendFile, readdir, stat, rename, mkdir } from 'node:fs/promises';
+import { existsSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { homedir } from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { createProgress, defaultProgressFile, summaryLine } from '../../stardust/scripts/progress.mjs';
 
-const DA_SRC = 'https://admin.da.live/source';
-const ADMIN = 'https://admin.hlx.page';
+const DA_SRC = process.env.DEPLOY_BATCH_DA_SRC || 'https://admin.da.live/source';
+const ADMIN = process.env.DEPLOY_BATCH_ADMIN || 'https://admin.hlx.page';
+const DELIVERY_BASE = process.env.DEPLOY_BATCH_DELIVERY_BASE || null;
+const DA_LIST = process.env.DEPLOY_BATCH_DA_LIST || 'https://admin.da.live/list';
+const HALT_EXIT = 3;
+const OK_STATUS = new Set(['live', 'previewed']);
+const REPAIR_DELAY_MS = Number(process.env.DEPLOY_BATCH_REPAIR_DELAY_MS) || 3000;
+const MIN_BODY_BYTES = 200;
+const SHRINK_RATIO = 5;
 
-function parseArgs(argv) {
-  const a = { content: 'content', concurrency: 4, publish: false, force: false, retries: 4 };
+export const sha1 = (buf) => createHash('sha1').update(buf).digest('hex');
+
+/** A 401 mid-batch or an access-restricted delivery host: stop, checkpoint, instruct. */
+export class HaltError extends Error {
+  constructor(why, remedy) { super(remedy); this.why = why; this.remedy = remedy; }
+}
+
+/**
+ * Resolve a token by env NAME: shell → ./.env → ~/.claude/.env → ~/.env.
+ * Returns { value, source } with source ∈ shell | repo-env | global-env | home-env,
+ * or null. Only the source CLASS is ever printed — never the value or a home path.
+ */
+export function resolveToken(name, { cwd = process.cwd(), home = homedir(), env = process.env } = {}) {
+  const clean = (v) => (v == null ? null : String(v).trim().replace(/^["']|["']$/g, '')) || null;
+  if (clean(env[name])) return { value: clean(env[name]), source: 'shell' };
+  const files = [[path.join(cwd, '.env'), 'repo-env'], [path.join(home, '.claude', '.env'), 'global-env'], [path.join(home, '.env'), 'home-env']];
+  for (const [file, source] of files) {
+    if (!existsSync(file)) continue;
+    const m = readFileSync(file, 'utf8').match(new RegExp(`^(?:export\\s+)?${name}=(.*)$`, 'm'));
+    if (m && clean(m[1])) return { value: clean(m[1]), source };
+  }
+  return null;
+}
+
+/** IMS tokens carry `created_at` + `expires_in` (string ms), not `exp`; plain JWTs carry `exp` (s). → epoch seconds or null. */
+export function tokenExpiry(jwt) {
+  try {
+    const seg = String(jwt).split('.')[1];
+    if (!seg) return null;
+    const claims = JSON.parse(Buffer.from(seg.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+    if (claims.created_at && claims.expires_in) {
+      const exp = (Number(claims.created_at) + Number(claims.expires_in)) / 1000;
+      return Number.isFinite(exp) ? exp : null;
+    }
+    return Number.isFinite(Number(claims.exp)) ? Number(claims.exp) : null;
+  } catch { return null; }
+}
+
+/** One authenticated GET on the DA list endpoint — the smoke test before any PUT. */
+export async function daSmoke(token, org, repo) {
+  try {
+    const res = await fetch(`${DA_LIST}/${org}/${repo}/`, { headers: { Authorization: `Bearer ${token}` } });
+    return res.status;
+  } catch (err) { return 0; }
+}
+
+/** SITE_TOKEN_<REPO> (uppercased, non-alphanumerics → _) then SITE_TOKEN. */
+export function siteTokenNames(repo) {
+  return [`SITE_TOKEN_${String(repo).toUpperCase().replace(/[^A-Z0-9]/g, '_')}`, 'SITE_TOKEN'];
+}
+
+/** median `ms` of the verify rows in an existing log — the s/page default (≥ 20 samples). */
+export function medianSecPerPage(logFile, fallback = 6) {
+  if (!existsSync(logFile)) return fallback;
+  const ms = readFileSync(logFile, 'utf8').split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } })
+    .filter((o) => o && o.step === 'verify' && Number.isFinite(o.ms)).map((o) => o.ms).sort((a, b) => a - b);
+  if (ms.length < 20) return fallback;
+  return Math.max(1, Math.round(ms[Math.floor(ms.length / 2)] / 1000));
+}
+
+/** `//x/y.html` → `/x/y`; empty → null. The one place a web path is shaped. */
+export function normalisePath(p) {
+  const s = String(p || '').trim();
+  if (!s) return null;
+  return `/${s.replace(/\.html$/i, '')}`.replace(/^\/+/, '/');
+}
+
+/** A newline-delimited file or a comma list → Set of normalised web paths. */
+export async function readPathList(spec) {
+  let text = spec;
+  if (existsSync(spec) && (await stat(spec)).isFile()) text = await readFile(spec, 'utf8');
+  return new Set(text.split(/[\n,]/).map(normalisePath).filter(Boolean));
+}
+
+export function deliveryUrl({ org, repo, branch, tld, webPath }) {
+  return DELIVERY_BASE ? `${DELIVERY_BASE}/${tld}${webPath}.plain.html` : `https://${branch}--${repo}--${org}.${tld}${webPath}.plain.html`;
+}
+
+function usage() {
+  console.log('usage: node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> [--content content] [--paths <file|a,b>] [--exclude <file|a,b>] [--concurrency 4] [--publish] [--force] [--allow-thin] [--allow-shrink] [--ledger <path>] [--log <path>] [--progress <path> | --no-progress] [--token-env DA_TOKEN] [--site-token-env NAME] [--sec-per-page 6] [--ignore-ttl] [--plan | --report]');
+}
+
+export function parseArgs(argv) {
+  const a = { content: 'content', concurrency: 4, publish: false, force: false, retries: 4, plan: false, report: false, allowThin: false, allowShrink: false, ignoreTtl: false };
   for (let i = 2; i < argv.length; i += 1) {
     const k = argv[i];
     const next = () => argv[(i += 1)];
@@ -71,6 +226,7 @@ function parseArgs(argv) {
     else if (k === '--branch') a.branch = next();
     else if (k === '--content') a.content = next();
     else if (k === '--paths') a.paths = next();
+    else if (k === '--exclude') a.exclude = next();
     else if (k === '--ledger') a.ledger = next();
     else if (k === '--log') a.log = next();
     else if (k === '--concurrency') a.concurrency = Math.max(1, +next() || 4);
@@ -78,14 +234,32 @@ function parseArgs(argv) {
     else if (k === '--publish') a.publish = true;
     else if (k === '--no-publish') { a.publish = false; console.error('[deploy-batch] --no-publish is the default since 0.24 and will be removed; drop the flag (publish is an explicit --publish run)'); }
     else if (k === '--force') a.force = true;
+    else if (k === '--plan') a.plan = true;
+    else if (k === '--report') a.report = true;
+    else if (k === '--allow-thin') a.allowThin = true;
+    else if (k === '--allow-shrink') a.allowShrink = true;
+    else if (k === '--progress') a.progress = next();
+    else if (k === '--no-progress') a.progress = null;
     else if (k === '--token-env') a.tokenEnv = next();
+    else if (k === '--site-token-env') a.siteTokenEnv = next();
+    else if (k === '--sec-per-page') a.secPerPage = Math.max(0.1, +next() || 6);
+    else if (k === '--ignore-ttl') a.ignoreTtl = true;
+    else if (k === '--help' || k === '-h') { usage(); process.exit(0); }
     else throw new Error(`unknown arg: ${k}`);
   }
-  a.token = process.env[a.tokenEnv || 'DA_TOKEN'];
   if (!a.org || !a.repo || !a.branch) throw new Error('--org, --repo and --branch are required');
-  if (!a.token) throw new Error(`missing token in env ${a.tokenEnv || 'DA_TOKEN'}`);
+  a.offline = a.plan || a.report;
+  const tok = resolveToken(a.tokenEnv || 'DA_TOKEN');
+  a.token = tok ? tok.value : undefined;
+  a.tokenSource = tok ? tok.source : null;
+  if (!a.token && !a.offline) throw new Error(`missing token in env ${a.tokenEnv || 'DA_TOKEN'} (looked in the shell, ./.env, ~/.claude/.env, ~/.env)`);
+  const siteNames = a.siteTokenEnv ? [a.siteTokenEnv] : siteTokenNames(a.repo);
+  const site = siteNames.map((n) => resolveToken(n)).find(Boolean);
+  a.siteAuth = site ? (/^(token|bearer) /i.test(site.value) ? site.value : `token ${site.value}`) : null;
+  a.siteTokenName = siteNames[0];
   a.ledger ||= path.join(a.content, '.deploy-ledger.json');
   a.log ||= path.join(a.content, '.deploy-log.jsonl');
+  if (a.progress === undefined) a.progress = defaultProgressFile('deploy', 'deploy-batch');
   return a;
 }
 
@@ -119,6 +293,7 @@ async function call(method, url, { token, body } = {}, retries = 4) {
       text = String(err.message || err);
     }
     if (status > 0 && status < 400) return { status, text: '' };
+    if (status === 401) throw new HaltError('401', 'DA_TOKEN rejected (401) — expired or revoked');
     if (RETRYABLE.has(status) && attempt < retries) {
       await sleep(Math.min(15000, 500 * 2 ** attempt) + attempt * 137); // capped backoff + deterministic jitter
       continue;
@@ -127,49 +302,177 @@ async function call(method, url, { token, body } = {}, retries = 4) {
   }
 }
 
-async function deliveredOk({ org, repo, branch, webPath, tld = 'aem.live' }) {
+async function deliveredOk({ org, repo, branch, webPath, tld = 'aem.live', siteAuth = null, siteTokenName = 'SITE_TOKEN' }) {
   // admin 200 != delivered; GET the rendered .plain.html on the delivery tree
-  // (live = aem.live; preview-only = aem.page).
-  const url = `https://${branch}--${repo}--${org}.${tld}${webPath}.plain.html`;
-  try {
-    const res = await fetch(url, { headers: { 'accept-encoding': 'gzip' } });
-    if (res.status !== 200) return { ok: false, why: `plain.html ${res.status}` };
-    const html = await res.text();
-    if (html.includes('about:error')) return { ok: false, why: 'about:error in delivered html' };
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, why: String(err.message || err) };
+  // (live = aem.live; preview-only = aem.page). One retry after a blip (fetch
+  // error, 5xx, 000) — a 404 or about:error is a verdict, never retried here.
+  // The site token (if any) goes to THIS host only — never to admin.
+  const url = deliveryUrl({ org, repo, branch, tld, webPath });
+  for (let attempt = 0; ; attempt += 1) {
+    let status = 0;
+    let why;
+    try {
+      const res = await fetch(url, { headers: { 'accept-encoding': 'gzip', ...(siteAuth ? { authorization: siteAuth } : {}) } });
+      status = res.status;
+      if (status === 200) {
+        const html = await res.text();
+        if (html.includes('about:error')) return { ok: false, why: 'about:error in delivered html', aboutError: true };
+        return { ok: true };
+      }
+      const xerr = res.headers.get('x-error') || '';
+      if (status === 401 && /access-not-allowed/.test(xerr) && !siteAuth) {
+        throw new HaltError('access-restricted', `delivery host answers 401 x-error: access-not-allowed and no site token is set — put ${siteTokenName} in .env (sent as \`Authorization: token …\` to the delivery host only), or ask the owner to widen access.site.allow`);
+      }
+      why = `plain.html ${status}${xerr ? ` (x-error: ${xerr})` : ''}`;
+    } catch (err) {
+      if (err instanceof HaltError) throw err;
+      why = String(err.message || err);
+    }
+    const blip = status === 0 || status >= 500;
+    if (blip && attempt === 0) { await sleep(REPAIR_DELAY_MS); continue; }
+    return { ok: false, why: blip ? `${why} (after retry)` : why };
   }
 }
 
+/** GET the DA source document: status + byte length (body discarded). */
+async function daSourceSize(url, token) {
+  try {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (res.status === 401) throw new HaltError('401', 'DA_TOKEN rejected (401) — expired or revoked');
+    const buf = res.status === 200 ? Buffer.from(await res.arrayBuffer()) : null;
+    return { status: res.status, length: buf ? buf.length : 0 };
+  } catch (err) {
+    if (err instanceof HaltError) throw err;
+    return { status: 0, length: 0, text: String(err.message || err) };
+  }
+}
+
+/**
+ * Decide, per page, drive or skip — and why. `verify` is the delivered-GET
+ * probe (null in --plan mode: no network, hash-unknown rows count as unchanged
+ * and say so). Mutates `ledger` only for --force resets and hash backfills;
+ * every touched path is added to `touched` so persist() merges just those rows.
+ */
+export async function buildPlan({ pages, ledger, want, exclude, publish, force, branch, verify, touched }) {
+  const rows = [];
+  const todo = [];
+  const counts = { pages: 0, unchanged: 0, changed: 0, new: 0, failedLast: 0, excluded: 0, missing: 0, forced: 0, fastPublish: 0, reverify: 0 };
+  const seen = new Set();
+  const tld = publish ? 'aem.live' : 'aem.page';
+  const drive = (p, reason, key) => { rows.push({ webPath: p.webPath, action: 'drive', reason }); todo.push(p); if (key) counts[key] += 1; };
+  const skip = (p, reason, key) => { rows.push({ webPath: p.webPath, action: 'skip', reason }); if (key) counts[key] += 1; };
+
+  for (const p of pages) {
+    if (want && !want.has(p.webPath)) continue;
+    seen.add(p.webPath);
+    counts.pages += 1;
+    if (exclude && exclude.has(p.webPath)) { skip(p, 'excluded', 'excluded'); continue; }
+    p.hash = sha1(await readFile(p.file));
+    const rec = ledger[p.webPath];
+    if (force) {
+      if (rec) { rec.status = 'pending'; touched.add(p.webPath); }
+      drive(p, 'forced (--force)', 'forced');
+      continue;
+    }
+    if (!rec) { drive(p, 'new', 'new'); continue; }
+    if (!OK_STATUS.has(rec.status)) { drive(p, `failed-last-time (${rec.status})`, 'failedLast'); continue; }
+    if (rec.bodyHash && rec.bodyHash !== p.hash) { drive(p, 'changed', 'changed'); continue; }
+    if (publish && rec.status === 'previewed') {
+      drive(p, rec.bodyHash ? 'previewed (publish fast path)' : 'previewed (no hash — full drive)', 'fastPublish');
+      continue;
+    }
+    // hash equal or unknown, status matches the run → verify the delivered page
+    if (!verify) {
+      skip(p, rec.bodyHash ? 'unchanged (hash)' : 'unchanged (no hash — a live run verifies the delivered page first)', 'unchanged');
+      continue;
+    }
+    const v = await verify({ webPath: p.webPath, tld });
+    if (!v.ok) { drive(p, `re-verify failed (${v.why})`, 'reverify'); continue; }
+    if (!rec.bodyHash) { rec.bodyHash = p.hash; rec.branch ||= branch; touched.add(p.webPath); }
+    skip(p, rec.status === 'previewed' && !publish ? 'unchanged (hash; previewed-only — needs --publish to go live)' : 'unchanged (hash)', 'unchanged');
+  }
+  if (want) {
+    for (const w of want) if (!seen.has(w)) { rows.push({ webPath: w, action: 'missing', reason: 'not in content tree' }); counts.missing += 1; }
+  }
+  counts.toDrive = todo.length;
+  return { rows, todo, counts };
+}
+
+export function planLine(c, extra = '') {
+  return `[deploy-batch] ${c.pages} pages · ${c.unchanged} unchanged (hash) · ${c.changed} changed · ${c.new} new · ${c.failedLast} failed-last-time`
+    + `${c.forced ? ` · ${c.forced} forced` : ''}${c.fastPublish ? ` · ${c.fastPublish} previewed→publish` : ''}${c.reverify ? ` · ${c.reverify} re-verify failed` : ''}`
+    + ` · ${c.excluded} excluded${c.missing ? ` · ${c.missing} not in content tree` : ''} · ${c.toDrive} to drive${extra}`;
+}
+
+/** on-disk rows ∪ this run's rows — never a subset of what was there. */
+export function mergeLedger(onDisk, ledger, touched) {
+  const merged = { ...onDisk };
+  for (const p of touched) if (ledger[p]) merged[p] = ledger[p];
+  for (const [k, v] of Object.entries(ledger)) if (!(k in merged)) merged[k] = v;
+  return merged;
+}
+
+async function readLedger(file) {
+  if (!existsSync(file)) return {};
+  try { return JSON.parse(await readFile(file, 'utf8')); } catch (e) { throw new Error(`ledger ${file} is not valid JSON (${e.message}) — fix or move it; never start from an empty ledger`); }
+}
+
+let persistSeq = 0;
+async function persistLedger(file, ledger, touched) {
+  const merged = mergeLedger(await readLedger(file), ledger, touched);
+  await mkdir(path.dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.${(persistSeq += 1)}.tmp`;
+  await writeFile(tmp, JSON.stringify(merged, null, 2));
+  await rename(tmp, file);
+  return merged;
+}
+
 async function deployOne(page, args, ledger, logLine, shared) {
-  const { org, repo, branch, token, publish } = args;
+  const { org, repo, branch, token, publish, siteAuth, siteTokenName } = args;
   const enc = encodeURI(page.webPath);
   const rec = ledger[page.webPath] || (ledger[page.webPath] = { status: 'pending', attempts: 0 });
+  const t0 = Date.now();
   rec.attempts += 1;
   rec.ts = new Date().toISOString();
+  let putHash = null; // recorded on the row only once the delivered GET passes
 
-  // Publish fast path: a page this ledger already holds as `previewed` and that
-  // still delivers on aem.page needs only POST /live/ + verify — re-running
-  // PUT → preview for every page would double the admin traffic of a 1k-page run.
-  const fastPublish = publish && !args.force && rec.status === 'previewed'
-    && (await deliveredOk({ org, repo, branch, webPath: page.webPath, tld: 'aem.page' })).ok;
-
-  // 0. two clocks — a DA document is shared across every code ref. On a
-  //    non-main branch, a document that already exists is also main's. The
-  //    answer is recorded once per page so a re-run of this branch does not
-  //    count its own earlier PUTs.
-  if (branch !== 'main' && shared) {
-    if (rec.sharedWithMain === undefined) {
-      const head = await call('HEAD', `${DA_SRC}/${org}/${repo}${enc}.html`, { token }, 1);
-      rec.sharedWithMain = head.status === 200;
-    }
-    if (rec.sharedWithMain) shared.push(page.webPath);
-  }
+  // Publish fast path: a page this ledger already holds as `previewed`, whose
+  // bytes are unchanged (hash) and that still delivers on aem.page needs only
+  // POST /live/ + verify — re-running PUT → preview for every page would double
+  // the admin traffic of a 1k-page run.
+  const fastPublish = publish && !args.force && rec.status === 'previewed' && rec.bodyHash && rec.bodyHash === page.hash
+    && (await deliveredOk({ org, repo, branch, webPath: page.webPath, tld: 'aem.page', siteAuth, siteTokenName })).ok;
 
   if (!fastPublish) {
-    // 1. PUT body fragment (multipart, field name MUST be `data`, type text/html)
     const buf = await readFile(page.file);
+
+    // 0a. body guard — zero network. A sanitise log line captured as the body,
+    //     or an empty file, must never become the page.
+    if (!args.allowThin && (buf.length < MIN_BODY_BYTES || !/<main[\s>]/.test(buf.toString('utf8')))) {
+      rec.status = 'body-invalid';
+      rec.lastError = `body ${buf.length} B${/<main[\s>]/.test(buf.toString('utf8')) ? '' : ' / no <main>'} — --allow-thin to PUT anyway`;
+      await logLine({ path: page.webPath, step: 'body-guard', bytes: buf.length });
+      return rec;
+    }
+
+    // 0b. existing DA document — one GET serves two purposes: the shrink guard
+    //     (a rich page must not be overwritten by a stub) and, on a non-main
+    //     branch, the two-clocks existence probe (a document that already
+    //     exists is also main's; recorded once per page so a re-run of this
+    //     branch does not count its own earlier PUTs).
+    const existing = await daSourceSize(`${DA_SRC}/${org}/${repo}${enc}.html`, token);
+    if (branch !== 'main' && shared) {
+      if (rec.sharedWithMain === undefined && existing.status !== 0) rec.sharedWithMain = existing.status === 200;
+      if (rec.sharedWithMain) shared.push(page.webPath);
+    }
+    if (!args.allowShrink && existing.status === 200 && existing.length > SHRINK_RATIO * buf.length) {
+      rec.status = 'overwrite-guard';
+      rec.lastError = `existing ${existing.length} B vs new ${buf.length} B (> ${SHRINK_RATIO}×) — --allow-shrink to overwrite`;
+      await logLine({ path: page.webPath, step: 'shrink-guard', existing: existing.length, bytes: buf.length });
+      return rec;
+    }
+
+    // 1. PUT body fragment (multipart, field name MUST be `data`, type text/html)
     const fd = new FormData();
     fd.append('data', new Blob([buf], { type: 'text/html' }), path.basename(page.file));
     const put = await call('PUT', `${DA_SRC}/${org}/${repo}${enc}.html`, { token, body: fd }, args.retries);
@@ -180,6 +483,7 @@ async function deployOne(page, args, ledger, logLine, shared) {
       await logLine({ path: page.webPath, step: 'put', ...put });
       return rec;
     }
+    putHash = sha1(buf);
 
     // 2. preview (path WITHOUT extension; ref = code branch)
     const prev = await call('POST', `${ADMIN}/preview/${org}/${repo}/${branch}${enc}`, { token }, args.retries);
@@ -206,61 +510,166 @@ async function deployOne(page, args, ledger, logLine, shared) {
     }
   }
 
-  // 4. verify delivery (admin 200 != delivered)
-  const v = await deliveredOk({ org, repo, branch, webPath: page.webPath, tld: publish ? 'aem.live' : 'aem.page' });
+  // 4. verify delivery (admin 200 != delivered). An about:error is first
+  //    repaired by ONE idempotent re-preview (an image lost the ingest race
+  //    with Code Sync); only a persisting about:error is a FAIL.
+  const tld = publish ? 'aem.live' : 'aem.page';
+  let v = await deliveredOk({ org, repo, branch, webPath: page.webPath, tld, siteAuth, siteTokenName });
+  if (!v.ok && v.aboutError) {
+    const again = await call('POST', `${ADMIN}/preview/${org}/${repo}/${branch}${enc}`, { token }, 1);
+    if (again.status < 400 && publish) await call('POST', `${ADMIN}/live/${org}/${repo}/${branch}${enc}`, { token }, 1);
+    await sleep(REPAIR_DELAY_MS);
+    const v2 = again.status < 400 ? await deliveredOk({ org, repo, branch, webPath: page.webPath, tld, siteAuth, siteTokenName }) : { ok: false, why: `re-preview ${again.status}` };
+    await logLine({ path: page.webPath, step: 'repreview', status: again.status, ok: v2.ok });
+    if (v2.ok) rec.repaired = 're-preview';
+    else delete rec.repaired;
+    v = v2.ok ? v2 : { ok: false, why: v2.aboutError ? 'about:error (persists after re-preview)' : v2.why };
+  } else if (v.ok) delete rec.repaired;
   rec.verify = v.ok ? 'ok' : v.why;
   rec.status = v.ok ? (publish ? 'live' : 'previewed') : 'verify-fail';
-  if (!v.ok) rec.lastError = v.why;
-  await logLine({ path: page.webPath, step: 'verify', ok: v.ok, why: v.why });
+  if (v.ok) {
+    delete rec.lastError; // a stale "PUT 401" must not outlive the page's recovery
+    if (putHash) { rec.bodyHash = putHash; rec.branch = branch; }
+  } else rec.lastError = v.why;
+  await logLine({ path: page.webPath, step: 'verify', ok: v.ok, why: v.why, ms: Date.now() - t0 });
   return rec;
 }
 
+/** Bounded pool; a HaltError from any worker drains the queue and is re-thrown once all in-flight pages settle. */
 async function pool(items, n, worker) {
   const q = [...items];
-  const run = async () => { while (q.length) await worker(q.shift()); };
+  let halted = null;
+  const run = async () => {
+    while (q.length && !halted) {
+      try { await worker(q.shift()); } catch (err) {
+        if (!(err instanceof HaltError)) throw err;
+        halted = err; q.length = 0;
+      }
+    }
+  };
   await Promise.all(Array.from({ length: Math.min(n, items.length) }, run));
+  if (halted) throw halted;
 }
 
-async function main() {
-  const args = parseArgs(process.argv);
-  let pages = await walkHtml(args.content);
-  if (args.paths) {
-    const want = new Set((await readFile(args.paths, 'utf8')).split('\n').map((s) => s.trim()).filter(Boolean)
-      .map((p) => (p.startsWith('/') ? p : `/${p}`)));
-    pages = pages.filter((p) => want.has(p.webPath));
+function report(ledger) {
+  const by = {};
+  for (const [p, r] of Object.entries(ledger)) (by[r.status] ||= []).push([p, r]);
+  const order = Object.keys(by).sort((a, b) => by[b].length - by[a].length);
+  console.log(`[deploy-batch] ledger: ${Object.keys(ledger).length} rows`);
+  for (const s of order) console.log(`  ${s}: ${by[s].length}`);
+  for (const s of order) {
+    if (OK_STATUS.has(s)) continue;
+    for (const [p, r] of by[s]) console.log(`  ${s}  ${p}  ${r.lastError || ''}`.trimEnd());
   }
-  const ledger = (!args.force && existsSync(args.ledger))
-    ? JSON.parse(await readFile(args.ledger, 'utf8')) : {};
+}
 
-  // Skip pages already live AND still delivering 200 (verify, don't trust the ledger blindly).
-  const todo = [];
-  let skipped = 0;
-  for (const p of pages) {
-    const rec = ledger[p.webPath];
-    if (!args.force && rec && rec.status === 'live') {
-      const v = await deliveredOk({ ...args, webPath: p.webPath });
-      if (v.ok) { skipped += 1; continue; }
-    }
-    todo.push(p);
+let summaryCtx = null; // set once args are known, so a fatal exit still prints a SUMMARY line
+
+export async function main(argv = process.argv) {
+  const args = parseArgs(argv);
+  summaryCtx = { details: args.ledger };
+  const ledger = await readLedger(args.ledger);
+  if (args.report) {
+    report(ledger);
+    console.log(summaryLine({ driver: 'deploy-batch', exit: 0, details: args.ledger, extra: { mode: 'report', rows: Object.keys(ledger).length } }));
+    return 0;
   }
 
-  const persist = async () => writeFile(args.ledger, JSON.stringify(ledger, null, 2));
+  const pages = await walkHtml(args.content);
+  const want = args.paths ? await readPathList(args.paths) : null;
+  const exclude = args.exclude ? await readPathList(args.exclude) : null;
+  const touched = new Set();
   const logLine = async (o) => appendFile(args.log, `${JSON.stringify({ t: new Date().toISOString(), ...o })}\n`);
+  // serialised: two workers hitting `done % 5 === 0` inside one persist's await window must not race the tmp+rename
+  let persisting = Promise.resolve();
+  const persist = () => (persisting = persisting.then(() => persistLedger(args.ledger, ledger, touched)));
+  let progress = null; // created once the plan is known; halt() reads it so the SUMMARY counts what this run drove
+  const next = `node ${path.relative(process.cwd(), argv[1]) || argv[1]} ${argv.slice(2).map((x) => (/[\s"']/.test(x) ? JSON.stringify(x) : x)).join(' ')}`;
+  const halt = async (err, driven, remaining) => {
+    await persist();
+    await logLine({ step: 'halt', why: err.why, driven, remaining });
+    console.error(`[deploy-batch] HALT (${err.why}): ${err.remedy}${err.why === '401' ? ` (token source: ${args.tokenSource})` : ''}. ${driven} page(s) driven this run, ${remaining} remaining — their rows keep their previous status. Fix the credential, then re-run:`);
+    console.log(`next=${next}`);
+    const extra = { halted: err.why, remaining };
+    console.log(progress ? progress.summaryLine({ exit: HALT_EXIT, details: args.ledger, extra }) : summaryLine({ driver: 'deploy-batch', exit: HALT_EXIT, details: args.ledger, extra }));
+    return HALT_EXIT;
+  };
 
-  console.error(`[deploy-batch] ${pages.length} pages, ${skipped} already live, ${todo.length} to drive (concurrency ${args.concurrency}, publish=${args.publish})`);
+  // preflight — one authenticated call before any page; a 401 here is exit 2, not a red batch
+  let exp = null;
+  if (!args.plan) {
+    const list = await daSmoke(args.token, args.org, args.repo);
+    exp = tokenExpiry(args.token);
+    const hours = exp === null ? 'unknown' : `${((exp - Date.now() / 1000) / 3600).toFixed(1)}h`;
+    console.error(`[deploy-batch] token source=${args.tokenSource} valid≈${hours} list=${list}`);
+    if (list === 401) throw new Error(`DA_TOKEN rejected (401) at preflight — refresh it (source: ${args.tokenSource}) and re-run; nothing was PUT`);
+    if (exp === null) console.error('[deploy-batch] WARN token expiry unknown (no created_at/expires_in or exp claim) — running; a mid-batch 401 halts with exit 3');
+  }
+
+  let plan;
+  try {
+    const verify = args.plan ? null : ({ webPath, tld }) => deliveredOk({ ...args, webPath, tld });
+    plan = await buildPlan({ pages, ledger, want, exclude, publish: args.publish, force: args.force, branch: args.branch, verify, touched });
+  } catch (err) {
+    if (err instanceof HaltError) return halt(err, 0, '?');
+    throw err;
+  }
+  const { todo, counts } = plan;
+
+  // content-bus reset sentinel: previously delivered pages now 404 → warn, re-drive (no halt)
+  const gone = plan.rows.filter((r) => /^re-verify failed \(plain\.html 404/.test(r.reason)).length;
+  if (gone >= 3 && !args.plan) {
+    console.error(`[deploy-batch] WARN ${gone} previously delivered pages now 404 — content-bus reset or config change; re-driving them (bulk alternative: POST /preview|live/{org}/{repo}/{ref}/* with a paths body)`);
+    await logLine({ step: 'sentinel', why: 'content-bus-reset', n: gone });
+  }
+
+  // TTL projection — exit 2 before any PUT when the token cannot outlive the run
+  if (!args.plan && exp !== null && todo.length) {
+    const remaining = exp - Date.now() / 1000;
+    const sec = args.secPerPage || medianSecPerPage(args.log);
+    const projection = (todo.length * sec) / args.concurrency;
+    if (remaining <= 0) throw new Error(`DA_TOKEN expired ${Math.round(-remaining / 60)} min ago (source: ${args.tokenSource}) — refresh it and re-run; nothing was PUT`);
+    if (remaining < projection && !args.ignoreTtl) throw new Error(`DA_TOKEN has ${(remaining / 60).toFixed(0)} min left but ${todo.length} pages × ${sec}s ÷ ${args.concurrency} ≈ ${(projection / 60).toFixed(0)} min — refresh it first, narrow --paths, or --ignore-ttl; nothing was PUT`);
+  }
+
+  if (args.plan) {
+    console.log(planLine(counts, ` (plan only, publish=${args.publish})`));
+    for (const r of plan.rows) console.log(`  ${r.action.padEnd(7)} ${r.webPath}  ${r.reason}`);
+    console.log(summaryLine({ driver: 'deploy-batch', exit: 0, details: args.ledger, extra: { mode: 'plan', toDrive: counts.toDrive } }));
+    return 0;
+  }
+
+  console.error(planLine(counts, ` (concurrency ${args.concurrency}, publish=${args.publish})`));
+  if (!todo.length) {
+    const show = plan.rows.slice(0, 50); // one reason per path — why nothing moves
+    for (const r of show) console.error(`  ${r.action.padEnd(7)} ${r.webPath}  ${r.reason}`);
+    if (plan.rows.length > show.length) console.error(`  (${plan.rows.length - show.length} more — \`--plan\` prints every reason)`);
+  }
+  if (touched.size) await persist(); // hash backfills / --force resets
+
+  progress = createProgress({ file: args.progress, driver: 'deploy-batch', total: todo.length, extra: { publish: args.publish, skipped: counts.unchanged, ledger: args.ledger } });
   const shared = args.branch !== 'main' ? [] : null;
   let done = 0;
-  await pool(todo, args.concurrency, async (p) => {
-    const rec = await deployOne(p, args, ledger, logLine, shared);
-    done += 1;
-    const ok = rec.status === 'live' || rec.status === 'previewed';
-    console.error(`[${done}/${todo.length}] ${ok ? 'OK  ' : 'FAIL'} ${p.webPath} (${rec.status})`);
-    if (done % 5 === 0) await persist();
-  });
+  try {
+    await pool(todo, args.concurrency, async (p) => {
+      touched.add(p.webPath);
+      const rec = await deployOne(p, args, ledger, logLine, shared);
+      done += 1;
+      const ok = OK_STATUS.has(rec.status);
+      progress.tick({ ok, path: p.webPath });
+      console.error(`[${done}/${todo.length}] ${ok ? 'OK  ' : 'FAIL'} ${p.webPath} (${rec.status})`);
+      if (done % 5 === 0) await persist();
+    });
+  } catch (err) {
+    if (err instanceof HaltError) { progress.set({ halted: err.why }); return halt(err, done, todo.length - done); }
+    await persist().catch(() => {}); // a non-halt worker error is fatal (exit 2) — but the rows driven so far are kept
+    throw err;
+  }
   await persist();
 
-  const fails = Object.entries(ledger).filter(([, r]) => !['live', 'previewed'].includes(r.status));
+  const fails = todo.map((p) => [p.webPath, ledger[p.webPath]]).filter(([, r]) => !OK_STATUS.has(r.status));
   console.error(`[deploy-batch] done. ${todo.length - fails.length} ok, ${fails.length} failed.`);
+  const summary = (exit) => progress.summaryLine({ exit, details: args.ledger, extra: { skipped: counts.unchanged, published: args.publish ? todo.length - fails.length : 'preview-only' } });
   if (shared && shared.length) {
     console.error(`[deploy-batch] WARN two clocks: ${shared.length} document(s) already on DA are shared with main — main renders them with main's code until branch "${args.branch}" is merged (da-deploy-protocol.md § Two clocks).`);
   }
@@ -269,10 +678,20 @@ async function main() {
     console.error(`[deploy-batch] code is served with max-age=7200 — visitors may hold old code until ${until} UTC; report that window end with the publish.`);
   }
   if (fails.length) {
-    console.error('FAILS (re-run the same command to re-drive — succeeded pages are skipped):');
+    console.error('FAILS (re-run the same command to re-drive — verified pages are skipped):');
     for (const [p, r] of fails) console.error(`  ${p}  ${r.status}  ${r.lastError || ''}`);
-    process.exit(1);
+    console.log(summary(1));
+    return 1;
   }
+  console.log(summary(0));
+  return 0;
 }
 
-main().catch((e) => { console.error(`[deploy-batch] fatal: ${e.message}`); process.exit(2); });
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+if (isMain) {
+  main().then((code) => process.exit(code)).catch((e) => {
+    console.error(`[deploy-batch] fatal: ${e.message}`);
+    console.log(summaryLine({ driver: 'deploy-batch', exit: 2, details: summaryCtx ? summaryCtx.details : '-', extra: { error: e.message.slice(0, 80) } }));
+    process.exit(2);
+  });
+}

@@ -31,7 +31,9 @@ node skills/deploy/scripts/served-check.mjs \
   "https://$BRANCH--$REPO--$ORG.aem.page/blocks/<edited-block>/<edited-block>.js" \
   --grep "<a marker string from your edit>" --wait 180        # exit 1 = did not land: check the POST / installation
 
-# 1. sanitise non-ASCII to entities (in place, idempotent) — DA corrupts raw UTF-8
+# 1. sanitise non-ASCII to entities (in place, idempotent) — DA corrupts raw UTF-8.
+#    It writes in place and reports on stderr; NEVER capture its output as the PUT body
+#    (a log line was PUT as the page twice in the field — the driver's body guard refuses it).
 node skills/deploy/scripts/sanitise.js content/$P.html
 
 # 2. write the body fragment to DA (multipart, field name MUST be `data`, type text/html)
@@ -42,15 +44,12 @@ curl -sS -X PUT -H "Authorization: Bearer $TOKEN" \
 # 2b. NEW image assets must be LIVE on Code Bus BEFORE the preview ingests them (#75).
 #     The preview fetches every <img src>, hashes the bytes into Media Bus, and writes
 #     about:error if a URL doesn't return image bytes AT THAT MOMENT. A just-pushed
-#     img/<brand>/x.jpg can lose the race with Code Sync. Wait for each authored image:
+#     img/<brand>/x.jpg can lose the race with Code Sync. Wait for each authored image
+#     with the same capped waiter as step 0 (no --grep: a 2xx is the verdict; ~2 min per asset):
 for u in $(grep -oE 'https://[^"]+/img/[^"]+\.(jpg|jpeg|png|webp|svg)' content/$P.html | sort -u); do
-  for i in $(seq 1 40); do   # capped: ~2 min per asset, then fail loud
-    [ "$(curl -s -o /dev/null -w '%{http_code}' "$u")" = "200" ] && break
-    [ "$i" = 40 ] && { echo "asset never became live: $u" >&2; exit 1; }
-    sleep 3
-  done
+  node skills/deploy/scripts/served-check.mjs "$u" --wait 120 || { echo "asset never became live: $u" >&2; exit 1; }
 done
-# NB (#2): this bare-curl wait is for repo-relative /img/ assets only. Do NOT bare-curl
+# NB (#2): this waiter is for repo-relative /img/ assets only. Do NOT probe
 #   - content.da.live/admin.da.live media URLs — they 401 to anon curl but ingest fine
 #     (verify them via step 3b about:error instead); and
 #   - external SOURCE/CDN <img> srcs on a bot-walled origin (Akamai/Cloudflare 403 a curl
@@ -81,7 +80,8 @@ curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
 
 # 3b. VERIFY ingestion on the delivered .plain.html (per page; served-check decodes gzip):
 #   (i)  no broken-image ingestion (#75) — must be 0; if not, an asset wasn't on Code Bus
-#        yet. Re-run step 3 (preview is idempotent; it re-ingests and repairs).
+#        yet. Re-run step 3 (preview is idempotent; it re-ingests and repairs — the
+#        driver does this once by itself; only a PERSISTING about:error is an image case).
 #   (ii) authored EDITORIAL images actually landed — assert the expected <img>/alt count.
 #        CSS-background images are absent from .plain.html, so "it renders" is NOT proof
 #        that an image is authorable/AI-visible (see `reference/encode-contract.md` § Images).
@@ -118,7 +118,7 @@ A DA document is one document for every code ref: `main--<repo>--<org>` and `<br
 
 The content payload is a **body fragment** (see Step 9). The deploy needs the **code branch pushed to GitHub** so the branch preview (`<branch>--<repo>--<org>.aem.page`) renders with your blocks. See § Deploy (DA Source API + curl) above for the full curl contract.
 
-**For more than one page, preview and publish go through the bundled driver — the curl sequence above is the single-page diagnostic form only (#4).** `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> --content content [--concurrency 4]` runs `PUT → preview` across a content tree; live publish is a separate `deploy-batch.mjs … --publish` invocation, taken only when the preview gate passed or `decisions.md` records publish-to-live (D1, D16) — one command, one intent (SKILL.md § Deploy). The driver with bounded concurrency, a **persistent ledger** (`content/.deploy-ledger.json`) so a re-run **skips pages already live** and only re-drives FAILs, capped-backoff retries on `000/429/5xx`, an **append-only** log (survives a restart), and a delivered-`.plain.html` check before flipping a page to `live` (admin 200 ≠ delivered). It's idempotent — safe to Ctrl-C and re-run, which is the documented recovery for a transient-blip half-deploy. A serial hand-rolled bash loop that truncates its own log on restart is the anti-pattern this replaces.
+**For more than one page, preview and publish go through the bundled driver — the curl sequence above is the single-page diagnostic form only (#4).** `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> --content content [--concurrency 4]` runs `PUT → preview` across a content tree; live publish is a separate `deploy-batch.mjs … --publish` invocation, taken only when the preview gate passed or `decisions.md` records publish-to-live (D1, D16) — one command, one intent (SKILL.md § Deploy). The driver with bounded concurrency, a **persistent ledger** (`content/.deploy-ledger.json`, one row per path with the sha1 of the bytes PUT) so a re-run **skips a page only when its row is delivered AND its bytes are unchanged** — a changed file always re-drives, FAILs always re-drive — capped-backoff retries on `000/429/5xx`, an **append-only** log (survives a restart), and a delivered-`.plain.html` check before flipping a page to `live`/`previewed` (admin 200 ≠ delivered). The ledger is always loaded and merged on write: `--force` resets only the selected pages, `--paths <file|a,b>` (normalised, a missing path is reported not dropped) and `--exclude` narrow a run, `--plan` prints one reason per path with no network, `--report` prints the ledger by status. It repairs delivery-side blips itself — one idempotent re-preview on `about:error`, one retry on a verify 5xx — and refuses to PUT a thin body (< 200 B or no `<main`, `body-invalid`) or a document more than 5× smaller than the one on DA (`overwrite-guard`); `--allow-thin` / `--allow-shrink` override per run. Run it in the background: it writes `stardust/.work/deploy/deploy-batch.progress.json` while it runs (the file the ≤ 4-minute check reads — `node skills/stardust/scripts/progress.mjs read <file>`) and ends with one stdout line, `SUMMARY deploy-batch ok=<n> failed=<n> exit=<code> details=<ledger> …`, which the hand-off quotes. It's idempotent — safe to Ctrl-C and re-run, which is the documented recovery for a transient-blip half-deploy. A serial hand-rolled bash loop that truncates its own log on restart is the anti-pattern this replaces.
 
 **Boilerplate documents are overwritable (decision register).** Before the first `PUT` to a path that already exists in DA, `GET` it: a body matching the boilerplate template's own `/index`, `/nav` or `/footer` text (the template's fingerprint, not the customer's content) is overwritten and logged `overwrote boilerplate`; anything else opens a `stardust/decisions.md` row (`skills/stardust/reference/decisions.md`) instead of a question — never silently overwrite non-boilerplate content.
 
@@ -134,7 +134,7 @@ The IMS token typically lives in repo `.env` as `DA_TOKEN`. Before the first com
 
 ### DA_TOKEN lifecycle
 
-**Preflight and re-check, never fail pages on it.** At setup, preflight the token: decode the JWT `exp` claim when present (base64-decode the middle segment) and smoke-test ONE authenticated DA call before any batch. **Re-check before each long batch** — a token fresh at setup can expire mid-run. On a `401` mid-batch: checkpoint the ledger (the batch driver's persistent ledger already records per-page state), stop the batch, and halt with a single actionable instruction — "DA_TOKEN expired; refresh it in `.env` and re-run the same command (the ledger skips delivered pages)" — instead of letting every remaining page fail red. Token expiry is the one credential failure the agent cannot self-recover; it is a legitimate hard stop even in a hands-off run.
+**Preflight and halt are the driver's, never a page's.** `deploy-batch.mjs` resolves `DA_TOKEN` (shell → `./.env` → `~/.claude/.env` → `~/.env`; it prints the source class, never the value), decodes the IMS expiry (`created_at` + `expires_in` in ms — IMS tokens carry no `exp` claim; a plain `exp` is the fallback, unknown → warn and run) and makes ONE authenticated `GET admin.da.live/list/…` before any PUT. It exits **2** — nothing written — when that call is 401, the token is expired, or it will expire before `pages × s/page ÷ concurrency` (`--sec-per-page`, default the log's median; `--ignore-ttl` to run anyway). The **first 401 mid-batch halts with exit 3**: 401 is never retried, in-flight rows keep their previous status, the ledger is checkpointed, and stdout carries the one instruction with `next=<the same command>` — the agent writes the `blocked` status line with that `next` (`../stardust/reference/run-status.md`) instead of letting every remaining page fail red. A delivered-host `401 x-error: access-not-allowed` with no site token is the same halt class (`access-restricted`; remedy `SITE_TOKEN_<REPO>` in `.env`, sent as `Authorization: token …` to the delivery host only via `--site-token-env`); ≥ 3 previously delivered pages answering 404 at startup are a content-bus reset — the driver warns and re-drives them, no halt. Token expiry is the one credential failure the agent cannot self-recover; it is a legitimate hard stop even in a hands-off run.
 
 ### Site auth — header vs browser
 

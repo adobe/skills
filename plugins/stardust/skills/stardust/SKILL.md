@@ -253,8 +253,7 @@ Defaults (override only when the invocation says otherwise):
   its body, and before reading any file over 20 KB lists the headings
   and reads only the section the card names. Stall-prone instruments run
   under their shipped deadline (replica `gate.sh`, `pixel-compare
-  --timeout`), never an agent-authored `sleep N; kill` loop; long steps
-  write a progress file the coordinator polls. Worker contract (briefs
+  --timeout`), never an agent-authored `sleep N; kill` loop. Worker contract (briefs
   point at it): `reference/fan-out.md` § Worker contract.
 - **Image reads.** Numbers first, then band crops; never a stitched
   capture whole — `reference/context-hygiene.md` § Image reads.
@@ -262,14 +261,15 @@ Defaults (override only when the invocation says otherwise):
   workers by default, the coordinator dispatches and merges —
   `reference/fan-out.md` § Scope and type of delegated agents.
 - **Wait discipline: never park the conversation past the prompt-cache
-  window.** Anything over about 2 minutes (gate round, crawl, batch
-  push, delegated agent) runs in the background and writes a progress
-  file — never in the foreground, never under one long
-  `sleep`. Do independent work meanwhile; otherwise check the progress
-  file **at most every 4 minutes** (never a fixed `sleep` ≥ 5 minutes,
-  never a blocking wait on the agent's output), and end the turn only for
-  waits over ~45 minutes or a user decision. Write large files in ≤ 2
-  chunks and cap tool output (`| tail`, `--reporter=dot`). Rationale and
+  window.** Anything over ~2 minutes (gate round, crawl, batch push,
+  delegated agent) runs in the background and writes a progress file
+  (`<driver>.progress.json`, `skills/stardust/scripts/progress.mjs read
+  <file>`; it ends with one `SUMMARY` stdout line —
+  `../deploy/da-deploy-protocol.md` § Delivery pipeline) — never under one
+  long `sleep`. Do independent work meanwhile;
+  otherwise check the progress file **at most every 4 minutes** (no fixed
+  `sleep` ≥ 5 min, no blocking wait on agent output); end the turn only
+  for waits over ~45 min or a user decision. Rationale, output caps and
   Claude Code levers: `reference/run-status.md` § Long-running steps.
 - **Context hygiene.** Class tables in the conversation, per-page rows
   in files, hand-off at phase boundaries — `reference/context-hygiene.md`

@@ -651,7 +651,10 @@ published page — preview or live origin — as build. Judge the result in the
 published-origin regime (§ Pass bar, calibration honesty), not against
 prototype-regime numbers.
 
-Two rules for that final run:
+Before the final run: `skills/deploy/scripts/served-check.mjs <asset-url> --grep
+<marker> --wait 180` exits 0 for every asset the round touched and the page
+marker — `../../deploy/reference/deployed-reconcile.md` § The six reconcile checks
+(a gate run earlier measures yesterday's code). Two rules for that final run:
 
 - **Re-probe live chrome metrics at deploy time — crawl captures are the
   CONTENT source, live-now is the chrome/metrics source.** The live site

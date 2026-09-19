@@ -81,8 +81,12 @@ contexts a migration reaches every expiry re-writes the whole prefix at
 write price; a completion notification that arrives after 5 minutes
 misses the window too, so ending the turn helps the user, not the cache.
 The progress file a long step writes is the thing to poll — `status.jsonl`
-for phase boundaries, the step's own ledger or log for progress inside a
-phase. Claude Code levers: `run_in_background: true` on the shell call
+for phase boundaries, the driver's `stardust/.work/<skill>/<driver>.progress.json`
+inside a phase (`node skills/stardust/scripts/progress.mjs read <file>`; the
+driver's last stdout line is `SUMMARY <driver> ok=<n> failed=<n> exit=<code> …`
+— `../../deploy/da-deploy-protocol.md` § Delivery pipeline). Output caps:
+write large files in ≤ 2 chunks and cap tool output (`| tail`,
+`--reporter=dot`). Claude Code levers: `run_in_background: true` on the shell call
 (the harness posts a task notification when it exits);
 `promptCacheTtl: "1h"` in settings.json stretches the window to an hour
 at 1.6× write price — an owner setting, worth it for any multi-hour

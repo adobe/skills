@@ -235,20 +235,18 @@ representative-first so blocks exist to be reused, and **a family's
 listing/index pages ship in its first wave**, before its volume wave (posts
 delivered ahead of their category/author pages bounce every in-page link, and
 a later stub wave can overwrite the rich pages); then a **central deploy**
-per page; then background batches with a per-page OK/FAIL ledger, re-driving
-FAILs only. For clusters of 6–20+ siblings, the full flow is
+per page; then background batches on the same ledger. For clusters of 6–20+ siblings, the full flow is
 `reference/delivery-gates.md` § Batched delivery. The central deploy step
-runs the bundled, resumable driver rather than a serial loop:
+runs the bundled, resumable driver, never a serial loop:
 `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo>
---branch <branch> --content <dir>` (concurrency pool, persistent ledger that skips
-already-live pages, retry/backoff, append-only log, delivered-`.plain.html` check),
+--branch <branch> --content <dir>` (concurrency pool, persistent path + body-hash
+ledger — only changed files and FAILs re-drive; retry/backoff, append-only log, delivered-`.plain.html` check),
 then, once the page gate passed (or `decisions.md` records publish-to-live), the
-separate `… --publish` run. Two clocks: push and Code-Sync the code on the ref the
-user will look at before previewing content there; the publish report names the
-2 h code-cache window end (`skills/deploy/da-deploy-protocol.md` § Two clocks).
-The driver and every batch run in the background; its log and ledger are the
-progress file, polled per the master skill's wait discipline.
-After a transient blip, re-run the same command — it re-drives only the FAILs.
+separate `… --publish` run. Two clocks: code first on the ref the user will look at, then
+content; the publish report names the 2 h code-cache window end (`skills/deploy/da-deploy-protocol.md` § Two clocks).
+The driver and every batch run in the background; `stardust/.work/deploy/deploy-batch.progress.json`
+is the progress file (`skills/stardust/scripts/progress.mjs read <file>`) and its
+stdout `SUMMARY` line the completion; after a blip, re-run the same command.
 Then reconcile the ledger into coverage with `update-coverage.mjs`.
 Every wave agent follows `skills/stardust/reference/fan-out.md` § Worker contract
 (liveness, resume-once, finisher) and § Scope and type of delegated agents; every

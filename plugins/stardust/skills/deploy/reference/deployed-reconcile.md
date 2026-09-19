@@ -2,7 +2,7 @@
 
 Full text of deploy Step 10. Read:
 - § Step 10 — after a page is `deployed`: what the atomic contract already proved, the QA-scope note;
-- § The six reconcile checks — the per-page procedure: content-diff summary, deployed eyeball, CLS probe, chrome crop gate (#115), ≥1920 box check (#116), geometry-fix hygiene (#117);
+- § The six reconcile checks — served-check first (gate after the origin serves the round), then the per-page procedure: content-diff summary, deployed eyeball, CLS probe, chrome crop gate (#115), ≥1920 box check (#116), geometry-fix hygiene (#117);
 - § Running content-diff — the commands and the fixed-asset URL grep (#44);
 - § Reading content-diff — how to triage its flags (#78);
 - § Scope — when to hand over to the site-wide `qa` sweep or the rollout fix loop instead.
@@ -21,6 +21,8 @@ After deploy, reconcile the EDS page against the source prototype on the **DEPLO
 > a blocking gate, and the deployed eyeball is the load-bearing visual check.
 
 ## The six reconcile checks
+
+**Gate only after the origin serves what you shipped.** Run the checks below only after `node skills/deploy/scripts/served-check.mjs <css-or-js-url> --grep '<marker from the round's edit>' --wait 180` exits 0 for every asset the round touched and for the page's `.plain.html` marker — a gate run earlier measures yesterday's code; the wait is the helper's capped poll, never `sleep N; <gate>`.
 
 **1. `content-diff` — advisory structural summary (`skills/diff/scripts/content-diff.mjs`).** Extracts an ordered, role-classified inventory ({heading, eyebrow, cta+href, body}) from each `<main>` (computed-style + tag, so the prototype's `.ds-*` DOM and the EDS block DOM compare symmetrically) and diffs them. **Read the SUMMARY line first** — a large per-role or `img` count delta is a fast dropped-section signal. Treat its per-node `MISSING`/`ROLE SWAP` findings as **advisory leads to verify by eye**, NOT auto-blocking: `block-roundtrip` (#94, A6) already gated in-block content fidelity with the same classifier PRE-deploy, so a Step-10 🔴 that #94 did not show is either a real DA-transport reshape (a stripped tag, an unwrapped `<p>` #79, a flattened row #50/#62 — fix it) **or** a known false-positive class (auto-generated TOC/anchor href schemes; verbatim-vs-authored typography — now largely folded out by apostrophe/quote/ellipsis/dash normalization in the classifier). Confirm which by eye before acting; the script exits 0 (advisory) regardless.
 

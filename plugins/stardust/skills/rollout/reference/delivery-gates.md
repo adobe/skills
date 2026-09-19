@@ -127,7 +127,8 @@ so the gates run uniformly:
   "published-origin gate NOT run"; it never invents a publish path. On
   re-auth the coordinator runs `next`, then the published-origin gate on the
   newly delivered pages, and only then flips coverage — the ledger's POST
-  codes never flip state ("Admin 200 ≠ delivered" below).
+  codes never flip state ("Admin 200 ≠ delivered" below). Halt classes, exit
+  codes and remedies: `skills/deploy/da-deploy-protocol.md` § DA_TOKEN lifecycle.
 - **Validate structure BEFORE deploy.** Cheap deterministic check on every authored
   file — exactly one `<h1>`, the body/`<main>`/`<footer>` wrapper, balanced
   `<div>`s — catches a truncated/garbled file before it reaches DA.
@@ -144,8 +145,11 @@ so the gates run uniformly:
   only thing that catches it after the fact. Fix = rename to the lowercase path,
   redeploy, `DELETE` the stale uppercase DA source, add a redirect.
 - **Long batches run in the background** (a 130-page `PUT`+preview loop exceeds a
-  2-min foreground budget); log per-page OK/FAIL and re-drive only the FAILs.
-  Transient `PUT=000` → retry; `PUT=201 PRE=4xx/400` → a path-safety case (Gate 3);
-  `200 + about:error` → an image case (Gate 2).
+  2-min foreground budget); the driver's ledger, repairs, progress file, `SUMMARY`
+  line and exit codes (0/1/2/3): `skills/deploy/da-deploy-protocol.md` § Delivery
+  pipeline and § DA_TOKEN lifecycle — read those, never `sleep N; grep -c` a log.
+  Gate mapping of the driver's verdicts: `PUT=201 PRE=4xx/400` → a path-safety case
+  (Gate 3); a `200 + about:error` that PERSISTS after the driver's one re-preview →
+  an image case (Gate 2); `body-invalid` / `overwrite-guard` → the authored file, not DA.
 - **Shell and runner quirks** (zsh PATH loss in loops, bash 3.2, the 2-minute
   foreground cap): `../../stardust/reference/harness-quirks.md` § Shell · § Runner.
