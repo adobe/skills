@@ -15,7 +15,7 @@ metadata:
 |---|---|---|---|
 | Setup 1–4 | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/extract/scripts/crawl.mjs` → `stardust/scripts/crawl.mjs`; origin-collision and flow guard; consent pre-flight; bot-management probe | flow stamped before a migration crawl | `_crawl-log.json#consent`, `#discovery.fetchTechnique` |
 | 1 Discovery | robots sitemaps → standard → conventions → nav union → BFS (`--depth`); subtree from the typed path; junk filter; cap via `--cap <N>` / `--all` / `--pages <slugs>` / `--single` | informational summary, no confirmation gate | `stardust/current/_crawl-log.json` |
-| 2 Per-page extraction | `node stardust/scripts/crawl.mjs --url <origin> [--pages …] [--cap N \| --all \| --single] [--refresh <slug,…> \| --force] [--headed] [--concurrency N] [--wait <mode>] [--dynamics] [--mobile <mode>] [--dpr N] [--depth N] [--cookie n=v]` | live-render evidence contract; synthesis is a Phase 2 failure | `current/pages/<slug>.json` + `.html`, `assets/screenshots/<slug>.png`, `assets/media/`, `state.json` page → `extracted` |
+| 2 Per-page extraction | `node stardust/scripts/crawl.mjs --url <origin> [--pages …] [--cap N \| --all \| --single] [--refresh <slug,…> \| --force] [--headed] [--concurrency N] [--wait <mode>] [--dynamics] [--mobile <mode>] [--dpr N] [--depth N] [--cookie n=v] [--storage-state <file> \| --fresh-state] [--save-state] [--solve-wait <ms>]` | live-render evidence contract; synthesis is a Phase 2 failure | `current/pages/<slug>.json` + `.html`, `assets/screenshots/<slug>.png`, `assets/media/`, `state.json` page → `extracted` |
 | 2.5 Vision verification | look at each screenshot against its record; `_signals` flags first; escalation ladder (wait mode → next bot-management tier → fresh context); `node evals/lint/crawl-log-lint.mjs --dir stardust/current` | verdict `ok` / `recaptured` / `suspect`; never `ok` on DEGRADED / overlay | `_crawl-log.json#visionCheck[]` |
 | 3 Brand-surface extraction | aggregate across all extracted pages (+ brand-source pages) | source citation per value | `current/_brand-extraction.json`, `assets/logo.<ext>`, `assets/favicon.<ext>` |
 | 4 Seed current-state docs | author directly from impeccable's format specs (no `$impeccable init` / `document`) | provenance block first | `current/PRODUCT.md`, `current/DESIGN.md`, `current/DESIGN.json` |
@@ -76,6 +76,13 @@ critique, and it does not modify the live site. It writes only under
   runs pass `all`.
 - `--dpr <n>` — optional, default 1 (D4: the gate captures at 1);
   recorded in `_provenance.dpr`.
+- `--storage-state <file>` / `--fresh-state` — optional. Load a saved
+  session into the probe / start clean; default: the reserved
+  `stardust/current/_storage-state.json` when its cookies match the host.
+- `--save-state` — optional, default off. Write the probe session to the
+  reserved file even without a cleared challenge.
+- `--solve-wait <ms>` — optional, unset by default (no interactive
+  solve). Tier 3, window visible; wait for a human to clear the wall.
 - `--wait <fast|medium|spec|auto>` — optional. Wait strategy per page.
   Default `medium`. See `reference/playwright-recipe.md` § Wait modes.
 - `--no-junk-filter` — optional. Disable the default junk-page filter
@@ -319,8 +326,7 @@ first key. **The bundled crawler also saves the settled rendered DOM
 verbatim as `stardust/current/pages/<slug>.html`** (path in the
 record's `renderedHtml` field). Capture once, parse offline: importers
 and sibling generators iterate against this artifact instead of
-re-running live probes per selector guess (recorded: 4+ live
-round-trips per page family before the switch); live probes stay for
+re-running live probes per selector guess; live probes stay for
 geometry and computed styles. Save referenced media to
 `stardust/current/assets/media/` preserving basename plus a short
 content hash.
@@ -574,9 +580,8 @@ After all Phase 2-5 writes succeed:
    counts. Flag `⚠ low-media` when a brand/marketing page (register
    `brand`, or a landing/solution/product template) has
    `cssBackgrounds: []` **and** no raster ≥ 600 px wide — the signature
-   of a silently failed background / lazy-media walk (recorded: a SaaS
-   site with `cssBackgrounds: []` on every page, all product imagery
-   lost). Re-run the row with `--refresh`, then up the ladder; a
+   of a silently failed background / lazy-media walk. Re-run the row
+   with `--refresh`, then up the ladder; a
    `brand`-register site with all-zero `bg` counts is suspect, not
    "uses no background images".
 
@@ -660,16 +665,13 @@ Page captures run **concurrently**: the Phase 2 queue is drained by
 aggregate incrementally as long as `_brand-extraction.json` reflects
 every extracted page.
 
-Live-origin budget (code, not a rule to remember): `crawl.mjs` paces
-every navigation per host (≥ 3 s gap, ≤ 10/min; `robots.txt`
-`Crawl-delay` widens the gap; a learned ceiling persists in
-`stardust/live-budget.json`), drops to **one** worker under a bot
-block or after a bare 429 — a rate limit, not a challenge: retried once
-with `Retry-After`, then a failure row with the hint — and holds
-`stardust/.work/live-<host>.lock` so two live tools never hit one
-origin at once (`STARDUST_LIVE_FORCE=1` overrides; a live holder →
-exit 2). `state.json` itself is never locked: two extracts on one
-project stay last-write-wins (`state-machine.md` § Concurrency).
+`crawl.mjs` paces every navigation per host and runs **one** worker
+under a bot block or after a bare 429 (`reference/playwright-recipe.md`
+§ Bot-management fallback has the classes; the ceilings live in the
+script header); `stardust/.work/live-<host>.lock` refuses a second live
+tool on the same origin (`STARDUST_LIVE_FORCE=1` overrides). `state.json`
+itself is never locked — two extracts on one project stay
+last-write-wins (`state-machine.md` § Concurrency).
 
 ## Failure modes
 
@@ -713,8 +715,7 @@ project stay last-write-wins (`state-machine.md` § Concurrency).
   "ProvenanceMissing"`) — never a record synthesized from
   `_brand-extraction.json` + URL patterns + captured photos: it is
   indistinguishable from a success and propagates fabricated content
-  through every downstream phase (recorded: 20 of 25 pages
-  synthesized, caught four phases later).
+  through every downstream phase.
 
 ## Prep mode (--prep)
 

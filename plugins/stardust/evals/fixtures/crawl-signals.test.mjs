@@ -8,7 +8,10 @@
 // Runs without playwright: crawl.mjs imports it lazily inside main().
 // Usage: node plugins/stardust/evals/fixtures/crawl-signals.test.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
-import { captureQualityOf, SHOT_WRAP_PX, OVERLAY_FLAG_PCT, challengeMarker, CHALLENGE_PHRASE, HostBudget, BUDGET_DEFAULT, parseRetryAfter, mergeLiveBudget } from '../../skills/extract/scripts/crawl.mjs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { captureQualityOf, SHOT_WRAP_PX, OVERLAY_FLAG_PCT, challengeMarker, CHALLENGE_PHRASE, HostBudget, BUDGET_DEFAULT, parseRetryAfter, mergeLiveBudget, tuneBudget, sessionReusedOf, UNPACED_DISCOVERY } from '../../skills/extract/scripts/crawl.mjs';
 
 assert.equal(captureQualityOf({ emptyMain: false, subResourceBlock: false, overlayCoverPct: 95, spaShellSuspect: true }), 'ok', 'overlay / SPA-shell flags do not degrade by themselves');
 assert.equal(captureQualityOf({ emptyMain: true, subResourceBlock: false }), 'degraded', 'blank <main> with no real image → degraded');
@@ -36,7 +39,7 @@ assert.equal(challengeMarker(200, { 'x-datadome': 'protected' }), null, 'DataDom
 assert.equal(challengeMarker(404, { 'set-cookie': 'session=1' }), null, 'unrelated cookies never classify');
 assert.ok(CHALLENGE_PHRASE.test('Press & Hold to confirm you are a human') && CHALLENGE_PHRASE.test('Access to this page has been denied.') && !CHALLENGE_PHRASE.test('Hold on to your hats — new arrivals'), 'phrase table');
 
-// HostBudget — pacing per host with a fake clock (SKILL.md § Concurrency: ≥ 3 s gap, ≤ 10/min, halve on a bare 429)
+// HostBudget — pacing per host with a fake clock (crawl.mjs header § Live budget: ≥ 3 s gap, ≤ 10/min, halve on a bare 429)
 assert.deepEqual(BUDGET_DEFAULT, { navPerMin: 10, minGapMs: 3000 });
 let clock = 1_000_000; const slept = [];
 const budget = new HostBudget({ now: () => clock, sleep: async (ms) => { slept.push(ms); clock += ms; } });
@@ -63,5 +66,24 @@ assert.equal(parseRetryAfter('30'), 30); assert.equal(parseRetryAfter(undefined)
 assert.ok(parseRetryAfter(new Date(Date.now() + 45000).toUTCString()) >= 44, 'HTTP-date form → seconds from now');
 assert.deepEqual(mergeLiveBudget({ 'a.example': { navPerMin: 3 } }, 'b.example', { navPerMin: 5, minGapMs: 6000 }), { 'a.example': { navPerMin: 3 }, 'b.example': { navPerMin: 5, minGapMs: 6000 } }, 'merge-by-host keeps other hosts');
 assert.deepEqual(mergeLiveBudget(null, 'a.example', { navPerMin: 1 }), { 'a.example': { navPerMin: 1 } });
+
+
+// tuneBudget — the ONE instance created before the probe is tightened in place, never loosened
+const dir = mkdtempSync(join(tmpdir(), 'crawl-budget-')); const args = { out: join(dir, 'current') };
+writeFileSync(join(dir, 'live-budget.json'), JSON.stringify({ 'www.example.test': { navPerMin: 4, minGapMs: 8000 }, 'loose.example.test': { navPerMin: 30, minGapMs: 500 } }));
+const fresh = () => new HostBudget({ ...BUDGET_DEFAULT, source: 'default', now: () => clock, sleep: async () => {} });
+assert.deepEqual(tuneBudget(fresh(), args, 'example.test', null).toJSON(), { navPerMin: 10, minGapMs: 3000, source: 'default' }, 'no learned entry → defaults');
+assert.deepEqual(tuneBudget(fresh(), args, 'www.example.test', null).toJSON(), { navPerMin: 4, minGapMs: 8000, source: 'live-budget.json' }, 'apex→www adoption re-keys and picks up the www ceiling');
+assert.deepEqual(tuneBudget(fresh(), args, 'loose.example.test', null).toJSON(), { navPerMin: 10, minGapMs: 3000, source: 'default' }, 'a looser learned entry never loosens the default');
+assert.deepEqual(tuneBudget(fresh(), args, 'example.test', 12).toJSON(), { navPerMin: 10, minGapMs: 12000, source: 'robots Crawl-delay' }, 'Crawl-delay widens the gap after discovery');
+const hit = fresh(); hit.rateLimited(null); tuneBudget(hit, args, 'www.example.test', 5);
+assert.deepEqual(hit.toJSON(), { navPerMin: 4, minGapMs: 8000, source: 'rate-limited' }, 'a probe 429 already taken keeps its source; the stricter learned values still apply');
+// sessionReusedOf — _provenance.storageState is a pin, not a constant (current-state-schema.md § Top-level shape)
+assert.equal(sessionReusedOf({}), false, 'plain headless run, 0 cookies → false');
+assert.equal(sessionReusedOf({ botBlock: 'challenge' }), true, 'a cleared challenge is an admitted session');
+assert.equal(sessionReusedOf({ loadedState: '/x/_storage-state.json' }), true, 'a loaded reserved/explicit file is reuse');
+assert.equal(sessionReusedOf({ cookies: 3 }), true, 'a probe clone that carries cookies is reuse');
+assert.equal(sessionReusedOf({ botBlock: null, loadedState: null, cookies: 0 }), false);
+assert.ok(UNPACED_DISCOVERY.has('/robots.txt') && UNPACED_DISCOVERY.has('/sitemap.aspx') && !UNPACED_DISCOVERY.has('/sitemaps/pages.xml'), 'only the ≤ 5 guessed probes skip the budget; declared children and BFS hops are paced');
 
 console.log('crawl-signals test: ok');

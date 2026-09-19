@@ -139,18 +139,27 @@
  *   BARE 429 (no edge signature = rate limit, not a challenge): the ceiling is
  *   halved and persisted (merge-by-host), Retry-After honoured (≤ 60 s), the
  *   page retried ONCE, then recorded as HTTPError { rateLimited: true } with
- *   the hint. stardust/.work/live-<host>.lock (pid liveness; STARDUST_LIVE_FORCE=1
+ *   the hint. The PROBE takes the same path (a 429 on the first hit is not
+ *   "admitted"): retried once after the wait, then fatal HTTPError (exit 2)
+ *   with the halved ceiling persisted before exit. The budget exists from the
+ *   first navigation: discovery's sitemap children and BFS hops are paced too
+ *   (the ≤ 5 guessed probes are not), and the gap widens once Crawl-delay is
+ *   read. stardust/.work/live-<host>.lock (pid liveness; STARDUST_LIVE_FORCE=1
  *   overrides) keeps two live tools off one origin at once — the recorded
- *   "two launches within a minute, both challenged" class.
+ *   "two launches within a minute, both challenged" class; the lock is
+ *   re-keyed to the post-redirect host (apex→www) so it matches the budget's.
  * Exit codes: 0 done (per-page failures are in the log) · 2 fatal (incl.
  *   LiveLockError: another live tool holds stardust/.work/live-<host>.lock) ·
  *   3 BotChallengeError (tier 3 still challenged, or --solve-wait expired —
  *   never captured as content).
  * Exports (for evals/fixtures/*.test.mjs): slugify, assignSlugs, mergeCrawlLog,
- *   TIERS, tierOf, captureQualityOf, SHOT_WRAP_PX, discoverInventory,
- *   parseRobots, parseCookieFlag, challengeMarker, HostBudget, parseRetryAfter,
- *   mergeLiveBudget — importing this module runs nothing; main()
- *   runs only when the file is the entry script.
+ *   RUN_LEVEL_DISCOVERY, TIERS, tierOf, captureQualityOf, SHOT_WRAP_PX,
+ *   OVERLAY_FLAG_PCT, discoverInventory, parseRobots, parseCookieFlag,
+ *   challengeMarker, CHALLENGE_PHRASE, HostBudget, BUDGET_DEFAULT,
+ *   parseRetryAfter, mergeLiveBudget, tuneBudget, sessionReusedOf,
+ *   UNPACED_DISCOVERY —
+ *   importing this module runs nothing; main() runs only when the file is
+ *   the entry script.
  *
  * Needs playwright importable from the project (see extract/SKILL.md Setup —
  * `npm i -D playwright` or the Playwright MCP server; the `npx playwright`
@@ -370,16 +379,25 @@ export function mergeLiveBudget(prev, host, entry) {
   return out;
 }
 function liveBudgetPath(args) { return path.resolve(args.out, '..', 'live-budget.json'); }
-// the ceiling for this run: stricter of default / learned (live-budget.json) / robots Crawl-delay
-function makeBudget(args, host, crawlDelay) {
-  let cfg = { ...BUDGET_DEFAULT, source: 'default' };
+// the ceiling for this run: stricter of default / learned (live-budget.json) / robots Crawl-delay.
+// Created BEFORE the probe (the first navigation is paced and a probe 429 is
+// handled); `tuneBudget` tightens the SAME instance in place once the adopted
+// host and Crawl-delay are known — a 429 already taken is never loosened.
+function makeBudget(args, host, crawlDelay) { return tuneBudget(new HostBudget({ ...BUDGET_DEFAULT, source: 'default' }), args, host, crawlDelay); }
+export function tuneBudget(budget, args, host, crawlDelay) {
   try {
     const learned = existsSync(liveBudgetPath(args)) ? JSON.parse(readFileSync(liveBudgetPath(args), 'utf8'))[host] : null;
-    if (learned) cfg = { navPerMin: Math.min(cfg.navPerMin, learned.navPerMin || cfg.navPerMin), minGapMs: Math.max(cfg.minGapMs, learned.minGapMs || 0), source: 'live-budget.json' };
-  } catch { /* unreadable — defaults */ }
-  if (crawlDelay && crawlDelay * 1000 > cfg.minGapMs) cfg = { ...cfg, minGapMs: crawlDelay * 1000, source: 'robots Crawl-delay' };
-  return new HostBudget(cfg);
+    if (learned && ((learned.navPerMin || Infinity) < budget.navPerMin || (learned.minGapMs || 0) > budget.minGapMs)) {
+      budget.navPerMin = Math.min(budget.navPerMin, learned.navPerMin || budget.navPerMin); budget.minGapMs = Math.max(budget.minGapMs, learned.minGapMs || 0);
+      if (!budget.rateLimits) budget.source = 'live-budget.json';
+    }
+  } catch { /* unreadable — keep the current ceiling */ }
+  if (crawlDelay && crawlDelay * 1000 > budget.minGapMs) { budget.minGapMs = crawlDelay * 1000; if (!budget.rateLimits) budget.source = 'robots Crawl-delay'; }
+  budget.tokens = Math.min(budget.tokens, budget.navPerMin);
+  return budget;
 }
+// the fatal path (main().catch) persists a halved ceiling before exit 2, so a probe 429 outlives the aborted run
+let persistOnFatal = null;
 function persistBudget(args, host, budget) {
   try {
     const file = liveBudgetPath(args);
@@ -404,9 +422,14 @@ function acquireLiveLock(args, host) {
     }
   }
   writeFileSync(file, JSON.stringify({ host, pid: process.pid, tool: 'crawl.mjs', startedAt: new Date().toISOString() }));
-  process.on('exit', () => { try { unlinkSync(file); } catch { /* already gone */ } });
-  return file;
+  const release = () => { try { unlinkSync(file); } catch { /* already gone */ } };
+  process.on('exit', release);
+  return { file, host, release };
 }
+// _provenance.storageState / discovery.storageState — true only when an ADMITTED
+// session was reused: a cleared challenge, a loaded reserved/explicit file, or a
+// probe clone that actually carries cookies (a 0-cookie clone reuses nothing).
+export function sessionReusedOf({ botBlock = null, loadedState = null, cookies = 0 } = {}) { return !!(botBlock || loadedState || cookies > 0); }
 // ---- admitted-session reuse (mirror of live-session.mjs resolveStorageState; crawl ships alone) ----
 const STORAGE_STATE_FILE = '_storage-state.json'; // reserved under <out> — never tracked (artifact-map.md)
 function storageStatePath(args) { return path.join(args.out, STORAGE_STATE_FILE); }
@@ -482,9 +505,19 @@ const CHALLENGE_DOM = '#px-captcha, [id^="px-captcha"], iframe[src*="challenges.
 export const CHALLENGE_PHRASE = /(press\s*&?\s*hold|before we continue|are you a human|verify you are human|access to this page has been denied|checking your browser|just a moment)/i;
 async function challengeInDom(page) {
   const st = await page.evaluate((sel) => { const t = document.body ? document.body.innerText : ''; return { len: t.length, head: t.slice(0, 4000), dom: !!document.querySelector(sel), h: document.documentElement.scrollHeight, vh: window.innerHeight }; }, CHALLENGE_DOM).catch(() => null);
-  if (!st) return { walled: true, st: null }; // navigating (a solve reloads the page) — not clean yet
+  // evaluate rejected = the page is navigating (a solve reloads it, a late
+  // redirect is in flight): PENDING — neither clean nor a detected wall. Only a
+  // read DOM may say `walled`, so a transient failure never opens the solve
+  // window on a page that has no challenge.
+  if (!st) return { walled: false, pending: true, st: null };
   const walled = st.dom || (st.len < 1500 && CHALLENGE_PHRASE.test(st.head));
-  return { walled, st };
+  return { walled, pending: false, st };
+}
+// probe entry check: a pending read gets ONE settle-and-retry before it counts as clean
+async function challengeInDomSettled(page) {
+  let r = await challengeInDom(page);
+  if (r.pending) { await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {}); r = await challengeInDom(page); }
+  return r;
 }
 // --solve-wait: poll the SAME page (never reload — that destroys a Press & Hold
 // in progress) until two consecutive clean polls, or the deadline.
@@ -494,8 +527,8 @@ async function solveWait(page, ms) {
   let clean = 0;
   while (Date.now() < deadline) {
     await page.waitForTimeout(2500);
-    const { walled, st } = await challengeInDom(page);
-    const ok = !walled && st && st.len >= 800 && st.h > 1.5 * st.vh;
+    const { walled, pending, st } = await challengeInDom(page);
+    const ok = !pending && !walled && st.len >= 800 && st.h > 1.5 * st.vh;
     clean = ok ? clean + 1 : 0;
     if (clean >= 2) return true;
   }
@@ -556,6 +589,7 @@ export function parseRobots(text, origin) {
   return { sitemaps: [...new Set(sitemaps)], crawlDelay };
 }
 const SITEMAP_MAX_DEPTH = 3; // ia-extraction.md § Recursive sitemap traversal
+export const UNPACED_DISCOVERY = new Set(['/robots.txt', '/sitemap.xml', '/sitemap_index.xml', '/.sitemap.xml', '/sitemap.aspx']); // the guessed probes; everything else discovery fetches is paced
 const SITEMAP_MAX_URLS = 10000;
 const ASSET_RE = /\.(css|js|mjs|json|xml|pdf|png|jpe?g|gif|svg|webp|avif|ico|zip|gz|mp4|webm|mp3|woff2?|ttf|otf)(?:[?#]|$)/i;
 // depth-first over <sitemapindex> children (visited set, depth ≤ 3); <urlset>
@@ -700,8 +734,13 @@ async function discover(args, page) {
     }
     return { urls, discovery: { source: '--pages', subtree: null, kept: urls, cut: [] } };
   }
-  // every discovery fetch rides the probe page: browser UA, admitted cookies, one origin
-  const io = { fetchText: (u) => page.evaluate(async (x) => { try { const r = await fetch(x, { credentials: 'include' }); return r.ok ? await r.text() : null; } catch { return null; } }, u) };
+  // every discovery fetch rides the probe page: browser UA, admitted cookies, one
+  // origin — and takes a budget token unless it is one of the ≤ 5 guessed probes
+  // (sitemap-index children and BFS hops are the burst the budget exists to prevent)
+  const io = { fetchText: async (u) => {
+    if (args.budget && !UNPACED_DISCOVERY.has(new URL(u).pathname)) await args.budget.take();
+    return page.evaluate(async (x) => { try { const r = await fetch(x, { credentials: 'include' }); return r.ok ? await r.text() : null; } catch { return null; } }, u);
+  } };
   const navLinks = await page.evaluate((origin) => [...document.querySelectorAll('a[href]')]
     .map((a) => a.href).filter((h) => h.startsWith(origin)), args.origin);
   return discoverInventory({ entry, origin: args.origin, entryPath: args.entryPath, max: args.max, botBlock: args.botBlock, depth: args.depth, navLinks }, io);
@@ -1457,17 +1496,33 @@ async function main() {
   const probeUrl = args.pages?.length ? normalizeUrl(args.pages[0], args.url) : args.url;
   let botBlock = null; // 'fingerprint' | 'challenge'
   const escalations = []; // { tier, block } per rejected tier
-  acquireLiveLock(args, new URL(probeUrl).hostname); // one live tool per origin; released on exit
+  let host = new URL(probeUrl).hostname;
+  let liveLock = acquireLiveLock(args, host); // one live tool per origin; released on exit (re-keyed after an origin redirect)
+  args.budget = makeBudget(args, host, null); // paced from the FIRST navigation; tuned after discovery (adopted host, Crawl-delay)
+  persistOnFatal = () => { if (args.budget?.rateLimits) persistBudget(args, host, args.budget); };
   for (;;) {
     browser = await launchTier(chromium, tier);
     context = await newContext(browser, tier >= 2, ctxExtra, cookiesFor(args));
     probe = await context.newPage();
     let blocked = null;
     try {
+      await args.budget.take();
       let probeResp = await probe.goto(probeUrl, { waitUntil: 'domcontentloaded', timeout: tier === 1 ? 30000 : 45000 });
+      // a BARE 429 on the probe is a rate limit, not admission: same path as a
+      // worker (halve, persist, Retry-After, ONE retry), then fatal — nothing
+      // downstream may run discovery on a 429 body and call the site "1 page".
+      if (probeResp && probeResp.status() === 429 && !isChallengeResponse(probeResp)) {
+        const waitMs = args.budget.rateLimited(parseRetryAfter(probeResp.headers()['retry-after']));
+        args.throttled = true; persistBudget(args, host, args.budget);
+        console.error(`[crawl] HTTP 429 (rate limit, no edge signature) on the probe — ceiling halved (${args.budget.navPerMin}/min, ≥ ${args.budget.minGapMs / 1000} s) and recorded; retrying once in ${Math.round(waitMs / 1000)} s`);
+        await probe.waitForTimeout(waitMs);
+        await args.budget.take();
+        probeResp = await probe.goto(probeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+        if (probeResp && probeResp.status() === 429) throw Object.assign(new Error(`HTTP 429 — rate-limited by ${host}; ceiling recorded in stardust/live-budget.json — rerun alone, later`), { errorClass: 'HTTPError', rateLimited: true });
+      }
       if (tier === 3 && args.solveWait) {
         // interactive solve: header stage OR DOM stage says wall → wait for the human, no reload
-        if (isChallengeResponse(probeResp) || (await challengeInDom(probe)).walled) {
+        if (isChallengeResponse(probeResp) || (await challengeInDomSettled(probe)).walled) {
           const solved = await solveWait(probe, args.solveWait);
           if (!solved) throw Object.assign(new Error(`bot challenge not solved in ${args.solveWait} ms (--solve-wait) — nothing captured`), { errorClass: 'BotChallengeError', nextTier: null });
           botBlock = botBlock || 'challenge'; // a cleared challenge → the state is saved below
@@ -1509,7 +1564,7 @@ async function main() {
       console.error(`[crawl] storage state: saved ${savedState} (${n} cookies; downstream live instruments reuse it by default). Fingerprint-bound clearances (PerimeterX/HUMAN) will not replay; Cloudflare's managed clearance does until it escalates.`);
     } catch (e) { console.error(`[crawl] WARN could not save storage state: ${e.message}`); }
   }
-  args.sessionReused = true;
+  args.sessionReused = sessionReusedOf({ botBlock, loadedState, cookies: ctxExtra.storageState?.cookies?.length || 0 });
   // one worker under a bot block: concurrency 4 drew 9 re-challenges even with
   // the cloned session; some origins score SESSIONS, not requests
   if ((tier > 1 || botBlock) && args.concurrency > 1) { console.error(`[crawl] concurrency ${args.concurrency} → 1 (bot-management tier ${tier}${botBlock ? `, ${botBlock} cleared` : ''}: one context, human pace)`); args.concurrency = 1; }
@@ -1540,11 +1595,14 @@ async function main() {
       console.error(`[crawl] ${entryRedirect.note}`);
     }
   } catch { /* keep declared origin */ }
+  if (new URL(args.origin).hostname !== host) { // lock key = budget key = where the site lives (outside the try: a LiveLockError here must surface)
+    liveLock.release(); host = new URL(args.origin).hostname; liveLock = acquireLiveLock(args, host);
+    tuneBudget(args.budget, args, host, null);
+  }
   args.botBlock = botBlock;
 
   const { urls, discovery } = await discover(args, probe);
-  const host = new URL(args.origin).hostname;
-  args.budget = makeBudget(args, host, discovery.crawlDelay);
+  tuneBudget(args.budget, args, host, discovery.crawlDelay); // Crawl-delay widens the gap now that robots.txt is read
   if (discovery.census) {
     const cut = discovery.cutTruncated || discovery.cut.length;
     console.error(`[crawl] discovered ${urls.length} page(s) via ${discovery.source}${discovery.subtree ? ` under ${discovery.subtree}` : ''} — census ${discovery.census.total} declared, ${discovery.navOnly} nav-only, ${discovery.probes} probe(s); kept ${discovery.kept.length}, cut ${cut}${cut ? ' (--all to lift)' : ''}`);
@@ -1747,5 +1805,9 @@ export function mergeCrawlLog(prev, log, run, okSlugs) {
 // run only as the entry script — importing the module (fixture tests) runs nothing
 const entry = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : null;
 if (entry === import.meta.url) {
-  main().catch((e) => { console.error(`[crawl] fatal: ${e.errorClass || 'Error'}: ${e.message}`); process.exit(e.errorClass === 'BotChallengeError' ? 3 : 2); });
+  main().catch((e) => {
+    console.error(`[crawl] fatal: ${e.errorClass || 'Error'}: ${e.message}`);
+    try { if (persistOnFatal) persistOnFatal(); } catch { /* best effort */ }
+    process.exit(e.errorClass === 'BotChallengeError' ? 3 : 2);
+  });
 }

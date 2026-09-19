@@ -125,7 +125,9 @@ worker under any bot block; the per-host lock keeps other live tools
 out). And a **bare 429** (no edge signature) is a rate limit, not a
 challenge: the host ceiling is halved, `Retry-After` honoured
 (≤ 60 s), the page retried once, the ceiling recorded in
-`stardust/live-budget.json` (`SKILL.md` § Concurrency). The challenge re-fires per context, so
+`stardust/live-budget.json` (the ceilings are in the `crawl.mjs`
+header; the probe takes the same path — a 429 there is never
+"admitted"). The challenge re-fires per context, so
 a worker challenged after the probe cleared escalates the same way
 (pool drained, unfinished pages requeued one tier up).
 Record the tier that worked in
