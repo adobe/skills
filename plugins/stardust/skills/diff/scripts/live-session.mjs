@@ -238,7 +238,8 @@ export async function attachBlockRoute(context, substrings, { authOrigin = null 
   warnCmpBlock(substrings);
   await context.route('**/*', (route) => {
     const req = route.request();
-    const isMainNav = req.isNavigationRequest() && !req.frame().parentFrame();
+    let isMainNav = false;
+    try { isMainNav = req.isNavigationRequest() && !req.frame().parentFrame(); } catch { /* service-worker / pre-frame request: treat as non-main */ }
     if (isMainNav) { try { targetOrigin = new URL(req.url()).origin; } catch { /* keep previous */ } }
     if (blockDecision({ url: req.url(), isMainNav, targetOrigin, authOrigin, substrings })) route.abort('blockedbyclient');
     else route.fallback();
@@ -524,6 +525,9 @@ export const DECLINE_LABELS = [
   'rejeitar todos', 'rejeitar', 'apenas necessários',
   'odrzuć wszystkie', 'odrzuć', 'tylko niezbędne',
 ];
+// Settings/preferences labels: a control that marks a consent container in the
+// generic consentPresent fallback (never clicked — it opens a second layer).
+export const SETTINGS_LABELS = ['cookie settings', 'manage cookies', 'manage preferences', 'settings', 'preferences', 'customize', 'customise', 'more options', 'einstellungen', 'cookie-einstellungen', 'paramétrer', 'personnaliser', 'preferenze', 'configurar', 'instellingen'];
 // Close labels for timed interstitials and survey invites (also tried inside
 // frames — a feedback-survey iframe with a dimming scrim was recorded).
 const CLOSE_LABELS = ['close', 'no thanks', 'no, thanks', 'not now', 'maybe later', 'dismiss', 'skip', 'nein danke', 'non merci', 'no grazie', 'no, gracias', 'nee bedankt', 'nei takk', 'nej tak', 'nej tack', 'não, obrigado', 'nie, dziękuję', '×', '✕'];
@@ -836,13 +840,15 @@ export async function dismissOverlays(page, { extra = [], lateWindowMs = 6000, m
       }
       for (const phrase of phrases) {
         const needle = String(phrase).toLowerCase();
-        let n = 0;
+        let n = 0; const seen = new Set(); // distinct targets — a bar and its <p> resolve to the same ancestor
         for (const el of document.querySelectorAll('body *')) {
           if (el.children.length > 3 || !(el.textContent || '').toLowerCase().includes(needle)) continue;
           let target = el;
           for (let a = el; a && a !== document.body; a = a.parentElement) { const cs = getComputedStyle(a); if (cs.position === 'fixed' || cs.position === 'sticky') { target = a; break; } }
-          if (target.hasAttribute('data-stardust-hidden')) continue;
-          hide(target); n += 1;
+          if (seen.has(target)) continue;
+          seen.add(target);
+          if (!target.hasAttribute('data-stardust-hidden')) hide(target); // hidden by an earlier pass: still a match
+          n += 1;
           if (n >= 5) break;
         }
         out.push({ kind: 'remove-text', sel: `text:${phrase}`, count: n });
@@ -853,7 +859,7 @@ export async function dismissOverlays(page, { extra = [], lateWindowMs = 6000, m
   }
 
   // Fail-loud signal: a consent container STILL visible after the window.
-  const present = await page.evaluate((sels) => {
+  const present = await page.evaluate(({ sels, known }) => {
     const vis = (el) => { const cs = getComputedStyle(el); if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0) return false; const r = el.getBoundingClientRect(); return r.width > 40 && r.height > 24 && r.bottom > 0 && r.top < innerHeight; };
     const desc = (el) => `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${typeof el.className === 'string' && el.className.trim() ? `.${el.className.trim().split(/\s+/).slice(0, 2).join('.')}` : ''}`;
     for (const sel of sels) {
@@ -864,17 +870,32 @@ export async function dismissOverlays(page, { extra = [], lateWindowMs = 6000, m
         }
       } catch { /* bad selector */ }
     }
-    // generic: a fixed/sticky visible element that talks about cookies and carries a consent control
+    // generic: a fixed/sticky visible element whose PROSE (text outside links —
+    // a "Cookie policy" link in a sticky bar is not a banner) talks about
+    // cookies/consent and that carries a consent-shaped control. Site chrome is
+    // never a banner: skip header/nav/footer (and their landmark roles),
+    // anything wrapping a nav, anything with a link list (> 6 hrefs). A
+    // privacy-only wording needs a control whose label is a known
+    // accept/decline/settings label; a cookie/consent wording needs a control
+    // with a SHORT label (≤ 25 chars, the B28 shape) — an unknown label is
+    // still reported (fail-loud), an icon-only "Open menu" button is not.
+    const CHROME = 'header, nav, footer, [role=banner], [role=navigation], [role=contentinfo]';
+    const normL = (s) => String(s || '').toLowerCase().replace(/[\u00a0\u200b]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[.!…»›→]+$/g, '').trim();
+    const labelOf = (c) => normL(c.textContent || c.getAttribute('aria-label') || c.value || '');
+    const proseOf = (root) => { let t = ''; const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); for (let n = w.nextNode(); n; n = w.nextNode()) if (!n.parentElement.closest('a')) t += `${n.data} `; return t.toLowerCase(); };
     for (const el of document.querySelectorAll('body *')) {
       const cs = getComputedStyle(el);
       if (cs.position !== 'fixed' && cs.position !== 'sticky') continue;
-      if (!vis(el)) continue;
-      const t = (el.textContent || '').toLowerCase();
-      if (t.length > 2500 || !/cookie|consent|privacy|datenschutz|confidentialit|privacidad|personvern/.test(t)) continue;
-      if (el.querySelector('button, a[role=button], [role=button], input[type=button]')) return desc(el);
+      if (!vis(el) || el.closest(CHROME) || el.querySelector('nav, [role=navigation]') || el.querySelectorAll('a[href]').length > 6) continue;
+      if ((el.textContent || '').length > 2500) continue;
+      const t = proseOf(el);
+      const strong = /cookie|consent|consens|tracking|samtykke|samtycke|toestemming/.test(t);
+      if (!strong && !/privacy|datenschutz|confidentialit|privacidad|personvern/.test(t)) continue;
+      const labels = [...el.querySelectorAll('button, a[role=button], [role=button], input[type=button], input[type=submit]')].map(labelOf).filter(Boolean);
+      if (labels.some((l) => known.includes(l)) || (strong && labels.some((l) => l.length <= 25))) return desc(el);
     }
     return null;
-  }, CONSENT_CONTAINERS).catch(() => null);
+  }, { sels: CONSENT_CONTAINERS, known: [...ACCEPT_LABELS, ...DECLINE_LABELS, ...SETTINGS_LABELS] }).catch(() => null);
   dismissed.consentContainer = present;
   dismissed.consentPresent = present !== null;
   if (mode === 'deny' && dismissed.consentPresent && !dismissed.rejected) {

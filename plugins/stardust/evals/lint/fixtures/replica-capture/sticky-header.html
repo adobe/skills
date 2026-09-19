@@ -1,0 +1,15 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>sticky header fixture (negative: no consent banner)</title>
+<style>
+  html,body{margin:0;padding:0} body{width:800px;font-family:sans-serif}
+  header{position:sticky;top:0;left:0;width:800px;height:64px;background:#102030;color:#fff;display:flex;align-items:center;gap:24px;padding:0 16px;box-sizing:border-box;z-index:100}
+  header a{color:#fff;text-decoration:none}
+  .topbar{position:fixed;bottom:0;left:0;width:800px;height:48px;background:#333;color:#fff;display:flex;align-items:center;gap:16px;padding:0 16px;box-sizing:border-box}
+  .topbar a{color:#fff}
+  section{height:500px;background:#ffcc00}
+</style></head>
+<body>
+<header><a href="/">Home</a><a href="/products">Products</a><a href="/privacy">Privacy</a><button aria-label="Open menu">☰</button></header>
+<main><section><h1>Content</h1></section><section><h2>More</h2></section></main>
+<div class="topbar"><span>Support</span><a href="/cookie-policy">Cookie policy</a><a href="/privacy">Privacy statement</a><button>Menu</button></div>
+</body></html>

@@ -303,8 +303,13 @@ async function dismissAndLog(page, url, opts, prov, { lateWindowMs = isLiveHttpU
   });
   // Persistent widgets hidden by live-session (both sides, layout kept) —
   // printed and recorded so the pair's hidden lists can be compared.
+  // dismissAndLog runs up to three times per capture (initial, --settle, late
+  // overlay re-sweep): a hide already reported is not printed again; a count
+  // that grew (late-mounted target) updates the sidecar entry and prints.
   for (const h of d.hidden || []) {
-    if (!prov.hidden.some((x) => x.kind === h.kind && x.sel === h.sel)) prov.hidden.push(h);
+    const prev = prov.hidden.find((x) => x.kind === h.kind && x.sel === h.sel);
+    if (prev && prev.count >= h.count) continue;
+    if (prev) prev.count = h.count; else prov.hidden.push(h);
     if (h.count > 0) console.log(`hidden ${h.count} persistent widget(s) via ${h.sel} (${h.kind}; visibility, layout kept)`);
     else if (h.kind === 'remove-text') console.log(`--remove-text ${h.sel.slice(5)}: no element matched`);
   }
@@ -414,10 +419,13 @@ function restorePinned(page) {
 // chunks. Compare the top 96 and bottom 96 rows of chunk N with chunk N+1 —
 // same viewport rows, different page rows by construction — skipping
 // uniform-colour rows (a white band, a flat header background, would
-// false-positive). A seam "fires" when ≥ 8 non-uniform rows are
-// byte-identical, or ≥ 60 % of the compared rows are.
+// false-positive) AND texture rows: a row byte-identical to its own in-chunk
+// neighbour 8 rows up or down is a persistent vertical texture (bordered
+// max-width container, side rail, 1px rule, column gutters) that is identical
+// across chunks without anything being baked in. A seam "fires" when ≥ 8
+// remaining rows are byte-identical, or ≥ 60 % of the compared rows are.
 function seamRepeats(chunks, width) {
-  const ROWS = 96;
+  const ROWS = 96; const STRIDE = 8;
   const rowOf = (img, row) => img.data.subarray(row * img.width * 4, (row + 1) * img.width * 4);
   const uniform = (buf) => { const [r, g, b] = buf; for (let i = 4; i < buf.length; i += 4) if (buf[i] !== r || buf[i + 1] !== g || buf[i + 2] !== b) return false; return true; };
   let seams = 0;
@@ -425,10 +433,11 @@ function seamRepeats(chunks, width) {
     const a = chunks[i].img; const b = chunks[i + 1].img;
     if (a.width !== b.width || a.height !== b.height || a.width !== width) continue;
     const rows = [...Array(ROWS).keys(), ...Array.from({ length: ROWS }, (_, k) => a.height - 1 - k)].filter((r) => r >= 0 && r < a.height);
+    const texture = (r, ra) => (r - STRIDE >= 0 && Buffer.compare(ra, rowOf(a, r - STRIDE)) === 0) || (r + STRIDE < a.height && Buffer.compare(ra, rowOf(a, r + STRIDE)) === 0);
     let compared = 0; let same = 0;
     for (const r of rows) {
       const ra = rowOf(a, r);
-      if (uniform(ra)) continue;
+      if (uniform(ra) || texture(r, ra)) continue;
       compared += 1;
       if (Buffer.compare(ra, rowOf(b, r)) === 0) same += 1;
     }

@@ -35,7 +35,6 @@
  *                         never blocked. Run the SAME value on both sides —
  *                         the sidecar records `blocked` and an asymmetric pair
  *                         is refused by pixel-compare
-  --block <substr,…> abort requests whose URL contains a substring (3rd-party widgets with no close control; never the page's own origin) — SAME value on both sides
  *     --consent-mode <m>  accept | deny (default accept; deny clicks reject-all, never accept — live-session)
  *     --headed[=window]   bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
  *     --locale <tag>     pin Accept-Language + locale (e.g. en-GB)

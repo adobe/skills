@@ -536,22 +536,27 @@ capture-invisible under the freeze, and the pixel re-run proves it).
 ## Fixed and sticky chrome (headers, floating tabs × stitched capture)
 
 `position: fixed`/`sticky` chrome interacts with the stitched capture in
-three ways, each observed live on the first fresh-site run (a design-furniture site):
+two ways, both observed live on the first fresh-site run (a design-furniture site):
 
-1. **Seam repeats.** A fixed element renders in EVERY viewport chunk, so
-   the stitched PNG shows it repeated at each chunk seam (every `--vh` px).
-   Instrument behavior, not a page defect — but only while it is symmetric.
-2. **Content occlusion.** Each repeat occludes a band of real content under
-   that seam; the occluded band is invisible to the pixel probe on both
-   sides (again: harmless only while symmetric).
-3. **Scroll-state morph.** Chrome that changes with scroll captures
+1. **Seam repeats and occlusion — instrument-provided.** A fixed element
+   would render in every viewport chunk, repeated at each seam and hiding a
+   band of content under it; `stitch-shot` (gate doc rule 16) now sets
+   `opacity:0` on every fixed and stuck-sticky element before shooting
+   chunks 2+ and restores it after, on BOTH sides (`--keep-pinned` is the
+   off-switch; `WARN fixed overlay baked into N seams` names chrome the hide
+   could not reach — iframe/shadow-hosted — for `--exclude` on both sides).
+   Chunk 1 keeps everything, so the chrome crop still reads the header. No
+   recreation duty remains for the repeats; what remains is the chrome
+   itself, replicated fixed with its scroll-state morph so chunk 1 and the
+   chrome-crop gate match.
+2. **Scroll-state morph.** Chrome that changes with scroll captures
    differently per chunk: the site swaps to a `body.header-minimized` 55px
-   hamburger bar once scrolled, so chunks 2+ carry different chrome than
-   chunk 1 — the stitched live capture contains BOTH states.
+   hamburger bar once scrolled, so chunks 2+ (and any in-flow offset the
+   morph moves) carry a different state than chunk 1.
 
 **Resolution — symmetry, including the scroll-state trigger.** Replicate
 the fixed chrome AS fixed (never flattened to static/in-flow — that changes
-both the geometry and the seam behavior), and when the live chrome morphs
+both the geometry and the chrome crop), and when the live chrome morphs
 with scroll, give the prototype the SAME morph so chunks 2+ match.
 
 This is the one sanctioned exception to the "no JS unless a section's
@@ -567,10 +572,11 @@ them), no frameworks, no other behavior. Log the addition in the progress
 ledger the way a CSS portation is logged.
 
 **Reading the diff:** any height delta between the captures de-aligns the
-seams, turning every seam repeat into a ghost band in the pixel diff
-(observed: seam ghosting of a fixed newsletter tab, plus a hot band exactly
-at a chunk boundary). Fix the height delta first — seam ghosts below the
-first hot band are offset contamination, not chrome bugs.
+seams; under `--keep-pinned`, or when the seam WARN fires, every repeat
+becomes a ghost band in the pixel diff (observed: seam ghosting of a fixed
+newsletter tab, plus a hot band exactly at a chunk boundary). Fix the
+height delta first — seam ghosts below the first hot band are offset
+contamination, not chrome bugs.
 
 ## CSS-portation fallback (per-section, never page-level)
 

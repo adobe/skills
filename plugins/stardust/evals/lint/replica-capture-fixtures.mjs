@@ -17,7 +17,9 @@
 //      lint/fixtures/replica-capture/ (a fixed header that must be hidden on
 //      chunks 2+, a static page that must stay byte-identical, an overlay
 //      wall that must exit 5, --expect-height 99999 → exit 5, the overlays
-//      page for dismissOverlays, a blocked third-party sub-resource). They
+//      page for dismissOverlays, a sticky-header page that must NOT read as a
+//      consent banner, a blocked third-party sub-resource, gate.sh rounds
+//      incl. the anchor-live.skip marker). They
 //      run when a node_modules tree with playwright + pngjs + pixelmatch is
 //      resolvable: `STARDUST_GATE_DEPS=<dir>/node_modules`, else the repo
 //      root's node_modules. Otherwise this layer prints ONE `SKIP` line and
@@ -70,6 +72,11 @@ check(ls.normLabel('  Godta\u00a0ALLE! ') === 'godta alle' && ls.normLabel('Acce
 check(ls.HIDE_DEFAULTS.includes('#ot-sdk-btn-floating'), 'live-session: HIDE_DEFAULTS must include the OneTrust floating launcher');
 const lsSrc = src(join(DIFF, 'live-session.mjs'));
 check(!/page\.locator\(sel\)\.first\(\)/.test(lsSrc.slice(lsSrc.indexOf('export async function dismissOverlays'))), 'live-session: dismissOverlays must not use locator(sel).first() (the hidden-twin trap) — iterate all matches');
+check(Array.isArray(ls.SETTINGS_LABELS) && ls.SETTINGS_LABELS.includes('cookie settings') && /header, nav, footer, \[role=banner\]/.test(lsSrc) && /proseOf\(el\)/.test(lsSrc), 'live-session: the generic consentPresent fallback must skip header/nav/footer chrome, match cookie wording in prose (not links) and know SETTINGS_LABELS');
+check(/try \{ isMainNav = req\.isNavigationRequest\(\) && !req\.frame\(\)\.parentFrame\(\); \} catch/.test(lsSrc), 'live-session: attachBlockRoute must guard req.frame() (throws for service-worker / pre-frame requests)');
+check(/seen\.has\(target\)/.test(lsSrc) && /if \(!target\.hasAttribute\('data-stardust-hidden'\)\) hide\(target\)/.test(lsSrc), 'live-session: --remove-text must count distinct targets and count one hidden by an earlier pass as matched');
+check(/texture\(r, ra\)/.test(ss), 'stitch-shot: seamRepeats must skip texture rows (identical to an in-chunk neighbour) before counting a seam');
+const cpHead = src(join(REPLICA, 'chrome-parity.mjs')); check(!/^  --block/m.test(cpHead.slice(0, cpHead.indexOf('const HELP'))), 'chrome-parity: stray un-prefixed --block line in the JSDoc header');
 // --block (T14.5): pure decision + route composition contract
 check(JSON.stringify(ls.parseBlockList(' Chat.Example, ads.example ,chat.example,')) === JSON.stringify(['chat.example', 'ads.example']), 'live-session: parseBlockList must trim, lower-case and de-duplicate');
 const bd = (o) => ls.blockDecision({ substrings: ['chat.example'], targetOrigin: 'https://site.example', authOrigin: 'https://auth.example', ...o });
@@ -116,6 +123,7 @@ check(/--review "\$DIR\/review-\$LBL\.png"/.test(gate), 'gate.sh: pixel-compare 
 check(/GATE_LANDMARKS/.test(gate) && /anchor\.mjs" "\$LIVE_URL" --width "\$W" --landmarks --cache/.test(gate) && /--against "\$DIR\/anchor-live\.json"/.test(gate) && /landmark table unavailable/.test(gate), 'gate.sh: landmark hook (live cached + build --against, warn-and-continue, GATE_LANDMARKS=0) missing');
 check(gate.indexOf('anchor.mjs" "$LIVE_URL"') > gate.indexOf('stitch-shot build') && gate.indexOf('anchor.mjs" "$LIVE_URL"') < gate.indexOf('pixel-compare.mjs" "$DIR/live.png"'), 'gate.sh: the landmark passes must sit between the build capture and pixel-compare');
 check(/instrument\.version/.test(gate) && /older stitch-shot procedure/.test(gate), 'gate.sh: a cached live.png from an older stitch-shot procedure version must be treated as stale');
+check((gate.match(/anchor-live\.skip/g) || []).length >= 5 && /elif \[ -f "\$DIR\/anchor-live\.skip" \]/.test(gate), 'gate.sh: a failed live landmark probe must write anchor-live.skip and later rounds must skip the live pass while it exists (cleared with live.png / GATE_LANDMARKS=0)');
 check(/GATE_BLOCK/.test(gate) && (gate.match(/\$STITCH_COMMON/g) || []).length >= 2, 'gate.sh: GATE_BLOCK must reach BOTH stitch-shot calls');
 
 // ---------------------------------------------------------------- deps
@@ -247,6 +255,8 @@ async function layer2(deps) {
     check(shadow.state.consent === 'shadow' && shadow.d.consent && /usercentrics-root|alle akzeptieren|data-testid/.test(shadow.d.consent), `consent-shadow: the open-shadow CMP button must be clicked, got ${shadow.d.consent} / ${shadow.state.consent}`);
     const unk = await drive('consent-unknown.html', { lateWindowMs: 0 });
     check(unk.d.consent === null && unk.d.consentPresent === true && unk.d.consentContainer === 'div#unknown-banner.cookie-banner' && unk.state.consent === null, `consent-unknown: an unknown label must be left alone and reported, got ${JSON.stringify(unk.d)}`);
+    const neg = await drive('sticky-header.html', { lateWindowMs: 0 });
+    check(neg.d.consentPresent === false && neg.d.consentContainer === null && neg.d.consent === null, `sticky-header (negative): a sticky header with a Privacy link + menu button and a fixed bar with a "Cookie policy" LINK is not a consent banner, got ${JSON.stringify(neg.d)}`);
     const rm = await drive('consent-unknown.html', { lateWindowMs: 0, removeText: ['We use cookies'] });
     check(rm.d.hidden.some((h) => h.kind === 'remove-text' && h.count === 1) && rm.d.consentPresent === false, `consent-unknown --remove-text: the fixed ancestor must be hidden and consentPresent cleared, got ${JSON.stringify(rm.d)}`);
     // stitch-shot fail-loud on a surviving consent container (exit 5), --allow-consent, --remove-text
@@ -257,6 +267,12 @@ async function layer2(deps) {
     const csR = await run('stitch-shot.mjs', [`${base}/consent-unknown.html`, 'out/cR.png', ...W, '--remove-text', 'We use cookies']);
     check(csR.status === 0 && /hidden 1 persistent widget\(s\) via text:We use cookies/.test(csR.stdout), `stitch-shot --remove-text: expected exit 0 + hidden line, got ${csR.status}\n${csR.stdout}${csR.stderr}`);
     if (csR.status === 0) { const sc = JSON.parse(readFileSync(join(tmp, 'out/cR.png.json'), 'utf8')); check(sc.hidden.some((h) => h.kind === 'remove-text') && sc.instrument.options.removeText[0] === 'We use cookies', 'stitch-shot --remove-text: sidecar hidden[] / options.removeText missing'); }
+    // --settle re-runs dismissAndLog: the bar hidden on pass 1 must not print "no element matched" on pass 2, and the hidden line prints once
+    const csS = await run('stitch-shot.mjs', [`${base}/consent-unknown.html`, 'out/cS.png', ...W, '--settle', '--remove-text', 'We use cookies']);
+    check(csS.status === 0 && !/no element matched/.test(csS.stdout) && (csS.stdout.match(/hidden 1 persistent widget\(s\) via text:We use cookies/g) || []).length === 1, `stitch-shot --settle --remove-text: expected exit 0, one hidden line, no "no element matched", got ${csS.status}\n${csS.stdout}${csS.stderr}`);
+    // the reviewer's scenario: an ordinary sticky header must capture by default (exit 0, no consent WARN)
+    const csN = await run('stitch-shot.mjs', [`${base}/sticky-header.html`, 'out/cN.png', ...W]);
+    check(csN.status === 0 && !/consent present/.test(csN.stdout + csN.stderr), `stitch-shot sticky-header: a page without a banner must capture (exit 0), got ${csN.status}\n${csN.stdout}${csN.stderr}`);
     const csP = await run('stitch-shot.mjs', [`${base}/consent-pair.html`, 'out/cP.png', ...W]);
     check(csP.status === 0 && /consent dismissed via (button:has-text\("Accept all"\)|\[data-testid\*="accept"\])/.test(csP.stdout) && /frame overlay dismissed via frame:.*text:no thanks/.test(csP.stdout) && /hidden 1 persistent widget\(s\) via #ot-sdk-btn-floating/.test(csP.stdout), `stitch-shot consent-pair: expected consent + frame + hidden lines, got ${csP.status}\n${csP.stdout}${csP.stderr}`);
 
@@ -356,6 +372,17 @@ async function layer2(deps) {
       const g3 = await gateRun({ GATE_LANDMARKS: '0' }, 'iter3');
       const after = existsSync(liveSide) ? JSON.parse(readFileSync(liveSide, 'utf8')) : null;
       check([0, 2].includes(g3.status) && /older stitch-shot procedure \(instrument\.version 2, current 3/.test(g3.err) && after && after.instrument.version === cur, `gate.sh: a v2 live reference must be re-captured (exit ${g3.status}, version after ${after && after.instrument.version})\n${g3.err}`);
+      // T05.3: a failed live landmark probe is not retried every round — anchor-live.skip
+      // (a directory at the cache path makes anchor.mjs's cache write throw → exit 1, deterministic)
+      const gdir = join(tmp, 'stardust/replica/gates/landmark-800');
+      rmSync(join(gdir, 'anchor-live.json'), { recursive: true, force: true }); mkdirSync(join(gdir, 'anchor-live.json'));
+      const g4 = await gateRun({}, 'iter4');
+      check([0, 2].includes(g4.status) && /landmark table unavailable \(live anchor exit 1\)/.test(g4.err) && existsSync(join(gdir, 'anchor-live.skip')) && /^exit 1 at \d{4}-/.test(readFileSync(join(gdir, 'anchor-live.skip'), 'utf8')), `gate.sh: a failed live landmark probe must warn once and write anchor-live.skip (exit ${g4.status})\n${g4.err}`);
+      const g5 = await gateRun({}, 'iter5');
+      check([0, 2].includes(g5.status) && /landmark table skipped — the live landmark probe failed earlier/.test(g5.err) && !/landmark table unavailable/.test(g5.err) && !/anchor live landmark/.test(g5.err), `gate.sh: while anchor-live.skip exists the live pass must be skipped, not retried (exit ${g5.status})\n${g5.err}`);
+      rmSync(join(gdir, 'anchor-live.json'), { recursive: true, force: true });
+      const g6 = await gateRun({ GATE_LANDMARKS: '0' }, 'iter6');
+      check([0, 2].includes(g6.status) && !existsSync(join(gdir, 'anchor-live.skip')), `gate.sh GATE_LANDMARKS=0: anchor-live.skip must be cleared (exit ${g6.status})\n${g6.err}`);
     }
 
     // ---- T05.4 pixel-compare --offsets: pure helpers + synthetic pair with a 40 px strip inserted at y = 1000

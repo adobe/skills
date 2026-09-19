@@ -316,8 +316,7 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   --bands`): the 3 worst bands as [live | build] rows with a diff heat bar,
   one Read for the whole round. Then at most one full-resolution band per
   hot band still unexplained (`crop-compare --out`), ≤ 10 per round, never
-  `live.png`/`proto.png`/`diff*.png` whole. Recorded: 80 side-by-side reads
-  that were already display-sized killed a session — the count is the cost.
+  `live.png`/`proto.png`/`diff*.png` whole — the count is the cost.
 - **Before counting an iteration, verify the fix changed the render.** A
   byte-identical differing-pixel count after a "fix" means the rule was a
   no-op (recorded: a padding whose value the EDS section wrapper already
@@ -627,20 +626,18 @@ rather than erroring.
     raced.** stitch-shot sets `opacity:0 !important` on every fixed and
     stuck-sticky element before shooting chunks 2+ and restores it after
     (chunk 1 keeps everything for the chrome crop; `--keep-pinned` is the
-    off-switch), rounds `window.scrollY` before placing a chunk, and
-    `img.decode()`s in-viewport images under a 1.5 s bound — a fixed header
-    repainted per chunk was 5–17 % of "diff" on short pages, a fractional
-    scroll rotated whole chunks by half a width, and two projects patched
-    the script locally for it. Read the verdict block: `pinned hidden on
-    chunks 2+: N […]` is the list; `WARN fixed overlay baked into N seams`
+    off-switch), rounds `window.scrollY` before placing a chunk (a
+    fractional scroll rotates the whole chunk by half a width), and bounds
+    the in-viewport `img.decode()` wait. Read the verdict block: `pinned
+    hidden on chunks 2+: N […]` is the list; `WARN fixed overlay baked into N seams`
     means chrome the hide could not reach (iframe/shadow-hosted) — pass
     `--exclude <sel>` on both sides or mask the seam rows.
 17. **Short and invalid captures are exit 5 — no PNG, no verdict, never a
     FAIL.** stitch-shot re-measures the settled height after one more
-    `--wait` (> 25 % growth = load race, it settles again and says so);
+    `--wait` (growth = load race: it settles again and says so);
     `gate.sh` passes `--expect-height` from the crawl screenshot on the
     live side and a height under 40 % of it retries once then exits 5; an
-    error-boundary page or a fixed/dialog element still covering > 30 % of
+    error-boundary page or a fixed/dialog element still covering much of
     the first viewport after dismissal exits 5 too (`--allow-overlay`,
     both sides, when the overlay is the page). `gate.sh` removes the
     partial PNG, caches nothing and re-exits 5 like it re-exits 3.
