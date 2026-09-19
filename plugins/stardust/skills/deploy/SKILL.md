@@ -36,7 +36,7 @@ Outputs: `blocks/<name>/<name>.{js,css}` · `content/**/*.html` (+ `nav.html`, `
 |---|---|
 | 0 | this file § Playwright re-probe, § Runtime-detection probe; `reference/target-runtime.md` § Target runtime |
 | 1–2b | `reference/audit-and-naming.md` § 1. Audit / § 2. Decide names + reuse / § 2b. Section schema + decode tier; `reference/encode-contract.md` § Structural rules |
-| 3 | `reference/foundation.md` § 3. Foundation, § Header reservation and hero CLS, § Section rhythm; before deploy § Token-completeness gate, § Favicon |
+| 3 | `reference/foundation.md` § 3. Foundation, § Header reservation and hero CLS; `reference/section-rhythm.md` when spacing varies per band; before deploy § Token-completeness gate, § Favicon |
 | 4 | `reference/fonts-and-cls.md` § 0 through § 4 |
 | 5 | `reference/buttons.md` § 5, § Block JS — move the CTA paragraph |
 | 6 | `reference/chrome.md` § The nav/footer documents, § The header/footer blocks, § What still cannot run, § Chrome states and variants |
@@ -201,7 +201,8 @@ Chapters (full text of the sections this core compresses — read by `##`, each 
 - `reference/target-runtime.md` — the boilerplate's load chain, section DOM, cell normalization (#104), body gate and Experience Workspace instrumentation.
 - `reference/encode-contract.md` — the ENCODE contract in full: structural rules, authoring shapes, § Section heads, § Images.
 - `reference/audit-and-naming.md` — Steps 1, 2 and 2b: input normalization, the fingerprint probe (#90), D1/D11 triage, naming rules, section schema and decode tiers (#93, #95).
-- `reference/foundation.md` — Step 3: structural layer, tokens, reset, section styles, edit-mode foundation, header reservation and hero CLS, token-completeness gate, favicon; § Section rhythm (section-per-module, the `--mt` engine).
+- `reference/foundation.md` — Step 3: structural layer, tokens, reset, section styles, edit-mode foundation, header reservation and hero CLS, token-completeness gate, favicon.
+- `reference/section-rhythm.md` — Step 3: section-per-module encoding, the rhythm engine (`--mt`, classifiers), token remainder, replica hand-off.
 - `reference/fonts-and-cls.md` — Step 4: the four font principles, licensing alert, metric-matched fallbacks, width classification, font traps.
 - `reference/buttons.md` — Step 5: the `decorateButtons()` table, global button CSS, surface-aware variants, moving CTA paragraphs, multi-variant systems.
 - `reference/chrome.md` — Step 6: nav/footer documents, template-slotted header/footer blocks, CSP limits, per-page variants.
