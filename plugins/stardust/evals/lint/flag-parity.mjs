@@ -20,23 +20,33 @@
 //     are unattributed.
 //   * the same with the script named WITHOUT its .mjs token — `chrome-parity
 //     --open <sel>`, `update-coverage --from-ledger` — a bare basename of a
-//     skills/*/scripts/*.mjs file inside the same code span (or fenced command)
-//     attributes the flags that follow it. The 2026-09 B2 close found six
-//     documented flags that no parser had, every one written without .mjs.
+//     skills/*/scripts/*.mjs file that OPENS the code span (or the fenced
+//     command; an optional `node`/`npx`/`$` before it) and is followed by an
+//     argument attributes the flags after it. Only the command position counts:
+//     many basenames are ordinary words (plan, verify, inventory, progress,
+//     anchor) that prose and tree diagrams use freely, and a basename that is
+//     also a skill name (`qa`) is never attributed bare — `$stardust qa …` is
+//     the skill. The 2026-09 B2 close found six documented flags that no
+//     parser had, every one written without .mjs and every one span-initial.
 //   * a lint RULE ID a doc names in backticks (`D-CONST`, `D14-OPTIONS`,
 //     `ICON-MISSING` — ALL-CAPS, hyphenated) on a line that talks about a lint,
-//     a finding or a script must be a string some skills/*/scripts source
-//     emits (a literal `'D1-EMPTY'`, or a `VEHICLE-${…}` template prefix). A
-//     rule only "planned" in prose is a claim the reader acts on.
+//     a finding or a rule id, or names a script (`.mjs`, or a span-initial bare
+//     command) must be a string some skills/*/scripts source emits (a literal
+//     `'D1-EMPTY'`, or a `VEHICLE-${…}` template prefix). A rule only
+//     "planned" in prose is a claim the reader acts on. A caps token on a plain
+//     prose line (`YYYY-MM-DD`) is not checked.
 //   * DEFAULTS below: a numeric default the parser sets vs the number the
 //     owning SKILL.md quotes for it.
 // Docs scanned: skills/<skill>/*.md and skills/<skill>/reference/*.md.
 // A line containing `flag-parity: ignore` is skipped (say why in the line).
-// CROSS_LANE_PENDING below suppresses a finding another lane owns (its file is
-// out of this lane's scope); a resolved entry is reported as a note, not a
-// failure, so whichever lane lands first keeps the chain green — remove it then.
+// CROSS_LANE_PENDING below suppresses a finding whose fix another lane has landed
+// on its own branch (the file is out of this lane's scope); once that edit merges
+// the entry no longer suppresses anything and FAILS as stale, like the
+// allowlist — delete it in the merge. An entry never outlives its fix.
 //
-// Usage: node plugins/stardust/evals/lint/flag-parity.mjs [--docs <dir>]  (exit 1 on findings)
+// Usage: node plugins/stardust/evals/lint/flag-parity.mjs [--docs <dir>]
+//   exit 0 = every reference resolves; 1 = findings (or a stale allowlist/pending
+//   entry); 2 = --docs is not an existing directory
 //   --docs <dir>  scan that tree (same <skill>/*.md + <skill>/reference/*.md layout)
 //                 instead of skills/ — the scripts still come from skills/ (fixture testing;
 //                 evals/lint/flag-parity.test.mjs drives fixtures/flag-parity/)
@@ -44,7 +54,14 @@ import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
-  console.log(readFileSync(new URL(import.meta.url), 'utf8').split('\n').filter((l) => l.startsWith('//')).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
+  // the leading comment block only — inline comments further down are not help text
+  const header = [];
+  for (const l of readFileSync(new URL(import.meta.url), 'utf8').split('\n')) {
+    if (l.startsWith('#!')) continue;
+    if (!l.startsWith('//')) break;
+    header.push(l.replace(/^\/\/ ?/, ''));
+  }
+  console.log(header.join('\n'));
   process.exit(0);
 }
 const ROOT = join(import.meta.dirname, '..', '..', 'skills');
@@ -102,9 +119,15 @@ for (const skill of readdirSync(DOCS_ROOT)) {
 const byName = new Map();
 for (const s of scripts) byName.set(s.name, [...(byName.get(s.name) || []), s]);
 // bare basenames (`chrome-parity`, `update-coverage`) — a doc that names the
-// script without .mjs still documents its flags
-const BARE_NAME_RE = new RegExp(`(?<![\\w/.-])(${[...byName.keys()].map((n) => n.slice(0, -4).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?![\\w./-])`, 'g');
-const MENTIONS_SCRIPT_RE = new RegExp(`\\.mjs\\b|${BARE_NAME_RE.source}`);
+// script without .mjs still documents its flags, but only in command position:
+// the name opens the span (after an optional `node`/`npx`/`$`) and an argument
+// follows. A basename that is also a skill name (`qa`) is the skill, never the script.
+const SKILL_NAMES = new Set(readdirSync(ROOT).filter((d) => statSync(join(ROOT, d)).isDirectory()));
+const bareNames = [...byName.keys()].map((n) => n.slice(0, -4)).filter((n) => !SKILL_NAMES.has(n));
+const BARE_CMD_RE = new RegExp(`^\\s*(?:(?:node|npx|\\$)\\s+)?(${bareNames.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?=\\s+\\S)`);
+const spansOf = (line, fenced) => (fenced ? [line] : [...line.matchAll(/`([^`]+)`/g)].map((m) => m[1]));
+const bareCommand = (line, fenced) => spansOf(line, fenced).some((sp) => BARE_CMD_RE.test(sp));
+const mentionsScript = (line, fenced) => /\.mjs\b/.test(line) || bareCommand(line, fenced);
 
 // Flags implemented by a shared helper the script calls (the flag name lives in
 // live-session.mjs, not in the calling script's source).
@@ -118,21 +141,23 @@ const SHARED_HELPERS = [
 const TEMPORARY_ALLOWLIST = {
   // empty — every documented flag has a parser case; entries added here must shrink per release
 };
-// Findings whose fix (build the flag/rule, or delete the claim) lives in a file
-// another remediation lane owns. Same key shape (`<doc>:<flag-or-rule>:<script
-// or "rule">`); value: the owning lane and the edit. Suppressed while the claim
-// stands; once it is resolved the entry is printed as a note to remove, exit 0.
+// Findings whose fix (build the flag/rule, or delete the claim) another
+// remediation lane has ALREADY landed on its branch, in a file this lane does not
+// edit. Same key shape (`<doc>:<flag-or-rule>:<script or "rule">`); value: the
+// landing commit and the edit. Suppressed while the claim stands on this branch;
+// once the fix merges the entry is stale and fails — delete it in that merge.
+// (A --docs fixture tree that reuses an entry's doc path is read as that doc.)
 const CROSS_LANE_PENDING = {
-  // T30.1 (deploy-harness lane): build 🟡 D-CONST / D14-OPTIONS in davids-model-lint.mjs tree mode, or delete the "planned lint" claims
-  'deploy/reference/block-js-scaffold.md:D-CONST:rule': 'deploy-harness — T30.1: build D-CONST or reword EW5 (a) to "a site-wide string (encode-contract § Site-wide strings), not an exemption"',
-  'deploy/reference/encode-contract.md:D-CONST:rule': 'deploy-harness — T30.1: build D-CONST or drop the "Planned tree-mode lint" sentence',
-  'deploy/reference/encode-contract.md:D14-OPTIONS:rule': 'deploy-harness — T30.1: build D14-OPTIONS or drop the "Planned tree-mode lint" sentence',
-  // T18.3 (replica-capture lane): chrome-parity --open <sel> is not a parser case — build it or say "open the trigger by hand in the Playwright re-probe"
-  'deploy/reference/checklist.md:--open:chrome-parity.mjs': 'replica-capture — T18.3: build --open or delete the "(`chrome-parity --open <sel>`; until that flag ships, …)" parenthetical',
-  'deploy/reference/chrome.md:--open:chrome-parity.mjs': 'replica-capture — T18.3: build --open or delete the parenthetical',
-  'rollout/SKILL.md:--open:chrome-parity.mjs': 'replica-capture — T18.3: build --open or write "opened by hand in the Playwright re-probe"',
-  // T06.1 (deploy-batch lane): update-coverage --from-ledger is cited but not built
-  'rollout/reference/coverage-model.md:--from-ledger:update-coverage.mjs': 'deploy-batch — T06.1: build --from-ledger or cite `update-coverage <slug> --status` / `inventory --redirects` only',
+  // T30.1 — landed b2r/deploy-harness d6a4946: no doc names the unbuilt D-CONST / D14-OPTIONS lints
+  'deploy/reference/block-js-scaffold.md:D-CONST:rule': 'b2r/deploy-harness d6a4946 — EW5 (a) reworded to "a site-wide constant to lift out, encode-contract § Structural rules"',
+  'deploy/reference/encode-contract.md:D-CONST:rule': 'b2r/deploy-harness d6a4946 — "Planned tree-mode lint" sentence replaced by "No lint reads across pages yet — the check is the Step 1 audit"',
+  'deploy/reference/encode-contract.md:D14-OPTIONS:rule': 'b2r/deploy-harness d6a4946 — same sentence',
+  // T18.3/T18.4 — chrome-parity --open <sel> is not a parser case; the docs now say "by hand in the Playwright re-probe"
+  'deploy/reference/checklist.md:--open:chrome-parity.mjs': 'b2r/deploy-harness 204de0b — parenthetical replaced by "(by hand in the Playwright re-probe — chrome-parity captures rest state only)"',
+  'deploy/reference/chrome.md:--open:chrome-parity.mjs': 'b2r/deploy-harness 204de0b — § Chrome states and variants rewritten without the flag',
+  'rollout/SKILL.md:--open:chrome-parity.mjs': 'b2r/rollout-migrate b2d06c6 — "opened on the deployed page (by hand, in the Playwright re-probe)"',
+  // T06.1 — update-coverage --from-ledger <ledger> [--url-base] is built
+  'rollout/reference/coverage-model.md:--from-ledger:update-coverage.mjs': 'b2r/deploy-batch 81feef0 — update-coverage.mjs parses --from-ledger; the claim becomes true at merge',
 };
 
 // Attribute each `--flag` to the script named in the SAME inline-code span
@@ -147,10 +172,15 @@ function pick(m, docSkill) {
     || { name: m[2], tokens: new Set(cands.flatMap((c) => [...c.tokens])), bare: new Set(cands.flatMap((c) => [...c.bare])), union: true };
 }
 function attribute(span, docSkill) {
-  // bare names count only in a span that names no `.mjs` at all — `block-lint.mjs
-  // blocks/ --styles` keeps its flags on block-lint, not on rollout's blocks.mjs
+  // a bare name counts only in a span that names no `.mjs` at all — `block-lint.mjs
+  // blocks/ --styles` keeps its flags on block-lint, not on rollout's blocks.mjs —
+  // and only in command position (BARE_CMD_RE): `make verify --x` names no script
   const marks = [...span.matchAll(SCRIPT_RE)].map((m) => ({ at: m.index, script: pick(m, docSkill) })).filter((x) => x.script);
-  if (!marks.length) marks.push(...[...span.matchAll(BARE_NAME_RE)].map((m) => ({ at: m.index, script: pick([m[0], undefined, `${m[1]}.mjs`], docSkill) })).filter((x) => x.script));
+  if (!marks.length) {
+    const m = span.match(BARE_CMD_RE);
+    const script = m && pick([m[0], undefined, `${m[1]}.mjs`], docSkill);
+    if (script) marks.push({ at: m.index + m[0].length - m[1].length, script });
+  }
   const pairs = [];
   for (const f of span.matchAll(FLAG_RE)) {
     const owner = marks.filter((x) => x.at < f.index).at(-1);
@@ -158,7 +188,6 @@ function attribute(span, docSkill) {
   }
   return pairs;
 }
-const spansOf = (line, fenced) => (fenced ? [line] : [...line.matchAll(/`([^`]+)`/g)].map((m) => m[1]));
 function accepts(s, flag) {
   if (s.tokens.has(flag) || s.bare.has(flag.slice(2))) return true;
   const src = s.union ? '' : readFileSync(s.path, 'utf8');
@@ -166,7 +195,6 @@ function accepts(s, flag) {
 }
 
 const findings = [];
-const notes = [];
 const used = new Set();
 const pendingUsed = new Set();
 let checked = 0;
@@ -184,15 +212,16 @@ for (const { skill, path } of docs) {
     const line = lines[i];
     if (/^\s*```/.test(line)) { fenced = !fenced; continue; }
     if (line.includes('flag-parity: ignore')) continue;
-    // rule ids: a backticked ALL-CAPS hyphenated id on a lint/finding/script line
-    if (LINT_CONTEXT_RE.test(line) || MENTIONS_SCRIPT_RE.test(line)) {
+    // rule ids: a backticked ALL-CAPS hyphenated id on a lint/finding/script line —
+    // a prose line that happens to use a basename as a word (plan, inventory) is not one
+    if (LINT_CONTEXT_RE.test(line) || bareCommand(line, fenced)) {
       for (const m of line.matchAll(/`([A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)+)`/g)) {
         checked += 1;
         if (ruleKnown(m[1])) continue;
         report(`${relative(DOCS_ROOT, path)}:${m[1]}:rule`, `${rel(path)}:${i + 1}: rule id \`${m[1]}\` is emitted by no skills/*/scripts source — build the rule or delete the claim`);
       }
     }
-    if (!MENTIONS_SCRIPT_RE.test(line)) continue;
+    if (!mentionsScript(line, fenced)) continue;
     // inside a fence a command may continue over `\`-terminated lines
     let cmd = line;
     let j = i;
@@ -211,7 +240,9 @@ for (const { skill, path } of docs) {
   }
 }
 for (const k of Object.keys(TEMPORARY_ALLOWLIST)) if (!used.has(k)) findings.push(`stale TEMPORARY_ALLOWLIST entry "${k}" — remove it`);
-for (const k of Object.keys(CROSS_LANE_PENDING)) if (!pendingUsed.has(k)) notes.push(`resolved CROSS_LANE_PENDING entry "${k}" — remove it`);
+// a pending entry whose doc is in the scanned tree but no longer needs it: the
+// owning lane's edit has merged — the entry is stale and fails until deleted
+for (const k of Object.keys(CROSS_LANE_PENDING)) if (!pendingUsed.has(k) && existsSync(join(DOCS_ROOT, k.split(':')[0]))) findings.push(`stale CROSS_LANE_PENDING entry "${k}" — its fix landed (${CROSS_LANE_PENDING[k]}); remove it`);
 for (const d of DEFAULTS) {
   const src = readFileSync(join(ROOT, d.script), 'utf8');
   const code = (src.match(d.pick) || [])[1];
@@ -227,5 +258,4 @@ for (const d of DEFAULTS) {
 }
 const uniq = [...new Set(findings)];
 if (uniq.length) { console.error(`flag-parity lint: ${uniq.length} finding(s) across ${docs.length} docs / ${scripts.length} scripts\n${uniq.join('\n')}`); process.exit(1); }
-for (const n of notes) console.log(`flag-parity lint: note — ${n}`);
 console.log(`flag-parity lint: ${docs.length} docs, ${scripts.length} scripts, ${checked} flag/rule-id references resolve${pendingUsed.size ? ` (${pendingUsed.size} cross-lane pending)` : ''}`);
