@@ -289,8 +289,9 @@ hand-edits is a defect (gate doc § Script adaptations).
 output per archetype — not a post-pass**
 (`reference/recreation-procedure.md` § Interaction parity). Motion is OBSERVED,
 never inferred from static classes or CSS: run
-`stardust/scripts/replica/motion-observe.mjs` per archetype live URL →
-`stardust/replica/motion/<slug>.json`, implement ONLY behaviors that
+`stardust/scripts/replica/motion-observe.mjs` per archetype live URL
+(`--hover`, `--click`, `--triggers auto`) → `stardust/replica/motion/<slug>.json`
+(schema 2: `entrances[]`, `stateMachines[]`), implement ONLY behaviors that
 fired (dead classes = NOT implemented), record
 `motion: {observed, implemented, dead[]}` in `progress.json`, and re-run
 pixel-compare — the number must return to the gated value.
