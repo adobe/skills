@@ -113,7 +113,7 @@ function parseArgs(argv) {
       const next = rest[i + 1];
       opts.dismiss = (next && !next.startsWith('--')) ? rest[i += 1].split(',').map((s) => s.trim()).filter(Boolean) : [];
     }
-    else if (a === '--consent-mode') { opts.consentMode = rest[i += 1]; if (!['accept', 'deny'].includes(opts.consentMode)) { console.error(`--consent-mode must be accept or deny\n\n${HELP}`); process.exit(1); } if (!opts.dismiss) opts.dismiss = []; }
+    else if (a === '--consent-mode') { opts.consentMode = rest[i += 1]; if (!['accept', 'deny'].includes(opts.consentMode)) { console.error(`--consent-mode must be accept or deny\n\n${USAGE}`); process.exit(1); } if (!opts.dismiss) opts.dismiss = []; }
     else if (a === '--headed' || a.startsWith('--headed=')) { opts.headed = parseHeadedFlag(a); }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
   }
