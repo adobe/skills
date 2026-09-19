@@ -37,6 +37,10 @@ One JSON object per line (JSONL — no wrapping array, no pretty-print):
 - **One line per phase start, one per end.** No intermediate spam;
   per-page progress lives in each phase's own ledgers (e.g., rollout's
   `coverage/pages.json`).
+- **The phase `start` line carries the session lock.** Writing a
+  `start` line acquires or refreshes `stardust/.work/run.lock`
+  (`state-machine.md` § Concurrency → Session advisory lock); the
+  run's last `end` line releases it.
 - **Harness-agnostic.** Plugin skills must never reference
   harness-specific progress mechanisms (no `emit_milestone`, no
   session APIs). `stardust/status.jsonl` is the only progress

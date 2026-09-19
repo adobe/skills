@@ -10,7 +10,7 @@
 - § Provenance validation — before any downstream phase consumes per-page JSON: the read-time synthesis guard.
 - § IA-fidelity and iaPriorities mutability — when a later phase wants to change what `direct` pinned.
 - § Fold-back state record — after prototype fold-back: where the decision is recorded.
-- § Concurrency — when parallel writers touch `state.json`: the merge-by-slug contract.
+- § Concurrency — when parallel writers touch `state.json`: the merge-by-slug contract; when a second session opens the project: the session advisory lock.
 - § Schema versioning — when the schema changes.
 
 Stardust tracks state per page so multi-page redesigns can be incremental
@@ -307,6 +307,11 @@ Repo:  tracked 412 files / 31 MB under stardust/; not tracked 1,165 (captures, s
        run `$stardust extract` before migrate/deploy.
 ```
 
+When `stardust/.work/run.lock` names a held run in another session
+(§ Concurrency), the report opens with one line before `Site:` —
+`Active run: <skill> in session <sessionId> since <startedAt> — read-only
+unless you take over` — and the recommended next step is omitted.
+
 The `Repo:` block is rendered only when the project is a git repo. Its
 four facts come from `git ls-files` / `git check-ignore` and the master
 skill's write boundary (SKILL.md § Artifacts): counts and size of tracked
@@ -492,8 +497,21 @@ Safe parallel lanes — all merge cleanly under this contract:
 **Same-slug concurrent runs remain last-write-wins** — two writers
 racing on the SAME page entry are not merged; the later write wins.
 When the pre-write re-read shows your page's entry changed underneath
-you, surface a warning in the report naming the slug. Do not lock;
-do not engineer around it.
+you, surface a warning in the report naming the slug. Do not lock page
+entries; do not engineer around it.
+
+**Session advisory lock** — orthogonal to merge-by-slug, and the only
+lock stardust has. `stardust/.work/run.lock` (untracked) is one JSON
+object: `{ "sessionId", "pid", "startedAt", "refreshedAt", "skill",
+"owns": [] }`. A phase skill writes it with its first `status.jsonl`
+`start` line, rewrites `refreshedAt` and `skill` on every later phase
+line, and deletes it when the run ends. The lock is **held** while the
+file exists, `pid` is alive (`kill -0 <pid>`) and `refreshedAt` is less
+than 2 hours old; otherwise it is **stale** and a new run overwrites it.
+It never blocks its owner and never merges anything: it tells a *second
+session* that a run is in progress and which paths it is writing
+(`owns[]`: `stardust/<skill>/…`, the EDS project). The master skill's
+Setup step 7 reads it; page-entry races stay last-write-wins as above.
 
 ---
 
