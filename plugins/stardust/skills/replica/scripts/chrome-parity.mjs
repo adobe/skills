@@ -51,8 +51,8 @@
  *                         substrings (undismissable iframe/shadow widgets); the
  *                         main-frame navigation and the page's own origin are
  *                         never blocked. Run the SAME value on both sides —
- *                         the sidecar records `blocked` and an asymmetric pair
- *                         is refused by pixel-compare
+ *                         stitch-shot's sidecar records `blocked` and
+ *                         pixel-compare refuses an asymmetric pair (this probe writes no sidecar)
  *     --consent-mode <m>  accept | deny (default accept; deny clicks reject-all, never accept — live-session)
  *     --headed[=window]   bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
  *     --storage-state <file> | --fresh-state | --solve-wait <ms>  admitted-session reuse / clean start / interactive solve (live-session.mjs § Admitted-session reuse; --solve-wait implies a visible tier-3 window)

@@ -10,7 +10,7 @@
     {
       "name": "precondition_stated_not_bypassed",
       "max_score": 10,
-      "description": "The gated-archetype precondition is applied and reported: the program type is named as blocked with its archetype slug (insurance__home) and the command to gate it; landing and article are named as shippable. Nothing is delivered. The block does not stop the offline verify, which still covers all six pages."
+      "description": "The gated-archetype precondition is applied through `skills/replica/scripts/gate-ledger-lint.mjs`: the agent quotes its per-type verdict lines rather than reading progress.json by eye — program blocked (never gated, archetype insurance__home, the command to gate it) and article blocked (over the bar, residuals unnamed / without artifacts[] and acceptedBy); landing is named as shippable. Nothing is delivered. The block does not stop the offline verify, which still covers all six pages."
     },
     {
       "name": "ranked_class_report",

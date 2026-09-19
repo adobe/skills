@@ -6,11 +6,16 @@
 //     width, a non-URL and a duplicate slug@width throw;
 //   - classify / batchExit: 0 ok · 2 failed · 124/3/5/6/4/1 noverdict (never failed);
 //     batch exit 2 over 124 over another code over 0;
-//   - end to end over 5 pairs (pass, fail, slow=124, bot=3, pass with marker) at
-//     --concurrency 2: the table has one row per pair with exit/verdict/pixel/record,
-//     the SUMMARY line is last and reads ok=2 failed=1 noverdict=2 exit=2, the progress
-//     JSON has the same counts, gate-batch.json + one log per pair are written, the
-//     marker reached gate.sh, and no more than 2 rounds ever overlapped;
+//   - end to end over 5 pairs (pass, fail, slow=124, bot=3, pass with marker) on two
+//     live hosts at --concurrency 2: the table has one row per pair with
+//     exit/verdict/pixel/record, the SUMMARY line is last and reads ok=2 failed=1
+//     noverdict=2 exit=2, the progress JSON has the same counts, gate-batch.json + one
+//     log per pair are written, the marker reached gate.sh, and no more than 2 rounds
+//     ever overlapped;
+//   - per-host pooling (defect fixture): three pass rows on ONE live host at
+//     --concurrency 3 run strictly one after another and all PASS — the stub holds
+//     live-budget's per-host lock and exits 1 on an overlap, which would land as
+//     NO VERDICT (error); groupByHost keeps input order;
 //   - a sweep with a deadline row and no FAIL exits 124 (no verdict is not a FAIL);
 //   - --dry-run runs nothing; --help 0; missing file / bad row / duplicate pair 125.
 // Usage: node plugins/stardust/evals/lint/gate-batch-fixtures.mjs  (exit 1 on findings)
@@ -19,13 +24,14 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parsePairs, classify, batchExit } from '../../skills/replica/scripts/gate-batch.mjs';
+import { parsePairs, classify, batchExit, groupByHost } from '../../skills/replica/scripts/gate-batch.mjs';
 
 const HERE = import.meta.dirname;
 const CLI = join(HERE, '..', '..', 'skills', 'replica', 'scripts', 'gate-batch.mjs');
 const STUB = join(HERE, 'fixtures', 'gate-batch', 'gate.sh');
 const work = mkdtempSync(join(tmpdir(), 'gate-batch-'));
-const run = (args, env = {}) => spawnSync(process.execPath, [CLI, ...args], { cwd: work, encoding: 'utf8', env: { ...process.env, ...env } });
+const run = (args, env = {}) => spawnSync(process.execPath, [CLI, ...args], { cwd: work, encoding: 'utf8', env: { ...process.env, GATE_STUB_LOCK_DIR: work, ...env } });
+const peakOverlap = (traceFile) => { let live = 0; let peak = 0; for (const l of readFileSync(traceFile, 'utf8').trim().split('\n').map((x) => x.split(' ')).sort((a, b) => Number(a[2]) - Number(b[2]))) { live += l[0] === 'start' ? 1 : -1; peak = Math.max(peak, live); } return peak; };
 
 try {
   // pure helpers
@@ -43,10 +49,11 @@ try {
   assert.equal(batchExit([0, 3, 124]), 124);
   assert.equal(batchExit([0, 3, 0]), 3);
   assert.equal(batchExit([0, 0]), 0);
+  assert.deepEqual(groupByHost(parsePairs('a\thttps://one.test/\thttp://localhost:1/\t1440\nb\thttps://two.test/x\thttp://localhost:1/\t1440\nc\thttps://ONE.test/y\thttp://localhost:1/\t360')).map((g) => g.map(({ row, idx }) => `${row.slug}:${idx}`)), [['a:0', 'c:2'], ['b:1']], 'groupByHost: same hostname (case-insensitive) → one group, input order kept');
 
   // end to end with the stub
   const pairs = join(work, 'pairs.tsv');
-  writeFileSync(pairs, ['# slug live build width [marker]', 'pass-home\thttps://live.test/\thttp://localhost:8791/home.html\t1440', 'fail-news\thttps://live.test/news\thttp://localhost:8791/news.html\t1440', 'slow-blog\thttps://live.test/blog\thttp://localhost:8791/blog.html\t360', 'bot-shop\thttps://live.test/shop\thttp://localhost:8791/shop.html\t1440', 'pass-about\thttps://live.test/about\thttp://localhost:8791/about.html\t360\tabout-marker', ''].join('\n'));
+  writeFileSync(pairs, ['# slug live build width [marker]', 'pass-home\thttps://live.test/\thttp://localhost:8791/home.html\t1440', 'fail-news\thttps://live2.test/news\thttp://localhost:8791/news.html\t1440', 'slow-blog\thttps://live.test/blog\thttp://localhost:8791/blog.html\t360', 'bot-shop\thttps://live2.test/shop\thttp://localhost:8791/shop.html\t1440', 'pass-about\thttps://live.test/about\thttp://localhost:8791/about.html\t360\tabout-marker', ''].join('\n'));
   const trace = join(work, 'trace.log');
   const progress = join(work, 'p.json');
   let r = run([pairs, '--gate', STUB, '--concurrency', '2', '--out', join(work, 'out'), '--progress', progress], { GATE_STUB_TRACE: trace });
@@ -65,10 +72,19 @@ try {
   for (const k of ['pass-home-1440', 'fail-news-1440', 'slow-blog-360', 'bot-shop-1440', 'pass-about-360']) assert.ok(existsSync(join(work, 'out', `${k}.log`)), `log for ${k}`);
   assert.match(readFileSync(join(work, 'out', 'pass-about-360.log'), 'utf8'), /--marker about-marker/, 'marker forwarded to gate.sh');
   assert.equal(JSON.parse(readFileSync(join(work, 'stardust', 'replica', 'gates', 'pass-about-360', 'gate-iter1.json'), 'utf8')).marker, 'about-marker');
-  // concurrency: reconstruct the overlap from the stub's start/end trace
-  let live = 0; let peak = 0;
-  for (const l of readFileSync(trace, 'utf8').trim().split('\n').map((x) => x.split(' ')).sort((a, b) => Number(a[2]) - Number(b[2]))) { live += l[0] === 'start' ? 1 : -1; peak = Math.max(peak, live); }
-  assert.ok(peak >= 2 && peak <= 2, `pool ran ${peak} rounds at once (asked 2)`);
+  // concurrency: reconstruct the overlap from the stub's start/end trace (two hosts → two rounds at once)
+  const peak = peakOverlap(trace);
+  assert.ok(peak >= 2 && peak <= 2, `pool ran ${peak} rounds at once (asked 2, two live hosts)`);
+  assert.match(r.stderr, /5 pair\(s\) on 2 live host\(s\)/, 'host count printed');
+
+  // per-host pooling: same live host → sequential even at --concurrency 3 (the stub's live lock makes an overlap exit 1)
+  writeFileSync(pairs, 'pass-h1\thttps://same.test/\thttp://localhost:1/a.html\t1440\npass-h2\thttps://same.test/b\thttp://localhost:1/b.html\t1440\npass-h3\thttps://SAME.test/c\thttp://localhost:1/c.html\t360\n');
+  const trace2 = join(work, 'trace2.log');
+  r = run([pairs, '--gate', STUB, '--concurrency', '3', '--no-progress', '--out', join(work, 'out-host')], { GATE_STUB_TRACE: trace2, GATE_STUB_SLEEP: '0.2' });
+  assert.equal(r.status, 0, `same-host rows must all PASS (no LiveLockError round)\n${r.stdout}\n${r.stderr}`);
+  assert.equal(peakOverlap(trace2), 1, 'same-host rows never overlap');
+  assert.match(r.stdout.trim().split('\n').at(-1), /^SUMMARY gate-batch ok=3 failed=0 exit=0 .* pairs=3 concurrency=3$/);
+  assert.match(r.stderr, /3 pair\(s\) on 1 live host\(s\)/);
 
   // no FAIL but a deadline → 124
   writeFileSync(pairs, 'pass-a\thttps://live.test/\thttp://localhost:1/a.html\t1440\nslow-b\thttps://live.test/b\thttp://localhost:1/b.html\t1440\n');
@@ -88,7 +104,7 @@ try {
   r = run([pairs, '--gate', STUB]); assert.equal(r.status, 125, 'duplicate pair → 125'); assert.match(r.stderr, /appears twice/);
   assert.equal(run([pairs, '--gate', STUB, '--concurrency', '0']).status, 125);
   assert.equal(spawnSync(process.execPath, ['--check', CLI]).status, 0, 'node --check');
-  console.log('gate-batch fixtures: ok (parsePairs, classify/batchExit, pooled sweep table + SUMMARY + progress, 124 batch exit, usage)');
+  console.log('gate-batch fixtures: ok (parsePairs, classify/batchExit, groupByHost, pooled sweep table + SUMMARY + progress, same-host sequential, 124 batch exit, usage)');
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

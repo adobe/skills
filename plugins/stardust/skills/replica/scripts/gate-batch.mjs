@@ -9,15 +9,20 @@
  * rounds under a small pool, writes ONE progress JSON while it runs and prints ONE
  * table + ONE SUMMARY line when it ends — the agent's ≤ 4-minute check is a single
  * `progress.mjs read`. Nothing about a round changes: bars, records, the cap, the
- * cached live.png per pair (parallelism adds no source-site hits — each pair owns
- * its gate dir; the same slug@width twice in one file is refused).
+ * cached live.png per pair (each pair owns its gate dir; the same slug@width twice
+ * in one file is refused). Pairs are POOLED PER LIVE HOST: rows sharing a live
+ * hostname run one after another (live-budget's per-host live lock — one
+ * live-hitting tool per origin at a time — would otherwise fail the second
+ * capture with LiveLockError → exit 1, NO VERDICT); only rows on different hosts
+ * run at once, so --concurrency caps the number of hosts hit in parallel.
  *
  * Usage:
  *   node skills/replica/scripts/gate-batch.mjs <pairs.tsv> [--concurrency 2] [--gate <gate.sh>]
  *        [--out stardust/.work/replica/gate-batch] [--progress <file> | --no-progress] [--dry-run]
  *   pairs.tsv — one pair per line, tab-separated: slug  live-url  build-url  width  [marker]
  *               (`#` lines and blank lines are skipped; a marker becomes gate.sh --marker)
- *   --concurrency  parallel gate.sh rounds (default 2 — two Chromium captures at a time)
+ *   --concurrency  parallel gate.sh rounds, one per live host (default 2 — two Chromium
+ *                  captures at a time; same-host pairs are always sequential)
  *   --gate         gate.sh to run (default: the gate.sh beside this script)
  *   --out          per-pair logs <slug>-<width>.log + gate-batch.json (the SUMMARY details)
  *   --progress     progress JSON (default stardust/.work/replica/gate-batch.progress.json)
@@ -131,6 +136,17 @@ function runGate(gate, row, logFile) {
   });
 }
 
+/** Rows grouped by live hostname (input order kept inside a group and across first appearances). */
+export function groupByHost(rows) {
+  const byHost = new Map();
+  rows.forEach((row, idx) => {
+    const host = new URL(row.live).hostname.toLowerCase();
+    if (!byHost.has(host)) byHost.set(host, []);
+    byHost.get(host).push({ row, idx });
+  });
+  return [...byHost.values()];
+}
+
 async function pool(items, n, fn) {
   let i = 0;
   const workers = Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const idx = i; i += 1; await fn(items[idx], idx); } });
@@ -156,21 +172,24 @@ async function main(argv) {
   if (!existsSync(args.gate)) { console.error(`gate-batch: gate.sh not found at ${args.gate} (--gate <path>)`); return 125; }
   if (args.dryRun) {
     for (const r of rows) console.log(`${r.slug}\t${r.live}\t${r.build}\t${r.width}${r.marker ? `\t--marker ${r.marker}` : ''}`);
-    console.log(`gate-batch: ${rows.length} pair(s), concurrency ${args.concurrency}, gate ${args.gate} (dry run — nothing ran)`);
+    console.log(`gate-batch: ${rows.length} pair(s) on ${groupByHost(rows).length} live host(s), concurrency ${args.concurrency}, gate ${args.gate} (dry run — nothing ran)`);
     return 0;
   }
   mkdirSync(args.out, { recursive: true });
   const { createProgress } = await loadProgress();
   const progress = createProgress({ file: args.progress, driver: 'gate-batch', total: rows.length, extra: { concurrency: args.concurrency, gate: args.gate, out: args.out } });
   const results = new Array(rows.length);
-  console.error(`gate-batch: ${rows.length} pair(s), concurrency ${args.concurrency}, logs in ${args.out}/`);
-  await pool(rows, args.concurrency, async (row, idx) => {
-    const key = `${row.slug}-${row.width}`;
-    const r = await runGate(args.gate, row, path.join(args.out, `${key}.log`));
-    const c = classify(r.code);
-    results[idx] = { ...row, ...r, ...c };
-    progress.tick({ ok: c.ok, noverdict: c.noverdict, path: key });
-    console.error(`[${progress.state.done}/${rows.length}] ${c.verdict.padEnd(8)} ${key} (exit ${r.code})${r.pixelPct != null ? `  ${r.pixelPct}%` : ''}`);
+  const groups = groupByHost(rows);
+  console.error(`gate-batch: ${rows.length} pair(s) on ${groups.length} live host(s), concurrency ${args.concurrency} (same-host pairs run sequentially), logs in ${args.out}/`);
+  await pool(groups, args.concurrency, async (group) => {
+    for (const { row, idx } of group) {
+      const key = `${row.slug}-${row.width}`;
+      const r = await runGate(args.gate, row, path.join(args.out, `${key}.log`));
+      const c = classify(r.code);
+      results[idx] = { ...row, ...r, ...c };
+      progress.tick({ ok: c.ok, noverdict: c.noverdict, path: key });
+      console.error(`[${progress.state.done}/${rows.length}] ${c.verdict.padEnd(8)} ${key} (exit ${r.code})${r.pixelPct != null ? `  ${r.pixelPct}%` : ''}`);
+    }
   });
   const codes = results.map((r) => r.code);
   const exit = batchExit(codes);

@@ -244,32 +244,33 @@ Defaults (override only when the invocation says otherwise):
 - **Volume caps as reasoned proposals.** Default **100 pages overall,
   20 per template**; roster priority: header/footer-linked pages, section
   landings, then a representative spread of detail pages per template.
-  State the chosen caps in `direction.md`.
+  State the caps in `direction.md`.
 - **Delegate by file pointer, read by section.** A brief to a delegated
   agent names files and sections (`state.json`, the page's schema, the
   phase's SKILL.md sections) — card rows, never whole files or inlined
-  reference docs. The coordinator reads a skill's operator card, never
+  docs. The coordinator reads a skill's operator card, never
   its body, and before reading any file over 20 KB lists the headings
   and reads only the section the card names. Stall-prone instruments run
   under their shipped deadline (replica `gate.sh`, `pixel-compare
   --timeout`), never an agent-authored `sleep N; kill` loop. Worker contract (briefs
   point at it): `reference/fan-out.md` § Worker contract.
-- **Image reads.** Numbers first, then band crops; never a stitched
-  capture whole — `reference/context-hygiene.md` § Image reads.
+- **Image reads.** Numbers first, then `review-<label>.png` bands or a
+  `sheet-NN.png` sheet (legend `.json`); never a stitched capture whole —
+  `reference/context-hygiene.md` § Image reads.
 - **Scope and type of delegated agents.** Scope cap first, fresh-context
   workers by default, the coordinator dispatches and merges —
   `reference/fan-out.md` § Scope and type of delegated agents.
 - **Wait discipline: never park the conversation past the prompt-cache
   window.** Anything over ~2 minutes (gate round, crawl, batch push,
-  delegated agent) runs in the background and writes a progress file
+  agent) runs in the background and writes a progress file
   (`<driver>.progress.json`, `skills/stardust/scripts/progress.mjs read
-  <file>`; it ends with one `SUMMARY` stdout line —
+  <file>`; it ends with one `SUMMARY` line —
   `../deploy/da-deploy-protocol.md` § Delivery pipeline) — never under one
   long `sleep`. Do independent work meanwhile;
-  otherwise check the progress file **at most every 4 minutes** (no fixed
-  `sleep` ≥ 5 min, no blocking wait on agent output); end the turn only
+  otherwise check the progress file **at most every 4 minutes** (no blocking
+  wait on agent output); end the turn only
   for waits over ~45 min or a user decision. Rationale, output caps and
-  Claude Code levers: `reference/run-status.md` § Long-running steps.
+  harness levers: `reference/run-status.md` § Long-running steps.
 - **Context hygiene.** Class tables in the conversation, per-page rows
   in files, hand-off at phase boundaries — `reference/context-hygiene.md`
   § Runner reports and session hand-off.

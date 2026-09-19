@@ -73,8 +73,9 @@ Tier-3 window flags: `--window-position=-32000,-32000
 --disable-background-timer-throttling`. The backgrounding flags
 keep the off-screen window at `document.visibilityState ===
 'visible'` — an occluded, backgrounded tab is challenged where an
-on-screen one is admitted, so the stitched-capture instrument asserts
-visibility before it shoots (exit 3 otherwise). The window is user-visible only under
+on-screen one is admitted, so the stitched-capture instrument records
+`document.visibilityState` in the sidecar and prints `WARN` when it is not
+`visible` (gate doc rule 12); the capture is not refused. The window is user-visible only under
 `STARDUST_HEADED_WINDOW=1`: a visible window is a cost the user
 pays, never a tier.
 

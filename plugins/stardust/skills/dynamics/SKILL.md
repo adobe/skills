@@ -37,10 +37,8 @@ Sections: When it runs · Phase 1 — Detect · Phase 2 — Classify · Phase 3 
 
 Static migration treats a page as content and layout. This skill treats it as **behaviour**:
 everything the source renders from JavaScript, a service or a data source, and everything the
-target host cannot serve the same way — a surface a block-scoped, pixel-verified pipeline
-certifies as correct while modals render as links, video pills as CTAs without targets, a search
-box as a 404. It forces a decision per row **before import**, then proves the behaviour after
-delivery. It never blocks the static path; every page must still work as a static page.
+target host cannot serve the same way. It forces a decision per row **before import**, then proves
+the behaviour after delivery. It never blocks the static path; every page must still work as a static page.
 
 ## When it runs — migration-bound, default-on there, never elsewhere
 
@@ -82,6 +80,8 @@ reproducibility · status** — plus pattern, phase and the owner decision. Cura
 - Only reproducibility `self` ships autonomously; everything else is **one decision batch**.
 - Never fabricate copy for a blank client-rendered capture; never auto-wire a `regulated-pii` form;
   a search box implies a results page; decided-out is explicit.
+- Gated `decided-out` / index-backed / data-fed rows get a `stardust/replica/masks.json` entry
+  (`sel`, `class`, `source: dynamics:<row-id>`) — replica gate doc rule 19.
 - **Gate:** a row without a disposition fails prepare-migration 4.5 / replica Phase 2 / rollout B2.
   The static migration continues regardless.
 

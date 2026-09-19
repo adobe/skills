@@ -78,6 +78,11 @@
  *                                                same-name block tables in one section
  *                                                (one block with N rows / a repeat
  *                                                unit — migrate importer-recipe rule 10)
+ *                                            D-CONST (tree) a block row identical on
+ *                                                ≥ 80 % of a block's instances (min 5) —
+ *                                                a site-wide constant authored per page
+ *                                            D14-OPTIONS a `key | a, b, c, d, e` row in
+ *                                                a content block — an option list per page
  *                                            D6  SOLE-EMPH — a lone link wrapped by
  *                                                emphasis in the pipeline-hoisted order
  *                                                (<a><strong>, <b>/<i>, or in a <li>)
@@ -172,6 +177,9 @@ const DUPROW_EXEMPT = new Set(['table', 'accordion', 'tabs', 'form', 'faq']);
 const DUPROW_MIN_WORDS = 15;
 const DUPROW_JACCARD = 0.6;
 const SERIAL_MIN = 4; // D5-SERIAL: segments in one cell joined by |, ; or •
+const CONST_MIN_INSTANCES = 5; // D-CONST: a row must recur on at least this many instances …
+const CONST_SHARE = 0.8; // … and on this share of the block's instances (tree mode)
+const OPTIONS_MIN_SEPARATORS = 4; // D14-OPTIONS: commas in a short-key row's value cell
 const FLATTEN_MIN_HEADINGS = 3; // D2-FLATTEN: headings inside one cell
 // D15 VEHICLE-ICON — an icon named as a spacer carries no meaning (a 67 B <svg></svg> asset seen in the field).
 const SPACER_ICON = /^(spacer|gap|blank|space)(-|$)/;
@@ -366,10 +374,24 @@ function lintBlock(file, section, block, name, flag) {
   }
 
   const cellCounts = [];
+  noteRows(file, name, rows);
 
   rows.forEach((row, ri) => {
     const cells = childDivs(row.inner);
     cellCounts.push(cells.length);
+
+    // D14-OPTIONS 🟡 — `key | a, b, c, d, e`: an option list authored as a row of a
+    // content block. Short key (≤ 3 words), no list markup, ≥ OPTIONS_MIN_SEPARATORS
+    // commas, every option short — a filter/select vocabulary that is site-wide
+    // config (a sheet behind one Source row, or placeholders), not page content.
+    if (!isKeyValue && cells.length === 2 && !/<(ul|ol|p)\b[\s\S]*<(ul|ol|p)\b/i.test(cells[1].inner)) {
+      const key = stripTags(cells[0].inner).replace(/&[a-z#0-9]+;/gi, ' ').trim();
+      const val = stripTags(cells[1].inner).replace(/&[a-z#0-9]+;/gi, ' ').trim();
+      const opts = val.split(',').map((x) => x.trim()).filter(Boolean);
+      if (key && key.split(/\s+/).length <= 3 && !/[.:;!?]/.test(key) && opts.length > OPTIONS_MIN_SEPARATORS && opts.every((o) => o.split(/\s+/).length <= 4) && !/[.!?]$/.test(val)) {
+        rollup(file, '🟡', 'D14-OPTIONS', `options:${name}:${key.toLowerCase()}`, 1, (n, files, single) => `block "${name}": row "${key}" carries an option list of ${opts.length} values${single ? '' : ` on ${files.size} page(s)`} — a site-wide vocabulary authored per page; one sheet behind a single \`Source\` row or /placeholders.json, page-specific values stay rows (reference/encode-contract.md § Structural rules, site-wide strings; D14-OPTIONS)`);
+      }
+    }
 
     cells.forEach((cell, ci) => {
       const where = `${label} row ${ri + 1} cell ${ci + 1}`;
@@ -828,6 +850,49 @@ function noteBlock(file, name, variants) {
   }
 }
 
+// D-CONST census — every row of every content-block instance, keyed by its text
+// (whitespace-collapsed, case-folded), with the pages/instances it recurs on.
+// Skipped: key-value blocks, chrome/fragment documents, and any instance that
+// already carries a `Source` row (the remedy shape: one sheet, one row).
+const ROW_USES = new Map(); // block → Map(rowKey → { instances, files:Set, ulOnly })
+const BLOCK_INSTANCES = new Map(); // block → content-block instances counted for D-CONST
+const rowKeyOf = (html) => stripTags(html).replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+function noteRows(file, name, rows) {
+  if (KEY_VALUE_BLOCKS.has(name) || CHROME_PATH.test(file) || !rows.length) return;
+  if (rows.some((r) => { const c = childDivs(r.inner); return c.length >= 2 && rowKeyOf(c[0].inner) === 'source'; })) return;
+  BLOCK_INSTANCES.set(name, (BLOCK_INSTANCES.get(name) || 0) + 1);
+  if (!ROW_USES.has(name)) ROW_USES.set(name, new Map());
+  const uses = ROW_USES.get(name);
+  const seen = new Set();
+  for (const r of rows) {
+    const key = rowKeyOf(r.inner);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    if (!uses.has(key)) uses.set(key, { instances: 0, files: new Set(), text: stripTags(r.inner).replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim(), ulOnly: /^\s*<(ul|ol)\b[\s\S]*<\/(ul|ol)>\s*$/i.test(childDivs(r.inner).map((c) => c.inner.trim()).join('')) });
+    const u = uses.get(key);
+    u.instances += 1;
+    u.files.add(file);
+  }
+}
+
+// D-CONST 🟡 (tree mode): per (block, row) recurring on ≥ CONST_SHARE of the block's
+// instances (min CONST_MIN_INSTANCES). A `<ul>`-only row (a label list) is skipped
+// while the block also has rows that vary — the listing shape, not a constant.
+function constantRows() {
+  const out = [];
+  for (const [block, uses] of [...ROW_USES].sort()) {
+    const total = BLOCK_INSTANCES.get(block) || 0;
+    if (total < CONST_MIN_INSTANCES) continue;
+    const isConst = (u) => u.instances >= CONST_MIN_INSTANCES && u.instances / total >= CONST_SHARE;
+    const hasVarying = [...uses.values()].some((u) => !isConst(u));
+    for (const [row, u] of uses) {
+      if (!isConst(u) || (u.ulOnly && hasVarying)) continue;
+      out.push({ block, row: u.text.length > 60 ? `${u.text.slice(0, 57)}…` : u.text, instances: u.instances, total, pages: u.files.size, files: u.files });
+    }
+  }
+  return out;
+}
+
 // STYLE-SEL — does the foundation CSS reach this section-style token at all?
 // `.section.tok` / `.tok` (bare or compound), `[class~='tok']` (exact) or
 // `[class*='sub']` with `sub` inside the token (attribute-selector band rules).
@@ -897,6 +962,12 @@ function reportCensus(push) {
     push('🟡', 'D1-SPACER', new Set(PAGE_STATS.filter((p) => p.metadataOnly).map((p) => p.file)), `${spacers} section(s) (${pct.toFixed(1)} %) carry only section-metadata — a spacer or rule; acceptable only as the #119 rule replacement with a closed-set style; spacing belongs in \`main .section\` CSS (D1-SPACER)`);
   }
 
+  // D-CONST (tree mode) — one line per (block, row); the remedy is a once-per-block decision.
+  const constants = TREE_MODE ? constantRows() : [];
+  for (const c of constants) {
+    push('🟡', 'D-CONST', c.files, `block "${c.block}": row "${c.row}" identical in ${c.instances}/${c.total} instances (${c.pages} pages) — a site-wide constant authored per page: placeholders sheet, block default, or an auto-blocked template shell (reference/audit-and-naming.md § 2b tier 3; D-CONST)`);
+  }
+
   // --json census (tree mode): what the conversion log's "locked vocabulary" pastes.
   if (!TREE_MODE) return null;
   const mean = (key) => (docs ? +(PAGE_STATS.reduce((n, p) => n + p[key], 0) / docs).toFixed(2) : 0);
@@ -911,6 +982,7 @@ function reportCensus(push) {
       metadataOnly: { count: spacers, pct: +pct.toFixed(1) },
     },
     pages: allFiles.size,
+    constants: constants.map(({ block, row, instances, pages }) => ({ block, row, instances, pages })),
   };
 }
 

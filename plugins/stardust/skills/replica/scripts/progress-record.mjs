@@ -82,11 +82,18 @@ export function countRounds(dir, regime = 'prototype') {
   }, 0);
 }
 
+/** One ledger mask entry: kind, class, area % and the identifier by kind (`spec` for
+ *  bands, `sel` / `src` otherwise), `asymmetric` + `side` when one side only — the
+ *  shape source-fidelity-gate.md § Residual logging format names; undefined keys dropped. */
+const maskEntry = ({ kind, class: cls, spec, sel, src, areaPct, asymmetric, side }) => Object.fromEntries(
+  Object.entries({ kind, class: cls, spec, sel, src, areaPct, ...(asymmetric ? { asymmetric, side } : {}) }).filter(([, v]) => v !== undefined),
+);
+
 /** The ledger block for one record. */
 export function blockFor(rec, recordPath, iterations) {
   const result = {
     regime: rec.regime, pixelPct: rec.pixelPct, pixelPctUnmasked: rec.pixelPctUnmasked ?? rec.pixelPct, heightDelta: rec.heightDelta, pass: rec.pass ?? rec.verdict === 'PASS',
-    masks: (rec.masks || []).map((m) => ({ spec: m.spec, areaPct: m.areaPct })), ref: rec.ref, at: rec.at,
+    masks: (rec.masks || []).map(maskEntry), ref: rec.ref, at: rec.at,
     ...(rec.forced ? { forced: true } : {}), ...(rec.noiseFloor ? { noiseFloor: { pixelPct: rec.noiseFloor.pixelPct, heightDelta: rec.noiseFloor.heightDelta } } : {}),
   };
   if (rec.regime === 'published-origin') return { key: 'published', block: { result, url: rec.build?.url, artifacts: [recordPath] } };

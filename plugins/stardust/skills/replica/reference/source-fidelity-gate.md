@@ -721,9 +721,10 @@ breakpoint without a published-origin number is `ungated` in the ledger
 (`published.<bp>` absent, § Residual logging format) and in every report —
 never passed, never inherited from the prototype number.
 
-Before the final run: `skills/deploy/scripts/served-check.mjs <asset-url> --grep
-<marker> --wait 180` exits 0 for every asset the round touched and the page
-marker — `../../deploy/reference/deployed-reconcile.md` § The six reconcile checks
+Before the final run: `skills/deploy/scripts/served-check.mjs <css|js-url>
+--same-as <local-file> --wait 180` exits 0 for every block CSS/JS the round
+touched and `… <page-url> --grep <marker> --wait 180` for the page marker —
+`../../deploy/reference/deployed-reconcile.md` § The six reconcile checks
 (a gate run earlier measures yesterday's code). Two rules for that final run:
 
 - **Re-probe live chrome metrics at deploy time — crawl captures are the
@@ -747,10 +748,10 @@ marker — `../../deploy/reference/deployed-reconcile.md` § The six reconcile c
   and the reconcile round as expected work, not a regression.
 - **Two published-origin rounds without improvement → stop editing CSS.**
   The number is then not a CSS problem. Run, in this order: the served-hash
-  check (§ Iteration discipline, rule-bearing element — code CSS served
-  under a CDN `max-age` shows the previous round for hours); the DOM
+  check (§ Iteration discipline — CDN `max-age` serves the previous round
+  for hours); the DOM
   ladder published-vs-prototype (which wrappers the pipeline added); the
-  landmark Δy table (`anchor.mjs` section anchors on both sides); the
+  landmark Δy table (`anchor.mjs --landmarks --against`); the
   text-wrap diff (line counts per matched paragraph). CSS experiments run
   on a branch host (`<branch>--<repo>--<owner>.aem.page`), never as
   commit/revert on `main` — every revert is a live publish and a phantom

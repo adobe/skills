@@ -129,6 +129,10 @@ so the gates run uniformly:
   newly delivered pages, and only then flips coverage — the ledger's POST
   codes never flip state ("Admin 200 ≠ delivered" below). Halt classes, exit
   codes and remedies: `skills/deploy/da-deploy-protocol.md` § DA_TOKEN lifecycle.
+  Two look-alikes: a delivered-host `401 x-error: access-not-allowed` is the
+  `access-restricted` halt (remedy `SITE_TOKEN_<REPO>` via `--site-token-env`, then
+  the same `next`); ≥ 3 previously delivered pages answering 404 at startup is a
+  content-bus reset — self-healing: the driver warns and re-drives them, no halt.
 - **Validate structure BEFORE deploy.** Cheap deterministic check on every authored
   file — exactly one `<h1>`, the body/`<main>`/`<footer>` wrapper, balanced
   `<div>`s — catches a truncated/garbled file before it reaches DA.
@@ -148,6 +152,9 @@ so the gates run uniformly:
   2-min foreground budget); the driver's ledger, repairs, progress file, `SUMMARY`
   line and exit codes (0/1/2/3): `skills/deploy/da-deploy-protocol.md` § Delivery
   pipeline and § DA_TOKEN lifecycle — read those, never `sleep N; grep -c` a log.
+  Hash-skip: a `previewed`/`deployed` row whose ledger `bodyHash` equals the file's
+  bytes is verified, never re-PUT (plan line `U unchanged (hash)`); a changed file
+  always re-drives, a row without a hash is verified-then-skipped and backfilled.
   Gate mapping of the driver's verdicts: `PUT=201 PRE=4xx/400` → a path-safety case
   (Gate 3); a `200 + about:error` that PERSISTS after the driver's one re-preview →
   an image case (Gate 2); `body-invalid` / `overwrite-guard` → the authored file, not DA.

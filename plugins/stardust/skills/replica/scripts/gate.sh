@@ -45,9 +45,10 @@
 # the round prints `LIVE DRIFT Δh <px> sections <a→b> — recapturing`, deletes
 # ALL THREE live caches together (live.png + .json, anchor-live.json,
 # chrome-live.json — a recaptured PNG next to a stale chrome/anchor cache is
-# the mixed-reference bug one level down), stores the fresh probe as the new
-# anchor-live.json (the hit is not wasted) and records liveDrift{} in the
-# round record. A probe that hits its deadline (124) or is blocked skips the
+# the mixed-reference bug one level down), stores the fresh probe (taken with
+# --landmarks) as the new anchor-live.json — the hit is not wasted: the
+# landmark step reads it from cache — and records liveDrift{} in the round
+# record. A probe that hits its deadline (124) or is blocked skips the
 # check with a printed reason — never a FAIL, never a recapture. The bounded
 # threshold is what keeps one live.png per breakpoint as the round's truth on
 # pages whose height varies ±700 px between loads; without it every round
@@ -417,7 +418,7 @@ NODE
       echo "gate.sh: reference $DIR/live.png is ${STALE#stale } h old${REFRESH:+ (--refresh)} — one fresh anchor probe to check for live drift" >&2
       PROBE="$DIR/.anchor-probe.json"
       # shellcheck disable=SC2086
-      capped "$STITCH_TIMEOUT" "anchor probe live $SLUG@$W" node "$HERE/anchor.mjs" "$LIVE_URL" --width "$W" --json --consent-mode "$CONSENT_MODE" ${GATE_BLOCK:+--block $GATE_BLOCK} > "$PROBE"
+      capped "$STITCH_TIMEOUT" "anchor probe live $SLUG@$W" node "$HERE/anchor.mjs" "$LIVE_URL" --width "$W" --json --landmarks --consent-mode "$CONSENT_MODE" ${GATE_BLOCK:+--block $GATE_BLOCK} > "$PROBE"
       prc=$?
       if [ $prc -ne 0 ]; then
         echo "gate.sh: drift check skipped — anchor probe exit $prc ($([ $prc -eq 124 ] && echo 'deadline, no verdict' || echo 'blocked/error')); comparing against the cached reference as-is" >&2
@@ -445,7 +446,7 @@ else {
 }
 if (out.drift) {
   for (const f of ['live.png', 'live.png.json', 'anchor-live.json', 'chrome-live.json', 'freshness.json']) fs.rmSync(`${dir}/${f}`, { force: true });
-  fs.writeFileSync(`${dir}/anchor-live.json`, `${JSON.stringify({ key: { url, width: Number(width), main: probe.main || 'main' }, probedAt: out.checkedAt, data: { doc: probe.doc, rootMissing: probe.rootMissing, rootWrapsChrome: probe.rootWrapsChrome, sections: probe.sections, footer: probe.footer } }, null, 2)}\n`);
+  fs.writeFileSync(`${dir}/anchor-live.json`, `${JSON.stringify({ key: { url, width: Number(width), main: probe.main || 'main' }, probedAt: out.checkedAt, data: { doc: probe.doc, rootMissing: probe.rootMissing, rootWrapsChrome: probe.rootWrapsChrome, sections: probe.sections, footer: probe.footer, ...(probe.landmarks ? { landmarks: probe.landmarks } : {}) } }, null, 2)}\n`);
   console.error(`gate.sh: LIVE DRIFT Δh ${out.deltaPx > 0 ? '+' : ''}${out.deltaPx}px (threshold ${out.thresholdPx}px) sections ${sectionsBefore ?? '?'}→${sectionsAfter ?? '?'} — recapturing live.png; anchor-live.json and chrome-live.json invalidated together (a stale reference is not a residual — this round does not count against the cap)`);
 } else {
   fs.writeFileSync(`${dir}/freshness.json`, `${JSON.stringify(out, null, 2)}\n`);
@@ -492,7 +493,10 @@ process.stdout.write(v && v.gradedAgainst && side && side.capturedAt && v.graded
 ' "$DIR" 2>/dev/null)
 if [ -n "$VARIANCE" ] && [ -z "$FORCE" ] && { [ ! -f "$DIR/variance.json" ] || [ -n "$VAR_STALE" ]; }; then
   [ -n "$VAR_STALE" ] && echo "gate.sh: noise floor was graded against the $VAR_STALE reference (recaptured since) — re-grading" >&2
-  capped "$STITCH_TIMEOUT" "stitch-shot live-b $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live-b.png" --width "$W" --settle --consent-mode "$CONSENT_MODE"
+  # same flags as live.png (--expect-height, --block, --allow-consent, masks): a
+  # sidecar that differs in `blocked`/masksRects is refused by pixel-compare.
+  # shellcheck disable=SC2086
+  capped "$STITCH_TIMEOUT" "stitch-shot live-b $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live-b.png" --width "$W" --settle --consent-mode "$CONSENT_MODE" $EXPECT_ARGS $STITCH_COMMON
   vrc=$?
   if [ $vrc -ne 0 ]; then
     rm -f "$DIR/live-b.png" "$DIR/live-b.png.json"

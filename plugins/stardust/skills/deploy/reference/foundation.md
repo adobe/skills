@@ -104,4 +104,4 @@ icon, which reads as broken to the client.
 
 ## Section rhythm
 
-Inter-module spacing that varies per band is a Step 3 concern with its own chapter — `reference/section-rhythm.md` (decision rule: majority in CSS, derivable deviations as `.section` classifiers, remainder as budgeted tokens; the `--mt` engine, its silent traps, the replica hand-off). This heading stays as the pointer the replica chapters cite.
+Inter-module spacing that varies per band is a Step 3 concern with its own chapter — `reference/section-rhythm.md` (decision rule: majority in CSS, derivable deviations as `.section` classifiers, remainder as budgeted tokens; the `--mt` engine, its silent traps, the replica hand-off — `replica/reference/recreation-procedure.md` cites that chapter directly).

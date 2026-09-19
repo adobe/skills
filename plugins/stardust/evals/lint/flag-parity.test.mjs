@@ -28,7 +28,7 @@ const run = (...args) => spawnSync(process.execPath, [LINT, ...args], { encoding
   const lines = r.stderr.trim().split('\n').filter((l) => /lint\.md:\d+:/.test(l));
   assert.equal(lines.length, 4, `four findings, got:\n${r.stderr}`);
   assert.ok(lines.some((l) => /lint\.md:9: --no-such-flag is not a parser case in .*replica\/scripts\/anchor\.mjs$/.test(l)), `span-initial unhyphenated bare name: ${r.stderr}`);
-  assert.ok(lines.some((l) => /lint\.md:3: --open is not a parser case in .*replica\/scripts\/chrome-parity\.mjs$/.test(l)), `bare-name flag: ${r.stderr}`);
+  assert.ok(lines.some((l) => /lint\.md:3: --no-such-flag is not a parser case in .*replica\/scripts\/chrome-parity\.mjs$/.test(l)), `bare-name flag: ${r.stderr}`);
   assert.ok(lines.some((l) => /lint\.md:4: --no-such-flag is not a parser case in .*rollout\/scripts\/delivery-lint\.mjs$/.test(l)), `.mjs flag still checked: ${r.stderr}`);
   assert.ok(lines.some((l) => /lint\.md:5: rule id `D-NOPE` is emitted by no skills\/\*\/scripts source/.test(l)), `unknown rule id: ${r.stderr}`);
   assert.ok(!/allow-no-h1|D1-EMPTY|YYYY-MM-DD|--styles|lint\.md:8/.test(r.stderr), `known flag, known rule id, non-lint caps token, blocks/ path and the ignore line are silent: ${r.stderr}`);

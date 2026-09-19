@@ -28,7 +28,7 @@ Read this card, then the one section you are at — never the whole skill. Every
 | 9 | Content pages | `node skills/deploy/scripts/davids-model-lint.mjs content/ --icons-dir icons --styles styles/styles.css`; `sanitise.js <file>` | lint exit 0 + whole-page round-trip clean → first PUT + preview (URL in the first status line) |
 | QA | Local harness | `block-lint.mjs blocks/ --styles styles/styles.css`; `pipeline-mimic.mjs --self-test`; `build-harness.mjs` → `qa-gate.mjs <harnessURL> --schema stardust/eds-schema/<page>.json`; whole-page `block-roundtrip --strict` (no `--blocks`); `render-harness.mjs content/<page>.html --fragments content/`; `ew-editability-probe.mjs --simulate-editor` | block-lint + qa-gate exit 0; no edit-mode drift |
 | D | Deploy | `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> --content content` (preview), then a separate `… --publish` run on pass; `localize-links.mjs --source-host <live-host> --check`; `ai-readability.mjs --origin <live> <paths>`; progress: `skills/stardust/scripts/progress.mjs read stardust/.work/deploy/deploy-batch.progress.json` | per-page atomic contract passed; AI-readability ≥ 98 |
-| 10 | Deployed reconcile | `node skills/diff/scripts/content-diff.mjs "<protoURL>" "<deployedURL>" --profile eds` (advisory); fetch-delayed CLS probe; `skills/replica/scripts/crop-compare.mjs` on header/footer bands; `served-check.mjs <asset-url> --grep <marker>` for served assets | CLS < 0.1; chrome bands within the crop gate; deployed eyeball faithful |
+| 10 | Deployed reconcile | `node skills/diff/scripts/content-diff.mjs "<protoURL>" "<deployedURL>" --profile eds` (advisory); fetch-delayed CLS probe; `skills/replica/scripts/crop-compare.mjs` on header/footer bands; `served-check.mjs <css|js-url> --same-as <local-file>` / `<page-url> --grep <marker>` first | CLS < 0.1; chrome bands within the crop gate; deployed eyeball faithful |
 
 Outputs: `blocks/<name>/<name>.{js,css}` · `content/**/*.html` (+ `nav.html`, `footer.html`) · `styles/styles.css`, `styles/fonts.css`, `fonts/*.woff2` · `stardust/runtime-contract.json` · `stardust/eds-schema/<page>.json` · `stardust/eds-conversion-log.md` · `content/.deploy-ledger.json`.
 
@@ -60,21 +60,21 @@ The user has:
    - **External per-page `.css`** (the `<style>` lives in a sibling stylesheet). Read the linked CSS as you would an inline `<style>`.
    - **`<x-dc>` document-content with everything inline-styled** — lift inline styles into a scoped block stylesheet.
    - **React/JSX prototypes** (an HTML shell that mounts `.jsx` components at runtime). **Pre-render to static HTML first** (run it, or screenshot + read the JSX to reconstruct the DOM); you cannot decorate a shell that has no server-rendered `<main>`.
-   Prototypes typically live under `stardust/prototypes/**` or `samples/<Name>/` — don't hard-code the path; discover them.
+   Discover the prototype path (`stardust/prototypes/**`, `samples/<Name>/`); never hard-code it.
 2. An EDS project at the repo root — **vanilla `aem-boilerplate`** (`github.com/adobe/aem-boilerplate`): `scripts/aem.js` + `scripts/scripts.js`, `blocks/` with `header`/`footer`/`fragment`, `styles/styles.css` + `styles/fonts.css`, `head.html`. This is the ONLY runtime this skill targets — no runtime files are ever ported, vendored, or edited.
 3. A goal to convert: prototypes → authorable EDS blocks + EDS content pages under `content/**`.
 
-If the user has prototypes but no EDS scaffolding, stop and ask whether to scaffold from `adobe/aem-boilerplate` (template as-is; the conversion never modifies `scripts/aem.js`). EDS but no prototypes: this skill doesn't apply.
+If the user has prototypes but no EDS scaffolding, stop and ask whether to scaffold from `adobe/aem-boilerplate` (template as-is). EDS but no prototypes: this skill doesn't apply.
 
 **Flow guard (stardust projects).** When `stardust/state.json` exists but has no `flow` and the ask is a migration (a URL plus "migrate" / "to EDS" / "re-platform"), stop before Step 1: print the master skill's two-flow table (`skills/stardust/SKILL.md` § Two migration flows) and hand back to its routing, which stamps `flow` (`skills/stardust/reference/state-machine.md` § Flow keys). Hand-authored prototypes with no `state.json` are this skill's standalone use.
 
 ## Target runtime — vanilla aem-boilerplate (compressed)
 
-The stock boilerplate provides everything the conversion needs; the runtime is never modified (ported, vendored or edited). The load chain `head.html` → `scripts.js` → `loadEager` → `loadLazy` → `loadDelayed` gives you: the **section DOM** (`div.section` › `div.default-content-wrapper` / `div.<name>-wrapper` › `div.<name>.block`, hidden until loaded); **cell normalization** — `wrapTextNodes` folds a media-led or unlisted-first-child cell into ONE `<p>` before `decorate()` runs (#104); the **body gate** (`body { display: none }` / `body.appear`) — keep it, and load the real `scripts/scripts.js` in every off-pipeline render; **buttons** via `decorateButtons()` on author-formatted links only (Step 5); **chrome** as `header`/`footer` blocks fetching `/nav` and `/footer` (Step 6); **fonts** via `styles/fonts.css` + `loadFonts()` with the metric-matched fallbacks in `styles.css` (Step 4); the project-owned **`buildAutoBlocks()`** hook; and the **Experience Workspace instrumentation** — the inline editor stamps `data-prose-index` on the outermost authored elements, re-runs `loadPage()`, and only elements that still carry their index become editable (Step 8, EW1–EW10). Clones drift — the Runtime-detection probe below records what THIS target does. Full text: `reference/target-runtime.md`.
+The stock boilerplate provides everything the conversion needs; the runtime is never modified. The load chain `head.html` → `scripts.js` → `loadEager` → `loadLazy` → `loadDelayed` gives you: the **section DOM** (`div.section` › `div.default-content-wrapper` / `div.<name>-wrapper` › `div.<name>.block`, hidden until loaded); **cell normalization** — `wrapTextNodes` folds a media-led or unlisted-first-child cell into ONE `<p>` before `decorate()` runs (#104); the **body gate** (`body { display: none }` / `body.appear`) — keep it, and load the real `scripts/scripts.js` in every off-pipeline render; **buttons** via `decorateButtons()` on author-formatted links only (Step 5); **chrome** as `header`/`footer` blocks fetching `/nav` and `/footer` (Step 6); **fonts** via `styles/fonts.css` + `loadFonts()` with the metric-matched fallbacks in `styles.css` (Step 4); the project-owned **`buildAutoBlocks()`** hook; and the **Experience Workspace instrumentation** — the inline editor stamps `data-prose-index` on the outermost authored elements, re-runs `loadPage()`, and only elements that still carry their index become editable (Step 8, EW1–EW10). Clones drift — the Runtime-detection probe below records what THIS target does. Full text: `reference/target-runtime.md`.
 
 ## Playwright re-probe (run before anything that renders)
 
-`--no-save` playwright installs are pruned by any later real `npm i` (extract SKILL.md § Setup). Before the Local-QA harness or any probe below, verify `node -e "import('playwright').then(()=>process.exit(0))"` from the project root and re-install (`npm i -D playwright --no-save --legacy-peer-deps`) on failure.
+`--no-save` playwright installs are pruned by any later real `npm i` (extract SKILL.md § Setup). Before the Local-QA harness or any probe below, run the card's row-0 probe from the project root and re-install (`npm i -D playwright --no-save --legacy-peer-deps`) on failure.
 
 ## Runtime-detection probe (run before Step 1 — write `stardust/runtime-contract.json`)
 
@@ -91,7 +91,7 @@ Boilerplate clones drift (button classes, wrapper names, buttonization rules), a
 }
 ```
 
-Block CSS/JS generation and the Local-QA harness read this contract. The values above are current `adobe/aem-boilerplate` main; the two known drift axes per target:
+Block CSS/JS generation and the Local-QA harness read this contract. Values above = current `adobe/aem-boilerplate` main; the two known drift axes:
 - **`buttonClasses`** — current main emits `a.button` (+ `.primary`/`.secondary`/`.accent`) inside `p.button-wrapper`; older clones emit `p.button-container`, and some buttonize a bare `<a>` alone in a paragraph (`bare-links-too`) where current main requires authored `<strong>`/`<em>`.
 - **`blockWrapperClass`** — `decorateBlock` adds `.block` + `data-block-name` and wraps the block in `div.<name>-wrapper` (section gains `.<name>-container`). Scope block CSS under `.<name>` (the class every vintage sets); confirm by asserting a grid container computes `display: grid` in a headless render (a wrong guess degrades every grid to `display: block` while typography still looks fine).
 
@@ -117,7 +117,7 @@ For a typical 5–10 page site:
 - **Nav + footer documents** at `content/nav.html` and `content/footer.html` — authored content deployed like any page, fetched by the stock `header`/`footer` blocks (D12).
 - **Per-site `blocks/header` + `blocks/footer` CSS/JS** reproducing the prototype's chrome (Step 6).
 - **Updated `styles/styles.css`** with brand tokens lifted from the prototype's `:root`, a reset, the EDS section scaffold, a global button system (Step 5), and the styles for the few section-metadata `style` values default-content sections use. Nothing more.
-- **No shared utility modules, wave systems or motion library** — the prototype encodes these per-section; keep them inside the owning block.
+- **No shared utility modules, wave systems or motion library** — keep them inside the owning block.
 
 ## The ENCODE contract — ten bullets
 
@@ -136,7 +136,7 @@ The decode side lives in `reference/anti-patterns.md` and `reference/block-js-sc
 
 ## Steps
 
-Each step is a one-paragraph procedure; its full text, citations and code live in the chapter named at the end of the paragraph. Read that chapter's `##` before the step — not the whole chapter.
+Each step is a one-paragraph procedure; full text, citations and code live in the chapter named at its end. Read that chapter's `##` before the step — never the whole chapter.
 
 ### 1. Audit (light)
 
@@ -188,7 +188,7 @@ The stages (code push with forced Code Sync, `localize-links.mjs` over the WHOLE
 
 ## Step 10 — Reconcile on the DEPLOYED URL (content-diff ADVISORY + eyeball + CLS)
 
-After deploy, reconcile each page against its prototype on the DEPLOYED URL only (#78, #101). The atomic contract ran the load-bearing automated gates; Step 10 adds six checks: the advisory `content-diff` structural summary (summary line first; per-node findings are leads to verify by eye), the deployed full-page eyeball at desktop + mobile (#23, #105 — the load-bearing visual check), the fetch-delayed CLS probe (#100), the chrome crop gate on the header and footer bands (`skills/replica/scripts/crop-compare.mjs`, diagnose with `chrome-parity.mjs` first, #115), the wide-viewport box check for frozen-vs-fluid widths (#116) and geometry-fix verification hygiene (#117 — served assets read through `served-check.mjs`). Also grep `blocks/` for fixed-asset URLs (#44). Step 10 is per-page against the prototype; the site-wide sweep after rollout is the read-only `qa` skill. Before this step read `reference/deployed-reconcile.md` § The six reconcile checks and § Reading content-diff.
+After deploy, reconcile each page against its prototype on the DEPLOYED URL only (#78, #101). The atomic contract ran the load-bearing automated gates; Step 10 adds six checks: the advisory `content-diff` structural summary (summary line first; per-node findings are leads to verify by eye), the deployed full-page eyeball at desktop + mobile (#23, #105 — the load-bearing visual check), the fetch-delayed CLS probe (#100), the chrome crop gate on the header and footer bands (`skills/replica/scripts/crop-compare.mjs`, diagnose with `chrome-parity.mjs` first, #115), the wide-viewport box check for frozen-vs-fluid widths (#116) and geometry-fix verification hygiene (#117). Also grep `blocks/` for fixed-asset URLs (#44). Gate only after `served-check.mjs <css|js-url> --same-as <local-file> --wait 180` exits 0 for every block CSS/JS the round touched and `… <page-url> --grep <marker> --wait 180` exits 0 (124 = no verdict, 1 = served-but-wrong — neither a gate result). Step 10 is per-page against the prototype; the site-wide sweep after rollout is the read-only `qa` skill. Before this step read `reference/deployed-reconcile.md` § The six reconcile checks and § Reading content-diff.
 
 ## When you finish
 

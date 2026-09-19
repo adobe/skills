@@ -110,7 +110,7 @@ Before any screenshot-eyeball tuning:
    inter-module margins per module kind per breakpoint (recorded in
    `capture/tokens.json` as `spacing.module[<kind>][<bp>] = { mt, afterText }`
    next to the canon `--sp-*` tokens, consumed by
-   `../../deploy/reference/foundation.md` § Section rhythm), radii, shadows,
+   `../../deploy/reference/section-rhythm.md` § Hand-off from replica), radii, shadows,
    hero heights, breakpoint values — **and the
    text-rendering group**: `text-rendering`, `-webkit-font-smoothing`,
    `font-synthesis`, `font-variant-numeric`, `font-kerning`. Sites commonly
@@ -252,7 +252,7 @@ un-floating override.
 
 Inter-module rhythm is encoded on the deploy side — majority in CSS, derivable
 deviations as `.section` classifiers, remainder as budgeted tokens
-(`../../deploy/reference/foundation.md` § Section rhythm); replica only records
+(`../../deploy/reference/section-rhythm.md` § Decision rule); replica only records
 the measured margins per module kind per breakpoint.
 
 ## Fonts policy

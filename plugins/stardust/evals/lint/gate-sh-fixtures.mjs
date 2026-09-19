@@ -13,15 +13,19 @@
 //     GATE_REF_MAX_AGE_H gets ONE anchor probe and is kept within the bounded
 //     threshold (recorded in freshness.json); --refresh + a taller live doc →
 //     LIVE DRIFT invalidates live.png(.json), anchor-live.json and
-//     chrome-live.json together, stores the probe as anchor-live.json,
-//     records liveDrift{} and does not count the round; a probe deadline (124)
-//     skips the check — no recapture, no FAIL;
+//     chrome-live.json together, stores the probe (taken with --landmarks) as
+//     anchor-live.json so the landmark step reads it from cache (a drift round
+//     is 2 live hits, not 3 — defect fixture), records liveDrift{} and does not
+//     count the round; a probe deadline (124) skips the check — no recapture,
+//     no FAIL;
 //   variance — --variance captures live-b once, writes variance.json, prints
 //     the noise floor and records noiseFloor{} without changing the verdict;
 //     variance.json carries gradedAgainst; a LIVE DRIFT recapture keeps the
 //     floor but flags it stale (line + record) until an explicit --variance
 //     re-grades it;
-//     its Δh bounds the drift threshold;
+//     its Δh bounds the drift threshold; live-b is taken with the SAME flags as
+//     live.png (--expect-height, GATE_BLOCK, GATE_ALLOW_CONSENT — defect fixture:
+//     a sidecar differing in `blocked` is refused by pixel-compare);
 //   cap — default labels iter<k> never collide (a no-verdict round keeps its
 //     label and does not count); the 4th counted round exits 6 before any
 //     capture; --over-cap <reason> runs it and lands overCap; a bad reason and
@@ -30,7 +34,9 @@
 //   record — --record upserts breakpoints.<w> (prototype) / published.<w>
 //     (published-origin) for the matching page type and prints-only when the
 //     archetype has no page type; iterations count the record's own regime
-//     only; the shared reader resolves a top-level archetypes[] ledger;
+//     only; the shared reader resolves a top-level archetypes[] ledger; the
+//     ledger's masks[] keep kind / class / spec|sel|src / areaPct / asymmetric+side
+//     (defect fixture: a sel mask used to land as `{ areaPct }`);
 //     progress-record --help exits 0;
 //   verdict line — `verdict: <V> <pct> % Δh <n>px  iteration k/3` is ONE line;
 //   per-regime cap — three prototype rounds do not exhaust the published-
@@ -70,7 +76,7 @@ mkdirSync(join(project, 'stardust', 'replica'), { recursive: true });
 // process's event loop, so an in-process server would never answer gate.sh's
 // identity curl.
 const server = spawn(process.execPath, ['-e', `
-  const s = require('node:http').createServer((q, r) => { r.setHeader('content-type', 'text/html'); r.end('<html><body><h1>fresh drift noise noise2 cap rec orphan regime stale forced proposed</h1></body></html>'); });
+  const s = require('node:http').createServer((q, r) => { r.setHeader('content-type', 'text/html'); r.end('<html><body><h1>fresh drift noise noise2 noise3 cap rec orphan regime stale forced proposed</h1></body></html>'); });
   s.listen(0, '127.0.0.1', () => process.stdout.write(String(s.address().port)));
 `], { stdio: ['ignore', 'pipe', 'inherit'] });
 const port = await new Promise((r) => { server.stdout.once('data', (d) => r(String(d).trim())); });
@@ -78,9 +84,11 @@ const BUILD = `http://127.0.0.1:${port}/proposed.html`;
 const LIVE = 'https://example.test/';
 const dirOf = (slug) => join(project, 'stardust', 'replica', 'gates', `${slug}-1440`);
 
+const anchorTrace = join(work, 'anchor-hits.log');
+const anchorHits = () => (existsSync(anchorTrace) ? readFileSync(anchorTrace, 'utf8').split('\n').filter((l) => l === LIVE).length : 0); // live-side probes only (the build --against probe is not a source-site hit)
 const gate = (slug, args = [], env = {}) => {
   const r = spawnSync('bash', [join(bin, 'gate.sh'), slug, LIVE, BUILD, '1440', ...args], {
-    cwd: project, encoding: 'utf8', env: { ...process.env, GATE_REAP_MIN: '0', ...env },
+    cwd: project, encoding: 'utf8', env: { ...process.env, GATE_REAP_MIN: '0', STUB_ANCHOR_TRACE: anchorTrace, ...env },
   });
   return { status: r.status, out: `${r.stdout}\n${r.stderr}` };
 };
@@ -122,11 +130,16 @@ try {
   writeFileSync(join(D, 'chrome-live.json'), '{"stale":true}');
   writeFileSync(join(D, 'anchor-live.json'), JSON.stringify({ key: { url: LIVE, width: 1440, main: 'main' }, probedAt: hoursAgo(30), data: { doc: 3000, sections: [1, 2, 3, 4] } }));
   const before = liveCapturedAt('drift');
+  const hitsBefore = anchorHits();
   r = gate('drift', ['--refresh'], { STUB_LIVE_DOC: '3400', STUB_LIVE_SECTIONS: '5' });
   check(r.status === 0 && /LIVE DRIFT Δh \+400px/.test(r.out) && /sections 4→5/.test(r.out) && /not counted/.test(r.out), `drift must print LIVE DRIFT with Δh, section counts and 'not counted'\n${r.out}`);
   check(liveCapturedAt('drift') !== before && !existsSync(join(D, 'chrome-live.json')), 'drift must recapture live.png and delete chrome-live.json with it');
   const anchorCache = readJson(join(D, 'anchor-live.json'));
   check(anchorCache?.data?.doc === 3400 && anchorCache.data.sections.length === 5 && anchorCache.key.url === LIVE, 'drift must store the fresh probe as anchor-live.json (anchor --cache format)');
+  // defect: the drift probe ran without --landmarks, so the landmark step re-probed live (3 hits per drift round)
+  check(Array.isArray(anchorCache?.data?.landmarks?.rows) && anchorCache.data.landmarks.rows.length === 5, 'the stored drift probe carries landmarks (probed with --landmarks)');
+  check(anchorHits() - hitsBefore === 1 && !/landmark table unavailable|anchor-live\.skip written/.test(r.out), `a drift round is ONE live anchor hit (the probe); the landmark step reads the stored probe from cache (its stdout is discarded by gate.sh) — got ${anchorHits() - hitsBefore} hit(s)\n${r.out}`);
+  check(rec('drift', 'iter2')?.landmarks?.clean === true, 'the drift round still lands its landmark table in the record');
   const d2 = rec('drift', 'iter2');
   check(d2?.liveDrift?.recaptured === true && d2.liveDrift.docBefore === 3000 && d2.liveDrift.docAfter === 3400 && d2.liveDrift.previousCapturedAt === before && d2.counted === false && d2.iteration === undefined, 'record.liveDrift carries before/after heights + previous capturedAt; the round is not counted');
   const ts5 = liveCapturedAt('drift');
@@ -147,11 +160,22 @@ try {
   r = gate('noise', ['--variance'], { STUB_PCT: '4' });
   check(r.status === 0 && statSync(join(N, 'live-b.png.json')).mtimeMs === liveB && /noise floor/.test(r.out), `variance is recorded once per gate dir and printed on later rounds\n${r.out}`);
   const ts8 = liveCapturedAt('noise');
-  r = gate('noise', ['--refresh'], { STUB_LIVE_DOC: '3500', STUB_LIVE_SECTIONS: '5', STUB_PCT: '4' });
+  // (section count unchanged: the landmark step's anchor-live.json now holds 4 sections; a 4→5 change is a real drift, tested on slug drift)
+  r = gate('noise', ['--refresh'], { STUB_LIVE_DOC: '3500', STUB_PCT: '4' });
   check(r.status === 0 && /within 700px/.test(r.out) && liveCapturedAt('noise') === ts8, `self-noise Δh must bound the drift threshold (Δ500 ≤ 700 → keep)\n${r.out}`);
   const varJson = readJson(join(N, 'variance.json'));
   check(varJson?.gradedAgainst === ts8 && typeof varJson.gradedAt === 'string', 'variance.json must carry gradedAgainst = the reference capturedAt it was graded on');
   check(!/graded against the/.test(r.out) && !rec('noise', 'iter3')?.noiseFloor?.stale && rec('noise', 'iter3')?.noiseFloor?.gradedAgainst === ts8, 'a floor graded against the current reference prints no stale note; record.noiseFloor.gradedAgainst set');
+
+  // ---- same flags on both live captures (slug noise3): --variance under GATE_BLOCK / GATE_ALLOW_CONSENT / --expect-height ----
+  // defect: live-b.png was taken without $EXPECT_ARGS $STITCH_COMMON → sidecars differ in `blocked` → pixel-compare refuses → no floor, every time
+  mkdirSync(join(project, 'stardust', 'current', 'assets', 'screenshots'), { recursive: true });
+  cpSync(join(dirOf('noise'), 'live.png'), join(project, 'stardust', 'current', 'assets', 'screenshots', 'noise3.png'));
+  r = gate('noise3', ['--variance'], { STUB_PCT: '4', GATE_BLOCK: 'chat-vendor.test,ads.test', GATE_ALLOW_CONSENT: '1' });
+  const N3 = dirOf('noise3');
+  const sideA = readJson(join(N3, 'live.png.json')); const sideB = readJson(join(N3, 'live-b.png.json'));
+  check(r.status === 0 && existsSync(join(N3, 'variance.json')) && /noise floor/.test(r.out) && !/variance capture failed|variance compare gave no verdict/.test(r.out), `--variance under GATE_BLOCK must record a noise floor\n${r.out}`);
+  check(sideA && sideB && JSON.stringify(sideA.blocked) === JSON.stringify(['chat-vendor.test', 'ads.test']) && JSON.stringify(sideB.blocked) === JSON.stringify(sideA.blocked) && sideA.allowConsent === true && sideB.allowConsent === true && sideA.expectHeight === '3000' && sideB.expectHeight === sideA.expectHeight, `live-b.png must be captured with the same --block / --allow-consent / --expect-height as live.png\nlive: ${JSON.stringify(sideA)}\nlive-b: ${JSON.stringify(sideB)}`);
 
   // ---- stale floor (slug noise2): LIVE DRIFT recaptures the reference, the floor survives flagged ----
   r = gate('noise2', ['--variance'], { STUB_PCT: '4', STUB_HDELTA: '100' });
@@ -219,6 +243,19 @@ try {
   r = gate('rec', ['--record'], { STUB_PCT: '4', STUB_HDELTA: '2' });
   pj = readJson(progress);
   check(r.status === 0 && pj.pageTypes.landing.breakpoints['1440'].iterations === 2 && pj.pageTypes.landing.published['1440'].result.pixelPct === 7, `--record counts only the record's own regime: prototype iterations 2 after one published round\n${r.out}\n${JSON.stringify(pj.pageTypes.landing)}`);
+  // defect: the ledger kept only { spec, areaPct } per mask — a sel / iframe / img mask landed as `{ areaPct }`
+  const STUB_MASKS = JSON.stringify([
+    { kind: 'band', class: 'live-content', label: '100:50', spec: '100:50', yA: 100, h: 50, yB: 100, rects: [], pixels: 100, side: 'both', areaPct: 0.5 },
+    { kind: 'sel', class: 'third-party', label: '.chat-widget', sel: '.chat-widget', rects: [], pixels: 200, side: 'A', asymmetric: true, areaPct: 1.2 },
+    { kind: 'iframe', class: 'third-party', label: 'iframe', src: 'https://embed.test/x', rects: [], pixels: 50, side: 'both', areaPct: 0.3 },
+  ]);
+  r = gate('rec', ['--record'], { STUB_PCT: '3', STUB_HDELTA: '1', STUB_MASKS });
+  pj = readJson(progress);
+  const ledgerMasks = pj?.pageTypes?.landing?.breakpoints?.['1440']?.result?.masks;
+  check(r.status === 0 && Array.isArray(ledgerMasks) && ledgerMasks.length === 3, `--record must copy every mask into the ledger\n${r.out}\n${JSON.stringify(ledgerMasks)}`);
+  check(JSON.stringify(ledgerMasks?.[0]) === JSON.stringify({ kind: 'band', class: 'live-content', spec: '100:50', areaPct: 0.5 }), `band mask: kind/class/spec/areaPct, nothing else — got ${JSON.stringify(ledgerMasks?.[0])}`);
+  check(JSON.stringify(ledgerMasks?.[1]) === JSON.stringify({ kind: 'sel', class: 'third-party', sel: '.chat-widget', areaPct: 1.2, asymmetric: true, side: 'A' }), `sel mask: kind/class/sel/areaPct + asymmetric/side — got ${JSON.stringify(ledgerMasks?.[1])}`);
+  check(JSON.stringify(ledgerMasks?.[2]) === JSON.stringify({ kind: 'iframe', class: 'third-party', src: 'https://embed.test/x', areaPct: 0.3 }), `iframe mask: kind/class/src/areaPct — got ${JSON.stringify(ledgerMasks?.[2])}`);
   const size = statSync(progress).size;
   r = gate('orphan', ['--record']);
   check(r.status === 0 && /no page type .* has archetype "orphan"/.test(r.out) && /would be:/.test(r.out) && statSync(progress).size === size, `--record with no matching page type must print the block and write nothing\n${r.out}`);
@@ -271,4 +308,4 @@ try {
 }
 
 if (failures.length) { console.error(`gate-sh-fixtures: ${failures.length} finding(s)`); for (const f of failures) console.error(`  ✗ ${f}`); process.exit(1); }
-console.log('gate-sh-fixtures: ok (freshness probe, live drift + cache invalidation, probe deadline, noise floor + stale floor after drift, iteration cap / --over-cap / --invalidate / NO-OP, per-regime cap + labels, verdict line, stale-procedure version read + safety net, --record ledger copy + archetypes[] reader, --help)');
+console.log('gate-sh-fixtures: ok (freshness probe, live drift + cache invalidation + stored landmarks (2 hits), probe deadline, noise floor + same flags on live-b + stale floor after drift, iteration cap / --over-cap / --invalidate / NO-OP, per-regime cap + labels, verdict line, stale-procedure version read + safety net, --record ledger copy + masks[] shape + archetypes[] reader, --help)');

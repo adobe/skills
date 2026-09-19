@@ -412,10 +412,10 @@ with the count of `default-applied` rows and, one per line, every
 The `Flow:` line is omitted when no flow key exists; on a migration ask
 with no flow, the report ends with the two-flow table instead of a
 recommendation (§ Flow keys). Under `flow: replica` the redesign heuristics
-below do not apply: recommend from `stardust/replica/progress.json` — an
-ungated archetype → `$stardust replica <archetype>`, all archetypes gated →
-`$stardust migrate` / `rollout` — and print the last gate numbers per
-archetype so a resumed session restarts without re-diagnosis.
+below do not apply: run `node skills/replica/scripts/gate-ledger-lint.mjs --all-types` and print
+its verdict lines — a blocked type → its `$stardust replica <archetype>` line,
+every type ok → `$stardust migrate` / `rollout` — so a resumed session restarts
+without re-diagnosis (the `ok` lines carry the last gate numbers per archetype).
 
 The recommended next step uses these heuristics, in order:
 

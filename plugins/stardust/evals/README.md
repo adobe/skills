@@ -178,6 +178,13 @@ whose harness cases skip when Playwright is unresolvable:
   harness cases (real module install on the synthetic origin, external-origin
   abort ledger, 404 → exit 2, `--strict` exit 1) are SKIPPED, not failed, when
   `loadChromium()` cannot resolve Playwright.
+- `node --test deploy/scripts/test/ai-readability-landmarks.test.mjs`,
+  `node --test deploy/scripts/test/harness-skip.test.mjs` — the checker's
+  `LANDMARKS` selector list (nav/header/footer plus `aside`, `complementary`,
+  `search`; no duplicates) and the harness self-skip contract: a resolvable
+  Playwright with no browser binary makes the probe suite print one `SKIP`
+  line and exit 0 (its pure cases still run); the fixture itself SKIPs when
+  Playwright is unresolvable.
 - `doc-size.mjs` — byte caps on `SKILL.md` and `reference/*.md`, an
   `## Operator card` heading ahead of the procedure, the always-on total and
   the per-skill delta versus the last release tag; its temporary allowlist
@@ -290,6 +297,14 @@ whose harness cases skip when Playwright is unresolvable:
   deployedPath, sitemap = live page rows; the runner-output contract on the
   shared fixture, link classes, 429/503 retry → `unverified` / exit 2, and the
   last-line `SUMMARY verify …` (throttled rows as `noverdict`).
+- `replica/scripts/gate-ledger-lint.test.mjs` — the gated-archetype
+  precondition as an instrument over the shared post-migrate fixture (program
+  never gated, article over the bar with unnamed residuals → blocked; landing
+  ok) plus synthetic ledgers: `<bp> missing`, `pass: true` typed over |Δh| 8,
+  `pageTypes{}` alias, unknown shape → exit 1, named-class residuals with
+  `artifacts[]`/`acceptedBy` (hands-off-policy permanent only, `register:R-nn
+  <description>`), motion + roster, `--published` coverage, and the gate doc's
+  § Residual classes intro stating the same cause grammar.
 - `rollout/scripts/update-coverage.test.mjs` — `--from-ledger`: the merge
   rules, `deployedPath` written only from a served (`live|previewed`) row,
   unmatched paths listed not invented, idempotence, exit codes; and that

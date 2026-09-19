@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * ai-readability.mjs LANDMARKS contract (T30.1 / broadcom F2 trap 3): a template shell
+ * ai-readability.mjs LANDMARKS contract (T30.1 / a harvest project's F2 trap 3): a template shell
  * whose roots are `<aside>` / role="complementary" / role="search" must be skipped by the
  * checker like nav/header/footer, or its placeholder strings (rendered, never served)
  * sink the `code` score the shell was built to pass (D11 keeps code ≥ 98 as the bar).

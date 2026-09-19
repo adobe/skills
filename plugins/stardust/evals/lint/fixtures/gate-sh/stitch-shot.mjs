@@ -3,7 +3,8 @@
 // Writes a minimal PNG + the provenance sidecar the real instrument writes;
 // no browser. Controlled by env: STUB_DOC (docHeight), STUB_CAPTURED_AT,
 // STUB_STITCH_EXIT, STUB_STITCH_VERSION (sidecar instrument.version; default
-// = INSTRUMENT.version below).
+// = INSTRUMENT.version below). The sidecar also records --block / --allow-consent /
+// --expect-height so the runner can assert live.png and live-b.png took the same flags.
 //
 // INSTRUMENT is deliberately declared MULTI-LINE: gate.sh reads the current
 // procedure version from this declaration, and a reformat of the real
@@ -31,6 +32,8 @@ writeFileSync(`${out}.json`, `${JSON.stringify({
   url, width, vh: 900, dpr: 1, capturedAt: process.env.STUB_CAPTURED_AT || new Date().toISOString(),
   instrument: { name: INSTRUMENT.name, version: process.env.STUB_STITCH_VERSION || INSTRUMENT.version, options: { settle: rest.includes('--settle') } },
   consent: { mode, via: 'none-detected' }, dismissed: [], fontsFailed: [],
+  // the flags pixel-compare refuses an asymmetric pair on / gate.sh must pass to BOTH live captures
+  blocked: opt('--block', '').split(',').filter(Boolean), allowConsent: rest.includes('--allow-consent'), expectHeight: opt('--expect-height', null),
   docHeight: Number(process.env.STUB_DOC || 3000), chunks: 4, source: 'stitch-shot', technique: 'headless', tier: 1,
 }, null, 2)}\n`);
 console.log(`stub stitch-shot: ${out}`);

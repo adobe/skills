@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Guard: the davids-model-lint icon/variant, embed, vocabulary/census, vehicle,
-// empty-structure (D1-EMPTY 🟡, B7) and content-loss rules keep their tiers and exit codes.
+// empty-structure (D1-EMPTY 🟡, B7), content-loss and site-wide-constant (D-CONST / D14-OPTIONS 🟡,
+// tree census) rules keep their tiers and exit codes.
 //
 // Why: the gate is only worth running if a mis-authored `:icon-x:` token or a
 // variant token that collides with a foundation class fails the page BEFORE
@@ -99,6 +100,20 @@ const CASES = [
   { name: 'usage: a --chrome file that does not exist is a usage error', args: ['pass.html', '--chrome', join(FIX, 'chrome', 'nope.html')], exit: 1 },
   { name: 'usage: --styles that does not exist is a usage error', args: ['pass.html', '--styles', join(FIX, 'nope.css')], exit: 1 },
   { name: 'usage: a dangling --icons-dir is a usage error, not a silent downgrade', args: ['fail-icons.html', ...STYLES, '--icons-dir'], exit: 1 },
+  // T30.1 — D-CONST (tree only) and D14-OPTIONS: both 🟡 (B7), exit 0; constants in --json census.
+  {
+    name: 'D-CONST (tree): a row identical on 5/6 and one on 6/6 toc instances fire once each; the listing <ul> label row and the Source-headed form are silent; D14-OPTIONS on the modello option row',
+    args: ['tree-const', ...STYLES], exit: 0, red: [],
+    expect: [
+      { sev: '🟡', rule: 'D-CONST', msg: 'row "Table of Contents" identical in 5/6 instances (5 pages)' },
+      { sev: '🟡', rule: 'D-CONST', msg: 'row "Show all" identical in 6/6 instances (6 pages)' },
+      { sev: '🟡', rule: 'D14-OPTIONS', msg: 'row "modello" carries an option list of 5 values' },
+    ],
+    absentMsg: [{ rule: 'D-CONST', msg: '"listing"' }, { rule: 'D-CONST', msg: '"form"' }, { rule: 'D-CONST', msg: '"filters"' }],
+    counts: { 'D-CONST': 2, 'D14-OPTIONS': 1 },
+    check: (out) => (out.census && Array.isArray(out.census.constants) && out.census.constants.length === 2 ? null : `census.constants: ${JSON.stringify(out.census && out.census.constants)}`),
+  },
+  { name: 'D-CONST is tree-only; D14-OPTIONS fires per page in single-file mode', args: ['tree-const/one.html', ...STYLES], exit: 0, absent: ['D-CONST'], expect: [{ sev: '🟡', rule: 'D14-OPTIONS', msg: 'option list of 5 values' }] },
 ];
 
 const failures = [];

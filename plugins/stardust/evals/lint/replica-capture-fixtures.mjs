@@ -388,11 +388,12 @@ check((gate.match(/anchor-live\.skip/g) || []).length >= 5, '(shape) gate.sh: a 
 check(/GATE_BLOCK/.test(gate) && (gate.match(/\$STITCH_COMMON/g) || []).length >= 2, '(shape) gate.sh: GATE_BLOCK must reach BOTH stitch-shot calls');
 // gate.sh reads stitch-shot's INSTRUMENT version off the source: keep the line it greps in step with the export
 {
-  // Derive the two patterns from gate.sh's own STITCH_VER line and run THEM — a change to
-  // either pattern that stops matching stitch-shot's INSTRUMENT export must fail here.
-  const m = gate.match(/STITCH_VER=\$\(grep -oE "([^"]+)" "\$HERE\/stitch-shot\.mjs" \| grep -oE "([^"]+)" \| tail -1\)/);
-  check(!!m, '(shape) gate.sh: STITCH_VER=$(grep -oE "…" "$HERE/stitch-shot.mjs" | grep -oE "…" | tail -1) line not found — the staleness check cannot be cross-checked');
-  if (m) { const ver = spawnSync('bash', ['-c', `grep -oE "${m[1]}" "${join(REPLICA, 'stitch-shot.mjs')}" | grep -oE "${m[2]}" | tail -1`], { encoding: 'utf8' }).stdout.trim(); check(ver === ssm.INSTRUMENT.version, `gate.sh staleness check: gate.sh's own grep over stitch-shot's source yields "${ver}" but INSTRUMENT.version is ${ssm.INSTRUMENT.version} — keep the pattern and the export in step`); }
+  // Run gate.sh's OWN STITCH_VER assignment (a whitespace/quote-tolerant node parse of the
+  // INSTRUMENT export, replica-gate T15.4) with HERE = the scripts dir — a change to the parse
+  // that stops matching stitch-shot's INSTRUMENT export must fail here, not silently in a round.
+  const m = gate.match(/^STITCH_VER=\$\(node -e '[\s\S]*?' "\$HERE\/stitch-shot\.mjs"[^\n]*\)$/m);
+  check(!!m, '(shape) gate.sh: STITCH_VER=$(node -e \'…\' "$HERE/stitch-shot.mjs") block not found — the stale-procedure check cannot be cross-checked');
+  if (m) { const ver = spawnSync('bash', ['-c', `HERE=${JSON.stringify(REPLICA)}\n${m[0]}\nprintf %s "$STITCH_VER"`], { encoding: 'utf8' }).stdout.trim(); check(ver === ssm.INSTRUMENT.version, `gate.sh staleness check: gate.sh's own version read over stitch-shot's source yields "${ver}" but INSTRUMENT.version is ${ssm.INSTRUMENT.version} — keep the parse and the export in step`); }
 }
 
 }

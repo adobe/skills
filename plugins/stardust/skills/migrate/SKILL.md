@@ -168,18 +168,16 @@ become `contentDeviations[]` `kind: "dynamic-dependency"` entries
 (`reference/content-preservation.md § Dynamic dependencies`).
 
 **Gated-archetype precondition (`flow: replica`).** Before rendering any
-`sibling`-tier page, read `stardust/replica/progress.json`: the page
-type's archetype must have a gate result at every configured breakpoint
-that is `pass: true`, or over the bar only when every residual is a named
-class (`../replica/reference/source-fidelity-gate.md` § Residual logging
-format — slug ids from § Residual classes) with `artifacts[]` and
-`acceptedBy`; any other over-bar breakpoint is **FAIL → blocked**. An
-archetype never gated, with a configured breakpoint absent from
-`published.<bp>` (`ungated`), or over the bar with an unaccepted residual
-blocks its page type: report the archetype slug and `$stardust replica
-<archetype>`, and render nothing for that type. The same rule guards
-`rollout` Setup; the published-origin re-gate is unchanged. Thresholds
-are the gate's.
+`sibling`-tier page run `node skills/replica/scripts/gate-ledger-lint.mjs
+--state stardust/state.json`, the reader of `stardust/replica/progress.json`
+(`../replica/reference/source-fidelity-gate.md` § Residual logging format:
+every configured breakpoint under § Pass bar, or over the bar only with
+named-class residuals carrying `artifacts[]` and `acceptedBy`). Exit 2
+lists each blocked type with its archetype slug and `$stardust replica
+<archetype>`: render nothing for that type. A page rendered under a type
+the lint passed records `"archetype-gate"` in `_meta.json#gatesPassed[]`.
+The same command guards `rollout` Setup; the published-origin re-gate is
+unchanged.
 
 Print the plan and wait for confirmation when the scope is large:
 

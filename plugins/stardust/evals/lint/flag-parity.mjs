@@ -148,16 +148,7 @@ const TEMPORARY_ALLOWLIST = {
 // once the fix merges the entry is stale and fails — delete it in that merge.
 // (A --docs fixture tree that reuses an entry's doc path is read as that doc.)
 const CROSS_LANE_PENDING = {
-  // T30.1 — landed b2r/deploy-harness d6a4946: no doc names the unbuilt D-CONST / D14-OPTIONS lints
-  'deploy/reference/block-js-scaffold.md:D-CONST:rule': 'b2r/deploy-harness d6a4946 — EW5 (a) reworded to "a site-wide constant to lift out, encode-contract § Structural rules"',
-  'deploy/reference/encode-contract.md:D-CONST:rule': 'b2r/deploy-harness d6a4946 — "Planned tree-mode lint" sentence replaced by "No lint reads across pages yet — the check is the Step 1 audit"',
-  'deploy/reference/encode-contract.md:D14-OPTIONS:rule': 'b2r/deploy-harness d6a4946 — same sentence',
-  // T18.3/T18.4 — chrome-parity --open <sel> is not a parser case; the docs now say "by hand in the Playwright re-probe"
-  'deploy/reference/checklist.md:--open:chrome-parity.mjs': 'b2r/deploy-harness 204de0b — parenthetical replaced by "(by hand in the Playwright re-probe — chrome-parity captures rest state only)"',
-  'deploy/reference/chrome.md:--open:chrome-parity.mjs': 'b2r/deploy-harness 204de0b — § Chrome states and variants rewritten without the flag',
-  'rollout/SKILL.md:--open:chrome-parity.mjs': 'b2r/rollout-migrate b2d06c6 — "opened on the deployed page (by hand, in the Playwright re-probe)"',
-  // T06.1 — update-coverage --from-ledger <ledger> [--url-base] is built
-  'rollout/reference/coverage-model.md:--from-ledger:update-coverage.mjs': 'b2r/deploy-batch 81feef0 — update-coverage.mjs parses --from-ledger; the claim becomes true at merge',
+  // empty at b2r-integration: every B2 cross-lane fix has merged (T30.1, T18.3/T18.4, T06.1)
 };
 
 // Attribute each `--flag` to the script named in the SAME inline-code span

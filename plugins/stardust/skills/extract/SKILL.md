@@ -341,23 +341,22 @@ the contract enforced by `reference/current-state-schema.md`
 § Live-render evidence and read back by every downstream phase
 via `validateProvenance()` per
 `skills/stardust/reference/state-machine.md` § Provenance
-validation. Synthesizing a page record from
-`_brand-extraction.json` plus URL patterns plus captured photos
-is the failure mode this guard prevents (§ Failure modes, synthesis).
+validation. Synthesizing a page record from brand JSON + URL
+patterns + captured photos is the failure mode this guard prevents (§ Failure modes, synthesis).
 A page that cannot satisfy the contract is a Phase 2 failure:
 `_crawl-log.json#crawl.failures[]` with `errorClass:
 "ProvenanceMissing"`; continue.
 
 Mark the page `extracted` in `state.json` immediately after each
 successful page write. If a page fails, record the error in
-`_crawl-log.json` and continue — extraction is best-effort per page.
+`_crawl-log.json` and continue.
 
 ### Phase 2.5 — Vision verification
 
 Before anything downstream is authored, **look** at each captured
 page's screenshot (`assets/screenshots/<slug>.png`; the 360 shot only
 for the entry page or when the 1440 verdict is not `ok`) and verify it
-against the extracted record: hero (headline + asset) vs pixels,
+against the extracted record: hero vs pixels,
 palette plausibility, a believable `cssBackgrounds: []`, the logo, and
 that the page is rendered — not a consent wall, bot-block or blank
 SPA shell. Three rules are code, not judgement (`_signals`, § Signals
@@ -383,14 +382,16 @@ mismatch survived the ladder; downstream phases treat that record as
 unreliable. Image reads follow `../stardust/reference/context-hygiene.md`
 § Image reads; vision stays authoritative here — a `suspect` verdict
 still opens the full page as a downscaled whole-page view, and when a
-contact sheet exists read it first. The heuristic defenses (low-media
+contact sheet exists (`../replica/scripts/review-image.mjs --sheet
+assets/screenshots --per 12` → `sheet-NN.png` + `.json` legend) read it
+first, one verdict per legend row. The heuristic defenses (low-media
 flag, `spaShellSuspect`, duplicate hash) remain cheap early signals,
 never gating alone.
 
 ### Phase 3 — Brand-surface extraction
 
-Run after the capture phases (2–2.5). Aggregation **may proceed
-incrementally** as concurrent page captures complete (§ Concurrency),
+Run after Phases 2–2.5. Aggregation **may proceed incrementally** as
+concurrent captures complete (§ Concurrency),
 but the written file must reflect every extracted page — including
 brand-source pages per § Cross-site brand sources.
 Produces `stardust/current/_brand-extraction.json`
