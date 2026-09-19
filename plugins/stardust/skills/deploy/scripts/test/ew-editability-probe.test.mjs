@@ -8,7 +8,10 @@
  * aggregate's item matching and --strict findings. The harness part (real module
  * install from a synthetic origin, external-origin abort ledger, 404 → exit 2,
  * --strict exit 1) needs Playwright + Chromium: when loadChromium() cannot resolve
- * playwright (project, bare or global install) those tests are SKIPPED, not failed.
+ * playwright (project, bare or global install) OR the resolved playwright has no
+ * browser binary (browserUnavailable()), those tests are SKIPPED with a `SKIP` line,
+ * not failed — harness-skip.test.mjs pins that by running this file with an empty
+ * PLAYWRIGHT_BROWSERS_PATH.
  *
  * Fixture: test/fixtures/ew-probe/ — blocks/{hero (imports aem.js + helper +
  * sibling teaser), teaser, cards (import before JSDoc, item-level exemption),
@@ -20,10 +23,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   parseExemptTags, parseExemptItem, matchExemption, aggregate, strictFindings, readBlockExemptions,
-  probeContent, verdict, loadChromium, installErrors,
+  probeContent, verdict, loadChromium, installErrors, globalNodeModulesCandidates, browserUnavailable,
 } from '../ew-editability-probe.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -124,9 +128,29 @@ test('block-roundtrip CLI: --help exits 0 wherever it sits; a flag before the po
   assert.equal(run(['--bogus', 'a', 'b']).status, 1, 'an unknown flag is a usage error');
 });
 
+test('globalNodeModulesCandidates: derived from the node prefix / npm_config_prefix / STARDUST_PLAYWRIGHT_ROOT, existing dirs only, no shell', () => {
+  const exists = (d) => d === '/pre/lib/node_modules' || d === '/root/nm' || d === '/opt/node/lib/node_modules';
+  const got = globalNodeModulesCandidates({ env: { npm_config_prefix: '/pre', STARDUST_PLAYWRIGHT_ROOT: '/root/nm' }, execPath: '/opt/node/bin/node', exists });
+  assert.deepEqual(got, ['/root/nm', '/pre/lib/node_modules', '/opt/node/lib/node_modules'], 'override first, then npm prefix, then the directory above bin/node');
+  assert.deepEqual(globalNodeModulesCandidates({ env: {}, execPath: '/opt/node/bin/node', exists: () => false }), [], 'nothing invented when no directory exists');
+  const real = globalNodeModulesCandidates();
+  assert.ok(real.every((d) => existsSync(d)), 'real candidates exist on disk');
+});
+
+test('browserUnavailable: a resolvable playwright whose launch throws is a skip reason, not a failure; null chromium too', async () => {
+  const reason = await browserUnavailable({ launch: async () => { throw new Error("browserType.launch: Executable doesn't exist at /nowhere/chrome"); } });
+  assert.match(reason, /^chromium cannot launch: browserType\.launch: Executable doesn't exist/);
+  assert.equal(await browserUnavailable(null), 'playwright is not resolvable (project, bare or global)');
+  let closed = false;
+  assert.equal(await browserUnavailable({ launch: async () => ({ close: async () => { closed = true; } }) }), null);
+  assert.ok(closed, 'the probe browser is closed again');
+});
+
 let chromium = null;
 try { chromium = await loadChromium(); } catch { /* skipped below */ }
-const skip = chromium ? false : 'playwright is not resolvable (project, bare or global) — harness tests skipped';
+const unavailable = await browserUnavailable(chromium);
+const skip = unavailable ? `${unavailable} — harness tests skipped` : false;
+if (skip) console.log(`SKIP ew-editability-probe harness tests: ${skip}`);
 
 test('harness: real module install, external abort ledger, 404 → not installed, exemptions matched', { skip }, async () => {
   const browser = await chromium.launch();
