@@ -11,6 +11,8 @@ Full text of deploy Step 10. Read:
 
 After deploy, reconcile the EDS page against the source prototype on the **DEPLOYED URL only** (#78, #101). The load-bearing *automated* deployed gates already ran in the per-page atomic-delivery contract: the **computed-style guard** (grids compute `grid`, blocks decorated, 0 broken imgs, 0 pageerrors — the silent grid→block scoping collapse) and the **`.plain.html` verify** (one `<h1>`, 0 `about:error`, authored img/alt count). Step 10 adds a structural summary, an eyeball, a CLS probe, a chrome crop gate, and a wide-viewport box check on top.
 
+**Gate only after the origin serves what you shipped.** Before any deployed gate or reconcile run, `node skills/deploy/scripts/served-check.mjs <css-or-js-url> --grep '<a marker from the round's edit>' --wait 180` for every block CSS/JS the round touched, and the page's `.plain.html` `--grep <a marker from the content> --wait 180`; run the gate only after each exits 0. A gate run before that is a measurement of yesterday's code (recorded: one page gated 4× in 32 min and another 3× in 12 min while Code Sync and publish landed, each wait a `sleep`). The wait is the helper's capped poll — never a `sleep N; <gate>` pair.
+
 > **QA-scope note (e2e benchmark, 5 pages).** Across the benchmark the real defects were caught by
 > `block-roundtrip` (A6, pre-deploy, in-block content), the computed-style guard + `.plain.html`
 > (grid/section-layout + image landing), the deployed eyeball (harness blind spots), and the deployed

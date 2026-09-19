@@ -44,13 +44,10 @@ curl -sS -X PUT -H "Authorization: Bearer $TOKEN" \
 # 2b. NEW image assets must be LIVE on Code Bus BEFORE the preview ingests them (#75).
 #     The preview fetches every <img src>, hashes the bytes into Media Bus, and writes
 #     about:error if a URL doesn't return image bytes AT THAT MOMENT. A just-pushed
-#     img/<brand>/x.jpg can lose the race with Code Sync. Wait for each authored image:
+#     img/<brand>/x.jpg can lose the race with Code Sync. Wait for each authored image
+#     with the same capped waiter as step 0 (no --grep: a 2xx is the verdict; ~2 min per asset):
 for u in $(grep -oE 'https://[^"]+/img/[^"]+\.(jpg|jpeg|png|webp|svg)' content/$P.html | sort -u); do
-  for i in $(seq 1 40); do   # capped: ~2 min per asset, then fail loud
-    [ "$(curl -s -o /dev/null -w '%{http_code}' "$u")" = "200" ] && break
-    [ "$i" = 40 ] && { echo "asset never became live: $u" >&2; exit 1; }
-    sleep 3
-  done
+  node skills/deploy/scripts/served-check.mjs "$u" --wait 120 || { echo "asset never became live: $u" >&2; exit 1; }
 done
 # NB (#2): this bare-curl wait is for repo-relative /img/ assets only. Do NOT bare-curl
 #   - content.da.live/admin.da.live media URLs — they 401 to anon curl but ingest fine
