@@ -7,6 +7,34 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 
 # stardust:extract
 
+## Operator card
+
+| phase | command / instrument | gate | writes |
+|---|---|---|---|
+| Setup 1–4 | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/extract/scripts/crawl.mjs` → `stardust/scripts/crawl.mjs`; origin-collision and flow guard; consent pre-flight; bot-management probe | flow stamped before a migration crawl | `_crawl-log.json#consent`, `#discovery.fetchTechnique` |
+| 1 Discovery | sitemap → BFS; junk filter; cap via `--cap <N>` / `--all` / `--pages <slugs>` / `--single` | informational summary, no confirmation gate | `stardust/current/_crawl-log.json` |
+| 2 Per-page extraction | `node stardust/scripts/crawl.mjs --url <origin> [--pages …] [--max N] [--concurrency N] [--wait <mode>] [--dynamics]` | live-render evidence contract; synthesis is a Phase 2 failure | `current/pages/<slug>.json` + `.html`, `assets/screenshots/<slug>.png`, `assets/media/`, `state.json` page → `extracted` |
+| 2.5 Vision verification | look at each screenshot against its record; escalation ladder (wait mode → headed Chrome → fresh context) | verdict `ok` / `recaptured` / `suspect` | `_crawl-log.json#visionCheck[]` |
+| 3 Brand-surface extraction | aggregate across all extracted pages (+ brand-source pages) | source citation per value | `current/_brand-extraction.json`, `assets/logo.<ext>`, `assets/favicon.<ext>` |
+| 4 Seed current-state docs | author directly from impeccable's format specs (no `$impeccable init` / `document`) | provenance block first | `current/PRODUCT.md`, `current/DESIGN.md`, `current/DESIGN.json` |
+| 5 Brand review | render per template; run the Tensions detectors | template mandatory; sections without data omitted | `current/brand-review.html` |
+| 6 State and report | per-page evidence table (`live`, `waitMode`, `media(img/bg)`), wait summary, vision line | every row `live: yes` | `stardust/state.json` |
+| opt-in | `--brand-source <url>` / `--design-source <url>`; sibling-site discovery; `--prep` (implies `--all`) | prep summary `Provenance: <live>/<total>` line | `current/brand-sources/<host>/`, `stardust/canon-source/`, `state.json.pages[].type` |
+
+| at phase | read |
+|---|---|
+| Setup 1, 4 | `reference/playwright-recipe.md` § Browser configuration · § Bot-management fallback |
+| Setup 3 | `reference/playwright-recipe.md` § Pre-flight: consent dismissal |
+| 1 | `reference/ia-extraction.md` § Discovery order · § Junk-page filter · § Page selection · § `_crawl-log.json` shape |
+| 2 | `reference/playwright-recipe.md` § Wait modes · § Capture list · § Response validation · `reference/current-state-schema.md` § Live-render evidence |
+| 3 | `reference/brand-surface.md` § Aggregation scope · § System components · § Voice |
+| 4 | `skills/stardust/reference/artifact-map.md` § Provenance shapes |
+| 5 | `reference/brand-review-template.md` § Section contract · § Tensions |
+| 6 | `skills/stardust/reference/state-machine.md` § File: `stardust/state.json` |
+| opt-in | `reference/cross-site-sources.md` (both sections) · `reference/prep-mode.md` § 1–5 |
+
+Headings: Inputs · Setup · Procedure · Cross-site brand sources · Sibling-site discovery · Outputs · Concurrency · Failure modes · Prep mode (--prep) · References
+
 Crawl an existing website, parse each page, extract the brand surface,
 and produce a stardust-formatted snapshot of the current state under
 `stardust/current/`. The output describes what the site **is**; later

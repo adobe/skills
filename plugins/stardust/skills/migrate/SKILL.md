@@ -7,6 +7,30 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 
 # stardust:migrate
 
+## Operator card
+
+| phase | command / instrument | gate | writes |
+|---|---|---|---|
+| Setup 0–8 | `node -e "import('playwright').then(()=>process.exit(0))"`; master setup + flow guard; `directed` page; `DESIGN.md`/`.json` with canon (auto-bootstrap from the first approved prototype when absent); active direction; scope partition; `validateProvenance(page)`; mobile-adapt audit on Path A / A′ sources | flow guard; provenance validation; mobile-adapt audit (no skip flag) | `stardust/canon/` (bootstrap case) |
+| 1 Plan | dynamic-surface precondition (`dynamics` Phases 1–3 when `dynamic-features.md` is missing); gated-archetype precondition under `flow: replica`; print the plan | confirmation on large scope; skipped for `<slug>` / small runs | — |
+| 2 Per-page render | idempotent skip → placeholder gate → branch A / A′ / B with `fidelityTier` → canon + modules → content preservation → content-count acceptance → `<head>` metadata → validation contracts → asset bundling → media reconciliation → cinematic sibling copy → write | placeholder gate; strict validation contracts; content-count acceptance | `stardust/migrated/<path>/index.html` + `_meta.json`, `migrated/assets/<subpath>`, `migrated/assets/motion/` |
+| 3 Sitewide assets + portability | logo, favicon/font check, `robots.txt`, `sitemap.xml`; `--clean` stale removal; the grep audits; `node skills/migrate/fixtures/pagemap-audit.mjs stardust/migrated/ stardust/state.json`; `node skills/migrate/fixtures/file-protocol-audit.mjs stardust/migrated/` | every audit clean (no skip flag) | `migrated/assets/logo.<ext>`, `migrated/robots.txt`, `migrated/sitemap.xml` |
+| 4 State and report | page status → `migrated`; failures to `lastRun.failures[]`; `migrate` block; run summary | — | `stardust/state.json` |
+| flags | `--all` · `--force` · `--require-approved` · `--strict-canon` · `--clean` (implies `--force`) · `--pin-timestamp <ISO8601>`; no `--skip-*` flags exist | — | — |
+
+| at phase | read |
+|---|---|
+| Setup 4 | `../prototype/reference/canon-extraction.md` § The five extraction steps |
+| Setup 7 | `skills/stardust/reference/state-machine.md` § Provenance validation |
+| 1 | `reference/content-preservation.md` § Dynamic dependencies · `../replica/reference/source-fidelity-gate.md` § Residual logging format |
+| 2 (branch, path) | `reference/migration-procedure.md` § Three render branches · § Output path mapping · § Idempotent skip · `reference/template-and-module-rendering.md` § Render path selection · § Validation contracts · § Deviation policy |
+| 2 (fidelity, content) | `reference/fidelity-tiers.md` § The three tiers · § Sibling variance probe · § Content-count acceptance · `reference/content-preservation.md` § Internal link rewriting · § Forms |
+| 2 (head, assets, media) | `reference/metadata-and-jsonld.md` § Categories · § JSON-LD by page-type · `reference/asset-bundling.md` § Detection · § Rewrite · `reference/media-reconciliation.md` § The four decisions · § Cross-origin optimization |
+| 3 | `reference/migration-procedure.md` § Reference shape · § Page map · `reference/metadata-and-jsonld.md` § Sitemap entry · `reference/asset-bundling.md` § Stale asset cleanup |
+| 4 | `skills/stardust/reference/migrate-output-format.md` § State.json contract · `skills/stardust/reference/state-machine.md` § Stale flagging (content-aware) |
+
+Headings: Inputs · Setup · Procedure · Outputs · Idempotent and incremental · Stale handling · Failure modes · What migrate does NOT do · References
+
 Apply the target spec authored by `direct`, the visual canon
 written by `prototype --prep`, and the brand-module catalog
 extracted during `prepare-migration` to every page in the

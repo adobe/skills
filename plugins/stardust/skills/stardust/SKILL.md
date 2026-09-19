@@ -7,6 +7,32 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 
 # stardust
 
+## Operator card
+
+| step | what runs | gate / outcome | writes |
+|---|---|---|---|
+| Setup 1 | impeccable presence check; `node skills/stardust/scripts/impeccable-version-check.mjs [--local <dir>]` (advisory) | impeccable is a hard dependency | — |
+| Setup 2–4 | `PRODUCT.md` / `DESIGN.md` presence; read `stardust/state.json`; parse impeccable's `command-metadata.json` | — | — |
+| Setup 5–6 | status ledger; project hygiene (`stardust/.gitignore`, root `.gitignore`, `.hlxignore`, `git check-ignore`) | `state.json` must not be ignored | `stardust/status.jsonl`, `stardust/.gitignore` |
+| Routing | no arg / resume → state report; sub-skill keyword → delegate; migration ask → § Two migration flows; freeform → intent reasoning | plan shown before any command (hands-off: recorded instead) | `state.json` flow keys |
+| Freeform intent | § The "open and reasoned" principle, steps 1–6 | plan confirmation | `stardust/direction.md` |
+| Hands-off | gate auto-resolution table; volume caps; background waits; per-phase commits | quality gates unchanged; hard blockers still stop | `state.json.handsOff`, `direction.md` activation line, `status.jsonl` `blocked` |
+| Every write | provenance block; journal entry; validate-and-fix loop on human-facing HTML | clean validation pass | `stardust/journal.md`, `stardust/validation/<artifact>/<viewport>.png` |
+
+| at step | read |
+|---|---|
+| Setup 3, Routing | `reference/state-machine.md` § File: `stardust/state.json` · § State report |
+| Setup 5 | `reference/run-status.md` § Line shape · § Rules |
+| Setup 6, Artifacts | `reference/artifact-map.md` § Versioning — what a clone holds · § Provenance shapes |
+| Routing (migration) | `reference/state-machine.md` § Flow keys |
+| Freeform intent | `reference/intent-reasoning.md` § Procedure · `reference/intent-dimensions.md` § Reading a phrase · `reference/impeccable-command-map.md` § Common sequences |
+| Hands-off | `reference/state-machine.md` § Hands-off keys |
+| Per-page state | `reference/state-machine.md` § Page lifecycle states · § Stale flagging (content-aware) |
+| Journal | `reference/journal-format.md` § Entry format · § Reading the journal at session start |
+| Validation | `../extract/reference/playwright-recipe.md` § Capture list · `../prototype/reference/motion-validation.md` § Validation procedure |
+
+Headings: Setup · Routing · Two migration flows · Hands-off mode · The "open and reasoned" principle · Per-page state and "stale on direction change" · Artifacts you read and write · Provenance · Journal rule · Validation rule · What stardust never does · References
+
 You are operating the `stardust` skill: a guided redesign of an existing
 website. The user's job is to say what they want; your job is to reason about
 what that means, propose a plan, and execute it through a small set of
@@ -231,7 +257,10 @@ otherwise):
 - **Delegate by file pointer, read by section.** A brief to a delegated
   agent names the files and sections it needs (`state.json`, the page's
   schema, the phase's SKILL.md sections); it never inlines reference docs.
-  Reference documents are read by heading and line range, not end to end.
+  Reading is card-first: the coordinator reads a skill's operator card,
+  never its body; before any read of a file over 20 KB it lists the
+  headings and reads only the section the card names; a brief to a
+  delegated agent names card rows, not files to read whole.
   Instruments that can stall run under their shipped deadline (replica
   `gate.sh`, `pixel-compare --timeout`) — never under an agent-authored
   `sleep N; kill` loop — and long steps write a progress file the

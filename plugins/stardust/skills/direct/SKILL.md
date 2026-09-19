@@ -7,6 +7,36 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 
 # stardust:direct
 
+## Operator card
+
+No scripts: every phase is authored by the agent against the reference files below.
+
+| phase | what happens | gate | writes |
+|---|---|---|---|
+| Setup 1–6 | master setup; `extracted` page present; `_brand-extraction.json` read; cross-site inputs; prior `direction.md`; provenance (prep only); brand-signal classification (`signal-strong` / `-thin` / `-absent`) | stop without extracted state or brand surface | — |
+| 1 Reasoning | intent-reasoning steps 1–6; zero-movement check → hand off to `replica`; density and IA-fidelity tuning questions | plan confirmation (`go`); hands-off: named assumptions instead | `direction.md` § Movements stamps |
+| 2 Divergence inputs | mode-detection precedence → Mode A / A+ / B / C / Default; seed roll for un-implied dimensions | anti-toolbox audit | `DESIGN.json.extensions.divergence` |
+| 2.5 Improvements list (Mode A) | weaknesses from brand-review, page JSON, brand-extraction (audit findings reused when present) | specificity bar; stopping condition → § Failure modes (d) | `stardust/prototypes/<slug>-improvements.md` |
+| 2.6 Multi-variant fork (N > 1) | branch on `ia-fidelity`: A1/A2/A3 surface forks or A + B + C roles | differentiation contract; render-refusal conditions | per-variant resolutions in `direction.md` |
+| 3 Target PRODUCT.md | impeccable's `init` document spec as format, not as a command; provenance block first, then schema comment | inferred sections marked | `PRODUCT.md` |
+| 4 Target DESIGN.md + DESIGN.json | site-level only; tokens from palette / deck / density stamp; motion register selection; IA-priority preservation audit | multi-audience hard floor; impeccable hard rules | `DESIGN.md`, `DESIGN.json` (or `DESIGN-<id>.{md,json}`) |
+| 5 Direction + state | reasoning trace; pages `extracted` → `directed`; `--re-direct` stale-flags | stale-flag confirmation | `stardust/direction.md`, `stardust/state.json` |
+| modes | `--prep` (type/module catalogs, color reservations, metadata); `--add-variant <name>` (skips Phases 1–2) | — | `DESIGN-<name>.{md,json}`, `direction.md` § Variant <name> |
+
+| at phase | read |
+|---|---|
+| Setup 3b | `reference/cross-site-brand-inputs.md` |
+| Setup 5 | `reference/prep-mode.md` § Provenance validation |
+| 1 | `skills/stardust/reference/intent-reasoning.md` § Procedure · `skills/stardust/reference/intent-dimensions.md` § 4 · § 9 · `skills/stardust/reference/intent-examples.md` |
+| 2 | `skills/stardust/reference/divergence-toolkit.md` § 1 · § 2 · § 3 · § 4 · `skills/stardust/reference/reference-research.md` § 2. Procedure · `reference/palette-picker.md` § The flow · `reference/mode-a-plus.md` · `reference/direction-format.md` § Divergence inputs |
+| 2.5 | `reference/improvements-list.md` § The five categories · § Format example |
+| 2.6 | `reference/multi-variant.md` § Branch on `ia-fidelity` first · § Variant role contract · § Variant differentiation contract |
+| 4 | `skills/stardust/reference/intent-dimensions.md` § 8 · `skills/prototype/reference/motion-registers.md` § Selection heuristic · `reference/multi-variant.md` § Multi-variant DESIGN files |
+| 5 | `reference/direction-format.md` § Top-level shape · § Re-direct procedure |
+| modes | `reference/prep-mode.md` § 1–5 · `reference/add-variant.md` § Procedure |
+
+Headings: Inputs · Setup · Procedure · Outputs · Failure modes · Prep mode (--prep) · Add-variant mode (--add-variant) · References
+
 Resolve the user's freeform redesign intent into a complete **target
 specification**: project-root `PRODUCT.md` and `DESIGN.md` (impeccable
 format), a `DESIGN.json` sidecar with the divergence audit trail, and a
