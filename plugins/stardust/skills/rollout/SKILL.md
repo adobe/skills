@@ -37,7 +37,7 @@ Outputs (under `stardust/rollout/`): `coverage/{pages,templates,blocks}.json` ·
 | B2 / D2 | `../dynamics/reference/triage.md` § Rules; `../dynamics/reference/listings.md` § Why it is a PRE-IMPORT gate · § Block contract; `../dynamics/reference/patterns.md`; `../dynamics/reference/parity-report.md` § Schema |
 | C | `reference/delivery-lint.md` § Run it · § Where it sits in Phase C; `reference/delivery-gates.md` § Gate 1 · § Gate 2 · § Gate 3 · § Gate 4 · § Batched delivery at scale; `../migrate/reference/fidelity-tiers.md` § Declaration (per page); `../migrate/reference/media-reconciliation.md` § The four decisions |
 | D3 | `reference/multilingual.md` |
-| E / E2 | `reference/coverage-model.md` § Verify; `reference/operational-learnings.md` § Two verify checks |
+| E / E2 | `reference/coverage-model.md` § Verify; `reference/operational-learnings.md` § Two verify checks; `reference/sweep-protocol.md` (site-scale fix loop, after verify) |
 | F / G | `reference/audit-sources.md` § The sources · § Recording an external finding · § Fixability → who fixes it · § AEM autofix registry · § The loop; `reference/checks.md`; `reference/coverage-model.md` § Optimize gate (findings lifecycle); `reference/operational-learnings.md` § Optimize-gate learnings |
 | H | `../stardust/reference/learnings.md` § Entry shape |
 
@@ -89,9 +89,7 @@ least the archetype pages first. For a single page, use `stardust deploy` direct
    to gate it (`$stardust replica <archetype>`), and neither fan out its
    siblings nor `POST /live/` any of them. Accepting logged residuals under
    hands-off is not a bypass for an ungated archetype. Thresholds are the
-   gate's, unchanged. (Recorded: 2,207 pages published at 24–28 % diff from
-   an archetype that never passed; a 3,366-page re-import after a random
-   review found what a gate would have.)
+   gate's, unchanged.
 3. Verify the EDS/AEM target is ready exactly as `deploy` requires (project
    scaffolding, `DA_TOKEN`, code branch pushable). `rollout` adds no new transport.
 4. If `state.json.handsOff` is true (`skills/stardust/SKILL.md` § Hands-off
@@ -143,10 +141,6 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
   lists are exactly `deploy`'s Step-7 brief input, so each block converts once
   **without changing deploy**. `content-pending` pages are always `convert: []`.
 
-> Extending an already-delivered site? A "new template" is almost always a new
-> COMPOSITION of the existing block library, not new block code — audit `blocks/`
-> first. See `reference/operational-learnings.md`.
-
 ### Phase B2 — Dynamic surface (PRE-IMPORT GATE — verify the inventory)
 
 **Before Phase C.** `stardust/dynamic-features.md` (from prepare-migration 4.5 or replica
@@ -171,8 +165,7 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    `edsBlockName` (do not recreate). **The brief MUST carry the Experience Workspace
    editability contract** (`skills/deploy/reference/block-js-scaffold.md` § Experience Workspace editability contract, EW1–EW10): every converted block
    moves authored elements into wrappers (never rebuilds from text) and passes the
-   EW gate (`block-roundtrip --ew`) before it counts as delivered — a brief without
-   it skipped the contract on 27/27 blocks of a real site.
+   EW gate (`block-roundtrip --ew`) before it counts as delivered.
 
    **`content-pending` pages** (archetypes-only): no migrated HTML — skip the
    document push entirely (no shell/placeholder), record `content-pending`, surface
@@ -246,7 +239,7 @@ already-live pages, retry/backoff, append-only log, delivered-`.plain.html` chec
 The driver and every batch run in the background; its log and ledger are the
 progress file. Check them at most every 4 minutes and never with a fixed `sleep`
 of 5 minutes or more (the prompt-cache window) — the master skill's wait
-discipline; recorded batch waits of 9–10 minutes re-wrote a ~650k prefix each time.
+discipline.
 After a transient blip, re-run the same command — it re-drives only the FAILs.
 Then reconcile the ledger into coverage with `update-coverage.mjs`.
 
@@ -302,6 +295,9 @@ template (home included), load the live URL in a headless browser and assert
 decoration ran: the runtime's `body.appear` class is set (per
 `stardust/runtime-contract.json`), `main .section` count > 0,
 zero `pageerror` events, zero broken images.
+
+**Site-scale fix loop** (template sample → class triage → tail → one
+confirmation sweep against preview): `reference/sweep-protocol.md`.
 
 ### Phase E2 — Link-audit completeness
 
@@ -528,6 +524,7 @@ Normalize each one's output into the ledger via `findings.mjs record`. See
 
 - `notes/rollout/PLAN.md` — design, coverage model, phasing, open questions.
 - `reference/delivery-gates.md` — Phase C gates + batched-delivery-at-scale flow.
+- `reference/sweep-protocol.md` — the site-scale fix loop after Phase E (sample, class rounds, tail, confirmation sweep).
 - `skills/dynamics/SKILL.md` + its `reference/` — the dynamic surface: classes, triage axes,
   listings contract + query-index mechanics, pattern catalogue, parity report (B2/D2).
 - `reference/multilingual.md` — per-language trees (D3).

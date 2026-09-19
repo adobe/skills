@@ -14,13 +14,19 @@
  * once under `fragments`, not per page.
  *
  * Writes stardust/rollout/plan.json and prints a readable plan.
- * Usage: node skills/rollout/scripts/plan.mjs [--out <rolloutDir>] [--pending-only]
+ * `--sample <n>` prints the first n pages per template in delivery order
+ * (representative first) as `slug<TAB>path<TAB>templateId` and exits without
+ * writing — the template sample the site-scale sweep gates
+ * (reference/sweep-protocol.md).
+ * Usage: node skills/rollout/scripts/plan.mjs [--out <rolloutDir>] [--pending-only] [--sample <n>]
  */
 import { join } from 'node:path';
 import { readJSON, writeJSON } from './lib.mjs';
 
 const OUT = (() => { const i = process.argv.indexOf('--out'); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : 'stardust/rollout'; })();
 const PENDING_ONLY = process.argv.includes('--pending-only');
+const SAMPLE = (() => { const i = process.argv.indexOf('--sample'); if (i === -1) return 0; const n = Number(process.argv[i + 1]); if (!Number.isInteger(n) || n < 1) { console.error('rollout plan: --sample needs a positive integer'); process.exit(1); } return n; })();
+if (process.argv.includes('--help')) { console.log('Usage: node skills/rollout/scripts/plan.mjs [--out <rolloutDir>] [--pending-only] [--sample <n>]'); process.exit(0); }
 
 const pagesDoc = readJSON(join(OUT, 'coverage', 'pages.json'));
 const tmplDoc = readJSON(join(OUT, 'coverage', 'templates.json'));
@@ -51,6 +57,21 @@ for (const t of orderedTemplates) {
 }
 // Any pages not covered by a template grouping (shouldn't happen) appended.
 for (const p of pages) if (!seen.has(p.slug)) { seen.add(p.slug); order.push(p.slug); }
+
+// --sample <n>: the template sample (n per template, representative first), no writes.
+if (SAMPLE) {
+  const perTemplate = new Map();
+  for (const slug of order) {
+    const p = bySlug.get(slug);
+    if (p.delivery && p.delivery.status === 'content-pending') continue; // no document to gate
+    const t = p.templateId || 'untyped';
+    const list = perTemplate.get(t) || [];
+    if (list.length < SAMPLE) { list.push(p); perTemplate.set(t, list); }
+  }
+  for (const [, list] of perTemplate) for (const p of list) console.log(`${p.slug}\t${p.path}\t${p.templateId || 'untyped'}`);
+  console.error(`rollout plan --sample ${SAMPLE}: ${[...perTemplate.values()].reduce((n, l) => n + l.length, 0)} pages across ${perTemplate.size} templates`);
+  process.exit(0);
+}
 
 // --- Walk once, assign each block a single conversion point -----------------------
 const converted = new Map(); // block id -> slug that converts it
