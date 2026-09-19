@@ -13,7 +13,8 @@
  *   createPageCache never re-serves a throttled response (the server is hit again)
  *   routing / metadata emit <check>/unmeasured (info) and no page-not-200 / og-image-broken
  *   createHostLimiter halves the host cap on throttle (min 1) and restores +1 after a clean window
- *   infraSummary flags the report incomplete above --throttle-max and exit 2 wins in qa.mjs's order
+ *   infraSummary flags the report incomplete above --throttle-max and exit 2 wins in qa.mjs's order;
+ *   fleet-level (path '') unmeasured probes are listed as unmeasuredFleet / fleetProbes, never dropped
  *   the request timeout is armed after the limiter slot is taken (queued fetches never abort as status 0)
  * Exit: 0 all assertions pass · 1 an assertion failed.
  */
@@ -115,6 +116,12 @@ const s1 = infraSummary(findings, 100, { throttleMaxPct: 5, counters: { throttle
 eq('2 unique unmeasured pages of 100 = 2% → complete', [s1.unmeasuredPages, s1.unmeasuredPct, s1.incomplete], [2, 2, false]);
 const s2 = infraSummary(findings, 20, { throttleMaxPct: 5, counters: { throttled: 3, retries: 4, serverErrors: 0 } });
 eq('2 of 20 = 10% > 5 → incomplete (exit 2 wins over the page-not-200 error)', [s2.unmeasuredPct, s2.incomplete], [10, true]);
+// fleet-level probes (path '') are listed, never dropped and never counted as pages
+const fleet = [...findings, { check: 'routing', id: 'unmeasured', path: '', message: 'unknown-path 404 probe throttled' }, { check: 'metadata', id: 'unmeasured', path: '', message: 'favicon probe throttled' }];
+const s3 = infraSummary(fleet, 100, { throttleMaxPct: 5, counters: { throttled: 5, retries: 4, serverErrors: 0 } });
+eq('fleet-level unmeasured probes are counted apart from pages', [s3.unmeasuredPages, s3.unmeasuredFleet, s3.unmeasuredFindings], [2, 2, 5]);
+eq('fleet probes are named in the summary', s3.fleetProbes, ['routing: unknown-path 404 probe throttled', 'metadata: favicon probe throttled']);
+eq('fleet probes do not move the page share', [s3.unmeasuredPct, s3.incomplete], [2, false]);
 eq('Retry-After seconds', retryAfterMs('3'), 3000);
 eq('Retry-After capped', retryAfterMs('600', { capMs: 60000 }), 60000);
 eq('Retry-After absent → null', retryAfterMs(undefined), null);

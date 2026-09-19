@@ -88,7 +88,8 @@ export function resolveAuthHeader() {
 //   - a response still throttled after the retries carries `throttled: true`;
 //     checks emit `<check>/unmeasured` (info) for it and never a defect finding
 //   - createPageCache never keeps a throttled or 503 response
-//   - infra counters (throttled, retries, serverErrors) feed report.infra
+//   - infra counters (throttled, retries, serverErrors) feed report.infra — the
+//     browser paths (gotoPaced / scorePaced) count through noteThrottled / noteRetry
 const FETCH_DEFAULTS = { backoffMs: 2000, throttleAttempts: 3, retryAfterCapMs: 60000 };
 /** override fetch/retry defaults for one process (tests: `configureFetch({ backoffMs: 10 })`) */
 export function configureFetch(partial) { Object.assign(FETCH_DEFAULTS, partial); return { ...FETCH_DEFAULTS }; }
@@ -98,6 +99,8 @@ export function infraCounters() { return { ...INFRA }; }
 export function resetInfraCounters() { INFRA.throttled = 0; INFRA.retries = 0; INFRA.serverErrors = 0; }
 /** browser checks count a throttled page here (fetchUrl counts its own) so report.infra covers both paths */
 export function noteThrottled(n = 1) { INFRA.throttled += n; return INFRA.throttled; }
+/** browser checks count a paced 429/503 retry here (fetchUrl counts its own) so infra.retries covers both paths */
+export function noteRetry(n = 1) { INFRA.retries += n; return INFRA.retries; }
 
 export function createHostLimiter({ maxInFlight = 4, restoreMs = 30000, now = Date.now } = {}) {
   const hosts = new Map(); // host -> { cap, inFlight, waiters: [], lastThrottle }
@@ -229,13 +232,26 @@ export async function pMap(items, fn, n = 6) {
  * (id `unmeasured` or `parity-unmeasured`) name the pages the origin throttled;
  * when their share of the fleet exceeds `throttleMaxPct` the report is
  * incomplete: report.html carries the banner and qa.mjs exits 2 (incomplete
- * beats "errors found"). No gate threshold lives here.
+ * beats "errors found"). Fleet-level probes (path '' — the unknown-path 404
+ * probe, the favicon probe, a replay's entry navigation) are not pages: they
+ * are listed as `unmeasuredFleet` / `fleetProbes` so a throttled probe is
+ * never silently dropped from the summary. No gate threshold lives here.
  */
 export function infraSummary(findings, pageCount, { throttleMaxPct = 5, counters = infraCounters() } = {}) {
   const unmeasured = findings.filter((f) => f.id === 'unmeasured' || f.id === 'parity-unmeasured');
   const pages = [...new Set(unmeasured.map((f) => f.path).filter(Boolean))];
+  const fleet = unmeasured.filter((f) => !f.path);
   const pct = pageCount ? Math.round((pages.length / pageCount) * 1000) / 10 : 0;
-  return { ...counters, unmeasuredFindings: unmeasured.length, unmeasuredPages: pages.length, unmeasuredPct: pct, throttleMaxPct, incomplete: pct > throttleMaxPct };
+  return {
+    ...counters,
+    unmeasuredFindings: unmeasured.length,
+    unmeasuredPages: pages.length,
+    unmeasuredPct: pct,
+    unmeasuredFleet: fleet.length,
+    fleetProbes: fleet.slice(0, 8).map((f) => `${f.check}: ${String(f.message || '').slice(0, 120)}`),
+    throttleMaxPct,
+    incomplete: pct > throttleMaxPct,
+  };
 }
 
 /* ----------------------------------------------------------------- html -- */

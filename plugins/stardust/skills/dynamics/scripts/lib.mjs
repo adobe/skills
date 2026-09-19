@@ -141,6 +141,86 @@ export const REACH_FEATURES = {
   quiz: 'quiz / questionnaire (client compute)',
 };
 const REACH_API = /\/(api|graphql|ajax|json|search|autocomplete|typeahead|suggest|client\/|webservices|_next\/data|wp-json|\.rest|odata)/i;
+/** the `dynamic` sidecar fields reachSignals reads — the crawl.mjs `dynamicDom` contract evals/lint/dynamics-recall.mjs checks */
+export const REACH_SIDECAR_FIELDS = ['triggers', 'mediaIds', 'forms', 'tabs', 'shadowHosts', 'emptyConfigContainers', 'controlGroups', 'searchShell', 'players', 'chatLoaders', 'federated', 'quiz'];
+
+/**
+ * Mask comments, string / template / regex literal contents of JS source with
+ * spaces (same length, delimiters kept) so a brace walk over the result sees
+ * code only. Regex literals are recognised by the preceding token (the usual
+ * `/` after `( , = : [ ! & | ? { } ; return` heuristic).
+ */
+export function maskLiterals(src) {
+  const out = src.split(''); const n = src.length;
+  const blank = (a, b) => { for (let k = a; k < b; k += 1) if (out[k] !== '\n') out[k] = ' '; };
+  const prevCode = (i) => { let j = i - 1; while (j >= 0 && /\s/.test(out[j])) j -= 1; return j < 0 ? '' : out[j]; };
+  const regexAllowed = (i) => { const c = prevCode(i); if (c === '') return true; if ('(,=:[!&|?{};+-*%<>~^'.includes(c)) return true; return /(?:^|[^\w$])(return|typeof|case|do|else|in|of|void|delete|throw|new|yield|await)$/.test(src.slice(Math.max(0, i - 8), i).trim()); };
+  let i = 0;
+  while (i < n) {
+    const c = src[i]; const d = src[i + 1];
+    if (c === '/' && d === '/') { const e = src.indexOf('\n', i); const end = e < 0 ? n : e; blank(i, end); i = end; continue; }
+    if (c === '/' && d === '*') { const e = src.indexOf('*/', i + 2); const end = e < 0 ? n : e + 2; blank(i, end); i = end; continue; }
+    if (c === '\'' || c === '"') { let j = i + 1; while (j < n && src[j] !== c && src[j] !== '\n') { if (src[j] === '\\') j += 1; j += 1; } blank(i + 1, j); i = j + 1; continue; }
+    if (c === '`') {
+      // template literal: blank the text, keep `${ … }` code (recursion depth via a small stack)
+      let j = i + 1; let depth = 0; let segStart = j;
+      while (j < n) {
+        if (depth === 0) {
+          if (src[j] === '\\') { j += 2; continue; }
+          if (src[j] === '`') { blank(segStart, j); break; }
+          if (src[j] === '$' && src[j + 1] === '{') { blank(segStart, j); depth = 1; j += 2; continue; }
+        } else {
+          if (src[j] === '{') depth += 1;
+          else if (src[j] === '}') { depth -= 1; if (depth === 0) { segStart = j + 1; } }
+          else if (src[j] === '\'' || src[j] === '"' || src[j] === '`') { const q = src[j]; let k = j + 1; while (k < n && src[k] !== q) { if (src[k] === '\\') k += 1; k += 1; } blank(j + 1, k); j = k; }
+        }
+        j += 1;
+      }
+      i = j + 1; continue;
+    }
+    if (c === '/' && regexAllowed(i)) {
+      let j = i + 1; let cls = false;
+      while (j < n && src[j] !== '\n') { if (src[j] === '\\') { j += 2; continue; } if (src[j] === '[') cls = true; else if (src[j] === ']') cls = false; else if (src[j] === '/' && !cls) break; j += 1; }
+      blank(i + 1, j); i = j + 1; continue;
+    }
+    i += 1;
+  }
+  return out.join('');
+}
+
+/**
+ * Keys of the object literal assigned to `name:` in `src` (`name: { a, b: 1, 'c-d': x, ...rest }`
+ * → ['a', 'b', 'c-d']), whatever its formatting: multi-line, nested values, trailing commas,
+ * comments and strings containing braces. Spreads and computed keys are skipped. Returns null
+ * when no such object exists — the caller decides whether that is a failure.
+ */
+export function objectLiteralKeys(src, name) {
+  const masked = maskLiterals(src);
+  const re = new RegExp(`(?:^|[^\\w$.])${name.replace(/[$]/g, '\\$&')}\\s*:\\s*\\{`, 'g');
+  let m;
+  while ((m = re.exec(masked))) {
+    const open = m.index + m[0].length - 1;
+    let depth = 0; let entryStart = open + 1; const entries = [];
+    for (let i = open; i < masked.length; i += 1) {
+      const ch = masked[i];
+      if ('{[('.includes(ch)) depth += 1;
+      else if ('}])'.includes(ch)) { depth -= 1; if (depth === 0) { entries.push([entryStart, i]); break; } }
+      else if (ch === ',' && depth === 1) { entries.push([entryStart, i]); entryStart = i + 1; }
+    }
+    if (depth !== 0) continue; // unbalanced → not the literal we want
+    const keys = [];
+    for (const [a, b] of entries) {
+      // keys are read off the masked slice (comments blanked, string contents blanked but delimiters kept);
+      // a quoted key's text is then taken from the raw source at the same offsets
+      const m = masked.slice(a, b); const i0 = m.search(/\S/); if (i0 < 0 || m.startsWith('...', i0)) continue;
+      if (m[i0] === '\'' || m[i0] === '"') { const i1 = m.indexOf(m[i0], i0 + 1); if (i1 > i0) keys.push(src.slice(a + i0 + 1, a + i1)); continue; }
+      const k = m.slice(i0).match(/^([A-Za-z_$][\w$]*)\s*(?::|$)/);
+      if (k) keys.push(k[1]);
+    }
+    return keys;
+  }
+  return null;
+}
 
 /**
  * Fold the per-page `dynamic` sections extract --dynamics wrote (`pages/*.json`)
