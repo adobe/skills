@@ -1,5 +1,17 @@
 # Source-fidelity gate (the measured heart of replica)
 
+## When to read what
+
+- § The three probes — first: what each instrument catches and is blind to, and why all three run.
+- § Per-breakpoint procedure — when running a gate pass: breakpoint order and the commands.
+- § Pass bar — when deciding whether an archetype ships: the criteria every breakpoint must meet.
+- § Reading the band breakdown — only after a failed round: locating the first hot band and ignoring the contaminated ones below it.
+- § Wide-viewport fluid check — after the desktop pass: catching frozen pixel widths that only diverge on wider screens.
+- § Iteration discipline — when a round fails: the hard cap and the measure-first order of fixes.
+- § Hardening rules — before trusting any number: the false-measurement traps (UA challenges, overlays, animation, lazy media, font forks).
+- § The published-origin gate — after platform delivery: re-running the gate against the published page, the only number that counts as final.
+- § Residual logging format — when recording a passed or capped result in `progress.json`.
+
 The gate proves an archetype matches the LIVE site — three instruments, per
 breakpoint, with a hard iteration cap. It replaces the redesign pipeline's
 craft gates entirely: an archetype ships because it measured true, never

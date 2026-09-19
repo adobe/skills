@@ -1,5 +1,14 @@
 # Artifact map
 
+## When to read what
+
+- § Project root — when writing or reading the impeccable-format files at the project root: who owns the format and when stardust touches each.
+- § `stardust/` — when locating any stardust-owned file: the full tree with owner and consumer per path.
+- § Versioning — when deciding what a clone commits or ignores under `stardust/`.
+- § Provenance shapes — when stamping a new HTML, JSON or Markdown artifact.
+- § Site-level vs page-level — when unsure whether a decision belongs to `direct`'s system or `prototype`'s deployment.
+- § Read-vs-write discipline — before any sub-command reads or writes: the read order, the write order, and the `state.json`-last rule.
+
 Every file stardust reads or writes, who owns it, what it contains, and
 how its provenance block is shaped.
 

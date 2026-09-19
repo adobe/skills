@@ -1,5 +1,18 @@
 # State machine
 
+## When to read what
+
+- § File: `stardust/state.json` — before reading or writing state: the full shape.
+- § Hands-off keys · § Flow keys — when the run is hands-off or a migration flow was chosen: the markers every sub-command checks.
+- § Page lifecycle states · § Page types — when moving a page between states or typing it for template reuse across siblings.
+- § Stale flagging — when `direct` resolves a new direction: which pages actually go stale.
+- § State report — when rendering the no-args status view.
+- § Provenance validation — before any downstream phase consumes per-page JSON: the read-time synthesis guard.
+- § IA-fidelity and iaPriorities mutability — when a later phase wants to change what `direct` pinned.
+- § Fold-back state record — after prototype fold-back: where the decision is recorded.
+- § Concurrency — when parallel writers touch `state.json`: the merge-by-slug contract.
+- § Schema versioning — when the schema changes.
+
 Stardust tracks state per page so multi-page redesigns can be incremental
 and resumable. The state file is `stardust/state.json`. It is written by
 `extract`, `direct`, `prototype`, and `migrate`, and read by `stardust`

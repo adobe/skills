@@ -1,5 +1,13 @@
 # Publish a sample to the showcase
 
+## When to read what
+
+- § Inputs — before starting: the slug, upstream and variant flags, and what must already exist on disk.
+- § Procedure — the staged flow: eligibility checks, backup of originals, staging, commit and PR, final report.
+- § PR body template — when composing the PR: the fields filled at submit-time (the "Adding sample" heading below belongs to the template).
+- § Failure modes — when a check or step fails: what to surface and where to stop.
+- § What this does NOT do — when tempted to auto-merge, configure Pages, push to upstream directly or judge design quality.
+
 The procedure for `$stardust prototype --publish-sample <slug>`.
 Stages a new sample folder in the stardust showcase repo, opens a
 PR, and lands the sample in the showcase published at

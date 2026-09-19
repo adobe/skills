@@ -1,5 +1,18 @@
 # Brand surface
 
+## When to read what
+
+- § File shape — before writing `_brand-extraction.json`: the top-level keys and provenance block.
+- § Aggregation scope · § Origins — when deciding whether a field is read home-only or cross-page, and which origins contributed evidence.
+- § Logo · § Icon font — when recording the captured logo asset or an icon-font family with its codepoint table.
+- § Palette · § Type · § Spacing — when aggregating computed colors, font stacks and the spacing scale across pages.
+- § Motifs · § Component style — when recording repeated visual moves (radius, shadows, gradients, patterns) and the carried-forward component fields.
+- § System components · § Cross-promo — when detecting cross-page repeated DOM blocks so `direct` can keep, move or kill them deliberately.
+- § Voice · § Voice table — when sampling home-page copy and aggregating cross-page CTA, nav and heading frequency for the review tables.
+- § Embed-dominated pages — only when a page's `embedDominance` flag is set: surfacing opaque third-party embeds.
+- § Register — when classifying the site as brand, product or ambiguous.
+- § What this file is not — when tempted to prescribe, score or critique instead of describe.
+
 The shape of `stardust/current/_brand-extraction.json` and the
 procedure that produces it. Run once per `extract` invocation, after
 the capture phases have finished. Aggregation may accumulate

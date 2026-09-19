@@ -1,5 +1,18 @@
 # Playwright recipe
 
+## When to read what
+
+- § Browser configuration — before launching: the fixed viewport, scale, locale and motion settings every capture uses.
+- § Pre-flight: consent dismissal — when the site ships a cookie or consent banner that would cover the hero.
+- § Wait modes · § Navigation — when choosing `--wait` and running the goto, scroll and reveal sequence before capture.
+- § Capture list — during capture: everything to read per page, in order.
+- § Capture hygiene — when hidden, transient or SPA-shell DOM could pollute the record: what to exclude or flag.
+- § Logo locator chain — during the brand-surface pass: the priority order for finding the logo.
+- § Favicon capture — always, independent of the logo result: the favicon resolution order.
+- § What NOT to capture — when tempted to widen the capture (per-element styles, HAR, extra viewports, authenticated pages).
+- § Response validation — after every navigation: refusing non-2xx and non-HTML responses as captured pages.
+- § Failure isolation — when a page fails: logging it to `_crawl-log.json` and continuing the crawl.
+
 The exact browser configuration and capture list every page extraction
 must use. Carried forward from stardust v1's brand-extract recipe with
 adjustments for multi-page operation.

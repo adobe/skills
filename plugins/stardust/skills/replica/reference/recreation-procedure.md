@@ -1,5 +1,18 @@
 # Recreation procedure (clean re-authoring against a live original)
 
+## When to read what
+
+- § Authoring order — first, per archetype: the step sequence in which each step removes a class of guesswork before the next.
+- § Cumulative archetype prototypes — when a new archetype appears: why every archetype keeps a standalone prototype importing the layers earlier ones gated.
+- § CSS lifting — before any screenshot tuning: fidelity values come from the source stylesheets, not the eye.
+- § Wrap-junction margins — on cards-on-a-canvas sites where collapsing margins drift every section top.
+- § Fonts policy · § Asset harvest and the capture-state policy — when self-hosting or substituting fonts, and when a CDN-defended site refuses direct asset requests.
+- § Granularity parity · § Role parity — when content-diff shows false reds from node splits or role swaps rather than dropped copy.
+- § Carousels and animated sections — when the page has moving tracks: freezing the at-rest state deterministically.
+- § Interaction parity — only after the static gate passes: the observed motion inventory.
+- § Fixed and sticky chrome — when fixed headers or floating tabs repeat at stitched-capture seams.
+- § CSS-portation fallback — the reserve, per section only, when re-authoring cannot recover a paint-level effect.
+
 Replica's Phase 3: author one clean prototype per page type that the
 source-fidelity gate can pass. This is **recreation, not redesign** — the
 craft skill's redesign gates (critique, anti-template, divergence,
