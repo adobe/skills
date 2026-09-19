@@ -20,7 +20,7 @@ Phases, in order: Setup → 1 EXTRACT → 2 PRESERVE DIRECTION → 3 RECREATE �
 | 2 | mechanical promotion + `stardust/replica/inconsistency-register.md`; the `dynamics` skill Phases 1–3 |
 | 3 | author `stardust/prototypes/<slug>-proposed.html` (+ per-page CSS) |
 | 4 | probes 1+2: `diff/content-diff.mjs`, `diff/visual-diff.mjs` (`--profile generic --width <w> --main <root> --dismiss`); probe 3: `replica/stitch-shot.mjs`, `replica/pixel-compare.mjs --timeout <s>`; inner loop: `replica/anchor.mjs --cache`, `replica/chrome-parity.mjs --live-cache`, `replica/gate.sh <slug> <live> <proto> <width> [iter] [--marker <string>] [--refresh] [--variance]` (reference freshness + noise floor: gate doc § Per-breakpoint procedure) — deadlines `GATE_STITCH_TIMEOUT`, `GATE_COMPARE_TIMEOUT`, stale reap `GATE_REAP_MIN`; every node step runs under `replica/run-capped.mjs --timeout <s> -- <cmd>`; after the static pass: `replica/motion-observe.mjs <live>` |
-| 5 | `replica/sibling-variance.mjs <archetype> <siblings…> --probe <block>=<sel>`; then the `migrate` (sibling tier) → `deploy` → `rollout` skills; re-run the Phase 4 gate against the published origin |
+| 5 | first: `deploy` the approved archetype to a branch preview (`deploy-batch.mjs … --branch <branch>`); `replica/sibling-variance.mjs <archetype> <siblings…> --probe <block>=<sel>`; then the `migrate` (sibling tier) → `deploy` → `rollout` skills; re-run the Phase 4 gate against the published origin |
 
 Gates: Phase 2 — every dynamic-surface row has a disposition. Phase 4, per breakpoint (default `1440,360`) — content-diff 0 structural 🔴 · visual-diff flags none/justified · pixel diff ≤ 10% with no hot band unexplained · height |Δ| ≤ 8px · cap 3 iterations · interaction parity recorded. `gate.sh` exits: 0 pass · 2 fail · 1 error / incomparable captures · 3 bot challenge · 4 wrong server · 5 invalid capture (consent) · 6 cap reached (decide: residual / register / `--over-cap <reason>`; `--invalidate <label> <fix>` excludes a defect round; `--record` copies the round into `progress.json`) · 124 deadline (re-run, not a FAIL).
 
@@ -116,16 +116,13 @@ to change." — so the first thing the user sees in this flow is the choice
 it rests on. `switch to redesign` runs `$stardust prepare-migration
 --switch-flow`; the extract is reused, nothing else is.
 
-**Bounded entry (one-page or pilot runs).** `--prep` is the
-site-wide contract, not the only way in: for "replicate just this page" or
-a one-archetype pilot, invoke `$stardust extract <URL> --single` (or
-`--pages <slug,...>`). A first-class entry: per-page JSON, screenshot and fonts are all
-provided; the CSS lift is Phase 3's either way. A bounded run skips the prep-only inventory (page
-typing, module detection — needed only when Phase 5 fans out; a pilot that
-grows re-runs Phase 1 with `--prep`) AND the descriptive synthesis: no
-`current/PRODUCT.md` / `DESIGN.md` / `DESIGN.json`, so Phase 2 takes the
-**bounded promotion branch** (`reference/preserve-direction.md` § 1a),
-provenance `bounded-single`.
+**Bounded entry (one page or a pilot).** `$stardust extract <URL> --single`
+(or `--pages <slug,...>`) is a first-class entry: per-page JSON, screenshot
+and fonts are provided (the CSS lift is Phase 3's either way); it skips the
+prep-only inventory (page typing, module detection — a pilot that grows
+re-runs Phase 1 with `--prep`) and the descriptive synthesis, so Phase 2
+takes the **bounded promotion branch** (`reference/preserve-direction.md`
+§ 1a), provenance `bounded-single`.
 
 Extract's failure modes apply as-is (bot-management ladder, consent
 handling, no-synthesis rule); the gate instruments start at the tier
@@ -243,14 +240,9 @@ node stardust/scripts/diff/visual-diff.mjs  "$LIVE" "$PROTO" --profile generic -
 # Probe 3 — replica's pixel probe: gate.sh below wraps stitch-shot (stitched
 # captures, NEVER fullPage:true) + pixel-compare; the unwrapped form is in the gate doc.
 
-# Iteration inner loop (gate doc § Band breakdown): anchor probe + pixel round
-G=stardust/replica/gates/<slug>-1440
-node stardust/scripts/replica/anchor.mjs "$LIVE"  --width 1440 --cache $G/anchor-live.json   # live: probed once, reused
-node stardust/scripts/replica/anchor.mjs "$PROTO" --width 1440   # build-side runs are free
-# Chrome: computed-style parity BEFORE any pixel round (exit 0 = quiet, then crop-compare)
-node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --live-cache $G/chrome-live.json
-# gate.sh: live.png cached with its sidecar, every step under a deadline, round record written
-stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
+# Inner loop (gate doc § Band breakdown): anchor probe both sides (live via
+# --cache $G/anchor-live.json), chrome-parity --live-cache BEFORE any pixel round, then
+stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440   # cached live.png, deadlines, round record, cap
 ```
 
 **Pass bar (all four, per breakpoint):**
@@ -304,10 +296,21 @@ approval per the standard prototype approval flow (hands-off mode records
 The close leads with what is NOT green, per archetype × breakpoint
 (`home 360: FAIL 12 % (register: R-04 mobile normalization)`,
 `… 360: ungated`), then the passes and the coverage line `archetypes gated
-A of T at <bp> · ungated: <slug@bp …>` read from `progress.json`.
+A of T at <bp> · ungated: <slug@bp …>` read from `progress.json`. The
+phase-close checkpoint block (master skill § Phase close) carries
+`EDS URL: <branch preview URL> | none yet` — two field runs went 3 h and
+25 h before the user had to ask for a URL.
 
 ### Phase 5 — HANDOFF (delegate — migrate → deploy → rollout, unchanged)
 
+- **First act after approval: put the archetype on an EDS preview.** Run
+  the `deploy` skill Steps 1–9 for the approved archetype, then
+  `deploy-batch.mjs … --branch <branch>` (preview only — D16; live publish
+  is a separate `--publish` on PASS, D1) and iterate on the published
+  origin (`reference/source-fidelity-gate.md` § The published-origin gate).
+  The approval is the trigger — hands-off never waits for a "ready to
+  deploy?". No EDS origin yet → the deploy skill's site bootstrap
+  (planned `reference/site-bootstrap.md`, T12.1).
 - **Pages beyond the archetypes** go through the stardust `migrate` skill at
   **sibling tier** (`../migrate/reference/fidelity-tiers.md`): structural
   clone of the gated archetype + content-fidelity + delivery-lint +
@@ -320,12 +323,11 @@ A of T at <bp> · ungated: <slug@bp …>` read from `progress.json`.
   module kind on a sibling → the lift ledger rule (Phase 3). Content-fidelity
   is **measured per page at import time** (same file, § Content-count
   acceptance) so importer bugs surface while cheap to fix.
-- **Delivery** via the stardust `deploy` skill per page. Bias the decode tier toward
-  **template-slotted** for fixed-composition sections (deploy #95): replica
-  sections are fixed compositions matched to a live original.
-  Repeat groups (cards, listings) stay reconstructive. **Blocks
-  obey the Experience Workspace editability contract (`../deploy/reference/block-js-scaffold.md` § Experience Workspace editability contract, EW1–EW10:
-  node-slotting, never value-slotting) and pass `block-roundtrip --ew`.**
+- **Delivery** via the stardust `deploy` skill per page: decode tier biased
+  to **template-slotted** for fixed compositions (deploy #95), repeat groups
+  reconstructive; blocks obey the Experience Workspace editability contract
+  (`../deploy/reference/block-js-scaffold.md` § Experience Workspace
+  editability contract, EW1–EW10) and pass `block-roundtrip --ew`.
 - **Site-wide rollout** via the stardust `rollout` skill, unchanged — its block dedup
   is what implements "same blocks across the whole site".
 - **The hand-off names the captured variant.** Every brief and report
