@@ -1,0 +1,30 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>chrome live fixture</title>
+<style>
+  html,body{margin:0;padding:0} body{width:800px;font-family:sans-serif;font-size:16px}
+  header{height:600px;background:#eee;position:relative}
+  .promo{position:sticky;top:0;height:48px;background:#c00;color:#fff;line-height:48px}
+  nav{padding:16px}
+  nav a{color:#000;margin-right:16px;font-weight:400;text-decoration:none}
+  nav a[aria-current]{font-weight:700;color:#c00}
+  button.menu{position:relative;background:none;border:0;font:inherit;padding:0 4px 8px;cursor:pointer}
+  button.menu::before{content:"";position:absolute;left:0;bottom:0;width:40px;height:4px;background:#000}
+  ul.dropdown{display:none;position:absolute;top:80px;left:16px;background:#fff;list-style:none;padding:8px;margin:0;z-index:40;border:1px solid #999}
+  header.open ul.dropdown{display:block}
+  ul.dropdown a{color:#000;text-decoration:none}
+  main{height:1600px;background:#fafafa;position:relative}
+  footer{height:200px;background:#333;color:#fff;padding:16px}
+  footer ul{list-style:none;padding:0;margin:0} footer a{color:#fff;text-decoration:none}
+</style></head>
+<body>
+<header id="hdr">
+  <div class="promo">Promo bar</div>
+  <nav>
+    <a href="/" aria-current="page">Home</a><a href="/shop">Shop</a>
+    <button class="menu" onclick="document.getElementById('hdr').classList.toggle('open')">Menu</button>
+    <ul class="dropdown"><li><a href="/a">Alpha item</a></li><li><a href="/b">Beta item</a></li></ul>
+  </nav>
+</header>
+<main><section><p>content</p></section></main>
+<footer><ul><li><a href="/legal">Legal</a></li><li><a href="/privacy">Privacy</a></li></ul></footer>
+</body></html>

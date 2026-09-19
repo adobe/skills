@@ -1,0 +1,15 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>consent reject-stays fixture</title>
+<style>
+  html,body{margin:0;padding:0} body{width:800px;font-family:sans-serif}
+  section{height:500px;background:#33cc66}
+  .cookie-banner{position:fixed;bottom:0;left:0;width:800px;height:120px;background:#123;color:#fff;padding:12px;box-sizing:border-box}
+</style></head>
+<body>
+<main><section><h1>Content</h1></section><section><h2>More</h2></section></main>
+<div id="cmp" class="cookie-banner">
+  <p>We use cookies for analytics; manage your consent below.</p>
+  <button onclick="document.body.dataset.consent='accepted';document.getElementById('cmp').remove()">Accept all</button>
+  <button onclick="document.body.dataset.reject='clicked'">Reject all</button>
+</div>
+</body></html>
