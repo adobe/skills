@@ -36,6 +36,11 @@
  *                        in the block's leading JSDoc declares config/derived/index
  *                        texts (⚪ advisory). Shared instrument: ew-editability-probe.mjs.
  *     --json             dump per-block inventories (+ the editability survey)
+ *     --no-pipeline      skip the pipeline emulation (pipeline-mimic.mjs runs on the
+ *                        authored <main> before the harness page is built, so
+ *                        section tagging, EW instrumentation and runtimeMimic all see
+ *                        the DELIVERED shape; the rule counts print once per run)
+ *     --style-split      comma (D7 default) | first-only — section-metadata `style` split
  *
  * EW contract in two sentences (deploy reference/block-js-scaffold.md § Experience Workspace editability
  * contract, EW1–EW10): the workspace stamps an index on every authored text element,
@@ -66,10 +71,11 @@ import fs from 'fs';
 import { resolveProfile } from './diff-profiles.mjs';
 import { inventory, diffInventories, summarise } from './content-inventory.mjs';
 import { EDITABLE, runtimeMimic, instrument, survey, installBlockJs, runDecorate, readBlockExemptions, aggregate } from './ew-editability-probe.mjs';
+import { pipelineMimic, formatCounts } from './pipeline-mimic.mjs';
 
 function parseArgs(argv) {
   const [, , proto, content, ...rest] = argv;
-  const opts = { blocks: null, map: {}, styles: null, blocksDir: null, width: 1280, profile: 'eds', json: false, ew: true };
+  const opts = { blocks: null, map: {}, styles: null, blocksDir: null, width: 1280, profile: 'eds', json: false, ew: true, pipeline: true, styleSplit: 'comma' };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--blocks') { opts.blocks = rest[i += 1].split(',').map((s) => s.trim()).filter(Boolean); }
@@ -81,6 +87,9 @@ function parseArgs(argv) {
     else if (a === '--json') { opts.json = true; }
     else if (a === '--ew') { opts.ew = true; }
     else if (a === '--no-ew') { opts.ew = false; }
+    else if (a === '--no-pipeline') { opts.pipeline = false; }
+    else if (a === '--style-split') { opts.styleSplit = rest[i += 1]; }
+    else if (a === '--help' || a === '-h') { opts.help = true; }
   }
   return { proto, content, opts };
 }
@@ -154,8 +163,10 @@ async function settle(page) {
 
 async function main() {
   const { proto, content, opts } = parseArgs(process.argv);
-  if (!proto || !content) {
-    process.stderr.write('usage: node skills/deploy/scripts/block-roundtrip.mjs <prototypeURL> <content/page.html> [--blocks a,b] [--map name=sel] [--styles css] [--blocks-dir dir] [--width px] [--profile p] [--ew|--no-ew] [--json]\n');
+  const usage = 'usage: node skills/deploy/scripts/block-roundtrip.mjs <prototypeURL> <content/page.html> [--blocks a,b] [--map name=sel] [--styles css] [--blocks-dir dir] [--width px] [--profile p] [--ew|--no-ew] [--json] [--no-pipeline] [--style-split comma|first-only]\n';
+  if (opts.help) { process.stdout.write(usage); process.exit(0); }
+  if (!proto || !content || !['comma', 'first-only'].includes(opts.styleSplit)) {
+    process.stderr.write(usage);
     process.exit(1);
   }
   const prof = resolveProfile(opts.profile);
@@ -167,7 +178,15 @@ async function main() {
   const raw = fs.readFileSync(content, 'utf8');
   const mainMatch = raw.match(/<main>([\s\S]*?)<\/main>/);
   if (!mainMatch) throw new Error(`${content} has no <main> element`);
-  const mainHtml = mainMatch[1];
+  let mainHtml = mainMatch[1];
+  // Delivered shape first (section-metadata applied, <p><picture>, hoisted CTAs,
+  // whitespace, tables, icons): everything below — tagging, EW instrumentation,
+  // runtimeMimic, decode — faces what the preview host will actually serve.
+  if (opts.pipeline) {
+    const r = pipelineMimic(mainHtml, { styleSplit: opts.styleSplit });
+    mainHtml = r.html;
+    process.stdout.write(`${formatCounts(r.counts)}\n`);
+  }
   // metadata + section-metadata are pipeline config, never rendered content —
   // removed in the DOM after setContent (never by regexing the HTML: a lazy regex
   // over-swallows past a shallow/empty metadata block and silently deletes real

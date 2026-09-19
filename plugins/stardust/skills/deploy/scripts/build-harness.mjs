@@ -9,10 +9,21 @@
  * naive `…</div></div>` match stops a tag too early and leaves an orphan </div>
  * that corrupts the harness DOM — #46). This does it with balanced tag counting.
  *
- * Usage: node skills/deploy/scripts/build-harness.mjs <contentFile> <outHarness> [--root <dir>]
+ * Usage: node skills/deploy/scripts/build-harness.mjs <contentFile> <outHarness> [--root <dir>] [--no-pipeline] [--style-split comma|first-only]
  *   e.g. node skills/deploy/scripts/build-harness.mjs content/snowflake-blocks/test-12.html stardust/.work/harness/test-12.html
- *   --root <dir>  repo root the harness is served from (favicon detection;
- *                 default: cwd)
+ *   --root <dir>       repo root the harness is served from (favicon detection;
+ *                      default: cwd)
+ *   --no-pipeline      skip the pipeline emulation (pure A/B against the old harness)
+ *   --style-split      section-metadata `style` split: comma (D7 default) | first-only
+ *
+ * Pipeline emulation (pipeline-mimic.mjs) runs FIRST on the extracted <main>:
+ * section-metadata → classes/data-*, <img> → <p><picture>, sole-emphasis links
+ * hoisted, NBSP paragraphs dropped, `:icon:` → span, raw tables → block divs,
+ * attribute strip — the delivered shape, so the real scripts.js decorates what
+ * the preview host will serve. The page `metadata` rows become <meta name>
+ * tags in <head> (the real aem.js decorateTemplateAndTheme reads
+ * getMetadata('template'|'theme'); the header block reads 'nav'). The rule
+ * counts are printed once per run. Exit 0 = written, 1 = usage.
  *
  * Output: a full HTML doc loading /styles/styles.css + /scripts/scripts.js
  * (which imports aem.js, adds body.appear, and loads the sections — the same
@@ -30,6 +41,7 @@
  */
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
+import { pipelineMimic, formatCounts, metaTags } from './pipeline-mimic.mjs';
 
 // Return the index just past the </div> that closes the <div> starting at `start`.
 function matchDivEnd(s, start) {
@@ -46,14 +58,19 @@ function matchDivEnd(s, start) {
 
 const argv = process.argv.slice(2);
 let root = process.cwd();
+let pipeline = true;
+let styleSplit = 'comma';
 const pos = [];
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === '--root') root = argv[++i];
+  else if (argv[i] === '--no-pipeline') pipeline = false;
+  else if (argv[i] === '--style-split') styleSplit = argv[++i];
+  else if (argv[i] === '--help' || argv[i] === '-h') { process.stdout.write('usage: node skills/deploy/scripts/build-harness.mjs <contentFile> <outHarness> [--root <dir>] [--no-pipeline] [--style-split comma|first-only]\n'); process.exit(0); }
   else pos.push(argv[i]);
 }
 const [inFile, outFile] = pos;
-if (!inFile || !outFile) {
-  process.stderr.write('usage: node skills/deploy/scripts/build-harness.mjs <contentFile> <outHarness> [--root <dir>]\n');
+if (!inFile || !outFile || !['comma', 'first-only'].includes(styleSplit)) {
+  process.stderr.write('usage: node skills/deploy/scripts/build-harness.mjs <contentFile> <outHarness> [--root <dir>] [--no-pipeline] [--style-split comma|first-only]\n');
   process.exit(1);
 }
 let html = readFileSync(inFile, 'utf8');
@@ -61,6 +78,17 @@ let html = readFileSync(inFile, 'utf8');
 // 1. extract <main>…</main>
 const mm = html.match(/<main[\s\S]*?<\/main>/i);
 let main = mm ? mm[0] : html;
+
+// 1b. pipeline emulation — the delivered shape (section-metadata applied, pictures,
+// hoists, whitespace, tables, icons, attribute strip); the metadata rows come back
+// as `meta` for the <head>. Stage one below (#46 balanced strip) stays as the
+// fallback for --no-pipeline.
+let meta = {};
+let countsLine = 'pipeline emulation: off (--no-pipeline)';
+if (pipeline) {
+  const r = pipelineMimic(main, { styleSplit });
+  main = r.html; meta = r.meta; countsLine = formatCounts(r.counts);
+}
 
 // 2. remove the metadata section: the wrapper <div> two levels above class="metadata"
 const metaAttr = main.indexOf('class="metadata"');
@@ -106,6 +134,7 @@ if (!faviconLink) {
 
 const doc = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>QA harness</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+${metaTags(meta)}
 <link rel="stylesheet" href="/styles/styles.css">
 <script src="/scripts/scripts.js" type="module"></script>
 ${faviconLink}</head>
@@ -115,4 +144,4 @@ ${main}
 <footer></footer>
 </body></html>`;
 writeFileSync(outFile, doc);
-process.stdout.write(`harness written: ${outFile} (${doc.length} bytes)\n`);
+process.stdout.write(`harness written: ${outFile} (${doc.length} bytes) — ${countsLine}${meta.template || meta.theme ? ` — <meta> template=${meta.template || '-'} theme=${meta.theme || '-'}` : ''}\n`);

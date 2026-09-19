@@ -25,6 +25,12 @@
  *                         ProseMirror-shaped editor the canvas inserts, so the
  *                         screenshot shows EDIT MODE (implies --ew instrumentation;
  *                         the quick-edit CSS fetch degrades gracefully offline)
+ *     --no-pipeline       skip the pipeline emulation (pipeline-mimic.mjs runs on the
+ *                         authored <main> BEFORE setContent, so tagging, instrumentation
+ *                         and runtimeMimic all see the delivered shape; the page
+ *                         metadata's template/theme become body classes as
+ *                         decorateTemplateAndTheme would; counts printed once per run)
+ *     --style-split       comma (D7 default) | first-only — section-metadata `style` split
  *
  * Exit codes: 0 rendered (and, with --ew, no dead/duplicated text), 1 = --ew found
  * dead non-exempt text or a duplicated index, 2 = harness error.
@@ -38,10 +44,11 @@ import {
   EDITABLE, firstExisting, readMainHtml, dropMetadata, discoverBlocks, runtimeMimic, instrument, survey, simulateEditor,
   installBlockJs, runDecorate, readBlockExemptions, aggregate, formatTable, verdict, fetchQuickEditCss,
 } from './ew-editability-probe.mjs';
+import { pipelineMimic, formatCounts, bodyClasses } from './pipeline-mimic.mjs';
 
 function parseArgs(argv) {
   const rest = argv.slice(2);
-  const opts = { positional: [], styles: null, blocksDir: null, width: 1280, ew: false, simulate: false };
+  const opts = { positional: [], styles: null, blocksDir: null, width: 1280, ew: false, simulate: false, pipeline: true, styleSplit: 'comma' };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--styles') { opts.styles = rest[i += 1]; }
@@ -49,6 +56,9 @@ function parseArgs(argv) {
     else if (a === '--width') { opts.width = Number(rest[i += 1]); }
     else if (a === '--ew') { opts.ew = true; }
     else if (a === '--simulate-editor') { opts.simulate = true; opts.ew = true; }
+    else if (a === '--no-pipeline') { opts.pipeline = false; }
+    else if (a === '--style-split') { opts.styleSplit = rest[i += 1]; }
+    else if (a === '--help' || a === '-h') { opts.help = true; }
     else if (a.startsWith('--')) { throw new Error(`unknown option ${a}`); }
     else opts.positional.push(a);
   }
@@ -58,13 +68,23 @@ function parseArgs(argv) {
 
 async function main() {
   const { contentPath, out, blocks, opts } = parseArgs(process.argv);
-  if (!contentPath || !out) {
-    process.stderr.write('usage: node render-harness.mjs <content/path.html> <out.png> [block-name ...] [--styles css] [--blocks-dir dir] [--width px] [--ew] [--simulate-editor]\n');
+  const usage = 'usage: node render-harness.mjs <content/path.html> <out.png> [block-name ...] [--styles css] [--blocks-dir dir] [--width px] [--ew] [--simulate-editor] [--no-pipeline] [--style-split comma|first-only]\n';
+  if (opts.help) { process.stdout.write(usage); process.exit(0); }
+  if (!contentPath || !out || !['comma', 'first-only'].includes(opts.styleSplit)) {
+    process.stderr.write(usage);
     process.exit(2);
   }
   const stylesPath = opts.styles || firstExisting(['eds/styles/styles.css', 'styles/styles.css'], 'styles.css');
   const blocksDir = opts.blocksDir || firstExisting(['eds/blocks', 'blocks'], 'blocks dir');
-  const mainHtml = readMainHtml(contentPath);
+  let mainHtml = readMainHtml(contentPath);
+  const bodyCls = ['appear'];
+  if (opts.pipeline) {
+    // Delivered shape first: what the preview host serves is what decode faces.
+    const r = pipelineMimic(mainHtml, { styleSplit: opts.styleSplit });
+    mainHtml = r.html;
+    bodyCls.push(...bodyClasses(r.meta));
+    console.log(formatCounts(r.counts));
+  }
   const styles = fs.readFileSync(stylesPath, 'utf8');
 
   const b = await chromium.launch();
@@ -73,7 +93,7 @@ async function main() {
     const p = await b.newPage({ viewport: { width: opts.width, height: 900 }, reducedMotion: 'reduce' });
     // body.appear satisfies the stock body{display:none} gate the same way
     // loadEager() does; body > header hidden (sticky headers in tall screenshots).
-    await p.setContent(`<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0}body > header{display:none}main .section{padding:0}${styles}</style></head><body class="appear"><main>${mainHtml}</main></body></html>`, { waitUntil: 'networkidle' });
+    await p.setContent(`<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0}body > header{display:none}main .section{padding:0}${styles}</style></head><body class="${bodyCls.join(' ')}"><main>${mainHtml}</main></body></html>`, { waitUntil: 'networkidle' });
     await p.evaluate(dropMetadata);
     const names = blocks.length ? blocks : await p.evaluate(discoverBlocks);
     const blockCss = names.map((n) => { try { return fs.readFileSync(path.join(blocksDir, n, `${n}.css`), 'utf8'); } catch { return ''; } }).join('\n');
