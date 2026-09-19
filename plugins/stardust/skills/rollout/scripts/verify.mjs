@@ -21,7 +21,8 @@
  *                      summary line (`not delivered: N (skipped)`) and never written —
  *                      a skipped row is "no verdict", not a FAIL. Offline `--root`
  *                      verifies the tree itself, so `--all` covers every row there.
- *   --include-undelivered   with --all over HTTP: probe the undelivered rows too
+ *   --include-undelivered   with --all over HTTP: probe the undelivered rows too (the line
+ *                      then reads `not delivered: N (probed — --include-undelivered)`)
  *   --slug <s>         that one row, whatever its status
  * The path fetched is `delivery.deployedPath` when set (update-coverage
  * --from-ledger / inventory --redirects), else `path`.
@@ -184,15 +185,16 @@ function failureClass(reason) {
 }
 
 // --- select rows ------------------------------------------------------------------
-let skipped = 0;
+let undelivered = 0; // never-delivered rows met under --all over HTTP: skipped, or probed with --include-undelivered
 const target = pages.filter((p) => {
   if (onlySlug) return p.slug === onlySlug;
   if (ALL) {
-    if (ROOT || INCLUDE_UNDELIVERED || isDelivered(p)) return true;
-    skipped += 1; return false;
+    if (ROOT || isDelivered(p)) return true;
+    undelivered += 1; return INCLUDE_UNDELIVERED;
   }
   return ['deployed', 'verified'].includes(p.delivery && p.delivery.status);
 });
+const skipped = INCLUDE_UNDELIVERED ? 0 : undelivered;
 
 const now = new Date().toISOString();
 const results = []; // one row per checked page: { slug, path, type, status, reason, class, severity }
@@ -247,7 +249,7 @@ const head = [
   `Checked ${results.length} · ${ok} verified · ${bad.length} failed · types: ${Object.entries(byType).map(([k, v]) => `${k}:${v}`).join(' ') || '—'}`,
 ];
 if (unverified.length) head.push(`unverified: ${unverified.length} page(s) throttled (429/503 through the inline retry) — ledger untouched, exit 2: re-run verify`);
-if (ALL && !ROOT) head.push(`not delivered: ${skipped} (skipped${INCLUDE_UNDELIVERED ? ' 0 — --include-undelivered' : ''})`);
+if (ALL && !ROOT) head.push(`not delivered: ${undelivered} (${INCLUDE_UNDELIVERED ? 'probed — --include-undelivered' : 'skipped'})`);
 if (pendingPages) head.push(`pending-target links: ${pendingPages} page(s) (advisory — the targets are coverage rows not yet delivered)`);
 if (outsideWarnPages) head.push(`outside-inventory links: ${outsideWarnPages} page(s) (links.outsideInventory: warn)`);
 const tail = [`summary: ${join(REPORT, 'summary.md')} · per-page rows: ${pagesMd}`];
@@ -258,7 +260,7 @@ const lines = [...head, ...table, ...tail];
 mkdirSync(REPORT, { recursive: true });
 writeJSON(join(REPORT, 'summary.json'), {
   generatedAt: now, source: ROOT ? `root:${ROOT}` : BASE, mode: ROOT ? 'root' : 'http', outsideInventory: OUTSIDE_POLICY,
-  total: pages.length, checked: results.length, verified: ok, failed: bad.length, skipped, unverified: unverified.length,
+  total: pages.length, checked: results.length, verified: ok, failed: bad.length, skipped, undelivered, unverified: unverified.length,
   pendingTargetPages: pendingPages, outsideWarnPages,
   classes: report.classes.map((c) => ({ class: c.class, count: c.count, severity: c.severity ?? null, worstExample: c.worst ? `${c.worst.page} — ${c.worst.message}` : null, pointer: c.worst ? c.worst.pointer : null })),
   pages: [...results, ...unverified, ...advisories].map(({ slug, path, type, status, class: cls, reason, severity }) => ({ slug, path, type, status, class: cls, reason, severity: severity ?? null })),

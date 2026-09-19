@@ -159,7 +159,11 @@ const lines = (s) => s.split('\n').filter((l) => l.length);
   seed({ outsideInventory: 'warn' });
   r = await runAsync(['--base', BASE, '--all', '--include-undelivered', '--out', OUT]);
   assert.equal(r.status, 1); assert.equal(status('b').status, 'failed'); assert.equal(status('b').error, 'HTTP 404');
-  assert.match(r.stdout, /not delivered: 0 \(skipped 0 — --include-undelivered\)/);
+  // defect 7: the line must count the undelivered rows that were probed, not print `skipped 0`
+  assert.match(r.stdout, /not delivered: 3 \(probed — --include-undelivered\)/, 'the summary line counts the probed undelivered rows');
+  assert.doesNotMatch(r.stdout, /skipped 0/, 'no `skipped 0` under --include-undelivered');
+  const uj = json(join(OUT, 'verify', 'summary.json'));
+  assert.deepEqual([uj.skipped, uj.undelivered, uj.checked], [0, 3, 7], 'summary.json: skipped 0, undelivered 3, all seven rows checked');
 
   // --slug targets any row regardless of status
   seed({ outsideInventory: 'warn' });
