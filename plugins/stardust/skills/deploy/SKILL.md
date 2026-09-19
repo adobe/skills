@@ -38,7 +38,7 @@ Outputs: `blocks/<name>/<name>.{js,css}` · `content/**/*.html` (+ `nav.html`, `
 | 4 | `reference/fonts-and-cls.md` § 0 through § 4 |
 | 5 | `reference/buttons.md` § 5, § Block JS — move the CTA paragraph |
 | 6 | `reference/chrome.md` § The nav/footer documents, § The header/footer blocks, § What still cannot run |
-| 7 | `reference/block-agents-brief.md` § The brief template; `davids-model.md` |
+| 7 | `reference/block-agents-brief.md` § The brief template, § Shared cores and variants; `davids-model.md` |
 | 8 | `reference/block-js-scaffold.md` § 8. Block JS scaffold, § Experience Workspace editability contract, § Decode rules |
 | 9 | `reference/content-page-scaffold.md` § 9. Content page scaffold; `reference/encode-contract.md` § Images |
 | QA | `reference/local-qa.md` § Gates, § Local-QA scope boundary |
@@ -72,13 +72,7 @@ The stock boilerplate provides everything the conversion needs; the runtime is n
 
 ## Playwright re-probe (run before anything that renders)
 
-`--no-save` playwright installs from earlier phases are pruned by any later
-real `npm i` — including any setup step adding a devDependency
-(extract SKILL.md § Setup → `--no-save` installs are ephemeral). Before the
-Local-QA harness, the computed-layout gate, or any probe below, verify
-`node -e "import('playwright').then(()=>process.exit(0))"` from the project
-root and re-install (`npm i -D playwright --no-save --legacy-peer-deps`) on
-failure.
+`--no-save` playwright installs from earlier phases are pruned by any later real `npm i` (extract SKILL.md § Setup). Before the Local-QA harness, the computed-layout gate or any probe below, verify `node -e "import('playwright').then(()=>process.exit(0))"` from the project root and re-install (`npm i -D playwright --no-save --legacy-peer-deps`) on failure.
 
 ## Runtime-detection probe (run before Step 1 — write `stardust/runtime-contract.json`)
 
@@ -106,9 +100,9 @@ When `emptySectionCollapse` is true (the page-metadata block leaves an empty pad
 **One distinct visual PATTERN = one EDS block — and a section with NO pattern is NOT a block at all.** The content structure that lands in DA must follow **David's Model** (`davids-model.md`, bundled with this skill — the 15 rules mapped to this skill's contracts; cited as `D#N` throughout). Its first rule shapes everything here:
 
 - **D1 — blocks aren't ideal for authoring.** A block is a table an author must maintain. A section whose content is plain prose — heading, paragraphs, an image, CTAs, with **no repeating units and no bespoke interactive structure** — is authored as **DEFAULT CONTENT** in its own section, never wrapped in a block. Its skin rides a minimal section-metadata `style` value (see Step 3); the section's semantics stay native `<h2>`/`<p>`/`<picture>`/`<a>`. Never create a `text`/`heading`/`image` block around bare default content — that is the D1 anti-pattern verbatim.
-- **Blocks are for structure default content can't express:** repeating units (cards, FAQ, logos, team), genuinely bespoke compositions (a countdown, a stat band, a cinematic hero), and interactive components. For those, one distinct prototype pattern = one block. Don't abstract speculatively, and don't extract "patterns" across prototypes unless sections are genuinely the same pattern — each pattern's bespoke CSS can't be wrongly shared; violating this casually cost full resets (see ANTI-PATTERNS).
+- **Blocks are for structure default content can't express:** repeating units (cards, FAQ, logos, team), genuinely bespoke compositions (a countdown, a stat band, a cinematic hero), and interactive components. For those, one distinct prototype pattern = one block. Don't abstract speculatively, and don't extract "patterns" across prototypes unless sections are genuinely the same pattern — each pattern's bespoke CSS can't be wrongly shared (`reference/anti-patterns.md` § Structure and decisions).
 
-**The one deliberate exception — collapse SAME-PATTERN sections into one block + VARIANT classes.** When two or more sections are the same content pattern (card grids, prose/CTA bands, quotes, accordions) differing only in skin, emit ONE canonical block (`cards`, `text`, `quote`, `accordion`) and put each section's look behind a variant class (`class="cards brands"`), brand styling in the variant CSS. The block JS stays generic (classify cells by content); only the CSS differs per variant. This is the David's-Model library win (D9: small, reusable, variant-driven — not 20 bespoke names) and is proven to preserve fidelity. Keep genuinely-unique sections (a hero, a countdown widget) bespoke. Budget for it: variant CSS is careful work and some grids are count-specific.
+**The one deliberate exception — collapse SAME-PATTERN sections into one block + VARIANT classes.** When two or more sections are the same content pattern (card grids, prose/CTA bands, quotes, accordions) differing only in skin, emit ONE canonical block (`cards`, `text`, `quote`, `accordion`) and put each section's look behind a variant class (`class="cards brands"`), brand styling in the variant CSS. The block JS stays generic (classify cells by content); only the CSS differs per variant. This is the David's-Model library win (D9: small, reusable, variant-driven — not 20 bespoke names). Keep genuinely-unique sections (a hero, a countdown widget) bespoke. Budget for it: variant CSS is careful work and some grids are count-specific.
 
 The prototype is the visual spec. The block exists to AUTHOR its content — see **The ENCODE contract** below for what well-authored content looks like, and ANTI-PATTERNS for how a block must defensively PARSE it.
 
@@ -120,7 +114,7 @@ For a typical 5–10 page site:
 - **One EDS content page per prototype page.** Same number of pages.
 - **Nav + footer documents** at `content/nav.html` and `content/footer.html` — authored content, deployed and published like any page, fetched by the stock `header`/`footer` blocks (D12: chrome is the canonical fragment use case).
 - **Per-site `blocks/header` + `blocks/footer` CSS/JS** reproducing the prototype's chrome (see Step 6).
-- **Updated `styles/styles.css`** with brand tokens lifted from the prototype's `:root`, a reset, the EDS section scaffold, a global button system (see "Lean on EDS button conventions" below), and the styles for the few section-metadata `style` values default-content sections use. Nothing more.
+- **Updated `styles/styles.css`** with brand tokens lifted from the prototype's `:root`, a reset, the EDS section scaffold, a global button system (Step 5), and the styles for the few section-metadata `style` values default-content sections use. Nothing more.
 - **No shared utility modules.** No wave systems. No motion library. The prototype already encodes these per-section; keep them inside the owning block. Section-metadata `style` values stay a SMALL closed set (`dark`, `tinted`, …) used only by default-content sections — blocks keep painting their own sections.
 
 ## The ENCODE contract — ten bullets
@@ -172,7 +166,7 @@ Content lives in `content/nav.html` (three sections: brand / link list / tools �
 
 ### 7. Blocks (parallel agents)
 
-Dispatch one agent per page-archetype cluster owning a non-overlapping set of blocks and content pages (three to four agents). The brief points at files and headings — `stardust/eds-schema/<page>.json`, the conversion log's triage rows, `reference/block-js-scaffold.md` § 8. Block JS scaffold and § Experience Workspace editability contract, `reference/encode-contract.md`, `davids-model.md` — and never pastes chapter text into the prompt; each agent reads by section. Long steps run in the background with a per-page progress file; the coordinator follows the master skill's wait discipline. Agents need not coordinate on shared blocks — the brief lists which existing blocks to reuse and names each block's round-trip, EW and David's Model gates. Before this step read `reference/block-agents-brief.md` § The brief template and use it verbatim.
+Dispatch one agent per page-archetype cluster owning a non-overlapping set of blocks and content pages (three to four agents). The brief points at files and headings — `stardust/eds-schema/<page>.json`, the conversion log's triage rows, `reference/block-js-scaffold.md` § 8. Block JS scaffold and § Experience Workspace editability contract, `reference/encode-contract.md`, `davids-model.md` — and never pastes chapter text into the prompt; each agent reads by section. Long steps run in the background with a per-page progress file; the coordinator follows the master skill's wait discipline. Shared cores (hero, cards, columns, chrome) are built in Steps 3–6 before fan-out and are additive-only for agents; the brief's ownership table and block-name claim in the conversion-log inventory keep parallel writers apart, and it names each block's round-trip, EW and David's Model gates. Before this step read `reference/block-agents-brief.md` § The brief template and use it verbatim.
 
 ### 8. Block JS scaffold
 
@@ -209,7 +203,7 @@ Chapters (full text of the sections this core compresses — read by `##`, each 
 - `reference/fonts-and-cls.md` — Step 4: the four font principles, licensing alert, metric-matched fallbacks, width classification, font traps.
 - `reference/buttons.md` — Step 5: the `decorateButtons()` table, global button CSS, surface-aware variants, moving CTA paragraphs, multi-variant systems.
 - `reference/chrome.md` — Step 6: nav/footer documents, template-slotted header/footer blocks, CSP limits, per-page variants.
-- `reference/block-agents-brief.md` — Step 7: brief discipline and the brief template.
+- `reference/block-agents-brief.md` — Step 7: brief discipline, the brief template (ownership table, block-name claim), shared cores and variants.
 - `reference/block-js-scaffold.md` — Step 8: the scaffold, the Experience Workspace editability contract (EW1–EW10), the EW and round-trip gates, decode rules, interactive blocks.
 - `reference/content-page-scaffold.md` — Step 9: metadata block, body-fragment shape, SPA views, image hosts.
 - `reference/local-qa.md` — the harness, the pre-push gates, the scope boundary, capture and drive rules.

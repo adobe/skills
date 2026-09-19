@@ -2,7 +2,8 @@
 
 Full text of deploy Step 7. Read:
 - § 7 and § Brief size and reading discipline — before dispatching any block agent (cluster split, file-pointer briefs, background waits);
-- § The brief template — when writing a brief: copy it, fill the lists, keep every pointer as a file + heading (never inline a chapter).
+- § The brief template — when writing a brief: copy it, fill the lists and the ownership table, keep every pointer as a file + heading (never inline a chapter);
+- § Shared cores and variants — before fan-out: what the serial steps must have built, and why variants are classes, not `import()`ed plugins.
 
 ## 7. Blocks (parallel agents)
 
@@ -18,7 +19,18 @@ The brief template:
 
 > Per the project's locked direction: each prototype `<section>` becomes its own EDS block. Lift the prototype's `<style>` for that section verbatim, scope it under the block class (`.block-name .x` instead of `section.x .y`), and rebuild the prototype's DOM through a `decorate(block)` function that consumes EDS table-block input.
 >
-> **You own**: prototypes [list], content pages [list], sections [list].
+> **Ownership** — prototypes [list], content pages [list], sections [list]. You create or edit only what the table grants; everything else is read-only, and a change you need elsewhere is a request to the coordinator, never an edit.
+>
+> | You may create / edit | Read-only |
+> |---|---|
+> | `blocks/<name>/` for the block names you claimed | every other agent's blocks; shared cores (hero, cards, columns, header, footer) — additive-only: a new variant class, never a rewrite of the core decode |
+> | your content pages | `styles/styles.css`, `scripts/*`, `head.html`, `content/nav.html`, `content/footer.html` |
+> | `styles/styles-<group>.css` when the coordinator assigned your cluster its own stylesheet | other clusters' stylesheets |
+> | helpers and probes prefixed `_<id>-*` (your agent id) | unprefixed helpers — another agent's `_dump.mjs` is not yours to overwrite |
+>
+> **Block names claimed**: before creating any file, append the block names you intend to create to `stardust/eds-conversion-log.md` § inventory with your agent id; a name already listed there belongs to someone else — reuse that block or choose another name, never overwrite. Write your own rows to `stardust/eds-conversion-log-<id>.md`; the coordinator merges the per-agent logs into the main log when the wave closes (progress goes to the shared ledger, `reference/fan-out.md`).
+>
+> **Generated content**: a page a generator produced is fixed through the generator, or the hand edit is committed at once — never `git checkout -- content/` to reset pages another agent may have edited since.
 >
 > **Existing blocks — REUSE, do not recreate**: [list with one-line authoring shape per block].
 >
@@ -48,6 +60,8 @@ The brief template:
 >
 > **EDS content page format**: NO `<head>` element (project `head.html` is injected by EDS), empty `<header></header>`/`<footer></footer>`, each top-level `<div>` inside `<main>` is one section holding one block OR default content, section-metadata only as a Step-3 `style` value on default-content sections, no `<style>`/`<script>`, fully-qualified image URLs.
 >
-> **Done criteria**: [list of paths]. Return a list of new blocks + one-line summary per page.
+> **Done criteria**: [list of paths]; the whole-page `block-roundtrip` on the foundation archetype page (`content/<foundation-page>.html`) still exits 0 after your changes — a regression there is yours to fix before you return. Return a list of new blocks + one-line summary per page.
 
-Agents do not need to coordinate on shared blocks — the brief tells them which existing blocks to reuse.
+## Shared cores and variants
+
+Shared cores — hero, cards, columns and the chrome blocks — are built in the serial steps before fan-out (Steps 3–6), so every agent inherits them read-only and extends them additively. A variant is a CSS class on the one block (`.cards.compact`), never a per-variant JS file loaded with `import()` from the core: the gates decode the core only, so a variant plugin's behaviour is invisible to `block-roundtrip` and the QA harness, and one agent's core rewrite silently drops every other agent's variant. When a wave must write code outside blocks (converter encoders, per-group stylesheets, helpers), the ownership table and the block-name claim above are what keep parallel writers apart; the rollout skill's author-only waves point here for that case.
