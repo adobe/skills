@@ -129,11 +129,9 @@ Always emit when page-type is known. Composition rules:
 | `unique`  | None (or fallback)     | Skip JSON-LD by default                                                      |
 
 Each page-type's emission rule lives here; future expansion
-(FAQPage, Event, BreadcrumbList, HowTo) is additive. **Delivery on
-EDS is runtime composition**: `scripts.js` builds the JSON-LD from the
-page type + typed metadata rows using this table; a raw `json-ld`
-metadata row is JSON in a document (David's-Model D15) — deploy's
-lint advises and `content-page-scaffold.md` Step 9 carries the rule.
+(FAQPage, Event, BreadcrumbList, HowTo) is additive. Delivery on EDS
+composes this at runtime — rule and lint: deploy
+`reference/content-page-scaffold.md` § 9 (D10).
 
 #### Article schema example
 

@@ -1,0 +1,4 @@
+# source<TAB>destination — Gate 3 rows; one .html source, one folder-root slash form
+/Old-About.html	/about
+/services_old	/services/
+/about/	/about

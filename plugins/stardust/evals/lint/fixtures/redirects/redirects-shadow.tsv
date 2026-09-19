@@ -1,0 +1,3 @@
+# a Source equal to a delivered path (case-insensitive) can only shadow the page
+/It-IT	/it-it/home
+/legacy	/about

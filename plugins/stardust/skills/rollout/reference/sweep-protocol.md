@@ -22,9 +22,9 @@ most of what it re-measures did not change.
    present; `anchor.mjs --cache`, `chrome-parity.mjs --live-cache`). A live
    capture is re-taken only when the source itself changed. One browser
    instrument at a time against the live host.
-2. **Template sample.** Gate 2–3 pages per template, representative first —
-   `node skills/rollout/scripts/plan.mjs --sample 3` prints them in delivery
-   order. Triage **class-complete per page**: list every large delta on the
+2. **Template sample.** Gate the `node skills/rollout/scripts/plan.mjs
+   --sample 3` set per template (printed in delivery order), representative
+   first. Triage **class-complete per page**: list every large delta on the
    page (band table + anchor probe), not the first divergence, and name each
    delta's class (a block's CSS, a section style, a chrome state, an importer
    rule, page-specific content).
@@ -56,7 +56,5 @@ most of what it re-measures did not change.
   straddles a publish measures two sites.
 - One browser instrument while a deploy batch runs (the master skill's wait
   discipline applies to both).
-- Budget: 3 class rounds, then the tail and the sweep; a fourth round is a
-  report to the owner, not more fixing.
 - The confirmation sweep is background work with a per-page ledger; check it
   on the wait discipline, never with a long fixed sleep.

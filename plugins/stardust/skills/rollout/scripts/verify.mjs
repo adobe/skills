@@ -134,7 +134,7 @@ for (const p of target) {
   if (status === 'verified' && !ROOT && isFolderRoot(p)) {
     const slashForm = `${p.path.replace(/\/$/, '')}/`;
     const st = await headStatus(`${BASE}${slashForm}`);
-    if (st !== 200) { status = 'failed'; reason = `folder root ${slashForm} → HTTP ${st}: add the redirect row ${slashForm} → ${p.path} (redirects.mjs emits both slash forms), keep internal links on the form that 200s`; }
+    if (st !== 200) { status = 'failed'; reason = `folder root ${slashForm} → HTTP ${st}: add the redirect row ${slashForm} → ${p.path} (redirects.mjs emits both slash forms); internal links keep the canonical form ${p.path} (no slash)`; }
   }
   p.delivery = p.delivery || {};
   p.delivery.status = status;

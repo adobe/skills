@@ -25,7 +25,7 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 | 1 | `reference/content-preservation.md` § Dynamic dependencies · `../replica/reference/source-fidelity-gate.md` § Residual logging format |
 | 2 (branch, path) | `reference/migration-procedure.md` § Three render branches · § Output path mapping · § Idempotent skip · `reference/template-and-module-rendering.md` § Render path selection · § Validation contracts · § Deviation policy · `reference/importer-recipe.md` (before writing or widening a sibling importer) |
 | 2 (fidelity, content) | `reference/fidelity-tiers.md` § The three tiers · § Sibling variance probe · § Content-count acceptance · `reference/content-preservation.md` § Internal link rewriting · § Forms |
-| 2 (head, assets, media) | `reference/metadata-and-jsonld.md` § Categories · § JSON-LD by page-type · `reference/asset-bundling.md` § Detection · § Rewrite · `reference/media-reconciliation.md` § The four decisions · § Cross-origin optimization |
+| 2 (head, assets, media) | `reference/metadata-and-jsonld.md` § Categories · § Page-specific, preserved · § JSON-LD by page-type · `reference/asset-bundling.md` § Detection · § Rewrite · `reference/media-reconciliation.md` § The four decisions · § Cross-origin optimization |
 | 3 | `reference/migration-procedure.md` § Reference shape · § Page map · § Portability audits · `reference/metadata-and-jsonld.md` § Sitemap entry · `reference/asset-bundling.md` § Stale asset cleanup |
 | 4 | `skills/stardust/reference/migrate-output-format.md` § State.json contract · `skills/stardust/reference/state-machine.md` § Stale flagging (content-aware) |
 
@@ -416,8 +416,7 @@ migrate run re-renders every affected page (canon and DESIGN.md
 edits typically affect every page).
 
 Two rules keep them true once a project importer or generator
-writes the tree (the same rules govern generated `content/**` and DA
-documents downstream — deploy's DA protocol points here):
+writes the tree (generated `content/**` downstream included):
 
 - **Generated content is never hand-edited.** A per-page override
   lives in `stardust/patches/<slug>.json` (`[{selector, op:

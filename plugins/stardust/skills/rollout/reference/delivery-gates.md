@@ -88,9 +88,10 @@ and `.html` when the source carried it — the platform serves a folder root on
 one slash form only and inbound links arrive on both), refuses (exit 2) a
 Source whose exact form equals a delivered path (it can only shadow the page),
 and `--post-publish` HEADs every page and both slash forms of every folder
-root. `verify.mjs` fails a folder root whose other slash form 404s: the fix is
-the redirect row, and internal links stay on the form that 200s (root-relative,
-no slash, no extension). Sheets keep `.json` in admin paths — the DA protocol
+root. `verify.mjs` fails a folder root whose other slash form 404s: the fix is the
+redirect row for the failing form; internal links keep the D9 canonical form
+(root-relative, no slash, no extension) and the redirect covers the other.
+Sheets keep `.json` in admin paths — the DA protocol
 owns that rule.
 
 ## Gate 4 — Source-content hygiene (a sitemap roster contains dead and bodyless URLs)

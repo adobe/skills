@@ -117,7 +117,7 @@ if (POST) {
   }
   console.log(`rollout redirects --post-publish (${BASE}): ${probes.length} forms probed · ${probes.length - failures.length} ok · ${failures.length} failing`);
   for (const f of failures) {
-    const fix = f.kind === 'canonical' ? 'page not delivered on its canonical form — deliver/publish it' : `add the redirect row ${f.form} → ${f.form.replace(/\/$/, '')} (or keep internal links on the form that 200s)`;
+    const fix = f.kind === 'canonical' ? 'page not delivered on its canonical form — deliver/publish it' : `add the redirect row ${f.form} → ${f.form.replace(/\/$/, '')}; internal links keep the canonical form (no slash)`;
     console.log(`  ✗ ${f.page}: ${f.form} → HTTP ${f.status} (${f.kind}) — ${fix}`);
   }
   if (failures.length) process.exit(2);
