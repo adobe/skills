@@ -20,7 +20,8 @@ site *do* now?".
       "owner": "optional: the exact decision the owner must take",
       "environmentLimit": "optional: what the test network cannot reach, egress region, why it is not a defect",
       "snapshot": "optional: date of the data snapshot the feature runs on",
-      "checks": [ { "type": "click-dialog", "path": "/", "trigger": "a[href$='#modal']", "headingIncludes": "…", "minWidth": 700 } ]
+      "checks": [ { "type": "click-dialog", "path": "/", "trigger": "a[href$='#modal']", "headingIncludes": "…", "minWidth": 700 },
+                  { "type": "search-query", "path": "/search", "terms": ["<noun>", "<noun>", "<noun>"], "resultSelector": ".results li", "compareLive": { "url": "https://<live>/search", "resultSelector": ".result" }, "itemPattern": { "title": "h3", "href": "a", "pagination": ".pagination" } } ]
     }
   ]
 }

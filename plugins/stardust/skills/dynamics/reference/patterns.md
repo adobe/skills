@@ -35,7 +35,11 @@ a `text` property for excerpts; the block ranks title > description > path, clip
 around matches **after skipping the breadcrumb + title lead** the `text` property starts with,
 pages client-side, reflects the query into the inputs. Second corpora (a non-migrated library) are
 explicitly not reproduced. Per locale tree: one results page each and a `lang` index property.
-**Verify.** A known term returns the expected page; pagination; excerpt sample.
+**Verify.** `search-query` replays `terms[]` (3 site nouns from roster h1s + the source's sample query)
+on the target and, through `compareLive`, on the live results page: fewer than live = index scope or
+a missing `text` property; more is expected from full-text matching and is logged, never failed.
+`itemPattern` asserts title / href / pagination on the first result. Live has no site search or is
+bot-blocked → `minResults` floor + a journal note. `--gate` blocks a `done` S row carrying neither.
 
 ```js
 // example — index fetch, token-AND ranking, client paging (adapt selectors, copy, sizes)

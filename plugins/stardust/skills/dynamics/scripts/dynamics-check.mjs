@@ -22,7 +22,11 @@
  *   fetch-json     { url*, minRows?, expectKeys? }                 GET on the origin returns JSON with rows / keys
  *   dom-count      { path*, selector*, min* }                      ≥ min elements after settle
  *   click-dialog   { path*, trigger*, headingIncludes?, minWidth? } click opens a dialog; heading / width asserted; Escape closes it
- *   search-query   { path*, param?, term*, resultSelector*, expectIncludes* } results include the expected text/href
+ *   search-query   { path*, param?, term | terms[]*, resultSelector*, expectIncludes?, minResults?, tolerance?,
+ *                    compareLive?: { url, resultSelector?, param? }, itemPattern?: { title?, href?, pagination? } }
+ *                                                                  per term: results > 0, ≥ minResults, ≥ live × (1 − tolerance|0.2) when compareLive
+ *                                                                  (higher than live is logged, never failed; live unreachable → environment-limit note, not FAIL);
+ *                                                                  expectIncludes found; itemPattern selectors resolve on the first result / page
  *   form-flow      { path*, form?, submit*, fill*, statusSelector?, endpointPattern?, successIncludes? } empty submit refused, filled submit arrives
  *   video-plays    { path*, trigger?, iframeSelector?, playbackHost? } a <video> plays (currentTime ≥ 0.5 s within 4 s, readyState ≥ 3; HLS/DASH: manifest + ≥ 1 segment < 400)
  *                                                                  or, iframe player, iframe present AND a playbackHost request < 400
@@ -79,13 +83,34 @@ const RUNNERS = {
     return { pass: !!d && okH && okW && closed !== false, detail: d ? `dialog ${d.width}px · heading "${d.heading}" · ${d.fields} fields${d.iframe ? ' · iframe' : ''} · Escape closes: ${closed}` : 'no dialog opened', thirdParty };
   },
   async 'search-query'(c, { ctx, origin }) {
-    const sep = c.path.includes('?') ? '&' : '?';
-    const { page, thirdParty } = await openPage(ctx, origin, `${c.path}${sep}${c.param || 'q'}=${encodeURIComponent(c.term)}`);
-    await page.waitForSelector(c.resultSelector, { timeout: 15000 }).catch(() => {});
-    const r = await page.evaluate((s) => [...document.querySelectorAll(s)].map((el) => `${el.textContent} ${el.getAttribute('href') || el.querySelector('a')?.getAttribute('href') || ''}`.replace(/\s+/g, ' ').trim().toLowerCase()), c.resultSelector);
-    await page.close();
-    const hit = r.find((x) => x.includes(String(c.expectIncludes).toLowerCase()));
-    return { pass: r.length > 0 && !!hit, detail: `${r.length} results · expected "${c.expectIncludes}" ${hit ? 'found' : 'MISSING'}${r[0] ? ` · first: ${r[0].slice(0, 80)}` : ''}`, thirdParty };
+    const terms = Array.isArray(c.terms) && c.terms.length ? c.terms : [c.term];
+    const q = (base, t, param) => `${base}${base.includes('?') ? '&' : '?'}${param || 'q'}=${encodeURIComponent(t)}`;
+    const results = async (page, sel) => { await page.waitForSelector(sel, { timeout: 15000 }).catch(() => {}); return page.evaluate((s) => [...document.querySelectorAll(s)].map((el) => `${el.textContent} ${el.getAttribute('href') || el.querySelector('a')?.getAttribute('href') || ''}`.replace(/\s+/g, ' ').trim().toLowerCase()), sel); };
+    const tol = c.tolerance ?? 0.2;
+    const lines = []; let pass = true; let thirdParty = []; let envLimit = null;
+    for (const t of terms) {
+      const { page, thirdParty: tp } = await openPage(ctx, origin, q(c.path, t, c.param));
+      thirdParty = thirdParty.concat(tp);
+      const r = await results(page, c.resultSelector);
+      const item = c.itemPattern ? await page.evaluate(({ sel, ip }) => { const first = document.querySelector(sel); const pick = (root, s) => (root.matches(s) ? root : root.querySelector(s)); return { title: !ip.title || !!(first && pick(first, ip.title)), href: !ip.href || !!(first && pick(first, ip.href)?.getAttribute('href')), pagination: !ip.pagination || !!document.querySelector(ip.pagination) }; }, { sel: c.resultSelector, ip: c.itemPattern }) : null;
+      await page.close();
+      let live = null;
+      if (c.compareLive && c.compareLive.url) {
+        // the live engine is the reference for "fewer": fresh page, no origin auth (route filter is origin-scoped), a failure here is an environment limit, not a defect
+        const lp = await ctx.newPage();
+        try {
+          const res = await lp.goto(q(c.compareLive.url, t, c.compareLive.param || c.param), { waitUntil: 'domcontentloaded', timeout: 30000 });
+          if (!res || res.status() >= 400) envLimit = `live answered ${res ? res.status() : 'nothing'}`; else { await settle(1500); live = (await results(lp, c.compareLive.resultSelector || c.resultSelector)).length; }
+        } catch (e) { envLimit = `live unreachable: ${String(e.message).slice(0, 40)}`; }
+        await lp.close();
+      }
+      const hit = c.expectIncludes ? r.find((x) => x.includes(String(c.expectIncludes).toLowerCase())) : null;
+      const fewer = live !== null && r.length < live * (1 - tol);
+      const ok = r.length > 0 && (c.minResults === undefined || r.length >= c.minResults) && !fewer && (!c.expectIncludes || !!hit) && (!item || (item.title && item.href && item.pagination));
+      if (!ok) pass = false;
+      lines.push(`${t}: target ${r.length}${live !== null ? ` vs live ${live}${fewer ? ' — FEWER: index scope or missing text property' : r.length > live ? ' (higher: full-text index, fine)' : ''}` : envLimit ? ` (live not comparable — ${envLimit})` : ''}${c.minResults !== undefined ? ` · floor ${c.minResults}` : ''}${c.expectIncludes ? ` · "${c.expectIncludes}" ${hit ? 'found' : 'MISSING'}` : ''}${item ? ` · first item title/href/pagination ${item.title}/${item.href}/${item.pagination}` : ''}`);
+    }
+    return { pass, detail: lines.join(' | ').slice(0, 400), thirdParty };
   },
   async 'form-flow'(c, { ctx, origin }) {
     const { page, thirdParty } = await openPage(ctx, origin, c.path);
@@ -198,6 +223,8 @@ export function gate(parity) {
   const out = [];
   for (const f of parity.features || []) {
     if (f.reproducibility === 'self' && bucket(f.status) === 'pending') out.push(`${f.feature} (${f.class}): reproducibility self, status "${f.status}" — implement it (D2) or set status interim with a reason and a named owner decision`);
+    // a search row is done only when its counts were compared with live or floored explicitly (patterns.md § search-index-backed)
+    if (f.class === 'S' && bucket(f.status) === 'delivered' && !(f.checks || []).some((c) => c.type === 'search-query' && (c.compareLive || c.minResults !== undefined))) out.push(`${f.feature} (S): status "${f.status}" without a search-query check carrying compareLive or minResults — result counts were never compared with live`);
     // every media row ends in a playable proof (patterns.md § media-as-url / § hls-stream)
     if (f.class === 'V' && bucket(f.status) === 'delivered' && (f.disposition || 'embed-passthrough') === 'embed-passthrough' && !(f.checks || []).some((c) => c.type === 'video-plays')) out.push(`${f.feature} (V): status "${f.status}" without a video-plays check — a poster-only render is not delivery`);
   }
