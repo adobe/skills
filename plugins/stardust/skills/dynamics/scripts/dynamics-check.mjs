@@ -24,7 +24,8 @@
  *   click-dialog   { path*, trigger*, headingIncludes?, minWidth? } click opens a dialog; heading / width asserted; Escape closes it
  *   search-query   { path*, param?, term*, resultSelector*, expectIncludes* } results include the expected text/href
  *   form-flow      { path*, form?, submit*, fill*, statusSelector?, endpointPattern?, successIncludes? } empty submit refused, filled submit arrives
- *   video-plays    { path*, trigger?, iframeSelector?, playbackHost* } iframe present AND a playback request to the vendor observed
+ *   video-plays    { path*, trigger?, iframeSelector?, playbackHost? } a <video> plays (currentTime ≥ 0.5 s within 4 s, readyState ≥ 3; HLS/DASH: manifest + ≥ 1 segment < 400)
+ *                                                                  or, iframe player, iframe present AND a playbackHost request < 400
  *   consent-gate   { path*, forbiddenHosts*[] }                    no request to those hosts before consent
  *   no-page-errors { paths*[] }                                    no uncaught exceptions
  *   listing-rows   { path*, block*, index?, minRows? }             authored rows of .<block> in <path>.plain.html (heading / label-list rows excluded) > 0,
@@ -40,13 +41,15 @@ const settle = (ms) => new Promise((r) => { setTimeout(r, ms); });
 
 async function openPage(ctx, origin, path) {
   const page = await ctx.newPage();
-  const errors = []; const thirdParty = [];
+  const errors = []; const thirdParty = []; const media = [];
   page.on('pageerror', (e) => errors.push(String(e.message).slice(0, 160)));
-  page.on('response', (r) => { try { const u = new URL(r.url()); if (!sameSite(u.host, new URL(origin).host) && thirdParty.length < 60) thirdParty.push({ host: u.host, status: r.status(), type: r.request().resourceType() }); } catch { /* ignore */ } });
+  page.on('response', (r) => { try { const u = new URL(r.url()); if (!sameSite(u.host, new URL(origin).host) && thirdParty.length < 60) thirdParty.push({ host: u.host, status: r.status(), type: r.request().resourceType() }); if (MEDIA_URL.test(u.pathname) && media.length < 80) media.push({ url: u.pathname.slice(-80), status: r.status() }); } catch { /* ignore */ } });
   await page.goto(origin + path, { waitUntil: 'networkidle', timeout: 60000 }).catch(async () => { await page.goto(origin + path, { waitUntil: 'domcontentloaded', timeout: 60000 }); });
   await settle(1200);
-  return { page, errors, thirdParty };
+  return { page, errors, thirdParty, media };
 }
+const MEDIA_URL = /\.(m3u8|mpd|ts|m4s|mp4|webm|aac|m4a)$/i;
+const MANIFEST = /\.(m3u8|mpd)$/i;
 const summarize = (tp) => { const m = {}; for (const t of tp) { const k = `${t.host}:${t.status}`; m[k] = (m[k] || 0) + 1; } return Object.entries(m).slice(0, 12).map(([k, n]) => `${k}×${n}`).join(' '); };
 const DIALOG = 'dialog[open], [role=dialog]:not([hidden]), [aria-modal=true]';
 
@@ -107,13 +110,26 @@ const RUNNERS = {
     return { pass: emptyRefused && arrived && success, detail: `empty refused: ${emptyRefused}${emptyStatus ? ` ("${emptyStatus}")` : ''} · filled posted: ${arrived}${posts.length ? ` (${posts.slice(-1)[0].slice(0, 80)})` : ''} · success copy: ${success}`, thirdParty };
   },
   async 'video-plays'(c, { ctx, origin }) {
-    const { page, thirdParty } = await openPage(ctx, origin, c.path);
-    if (c.trigger) { await page.click(c.trigger, { timeout: 8000 }); await settle(4000); } else await settle(3000);
-    const iframe = await page.evaluate((s) => !!document.querySelector(s), c.iframeSelector || 'iframe[src*="player" i], dialog iframe, [role=dialog] iframe, video');
+    const { page, thirdParty, media } = await openPage(ctx, origin, c.path);
+    if (c.trigger) await page.click(c.trigger, { timeout: 8000 });
+    // a <video> must actually advance: poll up to 4 s after the trigger (poster-only failures look identical at rest)
+    const readVideo = () => page.evaluate(() => { const els = [...document.querySelectorAll('video')]; const el = els.find((x) => x.currentTime > 0) || els[0]; return el ? { currentTime: +el.currentTime.toFixed(2), readyState: el.readyState, src: (el.currentSrc || el.src || '').slice(-60) } : null; });
+    const deadline = Date.now() + 4000; let v = await readVideo();
+    while (Date.now() < deadline && !(v && v.currentTime >= 0.5 && v.readyState >= 3)) { await settle(400); v = await readVideo(); }
+    const iframe = await page.evaluate((s) => !!document.querySelector(s), c.iframeSelector || 'iframe[src*="player" i], dialog iframe, [role=dialog] iframe');
     await page.close();
-    const playback = thirdParty.filter((t) => new RegExp(c.playbackHost, 'i').test(t.host));
-    const ok = playback.some((t) => t.status < 400); const failed = playback.filter((t) => t.status >= 400);
-    return { pass: iframe && ok, detail: `iframe/video: ${iframe} · playback requests ${playback.length} (${ok ? 'ok' : 'none ok'}${failed.length ? `, ${failed.length} ≥400 — check whether the probe leaked auth to the vendor` : ''})`, thirdParty };
+    const playing = !!v && v.currentTime >= 0.5 && v.readyState >= 3;
+    const manifests = media.filter((m) => MANIFEST.test(m.url)); const segments = media.filter((m) => !MANIFEST.test(m.url));
+    const streamOk = !manifests.length || (manifests.some((m) => m.status < 400) && segments.some((m) => m.status < 400));
+    const playback = c.playbackHost ? thirdParty.filter((t) => new RegExp(c.playbackHost, 'i').test(t.host)) : [];
+    const vendorOk = playback.some((t) => t.status < 400); const failed = playback.filter((t) => t.status >= 400);
+    const pass = v ? playing && streamOk && (!c.playbackHost || vendorOk) : iframe && !!c.playbackHost && vendorOk;
+    const detail = [
+      v ? `<video> currentTime ${v.currentTime}s readyState ${v.readyState}${playing ? '' : ' — NOT PLAYING'}` : `no <video> · iframe: ${iframe}${!c.playbackHost ? ' · no playbackHost to assert — a poster-only render is indistinguishable from playback' : ''}`,
+      manifests.length ? `stream: manifest ${manifests.map((m) => m.status).join('/')} · segments ${segments.filter((m) => m.status < 400).length}/${segments.length} ok` : null,
+      c.playbackHost ? `vendor ${playback.length} request(s) (${vendorOk ? 'ok' : 'none ok'}${failed.length ? `, ${failed.length} ≥400 — check whether the probe leaked auth to the vendor` : ''})` : null,
+    ].filter(Boolean).join(' · ');
+    return { pass, detail, thirdParty };
   },
   async 'consent-gate'(c, { ctx, origin }) {
     const { page, thirdParty } = await openPage(ctx, origin, c.path);
@@ -182,6 +198,8 @@ export function gate(parity) {
   const out = [];
   for (const f of parity.features || []) {
     if (f.reproducibility === 'self' && bucket(f.status) === 'pending') out.push(`${f.feature} (${f.class}): reproducibility self, status "${f.status}" — implement it (D2) or set status interim with a reason and a named owner decision`);
+    // every media row ends in a playable proof (patterns.md § media-as-url / § hls-stream)
+    if (f.class === 'V' && bucket(f.status) === 'delivered' && (f.disposition || 'embed-passthrough') === 'embed-passthrough' && !(f.checks || []).some((c) => c.type === 'video-plays')) out.push(`${f.feature} (V): status "${f.status}" without a video-plays check — a poster-only render is not delivery`);
   }
   return out;
 }

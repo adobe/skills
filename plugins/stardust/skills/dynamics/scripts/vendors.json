@@ -34,6 +34,7 @@
     { "match": "youtube\\.com|youtube-nocookie|ytimg|googlevideo", "class": "V", "role": "video: YouTube" },
     { "match": "vimeo\\.com|vimeocdn", "class": "V", "role": "video: Vimeo" },
     { "match": "wistia|vidyard|jwplayer|jwpcdn|kaltura|cloudinary\\.com/.*video|mux\\.com", "class": "V", "role": "video: hosted player" },
+    { "match": "\\.m3u8(\\?|$)|\\.mpd(\\?|$)", "class": "V", "role": "video: HLS/DASH stream" },
     { "match": "maps\\.googleapis|maps\\.gstatic|mapbox|here\\.com|openstreetmap|arcgis", "class": "V", "role": "maps: embedded map service" },
     { "match": "algolia|coveo|swiftype|searchspring|constructor\\.io|bloomreach|funnelback|sitesearch360|addsearch|cludo", "class": "S", "role": "search: hosted search service" },
     { "match": "b2clogin|login\\.microsoftonline|alcdn\\.msauth|okta\\.com|auth0\\.com|accounts\\.google\\.com|cognito|adobelogin|ims-na1", "class": "X", "role": "auth: identity provider" },

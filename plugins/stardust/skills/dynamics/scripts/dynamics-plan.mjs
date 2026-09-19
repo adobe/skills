@@ -70,6 +70,7 @@ const RULES = [
   { when: (f) => f.class === 'M' && /chrome only/.test(f.feature), pattern: 'chrome-interaction', disposition: 'rebuild-native', repro: 'self', phase: 'interactive', decision: 'none (motion-observe evidence)' },
   { when: (f) => f.class === 'M', pattern: 'modal-loader', disposition: 'rebuild-native', repro: 'self', phase: 'interactive', decision: 'none' },
   { when: (f) => f.class === 'V' && /iframe without src/.test(f.feature), pattern: 'embed-passthrough', disposition: 'embed-passthrough', repro: 'needs-human-capture', phase: 'embeds', decision: 'resolve the runtime src from a rendered capture' },
+  { when: (f) => f.class === 'V' && /HLS|DASH|\.m3u8|\.mpd/i.test(f.feature + (f.evidence || []).join(' ')), pattern: 'hls-stream', disposition: 'embed-passthrough', repro: 'self', phase: 'media', decision: 'none (manifest URL is public; 401/403 → needs-credential)' },
   { when: (f) => f.class === 'V', pattern: 'media-as-url', disposition: 'embed-passthrough', repro: 'self', phase: 'media', decision: 'none (player ids are public)' },
   { when: (f) => f.class === 'L', pattern: 'listing-index-backed', disposition: 'index-backed', repro: 'needs-business-decision', phase: 'listings', decision: 'index-driven or editorially curated?' },
   { when: (f) => f.class === 'X', pattern: 'decided-out', disposition: 'decided-out', repro: 'needs-backend', phase: 'register', decision: 'auth / commerce on the new host?' },

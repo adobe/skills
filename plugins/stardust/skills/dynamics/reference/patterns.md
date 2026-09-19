@@ -14,6 +14,7 @@ an existing library must be fed rather than forked.
 | `modal-loader` | M | rebuild-native | link marker + one runtime module | library's own dialog |
 | `chrome-interaction` | M | rebuild-native | motion-observe evidence → header/footer JS | keep |
 | `media-as-url` | V | embed-passthrough | player URL as content | same |
+| `hls-stream` | V | embed-passthrough | manifest URL as content; native HLS else `hls.js` | feed the library's player |
 | `forms` | F | rebuild-native | forms.md | forms.md § existing library |
 | `client-compute` | F | client-only | one block: controls + inline logic | same |
 | `consent-gated-tags` | T, A | embed-passthrough | owner config, disabled | library martech behind a host guard |
@@ -93,8 +94,39 @@ export default async function openModal(href, { decorateMain, playerHosts = [] }
 account, player and video id, plus `#modal` for overlays; inline via the site's video/embed block.
 Ids come from the detector's V rows **per page and per locale** (six of fourteen locale twins
 carried a different id), never from copy, never reused by path. Drive the probe from every
-target-less CTA, not a hand-made list. **Verify.** Iframe present **and** a playback request to the
-vendor observed with status < 400; with auth scoped to the origin (parity-report.md).
+target-less CTA, not a hand-made list. **Verify.** `video-plays`: for an iframe player, a playback
+request to the vendor with status < 400; for a `<video>`, `currentTime` advancing (≥ 0.5 s within
+4 s, `readyState` ≥ 3); auth scoped to the origin (parity-report.md). Every V row with this pattern
+or `hls-stream` carries one — `dynamics-check.mjs --gate` blocks a `done` row without it.
+
+## hls-stream
+
+**Intent.** A stream is not an iframe: a video.js / HLS player fed a `.m3u8` (or DASH `.mpd`)
+manifest is blank when the manifest URL is embedded as an iframe, and a poster-plus-link snapshot
+loses playback. **Signature.** The detector's `mechanism: hls` (a manifest URL in `data-setup` /
+`data-parameters` JSON or in the request log); extract records the same term. **Contract.** The
+manifest URL is the content (a link in the embed/video block row, poster image beside it). The block
+plays natively where `canPlayType('application/vnd.apple.mpegurl')` says so, else loads a pinned
+`hls.js` via `loadScript` on first play — never a vendor iframe, never a copied blob URL. A 401/403 on
+the manifest is a `needs-credential` row (authenticated rendition), not an auto-fix. **Verify.**
+`video-plays` with `currentTime` advance **and** manifest + ≥ 1 segment request < 400.
+
+```js
+// example — blocks/embed: play a manifest natively or through hls.js (adapt class names, CDN pin)
+const HLS_JS = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js';
+export async function playHls(box, src, poster) {
+  const video = document.createElement('video');
+  video.controls = true; video.autoplay = true; video.muted = true; video.playsInline = true;
+  if (poster) video.poster = poster;
+  box.replaceChildren(video);
+  if (video.canPlayType('application/vnd.apple.mpegurl')) video.src = src;
+  else {
+    if (!window.Hls) await loadScript(HLS_JS);
+    if (window.Hls && window.Hls.isSupported()) { const hls = new window.Hls(); hls.loadSource(src); hls.attachMedia(video); } else video.src = src;
+  }
+  video.play().catch(() => {});
+}
+```
 
 ## client-compute
 

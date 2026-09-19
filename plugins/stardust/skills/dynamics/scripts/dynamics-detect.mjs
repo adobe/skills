@@ -89,6 +89,12 @@ function domCapture() {
   const media = [...document.querySelectorAll('video, audio, video-js, iframe, [data-video-id], [data-account], [data-player], a[href*="player" i]')].map((el) => ({
     tag: el.tagName.toLowerCase(), src: (el.getAttribute('src') || el.getAttribute('href') || el.getAttribute('data-src') || '').slice(0, 200), account: el.getAttribute('data-account'), player: el.getAttribute('data-player'), videoId: el.getAttribute('data-video-id') || el.getAttribute('data-videoid'), inDialog: !!el.closest('dialog, [role=dialog], [class*="modal" i]'),
   })).filter((m) => m.src || m.videoId);
+  // stream manifests hidden in player JSON config (video.js data-setup, playlist data-parameters): record as mechanism hls / dash
+  for (const el of document.querySelectorAll('[data-setup], [data-parameters], [data-config], [data-options], [data-src], [data-playlist]')) {
+    const blob = [...el.attributes].filter((a) => a.name.startsWith('data-')).map((a) => a.value).join(' ').replace(/\\\//g, '/');
+    const m = blob.match(/(?:https?:)?\/\/[^"'\s\\]+\.(m3u8|mpd)(?:\?[^"'\s\\]*)?|\/[^"'\s\\]+\.(m3u8|mpd)(?:\?[^"'\s\\]*)?/i);
+    if (m) media.push({ tag: el.tagName.toLowerCase(), src: m[0].slice(0, 200), mechanism: /m3u8/i.test(m[0]) ? 'hls' : 'dash', inDialog: !!el.closest('dialog, [role=dialog], [class*="modal" i]') });
+  }
   // iframes: a missing src means a runtime-injected embed
   const iframes = [...document.querySelectorAll('iframe')].map((f) => ({ src: f.getAttribute('src') || null, title: f.getAttribute('title') || null, w: f.getBoundingClientRect().width | 0, h: f.getBoundingClientRect().height | 0 }));
   // tag-manager-proxied third parties: mount divs with vendor config attributes, zero script tags
@@ -143,7 +149,7 @@ function classify(page, path, add) {
   const byMarker = new Map();
   for (const t of page.triggers) { const k = t.marker; const row = byMarker.get(k) || { n: 0, ex: [], targets: new Set(), titles: 0, chrome: 0 }; row.n += 1; if (row.ex.length < 4) row.ex.push(t.href || t.text); if (t.target) row.targets.add(`${t.target.role}:${t.target.hasForm ? 'form' : t.target.hasVideo ? 'video' : t.target.hasIframe ? 'iframe' : 'content'}`); if (t.titleOnTrigger) row.titles += 1; if (t.inChrome) row.chrome += 1; byMarker.set(k, row); }
   for (const [marker, r] of byMarker) add({ class: 'M', feature: `modal trigger ${marker}${r.chrome === r.n ? ' (chrome only)' : ''} → ${[...r.targets].join('/') || 'target outside DOM at capture'}`, page: path, evidence: [...r.ex, r.titles ? `${r.titles} triggers carry the title (data-*title)` : null].filter(Boolean), hint: r.chrome === r.n ? 'chrome-interaction' : 'modal' });
-  for (const m of page.media) { const v = vendorFor(m.src || ''); if ((v && v.class === 'V') || m.videoId || m.tag === 'video-js') add({ class: 'V', feature: v ? v.role : `player element <${m.tag}>${m.inDialog ? ' in a dialog' : ''}`, page: path, evidence: [m.videoId ? `${m.account || '?'}/${m.player || 'default'}/${m.videoId}` : m.src], hint: 'media' }); }
+  for (const m of page.media) { const v = vendorFor(m.src || ''); if ((v && v.class === 'V') || m.videoId || m.tag === 'video-js' || m.mechanism) add({ class: 'V', feature: m.mechanism ? `video: ${m.mechanism.toUpperCase()} stream (manifest in player config)` : v ? v.role : `player element <${m.tag}>${m.inDialog ? ' in a dialog' : ''}`, page: path, evidence: [m.videoId ? `${m.account || '?'}/${m.player || 'default'}/${m.videoId}` : m.src], mechanism: m.mechanism || undefined, hint: 'media' }); }
   for (const f of page.iframes) if (!f.src) add({ class: 'V', feature: 'iframe without src (runtime-injected embed)', page: path, evidence: [f.title || `${f.w}×${f.h}`], hint: 'embed-runtime' });
   for (const mnt of page.mounts) add({ class: 'T', feature: `third-party mount <div ${mnt.attrs[0] || mnt.cls}> (tag-manager-injected widget)`, page: path, evidence: [mnt.attrs.join(' ') || mnt.cls], hint: 'tags' });
   if (page.auth.length) add({ class: 'X', feature: 'sign-in / account links', page: path, evidence: page.auth.slice(0, 4), hint: 'decided-out' });
@@ -164,7 +170,7 @@ const findingsByKey = new Map();
 const add = (f) => {
   const key = `${f.class}|${f.feature}`;
   let x = findingsByKey.get(key);
-  if (!x) { x = { id: slug(`${f.class}-${f.feature}`), class: f.class, feature: f.feature, role: f.role, api: f.api, signature: f.signature, hint: f.hint, evidence: [], pages: [] }; findingsByKey.set(key, x); report.findings.push(x); }
+  if (!x) { x = { id: slug(`${f.class}-${f.feature}`), class: f.class, feature: f.feature, role: f.role, api: f.api, signature: f.signature, mechanism: f.mechanism, hint: f.hint, evidence: [], pages: [] }; findingsByKey.set(key, x); report.findings.push(x); }
   if (!x.pages.includes(f.page)) x.pages.push(f.page);
   if (f.evidence) x.evidence = [...new Set([...x.evidence, ...f.evidence.filter(Boolean)])].slice(0, 12);
 };
