@@ -20,15 +20,14 @@ ORG=<daOrg>; REPO=<daRepo>; BRANCH=<branch>; P=<path-without-extension>   # e.g.
 TOKEN="$DA_TOKEN"
 
 # 0. force Code Sync (webhook may not fire for a scripted push) — then wait for
-#    your edited blocks to be live before previewing. Assets gzip → curl --compressed.
+#    your edited blocks to be live before previewing. Served assets are gzip:
+#    every served-asset read goes through served-check.mjs (fetch decodes; a bare
+#    `curl | grep` scans compressed bytes and matches nothing), capped at 3 min.
 curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
   "https://admin.hlx.page/code/$ORG/$REPO/$BRANCH/*"          # expect 202
-for i in $(seq 1 60); do   # capped: ~3 min, then fail loud — never an unbounded wait
-  curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/blocks/<edited-block>/<edited-block>.js" \
-    | grep -q "<a marker string from your edit>" && break
-  [ "$i" = 60 ] && { echo "code sync did not land in 3 min — check the POST above / Code Sync installation" >&2; exit 1; }
-  sleep 3
-done
+node skills/deploy/scripts/served-check.mjs \
+  "https://$BRANCH--$REPO--$ORG.aem.page/blocks/<edited-block>/<edited-block>.js" \
+  --grep "<a marker string from your edit>" --wait 180        # exit 1 = did not land: check the POST / installation
 
 # 1. sanitise non-ASCII to entities (in place, idempotent) — DA corrupts raw UTF-8
 node skills/deploy/scripts/sanitise.js content/$P.html
@@ -78,14 +77,14 @@ curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
 #        (D5) → split into a second PAGE → only then a `fragment` (noindex):
 #        fragment words are fetched by JS and cost `strict` AI-readability points.
 
-# 3b. VERIFY ingestion on the delivered .plain.html (per page; assets gzip → --compressed):
+# 3b. VERIFY ingestion on the delivered .plain.html (per page; served-check decodes gzip):
 #   (i)  no broken-image ingestion (#75) — must be 0; if not, an asset wasn't on Code Bus
 #        yet. Re-run step 3 (preview is idempotent; it re-ingests and repairs).
 #   (ii) authored EDITORIAL images actually landed — assert the expected <img>/alt count.
 #        CSS-background images are absent from .plain.html, so "it renders" is NOT proof
 #        that an image is authorable/AI-visible (see `reference/encode-contract.md` § Images).
-curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/$P.plain.html" | grep -c about:error      # expect 0
-curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/$P.plain.html" | grep -oc '<img'          # expect = authored editorial image count
+node skills/deploy/scripts/served-check.mjs "https://$BRANCH--$REPO--$ORG.aem.page/$P.plain.html" --grep about:error   # expect grep=0 (exit 1 is the pass here)
+node skills/deploy/scripts/served-check.mjs "https://$BRANCH--$REPO--$ORG.aem.page/$P.plain.html" --grep '<img'        # grep=N must equal the authored editorial image count
 
 # 4. (optional) publish to aem.live
 curl -sS -X POST -H "Authorization: Bearer $TOKEN" \

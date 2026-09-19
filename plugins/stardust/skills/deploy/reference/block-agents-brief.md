@@ -58,6 +58,8 @@ The brief template:
 >
 > **Runtime order** (`reference/block-js-scaffold.md` § Runtime order): nothing measured inside `decorate()` (the section is hidden — 0 px), `loadCSS` for any block whose builder you import, icons are already `span.icon > img` (not media), one `querySelector('picture, img')` never the `All` form, whitespace between line spans; `node skills/deploy/scripts/block-lint.mjs blocks/` exits 0.
 >
+> **Served-asset checks** go through `node skills/deploy/scripts/served-check.mjs <url> --grep <marker>` (served CSS/JS/HTML is gzip; a bare `curl | grep` matches nothing and reads as "the fix is not live").
+>
 > **EDS block convention**: each block at `blocks/<name>/<name>.{js,css}`. JS exports `default async function decorate(block)`. Block input is `<div class="block-name"><div>row<div>cell</div></div>…</div>` (the runtime adds `.block` + `data-block-name` and nests it in `.<name>-wrapper` before your JS runs). CSS scoped under `.block-name`. Inline SVG markup per-block (no shared utility). Honor `prefers-reduced-motion`.
 >
 > **EDS content page format**: NO `<head>` element (project `head.html` is injected by EDS), empty `<header></header>`/`<footer></footer>`, each top-level `<div>` inside `<main>` is one section holding one block OR default content, section-metadata only as a Step-3 `style` value on default-content sections, no `<style>`/`<script>`, fully-qualified image URLs.
