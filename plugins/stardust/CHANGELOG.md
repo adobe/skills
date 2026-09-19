@@ -4,6 +4,97 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.24.0-next.2 — B1 wave 1: hands-off contracts, pipeline-shape lints, preview-by-default delivery (pre-release, `stardust/next` only)
+
+Second batch of the 2026-08 learnings-harvest plan: the 48 wave-1 items — mostly rules, plus the lints and helpers that
+make them checkable. Evidence base: the Aug–Sep 2026 field sessions (74 sessions, 27 project directories), every claim
+re-measured against the transcripts before the build. Behind this batch: 118 bare "continue" acks in 37 sessions, 83 of
+113 after a harness stop (188 h idle); 41 owner questions in 34 sessions with a derivable answer (≈ 6.5 h idle); 1.4–3.5 h
+of blind waiting on delegated agents per run; 60 permission denials in 14 projects, one 8-hour hands-off run ending at a
+denied repo create; 101 failed shell calls in 16 projects; 2,087 screenshot reads, 332 over 3,000 px tall, two sessions
+killed at the 32 MB request cap; one 67-file foreign commit from an unlocked checkout. Counts live here, not in skill text.
+
+**Master skill**
+- **Setup 1, 7, 8**: every SKILL.md declares `metadata.impeccable: required | optional | none`, `none` skips the dependency
+  work (T39.2); new `scripts/run-lock.mjs` (`acquire|refresh|check|release` on `stardust/.work/run.lock`, exit 3 = another
+  live session), commits stage only the skill's own paths, never `git add -A` (T04.5); credentials resolved into
+  `state.json.credentials` (`DA_TOKEN` hours left, `SITE_TOKEN_<SITE>` by name, `GH_PAT`) before any 401 blocker (T09.2).
+- **Hands-off**: a fixed activation block (flow, wave 1 of a written plan with its stop point, commit policy); turn-end
+  contract — a turn ends only on completion, a hard blocker or a > 45-min wait; a phase close writes journal + `status.jsonl`
+  `end` + commit and starts the next step in the same turn; `approvedChain` chains skills after PASS (T10.1). `run-status.md`:
+  `next` (the pasteable command on every `end`), `owner`, § Phase close; resume runs the last `next`, never a finished phase (T10.3).
+- **`reference/decisions.md`** (new): plan-time register `stardust/decisions.md` — twelve default rows applied without asking
+  (publish = preview; live on gate PASS or an owner row, D1/D16), three owner-only rows; prepare-migration, replica Phase 2
+  and rollout Phase A present the open rows as one message (T10.2).
+- **`reference/fan-out.md`** (new): worker contract (skeleton first, a progress line per step, no model-authored file
+  > ~200 KB, hand back by pointer), coordinator contract (poll ≤ every 4 min, two flat polls = stall, resume once, then a
+  finisher) (T04.2); scope cap first, fresh-context workers for > ~20 requests or a browser, forks only for short tasks (T04.1).
+- **`reference/context-hygiene.md`** (new): numbers first, band crops, ≤ 10 image reads per gate round, never a stitched
+  capture whole (T02.1); runners print a ranked class table ≤ 60 lines and write `summary.json` + `summary.md` via the new
+  `scripts/class-report.mjs`, wired into rollout `verify.mjs` and qa `qa.mjs` (T02.3). **`reference/harness-quirks.md`**
+  (new, T07.2): one rule per line. **`reference/handoff-report.md`** (new, T13.3): gate table first, `regime` per row,
+  `neutralDiff` as the one reporting KPI.
+- **`reference/harness-permissions.md`** (new) with `scripts/permissions-snippet.mjs` (new, a `permissions.allow` block
+  derived from the shipped script tree) (T08.2); `scripts/preflight-transports.mjs` (new): five capability probes in the
+  first minutes → `stardust/.work/env.json.transports`, exit 2 on a denial — asked once, recorded `blocked` + `owner`, led
+  with `Blocked on owner:`, never a stop while unblocked work remains; a denied push or publish writes `stardust/.work/ship.sh`
+  per the new `deploy/reference/ship-script.md` (T08.1). Named deviations cover probe scripts: shipped instrument first (T33.3).
+**Deploy**
+- **`scripts/deploy-batch.mjs` — behaviour change**: the default run is `PUT → preview` only; live publish is a separate,
+  explicit `--publish` run after the preview gate passed or when `decisions.md` records publish-to-live (D1, D16);
+  `--no-publish` is a deprecated no-op (T08.3, 4 of 7 privileged denials were compound commands). Two clocks: on a non-`main`
+  branch a HEAD per page counts documents shared with main (one WARN), a publish prints the `max-age=7200` window end,
+  and `da-deploy-protocol.md` § Two clocks orders code before content on the ref the user will look at (T22.2).
+- **`scripts/served-check.mjs`** (new): one decoded read of a served asset (`--grep`/`--absent`, `--wait`), never a bare
+  `curl | grep` (T07.4, 11 false alarms). **`scripts/block-lint.mjs`** (new): BL-CSS 🔴, BL-MEDIA 🔴, BL-GUARD 🟡,
+  IMG-HARDCODED 🔴 with `@fixed-asset` — `block-js-scaffold.md` § Runtime order (T35.1, T30.6).
+- **`scripts/davids-model-lint.mjs`**: `--icons-dir`/`--styles` → ICON-PREFIX, ICON-MISSING, VARIANT-COLLIDE once per token
+  (T30.3, 62 `:icon-x:` tokens forced a redeploy; a variant collided with `.icon` on 7 pages, gates green); TABLE 🔴, D4 🔴
+  branch-host/protocol-relative hrefs, D6 hoisted emphasis, META, HBR, EMPTY-HEADING 🔴, ADJACENT-BLOCKS (T21.3); D15
+  TEXT-LEAK, JSON (runtime JSON-LD, D10), entity-escaped tags, TEXT (T30.5); D15 STYLE-SPACE — comma = N classes, space = one
+  class, #120 rewritten (T29.3); CHROME 🟡, inlining chrome is an owner decision (T33.3); D12 CONTENT, `fragments cost N pts`,
+  the whole-document 409 class (T31.3).
+- **Contracts**: `davids-model.md` D4 is the one link-form policy, three classes (T31.4, D9); `foundation.md` § Vocabulary
+  budget — ~12 named section styles, ≤ 2 variant tokens, no layout numbers (T29.1, 10/12 sites over); `encode-contract.md`
+  inline-vehicle table and #112 spacer ladder with its D8 residual (T31.1, 5,485 `<u>` on one site), § Pipeline-sensitive
+  shapes and new `reference/pipeline-facts.md` (T21.3), EW2 wrapper rhythm (T32.4); `block-agents-brief.md` ownership table,
+  block-name claim, shared cores additive-only (T04.4); `qa-gate.mjs` derives the full-bleed list from block CSS (T28.5).
+**Replica**
+- **`source-fidelity-gate.md`**: § Residual classes (16 ids); `result` copied from `gate-<label>.json` with `regime`, `masks[]`,
+  `pixelPctUnmasked`, `ref`, `build` (T17.1); regimes `source-inconsistent`, `separate-composition` (360 heights differ > 40 %),
+  `canon-followup` (T05.1, ≈ 4 h of over-cap loops); lift ledger `progress.json.modules[]`, `sibling-variance.mjs --brief` (T28.5).
+- **`scripts/capture-sidecar.mjs`** (new): every `stitch-shot` writes `<png>.json`; `pixel-compare`/`crop-compare` refuse
+  incomparable pairs (exit 1, `--force` marks the number); `gate.sh` prints `reference: captured <ts> via <technique>`,
+  re-captures a sidecar-less `live.png`, `--live-from-capture`, `--regime`; `--consent-mode accept|deny` on every live
+  instrument, deny with an unrejected dialog = exit 5 (T19.3, T14.7).
+- **`scripts/impeccable-ignores.mjs`** (new): replica/reskin install the lifted-value ignore set once at Setup (T39.1).
+**Rollout / migrate**
+- **`rollout/reference/sweep-protocol.md`** (new): reference once → `plan.mjs --sample 3` per template → fix per class,
+  ≤ 3 rounds → one-page tail → one confirmation sweep on preview (T06.2). **`rollout/scripts/redirects.mjs`** (new):
+  `redirects.tsv` → `/redirects.json` per request form, exit 2 when a Source shadows a page, `--post-publish` probes both
+  slash forms; `og:image` never `content.da.live` (T27.9). Phase C gates on preview, then `--publish`; `delivery-lint.mjs --icons-dir` (T30.3).
+- **Migrate**: new `reference/importer-recipe.md`, 13 numbered rules with `enforced by:` (T26.2, 5–13 re-import passes per
+  site); generated content is never hand-edited — `stardust/patches/<slug>.json`, `import-manifest.json` sha warning,
+  artifacts own their path (T26.5); token halts park in `content/**` with the re-drive as `next` (T09.4, `delivery-gates.md`).
+**Extract**
+- **Bot-management ladder** in `crawl.mjs` and `diff/scripts/live-session.mjs`: `headless` → `chrome-headless` →
+  `chrome-headed-offscreen`, one hit per tier, solve window at tier 3 only, window visible only under `STARDUST_HEADED_WINDOW=1`,
+  `--headed[=window]`, exit 3 (T14.2: two sites cleared a bot wall headless; pop-up windows interrupted four runs).
+- **Doc follows code (D6)**: `ia-extraction.md` § Slug derivation = `slugify`/`assignSlugs` (root `index`, 200-char cap,
+  `-sha1:4` collisions); `--cap`/`--all`/`--single`/`--refresh`/`--force`, `--pages` exact; append-only `_crawl-log.json`
+  `runs[]` (T23.3, 6/173 ENAMETOOLONG on a tech-docs migration). `home` → `index` everywhere.
+**Dynamics / qa**
+- **`dynamics-check.mjs --gate`** exits 3 on a missing `parity.json` or a pending `self` row; `dynamics-plan.mjs --lint`; a pilot
+  chain runs Phases 4–5 standalone (T34.1, 8 inventories with pending `self` rows); `search-query` `terms[]` + `compareLive`
+  (T34.6); `hls-stream`, `video-plays` asserts playback (T20.4); `listing-rows`, document-first for programmatic families,
+  forms and UI labels (T33.4, 116 pages with no served fare text).
+- **qa**: `--checks delivery|rendered|parity` presets, `--baseline-reset`, `visual/baseline-skipped` on a dirty render,
+  `report.json` rewritten `partial` after each check (T37.2, 36 false regressions from one re-baseline).
+**Lints** — `npm run lint:stardust` chains, after the three B0 checks: `davids-model-lint-fixtures.mjs`, `deploy-lint-fixtures.mjs`,
+`impeccable-dep.mjs`, `permissions-shapes.mjs`, `flag-parity.mjs`, `launch-ladder.mjs`, `fixtures/crawl-slugify.test.mjs`,
+`fixtures/crawl-log-merge.test.mjs`, `redirects-smoke.mjs`, `broad-git-add.mjs`; both W1 evals drop their "W1 target" markers.
+- Gate: ten evals at n = 2 on 0.23.0 text vs this branch — no mean score fell after one real regression was fixed in-batch (crawl default cap re-documented as 25 following the code and a crawl log without `_provenance`; both corrected, extract-multipage 87.5 → 100). Moves: phase-checkpoint 40 → 95, runner-output-contract 20 → 30, intent-reasoning 60 → 77.5, resume-state-report 65 → 77.5, ai-readability 82.5 → 92.5, direct-from-phrase 87.5 → 95, migrate-incremental 82.5 → 85; ew-editability, prototype unchanged; routing 95 → 90 on a single-run flip. Two eval defects fixed alongside (routing prompt block, runner-output read-only criterion vs the new credentials pre-flight).
+
 ## 0.24.0-next.1 — B0 foundation: deploy split, operator cards, doc-size lint, eval fixtures (pre-release, `stardust/next` only)
 
 First batch of the 2026-08 learnings-harvest execution plan. Pre-release: installed by the owner from
