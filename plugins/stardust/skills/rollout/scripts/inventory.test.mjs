@@ -92,6 +92,12 @@ r = node('inventory.mjs', ['--migrated', MIG, '--out', OUT, '--content', CONTENT
 navRow = bySlug().get('chrome-nav');
 assert.ok(navRow && navRow.source.missing === true && navRow.delivery.status === 'deployed', 'source gone → row kept, source.missing: true, delivery preserved');
 assert.equal(bySlug().get('chrome-nav-de').source.missing, false, 'a re-seeded row is not missing');
+// defect 7: --content pointing at a directory that does not exist must not flag every carried typed row missing
+r = node('inventory.mjs', ['--migrated', MIG, '--out', OUT, '--content', join(T, 'no-such-content')]);
+assert.equal(r.status, 0, 'a missing --content dir is a warning, not a failure');
+assert.match(r.stderr, /--content .*not found/, 'stderr names the missing --content dir');
+assert.deepEqual([bySlug().get('chrome-nav-de').source.missing, bySlug().get('chrome-nav').source.missing], [false, true], 'a nonexistent --content dir leaves every carried source.missing flag as it was');
+assert.equal(bySlug().size, 11, 'no typed row dropped by a nonexistent --content dir');
 // a changed fragment file re-flags a delivered row stale, like a page
 pages = json(pagesPath); const de = pages.pages.find((p) => p.slug === 'chrome-nav-de'); de.delivery.status = 'verified'; writeFileSync(pagesPath, JSON.stringify(pages));
 writeFileSync(join(CONTENT, 'nav-de.html'), `${NAV}<!-- changed -->`);
