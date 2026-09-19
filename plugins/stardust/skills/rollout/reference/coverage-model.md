@@ -8,7 +8,7 @@ The contract the two scripts maintain. Design rationale is in
 | File | Writer | Contract |
 |---|---|---|
 | `rollout.json` | inventory + blocks + update-coverage + verify | target + DA config + `lastRun` counts |
-| `coverage/pages.json` | inventory (rows) + update-coverage/verify (delivery) | one row per migrated page |
+| `coverage/pages.json` | inventory (rows) + update-coverage/verify (delivery) | one row per migrated page + one per typed row (chrome, fragment, index) |
 | `coverage/templates.json` | inventory + roll-up writers | pages grouped by `templateId` + roll-ups |
 | `coverage/blocks.json` | blocks (rows) + update-coverage (delivery) | one row per **distinct** block (dedup unit) |
 | `plan.json` | plan | dedup-driven delivery order + per-page convert/reuse |
@@ -16,6 +16,13 @@ The contract the two scripts maintain. Design rationale is in
 | `optimize/scorecard.json` | optimize + findings + autofix | per-layer health + overall + history |
 | `site/{sitemap.xml,robots.txt,manifest.json}` | assemble | site-level artifacts |
 | `dashboard/{index.html,data.json}` | dashboard | self-contained progress view + snapshot |
+| `verify/{summary.json,summary.md,pages.md}` | verify | ranked class report (≤ 60 lines) + per-page rows |
+
+`rollout.json` fields the scripts read: `site.liveHost` — stored as given, with
+or without a scheme or trailing slash; every script normalises it on read
+(`lib.mjs` `siteBase`, `--base` overrides). `links.outsideInventory: "fail" |
+"warn"` — what an internal link to a path that is no coverage row does to the
+page in verify (default `fail`).
 
 `rollout` writes nothing outside this directory. `stardust/migrated/`,
 `state.json`, and the rest of the agnostic core are read-only inputs.
@@ -55,8 +62,19 @@ of `delivery.status`:
 
 - **`delivery.type`** — `page | fragment | index`. Drives what "renders
   correctly" means: a fragment has no `<h1>`, an index is JSON with rows.
-  `verify.mjs` infers it from the path when unset and reports the distribution;
-  a one-size `<h1>` check false-fails fragments without it.
+  `inventory.mjs --content <eds-root>/content` seeds the typed rows (`nav*`,
+  `footer*` → `/nav`, `/footer`, `/nav-<lang>`; `fragments/**` → `/fragments/<x>`;
+  `**/*.json` → `/<x>.json`; slugs `chrome-<name>` / `fragment-<x>` /
+  `index-<x>`); they are preserved across runs (a gone source flags
+  `source.missing: true`, never drops the row), excluded from template
+  roll-ups, and `assemble` lists only `page` rows in the sitemap. Scripts infer
+  the type from the path when unset; a one-size `<h1>` check false-fails
+  fragments without it.
+- **`delivery.deployedPath`** — the path the row is served on when it differs
+  from `path` (source-slug key, normalised target): written by
+  `update-coverage --from-ledger` or seeded by `inventory --redirects
+  stardust/redirects.tsv`. verify/optimize fetch it; assemble lists it; links to
+  either form resolve.
 - **`fidelityTier`** — `archetype | sibling | thin` (+ `archetypeSource`,
   `gatesPassed[]`), set by `migrate` from the render branch
   (`migrate/reference/fidelity-tiers.md`). Records *how much QA the page carries*:
@@ -115,10 +133,31 @@ Chrome (`header`/`nav`/`footer`) is not per-page; it's listed once under
 
 ## Verify
 
-`verify.mjs` flips delivered pages to `verified` or `failed` based on: reachable
-(HTTP 200 / file present), no `about:error` in the body, and every internal
-`href="/…"` resolving to a known delivered path. Offline `--root <dir>` mode maps
-each delivered path back to a file for testing against a local export.
+`verify.mjs` flips delivered rows to `verified` or `failed` based on: reachable
+(HTTP 200 / file present), no `about:error` in the body, the typed render check
+(one `<h1>` per page, JSON `data[]` per index), and its internal `href="/…"`
+targets. Offline `--root <dir>` mode maps each path back to a file for testing
+against a local export or the migrated tree.
+
+- **Which rows.** Default: `deployed | verified`. `--all`: every *delivered*
+  row (`deployed | verified | failed | stale`); rows never delivered (`pending`,
+  `content-pending`, `converting`) have nothing to GET — they are counted on one
+  line (`not delivered: N (skipped)`) and never written (a skipped row is no
+  verdict, not a FAIL); `--include-undelivered` probes them anyway. Offline the
+  tree is the artefact, so `--root --all` covers every row. `--slug` targets
+  any row.
+- **Link classes.** Target is a coverage row that is delivered → ok. A coverage
+  row not yet delivered → **pending-target**: the page stays `verified`,
+  `delivery.pendingLinks` lists the targets, one summary line counts the pages.
+  No coverage row → **outside-inventory**: `links.outsideInventory: fail`
+  (default) fails the page; `warn` records `delivery.outsideLinks` and keeps it
+  `verified`. Exit 1 iff a row is `failed`; advisory classes never flip it.
+- **Report.** stdout = counts + the ranked class table, ≤ 60 lines, nothing per
+  page unless `--verbose`. `--report <dir>` (default `verify/`) receives
+  `summary.json` (`total, checked, verified, failed, skipped, classes[{class,
+  count, severity, worstExample, pointer}], pages[]`), `summary.md` (the same
+  table, ≤ 60 lines) and `pages.md` (per-page rows per class — where every
+  pointer leads). Triage per class from `summary.md`.
 
 ## Optimize gate (findings lifecycle)
 

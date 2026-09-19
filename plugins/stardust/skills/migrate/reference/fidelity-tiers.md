@@ -88,7 +88,9 @@ moment to fix the importer had passed. The `content-diff` classifier
 this failure class, so make it part of the per-page acceptance:
 
 - **Compare role-classified node counts** — headings, body/list nodes,
-  CTAs (+hrefs), images — between the captured source
+  CTAs (+hrefs), images — taken inside `main` on both sides (chrome is
+  excluded: nav/footer counts vary by page and are gated as their own
+  rows) — between the captured source
   (`stardust/current/pages/<slug>.json`; migrate is offline after extract,
   so the captured page is the reference, never a fresh live hit) and the
   rendered result. When both sides are renderable URLs (e.g. an imported

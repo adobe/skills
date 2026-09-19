@@ -8,14 +8,21 @@
  * Deterministic outputs staged under stardust/rollout/site/; the actual push of
  * fragments is deploy's job (this only prepares + records what to push).
  *
+ * sitemap.xml lists only rows that are live pages: `delivery.type` page (not
+ * fragment/index rows) with status deployed | verified | stale, at their
+ * served path (`delivery.deployedPath` else `path`). Undelivered rows are not
+ * URLs yet. Host = rollout.json site.liveHost normalised (lib.mjs siteBase).
+ *
  * Usage: node skills/rollout/scripts/assemble.mjs [--out <rolloutDir>] [--canon <dir>]
+ * Exit: 0 written · 1 coverage missing (run inventory.mjs first)
  */
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { readJSON, writeJSON } from './lib.mjs';
+import { readJSON, writeJSON, siteBase, deliveredPathOf, artifactType } from './lib.mjs';
 import { writeFileSync, mkdirSync } from 'node:fs';
 
 function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback; }
+if (process.argv.includes('--help')) { console.log('Usage: node skills/rollout/scripts/assemble.mjs [--out <rolloutDir>] [--canon <dir>]\n  exit 0 written · 1 coverage missing'); process.exit(0); }
 const OUT = arg('out', 'stardust/rollout');
 const CANON = arg('canon', 'stardust/canon');
 
@@ -25,12 +32,14 @@ const config = readJSON(join(OUT, 'rollout.json'), {});
 if (!pagesDoc) { console.error('rollout assemble: run inventory.mjs first.'); process.exit(1); }
 
 const pages = pagesDoc.pages || [];
-const host = (config.site && config.site.liveHost) ? `https://${config.site.liveHost}` : '';
+const host = siteBase(config) || '';
 const siteDir = join(OUT, 'site');
 mkdirSync(siteDir, { recursive: true });
 
-// sitemap.xml — delivered (extensionless) paths.
-const urls = pages.map((p) => `  <url><loc>${host}${p.path}</loc></url>`).join('\n');
+// sitemap.xml — live page rows only, at their served (extensionless) paths.
+const LIVE = new Set(['deployed', 'verified', 'stale']);
+const sitemapRows = pages.filter((p) => artifactType(p) === 'page' && LIVE.has(p.delivery && p.delivery.status));
+const urls = sitemapRows.map((p) => `  <url><loc>${host}${deliveredPathOf(p)}</loc></url>`).join('\n');
 const sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
 writeFileSync(join(siteDir, 'sitemap.xml'), sitemap);
 
@@ -63,7 +72,7 @@ writeJSON(join(siteDir, 'manifest.json'), {
 
 console.log(`rollout assemble → ${siteDir}`);
 console.log('='.repeat(60));
-console.log(`sitemap.xml   ${pages.length} urls${host ? ` @ ${host}` : ' (no liveHost set — relative locs)'}`);
+console.log(`sitemap.xml   ${sitemapRows.length} urls (live page rows of ${pages.length})${host ? ` @ ${host}` : ' (no liveHost set — relative locs)'}`);
 console.log(`robots.txt    written`);
 console.log(`fragments     ${fragments.length}: ${fragments.map((f) => `${f.id}${f.canonSource ? '' : ' (no canon source!)'}`).join(', ') || 'none'}`);
 if (fragments.some((f) => !f.canonSource)) console.log('  ⚠ some chrome has no canon/*.html source — deploy must lift it from a delivered page.');

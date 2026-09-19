@@ -22,9 +22,27 @@
  * that archetype's blocks, pushing no document. Block code ships from the archetypes;
  * sibling content is populated later by a separate content track.
  *
+ * Typed rows (`--content <eds-root>/content`): the chrome documents, fragments
+ * and sheets the site serves are coverage rows too, so verify/assemble/optimize
+ * see them with their type instead of a hand-added row that the next run drops:
+ *   nav*.html / footer*.html at the content root → delivery.type `fragment`, path /nav, /footer, /nav-<lang>…, slug chrome-<name>
+ *   fragments/**\/*.html                         → `fragment`, path /fragments/<x>, slug fragment-<x-with-dashes>
+ *   **\/*.json                                   → `index`, path /<x>.json, slug index-<x-with-dashes>
+ * Prior delivery is preserved by slug. A typed row whose source file is gone
+ * (or when --content is not passed on a re-run) is KEPT, flagged
+ * `source.missing: true` — never silently dropped. Typed rows are excluded
+ * from the template roll-ups (templates.json).
+ *
+ * `--redirects <tsv>` (source<TAB>destination, the Gate 3 file) seeds
+ * `delivery.deployedPath` on a row whose `path` is a Source: the page is served
+ * at the Destination (the source slug stays the key). Never overwrites a value
+ * update-coverage --from-ledger already wrote.
+ *
  * Usage:
  *   node skills/rollout/scripts/inventory.mjs [--migrated <dir>] [--out <rolloutDir>] [--site-url <url>] [--state <state.json>]
+ *        [--content <dir>] [--redirects <tsv>]
  *   defaults: --migrated stardust/migrated  --out stardust/rollout
+ * Exit: 0 written · 1 migrated tree missing
  */
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -36,7 +54,10 @@ function arg(name, fallback) {
   return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
 }
 
+if (process.argv.includes('--help')) { console.log('Usage: node skills/rollout/scripts/inventory.mjs [--migrated <dir>] [--out <rolloutDir>] [--site-url <url>] [--state <state.json>] [--content <dir>] [--redirects <tsv>]\n  exit 0 written · 1 migrated tree missing'); process.exit(0); }
 const MIGRATED = arg('migrated', 'stardust/migrated');
+const CONTENT = arg('content', null);
+const REDIRECTS = arg('redirects', null);
 const OUT = arg('out', 'stardust/rollout');
 const SITE_URL = arg('site-url', null);
 const STATE = arg('state', null);
@@ -198,11 +219,69 @@ if (STATE) {
   }
 }
 
+// --- Typed rows: chrome documents, fragments, sheets ----------------------------
+// Seeded from the EDS content tree (--content) and preserved across runs: a hand-
+// or script-added fragment row must survive the next inventory (it used to be
+// rebuilt from the migrated tree alone and lost).
+const TYPED = new Set(['fragment', 'index']);
+const typedSlugs = new Set();
+const seedTyped = (slug, path, type, absFile) => {
+  if (typedSlugs.has(slug) || pages.some((p) => p.slug === slug)) return;
+  typedSlugs.add(slug);
+  const prior = priorBySlug.get(slug);
+  const sourceHash = sha256(readFileSync(absFile));
+  let delivery = (prior && prior.delivery) ? { ...prior.delivery } : { status: 'pending', deployedUrl: null, deployedAt: null, verifiedAt: null, error: null };
+  if (prior && prior.source && prior.source.sourceHash !== sourceHash && ['deployed', 'verified'].includes(delivery.status)) delivery.status = 'stale';
+  delivery.type = type;
+  pages.push({ slug, path, title: (prior && prior.title) || slug, templateId: null, source: { contentFile: absFile, sourceHash, missing: false }, blocks: [], delivery });
+};
+if (CONTENT && existsSync(CONTENT)) {
+  const walkAll = (dir, root = dir, acc = []) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      if (e.name.startsWith('.')) continue;
+      const full = join(dir, e.name);
+      if (e.isDirectory()) walkAll(full, root, acc); else acc.push(relative(root, full));
+    }
+    return acc;
+  };
+  for (const rel of walkAll(CONTENT).sort()) {
+    const abs = join(CONTENT, rel);
+    const noExt = rel.replace(/\.(html|json)$/, '');
+    const dashed = noExt.replace(/\//g, '-');
+    if (/^(nav|footer)[^/]*\.html$/.test(rel)) seedTyped(`chrome-${noExt}`, `/${noExt}`, 'fragment', abs);
+    else if (/^fragments\/.+\.html$/.test(rel)) seedTyped(`fragment-${dashed.replace(/^fragments-/, '')}`, `/${noExt}`, 'fragment', abs);
+    else if (/\.json$/.test(rel)) seedTyped(`index-${dashed}`, `/${rel}`, 'index', abs);
+  }
+}
+// carry over prior typed rows not re-seeded this run (source gone, or --content not passed)
+for (const prior of priorPages.pages || []) {
+  const t = prior.delivery && prior.delivery.type;
+  if (!TYPED.has(t) || typedSlugs.has(prior.slug) || pages.some((p) => p.slug === prior.slug)) continue;
+  typedSlugs.add(prior.slug);
+  pages.push({ ...prior, source: { ...(prior.source || {}), missing: CONTENT ? true : (prior.source && prior.source.missing) || false } });
+}
+
+// --- Redirect-seeded served paths (source slug key, destination served) ----------
+if (REDIRECTS && existsSync(REDIRECTS)) {
+  const canon = (p) => { let s = String(p).trim().split(/[?#]/)[0].toLowerCase(); s = s.replace(/\.html?$/, '').replace(/\/+$/, ''); return s || '/'; };
+  const dest = new Map();
+  for (const line of readFileSync(REDIRECTS, 'utf8').split('\n')) {
+    const t = line.trim(); if (!t || t.startsWith('#')) continue;
+    const [src, dst] = t.split('\t').map((x) => (x || '').trim());
+    if (src && dst) dest.set(canon(src), canon(dst));
+  }
+  for (const p of pages) {
+    const d = dest.get(canon(p.path));
+    if (d && d !== canon(p.path) && !(p.delivery && p.delivery.deployedPath)) p.delivery.deployedPath = d;
+  }
+}
+
 pages.sort((a, b) => a.slug.localeCompare(b.slug));
 
-// --- Derive the template grouping ----------------------------------------------
+// --- Derive the template grouping (page rows only — typed rows are not templated)
 const tmap = new Map();
 for (const p of pages) {
+  if (TYPED.has(p.delivery && p.delivery.type)) continue;
   const id = p.templateId || 'untyped';
   if (!tmap.has(id)) tmap.set(id, { id, pages: [], blocks: new Set() });
   const t = tmap.get(id);
@@ -241,13 +320,14 @@ const counts = {
   stale: status('stale'),
   failed: status('failed'),
 };
+const typedCount = pages.filter((p) => TYPED.has(p.delivery && p.delivery.type)).length;
 
 // --- Write ---------------------------------------------------------------------
 const now = new Date().toISOString();
 mkdirSync(coverageDir, { recursive: true });
 
 const prov = (writtenBy) => ({
-  writtenBy, writtenAt: now, readArtifacts: STATE ? [MIGRATED, STATE] : [MIGRATED], stardustVersion: STARDUST_VERSION,
+  writtenBy, writtenAt: now, readArtifacts: [MIGRATED, STATE, CONTENT, REDIRECTS].filter(Boolean), stardustVersion: STARDUST_VERSION,
 });
 
 writeFileSync(pagesPath, `${JSON.stringify({ _provenance: prov('stardust:rollout/inventory'), generatedAt: now, pages }, null, 2)}\n`);
@@ -260,8 +340,9 @@ const config = {
   site: {
     sourceUrl: SITE_URL || (priorConfig && priorConfig.site && priorConfig.site.sourceUrl) || 'about:blank',
     da: (priorConfig && priorConfig.site && priorConfig.site.da) || { org: '', site: '', ref: 'main' },
-    liveHost: (priorConfig && priorConfig.site && priorConfig.site.liveHost) || null,
+    liveHost: (priorConfig && priorConfig.site && priorConfig.site.liveHost) || null, // stored as given; scripts normalise on read (lib.mjs siteBase)
   },
+  links: (priorConfig && priorConfig.links) || { outsideInventory: 'fail' },
   lastRun: { at: now, pages: counts, blocks: { total: 0, converted: 0, pending: 0 }, verifyFailures: 0 },
 };
 writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
@@ -269,7 +350,7 @@ writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
 // --- Report --------------------------------------------------------------------
 console.log(`rollout inventory → ${OUT}`);
 console.log('='.repeat(60));
-console.log(`Pages       ${counts.total} total · ${counts.verified} verified · ${counts.deployed} deployed · ${counts.pending} pending · ${counts.contentPending} content-pending · ${counts.stale} stale`);
+console.log(`Pages       ${counts.total} total · ${counts.verified} verified · ${counts.deployed} deployed · ${counts.pending} pending · ${counts.contentPending} content-pending · ${counts.stale} stale${typedCount ? ` · typed rows ${typedCount} (fragment/index)` : ''}`);
 console.log(`Templates   ${templates.length} (${templates.map((t) => `${t.id}:${t.pageCount}`).join(', ')})`);
 const todo = pages.filter((p) => ['pending', 'stale', 'failed'].includes(p.delivery.status));
 if (todo.length) console.log(`To deliver  ${todo.length}: ${todo.slice(0, 8).map((p) => p.slug).join(', ')}${todo.length > 8 ? ' …' : ''}`);
