@@ -199,8 +199,7 @@ module KIND, `{ kind, firstSeen: <slug>, lifted: { "1440": <gate artefact>,
 "360": <gate artefact> } }`. A kind is lifted when it has a gate artefact
 at BOTH breakpoints. A sibling (Phase 5) that introduces a kind absent from
 the ledger triggers a lift plus a Phase 4 gate ON THAT SIBLING at both
-breakpoints before its template counts as recreated — archetype-only
-mobile lifts left whole product families with recorded 360 residuals.
+breakpoints before its template counts as recreated.
 
 **This is recreation, not redesign — do NOT delegate to impeccable craft.**
 Impeccable's redesign gates (critique, anti-template, divergence) do not
@@ -314,9 +313,8 @@ approval per the standard prototype approval flow (hands-off mode records
   assumed**: before cloning, run `stardust/scripts/replica/sibling-variance.mjs
   <archetype> <siblings…> --probe <block>=<sel> … --brief` once per template
   and budget every delta as a block VARIANT class on the sibling's content
-  (same file, § Sibling variance probe). Its `SECTIONS` block goes INTO each
-  sibling's fan-out brief: the generator walks the sibling's OWN section
-  sequence — the archetype supplies block shapes, never the order. A new
+  (same file, § Sibling variance probe — which also owns where the `SECTIONS`
+  block goes and whose sequence the generator walks). A new
   module kind on a sibling → the lift ledger rule (Phase 3). Content-fidelity
   is **measured per page at import time** (same file, § Content-count
   acceptance) so importer bugs surface while cheap to fix.
@@ -329,8 +327,8 @@ approval per the standard prototype approval flow (hands-off mode records
 - **Site-wide rollout** via the stardust `rollout` skill, unchanged — its block dedup
   is what implements "same blocks across the whole site".
 - **The hand-off names the captured variant.** Every brief and report
-  carries `captured variant: <variants[] markers, capture date, consent
-  mode>` and the line "your browser may render a different variant —
+  carries `captured variant: <observed variant markers, capture date,
+  consent mode>` and the line "your browser may render a different variant —
   compare against the capture, not a fresh live view" (A/B, geo and cookie
   buckets: `reference/recreation-procedure.md` § Asset harvest and the
   capture-state policy).

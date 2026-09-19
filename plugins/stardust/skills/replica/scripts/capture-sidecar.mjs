@@ -38,6 +38,7 @@
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
 import { readFileSync, writeFileSync } from 'fs';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 export const REFUSAL_KEYS = ['instrument.name', 'width', 'vh', 'dpr', 'consent.mode'];
 
@@ -85,4 +86,11 @@ export function requireComparable(tool, aPng, bPng, { force = false } = {}) {
   }
   console.error(`${head} --force given: comparing anyway — this number is not a gate number.`);
   return { sidecars, incomparable: problems, forced: true };
+}
+
+// Library module — `node capture-sidecar.mjs --help` prints the schema block
+// from the header above (the one definition; nothing else runs when imported).
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const src = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+  console.log(src.slice(0, src.indexOf('*/')).replace(/^\/\*\*\n/, '').replace(/^ \* ?/gm, ''));
 }

@@ -148,9 +148,9 @@ The prototype capture is re-taken every iteration.
    **Multi-theme sites (a theme id on `html`/`body`, brand or product
    themes on one template): run `chrome-parity.mjs` on one themed page per
    template × theme id, not on the home archetype alone.** Theme tokens
-   bind per theme id, not per brand: an alias derived from the home
-   theme's surface put a white header on every dark theme while the
-   archetype gate passed — the header is a small share of page pixels.
+   bind per theme id, not per brand: an alias derived from one theme's
+   surface is wrong on every other theme, and the archetype gate cannot
+   see it (chrome is a small share of page pixels).
    Alias only tokens the live CSS actually binds to the measured element,
    and treat the source's theme/variant classes as probe deltas → block
    variants on the sibling's content (`../../migrate/reference/fidelity-tiers.md`
@@ -343,8 +343,7 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   documented residual is a pass with an asterisk; an undocumented fourth
   loop is scope creep.
 - **Three named regimes end a loop early or sit outside the cap.** The
-  label is the ledger's `overCap` reason (and the vocabulary `gate.sh
-  --over-cap <reason>` consumes when it lands); bars are unchanged in all
+  label is the ledger's `overCap` reason; bars are unchanged in all
   three — a justified residual is never a pass.
   - `source-inconsistent` — the live page is internally inconsistent
     (per-row authoring artefacts, irregular indents, mixed CTA arrangements
@@ -493,13 +492,18 @@ rather than erroring.
    chunk seam, that no prototype fidelity could null out. These fire on a
    timer, so the dismissal polls for late arrivals and stitch-shot sweeps
    again after the settle pass. **Consent mode is one instrument
-   parameter, the same on lift, capture and gate** (`--consent-mode
-   accept|deny`, default `accept`; the project's choice lives in
+   parameter, the same on capture and gate**: `--consent-mode
+   accept|deny` (default `accept`) on stitch-shot and every live-session
+   probe (content-diff, visual-diff, anchor, chrome-parity,
+   sibling-variance); the project's choice lives in
    `progress.json#captureState.consent` and `gate.sh` passes it to both
-   sides). `deny` is right when accepting loads nondeterministic
-   third-party walls the build cannot carry; a dialog with no reject
-   control makes `deny` an invalid capture (exit 5, no verdict) — never a
-   silent accept.
+   sides. The lift's control is inherited, not re-guessed: stitch-shot
+   reads the extract crawl's `_crawl-log.json#consent.method`
+   (`dismissed:<sel>` / `text:<label>`) as its default `--consent`.
+   `deny` is right when accepting loads nondeterministic third-party
+   walls the build cannot carry; in `deny` the accept list is never
+   tried, and a dialog that cannot be rejected is an invalid capture
+   (exit 5, no PNG, no verdict) — never a silent accept.
 7. **Granularity parity for JOIN/SPLIT false-reds (#87)** — mirror live
    node granularity or confirm-justify per
    `recreation-procedure.md` § Granularity parity.
@@ -579,9 +583,7 @@ rather than erroring.
     on every reuse. A reference imported with `gate.sh --live-from-capture
     <png>` (bot-walled sites where only the extraction's hand-solved
     capture exists) carries `source: extract-capture`; that compare is
-    forced once, said out loud, and its number is marked `forced`. Recorded: a same-page self-noise capture read 0.00 %
-    where the mixed-instrument "drift" had read 18 % — the delta was the
-    instrument, and the round chasing it was a false round.
+    forced once, said out loud, and its number is marked `forced`.
 
 ### Script adaptations (built-in flags first — but fail-loud outranks script immutability)
 

@@ -60,14 +60,17 @@
  *     pixel-compare / crop-compare refuse a pair whose sidecars differ in
  *     instrument.name, width, vh, dpr or consent.mode — mixed-instrument and
  *     mixed-consent compares produced whole false rounds in the field.
- *   - CONSENT MODE is one instrument parameter, the same on lift, capture and
- *     gate: --consent-mode accept (default) clicks accept; deny clicks a
- *     reject-all control (OneTrust / Usercentrics / "Reject all") and, when
- *     a consent dialog is present but no reject control exists, records
- *     consent.via 'failed' and exits 5 (invalid capture — no verdict, never
- *     a FAIL). Deny is right when accepting loads nondeterministic
- *     third-party walls the build cannot carry. The mode is recorded in the
- *     sidecar; the project's choice lives in progress.json#captureState.consent.
+ *   - CONSENT MODE is one instrument parameter, the same on capture and
+ *     gate: --consent-mode accept (default) clicks accept; deny goes through
+ *     live-session's dismissOverlays({ mode: 'deny' }), which clicks a
+ *     reject-all control (--consent <sel> first, then OneTrust / Usercentrics
+ *     / "Reject all") and NEVER tries the accept list. A consent dialog that
+ *     is present but cannot be denied — or that got accepted anyway — is an
+ *     INVALID CAPTURE: exit 5, no PNG, no sidecar, no verdict (never a FAIL,
+ *     never a silently accept-state reference certified as deny-state). Deny
+ *     is right when accepting loads nondeterministic third-party walls the
+ *     build cannot carry. The mode is recorded in the sidecar; the project's
+ *     choice lives in progress.json#captureState.consent.
  *   - the extract crawl's resolved consent selector
  *     (stardust/current/_crawl-log.json#consent.method = "dismissed:<sel>" or
  *     "text:<label>") is picked up as the default --consent when present.
@@ -79,8 +82,9 @@
  *     --settle            slow-scroll lazyload settle pass before capture
  *                         (use on live JS-heavy pages; harmless elsewhere)
  *     --consent <sel>     extra consent selector, tried before the built-in
- *                         candidates; "text:<label>" matches a button by its
- *                         exact label (recorded as consent.via "text:<label>")
+ *                         candidates (the reject list in deny mode);
+ *                         "text:<label>" matches a button by its exact label
+ *                         (recorded as consent.via "text:<label>")
  *     --consent-mode <m>  accept | deny (default accept; see above)
  *     --dismiss <sel,...> extra overlay-dismiss selectors (marketing modals
  *                         with non-standard close controls)
@@ -97,8 +101,8 @@
  * Requires: playwright, pngjs (project devDependencies), and the diff skill's
  * scripts dir alongside (live-session.mjs — the replica Setup copies both).
  * Exit codes: 0 written (PNG + sidecar), 1 error, 3 bot challenge (live side
- * blocked — fail loud, never captured), 5 invalid capture (consent dialog
- * present but --consent-mode deny found no reject control — no verdict).
+ * blocked — fail loud, never captured), 5 invalid capture (--consent-mode
+ * deny: consent dialog present but no reject control, or accepted — no verdict).
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
@@ -114,12 +118,8 @@ import { writeSidecar } from './capture-sidecar.mjs';
 // recorded in the sidecar so a reference taken by an older procedure is
 // visibly older. Comparability is keyed on instrument.name, not version.
 const INSTRUMENT = { name: 'stitch-shot', version: '2' };
-// --consent-mode deny: reject-all controls (the extract recipe's pre-flight
-// list + the exact short labels; narrow matcher, overlay controls only).
-const REJECT_CANDIDATES = ['#onetrust-reject-all-handler', '[data-testid="uc-deny-all-button"]', 'button:has-text("Reject all")', 'button:has-text("Reject All")', 'button:has-text("Decline all")'];
-// consent PRESENT check for deny mode (an accept control is visible, so a
-// dialog is up and cannot be denied): the shared accept list's head.
-const ACCEPT_PRESENT = ['#onetrust-accept-btn-handler', 'button:has-text("Accept all")', 'button:has-text("Accept All")', '[data-testid*="accept"]'];
+// --consent-mode deny is implemented ONCE, in live-session's dismissOverlays
+// ({ mode: 'deny' }): its reject list is tried, its accept list never is.
 class InvalidCaptureError extends Error { constructor(m) { super(m); this.name = 'InvalidCaptureError'; } }
 
 // live-session.mjs lives in the diff skill's scripts dir. Two layouts exist:
@@ -142,7 +142,7 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --vh <px>         viewport height / chunk size (default 900)
   --settle          slow-scroll lazyload settle pass before capture
   --consent <sel>   extra consent selector (clicked, not removed); "text:<label>" for a label match
-  --consent-mode <m> accept | deny (default accept; deny with no reject control → exit 5)
+  --consent-mode <m> accept | deny (default accept; deny with no reject control, or accepted → exit 5)
   --dismiss <sel,…> extra overlay-dismiss selectors (marketing modals etc.)
   --headed          headed stealth real Chrome (escalation for bot-managed sites)
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB) for geo determinism
@@ -154,7 +154,7 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
 Run the SAME command shape against the live page and the served prototype.
 Writes <out.png>.json (provenance sidecar: schema in capture-sidecar.mjs).
 Exit codes: 0 written, 1 error, 3 bot challenge (live side blocked — fail loud),
-5 invalid capture (consent present, deny impossible — no verdict).`;
+5 invalid capture (deny mode: consent present and not rejected — no verdict).`;
 
 function parseArgs(argv) {
   const rest = argv.slice(2);
@@ -201,39 +201,40 @@ function consentSelector(spec) {
   return { sel: spec, via: spec };
 }
 
-async function clickFirstVisible(page, selectors, settleMs) {
-  for (const sel of selectors) {
-    try {
-      const btn = page.locator(sel).first();
-      if (await btn.count() && await btn.isVisible()) { await btn.click({ timeout: 3000 }); await page.waitForTimeout(settleMs); return sel; }
-    } catch { /* candidate absent — try next */ }
-  }
-  return null;
-}
-
-async function anyVisible(page, selectors) {
-  for (const sel of selectors) { try { const l = page.locator(sel).first(); if (await l.count() && await l.isVisible()) return true; } catch { /* next */ } }
-  return false;
-}
-
 // Dismiss both overlay classes (consent + timed marketing modals) via
 // live-session, log what was closed, and note that the mouse is parked by
 // dismissOverlays itself (bottom-left — rule 10).
 async function dismissAndLog(page, url, opts, prov) {
   const cs = consentSelector(opts.consent);
-  // deny mode: click a reject control FIRST (before the shared accept pass
-  // could take the dialog); consent present with nothing to reject → invalid
-  // capture, exit 5 — a deny-state gate must never silently accept.
-  if (opts.consentMode === 'deny' && prov.consent.via === 'none-detected') {
-    const rejected = await clickFirstVisible(page, [...(cs ? [cs.sel] : []), ...REJECT_CANDIDATES], 1500);
-    if (rejected) { prov.consent.via = cs && rejected === cs.sel ? cs.via : rejected; prov.dismissed.push({ kind: 'consent', sel: rejected }); console.log(`consent REJECTED via ${rejected}`); }
-    else if (await anyVisible(page, ACCEPT_PRESENT)) { prov.consent.via = 'failed'; throw new InvalidCaptureError(`--consent-mode deny: a consent dialog is present but no reject-all control was found (tried ${REJECT_CANDIDATES.length + (cs ? 1 : 0)} selectors) — pass --consent <reject-sel> (or "text:<label>"), or capture in accept mode on BOTH sides. Not captured: an accepted-state reference would not be comparable to a deny-state build.`); }
+  const deny = opts.consentMode === 'deny';
+  // live-session owns both consent passes: --consent is the accept selector
+  // (tried first, via `extra`) in accept mode and the reject selector (tried
+  // first, via `reject`) in deny mode. Late-modal poll window only on live
+  // targets — a served prototype's overlays are not timed third-party scripts.
+  const d = await dismissOverlays(page, {
+    mode: opts.consentMode,
+    reject: deny && cs ? [cs.sel] : [],
+    extra: [...(!deny && cs ? [cs.sel] : []), ...opts.dismiss],
+    lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0,
+  });
+  if (deny) {
+    // A deny-state capture must be deny-state: an accepted dialog (instrument
+    // defect) or a dialog still up with nothing to reject is NOT captured —
+    // exit 5, no verdict; a deny-mode sidecar over an accept-state PNG would
+    // certify a non-comparable reference.
+    if (d.consent) throw new InvalidCaptureError(`--consent-mode deny: the consent dialog was ACCEPTED via ${d.consent} — instrument defect (accept list ran in deny mode); not captured.`);
+    if (d.consentPresent && !d.rejected) throw new InvalidCaptureError(`--consent-mode deny: a consent dialog is present but no reject-all control was found — pass --consent <reject-sel> (or "text:<label>"), or capture in accept mode on BOTH sides. Not captured: an accepted-state or still-dialogued reference would not be comparable to a deny-state build.`);
+    if (d.rejected) {
+      const via = cs && d.rejected === cs.sel ? cs.via : d.rejected;
+      console.log(`consent REJECTED via ${via}`);
+      prov.dismissed.push({ kind: 'consent', sel: d.rejected });
+      if (prov.consent.via === 'none-detected') prov.consent.via = via;
+    }
+  } else if (d.consent) {
+    console.log(`consent dismissed via ${d.consent}`);
+    prov.dismissed.push({ kind: 'consent', sel: d.consent });
+    if (prov.consent.via === 'none-detected') prov.consent.via = d.consent;
   }
-  const extra = [...(cs && opts.consentMode !== 'deny' ? [cs.sel] : []), ...opts.dismiss];
-  // late-modal poll window only on live targets — the served prototype's
-  // overlays are not timed third-party scripts, they render immediately.
-  const d = await dismissOverlays(page, { extra, lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
-  if (d.consent) { console.log(`consent dismissed via ${d.consent}`); prov.dismissed.push({ kind: 'consent', sel: d.consent }); if (prov.consent.via === 'none-detected') prov.consent.via = d.consent; }
   for (const sel of d.extra) {
     console.log(`overlay dismissed via extra selector ${sel}`);
     const isConsent = cs && sel === cs.sel;
@@ -421,5 +422,5 @@ async function main() {
 
 // exit 3 = bot challenge on the live side (distinct from generic errors, so a
 // gate runner can tell "blocked — escalate with --headed" from "capture broke").
-// exit 5 = invalid capture (consent present, deny impossible): no verdict, never a FAIL.
+// exit 5 = invalid capture (deny mode: consent present and not rejected, or accepted): no verdict, never a FAIL.
 main().catch((e) => { console.error(`stitch-shot error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : e.name === 'InvalidCaptureError' ? 5 : 1); });

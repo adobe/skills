@@ -13,7 +13,7 @@ Phases, in order: Setup → 1 INGEST DONOR → 2 CONTENT-MODEL CAPTURE → 3 MAP
 
 | Phase | Command (project copies under `stardust/scripts/reskin/`) |
 |---|---|
-| Setup | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/reskin/scripts/*` → `stardust/scripts/reskin/` and `skills/diff/scripts/live-session.mjs` → `stardust/scripts/diff/`; then `skills/replica/scripts/impeccable-ignores.mjs --skill reskin` |
+| Setup | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/reskin/scripts/*` + `skills/replica/scripts/impeccable-ignores.mjs` → `stardust/scripts/reskin/`, `skills/diff/scripts/live-session.mjs` → `stardust/scripts/diff/`; then `node stardust/scripts/reskin/impeccable-ignores.mjs --skill reskin` |
 | 1 | `$stardust extract <content-url> --design-source <donor-url>` (local donor: `python3 -m http.server <port> --directory <path>` first); author `stardust/reskin/donor-tokens.json` + `donor-modules.md` |
 | 2 | `capture-content.mjs --url <page-url> --scope '<sel,...>' --normalize stardust/reskin/normalize/<slug>.mjs --out stardust/reskin/content-model/<slug>/` |
 | 3 | author `stardust/reskin/mapping.md` |
@@ -103,20 +103,19 @@ regression check instead of a debugging tool.
    project root; on failure `npm i -D playwright --no-save
    --legacy-peer-deps`. Re-run the probe before every phase that renders —
    a `--no-save` install is pruned by any later real `npm i`.
-3. **Copy the scripts into the project.** ESM resolves
-   `import('playwright')` from the *script's* directory and the plugin
-   tree ships no `node_modules`. Copy `skills/reskin/scripts/*` (all five
-   files) byte-identical to `stardust/scripts/reskin/`, **and**
+3. **Copy the scripts into the project** (ESM resolves `playwright`
+   from the *script's* dir, not the plugin tree). Copy
+   `skills/reskin/scripts/*` and `skills/replica/scripts/impeccable-ignores.mjs`
+   (no deps) byte-identical to `stardust/scripts/reskin/`, **and**
    `skills/diff/scripts/live-session.mjs` to `stardust/scripts/diff/` —
-   every reskin gate script imports it at startup (without it each exits
-   2, even for `--help`); it carries ALL live-target hardening, resolved
-   from `../diff/` next to `../reskin/` — keep the dirs siblings. Run the
-   copies.
+   every reskin gate script imports it at startup from `../diff/` next to
+   `../reskin/` (exit 2 without it); keep the dirs siblings; run the copies.
 4. **Origin collision** — if `stardust/state.json` records a different
    `site.originUrl`, stop and ask before mixing sites, per
    `../extract/SKILL.md` § Setup.
-5. **Impeccable ignore set** — once Phase 1 writes `donor-tokens.json`: `node skills/replica/scripts/impeccable-ignores.mjs
-   --skill reskin` (`--files` on the user's go / hands-off); see
+5. **Impeccable ignore set** — once Phase 1 writes `donor-tokens.json`:
+   `node stardust/scripts/reskin/impeccable-ignores.mjs --skill reskin`
+   (`--files` on the user's go / hands-off); see
    `../replica/reference/preserve-direction.md` § 4.
 
 ## Procedure

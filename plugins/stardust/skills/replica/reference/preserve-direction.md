@@ -200,8 +200,7 @@ changed more than registered; fix the leak, not the register.
 A replica (or reskin) lifts its palette, type sizes and families from a
 live site, and impeccable's design hook WILL flag every one of them on
 each edit — that is not drift. Look the set up here before triaging a
-hook finding; re-deriving it per finding cost field runs dozens of admin
-calls per project. Install it once, after the Phase 1 capture (re-run when
+hook finding. Install it once, after the Phase 1 capture (re-run when
 Phase 3's CSS lift adds values), with the shipped instrument:
 
 ```bash

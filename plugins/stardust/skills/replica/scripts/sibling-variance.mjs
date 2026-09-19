@@ -35,6 +35,7 @@
  *     --tolerance <px>       ignore numeric deltas ≤ this      (default 2)
  *     --consent <sel>        extra consent-accept selector
  *     --dismiss <sel,…>      extra overlay-dismiss selectors
+ *     --consent-mode <m>  accept | deny (default accept; deny clicks reject-all, never accept — live-session)
  *     --headed               headed stealth real Chrome (bot-managed sites)
  *     --locale <tag>         pin Accept-Language + locale
  *     --json                 machine-readable output
@@ -75,6 +76,7 @@ Usage: node sibling-variance.mjs <archetypeURL> <siblingURL> [<siblingURL>…] [
   --tolerance <px>      ignore numeric deltas ≤ this (default 2)
   --consent <sel>       extra consent-accept selector
   --dismiss <sel,…>     extra overlay-dismiss selectors
+  --consent-mode <m>    accept | deny (default accept; deny clicks reject-all, never accept)
   --headed              headed stealth real Chrome
   --locale <tag>        pin Accept-Language + locale
   --json                machine-readable output
@@ -87,7 +89,7 @@ function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { probes: [], main: 'main', width: 1440, tolerance: 2, consent: null, dismiss: [], headed: false, locale: null, json: false, brief: false };
+  const opts = { probes: [], main: 'main', width: 1440, tolerance: 2, consent: null, dismiss: [], consentMode: 'accept', headed: false, locale: null, json: false, brief: false };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--probe') {
@@ -101,6 +103,7 @@ function parseArgs(argv) {
     else if (a === '--tolerance') { opts.tolerance = Number(rest[i += 1]); }
     else if (a === '--consent') { opts.consent = rest[i += 1]; }
     else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
+    else if (a === '--consent-mode') { opts.consentMode = rest[i += 1]; if (!['accept', 'deny'].includes(opts.consentMode)) { console.error(`--consent-mode must be accept or deny\n\n${HELP}`); process.exit(1); } }
     else if (a === '--headed') { opts.headed = true; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--json') { opts.json = true; }
@@ -231,7 +234,7 @@ async function probeUrl(browser, url, opts) {
   const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 } });
   const page = await ctx.newPage();
   await gotoLive(page, url, { waitUntil: defaultWaitUntil(url), settleMs: isLiveHttpUrl(url) ? 2500 : 1200, solveWindow: opts.headed });
-  await dismissOverlays(page, { extra: [...(opts.consent ? [opts.consent] : []), ...opts.dismiss], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
+  await dismissOverlays(page, { mode: opts.consentMode, reject: opts.consentMode === 'deny' && opts.consent ? [opts.consent] : [], extra: [...(opts.consent && opts.consentMode !== 'deny' ? [opts.consent] : []), ...opts.dismiss], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
   await page.evaluate(async () => {
     const h = document.documentElement.scrollHeight;
     for (let y = 0; y < h; y += 700) { window.scrollTo(0, y); await new Promise((r) => { setTimeout(r, 80); }); }

@@ -10,7 +10,7 @@
 #
 # Usage:
 #   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label] \
-#     [--marker <string>] [--live-from-capture <png>]
+#     [--marker <string>] [--live-from-capture <png>] [--regime prototype|published-origin]
 #
 #   --live-from-capture <png>  use an EXTRACT capture as the live reference
 #     instead of stitching live (bot-walled sites where only the extraction's
@@ -33,7 +33,8 @@
 # gate-<label>.json is the round's RECORD — pixel-compare's --json-out
 # (pixelPct, pixelPctUnmasked, masks[] with area %, heightDelta, bands) plus
 # what only this script knows: regime (prototype when the build URL is a
-# local server, published-origin otherwise), ref { url, width, capturedAt }
+# local server, published-origin otherwise; --regime overrides the heuristic
+# for a prototype served over https/a tunnel), ref { url, width, capturedAt }
 # for the live capture the number was measured against, and the verdict.
 # The ledger's `result` (source-fidelity-gate.md § Residual logging format)
 # is copied from this file, never typed.
@@ -69,7 +70,7 @@
 #   GATE_REAP_MIN        stale-instrument age in minutes  (default 15; 0 disables)
 set -u
 
-SLUG=${1:?usage: gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>]}
+SLUG=${1:?usage: gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>] [--live-from-capture <png>] [--regime prototype|published-origin]}
 LIVE_URL=${2:?missing <live-url>}
 BUILD_URL=${3:?missing <build-url>}
 W=${4:?missing <width>}
@@ -78,11 +79,14 @@ LBL=iter
 case "${1:-}" in ''|--*) ;; *) LBL=$1; shift ;; esac
 MARKER="$SLUG"
 FROM_CAPTURE=""
+REGIME_OVERRIDE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --marker) MARKER=${2:?--marker needs a value}; shift 2 ;;
     --live-from-capture) FROM_CAPTURE=${2:?--live-from-capture needs a <png>}; shift 2 ;;
-    *) echo "gate.sh: unknown argument $1 (usage: gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>] [--live-from-capture <png>])" >&2; exit 125 ;;
+    --regime) REGIME_OVERRIDE=${2:?--regime needs prototype|published-origin}; shift 2
+      case "$REGIME_OVERRIDE" in prototype|published-origin) ;; *) echo "gate.sh: --regime must be prototype or published-origin (got $REGIME_OVERRIDE)" >&2; exit 125 ;; esac ;;
+    *) echo "gate.sh: unknown argument $1 (usage: gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>] [--live-from-capture <png>] [--regime prototype|published-origin])" >&2; exit 125 ;;
   esac
 done
 
@@ -190,11 +194,13 @@ rc=$?
 
 # Round record: regime + reference + verdict are EMITTED here (see header) so
 # the ledger copies them. capturedAt comes from the live capture's own
-# provenance sidecar when it has one, else from live.png's mtime.
+# provenance sidecar when it has one, else from live.png's mtime. Regime:
+# local-server heuristic, --regime overrides (https://localhost, tunnels).
 case "$BUILD_URL" in
   http://localhost*|http://127.*|http://\[::1\]*|http://0.0.0.0*|file:*) REGIME=prototype ;;
   *) REGIME=published-origin ;;
 esac
+REGIME=${REGIME_OVERRIDE:-$REGIME}
 if [ -f "$DIR/gate-$LBL.json" ]; then
   node - "$DIR/gate-$LBL.json" "$DIR/live.png" "$SLUG" "$LBL" "$W" "$LIVE_URL" "$BUILD_URL" "$REGIME" "$rc" <<'NODE'
 const fs = require('fs');

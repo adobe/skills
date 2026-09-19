@@ -84,9 +84,8 @@ the NEW page's live chrome, and flag any page-level compensation for
 back-port into the canon files so later archetypes don't re-discover it.
 When two templates genuinely differ, the canon records module VARIANTS
 keyed by template, each with its own gate evidence — never one value tuned
-per page. A canon fix after an archetype passed is a `canon-followup` round
-(`source-fidelity-gate.md` § Iteration discipline): outside that page's
-cap, followed by a re-gate of every approved archetype sharing the canon.
+per page. A canon fix after a pass is a `canon-followup` round —
+`source-fidelity-gate.md` § Iteration discipline.
 
 ## CSS lifting — fidelity values come from the original site's CSS, not the eye
 
@@ -286,24 +285,19 @@ instrument** (residual class `capture-state`). Recurring cases:
   capture AND fabricates a state the source never showed this instrument.
 - **Nondeterministic live elements, live-data embeds, randomized
   decoration** — residual classes `nondeterministic-live`,
-  `live-data-embed`, `randomized-decoration` (`source-fidelity-gate.md`
-  § Residual classes owns cue, exclusion and who inherits). The recreation
-  moves: replicate the STRUCTURE and freeze one captured value for tickers,
-  dates and counts (the one content class where confirm-justify stays
-  legitimate under widget mirroring, § Granularity parity); load the SAME
-  live embed (same src) on both sides so moving data cancels out — never a
-  frozen snapshot, which guarantees a residual the size of the widget; mask
-  generative decoration, which never matches itself across captures.
+  `live-data-embed`, `randomized-decoration`: cue, standard exclusion
+  (the recreation move) and who inherits live in `source-fidelity-gate.md`
+  § Residual classes. Freezing one captured value is the one content
+  class where confirm-justify stays legitimate under widget mirroring
+  (§ Granularity parity).
 - **A/B, geo and cookie buckets.** Experimentation and personalisation
   serve a different variant per session (CTA copy, injected bands, geo
-  redirects): three captures gave three band lists, and a reviewer's
-  browser showed a variant the capture never served. Pin one bucket for
-  the whole run — the extract's storage state (`stardust/current/
-  _storage-state.json`, reused by every live instrument) — record the
-  observed markers in the page's `_provenance.variants[]` (experiment
-  cookies, `data-experiment*` attributes, testing globals), and mask the
-  bands that still vary (residual class `personalised-region`). The
-  captured variant is the ground truth; a fresh live view is not.
+  redirects). Record the markers you observe (experiment cookies,
+  `data-experiment*` attributes, testing globals) in the residual entry
+  (class `personalised-region`) and mask the bands that vary; pinning one
+  bucket for the whole run is `--storage-state` on every live instrument
+  when it ships. The captured variant is the ground truth; a fresh live
+  view is not.
 - **Pointer/hover state.** Pointer position is part of capture state: a
   `:hover`-styled element under the resting cursor is a false-measurement
   trap (recorded: a consent click left the cursor over a hero whose
