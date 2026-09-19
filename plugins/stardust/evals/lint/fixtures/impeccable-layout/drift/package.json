@@ -1,0 +1,1 @@
+{ "name": "impeccable", "version": "9.9.9", "private": true, "description": "fixture: an install whose load-bearing entries moved (probe must print drift lines and still exit 0)" }
