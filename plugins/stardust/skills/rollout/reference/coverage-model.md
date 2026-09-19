@@ -16,7 +16,7 @@ The contract the two scripts maintain. Design rationale is in
 | `optimize/scorecard.json` | optimize + findings + autofix | per-layer health + overall + history |
 | `site/{sitemap.xml,robots.txt,manifest.json}` | assemble | site-level artifacts |
 | `dashboard/{index.html,data.json}` | dashboard | self-contained progress view + snapshot |
-| `verify/{summary.json,summary.md,pages.md}` | verify | ranked class report + per-page rows (`slug-<s>/` under `--slug`) |
+| `verify/{summary.json,summary.md}` | verify | ranked class report, per-page rows per class below the table (`slug-<s>/` under `--slug`) |
 
 `rollout.json` fields the scripts read: `site.liveHost` — stored as given, with
 or without a scheme or trailing slash; every script normalises it on read
@@ -158,10 +158,11 @@ against a local export or the migrated tree.
   page unless `--verbose`. `--report <dir>` (default `verify/`; `verify/slug-<s>/`
   under `--slug`, so a spot re-check never overwrites the site-wide report)
   receives `summary.json` (`total, checked, verified, failed, skipped,
-  classes[{class, count, severity, worstExample, pointer}], pages[]`),
-  `summary.md` (the same table) and `pages.md` (per-page rows per class — where
-  every pointer leads). Triage per class from `summary.md`. Exit 1 iff a row is
-  `failed`; 2 = usage or no coverage.
+  undelivered, unverified, classes[{class, count, severity, worstExample,
+  pointer}], pages[]` — one row per slug, `class` = its failure else its first
+  advisory, `advisories[]` the rest) and `summary.md` (the same table, then a
+  `### <class> (<count>)` section per class listing its pages — where every
+  pointer leads). Triage per class from the table; the sections stay in the file.
 
 ## Optimize gate (findings lifecycle)
 
