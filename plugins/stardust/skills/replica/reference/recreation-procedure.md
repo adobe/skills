@@ -265,7 +265,7 @@ font files, and even in-page `fetch()` from a headless client. What works:
   is a ledger entry.
 
 **Capture-state policy — ground truth is the page as observable by the
-instrument.** Two recurring cases:
+instrument** (residual class `capture-state`). Recurring cases:
 
 - **Lazy images stuck on designed placeholders.** Some lazy loaders leave
   images on base64 placeholder data-URIs that report
@@ -279,26 +279,16 @@ instrument.** Two recurring cases:
   skeleton screens, etc. Replicate as captured, log, flag for delivery.
   "Fixing" the hydration state creates a pixel delta against the live
   capture AND fabricates a state the source never showed this instrument.
-- **Nondeterministic live elements** — stock tickers, "last updated" dates,
-  view/result counts, personalization slots. The live capture itself varies
-  run-to-run on these (recorded: a ticker populated in one gate capture,
-  empty in the next). Replicate the STRUCTURE, freeze one captured value in
-  the prototype, and log the element as a **permanent residual** in the
-  ledger — it can never zero out, and chasing it burns iterations on a
-  moving target. This is the one content class where confirm-justify stays
-  legitimate under widget mirroring (§ Granularity parity).
-- **Live-data embeds** (stock tickers, YouTube/euroland-style iframe
-  widgets) — the winning move is loading the SAME live embed (same src) on
-  both sides so the moving data cancels out in the pixel diff, NOT freezing
-  a snapshot (confirmed in two independent 2026-08 sessions: a same-src
-  YouTube iframe canceled to zero; a euroland share ticker mirrored same-src
-  stopped contributing). A frozen snapshot guarantees a permanent residual
-  the size of the widget; a mirrored live embed usually zeroes out, and any
-  residual left (frame-timing skew) is logged as permanent.
-- **Randomized decorative elements** (inline positions/paths regenerated per
-  page load — generative line art, particle fields): the live side never
-  pixel-matches ITSELF across captures, so no prototype can zero it out.
-  Class-level permanent residual: log it with its band and %, don't chase it.
+- **Nondeterministic live elements, live-data embeds, randomized
+  decoration** — residual classes `nondeterministic-live`,
+  `live-data-embed`, `randomized-decoration` (`source-fidelity-gate.md`
+  § Residual classes owns cue, exclusion and who inherits). The recreation
+  moves: replicate the STRUCTURE and freeze one captured value for tickers,
+  dates and counts (the one content class where confirm-justify stays
+  legitimate under widget mirroring, § Granularity parity); load the SAME
+  live embed (same src) on both sides so moving data cancels out — never a
+  frozen snapshot, which guarantees a residual the size of the widget; mask
+  generative decoration, which never matches itself across captures.
 - **Pointer/hover state.** Pointer position is part of capture state: a
   `:hover`-styled element under the resting cursor is a false-measurement
   trap (recorded: a consent click left the cursor over a hero whose

@@ -29,7 +29,7 @@ Outputs: `stardust/direction.md` · `stardust/replica/{inconsistency-register.md
 | Setup | `../stardust/reference/state-machine.md` § Flow keys |
 | 2 | `reference/preserve-direction.md` § 1. Promotion contract · § 1a. Bounded promotion branch · § 3. The inconsistency register; `../dynamics/reference/triage.md` § Dispositions |
 | 3 | `reference/recreation-procedure.md` § Authoring order · § Cumulative archetype prototypes · § CSS lifting · § Fonts policy · § Asset harvest and the capture-state policy · § CSS-portation fallback |
-| 4 | `reference/source-fidelity-gate.md` § Per-breakpoint procedure · § Pass bar · § Reading the band breakdown · § Iteration discipline · § Hardening rules · § Script adaptations |
+| 4 | `reference/source-fidelity-gate.md` § Per-breakpoint procedure · § Pass bar · § Reading the band breakdown · § Iteration discipline · § Hardening rules · § Script adaptations; after a capped round: § Residual classes |
 | 4, after the static pass | `reference/recreation-procedure.md` § Interaction parity · § Fixed and sticky chrome · § Granularity parity |
 | 5 | `../migrate/reference/fidelity-tiers.md` § Sibling variance probe · § Content-count acceptance; `reference/source-fidelity-gate.md` § The published-origin gate · § Residual logging format |
 
@@ -51,11 +51,6 @@ Two properties make this a different animal from the redesign pipeline:
    HTML/CSS from captured content + values lifted from the source site's own
    CSS — never DOM copies, never ported page-level stylesheets. Fidelity is
    proven by instruments, not asserted by construction.
-
-Validated end-to-end (a typographic retail home page, 2026-07-03): 8.31% → 2.93% → **1.31%**
-pixel diff in 3 measured iterations, height Δ 0, content-diff "findings:
-none" (198/198 nodes). Every fix came off the instruments, never off
-eyeballing.
 
 ## Inputs
 
@@ -268,8 +263,9 @@ stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
 
 **Iteration discipline: hard cap 3 iterations per breakpoint.** Each
 iteration's fixes come off the instruments, never off eyeballing. After 3,
-log the residuals in the ledger and move on — a documented 2% residual beats
-an undocumented fourth loop.
+log the residuals by class (gate doc § Residual classes; `result` copied
+from `gate-<label>.json`) and move on — a documented residual beats an
+undocumented fourth loop.
 
 **Hardening (each is a recorded false-measurement trap — see the reference
 doc for the full list):** real-Chrome UA **plus the standard request
@@ -375,7 +371,7 @@ stardust/
 │   ├── inconsistency-register.md       ← the ONLY permitted design deltas
 │   ├── progress.json                   ← per-page-type ledger: iterations, gate results, residuals, motion inventory
 │   ├── motion/<slug>.json              ← motion-observe evidence
-│   └── gates/<slug>-<width>/           ← live.png, proto.png, diff.png, probe outputs per iteration
+│   └── gates/<slug>-<width>/           ← live.png, build.png, diff-<label>.png, gate-<label>.json per round
 └── migrated/                           ← from migrate (Phase 5)
 
 PRODUCT.md / DESIGN.md / DESIGN.json    ← promoted verbatim from current/ (Phase 2)

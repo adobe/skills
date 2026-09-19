@@ -16,7 +16,15 @@
 #     "http://localhost:8791/home-proposed.html" 1440 iter2
 #
 # Evidence lands in stardust/replica/gates/<slug>-<width>/
-# (live.png, build.png, diff-<label>.png).
+# (live.png, build.png, diff-<label>.png, gate-<label>.json).
+#
+# gate-<label>.json is the round's RECORD — pixel-compare's --json-out
+# (pixelPct, pixelPctUnmasked, masks[] with area %, heightDelta, bands) plus
+# what only this script knows: regime (prototype when the build URL is a
+# local server, published-origin otherwise), ref { url, width, capturedAt }
+# for the live capture the number was measured against, and the verdict.
+# The ledger's `result` (source-fidelity-gate.md § Residual logging format)
+# is copied from this file, never typed.
 #
 # Fail-loud contract: a stitch-shot bot challenge (exit 3) or capture error
 # aborts the round — a missing/blocked side must never be compared. Exit
@@ -43,9 +51,16 @@ SLUG=${1:?usage: gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--m
 LIVE_URL=${2:?missing <live-url>}
 BUILD_URL=${3:?missing <build-url>}
 W=${4:?missing <width>}
-LBL=${5:-iter}
+shift 4
+LBL=iter
+case "${1:-}" in ''|--*) ;; *) LBL=$1; shift ;; esac
 MARKER="$SLUG"
-[ "${6:-}" = "--marker" ] && MARKER=${7:?--marker needs a value}
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --marker) MARKER=${2:?--marker needs a value}; shift 2 ;;
+    *) echo "gate.sh: unknown argument $1 (usage: gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>])" >&2; exit 125 ;;
+  esac
+done
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 DIR="stardust/replica/gates/$SLUG-$W"
@@ -115,4 +130,29 @@ rc=$?
 [ $rc -ne 0 ] && { echo "gate.sh: build capture failed (exit $rc) — not comparing" >&2; exit $rc; }
 
 # pixel-compare supervises its own deadline (--timeout); exit 124 = no verdict.
-node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --timeout "$COMPARE_TIMEOUT"
+node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --timeout "$COMPARE_TIMEOUT" --json-out "$DIR/gate-$LBL.json"
+rc=$?
+
+# Round record: regime + reference + verdict are EMITTED here (see header) so
+# the ledger copies them. capturedAt comes from the live capture's own
+# provenance sidecar when it has one, else from live.png's mtime.
+case "$BUILD_URL" in
+  http://localhost*|http://127.*|http://\[::1\]*|http://0.0.0.0*|file:*) REGIME=prototype ;;
+  *) REGIME=published-origin ;;
+esac
+if [ -f "$DIR/gate-$LBL.json" ]; then
+  node - "$DIR/gate-$LBL.json" "$DIR/live.png" "$SLUG" "$LBL" "$W" "$LIVE_URL" "$BUILD_URL" "$REGIME" "$rc" <<'NODE'
+const fs = require('fs');
+const [rec, live, slug, label, width, liveUrl, buildUrl, regime, rcStr] = process.argv.slice(2);
+const rc = Number(rcStr);
+const j = JSON.parse(fs.readFileSync(rec, 'utf8'));
+let side = null; try { side = JSON.parse(fs.readFileSync(`${live}.json`, 'utf8')); } catch { /* no sidecar: mtime */ }
+const capturedAt = side?.capturedAt || fs.statSync(live).mtime.toISOString();
+const out = { slug, label, width: Number(width), regime,
+  ref: { url: liveUrl, width: Number(width), capturedAt, ...(side ? { sidecar: `${live}.json` } : { source: 'mtime' }) },
+  build: { url: buildUrl }, verdict: rc === 0 ? 'PASS' : rc === 2 ? 'FAIL' : 'no-verdict', exit: rc, ...j };
+fs.writeFileSync(rec, `${JSON.stringify(out, null, 2)}\n`);
+console.log(`regime: ${regime}  reference: ${liveUrl} @${width} captured ${capturedAt}${side ? '' : ' (live.png mtime)'}  record: ${rec}`);
+NODE
+fi
+exit $rc

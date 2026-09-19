@@ -10,7 +10,7 @@
 - § Iteration discipline — when a round fails: the hard cap and the measure-first order of fixes.
 - § Hardening rules — before trusting any number: the false-measurement traps (UA challenges, overlays, animation, lazy media, font forks).
 - § The published-origin gate — after platform delivery: re-running the gate against the published page, the only number that counts as final.
-- § Residual logging format — when recording a passed or capped result in `progress.json`.
+- § Residual logging format — when recording a passed or capped result in `progress.json`: the `result` fields `gate.sh` emits (regime, masks, unmasked %, reference date) and § Residual classes, the table every residual's `cause` cites.
 
 The gate proves an archetype matches the LIVE site — three instruments, per
 breakpoint, with a hard iteration cap. It replaces the redesign pipeline's
@@ -631,7 +631,12 @@ none visible on a local harness):
 
 ## Residual logging format
 
-Per archetype per breakpoint, in `stardust/replica/progress.json`:
+Per archetype per breakpoint, in `stardust/replica/progress.json`. The
+`result` object is COPIED from the instruments — `gate.sh` writes it every
+round as `gates/<slug>-<width>/gate-<label>.json` (pixel-compare
+`--json-out` plus `regime`, `ref` and the verdict) — never typed: a
+hand-typed number is where masked and unmasked figures, regimes and
+reference dates get mixed up.
 
 ```json
 {
@@ -640,14 +645,16 @@ Per archetype per breakpoint, in `stardust/replica/progress.json`:
   "breakpoints": {
     "1440": {
       "iterations": 3,
-      "result": { "structuralRed": 0, "visualFlags": "3 justified",
-                   "pixelPct": 1.31, "heightDelta": 0, "pass": true },
+      "result": { "regime": "prototype", "structuralRed": 0, "visualFlags": "3 justified",
+                   "pixelPct": 1.31, "pixelPctUnmasked": 4.02, "heightDelta": 0, "pass": true,
+                   "masks": [ { "spec": "1200:600@1210", "areaPct": 8.3 } ],
+                   "ref": { "url": "https://<site>/", "width": 1440, "capturedAt": "<ISO-8601>" } },
       "justified": [
         { "probe": "visual", "flag": "1x1 h1 at x0", "why": "mirrors live SEO h1" },
         { "probe": "content", "flag": "🟠 font fork ×2", "why": "licensed kit substituted, R-policy fonts", "permanent": true }
       ],
       "residuals": [
-        { "band": "y 4500–5000", "pct": 6.2, "cause": "capture-state: 3 CDN-403 placeholder tiles", "flaggedFor": "delivery" },
+        { "band": "y 4500–5000", "pct": 6.2, "cause": "capture-state", "what": "3 CDN-403 placeholder tiles", "flaggedFor": "delivery" },
         { "region": "footer", "pct": 4.8, "cause": "glyph-antialiasing", "parity": "gates/home-1440/chrome-parity-iter3.json", "texture": { "thickPct": 6.1 }, "flaggedFor": "user" }
       ],
       "captureState": [ { "what": "product tiles 4–6 on placeholder data-URIs", "where": "carousel-2" } ]
@@ -657,9 +664,42 @@ Per archetype per breakpoint, in `stardust/replica/progress.json`:
 }
 ```
 
-Rules: every residual names its band, its %, its cause, and who inherits it
-(`delivery` for capture-state items, `user` for accepted trade-offs). A
-residual without a cause is not a residual — it's an unfinished iteration;
-either diagnose it or spend the remaining budget on it. The rollout phase's
-final report surfaces the residual list per page type so "gate passed"
-can't hide "passed with 6% unexplained".
+`result` fields: `regime` — `prototype` (standalone prototype vs live) or
+`published-origin` (delivered page vs live, § The published-origin gate);
+`pixelPct` — the gated number, masks excluded; `pixelPctUnmasked` — the
+same captures matched with no mask, the number an outside audit reads
+(equal to `pixelPct` when nothing was masked); `masks[]` — every `--mask`
+spec with its area % of the compared height; `ref` — the live capture the
+number was measured against (URL, width, capture time). Judge each
+regime against its own precedent (§ Pass bar, calibration honesty).
+
+### Residual classes
+
+A residual's `cause` is a class id from this table or a diagnosed cause in
+the page's own terms; anything else is an unfinished iteration — diagnose
+it or spend the remaining budget on it. `flaggedFor` names who inherits it
+(`delivery` — resolved when authors or wiring land; `user` — an accepted
+trade-off). A permanent class can never zero out: log it once with its band
+and %, do not chase it.
+
+| class id | detection cue | standard exclusion | inherits | permanent |
+|---|---|---|---|---|
+| `glyph-antialiasing` | crop-compare texture thin-edge, chrome-parity quiet, text-dense band (§ Pass bar, item 5) | none — stays in the number, logged with both artifacts | user | yes |
+| `third-party-in-flow` | a band whose live content is a third-party widget in document flow (chat launcher, feedback badge, social wall) rendering per session | `--mask` the band; the widget is wired at delivery | delivery | yes |
+| `tag-injected-tail` | doc height grows at the page tail between captures (tag-manager legal copy, consent footers), content-diff EXTRA at the end | recapture the reference; if it persists, `--mask` the tail rows | user | until recapture |
+| `index-driven-content` | listing/results items change between captures (news, search, feeds) | `--mask` the listing band, or mirror the same data source | delivery | yes |
+| `photo-reencoding` | diff spread evenly over an image whose anchors match — rendition or compression differences | none — logged; expected in the published-origin regime | delivery | yes |
+| `live-drift` | live changed since `ref.capturedAt` (campaign, copy edits): content-diff MISSING/EXTRA on fresh text, height Δ explained by a new element | delete `live.png` and recapture — a stale reference is not a residual | — | no |
+| `nondeterministic-live` | tickers, "last updated" dates, counts, personalization slots — live differs from itself run to run | replicate the structure, freeze one captured value, `--mask` | user | yes |
+| `live-data-embed` | third-party iframe or widget carrying moving data | load the SAME src on both sides so the data cancels; log the timing-skew remainder | user | yes |
+| `randomized-decoration` | generative line art, particle fields regenerated per load — live never matches itself | `--mask` the band | user | yes |
+| `personalised-region` | store or recommendation rails, ad slots: hundreds of px vary between loads by cookie or geo | pin storage state; `--mask` the region | delivery | yes |
+| `skip-link-focus` | a thin band at the top present in one capture only — a skip link or focus ring left visible after a dismissal click | instrument fix (blur the active element before capture); the run does not count against the cap | — | no |
+| `fixed-disc-at-seams` | the same small shape (chat disc, back-to-top) repeats every `vh` px | replicate the element fixed on both sides (`recreation-procedure.md` § Fixed and sticky chrome); `--mask` only as last resort | delivery | no |
+| `subpixel-layoutunit` | a whole band shifted 1px, anchors Δy ±1 — a fractional layout unit rounding differently per engine path | none — logged with band and % | user | yes |
+| `icon-font-substitution` | chrome-parity ICONS signature mismatch on a licensed icon font the new host cannot ship | harvest the live vectors first (`recreation-procedure.md` § Asset harvest, icons); residual only when the licensed face is unavailable | user | yes |
+| `capture-state` | CDN-403 placeholders, hydration states, fallback type on a face that fails for real browsers too (rules 8 and 14) | replicate as captured; real assets wired at delivery | delivery | until delivery |
+| `authored-volatile-masked` | campaign heroes / promo creatives that changed between capture and gate | `--mask` — every mask on the verdict line and in `masks[]` | user | n/a (masked) |
+
+The rollout phase's final report surfaces the residual list per page type
+so "gate passed" can't hide "passed with 6% unexplained".

@@ -28,8 +28,16 @@
  *                          gate: they are authored content, not conversion
  *                          fidelity, and they must not consume the fidelity bar.
  *                          Every mask is printed on the verdict line; a masked
- *                          number is never reported as an unmasked one.
+ *                          number is never reported as an unmasked one — the
+ *                          verdict line and --json also carry pixelPctUnmasked
+ *                          (the same stitched PNGs matched with no mask; one
+ *                          extra pixelmatch pass, only when masks are given)
+ *                          and masks[] with each mask's area % of the compared
+ *                          height, so the ledger copies both numbers instead
+ *                          of typing them.
  *     --json               emit machine-readable summary on stdout
+ *     --json-out <file>    write the same summary to <file> AND keep the human
+ *                          verdict lines on stdout (gate.sh's per-round record)
  *     --timeout <s>        hard wall-clock deadline (default 120; 0 disables).
  *                          Enforced from a supervising process (the compare
  *                          itself is synchronous, so an in-process timer could
@@ -79,6 +87,7 @@ Usage: node pixel-compare.mjs <a.png> <b.png> [options]
   --mask <yA:h[@yB]>  exclude a row band (authored-volatile region) on both sides;
                       repeatable / comma list; yB defaults to yA
   --json              machine-readable summary on stdout
+  --json-out <file>   write the summary to <file>, keep the human verdict on stdout
   --timeout <s>       hard deadline, exit 124 when hit (default 120; 0 disables)
   --help              this text
 
@@ -88,7 +97,7 @@ function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { out: 'diff.png', threshold: 10, band: 500, pmThreshold: 0.1, json: false, masks: [], timeout: 120, worker: false };
+  const opts = { out: 'diff.png', threshold: 10, band: 500, pmThreshold: 0.1, json: false, jsonOut: null, masks: [], timeout: 120, worker: false };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--out') { opts.out = rest[i += 1]; }
@@ -96,6 +105,7 @@ function parseArgs(argv) {
     else if (a === '--band') { opts.band = Number(rest[i += 1]); }
     else if (a === '--pm-threshold') { opts.pmThreshold = Number(rest[i += 1]); }
     else if (a === '--json') { opts.json = true; }
+    else if (a === '--json-out') { opts.jsonOut = rest[i += 1]; }
     else if (a === '--timeout') { opts.timeout = Number(rest[i += 1]); }
     else if (a === '--worker') { opts.worker = true; }
     else if (a === '--mask') {
@@ -146,10 +156,16 @@ function main() {
   // denominator. When yA ≠ yB the UNION of both row ranges is masked on both
   // sides — masking each side at its own offset would compare grey against real
   // content on the other side and manufacture a false diff.
+  // Before painting, take the UNMASKED number off the same buffers: an outside
+  // audit reads the page with no masks, and a ledger that carries only the
+  // masked figure cannot be reconciled with it (residual logging format,
+  // `pixelPctUnmasked`). One extra pass, only when masks are given.
+  const nUnmasked = opts.masks.length ? pixelmatch(ca.data, cb.data, null, w, h, { threshold: opts.pmThreshold }) : null;
   const masked = new Uint8Array(h);
-  for (const mk of opts.masks) {
-    for (const y0 of [mk.yA, mk.yB]) for (let y = Math.max(0, y0); y < Math.min(h, y0 + mk.h); y += 1) masked[y] = 1;
-  }
+  const maskRows = opts.masks.map(() => 0);
+  opts.masks.forEach((mk, k) => {
+    for (const y0 of [mk.yA, mk.yB]) for (let y = Math.max(0, y0); y < Math.min(h, y0 + mk.h); y += 1) { if (!masked[y]) maskRows[k] += 1; masked[y] = 1; }
+  });
   let maskedRows = 0;
   for (let y = 0; y < h; y += 1) {
     if (!masked[y]) continue;
@@ -162,6 +178,9 @@ function main() {
   writeFileSync(opts.out, PNG.sync.write(diff));
   const denom = w * (h - maskedRows);
   const pct = denom > 0 ? (100 * n) / denom : 0;
+  const pctUnmasked = nUnmasked === null ? pct : (100 * nUnmasked) / (w * h);
+  const maskSpec = (m) => `${m.yA}:${m.h}${m.yB !== m.yA ? `@${m.yB}` : ''}`;
+  const masks = opts.masks.map((m, k) => ({ spec: maskSpec(m), yA: m.yA, h: m.h, yB: m.yB, rows: maskRows[k], areaPct: Number(((100 * maskRows[k]) / h).toFixed(1)) }));
 
   // Per-band breakdown: count pixelmatch's red diff pixels (anti-aliased
   // pixels are drawn yellow and are NOT counted — matches pixelmatch's own count).
@@ -179,12 +198,17 @@ function main() {
   }
 
   const pass = pct <= opts.threshold;
+  // Field names mirror the ledger (source-fidelity-gate.md § Residual logging
+  // format) so `result` is copied from here, never typed: pixelPct,
+  // pixelPctUnmasked, heightDelta, pass, masks[].
+  const summary = { a: aPath, b: bPath, compared: { width: w, height: h }, heightDelta, differingPixels: n, pct: Number(pct.toFixed(2)), pixelPct: Number(pct.toFixed(2)), pixelPctUnmasked: Number(pctUnmasked.toFixed(2)), threshold: opts.threshold, pass, diff: opts.out, masks, maskedRows, bands: bands.map((x) => ({ ...x, pct: Number(x.pct.toFixed(1)) })) };
+  if (opts.jsonOut) { mkdirSync(dirname(opts.jsonOut), { recursive: true }); writeFileSync(opts.jsonOut, `${JSON.stringify(summary, null, 2)}\n`); }
   if (opts.json) {
-    console.log(JSON.stringify({ a: aPath, b: bPath, compared: { width: w, height: h }, heightDelta, differingPixels: n, pct: Number(pct.toFixed(2)), threshold: opts.threshold, pass, diff: opts.out, masks: opts.masks, maskedRows, bands: bands.map((x) => ({ ...x, pct: Number(x.pct.toFixed(1)) })) }, null, 2));
+    console.log(JSON.stringify(summary, null, 2));
   } else {
     console.log(`A ${a.width}x${a.height}  B ${b.width}x${b.height}  → compare ${w}x${h}, height delta ${heightDelta}px`);
     if (Math.abs(heightDelta) > 8) console.log(`  ⚠ height delta ${heightDelta}px — overlap-crop hides the tail; fix heights before trusting the %`);
-    console.log(`differing pixels: ${n} / ${denom} = ${pct.toFixed(2)}%  (threshold ${opts.threshold}%) → ${pass ? 'PASS' : 'FAIL'}${maskedRows ? `  [MASKED ${maskedRows} rows: ${opts.masks.map((m) => `${m.yA}:${m.h}${m.yB !== m.yA ? `@${m.yB}` : ''}`).join(', ')} — authored-volatile, excluded]` : ''}`);
+    console.log(`differing pixels: ${n} / ${denom} = ${pct.toFixed(2)}%  (threshold ${opts.threshold}%) → ${pass ? 'PASS' : 'FAIL'}${maskedRows ? `  [MASKED ${maskedRows} rows: ${masks.map((m) => `${m.spec} (${m.areaPct}%)`).join(', ')} — authored-volatile, excluded; unmasked ${pctUnmasked.toFixed(2)}%]` : ''}`);
     console.log(`diff image: ${opts.out}`);
     for (const bd of bands) {
       console.log(`  y ${String(bd.y0).padStart(6)}–${bd.y1}: ${bd.pct.toFixed(1)}%${bd.pct > 15 ? '  ◄◄ hot band' : ''}`);
