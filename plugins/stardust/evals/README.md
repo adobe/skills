@@ -145,7 +145,14 @@ whose harness cases skip when Playwright is unresolvable:
 - `harness-neutral.mjs` — no namespaced sibling-skill references or
   Claude-only tool names outside lines marked "Claude Code".
 - `script-paths.mjs` — every plugin-internal script or reference path a
-  skill doc names exists in the plugin tree.
+  skill doc names exists in the plugin tree. `--installed [<dir>] [--strict]`
+  is the cross-plugin pass: the five impeccable cite forms (impeccable's
+  `reference/<x>.md`, `scripts/command-metadata.json`, `scripts/impeccable
+  <verb>`, `$impeccable <cmd>`, `npx impeccable`) resolve against an
+  impeccable skill dir — the registry install locally (`<dir>` omitted),
+  `.impeccable-upstream/skill` in CI (`validate.yml`, advisory
+  `::warning` step), `--strict` (exit 1) on the release checklist; exit 2 =
+  no skill dir found.
 - `deploy-lint-fixtures.mjs` — runs `deploy/scripts/davids-model-lint.mjs` over
   `lint/fixtures/davids-model-lint-shapes/` and `deploy/scripts/block-lint.mjs`
   over `lint/fixtures/block-lint/`, pinning the pipeline-shape codes (TABLE,
@@ -223,6 +230,14 @@ whose harness cases skip when Playwright is unresolvable:
   armed after the slot), cache eviction, `report.infra` / exit 2; the
   browser half of the second (document retried, throttled sub-resource →
   `rendered/unmeasured`) skips without playwright.
+- `impeccable-probe-fixtures.mjs` — runs `stardust/scripts/impeccable-version-check.mjs
+  --probe/--state` and `script-paths.mjs --installed` over
+  `lint/fixtures/impeccable-layout/` (4.1.3 legacy-launcher, 4.3.1 and a
+  drifted layout; docs-fail / docs-pass cite sets; the real `skills/` tree):
+  pins the probe line shape, `--local` accepting the plugin root or the skill
+  dir itself, the `state.json#impeccable` keys (other keys preserved, an
+  unparsable file untouched), and the exit codes (probe always 0; lint 0
+  advisory / 1 `--strict` / 2 no install dir).
 
 ## What stardust v2 evals deliberately do NOT test
 

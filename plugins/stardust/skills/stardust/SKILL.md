@@ -13,7 +13,7 @@ metadata:
 
 | step | what runs | gate / outcome | writes |
 |---|---|---|---|
-| Setup 1 | read the skill's `metadata.impeccable` level; unless `none`: impeccable presence check + `node skills/stardust/scripts/impeccable-version-check.mjs [--local <dir>]` (advisory) | `required` stops if missing; `optional` degrades; `none` skips 1 and 4 | — |
+| Setup 1 | read the skill's `metadata.impeccable` level; unless `none`: `node skills/stardust/scripts/impeccable-version-check.mjs --probe --state stardust/state.json [--local <dir>]` (advisory) | `required` stops if missing; `optional` degrades; `none` skips 1 and 4 | `state.json.impeccable` |
 | Setup 2–4 | `PRODUCT.md` / `DESIGN.md` presence; read `stardust/state.json`; parse impeccable's `command-metadata.json` | — | — |
 | Setup 5–8 | status ledger; project hygiene (`stardust/.gitignore`, root `.gitignore`, `.hlxignore`, `git check-ignore`); `node skills/stardust/scripts/run-lock.mjs check` + project root; credentials lookup on migration-bound asks | `state.json` not ignored; `check` exit 3 (held) → read-only; no 401 blocker before the lookup ran | `stardust/status.jsonl`, `stardust/.gitignore`, `stardust/.work/run.lock`, `state.json.credentials` |
 | Routing | no arg / resume → state report; sub-skill keyword → delegate; migration ask → § Two migration flows; freeform → intent reasoning | plan shown before any command (hands-off: recorded instead) | `state.json` flow keys |
@@ -28,7 +28,7 @@ metadata:
 | Setup 5, Phase close | `reference/run-status.md` § Line shape · § Rules · § Phase close |
 | Setup 6, Artifacts | `reference/artifact-map.md` § Versioning · § Provenance shapes |
 | Any shell loop, runner, delivery or probe | `reference/harness-quirks.md` (whole card) |
-| Setup 1, 8 | `reference/harness-permissions.md` § Two classes · `reference/state-machine.md` § Credentials key |
+| Setup 1, 8 | `reference/harness-permissions.md` § Two classes · `reference/state-machine.md` § Impeccable key · § Credentials key |
 | Routing (migration) | `reference/state-machine.md` § Flow keys |
 | Freeform intent | `reference/intent-reasoning.md` § Procedure · `reference/intent-dimensions.md` § Reading a phrase · `reference/impeccable-command-map.md` § Common sequences |
 | Hands-off | `reference/state-machine.md` § Hands-off keys · `reference/decisions.md` § Default rows · `reference/harness-permissions.md` § Privileged-action preflight · `reference/run-status.md` § Long-running steps |
@@ -51,23 +51,22 @@ delegate the actual design work to **impeccable**.
    absent counts as `required`; the master itself is `required` for its
    freeform-intent route). `none` → skip this step and step 4, noting
    `impeccable: skipped` in the skill's first `status.jsonl` line.
-   Otherwise locate impeccable: the harness's skill list, project skill
-   directories (`.claude/skills/`, `.agents/skills/`, `.cursor/skills/`,
-   `.github/skills/`) or its plugin cache (Claude Code:
-   `~/.claude/plugins/cache/`; GitHub Copilot:
-   `~/.copilot/installed-plugins/*/impeccable/skills/impeccable`). Under a
-   permission layer read `reference/harness-permissions.md` § Two classes
-   first. If it is absent, `required` skills stop and tell the user:
+   Otherwise locate impeccable — once per session run
+   `node <plugin>/skills/stardust/scripts/impeccable-version-check.mjs
+   --probe --state stardust/state.json` (`--local <dir>` for a skills
+   directory): it resolves the installed skill dir, records it as
+   `state.json#impeccable` (`reference/state-machine.md` § Impeccable
+   key) and prints one advisory line per copy — surface it verbatim only
+   for a newer version or a `drift:` line; never stop or degrade over it.
+   Sub-skills read `state.json#impeccable.skillDir`, never re-locate it.
+   Under a permission layer read `reference/harness-permissions.md` § Two
+   classes first. If it is absent, `required` skills stop and tell the
+   user:
    > Stardust requires impeccable. Install it from
    > <https://github.com/pbakaus/impeccable> and re-run the command.
 
    `optional` skills note `impeccable: absent` there and continue on their
-   degrade path. **Version hint (advisory, never blocking):** once per
-   session run
-   `node <plugin>/skills/stardust/scripts/impeccable-version-check.mjs`
-   (`--local <dir>` for a harness skills directory); surface its one line
-   verbatim only when it reports a newer version — never stop or degrade
-   over it.
+   degrade path.
 2. **Check the target-state files.** `PRODUCT.md` and `DESIGN.md` at the
    project root are the *target* state; check whether they exist. Do not
    run impeccable's context loader here — impeccable runs it itself on
@@ -75,7 +74,7 @@ delegate the actual design work to **impeccable**.
 3. **Read stardust's state.** `stardust/state.json` if present
    (`reference/state-machine.md`); note each page's lifecycle state.
 4. **Read impeccable's command registry** (skipped when the level is
-   `none`): `<harness>/skills/impeccable/scripts/command-metadata.json`,
+   `none`): `<state.json#impeccable.skillDir>/scripts/command-metadata.json`,
    the single source of truth — never hardcode commands.
 5. **Status ledger.** Every skill appends a line to `stardust/status.jsonl`
    at each phase start and end (`reference/run-status.md`).

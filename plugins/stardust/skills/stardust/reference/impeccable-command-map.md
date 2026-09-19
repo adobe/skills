@@ -1,7 +1,7 @@
 # When to reach for each impeccable command
 
-Stardust orchestrates the 24 impeccable commands. This file is the
-runtime guide for picking which command fits a resolved direction.
+Stardust orchestrates the commands impeccable's registry lists. This
+file is the runtime guide for picking which command fits a resolved direction.
 
 **Source of truth.** The canonical command list is impeccable's own
 `scripts/command-metadata.json`. Read it at runtime and treat it as
@@ -173,6 +173,12 @@ session.
 
 ### "make it better" (no direction)
 `critique` → `detect --json` → refine commands by P-level → `polish`.
+
+`detect` is a launcher verb, not a registry entry: run
+`"<state.json#impeccable.skillDir>/scripts/impeccable" detect --json <paths>`.
+It prints a JSON array of finding objects (`antipattern`, `name`,
+`severity`, `category`, `file`, `line`, `snippet`); a `DEGRADED` text
+banner may precede the array.
 
 ### Expressive move (any direction)
 `shape` → `bolder`/`quieter`/`distill` (pick by axis) → `typeset` →

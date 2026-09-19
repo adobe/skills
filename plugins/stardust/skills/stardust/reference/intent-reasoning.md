@@ -71,7 +71,7 @@ using `impeccable-command-map.md` as the reference. The sequence must:
 
 - Start with information gathering if needed
   (`$impeccable critique` against `stardust/current/`,
-  `npx impeccable detect --json`).
+  `"<state.json#impeccable.skillDir>/scripts/impeccable" detect --json`).
 - Place build-or-refine commands in dependency order
   (`shape` before `craft`; `bolder`/`quieter`/`distill` before `polish`).
 - End with `$impeccable polish` unless the user is mid-iteration.

@@ -3,7 +3,7 @@
 ## When to read what
 
 - § File: `stardust/state.json` — before reading or writing state: the full shape.
-- § Hands-off keys · § Credentials key · § Flow keys — when the run is hands-off, migration-bound or a migration flow was chosen: the markers every sub-command checks.
+- § Hands-off keys · § Impeccable key · § Credentials key · § Flow keys — when the run is hands-off, needs impeccable's files, is migration-bound or a migration flow was chosen: the markers every sub-command checks.
 - § Page lifecycle states · § Page types — when moving a page between states or typing it for template reuse across siblings.
 - § Stale flagging — when `direct` resolves a new direction: which pages actually go stale.
 - § State report — when rendering the no-args status view.
@@ -98,6 +98,33 @@ When the run was activated hands-off (`skills/stardust/SKILL.md`
   Absent or empty means one skill per ask. The chain never implies
   publishing: a chained `deploy` or `rollout` stops at preview unless
   the ask said publish.
+
+---
+
+## Impeccable key
+
+Written by the master at Setup 1 (`skills/stardust/scripts/impeccable-version-check.mjs
+--probe --state stardust/state.json`) and refreshed on every Setup run;
+read by any sub-skill that needs impeccable's files (replica/reskin
+`impeccable-ignores.mjs` reads it first) instead of locating the install
+again:
+
+```json
+"impeccable": {
+  "skillDir": "<absolute path ending in skills/impeccable>",
+  "launcher": "scripts/impeccable",
+  "version": "4.3.1",
+  "registryCommands": 23,
+  "probedAt": "<ISO timestamp>",
+  "drift": []
+}
+```
+
+`launcher` is `scripts/impeccable` (4.3+), `scripts/hook-admin.mjs`
+(older installs) or `null`. `drift` lists the load-bearing entries the
+probe could not find (`scripts/command-metadata.json`, the launcher,
+`reference/init.md`, `reference/document.md`); non-empty means the docs'
+impeccable cites may be stale for this install — say so once, never stop.
 
 ---
 
