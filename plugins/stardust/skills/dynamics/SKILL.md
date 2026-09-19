@@ -7,6 +7,32 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 
 # stardust:dynamics — the dynamic surface of a migration
 
+## Operator card
+
+Phases, in order: 1 Detect → 2 Classify → 3 Triage (the gate output) → 4 Implement → 5 Verify. Which phases each caller runs: § When it runs.
+
+| Phase | Command |
+|---|---|
+| 1 | `node skills/dynamics/scripts/dynamics-detect.mjs --from-state stardust/state.json --out stardust/current [--reach stardust/current]` (or `--urls …`) |
+| 2 | class per finding; vendors via `scripts/vendors.json`; `dynamics-plan.mjs --target-origin <host>` marks dead first-party API paths host-bound |
+| 3 | `node skills/dynamics/scripts/dynamics-plan.mjs [--target-origin …] [--migrated stardust/migrated] --out stardust/dynamics`; curate `stardust/dynamic-features.md` + `-plan.md` |
+| 4 | per plan phase, from the pattern catalogue; tooling `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs` |
+| 5 | write `stardust/dynamics/parity.json`; `node skills/dynamics/scripts/dynamics-check.mjs --origin <published origin> [--auth-header … | --token-env SITE_TOKEN]` |
+
+Gates: Phase 3 — a row without a disposition fails the caller's pre-import gate (prepare-migration 4.5 / replica Phase 2 / rollout B2). Phase 4 — each plan phase ends with the flow verified on the published origin at both gate widths, a parity row, a journal entry and a commit. Phase 5 — replayed flows, not presence.
+
+Outputs: `stardust/current/_dynamics.json` + `dynamic-features.generated.md` · `stardust/dynamics/dynamic-features.generated-plan.{md,json}` · `stardust/dynamic-features.md` + `-plan.md` · `helix-query.yaml` · `data/<feature>/*.json` + `_provenance.json` · `scripts/site-config.js` · `stardust/dynamics/parity.json` · `stardust/qa/dynamics-report.{md,json}`.
+
+| At phase | Read |
+|---|---|
+| 1 | `reference/classes-and-signals.md` § Detection procedure · § Known noise |
+| 2 | `reference/classes-and-signals.md` § Classes · § Vendor table · § Origin-bound probe |
+| 3 | `reference/triage.md` § Dispositions · § Reproducibility · § Rules · § `stardust/dynamic-features.md` |
+| 4 | `reference/patterns.md` (one section per pattern); `reference/listings.md` § Mechanics · § Block contract; `reference/off-origin-data.md` § Tier 1 · § Tier 2 · § Tier 3 · § Tier 4 · § Sheet-backed data (class D); `reference/forms.md` § 1. Record the live form · § 2. Key the inventory · § 3. Decide the intake · § 4. The block · § 5. Regulated data; `reference/locale-trees.md` |
+| 5 | `reference/parity-report.md` § Schema · § Rules; `reference/off-origin-data.md` § Verify (flows, not presence); `reference/forms.md` § 6. Verify (flow) |
+
+Sections: When it runs · Phase 1 — Detect · Phase 2 — Classify · Phase 3 — Triage · Phase 4 — Implement · Phase 5 — Verify · Hands-off resolutions · Hard blockers · Artifacts · References.
+
 Static migration treats a page as content and layout. This skill treats it as **behaviour**:
 everything the source renders from JavaScript, a service or a data source, and everything the
 target host cannot serve the same way. Three real migrations found the same thing: the dynamic

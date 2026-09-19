@@ -7,6 +7,35 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 
 # stardust:qa — read-only site QA sweep
 
+## Operator card
+
+Steps, in order: Setup (base URL, inventory source, optional inputs) → 1 deterministic sweep → 2 triage the ambiguous flags → 3 report → allowlist workflow. Read-only throughout.
+
+| Step | Command |
+|---|---|
+| Setup | base from the user or `stardust/rollout/rollout.json` (`site.liveHost`); inventory = `stardust/template-map.json` ∪ paths file ∪ live `sitemap.xml`; append a line to `stardust/status.jsonl` at start/end |
+| 1 | `node <plugin>/skills/qa/scripts/qa.mjs --base <live-url> --template-map stardust/template-map.json --scrape stardust/scrape [--expected-blocks <json>] [--parity <json>] [--auth-header … | --token-env SITE_TOKEN] [--blocks-dir <dir> | --ew-exempt a,b]` — caps/gates: `--checks <subset>`, `--max-pages <n>`, `--fail-on warn` |
+| 1 (no playwright) | `--checks routing,content,templates,metadata,links` |
+| 2 | judge only `content/verbatim-below-threshold` (`evidence.missingNodes`) and `visual/visual-diff` (`evidence.baseline` vs `evidence.current`, `bands`) |
+| 3 | summarize by severity → `stardust/qa/report.html`; recommend, never apply |
+| allowlist | `stardust/qa/allowlist.json` entries with a reason, only for user-confirmed non-defects |
+
+Exit codes: 0 no active errors · 1 active errors · 2 infra failure. Findings that need triage are marked in `report.json`; a crashed check reports as `<check>/check-crashed`.
+
+Outputs (under `stardust/qa/`): `inventory.json` · `report.json` · `report.html` · `shots/` · `baselines/` (first run; local, untracked) · `allowlist.json` (tracked); plus the `stardust/status.jsonl` line.
+
+| At step | Read |
+|---|---|
+| Setup | `../stardust/reference/run-status.md` § Line shape; `../stardust/SKILL.md` § Artifacts you read and write |
+| 1 | `reference/checks.md` § routing · § content · § templates · § rendered · § dynamics · § visual · § metadata · § links · § a11y · § perf · § editability · § ai-readability · § Cross-cutting |
+| 1 (dynamics check) | `../dynamics/reference/parity-report.md` § Schema · § Rules |
+| 1 (editability check) | `../deploy/SKILL.md` § Experience Workspace editability contract (EW1–EW10) |
+| 1 (ai-readability check) | `../deploy/reference/ai-readability.md` § 1 · § 2. Two metrics · § 3. Cause classes and remediation |
+| 2 | `reference/checks.md` § content · § visual |
+| allowlist | `schemas/qa-allowlist.schema.json` |
+
+Sections: Setup · Procedure · Read-only contract · Scheduling / CI.
+
 One live URL in. One evidence-bound findings report out. **This skill never
 edits anything** — not site content, not DA documents, not repo code. Its only
 writes are report artifacts under `stardust/qa/`. If the user wants findings

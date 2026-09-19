@@ -7,6 +7,36 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 
 # stardust:uplift
 
+## Operator card
+
+Phases, in order: Setup → 1 Extract → 2 Tension and trait identification (2a improvements, 2b "what if" candidates) → 2.5 Reference grounding → 3 Pick three directions (3a C's register, 3b C's candidate, 3c B's candidate, 3d `direction.md`) → 4 Direct → 5 Prototype × 3 → 6 Open and summarize. Flags: `--page <slug>`, `--cinematic-register <name>`, `--two-variants`, `--re-extract`.
+
+| Phase | Command |
+|---|---|
+| 1 | `$stardust extract <URL> --single` (skipped when a same-URL extraction < 7 days old exists; `--re-extract` forces) |
+| 2a / 2b | author `stardust/uplift-improvements.md` and `stardust/uplift-questions.md` |
+| 3d | author `stardust/direction.md` with the A / B / C declarations |
+| 4 | invoke the `direct` skill with the three-variant declaration |
+| 5 | `$stardust prototype <slug>` — A first, then B, then C (parallel only via isolated workspace copies); never pass `--cinematic` |
+| 6 | `open stardust/prototypes/<slug>-A-proposed.html` / `-B-proposed.html` / `-C-cinematic.html`; print the three-pitch summary |
+
+Gates: 2a — at least 3 specific weaknesses, each cited, else stop (c); 2b — each candidate cites captured evidence and records `catalog | derived`; 2.5 — references justify the move, captured evidence the trait; 4 — direct's Mode A, IA-priority, density-floor, anti-toolbox and variant-differentiation validators; 5 — prototype Phases 2.5–2.8 per variant, Pass 6 on C, variant-convergence detector. Stops (a)–(e): § Stop conditions.
+
+Outputs: `stardust/{direction.md, uplift-improvements.md, uplift-questions.md}` · `stardust/prototypes/<slug>-{A,B,C}-shape.md`, `-{A,B,C}-proposed.html`, `-C-cinematic.html`, `lenis.min.{js,css}` · root `PRODUCT.md`, `DESIGN.md/json`, `DESIGN-{A,B,C}.md/json`.
+
+| At phase | Read |
+|---|---|
+| Setup | `../stardust/SKILL.md` § Setup |
+| 2a | `../extract/reference/brand-review-template.md` § Tensions |
+| 2b / 3b | `reference/what-if-candidates.md` § The eight candidates (each carries its "Natural register for C") · § Extension rule · § Selection procedure · § Format of `uplift-questions.md` |
+| 2.5 | `../stardust/reference/reference-research.md` § 1. Availability ladder · § 3. Evidence shape · § 4. Hard rules |
+| 3a | `../prototype/reference/motion-registers.md` § The five registers · § Selection heuristic |
+| 4 | `../direct/SKILL.md` § Mode A · § Phase 2.5 — Improvements list · § Phase 2.6 — Multi-variant fork · § IA-priority preservation audit |
+| 5 | `../prototype/SKILL.md` § Phase 2.4 — Motion application · § Phases 2.5 – 2.8 · § Variant-convergence detector; `../prototype/reference/motion-validation.md` § Pass 6 — Cinematic-mode gates; `../prototype/reference/proposed-file-shell.md` § Content sourcing hierarchy · § Hard requirements; `../stardust/reference/state-machine.md` § Concurrency |
+| Outputs | `../stardust/reference/artifact-map.md` § `stardust/uplift-improvements.md` and `stardust/uplift-questions.md` · § `stardust/prototypes/<slug>-cinematic.html` |
+
+Sections: Opinionated defaults · Inputs · Setup · Procedure · The three-variant role contract · Hard constraints · Stop conditions · Outputs · Scope · References.
+
 One entry point. One URL. Three presales-quality redesign variants.
 
 `uplift` collapses the `extract → direct → prototype × 3` chain into a

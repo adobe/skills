@@ -7,6 +7,32 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 
 # stardust:diff — prototype ↔ build reconcile
 
+## Operator card
+
+Steps, in order: Prereq 0 (playwright probe; copy the whole `skills/diff/scripts/` dir into the project) → serve a renderable source → 1 pixel/layout probe → 2 structural probe → read → loop on both.
+
+| Step | Command |
+|---|---|
+| 0 | `node -e "import('playwright').then(()=>process.exit(0))"`; on failure `npm i -D playwright --no-save --legacy-peer-deps`; `lsof -nP -iTCP:<port> -sTCP:LISTEN` to confirm the port is yours |
+| serve | `python3 -m http.server` from the prototype's dir; build side = the decorated page (preview or local harness) |
+| 1 | `node skills/diff/scripts/visual-diff.mjs "$PROTO" "$BUILD" --profile eds|generic [--width <px>] [--main <sel>] [--sections a,b] [--out <dir>]` |
+| 2 | `node skills/diff/scripts/content-diff.mjs "$PROTO" "$BUILD" --profile eds|generic [--width <px>] [--main <sel>] [--json]` |
+| live targets (both) | `--ua <string>`, `--wait-until <state>`, `--dismiss [sel,...]`, `--headed`, `--locale <tag>` — engine `scripts/live-session.mjs` |
+
+Exit codes: 0 ran (flags advisory) · 1 probe error · 3 bot challenge (never measured). Pass bar: visual red flags none/justified AND content-diff 0 structural 🔴 (🟡/🟠 confirmed intended); re-run both after each fix.
+
+Outputs: reports on stdout; `visual-diff` screenshots under `--out <dir>`; `content-diff --json` dumps both inventories.
+
+| At step | Read |
+|---|---|
+| 0 / serve | `../extract/SKILL.md` § Setup |
+| 1 / 2 | `scripts/diff-profiles.mjs` (labels, hints, thresholds per profile); `scripts/content-inventory.mjs` (classifier + differ) |
+| live targets | `../replica/reference/source-fidelity-gate.md` § Hardening rules · § Script adaptations |
+| read (🔴 JOIN/SPLIT) | `../replica/reference/recreation-procedure.md` § Granularity parity |
+| in-loop sibling gates | `../deploy/SKILL.md` § 2b. Section schema + decode tier · § Step 10 — Reconcile on the DEPLOYED URL |
+
+Sections: When to use · The two probes · Run it · Reading content-diff · Profiles · Shared engine + the in-loop sibling · Workflow use.
+
 Two probes that compare a **source** prototype against a **built** page. They catch
 **disjoint** failure classes — run BOTH; either alone gives a false "looks fine".
 

@@ -7,6 +7,36 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 
 # stardust:reskin — same content, donor design
 
+## Operator card
+
+Phases, in order: Setup → 1 INGEST DONOR → 2 CONTENT-MODEL CAPTURE → 3 MAPPING BRIEF → 4 PROGRAMMATIC RENDER → 5 GATES → 6 HANDOFF.
+
+| Phase | Command (project copies under `stardust/scripts/reskin/`) |
+|---|---|
+| Setup | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/reskin/scripts/*` → `stardust/scripts/reskin/` and `skills/diff/scripts/live-session.mjs` → `stardust/scripts/diff/` |
+| 1 | `$stardust extract <content-url> --design-source <donor-url>` (local donor: `python3 -m http.server <port> --directory <path>` first); author `stardust/reskin/donor-tokens.json` + `donor-modules.md` |
+| 2 | `capture-content.mjs --url <page-url> --scope '<sel,...>' --normalize stardust/reskin/normalize/<slug>.mjs --out stardust/reskin/content-model/<slug>/` |
+| 3 | author `stardust/reskin/mapping.md` |
+| 4 | write + run `stardust/reskin/renderers/<archetype>.mjs` → `stardust/reskin/pages/<slug>.html` |
+| 5 | (a) `dom-equality.mjs --source … --source-scope … --normalize … --rendered … --rendered-scope main --report …` + `slot-coverage.mjs --model … --rendered … --report …`; (b) `donor-probe.mjs --tokens … --rendered … --report …` + the side-by-side judgment; (c) overflow check inside donor-probe (`--widths` to override) |
+| 6 | the `migrate` skill (sibling tier) → `deploy` → `rollout` |
+
+Gates: Phase 3 — ≥ 80% of slots `mapped`; every `new-module` composed from donor tokens; chrome swaps and casing policy declared. Phase 5 — (a) byte-equal visible text + ordered image set + metadata carry-over; (b) donor tokens assert within tolerance and the page reads as the donor; (c) no horizontal overflow at either width; one fix iteration per gate family, residuals to `ledger.json`.
+
+Outputs: `stardust/canon-source/` · `stardust/reskin/{donor-tokens.json, donor-modules.md, content-model/<slug>/content-model.json, normalize/<slug>.mjs, mapping.md, renderers/<archetype>.mjs, pages/<slug>.html, reports/, ledger.json}` · `stardust/scripts/reskin/`.
+
+| At phase | Read |
+|---|---|
+| Setup | `../stardust/reference/state-machine.md` § Flow keys |
+| 1 | `reference/donor-sources.md` § 1. Live URL · § Two first-class token-sourcing paths · § 2. Local static prototypes · § 3. Figma · § Pin one reference page · § donor-tokens.json · § donor-modules.md |
+| 2 | `reference/content-model.md` § File shape · § Slot taxonomy · § Scope discovery · § Normalization ledger |
+| 3 | `reference/mapping-brief.md` § Entry schema · § Status semantics and gates · § Slot splitting · § Casing / text-transform policy · § Deltas block |
+| 4 | `reference/content-model.md` § The ordered stream · § When `orderedVerified` is false · § Rendered-case text; `reference/mapping-brief.md` § Flag, don't fix; `reference/gates.md` § Rendered-page conventions |
+| 5 | `reference/gates.md` § (a) Content gate · § (b) Design-adoption gate · § Tolerances · § The side-by-side judgment · § (c) Sanity · § One fix iteration per gate family, then residuals · § Failure modes |
+| 6 | `reference/donor-sources.md` § Two first-class token-sourcing paths; `../migrate/reference/content-preservation.md`; `reference/gates.md` § Relationship to the stardust `diff` skill |
+
+Sections: Inputs · Setup · Procedure · What reskin never does · Stop conditions · Outputs · References.
+
 The user has a site (the **content source**) and a design that already
 exists somewhere else (the **donor**: another live site, or a directory
 of static HTML prototypes; Figma is future scope). Reskin rebuilds the

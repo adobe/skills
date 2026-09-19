@@ -7,6 +7,36 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 
 # stardust:audit
 
+## Operator card
+
+Phases, in order: 0 Setup → 1 Brand surface & tensions → 2 Design & experience critique → 3 SEO & technical (+ Core Web Vitals) → 4 LLM visibility → 5 Reference benchmarking (optional) → 6 Synthesis & report. Non-interactive; flags: `--pages <n>`, `--single`, `--deploy`, `--benchmark`.
+
+| Phase | Command |
+|---|---|
+| 0 | `$stardust extract <url> --cap 8` (or `--single` / `--pages <n>`) unless a same-origin extraction < 7 days old is reused; probe optional capabilities once |
+| 1 | read `stardust/current/_brand-extraction.json` + `brand-review.html` § Tensions surfaced; compute `brandColorShare`, `ctaFragmentation`, `typeScale`, `radiusSprawl` |
+| 2 | invoke impeccable `critique <target>` then `audit <target>` (Claude Code form in the phase text); VISION pass on `assets/screenshots/<slug>.png`; accessibility fold-in |
+| 3 | `marketing-skills:seo-audit` methodology or the tabled curl/Playwright checks; CWV via Playwright or the PSI API; `npx -y modern-web-guidance@latest search "<failure>"` |
+| 4 | `marketing-skills:ai-seo` methodology or the direct checks; `skills/deploy/scripts/ai-readability.mjs --origin <site> <paths>` |
+| 5 | refero MCP (`mcp__refero__refero_search_styles`), forced by `--benchmark` |
+| 6 | score → findings → uplift directions → write `audit.json` → `$impeccable craft` renders `report.html` → `node skills/rollout/scripts/findings.mjs record --source audit:<dimension> …` (rollout projects) → `--deploy` via the DA transport → chat summary |
+
+Gates: evidence floor — an uncited claim does not ship; `not measured (<reason>)` over silent estimates; post-render validation checklist on `report.html`. Stops: (a) extract fails entirely; (b) impeccable unavailable (degraded run, `audit.json` still written).
+
+Outputs: `stardust/audit/<domain-slug>/audit.json` · `stardust/audit/<domain-slug>/report.html` · `stardust/rollout/optimize/findings.json` (appended, rollout projects only).
+
+| At phase | Read |
+|---|---|
+| 0 | `../stardust/SKILL.md` § Setup; `../extract/SKILL.md` § Failure modes |
+| 1 | `../extract/reference/brand-review-template.md` § Tensions; `reference/report-format.md` § Part 1 — `audit.json` schema |
+| 2 | `../prototype/SKILL.md` § Invoking impeccable |
+| 3 | `reference/scoring.md` § `performance`; `../rollout/reference/checks.md` § seo · § accessibility |
+| 4 | `../deploy/reference/ai-readability.md` § 1 · § 2. Two metrics |
+| 6 | `reference/scoring.md` § Scoring procedure · § Severity is orthogonal to score; `reference/report-format.md` § Part 1 · § Part 2 — the `report.html` craft brief · § Post-render validation; `../rollout/reference/audit-sources.md` § Recording an external finding; `../uplift/SKILL.md` § The three-variant role contract; `../prototype/reference/motion-registers.md` § Selection heuristic; `../deploy/da-deploy-protocol.md` |
+| provenance | `../stardust/reference/artifact-map.md` § Provenance shapes |
+
+Sections: Opinionated defaults · Inputs · Phase 0 — Setup · Procedure · Degradation ladder · Hard constraints · Stop conditions · Outputs · Scope · References.
+
 One URL in. One scored, evidence-bound audit out.
 
 `audit` looks at an existing website from three perspectives — design
