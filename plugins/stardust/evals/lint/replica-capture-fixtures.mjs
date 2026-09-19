@@ -82,11 +82,27 @@ const nlc = lsSrc.slice(lsSrc.indexOf('export async function newLiveContext'), l
 check(!/route\.continue\(/.test(nlc) && (nlc.match(/route\.fallback\(/g) || []).length >= 5, 'live-session: every route handler in the newLiveContext stack must use route.fallback() — continue() ends the chain and disabled the header/auth routes in the field');
 check(src(join(REPLICA, 'capture-sidecar.mjs')).includes("'blocked'"), 'capture-sidecar: blocked must be a refusal key');
 for (const f of ['stitch-shot.mjs', 'anchor.mjs', 'chrome-parity.mjs', 'sibling-variance.mjs', 'motion-observe.mjs']) check(/'--block'/.test(src(join(REPLICA, f))) && /block: opts\.block/.test(src(join(REPLICA, f))), `${f}: --block parser case + pass-through to newLiveContext missing`);
+// review-image (T02.2): dependency-free helpers importable without pngjs
+const ri = await import(pathToFileURL(join(REPLICA, 'review-image.mjs')).href);
+{
+  const img = ri.blank(40, 20); ri.drawDigits(img, 2, 2, '10-2', 2);
+  const px = (x, y) => img.data[(y * 40 + x) * 4];
+  check(px(2, 2) === 255 && px(4, 2) === 0, 'review-image: drawDigits must render the 3×5 glyph for "1" (col 0 blank, col 1 ink)');
+  check(JSON.stringify(ri.pickBands([{ y0: 0, y1: 500, pct: 1 }, { y0: 500, y1: 1000, pct: 30 }, { y0: 1000, y1: 1500, pct: 12 }], 2).map((b) => b.y0)) === '[500,1000]', 'review-image: pickBands must take the k worst by pct, returned in y order');
+  const sl = ri.sheetLayout({ n: 12, cols: 3, per: 12 }); check(sl.width <= 2000 && sl.height <= 2000 && sl.rows === 4, `review-image: sheetLayout must stay ≤ 2000 px per side (${sl.width}x${sl.height})`);
+  const bl = ri.bandsLayout({ srcW: 1440, bands: Array.from({ length: 12 }, (_, i) => ({ y0: i * 500, y1: (i + 1) * 500, pct: 1 })), width: 1000 }); check(bl.height <= 1500 && bl.rows.length < 12, `review-image: bandsLayout must cap the strip at 1500 px (${bl.height}, ${bl.rows.length} rows)`);
+  const src2 = ri.blank(4, 2, [0, 0, 0, 255]); for (let x = 2; x < 4; x++) for (let y = 0; y < 2; y++) { const i = (y * 4 + x) * 4; src2.data[i] = 255; src2.data[i + 1] = 255; src2.data[i + 2] = 255; }
+  const dst = ri.blank(1, 1); ri.downscaleInto(src2, 0, 0, 4, 2, dst, 0, 0, 1, 1); check(dst.data[0] === 128, `review-image: downscaleInto must box-average (got ${dst.data[0]})`);
+}
+const pcSrc = src(join(REPLICA, 'pixel-compare.mjs'));
+check(/'--review'/.test(pcSrc) && /renderBands\(/.test(pcSrc) && /review image:/.test(pcSrc), 'pixel-compare: --review must render the strip in-process and print `review image:`');
+check(pcSrc.indexOf('const pass = pct <= opts.threshold') > pcSrc.indexOf('renderBands({') && /verdict unaffected/.test(pcSrc), 'pixel-compare: the review render must sit before the verdict and never touch it (try/catch to stderr)');
 // gate.sh contracts
 const gate = src(join(REPLICA, 'gate.sh'));
 check(/\[ \$rc -eq 5 \]/.test(gate), 'gate.sh: rc 5 (invalid capture) branch missing — must remove the partial PNG and re-exit 5, never compare');
 check(/--expect-height \$EXPECT/.test(gate), 'gate.sh: --expect-height from the crawl screenshot missing on the live capture');
 check(/\[ \$rc -eq 124 \]/.test(gate), 'gate.sh: exit 124 handling must stay');
+check(/--review "\$DIR\/review-\$LBL\.png"/.test(gate), 'gate.sh: pixel-compare line must pass --review review-<label>.png');
 check(/GATE_BLOCK/.test(gate) && (gate.match(/\$STITCH_COMMON/g) || []).length >= 2, 'gate.sh: GATE_BLOCK must reach BOTH stitch-shot calls');
 
 // ---------------------------------------------------------------- deps
@@ -254,6 +270,34 @@ async function layer2(deps) {
     }
     const cmp = await run('stitch-shot.mjs', [`${base}/static.html`, 'out/cmp.png', ...W, '--block', 'onetrust']);
     check(cmp.status === 0 && /names a consent manager \(onetrust\)/.test(cmp.stderr), `--block onetrust: must warn that it is a consent decision (D3)\n${cmp.stderr}`);
+
+    // ---- T02.2 review-image: strip via pixel-compare --review, standalone --bands, --sheet with legend
+    const mk = (w, h, f) => { const im = new PNG({ width: w, height: h }); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = (y * w + x) * 4; const [r, g, b2] = f(x, y); im.data[i] = r; im.data[i + 1] = g; im.data[i + 2] = b2; im.data[i + 3] = 255; } return im; };
+    const stripe = (x, y) => ((Math.floor(y / 40) + Math.floor(x / 60)) % 2 ? [40, 60, 200] : [250, 250, 250]);
+    const A = mk(800, 3000, stripe);
+    const B = mk(800, 3000, (x, y) => (y >= 1000 && y < 1500 ? stripe(x, y + 20) : stripe(x, y))); // band 1000–1500 shifted 20 px
+    writeFileSync(join(tmp, 'out/A.png'), PNG.sync.write(A)); writeFileSync(join(tmp, 'out/B.png'), PNG.sync.write(B));
+    const pcr = await run('pixel-compare.mjs', ['out/A.png', 'out/B.png', '--out', 'out/dAB.png', '--review', 'out/review-x.png', '--json-out', 'out/gate-x.json', '--timeout', '30']);
+    check([0, 2].includes(pcr.status) && /^review image: out\/review-x\.png/m.test(pcr.stdout) && existsSync(join(tmp, 'out/review-x.png')), `pixel-compare --review: strip must be written and announced (exit ${pcr.status})\n${pcr.stdout}${pcr.stderr}`);
+    if (existsSync(join(tmp, 'out/review-x.png'))) {
+      const rv = png(join(tmp, 'out/review-x.png')); check(rv.width === 1000 && rv.height <= 1500 && rv.height > 100, `review strip: expected 1000 × ≤1500, got ${rv.width}x${rv.height}`);
+      const gx = JSON.parse(readFileSync(join(tmp, 'out/gate-x.json'), 'utf8')); check(gx.review === 'out/review-x.png' && Array.isArray(gx.bands), 'pixel-compare --review: --json-out must carry review');
+    }
+    const rb = await run('review-image.mjs', ['--bands', 'out/A.png', 'out/B.png', '--out', 'out/rb.png', '--json', 'out/gate-x.json', '--diff', 'out/dAB.png', '--top', '2']);
+    check(rb.status === 0 && /review strip: 2 band\(s\) \[.*1000–1500 48\.\d%/.test(rb.stdout) && existsSync(join(tmp, 'out/rb.png')), `review-image --bands: exit ${rb.status}\n${rb.stdout}${rb.stderr}`);
+    const ry = await run('review-image.mjs', ['--bands', 'out/A.png', 'out/B.png', '--out', 'out/ry.png', '--y', '1000', '--height', '500']);
+    check(ry.status === 0 && existsSync(join(tmp, 'out/ry.png')), `review-image --bands --y/--height: exit ${ry.status}\n${ry.stderr}`);
+    mkdirSync(join(tmp, 'shots'));
+    for (let i = 0; i < 5; i++) writeFileSync(join(tmp, 'shots', `page-${i}.png`), PNG.sync.write(mk(600, i === 4 ? 900 : 4000, stripe)));
+    const sh2 = await run('review-image.mjs', ['--sheet', 'shots', '--out', 'out/sheet-NN.png', '--per', '4', '--cols', '2']);
+    check(sh2.status === 0 && existsSync(join(tmp, 'out/sheet-01.png')) && existsSync(join(tmp, 'out/sheet-02.png')) && existsSync(join(tmp, 'out/sheet-01.json')), `review-image --sheet: two sheets + legends expected (exit ${sh2.status})\n${sh2.stdout}${sh2.stderr}`);
+    if (existsSync(join(tmp, 'out/sheet-01.json'))) {
+      const l1 = JSON.parse(readFileSync(join(tmp, 'out/sheet-01.json'), 'utf8')); const l2 = JSON.parse(readFileSync(join(tmp, 'out/sheet-02.json'), 'utf8'));
+      check(l1.tiles.length === 4 && l2.tiles.length === 1 && l1.tiles[0].slug === 'page-0' && l1.tiles[0].cropTop === 1200 && l1.tiles[0].cropTail === 600 && l2.tiles[0].cropTail === 0, `review-image --sheet: legend wrong ${JSON.stringify(l1.tiles[0])} / ${JSON.stringify(l2.tiles[0])}`);
+      const s1 = png(join(tmp, 'out/sheet-01.png')); check(s1.width <= 2000 && s1.height <= 2000, `sheet-01: ${s1.width}x${s1.height} exceeds 2000 px`);
+    }
+    const badArgs = await run('review-image.mjs', ['--bands', 'out/A.png']);
+    check(badArgs.status === 1, 'review-image: missing --out must exit 1');
   } finally {
     third.srv.close();
     srv.close();

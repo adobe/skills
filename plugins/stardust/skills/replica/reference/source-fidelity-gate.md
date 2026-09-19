@@ -311,8 +311,13 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   item 5); style deltas are named in one pass, pixels only say where.
 - Every fix cites the instrument line that demanded it.
 - Images are read per `../../stardust/reference/context-hygiene.md` § Image
-  reads: at most one band crop per hot band the instruments name, ≤ 10 per
-  round, never `live.png`/`proto.png`/`diff*.png` whole.
+  reads: **`review-<label>.png` first** — `gate.sh` writes it every round
+  (`pixel-compare --review`; standalone `../scripts/review-image.mjs
+  --bands`): the 3 worst bands as [live | build] rows with a diff heat bar,
+  one Read for the whole round. Then at most one full-resolution band per
+  hot band still unexplained (`crop-compare --out`), ≤ 10 per round, never
+  `live.png`/`proto.png`/`diff*.png` whole. Recorded: 80 side-by-side reads
+  that were already display-sized killed a session — the count is the cost.
 - **Before counting an iteration, verify the fix changed the render.** A
   byte-identical differing-pixel count after a "fix" means the rule was a
   no-op (recorded: a padding whose value the EDS section wrapper already

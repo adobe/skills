@@ -28,7 +28,10 @@
 #     "http://localhost:8791/home-proposed.html" 1440 iter2
 #
 # Evidence lands in stardust/replica/gates/<slug>-<width>/
-# (live.png, build.png, diff-<label>.png, gate-<label>.json).
+# (live.png, build.png, diff-<label>.png, review-<label>.png, gate-<label>.json).
+# review-<label>.png is the round's ONE image to read: the 3 worst bands as
+# [live | build] rows with a diff heat bar (pixel-compare --review); open a
+# full-resolution band only via crop-compare --out.
 #
 # gate-<label>.json is the round's RECORD — pixel-compare's --json-out
 # (pixelPct, pixelPctUnmasked, masks[] with area %, heightDelta, bands) plus
@@ -216,7 +219,7 @@ rc=$?
 
 # pixel-compare supervises its own deadline (--timeout); exit 124 = no verdict.
 # shellcheck disable=SC2086
-node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --timeout "$COMPARE_TIMEOUT" --json-out "$DIR/gate-$LBL.json" $FORCE
+node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --review "$DIR/review-$LBL.png" --timeout "$COMPARE_TIMEOUT" --json-out "$DIR/gate-$LBL.json" $FORCE
 rc=$?
 
 # Round record: regime + reference + verdict are EMITTED here (see header) so

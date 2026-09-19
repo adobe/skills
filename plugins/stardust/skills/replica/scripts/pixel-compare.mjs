@@ -45,6 +45,13 @@
  *                          has a sidecar. Without it that pair exits 1 with a
  *                          named message (./capture-sidecar.mjs): a mixed
  *                          compare is a false round, not a measurement.
+ *     --review <file>      write the review strip (review-image.mjs --bands: the 3
+ *                          worst bands as [A | B] rows + diff heat bar, ≤ 1000×1500)
+ *                          after the diff; gate.sh passes review-<label>.png. Runs
+ *                          inside the supervised worker; a failure is one stderr
+ *                          line and never touches the verdict or the exit code.
+ *                          Read THIS first (one image per round — context-hygiene
+ *                          § Image reads); crop-compare --out for one named band.
  *     --timeout <s>        hard wall-clock deadline (default 120; 0 disables).
  *                          Enforced from a supervising process (the compare
  *                          itself is synchronous, so an in-process timer could
@@ -84,6 +91,7 @@ import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { runCapped, DEADLINE_EXIT } from './run-capped.mjs';
 import { requireComparable } from './capture-sidecar.mjs';
+import { renderBands } from './review-image.mjs';
 
 const HELP = `pixel-compare — pixelmatch two stitched full-page PNGs with per-band breakdown
 
@@ -97,6 +105,7 @@ Usage: node pixel-compare.mjs <a.png> <b.png> [options]
   --json              machine-readable summary on stdout
   --json-out <file>   write the summary to <file>, keep the human verdict on stdout
   --force             compare captures whose provenance sidecars differ (exit 1 otherwise)
+  --review <file>     write the review strip (3 worst bands, [A | B] + heat bar) — read it instead of crops
   --timeout <s>       hard deadline, exit 124 when hit (default 120; 0 disables)
   --help              this text
 
@@ -106,7 +115,7 @@ function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { out: 'diff.png', threshold: 10, band: 500, pmThreshold: 0.1, json: false, jsonOut: null, masks: [], timeout: 120, worker: false, force: false };
+  const opts = { out: 'diff.png', threshold: 10, band: 500, pmThreshold: 0.1, json: false, jsonOut: null, masks: [], timeout: 120, worker: false, force: false, review: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--out') { opts.out = rest[i += 1]; }
@@ -118,6 +127,7 @@ function parseArgs(argv) {
     else if (a === '--timeout') { opts.timeout = Number(rest[i += 1]); }
     else if (a === '--worker') { opts.worker = true; }
     else if (a === '--force') { opts.force = true; }
+    else if (a === '--review') { opts.review = rest[i += 1]; }
     else if (a === '--mask') {
       for (const spec of rest[i += 1].split(',').map((s) => s.trim()).filter(Boolean)) {
         const m = spec.match(/^(\d+):(\d+)(?:@(\d+))?$/);
@@ -209,11 +219,24 @@ function main() {
     bands.push({ y0, y1: y0 + hh, pct: (100 * count) / (w * hh) });
   }
 
+  // --review: the round's one image — rendered from the buffers already in
+  // memory, written after the diff, never on the verdict path.
+  let review = null;
+  if (opts.review) {
+    try {
+      const { img } = renderBands({ a: ca, b: cb, diff, bands, width: 1000, top: 3 });
+      const outPng = new PNG({ width: img.width, height: img.height }); img.data.copy(outPng.data);
+      mkdirSync(dirname(opts.review), { recursive: true });
+      writeFileSync(opts.review, PNG.sync.write(outPng));
+      review = opts.review;
+    } catch (e) { console.error(`pixel-compare: review strip not written (${e.message}) — verdict unaffected`); }
+  }
+
   const pass = pct <= opts.threshold;
   // Field names mirror the ledger (source-fidelity-gate.md § Residual logging
   // format) so `result` is copied from here, never typed: pixelPct,
   // pixelPctUnmasked, heightDelta, pass, masks[].
-  const summary = { a: aPath, b: bPath, compared: { width: w, height: h }, heightDelta, differingPixels: n, pct: Number(pct.toFixed(2)), pixelPct: Number(pct.toFixed(2)), pixelPctUnmasked: Number(pctUnmasked.toFixed(2)), threshold: opts.threshold, pass, diff: opts.out, masks, maskedRows, bands: bands.map((x) => ({ ...x, pct: Number(x.pct.toFixed(1)) })), ...prov };
+  const summary = { a: aPath, b: bPath, compared: { width: w, height: h }, heightDelta, differingPixels: n, pct: Number(pct.toFixed(2)), pixelPct: Number(pct.toFixed(2)), pixelPctUnmasked: Number(pctUnmasked.toFixed(2)), threshold: opts.threshold, pass, diff: opts.out, masks, maskedRows, bands: bands.map((x) => ({ ...x, pct: Number(x.pct.toFixed(1)) })), ...(review ? { review } : {}), ...prov };
   if (opts.jsonOut) { mkdirSync(dirname(opts.jsonOut), { recursive: true }); writeFileSync(opts.jsonOut, `${JSON.stringify(summary, null, 2)}\n`); }
   if (opts.json) {
     console.log(JSON.stringify(summary, null, 2));
@@ -222,6 +245,7 @@ function main() {
     if (Math.abs(heightDelta) > 8) console.log(`  ⚠ height delta ${heightDelta}px — overlap-crop hides the tail; fix heights before trusting the %`);
     console.log(`differing pixels: ${n} / ${denom} = ${pct.toFixed(2)}%  (threshold ${opts.threshold}%) → ${pass ? 'PASS' : 'FAIL'}${maskedRows ? `  [MASKED ${maskedRows} rows: ${masks.map((m) => `${m.spec} (${m.areaPct}%)`).join(', ')} — authored-volatile, excluded; unmasked ${pctUnmasked.toFixed(2)}%]` : ''}`);
     console.log(`diff image: ${opts.out}`);
+    if (review) console.log(`review image: ${review}  (3 worst bands, A | B + heat bar — read this, not the crops; crop-compare --out for one band at full resolution)`);
     for (const bd of bands) {
       console.log(`  y ${String(bd.y0).padStart(6)}–${bd.y1}: ${bd.pct.toFixed(1)}%${bd.pct > 15 ? '  ◄◄ hot band' : ''}`);
     }
