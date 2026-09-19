@@ -511,7 +511,19 @@ rather than erroring.
    `deny` is right when accepting loads nondeterministic third-party
    walls the build cannot carry; in `deny` the accept list is never
    tried, and a dialog that cannot be rejected is an invalid capture
-   (exit 5, no PNG, no verdict) — never a silent accept.
+   (exit 5, no PNG, no verdict) — never a silent accept. The shared
+   dismissal inspects every match of a selector and clicks the first
+   visible one, falls back to an exact multilingual label (en/de/fr/it/
+   es/nl/nb/da/sv/pt/pl, overlay-scoped, selectors first), sweeps child
+   frames and open shadow roots, and re-runs all of it inside one late-mount
+   window. What no click removes — CMP re-open launcher, accessibility
+   trigger, feedback tab — is hidden (`visibility`, layout kept) on BOTH
+   sides (`--no-dismiss-defaults` disables the list; `--remove-text
+   "<phrase>"` is the last resort for one undismissable bar, both sides).
+   A consent container still visible after the window is **exit 5** on
+   stitch-shot (`consent present, not dismissed — <container>`; `--consent
+   <sel>` or `GATE_ALLOW_CONSENT=1` / `--allow-consent` on both sides) and
+   a `WARN consent present` on the structural probes.
 7. **Granularity parity for JOIN/SPLIT false-reds (#87)** — mirror live
    node granularity or confirm-justify per
    `recreation-procedure.md` § Granularity parity.

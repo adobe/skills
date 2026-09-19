@@ -127,6 +127,13 @@
  *                         "text:<label>" matches a button by its exact label
  *                         (recorded as consent.via "text:<label>")
  *     --consent-mode <m>  accept | deny (default accept; see above)
+ *     --allow-consent     capture even when a consent container is still
+ *                         visible after the dismissal window (default exit 5)
+ *     --no-dismiss-defaults  keep live-session's persistent-widget HIDE list
+ *                         off (the click passes always run)
+ *     --remove-text <phrase>  hide the nearest fixed/sticky ancestor of any
+ *                         element containing <phrase> (repeatable; last
+ *                         resort for an undismissable bar — run on BOTH sides)
  *     --dismiss <sel,...> extra overlay-dismiss selectors (marketing modals
  *                         with non-standard close controls)
  *     --headed[=window]    bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
@@ -144,8 +151,10 @@
  * Exit codes: 0 written (PNG + sidecar), 1 error (incl. scroll stall /
  * deflection), 3 bot challenge (live side blocked — fail loud, never
  * captured), 5 invalid capture — no PNG, no sidecar, NO VERDICT, never a
- * FAIL: --consent-mode deny with a dialog present but no reject control (or
- * accepted); settled height < 40 % of --expect-height after one retry; an
+ * FAIL: a consent container still visible after the dismissal window (deny
+ * mode: no reject control, or accepted; accept mode: nothing matched —
+ * --consent <sel>/"text:<label>" or --allow-consent on BOTH sides); settled
+ * height < 40 % of --expect-height after one retry; an
  * error-boundary page; an overlay still covering > 30 % of the first
  * viewport after dismissal (--allow-overlay). gate.sh maps 5 like 3.
  */
@@ -180,7 +189,7 @@ if (!LIVE_SESSION) {
   console.error('stitch-shot error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { REAL_CHROME_UA, TIERS, isLiveHttpUrl, launchLadder, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays } = await import(pathToFileURL(LIVE_SESSION).href);
+const { REAL_CHROME_UA, TIERS, isLiveHttpUrl, launchLadder, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays, installOverlayWatch, readOverlayWatch } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `stitch-shot — scroll-and-stitch full-page screenshot (symmetric capture instrument)
 
@@ -195,6 +204,9 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --allow-overlay   capture even when a fixed / dialog element covers > 30 % of the first viewport
   --consent <sel>   extra consent selector (clicked, not removed); "text:<label>" for a label match
   --consent-mode <m> accept | deny (default accept; deny with no reject control, or accepted → exit 5)
+  --allow-consent   capture even when a consent container is still visible after dismissal (default: exit 5)
+  --no-dismiss-defaults  do not hide the persistent-widget list (CMP launcher, feedback tab…); clicks still run
+  --remove-text <phrase> hide the nearest fixed/sticky ancestor of an element containing <phrase> (repeatable; last resort, BOTH sides)
   --dismiss <sel,…> extra overlay-dismiss selectors (marketing modals etc.)
   --headed[=window]  bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB) for geo determinism
@@ -214,7 +226,7 @@ function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { width: 1440, vh: 900, settle: false, consent: null, consentMode: 'accept', dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000, keepPinned: false, expectHeight: null, exclude: [], excludeLiveOnly: false, allowOverlay: false };
+  const opts = { width: 1440, vh: 900, settle: false, consent: null, consentMode: 'accept', dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000, keepPinned: false, expectHeight: null, exclude: [], excludeLiveOnly: false, allowOverlay: false, allowConsent: false, hideDefaults: true, removeText: [] };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -225,6 +237,9 @@ function parseArgs(argv) {
     else if (a === '--exclude') { opts.exclude = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
     else if (a === '--exclude-live-only') { opts.excludeLiveOnly = true; }
     else if (a === '--allow-overlay') { opts.allowOverlay = true; }
+    else if (a === '--allow-consent') { opts.allowConsent = true; }
+    else if (a === '--no-dismiss-defaults') { opts.hideDefaults = false; }
+    else if (a === '--remove-text') { const v = rest[i += 1]; if (!v) { console.error(`--remove-text needs a phrase\n\n${HELP}`); process.exit(1); } opts.removeText.push(v); }
     else if (a === '--consent') { opts.consent = rest[i += 1]; }
     else if (a === '--consent-mode') { opts.consentMode = rest[i += 1]; if (!['accept', 'deny'].includes(opts.consentMode)) { console.error(`--consent-mode must be accept or deny\n\n${HELP}`); process.exit(1); } }
     else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
@@ -263,7 +278,7 @@ function consentSelector(spec) {
 // Dismiss both overlay classes (consent + timed marketing modals) via
 // live-session, log what was closed, and note that the mouse is parked by
 // dismissOverlays itself (bottom-left — rule 10).
-async function dismissAndLog(page, url, opts, prov) {
+async function dismissAndLog(page, url, opts, prov, { lateWindowMs = isLiveHttpUrl(url) ? 6000 : 0 } = {}) {
   const cs = consentSelector(opts.consent);
   const deny = opts.consentMode === 'deny';
   // live-session owns both consent passes: --consent is the accept selector
@@ -274,8 +289,23 @@ async function dismissAndLog(page, url, opts, prov) {
     mode: opts.consentMode,
     reject: deny && cs ? [cs.sel] : [],
     extra: [...(!deny && cs ? [cs.sel] : []), ...opts.dismiss],
-    lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0,
+    lateWindowMs,
+    hideDefaults: opts.hideDefaults,
+    removeText: opts.removeText,
   });
+  // Persistent widgets hidden by live-session (both sides, layout kept) —
+  // printed and recorded so the pair's hidden lists can be compared.
+  for (const h of d.hidden || []) {
+    if (!prov.hidden.some((x) => x.kind === h.kind && x.sel === h.sel)) prov.hidden.push(h);
+    if (h.count > 0) console.log(`hidden ${h.count} persistent widget(s) via ${h.sel} (${h.kind}; visibility, layout kept)`);
+    else if (h.kind === 'remove-text') console.log(`--remove-text ${h.sel.slice(5)}: no element matched`);
+  }
+  // Fail loud (accept mode): a consent container still up after the window
+  // is not the reference state — exit 5 unless --allow-consent (both sides).
+  if (!deny && d.consentPresent) {
+    if (!opts.allowConsent) throw new InvalidCaptureError(`consent present, not dismissed — ${d.consentContainer}: pass --consent <sel> (or "text:<label>") or --allow-consent (BOTH sides). Not captured: a banner baked into every chunk is not the page.`);
+    console.log(`WARN consent present, not dismissed (${d.consentContainer}) — captured anyway (--allow-consent)`);
+  }
   if (deny) {
     // A deny-state capture must be deny-state: an accepted dialog (instrument
     // defect) or a dialog still up with nothing to reject is NOT captured —
@@ -301,6 +331,7 @@ async function dismissAndLog(page, url, opts, prov) {
     if (isConsent && prov.consent.via === 'none-detected') prov.consent.via = cs.via;
   }
   for (const sel of d.marketing) { console.log(`marketing modal dismissed via ${sel}`); prov.dismissed.push({ kind: 'marketing', sel }); }
+  for (const f of d.frames || []) { console.log(`frame overlay dismissed via ${f}`); prov.dismissed.push({ kind: 'frame', sel: f }); }
   return d;
 }
 
@@ -489,7 +520,7 @@ async function main() {
     }
     await page.waitForTimeout(opts.wait);
     // provenance accumulates through the run; written as <out>.json at the end
-    const prov = { consent: { mode: opts.consentMode, via: 'none-detected' }, dismissed: [], fontsFailed: [] };
+    const prov = { consent: { mode: opts.consentMode, via: 'none-detected' }, dismissed: [], fontsFailed: [], hidden: [] };
     await dismissAndLog(page, url, opts, prov);
 
     if (opts.settle) {
@@ -503,7 +534,6 @@ async function main() {
     // --exclude: in-flow third-party widgets (chat launchers, feedback tabs)
     // that no dismissal removes. display:none AFTER the settle so layout
     // drops them the same way on both sides; the sidecar records the list.
-    prov.hidden = [];
     if (opts.exclude.length) {
       const counts = await page.evaluate((sels) => sels.map((sel) => { let n = 0; try { for (const el of document.querySelectorAll(sel)) { el.style.setProperty('display', 'none', 'important'); n += 1; } } catch { n = -1; } return n; }), opts.exclude);
       opts.exclude.forEach((sel, i) => {
@@ -511,6 +541,12 @@ async function main() {
         console.log(`excluded ${counts[i] < 0 ? '(bad selector)' : `${counts[i]} element(s)`} via ${sel}${opts.excludeLiveOnly ? '  ASYMMETRIC (--exclude-live-only: applied on this side only)' : ''}`);
       });
     }
+
+    // Late-mount watch: overlays that mount AFTER the dismissal passes would be
+    // baked into every chunk below their arrival (recorded: a consent banner
+    // in ~7 chunks). A MutationObserver flags new fixed/dialog nodes; the chunk
+    // loop re-sweeps (one pass, no late window) when it reports any.
+    await installOverlayWatch(page);
 
     // Short-capture guard, instrument-internal first: a load race leaves the
     // page short at the settled height (recorded: a 360 capture of 1557 px on
@@ -667,6 +703,13 @@ async function main() {
         throw new Error(`scroll deflection at chunk target ${target}px: window.scrollY landed at ${actualY}px (${target - actualY}px short) — scroll snapping / scroll anchoring moved the viewport; the stitched rows in between would be unfilled. Not captured.`);
       }
       prevActualY = actualY;
+      const late = await readOverlayWatch(page);
+      if (late.length) {
+        console.log(`late overlay mounted before chunk ${chunks.length + 1}: ${late.join(', ')} — re-sweeping`);
+        await dismissAndLog(page, url, opts, prov, { lateWindowMs: 0 });
+        await page.evaluate((ty) => window.scrollTo(0, ty), target);
+        await page.waitForTimeout(200);
+      }
       // Chunks 2+: hide pinned chrome (fixed + stuck sticky) for the shot,
       // restore right after — chunk 1 keeps everything for the chrome crop gate.
       const hideNow = !opts.keepPinned && chunks.length > 0;
@@ -693,7 +736,7 @@ async function main() {
     const dpr = await page.evaluate(() => window.devicePixelRatio).catch(() => 1);
     const side = writeSidecar(out, {
       url, width: opts.width, vh: opts.vh, dpr, capturedAt: new Date().toISOString(),
-      instrument: { ...INSTRUMENT, options: { settle: opts.settle, headed: opts.headed, startTier: resolveStartTier(opts.headed), locale: opts.locale, wait: opts.wait, timeout: opts.timeout, consent: opts.consent, dismiss: opts.dismiss, keepPinned: opts.keepPinned, exclude: opts.exclude, excludeLiveOnly: opts.excludeLiveOnly, expectHeight: opts.expectHeight, allowOverlay: opts.allowOverlay } },
+      instrument: { ...INSTRUMENT, options: { settle: opts.settle, headed: opts.headed, startTier: resolveStartTier(opts.headed), locale: opts.locale, wait: opts.wait, timeout: opts.timeout, consent: opts.consent, dismiss: opts.dismiss, keepPinned: opts.keepPinned, exclude: opts.exclude, excludeLiveOnly: opts.excludeLiveOnly, expectHeight: opts.expectHeight, allowOverlay: opts.allowOverlay, allowConsent: opts.allowConsent, hideDefaults: opts.hideDefaults, removeText: opts.removeText } },
       consent: prov.consent, dismissed: prov.dismissed, fontsFailed: prov.fontsFailed,
       docHeight: totalH, chunks: chunks.length, source: 'stitch-shot', technique: TIERS[tier - 1], tier,
       pinnedHidden: [...pinnedHidden], pendingDecodes, tail, hidden: prov.hidden, seamRepeats: seams,

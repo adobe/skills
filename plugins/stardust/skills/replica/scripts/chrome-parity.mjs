@@ -70,7 +70,7 @@ if (!LIVE_SESSION) {
   console.error('chrome-parity error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { isLiveHttpUrl, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil } = await import(pathToFileURL(LIVE_SESSION).href);
+const { isLiveHttpUrl, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays, reportOverlayResidue, defaultWaitUntil } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `chrome-parity — computed-style + rect diff of matched chrome elements (live vs build)
 
@@ -256,7 +256,8 @@ async function probeSide(browser, url, opts, isLive) {
   const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 } });
   const page = await ctx.newPage();
   await gotoLive(page, url, { waitUntil: defaultWaitUntil(url), settleMs: isLiveHttpUrl(url) ? 2500 : 1200, tier: isLive ? opts.tier : 1 });
-  await dismissOverlays(page, { mode: opts.consentMode, reject: isLive && opts.consentMode === 'deny' && opts.consent ? [opts.consent] : [], extra: isLive ? [...(opts.consent && opts.consentMode !== 'deny' ? [opts.consent] : []), ...opts.dismiss] : [], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
+  const dOv = await dismissOverlays(page, { mode: opts.consentMode, reject: isLive && opts.consentMode === 'deny' && opts.consent ? [opts.consent] : [], extra: isLive ? [...(opts.consent && opts.consentMode !== 'deny' ? [opts.consent] : []), ...opts.dismiss] : [], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
+  reportOverlayResidue('chrome-parity', dOv);
   await settleTop(page);
   const out = {};
   for (const reg of opts.regions) out[reg.name] = await page.evaluate(probeRegion, isLive ? reg.live : reg.build);

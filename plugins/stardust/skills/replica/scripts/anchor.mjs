@@ -72,7 +72,7 @@ if (!LIVE_SESSION) {
   console.error('anchor error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { isLiveHttpUrl, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil } = await import(pathToFileURL(LIVE_SESSION).href);
+const { isLiveHttpUrl, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays, reportOverlayResidue, defaultWaitUntil } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `anchor — per-section [y, height] probe (run on BOTH sides, fix the first mismatch top-down)
 
@@ -144,7 +144,8 @@ async function main() {
     const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 } });
     const page = await ctx.newPage();
     await gotoLive(page, url, { waitUntil: defaultWaitUntil(url), settleMs: isLiveHttpUrl(url) ? 2500 : 1200, tier: opts.tier });
-    await dismissOverlays(page, { mode: opts.consentMode, reject: opts.consentMode === 'deny' && opts.consent ? [opts.consent] : [], extra: [...(opts.consent && opts.consentMode !== 'deny' ? [opts.consent] : []), ...opts.dismiss], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
+    const dOv = await dismissOverlays(page, { mode: opts.consentMode, reject: opts.consentMode === 'deny' && opts.consent ? [opts.consent] : [], extra: [...(opts.consent && opts.consentMode !== 'deny' ? [opts.consent] : []), ...opts.dismiss], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
+    reportOverlayResidue('anchor', dOv);
 
     // Slow-scroll settle before measuring — pre-settle heights are fake on
     // entrance-animated / lazy-loading pages (recreation-procedure.md

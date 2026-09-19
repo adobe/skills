@@ -45,7 +45,9 @@
 # 1 capture/compare error (incl. incomparable captures), 4 build-side
 # identity assertion failed (the URL serves something that isn't this
 # project's page — wrong/stale server), 5 invalid capture — no verdict,
-# never a FAIL (consent dialog present and --consent-mode deny impossible;
+# never a FAIL (consent dialog still present after the dismissal window —
+# in deny mode nothing to reject, in accept mode nothing matched: pass
+# --consent <sel> via the crawl log's consent.method, or GATE_ALLOW_CONSENT=1;
 # live settled height < 40 % of the crawl screenshot's after one retry;
 # error-boundary page; an overlay still covering > 30 % of the first
 # viewport — the partial PNG is removed, nothing is cached), 124 instrument
@@ -71,6 +73,8 @@
 #   GATE_STITCH_TIMEOUT  seconds per stitch-shot          (default 300)
 #   GATE_COMPARE_TIMEOUT seconds per pixel-compare        (default 120)
 #   GATE_REAP_MIN        stale-instrument age in minutes  (default 15; 0 disables)
+#   GATE_ALLOW_CONSENT=1 pass --allow-consent to BOTH captures (a consent
+#                        container that survives dismissal is otherwise exit 5)
 set -u
 
 SLUG=${1:?usage: gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>] [--live-from-capture <png>] [--regime prototype|published-origin]}
@@ -102,6 +106,8 @@ CONSENT_MODE=${GATE_CONSENT_MODE:-}
 [ -z "$CONSENT_MODE" ] && CONSENT_MODE=$(node -e 'try{const j=JSON.parse(require("fs").readFileSync("stardust/replica/progress.json","utf8"));process.stdout.write(j.captureState&&j.captureState.consent||"")}catch{}' 2>/dev/null)
 CONSENT_MODE=${CONSENT_MODE:-accept}
 COMPARE_TIMEOUT=${GATE_COMPARE_TIMEOUT:-120}
+STITCH_COMMON=""
+[ "${GATE_ALLOW_CONSENT:-0}" = "1" ] && STITCH_COMMON="--allow-consent"
 REAP_MIN=${GATE_REAP_MIN:-15}
 capped() { local t=$1 l=$2; shift 2; node "$HERE/run-capped.mjs" --timeout "$t" --label "$l" -- "$@"; }
 
@@ -190,7 +196,7 @@ EXPECT_ARGS=""
 [ -n "$EXPECT" ] && [ "$EXPECT" -gt 0 ] 2>/dev/null && EXPECT_ARGS="--expect-height $EXPECT"
 if [ ! -f "$DIR/live.png" ]; then
   # shellcheck disable=SC2086
-  capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle --consent-mode "$CONSENT_MODE" $EXPECT_ARGS
+  capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle --consent-mode "$CONSENT_MODE" $EXPECT_ARGS $STITCH_COMMON
   rc=$?
   [ $rc -eq 124 ] && rm -f "$DIR/live.png" "$DIR/live.png.json"   # never leave a partial live capture to be reused
   [ $rc -eq 5 ] && { rm -f "$DIR/live.png" "$DIR/live.png.json"; echo "gate.sh: live capture INVALID (exit 5: short capture / overlay / error page / consent not deniable) — not a verdict, never a FAIL; nothing cached" >&2; exit 5; }
@@ -198,7 +204,8 @@ if [ ! -f "$DIR/live.png" ]; then
 fi
 
 # Build side: re-captured every iteration.
-capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W" --consent-mode "$CONSENT_MODE"
+# shellcheck disable=SC2086
+capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W" --consent-mode "$CONSENT_MODE" $STITCH_COMMON
 rc=$?
 [ $rc -eq 5 ] && { rm -f "$DIR/build.png" "$DIR/build.png.json"; echo "gate.sh: build capture INVALID (exit 5: overlay / error page / consent not deniable) — not a verdict, never a FAIL" >&2; exit 5; }
 [ $rc -ne 0 ] && { echo "gate.sh: build capture failed (exit $rc) — not comparing" >&2; exit $rc; }

@@ -87,7 +87,7 @@ if (!LIVE_SESSION) {
   console.error('motion-observe error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { REAL_CHROME_UA, isLiveHttpUrl, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays } = await import(pathToFileURL(LIVE_SESSION).href);
+const { REAL_CHROME_UA, isLiveHttpUrl, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays, reportOverlayResidue } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `motion-observe — runtime motion observation (implement only what fired)
 
@@ -153,6 +153,7 @@ async function main() {
     const extra = [...(opts.consent ? [opts.consent] : []), ...opts.dismiss];
     const d = await dismissOverlays(page, { extra, lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
     if (d.consent) console.error(`consent dismissed via ${d.consent}`);
+    reportOverlayResidue('motion-observe', d);
 
     // ---- instrument BEFORE any scrolling, so the traversal exposes every
     // scroll-triggered behavior with its trigger class and scrollY ----

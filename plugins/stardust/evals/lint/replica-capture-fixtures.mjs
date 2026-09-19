@@ -58,6 +58,16 @@ check(/setProperty\('opacity', '0', 'important'\)/.test(ss), 'stitch-shot: pinne
 check(/--keep-pinned/.test(ss) && /--expect-height/.test(ss) && /--exclude-live-only/.test(ss) && /--allow-overlay/.test(ss), 'stitch-shot: T19.1 flags missing from the parser/HELP');
 check(/reducedMotion: 'reduce'/.test(ss), 'stitch-shot: newLiveContext must pass reducedMotion: reduce');
 check(/Exit codes: 0 written[^]*5 invalid capture/.test(ss), 'stitch-shot: HELP must document exit 5 (invalid capture, no verdict)');
+check(/--allow-consent/.test(ss) && /--no-dismiss-defaults/.test(ss) && /--remove-text/.test(ss), 'stitch-shot: T19.2 flags missing from the parser/HELP');
+// live-session pure exports (T19.2) — dependency-free module, importable here
+const ls = await import(pathToFileURL(join(DIFF, 'live-session.mjs')).href);
+check(typeof ls.dismissOverlays === 'function' && typeof ls.installOverlayWatch === 'function' && typeof ls.readOverlayWatch === 'function' && typeof ls.reportOverlayResidue === 'function', 'live-session: dismissOverlays / installOverlayWatch / readOverlayWatch / reportOverlayResidue must be exported');
+check(ls.ACCEPT_LABELS.includes('godta alle') && ls.ACCEPT_LABELS.includes('alle akzeptieren') && ls.ACCEPT_LABELS.includes('tout accepter') && ls.ACCEPT_LABELS.every((l) => l.length <= 25), 'live-session: ACCEPT_LABELS must carry the multilingual set with every label ≤ 25 chars (B28)');
+check(ls.DECLINE_LABELS.includes('reject all') && ls.DECLINE_LABELS.includes('alle ablehnen') && ls.DECLINE_LABELS.includes('avvis alle') && !ls.DECLINE_LABELS.some((l) => ls.ACCEPT_LABELS.includes(l)), 'live-session: DECLINE_LABELS must be disjoint from ACCEPT_LABELS');
+check(ls.normLabel('  Godta\u00a0ALLE! ') === 'godta alle' && ls.normLabel('Accept all cookies…') === 'accept all cookies', `live-session: normLabel wrong (${ls.normLabel('  Godta\u00a0ALLE! ')})`);
+check(ls.HIDE_DEFAULTS.includes('#ot-sdk-btn-floating'), 'live-session: HIDE_DEFAULTS must include the OneTrust floating launcher');
+const lsSrc = src(join(DIFF, 'live-session.mjs'));
+check(!/page\.locator\(sel\)\.first\(\)/.test(lsSrc.slice(lsSrc.indexOf('export async function dismissOverlays'))), 'live-session: dismissOverlays must not use locator(sel).first() (the hidden-twin trap) — iterate all matches');
 // gate.sh contracts
 const gate = src(join(REPLICA, 'gate.sh'));
 check(/\[ \$rc -eq 5 \]/.test(gate), 'gate.sh: rc 5 (invalid capture) branch missing — must remove the partial PNG and re-exit 5, never compare');
@@ -162,6 +172,37 @@ async function layer2(deps) {
     check(ov.status === 5 && /covers \d+ % of the first viewport/.test(ov.stderr) && !existsSync(join(tmp, 'out/ov.png')), `overlay: expected exit 5, got ${ov.status}\n${ov.stderr}`);
     const ov2 = await run('stitch-shot.mjs', [`${base}/overlay.html`, 'out/ov2.png', ...W, '--allow-overlay']);
     check(ov2.status === 0 && /^WARN fixed element div#wall covers/m.test(ov2.stdout), `overlay --allow-overlay: expected exit 0 + WARN, got ${ov2.status}\n${ov2.stdout}${ov2.stderr}`);
+
+    // ---- T19.2 dismissOverlays (driver copied next to the instruments)
+    cpSync(join(FIX, '_dismiss-driver.mjs'), join(tmp, 'replica', '_dismiss-driver.mjs'));
+    const drive = async (file, o) => { const r = await run('_dismiss-driver.mjs', [`${base}/${file}`, JSON.stringify(o)]); let j = null; try { j = JSON.parse(r.stdout.trim().split('\n').pop()); } catch { /* not json */ } check(r.status === 0 && j, `driver ${file}: exit ${r.status}\n${r.stdout}\n${r.stderr}`); return j || { d: {}, state: {} }; };
+    const pair = await drive('consent-pair.html', { lateWindowMs: 0 });
+    check(['button:has-text("Accept all")', '[data-testid*="accept"]'].includes(pair.d.consent) && pair.state.consent === 'visible', `consent-pair: the VISIBLE twin must be clicked (not the hidden first match), got consent=${pair.d.consent} state=${pair.state.consent}`);
+    check(pair.d.hidden.some((h) => h.sel === '#ot-sdk-btn-floating' && h.count === 1) && pair.state.floatingVisibility === 'hidden', `consent-pair: #ot-sdk-btn-floating must be hidden (visibility), got ${JSON.stringify(pair.d.hidden)} / ${pair.state.floatingVisibility}`);
+    check(pair.frameClosed === 'yes' && pair.d.frames.length === 1 && /text:no thanks/.test(pair.d.frames[0]), `consent-pair: the survey iframe's "No thanks" must be clicked, got ${JSON.stringify(pair.d.frames)} closed=${pair.frameClosed}`);
+    check(pair.d.consentPresent === false, 'consent-pair: consentPresent must be false after the banner is dismissed');
+    const pairNoHide = await drive('consent-pair.html', { lateWindowMs: 0, hideDefaults: false });
+    check(pairNoHide.d.hidden.length === 0 && pairNoHide.state.floatingVisibility === 'visible' && pairNoHide.state.consent === 'visible', 'consent-pair hideDefaults:false: no widget hidden, consent still clicked');
+    const late = await drive('consent-late.html', { lateWindowMs: 4000 });
+    check(late.d.consent === 'text:godta alle' && late.state.consent === 'late-text', `consent-late: the late-mounted Norwegian banner must be dismissed by the text fallback inside the window, got ${late.d.consent} / ${late.state.consent}`);
+    const lateDeny = await drive('consent-late.html', { lateWindowMs: 3000, mode: 'deny' });
+    check(lateDeny.d.rejected === null && lateDeny.d.consentPresent === true && /late-banner/.test(lateDeny.d.consentContainer || '') && lateDeny.state.consent === null, `consent-late deny: the accept label must NOT be clicked and consentPresent must name the banner, got ${JSON.stringify(lateDeny.d)}`);
+    const shadow = await drive('consent-shadow.html', { lateWindowMs: 0 });
+    check(shadow.state.consent === 'shadow' && shadow.d.consent && /usercentrics-root|alle akzeptieren|data-testid/.test(shadow.d.consent), `consent-shadow: the open-shadow CMP button must be clicked, got ${shadow.d.consent} / ${shadow.state.consent}`);
+    const unk = await drive('consent-unknown.html', { lateWindowMs: 0 });
+    check(unk.d.consent === null && unk.d.consentPresent === true && unk.d.consentContainer === 'div#unknown-banner.cookie-banner' && unk.state.consent === null, `consent-unknown: an unknown label must be left alone and reported, got ${JSON.stringify(unk.d)}`);
+    const rm = await drive('consent-unknown.html', { lateWindowMs: 0, removeText: ['We use cookies'] });
+    check(rm.d.hidden.some((h) => h.kind === 'remove-text' && h.count === 1) && rm.d.consentPresent === false, `consent-unknown --remove-text: the fixed ancestor must be hidden and consentPresent cleared, got ${JSON.stringify(rm.d)}`);
+    // stitch-shot fail-loud on a surviving consent container (exit 5), --allow-consent, --remove-text
+    const cs5 = await run('stitch-shot.mjs', [`${base}/consent-unknown.html`, 'out/c5.png', ...W]);
+    check(cs5.status === 5 && /consent present, not dismissed — div#unknown-banner/.test(cs5.stderr) && !existsSync(join(tmp, 'out/c5.png')), `stitch-shot consent-unknown: expected exit 5, got ${cs5.status}\n${cs5.stderr}`);
+    const csA = await run('stitch-shot.mjs', [`${base}/consent-unknown.html`, 'out/cA.png', ...W, '--allow-consent']);
+    check(csA.status === 0 && /^WARN consent present, not dismissed/m.test(csA.stdout), `stitch-shot --allow-consent: expected exit 0 + WARN, got ${csA.status}\n${csA.stdout}${csA.stderr}`);
+    const csR = await run('stitch-shot.mjs', [`${base}/consent-unknown.html`, 'out/cR.png', ...W, '--remove-text', 'We use cookies']);
+    check(csR.status === 0 && /hidden 1 persistent widget\(s\) via text:We use cookies/.test(csR.stdout), `stitch-shot --remove-text: expected exit 0 + hidden line, got ${csR.status}\n${csR.stdout}${csR.stderr}`);
+    if (csR.status === 0) { const sc = JSON.parse(readFileSync(join(tmp, 'out/cR.png.json'), 'utf8')); check(sc.hidden.some((h) => h.kind === 'remove-text') && sc.instrument.options.removeText[0] === 'We use cookies', 'stitch-shot --remove-text: sidecar hidden[] / options.removeText missing'); }
+    const csP = await run('stitch-shot.mjs', [`${base}/consent-pair.html`, 'out/cP.png', ...W]);
+    check(csP.status === 0 && /consent dismissed via (button:has-text\("Accept all"\)|\[data-testid\*="accept"\])/.test(csP.stdout) && /frame overlay dismissed via frame:.*text:no thanks/.test(csP.stdout) && /hidden 1 persistent widget\(s\) via #ot-sdk-btn-floating/.test(csP.stdout), `stitch-shot consent-pair: expected consent + frame + hidden lines, got ${csP.status}\n${csP.stdout}${csP.stderr}`);
   } finally {
     srv.close();
     rmSync(tmp, { recursive: true, force: true });
