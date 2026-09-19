@@ -3,7 +3,7 @@
 ## When to read what
 
 - § File: `stardust/state.json` — before reading or writing state: the full shape.
-- § Hands-off keys · § Flow keys — when the run is hands-off or a migration flow was chosen: the markers every sub-command checks.
+- § Hands-off keys · § Credentials key · § Flow keys — when the run is hands-off, migration-bound or a migration flow was chosen: the markers every sub-command checks.
 - § Page lifecycle states · § Page types — when moving a page between states or typing it for template reuse across siblings.
 - § Stale flagging — when `direct` resolves a new direction: which pages actually go stale.
 - § State report — when rendering the no-args status view.
@@ -98,6 +98,41 @@ When the run was activated hands-off (`skills/stardust/SKILL.md`
   Absent or empty means one skill per ask. The chain never implies
   publishing: a chained `deploy` or `rollout` stops at preview unless
   the ask said publish.
+
+---
+
+## Credentials key
+
+Stamped by the master skill's Setup step 8 on migration-bound asks and
+re-checked by `deploy` / `rollout` Setup. `state.json` is tracked, so the
+block holds names, statuses and source *classes* — never a token value,
+never a home path:
+
+```json
+"credentials": {
+  "at": "2026-09-18T08:40:00Z",
+  "da": "ok | expired | missing",
+  "daExpiresAt": "2026-09-19T07:12:00Z",
+  "daSource": "shell | repo-env | global-env",
+  "siteTokenEnv": "SITE_TOKEN_<SITE>",
+  "gh": "ok | expired | missing | skipped"
+}
+```
+
+`siteTokenEnv` is the matched variable name (or absent); every
+`--token-env` consumer defaults to it. `gh` is `skipped` when neither the
+ask nor the environment involves repo creation or Code Sync.
+
+**Lookup.** Resolve `DA_TOKEN` in order — shell env, repo `.env`, the
+harness's user-level env file (Claude Code: `~/.claude/.env`) — and read
+its remaining hours from the JWT `exp` claim (lifecycle rule:
+`skills/deploy/da-deploy-protocol.md` § DA_TOKEN lifecycle). Enumerate
+`SITE_TOKEN_*` **names** in the same files by pattern match — never `cat`
+an env file — and match `<SITE>` to the repo slug case-insensitively.
+Probe `GH_PAT` with `GET api.github.com/user` (200/401 only) when repo
+creation or Code Sync is in the ask or the variable exists. The
+`--credentials` mode of deploy's token-check script emits this block once
+it ships; until then the steps above are the procedure.
 
 ---
 
@@ -289,6 +324,9 @@ re-render the proposed file from the existing brief.
 stardust state
 ==============
 
+Blocked on owner:  gh repo create <org>/sdt-<slug> --template adobe/aem-boilerplate --private
+                   (since 2026-04-25T09:12Z · run continues author-only; `stardust/.work/ship.sh` carries the ship step)
+
 Site:        https://example.com (extracted 2026-04-25, 25/38 pages)
 Direction:   "make it more expressive for a young audience"
              (resolved 2026-04-25, see stardust/direction.md)
@@ -331,6 +369,16 @@ file matching a secret shape (`.env*`, `_storage-state.json`,
 `*-clearance.json`). Then one line per consequence that applies on this
 checkout (`current/assets/` missing, baselines missing). Above 50 MB of
 tracked binaries under `stardust/`, add "consider Git LFS (optional)".
+
+The `Blocked on owner:` block leads the report only while a
+`status.jsonl` `blocked` line carrying `owner` has no later `end` line
+for the same phase — one line per open command, verbatim from `owner`,
+plus the timestamp and what continues meanwhile
+(`reference/run-status.md`). Omitted otherwise.
+
+When `stardust/decisions.md` exists, a `Decisions:` line follows `Flow:`
+with the count of `default-applied` rows and, one per line, every
+`owner-only-pending` row by id (`reference/decisions.md`).
 
 The `Flow:` line is omitted when no flow key exists; on a migration ask
 with no flow, the report ends with the two-flow table instead of a

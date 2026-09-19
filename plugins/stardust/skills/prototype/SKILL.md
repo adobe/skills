@@ -3,6 +3,8 @@ name: prototype
 description: Render a proposed redesign of a page on the current website as a self-contained static HTML file, then iterate via the impeccable craft loop. Per-page, idempotent, stale-aware. Use when the user asks for a redesign prototype, a before/after comparison, a design preview, a page mockup, a visual diff of the redesign, or invokes `$stardust prototype` (`/stardust:prototype` in Claude Code).
 license: Apache-2.0
 compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+metadata:
+  impeccable: required
 ---
 
 # stardust:prototype
@@ -43,14 +45,14 @@ For each `directed` page, render a **proposed redesign** as a
 self-contained static HTML file at
 `stardust/prototypes/<slug>-proposed.html`. Open the file in the
 browser; iterate via chat-driven impeccable commands ("make the
-hero bolder", "tighten the cup-note grid"). Mark `approved` once
+hero bolder"). Mark `approved` once
 the user signs off in the conversation.
 
 `prototype` is not a renderer of its own design — it composes the
 target spec written by `direct` (`PRODUCT.md`, `DESIGN.md`,
 `DESIGN.json`, `stardust/direction.md`) onto the page content captured
-by `extract` (`stardust/current/pages/<slug>.json`). Visual creativity
-is delegated to `$impeccable craft` and the iteration commands
+by `extract` (`stardust/current/pages/<slug>.json`). Visual craft is
+delegated to `$impeccable craft` and the iteration commands
 (`bolder`, `quieter`, `distill`, `polish`, `colorize`, `typeset`,
 `layout`, `adapt`, `animate`, `delight`, `overdrive`, `impeccable`).
 

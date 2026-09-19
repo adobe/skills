@@ -716,7 +716,8 @@ reference dates get mixed up.
       "result": { "regime": "prototype", "structuralRed": 0, "visualFlags": "3 justified",
                    "pixelPct": 1.31, "pixelPctUnmasked": 4.02, "heightDelta": 0, "pass": true,
                    "masks": [ { "spec": "1200:600@1210", "areaPct": 8.3 } ],
-                   "ref": { "url": "https://<site>/", "width": 1440, "capturedAt": "<ISO-8601>" } },
+                   "ref": { "url": "https://<site>/", "width": 1440, "capturedAt": "<ISO-8601>" },
+                   "at": "<ISO-8601>", "build": "a1b2c3d", "run": "<status.jsonl run start — optional>" },
       "justified": [
         { "probe": "visual", "flag": "1x1 h1 at x0", "why": "mirrors live SEO h1" },
         { "probe": "content", "flag": "🟠 font fork ×2", "why": "licensed kit substituted, R-policy fonts", "permanent": true }
@@ -738,8 +739,12 @@ reference dates get mixed up.
 same captures matched with no mask, the number an outside audit reads
 (equal to `pixelPct` when nothing was masked); `masks[]` — every `--mask`
 spec with its area % of the compared height; `ref` — the live capture the
-number was measured against (URL, width, capture time). Judge each
-regime against its own precedent (§ Pass bar, calibration honesty).
+number was measured against (URL, width, capture time); `at` — when the
+gate ran; `build` — the code commit measured against; `run` (optional) —
+the `status.jsonl` run start. Every row is provenance the hand-off prints
+(`skills/stardust/reference/handoff-report.md` § Gate table first); a
+number without `regime` is not printed, and regimes are never compared
+(§ Pass bar, calibration honesty).
 
 ### Residual classes
 

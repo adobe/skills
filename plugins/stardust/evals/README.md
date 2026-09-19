@@ -135,7 +135,7 @@ out of `total` (100 per eval).
 
 ### Lints
 
-`npm run lint:stardust` (repo root) runs four static checks over `skills/`,
+`npm run lint:stardust` (repo root) runs seven static checks over `skills/`,
 each a plain ESM script under `lint/` that exits 1 with one line per finding:
 
 - `harness-neutral.mjs` — no namespaced sibling-skill references or
@@ -157,6 +157,14 @@ each a plain ESM script under `lint/` that exits 1 with one line per finding:
   over `lint/fixtures/davids-model-lint/` and pins the icon/variant rule tiers
   (ICON-PREFIX, ICON-MISSING, VARIANT-COLLIDE), the once-per-token report and
   the exit codes (2 on 🔴, 1 on a usage error, 0 on a legitimate page).
+- `impeccable-dep.mjs` — every `SKILL.md` declares `metadata.impeccable`
+  (`required` | `optional` | `none`); a `none` skill's docs carry no
+  `$impeccable <cmd>` invocation (lines or fences marked `impeccable-dep:
+  ignore` exempt), a `required` skill's carry at least one, and the
+  `compatibility:` clause matches the level.
+- `permissions-shapes.mjs` — the permissions-snippet generator runs, emits
+  valid JSON, and every script path it or the harness-permissions card names
+  resolves to a shipped file.
 
 ## What stardust v2 evals deliberately do NOT test
 

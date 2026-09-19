@@ -47,7 +47,9 @@ The double-rule (`---`) at the end of each entry is mandatory — it makes
 diffs readable and gives the journal a visual scroll rhythm. `Next:` is
 one verbatim command, identical to the `next` field of the phase's last
 `status.jsonl` line (`run-status.md` § Phase close) — not a prose
-recommendation.
+recommendation. While a `status.jsonl` `blocked` line with `owner` is
+open, the first line after the heading is `**Blocked on owner:**
+<command>` (`run-status.md`).
 
 ## What to include
 

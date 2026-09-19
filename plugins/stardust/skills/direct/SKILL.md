@@ -3,6 +3,8 @@ name: direct
 description: Set a redesign direction for an existing website. Analyzes the user's intent, picks a palette and visual direction, and writes the target spec (PRODUCT.md, DESIGN.md, DESIGN.json) plus a reasoning trace at stardust/direction.md. Use when the user asks to redesign a site, refresh the design, set a new design direction, define a redesign target, or invokes `$stardust direct` (`/stardust:direct` in Claude Code).
 license: Apache-2.0
 compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+metadata:
+  impeccable: required
 ---
 
 # stardust:direct
@@ -75,8 +77,8 @@ downstream sub-commands.
 ## Setup
 
 1. Run the master skill's setup
-   (`skills/stardust/SKILL.md` § Setup) — hard impeccable dep check,
-   context loader, state read.
+   (`skills/stardust/SKILL.md` § Setup) — impeccable dep check, state
+   read.
 2. Verify `stardust/state.json` exists and contains at least one
    `extracted` page. If not, stop and recommend
    `$stardust extract <url>` first.
@@ -139,9 +141,7 @@ same-design migration; the direction is the mechanical promotion in
 "run `$stardust replica <url>`". Never continue into a redesign
 direction, a `--prep` module catalog or a plan on such a phrase — under
 hands-off included: "ask nothing" below never means "proceed on a
-replica phrase". (Recorded: `direct` invoked with "exact replica —
-preserve verbatim" kept going; 2,207 pages were published at 24–28 %
-pixel diff, four to five times the replica pass bar.)
+replica phrase".
 
 **Hands-off mode** (per `skills/stardust/SKILL.md` § Hands-off mode,
 `state.json.handsOff: true`): ask nothing and wait for nothing — after

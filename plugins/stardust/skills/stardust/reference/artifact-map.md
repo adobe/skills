@@ -69,6 +69,7 @@ stardust/
 ├── state.json                        # state machine (state-machine.md)
 ├── status.jsonl                      # append-only phase-transition log — every skill appends start/end/blocked lines (run-status.md)
 ├── direction.md                      # resolved intent + reasoning trace
+├── decisions.md                      # plan-time decision register — default rows applied, owner-decided rows, owner-only rows (decisions.md)
 ├── learnings.md                      # per-run learnings ledger — rollout writes, maintainers harvest (learnings.md)
 ├── dynamic-features.md               # the dynamic-surface inventory: listings contract + one row per feature with class · disposition · reproducibility · status (dynamics Phase 3; prepare-migration 4.5 / replica Phase 2 / rollout B2)
 ├── dynamic-features-plan.md          # phases with deliverables, authoring contract, verification, owner decision (dynamics Phase 3)
@@ -144,6 +145,11 @@ direction, written using the format in
 section every time direction changes. Under hands-off mode the master
 skill also appends the activation line, named assumptions, and the
 chosen volume caps here.
+
+### `stardust/decisions.md`
+Owner: any phase appends on discovery; the plan gate (`prepare-migration`
+§ Final report, `replica` Phase 2, `rollout` Phase A) settles the batch.
+Row format, default rows and owner-only rows in `reference/decisions.md`.
 
 ### `stardust/learnings.md`
 Owner: `$stardust rollout` (report phase), plus any skill that hits a
@@ -382,7 +388,7 @@ excluded folders tracked deletes that line or adds a negation below it.
 
 | Path | Tracked | Owner | Notes |
 |---|---|---|---|
-| `state.json`, `status.jsonl`, `journal.md`, `learnings.md`, `direction.md` | yes | master / all | delivery state and decisions; a clone is dead without `state.json` |
+| `state.json`, `status.jsonl`, `journal.md`, `learnings.md`, `direction.md`, `decisions.md` | yes | master / all | delivery state and decisions; a clone is dead without `state.json` |
 | `dynamic-features.md`, `dynamic-features-plan.md`, `dynamics/parity.json`, `trees.json` | yes | dynamics | dispositions and parity checks |
 | `dynamics/` other (`*.generated-plan.*`, `sheets/_sync.json`) | yes | dynamics | small text; drafts superseded by the curated file |
 | `redirects.tsv`, `runtime-contract.json`, `eds-conversion-log.md`, `ai-readability-allowlist.json` | yes | rollout / deploy | |
@@ -412,14 +418,17 @@ excluded folders tracked deletes that line or adds a negation below it.
 
 Outside `stardust/`: the impeccable target files at the project root and
 the EDS project are tracked by the project's own rules; `.env` / `.env.*`
-are excluded by the managed block Setup step 6 appends. `stardust/` is
+and `.claude/settings.local.json` are excluded by the managed block Setup
+step 6 appends. `stardust/` is
 also appended to `.hlxignore` on EDS projects so nothing here is served.
 
 Setup step 6 in detail (idempotent, writes only what is missing):
 (a) `stardust/.gitignore` from `stardust.gitignore`, byte-identical, only
 if absent — the project owns any line it adds afterwards; (b) root
 `.gitignore`: a block between `# >>> stardust` and `# <<< stardust`
-holding `.env` and `.env.*`, lines outside the markers never touched;
+holding `.env`, `.env.*` and `.claude/settings.local.json` (the per-machine
+permission allowlist, `reference/harness-permissions.md`), lines outside
+the markers never touched;
 (c) `.hlxignore`, when present: append `stardust/`; (d) assert
 `git check-ignore -q stardust/state.json` fails — a bare `state.json`
 pattern in `.git/info/exclude` or a global excludes file silently drops

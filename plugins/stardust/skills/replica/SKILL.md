@@ -2,7 +2,9 @@
 name: replica
 description: Same-design migration — re-platform a site to AEM Edge Delivery (or any clean front end) keeping its current design near pixel-perfect. Recreates key pages (one archetype per page type) as clean re-authored HTML/CSS (never DOM copies), verifies each against the live site with a measured source-fidelity gate (structural + visual + stitched pixel diff per breakpoint), then hands off to migrate/deploy/rollout for site-wide delivery (subsumes prepare-migration's prep cascade — never chain the two). The only permitted design changes are entries in an explicit inconsistency register. Use when the user says "migrate this site keeping its current design", "same-design migration", "pixel-perfect replatform to AEM", or "keep the design, change the platform". NOT for redesigns — those are the stardust core pipeline (direct/prototype) or uplift.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and playwright-cli on PATH.
+metadata:
+  impeccable: none
 ---
 
 # stardust:replica — same-design migration
@@ -56,16 +58,15 @@ Two properties separate this from the redesign pipeline:
 
 - `<URL>` — required. The site to migrate.
 - `--breakpoints <list>` — optional. Gate breakpoints, default `1440,360`.
-  Mobile is NOT free: the validation run's 1440-tuned prototype measured 24%
-  at 360. Each breakpoint gets its own gate pass.
+  Each breakpoint gets its own gate pass — a 1440-tuned page is not gated at 360.
 - `--register <file>` — optional. User-supplied inconsistency items to seed
   the register (see Phase 2). Without it and without an audit, the register
   is empty — a pure replica.
 
 ## Setup
 
-1. Run the master skill's setup (`../stardust/SKILL.md` § Setup): context
-   loader, state read. **Flow guard.** If `state.json.flow` is
+1. Run the master skill's setup (`../stardust/SKILL.md` § Setup):
+   impeccable dep level, state read. **Flow guard.** If `state.json.flow` is
    `redesign`, refuse: print the never-mix line and the switch command
    (`$stardust replica --switch-flow`, which marks the redesign flow's
    prototyped and migrated pages stale — master skill § Two migration
@@ -164,6 +165,10 @@ Full contract: `reference/preserve-direction.md`. Summary:
    what surfaces modals, players, forms, search, tags and host-bound APIs
    that pixel gates certify as correct. Contract:
    `skills/dynamics/reference/triage.md`.
+5. **Plan gate.** Present every `stardust/decisions.md` row not yet
+   `owner-decided` as one numbered message, default on each line
+   (`../stardust/reference/decisions.md` § How phases use it); the
+   dynamics batch rides along.
 
 Anything not in the register is out of scope for change. When a recreation
 choice would "improve" something not registered, it is a fidelity bug.
@@ -337,6 +342,9 @@ approval per the standard prototype approval flow (hands-off mode records
   delivery pipeline transforms markup, so harness numbers understate.
   Re-run the full gate per delivered page against the preview/live origin,
   judged in the published-origin regime; only the published number counts.
+- **Hand-off shape**: the close-out follows
+  `../stardust/reference/handoff-report.md` § Gate table first — gate table
+  before counts, provenance per row.
 
 **State:** replica writes its own state under `stardust/replica/` — the
 inconsistency register, `progress.json` (per page type: archetype slug,
@@ -356,9 +364,7 @@ machine — replica never redefines it.
 - **No invented improvements.** A change without an inconsistency-register
   entry is a defect, however tasteful.
 - **No DOM copying.** Never paste the live DOM or port page-level CSS as the
-  prototype (that's the snowflake escape hatch, not this skill). Clean
-  re-authoring is the point — byte-fidelity without re-implementation value
-  defeats the migration.
+  prototype. Clean re-authoring is the point.
 
 ## Outputs
 

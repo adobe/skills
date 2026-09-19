@@ -2,7 +2,9 @@
 name: prepare-migration
 description: Prepare a whole site for migration by orchestrating the prep cascade — a full-inventory crawl (extract --prep), page-type and module-catalog confirmation (direct --prep), archetype prototypes plus design canon (prototype --prep), and asset preparation — with confirmation gates between phases. Builds the typed page inventory, confirmed module catalog, and canon that `migrate` consumes. Use when the user wants to prepare or set up a full-site migration, run migration prep, confirm page types and modules before migrating a site, get a large site ready to migrate, or invokes `$stardust prepare-migration`. Trigger phrases include "prepare the migration", "migration prep", "set up the migration data", "get the site ready to migrate". Redesign-flow only — for same-design migrations `replica` runs its own preserve-mode prep cascade; never chain prepare-migration with replica. Not for running the migration itself (`migrate`) or converting a single page (`deploy`).
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and playwright-cli on PATH.
+metadata:
+  impeccable: none
 ---
 
 # stardust:prepare-migration
@@ -83,7 +85,7 @@ this site" a conscious gesture and keeps idempotency obvious.
 ## Setup
 
 1. Run the master skill's setup (`skills/stardust/SKILL.md`
-   § Setup) — impeccable dep check, context loader, state read.
+   § Setup) — impeccable dep level, state read.
    **Flow guard.** This is the redesign flow's orchestrator. If
    `state.json.flow` is `replica`, refuse: print "never run
    `prepare-migration` before or after `replica`" and the switch
@@ -96,9 +98,6 @@ this site" a conscious gesture and keeps idempotency obvious.
    question (hands-off: default `redesign`, recorded in
    `direction.md`); then stamp `flow: "redesign"`
    (`skills/stardust/reference/state-machine.md` § Flow keys).
-   (Recorded: "build a 1:1 migration plan" entered here on a plugin
-   that already described both flows and ran the redesign cascade for
-   two hours before `direct` was asked for an "exact replica".)
 2. Verify `stardust/state.json` exists with at least one extracted
    page. If not, recommend `$stardust extract <url>` and stop.
 3. Verify `stardust/direction.md` exists with an active direction.
@@ -292,6 +291,11 @@ host-bound H · listings L dynamic / S static`. Contract:
 `skills/dynamics/reference/triage.md`.
 
 ### Final report
+
+First run the decision register's plan gate: present every
+`stardust/decisions.md` row not yet `owner-decided` as one numbered message,
+default on each line (`skills/stardust/reference/decisions.md` § How phases
+use it); the Phase 4.5 owner batch rides along.
 
 ```
 prepare-migration complete

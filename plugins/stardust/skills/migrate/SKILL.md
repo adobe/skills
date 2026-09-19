@@ -2,7 +2,9 @@
 name: migrate
 description: Apply DESIGN, canon, and modules to every page in the inventory, producing a deployable static HTML site. Use to migrate or render the whole captured site into the redesigned static tree ("migrate the pages", "render the migrated site", "apply the design to all pages", "build the deployable site", "convert the approved prototype into the full site") — the page-rendering step between prototype and deploy/rollout. Three render branches (approved page, template-applied sibling, unique render), with a declared fidelity tier per page. Per-page, incremental, idempotent, content-preserving by default.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and playwright-cli on PATH.
+metadata:
+  impeccable: none
 ---
 
 # stardust:migrate
@@ -99,9 +101,6 @@ inline, or run an impeccable command) and re-invoke migrate.
    (`skills/stardust/reference/state-machine.md` § Flow keys). Under
    hands-off the master's default applies (keep-design phrase →
    `replica`, otherwise `redesign`), recorded in `direction.md`.
-   (Recorded: `migrate <url>` as the first command of two same-design
-   migrations led to a hand-built compiler tuned by eye instead of the
-   replica gate.)
 2. Verify `stardust/state.json` exists with at least one
    `directed` page.
 3. Verify project-root `DESIGN.md` and `DESIGN.json` exist with
@@ -164,7 +163,7 @@ inline, or run an impeccable command) and re-invoke migrate.
    in the post-render `_meta.json#audit.adapt` sidecar. Path B
    (unique-renders) skips the audit because adapt hasn't run
    on those pages — a Path B page that needs mobile coverage
-   gets it via `$impeccable adapt` invoked separately by the
+   gets it via impeccable's `adapt` command, run separately by the
    user. Surface this distinction in the report so it's not
    read as a silent skip.
 
@@ -395,7 +394,7 @@ Update `state.json`:
 
 Print the run summary:
 
-```
+```text impeccable-dep: ignore
 migrate complete
 ================
 
@@ -530,7 +529,7 @@ work, they just mark it as out-of-step.
 ## What migrate does NOT do
 
 - Critique or audit the migrated output. Run
-  `$impeccable critique stardust/migrated/` after migration if
+  `$impeccable critique stardust/migrated/` after migration if <!-- impeccable-dep: ignore -->
   you want a quality assessment.
 - Deploy. Stardust does not push, upload, or modify origin.
 - Generate AEM EDS, a CMS payload, or framework components. The

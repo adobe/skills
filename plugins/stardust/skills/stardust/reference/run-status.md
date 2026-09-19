@@ -14,6 +14,7 @@ One JSON object per line (JSONL — no wrapping array, no pretty-print):
 { "ts": "2026-07-02T14:03:11Z", "skill": "stardust:migrate", "phase": "render", "event": "start" }
 { "ts": "2026-07-02T14:09:47Z", "skill": "stardust:migrate", "phase": "render", "event": "end", "detail": "12 pages rendered", "artifact": "stardust/migrated/", "next": "$stardust deploy home" }
 { "ts": "2026-07-02T14:11:02Z", "skill": "stardust:rollout", "phase": "C-deliver", "event": "blocked", "detail": "DA_TOKEN expired (401) — ledger checkpointed, awaiting re-auth" }
+{ "ts": "2026-07-02T09:12:40Z", "skill": "stardust:stardust", "phase": "setup", "event": "blocked", "detail": "repo creation denied by the permission layer", "owner": "gh repo create <org>/sdt-<slug> --template adobe/aem-boilerplate --private" }
 ```
 
 | field | required | contents |
@@ -25,6 +26,7 @@ One JSON object per line (JSONL — no wrapping array, no pretty-print):
 | `detail` | no | one human-readable line (counts, blocker reason) |
 | `artifact` | no | path to the phase's primary output, when one exists; on the `start` line of a long step, its progress or log file |
 | `next` | on `end` | the one pasteable command that continues the run; allowed on `blocked` and on the `start` line of a long-running phase |
+| `owner` | no | on `blocked` only: the exact command the owner runs to unblock — the `Blocked on owner:` line in the state report, journal and turn-ending reply is rendered from it (master § Hands-off mode) |
 
 ## Rules
 
@@ -69,6 +71,22 @@ executes the last `next`; a phase whose `end` line exists is neither
 re-run nor re-narrated — a deliberate re-run asks before replacing its
 outputs. Under hands-off the block is written and the next step starts
 in the same turn (master § Hands-off mode → Turn-end contract).
+
+## Long-running steps
+
+Master § Hands-off mode sets the wait rule (background plus a progress
+file, short periodic checks, end the turn only for long waits); the
+rationale: the prompt cache expires after 5 idle minutes, and at the
+contexts a migration reaches every expiry re-writes the whole prefix at
+write price; a completion notification that arrives after 5 minutes
+misses the window too, so ending the turn helps the user, not the cache.
+The progress file a long step writes is the thing to poll — `status.jsonl`
+for phase boundaries, the step's own ledger or log for progress inside a
+phase. Claude Code levers: `run_in_background: true` on the shell call
+(the harness posts a task notification when it exits);
+`promptCacheTtl: "1h"` in settings.json stretches the window to an hour
+at 1.6× write price — an owner setting, worth it for any multi-hour
+session.
 
 Unlike other stardust artifacts, `status.jsonl` carries no provenance
 block — each line is self-describing via `ts` + `skill`, and the

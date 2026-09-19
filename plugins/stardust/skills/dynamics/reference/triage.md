@@ -82,6 +82,10 @@ listings.md. "none" when there are no listing blocks.>
 | feature | reason | production statement |
 ```
 
+The decision batch goes out in the same message as the plan-time decision
+register (`skills/stardust/reference/decisions.md` § How phases use it); the
+register carries one pointer row (`dyn`) to this batch — no row is duplicated.
+
 `dynamics-plan.mjs` drafts the table; the run curates it (merge duplicates, drop noise, keep every
 axis honest) and writes `stardust/dynamic-features-plan.md`: phases with deliverables, authoring
 contract, verification, owner decision, effort; each phase lists its inventory rows as list items
