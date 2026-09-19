@@ -21,7 +21,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { startMock } from './mock-da.mjs';
-import { resolveToken, tokenExpiry, siteTokenNames, medianSecPerPage } from '../deploy-batch.mjs';
+import { resolveToken, tokenExpiry, daSmoke } from '../lib.mjs';
+import { siteTokenNames, medianSecPerPage } from '../deploy-batch.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CLI = join(here, '..', 'deploy-batch.mjs');
@@ -56,6 +57,7 @@ assert.equal(tokenExpiry(`a.${b64u({ exp: 1700000000 })}.b`), 1700000000, 'plain
 assert.equal(tokenExpiry('not-a-jwt'), null);
 assert.deepEqual(siteTokenNames('my-repo.v2'), ['SITE_TOKEN_MY_REPO_V2', 'SITE_TOKEN']);
 assert.equal(medianSecPerPage(join(dir, 'nope.jsonl')), 6);
+assert.equal(await daSmoke('x', 'o', 'r', { list: 'http://127.0.0.1:9' }), 0, 'daSmoke: network error → 0, never throws');
 
 const mock = await startMock();
 const run = (extra, env = {}) => new Promise((resolve) => {

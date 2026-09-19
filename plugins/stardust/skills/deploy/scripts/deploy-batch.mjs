@@ -37,7 +37,8 @@
  *   - verify blip: the delivered GET retries once after 3 s on a fetch error,
  *     5xx or 000 (a 404 is a verdict, not a blip).
  *
- * Token lifecycle (the one credential failure a run cannot self-recover):
+ * Token lifecycle (the one credential failure a run cannot self-recover; the
+ * resolve/decode/smoke primitives are skills/deploy/scripts/lib.mjs):
  *   - preflight: DA_TOKEN is resolved shell → ./.env → ~/.claude/.env → ~/.env
  *     (the SOURCE CLASS is printed, never the value or a home path); its IMS
  *     expiry is decoded (`created_at` + `expires_in` ms; `exp` s as fallback;
@@ -122,15 +123,14 @@
 import { readFile, writeFile, appendFile, readdir, stat, rename, mkdir } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { homedir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createProgress, defaultProgressFile, summaryLine } from '../../stardust/scripts/progress.mjs';
+import { resolveToken, tokenExpiry, daSmoke } from './lib.mjs';
 
 const DA_SRC = process.env.DEPLOY_BATCH_DA_SRC || 'https://admin.da.live/source';
 const ADMIN = process.env.DEPLOY_BATCH_ADMIN || 'https://admin.hlx.page';
 const DELIVERY_BASE = process.env.DEPLOY_BATCH_DELIVERY_BASE || null;
-const DA_LIST = process.env.DEPLOY_BATCH_DA_LIST || 'https://admin.da.live/list';
 const HALT_EXIT = 3;
 const OK_STATUS = new Set(['live', 'previewed']);
 const REPAIR_DELAY_MS = Number(process.env.DEPLOY_BATCH_REPAIR_DELAY_MS) || 3000;
@@ -144,44 +144,8 @@ export class HaltError extends Error {
   constructor(why, remedy) { super(remedy); this.why = why; this.remedy = remedy; }
 }
 
-/**
- * Resolve a token by env NAME: shell → ./.env → ~/.claude/.env → ~/.env.
- * Returns { value, source } with source ∈ shell | repo-env | global-env | home-env,
- * or null. Only the source CLASS is ever printed — never the value or a home path.
- */
-export function resolveToken(name, { cwd = process.cwd(), home = homedir(), env = process.env } = {}) {
-  const clean = (v) => (v == null ? null : String(v).trim().replace(/^["']|["']$/g, '')) || null;
-  if (clean(env[name])) return { value: clean(env[name]), source: 'shell' };
-  const files = [[path.join(cwd, '.env'), 'repo-env'], [path.join(home, '.claude', '.env'), 'global-env'], [path.join(home, '.env'), 'home-env']];
-  for (const [file, source] of files) {
-    if (!existsSync(file)) continue;
-    const m = readFileSync(file, 'utf8').match(new RegExp(`^(?:export\\s+)?${name}=(.*)$`, 'm'));
-    if (m && clean(m[1])) return { value: clean(m[1]), source };
-  }
-  return null;
-}
-
-/** IMS tokens carry `created_at` + `expires_in` (string ms), not `exp`; plain JWTs carry `exp` (s). → epoch seconds or null. */
-export function tokenExpiry(jwt) {
-  try {
-    const seg = String(jwt).split('.')[1];
-    if (!seg) return null;
-    const claims = JSON.parse(Buffer.from(seg.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
-    if (claims.created_at && claims.expires_in) {
-      const exp = (Number(claims.created_at) + Number(claims.expires_in)) / 1000;
-      return Number.isFinite(exp) ? exp : null;
-    }
-    return Number.isFinite(Number(claims.exp)) ? Number(claims.exp) : null;
-  } catch { return null; }
-}
-
-/** One authenticated GET on the DA list endpoint — the smoke test before any PUT. */
-export async function daSmoke(token, org, repo) {
-  try {
-    const res = await fetch(`${DA_LIST}/${org}/${repo}/`, { headers: { Authorization: `Bearer ${token}` } });
-    return res.status;
-  } catch (err) { return 0; }
-}
+// Credential primitives live in ./lib.mjs (shared with da-token-check.mjs); re-exported for existing importers.
+export { resolveToken, tokenExpiry, daSmoke };
 
 /** SITE_TOKEN_<REPO> (uppercased, non-alphanumerics → _) then SITE_TOKEN. */
 export function siteTokenNames(repo) {
