@@ -75,6 +75,9 @@
 #   GATE_REAP_MIN        stale-instrument age in minutes  (default 15; 0 disables)
 #   GATE_ALLOW_CONSENT=1 pass --allow-consent to BOTH captures (a consent
 #                        container that survives dismissal is otherwise exit 5)
+#   GATE_BLOCK           comma list of URL substrings → --block on BOTH captures
+#                        (undismissable third-party widgets; the sidecar refuses
+#                        an asymmetric pair, so the gate is the only safe place)
 set -u
 
 SLUG=${1:?usage: gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>] [--live-from-capture <png>] [--regime prototype|published-origin]}
@@ -108,6 +111,7 @@ CONSENT_MODE=${CONSENT_MODE:-accept}
 COMPARE_TIMEOUT=${GATE_COMPARE_TIMEOUT:-120}
 STITCH_COMMON=""
 [ "${GATE_ALLOW_CONSENT:-0}" = "1" ] && STITCH_COMMON="--allow-consent"
+[ -n "${GATE_BLOCK:-}" ] && STITCH_COMMON="$STITCH_COMMON --block $GATE_BLOCK"
 REAP_MIN=${GATE_REAP_MIN:-15}
 capped() { local t=$1 l=$2; shift 2; node "$HERE/run-capped.mjs" --timeout "$t" --label "$l" -- "$@"; }
 

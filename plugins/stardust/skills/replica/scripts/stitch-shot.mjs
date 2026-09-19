@@ -136,6 +136,12 @@
  *                         resort for an undismissable bar — run on BOTH sides)
  *     --dismiss <sel,...> extra overlay-dismiss selectors (marketing modals
  *                         with non-standard close controls)
+ *     --block <substr,...> abort every request whose URL contains one of the
+ *                         substrings (undismissable iframe/shadow widgets); the
+ *                         main-frame navigation and the page's own origin are
+ *                         never blocked. Run the SAME value on both sides —
+ *                         the sidecar records `blocked` and an asymmetric pair
+ *                         is refused by pixel-compare
  *     --headed[=window]    bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
  *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
  *     --ua <string>       user agent                        (default real-Chrome)
@@ -189,7 +195,7 @@ if (!LIVE_SESSION) {
   console.error('stitch-shot error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { REAL_CHROME_UA, TIERS, isLiveHttpUrl, launchLadder, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays, installOverlayWatch, readOverlayWatch } = await import(pathToFileURL(LIVE_SESSION).href);
+const { REAL_CHROME_UA, TIERS, isLiveHttpUrl, launchLadder, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays, installOverlayWatch, readOverlayWatch, parseBlockList } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `stitch-shot — scroll-and-stitch full-page screenshot (symmetric capture instrument)
 
@@ -208,6 +214,7 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --no-dismiss-defaults  do not hide the persistent-widget list (CMP launcher, feedback tab…); clicks still run
   --remove-text <phrase> hide the nearest fixed/sticky ancestor of an element containing <phrase> (repeatable; last resort, BOTH sides)
   --dismiss <sel,…> extra overlay-dismiss selectors (marketing modals etc.)
+  --block <substr,…> abort requests whose URL contains a substring (3rd-party widgets with no close control; never the page's own origin) — SAME value on both sides
   --headed[=window]  bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB) for geo determinism
   --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
@@ -226,7 +233,7 @@ function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { width: 1440, vh: 900, settle: false, consent: null, consentMode: 'accept', dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000, keepPinned: false, expectHeight: null, exclude: [], excludeLiveOnly: false, allowOverlay: false, allowConsent: false, hideDefaults: true, removeText: [] };
+  const opts = { width: 1440, vh: 900, settle: false, block: [], consent: null, consentMode: 'accept', dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000, keepPinned: false, expectHeight: null, exclude: [], excludeLiveOnly: false, allowOverlay: false, allowConsent: false, hideDefaults: true, removeText: [] };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -238,6 +245,7 @@ function parseArgs(argv) {
     else if (a === '--exclude-live-only') { opts.excludeLiveOnly = true; }
     else if (a === '--allow-overlay') { opts.allowOverlay = true; }
     else if (a === '--allow-consent') { opts.allowConsent = true; }
+    else if (a === '--block') { opts.block = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
     else if (a === '--no-dismiss-defaults') { opts.hideDefaults = false; }
     else if (a === '--remove-text') { const v = rest[i += 1]; if (!v) { console.error(`--remove-text needs a phrase\n\n${HELP}`); process.exit(1); } opts.removeText.push(v); }
     else if (a === '--consent') { opts.consent = rest[i += 1]; }
@@ -502,6 +510,7 @@ async function main() {
       ua: opts.ua, locale: opts.locale,
       viewport: { width: opts.width, height: opts.vh },
       reducedMotion: 'reduce',
+      block: opts.block,
     });
     const page = await ctx.newPage();
     // Challenge/blocked interstitial → loud BotChallengeError (exit 3); a
@@ -736,10 +745,10 @@ async function main() {
     const dpr = await page.evaluate(() => window.devicePixelRatio).catch(() => 1);
     const side = writeSidecar(out, {
       url, width: opts.width, vh: opts.vh, dpr, capturedAt: new Date().toISOString(),
-      instrument: { ...INSTRUMENT, options: { settle: opts.settle, headed: opts.headed, startTier: resolveStartTier(opts.headed), locale: opts.locale, wait: opts.wait, timeout: opts.timeout, consent: opts.consent, dismiss: opts.dismiss, keepPinned: opts.keepPinned, exclude: opts.exclude, excludeLiveOnly: opts.excludeLiveOnly, expectHeight: opts.expectHeight, allowOverlay: opts.allowOverlay, allowConsent: opts.allowConsent, hideDefaults: opts.hideDefaults, removeText: opts.removeText } },
+      instrument: { ...INSTRUMENT, options: { settle: opts.settle, headed: opts.headed, startTier: resolveStartTier(opts.headed), locale: opts.locale, wait: opts.wait, timeout: opts.timeout, consent: opts.consent, dismiss: opts.dismiss, keepPinned: opts.keepPinned, exclude: opts.exclude, excludeLiveOnly: opts.excludeLiveOnly, expectHeight: opts.expectHeight, allowOverlay: opts.allowOverlay, allowConsent: opts.allowConsent, hideDefaults: opts.hideDefaults, removeText: opts.removeText, block: opts.block } },
       consent: prov.consent, dismissed: prov.dismissed, fontsFailed: prov.fontsFailed,
       docHeight: totalH, chunks: chunks.length, source: 'stitch-shot', technique: TIERS[tier - 1], tier,
-      pinnedHidden: [...pinnedHidden], pendingDecodes, tail, hidden: prov.hidden, seamRepeats: seams,
+      pinnedHidden: [...pinnedHidden], pendingDecodes, tail, hidden: prov.hidden, seamRepeats: seams, blocked: parseBlockList(opts.block),
     });
     console.log(`stitched ${out}: ${opts.width}x${totalH} from ${chunks.length} chunks  (consent ${prov.consent.mode}/${prov.consent.via}; sidecar ${side})`);
     if (!opts.keepPinned && chunks.length > 1) console.log(`pinned hidden on chunks 2+: ${pinnedHidden.size}${pinnedHidden.size ? ` [${[...pinnedHidden].join(', ')}]` : ''}`);
@@ -747,6 +756,7 @@ async function main() {
     if (pendingDecodes) console.log(`WARN ${pendingDecodes} in-viewport image decode(s) did not finish inside the 1.5 s bound — chunk may carry a placeholder`);
     if (seams >= 2) console.log(`WARN fixed overlay baked into ${seams} seams — chrome the pinned hide missed (iframe/shadow-hosted, or --keep-pinned): pass --exclude <sel> on both sides, or mask the seam rows (pixel-compare --mask)`);
     if (tail && tail.px > 8) console.log(`tail ${tail.px}px below footer: ${tail.elements.join(', ') || '(no element boxes — margin/padding)'}`);
+    if (opts.block.length) console.log(`blocked: ${parseBlockList(opts.block).join(', ')} — run the same --block on the other side (the sidecar refuses an asymmetric pair)`);
     if (opts.excludeLiveOnly && opts.exclude.length) console.log(`ASYMMETRIC: --exclude applied on this side only (${opts.exclude.join(', ')}) — the pair is not a gate number`);
   });
   await browser.close();

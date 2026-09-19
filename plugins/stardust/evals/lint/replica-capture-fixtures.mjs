@@ -68,11 +68,26 @@ check(ls.normLabel('  Godta\u00a0ALLE! ') === 'godta alle' && ls.normLabel('Acce
 check(ls.HIDE_DEFAULTS.includes('#ot-sdk-btn-floating'), 'live-session: HIDE_DEFAULTS must include the OneTrust floating launcher');
 const lsSrc = src(join(DIFF, 'live-session.mjs'));
 check(!/page\.locator\(sel\)\.first\(\)/.test(lsSrc.slice(lsSrc.indexOf('export async function dismissOverlays'))), 'live-session: dismissOverlays must not use locator(sel).first() (the hidden-twin trap) — iterate all matches');
+// --block (T14.5): pure decision + route composition contract
+check(JSON.stringify(ls.parseBlockList(' Chat.Example, ads.example ,chat.example,')) === JSON.stringify(['chat.example', 'ads.example']), 'live-session: parseBlockList must trim, lower-case and de-duplicate');
+const bd = (o) => ls.blockDecision({ substrings: ['chat.example'], targetOrigin: 'https://site.example', authOrigin: 'https://auth.example', ...o });
+check(bd({ url: 'https://chat.example/widget.js' }) === true, 'blockDecision: a matching third-party URL must be blocked');
+check(bd({ url: 'https://chat.example/', isMainNav: true }) === false, 'blockDecision: the main-frame navigation is never blocked');
+check(bd({ url: 'https://site.example/chat.example.png' }) === false, 'blockDecision: the target origin is exempt even when the path matches');
+check(bd({ url: 'https://auth.example/x?chat.example' }) === false, 'blockDecision: the auth origin is exempt');
+check(bd({ url: 'https://cdn.chat.example/frame.html', isMainNav: false }) === true, 'blockDecision: a sub-frame document IS blockable (iframe widgets are the point)');
+check(ls.blockDecision({ url: 'https://chat.example/x', substrings: [] }) === false, 'blockDecision: an empty list blocks nothing');
+check(ls.CMP_HOSTS.includes('onetrust') && ls.warnCmpBlock(['qualified.com']).length === 0, 'live-session: CMP_HOSTS / warnCmpBlock wrong');
+const nlc = lsSrc.slice(lsSrc.indexOf('export async function newLiveContext'), lsSrc.indexOf('// The marker that classifies')).split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+check(!/route\.continue\(/.test(nlc) && (nlc.match(/route\.fallback\(/g) || []).length >= 5, 'live-session: every route handler in the newLiveContext stack must use route.fallback() — continue() ends the chain and disabled the header/auth routes in the field');
+check(src(join(REPLICA, 'capture-sidecar.mjs')).includes("'blocked'"), 'capture-sidecar: blocked must be a refusal key');
+for (const f of ['stitch-shot.mjs', 'anchor.mjs', 'chrome-parity.mjs', 'sibling-variance.mjs', 'motion-observe.mjs']) check(/'--block'/.test(src(join(REPLICA, f))) && /block: opts\.block/.test(src(join(REPLICA, f))), `${f}: --block parser case + pass-through to newLiveContext missing`);
 // gate.sh contracts
 const gate = src(join(REPLICA, 'gate.sh'));
 check(/\[ \$rc -eq 5 \]/.test(gate), 'gate.sh: rc 5 (invalid capture) branch missing — must remove the partial PNG and re-exit 5, never compare');
 check(/--expect-height \$EXPECT/.test(gate), 'gate.sh: --expect-height from the crawl screenshot missing on the live capture');
 check(/\[ \$rc -eq 124 \]/.test(gate), 'gate.sh: exit 124 handling must stay');
+check(/GATE_BLOCK/.test(gate) && (gate.match(/\$STITCH_COMMON/g) || []).length >= 2, 'gate.sh: GATE_BLOCK must reach BOTH stitch-shot calls');
 
 // ---------------------------------------------------------------- deps
 function resolveDeps() {
@@ -121,7 +136,19 @@ async function layer2(deps) {
     c.on('close', (status) => { clearTimeout(t); resolve({ status, stdout, stderr }); });
   });
   const hits = [];
-  const { srv, base } = await serve(FIX, (u) => { hits.push(u.pathname); return false; });
+  const seen = []; // main-server requests: { path, headers }
+  // second origin for the blocked-widget fixture (a substring must never match the page's own origin)
+  const thirdHits = [];
+  const third = await serve(FIX, (u, req, res) => {
+    thirdHits.push(u.pathname);
+    if (u.pathname === '/pixel.png') { res.writeHead(200, { 'content-type': 'image/png' }); res.end(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64')); return true; }
+    return false;
+  });
+  const { srv, base } = await serve(FIX, (u, req, res) => {
+    hits.push(u.pathname); seen.push({ path: u.pathname, headers: req.headers });
+    if (u.pathname === '/blocked.html') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(readFileSync(join(FIX, 'blocked.html'), 'utf8').replaceAll('__THIRD__', third.base)); return true; }
+    return false;
+  });
   try {
     // --help works for every instrument once deps resolve
     for (const f of SCRIPTS) {
@@ -203,7 +230,32 @@ async function layer2(deps) {
     if (csR.status === 0) { const sc = JSON.parse(readFileSync(join(tmp, 'out/cR.png.json'), 'utf8')); check(sc.hidden.some((h) => h.kind === 'remove-text') && sc.instrument.options.removeText[0] === 'We use cookies', 'stitch-shot --remove-text: sidecar hidden[] / options.removeText missing'); }
     const csP = await run('stitch-shot.mjs', [`${base}/consent-pair.html`, 'out/cP.png', ...W]);
     check(csP.status === 0 && /consent dismissed via (button:has-text\("Accept all"\)|\[data-testid\*="accept"\])/.test(csP.stdout) && /frame overlay dismissed via frame:.*text:no thanks/.test(csP.stdout) && /hidden 1 persistent widget\(s\) via #ot-sdk-btn-floating/.test(csP.stdout), `stitch-shot consent-pair: expected consent + frame + hidden lines, got ${csP.status}\n${csP.stdout}${csP.stderr}`);
+
+    // ---- T14.5 --block: third-party origin aborted, own origin + headers intact, sidecar refusal
+    thirdHits.length = 0;
+    const nb = await run('stitch-shot.mjs', [`${base}/blocked.html`, 'out/nb.png', ...W]);
+    check(nb.status === 0 && thirdHits.length >= 2, `blocked (no flag): the widget origin must be hit, exit ${nb.status} hits ${thirdHits.length}\n${nb.stderr}`);
+    thirdHits.length = 0; seen.length = 0;
+    const thirdHost = new URL(third.base).host;
+    const bl = await run('stitch-shot.mjs', [`${base}/blocked.html`, 'out/bl.png', ...W, '--block', `${thirdHost},ads.example`]);
+    check(bl.status === 0 && thirdHits.length === 0, `--block: the widget origin must receive 0 requests, got ${thirdHits.length} (exit ${bl.status})\n${bl.stderr}`);
+    check(new RegExp(`^blocked: ${thirdHost.replace('.', '\\.')}, ads\\.example`, 'm').test(bl.stdout), `--block: verdict block must print the blocked list\n${bl.stdout}`);
+    const doc = seen.find((x) => x.path === '/blocked.html');
+    check(doc && /Chromium/.test(doc.headers['sec-ch-ua'] || '') && /text\/html/.test(doc.headers.accept || ''), `--block: the main document must still carry the standard header set (route composition) — got ${JSON.stringify(doc && { ua: doc.headers['sec-ch-ua'], accept: doc.headers.accept })}`);
+    if (bl.status === 0) {
+      const sc = JSON.parse(readFileSync(join(tmp, 'out/bl.png.json'), 'utf8'));
+      check(JSON.stringify(sc.blocked) === JSON.stringify([thirdHost, 'ads.example']) && JSON.stringify(sc.instrument.options.block) === JSON.stringify([thirdHost, 'ads.example']), `--block: sidecar blocked[] / options.block wrong: ${JSON.stringify(sc.blocked)}`);
+      const pc = await run('pixel-compare.mjs', ['out/nb.png', 'out/bl.png', '--out', 'out/d.png', '--timeout', '0']);
+      check(pc.status === 1 && /INCOMPARABLE CAPTURES — blocked:/.test(pc.stderr), `pixel-compare: a blocked-vs-unblocked pair must be refused (exit 1), got ${pc.status}\n${pc.stderr}`);
+      const pcf = await run('pixel-compare.mjs', ['out/nb.png', 'out/bl.png', '--out', 'out/d.png', '--timeout', '0', '--force']);
+      check([0, 2].includes(pcf.status) && /--force given/.test(pcf.stderr), `pixel-compare --force: must compare anyway, got ${pcf.status}\n${pcf.stderr}`);
+      const pcs = await run('pixel-compare.mjs', ['out/bl.png', 'out/bl.png', '--out', 'out/d2.png', '--timeout', '0']);
+      check(pcs.status === 0 && !/INCOMPARABLE/.test(pcs.stderr), `pixel-compare: same blocked list on both sides must compare, got ${pcs.status}\n${pcs.stderr}`);
+    }
+    const cmp = await run('stitch-shot.mjs', [`${base}/static.html`, 'out/cmp.png', ...W, '--block', 'onetrust']);
+    check(cmp.status === 0 && /names a consent manager \(onetrust\)/.test(cmp.stderr), `--block onetrust: must warn that it is a consent decision (D3)\n${cmp.stderr}`);
   } finally {
+    third.srv.close();
     srv.close();
     rmSync(tmp, { recursive: true, force: true });
   }

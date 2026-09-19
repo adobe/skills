@@ -170,7 +170,7 @@ export function contextOptions({ ua, locale, viewport } = {}) {
  * cleared it; the spoof is harmless on non-challenging sites). Extra
  * Playwright context options pass through (reducedMotion, ...).
  */
-export async function newLiveContext(browser, { ua, locale, viewport, authOrigin, authHeader, ...rest } = {}) {
+export async function newLiveContext(browser, { ua, locale, viewport, authOrigin, authHeader, block = [], ...rest } = {}) {
   // F-B2 (financial-services site, 2026-08-25): the standard header set must ride on
   // DOCUMENT requests only. Forcing it via extraHTTPHeaders on every request
   // makes cross-origin CORS-mode subresource fetches (Typekit/webfont CDNs)
@@ -178,20 +178,71 @@ export async function newLiveContext(browser, { ua, locale, viewport, authOrigin
   // renders FALLBACK type — an asymmetric false measurement (the prototype
   // side loads the same kit fine). Bot-manager fingerprinting happens on the
   // navigation request, which still carries the full set below.
+  //
+  // ROUTE COMPOSITION: Playwright runs route handlers in REVERSE registration
+  // order and `route.continue()` ENDS the chain. Every handler in this stack
+  // therefore uses `route.fallback()` — a project port of the block route
+  // that `continue()`d on non-matches silently disabled this header route and
+  // the origin-auth route on every capture of one field run (recorded).
   const { extraHTTPHeaders, ...base } = contextOptions({ ua, locale, viewport });
   const ctx = await browser.newContext({ ...rest, ...base });
   await ctx.route('**/*', (route) => {
     if (route.request().resourceType() === 'document') {
-      route.continue({ headers: { ...route.request().headers(), ...extraHTTPHeaders } });
+      route.fallback({ headers: { ...route.request().headers(), ...extraHTTPHeaders } });
     } else {
-      route.continue();
+      route.fallback();
     }
   });
   await ctx.addInitScript(() => {
     Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
   });
   if (authOrigin && authHeader) await attachOriginAuth(ctx, authOrigin, authHeader);
+  const substrings = parseBlockList(block);
+  if (substrings.length) await attachBlockRoute(ctx, substrings, { authOrigin });
   return ctx;
+}
+
+// ---- --block: host-substring route abort for undismissable third-party widgets ----
+// Chat/survey/ad widgets hosted in an iframe or shadow root with no host-page
+// close control cannot be dismissed (recorded: an AI-chat widget on every
+// capture of one run — the agent added a local --block and used it 29 times).
+// The route aborts (blockedbyclient) any request whose URL contains one of the
+// substrings, EXCEPT the main-frame navigation, the target page's origin and
+// the auth origin — sub-frame documents are abortable by design (that is the
+// whole point for iframe widgets). Opt-in, symmetric: the sidecar records
+// `blocked` and pixel-compare/crop-compare refuse an asymmetric pair.
+export const CMP_HOSTS = ['onetrust', 'cookielaw', 'cookiebot', 'trustarc', 'usercentrics', 'didomi', 'quantcast', 'consentmanager', 'osano'];
+/** `"a.com, b.net"` | ['a.com'] → lower-cased, trimmed, de-duplicated substrings. */
+export function parseBlockList(v) {
+  const list = Array.isArray(v) ? v : String(v || '').split(',');
+  return [...new Set(list.map((s) => String(s || '').trim().toLowerCase()).filter(Boolean))];
+}
+/** Pure decision for one request — exported for tests. `isMainNav` = main-frame navigation. */
+export function blockDecision({ url, isMainNav = false, targetOrigin = null, authOrigin = null, substrings = [] }) {
+  if (isMainNav || !substrings.length) return false;
+  let origin = null;
+  try { origin = new URL(url).origin; } catch { return false; }
+  if (targetOrigin && origin === targetOrigin) return false;
+  if (authOrigin) { try { if (origin === new URL(authOrigin).origin) return false; } catch { /* unparseable auth origin */ } }
+  const u = url.toLowerCase();
+  return substrings.some((s) => u.includes(s));
+}
+/** Stderr line when a --block substring names a consent manager: that is a consent decision (D3), not a widget block. */
+export function warnCmpBlock(substrings, tool = 'live-session') {
+  const cmp = substrings.filter((s) => CMP_HOSTS.some((h) => s.includes(h) || h.includes(s)));
+  if (cmp.length) console.error(`[${tool}] --block names a consent manager (${cmp.join(', ')}): blocking a CMP changes the consent state — no banner renders and nothing is accepted or denied; the sidecar records consent.mode as requested but the page is in a third state. Prefer --consent / --consent-mode (D3) unless both sides are captured with the same block.`);
+  return cmp;
+}
+export async function attachBlockRoute(context, substrings, { authOrigin = null } = {}) {
+  let targetOrigin = null;
+  warnCmpBlock(substrings);
+  await context.route('**/*', (route) => {
+    const req = route.request();
+    const isMainNav = req.isNavigationRequest() && !req.frame().parentFrame();
+    if (isMainNav) { try { targetOrigin = new URL(req.url()).origin; } catch { /* keep previous */ } }
+    if (blockDecision({ url: req.url(), isMainNav, targetOrigin, authOrigin, substrings })) route.abort('blockedbyclient');
+    else route.fallback();
+  });
 }
 
 /**
@@ -218,10 +269,13 @@ export function resolveSiteAuth({ authHeader, tokenEnv } = {}) {
 export async function attachOriginAuth(context, origin, headerValue) {
   if (!headerValue || !origin) return;
   const o = new URL(origin).origin;
+  // fallback, not continue: this handler runs BEFORE the document-header route
+  // (reverse registration order) and must hand the request on so the auth
+  // origin's document still carries the standard header set (A114 + A29).
   await context.route('**/*', (route) => {
     const u = route.request().url();
-    if (u === o || u.startsWith(`${o}/`)) route.continue({ headers: { ...route.request().headers(), authorization: headerValue } });
-    else route.continue();
+    if (u === o || u.startsWith(`${o}/`)) route.fallback({ headers: { ...route.request().headers(), authorization: headerValue } });
+    else route.fallback();
   });
 }
 

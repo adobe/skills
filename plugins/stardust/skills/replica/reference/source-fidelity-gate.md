@@ -529,7 +529,13 @@ rather than erroring.
    `recreation-procedure.md` § Granularity parity.
 8. **Capture-state policy** — CDN-403 placeholders and hydration states are
    ground truth (`recreation-procedure.md` § Capture-state); a probe flag
-   over a logged capture-state zone is justified.
+   over a logged capture-state zone is justified. A third-party widget with
+   no close control (iframe/shadow-hosted chat, survey) is blocked at the
+   route, not eyeballed: `--block <host-substr,…>` on every live-session
+   instrument (`GATE_BLOCK` on `gate.sh`) — opt-in, host-substring, never
+   the page's own origin, the SAME value on both sides: the sidecar records
+   `blocked` and pixel-compare refuses an asymmetric pair. A consent-manager
+   host in that list is a consent decision (D3), and the instrument says so.
 9. **Two classes only the gate sees:** rendered-face font forks on inner
    spans (trust the width probe over captured computed styles) and overlay
    scrims (recover by per-row luminance fitting). Both in
@@ -654,6 +660,8 @@ node stardust/scripts/diff/visual-diff.mjs "$LIVE" "$PROTO" --profile generic \
 
 # non-standard overlay closer / pinned locale / bot-managed site:
 #   --dismiss "#custom-close"    --locale en-GB    --headed
+# undismissable iframe/shadow widget (chat, survey) — same value BOTH sides:
+#   --block "chat-vendor.example,ads.example"   (gate.sh: GATE_BLOCK=…)
 ```
 
 Defaults when no flags are passed: real-Chrome UA + standard headers on
