@@ -24,7 +24,7 @@ One JSON object per line (JSONL — no wrapping array, no pretty-print):
 | `event` | yes | `start` \| `end` \| `blocked` |
 | `detail` | no | one human-readable line (counts, blocker reason) |
 | `artifact` | no | path to the phase's primary output, when one exists; on the `start` line of a long step, its progress or log file |
-| `next` | no | the one pasteable command that continues the run; required on every `end` line, allowed on `blocked` and on the `start` line of a long-running phase |
+| `next` | on `end` | the one pasteable command that continues the run; allowed on `blocked` and on the `start` line of a long-running phase |
 
 ## Rules
 
@@ -40,10 +40,12 @@ One JSON object per line (JSONL — no wrapping array, no pretty-print):
   `coverage/pages.json`). The `start` line of any step expected to run
   over ~2 minutes is written *before* the step, with `artifact` naming
   the progress or log file the step appends to.
-- **The phase `start` line carries the session lock.** Writing a
-  `start` line acquires or refreshes `stardust/.work/run.lock`
-  (`state-machine.md` § Concurrency → Session advisory lock); the
-  run's last `end` line releases it.
+- **The phase `start` line carries the session lock.** Before the
+  first `start` line run
+  `node skills/stardust/scripts/run-lock.mjs acquire --skill <name>`;
+  before every later phase line `refresh --skill <name>`; after the
+  run's last `end` line `release` (`state-machine.md` § Concurrency →
+  Session advisory lock).
 - **Harness-agnostic.** Plugin skills must never reference
   harness-specific progress mechanisms (no `emit_milestone`, no
   session APIs). `stardust/status.jsonl` is the only progress

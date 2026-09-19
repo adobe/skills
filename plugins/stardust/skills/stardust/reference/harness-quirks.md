@@ -17,23 +17,23 @@ are in the CHANGELOG, not here.
 
 ## Runner
 
-- Waiting is the master skill's § Hands-off mode → Wait discipline: background plus progress file, checks at most every 4 minutes, never a fixed long `sleep`.
-- macOS has no `timeout`: cap a command with `node skills/replica/scripts/run-capped.mjs --timeout <s> -- <cmd>`.
+- Waiting: master § Hands-off mode → Wait discipline (pointer only; no numbers here).
+- macOS has no `timeout`: `node skills/replica/scripts/run-capped.mjs` — `../replica/reference/source-fidelity-gate.md` § Iteration discipline.
 - The tool layer kills a foreground command at about 2 minutes with exit 143; exit 124/143 means *killed*, never *FAIL* — re-run it in the background, do not record a verdict.
 
 ## Delivery
 
-- Bulk delivery is `node skills/deploy/scripts/deploy-batch.mjs` — never an ad-hoc `curl` loop; success is read from its ledger and the admin status line, never from a loop printing "done" (`../deploy/da-deploy-protocol.md` § Deploy, "use the bundled driver").
+- Bulk delivery is `node skills/deploy/scripts/deploy-batch.mjs` — never an ad-hoc `curl` loop; success is read from its ledger and the admin status line, never from a loop printing "done" (`../deploy/da-deploy-protocol.md` § Delivery pipeline, "use the bundled driver").
 
 ## Paths
 
-- Every path is absolute from the project root recorded at Setup (`pwd` at Setup step 1; once the environment preflight lands it is `stardust/.work/env.json` `projectRoot`).
+- Every path is absolute from the project root confirmed at Setup step 7.
 - Never `cd` inside a compound command (`cd x && …`): the working directory is reset between tool calls and a `cd` that survives poisons every relative path that follows.
-- The state report warns when the current directory is not the project root (master § Setup step 7).
+- The state report warns when the working directory is not the project root (`state-machine.md` § State report).
 
 ## Served assets
 
-- Delivered `.plain.html` and assets come gzip-encoded: every `curl` that reads a served file carries `--compressed`, or byte counts and text asserts lie (`../deploy/da-deploy-protocol.md` § Deploy, step 3b).
+- Served files are gzip: `--compressed` on every `curl` that reads one — `../deploy/da-deploy-protocol.md` § Deploy, step 3b.
 
 ## Local QA
 
@@ -42,4 +42,4 @@ are in the CHANGELOG, not here.
 
 ## Ports
 
-- Before any gate round, assert the server on the port is yours — `skills/replica/scripts/gate.sh --marker <string>` (the identity assertion) — and free stale listeners with `lsof -i :<port>`; a port allocator will replace the fixed defaults later.
+- Before any gate round, assert the server on the port is yours — `skills/replica/scripts/gate.sh --marker <string>` (the identity assertion) — and free stale listeners with `lsof -i :<port>`.

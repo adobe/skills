@@ -314,10 +314,12 @@ Repo:  tracked 412 files / 31 MB under stardust/; not tracked 1,165 (captures, s
        run `$stardust extract` before migrate/deploy.
 ```
 
-When `stardust/.work/run.lock` names a held run in another session
-(§ Concurrency), the report opens with one line before `Site:` —
-`Active run: <skill> in session <sessionId> since <startedAt> — read-only
-unless you take over` — and the recommended next step is omitted.
+When `run-lock.mjs check` exits 3 (§ Concurrency), the report opens
+with the line it prints, before `Site:` — `Active run: <skill> in
+session <sessionId> since <startedAt> — read-only unless you take over`
+— and the recommended next step is omitted. When the working directory
+is not the project root, the line `Project root: <path> (not the
+working directory)` follows it.
 
 The `Repo:` block is rendered only when the project is a git repo. Its
 four facts come from `git ls-files` / `git check-ignore` and the master
@@ -510,15 +512,16 @@ entries; do not engineer around it.
 **Session advisory lock** — orthogonal to merge-by-slug, and the only
 lock stardust has. `stardust/.work/run.lock` (untracked) is one JSON
 object: `{ "sessionId", "pid", "startedAt", "refreshedAt", "skill",
-"owns": [] }`. A phase skill writes it with its first `status.jsonl`
-`start` line, rewrites `refreshedAt` and `skill` on every later phase
-line, and deletes it when the run ends. The lock is **held** while the
-file exists, `pid` is alive (`kill -0 <pid>`) and `refreshedAt` is less
-than 2 hours old; otherwise it is **stale** and a new run overwrites it.
-It never blocks its owner and never merges anything: it tells a *second
-session* that a run is in progress and which paths it is writing
-(`owns[]`: `stardust/<skill>/…`, the EDS project). The master skill's
-Setup step 7 reads it; page-entry races stay last-write-wins as above.
+"owns": [] }`, written and read only through
+`node skills/stardust/scripts/run-lock.mjs acquire|refresh|check|release`.
+It is **held** while `refreshedAt` is under 2 hours old (and, when a
+`pid` is recorded, that pid is alive); otherwise it is **stale** and the
+next `acquire` overwrites it. It never blocks its owner and never merges
+anything: it tells a *second session* that a run is in progress and
+which paths it is writing (`owns[]`: `stardust/<skill>/…`, the EDS
+project). The master skill's Setup step 7 runs `check`; phase skills
+`acquire` / `refresh` / `release` it (`run-status.md` § Rules);
+page-entry races stay last-write-wins as above.
 
 ---
 

@@ -13,7 +13,7 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 |---|---|---|---|
 | Setup 1 | impeccable presence check; `node skills/stardust/scripts/impeccable-version-check.mjs [--local <dir>]` (advisory) | impeccable is a hard dependency | — |
 | Setup 2–4 | `PRODUCT.md` / `DESIGN.md` presence; read `stardust/state.json`; parse impeccable's `command-metadata.json` | — | — |
-| Setup 5–7 | status ledger; project hygiene (`stardust/.gitignore`, root `.gitignore`, `.hlxignore`, `git check-ignore`); run lock + project root | `state.json` must not be ignored; a held lock → read-only | `stardust/status.jsonl`, `stardust/.gitignore`, `stardust/.work/run.lock` |
+| Setup 5–7 | status ledger; project hygiene (`stardust/.gitignore`, root `.gitignore`, `.hlxignore`, `git check-ignore`); `node skills/stardust/scripts/run-lock.mjs check` + project root | `state.json` must not be ignored; `check` exit 3 (held) → read-only | `stardust/status.jsonl`, `stardust/.gitignore`, `stardust/.work/run.lock` |
 | Routing | no arg / resume → state report; sub-skill keyword → delegate; migration ask → § Two migration flows; freeform → intent reasoning | plan shown before any command (hands-off: recorded instead) | `state.json` flow keys |
 | Freeform intent | § The "open and reasoned" principle, steps 1–6 | plan confirmation | `stardust/direction.md` |
 | Hands-off | activation block (wave plan + stop point, commit policy); gate auto-resolution table; background waits; turn-end contract (chain after PASS); scoped per-phase commits | quality gates unchanged; hard blockers and owner-only rows still stop; a turn ends only on completion, blocker or a > 45-min wait | `state.json.handsOff` / `approvedChain`, `direction.md` activation line, `status.jsonl` `blocked` |
@@ -88,14 +88,16 @@ sub-commands that delegate the actual design work to **impeccable**.
    binaries under `stardust/` (`reference/artifact-map.md` § Versioning).
    Every shell loop, runner, delivery step and probe in the run follows
    `reference/harness-quirks.md`.
-7. **Run lock and project root.** Read `stardust/.work/run.lock`
-   (`reference/state-machine.md` § Concurrency → Session advisory lock).
-   If it names a held run in another session: interactive, ask once —
-   take over or proceed read-only; hands-off, proceed read-only, append
-   `event: "blocked"` naming the holder to `status.jsonl`, and stop at
-   the first write. When the requested project root is not the working
+7. **Run lock and project root.** Run
+   `node skills/stardust/scripts/run-lock.mjs check` (`--session <id>`
+   when you hold one; `reference/state-machine.md` § Concurrency →
+   Session advisory lock). Exit 3 means another live session holds the
+   run: interactive, ask once — take over (`acquire --force`) or proceed
+   read-only; hands-off, proceed read-only, append `event: "blocked"`
+   quoting the `Active run:` line to `status.jsonl`, and stop at the
+   first write. When the requested project root is not the working
    directory's project, confirm before any write (hands-off: record it
-   in `direction.md` and stop) and run this step in that root.
+   in `direction.md` and stop) and run `check --root <that root>`.
 
 ## Routing
 
@@ -225,8 +227,8 @@ keys), append an activation line quoting the phrase to
 **activation block**: the chosen flow; the roster cap as **wave 1 of a
 written wave plan** with its stop point; "commits land at each phase
 end without asking — hands-off overrides an ask-before-commit
-preference for this run"; the decision register
-(`reference/decisions.md`). The mode removes **waiting**, not
+preference for this run"; the open owner-only decisions. The mode
+removes **waiting**, not
 **validation**: provenance validation, the validation loop, fidelity,
 delivery and optimize gates all run unchanged — hands-off changes *who
 answers*, not *what must pass*.
@@ -265,17 +267,11 @@ otherwise):
   polls. What a delegated agent writes, how it is polled, resumed once
   and finished from its progress file: `reference/fan-out.md` (every
   brief points at its § Worker contract).
-- **Image reads.** Numbers first (`pixel-compare --json`, `crop-compare
-  --json`, `anchor`, `row-profile`), then band crops — never a stitched
-  capture whole (the viewer caps at 2,000 px tall), one image per turn,
-  none re-read, none past ~80 % of the context —
-  `reference/context-hygiene.md` § Image reads.
-- **Scope and type of delegated agents.** One agent owns at most one
-  archetype gate loop or three sibling pages; anything longer than ~20
-  requests or launching a browser is a fresh-context agent with a
-  file-pointer brief, and the coordinator dispatches and merges rather
-  than authoring inline while workers run — `reference/fan-out.md`
-  § Scope and type.
+- **Image reads.** Numbers first, then band crops; never a stitched
+  capture whole — `reference/context-hygiene.md` § Image reads.
+- **Scope and type of delegated agents.** Scope cap first, fresh-context
+  workers by default, the coordinator dispatches and merges —
+  `reference/fan-out.md` § Scope and type of delegated agents.
 - **Wait discipline: never park the conversation past the prompt-cache
   window.** Anything expected to run longer than about 2 minutes — a gate
   round, a crawl, a batch push, a capture set, a delegated agent — runs
@@ -293,11 +289,9 @@ otherwise):
   `run_in_background: true` on the shell call; the owner setting
   `promptCacheTtl: "1h"` stretches the window to an hour at 1.6× write
   price — worth it for any multi-hour session.)
-- **Context hygiene.** Batch runners report a ranked class table and
-  write `summary.json` + `summary.md`; nothing per-page is pasted into
-  the conversation; after an edit re-read the changed range only; a long
-  run hands off to a fresh session at each phase boundary and after the
-  first compaction — `reference/context-hygiene.md`.
+- **Context hygiene.** Class tables in the conversation, per-page rows
+  in files, hand-off at phase boundaries — `reference/context-hygiene.md`
+  § Runner reports and session hand-off.
 - **Commit at the end of each phase** when the project is a git repo.
   Stage only the paths this skill wrote (`stardust/`, the target files,
   the EDS project files it touched) — never `git add -A` or `git add .`;
@@ -307,7 +301,8 @@ otherwise):
   poisons every later push (GH013 + history rewrite at deploy time).
 
 **Turn-end contract.** A turn ends only on (a) run completion, (b) a
-hard blocker or an owner-only row of the decision register, or (c) a
+hard blocker or an owner-only decision (an unresolved hard question
+for the owner), or (c) a
 background wait longer than ~45 minutes (Wait discipline). A wave or
 phase close is never a permitted end: it writes the journal entry, the
 `status.jsonl` `end` line and the phase commit, then starts the next

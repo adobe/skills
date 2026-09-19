@@ -18,11 +18,10 @@ CHANGELOG, not here.
   per gate round.
 - **Never read a stitched capture whole** — `live.png`, `proto.png`,
   `diff*.png`, `assets/screenshots/<slug>.png`. The viewer caps an image
-  at 2,000 px tall, so a 1440-px-wide page taller than ~3,000 px is shown
-  under 1,000 px wide and its text is not legible; the cost is paid, the
-  information is not received. Read a band instead —
-  `crop-compare --y <px> --height <px> --out <file>`, at most 1,500 px
-  tall — or a downscaled whole-page view.
+  at 2,000 px tall: a full page is shown shrunk and its text is not
+  legible; the cost is paid, the information is not received. Read a
+  band instead — `crop-compare --y <px> --height <px> --out <file>` —
+  or a downscaled whole-page view.
 - **One image per turn; never re-read an image already in context**
   (crop a different band or re-run the instrument instead).
 - **No image reads once the context passes ~80 % of its window** —
@@ -41,9 +40,9 @@ CHANGELOG, not here.
   → count → worst example → file pointer, at most 60 lines, and they
   write `summary.json` + `summary.md` under `stardust/<skill>/`. Triage
   proceeds per class from `summary.md`; the per-page rows live in the
-  files. (rollout `verify.mjs` and qa's `qa.mjs` write these files; a
-  runner that does not yet is wrapped so that its stdout goes to a file
-  and only the class roll-up is read.)
+  files. Runners that call `skills/stardust/scripts/class-report.mjs`
+  write these files; until a runner does, redirect its stdout to a file
+  under `stardust/.work/<skill>/` and read only the class roll-up.
 - **Nothing per-page is pasted into the conversation**: no page
   listings, probe dumps, persisted tool-result files, or a delegated
   agent's full output. Delegated agents hand back by pointer
