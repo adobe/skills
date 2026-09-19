@@ -17,7 +17,7 @@
  *
  * Probes the SOURCE site. No auth header is sent (the source is public); the
  * target-host probe lives in dynamics-plan.mjs.
- * Exit: 0 report written · 2 usage / live-session.mjs missing. Findings are evidence, never a verdict.
+ * Exit: 0 report written · 2 usage / live-session.mjs or playwright missing. Findings are evidence, never a verdict.
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
 import { readdirSync, existsSync } from 'node:fs';
@@ -41,6 +41,8 @@ if (!LIVE_SESSION) {
 }
 const { launchTier, parseHeadedFlag, resolveStartTier } = await import(pathToFileURL(LIVE_SESSION).href);
 
+const USAGE = 'usage: dynamics-detect.mjs --urls <url,…> | --from-state stardust/state.json [--out dir] [--reach dir] [--settle ms] [--width px] [--headed[=window]] [--offline]';
+if (flag('help')) { console.log(USAGE); process.exit(0); }
 const OUT = arg('out', 'stardust/current');
 const SETTLE = Number(arg('settle', 5000));
 const WIDTH = Number(arg('width', 1440));
@@ -51,8 +53,6 @@ if (!URLS.length && arg('from-state')) {
   for (const p of st.pages || []) { const t = p.type || 'untyped'; if (!byType.has(t)) byType.set(t, p.url); }
   URLS = [...new Set([st.site?.url || st.site?.origin, ...byType.values()].filter(Boolean))];
 }
-const USAGE = 'usage: dynamics-detect.mjs --urls <url,…> | --from-state stardust/state.json [--out dir] [--reach dir] [--settle ms] [--width px] [--headed[=window]] [--offline]';
-if (flag('help')) { console.log(USAGE); process.exit(0); }
 if (!URLS.length) { console.error(USAGE); process.exit(2); }
 const OFFLINE = flag('offline');
 
@@ -220,7 +220,8 @@ function classify(page, path, add) {
 }
 
 /* ---------------------------------------------------------------- main -- */
-const { chromium } = await loadPlaywright();
+let chromium;
+try { ({ chromium } = await loadPlaywright()); } catch (e) { console.error('%s: %s', SCRIPT_NAME, e.message); process.exit(2); }
 // --headed = ladder start tier 2 (real Chrome headless), --headed=window = tier 3 (off-screen);
 // default = the tier extract recorded in _crawl-log.json#discovery.fetchTechnique.
 const headedArg = process.argv.find((a) => a === '--headed' || a.startsWith('--headed='));

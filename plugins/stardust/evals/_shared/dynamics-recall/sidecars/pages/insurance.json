@@ -1,14 +1,9 @@
 {
- "slug": "hjelp",
- "url": "https://source.example/hjelp",
+ "slug": "insurance",
+ "url": "https://source.example/insurance",
  "dynamic": {
   "endpoints": [],
-  "thirdPartyScriptHosts": [
-   {
-    "host": "static.zdassets.com",
-    "count": 1
-   }
-  ],
+  "thirdPartyScriptHosts": [],
   "inlineData": [],
   "globalState": [],
   "frameworkHints": [],
@@ -18,21 +13,19 @@
   "mediaIds": [],
   "tabs": {
    "tablists": 0,
-   "expanders": 0
+   "expanders": 9
   },
-  "shadowHosts": [
+  "shadowHosts": [],
+  "emptyConfigContainers": [],
+  "controlGroups": [
    {
-    "tag": "help-widget",
-    "cls": "help"
+    "container": "section.calculator",
+    "controls": 3
    }
   ],
-  "emptyConfigContainers": [],
-  "controlGroups": [],
   "searchShell": false,
   "players": [],
-  "chatLoaders": [
-   "static.zdassets.com"
-  ],
+  "chatLoaders": [],
   "federated": {
    "remoteEntries": [],
    "registerCalls": 0

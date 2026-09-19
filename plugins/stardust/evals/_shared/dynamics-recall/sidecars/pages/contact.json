@@ -1,6 +1,6 @@
 {
- "slug": "kontakt",
- "url": "https://source.example/kontakt",
+ "slug": "contact",
+ "url": "https://source.example/contact",
  "dynamic": {
   "endpoints": [],
   "thirdPartyScriptHosts": [],

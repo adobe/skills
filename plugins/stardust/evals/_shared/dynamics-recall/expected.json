@@ -23,6 +23,6 @@
     { "id": "quiz-reach", "class": "F", "feature": "^quiz / questionnaire", "via": "reach", "minPages": 1, "reachOnly": true },
     { "id": "shadow-reach", "class": "M", "feature": "^shadow-DOM component", "via": "reach", "minPages": 1, "reachOnly": true },
     { "id": "empty-config-reach", "class": "CR", "feature": "^empty data-\\* config container", "via": "reach", "minPages": 1, "reachOnly": false },
-    { "id": "pension-api-reach", "class": "A", "feature": "^first-party API GET /api/pension/\\{n\\}", "via": "reach", "minPages": 1, "reachOnly": true }
+    { "id": "plans-api-reach", "class": "A", "feature": "^first-party API GET /api/plans/\\{n\\}", "via": "reach", "minPages": 1, "reachOnly": true }
   ]
 }

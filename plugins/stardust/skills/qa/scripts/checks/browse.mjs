@@ -20,7 +20,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  loadPlaywright, finding, pageUrl, pathSlug, ensureDir, pMap, attachOriginAuth, withNavSlot, retryAfterMs, getFetchLimiter, configureFetch,
+  loadPlaywright, finding, pageUrl, pathSlug, ensureDir, pMap, attachOriginAuth, withNavSlot, retryAfterMs, getFetchLimiter, configureFetch, noteThrottled,
 } from '../lib.mjs';
 
 const THROTTLE = (s) => s === 429 || s === 503;
@@ -28,7 +28,7 @@ const THROTTLE = (s) => s === 429 || s === 503;
  * Navigate holding one limiter slot; a 429/503 document is retried (Retry-After,
  * else 2/4 s) up to three attempts. Returns the last response (or null) — a
  * document still throttled is `rendered/unmeasured`, never main-collapsed /
- * request-failed (fox: 67 + 67 such findings from one 429 wall).
+ * request-failed (one 429 wall once read as two errors on every page).
  */
 export async function gotoPaced(page, url, opts, { attempts = 3, backoffMs = configureFetch({}).backoffMs } = {}) {
   let res = null;
@@ -40,6 +40,19 @@ export async function gotoPaced(page, url, opts, { attempts = 3, backoffMs = con
     if (i + 1 < attempts) await page.waitForTimeout(retryAfterMs(res.headers()['retry-after']) ?? backoffMs * 2 ** i);
   }
   return res;
+}
+
+/**
+ * Sort one response for the rendered check (pure; test/browse-throttle.test.mjs):
+ *   'skip'      document 429/503 — gotoPaced owns that verdict (a retried document must not leave an HTTP 429 in badRequests)
+ *   'throttled' same-origin sub-resource 429/503 — infrastructure state → rendered/unmeasured, never request-failed
+ *   'bad'       same-origin ≥ 400 — the request-failed defect class
+ *   null        off-origin or fine
+ */
+export function sortResponse({ url, status, resourceType }, base) {
+  if (!url.startsWith(base)) return null;
+  if (THROTTLE(status)) return resourceType === 'document' ? 'skip' : 'throttled';
+  return status >= 400 ? 'bad' : null;
 }
 
 const VIEWPORTS = [
@@ -173,7 +186,7 @@ export async function run(ctx) {
       const context = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
       await attachOriginAuth(context);
       const page = await context.newPage();
-      const consoleErrors = []; const pageErrors = []; const badRequests = [];
+      const consoleErrors = []; const pageErrors = []; const badRequests = []; const throttledRequests = [];
       page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text().slice(0, 300)); });
       page.on('pageerror', (e) => pageErrors.push(String(e).slice(0, 300)));
       page.on('requestfailed', (r) => {
@@ -183,9 +196,8 @@ export async function run(ctx) {
         }
       });
       page.on('response', (r) => {
-        if (r.url().startsWith(base) && r.status() >= 400) {
-          badRequests.push(`HTTP ${r.status()} ${r.url().slice(base.length)}`.slice(0, 300));
-        }
+        const kind = sortResponse({ url: r.url(), status: r.status(), resourceType: r.request().resourceType() }, base);
+        if (kind === 'bad' || kind === 'throttled') (kind === 'bad' ? badRequests : throttledRequests).push(`HTTP ${r.status()} ${r.url().slice(base.length)}`.slice(0, 300));
       });
 
       let nav = null;
@@ -199,6 +211,7 @@ export async function run(ctx) {
       }
       if (nav && THROTTLE(nav.status())) {
         // the origin throttled the document itself: nothing below is a measurement (no main-collapsed, request-failed, axe, visual)
+        noteThrottled();
         findings.push(finding('rendered', 'unmeasured', 'info', p.path,
           `[${vp.name}] document throttled (HTTP ${nav.status()} after retries) — not measured; re-run`, { status: nav.status() }));
         await context.close();
@@ -210,6 +223,14 @@ export async function run(ctx) {
           `[${vp.name}] EDS section decoration did not reach "loaded" within ${DECORATION_TIMEOUT / 1000}s`));
       }
       await autoScroll(page);
+      if (throttledRequests.length) {
+        // the origin throttled css/js/img of this page: geometry, images and the screenshot measure the throttle, not the page
+        noteThrottled();
+        findings.push(finding('rendered', 'unmeasured', 'info', p.path,
+          `[${vp.name}] ${throttledRequests.length} same-origin request(s) throttled (${throttledRequests[0].split(' ').slice(0, 2).join(' ')}) — not measured; re-run`, { requests: [...new Set(throttledRequests)].slice(0, 8) }));
+        await context.close();
+        return;
+      }
 
       // ---- rendered (D): geometry --------------------------------------
       const geo = await page.evaluate(() => {

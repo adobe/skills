@@ -1,6 +1,6 @@
 {
- "slug": "om-oss",
- "url": "https://source.example/om-oss",
+ "slug": "plans",
+ "url": "https://source.example/plans",
  "dynamic": {
   "endpoints": [],
   "thirdPartyScriptHosts": [],
@@ -9,30 +9,22 @@
   "frameworkHints": [],
   "forms": [],
   "ariaLiveRegions": 0,
-  "triggers": [
-   {
-    "marker": "button--open-modal",
-    "href": null
-   }
-  ],
+  "triggers": [],
   "mediaIds": [],
   "tabs": {
-   "tablists": 0,
-   "expanders": 0
+   "tablists": 1,
+   "expanders": 6
   },
   "shadowHosts": [],
-  "emptyConfigContainers": [
-   {
-    "tag": "div",
-    "attrs": [
-     "data-component",
-     "data-props"
-    ]
-   }
-  ],
+  "emptyConfigContainers": [],
   "controlGroups": [],
   "searchShell": false,
-  "players": [],
+  "players": [
+   {
+    "vendor": "kaltura",
+    "id": "11111111"
+   }
+  ],
   "chatLoaders": [],
   "federated": {
    "remoteEntries": [],

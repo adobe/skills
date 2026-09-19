@@ -1,9 +1,14 @@
 {
- "slug": "privat-lofavor",
- "url": "https://source.example/privat-lofavor",
+ "slug": "help",
+ "url": "https://source.example/help",
  "dynamic": {
   "endpoints": [],
-  "thirdPartyScriptHosts": [],
+  "thirdPartyScriptHosts": [
+   {
+    "host": "static.zdassets.com",
+    "count": 1
+   }
+  ],
   "inlineData": [],
   "globalState": [],
   "frameworkHints": [],
@@ -12,20 +17,22 @@
   "triggers": [],
   "mediaIds": [],
   "tabs": {
-   "tablists": 1,
-   "expanders": 6
+   "tablists": 0,
+   "expanders": 0
   },
-  "shadowHosts": [],
+  "shadowHosts": [
+   {
+    "tag": "help-widget",
+    "cls": "help"
+   }
+  ],
   "emptyConfigContainers": [],
   "controlGroups": [],
   "searchShell": false,
-  "players": [
-   {
-    "vendor": "kaltura",
-    "id": "11111111"
-   }
+  "players": [],
+  "chatLoaders": [
+   "static.zdassets.com"
   ],
-  "chatLoaders": [],
   "federated": {
    "remoteEntries": [],
    "registerCalls": 0

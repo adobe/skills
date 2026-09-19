@@ -47,5 +47,4 @@ whenever a target host exists, with the site auth header scoped to that origin.
 
 `aria-controls` on nav dropdowns counts as a dialog trigger only when the target has `role=dialog`;
 media-CDN edge hosts and geo lookups appear as unknown hosts until the table knows them; four
-archetypes give features but not reach; a `reach-only` row is a sibling-page signal, not a probed
-feature — its class is inferred from the signal and its evidence is slugs, so confirm one page.
+archetypes give features but not reach; a `reach-only` class is inferred from the signal.

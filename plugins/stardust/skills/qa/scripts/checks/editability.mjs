@@ -20,7 +20,7 @@
  * Contract: deploy reference/block-js-scaffold.md § Experience Workspace editability contract (EW1–EW10).
  */
 import {
-  loadPlaywright, finding, pageUrl, pMap, arg, withNavSlot,
+  loadPlaywright, finding, pageUrl, pMap, arg, withNavSlot, getFetchLimiter, configureFetch, noteThrottled,
 } from '../lib.mjs';
 import {
   probeUrl, aggregate, readBlockExemptions, parseExemptList,
@@ -31,6 +31,8 @@ const SETTLE_MS = 1500;
 const DECORATION_TIMEOUT = 15000;
 
 const quote = (d) => `<${d.tag}> "${d.text.slice(0, 40)}${d.text.length > 40 ? '…' : ''}"`;
+const THROTTLE = (s) => s === 429 || s === 503;
+const THROTTLE_ATTEMPTS = 3; // same paced retry budget as browse.mjs gotoPaced / lib.mjs fetchUrl
 
 export async function run(ctx) {
   const { base, inventory, opts } = ctx;
@@ -43,17 +45,26 @@ export async function run(ctx) {
   await pMap(inventory.pages, async (p) => {
     let bctx = null;
     try {
-      // one limiter slot per navigation: the probe shares the fetch budget of the sweep (report.infra)
-      const probe = await withNavSlot(pageUrl(base, p.path), () => probeUrl(browser, pageUrl(base, p.path), {
-        width: VIEWPORT_WIDTH,
-        waitUntil: 'domcontentloaded', // hanging third-party tags never reach networkidle (browse.mjs)
-        settleMs: SETTLE_MS,
-        timeoutMs: DECORATION_TIMEOUT,
-      }));
-      bctx = probe.ctx;
-      // the document's own status (navigation timing): a throttled document instruments nothing — unmeasured, not "zero authored texts"
-      const docStatus = await probe.page.evaluate(() => performance.getEntriesByType('navigation')[0]?.responseStatus ?? 0).catch(() => 0);
-      if (docStatus === 429 || docStatus === 503) { findings.push(finding('editability', 'unmeasured', 'info', p.path, `document throttled (HTTP ${docStatus}) — not measured; re-run`, { status: docStatus })); return; }
+      const url = pageUrl(base, p.path);
+      let probe = null; let docStatus = 0;
+      for (let attempt = 0; ; attempt += 1) {
+        // one limiter slot per navigation: the probe shares the fetch budget of the sweep (report.infra)
+        probe = await withNavSlot(url, () => probeUrl(browser, url, {
+          width: VIEWPORT_WIDTH,
+          waitUntil: 'domcontentloaded', // hanging third-party tags never reach networkidle (browse.mjs)
+          settleMs: SETTLE_MS,
+          timeoutMs: DECORATION_TIMEOUT,
+        }));
+        bctx = probe.ctx;
+        // the document's own status (navigation timing): a throttled document instruments nothing — unmeasured, not "zero authored texts"
+        docStatus = await probe.page.evaluate(() => performance.getEntriesByType('navigation')[0]?.responseStatus ?? 0).catch(() => 0);
+        if (!THROTTLE(docStatus) || attempt + 1 >= THROTTLE_ATTEMPTS) break;
+        // paced retry like gotoPaced (Retry-After is not visible through the instrumented probe: back-off only)
+        getFetchLimiter()?.onThrottle(url);
+        await bctx.close().catch(() => {}); bctx = null;
+        await new Promise((r) => { setTimeout(r, configureFetch({}).backoffMs * 2 ** attempt); });
+      }
+      if (THROTTLE(docStatus)) { noteThrottled(); findings.push(finding('editability', 'unmeasured', 'info', p.path, `document throttled (HTTP ${docStatus} after ${THROTTLE_ATTEMPTS} attempts) — not measured; re-run`, { status: docStatus })); return; }
       const { rows } = probe;
       const names = [...new Set(rows.map((r) => r.block))];
       const exemptions = readBlockExemptions(blocksDir, names, cliExempt);

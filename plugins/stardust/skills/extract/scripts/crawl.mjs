@@ -552,8 +552,8 @@ function attachDynamicRecorder(page) {
 // site-level roll-up (written to _crawl-log.json#dynamicSurface): which
 // endpoints / hosts / frameworks / form targets recur across pages, with up to
 // three example slugs each — the view Phase 4.5 reads first.
-function newDynamicRollup() {
-  return { endpoints: new Map(), thirdPartyScriptHosts: new Map(), frameworkHints: new Map(), globalState: new Map(), formTargets: new Map(), pages: 0, pagesWithSameSiteData: 0, pagesWithSearchForm: 0, pagesHydrated: 0, truncatedPages: 0 };
+export function newDynamicRollup() {
+  return { endpoints: new Map(), thirdPartyScriptHosts: new Map(), frameworkHints: new Map(), globalState: new Map(), formTargets: new Map(), pages: 0, pagesWithSameSiteData: 0, pagesWithSearchForm: 0, pagesHydrated: 0, truncatedPages: 0, pagesWithTabs: 0, pagesWithPlayers: 0, pagesWithLooseControls: 0, pagesWithChat: 0, pagesWithFederated: 0, pagesWithQuiz: 0, searchShellPages: 0 };
 }
 function bump(map, key, slug, extra) {
   const row = map.get(key) || { ...extra, pages: 0, examples: [] };
@@ -561,19 +561,26 @@ function bump(map, key, slug, extra) {
   if (row.examples.length < 3) row.examples.push(slug);
   map.set(key, row);
 }
-function rollupDynamic(acc, d, slug) {
+export function rollupDynamic(acc, d, slug) {
   acc.pages += 1;
   if (d.truncated) acc.truncatedPages += 1;
   if (d.summary.sameSiteEndpoints) acc.pagesWithSameSiteData += 1;
   if (d.summary.searchForms) acc.pagesWithSearchForm += 1;
   if (d.summary.hydrated) acc.pagesHydrated += 1;
+  if (d.summary.tabs) acc.pagesWithTabs += 1;
+  if (d.summary.players) acc.pagesWithPlayers += 1;
+  if (d.summary.controlGroups) acc.pagesWithLooseControls += 1;
+  if (d.summary.chatLoaders) acc.pagesWithChat += 1;
+  if (d.summary.federated) acc.pagesWithFederated += 1;
+  if (d.summary.quiz) acc.pagesWithQuiz += 1;
+  if (d.summary.searchShell) acc.searchShellPages += 1;
   for (const e of d.endpoints) bump(acc.endpoints, `${e.method} ${e.host}${e.path}`, slug, { method: e.method, host: e.host, path: e.path, query: e.query, resourceType: e.resourceType, contentType: e.contentType, sameSite: e.sameSite, example: e.example });
   for (const h of d.thirdPartyScriptHosts) bump(acc.thirdPartyScriptHosts, h.host, slug, { host: h.host });
   for (const f of d.frameworkHints) bump(acc.frameworkHints, f, slug, { hint: f });
   for (const g of d.globalState) bump(acc.globalState, g, slug, { name: g });
   for (const f of d.forms) bump(acc.formTargets, `${f.method} ${f.action || '(js-handled)'}`, slug, { action: f.action, method: f.method, sameOrigin: f.sameOrigin, search: f.search, fieldNames: f.fieldNames });
 }
-function finalizeDynamic(acc) {
+export function finalizeDynamic(acc) {
   const list = (m, cap) => [...m.values()].sort((a, b) => b.pages - a.pages).slice(0, cap);
   return {
     pages: acc.pages,
@@ -581,6 +588,13 @@ function finalizeDynamic(acc) {
     pagesWithSearchForm: acc.pagesWithSearchForm,
     pagesHydrated: acc.pagesHydrated,
     truncatedPages: acc.truncatedPages,
+    pagesWithTabs: acc.pagesWithTabs,
+    pagesWithPlayers: acc.pagesWithPlayers,
+    pagesWithLooseControls: acc.pagesWithLooseControls,
+    pagesWithChat: acc.pagesWithChat,
+    pagesWithFederated: acc.pagesWithFederated,
+    pagesWithQuiz: acc.pagesWithQuiz,
+    searchShellPages: acc.searchShellPages,
     endpoints: list(acc.endpoints, 300),
     thirdPartyScriptHosts: list(acc.thirdPartyScriptHosts, DYNAMIC_MAX_HOSTS),
     frameworkHints: list(acc.frameworkHints, 20),
@@ -946,6 +960,14 @@ async function capturePage(context, url, slug, args) {
         forms: dom.forms.length,
         searchForms: dom.forms.filter((f) => f.search).length,
         hydrated: dom.frameworkHints.length > 0 || dom.globalState.some((g) => g !== 'dataLayer'),
+        // reach-signal counts (T34.7): the site-level roll-up and dynamics-detect --reach read these first
+        tabs: dom.tabs.tablists + dom.tabs.expanders,
+        players: dom.players.length,
+        controlGroups: dom.controlGroups.length,
+        chatLoaders: dom.chatLoaders.length,
+        federated: dom.federated.remoteEntries.length + dom.federated.registerCalls,
+        quiz: dom.quiz.markers + dom.quiz.radioFieldsets,
+        searchShell: dom.searchShell,
       },
     };
   }

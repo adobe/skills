@@ -96,6 +96,8 @@ export function configureFetch(partial) { Object.assign(FETCH_DEFAULTS, partial)
 const INFRA = { throttled: 0, retries: 0, serverErrors: 0 };
 export function infraCounters() { return { ...INFRA }; }
 export function resetInfraCounters() { INFRA.throttled = 0; INFRA.retries = 0; INFRA.serverErrors = 0; }
+/** browser checks count a throttled page here (fetchUrl counts its own) so report.infra covers both paths */
+export function noteThrottled(n = 1) { INFRA.throttled += n; return INFRA.throttled; }
 
 export function createHostLimiter({ maxInFlight = 4, restoreMs = 30000, now = Date.now } = {}) {
   const hosts = new Map(); // host -> { cap, inFlight, waiters: [], lastThrottle }
@@ -147,9 +149,10 @@ const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
 export async function fetchUrl(url, { redirect = 'follow', method = 'GET', timeoutMs = 20000, retries = 1, backoffMs = FETCH_DEFAULTS.backoffMs, throttleAttempts = FETCH_DEFAULTS.throttleAttempts } = {}) {
   let netAttempt = 0; let throttleAttempt = 0; let sawRetryAfter = false;
   for (;;) {
+    if (LIMITER) await LIMITER.take(url);
+    // armed only once the slot is held: time queued behind the per-host cap must not eat into timeoutMs
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), timeoutMs);
-    if (LIMITER) await LIMITER.take(url);
     let wait = 0; // ms before the next pass (set by a retry branch)
     try {
       const auth = originAuthFor(url);

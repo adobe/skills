@@ -60,8 +60,8 @@ redesign one.
 ## Phase 1 — Detect
 
 Operator card row 1 (or `--urls` one per archetype + the home page). Depth on archetypes, reach
-from `extract --dynamics` sidecars; a sibling-only signal becomes a `reach-only` row — re-probe one
-such page with `--urls` before triage. Output `_dynamics.json` + `dynamic-features.generated.md`. Evidence only.
+from `extract --dynamics` sidecars; reach-only rows: `reference/classes-and-signals.md` § Detection
+procedure 2. Output `_dynamics.json` + `dynamic-features.generated.md`. Evidence only.
 
 ## Phase 2 — Classify
 

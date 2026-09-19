@@ -1,6 +1,6 @@
 {
- "slug": "privat-forsikring",
- "url": "https://source.example/privat-forsikring",
+ "slug": "about",
+ "url": "https://source.example/about",
  "dynamic": {
   "endpoints": [],
   "thirdPartyScriptHosts": [],
@@ -9,20 +9,28 @@
   "frameworkHints": [],
   "forms": [],
   "ariaLiveRegions": 0,
-  "triggers": [],
+  "triggers": [
+   {
+    "marker": "button--open-modal",
+    "href": null
+   }
+  ],
   "mediaIds": [],
   "tabs": {
    "tablists": 0,
-   "expanders": 9
+   "expanders": 0
   },
   "shadowHosts": [],
-  "emptyConfigContainers": [],
-  "controlGroups": [
+  "emptyConfigContainers": [
    {
-    "container": "section.calculator",
-    "controls": 3
+    "tag": "div",
+    "attrs": [
+     "data-component",
+     "data-props"
+    ]
    }
   ],
+  "controlGroups": [],
   "searchShell": false,
   "players": [],
   "chatLoaders": [],

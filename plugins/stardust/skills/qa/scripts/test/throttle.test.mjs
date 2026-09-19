@@ -14,6 +14,7 @@
  *   routing / metadata emit <check>/unmeasured (info) and no page-not-200 / og-image-broken
  *   createHostLimiter halves the host cap on throttle (min 1) and restores +1 after a clean window
  *   infraSummary flags the report incomplete above --throttle-max and exit 2 wins in qa.mjs's order
+ *   the request timeout is armed after the limiter slot is taken (queued fetches never abort as status 0)
  * Exit: 0 all assertions pass · 1 an assertion failed.
  */
 import { createServer } from 'node:http';
@@ -38,6 +39,7 @@ const server = createServer((req, res) => {
   if (path === '/sitemap.xml') { res.writeHead(200, { 'content-type': 'application/xml' }); res.end(`<urlset><url><loc>http://127.0.0.1:${server.address().port}/</loc></url><url><loc>http://127.0.0.1:${server.address().port}/always</loc></url></urlset>`); return; }
   if (path === '/stardust-qa-definitely-not-a-page') { res.writeHead(404); res.end('<h1>not found</h1>'.padEnd(300, ' ')); return; }
   if (path === '/redirects.json' || path === '/favicon.ico') { res.writeHead(404); res.end(''); return; }
+  if (path === '/slow') { setTimeout(() => { res.writeHead(200, { 'content-type': 'text/html' }); res.end(page(path)); }, 150); return; }
   res.writeHead(200, { 'content-type': 'text/html' }); res.end(page(path));
 });
 await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
@@ -102,6 +104,9 @@ eq('release admits the waiter', second, true);
 setFetchLimiter(createHostLimiter({ maxInFlight: 1 }));
 const [a, b] = await Promise.all([fetchUrl(`${base}/always`), fetchUrl(`${base}/ok2`)]);
 eq('two fetches through a cap-1 limiter both complete', [a.status, b.status], [429, 200]);
+// queue time behind the cap must not count against timeoutMs: cap 1, 150 ms server, 250 ms timeout, four fetches → all 200 (not status 0 aborted)
+const slow = await Promise.all([1, 2, 3, 4].map(() => fetchUrl(`${base}/slow`, { timeoutMs: 250, retries: 0 })));
+eq('queued fetches are not aborted by the request timeout', slow.map((r) => r.status), [200, 200, 200, 200]);
 setFetchLimiter(null);
 
 // 7. infraSummary: completeness threshold and exit ordering

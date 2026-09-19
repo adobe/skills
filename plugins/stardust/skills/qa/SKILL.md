@@ -75,9 +75,8 @@ rendered correctly.
      `editability` check can honour `@ew-exempt` JSDoc tags (otherwise
      pass `--ew-exempt a,b` for index-driven blocks)
 5. Browser checks need **playwright resolvable from the project** (`node_modules/playwright`);
-   if missing, run `--checks delivery` and say what was skipped.
-   The runner paces itself against the published origin (per-host cap, back-off on 429/503,
-   `report.infra`); never run a gate and a sweep against the same host at once.
+   if missing, run `--checks delivery` and say what was skipped. Never run a gate and a
+   sweep against the same host at once (the runner paces itself; a gate does not).
 6. Append a phase-transition line to `stardust/status.jsonl` per
    `reference/run-status.md` (master skill) at sweep start/end.
 
@@ -151,7 +150,8 @@ a run green.
 ## Read-only contract
 
 - Writes only under `stardust/qa/` (plus the `status.jsonl` ledger line).
-- Never invokes deploy/publish APIs, PUTs to DA, or edits blocks, styles or content.
+- Never invokes deploy/publish APIs, PUTs to DA, or edits blocks, styles or content — even
+  fixes the sweep surfaced.
 - A crashed check appears in the report as `<check>/check-crashed` (error),
   never silently dropped.
 

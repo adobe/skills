@@ -1,17 +1,17 @@
 {
- "slug": "privat-pensjon",
- "url": "https://source.example/privat-pensjon",
+ "slug": "pension",
+ "url": "https://source.example/pension",
  "dynamic": {
   "endpoints": [
    {
     "method": "GET",
     "host": "source.example",
-    "path": "/api/pension/{n}",
+    "path": "/api/plans/{n}",
     "query": [],
     "resourceType": "fetch",
     "contentType": "application/json",
     "sameSite": true,
-    "example": "https://source.example/api/pension/1"
+    "example": "https://source.example/api/plans/1"
    }
   ],
   "thirdPartyScriptHosts": [],
@@ -30,7 +30,7 @@
   "emptyConfigContainers": [],
   "controlGroups": [
    {
-    "container": "section.pension-calc",
+    "container": "section.calculator",
     "controls": 4
    }
   ],
