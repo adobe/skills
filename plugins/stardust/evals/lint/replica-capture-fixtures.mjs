@@ -9,8 +9,10 @@
 //      static contract greps (the exit-5 header line, the integer-scroll
 //      rounding, the opacity hide, gate.sh's rc-5 branch, route.fallback),
 //      and pure-function tests on the dependency-free exports
-//      (live-session parseBlockList/blockDecision/label tables,
-//      pixel-compare bandOffsets, review-image layout helpers).
+//      (live-session parseBlockList/blockDecision/label tables/normLabel,
+//      review-image glyphs/layouts/downscale). anchor's pairLandmarks and
+//      pixel-compare's bandOffsets/markSeams are pure too but their modules
+//      import playwright / pngjs statically, so they run in layer 2.
 //   2. WITH DEPS — the browser-driven fixtures under
 //      lint/fixtures/replica-capture/ (a fixed header that must be hidden on
 //      chunks 2+, a static page that must stay byte-identical, an overlay
@@ -102,6 +104,9 @@ check(pcSrc.indexOf('const pass = pct <= opts.threshold') > pcSrc.indexOf('rende
 const anSrc = src(join(REPLICA, 'anchor.mjs'));
 check(/'--landmarks'/.test(anSrc) && /'--against'/.test(anSrc) && /'--json-out'/.test(anSrc) && /export function pairLandmarks/.test(anSrc) && /first non-zero Δ/.test(anSrc), 'anchor: --landmarks / --against / --json-out / pairLandmarks / first non-zero Δ line missing');
 check(/never changes the exit code/.test(anSrc), 'anchor: header must state the landmark table never changes the exit code');
+// pixel-compare --offsets (T05.4): static contract (pixelmatch/pngjs import statically; the algorithm runs in layer 2)
+check(/'--no-offsets'/.test(pcSrc) && /'--offset-range'/.test(pcSrc) && /export function bandOffsets/.test(pcSrc) && /export function markSeams/.test(pcSrc) && /first seam:/.test(pcSrc) && /◄ seam/.test(pcSrc), 'pixel-compare: --offsets machinery (bandOffsets, markSeams, first seam line, ◄ seam) missing');
+check(pcSrc.indexOf('bandOffsets(La, Lb') < pcSrc.indexOf('const pass = pct <= opts.threshold') && !/offset[^\n]*process\.exitCode/.test(pcSrc), 'pixel-compare: offsets must be computed before the verdict and never touch process.exitCode');
 // gate.sh contracts
 const gate = src(join(REPLICA, 'gate.sh'));
 check(/\[ \$rc -eq 5 \]/.test(gate), 'gate.sh: rc 5 (invalid capture) branch missing — must remove the partial PNG and re-exit 5, never compare');
@@ -343,6 +348,32 @@ async function layer2(deps) {
     const rec2Path = join(tmp, 'stardust/replica/gates/landmark-800/gate-iter2.json');
     check([0, 2].includes(g2.status) && existsSync(rec2Path) && !JSON.parse(readFileSync(rec2Path, 'utf8')).landmarks && !/first non-zero Δ/.test(g2.out), `gate.sh GATE_LANDMARKS=0: no landmark table expected (exit ${g2.status})\n${g2.out}${g2.err}`);
     check(/reference: .* captured/.test(g2.out), 'gate.sh: round 2 must reuse the cached live reference');
+
+    // ---- T05.4 pixel-compare --offsets: pure helpers + synthetic pair with a 40 px strip inserted at y = 1000
+    const pc = await import(pathToFileURL(join(tmp, 'replica', 'pixel-compare.mjs')).href);
+    {
+      const H = 3000; const La = new Float64Array(H); for (let y = 0; y < H; y++) La[y] = ((y * 2654435761) >>> 0) % 200 + 20;
+      const Lb = new Float64Array(H); for (let y = 0; y < H; y++) Lb[y] = y < 1000 ? La[y] : y < 1040 ? 128 : La[y - 40]; // 40 px strip inserted at 1000
+      for (let y = 2500; y < 3000; y++) { La[y] = 100; Lb[y] = 100; } // flat band
+      const bands = []; for (let y0 = 0; y0 < H; y0 += 500) bands.push({ y0, y1: y0 + 500, pct: 0 });
+      const offs = pc.bandOffsets(La, Lb, bands, { range: 240 });
+      check(offs[0].offset === 0 && offs[1].offset === 0 && offs[2].offset === 40 && offs[3].offset === 40 && offs[4].offset === 40 && offs[5].offset === null, `bandOffsets: expected [0,0,40,40,40,null], got ${JSON.stringify(offs.map((o) => o.offset))}`);
+      const { bands: mk2, firstSeam } = pc.markSeams(bands.map((bd, k) => ({ ...bd, ...offs[k] })));
+      check(firstSeam && firstSeam.y0 === 1000 && firstSeam.from === 0 && firstSeam.to === 40 && mk2[2].seam === true && mk2[3].seam === false, `markSeams: expected the seam on band 1000–1500 (0 → 40), got ${JSON.stringify(firstSeam)}`);
+    }
+    const hashRow = (y) => { const v = ((y * 2654435761) >>> 0) % 200 + 20; return [v, v, v]; };
+    const A2 = mk(600, 3000, (x, y) => (y >= 2500 ? [100, 100, 100] : hashRow(y)));
+    const B2 = mk(600, 3040, (x, y) => (y >= 2500 ? [100, 100, 100] : y < 1000 ? hashRow(y) : y < 1040 ? [128, 128, 128] : hashRow(y - 40)));
+    writeFileSync(join(tmp, 'out/A2.png'), PNG.sync.write(A2)); writeFileSync(join(tmp, 'out/B2.png'), PNG.sync.write(B2));
+    const po = await run('pixel-compare.mjs', ['out/A2.png', 'out/B2.png', '--out', 'out/d2.png', '--json-out', 'out/g2.json', '--timeout', '30']);
+    check([0, 2].includes(po.status) && /^first seam: y 1000–1500 \(offset 0 → \+40px\) — fix that section first/m.test(po.stdout), `pixel-compare offsets: first seam line expected\n${po.stdout}${po.stderr}`);
+    check(/y\s+1000–1500: [\d.]+%\s+offset\s+\+40px \([\d.]+\)(\s+◄◄ hot band)?\s+◄ seam/.test(po.stdout) && /y\s+2500–3000: [\d.]+%\s+offset\s+—/.test(po.stdout) && /y\s+0–500: [\d.]+%\s+offset\s+0px/.test(po.stdout), `pixel-compare offsets: band rows must carry +40px/◄ seam, 0px and — \n${po.stdout}`);
+    if (existsSync(join(tmp, 'out/g2.json'))) {
+      const g2 = JSON.parse(readFileSync(join(tmp, 'out/g2.json'), 'utf8'));
+      check(g2.bands[2].offset === 40 && g2.bands[2].seam === true && g2.bands[0].offset === 0 && g2.bands[5].offset === null && g2.offsets && g2.offsets.firstSeam && g2.offsets.firstSeam.y0 === 1000 && g2.heightDelta === -40, `pixel-compare --json-out: bands[].offset/seam + offsets.firstSeam wrong ${JSON.stringify({ b2: g2.bands[2], fs: g2.offsets && g2.offsets.firstSeam, hd: g2.heightDelta })}`);
+    }
+    const pn = await run('pixel-compare.mjs', ['out/A2.png', 'out/B2.png', '--out', 'out/d3.png', '--json', '--timeout', '30', '--no-offsets']);
+    check([0, 2].includes(pn.status) && !/offset/.test(pn.stdout), `pixel-compare --no-offsets: no offset fields expected\n${pn.stderr}`);
   } finally {
     third.srv.close();
     srv.close();
