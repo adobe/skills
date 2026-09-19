@@ -28,6 +28,7 @@
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
 import { spawn } from 'child_process';
+import { realpathSync } from 'fs';
 import { fileURLToPath } from 'url';
 
 export const DEADLINE_EXIT = 124;
@@ -80,4 +81,9 @@ function cli(argv) {
   runCapped(cmd[0], cmd.slice(1), { timeoutSec, label: label || cmd.slice(0, 2).join(' ') }).then((code) => { process.exitCode = code; });
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) cli(process.argv);
+// Main-module guard by REALPATH: import.meta.url is already resolved through
+// symlinks while argv[1] keeps the caller's spelling (macOS /tmp → /private/tmp,
+// a symlinked workspace) — a plain string compare then skips cli() and the
+// "capped" instrument exits 0 having run nothing: a silent no-op capture.
+const samePath = (a, b) => { try { return realpathSync(a) === realpathSync(b); } catch { return a === b; } };
+if (process.argv[1] && samePath(fileURLToPath(import.meta.url), process.argv[1])) cli(process.argv);

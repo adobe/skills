@@ -7,10 +7,10 @@
 - § Pass bar — when deciding whether an archetype ships: the criteria every breakpoint must meet.
 - § Reading the band breakdown — only after a failed round: locating the first hot band and ignoring the contaminated ones below it.
 - § Wide-viewport fluid check — after the desktop pass: catching frozen pixel widths that only diverge on wider screens.
-- § Iteration discipline — when a round fails: the hard cap and the measure-first order of fixes.
+- § Iteration discipline — when a round fails: the hard cap, the measure-first order of fixes, and the three named regimes (`source-inconsistent`, `separate-composition`, `canon-followup`) that end a loop early or sit outside the cap.
 - § Hardening rules — before trusting any number: the false-measurement traps (UA challenges, overlays, animation, lazy media, font forks).
 - § The published-origin gate — after platform delivery: re-running the gate against the published page, the only number that counts as final.
-- § Residual logging format — when recording a passed or capped result in `progress.json`.
+- § Residual logging format — when recording a passed or capped result in `progress.json`: the `result` fields `gate.sh` emits (regime, masks, unmasked %, reference date) and § Residual classes, the table every residual's `cause` cites.
 
 The gate proves an archetype matches the LIVE site — three instruments, per
 breakpoint, with a hard iteration cap. It replaces the redesign pipeline's
@@ -144,6 +144,17 @@ The prototype capture is re-taken every iteration.
    node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width $W \
      --region header=header --region footer=footer   # + --region strip=<sel>|<sel>
    ```
+
+   **Multi-theme sites (a theme id on `html`/`body`, brand or product
+   themes on one template): run `chrome-parity.mjs` on one themed page per
+   template × theme id, not on the home archetype alone.** Theme tokens
+   bind per theme id, not per brand: an alias derived from one theme's
+   surface is wrong on every other theme, and the archetype gate cannot
+   see it (chrome is a small share of page pixels).
+   Alias only tokens the live CSS actually binds to the measured element,
+   and treat the source's theme/variant classes as probe deltas → block
+   variants on the sibling's content (`../../migrate/reference/fidelity-tiers.md`
+   § Sibling variance probe) — encode the variant, never fix the page.
 
    **Glyph-dense chrome has a pixel noise floor — the ONE justified way past
    the 2% bar, and it is evidence-gated three ways.** A footer of ~50 links
@@ -331,6 +342,27 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
 - After iteration 3: log residuals (§ Residual logging) and move on. A
   documented residual is a pass with an asterisk; an undocumented fourth
   loop is scope creep.
+- **Three named regimes end a loop early or sit outside the cap.** The
+  label is the ledger's `overCap` reason; bars are unchanged in all
+  three — a justified residual is never a pass.
+  - `source-inconsistent` — the live page is internally inconsistent
+    (per-row authoring artefacts, irregular indents, mixed CTA arrangements
+    inside one module). After round 2 the honest output is an
+    inconsistency-register entry (`preserve-direction.md` § 3) naming the
+    normalisation as a permitted delta — not a fourth round chasing rows.
+  - `separate-composition` — the 360 page is a different composition, not
+    a reflow: the two document heights differ by more than 40 %, or
+    content-diff reports hidden twin rows (MISSING duplicates of desktop
+    content). Declare it BEFORE iterating; anchors + chrome crops are the
+    diagnostic evidence, and after two rounds with no material gain the
+    360 result is logged as a documented residual with a register entry
+    (FAIL-at-cap with a cause — never a second pass bar).
+  - `canon-followup` — a round that fixes a canon defect (chrome, tokens)
+    after an archetype passed does not count against that archetype's cap;
+    log it `canon-followup` and follow it with a re-gate of every approved
+    archetype sharing the canon. Template variants of canon modules are a
+    recreation rule: `recreation-procedure.md` § Cumulative archetype
+    prototypes.
 - **Instrument-invalidated runs don't consume the cap — once the defect is
   fixed and named.** The 3-iteration cap assumes valid instruments. When a
   run is later shown to have measured an instrument defect (a challenge
@@ -459,7 +491,19 @@ rather than erroring.
    baked a pixel-diff contributor into the LIVE capture, repeated at every
    chunk seam, that no prototype fidelity could null out. These fire on a
    timer, so the dismissal polls for late arrivals and stitch-shot sweeps
-   again after the settle pass.
+   again after the settle pass. **Consent mode is one instrument
+   parameter, the same on capture and gate**: `--consent-mode
+   accept|deny` (default `accept`) on stitch-shot and every live-session
+   probe (content-diff, visual-diff, anchor, chrome-parity,
+   sibling-variance); the project's choice lives in
+   `progress.json#captureState.consent` and `gate.sh` passes it to both
+   sides. The lift's control is inherited, not re-guessed: stitch-shot
+   reads the extract crawl's `_crawl-log.json#consent.method`
+   (`dismissed:<sel>` / `text:<label>`) as its default `--consent`.
+   `deny` is right when accepting loads nondeterministic third-party
+   walls the build cannot carry; in `deny` the accept list is never
+   tried, and a dialog that cannot be rejected is an invalid capture
+   (exit 5, no PNG, no verdict) — never a silent accept.
 7. **Granularity parity for JOIN/SPLIT false-reds (#87)** — mirror live
    node granularity or confirm-justify per
    `recreation-procedure.md` § Granularity parity.
@@ -526,6 +570,20 @@ rather than erroring.
     capture defect: fix the instrument, and the poisoned runs don't consume
     the iteration cap per § Iteration discipline); if it fails there too,
     fallback type is the truthful capture (**capture-state** — log it).
+15. **Comparable captures only — the provenance sidecar decides.** Every
+    stitch-shot capture writes `<png>.json` (schema: the header of
+    `../scripts/capture-sidecar.mjs`): url, width, vh, dpr, capturedAt,
+    instrument, consent {mode, via}, dismissed, fontsFailed, docHeight,
+    source, technique. `pixel-compare` and `crop-compare` read both sides
+    and refuse (exit 1, named message) a pair that differs in instrument
+    name, width, vh, dpr or consent mode, or has a sidecar on one side
+    only; `--force` compares anyway and marks the number `forced`.
+    `gate.sh` treats a cached `live.png` without a sidecar as stale and
+    re-captures it, and prints `reference: … captured <ts> via <technique>`
+    on every reuse. A reference imported with `gate.sh --live-from-capture
+    <png>` (bot-walled sites where only the extraction's hand-solved
+    capture exists) carries `source: extract-capture`; that compare is
+    forced once, said out loud, and its number is marked `forced`.
 
 ### Script adaptations (built-in flags first — but fail-loud outranks script immutability)
 
@@ -603,6 +661,16 @@ Two rules for that final run:
   paddings in block CSS, re-measure) brought it to 6.5% with exact anchor
   parity (recorded). Treat the pre-publish harness number as provisional
   and the reconcile round as expected work, not a regression.
+- **Two published-origin rounds without improvement → stop editing CSS.**
+  The number is then not a CSS problem. Run, in this order: the served-hash
+  check (§ Iteration discipline, rule-bearing element — code CSS served
+  under a CDN `max-age` shows the previous round for hours); the DOM
+  ladder published-vs-prototype (which wrappers the pipeline added); the
+  landmark Δy table (`anchor.mjs` section anchors on both sides); the
+  text-wrap diff (line counts per matched paragraph). CSS experiments run
+  on a branch host (`<branch>--<repo>--<owner>.aem.page`), never as
+  commit/revert on `main` — every revert is a live publish and a phantom
+  round.
 
 Recurring EDS pipeline transforms that move the number (each recorded;
 none visible on a local harness):
@@ -631,7 +699,12 @@ none visible on a local harness):
 
 ## Residual logging format
 
-Per archetype per breakpoint, in `stardust/replica/progress.json`:
+Per archetype per breakpoint, in `stardust/replica/progress.json`. The
+`result` object is COPIED from the instruments — `gate.sh` writes it every
+round as `gates/<slug>-<width>/gate-<label>.json` (pixel-compare
+`--json-out` plus `regime`, `ref` and the verdict) — never typed: a
+hand-typed number is where masked and unmasked figures, regimes and
+reference dates get mixed up.
 
 ```json
 {
@@ -640,14 +713,16 @@ Per archetype per breakpoint, in `stardust/replica/progress.json`:
   "breakpoints": {
     "1440": {
       "iterations": 3,
-      "result": { "structuralRed": 0, "visualFlags": "3 justified",
-                   "pixelPct": 1.31, "heightDelta": 0, "pass": true },
+      "result": { "regime": "prototype", "structuralRed": 0, "visualFlags": "3 justified",
+                   "pixelPct": 1.31, "pixelPctUnmasked": 4.02, "heightDelta": 0, "pass": true,
+                   "masks": [ { "spec": "1200:600@1210", "areaPct": 8.3 } ],
+                   "ref": { "url": "https://<site>/", "width": 1440, "capturedAt": "<ISO-8601>" } },
       "justified": [
         { "probe": "visual", "flag": "1x1 h1 at x0", "why": "mirrors live SEO h1" },
         { "probe": "content", "flag": "🟠 font fork ×2", "why": "licensed kit substituted, R-policy fonts", "permanent": true }
       ],
       "residuals": [
-        { "band": "y 4500–5000", "pct": 6.2, "cause": "capture-state: 3 CDN-403 placeholder tiles", "flaggedFor": "delivery" },
+        { "band": "y 4500–5000", "pct": 6.2, "cause": "capture-state", "what": "3 CDN-403 placeholder tiles", "flaggedFor": "delivery" },
         { "region": "footer", "pct": 4.8, "cause": "glyph-antialiasing", "parity": "gates/home-1440/chrome-parity-iter3.json", "texture": { "thickPct": 6.1 }, "flaggedFor": "user" }
       ],
       "captureState": [ { "what": "product tiles 4–6 on placeholder data-URIs", "where": "carousel-2" } ]
@@ -657,9 +732,42 @@ Per archetype per breakpoint, in `stardust/replica/progress.json`:
 }
 ```
 
-Rules: every residual names its band, its %, its cause, and who inherits it
-(`delivery` for capture-state items, `user` for accepted trade-offs). A
-residual without a cause is not a residual — it's an unfinished iteration;
-either diagnose it or spend the remaining budget on it. The rollout phase's
-final report surfaces the residual list per page type so "gate passed"
-can't hide "passed with 6% unexplained".
+`result` fields: `regime` — `prototype` (standalone prototype vs live) or
+`published-origin` (delivered page vs live, § The published-origin gate);
+`pixelPct` — the gated number, masks excluded; `pixelPctUnmasked` — the
+same captures matched with no mask, the number an outside audit reads
+(equal to `pixelPct` when nothing was masked); `masks[]` — every `--mask`
+spec with its area % of the compared height; `ref` — the live capture the
+number was measured against (URL, width, capture time). Judge each
+regime against its own precedent (§ Pass bar, calibration honesty).
+
+### Residual classes
+
+A residual's `cause` is a class id from this table or a diagnosed cause in
+the page's own terms; anything else is an unfinished iteration — diagnose
+it or spend the remaining budget on it. `flaggedFor` names who inherits it
+(`delivery` — resolved when authors or wiring land; `user` — an accepted
+trade-off). A permanent class can never zero out: log it once with its band
+and %, do not chase it.
+
+| class id | detection cue | standard exclusion | inherits | permanent |
+|---|---|---|---|---|
+| `glyph-antialiasing` | crop-compare texture thin-edge, chrome-parity quiet, text-dense band (§ Pass bar, item 5) | none — stays in the number, logged with both artifacts | user | yes |
+| `third-party-in-flow` | a band whose live content is a third-party widget in document flow (chat launcher, feedback badge, social wall) rendering per session | `--mask` the band; the widget is wired at delivery | delivery | yes |
+| `tag-injected-tail` | doc height grows at the page tail between captures (tag-manager legal copy, consent footers), content-diff EXTRA at the end | recapture the reference; if it persists, `--mask` the tail rows | user | until recapture |
+| `index-driven-content` | listing/results items change between captures (news, search, feeds) | `--mask` the listing band, or mirror the same data source | delivery | yes |
+| `photo-reencoding` | diff spread evenly over an image whose anchors match — rendition or compression differences | none — logged; expected in the published-origin regime | delivery | yes |
+| `live-drift` | live changed since `ref.capturedAt` (campaign, copy edits): content-diff MISSING/EXTRA on fresh text, height Δ explained by a new element | delete `live.png` and recapture — a stale reference is not a residual | — | no |
+| `nondeterministic-live` | tickers, "last updated" dates, counts, personalization slots — live differs from itself run to run | replicate the structure, freeze one captured value, `--mask` | user | yes |
+| `live-data-embed` | third-party iframe or widget carrying moving data | load the SAME src on both sides so the data cancels; log the timing-skew remainder | user | yes |
+| `randomized-decoration` | generative line art, particle fields regenerated per load — live never matches itself | `--mask` the band | user | yes |
+| `personalised-region` | store or recommendation rails, ad slots: hundreds of px vary between loads by cookie or geo | pin storage state; `--mask` the region | delivery | yes |
+| `skip-link-focus` | a thin band at the top present in one capture only — a skip link or focus ring left visible after a dismissal click | instrument fix (blur the active element before capture); the run does not count against the cap | — | no |
+| `fixed-disc-at-seams` | the same small shape (chat disc, back-to-top) repeats every `vh` px | replicate the element fixed on both sides (`recreation-procedure.md` § Fixed and sticky chrome); `--mask` only as last resort | delivery | no |
+| `subpixel-layoutunit` | a whole band shifted 1px, anchors Δy ±1 — a fractional layout unit rounding differently per engine path | none — logged with band and % | user | yes |
+| `icon-font-substitution` | chrome-parity ICONS signature mismatch on a licensed icon font the new host cannot ship | harvest the live vectors first (`recreation-procedure.md` § Asset harvest, icons); residual only when the licensed face is unavailable | user | yes |
+| `capture-state` | CDN-403 placeholders, hydration states, fallback type on a face that fails for real browsers too (rules 8 and 14) | replicate as captured; real assets wired at delivery | delivery | until delivery |
+| `authored-volatile-masked` | campaign heroes / promo creatives that changed between capture and gate | `--mask` — every mask on the verdict line and in `masks[]` | user | n/a (masked) |
+
+The rollout phase's final report surfaces the residual list per page type
+so "gate passed" can't hide "passed with 6% unexplained".

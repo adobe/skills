@@ -53,6 +53,27 @@
  *   - page height is measured AFTER the settle pass: entrance-animated
  *     sites inflate scrollHeight until elements go inview, so the
  *     pre-settle height is fake.
+ *   - PROVENANCE SIDECAR: every capture writes <out>.png.json next to the
+ *     PNG (schema in ./capture-sidecar.mjs): url, width, vh, dpr,
+ *     capturedAt, instrument {name, version, options}, consent {mode, via},
+ *     dismissed[], fontsFailed[], docHeight, chunks, source, technique.
+ *     pixel-compare / crop-compare refuse a pair whose sidecars differ in
+ *     instrument.name, width, vh, dpr or consent.mode — mixed-instrument and
+ *     mixed-consent compares produced whole false rounds in the field.
+ *   - CONSENT MODE is one instrument parameter, the same on capture and
+ *     gate: --consent-mode accept (default) clicks accept; deny goes through
+ *     live-session's dismissOverlays({ mode: 'deny' }), which clicks a
+ *     reject-all control (--consent <sel> first, then OneTrust / Usercentrics
+ *     / "Reject all") and NEVER tries the accept list. A consent dialog that
+ *     is present but cannot be denied — or that got accepted anyway — is an
+ *     INVALID CAPTURE: exit 5, no PNG, no sidecar, no verdict (never a FAIL,
+ *     never a silently accept-state reference certified as deny-state). Deny
+ *     is right when accepting loads nondeterministic third-party walls the
+ *     build cannot carry. The mode is recorded in the sidecar; the project's
+ *     choice lives in progress.json#captureState.consent.
+ *   - the extract crawl's resolved consent selector
+ *     (stardust/current/_crawl-log.json#consent.method = "dismissed:<sel>" or
+ *     "text:<label>") is picked up as the default --consent when present.
  *
  * Usage:
  *   node skills/replica/scripts/stitch-shot.mjs <url> <out.png> [options]
@@ -60,8 +81,11 @@
  *     --vh <px>           viewport height / chunk size      (default 900)
  *     --settle            slow-scroll lazyload settle pass before capture
  *                         (use on live JS-heavy pages; harmless elsewhere)
- *     --consent <sel>     extra consent-accept selector, tried before the
- *                         built-in candidates (OneTrust, "Accept all", …)
+ *     --consent <sel>     extra consent selector, tried before the built-in
+ *                         candidates (the reject list in deny mode);
+ *                         "text:<label>" matches a button by its exact label
+ *                         (recorded as consent.via "text:<label>")
+ *     --consent-mode <m>  accept | deny (default accept; see above)
  *     --dismiss <sel,...> extra overlay-dismiss selectors (marketing modals
  *                         with non-standard close controls)
  *     --headed            escalation: headed stealth real Chrome
@@ -76,17 +100,27 @@
  *
  * Requires: playwright, pngjs (project devDependencies), and the diff skill's
  * scripts dir alongside (live-session.mjs — the replica Setup copies both).
- * Exit codes: 0 written, 1 error, 3 bot challenge (live side blocked — fail
- * loud, never captured).
+ * Exit codes: 0 written (PNG + sidecar), 1 error, 3 bot challenge (live side
+ * blocked — fail loud, never captured), 5 invalid capture (--consent-mode
+ * deny: consent dialog present but no reject control, or accepted — no verdict).
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev tool: sequential page ops use awaited loops by design */
 import { chromium } from 'playwright';
 import { PNG } from 'pngjs';
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
 import { dirname, resolve as resolvePath } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
+import { writeSidecar } from './capture-sidecar.mjs';
+
+// Bump when the capture PROCEDURE changes (settle, freeze, dismissal order):
+// recorded in the sidecar so a reference taken by an older procedure is
+// visibly older. Comparability is keyed on instrument.name, not version.
+const INSTRUMENT = { name: 'stitch-shot', version: '2' };
+// --consent-mode deny is implemented ONCE, in live-session's dismissOverlays
+// ({ mode: 'deny' }): its reject list is tried, its accept list never is.
+class InvalidCaptureError extends Error { constructor(m) { super(m); this.name = 'InvalidCaptureError'; } }
 
 // live-session.mjs lives in the diff skill's scripts dir. Two layouts exist:
 // the plugin tree (skills/replica/scripts ↔ skills/diff/scripts) and the
@@ -107,7 +141,8 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --width <px>      viewport width (default 1440)
   --vh <px>         viewport height / chunk size (default 900)
   --settle          slow-scroll lazyload settle pass before capture
-  --consent <sel>   extra consent-accept selector (clicked, not removed)
+  --consent <sel>   extra consent selector (clicked, not removed); "text:<label>" for a label match
+  --consent-mode <m> accept | deny (default accept; deny with no reject control, or accepted → exit 5)
   --dismiss <sel,…> extra overlay-dismiss selectors (marketing modals etc.)
   --headed          headed stealth real Chrome (escalation for bot-managed sites)
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB) for geo determinism
@@ -117,19 +152,22 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --help            this text
 
 Run the SAME command shape against the live page and the served prototype.
-Exit codes: 0 written, 1 error, 3 bot challenge (live side blocked — fail loud).`;
+Writes <out.png>.json (provenance sidecar: schema in capture-sidecar.mjs).
+Exit codes: 0 written, 1 error, 3 bot challenge (live side blocked — fail loud),
+5 invalid capture (deny mode: consent present and not rejected — no verdict).`;
 
 function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000 };
+  const opts = { width: 1440, vh: 900, settle: false, consent: null, consentMode: 'accept', dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000 };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
     else if (a === '--vh') { opts.vh = Number(rest[i += 1]); }
     else if (a === '--settle') { opts.settle = true; }
     else if (a === '--consent') { opts.consent = rest[i += 1]; }
+    else if (a === '--consent-mode') { opts.consentMode = rest[i += 1]; if (!['accept', 'deny'].includes(opts.consentMode)) { console.error(`--consent-mode must be accept or deny\n\n${HELP}`); process.exit(1); } }
     else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
     else if (a === '--headed') { opts.headed = true; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
@@ -142,20 +180,68 @@ function parseArgs(argv) {
   const [url, out] = pos;
   if (!url || !out) { console.error(`need <url> and <out.png>\n\n${HELP}`); process.exit(1); }
   if (opts.wait == null) opts.wait = opts.settle ? 3000 : 1200;
+  // Default --consent from the extract crawl's resolved method, so lift,
+  // capture and gate dismiss the same control.
+  if (!opts.consent) {
+    try {
+      const m = JSON.parse(readFileSync('stardust/current/_crawl-log.json', 'utf8'))?.consent?.method;
+      if (typeof m === 'string' && /^dismissed:/.test(m)) opts.consent = m.slice('dismissed:'.length);
+      else if (typeof m === 'string' && /^text:/.test(m)) opts.consent = m;
+    } catch { /* no crawl log — built-in candidates only */ }
+  }
   return { url, out, opts };
+}
+
+// "text:<label>" → an exact-label button selector (narrow matcher: overlay
+// buttons only, exact short label). Returns { sel, via } — via is what the
+// sidecar records.
+function consentSelector(spec) {
+  if (!spec) return null;
+  if (/^text:/.test(spec)) { const label = spec.slice(5).trim(); return { sel: `button:has-text(${JSON.stringify(label)})`, via: `text:${label}` }; }
+  return { sel: spec, via: spec };
 }
 
 // Dismiss both overlay classes (consent + timed marketing modals) via
 // live-session, log what was closed, and note that the mouse is parked by
 // dismissOverlays itself (bottom-left — rule 10).
-async function dismissAndLog(page, url, opts) {
-  const extra = [...(opts.consent ? [opts.consent] : []), ...opts.dismiss];
-  // late-modal poll window only on live targets — the served prototype's
-  // overlays are not timed third-party scripts, they render immediately.
-  const d = await dismissOverlays(page, { extra, lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
-  if (d.consent) console.log(`consent dismissed via ${d.consent}`);
-  for (const sel of d.extra) console.log(`overlay dismissed via extra selector ${sel}`);
-  for (const sel of d.marketing) console.log(`marketing modal dismissed via ${sel}`);
+async function dismissAndLog(page, url, opts, prov) {
+  const cs = consentSelector(opts.consent);
+  const deny = opts.consentMode === 'deny';
+  // live-session owns both consent passes: --consent is the accept selector
+  // (tried first, via `extra`) in accept mode and the reject selector (tried
+  // first, via `reject`) in deny mode. Late-modal poll window only on live
+  // targets — a served prototype's overlays are not timed third-party scripts.
+  const d = await dismissOverlays(page, {
+    mode: opts.consentMode,
+    reject: deny && cs ? [cs.sel] : [],
+    extra: [...(!deny && cs ? [cs.sel] : []), ...opts.dismiss],
+    lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0,
+  });
+  if (deny) {
+    // A deny-state capture must be deny-state: an accepted dialog (instrument
+    // defect) or a dialog still up with nothing to reject is NOT captured —
+    // exit 5, no verdict; a deny-mode sidecar over an accept-state PNG would
+    // certify a non-comparable reference.
+    if (d.consent) throw new InvalidCaptureError(`--consent-mode deny: the consent dialog was ACCEPTED via ${d.consent} — instrument defect (accept list ran in deny mode); not captured.`);
+    if (d.consentPresent && !d.rejected) throw new InvalidCaptureError(`--consent-mode deny: a consent dialog is present but no reject-all control was found — pass --consent <reject-sel> (or "text:<label>"), or capture in accept mode on BOTH sides. Not captured: an accepted-state or still-dialogued reference would not be comparable to a deny-state build.`);
+    if (d.rejected) {
+      const via = cs && d.rejected === cs.sel ? cs.via : d.rejected;
+      console.log(`consent REJECTED via ${via}`);
+      prov.dismissed.push({ kind: 'consent', sel: d.rejected });
+      if (prov.consent.via === 'none-detected') prov.consent.via = via;
+    }
+  } else if (d.consent) {
+    console.log(`consent dismissed via ${d.consent}`);
+    prov.dismissed.push({ kind: 'consent', sel: d.consent });
+    if (prov.consent.via === 'none-detected') prov.consent.via = d.consent;
+  }
+  for (const sel of d.extra) {
+    console.log(`overlay dismissed via extra selector ${sel}`);
+    const isConsent = cs && sel === cs.sel;
+    prov.dismissed.push({ kind: isConsent ? 'consent' : 'extra', sel });
+    if (isConsent && prov.consent.via === 'none-detected') prov.consent.via = cs.via;
+  }
+  for (const sel of d.marketing) { console.log(`marketing modal dismissed via ${sel}`); prov.dismissed.push({ kind: 'marketing', sel }); }
   return d;
 }
 
@@ -175,7 +261,9 @@ async function main() {
     // the solve loop would spend the Akamai block budget (1 hit vs up to 4).
     await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: opts.timeout, settleMs: 0, solveWindow: opts.headed });
     await page.waitForTimeout(opts.wait);
-    await dismissAndLog(page, url, opts);
+    // provenance accumulates through the run; written as <out>.json at the end
+    const prov = { consent: { mode: opts.consentMode, via: 'none-detected' }, dismissed: [], fontsFailed: [] };
+    await dismissAndLog(page, url, opts, prov);
 
     if (opts.settle) {
       // Slow-scroll settle: fires scroll-triggered lazy loaders the way a real
@@ -193,7 +281,7 @@ async function main() {
       // Timed marketing/newsletter modals (CH-1) often fire DURING the settle
       // window — sweep again so a late interstitial isn't baked into the
       // stitched capture (recorded: a fashion retailer's "Sign up, stay updated!").
-      await dismissAndLog(page, url, opts);
+      await dismissAndLog(page, url, opts, prov);
     }
 
     // Freeze animations/transitions/carets for stable chunks — AFTER settle.
@@ -257,6 +345,7 @@ async function main() {
       await document.fonts.ready;
       return [...new Set([...document.fonts].filter((f) => f.status === 'error').map((f) => f.family))];
     }).catch(() => []);
+    prov.fontsFailed = failedFonts;
     if (failedFonts.length) {
       console.error(`stitch-shot WARNING: FONT LOAD FAILED for declared face(s) ${failedFonts.join(', ')} — this capture renders fallback type (silent false measurement, F-B2 class). Verify the face loads in a real browser: instrument-induced → fix the capture before gating; genuinely broken on the live site → log as capture-state.`);
     }
@@ -318,7 +407,14 @@ async function main() {
     }
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, PNG.sync.write(outPng));
-    console.log(`stitched ${out}: ${opts.width}x${totalH} from ${chunks.length} chunks`);
+    const dpr = await page.evaluate(() => window.devicePixelRatio).catch(() => 1);
+    const side = writeSidecar(out, {
+      url, width: opts.width, vh: opts.vh, dpr, capturedAt: new Date().toISOString(),
+      instrument: { ...INSTRUMENT, options: { settle: opts.settle, headed: opts.headed, locale: opts.locale, wait: opts.wait, timeout: opts.timeout, consent: opts.consent, dismiss: opts.dismiss } },
+      consent: prov.consent, dismissed: prov.dismissed, fontsFailed: prov.fontsFailed,
+      docHeight: totalH, chunks: chunks.length, source: 'stitch-shot', technique: opts.headed ? 'headed-stealth' : 'headless',
+    });
+    console.log(`stitched ${out}: ${opts.width}x${totalH} from ${chunks.length} chunks  (consent ${prov.consent.mode}/${prov.consent.via}; sidecar ${side})`);
   } finally {
     await browser.close();
   }
@@ -326,4 +422,5 @@ async function main() {
 
 // exit 3 = bot challenge on the live side (distinct from generic errors, so a
 // gate runner can tell "blocked — escalate with --headed" from "capture broke").
-main().catch((e) => { console.error(`stitch-shot error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+// exit 5 = invalid capture (deny mode: consent present and not rejected, or accepted): no verdict, never a FAIL.
+main().catch((e) => { console.error(`stitch-shot error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : e.name === 'InvalidCaptureError' ? 5 : 1); });

@@ -30,6 +30,7 @@
  *     --main <sel>        content root to probe under       (default main)
  *     --consent <sel>     extra consent-accept selector
  *     --dismiss <sel,...> extra overlay-dismiss selectors
+ *     --consent-mode <m>  accept | deny (default accept; deny clicks reject-all, never accept — live-session)
  *     --headed            escalation: headed stealth real Chrome
  *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
  *     --json              machine-readable output on stdout
@@ -80,6 +81,7 @@ Usage: node anchor.mjs <url> [options]
   --main <sel>      content root to probe under (default main)
   --consent <sel>   extra consent-accept selector (clicked, not removed)
   --dismiss <sel,…> extra overlay-dismiss selectors
+  --consent-mode <m>    accept | deny (default accept; deny clicks reject-all, never accept)
   --headed          headed stealth real Chrome (escalation for bot-managed sites)
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB)
   --json            machine-readable output
@@ -92,13 +94,14 @@ function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { width: 1440, main: 'main', consent: null, dismiss: [], headed: false, locale: null, json: false, cache: null };
+  const opts = { width: 1440, main: 'main', consent: null, dismiss: [], consentMode: 'accept', headed: false, locale: null, json: false, cache: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
     else if (a === '--main') { opts.main = rest[i += 1]; }
     else if (a === '--consent') { opts.consent = rest[i += 1]; }
     else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
+    else if (a === '--consent-mode') { opts.consentMode = rest[i += 1]; if (!['accept', 'deny'].includes(opts.consentMode)) { console.error(`--consent-mode must be accept or deny\n\n${HELP}`); process.exit(1); } }
     else if (a === '--headed') { opts.headed = true; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--json') { opts.json = true; }
@@ -140,7 +143,7 @@ async function main() {
     const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 } });
     const page = await ctx.newPage();
     await gotoLive(page, url, { waitUntil: defaultWaitUntil(url), settleMs: isLiveHttpUrl(url) ? 2500 : 1200, solveWindow: opts.headed });
-    await dismissOverlays(page, { extra: [...(opts.consent ? [opts.consent] : []), ...opts.dismiss], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
+    await dismissOverlays(page, { mode: opts.consentMode, reject: opts.consentMode === 'deny' && opts.consent ? [opts.consent] : [], extra: [...(opts.consent && opts.consentMode !== 'deny' ? [opts.consent] : []), ...opts.dismiss], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
 
     // Slow-scroll settle before measuring — pre-settle heights are fake on
     // entrance-animated / lazy-loading pages (recreation-procedure.md

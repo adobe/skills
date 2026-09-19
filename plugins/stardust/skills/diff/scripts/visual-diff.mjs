@@ -35,6 +35,7 @@
  *                           beacons never reach networkidle).
  *     --dismiss [sel,...]   dismiss overlays on both sides via live-session
  *                           (consent + timed marketing modals + optional extras)
+ *     --consent-mode <m>  accept | deny (default accept; deny clicks reject-all, never accept — live-session)
  *     --headed              escalation: headed stealth real Chrome (bot-managed sites)
  *     --locale <tag>        pin Accept-Language + context locale (geo-redirect determinism)
  *
@@ -83,6 +84,7 @@ const USAGE = `usage: node skills/diff/scripts/visual-diff.mjs <sourceURL> <buil
                          other live http(s) (never reach networkidle).
   --dismiss [sel,...]    dismiss overlays (consent + timed marketing modals) on both
                          sides; optional comma-separated extra selectors
+  --consent-mode <m>     accept | deny (default accept; deny clicks reject-all, never accept)
   --headed               headed stealth real Chrome (escalation for bot-managed sites)
   --locale <tag>         pin Accept-Language + locale (e.g. en-GB) for geo determinism
 exit codes: 0 ran (flags advisory; an HTTP-error side, e.g. a 404 build pre-propagation,
@@ -93,7 +95,7 @@ exit codes: 0 ran (flags advisory; an HTTP-error side, e.g. a 404 build pre-prop
 function parseArgs(argv) {
   const [, , proto, eds, ...rest] = argv;
   if (rest.includes('--help') || proto === '--help' || proto === '-h') { process.stdout.write(USAGE); process.exit(0); }
-  const opts = { out: 'qa/vdiff', width: 1280, sections: [], profile: 'eds', main: null, ua: REAL_CHROME_UA, waitUntil: null, dismiss: null, headed: false, locale: null };
+  const opts = { out: 'qa/vdiff', width: 1280, sections: [], profile: 'eds', main: null, ua: REAL_CHROME_UA, waitUntil: null, dismiss: null, consentMode: 'accept', headed: false, locale: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--out') { opts.out = rest[i += 1]; }
@@ -108,6 +110,7 @@ function parseArgs(argv) {
       const next = rest[i + 1];
       opts.dismiss = (next && !next.startsWith('--')) ? rest[i += 1].split(',').map((s) => s.trim()).filter(Boolean) : [];
     }
+    else if (a === '--consent-mode') { opts.consentMode = rest[i += 1]; if (!['accept', 'deny'].includes(opts.consentMode)) { console.error(`--consent-mode must be accept or deny\n\n${HELP}`); process.exit(1); } if (!opts.dismiss) opts.dismiss = []; }
     else if (a === '--headed') { opts.headed = true; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
   }
@@ -248,7 +251,7 @@ async function capture(browser, url, tag, opts) {
   await page.waitForTimeout(2000);
   // late-modal poll window only on live targets — local prototypes' overlays
   // are not timed third-party scripts, they render immediately.
-  if (opts.dismiss) await dismissOverlays(page, { extra: opts.dismiss, lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
+  if (opts.dismiss) await dismissOverlays(page, { mode: opts.consentMode, extra: opts.dismiss, lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
   // scroll through to trigger reveal-on-scroll / lazy images, then return to top
   await page.evaluate(async () => {
     for (let y = 0; y < document.body.scrollHeight; y += 600) {

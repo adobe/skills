@@ -115,7 +115,8 @@ Permitted deltas: ONLY the entries of stardust/replica/inconsistency-register.md
 Fidelity: ia verbatim · design verbatim · content verbatim.
 ```
 
-On the bounded branch (§ 1a), the `Promoted:` line instead reads
+Keep any `Impeccable ignore set (…)` line § 4 already appended — it is
+part of this record. On the bounded branch (§ 1a), the `Promoted:` line instead reads
 `Synthesized (bounded-single): current/pages/<slug>.json + Phase-3 CSS lift
 → PRODUCT.md · DESIGN.md · DESIGN.json (at <ISO-8601>)` and the register
 statement is unchanged — the branch changes where the spec came from, never
@@ -193,3 +194,42 @@ flags inside an applied entry's zone, cross-reference the entry ID in the
 gate log and mark the flag justified. When the pixel diff in that zone
 exceeds what the minimal change explains, the entry leaked — the recreation
 changed more than registered; fix the leak, not the register.
+
+## 4. Impeccable ignore set for lifted values
+
+A replica (or reskin) lifts its palette, type sizes and families from a
+live site, and impeccable's design hook WILL flag every one of them on
+each edit — that is not drift. Look the set up here before triaging a
+hook finding. Install it once, after the Phase 1 capture (re-run when
+Phase 3's CSS lift adds values), with the shipped instrument:
+
+```bash
+node stardust/scripts/replica/impeccable-ignores.mjs [--tokens <lift-record.json>] [--files]
+```
+
+What the script enforces (its `--help` is the contract):
+
+- **Resolved admin, never a hard-coded path** — the installed impeccable
+  skill dir (Setup step 1's probe; `state.json#impeccable.skillDir` when
+  present) and `<dir>/scripts/impeccable hooks …`, falling back to
+  `scripts/hook-admin.mjs` on older installs. Exit 3 = not installed: skip
+  the step and say so.
+- **Values are self-serve**: one bulk, idempotent `ignore-value` pass over
+  every colour, size and family in `_brand-extraction.json`, the lift
+  record and (reskin) `donor-tokens.json`, one reason string
+  `"<skill>: lifted from <origin> on <date>"`.
+- **`ignore-file` needs the user's go** (impeccable's self-serve boundary):
+  the script prints the planned globs — `stardust/current/**`,
+  `stardust/prototypes/**`, `stardust/canon/**`, reskin adds
+  `stardust/canon-source/**` and `stardust/reskin/**` — in one line and
+  applies them only with `--files`. Hands-off auto-resolves: choosing this
+  flow IS the keep-design decision, and the record says so. Until then the
+  copy-cadence rules on verbatim copy are scoped off by
+  `ignore-value <rule> "*" --file <glob>` on those globs only — never
+  `ignore-rule`.
+- **Agent-authored code keeps the full rule set**: a lifted value inside
+  `blocks/**` or `styles/**` is ignored by value, never by file.
+- **One record line** — date, impeccable version, globs, value count,
+  sources, who resolved — appended to `stardust/direction.md` (§ 2; reskin:
+  `stardust/reskin/mapping.md`). Not the inconsistency register: an empty
+  register means pure replica, and an ignore set is not a design delta.

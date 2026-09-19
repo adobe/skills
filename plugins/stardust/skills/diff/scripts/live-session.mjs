@@ -331,6 +331,18 @@ const CONSENT_CANDIDATES = [
   'button:has-text("I agree")',
   '[data-testid*="accept"]',
 ];
+// Consent-REJECT candidates for `mode: 'deny'` (OneTrust / Usercentrics ids +
+// the exact short labels; narrow matcher, overlay controls only). In deny mode
+// the accept list above is NEVER tried — a deny-state capture that silently
+// accepted (the dialog said "Accept", not "Accept all") certified a
+// non-comparable reference in the field; callers fail loud on it instead.
+const REJECT_CANDIDATES = [
+  '#onetrust-reject-all-handler',
+  '[data-testid="uc-deny-all-button"]',
+  'button:has-text("Reject all")',
+  'button:has-text("Reject All")',
+  'button:has-text("Decline all")',
+];
 
 // Container candidates for timed marketing/newsletter interstitials (CH-1).
 // [role=dialog]/[aria-modal]/.modal alone is NOT enough: the recorded
@@ -355,7 +367,13 @@ const MODAL_CLOSE_CANDIDATES = [
 
 /**
  * Dismiss the two overlay classes that corrupt live measurement:
- *   (a) cookie consent — clicked (never removed), first candidate wins;
+ *   (a) cookie consent — CLICKED (never removed), first candidate wins.
+ *       `mode` selects WHICH control: 'accept' (default) clicks the accept
+ *       list; 'deny' clicks `reject` (caller's selectors, first) then the
+ *       built-in reject-all list and never touches the accept list. In deny
+ *       mode `consentPresent && !rejected` means a dialog is up that could
+ *       not be denied — the page is NOT in deny state; this function warns,
+ *       the capture instruments refuse the capture (stitch-shot exit 5).
  *   (b) timed marketing/newsletter interstitials (CH-1) — every modal-like
  *       container with a VISIBLE close control gets it clicked, verified
  *       gone. Because these fire on a TIMER (recorded: a fashion retailer's panel
@@ -364,10 +382,12 @@ const MODAL_CLOSE_CANDIDATES = [
  * `extra` selectors are site-specific dismissers, clicked first (each once).
  * Parks the mouse afterwards (bottom-left — dead space on virtually every
  * layout) so no :hover-styled element under the cursor captures hovered.
- * Returns { extra: [...], consent: <sel|null>, marketing: [...] }.
+ * Returns { extra: [...], consent: <sel|null> (accept mode), rejected:
+ * <sel|null> (deny mode), consentPresent: bool, marketing: [...] }.
  */
-export async function dismissOverlays(page, { extra = [], lateWindowMs = 6000 } = {}) {
-  const dismissed = { extra: [], consent: null, marketing: [] };
+export async function dismissOverlays(page, { extra = [], lateWindowMs = 6000, mode = 'accept', reject = [] } = {}) {
+  if (!['accept', 'deny'].includes(mode)) throw new Error(`dismissOverlays: mode must be accept or deny (got ${JSON.stringify(mode)})`);
+  const dismissed = { extra: [], consent: null, rejected: null, consentPresent: false, marketing: [] };
 
   for (const sel of extra) {
     try {
@@ -380,16 +400,35 @@ export async function dismissOverlays(page, { extra = [], lateWindowMs = 6000 } 
     } catch { /* candidate absent — try next */ }
   }
 
-  for (const sel of CONSENT_CANDIDATES) {
-    try {
-      const btn = page.locator(sel).first();
-      if (await btn.count() && await btn.isVisible()) {
-        await btn.click({ timeout: 3000 });
-        await page.waitForTimeout(1500);
-        dismissed.consent = sel;
-        break;
-      }
-    } catch { /* candidate absent — try next */ }
+  const clickFirstVisible = async (selectors, settleMs) => {
+    for (const sel of selectors) {
+      try {
+        const btn = page.locator(sel).first();
+        if (await btn.count() && await btn.isVisible()) {
+          await btn.click({ timeout: 3000 });
+          await page.waitForTimeout(settleMs);
+          return sel;
+        }
+      } catch { /* candidate absent — try next */ }
+    }
+    return null;
+  };
+  const anyVisible = async (selectors) => {
+    for (const sel of selectors) {
+      try { const l = page.locator(sel).first(); if (await l.count() && await l.isVisible()) return true; } catch { /* next */ }
+    }
+    return false;
+  };
+  if (mode === 'deny') {
+    // reject FIRST and only — the accept list is never a fallback in deny mode.
+    dismissed.rejected = await clickFirstVisible([...reject, ...REJECT_CANDIDATES], 1500);
+    dismissed.consentPresent = dismissed.rejected !== null || await anyVisible(CONSENT_CANDIDATES);
+    if (dismissed.consentPresent && !dismissed.rejected) {
+      console.error(`[live-session] consent mode deny: a consent dialog is present but none of ${reject.length + REJECT_CANDIDATES.length} reject-all selectors matched — the page is NOT in deny state (pass a reject selector, or run accept mode on BOTH sides)`);
+    }
+  } else {
+    dismissed.consent = await clickFirstVisible(CONSENT_CANDIDATES, 1500);
+    dismissed.consentPresent = dismissed.consent !== null;
   }
 
   // marketing/newsletter interstitials — close every modal container that
