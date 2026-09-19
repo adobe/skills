@@ -30,7 +30,7 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 | Freeform intent | `reference/intent-reasoning.md` § Procedure · `reference/intent-dimensions.md` § Reading a phrase · `reference/impeccable-command-map.md` § Common sequences |
 | Hands-off | `reference/state-machine.md` § Hands-off keys |
 | Hands-off (delegating) | `reference/fan-out.md` § Scope and type · § Worker contract · § Coordinator contract |
-| Any batch instrument, phase boundary | `reference/context-hygiene.md` § Runner reports and session hand-off |
+| Any image read, batch instrument, phase boundary | `reference/context-hygiene.md` § Image reads · § Runner reports and session hand-off |
 | Per-page state | `reference/state-machine.md` § Page lifecycle states · § Stale flagging (content-aware) |
 | Journal | `reference/journal-format.md` § Entry format · § Reading the journal at session start |
 | Validation | `../extract/reference/playwright-recipe.md` § Capture list · `../prototype/reference/motion-validation.md` § Validation procedure |
@@ -77,18 +77,17 @@ sub-commands that delegate the actual design work to **impeccable**.
    `<harness>/skills/impeccable/scripts/command-metadata.json` — the
    single source of truth for the 24 impeccable commands; never hardcode
    them.
-5. **Status ledger.** Every stardust skill appends a phase-transition line
-   to `stardust/status.jsonl` at each phase start/end, per
-   `reference/run-status.md`.
+5. **Status ledger.** Every skill appends a line to `stardust/status.jsonl`
+   at each phase start and end (`reference/run-status.md`).
 6. **Project hygiene** (idempotent). Write `stardust/.gitignore` from
    `reference/stardust.gitignore` if absent; never edit a project's copy.
    In a git repo: root `.gitignore` covers `.env` / `.env.*` (managed
    `# >>> stardust` block), `.hlxignore` if present lists `stardust/`, and
    `git check-ignore -q stardust/state.json` must fail — if it passes,
    stop and name the rule. Offer, never write, LFS above 50 MB of tracked
-   binaries under `stardust/`. Details in `reference/artifact-map.md`
-   § Versioning. Every shell loop, runner command, delivery step and
-   probe in the run follows `reference/harness-quirks.md`.
+   binaries under `stardust/` (`reference/artifact-map.md` § Versioning).
+   Every shell loop, runner, delivery step and probe in the run follows
+   `reference/harness-quirks.md`.
 7. **Run lock and project root.** Read `stardust/.work/run.lock`
    (`reference/state-machine.md` § Concurrency → Session advisory lock).
    If it names a held run in another session: interactive, ask once —
@@ -105,9 +104,9 @@ Once setup is done, route on the user's input:
 - **No argument.** Render the **state report** described in
   `reference/state-machine.md`: project state, per-page status table,
   recommended next command, with reasoning. Do not write anything.
-  The same applies to any **resume**: a new session on a project that
-  has `stardust/state.json`, "continue", "where are we", or a resume
-  driven by a memory file. Start with the state report (it names the
+  The same applies to any **resume** (a new session on a project with
+  `stardust/state.json`, "continue", "where are we", a memory-driven
+  resume). Start with the state report (it names the
   flow and the last gate numbers), then execute the last `status.jsonl`
   `next` **through its skill** — the procedure drives, not memory. A
   phase whose `end` line exists is neither re-run nor re-narrated; a
@@ -218,8 +217,8 @@ flow in the first response to a migration question, including that
 Activated by `--hands-off` on **any** stardust invocation, or by a user
 phrase that says no one will answer: "fully hands-off", "no approval
 gates", "run autonomously", "not monitoring", "never stop (asking)",
-"do all of them" / "the full site". Activation is never inferred from
-the harness or from the size of the ask. On activation, stamp
+"do all of them" / "the full site" — never inferred from the harness or
+the size of the ask. On activation, stamp
 `state.json.handsOff: true` (`reference/state-machine.md` § Hands-off
 keys), append an activation line quoting the phrase to
 `stardust/direction.md`, and open the first reply with the fixed
@@ -266,6 +265,11 @@ otherwise):
   polls. What a delegated agent writes, how it is polled, resumed once
   and finished from its progress file: `reference/fan-out.md` (every
   brief points at its § Worker contract).
+- **Image reads.** Numbers first (`pixel-compare --json`, `crop-compare
+  --json`, `anchor`, `row-profile`), then band crops — never a stitched
+  capture whole (the viewer caps at 2,000 px tall), one image per turn,
+  none re-read, none past ~80 % of the context —
+  `reference/context-hygiene.md` § Image reads.
 - **Scope and type of delegated agents.** One agent owns at most one
   archetype gate loop or three sibling pages; anything longer than ~20
   requests or launching a browser is a fresh-context agent with a
@@ -274,8 +278,8 @@ otherwise):
   § Scope and type.
 - **Wait discipline: never park the conversation past the prompt-cache
   window.** Anything expected to run longer than about 2 minutes — a gate
-  round over several pages, a crawl, a batch push, a capture set, a
-  delegated agent — runs in the background and writes a progress or
+  round, a crawl, a batch push, a capture set, a delegated agent — runs
+  in the background and writes a progress or
   summary file; never in the foreground, never under one long `sleep`.
   While it runs, do independent work; when there is none, check back
   with one short read of the progress file **at most every 4 minutes** —
@@ -291,10 +295,9 @@ otherwise):
   price — worth it for any multi-hour session.)
 - **Context hygiene.** Batch runners report a ranked class table and
   write `summary.json` + `summary.md`; nothing per-page is pasted into
-  the conversation; an edit is followed by a re-read of the changed
-  range only; a long run hands off to a fresh session at each phase
-  boundary and after the first compaction, resuming from `state.json`,
-  the journal and the class report — `reference/context-hygiene.md`.
+  the conversation; after an edit re-read the changed range only; a long
+  run hands off to a fresh session at each phase boundary and after the
+  first compaction — `reference/context-hygiene.md`.
 - **Commit at the end of each phase** when the project is a git repo.
   Stage only the paths this skill wrote (`stardust/`, the target files,
   the EDS project files it touched) — never `git add -A` or `git add .`;
@@ -313,11 +316,11 @@ silence is a defect. When the ask names a chain ("replica, then
 deploy"), stamp `state.json.approvedChain` (§ Hands-off keys) and
 continue after each PASS; a FAIL or a residual over the bar still
 pauses, and a chained `deploy` stops at preview unless the ask said
-publish. An unavoidable pause ends with the fixed block — `Running: …` /
-`Waiting on you: 1) …` / `Will proceed without you: …` — and the
-pasteable `next` command (`reference/run-status.md` § Phase close); two
-same-named gates → one clarifying question naming both. Every path
-printed is `ls`-verified and every count re-read from the artifact.
+publish. An unavoidable pause ends with the fixed block `Running: …` /
+`Waiting on you: 1) …` / `Will proceed without you: …` and the pasteable
+`next` command (`reference/run-status.md` § Phase close); two same-named
+gates → one question naming both. Printed paths are `ls`-verified,
+printed counts re-read from the artifact.
 
 **Hard blockers remain stops.** An unreachable source site, an
 expired `DA_TOKEN` that cannot be recovered, or a signal-absent brand
@@ -430,8 +433,7 @@ motion cascade).
 
 ## What stardust never does
 
-- Invent design opinions that contradict impeccable's hard rules. Defer to
-  impeccable.
+- Invent design opinions that contradict impeccable's hard rules.
 - Execute a redesign plan without showing it first (hands-off mode records
   the plan in `stardust/direction.md` instead of waiting — § Hands-off mode).
 - Force a re-run on stale pages without explicit user opt-in.
@@ -456,7 +458,7 @@ motion cascade).
 - `reference/run-status.md` — the `stardust/status.jsonl` phase-transition contract every skill appends to; `next` and the phase-close block.
 - `reference/fan-out.md` — the delegated-agent protocol: progress files, worker and coordinator liveness contracts.
 - `reference/harness-quirks.md` — shell, runner, delivery, path, served-asset, local-QA and port rules the tool layer imposes.
-- `reference/context-hygiene.md` — what enters the conversation: ranked class reports, no per-page dumps, ranged re-reads, phase-boundary hand-off.
+- `reference/context-hygiene.md` — what enters the conversation: the image-read budget, ranked class reports, no per-page dumps, ranged re-reads, phase-boundary hand-off.
 - `reference/learnings.md` — the per-run learnings ledger (`stardust/learnings.md`) rollout's report phase writes and maintainers harvest.
 
 ### Cinematic-feature references (cross-cutting)
