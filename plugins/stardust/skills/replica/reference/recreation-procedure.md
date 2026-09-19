@@ -82,6 +82,11 @@ the new page's first two hot bands). Open every new archetype's gate with
 the chrome crop gate (`source-fidelity-gate.md` § Pass bar, item 5) against
 the NEW page's live chrome, and flag any page-level compensation for
 back-port into the canon files so later archetypes don't re-discover it.
+When two templates genuinely differ, the canon records module VARIANTS
+keyed by template, each with its own gate evidence — never one value tuned
+per page. A canon fix after an archetype passed is a `canon-followup` round
+(`source-fidelity-gate.md` § Iteration discipline): outside that page's
+cap, followed by a re-gate of every approved archetype sharing the canon.
 
 ## CSS lifting — fidelity values come from the original site's CSS, not the eye
 

@@ -7,7 +7,7 @@
 - § Pass bar — when deciding whether an archetype ships: the criteria every breakpoint must meet.
 - § Reading the band breakdown — only after a failed round: locating the first hot band and ignoring the contaminated ones below it.
 - § Wide-viewport fluid check — after the desktop pass: catching frozen pixel widths that only diverge on wider screens.
-- § Iteration discipline — when a round fails: the hard cap and the measure-first order of fixes.
+- § Iteration discipline — when a round fails: the hard cap, the measure-first order of fixes, and the three named regimes (`source-inconsistent`, `separate-composition`, `canon-followup`) that end a loop early or sit outside the cap.
 - § Hardening rules — before trusting any number: the false-measurement traps (UA challenges, overlays, animation, lazy media, font forks).
 - § The published-origin gate — after platform delivery: re-running the gate against the published page, the only number that counts as final.
 - § Residual logging format — when recording a passed or capped result in `progress.json`: the `result` fields `gate.sh` emits (regime, masks, unmasked %, reference date) and § Residual classes, the table every residual's `cause` cites.
@@ -331,6 +331,28 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
 - After iteration 3: log residuals (§ Residual logging) and move on. A
   documented residual is a pass with an asterisk; an undocumented fourth
   loop is scope creep.
+- **Three named regimes end a loop early or sit outside the cap.** The
+  label is the ledger's `overCap` reason (and the vocabulary `gate.sh
+  --over-cap <reason>` consumes when it lands); bars are unchanged in all
+  three — a justified residual is never a pass.
+  - `source-inconsistent` — the live page is internally inconsistent
+    (per-row authoring artefacts, irregular indents, mixed CTA arrangements
+    inside one module). After round 2 the honest output is an
+    inconsistency-register entry (`preserve-direction.md` § 3) naming the
+    normalisation as a permitted delta — not a fourth round chasing rows.
+  - `separate-composition` — the 360 page is a different composition, not
+    a reflow: the two document heights differ by more than 40 %, or
+    content-diff reports hidden twin rows (MISSING duplicates of desktop
+    content). Declare it BEFORE iterating; anchors + chrome crops are the
+    diagnostic evidence, and after two rounds with no material gain the
+    360 result is logged as a documented residual with a register entry
+    (FAIL-at-cap with a cause — never a second pass bar).
+  - `canon-followup` — a round that fixes a canon defect (chrome, tokens)
+    after an archetype passed does not count against that archetype's cap;
+    log it `canon-followup` and follow it with a re-gate of every approved
+    archetype sharing the canon. Template variants of canon modules are a
+    recreation rule: `recreation-procedure.md` § Cumulative archetype
+    prototypes.
 - **Instrument-invalidated runs don't consume the cap — once the defect is
   fixed and named.** The 3-iteration cap assumes valid instruments. When a
   run is later shown to have measured an instrument defect (a challenge
@@ -603,6 +625,16 @@ Two rules for that final run:
   paddings in block CSS, re-measure) brought it to 6.5% with exact anchor
   parity (recorded). Treat the pre-publish harness number as provisional
   and the reconcile round as expected work, not a regression.
+- **Two published-origin rounds without improvement → stop editing CSS.**
+  The number is then not a CSS problem. Run, in this order: the served-hash
+  check (§ Iteration discipline, rule-bearing element — code CSS served
+  under a CDN `max-age` shows the previous round for hours); the DOM
+  ladder published-vs-prototype (which wrappers the pipeline added); the
+  landmark Δy table (`anchor.mjs` section anchors on both sides); the
+  text-wrap diff (line counts per matched paragraph). CSS experiments run
+  on a branch host (`<branch>--<repo>--<owner>.aem.page`), never as
+  commit/revert on `main` — every revert is a live publish and a phantom
+  round.
 
 Recurring EDS pipeline transforms that move the number (each recorded;
 none visible on a local harness):

@@ -264,29 +264,26 @@ stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
 iteration's fixes come off the instruments, never off eyeballing. After 3,
 log the residuals by class (gate doc § Residual classes; `result` copied
 from `gate-<label>.json`) and move on — a documented residual beats an
-undocumented fourth loop.
+undocumented fourth loop. Three named regimes end a loop early or sit
+outside the cap — `source-inconsistent`, `separate-composition`,
+`canon-followup` (gate doc § Iteration discipline).
 
-**Hardening (each is a recorded false-measurement trap — see the reference
-doc for the full list):** real-Chrome UA **plus the standard request
-headers** on every capture (built into the shared
-`diff/scripts/live-session.mjs` — the default HeadlessChrome UA gets a
-Cloudflare challenge that the probes then silently measure AS the source,
-and the UA alone still 403s on Akamai); a challenge/blocked interstitial
-**fails loud (exit 3)**, never measured — escalate with `--headed`, and a
-site that still blocks needs crawl.mjs-class capture (the gate must not
-silently degrade); `domcontentloaded` on live targets, never `networkidle`;
-symmetric `--main` scoping on both sides (`--main body` is never valid);
-both overlay classes dismissed via `--dismiss` (consent AND timed marketing
-modals); animations frozen for capture; the pointer parked after any
-dismissal click (a `:hover`-styled element under the resting cursor
-captures in hover state); fixed/sticky chrome replicated fixed, with its
-scroll-state morph, so seam repeats stay symmetric
+**Hardening (each a recorded false-measurement trap — the gate doc
+§ Hardening rules is the list):** real-Chrome UA **plus the standard
+request headers** on every capture (built into the shared
+`diff/scripts/live-session.mjs`); a challenge/blocked interstitial **fails
+loud (exit 3)**, never measured — escalate with `--headed`, and a site that
+still blocks needs crawl.mjs-class capture (the gate must not silently
+degrade); `domcontentloaded` on live targets, never `networkidle`;
+symmetric `--main` scoping (`--main body` is never valid); both overlay
+classes dismissed via `--dismiss` (consent AND timed marketing modals);
+animations frozen; the pointer parked after any dismissal click;
+fixed/sticky chrome replicated fixed with its scroll-state morph
 (`reference/recreation-procedure.md` § Fixed and sticky chrome);
-granularity-parity policy for JOIN/SPLIT false-reds (#87); capture-state
-policy for CDN-403 images and hydration placeholders (replicate as captured
-+ log). Two defect classes only the gate catches — DOM/style capture misses
-them: rendered-face font forks on inner spans (width probe) and overlay
-scrims invisible to computed styles (recover by per-row luminance fitting).
+granularity parity for JOIN/SPLIT false-reds (#87); capture-state policy
+for CDN-403 images and hydration placeholders. Two defect classes only the
+gate catches: rendered-face font forks on inner spans (width probe) and
+overlay scrims invisible to computed styles (per-row luminance fitting).
 
 The live-target hardening ships as flags on the diff scripts (`--ua`,
 `--wait-until`, `--dismiss`, `--headed`, `--locale`, visual-diff `--main`)
