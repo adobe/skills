@@ -21,6 +21,7 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 
 | at step | read |
 |---|---|
+| Setup 1 (permission layer) | `reference/harness-permissions.md` § Two classes · § Pre-approval |
 | Setup 3, Routing | `reference/state-machine.md` § File: `stardust/state.json` · § State report |
 | Setup 5 | `reference/run-status.md` § Line shape · § Rules |
 | Setup 6, Artifacts | `reference/artifact-map.md` § Versioning — what a clone holds · § Provenance shapes |
@@ -47,8 +48,10 @@ sub-commands that delegate the actual design work to **impeccable**.
    to you, project skill directories (`.claude/skills/`, `.agents/skills/`,
    `.cursor/skills/`, `.github/skills/`), or the harness's plugin cache
    (Claude Code: `~/.claude/plugins/cache/`; GitHub Copilot:
-   `~/.copilot/installed-plugins/*/impeccable/skills/impeccable`). If it is
-   not installed, stop and tell the user:
+   `~/.copilot/installed-plugins/*/impeccable/skills/impeccable`). Under a
+   harness permission layer, read `reference/harness-permissions.md`
+   § Two classes before the first command. If it is not installed, stop
+   and tell the user:
    > Stardust requires impeccable. Install it from
    > <https://github.com/pbakaus/impeccable> and re-run the command.
 
@@ -84,8 +87,8 @@ sub-commands that delegate the actual design work to **impeccable**.
    `reference/run-status.md`.
 6. **Project hygiene** (idempotent). Write `stardust/.gitignore` from
    `reference/stardust.gitignore` if absent; never edit a project's copy.
-   In a git repo: root `.gitignore` covers `.env` / `.env.*` (managed
-   `# >>> stardust` block), `.hlxignore` if present lists `stardust/`, and
+   In a git repo: root `.gitignore` covers `.env` / `.env.*` and
+   `.claude/settings.local.json` (managed `# >>> stardust` block), `.hlxignore` if present lists `stardust/`, and
    `git check-ignore -q stardust/state.json` must fail — if it passes,
    stop and name the rule. Offer, never write, LFS above 50 MB of tracked
    binaries under `stardust/`. Details in `reference/artifact-map.md`
@@ -302,6 +305,13 @@ otherwise):
   lands at the end of the audit phase, long before deploy's SKILL.md is
   read, and a tracked `.env` poisons every later push (GH013 + history
   rewrite at deploy time).
+
+- **A permission denial is not a blocker.** On the first denial print
+  the pre-approval snippet and the two facts of
+  `reference/harness-permissions.md` § Pre-approval, ask once, and
+  continue on unblocked work; a denied privileged action goes on the
+  `Blocked on owner:` line, a denied read or instrument is re-issued
+  once as a bare command.
 
 **Hard blockers remain stops.** An unreachable source site, an
 expired `DA_TOKEN` that cannot be recovered, or a signal-absent brand

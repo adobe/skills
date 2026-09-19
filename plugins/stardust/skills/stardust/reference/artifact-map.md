@@ -418,14 +418,17 @@ excluded folders tracked deletes that line or adds a negation below it.
 
 Outside `stardust/`: the impeccable target files at the project root and
 the EDS project are tracked by the project's own rules; `.env` / `.env.*`
-are excluded by the managed block Setup step 6 appends. `stardust/` is
+and `.claude/settings.local.json` are excluded by the managed block Setup
+step 6 appends. `stardust/` is
 also appended to `.hlxignore` on EDS projects so nothing here is served.
 
 Setup step 6 in detail (idempotent, writes only what is missing):
 (a) `stardust/.gitignore` from `stardust.gitignore`, byte-identical, only
 if absent — the project owns any line it adds afterwards; (b) root
 `.gitignore`: a block between `# >>> stardust` and `# <<< stardust`
-holding `.env` and `.env.*`, lines outside the markers never touched;
+holding `.env`, `.env.*` and `.claude/settings.local.json` (the per-machine
+permission allowlist, `reference/harness-permissions.md`), lines outside
+the markers never touched;
 (c) `.hlxignore`, when present: append `stardust/`; (d) assert
 `git check-ignore -q stardust/state.json` fails — a bare `state.json`
 pattern in `.git/info/exclude` or a global excludes file silently drops
