@@ -1,0 +1,404 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:prototype",
+    "writtenAt": "2026-07-21T13:30:20Z",
+    "readArtifacts": [
+      "stardust/current/_brand-extraction.json",
+      "stardust/current/DESIGN.json",
+      "stardust/direction.md",
+      "DESIGN.md",
+      "stardust/prototypes/home-proposed.html",
+      "stardust/prototypes/pricing-proposed.html"
+    ],
+    "synthesizedInputs": [],
+    "stardustVersion": "0.10.0",
+    "note": "TARGET sidecar. Token primitives live in DESIGN.md frontmatter; this file carries what the frontmatter cannot hold plus stardust's extensions (divergence audit, abstract component style, system-component roles, IA priorities, voice). extensions.canon was written by prototype at the first approval (home) and re-verified at the second (pricing: no net-new items)."
+  },
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-21T10:31:55Z",
+  "title": "Design System: Ledgerline",
+  "extensions": {
+    "colorMeta": {
+      "ledger": {
+        "role": "primary",
+        "displayName": "Ledger",
+        "canonical": "#27187e",
+        "tonalRamp": [
+          "#0d0730",
+          "#180f52",
+          "#27187e",
+          "#3b2aa6",
+          "#5643c9",
+          "#7a6adb",
+          "#a89dea",
+          "#d6d0f5"
+        ]
+      },
+      "carbon-copy": {
+        "role": "secondary",
+        "displayName": "Carbon Copy",
+        "canonical": "#758bfd"
+      },
+      "tracing-paper": {
+        "role": "secondary",
+        "displayName": "Tracing Paper",
+        "canonical": "#aeb8fe"
+      },
+      "highlighter": {
+        "role": "tertiary",
+        "displayName": "Highlighter",
+        "canonical": "#ff8600",
+        "reservedFor": "one stroke per viewport (marker underline, Most-popular flag, accent button)"
+      },
+      "graph-paper": {
+        "role": "background",
+        "displayName": "Graph Paper",
+        "canonical": "#f1f2f6"
+      },
+      "index-card": {
+        "role": "surface",
+        "displayName": "Index Card",
+        "canonical": "#f9f9fd"
+      },
+      "ruled-line": {
+        "role": "border",
+        "displayName": "Ruled Line",
+        "canonical": "#d3d7ee"
+      },
+      "typewriter": {
+        "role": "text-primary",
+        "displayName": "Typewriter",
+        "canonical": "#1a1740"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Page H1, one per page. Space Grotesk 700 with a -0.02em track; may carry the one marker underline."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Section H2s."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Card, tier and FAQ headings."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "All prose."
+      },
+      "body-sm": {
+        "displayName": "Body Small",
+        "purpose": "Footer links, captions, legal."
+      },
+      "figure": {
+        "displayName": "Figure",
+        "purpose": "Eyebrows, prices, counts, dates. Monospace, tabular, tracked."
+      },
+      "quote": {
+        "displayName": "Quote",
+        "purpose": "The single pull-quote per page."
+      }
+    },
+    "shadows": [
+      {
+        "name": "lift",
+        "value": "0 12px 32px rgba(39, 24, 126, 0.10)",
+        "purpose": "The system's only shadow; the highlighted pricing tier and the mobile nav sheet."
+      }
+    ],
+    "motion": [],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "nav",
+        "value": "900px"
+      },
+      {
+        "name": "lg",
+        "value": "1200px"
+      }
+    ],
+    "containerMaxWidth": "1200px",
+    "componentStyle": {
+      "buttons": {
+        "primary": {
+          "background": "#27187e",
+          "color": "#f1f2f6",
+          "borderRadius": "999px",
+          "padding": "14px 28px",
+          "fontWeight": 600,
+          "shadow": null,
+          "hoverDelta": "fill -> #1a1740"
+        },
+        "secondary": {
+          "background": "#f9f9fd",
+          "color": "#27187e",
+          "border": "1px solid #d3d7ee",
+          "borderRadius": "999px",
+          "padding": "14px 28px",
+          "fontWeight": 600,
+          "shadow": null,
+          "hoverDelta": "border -> #758bfd"
+        },
+        "accent": {
+          "background": "#ff8600",
+          "color": "#1a1740",
+          "borderRadius": "999px",
+          "padding": "14px 28px",
+          "fontWeight": 600,
+          "shadow": null,
+          "hoverDelta": "fill -> #27187e, text -> #f1f2f6"
+        },
+        "ghost": null
+      },
+      "dualCTAPattern": "primary-then-secondary-pill",
+      "cards": {
+        "background": "#f9f9fd",
+        "borderRadius": "12px",
+        "padding": "32px",
+        "shadow": null,
+        "border": "1px solid #d3d7ee"
+      },
+      "inputs": {
+        "borderRadius": "12px",
+        "padding": "12px 14px",
+        "border": "1px solid #d3d7ee",
+        "focusRing": "0 0 0 3px #758bfd"
+      }
+    },
+    "systemComponentRoles": [
+      {
+        "role": "header",
+        "purpose": "Wordmark, four section links, one primary pill. Collapses to a sheet below 900px.",
+        "position": "top, not sticky",
+        "constraint": "Index Card bar with Ruled Line hairline; never sticky."
+      },
+      {
+        "role": "cta-band",
+        "purpose": "Closing conversion band with the inherited heading and the primary CTA.",
+        "position": "last section before the footer",
+        "constraint": "Ledger fill; present on every marketing page."
+      },
+      {
+        "role": "footer",
+        "purpose": "Four link columns and the legal line.",
+        "position": "bottom",
+        "constraint": "Graph Paper ground, Ruled Line top hairline; column headings in Figure."
+      }
+    ],
+    "iaPriorities": [
+      {
+        "signal": "commercial-conversion",
+        "evidence": "_brand-extraction.json#voiceTable.ctaFrequency: 'Request a demo' 11 instances across 5 pages; header CTA + cta-band on every captured page",
+        "preserveAs": "primary CTA reachable in the first viewport of every page and repeated in the closing band",
+        "scope": "site-wide",
+        "mutability": "movable"
+      }
+    ],
+    "voice": {
+      "tone": "direct-factual",
+      "examples": {
+        "do": [
+          "Bookkeeping your accountant will trust.",
+          "Match bank feeds to ledger entries every night. Exceptions are queued for review, not buried.",
+          "Simple per-entity pricing."
+        ],
+        "dont": [
+          "Supercharge your financial journey (hype without a fact behind it)",
+          "Bookkeeping, reimagined. (triplet-cadence tagline that says nothing)"
+        ]
+      },
+      "ctaSamples": [
+        "Request a demo",
+        "See pricing",
+        "Start 30-day trial",
+        "Contact sales"
+      ],
+      "rules": [
+        "Lead with the fact, then the benefit; never the reverse.",
+        "Second person where the captured copy already is; no new copy in this pass."
+      ]
+    },
+    "divergence": {
+      "toolkit_version": "v1.0 (stardust v2)",
+      "seed": {
+        "input": "Ledgerline|2026-07-21",
+        "decade": "1990s",
+        "craft": "Riso print",
+        "register": "Zine",
+        "ground_family": "monochrome-tint",
+        "picked_by": "deterministic",
+        "overrides": []
+      },
+      "font_deck": "bauhaus-functional",
+      "anti_toolbox_count": 1,
+      "anti_toolbox_hits": [
+        {
+          "move": "Monospace used for body microcopy / metadata as a load-bearing device",
+          "justification": "Ledgerline sells reconciled figures; setting prices, counts and dates in Martian Mono reproduces the tabular ledger column that is the product's own artefact. Scoped to figures (the Column Rule); body copy and headings stay in the grotesk."
+        }
+      ],
+      "off_toolbox_moves": [
+        "Marker underline (0.18em Highlighter stroke) under one display word per page",
+        "Notebook-margin offset: eyebrow + headline left, supporting content right"
+      ],
+      "audit_adjustments": [],
+      "references_used": [],
+      "palette_source": {
+        "library_version": "v0.7.0",
+        "candidates": [
+          "Midnight Sky",
+          "Cool Coastal Vibes",
+          "Serene Blue",
+          "Cherry Blossom",
+          "Vintage Cottage Charm"
+        ],
+        "recommended_index": 0,
+        "picked_index": 0,
+        "picked_name": "Midnight Sky",
+        "source": "https://coolors.co/27187e-758bfd-aeb8fe-f1f2f6-ff8600",
+        "derived": {
+          "typewriter": "text role derived from the Ledger tonal ramp",
+          "index-card": "surface tint of Graph Paper",
+          "ruled-line": "border tint of Tracing Paper"
+        }
+      },
+      "brand_faithful_inversions": [],
+      "notes": [
+        "Rebrand mode: palette and type replaced with user confirmation (navy + Georgia read as dated). No brand-faithful inversions apply; the pure-white page ground is not retained (Graph Paper #f1f2f6 replaces #ffffff).",
+        "Color tokens authored in hex for Stitch frontmatter portability; prototypes mirror the DESIGN.md format per proposed-file-shell.md."
+      ]
+    },
+    "canon": {
+      "sourceSlug": "home",
+      "approvedAt": "2026-07-21T11:40:00Z",
+      "files": {
+        "header": {
+          "path": "stardust/canon/header.html",
+          "sha": "da894de950b9037ad53f02a3965d0da379d32d2785352b3d8ace52b1ea935125"
+        },
+        "footer": {
+          "path": "stardust/canon/footer.html",
+          "sha": "0e70b966a9eb39543331d4b5217c9ada62252c87c8054c20c4af9d1e5fa8b21d"
+        },
+        "css": {
+          "path": "stardust/canon/canon.css",
+          "sha": "a3d03bcec457ea4c322b9e06ee396675279d57af24204d70aca7cfc91fd24204"
+        }
+      },
+      "pinned": {
+        "sectionPadding.desktop": "96px",
+        "sectionPadding.tablet": "64px",
+        "sectionPadding.mobile": "48px",
+        "densityTier": "balanced",
+        "typeScale": 1.333,
+        "lineHeights.display": 1.05,
+        "lineHeights.body": 1.55,
+        "lineHeights.small": 1.5,
+        "containerMaxWidth": "1200px"
+      },
+      "compositionalMoves": [
+        "Notebook-margin grid: eyebrow and headline occupy the left third, supporting content is offset right",
+        "One marker underline per page, on a single word of the display heading, never on body copy",
+        "Every meaningful number sits in a figure chip or a monospace price line, never inline in a grotesk sentence",
+        "Pages open on a contained composition and close on the full-bleed indigo band; the band is the only large indigo surface",
+        "Cards are flat hairline containers; the single shadow is reserved for the one element the page wants chosen"
+      ],
+      "history": [
+        {
+          "at": "2026-07-21T11:40:20Z",
+          "from": "home",
+          "kind": "first-approval"
+        },
+        {
+          "at": "2026-07-21T13:30:20Z",
+          "from": "pricing",
+          "kind": "extension",
+          "added": []
+        }
+      ]
+    }
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Ledger pill; the default conversion button.",
+      "html": "<a class=\"ds-btn-primary\" href=\"/contact\">Request a demo</a>",
+      "css": ".ds-btn-primary { display: inline-block; background: #27187e; color: #f1f2f6; font-family: 'Space Grotesk', 'Helvetica Neue', Arial, sans-serif; font-weight: 600; font-size: 1.125rem; padding: 14px 28px; border-radius: 999px; text-decoration: none; transition: background 0.15s; } .ds-btn-primary:hover { background: #1a1740; } .ds-btn-primary:focus-visible { outline: 3px solid #758bfd; outline-offset: 2px; }"
+    },
+    {
+      "name": "Accent Button",
+      "kind": "button",
+      "refersTo": "button-accent",
+      "description": "Highlighter pill; one per page.",
+      "html": "<a class=\"ds-btn-accent\" href=\"/signup\">Start 30-day trial</a>",
+      "css": ".ds-btn-accent { display: inline-block; background: #ff8600; color: #1a1740; font-family: 'Space Grotesk', 'Helvetica Neue', Arial, sans-serif; font-weight: 600; font-size: 1.125rem; padding: 14px 28px; border-radius: 999px; text-decoration: none; } .ds-btn-accent:hover { background: #27187e; color: #f1f2f6; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Index Card surface with a Ruled Line hairline; feature and tier cards.",
+      "html": "<div class=\"ds-card\"><span class=\"ds-figure\">01</span><h3>Automatic reconciliation</h3><p>Match bank feeds to ledger entries every night.</p></div>",
+      "css": ".ds-card { background: #f9f9fd; border: 1px solid #d3d7ee; border-radius: 12px; padding: 32px; } .ds-card h3 { font-family: 'Space Grotesk', 'Helvetica Neue', Arial, sans-serif; font-weight: 600; font-size: 1.75rem; line-height: 1.2; color: #1a1740; margin: 12px 0 8px; } .ds-card p { font-family: 'Space Grotesk', 'Helvetica Neue', Arial, sans-serif; font-size: 1.125rem; line-height: 1.55; color: #1a1740; margin: 0; } .ds-figure { display: inline-block; font-family: 'Martian Mono', Menlo, monospace; font-size: 0.875rem; font-weight: 500; letter-spacing: 0.06em; color: #27187e; background: #aeb8fe; border-radius: 6px; padding: 4px 10px; }"
+    },
+    {
+      "name": "Figure Chip",
+      "kind": "badge",
+      "refersTo": "figure-chip",
+      "description": "Monospace chip for any number that carries meaning.",
+      "html": "<span class=\"ds-figure\">$29 /mo per entity</span>",
+      "css": ".ds-figure { display: inline-block; font-family: 'Martian Mono', Menlo, monospace; font-size: 0.875rem; font-weight: 500; letter-spacing: 0.06em; font-variant-numeric: tabular-nums; color: #27187e; background: #aeb8fe; border-radius: 6px; padding: 4px 10px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Annotated Notebook",
+    "overview": "The redesign keeps Ledgerline's audit-grade seriousness and swaps the filing-cabinet wrapper for a notebook a first-time founder would actually open: a cool graph-paper ground, one deep indigo voice that descends from the old navy, a single highlighter-orange stroke per viewport, and figures set in monospace so the numbers read as ledger columns. Layout is asymmetric where the old site was uniform; every page still ends on the same closing band.",
+    "keyCharacteristics": [
+      "Tinted-neutral ground with one indigo voice and one orange highlight",
+      "Grotesk display and body, monospace for every figure, slab serif for the one quotation per page",
+      "Pill buttons and 12px cards on an otherwise flat, hairline-ruled page",
+      "Offset, notebook-margin compositions instead of centred stacks"
+    ],
+    "rules": [
+      {
+        "name": "The Highlighter Rule",
+        "body": "Highlighter appears at most once per viewport and never on more than one element type per page. If two things need emphasis, one of them uses Ledger instead.",
+        "section": "colors"
+      },
+      {
+        "name": "The Column Rule",
+        "body": "Any number that means money, a count or a date is set in Figure, tabular, on its own line or chip. Numbers never sit inline in a grotesk sentence when they are the point of the sentence.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Lift Rule",
+        "body": "At most one element per page carries the shadow.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do set every meaningful number in Figure (monospace) — numbers are the product.",
+      "Do keep one Highlighter stroke per viewport and let Ledger carry everything else.",
+      "Do offset compositions to the notebook margin; centred stacks are the old site.",
+      "Do keep the closing band on every page — the conversion path is inherited, not redesigned."
+    ],
+    "donts": [
+      "Don't use Highlighter for text or for more than one element type per page.",
+      "Don't add gradients, grain overlays or drop shadows on type.",
+      "Don't make the header sticky or add a ticker/marquee.",
+      "Don't invent statistics, logos or quotes; content comes from stardust/current/pages/*.json verbatim."
+    ]
+  }
+}

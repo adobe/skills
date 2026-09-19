@@ -1,0 +1,137 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:extract",
+    "writtenAt": "2026-07-21T09:45:49Z",
+    "readArtifacts": ["https://www.ledgerline.com/contact"],
+    "synthesizedInputs": [],
+    "stardustVersion": "0.10.0",
+    "renderedBy": "playwright",
+    "fetchedAt": "2026-07-21T09:43:35Z",
+    "waitMode": "medium",
+    "waitMs": 1840,
+    "httpStatus": 200,
+    "contentType": "text/html",
+    "heroSource": "dom"
+  },
+  "slug": "contact",
+  "url": "https://www.ledgerline.com/contact",
+  "finalUrl": "https://www.ledgerline.com/contact",
+  "title": "Contact sales — Ledgerline",
+  "metaDescription": "Talk to the Ledgerline sales team about a demo, pricing for accounting firms, or migrating your books.",
+  "heroHeadline": "Talk to our team.",
+  "heroLede": "Tell us about your close process and we will set up a demo tailored to your entity structure.",
+  "og": {
+    "title": "Contact sales — Ledgerline",
+    "description": "Talk to the Ledgerline sales team about a demo or migrating your books.",
+    "image": "https://www.ledgerline.com/img/og-contact.png",
+    "type": "website",
+    "siteName": "Ledgerline"
+  },
+  "themeColor": { "light": "#1f3a5f", "dark": null },
+  "language": "en",
+  "headings": [
+    { "level": 1, "text": "Talk to our team.", "id": null, "domPath": "main > section.page-head > h1", "style": { "fontFamily": "Georgia, 'Times New Roman', serif", "fontWeight": 700, "fontSize": "2.5rem", "lineHeight": 1.2, "letterSpacing": "normal", "color": "rgb(43, 47, 54)" } },
+    { "level": 2, "text": "Request a demo", "id": "demo-form", "domPath": "main > section.contact-form > h2", "style": { "fontFamily": "Georgia, 'Times New Roman', serif", "fontWeight": 700, "fontSize": "2rem", "lineHeight": 1.25, "letterSpacing": "normal", "color": "rgb(43, 47, 54)" } },
+    { "level": 2, "text": "Offices", "id": null, "domPath": "main > section.offices > h2", "style": { "fontFamily": "Georgia, 'Times New Roman', serif", "fontWeight": 400, "fontSize": "1.5rem", "lineHeight": 1.3, "letterSpacing": "normal", "color": "rgb(43, 47, 54)" } }
+  ],
+  "landmarks": [
+    {
+      "tag": "header",
+      "role": "banner",
+      "id": null,
+      "classes": ["site-header"],
+      "innerText": "Ledgerline Features Pricing About Contact Request a demo",
+      "children": [
+        { "tag": "nav", "role": "navigation", "id": null, "classes": ["nav-wrap"], "purpose": "unknown", "headlineRef": null, "innerTextSummary": "Ledgerline Features Pricing About Contact Request a demo", "wordCount": 8, "body": [], "lists": [], "qa": [], "quotes": [] }
+      ]
+    },
+    {
+      "tag": "main",
+      "role": "main",
+      "id": null,
+      "classes": [],
+      "innerText": "Talk to our team. Tell us about your close process and we will set up a demo tailored to your entity structure. Request a demo Work email Company name Number of entities Message Submit request Offices Denver 1801 Wewatta St, Denver, CO Toronto 325 Front St W, Toronto, ON",
+      "children": [
+        { "tag": "section", "role": null, "id": null, "classes": ["page-head"], "purpose": "hero", "headlineRef": 0, "innerTextSummary": "Talk to our team. Tell us about your close process and we will set up a demo.", "wordCount": 22, "body": ["Tell us about your close process and we will set up a demo tailored to your entity structure."], "lists": [], "qa": [], "quotes": [] },
+        { "tag": "section", "role": null, "id": "demo-form", "classes": ["contact-form"], "purpose": "form", "headlineRef": 1, "innerTextSummary": "Work email, Company name, Number of entities, Message, Submit request", "wordCount": 12, "body": [], "lists": [], "qa": [], "quotes": [] },
+        { "tag": "section", "role": null, "id": null, "classes": ["offices"], "purpose": "rich-text", "headlineRef": 2, "innerTextSummary": "Denver 1801 Wewatta St. Toronto 325 Front St W.", "wordCount": 14, "body": [], "lists": [ { "ordered": false, "items": ["Denver — 1801 Wewatta St, Denver, CO", "Toronto — 325 Front St W, Toronto, ON"] } ], "qa": [], "quotes": [] }
+      ]
+    },
+    {
+      "tag": "footer",
+      "role": "contentinfo",
+      "id": null,
+      "classes": ["site-footer"],
+      "innerText": "Product Features Pricing Security Company About Careers Contact Resources Help center Blog API docs Legal Privacy Terms © 2026 Ledgerline Inc.",
+      "children": [
+        { "tag": "section", "role": null, "id": null, "classes": ["footer-cols"], "purpose": "footer-nav", "headlineRef": null, "innerTextSummary": "Product Company Resources Legal", "wordCount": 22, "body": [], "lists": [ { "ordered": false, "items": ["Features", "Pricing", "Security", "About", "Careers", "Contact", "Help center", "Blog", "API docs", "Privacy", "Terms"] } ], "qa": [], "quotes": [] }
+      ]
+    }
+  ],
+  "ctas": [
+    { "label": "Request a demo", "href": "/contact", "tag": "a", "domPath": "header > div.nav-wrap > a.btn-primary", "style": { "backgroundColor": "rgb(31, 58, 95)", "color": "rgb(255, 255, 255)", "fontFamily": "Arial, Helvetica, sans-serif", "fontWeight": 700, "borderRadius": "4px", "padding": "10px 20px", "boxShadow": "none" }, "appearsAbove": "fold" },
+    { "label": "Submit request", "href": null, "tag": "button", "domPath": "main > section.contact-form > form > button[type=\"submit\"]", "style": { "backgroundColor": "rgb(31, 58, 95)", "color": "rgb(255, 255, 255)", "fontFamily": "Arial, Helvetica, sans-serif", "fontWeight": 700, "borderRadius": "4px", "padding": "12px 28px", "boxShadow": "none" }, "appearsAbove": "fold" }
+  ],
+  "links": {
+    "internal": [
+      { "href": "/features", "text": "Features", "domPath": "header > nav > a:nth-child(2)" },
+      { "href": "/pricing", "text": "Pricing", "domPath": "header > nav > a:nth-child(3)" },
+      { "href": "/about", "text": "About", "domPath": "header > nav > a:nth-child(4)" },
+      { "href": "/contact", "text": "Contact", "domPath": "header > nav > a:nth-child(5)" }
+    ],
+    "external": []
+  },
+  "media": {
+    "images": [],
+    "inlineSvgs": [
+      { "viewBox": "0 0 180 32", "domPath": "header > div.nav-wrap > a.brand > svg", "markupHash": "sha256:6f2d9b1e4a7c0f8b3e5d2a9c1f7b4e0d8a6c3f1b9e5d7a2c0f4b8e6d1a3c9f5b" }
+    ],
+    "cssBackgrounds": [],
+    "videos": [],
+    "iframes": []
+  },
+  "forms": [
+    {
+      "action": "/api/demo-request",
+      "method": "post",
+      "fields": [
+        { "type": "email", "name": "email", "label": "Work email", "required": true },
+        { "type": "text", "name": "company", "label": "Company name", "required": true },
+        { "type": "select", "name": "entities", "label": "Number of entities", "required": false },
+        { "type": "textarea", "name": "message", "label": "Message", "required": false }
+      ],
+      "thirdParty": null
+    }
+  ],
+  "widgets": { "modals": [], "accordions": [], "tabs": [] },
+  "components": {
+    "cards": { "count": 0, "examples": [] },
+    "grids": { "count": 1, "examples": ["section.offices .row"] },
+    "accordions": { "count": 0, "examples": [] },
+    "tabs": { "count": 0, "examples": [] },
+    "tables": { "count": 0, "examples": [] },
+    "modals": { "count": 0, "examples": [] },
+    "carousels": { "count": 0, "examples": [] },
+    "videos": { "count": 0, "examples": [] },
+    "iframes": { "count": 0, "examples": [] },
+    "dataVizEmbeds": { "count": 0, "examples": [] },
+    "teamTiles": { "count": 0, "examples": [] },
+    "pricingTiles": { "count": 0, "examples": [] },
+    "testimonialCards": { "count": 0, "examples": [] },
+    "logoStrip": { "count": 0, "examples": [] },
+    "timeline": { "count": 0, "examples": [] },
+    "breadcrumbs": { "count": 0, "examples": [] },
+    "statRow": { "count": 0, "examples": [] },
+    "ctaBand": { "count": 0, "examples": [] },
+    "formFields": { "count": 4, "examples": ["form input", "form textarea"] },
+    "other": []
+  },
+  "perSectionStyle": [
+    { "sectionRef": "main > section.page-head", "purpose": "hero", "background": { "color": "rgb(255, 255, 255)", "hasImage": false, "hasGradient": false }, "text": { "dominantColor": "rgb(43, 47, 54)" }, "spacing": { "paddingBlock": "64px", "paddingInline": "24px", "gap": "16px" }, "borderRadius": "0px", "fontFamilies": ["Georgia", "Arial"], "shadowsUsed": [] },
+    { "sectionRef": "main > section.contact-form", "purpose": "form", "background": { "color": "rgb(244, 246, 248)", "hasImage": false, "hasGradient": false }, "text": { "dominantColor": "rgb(43, 47, 54)" }, "spacing": { "paddingBlock": "48px", "paddingInline": "24px", "gap": "16px" }, "borderRadius": "2px", "fontFamilies": ["Georgia", "Arial"], "shadowsUsed": [] }
+  ],
+  "embedDominance": { "dominated": false, "iframeSrc": null, "viewportCoveragePct": null, "mainHeightCoveragePct": null, "screenshot": null },
+  "cssCustomProperties": [],
+  "screenshot": "stardust/current/assets/screenshots/contact.png",
+  "stats": { "wordCount": 96, "ctaCount": 2, "internalLinkCount": 14, "externalLinkCount": 0, "imageCount": 0 }
+}

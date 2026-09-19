@@ -1,0 +1,152 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:prototype",
+    "writtenAt": "2026-07-21T13:30:00Z",
+    "stardustVersion": "0.10.0"
+  },
+  "site": {
+    "originUrl": "https://www.ledgerline.com",
+    "deployUrl": null,
+    "extractedAt": "2026-07-21T09:47:30Z",
+    "pageCap": 5,
+    "totalDiscovered": 23,
+    "crawled": 5
+  },
+  "direction": {
+    "resolvedAt": "2026-07-21T10:32:00Z",
+    "phrase": "make it more expressive for a young audience",
+    "directionFile": "stardust/direction.md",
+    "iaFidelity": "reimagined"
+  },
+  "flow": "redesign",
+  "flowChosenAt": "2026-07-21T10:02:40Z",
+  "flowSource": "user-phrase",
+  "pages": [
+    {
+      "slug": "home",
+      "url": "https://www.ledgerline.com/",
+      "title": "Ledgerline — Bookkeeping software your accountant will trust",
+      "type": null,
+      "status": "approved",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-07-21T09:44:12Z"
+        },
+        {
+          "status": "directed",
+          "at": "2026-07-21T10:32:10Z"
+        },
+        {
+          "status": "prototyped",
+          "at": "2026-07-21T11:14:30Z"
+        },
+        {
+          "status": "approved",
+          "at": "2026-07-21T11:40:00Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/home.json",
+      "prototypePath": "stardust/prototypes/home-proposed.html",
+      "migratedPath": null
+    },
+    {
+      "slug": "features",
+      "url": "https://www.ledgerline.com/features",
+      "title": "Features — Ledgerline",
+      "type": null,
+      "status": "directed",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-07-21T09:44:41Z"
+        },
+        {
+          "status": "directed",
+          "at": "2026-07-21T10:32:10Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/features.json",
+      "prototypePath": null,
+      "migratedPath": null
+    },
+    {
+      "slug": "pricing",
+      "url": "https://www.ledgerline.com/pricing",
+      "title": "Pricing — Ledgerline",
+      "type": null,
+      "status": "approved",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-07-21T09:45:03Z"
+        },
+        {
+          "status": "directed",
+          "at": "2026-07-21T10:32:10Z"
+        },
+        {
+          "status": "prototyped",
+          "at": "2026-07-21T13:05:10Z"
+        },
+        {
+          "status": "approved",
+          "at": "2026-07-21T13:30:00Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/pricing.json",
+      "prototypePath": "stardust/prototypes/pricing-proposed.html",
+      "migratedPath": null
+    },
+    {
+      "slug": "about",
+      "url": "https://www.ledgerline.com/about",
+      "title": "About us — Ledgerline",
+      "type": null,
+      "status": "directed",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-07-21T09:45:27Z"
+        },
+        {
+          "status": "directed",
+          "at": "2026-07-21T10:32:10Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/about.json",
+      "prototypePath": null,
+      "migratedPath": null
+    },
+    {
+      "slug": "contact",
+      "url": "https://www.ledgerline.com/contact",
+      "title": "Contact sales — Ledgerline",
+      "type": null,
+      "status": "directed",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-07-21T09:45:49Z"
+        },
+        {
+          "status": "directed",
+          "at": "2026-07-21T10:32:10Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/contact.json",
+      "prototypePath": null,
+      "migratedPath": null
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{ "ts": "2026-07-21T09:40:41Z", "skill": "stardust:extract", "phase": "discovery", "event": "start" }
+{ "ts": "2026-07-21T09:41:10Z", "skill": "stardust:extract", "phase": "discovery", "event": "end", "detail": "23 pages discovered via sitemap.xml; cap 5 applied", "artifact": "stardust/current/_crawl-log.json" }
+{ "ts": "2026-07-21T09:41:12Z", "skill": "stardust:extract", "phase": "per-page extraction", "event": "start" }
+{ "ts": "2026-07-21T09:45:49Z", "skill": "stardust:extract", "phase": "per-page extraction", "event": "end", "detail": "5/5 pages captured, 0 failures", "artifact": "stardust/current/pages/" }
+{ "ts": "2026-07-21T09:45:52Z", "skill": "stardust:extract", "phase": "vision verification", "event": "start" }
+{ "ts": "2026-07-21T09:46:02Z", "skill": "stardust:extract", "phase": "vision verification", "event": "end", "detail": "5 ok, 0 recaptured, 0 suspect" }
+{ "ts": "2026-07-21T09:46:05Z", "skill": "stardust:extract", "phase": "brand-surface extraction", "event": "start" }
+{ "ts": "2026-07-21T09:46:20Z", "skill": "stardust:extract", "phase": "brand-surface extraction", "event": "end", "detail": "6 palette roles, 2 type families, 3 system components", "artifact": "stardust/current/_brand-extraction.json" }
+{ "ts": "2026-07-21T09:46:25Z", "skill": "stardust:extract", "phase": "seed current PRODUCT.md and DESIGN.md", "event": "start" }
+{ "ts": "2026-07-21T09:47:12Z", "skill": "stardust:extract", "phase": "seed current PRODUCT.md and DESIGN.md", "event": "end", "artifact": "stardust/current/DESIGN.json" }
+{ "ts": "2026-07-21T09:47:20Z", "skill": "stardust:extract", "phase": "update state and report", "event": "start" }
+{ "ts": "2026-07-21T09:47:30Z", "skill": "stardust:extract", "phase": "update state and report", "event": "end", "detail": "5 pages extracted", "artifact": "stardust/state.json" }
+{ "ts": "2026-07-21T10:02:11Z", "skill": "stardust:direct", "phase": "setup", "event": "start" }
+{ "ts": "2026-07-21T10:02:40Z", "skill": "stardust:direct", "phase": "setup", "event": "end", "detail": "impeccable present; 5 pages extracted; no target-state files; brand surface signal-strong" }
+{ "ts": "2026-07-21T10:02:42Z", "skill": "stardust:direct", "phase": "restate and clarify", "event": "start" }
+{ "ts": "2026-07-21T10:11:05Z", "skill": "stardust:direct", "phase": "restate and clarify", "event": "end", "detail": "2 questions asked; audience resolved, reference set skipped; plan confirmed with 'go'" }
+{ "ts": "2026-07-21T10:11:08Z", "skill": "stardust:direct", "phase": "resolve divergence inputs", "event": "start" }
+{ "ts": "2026-07-21T10:14:30Z", "skill": "stardust:direct", "phase": "resolve divergence inputs", "event": "end", "detail": "seed rolled; deck bauhaus-functional; palette Midnight Sky (index 0 of 5); 1 anti-toolbox hit" }
+{ "ts": "2026-07-21T10:14:33Z", "skill": "stardust:direct", "phase": "author PRODUCT.md and DESIGN files", "event": "start" }
+{ "ts": "2026-07-21T10:31:55Z", "skill": "stardust:direct", "phase": "author PRODUCT.md and DESIGN files", "event": "end", "detail": "PRODUCT.md, DESIGN.md, DESIGN.json written at project root", "artifact": "DESIGN.json" }
+{ "ts": "2026-07-21T10:31:57Z", "skill": "stardust:direct", "phase": "write direction and update state", "event": "start" }
+{ "ts": "2026-07-21T10:32:10Z", "skill": "stardust:direct", "phase": "write direction and update state", "event": "end", "detail": "5 pages extracted -> directed", "artifact": "stardust/direction.md" }
