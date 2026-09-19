@@ -10,6 +10,9 @@
  *            page once read as two findings per viewport)
  *   perf     a representative whose document is always 429 → perf/unmeasured (info) and
  *            report.infra counts it (noteThrottled), the clean representative is still measured
+ *   ai-readability  a page whose served fetch is always 429 → ai-readability/unmeasured (info),
+ *            counted in report.infra, retried `throttleAttempts` times through the limiter; a page
+ *            answering 429 once then 200 is scored (no unmeasured row)
  * SKIPped with exit 0 when playwright is not resolvable from the cwd (run from the EDS project).
  * Exit: 0 all assertions pass (or skipped) · 1 an assertion failed.
  */
@@ -25,6 +28,7 @@ if (!pw) { console.log('SKIP browser-unmeasured: playwright is not resolvable fr
 
 const { run: browse } = await import('../checks/browse.mjs');
 const { run: perf } = await import('../checks/perf.mjs');
+const { run: aiReadability } = await import('../checks/ai-readability.mjs');
 
 let failed = 0;
 const eq = (name, got, want) => { const ok = JSON.stringify(got) === JSON.stringify(want); if (!ok) failed += 1; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok ? '' : ` — got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`}`); };
@@ -65,8 +69,18 @@ eq('perf: no measurement row for the throttled page', of(pf, '/perf-429', 'measu
 eq('perf: clean representative measured', of(pf, '/ok', 'measurement').length, 1);
 eq('perf: report.infra counts the throttled page', infraCounters().throttled, 1);
 
+// ai-readability: through the limiter, paced retry, unmeasured never a score
+resetInfraCounters();
+const shared = {};
+const af = await aiReadability({ base: origin, inventory: { pages: [{ path: '/ai-429' }, { path: '/ai-flaky' }] }, opts: {}, shared });
+eq('ai-readability: always-429 → ai-readability/unmeasured (info)', of(af, '/ai-429', 'unmeasured').map((f) => [f.check, f.severity, f.evidence.status]), [['ai-readability', 'info', 429]]);
+eq('ai-readability: served fetch retried three times', hits['/ai-429'], 3);
+eq('ai-readability: no score / legacy unmeasured row for the throttled page', af.filter((f) => f.path === '/ai-429' && f.id !== 'unmeasured').length, 0);
+eq('ai-readability: 429-once page is scored (served retry, then render)', [of(af, '/ai-flaky', 'unmeasured').length, shared.aiReadability.map((s) => s.path)], [0, ['/ai-flaky']]);
+eq('ai-readability: report.infra counts the throttled page', infraCounters().throttled, 1);
+
 server.close();
 setFetchLimiter(null);
 rmSync(outDir, { recursive: true, force: true });
 if (failed) { console.error(`${failed} assertion(s) failed`); process.exit(1); }
-console.log('browser unmeasured paths (browse decoration, perf): all assertions pass');
+console.log('browser unmeasured paths (browse decoration, perf, ai-readability): all assertions pass');
