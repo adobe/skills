@@ -13,7 +13,7 @@ Phases, in order: Setup → 1 EXTRACT → 2 PRESERVE DIRECTION → 3 RECREATE �
 
 | Phase | Command (project copies under `stardust/scripts/`) |
 |---|---|
-| Setup | `npm i -D playwright pixelmatch pngjs --no-save --legacy-peer-deps`; copy this skill's `scripts/` → `stardust/scripts/replica/` and `../diff/scripts/` → `stardust/scripts/diff/` |
+| Setup | `npm i -D playwright pixelmatch pngjs --no-save --legacy-peer-deps`; copy this skill's `scripts/` → `stardust/scripts/replica/` and `../diff/scripts/` → `stardust/scripts/diff/`; after Phase 1: `replica/impeccable-ignores.mjs [--files]` |
 | 1 | `$stardust extract <URL> --prep --dynamics` — bounded entry: `--single` / `--pages <slug,...>` |
 | 2 | mechanical promotion + `stardust/replica/inconsistency-register.md`; the `dynamics` skill Phases 1–3 |
 | 3 | author `stardust/prototypes/<slug>-proposed.html` (+ per-page CSS) |
@@ -26,7 +26,7 @@ Outputs: `stardust/direction.md` · `stardust/replica/{inconsistency-register.md
 
 | At phase | Read |
 |---|---|
-| Setup | `../stardust/reference/state-machine.md` § Flow keys |
+| Setup | `../stardust/reference/state-machine.md` § Flow keys; `reference/preserve-direction.md` § 4. Impeccable ignore set |
 | 2 | `reference/preserve-direction.md` § 1. Promotion contract · § 1a. Bounded promotion branch · § 3. The inconsistency register; `../dynamics/reference/triage.md` § Dispositions |
 | 3 | `reference/recreation-procedure.md` § Authoring order · § Cumulative archetype prototypes · § CSS lifting · § Fonts policy · § Asset harvest and the capture-state policy · § CSS-portation fallback |
 | 4 | `reference/source-fidelity-gate.md` § Per-breakpoint procedure · § Pass bar · § Reading the band breakdown · § Iteration discipline · § Hardening rules · § Script adaptations; after a capped round: § Residual classes |
@@ -76,20 +76,19 @@ Two properties make this a different animal from the redesign pipeline:
    so do the gate scripts).
 3. Install the gate's pixel deps in the project:
    `npm i -D playwright pixelmatch pngjs --no-save --legacy-peer-deps`.
-   Same trap as diff's prereq 0: a `--no-save` install is PRUNED by any later
-   real `npm i` — re-probe before every gate run
-   (`node -e "import('pixelmatch').then(()=>process.exit(0))"`).
+   A `--no-save` install is PRUNED by any later real `npm i` — re-probe
+   before every gate run (`node -e "import('pixelmatch').then(()=>process.exit(0))"`).
 4. Copy scripts into the project and run them from there, not from the
-   plugin: this skill's whole `scripts/` dir (stitch-shot, pixel-compare,
-   crop-compare, chrome-parity, row-profile, sibling-variance, anchor,
-   gate.sh, motion-observe) to `stardust/scripts/replica/` AND the whole
-   `../diff/scripts/` dir to `stardust/scripts/diff/` (the diff scripts
-   import diff-profiles.mjs, and ALL live-target hardening — including
-   stitch-shot's — lives in its live-session.mjs; stitch-shot resolves it
-   from `stardust/scripts/diff/` next to `stardust/scripts/replica/`, so
-   keep the two dirs siblings). Never copy into the project-root
-   `scripts/` — that is the EDS boilerplate's directory (master skill
-   § Artifacts, the write boundary).
+   plugin: this skill's whole `scripts/` dir to `stardust/scripts/replica/`
+   AND the whole `../diff/scripts/` dir to `stardust/scripts/diff/` (all
+   live-target hardening lives in its live-session.mjs, which stitch-shot
+   resolves from the sibling dir — keep the two dirs siblings). Never copy
+   into the project-root `scripts/` — the EDS boilerplate's directory
+   (master skill § Artifacts, the write boundary).
+5. **Impeccable ignore set for lifted values** — once, after the Phase 1
+   capture: `node stardust/scripts/replica/impeccable-ignores.mjs`
+   (`--files` on the user's go / hands-off; `--tokens` for the Phase 3
+   lift). Contract: `reference/preserve-direction.md` § 4.
 
 ## Procedure
 

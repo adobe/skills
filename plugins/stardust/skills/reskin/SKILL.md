@@ -13,7 +13,7 @@ Phases, in order: Setup → 1 INGEST DONOR → 2 CONTENT-MODEL CAPTURE → 3 MAP
 
 | Phase | Command (project copies under `stardust/scripts/reskin/`) |
 |---|---|
-| Setup | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/reskin/scripts/*` → `stardust/scripts/reskin/` and `skills/diff/scripts/live-session.mjs` → `stardust/scripts/diff/` |
+| Setup | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/reskin/scripts/*` → `stardust/scripts/reskin/` and `skills/diff/scripts/live-session.mjs` → `stardust/scripts/diff/`; then `skills/replica/scripts/impeccable-ignores.mjs --skill reskin` |
 | 1 | `$stardust extract <content-url> --design-source <donor-url>` (local donor: `python3 -m http.server <port> --directory <path>` first); author `stardust/reskin/donor-tokens.json` + `donor-modules.md` |
 | 2 | `capture-content.mjs --url <page-url> --scope '<sel,...>' --normalize stardust/reskin/normalize/<slug>.mjs --out stardust/reskin/content-model/<slug>/` |
 | 3 | author `stardust/reskin/mapping.md` |
@@ -27,7 +27,7 @@ Outputs: `stardust/canon-source/` · `stardust/reskin/{donor-tokens.json, donor-
 
 | At phase | Read |
 |---|---|
-| Setup | `../stardust/reference/state-machine.md` § Flow keys |
+| Setup | `../stardust/reference/state-machine.md` § Flow keys; `../replica/reference/preserve-direction.md` § 4. Impeccable ignore set |
 | 1 | `reference/donor-sources.md` § 1. Live URL · § Two first-class token-sourcing paths · § 2. Local static prototypes · § 3. Figma · § Pin one reference page · § donor-tokens.json · § donor-modules.md |
 | 2 | `reference/content-model.md` § File shape · § Slot taxonomy · § Scope discovery · § Normalization ledger |
 | 3 | `reference/mapping-brief.md` § Entry schema · § Status semantics and gates · § Slot splitting · § Casing / text-transform policy · § Deltas block |
@@ -95,33 +95,29 @@ regression check instead of a debugging tool.
    impeccable dep check, context loader, state read. **Flow.** Stamp
    `state.json.flow: "reskin"` if unset
    (`../stardust/reference/state-machine.md` § Flow keys); if another
-   flow is set, print it and the switch command
-   (`$stardust reskin --switch-flow`) instead of running.
+   flow is set, print it and the switch command (`$stardust reskin
+   --switch-flow`) and stop.
 2. **Playwright import-resolvability probe** — same contract as
    `../extract/SKILL.md` § Setup:
    `node -e "import('playwright').then(()=>process.exit(0))"` from the
-   project root; on failure
-   `npm i -D playwright --no-save --legacy-peer-deps`. Re-run the
-   probe at the start of every phase that renders — a `--no-save`
-   install is pruned by any later real `npm i`.
+   project root; on failure `npm i -D playwright --no-save
+   --legacy-peer-deps`. Re-run the probe before every phase that renders —
+   a `--no-save` install is pruned by any later real `npm i`.
 3. **Copy the scripts into the project.** ESM resolves
    `import('playwright')` from the *script's* directory and the plugin
-   tree ships no `node_modules`. Copy `skills/reskin/scripts/*` (all
-   five files — `capture-content.mjs` and `dom-equality.mjs` import
-   `source-normalize.mjs` as a sibling) byte-identical to
-   `stardust/scripts/reskin/`, **and** `skills/diff/scripts/
-   live-session.mjs` to `stardust/scripts/diff/` — every reskin gate
-   script (capture-content, dom-equality, donor-probe, **and**
-   slot-coverage) imports it unconditionally at startup, regardless
-   of target type: without the copy each one exits 2 immediately,
-   even for `--help` or a local-file `--rendered` target. It supplies
-   ALL live-target hardening (real-Chrome UA + standard headers,
-   challenge detection, headed-stealth escalation), resolved from
-   `../diff/` next to `../reskin/`, so keep the two dirs siblings.
-   Run the copies.
+   tree ships no `node_modules`. Copy `skills/reskin/scripts/*` (all five
+   files) byte-identical to `stardust/scripts/reskin/`, **and**
+   `skills/diff/scripts/live-session.mjs` to `stardust/scripts/diff/` —
+   every reskin gate script imports it at startup (without it each exits
+   2, even for `--help`); it carries ALL live-target hardening, resolved
+   from `../diff/` next to `../reskin/` — keep the dirs siblings. Run the
+   copies.
 4. **Origin collision** — if `stardust/state.json` records a different
    `site.originUrl`, stop and ask before mixing sites, per
    `../extract/SKILL.md` § Setup.
+5. **Impeccable ignore set** — once Phase 1 writes `donor-tokens.json`: `node skills/replica/scripts/impeccable-ignores.mjs
+   --skill reskin` (`--files` on the user's go / hands-off); see
+   `../replica/reference/preserve-direction.md` § 4.
 
 ## Procedure
 
