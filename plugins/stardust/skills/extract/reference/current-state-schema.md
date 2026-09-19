@@ -542,7 +542,7 @@ re-crawled (`--refresh <slug>`, one tier up when the cause is an edge
 block); `OVERLAY?` pages are re-captured **before** they are looked at;
 a `banded` page is read band by band; `clipped` means the tail is
 missing by instrument — never `suspect` for that reason alone.
-`evals/lint/crawl-log-lint.mjs --dir stardust/current` fails a run whose
+`plugins/stardust/evals/lint/crawl-log-lint.mjs --dir stardust/current` fails a run whose
 `visionCheck[]` says `ok` on a degraded page or with an overlay in the note.
 
 ## § CSS custom properties

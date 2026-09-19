@@ -16,7 +16,7 @@ metadata:
 | Setup 1–4 | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/extract/scripts/crawl.mjs` → `stardust/scripts/crawl.mjs` (+ `skills/stardust/scripts/progress.mjs` → `stardust/scripts/stardust/`); origin-collision and flow guard; consent pre-flight; bot-management probe | flow stamped before a migration crawl | `_crawl-log.json#consent`, `#discovery.fetchTechnique` |
 | 1 Discovery | robots sitemaps → standard → conventions → nav union → BFS (`--depth`); subtree from the typed path; junk filter; cap via `--cap <N>` / `--all` / `--pages <slugs>` / `--single` | informational summary, no confirmation gate | `stardust/current/_crawl-log.json` |
 | 2 Per-page extraction | `node stardust/scripts/crawl.mjs --url <origin> [--pages …] [--cap N \| --all \| --single] [--refresh <slug,…> \| --force] [--headed] [--concurrency N] [--wait <mode>] [--dynamics] [--mobile <mode>] [--dpr N] [--depth N] [--cookie n=v] [--storage-state <file> \| --fresh-state] [--save-state] [--solve-wait <ms>] [--progress <file> \| --no-progress]` — in the background; `progress.mjs read stardust/.work/extract/crawl.progress.json`, then its `SUMMARY` line | live-render evidence contract; synthesis is a Phase 2 failure | `current/pages/<slug>.json` + `.html`, `assets/screenshots/<slug>.png`, `assets/media/`, `state.json` page → `extracted` |
-| 2.5 Vision verification | look at each screenshot against its record; `_signals` flags first; escalation ladder (wait mode → next bot-management tier → fresh context); `node evals/lint/crawl-log-lint.mjs --dir stardust/current` | verdict `ok` / `recaptured` / `suspect`; never `ok` on DEGRADED / overlay | `_crawl-log.json#visionCheck[]` |
+| 2.5 Vision verification | look at each screenshot against its record; `_signals` flags first; escalation ladder (wait mode → next bot-management tier → fresh context); `node plugins/stardust/evals/lint/crawl-log-lint.mjs --dir stardust/current` | verdict `ok` / `recaptured` / `suspect`; never `ok` on DEGRADED / overlay | `_crawl-log.json#visionCheck[]` |
 | 3 Brand-surface extraction | aggregate across all extracted pages (+ brand-source pages) | source citation per value | `current/_brand-extraction.json`, `assets/logo.<ext>`, `assets/favicon.<ext>` |
 | 4 Seed current-state docs | author directly from impeccable's format specs (no `$impeccable init` / `document`) | provenance block first | `current/PRODUCT.md`, `current/DESIGN.md`, `current/DESIGN.json` |
 | 5 Brand review | render per template; run the Tensions detectors | template mandatory; sections without data omitted | `current/brand-review.html` |
@@ -356,12 +356,11 @@ successful page write. If a page fails, record the error in
 Before anything downstream is authored, **look** at each captured
 page's screenshot (`assets/screenshots/<slug>.png`; the 360 shot only
 for the entry page or when the 1440 verdict is not `ok`) and verify it
-against the extracted record: hero vs pixels,
-palette plausibility, a believable `cssBackgrounds: []`, the logo, and
-that the page is rendered — not a consent wall, bot-block or blank
-SPA shell. Three rules are code, not judgement (`_signals`, § Signals
-in `reference/current-state-schema.md`; `evals/lint/crawl-log-lint.mjs`
-fails a run that breaks them): a note naming a consent/modal/overlay/
+against the record: hero vs pixels, palette plausibility, a believable
+`cssBackgrounds: []`, the logo, and that the page is rendered — not a
+consent wall, bot-block or blank SPA shell. Three rules are code, not judgement (`_signals`, § Signals
+in `reference/current-state-schema.md`;
+`plugins/stardust/evals/lint/crawl-log-lint.mjs` fails a run that breaks them): a note naming a consent/modal/overlay/
 scrim never carries `ok`; `DEGRADED` / `OVERLAY?` pages are re-crawled
 (`--refresh <slug>`, one tier up for an edge block) before they are
 looked at, then `recaptured` or `suspect`; `banded` is read band by
@@ -379,14 +378,14 @@ in `_crawl-log.json#visionCheck[]`:
 
 `verdict` is `"ok" | "recaptured" | "suspect"` — `suspect` means the
 mismatch survived the ladder; downstream phases treat that record as
-unreliable. Image reads follow `../stardust/reference/context-hygiene.md`
-§ Image reads; vision stays authoritative here — a `suspect` verdict
-still opens the full page as a downscaled whole-page view, and when a
-contact sheet exists (`../replica/scripts/review-image.mjs --sheet
-assets/screenshots --per 12` → `sheet-NN.png` + `.json` legend) read it
-first, one verdict per legend row. The heuristic defenses (low-media
-flag, `spaShellSuspect`, duplicate hash) remain cheap early signals,
-never gating alone.
+unreliable. Review captures from contact sheets, not one by one:
+`node ../replica/scripts/review-image.mjs --sheet assets/screenshots
+--per 12` writes `sheet-NN.png` + its `sheet-NN.json` legend;
+one verdict per legend row, and open a full page (downscaled whole-page
+view, `../stardust/reference/context-hygiene.md` § Image reads) only on
+`suspect` / `recaptured` doubt. The heuristic defenses (low-media flag,
+`spaShellSuspect`, duplicate hash) are cheap early signals, never gating
+alone.
 
 ### Phase 3 — Brand-surface extraction
 
