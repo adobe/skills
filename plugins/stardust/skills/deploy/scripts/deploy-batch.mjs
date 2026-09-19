@@ -37,10 +37,19 @@
  *   - verify blip: the delivered GET retries once after 3 s on a fetch error,
  *     5xx or 000 (a 404 is a verdict, not a blip).
  *
+ * Completion contract (skills/stardust/scripts/progress.mjs): while running, the
+ * driver writes stardust/.work/deploy/deploy-batch.progress.json (atomic; done/ok/
+ * failed/lastPath) — the file the agent's ≤ 4-minute check reads; when it ends
+ * the LAST stdout line is
+ *   SUMMARY deploy-batch ok=<n> failed=<n> exit=<code> details=<ledger> skipped=<n> published=<n>|preview-only
+ * Run it in the background (`nohup node … > stardust/.work/deploy/deploy-batch.log 2>&1 &`)
+ * and read the progress file, then the SUMMARY line — never `sleep N; grep -c`.
+ *
  * Usage:
  *   DA_TOKEN=… node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> \
  *     --content content [--paths <file|a,b,c>] [--exclude <file|a,b,c>] [--concurrency 4] \
- *     [--publish] [--force] [--allow-thin] [--allow-shrink] [--ledger path] [--log path] [--plan | --report]
+ *     [--publish] [--force] [--allow-thin] [--allow-shrink] [--ledger path] [--log path] \
+ *     [--progress path | --no-progress] [--plan | --report]
  *
  * --content   dir of *.html body-fragment files (default: content). Each file's
  *             path relative to this dir, minus .html, is its DA/web path.
@@ -59,6 +68,8 @@
  * --report    print the ledger grouped by status — no network, exit 0.
  * --allow-thin    PUT a body under 200 B / without `<main` anyway.
  * --allow-shrink  PUT over an existing DA document more than 5× larger anyway.
+ * --progress <path>  progress JSON path (default stardust/.work/deploy/deploy-batch.progress.json);
+ *             `--no-progress` writes none (the SUMMARY line still prints).
  * --concurrency  parallel pages in flight (default 4; DA admin tolerates ~4-6).
  *
  * Plan line: `N pages · U unchanged (hash) · C changed · K new · F failed-last-time
@@ -79,6 +90,7 @@ import { existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { createProgress, defaultProgressFile, summaryLine } from '../../stardust/scripts/progress.mjs';
 
 const DA_SRC = process.env.DEPLOY_BATCH_DA_SRC || 'https://admin.da.live/source';
 const ADMIN = process.env.DEPLOY_BATCH_ADMIN || 'https://admin.hlx.page';
@@ -109,7 +121,7 @@ export function deliveryUrl({ org, repo, branch, tld, webPath }) {
 }
 
 function usage() {
-  console.log('usage: node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> [--content content] [--paths <file|a,b>] [--exclude <file|a,b>] [--concurrency 4] [--publish] [--force] [--allow-thin] [--allow-shrink] [--ledger <path>] [--log <path>] [--plan | --report]');
+  console.log('usage: node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> [--content content] [--paths <file|a,b>] [--exclude <file|a,b>] [--concurrency 4] [--publish] [--force] [--allow-thin] [--allow-shrink] [--ledger <path>] [--log <path>] [--progress <path> | --no-progress] [--plan | --report]');
 }
 
 export function parseArgs(argv) {
@@ -134,6 +146,8 @@ export function parseArgs(argv) {
     else if (k === '--report') a.report = true;
     else if (k === '--allow-thin') a.allowThin = true;
     else if (k === '--allow-shrink') a.allowShrink = true;
+    else if (k === '--progress') a.progress = next();
+    else if (k === '--no-progress') a.progress = null;
     else if (k === '--token-env') a.tokenEnv = next();
     else if (k === '--help' || k === '-h') { usage(); process.exit(0); }
     else throw new Error(`unknown arg: ${k}`);
@@ -144,6 +158,7 @@ export function parseArgs(argv) {
   if (!a.token && !a.offline) throw new Error(`missing token in env ${a.tokenEnv || 'DA_TOKEN'}`);
   a.ledger ||= path.join(a.content, '.deploy-ledger.json');
   a.log ||= path.join(a.content, '.deploy-log.jsonl');
+  if (a.progress === undefined) a.progress = defaultProgressFile('deploy', 'deploy-batch');
   return a;
 }
 
@@ -423,8 +438,11 @@ function report(ledger) {
   }
 }
 
+let summaryCtx = null; // set once args are known, so a fatal exit still prints a SUMMARY line
+
 export async function main(argv = process.argv) {
   const args = parseArgs(argv);
+  summaryCtx = { details: args.ledger };
   const ledger = await readLedger(args.ledger);
   if (args.report) { report(ledger); return 0; }
 
@@ -452,6 +470,7 @@ export async function main(argv = process.argv) {
   }
   if (touched.size) await persist(); // hash backfills / --force resets
 
+  const progress = createProgress({ file: args.progress, driver: 'deploy-batch', total: todo.length, extra: { publish: args.publish, skipped: counts.unchanged, ledger: args.ledger } });
   const shared = args.branch !== 'main' ? [] : null;
   let done = 0;
   await pool(todo, args.concurrency, async (p) => {
@@ -459,6 +478,7 @@ export async function main(argv = process.argv) {
     const rec = await deployOne(p, args, ledger, logLine, shared);
     done += 1;
     const ok = OK_STATUS.has(rec.status);
+    progress.tick({ ok, path: p.webPath });
     console.error(`[${done}/${todo.length}] ${ok ? 'OK  ' : 'FAIL'} ${p.webPath} (${rec.status})`);
     if (done % 5 === 0) await persist();
   });
@@ -466,6 +486,7 @@ export async function main(argv = process.argv) {
 
   const fails = todo.map((p) => [p.webPath, ledger[p.webPath]]).filter(([, r]) => !OK_STATUS.has(r.status));
   console.error(`[deploy-batch] done. ${todo.length - fails.length} ok, ${fails.length} failed.`);
+  const summary = (exit) => progress.summaryLine({ exit, details: args.ledger, extra: { skipped: counts.unchanged, published: args.publish ? todo.length - fails.length : 'preview-only' } });
   if (shared && shared.length) {
     console.error(`[deploy-batch] WARN two clocks: ${shared.length} document(s) already on DA are shared with main — main renders them with main's code until branch "${args.branch}" is merged (da-deploy-protocol.md § Two clocks).`);
   }
@@ -476,12 +497,18 @@ export async function main(argv = process.argv) {
   if (fails.length) {
     console.error('FAILS (re-run the same command to re-drive — verified pages are skipped):');
     for (const [p, r] of fails) console.error(`  ${p}  ${r.status}  ${r.lastError || ''}`);
+    console.log(summary(1));
     return 1;
   }
+  console.log(summary(0));
   return 0;
 }
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 if (isMain) {
-  main().then((code) => process.exit(code)).catch((e) => { console.error(`[deploy-batch] fatal: ${e.message}`); process.exit(2); });
+  main().then((code) => process.exit(code)).catch((e) => {
+    console.error(`[deploy-batch] fatal: ${e.message}`);
+    console.log(summaryLine({ driver: 'deploy-batch', exit: 2, details: summaryCtx ? summaryCtx.details : '-', extra: { error: e.message.slice(0, 80) } }));
+    process.exit(2);
+  });
 }

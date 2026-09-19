@@ -144,7 +144,9 @@ so the gates run uniformly:
   only thing that catches it after the fact. Fix = rename to the lowercase path,
   redeploy, `DELETE` the stale uppercase DA source, add a redirect.
 - **Long batches run in the background** (a 130-page `PUT`+preview loop exceeds a
-  2-min foreground budget); log per-page OK/FAIL and re-drive only the FAILs.
+  2-min foreground budget); the driver's `deploy-batch.progress.json` is the progress
+  file and its `SUMMARY` stdout line the completion (`skills/stardust/scripts/progress.mjs`) —
+  read those, never `sleep N; grep -c` a log; re-drive only the FAILs.
   The driver's ledger keys on path + body hash: a re-run drives FAILs and changed
   files, skips verified unchanged pages, and never shrinks the ledger (`--force`
   resets the selected pages only; `--plan` shows the reasons before any request).

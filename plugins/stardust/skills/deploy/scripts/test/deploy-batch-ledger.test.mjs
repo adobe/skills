@@ -47,7 +47,8 @@ const writeLedger = (o) => writeFileSync(ledgerPath, JSON.stringify(o, null, 2))
 const readLedger = () => JSON.parse(readFileSync(ledgerPath, 'utf8'));
 
 const mock = await startMock();
-const base = ['--org', 'o', '--repo', 'r', '--branch', 'main', '--content', content];
+const progressFile = join(dir, 'work', 'deploy-batch.progress.json');
+const base = ['--org', 'o', '--repo', 'r', '--branch', 'main', '--content', content, '--progress', progressFile];
 // async spawn: the mock server lives in THIS process, so a spawnSync would starve it
 const run = (extra, env = {}) => new Promise((resolve) => {
   const c = spawn(process.execPath, [CLI, ...base, ...extra], { env: { ...process.env, DA_TOKEN: 'x', ...mock.env(), ...env } });
@@ -109,6 +110,11 @@ try {
   assert.equal(puts.length, 2, `two PUTs, got ${puts.join(',')}`);
   assert.ok(!puts.some((u) => u.endsWith('/a.html')), 'unchanged page not re-PUT');
   assert.equal(mock.requests.filter((q) => q.url.startsWith('/delivery/aem.page/a.')).length, 1, 'unchanged page verified once on aem.page');
+  const lastLine = r.stdout.trim().split('\n').at(-1);
+  assert.equal(lastLine, `SUMMARY deploy-batch ok=2 failed=0 exit=0 details=${ledgerPath} skipped=1 published=preview-only`, 'SUMMARY is the last stdout line');
+  const prog = JSON.parse(readFileSync(progressFile, 'utf8'));
+  assert.deepEqual([prog.driver, prog.total, prog.done, prog.ok, prog.failed, prog.noverdict], ['deploy-batch', 2, 2, 2, 0, 0], 'progress file shape');
+  assert.ok(prog.updatedAt && prog.startedAt && prog.lastPath, 'progress timestamps + lastPath');
   let led = readLedger();
   assert.equal(Object.keys(led).length, 4, 'ledger keeps /old and gains nothing spurious');
   assert.equal(led['/sub/b'].status, 'previewed');
@@ -157,6 +163,10 @@ try {
   r = await run(['--publish']);
   assert.equal(r.status, 1, 'exit 1 on a FAIL');
   assert.match(r.stderr, /done\. 0 ok, 1 failed\./, 'run-scoped count (the stale /old row is not counted)');
+  assert.match(r.stdout, /SUMMARY deploy-batch ok=0 failed=1 exit=1 details=.* skipped=2 published=0$/m);
+  r = await run(['--no-progress'], { DA_TOKEN: '' });
+  assert.equal(r.status, 2, 'missing token is fatal (exit 2)');
+  assert.match(r.stdout, /^SUMMARY deploy-batch ok=0 failed=0 exit=2 details=.* error=missing_token/m, 'fatal still prints a SUMMARY line');
   led = readLedger();
   assert.equal(led['/c'].status, 'put-fail');
   assert.equal(Object.keys(led).length, 4);
