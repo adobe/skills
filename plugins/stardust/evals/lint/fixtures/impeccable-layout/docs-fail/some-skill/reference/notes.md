@@ -6,3 +6,6 @@
 4. `$impeccable teach` — a command the registry does not list.
 5. `scripts/command-metadata.json` and impeccable's `reference/init.md` resolve (not findings).
 6. `npx impeccable detect --json` <!-- script-paths: ignore — hypothetical, must not be flagged -->
+7. `npx impeccable frobnicate` — the npm form AND a verb no engine answers.
+8. A span that wraps across a line break is still code: `$impeccable
+   teach` must be flagged like line 6.

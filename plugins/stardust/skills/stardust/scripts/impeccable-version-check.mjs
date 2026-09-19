@@ -15,7 +15,7 @@
  * anything it reads is missing — the registry/cache paths it consults are
  * harness implementation details, not a documented API.
  *
- * Probe (default on; --no-probe to skip): impeccable renames files between
+ * Probe (default on when a copy is found; --no-probe to skip): impeccable renames files between
  * releases (the 4.1 → 4.3 launcher swap moved `context.mjs`/`hook-admin.mjs`
  * behind `scripts/impeccable`), and every stale path a stardust doc carried
  * cost a session 2–3 rediscovery calls (`ls scripts/`, `find … -name`, retry).
@@ -28,7 +28,12 @@
  * (replica/reskin `impeccable-ignores.mjs` reads `impeccable.skillDir` first).
  * `launcher` is "scripts/impeccable" (4.3+), "scripts/hook-admin.mjs" (older
  * installs) or null. Only that key is touched; other state keys are preserved;
- * an unparsable state file is never overwritten.
+ * an unparsable state file is never overwritten; an ABSENT file is never
+ * created (state.json is born with `_provenance` first, written by
+ * extract/direct/prototype/migrate — a bare {impeccable} stub would read as a
+ * project with state). The key is rewritten only when the probe result
+ * changed, when `probedAt` is older than --max-age hours (default 24) or with
+ * --refresh: state.json is tracked, so an unchanged probe must not dirty it.
  *
  * Sources, in order of authority for "latest":
  *   1. upstream — the marketplace's git repo `.claude-plugin/plugin.json` on
@@ -53,44 +58,49 @@
  * Usage:
  *   node skills/stardust/scripts/impeccable-version-check.mjs [--marketplace impeccable]
  *        [--local <impeccable-dir>] [--offline] [--probe | --no-probe]
- *        [--state stardust/state.json] [--json] [--help]
+ *        [--state stardust/state.json [--refresh] [--max-age <hours>]] [--json] [--help]
  *
  * Output (text): one line per installed copy —
  *   "impeccable 4.1.3 installed (Claude Code) — 4.2.2 available: claude plugin marketplace update impeccable && claude plugin update impeccable@impeccable"
  *   "impeccable 4.2.2 installed (GitHub Copilot) — current"
  *   "impeccable version check skipped (<reason>)"
  * then, per probed copy, the probe line and its drift lines (see above).
- * --json adds skillDir, launcher, registryCommands, drift per install and for the first copy.
+ * --json adds skillDir, launcher, registryCommands, drift per install and for the first copy,
+ * plus `probed` (whether the probe ran) and `stateNote` (what --state did).
  * Exit code: always 0 (advisory; a drift line is information, not a failure).
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs';
 import path from 'path';
 import os from 'os';
 
 const HELP = `usage: node impeccable-version-check.mjs [--marketplace <name>] [--local <dir>] [--offline]
-                                         [--probe | --no-probe] [--state <state.json>] [--json]
+                                         [--probe | --no-probe] [--state <state.json> [--refresh] [--max-age <hours>]] [--json]
 
 Prints one advisory line per installed impeccable copy (newer version available / current /
 unknown), then a probe line "impeccable <v> at <skillDir> — launcher <x>, <n> commands, <k> drift"
 and one "drift: <path> missing" line per load-bearing file the install lacks.
   --local <dir>     a skills-directory install (plugin root or the skill dir itself)
   --offline         skip the upstream fetch; compare against the cached catalog only
-  --no-probe        version lines only (--probe is the default)
-  --state <file>    merge the probe into <file>#impeccable (other keys preserved;
-                    an unparsable file is left untouched)
+  --no-probe        version lines only (--probe is the default when a copy is found)
+  --state <file>    merge the probe into <file>#impeccable (other keys preserved; an unparsable
+                    file is left untouched; an absent file is never created — the sub-skills do that)
+  --refresh         rewrite <file>#impeccable even when the probe result is unchanged
+  --max-age <hours> rewrite an unchanged record once probedAt is older than this (default 24)
   --json            machine-readable output
 Exit code: always 0.`;
 
 const args = process.argv.slice(2);
 if (args.includes('--help') || args.includes('-h')) { console.log(HELP); process.exit(0); }
-const opt = (n, d = null) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
+// a flag's value is the next token unless that token is itself a flag (`--state --json` must not write a file named "--json")
+const opt = (n, d = null) => { const i = args.indexOf(`--${n}`); if (i < 0) return d; const v = args[i + 1]; if (v === undefined || v.startsWith('--')) { console.error(`--${n} needs a value — ignored`); return d; } return v; };
 const MKT = opt('marketplace', 'impeccable');
 const PLUGIN = 'impeccable';
 const LOCAL = opt('local');
 const OFFLINE = args.includes('--offline');
 const JSON_OUT = args.includes('--json');
-const PROBE = args.includes('--probe') || !args.includes('--no-probe');
 const STATE = opt('state');
+const REFRESH = args.includes('--refresh');
+const MAX_AGE_H = Number(opt('max-age', 24));
 const HOME = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
 const COPILOT_HOME = process.env.COPILOT_HOME || path.join(os.homedir(), '.copilot');
 
@@ -153,11 +163,19 @@ function probe(skillDir) {
   return { skillDir, launcher, registryCommands, drift };
 }
 
+// Merge the probe into <file>#impeccable. Never creates <file>; never rewrites an
+// unchanged, fresh record. Returns the one line that says what happened.
 function writeState(file, inst) {
-  let cur = {};
-  if (existsSync(file)) { cur = readJson(file); if (!cur || typeof cur !== 'object' || Array.isArray(cur)) return `state not written (${file} is not a JSON object)`; }
-  cur.impeccable = { skillDir: inst.skillDir, launcher: inst.launcher, version: inst.version, registryCommands: inst.registryCommands, probedAt: new Date().toISOString(), drift: inst.drift };
-  try { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, `${JSON.stringify(cur, null, 2)}\n`); return null; } catch (e) { return `state not written (${e.message})`; }
+  if (!existsSync(file)) return `state.json#impeccable not written (${file} absent — extract/direct/prototype/migrate create it; the next Setup 1 merges the probe into it)`;
+  const cur = readJson(file);
+  if (!cur || typeof cur !== 'object' || Array.isArray(cur)) return `state not written (${file} is not a JSON object)`;
+  const prev = cur.impeccable && typeof cur.impeccable === 'object' ? cur.impeccable : null;
+  const next = { skillDir: inst.skillDir, launcher: inst.launcher, version: inst.version, registryCommands: inst.registryCommands, drift: inst.drift };
+  const ageH = prev?.probedAt ? (Date.now() - Date.parse(prev.probedAt)) / 36e5 : Infinity;
+  const same = prev && ['skillDir', 'launcher', 'version', 'registryCommands'].every((k) => prev[k] === next[k]) && JSON.stringify(prev.drift || []) === JSON.stringify(next.drift);
+  if (same && !REFRESH && ageH <= MAX_AGE_H) return `state.json#impeccable current (probed ${prev.probedAt}; unchanged, not rewritten)`;
+  cur.impeccable = { skillDir: next.skillDir, launcher: next.launcher, version: next.version, registryCommands: next.registryCommands, probedAt: new Date().toISOString(), drift: next.drift };
+  try { writeFileSync(file, `${JSON.stringify(cur, null, 2)}\n`); return `state.json#impeccable ${prev ? 'refreshed' : 'written'} (${file})`; } catch (e) { return `state not written (${e.message})`; }
 }
 
 function marketplaceInfo() {
@@ -182,6 +200,8 @@ async function upstreamVersion(repo) {
 }
 
 const copies = installedCopies();
+// default on when a copy was found; nothing to probe otherwise
+const PROBE = args.includes('--probe') ? true : args.includes('--no-probe') ? false : copies.length > 0;
 const { cached, repo } = marketplaceInfo();
 const upstream = await upstreamVersion(repo);
 const latest = upstream || cached;
@@ -202,6 +222,7 @@ for (const inst of copies) {
 }
 
 const probeLines = [];
+let stateNote = null;
 if (PROBE) {
   for (const r of results) {
     if (r.status === 'not-installed') continue;
@@ -209,11 +230,11 @@ if (PROBE) {
     probeLines.push(`impeccable ${r.version} at ${r.skillDir} — ${r.launcher ? `launcher ${r.launcher}` : 'no launcher'}, ${r.registryCommands ?? 0} commands, ${r.drift.length} drift`);
     for (const d of r.drift) probeLines.push(`drift: ${d}`);
   }
-  const first = results.find((r) => r.status !== 'not-installed');
-  if (STATE && first) { const err = writeState(STATE, first); if (err) probeLines.push(err); }
+  const probed = results.find((r) => r.status !== 'not-installed');
+  if (STATE && probed) { stateNote = writeState(STATE, probed); probeLines.push(stateNote); }
 }
 
 const first = results[0];
-if (JSON_OUT) console.log(JSON.stringify({ status: first.status, installed: first.version || null, installedFrom: first.from || null, skillDir: first.skillDir || null, launcher: first.launcher ?? null, registryCommands: first.registryCommands ?? null, drift: first.drift || [], installs: results.map(({ line, ...r }) => r), cachedCatalog: cached, upstream, latest, marketplace: MKT, repo, updateCommand: first.status === 'outdated' ? first.update : null, state: STATE || null }));
+if (JSON_OUT) console.log(JSON.stringify({ status: first.status, installed: first.version || null, installedFrom: first.from || null, skillDir: first.skillDir || null, launcher: first.launcher ?? null, registryCommands: first.registryCommands ?? null, drift: first.drift || [], probed: PROBE, installs: results.map(({ line, ...r }) => r), cachedCatalog: cached, upstream, latest, marketplace: MKT, repo, updateCommand: first.status === 'outdated' ? first.update : null, state: STATE || null, stateNote }));
 else for (const l of [...results.map((r) => r.line), ...probeLines]) console.log(l);
 process.exit(0);
