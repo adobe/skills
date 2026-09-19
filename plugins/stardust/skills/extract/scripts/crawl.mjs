@@ -51,24 +51,27 @@
  *     [--refresh slug,slug | --force] [--out stardust/current] [--wait medium] \
  *     [--no-consent-dismiss] [--concurrency 4] [--dynamics] [--headed[=window]]
  *
- * Scope (ia-extraction.md § Incremental re-runs): --pages crawls exactly the
- *   listed paths (the entry URL only when listed or when the list is empty);
- *   discovered pages whose slug is already extracted (or beyond) in
- *   ../state.json are skipped unless --force / --refresh names them. state.json
- *   is read-only here; a missing file means no skip.
+ * Scope: ia-extraction.md § Incremental re-runs is the rule (--pages exact
+ *   paths, --refresh / --force vs the default skip of slugs already extracted
+ *   in ../state.json — read-only here; a missing file means no skip).
  * Log (ia-extraction.md § _crawl-log.json shape): one runs[] entry per
  *   invocation; crawl.failures is the union across runs minus slugs that later
  *   succeeded; discovery never shrinks on a narrower re-run.
  *
  * Bot-management ladder (playwright-recipe.md § Bot-management fallback):
  *   tier 1 headless → tier 2 chrome-headless → tier 3 chrome-headed-offscreen.
- *   A challenge at tiers 1–2 escalates after ONE hit; only tier 3 runs the
- *   wait+reload solve window. --headed starts at tier 2, --headed=window at
- *   tier 3; a re-run starts at the tier recorded in
- *   _crawl-log.json#discovery.fetchTechnique. The tier-3 window is parked
- *   off-screen unless STARDUST_HEADED_WINDOW=1.
+ *   A challenge at tiers 1–2 escalates after ONE hit — at the probe AND at
+ *   capture time (a worker context re-challenged after the probe cleared
+ *   drains the pool, relaunches one tier up and requeues the unfinished
+ *   pages); only tier 3 runs the wait+reload solve window. --headed starts at
+ *   tier 2, --headed=window at tier 3; a re-run starts at the tier recorded in
+ *   _crawl-log.json#discovery.fetchTechnique, which is the tier that actually
+ *   captured. The tier-3 window is parked off-screen unless STARDUST_HEADED_WINDOW=1.
  * Exit codes: 0 done (per-page failures are in the log) · 2 fatal ·
  *   3 BotChallengeError (tier 3 still challenged — never captured as content).
+ * Exports (for evals/fixtures/*.test.mjs): slugify, assignSlugs, mergeCrawlLog,
+ *   TIERS, tierOf — importing this module runs nothing; main() runs only when
+ *   the file is the entry script.
  *
  * Needs playwright importable from the project (see extract/SKILL.md Setup —
  * `npm i -D playwright` or the Playwright MCP server; the `npx playwright`
@@ -78,7 +81,11 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { chromium } from 'playwright';
+import { pathToFileURL } from 'node:url';
+
+// playwright is imported lazily in main(): the module must stay importable
+// without it (fixture tests import slugify / mergeCrawlLog from the plugin tree,
+// which ships no node_modules — extract/SKILL.md § Setup).
 
 const WAIT_MS = { fast: 1200, medium: 2500, slow: 5000 };
 
@@ -120,7 +127,7 @@ function parseArgs(argv) {
 // limit once .json/.png is appended (ENAMETOOLONG) — keep a stable 180-char
 // prefix + sha1:8 of the full slug.
 const SLUG_MAX = 200;
-const slugify = (u) => {
+export const slugify = (u) => {
   const { pathname } = new URL(u);
   const s = pathname.replace(/^\/|\/$/g, '').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
   if (s.length > SLUG_MAX) return `${s.slice(0, 180).replace(/-+$/, '')}-${crypto.createHash('sha1').update(s).digest('hex').slice(0, 8)}`;
@@ -147,7 +154,7 @@ async function readStatePages(args) {
 // duplicate post-pass can mark a page duplicateOf itself. Assign slugs once,
 // up front: first claimant keeps the clean slug, later distinct pages get a
 // deterministic -<hash4> suffix.
-function assignSlugs(urls) {
+export function assignSlugs(urls) {
   const bySlug = new Map(); // slug -> dedupeKey of first claimant
   return urls.map((u) => {
     const base = slugify(u);
@@ -162,6 +169,9 @@ function assignSlugs(urls) {
 }
 
 // ---- bot-management escalation ladder (shared contract with diff/scripts/live-session.mjs) ----
+// Byte-identical copy of live-session.mjs's TIERS / STEALTH_ARGS / OFFSCREEN_ARGS /
+// launchTier: this file is copied alone into projects (stardust/scripts/crawl.mjs)
+// and cannot import that module; evals/lint/launch-ladder.mjs fails when they drift.
 //   1 headless                 bundled Chromium, headless (default)
 //   2 chrome-headless          real Chrome (channel:'chrome'), headless, stealth args —
 //                              clears TLS/H2/JA3 fingerprint blocks without any window
@@ -171,19 +181,20 @@ function assignSlugs(urls) {
 // solve window (it never clears headless and only burns the block budget). The
 // tier-3 window is visible only under STARDUST_HEADED_WINDOW=1: a window popping
 // over the operator's desk is the interrupt class this ladder exists to remove.
-const TIERS = ['headless', 'chrome-headless', 'chrome-headed-offscreen'];
-const LEGACY_TIER = { 'headed-chrome-stealth': 3 }; // pre-ladder fetchTechnique value
+export const TIERS = ['headless', 'chrome-headless', 'chrome-headed-offscreen'];
+export const LEGACY_TIER = { 'headed-chrome-stealth': 3 }; // pre-ladder fetchTechnique value
 // Stealth: Cloudflare's managed challenge probes for automation signals —
 // `--disable-blink-features=AutomationControlled` + dropping `--enable-automation`
-// + the navigator.webdriver spoof (per context, newContext) let it solve.
-const STEALTH_ARGS = ['--disable-blink-features=AutomationControlled'];
+// + the navigator.webdriver spoof (per context, newLiveContext) let it solve.
+export const STEALTH_ARGS = ['--disable-blink-features=AutomationControlled'];
 // An off-screen window must stay `visible` to the renderer: occlusion
 // backgrounding flips document.visibilityState to 'hidden', and some edges
 // challenge hidden tabs they admit on-screen. These flags keep it visible.
-const OFFSCREEN_ARGS = ['--window-position=-32000,-32000', '--disable-backgrounding-occluded-windows',
+export const OFFSCREEN_ARGS = ['--window-position=-32000,-32000', '--disable-backgrounding-occluded-windows',
   '--disable-renderer-backgrounding', '--disable-background-timer-throttling'];
-function tierOf(technique) { return LEGACY_TIER[technique] || (TIERS.indexOf(technique) + 1) || 0; }
-async function launchTier(tier) {
+export function tierOf(technique) { return LEGACY_TIER[technique] || (TIERS.indexOf(technique) + 1) || 0; }
+/** Launch the browser for one ladder tier. Takes the caller's `chromium` so this module stays import-free. */
+export async function launchTier(chromium, tier) {
   if (tier <= 1) return chromium.launch({ headless: true });
   const stealth = { channel: 'chrome', args: STEALTH_ARGS, ignoreDefaultArgs: ['--enable-automation'] };
   if (tier === 2) return chromium.launch({ ...stealth, headless: true });
@@ -897,6 +908,7 @@ async function capturePage(context, url, slug, args) {
 
 async function main() {
   const args = parseArgs(process.argv);
+  const { chromium } = await import('playwright');
   const outPages = path.join(args.out, 'pages');
   await mkdir(outPages, { recursive: true });
 
@@ -920,7 +932,7 @@ async function main() {
   let botBlock = null; // 'fingerprint' | 'challenge'
   const escalations = []; // { tier, block } per rejected tier
   for (;;) {
-    browser = await launchTier(tier);
+    browser = await launchTier(chromium, tier);
     context = await newContext(browser, tier >= 2);
     probe = await context.newPage();
     let blocked = null;
@@ -948,11 +960,12 @@ async function main() {
     console.error(`[crawl] bot-management block (${blocked.kind}) at tier ${tier} (${TIERS[tier - 1]}) — escalating to tier ${tier + 1} (${TIERS[tier]})`);
     tier += 1;
   }
-  const technique = TIERS[tier - 1];
-  const stealth = tier >= 2;
+  let technique = TIERS[tier - 1];
+  let stealth = tier >= 2;
   args.tier = tier;
   args.solveWindow = tier === 3;
-  if (tier === 3 && process.env.STARDUST_HEADED_WINDOW !== '1') console.error('[crawl] tier 3: Chrome window parked off-screen (STARDUST_HEADED_WINDOW=1 to show it)');
+  const offscreenNote = () => { if (args.tier === 3 && process.env.STARDUST_HEADED_WINDOW !== '1') console.error('[crawl] tier 3: Chrome window parked off-screen (STARDUST_HEADED_WINDOW=1 to show it)'); };
+  offscreenNote();
 
   // adopt the post-redirect origin (apex→www etc.): the same-origin filter and
   // sitemap fetch must use where the site actually lives, or discovery silently
@@ -1008,53 +1021,88 @@ async function main() {
   // fresh context is covered without cross-context cookie sharing.
   // During capture we only RECORD content hashes (indexed by queue position);
   // duplicate attribution happens in a deterministic post-pass below.
+  // Per-page escalation: the challenge re-fires per context, so a worker can be
+  // challenged after the probe cleared (tiers 1–2). The first such error stops
+  // the pool pulling new pages, the browser relaunches one tier up and every
+  // unfinished page is requeued — one extra pass, one hit per challenged page
+  // per tier. At tier 3 a challenge is a terminal per-page failure.
   const results = new Array(queue.length).fill(null); // { slug, file, hash } per queue index
   const dynamicRollup = newDynamicRollup();
-  let nextIdx = 0;
-  async function worker() {
-    const ctx = await newContext(browser, stealth);
-    while (nextIdx < queue.length) {
-      const idx = nextIdx;
-      nextIdx += 1;
-      const { url, slug } = queue[idx];
-      try {
-        const rec = await capturePage(ctx, url, slug, args);
-        if (rec.dynamic) rollupDynamic(dynamicRollup, rec.dynamic, slug);
-        const hash = crypto.createHash('sha1').update(rec._contentHash).digest('hex');
-        delete rec._contentHash;
-        // slash-retry rescue: record the URL that actually served the page and
-        // an audit-trail entry — downstream consumers of `url` must not re-hit
-        // the 404 variant the crawler already learned to avoid.
-        const recordUrl = rec._resolvedUrl || url;
-        if (rec._resolvedUrl) {
-          log.crawl.slashRetries = log.crawl.slashRetries || [];
-          log.crawl.slashRetries.push({ requested: url, resolved: rec._resolvedUrl, slug });
-          delete rec._resolvedUrl;
+  const pending = new Set(queue.map((_, i) => i)); // neither captured nor terminally failed
+  let escalate = 0; // next tier to relaunch at, set by the first challenged worker
+  async function runPool() {
+    const order = [...pending];
+    let cursor = 0;
+    escalate = 0;
+    async function worker() {
+      const ctx = await newContext(browser, stealth);
+      while (cursor < order.length && !escalate) {
+        const idx = order[cursor];
+        cursor += 1;
+        const { url, slug } = queue[idx];
+        try {
+          const rec = await capturePage(ctx, url, slug, args);
+          if (rec.dynamic) rollupDynamic(dynamicRollup, rec.dynamic, slug);
+          const hash = crypto.createHash('sha1').update(rec._contentHash).digest('hex');
+          delete rec._contentHash;
+          // slash-retry rescue: record the URL that actually served the page and
+          // an audit-trail entry — downstream consumers of `url` must not re-hit
+          // the 404 variant the crawler already learned to avoid.
+          const recordUrl = rec._resolvedUrl || url;
+          if (rec._resolvedUrl) {
+            log.crawl.slashRetries = log.crawl.slashRetries || [];
+            log.crawl.slashRetries.push({ requested: url, resolved: rec._resolvedUrl, slug });
+            delete rec._resolvedUrl;
+          }
+          const file = path.join(outPages, `${slug}.json`);
+          const htmlFile = path.join(outPages, `${slug}.html`);
+          await writeFile(htmlFile, rec._renderedHtml);
+          delete rec._renderedHtml;
+          rec.renderedHtml = `pages/${slug}.html`;
+          const { _provenance, ...rest } = rec;
+          // top-level renderedBy/fetchedAt are legacy-reader aliases of the same
+          // _provenance fields — _provenance is the authoritative contract.
+          await writeFile(file, JSON.stringify({ _provenance, slug, url: recordUrl, renderedBy: _provenance.renderedBy, fetchedAt: _provenance.fetchedAt, ...rest }, null, 2));
+          results[idx] = { slug, file, hash };
+          pending.delete(idx);
+          ok += 1;
+          const s = rec._signals;
+          const dy = rec.dynamic?.summary || {};
+          const warn = [s.spaShellSuspect && 'SPA-SHELL?', s.trackingOnlyMedia && 'TRACKING-PIXEL-ONLY', s.filteredInterstitials && `filtered:${s.filteredInterstitials}`, dy.sameSiteEndpoints && `data-endpoints:${dy.sameSiteEndpoints}`, dy.searchForms && 'SEARCH-FORM', dy.hydrated && 'HYDRATED'].filter(Boolean).join(' ');
+          console.error(`[crawl] OK   ${slug}  ${warn}`);
+        } catch (err) {
+          if (err.errorClass === 'BotChallengeError' && args.tier < TIERS.length) {
+            if (!escalate) console.error(`[crawl] bot challenge at tier ${args.tier} (${TIERS[args.tier - 1]}) on ${slug} — draining the pool, escalating to tier ${args.tier + 1} (${TIERS[args.tier]}) and requeuing the unfinished pages`);
+            escalate = args.tier + 1; // idx stays pending → retried one tier up
+            continue;
+          }
+          pending.delete(idx);
+          const hint = err.errorClass === 'BotChallengeError' ? ' — tier 3 still challenged: interactive solve needed (STARDUST_HEADED_WINDOW=1) or an allowlist' : '';
+          log.crawl.failures.push({ url, slug, errorClass: err.errorClass || 'Error', message: `${String(err.message || err)}${hint}`, at: new Date().toISOString() });
+          console.error(`[crawl] FAIL ${slug}  ${err.errorClass || 'Error'}: ${err.message}${hint}`);
         }
-        const file = path.join(outPages, `${slug}.json`);
-        const htmlFile = path.join(outPages, `${slug}.html`);
-        await writeFile(htmlFile, rec._renderedHtml);
-        delete rec._renderedHtml;
-        rec.renderedHtml = `pages/${slug}.html`;
-        const { _provenance, ...rest } = rec;
-        // top-level renderedBy/fetchedAt are legacy-reader aliases of the same
-        // _provenance fields — _provenance is the authoritative contract.
-        await writeFile(file, JSON.stringify({ _provenance, slug, url: recordUrl, renderedBy: _provenance.renderedBy, fetchedAt: _provenance.fetchedAt, ...rest }, null, 2));
-        results[idx] = { slug, file, hash };
-        ok += 1;
-        const s = rec._signals;
-        const dy = rec.dynamic?.summary || {};
-        const warn = [s.spaShellSuspect && 'SPA-SHELL?', s.trackingOnlyMedia && 'TRACKING-PIXEL-ONLY', s.filteredInterstitials && `filtered:${s.filteredInterstitials}`, dy.sameSiteEndpoints && `data-endpoints:${dy.sameSiteEndpoints}`, dy.searchForms && 'SEARCH-FORM', dy.hydrated && 'HYDRATED'].filter(Boolean).join(' ');
-        console.error(`[crawl] OK   ${slug}  ${warn}`);
-      } catch (err) {
-        log.crawl.failures.push({ url, slug, errorClass: err.errorClass || 'Error', message: String(err.message || err), at: new Date().toISOString() });
-        console.error(`[crawl] FAIL ${slug}  ${err.errorClass || 'Error'}: ${err.message}`);
       }
+      await ctx.close();
     }
-    await ctx.close();
+    await Promise.all(Array.from({ length: Math.min(args.concurrency, order.length) }, worker));
   }
-  await Promise.all(Array.from({ length: Math.min(args.concurrency, queue.length) }, worker));
-  await browser.close();
+  for (;;) {
+    await runPool();
+    await browser.close();
+    if (!escalate) break;
+    botBlock = botBlock || 'challenge';
+    escalations.push({ tier: TIERS[args.tier - 1], block: 'challenge', at: 'capture' });
+    args.tier = escalate;
+    args.solveWindow = escalate === 3;
+    stealth = true;
+    technique = TIERS[escalate - 1];
+    browser = await launchTier(chromium, escalate);
+    offscreenNote();
+  }
+  // the tier that actually captured is the one re-runs and downstream
+  // instruments start at (ia-extraction.md § _crawl-log.json shape)
+  log.discovery.fetchTechnique = technique;
+  if (botBlock) Object.assign(log.discovery, { botBlock, escalations });
 
   // cross-page duplicate (detail == listing) detection — deterministic post-pass
   // in original queue order: canonical = earliest-QUEUED page per content hash
@@ -1074,23 +1122,11 @@ async function main() {
     log.dynamicSurface = finalizeDynamic(dynamicRollup);
     console.error(`[crawl] dynamic surface (reach): ${log.dynamicSurface.endpoints.filter((e) => e.sameSite).length} same-site data endpoints, ${log.dynamicSurface.pagesWithSearchForm} pages with a search form, ${log.dynamicSurface.pagesHydrated} hydrated — depth + classification: stardust:dynamics`);
   }
-  // merge into the existing _crawl-log.json — append-only across runs:
-  //   * crawl.failures = union of earlier failures and this run's, minus slugs
-  //     that succeeded now (a failed page keeps its previous record on disk —
-  //     nothing here deletes files);
-  //   * discovery never shrinks: a --pages / narrower re-run keeps the earlier
-  //     block and refreshes only the ladder fields;
-  //   * runs[] gets one entry per invocation (args, counts, failed slugs).
+  // merge into the existing _crawl-log.json (mergeCrawlLog — append-only across runs)
   const failedNow = new Set(log.crawl.failures.map((x) => x.slug));
-  const okNow = new Set(results.filter(Boolean).map((r) => r.slug));
-  const carried = (prev.crawl?.failures || []).filter((x) => !okNow.has(x.slug) && !failedNow.has(x.slug));
-  log.crawl.failures = [...carried, ...log.crawl.failures];
   log.crawl.successes = ok;
   log.crawl.finishedAt = new Date().toISOString();
-  if (prev.discovery && (prev.discovery.count || 0) > log.discovery.count) {
-    log.discovery = { ...prev.discovery, fetchTechnique: technique, ...(botBlock ? { botBlock, escalations } : {}) };
-  }
-  log.runs = [...(Array.isArray(prev.runs) ? prev.runs : []), {
+  const merged = mergeCrawlLog(prev, log, {
     at: startedAt,
     args: { url: args.url, pages: args.pages || null, cap: args.capLabel, wait: args.wait, concurrency: args.concurrency, dynamics: args.dynamics, refresh: args.refresh, force: args.force, headed: args.headed || null },
     technique,
@@ -1098,9 +1134,37 @@ async function main() {
     skipped: skipped.length,
     captured: ok,
     failed: [...failedNow],
-  }];
-  await writeFile(logPath, JSON.stringify({ ...prev, ...log }, null, 2));
-  console.error(`[crawl] done. ${ok}/${queue.length} captured, ${failedNow.size} failed (${log.crawl.failures.length} open across runs). log: ${logPath}`);
+  }, results.filter(Boolean).map((r) => r.slug));
+  await writeFile(logPath, JSON.stringify(merged, null, 2));
+  console.error(`[crawl] done. ${ok}/${queue.length} captured, ${failedNow.size} failed (${merged.crawl.failures.length} open across runs). log: ${logPath}`);
 }
 
-main().catch((e) => { console.error(`[crawl] fatal: ${e.errorClass || 'Error'}: ${e.message}`); process.exit(e.errorClass === 'BotChallengeError' ? 3 : 2); });
+/**
+ * Merge one invocation's log into the previous _crawl-log.json — append-only
+ * across runs (ia-extraction.md § _crawl-log.json shape is the rule):
+ *   * crawl.failures = union of earlier failures and this run's, minus slugs
+ *     that succeeded now (a failed page keeps its previous record on disk —
+ *     nothing here deletes files);
+ *   * discovery never shrinks: a --pages / narrower re-run keeps the earlier
+ *     block and refreshes only the ladder fields;
+ *   * runs[] gets one entry per invocation (args, counts, failed slugs).
+ * `okSlugs` = the slugs captured in this run.
+ */
+export function mergeCrawlLog(prev, log, run, okSlugs) {
+  const failedNow = new Set(log.crawl.failures.map((x) => x.slug));
+  const okNow = new Set(okSlugs);
+  const carried = (prev.crawl?.failures || []).filter((x) => !okNow.has(x.slug) && !failedNow.has(x.slug));
+  const merged = { ...prev, ...log, crawl: { ...log.crawl, failures: [...carried, ...log.crawl.failures] } };
+  if (prev.discovery && (prev.discovery.count || 0) > (log.discovery.count || 0)) {
+    const { botBlock, escalations } = log.discovery;
+    merged.discovery = { ...prev.discovery, fetchTechnique: log.discovery.fetchTechnique, ...(botBlock ? { botBlock, escalations } : {}) };
+  }
+  merged.runs = [...(Array.isArray(prev.runs) ? prev.runs : []), run];
+  return merged;
+}
+
+// run only as the entry script — importing the module (fixture tests) runs nothing
+const entry = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : null;
+if (entry === import.meta.url) {
+  main().catch((e) => { console.error(`[crawl] fatal: ${e.errorClass || 'Error'}: ${e.message}`); process.exit(e.errorClass === 'BotChallengeError' ? 3 : 2); });
+}

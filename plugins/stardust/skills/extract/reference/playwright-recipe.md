@@ -73,8 +73,8 @@ Tier-3 window flags: `--window-position=-32000,-32000
 --disable-background-timer-throttling`. The backgrounding flags
 keep the off-screen window at `document.visibilityState ===
 'visible'` — an occluded, backgrounded tab is challenged where an
-on-screen one is admitted, so capture instruments assert visibility
-before they shoot. The window is user-visible only under
+on-screen one is admitted, so the stitched-capture instrument asserts
+visibility before it shoots (exit 3 otherwise). The window is user-visible only under
 `STARDUST_HEADED_WINDOW=1`: a visible window is a cost the user
 pays, never a tier.
 
@@ -105,8 +105,10 @@ sets a clearance cookie, then the page becomes reachable — wait
 tier 3 + stealth + the solve window still cannot clear it, the
 site requires an *interactive* solve: fail loud
 (`BotChallengeError`, exit 3) rather than capturing the
-interstitial as content — and only at that point may the run tell
-the user the origin needs an interactive solve or a WAF allowlist.
+interstitial as content (what the run may then tell the user:
+`SKILL.md` § Failure modes). The challenge re-fires per context, so
+a worker challenged after the probe cleared escalates the same way
+(pool drained, unfinished pages requeued one tier up).
 Record the tier that worked in
 `_crawl-log.json#discovery.fetchTechnique` (with
 `#discovery.botBlock` = `fingerprint | challenge`); re-runs and

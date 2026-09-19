@@ -92,9 +92,9 @@ function urlToDeliveredPath(url) {
   return p;
 }
 
-/** Stable slug from a delivered path (de/x/y -> de-x-y; '/' -> home). */
+/** Stable slug from a delivered path (de/x/y -> de-x-y; '/' -> index — ia-extraction.md § Slug derivation). */
 function pathToSlug(path) {
-  if (path === '/') return 'home';
+  if (path === '/') return 'index';
   return path.replace(/^\//, '').replace(/\/+$/, '').replace(/\//g, '-');
 }
 
@@ -126,7 +126,7 @@ for (const relHtml of htmlFiles) {
   const sidecarRel = sidecarFor(relHtml);
   const meta = readJSON(join(MIGRATED, sidecarRel), {});
   const path = deliveredPath(relHtml);
-  const slug = meta.slug || (path === '/' ? 'home' : path.replace(/^\//, ''));
+  const slug = meta.slug || (path === '/' ? 'index' : path.replace(/^\//, ''));
 
   const prior = priorBySlug.get(slug);
   let delivery;

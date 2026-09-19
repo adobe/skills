@@ -49,15 +49,14 @@ critique, and it does not modify the live site. It writes only under
 - `<url>` — required. The origin to crawl. Examples: `https://example.com`,
   `https://example.com/shop`. A path narrows the same-origin crawl to
   that subtree.
-- `--cap <N>` (alias `--max`) — optional. Override the default 5-page
-  cap: a 5-page sample (home + four IA pillars/templates) is enough
-  for cross-page brand aggregation, system components and the
-  brand-review HTML; lift it (e.g. `--cap 25`) for a deeper crawl.
+- `--cap <N>` (alias `--max`) — optional. Override the default 25-page
+  cap (the number is `crawl.mjs`'s; the doc follows the code). A
+  small sample (`--cap 5`: home + four IA pillars/templates) already
+  feeds cross-page brand aggregation and the brand-review HTML.
 - `--all` — optional. Lift the cap entirely; extract every
   discovered page after junk filtering. Equivalent to `--cap 0`.
 - `--pages <path,path,...>` — optional. Crawl exactly these paths
-  (never skipped, never dropped; the entry URL only when listed).
-  Bypasses the cap.
+  (`reference/ia-extraction.md` § Incremental re-runs). Bypasses the cap.
 - `--refresh <slug,…>` / `--force` — optional. Re-extract the named
   pages / every page in scope; by default pages already `extracted`
   in `state.json` are skipped (`reference/ia-extraction.md`
@@ -202,15 +201,15 @@ Discover the page inventory before crawling. Procedure in
 5. Apply the junk-page filter (`reference/ia-extraction.md` §
    Junk-page filter) unless `--no-junk-filter` is set. Surface the
    filtered list to the user as overridable.
-6. Apply the cap (default 5, or `--cap`, or `--all` for no cap)
+6. Apply the cap (default 25, or `--cap`, or `--all` for no cap)
    and **proceed silently**. Print an informational summary of
    what was kept and what was cut — but do **not** gate on user
    confirmation. Users who want different scope set it
    spontaneously at command time:
 
    ```
-   $stardust extract https://example.com              # default 5 pages
-   $stardust extract https://example.com --cap 25     # bump to 25
+   $stardust extract https://example.com              # default 25 pages
+   $stardust extract https://example.com --cap 5      # small brand sample
    $stardust extract https://example.com --all        # lift the cap
    $stardust extract https://example.com --pages /,/about,/pricing
    $stardust extract https://example.com --single     # just the entry URL
@@ -705,9 +704,9 @@ this in the user report; do not engineer around it.
   the first navigation is fingerprinting or a managed challenge —
   not auth, not network. Climb the ladder in
   `reference/playwright-recipe.md` § Bot-management fallback;
-  `crawl.mjs` does so on its own and exits 3 when tier 3 is still
-  challenged. A visible window is a user cost, never a tier — it
-  appears only under `STARDUST_HEADED_WINDOW=1`. Do not tell the
+  `crawl.mjs` does so on its own — at the probe and again when a
+  worker is challenged mid-crawl — and exits 3 when tier 3 is still
+  challenged (window opt-in per that section). Do not tell the
   user the origin "needs a WAF allowlist" or an interactive solve
   until tier 3 has failed. Asset harvest: a page-level bot wall
   usually does NOT gate assets — media/CSS/font URLs commonly

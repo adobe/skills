@@ -35,7 +35,7 @@
  *                           beacons never reach networkidle).
  *     --dismiss [sel,...]   dismiss overlays on both sides via live-session
  *                           (consent + timed marketing modals + optional extras)
- *     --headed              escalation: headed stealth real Chrome (bot-managed sites)
+ *     --headed[=window]      bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
  *     --locale <tag>        pin Accept-Language + context locale (geo-redirect determinism)
  *
  * Every context gets the real-Chrome UA + the standard request headers via
@@ -67,7 +67,7 @@ import { chromium } from 'playwright';
 import { mkdirSync } from 'fs';
 import { resolve } from 'path';
 import { resolveProfile } from './diff-profiles.mjs';
-import { REAL_CHROME_UA, isLiveHttpUrl, defaultWaitUntil, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } from './live-session.mjs';
+import { REAL_CHROME_UA, isLiveHttpUrl, defaultWaitUntil, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays } from './live-session.mjs';
 
 const USAGE = `usage: node skills/diff/scripts/visual-diff.mjs <sourceURL> <buildURL> [options]
   --profile eds|generic  stack profile (default eds)
@@ -83,7 +83,7 @@ const USAGE = `usage: node skills/diff/scripts/visual-diff.mjs <sourceURL> <buil
                          other live http(s) (never reach networkidle).
   --dismiss [sel,...]    dismiss overlays (consent + timed marketing modals) on both
                          sides; optional comma-separated extra selectors
-  --headed               headed stealth real Chrome (escalation for bot-managed sites)
+  --headed[=window]       bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
   --locale <tag>         pin Accept-Language + locale (e.g. en-GB) for geo determinism
 exit codes: 0 ran (flags advisory; an HTTP-error side, e.g. a 404 build pre-propagation,
             is measured + flagged with a warning, not fatal), 1 error,
@@ -108,7 +108,7 @@ function parseArgs(argv) {
       const next = rest[i + 1];
       opts.dismiss = (next && !next.startsWith('--')) ? rest[i += 1].split(',').map((s) => s.trim()).filter(Boolean) : [];
     }
-    else if (a === '--headed') { opts.headed = true; }
+    else if (a === '--headed' || a.startsWith('--headed=')) { opts.headed = parseHeadedFlag(a); }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
   }
   return { proto, eds, opts };
@@ -242,9 +242,9 @@ async function capture(browser, url, tag, opts) {
   // BotChallengeError (exit 3), it is never measured as the source. A plain
   // HTTP error side is MEASURED (advisory contract): a 404 build is normal on
   // aem.page before preview propagation — the flags carry the signal, exit 0.
-  // solveWindow only under --headed: headless clearance never lands, and the
+  // solve window only at tier 3 (live-session gotoLive): headless clearance never lands, and the
   // solve loop would spend the Akamai block budget (1 hit vs up to 4).
-  await gotoLive(page, url, { waitUntil: opts.waitUntil || defaultWaitUntil(url), timeoutMs: 60000, settleMs: 0, httpError: 'measure', solveWindow: opts.headed });
+  await gotoLive(page, url, { waitUntil: opts.waitUntil || defaultWaitUntil(url), timeoutMs: 60000, settleMs: 0, httpError: 'measure', tier: opts.tier });
   await page.waitForTimeout(2000);
   // late-modal poll window only on live targets — local prototypes' overlays
   // are not timed third-party scripts, they render immediately.
@@ -349,7 +349,8 @@ async function main() {
   }
   const prof = resolveProfile(opts.profile);
   mkdirSync(resolve(opts.out), { recursive: true });
-  const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
+  opts.tier = resolveStartTier(opts.headed); // ladder start = max(--headed tier, tier extract recorded) — live-session.mjs
+  const browser = await launchTier(chromium, opts.tier);
   let report;
   try {
     const [protoM, edsM] = [await capture(browser, proto, 'proto', opts), await capture(browser, eds, 'eds', opts)];

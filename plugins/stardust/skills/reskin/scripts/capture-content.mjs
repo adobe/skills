@@ -64,7 +64,7 @@
  *       [--wait-until <state>]       live-target goto waitUntil (default
  *                                    domcontentloaded; local/file targets
  *                                    keep networkidle)
- *       [--headed]                   headed stealth real Chrome (escalation
+ *       [--headed[=window]]                   ladder start tier 2; =window tier 3 (escalation
  *                                    for bot-managed sites)
  *       [--locale <tag>]             pin Accept-Language + locale (e.g.
  *                                    en-GB) for geo determinism
@@ -90,7 +90,7 @@ if (!LIVE_SESSION) {
   console.error('Copy the diff skill\'s live-session.mjs alongside the reskin scripts (SKILL.md § Setup).');
   process.exit(2);
 }
-const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = await import(pathToFileURL(LIVE_SESSION).href);
+const { isLiveHttpUrl, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive } = await import(pathToFileURL(LIVE_SESSION).href);
 
 function parseArgs(argv) {
   const opts = { url: null, out: null, scope: 'main', normalize: null, ua: null, waitUntil: 'domcontentloaded', headed: false, locale: null };
@@ -102,7 +102,7 @@ function parseArgs(argv) {
     else if (a === '--normalize') opts.normalize = argv[++i];
     else if (a === '--ua') opts.ua = argv[++i];
     else if (a === '--wait-until') opts.waitUntil = argv[++i];
-    else if (a === '--headed') opts.headed = true;
+    else if (a === '--headed' || a.startsWith('--headed=')) opts.headed = parseHeadedFlag(a);
     else if (a === '--locale') opts.locale = argv[++i];
     else if (a === '--help' || a === '-h') opts.help = true;
     else { console.error(`[capture-content] unknown arg: ${a}`); process.exit(2); }
@@ -113,7 +113,7 @@ function parseArgs(argv) {
 const opts = parseArgs(process.argv);
 if (opts.help || !opts.url || !opts.out) {
   console.log('usage: node capture-content.mjs --url <page-url> --out <dir> [--scope sel1,sel2!] [--normalize ledger.mjs]');
-  console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed] [--locale <tag>]');
+  console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed[=window]] [--locale <tag>]');
   console.log('Writes <dir>/content-model.json + <dir>/source-full.png.');
   console.log('Scope: comma-separated selectors captured in order; trailing "!" keeps a scope whole as one slot.');
   console.log('Each selector captures exactly ONE element (querySelector, first match) — to capture N');
@@ -138,7 +138,8 @@ try { ({ chromium } = await import('playwright')); } catch {
 const { script: NORMALIZE, ledger, source: normalizeSource } = await loadNormalize(opts.normalize);
 mkdirSync(opts.out, { recursive: true });
 
-const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
+opts.tier = resolveStartTier(opts.headed); // ladder start = max(--headed tier, tier extract recorded) — live-session.mjs
+const browser = await launchTier(chromium, opts.tier);
 // UA + standard headers + webdriver spoof on the context (live-session) —
 // harmless on local/file targets, mandatory on live ones (F-G/F-R1).
 const ctx = await newLiveContext(browser, {
@@ -149,10 +150,10 @@ if (isLiveHttpUrl(opts.url)) {
   // Challenge/blocked interstitial or non-challenge HTTP >= 400 → loud
   // failure. A challenge page must NEVER be silently captured as the source:
   // the model built from it would gate the render against an interstitial.
-  // solveWindow only under --headed: headless clearance never lands, and the
+  // solve window only at tier 3 (live-session gotoLive): headless clearance never lands, and the
   // solve loop would spend the Akamai block budget (1 hit vs up to 4).
   try {
-    await gotoLive(page, opts.url, { waitUntil: opts.waitUntil, timeoutMs: 60000, settleMs: 0, solveWindow: opts.headed });
+    await gotoLive(page, opts.url, { waitUntil: opts.waitUntil, timeoutMs: 60000, settleMs: 0, tier: opts.tier });
   } catch (e) {
     console.error(`[capture-content] ${e.message}`);
     await browser.close();
@@ -542,7 +543,8 @@ writeFileSync(out, JSON.stringify({
     nav: {
       live: isLiveHttpUrl(opts.url),
       waitUntil: isLiveHttpUrl(opts.url) ? opts.waitUntil : 'networkidle',
-      headed: opts.headed,
+      headed: opts.headed || false, // ladder tier asked for (2 | 3) — tier = the one used
+      tier: opts.tier,
       ...(opts.ua ? { ua: opts.ua } : {}),
       ...(opts.locale ? { locale: opts.locale } : {}),
     },

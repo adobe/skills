@@ -135,8 +135,10 @@ out of `total` (100 per eval).
 
 ### Lints
 
-`npm run lint:stardust` (repo root) runs three static checks over `skills/`,
-each a plain ESM script under `lint/` that exits 1 with one line per finding:
+`npm run lint:stardust` (repo root) runs five static checks over `skills/`,
+each a plain ESM script under `lint/` that exits 1 with one line per finding,
+then the fixture tests under `fixtures/` (plain `node:assert` scripts that
+import a script's exported pure functions — no playwright needed):
 
 - `harness-neutral.mjs` — no namespaced sibling-skill references or
   Claude-only tool names outside lines marked "Claude Code".
@@ -146,6 +148,15 @@ each a plain ESM script under `lint/` that exits 1 with one line per finding:
   `## Operator card` heading ahead of the procedure, the always-on total and
   the per-skill delta versus the last release tag; its temporary allowlist
   must shrink with each release.
+- `flag-parity.mjs` — every `--flag` a doc passes to a `<skill>/scripts/*.mjs`
+  has a case in that script's parser; a documented numeric default (the
+  extract page cap) equals the parser's.
+- `launch-ladder.mjs` — the bot-management ladder (`TIERS`, stealth and
+  off-screen args, `launchTier`) is identical in `live-session.mjs` and
+  `crawl.mjs`, and no other script contains `headless: false`.
+- `fixtures/crawl-slugify.test.mjs`, `fixtures/crawl-log-merge.test.mjs` —
+  pin crawl.mjs's slug derivation (root → `index`, 200-char cap, `-<hash4>`
+  collision suffix) and the append-only `_crawl-log.json` merge.
 
 ## What stardust v2 evals deliberately do NOT test
 

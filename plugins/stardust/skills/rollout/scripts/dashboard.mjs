@@ -80,7 +80,7 @@ const covBySlug = new Map(covPages.map((p) => [p.slug, p]));
 function pathOf(slug, cov, stp) {
   if (cov && cov.path) return cov.path;
   if (stp && stp.url) { try { return new URL(stp.url).pathname.replace(/\/$/, '') || '/'; } catch { /* fall through */ } }
-  return slug === 'home' ? '/' : `/${slug}`;
+  return (slug === 'index' || slug === 'home') ? '/' : `/${slug}`; // `home` = legacy alias (ia-extraction.md § Slug derivation)
 }
 function stageOf(p) {
   let r = AG[p.agnosticStatus] ?? 0;

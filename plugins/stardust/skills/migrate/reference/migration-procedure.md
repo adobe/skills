@@ -102,10 +102,10 @@ source URL to its definitive output path and write the map to
 
 ```json
 "pageMap": [
-  { "sourceUrl": "/",                          "outputPath": "index.html",                    "slug": "home" },
+  { "sourceUrl": "/",                          "outputPath": "index.html",                    "slug": "index" },
   { "sourceUrl": "/beers-bev/",                "outputPath": "beers/index.html",              "slug": "beers" },
-  { "sourceUrl": "/about-us/history.html",     "outputPath": "about-us/history.html",         "slug": "about-us__history" },
-  { "sourceUrl": "/about-us/team/",            "outputPath": "about-us/team/index.html",      "slug": "about-us__team" }
+  { "sourceUrl": "/about-us/history.html",     "outputPath": "about-us/history.html",         "slug": "about-us-history-html" },
+  { "sourceUrl": "/about-us/team/",            "outputPath": "about-us/team/index.html",      "slug": "about-us-team" }
 ]
 ```
 
@@ -323,14 +323,14 @@ the failure with the specific rule violated and a suggested fix.
   writtenBy:        stardust:migrate
   writtenAt:        2026-04-26T11:00:00Z
   page:             home
-  slug:             home
+  slug:             index
   pagePath:         migrated/index.html
   renderBranch:     A | A' | B
   template:         article                                       (Path A' only)
-  archetypePath:    stardust/prototypes/news__post-housing-summit-proposed.html (Path A' only)
+  archetypePath:    stardust/prototypes/news-post-housing-summit-proposed.html (Path A' only)
   archetypeSha:     <short>                                                     (Path A' only)
-  sourceProposed:   stardust/prototypes/home-proposed.html        (Path A only)
-  sourceCurrent:    stardust/current/pages/home.json
+  sourceProposed:   stardust/prototypes/index-proposed.html       (Path A only)
+  sourceCurrent:    stardust/current/pages/index.json
   againstDirection: stardust/direction.md (Active 2026-04-25T15:42:00Z)
   designMd:         DESIGN.md (sha: <short hash>)
   designJson:       DESIGN.json (sha: <short hash>)

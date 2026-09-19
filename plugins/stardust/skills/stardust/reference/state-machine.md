@@ -48,7 +48,7 @@ and resumable. The state file is `stardust/state.json`. It is written by
   "flowSource": "user-phrase",
   "pages": [
     {
-      "slug": "home",
+      "slug": "index",
       "url": "https://example.com/",
       "title": "Example Home",
       "type": "landing",
@@ -61,8 +61,8 @@ and resumable. The state file is `stardust/state.json`. It is written by
       ],
       "stale": false,
       "staleReason": null,
-      "currentStatePath": "stardust/current/pages/home.json",
-      "prototypePath":    "stardust/prototypes/home-proposed.html",
+      "currentStatePath": "stardust/current/pages/index.json",
+      "prototypePath":    "stardust/prototypes/index-proposed.html",
       "migratedPath":     null
     }
   ]
@@ -289,13 +289,13 @@ Flow:        redesign (chosen 2026-04-25 from the user's phrase)
 
 Pages
 -----
-  ✓ migrated   home, about, pricing
+  ✓ migrated   index, about, pricing
   ✓ approved   features, contact
   · prototyped blog, docs/index
     directed   docs/api, docs/guide
     extracted  (15 more)
 
-Stale: 2 pages (home, about) — direction changed since they were migrated.
+Stale: 2 pages (index, about) — direction changed since they were migrated.
        Re-run with `$stardust migrate --all` to update.
 
 Recommended next: $stardust prototype features

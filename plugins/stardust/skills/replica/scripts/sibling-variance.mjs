@@ -35,7 +35,7 @@
  *     --tolerance <px>       ignore numeric deltas ≤ this      (default 2)
  *     --consent <sel>        extra consent-accept selector
  *     --dismiss <sel,…>      extra overlay-dismiss selectors
- *     --headed               headed stealth real Chrome (bot-managed sites)
+ *     --headed[=window]       bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
  *     --locale <tag>         pin Accept-Language + locale
  *     --json                 machine-readable output
  *
@@ -58,7 +58,7 @@ if (!LIVE_SESSION) {
   console.error('sibling-variance error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil } = await import(pathToFileURL(LIVE_SESSION).href);
+const { isLiveHttpUrl, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `sibling-variance — diff template-defining computed values of live siblings against the archetype
 
@@ -69,7 +69,7 @@ Usage: node sibling-variance.mjs <archetypeURL> <siblingURL> [<siblingURL>…] [
   --tolerance <px>      ignore numeric deltas ≤ this (default 2)
   --consent <sel>       extra consent-accept selector
   --dismiss <sel,…>     extra overlay-dismiss selectors
-  --headed              headed stealth real Chrome
+  --headed[=window]      bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
   --locale <tag>        pin Accept-Language + locale
   --json                machine-readable output
   --help                this text
@@ -94,7 +94,7 @@ function parseArgs(argv) {
     else if (a === '--tolerance') { opts.tolerance = Number(rest[i += 1]); }
     else if (a === '--consent') { opts.consent = rest[i += 1]; }
     else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
-    else if (a === '--headed') { opts.headed = true; }
+    else if (a === '--headed' || a.startsWith('--headed=')) { opts.headed = parseHeadedFlag(a); }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--json') { opts.json = true; }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
@@ -222,7 +222,7 @@ function compare(arch, sib, tol) {
 async function probeUrl(browser, url, opts) {
   const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 } });
   const page = await ctx.newPage();
-  await gotoLive(page, url, { waitUntil: defaultWaitUntil(url), settleMs: isLiveHttpUrl(url) ? 2500 : 1200, solveWindow: opts.headed });
+  await gotoLive(page, url, { waitUntil: defaultWaitUntil(url), settleMs: isLiveHttpUrl(url) ? 2500 : 1200, tier: opts.tier });
   await dismissOverlays(page, { extra: [...(opts.consent ? [opts.consent] : []), ...opts.dismiss], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
   await page.evaluate(async () => {
     const h = document.documentElement.scrollHeight;
@@ -238,7 +238,8 @@ async function probeUrl(browser, url, opts) {
 
 async function main() {
   const { archetype, siblings, opts } = parseArgs(process.argv);
-  const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
+  opts.tier = resolveStartTier(opts.headed); // ladder start = max(--headed tier, tier extract recorded) — live-session.mjs
+  const browser = await launchTier(chromium, opts.tier);
   let varying = 0;
   try {
     const A = await probeUrl(browser, archetype, opts);
