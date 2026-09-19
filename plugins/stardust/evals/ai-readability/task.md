@@ -11,8 +11,8 @@ a local server that serves the content documents and `/query-index.json`.
 
 ## User prompt
 
-"$stardust deploy <prototype>.html — convert this page to EDS blocks and content, ready to push
-to DA. The owner will run Adobe's AI Content Visibility Checker on it."
+"$stardust deploy stardust/prototypes/home-proposed.html — convert this page to EDS blocks and
+content, ready to push to DA. The owner will run Adobe's AI Content Visibility Checker on it."
 
 ## Expected behavior
 
