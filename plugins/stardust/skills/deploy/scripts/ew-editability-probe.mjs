@@ -72,6 +72,8 @@
  *                           without `all`, or names no category — printing what each
  *                           tag swallowed (recorded: 254 value-slotted texts hidden
  *                           behind a 4-text showcase exemption).
+ *                           (1 is this script's verdict code; block-roundtrip reports the
+ *                           same finding with its verdict code, 2)
  *   metadata / section-metadata cells are pipeline config (never displayed) and
  *   are not counted at all.
  *
