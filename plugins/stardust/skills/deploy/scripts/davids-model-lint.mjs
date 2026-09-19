@@ -98,6 +98,20 @@
  *                                                on one page (tree: one line per metric)
  *                                            D1-SPACER sections carrying only section-metadata
  *                                                > 5 % of sections or > pages (tree count)
+ *                                            D15 VEHICLE-U <u>; VEHICLE-CODE empty <code>;
+ *                                                VEHICLE-ZWSP NBSP/ZWSP/ZWNJ-only <p> (D8
+ *                                                ledgered residual); VEHICLE-SUP Unicode
+ *                                                super/subscript digits (CO₂, m² exempt);
+ *                                                VEHICLE-ICON :spacer:/:gap:/:blank: token
+ *                                                (tree: one line per vehicle; > 50 = encoder-
+ *                                                level decision — promote to 🔴 after one clean
+ *                                                rollout)
+ *                                            TEXT zero-width characters inside copy
+ *                                            ICON-EMPTY icons/x.svg with no child element
+ *                                                (--icons-dir)
+ *                                            D14 DUPROW two-row block whose ≥ 15-word rows
+ *                                                overlap ≥ 60 % (a breakpoint pair; table/
+ *                                                accordion/tabs/form/faq exempt)
  *
  * Icon and variant findings are reported ONCE per token with the page count;
  * in tree mode (a directory target or > 1 file) the D1 prose advisory is
@@ -128,6 +142,12 @@ const RESERVED_VARIANTS = new Set(['icon', 'button', 'primary', 'secondary', 'se
 // of a time/URL (10:30:45, https://) — the lookarounds exclude word/colon
 // neighbours.
 const ICON_TOKEN = /(?<![\w:]):([a-z][a-z0-9_-]*):(?![\w:])/g;
+// D14 DUPROW — blocks whose rows legitimately repeat wording (data, disclosure, forms).
+const DUPROW_EXEMPT = new Set(['table', 'accordion', 'tabs', 'form', 'faq']);
+const DUPROW_MIN_WORDS = 15;
+const DUPROW_JACCARD = 0.6;
+// D15 VEHICLE-ICON — an icon named as a spacer carries no meaning (fnbo's 67 B empty spacer.svg).
+const SPACER_ICON = /^(spacer|gap|blank|space)(-|$)/;
 const PROSE_TAGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'a', 'ul', 'ol', 'li', 'picture', 'img', 'source', 'strong', 'em', 'code', 'br']);
 
 // ---------------------------------------------------------------- primitives
@@ -340,6 +360,20 @@ function lintBlock(file, section, block, name, flag) {
     }
   });
 
+  // D14 DUPROW 🟡 — a two-row block whose rows repeat each other is a breakpoint
+  // pair (row 2 = the mobile copy). Restricted to exactly two prose-sized rows
+  // outside data/disclosure blocks: any-pair overlap fired 1,700× on forms.
+  if (rows.length === 2 && !isKeyValue && !DUPROW_EXEMPT.has(name)) {
+    const words = rows.map((r) => new Set(stripTags(r.inner).replace(/&[a-z#0-9]+;/gi, ' ').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean)));
+    if (words[0].size >= DUPROW_MIN_WORDS && words[1].size >= DUPROW_MIN_WORDS) {
+      const inter = [...words[0]].filter((w) => words[1].has(w)).length;
+      const j = inter / (words[0].size + words[1].size - inter);
+      if (j >= DUPROW_JACCARD) {
+        flag('🟡', 'D14', `${label}: row 2 duplicates row 1 (J=${j.toFixed(2)}) — a breakpoint pair; one copy per message, responsive differences are CSS (DUPROW; encode-contract.md § spacer ladder)`);
+      }
+    }
+  }
+
   // D10 — column budget.
   const maxCols = Math.max(0, ...cellCounts);
   if (maxCols > 4) {
@@ -471,10 +505,32 @@ function lintText(file, main, flag) {
     flag('🟡', 'D15', `converter syntax leaked into copy ("${leak[0]}") — [sup]/[sub], ^tooltip carets and ||| runs are encoder artefacts; fix the encoder, then regenerate (TEXT-LEAK)`);
   }
   // TEXT hygiene advisories — punctuation-only paragraphs and blank alts.
-  const dots = [...main.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)].filter((p) => { const t = stripTags(p[1]).replace(/&nbsp;|&#160;/g, ''); return t && /^[\s\p{P}]+$/u.test(t); });
+  const paras = [...main.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)];
+  const dots = paras.filter((p) => { const t = stripTags(p[1]).replace(/&nbsp;|&#160;/g, ''); return t && /^[\s\p{P}]+$/u.test(t); });
   if (dots.length) {
     flag('🟡', 'TEXT', `${dots.length} paragraph(s) whose only text is punctuation ("${stripTags(dots[0][1]).slice(0, 10)}") — a converter artefact or a whitespace spacer (#112); drop it`);
   }
+
+  // D15 VEHICLE — inline vehicles borrowed for a job they do not have
+  // (encode-contract.md § Authoring shapes, § spacer ladder). All 🟡; tree mode
+  // rolls each vehicle up to one line (count, pages) — a spacer habit recurs on
+  // every page, and > 50 hits is an encoder-level decision, not page edits.
+  const vehicle = (key, n, what, remedy) => n && rollup(file, '🟡', 'D15', `vehicle:${key}`, n, (c, files, single) => `${c} ${what}${single ? '' : ` across ${files.size} page(s)`}${c > 50 ? ' — an encoder-level decision, not per-page edits' : ''} — ${remedy} (VEHICLE-${key.toUpperCase()})`);
+  vehicle('u', [...main.matchAll(/<u\b/gi)].length, '<u> element(s)', '<u> has no permitted meaning in a document: a link underline is the default link style, small print is a block variant or section style, centring is the `center` variant (encode-contract.md § Authoring shapes → <u> row)');
+  vehicle('code', [...main.matchAll(/<code\b[^>]*>(?:&nbsp;|&#160;|\u00a0|\s)*<\/code>/gi)].length, 'empty <code> spacer(s)', '<code> is code/flags/paths only; the height belongs to a margin, an adjacency rule or a named section style (encode-contract.md § spacer ladder rung 1-3)');
+  // Invisible-only paragraphs: NBSP / ZWSP / ZWNJ as entity or code point. A
+  // <code>-only paragraph is VEHICLE-CODE's; ASCII whitespace alone is not a vehicle.
+  const INV = '&#8203;|&#x200b;|\\u200b|&zwnj;|&#8204;|\\u200c|&nbsp;|&#160;|\\u00a0';
+  const invOne = new RegExp(INV, 'i');
+  const invAll = new RegExp(INV, 'gi');
+  const ghosts = paras.filter((p) => { if (/<code\b/i.test(p[1])) return false; const raw = p[1].replace(/<[^>]+>/g, ''); return invOne.test(raw) && !raw.replace(invAll, '').replace(/\s/g, ''); });
+  vehicle('zwsp', ghosts.length, 'invisible-character spacer paragraph(s) (NBSP/ZWSP/ZWNJ only)', 'dropped or line-boxed by the pipeline (#112); D8: allowed only as a ledgered residual — page and count in the conversion log (encode-contract.md § spacer ladder rung 4)');
+  const ZW = '\\u200b|\\u200c|&#8203;|&#x200b;|&zwnj;|&#8204;';
+  const inlineZw = [...text.matchAll(new RegExp(`\\w(?:${ZW})|(?:${ZW})\\w`, 'gi'))].length;
+  if (inlineZw) rollup(file, '🟡', 'TEXT', 'zwsp-inline', inlineZw, (c, files, single) => `${c} zero-width character(s) inside copy${single ? '' : ` across ${files.size} page(s)`} — a source artefact (ZWSP/ZWNJ inside words or alt text), not a spacer; strip at capture (VEHICLE-ZWSP inline)`);
+  // Unicode super/subscript digits; chemical and unit notation (CO₂, m², cm³) is exempt.
+  const sup = [...text.matchAll(/(?<!\b(?:CO|H|O|N|SO|NO|CH|m|cm|km|mm|ft|in))[²³¹⁰-⁹₀-₉]/gu)];
+  vehicle('sup', sup.length, `Unicode superscript/subscript digit(s) (${sup.length ? `"${text.slice(Math.max(0, sup[0].index - 8), sup[0].index + 1)}"` : ''})`, 'keep <sup>/<sub> from the source DOM; chemical and unit notation (CO₂, m²) is exempt (encode-contract.md § Authoring shapes → <sup>/<sub> row)');
 }
 
 // TEXT alt ratio — inside blocks only (chrome/decorative imagery excluded).
@@ -741,6 +797,11 @@ function iconExists(name) {
   return ['svg', 'png'].some((ext) => existsSync(path.join(ICONS_DIR, `${name}.${ext}`)));
 }
 
+function iconIsEmptySvg(name) {
+  const f = path.join(ICONS_DIR, `${name}.svg`);
+  return existsSync(f) && /<svg\b[^>]*>\s*<\/svg>/i.test(readFileSync(f, 'utf8'));
+}
+
 // Bare single-class selectors (`.illu {`) vs classes that only appear inside
 // compound/descendant selectors (`span.icon`, `.hero .illu`). Comment-stripped
 // regex walk over rule preludes; at-rule preludes (@media …) are skipped.
@@ -780,6 +841,8 @@ function reportCollected(findings) {
 
   for (const [token, files] of [...ICON_USES].sort()) {
     const prefixed = token.startsWith('icon-');
+    if (SPACER_ICON.test(token)) push('🟡', 'D15', files, `icon token ":${token}:" is a spacer vehicle — an empty icon carries no meaning; the height belongs to a margin, an adjacency rule or a named section style (encode-contract.md § spacer ladder; VEHICLE-ICON)`);
+    if (ICONS_DIR && iconIsEmptySvg(token)) push('🟡', 'ICON-EMPTY', files, `icons/${token}.svg has no child element — an empty SVG is a spacer vehicle rendering a blank box; delete the asset and its ":${token}:" tokens (encode-contract.md § spacer ladder)`);
     if (!ICONS_DIR) {
       if (prefixed) push('🟡', 'ICON-PREFIX', files, `icon token ":${token}:" carries the icon- prefix the runtime adds itself (→ /icons/${token}.svg) — author ":${token.slice(5)}:" unless the site really owns icons/${token}.svg (pass --icons-dir to decide)`);
       continue;

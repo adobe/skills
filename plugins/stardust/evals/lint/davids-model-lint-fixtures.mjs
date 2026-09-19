@@ -22,7 +22,7 @@ const CASES = [
   { name: 'icons: double prefix + missing asset fail with --icons-dir', args: ['fail-icons.html', ...ICONS, ...STYLES], exit: 2, red: ['ICON-PREFIX', 'ICON-MISSING'], yellow: [] },
   { name: 'icons: without --icons-dir the prefix is advisory only', args: ['fail-icons.html', ...STYLES], exit: 0, red: [], yellow: ['ICON-PREFIX'], absent: ['ICON-MISSING'] },
   { name: 'variants: reserved token, bare selector and pseudo-suffixed bare selector (.tint:hover) fail', args: ['fail-variant.html', ...ICONS, ...STYLES], exit: 2, red: ['VARIANT-COLLIDE'], yellow: [], tokens: ['"icon"', '"illu"', '"tint"'] },
-  { name: 'pass: :name: token, decorated span, compound-selector variant is advisory, :not(.badge) is ignored; census/vehicle/empty rules silent', args: ['pass.html', ...ICONS, ...STYLES], exit: 0, red: [], yellow: ['VARIANT-COLLIDE'], absent: ['ICON-PREFIX', 'ICON-MISSING', 'D9-VOCAB', 'D15-STYLE', 'STYLE-SEL', 'D1-DENSITY', 'D1-SPACER'], absentTokens: ['"badge"'] },
+  { name: 'pass: :name: token, decorated span, compound-selector variant is advisory, :not(.badge) is ignored; census/vehicle/empty rules silent', args: ['pass.html', ...ICONS, ...STYLES], exit: 0, red: [], yellow: ['VARIANT-COLLIDE'], absent: ['ICON-PREFIX', 'ICON-MISSING', 'D9-VOCAB', 'D15-STYLE', 'STYLE-SEL', 'D1-DENSITY', 'D1-SPACER', 'D15', 'D14', 'ICON-EMPTY', 'TEXT'], absentTokens: ['"badge"'] },
   { name: 'tree mode: one finding per token with page count', args: ['.', ...ICONS, ...STYLES], exit: 2, oncePer: ['ICON-PREFIX'], pages: 'fail-icons.html' },
   // T30.4 — embed exemption for channel/profile URLs; the D1 prose advisory once per block name in tree mode.
   { name: 'embed: a channel/profile URL inside a block is a navigation link, not an authored embed', args: ['pass-channel.html', ...STYLES], exit: 0, count: 0 },
@@ -61,6 +61,23 @@ const CASES = [
     },
   },
   { name: 'census (single file): D1-DENSITY is a per-page line and --json carries no census', args: ['tree-vocab/a.html', '--styles', join(FIX, 'styles-vocab.css')], exit: 0, expect: [{ sev: '🟡', rule: 'D1-DENSITY', msg: '13 sections on one page' }], check: (out) => (out.census ? 'census present in single-file mode' : null) },
+  // T31.2 — D15 VEHICLE rules: all 🟡, exit 0; tree mode one line per vehicle.
+  {
+    name: 'vehicles: <u>, empty <code>, NBSP/ZWSP-only <p>, superscript digit, :spacer: (+ ICON-EMPTY), DUPROW pair — all 🟡; CO₂/m² and a 3-row cards block do not fire',
+    args: ['fail-vehicle.html', ...ICONS, ...STYLES], exit: 0, red: [],
+    expect: [
+      { sev: '🟡', rule: 'D15', msg: '1 <u> element(s)' },
+      { sev: '🟡', rule: 'D15', msg: '1 empty <code> spacer(s)' },
+      { sev: '🟡', rule: 'D15', msg: '2 invisible-character spacer paragraph(s)' },
+      { sev: '🟡', rule: 'D15', msg: '1 Unicode superscript/subscript digit(s) ("Boarding¹")' },
+      { sev: '🟡', rule: 'D15', msg: '":spacer:" is a spacer vehicle' },
+      { sev: '🟡', rule: 'ICON-EMPTY', msg: 'icons/spacer.svg has no child element' },
+      { sev: '🟡', rule: 'D14', msg: 'block "columns": row 2 duplicates row 1 (J=0.' },
+    ],
+    absentMsg: [{ rule: 'D14', msg: 'block "cards"' }, { rule: 'ICON-MISSING' }],
+    counts: { D14: 1, 'ICON-EMPTY': 1 },
+  },
+  { name: 'vehicles (tree): one rollup line per vehicle with the page count', args: ['tree-vehicle', ...ICONS, ...STYLES], exit: 0, count: 2, expect: [{ sev: '🟡', rule: 'D15', msg: '2 <u> element(s) across 2 page(s)' }, { sev: '🟡', rule: 'D15', msg: '2 invisible-character spacer paragraph(s) (NBSP/ZWSP/ZWNJ only) across 2 page(s)' }] },
   { name: 'usage: --styles that does not exist is a usage error', args: ['pass.html', '--styles', join(FIX, 'nope.css')], exit: 1 },
   { name: 'usage: a dangling --icons-dir is a usage error, not a silent downgrade', args: ['fail-icons.html', ...STYLES, '--icons-dir'], exit: 1 },
 ];
