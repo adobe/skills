@@ -86,10 +86,25 @@
  *                                            D12 CONTENT — a /fragments/ target in this
  *                                                tree carrying > 60 prose words (inline it
  *                                                + re-sync row; fragments cost strict pts)
+ *                                            D9-VOCAB vocabulary budget, four sub-rules:
+ *                                                > 12 section-style tokens per tree; > 6
+ *                                                variant strings on one block; ≥ 3 variant
+ *                                                tokens on one instance; > 10 single-use blocks
+ *                                            D15-STYLE layout-shaped style token (`pb-sm`,
+ *                                                `cols-8-4`, `h2-40`, `true`) — one per token
+ *                                            STYLE-SEL style token no --styles selector reaches
+ *                                                (.section.x / .x / [class~=] / [class*=])
+ *                                            D1-DENSITY > 12 sections or > 6 section-metadata
+ *                                                on one page (tree: one line per metric)
+ *                                            D1-SPACER sections carrying only section-metadata
+ *                                                > 5 % of sections or > pages (tree count)
  *
  * Icon and variant findings are reported ONCE per token with the page count;
  * in tree mode (a directory target or > 1 file) the D1 prose advisory is
  * reported ONCE per block name with the page count (single-file mode: per block).
+ * The census rules (D9-VOCAB, D15-STYLE, STYLE-SEL, D1-DENSITY, D1-SPACER) are
+ * tree-level rollups; `--json` in tree mode adds a `census` object ({styles,
+ * variants, blocks, sections}) — the locked vocabulary the conversion log pastes.
  *
  * Dependency-free by design (regex + balanced-div walking, same technique as
  * build-harness.mjs) — content pages are machine-generated and regular; this
@@ -171,10 +186,18 @@ function lintPage(file, html, findings) {
   const mainMatch = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i);
   const main = mainMatch ? mainMatch[1] : html; // nav/footer docs may be bare fragments
   const sections = childDivs(main);
+  const stats = { file, sections: sections.length, metaSections: 0, metadataOnly: 0 };
 
   for (const [si, section] of sections.entries()) {
     const kids = childDivs(section.inner);
     const defaultContentText = stripTags(childlessHtml(section.inner, kids));
+    const kidNames = kids.map((k) => (classOf(k.openTag).split(/\s+/)[0] || '').toLowerCase());
+    if (kidNames.includes('section-metadata')) {
+      stats.metaSections += 1;
+      // a section carrying ONLY its section-metadata block: the #119/#121
+      // spacer/rule technique — legitimate, counted for D1-SPACER
+      if (kids.length === 1 && !defaultContentText && !/<(img|picture)\b/i.test(childlessHtml(section.inner, kids))) stats.metadataOnly += 1;
+    }
 
     for (const block of kids) {
       const cls = classOf(block.openTag);
@@ -183,6 +206,7 @@ function lintPage(file, html, findings) {
       const name = classes[0].toLowerCase();
       lintBlock(file, section, block, name, flag);
       for (const variant of classes.slice(1)) noteVariant(file, name, variant.toLowerCase());
+      noteBlock(file, name, classes.slice(1).map((v) => v.toLowerCase()));
     }
 
     // ADJACENT-BLOCKS 🟡 — N ≥ 2 consecutive same-name block tables in one
@@ -203,6 +227,15 @@ function lintPage(file, html, findings) {
   }
 
   lintPipelineShapes(file, main, sections, flag);
+
+  // D1-DENSITY — per page in single-file mode; tree mode rolls the tallies up
+  // into one line per metric in reportCollected (a 4,000-page tree would
+  // otherwise print thousands of copies of the same advisory).
+  PAGE_STATS.push(stats);
+  if (!TREE_MODE) {
+    if (stats.sections > SECTIONS_PER_PAGE) flag('🟡', 'D1-DENSITY', `${stats.sections} sections on one page (budget ${SECTIONS_PER_PAGE}) — sections are bands, not paragraphs; merge same-style neighbours into one section (D1-DENSITY)`);
+    if (stats.metaSections > META_PER_PAGE) flag('🟡', 'D1-DENSITY', `${stats.metaSections} sections carry section-metadata on one page (budget ${META_PER_PAGE}) — per-band styling belongs in foundation CSS, not in a style row per section (D1-DENSITY)`);
+  }
 
   lintText(file, main, flag);
   lintAlts(file, sections, flag);
@@ -292,6 +325,9 @@ function lintBlock(file, section, block, name, flag) {
         const v = stripTags(cells[1].inner).trim();
         if (k === 'style' && /\s/.test(v) && !v.includes(',')) {
           flag('🟡', 'D15', `${label} row ${ri + 1}: style "${v}" is space-separated — the pipeline hyphen-joins it into one class (.${v.replace(/\s+/g, '-')}) that matches no rule; comma-separate the tokens (STYLE-SPACE, #120)`);
+        } else if (k === 'style') {
+          // census: comma = N classes (D7); a token with inner whitespace is STYLE-SPACE's
+          for (const t of v.toLowerCase().split(/\s*,\s*/).filter((x) => x && !/\s/.test(x))) noteStyle(file, t);
         }
       }
       // D15 JSON — a raw `json-ld` row is pipeline-supported but is JSON in a
@@ -580,6 +616,127 @@ function noteVariant(file, blockName, token) {
   u.blocks.add(blockName);
 }
 
+// ------------------------------------------- vocabulary census (D9 budget)
+// Thresholds — the vocabulary budget (foundation.md § Vocabulary budget) made
+// mechanical. All census rules are 🟡 and never change the exit code.
+const STYLES_BUDGET = 12; // distinct section-style tokens per tree
+const VARIANT_TOKENS_MAX = 3; // variant tokens on one block instance (≥ fires)
+const VARIANT_STRINGS_BUDGET = 6; // distinct variant strings per block
+const SINGLE_USE_BUDGET = 10; // block names used on one page only
+const SECTIONS_PER_PAGE = 12;
+const META_PER_PAGE = 6; // sections carrying section-metadata on one page
+const SPACER_PCT = 5; // metadata-only sections as % of all sections
+// A layout-shaped style token encodes a measurement or a grid in its name
+// (`pb-sm`, `cols-8-4`, `h2-40`, `true`) — a class-sized design decision
+// delegated to authors; the closed set names intent (`dark`, `tinted`).
+const LAYOUT_TOKEN = /\d|^(cols?|offset|lg|md|sm|xs|pad|pt|pb|mt|mb|u|separator|gap|img|space|spacing)-|^(true|false)$/;
+const STYLE_USES = new Map(); // token → { count, files:Set }
+const BLOCK_USES = new Map(); // name → { files:Set, instances, strings:Map(variantString→count), wide:[] }
+const PAGE_STATS = []; // { file, sections, metaSections, metadataOnly } per page
+
+function noteStyle(file, token) {
+  if (!STYLE_USES.has(token)) STYLE_USES.set(token, { count: 0, files: new Set() });
+  const u = STYLE_USES.get(token);
+  u.count += 1;
+  u.files.add(file);
+}
+
+function noteBlock(file, name, variants) {
+  if (!BLOCK_USES.has(name)) BLOCK_USES.set(name, { files: new Set(), instances: 0, strings: new Map(), wide: [] });
+  const u = BLOCK_USES.get(name);
+  u.files.add(file);
+  u.instances += 1;
+  const tokens = variants.filter((v) => v && v !== name);
+  if (tokens.length) {
+    const s = tokens.join(' ');
+    u.strings.set(s, (u.strings.get(s) || 0) + 1);
+    if (tokens.length >= VARIANT_TOKENS_MAX) u.wide.push({ file, variant: s });
+  }
+}
+
+// STYLE-SEL — does the foundation CSS reach this section-style token at all?
+// `.section.tok` / `.tok` (bare or compound), `[class~='tok']` (exact) or
+// `[class*='sub']` with `sub` inside the token (cigna's band rules).
+function styleSelectorExists(token) {
+  if (!STYLES) return null;
+  if (STYLES.bare.has(token) || STYLES.compound.has(token) || STYLES.attrExact.has(token)) return true;
+  return [...STYLES.attrSub].some((sub) => token.includes(sub));
+}
+
+const top = (entries, n = 3) => entries.slice(0, n).map(([k, v]) => `${k} (${v})`).join(', ');
+
+function reportCensus(push) {
+  const docs = PAGE_STATS.length;
+  const allFiles = new Set(PAGE_STATS.map((p) => p.file));
+  const styleFiles = new Set([...STYLE_USES.values()].flatMap((u) => [...u.files]));
+
+  // D9-VOCAB — four sub-rules of the vocabulary budget.
+  if (STYLE_USES.size > STYLES_BUDGET) {
+    const list = [...STYLE_USES].sort((a, b) => b[1].count - a[1].count).map(([t, u]) => [t, u.count]);
+    push('🟡', 'D9-VOCAB', styleFiles, `${STYLE_USES.size} distinct section-style tokens across ${docs} page(s) (budget ${STYLES_BUDGET}) — top: ${top(list, 5)}; collapse same-pattern styles into the closed set (foundation.md § Vocabulary budget; D9-VOCAB styles)`);
+  }
+  for (const [name, u] of [...BLOCK_USES].sort()) {
+    if (u.strings.size > VARIANT_STRINGS_BUDGET) {
+      const list = [...u.strings].sort((a, b) => b[1] - a[1]).map(([s, n]) => [`"${s}"`, `×${n}`]);
+      push('🟡', 'D9-VOCAB', u.files, `block "${name}": ${u.strings.size} distinct variant strings across ${u.files.size} page(s) (budget ${VARIANT_STRINGS_BUDGET}) — top: ${top(list)}; collapse into ≤ ${VARIANT_STRINGS_BUDGET} named variants (D9-VOCAB variants)`);
+    }
+  }
+  const wide = [...BLOCK_USES].flatMap(([name, u]) => u.wide.map((w) => ({ name, ...w })));
+  if (wide.length) {
+    const ex = wide[0];
+    push('🟡', 'D9-VOCAB', new Set(wide.map((w) => w.file)), `${wide.length} block instance(s) carry ≥ ${VARIANT_TOKENS_MAX} variant tokens (e.g. ${ex.name} "${ex.variant}") — a per-band design decision delegated to authors (D6/D9); fold each combination into one named variant (D9-VOCAB tokens)`);
+  }
+  const singleUse = [...BLOCK_USES].filter(([name, u]) => u.files.size === 1 && !KEY_VALUE_BLOCKS.has(name));
+  if (singleUse.length > SINGLE_USE_BUDGET) {
+    push('🟡', 'D9-VOCAB', new Set(singleUse.map(([, u]) => [...u.files][0])), `${singleUse.length} of ${BLOCK_USES.size} block names appear on one page only (budget ${SINGLE_USE_BUDGET}): ${capped(singleUse.map(([n]) => n), 8).join(', ')}${singleUse.length > 8 ? ` (+${singleUse.length - 8} more)` : ''} — collapse into a shared block + variant, or default content (D9-VOCAB single-use)`);
+  }
+
+  // D15-STYLE — one line per layout-shaped token; STYLE-SEL — one per unreached token.
+  for (const [token, u] of [...STYLE_USES].sort()) {
+    if (LAYOUT_TOKEN.test(token)) {
+      push('🟡', 'D15-STYLE', u.files, `section-style token "${token}" (${u.count} section(s)) encodes a measurement/grid in its name — a class-sized decision delegated to authors; name the intent (dark, tinted, narrow) and size it in CSS (D15-STYLE)`);
+    }
+    if (styleSelectorExists(token) === false) {
+      push('🟡', 'STYLE-SEL', u.files, `section-style token "${token}" (${u.count} section(s)) matches no selector in ${STYLES.file} (.section.${token}, [class~='${token}'] or a [class*=] substring) — add the rule or drop the token (STYLE-SEL)`);
+    }
+  }
+
+  // D1-DENSITY (tree mode; single-file mode flags per page in lintPage) — one line per metric.
+  if (TREE_MODE && docs) {
+    const metric = (key, budget, label) => {
+      const over = PAGE_STATS.filter((p) => p[key] > budget).sort((a, b) => b[key] - a[key]);
+      if (!over.length) return;
+      push('🟡', 'D1-DENSITY', new Set(over.map((p) => p.file)), `${over.length}/${docs} pages carry > ${budget} ${label}, max ${over[0][key]} — top: ${top(over.map((p) => [path.basename(p.file), p[key]]))} (D1-DENSITY)`);
+    };
+    metric('sections', SECTIONS_PER_PAGE, 'sections');
+    metric('metaSections', META_PER_PAGE, 'sections with section-metadata');
+  }
+
+  // D1-SPACER — sections that carry only their section-metadata block, as a tree-level count.
+  const totalSections = PAGE_STATS.reduce((n, p) => n + p.sections, 0);
+  const spacers = PAGE_STATS.reduce((n, p) => n + p.metadataOnly, 0);
+  const pct = totalSections ? (spacers / totalSections) * 100 : 0;
+  if (spacers && (pct > SPACER_PCT || spacers > docs)) {
+    push('🟡', 'D1-SPACER', new Set(PAGE_STATS.filter((p) => p.metadataOnly).map((p) => p.file)), `${spacers} section(s) (${pct.toFixed(1)} %) carry only section-metadata — a spacer or rule; acceptable only as the #119 rule replacement with a closed-set style; spacing belongs in \`main .section\` CSS (D1-SPACER)`);
+  }
+
+  // --json census (tree mode): what the conversion log's "locked vocabulary" pastes.
+  if (!TREE_MODE) return null;
+  const mean = (key) => (docs ? +(PAGE_STATS.reduce((n, p) => n + p[key], 0) / docs).toFixed(2) : 0);
+  const max = (key) => Math.max(0, ...PAGE_STATS.map((p) => p[key]));
+  return {
+    styles: [...STYLE_USES].sort().map(([token, u]) => ({ token, count: u.count, pages: u.files.size, layoutShaped: LAYOUT_TOKEN.test(token), selector: styleSelectorExists(token) })),
+    variants: [...BLOCK_USES].sort().flatMap(([block, u]) => [...u.strings].sort().map(([variant, count]) => ({ block, variant, count }))),
+    blocks: [...BLOCK_USES].sort().map(([name, u]) => ({ name, pages: u.files.size, instances: u.instances })),
+    sections: {
+      perPage: { mean: mean('sections'), max: max('sections'), over12: PAGE_STATS.filter((p) => p.sections > SECTIONS_PER_PAGE).length },
+      metadataPerPage: { mean: mean('metaSections'), max: max('metaSections'), over6: PAGE_STATS.filter((p) => p.metaSections > META_PER_PAGE).length },
+      metadataOnly: { count: spacers, pct: +pct.toFixed(1) },
+    },
+    pages: allFiles.size,
+  };
+}
+
 function iconExists(name) {
   return ['svg', 'png'].some((ext) => existsSync(path.join(ICONS_DIR, `${name}.${ext}`)));
 }
@@ -590,10 +747,15 @@ function iconExists(name) {
 function parseStyles(css) {
   const bare = new Set();
   const compound = new Set();
+  const attrExact = new Set(); // [class~='x'] / [class='x']
+  const attrSub = new Set(); // [class*='x'] / [class^='x'] / [class|='x'] — matched as a substring
   const clean = css.replace(/\/\*[\s\S]*?\*\//g, '');
   for (const m of clean.matchAll(/([^{}]+)\{/g)) {
     const prelude = m[1].trim();
     if (!prelude || prelude.startsWith('@')) continue;
+    for (const a of prelude.matchAll(/\[class\s*([~*^|$]?=)\s*['"]?([^'"\]\s]+)['"]?\s*\]/g)) {
+      (a[1] === '~=' || a[1] === '=' ? attrExact : attrSub).add(a[2].toLowerCase());
+    }
     for (const sel of prelude.split(',').map((x) => x.trim()).filter(Boolean)) {
       // `.x:hover {` / `.x::before {` target the block element exactly like
       // `.x {`; classes that appear only inside :not()/:where()/:is() arguments
@@ -604,7 +766,7 @@ function parseStyles(css) {
       for (const c of base.matchAll(/\.([a-zA-Z_-][\w-]*)/g)) compound.add(c[1].toLowerCase());
     }
   }
-  return { bare, compound };
+  return { bare, compound, attrExact, attrSub };
 }
 
 function pagesLabel(files) {
@@ -640,6 +802,8 @@ function reportCollected(findings) {
       push('🟡', 'VARIANT-COLLIDE', u.files, `variant token "${token}" on block(s) ${blocks} appears inside a compound/descendant selector of ${STYLES.file} — confirm no rule reaches the block, or rename the variant`);
     }
   }
+
+  return reportCensus(push);
 }
 
 // -------------------------------------------------------------------- main
@@ -702,12 +866,13 @@ const files = args.flatMap((target) => collectFiles(target));
 TREE_MODE = files.length > 1 || args.some((a) => statSync(a).isDirectory());
 for (const file of files) lintPage(file, readFileSync(file, 'utf8'), findings);
 
-reportCollected(findings);
+const census = reportCollected(findings);
 findings.sort((a, b) => (a.sev === b.sev ? 0 : a.sev === '🔴' ? -1 : 1));
 const red = findings.filter((f) => f.sev === '🔴').length;
 
 if (asJson) {
-  console.log(JSON.stringify({ red, advisories: findings.length - red, findings }, null, 2));
+  // `census` (tree mode only) is the locked vocabulary the conversion log pastes.
+  console.log(JSON.stringify({ red, advisories: findings.length - red, findings, ...(census ? { census } : {}) }, null, 2));
 } else {
   for (const f of findings) console.log(`${f.sev} ${f.rule} ${f.file}: ${f.msg}`);
   console.log(`${red === 0 ? 'PASS' : 'FAIL'} — ${red} 🔴, ${findings.length - red} 🟡 (rules: ../davids-model.md)`);

@@ -1,0 +1,4 @@
+.section.dark { background: #123; color: #fff; }
+main .section[class*='band'] { padding-block: 48px; }
+.tinted { background: #f4f4f4; }
+main .section[class~='narrow'] { max-width: 720px; }

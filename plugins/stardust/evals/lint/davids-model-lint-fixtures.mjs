@@ -22,12 +22,45 @@ const CASES = [
   { name: 'icons: double prefix + missing asset fail with --icons-dir', args: ['fail-icons.html', ...ICONS, ...STYLES], exit: 2, red: ['ICON-PREFIX', 'ICON-MISSING'], yellow: [] },
   { name: 'icons: without --icons-dir the prefix is advisory only', args: ['fail-icons.html', ...STYLES], exit: 0, red: [], yellow: ['ICON-PREFIX'], absent: ['ICON-MISSING'] },
   { name: 'variants: reserved token, bare selector and pseudo-suffixed bare selector (.tint:hover) fail', args: ['fail-variant.html', ...ICONS, ...STYLES], exit: 2, red: ['VARIANT-COLLIDE'], yellow: [], tokens: ['"icon"', '"illu"', '"tint"'] },
-  { name: 'pass: :name: token, decorated span, compound-selector variant is advisory, :not(.badge) is ignored', args: ['pass.html', ...ICONS, ...STYLES], exit: 0, red: [], yellow: ['VARIANT-COLLIDE'], absent: ['ICON-PREFIX', 'ICON-MISSING'], absentTokens: ['"badge"'] },
+  { name: 'pass: :name: token, decorated span, compound-selector variant is advisory, :not(.badge) is ignored; census/vehicle/empty rules silent', args: ['pass.html', ...ICONS, ...STYLES], exit: 0, red: [], yellow: ['VARIANT-COLLIDE'], absent: ['ICON-PREFIX', 'ICON-MISSING', 'D9-VOCAB', 'D15-STYLE', 'STYLE-SEL', 'D1-DENSITY', 'D1-SPACER'], absentTokens: ['"badge"'] },
   { name: 'tree mode: one finding per token with page count', args: ['.', ...ICONS, ...STYLES], exit: 2, oncePer: ['ICON-PREFIX'], pages: 'fail-icons.html' },
   // T30.4 — embed exemption for channel/profile URLs; the D1 prose advisory once per block name in tree mode.
   { name: 'embed: a channel/profile URL inside a block is a navigation link, not an authored embed', args: ['pass-channel.html', ...STYLES], exit: 0, count: 0 },
   { name: 'embed: a watch URL alone in a block cell stays 🔴 D1', args: ['fail-embed.html', ...STYLES], exit: 2, expect: [{ sev: '🔴', rule: 'D1', msg: 'embed/video URL' }] },
   { name: 'tree mode: an authored breadcrumbs block is ONE D1 advisory with the page count and the BREADCRUMB wording', args: ['tree-breadcrumbs', ...STYLES], exit: 0, count: 1, oncePer: ['D1'], pages: 'two.html', expect: [{ sev: '🟡', rule: 'D1', msg: 'BREADCRUMB' }, { rule: 'D1', msg: 'on 2 pages' }] },
+  // T29.2 — vocabulary census: every rule 🟡, exit 0, rollups once per rule/token, census in --json (tree mode).
+  {
+    name: 'census (tree): D9-VOCAB ×4 sub-rules, D15-STYLE per layout token, STYLE-SEL only for tokens no selector reaches, D1-DENSITY and D1-SPACER once',
+    args: ['tree-vocab', '--styles', join(FIX, 'styles-vocab.css')], exit: 0, red: [],
+    expect: [
+      { sev: '🟡', rule: 'D9-VOCAB', msg: '14 distinct section-style tokens' },
+      { sev: '🟡', rule: 'D9-VOCAB', msg: 'block "cards": 7 distinct variant strings' },
+      { sev: '🟡', rule: 'D9-VOCAB', msg: 'cards "promo duo arrow"' },
+      { sev: '🟡', rule: 'D9-VOCAB', msg: '12 of 13 block names appear on one page only' },
+      { sev: '🟡', rule: 'D15-STYLE', msg: '"pb-sm"' }, { sev: '🟡', rule: 'D15-STYLE', msg: '"cols-8-4"' }, { sev: '🟡', rule: 'D15-STYLE', msg: '"true"' },
+      { sev: '🟡', rule: 'STYLE-SEL', msg: '"wide"' },
+      { sev: '🟡', rule: 'D1-DENSITY', msg: '1/3 pages carry > 12 sections, max 13' },
+      { sev: '🟡', rule: 'D1-SPACER', msg: '2 section(s) (8.3 %)' },
+    ],
+    absentMsg: [{ rule: 'STYLE-SEL', msg: '"dark"' }, { rule: 'STYLE-SEL', msg: '"tinted"' }, { rule: 'STYLE-SEL', msg: '"narrow"' }, { rule: 'STYLE-SEL', msg: '"band-navy"' }, { rule: 'D15-STYLE', msg: '"dark"' }],
+    counts: { 'D9-VOCAB': 4, 'D15-STYLE': 3, 'STYLE-SEL': 9, 'D1-DENSITY': 1, 'D1-SPACER': 1 },
+    check: (out) => {
+      const c = out.census;
+      if (!c) return 'census missing from --json in tree mode';
+      const cards = c.blocks.find((b) => b.name === 'cards');
+      const bad = [
+        c.styles.length !== 14 && `styles ${c.styles.length} ≠ 14`,
+        !(cards && cards.instances === 7 && cards.pages === 1) && `cards ${JSON.stringify(cards)}`,
+        c.variants.filter((v) => v.block === 'cards').length !== 7 && 'cards variants ≠ 7',
+        c.sections.perPage.over12 !== 1 && 'over12 ≠ 1', c.sections.perPage.max !== 13 && 'max ≠ 13',
+        c.sections.metadataOnly.count !== 2 && 'metadataOnly ≠ 2',
+        c.styles.find((s) => s.token === 'band-navy').selector !== true && 'band-navy selector via [class*=] not true',
+        c.styles.find((s) => s.token === 'wide').selector !== false && 'wide selector not false',
+      ].filter(Boolean);
+      return bad.length ? `census: ${bad.join('; ')}` : null;
+    },
+  },
+  { name: 'census (single file): D1-DENSITY is a per-page line and --json carries no census', args: ['tree-vocab/a.html', '--styles', join(FIX, 'styles-vocab.css')], exit: 0, expect: [{ sev: '🟡', rule: 'D1-DENSITY', msg: '13 sections on one page' }], check: (out) => (out.census ? 'census present in single-file mode' : null) },
   { name: 'usage: --styles that does not exist is a usage error', args: ['pass.html', '--styles', join(FIX, 'nope.css')], exit: 1 },
   { name: 'usage: a dangling --icons-dir is a usage error, not a silent downgrade', args: ['fail-icons.html', ...STYLES, '--icons-dir'], exit: 1 },
 ];
@@ -49,6 +82,7 @@ for (const c of CASES) {
   for (const e of c.expect || []) if (!hit(e).length) failures.push(`${label}: expected ${e.sev || ''} ${e.rule}${e.msg ? ` (…${e.msg}…)` : ''}`);
   for (const e of c.absentMsg || []) if (hit(e).length) failures.push(`${label}: unexpected ${e.rule}${e.msg ? ` (…${e.msg}…)` : ''}`);
   if (c.count !== undefined && out.findings.length !== c.count) failures.push(`${label}: ${out.findings.length} finding(s), expected ${c.count}:\n  ${out.findings.map((f) => `${f.sev} ${f.rule} ${f.msg.slice(0, 80)}`).join('\n  ')}`);
+  for (const [rule, n] of Object.entries(c.counts || {})) { const k = out.findings.filter((f) => f.rule === rule).length; if (k !== n) failures.push(`${label}: ${rule} reported ${k}×, expected ${n}`); }
   if (c.check) { const err = c.check(out); if (err) failures.push(`${label}: ${err}`); }
   for (const t of c.tokens || []) if (!out.findings.some((f) => f.rule === 'VARIANT-COLLIDE' && f.msg.includes(t))) failures.push(`${label}: expected VARIANT-COLLIDE for ${t}`);
   for (const t of c.absentTokens || []) if (out.findings.some((f) => f.rule === 'VARIANT-COLLIDE' && f.msg.includes(t))) failures.push(`${label}: unexpected VARIANT-COLLIDE for ${t}`);
