@@ -135,9 +135,11 @@
  * Icon and variant findings are reported ONCE per token with the page count;
  * in tree mode (a directory target or > 1 file) the D1 prose advisory is
  * reported ONCE per block name with the page count (single-file mode: per block).
- * The census rules (D9-VOCAB, D15-STYLE, STYLE-SEL, D1-DENSITY, D1-SPACER) are
- * tree-level rollups; `--json` in tree mode adds a `census` object ({styles,
- * variants, blocks, sections}) — the locked vocabulary the conversion log pastes.
+ * The census rules are tree-level rollups: D9-VOCAB, D1-DENSITY and D1-SPACER
+ * run in tree mode only (on one page every block is "single-use" and one
+ * spacer is > 5 %); D15-STYLE and STYLE-SEL are per token and also run per
+ * page. `--json` in tree mode adds a `census` object ({styles, variants,
+ * blocks, sections}) — the locked vocabulary the conversion log pastes.
  *
  * Dependency-free by design (regex + balanced-div walking, same technique as
  * build-harness.mjs) — content pages are machine-generated and regular; this
@@ -167,7 +169,7 @@ const DUPROW_MIN_WORDS = 15;
 const DUPROW_JACCARD = 0.6;
 const SERIAL_MIN = 4; // D5-SERIAL: segments in one cell joined by |, ; or •
 const FLATTEN_MIN_HEADINGS = 3; // D2-FLATTEN: headings inside one cell
-// D15 VEHICLE-ICON — an icon named as a spacer carries no meaning (fnbo's 67 B empty spacer.svg).
+// D15 VEHICLE-ICON — an icon named as a spacer carries no meaning (a 67 B <svg></svg> asset seen in the field).
 const SPACER_ICON = /^(spacer|gap|blank|space)(-|$)/;
 const PROSE_TAGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'a', 'ul', 'ol', 'li', 'picture', 'img', 'source', 'strong', 'em', 'code', 'br']);
 
@@ -311,7 +313,10 @@ function childlessHtml(inner, kids) {
 }
 
 // A cell (or a cell-less row) that carries neither text nor media nor a link.
-const MEDIA_OR_LINK = /<(img|picture|video|iframe|a|svg|source)\b/i;
+// A decorated icon span (`<span class="icon icon-x">`, the form lintIcons()
+// resolves) is media: an icon-only cell or section (rating strips, dividers)
+// is authored content, the same shape as its `:x:` text form.
+const MEDIA_OR_LINK = /<(img|picture|video|iframe|a|svg|source)\b|<span\b[^>]*\bclass="[^"]*\bicon\b/i;
 const cellIsEmpty = (html) => !stripTags(html).replace(/&nbsp;|&#160;|\u00a0/g, '').trim() && !MEDIA_OR_LINK.test(html);
 
 function lintBlock(file, section, block, name, flag) {
@@ -818,7 +823,7 @@ function noteBlock(file, name, variants) {
 
 // STYLE-SEL — does the foundation CSS reach this section-style token at all?
 // `.section.tok` / `.tok` (bare or compound), `[class~='tok']` (exact) or
-// `[class*='sub']` with `sub` inside the token (cigna's band rules).
+// `[class*='sub']` with `sub` inside the token (attribute-selector band rules).
 function styleSelectorExists(token) {
   if (!STYLES) return null;
   if (STYLES.bare.has(token) || STYLES.compound.has(token) || STYLES.attrExact.has(token)) return true;
@@ -832,24 +837,25 @@ function reportCensus(push) {
   const allFiles = new Set(PAGE_STATS.map((p) => p.file));
   const styleFiles = new Set([...STYLE_USES.values()].flatMap((u) => [...u.files]));
 
-  // D9-VOCAB — four sub-rules of the vocabulary budget.
-  if (STYLE_USES.size > STYLES_BUDGET) {
+  // D9-VOCAB — four sub-rules of the vocabulary budget (tree mode only: on a
+  // single page every block is single-use and every style token is one token).
+  if (TREE_MODE && STYLE_USES.size > STYLES_BUDGET) {
     const list = [...STYLE_USES].sort((a, b) => b[1].count - a[1].count).map(([t, u]) => [t, u.count]);
     push('🟡', 'D9-VOCAB', styleFiles, `${STYLE_USES.size} distinct section-style tokens across ${docs} page(s) (budget ${STYLES_BUDGET}) — top: ${top(list, 5)}; collapse same-pattern styles into the closed set (foundation.md § Vocabulary budget; D9-VOCAB styles)`);
   }
-  for (const [name, u] of [...BLOCK_USES].sort()) {
+  for (const [name, u] of TREE_MODE ? [...BLOCK_USES].sort() : []) {
     if (u.strings.size > VARIANT_STRINGS_BUDGET) {
       const list = [...u.strings].sort((a, b) => b[1] - a[1]).map(([s, n]) => [`"${s}"`, `×${n}`]);
       push('🟡', 'D9-VOCAB', u.files, `block "${name}": ${u.strings.size} distinct variant strings across ${u.files.size} page(s) (budget ${VARIANT_STRINGS_BUDGET}) — top: ${top(list)}; collapse into ≤ ${VARIANT_STRINGS_BUDGET} named variants (D9-VOCAB variants)`);
     }
   }
-  const wide = [...BLOCK_USES].flatMap(([name, u]) => u.wide.map((w) => ({ name, ...w })));
+  const wide = TREE_MODE ? [...BLOCK_USES].flatMap(([name, u]) => u.wide.map((w) => ({ name, ...w }))) : [];
   if (wide.length) {
     const ex = wide[0];
     push('🟡', 'D9-VOCAB', new Set(wide.map((w) => w.file)), `${wide.length} block instance(s) carry ≥ ${VARIANT_TOKENS_MAX} variant tokens (e.g. ${ex.name} "${ex.variant}") — a per-band design decision delegated to authors (D6/D9); fold each combination into one named variant (D9-VOCAB tokens)`);
   }
   const singleUse = [...BLOCK_USES].filter(([name, u]) => u.files.size === 1 && !KEY_VALUE_BLOCKS.has(name));
-  if (singleUse.length > SINGLE_USE_BUDGET) {
+  if (TREE_MODE && singleUse.length > SINGLE_USE_BUDGET) {
     push('🟡', 'D9-VOCAB', new Set(singleUse.map(([, u]) => [...u.files][0])), `${singleUse.length} of ${BLOCK_USES.size} block names appear on one page only (budget ${SINGLE_USE_BUDGET}): ${capped(singleUse.map(([n]) => n), 8).join(', ')}${singleUse.length > 8 ? ` (+${singleUse.length - 8} more)` : ''} — collapse into a shared block + variant, or default content (D9-VOCAB single-use)`);
   }
 
@@ -874,11 +880,13 @@ function reportCensus(push) {
     metric('metaSections', META_PER_PAGE, 'sections with section-metadata');
   }
 
-  // D1-SPACER — sections that carry only their section-metadata block, as a tree-level count.
+  // D1-SPACER — sections that carry only their section-metadata block, as a
+  // tree-level count (never per section or per page: one rule section on one
+  // page is the sanctioned #119 shape, not a spacer habit).
   const totalSections = PAGE_STATS.reduce((n, p) => n + p.sections, 0);
   const spacers = PAGE_STATS.reduce((n, p) => n + p.metadataOnly, 0);
   const pct = totalSections ? (spacers / totalSections) * 100 : 0;
-  if (spacers && (pct > SPACER_PCT || spacers > docs)) {
+  if (TREE_MODE && spacers && (pct > SPACER_PCT || spacers > docs)) {
     push('🟡', 'D1-SPACER', new Set(PAGE_STATS.filter((p) => p.metadataOnly).map((p) => p.file)), `${spacers} section(s) (${pct.toFixed(1)} %) carry only section-metadata — a spacer or rule; acceptable only as the #119 rule replacement with a closed-set style; spacing belongs in \`main .section\` CSS (D1-SPACER)`);
   }
 

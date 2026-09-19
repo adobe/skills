@@ -7,7 +7,7 @@ Full text of the deploy skill's per-page checklist. Read:
 ## Checklist (per page)
 
 - [ ] Each section in the prototype `<main>` has a corresponding section in the content page — a block for pattern sections, default content for prose sections (D1, Step 2 triage recorded in the conversion log).
-- [ ] **`davids-model-lint` clean** — `node skills/deploy/scripts/davids-model-lint.mjs content/ --icons-dir icons --styles styles/styles.css` exits 0 (0 🔴; 🟡 advisories reviewed and either fixed or justified in the conversion log).
+- [ ] **`davids-model-lint` clean** — `node skills/deploy/scripts/davids-model-lint.mjs content/ --icons-dir icons --styles styles/styles.css` exits 0 (0 🔴; 🟡 advisories reviewed and either fixed or justified in the conversion log; the tree-mode `--json` `census` pasted into the conversion log).
 - [ ] **Content page is a body fragment** for the Source-API deploy: starts at `<body>`, **no `<!DOCTYPE>`/`<html>`/`<head>`** — EDS injects the project `head.html` at delivery. (Only the mount deploy tolerates a full doc.)
 - [ ] Ran `node skills/deploy/scripts/sanitise.js` on the content before any DA write (non-ASCII → entities).
 - [ ] **Per-instance variation fingerprinted (#90)** — ran `style-fingerprint.mjs` on the prototype BEFORE block code; every group with >1 style/structural cluster (active chip, accent CTA, image vs image-less card) is reproduced by its block, not flattened.

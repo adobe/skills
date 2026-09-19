@@ -192,7 +192,7 @@ After deploy, reconcile each page against its prototype on the DEPLOYED URL only
 
 ## When you finish
 
-Update `stardust/eds-conversion-log.md` (create it if absent): final block inventory, the locked vocabulary (section styles, variants, counts), decisions locked, anti-patterns avoided, anything site-specific the next person should know. Close with the hand-off shape in `../stardust/reference/handoff-report.md` § Gate table first.
+Update `stardust/eds-conversion-log.md` (create if absent): final block inventory, the locked vocabulary (`davids-model-lint --json` `census`), decisions locked, anti-patterns avoided, anything site-specific the next person must know. Close with the hand-off shape in `../stardust/reference/handoff-report.md` § Gate table first.
 
 ## References
 
