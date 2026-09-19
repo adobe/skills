@@ -16,7 +16,7 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 | Setup 5–7 | status ledger; project hygiene (`stardust/.gitignore`, root `.gitignore`, `.hlxignore`, `git check-ignore`); run lock + project root | `state.json` must not be ignored; a held lock → read-only | `stardust/status.jsonl`, `stardust/.gitignore`, `stardust/.work/run.lock` |
 | Routing | no arg / resume → state report; sub-skill keyword → delegate; migration ask → § Two migration flows; freeform → intent reasoning | plan shown before any command (hands-off: recorded instead) | `state.json` flow keys |
 | Freeform intent | § The "open and reasoned" principle, steps 1–6 | plan confirmation | `stardust/direction.md` |
-| Hands-off | gate auto-resolution table; volume caps; background waits; per-phase commits | quality gates unchanged; hard blockers still stop | `state.json.handsOff`, `direction.md` activation line, `status.jsonl` `blocked` |
+| Hands-off | activation block (wave plan + stop point, commit policy); gate auto-resolution table; background waits; turn-end contract (chain after PASS); scoped per-phase commits | quality gates unchanged; hard blockers and owner-only rows still stop; a turn ends only on completion, blocker or a > 45-min wait | `state.json.handsOff` / `approvedChain`, `direction.md` activation line, `status.jsonl` `blocked` |
 | Every write | provenance block; journal entry; validate-and-fix loop on human-facing HTML | clean validation pass | `stardust/journal.md`, `stardust/validation/<artifact>/<viewport>.png` |
 
 | at step | read |
@@ -58,19 +58,16 @@ sub-commands that delegate the actual design work to **impeccable**.
    one — and no harness announces third-party plugin updates by
    default. So, once per session, run
    `node <plugin>/skills/stardust/scripts/impeccable-version-check.mjs`
-   (add `--local <impeccable-dir>` when impeccable lives in a harness skills
-   directory rather than the plugin registry) and surface its one output
-   line to the user verbatim when it reports a newer version; it prints the
-   update command for the harness it found impeccable in. Any other outcome (current, unknown, offline) is
-   noise — do not mention it, and never stop or degrade a run over it.
+   (`--local <impeccable-dir>` when impeccable lives in a harness skills
+   directory) and surface its one output line verbatim when it reports a
+   newer version — it prints the update command for that harness. Any
+   other outcome (current, unknown, offline) is noise: do not mention it,
+   never stop or degrade a run over it.
 2. **Check the target-state files.** `PRODUCT.md` and `DESIGN.md` at the
-   project root are the *target* state for stardust; check whether they
-   exist (a directory listing is enough). Do not run impeccable's context
-   loader (`scripts/impeccable context`) here: it emits directives for
-   impeccable's own flow (init, new-work, detector, update checks) that do
-   not apply to stardust's setup, and impeccable runs it itself whenever
-   stardust invokes an impeccable command. Skip if already known from this
-   session's history.
+   project root are stardust's *target* state; a directory listing tells
+   whether they exist. Do not run impeccable's context loader
+   (`scripts/impeccable context`) here — its directives serve impeccable's
+   own flow, and it runs whenever stardust invokes an impeccable command.
 3. **Read stardust's state.** Read `stardust/state.json` if present
    (`reference/state-machine.md` defines the schema). Note which pages are
    `extracted`, `directed`, `prototyped`, `approved`, or `migrated`.
@@ -136,10 +133,10 @@ Once setup is done, route on the user's input:
   | `reskin` | byte-faithful content re-laid onto a separately defined donor design system |
   | `deploy` | one page → EDS blocks + DA delivery |
   | `rollout` | whole migrated site → EDS, with coverage + delivery gates |
-  | `dynamics` | the dynamic surface of a migration — detect, classify, triage, implement, verify (APIs, search, forms, modals, media, tags, client-rendered, sheet data); migration-bound, invoked by prepare-migration / replica / migrate / rollout or standalone on an already-migrated site |
+  | `dynamics` | the dynamic surface of a migration — detect, classify, triage, implement, verify (APIs, search, forms, modals, media, tags, client-rendered, sheet data); invoked by the migration skills or standalone on a migrated site |
   | `diff` | prototype ↔ build fidelity probes (pixel + structural) |
-  | `audit` | three-perspective site audit — design tensions, SEO/technical, LLM visibility — scored report + findings ledger |
-  | `qa` | read-only post-deploy QA sweep of the live site — routing, fidelity, template conformance, rendering, visual regression, SEO, links, a11y, perf — findings report only, never fixes |
+  | `audit` | three-perspective site audit (design tensions, SEO/technical, LLM visibility) — scored report + findings ledger |
+  | `qa` | read-only post-deploy QA sweep of the live site (routing, fidelity, rendering, visual regression, SEO, links, a11y, perf) — findings only, never fixes |
   | `uplift` | one-shot presales orchestrator (3 variants) |
 
   - `prototype` accepts `--cinematic` (or `--cinematic=<register>`)
@@ -213,27 +210,32 @@ prepare-migration --switch-flow` — and marks the old flow's prototyped or
 migrated pages stale (§ Per-page state).
 
 **Planning aids belong to one flow.** Redesign: the `prepare-migration`
-plan and its phase gates, the canon, module catalogs, template plans of
-the "learn the template, then compile" kind. Keep-design: `replica`'s
-inconsistency register and `progress.json`, the archetype gate ledgers,
-`rollout` waves. A redesign procedure or plan template inside a replica
-run — or the reverse — is a routing defect: refuse it, or flag it in
-`direction.md` and hand back to this section.
-
-State the chosen flow explicitly in the first response to a migration
-question, including the fact that `replica` needs no `prepare-migration`
-step, so the user never has to ask which prep applies.
+plan and gates, the canon, module catalogs, "learn the template, then
+compile" plans. Keep-design: `replica`'s inconsistency register and
+`progress.json`, the archetype gate ledgers, `rollout` waves. A redesign
+plan inside a replica run — or the reverse — is a routing defect: refuse
+it, or flag it in `direction.md` and hand back here. State the chosen
+flow in the first response to a migration question, including that
+`replica` needs no `prepare-migration` step.
 
 ## Hands-off mode
 
-Activated by `--hands-off` on **any** stardust invocation, or by an
-explicit user phrase ("fully hands-off", "no approval gates", "run
-autonomously"). On activation, stamp `state.json.handsOff: true`
-(schema note in `reference/state-machine.md` § Hands-off keys) and
-append an activation line to `stardust/direction.md`. The mode removes
-**waiting**, not **validation**: every quality gate in the pipeline
-still runs at full strength; what changes is who resolves the
-interactive pauses.
+Activated by `--hands-off` on **any** stardust invocation, or by a user
+phrase that says no one will answer: "fully hands-off", "no approval
+gates", "run autonomously", "not monitoring", "never stop (asking)",
+"do all of them" / "the full site". Activation is never inferred from
+the harness or from the size of the ask. On activation, stamp
+`state.json.handsOff: true` (`reference/state-machine.md` § Hands-off
+keys), append an activation line quoting the phrase to
+`stardust/direction.md`, and open the first reply with the fixed
+**activation block**: the chosen flow; the roster cap as **wave 1 of a
+written wave plan** with its stop point; "commits land at each phase
+end without asking — hands-off overrides an ask-before-commit
+preference for this run"; the decision register
+(`reference/decisions.md`). The mode removes **waiting**, not
+**validation**: provenance validation, the validation loop, fidelity,
+delivery and optimize gates all run unchanged — hands-off changes *who
+answers*, not *what must pass*.
 
 Under hands-off, every interactive gate across the pipeline
 auto-resolves:
@@ -281,26 +283,18 @@ otherwise):
   window.** Anything expected to run longer than about 2 minutes — a gate
   round over several pages, a crawl, a batch push, a capture set, a
   delegated agent — runs in the background and writes a progress or
-  summary file; the coordinator never runs it in the foreground and never
-  covers it with one long `sleep`. While it runs, do independent work;
-  when there is none, check back with one short read of the progress
-  file **at most every 4 minutes** — never a fixed `sleep` of 5 minutes or
-  more, and never a blocking "wait for the agent's output" call with a
-  long timeout. The number is not taste: the prompt cache expires after
-  5 idle minutes, and at the 500–900k-token contexts a migration reaches,
-  every expiry re-writes the whole prefix at write price (12× a cached
-  read). Field data, 48 sessions: a foreground wait of ≤ 4 minutes missed
-  the cache in ~10 % of cases, ≥ 5 minutes in 85–87 %; 572 such
-  agent-side waits re-wrote 325 M tokens — 46 % of everything those
-  sessions wrote to the cache. Ending the turn to wait for a completion
-  notification helps the user, not the cache: a notification that arrives
-  after 5 minutes misses too (137 recorded), so prefer short checks for
-  waits under ~45 minutes and end the turn only when the wait is longer
-  or the user should decide. (Claude Code: `run_in_background: true` on
-  the shell call, the harness posts a task notification when it exits;
-  `promptCacheTtl: "1h"` in settings.json stretches the window to an hour
-  at 1.6× write price — an owner setting, worth it for any multi-hour
-  session.)
+  summary file; never in the foreground, never under one long `sleep`.
+  While it runs, do independent work; when there is none, check back
+  with one short read of the progress file **at most every 4 minutes** —
+  never a fixed `sleep` of 5 minutes or more, never a blocking "wait for
+  the agent's output" call with a long timeout. The number is the prompt
+  cache's 5-minute idle window: at migration-size contexts every expiry
+  re-writes the whole prefix at write price (field data: CHANGELOG
+  0.22.2). Ending the turn to wait helps the user, not the cache, so
+  prefer short checks for waits under ~45 minutes. (Claude Code:
+  `run_in_background: true` on the shell call; `promptCacheTtl: "1h"` in
+  settings.json stretches the window to an hour at 1.6× write price — an
+  owner setting worth it for any multi-hour session.)
 - **Commit at the end of each phase** when the project is a git repo.
   Stage only the paths this skill wrote (`stardust/`, the target files,
   the EDS project files it touched) — never `git add -A` or `git add .`;
@@ -311,6 +305,22 @@ otherwise):
   read, and a tracked `.env` poisons every later push (GH013 + history
   rewrite at deploy time).
 
+**Turn-end contract.** A turn ends only on (a) run completion, (b) a
+hard blocker or an owner-only row of the decision register, or (c) a
+background wait longer than ~45 minutes (Wait discipline). A wave or
+phase close is never a permitted end: it writes the journal entry, the
+`status.jsonl` `end` line and the phase commit, then starts the next
+planned step **in the same turn** — "Phase N done, next: …" followed by
+silence is a defect. When the ask names a chain ("replica, then
+deploy"), stamp `state.json.approvedChain` (§ Hands-off keys) and
+continue after each PASS; a FAIL or a residual over the bar still
+pauses, and a chained `deploy` stops at preview unless the ask said
+publish. An unavoidable pause ends with the fixed block — `Running: …` /
+`Waiting on you: 1) …` / `Will proceed without you: …` — and the
+pasteable `next` command (`reference/run-status.md` § Phase close); two
+same-named gates → one clarifying question naming both. Every path
+printed is `ls`-verified and every count re-read from the artifact.
+
 **Hard blockers remain stops.** An unreachable source site, an
 expired `DA_TOKEN` that cannot be recovered, or a signal-absent brand
 surface (extract captured no usable brand signal even after a re-run)
@@ -318,28 +328,22 @@ are not judgment calls — state the blocker precisely, append
 `event: "blocked"` to `stardust/status.jsonl`, and halt. Never guess
 around a hard blocker.
 
-**Quality gates NEVER weaken under hands-off.** Provenance
-validation, the validation loop, fidelity gates, delivery gates, and
-rollout's optimize gate all run unchanged. Hands-off changes *who
-answers*, not *what must pass*.
-
 ## The "open and reasoned" principle
 
-Stardust does not ship a closed `intent → commands` lookup. Every freeform
-phrase is reasoned about in public. You must:
+Stardust ships no closed `intent → commands` lookup; every freeform
+phrase is reasoned about in public:
 
 1. Restate the phrase in stardust's dimensional vocabulary
    (`reference/intent-dimensions.md`).
-2. Identify which axes the phrase moves and in which direction.
-3. Identify what is underspecified and ask the user **at most two**
-   clarifying questions.
-4. Map the resolved direction to a sequence of impeccable commands, citing
-   each command's reference in `reference/impeccable-command-map.md`.
-5. Show the proposed plan to the user before executing.
-6. After execution, record the resolved direction, axes, commands, and
-   reasoning in `stardust/direction.md` with a stardust provenance block.
+2. Name the axes it moves, and in which direction.
+3. Name what is underspecified; ask **at most two** clarifying questions.
+4. Map the resolved direction to impeccable commands, citing each in
+   `reference/impeccable-command-map.md`.
+5. Show the plan before executing.
+6. Afterwards record direction, axes, commands and reasoning in
+   `stardust/direction.md` with a provenance block.
 
-Worked examples of this procedure live in `reference/intent-examples.md`.
+Worked examples: `reference/intent-examples.md`.
 
 ## Per-page state and "stale on direction change"
 
@@ -364,10 +368,9 @@ script copies, drafts — go under `stardust/.work/<skill>/`; the root
 bug in that skill.
 
 **Versioning.** Everything under `stardust/` is committed except what
-`reference/stardust.gitignore` lists: screenshots, four heavy folders
-(`current/assets/`, `replica/gates/`, `migrated/assets/`, `rollout/qa/`),
-`.work/`, run residue, session state. Per-directory table and what a clone
-without `current/assets/` can and cannot do: `reference/artifact-map.md`
+`reference/stardust.gitignore` lists (screenshots, the heavy asset and
+gate folders, `.work/`, run residue, session state); per-directory table
+and what a clone without `current/assets/` can do: `reference/artifact-map.md`
 § Versioning.
 
 ## Provenance
@@ -403,8 +406,7 @@ the gate's.
 
 Every artifact stardust writes that a human will eyeball — proposed HTML,
 brand-review.html, the migrated site — runs through a **recursive validate-
-and-fix loop** before being marked done. The principle: type checks and
-test suites verify code correctness; only browser rendering verifies
+and-fix loop** before being marked done: only browser rendering verifies
 *feature* correctness.
 
 For HTML the user will see (prototypes, migrated pages, the brand-review
@@ -430,11 +432,10 @@ HTML):
 4. Save the final clean-pass screenshots to `stardust/validation/<artifact>/<viewport>.png`
    so reviewers can compare without re-running.
 
-Per-sub-skill validation specifics live in each skill's reference docs —
-notably `extract/reference/playwright-recipe.md` (the canonical recipe),
-`prototype/reference/motion-validation.md` (motion-specific gates), and
-`prototype/SKILL.md` Phases 2.5–2.8 (the critique / audit / adapt /
-motion gate cascade).
+Per-sub-skill specifics: `extract/reference/playwright-recipe.md` (the
+canonical recipe), `prototype/reference/motion-validation.md` (motion
+gates), `prototype/SKILL.md` Phases 2.5–2.8 (critique / audit / adapt /
+motion cascade).
 
 ## What stardust never does
 
@@ -443,11 +444,10 @@ motion gate cascade).
 - Execute a redesign plan without showing it first (hands-off mode records
   the plan in `stardust/direction.md` instead of waiting — § Hands-off mode).
 - Force a re-run on stale pages without explicit user opt-in.
-- Crawl an existing site beyond the user's confirmed page cap (an explicit `--pages` list is itself the confirmed scope — listed pages are never dropped; the crawler warns rather than truncates when the list exceeds `--max`).
-- Emit platform-specific output from `migrate`. `migrate` emits
-  platform-agnostic static HTML; the EDS conversion and delivery are owned
-  by the stardust `deploy` (one page) and `rollout` (whole site) skills
-  sub-skills, routed above.
+- Crawl beyond the user's confirmed page cap (an explicit `--pages` list is itself the confirmed scope — listed pages are never dropped; the crawler warns rather than truncates past `--max`).
+- Emit platform-specific output from `migrate` — it emits
+  platform-agnostic static HTML; EDS conversion and delivery belong to
+  `deploy` (one page) and `rollout` (whole site).
 
 ## References
 
@@ -474,10 +474,10 @@ prototype rendering, but cited by `direct` (when selecting a
 register), `uplift` (when picking C's register), and `migrate`
 (when copying motion assets through):
 
-- `../prototype/reference/motion-registers.md` — five brand-faithful motion personalities (`arrival`, `kinetic-display`, `live-systems`, `editorial`, `kinetic-grid`) and the selection heuristic that maps PRODUCT.md Brand Personality traits to a register.
-- `../prototype/reference/motion-stack.md` — technology choice: Lenis + CSS keyframes + rAF + IntersectionObserver. Why not GSAP. Bundle policy.
-- `../prototype/reference/motion-attributes.md` — `data-*` vocabulary the runtime consumes (`[data-anim]`, `[data-tile-anim]`, `[data-countup]`, `[data-flip]`, `[data-fill]`, `[data-split]`, `[data-parallax]`).
-- `../prototype/reference/motion-runtime.md` — the canonical inline runtime script that powers every cinematic prototype.
+- `../prototype/reference/motion-registers.md` — the five motion registers and the heuristic that maps PRODUCT.md personality traits to one.
+- `../prototype/reference/motion-stack.md` — technology choice (Lenis + CSS keyframes + rAF + IntersectionObserver) and bundle policy.
+- `../prototype/reference/motion-attributes.md` — the `data-*` vocabulary the motion runtime consumes.
+- `../prototype/reference/motion-runtime.md` — the canonical inline runtime script of every cinematic prototype.
 - `../prototype/reference/motion-validation.md` § Pass 6 — cinematic-mode validation gates (Lenis boot, reduced-motion fallback, scroll-jack, three-position screenshots, register-match, motion C-cliff detector).
 
 ### Uplift-feature references

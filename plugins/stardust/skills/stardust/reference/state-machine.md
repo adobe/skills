@@ -81,7 +81,7 @@ one optional top-level key, `handsOff` (after `direction`; see
 ## Hands-off keys
 
 When the run was activated hands-off (`skills/stardust/SKILL.md`
-§ Hands-off mode), two extra markers appear:
+§ Hands-off mode), three extra markers may appear:
 
 - Top-level `"handsOff": true` — stamped by the master skill at
   activation; every sub-command reads it to auto-resolve its
@@ -91,6 +91,13 @@ When the run was activated hands-off (`skills/stardust/SKILL.md`
   quality gates passed, not by the user. A later explicit user
   approval appends a new history entry (without the marker); it does
   not rewrite the hands-off one.
+- Top-level `"approvedChain": ["replica", "migrate", "deploy"]` —
+  stamped by the master skill when the activating ask names the skills
+  to run in sequence; each listed skill starts after the previous one's
+  PASS without a pause (master § Hands-off mode → Turn-end contract).
+  Absent or empty means one skill per ask. The chain never implies
+  publishing: a chained `deploy` or `rollout` stops at preview unless
+  the ask said publish.
 
 ---
 
