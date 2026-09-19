@@ -235,9 +235,14 @@ Pre-flight a **consent dismissal** before the per-page loop.
 One dismissal in a fresh `BrowserContext` typically persists
 the cookie state across every subsequent page in the same
 context — but **not across contexts**: with concurrent capture
-(`extract/SKILL.md` § Concurrency) each worker context re-runs
-the dismissal on its first page, or clones the probe context's
-`storageState`. Cost: one extra navigation per context.
+(`extract/SKILL.md` § Concurrency) `crawl.mjs` clones the probe
+context's `storageState` into each worker (consent state rides along;
+the per-page dismissal then finds nothing to click) and every live
+instrument loads `stardust/current/_storage-state.json` by default
+when its cookie domains match the host (`live-session.mjs`
+`resolveStorageState`; `--storage-state <file>` / `--fresh-state`).
+Saved by the crawl when a challenge cleared or on `--save-state`; a
+PerimeterX/HUMAN clearance is fingerprint-bound and does not replay.
 
 Consent mode is one instrument parameter across lift, capture and
 gate — `accept` by default; `deny` per project, recorded in

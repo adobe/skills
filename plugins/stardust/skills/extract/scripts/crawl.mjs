@@ -68,8 +68,21 @@
  *   node crawl.mjs --url https://example.com [--pages /a,/b] [--cap 25 | --all | --single] \
  *     [--refresh slug,slug | --force] [--out stardust/current] [--wait medium] \
  *     [--no-consent-dismiss] [--concurrency 4] [--dynamics] [--headed[=window]] \
- *     [--mobile entry|all|none] [--dpr 1] [--depth 1] [--cookie name=value[;Path=/]]...
+ *     [--mobile entry|all|none] [--dpr 1] [--depth 1] [--cookie name=value[;Path=/]]... \
+ *     [--storage-state <file> | --fresh-state] [--save-state]
  *   node crawl.mjs --help
+ *
+ * Admitted session (mirror of diff/scripts/live-session.mjs resolveStorageState —
+ *   this file ships alone): the probe context's storageState (clearance,
+ *   consent, A/B cookies) is CLONED into every worker context, so a probe that
+ *   cleared a challenge no longer hands the workers a fresh, re-challenged
+ *   context. <out>/_storage-state.json (= stardust/current/_storage-state.json,
+ *   never tracked) is loaded into the probe when one of its cookie domains
+ *   matches the host (--storage-state <file> names another, --fresh-state opts
+ *   out) and written when a challenge was cleared or --save-state is given.
+ *   Limits: fingerprint-bound clearances (PerimeterX/HUMAN) and Cloudflare's
+ *   per-session escalation do not replay — a re-challenged state still fails
+ *   loud. _provenance.storageState / discovery.storageState record the reuse.
  *
  * Discovery (ia-extraction.md § Discovery order — discoverInventory below):
  *   --pages > robots.txt `Sitemap:` directives (all of them) > /sitemap.xml,
@@ -148,6 +161,9 @@ function parseArgs(argv) {
     else if (k === '--dpr') { const n = +argv[(i += 1)]; if (!(n > 0 && n <= 4)) throw new Error('--dpr must be a number in (0, 4]'); a.dpr = n; }
     else if (k === '--depth') { const n = +argv[(i += 1)]; if (!(n >= 1 && n <= 3)) throw new Error('--depth must be 1, 2 or 3'); a.depth = n; }
     else if (k === '--cookie') a.cookies.push(parseCookieFlag(argv[(i += 1)]));
+    else if (k === '--storage-state') a.storageState = argv[(i += 1)];
+    else if (k === '--fresh-state') a.freshState = true;
+    else if (k === '--save-state') a.saveState = true;
     else if (k === '--pages') a.pages = (argv[(i += 1)] || '').split(',').map((s) => s.trim()).filter(Boolean);
     else if (k === '--out') a.out = argv[(i += 1)];
     else if (k === '--max' || k === '--cap') { const n = +argv[(i += 1)]; a.max = Number.isFinite(n) && n >= 0 ? n : 5; } // 0 = no cap; default 5 (the extract contract's small sample)
@@ -266,6 +282,27 @@ async function newContext(browser, stealth, extra = {}, cookies = []) {
     });
   }
   return ctx;
+}
+// ---- admitted-session reuse (mirror of live-session.mjs resolveStorageState; crawl ships alone) ----
+const STORAGE_STATE_FILE = '_storage-state.json'; // reserved under <out> — never tracked (artifact-map.md)
+function storageStatePath(args) { return path.join(args.out, STORAGE_STATE_FILE); }
+// explicit file → the reserved default when a cookie domain matches the host → null; --fresh-state → null
+function resolveStorageStateFile(args) {
+  if (args.freshState) return null;
+  if (args.storageState) { if (!existsSync(args.storageState)) throw new Error(`--storage-state ${args.storageState}: file not found`); return args.storageState; }
+  const file = storageStatePath(args);
+  if (!existsSync(file)) return null;
+  try {
+    const host = new URL(args.url).hostname.toLowerCase();
+    const cookies = JSON.parse(readFileSync(file, 'utf8')).cookies || [];
+    return cookies.some((c) => { const d = String(c.domain || '').toLowerCase().replace(/^\./, ''); return d && (host === d || host.endsWith(`.${d}`)); }) ? file : null;
+  } catch { return null; }
+}
+async function saveStorageStateFile(context, file) {
+  const state = await context.storageState();
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, JSON.stringify(state, null, 2), { mode: 0o600 });
+  return (state.cookies || []).length;
 }
 // Network-level fingerprint reject: navigation THROWS before any JS runs.
 function isFingerprintBlock(err) {
@@ -1192,7 +1229,7 @@ async function capturePage(context, url, slug, args, isEntry = false) {
     width: CRAWL_CONTEXT.viewport.width,
     dpr: await page.evaluate(() => window.devicePixelRatio || 1).catch(() => 1),
     technique: TIERS[(args.tier || 1) - 1],
-    storageState: false, // every worker context is fresh — no admitted session is reused (SKILL.md Phase 2 step 3)
+    storageState: !!args.sessionReused, // the worker ran on the probe's admitted session (clone / loaded file) — SKILL.md Setup step 3
     variants: await collectVariants(page, context),
     compatMode, // 'CSS1Compat' | 'BackCompat' — a quirks-mode source needs its doctype mirrored (recreation-procedure.md § CSS lifting)
   };
@@ -1213,6 +1250,8 @@ async function main() {
   // per-run context options shared by probe and workers (--dpr; the admitted
   // session, once the probe has one, is added below)
   const ctxExtra = { deviceScaleFactor: args.dpr };
+  const loadedState = resolveStorageStateFile(args);
+  if (loadedState) { ctxExtra.storageState = loadedState; console.error(`[crawl] storage state: loading ${loadedState} into the probe (--fresh-state to opt out)`); }
   // --cookie → Playwright cookie records on the (possibly adopted) origin's host
   const cookiesFor = (a) => a.cookies.map((c) => ({ name: c.name, value: c.value, domain: new URL(a.origin).hostname, path: c.path }));
   const outPages = path.join(args.out, 'pages');
@@ -1266,6 +1305,20 @@ async function main() {
     console.error(`[crawl] bot-management block (${blocked.kind}) at tier ${tier} (${TIERS[tier - 1]}) — escalating to tier ${tier + 1} (${TIERS[tier]})`);
     tier += 1;
   }
+  // clone the admitted probe session into every worker context (clearance,
+  // consent and A/B cookies ride along); persist it when a challenge was
+  // cleared or asked for. A worker re-challenged despite the clone still
+  // escalates — the clone never softens the fail-loud contract.
+  ctxExtra.storageState = await context.storageState().catch(() => ctxExtra.storageState);
+  let savedState = null;
+  if (botBlock || args.saveState) {
+    try {
+      const n = await saveStorageStateFile(context, storageStatePath(args));
+      savedState = storageStatePath(args);
+      console.error(`[crawl] storage state: saved ${savedState} (${n} cookies; downstream live instruments reuse it by default). Fingerprint-bound clearances (PerimeterX/HUMAN) will not replay; Cloudflare's managed clearance does until it escalates.`);
+    } catch (e) { console.error(`[crawl] WARN could not save storage state: ${e.message}`); }
+  }
+  args.sessionReused = true;
   let technique = TIERS[tier - 1];
   let stealth = tier >= 2;
   args.tier = tier;
@@ -1331,7 +1384,7 @@ async function main() {
   console.error(`[crawl] technique=${technique} discovered=${urls.length} queued=${queue.length}`);
 
   const startedAt = new Date().toISOString();
-  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...discovery, ...(botBlock ? { botBlock, escalations } : {}), ...(originRedirect ? { originRedirect } : {}), ...(entryRedirect ? { entryRedirect } : {}), ...(skipped.length ? { skippedExtracted: skipped } : {}) }, consent: { method: args.consent ? 'none-detected' : 'skipped' }, favicon: favicon || null, crawl: { startedAt, finishedAt: null, successes: 0, failures: [] } };
+  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, storageState: !!args.sessionReused, ...(loadedState || savedState ? { storageStateFile: savedState || loadedState } : {}), ...discovery, ...(botBlock ? { botBlock, escalations } : {}), ...(originRedirect ? { originRedirect } : {}), ...(entryRedirect ? { entryRedirect } : {}), ...(skipped.length ? { skippedExtracted: skipped } : {}) }, consent: { method: args.consent ? 'none-detected' : 'skipped' }, favicon: favicon || null, crawl: { startedAt, finishedAt: null, successes: 0, failures: [] } };
   let ok = 0;
   await context.close();
 
@@ -1449,7 +1502,7 @@ async function main() {
   log.crawl.finishedAt = new Date().toISOString();
   const merged = mergeCrawlLog(prev, log, {
     at: startedAt,
-    args: { url: args.url, pages: args.pages || null, cap: args.capLabel, wait: args.wait, concurrency: args.concurrency, dynamics: args.dynamics, refresh: args.refresh, force: args.force, headed: args.headed || null, depth: args.depth, cookie: args.cookies.map((c) => c.name), mobile: args.mobile, dpr: args.dpr },
+    args: { url: args.url, pages: args.pages || null, cap: args.capLabel, wait: args.wait, concurrency: args.concurrency, dynamics: args.dynamics, refresh: args.refresh, force: args.force, headed: args.headed || null, depth: args.depth, cookie: args.cookies.map((c) => c.name), mobile: args.mobile, dpr: args.dpr, storageState: loadedState ? 'loaded' : args.freshState ? 'fresh' : 'clone', saveState: !!savedState },
     technique,
     discovered: urls.length,
     skipped: skipped.length,
@@ -1471,7 +1524,7 @@ async function main() {
  *   * runs[] gets one entry per invocation (args, counts, failed slugs).
  * `okSlugs` = the slugs captured in this run.
  */
-export const RUN_LEVEL_DISCOVERY = ['fetchTechnique', 'botBlock', 'escalations', 'concurrency', 'storageState', 'liveBudget', 'skippedExtracted', 'originRedirect', 'entryRedirect'];
+export const RUN_LEVEL_DISCOVERY = ['fetchTechnique', 'botBlock', 'escalations', 'concurrency', 'storageState', 'storageStateFile', 'liveBudget', 'skippedExtracted', 'originRedirect', 'entryRedirect'];
 export function mergeCrawlLog(prev, log, run, okSlugs) {
   const failedNow = new Set(log.crawl.failures.map((x) => x.slug));
   const okNow = new Set(okSlugs);

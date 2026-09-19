@@ -165,10 +165,12 @@ Additional checks for this sub-command:
    worker (§ Concurrency; default 4). Run the **consent dismissal
    pre-flight** per `reference/playwright-recipe.md` § Pre-flight:
    consent dismissal *unless* `--no-consent-dismiss`.
-   Cookies persist within a context, **not across contexts** —
-   re-establish consent per context (re-run the dismissal on
-   the worker's first page, or clone the probe context's
-   `storageState`). Record the resolved method in
+   `crawl.mjs` clones the probe context's `storageState` into every
+   worker (clearance, consent and A/B cookies ride along), loads
+   `stardust/current/_storage-state.json` when its cookies match the
+   host (`--storage-state <file>` / `--fresh-state`) and saves it on a
+   cleared challenge or `--save-state` — never tracked; fingerprint-bound
+   clearances (PerimeterX/HUMAN) do not replay. Record the resolved method in
    `_crawl-log.json#consent.method` — one of `dismissed:<sel>`,
    `text:<label>`, `none-detected`, `failed` (`skipped` under
    `--no-consent-dismiss`); never `auto`. Replica's gate reads
@@ -592,11 +594,9 @@ After all Phase 2-5 writes succeed:
 
 ## Cross-site brand sources
 
-Two flags widen extraction beyond the primary origin — **read
-`reference/cross-site-sources.md` in full whenever either flag is
-present**. Both are opt-in; without them this section is inert.
-
-Core contract (merge rules and capture shapes in the reference):
+Two opt-in flags widen extraction beyond the primary origin — **read
+`reference/cross-site-sources.md` in full whenever either is present**
+(merge rules and capture shapes live there):
 
 - `--brand-source <url>` (repeatable) — a **same-brand** sibling
   gets a shallow capture (home + ≤2 nav-linked pages, full recipe +
@@ -617,8 +617,8 @@ Core contract (merge rules and capture shapes in the reference):
 
 ## Sibling-site discovery
 
-After the primary crawl (Phases 2–2.5), harvest candidate same-brand
-origins from evidence **already captured** — no extra navigation:
+After Phases 2–2.5, harvest candidate same-brand origins from evidence
+**already captured** — no extra navigation:
 
 - footer / nav links out to other properties
 - "our brands" / "our companies" pages
