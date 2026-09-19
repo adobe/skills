@@ -205,12 +205,12 @@ in summary:
 5. Apply the junk-page filter (`reference/ia-extraction.md` §
    Junk-page filter) unless `--no-junk-filter`; surface the filtered
    list as overridable.
-6. Apply the cap (default 25, `--cap N`, or `--all`) and **proceed
+6. Apply the cap (default 5, `--cap N`, or `--all`) and **proceed
    silently**: print what was kept and cut, do **not** gate on
    confirmation. Scope is set at command time:
 
    ```
-   $stardust extract https://example.com              # default 25 pages
+   $stardust extract https://example.com              # default 5 pages
    $stardust extract https://example.com --cap 5      # small brand sample
    $stardust extract https://example.com --all        # lift the cap
    $stardust extract https://example.com --pages /,/about,/pricing
