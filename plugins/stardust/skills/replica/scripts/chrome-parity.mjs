@@ -32,7 +32,8 @@
  *     --consent-mode <m>  accept | deny (default accept; deny clicks reject-all, never accept — live-session)
  *     --headed[=window]   bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
  *     --locale <tag>     pin Accept-Language + locale (e.g. en-GB)
- *     --json             machine-readable output
+ *     --json [file]      machine-readable output — written to <file> when the next
+ *                        argv token exists and does not start with `--`, else stdout
  *     --live-cache <f>   reuse the live side's measurement from <f> (JSON) when it
  *                        exists for the same URL, width and region selectors; probe
  *                        and write it otherwise. Same contract as gate.sh's live.png:
@@ -83,7 +84,7 @@ Usage: node chrome-parity.mjs <liveURL> <buildURL> [options]
   --consent-mode <m>    accept | deny (default accept; deny clicks reject-all, never accept)
   --headed[=window]   bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
   --locale <tag>     pin Accept-Language + locale
-  --json             machine-readable output
+  --json [file]      machine-readable output (to <file> if given, else stdout)
   --live-cache <f>   reuse/write the live side's measurement (JSON) — one live hit per breakpoint
   --help             this text
 
@@ -93,7 +94,7 @@ function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { regions: [], noDefaults: false, width: 1440, tolerance: 1, consent: null, dismiss: [], consentMode: 'accept', headed: false, locale: null, json: false, liveCache: null };
+  const opts = { regions: [], noDefaults: false, width: 1440, tolerance: 1, consent: null, dismiss: [], consentMode: 'accept', headed: false, locale: null, json: false, jsonFile: null, liveCache: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--region') {
@@ -110,7 +111,7 @@ function parseArgs(argv) {
     else if (a === '--consent-mode') { opts.consentMode = rest[i += 1]; if (!['accept', 'deny'].includes(opts.consentMode)) { console.error(`--consent-mode must be accept or deny\n\n${HELP}`); process.exit(1); } }
     else if (a === '--headed' || a.startsWith('--headed=')) { opts.headed = parseHeadedFlag(a); }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
-    else if (a === '--json') { opts.json = true; }
+    else if (a === '--json') { opts.json = true; if (rest[i + 1] && !rest[i + 1].startsWith('--')) opts.jsonFile = rest[i += 1]; }
     else if (a === '--live-cache') { opts.liveCache = rest[i += 1]; }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else pos.push(a);
@@ -151,12 +152,16 @@ function probeRegion(sel) {
     const box = el.closest('a, button') || el;
     atoms.push({ key: own.toLowerCase(), text: own, tag: el.tagName.toLowerCase(), rect: rect(el), box: rect(box), boxTag: box.tagName.toLowerCase(), style: styles(el), boxStyle: box === el ? null : { backgroundColor: getComputedStyle(box).backgroundColor, borderRadius: getComputedStyle(box).borderRadius, paddingTop: getComputedStyle(box).paddingTop, paddingLeft: getComputedStyle(box).paddingLeft } });
   }
+  // <img> icons pair on intrinsic size (+ the bounding rect compared below), never
+  // on the URL basename: the build's harvested copy of the same asset carries a
+  // different (hashed) filename and must not register as an ICON delta.
   const icons = [...root.querySelectorAll('svg, img')].filter(visible).map((el) => ({
     tag: el.tagName.toLowerCase(),
     rect: rect(el),
     sig: el.tagName.toLowerCase() === 'svg'
       ? `viewBox=${el.getAttribute('viewBox') || '-'} paths=${el.querySelectorAll('path,circle,rect,polygon,line').length}`
-      : (el.currentSrc || el.getAttribute('src') || '').split('/').pop().split('?')[0].slice(0, 40),
+      : `img ${el.naturalWidth || 0}×${el.naturalHeight || 0}`,
+    src: el.tagName.toLowerCase() === 'img' ? (el.currentSrc || el.getAttribute('src') || '').split('/').pop().split('?')[0].slice(0, 40) : null,
     near: norm((el.closest('a, button, li, [aria-label]') || el).getAttribute?.('aria-label') || (el.closest('a, button, li') || {}).textContent || '').slice(0, 30),
   }));
   const cs = getComputedStyle(root);
@@ -228,7 +233,7 @@ function compareRegion(name, L, B, tol) {
   for (let i = 0; i < n; i += 1) {
     const a = L.icons[i]; const b = B.icons[i];
     const d = diffRect(a.rect, b.rect, tol).filter((s) => /Δ[wh]/.test(s));
-    if (a.sig !== b.sig) d.push(`signature "${a.sig}" → "${b.sig}"`);
+    if (a.sig !== b.sig) d.push(`signature "${a.sig}" → "${b.sig}"${a.src || b.src ? ` (${a.src || '-'} → ${b.src || '-'})` : ''}`);
     if (d.length) r.findings.push({ kind: 'ICON', text: a.near, msg: `icon #${i}${a.near ? ` near "${a.near}"` : ''}: ${d.join('; ')}` });
   }
   r.inventory = { live: { atoms: L.atoms.length, icons: L.icons.length }, build: { atoms: B.atoms.length, icons: B.icons.length } };
@@ -289,7 +294,9 @@ async function main() {
     const regions = opts.regions.map((reg) => compareRegion(reg.name, L[reg.name], B[reg.name], opts.tolerance));
     total = regions.reduce((n, r) => n + r.findings.length, 0);
     if (opts.json) {
-      console.log(JSON.stringify({ live, build, width: opts.width, tolerance: opts.tolerance, liveCache: cached ? { file: opts.liveCache, probedAt: cached.probedAt } : null, regions, raw: { live: L, build: B } }, null, 2));
+      const report = JSON.stringify({ live, build, width: opts.width, tolerance: opts.tolerance, liveCache: cached ? { file: opts.liveCache, probedAt: cached.probedAt } : null, regions, raw: { live: L, build: B } }, null, 2);
+      if (opts.jsonFile) { mkdirSync(dirname(opts.jsonFile), { recursive: true }); writeFileSync(opts.jsonFile, report); console.log(`chrome-parity: ${total} delta(s) — report written to ${opts.jsonFile}`); }
+      else console.log(report);
     } else {
       console.log(`chrome-parity @ ${opts.width}px, tolerance ${opts.tolerance}px\n  live:  ${live}${liveNote}\n  build: ${build}`);
       for (const r of regions) {

@@ -147,6 +147,5 @@ so the gates run uniformly:
   2-min foreground budget); log per-page OK/FAIL and re-drive only the FAILs.
   Transient `PUT=000` → retry; `PUT=201 PRE=4xx/400` → a path-safety case (Gate 3);
   `200 + about:error` → an image case (Gate 2).
-- **zsh gotcha:** `node`/`curl` inside a multi-line `while`/`for` can lose PATH
-  ("command not found") — write the loop to a `bash` script file with absolute
-  binaries and run it, rather than inlining.
+- **Shell and runner quirks** (zsh PATH loss in loops, bash 3.2, the 2-minute
+  foreground cap): `../../stardust/reference/harness-quirks.md` § Shell · § Runner.

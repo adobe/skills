@@ -37,8 +37,8 @@ export async function run(ctx) {
   const findings = [];
   const { chromium } = await loadPlaywright();
   const browser = await chromium.launch();
-  const cliExempt = parseExemptList(arg('ew-exempt', ''));
-  const blocksDir = arg('blocks-dir', null);
+  const cliExempt = parseExemptList(opts.ewExempt || arg('ew-exempt', ''));
+  const blocksDir = opts.blocksDir || arg('blocks-dir', null);
 
   await pMap(inventory.pages, async (p) => {
     let bctx = null;

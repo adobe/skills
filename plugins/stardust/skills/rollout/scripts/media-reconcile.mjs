@@ -8,7 +8,16 @@
  *   optimize  — same-origin (Content Bus) asset; safe to run createOptimizedPicture
  *   keep      — external, resolves 200; reference as-is but skip block optimization
  *   rewrite   — repairable break (missing ?-delimiter, wrong host) → suggested URL
- *   omit      — unresolvable; drop the <img> (render gracefully), never ship about:error
+ *   rehost    — 401/403: a bot wall / referer gate, NOT a missing asset — fetch
+ *               in-page with the recorded technique and rehost (deploy
+ *               encode-contract.md § 403-bot-wall); never auto-omitted
+ *   omit      — a definitive 404/410; drop the <img> (render gracefully), never ship about:error
+ * Non-image media (<video src>, <source src>, poster, <iframe src>, .m3u8/.mpd
+ * manifests) is probed with a ranged GET + browser UA (some CDNs refuse HEAD yet
+ * answer 200/206 to a ranged GET):
+ *   unplayable       — media URL that does not answer a ranged GET (P1, blocks done)
+ *   needs-credential — 401/403 on a media URL (a row in stardust/dynamic-features.md,
+ *                      never an auto-fix and never a log TODO)
  *
  * Reference: skills/migrate/reference/media-reconciliation.md and
  * skills/rollout/reference/delivery-gates.md § Gate 2.
@@ -36,6 +45,21 @@ function collect(h) {
   for (const m of h.matchAll(/\bsrcset="([^"]+)"/gi)) m[1].split(',').forEach((part) => { const u = part.trim().split(/\s+/)[0]; if (u) urls.add(u); });
   for (const m of h.matchAll(/url\((['"]?)(https?:\/\/[^)'"]+)\1\)/gi)) urls.add(m[2]);
   return [...urls].filter((u) => u && !u.startsWith('data:'));
+}
+
+/* non-image media: <video src>, <source src>, poster, <iframe src>, .m3u8/.mpd manifests */
+function collectMedia(h) {
+  const urls = new Set();
+  for (const m of h.matchAll(/<(?:video|source|iframe)\b[^>]*\ssrc="([^"]+)"/gi)) urls.add(m[1]);
+  for (const m of h.matchAll(/<video\b[^>]*\sposter="([^"]+)"/gi)) urls.add(m[1]);
+  for (const m of h.matchAll(/https?:\/\/[^\s"'<>)]+\.(?:m3u8|mpd)(?:\?[^\s"'<>)]*)?/gi)) urls.add(m[0]);
+  const images = new Set(collect(h));
+  return [...urls].filter((u) => /^https?:/.test(u) && !images.has(u));
+}
+const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+async function probeMedia(u) {
+  const ac = new AbortController(); const t = setTimeout(() => ac.abort(), 15000);
+  try { const r = await fetch(u, { signal: ac.signal, headers: { range: 'bytes=0-1023', 'user-agent': BROWSER_UA } }); return r.status; } catch { return 0; } finally { clearTimeout(t); }
 }
 
 function repairUrl(u) {
@@ -91,13 +115,18 @@ for (const u of collect(html)) {
         const fstatus = await resolve(fixed);
         if (fstatus === 200) { decision = 'rewrite'; suggested = fixed; status = fstatus; }
       }
-      // only a definitive 4xx (gone/forbidden/not-found) is safe to auto-omit;
-      // a 0 (network/timeout) or 5xx is transient — flag 'unresolved' for a human,
-      // never delete a possibly-good image on a blip.
-      if (!decision) decision = (status >= 400 && status < 500) ? 'omit' : 'unresolved';
+      // only a definitive 404/410 is safe to auto-omit; 401/403 is a bot wall or
+      // referer gate (the asset exists) → 'rehost'; a 0 (network/timeout) or 5xx is
+      // transient — flag 'unresolved' for a human, never delete a possibly-good image on a blip.
+      if (!decision) decision = (status === 401 || status === 403) ? 'rehost' : (status >= 400 && status < 500) ? 'omit' : 'unresolved';
     }
   }
-  results.push({ url: u, host, status, decision, suggested });
+  results.push({ url: u, host, status, decision, suggested, kind: 'image' });
+}
+for (const u of collectMedia(html)) {
+  const status = await probeMedia(u); // 200/206 = playable; 401/403 = authenticated rendition → needs-credential inventory row; else P1 unplayable
+  const decision = (status === 200 || status === 206) ? 'keep' : (status === 401 || status === 403) ? 'needs-credential' : 'unplayable';
+  results.push({ url: u, host: originOf(u), status, decision, suggested: null, kind: 'media' });
 }
 
 /* optionally apply rewrites/omits */
@@ -112,15 +141,16 @@ if (APPLY) {
 }
 
 const counts = results.reduce((a, r) => { a[r.decision] = (a[r.decision] || 0) + 1; return a; }, {});
-// gate fails on omit (broken) AND unresolved (needs a human) — neither is shippable as-is.
-const failing = results.filter((r) => r.decision === 'omit' || r.decision === 'unresolved');
+// gate fails on omit (broken), rehost (in-page fetch pending), unresolved (needs a human)
+// and unplayable (P1) — none is shippable as-is. needs-credential is an inventory row, not a gate fail.
+const failing = results.filter((r) => ['omit', 'rehost', 'unresolved', 'unplayable'].includes(r.decision));
 if (JSON_OUT) {
   console.log(JSON.stringify({ file: FILE, deployHost: DEPLOY_HOST, applied: APPLY, counts, results }, null, 2));
 } else {
   console.log(`media-reconcile ${FILE}${APPLY ? ' (APPLIED)' : ''}`);
   console.log('='.repeat(60));
   for (const r of results) {
-    const tag = { optimize: '✓ optimize', keep: '✓ keep    ', rewrite: '→ rewrite ', omit: '✗ omit    ', unresolved: '? manual  ' }[r.decision];
+    const tag = { optimize: '✓ optimize', keep: '✓ keep    ', rewrite: '→ rewrite ', rehost: '↓ rehost  ', omit: '✗ omit    ', unresolved: '? manual  ', unplayable: '✗ unplay  ', 'needs-credential': '! cred    ' }[r.decision];
     console.log(`  ${tag} ${r.status ? `[${r.status}] ` : ''}${r.url.slice(0, 70)}${r.suggested ? `\n              → ${r.suggested.slice(0, 70)}` : ''}`);
   }
   console.log(`\n${Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(' · ')}`);

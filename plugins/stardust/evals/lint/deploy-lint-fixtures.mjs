@@ -3,7 +3,7 @@
 //
 // Why: davids-model-lint's pipeline-shape rules (TABLE, branch-host and
 // protocol-relative D4, STYLE-SPACE, JSON, SOLE-EMPH, META ALONE/CHROME, HBR,
-// TEXT-LEAK, TEXT, CHROME, CONTENT, LOCALIZE) and block-lint (BL-CSS, BL-MEDIA,
+// TEXT-LEAK, TEXT, CHROME, CONTENT, LOCALIZE, EMPTY-HEADING, ADJACENT-BLOCKS) and block-lint (BL-CSS, BL-MEDIA,
 // BL-GUARD, IMG-HARDCODED with the @fixed-asset exemption) run BEFORE the PUT
 // and before the harness respectively; none of what they catch shows locally.
 // A rule that fires on a clean page, or stays silent on the shape it names, is
@@ -47,6 +47,7 @@ const DM_CASES = [
   { name: 'a protocol-relative source-host link is ONE 🔴, never 🔴 + LOCALIZE 🟡', args: ['fail-urls.html', ...HOST], exit: 2, count: 1, expect: [{ sev: '🔴', rule: 'D4', msg: 'protocol-relative' }], absent: [{ rule: 'D4', msg: 'LOCALIZE' }] },
   { name: 'style: a / a, b pass; a b is one STYLE-SPACE advisory (#120)', args: ['fail-style.html'], exit: 0, count: 1, expect: [{ sev: '🟡', rule: 'D15', msg: 'STYLE-SPACE' }] },
   { name: 'chrome document: a metadata block is one META CHROME advisory', args: ['nav.html'], exit: 0, count: 1, expect: [{ sev: '🟡', rule: 'META', msg: 'chrome/fragment' }] },
+  { name: 'importer shapes: an empty <h2> is one EMPTY-HEADING 🔴, three adjacent cards tables are one ADJACENT-BLOCKS advisory', args: ['fail-adjacent.html'], exit: 2, count: 2, expect: [{ sev: '🔴', rule: 'EMPTY-HEADING', msg: '1 empty heading' }, { sev: '🟡', rule: 'ADJACENT-BLOCKS', msg: '3 consecutive "cards"' }] },
   { name: 'clean page (D6 <p><strong><a>, comma styles, alts, root-relative + external links) is silent', args: ['pass.html', ...HOST], exit: 0, count: 0 },
   { name: 'a prose fragment linted on its own is silent (CONTENT fires on the linking page)', args: ['fragments/promo.html'], exit: 0, count: 0 },
   { name: 'usage: no target is a usage error', args: [], exit: 1 },

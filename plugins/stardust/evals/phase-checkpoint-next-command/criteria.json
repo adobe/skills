@@ -1,5 +1,5 @@
 {
-  "context": "Phase checkpoint with the one next command, on the direct phase. Task and setup in task.md; each item is judged pass/fail and weighted by max_score. Items marked (W1 target) pin a rule not yet in the 0.23.0 skill text — they are expected to fail on the baseline and pass once the checkpoint rule lands. Only run 1 is executed; run-2 behaviour is judged through what run 1's checkpoint states about a re-run.",
+  "context": "Phase checkpoint with the one next command, on the direct phase. Task and setup in task.md; each item is judged pass/fail and weighted by max_score. The checkpoint rule is run-status.md § Phase close (0.24.0). Only run 1 is executed; run-2 behaviour is judged through what run 1's checkpoint states about a re-run.",
   "type": "weighted_checklist",
   "checklist": [
     {
@@ -20,7 +20,7 @@
     {
       "name": "checkpoint_verified",
       "max_score": 15,
-      "description": "(W1 target) The closing report has a distinct 'verified' part, separate from 'written': it states what was checked after writing and how — e.g. files listed or re-read, state.json parsed, the directed-page count re-read from state.json rather than remembered — and the transcript shows the check actually ran (a tool call after the writes). A report that only lists what it wrote fails."
+      "description": "The closing report has a distinct 'verified' part, separate from 'written': it states what was checked after writing and how — e.g. files listed or re-read, state.json parsed, the directed-page count re-read from state.json rather than remembered — and the transcript shows the check actually ran (a tool call after the writes). A report that only lists what it wrote fails."
     },
     {
       "name": "checkpoint_next_command_verbatim",
@@ -30,7 +30,7 @@
     {
       "name": "checkpoint_rerun_skip",
       "max_score": 15,
-      "description": "(W1 target) The closing report states what a second invocation of the same prompt would skip because it is already done — no re-reasoning of the phrase, no rewrite of PRODUCT.md / DESIGN.md / DESIGN.json / direction.md, no page status change since the pages are already directed — and what it would do instead (ask before replacing the existing direction, per the skill's --re-direct contract). Either half missing fails."
+      "description": "The closing report states what a second invocation of the same prompt would skip because it is already done — no re-reasoning of the phrase, no rewrite of PRODUCT.md / DESIGN.md / DESIGN.json / direction.md, no page status change since the pages are already directed — and what it would do instead (ask before replacing the existing direction, per the skill's --re-direct contract). Either half missing fails."
     },
     {
       "name": "journal_entry_next",
@@ -40,7 +40,7 @@
     {
       "name": "status_end_line_next",
       "max_score": 10,
-      "description": "(W1 target) stardust/status.jsonl was appended (extract lines unchanged) with start/end lines for the direct phases, and the final end line carries a next field whose value is the same command as the report's next command. Start/end lines without the next field fail this item."
+      "description": "stardust/status.jsonl was appended (extract lines unchanged) with start/end lines for the direct phases, and the final end line carries a next field whose value is the same command as the report's next command. Start/end lines without the next field fail this item."
     },
     {
       "name": "state_pages_directed",

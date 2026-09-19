@@ -55,6 +55,12 @@
  *       (pseudo suffixes ignored: `.x:hover {`)
  *   TABLE raw <table> under <main> (the pipeline names a block after its
  *       first cell → a `table` block whose CSS 404s; author the `table` block)
+ *   EMPTY-HEADING <h1>–<h6> with no text content (the CMS emits one before
+ *       the real heading; drop it at import — migrate importer-recipe rule 6)
+ *                                            ADJACENT-BLOCKS N ≥ 2 consecutive
+ *                                                same-name block tables in one section
+ *                                                (one block with N rows / a repeat
+ *                                                unit — migrate importer-recipe rule 10)
  *                                            D6  SOLE-EMPH — a lone link wrapped by
  *                                                emphasis in the pipeline-hoisted order
  *                                                (<a><strong>, <b>/<i>, or in a <li>)
@@ -159,7 +165,7 @@ function lintPage(file, html, findings) {
   const main = mainMatch ? mainMatch[1] : html; // nav/footer docs may be bare fragments
   const sections = childDivs(main);
 
-  for (const section of sections) {
+  for (const [si, section] of sections.entries()) {
     const kids = childDivs(section.inner);
     const defaultContentText = stripTags(childlessHtml(section.inner, kids));
 
@@ -170,6 +176,20 @@ function lintPage(file, html, findings) {
       const name = classes[0].toLowerCase();
       lintBlock(file, section, block, name, flag);
       for (const variant of classes.slice(1)) noteVariant(file, name, variant.toLowerCase());
+    }
+
+    // ADJACENT-BLOCKS 🟡 — N ≥ 2 consecutive same-name block tables in one
+    // section: an importer emitted one table per source item where one block
+    // with N rows (a repeat unit) was meant (migrate importer-recipe.md rule 10).
+    // Unclassed child divs break a run; key-value blocks are never a repeat unit.
+    const names = kids.map((k) => (classOf(k.openTag).split(/\s+/)[0] || '').toLowerCase());
+    let run = 1;
+    for (let i = 1; i <= names.length; i += 1) {
+      if (i < names.length && names[i] && names[i] === names[i - 1]) { run += 1; continue; }
+      if (run >= 2 && !KEY_VALUE_BLOCKS.has(names[i - 1])) {
+        flag('🟡', 'ADJACENT-BLOCKS', `section ${si + 1}: ${run} consecutive "${names[i - 1]}" block tables in one section — one block with ${run} rows (a repeat unit), not ${run} tables (importer-recipe rule 10)`);
+      }
+      run = 1;
     }
 
     lintSectionShape(file, section, kids, defaultContentText, flag);
@@ -327,6 +347,15 @@ function lintPipelineShapes(file, main, sections, flag) {
   // META CHROME 🟡 — chrome/fragment documents carry no metadata block.
   if (CHROME_PATH.test(file) && sections.some((s) => childDivs(s.inner).some((k) => classOf(k.openTag).split(/\s+/)[0].toLowerCase() === 'metadata'))) {
     flag('🟡', 'META', 'metadata block in a chrome/fragment document — /nav, /footer and /fragments/* carry none (an empty band shifts the slot contract); noindex via the metadata sheet or robots');
+  }
+  // EMPTY-HEADING 🔴 — a heading with no text: the CMS emits one before the
+  // real heading and an importer that copies it ships a dead outline entry
+  // (an empty band); drop it at import (migrate importer-recipe.md rule 6).
+  // A heading holding only a picture/icon is not empty.
+  const emptyHeads = [...main.matchAll(/<(h[1-6])\b[^>]*>([\s\S]*?)<\/\1>/gi)]
+    .filter((m) => !/<(img|picture|span[^>]*class="[^"]*\bicon\b)/i.test(m[2]) && !stripTags(m[2]).replace(/&nbsp;|\u00a0/g, '').trim());
+  if (emptyHeads.length) {
+    flag('🔴', 'EMPTY-HEADING', `${emptyHeads.length} empty heading(s) <h1>–<h6> with no text content — the CMS emits one before the real heading; drop it at import (importer-recipe rule 6)`);
   }
   // HBR 🟡 — <br> inside a heading is stripped at delivery.
   const hbr = [...main.matchAll(/<h[1-6]\b[^>]*>(?:(?!<\/h[1-6]>)[\s\S])*?<br\b/gi)];

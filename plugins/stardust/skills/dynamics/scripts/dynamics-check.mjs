@@ -11,7 +11,7 @@
  * + `.json`. Also exported as `replay()` for the qa `dynamics` check.
  *
  *   node dynamics-check.mjs --origin https://main--site--org.aem.live [--parity stardust/dynamics/parity.json]
- *        [--out stardust/qa] [--auth-header "token …" | --token-env SITE_TOKEN] [--headed] [--gate]
+ *        [--out stardust/qa] [--auth-header "token …" | --token-env SITE_TOKEN] [--headed[=window]] [--gate]
  *
  * Exit: 0 all replays pass · 1 a replay failed · 2 usage · 3 `--gate` blocked — the close-out condition
  * (reference/parity-report.md rule 8 lists the blocking rows; `gate()` below is the implementation and
@@ -41,8 +41,24 @@
  * probe-induced failure is distinguishable from a vendor restriction.
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
-import { join } from 'node:path';
+import { join, dirname, resolve as resolvePath } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { existsSync } from 'node:fs';
 import { arg, flag, readJSON, writeJSON, writeText, provenance, loadPlaywright, resolveAuthHeader, attachOriginAuth, sameSite } from './lib.mjs';
+
+const SCRIPT_NAME = 'dynamics-check';
+// live-session.mjs (diff skill) owns the bot-management launch ladder — no
+// dynamics script opens a window on its own (evals/lint/launch-ladder.mjs).
+// Two layouts exist: the plugin tree (skills/dynamics/scripts ↔ skills/diff/scripts)
+// and a project copy (scripts/dynamics ↔ scripts/diff) — resolve either.
+const HERE = dirname(fileURLToPath(import.meta.url));
+const LIVE_SESSION = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs']
+  .map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
+if (!LIVE_SESSION) {
+  console.error('%s: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s live-session.mjs alongside the dynamics scripts.', SCRIPT_NAME);
+  process.exit(2);
+}
+const { launchTier, parseHeadedFlag, resolveStartTier } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const settle = (ms) => new Promise((r) => { setTimeout(r, ms); });
 
@@ -204,9 +220,10 @@ const RUNNERS = {
 };
 
 /** replay every check of every feature; returns results with per-check third-party statuses */
-export async function replay({ origin, parity, authHeader = null, headed = false }) {
+export async function replay({ origin, parity, authHeader = null, headed = 0 }) {
   const { chromium } = await loadPlaywright();
-  const browser = await chromium.launch({ headless: !headed });
+  // headed = ladder start tier (0 = the tier extract recorded; 2 = real Chrome headless; 3 = off-screen window)
+  const browser = await launchTier(chromium, resolveStartTier(headed));
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await attachOriginAuth(ctx, origin, authHeader);
   const results = [];
@@ -262,7 +279,8 @@ if (process.argv[1] && process.argv[1].endsWith('dynamics-check.mjs')) {
   const gating = flag('gate');
   const parity = readJSON(parityFile, gating ? null : undefined);
   if (!parity) { console.error(`[dynamics-check] GATE: ${parityFile} missing — Phase 5 never ran; parity.json is required in both flows`); process.exit(3); }
-  const results = await replay({ origin, parity, authHeader: resolveAuthHeader(), headed: flag('headed') });
+  const headedArg = process.argv.find((a) => a === '--headed' || a.startsWith('--headed='));
+  const results = await replay({ origin, parity, authHeader: resolveAuthHeader(), headed: headedArg ? parseHeadedFlag(headedArg) : 0 });
   const out = arg('out', 'stardust/qa');
   const pass = results.filter((r) => r.pass).length;
   const blocked = gate(parity);

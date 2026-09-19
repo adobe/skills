@@ -1071,6 +1071,9 @@ section); `davids-model-lint.mjs` flags any `<hr>` as 🔴 (rule `HR`) and
 `hr` left the prose-expressible tag set.
 
 ### #120 🟠 Multi-value section-metadata `style` delivers only the first class ✅
+**Superseded** — comma = N classes, space = one hyphen-joined class; rule now at
+`skills/deploy/reference/foundation.md` § 3. Foundation (#120 bullet), lint
+`D15 STYLE-SPACE`.
 **Where:** a commerce-site migration. `style: a, b` (comma- or space-separated)
 delivered only `a` on a real stack.
 **Fix applied:** Step 3: one `style` value per section; a second styling

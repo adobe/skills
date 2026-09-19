@@ -73,6 +73,11 @@ prototype remains the per-archetype fidelity reference (full gate: ≤10%,
 Δ≤8px, 0 structural red) that the published page is judged against
 (`source-fidelity-gate.md` § The published-origin gate).
 
+Run-authored handler maps keyed by module or block kind are
+family-scoped: each per-archetype handler file declares the families it
+owns, and a core-key override from outside those families is a load-time
+error, not a silent last-file-wins.
+
 **Canon chrome is a snapshot — re-verify it against EACH new archetype's
 live page before iterating page content.** Header/footer vary per template
 family and the live site drifts continuously (recorded: the gated canon
@@ -99,7 +104,8 @@ Before any screenshot-eyeball tuning:
    instead, see § Asset harvest).
 2. **Lift the exact values** into a tokens file (`capture/tokens.json`
    pattern): container max-widths, the full type ramp (family / size /
-   line-height / letter-spacing / weight per level), button specs (border,
+   line-height / letter-spacing (exactly — `-0.005em` vs `normal` flips a
+   wrap at 360) / weight per level), button specs (border,
    radius, padding — the whole spec, not just color), section paddings,
    radii, shadows, hero heights, breakpoint values — **and the
    text-rendering group**: `text-rendering`, `-webkit-font-smoothing`,
@@ -332,6 +338,8 @@ mirror these classes rather than fighting per-page false-reds:
   these as clean `<p><br></p>` measures 20–36px short per instance. Mirror
   the byte patterns as captured; when a wrap-count mismatch survives width
   parity, diff `innerHTML` — the byte-level difference is usually the cause.
+- **Never encode a wrap outcome under a substituted face** (`<br>`,
+  glyph-count `max-width`): log the wrap delta as a font residual.
 - Alternatively, where mirroring would be genuinely absurd, treat the
   specific JOIN/SPLIT reds as **confirmed-justified** per diff SKILL.md's
   #87 guidance (verify the fragments concatenate into a matched EXTRA before

@@ -142,20 +142,19 @@ Additional checks for this sub-command:
    (`stardust/scripts/crawl.mjs`) and run the copy; it resolves
    against the project's `node_modules`.
 
-   **Bundled crawler.** `skills/extract/scripts/crawl.mjs` is a
-   runnable reference implementation of this whole sub-command —
-   browser config + bot-management fallback, consent dismissal, wait
-   + scroll, the capture list, per-page full-page screenshots
-   (`assets/screenshots/<slug>.png`, consumed by the Phase 2.5
-   vision gate), response validation, and the §
-   Capture-hygiene hardening (visibility filter, interstitial drop,
-   SPA-shell flag, modal `textContent` capture, tracking-pixel
-   discounting, cross-page duplicate detection). Prefer invoking it
-   (`node skills/extract/scripts/crawl.mjs --url <origin> [--pages …]
-   [--cap N] [--concurrency N]`) over hand-rolling a Playwright
-   script per run; extend
-   its in-page `capture()` to cover any recipe field it doesn't yet
-   emit.
+   **Bundled crawler.** `skills/extract/scripts/crawl.mjs` is the
+   runnable reference implementation of this sub-command — browser
+   config + bot-management fallback, consent dismissal, wait + scroll,
+   the capture list, per-page full-page screenshots
+   (`assets/screenshots/<slug>.png`, the Phase 2.5 vision gate's
+   input), response validation, and the § Capture-hygiene hardening
+   (visibility filter, interstitial drop, SPA-shell flag, modal
+   `textContent` capture, tracking-pixel discounting, cross-page
+   duplicate detection). Invoke it (`node
+   skills/extract/scripts/crawl.mjs --url <origin> [--pages …] [--cap N]
+   [--concurrency N]`) rather than hand-rolling a Playwright script;
+   extend its in-page `capture()` for any recipe field it does not
+   yet emit.
 2. **Origin collision.** If `stardust/state.json` already records
    `site.originUrl` and the new `<url>` is a different origin, stop and
    ask before clobbering. Stardust does not silently mix two sites in
@@ -171,43 +170,43 @@ Additional checks for this sub-command:
 3. **Browser contexts.** Open a fresh `BrowserContext` per capture
    worker (§ Concurrency; default 4). Run the **consent dismissal
    pre-flight** per `reference/playwright-recipe.md` § Pre-flight:
-   consent dismissal *unless* `--no-consent-dismiss` is set.
-   Cookies persist within a context but **not across contexts** —
-   re-establish consent state per context (re-run the dismissal on
+   consent dismissal *unless* `--no-consent-dismiss`.
+   Cookies persist within a context, **not across contexts** —
+   re-establish consent per context (re-run the dismissal on
    the worker's first page, or clone the probe context's
    `storageState`). Record the resolved method in
-   `_crawl-log.json#consent.method`.
+   `_crawl-log.json#consent.method` — one of `dismissed:<sel>`,
+   `text:<label>`, `none-detected`, `failed` (`skipped` under
+   `--no-consent-dismiss`); never `auto`. Replica's gate reads
+   `dismissed:` / `text:` as its default `--consent`
+   (`../replica/reference/source-fidelity-gate.md` § Hardening rule 6).
 4. **Bot-management probe.** On a fingerprint reject or a challenge
    response at the first navigation, climb the escalation ladder in
    `reference/playwright-recipe.md` § Bot-management fallback
    (headless → real Chrome headless → real Chrome off-screen; one
-   hit per tier). `crawl.mjs` does this itself and records the tier
-   that worked in `_crawl-log.json#discovery.fetchTechnique` so
-   re-runs start there.
+   hit per tier). `crawl.mjs` does this itself and records the winning
+   tier in `_crawl-log.json#discovery.fetchTechnique`; re-runs start there.
 
 ## Procedure
 
 ### Phase 1 — Discovery
 
-Discover the page inventory before crawling. Procedure in
-`reference/ia-extraction.md`. In summary:
+Discover the page inventory before crawling (`reference/ia-extraction.md`);
+in summary:
 
-1. Fetch `<origin>/sitemap.xml`, then `<origin>/sitemap_index.xml`,
-   then check `robots.txt` for `Sitemap:` directives.
-2. If no sitemap is reachable, run a same-origin BFS crawl from
-   `<url>`, depth-limited to 3, link-extracting from rendered HTML.
-3. Filter the discovered URL list: same origin only, exclude
-   `mailto:`, `tel:`, anchor-only links, query-only variations,
-   common asset paths (`.css`, `.js`, `.pdf`, image extensions).
+1. Fetch `<origin>/sitemap.xml`, then `sitemap_index.xml`, then the
+   `robots.txt` `Sitemap:` directives.
+2. No sitemap reachable → same-origin BFS crawl from `<url>`, depth 3,
+   links from rendered HTML.
+3. Filter: same origin only; drop `mailto:`, `tel:`, anchor-only
+   links, query-only variations, asset paths (`.css`, `.js`, `.pdf`, images).
 4. De-duplicate trailing-slash variations.
 5. Apply the junk-page filter (`reference/ia-extraction.md` §
-   Junk-page filter) unless `--no-junk-filter` is set. Surface the
-   filtered list to the user as overridable.
-6. Apply the cap (default 25, or `--cap`, or `--all` for no cap)
-   and **proceed silently**. Print an informational summary of
-   what was kept and what was cut — but do **not** gate on user
-   confirmation. Users who want different scope set it
-   spontaneously at command time:
+   Junk-page filter) unless `--no-junk-filter`; surface the filtered
+   list as overridable.
+6. Apply the cap (default 25, `--cap N`, or `--all`) and **proceed
+   silently**: print what was kept and cut, do **not** gate on
+   confirmation. Scope is set at command time:
 
    ```
    $stardust extract https://example.com              # default 25 pages
@@ -217,12 +216,11 @@ Discover the page inventory before crawling. Procedure in
    $stardust extract https://example.com --single     # just the entry URL
    ```
 
-   The agent reads spontaneous scope intent from the user's prompt
-   (e.g. "extract all pages", "look at just the home and pricing",
-   "do a full crawl") and applies the equivalent flag. No
-   re-confirmation needed once intent is clear.
+   Scope intent in the prompt ("extract all pages", "just home and
+   pricing", "full crawl") maps to the equivalent flag; no
+   re-confirmation once intent is clear.
 
-   Informational output (not a prompt — proceed immediately):
+   Informational output (not a prompt):
 
    ```
    Discovered 38 pages on https://example.com (sitemap.xml).
@@ -354,23 +352,22 @@ successful page write. If a page fails, record the error in
 ### Phase 2.5 — Vision verification
 
 Before anything downstream is authored, **look** at each captured
-page's screenshot (`assets/screenshots/<slug>.png`) — the multimodal
-model reads the image — and verify it against the extracted record:
+page's screenshot (`assets/screenshots/<slug>.png`) and verify it
+against the extracted record:
 
-- Does the recorded hero (headline + asset) match what the pixels show?
+- Does the recorded hero (headline + asset) match the pixels?
 - Is the extracted palette plausible against the pixels?
-- Does a `cssBackgrounds: []` record look believable, or is imagery
-  visibly present — a silent capture failure?
+- Is a `cssBackgrounds: []` record believable, or is imagery visibly
+  present (silent capture failure)?
 - Is the logo captured?
-- Is the page actually rendered — not a consent wall, bot-block
-  page, or blank SPA shell?
+- Is the page actually rendered — not a consent wall, bot-block, or
+  blank SPA shell?
 
-On mismatch, re-run that page's capture with the escalation ladder
-before proceeding: bump the wait mode one step
-(`reference/playwright-recipe.md` § Wait modes), then the next
-bot-management tier (§ Bot-management fallback), then a fresh
-browser context. Record
-the outcome per page in `_crawl-log.json#visionCheck[]`:
+On mismatch, re-run that page's capture up the escalation ladder
+before proceeding: wait mode one step (`reference/playwright-recipe.md`
+§ Wait modes), then the next bot-management tier (§ Bot-management
+fallback), then a fresh context. Record the outcome per page
+in `_crawl-log.json#visionCheck[]`:
 
 ```json
 { "slug": "pricing", "verdict": "recaptured", "notes": "record said zero CSS backgrounds; screenshot shows a full-bleed photo hero" }
@@ -378,9 +375,12 @@ the outcome per page in `_crawl-log.json#visionCheck[]`:
 
 `verdict` is `"ok" | "recaptured" | "suspect"` — `suspect` means the
 mismatch survived the ladder; downstream phases treat that record as
-unreliable. Vision is the **authoritative** capture check; the
-heuristic defenses (low-media flag, `spaShellSuspect`, duplicate
-hash) remain as cheap early signals but no longer gate alone.
+unreliable. Image reads follow `../stardust/reference/context-hygiene.md`
+§ Image reads; vision stays authoritative here — a `suspect` verdict
+still opens the full page as a downscaled whole-page view, and when a
+contact sheet exists read it first. The heuristic defenses (low-media
+flag, `spaShellSuspect`, duplicate hash) remain cheap early signals,
+never gating alone.
 
 ### Phase 3 — Brand-surface extraction
 

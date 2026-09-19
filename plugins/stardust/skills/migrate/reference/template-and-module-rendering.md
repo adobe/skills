@@ -49,6 +49,11 @@ within `data-template="<type>"`), inject this page's value:
 - `data-slot="article-byline"`   ← target page's `byline` slot
 - `data-slot="article-body"`     ← target page's `body` slot
 - ... and so on for every slot the archetype defines
+- Data-fed page families (one page per dataset row — routes, locations,
+  products) are listing pages: author one row per card from the dataset row,
+  the block adds only non-text fields — `skills/dynamics/reference/listings.md`
+  § Block contract (Programmatic families); sample 3–5 siblings with
+  `skills/deploy/scripts/ai-readability.mjs` before fan-out.
 
 The injection preserves the archetype's structural elements
 (wrapping divs, classes, data-attributes) and replaces the inner

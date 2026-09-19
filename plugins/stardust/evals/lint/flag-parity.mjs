@@ -74,8 +74,7 @@ const SHARED_HELPERS = [
 // value: why it is allowed today. An entry that no longer suppresses anything
 // is reported as stale and fails the lint.
 const TEMPORARY_ALLOWLIST = {
-  'qa/SKILL.md:--blocks-dir:qa.mjs': 'documented (SKILL.md:17, qa.mjs docstring) but qa.mjs has no arg("blocks-dir") — qa lane to add the case or drop the flag',
-  'qa/SKILL.md:--ew-exempt:qa.mjs': 'documented (SKILL.md:17, qa.mjs docstring) but qa.mjs has no arg("ew-exempt") — qa lane to add the case or drop the flag',
+  // empty — every documented flag has a parser case; entries added here must shrink per release
 };
 
 // Attribute each `--flag` to the script named in the SAME inline-code span

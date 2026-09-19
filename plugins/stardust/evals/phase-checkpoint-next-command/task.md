@@ -66,14 +66,14 @@ against the same rubric; the criteria pin only what run 1's checkpoint
    whose `Next:` line carries the next command.
 8. Appends `start` / `end` lines to `stardust/status.jsonl` for its
    phases; the final `end` line carries a `next` field with the same
-   command (W1 target).
+   command.
 9. Ends the turn with a **checkpoint block** inside the closing report,
    with four parts:
    - **Completed** — every file written this phase, by path; each path
      exists in the workspace.
    - **Verified** — what was checked after writing and how (files
      re-read or listed, `state.json` parses, the page count re-read from
-     the artifact rather than remembered) (W1 target).
+     the artifact rather than remembered).
    - **Next** — exactly ONE command, printed verbatim so it can be
      pasted (`$stardust prototype` or `$stardust prototype <slug>`),
      with no alternatives and no question attached; identical to the
@@ -82,8 +82,7 @@ against the same rubric; the criteria pin only what run 1's checkpoint
      skip because it is done (no re-reasoning, no rewrite of the target
      spec, no state change: the direction exists and the pages are
      already `directed`) and what it would do instead (ask before
-     replacing the direction, per the skill's `--re-direct` contract)
-     (W1 target).
+     replacing the direction, per the skill's `--re-direct` contract).
 10. Asks nothing after the checkpoint; the block is the last thing in
     the turn.
 

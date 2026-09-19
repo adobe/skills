@@ -117,11 +117,11 @@ For a typical 5–10 page site:
 - **Nav + footer documents** at `content/nav.html` and `content/footer.html` — authored content deployed like any page, fetched by the stock `header`/`footer` blocks (D12).
 - **Per-site `blocks/header` + `blocks/footer` CSS/JS** reproducing the prototype's chrome (Step 6).
 - **Updated `styles/styles.css`** with brand tokens lifted from the prototype's `:root`, a reset, the EDS section scaffold, a global button system (Step 5), and the styles for the few section-metadata `style` values default-content sections use. Nothing more.
-- **No shared utility modules, wave systems or motion library** — the prototype encodes these per-section; keep them inside the owning block. Section-metadata `style` values stay a SMALL closed set (`dark`, `tinted`, …) used only by default-content sections — blocks paint their own sections.
+- **No shared utility modules, wave systems or motion library** — the prototype encodes these per-section; keep them inside the owning block.
 
 ## The ENCODE contract — ten bullets
 
-The decode side (a block parses robustly whatever DA hands it) lives in `reference/anti-patterns.md` and `reference/block-js-scaffold.md`; this is the encode side — what the content page EMITS — and where David's Model is enforced (`davids-model.md`; gate: `node skills/deploy/scripts/davids-model-lint.mjs content/` exits 0 before any DA write). Full text with every citation, § Section heads and § Images: `reference/encode-contract.md`.
+The decode side (a block parses robustly whatever DA hands it) lives in `reference/anti-patterns.md` and `reference/block-js-scaffold.md`; this is the encode side — what the content page EMITS — and where David's Model is enforced (`davids-model.md`; gate: the Step 9 `davids-model-lint` command exits 0 before any DA write). Full text with every citation, § Section heads and § Images: `reference/encode-contract.md`.
 
 1. **Decoration that must survive DA rides a semantic inline tag** (`<strong>`, `<em>`, `<code>`, `<a>`, `<picture>`, source `<sup>`/`<sub>`, `<del>`; never `<u>`, `<span>`) with one permitted meaning each — never a class, never an invented delimiter; a sub-field leads its cell with the field's tag.
 2. **No nested block tables (D2), no spans beyond the block-name header (D3), blocks stay ≤ 4 columns (D10)**; section styles and block variants stay inside the vocabulary budget (`reference/foundation.md` § 3. Foundation).
@@ -168,7 +168,7 @@ Content lives in `content/nav.html` (three sections: brand / link list / tools �
 
 ### 7. Blocks (parallel agents)
 
-Dispatch one agent per page-archetype cluster owning a non-overlapping set of blocks and content pages (three to four agents). The brief points at files and headings — `stardust/eds-schema/<page>.json`, the conversion log's triage rows, `reference/block-js-scaffold.md` § 8. Block JS scaffold and § Experience Workspace editability contract, `reference/encode-contract.md`, `davids-model.md` — never pasting chapter text; each agent reads by section. Long steps run in the background with a per-page progress file; the coordinator follows the master skill's wait discipline. Shared cores (hero, cards, columns, chrome) are built in Steps 3–6 before fan-out and are additive-only for agents; the brief's ownership table and block-name claim in the conversion-log inventory keep parallel writers apart, and it names each block's round-trip, EW and David's Model gates. Before this step read `reference/block-agents-brief.md` § The brief template and use it verbatim.
+Dispatch one agent per page-archetype cluster owning a non-overlapping set of blocks and content pages (three to four agents). The brief points at files and headings (the schema, the triage rows, the scaffold and encode chapters, `davids-model.md`) — never pasting chapter text; each agent reads by section. Each agent is a fresh-context worker owning at most one cluster of ≤ 3 sibling pages (`../stardust/reference/fan-out.md` § Scope and type of delegated agents, § Worker contract); long steps run in the background with a per-page progress file and the coordinator waits per § Coordinator contract there. Shared cores (hero, cards, columns, chrome) are built in Steps 3–6 before fan-out and are additive-only for agents; the brief's ownership table and block-name claim in the conversion-log inventory keep parallel writers apart, and it names each block's round-trip, EW and David's Model gates. Before this step read `reference/block-agents-brief.md` § The brief template and use it verbatim.
 
 ### 8. Block JS scaffold
 
@@ -180,7 +180,7 @@ Every page carries a `metadata` block — in the first content section, never al
 
 ## Local QA before deploy (no DA) — in brief
 
-`aem up --html-folder content` is not a preview. Build the harness (`node skills/deploy/scripts/build-harness.mjs content/<path>.html stardust/.work/harness/page.html`) and open it through the dev server (`npx -y @adobe/aem-cli up --no-open`). Before any DA push: the whole-page round-trip gate (`block-roundtrip.mjs` with no `--blocks`, `--ew` on) is clean; the edit-mode simulation (`ew-editability-probe.mjs --content content/<page>.html --simulate-editor --verbose`) shows no drift; an editability conversion of an already-shipped block proves pixel parity; the stock `qa-gate.mjs <harnessURL> --schema stardust/eds-schema/<page>.json` exits 0 — never hand-roll a probe (#101) — with `--full-bleed` for the blocks the prototype renders edge-to-edge. Scope boundary (#101): CLS, the advisory `content-diff` and per-page chrome overrides are verified on the DEPLOYED URL only, and the visual eyeball also happens on the deployed page (#23, #105). Capture at a real viewport with scrolling (#19), drive interactive blocks and assert the state change (#28), and QA wide (#13). Before this step read `reference/local-qa.md` § Gates and § Local-QA scope boundary.
+`aem up --html-folder content` is not a preview. Build the harness (`node skills/deploy/scripts/build-harness.mjs content/<path>.html stardust/.work/harness/page.html`) and open it through the dev server (`npx -y @adobe/aem-cli up --no-open`). Before any DA push: the whole-page round-trip gate (`block-roundtrip.mjs` with no `--blocks`, `--ew` on) is clean; the edit-mode simulation (`ew-editability-probe.mjs --content content/<page>.html --simulate-editor --verbose`) shows no drift; an editability conversion of an already-shipped block proves pixel parity; the stock `qa-gate.mjs <harnessURL> --schema stardust/eds-schema/<page>.json` exits 0 — never hand-roll a probe (#101); its full-bleed pass is derived from block CSS, `--full-bleed` overrides. Scope boundary (#101): CLS, the advisory `content-diff` and per-page chrome overrides are verified on the DEPLOYED URL only, and the visual eyeball also happens on the deployed page (#23, #105). Capture at a real viewport with scrolling (#19), drive interactive blocks and assert the state change (#28), and QA wide (#13). Before this step read `reference/local-qa.md` § Gates and § Local-QA scope boundary.
 
 ## Deploy (DA Source API, from a local agent)
 
@@ -192,7 +192,7 @@ After deploy, reconcile each page against its prototype on the DEPLOYED URL only
 
 ## When you finish
 
-Update `stardust/eds-conversion-log.md` (create it if absent): final block inventory, the locked vocabulary (section styles, variants, counts), decisions locked, anti-patterns avoided, anything site-specific the next person should know Close with the hand-off shape in `../stardust/reference/handoff-report.md` § Gate table first.
+Update `stardust/eds-conversion-log.md` (create it if absent): final block inventory, the locked vocabulary (section styles, variants, counts), decisions locked, anti-patterns avoided, anything site-specific the next person should know. Close with the hand-off shape in `../stardust/reference/handoff-report.md` § Gate table first.
 
 ## References
 
@@ -213,6 +213,7 @@ Chapters (full text of the sections this core compresses — read by `##`, each 
 - `reference/anti-patterns.md` — the twenty anti-patterns, grouped.
 - `reference/checklist.md` — the per-page checklist.
 - `reference/ai-readability.md` — the AI-readability rule (#86, #100): checker formula, block rules, gate.
+- `reference/pipeline-facts.md` — what the DA → EDS pipeline rewrites on delivery: fact, remedy, lint id.
 - `reference/ship-script.md` — the one-command ship script a hands-off run writes when a push or publish is denied: merge → push → explicit publish → post-ship gate → issue comment.
 
 Bundled contracts:

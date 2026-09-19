@@ -8,9 +8,9 @@ skill's `stardust/<skill>/` directory, triages per class, and hands off by
 naming those files. Per-page listings never enter the conversation.
 
 Exercised on `rollout`'s offline full-site verify (Phase E, `--root`) over the
-shared post-migrate fixture. Criteria marked **(W1 target)** pin the contract
-as it will read once the rule lands; they fail on 0.23.0 by design and give
-the baseline reader the before/after.
+shared post-migrate fixture. The contract is `context-hygiene.md` § Runner
+reports and session hand-off (skill text since 0.24.0; the 0.23.0 baseline
+results give the before/after).
 
 ## Setup
 
@@ -61,27 +61,27 @@ Interactive session: the runner answers any question from `answers.md`
    page regardless of delivery status). The agent uses the shipped runner;
    an agent-written link checker would have to be recorded as a named
    deviation in `stardust/direction.md`.
-5. **(W1 target)** The report to the user is a ranked class table, one row
+5. The report to the user is a ranked class table, one row
    per finding class: class → count → worst example (slug + reason) → file
    pointer (where the affected pages are listed). Rows sorted by count, ties
    by severity. The whole report stays under 60 lines. All five classes from
    the Setup table appear (the two link targets may share one row or have
    one each).
-6. **(W1 target)** `summary.json` and `summary.md` are written under
+6. `summary.json` and `summary.md` are written under
    `stardust/rollout/` (any subdirectory, e.g. `stardust/rollout/verify/`).
    The JSON holds every page × every finding (slug, reason, file pointer)
    plus the class roll-up; the Markdown is the human view of the same data.
    The counts in the conversation equal the counts in the JSON.
-7. **(W1 target)** No per-page listing enters the conversation: the runner's
+7. No per-page listing enters the conversation: the runner's
    per-page `✗` lines are summarised, not pasted; `pages.json`,
    `summary.json` and `summary.md` are not echoed; no one-line-per-page
    enumeration beyond the worst example per class. Six pages make a full dump
    short — the contract is judged on shape, not on length.
-8. **(W1 target)** Triage happens per class: one recommended action per row
+8. Triage happens per class: one recommended action per row
    (e.g. migrate or localize the `/claims/` target; decide the members-area
    link with `dynamics`; demote the second `<h1>`; re-ingest the image), each
    pointing at `summary.md` for the affected pages. No per-page fix list.
-9. **(W1 target)** The hand-off note names `summary.json` and `summary.md` by
+9. The hand-off note names `summary.json` and `summary.md` by
    path as the place to continue from, and the next command
    (`$stardust replica insurance__home`, then the class actions).
 10. Inputs stay read-only: `stardust/migrated/**`, `state.json`,

@@ -4,7 +4,8 @@
  * Runs the deploy skill's exact reimplementation of Adobe's "AI Content Visibility Checker"
  * (deploy/scripts/ai-readability.mjs, deploy/reference/ai-readability.md) on every page:
  *   - strict  = served words ÷ rendered-DOM words in main (the customer's popup number)
- *   - code    = strict with fragment documents credited and app blocks excluded (what block code owns)
+ *   - code    = strict with fragment documents credited and app blocks excluded (what block code owns);
+ *             `fragments cost N pts` = strict points the page loses to runtime-fetched fragment copy (deploy's line, same formula)
  *   - servedGap = rendered words absent from the served HTML, per block (non-rendering crawlers)
  * Findings:
  *   ai-readability-poor   error  strict < 75 (the tool's "Fair"/"Poor" bands — the owner sees a red gauge)
@@ -38,7 +39,7 @@ export async function run(ctx) {
           `checker score ${r.strict.score}% (served ${r.strict.served} / rendered ${r.strict.rendered} words) — rendered DOM carries ${r.strict.missing} words the document does not; top: ${top.map((b) => `${b.block} ${b.servedGap}`).join(', ')}`, ev));
       } else if (r.strict.score < 95 || r.code.score < 98) {
         findings.push(finding('ai-readability', 'ai-readability-low', 'warn', p.path,
-          `checker score ${r.strict.score}%, code score ${r.code.score}% (fragments credited +${r.code.fragmentWords}) — top: ${top.map((b) => `${b.block} ${b.servedGap}`).join(', ')}`, ev));
+          `checker score ${r.strict.score}%, code score ${r.code.score}% (fragments credited +${r.code.fragmentWords} words = fragments cost ${r.code.fragmentsCostPts} pts${r.fragments?.length ? ` [${r.fragments.join(' ')}]` : ''}) — top: ${top.map((b) => `${b.block} ${b.servedGap}`).join(', ')}`, ev));
       }
       if (r.servedGap.main >= 40) {
         findings.push(finding('ai-readability', 'ai-readability-served-gap', 'info', p.path,

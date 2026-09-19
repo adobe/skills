@@ -94,9 +94,9 @@ v2 evals without modification.
 | `ai-readability/`            | Entry point (`deploy`)    | AI readability (#100): presentational carousel clones, document-first index-backed listing, explicit fragment decision, no generated visible text, gate run and reported, correct checker facts (no hidden-text or chrome work for the score). |
 | `routing-migration-flow/`    | Master skill routing      | § Two migration flows enforced: keep-design phrases → `replica` without a question, plain asks → one keep-vs-redesign question, redesign phrases → redesign flow; `flow` recorded in state.json; `prepare-migration` never loaded for keep-design; `migrate` never first; no hand-built pipeline. |
 | `resume-state-report/`       | Master skill resume       | § Routing "No argument" / resume: state report first (`Flow:` line + per-archetype gate numbers from `progress.json`), journal `Next:` quoted and checked against state, replica-flow recommendation (ungated archetype → `replica <archetype>`), nothing written, next phase entered through its skill, heading-list before any skill-file read (W1 target). |
-| `runner-output-contract/`    | Batch reporting (`rollout` Phase E) | Runner-output contract on an offline full-site verify: ranked class table (class → count → worst example → file pointer) in the conversation, full per-page listing in `summary.json` + `summary.md` under `stardust/rollout/`, triage per class, hand-off names the summary files; W1-target criteria fail on 0.23.0 by design. |
+| `runner-output-contract/`    | Batch reporting (`rollout` Phase E) | Runner-output contract on an offline full-site verify: ranked class table (class → count → worst example → file pointer) in the conversation, full per-page listing in `summary.json` + `summary.md` under `stardust/rollout/`, triage per class, hand-off names the summary files (rule: `context-hygiene.md` § Runner reports). |
 | `preflight-credentials/`     | Entry point (`deploy`)    | W1 pre-flight: token (present, unexpired, looked up through env → `.env` → `~/.claude/.env`), pushable code branch and scaffold are checked before any conversion work; one consolidated missing-prerequisite list with exact remediation; token value never printed; no push, no DA write, no fabricated token, no silent skip; `blocked` recorded in status.jsonl. |
-| `phase-checkpoint-next-command/` | Phase close (`direct`) | Checkpoint block at phase end: completed files (all `ls`-verifiable) + a verified part + ONE verbatim next command + what a re-run would skip; journal `Next:` and `status.jsonl` `next` carry the same command; pages `extracted` → `directed`. W1-target items fail on the 0.23.0 baseline by design. |
+| `phase-checkpoint-next-command/` | Phase close (`direct`) | Checkpoint block at phase end: completed files (all `ls`-verifiable) + a verified part + ONE verbatim next command + what a re-run would skip; journal `Next:` and `status.jsonl` `next` carry the same command; pages `extracted` → `directed` (rule: `run-status.md` § Phase close). |
 
 ## Coverage map
 
@@ -135,7 +135,7 @@ out of `total` (100 per eval).
 
 ### Lints
 
-`npm run lint:stardust` (repo root) runs ten static checks over `skills/`,
+`npm run lint:stardust` (repo root) runs eleven static checks over `skills/`,
 each a plain ESM script under `lint/` that exits 1 with one line per finding,
 then the fixture tests under `fixtures/` (plain `node:assert` scripts that
 import a script's exported pure functions — no playwright needed):
@@ -173,6 +173,10 @@ import a script's exported pure functions — no playwright needed):
 - `launch-ladder.mjs` — the bot-management ladder (`TIERS`, stealth and
   off-screen args, `launchTier`) is identical in `live-session.mjs` and
   `crawl.mjs`, and no other script contains `headless: false`.
+- `broad-git-add.mjs` — no `SKILL.md`, `reference/*.md` or `scripts/*` file
+  contains `git add -A` / `git add .` / `git add --all` (the master's own
+  `never …` prohibition passes); the rule lives in stardust/SKILL.md § Hands-off
+  mode.
 - `fixtures/crawl-slugify.test.mjs`, `fixtures/crawl-log-merge.test.mjs` —
   pin crawl.mjs's slug derivation (root → `index`, 200-char cap, `-<hash4>`
   collision suffix) and the append-only `_crawl-log.json` merge.

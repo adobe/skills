@@ -34,8 +34,9 @@ transition — rather than the reasoning quality `direct-from-phrase` pins.
   not executed: the runner runs the first prompt only. The
   `checkpoint_rerun_skip` criterion therefore grades the *statement*
   about a re-run in run 1's report, not the re-run.
-- The (W1 target) criteria pin a rule that is not in the 0.23.0 skill
-  text; a baseline run is expected to fail them. Do not read those
+- `checkpoint_verified`, `checkpoint_rerun_skip` and `status_end_line_next`
+  pin `run-status.md` § Phase close, which entered the skill text in 0.24.0;
+  the 0.23.0 baseline results fail them by design. Do not read those
   failures as agent defects.
 - Inherited from the copied fixture: 1×1-pixel PNGs with realistic
   claimed dimensions, fabricated hash strings, no `brand-review.html`.

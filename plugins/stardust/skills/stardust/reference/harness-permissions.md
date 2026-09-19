@@ -55,6 +55,9 @@ The **capability probes** it names, within the first five minutes: `gh api user`
 --dry-run origin <branch>` · DA `PUT` of a 1-byte `/.stardust-preflight/<ts>`
 then `DELETE` · admin `GET /status/<org>/<repo>/main/`. Results go to
 `stardust/.work/env.json` under `transports` (`ok` | `denied` | `unreachable`).
+`node skills/stardust/scripts/preflight-transports.mjs --org <org> --repo <repo>
+[--branch main] [--token-env DA_TOKEN]` runs the five and writes that block
+(exit 2 on any denial; `--help` lists the flags).
 A probe proves capability — token, reachability, org access — not permission:
 a read that passes says nothing about the write that follows.
 

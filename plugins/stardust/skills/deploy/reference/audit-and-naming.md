@@ -89,6 +89,8 @@ node skills/deploy/scripts/section-schema.mjs "http://localhost:8791/<prototype>
   --out stardust/eds-schema/<page>.json
 ```
 
+Repeated section names are de-duplicated with an ordinal (`hp-band`, `hp-band-2`, …) so every schema section binds to its own block in `qa-gate.mjs --schema`; authored rows and `decorate()` cite the suffixed name, and a template that repeats one class authors `data-section` to name each instance.
+
 Per section it emits the ordered role-classified inventory (heading / eyebrow / cta+href / body — the SAME classifier `content-diff` and `block-roundtrip` measure with, from `skills/deploy/scripts/content-inventory.mjs`) and the repeating-unit groups (count + per-unit composition: headings/ctas/imgs/textRuns, uniform or not). Use it on both sides:
 
 - **ENCODE**: one row per repeat unit, fields in schema order; every schema item appears in the authored content. An item you deliberately drop is a decision recorded in the conversion log — never an accident.

@@ -40,9 +40,11 @@
  *
  * Exit codes: 0 clean (below threshold), 1 findings at/above threshold, 2 infra error.
  * report.json is rewritten after every check with `partial: true` — a hang in a
- * later check never loses the findings already collected.
+ * later check never loses the findings already collected. stdout carries the
+ * ranked class table only (summary.json / summary.md hold the per-page rows).
  */
 import { join, dirname } from 'node:path';
+import { classReport, renderTable, writeSummary } from '../../stardust/scripts/class-report.mjs';
 import { fileURLToPath } from 'node:url';
 import { writeFileSync, rmSync } from 'node:fs';
 import {
@@ -76,6 +78,8 @@ const opts = {
   probeExternals: flag('probe-externals'),
   browserConcurrency: Number(arg('browser-concurrency', 3)),
   parity: arg('parity', null),
+  blocksDir: arg('blocks-dir', null),
+  ewExempt: arg('ew-exempt', null),
   authHeader: resolveAuthHeader(),
   baselineReset: flag('baseline-reset'),
 };
@@ -164,14 +168,17 @@ const report = {
 };
 writeJSON(join(OUT, 'report.json'), report);
 writeFileSync(join(OUT, 'report.html'), htmlReport(report));
+// class roll-up (stardust/reference/context-hygiene.md § Runner reports): the
+// ranked class table is what the conversation may hold; per-page rows go to
+// summary.json / summary.md, never to stdout.
+const cls = classReport(active, { classKey: ['id', 'check'], pageKey: ['path'], pointerKey: ['evidence'], source: 'qa sweep' });
+const summaryFiles = writeSummary(OUT, cls, { title: 'qa sweep' });
 
 console.log(`\nstardust:qa — ${BASE}`);
 console.log(`pages: ${inventory.pages.length} · duration: ${report.durationSeconds}s · checks: ${checksRun.join(', ')}`);
 console.log(`findings: ${summary.error} error / ${summary.warn} warn / ${summary.info} info (+${summary.allowlisted} allowlisted)`);
-for (const f of active.filter((x) => x.severity === 'error').slice(0, 30)) {
-  console.log(`  ERROR [${f.check}/${f.id}] ${f.path || '(fleet)'} — ${f.message}`);
-}
-console.log(`report: ${join(OUT, 'report.json')} · ${join(OUT, 'report.html')}`);
+console.log(renderTable(cls, { title: 'qa sweep', maxLines: 60 }).join('\n'));
+console.log(`report: ${join(OUT, 'report.json')} · ${join(OUT, 'report.html')} · ${summaryFiles.md}`);
 
 const failOn = arg('fail-on', 'error');
 const failing = failOn === 'warn' ? summary.error + summary.warn : summary.error;

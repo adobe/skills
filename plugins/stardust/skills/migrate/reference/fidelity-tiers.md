@@ -61,9 +61,19 @@ not an edge case.** A hero height/scrim delta → a hero VARIANT class
 variant; a different terms shape → the terms block handles both shapes.
 Emit the variant on the sibling's generated content — the block stays
 generic (deploy SKILL.md § The one rule → same-pattern sections collapse into
-one block + variant classes); never fork a block per page. Record the probe's
+one block + variant classes); never fork a block per page. A delta becomes a
+VARIANT class only inside the vocabulary budget
+(`skills/deploy/reference/foundation.md` § 3. Foundation, Vocabulary budget);
+otherwise it is adjacency CSS or a template rule. Record the probe's
 JSON next to the fan-out brief and list the variants in each sibling's
-`_meta.json` `variants[]`. The probe is read-only evidence — it never edits
+`_meta.json` `variants[]`. Run it with `--brief` and paste each sibling's
+SECTIONS block INTO that sibling's fan-out brief BEFORE dispatch: the generator
+walks THAT page's own section sequence — the archetype supplies block shapes,
+never the order; a sibling generated from the archetype's sequence is a clone
+of the wrong page (`skills/replica/SKILL.md` Phase 5 points here). A sibling
+that introduces a module kind absent from `progress.json.modules[]` is lifted
+and gated at both breakpoints first (replica SKILL.md Phase 3, lift ledger).
+The probe is read-only evidence — it never edits
 the clone — and it costs one live navigation per sibling, so run a
 template's siblings in one pass and reuse the JSON.
 

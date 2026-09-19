@@ -26,7 +26,8 @@ contract` records it; `helix-query.yaml` at the EDS project root is authored fro
 
 ## Mechanics
 
-- Scoped indexes: include globs + `target` per index; exclude chrome and search documents; a
+- Scoped indexes: include globs + `target` per index — each index has its OWN `target`; two
+  indexes sharing one target overwrite each other's rows; exclude chrome and search documents; a
   `lang` property per locale tree; a `text` property when search excerpts are wanted.
 - **The index builds from the PUBLISHED tree.** A preview-only rollout has an empty index;
   `POST /index/…` answering "requested path returned a 301 or 404" means "not published", not

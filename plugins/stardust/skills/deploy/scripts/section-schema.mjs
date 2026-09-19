@@ -67,9 +67,13 @@ function mapSections() {
   const top = all.filter((s) => !s.parentElement.closest('section, [data-section]'));
   const sections = top.length ? top : all;
   const out = [];
+  const seen = {};
   sections.forEach((sec, idx) => {
     sec.setAttribute('data-ss-idx', String(idx));
-    const name = sec.getAttribute('data-section') || (sec.className || '').toString().split(' ')[0] || `section-${idx}`;
+    const base = sec.getAttribute('data-section') || (sec.className || '').toString().split(' ')[0] || `section-${idx}`;
+    // repeated section names get an ordinal (hp-band, hp-band-2, …) so qa-gate.mjs binds each schema section to its own block
+    seen[base] = (seen[base] || 0) + 1;
+    const name = seen[base] > 1 ? `${base}-${seen[base]}` : base;
 
     // Repeating-unit groups: containers whose direct children form >=2 same
     // tag+class siblings that carry content. Outermost groups only — a card's

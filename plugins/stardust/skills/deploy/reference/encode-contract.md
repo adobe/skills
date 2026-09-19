@@ -56,7 +56,7 @@ Structural rules (the lint's 🔴 tier):
 
 ## Pipeline-sensitive shapes
 
-Six shapes the DA → EDS pipeline rewrites on delivery. None shows in the local harness, so each is either a `davids-model-lint.mjs` detector (pre-write) or a converter rule; the pipeline facts themselves are catalogued in `reference/pipeline-facts.md` when it ships.
+Six shapes the DA → EDS pipeline rewrites on delivery. None shows in the local harness, so each is either a `davids-model-lint.mjs` detector (pre-write) or a converter rule; the pipeline facts themselves are catalogued in `reference/pipeline-facts.md`.
 
 - **Buttonization is decided from the SOURCE shape.** A link that is a paragraph's, list item's or cell's sole content buttonizes when any emphasis wraps it in EITHER nesting order — the pipeline hoists `<a><strong|em|b|i>` to `<strong><a>` and the runtime buttonizes the result. Converters emit such links plain and record the count as `bold_links_flattened` in the conversion log; when the weight is systematic (a plan table, a footer column), restore it in block CSS. Lint `D6` 🟡 flags the hoisted shapes; `<p><strong><a>` authored on purpose is the D6 convention and passes.
 - **U+00A0 is copied byte-for-byte.** `[ \t\r\n]` is the only whitespace a converter ever strips; `sanitise.js` encodes NBSP as `&nbsp;` and never collapses it. A trailing NBSP the pipeline trims at delivery is a ledgered residual (D8) — never a per-paragraph CSS patch.

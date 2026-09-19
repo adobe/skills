@@ -38,7 +38,14 @@ The file is JSON because every consumer is non-human. It carries a
     "waitMs": 3820,                  // actual wait time, including grace and scroll pass — must be > 0
     "httpStatus": 200,               // final response status after redirects
     "contentType": "text/html",      // final response content-type (without charset)
-    "heroSource": "dom"              // "dom" | "meta-fallback" — which source heroHeadline/heroLede came from (see § Hero headline)
+    "heroSource": "dom",             // "dom" | "meta-fallback" — which source heroHeadline/heroLede came from (see § Hero headline)
+    // capture-condition fields — same names as the replica capture sidecar (../../replica/scripts/capture-sidecar.mjs)
+    "width": 1440,                   // viewport width the page was captured at
+    "dpr": 1,                        // devicePixelRatio of the capture
+    "technique": "headless",         // bot-management tier that captured: "headless" | "chrome-headless" | "chrome-headed-offscreen"
+    "storageState": false,           // true when an admitted session (cookies/storage) was reused for the capture
+    "variants": []                   // A/B / geo / personalisation markers observed at capture — { kind: "cookie"|"attribute"|"global", name, value? }
+                                     // from experiment cookies (optimizelyEndUserId, mbox, _vwo_uuid), [data-experiment*] attributes, testing globals
   },
   "slug": "about",
   "url": "https://example.com/about",

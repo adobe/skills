@@ -31,8 +31,7 @@ const files = [];
 // TEMPORARY — shrink per release. Key: path relative to skills/. Value: why a
 // windowed launch is still tolerated there. A stale entry fails the lint.
 const TEMPORARY_ALLOWLIST = {
-  'dynamics/scripts/dynamics-detect.mjs': '`headless: !flag("headed")` — dynamics lane to route through live-session launchTier (T14.2 follow-up)',
-  'dynamics/scripts/dynamics-check.mjs': '`headless: !headed` — dynamics lane to route through live-session launchTier (T14.2 follow-up)',
+  // empty — every windowed launch goes through live-session launchTier; entries added here must shrink per release
 };
 
 const findings = [];

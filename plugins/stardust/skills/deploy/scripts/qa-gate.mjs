@@ -23,9 +23,11 @@
  *   - wide-viewport (#13, second pass at 1600px): block content boxes stay
  *     ≤ --maxw unless the block is genuinely full-bleed in the schema order —
  *     over-wide boxes print as WARN (cross-check against the prototype).
- *   - --full-bleed a,b (the INVERSE of #13): for blocks the prototype renders
- *     edge-to-edge, the block's section wrapper must compute the full viewport
- *     width. A template-level cap (`main > .section > div { max-width }`) that
+ *   - full-bleed pass (the INVERSE of #13): for blocks rendered edge-to-edge,
+ *     the block's section wrapper must compute the full viewport width. The
+ *     list is derived from the loaded block CSS — every [data-block-name] whose
+ *     own /blocks/<name>/<name>.css sets `max-width: none` on the block or its
+ *     wrapper/container; --full-bleed a,b overrides the derived list. A template-level cap (`main > .section > div { max-width }`) that
  *     out-specifies the block's own `max-width: none` squeezes heroes, dark
  *     bands and card grids into a capped column with white gutters — it reads
  *     as a block bug and shipped three times before the template rule was
@@ -44,7 +46,7 @@ const url = args.find((a) => !a.startsWith('--'));
 const opt = (name, dflt) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : dflt; };
 const schemaPath = opt('schema', null);
 const maxw = Number(opt('maxw', 1340));
-const fullBleed = (opt('full-bleed', '') || '').split(',').map((s) => s.trim()).filter(Boolean);
+const fullBleedOpt = (opt('full-bleed', '') || '').split(',').map((s) => s.trim()).filter(Boolean);
 if (!url) { console.error('usage: qa-gate.mjs <harnessURL> [--schema <eds-schema.json>] [--maxw 1340] [--full-bleed hero,band]'); process.exit(2); }
 const schema = schemaPath ? JSON.parse(fs.readFileSync(schemaPath, 'utf8')) : null;
 
@@ -148,9 +150,33 @@ if (schema && Array.isArray(schema.sections)) {
   });
 }
 
-// full-bleed pass (inverse of #13): the declared full-bleed blocks' section
-// wrappers must span the viewport; a template-level max-width cap out-specifying
-// the block's `max-width: none` is the recorded cause.
+// full-bleed pass (inverse of #13): the full-bleed blocks' section wrappers must
+// span the viewport; a template-level max-width cap out-specifying the block's
+// `max-width: none` is the recorded cause. With no --full-bleed the list is
+// derived from the loaded block CSS: a block whose own stylesheet sets
+// `max-width: none` on the block or its wrapper/container declares itself
+// full-bleed; --full-bleed <a,b> overrides the derived list.
+const derived = await page.evaluate(() => {
+  const present = new Set([...document.querySelectorAll('[data-block-name]')].map((b) => b.dataset.blockName));
+  const out = new Set();
+  for (const sheet of document.styleSheets) {
+    const m = /\/blocks\/([a-z0-9-]+)\/\1\.css(?:[?#]|$)/i.exec(sheet.href || '');
+    if (!m || !present.has(m[1])) continue;
+    let rules;
+    try { rules = [...sheet.cssRules]; } catch { continue; } // cross-origin sheet: unreadable, skip
+    const own = new RegExp(`\\.${m[1]}(?:-wrapper|-container)?(?![a-z0-9-])`);
+    const walk = (list) => {
+      for (const r of list) {
+        if (r.cssRules) walk(r.cssRules);
+        else if (r.style && r.style.maxWidth === 'none' && own.test(r.selectorText || '')) out.add(m[1]);
+      }
+    };
+    walk(rules);
+  }
+  return [...out].sort();
+});
+const fullBleed = fullBleedOpt.length ? fullBleedOpt : derived;
+if (!fullBleedOpt.length) ok.push(`full-bleed: list derived from block CSS — ${derived.length ? derived.join(', ') : 'none (no block stylesheet sets max-width: none on its block or wrapper)'}`);
 if (fullBleed.length) {
   const fb = await page.evaluate((names) => {
     const vw = document.documentElement.clientWidth;
@@ -161,7 +187,7 @@ if (fullBleed.length) {
         return { name: b.dataset.blockName, w: Math.round(wrapper.getBoundingClientRect().width), vw };
       });
   }, fullBleed);
-  fullBleed.filter((n) => !fb.some((b) => b.name === n)).forEach((n) => warns.push(`full-bleed: block ${n} not found on the page — check the --full-bleed list`));
+  fullBleedOpt.filter((n) => !fb.some((b) => b.name === n)).forEach((n) => warns.push(`full-bleed: block ${n} not found on the page — check the --full-bleed list`));
   fb.forEach((b) => (b.w >= b.vw - 2 ? ok : warns).push(`full-bleed: block ${b.name} wrapper spans ${b.w}px of ${b.vw}px viewport${b.w < b.vw - 2 ? ' — a template-level `main > .section > div { max-width }` cap is likely out-specifying the block\'s escape rule; define ONE full-bleed escape at template level and route the block through it' : ''}`));
 }
 

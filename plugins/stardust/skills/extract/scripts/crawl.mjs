@@ -342,24 +342,39 @@ async function discover(args, page) {
   return withEntry(links);
 }
 
+// Consent containers whose presence after the dismissal pass means `failed`
+// (banner detected, nothing hid it) rather than `none-detected`.
+const CONSENT_CONTAINERS = '#onetrust-banner-sdk, #truste-consent-track, #usercentrics-root, #CybotCookiebotDialog, [id*="didomi"], [id*="osano"], [class*="cookie" i][class*="banner" i], [id*="consent" i]';
+// Consent-method rank for _crawl-log.json#consent.method — the crawl keeps the
+// most informative value seen across pages (a click beats a no-op).
+const consentRank = (m) => (/^(dismissed|text):/.test(m) ? 3 : m === 'failed' ? 2 : m === 'none-detected' ? 1 : 0);
+
+/**
+ * Accept-mode consent dismissal (D3: lift, capture and gate click the SAME
+ * control — replica's stitch-shot reads the value returned here as its default
+ * `--consent`). Returns the resolved method, one of
+ *   dismissed:<sel>  a selector was clicked   text:<label>  the guarded text-match fallback clicked a label
+ *   none-detected    no consent surface seen  failed        a consent container is present and nothing hid it
+ * (playwright-recipe.md § Pre-flight: consent dismissal; values listed in extract/SKILL.md Phase 2 step 3).
+ */
 async function dismissConsent(page) {
-  const sels = ['#onetrust-accept-btn-handler', '.truste-button2', '[aria-label*="Accept" i]',
-    'button[id*="accept" i]', 'button[class*="accept" i]'];
-  let matched = false;
+  const sels = ['#onetrust-accept-btn-handler', '.truste-button2', '#CybotCookiebotDialogBodyLevelButtonAccept',
+    '[aria-label*="Accept" i]', 'button[id*="accept" i]', 'button[class*="accept" i]'];
+  let matched = null;
   for (const s of sels) {
     const el = await page.$(s);
-    if (el) { await el.click().catch(() => {}); matched = true; await page.waitForTimeout(300); break; }
+    if (el) { await el.click().catch(() => {}); matched = s; await page.waitForTimeout(300); break; }
   }
   // Usercentrics renders inside shadow DOM (#usercentrics-root) — regular
-  // selectors can't reach it (tools-retailer e2e finding).
+  // selectors can't reach it (tools-retailer e2e finding). Accept first (D3).
   const ucMatched = await page.evaluate(() => {
     const root = document.querySelector('#usercentrics-root')?.shadowRoot;
     if (root) {
-      const btn = root.querySelector('[data-testid="uc-deny-all-button"], [data-testid="uc-accept-all-button"]');
-      if (btn) { btn.click(); return true; }
+      const btn = root.querySelector('[data-testid="uc-accept-all-button"], [data-testid="uc-deny-all-button"]');
+      if (btn) { btn.click(); return `[data-testid="${btn.dataset.testid}"]`; }
     }
-    return false;
-  }).catch(() => false);
+    return null;
+  }).catch(() => null);
   // Text-match fallback, only when the selector pass matched NOTHING (two field
   // harvests, 2026-08: two different consent widgets — a custom
   // dialog, cookieconsent's a.cc-btn — were missed by the list above; on
@@ -368,6 +383,7 @@ async function dismissConsent(page) {
   // hitting an in-content link: exact match on a short consent label (≤25
   // chars after whitespace collapse), visible, and inside a fixed/sticky or
   // high-z overlay container. Worst case = today's behavior (banner stays).
+  let textHit = null;
   if (!matched && !ucMatched) {
     const hit = await page.evaluate(() => {
       const LABELS = new Set(['accept', 'accept all', 'allow all', 'agree', 'ok', 'decline',
@@ -392,14 +408,42 @@ async function dismissConsent(page) {
       }
       return null;
     }).catch(() => null);
-    if (hit) { console.error(`[crawl] consent dismissed via text-match fallback ("${hit}")`); await page.waitForTimeout(300); }
+    if (hit) { textHit = hit; console.error(`[crawl] consent dismissed via text-match fallback ("${hit}")`); await page.waitForTimeout(300); }
   }
   await page.waitForTimeout(300);
+  // resolved method BEFORE the prune — a container that survived every pass is `failed`
+  const stillPresent = (matched || ucMatched || textHit) ? false : await page.evaluate((sel) => [...document.querySelectorAll(sel)]
+    .some((n) => { const r = n.getBoundingClientRect(); return r.width > 1 && r.height > 1; }), CONSENT_CONTAINERS).catch(() => false);
   // assert: prune any consent container still present (don't leave it for capture).
-  await page.evaluate(() => {
-    document.querySelectorAll('#onetrust-banner-sdk, #truste-consent-track, #usercentrics-root, [class*="cookie" i][class*="banner" i], [id*="consent" i]')
-      .forEach((n) => n.remove());
-  });
+  await page.evaluate((sel) => { document.querySelectorAll(sel).forEach((n) => n.remove()); }, CONSENT_CONTAINERS);
+  if (matched) return `dismissed:${matched}`;
+  if (ucMatched) return `dismissed:${ucMatched}`;
+  if (textHit) return `text:${textHit}`;
+  return stillPresent ? 'failed' : 'none-detected';
+}
+
+// Experiment / personalisation markers recorded per page in _provenance.variants[]
+// (field names shared with replica's capture sidecar, capture-sidecar.mjs): a
+// capture taken inside an A/B bucket is not the site's default rendering.
+const EXPERIMENT_COOKIES = ['optimizelyEndUserId', 'mbox', '_vwo_uuid'];
+async function collectVariants(page, context) {
+  const out = [];
+  try {
+    for (const c of await context.cookies()) if (EXPERIMENT_COOKIES.includes(c.name)) out.push({ kind: 'cookie', name: c.name, value: c.value });
+  } catch { /* context already closed */ }
+  const inPage = await page.evaluate(() => {
+    const v = [];
+    for (const el of document.querySelectorAll('*')) {
+      for (const a of el.attributes) if (a.name.startsWith('data-experiment')) { v.push({ kind: 'attribute', name: a.name, value: a.value }); if (v.length >= 20) break; }
+      if (v.length >= 20) break;
+    }
+    if (window.optimizely) v.push({ kind: 'global', name: 'window.optimizely' });
+    if (window.adobe?.target) v.push({ kind: 'global', name: 'adobe.target' });
+    if (window._vwo_code) v.push({ kind: 'global', name: '_vwo_code' });
+    return v;
+  }).catch(() => []);
+  const seen = new Set();
+  return [...out, ...inPage].filter((x) => { const k = `${x.kind}|${x.name}|${x.value ?? ''}`; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 24);
 }
 
 // Favicon — captured on the ENTRY page in ALL modes (healthcare-site harvest, 2026-08:
@@ -823,7 +867,7 @@ async function capturePage(context, url, slug, args) {
   const ct = resp.headers()['content-type'] || '';
   if (!/text\/html|application\/xhtml/.test(ct)) throw Object.assign(new Error(`content-type ${ct}`), { errorClass: 'ContentTypeError' });
 
-  if (args.consent) await dismissConsent(page);
+  const consentMethod = args.consent ? await dismissConsent(page) : 'skipped';
   await page.waitForTimeout(WAIT_MS[args.wait] || WAIT_MS.medium);
   // 4-step scroll to trigger lazy content
   for (let y = 0; y <= 1; y += 0.34) {
@@ -896,7 +940,15 @@ async function capturePage(context, url, slug, args) {
     waitMode: args.wait || 'medium',
     waitMs: WAIT_MS[args.wait] || WAIT_MS.medium,
     httpStatus: status,
+    // capture conditions — field names identical to replica's capture sidecar
+    // (capture-sidecar.mjs) so the two records compare 1:1 (current-state-schema.md § Top-level shape)
+    width: CRAWL_CONTEXT.viewport.width,
+    dpr: await page.evaluate(() => window.devicePixelRatio || 1).catch(() => 1),
+    technique: TIERS[(args.tier || 1) - 1],
+    storageState: false, // every worker context is fresh — no admitted session is reused (SKILL.md Phase 2 step 3)
+    variants: await collectVariants(page, context),
   };
+  rec._consentMethod = consentMethod; // hoisted into _crawl-log.json#consent.method by the writer, not persisted per page
   return rec;
   } finally {
     // every exit path — success, validation throw, goto error — releases the
@@ -1012,7 +1064,7 @@ async function main() {
   console.error(`[crawl] technique=${technique} discovered=${urls.length} queued=${queue.length}`);
 
   const startedAt = new Date().toISOString();
-  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...(botBlock ? { botBlock, escalations } : {}), ...(originRedirect ? { originRedirect } : {}), ...(skipped.length ? { skippedExtracted: skipped } : {}) }, consent: { method: args.consent ? 'auto' : 'skipped' }, favicon: favicon || null, crawl: { startedAt, finishedAt: null, successes: 0, failures: [] } };
+  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...(botBlock ? { botBlock, escalations } : {}), ...(originRedirect ? { originRedirect } : {}), ...(skipped.length ? { skippedExtracted: skipped } : {}) }, consent: { method: args.consent ? 'none-detected' : 'skipped' }, favicon: favicon || null, crawl: { startedAt, finishedAt: null, successes: 0, failures: [] } };
   let ok = 0;
   await context.close();
 
@@ -1042,6 +1094,8 @@ async function main() {
         const { url, slug } = queue[idx];
         try {
           const rec = await capturePage(ctx, url, slug, args);
+          if (consentRank(rec._consentMethod) > consentRank(log.consent.method)) log.consent.method = rec._consentMethod;
+          delete rec._consentMethod;
           if (rec.dynamic) rollupDynamic(dynamicRollup, rec.dynamic, slug);
           const hash = crypto.createHash('sha1').update(rec._contentHash).digest('hex');
           delete rec._contentHash;

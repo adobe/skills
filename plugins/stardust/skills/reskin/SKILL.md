@@ -15,7 +15,7 @@ Phases, in order: Setup → 1 INGEST DONOR → 2 CONTENT-MODEL CAPTURE → 3 MAP
 
 | Phase | Command (project copies under `stardust/scripts/reskin/`) |
 |---|---|
-| Setup | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/reskin/scripts/*` + `skills/replica/scripts/impeccable-ignores.mjs` → `stardust/scripts/reskin/`, `skills/diff/scripts/live-session.mjs` → `stardust/scripts/diff/`; then `node stardust/scripts/reskin/impeccable-ignores.mjs --skill reskin` |
+| Setup | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/reskin/scripts/*` + `skills/replica/scripts/impeccable-ignores.mjs` → `stardust/scripts/reskin/`, `skills/diff/scripts/live-session.mjs` → `stardust/scripts/diff/` (live gates: `--headed[=window]` = ladder tier 2 / 3); then `node stardust/scripts/reskin/impeccable-ignores.mjs --skill reskin` |
 | 1 | `$stardust extract <content-url> --design-source <donor-url>` (local donor: `python3 -m http.server <port> --directory <path>` first); author `stardust/reskin/donor-tokens.json` + `donor-modules.md` |
 | 2 | `capture-content.mjs --url <page-url> --scope '<sel,...>' --normalize stardust/reskin/normalize/<slug>.mjs --out stardust/reskin/content-model/<slug>/` |
 | 3 | author `stardust/reskin/mapping.md` |
@@ -57,10 +57,10 @@ The two halves have different contracts:
   Structure (element counts, tag sequences) is informational, never
   gating — a reskin re-structures markup by design.
 
-The decisive rule, validated in the UC2-E1 experiment (a healthcare site ×
-a fintech donor: 2281/2281 text bytes, 7/7 images, 47/47 slots, 13/13 metadata,
-17/17 donor-token probe): **the page is generated programmatically from
-the captured content model — content strings are never retyped.** Byte
+The decisive rule, validated in the UC2-E1 experiment (every text byte,
+image, slot and metadata row carried): **the page is generated
+programmatically from the captured content model — content strings are
+never retyped.** Byte
 fidelity then holds by construction and the content gate becomes a
 regression check instead of a debugging tool.
 
@@ -112,6 +112,9 @@ regression check instead of a debugging tool.
    `skills/diff/scripts/live-session.mjs` to `stardust/scripts/diff/` —
    every reskin gate script imports it at startup from `../diff/` next to
    `../reskin/` (exit 2 without it); keep the dirs siblings; run the copies.
+   Live-side gates take `--headed` (ladder tier 2) / `--headed=window`
+   (tier 3); default = the tier extract recorded —
+   `../extract/reference/playwright-recipe.md` § Bot-management fallback.
 4. **Origin collision** — if `stardust/state.json` records a different
    `site.originUrl`, stop and ask before mixing sites, per
    `../extract/SKILL.md` § Setup.
@@ -140,8 +143,7 @@ site, into `stardust/canon-source/`. Full recipes per donor type in
   on localhost (`python3 -m http.server <port> --directory <path>`)
   and run the **same** `--design-source` capture path against the
   localhost origin. Record the real provenance (localhost serve of
-  `<path>`) in `canon-source/_crawl-log.json`. Recipe details —
-  page listing, index-less directories, port hygiene — in
+  `<path>`) in `canon-source/_crawl-log.json`. Details:
   `reference/donor-sources.md` § Local prototypes.
 - **Figma** (`--donor-figma`): FUTURE. Surface the exact message from
   § Inputs and stop.
@@ -168,10 +170,10 @@ Then author two reskin-owned donor artifacts (contracts in
   set the Phase 3 mapping brief maps onto.
 
 **The pin-one-reference-page rule (hard).** Real donors run multiple
-design systems concurrently — the experiment's donor served radius-4px
-/ 1266px on its homepage and pill-radius / 1080px on older product
-pages. Consolidating across them produces a chimera no live page ever
-shipped, and the token probe then asserts against nothing. When donor
+design systems concurrently (recorded: one donor served two radii and
+two container widths across its pages). Consolidating across them
+produces a chimera no live page ever shipped, and the token probe then
+asserts against nothing. When donor
 pages disagree on a token, **pin ONE donor reference page per module
 family**, record it in `donor-tokens.json` (`curatedFrom` + a note
 naming the reference page), and demote the other pages to

@@ -62,13 +62,12 @@ delegate the actual design work to **impeccable**.
    > <https://github.com/pbakaus/impeccable> and re-run the command.
 
    `optional` skills note `impeccable: absent` there and continue on their
-   degrade path. **Version hint (advisory, never blocking):** stardust
-   pins no impeccable version — the craft should be current — and no
-   harness announces third-party updates, so once per session run
+   degrade path. **Version hint (advisory, never blocking):** once per
+   session run
    `node <plugin>/skills/stardust/scripts/impeccable-version-check.mjs`
-   (`--local <dir>` for a harness skills directory) and surface its one
-   line verbatim only when it reports a newer version; any other outcome
-   is noise — never stop or degrade over it.
+   (`--local <dir>` for a harness skills directory); surface its one line
+   verbatim only when it reports a newer version — never stop or degrade
+   over it.
 2. **Check the target-state files.** `PRODUCT.md` and `DESIGN.md` at the
    project root are the *target* state; check whether they exist. Do not
    run impeccable's context loader here — impeccable runs it itself on
@@ -134,21 +133,21 @@ Route on the user's input:
   | `direct` | resolve the visual direction |
   | `prototype` | per-page redesign prototypes |
   | `migrate` | full-site platform-agnostic static HTML |
-  | `prepare-migration` | the migrate-prep cascade (prep phases, assets, dynamics gate) — **redesign flow only** |
-  | `replica` | same-design migration (keep the current design) — its own preserve-mode prep, then migrate/deploy/rollout |
+  | `prepare-migration` | the migrate-prep cascade — **redesign flow only** |
+  | `replica` | same-design migration — its own preserve-mode prep, then migrate/deploy/rollout |
   | `reskin` | byte-faithful content re-laid onto a separately defined donor design system |
   | `deploy` | one page → EDS blocks + DA delivery |
   | `rollout` | whole migrated site → EDS, with coverage + delivery gates |
-  | `dynamics` | the dynamic surface of a migration — detect, classify, triage, implement, verify (APIs, search, forms, modals, media, tags, client-rendered, sheet data); invoked by the migration skills or standalone |
+  | `dynamics` | the dynamic surface of a migration — detect, classify, triage, implement, verify; invoked by the migration skills or standalone |
   | `diff` | prototype ↔ build fidelity probes (pixel + structural) |
   | `audit` | three-perspective site audit (design, SEO/technical, LLM visibility) — scored report + findings ledger |
-  | `qa` | read-only post-deploy QA sweep of the live site (routing, fidelity, rendering, visual regression, SEO, links, a11y, perf) — findings, never fixes |
+  | `qa` | read-only post-deploy QA sweep of the live site — findings, never fixes |
   | `uplift` | one-shot presales orchestrator (3 variants) |
 
   - `prototype --cinematic[=<register>]` layers a brand-faithful motion
     register on the static prototype (`skills/prototype/reference/motion-registers.md`).
   - `uplift` skips the extract/direct/prototype chain: one URL in, three
-    differentiated variants out, one cinematic, no further coordination.
+    variants out (one cinematic), no further coordination.
 - **Migration to EDS — pick ONE of two flows, never mix them.** See
   § Two migration flows before answering any "how do I migrate X"
   question; the answer differs by whether the design is kept.
@@ -179,7 +178,9 @@ answer selects the flow; the downstream chain is shared.
   as the safety net) runs `dynamics` Phases 1–3 so every dynamic surface
   has a disposition before import; `rollout` D2 implements the
   reproducible rows, `qa` replays parity. Never for redesign-only work
-  (`uplift`, a bare `extract`).
+  (`uplift`, a bare `extract`). A chain that ends at `deploy` (one-page
+  pilot, no rollout) runs dynamics Phases 4–5 standalone before the pilot
+  is declared done (`../dynamics/SKILL.md` § When it runs).
 
 **Choosing the flow.** Read the ask before any sub-skill loads:
 
@@ -222,8 +223,8 @@ reply with the fixed **activation block**: the chosen flow; the roster
 cap as **wave 1 of a written wave plan** with its stop point; "commits
 land at each phase end without asking — hands-off overrides an
 ask-before-commit preference for this run"; the open owner-only
-decisions. The mode removes **waiting**, not **validation**: every
-quality gate runs unchanged — hands-off changes *who answers*, not *what
+decisions (`reference/decisions.md`). The mode removes **waiting**, not
+**validation**: every quality gate runs unchanged — hands-off changes *who answers*, not *what
 must pass*. Every interactive gate auto-resolves:
 
 | gate | hands-off resolution |
@@ -234,6 +235,7 @@ must pass*. Every interactive gate auto-resolves:
 | `prepare-migration` phase gates | behave as `--skip-confirm` |
 | `rollout` | runs full-auto end-to-end |
 | `dynamics` owner decisions (backend, tags, datasource ownership, locale scope) | ship the interim tier, record each by name in `dynamic-features.md` § Decision batch and the parity report, continue; regulated-PII forms stay blocked |
+| replica/reskin impeccable `ignore-file` consent (`impeccable-ignores.mjs --files`) | auto-resolve: choosing a keep-design flow IS the decision; the direction/mapping record line says `resolved by: hands-off` |
 | plan-time decisions (`reference/decisions.md` § Default rows) | apply the default row, print the open rows in the first reply; publish stays preview-only — live is an explicit `--publish` run on gate PASS or an owner-decided row (D1, D16); only an owner-only row halts the work it gates |
 
 Defaults (override only when the invocation says otherwise):
@@ -252,9 +254,8 @@ Defaults (override only when the invocation says otherwise):
   and reads only the section the card names. Stall-prone instruments run
   under their shipped deadline (replica `gate.sh`, `pixel-compare
   --timeout`), never an agent-authored `sleep N; kill` loop; long steps
-  write a progress file the coordinator polls. What a worker writes, how
-  it is polled, resumed once and finished: `reference/fan-out.md`
-  (briefs point at its § Worker contract).
+  write a progress file the coordinator polls. Worker contract (briefs
+  point at it): `reference/fan-out.md` § Worker contract.
 - **Image reads.** Numbers first, then band crops; never a stitched
   capture whole — `reference/context-hygiene.md` § Image reads.
 - **Scope and type of delegated agents.** Scope cap first, fresh-context
@@ -262,8 +263,8 @@ Defaults (override only when the invocation says otherwise):
   `reference/fan-out.md` § Scope and type of delegated agents.
 - **Wait discipline: never park the conversation past the prompt-cache
   window.** Anything over about 2 minutes (gate round, crawl, batch
-  push, capture set, delegated agent) runs in the background and
-  writes a progress file — never in the foreground, never under one long
+  push, delegated agent) runs in the background and writes a progress
+  file — never in the foreground, never under one long
   `sleep`. Do independent work meanwhile; otherwise check the progress
   file **at most every 4 minutes** (never a fixed `sleep` ≥ 5 minutes,
   never a blocking wait on the agent's output), and end the turn only for
@@ -298,9 +299,9 @@ Defaults (override only when the invocation says otherwise):
   the exact unblock command — delivery halts, author-only work goes on.
 
 **Turn-end contract.** A turn ends only on (a) run completion, (b) a
-hard blocker or an owner-only decision (an open `Blocked on owner:` with
-unblocked work left is neither), or (c) a background wait longer than
-~45 minutes. A wave or phase close is never a permitted end: it writes
+hard blocker or an owner-only row of `reference/decisions.md` (an open
+`Blocked on owner:` with unblocked work left is neither), or (c) a
+background wait longer than ~45 minutes. A wave or phase close is never a permitted end: it writes
 the journal entry, the `status.jsonl` `end` line and the phase commit,
 then starts the next planned step **in the same turn** — "Phase N done,
 next: …" followed by silence is a defect. When the ask names a chain
@@ -316,7 +317,10 @@ printed counts re-read from the artifact.
 **Hard blockers remain stops.** An unreachable source site, an expired
 `DA_TOKEN` that cannot be recovered, or a signal-absent brand surface are
 not judgment calls — state the blocker precisely, append `event:
-"blocked"` to `stardust/status.jsonl`, and halt. Never guess around one.
+"blocked"` to `stardust/status.jsonl`, and halt — for a token halt the
+`blocked` line carries `next` (the re-drive command) and authored
+files stay in `content/**`; `../rollout/reference/delivery-gates.md`
+§ Batched delivery at scale has the parking rule. Never guess around one.
 
 ## The "open and reasoned" principle
 
@@ -349,15 +353,14 @@ layout: `reference/artifact-map.md`.
 
 **Write boundary.** Stardust writes to `stardust/`, the impeccable target
 files at the project root, and the EDS project (only via `deploy`,
-`rollout`, `dynamics`). Run-only files — logs, harness page, pre-renders,
-script copies, drafts, probes — go under `stardust/.work/<skill>/`; the
+`rollout`, `dynamics`). Run-only files (logs, pre-renders, script
+copies, drafts, probes) go under `stardust/.work/<skill>/`; the
 root `scripts/` and `qa/` are not stardust's. Anything written elsewhere
 is a bug.
 
 **Versioning.** Everything under `stardust/` is committed except what
-`reference/stardust.gitignore` lists (screenshots, heavy asset and gate
-folders, `.work/`, run residue, session state); per-directory table and
-what a clone without `current/assets/` can do: `reference/artifact-map.md`
+`reference/stardust.gitignore` lists; per-directory table and what a
+clone without `current/assets/` can do: `reference/artifact-map.md`
 § Versioning.
 
 ## Provenance
@@ -380,11 +383,15 @@ project-scoped, at the level of `PRODUCT.md`; its last 3–5 entries are
 read with `state.json` at the start of every session.
 
 **Named deviations.** Any agent-authored crawler, compiler, importer,
-wave driver or gate that replaces a skill phase is recorded in
-`stardust/direction.md` as a **named deviation** — what it replaces, why
-the shipped instrument did not serve, where the replacement lives — and
-noted in the journal. An unrecorded parallel pipeline is a defect — its
-fidelity numbers are never comparable to the gate's.
+wave driver, gate **or measurement/probe script** that replaces a skill
+phase is recorded in `stardust/direction.md` as a **named deviation** —
+what it replaces, why the shipped instrument did not serve, where the
+replacement lives — and noted in the journal. Before writing one, list
+the shipped instruments (`ls skills/*/scripts`, or the project copy under
+`stardust/scripts/<skill>/`) and run the shipped one; write your own only
+when none exists, and ledger it here as a plugin gap. An unrecorded
+parallel pipeline is a defect — its fidelity numbers are never comparable
+to the gate's.
 
 ## Validation rule
 
@@ -417,10 +424,9 @@ Per-sub-skill specifics: `extract/reference/playwright-recipe.md`,
 - Execute a redesign plan without showing it first (hands-off records it
   in `stardust/direction.md` instead of waiting — § Hands-off mode).
 - Force a re-run on stale pages without explicit user opt-in.
-- Crawl beyond the user's confirmed page cap (an explicit `--pages` list is itself the confirmed scope — listed pages are never dropped; the crawler warns rather than truncates).
-- Emit platform-specific output from `migrate` — it emits platform-
-  agnostic static HTML; EDS conversion and delivery belong to `deploy`
-  (one page) and `rollout` (whole site).
+- Crawl beyond the user's confirmed page cap (an explicit `--pages` list is the confirmed scope — never dropped; the crawler warns rather than truncates).
+- Emit platform-specific output from `migrate` — EDS conversion and
+  delivery belong to `deploy` (one page) and `rollout` (whole site).
 
 ## References
 
@@ -446,21 +452,19 @@ Per-sub-skill specifics: `extract/reference/playwright-recipe.md`,
 
 ### Cinematic-feature references (cross-cutting)
 
-Owned by `prototype/` because the cinematic feature is scoped to
-prototype rendering, but cited by `direct` (when selecting a
-register), `uplift` (when picking C's register), and `migrate`
-(when copying motion assets through):
+Owned by `prototype/`; cited by `direct` and `uplift` (register
+choice) and `migrate` (motion assets):
 
 - `../prototype/reference/motion-registers.md` — the five motion registers and the heuristic that maps PRODUCT.md personality traits to one.
 - `../prototype/reference/motion-stack.md` — technology choice (Lenis + CSS keyframes + rAF + IntersectionObserver) and bundle policy.
 - `../prototype/reference/motion-attributes.md` — the `data-*` vocabulary the motion runtime consumes.
 - `../prototype/reference/motion-runtime.md` — the canonical inline runtime script of every cinematic prototype.
-- `../prototype/reference/motion-validation.md` § Pass 6 — cinematic-mode validation gates (Lenis boot, reduced-motion fallback, scroll-jack, three-position screenshots, register-match, motion C-cliff detector).
+- `../prototype/reference/motion-validation.md` § Pass 6 — cinematic-mode validation gates.
 
 ### Uplift-feature references
 
 Owned by `uplift/`. Cited by master routing when delegating
 `$stardust uplift <URL>`:
 
-- `../uplift/SKILL.md` — one-shot presales orchestrator: extract → tension/trait identification → 3-variant direction → prototype × 3 → open + summarize.
-- `../uplift/reference/what-if-candidates.md` — catalog of 8 worked captured-trait amplification candidates that B and C select from in Phase 2b — plus its § Extension rule admitting evidence-shaped `derived` candidates.
+- `../uplift/SKILL.md` — one-shot presales orchestrator: extract → 3-variant direction → prototype × 3 → summarize.
+- `../uplift/reference/what-if-candidates.md` — 8 worked trait-amplification candidates B and C select from in Phase 2b; § Extension rule admits evidence-shaped `derived` candidates.

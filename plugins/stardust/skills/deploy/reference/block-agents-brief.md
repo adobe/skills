@@ -11,12 +11,14 @@ Dispatch one agent per page-archetype cluster (utility pages, services, case stu
 
 ## Brief size and reading discipline
 
-**Brief size and reading discipline.** The brief points at files — `stardust/eds-schema/<page>.json`, the conversion log's triage rows for its pages, this document's §§ 7–8, `davids-model.md` — and never pastes reference text into the prompt. Each agent reads by section (list the headings, then read the range it needs), not the whole file: across twelve field migrations this document (~27k words) was read end to end about twenty times per run, once per dispatched agent; in one recorded run the two conversion agents the harness's no-progress watchdog killed carried the fattest briefs, while a re-dispatch with a lean brief and line-ranged reads finished the same pages. Long-running steps (captures, gates, batch pushes) run in the background with a progress file the agent appends to per page, so the coordinator can read progress instead of waiting blind. The coordinator's own waiting follows the master skill's wait discipline: nothing runs in the foreground past ~2 minutes, no single `sleep` reaches 5 minutes (the prompt-cache window — at deploy-phase context sizes each expiry re-writes the whole prefix), and progress is read from the file at most every 4 minutes.
+**Brief size and reading discipline.** The brief points at files — `stardust/eds-schema/<page>.json`, the conversion log's triage rows for its pages, this document's §§ 7–8, `davids-model.md` — and never pastes reference text into the prompt. Each agent reads by section (list the headings, then read the range it needs), not the whole file: across twelve field migrations this document (~27k words) was read end to end about twenty times per run, once per dispatched agent; in one recorded run the two conversion agents the harness's no-progress watchdog killed carried the fattest briefs, while a re-dispatch with a lean brief and line-ranged reads finished the same pages. Long-running steps (captures, gates, batch pushes) run in the background with a progress file the agent appends to per page, so the coordinator can read progress instead of waiting blind. Waiting, polling, resume-once and finisher rules: `../../stardust/reference/fan-out.md` § Coordinator contract.
 
 ## The brief template
 
 The brief template:
 
+> Read `skills/stardust/reference/harness-quirks.md` (whole card) and follow `skills/stardust/reference/fan-out.md` § Worker contract — skeleton first, append one line to `stardust/.work/deploy/progress/<slug>.log` after every step, never a fixed `sleep`, hand back by pointer (~1 KB).
+>
 > Per the project's locked direction: each prototype `<section>` becomes its own EDS block. Lift the prototype's `<style>` for that section verbatim, scope it under the block class (`.block-name .x` instead of `section.x .y`), and rebuild the prototype's DOM through a `decorate(block)` function that consumes EDS table-block input.
 >
 > **Ownership** — prototypes [list], content pages [list], sections [list]. You create or edit only what the table grants; everything else is read-only, and a change you need elsewhere is a request to the coordinator, never an edit.
@@ -35,6 +37,8 @@ The brief template:
 > **Existing blocks — REUSE, do not recreate**: [list with one-line authoring shape per block].
 >
 > **Brand tokens** are global in `styles/styles.css`; do not redefine.
+>
+> **Replica/reskin flows — lifted values are pre-ignored**: lifted palette/type values are already ignored by value (`stardust/direction.md` § Impeccable ignore set, `skills/replica/reference/preserve-direction.md` § 4) — never add `--file` ignores on `blocks/**`/`styles/**`; agent-authored code keeps the full rule set.
 >
 > **Round-trip contract (#93/#94)**: the page's authored rows AND your block's decode are both written from `stardust/eds-schema/<page>.json` (roles + repeat units — Step 2b); cite the schema path in the block JSDoc. After writing each block, run `node skills/deploy/scripts/block-roundtrip.mjs "<protoURL>" content/<page>.html --blocks <name>` — the block is NOT done until it exits 0 (0 structural 🔴).
 >

@@ -104,7 +104,7 @@ stardust/
 │   ├── lenis.min.js                  # smooth-scroll runtime (copied from skills/prototype/assets/motion/; cinematic only)
 │   └── lenis.min.css                 # smooth-scroll styles (cinematic only)
 └── migrated/                         # deployable static HTML site
-    ├── index.html                    # the home page (slug "index" -> root)
+    ├── index.html                    # the home page (slug "index" -> root; "home" is a legacy alias)
     ├── _meta.json                    # sidecar JSON (full reasoning trace) — one per migrated page
     ├── <slug>/
     │   ├── index.html                # one per non-home slug (URL-faithful nesting)

@@ -828,46 +828,45 @@ Procedure:
            args: "audit stardust/prototypes/<slug>-proposed.html --json" }
    ```
 
-   Each returns a JSON findings list — each finding has
-   `priority` (P0 / P1 / P2 / P3), `category` (hierarchy /
-   contrast / motion / a11y / perf / responsive / etc.), and a
-   one-line description. Capture critique findings into
-   `_provenance.critique[]` and audit findings into
-   `_provenance.audit[]` on the proposed file (append; never
-   overwrite previous runs' entries).
+   Each returns a JSON findings list — `priority` (P0–P3),
+   `category` (hierarchy / contrast / motion / a11y / perf /
+   responsive / …), one-line description. Append critique findings
+   to `_provenance.critique[]` and audit findings to
+   `_provenance.audit[]` on the proposed file (never overwrite
+   previous runs' entries).
 
 2. **Brand-faithful inversion auto-dismiss.** Both validators
    ship known false positives on Mode A renders — Arial fallback
-   reads as "overused-font," eyebrow uppercase reads as
-   "all-caps body," pure white / pure black flagged when the
-   brand's captured palette includes them. Before surfacing
-   findings to the user, diff each finding against
+   reads as "overused-font," eyebrow uppercase as "all-caps
+   body," pure white / black flagged when the captured palette
+   includes them. Before surfacing findings, diff each against
    `DESIGN.json#extensions.divergence.brand_faithful_inversions[]`
    and `DESIGN.md#narrative.rules` (e.g. permitted uppercase
    contexts). Drop findings whose category and target match an
    approved inversion; keep the original list in
-   `_provenance.<critique|audit>[]` with a
-   `dismissedAsBrandFaithful: true` flag for audit-trail
-   purposes. The user-facing report shows only the real hits.
+   `_provenance.<critique|audit>[]` flagged
+   `dismissedAsBrandFaithful: true` for the audit trail. The
+   user-facing report shows only the real hits.
 
 3. **Vision gate.** Render a screenshot of the proposed file and
    study it NEXT TO the captured source screenshot
-   (`stardust/current/assets/screenshots/<slug>.png` when present).
-   Judge visually, not from the DOM: **brand-fit** (would the
+   (`stardust/current/assets/screenshots/<slug>.png` when present) —
+   both read as a downscaled whole-page view, never the full-resolution
+   capture (`../stardust/reference/context-hygiene.md` § Image
+   reads). Judge visually, not from the DOM: **brand-fit** (would the
    brand owner say "that's us"?), **signature preservation** (hero
-   medium / motif carried, per Discipline 3's signature clause),
+   medium / motif carried, Discipline 3's signature clause),
    and **hierarchy at a glance** (does the eye land where the
-   brief says it should?). Record
+   brief says?). Record
    `_provenance.visionCheck = { verdict: pass|fail, observations[] }`;
    a `fail` is a P1 finding through the same gate mechanics as
-   critique/audit findings. The vision gate complements — never
-   replaces — the deterministic critique/audit pair.
+   critique/audit findings; the gate complements, never replaces, the
+   deterministic critique/audit pair.
 
 4. **Surface findings in the user-facing report**, grouped by
-   priority across both validators with the source attributed
-   (`critique:` / `audit:`). List the first 5 P0/P1 verbatim;
-   collapse P2/P3 to per-source counts with an "expand to see
-   all" pointer. Format:
+   priority across both validators, source attributed
+   (`critique:` / `audit:`): first 5 P0/P1 verbatim; P2/P3 collapsed
+   to per-source counts with an "expand to see all" pointer. Format:
 
    ```
    Critique + audit on home-proposed.html

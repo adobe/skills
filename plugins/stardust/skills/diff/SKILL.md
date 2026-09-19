@@ -19,7 +19,7 @@ Steps, in order: Prereq 0 (playwright probe; copy the whole `skills/diff/scripts
 | serve | `python3 -m http.server` from the prototype's dir; build side = the decorated page (preview or local harness) |
 | 1 | `node skills/diff/scripts/visual-diff.mjs "$PROTO" "$BUILD" --profile eds|generic [--width <px>] [--main <sel>] [--sections a,b] [--out <dir>]` |
 | 2 | `node skills/diff/scripts/content-diff.mjs "$PROTO" "$BUILD" --profile eds|generic [--width <px>] [--main <sel>] [--json]` |
-| live targets (both) | `--ua <string>`, `--wait-until <state>`, `--dismiss [sel,...]`, `--headed`, `--locale <tag>` — engine `scripts/live-session.mjs` |
+| live targets (both) | `--ua <string>`, `--wait-until <state>`, `--dismiss [sel,...]`, `--consent-mode accept\|deny`, `--headed[=window]` (ladder start tier: 2 = real Chrome headless; `=window` = 3, off-screen; default = the tier `_crawl-log.json#discovery.fetchTechnique` records — `skills/extract/reference/playwright-recipe.md` § Bot-management fallback), `--locale <tag>` — engine `scripts/live-session.mjs` |
 
 Exit codes: 0 ran (flags advisory) · 1 probe error · 3 bot challenge (never measured). Pass bar: visual red flags none/justified AND content-diff 0 structural 🔴 (🟡/🟠 confirmed intended); re-run both after each fix.
 
@@ -35,20 +35,20 @@ Outputs: reports on stdout; `visual-diff` screenshots under `--out <dir>`; `cont
 
 Sections: When to use · The two probes · Run it · Reading content-diff · Profiles · Shared engine + the in-loop sibling · Workflow use.
 
-Two probes that compare a **source** prototype against a **built** page. They catch
-**disjoint** failure classes — run BOTH; either alone gives a false "looks fine".
+Two probes compare a **source** prototype against a **built** page; they catch
+**disjoint** failure classes — run BOTH, either alone gives a false "looks fine".
 
-Both are framework-agnostic Playwright probes that compare two rendered URLs by
-**computed style + DOM** (not pixels). All stack-specific language lives in a
-**profile** (`--profile eds|generic`); the comparison logic is generic.
+Both are framework-agnostic Playwright probes comparing two rendered URLs by
+**computed style + DOM** (not pixels); stack-specific language lives in a
+**profile** (`--profile eds|generic`).
 
 ## When to use
 
 - After converting a prototype to EDS (the stardust `deploy` skill's Step 10) — use `--profile eds`.
-- Any "does the build match the design?" check between two rendered URLs (a Figma export vs a React build, a legacy page vs a rebuild) — use `--profile generic`.
+- Any "does the build match the design?" check between two rendered URLs (Figma export vs React build, legacy page vs rebuild) — `--profile generic`.
 - Inside a conversion/QA workflow as the validation gate (see *Workflow use*).
 
-Not for: a single static file with no JS decoration (use the build/harness URL so components are decorated — a raw `.plain.html` has no roles to classify).
+Not for: an undecorated static file (use the build/harness URL — a raw `.plain.html` has no roles to classify).
 
 ## The two probes
 
@@ -69,14 +69,12 @@ prototype's DOM and the built DOM compare symmetrically, then diffs them.
 # and re-install (npm i -D playwright --no-save --legacy-peer-deps) on failure:
 # a --no-save install from extract is PRUNED by any later real npm i
 # (extract SKILL.md § Setup). Run the copied scripts from the project, not the plugin.
-# Copy the WHOLE skills/diff/scripts/ dir: content-diff imports its local diff-profiles.mjs
-# AND content-inventory.mjs. (The deploy gates #93/#94 now use their OWN synced copies in
-# skills/deploy/scripts/ — A6/A2 are independent of this skill; the two copies must stay in
-# sync until the diff-skill abrasion PR consolidates them.)
+# Copy the WHOLE skills/diff/scripts/ dir: content-diff imports diff-profiles.mjs and
+# content-inventory.mjs (the deploy gates use their own synced copies in skills/deploy/scripts/).
 # Prereq: a RENDERABLE source. Static → serve from its own dir (python3 -m http.server).
 # The build URL must be the DECORATED page (live/preview or a local harness), not raw markup.
-# verify the port is YOURS first (lsof -nP -iTCP:8791 -sTCP:LISTEN); prefer a per-project
-# port — a stale server from another project makes both probes measure a foreign page
+# verify the port is YOURS (lsof -nP -iTCP:8791 -sTCP:LISTEN) — a stale server from another
+# project makes both probes measure a foreign page
 PROTO="http://localhost:8791/<prototype>.html"
 BUILD="https://<branch>--<repo>--<owner>.aem.page/<path>"   # or http://localhost:3000/<harness>
 
@@ -93,9 +91,9 @@ plus the live-target set (shared engine: `scripts/live-session.mjs` — every co
 real-Chrome UA **and** the standard Chrome request headers; the UA alone still 403s on
 Akamai-class bot management):
 
-- `--ua <string>` — user agent override (default: real-Chrome desktop UA).
-- `--wait-until <state>` — goto wait override. Default rule (one shared
-  `defaultWaitUntil` in `scripts/live-session.mjs`), decided **per URL side**, three tiers:
+- `--ua <string>` — user-agent override (default real-Chrome desktop).
+- `--wait-until <state>` — goto wait override. Default (shared `defaultWaitUntil`
+  in `scripts/live-session.mjs`), decided **per URL side**, three tiers:
   - localhost/127.0.0.1 → `networkidle` (local prototypes / harnesses, unchanged);
   - EDS build/preview origins — hostnames ending in `.aem.page`, `.aem.live`, `.hlx.page`,
     `.hlx.live` → `networkidle` (they decorate asynchronously and reliably reach
@@ -106,17 +104,17 @@ Akamai-class bot management):
 
   `--wait-until` overrides all three tiers.
 - `--dismiss [sel,...]` — dismiss overlays on both sides: cookie consent (clicked, not
-  removed) AND timed marketing/newsletter modals, plus optional extra site-specific
-  selectors; the mouse is parked afterwards.
-- `--headed` — escalation for bot-managed sites: headed stealth real Chrome.
+  removed; `--consent-mode deny` clicks reject-all, never accept) AND timed
+  marketing/newsletter modals, plus extra site-specific selectors; mouse parked after.
+- `--headed[=window]` — bot-management ladder start tier (Operator card, live targets row).
 - `--locale <tag>` — pin Accept-Language + context locale (geo-redirecting sites capture a
   different locale per run otherwise).
 
 `visual-diff` also: `--out <dir>`, `--sections a,b` (per-section screenshots).
 
 A bot-management challenge/blocked interstitial on either navigation fails LOUD with
-**exit 3** — it is never measured as the source. Escalate with `--headed`; if that is still
-blocked, the site needs crawl.mjs-class capture and the check cannot run headless.
+**exit 3** — never measured as the source. Escalate with `--headed`, then `--headed=window`;
+still blocked at tier 3 means the gate fails, it does not degrade.
 
 A plain (non-challenge) HTTP error on either side — e.g. a **404 build side, normal on
 aem.page before preview propagation** — is NOT fatal: the probe logs a loud warning,

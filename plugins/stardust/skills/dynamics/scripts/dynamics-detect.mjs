@@ -10,17 +10,32 @@
  *   node dynamics-detect.mjs --urls <url,url,…> [--out stardust/current]
  *        [--from-state stardust/state.json]   one URL per page type + the home page, from extract's inventory
  *        [--reach stardust/current]           roll per-page `dynamic` sections (extract --dynamics) into feature reach
- *        [--settle 5000] [--width 1440] [--headed]
+ *        [--settle 5000] [--width 1440] [--headed[=window]]
  *
  * Probes the SOURCE site. No auth header is sent (the source is public); the
  * target-host probe lives in dynamics-plan.mjs.
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
 import { readdirSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname, resolve as resolvePath } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
-  arg, flag, list, readJSON, writeJSON, writeText, provenance, loadPlaywright, vendorFor, registrable, sameSite, pathPattern, settlePage, slug,
+  arg, list, readJSON, writeJSON, writeText, provenance, loadPlaywright, vendorFor, registrable, sameSite, pathPattern, settlePage, slug,
 } from './lib.mjs';
+
+const SCRIPT_NAME = 'dynamics-detect';
+// live-session.mjs (diff skill) owns the bot-management launch ladder — no
+// dynamics script opens a window on its own (evals/lint/launch-ladder.mjs).
+// Two layouts exist: the plugin tree (skills/dynamics/scripts ↔ skills/diff/scripts)
+// and a project copy (scripts/dynamics ↔ scripts/diff) — resolve either.
+const HERE = dirname(fileURLToPath(import.meta.url));
+const LIVE_SESSION = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs']
+  .map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
+if (!LIVE_SESSION) {
+  console.error('%s: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s live-session.mjs alongside the dynamics scripts.', SCRIPT_NAME);
+  process.exit(2);
+}
+const { launchTier, parseHeadedFlag, resolveStartTier } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const OUT = arg('out', 'stardust/current');
 const SETTLE = Number(arg('settle', 5000));
@@ -164,7 +179,10 @@ function classify(page, path, add) {
 
 /* ---------------------------------------------------------------- main -- */
 const { chromium } = await loadPlaywright();
-const browser = await chromium.launch({ headless: !flag('headed'), args: ['--disable-blink-features=AutomationControlled'] });
+// --headed = ladder start tier 2 (real Chrome headless), --headed=window = tier 3 (off-screen);
+// default = the tier extract recorded in _crawl-log.json#discovery.fetchTechnique.
+const headedArg = process.argv.find((a) => a === '--headed' || a.startsWith('--headed='));
+const browser = await launchTier(chromium, resolveStartTier(headedArg ? parseHeadedFlag(headedArg) : 0));
 const report = { _provenance: provenance('detect', { settleMs: SETTLE, width: WIDTH, urls: URLS }), pages: {}, findings: [] };
 const findingsByKey = new Map();
 const add = (f) => {

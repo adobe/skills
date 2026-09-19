@@ -239,69 +239,62 @@ context — but **not across contexts**: with concurrent capture
 the dismissal on its first page, or clones the probe context's
 `storageState`. Cost: one extra navigation per context.
 
+Consent mode is one instrument parameter across lift, capture and
+gate — `accept` by default; `deny` per project, recorded in
+`progress.json#captureState.consent`; see
+`../../replica/reference/source-fidelity-gate.md` § Hardening rule 6.
+Lift (`crawl.mjs`), capture (replica's stitch-shot) and gate
+(`live-session.mjs` `dismissOverlays`) click the SAME control: an
+accept-side lift measured against a deny-side capture is the
+mixed-consent trap — consent-gated embeds, personalisation and
+analytics-loaded layout differ between the two states.
+
 ### Dismissal procedure
 
-API-first (most reliable across vendor config changes), then
-selector fallback. Stop at the first method that hides the
-banner. Probe in this order:
+Selector-first, then a guarded text-match fallback; `crawl.mjs`
+`dismissConsent()` is the reference implementation. Accept mode
+clicks the accept candidates; deny mode (`--consent-mode deny` on
+the diff and replica instruments) clicks the reject-all candidates
+FIRST and never falls back to accept. Stop at the first control
+that hides the banner:
 
 ```js
-async function dismissConsent(context, originUrl) {
-  const page = await context.newPage();
-  await page.goto(originUrl, { waitUntil: 'domcontentloaded' });
+const ACCEPT = ['#onetrust-accept-btn-handler', '.truste-button2',
+  '#CybotCookiebotDialogBodyLevelButtonAccept', '[aria-label*="accept" i]',
+  'button[id*="accept" i]', 'button[class*="accept" i]'];
+const REJECT = ['#onetrust-reject-all-handler', '#CybotCookiebotDialogBodyButtonDecline',
+  '[data-testid="uc-deny-all-button"]', '[aria-label*="reject" i]'];
+const CONTAINERS = '#onetrust-banner-sdk, #CybotCookiebotDialog, #usercentrics-root, [id*="didomi"], [id*="osano"], [id*="consent" i]';
 
-  // 1. JS APIs — defensive (?., try/catch, short timeouts)
-  const apiTried = await page.evaluate(() => {
-    try { if (window.OneTrust?.RejectAll)        { window.OneTrust.RejectAll();    return 'api:OneTrust.RejectAll'; } } catch {}
-    try { if (window.Cookiebot?.dismiss)         { window.Cookiebot.dismiss();     return 'api:Cookiebot.dismiss'; } } catch {}
-    try { if (window.CookieConsent?.dismiss)     { window.CookieConsent.dismiss(); return 'api:CookieConsent.dismiss'; } } catch {}
-    try { if (window.Didomi?.notice?.hide)       { window.Didomi.notice.hide();    return 'api:Didomi.notice.hide'; } } catch {}
-    try { if (window.osano?.cm?.dismiss)         { window.osano.cm.dismiss();      return 'api:osano.cm.dismiss'; } } catch {}
+async function dismissConsent(page, mode = 'accept') {
+  for (const sel of (mode === 'deny' ? REJECT : ACCEPT)) {
+    const el = await page.$(sel);
+    if (el) { await el.click().catch(() => {}); await page.waitForTimeout(300); return `dismissed:${sel}`; }
+  }
+  // Usercentrics renders inside shadow DOM (#usercentrics-root) — plain selectors cannot reach it
+  const uc = await page.evaluate((m) => {
+    const btn = document.querySelector('#usercentrics-root')?.shadowRoot
+      ?.querySelector(m === 'deny' ? '[data-testid="uc-deny-all-button"]' : '[data-testid="uc-accept-all-button"]');
+    if (btn) { btn.click(); return `[data-testid="${btn.dataset.testid}"]`; }
     return null;
-  });
-
-  // 2. Selector fallbacks — clicked in order; first that
-  //    dismisses the banner wins.
-  const selectorChain = [
-    '#onetrust-reject-all-handler',
-    '#onetrust-accept-btn-handler',
-    '#CybotCookiebotDialogBodyButtonDecline',
-    '#CybotCookiebotDialogBodyLevelButtonAccept',
-    '[data-testid="uc-deny-all-button"]',     // Usercentrics
-    '[aria-label*="reject" i]',
-    '[aria-label*="accept" i]'
-  ];
-
-  let methodUsed = apiTried;
-  if (!methodUsed) {
-    for (const sel of selectorChain) {
-      try {
-        await page.click(sel, { timeout: 3000 });
-        methodUsed = `selector:${sel}`;
-        break;
-      } catch {}
-    }
-  }
-
-  // 3. Wait for the most common banner containers to be hidden
-  //    or 8s elapse — whichever first.
-  for (const sel of ['#onetrust-banner-sdk', '#CybotCookiebotDialog',
-                     '[id*="didomi"]', '[id*="osano"]']) {
-    await page.waitForSelector(sel, { state: 'hidden', timeout: 8000 }).catch(() => {});
-  }
-
-  await page.close();
-  return methodUsed ?? 'none-detected';
+  }, mode).catch(() => null);
+  if (uc) return `dismissed:${uc}`;
+  // Text-match fallback — exact short label (<= 25 chars), visible, inside a
+  // fixed/sticky or high-z overlay; the guards keep it off in-content links.
+  const label = await page.evaluate((m) => { /* crawl.mjs dismissConsent(): LABELS per mode */ return null; }, mode).catch(() => null);
+  if (label) return `text:${label}`;
+  const present = await page.$(CONTAINERS);
+  return present ? 'failed' : 'none-detected';
 }
 ```
 
-Record the chosen method in
-`_crawl-log.json#consent.method`. Values:
-`api:<vendor>.<call>`, `selector:<css>`, `none-detected` (no
-banner present — common on small / dev / non-EU sites),
-`failed` (banner detected but neither API nor selectors
-hid it — surface to the user as a per-site warning, the
-banner will remain visible in screenshots).
+Record the resolved method in `_crawl-log.json#consent.method`;
+the value list lives once in `extract/SKILL.md` Phase 2 step 3
+(`dismissed:<sel>` | `text:<label>` | `none-detected` | `failed`).
+`failed` = a banner was detected and nothing hid it — surface it as
+a per-site warning; the banner stays visible in screenshots.
+Replica's gate reads `dismissed:` / `text:` as its default
+`--consent`, so the same control is clicked on every side.
 
 ### Opt-out
 
@@ -313,17 +306,18 @@ side-effects below.
 
 ### Side-effect caveat
 
-Calling `OneTrust.RejectAll()` (and equivalents) commits a
-"non-essential cookies declined" state, which on some sites
-**activates other scripts** that wouldn't have run otherwise —
-analytics, geo-IP detection, locale-cookie writes, A/B test
-slots, live-chat. A 2026-05-03 hardware-vendor run observed an
-expanded localization leak after the dismissal step that
-wasn't present in the pre-dismissal run. The dismissal step
-is therefore not behavior-neutral: cleaner screenshots come
-with the possibility of script-activation deltas. When the
-extract returns content that visibly differs from the live
-site, run with `--no-consent-dismiss` to compare.
+Deny mode (reject-all controls, `OneTrust.RejectAll()`-class APIs)
+commits a "non-essential cookies declined" state, which on some
+sites **activates other scripts** that wouldn't have run otherwise —
+analytics, geo-IP detection, locale-cookie writes, A/B test slots,
+live-chat. A 2026-05-03 hardware-vendor run observed an expanded
+localization leak after a reject-all dismissal that wasn't present
+in the pre-dismissal run. The dismissal step is therefore not
+behavior-neutral in either mode: cleaner screenshots come with the
+possibility of script-activation deltas. When the extract returns
+content that visibly differs from the live site, run with
+`--no-consent-dismiss` to compare — and keep the mode identical on
+every side of a comparison.
 
 ## Wait modes
 

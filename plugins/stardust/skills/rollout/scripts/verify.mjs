@@ -18,11 +18,16 @@
  * fetched in BOTH slash forms over HTTP: the platform may serve only one of
  * `/dir` and `/dir/`; a 404 on either form is a redirect row, not a pass.
  *
+ * Output: stdout carries the counts and the ranked class table only; the
+ * per-page rows go to <out>/verify/summary.json + summary.md (through
+ * skills/stardust/scripts/class-report.mjs — context-hygiene.md § Runner reports).
+ *
  * Usage: node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--slug <s>] [--all] [--out <rolloutDir>]
  */
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJSON, writeJSON, rollupTemplates, rollupConfig } from './lib.mjs';
+import { classReport, renderTable, writeSummary } from '../../stardust/scripts/class-report.mjs';
 
 function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback; }
 const OUT = arg('out', 'stardust/rollout');
@@ -140,7 +145,23 @@ for (const p of target) {
   p.delivery.status = status;
   if (status === 'verified') { p.delivery.verifiedAt = now; p.delivery.error = null; }
   else p.delivery.error = reason;
-  results.push({ slug: p.slug, type, status, reason });
+  results.push({ slug: p.slug, path: p.path, type, status, reason, class: failureClass(reason) });
+}
+
+// failure class = the reason's stable prefix, so the class table groups pages by
+// defect kind (HTTP 404, about:error, h1 count, broken links, folder root …) while
+// the per-page detail stays in the message.
+function failureClass(reason) {
+  if (!reason) return null;
+  if (/^HTTP \d+/.test(reason)) return reason.match(/^HTTP \d+/)[0];
+  if (/^not found under/.test(reason)) return 'not found under --root';
+  if (/^fetch error/.test(reason)) return 'fetch error';
+  if (/^folder root/.test(reason)) return 'folder root slash form';
+  if (/^broken internal links/.test(reason)) return 'broken internal links';
+  if (/about:error/.test(reason)) return 'about:error';
+  if (/<h1>/.test(reason)) return 'h1 count';
+  if (/^index /.test(reason)) return 'index shape';
+  return reason;
 }
 
 // persist + re-roll
@@ -157,6 +178,10 @@ const byType = results.reduce((a, r) => { a[r.type] = (a[r.type] || 0) + 1; retu
 console.log(`rollout verify (${ROOT ? `root:${ROOT}` : BASE})`);
 console.log('='.repeat(60));
 console.log(`Checked ${results.length} · ${ok} verified · ${bad.length} failed · types: ${Object.entries(byType).map(([k, v]) => `${k}:${v}`).join(' ')}`);
-for (const r of bad) console.log(`  ✗ ${r.slug} (${r.type}): ${r.reason}`);
+// per-page ✗ rows go to summary.md only; the conversation holds the ranked class table.
+const report = classReport(bad, { classKey: ['class'], pageKey: ['slug'], messageKey: ['reason'], pointerKey: ['path'], source: 'rollout verify' });
+const files = writeSummary(join(OUT, 'verify'), report, { title: 'rollout verify' });
+if (bad.length) console.log(renderTable(report, { title: 'rollout verify — failures by class', maxLines: 60 }).join('\n'));
+console.log(`summary: ${files.md}`);
 if (!target.length) console.log('Nothing to verify (no deployed pages). Deliver pages first, or pass --all.');
 process.exit(bad.length ? 1 : 0);

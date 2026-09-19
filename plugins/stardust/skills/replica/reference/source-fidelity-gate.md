@@ -225,6 +225,11 @@ bands (`--band` to change); read them top-down:
 - A page with height Δ 0 and uniformly warm bands (no single hot band) has a
   global fault — wrong base font metric, wrong container width, a missing
   background — not a per-section one.
+- Uniform 5–7 % bands with Δh growing linearly with the section/heading
+  count = a source CONTAINER margin, not a section fault: compare
+  `anchor.mjs` y positions on both sides and emit one section per source
+  container (its margin becomes the section gap). Import-side rule: migrate
+  `reference/importer-recipe.md` rule 8 points here.
 
 **The section-anchor probe names the section the band table only points
 at.** `../scripts/anchor.mjs` prints `[y, height]` per top-level section
@@ -305,6 +310,9 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   pixel round, run `chrome-parity.mjs` and clear its deltas (§ Pass bar,
   item 5); style deltas are named in one pass, pixels only say where.
 - Every fix cites the instrument line that demanded it.
+- Images are read per `../../stardust/reference/context-hygiene.md` § Image
+  reads: at most one band crop per hot band the instruments name, ≤ 10 per
+  round, never `live.png`/`proto.png`/`diff*.png` whole.
 - **Before counting an iteration, verify the fix changed the render.** A
   byte-identical differing-pixel count after a "fix" means the rule was a
   no-op (recorded: a padding whose value the EDS section wrapper already
@@ -320,10 +328,10 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   element whose source rule was lifted on live); the re-check ran through a
   CACHED stylesheet (DevTools showed the old rule at its old line number
   while both hosts already served the fix) — verify serving out-of-band
-  (`curl --compressed <css-url> | grep '<new-rule>'`; the CSS is
-  gzip-encoded, a bare `curl | grep` scans binary and silently matches
-  nothing) and re-render in a fresh headless context; and a reviewer's
-  screenshot encodes their zoom — back-compute their CSS viewport from any
+  (`node skills/deploy/scripts/served-check.mjs <css-url> --grep
+  '<new-rule>'` — served assets are gzip-encoded; the helper decodes and
+  prints the grep verdict) and re-render in a fresh headless context; and
+  a reviewer's screenshot encodes their zoom — back-compute their CSS viewport from any
   element with a known percentage rule (a card at 851px under `width: 50%`
   → viewport 1702px) and reproduce THAT viewport headlessly before letting
   their numbers overturn a fix.
