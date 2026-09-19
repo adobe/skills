@@ -45,7 +45,7 @@ values, and carries a source citation.
     "writtenAt": "2026-04-25T13:50:00Z",
     "readArtifacts": [
       "https://example.com/",
-      "stardust/current/pages/home.json"
+      "stardust/current/pages/index.json"
     ],
     "synthesizedInputs": [],
     "stardustVersion": "0.10.0"
@@ -202,7 +202,7 @@ role-named.
     "value": "#147aff",
     "occurrences": 412,
     "sourceSelectors": [".btn-primary", "a"],
-    "sources": ["home", "pricing", "donate"],
+    "sources": ["index", "pricing", "donate"],
     "usedAs": ["background", "border", "fill"]
   },
   {
@@ -394,7 +394,7 @@ labelled with the page list in `evidence`.
     "primary": "8px",              // mode of non-zero border-radii across all pages, weighted by element count
     "secondary": "16px",
     "pill": "9999px",
-    "primarySources": ["home", "about", "stories"],
+    "primarySources": ["index", "about", "stories"],
     "occurrences": { "8px": 122, "16px": 53, "9999px": 38, "2px": 30 }
   },
   "shadows": [
@@ -463,9 +463,9 @@ the redesign target.
     "headingSequence": ["About", "Stories", "Donate"],
     "ctaLabels": ["Donate now"],
     "domFingerprintHash": "sha256:...",
-    "exampleSlug": "home",            // representative page; the verbatim block lives on this slug
+    "exampleSlug": "index",           // representative page; the verbatim block lives on this slug
     "exampleSelector": "header > nav.primary",
-    "examplePages": ["home", "about", "stories"]
+    "examplePages": ["index", "about", "stories"]
   }
 ]
 ```
@@ -611,7 +611,7 @@ optimised for social cards) instead of the actual visible hero. The
 this way before the user noticed.
 
 Resolve from the home page's captured media (both
-`pages/home.json#media.images[]` and `media.cssBackgrounds[]` —
+`pages/index.json#media.images[]` and `media.cssBackgrounds[]` —
 the second covers `background-image` and `::before` /
 `::after` pseudo-element heroes per `playwright-recipe.md`
 § Capture list 11):
@@ -654,7 +654,7 @@ exact failure that dropped a fintech home's HLS brand-animation
 on the first migration pass.
 
 Resolve from the home page's captured media
-(`pages/home.json#media`): the `<video>` / `<iframe>` inventory
+(`pages/index.json#media`): the `<video>` / `<iframe>` inventory
 (`playwright-recipe.md` § Capture list — every `<video>`/`<iframe>`
 src), `<canvas>` presence, and any motion library detected among
 loaded scripts (hls.js, lottie, three.js, gsap, lenis).
@@ -690,7 +690,7 @@ just examples.
 ```json
 {
   "ctaFrequency": [
-    { "label": "Donate", "total": 35, "pageCount": 10, "pages": ["home", "about-us", ...] },
+    { "label": "Donate", "total": 35, "pageCount": 10, "pages": ["index", "about-us", ...] },
     { "label": "Read More", "total": 56, "pageCount": 5, "pages": [...] }
   ],
   "headingFrequency": [

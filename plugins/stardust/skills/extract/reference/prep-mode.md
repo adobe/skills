@@ -119,7 +119,7 @@ Candidate output is a draft entry under
     { "name": "<inferred>", "type": "text|link|image|...", "required": false }
   ],
   "instances": [
-    { "slug": "home",   "selector": "..." },
+    { "slug": "index",  "selector": "..." },
     { "slug": "donate", "selector": "..." }
   ],
   "status": "candidate"
@@ -161,9 +161,9 @@ Page types:   landing 1 · article 84 · listing 6 · program 12 · form 3 · st
               (LLM-inferred; refine in direct --prep)
 
 Module candidates: 8
-  hotline-211         5 instances  (home, get-help, donate, news, programs)
-  donate-band         12 instances (home, donate, news, all article footers)
-  story-card          7 instances  (home, news, programs)
+  hotline-211         5 instances  (index, get-help, donate, news, programs)
+  donate-band         12 instances (index, donate, news, all article footers)
+  story-card          7 instances  (index, news, programs)
   ...
 
 Typed slots:  filled per page-type (see current/pages/<slug>.json § slots)

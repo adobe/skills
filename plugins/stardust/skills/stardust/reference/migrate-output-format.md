@@ -154,8 +154,8 @@ every successful run:
     "outputDir":           "stardust/migrated/",
     "selfContained":       true,
     "pageMap": [
-      { "sourceUrl": "/",                       "outputPath": "index.html",                 "slug": "home" },
-      { "sourceUrl": "/about-us/history.html",  "outputPath": "about-us/history.html",      "slug": "about-us__history" },
+      { "sourceUrl": "/",                       "outputPath": "index.html",                 "slug": "index" },
+      { "sourceUrl": "/about-us/history.html",  "outputPath": "about-us/history.html",      "slug": "about-us-history-html" },
       { "sourceUrl": "/beers/",                 "outputPath": "beers/index.html",           "slug": "beers" }
     ],
     "totalAssetsBundled":  14,
@@ -165,13 +165,13 @@ every successful run:
       "..."
     ],
     "pages": [
-      { "slug": "home",        "file": "stardust/migrated/index.html",                  "assetsBundled": 11 },
-      { "slug": "about-us__history", "file": "stardust/migrated/about-us/history.html", "assetsBundled":  3 }
+      { "slug": "index",       "file": "stardust/migrated/index.html",                  "assetsBundled": 11 },
+      { "slug": "about-us-history-html", "file": "stardust/migrated/about-us/history.html", "assetsBundled":  3 }
     ],
     "missingAssets": [
       {
         "subpath":      "generated/missing.jpg",
-        "referencedBy": ["home"]
+        "referencedBy": ["index"]
       }
     ],
     "cleanedAssets": []

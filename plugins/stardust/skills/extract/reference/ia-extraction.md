@@ -220,24 +220,28 @@ audit trail is complete and the user can review what was dropped.
 
 ## Slug derivation
 
-Slugs are filesystem-friendly identifiers used as keys in `state.json`,
-filenames in `current/pages/<slug>.json`, and
-`prototypes/<slug>-proposed.html`.
+Slugs key `state.json.pages[]`, `current/pages/<slug>.json|.html`,
+`assets/screenshots/<slug>.png` and `prototypes/<slug>-proposed.html`.
+`crawl.mjs` (`slugify` + `assignSlugs`) is the implementation and this
+section describes it; downstream scripts key on
+`state.json.pages[].slug` — never on a re-implemented slugify.
 
-Algorithm:
+1. URL path only (query and hash ignored); drop leading and trailing
+   slashes.
+2. Every run of characters outside `[a-z0-9]` — `/` included — becomes
+   one `-`; lowercase. `/blog/post-one` → `blog-post-one`.
+3. Empty → `index` (the root page).
+4. Longer than 200 chars → the first 180 chars + `-<sha1:8>` of the
+   full slug (file-name cap: `<slug>.json` must fit the 255-byte limit).
+5. Collision — distinct pages flattening to one slug (`/about-us` vs
+   `/about/us`, or one path with different queries): the first claimant
+   in discovery order keeps the clean slug; each later page gets
+   `-<sha1:4>` of its dedupe key (`origin + path + query`). Stable
+   across runs.
 
-1. Take the URL path. Drop leading and trailing slashes.
-2. If empty → slug is `home`.
-3. Replace `/` with `__`. Example: `/blog/post-one` → `blog__post-one`.
-4. Lowercase, ASCII-only, replace any non-`[a-z0-9_-]` with `-`.
-5. Collapse runs of `-`. Trim leading/trailing `-`.
-6. If the result is empty after normalisation → fall back to a hash
-   of the URL prefixed with `_`.
-7. If two URLs collapse to the same slug, suffix `-2`, `-3`, etc., in
-   discovery order.
-
-The slug is purely a filesystem name. The original URL is always
-preserved in `state.json` and per-page JSON.
+The original URL is always preserved in `state.json` and the per-page
+JSON. Projects created before this rule may carry `home` for the root:
+read it as a legacy alias of `index`, never write it.
 
 ## Page selection — favour template variety over IA breadth
 
@@ -400,46 +404,60 @@ informational output.
     "capSource": "default",          // default | --cap | --all | --single | --pages | prompt-intent
     "userChoice": null,              // null when no confirmation was needed (the common case); only populated when one of the three narrow exceptions triggered (see § Informational output)
     "kept": [
-      { "url": "https://example.com/", "slug": "home", "priority": 1.0, "lastmod": "2026-04-12", "score": 18 }
+      { "url": "https://example.com/", "slug": "index", "priority": 1.0, "lastmod": "2026-04-12", "score": 18 }
     ],
     "cut": [
-      { "url": "https://example.com/blog/post-1", "slug": "blog__post-1", "reason": "below cap", "score": 1 }
+      { "url": "https://example.com/blog/post-1", "slug": "blog-post-1", "reason": "below cap", "score": 1 }
     ],
     "scores": {
       "rules": ["home", "IA-pillar keyword", "sitemap priority", "shallow path", "extra depth", "date-like archive", "version/test marker", "auth-walled", "page-type checklist"],
       "sample": { "url": "https://example.com/about", "total": 7, "breakdown": { "IA-pillar keyword": 5, "shallow path": 2 } }
     },
     "malformed": [],
-    "requiresAuth": []
+    "requiresAuth": [],
+    "skippedExtracted": [ { "slug": "about", "url": "...", "status": "extracted" } ]   // re-runs only
   },
   "crawl": {
     "startedAt": "...",
     "finishedAt": "...",
     "successes": 24,
-    "failures": [
+    "failures": [                    // union across runs; an entry leaves only when its slug later succeeds
       { "slug": "contact", "url": "...", "errorClass": "TimeoutError", "message": "...", "at": "..." }
     ]
-  }
-  // errorClass is one of: HTTPError | ContentTypeError | EmptyPageError | TimeoutError | NetworkError
+  },
+  "runs": [                          // one entry per invocation, appended
+    { "at": "...", "args": { "url": "...", "pages": null, "cap": 25, "wait": "medium", "concurrency": 4, "dynamics": false, "refresh": [], "force": false, "headed": null },
+      "technique": "headless", "discovered": 38, "skipped": 0, "captured": 24, "failed": ["contact"] }
+  ]
+  // errorClass is one of: HTTPError | ContentTypeError | EmptyPageError | TimeoutError | NetworkError | BotChallengeError | ProvenanceMissing
   // See playwright-recipe.md § Response validation for the trigger conditions.
 }
 ```
 
-This file is descriptive and append-only. Re-running `extract` adds a
-new top-level entry under `runs[]` rather than overwriting.
+Append-only across runs, enforced by `crawl.mjs`: one `runs[]` entry
+per invocation; `crawl.failures` is the union minus slugs that later
+succeeded; `discovery` never shrinks (a `--pages` or narrower re-run
+refreshes only `fetchTechnique`); a failed page keeps its previous
+record on disk.
 
 ## Incremental re-runs
 
 The user may run `$stardust extract` again on the same site to add new
 pages or refresh existing ones.
 
-- Default behaviour: skip URLs whose slug is already in `state.json`
-  with status `extracted` or beyond. Crawl only newly discovered URLs.
-- `--refresh <slug>` re-extracts a single named page even if already
-  extracted. The new per-page JSON overwrites, but state.json
-  preserves the page's full lifecycle history.
-- `--refresh-all` re-extracts every page in the cap. Rare; ask the
-  user to confirm.
+- Default: a discovered URL whose slug is already `extracted` (or
+  beyond) in `state.json` is skipped and listed under
+  `discovery.skippedExtracted[]`. `state.json` is read-only for the
+  crawler; a missing file means no skip.
+- `--refresh <slug,…>` re-extracts the named pages even when already
+  extracted (a slug outside this run's list is appended from its
+  `state.json` URL). The per-page JSON overwrites; state.json keeps
+  the lifecycle history.
+- `--force` re-extracts every page in scope.
+- `--pages <path,…>` crawls exactly the listed paths — never skipped,
+  never dropped, and the entry URL is included only when listed (or
+  when the list is empty), so a single-page recapture does not re-hit
+  the home page.
 - A re-run that resolves a different `originUrl` is rejected (see
   `extract` SKILL.md § Setup, "Origin collision").
 

@@ -37,7 +37,7 @@ stripped, dots replaced with dashes: `https://www.example.com/` →
   "site": {
     "url": "https://example.com",
     "domainSlug": "example-com",
-    "pagesAudited": ["home", "pricing", "about"],   // slugs from extract
+    "pagesAudited": ["index", "pricing", "about"],   // slugs from extract
     "extraction": {
       "reused": false,            // true when a <7-day extraction was reused
       "extractedAt": "<ISO-8601>",
@@ -74,7 +74,7 @@ stripped, dots replaced with dashes: `https://www.example.com/` →
     "brandColorShare": {
       "value": 0.06, "unit": "share-of-painted-pixels",
       "status": "measured", "method": "pixel-sample",
-      "detail": { "screenshot": "assets/screenshots/home.png", "grid": "every 8th px", "paintedPixels": 41230, "brandPixels": 2478 }
+      "detail": { "screenshot": "assets/screenshots/index.png", "grid": "every 8th px", "paintedPixels": 41230, "brandPixels": 2478 }
     },
     "ctaFragmentation": {
       "value": 4, "unit": "distinct-labels-per-bucket",

@@ -41,7 +41,7 @@
  *     [--wait-until <state>]         live-target goto waitUntil (default
  *                                    domcontentloaded; local/file keep
  *                                    networkidle)
- *     [--headed]                     headed stealth real Chrome (escalation
+ *     [--headed[=window]]                     ladder start tier 2; =window tier 3 (escalation
  *                                    for bot-managed sites)
  *     [--locale <tag>]               pin Accept-Language + locale
  *
@@ -64,7 +64,7 @@ if (!LIVE_SESSION) {
   console.error('Copy the diff skill\'s live-session.mjs alongside the reskin scripts (SKILL.md § Setup).');
   process.exit(2);
 }
-const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = await import(pathToFileURL(LIVE_SESSION).href);
+const { isLiveHttpUrl, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive } = await import(pathToFileURL(LIVE_SESSION).href);
 
 function parseArgs(argv) {
   const opts = { 'source-scope': 'main', 'rendered-scope': 'main', 'wait-until': 'domcontentloaded' };
@@ -74,7 +74,7 @@ function parseArgs(argv) {
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
-    else if (a === '--headed') opts.headed = true;
+    else if (a === '--headed' || a.startsWith('--headed=')) opts.headed = parseHeadedFlag(a);
     else if (a.startsWith('--') && VALUE_FLAGS.has(a.slice(2))) opts[a.slice(2)] = argv[++i];
     else { console.error(`[dom-equality] unknown arg: ${a}`); process.exit(2); }
   }
@@ -85,7 +85,7 @@ const args = parseArgs(process.argv);
 if (args.help || !args.source || !args.rendered || !args.report) {
   console.log('usage: node dom-equality.mjs --source <url|file> --rendered <url|file> --report <path>');
   console.log('         [--source-scope selA,selB] [--rendered-scope main] [--normalize ledger.mjs]');
-  console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed] [--locale <tag>]');
+  console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed[=window]] [--locale <tag>]');
   console.log('Gates on byte-equal normalized visible text + ordered visible-image set.');
   console.log('Structure (element count, tag sequence) is reported but informational.');
   console.log('Live targets get the shared live-session hardening (real-Chrome UA + standard headers,');
@@ -106,7 +106,8 @@ const toUrl = (p) => (/^(https?|file):/.test(p) ? p : pathToFileURL(resolve(p)).
 const die = (m, c = 2) => { console.error(`[dom-equality] ${m}`); process.exit(c); };
 const { script: NORMALIZE, source: normalizeSource } = await loadNormalize(args.normalize);
 
-const browser = args.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
+args.tier = resolveStartTier(args.headed); // ladder start = max(--headed tier, tier extract recorded) — live-session.mjs
+const browser = await launchTier(chromium, args.tier);
 
 async function capture(url, scopeList, normalize) {
   // UA + standard headers + webdriver spoof (live-session) — harmless on
@@ -120,10 +121,10 @@ async function capture(url, scopeList, normalize) {
     // The gate re-crawls the LIVE source here — a challenge/blocked
     // interstitial or an HTTP >= 400 page must fail loud, never be measured
     // as the source (the byte gate's correctness depends on it).
-    // solveWindow only under --headed: headless clearance never lands, and
+    // solve window only at tier 3 (live-session gotoLive): headless clearance never lands, and
     // the solve loop would spend the Akamai block budget (1 hit vs up to 4).
     try {
-      await gotoLive(page, url, { waitUntil: args['wait-until'], timeoutMs: 60000, settleMs: 0, solveWindow: !!args.headed });
+      await gotoLive(page, url, { waitUntil: args['wait-until'], timeoutMs: 60000, settleMs: 0, tier: args.tier });
     } catch (e) {
       console.error(`[dom-equality] ${e.message}`);
       await browser.close();

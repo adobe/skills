@@ -14,10 +14,10 @@
  *   - challenge/interstitial detection on the entry response
  *     (cf-mitigated: challenge; 403/429/503 + an edge/CDN signature);
  *   - the challenge-solve wait+reload window before declaring a hard block —
- *     under STEALTH-HEADED sessions only (gotoLive `solveWindow`): headless
- *     clearance never lands, and the loop's extra hits would spend the
- *     ~3–4-request Akamai block budget before --headed escalation;
- *   - headed real-Chrome stealth escalation (`--disable-blink-features=
+ *     at TIER 3 only (gotoLive `tier`/`solveWindow`): headless clearance
+ *     never lands, and the loop's extra hits would spend the ~3–4-request
+ *     Akamai block budget before the next tier gets its one hit;
+ *   - real-Chrome stealth on tiers 2–3 (`--disable-blink-features=
  *     AutomationControlled`, dropped `--enable-automation`, navigator.webdriver
  *     spoof on EVERY context — the challenge re-fires per context).
  *
@@ -48,9 +48,18 @@
  *     a fashion brand → /ww/) capture a different locale per run unless
  *     Accept-Language + context locale are pinned.
  *
- * Escalation ladder (documented in replica/reference/source-fidelity-gate.md):
- *   headers+UA (default) → --headed (launchStealthHeaded) → if STILL blocked,
- *   the site needs crawl.mjs-class capture and the gate must fail, not degrade.
+ * Escalation ladder — the rule is extract/reference/playwright-recipe.md
+ * § Bot-management fallback; this module and crawl.mjs enforce it, no script
+ * launches a window on its own (`fetchTechnique` value in brackets):
+ *   tier 1 [headless]                 bundled Chromium, headless — default
+ *   tier 2 [chrome-headless]          real Chrome (channel 'chrome'), headless, stealth args
+ *   tier 3 [chrome-headed-offscreen]  real Chrome headed, window parked off-screen;
+ *                                     visible only under STARDUST_HEADED_WINDOW=1
+ * Tiers 1–2 are 1-hit fail-loud (BotChallengeError.nextTier names the next
+ * tier); only tier 3 runs the solve window. `--headed` = start at tier 2,
+ * `--headed=window` = tier 3; the default start tier is the one recorded in
+ * stardust/current/_crawl-log.json#discovery.fetchTechnique (resolveStartTier).
+ * A tier-3 challenge means the gate must FAIL, not degrade.
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
@@ -235,18 +244,19 @@ export function isChallengeResponse(response) {
 
 /**
  * Navigate + settle, with the full fail-loud contract:
- *   - challenge/blocked interstitial → per `solveWindow`:
- *       false (default — plain headless): THROW BotChallengeError after the
- *         FIRST challenge-classified response, 1 hit total. Clearance only
- *         lands under a stealth-headed session (module docstring), so a
- *         headless solve loop just burns the documented ~3–4-request Akamai
- *         IP-block budget (source-fidelity-gate.md § Hit minimization)
- *         before the operator can escalate --headed.
- *       true (set it when the browser came from launchStealthHeaded): run
- *         the challenge-solve window first (wait + reload, 3 attempts —
- *         Cloudflare's non-interactive challenge sets its clearance cookie
- *         in that window under a stealth-headed session), THEN throw if
- *         still challenged.
+ *   - challenge/blocked interstitial → per `tier` (the ladder tier the browser
+ *     came from; `solveWindow` overrides the derived default `tier === 3`):
+ *       tiers 1–2 (default): THROW BotChallengeError after the FIRST
+ *         challenge-classified response, 1 hit total, `err.nextTier` = the
+ *         tier to escalate to. Clearance only lands under a headed session
+ *         (module docstring), so a headless solve loop just burns the
+ *         documented ~3–4-request Akamai IP-block budget
+ *         (source-fidelity-gate.md § Hit minimization).
+ *       tier 3: run the challenge-solve window first (wait + reload, 3
+ *         attempts — Cloudflare's non-interactive challenge sets its
+ *         clearance cookie in that window under a headed session), THEN
+ *         throw if still challenged (`err.nextTier === null`: interactive
+ *         solve or allowlist territory).
  *     Either way a challenge must NEVER be silently measured as the source
  *     (the Access-Denied trap) — regardless of `httpError`.
  *   - non-challenge entry status >= 400 → per `httpError`:
@@ -259,17 +269,17 @@ export function isChallengeResponse(response) {
  *         signal, exit stays 0).
  * Returns the response.
  */
-export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', timeoutMs = 60000, settleMs = 1200, httpError = 'throw', solveWindow = false } = {}) {
+export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', timeoutMs = 60000, settleMs = 1200, httpError = 'throw', tier = 1, solveWindow = tier === 3 } = {}) {
   let resp = await page.goto(url, { waitUntil, timeout: timeoutMs });
   if (!resp) {
     const err = new Error(`no response navigating to ${url} — network-level failure or non-HTTP navigation`);
     err.name = 'LiveNavigationError';
     throw err;
   }
-  // challenge-solve window (crawl.mjs clearChallenge semantics) — HEADED
-  // sessions only (solveWindow). In plain headless the clearance never
-  // lands, so the loop's up-to-3 extra hits are pure spent block budget:
-  // fail loud on the first challenge-classified response instead (1 hit).
+  // challenge-solve window (crawl.mjs clearChallenge semantics) — tier 3
+  // only (solveWindow). Headless the clearance never lands, so the loop's
+  // up-to-3 extra hits are pure spent block budget: fail loud on the first
+  // challenge-classified response instead (1 hit) and name the next tier.
   if (solveWindow) {
     for (let attempt = 0; attempt < 3 && isChallengeResponse(resp); attempt += 1) {
       await page.waitForTimeout(4000);
@@ -279,15 +289,19 @@ export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', time
   }
   const marker = challengeMarker(resp);
   if (marker) {
+    const nextTier = tier < TIERS.length ? tier + 1 : null;
+    const hint = nextTier
+      ? `escalate to tier ${nextTier} (${TIERS[nextTier - 1]}${nextTier === 2 ? ': --headed' : ': --headed=window'})`
+      : 'tier 3 is still challenged — the origin needs an interactive solve (STARDUST_HEADED_WINDOW=1) or an allowlist; the gate must fail, not degrade';
     const err = new Error(
       `bot challenge at ${url}: ${marker} — the live side served an edge interstitial, NOT the page; `
-      + 'refusing to measure it as the source. Escalate with --headed (stealth real Chrome); if that is '
-      + "still blocked, the site needs crawl.mjs-class capture (extract's bot-management ladder) and the "
-      + 'gate cannot run against it headless.',
+      + `refusing to measure it as the source (tier ${tier}, ${TIERS[tier - 1]}). ${hint}.`,
     );
     err.name = 'BotChallengeError';
     err.marker = marker;
     err.url = url;
+    err.tier = tier;
+    err.nextTier = nextTier;
     throw err;
   }
   const status = resp.status();
@@ -305,21 +319,83 @@ export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', time
   return resp;
 }
 
-/**
- * Headed stealth escalation tier (crawl.mjs launchHeadedStealth semantics):
- * headed real Chrome clears TLS/H2-fingerprint blocks, and the stealth args
- * strip the automation signals Cloudflare's managed challenge probes for.
- * Pair with newLiveContext so the navigator.webdriver spoof lands on every
- * context. Takes the caller's `chromium` so this module stays import-free.
- */
-export async function launchStealthHeaded(chromium) {
-  return chromium.launch({
-    headless: false,
-    channel: 'chrome',
-    args: ['--disable-blink-features=AutomationControlled'],
-    ignoreDefaultArgs: ['--enable-automation'],
-  });
+// ---- bot-management escalation ladder (shared contract with extract/scripts/crawl.mjs) ----
+// crawl.mjs carries a byte-identical copy of TIERS / STEALTH_ARGS / OFFSCREEN_ARGS /
+// launchTier (it is copied alone into projects and cannot import this module);
+// evals/lint/launch-ladder.mjs fails when the two drift.
+//   1 headless                 bundled Chromium, headless (default)
+//   2 chrome-headless          real Chrome (channel:'chrome'), headless, stealth args —
+//                              clears TLS/H2/JA3 fingerprint blocks without any window
+//   3 chrome-headed-offscreen  real Chrome headed, window parked off-screen — the only
+//                              tier where a JS managed challenge can solve
+// Tiers 1–2 are 1-hit fail-loud: a challenge escalates at once, no wait+reload
+// solve window (it never clears headless and only burns the block budget). The
+// tier-3 window is visible only under STARDUST_HEADED_WINDOW=1: a window popping
+// over the operator's desk is the interrupt class this ladder exists to remove.
+export const TIERS = ['headless', 'chrome-headless', 'chrome-headed-offscreen'];
+export const LEGACY_TIER = { 'headed-chrome-stealth': 3 }; // pre-ladder fetchTechnique value
+// Stealth: Cloudflare's managed challenge probes for automation signals —
+// `--disable-blink-features=AutomationControlled` + dropping `--enable-automation`
+// + the navigator.webdriver spoof (per context, newLiveContext) let it solve.
+export const STEALTH_ARGS = ['--disable-blink-features=AutomationControlled'];
+// An off-screen window must stay `visible` to the renderer: occlusion
+// backgrounding flips document.visibilityState to 'hidden', and some edges
+// challenge hidden tabs they admit on-screen. These flags keep it visible.
+export const OFFSCREEN_ARGS = ['--window-position=-32000,-32000', '--disable-backgrounding-occluded-windows',
+  '--disable-renderer-backgrounding', '--disable-background-timer-throttling'];
+export function tierOf(technique) { return LEGACY_TIER[technique] || (TIERS.indexOf(technique) + 1) || 0; }
+/** Launch the browser for one ladder tier. Takes the caller's `chromium` so this module stays import-free. */
+export async function launchTier(chromium, tier) {
+  if (tier <= 1) return chromium.launch({ headless: true });
+  const stealth = { channel: 'chrome', args: STEALTH_ARGS, ignoreDefaultArgs: ['--enable-automation'] };
+  if (tier === 2) return chromium.launch({ ...stealth, headless: true });
+  const visible = process.env.STARDUST_HEADED_WINDOW === '1';
+  return chromium.launch({ ...stealth, headless: false, args: visible ? STEALTH_ARGS : [...STEALTH_ARGS, ...OFFSCREEN_ARGS] });
 }
+/** `--headed` → tier 2, `--headed=window` / `--headed=offscreen` → tier 3, anything else → 0 (not a headed flag). */
+export function parseHeadedFlag(arg) {
+  if (arg === '--headed') return 2;
+  if (arg === '--headed=window' || arg === '--headed=offscreen') return 3;
+  if (typeof arg === 'string' && arg.startsWith('--headed=')) throw new Error(`unknown ${arg} — use --headed (tier 2, real Chrome headless) or --headed=window (tier 3, off-screen window)`);
+  return 0;
+}
+/**
+ * The tier an instrument starts at: max(flag tier, the tier extract recorded in
+ * `_crawl-log.json#discovery.fetchTechnique`, 1). Every downstream live
+ * instrument starts where the crawl cleared, so a site that needed real Chrome
+ * is never re-probed headless (one spent hit per instrument per breakpoint).
+ */
+export function resolveStartTier(flagTier = 0, { logPath = process.env.STARDUST_CRAWL_LOG || 'stardust/current/_crawl-log.json' } = {}) {
+  let recorded = 0;
+  try { recorded = tierOf(JSON.parse(readFileSync(logPath, 'utf8')).discovery?.fetchTechnique); } catch { /* no crawl log — start at the flag tier */ }
+  return Math.max(1, flagTier || 0, recorded);
+}
+/**
+ * Run `probe(browser, tier)` climbing the ladder: a BotChallengeError at tiers
+ * 1–2 closes the browser and relaunches one tier up (one hit per tier); any
+ * other error, or a tier-3 challenge (`err.nextTier === null`), propagates.
+ * Resolves { tier, technique, browser, result } with the browser still open —
+ * the caller closes it. Single-launch instruments wrap their whole capture in
+ * the probe (a challenge fires at navigation, before any output is written).
+ */
+export async function launchLadder(chromium, startTier, probe) {
+  let tier = Math.max(1, startTier || 1);
+  for (;;) {
+    const browser = await launchTier(chromium, tier);
+    if (tier === 3 && process.env.STARDUST_HEADED_WINDOW !== '1') console.error(`[live-session] tier 3 (${TIERS[2]}): Chrome window parked off-screen (STARDUST_HEADED_WINDOW=1 to show it)`);
+    try {
+      const result = await probe(browser, tier);
+      return { tier, technique: TIERS[tier - 1], browser, result };
+    } catch (err) {
+      await browser.close().catch(() => {});
+      if (err.name !== 'BotChallengeError' || !err.nextTier) throw err;
+      console.error(`[live-session] ${err.marker || 'bot challenge'} at tier ${tier} (${TIERS[tier - 1]}) — escalating to tier ${err.nextTier} (${TIERS[err.nextTier - 1]})`);
+      tier = err.nextTier;
+    }
+  }
+}
+/** Transitional alias: tier 3. Prefer launchTier(chromium, resolveStartTier(parseHeadedFlag(arg))). */
+export async function launchStealthHeaded(chromium) { return launchTier(chromium, 3); }
 
 // Consent-accept candidates (clicked, never DOM-removed, so consent-gated
 // layout settles the way a real visit does) — stitch-shot's proven list.

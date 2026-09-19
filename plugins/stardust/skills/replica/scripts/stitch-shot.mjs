@@ -20,8 +20,9 @@
  *     sites, and UA alone still 403s on Akamai (F-R1) — the standard headers
  *     (Accept / Accept-Language / sec-ch-ua*) are the other half of the fix.
  *   - a bot-management challenge/blocked interstitial FAILS LOUD (exit 3),
- *     never captured as if it were the source (the Access-Denied trap). Escalate
- *     with --headed (stealth real Chrome).
+ *     never captured as if it were the source (the Access-Denied trap). The
+ *     capture climbs the ladder itself (live-session launchLadder: headless →
+ *     real Chrome headless → off-screen window; --headed starts at tier 2).
  *   - waitUntil 'domcontentloaded' (never 'networkidle'): live sites with
  *     analytics beacons never reach networkidle — hard timeout otherwise.
  *   - TWO overlay classes dismissed: cookie consent (CLICKED accept, not DOM
@@ -88,7 +89,7 @@
  *     --consent-mode <m>  accept | deny (default accept; see above)
  *     --dismiss <sel,...> extra overlay-dismiss selectors (marketing modals
  *                         with non-standard close controls)
- *     --headed            escalation: headed stealth real Chrome
+ *     --headed[=window]    bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
  *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
  *     --ua <string>       user agent                        (default real-Chrome)
  *     --wait <ms>         initial post-load wait            (default 1200; 3000 with --settle)
@@ -133,7 +134,7 @@ if (!LIVE_SESSION) {
   console.error('stitch-shot error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { REAL_CHROME_UA, isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } = await import(pathToFileURL(LIVE_SESSION).href);
+const { REAL_CHROME_UA, TIERS, isLiveHttpUrl, launchLadder, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `stitch-shot — scroll-and-stitch full-page screenshot (symmetric capture instrument)
 
@@ -144,7 +145,7 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --consent <sel>   extra consent selector (clicked, not removed); "text:<label>" for a label match
   --consent-mode <m> accept | deny (default accept; deny with no reject control, or accepted → exit 5)
   --dismiss <sel,…> extra overlay-dismiss selectors (marketing modals etc.)
-  --headed          headed stealth real Chrome (escalation for bot-managed sites)
+  --headed[=window]  bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB) for geo determinism
   --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
   --wait <ms>       initial post-load wait (default 1200; 3000 with --settle)
@@ -169,7 +170,7 @@ function parseArgs(argv) {
     else if (a === '--consent') { opts.consent = rest[i += 1]; }
     else if (a === '--consent-mode') { opts.consentMode = rest[i += 1]; if (!['accept', 'deny'].includes(opts.consentMode)) { console.error(`--consent-mode must be accept or deny\n\n${HELP}`); process.exit(1); } }
     else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
-    else if (a === '--headed') { opts.headed = true; }
+    else if (a === '--headed' || a.startsWith('--headed=')) { opts.headed = parseHeadedFlag(a); }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--ua') { opts.ua = rest[i += 1]; }
     else if (a === '--wait') { opts.wait = Number(rest[i += 1]); }
@@ -247,8 +248,11 @@ async function dismissAndLog(page, url, opts, prov) {
 
 async function main() {
   const { url, out, opts } = parseArgs(process.argv);
-  const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
-  try {
+  // The whole capture is the ladder probe: a challenge fires at navigation,
+  // before any output is written, so relaunching one tier up loses nothing.
+  // Start tier = max(--headed tier, the tier extract recorded) — live-session.mjs.
+  const { browser } = await launchLadder(chromium, resolveStartTier(opts.headed), async (browser, tier) => {
+    opts.tier = tier;
     // UA + standard headers + webdriver spoof on the context (live-session).
     const ctx = await newLiveContext(browser, {
       ua: opts.ua, locale: opts.locale,
@@ -257,9 +261,18 @@ async function main() {
     const page = await ctx.newPage();
     // Challenge/blocked interstitial → loud BotChallengeError (exit 3); a
     // challenge page must never be stitched as if it were the source.
-    // solveWindow only under --headed: headless clearance never lands, and
+    // solve window only at tier 3 (live-session gotoLive): headless clearance never lands, and
     // the solve loop would spend the Akamai block budget (1 hit vs up to 4).
-    await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: opts.timeout, settleMs: 0, solveWindow: opts.headed });
+    await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: opts.timeout, settleMs: 0, tier });
+    // Tier 3 parks the window off-screen; an occluded/backgrounded tab reports
+    // visibilityState 'hidden' and some edges challenge it where an on-screen
+    // one is admitted (playwright-recipe.md § Bot-management fallback). Never
+    // shoot a hidden renderer — exit 3, same class as a challenge: not the page.
+    const vis = await page.evaluate(() => document.visibilityState);
+    if (vis !== 'visible') {
+      console.error(`[stitch-shot] window not visible to the renderer (visibilityState=${vis}) — capture would be challenged/backgrounded`);
+      process.exit(3);
+    }
     await page.waitForTimeout(opts.wait);
     // provenance accumulates through the run; written as <out>.json at the end
     const prov = { consent: { mode: opts.consentMode, via: 'none-detected' }, dismissed: [], fontsFailed: [] };
@@ -410,17 +423,16 @@ async function main() {
     const dpr = await page.evaluate(() => window.devicePixelRatio).catch(() => 1);
     const side = writeSidecar(out, {
       url, width: opts.width, vh: opts.vh, dpr, capturedAt: new Date().toISOString(),
-      instrument: { ...INSTRUMENT, options: { settle: opts.settle, headed: opts.headed, locale: opts.locale, wait: opts.wait, timeout: opts.timeout, consent: opts.consent, dismiss: opts.dismiss } },
+      instrument: { ...INSTRUMENT, options: { settle: opts.settle, headed: opts.headed, startTier: resolveStartTier(opts.headed), locale: opts.locale, wait: opts.wait, timeout: opts.timeout, consent: opts.consent, dismiss: opts.dismiss } },
       consent: prov.consent, dismissed: prov.dismissed, fontsFailed: prov.fontsFailed,
-      docHeight: totalH, chunks: chunks.length, source: 'stitch-shot', technique: opts.headed ? 'headed-stealth' : 'headless',
+      docHeight: totalH, chunks: chunks.length, source: 'stitch-shot', technique: TIERS[tier - 1], tier,
     });
     console.log(`stitched ${out}: ${opts.width}x${totalH} from ${chunks.length} chunks  (consent ${prov.consent.mode}/${prov.consent.via}; sidecar ${side})`);
-  } finally {
-    await browser.close();
-  }
+  });
+  await browser.close();
 }
 
 // exit 3 = bot challenge on the live side (distinct from generic errors, so a
-// gate runner can tell "blocked — escalate with --headed" from "capture broke").
+// gate runner can tell "blocked at tier 3 — interactive solve" from "capture broke").
 // exit 5 = invalid capture (deny mode: consent present and not rejected, or accepted): no verdict, never a FAIL.
 main().catch((e) => { console.error(`stitch-shot error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : e.name === 'InvalidCaptureError' ? 5 : 1); });

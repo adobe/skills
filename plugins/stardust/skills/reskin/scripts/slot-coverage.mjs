@@ -48,7 +48,7 @@
  *       [--wait-until <state>]     live-target goto waitUntil (default
  *                                  domcontentloaded; local/file targets
  *                                  keep networkidle)
- *       [--headed]                 headed stealth real Chrome (escalation
+ *       [--headed[=window]]                 ladder start tier 2; =window tier 3 (escalation
  *                                  for bot-managed sites)
  *       [--locale <tag>]           pin Accept-Language + locale
  *
@@ -70,7 +70,7 @@ if (!LIVE_SESSION) {
   console.error('Copy the diff skill\'s live-session.mjs alongside the reskin scripts (SKILL.md § Setup).');
   process.exit(2);
 }
-const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = await import(pathToFileURL(LIVE_SESSION).href);
+const { isLiveHttpUrl, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive } = await import(pathToFileURL(LIVE_SESSION).href);
 
 function parseArgs(argv) {
   const opts = { 'rendered-scope': 'main', paint: 'fail', 'wait-until': 'domcontentloaded' };
@@ -80,7 +80,7 @@ function parseArgs(argv) {
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
-    else if (a === '--headed') opts.headed = true;
+    else if (a === '--headed' || a.startsWith('--headed=')) opts.headed = parseHeadedFlag(a);
     else if (a.startsWith('--') && VALUE_FLAGS.has(a.slice(2))) opts[a.slice(2)] = argv[++i];
     else { console.error(`[slot-coverage] unknown arg: ${a}`); process.exit(2); }
   }
@@ -92,7 +92,7 @@ const args = parseArgs(process.argv);
 if (args.help || !args.model || !args.rendered) {
   console.log('usage: node slot-coverage.mjs --model <content-model.json> --rendered <url|file>');
   console.log('         [--rendered-scope main] [--report <path>] [--paint fail|warn]');
-  console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed] [--locale <tag>]');
+  console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed[=window]] [--locale <tag>]');
   console.log('Proves every model slot (text, CTAs, images) + all metadata present in the render,');
   console.log('and that every present content image actually PAINTS (naturalWidth > 0) — a URL-string');
   console.log('match can pass while an origin-locked source CDN 403s every image (gates.md § Image');
@@ -114,7 +114,8 @@ try { ({ chromium } = await import('playwright')); } catch {
 const toUrl = (p) => (/^(https?|file):/.test(p) ? p : pathToFileURL(resolve(p)).href);
 const model = JSON.parse(readFileSync(resolve(args.model), 'utf8'));
 
-const browser = args.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
+args.tier = resolveStartTier(args.headed); // ladder start = max(--headed tier, tier extract recorded) — live-session.mjs
+const browser = await launchTier(chromium, args.tier);
 // UA + standard headers + webdriver spoof (live-session) — harmless on
 // local/file targets, mandatory on live ones (F-G/F-R1).
 const ctx = await newLiveContext(browser, {
@@ -127,10 +128,10 @@ if (isLiveHttpUrl(renderedUrl)) {
   // A challenge interstitial or an HTTP >= 400 page must fail loud — this
   // byte-adjacent gate must never measure either as the rendered page
   // (gotoLive default httpError:'throw'). A nav failure is not swallowed.
-  // solveWindow only under --headed: headless clearance never lands, and the
+  // solve window only at tier 3 (live-session gotoLive): headless clearance never lands, and the
   // solve loop would spend the Akamai block budget (1 hit vs up to 4).
   try {
-    await gotoLive(page, renderedUrl, { waitUntil: args['wait-until'], timeoutMs: 60000, settleMs: 0, solveWindow: !!args.headed });
+    await gotoLive(page, renderedUrl, { waitUntil: args['wait-until'], timeoutMs: 60000, settleMs: 0, tier: args.tier });
   } catch (e) {
     console.error(`[slot-coverage] ${e.message}`);
     await browser.close();

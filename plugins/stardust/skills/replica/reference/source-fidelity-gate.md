@@ -533,16 +533,17 @@ rather than erroring.
     three instruments detect bot-management interstitials on every
     navigation (crawl.mjs semantics: `cf-mitigated: challenge`, or
     403/429/503 with a Cloudflare/Akamai/F5/Imperva edge signature) and
-    exit **3** with a `BotChallengeError` naming the URL and the marker.
-    Recorded (luggage retailer): Akamai served "Access Denied" to the headless
-    instruments — which, without this rule, would have silently measured
-    the block page as the source and diffed it cleanly, wrongly. The
-    escalation ladder: default (UA + standard headers) → `--headed`
-    (stealth real Chrome, same tier as crawl.mjs's fallback) → if STILL
-    blocked, the site needs crawl.mjs-class capture and **the gate must
-    not silently degrade** — record the breakpoint as gate-blocked in the
-    ledger and surface it to the user; a gate that can't read the live
-    source has no pass to report.
+    exit **3** with a `BotChallengeError` naming the URL and the marker
+    (an "Access Denied" page diffs cleanly — wrongly). Escalation follows
+    the three-tier ladder in `skills/extract/reference/playwright-recipe.md`
+    § Bot-management fallback (headless → `chrome-headless` →
+    `chrome-headed-offscreen`); the instruments start at
+    `_crawl-log.json#discovery.fetchTechnique` (`--headed` = tier 2,
+    `--headed=window` = tier 3) and stitch-shot asserts
+    `document.visibilityState === 'visible'` before it shoots. If tier 3
+    is still blocked **the gate must not silently degrade** — record the
+    breakpoint as gate-blocked in the ledger and surface it to the user; a
+    gate that can't read the live source has no pass to report.
 13. **Inner-scroller / scroll-jacked pages fail loud — stitched capture
     cannot measure them.** On pages where `html`/`body` are
     `overflow:hidden` and an inner container scrolls, the document reports

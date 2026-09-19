@@ -104,7 +104,7 @@ stardust/
 │   ├── lenis.min.js                  # smooth-scroll runtime (copied from skills/prototype/assets/motion/; cinematic only)
 │   └── lenis.min.css                 # smooth-scroll styles (cinematic only)
 └── migrated/                         # deployable static HTML site
-    ├── index.html                    # the home page (slug "home" -> root)
+    ├── index.html                    # the home page (slug "index" -> root)
     ├── _meta.json                    # sidecar JSON (full reasoning trace) — one per migrated page
     ├── <slug>/
     │   ├── index.html                # one per non-home slug (URL-faithful nesting)
@@ -309,8 +309,8 @@ contract.
 
 ### `stardust/migrated/`
 Owner: `$stardust migrate`. A deployable static HTML site. The slug →
-output-path mapping (`home` → `index.html`, `pricing` →
-`pricing/index.html`, `docs__api` → `docs/api/index.html`) is detailed
+output-path mapping (`/` → `index.html`, `/pricing/` →
+`pricing/index.html`, `/docs/api/` → `docs/api/index.html`) is detailed
 in `skills/migrate/reference/migration-procedure.md` § Output path
 mapping.
 
@@ -465,7 +465,7 @@ First child of `<head>`:
   writtenAt:        2026-04-25T15:42:00Z
   againstDirection: stardust/direction.md#section-2
   readArtifacts:
-    - stardust/current/pages/home.json
+    - stardust/current/pages/index.json
     - DESIGN.md
     - DESIGN.json
   synthesizedInputs: []

@@ -57,7 +57,7 @@
  *     --hover <sel>       element family to hover-diff (repeatable)
  *     --consent <sel>     extra consent-accept selector
  *     --dismiss <sel,...> extra overlay-dismiss selectors
- *     --headed            escalation: headed stealth real Chrome
+ *     --headed[=window]    bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
  *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
  *     --ua <string>       user agent                        (default real-Chrome)
  *     --wait <ms>         initial post-load wait            (default 2500)
@@ -87,7 +87,7 @@ if (!LIVE_SESSION) {
   console.error('motion-observe error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { REAL_CHROME_UA, isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } = await import(pathToFileURL(LIVE_SESSION).href);
+const { REAL_CHROME_UA, isLiveHttpUrl, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `motion-observe — runtime motion observation (implement only what fired)
 
@@ -97,7 +97,7 @@ Usage: node motion-observe.mjs <url> <out.json> [options]
   --hover <sel>     element family to hover-diff (repeatable)
   --consent <sel>   extra consent-accept selector (clicked, not removed)
   --dismiss <sel,…> extra overlay-dismiss selectors
-  --headed          headed stealth real Chrome (escalation for bot-managed sites)
+  --headed[=window]  bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB)
   --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
   --wait <ms>       initial post-load wait (default 2500)
@@ -119,7 +119,7 @@ function parseArgs(argv) {
     else if (a === '--hover') { opts.hovers.push(rest[i += 1]); }
     else if (a === '--consent') { opts.consent = rest[i += 1]; }
     else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
-    else if (a === '--headed') { opts.headed = true; }
+    else if (a === '--headed' || a.startsWith('--headed=')) { opts.headed = parseHeadedFlag(a); }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--ua') { opts.ua = rest[i += 1]; }
     else if (a === '--wait') { opts.wait = Number(rest[i += 1]); }
@@ -135,7 +135,8 @@ function parseArgs(argv) {
 async function main() {
   const { url, out, opts } = parseArgs(process.argv);
   const VH = 900;
-  const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
+  opts.tier = resolveStartTier(opts.headed); // ladder start = max(--headed tier, tier extract recorded) — live-session.mjs
+  const browser = await launchTier(chromium, opts.tier);
   try {
     const ctx = await newLiveContext(browser, {
       ua: opts.ua, locale: opts.locale,
@@ -144,7 +145,7 @@ async function main() {
     const page = await ctx.newPage();
     // Challenge/blocked interstitial → loud BotChallengeError (exit 3); a
     // challenge page's "motion" must never be recorded as the source's.
-    await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: opts.timeout, settleMs: 0, solveWindow: opts.headed });
+    await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: opts.timeout, settleMs: 0, tier: opts.tier });
     await page.waitForTimeout(opts.wait);
     // Dismiss BEFORE instrumenting: the dismissal's own class churn must not
     // pollute the mutation log, and an overlay intercepts hover/click probes.
