@@ -10,7 +10,7 @@
 - § Provenance validation — before any downstream phase consumes per-page JSON: the read-time synthesis guard.
 - § IA-fidelity and iaPriorities mutability — when a later phase wants to change what `direct` pinned.
 - § Fold-back state record — after prototype fold-back: where the decision is recorded.
-- § Concurrency — when parallel writers touch `state.json`: the merge-by-slug contract.
+- § Concurrency — when parallel writers touch `state.json`: the merge-by-slug contract; when a second session opens the project: the session advisory lock.
 - § Schema versioning — when the schema changes.
 
 Stardust tracks state per page so multi-page redesigns can be incremental
@@ -81,7 +81,7 @@ one optional top-level key, `handsOff` (after `direction`; see
 ## Hands-off keys
 
 When the run was activated hands-off (`skills/stardust/SKILL.md`
-§ Hands-off mode), two extra markers appear:
+§ Hands-off mode), three extra markers may appear:
 
 - Top-level `"handsOff": true` — stamped by the master skill at
   activation; every sub-command reads it to auto-resolve its
@@ -91,6 +91,13 @@ When the run was activated hands-off (`skills/stardust/SKILL.md`
   quality gates passed, not by the user. A later explicit user
   approval appends a new history entry (without the marker); it does
   not rewrite the hands-off one.
+- Top-level `"approvedChain": ["replica", "migrate", "deploy"]` —
+  stamped by the master skill when the activating ask names the skills
+  to run in sequence; each listed skill starts after the previous one's
+  PASS without a pause (master § Hands-off mode → Turn-end contract).
+  Absent or empty means one skill per ask. The chain never implies
+  publishing: a chained `deploy` or `rollout` stops at preview unless
+  the ask said publish.
 
 ---
 
@@ -307,6 +314,13 @@ Repo:  tracked 412 files / 31 MB under stardust/; not tracked 1,165 (captures, s
        run `$stardust extract` before migrate/deploy.
 ```
 
+When `run-lock.mjs check` exits 3 (§ Concurrency), the report opens
+with the line it prints, before `Site:` — `Active run: <skill> in
+session <sessionId> since <startedAt> — read-only unless you take over`
+— and the recommended next step is omitted. When the working directory
+is not the project root, the line `Project root: <path> (not the
+working directory)` follows it.
+
 The `Repo:` block is rendered only when the project is a git repo. Its
 four facts come from `git ls-files` / `git check-ignore` and the master
 skill's write boundary (SKILL.md § Artifacts): counts and size of tracked
@@ -492,8 +506,22 @@ Safe parallel lanes — all merge cleanly under this contract:
 **Same-slug concurrent runs remain last-write-wins** — two writers
 racing on the SAME page entry are not merged; the later write wins.
 When the pre-write re-read shows your page's entry changed underneath
-you, surface a warning in the report naming the slug. Do not lock;
-do not engineer around it.
+you, surface a warning in the report naming the slug. Do not lock page
+entries; do not engineer around it.
+
+**Session advisory lock** — orthogonal to merge-by-slug, and the only
+lock stardust has. `stardust/.work/run.lock` (untracked) is one JSON
+object: `{ "sessionId", "pid", "startedAt", "refreshedAt", "skill",
+"owns": [] }`, written and read only through
+`node skills/stardust/scripts/run-lock.mjs acquire|refresh|check|release`.
+It is **held** while `refreshedAt` is under 2 hours old (and, when a
+`pid` is recorded, that pid is alive); otherwise it is **stale** and the
+next `acquire` overwrites it. It never blocks its owner and never merges
+anything: it tells a *second session* that a run is in progress and
+which paths it is writing (`owns[]`: `stardust/<skill>/…`, the EDS
+project). The master skill's Setup step 7 runs `check`; phase skills
+`acquire` / `refresh` / `release` it (`run-status.md` § Rules);
+page-entry races stay last-write-wins as above.
 
 ---
 
