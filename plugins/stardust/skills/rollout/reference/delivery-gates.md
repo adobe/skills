@@ -81,8 +81,17 @@ links). Rules:
 - replace the `--` segment delimiter (e.g. `klinik-st--anna`) — AEM reserves `--`
   as the `branch--repo--owner` host delimiter, so a `--` in a path 400s.
 
-Append each change to `stardust/redirects.tsv` (`source<TAB>destination`); wiring
-those into the EDS redirects config is a Phase D/assembly step.
+Append each change to `stardust/redirects.tsv` (`source<TAB>destination`);
+Phase D's `scripts/redirects.mjs` turns the sheet into `site/redirects.json`
+with one row per request FORM of each source (extensionless, trailing-slash,
+and `.html` when the source carried it — the platform serves a folder root on
+one slash form only and inbound links arrive on both), refuses (exit 2) a
+Source whose exact form equals a delivered path (it can only shadow the page),
+and `--post-publish` HEADs every page and both slash forms of every folder
+root. `verify.mjs` fails a folder root whose other slash form 404s: the fix is
+the redirect row, and internal links stay on the form that 200s (root-relative,
+no slash, no extension). Sheets keep `.json` in admin paths — the DA protocol
+owns that rule.
 
 ## Gate 4 — Source-content hygiene (a sitemap roster contains dead and bodyless URLs)
 
