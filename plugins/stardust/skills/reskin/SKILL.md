@@ -2,7 +2,9 @@
 name: reskin
 description: Rebuild an existing site's pages with byte-faithful content on a separately-defined donor design system — another live site, or local static HTML prototypes (Figma donors are contract-defined, not yet implemented). Content fidelity is gated byte-level (text, ordered images, SEO metadata); design application is flexible (content re-laid-out onto donor modules). Use when the user says "reskin my site with this design", "apply this design system to my content", "restyle my site to look like <other site>", "new design, same content", "rebrand my site using these prototypes", or names a content site plus a design donor. NOT for redesigning from intent (that's the stardust core extract/direct/prototype chain) and NOT for keeping the current design while migrating (that's the replica flow).
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and playwright-cli on PATH.
+metadata:
+  impeccable: none
 ---
 
 # stardust:reskin — same content, donor design
@@ -92,7 +94,7 @@ regression check instead of a debugging tool.
 ## Setup
 
 1. Run the master skill's setup (`../stardust/SKILL.md` § Setup):
-   impeccable dep check, context loader, state read. **Flow.** Stamp
+   impeccable dep level, state read. **Flow.** Stamp
    `state.json.flow: "reskin"` if unset
    (`../stardust/reference/state-machine.md` § Flow keys); if another
    flow is set, print it and the switch command

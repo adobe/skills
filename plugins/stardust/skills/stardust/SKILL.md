@@ -45,8 +45,9 @@ sub-commands that delegate the actual design work to **impeccable**.
 ## Setup (run before anything else)
 
 1. **Resolve the impeccable dependency level.** Read the invoked skill's
-   frontmatter `metadata.impeccable` (`required` | `optional` | `none`; the
-   master itself is `required` for its freeform-intent route). `none` →
+   frontmatter `metadata.impeccable` (`required` | `optional` | `none`; absent
+   counts as `required`; the master itself is `required` for its
+   freeform-intent route). `none` →
    skip this step and step 4, noting `impeccable: skipped` in the skill's
    first `status.jsonl` line. Otherwise locate impeccable: the skill list
    the harness exposes to you, project skill directories
@@ -104,10 +105,7 @@ Once setup is done, route on the user's input:
   has `stardust/state.json`, "continue", "where are we", or a resume
   driven by a memory file. Start with the state report (it names the
   flow and the last gate numbers), then enter the next phase **through
-  its skill** — the procedure drives, not memory. (Recorded: a
-  144-hour resume session invoked no stardust skill at all, re-read
-  the procedure through `grep`, and followed whatever the previous
-  context remembered.)
+  its skill** — the procedure drives, not memory.
 - **First word names a sub-skill.** Delegate to the matching sub-skill
   and pass remaining args through. Sub-skills are named by their bare
   skill name below; how to address one depends on the harness. Claude
@@ -214,11 +212,7 @@ the "learn the template, then compile" kind. Keep-design: `replica`'s
 inconsistency register and `progress.json`, the archetype gate ledgers,
 `rollout` waves. A redesign procedure or plan template inside a replica
 run — or the reverse — is a routing defect: refuse it, or flag it in
-`direction.md` and hand back to this section. (Recorded: a same-design
-migration adopted a redesign-only "train the template, then compile" plan
-and spent an hour, 45 turns and 36 M tokens before reverting it; another
-loaded `prepare-migration` for a keep-design ask on a plugin that already
-described the two flows — description without a guard did not hold.)
+`direction.md` and hand back to this section.
 
 State the chosen flow explicitly in the first response to a migration
 question, including the fact that `replica` needs no `prepare-migration`
@@ -261,12 +255,12 @@ Defaults (override only when the invocation says otherwise):
   --timeout`), never an agent-authored `sleep N; kill` loop; long steps
   write a progress file the coordinator polls.
 - **Wait discipline: never park the conversation past the prompt-cache
-  window.** Anything longer than about 2 minutes (a gate round, a crawl,
-  a batch push, a delegated agent) runs in the background and writes a
-  progress file; never in the foreground, never under one long `sleep`. Do independent work meanwhile; otherwise check the
-  progress file **at most every 4 minutes** — never a fixed `sleep` of
-  5 minutes or more, never a blocking wait with a long timeout — and end
-  the turn only for waits over ~45 minutes or a user decision. Rationale
+  window.** Anything over about 2 minutes (a gate round, a crawl, a batch
+  push, a delegated agent) runs in the background and writes a progress
+  file — never in the foreground, never under one long `sleep`. Do
+  independent work meanwhile; otherwise check the progress file **at most
+  every 4 minutes**, and end the turn only for waits over ~45 minutes or a
+  user decision. Rationale
   and Claude Code levers: `reference/run-status.md` § Long-running steps.
 - **Commit at the end of each phase** when the project is a git repo;
   the phase-close message is the hand-off shape in
@@ -276,7 +270,9 @@ Defaults (override only when the invocation says otherwise):
   blocker.** Probe every transport the plan uses in the first minutes and
   run the register's privileged actions (repo, Code Sync, first push,
   scratch preview) at Setup, never after migrate. On a denial ask exactly
-  once, append `event: "blocked"` with `owner: "<command>"`, continue on
+  once — approve or run `<command>`, or the run writes
+  `stardust/.work/ship.sh` (`../deploy/reference/ship-script.md`) —
+  append `event: "blocked"` with `owner: "<command>"`, continue on
   unblocked work; state report, journal entry and turn-ending reply lead
   with `Blocked on owner:` while open. `reference/harness-permissions.md`
   § Privileged-action preflight.
@@ -362,16 +358,15 @@ here*. The journal does.
 **Maintain `stardust/journal.md` per the format in
 `reference/journal-format.md`.** On every prompt execution that resulted in
 a non-trivial write (any `direct`, `prototype`, `migrate`, or substantial
-iteration), append an entry before ending the turn.
+iteration), append an entry before ending the turn; a phase-close entry
+opens with the gate table (`reference/handoff-report.md` § Gate table first).
 
 **Named deviations.** Any agent-authored crawler, compiler, importer,
 wave driver or gate that replaces a skill phase is recorded in
 `stardust/direction.md` as a **named deviation** — what it replaces, why
 the shipped instrument did not serve, where the replacement lives — and
 noted in the journal entry. An unrecorded parallel pipeline is a defect,
-not initiative: three recorded migrations rebuilt the import pipeline by
-hand (one a 60 KB importer) beside skills that shipped it, and their
-fidelity numbers were never comparable to the gate's.
+not initiative.
 
 The journal is **append-only**. If a prior entry turns out wrong, write a
 new entry that corrects it; do not edit history. This preserves the
@@ -451,6 +446,9 @@ motion gate cascade).
 - `reference/journal-format.md` — `stardust/journal.md` entry format. Append-only chronological log; the shared narrative layer over the state machine.
 - `reference/run-status.md` — the `stardust/status.jsonl` phase-transition contract every skill appends to. The deterministic progress surface for any harness.
 - `reference/learnings.md` — the per-run learnings ledger contract (`stardust/learnings.md`). rollout's report phase writes it; plugin maintainers harvest pending entries into skill diffs.
+- `reference/decisions.md` — the plan-time decision register (`stardust/decisions.md`): default rows, owner-only rows, how the plan gate batches them.
+- `reference/handoff-report.md` — the phase-close hand-off shape: gate table first, the reporting KPI, before/after evidence, the report check.
+- `reference/harness-permissions.md` — the two command classes a permission layer sees, the Claude Code pre-approval generator, the capability probes.
 
 ### Cinematic-feature references (cross-cutting)
 

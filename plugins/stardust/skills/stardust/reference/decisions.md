@@ -86,7 +86,7 @@ same `id` and the later row wins (append-only, like the journal). An
 | `target` | where does the code go | `<org>/sdt-<slug>`, **private**, with a DA folder of the same name; `<org>` from a precedent repo in the org or the run's `gh` identity — the plugin ships the shape, never an org name | one convention across projects; private until the owner says otherwise |
 | `branch` | which branch serves | `main` | boilerplate default; Code Sync builds it |
 | `commit` | when does stardust commit | at the end of each phase — hands-off only; outside hands-off the owner's ask-before-commit preference stands, stated at activation | master § Hands-off mode |
-| `publish` | when do pages go live | **preview**; live publish on gate PASS (D1) or when this row is owner-decided `live` (D16); hands-off never publishes without one of the two, and live publish is its own explicit command (`deploy-batch.mjs --publish`), never joined to a preview run | D1, D16 |
+| `publish` | when do pages go live | **preview**; live publish on gate PASS (D1) or when this row is owner-decided `live` (D16); hands-off never publishes without one of the two, and live publish is its own explicit run (`deploy-batch.mjs --publish` once the deploy lane's flag lands; today `deploy-batch.mjs` without `--no-publish`), never joined to a preview run | D1, D16 |
 | `fonts` | how are web fonts served | self-host every family and write `fonts/LICENSING.md` (`skills/deploy/reference/fonts-and-cls.md`); a family whose licence forbids redistribution gets a metric-matched substitute and opens the `fonts-public` owner-only row | brand-faithful default with a loud licence trail |
 | `links` | where does an internal link stop being internal | root-relative for every target in the migrated tree, absolute source-host for targets outside the current wave, counted per wave in the report (`localize-links.mjs` lists them) | D9; the off-wave count is the honest integration boundary |
 | `locale` | how are languages laid out | one folder per locale **including the default** (`/en/`, `/de/`, …), root redirects to the default locale | symmetric trees; a root-level default locale breaks every later locale |
@@ -118,6 +118,7 @@ Pointers only — the rule is this file: master `SKILL.md` § Hands-off mode
 (gate row); `state-machine.md` § State report (open rows); `artifact-map.md`
 (tree + § Versioning); `prepare-migration` § Final report, `replica`
 Phase 2, `rollout` Phase A (the plan gate); `skills/dynamics/reference/triage.md`
-§ Decision batch (back-pointer); the deploy protocol's boilerplate-document
-rule (an existing DA document matching the boilerplate fingerprints is
-overwritable and logged; only non-boilerplate content opens a row).
+§ Decision batch (back-pointer); `skills/deploy/da-deploy-protocol.md` (the
+boilerplate-document paragraph: a matching DA document is overwritten and
+logged, only non-boilerplate content opens a row);
+`skills/deploy/reference/ship-script.md` (reads `target`, `branch`, `publish`).

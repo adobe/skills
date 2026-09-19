@@ -641,7 +641,9 @@ Per archetype per breakpoint, in `stardust/replica/progress.json`:
     "1440": {
       "iterations": 3,
       "result": { "structuralRed": 0, "visualFlags": "3 justified",
-                   "pixelPct": 1.31, "heightDelta": 0, "pass": true },
+                   "pixelPct": 1.31, "heightDelta": 0, "pass": true,
+                   "at": "2026-09-16T19:02:00Z", "regime": "harness | published-origin",
+                   "build": "a1b2c3d", "run": "<status.jsonl run start — optional>" },
       "justified": [
         { "probe": "visual", "flag": "1x1 h1 at x0", "why": "mirrors live SEO h1" },
         { "probe": "content", "flag": "🟠 font fork ×2", "why": "licensed kit substituted, R-policy fonts", "permanent": true }
@@ -657,7 +659,12 @@ Per archetype per breakpoint, in `stardust/replica/progress.json`:
 }
 ```
 
-Rules: every residual names its band, its %, its cause, and who inherits it
+Rules: every `result` carries `at` (when it was measured), `regime` (`harness`
+or `published-origin` — never compared across regimes), `build` (the code
+commit measured against) and optionally `run` (the `status.jsonl` run start),
+so the hand-off (`skills/stardust/reference/handoff-report.md` § Gate table
+first) prints provenance per row. Every residual names its band, its %, its
+cause, and who inherits it
 (`delivery` for capture-state items, `user` for accepted trade-offs). A
 residual without a cause is not a residual — it's an unfinished iteration;
 either diagnose it or spend the remaining budget on it. The rollout phase's

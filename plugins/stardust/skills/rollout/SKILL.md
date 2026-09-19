@@ -2,7 +2,9 @@
 name: rollout
 description: Deploy a WHOLE redesigned site to AEM Edge Delivery Services — the full-site, bulk sibling of `deploy` (which ships one page). Use to roll out, bulk-deploy, or publish an entire migrated stardust site at once ("deploy all pages", "full site deployment", "deploy the whole/entire website to AEM"), not just a single page. Inventories the migrated tree (stardust/migrated/ + _meta.json) into a delivery ledger, dedups blocks, drives `deploy` per page, verifies, and tracks what's done and what's left. Supports archetypes-only mode — when only the template archetype pages are migrated, it deploys all block code immediately and registers the rest as content-pending.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and optionally the impeccable skill (github.com/pbakaus/impeccable).
+metadata:
+  impeccable: optional
 ---
 
 # stardust:rollout — whole site → AEM (Edge Delivery Services)
@@ -66,8 +68,8 @@ ship all block code immediately without waiting for every page to be migrated.
 Sibling pages register as `content-pending` and get their content later via a
 separate track.
 
-If there is no `stardust/migrated/` tree at all, recommend `stardust migrate` on at
-least the archetype pages first. For a single page, use `stardust deploy` directly.
+No `stardust/migrated/` tree: recommend `stardust migrate` on the archetypes first.
+Single page: `stardust deploy`.
 
 ## Setup
 
@@ -87,16 +89,13 @@ least the archetype pages first. For a single page, use `stardust deploy` direct
    whose archetype was never gated, or is over the bar with no residual
    entries, is **blocked**: list it with its archetype slug and the command
    to gate it (`$stardust replica <archetype>`), and neither fan out its
-   siblings nor `POST /live/` any of them. Accepting logged residuals under
-   hands-off is not a bypass for an ungated archetype. Thresholds are the
-   gate's, unchanged. (Recorded: 2,207 pages published at 24–28 % diff from
-   an archetype that never passed; a 3,366-page re-import after a random
-   review found what a gate would have.)
+   siblings nor `POST /live/` any of them. Hands-off never bypasses an ungated
+   archetype; thresholds are the gate's.
 3. Verify the EDS/AEM target is ready exactly as `deploy` requires (project
    scaffolding, `DA_TOKEN`, code branch pushable). `rollout` adds no new transport.
 4. If `state.json.handsOff` is true (`skills/stardust/SKILL.md` § Hands-off
    mode), run full-auto: no per-phase pauses. Every gate and verify step below
-   runs unchanged — hands-off removes waiting, not validation.
+   runs unchanged.
 
 ## Procedure
 
@@ -123,6 +122,10 @@ whose migrated HTML changed after delivery is re-flagged `stale`. Fill in the DA
 coordinates in `rollout.json` (`site.da.org`, `site.site`, `site.da.ref`,
 `site.liveHost`) if not inferred.
 
+**Plan gate.** Present every `stardust/decisions.md` row not yet `owner-decided` as
+one numbered message, default on each line (`skills/stardust/reference/decisions.md`
+§ How phases use it); later phases read the rows, never re-ask.
+
 ### Phase B — Block dedup plan (FIRST-CLASS, before any conversion)
 
 ```bash
@@ -143,9 +146,8 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
   lists are exactly `deploy`'s Step-7 brief input, so each block converts once
   **without changing deploy**. `content-pending` pages are always `convert: []`.
 
-> Extending an already-delivered site? A "new template" is almost always a new
-> COMPOSITION of the existing block library, not new block code — audit `blocks/`
-> first. See `reference/operational-learnings.md`.
+> Extending a delivered site? A "new template" is almost always a composition of
+> the existing block library — audit `blocks/` first (`reference/operational-learnings.md`).
 
 ### Phase B2 — Dynamic surface (PRE-IMPORT GATE — verify the inventory)
 
@@ -218,7 +220,9 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    **Publish in the loop (`PUT → preview → live`), don't stop at preview** — any
    query-index (Phase D2) builds from the **live** tree, so a preview-only delivery
    leaves indexes empty. On failure: `--status failed --error "<reason>"` and
-   continue (one page's failure never aborts the rollout).
+   continue (one page's failure never aborts the rollout). A denied push or
+   publish under hands-off goes to `stardust/.work/ship.sh`
+   (`skills/deploy/reference/ship-script.md`), not a retry loop.
 
 **Foundation-first gate (hard block, once per rollout).** When the FIRST
 archetype page flips to `deployed`, stop and prove the foundation before
@@ -259,8 +263,7 @@ node skills/rollout/scripts/assemble.mjs   # → rollout/site/{sitemap.xml,robot
 Generates site-wide artifacts: `sitemap.xml` + `robots.txt` from delivered paths,
 and a fragments manifest mapping chrome blocks to the authored chrome documents
 (`content/nav.html`, `content/footer.html`) with their `canon/*.html` source
-(`deploy` authors + deploys the documents through the normal content chain —
-they MUST be published or the chrome 404s sitewide).
+(published through the normal content chain — unpublished chrome 404s sitewide).
 **Redirects:** if Phase C's path-safety gate emitted `stardust/redirects.tsv`, wire
 it into the EDS redirects mechanism here so original inbound URLs don't 404.
 
@@ -400,6 +403,10 @@ are surfaced, not auto-fixed.
 
 ### Phase H — Report
 
+Hand-off shape: `skills/stardust/reference/handoff-report.md` § Gate table first;
+review links open on the live host, the human logging in
+(`skills/deploy/da-deploy-protocol.md` § Site auth — header vs browser).
+
 Include the dynamic parity table (`stardust/qa/dynamics-report.md`, from Phase D2) next to
 the delivery ledger: per feature its class, reach, status, owner decision and the replayed
 check — so the report is honest about what the site *does*, not only what it *shows*.
@@ -425,8 +432,6 @@ and `inventory` is re-run.
 **Also write/refresh `stardust/learnings.md`** per
 `skills/stardust/reference/learnings.md`: one entry per failure class this run
 surfaced (evidence, proposed skill + section to change, `status: pending`).
-plugin maintainers harvest pending entries into skill
-diffs — this is how a run's hard-won fixes stop being re-learned.
 
 ### Phase I — Dashboard
 
@@ -446,12 +451,11 @@ identified → prototyped → deployed → optimised
 The stage spans `state.json` (`rostered/extracted/directed` → identified,
 `prototyped/approved/migrated` → prototyped), rollout coverage
 (`deployed`/`verified` → deployed), and optimize (`optimised` = verified **and** no
-open findings). A `content-pending` sibling stays at `identified` (it's in the
-ledger so delivery can be tracked, but has no designed document yet). Legend counts
+open findings). A `content-pending` sibling stays at `identified`. Legend counts
 are **cumulative**. **Template archetypes** are badged `T`; a page with open
 findings shows a red count. Also a templates table + the quality scorecard.
 `dashboard/data.json` is the inspectable snapshot — regenerate at every iteration
-boundary. (`state.json` is read-only and optional.)
+boundary.
 
 ## Inputs
 
@@ -486,7 +490,7 @@ or `migrated/` — those are read-only inputs.
 
 optimize orchestrates existing audit skills by invocation; they must be installed:
 
-- **impeccable** (`critique`, `audit`) — already a stardust dependency.
+- **impeccable** (`critique`, `audit`) — optional here; note absence, use the rest.
 - **marketing skills** — `seo-audit`, `schema`, `ai-seo`, `site-architecture`.
   Optional; surface a note if absent.
 - **stardust tensions** — emitted in-repo by `extract` (`brand-review.html`).

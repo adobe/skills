@@ -371,9 +371,9 @@ branch.
 
 - **Re-fetch the live site.** Migrate is offline. The only
   network step in the whole pipeline was Phase 1 of `extract`.
-- **Run `$impeccable critique` or `audit`.** Validation is the
+- **Run `$impeccable critique` or `audit`.** Validation is the <!-- impeccable-dep: ignore -->
   hard-rule pass; quality assessment is the user's call (a
-  manual `$impeccable critique stardust/migrated/` after the
+  manual `$impeccable critique stardust/migrated/` after the <!-- impeccable-dep: ignore -->
   fact is always available).
 - **Touch the live site.** Stardust never deploys, never pushes,
   never modifies origin.

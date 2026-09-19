@@ -2,7 +2,9 @@
 name: extract
 description: Crawl an existing website (capped, multi-page) and seed stardust/current/ with PRODUCT.md, DESIGN.md, DESIGN.json, a per-page inventory, and the consolidated brand surface — the captured design system, palette, typography, motifs, and voice of the live site. Use when the user wants to analyze an existing site's design, extract or reverse-engineer its design system or brand, capture design tokens from a live site, import a website as the starting point for a redesign, capture the current state before a migration, or invokes `$stardust extract` (`/stardust:extract` in Claude Code). Trigger phrases include "analyze this site", "extract the design tokens", "capture the brand", "crawl the site", "reverse engineer the design". Not for scraping page data or content for its own sake (it captures design evidence, not datasets), and not for the redesign itself — extraction is descriptive; direction and prototyping happen downstream.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and optionally the impeccable skill (github.com/pbakaus/impeccable).
+metadata:
+  impeccable: optional
 ---
 
 # stardust:extract
@@ -164,9 +166,7 @@ Additional checks for this sub-command:
    crawling: the flow is chosen and stamped there, and a keep-design
    ask enters through `replica` (which invokes this skill with `--prep`
    itself). A bare `extract <url>` for a redesign, audit or uplift is
-   unaffected. (Recorded: `extract` on a raw URL as the entry of a
-   same-design migration; the agent then built its own importer beside
-   `replica`.)
+   unaffected.
 3. **Browser contexts.** Open a fresh `BrowserContext` per capture
    worker (§ Concurrency; default 4). Run the **consent dismissal
    pre-flight** per `reference/playwright-recipe.md` § Pre-flight:

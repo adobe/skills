@@ -3,6 +3,8 @@ name: uplift
 description: One-shot brand-faithful presales redesign of a website page. The user provides only the URL; everything else — extraction, tension identification, three differentiated variants (one fully cinematic), validation — is derived from the captured brand surface. Use when the user asks to "uplift", "refresh", or "redesign a site for presales" without wanting to coordinate the extract / direct / prototype chain themselves.
 license: Apache-2.0
 compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+metadata:
+  impeccable: required
 ---
 
 # stardust:uplift
@@ -41,10 +43,9 @@ One entry point. One URL. Three presales-quality redesign variants.
 
 `uplift` collapses the `extract → direct → prototype × 3` chain into a
 single opinionated command that picks every variability axis from the
-captured brand surface rather than asking the user. The output is the
+captured brand surface, never asking. The output is the
 same as the long-form chain (state.json, brand-review.html, three
-proposed files, motion validation) — the user just doesn't have to
-coordinate it.
+proposed files, motion validation), without the coordination.
 
 ## Opinionated defaults
 

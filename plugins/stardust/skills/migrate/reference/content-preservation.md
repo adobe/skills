@@ -206,7 +206,7 @@ When the redesign moves the **tone** axis (per
 body copy to match the new tone. It restyles only.
 
 If the user wants tone-aligned copy, they run a separate pass:
-`$impeccable clarify stardust/migrated/<slug>` after migration.
+`$impeccable clarify stardust/migrated/<slug>` after migration. <!-- impeccable-dep: ignore -->
 Stardust does not auto-trigger that.
 
 ## Headings hierarchy

@@ -2,7 +2,9 @@
 name: deploy
 description: Convert per-page styled HTML prototypes (stardust under stardust/prototypes/**, or claude-design / Mobirise / Relume / Lovable / v0 / Figma-derived pages, or JSX prototypes pre-rendered to HTML, often under samples/) into Edge Delivery Services (EDS / AEM) blocks and content pages, then deploy via DA. Each prototype section becomes one EDS block; the prototype's per-section CSS becomes that block's CSS scoped under the block class. Use when the user wants to lift styled per-page HTML prototypes into a working EDS site under blocks/ and content/.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and playwright-cli on PATH.
+metadata:
+  impeccable: none
 ---
 
 # stardust:deploy — prototypes → EDS/AEM
@@ -196,7 +198,7 @@ After deploy, reconcile each page against its prototype on the DEPLOYED URL only
 
 ## When you finish
 
-Update `stardust/eds-conversion-log.md` (or create one) with: final block inventory, decisions locked, anti-patterns avoided this run, anything site-specific the next person should know. The log is the running history of "why does this look the way it does."
+Update `stardust/eds-conversion-log.md` (create it if absent): final block inventory, decisions locked, anti-patterns avoided, anything site-specific the next person should know. Close with the hand-off shape in `../stardust/reference/handoff-report.md` § Gate table first.
 
 ## References
 
@@ -217,6 +219,7 @@ Chapters (full text of the sections this core compresses — read by `##`, each 
 - `reference/anti-patterns.md` — the nineteen anti-patterns, grouped.
 - `reference/checklist.md` — the per-page checklist.
 - `reference/ai-readability.md` — the AI-readability rule (#86, #100): checker formula, block rules, gate.
+- `reference/ship-script.md` — the one-command ship script a hands-off run writes when a push or publish is denied: merge → push → explicit publish → post-ship gate → issue comment.
 
 Bundled contracts:
 
@@ -224,4 +227,4 @@ Bundled contracts:
 - `da-deploy-protocol.md` — the curl-based DA Source API deploy contract (auth, source PUT, preview/publish, asset-before-preview ordering) and the delivery pipeline (stages, batch driver, per-page atomic contract, link localization, token lifecycle).
 - `../../notes/deploy-improvements-archive.md` — the frozen ledger (findings #1–#80) that the `(#NN)` citations in this skill's chapters and in the deploy/diff scripts point to; new findings go to `skills/stardust/reference/learnings.md`.
 - `scripts/ew-editability-probe.mjs` — the Experience Workspace editability gate (Step 8 § contract): instrument → decorate → count survivors; `--simulate-editor` edit-mode drift; URL and `--content` harness modes; reads `@ew-exempt` JSDoc tags.
-- Experience Workspace sources the contract was verified against (read them when the mechanism seems to have changed): da.live `blocks/canvas/editor-utils/editor-utils.js` (`getInstrumentedHTML` — what is stamped), `blocks/canvas/ew-editor-wysiwyg/ew-editor-wysiwyg.js`, `blocks/shared/prose2aem.js` (cells keep their `<p>`); da-nx `nx/public/plugins/quick-edit/quick-edit.js` (`setBody` → `loadPage` → `restoreBlockIndices`), `src/prose.js` (`createEditor` swap shape), `src/images.js`, `src/dom-index.js`, `src/selection.js` (cursor math on `textContent` length).
+- Experience Workspace sources the contract was verified against: `reference/block-js-scaffold.md` § Experience Workspace sources.

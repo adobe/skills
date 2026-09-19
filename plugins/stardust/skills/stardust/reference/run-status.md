@@ -46,10 +46,9 @@ One JSON object per line (JSONL — no wrapping array, no pretty-print):
 
 ## Long-running steps
 
-Master § Hands-off mode sets the wait rule — background plus a progress
-file for anything over about 2 minutes, one short check at most every
-4 minutes, end the turn only for waits over ~45 minutes. The numbers are
-not taste: the prompt cache expires after 5 idle minutes, and at the
+Master § Hands-off mode sets the wait rule (background plus a progress
+file, short periodic checks, end the turn only for long waits); the
+rationale: the prompt cache expires after 5 idle minutes, and at the
 contexts a migration reaches every expiry re-writes the whole prefix at
 write price; a completion notification that arrives after 5 minutes
 misses the window too, so ending the turn helps the user, not the cache.
