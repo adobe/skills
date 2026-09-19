@@ -25,7 +25,34 @@
  *                single literal path (logo, fallback) never fires; a JSDoc
  *                `@fixed-asset <path> — <reason>` exempts a deliberate one.
  *
- *   node skills/deploy/scripts/block-lint.mjs blocks/ [scripts/scripts.js] [--json]
+ * Experience Workspace rules (the former manual "static review" checklist item;
+ * every miss on one recorded 143-page rollout — 1,992 dead texts — had one of
+ * these static signatures). POSITION-AWARE: reading `cell.textContent` to
+ * classify (#79: a class, dataset, attribute or condition) is legal and silent;
+ * only text written back into DISPLAYED positions fires.
+ *   EW-VALUE 🔴  authored text re-emitted as text: `x.textContent|innerHTML|innerText =`
+ *                whose RHS reads `.textContent|.innerHTML|.innerText` (directly or via
+ *                a variable assigned from one), or `${…textContent…}` at text position
+ *                (between `>` and `<`) in a template literal. EW1: MOVE the element.
+ *   EW-JOIN  🔴  `.join(…)` over collected texts (`[...ps].map((p) => p.textContent).join(' ')`).
+ *   EW-RETAG 🔴  an element created as h1–h6/p (`createElement('h2')`, `el('p')`)
+ *                filled from authored text — the heading loses its index.
+ *   EW-HEADER 🔴 `<header` / `createElement('header')` in block DOM (#107: the stock
+ *                `header { height }` reservation clamps and hides it).
+ *   EW-CLONE 🟡  `cloneNode(true)` in a file that never calls stripInstrumentation()
+ *                (🔴 when the clone source is a picture/a/p/heading query — EW4).
+ *   EW-CLASS 🟡  `classList.add` / `className =` on an element queried as an authored
+ *                h1–h6/p/ul/ol/a/picture (the class dies in the editor swap — EW2).
+ *   EW2-CSS  🟡  block CSS with `>` or a positional pseudo-class between a wrapper
+ *                token and an authored tag (`.text > p`, `h3:first-child`), outside
+ *                `:has()`/`:not()`/`:where()` and outside `.prosemirror-editor` rules.
+ *   EW-RHYTHM 🟡 `p + p` (any authored-tag adjacency) in block CSS — each moved element
+ *                sits in its own wrapper on the published page, so it never matches.
+ *   EW-COMPOSED 🟡 (with --styles) a styles.css selector under `body.<class>`,
+ *                `.section:first-of-type` or `main > .section:has(…)` ending on prose.
+ * Chrome blocks (header/footer) and blocks tagged `@ew-exempt all` are capped at 🟡.
+ *
+ *   node skills/deploy/scripts/block-lint.mjs blocks/ [scripts/scripts.js] [--styles styles/styles.css] [--json]
  *
  * Exit codes: 0 = clean (🟡 allowed), 2 = at least one 🔴, 1 = usage failure.
  * Dependency-free (regex over source text — blocks are small and regular).
@@ -35,11 +62,14 @@ import path from 'node:path';
 
 const args = process.argv.slice(2);
 if (!args.length || args.includes('--help') || args.includes('-h')) {
-  console.log('usage: node skills/deploy/scripts/block-lint.mjs <blocks-dir> [scripts/scripts.js] [--json]');
+  console.log('usage: node skills/deploy/scripts/block-lint.mjs <blocks-dir> [scripts/scripts.js] [--styles styles/styles.css] [--json]');
   process.exit(args.length ? 0 : 1);
 }
 const json = args.includes('--json');
-const paths = args.filter((a) => !a.startsWith('--'));
+const stylesAt = args.indexOf('--styles');
+const stylesCss = stylesAt >= 0 ? args[stylesAt + 1] : null;
+if (stylesAt >= 0 && (!stylesCss || stylesCss.startsWith('--'))) { console.error('block-lint: --styles needs a path'); process.exit(1); }
+const paths = args.filter((a, i) => !a.startsWith('--') && (stylesAt < 0 || i !== stylesAt + 1));
 const blocksDir = paths[0];
 const scriptsJs = paths[1] || (existsSync('scripts/scripts.js') ? 'scripts/scripts.js' : null);
 if (!existsSync(blocksDir) || !statSync(blocksDir).isDirectory()) {
@@ -49,18 +79,81 @@ if (!existsSync(blocksDir) || !statSync(blocksDir).isDirectory()) {
 
 const STOCK = new Set(['decorateButtons', 'decorateIcons', 'buildAutoBlocks', 'decorateSections', 'decorateBlocks', 'decorateTemplateAndTheme']);
 const findings = [];
-const add = (level, code, file, line, msg) => findings.push({ level, code, file, line, msg });
+// one finding per (code, file, line): an innerHTML template literal with two
+// interpolations is one defect, reported once
+const add = (level, code, file, line, msg) => { if (!findings.some((f) => f.code === code && f.file === file && f.line === line)) findings.push({ level, code, file, line, msg }); };
 const lineOf = (s, idx) => s.slice(0, idx).split('\n').length;
 
-// ---- blocks/*/*.js
+// ---- blocks/*/*.js (+ *.css for the EW2/rhythm rules)
 const blockFiles = [];
+const cssFiles = [];
 for (const name of readdirSync(blocksDir)) {
   const dir = path.join(blocksDir, name);
   if (!statSync(dir).isDirectory()) continue;
-  for (const f of readdirSync(dir)) if (f.endsWith('.js')) blockFiles.push(path.join(dir, f));
+  for (const f of readdirSync(dir)) {
+    if (f.endsWith('.js')) blockFiles.push(path.join(dir, f));
+    else if (f.endsWith('.css')) cssFiles.push(path.join(dir, f));
+  }
 }
+const AUTHORED = 'h[1-6]|p|ul|ol|picture|a';
+const TEXT_READ = /\.(?:textContent|innerHTML|innerText)\b(?!\s*=[^=])/;
+const isChrome = (file) => /[\/\\](?:header|footer)[\/\\][^\/\\]+$/.test(file);
+const cap = (level, file, src) => ((level === '🔴' && (isChrome(file) || /@ew-exempt\s+all\b/.test(src))) ? '🟡' : level);
+// Strip comments and string-literal noise is NOT attempted: blocks are small; a
+// comment quoting a signature is a false positive the author can rephrase.
+const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' ')).replace(/(^|[^:'"`])\/\/[^\n]*/g, '$1');
+
 for (const file of blockFiles) {
   const src = readFileSync(file, 'utf8');
+  const code = stripComments(src);
+  // ── EW value-slotting family ──
+  // identifiers assigned from an authored text read: const title = cell.textContent.trim()
+  const textVars = new Set([...code.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*[^;\n]*?\.(?:textContent|innerHTML|innerText)\b/g)].map((m) => m[1]));
+  const readsText = (expr) => TEXT_READ.test(expr) || [...textVars].some((v) => new RegExp(`(?<![\\w$.])${v.replace(/\$/g, '\\$')}(?![\\w$])`).test(expr));
+  // elements created as heading/paragraph: const h = document.createElement('h2') | el('p', …)
+  const retagVars = new Set([...code.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:document\.)?(?:createElement|el|create|dom|h)\(\s*['"](?:h[1-6]|p)['"]/g)].map((m) => m[1]));
+  for (const m of code.matchAll(/([A-Za-z_$][\w$.]*)\.(textContent|innerHTML|innerText)\s*=(?!=)\s*([^;\n]+)/g)) {
+    const [, target, , rhs] = m;
+    if (!readsText(rhs)) continue; // a literal / runtime value: ai-readability's domain, not EW1
+    const base = target.split('.')[0];
+    if (retagVars.has(base)) add(cap('🔴', file, src), 'EW-RETAG', file, lineOf(code, m.index), `${target} was created as a heading/paragraph and is filled from authored text (${rhs.trim().slice(0, 50)}) — the authored element loses its index; MOVE the authored h*/p into the wrapper (EW1)`);
+    else add(cap('🔴', file, src), 'EW-VALUE', file, lineOf(code, m.index), `${target}.${m[2]} = ${rhs.trim().slice(0, 60)} — authored text re-emitted as text is dead in the workspace; MOVE the element (EW1); classify from textContent, never display from it (#79)`);
+  }
+  // template literal, text position: >…${…textContent…}…<
+  for (const m of code.matchAll(/`(?:[^`\\]|\\.)*`/g)) {
+    const lit = m[0];
+    for (const t of lit.matchAll(/>[^<`]*?\$\{([^}]*)\}[^<`]*?</g)) {
+      if (readsText(t[1])) add(cap('🔴', file, src), 'EW-VALUE', file, lineOf(code, m.index), `template literal interpolates authored text at text position (\${${t[1].trim().slice(0, 40)}}) — a rebuilt DOM carries no index; MOVE the authored element into a slot (EW1)`);
+    }
+  }
+  for (const m of code.matchAll(/\.join\(\s*(['"`])[^'"`]*\1\s*\)/g)) {
+    const stmtStart = Math.max(code.lastIndexOf(';', m.index), code.lastIndexOf('\n', code.lastIndexOf('\n', m.index) - 1)) + 1;
+    const stmt = code.slice(stmtStart, m.index);
+    if (TEXT_READ.test(stmt) || /\.map\(\s*\(?\s*\w+\s*\)?\s*=>\s*\w+\.(?:textContent|innerText)/.test(stmt)) add(cap('🔴', file, src), 'EW-JOIN', file, lineOf(code, m.index), `texts joined into one string (${m[0]}) — N authored elements become one dead node; keep each element and wrap them (EW1)`);
+  }
+  // ── EW-HEADER (#107) ──
+  for (const m of code.matchAll(/createElement\(\s*['"]header['"]\s*\)|<header[\s>]/g)) {
+    add('🔴', 'EW-HEADER', file, lineOf(code, m.index), '<header> emitted in block DOM — the stock header { height: var(--nav-height) } + visibility rules clamp and hide it (#107); use <div class="…-head">');
+  }
+  // ── EW-CLONE (EW4) ──
+  if (!/stripInstrumentation\s*\(/.test(code)) {
+    for (const m of code.matchAll(/([A-Za-z_$][\w$]*(?:\.[\w$]+)*(?:\([^)]*\))?)\.cloneNode\(\s*true\s*\)/g)) {
+      const source = m[1];
+      const base = source.split(/[.(]/)[0];
+      const fromQuery = new RegExp(`(?:const|let|var)\\s+${base}\\s*=\\s*[^;\\n]*querySelector(?:All)?\\(\\s*['"][^'"]*\\b(?:${AUTHORED})\\b`).test(code) || new RegExp(`querySelector(?:All)?\\(\\s*['"][^'"]*\\b(?:${AUTHORED})\\b[^'"]*['"]\\s*\\)\\.cloneNode`).test(m[0]);
+      add(fromQuery ? cap('🔴', file, src) : '🟡', 'EW-CLONE', file, lineOf(code, m.index), `${source}.cloneNode(true) with no stripInstrumentation() in the file — the clone keeps data-prose-index and the editor attaches to the first copy in DOM order (EW4)`);
+    }
+  }
+  // ── EW-CLASS (EW2) ──
+  const authoredVars = new Set([...code.matchAll(new RegExp(`(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*[^;\\n]*?(?:querySelector\\(\\s*['"][^'"]*\\b(?:${AUTHORED})\\b[^'"]*['"]|closest\\(\\s*['"](?:${AUTHORED})['"])`, 'g'))].map((m) => m[1]));
+  for (const m of code.matchAll(new RegExp(`querySelectorAll\\(\\s*['"][^'"]*\\b(?:${AUTHORED})\\b[^'"]*['"]\\s*\\)\\.forEach\\(\\s*\\(?\\s*([A-Za-z_$][\\w$]*)[^)]*\\)?\\s*=>\\s*\\{?\\s*\\1\\.(?:classList\\.add|className\\s*=)`, 'g'))) {
+    add('🟡', 'EW-CLASS', file, lineOf(code, m.index), 'class added to authored elements in a querySelectorAll().forEach — classes on an authored h*/p/ul/a die in the editor swap; put the class on the wrapper and style by descent (EW2)');
+  }
+  for (const v of authoredVars) {
+    for (const m of code.matchAll(new RegExp(`(?<![\\w$.])${v.replace(/\$/g, '\\$')}\\.(?:classList\\.add\\(|className\\s*=(?!=))`, 'g'))) {
+      add('🟡', 'EW-CLASS', file, lineOf(code, m.index), `${v} (queried as an authored element) gets a class — it dies in the editor swap; wrap it (labelWrap) and style .wrap :where(${v.length > 12 ? 'tag' : v}) (EW2)`);
+    }
+  }
   // BL-CSS
   const importRe = /import\s+[^;]*?from\s+['"]\.\.\/([a-z0-9-]+)\/\1\.js['"]/g;
   for (const m of src.matchAll(importRe)) {
@@ -96,6 +189,55 @@ for (const file of blockFiles) {
   }
 }
 
+// ---- blocks/*/*.css — EW2-CSS, EW-RHYTHM
+const stripGroups = (sel) => { // drop the content of :has(…) / :not(…) / :where(…) — a `>` inside them is below the authored element
+  let out = sel; let prev;
+  do { prev = out; out = out.replace(/:(?:has|not|where)\([^()]*\)/g, ':__()'); } while (out !== prev);
+  return out;
+};
+const selectorsOf = (css) => {
+  const noComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const out = [];
+  const re = /([^{}]+)\{/g;
+  let m;
+  while ((m = re.exec(noComments))) {
+    const raw = m[1].trim();
+    if (!raw || raw.startsWith('@')) continue;
+    const line = noComments.slice(0, m.index + m[1].search(/\S/)).split('\n').length;
+    // split the selector list on top-level commas only (`:is(h2, h3)` stays whole)
+    let depth = 0; let cur = '';
+    for (const ch of raw) {
+      if (ch === '(') depth += 1; else if (ch === ')') depth -= 1;
+      if (ch === ',' && depth === 0) { out.push({ sel: cur.trim(), line }); cur = ''; } else cur += ch;
+    }
+    if (cur.trim()) out.push({ sel: cur.trim(), line });
+  }
+  return out;
+};
+for (const file of cssFiles) {
+  const css = readFileSync(file, 'utf8');
+  for (const { sel, line } of selectorsOf(css)) {
+    if (/\.prosemirror-editor|\.ProseMirror/.test(sel)) continue; // edit-mode foundation rules are written against the editor DOM on purpose
+    const s2 = stripGroups(sel);
+    const child = s2.match(new RegExp(`[\\w\\])]\\s*>\\s*(?::is\\([^)]*\\b(?:${AUTHORED})\\b[^)]*\\)|(?:${AUTHORED})\\b)`));
+    const positional = s2.match(new RegExp(`\\b(?:${AUTHORED})(?::(?:first|last|only)-child|:nth-(?:last-)?child\\([^)]*\\)|:nth-(?:last-)?of-type\\([^)]*\\))`));
+    if (child || positional) add('🟡', 'EW2-CSS', file, line, `\`${sel}\` — a child combinator / positional pseudo-class on the path to an authored element stops matching in edit mode (the editor inserts div.prosemirror-editor > div.ProseMirror above it); use descendant selectors on the wrapper (EW2)`);
+    const adj = s2.match(new RegExp(`\\b(?:${AUTHORED})\\s*\\+\\s*(?:${AUTHORED})\\b`));
+    if (adj) add('🟡', 'EW-RHYTHM', file, line, `\`${sel}\` — \`${adj[0]}\` never matches once each moved element sits in its own wrapper; write the rhythm at wrapper level (.text > * + *, .wrap + .wrap)`);
+  }
+}
+// ---- styles.css — EW-COMPOSED (T32.4 bullet 4), only with --styles
+if (stylesCss) {
+  if (!existsSync(stylesCss)) { console.error(`block-lint: --styles ${stylesCss} not found`); process.exit(1); }
+  const css = readFileSync(stylesCss, 'utf8');
+  for (const { sel, line } of selectorsOf(css)) {
+    if (/\.prosemirror-editor|\.ProseMirror/.test(sel)) continue;
+    const composed = /^body\.[\w-]+|\.section:first-of-type|main\s*>\s*\.section:has\(/.test(sel);
+    const endsOnProse = /(?:^|[\s>+~])(?:h[1-6]|p|ul|ol|li|a)(?::[\w-]+(?:\([^)]*\))?)*\s*$/.test(sel);
+    if (composed && endsOnProse) add('🟡', 'EW-COMPOSED', stylesCss, line, `\`${sel}\` — a composed page/section selector ending on prose drifts in edit mode (the two editor wrappers break the path) and hides the rule from block-roundtrip; scope it on the section or wrapper, not the prose element (EW10)`);
+  }
+}
+
 // ---- scripts/scripts.js — BL-GUARD
 if (scriptsJs && existsSync(scriptsJs)) {
   const src = readFileSync(scriptsJs, 'utf8');
@@ -127,9 +269,9 @@ if (scriptsJs && existsSync(scriptsJs)) {
 // ---- report
 const red = findings.filter((f) => f.level === '🔴').length;
 if (json) {
-  console.log(JSON.stringify({ files: blockFiles.length, scriptsJs, findings, red }, null, 2));
+  console.log(JSON.stringify({ files: blockFiles.length, cssFiles: cssFiles.length, scriptsJs, stylesCss, findings, red }, null, 2));
 } else {
   for (const f of findings) console.log(`${f.level} ${f.code} ${f.file}:${f.line} — ${f.msg}`);
-  console.log(`block-lint: ${blockFiles.length} block files${scriptsJs ? ` + ${scriptsJs}` : ''}, ${red} 🔴, ${findings.length - red} 🟡`);
+  console.log(`block-lint: ${blockFiles.length} block JS + ${cssFiles.length} block CSS${scriptsJs ? ` + ${scriptsJs}` : ''}${stylesCss ? ` + ${stylesCss}` : ''}, ${red} 🔴, ${findings.length - red} 🟡`);
 }
 process.exit(red ? 2 : 0);
