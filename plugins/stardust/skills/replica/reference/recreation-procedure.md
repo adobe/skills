@@ -294,6 +294,16 @@ instrument** (residual class `capture-state`). Recurring cases:
   live embed (same src) on both sides so moving data cancels out — never a
   frozen snapshot, which guarantees a residual the size of the widget; mask
   generative decoration, which never matches itself across captures.
+- **A/B, geo and cookie buckets.** Experimentation and personalisation
+  serve a different variant per session (CTA copy, injected bands, geo
+  redirects): three captures gave three band lists, and a reviewer's
+  browser showed a variant the capture never served. Pin one bucket for
+  the whole run — the extract's storage state (`stardust/current/
+  _storage-state.json`, reused by every live instrument) — record the
+  observed markers in the page's `_provenance.variants[]` (experiment
+  cookies, `data-experiment*` attributes, testing globals), and mask the
+  bands that still vary (residual class `personalised-region`). The
+  captured variant is the ground truth; a fresh live view is not.
 - **Pointer/hover state.** Pointer position is part of capture state: a
   `:hover`-styled element under the resting cursor is a false-measurement
   trap (recorded: a consent click left the cursor over a hero whose

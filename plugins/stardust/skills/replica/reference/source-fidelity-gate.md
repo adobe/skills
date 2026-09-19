@@ -575,7 +575,11 @@ rather than erroring.
     name, width, vh, dpr or consent mode, or has a sidecar on one side
     only; `--force` compares anyway and marks the number `forced`.
     `gate.sh` treats a cached `live.png` without a sidecar as stale and
-    re-captures it. Recorded: a same-page self-noise capture read 0.00 %
+    re-captures it, and prints `reference: … captured <ts> via <technique>`
+    on every reuse. A reference imported with `gate.sh --live-from-capture
+    <png>` (bot-walled sites where only the extraction's hand-solved
+    capture exists) carries `source: extract-capture`; that compare is
+    forced once, said out loud, and its number is marked `forced`. Recorded: a same-page self-noise capture read 0.00 %
     where the mixed-instrument "drift" had read 18 % — the delta was the
     instrument, and the round chasing it was a false round.
 

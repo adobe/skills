@@ -42,15 +42,15 @@ state, the only permitted deltas are the entries of an explicit
 **inconsistency register**, and every archetype must pass a **measured
 source-fidelity gate** against the live site before anything ships.
 
-Two properties make this a different animal from the redesign pipeline:
+Two properties separate this from the redesign pipeline:
 
-1. **No creative decisions.** The direction step is mechanical promotion of
-   the captured spec — the stardust `direct` skill is never invoked. Every judgment
-   call in a replica run is a *measurement-policy* call, not a taste call.
-2. **Recreation, not copying.** Archetypes are authored as clean semantic
-   HTML/CSS from captured content + values lifted from the source site's own
-   CSS — never DOM copies, never ported page-level stylesheets. Fidelity is
-   proven by instruments, not asserted by construction.
+1. **No creative decisions.** Direction is mechanical promotion of the
+   captured spec — the stardust `direct` skill is never invoked; every
+   judgment call is a *measurement-policy* call, not a taste call.
+2. **Recreation, not copying.** Archetypes are clean semantic HTML/CSS from
+   captured content + values lifted from the source site's own CSS — never
+   DOM copies, never ported page-level stylesheets. Fidelity is proven by
+   instruments, not asserted by construction.
 
 ## Inputs
 
@@ -207,11 +207,11 @@ Impeccable's redesign gates (critique, anti-template, divergence) do not
 apply; the source-fidelity gate (Phase 4) replaces them entirely. A
 "tastefully improved" section is a failing section.
 
-**Fonts:** use the same public source when available (extract's intercepted
-woff2 for open/self-hostable faces). For licensed commercial kits: never
-rehost on the new domain — pick a metric-matched substitute, keep the brand
-family name first in the font stack so a licensed drop-in later wins, and
-surface the substitution to the user. (Prior art: an earlier airport-site migration's improvement notes, §3.7.)
+**Fonts:** same public source when available (extract's intercepted woff2
+for open/self-hostable faces). Licensed commercial kits are never rehosted:
+metric-matched substitute, brand family first in the stack so a licensed
+drop-in later wins, substitution surfaced to the user
+(`reference/recreation-procedure.md` § Fonts policy).
 
 **CSS-portation is the per-section fallback only** — paint-level effects not
 recoverable from computed styles, JS-hydrated commerce widgets, video or
@@ -229,8 +229,7 @@ PROTO="http://localhost:8791/<slug>-proposed.html"   # python3 -m http.server fr
 # server silently poisons the gate (gate.sh asserts a page marker, exit 4)
 LIVE="https://<site>/<path>"
 
-# Probe 1+2 — the diff skill's two probes, generic profile (--dismiss keeps
-# consent + timed marketing modals out of both inventories)
+# Probe 1+2 — the diff skill's two probes, generic profile (--dismiss: both overlay classes)
 node stardust/scripts/diff/content-diff.mjs "$LIVE" "$PROTO" --profile generic --width 1440 --main "<content-root>" --dismiss
 node stardust/scripts/diff/visual-diff.mjs  "$LIVE" "$PROTO" --profile generic --width 1440 --main "<content-root>" --dismiss
 
@@ -242,11 +241,11 @@ node stardust/scripts/replica/pixel-compare.mjs stardust/replica/gates/<slug>-14
 
 # Iteration inner loop (gate doc § Band breakdown): anchor probe + pixel round
 G=stardust/replica/gates/<slug>-1440
-node stardust/scripts/replica/anchor.mjs "$LIVE"  --width 1440 --cache $G/anchor-live.json   # live side: probed once, reused
+node stardust/scripts/replica/anchor.mjs "$LIVE"  --width 1440 --cache $G/anchor-live.json   # live: probed once, reused
 node stardust/scripts/replica/anchor.mjs "$PROTO" --width 1440   # build-side runs are free
-# Chrome: computed-style parity BEFORE any pixel round on header/footer/strips
-node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --live-cache $G/chrome-live.json   # exit 0 = quiet, then crop-compare
-# gate.sh: live.png cached, every step under a deadline (exit 124 = re-run, not FAIL), stale instruments reaped
+# Chrome: computed-style parity BEFORE any pixel round (exit 0 = quiet, then crop-compare)
+node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --live-cache $G/chrome-live.json
+# gate.sh: live.png cached with its sidecar, every step under a deadline, round record written
 stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
 ```
 
@@ -291,8 +290,7 @@ copy carrying hand-edits is a defect
 
 **After the static gate passes, interaction parity is a REQUIRED gate
 output per archetype — not a post-pass**
-(`reference/recreation-procedure.md` § Interaction parity; optional, it was
-skipped on 5 of 7 archetypes — all shipped static). Motion is OBSERVED,
+(`reference/recreation-procedure.md` § Interaction parity). Motion is OBSERVED,
 never inferred from static classes or CSS: run
 `stardust/scripts/replica/motion-observe.mjs` per archetype live URL →
 `stardust/replica/motion/<slug>.json`, implement ONLY behaviors that
@@ -330,6 +328,12 @@ approval per the standard prototype approval flow (hands-off mode records
   node-slotting, never value-slotting) and pass `block-roundtrip --ew`.**
 - **Site-wide rollout** via the stardust `rollout` skill, unchanged — its block dedup
   is what implements "same blocks across the whole site".
+- **The hand-off names the captured variant.** Every brief and report
+  carries `captured variant: <variants[] markers, capture date, consent
+  mode>` and the line "your browser may render a different variant —
+  compare against the capture, not a fresh live view" (A/B, geo and cookie
+  buckets: `reference/recreation-procedure.md` § Asset harvest and the
+  capture-state policy).
 - **The final gate runs against the PUBLISHED origin — not the harness**
   (`reference/source-fidelity-gate.md` § The published-origin gate): the
   delivery pipeline transforms markup, so harness numbers understate.
@@ -378,18 +382,14 @@ PRODUCT.md / DESIGN.md / DESIGN.json    ← promoted verbatim from current/ (Pha
 
 ## References
 
-- `reference/preserve-direction.md` — mechanical promotion contract +
-  inconsistency-register entry schema.
-- `reference/recreation-procedure.md` — CSS-lifting method (per gate
-  breakpoint), fonts policy, scrim/luminance recovery, span-face forks,
-  capture-state policy, wrap-junction margins, fixed/sticky chrome,
-  granularity parity, role parity (mirror the live wrapping per string),
-  interaction parity (motion observed, never inferred; Swiper-lock),
-  CSS-portation fallback criteria.
-- `reference/source-fidelity-gate.md` — full gate contract: commands,
-  thresholds, per-breakpoint procedure, hardening rules, band-breakdown
-  reading guide (+ the section-anchor inner loop), iteration discipline,
-  the published-origin gate (EDS pipeline deltas), residual logging format.
+- `reference/preserve-direction.md` — mechanical promotion contract,
+  inconsistency-register entry schema, impeccable ignore set.
+- `reference/recreation-procedure.md` — CSS lifting, fonts policy, scrim
+  and span-face recovery, capture-state policy, fixed/sticky chrome,
+  granularity/role/interaction parity, CSS-portation fallback.
+- `reference/source-fidelity-gate.md` — full gate contract: probes, pass
+  bar, band breakdown, iteration discipline and regimes, hardening rules,
+  the published-origin gate, residual logging format and classes.
 - `../diff/SKILL.md` — the two probes replica reuses (`--profile generic`);
   reading content-diff output; the #87 JOIN/SPLIT limitation.
 - `../extract/SKILL.md` § Prep mode — what Phase 1 provides.

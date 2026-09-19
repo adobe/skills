@@ -9,7 +9,19 @@
 # delete it explicitly to re-take (site changed, capture hardening changed).
 #
 # Usage:
-#   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>]
+#   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label] \
+#     [--marker <string>] [--live-from-capture <png>]
+#
+#   --live-from-capture <png>  use an EXTRACT capture as the live reference
+#     instead of stitching live (bot-walled sites where only the extraction's
+#     hand-solved capture exists). The PNG (+ its <png>.json when present) is
+#     copied in as live.png; a missing sidecar is synthesized with
+#     source: extract-capture, instrument.name extract-capture, width from the
+#     PNG header, capturedAt from the file's mtime, dpr 1. The compare is then
+#     mixed-instrument by construction: gate.sh passes --force, says so on
+#     every round that reuses the imported reference, and the record carries
+#     forced — a number to read, not a gate number. Delete live.png to go back
+#     to a stitched reference.
 #
 # Example (iteration 2 of the home archetype at 1440):
 #   stardust/scripts/replica/gate.sh home "https://<site>/" \
@@ -65,10 +77,12 @@ shift 4
 LBL=iter
 case "${1:-}" in ''|--*) ;; *) LBL=$1; shift ;; esac
 MARKER="$SLUG"
+FROM_CAPTURE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --marker) MARKER=${2:?--marker needs a value}; shift 2 ;;
-    *) echo "gate.sh: unknown argument $1 (usage: gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>])" >&2; exit 125 ;;
+    --live-from-capture) FROM_CAPTURE=${2:?--live-from-capture needs a <png>}; shift 2 ;;
+    *) echo "gate.sh: unknown argument $1 (usage: gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>] [--live-from-capture <png>])" >&2; exit 125 ;;
   esac
 done
 
@@ -130,6 +144,29 @@ fi
 # Live side: captured once per breakpoint per full gate run and reused
 # (--settle: live JS-heavy pages need the lazyload pass). Never swallow the
 # output — exit 3 here means "blocked, escalate --headed", not "skip".
+FORCE=""
+if [ -n "$FROM_CAPTURE" ]; then
+  [ -f "$FROM_CAPTURE" ] || { echo "gate.sh: --live-from-capture $FROM_CAPTURE not found" >&2; exit 1; }
+  cp "$FROM_CAPTURE" "$DIR/live.png"
+  node - "$FROM_CAPTURE" "$DIR/live.png" "$LIVE_URL" "$CONSENT_MODE" <<'NODE'
+const fs = require('fs');
+const [src, dst, url, mode] = process.argv.slice(2);
+let side = null; try { side = JSON.parse(fs.readFileSync(`${src}.json`, 'utf8')); } catch { /* synthesize */ }
+if (!side) {
+  const buf = fs.readFileSync(src);
+  const width = buf.readUInt32BE(16); const height = buf.readUInt32BE(20); // PNG IHDR
+  side = { url, width, vh: null, dpr: 1, capturedAt: fs.statSync(src).mtime.toISOString(), instrument: { name: 'extract-capture', version: null, options: {} },
+    consent: { mode, via: 'unknown' }, dismissed: [], fontsFailed: [], docHeight: height, chunks: null, technique: 'extract-capture', synthesized: true };
+}
+side.source = 'extract-capture'; side.importedFrom = src;
+fs.writeFileSync(`${dst}.json`, `${JSON.stringify(side, null, 2)}\n`);
+console.log(`gate.sh: live reference imported from ${src} (source: extract-capture${side.synthesized ? ', sidecar synthesized from the PNG header + mtime' : ''}) — MIXED INSTRUMENT vs the stitch-shot build side: comparing with --force once; this number carries forced and is not a gate number.`);
+NODE
+  FORCE="--force"
+elif [ -f "$DIR/live.png.json" ] && node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(j.source==="extract-capture"?0:1)' "$DIR/live.png.json" 2>/dev/null; then
+  echo "gate.sh: live.png is an IMPORTED extract capture (source: extract-capture) — mixed instrument vs the stitch-shot build side: comparing with --force; this number carries forced and is not a gate number. Delete $DIR/live.png to stitch a live reference instead." >&2
+  FORCE="--force"
+fi
 if [ -f "$DIR/live.png" ] && [ ! -f "$DIR/live.png.json" ]; then
   echo "gate.sh: $DIR/live.png has no provenance sidecar (pre-sidecar capture, instrument state unknown) — treating it as stale and re-capturing" >&2
   rm -f "$DIR/live.png"
@@ -147,7 +184,8 @@ rc=$?
 [ $rc -ne 0 ] && { echo "gate.sh: build capture failed (exit $rc) — not comparing" >&2; exit $rc; }
 
 # pixel-compare supervises its own deadline (--timeout); exit 124 = no verdict.
-node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --timeout "$COMPARE_TIMEOUT" --json-out "$DIR/gate-$LBL.json"
+# shellcheck disable=SC2086
+node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --timeout "$COMPARE_TIMEOUT" --json-out "$DIR/gate-$LBL.json" $FORCE
 rc=$?
 
 # Round record: regime + reference + verdict are EMITTED here (see header) so
@@ -169,7 +207,7 @@ const out = { slug, label, width: Number(width), regime,
   ref: { url: liveUrl, width: Number(width), capturedAt, ...(side ? { sidecar: `${live}.json`, instrument: side.instrument && side.instrument.name, technique: side.technique, consent: side.consent } : { source: 'mtime' }) },
   build: { url: buildUrl }, verdict: rc === 0 ? 'PASS' : rc === 2 ? 'FAIL' : 'no-verdict', exit: rc, ...j };
 fs.writeFileSync(rec, `${JSON.stringify(out, null, 2)}\n`);
-console.log(`regime: ${regime}  reference: ${liveUrl} @${width} captured ${capturedAt}${side ? '' : ' (live.png mtime)'}  record: ${rec}`);
+console.log(`regime: ${regime}  reference: ${liveUrl} @${width} captured ${capturedAt}${side ? ` via ${side.technique || side.instrument?.name || 'unknown'}${side.source && side.source !== 'stitch-shot' ? ` (source: ${side.source})` : ''}` : ' (live.png mtime)'}${j.forced ? '  FORCED (incomparable captures — not a gate number)' : ''}  record: ${rec}`);
 NODE
 fi
 exit $rc
