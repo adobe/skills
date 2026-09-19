@@ -129,6 +129,20 @@ A criterion passes if its `description` is satisfied as judged by
 the runner. Per-criterion verdicts are combined as a weighted sum
 out of `total` (100 per eval).
 
+### Lints
+
+`npm run lint:stardust` (repo root) runs three static checks over `skills/`,
+each a plain ESM script under `lint/` that exits 1 with one line per finding:
+
+- `harness-neutral.mjs` — no namespaced sibling-skill references or
+  Claude-only tool names outside lines marked "Claude Code".
+- `script-paths.mjs` — every plugin-internal script or reference path a
+  skill doc names exists in the plugin tree.
+- `doc-size.mjs` — byte caps on `SKILL.md` and `reference/*.md`, an
+  `## Operator card` heading ahead of the procedure, the always-on total and
+  the per-skill delta versus the last release tag; its temporary allowlist
+  must shrink with each release.
+
 ## What stardust v2 evals deliberately do NOT test
 
 - **Visual quality of the redesigned output.** That's
