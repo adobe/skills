@@ -44,6 +44,23 @@ One JSON object per line (JSONL — no wrapping array, no pretty-print):
   session APIs). `stardust/status.jsonl` is the only progress
   contract; anything that wants milestones tails this file.
 
+## Long-running steps
+
+Master § Hands-off mode sets the wait rule — background plus a progress
+file for anything over about 2 minutes, one short check at most every
+4 minutes, end the turn only for waits over ~45 minutes. The numbers are
+not taste: the prompt cache expires after 5 idle minutes, and at the
+contexts a migration reaches every expiry re-writes the whole prefix at
+write price; a completion notification that arrives after 5 minutes
+misses the window too, so ending the turn helps the user, not the cache.
+The progress file a long step writes is the thing to poll — `status.jsonl`
+for phase boundaries, the step's own ledger or log for progress inside a
+phase. Claude Code levers: `run_in_background: true` on the shell call
+(the harness posts a task notification when it exits);
+`promptCacheTtl: "1h"` in settings.json stretches the window to an hour
+at 1.6× write price — an owner setting, worth it for any multi-hour
+session.
+
 Unlike other stardust artifacts, `status.jsonl` carries no provenance
 block — each line is self-describing via `ts` + `skill`, and the
 append-only rule replaces the overwrite protection provenance

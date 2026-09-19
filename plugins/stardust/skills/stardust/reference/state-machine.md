@@ -116,6 +116,17 @@ never a home path:
 `--token-env` consumer defaults to it. `gh` is `skipped` when neither the
 ask nor the environment involves repo creation or Code Sync.
 
+**Lookup.** Resolve `DA_TOKEN` in order — shell env, repo `.env`, the
+harness's user-level env file (Claude Code: `~/.claude/.env`) — and read
+its remaining hours from the JWT `exp` claim (lifecycle rule:
+`skills/deploy/da-deploy-protocol.md` § DA_TOKEN lifecycle). Enumerate
+`SITE_TOKEN_*` **names** in the same files by pattern match — never `cat`
+an env file — and match `<SITE>` to the repo slug case-insensitively.
+Probe `GH_PAT` with `GET api.github.com/user` (200/401 only) when repo
+creation or Code Sync is in the ask or the variable exists. The
+`--credentials` mode of deploy's token-check script emits this block once
+it ships; until then the steps above are the procedure.
+
 ---
 
 ## Flow keys

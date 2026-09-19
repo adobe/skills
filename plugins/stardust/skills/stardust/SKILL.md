@@ -3,6 +3,8 @@ name: stardust
 description: Guided multi-page redesign of an existing website through a four-phase pipeline — extract (crawl and capture the current site), direct (set a visual direction), prototype (generate redesigned HTML), and migrate (emit a deployable static site). Tracks progress incrementally per page in stardust/state.json so redesigns are resumable. Delegates the per-page design craft (typography, spacing, color, layout, motion) to the impeccable skill. Use when the user wants to redesign, revamp, modernize, or restyle an existing site they can point to by URL, run the extract/direct/prototype/migrate flow, or resume a multi-page redesign or migration. Also routes the same-design migration flow (replica) and the donor-design flow (reskin). Not for designing a brand-new site from scratch or one-off single-component edits.
 license: Apache-2.0
 compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+metadata:
+  impeccable: required
 ---
 
 # stardust
@@ -11,27 +13,26 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 
 | step | what runs | gate / outcome | writes |
 |---|---|---|---|
-| Setup 1 | impeccable presence check; `node skills/stardust/scripts/impeccable-version-check.mjs [--local <dir>]` (advisory) | impeccable is a hard dependency | — |
+| Setup 1 | read the skill's `metadata.impeccable` level; unless `none`: impeccable presence check + `node skills/stardust/scripts/impeccable-version-check.mjs [--local <dir>]` (advisory) | `required` stops if missing; `optional` degrades; `none` skips 1 and 4 | — |
 | Setup 2–4 | `PRODUCT.md` / `DESIGN.md` presence; read `stardust/state.json`; parse impeccable's `command-metadata.json` | — | — |
-| Setup 5–7 | status ledger; project hygiene (`stardust/.gitignore`, root `.gitignore`, `.hlxignore`, `git check-ignore`); credentials lookup (`DA_TOKEN` source + expiry, `SITE_TOKEN_*` names, `GH_PAT` probe) on migration-bound asks | `state.json` must not be ignored; no 401 blocker before the lookup ran | `stardust/status.jsonl`, `stardust/.gitignore`, `state.json.credentials` |
+| Setup 5–7 | status ledger; project hygiene (`stardust/.gitignore`, root `.gitignore`, `.hlxignore`, `git check-ignore`); credentials lookup on migration-bound asks | `state.json` must not be ignored; no 401 blocker before the lookup ran | `stardust/status.jsonl`, `stardust/.gitignore`, `state.json.credentials` |
 | Routing | no arg / resume → state report; sub-skill keyword → delegate; migration ask → § Two migration flows; freeform → intent reasoning | plan shown before any command (hands-off: recorded instead) | `state.json` flow keys |
 | Freeform intent | § The "open and reasoned" principle, steps 1–6 | plan confirmation | `stardust/direction.md` |
-| Hands-off | gate auto-resolution table + decision defaults; transport preflight, privileged actions at Setup; volume caps; background waits; per-phase commits | quality gates unchanged; hard blockers still stop; denied privileged action → ask once, `Blocked on owner:` | `state.json.handsOff`, `direction.md` activation line, `status.jsonl` `blocked` (+ `owner`), `stardust/.work/env.json` |
+| Hands-off | gate auto-resolution + decision defaults; transport preflight; volume caps; background waits; per-phase commits | quality gates unchanged; hard blockers still stop; denied privileged action → ask once, `Blocked on owner:` | `state.json.handsOff`, `direction.md` activation line, `status.jsonl` `blocked` (+ `owner`) |
 | Every write | provenance block; journal entry; validate-and-fix loop on human-facing HTML | clean validation pass | `stardust/journal.md`, `stardust/validation/<artifact>/<viewport>.png` |
 
 | at step | read |
 |---|---|
-| Setup 1 (permission layer) | `reference/harness-permissions.md` § Two classes · § Pre-approval |
 | Setup 3, Routing | `reference/state-machine.md` § File: `stardust/state.json` · § State report |
 | Setup 5 | `reference/run-status.md` § Line shape · § Rules |
 | Setup 6, Artifacts | `reference/artifact-map.md` § Versioning — what a clone holds · § Provenance shapes |
-| Setup 7 | `reference/state-machine.md` § Credentials key |
+| Setup 1, 7 | `reference/harness-permissions.md` § Two classes · `reference/state-machine.md` § Credentials key |
 | Routing (migration) | `reference/state-machine.md` § Flow keys |
 | Freeform intent | `reference/intent-reasoning.md` § Procedure · `reference/intent-dimensions.md` § Reading a phrase · `reference/impeccable-command-map.md` § Common sequences |
-| Hands-off | `reference/state-machine.md` § Hands-off keys · § State report · `reference/decisions.md` § How phases use it · § Default rows · `reference/harness-permissions.md` § Privileged-action preflight |
+| Hands-off | `reference/state-machine.md` § Hands-off keys · `reference/decisions.md` § Default rows · `reference/harness-permissions.md` § Privileged-action preflight · `reference/run-status.md` § Long-running steps |
 | Per-page state | `reference/state-machine.md` § Page lifecycle states · § Stale flagging (content-aware) |
 | Journal | `reference/journal-format.md` § Entry format · § Reading the journal at session start |
-| Phase close / hand-off | `reference/handoff-report.md` § Gate table first · § Report check |
+| Phase close / hand-off | `reference/handoff-report.md` § Gate table first |
 | Validation | `../extract/reference/playwright-recipe.md` § Capture list · `../prototype/reference/motion-validation.md` § Validation procedure |
 
 Headings: Setup · Routing · Two migration flows · Hands-off mode · The "open and reasoned" principle · Per-page state and "stale on direction change" · Artifacts you read and write · Provenance · Journal rule · Validation rule · What stardust never does · References
@@ -43,72 +44,54 @@ sub-commands that delegate the actual design work to **impeccable**.
 
 ## Setup (run before anything else)
 
-1. **Verify impeccable is installed.** Stardust has a hard dependency on
-   impeccable and ships no fallbacks. Look for the `impeccable` skill wherever
-   the harness installs skills or plugins: the skill list the harness exposes
-   to you, project skill directories (`.claude/skills/`, `.agents/skills/`,
-   `.cursor/skills/`, `.github/skills/`), or the harness's plugin cache
-   (Claude Code: `~/.claude/plugins/cache/`; GitHub Copilot:
+1. **Resolve the impeccable dependency level.** Read the invoked skill's
+   frontmatter `metadata.impeccable` (`required` | `optional` | `none`; the
+   master itself is `required` for its freeform-intent route). `none` →
+   skip this step and step 4, noting `impeccable: skipped` in the skill's
+   first `status.jsonl` line. Otherwise locate impeccable: the skill list
+   the harness exposes to you, project skill directories
+   (`.claude/skills/`, `.agents/skills/`, `.cursor/skills/`,
+   `.github/skills/`) or its plugin cache (Claude Code:
+   `~/.claude/plugins/cache/`; GitHub Copilot:
    `~/.copilot/installed-plugins/*/impeccable/skills/impeccable`). Under a
-   harness permission layer, read `reference/harness-permissions.md`
-   § Two classes before the first command. If it is not installed, stop
-   and tell the user:
+   permission layer, read `reference/harness-permissions.md` § Two classes
+   first. If impeccable is absent, `required` skills stop (stardust ships
+   no fallback for them) and tell the user:
    > Stardust requires impeccable. Install it from
    > <https://github.com/pbakaus/impeccable> and re-run the command.
 
-   **Version hint (advisory, never blocking).** Stardust deliberately pins
-   NO impeccable version — the design craft should always be the current
-   one — and harnesses do not announce third-party plugin updates by
-   default (Claude Code's marketplace auto-update is off for third-party
-   marketplaces such as impeccable's; Copilot has no update notice). So,
-   once per session, run
+   `optional` skills note `impeccable: absent` there and continue on their
+   degrade path; they never stop over it.
+   **Version hint (advisory, never blocking):** once per session run
    `node <plugin>/skills/stardust/scripts/impeccable-version-check.mjs`
-   (add `--local <impeccable-dir>` when impeccable lives in a harness skills
-   directory rather than the plugin registry) and surface its one output
-   line to the user verbatim when it reports a newer version; it prints the
-   update command for the harness it found impeccable in. Any other outcome (current, unknown, offline) is
-   noise — do not mention it, and never stop or degrade a run over it.
+   (`--local <dir>` when impeccable lives in a harness skills directory)
+   and surface its one line verbatim only when it reports a newer version;
+   every other outcome is noise. Stardust pins no impeccable version.
 2. **Check the target-state files.** `PRODUCT.md` and `DESIGN.md` at the
-   project root are the *target* state for stardust; check whether they
-   exist (a directory listing is enough). Do not run impeccable's context
-   loader (`scripts/impeccable context`) here: it emits directives for
-   impeccable's own flow (init, new-work, detector, update checks) that do
-   not apply to stardust's setup, and impeccable runs it itself whenever
-   stardust invokes an impeccable command. Skip if already known from this
-   session's history.
-3. **Read stardust's state.** Read `stardust/state.json` if present
-   (`reference/state-machine.md` defines the schema). Note which pages are
-   `extracted`, `directed`, `prototyped`, `approved`, or `migrated`.
-4. **Read impeccable's command registry.** Parse
-   `<harness>/skills/impeccable/scripts/command-metadata.json`. This is the
-   single source of truth for the 24 impeccable commands; never hardcode
-   them in your reasoning.
+   project root are the *target* state; check whether they exist. Do not
+   run impeccable's context loader here — impeccable runs it itself on
+   every command.
+3. **Read stardust's state.** `stardust/state.json` if present
+   (`reference/state-machine.md`); note each page's lifecycle state.
+4. **Read impeccable's command registry** (skipped when the level is
+   `none`): `<harness>/skills/impeccable/scripts/command-metadata.json`,
+   the single source of truth — never hardcode commands.
 5. **Status ledger.** Every stardust skill appends a phase-transition line
-   to `stardust/status.jsonl` at each phase start/end, per
-   `reference/run-status.md`.
+   to `stardust/status.jsonl` at each phase start/end
+   (`reference/run-status.md`).
 6. **Project hygiene** (idempotent). Write `stardust/.gitignore` from
    `reference/stardust.gitignore` if absent; never edit a project's copy.
-   In a git repo: root `.gitignore` covers `.env` / `.env.*` and
-   `.claude/settings.local.json` (managed `# >>> stardust` block), `.hlxignore` if present lists `stardust/`, and
-   `git check-ignore -q stardust/state.json` must fail — if it passes,
-   stop and name the rule. Offer, never write, LFS above 50 MB of tracked
-   binaries under `stardust/`. Details in `reference/artifact-map.md`
-   § Versioning.
-7. **Credentials** — for a migration ask or any invocation that can reach
-   `deploy` / `rollout` (keyed on the ask, not on `state.json.flow`, which
-   is stamped later). Resolve `DA_TOKEN` in order — shell env, repo
-   `.env`, the harness's user-level env file (Claude Code: `~/.claude/.env`)
-   — and note its source class and remaining hours (JWT `exp`; the
-   lifecycle rule is `skills/deploy/da-deploy-protocol.md` § DA_TOKEN
-   lifecycle). Enumerate `SITE_TOKEN_*` **names** in the same files by
-   pattern match — never `cat` an env file — and match `<SITE>` to the
-   repo slug case-insensitively. Probe `GH_PAT` (`GET api.github.com/user`,
-   200/401 only) when repo creation or Code Sync is in the ask or the
-   variable exists. Write the result to `state.json.credentials`
-   (`reference/state-machine.md` § Credentials key — names, statuses and
-   source classes; never a value or a home path). Two rules: never declare
-   a 401 blocker before this lookup ran; every `--token-env` consumer
-   defaults to `credentials.siteTokenEnv`.
+   In a git repo: root `.gitignore` covers `.env`, `.env.*` and
+   `.claude/settings.local.json` (managed `# >>> stardust` block),
+   `.hlxignore` if present lists `stardust/`, and `git check-ignore -q
+   stardust/state.json` must fail — if it passes, stop and name the rule.
+   Offer (never write) LFS above 50 MB of tracked binaries. Details:
+   `reference/artifact-map.md` § Versioning.
+7. **Credentials** — on a migration ask or any invocation that can reach
+   `deploy` / `rollout` (keyed on the ask; `flow` is stamped later). Run
+   the lookup in `reference/state-machine.md` § Credentials key and write
+   `state.json.credentials`. Never declare a 401 blocker before it ran;
+   `--token-env` consumers default to `credentials.siteTokenEnv`.
 
 ## Routing
 
@@ -243,116 +226,75 @@ step, so the user never has to ask which prep applies.
 
 ## Hands-off mode
 
-Activated by `--hands-off` on **any** stardust invocation, or by an
-explicit user phrase ("fully hands-off", "no approval gates", "run
-autonomously"). On activation, stamp `state.json.handsOff: true`
-(schema note in `reference/state-machine.md` § Hands-off keys) and
-append an activation line to `stardust/direction.md`. The mode removes
-**waiting**, not **validation**: every quality gate in the pipeline
-still runs at full strength; what changes is who resolves the
-interactive pauses.
-
-Under hands-off, every interactive gate across the pipeline
-auto-resolves:
+Activated by `--hands-off` on **any** stardust invocation or by an
+explicit phrase ("fully hands-off", "no approval gates", "run
+autonomously"): stamp `state.json.handsOff: true` and append an
+activation line to `stardust/direction.md`. The mode removes **waiting**,
+not **validation**: every quality gate still runs at full strength. Every
+interactive gate auto-resolves:
 
 | gate | hands-off resolution |
 |---|---|
-| `direct` clarifying questions | derive the answers from the captured evidence (`stardust/current/`), and state each as a **named assumption** in `direction.md` |
+| `direct` clarifying questions | derive from the captured evidence (`stardust/current/`); state each as a **named assumption** in `direction.md` |
 | `prototype` brief-confirmation waits | skip; proceed on the authored brief |
-| prototype approval | granted by the agent's own judgment **only after all quality gates pass** (craft bar, validation loop, motion gates); recorded as `approvedBy: "hands-off"` on the page's `approved` history entry in `state.json` |
+| prototype approval | granted by the agent's own judgment **only after all quality gates pass**; recorded as `approvedBy: "hands-off"` on the page's `approved` history entry in `state.json` |
 | `prepare-migration` phase gates | behave as `--skip-confirm` |
 | `rollout` | runs full-auto end-to-end |
-| `dynamics` owner decisions (backend, tags on the new host, datasource ownership, locale scope) | ship the interim tier, record each decision by name in `dynamic-features.md` and the parity report, continue; regulated-pii forms stay blocked |
-| plan-time decisions (deploy target, branch, publish timing, fonts, link boundary, locale layout, martech, crawl pacing, credentials, copy, scope) | apply the default row of `reference/decisions.md`, status `default-applied`, print the open rows in the first reply; publish stays preview-only — live is an explicit `--publish` run on gate PASS or an owner-decided row (D1, D16); only an owner-only row (chrome inlining, regulated-PII forms, licensed fonts on a public origin) halts, and only the work it gates |
+| `dynamics` owner decisions (backend, tags on the new host, datasource ownership, locale scope) | ship the interim tier, record each by name in `dynamic-features.md` § Decision batch and the parity report, continue; regulated-PII forms stay blocked |
+| plan-time decisions (`reference/decisions.md` § Default rows: target, branch, publish, fonts, links, locale, martech, crawl, credentials, copy, scope) | apply the default row and print the open rows in the first reply; publish stays preview-only — live is an explicit `--publish` run on gate PASS or an owner-decided row (D1, D16); only an owner-only row halts the work it gates |
 
-Defaults under hands-off (override only when the invocation says
-otherwise):
+Defaults (override only when the invocation says otherwise):
 
 - **One canonical direction.** No variant fan-out — commit to a
   single direction and record the rationale in `direction.md`.
 - **Volume caps as reasoned proposals.** Default **100 pages overall,
-  20 per template**. Roster priority: (1) every page linked from the
-  header and footer, (2) section landing/overview pages, (3) a
-  representative spread of detail pages across all templates. State
-  the chosen caps in `direction.md`.
+  20 per template**. Roster priority: header- and footer-linked pages,
+  then section landing pages, then a representative spread of detail
+  pages across templates. State the caps in `direction.md`.
 - **Delegate by file pointer, read by section.** A brief to a delegated
-  agent names the files and sections it needs (`state.json`, the page's
-  schema, the phase's SKILL.md sections); it never inlines reference docs.
-  Reading is card-first: the coordinator reads a skill's operator card,
-  never its body; before any read of a file over 20 KB it lists the
-  headings and reads only the section the card names; a brief to a
-  delegated agent names card rows, not files to read whole.
-  Instruments that can stall run under their shipped deadline (replica
-  `gate.sh`, `pixel-compare --timeout`) — never under an agent-authored
-  `sleep N; kill` loop — and long steps write a progress file the
-  coordinator polls instead of blocking on the agent. (Field evidence,
-  2026-09: in one recorded run the two conversion agents the harness
-  watchdog killed carried the fattest briefs and whole-document reads,
-  and a lean re-dispatch finished the same pages; that conversion lost
-  89 minutes to a blind wait and 30 to fixed sleeps.)
+  agent names files and sections (`state.json`, the page's schema, the
+  phase's SKILL.md sections) — card rows, never whole files or inlined
+  reference docs. The coordinator reads a skill's operator card, never
+  its body, and before reading any file over 20 KB lists the headings
+  and reads only the section the card names. Stall-prone instruments run
+  under their shipped deadline (replica `gate.sh`, `pixel-compare
+  --timeout`), never an agent-authored `sleep N; kill` loop; long steps
+  write a progress file the coordinator polls.
 - **Wait discipline: never park the conversation past the prompt-cache
-  window.** Anything expected to run longer than about 2 minutes — a gate
-  round over several pages, a crawl, a batch push, a capture set, a
-  delegated agent — runs in the background and writes a progress or
-  summary file; the coordinator never runs it in the foreground and never
-  covers it with one long `sleep`. While it runs, do independent work;
-  when there is none, check back with one short read of the progress
-  file **at most every 4 minutes** — never a fixed `sleep` of 5 minutes or
-  more, and never a blocking "wait for the agent's output" call with a
-  long timeout. The number is not taste: the prompt cache expires after
-  5 idle minutes, and at the 500–900k-token contexts a migration reaches,
-  every expiry re-writes the whole prefix at write price (12× a cached
-  read). Field data, 48 sessions: a foreground wait of ≤ 4 minutes missed
-  the cache in ~10 % of cases, ≥ 5 minutes in 85–87 %; 572 such
-  agent-side waits re-wrote 325 M tokens — 46 % of everything those
-  sessions wrote to the cache. Ending the turn to wait for a completion
-  notification helps the user, not the cache: a notification that arrives
-  after 5 minutes misses too (137 recorded), so prefer short checks for
-  waits under ~45 minutes and end the turn only when the wait is longer
-  or the user should decide. (Claude Code: `run_in_background: true` on
-  the shell call, the harness posts a task notification when it exits;
-  `promptCacheTtl: "1h"` in settings.json stretches the window to an hour
-  at 1.6× write price — an owner setting, worth it for any multi-hour
-  session.)
+  window.** Anything longer than about 2 minutes (a gate round, a crawl,
+  a batch push, a delegated agent) runs in the background and writes a
+  progress file; never in the foreground, never under one long `sleep`. Do independent work meanwhile; otherwise check the
+  progress file **at most every 4 minutes** — never a fixed `sleep` of
+  5 minutes or more, never a blocking wait with a long timeout — and end
+  the turn only for waits over ~45 minutes or a user decision. Rationale
+  and Claude Code levers: `reference/run-status.md` § Long-running steps.
 - **Commit at the end of each phase** when the project is a git repo;
   the phase-close message is the hand-off shape in
-  `reference/handoff-report.md` (gate table first, report-check line last).
-  Before the FIRST such commit, re-run Setup step 6 — the first commit
-  lands at the end of the audit phase, long before deploy's SKILL.md is
-  read, and a tracked `.env` poisons every later push (GH013 + history
-  rewrite at deploy time).
-
-- **Transports and privileged actions first.** Probe every transport the
-  plan uses within the first minutes and run the register's privileged
-  actions (repo, Code Sync, first push, scratch preview) at Setup, never
-  after migrate — `reference/harness-permissions.md` § Privileged-action
-  preflight.
-- **A permission denial is not a blocker.** Ask exactly once (approve,
-  run `<command>`, or `stardust/.work/ship.sh` carries it), append
-  `event: "blocked"` with `owner: "<command>"`, continue on unblocked
-  work; the state report, journal entry and turn-ending reply lead with
-  `Blocked on owner:` while it is open. A denied read or instrument is
-  re-issued once as a bare command.
-
-- **Plan inside the token window.** From `credentials.daExpiresAt`
-  the plan says which deploy waves fall after expiry and orders
-  token-bound work inside the window; when the projection exceeds the
-  TTL, ask for the refresh up front. A missing or expired credential is
-  the `blocked` line **and** the first line of every progress message,
-  with the exact unblock command; delivery halts, author-only work
-  continues.
+  `reference/handoff-report.md`. Re-run Setup step 6 before the FIRST
+  such commit — a tracked `.env` poisons every later push.
+- **Transports and privileged actions first; a denial is not a
+  blocker.** Probe every transport the plan uses in the first minutes and
+  run the register's privileged actions (repo, Code Sync, first push,
+  scratch preview) at Setup, never after migrate. On a denial ask exactly
+  once, append `event: "blocked"` with `owner: "<command>"`, continue on
+  unblocked work; state report, journal entry and turn-ending reply lead
+  with `Blocked on owner:` while open. `reference/harness-permissions.md`
+  § Privileged-action preflight.
+- **Plan inside the token window.** From `credentials.daExpiresAt` order
+  token-bound work inside the window and ask for the refresh up front
+  when the projection exceeds it; a missing or expired credential is the
+  `blocked` line **and** the first line of every progress message, with
+  the exact unblock command — delivery halts, author-only work continues.
 
 **Hard blockers remain stops.** An unreachable source site, an
 expired `DA_TOKEN` that cannot be recovered, or a signal-absent brand
-surface (extract captured no usable brand signal even after a re-run)
-are not judgment calls — state the blocker precisely, append
+surface are not judgment calls — state the blocker precisely, append
 `event: "blocked"` to `stardust/status.jsonl`, and halt. Never guess
 around a hard blocker.
 
-**Quality gates NEVER weaken under hands-off.** Provenance
-validation, the validation loop, fidelity gates, delivery gates, and
-rollout's optimize gate all run unchanged. Hands-off changes *who
-answers*, not *what must pass*.
+**Quality gates NEVER weaken under hands-off.** Provenance validation,
+the validation loop, fidelity gates, delivery gates and rollout's optimize
+gate run unchanged: hands-off changes *who answers*, not *what must pass*.
 
 ## The "open and reasoned" principle
 
