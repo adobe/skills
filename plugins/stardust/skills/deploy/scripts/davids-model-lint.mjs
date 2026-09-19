@@ -34,6 +34,17 @@
  *       inline-script text: window./try {)     D15 ALL_CAPS_TOKEN — tracking-token
  *                                                  lookalike (advisory: legit acronyms exist)
  *   HR  authored <hr> (#119 — the section delimiter; fractures the section)
+ *   TABLE raw <table> under <main> (the pipeline names a block after its
+ *       first cell → a `table` block whose CSS 404s; author the `table` block)
+ *                                            D6  SOLE-EMPH — a lone link wrapped by
+ *                                                emphasis in the pipeline-hoisted order
+ *                                                (<a><strong>, <b>/<i>, or in a <li>)
+ *                                                buttonizes on delivery
+ *                                            META ALONE — a section whose only child is
+ *                                                the metadata block (empty band)
+ *                                            META CHROME — metadata block in /nav,
+ *                                                /footer or /fragments/*
+ *                                            HBR heading text carrying <br> (stripped)
  *
  * Dependency-free by design (regex + balanced-div walking, same technique as
  * build-harness.mjs) — content pages are machine-generated and regular; this
@@ -117,6 +128,8 @@ function lintPage(file, html, findings) {
 
     lintSectionShape(file, section, kids, defaultContentText, flag);
   }
+
+  lintPipelineShapes(file, main, sections, flag);
 
   lintText(file, main, flag);
   lintUrls(file, main, flag);
@@ -225,8 +238,45 @@ function lintBlock(file, section, block, name, flag) {
 }
 
 function lintSectionShape(file, section, kids, defaultContentText, flag) {
-  // Reserved for future section-level checks; default content next to blocks
-  // is legitimate (section heads, D1) so nothing to flag here today.
+  // META ALONE — the metadata block is consumed into <head>; a section holding
+  // nothing else delivers as an empty padded band (first or trailing).
+  if (kids.length === 1 && classOf(kids[0].openTag).split(/\s+/)[0].toLowerCase() === 'metadata' && !defaultContentText) {
+    flag('🟡', 'META', 'metadata block alone in its section — put it in the section that holds the first content (an empty band ships otherwise; `main .section:empty` is only a fallback)');
+  }
+}
+
+// Shapes the DA → EDS pipeline rewrites on delivery, invisible in the harness
+// (reference/encode-contract.md § Pipeline-sensitive shapes).
+const CHROME_PATH = /(^|[\\/])(nav|footer)\.html$|[\\/]fragments[\\/]/i;
+const capped = (arr, n = 5) => (arr.length <= n ? arr : arr.slice(0, n));
+function lintPipelineShapes(file, main, sections, flag) {
+  // TABLE 🔴 — a raw <table> is a block named after its first cell.
+  const tables = [...main.matchAll(/<table\b/gi)].length;
+  if (tables) {
+    flag('🔴', 'TABLE', `${tables} raw <table> element(s) — the pipeline turns a table into a block named after its first cell (its CSS 404s); author the \`table\` block (\`no-header\` variant) instead`);
+  }
+  // META CHROME 🟡 — chrome/fragment documents carry no metadata block.
+  if (CHROME_PATH.test(file) && sections.some((s) => childDivs(s.inner).some((k) => classOf(k.openTag).split(/\s+/)[0].toLowerCase() === 'metadata'))) {
+    flag('🟡', 'META', 'metadata block in a chrome/fragment document — /nav, /footer and /fragments/* carry none (an empty band shifts the slot contract); noindex via the metadata sheet or robots');
+  }
+  // HBR 🟡 — <br> inside a heading is stripped at delivery.
+  const hbr = [...main.matchAll(/<h[1-6]\b[^>]*>(?:(?!<\/h[1-6]>)[\s\S])*?<br\b/gi)];
+  if (hbr.length) {
+    flag('🟡', 'HBR', `${hbr.length} heading(s) carry <br> — the pipeline strips layout breaks inside headings; let the heading wrap, or size the block's heading width in CSS`);
+  }
+  // D6 SOLE-EMPH 🟡 — buttonization is decided from the SOURCE shape: a link
+  // that is a paragraph/list-item/cell's sole content buttonizes when emphasis
+  // wraps it in EITHER nesting order (<a><strong> is hoisted to <strong><a>;
+  // <b>/<i> are emitted as <strong>/<em>), and a lone <strong><a> in a <li>
+  // buttonizes too. <p><strong><a> is the intended D6 shape and is not flagged.
+  const A = '<a\\b[^>]*>[^<]*<\\/a>';
+  const inner = new RegExp(`<(p|li|div)\\b[^>]*>\\s*<a\\b[^>]*>\\s*<(strong|em|b|i)\\b[^>]*>[^<]*<\\/\\2>\\s*<\\/a>\\s*<\\/\\1>`, 'gi');
+  const bi = new RegExp(`<(p|li|div)\\b[^>]*>\\s*<(b|i)\\b[^>]*>\\s*${A}\\s*<\\/\\2>\\s*<\\/\\1>`, 'gi');
+  const li = new RegExp(`<li\\b[^>]*>\\s*<(strong|em)\\b[^>]*>\\s*${A}\\s*<\\/\\1>\\s*<\\/li>`, 'gi');
+  const hits = [...main.matchAll(inner), ...main.matchAll(bi), ...main.matchAll(li)].map((m) => stripTags(m[0]).slice(0, 40));
+  if (hits.length) {
+    flag('🟡', 'D6', `${hits.length} lone emphasised link(s) in the pipeline-hoisted shape (<a><strong>, <b>/<i>, or alone in a <li>) will buttonize on delivery — emit a plain link and restore the weight in block CSS, or author the D6 <p><strong><a> shape on purpose: ${capped(hits).map((h) => `"${h}"`).join(', ')}${hits.length > 5 ? ` (+${hits.length - 5} more)` : ''}`);
+  }
 }
 
 function lintText(file, main, flag) {

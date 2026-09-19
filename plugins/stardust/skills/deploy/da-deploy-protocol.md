@@ -86,7 +86,7 @@ curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
   "https://admin.hlx.page/live/$ORG/$REPO/$BRANCH/$P"
 ```
 
-URLs: DA edit `https://da.live/#/$ORG/$REPO/$P` · preview `https://$BRANCH--$REPO--$ORG.aem.page/$P` · live `https://$BRANCH--$REPO--$ORG.aem.live/$P`. Token pre-flight: a 401 with empty body means it expired (dev tokens last ~24h) — re-auth.
+URLs: DA edit `https://da.live/#/$ORG/$REPO/$P` · preview `https://$BRANCH--$REPO--$ORG.aem.page/$P` · live `https://$BRANCH--$REPO--$ORG.aem.live/$P`. Sheets are the one exception to the extensionless path: a `.json` document keeps its `.json` in the preview/live admin paths (`/preview/$ORG/$REPO/$BRANCH/$P.json`), or the request 404s. Token pre-flight: a 401 with empty body means it expired (dev tokens last ~24h) — re-auth.
 
 ## Delivery pipeline — stages, batch driver, per-page atomic contract, token lifecycle
 
