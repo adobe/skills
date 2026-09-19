@@ -1,0 +1,51 @@
+{
+  "context": "Resume on a post-migrate keep-design project: the state report is rendered first, gate numbers and the journal's Next: line are read from files, the recommendation follows the replica-flow rule, nothing is written, and the next phase is entered through its skill. Two prompts in task.md run as separate sessions against the same fixture; each item is judged pass/fail per session and weighted by max_score.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "master_skill_entered",
+      "max_score": 10,
+      "description": "The stardust master skill is invoked in both scenarios before any substantive answer. Scenario 2 (a plain resume phrase with no 'stardust' in it) still enters the master skill because stardust/state.json exists; an answer assembled from memory, from an ad-hoc read of the project tree, or from grepping skill text without invoking the skill fails."
+    },
+    {
+      "name": "state_report_first",
+      "max_score": 15,
+      "description": "The first substantive output is the state report in the state-machine.md § State report shape: Site: (origin, extracted 2026-09-08), Direction: (the keep-design phrase, resolved 2026-09-08), Flow: replica with when (2026-09-14) and how (the keep-vs-redesign question) it was chosen, then a per-page status table showing six migrated pages and no stale pages. No Repo: block (not a git repository). The report precedes any recommendation, question, or sub-skill load."
+    },
+    {
+      "name": "gate_numbers_from_progress_json",
+      "max_score": 15,
+      "description": "The report prints the last gate numbers per archetype exactly as stardust/replica/progress.json records them: home 2.14% at 1440 and 3.87% at 360 (pass); news__storm-season-checklist 11.6% at 1440 and 12.4% at 360 (over the bar, every residual cause-logged — a pass with an asterisk); insurance__home never gated. Numbers that are invented, rounded away from the ledger, recomputed, or missing for any archetype fail."
+    },
+    {
+      "name": "journal_next_quoted_and_verified",
+      "max_score": 10,
+      "description": "The agent reads the last 3–5 journal entries and quotes the most recent Next: line ('$stardust replica insurance__home — gate the program archetype at 1440 and 360, then $stardust rollout', verbatim or near-verbatim), then states that it checked it against state: insurance__home is still gated: false, deployUrl is still null, the last status.jsonl line is the blocked rollout — so the journal is current. Quoting without the check, or claiming a discrepancy that does not exist, fails."
+    },
+    {
+      "name": "recommendation_follows_replica_rule",
+      "max_score": 15,
+      "description": "The recommended next command is $stardust replica insurance__home, justified by the ungated program archetype blocking its page type, with rollout named as the step after. Recommending from the redesign heuristics (all pages migrated → 'complete, run a critique'), or recommending prototype, migrate --all, extract, prepare-migration, or an immediate rollout, fails."
+    },
+    {
+      "name": "nothing_written",
+      "max_score": 10,
+      "description": "Up to the moment the user answers the proceed question, no file in the workspace is created or modified: state.json, journal.md, status.jsonl, progress.json, direction.md and everything under stardust/migrated/ are byte-identical to the fixture, and no root PRODUCT.md / DESIGN.md / DESIGN.json appears. The pre-seeded stardust/.gitignore is untouched. Any write, append, or edit tool call (or shell redirect into the workspace) before the answer fails."
+    },
+    {
+      "name": "next_phase_entered_via_skill",
+      "max_score": 10,
+      "description": "After the persona answers 'go', the agent enters the next phase by invoking the stardust replica skill for insurance__home (through the harness's skill mechanism, or by reading replica/SKILL.md inline where no such mechanism exists) rather than running gate scripts from memory of the journal or authoring its own gate. The gate is expected to fail at the unreachable .example origin; that failure is not graded. Skipping the skill and improvising the gate fails."
+    },
+    {
+      "name": "no_rerun_of_finished_steps",
+      "max_score": 5,
+      "description": "The agent does not re-run or propose re-running anything the ledger shows finished: no extract or crawl of the origin, no re-gate of home or news__storm-season-checklist, no re-migrate of the six pages, no flow question (flow is already recorded). Restarting from an earlier phase 'to be safe' fails."
+    },
+    {
+      "name": "heading_list_before_skill_reads",
+      "max_score": 10,
+      "description": "(W1 target) No skill file is read whole. Every tool-driven read of a skills/**/*.md file (SKILL.md or reference) is either a heading list (e.g. grep '^#') or a section-scoped read (offset/limit, line range) that follows one, covering only the sections the current step needs — state-machine.md § State report and § Flow keys, journal-format.md § Reading the journal at session start, replica § Setup / Phase 4. A full-file read of any SKILL.md or reference file fails. Text injected by the harness when a skill is invoked does not count as a read."
+    }
+  ]
+}
