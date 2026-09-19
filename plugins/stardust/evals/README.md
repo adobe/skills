@@ -135,7 +135,7 @@ out of `total` (100 per eval).
 
 ### Lints
 
-`npm run lint:stardust` (repo root) runs nine static checks over `skills/`,
+`npm run lint:stardust` (repo root) runs ten static checks over `skills/`,
 each a plain ESM script under `lint/` that exits 1 with one line per finding,
 then the fixture tests under `fixtures/` (plain `node:assert` scripts that
 import a script's exported pure functions — no playwright needed):
@@ -176,6 +176,10 @@ import a script's exported pure functions — no playwright needed):
 - `fixtures/crawl-slugify.test.mjs`, `fixtures/crawl-log-merge.test.mjs` —
   pin crawl.mjs's slug derivation (root → `index`, 200-char cap, `-<hash4>`
   collision suffix) and the append-only `_crawl-log.json` merge.
+- `redirects-smoke.mjs` — runs `rollout/scripts/redirects.mjs` over
+  `lint/fixtures/redirects/redirects.tsv`: the row expansion, the exit-2
+  shadow verdict (a Source that is also a delivered page) and `--check`
+  writing nothing.
 
 ## What stardust v2 evals deliberately do NOT test
 

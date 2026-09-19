@@ -72,6 +72,11 @@ the redesign restyles, doesn't rewrite copy:
 <meta name="robots" content="{robots || 'index,follow'}">
 ```
 
+`og:image` / `twitter:image` (and any `image` metadata row downstream) is
+never a `content.da.live` URL — that host 401s anonymous fetches, so social
+cards and previews break; use the pipeline default or a served `/media_…`
+URL (deploy `reference/content-page-scaffold.md` § Image src hosts).
+
 Plus on the `<html>` element:
 
 ```html
@@ -124,7 +129,9 @@ Always emit when page-type is known. Composition rules:
 | `unique`  | None (or fallback)     | Skip JSON-LD by default                                                      |
 
 Each page-type's emission rule lives here; future expansion
-(FAQPage, Event, BreadcrumbList, HowTo) is additive.
+(FAQPage, Event, BreadcrumbList, HowTo) is additive. Delivery on EDS
+composes this at runtime — rule and lint: deploy
+`reference/content-page-scaffold.md` § 9 (D10).
 
 #### Article schema example
 

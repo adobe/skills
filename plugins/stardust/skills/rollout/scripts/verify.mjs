@@ -14,7 +14,9 @@
  *
  * Checks per page: reachable (HTTP 200 / file exists), body has no `about:error`
  * (#75 broken-image ingestion), and every internal href="/…" resolves to a page
- * in coverage.
+ * in coverage. A folder root (a page delivered from <dir>/index.html) is
+ * fetched in BOTH slash forms over HTTP: the platform may serve only one of
+ * `/dir` and `/dir/`; a 404 on either form is a redirect row, not a pass.
  *
  * Usage: node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--slug <s>] [--all] [--out <rolloutDir>]
  */
@@ -47,6 +49,13 @@ function resolveLocal(p) {
     : [`${p.slice(1)}.html`, `${p.slice(1)}/index.html`, p.slice(1)];
   for (const c of candidates) { const f = join(ROOT, c); if (existsSync(f) && statSync(f).isFile()) return f; }
   return null;
+}
+
+// A page delivered from <dir>/index.html — served on one slash form only, so both are probed.
+const isFolderRoot = (p) => p.path && p.path !== '/' && /\/index\.html$/.test((p.source && p.source.migratedHtml) || '');
+
+async function headStatus(url) {
+  try { const r = await fetch(url, { method: 'HEAD', redirect: 'follow' }); return r.status; } catch { return 0; }
 }
 
 async function fetchPage(p) {
@@ -122,6 +131,11 @@ for (const p of target) {
   let status = 'verified'; let reason = null;
   if (!r.ok) { status = 'failed'; reason = r.reason; }
   else { reason = renderCheck(type, r.body); if (reason) status = 'failed'; }
+  if (status === 'verified' && !ROOT && isFolderRoot(p)) {
+    const slashForm = `${p.path.replace(/\/$/, '')}/`;
+    const st = await headStatus(`${BASE}${slashForm}`);
+    if (st !== 200) { status = 'failed'; reason = `folder root ${slashForm} → HTTP ${st}: add the redirect row ${slashForm} → ${p.path} (redirects.mjs emits both slash forms); internal links keep the canonical form ${p.path} (no slash)`; }
+  }
   p.delivery = p.delivery || {};
   p.delivery.status = status;
   if (status === 'verified') { p.delivery.verifiedAt = now; p.delivery.error = null; }

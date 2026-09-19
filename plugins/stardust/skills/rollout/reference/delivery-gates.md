@@ -81,8 +81,18 @@ links). Rules:
 - replace the `--` segment delimiter (e.g. `klinik-st--anna`) — AEM reserves `--`
   as the `branch--repo--owner` host delimiter, so a `--` in a path 400s.
 
-Append each change to `stardust/redirects.tsv` (`source<TAB>destination`); wiring
-those into the EDS redirects config is a Phase D/assembly step.
+Append each change to `stardust/redirects.tsv` (`source<TAB>destination`);
+Phase D's `scripts/redirects.mjs` turns the sheet into `site/redirects.json`
+with one row per request FORM of each source (extensionless, trailing-slash,
+and `.html` when the source carried it — the platform serves a folder root on
+one slash form only and inbound links arrive on both), refuses (exit 2) a
+Source whose exact form equals a delivered path (it can only shadow the page),
+and `--post-publish` HEADs every page and both slash forms of every folder
+root. `verify.mjs` fails a folder root whose other slash form 404s: the fix is the
+redirect row for the failing form; internal links keep the D9 canonical form
+(root-relative, no slash, no extension) and the redirect covers the other.
+Sheets keep `.json` in admin paths — the DA protocol
+owns that rule.
 
 ## Gate 4 — Source-content hygiene (a sitemap roster contains dead and bodyless URLs)
 
@@ -106,6 +116,18 @@ so the gates run uniformly:
   deploy. The orchestrator deploys centrally (one idempotent `PUT`+preview loop):
   token stays in one place, retries are trivial, and a sub-agent dying mid-response
   leaves its files already on disk.
+  **Token-bound halts park, never re-author.** When the central deploy (or any
+  agent still holding a publish step) hits the `DA_TOKEN` halt class: authored
+  files stay exactly where the plan put them (`content/**`) — never `/tmp` or
+  an ad-hoc staging dir (a staged copy outlives the CSS it was built against
+  and regresses on publish); write nothing but the `blocked` status line, whose
+  `next` (`stardust/reference/run-status.md`) is the exact re-drive — the same
+  `deploy-batch.mjs` command, `--paths` for a partial wave. An agent blocked
+  at publish hands back with its local-harness gate result and
+  "published-origin gate NOT run"; it never invents a publish path. On
+  re-auth the coordinator runs `next`, then the published-origin gate on the
+  newly delivered pages, and only then flips coverage — the ledger's POST
+  codes never flip state ("Admin 200 ≠ delivered" below).
 - **Validate structure BEFORE deploy.** Cheap deterministic check on every authored
   file — exactly one `<h1>`, the body/`<main>`/`<footer>` wrapper, balanced
   `<div>`s — catches a truncated/garbled file before it reaches DA.

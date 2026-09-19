@@ -1,0 +1,10 @@
+{
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "pages": [
+    { "slug": "home", "path": "/", "delivery": { "status": "deployed" }, "source": { "migratedHtml": "stardust/migrated/index.html" } },
+    { "slug": "about", "path": "/about", "delivery": { "status": "deployed" }, "source": { "migratedHtml": "stardust/migrated/about.html" } },
+    { "slug": "services", "path": "/services", "delivery": { "status": "deployed" }, "source": { "migratedHtml": "stardust/migrated/services/index.html" } },
+    { "slug": "it-it", "path": "/it-it", "delivery": { "status": "deployed" }, "source": { "migratedHtml": "stardust/migrated/it-it/index.html" } },
+    { "slug": "pending", "path": "/pending", "delivery": { "status": "content-pending" }, "source": { "migratedHtml": "stardust/migrated/pending.html" } }
+  ]
+}
