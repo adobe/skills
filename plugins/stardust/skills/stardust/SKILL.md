@@ -24,6 +24,7 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 | Setup 3, Routing | `reference/state-machine.md` § File: `stardust/state.json` · § State report |
 | Setup 5 | `reference/run-status.md` § Line shape · § Rules |
 | Setup 6, Artifacts | `reference/artifact-map.md` § Versioning — what a clone holds · § Provenance shapes |
+| Any shell loop, runner, delivery or probe | `reference/harness-quirks.md` (whole card, one page) |
 | Routing (migration) | `reference/state-machine.md` § Flow keys |
 | Freeform intent | `reference/intent-reasoning.md` § Procedure · `reference/intent-dimensions.md` § Reading a phrase · `reference/impeccable-command-map.md` § Common sequences |
 | Hands-off | `reference/state-machine.md` § Hands-off keys |
@@ -89,7 +90,8 @@ sub-commands that delegate the actual design work to **impeccable**.
    `git check-ignore -q stardust/state.json` must fail — if it passes,
    stop and name the rule. Offer, never write, LFS above 50 MB of tracked
    binaries under `stardust/`. Details in `reference/artifact-map.md`
-   § Versioning.
+   § Versioning. Every shell loop, runner command, delivery step and
+   probe in the run follows `reference/harness-quirks.md`.
 
 ## Routing
 
@@ -137,11 +139,9 @@ Once setup is done, route on the user's input:
   - `prototype` accepts `--cinematic` (or `--cinematic=<register>`)
     to layer a brand-faithful motion register on top of the static
     prototype (per `skills/prototype/reference/motion-registers.md`).
-  - `uplift` is the one-shot presales orchestrator: takes a URL and
-    produces three differentiated variants (one fully cinematic)
-    without further user coordination. Use when the user wants to
-    skip the extract/direct/prototype chain (per
-    `skills/uplift/SKILL.md`).
+  - `uplift` skips the extract/direct/prototype chain: one URL in,
+    three differentiated variants out, one of them cinematic, no
+    further user coordination (`skills/uplift/SKILL.md`).
 - **Migration to EDS — pick ONE of two flows, never mix them.** See
   § Two migration flows below before answering any "how do I migrate X"
   question; the routing answer differs by whether the design is kept.
@@ -462,6 +462,7 @@ motion gate cascade).
 - `reference/journal-format.md` — `stardust/journal.md` entry format. Append-only chronological log; the shared narrative layer over the state machine.
 - `reference/run-status.md` — the `stardust/status.jsonl` phase-transition contract every skill appends to. The deterministic progress surface for any harness.
 - `reference/fan-out.md` — the delegated-agent protocol: progress files, worker and coordinator liveness contracts.
+- `reference/harness-quirks.md` — shell, runner, delivery, path, served-asset, local-QA and port rules the tool layer imposes.
 - `reference/learnings.md` — the per-run learnings ledger contract (`stardust/learnings.md`). rollout's report phase writes it; plugin maintainers harvest pending entries into skill diffs.
 
 ### Cinematic-feature references (cross-cutting)
