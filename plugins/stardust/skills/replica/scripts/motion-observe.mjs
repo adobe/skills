@@ -64,8 +64,9 @@
  *      or ≥ 400 ms. "Not hovered" is distinct from "no change": a null/zero
  *      box → hovered:false reason no-box; a pointer intercepted by another
  *      element (elementFromPoint) → hovered:false reason intercepted, by
- *      <path>, WARN. :hover rules present but no measured change → WARN. The
- *      mouse is PARKED after each probe;
+ *      <path>, WARN; a selector matching nothing → hovered:false reason
+ *      not-found, WARN. :hover rules present but no measured change → WARN.
+ *      The mouse is PARKED after each probe;
  *   5. --triggers auto: enumerate `[aria-expanded],[aria-haspopup],
  *      [aria-controls],header button,[role=tab],summary` (deduped; a[href]
  *      and [type=submit] skipped), run LAST (opened panels must not poison
@@ -133,7 +134,11 @@ export const SCHEMA = 2;
 // A trigger that navigates tears the instrumented document down under the
 // evaluate: Playwright reports it as one of these. Recognised → the trigger is
 // recorded navigated:true, the loop stops and the JSON is still written.
-export const isNavigationError = (e) => /Execution context was destroyed|Target (page|context|browser).*closed|Target closed|navigat|frame was detached|Frame.*detached/i.test(String((e && e.message) || e || ''));
+// Matched on Playwright's own navigation-class messages only — never on the bare
+// substring "navigat": a hover/click timeout on a selector such as
+// `nav.navigation-menu`, or a ReferenceError naming `navigator`, carries that
+// substring and used to abort the trigger loop as a false navigation.
+export const isNavigationError = (e) => /Execution context was destroyed|Target (page|context|browser).*closed|Target closed|because of a navigation|Navigation (failed|interrupted|to .* is interrupted)|net::ERR_ABORTED|frame was detached|Frame.*detached/i.test(String((e && e.message) || e || ''));
 
 export const TRIGGER_SELECTOR = '[aria-expanded],[aria-haspopup],[aria-controls],header button,[role=tab],summary';
 export const STATE_ATTRS = ['aria-expanded', 'aria-hidden', 'hidden', 'open', 'data-state'];
@@ -145,6 +150,7 @@ Usage: node motion-observe.mjs <url> <out.json> [options]
   --width <px>      viewport width (default 1440)
   --click <sel>     widget control to poke (repeatable)
   --hover <sel>     element family to hover-diff (repeatable)
+                    hoverSamples[].hovered false carries reason: no-box | intercepted (by <path>) | not-found
   --triggers auto   click every enumerated toggle (${TRIGGER_SELECTOR}) after the hovers; Escape/re-click restore; navigation aborts the loop
   --consent <sel>   extra consent-accept selector (clicked, not removed)
   --dismiss <sel,…> extra overlay-dismiss selectors

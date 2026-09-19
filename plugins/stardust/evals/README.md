@@ -243,7 +243,9 @@ whose harness cases skip when Playwright is unresolvable:
   `bash -n`, exit-5 / integer-scroll / opacity-hide / route.fallback greps,
   the pure live-session and review-image exports); browser fixtures for
   stitch-shot, dismissOverlays (incl. the sticky-header negative),
-  `--block`, pixel-compare offsets + review, anchor `--landmarks` and gate.sh
+  `--block`, mask rects (`--mask-sel/--mask-iframes/--mask-images` → `masksRects[]`)
+  and the compare side (`--mask-from`, paired images only, `photo-dominated`,
+  `--masks-json` validation), pixel-compare offsets + review, anchor `--landmarks` and gate.sh
   (landmark cache, `anchor-live.skip`) when `STARDUST_GATE_DEPS=<dir>/node_modules`
   (or the repo-root `node_modules`) resolves playwright + pngjs + pixelmatch,
   else one `SKIP` line.

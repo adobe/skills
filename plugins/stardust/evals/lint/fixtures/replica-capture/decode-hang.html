@@ -1,0 +1,12 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>decode hang fixture</title>
+<style>html,body{margin:0;padding:0} body{width:800px} img{display:inline-block;width:120px;height:120px;background:#ccc;margin:20px}</style></head>
+<body>
+<main>
+  <img id="a" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==" alt=""><img id="b" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==" alt=""><img id="c" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==" alt="">
+</main>
+<script>
+  // one image whose decode() never settles: pendingDecodes must read 1, not 3
+  document.getElementById('b').decode = () => new Promise(() => {});
+</script>
+</body></html>

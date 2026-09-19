@@ -36,6 +36,10 @@
  *     --dismiss [sel,...]   dismiss overlays on both sides via live-session
  *                           (consent + timed marketing modals + optional extras)
  *     --consent-mode <m>  accept | deny (default accept; deny clicks reject-all, never accept — live-session)
+ *     --block <substr,...>  abort every request whose URL contains one of the
+ *                           substrings (undismissable iframe/shadow widgets); the
+ *                           main-frame navigation and the page's own origin are
+ *                           never blocked — SAME value on both sides (live-session)
  *     --headed[=window]      bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
  *     --locale <tag>        pin Accept-Language + context locale (geo-redirect determinism)
  *
@@ -68,7 +72,7 @@ import { chromium } from 'playwright';
 import { mkdirSync } from 'fs';
 import { resolve } from 'path';
 import { resolveProfile } from './diff-profiles.mjs';
-import { REAL_CHROME_UA, isLiveHttpUrl, defaultWaitUntil, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays } from './live-session.mjs';
+import { REAL_CHROME_UA, isLiveHttpUrl, defaultWaitUntil, launchTier, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, dismissOverlays, reportOverlayResidue } from './live-session.mjs';
 
 const USAGE = `usage: node skills/diff/scripts/visual-diff.mjs <sourceURL> <buildURL> [options]
   --profile eds|generic  stack profile (default eds)
@@ -85,6 +89,8 @@ const USAGE = `usage: node skills/diff/scripts/visual-diff.mjs <sourceURL> <buil
   --dismiss [sel,...]    dismiss overlays (consent + timed marketing modals) on both
                          sides; optional comma-separated extra selectors
   --consent-mode <m>     accept | deny (default accept; deny clicks reject-all, never accept)
+  --block <substr,...>   abort requests whose URL contains a substring (3rd-party widgets
+                         with no close control; never the page's own origin) — SAME value both sides
   --headed[=window]       bot-management ladder start: tier 2 (real Chrome headless); =window tier 3 (off-screen window). Default: the tier extract recorded
   --locale <tag>         pin Accept-Language + locale (e.g. en-GB) for geo determinism
 exit codes: 0 ran (flags advisory; an HTTP-error side, e.g. a 404 build pre-propagation,
@@ -95,7 +101,7 @@ exit codes: 0 ran (flags advisory; an HTTP-error side, e.g. a 404 build pre-prop
 function parseArgs(argv) {
   const [, , proto, eds, ...rest] = argv;
   if (rest.includes('--help') || proto === '--help' || proto === '-h') { process.stdout.write(USAGE); process.exit(0); }
-  const opts = { out: 'qa/vdiff', width: 1280, sections: [], profile: 'eds', main: null, ua: REAL_CHROME_UA, waitUntil: null, dismiss: null, consentMode: 'accept', headed: false, locale: null };
+  const opts = { out: 'qa/vdiff', width: 1280, sections: [], profile: 'eds', main: null, ua: REAL_CHROME_UA, waitUntil: null, dismiss: null, consentMode: 'accept', headed: false, locale: null, block: [] };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--out') { opts.out = rest[i += 1]; }
@@ -111,8 +117,10 @@ function parseArgs(argv) {
       opts.dismiss = (next && !next.startsWith('--')) ? rest[i += 1].split(',').map((s) => s.trim()).filter(Boolean) : [];
     }
     else if (a === '--consent-mode') { opts.consentMode = rest[i += 1]; if (!['accept', 'deny'].includes(opts.consentMode)) { console.error(`--consent-mode must be accept or deny\n\n${USAGE}`); process.exit(1); } if (!opts.dismiss) opts.dismiss = []; }
+    else if (a === '--block') { opts.block = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
     else if (a === '--headed' || a.startsWith('--headed=')) { opts.headed = parseHeadedFlag(a); }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
+    else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${USAGE}`); process.exit(1); }
   }
   return { proto, eds, opts };
 }
@@ -239,6 +247,7 @@ async function capture(browser, url, tag, opts) {
     ua: opts.ua, locale: opts.locale,
     viewport: { width: opts.width, height: 1000 },
     reducedMotion: 'reduce',
+    block: opts.block,
   });
   const page = await ctx.newPage();
   // challenge detection on every navigation — a blocked live side throws
@@ -251,7 +260,9 @@ async function capture(browser, url, tag, opts) {
   await page.waitForTimeout(2000);
   // late-modal poll window only on live targets — local prototypes' overlays
   // are not timed third-party scripts, they render immediately.
-  if (opts.dismiss) await dismissOverlays(page, { mode: opts.consentMode, extra: opts.dismiss, lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
+  // a consent container still up after the window is a WARN here (structural
+  // verdict, not pixels) — stitch-shot is the instrument that exits 5.
+  if (opts.dismiss) reportOverlayResidue('visual-diff', await dismissOverlays(page, { mode: opts.consentMode, extra: opts.dismiss, lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 }));
   // scroll through to trigger reveal-on-scroll / lazy images, then return to top
   await page.evaluate(async () => {
     for (let y = 0; y < document.body.scrollHeight; y += 600) {

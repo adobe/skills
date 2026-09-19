@@ -231,8 +231,8 @@ LIVE="https://<site>/<path>"
 node stardust/scripts/diff/content-diff.mjs "$LIVE" "$PROTO" --profile generic --width 1440 --main "<content-root>" --dismiss
 node stardust/scripts/diff/visual-diff.mjs  "$LIVE" "$PROTO" --profile generic --width 1440 --main "<content-root>" --dismiss
 
-# Probe 3 — replica's pixel probe: gate.sh below wraps stitch-shot (stitched
-# captures, NEVER fullPage:true) + pixel-compare; unwrapped form: gate doc.
+# Probe 3 — gate.sh wraps stitch-shot (stitched, NEVER fullPage) + pixel-compare.
+# Masks only via stardust/replica/masks.json (class + source) — gate doc rule 19.
 
 # Inner loop (gate doc § Band breakdown): anchor probe both sides (live via
 # --cache $G/anchor-live.json), chrome-parity --live-cache BEFORE any pixel round, then

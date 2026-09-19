@@ -19,7 +19,7 @@ Steps, in order: Prereq 0 (playwright probe; copy the whole `skills/diff/scripts
 | serve | `python3 -m http.server` from the prototype's dir; build side = the decorated page (preview or local harness) |
 | 1 | `node skills/diff/scripts/visual-diff.mjs "$PROTO" "$BUILD" --profile eds|generic [--width <px>] [--main <sel>] [--sections a,b] [--out <dir>]` |
 | 2 | `node skills/diff/scripts/content-diff.mjs "$PROTO" "$BUILD" --profile eds|generic [--width <px>] [--main <sel>] [--json]` |
-| live targets (both) | `--ua <string>`, `--wait-until <state>`, `--dismiss [sel,...]`, `--consent-mode accept\|deny`, `--headed[=window]` (ladder start tier: 2 = real Chrome headless; `=window` = 3, off-screen; default = the tier `_crawl-log.json#discovery.fetchTechnique` records — `skills/extract/reference/playwright-recipe.md` § Bot-management fallback), `--locale <tag>` — engine `scripts/live-session.mjs` |
+| live targets (both) | `--ua <string>`, `--wait-until <state>`, `--dismiss [sel,...]`, `--consent-mode accept\|deny`, `--block <substr,…>`, `--headed[=window]` (ladder start tier: 2 = real Chrome headless; `=window` = 3, off-screen; default = the tier `_crawl-log.json#discovery.fetchTechnique` records — `skills/extract/reference/playwright-recipe.md` § Bot-management fallback), `--locale <tag>` — engine `scripts/live-session.mjs` |
 
 Exit codes: 0 ran (flags advisory) · 1 probe error · 3 bot challenge (never measured). Pass bar: visual red flags none/justified AND content-diff 0 structural 🔴 (🟡/🟠 confirmed intended); re-run both after each fix.
 
@@ -69,11 +69,9 @@ prototype's DOM and the built DOM compare symmetrically, then diffs them.
 # and re-install (npm i -D playwright --no-save --legacy-peer-deps) on failure:
 # a --no-save install from extract is PRUNED by any later real npm i
 # (extract SKILL.md § Setup). Run the copied scripts from the project, not the plugin.
-# Copy the WHOLE skills/diff/scripts/ dir: content-diff imports diff-profiles.mjs and
-# content-inventory.mjs (the deploy gates use their own synced copies in skills/deploy/scripts/).
+# Copy the WHOLE skills/diff/scripts/ dir (content-diff imports diff-profiles + content-inventory).
 # Prereq: a RENDERABLE source. Static → serve from its own dir (python3 -m http.server).
 # The build URL must be the DECORATED page (live/preview or a local harness), not raw markup.
-# verify the port is YOURS (lsof -nP -iTCP:8791 -sTCP:LISTEN) — a foreign server = a foreign page
 PROTO="http://localhost:8791/<prototype>.html"
 BUILD="https://<branch>--<repo>--<owner>.aem.page/<path>"   # or http://localhost:3000/<harness>
 
@@ -103,9 +101,11 @@ Akamai-class bot management):
   `--wait-until` overrides all three tiers.
 - `--dismiss [sel,...]` — dismiss overlays on both sides: cookie consent (clicked, not
   removed; `--consent-mode deny` clicks reject-all, never accept) AND timed
-  marketing/newsletter modals, plus extra site-specific selectors; mouse parked after.
-  `../replica/scripts/stitch-shot.mjs` adds `--allow-consent`, `--no-dismiss-defaults`,
-  `--remove-text`, `--keep-pinned`, `--exclude` (its `--help`).
+  marketing/newsletter modals, plus extra site-specific selectors; mouse parked after;
+  a container still up is a `WARN consent present` (stitch-shot exits 5; its `--help` lists
+  the capture-only flags).
+- `--block <substr,...>` — abort requests whose URL contains a substring (undismissable
+  iframe/shadow widgets); never the page's own origin; the SAME value on both sides.
 - `--headed[=window]` — bot-management ladder start tier (Operator card, live targets row).
 - `--locale <tag>` — pin Accept-Language + context locale (geo-redirecting sites capture a
   different locale per run otherwise).
