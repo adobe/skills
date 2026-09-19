@@ -59,9 +59,11 @@
  *
  * Completion contract (skills/stardust/scripts/progress.mjs): while running, the
  * driver writes stardust/.work/deploy/deploy-batch.progress.json (atomic; done/ok/
- * failed/lastPath) — the file the agent's ≤ 4-minute check reads; when it ends
+ * failed/lastPath) — the file the agent's ≤ 4-minute check reads; on every exit
+ * (driving run, --plan/--report with mode=…, halt with halted=…, fatal with error=…)
  * the LAST stdout line is
  *   SUMMARY deploy-batch ok=<n> failed=<n> exit=<code> details=<ledger> skipped=<n> published=<n>|preview-only
+ * where ok/failed count the pages THIS run drove (a halt reports them too).
  * Run it in the background (`nohup node … > stardust/.work/deploy/deploy-batch.log 2>&1 &`)
  * and read the progress file, then the SUMMARY line — never `sleep N; grep -c`.
  *
@@ -415,10 +417,11 @@ async function readLedger(file) {
   try { return JSON.parse(await readFile(file, 'utf8')); } catch (e) { throw new Error(`ledger ${file} is not valid JSON (${e.message}) — fix or move it; never start from an empty ledger`); }
 }
 
+let persistSeq = 0;
 async function persistLedger(file, ledger, touched) {
   const merged = mergeLedger(await readLedger(file), ledger, touched);
   await mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
+  const tmp = `${file}.${process.pid}.${(persistSeq += 1)}.tmp`;
   await writeFile(tmp, JSON.stringify(merged, null, 2));
   await rename(tmp, file);
   return merged;
@@ -566,21 +569,29 @@ export async function main(argv = process.argv) {
   const args = parseArgs(argv);
   summaryCtx = { details: args.ledger };
   const ledger = await readLedger(args.ledger);
-  if (args.report) { report(ledger); return 0; }
+  if (args.report) {
+    report(ledger);
+    console.log(summaryLine({ driver: 'deploy-batch', exit: 0, details: args.ledger, extra: { mode: 'report', rows: Object.keys(ledger).length } }));
+    return 0;
+  }
 
   const pages = await walkHtml(args.content);
   const want = args.paths ? await readPathList(args.paths) : null;
   const exclude = args.exclude ? await readPathList(args.exclude) : null;
   const touched = new Set();
   const logLine = async (o) => appendFile(args.log, `${JSON.stringify({ t: new Date().toISOString(), ...o })}\n`);
-  const persist = async () => persistLedger(args.ledger, ledger, touched);
+  // serialised: two workers hitting `done % 5 === 0` inside one persist's await window must not race the tmp+rename
+  let persisting = Promise.resolve();
+  const persist = () => (persisting = persisting.then(() => persistLedger(args.ledger, ledger, touched)));
+  let progress = null; // created once the plan is known; halt() reads it so the SUMMARY counts what this run drove
   const next = `node ${path.relative(process.cwd(), argv[1]) || argv[1]} ${argv.slice(2).map((x) => (/[\s"']/.test(x) ? JSON.stringify(x) : x)).join(' ')}`;
   const halt = async (err, driven, remaining) => {
     await persist();
     await logLine({ step: 'halt', why: err.why, driven, remaining });
     console.error(`[deploy-batch] HALT (${err.why}): ${err.remedy}${err.why === '401' ? ` (token source: ${args.tokenSource})` : ''}. ${driven} page(s) driven this run, ${remaining} remaining — their rows keep their previous status. Fix the credential, then re-run:`);
     console.log(`next=${next}`);
-    console.log(summaryLine({ driver: 'deploy-batch', ok: 0, failed: 0, exit: HALT_EXIT, details: args.ledger, extra: { halted: err.why, remaining } }));
+    const extra = { halted: err.why, remaining };
+    console.log(progress ? progress.summaryLine({ exit: HALT_EXIT, details: args.ledger, extra }) : summaryLine({ driver: 'deploy-batch', exit: HALT_EXIT, details: args.ledger, extra }));
     return HALT_EXIT;
   };
 
@@ -624,6 +635,7 @@ export async function main(argv = process.argv) {
   if (args.plan) {
     console.log(planLine(counts, ` (plan only, publish=${args.publish})`));
     for (const r of plan.rows) console.log(`  ${r.action.padEnd(7)} ${r.webPath}  ${r.reason}`);
+    console.log(summaryLine({ driver: 'deploy-batch', exit: 0, details: args.ledger, extra: { mode: 'plan', toDrive: counts.toDrive } }));
     return 0;
   }
 
@@ -635,7 +647,7 @@ export async function main(argv = process.argv) {
   }
   if (touched.size) await persist(); // hash backfills / --force resets
 
-  const progress = createProgress({ file: args.progress, driver: 'deploy-batch', total: todo.length, extra: { publish: args.publish, skipped: counts.unchanged, ledger: args.ledger } });
+  progress = createProgress({ file: args.progress, driver: 'deploy-batch', total: todo.length, extra: { publish: args.publish, skipped: counts.unchanged, ledger: args.ledger } });
   const shared = args.branch !== 'main' ? [] : null;
   let done = 0;
   try {
@@ -650,6 +662,7 @@ export async function main(argv = process.argv) {
     });
   } catch (err) {
     if (err instanceof HaltError) { progress.set({ halted: err.why }); return halt(err, done, todo.length - done); }
+    await persist().catch(() => {}); // a non-halt worker error is fatal (exit 2) — but the rows driven so far are kept
     throw err;
   }
   await persist();

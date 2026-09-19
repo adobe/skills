@@ -2,7 +2,7 @@
 
 Full text of deploy Step 10. Read:
 - § Step 10 — after a page is `deployed`: what the atomic contract already proved, the QA-scope note;
-- § The six reconcile checks — the per-page procedure: content-diff summary, deployed eyeball, CLS probe, chrome crop gate (#115), ≥1920 box check (#116), geometry-fix hygiene (#117);
+- § The six reconcile checks — served-check first (gate after the origin serves the round), then the per-page procedure: content-diff summary, deployed eyeball, CLS probe, chrome crop gate (#115), ≥1920 box check (#116), geometry-fix hygiene (#117);
 - § Running content-diff — the commands and the fixed-asset URL grep (#44);
 - § Reading content-diff — how to triage its flags (#78);
 - § Scope — when to hand over to the site-wide `qa` sweep or the rollout fix loop instead.
@@ -10,8 +10,6 @@ Full text of deploy Step 10. Read:
 ## Step 10 — Reconcile on the DEPLOYED URL (content-diff ADVISORY + eyeball + CLS)
 
 After deploy, reconcile the EDS page against the source prototype on the **DEPLOYED URL only** (#78, #101). The load-bearing *automated* deployed gates already ran in the per-page atomic-delivery contract: the **computed-style guard** (grids compute `grid`, blocks decorated, 0 broken imgs, 0 pageerrors — the silent grid→block scoping collapse) and the **`.plain.html` verify** (one `<h1>`, 0 `about:error`, authored img/alt count). Step 10 adds a structural summary, an eyeball, a CLS probe, a chrome crop gate, and a wide-viewport box check on top.
-
-**Gate only after the origin serves what you shipped.** Before any deployed gate or reconcile run, `node skills/deploy/scripts/served-check.mjs <css-or-js-url> --grep '<a marker from the round's edit>' --wait 180` for every block CSS/JS the round touched, and the page's `.plain.html` `--grep <a marker from the content> --wait 180`; run the gate only after each exits 0. A gate run before that is a measurement of yesterday's code (recorded: one page gated 4× in 32 min and another 3× in 12 min while Code Sync and publish landed, each wait a `sleep`). The wait is the helper's capped poll — never a `sleep N; <gate>` pair.
 
 > **QA-scope note (e2e benchmark, 5 pages).** Across the benchmark the real defects were caught by
 > `block-roundtrip` (A6, pre-deploy, in-block content), the computed-style guard + `.plain.html`
@@ -23,6 +21,8 @@ After deploy, reconcile the EDS page against the source prototype on the **DEPLO
 > a blocking gate, and the deployed eyeball is the load-bearing visual check.
 
 ## The six reconcile checks
+
+**Gate only after the origin serves what you shipped.** Run the checks below only after `node skills/deploy/scripts/served-check.mjs <css-or-js-url> --grep '<marker from the round's edit>' --wait 180` exits 0 for every asset the round touched and for the page's `.plain.html` marker — a gate run earlier measures yesterday's code; the wait is the helper's capped poll, never `sleep N; <gate>`.
 
 **1. `content-diff` — advisory structural summary (`skills/diff/scripts/content-diff.mjs`).** Extracts an ordered, role-classified inventory ({heading, eyebrow, cta+href, body}) from each `<main>` (computed-style + tag, so the prototype's `.ds-*` DOM and the EDS block DOM compare symmetrically) and diffs them. **Read the SUMMARY line first** — a large per-role or `img` count delta is a fast dropped-section signal. Treat its per-node `MISSING`/`ROLE SWAP` findings as **advisory leads to verify by eye**, NOT auto-blocking: `block-roundtrip` (#94, A6) already gated in-block content fidelity with the same classifier PRE-deploy, so a Step-10 🔴 that #94 did not show is either a real DA-transport reshape (a stripped tag, an unwrapped `<p>` #79, a flattened row #50/#62 — fix it) **or** a known false-positive class (auto-generated TOC/anchor href schemes; verbatim-vs-authored typography — now largely folded out by apostrophe/quote/ellipsis/dash normalization in the classifier). Confirm which by eye before acting; the script exits 0 (advisory) regardless.
 

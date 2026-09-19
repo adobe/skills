@@ -72,6 +72,7 @@ try {
   r = await run(['--report'], { DA_TOKEN: '' });
   assert.equal(r.status, 0, `--report exit 0: ${r.stderr}`);
   assert.match(r.stdout, /ledger: 3 rows/);
+  assert.match(r.stdout.trim().split('\n').at(-1), /^SUMMARY deploy-batch ok=0 failed=0 exit=0 details=.* mode=report rows=3$/, '--report ends with a SUMMARY line');
   assert.match(r.stdout, /put-fail {2}\/old {2}PUT 500/);
 
   // --plan: no network, one reason per path
@@ -82,6 +83,7 @@ try {
   assert.match(r.stdout, /skip {4}\/a {2}unchanged \(hash\)/);
   assert.match(r.stdout, /drive {3}\/sub\/b {2}changed/);
   assert.match(r.stdout, /drive {3}\/c {2}new/);
+  assert.match(r.stdout.trim().split('\n').at(-1), /^SUMMARY deploy-batch ok=0 failed=0 exit=0 details=.* mode=plan toDrive=2$/, '--plan ends with a SUMMARY line');
   assert.equal(mock.requests.length, 0, '--plan makes no request');
 
   // mutate a → plan says 2 changed

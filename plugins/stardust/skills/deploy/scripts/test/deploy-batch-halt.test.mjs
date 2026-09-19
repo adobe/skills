@@ -123,7 +123,7 @@ try {
   assert.deepEqual(readLog().find((l) => l.step === 'halt'), { ...readLog().find((l) => l.step === 'halt'), why: '401', driven: 2, remaining: 1 });
   assert.match(r.stderr, /HALT \(401\): DA_TOKEN rejected.*token source: shell.*2 page\(s\) driven this run, 1 remaining/);
   assert.match(r.stdout, /^next=node .*deploy-batch\.mjs --org o --repo r --branch main --content .* --no-progress --concurrency 1$/m, 'next= is the same command');
-  assert.match(r.stdout, /^SUMMARY deploy-batch ok=0 failed=0 exit=3 details=.* halted=401 remaining=1$/m);
+  assert.match(r.stdout, /^SUMMARY deploy-batch ok=2 failed=0 exit=3 details=.* halted=401 remaining=1$/m, 'halt SUMMARY counts the pages this run drove');
   assert.equal(puts(), 3, 'no retry of the 401');
   // resume: the same command finishes the remaining page and clears the stale lastError
   mock.reset(); mock.rules.putStatus = () => 201;

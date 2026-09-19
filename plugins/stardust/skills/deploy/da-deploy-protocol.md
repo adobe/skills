@@ -49,7 +49,7 @@ curl -sS -X PUT -H "Authorization: Bearer $TOKEN" \
 for u in $(grep -oE 'https://[^"]+/img/[^"]+\.(jpg|jpeg|png|webp|svg)' content/$P.html | sort -u); do
   node skills/deploy/scripts/served-check.mjs "$u" --wait 120 || { echo "asset never became live: $u" >&2; exit 1; }
 done
-# NB (#2): this bare-curl wait is for repo-relative /img/ assets only. Do NOT bare-curl
+# NB (#2): this waiter is for repo-relative /img/ assets only. Do NOT probe
 #   - content.da.live/admin.da.live media URLs — they 401 to anon curl but ingest fine
 #     (verify them via step 3b about:error instead); and
 #   - external SOURCE/CDN <img> srcs on a bot-walled origin (Akamai/Cloudflare 403 a curl
