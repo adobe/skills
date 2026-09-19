@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- stardust:provenance
+       writtenBy: stardust:prototype
+       writtenAt: 2026-09-11T16:20:33Z
+       stardustVersion: 0.22.0
+       page: home
+       direction: stardust/direction.md (resolved 2026-09-09T09:05:18Z, mode A brand-faithful, iaFidelity verbatim)
+       contentSource: stardust/current/pages/home.json
+       synthesized: none — every literal comes from the captured page
+  -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Meridian Coast Credit Union — Banking that stays local</title>
+  <style>
+    :root {
+      --heading-font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      --body-font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+
+      --heading-xxl: 64px;
+      --heading-xl:  48px;
+      --heading-lg:  36px;
+      --heading-md:  26px;
+      --body:        18px;
+      --body-sm:     15px;
+
+      --line-height-heading: 1.1;
+      --line-height-body:    1.55;
+
+      --color-bg:     #f4efe6;
+      --color-fg:     #14212b;
+      --color-accent: #0b4f6c;
+
+      --spacing-xs:  4px;
+      --spacing-sm:  8px;
+      --spacing-md:  16px;
+      --spacing-lg:  24px;
+      --spacing-xl:  48px;
+      --spacing-2xl: 96px;
+
+      --section-padding: 96px;
+      --max-width:       1200px;
+      --radius:          12px;
+
+      /* brand extensions */
+      --color-surface: #ffffff;
+      --color-coral:   #e4572e;
+      --color-teal-deep: #073a4f;
+      --color-muted:   #5b6770;
+      --color-line:    #d9d2c5;
+      --nav-height:    72px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--color-bg);
+      color: var(--color-fg);
+      font-family: var(--body-font-family);
+      font-size: var(--body);
+      line-height: var(--line-height-body);
+    }
+    img { display: block; max-width: 100%; height: auto; }
+    h1, h2, h3 { font-family: var(--heading-font-family); line-height: var(--line-height-heading); margin: 0 0 var(--spacing-md); font-weight: 600; }
+    h1 { font-size: var(--heading-xxl); }
+    h2 { font-size: var(--heading-xl); }
+    h3 { font-size: var(--heading-md); }
+    p { margin: 0 0 var(--spacing-md); }
+    a { color: var(--color-accent); }
+    .container { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--spacing-lg); }
+    .eyebrow { font-size: var(--body-sm); letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-coral); font-weight: 600; margin-bottom: var(--spacing-sm); }
+    .lede { font-size: 20px; color: var(--color-muted); max-width: 60ch; }
+    .btn { display: inline-block; padding: 14px 26px; border-radius: 999px; font-weight: 600; text-decoration: none; border: 2px solid var(--color-accent); }
+    .btn-primary { background: var(--color-accent); color: #fff; }
+    .btn-secondary { background: transparent; color: var(--color-accent); }
+    .on-dark .btn-primary { background: var(--color-coral); border-color: var(--color-coral); }
+    .on-dark .btn-secondary { color: #fff; border-color: #fff; }
+
+    /* header */
+    .site-header { height: var(--nav-height); background: var(--color-surface); border-bottom: 1px solid var(--color-line); }
+    .site-header .container { display: flex; align-items: center; justify-content: space-between; height: 100%; gap: var(--spacing-lg); }
+    .brand { font-family: var(--heading-font-family); font-size: 22px; font-weight: 700; color: var(--color-accent); text-decoration: none; }
+    .site-nav ul { display: flex; gap: var(--spacing-lg); list-style: none; margin: 0; padding: 0; }
+    .site-nav a { text-decoration: none; color: var(--color-fg); font-weight: 500; }
+    .site-tools .btn { padding: 10px 20px; }
+
+    /* hero carousel */
+    .hero-carousel { background: var(--color-teal-deep); color: #fff; }
+    .hero-carousel .slides { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; list-style: none; margin: 0; padding: 0; scrollbar-width: none; }
+    .hero-carousel .slide { flex: 0 0 100%; scroll-snap-align: start; }
+    .hero-carousel .slide-inner { display: grid; grid-template-columns: 1.1fr 1fr; gap: var(--spacing-xl); align-items: center; min-height: 560px; padding: var(--spacing-2xl) var(--spacing-lg); max-width: var(--max-width); margin: 0 auto; }
+    .hero-carousel h1, .hero-carousel h2 { font-size: var(--heading-xxl); color: #fff; }
+    .hero-carousel .lede { color: #d8e6ec; }
+    .hero-carousel img { border-radius: var(--radius); aspect-ratio: 4 / 3; object-fit: cover; }
+    .hero-carousel .dots { display: flex; gap: var(--spacing-sm); justify-content: center; padding: 0 0 var(--spacing-lg); }
+    .hero-carousel .dot { width: 10px; height: 10px; border-radius: 50%; background: #ffffff66; }
+    .hero-carousel .dot[aria-current="true"] { background: var(--color-coral); }
+
+    /* products */
+    .products { padding: var(--section-padding) 0; }
+    .section-head { max-width: 62ch; margin-bottom: var(--spacing-xl); }
+    .card-grid { display: grid; gap: var(--spacing-lg); }
+    .products .card-grid { grid-template-columns: repeat(4, 1fr); }
+    .card { display: flex; flex-direction: column; gap: var(--spacing-sm); padding: var(--spacing-lg); background: var(--color-surface); border-radius: var(--radius); border: 1px solid var(--color-line); text-decoration: none; color: var(--color-fg); }
+    .card:hover { border-color: var(--color-accent); }
+    .card h3 { margin: var(--spacing-sm) 0 0; }
+    .card p { color: var(--color-muted); font-size: var(--body-sm); flex: 1; }
+    .card .card-cta { color: var(--color-accent); font-weight: 600; }
+    .card .glyph { width: 40px; height: 40px; border-radius: 10px; background: var(--color-bg); display: grid; place-items: center; color: var(--color-accent); font-weight: 700; }
+
+    /* locations */
+    .locations { padding: var(--section-padding) 0; background: var(--color-surface); }
+    .locations .section-head { display: flex; align-items: end; justify-content: space-between; max-width: none; gap: var(--spacing-xl); }
+    .locations .section-head p { color: var(--color-muted); max-width: 48ch; }
+    .branch-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--spacing-lg); }
+    .branch { padding: var(--spacing-lg); border: 1px solid var(--color-line); border-radius: var(--radius); background: var(--color-bg); }
+    .branch h3 { font-size: 20px; margin-bottom: var(--spacing-xs); }
+    .branch h3 a { text-decoration: none; color: var(--color-fg); }
+    .branch p { margin: 0; font-size: var(--body-sm); color: var(--color-muted); }
+    .branch .hours { color: var(--color-fg); margin-top: var(--spacing-sm); }
+    .branch .details { display: inline-block; margin-top: var(--spacing-sm); font-weight: 600; font-size: var(--body-sm); }
+
+    /* newsletter */
+    .newsletter { padding: var(--spacing-2xl) 0; }
+    .newsletter .panel { display: grid; grid-template-columns: 1.2fr 1fr; gap: var(--spacing-xl); align-items: center; padding: var(--spacing-xl); background: var(--color-teal-deep); color: #fff; border-radius: var(--radius); }
+    .newsletter h2 { color: #fff; font-size: var(--heading-lg); }
+    .newsletter p { color: #d8e6ec; }
+    .newsletter form { display: grid; gap: var(--spacing-sm); }
+    .newsletter label { font-size: var(--body-sm); }
+    .newsletter input { padding: 14px 16px; border-radius: 999px; border: 1px solid #ffffff66; background: #ffffff14; color: #fff; font: inherit; }
+    .newsletter button { padding: 14px 26px; border-radius: 999px; border: 0; background: var(--color-coral); color: #fff; font: inherit; font-weight: 600; }
+    .newsletter small { color: #b7cbd4; font-size: 13px; }
+
+    /* faq */
+    .faq { padding: var(--section-padding) 0; }
+    .faq .section-head { text-align: center; margin: 0 auto var(--spacing-xl); }
+    .faq details { border-top: 1px solid var(--color-line); padding: var(--spacing-md) 0; max-width: 760px; margin: 0 auto; }
+    .faq details:last-of-type { border-bottom: 1px solid var(--color-line); }
+    .faq summary { font-family: var(--heading-font-family); font-size: 22px; cursor: pointer; list-style: none; display: flex; justify-content: space-between; }
+    .faq summary::after { content: "+"; color: var(--color-accent); }
+    .faq details[open] summary::after { content: "–"; }
+    .faq details p { color: var(--color-muted); margin: var(--spacing-md) 0 0; }
+
+    /* footer */
+    .site-footer { background: var(--color-teal-deep); color: #d8e6ec; padding: var(--spacing-xl) 0 var(--spacing-lg); font-size: var(--body-sm); }
+    .site-footer .cols { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: var(--spacing-xl); }
+    .site-footer h3 { color: #fff; font-size: 16px; font-family: var(--body-font-family); text-transform: uppercase; letter-spacing: 0.08em; }
+    .site-footer ul { list-style: none; margin: 0; padding: 0; }
+    .site-footer li { margin-bottom: var(--spacing-sm); }
+    .site-footer a { color: #fff; text-decoration: none; }
+    .site-footer .legal { border-top: 1px solid #ffffff22; margin-top: var(--spacing-xl); padding-top: var(--spacing-md); color: #b7cbd4; font-size: 13px; }
+
+    @media (width <= 900px) {
+      h1, .hero-carousel h1, .hero-carousel h2 { font-size: 40px; }
+      .hero-carousel .slide-inner, .newsletter .panel { grid-template-columns: 1fr; }
+      .products .card-grid, .branch-grid { grid-template-columns: repeat(2, 1fr); }
+      .site-footer .cols { grid-template-columns: 1fr 1fr; }
+      .site-nav { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header" data-section="site-header" data-intent="orient and navigate" data-layout="contained">
+    <div class="container">
+      <a class="brand" href="/">Meridian Coast Credit Union</a>
+      <nav class="site-nav" aria-label="Primary">
+        <ul>
+          <li><a href="/accounts">Accounts</a></li>
+          <li><a href="/loans">Loans</a></li>
+          <li><a href="/locations">Locations</a></li>
+          <li><a href="/about">About us</a></li>
+        </ul>
+      </nav>
+      <div class="site-tools">
+        <a class="btn btn-primary" href="https://online.meridiancoastcu.example/login">Log in</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero-carousel on-dark" data-section="hero-carousel" data-intent="emotional hook" data-layout="full-bleed" data-items="3" data-media="image" data-interactive="carousel" aria-roledescription="carousel" aria-label="Featured">
+      <ul class="slides">
+        <li class="slide" id="slide-1">
+          <div class="slide-inner">
+            <div class="copy">
+              <p class="eyebrow">Member-owned since 1952</p>
+              <h1>Banking that stays on this coast</h1>
+              <p class="lede">Every dollar you keep with us is lent to a neighbour, a fishing crew or a family on the same shoreline. No shareholders, no surprise fees.</p>
+              <p><a class="btn btn-primary" href="/accounts">Open an account</a></p>
+            </div>
+            <img src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 1200'%3E%3Crect width='1600' height='1200' fill='%230b4f6c'/%3E%3Ccircle cx='1180' cy='420' r='260' fill='%23e4572e' opacity='.85'/%3E%3C/svg%3E" alt="Harbour at dawn with fishing boats moored along the quay" width="1600" height="1200">
+          </div>
+        </li>
+        <li class="slide" id="slide-2">
+          <div class="slide-inner">
+            <div class="copy">
+              <p class="eyebrow">Home loans</p>
+              <h2>A mortgage decided by people who know the street</h2>
+              <p class="lede">Local underwriting means a real conversation about your home, not a score from a call centre three time zones away.</p>
+              <p><a class="btn btn-secondary" href="/loans/mortgages">See mortgage rates</a></p>
+            </div>
+            <img src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 1200'%3E%3Crect width='1600' height='1200' fill='%23f4efe6'/%3E%3Crect x='300' y='400' width='1000' height='500' fill='%230b4f6c'/%3E%3C/svg%3E" alt="Clapboard house with a blue front door on a quiet coastal street" width="1600" height="1200">
+          </div>
+        </li>
+        <li class="slide" id="slide-3">
+          <div class="slide-inner">
+            <div class="copy">
+              <p class="eyebrow">Mobile banking</p>
+              <h2>Deposit a cheque from the dock</h2>
+              <p class="lede">Our app handles deposits, transfers and card controls, with a person one tap away when you need one.</p>
+              <p><a class="btn btn-secondary" href="/mobile">Get the app</a></p>
+            </div>
+            <img src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 1200'%3E%3Crect width='1600' height='1200' fill='%23073a4f'/%3E%3Crect x='620' y='200' width='360' height='800' rx='40' fill='%23f4efe6'/%3E%3C/svg%3E" alt="Phone held up on a wooden dock showing the mobile banking app" width="1600" height="1200">
+          </div>
+        </li>
+      </ul>
+      <div class="dots">
+        <a class="dot" href="#slide-1" aria-label="Go to slide 1" aria-current="true"></a>
+        <a class="dot" href="#slide-2" aria-label="Go to slide 2"></a>
+        <a class="dot" href="#slide-3" aria-label="Go to slide 3"></a>
+      </div>
+    </section>
+
+    <section class="products" data-section="products" data-intent="value proposition" data-layout="grid" data-items="4">
+      <div class="container">
+        <div class="section-head">
+          <p class="eyebrow">What we offer</p>
+          <h2>Everyday banking, priced like a co-operative</h2>
+          <p class="lede">Four products cover most members. Each one is explained in plain words with the rate and any fee right next to it.</p>
+        </div>
+        <div class="card-grid">
+          <a class="card" href="/accounts/checking">
+            <span class="glyph" aria-hidden="true">✓</span>
+            <h3>Free Checking</h3>
+            <p>No monthly fee, no minimum balance, and every ATM on the coast surcharge-free.</p>
+            <span class="card-cta">Learn more</span>
+          </a>
+          <a class="card" href="/accounts/savings">
+            <span class="glyph" aria-hidden="true">%</span>
+            <h3>Tide Savings</h3>
+            <p>4.10% APY on the first $10,000, paid monthly, with no tiers to keep track of.</p>
+            <span class="card-cta">Learn more</span>
+          </a>
+          <a class="card" href="/loans/auto">
+            <span class="glyph" aria-hidden="true">→</span>
+            <h3>Auto Loans</h3>
+            <p>From 5.49% APR for new and used vehicles, with a decision the same business day.</p>
+            <span class="card-cta">Learn more</span>
+          </a>
+          <a class="card" href="/loans/mortgages">
+            <span class="glyph" aria-hidden="true">⌂</span>
+            <h3>Home Loans</h3>
+            <p>Fixed and adjustable mortgages underwritten locally, plus home-equity lines from 6.25% APR.</p>
+            <span class="card-cta">Learn more</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section class="locations" data-section="locations" data-intent="build trust" data-layout="grid" data-items="12">
+      <div class="container">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Twelve branches</p>
+            <h2>Find a branch near you</h2>
+            <p>Every branch has a drive-up ATM, safe deposit boxes and advisors who can open an account or a loan on the spot.</p>
+          </div>
+          <p><a class="btn btn-secondary" href="/locations">View all branches</a></p>
+        </div>
+        <div class="branch-grid">
+          <article class="branch"><h3><a href="/locations/harbourview">Harbourview Branch</a></h3><p>210 Quay Street, Harbourview</p><p class="hours">Mon–Fri 9am–5pm, Sat 9am–12pm</p><a class="details" href="/locations/harbourview">View details</a></article>
+          <article class="branch"><h3><a href="/locations/salt-marsh">Salt Marsh Branch</a></h3><p>48 Estuary Road, Salt Marsh</p><p class="hours">Mon–Fri 9am–5pm, Sat 9am–12pm</p><a class="details" href="/locations/salt-marsh">View details</a></article>
+          <article class="branch"><h3><a href="/locations/pelican-point">Pelican Point Branch</a></h3><p>7 Lighthouse Lane, Pelican Point</p><p class="hours">Mon–Fri 9am–5pm, Sat 9am–12pm</p><a class="details" href="/locations/pelican-point">View details</a></article>
+          <article class="branch"><h3><a href="/locations/driftwood">Driftwood Branch</a></h3><p>1120 Coast Highway, Driftwood</p><p class="hours">Mon–Fri 9am–6pm, Sat 9am–1pm</p><a class="details" href="/locations/driftwood">View details</a></article>
+          <article class="branch"><h3><a href="/locations/gullhaven">Gullhaven Branch</a></h3><p>33 Market Square, Gullhaven</p><p class="hours">Mon–Fri 9am–5pm, Sat 9am–12pm</p><a class="details" href="/locations/gullhaven">View details</a></article>
+          <article class="branch"><h3><a href="/locations/tidewater">Tidewater Branch</a></h3><p>902 Ferry Terminal Way, Tidewater</p><p class="hours">Mon–Fri 9am–5pm, Sat 9am–12pm</p><a class="details" href="/locations/tidewater">View details</a></article>
+          <article class="branch"><h3><a href="/locations/cape-alder">Cape Alder Branch</a></h3><p>15 Alder Street, Cape Alder</p><p class="hours">Mon–Fri 9am–5pm, Sat 9am–12pm</p><a class="details" href="/locations/cape-alder">View details</a></article>
+          <article class="branch"><h3><a href="/locations/sandbar">Sandbar Branch</a></h3><p>660 Boardwalk Avenue, Sandbar</p><p class="hours">Mon–Fri 9am–6pm, Sat 9am–1pm</p><a class="details" href="/locations/sandbar">View details</a></article>
+          <article class="branch"><h3><a href="/locations/kelp-bay">Kelp Bay Branch</a></h3><p>4 Cannery Row, Kelp Bay</p><p class="hours">Mon–Fri 9am–5pm, Sat 9am–12pm</p><a class="details" href="/locations/kelp-bay">View details</a></article>
+          <article class="branch"><h3><a href="/locations/norwick">Norwick Branch</a></h3><p>78 Station Road, Norwick</p><p class="hours">Mon–Fri 9am–5pm, Sat 9am–12pm</p><a class="details" href="/locations/norwick">View details</a></article>
+          <article class="branch"><h3><a href="/locations/seagrass">Seagrass Branch</a></h3><p>301 Dune Parkway, Seagrass</p><p class="hours">Mon–Fri 9am–5pm, Sat 9am–12pm</p><a class="details" href="/locations/seagrass">View details</a></article>
+          <article class="branch"><h3><a href="/locations/mariners-reach">Mariner's Reach Branch</a></h3><p>12 Anchor Court, Mariner's Reach</p><p class="hours">Mon–Fri 9am–6pm, Sat 9am–1pm</p><a class="details" href="/locations/mariners-reach">View details</a></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="newsletter" data-section="newsletter" data-intent="capture lead" data-layout="contained" data-fragment="newsletter" data-fragment-role="reuse" data-fragment-source="/fragments/newsletter">
+      <div class="container">
+        <div class="panel on-dark">
+          <div>
+            <h2>Rates change. Hear about it first.</h2>
+            <p>One e-mail a month with new savings rates, branch news and the scam alerts we send our own families. Unsubscribe any time.</p>
+          </div>
+          <form action="#" method="post">
+            <label for="nl-email">Your e-mail address</label>
+            <input id="nl-email" name="email" type="email" placeholder="you@example.com" autocomplete="email">
+            <button type="submit">Sign me up</button>
+            <small>We never share member e-mail addresses.</small>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <section class="faq" data-section="faq" data-intent="explain mechanic" data-layout="stack" data-items="6" data-interactive="accordion">
+      <div class="container">
+        <div class="section-head">
+          <p class="eyebrow">Good to know</p>
+          <h2>Questions members ask</h2>
+        </div>
+        <details><summary>Who can join Meridian Coast Credit Union?</summary><p>Anyone who lives, works, worships or studies in one of the twelve coastal towns we serve, plus their family members. A $5 share deposit makes you a member-owner.</p></details>
+        <details><summary>Are my deposits insured?</summary><p>Yes. Deposits are federally insured up to $250,000 per member, per ownership category, the same protection a bank account carries.</p></details>
+        <details><summary>Do you charge ATM fees?</summary><p>Not at our machines or the shared co-operative network of more than 30,000 ATMs nationwide. Other operators may add their own surcharge, and we refund up to $10 of those each month on Free Checking.</p></details>
+        <details><summary>How fast is a loan decision?</summary><p>Auto and personal loans are usually decided the same business day. Mortgages take longer because a local underwriter reviews every file, typically two to three weeks to close.</p></details>
+        <details><summary>Can I bank entirely from my phone?</summary><p>You can open accounts, deposit cheques, move money, freeze a card and message an advisor in the app. The only things that still need a branch visit are notarised documents and safe deposit boxes.</p></details>
+        <details><summary>What happens to the profit?</summary><p>There are no shareholders. After reserves are set aside, earnings return to members as higher savings rates, lower loan rates and the fees we do not charge.</p></details>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer" data-section="footer" data-intent="orient and reassure" data-layout="grid">
+    <div class="container">
+      <div class="cols">
+        <div>
+          <h3>Meridian Coast Credit Union</h3>
+          <p>Member-owned and federally insured. Serving twelve coastal towns since 1952.</p>
+          <p>Routing number 211370001</p>
+        </div>
+        <div>
+          <h3>Banking</h3>
+          <ul>
+            <li><a href="/accounts/checking">Free Checking</a></li>
+            <li><a href="/accounts/savings">Tide Savings</a></li>
+            <li><a href="/accounts/certificates">Certificates</a></li>
+            <li><a href="/loans">Loans</a></li>
+          </ul>
+        </div>
+        <div>
+          <h3>Members</h3>
+          <ul>
+            <li><a href="/locations">Branches and ATMs</a></li>
+            <li><a href="/mobile">Mobile app</a></li>
+            <li><a href="/security">Fraud and security</a></li>
+            <li><a href="/contact">Contact us</a></li>
+          </ul>
+        </div>
+        <div>
+          <h3>About</h3>
+          <ul>
+            <li><a href="/about">Our story</a></li>
+            <li><a href="/about/board">Board of directors</a></li>
+            <li><a href="/about/community">Community giving</a></li>
+            <li><a href="/careers">Careers</a></li>
+          </ul>
+        </div>
+      </div>
+      <p class="legal">© 2026 Meridian Coast Credit Union. Federally insured. Equal Housing Opportunity. <a href="/privacy">Privacy</a> · <a href="/accessibility">Accessibility</a></p>
+    </div>
+  </footer>
+</body>
+</html>

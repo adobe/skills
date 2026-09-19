@@ -1,0 +1,62 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:prototype",
+    "writtenAt": "2026-09-12T15:42:07Z",
+    "stardustVersion": "0.22.0"
+  },
+  "site": {
+    "originUrl": "https://www.meridiancoastcu.example",
+    "deployUrl": null,
+    "extractedAt": "2026-09-08T10:14:52Z",
+    "pageCap": 5,
+    "totalDiscovered": 31,
+    "crawled": 5
+  },
+  "direction": {
+    "resolvedAt": "2026-09-09T09:05:18Z",
+    "phrase": "keep our colours and voice, but make the site feel like a modern coastal credit union instead of a bank form",
+    "directionFile": "stardust/direction.md",
+    "iaFidelity": "verbatim"
+  },
+  "flow": "redesign",
+  "flowChosenAt": "2026-09-08T10:12:40Z",
+  "flowSource": "user-phrase",
+  "pages": [
+    {
+      "slug": "home",
+      "url": "https://www.meridiancoastcu.example/",
+      "title": "Meridian Coast Credit Union — Banking that stays local",
+      "type": "landing",
+      "status": "approved",
+      "history": [
+        { "status": "extracted", "at": "2026-09-08T10:14:52Z" },
+        { "status": "directed", "at": "2026-09-09T09:05:18Z" },
+        { "status": "prototyped", "at": "2026-09-11T16:20:33Z" },
+        { "status": "approved", "at": "2026-09-12T15:42:07Z" }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": null,
+      "prototypePath": "stardust/prototypes/home-proposed.html",
+      "migratedPath": null
+    },
+    {
+      "slug": "accounts",
+      "url": "https://www.meridiancoastcu.example/accounts",
+      "title": "Accounts — Meridian Coast Credit Union",
+      "type": "program",
+      "status": "approved",
+      "history": [
+        { "status": "extracted", "at": "2026-09-08T10:15:31Z" },
+        { "status": "directed", "at": "2026-09-09T09:05:18Z" },
+        { "status": "prototyped", "at": "2026-09-11T16:48:10Z" },
+        { "status": "approved", "at": "2026-09-12T15:42:07Z" }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": null,
+      "prototypePath": "stardust/prototypes/accounts-proposed.html",
+      "migratedPath": null
+    }
+  ]
+}

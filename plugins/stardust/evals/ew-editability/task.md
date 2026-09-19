@@ -12,8 +12,8 @@ run in harness mode.
 
 ## User prompt
 
-"$stardust deploy <prototype>.html — convert this page to EDS blocks and
-content, ready to push to DA"
+"$stardust deploy stardust/prototypes/accounts-proposed.html — convert this page to
+EDS blocks and content, ready to push to DA"
 
 ## Expected behavior
 
