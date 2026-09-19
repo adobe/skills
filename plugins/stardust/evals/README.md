@@ -204,6 +204,10 @@ whose harness cases skip when Playwright is unresolvable:
   contains `git add -A` / `git add .` / `git add --all` (the master's own
   `never …` prohibition passes); the rule lives in stardust/SKILL.md § Hands-off
   mode.
+- `forbidden-phrases.mjs` — no `skills/**/*.md` or `evals/**/*.md` line
+  (recorded `runner/results/` excluded) contains the abolished over-bar
+  wording "pass with an asterisk" (forbidden-phrases: ignore — this bullet);
+  the rule now reads FAIL → blocked in replica's source-fidelity-gate.md.
 - `fixtures/crawl-slugify.test.mjs`, `fixtures/crawl-log-merge.test.mjs` —
   pin crawl.mjs's slug derivation (root → `index`, 200-char cap, `-<hash4>`
   collision suffix) and the append-only `_crawl-log.json` merge.
@@ -230,6 +234,12 @@ whose harness cases skip when Playwright is unresolvable:
   armed after the slot), cache eviction, `report.infra` / exit 2; the
   browser half of the second (document retried, throttled sub-resource →
   `rendered/unmeasured`) skips without playwright.
+- `rollout/scripts/delivery-lint.test.mjs`, `rollout/scripts/inventory.test.mjs`,
+  `rollout/scripts/verify.test.mjs` — the pre-PUT mirror rules and the
+  chrome-variant guard both directions (fires on the named shape, silent on a
+  clean page); typed inventory rows seeded + preserved, `--redirects`
+  deployedPath, sitemap = live page rows; the runner-output contract on the
+  shared fixture, link classes, 429/503 retry → `unverified` / exit 2.
 - `impeccable-probe-fixtures.mjs` — runs `stardust/scripts/impeccable-version-check.mjs
   --probe/--state` and `script-paths.mjs --installed` over
   `lint/fixtures/impeccable-layout/` (4.1.3 legacy-launcher, 4.3.1 and a

@@ -74,8 +74,9 @@ Both scenarios behave the same once the master skill is entered.
 4. **Last gate numbers per archetype**, read from `progress.json`, not
    recomputed and not invented: `home` 2.14 % at 1440 and 3.87 % at 360
    (pass); `news__storm-season-checklist` 11.6 % at 1440 and 12.4 % at 360
-   (over the bar, three iterations, every residual carries a `cause` —
-   a pass with an asterisk); `insurance__home` never gated.
+   (over the bar after three iterations, residuals cause-only — reported
+   `FAIL 11.6 % / 12.4 % (residuals unaccepted)`, blocked); `insurance__home`
+   never gated.
 5. **The journal's last `Next:` line is quoted** and checked against
    state: `insurance__home` is still `gated: false`, `deployUrl` is
    still `null`, the last ledger line is the blocked rollout — so the

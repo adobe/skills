@@ -51,9 +51,12 @@
  * report.json is rewritten after every check with `partial: true` — a hang in a
  * later check never loses the findings already collected. stdout carries the
  * ranked class table only (summary.json / summary.md hold the per-page rows).
+ *
+ * Runs from the plugin tree or the project copy (stardust/scripts/qa/): the
+ * class-report helper is loaded from skills/stardust/scripts/ or, beside a project
+ * copy, stardust/scripts/stardust/class-report.mjs — copy it along with this file.
  */
 import { join, dirname } from 'node:path';
-import { classReport, renderTable, writeSummary } from '../../stardust/scripts/class-report.mjs';
 import { fileURLToPath } from 'node:url';
 import { writeFileSync, rmSync, readFileSync } from 'node:fs';
 import {
@@ -64,6 +67,14 @@ import { htmlReport } from './report-html.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 if (flag('help')) { console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('*/')[0].replace(/^\/\*\*|^ \* ?/gm, '')); process.exit(0); }
+// class-report.mjs lives in skills/stardust/scripts/ (plugin tree) or stardust/scripts/stardust/ (project copy)
+const { classReport, renderTable, writeSummary } = await (async () => {
+  for (const c of ['../../stardust/scripts/class-report.mjs', '../stardust/class-report.mjs']) {
+    try { return await import(new URL(c, import.meta.url)); } catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; }
+  }
+  console.error('qa: class-report.mjs not found next to this script — copy skills/stardust/scripts/class-report.mjs to stardust/scripts/stardust/.');
+  process.exit(2);
+})();
 const BASE = (arg('base') || '').replace(/\/$/, '');
 if (!BASE) { console.error('qa: --base <live-url> is required'); process.exit(2); }
 

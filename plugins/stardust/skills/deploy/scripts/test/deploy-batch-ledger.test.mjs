@@ -111,6 +111,8 @@ try {
   const puts = mock.requests.filter((q) => q.method === 'PUT').map((q) => q.url);
   assert.equal(puts.length, 2, `two PUTs, got ${puts.join(',')}`);
   assert.ok(!puts.some((u) => u.endsWith('/a.html')), 'unchanged page not re-PUT');
+  assert.match(r.stderr, /OK {3}\/sub\/b \(previewed\) {2}https:\/\/main--r--o\.aem\.page\/sub\/b\n/, 'previewed line ends with the aem.page URL');
+  assert.match(r.stderr, /\[deploy-batch\] done\. 2 ok, 0 failed\. {2}first: https:\/\/main--r--o\.aem\.page\//, 'summary names the first preview URL');
   assert.equal(mock.requests.filter((q) => q.url.startsWith('/delivery/aem.page/a.')).length, 1, 'unchanged page verified once on aem.page');
   const lastLine = r.stdout.trim().split('\n').at(-1);
   assert.equal(lastLine, `SUMMARY deploy-batch ok=2 failed=0 exit=0 details=${ledgerPath} skipped=1 published=preview-only`, 'SUMMARY is the last stdout line');

@@ -55,11 +55,17 @@
  * class-report helper is loaded from skills/stardust/scripts/ or, beside a project
  * copy, stardust/scripts/stardust/class-report.mjs — copy it along with this file.
  *
+ * Throttling is not a verdict: a 429/503 is retried inline (Retry-After, capped at
+ * 60 s, else 2 s then 4 s — 3 attempts); a page still throttled is reported as
+ * `unverified` — its ledger status is NOT written — and the run exits 2: re-run,
+ * never a failed page.
+ *
  * Usage: node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--slug <s>]
  *          [--all [--include-undelivered]] [--out <rolloutDir>] [--report <dir>] [--verbose]
  * Exit: 0 no row failed · 1 at least one row is `failed` (advisory classes never set
  *       it) · 2 usage (no base/root, coverage missing — run inventory.mjs first — or
- *       class-report.mjs not found next to this script)
+ *       class-report.mjs not found next to this script) or a page left `unverified`
+ *       by 429/503 throttling after the inline retry (re-run)
  */
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -68,7 +74,7 @@ import { readJSON, writeJSON, rollupTemplates, rollupConfig, siteBase, delivered
 function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : fallback; }
 const has = (f) => process.argv.includes(`--${f}`);
 if (has('help')) {
-  console.log('Usage: node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--slug <s>] [--all [--include-undelivered]] [--out <rolloutDir>] [--report <dir>] [--verbose]\n  exit 0 no failed row · 1 at least one failed row · 2 usage (no base/root, no coverage, helper missing)');
+  console.log('Usage: node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--slug <s>] [--all [--include-undelivered]] [--out <rolloutDir>] [--report <dir>] [--verbose]\n  exit 0 no failed row · 1 at least one failed row · 2 usage (no base/root, no coverage, helper missing) or a page left unverified by 429/503 throttling (re-run)');
   process.exit(0);
 }
 // class-report.mjs lives in skills/stardust/scripts/ (plugin tree) or stardust/scripts/stardust/ (project copy)
@@ -108,6 +114,22 @@ const targetDelivered = (row) => (ROOT ? true : isDelivered(row));
 const isFolderRoot = (p) => p.path && p.path !== '/' && /\/index\.html$/.test((p.source && p.source.migratedHtml) || '');
 async function headStatus(url) {
   try { const r = await fetch(url, { method: 'HEAD', redirect: 'follow' }); return r.status; } catch { return 0; }
+}
+
+// 429/503 = the host is throttling, not failing: retry inline (Retry-After capped at 60 s,
+// else 2 s / 4 s), then hand back `throttled` — a no-verdict the loop keeps out of the ledger.
+const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms));
+async function fetchPage(p) {
+  if (ROOT) return loadPageHTML(p, { root: ROOT, base: BASE });
+  const url = `${BASE}${deliveredPathOf(p)}`;
+  for (let attempt = 1; ; attempt += 1) {
+    let res;
+    try { res = await fetch(url); } catch (e) { return { ok: false, reason: `fetch error: ${e.message}` }; }
+    if (res.status !== 429 && res.status !== 503) return res.ok ? { ok: true, body: await res.text() } : { ok: false, reason: `HTTP ${res.status}` };
+    if (attempt === 3) return { ok: false, throttled: true, reason: `HTTP ${res.status} after 3 attempts — throttled, no verdict (re-run verify)` };
+    const ra = Number(res.headers.get('retry-after'));
+    await sleep((Number.isFinite(ra) && res.headers.has('retry-after') ? Math.min(ra, 60) : attempt * 2) * 1000);
+  }
 }
 
 const ASSET_RE = /\.(css|js|png|jpe?g|gif|webp|avif|svg|ico|woff2?|xml|txt|json|pdf|mp4|webm|mov|zip)$/i;
@@ -175,10 +197,12 @@ const target = pages.filter((p) => {
 const now = new Date().toISOString();
 const results = []; // one row per checked page: { slug, path, type, status, reason, class, severity }
 const advisories = []; // pending-target / outside-inventory(warn) rows — never flip the exit
+const unverified = []; // throttled rows (429/503 through the retry) — ledger untouched, exit 2
 for (const p of target) {
-  const r = await loadPageHTML(p, { root: ROOT, base: BASE });
+  const r = await fetchPage(p);
   const type = artifactType(p);
   const served = deliveredPathOf(p);
+  if (r.throttled) { unverified.push({ slug: p.slug, path: served, type, status: 'unverified', reason: r.reason, class: 'throttled (429/503)', severity: 'warn' }); continue; }
   let status = 'verified'; let reason = null; let pending = []; let outside = [];
   if (!r.ok) { status = 'failed'; reason = r.reason; }
   else { const c = renderCheck(type, r.body); reason = c.reason; pending = c.pending; outside = c.outside; if (reason) status = 'failed'; }
@@ -214,7 +238,7 @@ const pendingPages = advisories.filter((a) => a.severity === 'info').length;
 const outsideWarnPages = advisories.filter((a) => a.severity === 'warn').length;
 const anchor = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const pagesMd = join(REPORT, 'pages.md');
-const report = classReport([...bad, ...advisories], { classKey: ['class'], pageKey: ['slug'], messageKey: ['reason'], pointerKey: ['pointer'], source: 'rollout verify' });
+const report = classReport([...bad, ...unverified, ...advisories], { classKey: ['class'], pageKey: ['slug'], messageKey: ['reason'], pointerKey: ['pointer'], source: 'rollout verify' });
 for (const c of report.classes) { const ptr = `${pagesMd}#${anchor(c.class)}`; for (const pg of c.pages) pg.pointer = ptr; if (c.worst) c.worst.pointer = ptr; }
 
 const head = [
@@ -222,6 +246,7 @@ const head = [
   '='.repeat(60),
   `Checked ${results.length} · ${ok} verified · ${bad.length} failed · types: ${Object.entries(byType).map(([k, v]) => `${k}:${v}`).join(' ') || '—'}`,
 ];
+if (unverified.length) head.push(`unverified: ${unverified.length} page(s) throttled (429/503 through the inline retry) — ledger untouched, exit 2: re-run verify`);
 if (ALL && !ROOT) head.push(`not delivered: ${skipped} (skipped${INCLUDE_UNDELIVERED ? ' 0 — --include-undelivered' : ''})`);
 if (pendingPages) head.push(`pending-target links: ${pendingPages} page(s) (advisory — the targets are coverage rows not yet delivered)`);
 if (outsideWarnPages) head.push(`outside-inventory links: ${outsideWarnPages} page(s) (links.outsideInventory: warn)`);
@@ -233,10 +258,10 @@ const lines = [...head, ...table, ...tail];
 mkdirSync(REPORT, { recursive: true });
 writeJSON(join(REPORT, 'summary.json'), {
   generatedAt: now, source: ROOT ? `root:${ROOT}` : BASE, mode: ROOT ? 'root' : 'http', outsideInventory: OUTSIDE_POLICY,
-  total: pages.length, checked: results.length, verified: ok, failed: bad.length, skipped,
+  total: pages.length, checked: results.length, verified: ok, failed: bad.length, skipped, unverified: unverified.length,
   pendingTargetPages: pendingPages, outsideWarnPages,
   classes: report.classes.map((c) => ({ class: c.class, count: c.count, severity: c.severity ?? null, worstExample: c.worst ? `${c.worst.page} — ${c.worst.message}` : null, pointer: c.worst ? c.worst.pointer : null })),
-  pages: [...results, ...advisories].map(({ slug, path, type, status, class: cls, reason, severity }) => ({ slug, path, type, status, class: cls, reason, severity: severity ?? null })),
+  pages: [...results, ...unverified, ...advisories].map(({ slug, path, type, status, class: cls, reason, severity }) => ({ slug, path, type, status, class: cls, reason, severity: severity ?? null })),
 });
 writeFileSync(join(REPORT, 'summary.md'), `${['# rollout verify', '', `Generated ${now}.`, '', ...lines.slice(0, MAX_LINES - 4)].join('\n')}\n`);
 const md = ['# rollout verify — per-page rows', '', `Generated ${now}. Ranked table: summary.md · data: summary.json`, ''];
@@ -248,5 +273,5 @@ for (const c of report.classes) {
 writeFileSync(pagesMd, md.join('\n'));
 
 console.log(lines.join('\n'));
-if (VERBOSE) for (const r of [...bad, ...advisories]) console.log(`  ${r.status === 'failed' ? '✗' : '·'} ${r.slug} (${r.type}): ${r.reason}`);
-process.exit(bad.length ? 1 : 0);
+if (VERBOSE) for (const r of [...bad, ...unverified, ...advisories]) console.log(`  ${r.status === 'failed' ? '✗' : '·'} ${r.slug} (${r.type}): ${r.reason}`);
+process.exit(unverified.length ? 2 : bad.length ? 1 : 0);

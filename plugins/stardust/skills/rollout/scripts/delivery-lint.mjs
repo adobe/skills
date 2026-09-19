@@ -11,8 +11,22 @@
  *
  * Usage:
  *   node skills/rollout/scripts/delivery-lint.mjs --file <html> [--path </da/path>]
- *        [--type page|fragment|index] [--icons-dir <dir>] [--json]
+ *        [--type page|fragment|index] [--icons-dir <dir>] [--allow-empty <name,…>]
+ *        [--chrome-docs <nav.html>,<footer.html>,… [--content <dir>]] [--json]
  * Exit: 0 = clean (no P0/P1), 1 = P0/P1 findings, 2 = bad invocation.
+ *
+ * Pre-PUT mirrors of the deploy lint (davids-model-lint D1-EMPTY) and href hygiene:
+ *   empty-block P1      a block table with 0 rows inside <main> — silent content loss;
+ *                       --allow-empty <name,…> exempts declared runtime-widget placeholders
+ *   href-scheme P1      `javascript:` or a bare `#` / `#!` href — a dead CTA after decoration
+ *   href-whitespace P1  leading/trailing whitespace inside the href value (404s at delivery)
+ *
+ * --chrome-docs <files> reads the authored chrome documents (kind = nav | footer from the
+ * file name), dedupes each kind by content hash and, on a MULTI-variant site, requires an
+ * explicit `nav:` / `footer:` metadata row on every page (P1 chrome-variant); > 3 variants
+ * of one kind is P2 chrome-variant-count. Pages checked: --file, plus every page under
+ * --content <dir> when given (chrome docs and fragments excluded). Single-variant sites
+ * are silent — exit semantics unchanged (deploy/reference/chrome.md § Chrome states and variants).
  *
  * --icons-dir <dir> enables the icon-token checks (silent without it): every
  * `:name:` token / `<span class="icon icon-name">` must resolve to <dir>/name.svg|png
@@ -23,8 +37,9 @@
  * Blocks known to run createOptimizedPicture over their images (cross-origin
  * breakage risk) — extend per project via --optimizing-blocks a,b,c.
  */
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { basename, join, relative } from 'node:path';
 
 function arg(name, fb) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fb; }
 const FILE = arg('file', null);
@@ -33,7 +48,12 @@ const TYPE = arg('type', null); // page | fragment | index — inferred if absen
 const JSON_OUT = process.argv.includes('--json');
 const OPTIMIZING = (arg('optimizing-blocks', 'cards,columns,hero')).split(',').map((s) => s.trim()).filter(Boolean);
 const ICONS_DIR = arg('icons-dir', null);
+const ALLOW_EMPTY = new Set((arg('allow-empty', '')).split(',').map((s) => s.trim()).filter(Boolean));
+const CHROME_DOCS = (arg('chrome-docs', '')).split(',').map((s) => s.trim()).filter(Boolean);
+const CONTENT_DIR = arg('content', null);
 if (!FILE) { console.error('delivery-lint: need --file <html>'); process.exit(2); }
+for (const f of CHROME_DOCS) if (!existsSync(f)) { console.error(`delivery-lint: --chrome-docs file not found: ${f}`); process.exit(2); }
+if (CONTENT_DIR && !(existsSync(CONTENT_DIR) && statSync(CONTENT_DIR).isDirectory())) { console.error(`delivery-lint: --content needs an existing directory (got ${CONTENT_DIR})`); process.exit(2); }
 if (process.argv.includes('--icons-dir') && !(ICONS_DIR && existsSync(ICONS_DIR) && statSync(ICONS_DIR).isDirectory())) {
   console.error(`delivery-lint: --icons-dir needs an existing directory (got ${ICONS_DIR ?? 'nothing'})`); process.exit(2);
 }
@@ -104,6 +124,24 @@ for (const m of html.matchAll(/href="(\/[^"]*)"/gi)) {
   if (/\.html(\?|#|$)/i.test(href)) add('P1', 'html-extension', `internal link ends in .html (EDS serves extensionless): ${href}`);
 }
 
+/* ---- href hygiene: scheme + whitespace (a `javascript:`/bare-`#` CTA is dead after
+   decorateButtons; whitespace inside the value is a 404 the browser hides locally) ---- */
+for (const m of html.matchAll(/<a\b[^>]*\shref="([^"]*)"/gi)) {
+  const href = m[1];
+  if (/^\s*javascript:/i.test(href) || /^\s*#!?\s*$/.test(href)) add('P1', 'href-scheme', `dead href (javascript: or bare #): ${href.slice(0, 60) || '#'}`);
+  if (href !== href.trim()) add('P1', 'href-whitespace', `whitespace inside the href value: "${href.slice(0, 60)}"`);
+}
+
+/* ---- empty block table inside <main> (pre-PUT mirror of deploy lint D1-EMPTY):
+   0 rows = the encoder's selector missed the source items — silent content loss ---- */
+if (type !== 'index') {
+  const mainOnly = (html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i) || [, html])[1];
+  for (const m of mainOnly.matchAll(/<div class="([^"]+)">\s*<\/div>/g)) {
+    const name = m[1].split(/\s+/)[0];
+    if (!ALLOW_EMPTY.has(name)) add('P1', 'empty-block', `${name}: block table with 0 rows — silent content loss; fix the encoder or declare a runtime-widget placeholder with --allow-empty ${name}`);
+  }
+}
+
 /* ---- path-safety of the target DA path ---- */
 if (DAPATH) {
   const norm = DAPATH.toLowerCase()
@@ -130,6 +168,27 @@ if (ICONS_DIR) {
     if (iconExists(t)) continue;
     if (t.startsWith('icon-') && iconExists(t.slice(5))) add('P0', 'icon-prefix', `:${t}: doubles the icon- prefix the runtime adds (${ICONS_DIR}/${t.slice(5)}.svg exists, ${t}.svg does not) — author :${t.slice(5)}:`);
     else add('P0', 'icon-missing', `:${t}: has no ${ICONS_DIR}/${t}.svg|png — the asset must exist in the branch before the PUT`);
+  }
+}
+
+/* ---- chrome variants (--chrome-docs): on a multi-variant site every page names its
+   nav:/footer: document; > 3 variants of one kind is a vocabulary smell ---- */
+if (CHROME_DOCS.length) {
+  const kindOf = (f) => (basename(f).match(/^(nav|footer)/i) || [])[1]?.toLowerCase() ?? null;
+  const variants = { nav: new Set(), footer: new Set() };
+  for (const f of CHROME_DOCS) { const k = kindOf(f); if (k) variants[k].add(createHash('sha1').update(readFileSync(f, 'utf8').replace(/\s+/g, ' ')).digest('hex')); }
+  const multi = Object.keys(variants).filter((k) => variants[k].size > 1);
+  for (const k of multi) if (variants[k].size > 3) add('P2', 'chrome-variant-count', `${variants[k].size} distinct ${k} documents — more than three per kind is a vocabulary smell (chrome.md § Chrome states and variants)`);
+  if (multi.length) {
+    const chromeSet = new Set(CHROME_DOCS.map((f) => relative(process.cwd(), f)));
+    const pages = [{ file: FILE, html }];
+    const walk = (d) => { for (const e of readdirSync(d, { withFileTypes: true })) { const p = join(d, e.name); if (e.isDirectory()) { if (!/^fragments?$/.test(e.name)) walk(p); } else if (/\.html$/.test(e.name) && !kindOf(p) && !chromeSet.has(relative(process.cwd(), p)) && p !== FILE) pages.push({ file: p, html: readFileSync(p, 'utf8') }); } };
+    if (CONTENT_DIR) walk(CONTENT_DIR);
+    for (const pg of pages) {
+      const meta = (pg.html.match(/<div class="metadata">([\s\S]*?)(?=<div class="|<\/main>)/i) || [])[1] || '';
+      const rows = new Set([...meta.matchAll(/<div>\s*<div>\s*(?:<p>)?\s*([a-z][a-z-]*)\s*(?:<\/p>)?\s*<\/div>/gi)].map((m) => m[1].toLowerCase()));
+      for (const k of multi) if (!rows.has(k)) add('P1', 'chrome-variant', `${pg.file}: no \`${k}:\` metadata row on a site with ${variants[k].size} ${k} variants — name the document (chrome.md § Per-page chrome variants)`);
+    }
   }
 }
 

@@ -143,9 +143,8 @@ capture is re-taken every iteration.
    transform / colour / background / padding / radius, the element rect,
    the clickable box of links and buttons, and the icon inventory
    (count + size + signature, paired by order). Recorded: one run found
-   what many pixel-band rounds had not — an italic-vs-normal note, a
-   regular-vs-bold link, a wrong nav link colour, 12px row offsets, a 97×40
-   vs 71×32 button, six missing icons. Fix every delta, re-run until it is
+   what many pixel-band rounds had not — weight, colour, offset,
+   button-size and icon deltas. Fix every delta, re-run until it is
    quiet (exit 0), THEN crop-compare — a pixel loop on chrome with parity
    deltas outstanding is wasted iterations. Each run is one live
    navigation (budget it like any live probe); `--json` records both
@@ -191,9 +190,9 @@ capture is re-taken every iteration.
 
    **Chrome crops are ELEMENT-ANCHORED per side, never fixed-y — and
    "chrome" means every site-wide repeating band: header, sticky/quick-link
-   strips, footer.** Recorded: the header measured 33.9% and a quick-links
-   strip 19.2% while the full page passed at 6.5% — chrome is small-area,
-   highest-salience and repeats on every page. Two traps: (a) a fixed-y crop
+   strips, footer.** Recorded: header and quick-links strips measured 3–5×
+   the full-page number — chrome is small-area, highest-salience and
+   repeats on every page. Two traps: (a) a fixed-y crop
    produces FALSE reads the moment either side's rhythm shifts — a 35px nav
    fix moved everything below it and the strip crop read 66% while the strip
    itself, re-anchored to its own band edges, was at 1.6%. Locate each
@@ -270,11 +269,10 @@ runs over the same stitched PNGs — no live hit):**
   height, photo height, band start or card overlap, read the per-column
   class transitions (white / dark / brand / photo at N x positions) on the
   capture: `node stardust/scripts/replica/row-profile.mjs live.png proto.png
-  --columns 7`. Recorded: a stacked-crop visual read suggested a 415px photo
-  with a white band under it; the scan of the same capture proved the photo
-  full-bleed to 499px with the "white band" being an overlapping card — the
-  wrong read cost two build/measure cycles. Crop eyeballing is hypothesis;
-  the scan is the measurement.
+  --columns 7`. Recorded: a stacked-crop visual read saw a photo with a
+  white band under it; the scan of the same capture proved the photo
+  full-bleed and the "band" an overlapping card — two build/measure cycles
+  lost. Crop eyeballing is hypothesis; the scan is the measurement.
 - **Brand-colour landmarks for vertical alignment.** Band percentages say
   WHERE diffs are, not by how many pixels sections are offset. When a
   saturated brand colour recurs in every section (CTA buttons are ideal),
@@ -282,10 +280,9 @@ runs over the same stitched PNGs — no live hit):**
   pairs them in order: the per-pair delta is each landmark's offset, and the
   CHANGE in delta between consecutive pairs (`gapShift`) names the one
   inter-landmark CSS gap that absorbed the shift. Patch that gap, re-measure,
-  top-down — the same contamination rule as the band table. Recorded: three
-  passes driven this way took a page 16.9% → 11.05% and a 1559px height
-  delta → 48px. Do not tune margins by eye against crops. (Crop with pngjs;
-  macOS `sips --cropOffset` is unreliable for band crops.)
+  top-down — the same contamination rule as the band table. Do not tune
+  margins by eye against crops. (Crop with pngjs; macOS `sips --cropOffset`
+  is unreliable for band crops.)
 
 ## Wide-viewport fluid check (fluid-vs-fixed is invisible at the gate widths, #116)
 
@@ -423,9 +420,7 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   <gates-dir>/chrome-live.json` and `anchor.mjs --cache
   <gates-dir>/anchor-live.json` (live URL only) write the live measurement
   on the first run and reuse it while URL, width and selectors match —
-  delete the file to re-probe. Recorded without it: a chrome-parity round
-  on an AEM site cost 5½ minutes of live settle per iteration, ×3
-  iterations ×4 archetypes. On hard-CDN sites
+  delete the file to re-probe. On hard-CDN sites
   (Akamai-class), take the live captures with `--headed` and treat further
   live hits as spent budget — the recorded failure mode was an
   IP-level block escalating within ~3–4 automated requests, after which
@@ -434,6 +429,10 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   `BotChallengeError` on the first challenge-classified response (the
   wait+reload solve window runs only under `--headed`, where clearance can
   actually land) — so the block budget is still intact when you escalate.
+- **Some origins score sessions, not requests (admitted-then-escalated):**
+  one live-hitting tool per host at a time — `stardust/.work/live-<host>.lock`
+  enforces it (`STARDUST_LIVE_FORCE=1` overrides); pacing never re-captures a
+  page that already has a record.
 - **Instrument deadlines are the gate's, not yours.** `gate.sh` runs each
   capture under `run-capped.mjs` (stitch 300 s, compare 120 s —
   `GATE_STITCH_TIMEOUT` / `GATE_COMPARE_TIMEOUT`) and reaps this user's
@@ -448,10 +447,9 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   raise the variable for that page and say so in the ledger.
 - **Your waiting has a ceiling too.** A gate round over several archetypes
   or siblings runs in the background, not as a foreground `for` loop of
-  `gate.sh` calls (recorded: 5–10-minute foreground sweeps, 58 % of which
-  re-wrote the whole prompt prefix because the cache window is 5 minutes).
-  Read the round's ledger at most every 4 minutes, never with a single
-  `sleep` of 5 minutes or more — the master skill's wait discipline.
+  `gate.sh` calls. Read the round's ledger at most every 4 minutes, never
+  with a single `sleep` of 5 minutes or more — the master skill's wait
+  discipline.
 - **Media-density budget.** The ≤3-iteration convergence was validated on a
   typographic, low-image page (the retail home). Image-dense commerce homes
   (recorded: ~130 imgs) spend iterations on media parity —
@@ -460,9 +458,9 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   iteration 1's job; geometry starts at iteration 2.
 - **A pixel pass at the wrong metric is debt — spot-check base typography
   against live computed styles once the gate passes.** An archetype shipped
-  16px card body text (live: 17.6px) and still passed at 5.24% because the
-  tuned spacing absorbed the size error; siblings with more text amplified
-  it into extra wraps and +80..250px heights (recorded). After the pass,
+  card body text one size too small and still passed because the tuned
+  spacing absorbed the size error; siblings with more text amplified it
+  into extra wraps and taller pages (recorded). After the pass,
   read body font-size/line-height per block on both sides (a computed-style
   probe — build-side runs are free) and re-fit rhythm at the true metric.
   Compensating spacing is the tell.
@@ -580,9 +578,8 @@ rather than erroring.
 10. **Pointer parked after any dismissal click.** A consent/modal click
     leaves the virtual cursor at the button's coordinates; a
     `:hover`-styled element under the resting cursor is silently captured
-    in HOVER state (recorded: a hero's `a.box-hover:hover img{opacity:.4}`
-    shipped the live capture dimmed — measured 0.4 in capture, 1.0 in
-    reality). The shared `dismissOverlays` parks the mouse (bottom-left)
+    in HOVER state (recorded: a hero's `:hover` opacity rule shipped the live
+    capture dimmed). The shared `dismissOverlays` parks the mouse (bottom-left)
     after every dismissal pass — all three instruments inherit it; mirror
     it in any ad-hoc capture that clicks anything.
 11. **Fixed/sticky chrome × stitched capture.** Fixed elements can morph
@@ -624,10 +621,10 @@ rather than erroring.
     heights, wrong doc height — with no error anywhere. It is the same
     defect class as silently measuring a Cloudflare interstitial, and it
     poisons every number the gate reports (recorded, F-B2: an
-    instrument-forced header set killed the live side's Typekit fetch; live
-    doc height moved 6669→6518 once fixed, and a whole class of
-    "one-line-off" defects vanished). stitch-shot now checks after
-    `document.fonts.ready` for declared faces with FontFace status `error`
+    instrument-forced header set killed the live side's webfont fetch; once
+    fixed, a whole class of "one-line-off" defects vanished). stitch-shot now
+    checks after `document.fonts.ready` for declared faces with FontFace
+    status `error`
     and warns loudly with the family names; mirror the check in any ad-hoc
     capture. On the warning, decide before gating: load the face in a real
     browser — if it loads there, the failure is **instrument-induced** (a
@@ -744,10 +741,10 @@ marker — `../../deploy/reference/deployed-reconcile.md` § The six reconcile c
 
 - **Re-probe live chrome metrics at deploy time — crawl captures are the
   CONTENT source, live-now is the chrome/metrics source.** The live site
-  drifts between crawl and deploy (recorded, one day apart: header 141→106px,
-  footer links 13→16px/24px with new 24px column headings, a swapped
-  campaign hero). A deploy gated against crawl-time captures ships
-  yesterday's chrome. Immediately before the published-origin gate, re-run
+  drifts between crawl and deploy (recorded: header height, footer type and
+  a campaign hero all moved within one day). A deploy gated against
+  crawl-time captures ships yesterday's chrome. Immediately before the
+  published-origin gate, re-run
   the chrome probes (anchor + crop gate, computed styles of matched
   header/footer elements) against the live origin, never the crawl
   snapshot; mask live-content drift (campaign creatives, promo slots) out
@@ -772,6 +769,12 @@ marker — `../../deploy/reference/deployed-reconcile.md` § The six reconcile c
   on a branch host (`<branch>--<repo>--<owner>.aem.page`), never as
   commit/revert on `main` — every revert is a live publish and a phantom
   round.
+- **Run the published-origin gate and the qa sweep sequentially, never
+  against the same `aem.live` host at once.** The origin rate-limits per
+  host; a 429/503 during the gate is infrastructure state, not a fidelity
+  delta — the gate has no verdict for that page (re-run it), and qa reports
+  the same condition as `<check>/unmeasured` / exit 2
+  (`../../qa/reference/checks.md` § Cross-cutting).
 
 Recurring EDS pipeline transforms that move the number (each recorded;
 none visible on a local harness):

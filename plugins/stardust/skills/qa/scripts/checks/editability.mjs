@@ -14,7 +14,8 @@
  *
  * Findings: editability/dead-text (error, per block with dead non-exempt texts),
  * editability/duplicated-index (warn, per block), editability/summary (info, per
- * page), editability/probe-failed (warn). Exemptions (EW5): --ew-exempt a,b and,
+ * page — names each block's exempt items with their @ew-exempt reasons, so a
+ * blanket exemption stays visible), editability/probe-failed (warn). Exemptions (EW5): --ew-exempt a,b and,
  * with --blocks-dir <dir>, `@ew-exempt <reason>` tags in each block's leading
  * JSDoc. Shared instrument: skills/deploy/scripts/ew-editability-probe.mjs.
  * Contract: deploy reference/block-js-scaffold.md § Experience Workspace editability contract (EW1–EW10).
@@ -81,9 +82,16 @@ export async function run(ctx) {
             { block: b.block, items: b.dupItems.slice(0, 8).map(({ tag, text, hits }) => ({ tag, text, hits })) }));
         }
       }
+      // exempt items are named per block (with their @ew-exempt reasons) so a blanket exemption is visible in the report, not swallowed
+      const exemptBlocks = blocks.filter((b) => b.exemptItems.length);
       findings.push(finding('editability', 'summary', 'info', p.path,
-        `authored ${totals.authored} · editable ${totals.editable} · dead ${totals.dead} · duplicated ${totals.duplicated} · exempt ${totals.exempt}`,
-        { totals, blocks: blocks.map(({ block, authored, editable, dead, duplicated, exempt, exemptReasons }) => ({ block, authored, editable, dead, duplicated, exempt, ...(exemptReasons.length ? { exemptReasons } : {}) })) }));
+        `authored ${totals.authored} · editable ${totals.editable} · dead ${totals.dead} · duplicated ${totals.duplicated} · exempt ${totals.exempt}`
+        + (exemptBlocks.length ? ` · exempt items per block: ${exemptBlocks.map((b) => `${b.block} ${b.exemptItems.length} (${b.exemptReasons.join('; ')})`).join(', ')}` : ''),
+        { totals, blocks: blocks.map(({ block, authored, editable, dead, duplicated, exempt, exemptReasons, exemptItems }) => ({
+          block, authored, editable, dead, duplicated, exempt,
+          ...(exemptReasons.length ? { exemptReasons } : {}),
+          ...(exemptItems.length ? { exemptItems: exemptItems.slice(0, 8).map(({ tag, text, category, reason }) => ({ tag, text, category, reason })) } : {}),
+        })) }));
     } catch (e) {
       findings.push(finding('editability', 'probe-failed', 'warn', p.path,
         `editability probe did not complete: ${String(e).slice(0, 200)}`));

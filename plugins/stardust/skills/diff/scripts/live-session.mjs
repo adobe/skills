@@ -70,6 +70,33 @@
  * stardust/current/_crawl-log.json#discovery.fetchTechnique (resolveStartTier).
  * A tier-3 challenge means the gate must FAIL, not degrade.
  *
+ * Challenge classification — two stages, mirrored from crawl.mjs:
+ *   - header stage (challengeMarker(status, headers, url), pure): cf-mitigated:
+ *     challenge at any status; on ANY 4xx/5xx a PerimeterX/DataDome set-cookie
+ *     (_pxhd / _px3 / _pxvid / datadome) or DataDome header; HTTP 400 +
+ *     AkamaiGHost / x-akamai-* (Akamai's escalation body); 403/429/503 + a
+ *     Cloudflare / Akamai / F5 / Imperva edge signature. A 200 is NEVER a
+ *     challenge (PX/DataDome set their ids on admitted responses too); a bare
+ *     403 is an app-level status; a BARE 429 is a rate limit (below).
+ *   - DOM stage (CHALLENGE_DOM selector + CHALLENGE_PHRASE, read from the page
+ *     already loaded — no extra hit): the 200-status walls the headers cannot
+ *     see. Runs at tier 3 for `solveWaitMs` (`--solve-wait <ms>`, ≥ 5000): a
+ *     visible window, NO reload loop (a reload destroys a Press & Hold in
+ *     progress), 2.5 s polls, two clean polls resume; expiry throws
+ *     BotChallengeError with nextTier null.
+ *
+ * Live budget + live lock (./live-budget.mjs, imported lazily on the first
+ * LIVE host — a local prototype/harness never loads it): gotoLive awaits
+ * takeNavigation(host) before EVERY navigation and solve-window reload
+ * (≤ 10/min, ≥ 3 s gap, tightened by stardust/live-budget.json), acquires
+ * stardust/.work/live-<host>.lock once per host (one live-hitting tool per
+ * origin at a time; LiveLockError otherwise, STARDUST_LIVE_FORCE=1 overrides),
+ * and takes the bare-429 path: recordRateLimit (halve + persist), Retry-After
+ * wait (≤ 60 s), ONE retry, then LiveHTTPError { status: 429, rateLimited:
+ * true } regardless of `httpError` — a 429 body is never the page. A project
+ * copy missing live-budget.mjs WARNs once and runs unpaced; copy it beside
+ * live-session.mjs.
+ *
  * Admitted-session reuse (resolveStorageState / saveStorageState): every live
  * instrument of one gate run starts from the SAME storage state — the reserved
  * path is `stardust/current/_storage-state.json` (never tracked; secrets), the
@@ -88,7 +115,7 @@
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev-tool library: sequential page ops use awaited loops by design */
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, basename } from 'node:path';
 
 // Current stable Chrome on macOS. Chrome's UA reduction freezes the platform
 // token at 10_15_7 and the minor version at .0.0.0 — only the major matters,
@@ -334,29 +361,99 @@ export async function saveStorageState(ctx, file = STORAGE_STATE_PATH) {
 }
 
 // The marker that classifies a response as a bot-management challenge/block,
-// or null. Same semantics as crawl.mjs isChallengeResponse: a bare 403 with
-// NO edge signature is a genuine app-level status (fail loud as HTTP, not as
-// a challenge — no 12s solve loop on an auth-gated page).
-function challengeMarker(resp) {
-  if (!resp) return null;
-  const status = resp.status();
-  const h = resp.headers();
+// or null — the header stage, mirrored from crawl.mjs challengeMarker (pure
+// (status, headers, url); crawl.mjs ships alone and carries its own copy). A
+// bare 403 with NO edge signature is a genuine app-level status (fail loud as
+// HTTP, not as a challenge — no 12s solve loop on an auth-gated page); a
+// BARE 429 is a rate limit (gotoLive's live-budget path), never a challenge.
+const WALL_COOKIES = ['_pxhd', '_px3', '_pxvid', 'datadome'];
+export function challengeMarker(status, headers = {}, url = '') {
+  const h = {};
+  for (const [k, v] of Object.entries(headers || {})) h[k.toLowerCase()] = String(v ?? '');
   // Cloudflare stamps this header specifically on managed/JS-challenge responses.
   if ((h['cf-mitigated'] || '').toLowerCase() === 'challenge') return 'cf-mitigated: challenge';
+  const server = (h.server || '').toLowerCase();
+  if (status < 400) return null; // a served page is the page — PX/DataDome set their ids on admitted responses too
+  // PerimeterX / DataDome walls: the 403 (often via Varnish) carries NO other
+  // edge signature — the set-cookie names are what identify it.
+  const cookieNames = (h['set-cookie'] || '').split(/\r?\n/).map((c) => c.trim().split('=')[0].toLowerCase()).filter(Boolean);
+  const wall = cookieNames.find((n) => WALL_COOKIES.includes(n));
+  if (wall) return `HTTP ${status} + set-cookie ${wall} (PerimeterX/DataDome wall)`;
+  if (h['x-datadome'] || server.includes('datadome')) return `HTTP ${status} + DataDome edge signature`;
+  // Akamai escalates to a 400 JSON body ({"result":"Bad Request"}, server: AkamaiGHost) — not a 403 interstitial
+  if (status === 400 && (server.includes('akamaighost') || Object.keys(h).some((k) => k.startsWith('x-akamai')))) return 'HTTP 400 + AkamaiGHost (Akamai escalation body, not the page)';
+  // A hard 403/429/503 that ALSO carries an edge/CDN signature is an edge
+  // interstitial (Cloudflare / Akamai / F5 / Imperva) — headed real Chrome is
+  // the correct response regardless of vendor.
   if (status === 403 || status === 429 || status === 503) {
-    const server = (h.server || '').toLowerCase();
-    if (h['cf-ray'] || server.includes('cloudflare')) return `HTTP ${status} + Cloudflare edge signature (cf-ray/server)`;
-    if (h['x-akamai-transformed'] || server.includes('akamai') || server.includes('edgesuite')) return `HTTP ${status} + Akamai edge signature`;
-    if (resp.url().includes('edgesuite.net')) return `HTTP ${status} + errors.edgesuite.net interstitial`;
+    if (h['cf-ray'] || server.includes('cloudflare')) return `HTTP ${status} + Cloudflare edge signature`;
+    if (h['x-akamai-transformed'] || server.includes('akamai') || server.includes('edgesuite') || /edgesuite\.net/.test(url)) return `HTTP ${status} + Akamai edge signature`;
     if (server.includes('big-ip') || server.includes('imperva') || h['x-iinfo']) return `HTTP ${status} + F5/Imperva edge signature`;
-    // no edge signature — a genuine app-level status, not a challenge.
+    // no edge signature — treat as a genuine app-level status, not a challenge.
   }
   return null;
 }
+function markerOf(resp) { return resp ? challengeMarker(resp.status(), resp.headers(), resp.url()) : null; }
 
 /** crawl.mjs semantics: is this response a bot-management challenge/block? */
 export function isChallengeResponse(response) {
-  return challengeMarker(response) !== null;
+  return markerOf(response) !== null;
+}
+
+// DOM stage — the 200-status walls the header stage cannot see (PerimeterX
+// px-captcha, Turnstile / hCaptcha / DataDome iframes) and the interstitial
+// phrases, read from the page already loaded (no extra hit). Mirrored from
+// crawl.mjs; drives the --solve-wait poll at tier 3.
+export const CHALLENGE_DOM = '#px-captcha, [id^="px-captcha"], iframe[src*="challenges.cloudflare.com"], iframe[src*="hcaptcha.com"], iframe[src*="captcha-delivery.com"]';
+export const CHALLENGE_PHRASE = /(press\s*&?\s*hold|before we continue|are you a human|verify you are human|access to this page has been denied|checking your browser|just a moment)/i;
+export async function challengeInDom(page) {
+  const st = await page.evaluate((sel) => { const t = document.body ? document.body.innerText : ''; return { len: t.length, head: t.slice(0, 4000), dom: !!document.querySelector(sel), h: document.documentElement.scrollHeight, vh: window.innerHeight }; }, CHALLENGE_DOM).catch(() => null);
+  // evaluate rejected = the page is navigating: PENDING — neither clean nor a
+  // detected wall. Only a read DOM may say `walled`.
+  if (!st) return { walled: false, pending: true, st: null };
+  const walled = st.dom || (st.len < 1500 && CHALLENGE_PHRASE.test(st.head));
+  return { walled, pending: false, st };
+}
+// --solve-wait: poll the SAME page (never reload — that destroys a Press & Hold
+// in progress) until two consecutive clean polls, or the deadline.
+export async function solveWait(page, ms, tool = 'live-session') {
+  console.error(`[${tool}] --solve-wait ${ms}: a visible Chrome window is open — complete the challenge by hand; capture resumes after two clean polls (every 2.5 s)`);
+  const deadline = Date.now() + ms;
+  let clean = 0;
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(2500);
+    const { walled, pending, st } = await challengeInDom(page);
+    const ok = !pending && !walled && st.len >= 800 && st.h > 1.5 * st.vh;
+    clean = ok ? clean + 1 : 0;
+    if (clean >= 2) return true;
+  }
+  return false;
+}
+
+// ---- live budget + live lock (./live-budget.mjs; lazy — a local-only run never loads it) ----
+let budgetModule = null; // Promise<module | null>
+/** The calling instrument's name (lock holder / learnedBy). */
+export function toolName() { return basename(process.argv[1] || 'live-session.mjs'); }
+function liveBudget() {
+  if (!budgetModule) {
+    budgetModule = import(new URL('./live-budget.mjs', import.meta.url)).catch((e) => {
+      if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e;
+      console.error('[live-session] WARN live-budget.mjs not found beside live-session.mjs — live navigations run unpaced and unlocked; copy skills/diff/scripts/live-budget.mjs next to it');
+      return null;
+    });
+  }
+  return budgetModule;
+}
+// Before every live navigation: lock the host once, then wait for the budget.
+// Returns { lb, host } for the bare-429 path, or null (local URL / no module).
+async function paceLive(url) {
+  if (!isLiveHttpUrl(url)) return null;
+  const lb = await liveBudget();
+  if (!lb) return null;
+  const host = new URL(url).hostname.toLowerCase();
+  lb.acquireLiveLock(host, toolName());
+  await lb.takeNavigation(host);
+  return { lb, host };
 }
 
 /**
@@ -376,6 +473,18 @@ export function isChallengeResponse(response) {
  *         solve or allowlist territory).
  *     Either way a challenge must NEVER be silently measured as the source
  *     (the Access-Denied trap) — regardless of `httpError`.
+ *   - live host (isLiveHttpUrl): the live lock is taken once per host and the
+ *     per-host budget awaited before this navigation and every solve-window
+ *     reload (module docstring § Live budget). A BARE 429 (no edge signature)
+ *     → halve + persist, Retry-After wait (≤ 60 s), ONE paced retry, then
+ *     THROW LiveHTTPError { status: 429, rateLimited: true } whatever
+ *     `httpError` says — a 429 body is never the page (qa reports it as
+ *     `<check>/unmeasured`, the gate has no verdict for it).
+ *   - `solveWaitMs` (≥ 5000, `--solve-wait`; tier 3 only): when the header OR
+ *     DOM stage still says wall after the reload window, poll the visible page
+ *     for a hand solve (solveWait) instead of throwing; expiry → BotChallengeError
+ *     with nextTier null. A solved page is returned as loaded (the response
+ *     object is the pre-solve one; callers read the DOM, not `resp.status()`).
  *   - non-challenge entry status >= 400 → per `httpError`:
  *       'throw' (default): THROW LiveHTTPError. Measuring a 404/500 page is
  *         as false a measurement as measuring a challenge — the reskin byte
@@ -386,7 +495,8 @@ export function isChallengeResponse(response) {
  *         signal, exit stays 0).
  * Returns the response.
  */
-export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', timeoutMs = 60000, settleMs = 1200, httpError = 'throw', tier = 1, solveWindow = tier === 3 } = {}) {
+export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', timeoutMs = 60000, settleMs = 1200, httpError = 'throw', tier = 1, solveWindow = tier === 3, solveWaitMs = 0 } = {}) {
+  const paced = await paceLive(url);
   let resp = await page.goto(url, { waitUntil, timeout: timeoutMs });
   if (!resp) {
     const err = new Error(`no response navigating to ${url} — network-level failure or non-HTTP navigation`);
@@ -400,11 +510,42 @@ export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', time
   if (solveWindow) {
     for (let attempt = 0; attempt < 3 && isChallengeResponse(resp); attempt += 1) {
       await page.waitForTimeout(4000);
+      if (paced) await paced.lb.takeNavigation(paced.host);
       const reloaded = await page.reload({ waitUntil, timeout: timeoutMs }).catch(() => null);
       if (reloaded) resp = reloaded;
     }
+    // interactive solve (--solve-wait): header stage OR DOM stage says wall →
+    // wait for the human on the SAME page, never reload.
+    if (solveWaitMs >= 5000 && (isChallengeResponse(resp) || (await challengeInDom(page)).walled)) {
+      const solved = await solveWait(page, solveWaitMs, toolName());
+      if (!solved) {
+        const err = new Error(`bot challenge at ${url} not solved in ${solveWaitMs} ms (--solve-wait) — nothing measured; the gate must fail, not degrade`);
+        err.name = 'BotChallengeError'; err.marker = markerOf(resp) || 'challenge in DOM'; err.url = url; err.tier = tier; err.nextTier = null;
+        throw err;
+      }
+      if (settleMs > 0) await page.waitForTimeout(settleMs);
+      return resp;
+    }
   }
-  const marker = challengeMarker(resp);
+  // BARE 429 (edge-signed ones are classified below) = rate limit, not a
+  // challenge: halve the host ceiling and persist it, honour Retry-After
+  // (≤ 60 s), retry ONCE, then fail the page with the hint — never measure it.
+  if (resp.status() === 429 && !isChallengeResponse(resp)) {
+    if (paced) {
+      const waitMs = paced.lb.recordRateLimit(paced.host, resp.headers()['retry-after'], { tool: toolName() });
+      console.error(`[live-session] HTTP 429 (rate limit, no edge signature) at ${url} — ceiling halved and recorded in ${paced.lb.LIVE_BUDGET_PATH}; retrying once in ${Math.round(waitMs / 1000)} s`);
+      await page.waitForTimeout(waitMs);
+      await paced.lb.takeNavigation(paced.host);
+      const again = await page.goto(url, { waitUntil, timeout: timeoutMs }).catch(() => null);
+      if (again) resp = again;
+    }
+    if (resp.status() === 429 && !isChallengeResponse(resp)) {
+      const err = new Error(`HTTP 429 at ${url} — rate-limited by ${new URL(url).hostname}${paced ? `; ceiling recorded in ${paced.lb.LIVE_BUDGET_PATH}` : ''} — no measurement for this page; rerun alone, later`);
+      err.name = 'LiveHTTPError'; err.status = 429; err.rateLimited = true;
+      throw err;
+    }
+  }
+  const marker = markerOf(resp);
   if (marker) {
     const nextTier = tier < TIERS.length ? tier + 1 : null;
     const hint = nextTier

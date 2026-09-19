@@ -15,7 +15,10 @@
 //      the fetched path is delivery.deployedPath when set and links to the source
 //      path of such a row resolve; fragment rows skip the <h1> rule; index rows are
 //      JSON-checked; siteBase never yields https://https://; a --slug run writes its
-//      report under verify/slug-<s>/ and leaves the site-wide verify/summary.json intact.
+//      report under verify/slug-<s>/ and leaves the site-wide verify/summary.json intact;
+//      a 429/503 is retried inline (Retry-After honoured) — a page recovering on the retry
+//      is verified, a page still throttled is `unverified` (ledger status untouched) and
+//      the run exits 2, never a failed page.
 //   C. Project-copy layout: verify.mjs + lib.mjs copied to <tmp>/stardust/scripts/rollout/
 //      run --help without the plugin tree; the class-report helper resolves from
 //      stardust/scripts/stardust/ once copied there, and its absence is a clear exit 2.
@@ -102,9 +105,13 @@ const lines = (s) => s.split('\n').filter((l) => l.length);
     '/nav': '<html><body><ul><li><a href="/a">A</a></li></ul></body></html>',
     '/query-index.json': '{"total":0,"data":[]}',
   };
+  let hits503 = 0;
   const srv = createServer((req, res) => {
     const p = req.url.split('?')[0];
-    if (pagesHtml[p]) { res.writeHead(200, { 'content-type': p.endsWith('.json') ? 'application/json' : 'text/html' }); res.end(pagesHtml[p]); }
+    if (p === '/t429') { res.writeHead(429, { 'retry-after': '0' }); res.end('slow down'); }
+    else if (p === '/t503' && hits503++ < 1) { res.writeHead(503, { 'retry-after': '0' }); res.end('busy'); }
+    else if (p === '/t503') { res.writeHead(200, { 'content-type': 'text/html' }); res.end('<html><body><main><h1>T</h1></main></body></html>'); }
+    else if (pagesHtml[p]) { res.writeHead(200, { 'content-type': p.endsWith('.json') ? 'application/json' : 'text/html' }); res.end(pagesHtml[p]); }
     else { res.writeHead(404); res.end('nope'); }
   });
   await new Promise((ok) => srv.listen(0, '127.0.0.1', ok));
@@ -164,6 +171,22 @@ const lines = (s) => s.split('\n').filter((l) => l.length);
   assert.equal(json(join(OUT, 'verify', 'slug-c', 'summary.json')).checked, 1, '--slug reports under verify/slug-<s>/');
   assert.equal(json(join(OUT, 'verify', 'summary.json')).checked, siteWide, 'a --slug re-check leaves the site-wide summary.json untouched');
 
+  // throttling: 503-then-200 recovers on the inline retry; a persistent 429 is `unverified`
+  // (ledger status untouched, no error written), reported once, exit 2 — not a failed page
+  rmSync(OUT, { recursive: true, force: true }); mkdirSync(join(OUT, 'coverage'), { recursive: true });
+  writeFileSync(join(OUT, 'coverage', 'pages.json'), JSON.stringify({ pages: [row('t429', '/t429', 'deployed'), row('t503', '/t503', 'deployed'), row('new', '/new', 'deployed')] }));
+  writeFileSync(join(OUT, 'rollout.json'), JSON.stringify({ site: { liveHost: 'https://main--x--y.aem.live/' }, lastRun: {} }));
+  r = await runAsync(['--base', BASE, '--out', OUT]);
+  assert.equal(r.status, 2, `a throttled page → exit 2 (no verdict)\n${r.stderr}`);
+  assert.equal(hits503, 2, 'the 503 page was fetched twice: 503, then 200 on the inline retry');
+  assert.deepEqual([status('t503').status, status('new').status], ['verified', 'verified'], '503 → 200 on the retry is verified');
+  assert.deepEqual([status('t429').status, status('t429').error, status('t429').verifiedAt], ['deployed', null, null], 'a still-throttled row keeps its ledger status, no error written');
+  assert.match(r.stdout, /Checked 2 · 2 verified · 0 failed/, 'the throttled page is not counted as checked, verified or failed');
+  assert.match(r.stdout, /unverified: 1 page\(s\) throttled/, 'one summary line for the throttled rows');
+  const tj = json(join(OUT, 'verify', 'summary.json'));
+  assert.equal(tj.unverified, 1); assert.ok(tj.classes.some((c) => c.class === 'throttled (429/503)' && c.severity === 'warn'), 'throttled is a warn class in the report');
+  assert.ok(tj.pages.some((p) => p.slug === 't429' && p.status === 'unverified'), 'summary.json carries the unverified row');
+
   // usage errors
   seed(undefined); rmSync(join(OUT, 'rollout.json'));
   assert.equal((await runAsync(['--all', '--out', OUT])).status, 2, 'no base/root → exit 2');
@@ -197,4 +220,4 @@ assert.equal(siteBase({ site: { liveHost: 'http://main--x--y.aem.page' } }), 'ht
 assert.equal(siteBase({ site: { liveHost: 'main--x--y.aem.live' } }, 'http://127.0.0.1:9/'), 'http://127.0.0.1:9', '--base override wins verbatim (trailing slash stripped)');
 assert.equal(siteBase({}), null);
 
-console.log('verify.test: ok (runner-output contract on the shared fixture; --all guard, link classes, deployedPath, typed rows, --slug report dir, project-copy layout, siteBase)');
+console.log('verify.test: ok (runner-output contract on the shared fixture; --all guard, link classes, deployedPath, typed rows, --slug report dir, 429/503 retry → unverified/exit 2, project-copy layout, siteBase)');

@@ -146,13 +146,15 @@ zero = **dead** (the block rebuilt it from `textContent`/`innerHTML`, synthesize
 or retagged it); several = **duplicated** (clone slides — the editor attaches to
 the first in DOM order). Shared instrument:
 `skills/deploy/scripts/ew-editability-probe.mjs`; contract: `skills/deploy/reference/block-js-scaffold.md`
-§ Experience Workspace editability contract (EW1–EW10).
+§ Experience Workspace editability contract (EW1–EW10). The `editability/summary`
+finding lists each block's exempt items with their `@ew-exempt` reasons and
+categories, so a blanket exemption is visible in the report rather than swallowed.
 
 | id | sev | what |
 |---|---|---|
 | `dead-text` | error | a block has ≥1 non-exempt authored text that no longer carries its index after decoration — the author clicks it in the workspace and nothing happens. Message: block name, dead/authored count, first 3 texts; evidence lists up to 8. Fix in the block JS: MOVE the authored element into the wrapper (EW1) |
 | `duplicated-index` | warn | a text's index survives on several elements (presentational clones) — editable, but the editor may attach to a hidden copy; strip instrumentation from clones (EW4) |
-| `summary` | info | per page: authored / editable / dead / duplicated / exempt totals and the per-block breakdown — evidence for the migration ledger |
+| `summary` | info | per page: authored / editable / dead / duplicated / exempt totals and the per-block breakdown, exempt items named per block with their reasons — evidence for the migration ledger |
 | `probe-failed` | warn | navigation or instrumentation failed for the page (timeout, blocked response); nothing measured |
 
 Severity rationale: dead text is an **error** because an author is harmed right

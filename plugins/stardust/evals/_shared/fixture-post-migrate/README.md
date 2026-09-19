@@ -40,7 +40,7 @@ crawled.
 | Page type | Archetype | 1440 | 360 | Reads as |
 |---|---|---|---|---|
 | `landing` | `home` | pass | pass | may ship |
-| `article` | `news__storm-season-checklist` | over the bar, every residual carries a `cause` | same | pass with an asterisk — may ship, residuals surface in the report |
+| `article` | `news__storm-season-checklist` | over the bar, residuals cause-only (no `artifacts[]`/`acceptedBy`) | same | FAIL → blocked; re-log the residuals as named classes with artifacts[] and acceptedBy, or re-gate the archetype |
 | `program` | `insurance__home` | never gated (`gated: false`, `breakpoints: {}`) | — | blocked; the command to gate it is in the journal `Next:` line |
 
 Siblings: `business` (landing), `news__annual-report-2025` (article),

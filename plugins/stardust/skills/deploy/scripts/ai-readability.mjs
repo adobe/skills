@@ -30,7 +30,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const CHATGPT_UA = 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot';
-export const LANDMARKS = 'nav,header,footer,.nav,.navigation,.navbar,.nav-bar,.menu,.main-menu,.header,.site-header,.page-header,.footer,.site-footer,.page-footer,#nav,#navigation,#navbar,#header,#footer,#menu,[role="navigation"],[role="banner"],[role="contentinfo"]';
+export const LANDMARKS = 'nav,header,footer,.nav,.navigation,.navbar,.nav-bar,.menu,.main-menu,.header,.site-header,.page-header,.footer,.site-footer,.page-footer,#nav,#navigation,#navbar,#header,#footer,#menu,[role="navigation"],[role="banner"],[role="contentinfo"],aside,[role="complementary"],[role="search"]';
 
 /* -------------------------------------------------------------- in-page code -- */
 /** Runs inside the page. Returns both scenarios, the code score and per-block attribution. */

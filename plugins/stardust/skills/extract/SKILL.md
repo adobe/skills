@@ -52,10 +52,9 @@ critique, and it does not modify the live site. It writes only under
   `https://example.com/shop`. A path scopes the crawl to that subtree
   (the path as typed; a redirected root entry is not scoped).
 - `--cap <N>` (alias `--max`) — optional. Override the default 5-page
-  cap (home + four IA pillars/templates; `crawl.mjs` defaults to the
-  same number). The small sample already feeds cross-page brand
-  aggregation and the brand-review HTML; raise it only when a deeper
-  crawl is genuinely needed.
+  cap (home + four IA pillars/templates). The small sample already
+  feeds cross-page brand aggregation and the brand-review HTML; raise
+  it only when a deeper crawl is needed.
 - `--all` — optional. Lift the cap entirely; extract every
   discovered page after junk filtering. Equivalent to `--cap 0`.
 - `--pages <path,path,...>` — optional. Crawl exactly these paths
@@ -96,8 +95,10 @@ critique, and it does not modify the live site. It writes only under
   aggregation, and per-section style unpolluted by the banner.
 - `--dynamics` — optional, **migration-bound**. Record per-page reach
   signals of the dynamic surface (data endpoints, forms, modal
-  triggers, player ids) in each page JSON `dynamic` section and roll
-  them up in `_crawl-log.json#dynamicSurface`. Set by
+  triggers, player ids; tabs / expanders, shadow roots, empty `data-*`
+  config containers, form-less control groups, search shells, chat
+  loaders, federated modules, quizzes) in each page JSON `dynamic`
+  section and roll them up in `_crawl-log.json#dynamicSurface`. Set by
   `prepare-migration`, `replica` and `migrate`'s safety net; never by a
   bare extract, `uplift` or `audit` — dynamics is a migration concern.
   Depth and classification belong to the stardust `dynamics` skill.
@@ -214,7 +215,6 @@ in summary:
 
    ```
    $stardust extract https://example.com              # default 5 pages
-   $stardust extract https://example.com --cap 5      # small brand sample
    $stardust extract https://example.com --all        # lift the cap
    $stardust extract https://example.com --pages /,/about,/pricing
    $stardust extract https://example.com --single     # just the entry URL
@@ -315,11 +315,11 @@ Capture per page (full schema in `reference/current-state-schema.md`):
   `reference/current-state-schema.md` § Signals
 
 - **Dynamic surface (only with `--dynamics`)** — per-page reach
-  signals: endpoints, third-party script hosts, forms, modal triggers,
-  player ids, hydration hints, in the page JSON `dynamic` section and
-  `_crawl-log.json#dynamicSurface` (schema in
-  `reference/current-state-schema.md § Dynamic`). Evidence only; the
-  stardust `dynamics` sub-skill probes archetypes in depth and decides.
+  signals (families listed under the `--dynamics` flag above) in the
+  page JSON `dynamic` section and `_crawl-log.json#dynamicSurface`
+  (schema in `reference/current-state-schema.md § Dynamic`). Evidence
+  only; the stardust `dynamics` sub-skill probes archetypes in depth
+  and decides.
 
 Save to `stardust/current/pages/<slug>.json` with `_provenance` as the
 first key. **The bundled crawler also saves the settled rendered DOM

@@ -15,7 +15,8 @@ to "the tool enforces".
 
 ```bash
 node skills/rollout/scripts/delivery-lint.mjs --file <content.html> \
-  --path </da/target/path> [--type page|fragment|index] [--icons-dir icons] [--json]
+  --path </da/target/path> [--type page|fragment|index] [--icons-dir icons] \
+  [--allow-empty <names>] [--chrome-docs content/nav.html,content/footer.html,… [--content content]] [--json]
 ```
 
 `--type` is inferred from the path when omitted (`/nav`, `/footer`, `*/fragments/*`
@@ -38,6 +39,11 @@ advisory (surfaced, never blocks).
 | `metadata` | P2 | No metadata block → thin query-index rows (no description/og:image at import time). |
 | `icon-missing` | P0 | `:x:` (or `<span class="icon icon-x">`) with no `icons/x.svg\|png` in the code tree — the runtime fetches `/icons/x.svg` and renders a broken-image box; the asset must exist in the branch before the PUT. Needs `--icons-dir`; silent without it. |
 | `icon-prefix` | P0 | `:icon-x:` doubles the prefix the runtime adds (`icons/x.svg` exists, `icon-x.svg` does not) — author `:x:`. Same scan as `deploy`'s `davids-model-lint` ICON-PREFIX / ICON-MISSING. |
+| `empty-block` | P1 | A block table with 0 rows inside `<main>` — the encoder's selector missed the source items, silent content loss (mirror of deploy lint D1-EMPTY). `--allow-empty <names>` exempts declared runtime-widget placeholders. |
+| `href-scheme` | P1 | A `javascript:` or bare `#` / `#!` href — a dead CTA once `decorateButtons` styles it. |
+| `href-whitespace` | P1 | Whitespace inside the href value — the browser trims it locally, delivery 404s. |
+| `chrome-variant` | P1 | With `--chrome-docs`, on a site whose nav (or footer) documents dedupe by content hash to more than one variant, a page without an explicit `nav:` / `footer:` metadata row (the `--file` page and every page under `--content`; chrome docs and fragments excluded). Single-variant sites are silent — `../../deploy/reference/chrome.md` § Chrome states and variants. |
+| `chrome-variant-count` | P2 | More than three distinct documents of one chrome kind — a vocabulary smell to report (D9/D12). |
 
 `--optimizing-blocks a,b,c` overrides the block list for the cross-origin check
 (default `cards,columns,hero`) when a project's block set differs.

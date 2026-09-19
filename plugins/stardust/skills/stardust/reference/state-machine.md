@@ -10,7 +10,7 @@
 - § Provenance validation — before any downstream phase consumes per-page JSON: the read-time synthesis guard.
 - § IA-fidelity and iaPriorities mutability — when a later phase wants to change what `direct` pinned.
 - § Fold-back state record — after prototype fold-back: where the decision is recorded.
-- § Concurrency — when parallel writers touch `state.json`: the merge-by-slug contract; when a second session opens the project: the session advisory lock.
+- § Concurrency — when parallel writers touch `state.json`: the merge-by-slug contract; when a second session opens the project: the session advisory lock; when a second live tool targets the same origin: the per-host live lock.
 - § Schema versioning — when the schema changes.
 
 Stardust tracks state per page so multi-page redesigns can be incremental
@@ -585,9 +585,9 @@ you, surface a warning in the report naming the slug. Do not lock page
 entries; do not engineer around it.
 
 **Session advisory lock** — orthogonal to merge-by-slug, and the only
-lock stardust has. `stardust/.work/run.lock` (untracked) is one JSON
-object: `{ "sessionId", "pid", "startedAt", "refreshedAt", "skill",
-"owns": [] }`, written and read only through
+lock stardust holds on the project. `stardust/.work/run.lock`
+(untracked) is one JSON object: `{ "sessionId", "pid", "startedAt",
+"refreshedAt", "skill", "owns": [] }`, written and read only through
 `node skills/stardust/scripts/run-lock.mjs acquire|refresh|check|release`.
 It is **held** while `refreshedAt` is under 2 hours old (and, when a
 `pid` is recorded, that pid is alive); otherwise it is **stale** and the
@@ -597,6 +597,12 @@ which paths it is writing (`owns[]`: `stardust/<skill>/…`, the EDS
 project). The master skill's Setup step 7 runs `check`; phase skills
 `acquire` / `refresh` / `release` it (`run-status.md` § Rules);
 page-entry races stay last-write-wins as above.
+
+**Per-host live lock** — `state.json` is never locked (last-write-wins);
+the per-host live lock `stardust/.work/live-<host>.lock` (untracked,
+`run.lock`'s shape and directory, pid liveness) is the only other lock,
+and it guards the *source origin*, not the project: one live tool per
+host at a time (`crawl.mjs`; `STARDUST_LIVE_FORCE=1` overrides).
 
 ---
 

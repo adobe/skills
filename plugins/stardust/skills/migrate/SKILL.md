@@ -24,7 +24,7 @@ metadata:
 |---|---|
 | Setup 4 | `../prototype/reference/canon-extraction.md` § The five extraction steps |
 | Setup 7 | `skills/stardust/reference/state-machine.md` § Provenance validation |
-| 1 | `reference/content-preservation.md` § Dynamic dependencies · `../replica/reference/source-fidelity-gate.md` § Residual logging format |
+| 1 | `reference/content-preservation.md` § Dynamic dependencies · `../replica/reference/source-fidelity-gate.md` § Residual logging format · § Residual classes |
 | 2 (branch, path) | `reference/migration-procedure.md` § Three render branches · § Output path mapping · § Idempotent skip · `reference/template-and-module-rendering.md` § Render path selection · § Validation contracts · § Deviation policy · `reference/importer-recipe.md` (before writing or widening a sibling importer) |
 | 2 (fidelity, content) | `reference/fidelity-tiers.md` § The three tiers · § Sibling variance probe · § Content-count acceptance · `reference/content-preservation.md` § Internal link rewriting · § Forms |
 | 2 (head, assets, media) | `reference/metadata-and-jsonld.md` § Categories · § Page-specific, preserved · § JSON-LD by page-type · `reference/asset-bundling.md` § Detection · § Rewrite · `reference/media-reconciliation.md` § The four decisions · § Cross-origin optimization |
@@ -33,17 +33,13 @@ metadata:
 
 Headings: Inputs · Setup · Procedure · Outputs · Idempotent and incremental · Stale handling · Failure modes · What migrate does NOT do · References
 
-Apply the target spec authored by `direct`, the visual canon
-written by `prototype --prep`, and the brand-module catalog
-extracted during `prepare-migration` to every page in the
-inventory. Produces a self-contained, deployable static HTML site
-under `stardust/migrated/`. Per-page, incremental, idempotent.
-
-`migrate` is the final stardust phase. Output is platform-
-agnostic HTML — downstream conversion (AEM EDS, a CMS, a
-framework) is the job of a separate plugin that consumes
-`migrated/` plus `DESIGN.json` plus the per-page `_meta.json`
-sidecars.
+Apply `direct`'s target spec, `prototype --prep`'s visual canon and
+`prepare-migration`'s brand-module catalog to every page in the
+inventory, producing a self-contained static HTML site under
+`stardust/migrated/` — per-page, incremental, idempotent. `migrate` is
+the final stardust phase: platform-agnostic HTML; downstream conversion
+(AEM EDS, a CMS, a framework) is a separate plugin's job, consuming
+`migrated/` + `DESIGN.json` + the per-page `_meta.json` sidecars.
 
 ## Inputs
 
@@ -174,11 +170,13 @@ become `contentDeviations[]` `kind: "dynamic-dependency"` entries
 **Gated-archetype precondition (`flow: replica`).** Before rendering any
 `sibling`-tier page, read `stardust/replica/progress.json`: the page
 type's archetype must have a gate result at every configured breakpoint
-that is `pass: true`, or over the bar with every residual carrying a
-`cause` (`../replica/reference/source-fidelity-gate.md` § Residual
-logging format — a documented residual is a pass with an asterisk). An
-archetype never gated, or over the bar with no residual entries, blocks
-its page type: report the archetype slug and `$stardust replica
+that is `pass: true`, or over the bar only when every residual is a named
+class (`../replica/reference/source-fidelity-gate.md` § Residual logging
+format — slug ids from § Residual classes) with `artifacts[]` and
+`acceptedBy`; any other over-bar breakpoint is **FAIL → blocked**. An
+archetype never gated, with a configured breakpoint absent from
+`published.<bp>` (`ungated`), or over the bar with an unaccepted residual
+blocks its page type: report the archetype slug and `$stardust replica
 <archetype>`, and render nothing for that type. The same rule guards
 `rollout` Setup; the published-origin re-gate is unchanged. Thresholds
 are the gate's.
@@ -504,9 +502,8 @@ work, they just mark it as out-of-step.
   `$impeccable critique stardust/migrated/` after migration if <!-- impeccable-dep: ignore -->
   you want a quality assessment.
 - Deploy. Stardust does not push, upload, or modify origin.
-- Generate AEM EDS, a CMS payload, or framework components. The
-  output is platform-agnostic static HTML; downstream conversion
-  is a separate plugin's job.
+- Generate AEM EDS, a CMS payload, or framework components (a
+  separate plugin's job).
 - Re-fetch the live site. Offline after extract Phase 1.
 - Run any iteration loop. Iteration belongs to `prototype`;
   migrate consumes the result.
@@ -527,8 +524,7 @@ work, they just mark it as out-of-step.
 - `reference/content-preservation.md` — what's kept,
   transformed, dropped; internal-link rewriting; asset path
   rewriting; form handling.
-- `reference/asset-bundling.md` — detection / copy / rewrite
-  contract for the per-page asset-bundling phase.
+- `reference/asset-bundling.md` — detection / copy / rewrite contract.
 - `skills/stardust/reference/migrate-output-format.md` — the
   self-contained-bundle contract downstream consumers can rely
   on (asset reference shape, directory layout,

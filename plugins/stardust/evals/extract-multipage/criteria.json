@@ -15,7 +15,7 @@
     {
       "name": "discovery_before_crawl",
       "max_score": 10,
-      "description": "Discovery (sitemap.xml -> sitemap_index -> robots.txt Sitemap: directives -> BFS crawl) happened before any per-page rendering. The discovery outcome (source used, discovered count, and the selected page list) was visible in the agent's narration; eliding a long cut list is acceptable."
+      "description": "Discovery (robots.txt Sitemap: directives -> sitemap.xml -> sitemap_index.xml -> CMS conventions -> nav union -> BFS fallback) happened before any per-page rendering. The discovery outcome (source used, discovered count, and the selected page list) was visible in the agent's narration; eliding a long cut list is acceptable."
     },
     {
       "name": "page_cap_confirmation",
@@ -25,7 +25,12 @@
     {
       "name": "playwright_over_webfetch",
       "max_score": 10,
-      "description": "Playwright was used for per-page rendering (1440x900 @ 2x DPR, wait per the configured wait mode — default 'medium': domcontentloaded + 2s grace, 8s hard cap — plus the scroll-to-bottom pass). Running the bundled scripts/crawl.mjs copied into the project satisfies this. WebFetch / curl was NOT used as a substitute for page rendering."
+      "description": "Playwright was used for per-page rendering (1440x900 @ DPR 1, recorded in _provenance.dpr; wait per the configured wait mode — default 'medium': domcontentloaded + 2s grace, 8s hard cap — plus the scroll-to-bottom pass). Running the bundled scripts/crawl.mjs copied into the project satisfies this. WebFetch / curl was NOT used as a substitute for page rendering."
+    },
+    {
+      "name": "capture_signals_recorded",
+      "max_score": 5,
+      "description": "The entry page record carries screenshotMobile (<slug>-360.png) and a _signals block with screenshotMode, captureQuality and overlayCoverPct; a visionCheck verdict of ok was never given to a page whose captureQuality is degraded or whose note mentions an overlay."
     },
     {
       "name": "per_page_json_shape",

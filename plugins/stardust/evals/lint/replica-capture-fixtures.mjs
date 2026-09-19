@@ -345,8 +345,9 @@ async function layer2(deps) {
     const a4 = await run('anchor.mjs', [`${base}/landmark-a.html`, '--width', '800', '--landmarks', '--against', 'out/al.json']);
     check(a4.status === 0 && /landmarks clean \(all \|Δy\| ≤ 2 px\)/.test(a4.stdout), `anchor --against (same page): expected "landmarks clean"\n${a4.stdout}`);
     // gate.sh end to end on the two fixtures: rc 0/2, review + landmarks in the record, GATE_LANDMARKS=0 drops them
-    const gateRun = (env, label) => new Promise((resolve) => {
-      const c = spawn('bash', [join(tmp, 'replica', 'gate.sh'), 'landmark', `${base}/landmark-a.html`, `${base}/landmark-b.html`, '800', label, '--marker', 'landmark fixture'], { cwd: tmp, env: { ...process.env, GATE_REAP_MIN: '0', GATE_STITCH_TIMEOUT: '120', ...env } });
+    // rounds past gate.sh's 3-counted-round cap (iter4+) need --over-cap — the fixture asserts the landmark hook, not the cap (gate-sh-fixtures.mjs owns that)
+    const gateRun = (env, label, extra = []) => new Promise((resolve) => {
+      const c = spawn('bash', [join(tmp, 'replica', 'gate.sh'), 'landmark', `${base}/landmark-a.html`, `${base}/landmark-b.html`, '800', label, '--marker', 'landmark fixture', ...extra], { cwd: tmp, env: { ...process.env, GATE_REAP_MIN: '0', GATE_STITCH_TIMEOUT: '120', ...env } });
       let out = ''; let err = ''; c.stdout.on('data', (d) => { out += d; }); c.stderr.on('data', (d) => { err += d; });
       const t = setTimeout(() => c.kill('SIGKILL'), 240000);
       c.on('close', (status) => { clearTimeout(t); resolve({ status, out, err }); });
@@ -376,12 +377,12 @@ async function layer2(deps) {
       // (a directory at the cache path makes anchor.mjs's cache write throw → exit 1, deterministic)
       const gdir = join(tmp, 'stardust/replica/gates/landmark-800');
       rmSync(join(gdir, 'anchor-live.json'), { recursive: true, force: true }); mkdirSync(join(gdir, 'anchor-live.json'));
-      const g4 = await gateRun({}, 'iter4');
+      const g4 = await gateRun({}, 'iter4', ['--over-cap', 'instrument-invalidated']);
       check([0, 2].includes(g4.status) && /landmark table unavailable \(live anchor exit 1\)/.test(g4.err) && existsSync(join(gdir, 'anchor-live.skip')) && /^exit 1 at \d{4}-/.test(readFileSync(join(gdir, 'anchor-live.skip'), 'utf8')), `gate.sh: a failed live landmark probe must warn once and write anchor-live.skip (exit ${g4.status})\n${g4.err}`);
-      const g5 = await gateRun({}, 'iter5');
+      const g5 = await gateRun({}, 'iter5', ['--over-cap', 'instrument-invalidated']);
       check([0, 2].includes(g5.status) && /landmark table skipped — the live landmark probe failed earlier/.test(g5.err) && !/landmark table unavailable/.test(g5.err) && !/anchor live landmark/.test(g5.err), `gate.sh: while anchor-live.skip exists the live pass must be skipped, not retried (exit ${g5.status})\n${g5.err}`);
       rmSync(join(gdir, 'anchor-live.json'), { recursive: true, force: true });
-      const g6 = await gateRun({ GATE_LANDMARKS: '0' }, 'iter6');
+      const g6 = await gateRun({ GATE_LANDMARKS: '0' }, 'iter6', ['--over-cap', 'instrument-invalidated']);
       check([0, 2].includes(g6.status) && !existsSync(join(gdir, 'anchor-live.skip')), `gate.sh GATE_LANDMARKS=0: anchor-live.skip must be cleared (exit ${g6.status})\n${g6.err}`);
     }
 

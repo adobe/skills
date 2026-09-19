@@ -374,10 +374,21 @@ crawl ran without the flag (redesign-only work).
   "ariaLiveRegions": 0,
   "triggers": [{ "marker": "aria-haspopup=dialog", "href": null }],   // modal-trigger markers per page (reach for M findings)
   "mediaIds": ["987654"],                                             // player ids / player iframe srcs per page (reach for V findings)
+  "tabs": { "tablists": 1, "expanders": 4 },                          // [role=tablist] count + [aria-expanded] outside page chrome (tabs / accordions)
+  "shadowHosts": [{ "tag": "my-widget", "cls": "product-finder" }],   // open shadow roots with > 40 chars of text, ≤10 (web-component islands)
+  "emptyConfigContainers": [{ "tag": "div", "attrs": ["data-component", "data-endpoint"] }],  // childless, text-less data-* config mounts, ≤10 — a client app renders here
+  "controlGroups": [{ "container": "section.filters", "controls": 3 }],  // ≥2 visible form-less inputs per container, ≤10 (JS-driven filters / calculators)
+  "searchShell": false,                                               // search URL or input[type=search] on a near-empty <main> — results render client-side
+  "players": [{ "vendor": "kaltura", "id": "12345678" }],             // vendor players by DOM fingerprint (kaltura | brightcove | wistia), ≤20
+  "chatLoaders": ["widget.intercom.io"],                              // chat vendor script hosts or launcher markers, ≤6 (DOM side; network side is thirdPartyScriptHosts)
+  "federated": { "remoteEntries": [], "registerCalls": 0 },           // module-federation remoteEntry.js srcs (≤6) + registerFederatedComponent( calls
+  "quiz": { "markers": 0, "radioFieldsets": 0 },                      // quiz / questionnaire class markers + fieldsets with ≥3 radios
   "summary": {
     "sameSiteEndpoints": 2, "thirdPartyEndpoints": 1, "thirdPartyScriptHosts": 1,
     "inlineDataBlobs": 1, "forms": 2, "searchForms": 1,
-    "hydrated": true                   // frameworkHints or a hydration global present — the page was (at least partly) client-rendered
+    "hydrated": true,                  // frameworkHints or a hydration global present — the page was (at least partly) client-rendered
+    "tabs": 5, "players": 1, "controlGroups": 1, "chatLoaders": 1, "federated": 0, "quiz": 0,   // reach-signal counts (tablists+expanders, players, groups, loaders, remoteEntries+registerCalls, markers+radioFieldsets)
+    "searchShell": false
   }
 }
 ```
@@ -401,8 +412,12 @@ across pages with `pages` (how many pages hit it) and `examples[]`
 (≤3 slugs). Sections: `endpoints` (≤300), `thirdPartyScriptHosts`,
 `frameworkHints`, `globalState`, `formTargets`, plus the counters
 `pages`, `pagesWithSameSiteData`, `pagesWithSearchForm`,
-`pagesHydrated`, `truncatedPages`. This is the view Phase 4.5 reads
-first; per-page `dynamic` is for drilling into one row.
+`pagesHydrated`, `truncatedPages` and the reach-signal counters
+`pagesWithTabs`, `pagesWithPlayers`, `pagesWithLooseControls`,
+`pagesWithChat`, `pagesWithFederated`, `pagesWithQuiz`,
+`searchShellPages` (one per page whose `summary` count is non-zero /
+`searchShell` is true). This is the view Phase 4.5 reads first;
+per-page `dynamic` is for drilling into one row.
 
 ## § Components
 

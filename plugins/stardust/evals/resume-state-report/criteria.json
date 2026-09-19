@@ -15,7 +15,7 @@
     {
       "name": "gate_numbers_from_progress_json",
       "max_score": 15,
-      "description": "The report prints the last gate numbers per archetype exactly as stardust/replica/progress.json records them: home 2.14% at 1440 and 3.87% at 360 (pass); news__storm-season-checklist 11.6% at 1440 and 12.4% at 360 (over the bar, every residual cause-logged — a pass with an asterisk); insurance__home never gated. Numbers that are invented, rounded away from the ledger, recomputed, or missing for any archetype fail."
+      "description": "The report prints the last gate numbers per archetype exactly as stardust/replica/progress.json records them: home 2.14% at 1440 and 3.87% at 360 (pass); news__storm-season-checklist 11.6% at 1440 and 12.4% at 360 (over the bar, residuals cause-only — printed as `FAIL 11.6 % / 12.4 % (residuals unaccepted)`, blocked); insurance__home never gated. Numbers that are invented, rounded away from the ledger, recomputed, or missing for any archetype fail."
     },
     {
       "name": "journal_next_quoted_and_verified",

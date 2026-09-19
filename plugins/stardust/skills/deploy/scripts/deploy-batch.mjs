@@ -66,6 +66,9 @@
  * where ok/failed count the pages THIS run drove (a halt reports them too).
  * Run it in the background (`nohup node … > stardust/.work/deploy/deploy-batch.log 2>&1 &`)
  * and read the progress file, then the SUMMARY line — never `sleep N; grep -c`.
+ * Per driven page the stderr line prints https://<branch>--<repo>--<org>.aem.page<webPath>
+ * (aem.live on a publish run) and the summary names the first URL — the deploy/replica
+ * status line copies it (the URL is derived at print time, never written into the ledger).
  *
  * Usage:
  *   DA_TOKEN=… node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> \
@@ -650,6 +653,7 @@ export async function main(argv = process.argv) {
   progress = createProgress({ file: args.progress, driver: 'deploy-batch', total: todo.length, extra: { publish: args.publish, skipped: counts.unchanged, ledger: args.ledger } });
   const shared = args.branch !== 'main' ? [] : null;
   let done = 0;
+  let firstUrl = null;
   try {
     await pool(todo, args.concurrency, async (p) => {
       touched.add(p.webPath);
@@ -657,7 +661,9 @@ export async function main(argv = process.argv) {
       done += 1;
       const ok = OK_STATUS.has(rec.status);
       progress.tick({ ok, path: p.webPath });
-      console.error(`[${done}/${todo.length}] ${ok ? 'OK  ' : 'FAIL'} ${p.webPath} (${rec.status})`);
+      const url = ok ? `https://${args.branch}--${args.repo}--${args.org}.${rec.status === 'live' ? 'aem.live' : 'aem.page'}${p.webPath}` : null;
+      if (url && !firstUrl) firstUrl = url;
+      console.error(`[${done}/${todo.length}] ${ok ? 'OK  ' : 'FAIL'} ${p.webPath} (${rec.status})${url ? `  ${url}` : ''}`);
       if (done % 5 === 0) await persist();
     });
   } catch (err) {
@@ -668,7 +674,7 @@ export async function main(argv = process.argv) {
   await persist();
 
   const fails = todo.map((p) => [p.webPath, ledger[p.webPath]]).filter(([, r]) => !OK_STATUS.has(r.status));
-  console.error(`[deploy-batch] done. ${todo.length - fails.length} ok, ${fails.length} failed.`);
+  console.error(`[deploy-batch] done. ${todo.length - fails.length} ok, ${fails.length} failed.${firstUrl ? `  first: ${firstUrl}` : ''}`);
   const summary = (exit) => progress.summaryLine({ exit, details: args.ledger, extra: { skipped: counts.unchanged, published: args.publish ? todo.length - fails.length : 'preview-only' } });
   if (shared && shared.length) {
     console.error(`[deploy-batch] WARN two clocks: ${shared.length} document(s) already on DA are shared with main — main renders them with main's code until branch "${args.branch}" is merged (da-deploy-protocol.md § Two clocks).`);

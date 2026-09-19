@@ -106,8 +106,12 @@ Before any screenshot-eyeball tuning:
    pattern): container max-widths, the full type ramp (family / size /
    line-height / letter-spacing (exactly — `-0.005em` vs `normal` flips a
    wrap at 360) / weight per level), button specs (border,
-   radius, padding — the whole spec, not just color), section paddings,
-   radii, shadows, hero heights, breakpoint values — **and the
+   radius, padding — the whole spec, not just color), section paddings and
+   inter-module margins per module kind per breakpoint (recorded in
+   `capture/tokens.json` as `spacing.module[<kind>][<bp>] = { mt, afterText }`
+   next to the canon `--sp-*` tokens, consumed by
+   `../../deploy/reference/foundation.md` § Section rhythm), radii, shadows,
+   hero heights, breakpoint values — **and the
    text-rendering group**: `text-rendering`, `-webkit-font-smoothing`,
    `font-synthesis`, `font-variant-numeric`, `font-kerning`. Sites commonly
    set these globally, and the ramp alone doesn't carry them: a ±1%
@@ -245,6 +249,11 @@ across a whole page in the field. Corollary for responsive work: a column
 that is floated on desktop loses its BFC when a media query un-floats it, and
 the last child's margin escapes at mobile only — add `flow-root` to the
 un-floating override.
+
+Inter-module rhythm is encoded on the deploy side — majority in CSS, derivable
+deviations as `.section` classifiers, remainder as budgeted tokens
+(`../../deploy/reference/foundation.md` § Section rhythm); replica only records
+the measured margins per module kind per breakpoint.
 
 ## Fonts policy
 

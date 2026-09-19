@@ -76,6 +76,7 @@ stardust/
 ├── dynamics/                         # dynamics working dir: generated-plan draft, parity.json (Phase 5), snapshot sync logs
 ├── redirects.tsv                     # original→normalized path pairs from the path-safety gate (rollout Phase C)
 ├── runtime-contract.json             # EDS runtime probe result (deploy § Runtime-detection probe)
+├── live-budget.json                  # learned per-host live ceiling — merge-by-host, written by a live tool (extract crawl.mjs) on a bare 429
 ├── uplift-improvements.md            # >=3 specific weaknesses (cut, not padded) — load-bearing for uplift's variant A (written by the stardust `uplift` skill Phase 2a; absent otherwise)
 ├── uplift-questions.md               # 6–8 "what if…" candidates with disqualifications (written by the stardust `uplift` skill Phase 2b; absent otherwise)
 ├── canon/                            # design canon (canon-extraction.md) — written by prototype --prep on first approval, extended on subsequent approvals
@@ -389,6 +390,7 @@ excluded folders tracked deletes that line or adds a negation below it.
 | Path | Tracked | Owner | Notes |
 |---|---|---|---|
 | `state.json`, `status.jsonl`, `journal.md`, `learnings.md`, `direction.md`, `decisions.md` | yes | master / all | delivery state and decisions; a clone is dead without `state.json` |
+| `live-budget.json` | yes | extract / any live tool | learned per-host live ceiling (`{ "<host>": { navPerMin, minGapMs, learnedAt, learnedBy, lastStatus } }`), merge-by-host, written on a bare 429; a clone inherits the origin's known limit |
 | `dynamic-features.md`, `dynamic-features-plan.md`, `dynamics/parity.json`, `trees.json` | yes | dynamics | dispositions and parity checks |
 | `dynamics/` other (`*.generated-plan.*`, `sheets/_sync.json`) | yes | dynamics | small text; drafts superseded by the curated file |
 | `redirects.tsv`, `runtime-contract.json`, `eds-conversion-log.md`, `ai-readability-allowlist.json` | yes | rollout / deploy | |
@@ -412,9 +414,10 @@ excluded folders tracked deletes that line or adds a negation below it.
 | `qa/shots/**`, `qa/baselines/**` | **no** | qa | screenshots; baselines are per machine, a clone re-creates them |
 | `scripts/**` | yes (for now) | extract / reskin / replica | byte copies of plugin scripts so ESM resolves the project's `node_modules`; stale against the installed plugin — removing the copies is a planned change |
 | `_pre-publish-backup/**`, `_palette-pick.html`, `*.generated.*` drafts | backup yes; picker no | prototype / direct / dynamics | |
+| `.work/live-<host>.lock` | **never** | extract / any live tool | per-host live lock (pid liveness); one live tool per origin at a time — `state-machine.md` § Concurrency |
 | `.work/**` | **no** | any | run residue: logs, harness page, pre-renders, probe dumps |
 | `*.log`, `*.err`, `*.out`, `last-run.json` anywhere | **no** | any | safety net until every writer routes to `.work/logs/` |
-| `_storage-state.json`, `*-clearance.json` | **never** | extract | captured session cookies; secrets |
+| `_storage-state.json`, `*-clearance.json` | **never** | extract | admitted session (cookies / storage), written 0600; secrets |
 
 Outside `stardust/`: the impeccable target files at the project root and
 the EDS project are tracked by the project's own rules; `.env` / `.env.*`

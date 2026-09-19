@@ -101,6 +101,7 @@ this failure class, so make it part of the per-page acceptance:
   to `migrated`; the remediation is fixing the importer/template while it
   is still cheap, then re-running the page.
 - Record the pass as `"content-count"` in the page's `gatesPassed[]`.
+- Before upload, run `node skills/deploy/scripts/davids-model-lint.mjs content/ --chrome content/nav.html,content/footer.html` over the tree — a page whose link labels are mostly chrome labels was captured through the importer's `<main>` fallback (🟡 CHROME-LEAK; threshold `--chrome-min`).
 
 This is a counts-level gate by design — cheap enough to run on every
 sibling. Per-node structural diffing stays where it lives today (the
