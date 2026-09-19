@@ -317,6 +317,16 @@ discipline — convergence happened within 3 with the recreation procedure
 followed; more loops mean the inputs were wrong (values eyeballed instead of
 lifted, capture unhardened), and the fix is upstream, not a fourth loop.
 
+- **The cap is mechanical.** `gate.sh` counts the rounds from the round
+  records (`gate-<label>.json` with verdict PASS/FAIL, not excluded, not a
+  live-drift recapture; no-verdict rounds never count), labels rounds
+  `iter<k>` by default and stops at 3 with exit 6 before any capture.
+  `--over-cap <reason>` runs one more round with one of the regime labels
+  below, written to the record as `overCap`; `--invalidate <label> <fix>` is
+  the instrument-invalidated exclusion as a record field; `--record` copies
+  `iterations` and `result` into `progress.json` (`progress-record.mjs`).
+  The verdict line prints `iteration k/3` and `NO-OP` when the
+  differing-pixel count did not move.
 - Measure first (iteration 1 IS the map — do not pre-polish).
 - **Chrome: parity probe first, pixels second.** Before a chrome band's first
   pixel round, run `chrome-parity.mjs` and clear its deltas (§ Pass bar,
