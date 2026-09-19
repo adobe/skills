@@ -407,7 +407,7 @@ function lintUrls(file, main, flag) {
       if (/\.svg(\?|$)/i.test(src)) svgs.push(src);
       continue;
     }
-    flag('🔴', 'D4', `authored <img src="${src}"> is not fully qualified — upload to DA /media and author the content.da.live URL (repo-relative delivers as about:error)`);
+    flag('🔴', 'D4', `authored <img src="${src}"> is not fully qualified — upload to DA /media and author the content.da.live URL, or author the verified source URL (the ingester re-hosts it); never move the image into block JS (block-lint IMG-HARDCODED). Repo-relative delivers as about:error`);
   }
   if (svgs.length) {
     const list = svgs.length <= 4 ? svgs.join(', ') : `${svgs.slice(0, 4).join(', ')} (+${svgs.length - 4} more)`;

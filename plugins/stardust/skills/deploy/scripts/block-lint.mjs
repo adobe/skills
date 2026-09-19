@@ -17,6 +17,13 @@
  *                scripts/scripts.js re-runs on every chrome fragment
  *                (loadFragment → decorateMain); it should carry a
  *                `data-decorated` / `dataset.decorated` idempotency guard.
+ *   IMG-HARDCODED 🔴  content imagery baked into block JS: an array/object of
+ *                ≥ 2 /img|/icons image paths consumed by index or key, a
+ *                template path interpolating slug()/slugify()/toClassName()/
+ *                textContent, or createOptimizedPicture('/img/…'). Per-row
+ *                imagery is authored content (encode-contract § Images). A
+ *                single literal path (logo, fallback) never fires; a JSDoc
+ *                `@fixed-asset <path> — <reason>` exempts a deliberate one.
  *
  *   node skills/deploy/scripts/block-lint.mjs blocks/ [scripts/scripts.js] [--json]
  *
@@ -62,6 +69,22 @@ for (const file of blockFiles) {
     if (!cssRe.test(src)) {
       add('🔴', 'BL-CSS', file, lineOf(src, m.index), `imports ../${dep}/${dep}.js but never loadCSS()s /blocks/${dep}/${dep}.css — the built ${dep} DOM ships unstyled unless a ${dep} block is authored on the page`);
     }
+  }
+  // IMG-HARDCODED
+  const exempt = [...src.matchAll(/@fixed-asset\s+(\S+)/g)].map((m) => m[1]);
+  const isExempt = (p) => exempt.some((e) => p.includes(e.replace(/\*.*$/, '')));
+  const IMG = /(['"`])(\/(?:img|icons)\/[^'"`\s]+\.(?:png|jpe?g|webp|avif|svg|gif))\1/g;
+  for (const m of src.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*[[{]([\s\S]*?)[\]}]\s*;/g)) {
+    const paths = [...m[2].matchAll(IMG)].map((x) => x[2]).filter((p) => !isExempt(p));
+    if (paths.length >= 2 && new RegExp(`\\b${m[1]}\\s*\\[`).test(src)) {
+      add('🔴', 'IMG-HARDCODED', file, lineOf(src, m.index), `${m[1]} holds ${paths.length} image paths consumed by index/key — per-row imagery is authored content (<img> in the row), not a JS table`);
+    }
+  }
+  for (const m of src.matchAll(/`\/(?:img|icons)\/[^`]*\$\{[^}]*(?:slug|slugify|toClassName|textContent)[^}]*\}[^`]*`/g)) {
+    if (!isExempt(m[0])) add('🔴', 'IMG-HARDCODED', file, lineOf(src, m.index), `image path derived from authored text (${m[0].slice(0, 60)}) — a title edit drops the asset and authors have no swap path; author the <img> per row`);
+  }
+  for (const m of src.matchAll(/createOptimizedPicture\(\s*(['"`])(\/(?:img|icons)\/[^'"`]+)\1/g)) {
+    if (!isExempt(m[2])) add('🔴', 'IMG-HARDCODED', file, lineOf(src, m.index), `createOptimizedPicture('${m[2]}') builds content imagery from a code-origin path — author the <img>, or declare @fixed-asset for a genuine brand fixture`);
   }
   // BL-MEDIA
   const qsaRe = /querySelectorAll\(\s*(['"`])([^'"`]*)\1/g;
