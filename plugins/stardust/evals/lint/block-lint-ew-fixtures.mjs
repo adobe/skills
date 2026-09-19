@@ -21,6 +21,11 @@
 //   fixtures/block-lint/exempt-ew/ a declared item-level `@ew-exempt <p> /^\d{4}-/ — derived` with a
 //                                 derived-date assignment: EW-VALUE reported 🟡 (capped, reason
 //                                 appended), exit 0 — the runtime gate decides per text (EW5)
+//   fixtures/block-lint/exempt-overreach-ew/ ONE declared item, THREE value-slotting sites: only the
+//                                 first (by line) is capped 🟡, the other two stay 🔴 with a
+//                                 "not capped" reason, exit 2 — a single declared showcase link
+//                                 must never hide a file of value-slotted texts (the recorded
+//                                 4-declared / 254-slotted case). `all` still caps the file (promo).
 // deploy-lint-fixtures.mjs keeps pinning the BL-*/IMG-HARDCODED rules over fail/ and pass/.
 //
 // Usage: node plugins/stardust/evals/lint/block-lint-ew-fixtures.mjs  (exit 1 on findings)
@@ -69,6 +74,18 @@ try {
   check('exempt-ew: EW-VALUE reported once, 🟡, with the cap reason', v.length === 1 && v[0].level === '🟡' && /\[capped 🟡: 1 @ew-exempt item\(s\) declared/.test(v[0].msg) && j.red === 0, JSON.stringify(j.findings.map((f) => `${f.level} ${f.code} ${f.msg.slice(-90)}`)));
 } catch (e) { check('exempt-ew --json parses', false, e.message); }
 
+// ── exempt-overreach-ew: N declared items cap N value-slotting sites, never the whole file
+r = run(['exempt-overreach-ew/blocks', '--json']);
+check('exempt-overreach-ew exits 2 (one item cannot cap three re-emission sites)', r.status === 2, r.stderr || r.stdout);
+try {
+  const j = JSON.parse(r.stdout);
+  const v = j.findings.filter((f) => ['EW-VALUE', 'EW-RETAG', 'EW-JOIN'].includes(f.code)).sort((a, b) => a.line - b.line);
+  check('exempt-overreach-ew: three value-slotting findings', v.length === 3, JSON.stringify(v.map((f) => `${f.level} ${f.code}:${f.line}`)));
+  check('exempt-overreach-ew: the lowest-line site is the capped one, 🟡 with the per-item reason', v[0] && v[0].level === '🟡' && v[0].code === 'EW-RETAG' && /\[capped 🟡: 1 @ew-exempt item\(s\) declared \(one cap per item\)/.test(v[0].msg), v[0] && v[0].msg.slice(-120));
+  check('exempt-overreach-ew: the other two stay 🔴 and say the item is spent', v.slice(1).every((f) => f.level === '🔴' && /\[not capped: the 1 declared @ew-exempt item\(s\) already cover 1 re-emission site\(s\)/.test(f.msg)), JSON.stringify(v.slice(1).map((f) => `${f.level} ${f.msg.slice(-100)}`)));
+  check('exempt-overreach-ew: red = 2, no `cappable` field leaks into --json', j.red === 2 && j.findings.every((f) => !('cappable' in f)), `red=${j.red}`);
+} catch (e) { check('exempt-overreach-ew --json parses', false, e.message); }
+
 // ── usage
 r = run(['pass-ew/blocks', '--styles']);
 check('--styles without a path is a usage error (exit 1)', r.status === 1);
@@ -82,4 +99,4 @@ if (failures.length) {
   console.log(`block-lint EW fixtures: ${failures.length} finding(s)`);
   process.exit(1);
 }
-console.log(`block-lint EW fixtures: ${expect.length + 11} cases pass (${relative(process.cwd(), CWD)}/{fail-ew,pass-ew,exempt-ew})`);
+console.log(`block-lint EW fixtures: ${expect.length + 16} cases pass (${relative(process.cwd(), CWD)}/{fail-ew,pass-ew,exempt-ew,exempt-overreach-ew})`);
