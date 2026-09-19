@@ -27,6 +27,8 @@
  *   D1  embed/video URL authored as a block        structure (default-content candidate)
  *   D2  block table nested inside a block cell D3  ragged rows (cell-count mismatch —
  *   D4  relative/repo-relative src or href         a span-shaped structure)
+ *   D4  protocol-relative or delivery branch-host
+ *       <a href> (//host/p, main--repo--org.aem.page)
  *                                            D4  source-host href whose path exists
  *                                                locally (LOCALIZE — run localize-links)
  *   D14 display copy in a key-value block     D10 block rows wider than 4 columns
@@ -431,6 +433,16 @@ function lintUrls(file, main, flag) {
       if (m && LOCAL.hosts.has(host) && LOCAL.paths.has(canonicalPath(m[2]))) {
         flag('🟡', 'D4', `<a href="${href.slice(0, 80)}"> points at the SOURCE host for a page that exists in this content tree — a bounce link; run localize-links.mjs (LOCALIZE)`);
       }
+    }
+    // D4 — a delivery branch host or a protocol-relative URL is never authored:
+    // the branch dies at merge and `//host` inherits whatever scheme serves the page.
+    if (/^(?:https?:)?\/\/[a-z0-9-]+--[a-z0-9-]+--[a-z0-9-]+\.(?:aem|hlx)\.(?:page|live)\b/i.test(href)) {
+      flag('🔴', 'D4', `authored <a href="${href.slice(0, 80)}"> points at a delivery branch host — author the root-relative path (localize-links.mjs rewrites it)`);
+      continue;
+    }
+    if (/^\/\//.test(href)) {
+      flag('🔴', 'D4', `authored <a href="${href.slice(0, 80)}"> is protocol-relative — use a root-relative path or a fully-qualified URL`);
+      continue;
     }
     if (/^(https?:|mailto:|tel:|#|\/)/i.test(href)) continue;
     flag('🔴', 'D4', `authored <a href="${href}"> is document-relative — use a root-relative path or a fully-qualified URL`);
