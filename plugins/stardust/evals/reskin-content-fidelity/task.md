@@ -2,15 +2,26 @@
 
 ## Setup
 
-A clean project. Network access to two stable public sites: a content-rich
-CONTENT site and a visually distinct DONOR site (the eval runner pins the
-pair; structure drift is expected maintenance). Impeccable installed. Node +
+A clean project (`fixture/` is empty). Impeccable installed. Node +
 Playwright available.
+
+This is a live-network eval against two pages on the suite's live crawl
+target's properties, both verified 200 with real server-rendered HTML and no
+bot challenge:
+
+- CONTENT page: https://stripe.com/gb/about — small, locale-explicit (no
+  geo-redirect), a dozen prose slots, stats and images.
+- DONOR site: https://press.stripe.com/ — the same company's book imprint;
+  a visually distinct design system (editorial serif, dark ground,
+  cover-led grid) on a stable public origin.
+
+Structure drift is expected maintenance, as with `extract-multipage`. The
+persona in `answers.md` confirms plans and declines any content edits.
 
 ## User prompt
 
-"$stardust reskin — rebuild https://<content-site-page> with the design of
-https://<donor-site>"
+"$stardust reskin — rebuild https://stripe.com/gb/about with the design of
+https://press.stripe.com/"
 
 ## Expected behavior
 

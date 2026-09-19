@@ -2,16 +2,22 @@
 
 ## Setup
 
-A clean project (no `stardust/` directory). Network access to a stable,
-public, design-distinctive target site (the eval runner pins one; structure
-changes are expected maintenance, as with `extract-multipage`). Impeccable
+A clean project (no `stardust/` directory; `fixture/` is empty). Impeccable
 installed (master setup dependency check still applies). Node + Playwright
 available.
 
+This is a live-network eval. The entry URL is one small, stable page on the
+suite's live crawl target: https://stripe.com/gb/about (locale-explicit so
+the server does not geo-redirect; verified 200 with real server-rendered
+HTML and no bot challenge). It is the archetype the gate measures;
+`extract --prep` discovers the rest of the origin under its default cap.
+Structure drift is expected maintenance, as with `extract-multipage`. The
+persona in `answers.md` confirms plans and asks for a pure replica.
+
 ## User prompt
 
-"$stardust replica https://<target-site> — migrate this site to EDS keeping
-its current design"
+"$stardust replica https://stripe.com/gb/about — migrate this site to EDS
+keeping its current design"
 
 ## Expected behavior
 
