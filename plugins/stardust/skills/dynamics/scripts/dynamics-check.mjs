@@ -22,6 +22,8 @@
  *   video-plays    { path*, trigger?, iframeSelector?, playbackHost* } iframe present AND a playback request to the vendor observed
  *   consent-gate   { path*, forbiddenHosts*[] }                    no request to those hosts before consent
  *   no-page-errors { paths*[] }                                    no uncaught exceptions
+ *   listing-rows   { path*, block*, index?, minRows? }             authored rows of .<block> in <path>.plain.html (heading / label-list rows excluded) > 0,
+ *                                                                  and ≥ min(index first-page count, minRows|12) when an index URL is given
  * Every check also records the third-party request statuses it observed, so a
  * probe-induced failure is distinguishable from a vendor restriction.
  */
@@ -119,6 +121,30 @@ const RUNNERS = {
     const all = [];
     for (const p of c.paths) { const { page, errors } = await openPage(ctx, origin, p); await page.close(); all.push(...errors.map((e) => `${p}: ${e}`)); }
     return { pass: all.length === 0, detail: all.length ? all.slice(0, 3).join(' | ').slice(0, 200) : `none on ${c.paths.length} page(s)` };
+  },
+  async 'listing-rows'(c, { ctx, origin }) {
+    // document-first listings (reference/listings.md § Block contract): the served document, not the rendered DOM
+    const plain = `${c.path.replace(/\/$/, '/index')}.plain.html`;
+    const page = await ctx.newPage();
+    const res = await page.goto(origin + plain, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => null);
+    const status = res ? res.status() : 0;
+    const r = status < 400 ? await page.evaluate((block) => {
+      const blocks = [...document.querySelectorAll('div')].filter((d) => d.classList.contains(block));
+      const isHeading = (row) => row.textContent.trim() && [...row.querySelectorAll('*')].every((el) => /^(DIV|H[1-6]|STRONG|EM|A)$/.test(el.tagName)) && row.querySelector('h1,h2,h3,h4,h5,h6') && !row.querySelector('p,ul,ol,img,picture');
+      const isLabelList = (row) => row.querySelector('ul,ol') && !row.querySelector('p,img,picture,h1,h2,h3,h4,h5,h6');
+      let rows = 0; let excluded = 0;
+      for (const b of blocks) for (const row of b.children) { if (!row.textContent.trim() && !row.querySelector('img,picture,a')) continue; if (isHeading(row) || isLabelList(row)) excluded += 1; else rows += 1; }
+      return { blocks: blocks.length, rows, excluded };
+    }, c.block) : { blocks: 0, rows: 0, excluded: 0 };
+    let indexCount = null;
+    if (c.index) {
+      const j = await page.evaluate(async (u) => { try { const x = await (await fetch(u)).json(); return Array.isArray(x) ? x.length : Array.isArray(x.data) ? x.data.length : (x.total ?? null); } catch { return null; } }, c.index.startsWith('http') ? c.index : origin + c.index);
+      indexCount = typeof j === 'number' ? j : null;
+    }
+    await page.close();
+    const floor = indexCount !== null ? Math.min(indexCount, c.minRows ?? 12) : (c.minRows ?? 1);
+    const pass = status < 400 && r.blocks > 0 && r.rows > 0 && r.rows >= floor;
+    return { pass, detail: status >= 400 ? `${plain} → ${status}` : `${r.blocks} × .${c.block} · ${r.rows} authored rows (${r.excluded} heading/label rows excluded) · floor ${floor}${indexCount !== null ? ` (index ${indexCount})` : ''}${r.rows === 0 && r.blocks ? ' · EMPTY — block authored without rows renders nothing until code-sync and serves 0 words' : ''}` };
   },
 };
 

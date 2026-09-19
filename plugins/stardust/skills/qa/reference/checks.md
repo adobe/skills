@@ -71,7 +71,7 @@ for a judgment pass without re-crawling.
 
 ## dynamics (H, browser; replay of `stardust/dynamics/parity.json`)
 
-Flows, not presence — each check replays a user-visible flow through `skills/dynamics/scripts/dynamics-check.mjs` (closed check set: `fetch-json`, `dom-count`, `click-dialog`, `search-query`, `form-flow`, `video-plays`, `consent-gate`, `no-page-errors`). Third-party request statuses are recorded per check so a probe-induced failure is distinguishable from a vendor restriction. Pass `--parity <file>` to point at another parity file; `--auth-header` / `--token-env` for protected origins (sent to the base origin only).
+Flows, not presence — each check replays a user-visible flow through `skills/dynamics/scripts/dynamics-check.mjs` (closed check set: `skills/dynamics/reference/parity-report.md` § Schema). Third-party request statuses are recorded per check so a probe-induced failure is distinguishable from a vendor restriction. Pass `--parity <file>` to point at another parity file; `--auth-header` / `--token-env` for protected origins (sent to the base origin only).
 
 | id | sev | what |
 |---|---|---|

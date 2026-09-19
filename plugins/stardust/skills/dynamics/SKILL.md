@@ -29,7 +29,7 @@ Outputs: `stardust/current/_dynamics.json` + `dynamic-features.generated.md` · 
 | 2 | `reference/classes-and-signals.md` § Classes · § Vendor table · § Origin-bound probe |
 | 3 | `reference/triage.md` § Dispositions · § Reproducibility · § Rules · § `stardust/dynamic-features.md` |
 | 4 | `reference/patterns.md` (one section per pattern); `reference/listings.md` § Mechanics · § Block contract; `reference/off-origin-data.md` § Tier 1 · § Tier 2 · § Tier 3 · § Tier 4 · § Sheet-backed data (class D); `reference/forms.md` § 1. Record the live form · § 2. Key the inventory · § 3. Decide the intake · § 4. The block · § 5. Regulated data; `reference/locale-trees.md` |
-| 5 | `reference/parity-report.md` § Schema · § Rules; `reference/off-origin-data.md` § Verify (flows, not presence); `reference/forms.md` § 6. Verify (flow) |
+| 5 | `reference/parity-report.md` § Schema · § Rules; `reference/listings.md` § Verify; `reference/off-origin-data.md` § Verify (flows, not presence); `reference/forms.md` § 6. Verify (flow) |
 
 Sections: When it runs · Phase 1 — Detect · Phase 2 — Classify · Phase 3 — Triage · Phase 4 — Implement · Phase 5 — Verify · Hands-off resolutions · Hard blockers · Artifacts · References.
 
@@ -121,10 +121,7 @@ required; an interim tier that would capture regulated data (record as decided-o
 
 ## Artifacts
 
-`stardust/current/_dynamics.json`, `dynamic-features.generated.md` · `stardust/dynamics/dynamic-features.generated-plan.{md,json}` ·
-`stardust/dynamic-features.md`, `stardust/dynamic-features-plan.md` (curated) · `helix-query.yaml` (listings) ·
-`data/<feature>/*.json` + `_provenance.json` (snapshots, code bus) · `scripts/site-config.js` (owner-facing integrations, disabled) ·
-`stardust/dynamics/parity.json` · `stardust/qa/dynamics-report.{md,json}` · register rows · journal + status lines.
+The Operator card's Outputs line, plus register rows · journal + status lines.
 
 ## References
 

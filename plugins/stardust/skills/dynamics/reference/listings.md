@@ -51,5 +51,13 @@ crawlers read — a block that builds 65 cards from the index leaves ~850 words 
 halves the page's score (`deploy/reference/ai-readability.md`). Index-only rendering is right for
 thousands of items or per-user results; such a page needs an authored summary in the document.
 
-**Verify.** Authored rows equal the index on the listing pages; a newly published page appears after
-publish (top-up); the AI-readability gate reads ≥ 98 on every listing page.
+**Programmatic families.** Pages generated from a dataset (routes, locations, products) are one
+listing page each: the generator authors one row per card with the card's text taken from the
+dataset row, and the block adds only non-text fields (images, coordinates, live values). A family
+authored as an empty block renders nothing until the block code syncs and scores 0 served words
+forever. Before fanning out, run `deploy/scripts/ai-readability.mjs` on 3–5 sibling pages; fan out
+only when every sibling reads ≥ 98.
+
+**Verify.** `dynamics-check.mjs` type `listing-rows` on every listing page (authored rows > 0 and
+not fewer than the index's first page); a newly published page appears after publish (top-up); the
+3–5 sibling sample above, then the AI-readability gate on every listing page.

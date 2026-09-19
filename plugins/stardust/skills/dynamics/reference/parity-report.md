@@ -27,8 +27,9 @@ site *do* now?".
 ```
 
 Check types (closed set, all replayable): `fetch-json` · `dom-count` · `click-dialog` ·
-`search-query` · `form-flow` · `video-plays` · `consent-gate` · `no-page-errors` — fields in the
-script header. A feature with no checks is listed under "features without checks" with its status
+`search-query` · `form-flow` · `video-plays` · `consent-gate` · `no-page-errors` · `listing-rows`
+(`{ path, block, index?, minRows? }` — authored rows of the block in `<path>.plain.html`, minus
+heading and label-list rows; one per listing page) — fields in the script header. A feature with no checks is listed under "features without checks" with its status
 and owner; `decided-out` rows belong there.
 
 ## Rules

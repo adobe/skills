@@ -28,8 +28,11 @@ Never pretend: success copy on a captured submission says it was captured locall
 
 ## 4. The block
 
-Definition-driven (`Source | /data/forms/<name>.json`) or field rows; optional `Action`, `Success`,
-`Intro`. Sections, selects with a placeholder option, choice groups, required marks, validation copy
+Field rows (label · type · required · options) or definition-driven (`Source | /data/forms/<name>.json`);
+optional `Action`, `Success`, `Intro`. **Default for a page-specific form: field rows** — the recorded
+`data/forms/<name>.json` is the importer's intermediate and is not shipped as the source of copy
+(`deploy/reference/ai-readability.md` § 3). A site-wide identical form lives once (a fragment, or the
+site-wide constant tier when it lands). Sections, selects with a placeholder option, choice groups, required marks, validation copy
 from live, dependent fields follow their controlling option, **empty submission refused**, honeypot
 instead of the source's anti-forgery token, posts `{ data, page, timestamp }` as JSON to `Action` or
 a per-page endpoint in `scripts/site-config.js` (empty = native post). Vendor-backed flows
