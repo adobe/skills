@@ -52,6 +52,8 @@
  *                                  for bot-managed sites)
  *       [--storage-state <file> | --fresh-state] [--solve-wait <ms>]  admitted-session reuse / clean start / interactive solve
  *                                      (live-session.mjs; --solve-wait implies a visible tier-3 window)
+ *       [--block <substr,...>]            abort requests whose URL contains a substring (third-party widgets with no close
+ *                                          control; never the page's own origin) — live-session blockRoute, SAME value on both sides
  *       [--locale <tag>]           pin Accept-Language + locale
  *
  * Exit: 0 all checks pass, 1 any fail, 2 setup error,
@@ -72,13 +74,13 @@ if (!LIVE_SESSION) {
   console.error('Copy the diff skill\'s live-session.mjs AND live-budget.mjs alongside the reskin scripts (SKILL.md § Setup) — without live-budget.mjs live navigations run unpaced and unlocked.');
   process.exit(2);
 }
-const { isLiveHttpUrl, launchTier, parseHeadedFlag, parseSolveWaitFlag, resolveStartTier, newLiveContext, gotoLive, sessionContextOptions } = await import(pathToFileURL(LIVE_SESSION).href);
+const { isLiveHttpUrl, launchTier, parseHeadedFlag, parseSolveWaitFlag, resolveStartTier, newLiveContext, gotoLive, sessionContextOptions, parseBlockList } = await import(pathToFileURL(LIVE_SESSION).href);
 
 function parseArgs(argv) {
   const opts = { 'rendered-scope': 'main', paint: 'fail', 'wait-until': 'domcontentloaded' };
   // Enumerated value-taking flags — an unknown --flag (e.g. a typo like
   // --rendered-scpoe) must be rejected, not silently stored and defaulted.
-  const VALUE_FLAGS = new Set(['model', 'rendered', 'rendered-scope', 'report', 'paint', 'ua', 'wait-until', 'locale', 'storage-state', 'solve-wait']);
+  const VALUE_FLAGS = new Set(['model', 'rendered', 'rendered-scope', 'report', 'paint', 'ua', 'wait-until', 'locale', 'storage-state', 'solve-wait', 'block']);
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
@@ -94,6 +96,7 @@ function parseArgs(argv) {
   // the three session flags, live-session.mjs § Admitted-session reuse
   opts.storageState = opts['storage-state'] || null;
   if (opts['solve-wait'] != null) { opts.solveWaitMs = parseSolveWaitFlag(opts['solve-wait']); opts.headed = 3; }
+  opts.block = parseBlockList(opts.block); // --block <substr,...> — host-substring abort list, live-session blockRoute (T14.5)
   return opts;
 }
 
@@ -102,7 +105,7 @@ if (args.help || !args.model || !args.rendered) {
   console.log('usage: node slot-coverage.mjs --model <content-model.json> --rendered <url|file>');
   console.log('         [--rendered-scope main] [--report <path>] [--paint fail|warn]');
   console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed[=window]] [--locale <tag>]');
-  console.log('         [--storage-state <file> | --fresh-state] [--solve-wait <ms>]');
+  console.log('         [--storage-state <file> | --fresh-state] [--solve-wait <ms>] [--block <substr,...>]');
   console.log('Proves every model slot (text, CTAs, images) + all metadata present in the render,');
   console.log('and that every present content image actually PAINTS (naturalWidth > 0) — a URL-string');
   console.log('match can pass while an origin-locked source CDN 403s every image (gates.md § Image');
@@ -129,7 +132,7 @@ const browser = await launchTier(chromium, args.tier);
 // UA + standard headers + webdriver spoof (live-session) — harmless on
 // local/file targets, mandatory on live ones (F-G/F-R1).
 const ctx = await newLiveContext(browser, {
-  ua: args.ua, locale: args.locale, viewport: { width: 1440, height: 900 },
+  ua: args.ua, locale: args.locale, viewport: { width: 1440, height: 900 }, block: args.block,
   ...sessionContextOptions(toUrl(args.rendered), args), // the run's admitted session, live side only (renderedUrl is declared below)
 });
 const page = await ctx.newPage();

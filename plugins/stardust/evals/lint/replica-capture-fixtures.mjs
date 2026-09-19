@@ -86,6 +86,17 @@ for (const f of SCRIPTS) {
 for (const f of ['live-session.mjs', 'content-diff.mjs', 'visual-diff.mjs']) check(spawnSync(process.execPath, ['--check', join(DIFF, f)], { encoding: 'utf8' }).status === 0, `${f}: node --check failed`);
 check(spawnSync('bash', ['-n', join(REPLICA, 'gate.sh')], { encoding: 'utf8' }).status === 0, 'gate.sh: bash -n failed');
 
+// ---- reskin live scripts (T14.5): --block parsed the same way as the seven replica/diff importers
+// (VALUE_FLAGS / explicit branch → parseBlockList → `block:` into newLiveContext, listed in usage) — a
+// third-party widget with no close control is blocked at the route on the reskin render too.
+for (const f of ['dom-equality.mjs', 'slot-coverage.mjs', 'donor-probe.mjs', 'capture-content.mjs']) {
+  const code = src(join(PLUGIN, 'skills', 'reskin', 'scripts', f)).split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  check(/'block'\]\)|a === '--block'/.test(code), `reskin ${f}: --block is not parsed (VALUE_FLAGS entry or explicit branch)`);
+  check(/parseBlockList\(/.test(code) && /newLiveContext, gotoLive, sessionContextOptions, parseBlockList \}/.test(code), `reskin ${f}: --block must go through live-session parseBlockList (lower-cased, deduped host substrings)`);
+  check(/newLiveContext\(browser, \{[^]*?block: (args|opts)\.block,/.test(code), `reskin ${f}: block must be passed into newLiveContext (the route is installed there)`);
+  check(/\[--block <substr,\.\.\.>\]/.test(code), `reskin ${f}: usage must list --block`);
+}
+
 // ---- stitch-shot (T19.1 / T19.2 / T14.5): parser, HELP, seam detector
 const ssHelp = help('replica', 'stitch-shot.mjs');
 for (const fl of ['--keep-pinned', '--expect-height', '--exclude-live-only', '--allow-overlay', '--allow-consent', '--no-dismiss-defaults', '--remove-text', '--block', '--consent-mode', '--mask-sel', '--mask-iframes', '--mask-images', '--masks-json']) check(ssHelp.includes(fl), `stitch-shot --help: ${fl} missing`);
@@ -380,7 +391,7 @@ for (const f of ['content-diff.mjs', 'visual-diff.mjs']) {
 const gate = src(join(REPLICA, 'gate.sh'));
 check(/\[ \$rc -eq 5 \]/.test(gate), '(shape) gate.sh: rc 5 (invalid capture) branch missing — must remove the partial PNG and re-exit 5, never compare');
 check(/--expect-height \$EXPECT/.test(gate), '(shape) gate.sh: --expect-height from the crawl screenshot missing on the live capture');
-check(/\[ \$rc -eq 124 \]/.test(gate), '(shape) gate.sh: exit 124 handling must stay');
+check(/\[ \$rc -ne 0 \] && rm -f "\$DIR\/live\.png" "\$DIR\/live\.png\.json"/.test(gate), '(shape) gate.sh: ANY non-zero live capture rc (124 deadline, 3, 1, 5) must remove the partial live.png + sidecar before re-exiting');
 check(/--review "\$DIR\/review-\$LBL\.png"/.test(gate), '(shape) gate.sh: pixel-compare line must pass --review review-<label>.png');
 check(/GATE_LANDMARKS/.test(gate) && /--landmarks --cache/.test(gate) && /--against "\$DIR\/anchor-live\.json"/.test(gate) && /landmark table unavailable/.test(gate), '(shape) gate.sh: landmark hook (live cached + build --against, warn-and-continue, GATE_LANDMARKS=0) missing');
 check(/instrument\.version/.test(gate) && /older stitch-shot procedure/.test(gate), '(shape) gate.sh: a cached live.png from an older stitch-shot procedure version must be treated as stale');

@@ -46,6 +46,8 @@
  *                                    for bot-managed sites)
  *       [--storage-state <file> | --fresh-state] [--solve-wait <ms>]  admitted-session reuse / clean start / interactive solve
  *                                      (live-session.mjs; --solve-wait implies a visible tier-3 window)
+ *       [--block <substr,...>]            abort requests whose URL contains a substring (third-party widgets with no close
+ *                                          control; never the page's own origin) — live-session blockRoute, SAME value on both sides
  *       [--locale <tag>]             pin Accept-Language + locale
  *
  * Live --rendered targets (a staged deploy, a served page on a real host)
@@ -71,13 +73,13 @@ if (!LIVE_SESSION) {
   console.error('Copy the diff skill\'s live-session.mjs AND live-budget.mjs alongside the reskin scripts (SKILL.md § Setup) — without live-budget.mjs live navigations run unpaced and unlocked.');
   process.exit(2);
 }
-const { isLiveHttpUrl, launchTier, parseHeadedFlag, parseSolveWaitFlag, resolveStartTier, newLiveContext, gotoLive, sessionContextOptions } = await import(pathToFileURL(LIVE_SESSION).href);
+const { isLiveHttpUrl, launchTier, parseHeadedFlag, parseSolveWaitFlag, resolveStartTier, newLiveContext, gotoLive, sessionContextOptions, parseBlockList } = await import(pathToFileURL(LIVE_SESSION).href);
 
 function parseArgs(argv) {
   const opts = { widths: '1440,360', 'wait-until': 'domcontentloaded' };
   // Enumerated value-taking flags — an unknown --flag (e.g. a typo like
   // --tokns) must be rejected, not silently stored and defaulted.
-  const VALUE_FLAGS = new Set(['tokens', 'rendered', 'spec', 'report', 'shot', 'widths', 'ua', 'wait-until', 'locale', 'storage-state', 'solve-wait']);
+  const VALUE_FLAGS = new Set(['tokens', 'rendered', 'spec', 'report', 'shot', 'widths', 'ua', 'wait-until', 'locale', 'storage-state', 'solve-wait', 'block']);
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
@@ -92,6 +94,7 @@ function parseArgs(argv) {
   // the three session flags, live-session.mjs § Admitted-session reuse
   opts.storageState = opts['storage-state'] || null;
   if (opts['solve-wait'] != null) { opts.solveWaitMs = parseSolveWaitFlag(opts['solve-wait']); opts.headed = 3; }
+  opts.block = parseBlockList(opts.block); // --block <substr,...> — host-substring abort list, live-session blockRoute (T14.5)
   return opts;
 }
 
@@ -100,7 +103,7 @@ if (args.help || !args.tokens || !args.rendered) {
   console.log('usage: node donor-probe.mjs --tokens <donor-tokens.json> --rendered <url|file>');
   console.log('         [--spec <probe-spec.json>] [--report <path>] [--shot <path>] [--widths 1440,360]');
   console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed[=window]] [--locale <tag>]');
-  console.log('         [--storage-state <file> | --fresh-state] [--solve-wait <ms>]');
+  console.log('         [--storage-state <file> | --fresh-state] [--solve-wait <ms>] [--block <substr,...>]');
   console.log('Asserts donor token values (computed styles) on the rendered reskin + overflow sanity.');
   console.log('Default spec expects: content in <main>, main .container measure, main .btn primary button.');
   console.log('Live --rendered targets get the shared live-session hardening; escalate with --headed.');
@@ -173,7 +176,7 @@ const browser = await launchTier(chromium, args.tier);
 // UA + standard headers + webdriver spoof (live-session) — harmless on
 // local/file targets, mandatory on live ones (F-G/F-R1).
 const ctx = await newLiveContext(browser, {
-  ua: args.ua, locale: args.locale, viewport: { width: 1440, height: 900 },
+  ua: args.ua, locale: args.locale, viewport: { width: 1440, height: 900 }, block: args.block,
   ...sessionContextOptions(toUrl(args.rendered), args), // the run's admitted session, live side only (renderedUrl is declared below)
 });
 const page = await ctx.newPage();

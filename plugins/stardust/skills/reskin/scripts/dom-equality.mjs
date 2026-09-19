@@ -45,6 +45,8 @@
  *                                    for bot-managed sites)
  *     [--storage-state <file> | --fresh-state] [--solve-wait <ms>]  admitted-session reuse / clean start / interactive solve
  *                                    (live-session.mjs; --solve-wait implies a visible tier-3 window)
+ *     [--block <substr,...>]            abort requests whose URL contains a substring (third-party widgets with no close
+ *                                        control; never the page's own origin) — live-session blockRoute, SAME value on both sides
  *     [--locale <tag>]               pin Accept-Language + locale
  *
  * Exit: 0 PASS (text + images), 1 FAIL, 2 setup error,
@@ -66,13 +68,13 @@ if (!LIVE_SESSION) {
   console.error('Copy the diff skill\'s live-session.mjs AND live-budget.mjs alongside the reskin scripts (SKILL.md § Setup) — without live-budget.mjs live navigations run unpaced and unlocked.');
   process.exit(2);
 }
-const { isLiveHttpUrl, launchTier, parseHeadedFlag, parseSolveWaitFlag, resolveStartTier, newLiveContext, gotoLive, sessionContextOptions } = await import(pathToFileURL(LIVE_SESSION).href);
+const { isLiveHttpUrl, launchTier, parseHeadedFlag, parseSolveWaitFlag, resolveStartTier, newLiveContext, gotoLive, sessionContextOptions, parseBlockList } = await import(pathToFileURL(LIVE_SESSION).href);
 
 function parseArgs(argv) {
   const opts = { 'source-scope': 'main', 'rendered-scope': 'main', 'wait-until': 'domcontentloaded' };
   // Enumerated value-taking flags — an unknown --flag (e.g. a typo like
   // --source-scpoe) must be rejected, not silently stored and defaulted.
-  const VALUE_FLAGS = new Set(['source', 'rendered', 'report', 'source-scope', 'rendered-scope', 'normalize', 'ua', 'wait-until', 'locale', 'storage-state', 'solve-wait']);
+  const VALUE_FLAGS = new Set(['source', 'rendered', 'report', 'source-scope', 'rendered-scope', 'normalize', 'ua', 'wait-until', 'locale', 'storage-state', 'solve-wait', 'block']);
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
@@ -87,6 +89,7 @@ function parseArgs(argv) {
   // the three session flags, live-session.mjs § Admitted-session reuse
   opts.storageState = opts['storage-state'] || null;
   if (opts['solve-wait'] != null) { opts.solveWaitMs = parseSolveWaitFlag(opts['solve-wait']); opts.headed = 3; }
+  opts.block = parseBlockList(opts.block); // --block <substr,...> — host-substring abort list, live-session blockRoute (T14.5)
   return opts;
 }
 
@@ -95,7 +98,7 @@ if (args.help || !args.source || !args.rendered || !args.report) {
   console.log('usage: node dom-equality.mjs --source <url|file> --rendered <url|file> --report <path>');
   console.log('         [--source-scope selA,selB] [--rendered-scope main] [--normalize ledger.mjs]');
   console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed[=window]] [--locale <tag>]');
-  console.log('         [--storage-state <file> | --fresh-state] [--solve-wait <ms>]');
+  console.log('         [--storage-state <file> | --fresh-state] [--solve-wait <ms>] [--block <substr,...>]');
   console.log('Gates on byte-equal normalized visible text + ordered visible-image set.');
   console.log('Structure (element count, tag sequence) is reported but informational.');
   console.log('Live targets get the shared live-session hardening (real-Chrome UA + standard headers,');
@@ -123,7 +126,7 @@ async function capture(url, scopeList, normalize) {
   // UA + standard headers + webdriver spoof (live-session) — harmless on
   // local/file targets, mandatory on live ones (F-G/F-R1).
   const ctx = await newLiveContext(browser, {
-    ua: args.ua, locale: args.locale, viewport: { width: 1440, height: 900 },
+    ua: args.ua, locale: args.locale, viewport: { width: 1440, height: 900 }, block: args.block,
   ...sessionContextOptions(url, args), // the run's admitted session, live side only
   });
   const page = await ctx.newPage();

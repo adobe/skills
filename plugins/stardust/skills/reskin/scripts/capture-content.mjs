@@ -68,6 +68,8 @@
  *                                    for bot-managed sites)
  *       [--storage-state <file> | --fresh-state] [--solve-wait <ms>]  admitted-session reuse / clean start / interactive solve
  *                                      (live-session.mjs; --solve-wait implies a visible tier-3 window)
+ *       [--block <substr,...>]            abort requests whose URL contains a substring (third-party widgets with no close
+ *                                          control; never the page's own origin) — live-session blockRoute, SAME value on both sides
  *       [--locale <tag>]             pin Accept-Language + locale (e.g.
  *                                    en-GB) for geo determinism
  *
@@ -92,10 +94,10 @@ if (!LIVE_SESSION) {
   console.error('Copy the diff skill\'s live-session.mjs AND live-budget.mjs alongside the reskin scripts (SKILL.md § Setup) — without live-budget.mjs live navigations run unpaced and unlocked.');
   process.exit(2);
 }
-const { isLiveHttpUrl, launchTier, parseHeadedFlag, parseSolveWaitFlag, resolveStartTier, newLiveContext, gotoLive, sessionContextOptions } = await import(pathToFileURL(LIVE_SESSION).href);
+const { isLiveHttpUrl, launchTier, parseHeadedFlag, parseSolveWaitFlag, resolveStartTier, newLiveContext, gotoLive, sessionContextOptions, parseBlockList } = await import(pathToFileURL(LIVE_SESSION).href);
 
 function parseArgs(argv) {
-  const opts = { url: null, out: null, scope: 'main', normalize: null, ua: null, waitUntil: 'domcontentloaded', headed: false, locale: null };
+  const opts = { url: null, out: null, scope: 'main', normalize: null, ua: null, waitUntil: 'domcontentloaded', headed: false, locale: null, block: [] };
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--url') opts.url = argv[++i];
@@ -109,6 +111,7 @@ function parseArgs(argv) {
     else if (a === '--fresh-state') opts.freshState = true;
     else if (a === '--solve-wait') { opts.solveWaitMs = parseSolveWaitFlag(argv[++i]); opts.headed = 3; }
     else if (a === '--locale') opts.locale = argv[++i];
+    else if (a === '--block') { if (argv[i + 1] === undefined) { console.error('[capture-content] --block needs a value'); process.exit(2); } opts.block = parseBlockList(argv[++i]); } // host-substring abort list, live-session blockRoute (T14.5)
     else if (a === '--help' || a === '-h') opts.help = true;
     else { console.error(`[capture-content] unknown arg: ${a}`); process.exit(2); }
   }
@@ -119,7 +122,7 @@ const opts = parseArgs(process.argv);
 if (opts.help || !opts.url || !opts.out) {
   console.log('usage: node capture-content.mjs --url <page-url> --out <dir> [--scope sel1,sel2!] [--normalize ledger.mjs]');
   console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed[=window]] [--locale <tag>]');
-  console.log('         [--storage-state <file> | --fresh-state] [--solve-wait <ms>]');
+  console.log('         [--storage-state <file> | --fresh-state] [--solve-wait <ms>] [--block <substr,...>]');
   console.log('Writes <dir>/content-model.json + <dir>/source-full.png.');
   console.log('Scope: comma-separated selectors captured in order; trailing "!" keeps a scope whole as one slot.');
   console.log('Each selector captures exactly ONE element (querySelector, first match) — to capture N');
@@ -149,7 +152,7 @@ const browser = await launchTier(chromium, opts.tier);
 // UA + standard headers + webdriver spoof on the context (live-session) —
 // harmless on local/file targets, mandatory on live ones (F-G/F-R1).
 const ctx = await newLiveContext(browser, {
-  ua: opts.ua, locale: opts.locale, viewport: { width: 1440, height: 900 },
+  ua: opts.ua, locale: opts.locale, viewport: { width: 1440, height: 900 }, block: opts.block,
   ...sessionContextOptions(opts.url, opts), // the run's admitted session, live side only
 });
 const page = await ctx.newPage();
