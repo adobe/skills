@@ -23,10 +23,24 @@
  *   - `live` / `previewed` are set only after the delivered GET — POST codes
  *     never flip state (admin 200 ≠ delivered).
  *
+ * Delivery-side repairs (each one was an operator re-drive turn in the field):
+ *   - body guard: a file under 200 B or without `<main` is `body-invalid` before
+ *     any request (a sanitise log line or an empty file was PUT as the page);
+ *     `--allow-thin` bypasses.
+ *   - shrink guard: the DA source is GET before the PUT; an existing document
+ *     more than 5× the new bytes is `overwrite-guard`, no PUT (rich pages were
+ *     overwritten by 700 B stubs); `--allow-shrink` bypasses. On a non-main
+ *     branch the same GET is the two-clocks existence probe.
+ *   - about:error repair: preview is re-POSTed ONCE, then the page is re-read;
+ *     success is recorded `repaired: 're-preview'`; a persisting about:error is
+ *     `verify-fail` "about:error (persists after re-preview)" — the image case.
+ *   - verify blip: the delivered GET retries once after 3 s on a fetch error,
+ *     5xx or 000 (a 404 is a verdict, not a blip).
+ *
  * Usage:
  *   DA_TOKEN=… node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> \
  *     --content content [--paths <file|a,b,c>] [--exclude <file|a,b,c>] [--concurrency 4] \
- *     [--publish] [--force] [--ledger path] [--log path] [--plan | --report]
+ *     [--publish] [--force] [--allow-thin] [--allow-shrink] [--ledger path] [--log path] [--plan | --report]
  *
  * --content   dir of *.html body-fragment files (default: content). Each file's
  *             path relative to this dir, minus .html, is its DA/web path.
@@ -43,6 +57,8 @@
  *             exit 0. `unchanged (hash)` / `changed` / `new` / `failed-last-time` /
  *             `excluded` / `not in content tree` / `previewed (publish fast path)`.
  * --report    print the ledger grouped by status — no network, exit 0.
+ * --allow-thin    PUT a body under 200 B / without `<main` anyway.
+ * --allow-shrink  PUT over an existing DA document more than 5× larger anyway.
  * --concurrency  parallel pages in flight (default 4; DA admin tolerates ~4-6).
  *
  * Plan line: `N pages · U unchanged (hash) · C changed · K new · F failed-last-time
@@ -52,7 +68,8 @@
  * same command — verified pages are skipped); 2 = fatal (usage, missing token).
  *
  * Test hooks (fixture tests only): DEPLOY_BATCH_DA_SRC, DEPLOY_BATCH_ADMIN and
- * DEPLOY_BATCH_DELIVERY_BASE override the three hosts. The module is importable
+ * DEPLOY_BATCH_DELIVERY_BASE override the three hosts; DEPLOY_BATCH_REPAIR_DELAY_MS
+ * shortens the 3 s repair/blip wait. The module is importable
  * (normalisePath, readPathList, buildPlan, mergeLedger) — main() runs only as a CLI.
  *
  * No external deps — uses Node's global fetch/FormData/Blob (Node 18+).
@@ -67,6 +84,9 @@ const DA_SRC = process.env.DEPLOY_BATCH_DA_SRC || 'https://admin.da.live/source'
 const ADMIN = process.env.DEPLOY_BATCH_ADMIN || 'https://admin.hlx.page';
 const DELIVERY_BASE = process.env.DEPLOY_BATCH_DELIVERY_BASE || null;
 const OK_STATUS = new Set(['live', 'previewed']);
+const REPAIR_DELAY_MS = Number(process.env.DEPLOY_BATCH_REPAIR_DELAY_MS) || 3000;
+const MIN_BODY_BYTES = 200;
+const SHRINK_RATIO = 5;
 
 export const sha1 = (buf) => createHash('sha1').update(buf).digest('hex');
 
@@ -89,11 +109,11 @@ export function deliveryUrl({ org, repo, branch, tld, webPath }) {
 }
 
 function usage() {
-  console.log('usage: node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> [--content content] [--paths <file|a,b>] [--exclude <file|a,b>] [--concurrency 4] [--publish] [--force] [--ledger <path>] [--log <path>] [--plan | --report]');
+  console.log('usage: node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> [--content content] [--paths <file|a,b>] [--exclude <file|a,b>] [--concurrency 4] [--publish] [--force] [--allow-thin] [--allow-shrink] [--ledger <path>] [--log <path>] [--plan | --report]');
 }
 
 export function parseArgs(argv) {
-  const a = { content: 'content', concurrency: 4, publish: false, force: false, retries: 4, plan: false, report: false };
+  const a = { content: 'content', concurrency: 4, publish: false, force: false, retries: 4, plan: false, report: false, allowThin: false, allowShrink: false };
   for (let i = 2; i < argv.length; i += 1) {
     const k = argv[i];
     const next = () => argv[(i += 1)];
@@ -112,6 +132,8 @@ export function parseArgs(argv) {
     else if (k === '--force') a.force = true;
     else if (k === '--plan') a.plan = true;
     else if (k === '--report') a.report = true;
+    else if (k === '--allow-thin') a.allowThin = true;
+    else if (k === '--allow-shrink') a.allowShrink = true;
     else if (k === '--token-env') a.tokenEnv = next();
     else if (k === '--help' || k === '-h') { usage(); process.exit(0); }
     else throw new Error(`unknown arg: ${k}`);
@@ -165,16 +187,38 @@ async function call(method, url, { token, body } = {}, retries = 4) {
 
 async function deliveredOk({ org, repo, branch, webPath, tld = 'aem.live' }) {
   // admin 200 != delivered; GET the rendered .plain.html on the delivery tree
-  // (live = aem.live; preview-only = aem.page).
+  // (live = aem.live; preview-only = aem.page). One retry after a blip (fetch
+  // error, 5xx, 000) — a 404 or about:error is a verdict, never retried here.
   const url = deliveryUrl({ org, repo, branch, tld, webPath });
+  for (let attempt = 0; ; attempt += 1) {
+    let status = 0;
+    let why;
+    try {
+      const res = await fetch(url, { headers: { 'accept-encoding': 'gzip' } });
+      status = res.status;
+      if (status === 200) {
+        const html = await res.text();
+        if (html.includes('about:error')) return { ok: false, why: 'about:error in delivered html', aboutError: true };
+        return { ok: true };
+      }
+      why = `plain.html ${status}`;
+    } catch (err) {
+      why = String(err.message || err);
+    }
+    const blip = status === 0 || status >= 500;
+    if (blip && attempt === 0) { await sleep(REPAIR_DELAY_MS); continue; }
+    return { ok: false, why: blip ? `${why} (after retry)` : why };
+  }
+}
+
+/** GET the DA source document: status + byte length (body discarded). */
+async function daSourceSize(url, token) {
   try {
-    const res = await fetch(url, { headers: { 'accept-encoding': 'gzip' } });
-    if (res.status !== 200) return { ok: false, why: `plain.html ${res.status}` };
-    const html = await res.text();
-    if (html.includes('about:error')) return { ok: false, why: 'about:error in delivered html' };
-    return { ok: true };
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const buf = res.status === 200 ? Buffer.from(await res.arrayBuffer()) : null;
+    return { status: res.status, length: buf ? buf.length : 0 };
   } catch (err) {
-    return { ok: false, why: String(err.message || err) };
+    return { status: 0, length: 0, text: String(err.message || err) };
   }
 }
 
@@ -271,21 +315,36 @@ async function deployOne(page, args, ledger, logLine, shared) {
   const fastPublish = publish && !args.force && rec.status === 'previewed' && rec.bodyHash && rec.bodyHash === page.hash
     && (await deliveredOk({ org, repo, branch, webPath: page.webPath, tld: 'aem.page' })).ok;
 
-  // 0. two clocks — a DA document is shared across every code ref. On a
-  //    non-main branch, a document that already exists is also main's. The
-  //    answer is recorded once per page so a re-run of this branch does not
-  //    count its own earlier PUTs.
-  if (branch !== 'main' && shared) {
-    if (rec.sharedWithMain === undefined) {
-      const head = await call('HEAD', `${DA_SRC}/${org}/${repo}${enc}.html`, { token }, 1);
-      rec.sharedWithMain = head.status === 200;
-    }
-    if (rec.sharedWithMain) shared.push(page.webPath);
-  }
-
   if (!fastPublish) {
-    // 1. PUT body fragment (multipart, field name MUST be `data`, type text/html)
     const buf = await readFile(page.file);
+
+    // 0a. body guard — zero network. A sanitise log line captured as the body,
+    //     or an empty file, must never become the page.
+    if (!args.allowThin && (buf.length < MIN_BODY_BYTES || !/<main[\s>]/.test(buf.toString('utf8')))) {
+      rec.status = 'body-invalid';
+      rec.lastError = `body ${buf.length} B${/<main[\s>]/.test(buf.toString('utf8')) ? '' : ' / no <main>'} — --allow-thin to PUT anyway`;
+      await logLine({ path: page.webPath, step: 'body-guard', bytes: buf.length });
+      return rec;
+    }
+
+    // 0b. existing DA document — one GET serves two purposes: the shrink guard
+    //     (a rich page must not be overwritten by a stub) and, on a non-main
+    //     branch, the two-clocks existence probe (a document that already
+    //     exists is also main's; recorded once per page so a re-run of this
+    //     branch does not count its own earlier PUTs).
+    const existing = await daSourceSize(`${DA_SRC}/${org}/${repo}${enc}.html`, token);
+    if (branch !== 'main' && shared) {
+      if (rec.sharedWithMain === undefined && existing.status !== 0) rec.sharedWithMain = existing.status === 200;
+      if (rec.sharedWithMain) shared.push(page.webPath);
+    }
+    if (!args.allowShrink && existing.status === 200 && existing.length > SHRINK_RATIO * buf.length) {
+      rec.status = 'overwrite-guard';
+      rec.lastError = `existing ${existing.length} B vs new ${buf.length} B (> ${SHRINK_RATIO}×) — --allow-shrink to overwrite`;
+      await logLine({ path: page.webPath, step: 'shrink-guard', existing: existing.length, bytes: buf.length });
+      return rec;
+    }
+
+    // 1. PUT body fragment (multipart, field name MUST be `data`, type text/html)
     const fd = new FormData();
     fd.append('data', new Blob([buf], { type: 'text/html' }), path.basename(page.file));
     const put = await call('PUT', `${DA_SRC}/${org}/${repo}${enc}.html`, { token, body: fd }, args.retries);
@@ -324,8 +383,21 @@ async function deployOne(page, args, ledger, logLine, shared) {
     }
   }
 
-  // 4. verify delivery (admin 200 != delivered)
-  const v = await deliveredOk({ org, repo, branch, webPath: page.webPath, tld: publish ? 'aem.live' : 'aem.page' });
+  // 4. verify delivery (admin 200 != delivered). An about:error is first
+  //    repaired by ONE idempotent re-preview (an image lost the ingest race
+  //    with Code Sync); only a persisting about:error is a FAIL.
+  const tld = publish ? 'aem.live' : 'aem.page';
+  let v = await deliveredOk({ org, repo, branch, webPath: page.webPath, tld });
+  if (!v.ok && v.aboutError) {
+    const again = await call('POST', `${ADMIN}/preview/${org}/${repo}/${branch}${enc}`, { token }, 1);
+    if (again.status < 400 && publish) await call('POST', `${ADMIN}/live/${org}/${repo}/${branch}${enc}`, { token }, 1);
+    await sleep(REPAIR_DELAY_MS);
+    const v2 = again.status < 400 ? await deliveredOk({ org, repo, branch, webPath: page.webPath, tld }) : { ok: false, why: `re-preview ${again.status}` };
+    await logLine({ path: page.webPath, step: 'repreview', status: again.status, ok: v2.ok });
+    if (v2.ok) rec.repaired = 're-preview';
+    else delete rec.repaired;
+    v = v2.ok ? v2 : { ok: false, why: v2.aboutError ? 'about:error (persists after re-preview)' : v2.why };
+  } else if (v.ok) delete rec.repaired;
   rec.verify = v.ok ? 'ok' : v.why;
   rec.status = v.ok ? (publish ? 'live' : 'previewed') : 'verify-fail';
   if (!v.ok) rec.lastError = v.why;

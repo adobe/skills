@@ -149,6 +149,7 @@ so the gates run uniformly:
   files, skips verified unchanged pages, and never shrinks the ledger (`--force`
   resets the selected pages only; `--plan` shows the reasons before any request).
   Transient `PUT=000` → retry; `PUT=201 PRE=4xx/400` → a path-safety case (Gate 3);
-  `200 + about:error` → an image case (Gate 2).
+  a `200 + about:error` that PERSISTS after the driver's one re-preview → an image
+  case (Gate 2); `body-invalid` / `overwrite-guard` → look at the authored file, not DA.
 - **Shell and runner quirks** (zsh PATH loss in loops, bash 3.2, the 2-minute
   foreground cap): `../../stardust/reference/harness-quirks.md` § Shell · § Runner.

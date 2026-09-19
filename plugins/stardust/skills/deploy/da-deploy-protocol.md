@@ -31,7 +31,9 @@ node skills/deploy/scripts/served-check.mjs \
   "https://$BRANCH--$REPO--$ORG.aem.page/blocks/<edited-block>/<edited-block>.js" \
   --grep "<a marker string from your edit>" --wait 180        # exit 1 = did not land: check the POST / installation
 
-# 1. sanitise non-ASCII to entities (in place, idempotent) — DA corrupts raw UTF-8
+# 1. sanitise non-ASCII to entities (in place, idempotent) — DA corrupts raw UTF-8.
+#    It writes in place and reports on stderr; NEVER capture its output as the PUT body
+#    (a log line was PUT as the page twice in the field — the driver's body guard refuses it).
 node skills/deploy/scripts/sanitise.js content/$P.html
 
 # 2. write the body fragment to DA (multipart, field name MUST be `data`, type text/html)
@@ -81,7 +83,8 @@ curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
 
 # 3b. VERIFY ingestion on the delivered .plain.html (per page; served-check decodes gzip):
 #   (i)  no broken-image ingestion (#75) — must be 0; if not, an asset wasn't on Code Bus
-#        yet. Re-run step 3 (preview is idempotent; it re-ingests and repairs).
+#        yet. Re-run step 3 (preview is idempotent; it re-ingests and repairs — the
+#        driver does this once by itself; only a PERSISTING about:error is an image case).
 #   (ii) authored EDITORIAL images actually landed — assert the expected <img>/alt count.
 #        CSS-background images are absent from .plain.html, so "it renders" is NOT proof
 #        that an image is authorable/AI-visible (see `reference/encode-contract.md` § Images).
@@ -118,7 +121,7 @@ A DA document is one document for every code ref: `main--<repo>--<org>` and `<br
 
 The content payload is a **body fragment** (see Step 9). The deploy needs the **code branch pushed to GitHub** so the branch preview (`<branch>--<repo>--<org>.aem.page`) renders with your blocks. See § Deploy (DA Source API + curl) above for the full curl contract.
 
-**For more than one page, preview and publish go through the bundled driver — the curl sequence above is the single-page diagnostic form only (#4).** `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> --content content [--concurrency 4]` runs `PUT → preview` across a content tree; live publish is a separate `deploy-batch.mjs … --publish` invocation, taken only when the preview gate passed or `decisions.md` records publish-to-live (D1, D16) — one command, one intent (SKILL.md § Deploy). The driver with bounded concurrency, a **persistent ledger** (`content/.deploy-ledger.json`, one row per path with the sha1 of the bytes PUT) so a re-run **skips a page only when its row is delivered AND its bytes are unchanged** — a changed file always re-drives, FAILs always re-drive — capped-backoff retries on `000/429/5xx`, an **append-only** log (survives a restart), and a delivered-`.plain.html` check before flipping a page to `live`/`previewed` (admin 200 ≠ delivered). The ledger is always loaded and merged on write: `--force` resets only the selected pages, `--paths <file|a,b>` (normalised, a missing path is reported not dropped) and `--exclude` narrow a run, `--plan` prints one reason per path with no network, `--report` prints the ledger by status. It's idempotent — safe to Ctrl-C and re-run, which is the documented recovery for a transient-blip half-deploy. A serial hand-rolled bash loop that truncates its own log on restart is the anti-pattern this replaces.
+**For more than one page, preview and publish go through the bundled driver — the curl sequence above is the single-page diagnostic form only (#4).** `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo> --branch <branch> --content content [--concurrency 4]` runs `PUT → preview` across a content tree; live publish is a separate `deploy-batch.mjs … --publish` invocation, taken only when the preview gate passed or `decisions.md` records publish-to-live (D1, D16) — one command, one intent (SKILL.md § Deploy). The driver with bounded concurrency, a **persistent ledger** (`content/.deploy-ledger.json`, one row per path with the sha1 of the bytes PUT) so a re-run **skips a page only when its row is delivered AND its bytes are unchanged** — a changed file always re-drives, FAILs always re-drive — capped-backoff retries on `000/429/5xx`, an **append-only** log (survives a restart), and a delivered-`.plain.html` check before flipping a page to `live`/`previewed` (admin 200 ≠ delivered). The ledger is always loaded and merged on write: `--force` resets only the selected pages, `--paths <file|a,b>` (normalised, a missing path is reported not dropped) and `--exclude` narrow a run, `--plan` prints one reason per path with no network, `--report` prints the ledger by status. It repairs delivery-side blips itself — one idempotent re-preview on `about:error`, one retry on a verify 5xx — and refuses to PUT a thin body (< 200 B or no `<main`, `body-invalid`) or a document more than 5× smaller than the one on DA (`overwrite-guard`); `--allow-thin` / `--allow-shrink` override per run. It's idempotent — safe to Ctrl-C and re-run, which is the documented recovery for a transient-blip half-deploy. A serial hand-rolled bash loop that truncates its own log on restart is the anti-pattern this replaces.
 
 **Boilerplate documents are overwritable (decision register).** Before the first `PUT` to a path that already exists in DA, `GET` it: a body matching the boilerplate template's own `/index`, `/nav` or `/footer` text (the template's fingerprint, not the customer's content) is overwritten and logged `overwrote boilerplate`; anything else opens a `stardust/decisions.md` row (`skills/stardust/reference/decisions.md`) instead of a question — never silently overwrite non-boilerplate content.
 
