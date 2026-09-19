@@ -37,7 +37,7 @@ node skills/deploy/scripts/qa-gate.mjs http://localhost:3000/stardust/.work/harn
      --schema stardust/eds-schema/<page>.json     # exit 0 required
 ```
 
-One run asserts the whole decoration contract: runtime booted (`body.appear`), exactly one `<h1>` with nothing nested (#35/#55), all blocks `loaded` and rendering non-empty, zero pageerrors/broken images, schema unit counts rendered (the 1-of-N segmentation collapse, #48/#52/#62), and the wide-1600 wrap check (#13, as warnings to cross-check). Pass `--full-bleed <block,block>` for the blocks the prototype renders edge-to-edge: the inverse of #13 — a template-level `max-width` cap squeezing a full-bleed wrapper — prints as a warning with the measured widths (Step 3 § template escape). Interactive drives (#28) are the one thing you still write by hand.
+One run asserts the whole decoration contract: runtime booted (`body.appear`), exactly one `<h1>` with nothing nested (#35/#55), all blocks `loaded` and rendering non-empty, zero pageerrors/broken images, schema unit counts rendered (the 1-of-N segmentation collapse, #48/#52/#62), and the wide-1600 wrap check (#13, as warnings to cross-check). Pass `--full-bleed <block,block>` for the blocks the prototype renders edge-to-edge: the inverse of #13 — a template-level `max-width` cap squeezing a full-bleed wrapper — prints as a warning with the measured widths (Step 3 § template escape). Interactive drives (#28) are the one thing you still write by hand. Before the harness, `node skills/deploy/scripts/block-lint.mjs blocks/ scripts/scripts.js` exits 0 (runtime-order facts: builder CSS, double image collection, fragment re-decoration — `block-js-scaffold.md` § Runtime order).
 
 ## Local-QA scope boundary (#101)
 
