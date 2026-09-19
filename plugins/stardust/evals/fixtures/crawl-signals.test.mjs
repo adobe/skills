@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { captureQualityOf, SHOT_WRAP_PX, OVERLAY_FLAG_PCT, challengeMarker, CHALLENGE_PHRASE, HostBudget, BUDGET_DEFAULT, parseRetryAfter, mergeLiveBudget, tuneBudget, LIVE_BUDGET_TTL_MS, sessionReusedOf, UNPACED_DISCOVERY } from '../../skills/extract/scripts/crawl.mjs';
+import { captureQualityOf, SHOT_WRAP_PX, OVERLAY_FLAG_PCT, challengeMarker, CHALLENGE_PHRASE, HostBudget, BUDGET_DEFAULT, parseRetryAfter, mergeLiveBudget, tuneBudget, LIVE_BUDGET_TTL_MS, sessionReusedOf, UNPACED_DISCOVERY, exitCodeOf, noteRateLimited, needsStateSave } from '../../skills/extract/scripts/crawl.mjs';
 
 assert.equal(captureQualityOf({ emptyMain: false, subResourceBlock: false, overlayCoverPct: 95, spaShellSuspect: true }), 'ok', 'overlay / SPA-shell flags do not degrade by themselves');
 assert.equal(captureQualityOf({ emptyMain: true, subResourceBlock: false }), 'degraded', 'blank <main> with no real image → degraded');
@@ -92,6 +92,19 @@ assert.equal(sessionReusedOf({ botBlock: 'challenge' }), true, 'a cleared challe
 assert.equal(sessionReusedOf({ loadedState: '/x/_storage-state.json' }), true, 'a loaded reserved/explicit file is reuse');
 assert.equal(sessionReusedOf({ cookies: 3 }), true, 'a probe clone that carries cookies is reuse');
 assert.equal(sessionReusedOf({ botBlock: null, loadedState: null, cookies: 0 }), false);
+// exit codes (crawl.mjs header): a held live lock is 1 (wait for the other tool), a challenge 3, anything else 2
+assert.equal(exitCodeOf({ errorClass: 'LiveLockError' }), 1, 'LiveLockError exits 1, not 2');
+assert.equal(exitCodeOf({ errorClass: 'BotChallengeError' }), 3); assert.equal(exitCodeOf({ errorClass: 'HTTPError', rateLimited: true }), 2); assert.equal(exitCodeOf(new Error('x')), 2); assert.equal(exitCodeOf(null), 2);
+// a bare 429 in the pool drops the pool to ONE worker (header § Live budget) — not just a flag other workers read
+const pool = noteRateLimited({ concurrency: 4 });
+assert.equal(pool.throttled, true); assert.equal(pool.concurrency, 1, 'concurrency 4 → 1 after the first bare 429 (the log and the escalated pass inherit it)');
+assert.equal(noteRateLimited({ concurrency: 1 }).concurrency, 1);
+// the state file is (re)written after a capture-time escalation — the pre-pool save was the PRE-escalation state
+assert.equal(needsStateSave({ botBlock: 'challenge', savedState: null }), true, 'cleared at the probe, not yet saved');
+assert.equal(needsStateSave({ botBlock: 'challenge', savedState: '/x/_storage-state.json', escalatedAtCapture: false }), false, 'already saved, no escalation since');
+assert.equal(needsStateSave({ botBlock: 'challenge', savedState: '/x/_storage-state.json', escalatedAtCapture: true }), true, 'a capture-time escalation re-saves: the admitted session is the worker\'s');
+assert.equal(needsStateSave({ saveState: true, savedState: '/x/_storage-state.json', escalatedAtCapture: true }), true, '--save-state follows the same rule');
+assert.equal(needsStateSave({ botBlock: null, saveState: false, escalatedAtCapture: true }), false, 'no cleared challenge and no --save-state → nothing to save');
 assert.ok(UNPACED_DISCOVERY.has('/robots.txt') && UNPACED_DISCOVERY.has('/sitemap.aspx') && !UNPACED_DISCOVERY.has('/sitemaps/pages.xml'), 'only the ≤ 5 guessed probes skip the budget; declared children and BFS hops are paced');
 
 console.log('crawl-signals test: ok');

@@ -9,7 +9,7 @@
 // Runs without playwright: crawl.mjs imports it lazily inside main().
 // Usage: node plugins/stardust/evals/fixtures/crawl-slugify.test.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
-import { slugify, assignSlugs } from '../../skills/extract/scripts/crawl.mjs';
+import { slugify, assignSlugs, MOBILE_SHOT_SUFFIX } from '../../skills/extract/scripts/crawl.mjs';
 
 const O = 'https://example.com';
 assert.equal(slugify(`${O}/`), 'index', 'root → index');
@@ -34,5 +34,19 @@ assert.match(slugs[3], /^p-[0-9a-f]{4}$/, 'query variant 2 is a distinct page');
 assert.equal(slugs[4], 'index');
 assert.deepEqual(assignSlugs(urls), slugs, 'assignment is deterministic');
 assert.equal(new Set(slugs).size, slugs.length, 'no two pages share a slug');
+
+// the mobile shot is <slug>-360.png (extract/SKILL.md --mobile): a real page at
+// /foo-360 must never share that file with /foo's 360 shot, whichever is queued first
+assert.equal(MOBILE_SHOT_SUFFIX, '-360');
+const noShotClash = (ss) => ss.every((s) => !ss.includes(`${s}${MOBILE_SHOT_SUFFIX}`));
+const a = assignSlugs([`${O}/promo`, `${O}/promo-360`, `${O}/index-360`]);
+assert.equal(a[0], 'promo'); assert.match(a[1], /^promo-360-[0-9a-f]{4}$/, 'a later page whose slug is <claimed>-360 is disambiguated');
+assert.equal(a[2], 'index-360', 'index-360 is free while no page claims index');
+assert.ok(noShotClash(a), `no slug may equal another slug + -360: ${a}`);
+const b = assignSlugs([`${O}/promo-360`, `${O}/promo`]);
+assert.equal(b[0], 'promo-360', 'first claimant keeps its clean slug even when it ends in -360');
+assert.match(b[1], /^promo-[0-9a-f]{4}$/, 'the page whose 360 shot would collide with an existing slug is disambiguated instead');
+assert.ok(noShotClash(b), `reverse order too: ${b}`);
+assert.deepEqual(assignSlugs([`${O}/promo-360`, `${O}/promo`]), b, 'deterministic');
 
 console.log('crawl-slugify test: ok');

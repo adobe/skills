@@ -149,11 +149,12 @@
  *   overrides) keeps two live tools off one origin at once — the recorded
  *   "two launches within a minute, both challenged" class; the lock is
  *   re-keyed to the post-redirect host (apex→www) so it matches the budget's.
- * Exit codes: 0 done (per-page failures are in the log) · 2 fatal (incl.
- *   LiveLockError: another live tool holds stardust/.work/live-<host>.lock) ·
- *   3 BotChallengeError (tier 3 still challenged, or --solve-wait expired —
- *   never captured as content).
- * Exports (for evals/fixtures/*.test.mjs): slugify, assignSlugs, mergeCrawlLog,
+ * Exit codes (exitCodeOf): 0 done (per-page failures are in the log) ·
+ *   1 LiveLockError (another live tool holds stardust/.work/live-<host>.lock —
+ *   wait for it, or STARDUST_LIVE_FORCE=1) · 2 fatal · 3 BotChallengeError
+ *   (tier 3 still challenged, or --solve-wait expired — never captured as content).
+ * Exports (for evals/fixtures/*.test.mjs): slugify, assignSlugs, MOBILE_SHOT_SUFFIX,
+ *   exitCodeOf, noteRateLimited, needsStateSave, mergeCrawlLog,
  *   RUN_LEVEL_DISCOVERY, TIERS, tierOf, captureQualityOf, SHOT_WRAP_PX,
  *   OVERLAY_FLAG_PCT, discoverInventory, parseRobots, parseCookieFlag,
  *   challengeMarker, CHALLENGE_PHRASE, HostBudget, BUDGET_DEFAULT,
@@ -265,14 +266,18 @@ async function readStatePages(args) {
 // concurrent workers write the same files (silent last-writer-wins) and the
 // duplicate post-pass can mark a page duplicateOf itself. Assign slugs once,
 // up front: first claimant keeps the clean slug, later distinct pages get a
-// deterministic -<hash4> suffix.
+// deterministic -<hash4> suffix. A claimed slug also reserves `<slug>-360` —
+// the mobile shot's file base (screenshotMobile) — so a real page at /foo-360
+// and /foo's 360 shot never share assets/screenshots/foo-360.png.
+export const MOBILE_SHOT_SUFFIX = '-360';
 export function assignSlugs(urls) {
   const bySlug = new Map(); // slug -> dedupeKey of first claimant
+  const taken = (s) => bySlug.has(s) || bySlug.has(`${s}${MOBILE_SHOT_SUFFIX}`) || (s.endsWith(MOBILE_SHOT_SUFFIX) && bySlug.has(s.slice(0, -MOBILE_SHOT_SUFFIX.length)));
   return urls.map((u) => {
     const base = slugify(u);
     const key = dedupeKey(u);
-    if (!bySlug.has(base)) { bySlug.set(base, key); return base; }
     if (bySlug.get(base) === key) return base; // same page (shouldn't recur post-dedupe)
+    if (!taken(base)) { bySlug.set(base, key); return base; }
     const suffix = crypto.createHash('sha1').update(key).digest('hex').slice(0, 4);
     const alt = `${base}-${suffix}`;
     if (!bySlug.has(alt)) bySlug.set(alt, key);
@@ -429,6 +434,28 @@ function acquireLiveLock(args, host) {
   process.on('exit', release);
   return { file, host, release };
 }
+// exit code for a fatal error (main().catch): a held live lock is "wait for the
+// other tool" (1), a challenge is 3, anything else 2.
+export function exitCodeOf(e) {
+  if (e?.errorClass === 'BotChallengeError') return 3;
+  if (e?.errorClass === 'LiveLockError') return 1;
+  return 2;
+}
+// a BARE 429 in the pool: the ceiling is halved by the caller; the pool drops to
+// ONE worker from here on (other workers finish their page and stop pulling),
+// and the escalated pass / log inherit concurrency 1.
+export function noteRateLimited(args) {
+  args.throttled = true;
+  if (args.concurrency > 1) args.concurrency = 1;
+  return args;
+}
+// when to (re)write <out>/_storage-state.json: on a cleared challenge or
+// --save-state, and again after a capture-time escalation — the state saved
+// before the pool is the PRE-escalation one; the admitted session lives in the
+// worker context that cleared the challenge.
+export function needsStateSave({ botBlock = null, saveState = false, savedState = null, escalatedAtCapture = false } = {}) {
+  return !!((botBlock || saveState) && (!savedState || escalatedAtCapture));
+}
 // _provenance.storageState / discovery.storageState — true only when an ADMITTED
 // session was reused: a cleared challenge, a loaded reserved/explicit file, or a
 // probe clone that actually carries cookies (a 0-cookie clone reuses nothing).
@@ -448,8 +475,8 @@ function resolveStorageStateFile(args) {
     return cookies.some((c) => { const d = String(c.domain || '').toLowerCase().replace(/^\./, ''); return d && (host === d || host.endsWith(`.${d}`)); }) ? file : null;
   } catch { return null; }
 }
-async function saveStorageStateFile(context, file) {
-  const state = await context.storageState();
+async function saveStorageStateFile(context, file) { return writeStorageStateFile(await context.storageState(), file); }
+async function writeStorageStateFile(state, file) {
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, JSON.stringify(state, null, 2), { mode: 0o600 });
   return (state.cookies || []).length;
@@ -1403,7 +1430,7 @@ async function capturePage(context, url, slug, args, isEntry = false) {
   if (status === 429) {
     const ra = parseRetryAfter(resp.headers()['retry-after']);
     const waitMs = args.budget ? args.budget.rateLimited(ra) : Math.min(60, ra || 30) * 1000;
-    args.throttled = true;
+    noteRateLimited(args);
     console.error(`[crawl] HTTP 429 (rate limit, no edge signature) on ${slug} — pool → 1 worker, ceiling halved${args.budget ? ` (${args.budget.navPerMin}/min, ≥ ${args.budget.minGapMs / 1000} s)` : ''}; retrying once in ${Math.round(waitMs / 1000)} s`);
     await page.waitForTimeout(waitMs);
     if (args.budget) await args.budget.take();
@@ -1727,12 +1754,14 @@ async function main() {
   const dynamicRollup = newDynamicRollup();
   const pending = new Set(queue.map((_, i) => i)); // neither captured nor terminally failed
   let escalate = 0; // next tier to relaunch at, set by the first challenged worker
+  let admittedState = null; // storageState of a worker context that captured pages AFTER a capture-time escalation
   async function runPool() {
     const order = [...pending];
     let cursor = 0;
     escalate = 0;
     async function worker(wi) {
       const ctx = await newContext(browser, stealth, ctxExtra, cookiesFor(args));
+      let captured = 0;
       while (cursor < order.length && !escalate && (wi === 0 || !args.throttled)) {
         const idx = order[cursor];
         cursor += 1;
@@ -1764,7 +1793,7 @@ async function main() {
           await writeFile(file, JSON.stringify({ _provenance, slug, url: recordUrl, renderedBy: _provenance.renderedBy, fetchedAt: _provenance.fetchedAt, ...rest }, null, 2));
           results[idx] = { slug, file, hash };
           pending.delete(idx);
-          ok += 1;
+          ok += 1; captured += 1;
           const s = rec._signals;
           const dy = rec.dynamic?.summary || {};
           const warn = [s.spaShellSuspect && 'SPA-SHELL?', s.trackingOnlyMedia && 'TRACKING-PIXEL-ONLY', s.filteredInterstitials && `filtered:${s.filteredInterstitials}`, s.captureQuality === 'degraded' && 'DEGRADED', s.overlayCoverPct > OVERLAY_FLAG_PCT && 'OVERLAY?', s.screenshotMode !== 'fullPage' && `shot:${s.screenshotMode}`, dy.sameSiteEndpoints && `data-endpoints:${dy.sameSiteEndpoints}`, dy.searchForms && 'SEARCH-FORM', dy.hydrated && 'HYDRATED'].filter(Boolean).join(' ');
@@ -1781,6 +1810,8 @@ async function main() {
           console.error(`[crawl] FAIL ${slug}  ${err.errorClass || 'Error'}: ${err.message}${hint}`);
         }
       }
+      // the admitted session after a capture-time escalation lives HERE, not in the probe context saved before the pool
+      if (captured && !escalate && escalations.some((e) => e.at === 'capture')) admittedState = await ctx.storageState().catch(() => admittedState);
       await ctx.close();
     }
     await Promise.all(Array.from({ length: Math.min(args.concurrency, order.length) }, (_, wi) => worker(wi)));
@@ -1802,6 +1833,14 @@ async function main() {
   // the tier that actually captured is the one re-runs and downstream
   // instruments start at (ia-extraction.md § _crawl-log.json shape)
   log.discovery.fetchTechnique = technique;
+  log.discovery.concurrency = args.concurrency; // 1 after a bare 429 / escalation — what the pool actually ran at the end (liveBudget.rateLimits says why)
+  if (admittedState && needsStateSave({ botBlock, saveState: args.saveState, savedState, escalatedAtCapture: true })) {
+    try {
+      const n = await writeStorageStateFile(admittedState, storageStatePath(args));
+      savedState = storageStatePath(args); log.discovery.storageStateFile = savedState; log.discovery.storageState = true;
+      console.error(`[crawl] storage state: saved ${savedState} after the capture-time escalation (${n} cookies; the pre-escalation state was not the admitted one)`);
+    } catch (e) { console.error(`[crawl] WARN could not save storage state: ${e.message}`); }
+  }
   log.discovery.liveBudget = { ...args.budget.toJSON(), ...(args.budget.rateLimits ? { rateLimits: args.budget.rateLimits } : {}), waitedMs: Math.round(args.budget.waitedMs) };
   if (args.budget.rateLimits) persistBudget(args, host, args.budget); // the learned ceiling outlives this run
   if (botBlock) Object.assign(log.discovery, { botBlock, escalations });
@@ -1877,6 +1916,6 @@ if (entry === import.meta.url) {
   main().catch((e) => {
     console.error(`[crawl] fatal: ${e.errorClass || 'Error'}: ${e.message}`);
     try { if (persistOnFatal) persistOnFatal(); } catch { /* best effort */ }
-    process.exit(e.errorClass === 'BotChallengeError' ? 3 : 2);
+    process.exit(exitCodeOf(e));
   });
 }
