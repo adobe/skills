@@ -40,7 +40,9 @@
 //     MULTI-LINE INSTRUMENT declaration (a reformat never disables the
 //     check); a live sidecar on an older version is re-taken; a build sidecar
 //     on another version than the cached live one re-takes live once (safety
-//     net); an unreadable version prints a WARN;
+//     net); an unreadable version prints a WARN — except on a --force round
+//     (imported extract capture) where the check does not apply; --invalidate
+//     on an unparseable record exits 1 and marks nothing;
 //   --help exits 0.
 //
 // Usage: node plugins/stardust/evals/lint/gate-sh-fixtures.mjs  (exit 1 on findings)
@@ -68,7 +70,7 @@ mkdirSync(join(project, 'stardust', 'replica'), { recursive: true });
 // process's event loop, so an in-process server would never answer gate.sh's
 // identity curl.
 const server = spawn(process.execPath, ['-e', `
-  const s = require('node:http').createServer((q, r) => { r.setHeader('content-type', 'text/html'); r.end('<html><body><h1>fresh drift noise noise2 cap rec orphan regime stale proposed</h1></body></html>'); });
+  const s = require('node:http').createServer((q, r) => { r.setHeader('content-type', 'text/html'); r.end('<html><body><h1>fresh drift noise noise2 cap rec orphan regime stale forced proposed</h1></body></html>'); });
   s.listen(0, '127.0.0.1', () => process.stdout.write(String(s.address().port)));
 `], { stdio: ['ignore', 'pipe', 'inherit'] });
 const port = await new Promise((r) => { server.stdout.once('data', (d) => r(String(d).trim())); });
@@ -191,6 +193,11 @@ try {
   check(r.status === 0 && /counted prototype rounds now 3\/3 \(excluded: 1\)/.test(r.out) && rec('cap', 'iter2')?.excluded?.reason === 'consent dialog present in the build capture', `--invalidate must mark the record excluded and reprint the count\n${r.out}`);
   r = gate('cap', ['--invalidate', 'nope', 'x']);
   check(r.status === 1, `--invalidate on a missing record must exit 1, got ${r.status}`);
+  // defect: a record that exists but is not JSON made the node step fail silently — INV_REGIME empty, "counted  rounds now 0/3", exit 0, nothing marked
+  writeFileSync(join(C, 'gate-junk.json'), '{ not json');
+  r = gate('cap', ['--invalidate', 'junk', 'x']);
+  check(r.status === 1 && /not readable JSON/.test(r.out) && !/rounds now/.test(r.out), `--invalidate on an unparseable record must exit 1 and say so, never print a count of nothing\n${r.out}`);
+  rmSync(join(C, 'gate-junk.json'));
   r = gate('cap', ['--invalidate', 'iter4', 'stale server']);
   r = gate('cap', [], { STUB_DIFFPX: '300' });
   check(r.status === 0 && rec('cap', 'iter6')?.iteration === 3, `after two exclusions the next default label is the free iter6 and counts as iteration 3\n${r.out}`);
@@ -250,6 +257,14 @@ try {
   r = gate('stale', ['--over-cap', 'canon-followup'], { STUB_STITCH_VERSION: '4' });
   writeFileSync(join(bin, 'stitch-shot.mjs'), stubSrc);
   check(r.status === 0 && /WARN cannot read stitch-shot's procedure version/.test(r.out), `an unreadable procedure version is said out loud, never silently disabled\n${r.out}`);
+  // defect: the same WARN printed on a --force round (imported extract capture) where the stale-procedure check is not applied at all
+  r = gate('forced');
+  check(r.status === 0, `forced round 1 captures normally\n${r.out}`);
+  const fc = readJson(sidecar('forced')); fc.source = 'extract-capture'; writeFileSync(sidecar('forced'), JSON.stringify(fc, null, 2));
+  writeFileSync(join(bin, 'stitch-shot.mjs'), stubSrc.replace(/INSTRUMENT/g, 'INSTR'));
+  r = gate('forced');
+  writeFileSync(join(bin, 'stitch-shot.mjs'), stubSrc);
+  check(r.status === 0 && /IMPORTED extract capture/.test(r.out) && !/WARN cannot read/.test(r.out), `no stale-procedure WARN on a --force round — the check does not apply there\n${r.out}`);
 } finally {
   server.kill();
   rmSync(work, { recursive: true, force: true });

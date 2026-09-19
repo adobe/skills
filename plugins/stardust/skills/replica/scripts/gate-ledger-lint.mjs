@@ -9,7 +9,7 @@
  * configured breakpoint that passes the bar, or is over the bar only with
  * named-class residuals carrying artifacts[] and acceptedBy. Field ledgers
  * read by eye let `pass: true` next to Δh 28, six templates fan out on
- * numbers that fail 6/6 at 360, and "pass with an asterisk" ship. This script
+ * numbers that fail 6/6 at 360, and asterisked over-bar passes ship. This script
  * applies the gate doc's existing bars to the ledger's own numbers
  * (source-fidelity-gate.md § Pass bar: pixel ≤ 10 %, |Δh| ≤ 8 px, 0
  * structural 🔴 — restated, never re-tuned) and prints one verdict line per
@@ -130,9 +130,10 @@ export function judgeResiduals(residuals, classes) {
   const problems = new Set();
   if (!Array.isArray(residuals) || !residuals.length) { problems.add('no residuals logged'); return [...problems]; }
   for (const r of residuals) {
+    // cause = <class id | register:R-nn>[: description] — the leading token names it, the rest is free
     const cause = String(r?.cause || '').trim();
-    const id = cause.split(/[:\s]/)[0];
-    const registered = /^register:R-\d+$/i.test(cause);
+    const registered = cause.match(/^register:R-\d+(?=$|[\s:,;])/i);
+    const id = registered ? registered[0] : cause.split(/[:\s]/)[0];
     const cls = classes.get(id);
     if (!registered && !cls) problems.add('residuals unnamed');
     if (!Array.isArray(r?.artifacts) || !r.artifacts.length) problems.add('residuals without artifacts[]');

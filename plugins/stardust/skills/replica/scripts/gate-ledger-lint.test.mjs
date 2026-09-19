@@ -12,9 +12,11 @@
 //   hands-off-policy on a non-permanent class → blocked;
 //   --published on a ledger without `published` → every bp ungated, exit 0,
 //   coverage line; with one published PASS → counted;
+//   register:R-nn with a trailing description is a named cause;
+//   the gate doc's § Residual classes intro states the same cause grammar;
 //   --help exits 0; unknown flag exits 1.
 // Usage: node plugins/stardust/skills/replica/scripts/gate-ledger-lint.test.mjs
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -90,6 +92,15 @@ try {
   const p7 = ledgerFile('unnamed', { archetypes: [{ pageType: 'landing', archetype: 'home', prototype: 'x.html', motion, breakpoints: { 1440: unnamed, 360: good(1, 0) } }] });
   r = run(['--progress', p7, '--all-types']);
   check(r.status === 2 && /residuals unnamed/.test(r.out), `a residual whose cause is not a class id or register:R-nn blocks\n${r.out}`);
+  // defect: a register cause with a trailing description ("register:R-01 footer colour") split to id "register" and read as unnamed — class ids tolerate the description, so must register:R-nn
+  const registered = JSON.parse(JSON.stringify(valid)); registered.residuals[1].cause = 'register:R-01 footer link colour'; registered.residuals[1].acceptedBy = 'register:R-01';
+  const p7b = ledgerFile('registered', { archetypes: [{ pageType: 'landing', archetype: 'home', prototype: 'x.html', motion, breakpoints: { 1440: registered, 360: good(1, 0) } }] });
+  r = run(['--progress', p7b, '--all-types']);
+  check(r.status === 0 && /landing: ok — home/.test(r.out), `register:R-nn followed by a description is a named cause (same tolerance as "capture-state: …")\n${r.out}`);
+  // doc/instrument agreement: the gate doc's § Residual classes intro must state the grammar the lint applies (class id | register:R-nn), not "a diagnosed cause in the page's own terms"
+  const doc = readFileSync(join(HERE, '..', 'reference', 'source-fidelity-gate.md'), 'utf8');
+  const intro = (doc.split(/^### Residual classes\s*$/m)[1] || '').split('\n| class id')[0];
+  check(/register:R-nn/.test(intro) && !/own terms/.test(intro) && /class id from this table/.test(intro), `§ Residual classes intro must name the lint's cause grammar (class id | register:R-nn), not free-text causes\n${intro}`);
 
   // synthetic: motion inventory missing; roster from state.json pages (type with no sibling is not checked)
   const p8 = ledgerFile('motion', { archetypes: [{ pageType: 'landing', archetype: 'home', prototype: 'x.html', breakpoints: { 1440: good(1, 0), 360: good(1, 0) } }, { pageType: 'program', archetype: 'prog', prototype: 'y.html', motion, breakpoints: {} }] });

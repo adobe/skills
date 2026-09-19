@@ -234,7 +234,7 @@ if [ -n "$INVALIDATE_LBL" ]; then
 const fs = require("fs"); const [p, fix] = process.argv.slice(1);
 const j = JSON.parse(fs.readFileSync(p, "utf8")); j.excluded = { reason: fix, ts: new Date().toISOString() };
 fs.writeFileSync(p, `${JSON.stringify(j, null, 2)}\n`); process.stdout.write(j.regime || "prototype");
-' "$DIR/gate-$INVALIDATE_LBL.json" "$INVALIDATE_FIX")
+' "$DIR/gate-$INVALIDATE_LBL.json" "$INVALIDATE_FIX" 2>/dev/null) || { echo "gate.sh: --invalidate: $DIR/gate-$INVALIDATE_LBL.json is not readable JSON — nothing marked excluded, the count is unchanged" >&2; exit 1; }
   set -- $(count_rounds "$INV_REGIME")
   echo "gate.sh: round $INVALIDATE_LBL excluded from the cap (instrument-invalidated: $INVALIDATE_FIX) — counted $INV_REGIME rounds now ${1:-0}/3 (excluded: ${2:-0}). Name the same fix in the ledger."
   exit 0
@@ -352,14 +352,14 @@ fi
 # The current procedure version is READ from the instrument's INSTRUMENT
 # declaration by a whitespace/quote-tolerant parse — a reformat must not turn
 # this check off silently: when the version cannot be read the round says so
-# (WARN), and the build capture's own sidecar is cross-checked below as the
-# format-independent safety net.
+# (WARN — not on a --force round, where the check does not apply), and the
+# build capture's own sidecar is cross-checked below as the safety net.
 STITCH_VER=$(node -e '
 const src = require("fs").readFileSync(process.argv[1], "utf8");
 const m = src.match(/INSTRUMENT\s*=\s*\{[\s\S]{0,300}?\bversion\s*:\s*["\x27]?(\d+)["\x27]?/);
 process.stdout.write(m ? m[1] : "");
 ' "$HERE/stitch-shot.mjs" 2>/dev/null)
-[ -z "$STITCH_VER" ] && echo "gate.sh: WARN cannot read stitch-shot's procedure version (INSTRUMENT.version in $HERE/stitch-shot.mjs) — the stale-procedure check runs from the build sidecar only this round" >&2
+[ -z "$STITCH_VER" ] && [ -z "$FORCE" ] && echo "gate.sh: WARN cannot read stitch-shot's procedure version (INSTRUMENT.version in $HERE/stitch-shot.mjs) — the stale-procedure check runs from the build sidecar only this round" >&2
 if [ -f "$DIR/live.png.json" ] && [ -n "$STITCH_VER" ] && [ -z "$FORCE" ]; then
   OLD_VER=$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(j.source==="extract-capture"?String(process.argv[2]):String(j.instrument&&j.instrument.version||""))' "$DIR/live.png.json" "$STITCH_VER" 2>/dev/null)
   if [ "$OLD_VER" != "$STITCH_VER" ]; then
