@@ -31,7 +31,7 @@ const readLog = () => readFileSync(join(content, '.deploy-log.jsonl'), 'utf8').t
 
 const mock = await startMock();
 const run = (extra, env = {}) => new Promise((resolve) => {
-  const c = spawn(process.execPath, [CLI, '--org', 'o', '--repo', 'r', '--content', content, ...extra], { env: { ...process.env, DA_TOKEN: 'x', DEPLOY_BATCH_REPAIR_DELAY_MS: '20', ...mock.env(), ...env } });
+  const c = spawn(process.execPath, [CLI, '--org', 'o', '--repo', 'r', '--content', content, ...extra], { cwd: dir, env: { ...process.env, HOME: dir, DA_TOKEN: 'x', DEPLOY_BATCH_REPAIR_DELAY_MS: '20', ...mock.env(), ...env } });
   let stdout = ''; let stderr = '';
   c.stdout.on('data', (d) => { stdout += d; }); c.stderr.on('data', (d) => { stderr += d; });
   const t = setTimeout(() => { c.kill(); stderr += '\n[test] TIMEOUT'; }, 30000);
@@ -70,7 +70,7 @@ try {
   writeFileSync(join(content, 'a.html'), 'da-sanitise: encoded 3 entities -> content/a.html\n');
   r = await run(['--branch', 'main']);
   assert.equal(r.status, 1);
-  assert.equal(mock.requests.length, 0, 'no request for an invalid body');
+  assert.equal(mock.requests.filter((q) => !q.url.startsWith('/list/')).length, 0, 'no request for an invalid body (only the preflight smoke)');
   led = readLedger();
   assert.equal(led['/a'].status, 'body-invalid');
   assert.match(led['/a'].lastError, /^body \d+ B \/ no <main>/);

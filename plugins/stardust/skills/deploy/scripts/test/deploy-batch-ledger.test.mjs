@@ -51,7 +51,7 @@ const progressFile = join(dir, 'work', 'deploy-batch.progress.json');
 const base = ['--org', 'o', '--repo', 'r', '--branch', 'main', '--content', content, '--progress', progressFile];
 // async spawn: the mock server lives in THIS process, so a spawnSync would starve it
 const run = (extra, env = {}) => new Promise((resolve) => {
-  const c = spawn(process.execPath, [CLI, ...base, ...extra], { env: { ...process.env, DA_TOKEN: 'x', ...mock.env(), ...env } });
+  const c = spawn(process.execPath, [CLI, ...base, ...extra], { cwd: dir, env: { ...process.env, HOME: dir, DA_TOKEN: 'x', ...mock.env(), ...env } });
   let stdout = ''; let stderr = '';
   c.stdout.on('data', (d) => { stdout += d; }); c.stderr.on('data', (d) => { stderr += d; });
   const t = setTimeout(() => { c.kill(); stderr += '\n[test] TIMEOUT'; }, 30000);
@@ -60,7 +60,7 @@ const run = (extra, env = {}) => new Promise((resolve) => {
 
 try {
   // --help / --report: offline, exit 0
-  let r = spawnSync(process.execPath, [CLI, '--help'], { encoding: 'utf8', env: { ...process.env, DA_TOKEN: '' } });
+  let r = spawnSync(process.execPath, [CLI, '--help'], { encoding: 'utf8', env: { ...process.env, HOME: dir, DA_TOKEN: '' } });
   assert.equal(r.status, 0, `--help exit 0: ${r.stderr}`);
   assert.match(r.stdout, /usage:/);
 
@@ -167,6 +167,7 @@ try {
   r = await run(['--no-progress'], { DA_TOKEN: '' });
   assert.equal(r.status, 2, 'missing token is fatal (exit 2)');
   assert.match(r.stdout, /^SUMMARY deploy-batch ok=0 failed=0 exit=2 details=.* error=missing_token/m, 'fatal still prints a SUMMARY line');
+  assert.match(r.stderr, /looked in the shell, \.\/\.env, ~\/\.claude\/\.env, ~\/\.env/);
   led = readLedger();
   assert.equal(led['/c'].status, 'put-fail');
   assert.equal(Object.keys(led).length, 4);

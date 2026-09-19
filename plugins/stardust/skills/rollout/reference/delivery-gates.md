@@ -127,7 +127,10 @@ so the gates run uniformly:
   "published-origin gate NOT run"; it never invents a publish path. On
   re-auth the coordinator runs `next`, then the published-origin gate on the
   newly delivered pages, and only then flips coverage — the ledger's POST
-  codes never flip state ("Admin 200 ≠ delivered" below).
+  codes never flip state ("Admin 200 ≠ delivered" below). The driver exits 3
+  on that halt (and on an `access-restricted` delivery host — `SITE_TOKEN_<REPO>`
+  is the remedy); a content-bus reset (previously delivered pages now 404) is
+  NOT a halt — the driver warns once and re-drives them.
 - **Validate structure BEFORE deploy.** Cheap deterministic check on every authored
   file — exactly one `<h1>`, the body/`<main>`/`<footer>` wrapper, balanced
   `<div>`s — catches a truncated/garbled file before it reaches DA.
