@@ -47,9 +47,18 @@
  *     SKILL.md Phase 2.5 vision gate.
  *
  * Usage:
- *   node crawl.mjs --url https://example.com [--pages a,b,c] [--max 25] \
- *     [--out stardust/current] [--wait medium] [--no-consent-dismiss] \
- *     [--concurrency 4] [--headed[=window]]
+ *   node crawl.mjs --url https://example.com [--pages /a,/b] [--cap 25 | --all | --single] \
+ *     [--refresh slug,slug | --force] [--out stardust/current] [--wait medium] \
+ *     [--no-consent-dismiss] [--concurrency 4] [--dynamics] [--headed[=window]]
+ *
+ * Scope (ia-extraction.md § Incremental re-runs): --pages crawls exactly the
+ *   listed paths (the entry URL only when listed or when the list is empty);
+ *   discovered pages whose slug is already extracted (or beyond) in
+ *   ../state.json are skipped unless --force / --refresh names them. state.json
+ *   is read-only here; a missing file means no skip.
+ * Log (ia-extraction.md § _crawl-log.json shape): one runs[] entry per
+ *   invocation; crawl.failures is the union across runs minus slugs that later
+ *   succeeded; discovery never shrinks on a narrower re-run.
  *
  * Bot-management ladder (playwright-recipe.md § Bot-management fallback):
  *   tier 1 headless → tier 2 chrome-headless → tier 3 chrome-headed-offscreen.
@@ -79,13 +88,17 @@ const WAIT_MS = { fast: 1200, medium: 2500, slow: 5000 };
 const CRAWL_CONTEXT = { reducedMotion: 'reduce', viewport: { width: 1440, height: 900 } };
 
 function parseArgs(argv) {
-  const a = { out: 'stardust/current', max: 25, wait: 'medium', consent: true, concurrency: 4, dynamics: false };
+  const a = { out: 'stardust/current', max: 25, wait: 'medium', consent: true, concurrency: 4, dynamics: false, refresh: [], force: false, headed: 0 };
   for (let i = 2; i < argv.length; i += 1) {
     const k = argv[i];
     if (k === '--url') a.url = argv[(i += 1)];
-    else if (k === '--pages') a.pages = argv[(i += 1)].split(',').map((s) => s.trim()).filter(Boolean);
+    else if (k === '--pages') a.pages = (argv[(i += 1)] || '').split(',').map((s) => s.trim()).filter(Boolean);
     else if (k === '--out') a.out = argv[(i += 1)];
-    else if (k === '--max') a.max = Math.max(1, +argv[(i += 1)] || 25);
+    else if (k === '--max' || k === '--cap') { const n = +argv[(i += 1)]; a.max = Number.isFinite(n) && n >= 0 ? n : 25; } // 0 = no cap
+    else if (k === '--all') a.max = 0;
+    else if (k === '--single') a.max = 1;
+    else if (k === '--refresh') a.refresh = (argv[(i += 1)] || '').split(',').map((s) => s.trim()).filter(Boolean);
+    else if (k === '--force') a.force = true;
     else if (k === '--wait') a.wait = argv[(i += 1)];
     else if (k === '--no-consent-dismiss') a.consent = false;
     else if (k === '--concurrency') a.concurrency = Math.max(1, +argv[(i += 1)] || 4);
@@ -96,14 +109,35 @@ function parseArgs(argv) {
   }
   if (!a.url) throw new Error('--url is required');
   a.origin = new URL(a.url).origin;
+  a.capLabel = a.max === 0 ? 'all' : a.max;
+  if (a.max === 0) a.max = Infinity;
   return a;
 }
 
+// Slug algorithm — ia-extraction.md § Slug derivation DESCRIBES this function;
+// downstream scripts key on state.json.pages[].slug, never re-implement it.
+// Cap: a 200+-char path (deep vendor docs) overflows the 255-byte file-name
+// limit once .json/.png is appended (ENAMETOOLONG) — keep a stable 180-char
+// prefix + sha1:8 of the full slug.
+const SLUG_MAX = 200;
 const slugify = (u) => {
   const { pathname } = new URL(u);
   const s = pathname.replace(/^\/|\/$/g, '').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+  if (s.length > SLUG_MAX) return `${s.slice(0, 180).replace(/-+$/, '')}-${crypto.createHash('sha1').update(s).digest('hex').slice(0, 8)}`;
   return s || 'index';
 };
+
+// state.json is READ-ONLY for the crawler (the skill's Phase 6 writes it):
+// pages already extracted or beyond are skipped on a re-run so nothing is
+// re-hit or clobbered by accident. Missing / unreadable file → no skip.
+const EXTRACTED_OR_BEYOND = new Set(['extracted', 'directed', 'prototyped', 'approved', 'migrated']);
+async function readStatePages(args) {
+  const p = path.resolve(args.out, '..', 'state.json');
+  try {
+    const st = existsSync(p) ? JSON.parse(await readFile(p, 'utf8')) : null;
+    return new Map((st?.pages || []).filter((pg) => pg && pg.slug).map((pg) => [pg.slug, pg]));
+  } catch { return new Map(); }
+}
 
 // Slugs key the output FILES (pages/<slug>.json, screenshots/<slug>.png), but
 // distinct pages can collide on one slug: dedupeKey keeps url.search (so
@@ -238,17 +272,17 @@ function dedupeKey(href) {
 // ---- discovery: explicit pages > sitemap (validated) > BFS from nav ----
 async function discover(args, page) {
   const entry = normalizeUrl(args.url);
-  // explicit --pages: NEVER drop a listed page. The entry URL is ADDED on top
-  // (the effective cap grows by one when needed); if the total still exceeds
-  // --max, warn instead of silently evicting a requested page.
+  // explicit --pages: crawl EXACTLY the listed pages, never drop one. The entry
+  // URL is included only when listed (or when the list is empty) — a
+  // single-page recapture must not re-hit the home page every time. If the
+  // list exceeds --cap, warn instead of silently evicting a requested page.
   if (args.pages) {
     const seen = new Set();
     const listed = args.pages.map((p) => normalizeUrl(p, args.url))
       .filter((u) => { const k = dedupeKey(u); if (seen.has(k)) return false; seen.add(k); return true; });
-    const entryKey = dedupeKey(entry);
-    const urls = listed.some((u) => dedupeKey(u) === entryKey) ? listed : [entry, ...listed];
+    const urls = listed.length ? listed : [entry];
     if (urls.length > args.max) {
-      console.error(`[crawl] WARN --pages lists ${listed.length} page(s); with the entry URL the total is ${urls.length}, exceeding --max ${args.max} — crawling all of them (explicitly listed pages are never dropped)`);
+      console.error(`[crawl] WARN --pages lists ${urls.length} page(s), exceeding --cap ${args.capLabel} — crawling all of them (explicitly listed pages are never dropped)`);
     }
     return urls;
   }
@@ -525,7 +559,7 @@ function capture() {
     if (!vis(h)) return false;
     if (isInterstitial(text(h))) { filtered += 1; return false; }
     return true;
-  }).map((h) => ({ tag: h.tagName.toLowerCase(), text: text(h) })).filter((h) => h.text);
+  }).map((h) => ({ tag: h.tagName.toLowerCase(), level: +h.tagName[1], text: text(h) })).filter((h) => h.text);
 
   const main = document.querySelector('main') || document.body;
   // body paragraphs: visible, non-interstitial
@@ -880,6 +914,9 @@ async function main() {
   // Each tier gets ONE probe hit; the solve window runs at tier 3 only.
   let tier = Math.max(1, args.headed || 0, tierOf(prev.discovery?.fetchTechnique));
   let browser; let context; let probe;
+  // with --pages the probe rides the first listed page — the entry URL is not
+  // hit unless it is part of the ask.
+  const probeUrl = args.pages?.length ? normalizeUrl(args.pages[0], args.url) : args.url;
   let botBlock = null; // 'fingerprint' | 'challenge'
   const escalations = []; // { tier, block } per rejected tier
   for (;;) {
@@ -888,7 +925,7 @@ async function main() {
     probe = await context.newPage();
     let blocked = null;
     try {
-      let probeResp = await probe.goto(args.url, { waitUntil: 'domcontentloaded', timeout: tier === 1 ? 30000 : 45000 });
+      let probeResp = await probe.goto(probeUrl, { waitUntil: 'domcontentloaded', timeout: tier === 1 ? 30000 : 45000 });
       if (tier === 3) probeResp = await clearChallenge(probe, probeResp);
       if (isChallengeResponse(probeResp)) blocked = { kind: 'challenge', status: probeResp.status() };
     } catch (err) {
@@ -926,21 +963,43 @@ async function main() {
     if (landed.origin !== args.origin) {
       originRedirect = { from: args.origin, to: landed.origin };
       console.error(`[crawl] origin redirect ${args.origin} -> ${landed.origin} — adopting post-redirect origin`);
+      args.url = new URL(new URL(args.url).pathname + new URL(args.url).search, landed.origin).href;
       args.origin = landed.origin;
-      args.url = landed.href;
     }
   } catch { /* keep declared origin */ }
 
   const urls = await discover(args, probe);
+  const statePages = await readStatePages(args);
+  // --refresh <slug,…>: a named slug outside this run's list is appended from
+  // its state.json URL, so a capped-out page can be re-extracted by name.
+  for (const slug of args.refresh) {
+    const sp = statePages.get(slug);
+    if (!sp) { console.error(`[crawl] WARN --refresh ${slug}: not in state.json — nothing to refresh by that name`); continue; }
+    if (sp.url && !urls.some((u) => dedupeKey(u) === dedupeKey(normalizeUrl(sp.url)))) urls.push(normalizeUrl(sp.url));
+  }
   // favicon rides the probe page (already on the entry URL) — runs in every
   // mode, so bounded extracts can't silently drop it (CEN-4).
   const favicon = await captureFavicon(probe, args);
   if (favicon) console.error(`[crawl] favicon captured: ${favicon.file} (${favicon.url})`);
   else console.error('[crawl] WARN no favicon captured — no link[rel~=icon] and /favicon.ico unreachable; deploy will ship the default icon unless one is provided');
   await probe.close();
-  console.error(`[crawl] technique=${technique} pages=${urls.length}`);
 
-  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...(botBlock ? { botBlock, escalations } : {}), ...(originRedirect ? { originRedirect } : {}) }, consent: { method: args.consent ? 'auto' : 'skipped' }, favicon: favicon || null, crawl: { failures: [] } };
+  // scope: skip slugs already extracted (or beyond) unless --force, named by
+  // --refresh, or explicitly listed with --pages (an explicit ask is never skipped).
+  const allSlugs = assignSlugs(urls);
+  const explicit = new Set((args.pages || []).map((p) => dedupeKey(normalizeUrl(p, args.url))));
+  const skipped = [];
+  const queue = urls.map((url, i) => ({ url, slug: allSlugs[i] })).filter(({ url, slug }) => {
+    if (args.force || args.refresh.includes(slug) || explicit.has(dedupeKey(url))) return true;
+    const sp = statePages.get(slug);
+    if (sp && EXTRACTED_OR_BEYOND.has(sp.status)) { skipped.push({ slug, url, status: sp.status }); return false; }
+    return true;
+  });
+  if (skipped.length) console.error(`[crawl] skipping ${skipped.length} already-extracted page(s) (--force or --refresh <slug> to redo): ${skipped.map((x) => x.slug).join(', ')}`);
+  console.error(`[crawl] technique=${technique} discovered=${urls.length} queued=${queue.length}`);
+
+  const startedAt = new Date().toISOString();
+  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...(botBlock ? { botBlock, escalations } : {}), ...(originRedirect ? { originRedirect } : {}), ...(skipped.length ? { skippedExtracted: skipped } : {}) }, consent: { method: args.consent ? 'auto' : 'skipped' }, favicon: favicon || null, crawl: { startedAt, finishedAt: null, successes: 0, failures: [] } };
   let ok = 0;
   await context.close();
 
@@ -949,17 +1008,15 @@ async function main() {
   // fresh context is covered without cross-context cookie sharing.
   // During capture we only RECORD content hashes (indexed by queue position);
   // duplicate attribution happens in a deterministic post-pass below.
-  const results = new Array(urls.length).fill(null); // { slug, file, hash } per queue index
+  const results = new Array(queue.length).fill(null); // { slug, file, hash } per queue index
   const dynamicRollup = newDynamicRollup();
-  const slugs = assignSlugs(urls);
   let nextIdx = 0;
   async function worker() {
     const ctx = await newContext(browser, stealth);
-    while (nextIdx < urls.length) {
+    while (nextIdx < queue.length) {
       const idx = nextIdx;
       nextIdx += 1;
-      const url = urls[idx];
-      const slug = slugs[idx];
+      const { url, slug } = queue[idx];
       try {
         const rec = await capturePage(ctx, url, slug, args);
         if (rec.dynamic) rollupDynamic(dynamicRollup, rec.dynamic, slug);
@@ -996,7 +1053,7 @@ async function main() {
     }
     await ctx.close();
   }
-  await Promise.all(Array.from({ length: Math.min(args.concurrency, urls.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(args.concurrency, queue.length) }, worker));
   await browser.close();
 
   // cross-page duplicate (detail == listing) detection — deterministic post-pass
@@ -1017,9 +1074,33 @@ async function main() {
     log.dynamicSurface = finalizeDynamic(dynamicRollup);
     console.error(`[crawl] dynamic surface (reach): ${log.dynamicSurface.endpoints.filter((e) => e.sameSite).length} same-site data endpoints, ${log.dynamicSurface.pagesWithSearchForm} pages with a search form, ${log.dynamicSurface.pagesHydrated} hydrated — depth + classification: stardust:dynamics`);
   }
-  // merge into existing _crawl-log.json if present
+  // merge into the existing _crawl-log.json — append-only across runs:
+  //   * crawl.failures = union of earlier failures and this run's, minus slugs
+  //     that succeeded now (a failed page keeps its previous record on disk —
+  //     nothing here deletes files);
+  //   * discovery never shrinks: a --pages / narrower re-run keeps the earlier
+  //     block and refreshes only the ladder fields;
+  //   * runs[] gets one entry per invocation (args, counts, failed slugs).
+  const failedNow = new Set(log.crawl.failures.map((x) => x.slug));
+  const okNow = new Set(results.filter(Boolean).map((r) => r.slug));
+  const carried = (prev.crawl?.failures || []).filter((x) => !okNow.has(x.slug) && !failedNow.has(x.slug));
+  log.crawl.failures = [...carried, ...log.crawl.failures];
+  log.crawl.successes = ok;
+  log.crawl.finishedAt = new Date().toISOString();
+  if (prev.discovery && (prev.discovery.count || 0) > log.discovery.count) {
+    log.discovery = { ...prev.discovery, fetchTechnique: technique, ...(botBlock ? { botBlock, escalations } : {}) };
+  }
+  log.runs = [...(Array.isArray(prev.runs) ? prev.runs : []), {
+    at: startedAt,
+    args: { url: args.url, pages: args.pages || null, cap: args.capLabel, wait: args.wait, concurrency: args.concurrency, dynamics: args.dynamics, refresh: args.refresh, force: args.force, headed: args.headed || null },
+    technique,
+    discovered: urls.length,
+    skipped: skipped.length,
+    captured: ok,
+    failed: [...failedNow],
+  }];
   await writeFile(logPath, JSON.stringify({ ...prev, ...log }, null, 2));
-  console.error(`[crawl] done. ${ok}/${urls.length} captured, ${log.crawl.failures.length} failed. log: ${logPath}`);
+  console.error(`[crawl] done. ${ok}/${queue.length} captured, ${failedNow.size} failed (${log.crawl.failures.length} open across runs). log: ${logPath}`);
 }
 
 main().catch((e) => { console.error(`[crawl] fatal: ${e.errorClass || 'Error'}: ${e.message}`); process.exit(e.errorClass === 'BotChallengeError' ? 3 : 2); });

@@ -13,7 +13,7 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 |---|---|---|---|
 | Setup 1–4 | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/extract/scripts/crawl.mjs` → `stardust/scripts/crawl.mjs`; origin-collision and flow guard; consent pre-flight; bot-management probe | flow stamped before a migration crawl | `_crawl-log.json#consent`, `#discovery.fetchTechnique` |
 | 1 Discovery | sitemap → BFS; junk filter; cap via `--cap <N>` / `--all` / `--pages <slugs>` / `--single` | informational summary, no confirmation gate | `stardust/current/_crawl-log.json` |
-| 2 Per-page extraction | `node stardust/scripts/crawl.mjs --url <origin> [--pages …] [--max N] [--concurrency N] [--wait <mode>] [--dynamics]` | live-render evidence contract; synthesis is a Phase 2 failure | `current/pages/<slug>.json` + `.html`, `assets/screenshots/<slug>.png`, `assets/media/`, `state.json` page → `extracted` |
+| 2 Per-page extraction | `node stardust/scripts/crawl.mjs --url <origin> [--pages …] [--cap N \| --all \| --single] [--refresh <slug,…> \| --force] [--headed] [--concurrency N] [--wait <mode>] [--dynamics]` | live-render evidence contract; synthesis is a Phase 2 failure | `current/pages/<slug>.json` + `.html`, `assets/screenshots/<slug>.png`, `assets/media/`, `state.json` page → `extracted` |
 | 2.5 Vision verification | look at each screenshot against its record; escalation ladder (wait mode → next bot-management tier → fresh context) | verdict `ok` / `recaptured` / `suspect` | `_crawl-log.json#visionCheck[]` |
 | 3 Brand-surface extraction | aggregate across all extracted pages (+ brand-source pages) | source citation per value | `current/_brand-extraction.json`, `assets/logo.<ext>`, `assets/favicon.<ext>` |
 | 4 Seed current-state docs | author directly from impeccable's format specs (no `$impeccable init` / `document`) | provenance block first | `current/PRODUCT.md`, `current/DESIGN.md`, `current/DESIGN.json` |
@@ -25,7 +25,7 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 |---|---|
 | Setup 1, 4 | `reference/playwright-recipe.md` § Browser configuration · § Bot-management fallback |
 | Setup 3 | `reference/playwright-recipe.md` § Pre-flight: consent dismissal |
-| 1 | `reference/ia-extraction.md` § Discovery order · § Junk-page filter · § Page selection · § `_crawl-log.json` shape |
+| 1 | `reference/ia-extraction.md` § Discovery order · § Junk-page filter · § Page selection · § Incremental re-runs · § `_crawl-log.json` shape |
 | 2 | `reference/playwright-recipe.md` § Wait modes · § Capture list · § Response validation · `reference/current-state-schema.md` § Live-render evidence |
 | 3 | `reference/brand-surface.md` § Aggregation scope · § System components · § Voice |
 | 4 | `skills/stardust/reference/artifact-map.md` § Provenance shapes |
@@ -49,20 +49,22 @@ critique, and it does not modify the live site. It writes only under
 - `<url>` — required. The origin to crawl. Examples: `https://example.com`,
   `https://example.com/shop`. A path narrows the same-origin crawl to
   that subtree.
-- `--cap <N>` — optional. Override the default 5-page cap. The cap
-  is intentionally small — a 5-page sample (home + four IA
-  pillars/templates) is enough for cross-page brand aggregation,
-  system-component detection, and the brand-review HTML; lift it
-  (e.g. `--cap 25`) when a deeper crawl is genuinely needed.
+- `--cap <N>` (alias `--max`) — optional. Override the default 5-page
+  cap: a 5-page sample (home + four IA pillars/templates) is enough
+  for cross-page brand aggregation, system components and the
+  brand-review HTML; lift it (e.g. `--cap 25`) for a deeper crawl.
 - `--all` — optional. Lift the cap entirely; extract every
   discovered page after junk filtering. Equivalent to `--cap 0`.
-  Use when the user spontaneously asks for a full crawl.
-- `--pages <slug,slug,...>` — optional. Restrict the crawl to specific
-  paths (slugs derived per `reference/ia-extraction.md`). Bypasses
-  the cap.
-- `--refresh <slug>` — optional. Re-extract one page that already exists
-  in `state.json`.
-- `--single` — optional. Equivalent to `--cap 1`. Useful for testing.
+- `--pages <path,path,...>` — optional. Crawl exactly these paths
+  (never skipped, never dropped; the entry URL only when listed).
+  Bypasses the cap.
+- `--refresh <slug,…>` / `--force` — optional. Re-extract the named
+  pages / every page in scope; by default pages already `extracted`
+  in `state.json` are skipped (`reference/ia-extraction.md`
+  § Incremental re-runs).
+- `--single` — optional. Equivalent to `--cap 1`.
+- `--headed` — optional. Start the bot-management ladder at tier 2
+  (`--headed=window`: tier 3); re-runs resume the recorded tier.
 - `--wait <fast|medium|spec|auto>` — optional. Wait strategy per page.
   Default `medium`. See `reference/playwright-recipe.md` § Wait modes.
 - `--no-junk-filter` — optional. Disable the default junk-page filter
@@ -149,7 +151,7 @@ Additional checks for this sub-command:
    SPA-shell flag, modal `textContent` capture, tracking-pixel
    discounting, cross-page duplicate detection). Prefer invoking it
    (`node skills/extract/scripts/crawl.mjs --url <origin> [--pages …]
-   [--max N] [--concurrency N]`) over hand-rolling a Playwright
+   [--cap N] [--concurrency N]`) over hand-rolling a Playwright
    script per run; extend
    its in-page `capture()` to cover any recipe field it doesn't yet
    emit.
@@ -164,9 +166,7 @@ Additional checks for this sub-command:
    crawling: the flow is chosen and stamped there, and a keep-design
    ask enters through `replica` (which invokes this skill with `--prep`
    itself). A bare `extract <url>` for a redesign, audit or uplift is
-   unaffected. (Recorded: `extract` on a raw URL as the entry of a
-   same-design migration; the agent then built its own importer beside
-   `replica`.)
+   unaffected.
 3. **Browser contexts.** Open a fresh `BrowserContext` per capture
    worker (§ Concurrency; default 4). Run the **consent dismissal
    pre-flight** per `reference/playwright-recipe.md` § Pre-flight:
@@ -212,7 +212,7 @@ Discover the page inventory before crawling. Procedure in
    $stardust extract https://example.com              # default 5 pages
    $stardust extract https://example.com --cap 25     # bump to 25
    $stardust extract https://example.com --all        # lift the cap
-   $stardust extract https://example.com --pages home,about,pricing
+   $stardust extract https://example.com --pages /,/about,/pricing
    $stardust extract https://example.com --single     # just the entry URL
    ```
 
@@ -686,7 +686,7 @@ this in the user report; do not engineer around it.
 - **Network failure mid-crawl.** Continue, record in `_crawl-log.json`,
   end with a partial state. State.json reflects only successfully
   extracted pages. User can re-run; already-extracted pages are
-  skipped unless `--refresh <slug>`.
+  skipped unless `--refresh <slug,…>` / `--force`.
 - **HTTP 4xx/5xx, non-HTML content, soft-404s.** Validated explicitly
   per `reference/playwright-recipe.md` § Response validation. Each
   produces a distinct error class (`HTTPError`, `ContentTypeError`,
