@@ -179,7 +179,7 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    — the authoritative form of the image-fidelity gate below.
 
    **Chrome guard set.** Before chrome is signed off, every top-level trigger is
-   opened on the deployed page (`chrome-parity --open <sel>`) and the open-state
+   opened on the deployed page (by hand, in the Playwright re-probe) and the open-state
    crop passes the same bar as the rest-state crop (#115); `aria-current="page"`
    is set by the header block; a page on a multi-variant site names its
    `nav:`/`footer:` rows (P1 `chrome-variant`, P2 `chrome-variant-count`) —
@@ -247,7 +247,8 @@ content; the publish report names the 2 h code-cache window end (`skills/deploy/
 The driver and every batch run in the background; `stardust/.work/deploy/deploy-batch.progress.json`
 is the progress file (`skills/stardust/scripts/progress.mjs read <file>`) and its
 stdout `SUMMARY` line the completion; after a blip, re-run the same command.
-Then reconcile the ledger into coverage with `update-coverage.mjs`.
+Then reconcile the ledger into coverage in one pass — `update-coverage.mjs --from-ledger
+<content>/.deploy-ledger.json` (merge rules: `reference/coverage-model.md` § Page delivery status lifecycle).
 Every wave agent follows `skills/stardust/reference/fan-out.md` § Worker contract
 (liveness, resume-once, finisher) and § Scope and type of delegated agents; every
 shell loop, runner and delivery step in a wave follows

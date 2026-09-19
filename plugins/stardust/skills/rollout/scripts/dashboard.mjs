@@ -15,17 +15,19 @@
  *
  * Emits dashboard/index.html (self-contained, no external JS) + dashboard/data.json.
  * Usage: node skills/rollout/scripts/dashboard.mjs [--out <rolloutDir>]
+ * Exit: 0 written · 2 coverage missing (run inventory.mjs first)
  */
 import { join } from 'node:path';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { readJSON, writeJSON } from './lib.mjs';
 
+if (process.argv.includes('--help')) { console.log('Usage: node skills/rollout/scripts/dashboard.mjs [--out <rolloutDir>]\n  exit 0 written · 2 coverage missing'); process.exit(0); }
 const i = process.argv.indexOf('--out');
 const OUT = i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : 'stardust/rollout';
 
 const config = readJSON(join(OUT, 'rollout.json'), {});
 const pagesDoc = readJSON(join(OUT, 'coverage', 'pages.json'));
-if (!pagesDoc) { console.error('rollout dashboard: run inventory.mjs first.'); process.exit(1); }
+if (!pagesDoc) { console.error('rollout dashboard: run inventory.mjs first.'); process.exit(2); }
 const covPages = pagesDoc.pages || [];
 const templates = (readJSON(join(OUT, 'coverage', 'templates.json'), {}).templates) || [];
 const blocks = (readJSON(join(OUT, 'coverage', 'blocks.json'), {}).blocks) || [];

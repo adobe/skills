@@ -54,6 +54,14 @@ page in verify (default `fail`).
 - **failed** — a delivery error; `error` carries the reason. Non-fatal to the run.
 - **stale** — was deployed/verified, but `migrate` re-emitted the page (its
   `sourceHash` changed). Needs re-delivery.
+- **Ledger reconcile** — `update-coverage --from-ledger <content/.deploy-ledger.json>`
+  folds a `deploy-batch` run into the rows in one pass (replaces the per-page
+  calls): ledger `live | previewed` → `deployed` only from `pending | converting |
+  failed | stale` (`verified` is never downgraded, `content-pending` untouched);
+  `*-fail` → `failed` with the ledger's `lastError`; any other ledger status is no
+  verdict. The ledger path is matched to `path` | `deployedPath` (`/index` ≡ `/`);
+  a match by source slug (`/about.jsp` ↔ `/about`) carries `deployedPath`; a
+  ledger path with no row is listed, never invented. The ledger is read-only here.
 
 ## Artifact type + fidelity tier (orthogonal to status)
 
@@ -161,8 +169,9 @@ against a local export or the migrated tree.
   `verified`.
 - **Exit.** 0 · 1 iff a row is `failed` (advisory classes never flip it) ·
   2 = usage (no `--base`/`--root`), coverage missing (run `inventory.mjs`
-  first — was exit 1; moved so 1 means only "a row failed"), or a page left
-  `unverified` by throttling.
+  first — the family precondition code, shared by `assemble`, `optimize`,
+  `dashboard` and `update-coverage`; `redirects` alone keeps 1, its 2 being the
+  shadow gate), or a page left `unverified` by throttling.
 - **Report.** stdout = counts + the ranked class table, ≤ 60 lines
   (`../../stardust/reference/context-hygiene.md` § Runner reports), nothing per
   page unless `--verbose`. `--report <dir>` (default `verify/`; `verify/slug-<s>/`

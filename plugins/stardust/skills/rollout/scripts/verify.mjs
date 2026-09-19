@@ -18,7 +18,7 @@
  *   --all              every DELIVERED row (deployed | verified | failed | stale). Rows
  *                      that were never delivered (pending | content-pending |
  *                      converting) have nothing to GET: they are counted on one
- *                      summary line (`not delivered: N (skipped)`) and never written —
+ *                      summary line (`not delivered: N (skipped)`, N > 0 only) and never written —
  *                      a skipped row is "no verdict", not a FAIL. Offline `--root`
  *                      verifies the tree itself, so `--all` covers every row there.
  *   --include-undelivered   with --all over HTTP: probe the undelivered rows too (the line
@@ -253,7 +253,7 @@ const head = [
   `Checked ${results.length} · ${ok} verified · ${bad.length} failed · types: ${Object.entries(byType).map(([k, v]) => `${k}:${v}`).join(' ') || '—'}`,
 ];
 if (unverified.length) head.push(`unverified: ${unverified.length} page(s) throttled (429/503 through the inline retry) — ledger untouched, exit 2: re-run verify`);
-if (ALL && !ROOT) head.push(`not delivered: ${undelivered} (${INCLUDE_UNDELIVERED ? 'probed — --include-undelivered' : 'skipped'})`);
+if (ALL && !ROOT && undelivered) head.push(`not delivered: ${undelivered} (${INCLUDE_UNDELIVERED ? 'probed — --include-undelivered' : 'skipped'})`);
 if (pendingPages) head.push(`pending-target links: ${pendingPages} page(s) (advisory — the targets are coverage rows not yet delivered)`);
 if (outsideWarnPages) head.push(`outside-inventory links: ${outsideWarnPages} page(s) (links.outsideInventory: warn)`);
 const tail = [`report: ${summaryMd} (table, then per-page rows per class) · data: ${join(REPORT, 'summary.json')}`];

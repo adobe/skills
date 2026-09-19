@@ -19,7 +19,8 @@
 //      report under verify/slug-<s>/ and leaves the site-wide verify/summary.json intact;
 //      a 429/503 is retried inline (Retry-After honoured) — a page recovering on the retry
 //      is verified, a page still throttled is `unverified` (ledger status untouched) and
-//      the run exits 2, never a failed page.
+//      the run exits 2, never a failed page; an all-delivered ledger prints no
+//      `not delivered: 0` line (the four summary lines print only when non-zero).
 //   C. Project-copy layout: verify.mjs + lib.mjs copied to <tmp>/stardust/scripts/rollout/
 //      run --help without the plugin tree; the class-report helper resolves from
 //      stardust/scripts/stardust/ once copied there, and its absence is a clear exit 2.
@@ -201,6 +202,20 @@ const lines = (s) => s.split('\n').filter((l) => l.length);
   const tj = json(join(OUT, 'verify', 'summary.json'));
   assert.equal(tj.unverified, 1); assert.ok(tj.classes.some((c) => c.class === 'throttled (429/503)' && c.severity === 'warn'), 'throttled is a warn class in the report');
   assert.ok(tj.pages.some((p) => p.slug === 't429' && p.status === 'unverified'), 'summary.json carries the unverified row');
+
+  // review pass (gap d): the four summary lines print only when non-zero — an all-delivered
+  // ledger under --all used to print `not delivered: 0 (skipped)` / `(probed — …)`
+  rmSync(OUT, { recursive: true, force: true }); mkdirSync(join(OUT, 'coverage'), { recursive: true });
+  writeFileSync(join(OUT, 'coverage', 'pages.json'), JSON.stringify({ pages: [row('new', '/new', 'deployed')] }));
+  writeFileSync(join(OUT, 'rollout.json'), JSON.stringify({ site: { liveHost: 'https://main--x--y.aem.live/' }, lastRun: {} }));
+  for (const flags of [['--all'], ['--all', '--include-undelivered']]) {
+    r = await runAsync(['--base', BASE, ...flags, '--out', OUT]);
+    assert.equal(r.status, 0, `${flags.join(' ')} on an all-delivered ledger → exit 0\n${r.stderr}`);
+    assert.doesNotMatch(r.stdout, /not delivered: 0/, `${flags.join(' ')}: no \`not delivered: 0\` line when every row is delivered`);
+    assert.doesNotMatch(readFileSync(join(OUT, 'verify', 'summary.md'), 'utf8'), /not delivered: 0/, `${flags.join(' ')}: summary.md carries no zero line either`);
+    assert.ok(!/unverified:|pending-target links:|outside-inventory links:/.test(r.stdout), 'the other three lines stay silent at zero');
+    assert.equal(json(join(OUT, 'verify', 'summary.json')).undelivered, 0, 'summary.json still records undelivered: 0');
+  }
 
   // usage errors
   seed(undefined); rmSync(join(OUT, 'rollout.json'));
