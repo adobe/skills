@@ -10,9 +10,10 @@
 //      rounding, the opacity hide, gate.sh's rc-5 branch, route.fallback),
 //      and pure-function tests on the dependency-free exports
 //      (live-session parseBlockList/blockDecision/label tables/normLabel,
-//      review-image glyphs/layouts/downscale). anchor's pairLandmarks and
-//      pixel-compare's bandOffsets/markSeams are pure too but their modules
-//      import playwright / pngjs statically, so they run in layer 2.
+//      review-image glyphs/layouts/downscale, capture-sidecar loadMasksJson,
+//      pixel-compare pairRects/buildMasks/rasterMasks and --masks-json --check).
+//      A stub node_modules lets the browser/PNG modules import here too.
+//      The stub dir is removed in a finally — a throwing import never leaks it.
 //   2. WITH DEPS — the browser-driven fixtures under
 //      lint/fixtures/replica-capture/ (a fixed header that must be hidden on
 //      chunks 2+, a static page that must stay byte-identical, an overlay
@@ -64,12 +65,19 @@ function stubDeps() {
   }
   return tmp;
 }
+const SCRIPTS = ['stitch-shot.mjs', 'anchor.mjs', 'chrome-parity.mjs', 'sibling-variance.mjs', 'motion-observe.mjs', 'pixel-compare.mjs', 'crop-compare.mjs', 'capture-sidecar.mjs', 'review-image.mjs', 'run-capped.mjs'];
 const L1 = stubDeps();
+// The stub dir goes on every exit path: the finally below covers a throwing import;
+// this hook covers an in-process process.exit() from an imported parser (an unknown
+// flag in parseArgs exits the RUNNER, not a child) — no leftover replica-capture-l1-*.
+process.on('exit', () => { try { rmSync(L1, { recursive: true, force: true }); } catch { /* gone */ } });
+// Run an imported parser in-process without letting its process.exit() kill the runner.
+const inProc = (fn) => { const ex = process.exit; process.exit = (c) => { throw new Error(`process.exit(${c})`); }; try { return fn(); } catch (e) { return { error: e.message }; } finally { process.exit = ex; } };
+async function layer1() {
 const l1 = (dir, f) => join(L1, dir, f);
 const runL1 = (dir, f, args) => spawnSync(process.execPath, [l1(dir, f), ...args], { encoding: 'utf8', cwd: L1 });
 const help = (dir, f) => { const r = runL1(dir, f, ['--help']); check(r.status === 0 && /usage/i.test(r.stdout), `${f} --help: exit ${r.status}\n${r.stderr}`); return r.stdout; };
 
-const SCRIPTS = ['stitch-shot.mjs', 'anchor.mjs', 'chrome-parity.mjs', 'sibling-variance.mjs', 'motion-observe.mjs', 'pixel-compare.mjs', 'crop-compare.mjs', 'capture-sidecar.mjs', 'review-image.mjs', 'run-capped.mjs'];
 for (const f of SCRIPTS) {
   if (!existsSync(join(REPLICA, f))) continue;
   const r = spawnSync(process.execPath, ['--check', join(REPLICA, f)], { encoding: 'utf8' });
@@ -80,7 +88,8 @@ check(spawnSync('bash', ['-n', join(REPLICA, 'gate.sh')], { encoding: 'utf8' }).
 
 // ---- stitch-shot (T19.1 / T19.2 / T14.5): parser, HELP, seam detector
 const ssHelp = help('replica', 'stitch-shot.mjs');
-for (const fl of ['--keep-pinned', '--expect-height', '--exclude-live-only', '--allow-overlay', '--allow-consent', '--no-dismiss-defaults', '--remove-text', '--block', '--consent-mode']) check(ssHelp.includes(fl), `stitch-shot --help: ${fl} missing`);
+for (const fl of ['--keep-pinned', '--expect-height', '--exclude-live-only', '--allow-overlay', '--allow-consent', '--no-dismiss-defaults', '--remove-text', '--block', '--consent-mode', '--mask-sel', '--mask-iframes', '--mask-images', '--masks-json']) check(ssHelp.includes(fl), `stitch-shot --help: ${fl} missing`);
+{ const ssSrc = src(join(REPLICA, 'stitch-shot.mjs')); const head = ssSrc.slice(0, ssSrc.indexOf('*/')).replace(/\n \* ?/g, ' '); check(!/or accepted/.test(head) && !/or accepted/.test(ssHelp) && /deny mode: no reject control, or still visible after the reject click/.test(head), '(shape) stitch-shot header + HELP: the deny-mode exit-5 condition is "still visible after the reject click" (as HELP says) — the removed "accepted" branch must not be documented'); }
 check(/Exit codes: 0 written[^]*5 invalid capture[^]*never a FAIL/.test(ssHelp), 'stitch-shot --help: exit 5 (invalid capture, no verdict) must be documented');
 check(/accept mode:[^]*(--allow-consent|consent present)/.test(ssHelp), 'stitch-shot --help: the accept-mode exit 5 (consent present, not dismissed) must be listed, not only the deny-mode one');
 const ssm = await import(pathToFileURL(l1('replica', 'stitch-shot.mjs')).href);
@@ -89,6 +98,13 @@ check(ssm.INSTRUMENT && ssm.INSTRUMENT.name === 'stitch-shot' && /^\d+$/.test(ss
   const { opts } = ssm.parseArgs(['node', 'x', 'http://h/', 'o.png', '--keep-pinned', '--expect-height', '500', '--exclude', '.a, .b', '--exclude-live-only', '--allow-overlay', '--allow-consent', '--no-dismiss-defaults', '--remove-text', 'p1', '--remove-text', 'p2', '--block', 'Chat.Example,ads', '--consent-mode', 'deny']);
   check(opts.keepPinned && opts.expectHeight === 500 && JSON.stringify(opts.exclude) === '[".a",".b"]' && opts.excludeLiveOnly && opts.allowOverlay && opts.allowConsent && opts.hideDefaults === false && JSON.stringify(opts.removeText) === '["p1","p2"]' && JSON.stringify(opts.block) === '["Chat.Example","ads"]' && opts.consentMode === 'deny', `stitch-shot parseArgs: T19.1/T19.2/T14.5 flags wrong: ${JSON.stringify(opts)}`);
   const d = ssm.parseArgs(['node', 'x', 'http://h/', 'o.png']).opts;
+  // --masks-json merges the inventory's sel entries + flags into the capture; an invalid file is exit 1 before any capture
+  const mjp = join(L1, 'ss-masks.json'); writeFileSync(mjp, JSON.stringify([{ sel: '.promo', class: 'nondeterministic-live', source: 'dynamics:D-1' }, { kind: 'iframes', source: 'decision:u' }]));
+  const mo2 = inProc(() => ssm.parseArgs(['node', 'x', 'http://h/', 'o.png', '--mask-sel', '.x,.promo', '--masks-json', mjp]).opts);
+  check(!mo2.error && JSON.stringify(mo2.maskSel) === '[".x",".promo"]' && mo2.maskIframes === true && mo2.maskImages === false, `stitch-shot parseArgs --masks-json: expected maskSel [.x,.promo] + maskIframes, got ${JSON.stringify({ e: mo2.error, s: mo2.maskSel, i: mo2.maskIframes, m: mo2.maskImages })}`);
+  const badp = join(L1, 'ss-bad.json'); writeFileSync(badp, '[{"sel":".a","class":"nondeterministic-live"}]');
+  const rb = runL1('replica', 'stitch-shot.mjs', ['http://h/', 'o.png', '--masks-json', badp]);
+  check(rb.status === 1 && /masks\.json .*entry 0: source missing/.test(rb.stderr) && /nothing captured/.test(rb.stderr), `stitch-shot --masks-json (entry without source): exit 1 naming the entry expected, got ${rb.status}\n${rb.stderr}`);
   check(d.wait === 1200 && ssm.parseArgs(['node', 'x', 'http://h/', 'o.png', '--settle']).opts.wait === 3000 && d.hideDefaults === true && d.consentMode === 'accept', 'stitch-shot parseArgs: defaults (wait 1200 / 3000 with --settle, hideDefaults, accept)');
 }
 {
@@ -191,6 +207,28 @@ const cs = await import(pathToFileURL(join(REPLICA, 'capture-sidecar.mjs')).href
   check(cs.comparability(c, e).problems.some((p) => /^consent\.mode/.test(p)), 'capture-sidecar: consent.mode is a refusal key');
   const f = join(dir, 'f.png'); writeFileSync(f, '');
   check(cs.comparability(c, f).problems.some((p) => /only A has a provenance sidecar/.test(p)) && cs.comparability(f, join(dir, 'g.png')).sidecars === null, 'capture-sidecar: one-sided sidecar is a refusal; none on either side is allowed through');
+  const csHead = src(join(REPLICA, 'capture-sidecar.mjs')); const csSchema = csHead.slice(0, csHead.indexOf('*/'));
+  check(/masksRects\?:[^\n]*error\?/.test(csSchema) && /error:'bad selector'/.test(csSchema), '(shape) capture-sidecar schema: masksRects entries must document error:"bad selector" — the zero-rect placeholders collectMaskRects emits and every consumer skips');
+  // loadMasksJson — the ONE validator of stardust/replica/masks.json (T17.3 correction 1: class + source or refused)
+  if (typeof cs.loadMasksJson !== 'function' || typeof cs.maskFlagsOf !== 'function') check(false, 'capture-sidecar: loadMasksJson / maskFlagsOf exports missing (masks.json has no validator)');
+  else {
+  const mj = (name, body) => { const p = join(dir, name); writeFileSync(p, typeof body === 'string' ? body : JSON.stringify(body)); return p; };
+  const good = cs.loadMasksJson(mj('m-good.json', [{ sel: '.promo', class: 'nondeterministic-live', source: 'dynamics:D-07' }, { kind: 'iframes', source: 'decision:user' }, { kind: 'images', source: 'register:R-3' }]));
+  check(JSON.stringify(good.sels) === '[".promo"]' && good.iframes === true && good.images === true && good.classBySel['.promo'] === 'nondeterministic-live' && JSON.stringify(cs.maskFlagsOf(good)) === '{"maskSel":[".promo"],"maskIframes":true,"maskImages":true}', `loadMasksJson: valid file → sels/iframes/images/classBySel, got ${JSON.stringify(good)}`);
+  check(Array.isArray(cs.MASK_CLASSES) && cs.MASK_CLASSES.includes('photo-reencoding') && cs.MASK_CLASSES.includes('authored-volatile-masked') && cs.AUTO_MASK_CLASS.iframe === 'live-data-embed' && cs.AUTO_MASK_CLASS.img === 'photo-reencoding', 'capture-sidecar: MASK_CLASSES / AUTO_MASK_CLASS must carry the residual class ids');
+  const refuses = (body, re, why) => { let msg = ''; try { cs.loadMasksJson(mj(`m-${why}.json`, body)); } catch (e) { msg = e.message; } check(re.test(msg), `loadMasksJson must refuse ${why} with a named message, got "${msg}"`); };
+  refuses([{ sel: '.a', class: 'nondeterministic-live' }], /entry 0: source missing/, 'missing-source');
+  refuses([{ sel: '.a', source: 'decision:x' }], /entry 0: class undefined is not a residual class id/, 'missing-class');
+  refuses([{ sel: '.a', class: 'made-up', source: 'decision:x' }], /not a residual class id/, 'unknown-class');
+  refuses([{ class: 'nondeterministic-live', source: 'decision:x' }], /sel missing/, 'missing-sel');
+  refuses([{ sel: '.a', class: 'nondeterministic-live', source: 'because' }], /source missing or not dynamics:/, 'free-text-source');
+  refuses([{ sel: '.a, .b', class: 'nondeterministic-live', source: 'decision:x' }], /contains a comma/, 'comma-list-sel');
+  refuses([{ kind: 'iframes', source: 'decision:x', class: 'photo-reencoding' }], /omit class/, 'iframes-with-another-class');
+  refuses([{ kind: 'rows', source: 'decision:x' }], /kind "rows"/, 'unknown-kind');
+  refuses({ sel: '.a' }, /expected a JSON array/, 'not-an-array');
+  refuses('nope', /not JSON/, 'not-json');
+  { let msg = ''; try { cs.loadMasksJson(join(dir, 'absent.json')); } catch (e) { msg = e.message; } check(/not found/.test(msg), `loadMasksJson: a missing file must say "not found", got "${msg}"`); }
+  }
 }
 
 // ---- motion-observe (defect 10): isNavigationError must not match "navigation" in a selector or unrelated text
@@ -243,7 +281,38 @@ const pc = await import(pathToFileURL(l1('replica', 'pixel-compare.mjs')).href);
   const { bands: mk2, firstSeam } = pc.markSeams(bands.map((bd2, k) => ({ ...bd2, ...offs[k] })));
   check(firstSeam && firstSeam.y0 === 1000 && firstSeam.from === 0 && firstSeam.to === 40 && mk2[2].seam === true && mk2[3].seam === false, `markSeams: expected the seam on band 1000–1500 (0 → 40), got ${JSON.stringify(firstSeam)}`);
   const pcHelp = help('replica', 'pixel-compare.mjs');
-  for (const fl of ['--review', '--no-offsets', '--offset-range', '--mask', '--json-out', '--force', '--timeout']) check(pcHelp.includes(fl), `pixel-compare --help: ${fl} missing`);
+  for (const fl of ['--review', '--no-offsets', '--offset-range', '--mask', '--mask-from', '--mask-iframes', '--mask-images', '--masks-json', '--check', '--json-out', '--force', '--timeout']) check(pcHelp.includes(fl), `pixel-compare --help: ${fl} missing`);
+  // --masks-json --check: validation without a compare (gate.sh runs it before the first capture)
+  const mdir = join(L1, 'mj'); mkdirSync(mdir);
+  writeFileSync(join(mdir, 'ok.json'), JSON.stringify([{ sel: 'h2', class: 'nondeterministic-live', source: 'decision:fixture' }, { kind: 'images', source: 'register:R-1' }]));
+  writeFileSync(join(mdir, 'bad.json'), JSON.stringify([{ sel: 'h2', class: 'nondeterministic-live' }]));
+  const okc = runL1('replica', 'pixel-compare.mjs', ['--masks-json', join(mdir, 'ok.json'), '--check']);
+  check(okc.status === 0 && okc.stdout.trim() === '{"maskSel":["h2"],"maskIframes":false,"maskImages":true}', `pixel-compare --masks-json --check: exit 0 + the capture flags as JSON expected, got ${okc.status} ${okc.stdout}${okc.stderr}`);
+  const badc = runL1('replica', 'pixel-compare.mjs', ['--masks-json', join(mdir, 'bad.json'), '--check']);
+  check(badc.status === 1 && /entry 0: source missing/.test(badc.stderr), `pixel-compare --masks-json --check (no source): exit 1 naming the entry expected, got ${badc.status}\n${badc.stderr}`);
+  check(runL1('replica', 'pixel-compare.mjs', ['--check']).status === 1, 'pixel-compare --check without --masks-json must exit 1');
+  check(runL1('replica', 'pixel-compare.mjs', ['a.png', 'b.png', '--mask-from', 'a.json,b.json,c.json']).status === 1, 'pixel-compare --mask-from with three files must exit 1');
+  // the rect mask model (T17.3 corrections 3–7): pairRects ±2 px, buildMasks union / skips / declared classes, rasterMasks own-pixels
+  if (typeof pc.pairRects !== 'function' || typeof pc.buildMasks !== 'function' || typeof pc.rasterMasks !== 'function') check(false, 'pixel-compare: pairRects / buildMasks / rasterMasks exports missing (no rect mask model)');
+  else {
+  const pr = pc.pairRects([{ x: 0, y: 0, w: 100, h: 50 }, { x: 500, y: 0, w: 100, h: 50 }], [{ x: 2, y: 2, w: 98, h: 52 }, { x: 520, y: 0, w: 100, h: 50 }]);
+  check(pr.pairs.length === 1 && pr.onlyA.length === 1 && pr.onlyA[0].x === 500 && pr.onlyB.length === 1 && pr.onlyB[0].x === 520, `pairRects: ±2 px on every edge pairs one, a 20 px shift pairs none, got ${JSON.stringify(pr)}`);
+  check(pc.pairRects([{ x: 0, y: 0, w: 100, h: 50 }], [{ x: 3, y: 0, w: 100, h: 50 }]).pairs.length === 0, 'pairRects: 3 px is outside the ±2 px tolerance');
+  const RA = [{ kind: 'sel', sel: '.promo', x: 0, y: 0, w: 800, h: 100 }, { kind: 'sel', sel: '.chat', x: 700, y: 500, w: 60, h: 60, fixed: true }, { kind: 'sel', sel: 'x[', x: 0, y: 0, w: 0, h: 0, error: 'bad selector' }, { kind: 'iframe', src: 'about:blank', x: 0, y: 300, w: 400, h: 200 }, { kind: 'img', x: 100, y: 200, w: 120, h: 80 }, { kind: 'img', x: 500, y: 200, w: 120, h: 80 }];
+  const RB = [{ kind: 'sel', sel: '.promo', x: 0, y: 0, w: 800, h: 100 }, { kind: 'iframe', src: 'about:blank', x: 0, y: 300, w: 400, h: 200 }, { kind: 'iframe', src: 'b-only', x: 0, y: 550, w: 100, h: 20 }, { kind: 'img', x: 100, y: 202, w: 120, h: 80 }, { kind: 'img', x: 520, y: 200, w: 120, h: 80 }];
+  const bm = pc.buildMasks({ bands: [{ yA: 10, h: 5, yB: 20 }], A: RA, B: RB, iframes: true, images: true, width: 800 });
+  const kinds = bm.masks.map((m) => `${m.kind}:${m.side}${m.asymmetric ? '!' : ''}`).join(' ');
+  check(kinds === 'band:both sel:both iframe:both iframe:B! img:both', `buildMasks: expected "band:both sel:both iframe:both iframe:B! img:both", got "${kinds}"`);
+  check(bm.imagesUnmatched === 2 && !bm.masks.some((m) => m.sel === '.chat' || m.sel === 'x[') && bm.notes.length === 2 && /\.chat: inside pinned chrome on A/.test(bm.notes[0].msg) && /"x\[": bad selector on A/.test(bm.notes[1].msg), `buildMasks: fixed + bad-selector entries are skipped and noted once, moved images unmatched, got ${JSON.stringify({ n: bm.notes, u: bm.imagesUnmatched })}`);
+  check(bm.masks[0].class === 'authored-volatile-masked' && bm.masks[0].spec === '10:5@20' && bm.masks[0].rects.length === 2 && bm.masks[2].class === 'live-data-embed' && bm.masks[4].class === 'photo-reencoding' && bm.masks[4].rects.length === 2, `buildMasks: classes / band rects wrong ${JSON.stringify(bm.masks.map((m) => [m.class, m.rects.length]))}`);
+  const ras = pc.rasterMasks(bm.masks, 800, 600);
+  check(ras.maskedPixels === 8000 + 72000 + 80000 + 2000 + 9840 && bm.masks[0].pixels === 8000 && bm.masks[1].pixels === 72000 && bm.masks[1].areaPct === 15 && bm.masks[4].pixels === 9840, `rasterMasks: own-pixel counts (union, no double count) wrong: ${ras.maskedPixels} ${JSON.stringify(bm.masks.map((m) => m.pixels))}`);
+  let fullRows = 0; for (let y = 0; y < 600; y++) fullRows += ras.rows[y]; check(fullRows === 100, `rasterMasks: fully masked rows (offset NaN) must be the 100 promo rows, got ${fullRows}`);
+  let errU = ''; try { pc.buildMasks({ A: RA, B: RB, declared: { classBySel: {} } }); } catch (e) { errU = e.message; } check(/does not declare/.test(errU), `buildMasks: a sidecar sel rect masks.json does not declare must throw, got "${errU}"`);
+  const dm = pc.buildMasks({ A: RA, B: RB, declared: { classBySel: { '.promo': 'index-driven-content', '.chat': 'third-party-in-flow' } } });
+  check(dm.masks.length === 1 && dm.masks[0].class === 'index-driven-content' && dm.masks[0].kind === 'sel', `buildMasks: the declared class must be applied and iframes/images left alone without their flags, got ${JSON.stringify(dm.masks)}`);
+  const onlyBands = pc.buildMasks({ bands: [{ yA: 0, h: 10, yB: 0 }], width: 100 }); check(onlyBands.masks.length === 1 && onlyBands.masks[0].rects.length === 1 && onlyBands.masks[0].rects[0].w === 100, 'buildMasks: --mask yA:h with yB = yA is ONE full-width rect');
+  }
 }
 help('replica', 'crop-compare.mjs');
 help('replica', 'sibling-variance.mjs');
@@ -279,6 +348,12 @@ const cp = await import(pathToFileURL(l1('replica', 'chrome-parity.mjs')).href);
   check(same.findings.length === 0, `compareRegion: identical probes (incl. sticky/pseudo/current) must be parity, got ${JSON.stringify(same.findings)}`);
   const legacy = cp.compareRegion('footer', region({ atoms: [atom('A')] }), region({ atoms: [atom('A')] }), 1);
   check(legacy.findings.length === 0, 'compareRegion: probes without sticky/pseudo/current keys (older cache) still compare');
+  // STICKY is keyed on geometry: a replica never shares the live ids/classes, so equal pins with different descriptors are parity
+  const Lg = region({ sticky: [{ el: 'header.site-header.masthead', top: 0, h: 80 }] });
+  check(!cp.compareRegion('header', Lg, region({ sticky: [{ el: 'header.header-wrapper', top: 0, h: 80 }] }), 1).findings.some((f) => f.kind === 'STICKY'), 'compareRegion: pinned inventories with equal geometry but different descriptors (live header.site-header.masthead 80px vs build header.header-wrapper 80px) must NOT be STICKY — exit 0 would otherwise be unreachable on every site with fixed chrome');
+  check(!cp.compareRegion('header', Lg, region({ sticky: [{ el: 'div.hdr', top: 0, h: 81 }] }), 1).findings.some((f) => f.kind === 'STICKY'), 'compareRegion: a pinned height inside --tol is parity');
+  check(cp.compareRegion('header', Lg, region({ sticky: [{ el: 'header.header-wrapper', top: 0, h: 80 }, { el: 'div.bar', top: 80, h: 40 }] }), 1).findings.some((f) => f.kind === 'STICKY'), 'compareRegion: a different pinned COUNT is still STICKY');
+  check(cp.compareRegion('header', Lg, region({ sticky: [{ el: 'header.header-wrapper', top: 0, h: 96 }] }), 1).findings.some((f) => f.kind === 'STICKY' && /header\.site-header\.masthead \(80px\)/.test(f.msg) && /header\.header-wrapper \(96px\)/.test(f.msg)), 'compareRegion: a different pinned HEIGHT is STICKY and the message still names both descriptors');
 }
 
 // ---- diff instruments (T14.5 / T19.2): --block in the parser + HELP of content-diff / visual-diff
@@ -300,9 +375,16 @@ check(/instrument\.version/.test(gate) && /older stitch-shot procedure/.test(gat
 check((gate.match(/anchor-live\.skip/g) || []).length >= 5, '(shape) gate.sh: a failed live landmark probe must write anchor-live.skip and later rounds must skip the live pass while it exists');
 check(/GATE_BLOCK/.test(gate) && (gate.match(/\$STITCH_COMMON/g) || []).length >= 2, '(shape) gate.sh: GATE_BLOCK must reach BOTH stitch-shot calls');
 // gate.sh reads stitch-shot's INSTRUMENT version off the source: keep the line it greps in step with the export
-{ const m = gate.match(/grep -o "([^"]+)"/); const ver = spawnSync('bash', ['-c', `grep -oE "name: 'stitch-shot', version: '[0-9]+'" "${join(REPLICA, 'stitch-shot.mjs')}" | grep -oE "[0-9]+"`], { encoding: 'utf8' }).stdout.trim(); check(ver === ssm.INSTRUMENT.version, `gate.sh staleness check: the grep over stitch-shot's source must yield the exported INSTRUMENT.version (${ssm.INSTRUMENT.version}), got "${ver}"${m ? ` (gate.sh pattern ${m[1]})` : ''} — a reformat of that line would silently disable the check`); }
+{
+  // Derive the two patterns from gate.sh's own STITCH_VER line and run THEM — a change to
+  // either pattern that stops matching stitch-shot's INSTRUMENT export must fail here.
+  const m = gate.match(/STITCH_VER=\$\(grep -oE "([^"]+)" "\$HERE\/stitch-shot\.mjs" \| grep -oE "([^"]+)" \| tail -1\)/);
+  check(!!m, '(shape) gate.sh: STITCH_VER=$(grep -oE "…" "$HERE/stitch-shot.mjs" | grep -oE "…" | tail -1) line not found — the staleness check cannot be cross-checked');
+  if (m) { const ver = spawnSync('bash', ['-c', `grep -oE "${m[1]}" "${join(REPLICA, 'stitch-shot.mjs')}" | grep -oE "${m[2]}" | tail -1`], { encoding: 'utf8' }).stdout.trim(); check(ver === ssm.INSTRUMENT.version, `gate.sh staleness check: gate.sh's own grep over stitch-shot's source yields "${ver}" but INSTRUMENT.version is ${ssm.INSTRUMENT.version} — keep the pattern and the export in step`); }
+}
 
-rmSync(L1, { recursive: true, force: true });
+}
+try { await layer1(); } finally { rmSync(L1, { recursive: true, force: true }); }
 
 // ---------------------------------------------------------------- deps
 function resolveDeps() {
@@ -475,15 +557,43 @@ async function layer2(deps) {
     const mk0 = await run('stitch-shot.mjs', [`${base}/masks.html`, 'out/mk0.png', ...W]);
     if (mk0.status === 0) { const sc = JSON.parse(readFileSync(join(tmp, 'out/mk0.png.json'), 'utf8')); check(!('masksRects' in sc) && !/mask rects:/.test(mk0.stdout), 'masks (no flag): masksRects must be ABSENT from the sidecar and no line printed'); }
     const mk1 = await run('stitch-shot.mjs', [`${base}/masks.html`, 'out/mk1.png', ...W, '--mask-sel', '.promo, .chat, .nope', '--mask-iframes', '--mask-images']);
-    check(mk1.status === 0 && /^mask rects: 3 \(sel 1, iframe 1, img 1; fixed skipped 1\)/m.test(mk1.stdout), `masks: expected "mask rects: 3 (sel 1, iframe 1, img 1; fixed skipped 1)", got ${mk1.status}\n${mk1.stdout}${mk1.stderr}`);
+    check(mk1.status === 0 && /^mask rects: 4 \(sel 1, iframe 1, img 2; fixed skipped 1\)/m.test(mk1.stdout), `masks: expected "mask rects: 4 (sel 1, iframe 1, img 2; fixed skipped 1)", got ${mk1.status}\n${mk1.stdout}${mk1.stderr}`);
     if (mk1.status === 0) {
       const sc = JSON.parse(readFileSync(join(tmp, 'out/mk1.png.json'), 'utf8')); const m = sc.masksRects || [];
       const promo = m.find((r) => r.kind === 'sel' && r.sel === '.promo'); const chat = m.find((r) => r.kind === 'sel' && r.sel === '.chat'); const fr = m.find((r) => r.kind === 'iframe'); const im = m.filter((r) => r.kind === 'img');
       check(promo && promo.y === 0 && promo.h === 100 && promo.w === 800 && !promo.fixed, `masks: .promo rect must be page-space {y 0, h 100, w 800}, got ${JSON.stringify(promo)}`);
       check(chat && chat.fixed === true, `masks: the fixed .chat match must carry fixed:true, got ${JSON.stringify(chat)}`);
       check(fr && fr.y === 300 && fr.w === 400 && fr.h === 200, `masks: iframe rect wrong ${JSON.stringify(fr)}`);
-      check(im.length === 1 && im[0].w === 120 && im[0].h === 80, `masks: only the ≥ 40×40 image is recorded, got ${JSON.stringify(im)}`);
+      check(im.length === 2 && im.every((r) => r.w === 120 && r.h === 80), `masks: only the two ≥ 40×40 images are recorded, got ${JSON.stringify(im)}`);
       check(JSON.stringify(sc.instrument.options.maskSel) === '[".promo",".chat",".nope"]' && sc.instrument.options.maskIframes === true && sc.instrument.options.maskImages === true, 'masks: options must record maskSel/maskIframes/maskImages');
+    }
+    // ---- T17.3 (compare side): the same page served as B with the promo, the image bytes and the iframe body changed and ONE
+    // image shifted 20 px → sel + iframe + matched image masked, the shifted image NOT masked, pixelPctUnmasked > pixelPct, area % printed
+    const mk2 = await run('stitch-shot.mjs', [`${base}/masks-b.html`, 'out/mk2.png', ...W, '--mask-sel', '.promo, .chat, .nope', '--mask-iframes', '--mask-images']);
+    check(mk2.status === 0, `masks-b: exit ${mk2.status}\n${mk2.stderr}`);
+    if (mk1.status === 0 && mk2.status === 0) {
+      const p0 = await run('pixel-compare.mjs', ['out/mk1.png', 'out/mk2.png', '--out', 'out/mk-d0.png', '--timeout', '0', '--no-offsets', '--json-out', 'out/mk-g0.json']);
+      const pm = await run('pixel-compare.mjs', ['out/mk1.png', 'out/mk2.png', '--out', 'out/mk-d1.png', '--timeout', '0', '--no-offsets', '--mask-from', '--mask-iframes', '--mask-images', '--json-out', 'out/mk-g1.json']);
+      check([0, 2].includes(p0.status) && !/MASKED/.test(p0.stdout) && [0, 2].includes(pm.status), `masks compare: exits ${p0.status}/${pm.status}\n${p0.stderr}${pm.stderr}`);
+      check(/\[MASKED 3 mask\(s\), [\d.]+% of area: sel\/authored-volatile-masked \.promo \([\d.]+%\), iframe\/live-data-embed [^(]*\([\d.]+%\), img\/photo-reencoding img@\d+,\d+ 120×80 \([\d.]+%\) — excluded from the number; unmasked [\d.]+%\]/.test(pm.stdout), `masks compare: verdict line must print every mask with kind/class/area % and the unmasked number\n${pm.stdout}`);
+      check(/^  mask sel \.chat: inside pinned chrome on A, B — recorded, not masked \(fixed-disc-at-seams\)$/m.test(pm.stdout) && /^  images: 1 paired within ±2 px and masked, 2 unmatched \(moved \/ missing \/ resized\) kept in the number$/m.test(pm.stdout), `masks compare: the fixed match (both sides) is said ONCE and the shifted image counted as unmatched\n${pm.stdout}`);
+      if (existsSync(join(tmp, 'out/mk-g0.json')) && existsSync(join(tmp, 'out/mk-g1.json'))) {
+        const g0 = JSON.parse(readFileSync(join(tmp, 'out/mk-g0.json'), 'utf8')); const g1 = JSON.parse(readFileSync(join(tmp, 'out/mk-g1.json'), 'utf8'));
+        check(g1.pixelPct > 0 && g1.pixelPct < g1.pixelPctUnmasked && g1.pixelPctUnmasked === g0.pixelPct && g1.imagesUnmatched === 2 && g1.masks.length === 3 && g1.masks.every((m) => m.areaPct > 0 && m.side === 'both' && m.rects.length === 2) && g1.maskedPct > 0 && g1.masksFrom.length === 2 && g1.masksSkipped.length === 1, `masks compare --json-out: pixelPct < pixelPctUnmasked (= the unmasked run), 3 masks with area %, 2 images unmatched, got ${JSON.stringify({ pp: g1.pixelPct, pu: g1.pixelPctUnmasked, p0: g0.pixelPct, u: g1.imagesUnmatched, m: g1.masks && g1.masks.map((m) => [m.kind, m.side, m.areaPct]), sk: g1.masksSkipped })}`);
+        const dd = png(join(tmp, 'out/mk-d1.png')); const red = (x, y) => { const [r, g] = px(dd, x, y); return r === 255 && g < 100; };
+        check(red(10, 220) && !red(60, 140) && !red(400, 50) && !red(200, 400), `masks compare diff: the 20 px-shifted image (10,220) must stay red; the paired image (60,140), the promo (400,50) and the iframe (200,400) must be grey, got ${JSON.stringify([px(dd, 10, 220), px(dd, 60, 140), px(dd, 400, 50), px(dd, 200, 400)])}`);
+      }
+      // --masks-json on the compare: declared class applied; kinds not declared stay unmasked; an undeclared sel rect is exit 1
+      writeFileSync(join(tmp, 'out/masks.json'), JSON.stringify([{ sel: '.promo', class: 'index-driven-content', source: 'dynamics:D-07' }, { sel: '.chat', class: 'third-party-in-flow', source: 'decision:user' }, { sel: '.nope', class: 'nondeterministic-live', source: 'decision:user' }, { kind: 'images', source: 'register:R-1' }]));
+      const pj = await run('pixel-compare.mjs', ['out/mk1.png', 'out/mk2.png', '--out', 'out/mk-d2.png', '--timeout', '0', '--no-offsets', '--masks-json', 'out/masks.json', '--json-out', 'out/mk-g2.json']);
+      check([0, 2].includes(pj.status) && /sel\/index-driven-content \.promo/.test(pj.stdout) && !/iframe\//.test(pj.stdout) && /img\/photo-reencoding/.test(pj.stdout), `masks.json on the compare: declared class applied, iframes NOT masked (not declared), images masked (declared), got ${pj.status}\n${pj.stdout}${pj.stderr}`);
+      if (existsSync(join(tmp, 'out/mk-g2.json'))) check(JSON.parse(readFileSync(join(tmp, 'out/mk-g2.json'), 'utf8')).masksJson === 'out/masks.json', 'masks.json on the compare: --json-out must record masksJson');
+      writeFileSync(join(tmp, 'out/masks-undeclared.json'), JSON.stringify([{ kind: 'images', source: 'register:R-1' }]));
+      const pu = await run('pixel-compare.mjs', ['out/mk1.png', 'out/mk2.png', '--out', 'out/mk-d3.png', '--timeout', '0', '--masks-json', 'out/masks-undeclared.json']);
+      check(pu.status === 1 && /does not declare/.test(pu.stderr) && !existsSync(join(tmp, 'out/mk-d3.png')), `masks.json on the compare: a sidecar sel rect the file does not declare must be exit 1 before any diff, got ${pu.status}\n${pu.stderr}`);
+      // --mask-from with no masksRects on either side is exit 1 (not a silent unmasked number)
+      const pn0 = await run('pixel-compare.mjs', ['out/s1.png', 'out/s2.png', '--out', 'out/mk-d4.png', '--timeout', '0', '--mask-from']);
+      check(pn0.status === 1 && /no masksRects/.test(pn0.stderr), `pixel-compare --mask-from without masksRects: exit 1 expected, got ${pn0.status}\n${pn0.stderr}`);
     }
 
     // ---- T14.5 --block: third-party origin aborted, own origin + headers intact, sidecar refusal
@@ -549,6 +659,29 @@ async function layer2(deps) {
     }
     const badArgs = await run('review-image.mjs', ['--bands', 'out/A.png']);
     check(badArgs.status === 1, 'review-image: missing --out must exit 1');
+    // ---- T17.3 photo-dominated + one-sided sidecar + band ≡ full-width rect, on the synthetic pair (copies, so A/B keep no sidecar)
+    {
+      cpSync(join(tmp, 'out/A.png'), join(tmp, 'out/PA.png')); cpSync(join(tmp, 'out/B.png'), join(tmp, 'out/PB.png'));
+      const sideBase = { url: 'x', width: 800, vh: 400, dpr: 1, capturedAt: 'x', instrument: { name: 'stitch-shot', version: '3', options: {} }, consent: { mode: 'accept', via: 'x' }, blocked: [] };
+      writeFileSync(join(tmp, 'out/PA.png.json'), JSON.stringify({ ...sideBase, masksRects: [{ kind: 'img', x: 0, y: 0, w: 800, h: 2000 }] }));
+      writeFileSync(join(tmp, 'out/PB.png.json'), JSON.stringify({ ...sideBase, masksRects: [{ kind: 'img', x: 0, y: 1, w: 800, h: 2000 }] }));
+      const pd = await run('pixel-compare.mjs', ['out/PA.png', 'out/PB.png', '--out', 'out/pd.png', '--timeout', '0', '--no-offsets', '--mask-images', '--json-out', 'out/pd.json']);
+      check([0, 2].includes(pd.status) && /^  photo-dominated: masked number covers 33\.3 % of the page \(image masks 66\.7 %\) — the ledger carries this line$/m.test(pd.stdout), `photo-dominated: a 66.7 % image mask must print the line\n${pd.stdout}${pd.stderr}`);
+      if (existsSync(join(tmp, 'out/pd.json'))) { const j = JSON.parse(readFileSync(join(tmp, 'out/pd.json'), 'utf8')); check(j.photoDominated === 33.3 && j.imageMaskPct === 66.7 && j.masks[0].areaPct === 66.7, `photo-dominated --json-out: photoDominated/imageMaskPct wrong ${JSON.stringify({ p: j.photoDominated, i: j.imageMaskPct })}`); }
+      const pdn = await run('pixel-compare.mjs', ['out/PA.png', 'out/PB.png', '--out', 'out/pdn.png', '--timeout', '0', '--no-offsets', '--mask-from']);
+      check([0, 2].includes(pdn.status) && !/MASKED/.test(pdn.stdout) && !/photo-dominated/.test(pdn.stdout), `--mask-from alone never masks images (img rects need --mask-images)\n${pdn.stdout}`);
+      // one side only: the union still applies, said on stderr
+      writeFileSync(join(tmp, 'out/PB.png.json'), JSON.stringify({ ...sideBase }));
+      writeFileSync(join(tmp, 'out/PA.png.json'), JSON.stringify({ ...sideBase, masksRects: [{ kind: 'sel', sel: '.x', x: 0, y: 1000, w: 800, h: 500 }] }));
+      const one = await run('pixel-compare.mjs', ['out/PA.png', 'out/PB.png', '--out', 'out/one.png', '--timeout', '0', '--no-offsets', '--mask-from', '--json-out', 'out/one.json']);
+      check([0, 2].includes(one.status) && /masksRects\[\] on A only/.test(one.stderr) && /sel\/authored-volatile-masked \.x \(16\.7%, asymmetric A\)/.test(one.stdout), `--mask-from one-sided: applied as union + asymmetric, warned on stderr, got ${one.status}\n${one.stdout}${one.stderr}`);
+      // a --mask band and the same rows as a sel rect give the SAME number (one rect model)
+      const band = await run('pixel-compare.mjs', ['out/PA.png', 'out/PB.png', '--out', 'out/band.png', '--timeout', '0', '--no-offsets', '--mask', '1000:500', '--json-out', 'out/band.json']);
+      if (existsSync(join(tmp, 'out/one.json')) && existsSync(join(tmp, 'out/band.json'))) { const o = JSON.parse(readFileSync(join(tmp, 'out/one.json'), 'utf8')); const bnd = JSON.parse(readFileSync(join(tmp, 'out/band.json'), 'utf8')); check(band.status === one.status && o.pixelPct === bnd.pixelPct && o.maskedPixels === bnd.maskedPixels && bnd.masks[0].kind === 'band' && bnd.masks[0].spec === '1000:500' && bnd.maskedRows === 500, `band ≡ rect: --mask 1000:500 and a sel rect over the same rows must give the same pixelPct, got ${o.pixelPct} vs ${bnd.pixelPct} (maskedRows ${bnd.maskedRows})`); }
+      // explicit --mask-from a.json,b.json
+      const ex2 = await run('pixel-compare.mjs', ['out/PA.png', 'out/PB.png', '--out', 'out/ex2.png', '--timeout', '0', '--no-offsets', '--mask-from', 'out/PA.png.json,out/PA.png.json']);
+      check([0, 2].includes(ex2.status) && /sel\/authored-volatile-masked \.x \(16\.7%\)/.test(ex2.stdout), `--mask-from a.json,b.json (explicit): both sides from the named files\n${ex2.stdout}${ex2.stderr}`);
+    }
 
     // ---- T05.3 anchor --landmarks: table, first non-zero Δ, cache re-probe, --against, gate.sh record (pairLandmarks itself: layer 1)
     const a0 = await run('anchor.mjs', [`${base}/landmark-a.html`, '--width', '800', '--cache', 'out/al.json']);
@@ -602,6 +735,24 @@ async function layer2(deps) {
       rmSync(join(gdir, 'anchor-live.json'), { recursive: true, force: true });
       const g6 = await gateRun({ GATE_LANDMARKS: '0' }, 'iter6', ['--over-cap', 'instrument-invalidated']);
       check([0, 2].includes(g6.status) && !existsSync(join(gdir, 'anchor-live.skip')), `gate.sh GATE_LANDMARKS=0: anchor-live.skip must be cleared (exit ${g6.status})\n${g6.err}`);
+      // T17.3 gate.sh: masks.json validated first, on BOTH captures (sidecar masksRects) and the compare (record masks[]);
+      // a cached live.png taken with other mask flags is stale; an invalid file exits 1 before any capture
+      mkdirSync(join(tmp, 'stardust/replica'), { recursive: true });
+      const mjPath = join(tmp, 'stardust/replica/masks.json');
+      writeFileSync(mjPath, JSON.stringify([{ sel: 'h2', class: 'nondeterministic-live', source: 'decision:fixture' }]));
+      const g7 = await gateRun({ GATE_LANDMARKS: '0' }, 'iter7', ['--over-cap', 'instrument-invalidated']);
+      check([0, 2].includes(g7.status) && /captured with other mask flags/.test(g7.err) && /^gate\.sh: masks from stardust\/replica\/masks\.json → \{"maskSel":\["h2"\]/m.test(g7.out) && /\[MASKED \d+ mask\(s\)/.test(g7.out) && /sel\/nondeterministic-live h2 \([\d.]+%\)/.test(g7.out), `gate.sh masks.json: the live reference taken without masks must be recaptured (stderr), the masks line printed and every h2 mask on the verdict line (exit ${g7.status})\n${g7.out}\n${g7.err}`);
+      const rec7 = join(gdir, 'gate-iter7.json');
+      if (existsSync(rec7)) { const r7 = JSON.parse(readFileSync(rec7, 'utf8')); check(Array.isArray(r7.masks) && r7.masks.length === 1 && r7.masks[0].kind === 'sel' && r7.masks[0].sel === 'h2' && r7.masks[0].class === 'nondeterministic-live' && r7.masks[0].side === 'both' && r7.masks[0].rects.length >= 2 && r7.masksJson === 'stardust/replica/masks.json' && typeof r7.pixelPctUnmasked === 'number', `gate record iter7: masks[] must carry the one h2 sel mask (union of both sides) + masksJson, got ${JSON.stringify({ m: r7.masks, j: r7.masksJson })}`); }
+      for (const sd of ['live', 'build']) { const scp = join(gdir, `${sd}.png.json`); const sc = existsSync(scp) ? JSON.parse(readFileSync(scp, 'utf8')) : {}; check(sc.instrument && JSON.stringify(sc.instrument.options.maskSel) === '["h2"]' && Array.isArray(sc.masksRects) && sc.masksRects.length >= 1 && sc.masksRects.every((r) => r.kind === 'sel' && r.sel === 'h2'), `gate.sh masks.json: the ${sd} sidecar must record maskSel ["h2"] and masksRects[], got ${JSON.stringify({ o: sc.instrument && sc.instrument.options && sc.instrument.options.maskSel, n: sc.masksRects && sc.masksRects.length })}`); }
+      const g8 = await gateRun({ GATE_LANDMARKS: '0' }, 'iter8', ['--over-cap', 'instrument-invalidated']);
+      check([0, 2].includes(g8.status) && !/captured with other mask flags/.test(g8.err) && /reference: .* captured/.test(g8.out), `gate.sh masks.json unchanged: the cached live reference must be reused (exit ${g8.status})\n${g8.err}`);
+      writeFileSync(mjPath, JSON.stringify([{ sel: 'h2', class: 'nondeterministic-live' }]));
+      const g9 = await gateRun({ GATE_LANDMARKS: '0' }, 'iter9', ['--over-cap', 'instrument-invalidated']);
+      check(g9.status === 1 && /masks\.json rejected/.test(g9.err) && /entry 0: source missing/.test(g9.err) && !existsSync(join(gdir, 'gate-iter9.json')) && !/stitched /.test(g9.out), `gate.sh masks.json without source: exit 1 before any capture, no record (exit ${g9.status})\n${g9.out}${g9.err}`);
+      rmSync(mjPath, { force: true });
+      const g10 = await gateRun({ GATE_LANDMARKS: '0' }, 'iter10', ['--over-cap', 'instrument-invalidated']);
+      check([0, 2].includes(g10.status) && /captured with other mask flags/.test(g10.err) && !/MASKED/.test(g10.out), `gate.sh masks.json removed: the masked live reference is stale again and the round is unmasked (exit ${g10.status})\n${g10.err}`);
     }
 
     // ---- T05.4 pixel-compare --offsets on a synthetic pair with a 40 px strip inserted at y = 1000 (bandOffsets/markSeams: layer 1)

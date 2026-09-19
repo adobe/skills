@@ -149,6 +149,14 @@
 #   GATE_BLOCK           comma list of URL substrings → --block on BOTH captures
 #                        (undismissable third-party widgets; the sidecar refuses
 #                        an asymmetric pair, so the gate is the only safe place)
+#   GATE_MASKS           path of the inventory-declared masks file
+#                        (default stardust/replica/masks.json; schema in
+#                        capture-sidecar.mjs). When it exists it is validated
+#                        BEFORE the first capture (exit 1 names the entry), reaches
+#                        both stitch-shot calls (--masks-json → sidecar masksRects[])
+#                        and pixel-compare (rect masks from both sidecars, on the
+#                        verdict line and in the record's masks[]). A cached live.png
+#                        taken with other mask flags is stale and re-captured.
 set -u
 
 USAGE="usage: gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>] [--live-from-capture <png>] [--regime prototype|published-origin] [--refresh] [--variance] [--over-cap <reason>] [--invalidate <label> <fix>] [--record]"
@@ -247,6 +255,16 @@ COMPARE_TIMEOUT=${GATE_COMPARE_TIMEOUT:-120}
 STITCH_COMMON=""
 [ "${GATE_ALLOW_CONSENT:-0}" = "1" ] && STITCH_COMMON="--allow-consent"
 [ -n "${GATE_BLOCK:-}" ] && STITCH_COMMON="$STITCH_COMMON --block $GATE_BLOCK"
+# Masks (see header GATE_MASKS): validate first, then the same file on both captures and the compare.
+MASKS_JSON=${GATE_MASKS:-stardust/replica/masks.json}
+MASK_FLAGS='{"maskSel":[],"maskIframes":false,"maskImages":false}'
+MASK_ARG=""
+if [ -f "$MASKS_JSON" ]; then
+  MASK_FLAGS=$(node "$HERE/pixel-compare.mjs" --masks-json "$MASKS_JSON" --check) || { echo "gate.sh: $MASKS_JSON rejected — every entry needs class + source (schema: capture-sidecar.mjs --help); nothing captured, no verdict" >&2; exit 1; }
+  MASK_ARG="--masks-json $MASKS_JSON"
+  STITCH_COMMON="$STITCH_COMMON $MASK_ARG"
+  echo "gate.sh: masks from $MASKS_JSON → $MASK_FLAGS on both captures; pixel-compare applies them from both sidecars (every mask on the verdict line and in the record)"
+fi
 REAP_MIN=${GATE_REAP_MIN:-15}
 capped() { local t=$1 l=$2; shift 2; node "$HERE/run-capped.mjs" --timeout "$t" --label "$l" -- "$@"; }
 
@@ -333,6 +351,15 @@ if [ -f "$DIR/live.png.json" ] && [ -n "$STITCH_VER" ] && [ -z "$FORCE" ]; then
   OLD_VER=$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(j.source==="extract-capture"?String(process.argv[2]):String(j.instrument&&j.instrument.version||""))' "$DIR/live.png.json" "$STITCH_VER" 2>/dev/null)
   if [ "$OLD_VER" != "$STITCH_VER" ]; then
     echo "gate.sh: $DIR/live.png was captured by an older stitch-shot procedure (instrument.version ${OLD_VER:-unknown}, current $STITCH_VER — the capture procedure changed) — treating it as stale and re-capturing so both sides use the same procedure" >&2
+    rm -f "$DIR/live.png" "$DIR/live.png.json" "$DIR/anchor-live.json" "$DIR/anchor-live.skip"
+  fi
+fi
+# A cached reference taken with OTHER mask flags (masks.json added, edited or
+# removed since) carries masksRects[] the build side will not match: stale too.
+if [ -f "$DIR/live.png.json" ] && [ -z "$FORCE" ]; then
+  MASK_STALE=$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));if(j.source==="extract-capture")process.exit(0);const o=(j.instrument&&j.instrument.options)||{};const norm=(x)=>JSON.stringify({maskSel:[...(x.maskSel||[])].sort(),maskIframes:!!x.maskIframes,maskImages:!!x.maskImages});const cur=norm(JSON.parse(process.argv[2]));const old=norm(o);process.stdout.write(old===cur?"":old)' "$DIR/live.png.json" "$MASK_FLAGS" 2>/dev/null)
+  if [ -n "$MASK_STALE" ]; then
+    echo "gate.sh: $DIR/live.png was captured with other mask flags ($MASK_STALE; current $MASK_FLAGS — masks.json changed) — treating it as stale and re-capturing so both sidecars carry the same masksRects" >&2
     rm -f "$DIR/live.png" "$DIR/live.png.json" "$DIR/anchor-live.json" "$DIR/anchor-live.skip"
   fi
 fi
@@ -510,7 +537,7 @@ fi
 
 # pixel-compare supervises its own deadline (--timeout); exit 124 = no verdict.
 # shellcheck disable=SC2086
-node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --review "$DIR/review-$LBL.png" --timeout "$COMPARE_TIMEOUT" --json-out "$DIR/gate-$LBL.json" $FORCE
+node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --review "$DIR/review-$LBL.png" --timeout "$COMPARE_TIMEOUT" --json-out "$DIR/gate-$LBL.json" $FORCE $MASK_ARG
 rc=$?
 # A compare that produced no summary (deadline, incomparable pair) still
 # leaves a no-verdict record: the attempt is on the audit trail, its label is

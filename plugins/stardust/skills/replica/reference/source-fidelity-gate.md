@@ -46,7 +46,7 @@ then 360.
 # Serve the prototype from its own dir so relative assets resolve. Verify the
 # port is YOURS first (lsof -nP -iTCP:8791 -sTCP:LISTEN); prefer a per-project
 # port — a stale server from another stardust project on the shared suggested
-# port silently serves a foreign site into the gate (recorded twice, 2026-08).
+# port silently serves a foreign site into the gate.
 # On shared machines run gate.sh with --marker "<brand string>": the slug
 # default can false-pass against another stardust project sharing the slug
 # (both serving a home-proposed.html that contains "home").
@@ -115,10 +115,7 @@ capture is re-taken every iteration.
 5. **Chrome crop gate: header band AND footer band each ≤ 2% diff (≥98%
    match, #115).** The full-page bar dilutes the chrome — header/footer are
    a small share of page pixels but carry disproportionate visual weight
-   and repeat on every page of a rollout. Two field runs shipped
-   full-page-green pages whose chrome measured only 93–97% (lookalike
-   icons, wrong micro-weights, off-by-10px nav rows all fit inside a ≤10%
-   full-page bar). Run `../scripts/crop-compare.mjs` over the SAME stitched
+   and repeat on every page of a rollout. Full-page-green pages have shipped with chrome at 93–97% (lookalike icons, wrong micro-weights, off-by-10px nav rows all fit inside the full-page bar). Run `../scripts/crop-compare.mjs` over the SAME stitched
    captures the pixel probe used — no extra live hit:
 
    ```bash
@@ -173,7 +170,7 @@ capture is re-taken every iteration.
    **Glyph-dense chrome has a pixel noise floor — the ONE justified way past
    the 2% bar, and it is evidence-gated three ways.** A footer of ~50 links
    bottomed out at ~5% pixel diff with family, size, line-height, weight,
-   colour, pitch and positions all numerically identical (recorded): per-glyph
+   colour, pitch and positions all numerically identical: per-glyph
    antialiasing between a hinted licensed face and the self-hosted webfont
    dominates, and raw pixel bars over-iterate against noise. A chrome band
    that FAILS crop-compare may be logged as a **justified residual** —
@@ -202,8 +199,7 @@ capture is re-taken every iteration.
    (`--y`/`--y-b`); every gate round re-reads the anchors. (b) Regions whose
    live content is authored-volatile — campaign heroes, promo creatives that
    change between capture and gate — are masked out of the fidelity number
-   with `pixel-compare.mjs --mask <yA:h[@yB]>` (printed on the verdict line,
-   never silent): they are authored content, not conversion fidelity, and
+   with `pixel-compare.mjs --mask <yA:h[@yB]>` or a `masks.json` entry (rule 19; printed on the verdict line, never silent): they are authored content, not conversion fidelity, and
    chasing them burns iterations on a moving target.
 
 Applied inconsistency-register entries create expected deltas: cross-
@@ -216,7 +212,7 @@ prototype gated against the live page, on a typographic page. Pages
 converted to the delivery platform and gated against the **published
 origin** (§ The published-origin gate) carry justified block-model deltas —
 control UI, split anchors, nondeterministic elements — and landed at
-6.9–9.9% in the field while visually faithful. The ≤10% bar covers both
+6.9–9.9% while visually faithful. The ≤10% bar covers both
 regimes; what burns iteration caps is chasing prototype-regime numbers on a
 published-origin gate. Record which regime a number belongs to in the
 ledger, and judge each against its own regime's precedent.
@@ -288,9 +284,7 @@ runs over the same stitched PNGs — no live hit):**
 Both gate breakpoints render a frozen `width: 720px` and an authored
 `width: 50%` byte-identically at 1440 — and 360 collapses both — so a
 computed-style lift that recorded the resolved px instead of the sizing
-MODEL passes every gate and diverges only on wider screens (recorded: a
-live hero card 940px at 1920 vs a frozen 720px; the CTA row wrapped as a
-side effect). After the 1440 pass, run a cheap **box-map spot check at
+MODEL passes every gate and diverges only on wider screens. After the 1440 pass, run a cheap **box-map spot check at
 ≥1920**: sample the text-bearing elements' x/width on both sides (the
 anchor-probe technique at `--width 1920`, or one extra stitched capture)
 and compare — a box whose width scales on live but not on the prototype is
@@ -302,7 +296,7 @@ authored rule per `recreation-procedure.md` § Lift the sizing MODEL, don't
 nudge the px. Sample heights as well as widths, and take one extra sample
 at an intermediate width (1280 or 1680) when the live layout is fluid: a
 hero that scales with the viewport on live and is fixed-px on the prototype
-is identical at 1440 and visibly off at 1512 (recorded).
+is identical at 1440 and visibly off at 1512.
 
 ## Iteration discipline
 
@@ -335,8 +329,7 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   `live.png`/`proto.png`/`diff*.png` whole — the count is the cost.
 - **Before counting an iteration, verify the fix changed the render.** A
   byte-identical differing-pixel count after a "fix" means the rule was a
-  no-op (recorded: a padding whose value the EDS section wrapper already
-  carried — the round measured nothing and was burned). The check is free —
+  no-op and the round measured nothing. The check is free —
   the count is already on the verdict line; if it didn't move at all, find
   out why the rule never applied (specificity, wrong selector, value already
   in effect) before spending another round.
@@ -421,9 +414,7 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   on the first run and reuse it while URL, width and selectors match —
   delete the file to re-probe. On hard-CDN sites
   (Akamai-class), take the live captures with `--headed` and treat further
-  live hits as spent budget — the recorded failure mode was an
-  IP-level block escalating within ~3–4 automated requests, after which
-  iteration 2's numbers measure the block, not the site. A challenged
+  live hits as spent budget — an IP-level block escalates within a few automated requests, after which the numbers measure the block, not the site. A challenged
   headless run costs exactly **1** hit: `gotoLive` throws
   `BotChallengeError` on the first challenge-classified response (the
   wait+reload solve window runs only under `--headed`, where clearance can
@@ -438,10 +429,7 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   replica instruments older than 15 minutes before a round (`GATE_REAP_MIN`,
   0 disables); `pixel-compare.mjs` supervises its own `--timeout` (120 s)
   when run alone. Exit 124 is "no verdict — re-run", never a FAIL. Do not
-  wrap the instruments in your own `sleep N; kill` guard: three field
-  migrations did, after `pixel-compare` sat at 0 % CPU for 10+ minutes
-  (a Node exit-path hang, fixed in the script and now reproduced in a
-  test), and a page's four rounds then spent a fixed 30 minutes sleeping.
+  wrap the instruments in your own `sleep N; kill` guard: a fixed sleep spends its whole window every round (the exit-path hang it guarded against is fixed in the script and covered by a test).
   When a capture legitimately needs longer (a 10k-px page under `--settle`),
   raise the variable for that page and say so in the ledger.
 - **Your waiting has a ceiling too.** A gate round over several archetypes
@@ -451,7 +439,7 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   discipline.
 - **Media-density budget.** The ≤3-iteration convergence was validated on a
   typographic, low-image page (the retail home). Image-dense commerce homes
-  (recorded: ~130 imgs) spend iterations on media parity —
+  spend iterations on media parity —
   populating grids, matching crops — before geometry work even starts.
   Budget accordingly: on a media-heavy page, image/media parity IS
   iteration 1's job; geometry starts at iteration 2.
@@ -459,7 +447,7 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   against live computed styles once the gate passes.** An archetype shipped
   card body text one size too small and still passed because the tuned
   spacing absorbed the size error; siblings with more text amplified it
-  into extra wraps and taller pages (recorded). After the pass,
+  into extra wraps and taller pages. After the pass,
   read body font-size/line-height per block on both sides (a computed-style
   probe — build-side runs are free) and re-fit rhythm at the true metric.
   Compensating spacing is the tell.
@@ -521,18 +509,13 @@ rather than erroring.
    even when the DOM says loaded. Stitch on BOTH sides — the instrument
    must be symmetric.
 5. **Freeze animations for capture, injected AFTER lazyload settle.**
-   Injection before the settle breaks some lazy loaders' swaps (recorded
-   failure mode). stitch-shot.mjs orders this correctly.
+   Injection before the settle breaks some lazy loaders' swaps; stitch-shot.mjs orders this correctly.
 6. **Overlays dismissed — BOTH classes, by clicking, not DOM removal** (so
    layout settles as a real visit does). Two classes, both handled by the
    shared `dismissOverlays` (stitch-shot always; diff probes via
    `--dismiss`): (a) cookie consent (clicked accept; `--consent <sel>` /
    `--dismiss <sel,...>` for non-standard banners); (b) **timed
-   marketing/newsletter interstitials** — recorded: an
-   undismissed "Sign up, stay updated!" modal fired ~5–9s after load and
-   baked a pixel-diff contributor into the LIVE capture, repeated at every
-   chunk seam, that no prototype fidelity could null out. These fire on a
-   timer, so the dismissal polls for late arrivals and stitch-shot sweeps
+   marketing/newsletter interstitials** — they fire on a timer seconds after load and, undismissed, bake a per-seam contributor into the live capture that no prototype fidelity can null out, so the dismissal polls for late arrivals and stitch-shot sweeps
    again after the settle pass. **Consent mode is one instrument
    parameter, the same on capture and gate**: `--consent-mode
    accept|deny` (default `accept`) on stitch-shot and every live-session
@@ -547,8 +530,7 @@ rather than erroring.
    tried, and a dialog that cannot be rejected is an invalid capture
    (exit 5, no PNG, no verdict) — never a silent accept. The shared
    dismissal inspects every match of a selector and clicks the first
-   visible one, falls back to an exact multilingual label (en/de/fr/it/
-   es/nl/nb/da/sv/pt/pl, overlay-scoped, selectors first), sweeps child
+   visible one, falls back to an exact multilingual label (overlay-scoped, selectors first), sweeps child
    frames and open shadow roots, and re-runs all of it inside one late-mount
    window. What no click removes — CMP re-open launcher, accessibility
    trigger, feedback tab — is hidden (`visibility`, layout kept) on BOTH
@@ -577,8 +559,7 @@ rather than erroring.
 10. **Pointer parked after any dismissal click.** A consent/modal click
     leaves the virtual cursor at the button's coordinates; a
     `:hover`-styled element under the resting cursor is silently captured
-    in HOVER state (recorded: a hero's `:hover` opacity rule shipped the live
-    capture dimmed). The shared `dismissOverlays` parks the mouse (bottom-left)
+    in HOVER state. The shared `dismissOverlays` parks the mouse (bottom-left)
     after every dismissal pass — all three instruments inherit it; mirror
     it in any ad-hoc capture that clicks anything.
 11. **Fixed/sticky chrome × stitched capture.** Fixed elements can morph
@@ -619,9 +600,7 @@ rather than erroring.
     capture in fallback type: wrong wraps, wrong line counts, wrong section
     heights, wrong doc height — with no error anywhere. It is the same
     defect class as silently measuring a Cloudflare interstitial, and it
-    poisons every number the gate reports (recorded, F-B2: an
-    instrument-forced header set killed the live side's webfont fetch; once
-    fixed, a whole class of "one-line-off" defects vanished). stitch-shot now
+    poisons every number the gate reports. stitch-shot now
     checks after `document.fonts.ready` for declared faces with FontFace
     status `error`
     and warns loudly with the family names; mirror the check in any ad-hoc
@@ -641,22 +620,20 @@ rather than erroring.
     `gate.sh` treats a cached `live.png` without a sidecar as stale and
     re-captures it, and prints `reference: … captured <ts> via <technique>`
     on every reuse. A reference imported with `gate.sh --live-from-capture
-    <png>` (bot-walled sites where only the extraction's hand-solved
-    capture exists) carries `source: extract-capture`; that compare is
+    <png>` (bot-walled sites) carries `source: extract-capture`; that compare is
     forced once, said out loud, and its number is marked `forced`.
 16. **Pinned chrome is hidden on chunks 2+, scroll is integer, decodes are
     raced.** stitch-shot sets `opacity:0 !important` on every fixed and
     stuck-sticky element before shooting chunks 2+ and restores it after
     (chunk 1 keeps everything for the chrome crop; `--keep-pinned` is the
-    off-switch), rounds `window.scrollY` before placing a chunk (a
-    fractional scroll rotates the whole chunk by half a width), and bounds
+    off-switch), rounds `window.scrollY` before placing a chunk, and bounds
     the in-viewport `img.decode()` wait. Read the verdict block: `pinned
     hidden on chunks 2+: N […]` is the list; `WARN fixed overlay baked into N seams`
     means chrome the hide could not reach (iframe/shadow-hosted) — pass
     `--exclude <sel>` on both sides or mask the seam rows.
 17. **Short and invalid captures are exit 5 — no PNG, no verdict, never a
     FAIL.** stitch-shot re-measures the settled height after one more
-    `--wait` (growth = load race: it settles again and says so);
+    `--wait` (growth = load race: it settles again);
     `gate.sh` passes `--expect-height` from the crawl screenshot on the
     live side and a height under 40 % of it retries once then exits 5; an
     error-boundary page or a fixed/dialog element still covering much of
@@ -671,6 +648,21 @@ rather than erroring.
     verdict line says ASYMMETRIC and the number is not a gate number.
     Read `tail Npx below footer: …` on the same block before chasing a
     footer-band residual: it names the element under the footer.
+
+19. **Masks are declared, symmetric and printed — one rect model.** Every
+    mask (`--mask` band, `sel`, `iframe`, `img`) is a rect painted on BOTH
+    sides and dropped from the denominator; `pixelPctUnmasked` always
+    accompanies the number. Auto-masks come only from
+    `stardust/replica/masks.json` (`sel` + `class` + `source`; schema in `../scripts/capture-sidecar.mjs`): `gate.sh` validates it
+    before the first capture, passes it to both stitch-shot calls (sidecar
+    `masksRects[]`, read at scroll 0; a fixed/sticky match is recorded,
+    never masked) and to pixel-compare (`--masks-json`; an undeclared `sel`
+    rect is exit 1). `kind: iframes` masks every iframe (a live-only one
+    prints `asymmetric`); `kind: images` masks only image rects whose
+    geometry matches on both sides — a moved or missing image stays in the
+    number — and above 60 % image area the verdict prints `photo-dominated`,
+    which the ledger copies. A cached `live.png` taken with other mask
+    flags is stale and re-captured.
 
 ### Script adaptations (built-in flags first — but fail-loud outranks script immutability)
 
@@ -709,10 +701,7 @@ an older run, re-copy the shipped scripts and pass flags instead.
 The narrow exception: **a documented instrument-bug fix is the correct
 move when the shipped instrument measures falsely** — fail-loud outranks
 script immutability. The rule above exists to kill stale re-implementations
-of upstreamed flags, not to force gating on an instrument known to lie
-(recorded, F-B2: the shipped header delivery silently killed live webfont
-loads; the session's most important fix was a hand-edit to the project's
-live-session.mjs). A legitimate instrument fix is (a) commented in the
+of upstreamed flags, not to force gating on an instrument known to lie. A legitimate instrument fix is (a) commented in the
 script with the defect it corrects, (b) recorded in the ledger with the
 runs it invalidates, and (c) flagged for upstreaming into the plugin. An
 uncommented, unledgered edit is still a defect.
@@ -740,8 +729,7 @@ marker — `../../deploy/reference/deployed-reconcile.md` § The six reconcile c
 
 - **Re-probe live chrome metrics at deploy time — crawl captures are the
   CONTENT source, live-now is the chrome/metrics source.** The live site
-  drifts between crawl and deploy (recorded: header height, footer type and
-  a campaign hero all moved within one day). A deploy gated against
+  drifts between crawl and deploy. A deploy gated against
   crawl-time captures ships yesterday's chrome. Immediately before the
   published-origin gate, re-run
   the chrome probes (anchor + crop gate, computed styles of matched
@@ -756,7 +744,7 @@ marker — `../../deploy/reference/deployed-reconcile.md` § The six reconcile c
   fragment chrome): a gate-passed 8.4% prototype first published at 11.75%,
   and two text-anchor rounds (anchor probe live-vs-published, patch section
   paddings in block CSS, re-measure) brought it to 6.5% with exact anchor
-  parity (recorded). Treat the pre-publish harness number as provisional
+  parity. Treat the pre-publish harness number as provisional
   and the reconcile round as expected work, not a regression.
 - **Two published-origin rounds without improvement → stop editing CSS.**
   The number is then not a CSS problem. Run, in this order: the served-hash
@@ -797,7 +785,7 @@ none visible on a local harness):
 - **Authored inner blocks may be FLATTENED to default content**, so a
   selector written against the authored markup
   (`.section:has(.some-block)`) can silently never match the delivered
-  page (recorded). Verify every `:has()` / block-class selector against the
+  page. Verify every `:has()` / block-class selector against the
   delivered `.plain.html` and rendered DOM, not the authored file.
 
 ## Residual logging format
@@ -818,7 +806,7 @@ reference dates get mixed up.
       "iterations": 3,
       "result": { "regime": "prototype", "structuralRed": 0, "visualFlags": "3 justified",
                    "pixelPct": 1.31, "pixelPctUnmasked": 4.02, "heightDelta": 0, "pass": true,
-                   "masks": [ { "spec": "1200:600@1210", "areaPct": 8.3 } ],
+                   "masks": [ { "kind": "band", "class": "authored-volatile-masked", "spec": "1200:600@1210", "areaPct": 8.3 } ],
                    "ref": { "url": "https://<site>/", "width": 1440, "capturedAt": "<ISO-8601>" },
                    "at": "<ISO-8601>", "build": "a1b2c3d", "run": "<status.jsonl run start — optional>" },
       "justified": [
@@ -856,8 +844,8 @@ breakpoint (§ The published-origin gate); a breakpoint absent there is
 `published-origin` (delivered page vs live, § The published-origin gate);
 `pixelPct` — the gated number, masks excluded; `pixelPctUnmasked` — the
 same captures matched with no mask, the number an outside audit reads
-(equal to `pixelPct` when nothing was masked); `masks[]` — every `--mask`
-spec with its area % of the compared height; `ref` — the live capture the
+(equal to `pixelPct` when nothing was masked); `masks[]` — every mask
+with its kind, class and area % of the compared area (`spec` for bands, `sel`/`src` otherwise; `asymmetric` when one side only); `ref` — the live capture the
 number was measured against (URL, width, capture time); `at` — when the
 gate ran; `build` — the code commit measured against; `run` (optional) —
 the `status.jsonl` run start. Every row is provenance the hand-off prints
@@ -877,13 +865,13 @@ and %, do not chase it.
 | class id | detection cue | standard exclusion | inherits | permanent |
 |---|---|---|---|---|
 | `glyph-antialiasing` | crop-compare texture thin-edge, chrome-parity quiet, text-dense band (§ Pass bar, item 5) | none — stays in the number, logged with both artifacts | user | yes |
-| `third-party-in-flow` | a band whose live content is a third-party widget in document flow (chat launcher, feedback badge, social wall) rendering per session | `--mask` the band; the widget is wired at delivery | delivery | yes |
+| `third-party-in-flow` | a band whose live content is a third-party widget in document flow (chat launcher, feedback badge, social wall) rendering per session | `masks.json` `sel` entry (rule 19); the widget is wired at delivery | delivery | yes |
 | `tag-injected-tail` | doc height grows at the page tail between captures (tag-manager legal copy, consent footers), content-diff EXTRA at the end | recapture the reference; if it persists, `--mask` the tail rows | user | until recapture |
 | `index-driven-content` | listing/results items change between captures (news, search, feeds) | `--mask` the listing band, or mirror the same data source | delivery | yes |
-| `photo-reencoding` | diff spread evenly over an image whose anchors match — rendition or compression differences | none — logged; expected in the published-origin regime | delivery | yes |
+| `photo-reencoding` | diff spread evenly over an image whose anchors match — rendition or compression differences | `masks.json` `kind: images` (rule 19): geometry-matched rects only; the `photo-dominated` line is ledgered | delivery | yes |
 | `live-drift` | live changed since `ref.capturedAt` (campaign, copy edits): content-diff MISSING/EXTRA on fresh text, height Δ explained by a new element | delete `live.png` and recapture — a stale reference is not a residual | — | no |
 | `nondeterministic-live` | tickers, "last updated" dates, counts, personalization slots — live differs from itself run to run | replicate the structure, freeze one captured value, `--mask` | user | yes |
-| `live-data-embed` | third-party iframe or widget carrying moving data | load the SAME src on both sides so the data cancels; log the timing-skew remainder | user | yes |
+| `live-data-embed` | third-party iframe or widget carrying moving data | load the SAME src on both sides so the data cancels; log the timing-skew remainder; decided-out embeds: `masks.json` `kind: iframes` | user | yes |
 | `randomized-decoration` | generative line art, particle fields regenerated per load — live never matches itself | `--mask` the band | user | yes |
 | `personalised-region` | store or recommendation rails, ad slots: hundreds of px vary between loads by cookie or geo | pin storage state; `--mask` the region | delivery | yes |
 | `skip-link-focus` | a thin band at the top present in one capture only — a skip link or focus ring left visible after a dismissal click | instrument fix (blur the active element before capture); the run does not count against the cap | — | no |

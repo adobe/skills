@@ -304,10 +304,14 @@ export function compareRegion(name, L, B, tol) {
   if (L.backgroundColor !== B.backgroundColor) r.findings.push({ kind: 'REGION STYLE', msg: `backgroundColor ${L.backgroundColor} → ${B.backgroundColor}` });
   if (L.position !== B.position) r.findings.push({ kind: 'REGION STYLE', msg: `position ${L.position} → ${B.position} (fixed/sticky chrome must stay fixed/sticky — seam symmetry)` });
 
-  // STICKY: the pinned inventory (fixed + stuck-sticky) must match per region
+  // STICKY: the pinned inventory (fixed + stuck-sticky) must match per region —
+  // compared on GEOMETRY (count + sorted heights, ±tol), never on the descriptor:
+  // a replica never shares the live site's ids/classes, and seam symmetry is
+  // about the pinned band's height, not its name. desc() is for the message only.
   const fmtPin = (list) => ((list || []).length ? list.map((s) => `${s.el} (${s.h}px)`).join(' + ') : 'nothing');
-  const pinKey = (list) => JSON.stringify((list || []).map((s) => [s.el, s.h]));
-  if (pinKey(L.sticky) !== pinKey(B.sticky)) r.findings.push({ kind: 'STICKY', msg: `live pins ${fmtPin(L.sticky)}, build pins ${fmtPin(B.sticky)} (per-chunk seam symmetry; --scroll <y> for the scrolled state)` });
+  const pinKey = (list) => (list || []).map((s) => s.h).sort((p, q) => p - q);
+  const pinsMatch = (p, q) => p.length === q.length && p.every((hh, i) => Math.abs(hh - q[i]) <= tol);
+  if (!pinsMatch(pinKey(L.sticky), pinKey(B.sticky))) r.findings.push({ kind: 'STICKY', msg: `live pins ${fmtPin(L.sticky)}, build pins ${fmtPin(B.sticky)} (per-chunk seam symmetry; --scroll <y> for the scrolled state)` });
   // PSEUDO: the opened trigger's ::before/::after (hover bar, caret)
   if (L.pseudo || B.pseudo) {
     for (const pe of ['::before', '::after']) {

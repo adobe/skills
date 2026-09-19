@@ -28,10 +28,24 @@
  *     variants?: [ ... ],                                // optional (A/B / geo markers)
  *     blocked: [ '<substr>' ],                             // --block list (refusal key; [] when none)
  *     hidden?: [], pinnedHidden?: [], tail?: {}, pendingDecodes?, seamRepeats?, visibilityState?,   // optional
- *     masksRects?: [ { kind: 'sel'|'iframe'|'img', sel?, src?, x, y, w, h, fixed? } ]
- *       // --mask-sel / --mask-iframes / --mask-images: page-space rects at scroll 0 after the settle;
- *       // present only when a --mask-* flag was given; fixed:true = inside pinned chrome, never masked
+ *     masksRects?: [ { kind: 'sel'|'iframe'|'img', sel?, src?, x, y, w, h, fixed?, error? } ]
+ *       // --mask-sel / --mask-iframes / --mask-images / --masks-json: page-space rects at
+ *       // scroll 0 after the settle; present only when a --mask-* flag was given.
+ *       // fixed:true = inside pinned chrome — recorded, never masked (printed once).
+ *       // error:'bad selector' = a --mask-sel entry querySelectorAll rejected — a
+ *       // zero-size placeholder (x,y,w,h = 0) a consumer MUST skip (printed once).
  *   }
+ *
+ * masks.json (`stardust/replica/masks.json`, read by gate.sh → both stitch-shot
+ * calls and pixel-compare via --masks-json; loadMasksJson below is the ONE
+ * validator): a JSON array of inventory-declared masks —
+ *   { "sel": "<css>", "class": "<residual class id>", "source": "<ref>" }   // kind sel (default)
+ *   { "kind": "iframes", "source": "<ref>" }   // every iframe box (class live-data-embed)
+ *   { "kind": "images",  "source": "<ref>" }   // geometry-matched img boxes (class photo-reencoding)
+ * `source` is `dynamics:<row-id>` | `register:R-<nn>` | `decision:<owner>` — the
+ * inventory link; an entry without it, a sel entry without `class`, or a class
+ * outside MASK_CLASSES (source-fidelity-gate.md § Residual classes) is refused
+ * (exit 1 in every consumer): only inventory-declared regions are auto-masked.
  *
  * Refusal keys — a pair is incomparable when any of these differ, or when
  * only one side has a sidecar: instrument.name, width, vh, dpr, consent.mode,
@@ -46,6 +60,46 @@ import { readFileSync, writeFileSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 
 export const REFUSAL_KEYS = ['instrument.name', 'width', 'vh', 'dpr', 'consent.mode', 'blocked'];
+
+// Residual class ids (source-fidelity-gate.md § Residual classes) — the only
+// values masks.json `class` may carry. Keep in step with the table.
+export const MASK_CLASSES = ['glyph-antialiasing', 'third-party-in-flow', 'tag-injected-tail', 'index-driven-content', 'photo-reencoding', 'live-drift', 'nondeterministic-live', 'live-data-embed', 'randomized-decoration', 'personalised-region', 'skip-link-focus', 'fixed-disc-at-seams', 'subpixel-layoutunit', 'icon-font-substitution', 'capture-state', 'authored-volatile-masked'];
+export const MASK_SOURCE_RE = /^(dynamics:\S+|register:R-\d+|decision:\S+)$/;
+// classes the instrument assigns to its own auto-masks
+export const AUTO_MASK_CLASS = { iframe: 'live-data-embed', img: 'photo-reencoding', band: 'authored-volatile-masked', sel: 'authored-volatile-masked' };
+
+/**
+ * Validate masks.json. Returns { entries, sels, classBySel, iframes, images }
+ * or throws an Error whose message names the offending entry — every consumer
+ * exits 1 on it (stitch-shot before capturing, pixel-compare before comparing,
+ * gate.sh before the first capture via `pixel-compare --masks-json <f> --check`).
+ */
+export function loadMasksJson(file) {
+  let raw;
+  try { raw = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new Error(`masks.json ${file}: ${e.code === 'ENOENT' ? 'not found' : `not JSON (${e.message})`}`); }
+  if (!Array.isArray(raw)) throw new Error(`masks.json ${file}: expected a JSON array of { sel, class, source } entries`);
+  const out = { entries: [], sels: [], classBySel: {}, iframes: false, images: false };
+  raw.forEach((e, i) => {
+    const at = `masks.json ${file} entry ${i}`;
+    if (!e || typeof e !== 'object') throw new Error(`${at}: not an object`);
+    const kind = e.kind || 'sel';
+    if (!['sel', 'iframes', 'images'].includes(kind)) throw new Error(`${at}: kind "${kind}" — expected sel | iframes | images`);
+    if (typeof e.source !== 'string' || !MASK_SOURCE_RE.test(e.source)) throw new Error(`${at}: source missing or not dynamics:<row-id> | register:R-<nn> | decision:<owner> (got ${JSON.stringify(e.source)}) — only inventory-declared regions are masked`);
+    if (kind === 'sel') {
+      if (typeof e.sel !== 'string' || !e.sel.trim()) throw new Error(`${at}: sel missing`);
+      if (typeof e.class !== 'string' || !MASK_CLASSES.includes(e.class)) throw new Error(`${at}: class ${JSON.stringify(e.class)} is not a residual class id (${MASK_CLASSES.join(', ')})`);
+      const sel = e.sel.trim();
+      if (sel.includes(',')) throw new Error(`${at}: sel "${sel}" contains a comma — one selector per entry`);
+      out.sels.push(sel); out.classBySel[sel] = e.class;
+    } else if (e.class !== undefined && e.class !== AUTO_MASK_CLASS[kind === 'iframes' ? 'iframe' : 'img']) throw new Error(`${at}: kind ${kind} carries class ${AUTO_MASK_CLASS[kind === 'iframes' ? 'iframe' : 'img']} — omit class`);
+    else out[kind] = true;
+    out.entries.push({ ...e, kind });
+  });
+  return out;
+}
+
+/** The effective capture flags for a masks.json (what stitch-shot records in instrument.options). */
+export const maskFlagsOf = (m) => ({ maskSel: [...m.sels], maskIframes: !!m.iframes, maskImages: !!m.images });
 
 export const sidecarPath = (png) => `${png}.json`;
 

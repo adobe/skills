@@ -125,9 +125,15 @@
  *                         are recorded fixed:true and are NOT to be masked
  *     --mask-iframes      record every iframe box (kind iframe)
  *     --mask-images       record every img box ≥ 40×40 (kind img)
+ *     --masks-json <file> the project's inventory-declared masks
+ *                         (stardust/replica/masks.json; schema + validator in
+ *                         capture-sidecar.mjs): adds its sel entries to
+ *                         --mask-sel and switches on the iframes/images flags it
+ *                         declares; an invalid file is exit 1 before any capture
  *                         Rects are read at scroll 0 after the settle; nothing
  *                         is painted — masks are applied by the compare side,
- *                         symmetrically, from both sidecars
+ *                         symmetrically, from both sidecars (pixel-compare
+ *                         --mask-from / --masks-json)
  *     --allow-overlay     capture even when a fixed / dialog element covers
  *                         > 30 % of the first viewport after dismissal
  *     --consent <sel>     extra consent selector, tried before the built-in
@@ -166,8 +172,9 @@
  * deflection), 3 bot challenge (live side blocked — fail loud, never
  * captured), 5 invalid capture — no PNG, no sidecar, NO VERDICT, never a
  * FAIL: a consent container still visible after the dismissal window (deny
- * mode: no reject control, or accepted; accept mode: nothing matched —
- * --consent <sel>/"text:<label>" or --allow-consent on BOTH sides); settled
+ * mode: no reject control, or still visible after the reject click; accept
+ * mode: nothing matched — --consent <sel>/"text:<label>" or --allow-consent
+ * on BOTH sides); settled
  * height < 40 % of --expect-height after one retry; an
  * error-boundary page; an overlay still covering > 30 % of the first
  * viewport after dismissal (--allow-overlay). gate.sh maps 5 like 3.
@@ -180,7 +187,7 @@ import { PNG } from 'pngjs';
 import { writeFileSync, mkdirSync, existsSync, readFileSync, realpathSync } from 'fs';
 import { dirname, resolve as resolvePath } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { writeSidecar } from './capture-sidecar.mjs';
+import { writeSidecar, loadMasksJson } from './capture-sidecar.mjs';
 
 // Bump when the capture PROCEDURE changes (settle, freeze, dismissal order):
 // recorded in the sidecar so a reference taken by an older procedure is
@@ -218,9 +225,11 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --mask-sel <sel,…>  record matched elements' page-space rects in the sidecar masksRects[] (fixed/sticky: fixed:true, never masked)
   --mask-iframes      record every iframe box in masksRects[]
   --mask-images       record every img box ≥ 40×40 in masksRects[] (only geometry-matched pairs are masked by the compare)
+  --masks-json <file>  inventory-declared masks (stardust/replica/masks.json; schema: capture-sidecar.mjs) — adds its sel
+                    entries to --mask-sel and its iframes/images flags; an invalid file is exit 1 before any capture
   --allow-overlay   capture even when a fixed / dialog element covers > 30 % of the first viewport
   --consent <sel>   extra consent selector (clicked, not removed); "text:<label>" for a label match
-  --consent-mode <m> accept | deny (default accept; deny with no reject control, or accepted → exit 5)
+  --consent-mode <m> accept | deny (default accept; deny: no reject control, or still visible after the reject click → exit 5)
   --allow-consent   capture even when a consent container is still visible after dismissal (default: exit 5)
   --no-dismiss-defaults  do not hide the persistent-widget list (CMP launcher, feedback tab…); clicks still run
   --remove-text <phrase> hide the nearest fixed/sticky ancestor of an element containing <phrase> (repeatable; last resort, BOTH sides)
@@ -259,6 +268,11 @@ export function parseArgs(argv) {
     else if (a === '--mask-sel') { opts.maskSel = (rest[i += 1] || '').split(',').map((x) => x.trim()).filter(Boolean); }
     else if (a === '--mask-iframes') { opts.maskIframes = true; }
     else if (a === '--mask-images') { opts.maskImages = true; }
+    else if (a === '--masks-json') {
+      let m; try { m = loadMasksJson(rest[i += 1] || ''); } catch (e) { console.error(`stitch-shot: ${e.message} — nothing captured (exit 1)`); process.exit(1); }
+      for (const sel of m.sels) if (!opts.maskSel.includes(sel)) opts.maskSel.push(sel);
+      opts.maskIframes = opts.maskIframes || m.iframes; opts.maskImages = opts.maskImages || m.images; opts.masksJson = rest[i];
+    }
     else if (a === '--allow-overlay') { opts.allowOverlay = true; }
     else if (a === '--allow-consent') { opts.allowConsent = true; }
     else if (a === '--block') { opts.block = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
