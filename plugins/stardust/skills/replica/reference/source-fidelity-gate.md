@@ -78,12 +78,24 @@ redirects to a different locale per run is a nondeterministic source); on a
 bot-managed site that exits 3, escalate with `--headed` (§ Hardening rule 1).
 
 The live capture is taken ONCE per breakpoint per full gate run and reused
-across iterations — re-take it only if it is genuinely stale (site changed,
-capture hardening changed). This is a bot-block control, not just a cost
-note: content-diff + visual-diff each navigate the live URL per run, so a
-full 3-iter, 2-breakpoint gate is already ≈12–18 live hits, and hard-CDN
-sites (recorded: an Akamai-defended luggage retailer) escalate to an IP block after a handful.
-The prototype capture is re-taken every iteration.
+across iterations. **Freshness is an instrument, not a judgment**: `gate.sh`
+re-probes a reference older than `GATE_REF_MAX_AGE_H` (24 h; `--refresh`
+forces it) with ONE `anchor.mjs` hit and recaptures only on `LIVE DRIFT`
+(height beyond a noise-bounded threshold or a changed section count),
+invalidating `live.png`, `anchor-live.json` and `chrome-live.json` together
+— a stale reference is not a residual (§ Residual classes, `live-drift`)
+and the recapture round does not count against the cap. The gate dir's own
+capture is the only reference; never a POC or crawl screenshot. Add
+`--variance` (a second live hit, once per gate dir) for the published-origin
+gate and for the first round of an archetype whose dynamics inventory lists
+index-backed or personalised rows; never on hard-CDN sites. Its `noise floor`
+is printed beside the raw number and its hot bands offered as `--mask`
+suggestions — it is never subtracted and never moves the bar. This is a
+bot-block control, not just a cost note: content-diff + visual-diff each
+navigate the live URL per run, so a full 3-iter, 2-breakpoint gate is
+already ≈12–18 live hits, and hard-CDN sites (recorded: an Akamai-defended
+luggage retailer) escalate to an IP block after a handful. The prototype
+capture is re-taken every iteration.
 
 ## Pass bar (all five, per breakpoint)
 
@@ -663,6 +675,9 @@ Two rules for that final run:
   header/footer elements) against the live origin, never the crawl
   snapshot; mask live-content drift (campaign creatives, promo slots) out
   of the fidelity number — it is authored content, not conversion fidelity.
+  Run the round with `--refresh --variance`: the drift probe decides
+  whether the reference is recaptured, the self-noise floor tells a rotating
+  campaign slot from a conversion defect before any CSS round is spent.
 - **Budget ONE anchors-driven reconcile round at the published origin.** The
   pipeline shifts vertical rhythm (section wrappers, `<p><picture>`,
   fragment chrome): a gate-passed 8.4% prototype first published at 11.75%,

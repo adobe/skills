@@ -5,12 +5,48 @@
 # minimization, source-fidelity-gate.md § Iteration discipline), runs
 # pixel-compare, and prints the verdict lines that drive the loop (size /
 # height delta / differing % / hot bands). The prototype/build side is
-# re-captured every round; the live side only when live.png is absent —
-# delete it explicitly to re-take (site changed, capture hardening changed).
+# re-captured every round; the live side only when live.png is absent, has
+# no sidecar, or the freshness probe below finds LIVE DRIFT (delete it
+# explicitly when capture hardening changed).
 #
 # Usage:
 #   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label] \
-#     [--marker <string>] [--live-from-capture <png>] [--regime prototype|published-origin]
+#     [--marker <string>] [--live-from-capture <png>] [--regime prototype|published-origin] \
+#     [--refresh] [--variance]
+#
+#   --refresh   force the live-drift probe on a cached live.png (one anchor.mjs
+#     hit) instead of waiting for the reference to age past GATE_REF_MAX_AGE_H.
+#   --variance  live self-noise grade, once per gate dir: a SECOND live capture
+#     (live-b.png) compared against live.png → variance.json; prints
+#     `noise floor N %` and the hot bands as --mask suggestions. Opt-in: it is
+#     a second live hit per breakpoint — the doc names the two triggers
+#     (published-origin gate; first round of an archetype whose dynamics
+#     inventory lists index-backed/personalised rows) and says never on
+#     hard-CDN sites. The floor is PRINTED beside the raw number every later
+#     round and recorded as noiseFloor{}; it is never subtracted from it and
+#     never moves the bar.
+#
+# Reference freshness (instrument, not prose): a stale reference is not a
+# residual (field: a one-day-old reference read 5 % where a fresh one read
+# 31 %; a campaign hero rotated three times in four days). When live.png is
+# older than GATE_REF_MAX_AGE_H hours (default 24; sidecar capturedAt, else
+# mtime, else the last freshness check) or --refresh is given, ONE fresh
+# anchor.mjs --json probe (never --cache — a cache hit is zero live hits and
+# nothing to compare) is compared against the sidecar docHeight / cached
+# anchor-live.json. Over the bounded threshold
+#   |Δh| > max(1 % of height, GATE_DRIFT_PX (default 24), recorded self-noise Δh)
+#   OR the top-level section count changed
+# the round prints `LIVE DRIFT Δh <px> sections <a→b> — recapturing`, deletes
+# ALL THREE live caches together (live.png + .json, anchor-live.json,
+# chrome-live.json — a recaptured PNG next to a stale chrome/anchor cache is
+# the mixed-reference bug one level down), stores the fresh probe as the new
+# anchor-live.json (the hit is not wasted) and records liveDrift{} in the
+# round record. A probe that hits its deadline (124) or is blocked skips the
+# check with a printed reason — never a FAIL, never a recapture. The bounded
+# threshold is what keeps one live.png per breakpoint as the round's truth on
+# pages whose height varies ±700 px between loads; without it every round
+# would recapture. Below the threshold the check is recorded in
+# freshness.json so the probe is not repeated every round.
 #
 #   --live-from-capture <png>  use an EXTRACT capture as the live reference
 #     instead of stitching live (bot-walled sites where only the extraction's
@@ -28,7 +64,9 @@
 #     "http://localhost:8791/home-proposed.html" 1440 iter2
 #
 # Evidence lands in stardust/replica/gates/<slug>-<width>/
-# (live.png, build.png, diff-<label>.png, gate-<label>.json).
+# (live.png, build.png, diff-<label>.png, gate-<label>.json; freshness.json
+# after a within-threshold drift check; live-b.png + variance.json after
+# --variance).
 #
 # gate-<label>.json is the round's RECORD — pixel-compare's --json-out
 # (pixelPct, pixelPctUnmasked, masks[] with area %, heightDelta, bands) plus
@@ -70,7 +108,9 @@
 #   GATE_REAP_MIN        stale-instrument age in minutes  (default 15; 0 disables)
 set -u
 
-SLUG=${1:?usage: gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>] [--live-from-capture <png>] [--regime prototype|published-origin]}
+USAGE="usage: gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>] [--live-from-capture <png>] [--regime prototype|published-origin] [--refresh] [--variance]"
+case "${1:-}" in --help|-h) sed -n '2,/^set -u/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; exit 0 ;; esac
+SLUG=${1:?$USAGE}
 LIVE_URL=${2:?missing <live-url>}
 BUILD_URL=${3:?missing <build-url>}
 W=${4:?missing <width>}
@@ -80,13 +120,17 @@ case "${1:-}" in ''|--*) ;; *) LBL=$1; shift ;; esac
 MARKER="$SLUG"
 FROM_CAPTURE=""
 REGIME_OVERRIDE=""
+REFRESH=""
+VARIANCE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --marker) MARKER=${2:?--marker needs a value}; shift 2 ;;
     --live-from-capture) FROM_CAPTURE=${2:?--live-from-capture needs a <png>}; shift 2 ;;
     --regime) REGIME_OVERRIDE=${2:?--regime needs prototype|published-origin}; shift 2
       case "$REGIME_OVERRIDE" in prototype|published-origin) ;; *) echo "gate.sh: --regime must be prototype or published-origin (got $REGIME_OVERRIDE)" >&2; exit 125 ;; esac ;;
-    *) echo "gate.sh: unknown argument $1 (usage: gate.sh <slug> <live-url> <build-url> <width> [iter-label] [--marker <string>] [--live-from-capture <png>] [--regime prototype|published-origin])" >&2; exit 125 ;;
+    --refresh) REFRESH=1; shift ;;
+    --variance) VARIANCE=1; shift ;;
+    *) echo "gate.sh: unknown argument $1 ($USAGE)" >&2; exit 125 ;;
   esac
 done
 
@@ -175,11 +219,99 @@ if [ -f "$DIR/live.png" ] && [ ! -f "$DIR/live.png.json" ]; then
   echo "gate.sh: $DIR/live.png has no provenance sidecar (pre-sidecar capture, instrument state unknown) — treating it as stale and re-capturing" >&2
   rm -f "$DIR/live.png"
 fi
+
+# Reference freshness (see header): probe only when the cached reference is
+# older than GATE_REF_MAX_AGE_H or --refresh asked; never on an imported
+# extract capture (there is no live page it claims to equal).
+DRIFT_JSON=""
+if [ -f "$DIR/live.png" ] && [ -z "$FORCE" ]; then
+  REF_MAX_AGE_H=${GATE_REF_MAX_AGE_H:-24}
+  STALE=$(node - "$DIR/live.png" "$REF_MAX_AGE_H" "${REFRESH:-0}" <<'NODE'
+const fs = require('fs');
+const [live, maxH, refresh] = process.argv.slice(2);
+const read = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } };
+const side = read(`${live}.json`);
+const fresh = read(`${live.replace(/live\.png$/, 'freshness.json')}`);
+const capturedAt = side?.capturedAt || fs.statSync(live).mtime.toISOString();
+const last = [capturedAt, fresh?.checkedAt].filter(Boolean).map((t) => Date.parse(t)).filter(Number.isFinite);
+const ageH = (Date.now() - Math.max(...last)) / 36e5;
+process.stdout.write(refresh === '1' || ageH > Number(maxH) ? `stale ${ageH.toFixed(1)}` : `fresh ${ageH.toFixed(1)}`);
+NODE
+)
+  case "$STALE" in
+    stale*)
+      echo "gate.sh: reference $DIR/live.png is ${STALE#stale } h old${REFRESH:+ (--refresh)} — one fresh anchor probe to check for live drift" >&2
+      PROBE="$DIR/.anchor-probe.json"
+      capped "$STITCH_TIMEOUT" "anchor probe live $SLUG@$W" node "$HERE/anchor.mjs" "$LIVE_URL" --width "$W" --json --consent-mode "$CONSENT_MODE" > "$PROBE"
+      prc=$?
+      if [ $prc -ne 0 ]; then
+        echo "gate.sh: drift check skipped — anchor probe exit $prc ($([ $prc -eq 124 ] && echo 'deadline, no verdict' || echo 'blocked/error')); comparing against the cached reference as-is" >&2
+        rm -f "$PROBE"
+      else
+        DRIFT_JSON=$(node - "$DIR" "$PROBE" "$LIVE_URL" "$W" "${GATE_DRIFT_PX:-24}" <<'NODE'
+const fs = require('fs');
+const [dir, probePath, url, width, driftPx] = process.argv.slice(2);
+const read = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } };
+const probe = read(probePath);
+const side = read(`${dir}/live.png.json`);
+const cache = read(`${dir}/anchor-live.json`);
+const variance = read(`${dir}/variance.json`);
+const docBefore = side?.docHeight ?? cache?.data?.doc ?? null;
+const sectionsBefore = cache?.data?.sections?.length ?? null;
+const docAfter = probe?.doc ?? null;
+const sectionsAfter = Array.isArray(probe?.sections) ? probe.sections.length : null;
+const out = { checkedAt: new Date().toISOString(), previousCapturedAt: side?.capturedAt || fs.statSync(`${dir}/live.png`).mtime.toISOString(), docBefore, docAfter, sectionsBefore, sectionsAfter, drift: false };
+if (docBefore == null || docAfter == null) { out.skipped = 'no reference height (sidecar docHeight / anchor-live.json)'; }
+else {
+  const noise = Math.abs(Number(variance?.heightDelta) || 0);
+  out.thresholdPx = Math.max(Math.round(docBefore / 100), Number(driftPx) || 0, noise);
+  out.deltaPx = docAfter - docBefore;
+  out.drift = Math.abs(out.deltaPx) > out.thresholdPx || (sectionsBefore != null && sectionsAfter != null && sectionsBefore !== sectionsAfter);
+}
+if (out.drift) {
+  for (const f of ['live.png', 'live.png.json', 'anchor-live.json', 'chrome-live.json', 'freshness.json']) fs.rmSync(`${dir}/${f}`, { force: true });
+  fs.writeFileSync(`${dir}/anchor-live.json`, `${JSON.stringify({ key: { url, width: Number(width), main: probe.main || 'main' }, probedAt: out.checkedAt, data: { doc: probe.doc, rootMissing: probe.rootMissing, rootWrapsChrome: probe.rootWrapsChrome, sections: probe.sections, footer: probe.footer } }, null, 2)}\n`);
+  console.error(`gate.sh: LIVE DRIFT Δh ${out.deltaPx > 0 ? '+' : ''}${out.deltaPx}px (threshold ${out.thresholdPx}px) sections ${sectionsBefore ?? '?'}→${sectionsAfter ?? '?'} — recapturing live.png; anchor-live.json and chrome-live.json invalidated together (a stale reference is not a residual — this round does not count against the cap)`);
+} else {
+  fs.writeFileSync(`${dir}/freshness.json`, `${JSON.stringify(out, null, 2)}\n`);
+  console.error(out.skipped ? `gate.sh: drift check inconclusive — ${out.skipped}; keeping the reference` : `gate.sh: reference fresh-checked — Δh ${out.deltaPx > 0 ? '+' : ''}${out.deltaPx}px within ${out.thresholdPx}px${sectionsAfter != null ? `, ${sectionsAfter} sections` : ''}; keeping live.png`);
+}
+fs.rmSync(probePath, { force: true });
+process.stdout.write(JSON.stringify(out));
+NODE
+)
+      fi ;;
+  esac
+fi
+
 if [ ! -f "$DIR/live.png" ]; then
   capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle --consent-mode "$CONSENT_MODE"
   rc=$?
   [ $rc -eq 124 ] && rm -f "$DIR/live.png" "$DIR/live.png.json"   # never leave a partial live capture to be reused
   [ $rc -ne 0 ] && { echo "gate.sh: live capture failed (exit $rc) — not comparing" >&2; exit $rc; }
+fi
+
+# --variance: live self-noise grade, once per gate dir (second live hit —
+# opt-in, see header). Compared with the same instrument settings as the
+# reference; its number is a floor to READ, never a bar to move.
+if [ -n "$VARIANCE" ] && [ -z "$FORCE" ] && [ ! -f "$DIR/variance.json" ]; then
+  capped "$STITCH_TIMEOUT" "stitch-shot live-b $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live-b.png" --width "$W" --settle --consent-mode "$CONSENT_MODE"
+  vrc=$?
+  if [ $vrc -ne 0 ]; then
+    rm -f "$DIR/live-b.png" "$DIR/live-b.png.json"
+    echo "gate.sh: variance capture failed (exit $vrc) — no noise floor recorded this round" >&2
+  else
+    node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/live-b.png" --out "$DIR/variance-diff.png" --timeout "$COMPARE_TIMEOUT" --json-out "$DIR/variance.json" > /dev/null
+    vrc=$?
+    if [ $vrc -eq 124 ] || [ ! -f "$DIR/variance.json" ]; then rm -f "$DIR/variance.json"; echo "gate.sh: variance compare gave no verdict (exit $vrc) — no noise floor recorded" >&2; fi
+  fi
+fi
+if [ -f "$DIR/variance.json" ]; then
+  node -e '
+const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+const hot = (j.bands || []).filter((b) => b.pct >= 0.5).sort((a, b) => b.pct - a.pct).slice(0, 5);
+console.log(`noise floor ${j.pixelPct} % (live vs itself, Δh ${j.heightDelta}px)${hot.length ? ` — hot bands ${hot.map((b) => `y ${b.y0}–${b.y1} ${b.pct}%`).join(", ")}; mask suggestions: ${hot.map((b) => `--mask ${b.y0}:${b.y1 - b.y0}`).join(" ")}` : ""} — a floor to read beside the raw number, never subtracted from it`);
+' "$DIR/variance.json"
 fi
 
 # Build side: re-captured every iteration.
@@ -202,18 +334,28 @@ case "$BUILD_URL" in
 esac
 REGIME=${REGIME_OVERRIDE:-$REGIME}
 if [ -f "$DIR/gate-$LBL.json" ]; then
-  node - "$DIR/gate-$LBL.json" "$DIR/live.png" "$SLUG" "$LBL" "$W" "$LIVE_URL" "$BUILD_URL" "$REGIME" "$rc" <<'NODE'
+  GATE_DRIFT_JSON="$DRIFT_JSON" node - "$DIR/gate-$LBL.json" "$DIR/live.png" "$SLUG" "$LBL" "$W" "$LIVE_URL" "$BUILD_URL" "$REGIME" "$rc" <<'NODE'
 const fs = require('fs');
 const [rec, live, slug, label, width, liveUrl, buildUrl, regime, rcStr] = process.argv.slice(2);
 const rc = Number(rcStr);
+const read = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } };
 const j = JSON.parse(fs.readFileSync(rec, 'utf8'));
-let side = null; try { side = JSON.parse(fs.readFileSync(`${live}.json`, 'utf8')); } catch { /* no sidecar: mtime */ }
+const side = read(`${live}.json`); // no sidecar: mtime
 const capturedAt = side?.capturedAt || fs.statSync(live).mtime.toISOString();
-const out = { slug, label, width: Number(width), regime,
+const dir = rec.replace(/\/[^/]+$/, '');
+let drift = null; try { drift = process.env.GATE_DRIFT_JSON ? JSON.parse(process.env.GATE_DRIFT_JSON) : null; } catch { drift = null; }
+const variance = read(`${dir}/variance.json`);
+const out = { slug, label, width: Number(width), regime, at: new Date().toISOString(),
   ref: { url: liveUrl, width: Number(width), capturedAt, ...(side ? { sidecar: `${live}.json`, instrument: side.instrument && side.instrument.name, technique: side.technique, consent: side.consent } : { source: 'mtime' }) },
   build: { url: buildUrl }, verdict: rc === 0 ? 'PASS' : rc === 2 ? 'FAIL' : 'no-verdict', exit: rc, ...j };
+// Live drift is an EVENT on the record (not a progress.json residual): the
+// recapture round does not count against the cap, same rule as skip-link-focus.
+if (drift?.drift) out.liveDrift = { previousCapturedAt: drift.previousCapturedAt, docBefore: drift.docBefore, docAfter: drift.docAfter, sectionsBefore: drift.sectionsBefore, sectionsAfter: drift.sectionsAfter, thresholdPx: drift.thresholdPx, recaptured: true };
+else if (drift && !drift.skipped) out.freshness = { checkedAt: drift.checkedAt, deltaPx: drift.deltaPx, thresholdPx: drift.thresholdPx };
+// Noise floor: read beside the number, never subtracted (thresholds unchanged).
+if (variance) out.noiseFloor = { pixelPct: variance.pixelPct, heightDelta: variance.heightDelta, source: `${dir}/variance.json` };
 fs.writeFileSync(rec, `${JSON.stringify(out, null, 2)}\n`);
-console.log(`regime: ${regime}  reference: ${liveUrl} @${width} captured ${capturedAt}${side ? ` via ${side.technique || side.instrument?.name || 'unknown'}${side.source && side.source !== 'stitch-shot' ? ` (source: ${side.source})` : ''}` : ' (live.png mtime)'}${j.forced ? '  FORCED (incomparable captures — not a gate number)' : ''}  record: ${rec}`);
+console.log(`regime: ${regime}  reference: ${liveUrl} @${width} captured ${capturedAt}${side ? ` via ${side.technique || side.instrument?.name || 'unknown'}${side.source && side.source !== 'stitch-shot' ? ` (source: ${side.source})` : ''}` : ' (live.png mtime)'}${j.forced ? '  FORCED (incomparable captures — not a gate number)' : ''}${out.liveDrift ? `  LIVE DRIFT (Δh ${out.liveDrift.docAfter - out.liveDrift.docBefore}px — reference recaptured, round not counted)` : ''}${out.noiseFloor ? `  noise floor ${out.noiseFloor.pixelPct} % (raw ${j.pixelPct} % is the gated number)` : ''}  record: ${rec}`);
 NODE
 fi
 exit $rc
