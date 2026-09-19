@@ -45,6 +45,15 @@
  *                                            META CHROME — metadata block in /nav,
  *                                                /footer or /fragments/*
  *                                            HBR heading text carrying <br> (stripped)
+ *                                            D15 TEXT-LEAK — [sup]/[sub] tokens,
+ *                                                label^tooltip carets, ||| runs
+ *                                            D15 JSON — raw `json-ld` metadata row /
+ *                                                value cell starting with { or [
+ *                                                (JSON-LD is composed at runtime, D10)
+ *                                            TEXT punctuation-only <p>; >50 % of
+ *                                                in-block <img> with alt=""
+ *                                            CHROME header/footer/nav/page-chrome block
+ *                                                inlined into a content document
  *
  * Dependency-free by design (regex + balanced-div walking, same technique as
  * build-harness.mjs) — content pages are machine-generated and regular; this
@@ -55,6 +64,7 @@ import path from 'path';
 
 const WRAPPER_BLOCK_NAMES = new Set(['text', 'heading', 'title', 'image']);
 const KEY_VALUE_BLOCKS = new Set(['metadata', 'section-metadata']);
+const CHROME_BLOCK_NAMES = new Set(['header', 'footer', 'nav', 'page-chrome']);
 const EMBED_HOST = /(youtube\.com|youtu\.be|vimeo\.com|player\.|\/embed\/)/i;
 // Default-content-expressible tags: what a prose section can carry natively.
 const PROSE_TAGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'a', 'ul', 'ol', 'li', 'picture', 'img', 'source', 'strong', 'em', 'code', 'br']);
@@ -132,6 +142,7 @@ function lintPage(file, html, findings) {
   lintPipelineShapes(file, main, sections, flag);
 
   lintText(file, main, flag);
+  lintAlts(file, sections, flag);
   lintUrls(file, main, flag);
 
   // HR (#119) — <hr> is the EDS section delimiter: authored inside a section
@@ -162,6 +173,12 @@ function lintBlock(file, section, block, name, flag) {
   // D1 — wrapper block around bare default content.
   if (WRAPPER_BLOCK_NAMES.has(name)) {
     flag('🔴', 'D1', `${label}: block named "${name}" wraps bare default content — author it as default content in the section instead`);
+  }
+
+  // CHROME — nav/footer inlined into a content document is an owner decision
+  // (David's Model #8 authoring groups, #12 fragments), never the default.
+  if (CHROME_BLOCK_NAMES.has(name) && !CHROME_PATH.test(file)) {
+    flag('🟡', 'CHROME', `${label}: chrome block "${name}" inlined into a content document — an owner decision recorded in direction.md (or stardust/decisions.md)? Default is the runtime fragment (reference/ai-readability.md § 5)`);
   }
 
   const isKeyValue = KEY_VALUE_BLOCKS.has(name);
@@ -204,6 +221,13 @@ function lintBlock(file, section, block, name, flag) {
       const pCount = valueTags.filter((t) => t === 'p').length;
       if (valueTags.some((t) => /^h[1-6]$/.test(t) || t === 'picture') || pCount > 1) {
         flag('🔴', 'D14', `${label} row ${ri + 1}: key-value block carries display content (heading/picture/multi-paragraph) in its value cell — name/value is for configuration only`);
+      }
+      // D15 JSON — a raw `json-ld` row is pipeline-supported but is JSON in a
+      // document; the documented default composes JSON-LD at runtime (D10).
+      const key = stripTags(cells[0].inner).toLowerCase();
+      const val = stripTags(cells[1].inner);
+      if (/json-?ld|^schema$/.test(key) || /^[{[]/.test(val)) {
+        flag('🟡', 'D15', `${label} row ${ri + 1}: raw JSON in a metadata row ("${key}") — JSON-LD is composed at runtime by scripts.js from the page-type and typed metadata rows (reference/content-page-scaffold.md § 9); a raw json-ld row is a per-page exception, not the default`);
       }
     }
   });
@@ -283,7 +307,7 @@ function lintText(file, main, flag) {
   // D15 — code visible as text. In raw content HTML, author-visible "<tag>"
   // is entity-encoded, and template/binding syntax survives literally.
   const text = stripTags(main);
-  const m = text.match(/&lt;\s*[a-z][a-z0-9-]*|\{\{[^}]*\}\}|<%|%>|\b[a-z-]+\s*:\s*[^;{}]+;\s*\}/i);
+  const m = text.match(/&(?:lt|#x0*3c|#0*60);\s*[a-z][a-z0-9-]*|\{\{[^}]*\}\}|<%|%>|\b[a-z-]+\s*:\s*[^;{}]+;\s*\}/i);
   if (m) {
     flag('🔴', 'D15', `code visible as text in authored content ("${m[0].slice(0, 40)}…") — markup/bindings/CSS never appear as author-facing text`);
   }
@@ -301,6 +325,34 @@ function lintText(file, main, flag) {
   const tok = text.match(/\b[A-Z][A-Z0-9]{2,}_[A-Z0-9_]{3,}\b/);
   if (tok) {
     flag('🟡', 'D15', `"${tok[0].slice(0, 40)}" reads like a campaign/tracking token lifted as copy — confirm it is genuine content`);
+  }
+  // D15 TEXT-LEAK advisory — converter micro-syntax that leaked into copy:
+  // `[sup]`/`[sub]` markers, `label^tooltip` carets, `|||` field-delimiter runs.
+  const leak = text.match(/\[su[pb]\]|[A-Za-z]\^[A-Za-z]|\|{3,}/);
+  if (leak) {
+    flag('🟡', 'D15', `converter syntax leaked into copy ("${leak[0]}") — [sup]/[sub], ^tooltip carets and ||| runs are encoder artefacts; fix the encoder, then regenerate (TEXT-LEAK)`);
+  }
+  // TEXT hygiene advisories — punctuation-only paragraphs and blank alts.
+  const dots = [...main.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)].filter((p) => { const t = stripTags(p[1]).replace(/&nbsp;|&#160;/g, ''); return t && /^[\s\p{P}]+$/u.test(t); });
+  if (dots.length) {
+    flag('🟡', 'TEXT', `${dots.length} paragraph(s) whose only text is punctuation ("${stripTags(dots[0][1]).slice(0, 10)}") — a converter artefact or a whitespace spacer (#112); drop it`);
+  }
+}
+
+// TEXT alt ratio — inside blocks only (chrome/decorative imagery excluded).
+function lintAlts(file, sections, flag) {
+  let imgs = 0; let blank = 0;
+  for (const section of sections) {
+    for (const block of childDivs(section.inner)) {
+      if (!classOf(block.openTag)) continue;
+      for (const m of block.inner.matchAll(/<img\b[^>]*>/gi)) {
+        imgs += 1;
+        if (/\balt=""/i.test(m[0]) || !/\balt=/i.test(m[0])) blank += 1;
+      }
+    }
+  }
+  if (imgs >= 2 && blank / imgs > 0.5) {
+    flag('🟡', 'TEXT', `${blank} of ${imgs} in-block <img> carry an empty or missing alt — editorial images need a description (D13); only genuinely decorative tiles may be alt=""`);
   }
 }
 
