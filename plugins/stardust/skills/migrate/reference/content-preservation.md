@@ -57,6 +57,9 @@ reason }` so the user can audit.
 - **Asset paths** are rewritten per § Media references.
 - **Whitespace and line breaks** in copy are normalised; trailing
   whitespace and double-spaces collapse.
+- **Doc-source markup** (DITA/technical-documentation exports: inline
+  wrappers, `div.p`, lists split by block children, `<dl>`, nested
+  tables) maps per `importer-recipe.md` rule 11.
 
 ## Drop deliberately
 

@@ -17,7 +17,7 @@ trade so a reviewer can see, per page, what was and wasn't checked.
 | Tier | Render branch | Gates it MUST pass | When |
 |---|---|---|---|
 | **archetype** | Path A (approved prototype) | Full `prototype` gate stack: critique, audit, mobile-adapt, anti-template, content-sourcing, `:root` + data-attribute contracts | One representative page **per template**. The design canon. |
-| **sibling** | Path A′ (canon-fork) | **Variance-probed** (§ Sibling variance probe — run once per template BEFORE cloning) + structural clone of the archetype + **content-fidelity** (verbatim source copy, no fabrication, **measured** — § Content-count acceptance) + **delivery-lint** + **media-reconcile**. NOT full craft. | Every other page of a template the archetype already covers. **The cheap default for breadth.** |
+| **sibling** | Path A′ (canon-fork) | **Variance-probed** (§ Sibling variance probe — run once per template BEFORE cloning) + structural clone of the archetype + **content-fidelity** (verbatim source copy, no fabrication, **measured** — § Content-count acceptance) + **delivery-lint** + **media-reconcile**. NOT full craft. A scripted sibling importer follows `importer-recipe.md`. | Every other page of a template the archetype already covers. **The cheap default for breadth.** |
 | **thin** | unique (graceful) | delivery-lint + media-reconcile + a declared `contentGap`. Renders metadata + hero + whatever real content exists (e.g. a PDF link). No fabricated filler. | Pages with little/no body content (PDF-only, redirect stubs, bodyless landing). |
 
 The point of the table: **archetype is craft-gated once per template; siblings

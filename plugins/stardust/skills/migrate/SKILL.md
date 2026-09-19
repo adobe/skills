@@ -23,7 +23,7 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 | Setup 4 | `../prototype/reference/canon-extraction.md` § The five extraction steps |
 | Setup 7 | `skills/stardust/reference/state-machine.md` § Provenance validation |
 | 1 | `reference/content-preservation.md` § Dynamic dependencies · `../replica/reference/source-fidelity-gate.md` § Residual logging format |
-| 2 (branch, path) | `reference/migration-procedure.md` § Three render branches · § Output path mapping · § Idempotent skip · `reference/template-and-module-rendering.md` § Render path selection · § Validation contracts · § Deviation policy |
+| 2 (branch, path) | `reference/migration-procedure.md` § Three render branches · § Output path mapping · § Idempotent skip · `reference/template-and-module-rendering.md` § Render path selection · § Validation contracts · § Deviation policy · `reference/importer-recipe.md` (before writing or widening a sibling importer) |
 | 2 (fidelity, content) | `reference/fidelity-tiers.md` § The three tiers · § Sibling variance probe · § Content-count acceptance · `reference/content-preservation.md` § Internal link rewriting · § Forms |
 | 2 (head, assets, media) | `reference/metadata-and-jsonld.md` § Categories · § JSON-LD by page-type · `reference/asset-bundling.md` § Detection · § Rewrite · `reference/media-reconciliation.md` § The four decisions · § Cross-origin optimization |
 | 3 | `reference/migration-procedure.md` § Reference shape · § Page map · `reference/metadata-and-jsonld.md` § Sitemap entry · `reference/asset-bundling.md` § Stale asset cleanup |
@@ -99,9 +99,6 @@ inline, or run an impeccable command) and re-invoke migrate.
    (`skills/stardust/reference/state-machine.md` § Flow keys). Under
    hands-off the master's default applies (keep-design phrase →
    `replica`, otherwise `redesign`), recorded in `direction.md`.
-   (Recorded: `migrate <url>` as the first command of two same-design
-   migrations led to a hand-built compiler tuned by eye instead of the
-   replica gate.)
 2. Verify `stardust/state.json` exists with at least one
    `directed` page.
 3. Verify project-root `DESIGN.md` and `DESIGN.json` exist with
@@ -110,25 +107,20 @@ inline, or run an impeccable command) and re-invoke migrate.
    `header.html`, `footer.html`, `canon.css`.
 
    **Canon auto-bootstrap (when steps 3–4 find no canon).** The
-   documented `prototype → migrate → deploy` happy path does not
-   run `prepare-migration`, so a first migrate legitimately arrives
-   with no canon (observed on 4 of 6 e2e sites, where every run had
-   to derive canon by hand to proceed — this is the fix). When
-   canon is absent **and** at least one `approved` prototype exists,
-   do not stop: run the canon write-back inline from the first
-   approved prototype (the canon-author, default `home`) per
+   `prototype → migrate → deploy` happy path never runs
+   `prepare-migration`, so a first migrate legitimately arrives with
+   no canon. When canon is absent **and** an `approved` prototype
+   exists, do not stop: run the canon write-back inline from the
+   first approved prototype (the canon-author, default `home`) per
    `../prototype/reference/canon-extraction.md` § Five-step
-   procedure — extract `header.html` / `footer.html` / `canon.css`
-   to `stardust/canon/`, pin tokens + compositional moves to
-   `DESIGN.json.extensions.canon`, and record
-   `canon.source: "auto-bootstrap: <slug>"`. This is exactly what
-   `prototype --prep` does on first approval; migrate performs it
-   on demand so the core pipeline never dead-ends. Only stop and
-   recommend `$stardust prepare-migration` when canon is absent
-   **and** no approved prototype exists (there is nothing to derive
-   canon from). Under `state.json.handsOff` the bootstrap is
-   automatic and logged; interactively, surface it as a one-line
-   notice before proceeding.
+   procedure — `header.html` / `footer.html` / `canon.css` to
+   `stardust/canon/`, tokens + compositional moves pinned to
+   `DESIGN.json.extensions.canon`, `canon.source: "auto-bootstrap:
+   <slug>"` recorded — what `prototype --prep` does on first
+   approval. Only stop and recommend `$stardust prepare-migration`
+   when canon is absent **and** no approved prototype exists. Under
+   `state.json.handsOff` the bootstrap is automatic and logged;
+   interactively, surface it as a one-line notice.
 5. Verify `stardust/direction.md` has an active (not pending)
    direction.
 6. Read `state.json.pages[]` and partition into:
@@ -242,7 +234,9 @@ For each page in scope, follow
   B/bodyless → `thin` — per `reference/fidelity-tiers.md`. Record
   `fidelityTier`, `archetypeSource`, and `gatesPassed[]` in
   `_meta.json` so coverage shows what was craft-gated vs cloned.
-- **Render** per the chosen branch's procedure in T&M.
+- **Render** per the chosen branch's procedure in T&M. A scripted
+  sibling importer follows `reference/importer-recipe.md` (13 rules,
+  each with its enforcing instrument).
 - **Canon application** — chrome injection, canon.css
   injection, deviation logging.
 - **Module rendering** — render module instances via
@@ -550,6 +544,9 @@ work, they just mark it as out-of-step.
   validation contracts.
 - `reference/metadata-and-jsonld.md` — head composition, JSON-LD
   per page-type, canonical strategy.
+- `reference/importer-recipe.md` — the numbered importer rules
+  (rendered capture, element-scoped classification, exclusion
+  list, doc-source mapping) and what enforces each.
 - `reference/content-preservation.md` — what's kept,
   transformed, dropped; internal-link rewriting; asset path
   rewriting; form handling.
