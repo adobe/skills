@@ -7,16 +7,24 @@ phrasings run as four sessions against the same setup.
 
 ## Setup
 
-A fresh project directory with no `stardust/` state. The stardust plugin
-is installed. The target site is the eval suite's live crawl target.
-Nothing else is present — no EDS scaffold, no prototypes.
+A fresh project directory with no `stardust/` state (`fixture/` is empty).
+The stardust plugin is installed. The target is https://stripe.com, the
+suite's live crawl target (see `extract-multipage`). Nothing else is
+present — no EDS scaffold, no prototypes.
+
+This is a live-network eval: the routing decision itself needs no network,
+but a session that proceeds into `replica` or `prepare-migration` will
+crawl the target. Reachability drift is expected maintenance.
+
+Prompt 1 is interactive: the runner answers the keep-vs-redesign question
+from `answers.md` ("keep the design") and confirms any plan.
 
 ## User prompts (one session each)
 
-1. "$stardust migrate this page to EDS <url>"
-2. "$stardust migrate <url> to EDS keeping the current design"
-3. "$stardust build an exact replica of <url> on EDS, 1:1"
-4. "$stardust redesign and migrate <url> to EDS"
+1. "$stardust migrate this page to EDS https://stripe.com"
+2. "$stardust migrate https://stripe.com to EDS keeping the current design"
+3. "$stardust build an exact replica of https://stripe.com on EDS, 1:1"
+4. "$stardust redesign and migrate https://stripe.com to EDS"
 
 ## Expected behavior
 
