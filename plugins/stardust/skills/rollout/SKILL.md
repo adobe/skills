@@ -171,7 +171,7 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    `reference/delivery-lint.md`. **A P0/P1 blocks the PUT.**
    `node skills/deploy/scripts/block-lint.mjs blocks/ --styles styles/styles.css` exits 0 once per code-writing wave (EW-* static signatures; a 🔴 capped by a declared `@ew-exempt` item is `block-roundtrip --ew`'s call) — before any block's round-trip.
    ```bash
-   node skills/rollout/scripts/delivery-lint.mjs --file <html> --path </da/path> --icons-dir icons [--chrome-docs content/nav.html,content/footer.html,…]
+   node skills/rollout/scripts/delivery-lint.mjs --file <html> --path </da/path> --icons-dir icons [--allow-no-h1] [--chrome-docs content/nav.html,content/footer.html,…]
    node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <branch>--<repo>--<owner>.aem.live [--apply]
    ```
    `media-reconcile` resolves every image on the network and decides

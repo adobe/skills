@@ -195,8 +195,17 @@ whose harness cases skip when Playwright is unresolvable:
   valid JSON, and every script path it or the harness-permissions card names
   resolves to a shipped file.
 - `flag-parity.mjs` — every `--flag` a doc passes to a `<skill>/scripts/*.mjs`
-  has a case in that script's parser; a documented numeric default (the
-  extract page cap) equals the parser's.
+  (named with `.mjs`, or as a bare span-initial command such as
+  `block-roundtrip --ew`) has a case in that script's parser; every backticked
+  lint rule id on a lint/finding/script line is a string some script emits; a
+  documented numeric default (the extract page cap) equals the parser's;
+  `--docs <dir>` scans a fixture tree instead of `skills/`.
+- `flag-parity.test.mjs` — drives `lint/fixtures/flag-parity/`: a bare-name
+  flag, an unknown rule id and an `.mjs` flag with no parser case each fire
+  once; basenames used as words (`plan`, `inventory`), caps tokens on prose
+  lines, skill invocations (`$stardust qa`) and non-initial bare names are
+  silent; a resolved `CROSS_LANE_PENDING` entry is stale (exit 1); `--help`
+  prints the header only.
 - `launch-ladder.mjs` — the bot-management ladder (`TIERS`, stealth and
   off-screen args, `launchTier`) is identical in `live-session.mjs` and
   `crawl.mjs`, and no other script contains `headless: false`.

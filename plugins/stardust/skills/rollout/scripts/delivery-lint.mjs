@@ -12,12 +12,27 @@
  * Usage:
  *   node skills/rollout/scripts/delivery-lint.mjs --file <html> [--path </da/path>]
  *        [--type page|fragment|index] [--icons-dir <dir>] [--allow-empty <name,…>]
- *        [--chrome-docs <nav.html>,<footer.html>,… [--content <dir>]] [--json]
- * Exit: 0 = clean (no P0/P1), 1 = P0/P1 findings, 2 = bad invocation.
+ *        [--allow-no-h1] [--chrome-docs <nav.html>,<footer.html>,… [--content <dir>]] [--json]
+ * Exit: 0 = clean (no P0/P1), 1 = P0/P1 findings, 2 = bad invocation. --help prints this.
  *
- * Pre-PUT mirrors of the deploy lint (davids-model-lint D1-EMPTY) and href hygiene:
- *   empty-block P1      a block table with 0 rows inside <main> — silent content loss;
- *                       --allow-empty <name,…> exempts declared runtime-widget placeholders
+ * h1: a page needs exactly one <h1> (0 → P0, > 1 → P1). A faithful page whose SOURCE has
+ * no h1 is resolved by default with a visually-hidden default-content h1 from title/og:title;
+ * the recorded fallback is `--allow-no-h1` (the driver passes it per page): found-0 becomes
+ * P2 `h1-deviation` and `--json` carries `deviation: "no h1 (source has none)"` for the
+ * page record (next to contentGap — migrate/reference/fidelity-tiers.md § Declaration).
+ *
+ * one-cta-per-p P1: decorateButtons buttonizes a link only when the <p> holds nothing but
+ * the link(s) (`up.childNodes.length === 1`); the rule fires only when the paragraph's text
+ * outside its <a>s is whitespace, it has > 1 link and an emphasis wrapper — running prose
+ * with inline links ("call us at <a>…</a> or <strong><a>…</a></strong>") never buttonizes.
+ *
+ * description-alt P2: the metadata `description` cell starts with "Image" or equals an
+ * <img alt> on the page — an importer polluted the description with alt text.
+ *
+ * Pre-PUT mirrors of the deploy lint (davids-model-lint D1-EMPTY 🟡) and href hygiene:
+ *   empty-block P2      a block table with 0 rows inside <main> — silent content loss unless
+ *                       it is a runtime-widget mount point; --allow-empty <name,…> declares
+ *                       those (B7: advisory first; P1 after one clean wave, with D1-EMPTY)
  *   href-scheme P1      `javascript:` or a bare `#` / `#!` href — a dead CTA after decoration
  *   href-whitespace P1  leading/trailing whitespace inside the href value (404s at delivery)
  *
@@ -42,6 +57,10 @@ import { createHash } from 'node:crypto';
 import { basename, join, relative } from 'node:path';
 
 function arg(name, fb) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fb; }
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  console.log(readFileSync(new URL(import.meta.url), 'utf8').match(/\/\*\*([\s\S]*?)\*\//)[1].replace(/^ \* ?/gm, ''));
+  process.exit(0);
+}
 const FILE = arg('file', null);
 const DAPATH = arg('path', null);
 const TYPE = arg('type', null); // page | fragment | index — inferred if absent
@@ -49,6 +68,7 @@ const JSON_OUT = process.argv.includes('--json');
 const OPTIMIZING = (arg('optimizing-blocks', 'cards,columns,hero')).split(',').map((s) => s.trim()).filter(Boolean);
 const ICONS_DIR = arg('icons-dir', null);
 const ALLOW_EMPTY = new Set((arg('allow-empty', '')).split(',').map((s) => s.trim()).filter(Boolean));
+const ALLOW_NO_H1 = process.argv.includes('--allow-no-h1');
 const CHROME_DOCS = (arg('chrome-docs', '')).split(',').map((s) => s.trim()).filter(Boolean);
 const CONTENT_DIR = arg('content', null);
 if (!FILE) { console.error('delivery-lint: need --file <html>'); process.exit(2); }
@@ -81,20 +101,27 @@ if (type !== 'index') {
   if (!/<footer>\s*<\/footer>|<footer[\s>]/i.test(html)) add('P1', 'wrapper', 'missing <footer> tag (DA expects <footer></footer>)');
 }
 
-/* ---- h1 cardinality (typed) ---- */
+/* ---- h1 cardinality (typed). --allow-no-h1 is the per-page recorded deviation for a
+   source with no h1 (the preferred resolution is a visually-hidden default-content h1) ---- */
 const h1Count = (html.match(/<h1[\s>]/gi) || []).length;
-if (type === 'page' && h1Count !== 1) add(h1Count === 0 ? 'P0' : 'P1', 'h1', `expected exactly one <h1>, found ${h1Count}`);
+let deviation = null;
+if (type === 'page' && h1Count === 0 && ALLOW_NO_H1) {
+  deviation = 'no h1 (source has none)';
+  add('P2', 'h1-deviation', 'source has no h1 — recorded deviation; prefer a visually-hidden default-content h1 from title/og:title');
+} else if (type === 'page' && h1Count !== 1) add(h1Count === 0 ? 'P0' : 'P1', 'h1', `expected exactly one <h1>, found ${h1Count}`);
 if (type === 'fragment' && h1Count > 0) add('P1', 'h1', `fragment should not contain an <h1> (found ${h1Count})`);
 
-/* ---- one CTA per <p> (decorateButtons only buttonizes a link that is the
-   sole content of its <p>; two links in one <p> ship as unstyled text) ---- */
+/* ---- one CTA per <p>. decorateButtons buttonizes only when the <p> holds nothing but
+   the link (`up.childNodes.length === 1`, or <strong>/<em> alone in the <p>): running text
+   beside the links never buttonizes, so only a links-only paragraph with > 1 emphasized
+   link ships unstyled CTAs (<p><strong><a>A</a></strong> <strong><a>B</a></strong></p>) ---- */
 for (const m of html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)) {
   const inner = m[1];
   const links = (inner.match(/<a\b[^>]*>/gi) || []).length;
   const emphasized = /<(strong|em)\b/i.test(inner);
-  // a buttonizable paragraph wraps its link(s) in strong/em; >1 link there breaks buttonization
-  if (links > 1 && emphasized) {
-    add('P1', 'one-cta-per-p', 'paragraph contains >1 emphasized link — split each CTA into its own <p> or they ship unstyled');
+  const nonLinkText = inner.replace(/<a\b[\s\S]*?<\/a>/gi, '').replace(/<[^>]+>/g, '').replace(/&nbsp;|&#160;|\u00a0/g, ' ').trim();
+  if (links > 1 && emphasized && nonLinkText === '') {
+    add('P1', 'one-cta-per-p', 'paragraph contains >1 emphasized link and nothing else — split each CTA into its own <p> or they ship unstyled');
   }
 }
 
@@ -138,7 +165,7 @@ if (type !== 'index') {
   const mainOnly = (html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i) || [, html])[1];
   for (const m of mainOnly.matchAll(/<div class="([^"]+)">\s*<\/div>/g)) {
     const name = m[1].split(/\s+/)[0];
-    if (!ALLOW_EMPTY.has(name)) add('P1', 'empty-block', `${name}: block table with 0 rows — silent content loss; fix the encoder or declare a runtime-widget placeholder with --allow-empty ${name}`);
+    if (!ALLOW_EMPTY.has(name)) add('P2', 'empty-block', `${name}: block table with 0 rows — silent content loss unless it is a runtime-widget mount point; fix the encoder or declare the placeholder with --allow-empty ${name} (mirror of deploy lint D1-EMPTY 🟡)`);
   }
 }
 
@@ -197,10 +224,24 @@ if (type === 'page' && !/class="metadata"/i.test(html)) {
   add('P2', 'metadata', 'no metadata block — query-index rows will be thin (title/description/og:image)');
 }
 
+/* ---- description polluted with image alt text ("Image: <alt>" or equal to an <img alt>) ---- */
+const decode = (s) => s.replace(/&nbsp;|&#160;/g, ' ').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+const textOf = (s) => decode(s.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+if (type === 'page') {
+  const meta = (html.match(/<div class="metadata">([\s\S]*?)(?=<div class="|<\/main>)/i) || [])[1] || '';
+  const desc = (meta.match(/<div>\s*<div>\s*(?:<p>)?\s*description\s*(?:<\/p>)?\s*<\/div>\s*<div>([\s\S]*?)<\/div>/i) || [])[1];
+  if (desc !== undefined) {
+    const text = textOf(desc);
+    const alts = new Set([...html.matchAll(/<img\b[^>]*\salt="([^"]*)"/gi)].map((m) => textOf(m[1]).toLowerCase()).filter(Boolean));
+    if (/^image\b/i.test(text)) add('P2', 'description-alt', `description starts with "Image" — an importer wrote alt text into the description: "${text.slice(0, 60)}"`);
+    else if (text && alts.has(text.toLowerCase())) add('P2', 'description-alt', `description equals an <img alt> on the page — write a real description: "${text.slice(0, 60)}"`);
+  }
+}
+
 const p0 = findings.filter((f) => f.sev === 'P0');
 const p1 = findings.filter((f) => f.sev === 'P1');
 if (JSON_OUT) {
-  console.log(JSON.stringify({ file: FILE, type, findings, gate: p0.length || p1.length ? 'FAIL' : 'PASS' }, null, 2));
+  console.log(JSON.stringify({ file: FILE, type, findings, deviation, gate: p0.length || p1.length ? 'FAIL' : 'PASS' }, null, 2));
 } else {
   console.log(`delivery-lint ${FILE} (type:${type})`);
   console.log('='.repeat(60));

@@ -16,7 +16,8 @@ to "the tool enforces".
 ```bash
 node skills/rollout/scripts/delivery-lint.mjs --file <content.html> \
   --path </da/target/path> [--type page|fragment|index] [--icons-dir icons] \
-  [--allow-empty <names>] [--chrome-docs content/nav.html,content/footer.html,… [--content content]] [--json]
+  [--allow-empty <names>] [--allow-no-h1] \
+  [--chrome-docs content/nav.html,content/footer.html,… [--content content]] [--json]
 ```
 
 `--type` is inferred from the path when omitted (`/nav`, `/footer`, `*/fragments/*`
@@ -29,17 +30,18 @@ advisory (surfaced, never blocks).
 | Rule | Sev | Why it breaks delivery |
 |---|---|---|
 | `wrapper` | P0 | No `<body>…<main>…</main></body>` → DA silently discards the content. `<header>`/`<footer>` absent → P1. |
-| `h1` | P0/P1 | A page needs exactly one `<h1>` (SEO + decoration). 0 → P0; >1 → P1. A fragment must have none. |
-| `one-cta-per-p` | P1 | `decorateButtons` only buttonizes a link that is the **sole** content of its `<p>`. Two emphasized links in one paragraph ship as unstyled text — invisible on light grounds, glaring on a photo hero. Split each CTA into its own `<p>`. |
+| `h1` / `h1-deviation` | P0/P1/P2 | A page needs exactly one `<h1>` (SEO + decoration). 0 → P0; >1 → P1. A fragment must have none. A source with no h1: prefer a visually-hidden default-content `<h1>` from the title; the recorded fallback is `--allow-no-h1` (passed per page) — 0 becomes P2 `h1-deviation` and `--json` carries `deviation` for the coverage row. |
+| `one-cta-per-p` | P1 | `decorateButtons` only buttonizes a link that is the **sole** content of its `<p>`. Two emphasized links in one paragraph ship as unstyled text — invisible on light grounds, glaring on a photo hero. Split each CTA into its own `<p>`. Fires only when the paragraph holds nothing but the links — prose with inline links is silent. |
 | `about-error` | P0 | `about:error` in the source means a broken image rendition already shipped. |
 | `img-path` | P0 | A `/img/...` src 404s at delivery. |
 | `cross-origin-optimize` | P2 | An external `<img>` inside a block that runs `createOptimizedPicture` (cards/columns/hero) may be corrupted (dropped `?v=`, added `&format=webply`). Advisory — the authoritative resolve is `media-reconcile.mjs`. |
 | `trailing-slash` / `html-extension` | P1 | Internal links with a trailing slash or `.html` 404 on EDS (it serves extensionless, no-trailing-slash). |
 | `path-safety` | P0 | The target DA path must be lowercase, hyphenated, no `_`, no `//`. A double slash makes the PUT 400 while preview/live still 200 — a silent partial. Normalize and record the original → safe mapping in `redirects.tsv`. |
 | `metadata` | P2 | No metadata block → thin query-index rows (no description/og:image at import time). |
+| `description-alt` | P2 | The metadata `description` starts with "Image" or equals an `<img alt>` on the page — an importer wrote alt text into the description; write a real one. |
 | `icon-missing` | P0 | `:x:` (or `<span class="icon icon-x">`) with no `icons/x.svg\|png` in the code tree — the runtime fetches `/icons/x.svg` and renders a broken-image box; the asset must exist in the branch before the PUT. Needs `--icons-dir`; silent without it. |
 | `icon-prefix` | P0 | `:icon-x:` doubles the prefix the runtime adds (`icons/x.svg` exists, `icon-x.svg` does not) — author `:x:`. Same scan as `deploy`'s `davids-model-lint` ICON-PREFIX / ICON-MISSING. |
-| `empty-block` | P1 | A block table with 0 rows inside `<main>` — the encoder's selector missed the source items, silent content loss (mirror of deploy lint D1-EMPTY). `--allow-empty <names>` exempts declared runtime-widget placeholders. |
+| `empty-block` | P2 | A block table with 0 rows inside `<main>` — the encoder's selector missed the source items, silent content loss (mirror of deploy lint D1-EMPTY 🟡; advisory first, B7). `--allow-empty <names>` exempts declared runtime-widget placeholders. |
 | `href-scheme` | P1 | A `javascript:` or bare `#` / `#!` href — a dead CTA once `decorateButtons` styles it. |
 | `href-whitespace` | P1 | Whitespace inside the href value — the browser trims it locally, delivery 404s. |
 | `chrome-variant` | P1 | With `--chrome-docs`, on a site whose nav (or footer) documents dedupe by content hash to more than one variant, a page without an explicit `nav:` / `footer:` metadata row (the `--file` page and every page under `--content`; chrome docs and fragments excluded). Single-variant sites are silent — `../../deploy/reference/chrome.md` § Chrome states and variants. |

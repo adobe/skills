@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Guard: the davids-model-lint icon/variant, embed, vocabulary/census, vehicle,
-// empty-structure and content-loss rules keep their tiers and exit codes.
+// empty-structure (D1-EMPTY 🟡, B7) and content-loss rules keep their tiers and exit codes.
 //
 // Why: the gate is only worth running if a mis-authored `:icon-x:` token or a
 // variant token that collides with a foundation class fails the page BEFORE
@@ -80,9 +80,10 @@ const CASES = [
     counts: { D14: 1, 'ICON-EMPTY': 1 },
   },
   { name: 'vehicles (tree): one rollup line per vehicle with the page count', args: ['tree-vehicle', ...ICONS, ...STYLES], exit: 0, count: 2, expect: [{ sev: '🟡', rule: 'D15', msg: '2 <u> element(s) across 2 page(s)' }, { sev: '🟡', rule: 'D15', msg: '2 invisible-character spacer paragraph(s) (NBSP/ZWSP/ZWNJ only) across 2 page(s)' }] },
-  // T16.2 — D1-EMPTY 🔴: zero-row block, all-empty cells, empty section; --allow-empty declares placeholders.
-  { name: 'empty: a 0-row block, an all-empty-cells block, an undeclared placeholder and an empty section are four D1-EMPTY 🔴', args: ['fail-empty.html', ...STYLES], exit: 2, expect: [{ sev: '🔴', rule: 'D1-EMPTY', msg: 'block "cards": block table with 0 rows' }, { sev: '🔴', rule: 'D1-EMPTY', msg: 'block "hero": 1 row(s) whose every cell is empty' }, { sev: '🔴', rule: 'D1-EMPTY', msg: 'block "form": block table with 0 rows' }, { sev: '🔴', rule: 'D1-EMPTY', msg: 'section 2: no text, link, image or block' }], counts: { 'D1-EMPTY': 4 } },
-  { name: 'empty: --allow-empty exempts the named placeholders only', args: ['fail-empty.html', ...STYLES, '--allow-empty', 'form,cards'], exit: 2, expect: [{ sev: '🔴', rule: 'D1-EMPTY', msg: 'block "hero"' }, { sev: '🔴', rule: 'D1-EMPTY', msg: 'section 2' }], absentMsg: [{ rule: 'D1-EMPTY', msg: '"form"' }, { rule: 'D1-EMPTY', msg: '"cards"' }], counts: { 'D1-EMPTY': 2 } },
+  // T16.2 / T30.2 — D1-EMPTY ships 🟡 (B7: new tiers advisory first; promote after one clean wave): zero-row block,
+  // all-empty cells, empty section — exit 0, never 🔴; --allow-empty declares placeholders.
+  { name: 'empty: a 0-row block, an all-empty-cells block, an undeclared placeholder and an empty section are four D1-EMPTY 🟡, exit 0 (B7)', args: ['warn-empty.html', ...STYLES], exit: 0, red: [], expect: [{ sev: '🟡', rule: 'D1-EMPTY', msg: 'block "cards": block table with 0 rows' }, { sev: '🟡', rule: 'D1-EMPTY', msg: 'block "hero": 1 row(s) whose every cell is empty' }, { sev: '🟡', rule: 'D1-EMPTY', msg: 'block "form": block table with 0 rows' }, { sev: '🟡', rule: 'D1-EMPTY', msg: 'section 2: no text, link, image or block' }], counts: { 'D1-EMPTY': 4 } },
+  { name: 'empty: --allow-empty exempts the named placeholders only', args: ['warn-empty.html', ...STYLES, '--allow-empty', 'form,cards'], exit: 0, red: [], expect: [{ sev: '🟡', rule: 'D1-EMPTY', msg: 'block "hero"' }, { sev: '🟡', rule: 'D1-EMPTY', msg: 'section 2' }], absentMsg: [{ rule: 'D1-EMPTY', msg: '"form"' }, { rule: 'D1-EMPTY', msg: '"cards"' }], counts: { 'D1-EMPTY': 2 } },
   { name: 'empty: a declared placeholder, a section-metadata-only spacer section, an icon-only cell and an icon-only section pass; D1-SPACER and D9-VOCAB are tree-only', args: ['pass-empty.html', ...STYLES, '--allow-empty', 'form'], exit: 0, red: [], absent: ['D1-EMPTY', 'D1-SPACER', 'D9-VOCAB'] },
   { name: 'empty (tree): the icon-only cell and section stay silent in tree mode too; the spacer count fires as one D1-SPACER line', args: ['pass-empty.html', 'tree-breadcrumbs/one.html', ...STYLES, '--allow-empty', 'form'], exit: 0, red: [], absent: ['D1-EMPTY'], expect: [{ sev: '🟡', rule: 'D1-SPACER', msg: '1 section(s)' }], counts: { 'D1-SPACER': 1 } },
   { name: 'usage: a dangling --allow-empty is a usage error', args: ['pass-empty.html', ...STYLES, '--allow-empty'], exit: 1 },
