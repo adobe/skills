@@ -83,7 +83,9 @@
  *     see. Runs at tier 3 for `solveWaitMs` (`--solve-wait <ms>`, ≥ 5000): a
  *     visible window, NO reload loop (a reload destroys a Press & Hold in
  *     progress), 2.5 s polls, two clean polls resume; expiry throws
- *     BotChallengeError with nextTier null.
+ *     BotChallengeError with nextTier null. `--solve-wait` implies the visible
+ *     tier-3 window (parseSolveWaitFlag sets STARDUST_HEADED_WINDOW=1); a
+ *     window the renderer reports hidden is WARNed before the poll.
  *
  * Live budget + live lock (./live-budget.mjs, imported lazily on the first
  * LIVE host — a local prototype/harness never loads it): gotoLive awaits
@@ -103,7 +105,11 @@
  * one crawl.mjs writes when a challenge cleared or on `--save-state`.
  * `--storage-state <file>` names another file, `--fresh-state` opts out; the
  * default lookup applies only when one of the file's cookie domains matches
- * the live host, and never to a local URL. What it fixes: the probe-cleared →
+ * the live host, and never to a local URL. All 11 importers (replica stitch-shot,
+ * anchor, chrome-parity, motion-observe, sibling-variance; diff content-diff,
+ * visual-diff; reskin dom-equality, slot-coverage, donor-probe, capture-content)
+ * parse the three session flags and spread sessionContextOptions(url, opts)
+ * into newLiveContext — evals/fixtures/live-session-flags.test.mjs pins it. What it fixes: the probe-cleared →
  * fresh-worker-403 class, and A/B / consent bucket drift between the capture
  * and the instruments (one Optimizely bucket for the whole run). What it does
  * NOT fix: fingerprint-bound clearances (PerimeterX/HUMAN — the cookie is tied
@@ -359,6 +365,24 @@ export async function saveStorageState(ctx, file = STORAGE_STATE_PATH) {
   writeFileSync(file, JSON.stringify(state, null, 2), { mode: 0o600 });
   return { file, cookies: (state.cookies || []).length };
 }
+/**
+ * The three session flags every live instrument parses the same way:
+ *   --storage-state <file>  → opts.storageState   --fresh-state → opts.freshState
+ *   --solve-wait <ms>       → opts.solveWaitMs (parseSolveWaitFlag) and opts.headed = 3
+ * sessionContextOptions(url, opts) resolves them into the `{ storageState }`
+ * spread for newLiveContext (live side only — a local URL gets {}).
+ */
+export function sessionContextOptions(url, { storageState = null, freshState = false } = {}) {
+  const file = resolveStorageState({ url, explicit: storageState, fresh: freshState });
+  return file ? { storageState: file } : {};
+}
+/** `--solve-wait <ms>`: ≥ 5000 or throw; a human cannot solve in an off-screen window, so the tier-3 window is made visible. */
+export function parseSolveWaitFlag(value) {
+  const n = Number(value);
+  if (!(n >= 5000)) throw new Error(`--solve-wait <ms> must be a number ≥ 5000 (got ${value})`);
+  process.env.STARDUST_HEADED_WINDOW = '1'; // read by launchTier; --solve-wait implies --headed=window, visible
+  return n;
+}
 
 // The marker that classifies a response as a bot-management challenge/block,
 // or null — the header stage, mirrored from crawl.mjs challengeMarker (pure
@@ -428,6 +452,22 @@ export async function solveWait(page, ms, tool = 'live-session') {
     if (clean >= 2) return true;
   }
   return false;
+}
+
+// Post-capture sanity (stitch-shot): a wall that passed the header stage and
+// got stitched is the recorded trap (a challenge page stitched from 1 chunk,
+// exit 0, taken as ground truth). Same floors as the solve poll. Pure.
+//   short   = under CAPTURE_FLOOR.vhRatio viewports OR under .textLen chars
+//   suspect = short AND (challenge DOM/phrase OR under .emptyLen chars) → exit 3
+//   short alone (a legal / contact page) is a WARN, never a refusal.
+export const CAPTURE_FLOOR = { vhRatio: 1.5, textLen: 800, emptyLen: 400 };
+export function captureSanity({ totalH, vh, textLen, walled = false }) {
+  const short = totalH < CAPTURE_FLOOR.vhRatio * vh || textLen < CAPTURE_FLOOR.textLen;
+  if (!short) return { verdict: 'ok', reason: null };
+  const why = `${totalH}px tall (${(totalH / vh).toFixed(2)} viewports), ${textLen} chars of text`;
+  if (walled) return { verdict: 'suspect', reason: `${why}, challenge DOM/phrase present` };
+  if (textLen < CAPTURE_FLOOR.emptyLen) return { verdict: 'suspect', reason: `${why}, near-empty` };
+  return { verdict: 'short', reason: why };
 }
 
 // ---- live budget + live lock (./live-budget.mjs; lazy — a local-only run never loads it) ----
@@ -517,6 +557,8 @@ export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', time
     // interactive solve (--solve-wait): header stage OR DOM stage says wall →
     // wait for the human on the SAME page, never reload.
     if (solveWaitMs >= 5000 && (isChallengeResponse(resp) || (await challengeInDom(page)).walled)) {
+      const vis = await page.evaluate(() => document.visibilityState).catch(() => null);
+      if (vis && vis !== 'visible') console.error(`[live-session] WARN --solve-wait: the window is ${vis} to the renderer — nobody can solve an off-screen/occluded challenge; bring it on screen (STARDUST_HEADED_WINDOW=1 launches it visible)`);
       const solved = await solveWait(page, solveWaitMs, toolName());
       if (!solved) {
         const err = new Error(`bot challenge at ${url} not solved in ${solveWaitMs} ms (--solve-wait) — nothing measured; the gate must fail, not degrade`);

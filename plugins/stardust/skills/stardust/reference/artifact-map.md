@@ -390,7 +390,7 @@ excluded folders tracked deletes that line or adds a negation below it.
 | Path | Tracked | Owner | Notes |
 |---|---|---|---|
 | `state.json`, `status.jsonl`, `journal.md`, `learnings.md`, `direction.md`, `decisions.md` | yes | master / all | delivery state and decisions; a clone is dead without `state.json` |
-| `live-budget.json` | yes | extract / any live tool | learned per-host live ceiling (`{ "<host>": { navPerMin, minGapMs, learnedAt, learnedBy, lastStatus } }`), merge-by-host, written on a bare 429; a clone inherits the origin's known limit |
+| `live-budget.json` | yes | extract / any live tool | learned per-host live ceiling (`{ "<host>": { navPerMin, minGapMs, learnedAt, learnedBy, lastStatus } }`), merge-by-host, written on a bare 429 by `crawl.mjs` or `live-session.mjs gotoLive` (`learnedBy` names the tool); read by every live tool (`live-budget.mjs` beside `live-session.mjs`) until 7 days after `learnedAt`, then ignored; a clone inherits the origin's known limit |
 | `dynamic-features.md`, `dynamic-features-plan.md`, `dynamics/parity.json`, `trees.json` | yes | dynamics | dispositions and parity checks |
 | `dynamics/` other (`*.generated-plan.*`, `sheets/_sync.json`) | yes | dynamics | small text; drafts superseded by the curated file |
 | `redirects.tsv`, `runtime-contract.json`, `eds-conversion-log.md`, `ai-readability-allowlist.json` | yes | rollout / deploy | |
@@ -417,7 +417,7 @@ excluded folders tracked deletes that line or adds a negation below it.
 | `.work/live-<host>.lock` | **never** | extract / any live tool | per-host live lock (pid liveness); one live tool per origin at a time — `state-machine.md` § Concurrency |
 | `.work/**` | **no** | any | run residue: logs, harness page, pre-renders, probe dumps |
 | `*.log`, `*.err`, `*.out`, `last-run.json` anywhere | **no** | any | safety net until every writer routes to `.work/logs/` |
-| `_storage-state.json`, `*-clearance.json` | **never** | extract | admitted session (cookies / storage), written 0600; secrets |
+| `_storage-state.json`, `*-clearance.json` | **never** | extract | admitted session (cookies / storage), written 0600; secrets. Writer: `crawl.mjs` (cleared challenge, `--save-state`, or after a capture-time escalation). Readers: every live instrument by default when a cookie domain matches the live host (`--storage-state <file>` names another, `--fresh-state` opts out) |
 
 Outside `stardust/`: the impeccable target files at the project root and
 the EDS project are tracked by the project's own rules; `.env` / `.env.*`

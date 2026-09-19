@@ -339,8 +339,7 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   the box carrying the lifted rule — always pair the same semantic element
   on both sides (the element the fixed rule targets on the build; the
   element whose source rule was lifted on live); the re-check ran through a
-  CACHED stylesheet (DevTools showed the old rule at its old line number
-  while both hosts already served the fix) — verify serving out-of-band
+  CACHED stylesheet — verify serving out-of-band
   (`node skills/deploy/scripts/served-check.mjs <css-url> --grep
   '<new-rule>'` — served assets are gzip-encoded; the helper decodes and
   prints the grep verdict) and re-render in a fresh headless context; and
@@ -486,8 +485,7 @@ rather than erroring.
    `domcontentloaded`.
 3. **Symmetric `--main` scoping — and never `body`.** Live `<main>` often
    contains header nav + hidden mega-menu; unscoped, those diff as ~dozens
-   of missing CTAs (UC1-E1 iteration 1: 41 of 50 reds were scoping
-   artifacts). Scope BOTH sides with the same selector — have the prototype
+   of missing CTAs. Scope BOTH sides with the same selector — have the prototype
    adopt the live content-root class so one `--main` value fits both. Both
    diff scripts take `--main` (visual-diff's is the upstreamed flag: on
    sites without a `<main>`, both sides otherwise false-flag BLANK RENDER
@@ -501,8 +499,7 @@ rather than erroring.
      exclude consent/analytics chrome.
    - **Verify the consent banner is actually gone post-dismiss before
      trusting an inventory** — consent UIs render nondeterministically
-     between two sequential captures (one capture caught the expanded
-     cookie panel, the other didn't). If reds cluster on cookie/consent
+     between two sequential captures. If reds cluster on cookie/consent
      strings, the scope or the dismissal is wrong, not the recreation.
 4. **Stitched captures only, never `fullPage:true`.** Chromium's
    captureBeyondViewport renders lazy-decoded images as gray placeholders
@@ -570,18 +567,21 @@ rather than erroring.
     chunk 1 and the chrome crop gate match. Full treatment:
     `recreation-procedure.md` § Fixed and sticky chrome.
 12. **A challenge/blocked response FAILS LOUD — it is never measured.** All
-    three instruments detect bot-management interstitials on every
-    navigation (crawl.mjs semantics: `cf-mitigated: challenge`, or
-    403/429/503 with a Cloudflare/Akamai/F5/Imperva edge signature) and
-    exit **3** with a `BotChallengeError` naming the URL and the marker
-    (an "Access Denied" page diffs cleanly — wrongly). Escalation follows
-    the three-tier ladder in `skills/extract/reference/playwright-recipe.md`
-    § Bot-management fallback (headless → `chrome-headless` →
-    `chrome-headed-offscreen`); the instruments start at
+    three instruments classify every navigation (live-session.mjs
+    `challengeMarker`: `cf-mitigated: challenge`; a 4xx/5xx with a
+    Cloudflare/Akamai/F5/Imperva edge signature, a PerimeterX/DataDome
+    `set-cookie`, or the Akamai 400 body; plus the DOM/phrase stage) and
+    exit **3** with a `BotChallengeError` naming URL and marker.
+    Escalation follows the ladder in
+    `skills/extract/reference/playwright-recipe.md` § Bot-management
+    fallback; the instruments start at
     `_crawl-log.json#discovery.fetchTechnique` (`--headed` = tier 2,
-    `--headed=window` = tier 3); stitch-shot WARNs when
-    `document.visibilityState` is not `visible` (read `pendingDecodes`). If tier 3
-    is still blocked **the gate must not silently degrade** — record the
+    `--headed=window` = tier 3); `--solve-wait <ms>` on any instrument
+    opens the visible window and waits for a hand solve. stitch-shot WARNs
+    when `document.visibilityState` is not `visible` (read `pendingDecodes`)
+    and refuses a stitched capture that is short AND challenge-phrased /
+    near-empty (exit 3, nothing written; short alone WARNs). If tier 3 is
+    still blocked **the gate must not silently degrade** — record the
     breakpoint as gate-blocked in the ledger and surface it to the user; a
     gate that can't read the live source has no pass to report.
 13. **Inner-scroller / scroll-jacked pages fail loud — stitched capture

@@ -235,6 +235,13 @@ whose harness cases skip when Playwright is unresolvable:
   slug@width refused), verdict mapping (0 ok · 2 failed · 124/3/5/6 noverdict,
   never failed), the pooled sweep's table + last-line `SUMMARY` + progress
   JSON, batch exit 2 over 124 over other codes, `--dry-run`, usage 125.
+- `fixtures/live-budget.test.mjs`, `fixtures/live-session-flags.test.mjs`,
+  `fixtures/live-session-goto.test.mjs` — the shared live budget / lock
+  (pacing, bare-429 persist + TTL, lock refuse/force/stale), every
+  live-session importer's session flags (`--storage-state` / `--fresh-state`
+  / `--solve-wait`, trailing-flag guard, live-budget.mjs named in Setup),
+  and gotoLive's duck-typed contract (429 path, edge-signed challenge,
+  `--solve-wait` poll, challengeMarker mirror, captureSanity).
 - `redirects-smoke.mjs` — runs `rollout/scripts/redirects.mjs` over
   `lint/fixtures/redirects/redirects.tsv`: the row expansion, the exit-2
   shadow verdict (a Source that is also a delivered page) and `--check`

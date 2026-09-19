@@ -177,7 +177,8 @@ Additional checks for this sub-command:
    worker (clearance, consent and A/B cookies ride along), loads
    `stardust/current/_storage-state.json` when its cookies match the
    host (`--storage-state <file>` / `--fresh-state`) and saves it on a
-   cleared challenge or `--save-state` — never tracked; fingerprint-bound
+   cleared challenge (again after a mid-crawl escalation) or `--save-state`
+   — never tracked; fingerprint-bound
    clearances (PerimeterX/HUMAN) do not replay. Record the resolved method in
    `_crawl-log.json#consent.method` — one of `dismissed:<sel>`,
    `text:<label>`, `none-detected`, `failed` (`skipped` under
@@ -699,8 +700,8 @@ last-write-wins (`state-machine.md` § Concurrency).
   (`reference/playwright-recipe.md` § Bot-management fallback) at the
   probe and again when a worker is challenged mid-crawl, and exits 3
   when tier 3 is still challenged; only then say the origin needs an
-  interactive solve (`crawl.mjs --solve-wait <ms>` opens a visible
-  window and waits for you) or a WAF allowlist. A page-level wall usually does
+  interactive solve (`--solve-wait <ms>` on crawl.mjs or any live
+  instrument opens a visible window and waits for you) or a WAF allowlist. A page-level wall usually does
   NOT gate assets: probe one media/CSS/font URL with a browser-UA curl
   before reaching for in-page fetch (the fallback, not the default).
 - **JavaScript-only content.** Playwright already handles this. If

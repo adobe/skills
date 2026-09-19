@@ -15,7 +15,7 @@ Phases, in order: Setup → 1 INGEST DONOR → 2 CONTENT-MODEL CAPTURE → 3 MAP
 
 | Phase | Command (project copies under `stardust/scripts/reskin/`) |
 |---|---|
-| Setup | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/reskin/scripts/*` + `skills/replica/scripts/impeccable-ignores.mjs` → `stardust/scripts/reskin/`, `skills/diff/scripts/live-session.mjs` → `stardust/scripts/diff/` (live gates: `--headed[=window]` = ladder tier 2 / 3); then `node stardust/scripts/reskin/impeccable-ignores.mjs --skill reskin` |
+| Setup | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/reskin/scripts/*` + `skills/replica/scripts/impeccable-ignores.mjs` → `stardust/scripts/reskin/`, `skills/diff/scripts/live-session.mjs` + `live-budget.mjs` → `stardust/scripts/diff/`; then `node stardust/scripts/reskin/impeccable-ignores.mjs --skill reskin` |
 | 1 | `$stardust extract <content-url> --design-source <donor-url>` (local donor: `python3 -m http.server <port> --directory <path>` first); author `stardust/reskin/donor-tokens.json` + `donor-modules.md` |
 | 2 | `capture-content.mjs --url <page-url> --scope '<sel,...>' --normalize stardust/reskin/normalize/<slug>.mjs --out stardust/reskin/content-model/<slug>/` |
 | 3 | author `stardust/reskin/mapping.md` |
@@ -106,12 +106,13 @@ regression check instead of a debugging tool.
    --legacy-peer-deps`. Re-run the probe before every phase that renders —
    a `--no-save` install is pruned by any later real `npm i`.
 3. **Copy the scripts into the project** (ESM resolves `playwright`
-   from the *script's* dir, not the plugin tree). Copy
+   from the *script's* dir). Copy
    `skills/reskin/scripts/*` and `skills/replica/scripts/impeccable-ignores.mjs`
    (no deps) byte-identical to `stardust/scripts/reskin/`, **and**
-   `skills/diff/scripts/live-session.mjs` to `stardust/scripts/diff/` —
-   every reskin gate script imports it at startup from `../diff/` next to
-   `../reskin/` (exit 2 without it); keep the dirs siblings; run the copies.
+   `skills/diff/scripts/live-session.mjs` + `live-budget.mjs` to
+   `stardust/scripts/diff/` — every reskin gate script imports them from
+   `../diff/` beside `../reskin/` (exit 2 without live-session; no
+   lock/pacing without live-budget); run the copies.
    Live-side gates take `--headed` (ladder tier 2) / `--headed=window`
    (tier 3); default = the tier extract recorded —
    `../extract/reference/playwright-recipe.md` § Bot-management fallback.

@@ -8,10 +8,10 @@
 // Runs without playwright: crawl.mjs imports it lazily inside main().
 // Usage: node plugins/stardust/evals/fixtures/crawl-signals.test.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { captureQualityOf, SHOT_WRAP_PX, OVERLAY_FLAG_PCT, challengeMarker, CHALLENGE_PHRASE, HostBudget, BUDGET_DEFAULT, parseRetryAfter, mergeLiveBudget, tuneBudget, sessionReusedOf, UNPACED_DISCOVERY } from '../../skills/extract/scripts/crawl.mjs';
+import { captureQualityOf, SHOT_WRAP_PX, OVERLAY_FLAG_PCT, challengeMarker, CHALLENGE_PHRASE, HostBudget, BUDGET_DEFAULT, parseRetryAfter, mergeLiveBudget, tuneBudget, LIVE_BUDGET_TTL_MS, sessionReusedOf, UNPACED_DISCOVERY, exitCodeOf, noteRateLimited, probeRateLimited, needsStateSave } from '../../skills/extract/scripts/crawl.mjs';
 
 assert.equal(captureQualityOf({ emptyMain: false, subResourceBlock: false, overlayCoverPct: 95, spaShellSuspect: true }), 'ok', 'overlay / SPA-shell flags do not degrade by themselves');
 assert.equal(captureQualityOf({ emptyMain: true, subResourceBlock: false }), 'degraded', 'blank <main> with no real image → degraded');
@@ -78,12 +78,48 @@ assert.deepEqual(tuneBudget(fresh(), args, 'loose.example.test', null).toJSON(),
 assert.deepEqual(tuneBudget(fresh(), args, 'example.test', 12).toJSON(), { navPerMin: 10, minGapMs: 12000, source: 'robots Crawl-delay' }, 'Crawl-delay widens the gap after discovery');
 const hit = fresh(); hit.rateLimited(null); tuneBudget(hit, args, 'www.example.test', 5);
 assert.deepEqual(hit.toJSON(), { navPerMin: 4, minGapMs: 8000, source: 'rate-limited' }, 'a probe 429 already taken keeps its source; the stricter learned values still apply');
+// learned ceilings expire (crawl.mjs header § Live budget: LIVE_BUDGET_TTL_MS after learnedAt) — one 429 must not slow every later run forever
+assert.equal(LIVE_BUDGET_TTL_MS, 7 * 24 * 3600 * 1000, 'same constant as live-budget.mjs');
+writeFileSync(join(dir, 'live-budget.json'), JSON.stringify({ 'old.example.test': { navPerMin: 1, minGapMs: 30000, learnedAt: new Date(Date.now() - LIVE_BUDGET_TTL_MS - 60000).toISOString() }, 'recent.example.test': { navPerMin: 1, minGapMs: 30000, learnedAt: new Date().toISOString() } }));
+const quiet = console.error; console.error = () => {};
+try {
+  assert.deepEqual(tuneBudget(fresh(), args, 'old.example.test', null).toJSON(), { navPerMin: 10, minGapMs: 3000, source: 'default' }, 'an expired ceiling is ignored');
+  assert.deepEqual(tuneBudget(fresh(), args, 'recent.example.test', null).toJSON(), { navPerMin: 1, minGapMs: 30000, source: 'live-budget.json' }, 'a recent one applies');
+} finally { console.error = quiet; }
 // sessionReusedOf — _provenance.storageState is a pin, not a constant (current-state-schema.md § Top-level shape)
 assert.equal(sessionReusedOf({}), false, 'plain headless run, 0 cookies → false');
 assert.equal(sessionReusedOf({ botBlock: 'challenge' }), true, 'a cleared challenge is an admitted session');
 assert.equal(sessionReusedOf({ loadedState: '/x/_storage-state.json' }), true, 'a loaded reserved/explicit file is reuse');
 assert.equal(sessionReusedOf({ cookies: 3 }), true, 'a probe clone that carries cookies is reuse');
 assert.equal(sessionReusedOf({ botBlock: null, loadedState: null, cookies: 0 }), false);
+// exit codes (crawl.mjs header): a held live lock is 1 (wait for the other tool), a challenge 3, anything else 2
+assert.equal(exitCodeOf({ errorClass: 'LiveLockError' }), 1, 'LiveLockError exits 1, not 2');
+assert.equal(exitCodeOf({ errorClass: 'BotChallengeError' }), 3); assert.equal(exitCodeOf({ errorClass: 'HTTPError', rateLimited: true }), 2); assert.equal(exitCodeOf(new Error('x')), 2); assert.equal(exitCodeOf(null), 2);
+// a bare 429 in the pool drops the pool to ONE worker (header § Live budget) — not just a flag other workers read
+const pool = noteRateLimited({ concurrency: 4 });
+assert.equal(pool.throttled, true); assert.equal(pool.concurrency, 1, 'concurrency 4 → 1 after the first bare 429 (the log and the escalated pass inherit it)');
+assert.equal(noteRateLimited({ concurrency: 1 }).concurrency, 1);
+// the PROBE's bare 429 takes the same path as a worker's — ONE worker, halved
+// ceiling persisted (ia-extraction.md § _crawl-log.json: concurrency 1 after a bare 429)
+const probeDir = mkdtempSync(join(tmpdir(), 'crawl-probe-429-')); const probeOut = join(probeDir, 'current'); mkdirSync(probeOut);
+const pa = { concurrency: 4, out: probeOut, budget: new HostBudget({ now: () => 0, sleep: async () => {} }) };
+const perr = []; const origErr = console.error; console.error = (m) => perr.push(String(m));
+let probeWait; try { probeWait = probeRateLimited(pa, 'www.example.test', { headers: () => ({ 'retry-after': '7' }) }); } finally { console.error = origErr; }
+assert.equal(probeWait, 7000, 'Retry-After honoured before the ONE retry');
+assert.equal(pa.concurrency, 1, 'a probe 429 drops the pool to ONE worker before it spawns — not just args.throttled');
+assert.equal(pa.throttled, true);
+const learnedProbe = JSON.parse(readFileSync(join(probeDir, 'live-budget.json'), 'utf8'))['www.example.test'];
+assert.equal(learnedProbe.navPerMin, 5); assert.equal(learnedProbe.lastStatus, 429); assert.equal(learnedProbe.learnedBy, 'crawl.mjs');
+assert.ok(perr.some((l) => /on the probe — pool → 1 worker/.test(l)), 'the probe line names the pool drop');
+// every bare-429 site goes through noteRateLimited: the flag is set in exactly one place
+const crawlSrc = readFileSync(new URL('../../skills/extract/scripts/crawl.mjs', import.meta.url), 'utf8');
+assert.equal((crawlSrc.match(/args\.throttled = true/g) || []).length, 1, 'args.throttled is assigned only inside noteRateLimited — a bare 429 anywhere must also drop concurrency');
+// the state file is (re)written after a capture-time escalation — the pre-pool save was the PRE-escalation state
+assert.equal(needsStateSave({ botBlock: 'challenge', savedState: null }), true, 'cleared at the probe, not yet saved');
+assert.equal(needsStateSave({ botBlock: 'challenge', savedState: '/x/_storage-state.json', escalatedAtCapture: false }), false, 'already saved, no escalation since');
+assert.equal(needsStateSave({ botBlock: 'challenge', savedState: '/x/_storage-state.json', escalatedAtCapture: true }), true, 'a capture-time escalation re-saves: the admitted session is the worker\'s');
+assert.equal(needsStateSave({ saveState: true, savedState: '/x/_storage-state.json', escalatedAtCapture: true }), true, '--save-state follows the same rule');
+assert.equal(needsStateSave({ botBlock: null, saveState: false, escalatedAtCapture: true }), false, 'no cleared challenge and no --save-state → nothing to save');
 assert.ok(UNPACED_DISCOVERY.has('/robots.txt') && UNPACED_DISCOVERY.has('/sitemap.aspx') && !UNPACED_DISCOVERY.has('/sitemaps/pages.xml'), 'only the ≤ 5 guessed probes skip the budget; declared children and BFS hops are paced');
 
 console.log('crawl-signals test: ok');

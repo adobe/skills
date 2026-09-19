@@ -55,8 +55,8 @@ const src = (p) => readFileSync(p, 'utf8');
 function stubDeps() {
   const tmp = mkdtempSync(join(tmpdir(), 'replica-capture-l1-'));
   mkdirSync(join(tmp, 'replica')); mkdirSync(join(tmp, 'diff'));
-  for (const f of readdirSync(REPLICA)) cpSync(join(REPLICA, f), join(tmp, 'replica', f));
-  for (const f of readdirSync(DIFF)) cpSync(join(DIFF, f), join(tmp, 'diff', f));
+  for (const f of readdirSync(REPLICA)) cpSync(join(REPLICA, f), join(tmp, 'replica', f), { recursive: true });
+  for (const f of readdirSync(DIFF)) cpSync(join(DIFF, f), join(tmp, 'diff', f), { recursive: true });
   const stubs = { playwright: 'exports.chromium = {};', pngjs: 'exports.PNG = class PNG {};', pixelmatch: 'module.exports = function pixelmatch() { return 0; };' };
   for (const [name, body] of Object.entries(stubs)) {
     mkdirSync(join(tmp, 'node_modules', name), { recursive: true });
@@ -123,6 +123,18 @@ check(ssm.INSTRUMENT && ssm.INSTRUMENT.name === 'stitch-shot' && /^\d+$/.test(ss
   check(ssm.seamRepeats(texture, W) === 0, 'seamRepeats: a persistent vertical texture (rows identical to their in-chunk neighbour) must not count as a seam');
   const flat = [0, 1].map(() => ({ img: mk(() => [255, 255, 255]) }));
   check(ssm.seamRepeats(flat, W) === 0, 'seamRepeats: uniform rows never count');
+}
+
+// ---- stitch-shot (T14.3 c) (shape): post-capture sanity runs on the stitched page BEFORE
+// the PNG is written — short AND challenge/near-empty on the live side → BotChallengeError
+// (exit 3, nothing written); short alone → one stderr WARN; a thin LOCAL capture is a measurement
+{
+  const ss = src(join(REPLICA, 'stitch-shot.mjs'));
+  const sanityAt = ss.indexOf('captureSanity({'); const writeAt = ss.indexOf('writeFileSync(out,');
+  check(sanityAt > 0 && writeAt > 0 && sanityAt < writeAt, '(shape) stitch-shot: captureSanity({ totalH, vh, textLen, walled }) must run before writeFileSync(out, …)');
+  check(/verdict === 'suspect' && isLiveHttpUrl\(url\)\)[^\n]*BotChallengeError/.test(ss), '(shape) stitch-shot: a suspect LIVE capture must throw a BotChallengeError (exit 3); a thin local prototype is a measurement, not a wall');
+  check(/verdict === 'short'\)[^\n]*console\.error\([^\n]*WARN short capture/.test(ss), '(shape) stitch-shot: a short-only capture is one stderr WARN, not a refusal');
+  check(/Exit codes: 0 written[^]*3 bot challenge[^]*short capture with a challenge DOM\/phrase or near-empty text/.test(ssHelp), 'stitch-shot --help: exit 3 must name the post-capture sanity refusal');
 }
 
 // ---- live-session (T19.2 / T14.5): pure exports + the route stack on a fake browser
@@ -416,8 +428,8 @@ async function layer2(deps) {
   // instruments resolve live-session.mjs from ../diff/ there.
   const tmp = mkdtempSync(join(tmpdir(), 'replica-capture-'));
   mkdirSync(join(tmp, 'replica')); mkdirSync(join(tmp, 'diff')); mkdirSync(join(tmp, 'out'));
-  for (const f of readdirSync(REPLICA)) cpSync(join(REPLICA, f), join(tmp, 'replica', f));
-  for (const f of readdirSync(DIFF)) cpSync(join(DIFF, f), join(tmp, 'diff', f));
+  for (const f of readdirSync(REPLICA)) cpSync(join(REPLICA, f), join(tmp, 'replica', f), { recursive: true });
+  for (const f of readdirSync(DIFF)) cpSync(join(DIFF, f), join(tmp, 'diff', f), { recursive: true });
   const runDiff = (script, args) => new Promise((resolve) => { const c = spawn(process.execPath, [join(tmp, 'diff', script), ...args], { cwd: tmp }); let stdout = ''; let stderr = ''; c.stdout.on('data', (d) => { stdout += d; }); c.stderr.on('data', (d) => { stderr += d; }); const t = setTimeout(() => { c.kill('SIGKILL'); stderr += '\n[runner] killed after 120s'; }, 120000); c.on('close', (status) => { clearTimeout(t); resolve({ status, stdout, stderr }); }); });
   symlinkSync(deps, join(tmp, 'node_modules'));
   const req = createRequire(join(tmp, 'x.js'));
