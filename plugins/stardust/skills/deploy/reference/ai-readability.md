@@ -100,7 +100,11 @@ larger than most info pages), every chrome edit becomes a tool re-run plus a ful
 (≈5 min per 150 pages with the batch driver), and authors see the block in DA. Two of three owners
 asked declined it. Offer it only when the owner wants served-text parity on chrome; ship the code
 before the content so live never renders the raw block; put the re-sync tool and the redeploy
-driver in the hand-off.
+driver in the hand-off. Under hands-off this is **never self-resolved**: it is a row of the plan-time
+owner decision batch (rollout Phase D / `dynamics-plan`) carrying the cost above and the alternative
+(accept the default score, which strips landmarks); until answered, chrome stays a runtime fragment.
+`davids-model-lint` flags a `header`/`footer`/`nav`/`page-chrome` block inside a content document
+(🟡 CHROME) so the decision is visible in the log.
 
 ## 6. The gate
 
