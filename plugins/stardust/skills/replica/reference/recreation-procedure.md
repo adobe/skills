@@ -140,6 +140,13 @@ Before any screenshot-eyeball tuning:
    recreation doesn't degrade gracefully at mobile, it collapses. With
    per-breakpoint lifting, mobile converges in 1–2 iterations; without it,
    expect the full iteration cap.
+   - **Start the 360 pass from the extract's `<slug>-360.png`** (the same
+     settled page re-laid out at 360×900, `screenshotMobile` in the page
+     record) — never from a guess at the mobile layout. **Mirror
+     `_provenance.compatMode`**: `BackCompat` means the source renders in
+     quirks mode and the replica ships the same (missing) doctype, or its
+     standards-mode boxes measure against quirks-mode ground truth
+     (`deploy/reference/foundation.md` § 3 carries the boilerplate rule).
 
 This converts 3–4 guess-and-screenshot loops into one. Eyeballing is for
 step 4 of the authoring order only — and even then, the gate's instruments

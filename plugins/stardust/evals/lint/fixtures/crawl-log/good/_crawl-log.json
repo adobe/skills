@@ -1,0 +1,9 @@
+{
+  "_provenance": { "writtenBy": "stardust:extract", "script": "crawl.mjs" },
+  "discovery": { "fetchTechnique": "headless", "count": 3 },
+  "visionCheck": [
+    { "slug": "index", "verdict": "ok", "notes": "hero and palette match" },
+    { "slug": "about", "verdict": "recaptured", "notes": "first shot had a survey modal with a scrim; re-crawled with --refresh about" },
+    { "slug": "blog", "verdict": "suspect", "notes": "DEGRADED: <main> empty after recapture at tier 2" }
+  ]
+}

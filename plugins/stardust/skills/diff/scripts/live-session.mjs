@@ -69,11 +69,26 @@
  * `--headed=window` = tier 3; the default start tier is the one recorded in
  * stardust/current/_crawl-log.json#discovery.fetchTechnique (resolveStartTier).
  * A tier-3 challenge means the gate must FAIL, not degrade.
+ *
+ * Admitted-session reuse (resolveStorageState / saveStorageState): every live
+ * instrument of one gate run starts from the SAME storage state — the reserved
+ * path is `stardust/current/_storage-state.json` (never tracked; secrets), the
+ * one crawl.mjs writes when a challenge cleared or on `--save-state`.
+ * `--storage-state <file>` names another file, `--fresh-state` opts out; the
+ * default lookup applies only when one of the file's cookie domains matches
+ * the live host, and never to a local URL. What it fixes: the probe-cleared →
+ * fresh-worker-403 class, and A/B / consent bucket drift between the capture
+ * and the instruments (one Optimizely bucket for the whole run). What it does
+ * NOT fix: fingerprint-bound clearances (PerimeterX/HUMAN — the cookie is tied
+ * to the solving browser) and Cloudflare's per-session escalation once it has
+ * fired (a saved state gets re-challenged; a re-challenge still throws
+ * BotChallengeError, exit 3 — a stale state never softens the contract).
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev-tool library: sequential page ops use awaited loops by design */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 
 // Current stable Chrome on macOS. Chrome's UA reduction freezes the platform
 // token at 10_15_7 and the minor version at .0.0.0 — only the major matters,
@@ -278,6 +293,44 @@ export async function attachOriginAuth(context, origin, headerValue) {
     if (u === o || u.startsWith(`${o}/`)) route.fallback({ headers: { ...route.request().headers(), authorization: headerValue } });
     else route.fallback();
   });
+}
+
+// ---- admitted-session reuse ----
+// The ONE reserved secret path (artifact-map.md: never tracked). crawl.mjs
+// writes it; every live instrument reads it by default.
+export const STORAGE_STATE_PATH = 'stardust/current/_storage-state.json';
+/**
+ * The storage state an instrument starts from, or null:
+ *   explicit file (`--storage-state`) → the reserved default, when it exists
+ *   and one of its cookie `domain`s suffix-matches the live host → null.
+ * Live URLs only (a localhost prototype never gets a session); `fresh`
+ * (`--fresh-state`) → null always. One stderr line when a state is applied.
+ * Spread the result as `storageState` into newLiveContext (live side only).
+ */
+export function resolveStorageState({ url, explicit = null, fresh = false, defaultPath = process.env.STARDUST_STORAGE_STATE || STORAGE_STATE_PATH } = {}) {
+  if (fresh) return null;
+  if (!isLiveHttpUrl(url)) { if (explicit) console.error(`[live-session] --storage-state ignored for the local URL ${url}`); return null; }
+  if (explicit) {
+    if (!existsSync(explicit)) throw new Error(`--storage-state ${explicit}: file not found`);
+    console.error(`[live-session] storage state: ${explicit} (explicit)`);
+    return explicit;
+  }
+  if (!existsSync(defaultPath)) return null;
+  let state;
+  try { state = JSON.parse(readFileSync(defaultPath, 'utf8')); } catch { return null; }
+  const host = new URL(url).hostname.toLowerCase();
+  const cookies = Array.isArray(state.cookies) ? state.cookies : [];
+  const match = cookies.some((c) => { const d = String(c.domain || '').toLowerCase().replace(/^\./, ''); return d && (host === d || host.endsWith(`.${d}`)); });
+  if (!match) return null;
+  console.error(`[live-session] storage state: reusing ${defaultPath} (${cookies.length} cookies match ${host}; --fresh-state to opt out)`);
+  return defaultPath;
+}
+/** Persist a context's storage state (cookies + localStorage) to `file`, mode 0600. Returns { file, cookies }. */
+export async function saveStorageState(ctx, file = STORAGE_STATE_PATH) {
+  const state = await ctx.storageState();
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify(state, null, 2), { mode: 0o600 });
+  return { file, cookies: (state.cookies || []).length };
 }
 
 // The marker that classifies a response as a bot-management challenge/block,

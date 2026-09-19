@@ -41,15 +41,77 @@
  *     reproducible, and provenance) instead of re-running live probes per
  *     selector guess. Live probes stay for what the static DOM cannot answer
  *     (geometry, computed styles).
- *   - SCREENSHOT: a full-page PNG per page under <out>/assets/screenshots/<slug>.png
- *     (viewport-only fallback on extremely tall pages; mode in _signals.screenshotMode,
- *     relative path in the page record's `screenshot` field) — feeds the extract
- *     SKILL.md Phase 2.5 vision gate.
+ *   - SCREENSHOT: a full-page PNG per page under <out>/assets/screenshots/<slug>.png.
+ *     Chromium silently WRAPS a full-page raster above its 16,384 px texture
+ *     limit (rows repeat, the tail is lost, nothing throws), so a page taller
+ *     than SHOT_WRAP_PX is captured in clip BANDS (<slug>.png, <slug>.part2.png…;
+ *     _signals.screenshotMode 'banded', screenshotBands, docHeight); a raster
+ *     that throws falls back to the first viewport ('clipped' — the tail is
+ *     missing by instrument, never a vision-gate `suspect`). Mode in
+ *     _signals.screenshotMode, relative path in the record's `screenshot` field.
+ *   - 360 SHOT (--mobile entry|all|none, default entry): the same page, no
+ *     navigation (consent + solved bot state inherited), re-laid out at
+ *     360×900 → <slug>-360.png (`screenshotMobile`, _signals.screenshotMobileMode).
+ *     Replica's 360 pass starts from it instead of guessing the mobile layout.
+ *   - CAPTURE QUALITY: _signals.emptyMain (a <main> exists but is blank with
+ *     no real image — client-rendered page captured before hydration),
+ *     brokenImages / subResourceBlock (images 403'd by the edge while the
+ *     document loaded), overlayCoverPct (fixed-position overlay ∩ first
+ *     viewport — a survey/feedback modal the consent pass did not know).
+ *     captureQuality 'degraded' is recorded, never thrown: the DOM is still
+ *     evidence; Phase 2.5 treats it as `suspect` until recaptured.
+ *   - COMPAT MODE: _provenance.compatMode ('CSS1Compat' | 'BackCompat') — a
+ *     legacy site rendering in quirks mode needs its doctype mirrored, or the
+ *     replica lays out standards-mode boxes against quirks-mode ground truth.
  *
  * Usage:
  *   node crawl.mjs --url https://example.com [--pages /a,/b] [--cap 25 | --all | --single] \
  *     [--refresh slug,slug | --force] [--out stardust/current] [--wait medium] \
- *     [--no-consent-dismiss] [--concurrency 4] [--dynamics] [--headed[=window]]
+ *     [--no-consent-dismiss] [--concurrency 4] [--dynamics] [--headed[=window]] \
+ *     [--mobile entry|all|none] [--dpr 1] [--depth 1] [--cookie name=value[;Path=/]]... \
+ *     [--storage-state <file> | --fresh-state] [--save-state] [--solve-wait <ms>]
+ *   node crawl.mjs --help
+ *
+ * Interactive solve (--solve-wait <ms>): PerimeterX "Press & Hold", Cloudflare
+ *   Turnstile and hCaptcha never clear without a human. The flag starts at
+ *   tier 3 with the window VISIBLE, skips the wait+reload loop on the probe
+ *   (a reload destroys a Press & Hold in progress), polls the same page every
+ *   2.5 s and resumes after two consecutive clean polls (no challenge DOM or
+ *   phrase, ≥ 800 chars of text, taller than 1.5 viewports), then saves the
+ *   storage state for the downstream instruments; unsolved at the deadline →
+ *   BotChallengeError (exit 3). Probe only — workers inherit the solved state.
+ *   Challenge markers (challengeMarker, mirrored in live-session.mjs): the
+ *   Cloudflare/Akamai/F5/Imperva 403|429|503 signatures, HTTP 400 + AkamaiGHost
+ *   (Akamai's escalation body), and on any 4xx/5xx a _pxhd|_px3|_pxvid|datadome
+ *   set-cookie or DataDome header (a PerimeterX 403 via Varnish carries no other
+ *   signature). A 200 is never a challenge here — PX/DataDome set their ids on
+ *   admitted pages too; the DOM stage (--solve-wait) covers the 200-status walls.
+ *
+ * Admitted session (mirror of diff/scripts/live-session.mjs resolveStorageState —
+ *   this file ships alone): the probe context's storageState (clearance,
+ *   consent, A/B cookies) is CLONED into every worker context, so a probe that
+ *   cleared a challenge no longer hands the workers a fresh, re-challenged
+ *   context. <out>/_storage-state.json (= stardust/current/_storage-state.json,
+ *   never tracked) is loaded into the probe when one of its cookie domains
+ *   matches the host (--storage-state <file> names another, --fresh-state opts
+ *   out) and written when a challenge was cleared or --save-state is given.
+ *   Limits: fingerprint-bound clearances (PerimeterX/HUMAN) and Cloudflare's
+ *   per-session escalation do not replay — a re-challenged state still fails
+ *   loud. _provenance.storageState / discovery.storageState record the reuse.
+ *
+ * Discovery (ia-extraction.md § Discovery order — discoverInventory below):
+ *   --pages > robots.txt `Sitemap:` directives (all of them) > /sitemap.xml,
+ *   /sitemap_index.xml > /.sitemap.xml, /sitemap.aspx (only when the tiers
+ *   above are empty and the origin is not bot-walled) > the probe page's nav
+ *   links (always unioned) > BFS --depth N (≤ 3, in-page fetch hops, breadth
+ *   max(200, cap); depth 1 under a bot block). A non-root --url path scopes
+ *   the roster to that subtree (taken from the URL as TYPED, before any
+ *   redirect); the census of everything declared is logged regardless.
+ *   --cookie seeds every context (age gates, region pins); names only are logged.
+ *
+ * --dpr <n> sets deviceScaleFactor (default 1, recorded in _provenance.dpr): the
+ *   gate captures at DPR 1, and a DPR-2 ground truth would never pixel-match it
+ *   (decision D4 — keep 1, record it).
  *
  * Scope: ia-extraction.md § Incremental re-runs is the rule (--pages exact
  *   paths, --refresh / --force vs the default skip of slugs already extracted
@@ -67,18 +129,44 @@
  *   tier 2, --headed=window at tier 3; a re-run starts at the tier recorded in
  *   _crawl-log.json#discovery.fetchTechnique, which is the tier that actually
  *   captured. The tier-3 window is parked off-screen unless STARDUST_HEADED_WINDOW=1.
- * Exit codes: 0 done (per-page failures are in the log) · 2 fatal ·
- *   3 BotChallengeError (tier 3 still challenged — never captured as content).
+ * Live budget per host (HostBudget — the crawl-local copy of the planned
+ *   diff/scripts/live-budget.mjs; this file ships alone): every navigation
+ *   waits for a token (≤ 10/min) AND a minimum gap (≥ 3 s; robots.txt
+ *   Crawl-delay widens it — decisions.md `crawl` row; a stricter ceiling
+ *   learned earlier is read from stardust/live-budget.json). The pool drops to
+ *   ONE worker under a bot block (tier > 1 or a cleared challenge — concurrency
+ *   4 drew 9 re-challenges even with the cloned session) and after the first
+ *   BARE 429 (no edge signature = rate limit, not a challenge): the ceiling is
+ *   halved and persisted (merge-by-host), Retry-After honoured (≤ 60 s), the
+ *   page retried ONCE, then recorded as HTTPError { rateLimited: true } with
+ *   the hint. The PROBE takes the same path (a 429 on the first hit is not
+ *   "admitted"): retried once after the wait, then fatal HTTPError (exit 2)
+ *   with the halved ceiling persisted before exit. The budget exists from the
+ *   first navigation: discovery's sitemap children and BFS hops are paced too
+ *   (the ≤ 5 guessed probes are not), and the gap widens once Crawl-delay is
+ *   read. stardust/.work/live-<host>.lock (pid liveness; STARDUST_LIVE_FORCE=1
+ *   overrides) keeps two live tools off one origin at once — the recorded
+ *   "two launches within a minute, both challenged" class; the lock is
+ *   re-keyed to the post-redirect host (apex→www) so it matches the budget's.
+ * Exit codes: 0 done (per-page failures are in the log) · 2 fatal (incl.
+ *   LiveLockError: another live tool holds stardust/.work/live-<host>.lock) ·
+ *   3 BotChallengeError (tier 3 still challenged, or --solve-wait expired —
+ *   never captured as content).
  * Exports (for evals/fixtures/*.test.mjs): slugify, assignSlugs, mergeCrawlLog,
- *   TIERS, tierOf — importing this module runs nothing; main() runs only when
- *   the file is the entry script.
+ *   RUN_LEVEL_DISCOVERY, TIERS, tierOf, captureQualityOf, SHOT_WRAP_PX,
+ *   OVERLAY_FLAG_PCT, discoverInventory, parseRobots, parseCookieFlag,
+ *   challengeMarker, CHALLENGE_PHRASE, HostBudget, BUDGET_DEFAULT,
+ *   parseRetryAfter, mergeLiveBudget, tuneBudget, sessionReusedOf,
+ *   UNPACED_DISCOVERY —
+ *   importing this module runs nothing; main() runs only when the file is
+ *   the entry script.
  *
  * Needs playwright importable from the project (see extract/SKILL.md Setup —
  * `npm i -D playwright` or the Playwright MCP server; the `npx playwright`
  * availability probe alone does NOT make the ESM module importable).
  */
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { pathToFileURL } from 'node:url';
@@ -94,11 +182,33 @@ const WAIT_MS = { fast: 1200, medium: 2500, slow: 5000 };
 // conditions than capture. Viewport here also saves a per-page CDP round-trip.
 const CRAWL_CONTEXT = { reducedMotion: 'reduce', viewport: { width: 1440, height: 900 } };
 
+// --help prints the header block above (the usage lives there once).
+function printHelp() {
+  const src = readFileSyncSafe(new URL(import.meta.url));
+  const block = src.split('\n').slice(1).join('\n').split('*/')[0];
+  console.log(block.split('\n').filter((l) => l !== '/**').map((l) => l.replace(/^ \* ?/, '')).join('\n').trim());
+}
+function readFileSyncSafe(u) { try { return readFileSync(u, 'utf8'); } catch { return ''; } }
+
+const MOBILE_MODES = ['entry', 'all', 'none'];
 function parseArgs(argv) {
-  const a = { out: 'stardust/current', max: 5, wait: 'medium', consent: true, concurrency: 4, dynamics: false, refresh: [], force: false, headed: 0 };
+  const a = { out: 'stardust/current', max: 5, wait: 'medium', consent: true, concurrency: 4, dynamics: false, refresh: [], force: false, headed: 0, mobile: 'entry', dpr: 1, depth: 1, cookies: [] };
   for (let i = 2; i < argv.length; i += 1) {
     const k = argv[i];
+    if (k === '--help' || k === '-h') { a.help = true; return a; }
     if (k === '--url') a.url = argv[(i += 1)];
+    else if (k === '--mobile') { a.mobile = argv[(i += 1)]; if (!MOBILE_MODES.includes(a.mobile)) throw new Error(`--mobile must be one of ${MOBILE_MODES.join('|')}`); }
+    else if (k === '--dpr') { const n = +argv[(i += 1)]; if (!(n > 0 && n <= 4)) throw new Error('--dpr must be a number in (0, 4]'); a.dpr = n; }
+    else if (k === '--depth') { const n = +argv[(i += 1)]; if (!(n >= 1 && n <= 3)) throw new Error('--depth must be 1, 2 or 3'); a.depth = n; }
+    else if (k === '--cookie') a.cookies.push(parseCookieFlag(argv[(i += 1)]));
+    else if (k === '--storage-state') a.storageState = argv[(i += 1)];
+    else if (k === '--fresh-state') a.freshState = true;
+    else if (k === '--save-state') a.saveState = true;
+    else if (k === '--solve-wait') {
+      const n = +argv[(i += 1)]; if (!(n >= 5000)) throw new Error('--solve-wait <ms> must be ≥ 5000');
+      a.solveWait = n; a.headed = 3; // a human cannot solve in an off-screen window: tier 3, visible
+      process.env.STARDUST_HEADED_WINDOW = '1'; // read by launchTier (byte-identical ladder copy; no parameter)
+    }
     else if (k === '--pages') a.pages = (argv[(i += 1)] || '').split(',').map((s) => s.trim()).filter(Boolean);
     else if (k === '--out') a.out = argv[(i += 1)];
     else if (k === '--max' || k === '--cap') { const n = +argv[(i += 1)]; a.max = Number.isFinite(n) && n >= 0 ? n : 5; } // 0 = no cap; default 5 (the extract contract's small sample)
@@ -116,6 +226,7 @@ function parseArgs(argv) {
   }
   if (!a.url) throw new Error('--url is required');
   a.origin = new URL(a.url).origin;
+  a.entryPath = new URL(a.url).pathname; // subtree scope comes from the URL as TYPED — origin adoption rewrites a.url later
   a.capLabel = a.max === 0 ? 'all' : a.max;
   if (a.max === 0) a.max = Infinity;
   return a;
@@ -205,14 +316,140 @@ export async function launchTier(chromium, tier) {
 // workers) once the run is in stealth mode — the challenge re-fires per context
 // (no cross-context cookie sharing), so a worker that skipped the spoof would be
 // re-challenged even after the probe cleared it.
-async function newContext(browser, stealth) {
-  const ctx = await browser.newContext(CRAWL_CONTEXT);
+// `extra` = per-run context options (deviceScaleFactor from --dpr, storageState)
+// so probe and workers render under identical conditions.
+async function newContext(browser, stealth, extra = {}, cookies = []) {
+  const ctx = await browser.newContext({ ...CRAWL_CONTEXT, ...extra });
+  if (cookies.length) await ctx.addCookies(cookies);
   if (stealth) {
     await ctx.addInitScript(() => {
       Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
     });
   }
   return ctx;
+}
+// ---- per-host live budget (crawl-local copy of the planned diff/scripts/live-budget.mjs; crawl ships alone) ----
+export const BUDGET_DEFAULT = { navPerMin: 10, minGapMs: 3000 };
+/**
+ * Token bucket + minimum gap, serialised across workers. `now`/`sleep` are
+ * injectable (evals/fixtures/crawl-signals.test.mjs drives it with a fake clock).
+ */
+export class HostBudget {
+  constructor({ navPerMin = BUDGET_DEFAULT.navPerMin, minGapMs = BUDGET_DEFAULT.minGapMs, source = 'default', now = Date.now, sleep = (ms) => new Promise((r) => { setTimeout(r, ms); }) } = {}) {
+    Object.assign(this, { navPerMin, minGapMs, source, now, sleep, tokens: navPerMin, lastRefill: now(), lastNav: -Infinity, rateLimits: 0, waitedMs: 0, queue: Promise.resolve() });
+  }
+  /** Resolve when the next navigation may start (one caller at a time). */
+  take() {
+    const run = async () => {
+      for (;;) {
+        const t = this.now();
+        this.tokens = Math.min(this.navPerMin, this.tokens + ((t - this.lastRefill) * this.navPerMin) / 60000);
+        this.lastRefill = t;
+        const wait = Math.max(0, this.lastNav + this.minGapMs - t, this.tokens >= 1 ? 0 : ((1 - this.tokens) * 60000) / this.navPerMin);
+        if (wait <= 0) { this.tokens -= 1; this.lastNav = t; return; }
+        this.waitedMs += wait;
+        await this.sleep(Math.ceil(wait));
+      }
+    };
+    const p = this.queue.then(run);
+    this.queue = p.catch(() => {});
+    return p;
+  }
+  /** A bare 429: halve the rate, double the gap (≤ 60 s), drain tokens. Returns the ms to wait before the ONE retry. */
+  rateLimited(retryAfterSec) {
+    this.navPerMin = Math.max(1, Math.floor(this.navPerMin / 2));
+    this.minGapMs = Math.min(60000, this.minGapMs * 2);
+    this.tokens = 0; this.rateLimits += 1; this.source = 'rate-limited';
+    return retryAfterSec ? Math.min(60, retryAfterSec) * 1000 : Math.min(60000, this.minGapMs * 4);
+  }
+  toJSON() { return { navPerMin: this.navPerMin, minGapMs: this.minGapMs, source: this.source }; }
+}
+/** Retry-After: seconds or an HTTP date → seconds (null when absent/unparseable). */
+export function parseRetryAfter(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  if (Number.isFinite(n)) return n >= 0 ? n : null;
+  const t = Date.parse(v);
+  return Number.isFinite(t) ? Math.max(0, Math.ceil((t - Date.now()) / 1000)) : null;
+}
+/** stardust/live-budget.json — merge-by-host: { "<host>": { navPerMin, minGapMs, learnedAt, learnedBy, lastStatus } }. */
+export function mergeLiveBudget(prev, host, entry) {
+  const out = prev && typeof prev === 'object' ? { ...prev } : {};
+  out[host] = { ...(out[host] || {}), ...entry };
+  return out;
+}
+function liveBudgetPath(args) { return path.resolve(args.out, '..', 'live-budget.json'); }
+// the ceiling for this run: stricter of default / learned (live-budget.json) / robots Crawl-delay.
+// Created BEFORE the probe (the first navigation is paced and a probe 429 is
+// handled); `tuneBudget` tightens the SAME instance in place once the adopted
+// host and Crawl-delay are known — a 429 already taken is never loosened.
+function makeBudget(args, host, crawlDelay) { return tuneBudget(new HostBudget({ ...BUDGET_DEFAULT, source: 'default' }), args, host, crawlDelay); }
+export function tuneBudget(budget, args, host, crawlDelay) {
+  try {
+    const learned = existsSync(liveBudgetPath(args)) ? JSON.parse(readFileSync(liveBudgetPath(args), 'utf8'))[host] : null;
+    if (learned && ((learned.navPerMin || Infinity) < budget.navPerMin || (learned.minGapMs || 0) > budget.minGapMs)) {
+      budget.navPerMin = Math.min(budget.navPerMin, learned.navPerMin || budget.navPerMin); budget.minGapMs = Math.max(budget.minGapMs, learned.minGapMs || 0);
+      if (!budget.rateLimits) budget.source = 'live-budget.json';
+    }
+  } catch { /* unreadable — keep the current ceiling */ }
+  if (crawlDelay && crawlDelay * 1000 > budget.minGapMs) { budget.minGapMs = crawlDelay * 1000; if (!budget.rateLimits) budget.source = 'robots Crawl-delay'; }
+  budget.tokens = Math.min(budget.tokens, budget.navPerMin);
+  return budget;
+}
+// the fatal path (main().catch) persists a halved ceiling before exit 2, so a probe 429 outlives the aborted run
+let persistOnFatal = null;
+function persistBudget(args, host, budget) {
+  try {
+    const file = liveBudgetPath(args);
+    const prev = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
+    writeFileSync(file, `${JSON.stringify(mergeLiveBudget(prev, host, { navPerMin: budget.navPerMin, minGapMs: budget.minGapMs, learnedAt: new Date().toISOString(), learnedBy: 'crawl.mjs', lastStatus: 429 }), null, 2)}\n`);
+  } catch (e) { console.error(`[crawl] WARN could not persist live budget: ${e.message}`); }
+}
+// ---- per-host live lock (stardust/.work/live-<host>.lock — run-lock.mjs's shape and directory) ----
+function acquireLiveLock(args, host) {
+  const dir = path.resolve(args.out, '..', '.work');
+  const file = path.join(dir, `live-${host}.lock`);
+  mkdirSync(dir, { recursive: true });
+  if (existsSync(file)) {
+    let held = null;
+    try { held = JSON.parse(readFileSync(file, 'utf8')); } catch { held = null; }
+    let alive = false;
+    if (held && held.pid && held.pid !== process.pid) { try { process.kill(held.pid, 0); alive = true; } catch { alive = false; } }
+    if (alive) {
+      const msg = `${host} is being hit by ${held.tool || 'another live tool'} (pid ${held.pid}, since ${held.startedAt}) — one live tool per origin at a time; wait for it, or STARDUST_LIVE_FORCE=1 to override`;
+      if (process.env.STARDUST_LIVE_FORCE === '1') console.error(`[crawl] WARN live lock overridden: ${msg}`);
+      else throw Object.assign(new Error(msg), { errorClass: 'LiveLockError' });
+    }
+  }
+  writeFileSync(file, JSON.stringify({ host, pid: process.pid, tool: 'crawl.mjs', startedAt: new Date().toISOString() }));
+  const release = () => { try { unlinkSync(file); } catch { /* already gone */ } };
+  process.on('exit', release);
+  return { file, host, release };
+}
+// _provenance.storageState / discovery.storageState — true only when an ADMITTED
+// session was reused: a cleared challenge, a loaded reserved/explicit file, or a
+// probe clone that actually carries cookies (a 0-cookie clone reuses nothing).
+export function sessionReusedOf({ botBlock = null, loadedState = null, cookies = 0 } = {}) { return !!(botBlock || loadedState || cookies > 0); }
+// ---- admitted-session reuse (mirror of live-session.mjs resolveStorageState; crawl ships alone) ----
+const STORAGE_STATE_FILE = '_storage-state.json'; // reserved under <out> — never tracked (artifact-map.md)
+function storageStatePath(args) { return path.join(args.out, STORAGE_STATE_FILE); }
+// explicit file → the reserved default when a cookie domain matches the host → null; --fresh-state → null
+function resolveStorageStateFile(args) {
+  if (args.freshState) return null;
+  if (args.storageState) { if (!existsSync(args.storageState)) throw new Error(`--storage-state ${args.storageState}: file not found`); return args.storageState; }
+  const file = storageStatePath(args);
+  if (!existsSync(file)) return null;
+  try {
+    const host = new URL(args.url).hostname.toLowerCase();
+    const cookies = JSON.parse(readFileSync(file, 'utf8')).cookies || [];
+    return cookies.some((c) => { const d = String(c.domain || '').toLowerCase().replace(/^\./, ''); return d && (host === d || host.endsWith(`.${d}`)); }) ? file : null;
+  } catch { return null; }
+}
+async function saveStorageStateFile(context, file) {
+  const state = await context.storageState();
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, JSON.stringify(state, null, 2), { mode: 0o600 });
+  return (state.cookies || []).length;
 }
 // Network-level fingerprint reject: navigation THROWS before any JS runs.
 function isFingerprintBlock(err) {
@@ -225,24 +462,75 @@ function isFingerprintBlock(err) {
 // managed challenge (cf-mitigated: challenge, HTTP 403) sailed past the probe
 // and only blew up at capture-time as a fatal HTTPError. Validate the RESPONSE,
 // not just DOM-ready.
-function isChallengeResponse(resp) {
-  if (!resp) return false;
-  const status = resp.status();
-  const h = resp.headers();
+// Pure (status, headers, url) → marker string | null; pinned by evals/fixtures.
+const WALL_COOKIES = ['_pxhd', '_px3', '_pxvid', 'datadome'];
+export function challengeMarker(status, headers = {}, url = '') {
+  const h = {};
+  for (const [k, v] of Object.entries(headers || {})) h[k.toLowerCase()] = String(v ?? '');
   // Cloudflare stamps this header specifically on managed/JS-challenge responses.
-  if ((h['cf-mitigated'] || '').toLowerCase() === 'challenge') return true;
+  if ((h['cf-mitigated'] || '').toLowerCase() === 'challenge') return 'cf-mitigated: challenge';
+  const server = (h.server || '').toLowerCase();
+  if (status < 400) return null; // a served page is the page — PX/DataDome set their ids on admitted responses too
+  // PerimeterX / DataDome walls: the 403 (often via Varnish) carries NO other
+  // edge signature — the set-cookie names are what identify it.
+  const cookieNames = (h['set-cookie'] || '').split(/\r?\n/).map((c) => c.trim().split('=')[0].toLowerCase()).filter(Boolean);
+  const wall = cookieNames.find((n) => WALL_COOKIES.includes(n));
+  if (wall) return `HTTP ${status} + set-cookie ${wall} (PerimeterX/DataDome wall)`;
+  if (h['x-datadome'] || server.includes('datadome')) return `HTTP ${status} + DataDome edge signature`;
+  // Akamai escalates to a 400 JSON body ({"result":"Bad Request"}, server: AkamaiGHost) — not a 403 interstitial
+  if (status === 400 && (server.includes('akamaighost') || Object.keys(h).some((k) => k.startsWith('x-akamai')))) return 'HTTP 400 + AkamaiGHost (Akamai escalation body, not the page)';
   // A hard 403/429/503 that ALSO carries an edge/CDN signature is an edge
   // interstitial (Cloudflare / Akamai / F5 / Imperva) — headed real Chrome is the
   // correct response regardless of vendor. Requiring the edge signature (not the
   // bare status) is deliberate: isChallengeResponse gates clearChallenge() on
   // EVERY page, so a legitimate app-level 403 (e.g. an auth-gated deep page with
-  // no CDN header) must fail fast, not eat the ~12s challenge-solve retry loop.
+  // no CDN header) must fail fast, not eat the ~12s challenge-solve retry loop —
+  // and a BARE 429 is a rate limit, handled as such (HostBudget), never a challenge.
   if (status === 403 || status === 429 || status === 503) {
-    const server = (h['server'] || '').toLowerCase();
-    if (h['cf-ray'] || server.includes('cloudflare')) return true;
-    if (h['x-akamai-transformed'] || server.includes('akamai')) return true;
-    if (server.includes('big-ip') || server.includes('imperva') || h['x-iinfo']) return true;
+    if (h['cf-ray'] || server.includes('cloudflare')) return `HTTP ${status} + Cloudflare edge signature`;
+    if (h['x-akamai-transformed'] || server.includes('akamai') || server.includes('edgesuite') || /edgesuite\.net/.test(url)) return `HTTP ${status} + Akamai edge signature`;
+    if (server.includes('big-ip') || server.includes('imperva') || h['x-iinfo']) return `HTTP ${status} + F5/Imperva edge signature`;
     // no edge signature — treat as a genuine app-level status, not a challenge.
+  }
+  return null;
+}
+function isChallengeResponse(resp) {
+  if (!resp) return false;
+  return challengeMarker(resp.status(), resp.headers(), resp.url()) !== null;
+}
+// The 200-status walls the header stage cannot see (PerimeterX px-captcha,
+// Turnstile / hCaptcha / DataDome iframes) and the interstitial phrases — read
+// from the page already loaded (no extra hit). Used by the --solve-wait poll.
+const CHALLENGE_DOM = '#px-captcha, [id^="px-captcha"], iframe[src*="challenges.cloudflare.com"], iframe[src*="hcaptcha.com"], iframe[src*="captcha-delivery.com"]';
+export const CHALLENGE_PHRASE = /(press\s*&?\s*hold|before we continue|are you a human|verify you are human|access to this page has been denied|checking your browser|just a moment)/i;
+async function challengeInDom(page) {
+  const st = await page.evaluate((sel) => { const t = document.body ? document.body.innerText : ''; return { len: t.length, head: t.slice(0, 4000), dom: !!document.querySelector(sel), h: document.documentElement.scrollHeight, vh: window.innerHeight }; }, CHALLENGE_DOM).catch(() => null);
+  // evaluate rejected = the page is navigating (a solve reloads it, a late
+  // redirect is in flight): PENDING — neither clean nor a detected wall. Only a
+  // read DOM may say `walled`, so a transient failure never opens the solve
+  // window on a page that has no challenge.
+  if (!st) return { walled: false, pending: true, st: null };
+  const walled = st.dom || (st.len < 1500 && CHALLENGE_PHRASE.test(st.head));
+  return { walled, pending: false, st };
+}
+// probe entry check: a pending read gets ONE settle-and-retry before it counts as clean
+async function challengeInDomSettled(page) {
+  let r = await challengeInDom(page);
+  if (r.pending) { await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {}); r = await challengeInDom(page); }
+  return r;
+}
+// --solve-wait: poll the SAME page (never reload — that destroys a Press & Hold
+// in progress) until two consecutive clean polls, or the deadline.
+async function solveWait(page, ms) {
+  console.error(`[crawl] --solve-wait ${ms}: a visible Chrome window is open — complete the challenge by hand; capture resumes after two clean polls (every 2.5 s)`);
+  const deadline = Date.now() + ms;
+  let clean = 0;
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(2500);
+    const { walled, pending, st } = await challengeInDom(page);
+    const ok = !pending && !walled && st.len >= 800 && st.h > 1.5 * st.vh;
+    clean = ok ? clean + 1 : 0;
+    if (clean >= 2) return true;
   }
   return false;
 }
@@ -280,7 +568,156 @@ function dedupeKey(href) {
   return url.origin + url.pathname.replace(/\/+$/, '') + url.search;
 }
 
-// ---- discovery: explicit pages > sitemap (validated) > BFS from nav ----
+// ---- discovery: --pages > robots-declared sitemaps > standard paths > CMS conventions > nav union / BFS ----
+// Precedence is by SOURCE, first non-empty tier wins; <lastmod> is recorded on
+// every candidate but never decisive (dynamic sitemaps stamp "today"; a stale
+// legacy map was 3.5× larger than the authoritative one). Every fetch runs
+// in-page (browser UA, admitted cookies — hit minimisation on bot-walled
+// origins) and every guessed URL counts as a probe: robots.txt (1), the two
+// standard paths only when robots names nothing, the CMS conventions only when
+// those are empty too and the origin is not bot-walled. Typical run: 2–3 probes.
+export function parseRobots(text, origin) {
+  const sitemaps = []; let crawlDelay = null;
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    const line = raw.replace(/#.*$/, '').trim();
+    const m = line.match(/^([a-z-]+)\s*:\s*(.+)$/i);
+    if (!m) continue;
+    const key = m[1].toLowerCase(); const val = m[2].trim();
+    if (key === 'sitemap') { try { sitemaps.push(new URL(val, origin).href); } catch { /* malformed directive */ } }
+    else if (key === 'crawl-delay') { const n = parseFloat(val); if (Number.isFinite(n) && n > 0) crawlDelay = Math.max(crawlDelay || 0, n); }
+  }
+  return { sitemaps: [...new Set(sitemaps)], crawlDelay };
+}
+const SITEMAP_MAX_DEPTH = 3; // ia-extraction.md § Recursive sitemap traversal
+export const UNPACED_DISCOVERY = new Set(['/robots.txt', '/sitemap.xml', '/sitemap_index.xml', '/.sitemap.xml', '/sitemap.aspx']); // the guessed probes; everything else discovery fetches is paced
+const SITEMAP_MAX_URLS = 10000;
+const ASSET_RE = /\.(css|js|mjs|json|xml|pdf|png|jpe?g|gif|svg|webp|avif|ico|zip|gz|mp4|webm|mp3|woff2?|ttf|otf)(?:[?#]|$)/i;
+// depth-first over <sitemapindex> children (visited set, depth ≤ 3); <urlset>
+// leaves aggregate. Kind is read from the ROOT TAG, not the URL extension.
+async function collectSitemap(url, io, st, depth) {
+  if (st.visited.has(url)) return;
+  if (depth > SITEMAP_MAX_DEPTH) { st.deepDropped += 1; return; }
+  st.visited.add(url); st.fetches += 1;
+  const xml = await io.fetchText(url);
+  if (xml == null) { if (depth === 1) st.rootUnreachable = true; return; }
+  const locs = [...xml.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)].map((m) => m[1].trim());
+  for (const m of xml.matchAll(/<lastmod>\s*([^<]+?)\s*<\/lastmod>/g)) if (!st.maxLastmod || m[1] > st.maxLastmod) st.maxLastmod = m[1].trim();
+  const isIndex = /<sitemapindex[\s>]/i.test(xml) || (locs.length > 0 && locs.every((u) => /\.xml(?:\.gz)?(?:[?#]|$)/i.test(u)));
+  if (isIndex) { for (const child of locs) { try { await collectSitemap(new URL(child, url).href, io, st, depth + 1); } catch { st.malformed.push(child); } } return; }
+  for (const loc of locs) {
+    if (st.leaves.length >= SITEMAP_MAX_URLS) { st.truncated = true; break; }
+    try { st.leaves.push(new URL(loc, url).href); } catch { st.malformed.push(loc); }
+  }
+}
+/**
+ * The roster decision, browser-free (evals/fixtures/crawl-discover.test.mjs
+ * drives it over a local static server). `io.fetchText(url)` → body or null;
+ * `navLinks` are the probe page's same-origin hrefs (0 extra hits).
+ * Returns { urls, discovery } — `discovery` is the block written to
+ * _crawl-log.json (ia-extraction.md § _crawl-log.json shape).
+ */
+export async function discoverInventory({ entry, origin, entryPath = null, max = Infinity, botBlock = null, depth = 1, navLinks = [] }, io) {
+  const scopePath = entryPath && entryPath !== '/' ? entryPath.replace(/\/+$/, '') : null;
+  const sameOrigin = (u) => u === origin || u.startsWith(`${origin}/`);
+  const inScope = (u) => { if (!scopePath) return true; try { const p = new URL(u).pathname.replace(/\/+$/, ''); return p === scopePath || p.startsWith(`${scopePath}/`); } catch { return false; } };
+  const pageLike = (u) => sameOrigin(u) && !ASSET_RE.test(new URL(u).pathname);
+  const candidates = []; const malformed = []; let probes = 0; let fetches = 0;
+  const abs = (p) => new URL(p, origin).href;
+  const fetchTier = async (urls, tier, { all, guessed }) => {
+    const leaves = [];
+    for (const u of urls) {
+      if (!all && leaves.length) { candidates.push({ url: u, tier, rejected: 'lower-precedence' }); continue; }
+      if (guessed) probes += 1;
+      const st = { visited: new Set(), leaves: [], malformed: [], maxLastmod: null, truncated: false, deepDropped: 0, fetches: 0 };
+      await collectSitemap(u, io, st, 1);
+      fetches += st.fetches; malformed.push(...st.malformed);
+      const pages = [...new Set(st.leaves.filter(pageLike))];
+      candidates.push({ url: u, tier, count: pages.length, ...(st.maxLastmod ? { maxLastmod: st.maxLastmod } : {}), ...(st.truncated ? { truncated: true } : {}), ...(st.deepDropped ? { deepDropped: st.deepDropped } : {}), ...(pages.length ? {} : { rejected: st.rootUnreachable ? 'unreachable' : 'empty' }) });
+      leaves.push(...pages);
+    }
+    return leaves;
+  };
+  // tier 1 — robots.txt Sitemap: directives (all of them: they partition the site)
+  probes += 1; fetches += 1;
+  const robots = parseRobots(await io.fetchText(abs('/robots.txt')), origin);
+  let leaves = []; let source = null; let sourceUrl = null;
+  if (robots.sitemaps.length) {
+    leaves = await fetchTier(robots.sitemaps, 'robots', { all: true, guessed: false });
+    if (leaves.length) { source = 'robots.txt'; sourceUrl = robots.sitemaps.length === 1 ? robots.sitemaps[0] : robots.sitemaps; }
+  }
+  // tier 2 — the two standard paths, only when robots named nothing usable
+  if (!leaves.length) {
+    leaves = await fetchTier([abs('/sitemap.xml'), abs('/sitemap_index.xml')], 'standard', { all: false, guessed: true });
+    if (leaves.length) { const w = candidates.find((c) => c.tier === 'standard' && c.count); source = new URL(w.url).pathname.slice(1); sourceUrl = w.url; }
+  }
+  // tier 3 — CMS conventions (AEM dot-prefixed map, ASP.NET handler), never on a bot-walled origin
+  if (!leaves.length && !botBlock) {
+    leaves = await fetchTier([abs('/.sitemap.xml'), abs('/sitemap.aspx')], 'convention', { all: false, guessed: true });
+    if (leaves.length) { const w = candidates.find((c) => c.tier === 'convention' && c.count); source = new URL(w.url).pathname.slice(1); sourceUrl = w.url; }
+  }
+  // census over everything the sitemaps declared (pre-scope): the honest "how many pages" answer
+  const seenAll = new Set(); const byPrefix = {};
+  for (const u of leaves) {
+    const k = dedupeKey(u); if (seenAll.has(k)) continue; seenAll.add(k);
+    const seg = new URL(u).pathname.split('/').filter(Boolean)[0]; const key = seg ? `/${seg}` : '/';
+    byPrefix[key] = (byPrefix[key] || 0) + 1;
+  }
+  const census = { total: seenAll.size, byPrefix: Object.fromEntries(Object.entries(byPrefix).sort((a, b) => b[1] - a[1]).slice(0, 20)) };
+  // scope + nav union (always: sitemap-blind sections live in the nav)
+  const scoped = leaves.filter(inScope);
+  const sitemapKeys = new Set(scoped.map(dedupeKey));
+  const nav = [...new Set(navLinks.map((h) => { try { return normalizeUrl(h, origin); } catch { return null; } }).filter(Boolean).filter(pageLike).filter(inScope))];
+  const navOnly = nav.filter((u) => !sitemapKeys.has(dedupeKey(u)));
+  let union = [...scoped, ...navOnly];
+  let bfs = null;
+  if (!scoped.length) {
+    // BFS fallback — hop 1 is the probe page (0 hits); hops 2..depth fetch HTML
+    // in-page (never full navigations); breadth max(200, cap); depth 1 under botBlock
+    const maxDepth = Math.max(1, Math.min(3, botBlock ? 1 : depth || 1));
+    const breadth = Math.max(200, Number.isFinite(max) ? max : 0);
+    const seen = new Map([[dedupeKey(entry), entry]]); const order = [];
+    let frontier = [];
+    for (const u of nav) { const k = dedupeKey(u); if (!seen.has(k)) { seen.set(k, u); order.push(u); frontier.push(u); } }
+    let fetched = 0; let hop = 1;
+    while (hop < maxDepth && frontier.length && seen.size < breadth) {
+      hop += 1; const next = [];
+      for (const u of frontier) {
+        if (seen.size >= breadth) break;
+        const html = await io.fetchText(u); fetched += 1; fetches += 1;
+        if (!html) continue;
+        for (const m of html.matchAll(/href\s*=\s*["']([^"'#]+)["']/gi)) {
+          if (/^(mailto:|tel:|javascript:)/i.test(m[1])) continue;
+          let h; try { h = normalizeUrl(m[1], u); } catch { continue; }
+          if (!pageLike(h) || !inScope(h)) continue;
+          const k = dedupeKey(h);
+          if (!seen.has(k)) { seen.set(k, h); order.push(h); next.push(h); if (seen.size >= breadth) break; }
+        }
+      }
+      frontier = next;
+    }
+    union = order; bfs = { depth: hop, visited: seen.size, fetched };
+    source = source ? `${source}+bfs` : 'bfs'; // a sitemap that had nothing under the scope still counts as consulted
+  } else if (!source) source = 'nav';
+  // entry first, slash-insensitive dedupe, cap → kept / cut
+  const seen = new Set(); const all = [];
+  for (const u of [entry, ...union]) { const k = dedupeKey(u); if (!seen.has(k)) { seen.add(k); all.push(u); } }
+  const kept = all.slice(0, max); const cut = all.slice(kept.length).map((url) => ({ url, reason: 'cap' }));
+  const discovery = {
+    source, sourceUrl, subtree: scopePath, census, navOnly: navOnly.length, probes, fetches, candidates, malformed: malformed.slice(0, 50),
+    kept, cut: cut.slice(0, 2000), ...(cut.length > 2000 ? { cutTruncated: cut.length } : {}), ...(bfs ? { bfs } : {}), ...(robots.crawlDelay ? { crawlDelay: robots.crawlDelay } : {}),
+  };
+  return { urls: kept, discovery };
+}
+// --cookie name=value[;Path=/] — repeatable; applied to every context via addCookies.
+// Only the NAME is ever logged (runs[].args.cookie) — provenance without secrets (D3 spirit).
+export function parseCookieFlag(spec) {
+  const [pair, ...attrs] = String(spec || '').split(';').map((x) => x.trim()).filter(Boolean);
+  const eq = pair ? pair.indexOf('=') : -1;
+  if (eq <= 0) throw new Error(`--cookie expects name=value[;Path=/] (got ${JSON.stringify(spec)})`);
+  const c = { name: pair.slice(0, eq).trim(), value: pair.slice(eq + 1), path: '/' };
+  for (const a of attrs) { const m = a.match(/^path\s*=\s*(.+)$/i); if (m) c.path = m[1].trim(); }
+  return c;
+}
 async function discover(args, page) {
   const entry = normalizeUrl(args.url);
   // explicit --pages: crawl EXACTLY the listed pages, never drop one. The entry
@@ -295,51 +732,18 @@ async function discover(args, page) {
     if (urls.length > args.max) {
       console.error(`[crawl] WARN --pages lists ${urls.length} page(s), exceeding --cap ${args.capLabel} — crawling all of them (explicitly listed pages are never dropped)`);
     }
-    return urls;
+    return { urls, discovery: { source: '--pages', subtree: null, kept: urls, cut: [] } };
   }
-  // discovered lists (sitemap/BFS): entry always included, normalized dedupe, capped at --max.
-  const withEntry = (list) => {
-    const seen = new Set(); const out = [];
-    for (const u of [entry, ...list.map((x) => normalizeUrl(x, args.origin))]) {
-      const k = dedupeKey(u);
-      if (!seen.has(k)) { seen.add(k); out.push(u); }
-    }
-    return out.slice(0, args.max);
-  };
-  // sitemap.xml — but only trust it if it has >=1 <loc> (a 200-but-empty Drupal
-  // sitemap must fall through to BFS — finding from a media-site run).
-  for (const sm of ['/sitemap.xml', '/sitemap_index.xml']) {
-    try {
-      const xml = await page.evaluate(async (u) => {
-        const r = await fetch(u); return r.ok ? r.text() : '';
-      }, new URL(sm, args.origin).href);
-      const locs = [...xml.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)].map((m) => m[1])
-        .filter((u) => u.startsWith(args.origin));
-      // a sitemap INDEX's <loc>s are child-sitemap .xml URLs, not pages —
-      // recurse one level (capped) instead of queueing them as pages, where
-      // every capture would throw ContentTypeError and discovery would
-      // silently collapse to the entry page.
-      const isXml = (u) => /\.xml(?:[?#]|$)/i.test(u);
-      let pageLocs = locs.filter((u) => !isXml(u));
-      const childMaps = locs.filter(isXml).slice(0, 8);
-      if (!pageLocs.length && childMaps.length) {
-        for (const child of childMaps) {
-          try {
-            const cx = await page.evaluate(async (u) => {
-              const r = await fetch(u); return r.ok ? r.text() : '';
-            }, child);
-            pageLocs = pageLocs.concat([...cx.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)]
-              .map((m) => m[1]).filter((u) => u.startsWith(args.origin) && !isXml(u)));
-          } catch { /* skip unreadable child sitemap */ }
-        }
-      }
-      if (pageLocs.length >= 1) return withEntry(pageLocs);
-    } catch { /* fall through */ }
-  }
-  // BFS depth-1 from the entry page's same-origin nav links.
-  const links = await page.evaluate((origin) => [...document.querySelectorAll('a[href]')]
+  // every discovery fetch rides the probe page: browser UA, admitted cookies, one
+  // origin — and takes a budget token unless it is one of the ≤ 5 guessed probes
+  // (sitemap-index children and BFS hops are the burst the budget exists to prevent)
+  const io = { fetchText: async (u) => {
+    if (args.budget && !UNPACED_DISCOVERY.has(new URL(u).pathname)) await args.budget.take();
+    return page.evaluate(async (x) => { try { const r = await fetch(x, { credentials: 'include' }); return r.ok ? await r.text() : null; } catch { return null; } }, u);
+  } };
+  const navLinks = await page.evaluate((origin) => [...document.querySelectorAll('a[href]')]
     .map((a) => a.href).filter((h) => h.startsWith(origin)), args.origin);
-  return withEntry(links);
+  return discoverInventory({ entry, origin: args.origin, entryPath: args.entryPath, max: args.max, botBlock: args.botBlock, depth: args.depth, navLinks }, io);
 }
 
 // Consent containers whose presence after the dismissal pass means `failed`
@@ -719,6 +1123,30 @@ function capture() {
   // substance / SPA-shell signal
   const distinctHeadings = new Set(headings.map((h) => h.text)).size;
   const spaShellSuspect = distinctHeadings < 2 && mainText.length < 200 && realImgs.length === 0;
+  // capture-quality signals (recorded, never thrown — the DOM is still evidence):
+  //   emptyMain — a landmark exists but is blank (header/footer headings kept
+  //     the soft-404 check quiet while <main> was an unhydrated shell);
+  //   brokenImages / subResourceBlock — images the edge 403'd while the
+  //     document itself loaded (broken-image icons recorded as a success);
+  //   overlayCoverPct — fixed-position overlay ∩ first viewport, in % of the
+  //     viewport: a survey/feedback modal with a dimming scrim the consent pass
+  //     did not know covers most of it; the dismissal already removed CMPs.
+  const landmark = document.querySelector('main, [role="main"]');
+  const emptyMain = !!landmark && text(landmark).length < 50 && realImgs.length === 0;
+  const withSrc = [...document.querySelectorAll('img[src]')].filter((im) => im.getAttribute('src') && !/^data:/i.test(im.getAttribute('src')));
+  const brokenImages = withSrc.filter((im) => im.complete && im.naturalWidth === 0).length;
+  const subResourceBlock = brokenImages >= Math.max(3, Math.ceil(withSrc.length * 0.3));
+  let overlayArea = 0;
+  const vw = window.innerWidth; const vh = window.innerHeight;
+  for (const el of document.querySelectorAll('body *')) {
+    const cs = getComputedStyle(el);
+    if (cs.position !== 'fixed' || cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity === 0) continue;
+    if (el.closest('[aria-hidden="true"],[hidden]')) continue;
+    const r = el.getBoundingClientRect();
+    const w = Math.min(r.right, vw) - Math.max(r.left, 0); const h = Math.min(r.bottom, vh) - Math.max(r.top, 0);
+    if (w > 0 && h > 0) overlayArea += w * h;
+  }
+  const overlayCoverPct = Math.min(100, Math.round((overlayArea / Math.max(1, vw * vh)) * 100));
 
   // content hash for cross-page duplicate detection (detail == listing)
   const contentHash = `${headings.map((h) => h.text).join('|')}::${mainText.slice(0, 4000)}`;
@@ -826,15 +1254,77 @@ function capture() {
       realImageCount: realImgs.length,
       trackingOnlyMedia: imgs.length > 0 && realImgs.length === 0,
       spaShellSuspect,
+      emptyMain,
+      brokenImages,
+      subResourceBlock,
+      overlayCoverPct,
     },
+    _compatMode: document.compatMode, // 'CSS1Compat' | 'BackCompat' (quirks) → _provenance.compatMode
     _contentHash: contentHash,
   };
 }
 
-async function capturePage(context, url, slug, args) {
+// captureQuality from the in-page signals — 'degraded' when the record is real
+// DOM but not the page as a visitor sees it (Phase 2.5 treats it as `suspect`
+// until recaptured at a higher tier). Pure: pinned by evals/fixtures.
+export function captureQualityOf(s) {
+  return s && (s.emptyMain || s.subResourceBlock) ? 'degraded' : 'ok';
+}
+export const OVERLAY_FLAG_PCT = 30; // page line prints OVERLAY? above this
+
+// Chromium wraps (does not throw) a full-page raster above its 16,384 px
+// texture limit: rows repeat and the tail is lost. Above SHOT_WRAP_PX the page
+// is captured in clip bands instead; the fixture pins the threshold.
+export const SHOT_WRAP_PX = 16000;
+const SHOT_BAND_PX = 8000;
+/**
+ * One page → PNG(s) under shotsDir. Returns { mode, files, docHeight, bands? }:
+ *   fullPage  one raster (docHeight ≤ SHOT_WRAP_PX)
+ *   banded    <base>.png + <base>.part2.png… (clip bands of ≤ SHOT_BAND_PX)
+ *   clipped   first viewport only — the raster threw; the tail is missing by
+ *             instrument (never a vision-gate `suspect` for that reason)
+ *   failed    nothing written
+ */
+async function screenshotPage(page, base, shotsDir) {
+  const docHeight = await page.evaluate(() => Math.max(document.documentElement.scrollHeight || 0, document.body ? document.body.scrollHeight : 0)).catch(() => 0);
+  const vp = page.viewportSize() || CRAWL_CONTEXT.viewport;
+  const files = [];
+  if (docHeight > SHOT_WRAP_PX) {
+    try {
+      for (let y = 0, i = 1; y < docHeight; y += SHOT_BAND_PX, i += 1) {
+        const file = i === 1 ? `${base}.png` : `${base}.part${i}.png`;
+        await page.screenshot({ path: path.join(shotsDir, file), fullPage: true, clip: { x: 0, y, width: vp.width, height: Math.min(SHOT_BAND_PX, docHeight - y) }, timeout: 30000 });
+        files.push(file);
+      }
+      return { mode: 'banded', files, docHeight, bands: files.length };
+    } catch { files.length = 0; }
+  } else {
+    try {
+      await page.screenshot({ path: path.join(shotsDir, `${base}.png`), fullPage: true, timeout: 30000 });
+      return { mode: 'fullPage', files: [`${base}.png`], docHeight };
+    } catch { /* fall through to the viewport clip */ }
+  }
+  try {
+    await page.screenshot({ path: path.join(shotsDir, `${base}.png`), fullPage: false, timeout: 30000 });
+    return { mode: 'clipped', files: [`${base}.png`], docHeight };
+  } catch { return { mode: 'failed', files: [], docHeight }; }
+}
+// the 4-step lazy-load scroll + return-to-top + settle used before every capture
+async function lazyScroll(page) {
+  for (let y = 0; y <= 1; y += 0.34) {
+    await page.evaluate((f) => window.scrollTo(0, document.body.scrollHeight * f), y);
+    await page.waitForTimeout(400);
+  }
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(800);
+}
+const MOBILE_VIEWPORT = { width: 360, height: 900 }; // 900 = stitch-shot's default --vh, for gate symmetry
+
+async function capturePage(context, url, slug, args, isEntry = false) {
   const page = await context.newPage();
   const recorder = args.dynamics ? attachDynamicRecorder(page) : null; // opt-in; must precede goto — load-time fetches are the evidence
   try {
+  if (args.budget) await args.budget.take(); // per-host pacing — every navigation, every worker
   let resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
   // response validation
   if (!resp) throw Object.assign(new Error('no response'), { errorClass: 'TimeoutError' });
@@ -846,6 +1336,20 @@ async function capturePage(context, url, slug, args) {
   if (args.solveWindow) resp = await clearChallenge(page, resp);
   if (isChallengeResponse(resp)) throw Object.assign(new Error(`bot challenge (HTTP ${resp.status()}) at tier ${args.tier} — not the page`), { errorClass: 'BotChallengeError' });
   let status = resp.status();
+  // BARE 429 (edge-signed ones were classified above) = rate limit, not a
+  // challenge: halve the host ceiling, drop the pool to one worker, honour
+  // Retry-After (≤ 60 s), retry ONCE, then fail the page with the hint.
+  if (status === 429) {
+    const ra = parseRetryAfter(resp.headers()['retry-after']);
+    const waitMs = args.budget ? args.budget.rateLimited(ra) : Math.min(60, ra || 30) * 1000;
+    args.throttled = true;
+    console.error(`[crawl] HTTP 429 (rate limit, no edge signature) on ${slug} — pool → 1 worker, ceiling halved${args.budget ? ` (${args.budget.navPerMin}/min, ≥ ${args.budget.minGapMs / 1000} s)` : ''}; retrying once in ${Math.round(waitMs / 1000)} s`);
+    await page.waitForTimeout(waitMs);
+    if (args.budget) await args.budget.take();
+    const again = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => null);
+    if (again) { resp = again; status = again.status(); }
+    if (status === 429) throw Object.assign(new Error(`HTTP 429 — rate-limited by ${new URL(url).hostname}; ceiling recorded in stardust/live-budget.json — rerun alone, later`), { errorClass: 'HTTPError', rateLimited: true });
+  }
   // 404 on a slash variant: retry ONCE with the trailing slash flipped before
   // recording a failure (stardust-style e2e finding — slash-required hosts).
   let resolvedUrl = url;
@@ -855,6 +1359,7 @@ async function capturePage(context, url, slug, args) {
       u.pathname = u.pathname.endsWith('/') ? u.pathname.replace(/\/+$/, '') : `${u.pathname}/`;
       // guarded + short timeout: a hanging flipped-variant probe must not
       // replace the crisp HTTPError 404 with a raw TimeoutError.
+      if (args.budget) await args.budget.take();
       const retry = await page.goto(u.href, { waitUntil: 'domcontentloaded', timeout: 15000 })
         .catch(() => null);
       if (retry && retry.status() < 400) {
@@ -869,22 +1374,19 @@ async function capturePage(context, url, slug, args) {
 
   const consentMethod = args.consent ? await dismissConsent(page) : 'skipped';
   await page.waitForTimeout(WAIT_MS[args.wait] || WAIT_MS.medium);
-  // 4-step scroll to trigger lazy content
-  for (let y = 0; y <= 1; y += 0.34) {
-    await page.evaluate((f) => window.scrollTo(0, document.body.scrollHeight * f), y);
-    await page.waitForTimeout(400);
-  }
-  await page.evaluate(() => window.scrollTo(0, 0));
-  // settle after return-to-top: entry animations (hero reveals) must reach
-  // their final state before the visibility filter reads computed opacity, or
-  // the animated h1 is silently dropped. reducedMotion emulation neutralizes
-  // most of it; the settle covers JS-driven reveals. Deliberately a FLAT wait:
-  // gating on document.getAnimations() was tried and re-dropped the h1 — a
-  // JS-delayed reveal has no running animation at check time, so the gate
-  // resolves before the reveal even starts. The 800ms floor is load-bearing.
-  await page.waitForTimeout(800);
+  // 4-step scroll to trigger lazy content, return to top, then settle: entry
+  // animations (hero reveals) must reach their final state before the
+  // visibility filter reads computed opacity, or the animated h1 is silently
+  // dropped. reducedMotion emulation neutralizes most of it; the settle covers
+  // JS-driven reveals. Deliberately a FLAT wait: gating on
+  // document.getAnimations() was tried and re-dropped the h1 — a JS-delayed
+  // reveal has no running animation at check time, so the gate resolves before
+  // the reveal even starts. The 800ms floor inside lazyScroll is load-bearing.
+  await lazyScroll(page);
 
   const rec = await page.evaluate(capture);
+  const compatMode = rec._compatMode || null;
+  delete rec._compatMode;
   // dynamic surface (opt-in): network recorder + DOM-side evidence → one `dynamic` section
   if (!recorder) delete rec.dynamicDom;
   else {
@@ -912,25 +1414,27 @@ async function capturePage(context, url, slug, args) {
   if (!rec.headings.length && rec._signals.mainTextLen === 0 && rec._signals.realImageCount === 0) {
     throw Object.assign(new Error('empty page — possibly soft-404'), { errorClass: 'EmptyPageError' });
   }
-  // full-page screenshot for the Phase 2.5 vision gate. Extremely tall pages
-  // can exceed Playwright's raster limit — catch and retry viewport-only,
-  // recording which mode was used in _signals.
+  // screenshots for the Phase 2.5 vision gate (screenshotPage: fullPage |
+  // banded above SHOT_WRAP_PX | clipped | failed). The record above is the
+  // 1440 DOM; the 360 pass below only re-lays out the same page for its PNG.
   const shotsDir = path.join(args.out, 'assets', 'screenshots');
   await mkdir(shotsDir, { recursive: true });
-  const shotPath = path.join(shotsDir, `${slug}.png`);
-  let screenshotMode = 'fullPage';
-  try {
-    await page.screenshot({ path: shotPath, fullPage: true, timeout: 30000 });
-  } catch {
-    screenshotMode = 'viewport';
-    try {
-      await page.screenshot({ path: shotPath, fullPage: false, timeout: 30000 });
-    } catch {
-      screenshotMode = 'failed';
-    }
+  const shot = await screenshotPage(page, slug, shotsDir);
+  rec.screenshot = shot.files.length ? `assets/screenshots/${shot.files[0]}` : null;
+  rec._signals.screenshotMode = shot.mode;
+  rec._signals.docHeight = shot.docHeight;
+  if (shot.bands) rec._signals.screenshotBands = shot.bands;
+  // 360 shot — same page, no navigation (hit minimisation; consent and solved
+  // bot state inherited). Mobile layouts are taller, so banding fires here first.
+  if (args.mobile === 'all' || (args.mobile === 'entry' && isEntry)) {
+    await page.setViewportSize(MOBILE_VIEWPORT).catch(() => {});
+    await lazyScroll(page);
+    const m = await screenshotPage(page, `${slug}-360`, shotsDir);
+    rec.screenshotMobile = m.files.length ? `assets/screenshots/${m.files[0]}` : null;
+    rec._signals.screenshotMobileMode = m.mode;
+    if (m.bands) rec._signals.screenshotMobileBands = m.bands;
   }
-  rec.screenshot = screenshotMode === 'failed' ? null : `assets/screenshots/${slug}.png`;
-  rec._signals.screenshotMode = screenshotMode;
+  rec._signals.captureQuality = captureQualityOf(rec._signals);
   // live-render evidence per SKILL.md § Phase 2 / current-state-schema.md —
   // validateProvenance() downstream refuses pages without these five fields.
   if (resolvedUrl !== url) rec._resolvedUrl = resolvedUrl;
@@ -945,8 +1449,9 @@ async function capturePage(context, url, slug, args) {
     width: CRAWL_CONTEXT.viewport.width,
     dpr: await page.evaluate(() => window.devicePixelRatio || 1).catch(() => 1),
     technique: TIERS[(args.tier || 1) - 1],
-    storageState: false, // every worker context is fresh — no admitted session is reused (SKILL.md Phase 2 step 3)
+    storageState: !!args.sessionReused, // the worker ran on the probe's admitted session (clone / loaded file) — SKILL.md Setup step 3
     variants: await collectVariants(page, context),
+    compatMode, // 'CSS1Compat' | 'BackCompat' — a quirks-mode source needs its doctype mirrored (recreation-procedure.md § CSS lifting)
   };
   rec._consentMethod = consentMethod; // hoisted into _crawl-log.json#consent.method by the writer, not persisted per page
   return rec;
@@ -960,7 +1465,15 @@ async function capturePage(context, url, slug, args) {
 
 async function main() {
   const args = parseArgs(process.argv);
+  if (args.help) { printHelp(); return; }
   const { chromium } = await import('playwright');
+  // per-run context options shared by probe and workers (--dpr; the admitted
+  // session, once the probe has one, is added below)
+  const ctxExtra = { deviceScaleFactor: args.dpr };
+  const loadedState = resolveStorageStateFile(args);
+  if (loadedState) { ctxExtra.storageState = loadedState; console.error(`[crawl] storage state: loading ${loadedState} into the probe (--fresh-state to opt out)`); }
+  // --cookie → Playwright cookie records on the (possibly adopted) origin's host
+  const cookiesFor = (a) => a.cookies.map((c) => ({ name: c.name, value: c.value, domain: new URL(a.origin).hostname, path: c.path }));
   const outPages = path.join(args.out, 'pages');
   await mkdir(outPages, { recursive: true });
 
@@ -983,15 +1496,41 @@ async function main() {
   const probeUrl = args.pages?.length ? normalizeUrl(args.pages[0], args.url) : args.url;
   let botBlock = null; // 'fingerprint' | 'challenge'
   const escalations = []; // { tier, block } per rejected tier
+  let host = new URL(probeUrl).hostname;
+  let liveLock = acquireLiveLock(args, host); // one live tool per origin; released on exit (re-keyed after an origin redirect)
+  args.budget = makeBudget(args, host, null); // paced from the FIRST navigation; tuned after discovery (adopted host, Crawl-delay)
+  persistOnFatal = () => { if (args.budget?.rateLimits) persistBudget(args, host, args.budget); };
   for (;;) {
     browser = await launchTier(chromium, tier);
-    context = await newContext(browser, tier >= 2);
+    context = await newContext(browser, tier >= 2, ctxExtra, cookiesFor(args));
     probe = await context.newPage();
     let blocked = null;
     try {
+      await args.budget.take();
       let probeResp = await probe.goto(probeUrl, { waitUntil: 'domcontentloaded', timeout: tier === 1 ? 30000 : 45000 });
-      if (tier === 3) probeResp = await clearChallenge(probe, probeResp);
-      if (isChallengeResponse(probeResp)) blocked = { kind: 'challenge', status: probeResp.status() };
+      // a BARE 429 on the probe is a rate limit, not admission: same path as a
+      // worker (halve, persist, Retry-After, ONE retry), then fatal — nothing
+      // downstream may run discovery on a 429 body and call the site "1 page".
+      if (probeResp && probeResp.status() === 429 && !isChallengeResponse(probeResp)) {
+        const waitMs = args.budget.rateLimited(parseRetryAfter(probeResp.headers()['retry-after']));
+        args.throttled = true; persistBudget(args, host, args.budget);
+        console.error(`[crawl] HTTP 429 (rate limit, no edge signature) on the probe — ceiling halved (${args.budget.navPerMin}/min, ≥ ${args.budget.minGapMs / 1000} s) and recorded; retrying once in ${Math.round(waitMs / 1000)} s`);
+        await probe.waitForTimeout(waitMs);
+        await args.budget.take();
+        probeResp = await probe.goto(probeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+        if (probeResp && probeResp.status() === 429) throw Object.assign(new Error(`HTTP 429 — rate-limited by ${host}; ceiling recorded in stardust/live-budget.json — rerun alone, later`), { errorClass: 'HTTPError', rateLimited: true });
+      }
+      if (tier === 3 && args.solveWait) {
+        // interactive solve: header stage OR DOM stage says wall → wait for the human, no reload
+        if (isChallengeResponse(probeResp) || (await challengeInDomSettled(probe)).walled) {
+          const solved = await solveWait(probe, args.solveWait);
+          if (!solved) throw Object.assign(new Error(`bot challenge not solved in ${args.solveWait} ms (--solve-wait) — nothing captured`), { errorClass: 'BotChallengeError', nextTier: null });
+          botBlock = botBlock || 'challenge'; // a cleared challenge → the state is saved below
+          escalations.push({ tier: TIERS[2], block: 'challenge', solved: 'interactive' });
+          probeResp = null;
+        }
+      } else if (tier === 3) probeResp = await clearChallenge(probe, probeResp);
+      if (probeResp && isChallengeResponse(probeResp)) blocked = { kind: 'challenge', status: probeResp.status() };
     } catch (err) {
       if (isFingerprintBlock(err)) blocked = { kind: 'fingerprint' };
       else throw err;
@@ -1012,6 +1551,23 @@ async function main() {
     console.error(`[crawl] bot-management block (${blocked.kind}) at tier ${tier} (${TIERS[tier - 1]}) — escalating to tier ${tier + 1} (${TIERS[tier]})`);
     tier += 1;
   }
+  // clone the admitted probe session into every worker context (clearance,
+  // consent and A/B cookies ride along); persist it when a challenge was
+  // cleared or asked for. A worker re-challenged despite the clone still
+  // escalates — the clone never softens the fail-loud contract.
+  ctxExtra.storageState = await context.storageState().catch(() => ctxExtra.storageState);
+  let savedState = null;
+  if (botBlock || args.saveState) {
+    try {
+      const n = await saveStorageStateFile(context, storageStatePath(args));
+      savedState = storageStatePath(args);
+      console.error(`[crawl] storage state: saved ${savedState} (${n} cookies; downstream live instruments reuse it by default). Fingerprint-bound clearances (PerimeterX/HUMAN) will not replay; Cloudflare's managed clearance does until it escalates.`);
+    } catch (e) { console.error(`[crawl] WARN could not save storage state: ${e.message}`); }
+  }
+  args.sessionReused = sessionReusedOf({ botBlock, loadedState, cookies: ctxExtra.storageState?.cookies?.length || 0 });
+  // one worker under a bot block: concurrency 4 drew 9 re-challenges even with
+  // the cloned session; some origins score SESSIONS, not requests
+  if ((tier > 1 || botBlock) && args.concurrency > 1) { console.error(`[crawl] concurrency ${args.concurrency} → 1 (bot-management tier ${tier}${botBlock ? `, ${botBlock} cleared` : ''}: one context, human pace)`); args.concurrency = 1; }
   let technique = TIERS[tier - 1];
   let stealth = tier >= 2;
   args.tier = tier;
@@ -1022,7 +1578,7 @@ async function main() {
   // adopt the post-redirect origin (apex→www etc.): the same-origin filter and
   // sitemap fetch must use where the site actually lives, or discovery silently
   // collapses to 1 page (agency-site e2e finding).
-  let originRedirect = null;
+  let originRedirect = null; let entryRedirect = null;
   try {
     const landed = new URL(probe.url());
     if (landed.origin !== args.origin) {
@@ -1031,9 +1587,26 @@ async function main() {
       args.url = new URL(new URL(args.url).pathname + new URL(args.url).search, landed.origin).href;
       args.origin = landed.origin;
     }
+    // the subtree scope is the path the user TYPED: a root entry that
+    // geo-redirects to /us/en must not silently scope the crawl to /us/en
+    const typed = args.entryPath.replace(/\/+$/, '') || '/'; const got = landed.pathname.replace(/\/+$/, '') || '/';
+    if (!args.pages && typed !== got) {
+      entryRedirect = { from: typed, to: got, note: typed === '/' ? `entry redirected to ${got}; not scoped` : `entry redirected to ${got}; scoped to the typed ${typed}` };
+      console.error(`[crawl] ${entryRedirect.note}`);
+    }
   } catch { /* keep declared origin */ }
+  if (new URL(args.origin).hostname !== host) { // lock key = budget key = where the site lives (outside the try: a LiveLockError here must surface)
+    liveLock.release(); host = new URL(args.origin).hostname; liveLock = acquireLiveLock(args, host);
+    tuneBudget(args.budget, args, host, null);
+  }
+  args.botBlock = botBlock;
 
-  const urls = await discover(args, probe);
+  const { urls, discovery } = await discover(args, probe);
+  tuneBudget(args.budget, args, host, discovery.crawlDelay); // Crawl-delay widens the gap now that robots.txt is read
+  if (discovery.census) {
+    const cut = discovery.cutTruncated || discovery.cut.length;
+    console.error(`[crawl] discovered ${urls.length} page(s) via ${discovery.source}${discovery.subtree ? ` under ${discovery.subtree}` : ''} — census ${discovery.census.total} declared, ${discovery.navOnly} nav-only, ${discovery.probes} probe(s); kept ${discovery.kept.length}, cut ${cut}${cut ? ' (--all to lift)' : ''}`);
+  }
   const statePages = await readStatePages(args);
   // --refresh <slug,…>: a named slug outside this run's list is appended from
   // its state.json URL, so a capped-out page can be re-extracted by name.
@@ -1054,7 +1627,8 @@ async function main() {
   const allSlugs = assignSlugs(urls);
   const explicit = new Set((args.pages || []).map((p) => dedupeKey(normalizeUrl(p, args.url))));
   const skipped = [];
-  const queue = urls.map((url, i) => ({ url, slug: allSlugs[i] })).filter(({ url, slug }) => {
+  const entryKey = dedupeKey(normalizeUrl(args.url));
+  const queue = urls.map((url, i) => ({ url, slug: allSlugs[i], entry: dedupeKey(url) === entryKey })).filter(({ url, slug }) => {
     if (args.force || args.refresh.includes(slug) || explicit.has(dedupeKey(url))) return true;
     const sp = statePages.get(slug);
     if (sp && EXTRACTED_OR_BEYOND.has(sp.status)) { skipped.push({ slug, url, status: sp.status }); return false; }
@@ -1062,9 +1636,11 @@ async function main() {
   });
   if (skipped.length) console.error(`[crawl] skipping ${skipped.length} already-extracted page(s) (--force or --refresh <slug> to redo): ${skipped.map((x) => x.slug).join(', ')}`);
   console.error(`[crawl] technique=${technique} discovered=${urls.length} queued=${queue.length}`);
+  const perNavMs = Math.max(60000 / args.budget.navPerMin, args.budget.minGapMs);
+  if (queue.length) console.error(`[crawl] pacing ${host}: ≥ ${args.budget.minGapMs / 1000} s between navigations, ≤ ${args.budget.navPerMin}/min (${args.budget.source}) → ETA ~${Math.max(1, Math.ceil((queue.length * perNavMs) / 60000))} min for ${queue.length} page(s)`);
 
   const startedAt = new Date().toISOString();
-  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...(botBlock ? { botBlock, escalations } : {}), ...(originRedirect ? { originRedirect } : {}), ...(skipped.length ? { skippedExtracted: skipped } : {}) }, consent: { method: args.consent ? 'none-detected' : 'skipped' }, favicon: favicon || null, crawl: { startedAt, finishedAt: null, successes: 0, failures: [] } };
+  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, storageState: !!args.sessionReused, ...(loadedState || savedState ? { storageStateFile: savedState || loadedState } : {}), liveBudget: args.budget.toJSON(), ...discovery, ...(botBlock ? { botBlock, escalations } : {}), ...(originRedirect ? { originRedirect } : {}), ...(entryRedirect ? { entryRedirect } : {}), ...(skipped.length ? { skippedExtracted: skipped } : {}) }, consent: { method: args.consent ? 'none-detected' : 'skipped' }, favicon: favicon || null, crawl: { startedAt, finishedAt: null, successes: 0, failures: [] } };
   let ok = 0;
   await context.close();
 
@@ -1086,14 +1662,14 @@ async function main() {
     const order = [...pending];
     let cursor = 0;
     escalate = 0;
-    async function worker() {
-      const ctx = await newContext(browser, stealth);
-      while (cursor < order.length && !escalate) {
+    async function worker(wi) {
+      const ctx = await newContext(browser, stealth, ctxExtra, cookiesFor(args));
+      while (cursor < order.length && !escalate && (wi === 0 || !args.throttled)) {
         const idx = order[cursor];
         cursor += 1;
-        const { url, slug } = queue[idx];
+        const { url, slug, entry: isEntry } = queue[idx];
         try {
-          const rec = await capturePage(ctx, url, slug, args);
+          const rec = await capturePage(ctx, url, slug, args, isEntry);
           if (consentRank(rec._consentMethod) > consentRank(log.consent.method)) log.consent.method = rec._consentMethod;
           delete rec._consentMethod;
           if (rec.dynamic) rollupDynamic(dynamicRollup, rec.dynamic, slug);
@@ -1122,7 +1698,7 @@ async function main() {
           ok += 1;
           const s = rec._signals;
           const dy = rec.dynamic?.summary || {};
-          const warn = [s.spaShellSuspect && 'SPA-SHELL?', s.trackingOnlyMedia && 'TRACKING-PIXEL-ONLY', s.filteredInterstitials && `filtered:${s.filteredInterstitials}`, dy.sameSiteEndpoints && `data-endpoints:${dy.sameSiteEndpoints}`, dy.searchForms && 'SEARCH-FORM', dy.hydrated && 'HYDRATED'].filter(Boolean).join(' ');
+          const warn = [s.spaShellSuspect && 'SPA-SHELL?', s.trackingOnlyMedia && 'TRACKING-PIXEL-ONLY', s.filteredInterstitials && `filtered:${s.filteredInterstitials}`, s.captureQuality === 'degraded' && 'DEGRADED', s.overlayCoverPct > OVERLAY_FLAG_PCT && 'OVERLAY?', s.screenshotMode !== 'fullPage' && `shot:${s.screenshotMode}`, dy.sameSiteEndpoints && `data-endpoints:${dy.sameSiteEndpoints}`, dy.searchForms && 'SEARCH-FORM', dy.hydrated && 'HYDRATED'].filter(Boolean).join(' ');
           console.error(`[crawl] OK   ${slug}  ${warn}`);
         } catch (err) {
           if (err.errorClass === 'BotChallengeError' && args.tier < TIERS.length) {
@@ -1138,7 +1714,7 @@ async function main() {
       }
       await ctx.close();
     }
-    await Promise.all(Array.from({ length: Math.min(args.concurrency, order.length) }, worker));
+    await Promise.all(Array.from({ length: Math.min(args.concurrency, order.length) }, (_, wi) => worker(wi)));
   }
   for (;;) {
     await runPool();
@@ -1146,6 +1722,7 @@ async function main() {
     if (!escalate) break;
     botBlock = botBlock || 'challenge';
     escalations.push({ tier: TIERS[args.tier - 1], block: 'challenge', at: 'capture' });
+    if (args.concurrency > 1) { console.error('[crawl] concurrency → 1 for the escalated pass'); args.concurrency = 1; }
     args.tier = escalate;
     args.solveWindow = escalate === 3;
     stealth = true;
@@ -1156,6 +1733,8 @@ async function main() {
   // the tier that actually captured is the one re-runs and downstream
   // instruments start at (ia-extraction.md § _crawl-log.json shape)
   log.discovery.fetchTechnique = technique;
+  log.discovery.liveBudget = { ...args.budget.toJSON(), ...(args.budget.rateLimits ? { rateLimits: args.budget.rateLimits } : {}), waitedMs: Math.round(args.budget.waitedMs) };
+  if (args.budget.rateLimits) persistBudget(args, host, args.budget); // the learned ceiling outlives this run
   if (botBlock) Object.assign(log.discovery, { botBlock, escalations });
 
   // cross-page duplicate (detail == listing) detection — deterministic post-pass
@@ -1182,7 +1761,7 @@ async function main() {
   log.crawl.finishedAt = new Date().toISOString();
   const merged = mergeCrawlLog(prev, log, {
     at: startedAt,
-    args: { url: args.url, pages: args.pages || null, cap: args.capLabel, wait: args.wait, concurrency: args.concurrency, dynamics: args.dynamics, refresh: args.refresh, force: args.force, headed: args.headed || null },
+    args: { url: args.url, pages: args.pages || null, cap: args.capLabel, wait: args.wait, concurrency: args.concurrency, dynamics: args.dynamics, refresh: args.refresh, force: args.force, headed: args.headed || null, solveWait: args.solveWait || null, depth: args.depth, cookie: args.cookies.map((c) => c.name), mobile: args.mobile, dpr: args.dpr, storageState: loadedState ? 'loaded' : args.freshState ? 'fresh' : 'clone', saveState: !!savedState },
     technique,
     discovered: urls.length,
     skipped: skipped.length,
@@ -1204,6 +1783,7 @@ async function main() {
  *   * runs[] gets one entry per invocation (args, counts, failed slugs).
  * `okSlugs` = the slugs captured in this run.
  */
+export const RUN_LEVEL_DISCOVERY = ['fetchTechnique', 'botBlock', 'escalations', 'concurrency', 'storageState', 'storageStateFile', 'liveBudget', 'skippedExtracted', 'originRedirect', 'entryRedirect'];
 export function mergeCrawlLog(prev, log, run, okSlugs) {
   const failedNow = new Set(log.crawl.failures.map((x) => x.slug));
   const okNow = new Set(okSlugs);
@@ -1213,8 +1793,10 @@ export function mergeCrawlLog(prev, log, run, okSlugs) {
   const readArtifacts = [...new Set([...(prevProv && prevProv.readArtifacts) || [], log.discovery && log.discovery.sourceUrl].filter(Boolean))];
   const merged = { _provenance: { writtenBy: 'stardust:extract', writtenAt: new Date().toISOString(), script: 'crawl.mjs', readArtifacts }, ...prevRest, ...log, crawl: { ...log.crawl, failures: [...carried, ...log.crawl.failures] } };
   if (prev.discovery && (prev.discovery.count || 0) > (log.discovery.count || 0)) {
-    const { botBlock, escalations } = log.discovery;
-    merged.discovery = { ...prev.discovery, fetchTechnique: log.discovery.fetchTechnique, ...(botBlock ? { botBlock, escalations } : {}) };
+    // keep the richer roster block (kept/cut/census/candidates…) and refresh
+    // only the RUN-LEVEL fields this invocation actually observed
+    merged.discovery = { ...prev.discovery };
+    for (const k of RUN_LEVEL_DISCOVERY) if (log.discovery[k] !== undefined) merged.discovery[k] = log.discovery[k];
   }
   merged.runs = [...(Array.isArray(prev.runs) ? prev.runs : []), run];
   return merged;
@@ -1223,5 +1805,9 @@ export function mergeCrawlLog(prev, log, run, okSlugs) {
 // run only as the entry script — importing the module (fixture tests) runs nothing
 const entry = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : null;
 if (entry === import.meta.url) {
-  main().catch((e) => { console.error(`[crawl] fatal: ${e.errorClass || 'Error'}: ${e.message}`); process.exit(e.errorClass === 'BotChallengeError' ? 3 : 2); });
+  main().catch((e) => {
+    console.error(`[crawl] fatal: ${e.errorClass || 'Error'}: ${e.message}`);
+    try { if (persistOnFatal) persistOnFatal(); } catch { /* best effort */ }
+    process.exit(e.errorClass === 'BotChallengeError' ? 3 : 2);
+  });
 }

@@ -14,9 +14,9 @@ metadata:
 | phase | command / instrument | gate | writes |
 |---|---|---|---|
 | Setup 1–4 | `node -e "import('playwright').then(()=>process.exit(0))"`; copy `skills/extract/scripts/crawl.mjs` → `stardust/scripts/crawl.mjs`; origin-collision and flow guard; consent pre-flight; bot-management probe | flow stamped before a migration crawl | `_crawl-log.json#consent`, `#discovery.fetchTechnique` |
-| 1 Discovery | sitemap → BFS; junk filter; cap via `--cap <N>` / `--all` / `--pages <slugs>` / `--single` | informational summary, no confirmation gate | `stardust/current/_crawl-log.json` |
-| 2 Per-page extraction | `node stardust/scripts/crawl.mjs --url <origin> [--pages …] [--cap N \| --all \| --single] [--refresh <slug,…> \| --force] [--headed] [--concurrency N] [--wait <mode>] [--dynamics]` | live-render evidence contract; synthesis is a Phase 2 failure | `current/pages/<slug>.json` + `.html`, `assets/screenshots/<slug>.png`, `assets/media/`, `state.json` page → `extracted` |
-| 2.5 Vision verification | look at each screenshot against its record; escalation ladder (wait mode → next bot-management tier → fresh context) | verdict `ok` / `recaptured` / `suspect` | `_crawl-log.json#visionCheck[]` |
+| 1 Discovery | robots sitemaps → standard → conventions → nav union → BFS (`--depth`); subtree from the typed path; junk filter; cap via `--cap <N>` / `--all` / `--pages <slugs>` / `--single` | informational summary, no confirmation gate | `stardust/current/_crawl-log.json` |
+| 2 Per-page extraction | `node stardust/scripts/crawl.mjs --url <origin> [--pages …] [--cap N \| --all \| --single] [--refresh <slug,…> \| --force] [--headed] [--concurrency N] [--wait <mode>] [--dynamics] [--mobile <mode>] [--dpr N] [--depth N] [--cookie n=v] [--storage-state <file> \| --fresh-state] [--save-state] [--solve-wait <ms>]` | live-render evidence contract; synthesis is a Phase 2 failure | `current/pages/<slug>.json` + `.html`, `assets/screenshots/<slug>.png`, `assets/media/`, `state.json` page → `extracted` |
+| 2.5 Vision verification | look at each screenshot against its record; `_signals` flags first; escalation ladder (wait mode → next bot-management tier → fresh context); `node evals/lint/crawl-log-lint.mjs --dir stardust/current` | verdict `ok` / `recaptured` / `suspect`; never `ok` on DEGRADED / overlay | `_crawl-log.json#visionCheck[]` |
 | 3 Brand-surface extraction | aggregate across all extracted pages (+ brand-source pages) | source citation per value | `current/_brand-extraction.json`, `assets/logo.<ext>`, `assets/favicon.<ext>` |
 | 4 Seed current-state docs | author directly from impeccable's format specs (no `$impeccable init` / `document`) | provenance block first | `current/PRODUCT.md`, `current/DESIGN.md`, `current/DESIGN.json` |
 | 5 Brand review | render per template; run the Tensions detectors | template mandatory; sections without data omitted | `current/brand-review.html` |
@@ -28,8 +28,8 @@ metadata:
 | Setup 1, 4 | `reference/playwright-recipe.md` § Browser configuration · § Bot-management fallback |
 | Setup 3 | `reference/playwright-recipe.md` § Pre-flight: consent dismissal |
 | 1 | `reference/ia-extraction.md` § Discovery order · § Junk-page filter · § Page selection · § Incremental re-runs · § `_crawl-log.json` shape |
-| 2 | `reference/playwright-recipe.md` § Wait modes · § Capture list · § Response validation · `reference/current-state-schema.md` § Live-render evidence |
-| 3 | `reference/brand-surface.md` § Aggregation scope · § System components · § Voice |
+| 2, 2.5 | `reference/playwright-recipe.md` § Wait modes · § Capture list · § Response validation · `reference/current-state-schema.md` § Live-render evidence · § Signals |
+| 3 | `reference/brand-surface.md` § Aggregation scope · § Palette (third-party chrome exclusion) · § System components · § Voice |
 | 4 | `skills/stardust/reference/artifact-map.md` § Provenance shapes |
 | 5 | `reference/brand-review-template.md` § Section contract · § Tensions |
 | 6 | `skills/stardust/reference/state-machine.md` § File: `stardust/state.json` |
@@ -49,8 +49,8 @@ critique, and it does not modify the live site. It writes only under
 ## Inputs
 
 - `<url>` — required. The origin to crawl. Examples: `https://example.com`,
-  `https://example.com/shop`. A path narrows the same-origin crawl to
-  that subtree.
+  `https://example.com/shop`. A path scopes the crawl to that subtree
+  (the path as typed; a redirected root entry is not scoped).
 - `--cap <N>` (alias `--max`) — optional. Override the default 5-page
   cap (home + four IA pillars/templates; `crawl.mjs` defaults to the
   same number). The small sample already feeds cross-page brand
@@ -67,6 +67,22 @@ critique, and it does not modify the live site. It writes only under
 - `--single` — optional. Equivalent to `--cap 1`.
 - `--headed` — optional. Start the bot-management ladder at tier 2
   (`--headed=window`: tier 3); re-runs resume the recorded tier.
+- `--depth <1-3>` — optional, default 1. BFS hops (in-page fetches)
+  when no sitemap covers the scope; 1 under a bot block.
+- `--cookie name=value[;Path=/]` — optional, repeatable. Seeds every
+  context (age gates, region pins); names only are logged.
+- `--mobile entry|all|none` — optional, default `entry`. Also shoot the
+  page at 360×900 (`<slug>-360.png`, same page, no navigation); `--prep`
+  runs pass `all`.
+- `--dpr <n>` — optional, default 1 (D4: the gate captures at 1);
+  recorded in `_provenance.dpr`.
+- `--storage-state <file>` / `--fresh-state` — optional. Load a saved
+  session into the probe / start clean; default: the reserved
+  `stardust/current/_storage-state.json` when its cookies match the host.
+- `--save-state` — optional, default off. Write the probe session to the
+  reserved file even without a cleared challenge.
+- `--solve-wait <ms>` — optional, unset by default (no interactive
+  solve). Tier 3, window visible; wait for a human to clear the wall.
 - `--wait <fast|medium|spec|auto>` — optional. Wait strategy per page.
   Default `medium`. See `reference/playwright-recipe.md` § Wait modes.
 - `--no-junk-filter` — optional. Disable the default junk-page filter
@@ -110,38 +126,22 @@ loader, state read.
 
 Additional checks for this sub-command:
 
-1. **Playwright availability.** The extraction step needs a real
-   browser. Detect Playwright in this order: a Playwright MCP server,
-   then a project-importable `playwright` module. **The `npx
-   playwright` probe is NOT sufficient** — it confirms the CLI
-   (which resolves a global install) but the recipe and
-   `scripts/crawl.mjs` do `import { chromium } from 'playwright'`,
-   and ESM module resolution does **not** honour a global install or
-   `NODE_PATH` — the import throws `ERR_MODULE_NOT_FOUND` even where
-   `npx playwright --version` succeeds. Verify the module is
-   import-resolvable from the project root (probe:
-   `node -e "import('playwright').then(()=>process.exit(0))"`); if it
-   isn't, run `npm i -D playwright --no-save --legacy-peer-deps` (or
-   use the Playwright MCP server) before crawling. The
-   `--legacy-peer-deps` flag is required on `aem-boilerplate` targets
-   (their pinned `eslint@8` makes a plain `npm i` exit `ERESOLVE`
-   before playwright is even considered). Don't trust the CLI
-   probe alone.
-
-   **`--no-save` installs are ephemeral.** Any later real `npm i` (e.g. a setup step
-   adding a devDependency) prunes non-manifest packages, silently
-   removing playwright mid-pipeline. Every downstream skill that
-   renders (prototype, migrate, deploy, diff) must re-run the
-   import-resolvability probe — and re-install on failure — at the
-   start of its own run, not assume extract's install survived.
-
-   **Script location matters.** ESM resolves `import 'playwright'`
-   from the *script's* directory, and the plugin tree ships no
-   `node_modules` — so running `crawl.mjs` from the plugin path
-   throws `ERR_MODULE_NOT_FOUND` even when the project has playwright
-   installed. Copy the script byte-identical into the project
-   (`stardust/scripts/crawl.mjs`) and run the copy; it resolves
-   against the project's `node_modules`.
+1. **Playwright availability.** Detect a Playwright MCP server, else a
+   project-importable `playwright` module — probe
+   `node -e "import('playwright').then(()=>process.exit(0))"` from the
+   project root. **`npx playwright --version` is NOT sufficient**: ESM
+   resolution honours neither a global install nor `NODE_PATH`, so the
+   scripts' `import 'playwright'` throws `ERR_MODULE_NOT_FOUND` where the
+   CLI succeeds. On failure `npm i -D playwright --no-save
+   --legacy-peer-deps` (the flag is required on `aem-boilerplate`
+   targets, whose pinned `eslint@8` makes a plain `npm i` exit
+   `ERESOLVE`). `--no-save` installs are ephemeral — a later real
+   `npm i` prunes them — so every rendering skill (prototype, migrate,
+   deploy, diff) re-runs the probe at its own start.
+   **Script location matters.** ESM resolves from the *script's*
+   directory and the plugin tree ships no `node_modules`: copy
+   `crawl.mjs` byte-identical to `stardust/scripts/crawl.mjs` and run
+   the copy.
 
    **Bundled crawler.** `skills/extract/scripts/crawl.mjs` is the
    runnable reference implementation of this sub-command — browser
@@ -172,10 +172,12 @@ Additional checks for this sub-command:
    worker (§ Concurrency; default 4). Run the **consent dismissal
    pre-flight** per `reference/playwright-recipe.md` § Pre-flight:
    consent dismissal *unless* `--no-consent-dismiss`.
-   Cookies persist within a context, **not across contexts** —
-   re-establish consent per context (re-run the dismissal on
-   the worker's first page, or clone the probe context's
-   `storageState`). Record the resolved method in
+   `crawl.mjs` clones the probe context's `storageState` into every
+   worker (clearance, consent and A/B cookies ride along), loads
+   `stardust/current/_storage-state.json` when its cookies match the
+   host (`--storage-state <file>` / `--fresh-state`) and saves it on a
+   cleared challenge or `--save-state` — never tracked; fingerprint-bound
+   clearances (PerimeterX/HUMAN) do not replay. Record the resolved method in
    `_crawl-log.json#consent.method` — one of `dismissed:<sel>`,
    `text:<label>`, `none-detected`, `failed` (`skipped` under
    `--no-consent-dismiss`); never `auto`. Replica's gate reads
@@ -195,10 +197,11 @@ Additional checks for this sub-command:
 Discover the page inventory before crawling (`reference/ia-extraction.md`);
 in summary:
 
-1. Fetch `<origin>/sitemap.xml`, then `sitemap_index.xml`, then the
-   `robots.txt` `Sitemap:` directives.
-2. No sitemap reachable → same-origin BFS crawl from `<url>`, depth 3,
-   links from rendered HTML.
+1. `robots.txt` `Sitemap:` directives → `sitemap.xml` →
+   `sitemap_index.xml` → CMS conventions; first non-empty tier wins,
+   all fetched in-page; the probe page's nav links are always unioned.
+2. Nothing under the scope → BFS from `<url>` (`--depth`, in-page
+   hops). Census, candidates and `navOnly` are logged either way.
 3. Filter: same origin only; drop `mailto:`, `tel:`, anchor-only
    links, query-only variations, asset paths (`.css`, `.js`, `.pdf`, images).
 4. De-duplicate trailing-slash variations.
@@ -257,7 +260,7 @@ following `reference/playwright-recipe.md`. Captures run
 mandatory per page — in particular, do not skip the wait, scroll, or
 capture-list steps:
 
-- Viewport 1440 × 900 @ 2× DPR
+- Viewport 1440 × 900 @ DPR 1 (`--dpr`, recorded)
 - Wait per the configured wait mode (default `medium`; see § Wait
   modes in `reference/playwright-recipe.md`)
 - Disable animations via `prefers-reduced-motion: reduce`
@@ -304,11 +307,12 @@ Capture per page (full schema in `reference/current-state-schema.md`):
   `_brand-extraction.json#iconFont`.
 - Interactive elements: forms (with field types), buttons, modals
   detected by ARIA roles
-- Full-page screenshot to `assets/screenshots/<slug>.png` —
-  script-captured by the bundled crawler after the wait/scroll
-  settle (viewport-only fallback on extremely tall pages; mode in
-  `_signals.screenshotMode`, relative path in the page JSON
-  `screenshot` field)
+- Screenshots by the bundled crawler after the settle:
+  `assets/screenshots/<slug>.png` (banded above 16,000 px, `clipped`
+  fallback) and `<slug>-360.png` (`--mobile`); modes and the
+  capture-quality flags (`emptyMain`, `subResourceBlock`,
+  `overlayCoverPct`, `captureQuality`, `compatMode`) per
+  `reference/current-state-schema.md` § Signals
 
 - **Dynamic surface (only with `--dynamics`)** — per-page reach
   signals: endpoints, third-party script hosts, forms, modal triggers,
@@ -319,15 +323,13 @@ Capture per page (full schema in `reference/current-state-schema.md`):
 
 Save to `stardust/current/pages/<slug>.json` with `_provenance` as the
 first key. **The bundled crawler also saves the settled rendered DOM
-verbatim as `stardust/current/pages/<slug>.html`** (`page.content()`
-after the wait/scroll settle; path in the record's `renderedHtml`
-field). Capture once, parse offline: every downstream importer or
-sibling generator iterates its extraction against this artifact —
-free, reproducible, and provenance — instead of re-running live
-probes per selector guess (recorded: 4+ live round-trips per page
-family before the switch). Live probes stay for what the static DOM
-cannot answer: geometry and computed styles. Save referenced media to `stardust/current/assets/media/`
-preserving basename plus a short content hash.
+verbatim as `stardust/current/pages/<slug>.html`** (path in the
+record's `renderedHtml` field). Capture once, parse offline: importers
+and sibling generators iterate against this artifact instead of
+re-running live probes per selector guess; live probes stay for
+geometry and computed styles. Save referenced media to
+`stardust/current/assets/media/` preserving basename plus a short
+content hash.
 
 **Live-render evidence (synthesis is forbidden).** Refuse to mark
 a page `extracted` in `state.json` unless its `_provenance`
@@ -340,11 +342,10 @@ via `validateProvenance()` per
 `skills/stardust/reference/state-machine.md` § Provenance
 validation. Synthesizing a page record from
 `_brand-extraction.json` plus URL patterns plus captured photos
-— the 2026-04-30 e-commerce shortcut — is the failure mode this
-guard exists to prevent. When the agent (or a delegated sub-
-agent) cannot satisfy the contract for a page, treat the page
-as a Phase 2 failure: record under `_crawl-log.json#crawl.failures[]`
-with `errorClass: "ProvenanceMissing"` and continue.
+is the failure mode this guard prevents (§ Failure modes, synthesis).
+A page that cannot satisfy the contract is a Phase 2 failure:
+`_crawl-log.json#crawl.failures[]` with `errorClass:
+"ProvenanceMissing"`; continue.
 
 Mark the page `extracted` in `state.json` immediately after each
 successful page write. If a page fails, record the error in
@@ -353,16 +354,18 @@ successful page write. If a page fails, record the error in
 ### Phase 2.5 — Vision verification
 
 Before anything downstream is authored, **look** at each captured
-page's screenshot (`assets/screenshots/<slug>.png`) and verify it
-against the extracted record:
-
-- Does the recorded hero (headline + asset) match the pixels?
-- Is the extracted palette plausible against the pixels?
-- Is a `cssBackgrounds: []` record believable, or is imagery visibly
-  present (silent capture failure)?
-- Is the logo captured?
-- Is the page actually rendered — not a consent wall, bot-block, or
-  blank SPA shell?
+page's screenshot (`assets/screenshots/<slug>.png`; the 360 shot only
+for the entry page or when the 1440 verdict is not `ok`) and verify it
+against the extracted record: hero (headline + asset) vs pixels,
+palette plausibility, a believable `cssBackgrounds: []`, the logo, and
+that the page is rendered — not a consent wall, bot-block or blank
+SPA shell. Three rules are code, not judgement (`_signals`, § Signals
+in `reference/current-state-schema.md`; `evals/lint/crawl-log-lint.mjs`
+fails a run that breaks them): a note naming a consent/modal/overlay/
+scrim never carries `ok`; `DEGRADED` / `OVERLAY?` pages are re-crawled
+(`--refresh <slug>`, one tier up for an edge block) before they are
+looked at, then `recaptured` or `suspect`; `banded` is read band by
+band and `clipped` is never `suspect` for its missing tail.
 
 On mismatch, re-run that page's capture up the escalation ladder
 before proceeding: wait mode one step (`reference/playwright-recipe.md`
@@ -565,43 +568,28 @@ After all Phase 2-5 writes succeed:
    Next: $stardust direct  (resolve a redesign direction)
    ```
 
-   The **per-page evidence table** is mandatory. The `live` column
-   is `yes` when `_provenance.renderedBy === "playwright"` AND
-   `waitMs > 0`, else `no`. A `no` row means the page record was
-   not produced by a live Playwright render — the visible column
-   is the defense-in-depth signal for the failure mode the
-   write-time guard exists to prevent (2026-04-30 e-commerce run). A
-   maintainer scanning the summary should see `yes` on every row.
+   The **per-page evidence table** is mandatory. `live` is `yes` when
+   `_provenance.renderedBy === "playwright"` AND `waitMs > 0`, else
+   `no` — the visible defense-in-depth signal for the synthesis
+   failure the write-time guard prevents; every row should read `yes`.
+   Wait summary: group `_provenance.waitMode`, average `waitMs`; slugs
+   whose mode ends in `(fallback)` (`(fb)` in the table) are `--refresh`
+   candidates.
 
-   Compute the wait summary by grouping each page's `_provenance.waitMode`
-   and averaging `waitMs`. List slugs whose `waitMode` ends in
-   `(fallback)` (rendered as `(fb)` in the table for width) as
-   candidates for `--refresh`.
-
-   The **`media(img/bg)` column** is the analogous defense-in-depth
-   signal for imagery. It prints `<count of media.imgs> / <count of
-   media.cssBackgrounds>`. Flag a row `⚠ low-media` when the page
-   reads as brand/marketing (register `brand`, or a landing/solution/
-   product template) yet has `cssBackgrounds: []` **and** few large
-   rasters (no `media.imgs` entry with intrinsic width ≥ 600). That
-   combination is the signature of a silently-failed background /
-   lazy-media walk — a capture pass that specs the full background
-   walk (`playwright-recipe.md` § Capture list 11) yet silently
-   produces nothing still ships an image-less capture (2026-06-26
-   a SaaS site: `cssBackgrounds: []` on every page, all product
-   imagery lost). A flagged row is the cue to re-run that page with
-   `--refresh` (and, if it persists, to climb the ladder per
-   § Bot-management fallback). A maintainer scanning the summary should
-   treat a `brand`-register site with all-zero `bg` counts as suspect,
-   not as "this site uses no background images."
+   **`media(img/bg)`** prints `<media.imgs> / <media.cssBackgrounds>`
+   counts. Flag `⚠ low-media` when a brand/marketing page (register
+   `brand`, or a landing/solution/product template) has
+   `cssBackgrounds: []` **and** no raster ≥ 600 px wide — the signature
+   of a silently failed background / lazy-media walk. Re-run the row
+   with `--refresh`, then up the ladder; a
+   `brand`-register site with all-zero `bg` counts is suspect, not
+   "uses no background images".
 
 ## Cross-site brand sources
 
-Two flags widen extraction beyond the primary origin — **read
-`reference/cross-site-sources.md` in full whenever either flag is
-present**. Both are opt-in; without them this section is inert.
-
-Core contract (merge rules and capture shapes in the reference):
+Two opt-in flags widen extraction beyond the primary origin — **read
+`reference/cross-site-sources.md` in full whenever either is present**
+(merge rules and capture shapes live there):
 
 - `--brand-source <url>` (repeatable) — a **same-brand** sibling
   gets a shallow capture (home + ≤2 nav-linked pages, full recipe +
@@ -622,8 +610,8 @@ Core contract (merge rules and capture shapes in the reference):
 
 ## Sibling-site discovery
 
-After the primary crawl (Phases 2–2.5), harvest candidate same-brand
-origins from evidence **already captured** — no extra navigation:
+After Phases 2–2.5, harvest candidate same-brand origins from evidence
+**already captured** — no extra navigation:
 
 - footer / nav links out to other properties
 - "our brands" / "our companies" pages
@@ -671,17 +659,19 @@ capture (≤ 3 pages). It must never balloon the crawl.
 ## Concurrency
 
 Page captures run **concurrently**: the Phase 2 queue is drained by
-4–8 parallel browser contexts (`--concurrency`, default 4). Each
-worker owns its `BrowserContext`; consent state is re-established per
-context (Setup step 3). Media `resolves` / HEAD checks are batched
-with `Promise.all`. Brand-surface aggregation (Phase 3) may proceed
-incrementally as pages complete, so long as the written
-`_brand-extraction.json` reflects every extracted page. The bundled
-crawler implements the pool (`crawl.mjs --concurrency <n>`).
+4–8 parallel browser contexts (`crawl.mjs --concurrency <n>`, default
+4), each on the probe's cloned session (Setup step 3); media
+`resolves` / HEAD checks batch with `Promise.all`; Phase 3 may
+aggregate incrementally as long as `_brand-extraction.json` reflects
+every extracted page.
 
-Across processes, per `state-machine.md`: stardust does not lock. Two
-concurrent extracts on the same project are last-write-wins. Document
-this in the user report; do not engineer around it.
+`crawl.mjs` paces every navigation per host and runs **one** worker
+under a bot block or after a bare 429 (`reference/playwright-recipe.md`
+§ Bot-management fallback has the classes; the ceilings live in the
+script header); `stardust/.work/live-<host>.lock` refuses a second live
+tool on the same origin (`STARDUST_LIVE_FORCE=1` overrides). `state.json`
+itself is never locked — two extracts on one project stay
+last-write-wins (`state-machine.md` § Concurrency).
 
 ## Failure modes
 
@@ -697,45 +687,35 @@ this in the user report; do not engineer around it.
   they appear only in the failure log. Without this validation a 5xx
   page silently lands as an empty success and propagates wrong data
   to `direct` and `prototype`.
-- **Login wall.** Do not attempt to authenticate. If the home page
-  redirects to a login screen, capture that one page, mark the rest as
-  unreachable, and ask the user how to proceed (provide cookies via
-  Playwright config, change the entry URL, or scope to public pages).
+- **Login wall.** Do not authenticate. If the home page redirects to
+  a login screen, capture that one page, mark the rest unreachable,
+  and ask how to proceed (`--cookie`, another entry URL, or public
+  pages only).
 - **Bot-management block (Akamai / Cloudflare / F5 / Imperva).**
   `ERR_HTTP2_PROTOCOL_ERROR` / `ERR_QUIC_PROTOCOL_ERROR`, a hang
-  through the hard-cap, or a 403/429/503 with an edge signature on
-  the first navigation is fingerprinting or a managed challenge —
-  not auth, not network. Climb the ladder in
-  `reference/playwright-recipe.md` § Bot-management fallback;
-  `crawl.mjs` does so on its own — at the probe and again when a
-  worker is challenged mid-crawl — and exits 3 when tier 3 is still
-  challenged (window opt-in per that section). Do not tell the
-  user the origin "needs a WAF allowlist" or an interactive solve
-  until tier 3 has failed. Asset harvest: a page-level bot wall
-  usually does NOT gate assets — media/CSS/font URLs commonly
-  return 200 to a plain browser-UA curl even while every page
-  navigation is challenged. Probe one asset with curl BEFORE
-  reaching for in-page-fetch machinery; the in-page harvest is the
-  fallback, not the default.
+  through the hard cap, or a 403/429/503 with an edge signature on the
+  first navigation is fingerprinting or a managed challenge — not
+  auth, not network. `crawl.mjs` climbs the ladder itself
+  (`reference/playwright-recipe.md` § Bot-management fallback) at the
+  probe and again when a worker is challenged mid-crawl, and exits 3
+  when tier 3 is still challenged; only then say the origin needs an
+  interactive solve (`crawl.mjs --solve-wait <ms>` opens a visible
+  window and waits for you) or a WAF allowlist. A page-level wall usually does
+  NOT gate assets: probe one media/CSS/font URL with a browser-UA curl
+  before reaching for in-page fetch (the fallback, not the default).
 - **JavaScript-only content.** Playwright already handles this. If
   the configured wait condition never fires within the mode's hard
   cap (`reference/playwright-recipe.md` § Wait modes), fall back to
   `domcontentloaded` and capture what is rendered. Record the
   fallback in the per-page `_provenance.waitMode` and surface in the
   wait-summary line of the final report.
-- **Synthesis attempt (forbidden).** When the agent (or a delegated
-  sub-agent) cannot run a real Playwright render for a page —
-  whether due to time pressure, token budget, or a tool/network
-  failure — the only correct outcome is to record the page as a
-  Phase 2 failure (`errorClass: "ProvenanceMissing"` in
-  `_crawl-log.json#crawl.failures[]`) and continue. **Synthesizing
-  a page record from `_brand-extraction.json` plus URL patterns
-  plus captured photos at "semantically matching" template
-  positions is forbidden.** The shortcut produces output
-  indistinguishable from a successful run and propagates
-  fabricated content through every downstream phase
-  (2026-04-30 e-commerce run: 20 of 25 pages synthesized, caught
-  four phases later).
+- **Synthesis attempt (forbidden).** When a real Playwright render is
+  impossible for a page (time, token budget, tool/network failure),
+  the only correct outcome is a Phase 2 failure (`errorClass:
+  "ProvenanceMissing"`) — never a record synthesized from
+  `_brand-extraction.json` + URL patterns + captured photos: it is
+  indistinguishable from a success and propagates fabricated content
+  through every downstream phase.
 
 ## Prep mode (--prep)
 

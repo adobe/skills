@@ -8,32 +8,46 @@ the shape of the site so the user can confirm scope and the cap.
 
 ## Discovery order
 
-1. **`<origin>/sitemap.xml`** — fetch with a `User-Agent: stardust/0.2`
-   header. If 200 and well-formed XML, parse `<url><loc>` entries.
-   Capture optional `<priority>` and `<lastmod>` for sorting.
-2. **`<origin>/sitemap_index.xml`** — if (1) is missing or returns
-   the index variant, parse all referenced sitemaps. **Recurse**: if
-   any referenced sitemap is itself an index, follow it. Continue
-   until every entry is a leaf (URL list, not another index). See
-   § Recursive sitemap traversal.
-3. **`<origin>/robots.txt`** — parse for `Sitemap:` directives. If
-   present and pointing at a different URL than (1) or (2), fetch it.
-   Apply the same recursion rule.
-4. **BFS crawl** — fallback when no sitemap is reachable. Start from
-   `<url>`, render with Playwright (same recipe as Phase 2 but only
-   capturing `<a href>` and document title), enqueue same-origin
-   internal links. Depth-limit 3, breadth-limit 200 visited URLs
-   regardless of cap (so we have something to prioritise from). De-dup
-   trailing slashes and `?utm_*`-style tracking params.
+`crawl.mjs` `discoverInventory()` implements this order; every fetch
+runs **in-page** from the probe tab (browser UA, admitted cookies — no
+separate crawler UA, no extra hits on a bot-walled origin), and every
+*guessed* URL counts as a probe (`discovery.probes`; typical run 2–3).
+**Precedence is by source, first non-empty tier wins.** `<lastmod>` is
+recorded per candidate (`maxLastmod`) but never decisive: dynamic
+sitemaps stamp "today", and a stale legacy map was 3.5× larger than
+the authoritative one.
 
-Every URL extracted from any source — `<loc>` value, robots
-`Sitemap:` directive, BFS-found `<a href>` — must pass through
-§ URL normalization before being added to the discovered set, and
-every relative URL must pass through § Relative-URL resolution
-before normalization.
+1. **`<origin>/robots.txt`** `Sitemap:` directives — all of them (they
+   commonly partition the site; one site declared 11). Relative
+   directives resolve against the origin. Also read: `Crawl-delay`
+   (→ the pacing gap, `extract/SKILL.md` § Concurrency).
+2. **`<origin>/sitemap.xml`, then `/sitemap_index.xml`** — only when
+   robots names nothing usable; the second is recorded
+   `rejected: "lower-precedence"` without a fetch when the first has
+   pages. A 200-but-empty map falls through.
+3. **CMS conventions `/.sitemap.xml` (AEM), `/sitemap.aspx`** — only
+   when tiers 1–2 are empty **and** the origin is not bot-walled
+   (`botBlock` set → skipped).
+4. **Nav union — always.** The probe page's same-origin `<a href>`
+   links are unioned with the sitemap roster (`discovery.navOnly`
+   counts the sitemap-blind pages).
+5. **BFS fallback** — only when no tier yields a page *under the
+   scope*: hop 1 is the probe page (0 hits); hops 2..`--depth N`
+   (max 3) fetch HTML in-page and read `href`s (never full
+   navigations); breadth `max(200, cap)`; depth 1 under a bot block.
 
-If multiple discovery sources return overlapping URLs, prefer
-sitemap-declared metadata (priority, lastmod) over crawl order.
+**Subtree scope.** A non-root `<url>` path (`https://example.com/shop`)
+scopes sitemap locs and BFS alike to that subtree. The prefix is the
+path the user **typed**, captured before origin adoption: a root entry
+that geo-redirects to `/us/en` is *not* scoped (`discovery.entryRedirect
+.note`). `--pages` bypasses the scope. When the sitemaps have zero locs
+under the scope, discovery falls to BFS (5) — the census of everything
+declared is still logged.
+
+Every URL from any source passes § URL normalization (and relative
+URLs § Relative-URL resolution first) before entering the set. Kinds
+are read from the sitemap **root tag** (`<sitemapindex>` vs
+`<urlset>`), not the URL extension.
 
 ## Relative-URL resolution
 
@@ -388,34 +402,32 @@ informational output.
 ```json
 {
   "_provenance": { "writtenBy": "stardust:extract", "writtenAt": "...", "stardustVersion": "0.10.0" },
-  "discovery": {
-    "source": "sitemap.xml",
-    "sourceUrl": "https://example.com/sitemap.xml",
-    "fetchedAt": "...",
-    "discoveredCount": 38,
-    "filteredCount": 33,
-    "filteredAsJunk": [
-      { "url": "https://example.com/test-content/", "pattern": "^/test(\\b|-|\\d|/)" }
+  "discovery": {                     // written by crawl.mjs discoverInventory()
+    "fetchTechnique": "headless",    // ladder tier that captured; botBlock / escalations when a tier was rejected
+    "count": 5,                      // pages kept (= kept.length)
+    "concurrency": 4,                // 1 under a bot block or after a bare 429 (SKILL.md § Concurrency)
+    "source": "robots.txt",          // robots.txt | sitemap.xml | sitemap_index.xml | .sitemap.xml | sitemap.aspx | nav | bfs | <source>+bfs | --pages
+    "sourceUrl": "https://example.com/sitemaps/index.xml",   // string, or the array of robots-declared maps
+    "subtree": null,                 // "/shop" when the typed path scoped the roster; null at root
+    "entryRedirect": { "from": "/", "to": "/us/en", "note": "entry redirected to /us/en; not scoped" },  // only when it happened
+    "census": { "total": 1044, "byPrefix": { "/products": 612, "/blog": 301, "/": 1 } },  // everything the winning tier declared, pre-scope
+    "navOnly": 12,                   // probe-page nav links no sitemap declared (unioned into the roster)
+    "probes": 1,                     // guessed URLs fetched (robots + standard paths + conventions); declared maps are not guesses
+    "fetches": 4,                    // every discovery fetch, incl. index children and BFS hops
+    "candidates": [                  // every sitemap consulted or skipped, in precedence order
+      { "url": "https://example.com/sitemaps/index.xml", "tier": "robots", "count": 1044, "maxLastmod": "2026-04-12" },
+      { "url": "https://example.com/sitemap.xml", "tier": "standard", "rejected": "lower-precedence" }   // rejected: lower-precedence | empty | unreachable
     ],
-    "waitMode": "medium",
-    "waitModeAutoDetect": null,         // when --wait auto: { signal: "ssr", basis: "found <main> in initial HTML" }
-    "cappedAt": 5,
-    "cap": 5,
-    "capSource": "default",          // default | --cap | --all | --single | --pages | prompt-intent
-    "userChoice": null,              // null when no confirmation was needed (the common case); only populated when one of the three narrow exceptions triggered (see § Informational output)
-    "kept": [
-      { "url": "https://example.com/", "slug": "index", "priority": 1.0, "lastmod": "2026-04-12", "score": 18 }
-    ],
-    "cut": [
-      { "url": "https://example.com/blog/post-1", "slug": "blog-post-1", "reason": "below cap", "score": 1 }
-    ],
-    "scores": {
-      "rules": ["home", "IA-pillar keyword", "sitemap priority", "shallow path", "extra depth", "date-like archive", "version/test marker", "auth-walled", "page-type checklist"],
-      "sample": { "url": "https://example.com/about", "total": 7, "breakdown": { "IA-pillar keyword": 5, "shallow path": 2 } }
-    },
-    "malformed": [],
-    "requiresAuth": [],
+    "kept": [ "https://example.com/", "https://example.com/about" ],   // entry first, capped
+    "cut": [ { "url": "https://example.com/blog/post-1", "reason": "cap" } ],   // first 2,000; cutTruncated = full count beyond
+    "malformed": [],                 // <loc> values that did not parse (first 50)
+    "bfs": { "depth": 2, "visited": 87, "fetched": 14 },   // fallback only
+    "crawlDelay": 5,                 // robots Crawl-delay seconds, when declared
+    "storageState": false,           // an admitted probe session was cloned into the workers / loaded from _storage-state.json
+    "liveBudget": { "navPerMin": 10, "minGapMs": 5000, "source": "robots Crawl-delay" },
     "skippedExtracted": [ { "slug": "about", "url": "...", "status": "extracted" } ]   // re-runs only
+    // filteredAsJunk[], scores, requiresAuth[], userChoice belong to the agent's page-selection
+    // pass (§ Page selection, § Junk-page filter) and are added by it, never by crawl.mjs.
   },
   "crawl": {
     "startedAt": "...",
@@ -426,7 +438,7 @@ informational output.
     ]
   },
   "runs": [                          // one entry per invocation, appended
-    { "at": "...", "args": { "url": "...", "pages": null, "cap": 25, "wait": "medium", "concurrency": 4, "dynamics": false, "refresh": [], "force": false, "headed": null },
+    { "at": "...", "args": { "url": "...", "pages": null, "cap": 5, "wait": "medium", "concurrency": 4, "dynamics": false, "refresh": [], "force": false, "headed": null, "depth": 1, "cookie": ["agegate_confirmed"], "mobile": "entry", "dpr": 1 },   // cookie = NAMES only, never values
       "technique": "headless", "discovered": 38, "skipped": 0, "captured": 24, "failed": ["contact"] }
   ]
   // errorClass is one of: HTTPError | ContentTypeError | EmptyPageError | TimeoutError | NetworkError | BotChallengeError | ProvenanceMissing
@@ -437,7 +449,9 @@ informational output.
 Append-only across runs, enforced by `crawl.mjs`: one `runs[]` entry
 per invocation; `crawl.failures` is the union minus slugs that later
 succeeded; `discovery` never shrinks (a `--pages` or narrower re-run
-refreshes only `fetchTechnique`); a failed page keeps its previous
+keeps the richer roster block and refreshes only the run-level fields:
+`fetchTechnique`, `botBlock`, `escalations`, `concurrency`,
+`storageState`, `liveBudget`, `skippedExtracted`, redirects); a failed page keeps its previous
 record on disk.
 
 ## Incremental re-runs
