@@ -1,0 +1,50 @@
+{ "ts": "2026-07-21T09:40:41Z", "skill": "stardust:extract", "phase": "discovery", "event": "start" }
+{ "ts": "2026-07-21T09:41:10Z", "skill": "stardust:extract", "phase": "discovery", "event": "end", "detail": "23 pages discovered via sitemap.xml; cap 5 applied", "artifact": "stardust/current/_crawl-log.json" }
+{ "ts": "2026-07-21T09:41:12Z", "skill": "stardust:extract", "phase": "per-page extraction", "event": "start" }
+{ "ts": "2026-07-21T09:45:49Z", "skill": "stardust:extract", "phase": "per-page extraction", "event": "end", "detail": "5/5 pages captured, 0 failures", "artifact": "stardust/current/pages/" }
+{ "ts": "2026-07-21T09:45:52Z", "skill": "stardust:extract", "phase": "vision verification", "event": "start" }
+{ "ts": "2026-07-21T09:46:02Z", "skill": "stardust:extract", "phase": "vision verification", "event": "end", "detail": "5 ok, 0 recaptured, 0 suspect" }
+{ "ts": "2026-07-21T09:46:05Z", "skill": "stardust:extract", "phase": "brand-surface extraction", "event": "start" }
+{ "ts": "2026-07-21T09:46:20Z", "skill": "stardust:extract", "phase": "brand-surface extraction", "event": "end", "detail": "6 palette roles, 2 type families, 3 system components", "artifact": "stardust/current/_brand-extraction.json" }
+{ "ts": "2026-07-21T09:46:25Z", "skill": "stardust:extract", "phase": "seed current PRODUCT.md and DESIGN.md", "event": "start" }
+{ "ts": "2026-07-21T09:47:12Z", "skill": "stardust:extract", "phase": "seed current PRODUCT.md and DESIGN.md", "event": "end", "artifact": "stardust/current/DESIGN.json" }
+{ "ts": "2026-07-21T09:47:20Z", "skill": "stardust:extract", "phase": "update state and report", "event": "start" }
+{ "ts": "2026-07-21T09:47:30Z", "skill": "stardust:extract", "phase": "update state and report", "event": "end", "detail": "5 pages extracted", "artifact": "stardust/state.json" }
+{ "ts": "2026-07-21T10:02:11Z", "skill": "stardust:direct", "phase": "setup", "event": "start" }
+{ "ts": "2026-07-21T10:02:40Z", "skill": "stardust:direct", "phase": "setup", "event": "end", "detail": "impeccable present; 5 pages extracted; no target-state files; brand surface signal-strong" }
+{ "ts": "2026-07-21T10:02:42Z", "skill": "stardust:direct", "phase": "restate and clarify", "event": "start" }
+{ "ts": "2026-07-21T10:11:05Z", "skill": "stardust:direct", "phase": "restate and clarify", "event": "end", "detail": "2 questions asked; audience resolved, reference set skipped; plan confirmed with 'go'" }
+{ "ts": "2026-07-21T10:11:08Z", "skill": "stardust:direct", "phase": "resolve divergence inputs", "event": "start" }
+{ "ts": "2026-07-21T10:14:30Z", "skill": "stardust:direct", "phase": "resolve divergence inputs", "event": "end", "detail": "seed rolled; deck bauhaus-functional; palette Midnight Sky (index 0 of 5); 1 anti-toolbox hit" }
+{ "ts": "2026-07-21T10:14:33Z", "skill": "stardust:direct", "phase": "author PRODUCT.md and DESIGN files", "event": "start" }
+{ "ts": "2026-07-21T10:31:55Z", "skill": "stardust:direct", "phase": "author PRODUCT.md and DESIGN files", "event": "end", "detail": "PRODUCT.md, DESIGN.md, DESIGN.json written at project root", "artifact": "DESIGN.json" }
+{ "ts": "2026-07-21T10:31:57Z", "skill": "stardust:direct", "phase": "write direction and update state", "event": "start" }
+{ "ts": "2026-07-21T10:32:10Z", "skill": "stardust:direct", "phase": "write direction and update state", "event": "end", "detail": "5 pages extracted -> directed", "artifact": "stardust/direction.md" }
+{ "ts": "2026-07-21T11:00:05Z", "skill": "stardust:prototype", "phase": "setup", "event": "start" }
+{ "ts": "2026-07-21T11:00:30Z", "skill": "stardust:prototype", "phase": "setup", "event": "end", "detail": "Provenance OK on 1 page; home is directed; active direction 2026-07-21T10:32:00Z" }
+{ "ts": "2026-07-21T11:00:32Z", "skill": "stardust:prototype", "phase": "page-shape brief", "event": "start" }
+{ "ts": "2026-07-21T11:03:40Z", "skill": "stardust:prototype", "phase": "page-shape brief", "event": "end", "detail": "variant A; surprise budget medium" }
+{ "ts": "2026-07-21T11:03:42Z", "skill": "stardust:prototype", "phase": "render", "event": "start" }
+{ "ts": "2026-07-21T11:12:50Z", "skill": "stardust:prototype", "phase": "render", "event": "end", "detail": "home-proposed.html written; divergence audit 1 hit (pre-justified)", "artifact": "stardust/prototypes/home-proposed.html" }
+{ "ts": "2026-07-21T11:12:52Z", "skill": "stardust:prototype", "phase": "adapt", "event": "start" }
+{ "ts": "2026-07-21T11:14:20Z", "skill": "stardust:prototype", "phase": "adapt", "event": "end", "detail": "2 @media rules at 768/900; nav collapse applied" }
+{ "ts": "2026-07-21T11:14:22Z", "skill": "stardust:prototype", "phase": "update state and report", "event": "start" }
+{ "ts": "2026-07-21T11:14:30Z", "skill": "stardust:prototype", "phase": "update state and report", "event": "end", "detail": "home prototyped; opened in browser", "artifact": "stardust/state.json" }
+{ "ts": "2026-07-21T11:39:50Z", "skill": "stardust:prototype", "phase": "approval", "event": "start" }
+{ "ts": "2026-07-21T11:40:00Z", "skill": "stardust:prototype", "phase": "approval", "event": "end", "detail": "home approved; fold-back none (variant A)", "artifact": "stardust/state.json" }
+{ "ts": "2026-07-21T11:40:02Z", "skill": "stardust:prototype", "phase": "canon write-back", "event": "start" }
+{ "ts": "2026-07-21T11:40:20Z", "skill": "stardust:prototype", "phase": "canon write-back", "event": "end", "detail": "header, footer, canon.css written; 9 tokens pinned; 5 compositional moves", "artifact": "stardust/canon/" }
+{ "ts": "2026-07-21T12:50:10Z", "skill": "stardust:prototype", "phase": "setup", "event": "start" }
+{ "ts": "2026-07-21T12:50:35Z", "skill": "stardust:prototype", "phase": "setup", "event": "end", "detail": "Provenance OK on 1 page; pricing is directed; canon present" }
+{ "ts": "2026-07-21T12:50:37Z", "skill": "stardust:prototype", "phase": "page-shape brief", "event": "start" }
+{ "ts": "2026-07-21T12:53:00Z", "skill": "stardust:prototype", "phase": "page-shape brief", "event": "end", "detail": "variant A; surprise budget medium" }
+{ "ts": "2026-07-21T12:53:02Z", "skill": "stardust:prototype", "phase": "render", "event": "start" }
+{ "ts": "2026-07-21T13:03:30Z", "skill": "stardust:prototype", "phase": "render", "event": "end", "detail": "pricing-proposed.html written; canon chrome injected verbatim", "artifact": "stardust/prototypes/pricing-proposed.html" }
+{ "ts": "2026-07-21T13:03:32Z", "skill": "stardust:prototype", "phase": "adapt", "event": "start" }
+{ "ts": "2026-07-21T13:05:00Z", "skill": "stardust:prototype", "phase": "adapt", "event": "end", "detail": "tiers collapse to one column at 768" }
+{ "ts": "2026-07-21T13:05:02Z", "skill": "stardust:prototype", "phase": "update state and report", "event": "start" }
+{ "ts": "2026-07-21T13:05:10Z", "skill": "stardust:prototype", "phase": "update state and report", "event": "end", "detail": "pricing prototyped; opened in browser", "artifact": "stardust/state.json" }
+{ "ts": "2026-07-21T13:29:50Z", "skill": "stardust:prototype", "phase": "approval", "event": "start" }
+{ "ts": "2026-07-21T13:30:00Z", "skill": "stardust:prototype", "phase": "approval", "event": "end", "detail": "pricing approved; fold-back none (variant A)", "artifact": "stardust/state.json" }
+{ "ts": "2026-07-21T13:30:02Z", "skill": "stardust:prototype", "phase": "canon write-back", "event": "start" }
+{ "ts": "2026-07-21T13:30:20Z", "skill": "stardust:prototype", "phase": "canon write-back", "event": "end", "detail": "diff mode: 0 net-new, 0 deviations", "artifact": "DESIGN.json" }

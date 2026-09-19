@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- stardust:provenance
+    writtenBy:         stardust:prototype
+    writtenAt:         2026-07-21T11:14:30Z
+    page:              home
+    pageUrl:           https://www.ledgerline.com/
+    variant:           A
+    againstDirection:  stardust/direction.md (Active 2026-07-21T10:32:00Z)
+    readArtifacts:
+      - stardust/current/pages/home.json
+      - stardust/current/_brand-extraction.json
+      - stardust/direction.md
+      - DESIGN.md
+      - DESIGN.json
+    divergenceVersion: v1.0 (stardust v2)
+    fontDeck:          bauhaus-functional
+    paletteSource:     library:Midnight Sky (recommended_index=0, picked_index=0)
+    unsourcedContent:  []
+    foldBackDecision:  { choice: none, at: 2026-07-21T11:40:00Z, scope: page, rationale: "variant A approved; no structural moves to fold" }
+    stardustVersion:   0.10.0
+  -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ledgerline — Bookkeeping software your accountant will trust</title>
+  <link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiIgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIj4KICA8cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHJ4PSI2IiBmaWxsPSIjMWYzYTVmIi8+CiAgPHBhdGggZD0iTTkgOGg1djEyaDl2NEg5eiIgZmlsbD0iI2ZmZmZmZiIvPgo8L3N2Zz4K">
+  <style>
+    :root {
+      /* Ledger (primary) · Carbon Copy (secondary) · Tracing Paper · Graph Paper (ground) · Highlighter · Typewriter (text) · Index Card (surface) · Ruled Line (border) — DESIGN.md colors */
+      --heading-font-family: 'Space Grotesk', 'Helvetica Neue', Arial, sans-serif;
+      --body-font-family:    'Space Grotesk', 'Helvetica Neue', Arial, sans-serif;
+      --mono-font-family:    'Martian Mono', 'SFMono-Regular', Menlo, monospace;
+      --quote-font-family:   'Roboto Slab', Georgia, serif;
+
+      --heading-xxl: 72px;
+      --heading-xl:  56px;
+      --heading-lg:  40px;
+      --heading-md:  28px;
+      --body:        18px;
+      --body-sm:     15px;
+      --body-xs:     14px;
+
+      --line-height-heading: 1.05;
+      --line-height-body:    1.55;
+
+      --color-bg:        #f1f2f6; /* graph-paper */
+      --color-fg:        #1a1740; /* typewriter */
+      --color-accent:    #27187e; /* ledger */
+      --color-secondary: #758bfd; /* carbon-copy */
+      --color-tertiary:  #aeb8fe; /* tracing-paper */
+      --color-highlight: #ff8600; /* highlighter */
+      --color-surface:   #f9f9fd; /* index-card */
+      --color-border:    #d3d7ee; /* ruled-line */
+
+      --spacing-xs:  4px;
+      --spacing-sm:  8px;
+      --spacing-md:  16px;
+      --spacing-lg:  24px;
+      --spacing-xl:  48px;
+      --spacing-2xl: 96px;
+
+      --section-padding: 96px;
+      --max-width:       1200px;
+      --radius:          12px;
+      --radius-sm:       6px;
+      --radius-pill:     999px;
+      --shadow-lift:     0 12px 32px rgba(39, 24, 126, 0.10);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body { margin: 0; background: var(--color-bg); color: var(--color-fg); font-family: var(--body-font-family); font-size: var(--body); line-height: var(--line-height-body); }
+    h1, h2, h3 { font-family: var(--heading-font-family); line-height: var(--line-height-heading); letter-spacing: -0.01em; margin: 0; }
+    h1 { font-size: clamp(44px, 6vw, var(--heading-xxl)); letter-spacing: -0.02em; line-height: 1; }
+    h2 { font-size: var(--heading-lg); }
+    p { margin: 0 0 var(--spacing-md); }
+    img { max-width: 100%; display: block; }
+    .skip-link { position: absolute; left: var(--spacing-md); top: -100px; background: var(--color-accent); color: var(--color-bg); padding: var(--spacing-sm) var(--spacing-md); border-radius: var(--radius-sm); z-index: 10; }
+    .skip-link:focus { top: var(--spacing-md); }
+    section { padding: var(--section-padding) 0; }
+    .eyebrow { margin-bottom: var(--spacing-md); }
+    .margin-grid { display: grid; grid-template-columns: 4fr 8fr; gap: var(--spacing-xl); align-items: start; }
+    .cta-row { display: flex; flex-wrap: wrap; gap: var(--spacing-md); margin-top: var(--spacing-lg); }
+    .cta-band { background: var(--color-accent); color: var(--color-bg); }
+    .cta-band .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--spacing-lg); }
+    .cta-band h2 { max-width: 20ch; }
+    .cta-band .btn-primary { background: var(--color-bg); color: var(--color-accent); }
+    .cta-band .btn-primary:hover { background: var(--color-tertiary); }
+    @media (max-width: 768px) {
+      section { padding: var(--spacing-xl) 0; }
+      .margin-grid { grid-template-columns: 1fr; gap: var(--spacing-lg); }
+      h2 { font-size: 32px; }
+    }
+    /* canon: compound visual language (stardust/canon/canon.css) */
+    .btn-primary { display: inline-block; background: var(--color-accent); color: var(--color-bg); font-family: var(--body-font-family); font-weight: 600; font-size: var(--body); line-height: 1.2; padding: 14px 28px; border-radius: var(--radius-pill); text-decoration: none; border: 1px solid transparent; transition: background 0.15s; }
+    .btn-primary:hover { background: var(--color-fg); }
+    .btn-secondary { display: inline-block; background: var(--color-surface); color: var(--color-accent); font-family: var(--body-font-family); font-weight: 600; font-size: var(--body); line-height: 1.2; padding: 14px 28px; border-radius: var(--radius-pill); text-decoration: none; border: 1px solid var(--color-border); transition: border-color 0.15s; }
+    .btn-secondary:hover { border-color: var(--color-secondary); }
+    .btn-accent { display: inline-block; background: var(--color-highlight); color: var(--color-fg); font-family: var(--body-font-family); font-weight: 600; font-size: var(--body); line-height: 1.2; padding: 14px 28px; border-radius: var(--radius-pill); text-decoration: none; border: 1px solid transparent; transition: background 0.15s, color 0.15s; }
+    .btn-accent:hover { background: var(--color-accent); color: var(--color-bg); }
+    .btn-primary:focus-visible, .btn-secondary:focus-visible, .btn-accent:focus-visible, .link:focus-visible, .burger:focus-visible { outline: 3px solid var(--color-secondary); outline-offset: 2px; }
+    .card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: var(--spacing-xl); }
+    .card h3 { font-size: var(--heading-md); font-weight: 600; line-height: 1.2; margin: var(--spacing-md) 0 var(--spacing-sm); }
+    .card p { margin: 0; }
+    .link { color: var(--color-accent); text-decoration: none; border-bottom: 1px solid var(--color-border); }
+    .link:hover { color: var(--color-secondary); border-bottom-color: var(--color-secondary); }
+    .figure { display: inline-block; font-family: var(--mono-font-family); font-size: var(--body-xs); font-weight: 500; letter-spacing: 0.06em; font-variant-numeric: tabular-nums; color: var(--color-accent); background: var(--color-tertiary); border-radius: var(--radius-sm); padding: 4px 10px; }
+    .figure--highlight { background: var(--color-highlight); color: var(--color-fg); }
+    .mark { text-decoration: underline; text-decoration-color: var(--color-highlight); text-decoration-thickness: 0.18em; text-underline-offset: 0.08em; text-decoration-skip-ink: none; }
+    input, textarea, select { font: inherit; color: var(--color-fg); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 12px 14px; }
+    input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 3px solid var(--color-secondary); outline-offset: 0; }
+    .wrap { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--spacing-lg); }
+    .header-wrap { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-lg); min-height: 72px; }
+    header[data-canon] { background: var(--color-surface); border-bottom: 1px solid var(--color-border); }
+    .brand img { display: block; height: 32px; width: auto; }
+    .site-nav { display: flex; align-items: center; gap: var(--spacing-lg); }
+    .site-nav a:not(.btn-primary) { color: var(--color-fg); text-decoration: none; font-weight: 500; }
+    .site-nav a:not(.btn-primary):hover { color: var(--color-accent); }
+    .burger { display: none; font: inherit; font-weight: 600; background: none; border: 1px solid var(--color-border); border-radius: var(--radius-pill); padding: 8px 16px; color: var(--color-fg); }
+    @media (max-width: 900px) {
+      .burger { display: inline-block; }
+      .site-nav { display: none; position: absolute; top: 72px; left: 0; right: 0; flex-direction: column; align-items: stretch; gap: 0; background: var(--color-surface); border-bottom: 1px solid var(--color-border); box-shadow: var(--shadow-lift); padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg); }
+      .site-nav a { padding: var(--spacing-md) 0; }
+      header[data-canon] { position: relative; }
+      .burger[aria-expanded="true"] + .site-nav { display: flex; }
+    }
+    footer[data-canon] { background: var(--color-bg); border-top: 1px solid var(--color-border); padding: var(--spacing-xl) 0; font-size: var(--body-sm); }
+    .footer-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--spacing-lg); }
+    .footer-grid h2 { margin: 0 0 var(--spacing-md); }
+    .footer-grid ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--spacing-sm); }
+    .footer-legal { display: flex; justify-content: space-between; align-items: center; margin-top: var(--spacing-xl); padding-top: var(--spacing-lg); border-top: 1px solid var(--color-border); }
+    .footer-legal p { margin: 0; }
+    @media (max-width: 768px) { .footer-grid { grid-template-columns: repeat(2, 1fr); } }
+    /* page-specific */
+    .hero .margin-grid { grid-template-columns: 7fr 5fr; align-items: center; }
+    .hero h1 { max-width: 14ch; }
+    .hero .lede { font-size: 22px; max-width: 42ch; margin-top: var(--spacing-lg); }
+    .hero-media { border-radius: var(--radius); border: 1px solid var(--color-border); background: var(--color-surface); overflow: hidden; aspect-ratio: 4 / 3; }
+    .hero-media img { width: 100%; height: 100%; object-fit: cover; }
+    .social-proof { padding: var(--spacing-xl) 0; border-top: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); background: var(--color-surface); }
+    .social-proof .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: var(--spacing-xl); }
+    .social-proof h2 { font-size: var(--heading-md); font-weight: 500; }
+    .logo-row { display: flex; gap: var(--spacing-xl); align-items: center; }
+    .logo-row img { height: 32px; width: auto; filter: grayscale(1); opacity: 0.8; }
+    .features .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--spacing-lg); }
+    .features .card a { display: inline-block; margin-top: var(--spacing-md); }
+    .testimonial blockquote { margin: 0; font-family: var(--quote-font-family); font-size: 28px; line-height: 1.35; max-width: 28ch; }
+    .testimonial cite { display: block; margin-top: var(--spacing-lg); font-style: normal; }
+    @media (max-width: 768px) {
+      .hero .margin-grid { grid-template-columns: 1fr; }
+      .features .cards { grid-template-columns: 1fr; }
+      .testimonial blockquote { font-size: 22px; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header data-section="site-header" data-intent="orient and route" data-layout="contained" data-canon>
+    <div class="wrap header-wrap">
+      <a class="brand" href="/" aria-label="Ledgerline home"><img src="../current/assets/logo.svg" alt="Ledgerline" width="180" height="32"></a>
+      <button class="burger" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button>
+      <nav id="site-nav" class="site-nav" aria-label="Primary">
+        <a href="/features">Features</a>
+        <a href="/pricing">Pricing</a>
+        <a href="/about">About</a>
+        <a href="/contact">Contact</a>
+        <a class="btn-primary" href="/contact">Request a demo</a>
+      </nav>
+    </div>
+  </header>
+  <main id="main">
+    <section class="hero" data-section="hero" data-intent="value proposition" data-layout="split-media" data-media="image">
+      <div class="wrap margin-grid">
+        <div>
+          <p class="eyebrow"><span class="figure">Double-entry bookkeeping</span></p>
+          <h1>Bookkeeping your <span class="mark">accountant</span> will trust.</h1>
+          <p class="lede">Ledgerline keeps your books reconciled, your reports audit-ready, and your month-end close on schedule.</p>
+          <div class="cta-row">
+            <a class="btn-primary" href="/contact">Request a demo</a>
+            <a class="btn-secondary" href="/pricing">See pricing</a>
+          </div>
+        </div>
+        <div class="hero-media"><img src="../current/assets/media/hero-ledger-2c1a.png" alt="" width="640" height="460"></div>
+      </div>
+    </section>
+
+    <section class="social-proof" data-section="social-proof" data-intent="build trust" data-layout="contained" data-items="2" data-media="image">
+      <div class="wrap">
+        <h2>Trusted by <span class="figure">4,200</span> finance teams</h2>
+        <div class="logo-row">
+          <img src="../current/assets/media/logos-acme-1d2e.png" alt="Acme Freight" width="320" height="96">
+          <img src="../current/assets/media/logos-northwind-7e8f.png" alt="Northwind Supply" width="320" height="96">
+        </div>
+      </div>
+    </section>
+
+    <section class="features" id="features" data-section="features" data-intent="explain mechanic" data-layout="grid" data-items="3">
+      <div class="wrap">
+        <div class="margin-grid">
+          <h2>Everything your close process needs</h2>
+          <div class="cards">
+            <article class="card">
+              <span class="figure">01</span>
+              <h3>Automatic reconciliation</h3>
+              <p>Match bank feeds to ledger entries every night. Exceptions are queued for review, not buried.</p>
+              <a class="link" href="/features">Learn more</a>
+            </article>
+            <article class="card">
+              <span class="figure">02</span>
+              <h3>Audit-ready reports</h3>
+              <p>GAAP-aligned statements exported to PDF and XLSX, with a change log on every line item.</p>
+            </article>
+            <article class="card">
+              <span class="figure">03</span>
+              <h3>Accountant access</h3>
+              <p>Give your CPA read or write access without sharing passwords. Every action is attributed.</p>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="testimonial" data-section="testimonial" data-intent="build trust" data-layout="contained" data-items="1">
+      <div class="wrap margin-grid">
+        <p class="eyebrow"><span class="figure">Customer story</span></p>
+        <blockquote>
+          <p>“We cut our month-end close from nine days to four.”</p>
+          <cite>— Priya Raman, Controller, Northwind Supply</cite>
+        </blockquote>
+      </div>
+    </section>
+
+    <section class="cta-band" data-section="closing-cta" data-intent="drive action" data-layout="full-bleed">
+      <div class="wrap">
+        <h2>Ready to close the books faster?</h2>
+        <a class="btn-primary" href="/contact">Request a demo</a>
+      </div>
+    </section>
+  </main>
+  <footer data-section="footer-nav" data-intent="route and reassure" data-layout="grid" data-items="4" data-canon>
+    <div class="wrap footer-grid">
+      <div><h2 class="figure">Product</h2><ul><li><a class="link" href="/features">Features</a></li><li><a class="link" href="/pricing">Pricing</a></li><li><a class="link" href="/security">Security</a></li></ul></div>
+      <div><h2 class="figure">Company</h2><ul><li><a class="link" href="/about">About</a></li><li><a class="link" href="/careers">Careers</a></li><li><a class="link" href="/contact">Contact</a></li></ul></div>
+      <div><h2 class="figure">Resources</h2><ul><li><a class="link" href="/help">Help center</a></li><li><a class="link" href="/blog">Blog</a></li><li><a class="link" href="/docs/api">API docs</a></li></ul></div>
+      <div><h2 class="figure">Legal</h2><ul><li><a class="link" href="/privacy">Privacy</a></li><li><a class="link" href="/terms">Terms</a></li></ul></div>
+    </div>
+    <div class="wrap footer-legal">
+      <p>© 2026 Ledgerline Inc.</p>
+      <a class="link" href="https://www.linkedin.com/company/ledgerline" rel="noopener">LinkedIn</a>
+    </div>
+  </footer>
+  <script>
+    // mobile nav a11y (mobile-nav-collapse.md): sync aria-expanded, Escape closes
+    const burger = document.querySelector('.burger');
+    burger.addEventListener('click', () => {
+      burger.setAttribute('aria-expanded', burger.getAttribute('aria-expanded') !== 'true');
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') burger.setAttribute('aria-expanded', 'false');
+    });
+  </script>
+</body>
+</html>
