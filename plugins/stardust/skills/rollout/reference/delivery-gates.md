@@ -115,6 +115,18 @@ so the gates run uniformly:
   deploy. The orchestrator deploys centrally (one idempotent `PUT`+preview loop):
   token stays in one place, retries are trivial, and a sub-agent dying mid-response
   leaves its files already on disk.
+  **Token-bound halts park, never re-author.** When the central deploy (or any
+  agent still holding a publish step) hits the `DA_TOKEN` halt class: authored
+  files stay exactly where the plan put them (`content/**`) — never `/tmp` or
+  an ad-hoc staging dir (a staged copy outlives the CSS it was built against
+  and regresses on publish); write nothing but the `blocked` status line, whose
+  `next` (`stardust/reference/run-status.md`) is the exact re-drive — the same
+  `deploy-batch.mjs` command, `--paths` for a partial wave. An agent blocked
+  at publish hands back with its local-harness gate result and
+  "published-origin gate NOT run"; it never invents a publish path. On
+  re-auth the coordinator runs `next`, then the published-origin gate on the
+  newly delivered pages, and only then flips coverage — the ledger's POST
+  codes never flip state ("Admin 200 ≠ delivered" below).
 - **Validate structure BEFORE deploy.** Cheap deterministic check on every authored
   file — exactly one `<h1>`, the body/`<main>`/`<footer>` wrapper, balanced
   `<div>`s — catches a truncated/garbled file before it reaches DA.
