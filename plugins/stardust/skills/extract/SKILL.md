@@ -704,7 +704,8 @@ this in the user report; do not engineer around it.
   (`reference/playwright-recipe.md` § Bot-management fallback) at the
   probe and again when a worker is challenged mid-crawl, and exits 3
   when tier 3 is still challenged; only then say the origin needs an
-  interactive solve or a WAF allowlist. A page-level wall usually does
+  interactive solve (`crawl.mjs --solve-wait <ms>` opens a visible
+  window and waits for you) or a WAF allowlist. A page-level wall usually does
   NOT gate assets: probe one media/CSS/font URL with a browser-UA curl
   before reaching for in-page fetch (the fallback, not the default).
 - **JavaScript-only content.** Playwright already handles this. If

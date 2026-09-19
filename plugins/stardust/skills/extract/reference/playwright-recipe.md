@@ -106,7 +106,18 @@ tier 3 + stealth + the solve window still cannot clear it, the
 site requires an *interactive* solve: fail loud
 (`BotChallengeError`, exit 3) rather than capturing the
 interstitial as content (what the run may then tell the user:
-`SKILL.md` § Failure modes). The challenge re-fires per context, so
+`SKILL.md` § Failure modes) — or re-run `crawl.mjs --solve-wait <ms>`:
+the window opens **visible**, the reload loop is skipped (a reload
+destroys a Press & Hold in progress), the same page is polled every
+2.5 s and capture resumes after two clean polls (no challenge DOM or
+phrase, ≥ 800 chars, > 1.5 viewports), saving the storage state for
+the instruments. Markers beyond the 403/429/503 signatures: **HTTP 400
++ `server: AkamaiGHost`** (Akamai's escalation body), a **`_pxhd` /
+`_px3` / `datadome` set-cookie or DataDome header on any 4xx/5xx**
+(a PerimeterX 403 via Varnish carries nothing else), and — DOM stage
+only — `#px-captcha` / Turnstile / hCaptcha / `captcha-delivery`
+iframes inside a 200 body. A bare 429 is a rate limit, not a
+challenge (`SKILL.md` § Concurrency). The challenge re-fires per context, so
 a worker challenged after the probe cleared escalates the same way
 (pool drained, unfinished pages requeued one tier up).
 Record the tier that worked in

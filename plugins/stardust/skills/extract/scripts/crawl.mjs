@@ -69,8 +69,23 @@
  *     [--refresh slug,slug | --force] [--out stardust/current] [--wait medium] \
  *     [--no-consent-dismiss] [--concurrency 4] [--dynamics] [--headed[=window]] \
  *     [--mobile entry|all|none] [--dpr 1] [--depth 1] [--cookie name=value[;Path=/]]... \
- *     [--storage-state <file> | --fresh-state] [--save-state]
+ *     [--storage-state <file> | --fresh-state] [--save-state] [--solve-wait <ms>]
  *   node crawl.mjs --help
+ *
+ * Interactive solve (--solve-wait <ms>): PerimeterX "Press & Hold", Cloudflare
+ *   Turnstile and hCaptcha never clear without a human. The flag starts at
+ *   tier 3 with the window VISIBLE, skips the wait+reload loop on the probe
+ *   (a reload destroys a Press & Hold in progress), polls the same page every
+ *   2.5 s and resumes after two consecutive clean polls (no challenge DOM or
+ *   phrase, ≥ 800 chars of text, taller than 1.5 viewports), then saves the
+ *   storage state for the downstream instruments; unsolved at the deadline →
+ *   BotChallengeError (exit 3). Probe only — workers inherit the solved state.
+ *   Challenge markers (challengeMarker, mirrored in live-session.mjs): the
+ *   Cloudflare/Akamai/F5/Imperva 403|429|503 signatures, HTTP 400 + AkamaiGHost
+ *   (Akamai's escalation body), and on any 4xx/5xx a _pxhd|_px3|_pxvid|datadome
+ *   set-cookie or DataDome header (a PerimeterX 403 via Varnish carries no other
+ *   signature). A 200 is never a challenge here — PX/DataDome set their ids on
+ *   admitted pages too; the DOM stage (--solve-wait) covers the 200-status walls.
  *
  * Admitted session (mirror of diff/scripts/live-session.mjs resolveStorageState —
  *   this file ships alone): the probe context's storageState (clearance,
@@ -115,10 +130,11 @@
  *   _crawl-log.json#discovery.fetchTechnique, which is the tier that actually
  *   captured. The tier-3 window is parked off-screen unless STARDUST_HEADED_WINDOW=1.
  * Exit codes: 0 done (per-page failures are in the log) · 2 fatal ·
- *   3 BotChallengeError (tier 3 still challenged — never captured as content).
+ *   3 BotChallengeError (tier 3 still challenged, or --solve-wait expired —
+ *   never captured as content).
  * Exports (for evals/fixtures/*.test.mjs): slugify, assignSlugs, mergeCrawlLog,
  *   TIERS, tierOf, captureQualityOf, SHOT_WRAP_PX, discoverInventory,
- *   parseRobots, parseCookieFlag — importing this module runs nothing; main()
+ *   parseRobots, parseCookieFlag, challengeMarker — importing this module runs nothing; main()
  *   runs only when the file is the entry script.
  *
  * Needs playwright importable from the project (see extract/SKILL.md Setup —
@@ -164,6 +180,11 @@ function parseArgs(argv) {
     else if (k === '--storage-state') a.storageState = argv[(i += 1)];
     else if (k === '--fresh-state') a.freshState = true;
     else if (k === '--save-state') a.saveState = true;
+    else if (k === '--solve-wait') {
+      const n = +argv[(i += 1)]; if (!(n >= 5000)) throw new Error('--solve-wait <ms> must be ≥ 5000');
+      a.solveWait = n; a.headed = 3; // a human cannot solve in an off-screen window: tier 3, visible
+      process.env.STARDUST_HEADED_WINDOW = '1'; // read by launchTier (byte-identical ladder copy; no parameter)
+    }
     else if (k === '--pages') a.pages = (argv[(i += 1)] || '').split(',').map((s) => s.trim()).filter(Boolean);
     else if (k === '--out') a.out = argv[(i += 1)];
     else if (k === '--max' || k === '--cap') { const n = +argv[(i += 1)]; a.max = Number.isFinite(n) && n >= 0 ? n : 5; } // 0 = no cap; default 5 (the extract contract's small sample)
@@ -315,24 +336,65 @@ function isFingerprintBlock(err) {
 // managed challenge (cf-mitigated: challenge, HTTP 403) sailed past the probe
 // and only blew up at capture-time as a fatal HTTPError. Validate the RESPONSE,
 // not just DOM-ready.
-function isChallengeResponse(resp) {
-  if (!resp) return false;
-  const status = resp.status();
-  const h = resp.headers();
+// Pure (status, headers, url) → marker string | null; pinned by evals/fixtures.
+const WALL_COOKIES = ['_pxhd', '_px3', '_pxvid', 'datadome'];
+export function challengeMarker(status, headers = {}, url = '') {
+  const h = {};
+  for (const [k, v] of Object.entries(headers || {})) h[k.toLowerCase()] = String(v ?? '');
   // Cloudflare stamps this header specifically on managed/JS-challenge responses.
-  if ((h['cf-mitigated'] || '').toLowerCase() === 'challenge') return true;
+  if ((h['cf-mitigated'] || '').toLowerCase() === 'challenge') return 'cf-mitigated: challenge';
+  const server = (h.server || '').toLowerCase();
+  if (status < 400) return null; // a served page is the page — PX/DataDome set their ids on admitted responses too
+  // PerimeterX / DataDome walls: the 403 (often via Varnish) carries NO other
+  // edge signature — the set-cookie names are what identify it.
+  const cookieNames = (h['set-cookie'] || '').split(/\r?\n/).map((c) => c.trim().split('=')[0].toLowerCase()).filter(Boolean);
+  const wall = cookieNames.find((n) => WALL_COOKIES.includes(n));
+  if (wall) return `HTTP ${status} + set-cookie ${wall} (PerimeterX/DataDome wall)`;
+  if (h['x-datadome'] || server.includes('datadome')) return `HTTP ${status} + DataDome edge signature`;
+  // Akamai escalates to a 400 JSON body ({"result":"Bad Request"}, server: AkamaiGHost) — not a 403 interstitial
+  if (status === 400 && (server.includes('akamaighost') || Object.keys(h).some((k) => k.startsWith('x-akamai')))) return 'HTTP 400 + AkamaiGHost (Akamai escalation body, not the page)';
   // A hard 403/429/503 that ALSO carries an edge/CDN signature is an edge
   // interstitial (Cloudflare / Akamai / F5 / Imperva) — headed real Chrome is the
   // correct response regardless of vendor. Requiring the edge signature (not the
   // bare status) is deliberate: isChallengeResponse gates clearChallenge() on
   // EVERY page, so a legitimate app-level 403 (e.g. an auth-gated deep page with
-  // no CDN header) must fail fast, not eat the ~12s challenge-solve retry loop.
+  // no CDN header) must fail fast, not eat the ~12s challenge-solve retry loop —
+  // and a BARE 429 is a rate limit, handled as such (HostBudget), never a challenge.
   if (status === 403 || status === 429 || status === 503) {
-    const server = (h['server'] || '').toLowerCase();
-    if (h['cf-ray'] || server.includes('cloudflare')) return true;
-    if (h['x-akamai-transformed'] || server.includes('akamai')) return true;
-    if (server.includes('big-ip') || server.includes('imperva') || h['x-iinfo']) return true;
+    if (h['cf-ray'] || server.includes('cloudflare')) return `HTTP ${status} + Cloudflare edge signature`;
+    if (h['x-akamai-transformed'] || server.includes('akamai') || server.includes('edgesuite') || /edgesuite\.net/.test(url)) return `HTTP ${status} + Akamai edge signature`;
+    if (server.includes('big-ip') || server.includes('imperva') || h['x-iinfo']) return `HTTP ${status} + F5/Imperva edge signature`;
     // no edge signature — treat as a genuine app-level status, not a challenge.
+  }
+  return null;
+}
+function isChallengeResponse(resp) {
+  if (!resp) return false;
+  return challengeMarker(resp.status(), resp.headers(), resp.url()) !== null;
+}
+// The 200-status walls the header stage cannot see (PerimeterX px-captcha,
+// Turnstile / hCaptcha / DataDome iframes) and the interstitial phrases — read
+// from the page already loaded (no extra hit). Used by the --solve-wait poll.
+const CHALLENGE_DOM = '#px-captcha, [id^="px-captcha"], iframe[src*="challenges.cloudflare.com"], iframe[src*="hcaptcha.com"], iframe[src*="captcha-delivery.com"]';
+export const CHALLENGE_PHRASE = /(press\s*&?\s*hold|before we continue|are you a human|verify you are human|access to this page has been denied|checking your browser|just a moment)/i;
+async function challengeInDom(page) {
+  const st = await page.evaluate((sel) => { const t = document.body ? document.body.innerText : ''; return { len: t.length, head: t.slice(0, 4000), dom: !!document.querySelector(sel), h: document.documentElement.scrollHeight, vh: window.innerHeight }; }, CHALLENGE_DOM).catch(() => null);
+  if (!st) return { walled: true, st: null }; // navigating (a solve reloads the page) — not clean yet
+  const walled = st.dom || (st.len < 1500 && CHALLENGE_PHRASE.test(st.head));
+  return { walled, st };
+}
+// --solve-wait: poll the SAME page (never reload — that destroys a Press & Hold
+// in progress) until two consecutive clean polls, or the deadline.
+async function solveWait(page, ms) {
+  console.error(`[crawl] --solve-wait ${ms}: a visible Chrome window is open — complete the challenge by hand; capture resumes after two clean polls (every 2.5 s)`);
+  const deadline = Date.now() + ms;
+  let clean = 0;
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(2500);
+    const { walled, st } = await challengeInDom(page);
+    const ok = !walled && st && st.len >= 800 && st.h > 1.5 * st.vh;
+    clean = ok ? clean + 1 : 0;
+    if (clean >= 2) return true;
   }
   return false;
 }
@@ -1283,8 +1345,17 @@ async function main() {
     let blocked = null;
     try {
       let probeResp = await probe.goto(probeUrl, { waitUntil: 'domcontentloaded', timeout: tier === 1 ? 30000 : 45000 });
-      if (tier === 3) probeResp = await clearChallenge(probe, probeResp);
-      if (isChallengeResponse(probeResp)) blocked = { kind: 'challenge', status: probeResp.status() };
+      if (tier === 3 && args.solveWait) {
+        // interactive solve: header stage OR DOM stage says wall → wait for the human, no reload
+        if (isChallengeResponse(probeResp) || (await challengeInDom(probe)).walled) {
+          const solved = await solveWait(probe, args.solveWait);
+          if (!solved) throw Object.assign(new Error(`bot challenge not solved in ${args.solveWait} ms (--solve-wait) — nothing captured`), { errorClass: 'BotChallengeError', nextTier: null });
+          botBlock = botBlock || 'challenge'; // a cleared challenge → the state is saved below
+          escalations.push({ tier: TIERS[2], block: 'challenge', solved: 'interactive' });
+          probeResp = null;
+        }
+      } else if (tier === 3) probeResp = await clearChallenge(probe, probeResp);
+      if (probeResp && isChallengeResponse(probeResp)) blocked = { kind: 'challenge', status: probeResp.status() };
     } catch (err) {
       if (isFingerprintBlock(err)) blocked = { kind: 'fingerprint' };
       else throw err;
@@ -1502,7 +1573,7 @@ async function main() {
   log.crawl.finishedAt = new Date().toISOString();
   const merged = mergeCrawlLog(prev, log, {
     at: startedAt,
-    args: { url: args.url, pages: args.pages || null, cap: args.capLabel, wait: args.wait, concurrency: args.concurrency, dynamics: args.dynamics, refresh: args.refresh, force: args.force, headed: args.headed || null, depth: args.depth, cookie: args.cookies.map((c) => c.name), mobile: args.mobile, dpr: args.dpr, storageState: loadedState ? 'loaded' : args.freshState ? 'fresh' : 'clone', saveState: !!savedState },
+    args: { url: args.url, pages: args.pages || null, cap: args.capLabel, wait: args.wait, concurrency: args.concurrency, dynamics: args.dynamics, refresh: args.refresh, force: args.force, headed: args.headed || null, solveWait: args.solveWait || null, depth: args.depth, cookie: args.cookies.map((c) => c.name), mobile: args.mobile, dpr: args.dpr, storageState: loadedState ? 'loaded' : args.freshState ? 'fresh' : 'clone', saveState: !!savedState },
     technique,
     discovered: urls.length,
     skipped: skipped.length,
