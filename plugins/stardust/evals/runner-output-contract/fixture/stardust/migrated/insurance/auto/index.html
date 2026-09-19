@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- stardust:migrate
+  writtenBy:        stardust:migrate
+  writtenAt:        2026-09-10T15:39:21Z
+  page:             insurance__auto
+  slug:             insurance__auto
+  pagePath:         migrated/insurance/auto/index.html
+  renderBranch:     A'
+  template:         program
+  archetypePath:    stardust/prototypes/insurance__home-proposed.html
+  archetypeSha:     91aa145573f0
+  sourceCurrent:    stardust/current/pages/insurance__auto.json
+  againstDirection: stardust/direction.md (Active 2026-09-08T10:05:00Z)
+  designMd:         DESIGN.md (sha: a99e7fb42dee)
+  designJson:       DESIGN.json (sha: 27bf506c8992)
+  canonShas:        header:9df3d58a07d2 footer:323f63aaa91f css:c8372774ba5a
+  decisionTrace:    _meta.json
+  brokenInternalLinks: 0
+  stardustVersion:  0.22.2
+-->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Auto insurance — Larkspur Mutual</title>
+<meta name="description" content="Liability, collision and comprehensive coverage with a local repair network and lifetime workmanship guarantee.">
+<link rel="canonical" href="https://www.larkspurmutual.example/insurance/auto/">
+<meta property="og:title" content="Auto insurance — Larkspur Mutual">
+<meta property="og:url" content="https://www.larkspurmutual.example/insurance/auto/">
+<link rel="icon" href="../../assets/favicon.svg">
+<link rel="stylesheet" href="../../assets/styles.css">
+<style>
+:root {
+  --heading-font-family: 'Source Serif 4', Georgia, serif;
+  --body-font-family:    'Inter', Arial, sans-serif;
+  --heading-xxl: 64px;
+  --heading-xl:  48px;
+  --heading-lg:  36px;
+  --heading-md:  26px;
+  --body:        17px;
+  --body-sm:     14px;
+  --line-height-heading: 1.12;
+  --line-height-body:    1.6;
+  --color-bg:     #ffffff;
+  --color-fg:     #1f2a37;
+  --color-accent: #2f6b4f;
+  --color-accent-2: #c8a24a;
+  --spacing-xs:  4px;
+  --spacing-sm:  8px;
+  --spacing-md:  16px;
+  --spacing-lg:  24px;
+  --spacing-xl:  48px;
+  --spacing-2xl: 88px;
+  --section-padding: 88px;
+  --max-width:       1160px;
+  --radius:          6px;
+}
+body { margin: 0; font: var(--body)/var(--line-height-body) var(--body-font-family); color: var(--color-fg); background: var(--color-bg); }
+h1, h2, h3 { font-family: var(--heading-font-family); line-height: var(--line-height-heading); margin: 0 0 var(--spacing-md); }
+h1 { font-size: var(--heading-xl); } h2 { font-size: var(--heading-lg); } h3 { font-size: var(--heading-md); }
+section, article > header, article > div, article > aside { max-width: var(--max-width); margin: 0 auto; padding: var(--section-padding) var(--spacing-lg); }
+[data-layout="full-bleed"] { max-width: none; background: var(--color-accent); color: #fff; }
+[data-layout="full-bleed"] > * { max-width: var(--max-width); margin-left: auto; margin-right: auto; }
+[data-layout="grid"] ul, dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--spacing-lg); list-style: none; padding: 0; margin: 0; }
+[data-layout="prose"] { max-width: 720px; }
+.btn { display: inline-block; padding: 12px 22px; border-radius: var(--radius); background: var(--color-accent-2); color: var(--color-fg); text-decoration: none; font-weight: 600; margin-right: var(--spacing-sm); }
+.btn-secondary { background: transparent; color: inherit; border: 1px solid currentColor; }
+header[data-canon], footer[data-canon] { max-width: var(--max-width); margin: 0 auto; padding: var(--spacing-md) var(--spacing-lg); display: flex; gap: var(--spacing-lg); align-items: center; }
+header[data-canon] nav a, footer[data-canon] a { color: var(--color-fg); text-decoration: none; margin-right: var(--spacing-md); }
+footer[data-canon] { border-top: 1px solid #d9dee5; font-size: var(--body-sm); flex-wrap: wrap; }
+footer[data-canon] a { color: #4a5563; } /* R-01: footer links lifted from #7f8894 to 4.6:1 */
+@media (max-width: 600px) { h1 { font-size: var(--heading-lg); } section, article > * { padding: var(--spacing-xl) var(--spacing-md); } header[data-canon] { flex-direction: column; align-items: flex-start; } }
+</style>
+</head>
+<body data-template="program">
+  <header data-canon data-nav-collapse="hamburger">
+    <a href="../../index.html" aria-label="Larkspur Mutual home"><img src="../../assets/logo.svg" alt="Larkspur Mutual" width="168" height="36"></a>
+    <nav aria-label="Primary">
+      <a href="/members/login/">Member login</a>
+      <a href="../../insurance/home/index.html">Home insurance</a>
+      <a href="../../insurance/auto/index.html">Auto insurance</a>
+      <a href="../../business/index.html">Business</a>
+      <a href="../../news/storm-season-checklist/index.html">Member news</a>
+    </nav>
+  </header>
+  <main>
+    <section data-section="product-hero" data-intent="name the product and its promise" data-layout="split" data-module="product-hero">
+      <h1 data-slot="headline">Auto insurance</h1>
+      <p data-slot="lede">Repairs at a shop we guarantee for as long as you own the car.</p>
+      <a class="btn" href="#quote" data-slot="primary-cta">Start a quote</a>
+    </section>
+    <section data-section="features" data-intent="explain what is included" data-layout="grid" data-items="5" data-module="feature-list" class="items-5">
+      <h2 data-slot="heading">What every policy includes</h2>
+      <ul>
+        <li data-slot="feature">Bodily injury and property damage liability</li>
+        <li data-slot="feature">Collision and comprehensive with glass at no deductible</li>
+        <li data-slot="feature">Uninsured motorist protection</li>
+        <li data-slot="feature">Roadside assistance to 100 miles</li>
+        <li data-slot="feature">Lifetime workmanship guarantee at network shops</li>
+      </ul>
+    </section>
+    <section id="quote" data-section="quote" data-intent="conversion" data-layout="contained" data-module="quote-cta">
+      <h2 data-slot="heading">Get an auto quote</h2>
+      <p data-slot="copy">Call 1-800-555-0142 or bring your current declarations page to any office.</p>
+    </section>
+  </main>
+  <footer data-canon>
+    <p>© 2026 Larkspur Mutual Insurance Company. A member-owned mutual insurer.</p>
+    <nav aria-label="Footer">
+      <a href="../../index.html">Home</a>
+      <a href="../../business/index.html">Business</a>
+      <a href="../../news/annual-report-2025/index.html">Annual report</a>
+      <a href="/claims/">File a claim</a>
+    </nav>
+  </footer>
+</body>
+</html>

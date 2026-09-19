@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- stardust:migrate
+  writtenBy:        stardust:migrate
+  writtenAt:        2026-09-10T15:31:04Z
+  page:             home
+  slug:             home
+  pagePath:         migrated/index.html
+  renderBranch:     A
+  sourceProposed:   stardust/prototypes/home-proposed.html
+  sourceCurrent:    stardust/current/pages/home.json
+  againstDirection: stardust/direction.md (Active 2026-09-08T10:05:00Z)
+  designMd:         DESIGN.md (sha: a99e7fb42dee)
+  designJson:       DESIGN.json (sha: 27bf506c8992)
+  canonShas:        header:9df3d58a07d2 footer:323f63aaa91f css:c8372774ba5a
+  decisionTrace:    _meta.json
+  brokenInternalLinks: 0
+  stardustVersion:  0.22.2
+-->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Larkspur Mutual — Home and auto insurance, member-owned since 1931</title>
+<meta name="description" content="Larkspur Mutual is a member-owned insurer covering homes, cars and small businesses across the three river counties.">
+<link rel="canonical" href="https://www.larkspurmutual.example/">
+<meta property="og:title" content="Larkspur Mutual — Home and auto insurance, member-owned since 1931">
+<meta property="og:url" content="https://www.larkspurmutual.example/">
+<link rel="icon" href="./assets/favicon.svg">
+<link rel="stylesheet" href="./assets/styles.css">
+<style>
+:root {
+  --heading-font-family: 'Source Serif 4', Georgia, serif;
+  --body-font-family:    'Inter', Arial, sans-serif;
+  --heading-xxl: 64px;
+  --heading-xl:  48px;
+  --heading-lg:  36px;
+  --heading-md:  26px;
+  --body:        17px;
+  --body-sm:     14px;
+  --line-height-heading: 1.12;
+  --line-height-body:    1.6;
+  --color-bg:     #ffffff;
+  --color-fg:     #1f2a37;
+  --color-accent: #2f6b4f;
+  --color-accent-2: #c8a24a;
+  --spacing-xs:  4px;
+  --spacing-sm:  8px;
+  --spacing-md:  16px;
+  --spacing-lg:  24px;
+  --spacing-xl:  48px;
+  --spacing-2xl: 88px;
+  --section-padding: 88px;
+  --max-width:       1160px;
+  --radius:          6px;
+}
+body { margin: 0; font: var(--body)/var(--line-height-body) var(--body-font-family); color: var(--color-fg); background: var(--color-bg); }
+h1, h2, h3 { font-family: var(--heading-font-family); line-height: var(--line-height-heading); margin: 0 0 var(--spacing-md); }
+h1 { font-size: var(--heading-xl); } h2 { font-size: var(--heading-lg); } h3 { font-size: var(--heading-md); }
+section, article > header, article > div, article > aside { max-width: var(--max-width); margin: 0 auto; padding: var(--section-padding) var(--spacing-lg); }
+[data-layout="full-bleed"] { max-width: none; background: var(--color-accent); color: #fff; }
+[data-layout="full-bleed"] > * { max-width: var(--max-width); margin-left: auto; margin-right: auto; }
+[data-layout="grid"] ul, dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--spacing-lg); list-style: none; padding: 0; margin: 0; }
+[data-layout="prose"] { max-width: 720px; }
+.btn { display: inline-block; padding: 12px 22px; border-radius: var(--radius); background: var(--color-accent-2); color: var(--color-fg); text-decoration: none; font-weight: 600; margin-right: var(--spacing-sm); }
+.btn-secondary { background: transparent; color: inherit; border: 1px solid currentColor; }
+header[data-canon], footer[data-canon] { max-width: var(--max-width); margin: 0 auto; padding: var(--spacing-md) var(--spacing-lg); display: flex; gap: var(--spacing-lg); align-items: center; }
+header[data-canon] nav a, footer[data-canon] a { color: var(--color-fg); text-decoration: none; margin-right: var(--spacing-md); }
+footer[data-canon] { border-top: 1px solid #d9dee5; font-size: var(--body-sm); flex-wrap: wrap; }
+footer[data-canon] a { color: #4a5563; } /* R-01: footer links lifted from #7f8894 to 4.6:1 */
+@media (max-width: 600px) { h1 { font-size: var(--heading-lg); } section, article > * { padding: var(--spacing-xl) var(--spacing-md); } header[data-canon] { flex-direction: column; align-items: flex-start; } }
+</style>
+</head>
+<body data-template="landing">
+  <header data-canon data-nav-collapse="hamburger">
+    <a href="./index.html" aria-label="Larkspur Mutual home"><img src="./assets/logo.svg" alt="Larkspur Mutual" width="168" height="36"></a>
+    <nav aria-label="Primary">
+      <a href="./insurance/home/index.html">Home insurance</a>
+      <a href="./insurance/auto/index.html">Auto insurance</a>
+      <a href="./business/index.html">Business</a>
+      <a href="./news/storm-season-checklist/index.html">Member news</a>
+    </nav>
+  </header>
+  <main>
+    <section data-section="hero" data-intent="state what we insure and for whom" data-layout="full-bleed" data-module="hero-statement">
+      <h1 data-slot="headline">Insurance that answers the phone.</h1>
+      <p data-slot="lede">Member-owned since 1931. Home, auto and small-business coverage written and serviced in the three river counties.</p>
+      <a class="btn" href="./insurance/home/index.html" data-slot="primary-cta">Get a home quote</a>
+      <a class="btn btn-secondary" href="./insurance/auto/index.html" data-slot="secondary-cta">Get an auto quote</a>
+    </section>
+    <section data-section="coverage" data-intent="route visitors to the right product" data-layout="grid" data-items="3" data-module="coverage-tiles">
+      <h2 data-slot="heading">What we cover</h2>
+      <ul>
+        <li><h3 data-slot="tile-title">Home</h3><p data-slot="tile-copy">Dwelling, contents and liability, with replacement-cost settlement on every policy.</p></li>
+        <li><h3 data-slot="tile-title">Auto</h3><p data-slot="tile-copy">Liability, collision and comprehensive, plus a local repair network with lifetime workmanship guarantee.</p></li>
+        <li><h3 data-slot="tile-title">Business</h3><p data-slot="tile-copy">Property, general liability and commercial auto for shops, farms and contractors.</p></li>
+      </ul>
+    </section>
+    <section data-section="member-stats" data-intent="proof of mutual model" data-layout="contained" data-items="3" data-module="member-stat-band">
+      <dl>
+        <div><dt data-slot="stat-label">Members</dt><dd data-slot="stat-value">48,200</dd></div>
+        <div><dt data-slot="stat-label">Claims paid in 2025</dt><dd data-slot="stat-value">$61.4M</dd></div>
+        <div><dt data-slot="stat-label">Average claim response</dt><dd data-slot="stat-value">1.8 days</dd></div>
+      </dl>
+    </section>
+    <section data-section="find-an-agent" data-intent="conversion" data-layout="contained" data-module="agent-locator-cta">
+      <h2 data-slot="heading">Talk to a local agent</h2>
+      <p data-slot="copy">Twelve offices, one phone number: 1-800-555-0142.</p>
+      <a class="btn" href="./business/index.html" data-slot="cta">Business coverage</a>
+    </section>
+  </main>
+  <footer data-canon>
+    <p>© 2026 Larkspur Mutual Insurance Company. A member-owned mutual insurer.</p>
+    <nav aria-label="Footer">
+      <a href="./index.html">Home</a>
+      <a href="./business/index.html">Business</a>
+      <a href="./news/annual-report-2025/index.html">Annual report</a>
+      <a href="/claims/">File a claim</a>
+    </nav>
+  </footer>
+</body>
+</html>

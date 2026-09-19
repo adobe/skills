@@ -1,0 +1,51 @@
+{
+  "context": "Runner output contract on rollout's offline full-site verify. Task and setup in task.md; each item is judged pass/fail and weighted by max_score. Items marked (W1 target) pin the batch-reporting rule before it lands in the skill text and are expected to fail on 0.23.0.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "rollout_offline_verify_invoked",
+      "max_score": 10,
+      "description": "The rollout skill (not qa, not a hand-built checker) is invoked; inventory.mjs runs before verify.mjs; verify runs offline with --root stardust/migrated and --all (or an equivalent offline invocation covering all six pages). No HTTP request, no --base, no DA_TOKEN lookup, no publish or POST /live/ call. Any agent-authored link checker that replaces the runner is recorded as a named deviation in stardust/direction.md, otherwise the item fails."
+    },
+    {
+      "name": "precondition_stated_not_bypassed",
+      "max_score": 10,
+      "description": "The gated-archetype precondition is applied and reported: the program type is named as blocked with its archetype slug (insurance__home) and the command to gate it; landing and article are named as shippable. Nothing is delivered. The block does not stop the offline verify, which still covers all six pages."
+    },
+    {
+      "name": "ranked_class_report",
+      "max_score": 20,
+      "description": "(W1 target) The report to the user is a ranked class table with one row per finding class, each row carrying class, count, worst example (slug plus reason) and a file pointer to where the affected pages are listed. Rows are ordered by count (ties by severity). The complete report — table, triage and hand-off — is at most 60 lines. Every class present in the fixture appears: broken internal link(s), about:error, h1 count, blocked-by-precondition."
+    },
+    {
+      "name": "summary_files_written",
+      "max_score": 15,
+      "description": "(W1 target) A summary.json and a summary.md exist under stardust/rollout/ (any subdirectory). summary.json lists every page with every finding (slug, reason, file pointer) and a per-class roll-up with counts; summary.md is the human-readable view of the same data. The per-class counts stated in the conversation equal the counts in summary.json."
+    },
+    {
+      "name": "no_per_page_dump",
+      "max_score": 15,
+      "description": "(W1 target) No per-page listing is printed into the conversation: the runner's per-page failure lines are summarised rather than pasted, pages.json / summary.json / summary.md contents are not echoed, and no assistant text enumerates pages one line each beyond the single worst example per class. Judge on shape, not length — six pages make a full dump short."
+    },
+    {
+      "name": "triage_per_class",
+      "max_score": 10,
+      "description": "(W1 target) Triage and recommendations are given per class, one action per row (e.g. migrate or localize the /claims/ target, route the members-area link through dynamics, demote the second h1, re-ingest the image), each pointing at summary.md for the affected pages. No per-page fix list, no page-by-page walkthrough."
+    },
+    {
+      "name": "handoff_names_summary_files",
+      "max_score": 10,
+      "description": "(W1 target) The closing hand-off note names summary.json and summary.md by path as the place to continue from, and states the next command (gating insurance__home with replica, then the class actions)."
+    },
+    {
+      "name": "read_only_inputs",
+      "max_score": 5,
+      "description": "stardust/migrated/**, stardust/state.json, stardust/replica/progress.json and stardust/direction.md are byte-identical to the fixture after the run. Writes land only under stardust/rollout/, plus an appended journal.md entry and status.jsonl lines."
+    },
+    {
+      "name": "journal_and_status",
+      "max_score": 5,
+      "description": "stardust/journal.md has a fifth entry appended (the four prior entries intact, append-only) with a Next: line that names the summary files; stardust/status.jsonl gains rollout start/end lines for the phases that ran."
+    }
+  ]
+}
