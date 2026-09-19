@@ -1,0 +1,5 @@
+:root { --x: 1; }
+body.landing main .section .default-content-wrapper p { margin: 0; }           /* EW-COMPOSED */
+main > .section:has(> .callout-wrapper) + .section h2 { margin-top: 0; }       /* EW-COMPOSED */
+main .section:first-of-type { padding-top: 0; }                                /* not prose: silent */
+main .section.dark { background: #123; }                                       /* silent */

@@ -1,0 +1,3 @@
+:root { --y: 2; }
+main .section.dark { background: #123; }
+body.landing main .section { padding: 0; }

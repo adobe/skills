@@ -5,7 +5,8 @@ Full text of deploy Step 6. Read:
 - § The nav/footer documents — when authoring `content/nav.html` / `content/footer.html` (the three-section contract, #98);
 - § The header/footer blocks — when replacing `blocks/header` / `blocks/footer` CSS/JS (#31, #26, #106);
 - § What still cannot run — before wiring any chrome form, scroll state or media dependency (CSP, #20, #102);
-- § Per-page chrome variants — when a page needs an alternate nav/footer.
+- § Per-page chrome variants — when a page needs an alternate nav/footer;
+- § Chrome states and variants — before Step 10 signs chrome off (open states, `aria-current`, variant roster).
 
 ## 6. Chrome — authored `/nav` + `/footer` documents, template-slotted header/footer blocks
 
@@ -34,3 +35,9 @@ Chrome is the canonical fragment use case (D12): **content** lives in two author
 ## Per-page chrome variants
 
 **Per-page chrome variants:** set `nav: /nav-minimal` (or `footer: /footer-legal`) in the page's metadata block to point that page at an alternate authored document — this replaces the old `header: off` switch (there is no stock off switch; a chrome-less page points at a minimal nav doc you author). Multilingual sites route the same way: `/fr/nav`, `/fr/footer`.
+
+## Chrome states and variants
+
+**Done means gated open.** Before Step 10 signs chrome off, each top-level nav trigger is opened on the deployed page (`chrome-parity --open <sel>`; until that flag ships, open it by hand in the Playwright re-probe) and the header, footer and open-state crops pass the crop gate against the cached live capture (rest-state gate #115 unchanged). The header block sets `aria-current="page"` and replicates the live current-page styling; desktop nav rules are written at `[aria-expanded='true']` specificity or under `:where()` (the stock header sets the attribute on desktop); a `/nav` section absent in the document renders nothing — no toggle, no band.
+
+**Variant roster.** `nav:` / `footer:` documents are deduped by content hash and their names persisted (`nav`, `nav-minimal`, `footer-legal`, …); more than three per kind is a D9/D12 smell to report, and on a multi-variant site every page carries explicit `nav:`/`footer:` rows (rollout's `delivery-lint` flags the missing ones once its chrome-docs option ships). The header block slots nav levels — each level a nested `<ul>` inside its parent `<li>`, a panel column one nested list — and never parses text (anti-pattern 5).

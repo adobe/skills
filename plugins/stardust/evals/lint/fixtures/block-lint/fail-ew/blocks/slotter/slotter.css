@@ -1,0 +1,6 @@
+.slotter .card > p { margin: 0; }                 /* EW2-CSS: child combinator to authored p */
+.slotter .callout-text > :is(h2, h3) { margin: 0; } /* EW2-CSS: :is() after > */
+.slotter h3:first-child { margin-top: 0; }         /* EW2-CSS: positional on authored tag */
+.slotter .body p + p { margin-top: 1em; }          /* EW-RHYTHM */
+.slotter p:has(> :is(picture, img):only-child) { margin: 0; } /* legal: > below the authored p */
+.prosemirror-editor .slotter p > strong > a { color: inherit; } /* legal: edit-mode foundation */

@@ -1,0 +1,6 @@
+.teaser .teaser-media picture { display: block; }
+.teaser .teaser-actions :where(a) { font-weight: 600; }
+.teaser .teaser-text > * + * { margin-top: 1em; }
+.teaser p:has(> picture:only-child) { margin: 0; }
+.teaser :is(.teaser-body, .teaser-note) p { margin: 0; }
+.prosemirror-editor .teaser p > strong > a { color: inherit; }
