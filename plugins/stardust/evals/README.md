@@ -226,14 +226,30 @@ whose harness cases skip when Playwright is unresolvable:
 - `dynamics-recall.mjs` — detector recall over `_shared/dynamics-recall/`:
   the reach half (sidecar signals → `reach-only` rows, and the sidecar
   fields `crawl.mjs` must keep writing) always runs; the depth half
-  (`dynamics-detect.mjs --urls --offline` over the fixture pages) is
-  skipped with a notice when playwright is not resolvable from the cwd.
+  (`dynamics-detect.mjs --urls --offline` over the fixture pages) runs only
+  without `--static`, and is skipped with a notice when playwright is not
+  resolvable from the cwd. `lint:stardust` chains it with `--static` — the
+  chain mode, no browser and no SKIPPED line; run the full eval from an EDS
+  project before a dynamics release.
+- `dynamics/scripts/test/reach-fields.test.mjs` — the sidecar contract without
+  the eval (no browser): `objectLiteralKeys` over one-line / multi-line /
+  nested / commented `dynamicDom` literals, the first-`}` regex it replaced
+  (positive control and the miss), `REACH_SIDECAR_FIELDS` ⊆ `crawl.mjs`'s real
+  literal, `maskLiterals` shape.
 - `qa/scripts/test/throttle.test.mjs`, `qa/scripts/test/browse-throttle.test.mjs`
   — the 429/503-as-infrastructure path against a local `node:http` server:
   paced retries, `<check>/unmeasured`, the per-host limiter (AIMD, timeout
-  armed after the slot), cache eviction, `report.infra` / exit 2; the
-  browser half of the second (document retried, throttled sub-resource →
-  `rendered/unmeasured`) skips without playwright.
+  armed after the slot), cache eviction, `report.infra` / exit 2, `gotoPaced`
+  on a fake page (retries counted); the browser half of the second (document
+  retried, throttled sub-resource → `rendered/unmeasured`) skips without
+  playwright. `qa/scripts/test/browser-unmeasured.test.mjs` sits beside them:
+  the browser checks beyond browse's document retry (decoration stall on a
+  throttled page → one row, `perf/unmeasured`, ai-readability through the
+  limiter, `infra.retries` from paced navigations) — SKIP + exit 0 without
+  playwright.
+- `diff/scripts/test/live-budget.test.mjs` — `live-budget.mjs`'s header claims
+  (its `Importers:` line equals the scripts that import it; every listed
+  export exists; importing runs nothing).
 - `rollout/scripts/delivery-lint.test.mjs`, `rollout/scripts/inventory.test.mjs`,
   `rollout/scripts/verify.test.mjs` — the pre-PUT mirror rules and the
   chrome-variant guard both directions (fires on the named shape, silent on a

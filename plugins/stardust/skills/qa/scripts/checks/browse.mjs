@@ -20,13 +20,13 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  loadPlaywright, finding, pageUrl, pathSlug, ensureDir, pMap, attachOriginAuth, withNavSlot, retryAfterMs, getFetchLimiter, configureFetch, noteThrottled,
+  loadPlaywright, finding, pageUrl, pathSlug, ensureDir, pMap, attachOriginAuth, withNavSlot, retryAfterMs, getFetchLimiter, configureFetch, noteThrottled, noteRetry,
 } from '../lib.mjs';
 
 const THROTTLE = (s) => s === 429 || s === 503;
 /**
  * Navigate holding one limiter slot; a 429/503 document is retried (Retry-After,
- * else 2/4 s) up to three attempts. Returns the last response (or null) — a
+ * else 2/4 s) up to three attempts, each retry counted in report.infra. Returns the last response (or null) — a
  * document still throttled is `rendered/unmeasured`, never main-collapsed /
  * request-failed (one 429 wall once read as two errors on every page).
  */
@@ -37,7 +37,7 @@ export async function gotoPaced(page, url, opts, { attempts = 3, backoffMs = con
     const status = res ? res.status() : 0;
     if (!THROTTLE(status)) return res;
     getFetchLimiter()?.onThrottle(url);
-    if (i + 1 < attempts) await page.waitForTimeout(retryAfterMs(res.headers()['retry-after']) ?? backoffMs * 2 ** i);
+    if (i + 1 < attempts) { noteRetry(); await page.waitForTimeout(retryAfterMs(res.headers()['retry-after']) ?? backoffMs * 2 ** i); }
   }
   return res;
 }

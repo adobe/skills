@@ -7,7 +7,9 @@
  *   static (always)     sortResponse(): a document 429/503 is 'skip' (gotoPaced owns that verdict —
  *                       a retried document must not leave `HTTP 429 /path` in badRequests), a same-origin
  *                       sub-resource 429/503 is 'throttled' (→ rendered/unmeasured), same-origin ≥ 400 is
- *                       'bad' (→ request-failed), off-origin is ignored.
+ *                       'bad' (→ request-failed), off-origin is ignored. gotoPaced() on a fake page:
+ *                       429/503 retried to the 200, a wall returns the last response, and every retry is
+ *                       counted in infra.retries (the browser path once left it at fetchUrl's count only).
  *   browser (playwright) run() against a local server: a document that answers 429 once then 200 renders
  *                       cleanly (no request-failed, no unmeasured, baseline created); a page whose
  *                       stylesheet is throttled gets rendered/unmeasured (info), no request-failed, and
@@ -19,7 +21,7 @@ import { createServer } from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { sortResponse, run } from '../checks/browse.mjs';
+import { sortResponse, gotoPaced, run } from '../checks/browse.mjs';
 import { loadPlaywright, configureFetch, infraCounters, resetInfraCounters, setFetchLimiter, createHostLimiter } from '../lib.mjs';
 
 let failed = 0;
@@ -35,6 +37,21 @@ eq('image 404 → bad', sortResponse({ url: `${base}/i.png`, status: 404, resour
 eq('document 500 → bad', sortResponse({ url: `${base}/p`, status: 500, resourceType: 'document' }, base), 'bad');
 eq('200 → null', sortResponse({ url: `${base}/p`, status: 200, resourceType: 'document' }, base), null);
 eq('off-origin 429 → null', sortResponse({ url: 'https://cdn.other/x.js', status: 429, resourceType: 'script' }, base), null);
+
+// gotoPaced on a fake page (no browser): the paced retries are counted in report.infra
+configureFetch({ backoffMs: 1 });
+const fakePage = (statuses) => { let i = 0; return { goto: async () => { const s = statuses[Math.min(i, statuses.length - 1)]; i += 1; return { status: () => s, headers: () => ({}) }; }, waitForTimeout: async () => {}, hits: () => i }; };
+resetInfraCounters();
+let pg = fakePage([429, 503, 200]);
+let nav = await gotoPaced(pg, `${base}/p`, {});
+eq('gotoPaced: 429, 503, then 200 → the 200 after three attempts', [nav.status(), pg.hits()], [200, 3]);
+eq('gotoPaced: both paced retries counted in infra.retries', infraCounters().retries, 2);
+resetInfraCounters();
+pg = fakePage([429]);
+nav = await gotoPaced(pg, `${base}/p`, {});
+eq('gotoPaced: a 429 wall → the last response after three attempts', [nav.status(), pg.hits()], [429, 3]);
+eq('gotoPaced: two retries counted; the throttled verdict stays with the caller (noteThrottled)', [infraCounters().retries, infraCounters().throttled], [2, 0]);
+resetInfraCounters();
 
 // browser half
 let pw = null;

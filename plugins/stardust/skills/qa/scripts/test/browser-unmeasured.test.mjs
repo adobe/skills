@@ -12,7 +12,8 @@
  *            report.infra counts it (noteThrottled), the clean representative is still measured
  *   ai-readability  a page whose served fetch is always 429 → ai-readability/unmeasured (info),
  *            counted in report.infra, retried `throttleAttempts` times through the limiter; a page
- *            answering 429 once then 200 is scored (no unmeasured row)
+ *            answering 429 once then 200 is scored (no unmeasured row); infra.retries counts the
+ *            paced browser retries (perf's gotoPaced, ai-readability's scorePaced), not only fetchUrl's
  * SKIPped with exit 0 when playwright is not resolvable from the cwd (run from the EDS project).
  * Exit: 0 all assertions pass (or skipped) · 1 an assertion failed.
  */
@@ -68,6 +69,7 @@ eq('perf: document retried three times', hits['/perf-429'], 3);
 eq('perf: no measurement row for the throttled page', of(pf, '/perf-429', 'measurement').length, 0);
 eq('perf: clean representative measured', of(pf, '/ok', 'measurement').length, 1);
 eq('perf: report.infra counts the throttled page', infraCounters().throttled, 1);
+eq('perf: the two paced retries are counted in infra.retries', infraCounters().retries, 2);
 
 // ai-readability: through the limiter, paced retry, unmeasured never a score
 resetInfraCounters();
@@ -78,6 +80,7 @@ eq('ai-readability: served fetch retried three times', hits['/ai-429'], 3);
 eq('ai-readability: no score / legacy unmeasured row for the throttled page', af.filter((f) => f.path === '/ai-429' && f.id !== 'unmeasured').length, 0);
 eq('ai-readability: 429-once page is scored (served retry, then render)', [of(af, '/ai-flaky', 'unmeasured').length, shared.aiReadability.map((s) => s.path)], [0, ['/ai-flaky']]);
 eq('ai-readability: report.infra counts the throttled page', infraCounters().throttled, 1);
+eq('ai-readability: paced retries counted (two for the 429 wall, one for the flaky page)', infraCounters().retries, 3);
 
 server.close();
 setFetchLimiter(null);

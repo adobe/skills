@@ -1,15 +1,19 @@
 /**
  * skills/diff/scripts/live-budget.mjs
  *
- * The shared per-host live budget + live lock for every live-hitting
- * instrument: live-session.mjs `gotoLive` (the 11 gate/diff/replica/reskin/
- * dynamics importers), qa's paced browse and rollout verify import it. Some
- * origins score SESSIONS, not requests (admitted-then-escalated): two tools on
- * one origin within a minute, or a rate that climbs, turns an admitted session
- * into a block — so pacing and the lock are ONE module, never per-instrument
- * copies. extract/scripts/crawl.mjs ships alone into projects and carries a
- * crawl-local copy of HostBudget / tuneBudget / persistBudget / acquireLiveLock
- * (same shapes, same file formats; keep them in step by hand).
+ * The shared per-host live budget + live lock for the source-site instruments:
+ * live-session.mjs `gotoLive` (every gate/diff/replica/reskin/dynamics caller)
+ * imports it. Some origins score SESSIONS, not requests (admitted-then-
+ * escalated): two tools on one origin within a minute, or a rate that climbs,
+ * turns an admitted session into a block — so pacing and the lock are ONE
+ * module, never per-instrument copies. extract/scripts/crawl.mjs ships alone
+ * into projects and carries a crawl-local copy of HostBudget / tuneBudget /
+ * persistBudget / acquireLiveLock (same shapes, same file formats; keep them in
+ * step by hand). The published-origin tools do NOT import it: qa's paced browse
+ * / fetch path uses qa/scripts/lib.mjs's per-host limiter and rollout verify an
+ * inline 429/503 retry — the same 429-is-infrastructure rule, a separate budget.
+ * Importers: skills/diff/scripts/live-session.mjs
+ *   (the line above is checked by skills/diff/scripts/test/live-budget.test.mjs)
  *
  *   takeNavigation(host, { crawlDelay })
  *     Resolves when the next navigation to <host> may start: token bucket

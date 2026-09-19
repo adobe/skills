@@ -16,7 +16,7 @@
  * Evidence carries the top blocks by DOM-only words so the fix lands on the right block.
  */
 import {
-  loadPlaywright, finding, originAuthFor, attachOriginAuth, arg, withNavSlot, getFetchLimiter, configureFetch, retryAfterMs, noteThrottled,
+  loadPlaywright, finding, originAuthFor, attachOriginAuth, arg, withNavSlot, getFetchLimiter, configureFetch, retryAfterMs, noteThrottled, noteRetry,
 } from '../lib.mjs';
 import { scorePage } from '../../../deploy/scripts/ai-readability.mjs';
 
@@ -26,7 +26,8 @@ const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
  * scorePage holding one limiter slot (the served fetch + the render share the sweep's
  * per-host budget, report.infra). A 429/503 — the served fetch's `HTTP 4xx` error or
  * the document navigation's status — is retried like gotoPaced (Retry-After when the
- * document carried one, else 2/4 s), `attempts` times; still throttled → { throttled }.
+ * document carried one, else 2/4 s), `attempts` times, each retry counted in report.infra;
+ * still throttled → { throttled }.
  */
 export async function scorePaced(context, origin, path, o, { attempts = configureFetch({}).throttleAttempts, backoffMs = configureFetch({}).backoffMs } = {}) {
   const url = `${origin}${path}`;
@@ -42,6 +43,7 @@ export async function scorePaced(context, origin, path, o, { attempts = configur
       if (!THROTTLE(status)) return r;
       getFetchLimiter()?.onThrottle(url);
       if (i + 1 >= attempts) return { path, throttled: status, attempts };
+      noteRetry();
       await sleep(retryAfterMs(retryAfter) ?? backoffMs * 2 ** i);
     }
   } finally { context.off('response', onResponse); }

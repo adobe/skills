@@ -3,14 +3,16 @@
  * Fixture test for the sidecar-contract half of evals/lint/dynamics-recall.mjs (no browser, no network).
  * Run: node skills/dynamics/scripts/test/reach-fields.test.mjs
  *
- * The lint once regexed one source line of extract/scripts/crawl.mjs (`dynamicDom:\s*\{([^}]*)\}`):
- * a line break, a nested value or a comment inside the literal silently emptied the field list and
- * every "crawl.mjs dynamicDom writes <field>" check failed — or, worse, a reformat that moved the
- * keys onto a second line passed nothing and failed loudly on a contract that still held. Asserts:
+ * The lint once regexed the raw source of extract/scripts/crawl.mjs (`dynamicDom:\s*\{([^}]*)\}`),
+ * taking the keys up to the FIRST `}`: a nested object / array value, a `}` inside a comment or a
+ * string, or an earlier `dynamicDom: {` mention in a comment truncated (or redirected) the field list
+ * and every "crawl.mjs dynamicDom writes <field>" check failed on a contract that still held. Line
+ * breaks were never the fragility — `[^}]*` spans them and a flat reformat passed. Asserts:
  *   objectLiteralKeys() finds the keys of a `name: { … }` literal however it is formatted (one line,
  *   multi-line, nested objects / arrays / calls, trailing comma, comments and strings with braces,
  *   quoted keys, spreads skipped, template literals with `${}`), and null when the literal is absent;
- *   the old one-line regex misses the multi-line form (the fragility being fixed);
+ *   the old first-`}` regex handles the flat one-line and flat multi-line forms (positive control)
+ *   and misses the nested / commented form (the fragility being fixed);
  *   REACH_SIDECAR_FIELDS ⊆ the keys of crawl.mjs's real `dynamicDom` literal (the contract itself);
  *   maskLiterals keeps code and blanks comments / strings / regex literals (length preserved).
  * Exit: 0 all assertions pass · 1 an assertion failed.
@@ -26,6 +28,8 @@ const eq = (name, got, want) => { const ok = JSON.stringify(got) === JSON.string
 
 const oneLine = 'return { dynamicDom: { a, b, c }, other: 1 };';
 eq('one-line shorthand literal', objectLiteralKeys(oneLine, 'dynamicDom'), ['a', 'b', 'c']);
+const flatMulti = 'return {\n  dynamicDom: {\n    a,\n    b,\n    c,\n  },\n};';
+eq('flat multi-line literal', objectLiteralKeys(flatMulti, 'dynamicDom'), ['a', 'b', 'c']);
 
 const multi = `
   // dynamicDom: { notThis } — a comment that names the key
@@ -46,10 +50,12 @@ eq('absent literal → null', objectLiteralKeys('const x = { a: 1 };', 'dynamicD
 eq('a mention inside a comment or string is not the literal', objectLiteralKeys('// dynamicDom: { a }\nconst t = "dynamicDom: { b }";', 'dynamicDom'), null);
 eq('regex literal with braces and quotes does not derail the walk', objectLiteralKeys("const re = /[\"'{]/g; const o = { dynamicDom: { a, b } };", 'dynamicDom'), ['a', 'b']);
 
-// the fragility being fixed: the old regex over one line
+// the fragility being fixed: the old regex cut the literal at the first `}` (line breaks were fine)
 const oldRegex = (src) => ((src.match(/dynamicDom:\s*\{([^}]*)\}/) || [])[1] || '').split(',').map((s) => s.trim().split(':')[0]).filter(Boolean);
-eq('old one-line regex still handles the one-line form', oldRegex(oneLine), ['a', 'b', 'c']);
-eq('old one-line regex misses the multi-line / nested form (keys truncated at the first `}`)', oldRegex(multi).includes('d'), false);
+eq('old first-`}` regex handles the one-line form', oldRegex(oneLine), ['a', 'b', 'c']);
+eq('old first-`}` regex spans line breaks — a flat multi-line literal was never the failure', oldRegex(flatMulti), ['a', 'b', 'c']);
+eq('old first-`}` regex is redirected by the `dynamicDom: {` mention in a comment (reads its keys)', oldRegex(multi), ['notThis']);
+eq('old first-`}` regex truncates a nested literal at the first `}` (keys after it lost)', oldRegex(multi.replace(/^.*(notThis|norThis).*$/gm, '')).includes('d'), false);
 
 // the contract itself, on the real crawl.mjs
 const crawl = readFileSync(join(here, '..', '..', '..', 'extract', 'scripts', 'crawl.mjs'), 'utf8');

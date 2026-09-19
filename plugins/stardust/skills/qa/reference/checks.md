@@ -133,6 +133,7 @@ Flows, not presence — each check replays a user-visible flow through `skills/d
 | `network-degraded` | info | neutral-host TTFB control tripped — all perf findings this run downgraded to info (a slow network must not read as a site regression) |
 | `measurement` | info | per-page numbers, always recorded |
 | `load-timeout` | warn | no load event in 60s |
+| `unmeasured` | info | document 429/503 after the paced retries — the representative is not measured (no `measurement` row) and `report.infra` counts it; re-run |
 
 ## editability (J, browser, desktop 1440 — Experience Workspace inline-edit gate)
 
@@ -180,7 +181,8 @@ from the served HTML, per block. Formula, cause classes and fixes: `deploy/refer
 | `ai-readability-poor` | error | strict < 75 — the owner's gauge reads Fair/Poor; the rendered DOM carries hundreds of words the document lacks (clones, index cards, fragments) |
 | `ai-readability-low` | warn | strict < 95 or code < 98 — block code adds words the document does not have |
 | `ai-readability-served-gap` | info | ≥ 40 rendered main words never served — non-rendering crawlers miss them (fragment / index / generated text); evidence names the blocks |
-| `ai-readability-unmeasured` | info | page could not be fetched or rendered for the check |
+| `ai-readability-unmeasured` | info | page could not be fetched or rendered for the check (an error, not a throttle) |
+| `unmeasured` | info | served fetch or render 429/503 after the paced retries through the per-host limiter — not scored, counted in `report.infra` (§ Cross-cutting) |
 
 ## Cross-cutting
 
@@ -190,8 +192,11 @@ from the served HTML, per block. Formula, cause classes and fixes: `deploy/refer
   through the paced retries; the page is unmeasured for that check, never a defect
   (`page-not-200`, `og-image-broken`, `unknown-block`, `request-failed`, `main-collapsed` are
   silenced for it; `browse` skips axe and visual too, and a throttled same-origin css/js/img
-  counts the same way). `report.infra` counts throttled / retries / unmeasured pages; above
+  counts the same way). `report.infra` counts throttled / retries (fetch and paced browser
+  navigations alike) / unmeasured pages; above
   `--throttle-max 5` % the report is incomplete: banner + exit 2. Pacing defaults: `qa.mjs --help`;
-  tests: `scripts/test/throttle.test.mjs`, `scripts/test/browse-throttle.test.mjs`.
+  tests: `scripts/test/throttle.test.mjs`, `scripts/test/browse-throttle.test.mjs`,
+  `scripts/test/browser-unmeasured.test.mjs` (perf / ai-readability / browse decoration; SKIP + exit 0
+  without playwright).
 - Allowlisted findings keep their severity but don't count toward the exit
   code or summary totals; they render greyed-out in report.html.

@@ -66,7 +66,7 @@ if (reachNoise.length) console.log(`reach noise (informational): ${reachNoise.ma
 
 // crawl.mjs must still write every field the reach pass reads (the sidecar contract, extract/reference/current-state-schema.md § dynamic).
 // The key list comes from crawl's own export when it has one; otherwise the `dynamicDom: { … }` literal is parsed
-// (comments, strings, nesting and line breaks are fine) — never a regex over one source line.
+// (comments, strings and nested `{}` are fine) — never a regex cut at the first `}` of the source.
 const crawlMod = await import(pathToFileURL(CRAWL).href);
 const crawlFields = Array.isArray(crawlMod.DYNAMIC_DOM_FIELDS) ? crawlMod.DYNAMIC_DOM_FIELDS : objectLiteralKeys(readFileSync(CRAWL, 'utf8'), 'dynamicDom');
 ok('crawl.mjs dynamicDom contract located', Array.isArray(crawlFields) && crawlFields.length > 0, crawlFields ? `${crawlFields.length} field(s) via ${crawlMod.DYNAMIC_DOM_FIELDS ? 'DYNAMIC_DOM_FIELDS export' : 'object-literal parse'}` : 'no `dynamicDom: {…}` literal in crawl.mjs');
