@@ -85,7 +85,8 @@ and one "drift: <path> missing" line per load-bearing file the install lacks.
   --state <file>    merge the probe into <file>#impeccable (other keys preserved; an unparsable
                     file is left untouched; an absent file is never created — the sub-skills do that)
   --refresh         rewrite <file>#impeccable even when the probe result is unchanged
-  --max-age <hours> rewrite an unchanged record once probedAt is older than this (default 24)
+  --max-age <hours> rewrite an unchanged record once probedAt is older than this (default 24;
+                    a non-numeric value is ignored with a stderr note)
   --json            machine-readable output
 Exit code: always 0.`;
 
@@ -100,7 +101,8 @@ const OFFLINE = args.includes('--offline');
 const JSON_OUT = args.includes('--json');
 const STATE = opt('state');
 const REFRESH = args.includes('--refresh');
-const MAX_AGE_H = Number(opt('max-age', 24));
+// hours as a finite number; anything else (`--max-age abc`) would make `ageH <= NaN` false and silently rewrite every run
+const MAX_AGE_H = (() => { const v = opt('max-age', 24); const n = v === '' ? NaN : Number(v); if (Number.isFinite(n)) return n; console.error('--max-age needs a value — ignored'); return 24; })();
 const HOME = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
 const COPILOT_HOME = process.env.COPILOT_HOME || path.join(os.homedir(), '.copilot');
 

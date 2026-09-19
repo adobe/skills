@@ -17,15 +17,18 @@
 //   * --state never creates an absent state.json (a bare {impeccable} stub is not a state file);
 //     `--state --json` takes no value and writes no file named "--json" (defect 8)
 //   * --state rewrites only when the probe changed, probedAt is older than --max-age (24 h)
-//     or --refresh is given — an unchanged probe leaves the tracked file byte-identical
+//     or --refresh is given — an unchanged probe leaves the tracked file byte-identical;
+//     a non-numeric --max-age is ignored with a stderr note (24 h), never a silent every-run rewrite
+//   * reference/state-machine.md § Impeccable key states that rule (no "every Setup run" claim)
 //   * probe is on by default only when a copy is found; --json carries `probed`
-//   * lint: docs-fail yields exactly six findings (npx ×2, renamed reference, unknown launcher
-//     verb, unknown $impeccable command ×2 — one in a span wrapping a line break) and honours
+//   * lint: docs-fail yields exactly eight findings (npx ×2, renamed reference, unknown launcher
+//     verb, unknown $impeccable command ×4 — one in a span wrapping a line break, one after a
+//     stray backtick that must stay a literal, one in an indented code block) and honours
 //     `script-paths: ignore`;
 //     exit 0 advisory, exit 1 under --strict, exit 2 with no install dir
 //   * lint: launcher verbs are derived from the install's own docs and scripts, never a
 //     hard-coded list (critique-storage / live-poll resolve on 4.3.1); prose outside code
-//     spans and fences is not a cite (defect 8)
+//     spans and fences is not a cite (defect 8) and, in the install's own docs, not a verb
 //   * lint: docs-pass is clean on 4.3.1 and reports only the launcher on 4.1.3
 //   * lint: the real skills/ tree resolves against the 4.3.1 layout (the sweep stays swept)
 //
@@ -138,6 +141,27 @@ t('--state rewrites only on change, age or --refresh (probedAt rule)', () => {
   assert.match(run(CHECK, '--local', join(FX, '4.1.3'), '--offline', '--state', state).out, /refreshed/, 'a changed install → refreshed even when fresh');
   assert.equal(JSON.parse(readFileSync(state, 'utf8')).impeccable.version, '4.1.3');
 });
+t('--max-age <non-numeric> is ignored with a note, not a silent every-run rewrite', () => {
+  const state = join(tmp, 'max-age.json');
+  writeFileSync(state, JSON.stringify({ _provenance: { writtenBy: 'stardust:extract' } }));
+  run(CHECK, '--local', join(FX, '4.3.1'), '--offline', '--state', state);
+  const before = readFileSync(state, 'utf8');
+  for (const bad of ['abc', '']) {
+    const r = run(CHECK, '--local', join(FX, '4.3.1'), '--offline', '--state', state, '--max-age', bad);
+    assert.equal(r.code, 0); assert.match(r.err, /--max-age needs a value — ignored/, `--max-age ${JSON.stringify(bad)} warns`);
+    assert.match(r.out, /^state\.json#impeccable current .*not rewritten/m, `--max-age ${JSON.stringify(bad)} falls back to 24 h`);
+    assert.equal(readFileSync(state, 'utf8'), before, 'file untouched');
+  }
+  const ok = run(CHECK, '--local', join(FX, '4.3.1'), '--offline', '--state', state, '--max-age', '48');
+  assert.doesNotMatch(ok.err, /--max-age/); assert.match(ok.out, /not rewritten/);
+});
+t('reference/state-machine.md § Impeccable key states the rewrite rule, not "every Setup run"', () => {
+  const doc = readFileSync(join(HERE, '..', '..', 'skills', 'stardust', 'reference', 'state-machine.md'), 'utf8');
+  const section = doc.slice(doc.indexOf('## Impeccable key'), doc.indexOf('\n## ', doc.indexOf('## Impeccable key') + 1));
+  assert.ok(section.length > 0, 'section present');
+  assert.doesNotMatch(section, /every Setup run/, 'the key is not rewritten on every run');
+  assert.match(section, /`probedAt`.*24 h.*`--max-age`/s); assert.match(section, /`--refresh`/);
+});
 t('probe defaults on only when a copy is found; --json reports probed', () => {
   const none = JSON.parse(run(CHECK, '--local', join(FX, 'nowhere'), '--offline', '--json').out);
   assert.equal(none.status, 'not-installed'); assert.equal(none.probed, false);
@@ -154,11 +178,11 @@ t('lint help exits 0; no install dir exits 2', () => {
   const r = run(LINT, '--installed', join(FX, 'nowhere'), '--docs', join(FX, 'docs-pass'));
   assert.equal(r.code, 2); assert.match(r.err, /no impeccable skill directory/);
 });
-t('docs-fail: the five drift forms, ignore honoured, advisory exit 0', () => {
+t('docs-fail: eight findings across the cite forms, ignore honoured, advisory exit 0', () => {
   const r = run(LINT, '--installed', L431, '--docs', join(FX, 'docs-fail'));
   assert.equal(r.code, 0, `advisory exit: ${r.all}`);
   const lines = r.err.split('\n').filter((l) => /notes\.md:\d+:/.test(l));
-  assert.equal(lines.length, 6, r.err);
+  assert.equal(lines.length, 8, r.err);
   assert.match(r.err, /notes\.md:3: npx impeccable detect → `npx impeccable` is the npm shim of the same engine.*\(detect is a verb\)/);
   assert.match(r.err, /notes\.md:4: .*reference\/teach\.md does not exist/);
   assert.match(r.err, /notes\.md:5: scripts\/impeccable load-context → .*"load-context" is neither a registry command nor a launcher verb \(\d+ verbs named by the install's own docs and scripts\)/);
@@ -167,12 +191,15 @@ t('docs-fail: the five drift forms, ignore honoured, advisory exit 0', () => {
   assert.doesNotMatch(r.err, /notes\.md:8:/, 'script-paths: ignore honoured');
   assert.match(r.err, /notes\.md:9: npx impeccable frobnicate → .*"frobnicate" is not a verb the install names/);
   assert.match(r.err, /notes\.md:10: \$impeccable teach → .*"teach" is not in/, 'a backtick span wrapping across a line break is still a cite');
-  assert.match(r.err, /[7-9] impeccable cites checked/);
+  assert.doesNotMatch(r.err, /notes\.md:12:/, 'a stray backtick is a literal: the prose after it is not code');
+  assert.match(r.err, /notes\.md:13: \$impeccable frobnicate → .*"frobnicate" is not in/, 'the real span after a stray backtick is still a cite');
+  assert.match(r.err, /notes\.md:17: \$impeccable teach → .*"teach" is not in/, 'an indented code block is code');
+  assert.match(r.err, /\b(9|1\d) impeccable cites checked/);
 });
 t('docs-fail --strict exits 1; GITHUB_ACTIONS emits ::warning annotations', () => {
   assert.equal(run(LINT, '--installed', L431, '--docs', join(FX, 'docs-fail'), '--strict').code, 1);
   const r = spawnSync(process.execPath, [LINT, '--installed', L431, '--docs', join(FX, 'docs-fail')], { encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: 'true' } });
-  assert.equal(r.status, 0); assert.equal((r.stdout.match(/^::warning file=.*,line=\d+::impeccable drift:/gm) || []).length, 6);
+  assert.equal(r.status, 0); assert.equal((r.stdout.match(/^::warning file=.*,line=\d+::impeccable drift:/gm) || []).length, 8);
 });
 t('docs-pass: clean on 4.3.1 (derived verbs, prose ignored), launcher-only finding on 4.1.3', () => {
   const ok = run(LINT, '--installed', L431, '--docs', join(FX, 'docs-pass'), '--strict');
@@ -182,6 +209,16 @@ t('docs-pass: clean on 4.3.1 (derived verbs, prose ignored), launcher-only findi
   assert.equal(old.code, 0);
   const lines = old.err.split('\n').filter((l) => /notes\.md:\d+:/.test(l));
   assert.ok(lines.length >= 1 && lines.every((l) => /scripts\/impeccable launcher does not exist .*older install: scripts\/hook-admin\.mjs/.test(l)), old.err);
+});
+t('launcher verbs come from the install\'s code only: a prose "scripts/impeccable\\nresolves" is not a verb', () => {
+  const inst = join(tmp, 'prose-install', 'skills', 'impeccable'); cpSync(L431, inst, { recursive: true });
+  writeFileSync(join(inst, 'reference', 'prose.md'), 'The launcher scripts/impeccable\nresolves the engine on first use; `"<dir>/scripts/impeccable" doctor` is the cite.\n');
+  const docs = join(tmp, 'prose-docs', 'some-skill'); mkdirSync(docs, { recursive: true });
+  writeFileSync(join(docs, 'notes.md'), '`$impeccable resolves` — a word that follows the launcher only in prose.\n`$impeccable doctor` — a verb the install cites in code.\n');
+  const r = run(LINT, '--installed', inst, '--docs', join(tmp, 'prose-docs'));
+  assert.equal(r.code, 0);
+  assert.match(r.err, /notes\.md:1: \$impeccable resolves → .*"resolves" is not in/, 'prose after scripts/impeccable must not be accepted as a verb');
+  assert.doesNotMatch(r.err, /notes\.md:2:/, 'doctor resolves');
 });
 t('real skills/ tree resolves against the 4.3.1 layout', () => {
   const r = run(LINT, '--installed', L431, '--strict');

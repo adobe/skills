@@ -33,9 +33,11 @@
 // Launcher verbs are never a hard-coded list: they are the verbs the install's
 // own docs (SKILL.md, reference/*.md) cite after `scripts/impeccable` — 22 in
 // 4.3.1, from `hooks` to `live-poll` — plus the legacy per-verb scripts
-// (4.1: scripts/<verb>.mjs). The three command forms are read from code
-// (backtick spans and fenced blocks) only: "the launcher scripts/impeccable
-// resolves the engine" is prose, not a cite, and must not yield a verb.
+// (4.1: scripts/<verb>.mjs). The three command forms — and the verb scan —
+// are read from code only (backtick spans, fenced and indented blocks; a
+// stray backtick is a literal, never an opener): "the launcher
+// scripts/impeccable resolves the engine" is prose, not a cite, and must
+// not yield a verb.
 // `--installed` with no value resolves the Claude Code registry's install
 // (installed_plugins.json → installPath/skills/impeccable). In CI use a
 // checkout of pbakaus/impeccable and pass its `skill/` directory.
@@ -167,15 +169,17 @@ function crossPlugin() {
 
 // The verbs the launcher answers, read from the install itself: every `scripts/impeccable <verb>`
 // (or the source template's `{{scripts_path}}/impeccable <verb>`) its own SKILL.md / reference/*.md
-// cite, the `impeccable <verb>` entries of an upstream checkout's docs/CLI-CONTRACT.md when it sits
-// beside the skill dir, plus legacy per-verb scripts (scripts/<verb>.mjs).
+// cite IN CODE (backtick spans and fences — "the launcher scripts/impeccable\nresolves the engine"
+// is prose and must not make "resolves" a verb), the `impeccable <verb>` entries of an upstream
+// checkout's docs/CLI-CONTRACT.md when it sits beside the skill dir, plus legacy per-verb scripts
+// (scripts/<verb>.mjs).
 function launcherVerbs(dir) {
   const verbs = new Set();
   const docs = [join(dir, 'SKILL.md'), join(dir, 'SKILL.src.md')];
   try { for (const f of readdirSync(join(dir, 'reference'))) if (f.endsWith('.md')) docs.push(join(dir, 'reference', f)); } catch { /* no reference dir */ }
   for (const f of docs) {
     let text; try { text = readFileSync(f, 'utf8'); } catch { continue; }
-    for (const m of text.matchAll(/(?:scripts|scripts_path\}\})\/impeccable["']?\s+([a-z][a-z-]*)/g)) verbs.add(m[1]);
+    for (const seg of codeSegments(text)) for (const m of seg.text.matchAll(/(?:scripts|scripts_path\}\})\/impeccable["']?[ \t]+([a-z][a-z-]*)/g)) verbs.add(m[1]);
   }
   try {
     const contract = readFileSync(join(dir, '..', 'docs', 'CLI-CONTRACT.md'), 'utf8');
@@ -185,24 +189,57 @@ function launcherVerbs(dir) {
   return verbs;
 }
 
-// Code segments of a markdown file: each line of a fenced block, and each inline backtick span
-// (which may wrap across a line break but never a blank line), with the 1-based line it starts
-// on. Command cites live here; prose does not count.
+// Backtick spans of one line, paired the CommonMark way: an opening run closes at the next run of
+// the SAME length; a run with no partner is a literal backtick, not an opener. Returns the spans
+// and the unmatched runs (as {index, len}) so a paragraph can decide whether a span wraps.
+function lineSpans(text, from = 0) {
+  const runs = [...text.slice(from).matchAll(/`+/g)].map((m) => ({ index: from + m.index, len: m[0].length }));
+  const spans = [];
+  const loose = [];
+  for (let i = 0; i < runs.length; i += 1) {
+    const j = runs.findIndex((r, k) => k > i && r.len === runs[i].len);
+    if (j < 0) { loose.push(runs[i]); continue; }
+    spans.push(text.slice(runs[i].index + runs[i].len, runs[j].index));
+    i = j;
+  }
+  return { spans, loose };
+}
+
+// Code segments of a markdown file, with the 1-based line each starts on: every line of a fenced
+// block, every line of an indented code block (4 spaces / a tab after a blank line — a 4-space
+// line that continues a paragraph or list item is prose), and each inline backtick span. Spans
+// are paired line by line first; a span wraps onto the next line only when BOTH lines are left
+// with an unpaired run of the same length, so a stray backtick in one line ("a ` typo") stays a
+// literal instead of swallowing the next line's real span. Command cites live here; prose does not.
 function codeSegments(text) {
   const out = [];
   let fence = false;
   let para = [];
   const flush = () => {
-    if (!para.length) return;
-    const start = para[0].line;
-    const joined = para.map((x) => x.text).join('\n');
-    for (const m of joined.matchAll(/`([^`]*)`/g)) out.push({ text: m[1], line: start + joined.slice(0, m.index).split('\n').length - 1 });
+    let carry = null; // { len, line } — an unpaired run at the end of the previous line
+    for (const { text: l, line } of para) {
+      let from = 0;
+      if (carry) {
+        const first = l.match(/`+/);
+        const { loose } = lineSpans(l);
+        if (first && loose.length && first[0].length === carry.len) {
+          out.push({ text: `${carry.tail}\n${l.slice(0, first.index)}`, line: carry.line });
+          from = first.index + first[0].length;
+        }
+        carry = null;
+      }
+      const { spans, loose } = lineSpans(l, from);
+      for (const sp of spans) out.push({ text: sp, line });
+      const last = loose[loose.length - 1];
+      if (last) carry = { len: last.len, line, tail: l.slice(last.index + last.len) };
+    }
     para = [];
   };
   text.split('\n').forEach((l, i) => {
     if (/^\s*(```|~~~)/.test(l)) { flush(); fence = !fence; return; }
     if (fence) out.push({ text: l, line: i + 1 });
     else if (!l.trim()) flush();
+    else if (!para.length && /^(?: {4,}|\t)/.test(l)) out.push({ text: l, line: i + 1 });
     else para.push({ text: l, line: i + 1 });
   });
   flush();
