@@ -27,6 +27,7 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 | Routing (migration) | `reference/state-machine.md` § Flow keys |
 | Freeform intent | `reference/intent-reasoning.md` § Procedure · `reference/intent-dimensions.md` § Reading a phrase · `reference/impeccable-command-map.md` § Common sequences |
 | Hands-off | `reference/state-machine.md` § Hands-off keys |
+| Hands-off (delegating) | `reference/fan-out.md` § Worker contract · § Coordinator contract |
 | Per-page state | `reference/state-machine.md` § Page lifecycle states · § Stale flagging (content-aware) |
 | Journal | `reference/journal-format.md` § Entry format · § Reading the journal at session start |
 | Validation | `../extract/reference/playwright-recipe.md` § Capture list · `../prototype/reference/motion-validation.md` § Validation procedure |
@@ -211,11 +212,7 @@ the "learn the template, then compile" kind. Keep-design: `replica`'s
 inconsistency register and `progress.json`, the archetype gate ledgers,
 `rollout` waves. A redesign procedure or plan template inside a replica
 run — or the reverse — is a routing defect: refuse it, or flag it in
-`direction.md` and hand back to this section. (Recorded: a same-design
-migration adopted a redesign-only "train the template, then compile" plan
-and spent an hour, 45 turns and 36 M tokens before reverting it; another
-loaded `prepare-migration` for a keep-design ask on a plugin that already
-described the two flows — description without a guard did not hold.)
+`direction.md` and hand back to this section.
 
 State the chosen flow explicitly in the first response to a migration
 question, including the fact that `replica` needs no `prepare-migration`
@@ -264,11 +261,10 @@ otherwise):
   Instruments that can stall run under their shipped deadline (replica
   `gate.sh`, `pixel-compare --timeout`) — never under an agent-authored
   `sleep N; kill` loop — and long steps write a progress file the
-  coordinator polls instead of blocking on the agent. (Field evidence,
-  2026-09: in one recorded run the two conversion agents the harness
-  watchdog killed carried the fattest briefs and whole-document reads,
-  and a lean re-dispatch finished the same pages; that conversion lost
-  89 minutes to a blind wait and 30 to fixed sleeps.)
+  coordinator polls instead of blocking on the agent. What a delegated
+  agent writes, how it is polled, resumed once and then finished from
+  its progress file: `reference/fan-out.md` (every brief points at its
+  § Worker contract).
 - **Wait discipline: never park the conversation past the prompt-cache
   window.** Anything expected to run longer than about 2 minutes — a gate
   round over several pages, a crawl, a batch push, a capture set, a
@@ -465,6 +461,7 @@ motion gate cascade).
 - `reference/data-attributes.md` — structural `data-*` vocabulary applied to sections in every prototype and migrated page. The structural lingua franca between stardust sub-commands and downstream tools.
 - `reference/journal-format.md` — `stardust/journal.md` entry format. Append-only chronological log; the shared narrative layer over the state machine.
 - `reference/run-status.md` — the `stardust/status.jsonl` phase-transition contract every skill appends to. The deterministic progress surface for any harness.
+- `reference/fan-out.md` — the delegated-agent protocol: progress files, worker and coordinator liveness contracts.
 - `reference/learnings.md` — the per-run learnings ledger contract (`stardust/learnings.md`). rollout's report phase writes it; plugin maintainers harvest pending entries into skill diffs.
 
 ### Cinematic-feature references (cross-cutting)
