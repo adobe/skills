@@ -54,12 +54,15 @@
  *                                                in-block <img> with alt=""
  *                                            CHROME header/footer/nav/page-chrome block
  *                                                inlined into a content document
+ *                                            D12 CONTENT — a /fragments/ target in this
+ *                                                tree carrying > 60 prose words (inline it
+ *                                                + re-sync row; fragments cost strict pts)
  *
  * Dependency-free by design (regex + balanced-div walking, same technique as
  * build-harness.mjs) — content pages are machine-generated and regular; this
  * is a structural lint, not a browser-grade parser.
  */
-import { readFileSync, readdirSync, statSync } from 'fs';
+import { readFileSync, readdirSync, statSync, existsSync } from 'fs';
 import path from 'path';
 
 const WRAPPER_BLOCK_NAMES = new Set(['text', 'heading', 'title', 'image']);
@@ -366,6 +369,27 @@ function canonicalPath(p) {
   return s.replace(/\/index$/, '').toLowerCase() || '/';
 }
 let LOCAL = null; // { hosts:Set, paths:Set } when --source-host is given
+let FRAG_ROOT = null; // content root used to resolve /fragments/ targets (D12 CONTENT)
+const FRAG_WORDS = new Map(); // fragment path → prose word count (memo)
+
+// D12 CONTENT — prose words in a fragment document outside link lists.
+function fragmentProseWords(webPath) {
+  if (FRAG_WORDS.has(webPath)) return FRAG_WORDS.get(webPath);
+  let words = -1;
+  if (FRAG_ROOT) {
+    const file = path.join(FRAG_ROOT, `${webPath.replace(/^\//, '')}.html`);
+    if (existsSync(file)) {
+      const html = readFileSync(file, 'utf8');
+      const mainMatch = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i);
+      const body = (mainMatch ? mainMatch[1] : html)
+        .replace(/<(ul|ol)\b[\s\S]*?<\/\1>/gi, ' ')
+        .replace(/<a\b[^>]*>[\s\S]*?<\/a>/gi, ' ');
+      words = stripTags(body).split(/\s+/).filter((w) => /\w/.test(w)).length;
+    }
+  }
+  FRAG_WORDS.set(webPath, words);
+  return words;
+}
 
 function lintUrls(file, main, flag) {
   // D4 — src: only fully-qualified (content.da.live preferred) survives the
@@ -389,8 +413,18 @@ function lintUrls(file, main, flag) {
   }
   // D4 — href: root-relative internal links are the EDS convention; DOCUMENT-
   // relative ones (donate.html, ../x) break under path mapping.
+  const fragSeen = new Set();
   for (const m of main.matchAll(/<a\b[^>]*\bhref="([^"]+)"/gi)) {
     const href = m[1];
+    // D12 CONTENT — a fragment link whose local target carries prose (not a link list)
+    const frag = href.match(/^(?:https?:\/\/[^/]+)?((?:\/[^?#]*)?\/fragments\/[^?#]+)/i);
+    if (frag && !fragSeen.has(frag[1])) {
+      fragSeen.add(frag[1]);
+      const n = fragmentProseWords(canonicalPath(frag[1]));
+      if (n > 60) {
+        flag('🟡', 'D12', `fragment ${frag[1]} carries ${n} prose words — content-bearing copy is invisible to non-rendering crawlers and costs strict AI-readability points; inline it on the page with a \`fragment | ${frag[1]}\` re-sync row (CONTENT; reference/ai-readability.md § 4 rule 4)`);
+      }
+    }
     if (LOCAL && /^(https?:)?\/\//i.test(href)) {
       const m = href.match(/^(?:https?:)?\/\/([^/?#]+)([^?#]*)/i);
       const host = m ? m[1].toLowerCase().replace(/^www\./, '') : '';
@@ -428,8 +462,9 @@ if (!args.length) {
   console.error('usage: davids-model-lint.mjs <content-file-or-dir> [...] [--json] [--source-host <host[,host]> [--content-root <dir>]]');
   process.exit(1);
 }
+FRAG_ROOT = contentRootOpt || args.find((a) => existsSync(a) && statSync(a).isDirectory()) || path.dirname(args[0]);
 if (sourceHost) {
-  const root = contentRootOpt || args.find((a) => statSync(a).isDirectory()) || path.dirname(args[0]);
+  const root = FRAG_ROOT;
   const paths = new Set();
   for (const f of collectFiles(root)) paths.add(canonicalPath(`/${path.relative(root, f).split(path.sep).join('/')}`));
   LOCAL = { hosts: new Set(sourceHost.split(',').map((h) => h.trim().toLowerCase().replace(/^www\./, '')).filter(Boolean)), paths };

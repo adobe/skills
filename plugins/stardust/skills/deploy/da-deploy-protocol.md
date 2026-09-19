@@ -72,6 +72,11 @@ curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
 #        same 409). Remedy: rasterize the SVG to PNG, upload the PNG to DA
 #        media, re-author, re-preview. Field-proven: this turned a dead-end
 #        409 into a 3-minute fix.
+#   (iii) whole-document size — a document with more than ~150 authored images
+#        (or a body over ~150 KB) 409s as a whole while each half previews 200.
+#        Diagnostic: PUT + preview each half. Remedy order: trim tiles per rail
+#        (D5) → split into a second PAGE → only then a `fragment` (noindex):
+#        fragment words are fetched by JS and cost `strict` AI-readability points.
 
 # 3b. VERIFY ingestion on the delivered .plain.html (per page; assets gzip → --compressed):
 #   (i)  no broken-image ingestion (#75) — must be 0; if not, an asset wasn't on Code Bus

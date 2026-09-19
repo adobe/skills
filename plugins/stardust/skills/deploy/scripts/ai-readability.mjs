@@ -104,7 +104,9 @@ export function analyse({ served, fragments, landmarks, excludeBlocks, allow }) 
   const fragmentWords = (fragments || []).reduce((n, html) => n + tokens(clean(html, true, true).documentElement.textContent).length, 0);
   const codeServed = strict.served + fragmentWords;
   const codeRendered = Math.max(0, strict.rendered - excludedWords - allowedWords);
-  const code = { score: ratio(codeServed, codeRendered), served: codeServed, rendered: codeRendered, fragmentWords, excludedWords, allowedWords };
+  // fragmentsCostPts: strict points the page loses to runtime-fetched fragment copy — the owner's decision, surfaced per page
+  const fragmentsCostPts = Math.max(0, ratio(strict.served + fragmentWords, strict.rendered) - strict.score);
+  const code = { score: ratio(codeServed, codeRendered), served: codeServed, rendered: codeRendered, fragmentWords, fragmentsCostPts, excludedWords, allowedWords };
 
   const servedGapTotal = blocks.filter((b) => b.block !== 'header' && b.block !== 'footer').reduce((n, b) => n + b.servedGap, 0);
   return { strict, landmarksCounted, code, blocks, servedGap: { main: servedGapTotal, chrome: blocks.filter((b) => b.block === 'header' || b.block === 'footer').reduce((n, b) => n + b.servedGap, 0), renderedMain } };
@@ -204,7 +206,7 @@ if (isMain) {
     if (r.error) { console.log(`${p}\n  ERROR ${r.error}`); fail = true; continue; }
     const flag = r.code.score < min ? 'FAIL' : 'ok';
     console.log(`${p}\n  strict ${String(r.strict.score).padStart(3)}%  (served ${r.strict.served} / rendered ${r.strict.rendered}, missing ${r.strict.missing}; landmarks counted ${r.landmarksCounted.score}%)`
-      + `\n  code   ${String(r.code.score).padStart(3)}%  ${flag}  (fragments credited +${r.code.fragmentWords}${r.fragments.length ? ` [${r.fragments.join(' ')}]` : ''}, app blocks −${r.code.excludedWords}, allowlisted −${r.code.allowedWords})`
+      + `\n  code   ${String(r.code.score).padStart(3)}%  ${flag}  (fragments credited +${r.code.fragmentWords} words = fragments cost ${r.code.fragmentsCostPts} pts${r.fragments.length ? ` [${r.fragments.join(' ')}]` : ''}, app blocks −${r.code.excludedWords}, allowlisted −${r.code.allowedWords})`
       + `\n  servedGap main ${r.servedGap.main} / ${r.servedGap.renderedMain} words, chrome ${r.servedGap.chrome}`);
     const rows = r.blocks.filter((b) => b.servedGap > 0 || b.excluded);
     (verbose ? rows : rows.slice(0, 5)).forEach((b) => console.log(`    ${String(b.servedGap).padStart(5)} / ${String(b.words).padStart(5)}  ${(b.block + (b.variants ? ` [${b.variants}]` : '')).padEnd(40)}${b.excluded ? ' (excluded)' : ''} ${b.sample}`));
