@@ -58,4 +58,10 @@ assert.deepEqual(
   'dynamicSurface counts pages per reach-signal family',
 );
 
+// _provenance.readArtifacts stays FLAT when robots.txt declared several sitemaps (discovery.sourceUrl is an array) and dedupes across re-runs
+const multi = { discovery: { fetchTechnique: 'headless', count: 2, concurrency: 4, sourceUrl: ['https://example.com/a.xml', 'https://example.com/b.xml'] }, consent: { method: 'auto' }, favicon: null, crawl: { startedAt: 't', finishedAt: 't', successes: 2, failures: [] }, pages: {} };
+const p1 = mergeCrawlLog({}, multi, run({ captured: 2 }), []);
+const p2 = mergeCrawlLog(p1, multi, run({ captured: 2 }), []);
+assert.deepEqual(p2._provenance.readArtifacts, ['https://example.com/a.xml', 'https://example.com/b.xml'], 'readArtifacts lists each sitemap URL once, as flat strings, after two runs');
+
 console.log('crawl-log-merge test: ok');

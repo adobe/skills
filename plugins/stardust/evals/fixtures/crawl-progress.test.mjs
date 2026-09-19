@@ -36,6 +36,14 @@ assert.equal(a.progress, '/tmp/p.json', '--progress overrides');
 a = parseArgs(['node', 'crawl.mjs', '--url', 'https://example.test/', '--no-progress']);
 assert.equal(a.progress, null, '--no-progress disables the file');
 assert.throws(() => parseArgs(['node', 'crawl.mjs', '--url', 'https://example.test/', '--progres']), /unknown arg/);
+// a value-taking flag never swallows the next flag (`--cap --all` once crawled 5 pages silently)
+assert.throws(() => parseArgs(['node', 'crawl.mjs', '--url', 'https://example.test/', '--cap', '--all']), /--cap needs a value/);
+assert.throws(() => parseArgs(['node', 'crawl.mjs', '--url', 'https://example.test/', '--concurrency', '--dynamics']), /--concurrency needs a value/);
+assert.throws(() => parseArgs(['node', 'crawl.mjs', '--url', 'https://example.test/', '--pages']), /--pages needs a value/);
+// --solve-wait starts at tier 3 whatever the order of --headed; runs[].args keeps the CLI concurrency
+a = parseArgs(['node', 'crawl.mjs', '--url', 'https://example.test/', '--solve-wait', '6000', '--headed', '--concurrency', '4']);
+assert.equal(a.headed, 3, '--solve-wait <ms> --headed (that order) still starts at tier 3, window visible');
+assert.equal(a.concurrencyRequested, 4, 'the CLI concurrency is kept apart from the run-time pool size (a bare 429 drops the latter to 1)');
 
 // helper resolution from the plugin tree
 const helper = await loadProgressHelper();

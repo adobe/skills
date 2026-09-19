@@ -79,8 +79,8 @@ The file is JSON because every consumer is non-human. It carries a
   "embedDominance": { /* see § Embed dominance */ },
   "cssCustomProperties": [ /* see § CSS custom properties */ ],
 
-  "screenshot": "stardust/current/assets/screenshots/about.png",         // 1440-wide; band 1 when _signals.screenshotMode is "banded"
-  "screenshotMobile": "stardust/current/assets/screenshots/about-360.png", // 360×900 re-layout of the same page (`--mobile entry|all|none`, default entry); absent when not taken
+  "screenshot": "assets/screenshots/about.png",         // relative to stardust/current; 1440-wide; band 1 when _signals.screenshotMode is "banded"
+  "screenshotMobile": "assets/screenshots/about-360.png", // 360×900 re-layout of the same page (`--mobile entry|all|none`, default entry); absent when not taken
   "_signals": { /* see § Signals — crawler capture-quality flags, never content */ },
 
   "stats": {

@@ -79,7 +79,7 @@
  *   stdout line is `SUMMARY crawl ok=<n> failed=<n> exit=<code> details=<_crawl-log.json> …`.
  *   Run it in the background and read the progress file (`progress.mjs read <file>`),
  *   never `sleep N; grep -c` the log. Exit codes unchanged: 0 (per-page failures are in
- *   the log), 2 fatal, 3 bot challenge. A project copy loads the helper from
+ *   the log), 1 live lock held, 2 fatal, 3 bot challenge (§ Exit codes below). A project copy loads the helper from
  *   stardust/scripts/stardust/progress.mjs (copy it beside class-report.mjs); without it
  *   the SUMMARY line still prints and one WARN names the copy.
  *
@@ -226,38 +226,42 @@ export function parseArgs(argv) {
   const a = { out: 'stardust/current', max: 5, wait: 'medium', consent: true, concurrency: 4, dynamics: false, refresh: [], force: false, headed: 0, mobile: 'entry', dpr: 1, depth: 1, cookies: [] };
   for (let i = 2; i < argv.length; i += 1) {
     const k = argv[i];
+    // a value-taking flag never swallows the next flag: `--cap --all` is an error, not a 5-page crawl
+    const val = () => { const v = argv[i + 1]; if (v === undefined || /^--/.test(v)) throw new Error(`${k} needs a value`); i += 1; return v; };
     if (k === '--help' || k === '-h') { a.help = true; return a; }
-    if (k === '--url') a.url = argv[(i += 1)];
-    else if (k === '--mobile') { a.mobile = argv[(i += 1)]; if (!MOBILE_MODES.includes(a.mobile)) throw new Error(`--mobile must be one of ${MOBILE_MODES.join('|')}`); }
-    else if (k === '--dpr') { const n = +argv[(i += 1)]; if (!(n > 0 && n <= 4)) throw new Error('--dpr must be a number in (0, 4]'); a.dpr = n; }
-    else if (k === '--depth') { const n = +argv[(i += 1)]; if (!(n >= 1 && n <= 3)) throw new Error('--depth must be 1, 2 or 3'); a.depth = n; }
-    else if (k === '--cookie') a.cookies.push(parseCookieFlag(argv[(i += 1)]));
-    else if (k === '--storage-state') a.storageState = argv[(i += 1)];
+    if (k === '--url') a.url = val();
+    else if (k === '--mobile') { a.mobile = val(); if (!MOBILE_MODES.includes(a.mobile)) throw new Error(`--mobile must be one of ${MOBILE_MODES.join('|')}`); }
+    else if (k === '--dpr') { const n = +val(); if (!(n > 0 && n <= 4)) throw new Error('--dpr must be a number in (0, 4]'); a.dpr = n; }
+    else if (k === '--depth') { const n = +val(); if (!(n >= 1 && n <= 3)) throw new Error('--depth must be 1, 2 or 3'); a.depth = n; }
+    else if (k === '--cookie') a.cookies.push(parseCookieFlag(val()));
+    else if (k === '--storage-state') a.storageState = val();
     else if (k === '--fresh-state') a.freshState = true;
     else if (k === '--save-state') a.saveState = true;
     else if (k === '--solve-wait') {
-      const n = +argv[(i += 1)]; if (!(n >= 5000)) throw new Error('--solve-wait <ms> must be ≥ 5000');
-      a.solveWait = n; a.headed = 3; // a human cannot solve in an off-screen window: tier 3, visible
+      const n = +val(); if (!(n >= 5000)) throw new Error('--solve-wait <ms> must be ≥ 5000');
+      a.solveWait = n; // tier 3, visible — applied after the loop so a later --headed cannot lower it
       process.env.STARDUST_HEADED_WINDOW = '1'; // read by launchTier (byte-identical ladder copy; no parameter)
     }
-    else if (k === '--pages') a.pages = (argv[(i += 1)] || '').split(',').map((s) => s.trim()).filter(Boolean);
-    else if (k === '--out') a.out = argv[(i += 1)];
-    else if (k === '--max' || k === '--cap') { const n = +argv[(i += 1)]; a.max = Number.isFinite(n) && n >= 0 ? n : 5; } // 0 = no cap; default 5 (the extract contract's small sample)
+    else if (k === '--pages') a.pages = val().split(',').map((s) => s.trim()).filter(Boolean);
+    else if (k === '--out') a.out = val();
+    else if (k === '--max' || k === '--cap') { const n = +val(); a.max = Number.isFinite(n) && n >= 0 ? n : 5; } // 0 = no cap; default 5 (the extract contract's small sample)
     else if (k === '--all') a.max = 0;
     else if (k === '--single') a.max = 1;
-    else if (k === '--refresh') a.refresh = (argv[(i += 1)] || '').split(',').map((s) => s.trim()).filter(Boolean);
+    else if (k === '--refresh') a.refresh = val().split(',').map((s) => s.trim()).filter(Boolean);
     else if (k === '--force') a.force = true;
-    else if (k === '--wait') a.wait = argv[(i += 1)];
+    else if (k === '--wait') a.wait = val();
     else if (k === '--no-consent-dismiss') a.consent = false;
-    else if (k === '--concurrency') a.concurrency = Math.max(1, +argv[(i += 1)] || 4);
+    else if (k === '--concurrency') a.concurrency = Math.max(1, +val() || 4);
     else if (k === '--dynamics') a.dynamics = true; // migration-bound: set by prepare-migration / replica / migrate, never by default
     else if (k === '--headed') a.headed = 2; // start the ladder at tier 2 (real Chrome, still headless)
     else if (k === '--headed=window' || k === '--headed=offscreen') a.headed = 3; // start at tier 3 (off-screen window)
-    else if (k === '--progress') a.progress = argv[(i += 1)];
+    else if (k === '--progress') a.progress = val();
     else if (k === '--no-progress') a.progress = null;
     else throw new Error(`unknown arg: ${k}`);
   }
   if (!a.url) throw new Error('--url is required');
+  if (a.solveWait) a.headed = 3; // a human cannot solve in an off-screen window: tier 3 with the window VISIBLE, whatever --headed said
+  a.concurrencyRequested = a.concurrency; // the CLI value — runs[].args records it; a bare 429 drops a.concurrency to 1 at run time
   if (a.progress === undefined) a.progress = crawlProgressFile(a);
   a.origin = new URL(a.url).origin;
   a.entryPath = new URL(a.url).pathname; // subtree scope comes from the URL as TYPED — origin adoption rewrites a.url later
@@ -615,9 +619,10 @@ async function solveWait(page, ms) {
 // Wait for that window and reload to pick up the cookie before treating the
 // status as a hard failure. No-op for a normal 200 (isChallengeResponse false),
 // so zero overhead on the common path.
-async function clearChallenge(page, resp) {
+async function clearChallenge(page, resp, budget = null) {
   for (let attempt = 0; attempt < 3 && isChallengeResponse(resp); attempt += 1) {
     await page.waitForTimeout(4000);
+    if (budget) await budget.take(); // every navigation waits for a token — reloads included (header § Live budget)
     const reloaded = await page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 })
       .catch(() => null);
     if (reloaded) resp = reloaded;
@@ -1521,7 +1526,11 @@ async function screenshotPage(page, base, shotsDir) {
         files.push(file);
       }
       return { mode: 'banded', files, docHeight, bands: files.length };
-    } catch { files.length = 0; }
+    } catch {
+      // a band failed: unlink the parts already written — a clipped <slug>.png next to orphan .partN.png files misleads a vision reader
+      for (const f of files) { try { unlinkSync(path.join(shotsDir, f)); } catch { /* already gone */ } }
+      files.length = 0;
+    }
   } else {
     try {
       await page.screenshot({ path: path.join(shotsDir, `${base}.png`), fullPage: true, timeout: 30000 });
@@ -1557,7 +1566,7 @@ async function capturePage(context, url, slug, args, isEntry = false) {
   // Tier 3 only: give the interstitial its JS-solve window and reload before
   // validating. Tiers 1–2: one hit, fail loud — the page is recorded as a
   // BotChallengeError, never captured as content and never retried headless.
-  if (args.solveWindow) resp = await clearChallenge(page, resp);
+  if (args.solveWindow) resp = await clearChallenge(page, resp, args.budget);
   if (isChallengeResponse(resp)) throw Object.assign(new Error(`bot challenge (HTTP ${resp.status()}) at tier ${args.tier} — not the page`), { errorClass: 'BotChallengeError' });
   let status = resp.status();
   // BARE 429 (edge-signed ones were classified above) = rate limit, not a
@@ -1565,9 +1574,12 @@ async function capturePage(context, url, slug, args, isEntry = false) {
   // Retry-After (≤ 60 s), retry ONCE, then fail the page with the hint.
   if (status === 429) {
     const ra = parseRetryAfter(resp.headers()['retry-after']);
-    const waitMs = args.budget ? args.budget.rateLimited(ra) : Math.min(60, ra || 30) * 1000;
+    // the FIRST bare 429 halves the ceiling; a concurrent worker's 429 from the same burst only waits
+    // (Retry-After, else 4 gaps) — four workers must not halve four times and persist 1/min for a week
+    const already = args.throttled;
+    const waitMs = args.budget ? (already ? Math.min(60000, ra ? ra * 1000 : args.budget.minGapMs * 4) : args.budget.rateLimited(ra)) : Math.min(60, ra || 30) * 1000;
     noteRateLimited(args);
-    console.error(`[crawl] HTTP 429 (rate limit, no edge signature) on ${slug} — pool → 1 worker, ceiling halved${args.budget ? ` (${args.budget.navPerMin}/min, ≥ ${args.budget.minGapMs / 1000} s)` : ''}; retrying once in ${Math.round(waitMs / 1000)} s`);
+    console.error(`[crawl] HTTP 429 (rate limit, no edge signature) on ${slug} — pool → 1 worker, ceiling ${already ? 'already halved' : 'halved'}${args.budget ? ` (${args.budget.navPerMin}/min, ≥ ${args.budget.minGapMs / 1000} s)` : ''}; retrying once in ${Math.round(waitMs / 1000)} s`);
     await page.waitForTimeout(waitMs);
     if (args.budget) await args.budget.take();
     const again = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => null);
@@ -1765,7 +1777,7 @@ async function main() {
           escalations.push({ tier: TIERS[2], block: 'challenge', solved: 'interactive' });
           probeResp = null;
         }
-      } else if (tier === 3) probeResp = await clearChallenge(probe, probeResp);
+      } else if (tier === 3) probeResp = await clearChallenge(probe, probeResp, args.budget);
       if (probeResp && isChallengeResponse(probeResp)) blocked = { kind: 'challenge', status: probeResp.status() };
     } catch (err) {
       if (isFingerprintBlock(err)) blocked = { kind: 'fingerprint' };
@@ -2013,7 +2025,7 @@ async function main() {
   log.crawl.finishedAt = new Date().toISOString();
   const merged = mergeCrawlLog(prev, log, {
     at: startedAt,
-    args: { url: args.url, pages: args.pages || null, cap: args.capLabel, wait: args.wait, concurrency: args.concurrency, dynamics: args.dynamics, refresh: args.refresh, force: args.force, headed: args.headed || null, solveWait: args.solveWait || null, depth: args.depth, cookie: args.cookies.map((c) => c.name), mobile: args.mobile, dpr: args.dpr, storageState: loadedState ? 'loaded' : args.freshState ? 'fresh' : 'clone', saveState: !!savedState },
+    args: { url: args.url, pages: args.pages || null, cap: args.capLabel, wait: args.wait, concurrency: args.concurrencyRequested ?? args.concurrency, dynamics: args.dynamics, refresh: args.refresh, force: args.force, headed: args.headed || null, solveWait: args.solveWait || null, depth: args.depth, cookie: args.cookies.map((c) => c.name), mobile: args.mobile, dpr: args.dpr, storageState: loadedState ? 'loaded' : args.freshState ? 'fresh' : 'clone', saveState: !!savedState },
     technique,
     discovered: urls.length,
     skipped: skipped.length,
@@ -2044,7 +2056,7 @@ export function mergeCrawlLog(prev, log, run, okSlugs) {
   const carried = (prev.crawl?.failures || []).filter((x) => !okNow.has(x.slug) && !failedNow.has(x.slug));
   // _provenance is the first key of every stardust artifact (master skill § Provenance); the script owns this file.
   const { _provenance: prevProv, ...prevRest } = prev;
-  const readArtifacts = [...new Set([...(prevProv && prevProv.readArtifacts) || [], log.discovery && log.discovery.sourceUrl].filter(Boolean))];
+  const readArtifacts = [...new Set([...(prevProv && prevProv.readArtifacts) || [], ...[].concat((log.discovery && log.discovery.sourceUrl) || [])].filter(Boolean))]; // sourceUrl is an ARRAY when robots.txt declares several sitemaps — flatten, never nest
   const merged = { _provenance: { writtenBy: 'stardust:extract', writtenAt: new Date().toISOString(), script: 'crawl.mjs', readArtifacts }, ...prevRest, ...log, crawl: { ...log.crawl, failures: [...carried, ...log.crawl.failures] } };
   if (prev.discovery && (prev.discovery.count || 0) > (log.discovery.count || 0)) {
     // keep the richer roster block (kept/cut/census/candidates…) and refresh

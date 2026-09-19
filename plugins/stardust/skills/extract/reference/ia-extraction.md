@@ -129,7 +129,8 @@ until every leaf is a URL list:
 
 Recursion safeguards:
 
-- **Depth cap: 3.** Beyond that, drop deeper indexes and warn — a
+- **Depth cap: 3.** Beyond that, drop deeper indexes and record
+  `deepDropped` on the sitemap candidate — a
   sitemap-index nested ≥4 levels deep is almost certainly a loop or a
   pathological structure.
 - **Cycle detection.** Maintain a visited-sitemap-URLs set; refuse to
