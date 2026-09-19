@@ -27,8 +27,8 @@
  *       is capped at 1,500 px (k shrinks if needed). gate.sh writes it every
  *       round as review-<label>.png via `pixel-compare --review`.
  *   --sheet <dir-or-files…> --out <sheet-NN.png> [--per 12] [--cols 3]
- *           [--top 1200] [--tail 600]
- *       A contact sheet of page captures: each tile is the top --top rows plus
+ *           [--crop-top 1200] [--tail 600]
+ *       A contact sheet of page captures: each tile is the top --crop-top rows plus
  *       the footer --tail rows of one screenshot (the whole page when shorter),
  *       digit-labelled 1..N, ≤ 2,000 px either side. More files than --per →
  *       sheet-01, sheet-02, … (NN in --out is replaced; else -NN is inserted).
@@ -49,8 +49,8 @@ import { pathToFileURL } from 'url';
 const HELP = `review-image — one small PNG per round: stacked band strip or contact sheet (pngjs only, never a verdict)
 
 Usage:
-  node review-image.mjs --bands <a.png> <b.png> --out <review.png> [--json <pixel-compare.json> | --y <px> --height <px>] [--diff <diff.png>] [--top 3] [--width 1000]
-  node review-image.mjs --sheet <dir-or-files…> --out <sheet-NN.png> [--per 12] [--cols 3] [--top 1200] [--tail 600]
+  node review-image.mjs --bands <a.png> <b.png> --out <review.png> [--json <pixel-compare.json> | --y <px> --height <px>] [--diff <diff.png>] [--top <k>] [--width 1000]
+  node review-image.mjs --sheet <dir-or-files…> --out <sheet-NN.png> [--per 12] [--cols 3] [--crop-top <px>] [--tail 600]
 
   --bands   k worst bands (pixel-compare JSON bands[].pct) as rows of [A | B] + diff heat bar; ≤ 1500 px tall
   --sheet   tiles of top+tail crops of each capture, digit-labelled, ≤ 2000 px per side, + <sheet>.json legend
@@ -200,7 +200,7 @@ export async function writeImage(path, img) {
 function parseArgs(argv) {
   const rest = argv.slice(2);
   if (!rest.length || rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(rest.length ? 0 : 1); }
-  const o = { mode: null, inputs: [], out: null, json: null, y: null, height: null, diff: null, top: null, width: 1000, per: 12, cols: 3, tail: 600 };
+  const o = { mode: null, inputs: [], out: null, json: null, y: null, height: null, diff: null, top: null, cropTop: null, width: 1000, per: 12, cols: 3, tail: 600 };
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     if (a === '--bands' || a === '--sheet') { o.mode = a.slice(2); }
@@ -210,6 +210,7 @@ function parseArgs(argv) {
     else if (a === '--y') o.y = Number(rest[++i]);
     else if (a === '--height') o.height = Number(rest[++i]);
     else if (a === '--top') o.top = Number(rest[++i]);
+    else if (a === '--crop-top') o.cropTop = Number(rest[++i]);
     else if (a === '--width') o.width = Number(rest[++i]);
     else if (a === '--per') o.per = Number(rest[++i]);
     else if (a === '--cols') o.cols = Number(rest[++i]);
@@ -218,6 +219,10 @@ function parseArgs(argv) {
     else o.inputs.push(a);
   }
   if (!o.mode || !o.out) { console.error(`need --bands or --sheet, and --out\n\n${HELP}`); process.exit(1); }
+  // One meaning per flag: --top <k> counts bands, --crop-top <px> crops sheet
+  // tiles (the same token meant "k bands" in one mode and "crop px" in the other).
+  if (o.mode === 'sheet' && o.top != null) { console.error(`--sheet: --top is the --bands band count; the tile crop height is --crop-top <px> (default 1200)\n\n${HELP}`); process.exit(1); }
+  if (o.mode === 'bands' && o.cropTop != null) { console.error(`--bands: --crop-top is the --sheet tile crop; the band count is --top <k> (default 3)\n\n${HELP}`); process.exit(1); }
   return o;
 }
 
@@ -256,7 +261,7 @@ async function main() {
     const chunk = files.slice(s * o.per, (s + 1) * o.per);
     const items = [];
     for (const f of chunk) items.push({ slug: basename(f, '.png'), file: f, img: await readImage(f) });
-    const { img, legend } = renderSheet(items, { cols: o.cols, per: o.per, top: o.top || 1200, tail: o.tail });
+    const { img, legend } = renderSheet(items, { cols: o.cols, per: o.per, top: o.cropTop || 1200, tail: o.tail });
     const out = sheetName(o.out, nSheets, s);
     await writeImage(out, img);
     const legendPath = `${out.slice(0, out.length - extname(out).length)}.json`;
