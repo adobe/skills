@@ -481,7 +481,14 @@ rather than erroring.
    baked a pixel-diff contributor into the LIVE capture, repeated at every
    chunk seam, that no prototype fidelity could null out. These fire on a
    timer, so the dismissal polls for late arrivals and stitch-shot sweeps
-   again after the settle pass.
+   again after the settle pass. **Consent mode is one instrument
+   parameter, the same on lift, capture and gate** (`--consent-mode
+   accept|deny`, default `accept`; the project's choice lives in
+   `progress.json#captureState.consent` and `gate.sh` passes it to both
+   sides). `deny` is right when accepting loads nondeterministic
+   third-party walls the build cannot carry; a dialog with no reject
+   control makes `deny` an invalid capture (exit 5, no verdict) — never a
+   silent accept.
 7. **Granularity parity for JOIN/SPLIT false-reds (#87)** — mirror live
    node granularity or confirm-justify per
    `recreation-procedure.md` § Granularity parity.
@@ -548,6 +555,18 @@ rather than erroring.
     capture defect: fix the instrument, and the poisoned runs don't consume
     the iteration cap per § Iteration discipline); if it fails there too,
     fallback type is the truthful capture (**capture-state** — log it).
+15. **Comparable captures only — the provenance sidecar decides.** Every
+    stitch-shot capture writes `<png>.json` (schema: the header of
+    `../scripts/capture-sidecar.mjs`): url, width, vh, dpr, capturedAt,
+    instrument, consent {mode, via}, dismissed, fontsFailed, docHeight,
+    source, technique. `pixel-compare` and `crop-compare` read both sides
+    and refuse (exit 1, named message) a pair that differs in instrument
+    name, width, vh, dpr or consent mode, or has a sidecar on one side
+    only; `--force` compares anyway and marks the number `forced`.
+    `gate.sh` treats a cached `live.png` without a sidecar as stale and
+    re-captures it. Recorded: a same-page self-noise capture read 0.00 %
+    where the mixed-instrument "drift" had read 18 % — the delta was the
+    instrument, and the round chasing it was a false round.
 
 ### Script adaptations (built-in flags first — but fail-loud outranks script immutability)
 

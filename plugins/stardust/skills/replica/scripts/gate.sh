@@ -29,9 +29,19 @@
 # Fail-loud contract: a stitch-shot bot challenge (exit 3) or capture error
 # aborts the round — a missing/blocked side must never be compared. Exit
 # codes: 0 gate PASS, 2 gate FAIL (over threshold), 3 bot challenge,
-# 1 capture/compare error, 4 build-side identity assertion failed (the URL
-# serves something that isn't this project's page — wrong/stale server),
-# 124 instrument deadline exceeded (not a measurement — see below).
+# 1 capture/compare error (incl. incomparable captures), 4 build-side
+# identity assertion failed (the URL serves something that isn't this
+# project's page — wrong/stale server), 5 invalid capture (consent dialog
+# present, --consent-mode deny impossible — no verdict), 124 instrument
+# deadline exceeded (not a measurement — see below).
+#
+# Comparable captures (gate doc § Hardening rule 15): both sides are taken by
+# stitch-shot with the same width, vh, dpr and CONSENT MODE, and each PNG
+# carries its provenance sidecar (<png>.json). A cached live.png WITHOUT a
+# sidecar is a pre-sidecar capture of unknown instrument state: it is deleted
+# and re-taken (one loud line) rather than compared. The consent mode comes
+# from GATE_CONSENT_MODE, else stardust/replica/progress.json#captureState.consent,
+# else accept — and is passed to BOTH captures so the pair stays comparable.
 #
 # Instrument deadlines + stale reap: every node step runs under
 # run-capped.mjs (macOS has no `timeout`). Three field migrations (2026-08/09)
@@ -67,6 +77,9 @@ DIR="stardust/replica/gates/$SLUG-$W"
 mkdir -p "$DIR"
 
 STITCH_TIMEOUT=${GATE_STITCH_TIMEOUT:-300}
+CONSENT_MODE=${GATE_CONSENT_MODE:-}
+[ -z "$CONSENT_MODE" ] && CONSENT_MODE=$(node -e 'try{const j=JSON.parse(require("fs").readFileSync("stardust/replica/progress.json","utf8"));process.stdout.write(j.captureState&&j.captureState.consent||"")}catch{}' 2>/dev/null)
+CONSENT_MODE=${CONSENT_MODE:-accept}
 COMPARE_TIMEOUT=${GATE_COMPARE_TIMEOUT:-120}
 REAP_MIN=${GATE_REAP_MIN:-15}
 capped() { local t=$1 l=$2; shift 2; node "$HERE/run-capped.mjs" --timeout "$t" --label "$l" -- "$@"; }
@@ -117,15 +130,19 @@ fi
 # Live side: captured once per breakpoint per full gate run and reused
 # (--settle: live JS-heavy pages need the lazyload pass). Never swallow the
 # output — exit 3 here means "blocked, escalate --headed", not "skip".
+if [ -f "$DIR/live.png" ] && [ ! -f "$DIR/live.png.json" ]; then
+  echo "gate.sh: $DIR/live.png has no provenance sidecar (pre-sidecar capture, instrument state unknown) — treating it as stale and re-capturing" >&2
+  rm -f "$DIR/live.png"
+fi
 if [ ! -f "$DIR/live.png" ]; then
-  capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle
+  capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle --consent-mode "$CONSENT_MODE"
   rc=$?
-  [ $rc -eq 124 ] && rm -f "$DIR/live.png"   # never leave a partial live capture to be reused
+  [ $rc -eq 124 ] && rm -f "$DIR/live.png" "$DIR/live.png.json"   # never leave a partial live capture to be reused
   [ $rc -ne 0 ] && { echo "gate.sh: live capture failed (exit $rc) — not comparing" >&2; exit $rc; }
 fi
 
 # Build side: re-captured every iteration.
-capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W"
+capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W" --consent-mode "$CONSENT_MODE"
 rc=$?
 [ $rc -ne 0 ] && { echo "gate.sh: build capture failed (exit $rc) — not comparing" >&2; exit $rc; }
 
@@ -149,7 +166,7 @@ const j = JSON.parse(fs.readFileSync(rec, 'utf8'));
 let side = null; try { side = JSON.parse(fs.readFileSync(`${live}.json`, 'utf8')); } catch { /* no sidecar: mtime */ }
 const capturedAt = side?.capturedAt || fs.statSync(live).mtime.toISOString();
 const out = { slug, label, width: Number(width), regime,
-  ref: { url: liveUrl, width: Number(width), capturedAt, ...(side ? { sidecar: `${live}.json` } : { source: 'mtime' }) },
+  ref: { url: liveUrl, width: Number(width), capturedAt, ...(side ? { sidecar: `${live}.json`, instrument: side.instrument && side.instrument.name, technique: side.technique, consent: side.consent } : { source: 'mtime' }) },
   build: { url: buildUrl }, verdict: rc === 0 ? 'PASS' : rc === 2 ? 'FAIL' : 'no-verdict', exit: rc, ...j };
 fs.writeFileSync(rec, `${JSON.stringify(out, null, 2)}\n`);
 console.log(`regime: ${regime}  reference: ${liveUrl} @${width} captured ${capturedAt}${side ? '' : ' (live.png mtime)'}  record: ${rec}`);

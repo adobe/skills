@@ -23,6 +23,9 @@
  *     --threshold <pct>  pass bar; exit 2 above it           (default 2)
  *     --pm-threshold <n> pixelmatch per-pixel color threshold (default 0.1)
  *     --json          machine-readable summary on stdout
+ *     --force         compare even when the two captures' provenance sidecars
+ *                     (<png>.json) are not comparable — see pixel-compare.mjs
+ *                     and ./capture-sidecar.mjs; exit 1 otherwise
  *
  *   Also prints the diff TEXTURE (share of differing pixels with ≥5 differing
  *   neighbours): thin-edge = glyph-antialiasing noise, thick = blocks/bands.
@@ -36,22 +39,25 @@
  *     --y 8840 --y-b 8846 --height 400 --out gates/home-1440/chrome-footer-diff.png
  *
  * Requires: pixelmatch, pngjs (project devDependencies — same as
- * pixel-compare.mjs). Exit codes: 0 under threshold, 1 error, 2 over
- * threshold (gate FAIL).
+ * pixel-compare.mjs). Exit codes: 0 under threshold, 1 error (incl.
+ * incomparable captures), 2 over threshold (gate FAIL).
  */
 import fs from 'node:fs';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
+import { requireComparable } from './capture-sidecar.mjs';
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
   return i !== -1 ? process.argv[i + 1] : fallback;
 }
 
+const USAGE = 'usage: crop-compare.mjs <a.png> <b.png> --height <px> [--y <px>] [--y-b <px>] [--out diff.png] [--threshold pct] [--pm-threshold n] [--json] [--force]';
+if (process.argv.includes('--help') || process.argv.includes('-h')) { console.log(`crop-compare — per-region crop gate over two stitched captures (chrome parity, #115)\n${USAGE}\nExit: 0 under threshold · 1 error (incl. incomparable captures) · 2 over threshold`); process.exit(0); }
 const positional = [];
 for (let i = 2; i < process.argv.length; i += 1) {
   const t = process.argv[i];
-  if (t.startsWith('--')) { if (t !== '--json') i += 1; continue; }
+  if (t.startsWith('--')) { if (t !== '--json' && t !== '--force') i += 1; continue; }
   positional.push(t);
 }
 const [fileA, fileB] = positional;
@@ -62,12 +68,14 @@ const out = arg('out', 'crop-diff.png');
 const bar = Number(arg('threshold', 2));
 const pmThreshold = Number(arg('pm-threshold', 0.1));
 const asJson = process.argv.includes('--json');
+const force = process.argv.includes('--force');
 
 if (!fileA || !fileB || Number.isNaN(h) || h <= 0) {
-  console.error('usage: crop-compare.mjs <a.png> <b.png> --height <px> [--y <px>] [--y-b <px>] [--out diff.png] [--threshold pct]');
+  console.error(USAGE);
   process.exit(1);
 }
 
+const prov = requireComparable('crop-compare', fileA, fileB, { force });
 let A;
 let B;
 try {
@@ -126,6 +134,7 @@ if (asJson) {
     diffPixels: n, diffPct: +pct.toFixed(2), matchPct: +(100 - pct).toFixed(2),
     threshold: bar, pass, diffImage: out,
     texture: { thickPct: +thickPct.toFixed(1), label: texture },
+    ...prov,
   }));
 } else {
   console.log(`crop y${y0}${y1 !== y0 ? `/y${y1}` : ''}+${h}: ${n} px = ${pct.toFixed(2)}% diff → match ${(100 - pct).toFixed(2)}% — ${pass ? 'PASS' : `FAIL (bar ${bar}%)`}`);

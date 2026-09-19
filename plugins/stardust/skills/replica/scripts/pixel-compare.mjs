@@ -38,6 +38,13 @@
  *     --json               emit machine-readable summary on stdout
  *     --json-out <file>    write the same summary to <file> AND keep the human
  *                          verdict lines on stdout (gate.sh's per-round record)
+ *     --force              compare even when the two captures' provenance
+ *                          sidecars (<png>.json, written by stitch-shot) say
+ *                          they are not comparable — different instrument,
+ *                          width, vh, dpr or consent mode, or only one side
+ *                          has a sidecar. Without it that pair exits 1 with a
+ *                          named message (./capture-sidecar.mjs): a mixed
+ *                          compare is a false round, not a measurement.
  *     --timeout <s>        hard wall-clock deadline (default 120; 0 disables).
  *                          Enforced from a supervising process (the compare
  *                          itself is synchronous, so an in-process timer could
@@ -62,8 +69,8 @@
  *     --out stardust/replica/gates/home-1440/diff.png
  *
  * Requires: pixelmatch, pngjs (project devDependencies).
- * Exit codes: 0 under threshold, 1 error, 2 over threshold (gate FAIL),
- * 124 deadline exceeded (see --timeout; not a measurement).
+ * Exit codes: 0 under threshold, 1 error (incl. incomparable captures), 2 over
+ * threshold (gate FAIL), 124 deadline exceeded (see --timeout; not a measurement).
  * Note: the height delta does NOT affect the exit code — the SKILL gate
  * requires height Δ ≈ 0 separately; a large delta is printed as a warning
  * because the overlap-crop can make the % look artificially healthy.
@@ -76,6 +83,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { runCapped, DEADLINE_EXIT } from './run-capped.mjs';
+import { requireComparable } from './capture-sidecar.mjs';
 
 const HELP = `pixel-compare — pixelmatch two stitched full-page PNGs with per-band breakdown
 
@@ -88,6 +96,7 @@ Usage: node pixel-compare.mjs <a.png> <b.png> [options]
                       repeatable / comma list; yB defaults to yA
   --json              machine-readable summary on stdout
   --json-out <file>   write the summary to <file>, keep the human verdict on stdout
+  --force             compare captures whose provenance sidecars differ (exit 1 otherwise)
   --timeout <s>       hard deadline, exit 124 when hit (default 120; 0 disables)
   --help              this text
 
@@ -97,7 +106,7 @@ function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { out: 'diff.png', threshold: 10, band: 500, pmThreshold: 0.1, json: false, jsonOut: null, masks: [], timeout: 120, worker: false };
+  const opts = { out: 'diff.png', threshold: 10, band: 500, pmThreshold: 0.1, json: false, jsonOut: null, masks: [], timeout: 120, worker: false, force: false };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--out') { opts.out = rest[i += 1]; }
@@ -108,6 +117,7 @@ function parseArgs(argv) {
     else if (a === '--json-out') { opts.jsonOut = rest[i += 1]; }
     else if (a === '--timeout') { opts.timeout = Number(rest[i += 1]); }
     else if (a === '--worker') { opts.worker = true; }
+    else if (a === '--force') { opts.force = true; }
     else if (a === '--mask') {
       for (const spec of rest[i += 1].split(',').map((s) => s.trim()).filter(Boolean)) {
         const m = spec.match(/^(\d+):(\d+)(?:@(\d+))?$/);
@@ -143,6 +153,8 @@ async function supervise(timeoutSec) {
 function main() {
   const { aPath, bPath, opts } = parseArgs(process.argv);
   if (!opts.worker && opts.timeout > 0) { supervise(opts.timeout); return; }
+  // Comparability first (rule 15): same instrument, width, vh, dpr, consent mode.
+  const prov = requireComparable('pixel-compare', aPath, bPath, { force: opts.force });
   const a = PNG.sync.read(readFileSync(aPath));
   const b = PNG.sync.read(readFileSync(bPath));
   const w = Math.min(a.width, b.width);
@@ -201,7 +213,7 @@ function main() {
   // Field names mirror the ledger (source-fidelity-gate.md § Residual logging
   // format) so `result` is copied from here, never typed: pixelPct,
   // pixelPctUnmasked, heightDelta, pass, masks[].
-  const summary = { a: aPath, b: bPath, compared: { width: w, height: h }, heightDelta, differingPixels: n, pct: Number(pct.toFixed(2)), pixelPct: Number(pct.toFixed(2)), pixelPctUnmasked: Number(pctUnmasked.toFixed(2)), threshold: opts.threshold, pass, diff: opts.out, masks, maskedRows, bands: bands.map((x) => ({ ...x, pct: Number(x.pct.toFixed(1)) })) };
+  const summary = { a: aPath, b: bPath, compared: { width: w, height: h }, heightDelta, differingPixels: n, pct: Number(pct.toFixed(2)), pixelPct: Number(pct.toFixed(2)), pixelPctUnmasked: Number(pctUnmasked.toFixed(2)), threshold: opts.threshold, pass, diff: opts.out, masks, maskedRows, bands: bands.map((x) => ({ ...x, pct: Number(x.pct.toFixed(1)) })), ...prov };
   if (opts.jsonOut) { mkdirSync(dirname(opts.jsonOut), { recursive: true }); writeFileSync(opts.jsonOut, `${JSON.stringify(summary, null, 2)}\n`); }
   if (opts.json) {
     console.log(JSON.stringify(summary, null, 2));
