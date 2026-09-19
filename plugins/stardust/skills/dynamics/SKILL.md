@@ -15,11 +15,11 @@ Phases, in order: 1 Detect → 2 Classify → 3 Triage (the gate output) → 4 I
 |---|---|
 | 1 | `node skills/dynamics/scripts/dynamics-detect.mjs --from-state stardust/state.json --out stardust/current [--reach stardust/current]` (or `--urls …`) |
 | 2 | class per finding; vendors via `scripts/vendors.json`; `dynamics-plan.mjs --target-origin <host>` marks dead first-party API paths host-bound |
-| 3 | `node skills/dynamics/scripts/dynamics-plan.mjs [--target-origin …] [--migrated stardust/migrated] --out stardust/dynamics`; curate `stardust/dynamic-features.md` + `-plan.md` |
+| 3 | `node skills/dynamics/scripts/dynamics-plan.mjs [--target-origin …] [--migrated stardust/migrated] --out stardust/dynamics`; curate `stardust/dynamic-features.md` + `-plan.md`; `dynamics-plan.mjs --lint <inventory.md> <plan.md>` (every row placed once) |
 | 4 | per plan phase, from the pattern catalogue; tooling `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs` |
-| 5 | write `stardust/dynamics/parity.json`; `node skills/dynamics/scripts/dynamics-check.mjs --origin <published origin> [--auth-header … | --token-env SITE_TOKEN]` |
+| 5 | write `stardust/dynamics/parity.json`; `node skills/dynamics/scripts/dynamics-check.mjs --origin <published origin> [--auth-header … | --token-env SITE_TOKEN] [--gate]` |
 
-Gates: Phase 3 — a row without a disposition fails the caller's pre-import gate (prepare-migration 4.5 / replica Phase 2 / rollout B2). Phase 4 — each plan phase ends with the flow verified on the published origin at both gate widths, a parity row, a journal entry and a commit. Phase 5 — replayed flows, not presence.
+Gates: Phase 3 — a row without a disposition fails the caller's pre-import gate (prepare-migration 4.5 / replica Phase 2 / rollout B2). Phase 4 — each plan phase ends with the flow verified on the published origin at both gate widths, a parity row, a journal entry and a commit. Phase 5 — replayed flows, not presence; `--gate` is the close-out condition (`reference/parity-report.md` rule 8).
 
 Outputs: `stardust/current/_dynamics.json` + `dynamic-features.generated.md` · `stardust/dynamics/dynamic-features.generated-plan.{md,json}` · `stardust/dynamic-features.md` + `-plan.md` · `helix-query.yaml` · `data/<feature>/*.json` + `_provenance.json` · `scripts/site-config.js` · `stardust/dynamics/parity.json` · `stardust/qa/dynamics-report.{md,json}`.
 
@@ -29,18 +29,16 @@ Outputs: `stardust/current/_dynamics.json` + `dynamic-features.generated.md` · 
 | 2 | `reference/classes-and-signals.md` § Classes · § Vendor table · § Origin-bound probe |
 | 3 | `reference/triage.md` § Dispositions · § Reproducibility · § Rules · § `stardust/dynamic-features.md` |
 | 4 | `reference/patterns.md` (one section per pattern); `reference/listings.md` § Mechanics · § Block contract; `reference/off-origin-data.md` § Tier 1 · § Tier 2 · § Tier 3 · § Tier 4 · § Sheet-backed data (class D); `reference/forms.md` § 1. Record the live form · § 2. Key the inventory · § 3. Decide the intake · § 4. The block · § 5. Regulated data; `reference/locale-trees.md` |
-| 5 | `reference/parity-report.md` § Schema · § Rules; `reference/off-origin-data.md` § Verify (flows, not presence); `reference/forms.md` § 6. Verify (flow) |
+| 5 | `reference/parity-report.md` § Schema · § Rules; `reference/listings.md` § Verify; `reference/off-origin-data.md` § Verify (flows, not presence); `reference/forms.md` § 6. Verify (flow) |
 
 Sections: When it runs · Phase 1 — Detect · Phase 2 — Classify · Phase 3 — Triage · Phase 4 — Implement · Phase 5 — Verify · Hands-off resolutions · Hard blockers · Artifacts · References.
 
 Static migration treats a page as content and layout. This skill treats it as **behaviour**:
 everything the source renders from JavaScript, a service or a data source, and everything the
-target host cannot serve the same way. Three real migrations found the same thing: the dynamic
-surface is invisible to a block-scoped, pixel-verified pipeline — and invisible in a way every gate
-certifies as correct. Modals rendered as links, video pills as CTAs without targets, a search box as
-a 404, forms that rendered and could not submit. This skill makes that surface visible and forces a
-decision per row **before import**, then proves the behaviour after delivery. It never blocks the
-static path; every page must still work as a static page.
+target host cannot serve the same way — a surface a block-scoped, pixel-verified pipeline
+certifies as correct while modals render as links, video pills as CTAs without targets, a search
+box as a 404. It forces a decision per row **before import**, then proves the behaviour after
+delivery. It never blocks the static path; every page must still work as a static page.
 
 ## When it runs — migration-bound, default-on there, never elsewhere
 
@@ -52,14 +50,14 @@ static path; every page must still work as a static page.
 | `rollout` B2 · D2 | B2 verifies the inventory against fresh evidence; D2 = Phase 4 for the `self` set + one owner batch |
 | `qa` `dynamics` check · rollout report | Phase 5 replay of `parity.json` |
 | **standalone** `$stardust dynamics <origin>` | all phases on a site that was already migrated without them |
+| **chain ends at `deploy`** (pilot, no rollout) | Phases 4–5 run standalone before the pilot is declared done; `parity.json` + `dynamics-check.mjs --gate` exit 0 are required in both flows |
 
 `uplift`, `audit` and a bare `extract` never trigger it: dynamics is a migration concern (EDS today,
 other platforms later), not a redesign one.
 
 ## Phase 1 — Detect
 
-`node skills/dynamics/scripts/dynamics-detect.mjs --from-state stardust/state.json --out stardust/current [--reach stardust/current]`
-(or `--urls` one per archetype + the home page). Depth on archetypes, reach from the crawl's
+Command: Operator card row 1 (or `--urls` one per archetype + the home page). Depth on archetypes, reach from the crawl's
 `extract --dynamics` per-page signals. Output `stardust/current/_dynamics.json` +
 `dynamic-features.generated.md`. Evidence only. `reference/classes-and-signals.md`.
 
@@ -72,8 +70,7 @@ there and marks dead ones **host-bound** — the signal a pixel gate reports as 
 
 ## Phase 3 — Triage (the gate output)
 
-`node skills/dynamics/scripts/dynamics-plan.mjs [--target-origin …] [--migrated stardust/migrated] --out stardust/dynamics`
-drafts one row per finding with the four axes pre-filled — **class · disposition ·
+`dynamics-plan.mjs` (Operator card row 3) drafts one row per finding with the four axes pre-filled — **class · disposition ·
 reproducibility · status** — plus pattern, phase and the owner decision. Curate it into
 `stardust/dynamic-features.md` (subsumes the former dynamic-blocks map: § Listings contract +
 § Features + § Decision batch + § Register) and `stardust/dynamic-features-plan.md`.
@@ -99,8 +96,8 @@ and a commit. Tooling: `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mj
 ## Phase 5 — Verify: dynamic parity
 
 Write `stardust/dynamics/parity.json` (`reference/parity-report.md`) with replayable checks from the
-closed set; `node skills/dynamics/scripts/dynamics-check.mjs --origin <published origin> [--auth-header … | --token-env SITE_TOKEN]`
-writes `stardust/qa/dynamics-report.md`. **Flows, not presence.** The site secret rides an
+closed set; `dynamics-check.mjs` (Operator card row 5) writes `stardust/qa/dynamics-report.md`;
+`--gate` is the close-out condition. **Flows, not presence.** The site secret rides an
 origin-scoped route filter only; third-party request statuses are recorded next to every assertion.
 
 ## Hands-off resolutions
@@ -113,6 +110,8 @@ origin-scoped route filter only; third-party request statuses are recorded next 
 | regulated-pii form | UI rebuilt, submission blocked, mandatory decision |
 | hand-off target unreachable from the test network | `environment-limit` row with the egress region; not a defect |
 | content source cannot receive submissions | local capture with an explicit "no backend connected" message; decision named |
+| class S search box with no results page | interim = the index-backed `/search` over `query-index.json`; if it cannot ship, point the box at the live results page; a submit target that 404s is never promoted |
+| `self` row unshipped at close-out | `reference/parity-report.md` rule 8 remedy |
 
 ## Hard blockers (`event: "blocked"`)
 
@@ -121,17 +120,14 @@ required; an interim tier that would capture regulated data (record as decided-o
 
 ## Artifacts
 
-`stardust/current/_dynamics.json`, `dynamic-features.generated.md` · `stardust/dynamics/dynamic-features.generated-plan.{md,json}` ·
-`stardust/dynamic-features.md`, `stardust/dynamic-features-plan.md` (curated) · `helix-query.yaml` (listings) ·
-`data/<feature>/*.json` + `_provenance.json` (snapshots, code bus) · `scripts/site-config.js` (owner-facing integrations, disabled) ·
-`stardust/dynamics/parity.json` · `stardust/qa/dynamics-report.{md,json}` · register rows · journal + status lines.
+The Operator card's Outputs line, plus register rows · journal + status lines.
 
 ## References
 
 - `reference/classes-and-signals.md` — the class axis, detector procedure, vendor table policy, origin-bound probe.
 - `reference/triage.md` — the four axes, rules, the inventory file format.
 - `reference/patterns.md` — catalogue: contracts + verification per pattern, example mechanisms.
-- `reference/listings.md` — metadata contract + query-index mechanics (formerly rollout's dynamic-listings).
+- `reference/listings.md` — metadata contract + query-index mechanics + document-first block contract.
 - `reference/off-origin-data.md` — feeding an existing library off-origin; sheet-backed data; chrome URL space.
 - `reference/forms.md` — controls not form tags; intake by content source; regulated data.
 - `reference/parity-report.md` — schema, check types, rules.

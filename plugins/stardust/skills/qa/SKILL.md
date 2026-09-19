@@ -14,8 +14,9 @@ Steps, in order: Setup (base URL, inventory source, optional inputs) → 1 deter
 | Step | Command |
 |---|---|
 | Setup | base from the user or `stardust/rollout/rollout.json` (`site.liveHost`); inventory = `stardust/template-map.json` ∪ paths file ∪ live `sitemap.xml`; append a line to `stardust/status.jsonl` at start/end |
-| 1 | `node <plugin>/skills/qa/scripts/qa.mjs --base <live-url> --template-map stardust/template-map.json --scrape stardust/scrape [--expected-blocks <json>] [--parity <json>] [--auth-header … | --token-env SITE_TOKEN] [--blocks-dir <dir> | --ew-exempt a,b]` — caps/gates: `--checks <subset>`, `--max-pages <n>`, `--fail-on warn` |
-| 1 (no playwright) | `--checks routing,content,templates,metadata,links` |
+| 1 | `node <plugin>/skills/qa/scripts/qa.mjs --base <live-url> --template-map stardust/template-map.json --scrape stardust/scrape [--expected-blocks <json>] [--parity <json>] [--auth-header … | --token-env SITE_TOKEN] [--blocks-dir <dir> | --ew-exempt a,b]` — caps/gates: `--checks <modules, or preset: delivery · rendered · parity>`, `--max-pages <n>`, `--fail-on warn`, `--baseline-reset` |
+| 1 (no playwright) | `--checks delivery` |
+| 1 (fleet > 100 pages) | `--checks delivery`, `--checks rendered`, `--checks parity` as separate, sequential invocations |
 | 2 | judge only `content/verbatim-below-threshold` (`evidence.missingNodes`) and `visual/visual-diff` (`evidence.baseline` vs `evidence.current`, `bands`) |
 | 3 | summarize by severity → `stardust/qa/report.html`; recommend, never apply |
 | allowlist | `stardust/qa/allowlist.json` entries with a reason, only for user-confirmed non-defects |
@@ -78,8 +79,7 @@ delivered HTML ≠ rendered correctly.
      `editability` check can honour `@ew-exempt` JSDoc tags (otherwise
      pass `--ew-exempt a,b` for index-driven blocks)
 5. Browser checks need **playwright resolvable from the project** (`node_modules/playwright`).
-   If missing, run the delivery-layer checks only (`--checks routing,content,templates,metadata,links`)
-   and tell the user what was skipped.
+   If missing, run `--checks delivery` and tell the user what was skipped.
 6. Append a phase-transition line to `stardust/status.jsonl` per
    `reference/run-status.md` (master skill) at sweep start/end.
 
@@ -94,30 +94,28 @@ node <plugin>/skills/qa/scripts/qa.mjs \
   --scrape stardust/scrape
 ```
 
-Writes `stardust/qa/inventory.json`, `report.json`, `report.html`, screenshots
-under `stardust/qa/shots/`, and (first run) visual baselines under
+Writes `stardust/qa/inventory.json`, `report.json` (rewritten after every check,
+`partial: true` until the sweep ends), `report.html`, screenshots under
+`stardust/qa/shots/`, and (first run) visual baselines under
 `stardust/qa/baselines/`. Exit 0 = no active errors, 1 = active errors,
 2 = infra failure. `reference/checks.md` documents every check, its finding
-ids, and severity rationale. Useful variants: `--checks <subset>`,
-`--max-pages <n>` (smoke run), `--fail-on warn` (strict gate). The `ai-readability` check
+ids, and severity rationale. Variants: Operator card row 1. The `ai-readability` check
 reproduces Adobe's AI Content Visibility Checker per page (served words ÷ rendered words) and
 attributes the gap per block (`deploy/reference/ai-readability.md`).
 
-The `editability` check is the post-deploy **Experience Workspace
-editability gate** (`skills/deploy/reference/block-js-scaffold.md` § Experience Workspace editability contract, EW1–EW10): per page it re-creates
-the da.live canvas's instrumentation on the served document, lets the live
-page decorate, and counts which authored texts still carry their editor
-index. `editability/dead-text` (error) = a block rebuilt authored text and
-the author cannot click it in the canvas; `editability/duplicated-index`
-(warn) = a presentational clone kept the index. Dead texts inside blocks
-declared `@ew-exempt` (or listed in `--ew-exempt`) are info, not errors.
+The `editability` check is the post-deploy **Experience Workspace editability gate**
+(`skills/deploy/reference/block-js-scaffold.md` § Experience Workspace editability contract,
+EW1–EW10); finding ids, severities and exemptions: `reference/checks.md` § editability.
 
 First run on a site: expect a wave of `visual/baseline-created` info findings —
-that is the baseline being established, not a defect. Baselines are
-screenshots and therefore local (`stardust/.gitignore` excludes
-`qa/baselines/` and `qa/shots/`, master skill § Artifacts): later runs on the
-same machine diff against them; a fresh clone re-establishes them on its
-first sweep. `qa/allowlist.json` is the tracked record of judgement.
+that is the baseline being established, not a defect. A page whose render was
+not clean (collapsed `main`, a same-origin 429/503) gets `visual/baseline-skipped`
+and no file — re-run. After an approved fix batch, `--baseline-reset` clears the
+set so the fixes do not read as regressions. Baselines are screenshots and
+therefore local (`stardust/.gitignore` excludes `qa/baselines/` and `qa/shots/`,
+master skill § Artifacts): later runs on the same machine diff against them; a
+fresh clone re-establishes them on its first sweep. `qa/allowlist.json` is the
+tracked record of judgement.
 
 ### Phase 2 — triage the ambiguous flags (LLM judgment, still read-only)
 
@@ -168,5 +166,4 @@ a run green.
 
 The runner is plain node with no plugin-runtime dependency, so the same
 command works from a GitHub Action or cron for drift monitoring; `--fail-on`
-sets the gate. In CI without playwright, pin `--checks` to the delivery-layer
-subset.
+sets the gate. In CI without playwright, pin `--checks delivery`.

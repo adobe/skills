@@ -65,9 +65,11 @@ second.
 
 ## 4. Block rules (deploy § block authoring, alongside EW1–EW10)
 
-1. **`decorate()` adds no words.** Every string a visitor can read is authored. Generated text is
-   allowed only for values computed at runtime (live hours, "N results", prices) and each one is
-   named in the gate allowlist as `block + string`, never per page.
+1. **`decorate()` adds no words.** Every string a visitor can read is authored — including block
+   control labels (Previous/Next, Open, the "N of M" *label*), which are locale-specific on every
+   non-English site and belong in the block's label-list row (rule 3). Generated text is allowed
+   only for the runtime *values* (live hours, "N results", prices, the N and M themselves) and each
+   one is named in the gate allowlist as `block + string`, never per page.
 2. **Clones are presentational.** Anything a block duplicates for geometry carries no text, alt,
    href, role or aria. The EW `stripInstrumentation()` pass and this rule apply to the same nodes.
 3. **Document-first listings (fallback-first).** The generator writes one authored row per listed

@@ -16,11 +16,33 @@
  *
  *   node dynamics-plan.mjs [--in stardust/current/_dynamics.json] [--out stardust/dynamics]
  *        [--target-origin https://…] [--auth-header "token …" | --token-env SITE_TOKEN] [--migrated stardust/migrated]
+ *   node dynamics-plan.mjs --lint stardust/dynamic-features.md stardust/dynamic-features-plan.md
+ *        plan↔inventory lint (rollout B2): every inventory row `| N |` is placed exactly once in the plan as a
+ *        list item starting with `#N` (`- #N …`, one row per item — the shape § Phases of the generated plan
+ *        seeds; `#N` elsewhere in prose is ignored) and every such item names an inventory row; exit 1 on
+ *        misses / duplicates / orphans. Fixture: test/lint.test.mjs.
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { arg, readJSON, writeJSON, writeText, provenance, resolveAuthHeader, probe } from './lib.mjs';
+
+/* ---------------------------------------------------------------- lint ---- */
+if (process.argv.includes('--lint')) {
+  const i = process.argv.indexOf('--lint');
+  const [inv, plan] = [process.argv[i + 1], process.argv[i + 2]];
+  if (!inv || !plan || !existsSync(inv) || !existsSync(plan)) { console.error('usage: dynamics-plan.mjs --lint <stardust/dynamic-features.md> <stardust/dynamic-features-plan.md>  (both files must exist)'); process.exit(2); }
+  const ids = [...new Set([...readFileSync(inv, 'utf8').matchAll(/^\|\s*(\d+)\s*\|/gm)].map((m) => m[1]))];
+  const planText = readFileSync(plan, 'utf8');
+  const refs = {}; for (const m of planText.matchAll(/^\s*[-*]\s*#(\d+)\b/gm)) refs[m[1]] = (refs[m[1]] || 0) + 1;
+  const problems = [];
+  for (const id of ids) { if (!refs[id]) problems.push(`inventory row ${id} is not placed in the plan (no #${id})`); else if (refs[id] > 1) problems.push(`inventory row ${id} appears ${refs[id]}× in the plan`); }
+  for (const id of Object.keys(refs)) if (!ids.includes(id)) problems.push(`plan cites #${id} but the inventory has no row ${id}`);
+  if (!ids.length) problems.push(`no \`| N |\` rows found in ${inv}`);
+  if (problems.length) { console.error(`[dynamics-plan] lint: ${problems.length} problem(s) — ${ids.length} inventory rows vs ${Object.keys(refs).length} plan references\n${problems.map((p) => `  - ${p}`).join('\n')}`); process.exit(1); }
+  console.error(`[dynamics-plan] lint: ${ids.length} inventory rows each placed once in the plan`);
+  process.exit(0);
+}
 
 const IN = arg('in', 'stardust/current/_dynamics.json');
 const OUT = arg('out', 'stardust/dynamics');
@@ -50,6 +72,7 @@ const RULES = [
   { when: (f) => f.class === 'M' && /chrome only/.test(f.feature), pattern: 'chrome-interaction', disposition: 'rebuild-native', repro: 'self', phase: 'interactive', decision: 'none (motion-observe evidence)' },
   { when: (f) => f.class === 'M', pattern: 'modal-loader', disposition: 'rebuild-native', repro: 'self', phase: 'interactive', decision: 'none' },
   { when: (f) => f.class === 'V' && /iframe without src/.test(f.feature), pattern: 'embed-passthrough', disposition: 'embed-passthrough', repro: 'needs-human-capture', phase: 'embeds', decision: 'resolve the runtime src from a rendered capture' },
+  { when: (f) => f.class === 'V' && /HLS|DASH|\.m3u8|\.mpd/i.test(f.feature + (f.evidence || []).join(' ')), pattern: 'hls-stream', disposition: 'embed-passthrough', repro: 'self', phase: 'media', decision: 'none (manifest URL is public; 401/403 → needs-credential)' },
   { when: (f) => f.class === 'V', pattern: 'media-as-url', disposition: 'embed-passthrough', repro: 'self', phase: 'media', decision: 'none (player ids are public)' },
   { when: (f) => f.class === 'L', pattern: 'listing-index-backed', disposition: 'index-backed', repro: 'needs-business-decision', phase: 'listings', decision: 'index-driven or editorially curated?' },
   { when: (f) => f.class === 'X', pattern: 'decided-out', disposition: 'decided-out', repro: 'needs-backend', phase: 'register', decision: 'auth / commerce on the new host?' },
@@ -112,7 +135,8 @@ const md = [
   `- **One owner decision batch:** ${batch.length} row(s) — ${[...new Set(batch.map((r) => r.decision))].slice(0, 6).join(' · ') || 'none'}.`,
   `- **Already delivered by the capture pipeline:** ${rows.filter((r) => r.alreadyDelivered).length} row(s) — no work.`,
   `- **Host-bound on the target:** ${rows.filter((r) => /dead/.test(r.hostBound || '')).length} of ${Object.keys(hostBound).length} probed API paths — the off-origin data work.`,
-  '', '## Phases', '', ...Object.entries(byPhase).sort((a, b) => b[1] - a[1]).map(([k, n]) => `- **${k}** — ${n}`),
+  '', '## Phases', '', '<!-- one list item per inventory row, `- #N …`; `dynamics-plan.mjs --lint` checks every row is placed once -->',
+  ...Object.entries(byPhase).sort((a, b) => b[1] - a[1]).flatMap(([k, n]) => [`- **${k}** — ${n}`, ...rows.map((r, i) => ({ r, n: i + 1 })).filter(({ r }) => r.phase === k).map(({ r, n: id }) => `  - #${id} ${r.feature.replace(/\|/g, '/')} (${r.class}, ${r.disposition}, ${r.reproducibility})`)]),
 ];
 writeText(join(OUT, 'dynamic-features.generated-plan.md'), md.join('\n'));
 console.error(`[dynamics] ${rows.length} rows → ${OUT}/dynamic-features.generated-plan.md · self ${self.length} · owner batch ${batch.length} · delivered ${Object.keys(delivered).length} · host-bound ${Object.values(hostBound).filter((v) => /dead/.test(v)).length}/${Object.keys(hostBound).length}`);

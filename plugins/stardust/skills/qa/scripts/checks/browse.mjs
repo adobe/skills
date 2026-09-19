@@ -33,6 +33,25 @@ const DECORATION_TIMEOUT = 15000;
 const DIFF_WARN = 0.005; // 0.5% pixels changed
 const DIFF_ERROR = 0.05; // 5%
 
+/**
+ * A visual baseline is only worth keeping when the page rendered cleanly: a
+ * baseline taken under a 429/503, a blank <main> or a failed load freezes the
+ * broken state and every later honest run reads as a regression. Returns null
+ * when clean, else the one-line reason the baseline was skipped.
+ */
+export function baselineSkipReason({ mainCollapsed = false, badRequests = [] } = {}) {
+  if (mainCollapsed) return 'main collapsed';
+  if (badRequests.length) return `${badRequests.length} same-origin response(s) ≥ 400 or failed (${badRequests[0].split(' ').slice(0, 2).join(' ')})`;
+  return null;
+}
+/** write `shot` as the baseline at `baseFile` only when the render was clean → { created } or { skip } (nothing written) */
+export function establishBaseline(baseFile, shot, render) {
+  const skip = baselineSkipReason(render);
+  if (skip) return { skip };
+  writeFileSync(baseFile, shot);
+  return { created: true };
+}
+
 async function settle(page) {
   try {
     await page.waitForFunction(() => {
@@ -281,9 +300,14 @@ export async function run(ctx) {
         if (baselineDir) {
           const baseFile = join(baselineDir, name);
           if (!existsSync(baseFile)) {
-            writeFileSync(baseFile, shot);
-            findings.push(finding('visual', 'baseline-created', 'info', p.path,
-              `[${vp.name}] no baseline existed — current screenshot saved as baseline`, { file: baseFile }));
+            const { skip } = establishBaseline(baseFile, shot, { mainCollapsed: geo.mainH < 50, badRequests });
+            if (skip) {
+              findings.push(finding('visual', 'baseline-skipped', 'info', p.path,
+                `[${vp.name}] render not clean (${skip}) — baseline not established, re-run when the host answers cleanly`, { reason: skip }));
+            } else {
+              findings.push(finding('visual', 'baseline-created', 'info', p.path,
+                `[${vp.name}] no baseline existed — current screenshot saved as baseline`, { file: baseFile }));
+            }
           } else {
             const baseline = readFileSync(baseFile);
             const d = await pixelDiff(await getDiffPage(), baseline, shot);
