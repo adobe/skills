@@ -154,7 +154,7 @@
  *   wait for it, or STARDUST_LIVE_FORCE=1) · 2 fatal · 3 BotChallengeError
  *   (tier 3 still challenged, or --solve-wait expired — never captured as content).
  * Exports (for evals/fixtures/*.test.mjs): slugify, assignSlugs, MOBILE_SHOT_SUFFIX,
- *   exitCodeOf, noteRateLimited, needsStateSave, mergeCrawlLog,
+ *   exitCodeOf, noteRateLimited, probeRateLimited, needsStateSave, mergeCrawlLog,
  *   RUN_LEVEL_DISCOVERY, TIERS, tierOf, captureQualityOf, SHOT_WRAP_PX,
  *   OVERLAY_FLAG_PCT, discoverInventory, parseRobots, parseCookieFlag,
  *   challengeMarker, CHALLENGE_PHRASE, HostBudget, BUDGET_DEFAULT,
@@ -391,10 +391,14 @@ function liveBudgetPath(args) { return path.resolve(args.out, '..', 'live-budget
 // host and Crawl-delay are known — a 429 already taken is never loosened.
 function makeBudget(args, host, crawlDelay) { return tuneBudget(new HostBudget({ ...BUDGET_DEFAULT, source: 'default' }), args, host, crawlDelay); }
 export const LIVE_BUDGET_TTL_MS = 7 * 24 * 3600 * 1000; // a learned ceiling older than this is ignored (live-budget.mjs carries the same constant)
+const expiredWarned = new Set(); // the expiry line prints once per host, not once per tune
 export function tuneBudget(budget, args, host, crawlDelay) {
   try {
     let learned = existsSync(liveBudgetPath(args)) ? JSON.parse(readFileSync(liveBudgetPath(args), 'utf8'))[host] : null;
-    if (learned && learned.learnedAt && Date.now() - Date.parse(learned.learnedAt) > LIVE_BUDGET_TTL_MS) { console.error(`[crawl] learned ceiling for ${host} (learnedAt ${learned.learnedAt}) has expired — default pacing; a recurring 429 re-learns it`); learned = null; }
+    if (learned && learned.learnedAt && Date.now() - Date.parse(learned.learnedAt) > LIVE_BUDGET_TTL_MS) {
+      if (!expiredWarned.has(host)) { expiredWarned.add(host); console.error(`[crawl] learned ceiling for ${host} (learnedAt ${learned.learnedAt}) has expired — default pacing; a recurring 429 re-learns it`); }
+      learned = null;
+    }
     if (learned && ((learned.navPerMin || Infinity) < budget.navPerMin || (learned.minGapMs || 0) > budget.minGapMs)) {
       budget.navPerMin = Math.min(budget.navPerMin, learned.navPerMin || budget.navPerMin); budget.minGapMs = Math.max(budget.minGapMs, learned.minGapMs || 0);
       if (!budget.rateLimits) budget.source = 'live-budget.json';
@@ -448,6 +452,15 @@ export function noteRateLimited(args) {
   args.throttled = true;
   if (args.concurrency > 1) args.concurrency = 1;
   return args;
+}
+// The PROBE's bare 429 takes the worker path — halve, ONE worker, persist —
+// so the pool that follows spawns 1 context and the log records concurrency 1
+// (ia-extraction.md § _crawl-log.json). Returns the ms to wait before the ONE retry.
+export function probeRateLimited(args, host, resp) {
+  const waitMs = args.budget.rateLimited(parseRetryAfter(resp.headers()['retry-after']));
+  noteRateLimited(args); persistBudget(args, host, args.budget);
+  console.error(`[crawl] HTTP 429 (rate limit, no edge signature) on the probe — pool → 1 worker, ceiling halved (${args.budget.navPerMin}/min, ≥ ${args.budget.minGapMs / 1000} s) and recorded; retrying once in ${Math.round(waitMs / 1000)} s`);
+  return waitMs;
 }
 // when to (re)write <out>/_storage-state.json: on a cleared challenge or
 // --save-state, and again after a capture-time escalation — the state saved
@@ -1525,7 +1538,7 @@ async function capturePage(context, url, slug, args, isEntry = false) {
   if (args.mobile === 'all' || (args.mobile === 'entry' && isEntry)) {
     await page.setViewportSize(MOBILE_VIEWPORT).catch(() => {});
     await lazyScroll(page);
-    const m = await screenshotPage(page, `${slug}-360`, shotsDir);
+    const m = await screenshotPage(page, `${slug}${MOBILE_SHOT_SUFFIX}`, shotsDir);
     rec.screenshotMobile = m.files.length ? `assets/screenshots/${m.files[0]}` : null;
     rec._signals.screenshotMobileMode = m.mode;
     if (m.bands) rec._signals.screenshotMobileBands = m.bands;
@@ -1608,9 +1621,7 @@ async function main() {
       // worker (halve, persist, Retry-After, ONE retry), then fatal — nothing
       // downstream may run discovery on a 429 body and call the site "1 page".
       if (probeResp && probeResp.status() === 429 && !isChallengeResponse(probeResp)) {
-        const waitMs = args.budget.rateLimited(parseRetryAfter(probeResp.headers()['retry-after']));
-        args.throttled = true; persistBudget(args, host, args.budget);
-        console.error(`[crawl] HTTP 429 (rate limit, no edge signature) on the probe — ceiling halved (${args.budget.navPerMin}/min, ≥ ${args.budget.minGapMs / 1000} s) and recorded; retrying once in ${Math.round(waitMs / 1000)} s`);
+        const waitMs = probeRateLimited(args, host, probeResp);
         await probe.waitForTimeout(waitMs);
         await args.budget.take();
         probeResp = await probe.goto(probeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });

@@ -10,7 +10,9 @@
 //   - another live tool holding the host → LiveLockError (exit 1 in every importer);
 //   - --solve-wait at tier 3: no reload during the poll, two clean polls resume,
 //     expiry → BotChallengeError with nextTier null; a hidden window is WARNed;
-//   - challengeMarker is the SAME function in live-session.mjs and crawl.mjs (vector table).
+//   - challengeMarker is the SAME function in live-session.mjs and crawl.mjs (vector table);
+//   - captureSanity (stitch-shot's post-capture rule): short AND challenge/near-empty →
+//     suspect (exit 3, nothing written); short alone → WARN; a full page → ok.
 // Usage: node plugins/stardust/evals/fixtures/live-session-goto.test.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
@@ -24,7 +26,7 @@ delete process.env.STARDUST_LIVE_FORCE;
 const lb = await import('../../skills/diff/scripts/live-budget.mjs');
 const ls = await import('../../skills/diff/scripts/live-session.mjs');
 const crawl = await import('../../skills/extract/scripts/crawl.mjs');
-const { gotoLive, challengeMarker, CHALLENGE_PHRASE } = ls;
+const { gotoLive, challengeMarker, CHALLENGE_PHRASE, captureSanity, CAPTURE_FLOOR } = ls;
 
 let clock = 5_000_000; const slept = [];
 const seed = (host) => lb.budgetFor(host, { now: () => clock, sleep: async (ms) => { slept.push(ms); clock += ms; } });
@@ -114,4 +116,19 @@ try {
   assert.equal(challengeMarker(400, { server: 'AkamaiGHost' }), 'HTTP 400 + AkamaiGHost (Akamai escalation body, not the page)');
   assert.equal(String(CHALLENGE_PHRASE), String(crawl.CHALLENGE_PHRASE), 'CHALLENGE_PHRASE mirror drifted');
 } finally { console.error = origErr; }
-console.log('live-session-goto test: ok (lock + budget on live hosts, bare-429 path, edge-signed challenge, --solve-wait poll, challengeMarker mirror)');
+
+// ---- captureSanity: stitch-shot's post-capture rule (T14.3 (c)) ----
+assert.deepEqual(CAPTURE_FLOOR, { vhRatio: 1.5, textLen: 800, emptyLen: 400 }, 'the sanity floors are the solve poll\'s (1.5 viewports, 800 chars) plus the near-empty floor');
+const vh = 900;
+assert.equal(captureSanity({ totalH: 5400, vh, textLen: 4200 }).verdict, 'ok', 'a full page passes');
+assert.equal(captureSanity({ totalH: 5400, vh, textLen: 4200, walled: true }).verdict, 'ok', 'a tall page with an inline captcha widget is not short — never refused by this rule');
+assert.equal(captureSanity({ totalH: 900, vh, textLen: 120, walled: true }).verdict, 'suspect', 'the recorded trap: 1 viewport, challenge DOM/phrase → suspect (exit 3)');
+assert.equal(captureSanity({ totalH: 900, vh, textLen: 120 }).verdict, 'suspect', 'short AND near-empty (no phrase matched) → suspect');
+assert.equal(captureSanity({ totalH: 4000, vh, textLen: 300 }).verdict, 'suspect', 'tall but near-empty text (a blank shell) → suspect');
+const legal = captureSanity({ totalH: 1200, vh, textLen: 600 });
+assert.equal(legal.verdict, 'short', 'a genuinely short contact/legal page (≤ 1.5 viewports, real text) is a WARN, not a refusal');
+assert.match(legal.reason, /1200px tall \(1\.33 viewports\), 600 chars/);
+assert.match(captureSanity({ totalH: 900, vh, textLen: 120, walled: true }).reason, /challenge DOM\/phrase present/);
+assert.match(captureSanity({ totalH: 900, vh, textLen: 120 }).reason, /near-empty/);
+assert.equal(captureSanity({ totalH: 1350, vh, textLen: 800 }).verdict, 'ok', 'exactly at the floors is not short');
+console.log('live-session-goto test: ok (lock + budget on live hosts, bare-429 path, edge-signed challenge, --solve-wait poll, challengeMarker mirror, captureSanity)');

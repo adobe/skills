@@ -211,6 +211,13 @@ whose harness cases skip when Playwright is unresolvable:
 - `fixtures/crawl-slugify.test.mjs`, `fixtures/crawl-log-merge.test.mjs` —
   pin crawl.mjs's slug derivation (root → `index`, 200-char cap, `-<hash4>`
   collision suffix) and the append-only `_crawl-log.json` merge.
+- `fixtures/live-budget.test.mjs`, `fixtures/live-session-flags.test.mjs`,
+  `fixtures/live-session-goto.test.mjs` — the shared live budget / lock
+  (pacing, bare-429 persist + TTL, lock refuse/force/stale), every
+  live-session importer's session flags (`--storage-state` / `--fresh-state`
+  / `--solve-wait`, trailing-flag guard, live-budget.mjs named in Setup),
+  and gotoLive's duck-typed contract (429 path, edge-signed challenge,
+  `--solve-wait` poll, challengeMarker mirror, captureSanity).
 - `redirects-smoke.mjs` — runs `rollout/scripts/redirects.mjs` over
   `lint/fixtures/redirects/redirects.tsv`: the row expansion, the exit-2
   shadow verdict (a Source that is also a delivered page) and `--check`

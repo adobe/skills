@@ -454,6 +454,22 @@ export async function solveWait(page, ms, tool = 'live-session') {
   return false;
 }
 
+// Post-capture sanity (stitch-shot): a wall that passed the header stage and
+// got stitched is the recorded trap (a challenge page stitched from 1 chunk,
+// exit 0, taken as ground truth). Same floors as the solve poll. Pure.
+//   short   = under CAPTURE_FLOOR.vhRatio viewports OR under .textLen chars
+//   suspect = short AND (challenge DOM/phrase OR under .emptyLen chars) → exit 3
+//   short alone (a legal / contact page) is a WARN, never a refusal.
+export const CAPTURE_FLOOR = { vhRatio: 1.5, textLen: 800, emptyLen: 400 };
+export function captureSanity({ totalH, vh, textLen, walled = false }) {
+  const short = totalH < CAPTURE_FLOOR.vhRatio * vh || textLen < CAPTURE_FLOOR.textLen;
+  if (!short) return { verdict: 'ok', reason: null };
+  const why = `${totalH}px tall (${(totalH / vh).toFixed(2)} viewports), ${textLen} chars of text`;
+  if (walled) return { verdict: 'suspect', reason: `${why}, challenge DOM/phrase present` };
+  if (textLen < CAPTURE_FLOOR.emptyLen) return { verdict: 'suspect', reason: `${why}, near-empty` };
+  return { verdict: 'short', reason: why };
+}
+
 // ---- live budget + live lock (./live-budget.mjs; lazy — a local-only run never loads it) ----
 let budgetModule = null; // Promise<module | null>
 /** The calling instrument's name (lock holder / learnedBy). */

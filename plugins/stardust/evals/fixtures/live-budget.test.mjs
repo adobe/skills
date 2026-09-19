@@ -63,6 +63,8 @@ try {
   assert.deepEqual(tuneBudget(fresh(), 'loose.example.test').toJSON(), { navPerMin: 10, minGapMs: 3000, source: 'default' }, 'a looser entry never loosens the default');
   assert.deepEqual(tuneBudget(fresh(), 'old.example.test').toJSON(), { navPerMin: 10, minGapMs: 3000, source: 'default' }, `a ceiling learned more than ${LIVE_BUDGET_TTL_MS / 86400000} days ago has expired — one 429 must not slow every later run forever`);
   assert.deepEqual(tuneBudget(fresh(), 'undated.example.test').toJSON(), { navPerMin: 3, minGapMs: 5000, source: 'live-budget.json' }, 'an entry without learnedAt (older writer) still applies');
+  tuneBudget(fresh(), 'old.example.test'); await budgetFor('old.example.test', { now: () => clock, sleep: async () => {} }).take(); tuneBudget(fresh(), 'old.example.test');
+  assert.equal(errs.filter((l) => /old\.example\.test.*has expired/.test(l)).length, 1, 'the expiry line prints once per host per process — readLearned runs on every budgetFor()/navigation, so per-call would spam stderr');
   assert.equal(tuneBudget(fresh(), 'keep.example.test', 12).minGapMs, 12000, 'robots Crawl-delay widens the gap');
 
   // ---- live lock ----
@@ -89,4 +91,4 @@ try {
   assert.notEqual(acquireLiveLock('stale.example.test', 'anchor.mjs'), h3, 'after release a new handle is issued');
   h1.release();
 } finally { console.error = origErr; }
-console.log('live-budget test: ok (per-host pacing, bare-429 persist + TTL, live lock refuse/force/stale)');
+console.log('live-budget test: ok (per-host pacing, bare-429 persist + TTL warned once, live lock refuse/force/stale)');

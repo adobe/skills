@@ -9,6 +9,7 @@
 // Runs without playwright: crawl.mjs imports it lazily inside main().
 // Usage: node plugins/stardust/evals/fixtures/crawl-slugify.test.mjs  (exit 1 on failure)
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { slugify, assignSlugs, MOBILE_SHOT_SUFFIX } from '../../skills/extract/scripts/crawl.mjs';
 
 const O = 'https://example.com';
@@ -48,5 +49,10 @@ assert.equal(b[0], 'promo-360', 'first claimant keeps its clean slug even when i
 assert.match(b[1], /^promo-[0-9a-f]{4}$/, 'the page whose 360 shot would collide with an existing slug is disambiguated instead');
 assert.ok(noShotClash(b), `reverse order too: ${b}`);
 assert.deepEqual(assignSlugs([`${O}/promo-360`, `${O}/promo`]), b, 'deterministic');
+// the shot is WRITTEN through the same constant the guard reserves — a literal
+// `${slug}-360` at the write site would drift silently on a width change
+const crawlSrc = readFileSync(new URL('../../skills/extract/scripts/crawl.mjs', import.meta.url), 'utf8');
+assert.equal((crawlSrc.match(/\$\{slug\}-360/g) || []).length, 0, 'crawl.mjs must not write `${slug}-360` literally — use MOBILE_SHOT_SUFFIX');
+assert.ok(/\$\{slug\}\$\{MOBILE_SHOT_SUFFIX\}/.test(crawlSrc), 'the mobile shot file base is `${slug}${MOBILE_SHOT_SUFFIX}`');
 
 console.log('crawl-slugify test: ok');

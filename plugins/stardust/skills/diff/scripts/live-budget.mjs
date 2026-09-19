@@ -101,11 +101,17 @@ export function mergeLiveBudget(prev, host, entry) {
   out[host] = { ...(out[host] || {}), ...entry };
   return out;
 }
+// readLearned runs on EVERY budgetFor() (each navigation): the expiry line is
+// printed once per host per process, not once per navigation.
+const expiredWarned = new Set();
 function readLearned(file, host) {
   let learned = null;
   try { learned = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8'))[host] || null : null; } catch { return null; }
   if (learned && learned.learnedAt && Date.now() - Date.parse(learned.learnedAt) > LIVE_BUDGET_TTL_MS) {
-    console.error(`[live-budget] learned ceiling for ${host} (learnedAt ${learned.learnedAt}) has expired — default pacing; a recurring 429 re-learns it`);
+    if (!expiredWarned.has(host)) {
+      expiredWarned.add(host);
+      console.error(`[live-budget] learned ceiling for ${host} (learnedAt ${learned.learnedAt}) has expired — default pacing; a recurring 429 re-learns it`);
+    }
     return null;
   }
   return learned;

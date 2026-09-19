@@ -156,7 +156,8 @@
  * Requires: playwright, pngjs (project devDependencies), and the diff skill's
  * scripts dir alongside (live-session.mjs — the replica Setup copies both).
  * Exit codes: 0 written (PNG + sidecar), 1 error (incl. scroll stall /
- * deflection), 3 bot challenge (live side blocked — fail loud, never
+ * deflection), 3 bot challenge (live side blocked, or a stitched capture
+ * that is short AND challenge-phrased / near-empty — fail loud, never
  * captured), 5 invalid capture — no PNG, no sidecar, NO VERDICT, never a
  * FAIL: a consent container still visible after the dismissal window (deny
  * mode: no reject control, or accepted; accept mode: nothing matched —
@@ -196,7 +197,7 @@ if (!LIVE_SESSION) {
   console.error('stitch-shot error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { REAL_CHROME_UA, TIERS, isLiveHttpUrl, launchLadder, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, sessionContextOptions, parseSolveWaitFlag, dismissOverlays, installOverlayWatch, readOverlayWatch, parseBlockList } = await import(pathToFileURL(LIVE_SESSION).href);
+const { REAL_CHROME_UA, TIERS, isLiveHttpUrl, launchLadder, parseHeadedFlag, resolveStartTier, newLiveContext, gotoLive, sessionContextOptions, parseSolveWaitFlag, challengeInDom, captureSanity, dismissOverlays, installOverlayWatch, readOverlayWatch, parseBlockList } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `stitch-shot — scroll-and-stitch full-page screenshot (symmetric capture instrument)
 
@@ -228,7 +229,7 @@ Run the SAME command shape against the live page and the served prototype.
 Writes <out.png>.json (provenance sidecar: schema in capture-sidecar.mjs).
 Prints: pinned hidden on chunks 2+, tail below footer, WARN fixed overlay baked into N seams.
 Exit codes: 0 written, 1 error (incl. scroll stall/deflection), 3 bot challenge (live side
-blocked — fail loud), 5 invalid capture — no verdict, never a FAIL (deny mode: consent present
+blocked, or a short capture with a challenge DOM/phrase or near-empty text — fail loud, nothing written), 5 invalid capture — no verdict, never a FAIL (deny mode: consent present
 and not rejected; height < 40 % of --expect-height; error-boundary page; overlay > 30 %).`;
 
 function parseArgs(argv) {
@@ -753,6 +754,21 @@ async function main() {
         img.data.copy(outPng.data, (destY * opts.width) * 4, (row * img.width) * 4, (row * img.width + Math.min(img.width, opts.width)) * 4);
       }
     }
+    // Post-capture sanity (live-session captureSanity): a wall that passed the
+    // header stage — a 200 PerimeterX page, an Akamai body — must not be
+    // stitched as the source (recorded: a 1-chunk challenge page, exit 0).
+    // Live side: short AND (challenge DOM/phrase OR near-empty text) → exit 3,
+    // nothing written; short alone (a legal / contact page) → one WARN line.
+    // Local side: a wall is impossible — a thin prototype is a real (failing)
+    // measurement, so both verdicts are WARNs and the PNG is written.
+    const dom = await challengeInDom(page);
+    if (dom.pending) console.error('[stitch-shot] WARN post-capture sanity skipped: the page was navigating when its text was read');
+    else {
+      const sanity = captureSanity({ totalH, vh: opts.vh, textLen: dom.st.len, walled: dom.walled });
+      if (sanity.verdict === 'suspect' && isLiveHttpUrl(url)) throw Object.assign(new Error(`suspect challenge/blank capture at ${url}: ${sanity.reason} — not the page; nothing written (a hand solve: --solve-wait <ms>)`), { name: 'BotChallengeError' });
+      if (sanity.verdict === 'short') console.error(`[stitch-shot] WARN short capture: ${sanity.reason} — verify it is not a block page`);
+      else if (sanity.verdict === 'suspect') console.error(`[stitch-shot] WARN thin local capture: ${sanity.reason} — the prototype renders almost nothing at this width`);
+    }
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, PNG.sync.write(outPng));
     const seams = seamRepeats(chunks, opts.width);
@@ -777,8 +793,9 @@ async function main() {
   await browser.close();
 }
 
-// exit 3 = bot challenge on the live side (distinct from generic errors, so a
-// gate runner can tell "blocked at tier 3 — interactive solve" from "capture broke").
+// exit 3 = bot challenge on the live side, incl. the post-capture sanity refusal
+// (distinct from generic errors, so a gate runner can tell "blocked at tier 3 —
+// interactive solve" from "capture broke").
 // exit 5 = invalid capture (deny mode: consent present and not rejected, or accepted;
 // short capture under --expect-height; error-boundary page; overlay > 30 %): no verdict, never a FAIL.
 main().catch((e) => { console.error(`stitch-shot error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : e.name === 'InvalidCaptureError' ? 5 : 1); });

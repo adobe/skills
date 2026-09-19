@@ -63,6 +63,12 @@ check(/--keep-pinned/.test(ss) && /--expect-height/.test(ss) && /--exclude-live-
 check(/reducedMotion: 'reduce'/.test(ss), 'stitch-shot: newLiveContext must pass reducedMotion: reduce');
 check(/Exit codes: 0 written[^]*5 invalid capture/.test(ss), 'stitch-shot: HELP must document exit 5 (invalid capture, no verdict)');
 check(/--allow-consent/.test(ss) && /--no-dismiss-defaults/.test(ss) && /--remove-text/.test(ss), 'stitch-shot: T19.2 flags missing from the parser/HELP');
+// T14.3 (c): post-capture sanity runs on the stitched page BEFORE the PNG is written —
+// short AND challenge/near-empty → BotChallengeError (exit 3, nothing written); short alone → WARN
+const sanityAt = ss.indexOf('captureSanity({'); const writeAt = ss.indexOf('writeFileSync(out,');
+check(sanityAt > 0 && writeAt > 0 && sanityAt < writeAt, 'stitch-shot: captureSanity({ totalH, vh, textLen, walled }) must run before writeFileSync(out, …)');
+check(/verdict === 'suspect' && isLiveHttpUrl\(url\)\)[^\n]*BotChallengeError/.test(ss), 'stitch-shot: a suspect LIVE capture must throw a BotChallengeError (exit 3); a thin local prototype is a measurement, not a wall');
+check(/verdict === 'short'\)[^\n]*console\.error\([^\n]*WARN short capture/.test(ss), 'stitch-shot: a short-only capture is one stderr WARN, not a refusal');
 // live-session pure exports (T19.2) — dependency-free module, importable here
 const ls = await import(pathToFileURL(join(DIFF, 'live-session.mjs')).href);
 check(typeof ls.dismissOverlays === 'function' && typeof ls.installOverlayWatch === 'function' && typeof ls.readOverlayWatch === 'function' && typeof ls.reportOverlayResidue === 'function', 'live-session: dismissOverlays / installOverlayWatch / readOverlayWatch / reportOverlayResidue must be exported');

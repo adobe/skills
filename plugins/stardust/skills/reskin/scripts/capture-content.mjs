@@ -89,7 +89,7 @@ const LIVE_SESSION = ['../../diff/scripts/live-session.mjs', '../diff/live-sessi
   .map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
 if (!LIVE_SESSION) {
   console.error('[capture-content] live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/).');
-  console.error('Copy the diff skill\'s live-session.mjs alongside the reskin scripts (SKILL.md § Setup).');
+  console.error('Copy the diff skill\'s live-session.mjs AND live-budget.mjs alongside the reskin scripts (SKILL.md § Setup) — without live-budget.mjs live navigations run unpaced and unlocked.');
   process.exit(2);
 }
 const { isLiveHttpUrl, launchTier, parseHeadedFlag, parseSolveWaitFlag, resolveStartTier, newLiveContext, gotoLive, sessionContextOptions } = await import(pathToFileURL(LIVE_SESSION).href);
@@ -105,7 +105,7 @@ function parseArgs(argv) {
     else if (a === '--ua') opts.ua = argv[++i];
     else if (a === '--wait-until') opts.waitUntil = argv[++i];
     else if (a === '--headed' || a.startsWith('--headed=')) opts.headed = parseHeadedFlag(a);
-    else if (a === '--storage-state') opts.storageState = argv[++i];
+    else if (a === '--storage-state') { if (argv[i + 1] === undefined) { console.error('[capture-content] --storage-state needs a value'); process.exit(2); } opts.storageState = argv[++i]; }
     else if (a === '--fresh-state') opts.freshState = true;
     else if (a === '--solve-wait') { opts.solveWaitMs = parseSolveWaitFlag(argv[++i]); opts.headed = 3; }
     else if (a === '--locale') opts.locale = argv[++i];

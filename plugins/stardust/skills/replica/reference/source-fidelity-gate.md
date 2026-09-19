@@ -590,20 +590,22 @@ rather than erroring.
     chunk 1 and the chrome crop gate match. Full treatment:
     `recreation-procedure.md` § Fixed and sticky chrome.
 12. **A challenge/blocked response FAILS LOUD — it is never measured.** All
-    three instruments detect bot-management interstitials on every
-    navigation (crawl.mjs semantics: `cf-mitigated: challenge`, or
-    403/429/503 with a Cloudflare/Akamai/F5/Imperva edge signature) and
-    exit **3** with a `BotChallengeError` naming the URL and the marker
-    (an "Access Denied" page diffs cleanly — wrongly). Escalation follows
-    the three-tier ladder in `skills/extract/reference/playwright-recipe.md`
-    § Bot-management fallback (headless → `chrome-headless` →
-    `chrome-headed-offscreen`); the instruments start at
+    three instruments classify every navigation (live-session.mjs
+    `challengeMarker`: `cf-mitigated: challenge`; a 4xx/5xx with a
+    Cloudflare/Akamai/F5/Imperva edge signature, a PerimeterX/DataDome
+    `set-cookie`, or the Akamai 400 body; plus the DOM/phrase stage) and
+    exit **3** with a `BotChallengeError` naming URL and marker.
+    Escalation follows the ladder in
+    `skills/extract/reference/playwright-recipe.md` § Bot-management
+    fallback; the instruments start at
     `_crawl-log.json#discovery.fetchTechnique` (`--headed` = tier 2,
-    `--headed=window` = tier 3) and stitch-shot asserts
-    `document.visibilityState === 'visible'` before it shoots. If tier 3
-    is still blocked **the gate must not silently degrade** — record the
-    breakpoint as gate-blocked in the ledger and surface it to the user; a
-    gate that can't read the live source has no pass to report.
+    `--headed=window` = tier 3); `--solve-wait <ms>` on any instrument
+    opens the visible window and waits for a hand solve. stitch-shot
+    asserts `document.visibilityState === 'visible'` before it shoots and
+    refuses a stitched capture that is short AND challenge-phrased /
+    near-empty (exit 3, nothing written; short alone WARNs). If tier 3 is
+    still blocked **the gate must not silently degrade** — record the
+    breakpoint as gate-blocked in the ledger and tell the user.
 13. **Inner-scroller / scroll-jacked pages fail loud — stitched capture
     cannot measure them.** On pages where `html`/`body` are
     `overflow:hidden` and an inner container scrolls, the document reports

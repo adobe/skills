@@ -106,7 +106,8 @@ tier 3 + stealth + the solve window still cannot clear it, the
 site requires an *interactive* solve: fail loud
 (`BotChallengeError`, exit 3) rather than capturing the
 interstitial as content (what the run may then tell the user:
-`SKILL.md` § Failure modes) — or re-run `crawl.mjs --solve-wait <ms>`:
+`SKILL.md` § Failure modes) — or re-run with `--solve-wait <ms>` (any
+live instrument — crawl.mjs, the replica / diff / reskin gates):
 the window opens **visible**, the reload loop is skipped (a reload
 destroys a Press & Hold in progress), the same page is polled every
 2.5 s and capture resumes after two clean polls (no challenge DOM or

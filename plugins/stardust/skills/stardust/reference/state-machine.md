@@ -603,7 +603,7 @@ the per-host live lock `stardust/.work/live-<host>.lock` (untracked,
 `run.lock`'s shape and directory, pid liveness) is the only other lock,
 and it guards the *source origin*, not the project: one live tool per
 host at a time (`crawl.mjs` and every `live-session.mjs gotoLive`
-instrument take it on the first live navigation; a held lock is exit 1 —
+instrument with `live-budget.mjs` beside it take it on the first live navigation; a held lock is exit 1 —
 wait for the other tool — and `STARDUST_LIVE_FORCE=1` overrides).
 
 ---
