@@ -16,14 +16,14 @@ Steps, in order: Setup (base URL, inventory source, optional inputs) → 1 deter
 | Step | Command |
 |---|---|
 | Setup | base from the user or `stardust/rollout/rollout.json` (`site.liveHost`); inventory = `stardust/template-map.json` ∪ paths file ∪ live `sitemap.xml`; append a line to `stardust/status.jsonl` at start/end |
-| 1 | `node <plugin>/skills/qa/scripts/qa.mjs --base <live-url> --template-map stardust/template-map.json --scrape stardust/scrape [--expected-blocks <json>] [--parity <json>] [--auth-header … | --token-env SITE_TOKEN] [--blocks-dir <dir> | --ew-exempt a,b]` — caps/gates: `--checks <modules, or preset: delivery · rendered · parity>`, `--max-pages <n>`, `--fail-on warn`, `--baseline-reset` |
+| 1 | `node <plugin>/skills/qa/scripts/qa.mjs --base <live-url> --template-map stardust/template-map.json --scrape stardust/scrape [--expected-blocks <json>] [--parity <json>] [--auth-header … | --token-env SITE_TOKEN] [--blocks-dir <dir> | --ew-exempt a,b]` — caps/gates: `--checks <modules, or preset: delivery · rendered · parity>`, `--max-pages <n>`, `--fail-on warn`, `--baseline-reset`; pacing: `--fetch-concurrency 4`, `--browser-concurrency 2`, `--throttle-max 5` |
 | 1 (no playwright) | `--checks delivery` |
 | 1 (fleet > 100 pages) | `--checks delivery`, `--checks rendered`, `--checks parity` as separate, sequential invocations |
 | 2 | judge only `content/verbatim-below-threshold` (`evidence.missingNodes`) and `visual/visual-diff` (`evidence.baseline` vs `evidence.current`, `bands`) |
 | 3 | classes first (ranked table, `stardust/qa/summary.md`) → `report.html`; recommend, never apply |
 | allowlist | `stardust/qa/allowlist.json` entries with a reason, only for user-confirmed non-defects |
 
-Exit codes: 0 no active errors · 1 active errors · 2 infra failure. Findings that need triage are marked in `report.json`; a crashed check reports as `<check>/check-crashed`.
+Exit codes: 0 no active errors · 1 active errors · 2 infra failure **or incomplete** (throttled pages > `--throttle-max`; exit 2 wins — re-run). Triage flags are marked in `report.json`; a crashed check reports as `<check>/check-crashed`, a throttled page as `<check>/unmeasured`.
 
 Outputs (under `stardust/qa/`): `inventory.json` · `report.json` · `summary.json` · `summary.md` · `report.html` · `shots/` · `baselines/` (first run; local, untracked) · `allowlist.json` (tracked); plus the `stardust/status.jsonl` line.
 
@@ -41,12 +41,10 @@ Sections: Setup · Procedure · Read-only contract · Scheduling/CI.
 
 One live URL in, one evidence-bound findings report out. **This skill never
 edits anything** — site content, DA documents, repo code; its only writes are
-report artifacts under `stardust/qa/`. Fixing findings is a separate,
-explicit follow-up outside this skill.
+report artifacts under `stardust/qa/`.
 
-`qa` is the post-deploy counterpart of `rollout`'s delivery verification: rollout
-asks "did every page ship?", qa asks "is everything that shipped correct?" — at
-all three layers a deploy can silently break:
+`qa` is the post-deploy counterpart of `rollout`'s delivery verification: rollout asks "did
+every page ship?", qa asks "is everything that shipped correct?" at three layers:
 
 1. **delivery** — what the pipeline serves (`.plain.html`, full HTML, sheets, sitemap)
 2. **rendered** — what a browser shows after block decoration
@@ -61,10 +59,9 @@ rendered correctly.
    already done this session; `qa` also works standalone from a live base URL.
 2. Resolve the **base URL** (`*.aem.live` host or production domain): from the
    user, else `stardust/rollout/rollout.json` (`site.liveHost`), else ask.
-3. Resolve the **inventory source** — the pages the sweep covers, merged from
-   `stardust/template-map.json` (also supplies template assignments), a paths
-   file, and the live `sitemap.xml` (always fetched; parity mismatches become
-   findings, so a wrong sitemap cannot silently shrink coverage).
+3. Resolve the **inventory source** (Operator card Setup row); the live `sitemap.xml` is
+   always fetched and parity mismatches become findings, so a wrong sitemap cannot
+   silently shrink coverage.
 4. Optional inputs that unlock deeper checks:
    - `--scrape stardust/scrape` — verbatim fidelity vs the extraction capture
    - `--expected-blocks <json>` — explicit per-template block expectations
@@ -78,7 +75,8 @@ rendered correctly.
      `editability` check can honour `@ew-exempt` JSDoc tags (otherwise
      pass `--ew-exempt a,b` for index-driven blocks)
 5. Browser checks need **playwright resolvable from the project** (`node_modules/playwright`);
-   if missing, run `--checks delivery` and say what was skipped.
+   if missing, run `--checks delivery` and say what was skipped. Never run a gate and a
+   sweep against the same host at once (the runner paces itself; a gate does not).
 6. Append a phase-transition line to `stardust/status.jsonl` per
    `reference/run-status.md` (master skill) at sweep start/end.
 
@@ -95,9 +93,8 @@ node <plugin>/skills/qa/scripts/qa.mjs \
 
 Writes `stardust/qa/inventory.json`, `report.json` (rewritten after every check,
 `partial: true` until the sweep ends), `summary.json` + `summary.md` (class roll-up),
-`report.html`, `shots/`, and (first run) `baselines/`. Exit 0 = no active errors, 1 = active errors,
-2 = infra failure. Checks, finding ids, severities: `reference/checks.md`; variants:
-Operator card row 1. `ai-readability` reproduces Adobe's AI Content Visibility Checker
+`report.html`, `shots/`, and (first run) `baselines/`. Exit codes: Operator card. Checks,
+finding ids, severities: `reference/checks.md`; variants: Operator card row 1. `ai-readability` reproduces Adobe's AI Content Visibility Checker
 per page (served ÷ rendered words), gap attributed per block (`deploy/reference/ai-readability.md`).
 
 The `editability` check is the post-deploy **Experience Workspace editability gate**
@@ -142,10 +139,8 @@ do not apply — fixes.
 ### Allowlist workflow (documented non-defects)
 
 `stardust/qa/allowlist.json` (schema in `schemas/qa-allowlist.schema.json`)
-keeps known non-defects from drowning every future run — e.g. a source page
-that itself ships placeholder copy, or a form endpoint deliberately awaiting a
-client credential. Entries match on check/id/path/messagePattern and **must
-carry a reason**. Allowlisted findings stay in the report, greyed out, so the
+keeps known non-defects from drowning every future run. Entries match on
+check/id/path/messagePattern and **must carry a reason**. Allowlisted findings stay in the report, greyed out, so the
 evidence is never deleted.
 
 Only add an entry when the user confirms the flag is a non-defect (or it is
@@ -155,13 +150,12 @@ a run green.
 ## Read-only contract
 
 - Writes only under `stardust/qa/` (plus the `status.jsonl` ledger line).
-- Never invokes deploy/publish APIs, PUTs to DA, or edits blocks, styles or
-  content — even for "trivial" fixes the sweep itself surfaced.
+- Never invokes deploy/publish APIs, PUTs to DA, or edits blocks, styles or content — even
+  fixes the sweep surfaced.
 - A crashed check appears in the report as `<check>/check-crashed` (error),
   never silently dropped.
 
 ## Scheduling / CI
 
-The runner is plain node with no plugin-runtime dependency: the same command
-runs from a GitHub Action or cron for drift monitoring; `--fail-on` sets the
-gate. In CI without playwright, pin `--checks delivery`.
+Plain node, no plugin-runtime dependency: the same command runs from a GitHub Action or
+cron for drift monitoring; `--fail-on` sets the gate. In CI without playwright, pin `--checks delivery`.

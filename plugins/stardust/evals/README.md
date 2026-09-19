@@ -138,8 +138,9 @@ out of `total` (100 per eval).
 `npm run lint:stardust` (repo root) runs the static checks below over `skills/`,
 each a plain ESM script under `lint/` that exits 1 with one line per finding,
 then the fixture tests under `fixtures/` (plain `node:assert` scripts that
-import a script's exported pure functions — no playwright needed) and one
-`node --test` suite whose harness cases skip when Playwright is unresolvable:
+import a script's exported pure functions — no playwright needed), the
+`*.test.mjs` runners beside the skill scripts, and one `node --test` suite
+whose harness cases skip when Playwright is unresolvable:
 
 - `harness-neutral.mjs` — no namespaced sibling-skill references or
   Claude-only tool names outside lines marked "Claude Code".
@@ -211,6 +212,17 @@ import a script's exported pure functions — no playwright needed) and one
   (landmark cache, `anchor-live.skip`) when `STARDUST_GATE_DEPS=<dir>/node_modules`
   (or the repo-root `node_modules`) resolves playwright + pngjs + pixelmatch,
   else one `SKIP` line.
+- `dynamics-recall.mjs` — detector recall over `_shared/dynamics-recall/`:
+  the reach half (sidecar signals → `reach-only` rows, and the sidecar
+  fields `crawl.mjs` must keep writing) always runs; the depth half
+  (`dynamics-detect.mjs --urls --offline` over the fixture pages) is
+  skipped with a notice when playwright is not resolvable from the cwd.
+- `qa/scripts/test/throttle.test.mjs`, `qa/scripts/test/browse-throttle.test.mjs`
+  — the 429/503-as-infrastructure path against a local `node:http` server:
+  paced retries, `<check>/unmeasured`, the per-host limiter (AIMD, timeout
+  armed after the slot), cache eviction, `report.infra` / exit 2; the
+  browser half of the second (document retried, throttled sub-resource →
+  `rendered/unmeasured`) skips without playwright.
 
 ## What stardust v2 evals deliberately do NOT test
 

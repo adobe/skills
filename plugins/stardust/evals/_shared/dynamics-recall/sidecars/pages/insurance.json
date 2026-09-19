@@ -1,0 +1,47 @@
+{
+ "slug": "insurance",
+ "url": "https://source.example/insurance",
+ "dynamic": {
+  "endpoints": [],
+  "thirdPartyScriptHosts": [],
+  "inlineData": [],
+  "globalState": [],
+  "frameworkHints": [],
+  "forms": [],
+  "ariaLiveRegions": 0,
+  "triggers": [],
+  "mediaIds": [],
+  "tabs": {
+   "tablists": 0,
+   "expanders": 9
+  },
+  "shadowHosts": [],
+  "emptyConfigContainers": [],
+  "controlGroups": [
+   {
+    "container": "section.calculator",
+    "controls": 3
+   }
+  ],
+  "searchShell": false,
+  "players": [],
+  "chatLoaders": [],
+  "federated": {
+   "remoteEntries": [],
+   "registerCalls": 0
+  },
+  "quiz": {
+   "markers": 0,
+   "radioFieldsets": 0
+  },
+  "summary": {
+   "sameSiteEndpoints": 0,
+   "thirdPartyEndpoints": 0,
+   "thirdPartyScriptHosts": 0,
+   "inlineDataBlobs": 0,
+   "forms": 0,
+   "searchForms": 0,
+   "hydrated": false
+  }
+ }
+}

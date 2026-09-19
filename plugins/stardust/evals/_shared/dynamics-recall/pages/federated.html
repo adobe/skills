@@ -1,0 +1,14 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Fixture — federated module + client slot</title>
+<script src="/mfe/remoteEntry.js" defer></script>
+</head>
+<body>
+<main>
+  <h1>Rates and offers</h1>
+  <p>The hero on this page is a federated module mounted at runtime; the offers band is an empty container whose configuration lives in data attributes, filled by a first-party API call after load.</p>
+  <div data-component="rates-hero" data-props='{"variant":"wide"}'></div>
+  <div class="offers" data-endpoint="/api/items"></div>
+  <script>fetch('/api/items').then(r => r.json()).then(j => { document.querySelector('.offers').textContent = j.data.map(x => x.title).join(' · '); });
+  window.registerFederatedComponent = window.registerFederatedComponent || ((name) => { window.__fixtureMounted = name; });
+  registerFederatedComponent('rates-hero', '/mfe/remoteEntry.js');</script>
+</main>
+</body></html>

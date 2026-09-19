@@ -1,0 +1,14 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Fixture — form-less calculator</title></head>
+<body>
+<main>
+  <h1>Savings calculator</h1>
+  <p>A modern CMS front end renders this calculator without a form tag: two loose inputs and a button inside a section. The result is computed client-side by an inline script; nothing is submitted to a server.</p>
+  <section class="calculator">
+    <label>Monthly amount <input type="number" name="amount" value="100"></label>
+    <label>Years <input type="range" name="years" min="1" max="30" value="10"></label>
+    <button type="button" id="calc">Calculate</button>
+    <p class="result" aria-live="polite">Result: <span id="out">0</span></p>
+  </section>
+  <script>document.getElementById('calc').addEventListener('click',()=>{const a=+document.querySelector('[name=amount]').value;const y=+document.querySelector('[name=years]').value;document.getElementById('out').textContent=a*12*y;});</script>
+</main>
+</body></html>

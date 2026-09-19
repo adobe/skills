@@ -79,6 +79,7 @@ Flows, not presence — each check replays a user-visible flow through `skills/d
 | `parity-failed` | error | a replayed flow did not complete (empty form accepted, dialog did not open, query returned nothing, player never requested playback) |
 | `parity-env-limit` | warn | a failed flow whose feature records an environment limit (geo-fenced hand-off target) |
 | `parity-unchecked` | info | a feature with a non-final status and no replayable check — an owner item |
+| `parity-unmeasured` | info | the entry navigation of a failed replay was throttled (429/503 from the origin) — not a parity verdict; re-run |
 
 ## visual (E, browser)
 
@@ -183,5 +184,12 @@ from the served HTML, per block. Formula, cause classes and fixes: `deploy/refer
 
 - `<check>/check-crashed` (error) — a check module threw; the sweep continues
   but the failure is visible, never silently dropped.
+- `<check>/unmeasured` (info) — the origin throttled the page (429, or 503 with `Retry-After`)
+  through the paced retries; the page is unmeasured for that check, never a defect
+  (`page-not-200`, `og-image-broken`, `unknown-block`, `request-failed`, `main-collapsed` are
+  silenced for it; `browse` skips axe and visual too, and a throttled same-origin css/js/img
+  counts the same way). `report.infra` counts throttled / retries / unmeasured pages; above
+  `--throttle-max 5` % the report is incomplete: banner + exit 2. Pacing defaults: `qa.mjs --help`;
+  tests: `scripts/test/throttle.test.mjs`, `scripts/test/browse-throttle.test.mjs`.
 - Allowlisted findings keep their severity but don't count toward the exit
   code or summary totals; they render greyed-out in report.html.

@@ -22,8 +22,10 @@
 import { readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  fetchUrl, pMap, finding, plainUrl, stripTags, normText, paragraphTexts, readJSON,
+  fetchUrl, pMap, finding, plainUrl, stripTags, normText, paragraphTexts, readJSON, isThrottled,
 } from '../lib.mjs';
+
+const unmeasured = (path, what, res) => finding('content', 'unmeasured', 'info', path, `${what} throttled (HTTP ${res.status} after retries) — not measured; re-run`, { status: res.status });
 
 const PLACEHOLDER_RE = /\[placeholder[^\]]*\]|REPLACE_WITH_[A-Z_]+|lorem ipsum|\bTODO\b|\bTBD\b/gi;
 const VERBATIM_THRESHOLD = 0.95;
@@ -261,6 +263,7 @@ export async function run(ctx) {
 
   await pMap(inventory.pages, async (p) => {
     const res = await ctx.fetchPage(plainUrl(base, p.path));
+    if (isThrottled(res)) { findings.push(unmeasured(p.path, '.plain.html', res)); return; }
     if (res.status !== 200) return; // routing check owns reachability
     const html = res.body;
     const text = stripTags(html);
@@ -390,6 +393,7 @@ export async function run(ctx) {
   await pMap([...fleetBlocks], async (b) => {
     const js = await fetchUrl(`${base}/blocks/${b}/${b}.js`, { method: 'HEAD' });
     const css = await fetchUrl(`${base}/blocks/${b}/${b}.css`, { method: 'HEAD' });
+    if (isThrottled(js) || isThrottled(css)) { findings.push(unmeasured('', `block code probe /blocks/${b}/`, isThrottled(js) ? js : css)); return; }
     if (js.status !== 200 && css.status !== 200) {
       const where = inventory.pages.filter((p) => (pageBlocks.get(p.path) || []).includes(b)).map((p) => p.path);
       findings.push(finding('content', 'unknown-block', 'error', where[0] || '',

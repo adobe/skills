@@ -14,6 +14,7 @@
  * window must not read as a site regression).
  */
 import { loadPlaywright, finding, pageUrl, attachOriginAuth } from '../lib.mjs';
+import { gotoPaced } from './browse.mjs';
 
 const BUDGET_TRANSFER_KB = 800;
 const BUDGET_JS_KB = 250;
@@ -74,10 +75,16 @@ export async function run(ctx) {
       if (types.get(e.requestId) === 'Script') jsTransfer += e.encodedDataLength;
     });
 
+    let nav = null;
     try {
-      await page.goto(pageUrl(base, p.path), { waitUntil: 'load', timeout: 60000 });
+      nav = await gotoPaced(page, pageUrl(base, p.path), { waitUntil: 'load', timeout: 60000 });
     } catch {
       findings.push(finding('perf', 'load-timeout', sev('warn'), p.path, 'page did not fire load within 60s'));
+      await context.close();
+      continue;
+    }
+    if (nav && (nav.status() === 429 || nav.status() === 503)) {
+      findings.push(finding('perf', 'unmeasured', 'info', p.path, `document throttled (HTTP ${nav.status()} after retries) — not measured; re-run`, { status: nav.status() }));
       await context.close();
       continue;
     }

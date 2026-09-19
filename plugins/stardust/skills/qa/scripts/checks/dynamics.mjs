@@ -8,6 +8,7 @@
  *   - parity-failed       error  a replayed flow did not complete
  *   - parity-env-limit    warn   a failed flow whose feature records an environment limit
  *   - parity-unchecked    info   a feature with a non-final status and no checks (owner item)
+ *   - parity-unmeasured   info   the entry navigation of a failed replay was throttled (429/503) — not a parity verdict
  * The site secret (--auth-header / --token-env) rides an origin-scoped route
  * filter only — never context-wide.
  */
@@ -27,8 +28,9 @@ export async function run(ctx) {
   const out = [];
   for (const r of results) {
     if (r.pass) continue;
-    const ev = { check: r.type, detail: r.detail, thirdParty: r.thirdParty };
-    if (r.environmentLimit) out.push(finding('dynamics', 'parity-env-limit', 'warn', '', `${r.feature}: ${r.type} failed under a recorded environment limit — ${r.environmentLimit}`, ev));
+    const ev = { check: r.type, detail: r.detail, thirdParty: r.thirdParty, entryStatus: r.entryStatus };
+    if (r.throttled) out.push(finding('dynamics', 'parity-unmeasured', 'info', '', `${r.feature}: ${r.type} not measured — entry navigation throttled (HTTP ${r.entryStatus}); re-run`, ev));
+    else if (r.environmentLimit) out.push(finding('dynamics', 'parity-env-limit', 'warn', '', `${r.feature}: ${r.type} failed under a recorded environment limit — ${r.environmentLimit}`, ev));
     else out.push(finding('dynamics', 'parity-failed', 'error', '', `${r.feature} (${r.class}): ${r.type} — ${r.detail}`, ev));
   }
   for (const f of parity.features || []) {

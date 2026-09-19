@@ -8,7 +8,10 @@
  * - sitemap parity: sitemap-only paths (published but untracked) and
  *   inventory-only paths (tracked but unlisted) are both surfaced
  */
-import { fetchUrl, pMap, finding, pageUrl, plainUrl } from '../lib.mjs';
+import { fetchUrl, pMap, finding, pageUrl, plainUrl, isThrottled } from '../lib.mjs';
+
+// 429 after the retries = the origin throttled us; the page is unmeasured, not broken (report.infra)
+const unmeasured = (path, what, res) => finding('routing', 'unmeasured', 'info', path, `${what} throttled (HTTP ${res.status} after retries) — not measured; re-run`, { status: res.status });
 
 export async function run(ctx) {
   const { base, inventory } = ctx;
@@ -17,12 +20,14 @@ export async function run(ctx) {
 
   await pMap(pages, async (p) => {
     const res = await ctx.fetchPage(pageUrl(base, p.path));
+    if (isThrottled(res)) { findings.push(unmeasured(p.path, `GET ${p.path}`, res)); return; }
     if (res.status !== 200) {
       findings.push(finding('routing', 'page-not-200', 'error', p.path,
         `GET ${p.path} returned ${res.status || `network error: ${res.error}`}`, { url: pageUrl(base, p.path) }));
       return;
     }
     const plain = await ctx.fetchPage(plainUrl(base, p.path));
+    if (isThrottled(plain)) { findings.push(unmeasured(p.path, '.plain.html', plain)); return; }
     if (plain.status !== 200) {
       findings.push(finding('routing', 'plain-not-200', 'error', p.path,
         `.plain.html returned ${plain.status || `network error: ${plain.error}`}`, { url: plainUrl(base, p.path) }));
@@ -32,6 +37,7 @@ export async function run(ctx) {
   // fragments must also be delivered (nav/footer power the chrome)
   await pMap(inventory.fragments, async (f) => {
     const res = await ctx.fetchPage(plainUrl(base, f));
+    if (isThrottled(res)) { findings.push(unmeasured(f, `fragment ${f}`, res)); return; }
     if (res.status !== 200) {
       findings.push(finding('routing', 'fragment-not-200', 'error', f,
         `chrome fragment ${f}.plain.html returned ${res.status}`));
@@ -48,12 +54,14 @@ export async function run(ctx) {
       const to = r.Destination || r.destination || r.to;
       if (!from || !to) return;
       const res = await fetchUrl(pageUrl(base, from), { redirect: 'manual' });
+      if (isThrottled(res)) { findings.push(unmeasured(from, `redirect rule ${from}`, res)); return; }
       if (![301, 302, 307, 308].includes(res.status)) {
         findings.push(finding('routing', 'redirect-not-firing', 'error', from,
           `redirect rule ${from} -> ${to} returned ${res.status} instead of a redirect`));
         return;
       }
       const dest = await fetchUrl(res.location.startsWith('http') ? res.location : pageUrl(base, res.location));
+      if (isThrottled(dest)) { findings.push(unmeasured(from, `redirect destination ${res.location}`, dest)); return; }
       if (dest.status !== 200) {
         findings.push(finding('routing', 'redirect-dest-broken', 'error', from,
           `redirect ${from} lands on ${res.location} which returns ${dest.status}`));
@@ -67,6 +75,7 @@ export async function run(ctx) {
   // trailing-slash sample: 3 non-root paths should resolve (200 or redirect->200)
   for (const p of pages.filter((x) => x.path !== '/').slice(0, 3)) {
     const res = await fetchUrl(`${pageUrl(base, p.path)}/`);
+    if (isThrottled(res)) { findings.push(unmeasured(p.path, `${p.path}/ (trailing slash)`, res)); continue; }
     if (res.status !== 200) {
       findings.push(finding('routing', 'trailing-slash-broken', 'warn', p.path,
         `${p.path}/ (trailing slash) returned ${res.status}`));
@@ -75,7 +84,8 @@ export async function run(ctx) {
 
   // a garbage path must 404 with a real error page
   const bogus = await fetchUrl(pageUrl(base, '/stardust-qa-definitely-not-a-page'));
-  if (bogus.status !== 404) {
+  if (isThrottled(bogus)) findings.push(unmeasured('', 'unknown-path 404 probe', bogus));
+  else if (bogus.status !== 404) {
     findings.push(finding('routing', '404-not-404', 'error', '',
       `unknown path returned ${bogus.status} instead of 404`));
   } else if ((bogus.body || '').length < 200) {

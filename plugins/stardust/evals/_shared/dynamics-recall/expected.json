@@ -1,0 +1,28 @@
+{
+  "_comment": "Detector recall fixture for dynamics-detect.mjs (evals/lint/dynamics-recall.mjs). `depth` rows must come out of --urls over pages/*.html (needs playwright); `reach` rows must come out of lib.mjs reachSignals over sidecars/pages/*.json (always checked). `feature` is a regex on the finding's feature; `via`: depth | reach; `reachOnly`: the row must carry hint reach-only (no archetype saw it) — false means an archetype finding exists and the sidecar reach only annotates it. Product names only; no customer hosts.",
+  "rows": [
+    { "id": "modal-trigger", "class": "M", "feature": "^modal trigger button--open-modal", "via": "depth", "page": "modal.html" },
+    { "id": "tabs-depth", "class": "M", "feature": "^tabs / expanders", "via": "depth", "page": "modal.html" },
+    { "id": "control-group", "class": "F", "feature": "^form-less control group in section\\.calculator", "via": "depth", "page": "controls.html" },
+    { "id": "kaltura", "class": "V", "feature": "^video: kaltura player", "via": "depth", "page": "players.html" },
+    { "id": "brightcove", "class": "V", "feature": "^video: brightcove player", "via": "depth", "page": "players.html" },
+    { "id": "wistia", "class": "V", "feature": "^video: wistia player", "via": "depth", "page": "players.html" },
+    { "id": "search-form", "class": "S", "feature": "^site search form → /search", "via": "depth", "page": "search.html" },
+    { "id": "search-shell", "class": "S", "feature": "^search shell page", "via": "depth", "page": "search.html" },
+    { "id": "federated", "class": "CR", "feature": "^micro-frontend module", "via": "depth", "page": "federated.html" },
+    { "id": "empty-config", "class": "CR", "feature": "^empty data-\\* config container", "via": "depth", "page": "federated.html" },
+    { "id": "first-party-api", "class": "A", "feature": "^first-party API GET /api/items", "via": "depth", "page": "federated.html" },
+    { "id": "consent", "class": "T", "feature": "^consent: OneTrust", "via": "depth", "page": "consent.html" },
+    { "id": "chat-depth", "class": "T", "feature": "^chat: live chat widget", "via": "depth", "page": "consent.html" },
+
+    { "id": "tabs-reach", "class": "M", "feature": "^tabs / expanders", "via": "reach", "minPages": 2, "reachOnly": false },
+    { "id": "kaltura-reach", "class": "V", "feature": "^video: kaltura player", "via": "reach", "minPages": 1, "reachOnly": false },
+    { "id": "chat-reach", "class": "T", "feature": "^chat: live chat widget", "via": "reach", "minPages": 1, "reachOnly": false },
+    { "id": "modal-reach", "class": "M", "feature": "^modal trigger button--open-modal", "via": "reach", "minPages": 1, "reachOnly": false },
+    { "id": "controls-reach", "class": "F", "feature": "^form-less control group \\(sibling pages only\\)", "via": "reach", "minPages": 2, "reachOnly": true },
+    { "id": "quiz-reach", "class": "F", "feature": "^quiz / questionnaire", "via": "reach", "minPages": 1, "reachOnly": true },
+    { "id": "shadow-reach", "class": "M", "feature": "^shadow-DOM component", "via": "reach", "minPages": 1, "reachOnly": true },
+    { "id": "empty-config-reach", "class": "CR", "feature": "^empty data-\\* config container", "via": "reach", "minPages": 1, "reachOnly": false },
+    { "id": "plans-api-reach", "class": "A", "feature": "^first-party API GET /api/plans/\\{n\\}", "via": "reach", "minPages": 1, "reachOnly": true }
+  ]
+}

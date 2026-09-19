@@ -61,6 +61,9 @@ dynamics from an open-ended stall into a bounded phase.
    "cannot exist here" are never confused.
 7. **Static first, then wire.** Every feature degrades to a working static page before any phase
    replaces one degradation with the live behaviour. The inventory never blocks the static path.
+8. **A downgrade is a row, never only a log line.** When the importer or compiler degrades a source
+   element (video → CTA link, form → text, widget → placeholder, tabs → prose), it is an inventory
+   row (class from the source element, `hint: downgrade`); the migrate/replica hook routes it here.
 
 ## `stardust/dynamic-features.md`
 

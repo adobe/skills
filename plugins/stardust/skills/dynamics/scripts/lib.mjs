@@ -124,3 +124,73 @@ export async function probe(url, { method = 'GET', headers = {}, timeoutMs = 150
     return { status: r.status, contentType: ct.split(';')[0], ok: r.status < 400 };
   } catch (e) { return { status: 0, error: String(e.message || e).slice(0, 80), ok: false }; } finally { clearTimeout(t); }
 }
+
+/* ------------------------------------------------------------- reach ---- */
+// Stable feature strings shared by the depth probe (dynamics-detect domCapture)
+// and the reach pass, so a sidecar signal annotates the archetype finding
+// when both saw it and mints a `reach-only` row when only the roster did.
+export const REACH_FEATURES = {
+  tabs: 'tabs / expanders (role=tablist, aria-expanded controls)',
+  shadow: 'shadow-DOM component (open shadow root with content)',
+  emptyConfig: 'empty data-* config container (client-rendered slot)',
+  controls: 'form-less control group (sibling pages only)',
+  searchShell: 'search shell page (results rendered client-side)',
+  player: (vendor) => `video: ${vendor} player (ids in the live DOM)`,
+  chat: 'chat: live chat widget',
+  federated: 'micro-frontend module (remoteEntry.js / registerFederatedComponent)',
+  quiz: 'quiz / questionnaire (client compute)',
+};
+const REACH_API = /\/(api|graphql|ajax|json|search|autocomplete|typeahead|suggest|client\/|webservices|_next\/data|wp-json|\.rest|odata)/i;
+
+/**
+ * Fold the per-page `dynamic` sections extract --dynamics wrote (`pages/*.json`)
+ * into reach rows. Pure: `records` = [{ slug, dynamic }]. Returns
+ *   { summary, rows } — summary is the roll-up `_dynamics.json#reach` carries;
+ *   each row is { class, feature, hint, pages, evidence, marker?, api? } with
+ *   `pages` = how many sidecars showed the signal and `evidence` = up to 4 slugs.
+ * Classes follow classes-and-signals.md: tabs / expanders / shadow content → M,
+ * empty config container / remoteEntry → CR, search shell → S, player ids → V,
+ * chat loader → T, control group / quiz → F, same-site API endpoint → A/S/D,
+ * third-party script host → the vendor table's class.
+ */
+export function reachSignals(records) {
+  const rows = new Map();
+  const hit = (key, row, slug) => {
+    const r = rows.get(key) || { ...row, pages: 0, evidence: [] };
+    r.pages += 1; if (r.evidence.length < 4 && slug) r.evidence.push(slug);
+    rows.set(key, r);
+  };
+  let withDyn = 0; const endpointPages = new Map(); const searchPages = new Set(); const formPages = new Set(); const triggerPages = new Map();
+  for (const rec of records) {
+    const d = rec && rec.dynamic; if (!d) continue; withDyn += 1;
+    const slug = rec.slug || '';
+    for (const e of d.endpoints || []) {
+      const k = `${e.method} ${e.host}${e.path}`; endpointPages.set(k, (endpointPages.get(k) || 0) + 1);
+      if (!e.sameSite || !(REACH_API.test(e.path) || /\.json$/.test(e.path))) continue;
+      const isSearch = /search|autocomplete|typeahead|suggest/i.test(e.path);
+      const isData = /\.json$/.test(e.path) && e.method === 'GET' && !REACH_API.test(e.path.replace(/\.json$/, ''));
+      hit(`api|${k}`, { class: isSearch ? 'S' : isData ? 'D' : 'A', feature: `first-party ${isData ? 'data file' : 'API'} ${e.method} ${e.path}`, hint: isSearch ? 'search' : isData ? 'data' : 'api', api: { method: e.method, path: e.path } }, slug);
+    }
+    if ((d.summary?.searchForms || 0) > 0 || (d.forms || []).some((f) => f.search)) { searchPages.add(slug); hit('search-form', { class: 'S', feature: 'site search form (sibling pages only)', hint: 'search', searchForm: true }, slug); }
+    if ((d.forms || []).some((x) => !x.search)) formPages.add(slug);
+    for (const t of d.triggers || []) { triggerPages.set(t.marker, (triggerPages.get(t.marker) || 0) + 1); }
+    for (const marker of new Set((d.triggers || []).map((t) => t.marker))) hit(`trigger|${marker}`, { class: 'M', feature: `modal trigger ${marker} (sibling pages only)`, hint: 'modal', marker }, slug);
+    if ((d.tabs?.tablists || 0) > 0 || (d.tabs?.expanders || 0) > 0) hit('tabs', { class: 'M', feature: REACH_FEATURES.tabs, hint: 'modal' }, slug);
+    if ((d.shadowHosts || []).length) hit('shadow', { class: 'M', feature: REACH_FEATURES.shadow, hint: 'client-rendered' }, slug);
+    if ((d.emptyConfigContainers || []).length) hit('empty-config', { class: 'CR', feature: REACH_FEATURES.emptyConfig, hint: 'client-rendered' }, slug);
+    if ((d.controlGroups || []).length) hit('controls', { class: 'F', feature: REACH_FEATURES.controls, hint: 'forms' }, slug);
+    if (d.searchShell) hit('search-shell', { class: 'S', feature: REACH_FEATURES.searchShell, hint: 'search' }, slug);
+    for (const vendor of new Set((d.players || []).map((p) => p.vendor).filter(Boolean))) hit(`player|${vendor}`, { class: 'V', feature: REACH_FEATURES.player(vendor), hint: 'media' }, slug);
+    if ((d.chatLoaders || []).length) hit(`vendor|T|${REACH_FEATURES.chat}`, { class: 'T', feature: REACH_FEATURES.chat, role: REACH_FEATURES.chat, hint: 'tags' }, slug);
+    if ((d.federated?.remoteEntries || []).length || (d.federated?.registerCalls || 0) > 0) hit('federated', { class: 'CR', feature: REACH_FEATURES.federated, hint: 'client-rendered' }, slug);
+    if ((d.quiz?.markers || 0) > 0 || (d.quiz?.radioFieldsets || 0) > 0) hit('quiz', { class: 'F', feature: REACH_FEATURES.quiz, hint: 'client-compute?' }, slug);
+    for (const h of d.thirdPartyScriptHosts || []) {
+      const v = vendorFor(h.host || h); if (!v || v.class === '-') continue;
+      hit(`vendor|${v.class}|${v.role}`, { class: v.class, feature: v.role, role: v.role, hint: v.class === 'T' ? 'tags' : v.class === 'F' ? 'forms' : v.class === 'V' ? 'media' : v.class === 'S' ? 'search' : v.class === 'X' ? 'decided-out' : 'inspect' }, slug);
+    }
+  }
+  return {
+    summary: { pagesWithEvidence: withDyn, of: records.length, endpoints: Object.fromEntries(endpointPages), searchFormPages: searchPages.size, formPages: formPages.size, triggerPages: Object.fromEntries(triggerPages) },
+    rows: [...rows.values()],
+  };
+}
