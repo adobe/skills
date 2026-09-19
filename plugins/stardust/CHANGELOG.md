@@ -4,6 +4,39 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.24.0-next.1 — B0 foundation: deploy split, operator cards, doc-size lint, eval fixtures (pre-release, `stardust/next` only)
+
+First batch of the 2026-08 learnings-harvest execution plan. Pre-release: installed by the owner from
+the `stardust/next` branch; not published to the marketplace until the promotion gate (real migrations
+compared against the harvest baseline) passes.
+
+- **deploy/SKILL.md split** (T03.1): 189 KB → 36.9 KB core plus fourteen step-scoped chapters under
+  `skills/deploy/reference/` (target-runtime, audit-and-naming, encode-contract, foundation,
+  fonts-and-cls, buttons, chrome, block-agents-brief, block-js-scaffold with the EW contract,
+  content-page-scaffold, local-qa, deployed-reconcile, anti-patterns, checklist); the DA Source API
+  section folded into `da-deploy-protocol.md` § Delivery pipeline. Relocation, not rewrite: an
+  adversarial content check found all 286 blocks of the original present verbatim (three lists split
+  by inserted headings, three heading-level changes, one self-pointer reworded), every `(#NN)`
+  citation and EW1–EW10 intact, every cross-skill pointer resolving.
+- **Operator card** at the top of every SKILL.md (T03.2): phases in order, command per phase with its
+  shipped cap flag, pass bars, outputs, and an "at phase N read: `reference/<file>.md` § <heading>"
+  table (113 pointers, all resolve) plus a heading index. Master § Hands-off: the coordinator reads the
+  card, lists headings before reading any file > 20 KB, and briefs agents with card rows, not files.
+  `## When to read what` TOCs on the eleven reference files over 20 KB.
+- **evals/lint/doc-size.mjs** (T03.3), in `npm run lint:stardust`: SKILL.md ≤ 100 KB, deploy core
+  ≤ 40 KB, reference ≤ 60 KB, operator card required; prints the always-on total (579.8k → 472.6k
+  bytes in this release) and the per-skill delta against the last tag. Allowlist empty.
+- **Evals**: fixtures for `intent-reasoning-style`, `prototype-before-after`, `migrate-incremental`
+  (stand-ins for `migrate-multi-template` and `migrate-self-contained-bundle`, documented),
+  `ai-readability`, `ew-editability`; a shared post-migrate keep-design fixture under `evals/_shared/`
+  (three archetypes: passing, residual-logged, ungated); concrete targets for the four from-scratch
+  evals; four new evals pinning W1 rules — `resume-state-report`, `runner-output-contract`,
+  `preflight-credentials`, `phase-checkpoint-next-command` (criteria marked "W1 target" fail on
+  0.23.0 by design).
+- Gate: eleven evals at n = 2 on 0.23.0 text vs this branch — no mean score fell
+  (`direct-from-phrase` 87.5 = 87.5, `ai-readability` 82.5 = 82.5, `ew-editability` 105 = 105,
+  `intent-reasoning-style` 60 → 65, `resume-state-report` 65 → 72.5).
+
 ## 0.23.0 — routing enforcement: the migration flow is chosen once, recorded, and guarded at every entry
 
 Evidence base: the same 48 field sessions. 0.18.5 fixed the routing *surface* (the two-flow table,
