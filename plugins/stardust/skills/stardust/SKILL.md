@@ -13,7 +13,7 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 |---|---|---|---|
 | Setup 1 | impeccable presence check; `node skills/stardust/scripts/impeccable-version-check.mjs [--local <dir>]` (advisory) | impeccable is a hard dependency | — |
 | Setup 2–4 | `PRODUCT.md` / `DESIGN.md` presence; read `stardust/state.json`; parse impeccable's `command-metadata.json` | — | — |
-| Setup 5–6 | status ledger; project hygiene (`stardust/.gitignore`, root `.gitignore`, `.hlxignore`, `git check-ignore`) | `state.json` must not be ignored | `stardust/status.jsonl`, `stardust/.gitignore` |
+| Setup 5–7 | status ledger; project hygiene (`stardust/.gitignore`, root `.gitignore`, `.hlxignore`, `git check-ignore`); credentials lookup (`DA_TOKEN` source + expiry, `SITE_TOKEN_*` names, `GH_PAT` probe) on migration-bound asks | `state.json` must not be ignored; no 401 blocker before the lookup ran | `stardust/status.jsonl`, `stardust/.gitignore`, `state.json.credentials` |
 | Routing | no arg / resume → state report; sub-skill keyword → delegate; migration ask → § Two migration flows; freeform → intent reasoning | plan shown before any command (hands-off: recorded instead) | `state.json` flow keys |
 | Freeform intent | § The "open and reasoned" principle, steps 1–6 | plan confirmation | `stardust/direction.md` |
 | Hands-off | gate auto-resolution table + decision defaults; transport preflight, privileged actions at Setup; volume caps; background waits; per-phase commits | quality gates unchanged; hard blockers still stop; denied privileged action → ask once, `Blocked on owner:` | `state.json.handsOff`, `direction.md` activation line, `status.jsonl` `blocked` (+ `owner`), `stardust/.work/env.json` |
@@ -25,6 +25,7 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 | Setup 3, Routing | `reference/state-machine.md` § File: `stardust/state.json` · § State report |
 | Setup 5 | `reference/run-status.md` § Line shape · § Rules |
 | Setup 6, Artifacts | `reference/artifact-map.md` § Versioning — what a clone holds · § Provenance shapes |
+| Setup 7 | `reference/state-machine.md` § Credentials key |
 | Routing (migration) | `reference/state-machine.md` § Flow keys |
 | Freeform intent | `reference/intent-reasoning.md` § Procedure · `reference/intent-dimensions.md` § Reading a phrase · `reference/impeccable-command-map.md` § Common sequences |
 | Hands-off | `reference/state-machine.md` § Hands-off keys · § State report · `reference/decisions.md` § How phases use it · § Default rows · `reference/harness-permissions.md` § Privileged-action preflight |
@@ -93,6 +94,21 @@ sub-commands that delegate the actual design work to **impeccable**.
    stop and name the rule. Offer, never write, LFS above 50 MB of tracked
    binaries under `stardust/`. Details in `reference/artifact-map.md`
    § Versioning.
+7. **Credentials** — for a migration ask or any invocation that can reach
+   `deploy` / `rollout` (keyed on the ask, not on `state.json.flow`, which
+   is stamped later). Resolve `DA_TOKEN` in order — shell env, repo
+   `.env`, the harness's user-level env file (Claude Code: `~/.claude/.env`)
+   — and note its source class and remaining hours (JWT `exp`; the
+   lifecycle rule is `skills/deploy/da-deploy-protocol.md` § DA_TOKEN
+   lifecycle). Enumerate `SITE_TOKEN_*` **names** in the same files by
+   pattern match — never `cat` an env file — and match `<SITE>` to the
+   repo slug case-insensitively. Probe `GH_PAT` (`GET api.github.com/user`,
+   200/401 only) when repo creation or Code Sync is in the ask or the
+   variable exists. Write the result to `state.json.credentials`
+   (`reference/state-machine.md` § Credentials key — names, statuses and
+   source classes; never a value or a home path). Two rules: never declare
+   a 401 blocker before this lookup ran; every `--token-env` consumer
+   defaults to `credentials.siteTokenEnv`.
 
 ## Routing
 
@@ -317,6 +333,14 @@ otherwise):
   work; the state report, journal entry and turn-ending reply lead with
   `Blocked on owner:` while it is open. A denied read or instrument is
   re-issued once as a bare command.
+
+- **Plan inside the token window.** From `credentials.daExpiresAt`
+  the plan says which deploy waves fall after expiry and orders
+  token-bound work inside the window; when the projection exceeds the
+  TTL, ask for the refresh up front. A missing or expired credential is
+  the `blocked` line **and** the first line of every progress message,
+  with the exact unblock command; delivery halts, author-only work
+  continues.
 
 **Hard blockers remain stops.** An unreachable source site, an
 expired `DA_TOKEN` that cannot be recovered, or a signal-absent brand

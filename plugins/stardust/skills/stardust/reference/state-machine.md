@@ -3,7 +3,7 @@
 ## When to read what
 
 - § File: `stardust/state.json` — before reading or writing state: the full shape.
-- § Hands-off keys · § Flow keys — when the run is hands-off or a migration flow was chosen: the markers every sub-command checks.
+- § Hands-off keys · § Credentials key · § Flow keys — when the run is hands-off, migration-bound or a migration flow was chosen: the markers every sub-command checks.
 - § Page lifecycle states · § Page types — when moving a page between states or typing it for template reuse across siblings.
 - § Stale flagging — when `direct` resolves a new direction: which pages actually go stale.
 - § State report — when rendering the no-args status view.
@@ -91,6 +91,30 @@ When the run was activated hands-off (`skills/stardust/SKILL.md`
   quality gates passed, not by the user. A later explicit user
   approval appends a new history entry (without the marker); it does
   not rewrite the hands-off one.
+
+---
+
+## Credentials key
+
+Stamped by the master skill's Setup step 7 on migration-bound asks and
+re-checked by `deploy` / `rollout` Setup. `state.json` is tracked, so the
+block holds names, statuses and source *classes* — never a token value,
+never a home path:
+
+```json
+"credentials": {
+  "at": "2026-09-18T08:40:00Z",
+  "da": "ok | expired | missing",
+  "daExpiresAt": "2026-09-19T07:12:00Z",
+  "daSource": "shell | repo-env | global-env",
+  "siteTokenEnv": "SITE_TOKEN_<SITE>",
+  "gh": "ok | expired | missing | skipped"
+}
+```
+
+`siteTokenEnv` is the matched variable name (or absent); every
+`--token-env` consumer defaults to it. `gh` is `skipped` when neither the
+ask nor the environment involves repo creation or Code Sync.
 
 ---
 
