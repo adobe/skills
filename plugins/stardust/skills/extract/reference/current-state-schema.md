@@ -1,5 +1,18 @@
 # Per-page JSON schema
 
+## When to read what
+
+- § Top-level shape — before writing a page record: the required keys and provenance block.
+- § Headings · § Hero headline — when recording document-order headings and the resolved hero copy on JS-rendered pages.
+- § Landmarks · § Widgets · § Components — when mapping IA structure, interactive ARIA widgets and the closed-list component inventory; three separate concerns.
+- § CTAs · § Links — when capturing button-like elements and de-duplicated internal/external links.
+- § Media · § Forms — when recording images, video and form fields.
+- § Dynamic — only on migration-bound runs with `--dynamics`: per-page reach evidence of what was fetched and how it rendered.
+- § Embed dominance — when a page's primary content lives inside a cross-origin iframe.
+- § CSS custom properties · § Per-section style — when capturing `:root` tokens and the per-section style summaries that feed brand-surface aggregation.
+- § Required vs optional · § Versioning — when a key has no data (empty, never omitted) or the schema evolves.
+- § Live-render evidence — before any write: why a synthesized page record is forbidden and how the guard refuses it.
+
 The shape of `stardust/current/pages/<slug>.json`. Every page extracted
 by Phase 2 of `extract` writes one of these. Downstream sub-commands
 (`direct`, `prototype`, `migrate`) consume it.

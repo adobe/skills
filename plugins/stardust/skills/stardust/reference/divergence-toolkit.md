@@ -1,5 +1,17 @@
 # Divergence Toolkit
 
+## When to read what
+
+- § 1. The Default-Moves List — when a visual decision has no brand-specific basis: the moves that need a per-hit justification.
+- § 2. Seed Lists — when reference research leaves a dimension un-implied: the deterministic fallback.
+- § 2.5 Dimension Weighting — when reading a rolled seed: which layer of the visual system each dimension governs.
+- § 3. Font Decks — when picking type: one deck per run, cross-deck mixing justified.
+- § 4. Role-Naming Rule — when naming palette roles: brand-language names, generic slots forbidden.
+- § 5. Reference-Use Discipline — when the designer supplies a listicle or trend article as a reference.
+- § 6. Designer Corrections — when the list needs amending; authoritative over § 1 on conflict.
+- § 7. Optional House Standards — when a rule is defensible across brands and should not count against the divergence budget.
+- § How skills consume this toolkit — when checking which sub-command reads which section.
+
 Shared inputs used by the `stardust` pipeline (primarily `direct` when it
 authors the target `DESIGN.md` / `DESIGN.json`, and `prototype` when it
 generates variants) to push back against the assistant's recurring default

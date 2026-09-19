@@ -1,5 +1,15 @@
 # The content model — capture contract
 
+## When to read what
+
+- § File shape — before writing `content-model.json`: the top-level keys.
+- § Slot taxonomy — when deciding what one slot is and how its root is classified.
+- § The ordered stream — when rendering: the document-order node view renderers consume exclusively for slot structure.
+- § Rendered-case text — when text arrives uppercase: why casing is captured as rendered and reproduced with CSS.
+- § Scope discovery — before every capture: finding the content root so nothing outside the obvious container is dropped.
+- § Normalization ledger — when the source DOM must be mutated before capture: declaring shared, executable deltas.
+- § Provenance — when writing or checking the `_provenance` block and its reskin-specific fields.
+
 What `scripts/capture-content.mjs` writes to
 `stardust/reskin/content-model/<slug>/content-model.json`, why each
 field exists, and the two procedures that keep the capture honest:

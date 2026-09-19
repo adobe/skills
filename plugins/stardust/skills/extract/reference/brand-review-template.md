@@ -1,5 +1,16 @@
 # Brand-review template
 
+## When to read what
+
+- § Output — before writing the file: where it lands and the self-contained constraints (no external scripts, fonts or analytics).
+- § Source artifacts — when wiring inputs: which `stardust/current/` files feed which part of the review.
+- § Section contract — when rendering each section: what it contains and which sections are conditional on source data.
+- § Badges — when stamping a section header: the provenance badge vocabulary and the confidence each one signals.
+- § Tensions — when the extraction shows the site contradicting itself: recording a descriptive decision agenda for `direct`, not prescriptions.
+- § Styling rules — when laying out the HTML: the mandatory layout moves that make the review feel like the site instead of a generic shell.
+- § What this artifact is not — when tempted to prescribe, critique or write a migration spec inside the review.
+- § Open issues for v0.3 — only when extending the template; known gaps, not current contract.
+
 The contract for `stardust/current/brand-review.html` — the
 self-contained visual artifact emitted at the end of `extract`. The
 review is the **first surface a human can eyeball** to verify the
