@@ -108,9 +108,10 @@ regression check instead of a debugging tool.
    `skills/reskin/scripts/*` and `skills/replica/scripts/impeccable-ignores.mjs`
    (no deps) byte-identical to `stardust/scripts/reskin/`, **and**
    `skills/diff/scripts/live-session.mjs` + `live-budget.mjs` to
-   `stardust/scripts/diff/` — every reskin gate script imports them from
-   `../diff/` beside `../reskin/` (exit 2 without live-session; no
-   lock/pacing without live-budget); run the copies.
+   `stardust/scripts/diff/` + the `stardust/` set (`../replica/SKILL.md`
+   § Setup step 4: browser-lock, lib/resolve) — gate scripts import them
+   from `../diff/` (exit 2 without live-session; unlocked/unpaced without
+   live-budget); run the copies.
    Live-side gates take `--headed` (ladder tier 2) / `--headed=window`
    (tier 3); default = the tier extract recorded —
    `../extract/reference/playwright-recipe.md` § Bot-management fallback.

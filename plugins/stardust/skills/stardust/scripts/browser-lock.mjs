@@ -50,7 +50,7 @@
  *             error. No network. Never reaps a dev server (ports are the port
  *             allocator's, by pidfile only).
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync, appendFileSync, utimesSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync, appendFileSync, utimesSync, realpathSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { homedir, hostname } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -188,7 +188,10 @@ export function reap({ minutes = DEFAULTS.reapMin } = {}) {
 }
 
 // ----------------------------------------------------------------------- CLI --
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// main guard on REAL paths: the main module's import.meta.url is symlink-resolved (macOS /var → /private/var, a
+// symlinked project dir) while argv[1] is not — a plain resolve() compare made the CLI exit 0 silently, no slot taken
+const realOf = (p) => { try { return realpathSync(p); } catch { return resolve(p); } };
+if (process.argv[1] && realOf(resolve(process.argv[1])) === realOf(fileURLToPath(import.meta.url))) {
   const args = process.argv.slice(2);
   const cmd = args.find((a) => !a.startsWith('--'));
   const opt = (n) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : undefined; };

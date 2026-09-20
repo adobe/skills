@@ -67,7 +67,7 @@ prototype's DOM and the built DOM compare symmetrically, then diffs them.
 # Prereq 0: node skills/stardust/scripts/preflight-runtime.mjs (master Setup step 10) — playwright, pixelmatch and pngjs
 # resolve from stardust/node_modules through the resolution chain (runtime-preflight.md § Resolution chain);
 # never npm i … --no-save in the EDS repo. Run the copied scripts from the project, not the plugin.
-# Copy the WHOLE skills/diff/scripts/ dir (content-diff imports diff-profiles + content-inventory).
+# Copy the WHOLE skills/diff/scripts/ dir + the stardust/ set (../replica/SKILL.md § Setup step 4).
 # Prereq: a RENDERABLE source. Static → serve from its own dir (python3 -m http.server).
 # The build URL must be the DECORATED page (live/preview or a local harness), not raw markup.
 PROTO="http://127.0.0.1:$(node skills/replica/scripts/port.mjs proto)/<prototype>.html"   # serve.mjs slot; a typed 8791 fallback is still identity-gated (exit 4)

@@ -735,6 +735,14 @@ integrates; every runner also runs standalone with `node <path>`:
   `data-hidden-live="<reason>"`, descendants are not re-stamped, `<details>` is
   never stamped, script/style/template skipped, `<html>` carries the stamp
   timestamp, the count returned.
+- `replica/scripts/test/copy-set.test.mjs` — replica SKILL § Setup step 4's copy
+  set: replica/ + diff/ scripts with `stardust/scripts/{browser-lock,lib/resolve}.mjs`
+  beside them — the copied `gate.sh` takes and releases the round slot (the
+  `acquired` line; browser-lock's main guard compares real paths, so a symlinked
+  project dir no longer exits 0 silently), `live-session.mjs` takes one slot per
+  process, `pixel-compare.mjs` resolves pngjs/pixelmatch through the chain; the
+  pre-fix copy (replica/ + diff/ only) warns and runs unlocked, the bare import
+  misses. Not yet in the chain — run by hand.
 - `rollout/scripts/test/plan.test.mjs` — `plan.mjs` reads
   `stardust/current/layout-clusters.json`: an ungated cluster ≥ T puts
   `coverageGap` on its pages' steps and prints `coverage gap: ungated cluster <id>
