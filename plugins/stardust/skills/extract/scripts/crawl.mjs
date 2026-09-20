@@ -89,8 +89,12 @@
  *     [--mobile entry|all|none] [--dpr 1] [--depth 1] [--cookie name=value[;Path=/]]... \
  *     [--storage-state <file> | --fresh-state] [--save-state] [--solve-wait <ms>] \
  *     [--progress <file> | --no-progress] [--assets intercept|full|none | --no-assets] \
- *     [--assets-max <n>] [--assets-max-bytes <n>]
+ *     [--assets-max <n>] [--assets-max-bytes <n>] [--prep]
  *   node crawl.mjs --help
+ *
+ * --prep: the migrate-prep run (extract/reference/prep-mode.md § 1) — implies --all unless
+ *   --cap / --single / --pages is given, and is recorded as runs[].args.prep so
+ *   brand-surface.mjs never auto-bounds a prep run that also carried --pages.
  *
  * Asset harvest (default on; --no-assets disables; --assets full adds capped in-page
  *   fetches): the render's own image/font bodies are kept from the response stream —
@@ -197,7 +201,7 @@
  *   (tier 3 still challenged, or --solve-wait expired — never captured as content).
  * Exports (for evals/fixtures/*.test.mjs and the sibling extract scripts, which
  *   import ./crawl.mjs — copy the set together): slugify, assignSlugs, MOBILE_SHOT_SUFFIX,
- *   exitCodeOf, noteRateLimited, probeRateLimited, needsStateSave, mergeCrawlLog,
+ *   exitCodeOf, noteRateLimited, probeRateLimited, needsStateSave, mergeCrawlLog, runArgsRecord,
  *   RUN_LEVEL_DISCOVERY, TIERS, tierOf, captureQualityOf, SHOT_WRAP_PX,
  *   OVERLAY_FLAG_PCT, discoverInventory, parseRobots, parseCookieFlag,
  *   challengeMarker, CHALLENGE_PHRASE, HostBudget, BUDGET_DEFAULT,
@@ -279,9 +283,10 @@ export function parseArgs(argv) {
     }
     else if (k === '--pages') a.pages = val().split(',').map((s) => s.trim()).filter(Boolean);
     else if (k === '--out') a.out = val();
-    else if (k === '--max' || k === '--cap') { const n = +val(); a.max = Number.isFinite(n) && n >= 0 ? n : 5; } // 0 = no cap; default 5 (the extract contract's small sample)
-    else if (k === '--all') a.max = 0;
-    else if (k === '--single') a.max = 1;
+    else if (k === '--max' || k === '--cap') { const n = +val(); a.max = Number.isFinite(n) && n >= 0 ? n : 5; a.capExplicit = true; } // 0 = no cap; default 5 (the extract contract's small sample)
+    else if (k === '--all') { a.max = 0; a.capExplicit = true; }
+    else if (k === '--single') { a.max = 1; a.capExplicit = true; }
+    else if (k === '--prep') a.prep = true; // prep-mode.md § 1: implies --all (below) and is recorded in runs[].args — never auto-bounded
     else if (k === '--refresh') a.refresh = val().split(',').map((s) => s.trim()).filter(Boolean);
     else if (k === '--force') a.force = true;
     else if (k === '--wait') { a.wait = val(); if (!WAIT_MS[a.wait]) throw new Error(`--wait must be one of ${Object.keys(WAIT_MS).join('|')}`); } // the recorded waitMode must be a recipe mode (schema gate)
@@ -299,6 +304,7 @@ export function parseArgs(argv) {
     else throw new Error(`unknown arg: ${k}`);
   }
   if (!a.url) throw new Error('--url is required');
+  if (a.prep && !a.capExplicit && !a.pages) a.max = 0; // --prep implies --all unless the cap or the page list was given
   if (a.solveWait) a.headed = 3; // a human cannot solve in an off-screen window: tier 3 with the window VISIBLE, whatever --headed said
   a.concurrencyRequested = a.concurrency; // the CLI value — runs[].args records it; a bare 429 drops a.concurrency to 1 at run time
   if (a.progress === undefined) a.progress = crawlProgressFile(a);
@@ -2886,7 +2892,7 @@ async function main() {
   log.crawl.finishedAt = new Date().toISOString();
   const merged = mergeCrawlLog(prev, log, {
     at: startedAt,
-    args: { url: args.url, pages: args.pages || null, cap: args.capLabel, wait: args.wait, concurrency: args.concurrencyRequested ?? args.concurrency, dynamics: args.dynamics, refresh: args.refresh, force: args.force, headed: args.headed || null, solveWait: args.solveWait || null, depth: args.depth, cookie: args.cookies.map((c) => c.name), mobile: args.mobile, dpr: args.dpr, assets: args.assets, storageState: loadedState ? 'loaded' : args.freshState ? 'fresh' : 'clone', saveState: !!savedState },
+    args: runArgsRecord(args, { loadedState, savedState }),
     technique,
     discovered: urls.length,
     skipped: skipped.length,
@@ -2898,6 +2904,12 @@ async function main() {
   console.error(`[crawl] done. ${ok}/${queue.length} captured, ${failedNow.size} failed (${merged.crawl.failures.length} open across runs). log: ${logPath}`);
   progress.set({ technique });
   console.log(progress.summaryLine({ exit: 0, details: logPath, extra: { discovered: urls.length, skipped: skipped.length, technique, openFailures: merged.crawl.failures.length } }));
+}
+
+/** runs[].args — the CLI facts of one invocation (ia-extraction.md § _crawl-log.json shape): cookie = NAMES only,
+ *  never values; `prep` is what brand-surface.mjs isBoundedRun() reads — a --prep run is never auto-bounded. */
+export function runArgsRecord(args, { loadedState = null, savedState = null } = {}) {
+  return { url: args.url, pages: args.pages || null, cap: args.capLabel, wait: args.wait, concurrency: args.concurrencyRequested ?? args.concurrency, dynamics: args.dynamics, refresh: args.refresh, force: args.force, headed: args.headed || null, solveWait: args.solveWait || null, depth: args.depth, cookie: args.cookies.map((c) => c.name), mobile: args.mobile, dpr: args.dpr, assets: args.assets, storageState: loadedState ? 'loaded' : args.freshState ? 'fresh' : 'clone', saveState: !!savedState, prep: !!args.prep };
 }
 
 /**

@@ -19,10 +19,12 @@ cap-respecting selection logic from `ia-extraction.md`
 § Page selection still applies for ordering and junk-filtering;
 it just doesn't truncate.
 
-A `--prep` run is **never bounded**: `brand-surface.mjs` reads
-`_crawl-log.json#runs[last].args.prep` and keeps the full brand surface
-(voice, voiceTable, crossPromo, register; `_provenance.mode: "full"`)
-even when the run also carried `--pages`.
+A `--prep` run is **never bounded**: `crawl.mjs --prep` records
+`_crawl-log.json#runs[last].args.prep`, `brand-surface.mjs` reads it and
+keeps the full brand surface (voice, voiceTable, crossPromo, register;
+`_provenance.mode: "full"`) even when the run also carried `--pages`.
+`brand-surface.mjs --full` is the manual override when the crawl ran
+without `--prep`.
 
 ### Sub-agent prompt requirements (when delegating)
 

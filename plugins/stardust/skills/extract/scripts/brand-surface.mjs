@@ -7,14 +7,18 @@
  * the crawl log and the fonts manifest — never from a second live pass.
  *
  * Usage:
- *   node brand-surface.mjs [--out stardust/current] [--home index] [--bounded] [--lift <dir>] [--dry-run]
+ *   node brand-surface.mjs [--out stardust/current] [--home index] [--bounded | --full] [--lift <dir>] [--dry-run]
  *   node brand-surface.mjs --help
  *     --out <dir>    the extract output dir (default stardust/current)
  *     --home <slug>  home-page slug (default index; `home` is the legacy alias, D6)
  *     --bounded      palette/type/motifs only — voice, voiceTable, crossPromo and
  *                    register are OMITTED (never guessed) and _provenance.mode is
  *                    "bounded". Automatic when the last _crawl-log.json run had
- *                    --pages / --single (cap 1) and no --prep.
+ *                    --pages / --single (cap 1) and no --prep (runs[].args.prep,
+ *                    written by crawl.mjs --prep).
+ *     --full         keep the full surface whatever the last run's args were — the
+ *                    operator's override of the auto-bounded detection (exclusive
+ *                    with --bounded; exit 2 together).
  *     --lift <dir>   optional replica CSS lift (T23.5): its files are listed in
  *                    readArtifacts and its @font-face entries fill type.files when
  *                    assets/_fonts-manifest.json is absent. Never required.
@@ -61,23 +65,25 @@ import { pathToFileURL } from 'node:url';
 import { CONSENT_LABELS, validateProvenance, licensingFlagFor } from './crawl.mjs';
 
 const HELP = `brand-surface — offline Phase 3 aggregation of pages/*.json into _brand-extraction.json
-Usage: node brand-surface.mjs [--out stardust/current] [--home index] [--bounded] [--lift <dir>] [--dry-run]
+Usage: node brand-surface.mjs [--out stardust/current] [--home index] [--bounded | --full] [--lift <dir>] [--dry-run]
 Exit codes: 0 written/dry · 1 no usable page records · 2 usage.`;
 
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) return { help: true };
-  const o = { out: 'stardust/current', home: 'index', bounded: false, lift: null, dryRun: false };
+  const o = { out: 'stardust/current', home: 'index', bounded: false, full: false, lift: null, dryRun: false };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     const val = () => { const v = rest[i + 1]; if (v === undefined || /^--/.test(v)) throw new UsageError(`${a} needs a value`); i += 1; return v; }; // a following flag is not a value (`--out --prep`)
     if (a === '--out') o.out = val();
     else if (a === '--home') o.home = val();
     else if (a === '--bounded') o.bounded = true;
+    else if (a === '--full') o.full = true;
     else if (a === '--lift') o.lift = val();
     else if (a === '--dry-run') o.dryRun = true;
     else throw new UsageError(`unknown flag ${a}`);
   }
+  if (o.bounded && o.full) throw new UsageError('--bounded and --full exclude each other');
   return o;
 }
 class UsageError extends Error {}
@@ -478,7 +484,7 @@ function main() {
   if (!pages.length) { console.error(`brand-surface: no live page record under ${pagesDir}${skipped.length ? ` (${skipped.length} skipped: ${skipped.join('; ')})` : ''} — run crawl.mjs first`); process.exit(1); }
   const sidecars = {}; for (const p of pages) { const h = path.join(pagesDir, `${p.slug}.html`); if (existsSync(h)) sidecars[p.slug] = readFileSync(h, 'utf8'); }
   const log = readJson(path.join(out, '_crawl-log.json')); const fonts = readJson(path.join(out, 'assets', '_fonts-manifest.json'));
-  const bounded = args.bounded || isBoundedRun(log);
+  const bounded = args.bounded || (!args.full && isBoundedRun(log)); // --full: the operator's override of the auto-bounded detection
   const bsDir = path.join(out, 'brand-sources'); const brandSources = existsSync(bsDir) ? readdirSync(bsDir).filter((h) => existsSync(path.join(bsDir, h, 'pages'))).map((h) => ({ origin: `https://${h}`, pages: readdirSync(path.join(bsDir, h, 'pages')).filter((f) => f.endsWith('.json')).length })) : [];
   const { surface, logoMarkup } = buildBrandSurface(pages, sidecars, { home: args.home, bounded, log, fonts, lift, outDir: out, brandSources });
   if (skipped.length) surface._provenance.notes.push(`skipped ${skipped.length} record(s) without live-render provenance: ${skipped.join('; ')}`);

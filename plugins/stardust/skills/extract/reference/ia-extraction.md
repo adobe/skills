@@ -443,7 +443,7 @@ informational output.
     ]
   },
   "runs": [                          // one entry per invocation, appended
-    { "at": "...", "args": { "url": "...", "pages": null, "cap": 5, "wait": "medium", "concurrency": 4, "dynamics": false, "refresh": [], "force": false, "headed": null, "depth": 1, "cookie": ["agegate_confirmed"], "mobile": "entry", "dpr": 1 },   // cookie = NAMES only, never values
+    { "at": "...", "args": { "url": "...", "pages": null, "cap": 5, "wait": "medium", "concurrency": 4, "dynamics": false, "refresh": [], "force": false, "headed": null, "depth": 1, "cookie": ["agegate_confirmed"], "mobile": "entry", "dpr": 1, "prep": false },   // cookie = NAMES only, never values; prep = the --prep run (brand-surface.mjs never bounds it)
       "technique": "headless", "discovered": 38, "skipped": 0, "captured": 24, "failed": ["contact"],
       "assets": { "mode": "intercept", "saved": 61, "failed": 2, "bytes": 4183020, "fonts": 3, "iconFonts": 1, "transformSuspect": 0, "extraFetches": 0 } }   // the harvest (SKILL § Phase 2); extraFetches > 0 only under --assets full
   ]
